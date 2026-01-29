@@ -2,6 +2,8 @@
 
 #include "agent/agent.h"
 
+#include "sse_parser.h"
+
 #include <curl/curl.h>
 
 #if defined(AGENT_HAVE_JSONCPP)
@@ -16,6 +18,44 @@ static size_t write_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
   auto* out = static_cast<std::string*>(userdata);
   out->append(ptr, size * nmemb);
   return size * nmemb;
+}
+
+struct StreamingWriteCtx {
+  SseParser parser;
+  OpenAIStreamChunkCallback on_chunk = nullptr;
+  void* on_chunk_ctx = nullptr;
+  std::string capture;
+  size_t capture_limit = 0;
+  bool saw_done = false;
+  size_t chunks = 0;
+};
+
+static size_t write_stream_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
+  auto* ctx = static_cast<StreamingWriteCtx*>(userdata);
+  const size_t n = size * nmemb;
+  if (!ctx || !ptr || n == 0) return n;
+
+  if (ctx->capture.size() < ctx->capture_limit) {
+    const size_t remaining = ctx->capture_limit - ctx->capture.size();
+    const size_t to_add = (n <= remaining) ? n : remaining;
+    ctx->capture.append(ptr, ptr + to_add);
+  }
+
+  std::vector<SseEvent> events;
+  ctx->parser.feed(ptr, n, &events);
+  for (const auto& ev : events) {
+    const std::string data = ev.data;
+    if (data == "[DONE]") {
+      ctx->saw_done = true;
+      continue;
+    }
+    if (data.empty()) continue;
+    ctx->chunks++;
+    if (ctx->on_chunk) {
+      ctx->on_chunk(ctx->on_chunk_ctx, data.data(), data.size());
+    }
+  }
+  return n;
 }
 
 static void ensure_curl_global_init() {
@@ -148,6 +188,98 @@ static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::
   return result;
 }
 
+static OpenAIStreamResult http_post_json_stream(
+  const OpenAIClientConfig& cfg,
+  const std::string& url,
+  const std::string& body,
+  OpenAIStreamChunkCallback on_chunk,
+  void* on_chunk_ctx,
+  size_t max_capture_bytes
+) {
+  OpenAIStreamResult result;
+  result.http_status = 0;
+  result.saw_done = false;
+
+  ensure_curl_global_init();
+
+  const char* https_proxy = std::getenv("HTTPS_PROXY");
+  if (!https_proxy || !https_proxy[0]) {
+    https_proxy = std::getenv("https_proxy");
+  }
+  const bool have_proxy = (https_proxy && https_proxy[0]);
+
+  CURL* curl = curl_easy_init();
+  if (!curl) {
+    result.response_body = "curl_easy_init failed";
+    return result;
+  }
+
+  struct curl_slist* headers = nullptr;
+  headers = curl_slist_append(headers, "Content-Type: application/json");
+  headers = curl_slist_append(headers, "Accept: text/event-stream");
+  if (!cfg.api_key.empty()) {
+    headers = curl_slist_append(headers, ("Authorization: Bearer " + cfg.api_key).c_str());
+  }
+  if (!cfg.openrouter_http_referer.empty()) {
+    headers = curl_slist_append(headers, ("HTTP-Referer: " + cfg.openrouter_http_referer).c_str());
+  }
+  if (!cfg.openrouter_x_title.empty()) {
+    headers = curl_slist_append(headers, ("X-Title: " + cfg.openrouter_x_title).c_str());
+  }
+
+  StreamingWriteCtx wctx;
+  wctx.on_chunk = on_chunk;
+  wctx.on_chunk_ctx = on_chunk_ctx;
+  wctx.capture_limit = max_capture_bytes;
+
+  curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+  curl_easy_setopt(curl, CURLOPT_POST, 1L);
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body.size());
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_stream_cb);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &wctx);
+  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, cfg.timeout_ms);
+  const long connect_timeout_ms = (cfg.timeout_ms > 0) ? std::min<long>(cfg.timeout_ms, 15000L) : 15000L;
+  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, connect_timeout_ms);
+  curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+
+  if (have_proxy) {
+    curl_easy_setopt(curl, CURLOPT_PROXY, https_proxy);
+    curl_easy_setopt(curl, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
+    curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 1L);
+    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+  }
+
+  CURLcode rc = curl_easy_perform(curl);
+  if (rc != CURLE_OK && have_proxy) {
+    // Retry once with proxy disabled.
+    wctx.capture.clear();
+    wctx.parser.reset();
+    curl_easy_setopt(curl, CURLOPT_PROXY, "");
+    curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 0L);
+    rc = curl_easy_perform(curl);
+  }
+  if (rc != CURLE_OK) {
+    result.response_body = wctx.capture;
+    result.error_message = std::string("curl_easy_perform failed: ") + curl_easy_strerror(rc);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    return result;
+  }
+
+  long http_status = 0;
+  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status);
+  result.http_status = http_status;
+  result.response_body = wctx.capture;
+  result.saw_done = wctx.saw_done;
+
+  curl_slist_free_all(headers);
+  curl_easy_cleanup(curl);
+  return result;
+}
+
 #if defined(AGENT_HAVE_JSONCPP)
 static void append_message_views_json(Json::Value& messages, const agent_message_view_t* views, size_t n) {
   for (size_t i = 0; i < n; i++) {
@@ -259,6 +391,26 @@ OpenAIRawResult openai_chat_completions_raw(const OpenAIClientConfig& cfg, const
   const std::string base = normalize_base_url(cfg.base_url);
   const std::string url = join_url(base, "/chat/completions");
   return http_post_json(cfg, url, request_body_json);
+}
+
+OpenAIStreamResult openai_chat_completions_raw_stream(
+  const OpenAIClientConfig& cfg,
+  const std::string& request_body_json,
+  OpenAIStreamChunkCallback on_chunk,
+  void* on_chunk_ctx,
+  size_t max_capture_bytes
+) {
+  const std::string base = normalize_base_url(cfg.base_url);
+  const std::string url = join_url(base, "/chat/completions");
+  OpenAIStreamResult r = http_post_json_stream(cfg, url, request_body_json, on_chunk, on_chunk_ctx, max_capture_bytes);
+
+#if defined(AGENT_HAVE_JSONCPP)
+  // Best-effort: if the provider returned a non-stream JSON error body, extract an error message.
+  if (r.http_status >= 400 && !r.response_body.empty()) {
+    r.error_message = openai_try_extract_error_message(r.response_body);
+  }
+#endif
+  return r;
 }
 
 std::string openai_try_extract_error_message(const std::string& response_body) {

@@ -33,6 +33,7 @@ find_package(CURL REQUIRED)
 # Host-side adapter library shared by CLI and daemon.
 add_library(agent_host STATIC
   cli/src/openai_client.cpp
+  cli/src/sse_parser.cpp
   cli/src/session_store.cpp
   cli/src/tool_loop.cpp
   cli/src/tool_loop_compaction.cpp
@@ -132,6 +133,14 @@ if(PKG_CONFIG_FOUND AND JSONCPP_FOUND)
   )
   target_link_libraries(host_toolset_tests PRIVATE agent_host)
   add_test(NAME host_toolset_tests COMMAND host_toolset_tests)
+
+  add_executable(sse_parser_tests
+    tests/test_sse_parser.cpp
+    cli/src/sse_parser.cpp
+  )
+  target_include_directories(sse_parser_tests PRIVATE cli/src)
+  add_test(NAME sse_parser_tests COMMAND sse_parser_tests)
+  set_tests_properties(sse_parser_tests PROPERTIES SKIP_RETURN_CODE 77)
 
   add_executable(tool_loop_compaction_tests
     tests/test_tool_loop_compaction.cpp

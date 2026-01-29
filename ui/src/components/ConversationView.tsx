@@ -53,6 +53,8 @@ export default function ConversationView({
   events: AgentEvent[];
 }) {
   const items: Array<React.ReactNode> = [];
+  let streamedAssistant = "";
+  let sawFinalAssistant = false;
 
   if (prompt.trim().length > 0) {
     items.push(
@@ -67,11 +69,18 @@ export default function ConversationView({
     const data: any = normalizeEventData(ev.data);
 
     if (type === "assistant_message") {
+      sawFinalAssistant = true;
       items.push(
         <Card key={`a-${idx}`} title="Assistant">
           <Markdown text={String(data.assistant_content ?? "")} />
         </Card>,
       );
+      return;
+    }
+
+    if (type === "assistant_delta") {
+      const delta = typeof data.delta === "string" ? data.delta : "";
+      if (delta) streamedAssistant += delta;
       return;
     }
 
@@ -122,6 +131,13 @@ export default function ConversationView({
     }
   });
 
+  if (!sawFinalAssistant && streamedAssistant.trim().length > 0) {
+    items.push(
+      <Card key="assistant-stream" title="Assistant (streaming)">
+        <Markdown text={streamedAssistant} />
+      </Card>,
+    );
+  }
+
   return <div className="grid gap-3">{items}</div>;
 }
-

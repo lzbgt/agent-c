@@ -34,6 +34,26 @@ OpenAIRawResult openai_chat_completions_raw(
   const std::string& request_body_json
 );
 
+// Streaming helper for OpenAI-compatible `stream: true` responses (SSE).
+// - `on_chunk` is called with each JSON chunk from `data: { ... }` SSE lines (excluding `[DONE]`).
+// - `response_body` is a best-effort capture of the wire body up to `max_capture_bytes` (useful for errors).
+typedef void (*OpenAIStreamChunkCallback)(void* ctx, const char* chunk_json, size_t chunk_len);
+
+struct OpenAIStreamResult {
+  long http_status = 0;
+  std::string response_body;
+  std::string error_message;
+  bool saw_done = false;
+};
+
+OpenAIStreamResult openai_chat_completions_raw_stream(
+  const OpenAIClientConfig& cfg,
+  const std::string& request_body_json,
+  OpenAIStreamChunkCallback on_chunk,
+  void* on_chunk_ctx,
+  size_t max_capture_bytes = 256 * 1024
+);
+
 // Best-effort extraction of a human-readable provider error from an OpenAI-compatible response.
 // Returns empty string if no error message could be extracted.
 std::string openai_try_extract_error_message(const std::string& response_body);

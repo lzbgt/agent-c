@@ -40,6 +40,7 @@ export default function App() {
   const [baseUrl, setBaseUrl] = useLocalStorageState("agentui.baseUrl", "https://api.deepseek.com");
   const [apiKey, setApiKey] = useLocalStorageState("agentui.apiKey", "");
   const [timeoutMs, setTimeoutMs] = useLocalStorageState("agentui.timeoutMs", "60000");
+  const [streamAssistant, setStreamAssistant] = useLocalStorageState("agentui.streamAssistant", false);
   const [maxSteps, setMaxSteps] = useLocalStorageState("agentui.maxSteps", "0");
   const [maxChars, setMaxChars] = useLocalStorageState("agentui.maxChars", "20000");
   const [keepLast, setKeepLast] = useLocalStorageState("agentui.keepLast", "16");
@@ -95,6 +96,7 @@ export default function App() {
         base_url: baseUrl || undefined,
         api_key: apiKey || undefined,
         timeout_ms: Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0 ? Number(timeoutMs) : undefined,
+        stream_assistant: streamAssistant,
         max_steps: Number.isFinite(Number(maxSteps)) ? Number(maxSteps) : 0,
         max_chars: Number.isFinite(Number(maxChars)) ? Number(maxChars) : 20000,
         keep_last: Number.isFinite(Number(keepLast)) ? Number(keepLast) : 16,
@@ -516,6 +518,18 @@ export default function App() {
               <input id="async" type="checkbox" checked={useAsync} onChange={(e) => setUseAsync(e.target.checked)} />
               <label htmlFor="async" className="text-sm text-white/70">
                 Async run (poll jobs)
+              </label>
+            </div>
+
+            <div className="mt-3 flex items-center gap-2">
+              <input
+                id="streamAssistant"
+                type="checkbox"
+                checked={streamAssistant}
+                onChange={(e) => setStreamAssistant(e.target.checked)}
+              />
+              <label htmlFor="streamAssistant" className="text-sm text-white/70">
+                Stream assistant tokens (tools=none)
               </label>
             </div>
 

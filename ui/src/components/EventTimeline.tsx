@@ -39,6 +39,7 @@ function EventCard({
 
   const title = (() => {
     if (type === "assistant_message") return "Assistant";
+    if (type === "assistant_delta") return "Assistant delta";
     if (type === "tool_call") return `Tool call: ${data.tool_name ?? ""}`;
     if (type === "tool_result") return `Tool result: ${data.tool_name ?? ""}`;
     if (type === "llm_request") return "LLM request";
@@ -63,6 +64,10 @@ function EventCard({
         <div className="px-3 pb-3">
           {type === "assistant_message" ? (
             <Markdown text={String(data.assistant_content ?? "")} />
+          ) : type === "assistant_delta" ? (
+            <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
+              {typeof data.delta === "string" ? data.delta : JSON.stringify(data, null, 2)}
+            </pre>
           ) : type === "tool_result" ? (
             typeof data.content === "string" ? (
               <ToolResultView baseUrl={baseUrl} yolo={yolo} content={data.content} />

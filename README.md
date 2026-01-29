@@ -168,6 +168,10 @@ Verbose inspection:
 - Pass `trace: true` to also return a plain-text transcript (`trace_text`).
 - The daemon also serves files for previews at `GET /api/v1/file?path=<...>&yolo=0|1` (up to 10MB).
 
+Assistant streaming (provider-dependent):
+- For `tools: "none"` runs, clients can set `stream_assistant: true` to request OpenAI-compatible SSE streaming (`stream: true`).
+  The daemon will emit `assistant_delta` events during the run so the UI doesn’t look stuck.
+
 Tool schema introspection (extensible tools):
 - `GET /api/v1/tools?tools=host|basic|none&tools_root=@host|@cwd|...&yolo=0|1` returns the tool registry the daemon will expose:
   `name`, `description`, `parameters_json` (OpenAI-compatible JSON Schema).

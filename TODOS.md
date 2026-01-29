@@ -37,7 +37,9 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
   - fetch per-run audit entries
 - [ ] Add streaming responses (SSE/WebSocket) for UI responsiveness.
   - [x] stream job events via SSE (`GET /api/v1/job/stream`) for responsive UIs
-  - [ ] stream assistant token deltas (provider-dependent)
+  - [~] stream assistant token deltas (provider-dependent)
+    - [x] `tools=none`: daemon can emit `assistant_delta` events when `stream_assistant=true`
+    - [ ] `tools=basic/host`: stream while still supporting tool calls (harder)
   - make event log fully structured (typed payloads; truncation metadata; stable schema)
 - [x] Add async runs (`/api/v1/run_async` + `/api/v1/job`) so UIs can poll long-running jobs without blocking.
 - [x] Add live job progress via event tailing:

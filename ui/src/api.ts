@@ -17,6 +17,7 @@ export const RunRequestSchema = z.object({
   base_url: z.string().optional(),
   api_key: z.string().optional(),
   timeout_ms: z.number().int().positive().optional(),
+  stream_assistant: z.boolean().optional(),
   tools: z.enum(["host", "basic", "none"]).optional(),
   tools_root: z.string().optional(),
   max_steps: z.number().int().nonnegative().optional(),
@@ -44,6 +45,7 @@ export const RunResponseSchema = z.object({
   effective_tools_root: z.string().optional(),
   effective_yolo: z.boolean().optional(),
   effective_timeout_ms: z.number().optional(),
+  effective_stream_assistant: z.boolean().optional(),
   verbose: z.boolean().optional(),
   events: z.array(EventSchema).optional(),
 });

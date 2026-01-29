@@ -286,6 +286,17 @@ static bool json_parse_any(const std::string& s, Json::Value* out, std::string* 
   return true;
 }
 
+static std::string json_try_extract_assistant_content_from_completion(const Json::Value& root) {
+  const auto& choices = root["choices"];
+  if (!choices.isArray() || choices.empty()) return "";
+  const auto& msg = choices[0]["message"];
+  const auto& content = msg["content"];
+  if (content.isString()) return content.asString();
+  const auto& text = choices[0]["text"];
+  if (text.isString()) return text.asString();
+  return "";
+}
+
 static void job_set_status(const std::string& id, const std::string& status, const std::string& error) {
   std::lock_guard<std::mutex> lk(g_jobs_mu);
   auto it = g_jobs.find(id);
@@ -435,6 +446,8 @@ static Json::Value run_request_to_json(
                              : daemon_cfg.keep_last_default;
   const bool trace = !(args.isMember("trace") && args["trace"].isBool() && args["trace"].asBool() == false);
   const bool verbose = args.isMember("verbose") && args["verbose"].isBool() ? args["verbose"].asBool() : false;
+  const bool stream_assistant =
+    args.isMember("stream_assistant") && args["stream_assistant"].isBool() ? args["stream_assistant"].asBool() : false;
 
   const std::string session_id = args.isMember("session_id") && args["session_id"].isString() ? args["session_id"].asString() : "default";
   const bool no_session = args.isMember("no_session") && args["no_session"].isBool() ? args["no_session"].asBool() : false;
@@ -581,61 +594,217 @@ static Json::Value run_request_to_json(
   } else {
     agent_session_add_message(session, AGENT_ROLE_USER, prompt.c_str());
 
-    ProviderCtx pctx;
-    pctx.cfg = run_cfg;
-    agent_provider_t provider;
-    provider.ctx = &pctx;
-    provider.generate = provider_generate;
-
-    agent_run_options_t run_opt{};
-    run_opt.model = run_cfg.model.c_str();
-    run_opt.max_chars = max_chars;
-    run_opt.keep_last_messages = keep_last;
-    run_opt.summary_or_null = nullptr;
-
-    agent_run_report_t rep{};
-    const agent_status_t st = agent_run_once(session, &provider, &run_opt, &rep);
-    ok = (st == AGENT_OK);
-    assistant_text = ok ? std::string(rep.assistant_view.content, rep.assistant_view.content_len) : "";
-    if (!ok) {
-      err = pctx.last_error.empty() ? "agent_run_once failed" : pctx.last_error;
-      http_status = pctx.last_http_status;
-      http_body = pctx.last_body;
-    } else {
-      agent_session_add_message(session, AGENT_ROLE_ASSISTANT, assistant_text.c_str());
-    }
-    if (trace_stream) {
-      *trace_stream << "=== REQUEST ===\n";
-      *trace_stream << (pctx.last_request_body.empty() ? "(request body unavailable)\n" : (pctx.last_request_body + "\n"));
-      *trace_stream << "=== RESPONSE ===\n";
-      *trace_stream << (pctx.last_body.empty() ? "" : (pctx.last_body + "\n"));
-    }
-
     events_out = Json::Value(Json::arrayValue);
     auto push_ev = [&](const std::string& type, const Json::Value& data) {
       Json::Value e(Json::objectValue);
       e["type"] = type;
       e["data"] = data;
       events_out.append(e);
+      if (job_id_or_null && job_id_or_null[0]) {
+        Json::StreamWriterBuilder wb;
+        wb["indentation"] = "";
+        job_append_event(job_id_or_null, type, Json::writeString(wb, data));
+      }
     };
     {
       Json::Value d(Json::objectValue);
       d["model"] = run_cfg.model;
       d["tools"] = "none";
       d["verbose"] = verbose;
+      d["stream_assistant"] = stream_assistant;
       push_ev("start", d);
     }
-    {
-      Json::Value d(Json::objectValue);
-      if (verbose) d["request_json"] = pctx.last_request_body;
-      push_ev("llm_request", d);
+
+    if (stream_assistant) {
+      // Apply core compaction policy (same as agent_run_once) and surface a compaction event.
+      agent_compact_report_t compact{};
+      const agent_status_t cst = agent_session_compact_char_budget(
+        session,
+        max_chars == 0 ? 20000 : max_chars,
+        keep_last == 0 ? 16 : keep_last,
+        nullptr,
+        &compact
+      );
+      if (cst != AGENT_OK) {
+        ok = false;
+        err = "session compaction failed";
+        Json::Value d(Json::objectValue);
+        d["error"] = err;
+        push_ev("error", d);
+      } else {
+        Json::Value d(Json::objectValue);
+        d["before_chars"] = (Json::UInt64)compact.before_chars;
+        d["after_chars"] = (Json::UInt64)compact.after_chars;
+        d["dropped_messages"] = (Json::UInt64)compact.dropped_messages;
+        d["inserted_summary"] = (bool)compact.inserted_summary;
+        push_ev("compaction", d);
+      }
+
+      // Build the provider request JSON from the compacted session messages.
+      std::string request_json;
+      {
+        Json::Value root(Json::objectValue);
+        root["model"] = run_cfg.model;
+        root["stream"] = true;
+        Json::Value messages(Json::arrayValue);
+        const size_t n = agent_session_message_count(session);
+        for (size_t i = 0; i < n; i++) {
+          agent_message_view_t v{};
+          if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
+          Json::Value m(Json::objectValue);
+          m["role"] = agent_role_to_string(v.role);
+          m["content"] = std::string(v.content, v.content_len);
+          messages.append(m);
+        }
+        root["messages"] = messages;
+        Json::StreamWriterBuilder wb;
+        wb["indentation"] = "";
+        request_json = Json::writeString(wb, root);
+      }
+      {
+        Json::Value d(Json::objectValue);
+        if (verbose) d["request_json"] = request_json;
+        push_ev("llm_request", d);
+      }
+
+      struct StreamCtx {
+        std::string assistant;
+        bool verbose = false;
+        int chunks = 0;
+        decltype(push_ev)* push = nullptr;
+      } sctx;
+      sctx.verbose = verbose;
+      sctx.push = &push_ev;
+
+      auto on_chunk = [](void* vctx, const char* chunk_json, size_t chunk_len) {
+        auto* s = static_cast<StreamCtx*>(vctx);
+        if (!s || !chunk_json || chunk_len == 0 || !s->push) return;
+
+        s->chunks++;
+        Json::Value root;
+        std::string perr;
+        if (!json_parse_any(std::string(chunk_json, chunk_len), &root, &perr)) {
+          return;
+        }
+        const auto& choices = root["choices"];
+        if (!choices.isArray() || choices.empty()) return;
+        const auto& delta = choices[0]["delta"];
+        if (!delta.isObject()) return;
+        const auto& content = delta["content"];
+        if (!content.isString()) return;
+        const std::string dstr = content.asString();
+        if (dstr.empty()) return;
+        s->assistant += dstr;
+
+        Json::Value d(Json::objectValue);
+        d["delta"] = dstr;
+        d["total_len"] = (Json::UInt64)s->assistant.size();
+        if (s->verbose) {
+          const size_t n = s->assistant.size();
+          const size_t start = (n > 200) ? (n - 200) : 0;
+          d["assistant_tail"] = s->assistant.substr(start);
+        }
+        (*s->push)("assistant_delta", d);
+      };
+
+      OpenAIStreamResult sr = openai_chat_completions_raw_stream(run_cfg, request_json, on_chunk, &sctx, 256 * 1024);
+      http_status = sr.http_status;
+      http_body = sr.response_body;
+
+      if (trace_stream) {
+        *trace_stream << "=== REQUEST (stream=" << (stream_assistant ? "true" : "false") << ") ===\n";
+        *trace_stream << request_json << "\n";
+        *trace_stream << "=== RESPONSE (stream capture) ===\n";
+        *trace_stream << (sr.response_body.empty() ? "" : (sr.response_body + "\n"));
+      }
+
+      if (http_status < 200 || http_status >= 300) {
+        ok = false;
+        err = sr.error_message.empty() ? openai_format_http_error(http_status, http_body) : sr.error_message;
+        Json::Value d(Json::objectValue);
+        d["http_status"] = (Json::Int64)http_status;
+        d["error"] = err;
+        push_ev("error", d);
+      } else {
+        assistant_text = sctx.assistant;
+        if (assistant_text.empty() && !http_body.empty() && http_body.size() > 0 && http_body[0] == '{') {
+          // Provider may have ignored streaming and returned a normal JSON completion.
+          Json::Value parsed;
+          std::string perr;
+          if (json_parse_any(http_body, &parsed, &perr)) {
+            assistant_text = json_try_extract_assistant_content_from_completion(parsed);
+          }
+        }
+        ok = !assistant_text.empty();
+        if (!ok) {
+          err = "streamed completion returned no assistant content";
+          Json::Value d(Json::objectValue);
+          d["error"] = err;
+          d["http_status"] = (Json::Int64)http_status;
+          push_ev("error", d);
+        } else {
+          agent_session_add_message(session, AGENT_ROLE_ASSISTANT, assistant_text.c_str());
+        }
+      }
+
+      {
+        Json::Value d(Json::objectValue);
+        d["http_status"] = (Json::Int64)http_status;
+        d["stream"] = true;
+        d["chunks"] = (Json::Int64)sctx.chunks;
+        if (verbose) d["response_body_capture"] = http_body;
+        push_ev("llm_response", d);
+      }
+    } else {
+      ProviderCtx pctx;
+      pctx.cfg = run_cfg;
+      agent_provider_t provider;
+      provider.ctx = &pctx;
+      provider.generate = provider_generate;
+
+      agent_run_options_t run_opt{};
+      run_opt.model = run_cfg.model.c_str();
+      run_opt.max_chars = max_chars;
+      run_opt.keep_last_messages = keep_last;
+      run_opt.summary_or_null = nullptr;
+
+      agent_run_report_t rep{};
+      const agent_status_t st = agent_run_once(session, &provider, &run_opt, &rep);
+      ok = (st == AGENT_OK);
+      assistant_text = ok ? std::string(rep.assistant_view.content, rep.assistant_view.content_len) : "";
+      if (!ok) {
+        err = pctx.last_error.empty() ? "agent_run_once failed" : pctx.last_error;
+        http_status = pctx.last_http_status;
+        http_body = pctx.last_body;
+      }
+      {
+        Json::Value d(Json::objectValue);
+        d["before_chars"] = (Json::UInt64)rep.compact.before_chars;
+        d["after_chars"] = (Json::UInt64)rep.compact.after_chars;
+        d["dropped_messages"] = (Json::UInt64)rep.compact.dropped_messages;
+        d["inserted_summary"] = (bool)rep.compact.inserted_summary;
+        push_ev("compaction", d);
+      }
+      {
+        Json::Value d(Json::objectValue);
+        if (verbose) d["request_json"] = pctx.last_request_body;
+        push_ev("llm_request", d);
+      }
+      if (trace_stream) {
+        *trace_stream << "=== REQUEST ===\n";
+        *trace_stream << (pctx.last_request_body.empty() ? "(request body unavailable)\n" : (pctx.last_request_body + "\n"));
+        *trace_stream << "=== RESPONSE ===\n";
+        *trace_stream << (pctx.last_body.empty() ? "" : (pctx.last_body + "\n"));
+      }
+      {
+        Json::Value d(Json::objectValue);
+        d["http_status"] = (Json::Int64)pctx.last_http_status;
+        if (verbose) d["response_body"] = pctx.last_body;
+        push_ev("llm_response", d);
+      }
     }
-    {
-      Json::Value d(Json::objectValue);
-      d["http_status"] = (Json::Int64)pctx.last_http_status;
-      if (verbose) d["response_body"] = pctx.last_body;
-      push_ev("llm_response", d);
-    }
+
+    // Final assistant message (if any).
     {
       Json::Value d(Json::objectValue);
       d["assistant_content"] = assistant_text;
@@ -671,6 +840,7 @@ static Json::Value run_request_to_json(
   out["effective_tools_root"] = tools_root;
   out["effective_yolo"] = yolo;
   out["effective_timeout_ms"] = (Json::Int64)run_cfg.timeout_ms;
+  out["effective_stream_assistant"] = stream_assistant;
   out["verbose"] = verbose;
   if (events_out.isArray()) {
     out["events"] = events_out;

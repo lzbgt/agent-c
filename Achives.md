@@ -95,3 +95,6 @@ Completed milestones and notable tasks.
   - `GET /api/v1/tools` endpoint to return the active tool registry (name/description/parameters schema) (`daemon/src/main.cpp`)
   - Web UI shows the active tool schemas and supports per-run provider timeout (`ui/src/App.tsx`, `ui/src/api.ts`)
   - Added non-network smoke test for `/api/v1/tools` (`tests/agentd_tools_list_smoke.sh`)
+- Added first-cut assistant streaming (provider-dependent):
+  - daemon supports `stream_assistant: true` for `tools="none"` and emits incremental `assistant_delta` events (`daemon/src/main.cpp`)
+  - added a small reusable SSE parser + unit test (`cli/src/sse_parser.cpp`, `tests/test_sse_parser.cpp`)

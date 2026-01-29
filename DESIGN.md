@@ -271,6 +271,7 @@ Initial endpoints (implemented in `agentd`):
 - `no_session` (bool, default `false`)
 - `model`, `base_url`, `api_key` (optional overrides; if omitted, daemon uses env/config)
 - `timeout_ms` (number; optional; provider HTTP timeout for this run)
+- `stream_assistant` (bool; optional; when `tools="none"`, request SSE streaming and emit `assistant_delta` events)
 - `tools` (`"host"|"basic"|"none"`, default `"host"`)
 - `tools_root` (string; used for diff-based edits in host tools)
   - `""` or `@cwd` means unrestricted (current working directory)
@@ -288,6 +289,7 @@ Response (JSON):
 - `error` (best-effort message)
 - `effective_yolo` (bool) and `effective_tools_root` (string) so clients can display what actually applied.
 - `effective_timeout_ms` (number) so clients can display the provider timeout that actually applied.
+- `effective_stream_assistant` (bool) so clients can display whether assistant streaming was requested.
 - `events` (array; structured event log for UIs)
 
 Note on “thinking process”:
@@ -297,6 +299,12 @@ Note on “thinking process”:
 Event log sizing:
 - Per-event large fields are truncated (best-effort).
 - The overall event log has a maximum event count and capture budget; if exceeded the final `end` event includes `truncated=true`.
+
+Assistant streaming (provider-dependent):
+- When `tools="none"`, clients may request `stream_assistant=true` to have the daemon use OpenAI-compatible SSE streaming
+  (`stream: true`) and emit incremental `assistant_delta` events while the request is in-flight.
+- Tool-calling loops (`tools="basic"`/`"host"`) still use non-streaming calls in milestone 1; streaming tool calls requires
+  reconstructing tool-call JSON incrementally and is deferred.
 
 Security notes (future):
 - Binding to `127.0.0.1` avoids LAN exposure by default.
