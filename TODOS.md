@@ -30,6 +30,9 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
   - list sessions, get session, delete session
   - streaming responses (SSE/WebSocket)
   - structured event log (not just trace text)
+- [ ] Add a daemon-level “sandbox policy” model:
+  - YOLO vs host-scoped tools-root
+  - future: per-tool allow/deny and command restrictions for `proc_exec` / `shell_exec`
 - [ ] Add a daemon skeleton with:
   - local control socket / HTTP
   - broker client abstraction (MQTT)

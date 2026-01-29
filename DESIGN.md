@@ -201,9 +201,12 @@ Initial endpoints (implemented in `agentd`):
 - `no_session` (bool, default `false`)
 - `model`, `base_url`, `api_key` (optional overrides; if omitted, daemon uses env/config)
 - `tools` (`"host"|"basic"|"none"`, default `"host"`)
-- `tools_root` (string, default `""`; used for diff-based edits in host tools)
+- `tools_root` (string; used for diff-based edits in host tools)
+  - `""` or `@cwd` means unrestricted (current working directory)
+  - `@host` means “daemon host scope” (configured by daemon, typically project/workspace root)
 - `max_steps` (number; `0` means unlimited)
 - `trace` (bool; include transcript text)
+- `yolo` (bool; if true, disables tool scoping and forces unrestricted mode)
 
 Response (JSON):
 - `ok` (bool)
@@ -211,6 +214,7 @@ Response (JSON):
 - `trace_text` (string; full transcript between daemon↔LLM↔tools)
 - `http_status`, `http_body` (best-effort diagnostics)
 - `error` (best-effort message)
+- `effective_yolo` (bool) and `effective_tools_root` (string) so clients can display what actually applied.
 
 Security notes (future):
 - Binding to `127.0.0.1` avoids LAN exposure by default.

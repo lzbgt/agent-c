@@ -65,7 +65,9 @@ struct DaemonConfig {
   std::string api_key;
   std::string model = "gpt-4o-mini";
   std::string tools = "host";     // none|basic|host
-  std::string tools_root = "";    // empty => CWD
+  std::string tools_root = "";    // empty => CWD (unrestricted file edits)
+  std::string host_scope_root;    // default: daemon process CWD (for "@host" tool root mode)
+  bool yolo_default = true;       // default to unrestricted unless client requests scoped mode
 };
 
 static void add_cors(HttpResponse* resp) {
@@ -137,6 +139,7 @@ static agent_status_t provider_generate(void* vctx, const agent_generate_request
 
 int main(int argc, char** argv) {
   DaemonConfig cfg;
+  cfg.host_scope_root = std::filesystem::current_path().string();
   // Minimal flag parsing (daemon is host-only; core remains argv/env-free).
   for (int i = 1; i < argc; i++) {
     const std::string a = argv[i] ? argv[i] : "";
@@ -188,6 +191,15 @@ int main(int argc, char** argv) {
         std::cerr << "Missing value for --tools-root\n";
         return 2;
       }
+    } else if (a == "--host-scope") {
+      if (!take(&cfg.host_scope_root)) {
+        std::cerr << "Missing value for --host-scope\n";
+        return 2;
+      }
+    } else if (a == "--yolo") {
+      cfg.yolo_default = true;
+    } else if (a == "--no-yolo") {
+      cfg.yolo_default = false;
     } else if (a == "--help" || a == "-h") {
       std::cerr
         << "Usage: agentd [options]\n"
@@ -197,7 +209,9 @@ int main(int argc, char** argv) {
         << "  --base-url <url>     Default base url\n"
         << "  --api-key <key>      Default API key (else env)\n"
         << "  --tools host|basic|none   Default toolset (default: host)\n"
-        << "  --tools-root <path>  Root/working dir for file edits\n";
+        << "  --tools-root <path>  Root/working dir for file edits (default: unrestricted)\n"
+        << "  --host-scope <path>  Host scope root for tools_root=\"@host\" (default: current dir)\n"
+        << "  --yolo / --no-yolo   Default unrestricted mode (default: yolo)\n";
       return 0;
     } else {
       std::cerr << "Unknown arg: " << a << "\n";
@@ -287,7 +301,18 @@ int main(int argc, char** argv) {
     if (args.isMember("api_key") && args["api_key"].isString()) run_cfg.api_key = args["api_key"].asString();
 
     const std::string tools = args.isMember("tools") && args["tools"].isString() ? args["tools"].asString() : cfg.tools;
-    const std::string tools_root = args.isMember("tools_root") && args["tools_root"].isString() ? args["tools_root"].asString() : cfg.tools_root;
+    const bool yolo = args.isMember("yolo") && args["yolo"].isBool() ? args["yolo"].asBool() : cfg.yolo_default;
+    std::string tools_root = args.isMember("tools_root") && args["tools_root"].isString() ? args["tools_root"].asString() : cfg.tools_root;
+    if (tools_root == "@host") {
+      tools_root = cfg.host_scope_root;
+    } else if (tools_root == "@cwd") {
+      tools_root = "";
+    }
+    if (yolo) {
+      // YOLO means "no restriction" for host tools. In practice this currently controls
+      // file edit scoping (`file_apply_patch` root + unsafe paths).
+      tools_root.clear();
+    }
     const size_t max_steps = args.isMember("max_steps") && args["max_steps"].isUInt64() ? (size_t)args["max_steps"].asUInt64() : 0;
     const bool trace = !(args.isMember("trace") && args["trace"].isBool() && args["trace"].asBool() == false);
 
@@ -433,6 +458,8 @@ int main(int argc, char** argv) {
     out["http_status"] = (Json::Int64)http_status;
     out["http_body"] = http_body;
     out["trace_text"] = trace_buf.str();
+    out["effective_tools_root"] = tools_root;
+    out["effective_yolo"] = yolo;
     resp->body = json_stringify(out);
 #endif
   });

@@ -18,6 +18,7 @@ export const RunRequestSchema = z.object({
   tools_root: z.string().optional(),
   max_steps: z.number().int().nonnegative().optional(),
   trace: z.boolean().optional(),
+  yolo: z.boolean().optional(),
 });
 export type RunRequest = z.infer<typeof RunRequestSchema>;
 
@@ -28,6 +29,8 @@ export const RunResponseSchema = z.object({
   http_status: z.number().optional(),
   http_body: z.string().optional(),
   trace_text: z.string().optional(),
+  effective_tools_root: z.string().optional(),
+  effective_yolo: z.boolean().optional(),
 });
 export type RunResponse = z.infer<typeof RunResponseSchema>;
 
@@ -47,4 +50,3 @@ export async function apiRun(base: string, req: RunRequest): Promise<RunResponse
   const j = await r.json();
   return RunResponseSchema.parse(j);
 }
-

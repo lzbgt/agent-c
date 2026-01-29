@@ -120,6 +120,11 @@ Health check:
 curl http://127.0.0.1:8123/api/v1/health
 ```
 
+YOLO vs host-scoped tools:
+- Default daemon mode is YOLO (unrestricted) to match local development needs.
+- To scope file edits to a workspace root, set `tools_root` to `@host` (host scope configured by daemon).
+- Clients can also pass `yolo: false` + `tools_root: "@host"` in `POST /api/v1/run`.
+
 ### Run the Web UI
 
 ```bash

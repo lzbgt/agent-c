@@ -13,6 +13,7 @@ export default function App() {
   const [sessionId, setSessionId] = React.useState("default");
   const [tools, setTools] = React.useState<"host" | "basic" | "none">("host");
   const [toolsRoot, setToolsRoot] = React.useState(".");
+  const [yolo, setYolo] = React.useState(true);
   const [model, setModel] = React.useState("deepseek-chat");
   const [baseUrl, setBaseUrl] = React.useState("https://api.deepseek.com");
   const [apiKey, setApiKey] = React.useState("");
@@ -33,6 +34,7 @@ export default function App() {
         no_session: false,
         tools,
         tools_root: toolsRoot,
+        yolo,
         model: model || undefined,
         base_url: baseUrl || undefined,
         api_key: apiKey || undefined,
@@ -102,7 +104,11 @@ export default function App() {
                 className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
                 value={toolsRoot}
                 onChange={(e) => setToolsRoot(e.target.value)}
+                disabled={yolo}
               />
+              <div className="mt-1 text-[11px] text-white/40">
+                Supports special values: <code>@host</code> (daemon host scope), <code>@cwd</code> (unrestricted).
+              </div>
             </div>
             <div>
               <Label>Max steps (0=∞)</Label>
@@ -118,6 +124,13 @@ export default function App() {
             <input id="trace" type="checkbox" checked={trace} onChange={(e) => setTrace(e.target.checked)} />
             <label htmlFor="trace" className="text-sm text-white/70">
               Include transcript
+            </label>
+          </div>
+
+          <div className="mt-3 flex items-center gap-2">
+            <input id="yolo" type="checkbox" checked={yolo} onChange={(e) => setYolo(e.target.checked)} />
+            <label htmlFor="yolo" className="text-sm text-white/70">
+              YOLO (no tool restrictions)
             </label>
           </div>
         </div>
@@ -192,6 +205,11 @@ export default function App() {
           {result?.http_status ? (
             <div className="mt-3 text-xs text-white/50">HTTP status: {result.http_status}</div>
           ) : null}
+          {typeof result?.effective_yolo === "boolean" ? (
+            <div className="mt-1 text-xs text-white/50">
+              Effective: yolo={String(result.effective_yolo)} tools_root={result.effective_tools_root ?? ""}
+            </div>
+          ) : null}
         </div>
 
         {result?.trace_text ? <TraceView trace={result.trace_text} /> : null}
@@ -199,4 +217,3 @@ export default function App() {
     </div>
   );
 }
-
