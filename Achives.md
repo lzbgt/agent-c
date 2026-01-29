@@ -81,3 +81,9 @@ Completed milestones and notable tasks.
 - Hardened host tool-loop context usage:
   - tool outputs are capped before being appended into the next request context (prevents context blowups from repeated tool output)
   - added a unit test to lock in tool-output truncation behavior
+- Added bounded filesystem inspection tools for host tool calling:
+  - `fs_stat`, `fs_list`, `fs_read` in `cli/src/toolset_host.cpp` with line-based pagination and entry caps
+  - extended `tests/test_host_toolset.cpp` to cover paged `fs_read` behavior
+- Improved daemon robustness for async jobs and proxies:
+  - ensure libcurl global initialization is done once for multi-threaded usage (`cli/src/openai_client.cpp`)
+  - emit an immediate `start` event for async jobs so UIs can show progress even before the first LLM request finishes (`daemon/src/main.cpp`)

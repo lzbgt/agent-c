@@ -24,8 +24,20 @@ static void test_json_output_field_truncation() {
   assert(out.size() <= 300);
 }
 
+static void test_json_content_field_truncation() {
+  std::string big(5000, 'B');
+  const std::string in =
+    std::string("{\"ok\":true,\"data\":{\"tool\":\"fs_read\",\"path\":\"x\",\"content\":\"") + big + "\"}}";
+  bool truncated = false;
+  const std::string out = tool_loop_cap_tool_output_for_prompt(in, 300, &truncated);
+  assert(truncated);
+  assert(out.find("\"prompt_truncated\"") != std::string::npos);
+  assert(out.size() <= 300);
+}
+
 int main() {
   test_plain_text_truncation();
   test_json_output_field_truncation();
+  test_json_content_field_truncation();
   return 0;
 }

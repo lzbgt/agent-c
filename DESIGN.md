@@ -198,15 +198,20 @@ Note on provider caching:
 
 ### Host toolset (CLI/daemon)
 
-The CLI/daemon toolset is designed around **OS-native tooling**:
-- Use `proc_exec` / `shell_exec` to run system-installed binaries for project inspection and file operations
-  (`ls`, `find`, `cat`, `rg`, `rm`, `git`, language toolchains, etc.).
+The CLI/daemon toolset is designed around **OS-native tooling** plus **bounded filesystem inspection**:
+- For **inspection** (read/list/stat), prefer bounded filesystem tools:
+  - `fs_stat`: metadata (exists/type/size/mtime/binary hint).
+  - `fs_list`: bounded directory listing (supports recursion with depth/entry caps).
+  - `fs_read`: bounded text reads with line-based pagination (`start_line`, `max_lines`, optional `end_line`).
+  These exist primarily to control token usage and avoid “cat the world” context blow-ups.
+- For everything else, use `proc_exec` / `shell_exec` to run system-installed binaries for project inspection and file operations
+  (`rg`, `find`, `git`, language toolchains, etc.).
 - Use a dedicated diff-based editing tool (`file_apply_patch`) so file edits are auditable in the transcript
   (the tool result includes the unified diff that was applied).
 
 Host default system hint (policy):
 - When using the host toolset, host apps inject a one-time `system` message into an empty session to encourage
-  **incremental inspection** (e.g. `rg/grep`, `head`, `tail`, `awk`, `sed -n`) instead of reading entire files.
+  **incremental inspection** (e.g. `rg/grep`, `head`, `tail`, `awk`, `sed -n`, and `fs_read` paging) instead of reading entire files.
 - This is host policy only (not a core concept) and can be disabled/overridden by the host or client.
 
 `--tools-root` (when set) is primarily used to control the working directory for `file_apply_patch`

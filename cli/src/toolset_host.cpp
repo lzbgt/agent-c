@@ -59,326 +59,62 @@ struct HostToolCtx {
   bool unrestricted = false;
 };
 
-#if 0
-static agent_status_t tool_fs_read(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
-  (void)arguments_json;
-  if (!ctx || !out_result) {
-    return AGENT_ERR_INVALID_ARGUMENT;
-  }
-#if !defined(AGENT_HAVE_JSONCPP)
-  return set_result(out_result, "{\"ok\":false,\"error\":\"fs_read requires jsoncpp\"}");
-#else
-  auto write_envelope = [&](bool ok, const std::string& error, const Json::Value& data) -> agent_status_t {
-    Json::Value o(Json::objectValue);
-    o["ok"] = ok;
-    if (!error.empty()) o["error"] = error;
-    o["data"] = data;
-    Json::StreamWriterBuilder wb;
-    wb["indentation"] = "";
-    return set_result(out_result, Json::writeString(wb, o));
-  };
-
-  Json::Value args;
-  std::string err;
-  if (!parse_json(arguments_json, &args, &err) || !args.isObject()) {
-    return write_envelope(false, "invalid args", Json::Value(Json::objectValue));
-  }
-  if (!args["path"].isString()) {
-    return write_envelope(false, "missing string field 'path'", Json::Value(Json::objectValue));
-  }
-  const std::string path = args["path"].asString();
-  const auto resolved = resolve_under_root(ctx->root, path, ctx->unrestricted);
-  if (!resolved) {
-    return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
-  }
-  std::ifstream in(*resolved, std::ios::binary);
-  if (!in.is_open()) {
-    return write_envelope(false, "failed to open", Json::Value(Json::objectValue));
-  }
-  std::ostringstream oss;
-  oss << in.rdbuf();
-  Json::Value data(Json::objectValue);
-  const std::string content = oss.str();
-  data["path"] = path;
-  data["content"] = content;
-  data["bytes"] = (Json::UInt64)content.size();
-  return write_envelope(true, "", data);
-#endif
+static std::string to_generic_string(const std::filesystem::path& p) {
+  // Prefer a stable "/"-separated form for JSON/tool output.
+  return p.generic_string();
 }
 
-static agent_status_t tool_fs_write(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
-  if (!ctx || !out_result) {
-    return AGENT_ERR_INVALID_ARGUMENT;
+static bool path_is_within(const std::filesystem::path& root, const std::filesystem::path& p) {
+  auto it_r = root.begin();
+  auto it_p = p.begin();
+  for (; it_r != root.end(); ++it_r, ++it_p) {
+    if (it_p == p.end()) return false;
+    if (*it_r != *it_p) return false;
   }
-#if !defined(AGENT_HAVE_JSONCPP)
-  return set_result(out_result, "{\"ok\":false,\"error\":\"fs_write requires jsoncpp\"}");
-#else
-  auto write_envelope = [&](bool ok, const std::string& error, const Json::Value& data) -> agent_status_t {
-    Json::Value o(Json::objectValue);
-    o["ok"] = ok;
-    if (!error.empty()) o["error"] = error;
-    o["data"] = data;
-    Json::StreamWriterBuilder wb;
-    wb["indentation"] = "";
-    return set_result(out_result, Json::writeString(wb, o));
-  };
-
-  Json::Value args;
-  std::string err;
-  if (!parse_json(arguments_json, &args, &err) || !args.isObject()) {
-    return write_envelope(false, "invalid args", Json::Value(Json::objectValue));
-  }
-  if (!args["path"].isString() || !args["content"].isString()) {
-    return write_envelope(false, "expected {path: string, content: string, ...}", Json::Value(Json::objectValue));
-  }
-  const std::string path = args["path"].asString();
-  const std::string content = args["content"].asString();
-  const std::string mode = args.isMember("mode") && args["mode"].isString() ? args["mode"].asString() : "overwrite";
-  const bool create_dirs = args.isMember("create_dirs") && args["create_dirs"].isBool() ? args["create_dirs"].asBool() : true;
-
-  const auto resolved = resolve_under_root(ctx->root, path, ctx->unrestricted);
-  if (!resolved) {
-    return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
-  }
-  std::error_code ec;
-  if (create_dirs) {
-    std::filesystem::create_directories(resolved->parent_path(), ec);
-  }
-  std::ios::openmode om = std::ios::binary;
-  if (mode == "append") {
-    om |= std::ios::app;
-  } else {
-    om |= std::ios::trunc;
-  }
-  std::ofstream out(*resolved, om);
-  if (!out.is_open()) {
-    return write_envelope(false, "failed to open for write", Json::Value(Json::objectValue));
-  }
-  out.write(content.data(), (std::streamsize)content.size());
-  out.flush();
-  if (!out.good()) {
-    return write_envelope(false, "write failed", Json::Value(Json::objectValue));
-  }
-  Json::Value data(Json::objectValue);
-  data["path"] = path;
-  data["bytes_written"] = (Json::UInt64)content.size();
-  data["mode"] = mode;
-  return write_envelope(true, "", data);
-#endif
+  return true;
 }
 
-static agent_status_t tool_fs_mkdir(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
-  if (!ctx || !out_result) {
-    return AGENT_ERR_INVALID_ARGUMENT;
+static std::optional<std::filesystem::path> resolve_under_root(
+  const std::filesystem::path& root,
+  const std::string& user_path,
+  bool unrestricted
+) {
+  std::filesystem::path p(user_path);
+  if (!unrestricted && p.is_absolute()) {
+    return std::nullopt;
   }
-#if !defined(AGENT_HAVE_JSONCPP)
-  return set_result(out_result, "{\"ok\":false,\"error\":\"fs_mkdir requires jsoncpp\"}");
-#else
-  auto write_envelope = [&](bool ok, const std::string& error, const Json::Value& data) -> agent_status_t {
-    Json::Value o(Json::objectValue);
-    o["ok"] = ok;
-    if (!error.empty()) o["error"] = error;
-    o["data"] = data;
-    Json::StreamWriterBuilder wb;
-    wb["indentation"] = "";
-    return set_result(out_result, Json::writeString(wb, o));
-  };
-
-  Json::Value args;
-  std::string err;
-  if (!parse_json(arguments_json, &args, &err) || !args.isObject()) {
-    return write_envelope(false, "invalid args", Json::Value(Json::objectValue));
+  std::filesystem::path resolved = p.is_absolute() ? p : (root / p);
+  resolved = resolved.lexically_normal();
+  if (!unrestricted) {
+    const std::filesystem::path norm_root = root.lexically_normal();
+    if (!path_is_within(norm_root, resolved)) {
+      return std::nullopt;
+    }
   }
-  if (!args["path"].isString()) {
-    return write_envelope(false, "missing string field 'path'", Json::Value(Json::objectValue));
-  }
-  const bool parents = args.isMember("parents") && args["parents"].isBool() ? args["parents"].asBool() : true;
-  const auto resolved = resolve_under_root(ctx->root, args["path"].asString(), ctx->unrestricted);
-  if (!resolved) {
-    return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
-  }
-  std::error_code ec;
-  bool created = false;
-  if (parents) {
-    created = std::filesystem::create_directories(*resolved, ec);
-  } else {
-    created = std::filesystem::create_directory(*resolved, ec);
-  }
-  if (ec) {
-    return write_envelope(false, "mkdir failed", Json::Value(Json::objectValue));
-  }
-  Json::Value data(Json::objectValue);
-  data["path"] = args["path"].asString();
-  data["created"] = created;
-  return write_envelope(true, "", data);
-#endif
+  return resolved;
 }
 
-static agent_status_t tool_fs_remove(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
-  if (!ctx || !out_result) {
-    return AGENT_ERR_INVALID_ARGUMENT;
-  }
-#if !defined(AGENT_HAVE_JSONCPP)
-  return set_result(out_result, "{\"ok\":false,\"error\":\"fs_remove requires jsoncpp\"}");
-#else
-  auto write_envelope = [&](bool ok, const std::string& error, const Json::Value& data) -> agent_status_t {
-    Json::Value o(Json::objectValue);
-    o["ok"] = ok;
-    if (!error.empty()) o["error"] = error;
-    o["data"] = data;
-    Json::StreamWriterBuilder wb;
-    wb["indentation"] = "";
-    return set_result(out_result, Json::writeString(wb, o));
-  };
-
-  Json::Value args;
-  std::string err;
-  if (!parse_json(arguments_json, &args, &err) || !args.isObject()) {
-    return write_envelope(false, "invalid args", Json::Value(Json::objectValue));
-  }
-  if (!args["path"].isString()) {
-    return write_envelope(false, "missing string field 'path'", Json::Value(Json::objectValue));
-  }
-  const bool recursive = args.isMember("recursive") && args["recursive"].isBool() ? args["recursive"].asBool() : false;
-  const auto p = std::filesystem::path(args["path"].asString());
-  if (!ctx->unrestricted && p.is_absolute()) {
-    return write_envelope(false, "absolute paths not allowed in restricted mode", Json::Value(Json::objectValue));
-  }
-  const auto resolved = resolve_under_root(ctx->root, args["path"].asString(), ctx->unrestricted);
-  if (!resolved) {
-    return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
-  }
-  std::error_code ec;
-  uintmax_t removed = 0;
-  if (recursive) {
-    removed = std::filesystem::remove_all(*resolved, ec);
-  } else {
-    removed = std::filesystem::remove(*resolved, ec) ? 1 : 0;
-  }
-  if (ec) {
-    return write_envelope(false, "remove failed", Json::Value(Json::objectValue));
-  }
-  Json::Value data(Json::objectValue);
-  data["path"] = args["path"].asString();
-  data["removed"] = (Json::UInt64)removed;
-  return write_envelope(true, "", data);
-#endif
+static int64_t file_time_to_unix_ms(std::filesystem::file_time_type ft) {
+  using file_clock = std::filesystem::file_time_type::clock;
+  using sys_clock = std::chrono::system_clock;
+  const auto sctp = std::chrono::time_point_cast<sys_clock::duration>(ft - file_clock::now() + sys_clock::now());
+  return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(sctp.time_since_epoch()).count();
 }
 
-static agent_status_t tool_fs_move(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
-  if (!ctx || !out_result) {
-    return AGENT_ERR_INVALID_ARGUMENT;
+static bool is_probably_binary(const std::filesystem::path& path) {
+  std::ifstream in(path, std::ios::binary);
+  if (!in.is_open()) return false;
+  char buf[4096];
+  in.read(buf, sizeof(buf));
+  const std::streamsize n = in.gcount();
+  for (std::streamsize i = 0; i < n; i++) {
+    if (buf[i] == '\0') return true;
   }
-#if !defined(AGENT_HAVE_JSONCPP)
-  return set_result(out_result, "{\"ok\":false,\"error\":\"fs_move requires jsoncpp\"}");
-#else
-  auto write_envelope = [&](bool ok, const std::string& error, const Json::Value& data) -> agent_status_t {
-    Json::Value o(Json::objectValue);
-    o["ok"] = ok;
-    if (!error.empty()) o["error"] = error;
-    o["data"] = data;
-    Json::StreamWriterBuilder wb;
-    wb["indentation"] = "";
-    return set_result(out_result, Json::writeString(wb, o));
-  };
-
-  Json::Value args;
-  std::string err;
-  if (!parse_json(arguments_json, &args, &err) || !args.isObject()) {
-    return write_envelope(false, "invalid args", Json::Value(Json::objectValue));
-  }
-  if (!args["from"].isString() || !args["to"].isString()) {
-    return write_envelope(false, "expected {from: string, to: string}", Json::Value(Json::objectValue));
-  }
-  const auto from_p = std::filesystem::path(args["from"].asString());
-  const auto to_p = std::filesystem::path(args["to"].asString());
-  if (!ctx->unrestricted && (from_p.is_absolute() || to_p.is_absolute())) {
-    return write_envelope(false, "absolute paths not allowed in restricted mode", Json::Value(Json::objectValue));
-  }
-  const auto from = resolve_under_root(ctx->root, args["from"].asString(), ctx->unrestricted);
-  const auto to = resolve_under_root(ctx->root, args["to"].asString(), ctx->unrestricted);
-  if (!from || !to) {
-    return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
-  }
-  std::error_code ec;
-  std::filesystem::create_directories(to->parent_path(), ec);
-  ec.clear();
-  std::filesystem::rename(*from, *to, ec);
-  if (ec) {
-    return write_envelope(false, "rename failed", Json::Value(Json::objectValue));
-  }
-  Json::Value data(Json::objectValue);
-  data["from"] = args["from"].asString();
-  data["to"] = args["to"].asString();
-  return write_envelope(true, "", data);
-#endif
-}
-
-static agent_status_t tool_fs_copy(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
-  if (!ctx || !out_result) {
-    return AGENT_ERR_INVALID_ARGUMENT;
-  }
-#if !defined(AGENT_HAVE_JSONCPP)
-  return set_result(out_result, "{\"ok\":false,\"error\":\"fs_copy requires jsoncpp\"}");
-#else
-  auto write_envelope = [&](bool ok, const std::string& error, const Json::Value& data) -> agent_status_t {
-    Json::Value o(Json::objectValue);
-    o["ok"] = ok;
-    if (!error.empty()) o["error"] = error;
-    o["data"] = data;
-    Json::StreamWriterBuilder wb;
-    wb["indentation"] = "";
-    return set_result(out_result, Json::writeString(wb, o));
-  };
-
-  Json::Value args;
-  std::string err;
-  if (!parse_json(arguments_json, &args, &err) || !args.isObject()) {
-    return write_envelope(false, "invalid args", Json::Value(Json::objectValue));
-  }
-  if (!args["from"].isString() || !args["to"].isString()) {
-    return write_envelope(false, "expected {from: string, to: string}", Json::Value(Json::objectValue));
-  }
-  const bool recursive = args.isMember("recursive") && args["recursive"].isBool() ? args["recursive"].asBool() : false;
-  const bool overwrite = args.isMember("overwrite") && args["overwrite"].isBool() ? args["overwrite"].asBool() : true;
-
-  const auto from_p = std::filesystem::path(args["from"].asString());
-  const auto to_p = std::filesystem::path(args["to"].asString());
-  if (!ctx->unrestricted && (from_p.is_absolute() || to_p.is_absolute())) {
-    return write_envelope(false, "absolute paths not allowed in restricted mode", Json::Value(Json::objectValue));
-  }
-  const auto from = resolve_under_root(ctx->root, args["from"].asString(), ctx->unrestricted);
-  const auto to = resolve_under_root(ctx->root, args["to"].asString(), ctx->unrestricted);
-  if (!from || !to) {
-    return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
-  }
-
-  std::error_code ec;
-  std::filesystem::create_directories(to->parent_path(), ec);
-  ec.clear();
-  auto opts = std::filesystem::copy_options::none;
-  if (overwrite) {
-    opts |= std::filesystem::copy_options::overwrite_existing;
-  }
-  if (recursive) {
-    opts |= std::filesystem::copy_options::recursive;
-  }
-  std::filesystem::copy(*from, *to, opts, ec);
-  if (ec) {
-    return write_envelope(false, "copy failed", Json::Value(Json::objectValue));
-  }
-  Json::Value data(Json::objectValue);
-  data["from"] = args["from"].asString();
-  data["to"] = args["to"].asString();
-  data["recursive"] = recursive;
-  return write_envelope(true, "", data);
-#endif
+  return false;
 }
 
 static agent_status_t tool_fs_stat(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
-  if (!ctx || !out_result) {
-    return AGENT_ERR_INVALID_ARGUMENT;
-  }
+  if (!ctx || !out_result) return AGENT_ERR_INVALID_ARGUMENT;
 #if !defined(AGENT_HAVE_JSONCPP)
   return set_result(out_result, "{\"ok\":false,\"error\":\"fs_stat requires jsoncpp\"}");
 #else
@@ -400,7 +136,8 @@ static agent_status_t tool_fs_stat(HostToolCtx* ctx, const char* arguments_json,
   if (!args["path"].isString()) {
     return write_envelope(false, "missing string field 'path'", Json::Value(Json::objectValue));
   }
-  const auto resolved = resolve_under_root(ctx->root, args["path"].asString(), ctx->unrestricted);
+  const std::string path = args["path"].asString();
+  const auto resolved = resolve_under_root(ctx->root, path, ctx->unrestricted);
   if (!resolved) {
     return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
   }
@@ -410,20 +147,49 @@ static agent_status_t tool_fs_stat(HostToolCtx* ctx, const char* arguments_json,
     return write_envelope(false, "stat failed", Json::Value(Json::objectValue));
   }
   Json::Value data(Json::objectValue);
+  data["tool"] = "fs_stat";
+  data["path"] = path;
+  data["resolved_path"] = to_generic_string(*resolved);
+  data["root_dir"] = to_generic_string(ctx->root);
+  data["unrestricted"] = ctx->unrestricted;
   data["exists"] = std::filesystem::exists(st);
   data["is_file"] = std::filesystem::is_regular_file(st);
   data["is_dir"] = std::filesystem::is_directory(st);
   if (data["exists"].asBool() && data["is_file"].asBool()) {
-    data["size"] = (Json::UInt64)std::filesystem::file_size(*resolved, ec);
+    data["size_bytes"] = (Json::UInt64)std::filesystem::file_size(*resolved, ec);
+    data["is_binary"] = is_probably_binary(*resolved);
+  }
+  std::filesystem::file_time_type mtime{};
+  ec.clear();
+  mtime = std::filesystem::last_write_time(*resolved, ec);
+  if (!ec) {
+    data["mtime_unix_ms"] = (Json::Int64)file_time_to_unix_ms(mtime);
+  }
+  {
+    // Human-friendly output for UIs. Keep structured fields for the LLM.
+    std::ostringstream oss;
+    oss << "path: " << path << "\n";
+    oss << "resolved_path: " << to_generic_string(*resolved) << "\n";
+    oss << "exists: " << (data["exists"].asBool() ? "true" : "false") << "\n";
+    oss << "is_file: " << (data["is_file"].asBool() ? "true" : "false") << "\n";
+    oss << "is_dir: " << (data["is_dir"].asBool() ? "true" : "false") << "\n";
+    if (data.isMember("size_bytes")) {
+      oss << "size_bytes: " << (unsigned long long)data["size_bytes"].asUInt64() << "\n";
+    }
+    if (data.isMember("mtime_unix_ms")) {
+      oss << "mtime_unix_ms: " << (long long)data["mtime_unix_ms"].asInt64() << "\n";
+    }
+    if (data.isMember("is_binary")) {
+      oss << "is_binary: " << (data["is_binary"].asBool() ? "true" : "false") << "\n";
+    }
+    data["output"] = oss.str();
   }
   return write_envelope(true, "", data);
 #endif
 }
 
 static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
-  if (!ctx || !out_result) {
-    return AGENT_ERR_INVALID_ARGUMENT;
-  }
+  if (!ctx || !out_result) return AGENT_ERR_INVALID_ARGUMENT;
 #if !defined(AGENT_HAVE_JSONCPP)
   return set_result(out_result, "{\"ok\":false,\"error\":\"fs_list requires jsoncpp\"}");
 #else
@@ -445,6 +211,8 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
   const std::string path = args.isMember("path") && args["path"].isString() ? args["path"].asString() : ".";
   const bool recursive = args.isMember("recursive") && args["recursive"].isBool() ? args["recursive"].asBool() : false;
   const int max_entries = args.isMember("max_entries") && args["max_entries"].isInt() ? args["max_entries"].asInt() : 200;
+  const int max_depth = args.isMember("max_depth") && args["max_depth"].isInt() ? args["max_depth"].asInt() : 4;
+  const bool include_hidden = args.isMember("include_hidden") && args["include_hidden"].isBool() ? args["include_hidden"].asBool() : false;
 
   const auto resolved = resolve_under_root(ctx->root, path, ctx->unrestricted);
   if (!resolved) {
@@ -457,37 +225,225 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
 
   Json::Value arr(Json::arrayValue);
   int count = 0;
+  const auto should_skip = [&](const std::filesystem::path& p) -> bool {
+    if (include_hidden) return false;
+    const auto name = p.filename().string();
+    return !name.empty() && name[0] == '.';
+  };
+
   if (recursive) {
     for (auto it = std::filesystem::recursive_directory_iterator(*resolved, ec); !ec && it != std::filesystem::recursive_directory_iterator(); ++it) {
-      if (count >= max_entries) {
-        break;
+      if (count >= max_entries) break;
+      if (max_depth >= 0 && it.depth() > max_depth) {
+        it.disable_recursion_pending();
+        continue;
       }
+      if (should_skip(it->path())) continue;
       Json::Value e(Json::objectValue);
-      e["path"] = it->path().lexically_relative(ctx->root).generic_string();
+      if (ctx->unrestricted) {
+        e["path"] = to_generic_string(it->path().lexically_normal());
+      } else {
+        e["path"] = it->path().lexically_relative(ctx->root).generic_string();
+      }
       e["type"] = it->is_directory() ? "dir" : (it->is_regular_file() ? "file" : "other");
+      if (it->is_regular_file()) {
+        std::error_code ec2;
+        e["size_bytes"] = (Json::UInt64)it->file_size(ec2);
+      }
       arr.append(e);
       count++;
     }
   } else {
     for (auto it = std::filesystem::directory_iterator(*resolved, ec); !ec && it != std::filesystem::directory_iterator(); ++it) {
-      if (count >= max_entries) {
-        break;
-      }
+      if (count >= max_entries) break;
+      if (should_skip(it->path())) continue;
       Json::Value e(Json::objectValue);
-      e["path"] = it->path().lexically_relative(ctx->root).generic_string();
+      if (ctx->unrestricted) {
+        e["path"] = to_generic_string(it->path().lexically_normal());
+      } else {
+        e["path"] = it->path().lexically_relative(ctx->root).generic_string();
+      }
       e["type"] = it->is_directory() ? "dir" : (it->is_regular_file() ? "file" : "other");
+      if (it->is_regular_file()) {
+        std::error_code ec2;
+        e["size_bytes"] = (Json::UInt64)it->file_size(ec2);
+      }
       arr.append(e);
       count++;
     }
   }
+
   Json::Value data(Json::objectValue);
+  data["tool"] = "fs_list";
   data["path"] = path;
+  data["resolved_path"] = to_generic_string(*resolved);
+  data["root_dir"] = to_generic_string(ctx->root);
+  data["unrestricted"] = ctx->unrestricted;
+  data["recursive"] = recursive;
   data["entries"] = arr;
   data["truncated"] = (count >= max_entries);
+  data["max_entries"] = max_entries;
+  data["max_depth"] = max_depth;
+  data["include_hidden"] = include_hidden;
+  {
+    std::ostringstream oss;
+    oss << "path: " << path << "\n";
+    oss << "resolved_path: " << to_generic_string(*resolved) << "\n";
+    oss << "recursive: " << (recursive ? "true" : "false") << "\n";
+    oss << "entries: " << count << (count >= max_entries ? " (truncated)\n" : "\n");
+    for (Json::ArrayIndex i = 0; i < arr.size(); i++) {
+      const auto& e = arr[i];
+      const std::string ep = e.isMember("path") && e["path"].isString() ? e["path"].asString() : "";
+      const std::string et = e.isMember("type") && e["type"].isString() ? e["type"].asString() : "";
+      oss << "- " << ep;
+      if (!et.empty()) oss << " (" << et << ")";
+      if (e.isMember("size_bytes") && e["size_bytes"].isUInt64()) {
+        oss << " " << (unsigned long long)e["size_bytes"].asUInt64() << " bytes";
+      }
+      oss << "\n";
+    }
+    data["output"] = oss.str();
+  }
   return write_envelope(true, "", data);
 #endif
 }
+
+static agent_status_t tool_fs_read(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
+  if (!ctx || !out_result) return AGENT_ERR_INVALID_ARGUMENT;
+#if !defined(AGENT_HAVE_JSONCPP)
+  return set_result(out_result, "{\"ok\":false,\"error\":\"fs_read requires jsoncpp\"}");
+#else
+  auto write_envelope = [&](bool ok, const std::string& error, const Json::Value& data) -> agent_status_t {
+    Json::Value o(Json::objectValue);
+    o["ok"] = ok;
+    if (!error.empty()) o["error"] = error;
+    o["data"] = data;
+    Json::StreamWriterBuilder wb;
+    wb["indentation"] = "";
+    return set_result(out_result, Json::writeString(wb, o));
+  };
+
+  Json::Value args;
+  std::string err;
+  if (!parse_json(arguments_json, &args, &err) || !args.isObject()) {
+    return write_envelope(false, "invalid args", Json::Value(Json::objectValue));
+  }
+  if (!args["path"].isString()) {
+    return write_envelope(false, "missing string field 'path'", Json::Value(Json::objectValue));
+  }
+
+  const std::string path = args["path"].asString();
+  const int start_line = args.isMember("start_line") && args["start_line"].isInt() ? args["start_line"].asInt() : 1;
+  const int max_lines = args.isMember("max_lines") && args["max_lines"].isInt() ? args["max_lines"].asInt() : 200;
+  const int end_line = args.isMember("end_line") && args["end_line"].isInt() ? args["end_line"].asInt() : 0;
+  const int max_chars = args.isMember("max_chars") && args["max_chars"].isInt() ? args["max_chars"].asInt() : 20000;
+  const bool with_line_numbers = args.isMember("with_line_numbers") && args["with_line_numbers"].isBool() ? args["with_line_numbers"].asBool() : false;
+
+  if (start_line < 1) {
+    return write_envelope(false, "start_line must be >= 1", Json::Value(Json::objectValue));
+  }
+  if (max_lines < 1) {
+    return write_envelope(false, "max_lines must be >= 1", Json::Value(Json::objectValue));
+  }
+
+  const auto resolved = resolve_under_root(ctx->root, path, ctx->unrestricted);
+  if (!resolved) {
+    return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
+  }
+  std::error_code ec;
+  if (!std::filesystem::exists(*resolved, ec) || !std::filesystem::is_regular_file(*resolved, ec)) {
+    return write_envelope(false, "not a regular file", Json::Value(Json::objectValue));
+  }
+
+  Json::Value data(Json::objectValue);
+  data["tool"] = "fs_read";
+  data["path"] = path;
+  data["resolved_path"] = to_generic_string(*resolved);
+  data["root_dir"] = to_generic_string(ctx->root);
+  data["unrestricted"] = ctx->unrestricted;
+  data["start_line"] = start_line;
+  data["max_lines"] = max_lines;
+  if (end_line > 0) data["end_line"] = end_line;
+  data["max_chars"] = max_chars;
+  data["with_line_numbers"] = with_line_numbers;
+
+  const uintmax_t sz = std::filesystem::file_size(*resolved, ec);
+  if (!ec) data["size_bytes"] = (Json::UInt64)sz;
+  const auto mtime = std::filesystem::last_write_time(*resolved, ec);
+  if (!ec) data["mtime_unix_ms"] = (Json::Int64)file_time_to_unix_ms(mtime);
+
+  const bool is_bin = is_probably_binary(*resolved);
+  data["is_binary"] = is_bin;
+  if (is_bin) {
+    data["content"] = "";
+    data["output"] = "";
+    data["truncated"] = true;
+    data["truncated_reason"] = "binary_file";
+    return write_envelope(true, "", data);
+  }
+
+  std::ifstream in(*resolved);
+  if (!in.is_open()) {
+    return write_envelope(false, "failed to open", Json::Value(Json::objectValue));
+  }
+
+  std::ostringstream out;
+  int line_no = 0;
+  int returned = 0;
+  bool truncated = false;
+  bool has_more = false;
+  std::string truncated_reason;
+  bool stopped_due_to_end_line = false;
+  std::string line;
+  while (std::getline(in, line)) {
+    line_no++;
+    if (line_no < start_line) {
+      continue;
+    }
+    if (end_line > 0 && line_no > end_line) {
+      has_more = true;
+      stopped_due_to_end_line = true;
+      break;
+    }
+    if (returned >= max_lines) {
+      truncated = true;
+      has_more = true;
+      truncated_reason = "max_lines";
+      break;
+    }
+    std::string chunk = line;
+    if (with_line_numbers) {
+      chunk = std::to_string(line_no) + ": " + chunk;
+    }
+    // Add newline back (getline strips it).
+    chunk.push_back('\n');
+    if ((int)out.tellp() + (int)chunk.size() > max_chars) {
+      truncated = true;
+      has_more = true;
+      truncated_reason = "max_chars";
+      break;
+    }
+    out << chunk;
+    returned++;
+  }
+
+  data["lines_returned"] = returned;
+  data["last_line"] = returned > 0 ? (start_line + returned - 1) : (start_line - 1);
+  data["has_more"] = has_more;
+  data["next_start_line"] = (Json::Int64)(start_line + returned);
+  data["truncated"] = truncated;
+  if (truncated && !truncated_reason.empty()) data["truncated_reason"] = truncated_reason;
+  if (stopped_due_to_end_line) data["stopped_due_to"] = "end_line";
+  if (!has_more) {
+    data["total_lines"] = line_no;
+  }
+  data["content"] = out.str();
+  data["output"] = data["content"];
+  data["content_bytes"] = (Json::UInt64)data["content"].asString().size();
+
+  return write_envelope(true, "", data);
 #endif
+}
 
 struct ExecResult {
   int exit_code = -1;
@@ -929,6 +885,15 @@ static agent_status_t host_tools_execute(void* vctx, const char* tool_name, cons
   if (name == "file_apply_patch") {
     return tool_file_apply_patch(ctx, arguments_json, out_result);
   }
+  if (name == "fs_stat") {
+    return tool_fs_stat(ctx, arguments_json, out_result);
+  }
+  if (name == "fs_list") {
+    return tool_fs_list(ctx, arguments_json, out_result);
+  }
+  if (name == "fs_read") {
+    return tool_fs_read(ctx, arguments_json, out_result);
+  }
   // Keep the response machine-readable so the LLM can reason about failures.
   return set_result(out_result, "{\"ok\":false,\"error\":\"unknown tool\",\"data\":{}}");
 }
@@ -1000,6 +965,58 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     "  \"unsafe_paths\":{\"type\":\"boolean\"}"
     "},"
     "\"required\":[\"patch\"]"
+    "}"
+  );
+  if (st != AGENT_OK) goto fail;
+
+  // Read-only filesystem tools (host-only):
+  // These exist to reduce token waste by bounding outputs and supporting pagination.
+  st = add_tool(
+    r,
+    "fs_stat",
+    "Stat a file or directory (host-side). Returns JSON envelope with metadata and a human-readable `data.output`.",
+    "{"
+    "\"type\":\"object\","
+    "\"properties\":{"
+    "  \"path\":{\"type\":\"string\",\"description\":\"File/directory path (relative to tools root unless yolo/unrestricted).\"}"
+    "},"
+    "\"required\":[\"path\"]"
+    "}"
+  );
+  if (st != AGENT_OK) goto fail;
+
+  st = add_tool(
+    r,
+    "fs_list",
+    "List a directory (host-side). Prefer this over `ls`/`find` when you need bounded output for token efficiency.",
+    "{"
+    "\"type\":\"object\","
+    "\"properties\":{"
+    "  \"path\":{\"type\":\"string\",\"description\":\"Directory path (default: .)\"},"
+    "  \"recursive\":{\"type\":\"boolean\"},"
+    "  \"max_entries\":{\"type\":\"integer\",\"description\":\"Max entries to return (default: 200)\"},"
+    "  \"max_depth\":{\"type\":\"integer\",\"description\":\"Max recursion depth when recursive=true (default: 4)\"},"
+    "  \"include_hidden\":{\"type\":\"boolean\"}"
+    "}"
+    "}"
+  );
+  if (st != AGENT_OK) goto fail;
+
+  st = add_tool(
+    r,
+    "fs_read",
+    "Read a text file with bounded output + pagination. Prefer this over `cat`/`sed` when you need predictable token usage.",
+    "{"
+    "\"type\":\"object\","
+    "\"properties\":{"
+    "  \"path\":{\"type\":\"string\"},"
+    "  \"start_line\":{\"type\":\"integer\",\"description\":\"1-based starting line (default: 1)\"},"
+    "  \"end_line\":{\"type\":\"integer\",\"description\":\"Optional 1-based end line (inclusive). 0 means unset.\"},"
+    "  \"max_lines\":{\"type\":\"integer\",\"description\":\"Max lines to return (default: 200)\"},"
+    "  \"max_chars\":{\"type\":\"integer\",\"description\":\"Max characters to return (default: 20000)\"},"
+    "  \"with_line_numbers\":{\"type\":\"boolean\"}"
+    "},"
+    "\"required\":[\"path\"]"
     "}"
   );
   if (st != AGENT_OK) goto fail;

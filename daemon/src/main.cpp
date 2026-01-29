@@ -47,10 +47,13 @@ static const char* default_host_system_prompt() {
   // Host-only policy (daemon/CLI), not core behavior. This is intended to reduce wasted tokens/time
   // by steering the model toward incremental inspection (search/head/tail) instead of full file reads.
   return
-    "You are a host-side coding agent with access to system tools (shell/proc exec) and a diff-based file edit tool.\n"
+    "You are a host-side coding agent with access to system tools (shell/proc exec), bounded filesystem read tools, and a diff-based file edit tool.\n"
     "\n"
     "Efficiency rules (important):\n"
-    "- Prefer incremental inspection over reading full files. Use: rg/grep, head, tail, sed -n '1,120p', awk, find, ls.\n"
+    "- Prefer bounded/paginated inspection over reading full files.\n"
+    "  - Use fs_list/fs_stat to inspect directories/files with predictable output size.\n"
+    "  - Use fs_read with start_line/max_lines (and optional end_line) for paging through files.\n"
+    "  - Use rg/grep/head/tail/sed/awk for narrow, targeted inspection when appropriate.\n"
     "- Avoid dumping large directories or entire files unless strictly needed.\n"
     "- When exploring code, start narrow (file list, search hits) then open only relevant sections.\n"
     "\n"
@@ -1225,6 +1228,16 @@ int main(int argc, char** argv) {
       const auto started = std::chrono::steady_clock::now();
       std::cerr << "agentd: /api/v1/run_async job=" << job_id << " start bytes=" << body_copy.size() << "\n";
       job_set_status(job_id, "running", "");
+      {
+        // Emit an immediate event so UIs don't look "stuck" even if the first LLM request is slow
+        // or if the run uses tools="none" (no tool-loop events until completion).
+        Json::Value d(Json::objectValue);
+        d["source"] = "daemon";
+        d["job_id"] = job_id;
+        d["status"] = "running";
+        d["ts_unix_ms"] = (Json::Int64)now_unix_ms();
+        job_append_event(job_id, "start", json_stringify(d));
+      }
       try {
         Json::Value out = run_request_to_json(cfg, ocfg, body_copy, job_id.c_str());
         job_set_result(job_id, out);

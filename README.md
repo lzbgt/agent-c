@@ -105,9 +105,14 @@ Host tool names:
 - `shell_exec` (runs `/bin/sh -lc <cmd>`, returns JSON envelope with `exit_code`, `timed_out`, `truncated`, `output`)
 - `proc_exec` (runs an argv array via `posix_spawnp`, no shell; returns JSON envelope with `argv`, `exit_code`, `timed_out`, `truncated`, `output`)
 - `file_apply_patch` (applies a unified diff via `git apply`; returns the patch as a diff-style audit trail)
+- `fs_stat` (file/dir metadata; returns structured fields + a human-readable `output`)
+- `fs_list` (bounded directory listing; returns structured `entries` + `output`)
+- `fs_read` (bounded file read with pagination by line; returns `content`/`output` + `has_more` + `next_start_line`)
 
 Notes:
-- For host-side file operations (read/list/remove/move), prefer OS-native commands via `proc_exec` / `shell_exec` (e.g. `ls`, `find`, `cat`, `rg`, `rm`).
+- For **inspection** (read/list/stat), prefer `fs_list` / `fs_read` / `fs_stat` because they provide bounded output and pagination
+  (helps prevent token/context blow-ups). Use `rg/grep` first, then `fs_read` for narrow line ranges.
+- For host-side **mutating** file operations (remove/move/rename), prefer OS-native commands via `proc_exec` / `shell_exec` (e.g. `rm`, `mv`, `git`).
 - For file edits, prefer `file_apply_patch` so the tool output includes a diff-style record of the change.
 - Tool outputs are capped before being inserted back into the next LLM request context, to avoid overflowing the context window.
 

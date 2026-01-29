@@ -10,11 +10,22 @@
 
 #include <sstream>
 #include <algorithm>
+#include <mutex>
 
 static size_t write_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
   auto* out = static_cast<std::string*>(userdata);
   out->append(ptr, size * nmemb);
   return size * nmemb;
+}
+
+static void ensure_curl_global_init() {
+  // libcurl requires global initialization exactly once per process.
+  // Without this, multi-threaded usage (daemon async jobs) can exhibit undefined behavior,
+  // including apparent "hangs" where no response ever arrives.
+  static std::once_flag once;
+  std::call_once(once, []() {
+    (void)curl_global_init(CURL_GLOBAL_DEFAULT);
+  });
 }
 
 static std::string truncate_for_error(const std::string& s, size_t max_len) {
@@ -58,6 +69,8 @@ static std::string normalize_base_url(std::string base_url) {
 static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::string& url, const std::string& body) {
   OpenAIRawResult result;
   result.http_status = 0;
+
+  ensure_curl_global_init();
 
   const char* https_proxy = std::getenv("HTTPS_PROXY");
   if (!https_proxy || !https_proxy[0]) {
@@ -106,6 +119,8 @@ static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::
     curl_easy_setopt(curl, CURLOPT_PROXY, https_proxy);
     curl_easy_setopt(curl, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
     curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 1L);
+    // Some local HTTP proxies are not happy with HTTP/2 over CONNECT.
+    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
   }
 
   CURLcode rc = curl_easy_perform(curl);

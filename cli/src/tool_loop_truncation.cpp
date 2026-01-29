@@ -60,6 +60,16 @@ std::string tool_loop_cap_tool_output_for_prompt(const std::string& tool_out, si
         data["prompt_truncated"] = true;
       }
     }
+    // Some tools use `content` for returned text (e.g. fs_read).
+    if (data.isMember("content") && data["content"].isString()) {
+      bool trunc = false;
+      const std::string out = truncate_str(data["content"].asString(), max_chars / 2, &trunc);
+      if (trunc) {
+        did = true;
+        data["content"] = out;
+        data["prompt_truncated"] = true;
+      }
+    }
     // Sometimes tools return `patch` or other large fields.
     if (data.isMember("patch") && data["patch"].isString()) {
       bool trunc = false;
@@ -83,4 +93,3 @@ std::string tool_loop_cap_tool_output_for_prompt(const std::string& tool_out, si
   return s;
 #endif
 }
-

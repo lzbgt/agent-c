@@ -58,6 +58,13 @@ export default function ToolResultView({
     const toolName = typeof parsed?.data?.tool === "string" ? parsed.data.tool : "";
     const patch = typeof parsed?.data?.patch === "string" ? parsed.data.patch : null;
     const output = typeof parsed?.data?.output === "string" ? parsed.data.output : null;
+    const hasMore = typeof parsed?.data?.has_more === "boolean" ? parsed.data.has_more : null;
+    const nextStartLine =
+      typeof parsed?.data?.next_start_line === "number" ? parsed.data.next_start_line : null;
+    const truncated = typeof parsed?.data?.truncated === "boolean" ? parsed.data.truncated : null;
+    const truncatedReason =
+      typeof parsed?.data?.truncated_reason === "string" ? parsed.data.truncated_reason : null;
+    const toolPath = typeof parsed?.data?.path === "string" ? parsed.data.path : null;
     const exitCode =
       typeof parsed?.data?.exit_code === "number"
         ? parsed.data.exit_code
@@ -90,6 +97,19 @@ export default function ToolResultView({
           ) : null}
           {exitCode !== null ? <span className="rounded-md bg-white/10 px-2 py-1">exit_code={exitCode}</span> : null}
           {toolName ? <span className="rounded-md bg-white/10 px-2 py-1">{toolName}</span> : null}
+          {toolPath ? <span className="rounded-md bg-white/10 px-2 py-1">path={toolPath}</span> : null}
+          {hasMore !== null ? (
+            <span className="rounded-md bg-white/10 px-2 py-1">has_more={String(hasMore)}</span>
+          ) : null}
+          {nextStartLine !== null ? (
+            <span className="rounded-md bg-white/10 px-2 py-1">next_start_line={nextStartLine}</span>
+          ) : null}
+          {truncated !== null ? (
+            <span className="rounded-md bg-white/10 px-2 py-1">truncated={String(truncated)}</span>
+          ) : null}
+          {truncatedReason ? (
+            <span className="rounded-md bg-white/10 px-2 py-1">reason={truncatedReason}</span>
+          ) : null}
           {error ? <span className="rounded-md bg-rose-500/10 px-2 py-1 text-rose-200">{error}</span> : null}
 
           {output ? (
@@ -166,4 +186,3 @@ export default function ToolResultView({
     </div>
   );
 }
-
