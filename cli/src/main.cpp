@@ -473,7 +473,7 @@ int main(int argc, char** argv) {
 
         std::string out = "[tool_result] name=" + rec.tool_name;
         if (!rec.tool_call_id.empty()) out += " id=" + rec.tool_call_id;
-        out += "\n" + rec.result_string;
+        out += "\n" + (rec.result_string_for_prompt.empty() ? rec.result_string : rec.result_string_for_prompt);
         agent_session_add_message(session, AGENT_ROLE_ASSISTANT, out.c_str());
       }
       agent_session_add_message(session, AGENT_ROLE_ASSISTANT, r.final_assistant_text.c_str());

@@ -136,6 +136,15 @@ The tool-call loop uses the same char-budget idea, but performs compaction at th
 
 This mirrors the approach in `ref/ds-cli` (Sophon) where compaction summaries are lightweight and do not require a second model call.
 
+### Per-request context hygiene (host-side)
+
+Compaction only triggers when the history exceeds a threshold. In practice, **tool outputs** can bloat the context quickly even
+before compaction triggers (e.g. repeated `rg`/`cat` output, large diffs, verbose build logs).
+
+Therefore the host tool loop applies additional per-request guardrails:
+- Tool results are **capped** before being appended into the next LLM request context (still preserving JSON envelope shape when possible).
+- Full tool outputs remain available in the daemon/UI event log and audit trail, but the model only sees a bounded excerpt.
+
 ### “Session rotation” when context runs out
 
 Because most providers are stateless, “spawning a new provider session” is implemented as **session rotation**:

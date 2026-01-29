@@ -14,6 +14,7 @@
 
 #include "openai_client.h"
 #include "tool_loop_compaction.h"
+#include "tool_loop_truncation.h"
 
 #if defined(AGENT_HAVE_JSONCPP)
 static std::string json_stringify(const Json::Value& v) {
@@ -677,6 +678,7 @@ bool run_tool_loop(
         rec.tool_call_id = tool_call_id;
         rec.arguments_json = tool_args_json;
         rec.result_string = tool_out;
+        rec.result_string_for_prompt = tool_loop_cap_tool_output_for_prompt(tool_out, options.max_tool_result_chars, &rec.result_truncated_for_prompt);
         out_result->tool_records.push_back(std::move(rec));
       }
 
@@ -703,7 +705,8 @@ bool run_tool_loop(
       Json::Value tm(Json::objectValue);
       tm["role"] = "tool";
       tm["tool_call_id"] = tool_call_id;
-      tm["content"] = tool_out;
+      // Avoid blowing up the context window: cap tool results before they enter the prompt.
+      tm["content"] = out_result->tool_records.back().result_string_for_prompt;
       messages.append(tm);
     }
   }

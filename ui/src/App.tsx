@@ -91,26 +91,22 @@ export default function App() {
         keep_last: Number.isFinite(Number(keepLast)) ? Number(keepLast) : 16,
         trace,
       };
-
-      // Reset UI state for a new run.
-      setLastRunPrompt(prompt);
-      setResult(undefined);
-      setJobError(null);
-      setJobStatus(null);
-      setJobUpdatedMs(null);
-      setLiveEvents([]);
-      cursorRef.current = 0;
-
       if (useAsync) {
         const job = await apiRunAsync(base, req);
-        return { mode: "async" as const, job };
+        return { mode: "async" as const, job, req };
       }
       const out = await apiRun(base, req);
-      return { mode: "sync" as const, out };
+      return { mode: "sync" as const, out, req };
     },
     onSuccess: (v) => {
       if (v.mode === "sync") {
+        // Only replace history once we have a new result (prevents "fetch failed" from wiping the UI).
+        setLastRunPrompt(v.req.prompt);
         setResult(v.out);
+        setLiveEvents([]);
+        setJobError(null);
+        setJobStatus(null);
+        setJobUpdatedMs(null);
         void audit.refetch();
         void sessions.refetch();
         return;
@@ -119,8 +115,20 @@ export default function App() {
         setJobError(v.job.error ?? "failed to start async job");
         return;
       }
+      // Only reset/replace history after the job has been successfully created.
+      setLastRunPrompt(v.req.prompt);
+      setResult(undefined);
+      setJobError(null);
+      setJobStatus(null);
+      setJobUpdatedMs(null);
+      setLiveEvents([]);
+      cursorRef.current = 0;
       setActiveJobId(v.job.job_id);
       setJobStatus("queued");
+    },
+    onError: (e) => {
+      // Keep the last conversation visible when a run cannot be started.
+      setJobError(`run failed: ${String(e)}`);
     },
   });
 
@@ -134,7 +142,16 @@ export default function App() {
         // Poll job progress + stream events via cursor.
         for (;;) {
           if (cancelled) return;
-          const job = await apiGetJobProgress(base, jobId, { cursor: cursorRef.current, maxEvents: 256 });
+          let job: any;
+          try {
+            job = await apiGetJobProgress(base, jobId, { cursor: cursorRef.current, maxEvents: 256 });
+          } catch (e) {
+            // Transient fetch failures should not invalidate the visible conversation.
+            // Keep the current liveEvents and keep the job active; retry with backoff.
+            setJobError(`job fetch failed: ${String(e)}`);
+            await sleep(1000);
+            continue;
+          }
 
           if (cancelled) return;
           setJobStatus(job.status ?? null);
@@ -168,8 +185,8 @@ export default function App() {
         }
       })().catch((e) => {
         if (cancelled) return;
-        setJobError(String(e));
-        setActiveJobId(null);
+        // Keep job state visible; do not invalidate the conversation on unexpected polling loop errors.
+        setJobError(`polling loop failed: ${String(e)}`);
       });
     };
 
@@ -180,6 +197,13 @@ export default function App() {
       typeof EventSource !== "undefined" &&
       typeof base === "string" &&
       (base.startsWith("http://") || base.startsWith("https://"));
+
+    let fallbackStarted = false;
+    const fallbackToPolling = () => {
+      if (fallbackStarted) return;
+      fallbackStarted = true;
+      startPolling();
+    };
 
     if (trySse) {
       try {
@@ -245,16 +269,15 @@ export default function App() {
           } catch {
             // ignore
           }
-          // If SSE couldn't even open, fall back immediately.
-          if (!opened) {
-            startPolling();
-          }
+          // Any SSE failure should fall back to polling (cursor-based) so the UI keeps progressing.
+          // Do not clear liveEvents; keep the conversation visible.
+          fallbackToPolling();
         };
       } catch {
-        startPolling();
+        fallbackToPolling();
       }
     } else {
-      startPolling();
+      fallbackToPolling();
     }
 
     return () => {

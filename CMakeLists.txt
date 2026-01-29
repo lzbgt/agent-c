@@ -36,6 +36,7 @@ add_library(agent_host STATIC
   cli/src/session_store.cpp
   cli/src/tool_loop.cpp
   cli/src/tool_loop_compaction.cpp
+  cli/src/tool_loop_truncation.cpp
   cli/src/toolset_basic.cpp
   cli/src/toolset_host.cpp
 )
@@ -126,4 +127,10 @@ if(PKG_CONFIG_FOUND AND JSONCPP_FOUND)
   )
   target_link_libraries(tool_loop_compaction_tests PRIVATE agent_host)
   add_test(NAME tool_loop_compaction_tests COMMAND tool_loop_compaction_tests)
+
+  add_executable(tool_loop_truncation_tests
+    tests/test_tool_loop_truncation.cpp
+  )
+  target_link_libraries(tool_loop_truncation_tests PRIVATE agent_host)
+  add_test(NAME tool_loop_truncation_tests COMMAND tool_loop_truncation_tests)
 endif()

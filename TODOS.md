@@ -14,6 +14,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [ ] Add a persistence interface (optional) so host apps can supply file/SQLite/NVS implementations.
 - [ ] Expand unit tests for compaction edge cases (overlap prefix/suffix; empty; all system messages).
 - [x] Add a small unit test for tool-loop compaction/rotation logic (JSON message arrays) to prevent regressions.
+- [x] Add a unit test to ensure tool result truncation stays JSON-shaped and capped.
 
 ## Near-term (CLI ergonomics)
 

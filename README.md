@@ -109,6 +109,7 @@ Host tool names:
 Notes:
 - For host-side file operations (read/list/remove/move), prefer OS-native commands via `proc_exec` / `shell_exec` (e.g. `ls`, `find`, `cat`, `rg`, `rm`).
 - For file edits, prefer `file_apply_patch` so the tool output includes a diff-style record of the change.
+- Tool outputs are capped before being inserted back into the next LLM request context, to avoid overflowing the context window.
 
 Default host system hint (CLI/daemon):
 - When using `--tools host`, the CLI/daemon injects a one-time `system` message into an empty session to encourage

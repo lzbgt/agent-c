@@ -78,3 +78,6 @@ Completed milestones and notable tasks.
 - Added SSE streaming for job progress (preferred over polling):
   - `GET /api/v1/job/stream?job_id=...&cursor=...` streams `agent_event` and ends with `job_done`
   - daemon HTTP server is now concurrent (per-connection thread) so streaming does not block other requests
+- Hardened host tool-loop context usage:
+  - tool outputs are capped before being appended into the next request context (prevents context blowups from repeated tool output)
+  - added a unit test to lock in tool-output truncation behavior

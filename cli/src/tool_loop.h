@@ -25,6 +25,10 @@ struct ToolLoopOptions {
   // Max bytes captured per field in events (best-effort).
   size_t max_capture_bytes = 256 * 1024;
 
+  // Caps tool outputs before they are appended into the LLM request context.
+  // 0 means "no extra capping" (not recommended for host tools).
+  size_t max_tool_result_chars = 12000;
+
   // Seamless compaction for tool loops (portable char-budget heuristic).
   // 0 means "use default" (20000).
   size_t max_chars = 0;
@@ -50,7 +54,9 @@ struct ToolLoopToolRecord {
   std::string tool_name;
   std::string tool_call_id;     // OpenAI-style call id when present (may be empty)
   std::string arguments_json;   // OpenAI tool arguments string (JSON)
-  std::string result_string;    // executor output (often JSON envelope string)
+  std::string result_string;            // executor output (often JSON envelope string)
+  std::string result_string_for_prompt; // capped version suitable for putting into LLM context
+  bool result_truncated_for_prompt = false;
 };
 
 struct ToolLoopResult {
