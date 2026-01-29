@@ -89,6 +89,9 @@ add_test(NAME agent_core_tests COMMAND agent_core_tests)
 add_test(NAME agent_openrouter_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/openrouter_smoke.sh $<TARGET_FILE:agent>)
 set_tests_properties(agent_openrouter_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
+add_test(NAME agent_openrouter_host_tools_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/openrouter_host_tools_smoke.sh $<TARGET_FILE:agent>)
+set_tests_properties(agent_openrouter_host_tools_smoke PROPERTIES SKIP_RETURN_CODE 77)
+
 add_test(NAME agent_deepseek_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/deepseek_smoke.sh $<TARGET_FILE:agent>)
 set_tests_properties(agent_deepseek_smoke PROPERTIES SKIP_RETURN_CODE 77)
 

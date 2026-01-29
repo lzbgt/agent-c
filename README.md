@@ -93,6 +93,12 @@ Host toolset usage:
 ./build/agent run "List files, then show README.md" --tools host --tools-root .
 ```
 
+Seamless compaction for tool loops:
+- In `--tools basic` / `--tools host` mode, the tool loop applies the same char-budget policy as the core runner:
+  keep pinned `system` prefix + keep last `K` messages.
+- When messages are dropped, a short deterministic `system` summary is inserted into the request so the model
+  has some continuity (no extra model call).
+
 Host tool names:
 - `shell_exec` (runs `/bin/sh -lc <cmd>`, returns JSON envelope with `exit_code`, `timed_out`, `truncated`, `output`)
 - `proc_exec` (runs an argv array via `posix_spawnp`, no shell; returns JSON envelope with `argv`, `exit_code`, `timed_out`, `truncated`, `output`)

@@ -118,6 +118,17 @@ Rationale:
   - The last `K` messages (configurable).
 - Drop older non-pinned messages until the budget is satisfied.
 
+### Tool-loop compaction (host-side, day-1)
+
+The tool-call loop uses the same char-budget idea, but performs compaction at the **request assembly** layer:
+
+- Keep pinned leading `system` messages.
+- Keep the last `K` messages.
+- Drop the middle window when over budget.
+- Optionally insert a deterministic `system` “compaction summary” message describing what was dropped (no extra LLM call).
+
+This mirrors the approach in `ref/ds-cli` (Sophon) where compaction summaries are lightweight and do not require a second model call.
+
 ### Optional summary insertion (future-friendly)
 
 - The host may generate a summary (possibly via an LLM call) and insert it as a `system` message:

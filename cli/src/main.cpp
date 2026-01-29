@@ -381,6 +381,8 @@ int main(int argc, char** argv) {
     opt.force_tool = force_tool;
     opt.require_tool_call = require_tool_call;
     opt.max_steps = max_steps;
+    opt.max_chars = max_chars;
+    opt.keep_last_messages = keep_last;
 
     auto run_one = [&](const std::string& user_prompt) -> int {
       ToolLoopResult r;

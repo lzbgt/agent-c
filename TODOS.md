@@ -20,7 +20,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Improve error messages (HTTP status + provider error extraction).
 - [ ] Add `--summary-model` option (host-generated summary insertion).
 - [x] Implement extensible host toolsets (subprocess exec + diff-based file edits) for CLI/daemon (`--tools host`).
-- [ ] Add an OpenRouter **tool-call** smoke test (host toolset) using a cheap model that supports `tools`.
+- [x] Add an OpenRouter **tool-call** smoke test (host toolset) using a cheap model that supports `tools`.
 - [ ] Decide how to persist **tool-call transcripts** (tool_call_id + tool messages) without breaking OpenAI-compatible request formats.
 - [x] Make tool-loop `--max-steps` default unlimited (0 means unlimited).
 

@@ -18,6 +18,19 @@ struct ToolLoopOptions {
   bool verbose = false;
   // Max bytes captured per field in events (best-effort).
   size_t max_capture_bytes = 256 * 1024;
+
+  // Seamless compaction for tool loops (portable char-budget heuristic).
+  // 0 means "use default" (20000).
+  size_t max_chars = 0;
+  // 0 means "use default" (16).
+  size_t keep_last_messages = 0;
+
+  // When true, inserts a short system summary describing what was dropped.
+  // This is a lightweight, deterministic summary (no extra LLM call).
+  bool insert_compaction_summary = true;
+  size_t summary_preview_items = 3;
+  size_t summary_snippet_chars = 160;
+  size_t summary_max_chars = 600;
 };
 
 struct ToolLoopResult {

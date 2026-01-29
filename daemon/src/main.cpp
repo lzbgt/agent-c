@@ -76,6 +76,8 @@ struct DaemonConfig {
   std::string tools_root = "";    // empty => CWD (unrestricted file edits)
   std::string host_scope_root;    // default: daemon process CWD (for "@host" tool root mode)
   bool yolo_default = true;       // default to unrestricted unless client requests scoped mode
+  size_t max_chars_default = 20000;
+  size_t keep_last_default = 16;
 };
 
 static void add_cors(HttpResponse* resp) {
@@ -284,6 +286,12 @@ static Json::Value run_request_to_json(
     tools_root.clear();
   }
   const size_t max_steps = args.isMember("max_steps") && args["max_steps"].isUInt64() ? (size_t)args["max_steps"].asUInt64() : 0;
+  const size_t max_chars = args.isMember("max_chars") && args["max_chars"].isUInt64()
+                             ? (size_t)args["max_chars"].asUInt64()
+                             : daemon_cfg.max_chars_default;
+  const size_t keep_last = args.isMember("keep_last") && args["keep_last"].isUInt64()
+                             ? (size_t)args["keep_last"].asUInt64()
+                             : daemon_cfg.keep_last_default;
   const bool trace = !(args.isMember("trace") && args["trace"].isBool() && args["trace"].asBool() == false);
   const bool verbose = args.isMember("verbose") && args["verbose"].isBool() ? args["verbose"].asBool() : false;
 
@@ -363,6 +371,8 @@ static Json::Value run_request_to_json(
     ToolLoopOptions opt;
     opt.max_steps = max_steps;
     opt.verbose = verbose;
+    opt.max_chars = max_chars;
+    opt.keep_last_messages = keep_last;
     if (args.isMember("force_tool") && args["force_tool"].isString()) opt.force_tool = args["force_tool"].asString();
     opt.require_tool_call = args.isMember("require_tool_call") && args["require_tool_call"].isBool() ? args["require_tool_call"].asBool() : false;
 

@@ -9,6 +9,8 @@
 
 #include <ostream>
 #include <sstream>
+#include <algorithm>
+#include <cctype>
 
 #include "openai_client.h"
 
@@ -39,6 +41,178 @@ static Json::Value session_to_json_messages(const agent_session_t* session) {
     m["content"] = std::string(view.content, view.content_len);
     messages.append(m);
   }
+  return messages;
+}
+
+static std::string summarize_for_compaction(const agent_message_view_t& view, size_t snippet_chars) {
+  std::string text(view.content ? view.content : "", view.content_len);
+  // First line only, newline-stripped.
+  const size_t nl = text.find('\n');
+  if (nl != std::string::npos) {
+    text.resize(nl);
+  }
+  // Collapse CRs.
+  text.erase(std::remove(text.begin(), text.end(), '\r'), text.end());
+  // Trim spaces.
+  auto ltrim = [&](std::string& s) {
+    size_t i = 0;
+    while (i < s.size() && std::isspace((unsigned char)s[i])) i++;
+    s.erase(0, i);
+  };
+  auto rtrim = [&](std::string& s) {
+    size_t i = s.size();
+    while (i > 0 && std::isspace((unsigned char)s[i - 1])) i--;
+    s.resize(i);
+  };
+  ltrim(text);
+  rtrim(text);
+
+  if (snippet_chars > 0 && text.size() > snippet_chars) {
+    text.resize(snippet_chars - 1);
+    rtrim(text);
+    text += "…";
+  }
+  const char* role = agent_role_to_string(view.role);
+  if (text.empty()) {
+    return std::string(role ? role : "unknown");
+  }
+  return std::string(role ? role : "unknown") + ": " + text;
+}
+
+static std::string build_compaction_summary(
+  const agent_session_t* session,
+  size_t pinned_system,
+  size_t drop_begin,
+  size_t drop_end, // exclusive
+  const ToolLoopOptions& opt
+) {
+  if (!session || drop_end <= drop_begin) {
+    return "";
+  }
+  const size_t dropped = drop_end - drop_begin;
+  std::ostringstream oss;
+  oss << "Previous conversation truncated (" << (unsigned long long)dropped
+      << " earlier messages omitted) to stay within the model context window.\n";
+
+  const size_t preview_n = std::min(opt.summary_preview_items, dropped);
+  const size_t preview_start = drop_end - preview_n;
+  for (size_t i = 0; i < preview_n; i++) {
+    const size_t idx = preview_start + i;
+    agent_message_view_t view{};
+    if (agent_session_get_message(session, idx, &view) != AGENT_OK) {
+      continue;
+    }
+    oss << (i + 1) << ". " << summarize_for_compaction(view, opt.summary_snippet_chars) << "\n";
+  }
+  std::string s = oss.str();
+  if (!s.empty() && s.back() == '\n') {
+    s.pop_back();
+  }
+  if (opt.summary_max_chars > 0 && s.size() > opt.summary_max_chars) {
+    s.resize(opt.summary_max_chars - 1);
+    // Ensure we don't end in the middle of a multi-byte sequence is out-of-scope;
+    // these are best-effort UI strings.
+    s += "…";
+  }
+  (void)pinned_system;
+  return s;
+}
+
+static Json::Value session_to_compacted_json_messages(
+  const agent_session_t* session,
+  const std::string& user_prompt,
+  const ToolLoopOptions& opt,
+  Json::Value* out_compaction_event_data
+) {
+  Json::Value messages(Json::arrayValue);
+  if (!session) {
+    return messages;
+  }
+
+  const size_t max_chars = opt.max_chars == 0 ? 20000 : opt.max_chars;
+  const size_t keep_last = opt.keep_last_messages == 0 ? 16 : opt.keep_last_messages;
+
+  const size_t n = agent_session_message_count(session);
+  size_t pinned = 0;
+  for (; pinned < n; pinned++) {
+    agent_message_view_t view{};
+    if (agent_session_get_message(session, pinned, &view) != AGENT_OK) {
+      break;
+    }
+    if (view.role != AGENT_ROLE_SYSTEM) {
+      break;
+    }
+  }
+
+  const size_t before_chars = agent_session_estimated_chars(session) + user_prompt.size();
+  bool did_compact = (max_chars > 0 && before_chars > max_chars);
+
+  size_t drop_begin = pinned;
+  size_t drop_end = pinned;
+  if (did_compact) {
+    // Drop from the middle: keep pinned system prefix and last K messages.
+    const size_t suffix_start = (n > keep_last) ? (n - keep_last) : pinned;
+    drop_end = std::min(suffix_start, n);
+    if (drop_end < drop_begin) {
+      drop_end = drop_begin;
+    }
+  }
+
+  const size_t dropped = (did_compact && drop_end > drop_begin) ? (drop_end - drop_begin) : 0;
+  const bool inserted_summary = (dropped > 0 && opt.insert_compaction_summary);
+
+  std::string summary;
+  if (inserted_summary) {
+    summary = build_compaction_summary(session, pinned, drop_begin, drop_end, opt);
+  }
+
+  // Prefix: pinned system messages.
+  for (size_t i = 0; i < pinned; i++) {
+    agent_message_view_t view{};
+    if (agent_session_get_message(session, i, &view) != AGENT_OK) {
+      continue;
+    }
+    Json::Value m(Json::objectValue);
+    m["role"] = agent_role_to_string(view.role);
+    m["content"] = std::string(view.content, view.content_len);
+    messages.append(m);
+  }
+
+  if (inserted_summary && !summary.empty()) {
+    Json::Value m(Json::objectValue);
+    m["role"] = "system";
+    m["content"] = summary;
+    messages.append(m);
+  }
+
+  // Suffix: keep last messages (or everything after pinned when not compacting).
+  const size_t suffix_from = did_compact ? drop_end : pinned;
+  for (size_t i = suffix_from; i < n; i++) {
+    agent_message_view_t view{};
+    if (agent_session_get_message(session, i, &view) != AGENT_OK) {
+      continue;
+    }
+    Json::Value m(Json::objectValue);
+    m["role"] = agent_role_to_string(view.role);
+    m["content"] = std::string(view.content, view.content_len);
+    messages.append(m);
+  }
+
+  if (out_compaction_event_data) {
+    Json::Value d(Json::objectValue);
+    d["before_chars"] = (Json::UInt64)before_chars;
+    d["max_chars"] = (Json::UInt64)max_chars;
+    d["keep_last_messages"] = (Json::UInt64)keep_last;
+    d["pinned_system_messages"] = (Json::UInt64)pinned;
+    d["dropped_messages"] = (Json::UInt64)dropped;
+    d["inserted_summary"] = inserted_summary;
+    if (opt.verbose && inserted_summary && !summary.empty()) {
+      const std::string capped = truncate_str(summary, opt.max_capture_bytes);
+      d["summary"] = capped;
+    }
+    *out_compaction_event_data = d;
+  }
+
   return messages;
 }
 
@@ -249,13 +423,8 @@ bool run_tool_loop(
     *trace_stream << "]\n";
   }
 
-  Json::Value messages = session_to_json_messages(seed_session);
-  {
-    Json::Value um(Json::objectValue);
-    um["role"] = "user";
-    um["content"] = user_prompt;
-    messages.append(um);
-  }
+  Json::Value compaction_data;
+  Json::Value messages = session_to_compacted_json_messages(seed_session, user_prompt, options, &compaction_data);
 
   Json::Value tools(Json::arrayValue);
   std::string tools_err;
@@ -271,7 +440,19 @@ bool run_tool_loop(
     d["model"] = cfg.model;
     d["max_steps"] = (Json::UInt64)options.max_steps;
     d["verbose"] = options.verbose;
+    d["max_chars"] = (Json::UInt64)(options.max_chars == 0 ? 20000 : options.max_chars);
+    d["keep_last_messages"] = (Json::UInt64)(options.keep_last_messages == 0 ? 16 : options.keep_last_messages);
     push_event("start", d);
+  }
+  if (compaction_data.isObject()) {
+    push_event("compaction", compaction_data);
+  }
+
+  {
+    Json::Value um(Json::objectValue);
+    um["role"] = "user";
+    um["content"] = user_prompt;
+    messages.append(um);
   }
 
   for (size_t step = 0; options.max_steps == 0 || step < options.max_steps; step++) {
