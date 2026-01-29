@@ -29,9 +29,9 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add “session rotation” retries for `tools="none"` when providers reject an over-long context (CLI + daemon).
 - [x] Support explicit proxy override (`--proxy` / request `proxy`) to avoid network hangs when env proxy is required.
 - [ ] Add more network smokes for host tools beyond `shell_exec` (e.g. `fs_read` paging) to reduce regressions.
-- [ ] Improve host filesystem tools defaults to avoid noise:
-  - exclude `node_modules`/`build`/`dist` by default in `fs_list` (configurable)
-  - consider optional `respect_gitignore`/`exclude_globs` (future)
+- [x] Improve host filesystem tools defaults to avoid noise:
+  - [x] exclude `node_modules`/`build`/`dist` by default in `fs_list` (configurable)
+  - [ ] consider optional `respect_gitignore`/`exclude_globs` (future)
 
 ## Mid-term (daemon + broker)
 
@@ -51,6 +51,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add job cancellation (`POST /api/v1/job/cancel`) and UI Cancel button (cooperative; kills host subprocess tools).
 - [x] Add live job progress via event tailing:
   - `GET /api/v1/job?job_id=...&include_events=1&cursor=...` (cursor-based incremental event polling).
+- [x] Emit lightweight `heartbeat` events for async jobs during long tool execution / slow providers (avoids "hang" perception).
 - [ ] Add a daemon-level “sandbox policy” model:
   - YOLO vs host-scoped tools-root
   - future: per-tool allow/deny and command restrictions for `proc_exec` / `shell_exec`

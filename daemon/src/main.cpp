@@ -457,6 +457,50 @@ static void job_set_result(const std::string& id, const Json::Value& result) {
   it->second.updated_unix_ms = now_unix_ms();
 }
 
+enum JobProgressPhase {
+  kPhaseIdle = 0,
+  kPhaseWaitingLlm = 1,
+  kPhaseRunningTool = 2,
+};
+
+struct DaemonJobEventHookCtx {
+  std::string job_id;
+  std::atomic<int64_t>* last_any_event_ms = nullptr;
+  std::atomic<int64_t>* last_non_heartbeat_ms = nullptr;
+  std::atomic<int>* phase = nullptr;
+};
+
+static void daemon_job_on_tool_loop_event(void* vctx, const char* type, const char* data_json) {
+  if (!vctx || !type) return;
+  auto* ctx = static_cast<DaemonJobEventHookCtx*>(vctx);
+  const int64_t now = now_unix_ms();
+  if (ctx->last_any_event_ms) ctx->last_any_event_ms->store(now);
+  if (ctx->last_non_heartbeat_ms) ctx->last_non_heartbeat_ms->store(now);
+  if (ctx->phase) {
+    const std::string t(type);
+    if (t == "llm_request") ctx->phase->store(kPhaseWaitingLlm);
+    else if (t == "llm_response") ctx->phase->store(kPhaseIdle);
+    else if (t == "tool_call") ctx->phase->store(kPhaseRunningTool);
+    else if (t == "tool_result") ctx->phase->store(kPhaseIdle);
+  }
+  job_append_event(ctx->job_id, type, data_json ? data_json : "");
+}
+
+static void daemon_job_emit_heartbeat(
+  const std::string& job_id,
+  int phase,
+  int64_t since_non_heartbeat_ms,
+  int64_t since_any_event_ms
+) {
+  Json::Value d(Json::objectValue);
+  d["job_id"] = job_id;
+  d["ts_unix_ms"] = (Json::Int64)now_unix_ms();
+  d["phase"] = phase;
+  d["since_last_non_heartbeat_ms"] = (Json::Int64)since_non_heartbeat_ms;
+  d["since_last_any_event_ms"] = (Json::Int64)since_any_event_ms;
+  job_append_event(job_id, "heartbeat", json_stringify(d));
+}
+
 static bool job_get(const std::string& id, JobState* out) {
   std::lock_guard<std::mutex> lk(g_jobs_mu);
   auto it = g_jobs.find(id);
@@ -671,7 +715,34 @@ static Json::Value run_request_to_json(
   std::ostream* trace_stream = trace ? &trace_buf : nullptr;
   Json::Value events_out;
 
-    if (use_tool_loop) {
+  std::atomic<bool> heartbeat_stop{false};
+  std::atomic<int64_t> heartbeat_last_any_event_ms{now_unix_ms()};
+  std::atomic<int64_t> heartbeat_last_non_ms{now_unix_ms()};
+  std::atomic<int> heartbeat_phase{kPhaseIdle};
+  std::thread heartbeat_thread;
+  if (!job_id_local.empty()) {
+    heartbeat_thread = std::thread([&]() {
+      // Emit a best-effort heartbeat while a job is running to avoid the appearance of "hangs"
+      // during long tool exec (sleep/build) or slow LLM responses.
+      for (;;) {
+        if (heartbeat_stop.load()) return;
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        if (heartbeat_stop.load()) return;
+        if (job_is_cancel_requested(job_id_local)) return;
+
+        const int64_t now = now_unix_ms();
+        const int64_t since_non = now - heartbeat_last_non_ms.load();
+        const int64_t since_any = now - heartbeat_last_any_event_ms.load();
+        // Only emit when we've been quiet for a while.
+        if (since_non >= 1200 && since_any >= 900) {
+          daemon_job_emit_heartbeat(job_id_local, heartbeat_phase.load(), since_non, since_any);
+          heartbeat_last_any_event_ms.store(now);
+        }
+      }
+    });
+  }
+
+  if (use_tool_loop) {
     ToolLoopOptions opt;
     opt.max_steps = max_steps;
     opt.verbose = verbose;
@@ -683,13 +754,14 @@ static Json::Value run_request_to_json(
       if (args.isMember("force_tool") && args["force_tool"].isString()) opt.force_tool = args["force_tool"].asString();
       opt.require_tool_call = args.isMember("require_tool_call") && args["require_tool_call"].isBool() ? args["require_tool_call"].asBool() : false;
 
+      DaemonJobEventHookCtx hook;
       if (!job_id_local.empty()) {
-        opt.on_event = [](void* ctx, const char* type, const char* data_json) {
-          if (!ctx || !type) return;
-          const auto* jid = static_cast<const std::string*>(ctx);
-          job_append_event(*jid, type, data_json ? data_json : "");
-        };
-        opt.on_event_ctx = (void*)&job_id_local;
+        hook.job_id = job_id_local;
+        hook.last_any_event_ms = &heartbeat_last_any_event_ms;
+        hook.last_non_heartbeat_ms = &heartbeat_last_non_ms;
+        hook.phase = &heartbeat_phase;
+        opt.on_event = daemon_job_on_tool_loop_event;
+        opt.on_event_ctx = &hook;
         opt.should_cancel = [](void* vctx) -> bool {
           if (!vctx) return false;
           const auto* jid = static_cast<const std::string*>(vctx);
@@ -737,7 +809,7 @@ static Json::Value run_request_to_json(
       }
       agent_session_add_message(session, AGENT_ROLE_ASSISTANT, assistant_text.c_str());
     }
-    } else {
+  } else {
       agent_session_add_message(session, AGENT_ROLE_USER, prompt.c_str());
 
       events_out = Json::Value(Json::arrayValue);
@@ -746,6 +818,13 @@ static Json::Value run_request_to_json(
       e["type"] = type;
       e["data"] = data;
       events_out.append(e);
+      heartbeat_last_any_event_ms.store(now_unix_ms());
+      // Heartbeats are emitted as job events only; do not treat them as "non-heartbeat" updates.
+      if (type != "heartbeat") {
+        heartbeat_last_non_ms.store(now_unix_ms());
+      }
+      if (type == "llm_request") heartbeat_phase.store(kPhaseWaitingLlm);
+      if (type == "llm_response") heartbeat_phase.store(kPhaseIdle);
       if (job_id_or_null && job_id_or_null[0]) {
         Json::StreamWriterBuilder wb;
         wb["indentation"] = "";
@@ -1073,6 +1152,11 @@ static Json::Value run_request_to_json(
       d["truncated"] = false;
       push_ev("end", d);
     }
+  }
+
+  heartbeat_stop.store(true);
+  if (heartbeat_thread.joinable()) {
+    heartbeat_thread.join();
   }
 
   if (ok && !no_session) {

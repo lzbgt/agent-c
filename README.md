@@ -212,6 +212,8 @@ Async runs (UI-friendly):
 - `GET /api/v1/job/stream?job_id=<id>&cursor=<n>` streams job progress via SSE:
   - emits `agent_event` (same objects as the `events` array)
   - ends with `job_done` containing the final `result`
+- While jobs are running, the daemon may emit `heartbeat` events when no other events have been produced for a short period.
+  This makes UIs resilient to slow providers and long-running tools (e.g. `sleep`, builds) without requiring token streaming.
 
 Job cancellation (best-effort):
 - `POST /api/v1/job/cancel?job_id=<id>` requests cancellation.

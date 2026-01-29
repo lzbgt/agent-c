@@ -123,3 +123,6 @@ Completed milestones and notable tasks.
 - Improved verbose tool result capture for UIs:
   - tool result payload capping now preserves JSON envelope shape (and truncates `data.entries` lists when needed) instead of producing invalid JSON
 - Fixed `agentd_cancel_smoke` to handle expected non-zero probe exit codes under `set -e`.
+- Improved UI responsiveness for long-running async runs:
+  - daemon emits lightweight `heartbeat` events when jobs go quiet for a short time (slow provider / long tool execution)
+  - added smoke test `agentd_heartbeat_smoke`
