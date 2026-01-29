@@ -35,6 +35,7 @@ add_library(agent_host STATIC
   cli/src/openai_client.cpp
   cli/src/session_store.cpp
   cli/src/tool_loop.cpp
+  cli/src/tool_loop_compaction.cpp
   cli/src/toolset_basic.cpp
   cli/src/toolset_host.cpp
 )
@@ -92,6 +93,9 @@ set_tests_properties(agent_openrouter_smoke PROPERTIES SKIP_RETURN_CODE 77)
 add_test(NAME agent_openrouter_host_tools_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/openrouter_host_tools_smoke.sh $<TARGET_FILE:agent>)
 set_tests_properties(agent_openrouter_host_tools_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
+add_test(NAME agentd_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_smoke.sh $<TARGET_FILE:agentd>)
+set_tests_properties(agentd_smoke PROPERTIES SKIP_RETURN_CODE 77)
+
 add_test(NAME agent_deepseek_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/deepseek_smoke.sh $<TARGET_FILE:agent>)
 set_tests_properties(agent_deepseek_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
@@ -110,4 +114,10 @@ if(PKG_CONFIG_FOUND AND JSONCPP_FOUND)
   )
   target_link_libraries(host_toolset_tests PRIVATE agent_host)
   add_test(NAME host_toolset_tests COMMAND host_toolset_tests)
+
+  add_executable(tool_loop_compaction_tests
+    tests/test_tool_loop_compaction.cpp
+  )
+  target_link_libraries(tool_loop_compaction_tests PRIVATE agent_host)
+  add_test(NAME tool_loop_compaction_tests COMMAND tool_loop_compaction_tests)
 endif()

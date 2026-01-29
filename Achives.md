@@ -53,3 +53,4 @@ Completed milestones and notable tasks.
 - Implemented seamless compaction for tool-call loops (CLI+daemon) with a deterministic “dropped messages” summary event (`cli/src/tool_loop.cpp`).
 - Added automatic “session rotation” for tool loops: if a provider rejects a request as too large, retry after more aggressive compaction (`cli/src/tool_loop.cpp`).
 - Downloaded DeepSeek API docs pages used for tool-calling, pricing, multi-round chat, and context caching reference into `ref/deepseek/` (HTML snapshots).
+- Added daemon-level smoke verification (`agentd_smoke`) and fixed loopback binding in the embedded-friendly HTTP server (`daemon/src/http_server.cpp`).

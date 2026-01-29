@@ -203,9 +203,10 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
   addr.sin_family = AF_INET;
   // Bind strictly to the requested host (default should be 127.0.0.1).
   // Supported forms: "127.0.0.1", "0.0.0.0".
-  addr.sin_addr.s_addr = INADDR_LOOPBACK;
+  // Note: INADDR_LOOPBACK / INADDR_ANY are host-order constants; sockaddr expects network order.
+  addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
   if (host == "0.0.0.0") {
-    addr.sin_addr.s_addr = INADDR_ANY;
+    addr.sin_addr.s_addr = htonl(INADDR_ANY);
   } else if (host != "127.0.0.1") {
     in_addr a{};
     if (::inet_pton(AF_INET, host.c_str(), &a) == 1) {
