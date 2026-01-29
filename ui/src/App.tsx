@@ -43,7 +43,9 @@ export default function App() {
   const [summaryMaxChars, setSummaryMaxChars] = useLocalStorageState("agentui.summaryMaxChars", "1200");
   const [baseUrl, setBaseUrl] = useLocalStorageState("agentui.baseUrl", "https://api.deepseek.com");
   const [apiKey, setApiKey] = useLocalStorageState("agentui.apiKey", "");
-  const [proxyUrl, setProxyUrl] = useLocalStorageState("agentui.proxyUrl", "");
+  // Many dev environments require a local HTTP proxy for outbound HTTPS (and this repo's test scripts assume it).
+  // Users can clear this if their environment does not need a proxy.
+  const [proxyUrl, setProxyUrl] = useLocalStorageState("agentui.proxyUrl", "http://localhost:8120");
   const [timeoutMs, setTimeoutMs] = useLocalStorageState("agentui.timeoutMs", "60000");
   const [maxCaptureBytes, setMaxCaptureBytes] = useLocalStorageState("agentui.maxCaptureBytes", "65536");
   const [streamAssistant, setStreamAssistant] = useLocalStorageState("agentui.streamAssistant", false);
@@ -70,27 +72,34 @@ export default function App() {
   const [liveEvents, setLiveEvents] = React.useState<AgentEvent[]>([]);
   const cursorRef = React.useRef<number>(0);
 
+  const effectiveBase = React.useMemo(() => {
+    const b = String(base || "").trim();
+    if (b.length === 0) return "http://127.0.0.1:8123";
+    const withScheme = /^https?:\/\//i.test(b) ? b : `http://${b}`;
+    return withScheme.replace(/\/+$/, "");
+  }, [base]);
+
   const health = useQuery({
-    queryKey: ["health", base],
-    queryFn: () => apiGetHealth(base),
+    queryKey: ["health", effectiveBase],
+    queryFn: () => apiGetHealth(effectiveBase),
     retry: 1,
   });
 
   const sessions = useQuery({
-    queryKey: ["sessions", base],
-    queryFn: () => apiListSessions(base),
+    queryKey: ["sessions", effectiveBase],
+    queryFn: () => apiListSessions(effectiveBase),
     retry: 1,
   });
 
   const toolsDefs = useQuery({
-    queryKey: ["tools", base, tools, toolsRoot, yolo],
-    queryFn: () => apiGetTools(base, { tools, toolsRoot, yolo }),
+    queryKey: ["tools", effectiveBase, tools, toolsRoot, yolo],
+    queryFn: () => apiGetTools(effectiveBase, { tools, toolsRoot, yolo }),
     retry: 1,
   });
 
   const audit = useQuery({
-    queryKey: ["audit", base, sessionId],
-    queryFn: () => apiGetAudit(base, sessionId),
+    queryKey: ["audit", effectiveBase, sessionId],
+    queryFn: () => apiGetAudit(effectiveBase, sessionId),
     enabled: !!sessionId,
     retry: 1,
   });
@@ -125,10 +134,10 @@ export default function App() {
         trace,
       };
       if (useAsync) {
-        const job = await apiRunAsync(base, req);
+        const job = await apiRunAsync(effectiveBase, req);
         return { mode: "async" as const, job, req };
       }
-      const out = await apiRun(base, req);
+      const out = await apiRun(effectiveBase, req);
       return { mode: "sync" as const, out, req };
     },
     onSuccess: (v) => {
@@ -170,7 +179,7 @@ export default function App() {
       const minTotal = Number(orMinTotal);
       const maxTotal = Number(orMaxTotal);
       const limit = Number(orLimit);
-      return apiGetOpenRouterModels(base, {
+      return apiGetOpenRouterModels(effectiveBase, {
         apiKey: apiKey || undefined,
         openrouterBaseUrl: "https://openrouter.ai/api/v1",
         minTotal: Number.isFinite(minTotal) ? minTotal : 0.01,
@@ -204,7 +213,7 @@ export default function App() {
           if (cancelled) return;
           let job: any;
           try {
-            job = await apiGetJobProgress(base, jobId, { cursor: cursorRef.current, maxEvents: 256 });
+            job = await apiGetJobProgress(effectiveBase, jobId, { cursor: cursorRef.current, maxEvents: 256 });
           } catch (e) {
             // Transient fetch failures should not invalidate the visible conversation.
             // Keep the current liveEvents and keep the job active; retry with backoff.
@@ -255,8 +264,8 @@ export default function App() {
     let opened = false;
     const trySse =
       typeof EventSource !== "undefined" &&
-      typeof base === "string" &&
-      (base.startsWith("http://") || base.startsWith("https://"));
+      typeof effectiveBase === "string" &&
+      (effectiveBase.startsWith("http://") || effectiveBase.startsWith("https://"));
 
     let fallbackStarted = false;
     const fallbackToPolling = () => {
@@ -267,7 +276,7 @@ export default function App() {
 
     if (trySse) {
       try {
-        const url = `${base}/api/v1/job/stream?job_id=${encodeURIComponent(jobId)}&cursor=${encodeURIComponent(
+        const url = `${effectiveBase}/api/v1/job/stream?job_id=${encodeURIComponent(jobId)}&cursor=${encodeURIComponent(
           String(cursorRef.current),
         )}`;
         es = new EventSource(url);
@@ -348,7 +357,7 @@ export default function App() {
         // ignore
       }
     };
-  }, [activeJobId, base, audit, sessions]);
+  }, [activeJobId, effectiveBase, audit, sessions]);
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
@@ -446,6 +455,11 @@ export default function App() {
               value={base}
               onChange={(e) => setBase(e.target.value)}
             />
+            {!/^https?:\/\//i.test(String(base || "").trim()) ? (
+              <div className="mt-1 text-[11px] text-amber-200/80">
+                Tip: include scheme (e.g. <code>http://127.0.0.1:8123</code>). Missing scheme will default to <code>http://</code>.
+              </div>
+            ) : null}
 
             <div className="mt-4 grid grid-cols-2 gap-3">
               <div>
@@ -810,7 +824,7 @@ export default function App() {
                   className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200 hover:bg-rose-500/15"
                   onClick={async () => {
                     try {
-                      await apiCancelJob(base, activeJobId);
+                      await apiCancelJob(effectiveBase, activeJobId);
                       setJobError("cancel requested");
                     } catch (e) {
                       setJobError(`cancel failed: ${String(e)}`);
@@ -837,7 +851,9 @@ export default function App() {
           {result?.assistant_text ? (
             <Markdown text={result.assistant_text} />
           ) : (
-            <div className="text-sm text-white/60">{activeJobId || run.isPending ? "" : "(no output yet)"}</div>
+            <div className="text-sm text-white/60">
+              {activeJobId ? `Running… (${jobStatus ?? "running"})` : run.isPending ? "Starting…" : "(no output yet)"}
+            </div>
           )}
           {!result?.ok && result?.error ? (
             <div className="mt-3 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
@@ -858,7 +874,7 @@ export default function App() {
           <div>
             <div className="mb-2 text-sm font-semibold text-white/80">Conversation (live)</div>
             <ConversationView
-              baseUrl={base}
+              baseUrl={effectiveBase}
               yolo={yolo}
               prompt={lastRunPrompt || prompt}
               events={liveEvents}
@@ -871,7 +887,7 @@ export default function App() {
           <div>
             <div className="mb-2 text-sm font-semibold text-white/80">Conversation</div>
             <ConversationView
-              baseUrl={base}
+              baseUrl={effectiveBase}
               yolo={yolo}
               prompt={lastRunPrompt || prompt}
               events={result.events}
@@ -883,14 +899,14 @@ export default function App() {
         {activeJobId && liveEvents.length > 0 ? (
           <div>
             <div className="mb-2 text-sm font-semibold text-white/80">Live Events</div>
-            <EventTimeline baseUrl={base} yolo={yolo} events={liveEvents} />
+            <EventTimeline baseUrl={effectiveBase} yolo={yolo} events={liveEvents} />
           </div>
         ) : null}
 
         {result?.events && result.events.length > 0 ? (
           <div>
             <div className="mb-2 text-sm font-semibold text-white/80">Events</div>
-            <EventTimeline baseUrl={base} yolo={yolo} events={result.events} />
+            <EventTimeline baseUrl={effectiveBase} yolo={yolo} events={result.events} />
           </div>
         ) : null}
 
@@ -925,7 +941,7 @@ export default function App() {
                         <div className="text-xs font-semibold text-white/70">Conversation</div>
                         <div className="mt-2">
                           <ConversationView
-                            baseUrl={base}
+                            baseUrl={effectiveBase}
                             yolo={yolo}
                             prompt={String(e.prompt ?? "")}
                             events={e.events}
@@ -934,7 +950,7 @@ export default function App() {
                         </div>
                         <div className="mt-3 text-xs font-semibold text-white/70">Events (raw)</div>
                         <div className="mt-2">
-                          <EventTimeline baseUrl={base} yolo={yolo} events={e.events} />
+                          <EventTimeline baseUrl={effectiveBase} yolo={yolo} events={e.events} />
                         </div>
                       </div>
                     ) : null}

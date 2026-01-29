@@ -41,6 +41,46 @@ function looksLikeMarkdown(s: string) {
   return false;
 }
 
+function SearchMatchesView({ matches }: { matches: any[] }) {
+  const items = Array.isArray(matches) ? matches : [];
+  if (items.length === 0) return null;
+  return (
+    <div className="mt-3">
+      <div className="mb-1 text-xs font-semibold text-white/70">Matches</div>
+      <div className="overflow-auto rounded-md border border-white/10 bg-black/20">
+        <table className="w-full text-left text-xs text-white/85">
+          <thead className="sticky top-0 bg-black/40 text-white/70">
+            <tr>
+              <th className="px-2 py-2">File</th>
+              <th className="px-2 py-2">Line</th>
+              <th className="px-2 py-2">Col</th>
+              <th className="px-2 py-2">Snippet</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.slice(0, 200).map((m, idx) => (
+              <tr key={idx} className="border-t border-white/5">
+                <td className="px-2 py-2 font-mono text-[11px] text-white/80">
+                  {typeof m?.path === "string" ? m.path : ""}
+                </td>
+                <td className="px-2 py-2 font-mono text-[11px] text-white/80">
+                  {typeof m?.line === "number" ? m.line : ""}
+                </td>
+                <td className="px-2 py-2 font-mono text-[11px] text-white/80">
+                  {typeof m?.column === "number" ? m.column : ""}
+                </td>
+                <td className="px-2 py-2 font-mono text-[11px] whitespace-pre-wrap">
+                  {typeof m?.snippet === "string" ? m.snippet : ""}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function ToolResultView({
   baseUrl,
   yolo,
@@ -58,6 +98,7 @@ export default function ToolResultView({
     const toolName = typeof parsed?.data?.tool === "string" ? parsed.data.tool : "";
     const patch = typeof parsed?.data?.patch === "string" ? parsed.data.patch : null;
     const output = typeof parsed?.data?.output === "string" ? parsed.data.output : null;
+    const matches = Array.isArray(parsed?.data?.matches) ? parsed.data.matches : null;
     const hasMore = typeof parsed?.data?.has_more === "boolean" ? parsed.data.has_more : null;
     const nextStartLine =
       typeof parsed?.data?.next_start_line === "number" ? parsed.data.next_start_line : null;
@@ -164,6 +205,8 @@ export default function ToolResultView({
             <DiffBlock text={patch} />
           </div>
         ) : null}
+
+        {toolName === "text_search" && matches ? <SearchMatchesView matches={matches} /> : null}
 
         {showRaw ? (
           <div className="mt-3">

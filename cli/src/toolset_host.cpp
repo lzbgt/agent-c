@@ -519,14 +519,284 @@ static agent_status_t tool_fs_read(HostToolCtx* ctx, const char* arguments_json,
   data["truncated"] = truncated;
   if (truncated && !truncated_reason.empty()) data["truncated_reason"] = truncated_reason;
   if (stopped_due_to_end_line) data["stopped_due_to"] = "end_line";
+
+  // Optional metadata: if we didn't reach EOF due to truncation or end_line, estimate total lines.
+  // This is bounded by file size so it stays fast and predictable.
   if (!has_more) {
     data["total_lines"] = line_no;
+    data["lines_remaining"] = 0;
+  } else if (!ec && sz > 0 && sz <= (uintmax_t)(1024 * 1024)) {
+    // Continue scanning to EOF without buffering content, just count remaining lines.
+    while (std::getline(in, line)) {
+      line_no++;
+    }
+    data["total_lines"] = line_no;
+    const int last_line = returned > 0 ? (start_line + returned - 1) : (start_line - 1);
+    data["lines_remaining"] = std::max(0, line_no - last_line);
+    data["total_lines_estimated"] = true;
   }
   data["content"] = out.str();
   data["output"] = data["content"];
   data["content_bytes"] = (Json::UInt64)data["content"].asString().size();
 
   return write_envelope(true, "", data);
+#endif
+}
+
+static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
+  if (!ctx || !out_result) return AGENT_ERR_INVALID_ARGUMENT;
+#if !defined(AGENT_HAVE_JSONCPP)
+  return set_result(out_result, "{\"ok\":false,\"error\":\"text_search requires jsoncpp\"}");
+#else
+  if (is_cancelled(ctx)) {
+    return set_result(out_result, "{\"ok\":false,\"error\":\"cancelled\"}");
+  }
+  auto write_envelope = [&](bool ok, const std::string& error, const Json::Value& data) -> agent_status_t {
+    Json::Value o(Json::objectValue);
+    o["ok"] = ok;
+    if (!error.empty()) o["error"] = error;
+    o["data"] = data;
+    Json::StreamWriterBuilder wb;
+    wb["indentation"] = "";
+    return set_result(out_result, Json::writeString(wb, o));
+  };
+
+  Json::Value args;
+  std::string err;
+  if (!parse_json(arguments_json, &args, &err) || !args.isObject()) {
+    return write_envelope(false, "invalid args", Json::Value(Json::objectValue));
+  }
+  if (!args.isMember("query") || !args["query"].isString() || args["query"].asString().empty()) {
+    return write_envelope(false, "missing string field 'query'", Json::Value(Json::objectValue));
+  }
+
+  const std::string query = args["query"].asString();
+  const std::string path = args.isMember("path") && args["path"].isString() ? args["path"].asString() : ".";
+  const bool recursive = args.isMember("recursive") && args["recursive"].isBool() ? args["recursive"].asBool() : true;
+  const bool case_sensitive =
+    args.isMember("case_sensitive") && args["case_sensitive"].isBool() ? args["case_sensitive"].asBool() : false;
+  const int max_results = args.isMember("max_results") && args["max_results"].isInt() ? args["max_results"].asInt() : 200;
+  const int max_file_bytes =
+    args.isMember("max_file_bytes") && args["max_file_bytes"].isInt() ? args["max_file_bytes"].asInt() : 512 * 1024;
+  const int max_line_chars =
+    args.isMember("max_line_chars") && args["max_line_chars"].isInt() ? args["max_line_chars"].asInt() : 400;
+  const bool include_hidden =
+    args.isMember("include_hidden") && args["include_hidden"].isBool() ? args["include_hidden"].asBool() : false;
+  const bool use_default_excludes =
+    !(args.isMember("use_default_excludes") && args["use_default_excludes"].isBool() && args["use_default_excludes"].asBool() == false);
+
+  if (max_results < 1) {
+    return write_envelope(false, "max_results must be >= 1", Json::Value(Json::objectValue));
+  }
+  if (max_file_bytes < 0) {
+    return write_envelope(false, "max_file_bytes must be >= 0", Json::Value(Json::objectValue));
+  }
+  if (max_line_chars < 1) {
+    return write_envelope(false, "max_line_chars must be >= 1", Json::Value(Json::objectValue));
+  }
+
+  std::vector<std::string> exclude_names;
+  if (use_default_excludes) {
+    exclude_names.push_back("node_modules");
+    exclude_names.push_back(".git");
+    exclude_names.push_back("build");
+    exclude_names.push_back("dist");
+    exclude_names.push_back("out");
+    exclude_names.push_back(".cache");
+    exclude_names.push_back("__pycache__");
+    exclude_names.push_back(".venv");
+    exclude_names.push_back("venv");
+    exclude_names.push_back(".DS_Store");
+  }
+  if (args.isMember("exclude_names") && args["exclude_names"].isArray()) {
+    for (Json::ArrayIndex i = 0; i < args["exclude_names"].size(); i++) {
+      const auto& v = args["exclude_names"][i];
+      if (v.isString()) {
+        const std::string s = v.asString();
+        if (!s.empty()) exclude_names.push_back(s);
+      }
+    }
+  }
+
+  const auto resolved = resolve_under_root(ctx->root, path, ctx->unrestricted);
+  if (!resolved) {
+    return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
+  }
+  std::error_code ec;
+  if (!std::filesystem::exists(*resolved, ec)) {
+    return write_envelope(false, "path does not exist", Json::Value(Json::objectValue));
+  }
+
+  auto lower_ascii = [](std::string s) {
+    for (char& c : s) c = (char)std::tolower((unsigned char)c);
+    return s;
+  };
+  const std::string q = case_sensitive ? query : lower_ascii(query);
+
+  const auto should_skip = [&](const std::filesystem::path& p) -> bool {
+    const auto name = p.filename().string();
+    if (!include_hidden && !name.empty() && name[0] == '.') return true;
+    if (!exclude_names.empty() && !name.empty()) {
+      for (const auto& ex : exclude_names) {
+        if (name == ex) return true;
+      }
+    }
+    return false;
+  };
+
+  Json::Value matches(Json::arrayValue);
+  int files_scanned = 0;
+  int files_skipped_binary = 0;
+  int files_skipped_too_large = 0;
+  int dirs_skipped = 0;
+  bool truncated = false;
+
+  auto add_match = [&](const std::filesystem::path& file_path, int line_no, int col_1based, const std::string& snippet) {
+    Json::Value m(Json::objectValue);
+    if (ctx->unrestricted) {
+      m["path"] = to_generic_string(file_path.lexically_normal());
+    } else {
+      m["path"] = file_path.lexically_relative(ctx->root).generic_string();
+    }
+    m["line"] = line_no;
+    m["column"] = col_1based;
+    m["snippet"] = snippet;
+    matches.append(m);
+  };
+
+  auto scan_file = [&](const std::filesystem::path& file_path) {
+    if (is_cancelled(ctx)) return;
+    std::error_code ec2;
+    const uintmax_t sz = std::filesystem::file_size(file_path, ec2);
+    if (!ec2 && max_file_bytes >= 0 && sz > (uintmax_t)max_file_bytes) {
+      files_skipped_too_large++;
+      return;
+    }
+    if (is_probably_binary(file_path)) {
+      files_skipped_binary++;
+      return;
+    }
+
+    std::ifstream in(file_path);
+    if (!in.is_open()) return;
+    files_scanned++;
+    std::string line;
+    int line_no = 0;
+    while (std::getline(in, line)) {
+      if (is_cancelled(ctx)) return;
+      line_no++;
+      std::string hay = case_sensitive ? line : lower_ascii(line);
+      const size_t pos = hay.find(q);
+      if (pos == std::string::npos) continue;
+      std::string snippet = line;
+      if ((int)snippet.size() > max_line_chars) {
+        snippet.resize((size_t)max_line_chars);
+        snippet += "...(truncated)";
+      }
+      add_match(file_path, line_no, (int)pos + 1, snippet);
+      if ((int)matches.size() >= max_results) {
+        truncated = true;
+        return;
+      }
+    }
+  };
+
+  auto scan_path = [&](const std::filesystem::path& p) {
+    std::error_code ec3;
+    const auto st = std::filesystem::status(p, ec3);
+    if (ec3) return;
+    if (std::filesystem::is_regular_file(st)) {
+      scan_file(p);
+      return;
+    }
+    if (!std::filesystem::is_directory(st)) return;
+
+    if (!recursive) {
+      for (auto it = std::filesystem::directory_iterator(p, ec); !ec && it != std::filesystem::directory_iterator(); ++it) {
+        if (is_cancelled(ctx)) return;
+        if (truncated) return;
+        if (should_skip(it->path())) {
+          if (it->is_directory()) dirs_skipped++;
+          continue;
+        }
+        const auto st2 = it->status(ec3);
+        if (ec3) continue;
+        if (std::filesystem::is_regular_file(st2)) scan_file(it->path());
+      }
+      return;
+    }
+
+    for (auto it = std::filesystem::recursive_directory_iterator(p, ec); !ec && it != std::filesystem::recursive_directory_iterator(); ++it) {
+      if (is_cancelled(ctx)) return;
+      if (truncated) return;
+      if (should_skip(it->path())) {
+        if (it->is_directory()) {
+          dirs_skipped++;
+          it.disable_recursion_pending();
+        }
+        continue;
+      }
+      if (it->is_regular_file()) {
+        scan_file(it->path());
+      }
+    }
+  };
+
+  scan_path(*resolved);
+
+  Json::Value data(Json::objectValue);
+  data["tool"] = "text_search";
+  data["query"] = query;
+  data["path"] = path;
+  data["resolved_path"] = to_generic_string(*resolved);
+  data["root_dir"] = to_generic_string(ctx->root);
+  data["unrestricted"] = ctx->unrestricted;
+  data["recursive"] = recursive;
+  data["case_sensitive"] = case_sensitive;
+  data["include_hidden"] = include_hidden;
+  data["use_default_excludes"] = use_default_excludes;
+  {
+    Json::Value ex(Json::arrayValue);
+    for (const auto& s : exclude_names) ex.append(s);
+    data["exclude_names"] = ex;
+  }
+  data["max_results"] = max_results;
+  data["max_file_bytes"] = max_file_bytes;
+  data["max_line_chars"] = max_line_chars;
+  data["files_scanned"] = files_scanned;
+  data["files_skipped_binary"] = files_skipped_binary;
+  data["files_skipped_too_large"] = files_skipped_too_large;
+  data["dirs_skipped"] = dirs_skipped;
+  data["matches"] = matches;
+  data["matches_count"] = (Json::UInt64)matches.size();
+  data["truncated"] = truncated;
+
+  {
+    std::ostringstream oss;
+    oss << "query: " << query << "\n";
+    oss << "path: " << path << "\n";
+    oss << "resolved_path: " << to_generic_string(*resolved) << "\n";
+    oss << "recursive: " << (recursive ? "true" : "false") << "\n";
+    oss << "case_sensitive: " << (case_sensitive ? "true" : "false") << "\n";
+    oss << "include_hidden: " << (include_hidden ? "true" : "false") << "\n";
+    oss << "use_default_excludes: " << (use_default_excludes ? "true" : "false") << "\n";
+    oss << "matches: " << (unsigned long long)matches.size() << (truncated ? " (truncated)\n" : "\n");
+    oss << "files_scanned: " << files_scanned << "\n";
+    if (files_skipped_binary) oss << "files_skipped_binary: " << files_skipped_binary << "\n";
+    if (files_skipped_too_large) oss << "files_skipped_too_large: " << files_skipped_too_large << "\n";
+    if (dirs_skipped) oss << "dirs_skipped: " << dirs_skipped << "\n";
+    for (Json::ArrayIndex i = 0; i < matches.size() && i < 50; i++) {
+      const auto& m = matches[i];
+      const std::string mp = m.isMember("path") && m["path"].isString() ? m["path"].asString() : "";
+      const int ln = m.isMember("line") && m["line"].isInt() ? m["line"].asInt() : 0;
+      const int col = m.isMember("column") && m["column"].isInt() ? m["column"].asInt() : 0;
+      const std::string sn = m.isMember("snippet") && m["snippet"].isString() ? m["snippet"].asString() : "";
+      oss << "- " << mp << ":" << ln << ":" << col << " " << sn << "\n";
+    }
+    data["output"] = oss.str();
+  }
+
+  return write_envelope(true, is_cancelled(ctx) ? "cancelled" : "", data);
 #endif
 }
 
@@ -1013,6 +1283,9 @@ static agent_status_t host_tools_execute(void* vctx, const char* tool_name, cons
   if (name == "fs_read") {
     return tool_fs_read(ctx, arguments_json, out_result);
   }
+  if (name == "text_search") {
+    return tool_text_search(ctx, arguments_json, out_result);
+  }
   // Keep the response machine-readable so the LLM can reason about failures.
   return set_result(out_result, "{\"ok\":false,\"error\":\"unknown tool\",\"data\":{}}");
 }
@@ -1138,6 +1411,29 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     "  \"with_line_numbers\":{\"type\":\"boolean\"}"
     "},"
     "\"required\":[\"path\"]"
+    "}"
+  );
+  if (st != AGENT_OK) goto fail;
+
+  st = add_tool(
+    r,
+    "text_search",
+    "Search for a substring in files under a path (token-safe, bounded output). Prefer this over `grep -R` for predictable output size.",
+    "{"
+    "\"type\":\"object\","
+    "\"properties\":{"
+    "  \"query\":{\"type\":\"string\",\"description\":\"Substring to search for.\"},"
+    "  \"path\":{\"type\":\"string\",\"description\":\"File or directory path (default: .)\"},"
+    "  \"recursive\":{\"type\":\"boolean\",\"description\":\"When path is a directory, recurse (default: true).\"},"
+    "  \"case_sensitive\":{\"type\":\"boolean\",\"description\":\"Case-sensitive search (default: false).\"},"
+    "  \"include_hidden\":{\"type\":\"boolean\",\"description\":\"Include dotfiles (default: false).\"},"
+    "  \"max_results\":{\"type\":\"integer\",\"description\":\"Max matches to return (default: 200).\"},"
+    "  \"max_file_bytes\":{\"type\":\"integer\",\"description\":\"Skip files larger than this many bytes (default: 524288). 0 disables size limit.\"},"
+    "  \"max_line_chars\":{\"type\":\"integer\",\"description\":\"Max chars per snippet line (default: 400).\"},"
+    "  \"use_default_excludes\":{\"type\":\"boolean\",\"description\":\"When true (default), skips common huge dirs like node_modules/build/dist unless explicitly requested.\"},"
+    "  \"exclude_names\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Extra directory/file basenames to exclude.\"}"
+    "},"
+    "\"required\":[\"query\"]"
     "}"
   );
   if (st != AGENT_OK) goto fail;

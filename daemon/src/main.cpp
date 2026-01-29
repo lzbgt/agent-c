@@ -59,6 +59,7 @@ static const char* default_host_system_prompt() {
     "- Prefer bounded/paginated inspection over reading full files.\n"
     "  - Use fs_list/fs_stat to inspect directories/files with predictable output size.\n"
     "    - Note: fs_list excludes common huge dirs (node_modules/build/dist) by default; disable with use_default_excludes=false.\n"
+    "  - Use text_search for token-safe code search instead of dumping whole files.\n"
     "  - Use fs_read with start_line/max_lines (and optional end_line) for paging through files.\n"
     "  - Use rg/grep/head/tail/sed/awk for narrow, targeted inspection when appropriate.\n"
     "- Avoid dumping large directories or entire files unless strictly needed.\n"

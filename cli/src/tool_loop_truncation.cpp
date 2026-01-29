@@ -105,6 +105,25 @@ std::string tool_loop_cap_tool_output_for_prompt(const std::string& tool_out, si
         }
       }
     }
+
+    // Some tools return large structured match lists (e.g. text_search: data.matches[]).
+    if (data.isMember("matches") && data["matches"].isArray()) {
+      const Json::ArrayIndex total = data["matches"].size();
+      if (total > 0) {
+        const Json::ArrayIndex keep = std::min<Json::ArrayIndex>(total, 50);
+        if (keep < total) {
+          Json::Value kept(Json::arrayValue);
+          for (Json::ArrayIndex i = 0; i < keep; i++) {
+            kept.append(data["matches"][i]);
+          }
+          data["matches_total"] = (Json::UInt64)total;
+          data["matches"] = kept;
+          data["matches_truncated"] = true;
+          data["prompt_truncated"] = true;
+          did = true;
+        }
+      }
+    }
   }
 
   std::string s = stringify(root);
@@ -120,6 +139,11 @@ std::string tool_loop_cap_tool_output_for_prompt(const std::string& tool_out, si
     if (data.isMember("entries")) {
       data.removeMember("entries");
       data["entries_dropped"] = true;
+      dropped = true;
+    }
+    if (data.isMember("matches")) {
+      data.removeMember("matches");
+      data["matches_dropped"] = true;
       dropped = true;
     }
     if (dropped) {

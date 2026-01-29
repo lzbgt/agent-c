@@ -69,6 +69,7 @@ DEEPSEEK_API_KEY="${DEEPSEEK_KEY}" "${AGENTD_BIN}" \
   --base-url "${BASE_URL}" \
   --model "${MODEL}" \
   --tools host \
+  --host-scope "${PROJECT_ROOT}" \
   > "${LOG_DIR}/agentd_host_tools_smoke.stdout.log" 2> "${LOG_DIR}/agentd_host_tools_smoke.stderr.log" &
 AGENTD_PID=$!
 
@@ -94,11 +95,12 @@ print(json.dumps({
   "prompt": "Use the shell_exec tool to run: echo OK. Then return exactly: OK",
   "session_id": "${SESSION_ID}",
   "tools": "host",
+  "tools_root": "@host",
   "force_tool": "shell_exec",
   "require_tool_call": True,
   "max_steps": 4,
   "verbose": True,
-  "yolo": True
+  "yolo": False
 }))
 PY
 )" \
@@ -120,10 +122,76 @@ if not any(e.get("type") == "tool_call" for e in events):
   raise SystemExit(1)
 PY
 
+# Verify text_search tool is exposed + works end-to-end (model/tool loop/daemon event capture).
+resp2="$(curl -fsS \
+  --noproxy "*" \
+  --max-time 120 \
+  -H "Content-Type: application/json" \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "prompt": "Use the text_search tool with query=tool_text_search and path=. (repo root). After the tool returns, return exactly: OK",
+  "session_id": "${SESSION_ID}",
+  "tools": "host",
+  "tools_root": "@host",
+  "force_tool": "text_search",
+  "require_tool_call": True,
+  "max_steps": 4,
+  "verbose": True,
+  "yolo": False
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/run")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${resp2}''')
+if not obj.get("ok"):
+  print("daemon run failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+txt = (obj.get("assistant_text") or "").strip()
+if txt != "OK":
+  print(f"unexpected assistant_text: {txt!r}", file=sys.stderr)
+  raise SystemExit(1)
+events = obj.get("events") or []
+tool_calls = [e for e in events if e.get("type") == "tool_call" and (e.get("data") or {}).get("tool_name") == "text_search"]
+tool_results = [e for e in events if e.get("type") == "tool_result" and (e.get("data") or {}).get("tool_name") == "text_search"]
+if not tool_calls:
+  print("expected text_search tool_call event", file=sys.stderr)
+  raise SystemExit(1)
+if not tool_results:
+  print("expected text_search tool_result event", file=sys.stderr)
+  raise SystemExit(1)
+content = (tool_results[-1].get("data") or {}).get("content") or ""
+try:
+  env = json.loads(content)
+except Exception as e:
+  print("failed to parse text_search tool_result content", e, file=sys.stderr)
+  print(content[:500], file=sys.stderr)
+  raise SystemExit(1)
+if not env.get("ok"):
+  print("text_search tool returned ok=false", env, file=sys.stderr)
+  raise SystemExit(1)
+data = env.get("data") or {}
+if data.get("query") != "tool_text_search":
+  print("unexpected query", data.get("query"), file=sys.stderr)
+  raise SystemExit(1)
+if data.get("path") != ".":
+  print("unexpected path", data.get("path"), file=sys.stderr)
+  raise SystemExit(1)
+matches = data.get("matches") or []
+if not isinstance(matches, list) or len(matches) < 1:
+  print("expected at least one match", file=sys.stderr)
+  raise SystemExit(1)
+if not any((m.get("path") or "").endswith("cli/src/toolset_host.cpp") for m in matches if isinstance(m, dict)):
+  print("expected match path to include cli/src/toolset_host.cpp", file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 # Cleanup session artifacts.
 curl -fsS --noproxy "*" -X DELETE "${DAEMON_URL}/api/v1/session?session_id=$(python3 - <<PY
 import urllib.parse
 print(urllib.parse.quote("${SESSION_ID}"))
 PY
 )" --max-time 10 >/dev/null || true
-

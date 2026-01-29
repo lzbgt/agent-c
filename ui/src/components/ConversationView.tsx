@@ -57,6 +57,8 @@ export default function ConversationView({
   const items: Array<React.ReactNode> = [];
   let streamedAssistant = "";
   let sawFinalAssistant = false;
+  let sawToolOrAssistant = false;
+  let lastHeartbeat: any = null;
 
   if (prompt.trim().length > 0) {
     items.push(
@@ -72,6 +74,7 @@ export default function ConversationView({
 
     if (type === "assistant_message") {
       sawFinalAssistant = true;
+      sawToolOrAssistant = true;
       items.push(
         <Card key={`a-${idx}`} title="Assistant">
           <Markdown text={String(data.assistant_content ?? "")} />
@@ -83,10 +86,12 @@ export default function ConversationView({
     if (type === "assistant_delta") {
       const delta = typeof data.delta === "string" ? data.delta : "";
       if (delta) streamedAssistant += delta;
+      if (delta) sawToolOrAssistant = true;
       return;
     }
 
     if (type === "tool_call") {
+      sawToolOrAssistant = true;
       const name = String(data.tool_name ?? "");
       const args = typeof data.arguments_json === "string" ? data.arguments_json : "";
       items.push(
@@ -100,6 +105,7 @@ export default function ConversationView({
     }
 
     if (type === "tool_result") {
+      sawToolOrAssistant = true;
       const name = String(data.tool_name ?? "");
       if (typeof data.content === "string") {
         items.push(
@@ -116,6 +122,11 @@ export default function ConversationView({
           </pre>
         </Card>,
       );
+      return;
+    }
+
+    if (type === "heartbeat") {
+      lastHeartbeat = data ?? {};
       return;
     }
 
@@ -185,6 +196,24 @@ export default function ConversationView({
       );
     }
   });
+
+  // If the daemon is emitting only low-level events (e.g. llm_request/llm_response/start) the conversation view
+  // can look "stuck" even though the job is progressing. Provide a lightweight status card in that case.
+  if (!sawToolOrAssistant && events.length > 0) {
+    const hb = lastHeartbeat && typeof lastHeartbeat === "object" ? JSON.stringify(lastHeartbeat, null, 2) : "";
+    items.push(
+      <Card key="working" title="Working…">
+        <div className="text-xs text-white/70">
+          Waiting for assistant output / tool calls.
+          {hb ? (
+            <pre className="mt-2 overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-[11px] leading-relaxed text-white/80">
+              {hb}
+            </pre>
+          ) : null}
+        </div>
+      </Card>,
+    );
+  }
 
   if (!sawFinalAssistant && streamedAssistant.trim().length > 0) {
     items.push(

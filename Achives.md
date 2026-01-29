@@ -131,3 +131,7 @@ Completed milestones and notable tasks.
   - daemon request fields: `summary_model`, `summary_max_chars` (and daemon defaults via flags)
   - UI settings: summary model + max chars stored in `localStorage`
   - summaries are tagged with `AGENT_SESSION_SUMMARY_PREFIX` so they are not treated as pinned forever
+- Added a token-safe code search host tool:
+  - `text_search` tool (bounded substring search with default excludes and file size caps) (`cli/src/toolset_host.cpp`)
+  - UI renders `text_search` results as a matches table (`ui/src/components/ToolResultView.tsx`)
+  - Tool-loop prompt capping preserves/truncates `data.matches` arrays to stay JSON-shaped (`cli/src/tool_loop_truncation.cpp`)

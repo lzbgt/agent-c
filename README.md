@@ -119,10 +119,12 @@ Host tool names:
 - `fs_stat` (file/dir metadata; returns structured fields + a human-readable `output`)
 - `fs_list` (bounded directory listing; returns structured `entries` + `output`)
 - `fs_read` (bounded file read with pagination by line; returns `content`/`output` + `has_more` + `next_start_line`)
+- `text_search` (token-safe substring search; returns structured `matches` + `output`)
 
 Notes:
 - For **inspection** (read/list/stat), prefer `fs_list` / `fs_read` / `fs_stat` because they provide bounded output and pagination
   (helps prevent token/context blow-ups). Use `rg/grep` first, then `fs_read` for narrow line ranges.
+- For **search**, prefer `text_search` over `grep -R` when you need predictable output size (bounded matches + per-file size limits).
 - For host-side **mutating** file operations (remove/move/rename), prefer OS-native commands via `proc_exec` / `shell_exec` (e.g. `rm`, `mv`, `git`).
 - For file edits, prefer `file_apply_patch` so the tool output includes a diff-style record of the change.
 - Tool outputs are capped before being inserted back into the next LLM request context, to avoid overflowing the context window.
