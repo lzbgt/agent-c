@@ -227,6 +227,10 @@ Note on “thinking process”:
 - The UI can display **tool calls/results and request/response transcripts**.
 - We do **not** expose hidden chain-of-thought. If a model includes reasoning in the visible assistant message, it will be displayed as part of the assistant content.
 
+Event log sizing:
+- Per-event large fields are truncated (best-effort).
+- The overall event log has a maximum event count and capture budget; if exceeded the final `end` event includes `truncated=true`.
+
 Security notes (future):
 - Binding to `127.0.0.1` avoids LAN exposure by default.
 - Once broker/remote control is added, the daemon must implement an auth story (device provisioning, rotating tokens).

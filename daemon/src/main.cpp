@@ -777,6 +777,44 @@ int main(int argc, char** argv) {
         *trace_stream << "=== RESPONSE ===\n";
         *trace_stream << (pctx.last_body.empty() ? "" : (pctx.last_body + "\n"));
       }
+
+      // Provide a minimal events timeline for tools=none as well, so UIs can render consistently.
+      events_out = Json::Value(Json::arrayValue);
+      auto push_ev = [&](const std::string& type, const Json::Value& data) {
+        Json::Value e(Json::objectValue);
+        e["type"] = type;
+        e["data"] = data;
+        events_out.append(e);
+      };
+      {
+        Json::Value d(Json::objectValue);
+        d["model"] = run_cfg.model;
+        d["tools"] = "none";
+        d["verbose"] = verbose;
+        push_ev("start", d);
+      }
+      {
+        Json::Value d(Json::objectValue);
+        if (verbose) d["request_json"] = pctx.last_request_body;
+        push_ev("llm_request", d);
+      }
+      {
+        Json::Value d(Json::objectValue);
+        d["http_status"] = (Json::Int64)pctx.last_http_status;
+        if (verbose) d["response_body"] = pctx.last_body;
+        push_ev("llm_response", d);
+      }
+      {
+        Json::Value d(Json::objectValue);
+        d["assistant_content"] = assistant_text;
+        d["has_tool_calls"] = false;
+        push_ev("assistant_message", d);
+      }
+      {
+        Json::Value d(Json::objectValue);
+        d["truncated"] = false;
+        push_ev("end", d);
+      }
     }
 
     if (ok && !no_session) {
@@ -802,7 +840,7 @@ int main(int argc, char** argv) {
     out["effective_yolo"] = yolo;
     out["verbose"] = verbose;
     // Structured event log for UIs (LLM requests/responses + tool calls/results).
-    if (use_tool_loop && events_out.isArray()) {
+    if (events_out.isArray()) {
       out["events"] = events_out;
     }
 
