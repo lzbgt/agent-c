@@ -141,7 +141,12 @@ static std::string extract_assistant_content(const Json::Value& message) {
 
 static bool message_has_tool_calls(const Json::Value& message) {
   const auto& tc = message["tool_calls"];
-  return tc.isArray() && !tc.empty();
+  if (tc.isArray() && !tc.empty()) {
+    return true;
+  }
+  // Older/alternate schema (function calling v0): {"function_call": {"name": "...", "arguments": "..."}}
+  const auto& fc = message["function_call"];
+  return fc.isObject() && fc.isMember("name") && fc.isMember("arguments");
 }
 
 static bool parse_json_object(const std::string& s, Json::Value* out_obj) {
@@ -296,6 +301,14 @@ bool run_tool_loop(
   };
 
   auto push_event = [&](const std::string& type, const Json::Value& data) {
+    if (options.on_event) {
+      try {
+        const std::string data_json = json_stringify(data);
+        options.on_event(options.on_event_ctx, type.c_str(), data_json.c_str());
+      } catch (...) {
+        // Best-effort: never allow observer failures to break the tool loop.
+      }
+    }
     if (events_truncated || events_count >= max_events) {
       events_truncated = true;
       return;
@@ -563,24 +576,66 @@ bool run_tool_loop(
       break;
     }
 
+    struct ParsedToolCall {
+      std::string id;
+      std::string name;
+      std::string arguments_json;
+    };
+
+    std::vector<ParsedToolCall> calls;
     const auto& tool_calls = assistant_msg["tool_calls"];
-    for (const auto& call : tool_calls) {
-      const auto& type = call["type"];
-      const auto& idv = call["id"];
-      const auto& fn = call["function"];
-      if (!type.isString() || type.asString() != "function") {
-        continue;
+    if (tool_calls.isArray()) {
+      size_t i = 0;
+      for (const auto& call : tool_calls) {
+        const auto& type = call["type"];
+        const auto& fn = call["function"];
+        if (!type.isString() || type.asString() != "function") {
+          i++;
+          continue;
+        }
+        if (!fn.isObject()) {
+          i++;
+          continue;
+        }
+        const auto& namev = fn["name"];
+        const auto& argv = fn["arguments"];
+        if (!namev.isString() || !argv.isString()) {
+          i++;
+          continue;
+        }
+        const auto& idv = call["id"];
+        std::string id = idv.isString() ? idv.asString() : (std::string("call_") + std::to_string(step) + "_" + std::to_string(i));
+        calls.push_back(ParsedToolCall{id, namev.asString(), argv.asString()});
+        i++;
       }
-      if (!idv.isString() || !fn.isObject()) {
-        continue;
+    } else {
+      const auto& fc = assistant_msg["function_call"];
+      if (fc.isObject()) {
+        const auto& namev = fc["name"];
+        const auto& argv = fc["arguments"];
+        if (namev.isString() && argv.isString()) {
+          calls.push_back(ParsedToolCall{std::string("call_") + std::to_string(step) + "_0", namev.asString(), argv.asString()});
+        }
       }
-      const auto& namev = fn["name"];
-      const auto& argv = fn["arguments"];
-      if (!namev.isString() || !argv.isString()) {
-        continue;
+    }
+
+    if (calls.empty()) {
+      if (out_error) {
+        *out_error = "model returned tool calls but none were parseable";
       }
-      const std::string tool_name = namev.asString();
-      const std::string tool_args_json = argv.asString();
+      {
+        Json::Value d(Json::objectValue);
+        d["step"] = (Json::UInt64)step;
+        d["error"] = "model returned tool calls but none were parseable";
+        push_event("error", d);
+      }
+      return false;
+    }
+
+    for (const auto& call : calls) {
+      const std::string tool_name = call.name;
+      const std::string tool_args_json = call.arguments_json;
+      const std::string tool_call_id = call.id;
 
       if (trace_stream) {
         *trace_stream << "=== TOOL CALL " << tool_name << " ARGS ===\n";
@@ -589,7 +644,7 @@ bool run_tool_loop(
       {
         Json::Value d(Json::objectValue);
         d["step"] = (Json::UInt64)step;
-        d["tool_call_id"] = idv.asString();
+        d["tool_call_id"] = tool_call_id;
         d["tool_name"] = tool_name;
         if (options.verbose) {
           const std::string capped = truncate_str(tool_args_json, options.max_capture_bytes);
@@ -615,6 +670,16 @@ bool run_tool_loop(
       }
       agent_string_free(&tool_result);
 
+      // Capture tool transcript for host session persistence (portable plain-text record).
+      {
+        ToolLoopToolRecord rec;
+        rec.tool_name = tool_name;
+        rec.tool_call_id = tool_call_id;
+        rec.arguments_json = tool_args_json;
+        rec.result_string = tool_out;
+        out_result->tool_records.push_back(std::move(rec));
+      }
+
       if (trace_stream) {
         *trace_stream << "=== TOOL CALL " << tool_name << " RESULT ===\n";
         *trace_stream << tool_out << "\n";
@@ -622,7 +687,7 @@ bool run_tool_loop(
       {
         Json::Value d(Json::objectValue);
         d["step"] = (Json::UInt64)step;
-        d["tool_call_id"] = idv.asString();
+        d["tool_call_id"] = tool_call_id;
         d["tool_name"] = tool_name;
         d["status"] = (Json::Int64)st;
         if (options.verbose) {
@@ -637,7 +702,7 @@ bool run_tool_loop(
 
       Json::Value tm(Json::objectValue);
       tm["role"] = "tool";
-      tm["tool_call_id"] = idv.asString();
+      tm["tool_call_id"] = tool_call_id;
       tm["content"] = tool_out;
       messages.append(tm);
     }

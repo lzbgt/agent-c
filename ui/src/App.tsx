@@ -1,12 +1,26 @@
 import React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiGetAudit, apiGetHealth, apiGetSession, apiListSessions, apiRun, RunRequest, RunResponse } from "./api";
+import {
+  apiGetAudit,
+  apiGetHealth,
+  apiGetJobProgress,
+  apiListSessions,
+  apiRun,
+  apiRunAsync,
+  RunRequest,
+  RunResponse,
+  type AgentEvent,
+} from "./api";
 import TraceView from "./components/TraceView";
 import EventTimeline from "./components/EventTimeline";
 import Markdown from "./components/Markdown";
 
 function Label({ children }: { children: React.ReactNode }) {
   return <div className="text-xs font-medium text-white/70">{children}</div>;
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export default function App() {
@@ -21,7 +35,17 @@ export default function App() {
   const [baseUrl, setBaseUrl] = React.useState("https://api.deepseek.com");
   const [apiKey, setApiKey] = React.useState("");
   const [maxSteps, setMaxSteps] = React.useState("0");
+  const [maxChars, setMaxChars] = React.useState("20000");
+  const [keepLast, setKeepLast] = React.useState("16");
   const [trace, setTrace] = React.useState(true);
+  const [useAsync, setUseAsync] = React.useState(true);
+
+  const [activeJobId, setActiveJobId] = React.useState<string | null>(null);
+  const [jobStatus, setJobStatus] = React.useState<string | null>(null);
+  const [jobError, setJobError] = React.useState<string | null>(null);
+  const [jobUpdatedMs, setJobUpdatedMs] = React.useState<number | null>(null);
+  const [liveEvents, setLiveEvents] = React.useState<AgentEvent[]>([]);
+  const cursorRef = React.useRef<number>(0);
 
   const health = useQuery({
     queryKey: ["health", base],
@@ -42,6 +66,8 @@ export default function App() {
     retry: 1,
   });
 
+  const [result, setResult] = React.useState<RunResponse | undefined>(undefined);
+
   const run = useMutation({
     mutationFn: async () => {
       const req: RunRequest = {
@@ -56,13 +82,93 @@ export default function App() {
         base_url: baseUrl || undefined,
         api_key: apiKey || undefined,
         max_steps: Number.isFinite(Number(maxSteps)) ? Number(maxSteps) : 0,
+        max_chars: Number.isFinite(Number(maxChars)) ? Number(maxChars) : 20000,
+        keep_last: Number.isFinite(Number(keepLast)) ? Number(keepLast) : 16,
         trace,
       };
-      return apiRun(base, req);
+
+      // Reset UI state for a new run.
+      setResult(undefined);
+      setJobError(null);
+      setJobStatus(null);
+      setJobUpdatedMs(null);
+      setLiveEvents([]);
+      cursorRef.current = 0;
+
+      if (useAsync) {
+        const job = await apiRunAsync(base, req);
+        return { mode: "async" as const, job };
+      }
+      const out = await apiRun(base, req);
+      return { mode: "sync" as const, out };
+    },
+    onSuccess: (v) => {
+      if (v.mode === "sync") {
+        setResult(v.out);
+        void audit.refetch();
+        void sessions.refetch();
+        return;
+      }
+      if (!v.job.ok || !v.job.job_id) {
+        setJobError(v.job.error ?? "failed to start async job");
+        return;
+      }
+      setActiveJobId(v.job.job_id);
+      setJobStatus("queued");
     },
   });
 
-  const result: RunResponse | undefined = run.data;
+  React.useEffect(() => {
+    if (!activeJobId) return;
+    let cancelled = false;
+    const jobId = activeJobId;
+
+    (async () => {
+      // Poll job progress + stream events via cursor.
+      for (;;) {
+        if (cancelled) return;
+        const job = await apiGetJobProgress(base, jobId, { cursor: cursorRef.current, maxEvents: 256 });
+
+        if (cancelled) return;
+        setJobStatus(job.status ?? null);
+        setJobError(job.error ?? null);
+        setJobUpdatedMs(typeof job.updated_unix_ms === "number" ? job.updated_unix_ms : null);
+
+        const ev = Array.isArray(job.events) ? job.events : [];
+        const next = typeof job.events_cursor_next === "number" ? job.events_cursor_next : cursorRef.current + ev.length;
+        if (ev.length > 0) {
+          if (job.events_reset) {
+            setLiveEvents(ev);
+          } else {
+            setLiveEvents((prev) => prev.concat(ev));
+          }
+          cursorRef.current = next;
+        }
+
+        if (job.status === "done" || job.status === "error") {
+          if (job.result) {
+            setResult(job.result);
+          } else {
+            setJobError("job completed but missing result");
+          }
+          setActiveJobId(null);
+          void audit.refetch();
+          void sessions.refetch();
+          return;
+        }
+
+        await sleep(500);
+      }
+    })().catch((e) => {
+      if (cancelled) return;
+      setJobError(String(e));
+      setActiveJobId(null);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeJobId, base, audit, sessions]);
 
   return (
     <div className="mx-auto max-w-5xl px-6 py-8">
@@ -176,6 +282,22 @@ export default function App() {
                 onChange={(e) => setMaxSteps(e.target.value)}
               />
             </div>
+            <div>
+              <Label>Max chars</Label>
+              <input
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                value={maxChars}
+                onChange={(e) => setMaxChars(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label>Keep last</Label>
+              <input
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                value={keepLast}
+                onChange={(e) => setKeepLast(e.target.value)}
+              />
+            </div>
           </div>
 
           <div className="mt-4 flex items-center gap-2">
@@ -196,6 +318,13 @@ export default function App() {
             <input id="verbose" type="checkbox" checked={verbose} onChange={(e) => setVerbose(e.target.checked)} />
             <label htmlFor="verbose" className="text-sm text-white/70">
               Verbose (capture tool output + LLM request/response)
+            </label>
+          </div>
+
+          <div className="mt-3 flex items-center gap-2">
+            <input id="async" type="checkbox" checked={useAsync} onChange={(e) => setUseAsync(e.target.checked)} />
+            <label htmlFor="async" className="text-sm text-white/70">
+              Async run (poll jobs)
             </label>
           </div>
         </div>
@@ -242,15 +371,32 @@ export default function App() {
           <button
             className="mt-4 w-full rounded-md bg-indigo-500 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-400 disabled:opacity-50"
             onClick={() => run.mutate()}
-            disabled={run.isPending}
+            disabled={run.isPending || !!activeJobId}
             type="button"
           >
-            {run.isPending ? "Running…" : "Run"}
+            {run.isPending || activeJobId ? "Running…" : "Run"}
           </button>
 
           {run.isError ? (
             <div className="mt-3 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
               Failed: {String(run.error)}
+            </div>
+          ) : null}
+
+          {activeJobId ? (
+            <div className="mt-3 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/70">
+              <div>
+                Job: <span className="text-white/90">{activeJobId}</span>
+              </div>
+              <div>
+                Status: <span className="text-white/90">{jobStatus ?? "running"}</span>
+              </div>
+              {jobUpdatedMs ? <div>Updated: {new Date(jobUpdatedMs).toISOString()}</div> : null}
+            </div>
+          ) : null}
+          {jobError ? (
+            <div className="mt-3 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+              {jobError}
             </div>
           ) : null}
         </div>
@@ -262,7 +408,7 @@ export default function App() {
           {result?.assistant_text ? (
             <Markdown text={result.assistant_text} />
           ) : (
-            <div className="text-sm text-white/60">{run.isPending ? "" : "(no output yet)"}</div>
+            <div className="text-sm text-white/60">{activeJobId || run.isPending ? "" : "(no output yet)"}</div>
           )}
           {!result?.ok && result?.error ? (
             <div className="mt-3 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
@@ -278,6 +424,13 @@ export default function App() {
             </div>
           ) : null}
         </div>
+
+        {activeJobId && liveEvents.length > 0 ? (
+          <div>
+            <div className="mb-2 text-sm font-semibold text-white/80">Live Events</div>
+            <EventTimeline baseUrl={base} yolo={yolo} events={liveEvents} />
+          </div>
+        ) : null}
 
         {result?.events && result.events.length > 0 ? (
           <div>

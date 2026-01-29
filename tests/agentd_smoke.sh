@@ -63,11 +63,10 @@ trap cleanup EXIT
 LOG_DIR="${PROJECT_ROOT}/build"
 mkdir -p "${LOG_DIR}"
 
-"${AGENTD_BIN}" \
+DEEPSEEK_API_KEY="${DEEPSEEK_KEY}" "${AGENTD_BIN}" \
   --host "${HOST}" \
   --port "${PORT}" \
   --base-url "${BASE_URL}" \
-  --api-key "${DEEPSEEK_KEY}" \
   --model "${MODEL}" \
   --tools basic \
   > "${LOG_DIR}/agentd_smoke.stdout.log" 2> "${LOG_DIR}/agentd_smoke.stderr.log" &

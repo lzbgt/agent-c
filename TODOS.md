@@ -22,7 +22,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [ ] Add `--summary-model` option (host-generated summary insertion).
 - [x] Implement extensible host toolsets (subprocess exec + diff-based file edits) for CLI/daemon (`--tools host`).
 - [x] Add an OpenRouter **tool-call** smoke test (host toolset) using a cheap model that supports `tools`.
-- [ ] Decide how to persist **tool-call transcripts** (tool_call_id + tool messages) without breaking OpenAI-compatible request formats.
+- [x] Persist **tool-call transcripts** in sessions in a portable form (assistant text markers for tool calls/results) without breaking OpenAI-compatible request formats.
 - [x] Make tool-loop `--max-steps` default unlimited (0 means unlimited).
 
 ## Mid-term (daemon + broker)
@@ -36,6 +36,9 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
   - start with tool events streaming (even without token streaming)
   - streaming responses (SSE/WebSocket)
   - make event log fully structured (typed payloads; truncation metadata; stable schema)
+- [x] Add async runs (`/api/v1/run_async` + `/api/v1/job`) so UIs can poll long-running jobs without blocking.
+- [x] Add live job progress via event tailing:
+  - `GET /api/v1/job?job_id=...&include_events=1&cursor=...` (cursor-based incremental event polling).
 - [ ] Add a daemon-level “sandbox policy” model:
   - YOLO vs host-scoped tools-root
   - future: per-tool allow/deny and command restrictions for `proc_exec` / `shell_exec`

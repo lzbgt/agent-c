@@ -9,6 +9,7 @@
 #endif
 
 #include <sstream>
+#include <algorithm>
 
 static size_t write_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
   auto* out = static_cast<std::string*>(userdata);
@@ -90,7 +91,15 @@ static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::
   curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body.size());
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+  // Make timeouts reliable even when used from background threads.
+  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+  // Total time budget for the request.
   curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, cfg.timeout_ms);
+  // Faster failure when the proxy/DNS/route is broken (prevents "hang" perception).
+  const long connect_timeout_ms = (cfg.timeout_ms > 0) ? std::min<long>(cfg.timeout_ms, 15000L) : 15000L;
+  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, connect_timeout_ms);
+  // Keep connections from going half-open silently.
+  curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
 
   if (have_proxy) {
     // Force libcurl to honor the proxy explicitly (and allow us to retry cleanly on failure).

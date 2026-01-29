@@ -199,6 +199,13 @@ The CLI/daemon toolset is designed around **OS-native tooling**:
 (via `git -C <root> apply ...`). It is not intended as a strong security boundary (since `proc_exec`
 can still invoke arbitrary commands in a YOLO host configuration).
 
+Tool transcript persistence (day-1 pragmatic choice):
+- The OpenAI tool-calling message schema uses fields like `tool_call_id` that are not yet part of the portable core session model.
+- Therefore, CLI/daemon persist tool usage into the session as **assistant text markers**:
+  - `[tool_call] name=... id=...` + args JSON
+  - `[tool_result] name=... id=...` + tool output string
+- This keeps sessions provider-compatible (no malformed `tool` role messages) while still preserving useful context for later turns.
+
 ### Tool success semantics (important)
 
 Tool success is not solely a return/exit code:
@@ -226,6 +233,11 @@ Decision:
 Initial endpoints (implemented in `agentd`):
 - `GET /api/v1/health` → `{ ok, service, version }`
 - `POST /api/v1/run` → runs one user prompt against an LLM backend with optional tool loop.
+- `POST /api/v1/run_async` → starts a background run and returns `{ ok, job_id }` (UI polls job status).
+- `GET /api/v1/job?job_id=...` → returns `{ ok, status, result? }` for async runs.
+  - Progress polling for UIs:
+    - `include_events=1` to include tool/LLM events captured so far (best-effort).
+    - `cursor=<n>&max_events=<m>` to tail events incrementally (cursor-based pagination).
 - `GET /api/v1/file?path=...&yolo=0|1` → returns a file for UI preview (images/audio/video/text; size capped).
 - `GET /api/v1/sessions` → list session ids.
 - `GET /api/v1/session?session_id=...` → get session messages.

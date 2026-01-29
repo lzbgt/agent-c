@@ -12,6 +12,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <cctype>
 
 #if defined(AGENT_HAVE_JSONCPP)
 #include <json/json.h>
@@ -20,6 +21,18 @@
 static const char* getenv_s(const char* k) {
   const char* v = std::getenv(k);
   return (v && v[0]) ? v : nullptr;
+}
+
+static std::string lower_copy(std::string s) {
+  for (char& c : s) c = (char)std::tolower((unsigned char)c);
+  return s;
+}
+
+static bool url_contains_ci(const std::string& url, const std::string& needle) {
+  if (needle.empty()) return false;
+  const std::string u = lower_copy(url);
+  const std::string n = lower_copy(needle);
+  return u.find(n) != std::string::npos;
 }
 
 static std::string home_dir_best_effort() {
@@ -288,15 +301,6 @@ int main(int argc, char** argv) {
   }
 
   // Host-side env defaults (core remains env-free).
-  if (api_key.empty()) {
-    if (const char* k = getenv_s("OPENAI_API_KEY")) {
-      api_key = k;
-    } else if (const char* k2 = getenv_s("OPENROUTER_API_KEY")) {
-      api_key = k2;
-    } else if (const char* k3 = getenv_s("DEEPSEEK_API_KEY")) {
-      api_key = k3;
-    }
-  }
   if (base_url == "https://api.openai.com/v1") {
     if (const char* b = getenv_s("OPENAI_API_BASE")) {
       base_url = b;
@@ -308,8 +312,25 @@ int main(int argc, char** argv) {
       base_url = b4;
     }
   }
+  // Pick the API key that matches the chosen base URL. This prevents accidental mix-ups when the
+  // host environment exports multiple provider keys.
   if (api_key.empty()) {
-    std::cerr << "Missing API key. Provide --api-key or set OPENAI_API_KEY / OPENROUTER_API_KEY.\n";
+    if (url_contains_ci(base_url, "deepseek")) {
+      if (const char* k = getenv_s("DEEPSEEK_API_KEY")) api_key = k;
+      else if (const char* k2 = getenv_s("OPENAI_API_KEY")) api_key = k2;
+      else if (const char* k3 = getenv_s("OPENROUTER_API_KEY")) api_key = k3;
+    } else if (url_contains_ci(base_url, "openrouter")) {
+      if (const char* k = getenv_s("OPENROUTER_API_KEY")) api_key = k;
+      else if (const char* k2 = getenv_s("OPENAI_API_KEY")) api_key = k2;
+      else if (const char* k3 = getenv_s("DEEPSEEK_API_KEY")) api_key = k3;
+    } else {
+      if (const char* k = getenv_s("OPENAI_API_KEY")) api_key = k;
+      else if (const char* k2 = getenv_s("OPENROUTER_API_KEY")) api_key = k2;
+      else if (const char* k3 = getenv_s("DEEPSEEK_API_KEY")) api_key = k3;
+    }
+  }
+  if (api_key.empty()) {
+    std::cerr << "Missing API key. Provide --api-key or set OPENAI_API_KEY / OPENROUTER_API_KEY / DEEPSEEK_API_KEY.\n";
     return 2;
   }
 
@@ -403,7 +424,24 @@ int main(int argc, char** argv) {
         }
         return 1;
       }
+
+      // Persist a portable transcript into the session:
+      // - user prompt
+      // - tool calls + tool results as assistant text markers (do not store raw "tool" role messages,
+      //   because OpenAI-compatible APIs often require tool_call_id fields we don't store in core sessions).
+      // - final assistant message
       agent_session_add_message(session, AGENT_ROLE_USER, user_prompt.c_str());
+      for (const auto& rec : r.tool_records) {
+        std::string call = "[tool_call] name=" + rec.tool_name;
+        if (!rec.tool_call_id.empty()) call += " id=" + rec.tool_call_id;
+        call += "\n" + rec.arguments_json;
+        agent_session_add_message(session, AGENT_ROLE_ASSISTANT, call.c_str());
+
+        std::string out = "[tool_result] name=" + rec.tool_name;
+        if (!rec.tool_call_id.empty()) out += " id=" + rec.tool_call_id;
+        out += "\n" + rec.result_string;
+        agent_session_add_message(session, AGENT_ROLE_ASSISTANT, out.c_str());
+      }
       agent_session_add_message(session, AGENT_ROLE_ASSISTANT, r.final_assistant_text.c_str());
       std::cout << r.final_assistant_text << "\n";
       return 0;

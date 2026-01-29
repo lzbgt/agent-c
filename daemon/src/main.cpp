@@ -21,6 +21,7 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#include <cctype>
 #include <cstring>
 #include <chrono>
 #include <atomic>
@@ -175,6 +176,10 @@ struct JobState {
   std::string status; // queued|running|done|error
   Json::Value result; // final JSON result (same shape as /api/v1/run)
   std::string error;
+  // Live event stream (best-effort) captured while a job is running. This is used by the UI
+  // to show progress instead of appearing to "hang" during long tool loops.
+  Json::Value events = Json::Value(Json::arrayValue);
+  uint64_t events_offset = 0; // number of events dropped from the front (cursor base)
   int64_t created_unix_ms = 0;
   int64_t updated_unix_ms = 0;
 };
@@ -194,6 +199,21 @@ static std::string new_job_id() {
 static std::mutex g_jobs_mu;
 static std::map<std::string, JobState> g_jobs;
 
+static bool json_parse_any(const std::string& s, Json::Value* out, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!out) return false;
+  Json::CharReaderBuilder rb;
+  std::string errs;
+  std::istringstream iss(s);
+  Json::Value v;
+  if (!Json::parseFromStream(rb, iss, &v, &errs)) {
+    if (out_err) *out_err = errs;
+    return false;
+  }
+  *out = v;
+  return true;
+}
+
 static void job_set_status(const std::string& id, const std::string& status, const std::string& error) {
   std::lock_guard<std::mutex> lk(g_jobs_mu);
   auto it = g_jobs.find(id);
@@ -203,12 +223,51 @@ static void job_set_status(const std::string& id, const std::string& status, con
   it->second.updated_unix_ms = now_unix_ms();
 }
 
+static void job_append_event(const std::string& id, const std::string& type, const std::string& data_json) {
+  constexpr Json::ArrayIndex kHardMax = 4096;
+  constexpr Json::ArrayIndex kSoftMax = 4608; // rebuild window to avoid O(n) per event
+
+  std::lock_guard<std::mutex> lk(g_jobs_mu);
+  auto it = g_jobs.find(id);
+  if (it == g_jobs.end()) return;
+
+  Json::Value data;
+  std::string perr;
+  if (!data_json.empty() && json_parse_any(data_json, &data, &perr)) {
+    // ok
+  } else {
+    data = data_json;
+  }
+
+  Json::Value e(Json::objectValue);
+  e["type"] = type;
+  e["data"] = data;
+  it->second.events.append(e);
+  it->second.updated_unix_ms = now_unix_ms();
+
+  const Json::ArrayIndex sz = it->second.events.size();
+  if (sz > kSoftMax) {
+    // Keep the last kHardMax events.
+    const Json::ArrayIndex start = (sz > kHardMax) ? (sz - kHardMax) : 0;
+    Json::Value trimmed(Json::arrayValue);
+    for (Json::ArrayIndex i = start; i < sz; i++) {
+      trimmed.append(it->second.events[i]);
+    }
+    it->second.events_offset += (uint64_t)start;
+    it->second.events = std::move(trimmed);
+  }
+}
+
 static void job_set_result(const std::string& id, const Json::Value& result) {
   std::lock_guard<std::mutex> lk(g_jobs_mu);
   auto it = g_jobs.find(id);
   if (it == g_jobs.end()) return;
   it->second.result = result;
-  it->second.status = result.isObject() && result.isMember("ok") && result["ok"].asBool() ? "done" : "error";
+  const bool ok = result.isObject() && result.isMember("ok") && result["ok"].isBool() && result["ok"].asBool();
+  it->second.status = ok ? "done" : "error";
+  if (!ok && result.isObject() && result.isMember("error") && result["error"].isString()) {
+    it->second.error = result["error"].asString();
+  }
   it->second.updated_unix_ms = now_unix_ms();
 }
 
@@ -228,6 +287,8 @@ static bool job_create(const std::string& id) {
   s.status = "queued";
   s.created_unix_ms = now_unix_ms();
   s.updated_unix_ms = s.created_unix_ms;
+  s.events = Json::Value(Json::arrayValue);
+  s.events_offset = 0;
   g_jobs[id] = s;
   return true;
 }
@@ -248,7 +309,8 @@ static bool job_delete(const std::string& id) {
 static Json::Value run_request_to_json(
   const DaemonConfig& daemon_cfg,
   const OpenAIClientConfig& ocfg,
-  const std::string& request_body
+  const std::string& request_body,
+  const char* job_id_or_null
 ) {
   Json::Value args;
   std::string perr;
@@ -376,8 +438,27 @@ static Json::Value run_request_to_json(
     if (args.isMember("force_tool") && args["force_tool"].isString()) opt.force_tool = args["force_tool"].asString();
     opt.require_tool_call = args.isMember("require_tool_call") && args["require_tool_call"].isBool() ? args["require_tool_call"].asBool() : false;
 
+    std::string job_id;
+    if (job_id_or_null && job_id_or_null[0]) {
+      job_id = job_id_or_null;
+      opt.on_event = [](void* ctx, const char* type, const char* data_json) {
+        if (!ctx || !type) return;
+        const auto* jid = static_cast<const std::string*>(ctx);
+        job_append_event(*jid, type, data_json ? data_json : "");
+      };
+      opt.on_event_ctx = &job_id;
+    }
+
     ToolLoopResult r;
-    ok = run_tool_loop(run_cfg, session, prompt, registry, &executor, opt, trace_stream, &r, &err, &http_status, &http_body);
+    try {
+      ok = run_tool_loop(run_cfg, session, prompt, registry, &executor, opt, trace_stream, &r, &err, &http_status, &http_body);
+    } catch (const std::exception& e) {
+      ok = false;
+      err = std::string("tool loop threw exception: ") + e.what();
+    } catch (...) {
+      ok = false;
+      err = "tool loop threw unknown exception";
+    }
     assistant_text = r.final_assistant_text;
     if (!r.events_json.empty()) {
       Json::CharReaderBuilder rb;
@@ -389,7 +470,22 @@ static Json::Value run_request_to_json(
       }
     }
     if (ok) {
+      // Persist a portable transcript into the session:
+      // - user prompt
+      // - tool calls + tool results as assistant text markers (portable)
+      // - final assistant message
       agent_session_add_message(session, AGENT_ROLE_USER, prompt.c_str());
+      for (const auto& rec : r.tool_records) {
+        std::string call = "[tool_call] name=" + rec.tool_name;
+        if (!rec.tool_call_id.empty()) call += " id=" + rec.tool_call_id;
+        call += "\n" + rec.arguments_json;
+        agent_session_add_message(session, AGENT_ROLE_ASSISTANT, call.c_str());
+
+        std::string out = "[tool_result] name=" + rec.tool_name;
+        if (!rec.tool_call_id.empty()) out += " id=" + rec.tool_call_id;
+        out += "\n" + rec.result_string;
+        agent_session_add_message(session, AGENT_ROLE_ASSISTANT, out.c_str());
+      }
       agent_session_add_message(session, AGENT_ROLE_ASSISTANT, assistant_text.c_str());
     }
   } else {
@@ -566,6 +662,18 @@ static agent_status_t provider_generate(void* vctx, const agent_generate_request
   return agent_string_set_copy(&out_resp->assistant_text, r.assistant_text.c_str(), r.assistant_text.size());
 }
 
+static std::string lower_copy(std::string s) {
+  for (char& c : s) c = (char)std::tolower((unsigned char)c);
+  return s;
+}
+
+static bool url_contains_ci(const std::string& url, const std::string& needle) {
+  if (needle.empty()) return false;
+  const std::string u = lower_copy(url);
+  const std::string n = lower_copy(needle);
+  return u.find(n) != std::string::npos;
+}
+
 int main(int argc, char** argv) {
   DaemonConfig cfg;
   cfg.host_scope_root = std::filesystem::current_path().string();
@@ -648,24 +756,39 @@ int main(int argc, char** argv) {
     }
   }
 
-  if (const char* k = getenv_s("OPENAI_API_KEY")) {
-    cfg.api_key = k;
-  } else if (const char* k2 = getenv_s("OPENROUTER_API_KEY")) {
-    cfg.api_key = k2;
-  } else if (const char* k3 = getenv_s("DEEPSEEK_API_KEY")) {
-    cfg.api_key = k3;
+  // Fill from env only when not provided by flags.
+  // Important: pick the API key that matches the configured base URL.
+  // Otherwise a host environment that exports multiple keys can accidentally send the wrong key to the wrong provider.
+  if (cfg.base_url.empty()) {
+    if (const char* b = getenv_s("OPENAI_API_BASE")) {
+      cfg.base_url = b;
+    } else if (const char* b2 = getenv_s("OPENAI_BASE_URL")) {
+      cfg.base_url = b2;
+    } else if (const char* b3 = getenv_s("OPENROUTER_API_BASE")) {
+      cfg.base_url = b3;
+    } else if (const char* b4 = getenv_s("DEEPSEEK_API_BASE")) {
+      cfg.base_url = b4;
+    }
   }
-  if (const char* b = getenv_s("OPENAI_API_BASE")) {
-    cfg.base_url = b;
-  } else if (const char* b2 = getenv_s("OPENAI_BASE_URL")) {
-    cfg.base_url = b2;
-  } else if (const char* b3 = getenv_s("OPENROUTER_API_BASE")) {
-    cfg.base_url = b3;
-  } else if (const char* b4 = getenv_s("DEEPSEEK_API_BASE")) {
-    cfg.base_url = b4;
+  if (cfg.api_key.empty()) {
+    if (url_contains_ci(cfg.base_url, "deepseek")) {
+      if (const char* k = getenv_s("DEEPSEEK_API_KEY")) cfg.api_key = k;
+      else if (const char* k2 = getenv_s("OPENAI_API_KEY")) cfg.api_key = k2;
+      else if (const char* k3 = getenv_s("OPENROUTER_API_KEY")) cfg.api_key = k3;
+    } else if (url_contains_ci(cfg.base_url, "openrouter")) {
+      if (const char* k = getenv_s("OPENROUTER_API_KEY")) cfg.api_key = k;
+      else if (const char* k2 = getenv_s("OPENAI_API_KEY")) cfg.api_key = k2;
+      else if (const char* k3 = getenv_s("DEEPSEEK_API_KEY")) cfg.api_key = k3;
+    } else {
+      if (const char* k = getenv_s("OPENAI_API_KEY")) cfg.api_key = k;
+      else if (const char* k2 = getenv_s("OPENROUTER_API_KEY")) cfg.api_key = k2;
+      else if (const char* k3 = getenv_s("DEEPSEEK_API_KEY")) cfg.api_key = k3;
+    }
   }
-  if (const char* m = getenv_s("AGENT_MODEL")) {
-    cfg.model = m;
+  if (cfg.model.empty()) {
+    if (const char* m = getenv_s("AGENT_MODEL")) {
+      cfg.model = m;
+    }
   }
 
   OpenAIClientConfig ocfg;
@@ -957,11 +1080,213 @@ int main(int argc, char** argv) {
     resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
     return;
 #else
-    Json::Value out = run_request_to_json(cfg, ocfg, req.body);
+    const auto started = std::chrono::steady_clock::now();
+    std::cerr << "agentd: /api/v1/run start bytes=" << req.body.size() << "\n";
+    Json::Value out = run_request_to_json(cfg, ocfg, req.body, nullptr);
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
+    const bool ok = out.isObject() && out.isMember("ok") && out["ok"].isBool() && out["ok"].asBool();
+    std::cerr << "agentd: /api/v1/run done ok=" << (ok ? "true" : "false") << " ms=" << ms << "\n";
     if (out.isObject() && out.isMember("rpc_status") && out["rpc_status"].isInt()) {
       resp->status = out["rpc_status"].asInt();
     }
     resp->body = json_stringify(out);
+#endif
+  });
+
+  // Async run: returns a job id immediately and completes in the background.
+  server.handle("POST", "/api/v1/run_async", [&](const HttpRequest& req, HttpResponse* resp) {
+    add_cors(resp);
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+
+#if !defined(AGENT_HAVE_JSONCPP)
+    resp->status = 500;
+    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
+    return;
+#else
+    Json::Value args;
+    std::string perr;
+    if (!json_parse_object(req.body, &args, &perr)) {
+      resp->status = 400;
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = std::string("invalid JSON: ") + perr;
+      resp->body = json_stringify(o);
+      return;
+    }
+    const std::string prompt = args.isMember("prompt") && args["prompt"].isString() ? args["prompt"].asString() : "";
+    if (prompt.empty()) {
+      resp->status = 400;
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "missing prompt";
+      resp->body = json_stringify(o);
+      return;
+    }
+
+    const std::string job_id = args.isMember("job_id") && args["job_id"].isString() ? args["job_id"].asString() : new_job_id();
+    if (job_id.empty()) {
+      resp->status = 400;
+      resp->body = R"({"ok":false,"error":"empty job_id"})";
+      return;
+    }
+    if (!job_create(job_id)) {
+      resp->status = 409;
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "job_id already exists";
+      o["job_id"] = job_id;
+      resp->body = json_stringify(o);
+      return;
+    }
+
+    const std::string body_copy = req.body;
+    std::thread([job_id, body_copy, cfg, ocfg]() mutable {
+      const auto started = std::chrono::steady_clock::now();
+      std::cerr << "agentd: /api/v1/run_async job=" << job_id << " start bytes=" << body_copy.size() << "\n";
+      job_set_status(job_id, "running", "");
+      try {
+        Json::Value out = run_request_to_json(cfg, ocfg, body_copy, job_id.c_str());
+        job_set_result(job_id, out);
+      } catch (const std::exception& e) {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = std::string("uncaught exception: ") + e.what();
+        job_set_result(job_id, o);
+      } catch (...) {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "uncaught unknown exception";
+        job_set_result(job_id, o);
+      }
+      const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
+      JobState s;
+      const bool got = job_get(job_id, &s);
+      const bool ok = got && s.result.isObject() && s.result.isMember("ok") && s.result["ok"].isBool() && s.result["ok"].asBool();
+      std::cerr << "agentd: /api/v1/run_async job=" << job_id << " done ok=" << (ok ? "true" : "false") << " ms=" << ms << "\n";
+    }).detach();
+
+    resp->status = 202;
+    Json::Value o(Json::objectValue);
+    o["ok"] = true;
+    o["job_id"] = job_id;
+    resp->body = json_stringify(o);
+    return;
+#endif
+  });
+
+  server.handle("GET", "/api/v1/job", [&](const HttpRequest& req, HttpResponse* resp) {
+    add_cors(resp);
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+#if !defined(AGENT_HAVE_JSONCPP)
+    resp->status = 500;
+    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
+    return;
+#else
+    const auto jid = query_get(req.query, "job_id");
+    if (!jid || jid->empty()) {
+      resp->status = 400;
+      resp->body = R"({"ok":false,"error":"missing job_id"})";
+      return;
+    }
+    JobState s;
+    if (!job_get(*jid, &s)) {
+      resp->status = 404;
+      resp->body = R"({"ok":false,"error":"job not found"})";
+      return;
+    }
+    Json::Value o(Json::objectValue);
+    o["ok"] = true;
+    o["job_id"] = s.id;
+    o["status"] = s.status;
+    o["error"] = s.error;
+    o["created_unix_ms"] = (Json::Int64)s.created_unix_ms;
+    o["updated_unix_ms"] = (Json::Int64)s.updated_unix_ms;
+    // Optional live events for progress (polling UI).
+    const auto include_ev = query_get(req.query, "include_events");
+    const bool want_events = include_ev && (*include_ev == "1" || *include_ev == "true");
+    const auto cursor_q = query_get(req.query, "cursor");
+    const auto max_q = query_get(req.query, "max_events");
+    uint64_t cursor = 0;
+    if (cursor_q && !cursor_q->empty()) {
+      try {
+        cursor = (uint64_t)std::stoull(*cursor_q);
+      } catch (...) {
+        cursor = 0;
+      }
+    }
+    size_t max_events = 256;
+    if (max_q && !max_q->empty()) {
+      try {
+        max_events = (size_t)std::stoull(*max_q);
+      } catch (...) {
+        max_events = 256;
+      }
+    }
+    if (max_events == 0) max_events = 256;
+    if (max_events > 2048) max_events = 2048;
+
+    o["events_cursor_base"] = (Json::UInt64)s.events_offset;
+    o["events_cursor_end"] = (Json::UInt64)(s.events_offset + (uint64_t)s.events.size());
+    if (want_events) {
+      Json::Value slice(Json::arrayValue);
+      const uint64_t base = s.events_offset;
+      const uint64_t end = base + (uint64_t)s.events.size();
+      bool reset = false;
+      uint64_t cur = cursor;
+      if (cur < base) {
+        reset = true;
+        cur = base;
+      }
+      if (cur > end) {
+        cur = end;
+      }
+      const uint64_t start_idx = cur - base;
+      const uint64_t avail = end - cur;
+      const uint64_t take = std::min<uint64_t>((uint64_t)max_events, avail);
+      for (uint64_t i = 0; i < take; i++) {
+        slice.append(s.events[(Json::ArrayIndex)(start_idx + i)]);
+      }
+      o["events"] = slice;
+      o["events_cursor_next"] = (Json::UInt64)(cur + take);
+      o["events_reset"] = reset;
+    }
+
+    if (s.status == "done" || s.status == "error") {
+      o["result"] = s.result;
+    }
+    resp->body = json_stringify(o);
+    return;
+#endif
+  });
+
+  server.handle("DELETE", "/api/v1/job", [&](const HttpRequest& req, HttpResponse* resp) {
+    add_cors(resp);
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+#if !defined(AGENT_HAVE_JSONCPP)
+    resp->status = 500;
+    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
+    return;
+#else
+    const auto jid = query_get(req.query, "job_id");
+    if (!jid || jid->empty()) {
+      resp->status = 400;
+      resp->body = R"({"ok":false,"error":"missing job_id"})";
+      return;
+    }
+    if (!job_delete(*jid)) {
+      resp->status = 409;
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "cannot delete job (still running or not found)";
+      o["job_id"] = *jid;
+      resp->body = json_stringify(o);
+      return;
+    }
+    Json::Value o(Json::objectValue);
+    o["ok"] = true;
+    o["job_id"] = *jid;
+    resp->body = json_stringify(o);
+    return;
 #endif
   });
 

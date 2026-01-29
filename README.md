@@ -157,6 +157,13 @@ Session browsing:
 - `GET /api/v1/session?session_id=<id>` returns the message history.
 - `GET /api/v1/session/audit?session_id=<id>` returns recent per-run audit entries (prompt + assistant + events).
 
+Async runs (UI-friendly):
+- `POST /api/v1/run_async` starts a background run and returns `{ ok, job_id }`.
+- `GET /api/v1/job?job_id=<id>` returns `{ ok, status, result? }` (result shape matches `/api/v1/run`).
+  - For live UI progress without SSE/WebSocket:
+    - Add `include_events=1` to include the tool/LLM `events` captured so far (best-effort).
+    - Use `cursor=<n>&max_events=<m>` to tail new events incrementally while the job is running.
+
 ### Run the Web UI
 
 ```bash

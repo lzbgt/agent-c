@@ -54,3 +54,14 @@ Completed milestones and notable tasks.
 - Added automatic “session rotation” for tool loops: if a provider rejects a request as too large, retry after more aggressive compaction (`cli/src/tool_loop.cpp`).
 - Downloaded DeepSeek API docs pages used for tool-calling, pricing, multi-round chat, and context caching reference into `ref/deepseek/` (HTML snapshots).
 - Added daemon-level smoke verification (`agentd_smoke`) and fixed loopback binding in the embedded-friendly HTTP server (`daemon/src/http_server.cpp`).
+- Added async daemon run endpoints (`POST /api/v1/run_async`, `GET /api/v1/job`) plus integration smoke test (`agentd_async_smoke`).
+- Added live job progress for the Web UI by tailing events from running jobs:
+  - `GET /api/v1/job?job_id=...&include_events=1&cursor=...&max_events=...`
+  - UI displays a live event timeline while an async job is running (no more "hang" with zero output).
+- Hardened tool loop parsing for wider provider compatibility:
+  - supports missing tool call ids by synthesizing a stable id
+  - supports legacy `function_call` shape
+  - fails fast if a model returns unparseable tool calls (avoids infinite loops)
+- Improved daemon observability and resilience:
+  - prints per-request start/end logs with duration
+  - catches uncaught async-thread exceptions and marks jobs as error instead of leaving them stuck "running"

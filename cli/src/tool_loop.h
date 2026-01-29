@@ -2,10 +2,16 @@
 
 #include "openai_client.h"
 #include "agent/tools.h"
+#include "agent/agent.h"
 
 #include <cstddef>
 #include <string>
+#include <vector>
 #include <iosfwd>
+
+// Optional callback for streaming tool-loop events as they occur.
+// `data_json` is a JSON object string for the event's `data` field.
+using ToolLoopEventCallback = void (*)(void* ctx, const char* type, const char* data_json);
 
 struct ToolLoopOptions {
   std::string force_tool;    // optional tool name to force on first request
@@ -31,6 +37,20 @@ struct ToolLoopOptions {
   size_t summary_preview_items = 3;
   size_t summary_snippet_chars = 160;
   size_t summary_max_chars = 600;
+
+  // Optional live event hook. When set, run_tool_loop will invoke this callback for every event.
+  // This is used by the daemon/UI to show progress while long requests are running.
+  ToolLoopEventCallback on_event = nullptr;
+  void* on_event_ctx = nullptr;
+};
+
+// Tool call record (captured during the tool loop) that can be persisted into host sessions
+// in a portable plain-text form.
+struct ToolLoopToolRecord {
+  std::string tool_name;
+  std::string tool_call_id;     // OpenAI-style call id when present (may be empty)
+  std::string arguments_json;   // OpenAI tool arguments string (JSON)
+  std::string result_string;    // executor output (often JSON envelope string)
 };
 
 struct ToolLoopResult {
@@ -39,6 +59,8 @@ struct ToolLoopResult {
   // This is intended for UIs; do not assume a fixed schema beyond `type`.
   std::string events_json;
   bool saw_tool_call = false;
+  // Tool transcript captured during execution (best-effort).
+  std::vector<ToolLoopToolRecord> tool_records;
 };
 
 // Runs an OpenAI-compatible tool-call loop using the host's HTTP client (libcurl).
