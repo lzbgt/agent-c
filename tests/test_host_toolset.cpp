@@ -322,6 +322,10 @@ static void test_text_search() {
     f << "needle here\n";
   }
   {
+    std::ofstream f(root / "src" / "a.cpp", std::ios::binary);
+    f << "int main() { /* needle */ return 0; }\n";
+  }
+  {
     std::ofstream f(root / "node_modules" / "pkg" / "b.txt", std::ios::binary);
     f << "needle in excluded dir\n";
   }
@@ -390,6 +394,148 @@ static void test_text_search() {
     agent_string_free(&out);
   }
 
+  // Extension filter should restrict which files are scanned.
+  {
+    Json::Value args(Json::objectValue);
+    args["query"] = "needle";
+    args["path"] = ".";
+    args["recursive"] = true;
+    args["use_default_excludes"] = true;
+    args["extensions"] = Json::Value(Json::arrayValue);
+    args["extensions"].append(".cpp");
+    args["max_results"] = 50;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "text_search", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    const auto& matches = resp["data"]["matches"];
+    assert(matches.isArray());
+    bool saw_cpp = false;
+    bool saw_txt = false;
+    for (Json::ArrayIndex i = 0; i < matches.size(); i++) {
+      const auto& m = matches[i];
+      if (!m.isObject() || !m["path"].isString()) continue;
+      const std::string p = m["path"].asString();
+      if (p.find("src/a.cpp") != std::string::npos) saw_cpp = true;
+      if (p.find("src/a.txt") != std::string::npos) saw_txt = true;
+    }
+    assert(saw_cpp);
+    assert(!saw_txt);
+    agent_string_free(&out);
+  }
+
+  agent_tool_registry_destroy(reg);
+  toolset_host_destroy(&exec);
+  std::filesystem::remove_all(root);
+}
+
+static void test_fs_find() {
+  const auto root = std::filesystem::temp_directory_path() / ("agent_host_tools_find_" + std::to_string((long long)getpid()));
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root / "src");
+  std::filesystem::create_directories(root / "node_modules" / "pkg");
+
+  {
+    std::ofstream f(root / "src" / "main.cpp", std::ios::binary);
+    f << "int main() { return 0; }\n";
+  }
+  {
+    std::ofstream f(root / "node_modules" / "pkg" / "lib.js", std::ios::binary);
+    f << "console.log('x');\n";
+  }
+
+  HostToolsetConfig cfg;
+  cfg.root_dir = root.string();
+
+  agent_tool_registry_t* reg = nullptr;
+  agent_tool_executor_t exec{};
+  assert(toolset_host_create(cfg, &reg, &exec) == AGENT_OK);
+
+  // Default excludes should skip node_modules.
+  {
+    Json::Value args(Json::objectValue);
+    args["path"] = ".";
+    args["recursive"] = true;
+    args["max_results"] = 200;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "fs_find", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    assert(resp["data"]["tool"].asString() == "fs_find");
+    const auto& entries = resp["data"]["entries"];
+    assert(entries.isArray());
+    bool saw_src = false;
+    bool saw_node = false;
+    for (Json::ArrayIndex i = 0; i < entries.size(); i++) {
+      const auto& e = entries[i];
+      if (!e.isObject() || !e["path"].isString()) continue;
+      const std::string p = e["path"].asString();
+      if (p.find("src/main.cpp") != std::string::npos) saw_src = true;
+      if (p.find("node_modules") != std::string::npos) saw_node = true;
+    }
+    assert(saw_src);
+    assert(!saw_node);
+    agent_string_free(&out);
+  }
+
+  // Disabling default excludes should allow node_modules paths.
+  {
+    Json::Value args(Json::objectValue);
+    args["path"] = ".";
+    args["recursive"] = true;
+    args["use_default_excludes"] = false;
+    args["max_results"] = 200;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "fs_find", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    const auto& entries = resp["data"]["entries"];
+    assert(entries.isArray());
+    bool saw_node = false;
+    for (Json::ArrayIndex i = 0; i < entries.size(); i++) {
+      const auto& e = entries[i];
+      if (!e.isObject() || !e["path"].isString()) continue;
+      if (e["path"].asString().find("node_modules") != std::string::npos) {
+        saw_node = true;
+        break;
+      }
+    }
+    assert(saw_node);
+    agent_string_free(&out);
+  }
+
+  // Extension filter should restrict files.
+  {
+    Json::Value args(Json::objectValue);
+    args["path"] = ".";
+    args["recursive"] = true;
+    args["extensions"] = Json::Value(Json::arrayValue);
+    args["extensions"].append(".cpp");
+    args["max_results"] = 200;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "fs_find", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    const auto& entries = resp["data"]["entries"];
+    assert(entries.isArray());
+    bool saw_cpp = false;
+    bool saw_js = false;
+    for (Json::ArrayIndex i = 0; i < entries.size(); i++) {
+      const auto& e = entries[i];
+      if (!e.isObject() || !e["path"].isString()) continue;
+      const std::string p = e["path"].asString();
+      if (p.find("src/main.cpp") != std::string::npos) saw_cpp = true;
+      if (p.find("lib.js") != std::string::npos) saw_js = true;
+    }
+    assert(saw_cpp);
+    assert(!saw_js);
+    agent_string_free(&out);
+  }
+
   agent_tool_registry_destroy(reg);
   toolset_host_destroy(&exec);
   std::filesystem::remove_all(root);
@@ -401,5 +547,6 @@ int main() {
   test_shell_exec();
   test_proc_exec();
   test_text_search();
+  test_fs_find();
   return 0;
 }

@@ -81,6 +81,42 @@ function SearchMatchesView({ matches }: { matches: any[] }) {
   );
 }
 
+function EntriesView({ entries, title }: { entries: any[]; title?: string }) {
+  const items = Array.isArray(entries) ? entries : [];
+  if (items.length === 0) return null;
+  return (
+    <div className="mt-3">
+      <div className="mb-1 text-xs font-semibold text-white/70">{title ?? "Entries"}</div>
+      <div className="overflow-auto rounded-md border border-white/10 bg-black/20">
+        <table className="w-full text-left text-xs text-white/85">
+          <thead className="sticky top-0 bg-black/40 text-white/70">
+            <tr>
+              <th className="px-2 py-2">Path</th>
+              <th className="px-2 py-2">Type</th>
+              <th className="px-2 py-2">Size</th>
+            </tr>
+          </thead>
+          <tbody>
+            {items.slice(0, 200).map((e, idx) => (
+              <tr key={idx} className="border-t border-white/5">
+                <td className="px-2 py-2 font-mono text-[11px] text-white/80">
+                  {typeof e?.path === "string" ? e.path : ""}
+                </td>
+                <td className="px-2 py-2 font-mono text-[11px] text-white/80">
+                  {typeof e?.type === "string" ? e.type : ""}
+                </td>
+                <td className="px-2 py-2 font-mono text-[11px] text-white/80">
+                  {typeof e?.size_bytes === "number" ? e.size_bytes : ""}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 export default function ToolResultView({
   baseUrl,
   yolo,
@@ -99,6 +135,7 @@ export default function ToolResultView({
     const patch = typeof parsed?.data?.patch === "string" ? parsed.data.patch : null;
     const output = typeof parsed?.data?.output === "string" ? parsed.data.output : null;
     const matches = Array.isArray(parsed?.data?.matches) ? parsed.data.matches : null;
+    const entries = Array.isArray(parsed?.data?.entries) ? parsed.data.entries : null;
     const hasMore = typeof parsed?.data?.has_more === "boolean" ? parsed.data.has_more : null;
     const nextStartLine =
       typeof parsed?.data?.next_start_line === "number" ? parsed.data.next_start_line : null;
@@ -207,6 +244,9 @@ export default function ToolResultView({
         ) : null}
 
         {toolName === "text_search" && matches ? <SearchMatchesView matches={matches} /> : null}
+        {(toolName === "fs_list" || toolName === "fs_find") && entries ? (
+          <EntriesView entries={entries} title={toolName === "fs_find" ? "Found" : "Entries"} />
+        ) : null}
 
         {showRaw ? (
           <div className="mt-3">

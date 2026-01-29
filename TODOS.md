@@ -23,6 +23,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add `--summary-model` option (host-generated compaction summary insertion for `--tools none`).
 - [x] Implement extensible host toolsets (subprocess exec + diff-based file edits) for CLI/daemon (`--tools host`).
 - [x] Add bounded filesystem inspection tools (`fs_stat`, `fs_list`, `fs_read`) for token-efficient inspection (paged reads; entry caps).
+- [x] Add bounded file discovery tool (`fs_find`) so models avoid unbounded `find`/`tree`.
 - [x] Add an OpenRouter **tool-call** smoke test (host toolset) using a cheap model that supports `tools`.
 - [x] Persist **tool-call transcripts** in a host-only audit log (`~/.agent/sessions/<id>.events.jsonl`) so session messages stay clean (token-safe).
 - [x] Make tool-loop `--max-steps` default unlimited (0 means unlimited).

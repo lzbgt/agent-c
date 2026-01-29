@@ -138,3 +138,6 @@ Completed milestones and notable tasks.
 - Moved verbose tool transcripts out of session message history:
   - Session messages remain user/assistant only (avoids token blowups when switching toolsets)
   - Full tool timelines are stored in `~/.agent/sessions/<id>.events.jsonl` and used by daemon/UI (`cli/src/session_store.cpp`, `daemon/src/main.cpp`, `cli/src/main.cpp`)
+- Added bounded file discovery + filtered search tools for token efficiency:
+  - `fs_find` for bounded file/dir discovery with default excludes (`cli/src/toolset_host.cpp`)
+  - `text_search` supports optional `extensions` filter to reduce irrelevant scans (`cli/src/toolset_host.cpp`)

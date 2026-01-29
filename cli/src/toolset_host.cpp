@@ -390,6 +390,255 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
 #endif
 }
 
+static agent_status_t tool_fs_find(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
+  if (!ctx || !out_result) return AGENT_ERR_INVALID_ARGUMENT;
+#if !defined(AGENT_HAVE_JSONCPP)
+  return set_result(out_result, "{\"ok\":false,\"error\":\"fs_find requires jsoncpp\"}");
+#else
+  if (is_cancelled(ctx)) {
+    return set_result(out_result, "{\"ok\":false,\"error\":\"cancelled\"}");
+  }
+  auto write_envelope = [&](bool ok, const std::string& error, const Json::Value& data) -> agent_status_t {
+    Json::Value o(Json::objectValue);
+    o["ok"] = ok;
+    if (!error.empty()) o["error"] = error;
+    o["data"] = data;
+    Json::StreamWriterBuilder wb;
+    wb["indentation"] = "";
+    return set_result(out_result, Json::writeString(wb, o));
+  };
+
+  Json::Value args;
+  std::string err;
+  if (!parse_json(arguments_json, &args, &err) || !args.isObject()) {
+    return write_envelope(false, "invalid args", Json::Value(Json::objectValue));
+  }
+
+  const std::string path = args.isMember("path") && args["path"].isString() ? args["path"].asString() : ".";
+  const bool recursive = args.isMember("recursive") && args["recursive"].isBool() ? args["recursive"].asBool() : true;
+  const int max_results = args.isMember("max_results") && args["max_results"].isInt() ? args["max_results"].asInt() : 200;
+  const int max_depth = args.isMember("max_depth") && args["max_depth"].isInt() ? args["max_depth"].asInt() : 6;
+  const bool include_hidden = args.isMember("include_hidden") && args["include_hidden"].isBool() ? args["include_hidden"].asBool() : false;
+  const bool use_default_excludes =
+    !(args.isMember("use_default_excludes") && args["use_default_excludes"].isBool() && args["use_default_excludes"].asBool() == false);
+  const std::string type = args.isMember("type") && args["type"].isString() ? args["type"].asString() : "any";
+  const std::string name_substring =
+    args.isMember("name_substring") && args["name_substring"].isString() ? args["name_substring"].asString() : "";
+
+  if (max_results < 1) return write_envelope(false, "max_results must be >= 1", Json::Value(Json::objectValue));
+  if (max_depth < 0) return write_envelope(false, "max_depth must be >= 0", Json::Value(Json::objectValue));
+
+  auto lower_ascii = [](std::string s) {
+    for (char& c : s) c = (char)std::tolower((unsigned char)c);
+    return s;
+  };
+
+  std::vector<std::string> exclude_names;
+  if (use_default_excludes) {
+    exclude_names = {"node_modules", ".git", "build", "dist", "out", ".cache", "__pycache__", ".venv", "venv", ".DS_Store"};
+  }
+  if (args.isMember("exclude_names") && args["exclude_names"].isArray()) {
+    for (Json::ArrayIndex i = 0; i < args["exclude_names"].size(); i++) {
+      const auto& v = args["exclude_names"][i];
+      if (v.isString()) {
+        const std::string s = v.asString();
+        if (!s.empty()) exclude_names.push_back(s);
+      }
+    }
+  }
+
+  std::vector<std::string> extensions;
+  if (args.isMember("extensions") && args["extensions"].isArray()) {
+    for (Json::ArrayIndex i = 0; i < args["extensions"].size(); i++) {
+      const auto& v = args["extensions"][i];
+      if (!v.isString()) continue;
+      std::string s = v.asString();
+      if (s.empty()) continue;
+      if (s[0] != '.') s = "." + s;
+      extensions.push_back(lower_ascii(s));
+    }
+  }
+
+  const auto resolved = resolve_under_root(ctx->root, path, ctx->unrestricted);
+  if (!resolved) {
+    return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
+  }
+  std::error_code ec;
+  if (!std::filesystem::exists(*resolved, ec)) {
+    return write_envelope(false, "path does not exist", Json::Value(Json::objectValue));
+  }
+
+  const auto should_skip = [&](const std::filesystem::path& p) -> bool {
+    const auto name = p.filename().string();
+    if (!include_hidden && !name.empty() && name[0] == '.') return true;
+    if (!exclude_names.empty() && !name.empty()) {
+      for (const auto& ex : exclude_names) {
+        if (name == ex) return true;
+      }
+    }
+    return false;
+  };
+  const auto ext_matches = [&](const std::filesystem::path& p) -> bool {
+    if (extensions.empty()) return true;
+    std::string e = p.extension().string();
+    if (e.empty()) return false;
+    e = lower_ascii(e);
+    for (const auto& want : extensions) {
+      if (e == want) return true;
+    }
+    return false;
+  };
+  const auto type_matches = [&](const std::filesystem::directory_entry& de) -> bool {
+    if (type == "any") return true;
+    if (type == "file") return de.is_regular_file();
+    if (type == "dir") return de.is_directory();
+    return true;
+  };
+
+  Json::Value entries(Json::arrayValue);
+  int added = 0;
+  int dirs_skipped = 0;
+  int files_seen = 0;
+  int files_skipped_by_ext = 0;
+  bool truncated = false;
+
+  auto add_entry = [&](const std::filesystem::directory_entry& de) {
+    Json::Value e(Json::objectValue);
+    if (ctx->unrestricted) {
+      e["path"] = to_generic_string(de.path().lexically_normal());
+    } else {
+      e["path"] = de.path().lexically_relative(ctx->root).generic_string();
+    }
+    e["type"] = de.is_directory() ? "dir" : (de.is_regular_file() ? "file" : "other");
+    if (de.is_regular_file()) {
+      std::error_code ec2;
+      e["size_bytes"] = (Json::UInt64)de.file_size(ec2);
+    }
+    entries.append(e);
+    added++;
+  };
+
+  const auto consider = [&](const std::filesystem::directory_entry& de) {
+    if (!type_matches(de)) return;
+    if (!name_substring.empty()) {
+      const std::string bn = de.path().filename().string();
+      if (bn.find(name_substring) == std::string::npos) return;
+    }
+    if (de.is_regular_file()) {
+      files_seen++;
+      if (!ext_matches(de.path())) {
+        files_skipped_by_ext++;
+        return;
+      }
+    }
+    add_entry(de);
+  };
+
+  if (std::filesystem::is_regular_file(*resolved, ec)) {
+    std::filesystem::directory_entry de(*resolved, ec);
+    if (!ec) consider(de);
+  } else if (std::filesystem::is_directory(*resolved, ec)) {
+    if (recursive) {
+      for (auto it = std::filesystem::recursive_directory_iterator(*resolved, ec);
+           !ec && it != std::filesystem::recursive_directory_iterator();
+           ++it) {
+        if (is_cancelled(ctx)) return set_result(out_result, "{\"ok\":false,\"error\":\"cancelled\"}");
+        if (added >= max_results) {
+          truncated = true;
+          break;
+        }
+        if (max_depth >= 0 && it.depth() > max_depth) {
+          it.disable_recursion_pending();
+          continue;
+        }
+        if (should_skip(it->path())) {
+          if (it->is_directory()) {
+            dirs_skipped++;
+            it.disable_recursion_pending();
+          }
+          continue;
+        }
+        consider(*it);
+      }
+    } else {
+      for (auto it = std::filesystem::directory_iterator(*resolved, ec);
+           !ec && it != std::filesystem::directory_iterator();
+           ++it) {
+        if (is_cancelled(ctx)) return set_result(out_result, "{\"ok\":false,\"error\":\"cancelled\"}");
+        if (added >= max_results) {
+          truncated = true;
+          break;
+        }
+        if (should_skip(it->path())) {
+          if (it->is_directory()) dirs_skipped++;
+          continue;
+        }
+        consider(*it);
+      }
+    }
+  } else {
+    return write_envelope(false, "path is not a file or directory", Json::Value(Json::objectValue));
+  }
+
+  Json::Value data(Json::objectValue);
+  data["tool"] = "fs_find";
+  data["path"] = path;
+  data["resolved_path"] = to_generic_string(*resolved);
+  data["root_dir"] = to_generic_string(ctx->root);
+  data["unrestricted"] = ctx->unrestricted;
+  data["recursive"] = recursive;
+  data["max_results"] = max_results;
+  data["max_depth"] = max_depth;
+  data["include_hidden"] = include_hidden;
+  data["use_default_excludes"] = use_default_excludes;
+  data["type"] = type;
+  if (!name_substring.empty()) data["name_substring"] = name_substring;
+  data["entries"] = entries;
+  data["truncated"] = truncated;
+  data["dirs_skipped"] = dirs_skipped;
+  data["files_seen"] = files_seen;
+  data["files_skipped_by_ext"] = files_skipped_by_ext;
+  if (!extensions.empty()) {
+    Json::Value exts(Json::arrayValue);
+    for (const auto& s : extensions) exts.append(s);
+    data["extensions"] = exts;
+  }
+
+  {
+    std::ostringstream oss;
+    oss << "path: " << path << "\n";
+    oss << "resolved_path: " << to_generic_string(*resolved) << "\n";
+    oss << "recursive: " << (recursive ? "true" : "false") << "\n";
+    oss << "type: " << type << "\n";
+    if (!name_substring.empty()) oss << "name_substring: " << name_substring << "\n";
+    if (!extensions.empty()) {
+      oss << "extensions: ";
+      for (size_t i = 0; i < extensions.size(); i++) {
+        if (i) oss << ", ";
+        oss << extensions[i];
+      }
+      oss << "\n";
+    }
+    oss << "use_default_excludes: " << (use_default_excludes ? "true" : "false") << "\n";
+    oss << "entries: " << added << (truncated ? " (truncated)\n" : "\n");
+    for (Json::ArrayIndex i = 0; i < entries.size() && i < 100; i++) {
+      const auto& e = entries[i];
+      const std::string ep = e.isMember("path") && e["path"].isString() ? e["path"].asString() : "";
+      const std::string et = e.isMember("type") && e["type"].isString() ? e["type"].asString() : "";
+      oss << "- " << ep;
+      if (!et.empty()) oss << " (" << et << ")";
+      if (e.isMember("size_bytes") && e["size_bytes"].isUInt64()) {
+        oss << " " << (unsigned long long)e["size_bytes"].asUInt64() << " bytes";
+      }
+      oss << "\n";
+    }
+    data["output"] = oss.str();
+  }
+
+  return write_envelope(true, "", data);
+#endif
+}
+
 static agent_status_t tool_fs_read(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
   if (!ctx || !out_result) return AGENT_ERR_INVALID_ARGUMENT;
 #if !defined(AGENT_HAVE_JSONCPP)
@@ -585,6 +834,24 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
   const bool use_default_excludes =
     !(args.isMember("use_default_excludes") && args["use_default_excludes"].isBool() && args["use_default_excludes"].asBool() == false);
 
+  auto lower_ascii = [](std::string s) {
+    for (char& c : s) c = (char)std::tolower((unsigned char)c);
+    return s;
+  };
+  const std::string q = case_sensitive ? query : lower_ascii(query);
+
+  std::vector<std::string> extensions;
+  if (args.isMember("extensions") && args["extensions"].isArray()) {
+    for (Json::ArrayIndex i = 0; i < args["extensions"].size(); i++) {
+      const auto& v = args["extensions"][i];
+      if (!v.isString()) continue;
+      std::string s = v.asString();
+      if (s.empty()) continue;
+      if (s[0] != '.') s = "." + s;
+      extensions.push_back(lower_ascii(s));
+    }
+  }
+
   if (max_results < 1) {
     return write_envelope(false, "max_results must be >= 1", Json::Value(Json::objectValue));
   }
@@ -627,11 +894,16 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
     return write_envelope(false, "path does not exist", Json::Value(Json::objectValue));
   }
 
-  auto lower_ascii = [](std::string s) {
-    for (char& c : s) c = (char)std::tolower((unsigned char)c);
-    return s;
+  const auto ext_matches = [&](const std::filesystem::path& p) -> bool {
+    if (extensions.empty()) return true;
+    std::string e = p.extension().string();
+    if (e.empty()) return false;
+    e = lower_ascii(e);
+    for (const auto& want : extensions) {
+      if (e == want) return true;
+    }
+    return false;
   };
-  const std::string q = case_sensitive ? query : lower_ascii(query);
 
   const auto should_skip = [&](const std::filesystem::path& p) -> bool {
     const auto name = p.filename().string();
@@ -648,6 +920,7 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
   int files_scanned = 0;
   int files_skipped_binary = 0;
   int files_skipped_too_large = 0;
+  int files_skipped_by_ext = 0;
   int dirs_skipped = 0;
   bool truncated = false;
 
@@ -666,6 +939,10 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
 
   auto scan_file = [&](const std::filesystem::path& file_path) {
     if (is_cancelled(ctx)) return;
+    if (!ext_matches(file_path)) {
+      files_skipped_by_ext++;
+      return;
+    }
     std::error_code ec2;
     const uintmax_t sz = std::filesystem::file_size(file_path, ec2);
     if (!ec2 && max_file_bytes >= 0 && sz > (uintmax_t)max_file_bytes) {
@@ -766,10 +1043,16 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
   data["files_scanned"] = files_scanned;
   data["files_skipped_binary"] = files_skipped_binary;
   data["files_skipped_too_large"] = files_skipped_too_large;
+  data["files_skipped_by_ext"] = files_skipped_by_ext;
   data["dirs_skipped"] = dirs_skipped;
   data["matches"] = matches;
   data["matches_count"] = (Json::UInt64)matches.size();
   data["truncated"] = truncated;
+  if (!extensions.empty()) {
+    Json::Value exts(Json::arrayValue);
+    for (const auto& s : extensions) exts.append(s);
+    data["extensions"] = exts;
+  }
 
   {
     std::ostringstream oss;
@@ -779,11 +1062,20 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
     oss << "recursive: " << (recursive ? "true" : "false") << "\n";
     oss << "case_sensitive: " << (case_sensitive ? "true" : "false") << "\n";
     oss << "include_hidden: " << (include_hidden ? "true" : "false") << "\n";
+    if (!extensions.empty()) {
+      oss << "extensions: ";
+      for (size_t i = 0; i < extensions.size(); i++) {
+        if (i) oss << ", ";
+        oss << extensions[i];
+      }
+      oss << "\n";
+    }
     oss << "use_default_excludes: " << (use_default_excludes ? "true" : "false") << "\n";
     oss << "matches: " << (unsigned long long)matches.size() << (truncated ? " (truncated)\n" : "\n");
     oss << "files_scanned: " << files_scanned << "\n";
     if (files_skipped_binary) oss << "files_skipped_binary: " << files_skipped_binary << "\n";
     if (files_skipped_too_large) oss << "files_skipped_too_large: " << files_skipped_too_large << "\n";
+    if (files_skipped_by_ext) oss << "files_skipped_by_ext: " << files_skipped_by_ext << "\n";
     if (dirs_skipped) oss << "dirs_skipped: " << dirs_skipped << "\n";
     for (Json::ArrayIndex i = 0; i < matches.size() && i < 50; i++) {
       const auto& m = matches[i];
@@ -1280,6 +1572,9 @@ static agent_status_t host_tools_execute(void* vctx, const char* tool_name, cons
   if (name == "fs_list") {
     return tool_fs_list(ctx, arguments_json, out_result);
   }
+  if (name == "fs_find") {
+    return tool_fs_find(ctx, arguments_json, out_result);
+  }
   if (name == "fs_read") {
     return tool_fs_read(ctx, arguments_json, out_result);
   }
@@ -1398,6 +1693,28 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
 
   st = add_tool(
     r,
+    "fs_find",
+    "Find files/dirs under a path with bounded output (host-side). Prefer this over `find`/`tree` for predictable token usage.",
+    "{"
+    "\"type\":\"object\","
+    "\"properties\":{"
+    "  \"path\":{\"type\":\"string\",\"description\":\"File or directory path (default: .)\"},"
+    "  \"recursive\":{\"type\":\"boolean\",\"description\":\"When path is a directory, recurse (default: true).\"},"
+    "  \"max_results\":{\"type\":\"integer\",\"description\":\"Max entries to return (default: 200)\"},"
+    "  \"max_depth\":{\"type\":\"integer\",\"description\":\"Max recursion depth when recursive=true (default: 6)\"},"
+    "  \"include_hidden\":{\"type\":\"boolean\",\"description\":\"Include dotfiles (default: false).\"},"
+    "  \"type\":{\"type\":\"string\",\"description\":\"Entry type filter: any|file|dir (default: any).\"},"
+    "  \"name_substring\":{\"type\":\"string\",\"description\":\"Optional substring filter on basename.\"},"
+    "  \"extensions\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Optional file extension filters (e.g. [\\\".cpp\\\",\\\".h\\\"]).\"},"
+    "  \"use_default_excludes\":{\"type\":\"boolean\",\"description\":\"When true (default), skips common huge dirs like node_modules/build/dist unless explicitly requested.\"},"
+    "  \"exclude_names\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Extra directory/file basenames to exclude.\"}"
+    "}"
+    "}"
+  );
+  if (st != AGENT_OK) goto fail;
+
+  st = add_tool(
+    r,
     "fs_read",
     "Read a text file with bounded output + pagination. Prefer this over `cat`/`sed` when you need predictable token usage.",
     "{"
@@ -1430,6 +1747,7 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     "  \"max_results\":{\"type\":\"integer\",\"description\":\"Max matches to return (default: 200).\"},"
     "  \"max_file_bytes\":{\"type\":\"integer\",\"description\":\"Skip files larger than this many bytes (default: 524288). 0 disables size limit.\"},"
     "  \"max_line_chars\":{\"type\":\"integer\",\"description\":\"Max chars per snippet line (default: 400).\"},"
+    "  \"extensions\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Optional file extension filters (e.g. [\\\".cpp\\\",\\\".h\\\"]).\"},"
     "  \"use_default_excludes\":{\"type\":\"boolean\",\"description\":\"When true (default), skips common huge dirs like node_modules/build/dist unless explicitly requested.\"},"
     "  \"exclude_names\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Extra directory/file basenames to exclude.\"}"
     "},"
