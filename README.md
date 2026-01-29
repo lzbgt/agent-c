@@ -17,6 +17,9 @@ either via environment variables or `project.md`. Disable them with:
 export AGENT_DISABLE_NETWORK_TESTS=1
 ```
 
+Network tests also assume an HTTP proxy may be required; the scripts default to `http://localhost:8120`
+via `https_proxy` / `http_proxy`.
+
 ## CLI usage
 
 ### One prompt (persisted session by default)

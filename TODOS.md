@@ -26,6 +26,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add an OpenRouter **tool-call** smoke test (host toolset) using a cheap model that supports `tools`.
 - [x] Persist **tool-call transcripts** in sessions in a portable form (assistant text markers for tool calls/results) without breaking OpenAI-compatible request formats.
 - [x] Make tool-loop `--max-steps` default unlimited (0 means unlimited).
+- [ ] Add more network smokes for host tools beyond `shell_exec` (e.g. `fs_read` paging) to reduce regressions.
 
 ## Mid-term (daemon + broker)
 

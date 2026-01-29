@@ -87,3 +87,7 @@ Completed milestones and notable tasks.
 - Improved daemon robustness for async jobs and proxies:
   - ensure libcurl global initialization is done once for multi-threaded usage (`cli/src/openai_client.cpp`)
   - emit an immediate `start` event for async jobs so UIs can show progress even before the first LLM request finishes (`daemon/src/main.cpp`)
+- Expanded integration smoke coverage for host tools:
+  - DeepSeek `fs_read` paging smoke (`tests/deepseek_fs_read_smoke.sh`)
+  - OpenRouter `fs_read` paging smoke (`tests/openrouter_fs_read_smoke.sh`)
+  - Daemon host tool smoke using DeepSeek + `shell_exec` (`tests/agentd_host_tools_smoke.sh`)
