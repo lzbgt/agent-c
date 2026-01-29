@@ -38,7 +38,14 @@ Date: 2026-01-29
 4) **Compaction is policy-driven and supports multiple budgeting strategies**
    - Token counting is model-specific and may require heavy tokenizer libraries.
    - Therefore: core supports a portable **character-budget** strategy by default, and can accept a
-     host-provided token counter in the future.
+   host-provided token counter in the future.
+
+5) **Provider APIs are usually stateless; “session id” is a client concern**
+   - OpenAI-compatible Chat Completions APIs typically do not store conversation state on the server.
+   - DeepSeek explicitly documents `/chat/completions` as “stateless”: clients must concatenate and resend prior messages.
+   - Therefore our `session_id` is a **local agent/session store concept**, not a provider feature.
+   - Some providers offer **context caching** (prefix-cache / KV-cache) which reduces cost/latency when request prefixes repeat,
+     but this is not the same as a server-side session handle.
 
 ## Layering Overview
 
@@ -128,6 +135,11 @@ The tool-call loop uses the same char-budget idea, but performs compaction at th
 - Optionally insert a deterministic `system` “compaction summary” message describing what was dropped (no extra LLM call).
 
 This mirrors the approach in `ref/ds-cli` (Sophon) where compaction summaries are lightweight and do not require a second model call.
+
+Note on provider caching:
+- DeepSeek supports automatic “context caching” for repeated request **prefixes** (KV-cache on disk).
+- Our compaction policy preserves pinned `system` prefixes and (after a compaction event) a stable summary prefix,
+  so subsequent turns can still benefit from prefix cache hits.
 
 ### Optional summary insertion (future-friendly)
 

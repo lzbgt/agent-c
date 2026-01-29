@@ -51,4 +51,4 @@ Completed milestones and notable tasks.
 - Added a DeepSeek host-tool smoke test to verify non-calculator tool calling (`tests/deepseek_host_tools_smoke.sh`).
 - Added an OpenRouter host-tool smoke test to verify tool calling via OpenRouter (`tests/openrouter_host_tools_smoke.sh`).
 - Implemented seamless compaction for tool-call loops (CLI+daemon) with a deterministic “dropped messages” summary event (`cli/src/tool_loop.cpp`).
-- Downloaded DeepSeek API docs pages used for tool-calling and pricing reference into `ref/deepseek/` (HTML snapshots).
+- Downloaded DeepSeek API docs pages used for tool-calling, pricing, multi-round chat, and context caching reference into `ref/deepseek/` (HTML snapshots).
