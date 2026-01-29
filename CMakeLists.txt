@@ -159,4 +159,10 @@ if(PKG_CONFIG_FOUND AND JSONCPP_FOUND)
   )
   target_link_libraries(tool_loop_truncation_tests PRIVATE agent_host)
   add_test(NAME tool_loop_truncation_tests COMMAND tool_loop_truncation_tests)
-endif()
+
+  add_executable(openai_error_tests
+    tests/test_openai_errors.cpp
+  )
+  target_link_libraries(openai_error_tests PRIVATE agent_host)
+  add_test(NAME openai_error_tests COMMAND openai_error_tests)
+ endif()

@@ -70,3 +70,7 @@ std::string openai_try_extract_error_message(const std::string& response_body);
 // Formats a concise human-readable error summary for non-2xx responses.
 // Includes extracted provider error (when available).
 std::string openai_format_http_error(long http_status, const std::string& response_body);
+
+// Best-effort heuristic for provider errors indicating the request is too large for the model/context window.
+// Used to trigger "session rotation" retries with more aggressive compaction.
+bool openai_is_context_too_long_error(long http_status, const std::string& response_body);

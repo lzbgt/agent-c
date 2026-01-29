@@ -525,3 +525,45 @@ std::string openai_format_http_error(long http_status, const std::string& respon
   }
   return msg;
 }
+
+bool openai_is_context_too_long_error(long http_status, const std::string& response_body) {
+  // Some providers return HTTP 413 when the prompt is too large.
+  if (http_status == 413) {
+    return true;
+  }
+  if (http_status < 400) {
+    return false;
+  }
+
+  std::string msg = openai_try_extract_error_message(response_body);
+  if (msg.empty()) {
+    msg = response_body;
+  }
+
+  // Lowercase scan for common "context too long" / "too many tokens" patterns across providers.
+  std::string s;
+  s.reserve(msg.size());
+  for (char c : msg) {
+    s.push_back((char)std::tolower((unsigned char)c));
+  }
+
+  const char* needles[] = {
+    "context length",
+    "maximum context",
+    "max context",
+    "context window",
+    "too many tokens",
+    "token limit",
+    "prompt is too long",
+    "request too large",
+    "reduce the length",
+    "exceeds the maximum",
+    "context_length_exceeded",
+  };
+  for (const char* n : needles) {
+    if (s.find(n) != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
+}

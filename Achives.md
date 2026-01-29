@@ -103,3 +103,8 @@ Completed milestones and notable tasks.
   - `GET /api/v1/openrouter/models` filters by modalities+tool support and sorts by price (`daemon/src/main.cpp`)
   - Web UI includes an OpenRouter model picker and can apply selected model ids (`ui/src/App.tsx`)
   - Added daemon smoke test (`tests/agentd_openrouter_models_smoke.sh`)
+- Hardened “session rotation” for context-limit failures across host apps:
+  - centralized best-effort detection in `openai_is_context_too_long_error(...)` (`cli/src/openai_client.cpp`)
+  - added retry loops for `tools="none"` in daemon (streaming + non-stream) and CLI (compact more, retry) (`daemon/src/main.cpp`, `cli/src/main.cpp`)
+  - bounded verbose event payloads (`llm_request`/`llm_response`) to keep the Web UI responsive while preserving full transcripts in `trace_text`
+  - added a small unit test for the context-too-long heuristic (`tests/test_openai_errors.cpp`)

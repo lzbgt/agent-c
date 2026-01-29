@@ -37,6 +37,8 @@ static const char* getenv_s(const char* k) {
   return (v && v[0]) ? v : nullptr;
 }
 
+static std::string truncate_for_event(const std::string& s, size_t max_bytes, bool* out_truncated = nullptr);
+
 static std::string home_dir_best_effort() {
   if (const char* h = getenv_s("HOME")) {
     return h;
@@ -679,122 +681,160 @@ static Json::Value run_request_to_json(
     }
 
     if (stream_assistant) {
-      // Apply core compaction policy (same as agent_run_once) and surface a compaction event.
-      agent_compact_report_t compact{};
-      const agent_status_t cst = agent_session_compact_char_budget(
-        session,
-        max_chars == 0 ? 20000 : max_chars,
-        keep_last == 0 ? 16 : keep_last,
-        nullptr,
-        &compact
-      );
-      if (cst != AGENT_OK) {
-        ok = false;
-        err = "session compaction failed";
-        Json::Value d(Json::objectValue);
-        d["error"] = err;
-        push_ev("error", d);
-      } else {
-        Json::Value d(Json::objectValue);
-        d["before_chars"] = (Json::UInt64)compact.before_chars;
-        d["after_chars"] = (Json::UInt64)compact.after_chars;
-        d["dropped_messages"] = (Json::UInt64)compact.dropped_messages;
-        d["inserted_summary"] = (bool)compact.inserted_summary;
-        push_ev("compaction", d);
-      }
+      // Retry loop for providers that reject over-long contexts.
+      // For stateless providers, retrying with a tighter compaction budget is equivalent to "spawning a new session".
+      size_t attempt_max_chars = (max_chars == 0 ? 20000 : max_chars);
+      const size_t keep = (keep_last == 0 ? 16 : keep_last);
 
-      // Build the provider request JSON from the compacted session messages.
-      std::string request_json;
-      {
-        Json::Value root(Json::objectValue);
-        root["model"] = run_cfg.model;
-        root["stream"] = true;
-        Json::Value messages(Json::arrayValue);
-        const size_t n = agent_session_message_count(session);
-        for (size_t i = 0; i < n; i++) {
-          agent_message_view_t v{};
-          if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
-          Json::Value m(Json::objectValue);
-          m["role"] = agent_role_to_string(v.role);
-          m["content"] = std::string(v.content, v.content_len);
-          messages.append(m);
-        }
-        root["messages"] = messages;
-        Json::StreamWriterBuilder wb;
-        wb["indentation"] = "";
-        request_json = Json::writeString(wb, root);
-      }
-      {
-        Json::Value d(Json::objectValue);
-        if (verbose) d["request_json"] = request_json;
-        push_ev("llm_request", d);
-      }
-
-      struct StreamCtx {
-        std::string assistant;
-        std::string pending_delta;
-        bool verbose = false;
-        int chunks = 0;
-        decltype(push_ev)* push = nullptr;
-      } sctx;
-      sctx.verbose = verbose;
-      sctx.push = &push_ev;
-
-      auto on_chunk = [](void* vctx, const char* chunk_json, size_t chunk_len) {
-        auto* s = static_cast<StreamCtx*>(vctx);
-        if (!s || !chunk_json || chunk_len == 0 || !s->push) return;
-
-        s->chunks++;
-        Json::Value root;
-        std::string perr;
-        if (!json_parse_any(std::string(chunk_json, chunk_len), &root, &perr)) {
-          return;
-        }
-        const auto& choices = root["choices"];
-        if (!choices.isArray() || choices.empty()) return;
-        const auto& delta = choices[0]["delta"];
-        if (!delta.isObject()) return;
-        const auto& content = delta["content"];
-        if (!content.isString()) return;
-        const std::string dstr = content.asString();
-        if (dstr.empty()) return;
-        s->assistant += dstr;
-        s->pending_delta += dstr;
-
-        // Coalesce small deltas to avoid flooding the daemon/UI with thousands of events.
-        if (s->pending_delta.size() >= 128) {
+      for (int attempt = 0; attempt < 3; attempt++) {
+        // Apply core compaction policy (same as agent_run_once) and surface a compaction event.
+        agent_compact_report_t compact{};
+        const agent_status_t cst = agent_session_compact_char_budget(session, attempt_max_chars, keep, nullptr, &compact);
+        if (cst != AGENT_OK) {
+          ok = false;
+          err = "session compaction failed";
           Json::Value d(Json::objectValue);
-          d["delta"] = s->pending_delta;
-          d["total_len"] = (Json::UInt64)s->assistant.size();
-          if (s->verbose) {
-            const size_t n = s->assistant.size();
-            const size_t start = (n > 200) ? (n - 200) : 0;
-            d["assistant_tail"] = s->assistant.substr(start);
-          }
-          (*s->push)("assistant_delta", d);
-          s->pending_delta.clear();
+          d["attempt"] = attempt;
+          d["error"] = err;
+          push_ev("error", d);
+          break;
         }
-      };
+        {
+          Json::Value d(Json::objectValue);
+          d["attempt"] = attempt;
+          d["max_chars"] = (Json::UInt64)attempt_max_chars;
+          d["keep_last"] = (Json::UInt64)keep;
+          d["before_chars"] = (Json::UInt64)compact.before_chars;
+          d["after_chars"] = (Json::UInt64)compact.after_chars;
+          d["dropped_messages"] = (Json::UInt64)compact.dropped_messages;
+          d["inserted_summary"] = (bool)compact.inserted_summary;
+          push_ev("compaction", d);
+        }
 
-      OpenAIStreamResult sr = openai_chat_completions_raw_stream(run_cfg, request_json, on_chunk, &sctx, 256 * 1024);
-      http_status = sr.http_status;
-      http_body = sr.response_body;
+        // Build the provider request JSON from the compacted session messages.
+        std::string request_json;
+        {
+          Json::Value root(Json::objectValue);
+          root["model"] = run_cfg.model;
+          root["stream"] = true;
+          Json::Value messages(Json::arrayValue);
+          const size_t n = agent_session_message_count(session);
+          for (size_t i = 0; i < n; i++) {
+            agent_message_view_t v{};
+            if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
+            Json::Value m(Json::objectValue);
+            m["role"] = agent_role_to_string(v.role);
+            m["content"] = std::string(v.content, v.content_len);
+            messages.append(m);
+          }
+          root["messages"] = messages;
+          Json::StreamWriterBuilder wb;
+          wb["indentation"] = "";
+          request_json = Json::writeString(wb, root);
+        }
+        {
+          Json::Value d(Json::objectValue);
+          d["attempt"] = attempt;
+          if (verbose) {
+            bool trunc = false;
+            d["request_json"] = truncate_for_event(request_json, 64 * 1024, &trunc);
+            d["request_truncated"] = trunc;
+          }
+          push_ev("llm_request", d);
+        }
 
-      if (trace_stream) {
-        *trace_stream << "=== REQUEST (stream=" << (stream_assistant ? "true" : "false") << ") ===\n";
-        *trace_stream << request_json << "\n";
-        *trace_stream << "=== RESPONSE (stream capture) ===\n";
-        *trace_stream << (sr.response_body.empty() ? "" : (sr.response_body + "\n"));
-      }
+        struct StreamCtx {
+          std::string assistant;
+          std::string pending_delta;
+          bool verbose = false;
+          int chunks = 0;
+          decltype(push_ev)* push = nullptr;
+        } sctx;
+        sctx.verbose = verbose;
+        sctx.push = &push_ev;
 
-      if (http_status < 200 || http_status >= 300) {
-        ok = false;
-        err = sr.error_message.empty() ? openai_format_http_error(http_status, http_body) : sr.error_message;
-        Json::Value d(Json::objectValue);
-        d["http_status"] = (Json::Int64)http_status;
-        d["error"] = err;
-        push_ev("error", d);
-      } else {
+        auto on_chunk = [](void* vctx, const char* chunk_json, size_t chunk_len) {
+          auto* s = static_cast<StreamCtx*>(vctx);
+          if (!s || !chunk_json || chunk_len == 0 || !s->push) return;
+
+          s->chunks++;
+          Json::Value root;
+          std::string perr;
+          if (!json_parse_any(std::string(chunk_json, chunk_len), &root, &perr)) {
+            return;
+          }
+          const auto& choices = root["choices"];
+          if (!choices.isArray() || choices.empty()) return;
+          const auto& delta = choices[0]["delta"];
+          if (!delta.isObject()) return;
+          const auto& content = delta["content"];
+          if (!content.isString()) return;
+          const std::string dstr = content.asString();
+          if (dstr.empty()) return;
+          s->assistant += dstr;
+          s->pending_delta += dstr;
+
+          // Coalesce small deltas to avoid flooding the daemon/UI with thousands of events.
+          if (s->pending_delta.size() >= 128) {
+            Json::Value d(Json::objectValue);
+            d["delta"] = s->pending_delta;
+            d["total_len"] = (Json::UInt64)s->assistant.size();
+            if (s->verbose) {
+              const size_t n = s->assistant.size();
+              const size_t start = (n > 200) ? (n - 200) : 0;
+              d["assistant_tail"] = s->assistant.substr(start);
+            }
+            (*s->push)("assistant_delta", d);
+            s->pending_delta.clear();
+          }
+        };
+
+        OpenAIStreamResult sr = openai_chat_completions_raw_stream(run_cfg, request_json, on_chunk, &sctx, 256 * 1024);
+        http_status = sr.http_status;
+        http_body = sr.response_body;
+
+        if (trace_stream) {
+          *trace_stream << "=== REQUEST (stream=true attempt=" << attempt << ") ===\n";
+          *trace_stream << request_json << "\n";
+          *trace_stream << "=== RESPONSE (stream capture) ===\n";
+          *trace_stream << (sr.response_body.empty() ? "" : (sr.response_body + "\n"));
+        }
+
+        {
+          Json::Value d(Json::objectValue);
+          d["attempt"] = attempt;
+          d["http_status"] = (Json::Int64)http_status;
+          d["stream"] = true;
+          d["chunks"] = (Json::Int64)sctx.chunks;
+          if (verbose) d["response_body_capture"] = http_body;
+          push_ev("llm_response", d);
+        }
+
+        if (http_status < 200 || http_status >= 300) {
+          ok = false;
+          err = sr.error_message.empty() ? openai_format_http_error(http_status, http_body) : sr.error_message;
+
+          if (attempt < 2 && openai_is_context_too_long_error(http_status, http_body)) {
+            const size_t next = std::max<size_t>(2000, (attempt_max_chars * 3) / 4);
+            Json::Value d(Json::objectValue);
+            d["attempt"] = attempt;
+            d["http_status"] = (Json::Int64)http_status;
+            d["reason"] = "context_too_long_retry";
+            d["max_chars_before"] = (Json::UInt64)attempt_max_chars;
+            d["max_chars_after"] = (Json::UInt64)next;
+            push_ev("retry", d);
+            attempt_max_chars = next;
+            continue;
+          }
+
+          Json::Value d(Json::objectValue);
+          d["attempt"] = attempt;
+          d["http_status"] = (Json::Int64)http_status;
+          d["error"] = err;
+          push_ev("error", d);
+          break;
+        }
+
         assistant_text = sctx.assistant;
         if (assistant_text.empty() && !http_body.empty() && http_body.size() > 0 && http_body[0] == '{') {
           // Provider may have ignored streaming and returned a normal JSON completion.
@@ -808,33 +848,28 @@ static Json::Value run_request_to_json(
         if (!ok) {
           err = "streamed completion returned no assistant content";
           Json::Value d(Json::objectValue);
+          d["attempt"] = attempt;
           d["error"] = err;
           d["http_status"] = (Json::Int64)http_status;
           push_ev("error", d);
-        } else {
-          if (!sctx.pending_delta.empty()) {
-            Json::Value d(Json::objectValue);
-            d["delta"] = sctx.pending_delta;
-            d["total_len"] = (Json::UInt64)sctx.assistant.size();
-            if (verbose) {
-              const size_t n = sctx.assistant.size();
-              const size_t start = (n > 200) ? (n - 200) : 0;
-              d["assistant_tail"] = sctx.assistant.substr(start);
-            }
-            push_ev("assistant_delta", d);
-            sctx.pending_delta.clear();
-          }
-          agent_session_add_message(session, AGENT_ROLE_ASSISTANT, assistant_text.c_str());
+          break;
         }
-      }
 
-      {
-        Json::Value d(Json::objectValue);
-        d["http_status"] = (Json::Int64)http_status;
-        d["stream"] = true;
-        d["chunks"] = (Json::Int64)sctx.chunks;
-        if (verbose) d["response_body_capture"] = http_body;
-        push_ev("llm_response", d);
+        if (!sctx.pending_delta.empty()) {
+          Json::Value d(Json::objectValue);
+          d["delta"] = sctx.pending_delta;
+          d["total_len"] = (Json::UInt64)sctx.assistant.size();
+          if (verbose) {
+            const size_t n = sctx.assistant.size();
+            const size_t start = (n > 200) ? (n - 200) : 0;
+            d["assistant_tail"] = sctx.assistant.substr(start);
+          }
+          push_ev("assistant_delta", d);
+          sctx.pending_delta.clear();
+        }
+
+        agent_session_add_message(session, AGENT_ROLE_ASSISTANT, assistant_text.c_str());
+        break;
       }
     } else {
       ProviderCtx pctx;
@@ -845,43 +880,77 @@ static Json::Value run_request_to_json(
 
       agent_run_options_t run_opt{};
       run_opt.model = run_cfg.model.c_str();
-      run_opt.max_chars = max_chars;
       run_opt.keep_last_messages = keep_last;
       run_opt.summary_or_null = nullptr;
 
-      agent_run_report_t rep{};
-      const agent_status_t st = agent_run_once(session, &provider, &run_opt, &rep);
-      ok = (st == AGENT_OK);
-      assistant_text = ok ? std::string(rep.assistant_view.content, rep.assistant_view.content_len) : "";
-      if (!ok) {
-        err = pctx.last_error.empty() ? "agent_run_once failed" : pctx.last_error;
-        http_status = pctx.last_http_status;
-        http_body = pctx.last_body;
-      }
-      {
-        Json::Value d(Json::objectValue);
-        d["before_chars"] = (Json::UInt64)rep.compact.before_chars;
-        d["after_chars"] = (Json::UInt64)rep.compact.after_chars;
-        d["dropped_messages"] = (Json::UInt64)rep.compact.dropped_messages;
-        d["inserted_summary"] = (bool)rep.compact.inserted_summary;
-        push_ev("compaction", d);
-      }
-      {
-        Json::Value d(Json::objectValue);
-        if (verbose) d["request_json"] = pctx.last_request_body;
-        push_ev("llm_request", d);
-      }
-      if (trace_stream) {
-        *trace_stream << "=== REQUEST ===\n";
-        *trace_stream << (pctx.last_request_body.empty() ? "(request body unavailable)\n" : (pctx.last_request_body + "\n"));
-        *trace_stream << "=== RESPONSE ===\n";
-        *trace_stream << (pctx.last_body.empty() ? "" : (pctx.last_body + "\n"));
-      }
-      {
-        Json::Value d(Json::objectValue);
-        d["http_status"] = (Json::Int64)pctx.last_http_status;
-        if (verbose) d["response_body"] = pctx.last_body;
-        push_ev("llm_response", d);
+      size_t attempt_max_chars = (max_chars == 0 ? 20000 : max_chars);
+      for (int attempt = 0; attempt < 3; attempt++) {
+        run_opt.max_chars = attempt_max_chars;
+
+        agent_run_report_t rep{};
+        const agent_status_t st = agent_run_once(session, &provider, &run_opt, &rep);
+        ok = (st == AGENT_OK);
+        assistant_text = ok ? std::string(rep.assistant_view.content, rep.assistant_view.content_len) : "";
+        if (!ok) {
+          err = pctx.last_error.empty() ? "agent_run_once failed" : pctx.last_error;
+          http_status = pctx.last_http_status;
+          http_body = pctx.last_body;
+        }
+        {
+          Json::Value d(Json::objectValue);
+          d["attempt"] = attempt;
+          d["max_chars"] = (Json::UInt64)attempt_max_chars;
+          d["before_chars"] = (Json::UInt64)rep.compact.before_chars;
+          d["after_chars"] = (Json::UInt64)rep.compact.after_chars;
+          d["dropped_messages"] = (Json::UInt64)rep.compact.dropped_messages;
+          d["inserted_summary"] = (bool)rep.compact.inserted_summary;
+          push_ev("compaction", d);
+        }
+        {
+          Json::Value d(Json::objectValue);
+          d["attempt"] = attempt;
+          if (verbose) {
+            bool trunc = false;
+            d["request_json"] = truncate_for_event(pctx.last_request_body, 64 * 1024, &trunc);
+            d["request_truncated"] = trunc;
+          }
+          push_ev("llm_request", d);
+        }
+        if (trace_stream) {
+          *trace_stream << "=== REQUEST (attempt=" << attempt << ") ===\n";
+          *trace_stream << (pctx.last_request_body.empty() ? "(request body unavailable)\n" : (pctx.last_request_body + "\n"));
+          *trace_stream << "=== RESPONSE ===\n";
+          *trace_stream << (pctx.last_body.empty() ? "" : (pctx.last_body + "\n"));
+        }
+        {
+          Json::Value d(Json::objectValue);
+          d["attempt"] = attempt;
+          d["http_status"] = (Json::Int64)pctx.last_http_status;
+          if (verbose) {
+            bool trunc = false;
+            d["response_body"] = truncate_for_event(pctx.last_body, 64 * 1024, &trunc);
+            d["response_truncated"] = trunc;
+          }
+          push_ev("llm_response", d);
+        }
+
+        if (ok) {
+          break;
+        }
+
+        if (attempt < 2 && openai_is_context_too_long_error(pctx.last_http_status, pctx.last_body)) {
+          const size_t next = std::max<size_t>(2000, (attempt_max_chars * 3) / 4);
+          Json::Value d(Json::objectValue);
+          d["attempt"] = attempt;
+          d["http_status"] = (Json::Int64)pctx.last_http_status;
+          d["reason"] = "context_too_long_retry";
+          d["max_chars_before"] = (Json::UInt64)attempt_max_chars;
+          d["max_chars_after"] = (Json::UInt64)next;
+          push_ev("retry", d);
+          attempt_max_chars = next;
+          continue;
+        }
+        break;
       }
     }
 
@@ -1014,6 +1083,15 @@ static bool url_contains_ci(const std::string& url, const std::string& needle) {
   const std::string u = lower_copy(url);
   const std::string n = lower_copy(needle);
   return u.find(n) != std::string::npos;
+}
+
+static std::string truncate_for_event(const std::string& s, size_t max_bytes, bool* out_truncated) {
+  if (out_truncated) *out_truncated = false;
+  if (max_bytes == 0 || s.size() <= max_bytes) {
+    return s;
+  }
+  if (out_truncated) *out_truncated = true;
+  return s.substr(0, max_bytes) + "...(truncated)";
 }
 
 int main(int argc, char** argv) {

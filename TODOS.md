@@ -26,6 +26,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add an OpenRouter **tool-call** smoke test (host toolset) using a cheap model that supports `tools`.
 - [x] Persist **tool-call transcripts** in sessions in a portable form (assistant text markers for tool calls/results) without breaking OpenAI-compatible request formats.
 - [x] Make tool-loop `--max-steps` default unlimited (0 means unlimited).
+- [x] Add “session rotation” retries for `tools="none"` when providers reject an over-long context (CLI + daemon).
 - [ ] Add more network smokes for host tools beyond `shell_exec` (e.g. `fs_read` paging) to reduce regressions.
 
 ## Mid-term (daemon + broker)
@@ -39,6 +40,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
   - [x] stream job events via SSE (`GET /api/v1/job/stream`) for responsive UIs
   - [~] stream assistant token deltas (provider-dependent)
     - [x] `tools=none`: daemon can emit `assistant_delta` events when `stream_assistant=true`
+    - [x] `tools=none`: retry/rotate context on “too long” errors (reduces perceived hangs)
     - [ ] `tools=basic/host`: stream while still supporting tool calls (harder)
   - make event log fully structured (typed payloads; truncation metadata; stable schema)
 - [x] Add async runs (`/api/v1/run_async` + `/api/v1/job`) so UIs can poll long-running jobs without blocking.

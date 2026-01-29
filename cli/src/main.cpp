@@ -531,13 +531,51 @@ int main(int argc, char** argv) {
 
       agent_run_options_t run_opt;
       run_opt.model = model.c_str();
-      run_opt.max_chars = max_chars;
       run_opt.keep_last_messages = keep_last;
       run_opt.summary_or_null = nullptr;
 
-      agent_run_report_t rep{};
-      const agent_status_t st = agent_run_once(session, &provider, &run_opt, &rep);
-      if (st != AGENT_OK) {
+      size_t attempt_max_chars = (max_chars == 0 ? 20000 : max_chars);
+      for (int attempt = 0; attempt < 3; attempt++) {
+        run_opt.max_chars = attempt_max_chars;
+
+        agent_run_report_t rep{};
+        const agent_status_t st = agent_run_once(session, &provider, &run_opt, &rep);
+        if (st == AGENT_OK) {
+          if (trace) {
+            std::cerr << "=== REQUEST (attempt=" << attempt << ") ===\n";
+            if (!pctx.last_request_body.empty()) {
+              std::cerr << pctx.last_request_body << "\n";
+            } else {
+              std::cerr << "(request body unavailable)\n";
+            }
+            std::cerr << "=== RESPONSE ===\n";
+            if (!pctx.last_body.empty()) {
+              std::cerr << pctx.last_body << "\n";
+            }
+            std::cerr << "=== COMPACTION ===\n";
+            std::cerr << "before_chars=" << rep.compact.before_chars
+                      << " after_chars=" << rep.compact.after_chars
+                      << " dropped=" << rep.compact.dropped_messages
+                      << " inserted_summary=" << (int)rep.compact.inserted_summary
+                      << "\n";
+          }
+          std::cout << std::string(rep.assistant_view.content, rep.assistant_view.content_len) << "\n";
+          return 0;
+        }
+
+        // Retry on context-too-long rejections by compacting more aggressively (session rotation).
+        if (attempt < 2 && openai_is_context_too_long_error(pctx.last_http_status, pctx.last_body)) {
+          const size_t next = std::max<size_t>(2000, (attempt_max_chars * 3) / 4);
+          if (trace) {
+            std::cerr << "=== RETRY (context too long) ===\n";
+            std::cerr << "attempt=" << attempt << " http_status=" << pctx.last_http_status
+                      << " max_chars_before=" << attempt_max_chars
+                      << " max_chars_after=" << next << "\n";
+          }
+          attempt_max_chars = next;
+          continue;
+        }
+
         if (pctx.last_http_status) {
           if (!pctx.last_error.empty()) {
             std::cerr << pctx.last_error << "\n";
@@ -553,27 +591,8 @@ int main(int argc, char** argv) {
         return 1;
       }
 
-      if (trace) {
-        std::cerr << "=== REQUEST ===\n";
-        if (!pctx.last_request_body.empty()) {
-          std::cerr << pctx.last_request_body << "\n";
-        } else {
-          std::cerr << "(request body unavailable)\n";
-        }
-        std::cerr << "=== RESPONSE ===\n";
-        if (!pctx.last_body.empty()) {
-          std::cerr << pctx.last_body << "\n";
-        }
-        std::cerr << "=== COMPACTION ===\n";
-        std::cerr << "before_chars=" << rep.compact.before_chars
-                  << " after_chars=" << rep.compact.after_chars
-                  << " dropped=" << rep.compact.dropped_messages
-                  << " inserted_summary=" << (int)rep.compact.inserted_summary
-                  << "\n";
-      }
-
-      std::cout << std::string(rep.assistant_view.content, rep.assistant_view.content_len) << "\n";
-      return 0;
+      std::cerr << "agent_run_once failed after retries\n";
+      return 1;
     };
 
     int rc = 0;

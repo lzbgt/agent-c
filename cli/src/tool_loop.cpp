@@ -85,41 +85,10 @@ static Json::Value session_to_compacted_json_messages(
   return messages;
 }
 
-static bool is_context_too_long_error(long http_status, const std::string& response_body) {
-  if (http_status < 400) {
-    return false;
-  }
-  std::string msg = openai_try_extract_error_message(response_body);
-  if (msg.empty()) {
-    msg = response_body;
-  }
-  // Lowercase scan.
-  std::string s;
-  s.reserve(msg.size());
-  for (char c : msg) s.push_back((char)std::tolower((unsigned char)c));
-  const char* needles[] = {
-    "context length",
-    "maximum context",
-    "max context",
-    "too many tokens",
-    "token limit",
-    "prompt is too long",
-    "request too large",
-    "reduce the length",
-    "exceeds the maximum",
-  };
-  for (const char* n : needles) {
-    if (s.find(n) != std::string::npos) {
-      return true;
+  static bool extract_choice0_message(const Json::Value& root, Json::Value* out_message) {
+    if (!out_message) {
+      return false;
     }
-  }
-  return false;
-}
-
-static bool extract_choice0_message(const Json::Value& root, Json::Value* out_message) {
-  if (!out_message) {
-    return false;
-  }
   const auto& choices = root["choices"];
   if (!choices.isArray() || choices.empty()) {
     return false;
@@ -439,7 +408,7 @@ bool run_tool_loop(
     OpenAIRawResult raw = openai_chat_completions_raw(cfg, request_json);
     // If the request is rejected due to context length, compact more aggressively and retry.
     // This is equivalent to "spawning a new session" on stateless providers: restart with a smaller window + summary.
-    for (int retry = 0; retry < 2 && raw.http_status >= 400 && is_context_too_long_error(raw.http_status, raw.response_body); retry++) {
+    for (int retry = 0; retry < 2 && raw.http_status >= 400 && openai_is_context_too_long_error(raw.http_status, raw.response_body); retry++) {
       Json::Value d(Json::objectValue);
       d["step"] = (Json::UInt64)step;
       d["epoch"] = (Json::UInt64)context_epoch;
