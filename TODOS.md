@@ -62,6 +62,9 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
   - broker client abstraction (MQTT)
   - session routing per client
 - [ ] Define an auth story (device provisioning; tokens; rotating secrets).
+- [ ] Add a “Provider catalog” UX:
+  - list OpenRouter models via daemon endpoint (done)
+  - improve search/filter UI (context length, modalities, provider, price range)
 
 ## Mid-term (multimodal + edge)
 

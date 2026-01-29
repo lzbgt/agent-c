@@ -4,6 +4,7 @@ import {
   apiGetAudit,
   apiGetHealth,
   apiGetJobProgress,
+  apiGetOpenRouterModels,
   apiGetTools,
   apiListSessions,
   apiRun,
@@ -41,6 +42,11 @@ export default function App() {
   const [apiKey, setApiKey] = useLocalStorageState("agentui.apiKey", "");
   const [timeoutMs, setTimeoutMs] = useLocalStorageState("agentui.timeoutMs", "60000");
   const [streamAssistant, setStreamAssistant] = useLocalStorageState("agentui.streamAssistant", false);
+  const [orMinTotal, setOrMinTotal] = useLocalStorageState("agentui.orMinTotal", "0.01");
+  const [orMaxTotal, setOrMaxTotal] = useLocalStorageState("agentui.orMaxTotal", "0.50");
+  const [orRequireMultimodal, setOrRequireMultimodal] = useLocalStorageState("agentui.orRequireMultimodal", true);
+  const [orRequireTools, setOrRequireTools] = useLocalStorageState("agentui.orRequireTools", true);
+  const [orLimit, setOrLimit] = useLocalStorageState("agentui.orLimit", "50");
   const [maxSteps, setMaxSteps] = useLocalStorageState("agentui.maxSteps", "0");
   const [maxChars, setMaxChars] = useLocalStorageState("agentui.maxChars", "20000");
   const [keepLast, setKeepLast] = useLocalStorageState("agentui.keepLast", "16");
@@ -81,6 +87,7 @@ export default function App() {
   });
 
   const [result, setResult] = React.useState<RunResponse | undefined>(undefined);
+  const [openrouterModels, setOpenrouterModels] = React.useState<any | null>(null);
 
   const run = useMutation({
     mutationFn: async () => {
@@ -140,6 +147,33 @@ export default function App() {
     onError: (e) => {
       // Keep the last conversation visible when a run cannot be started.
       setJobError(`run failed: ${String(e)}`);
+    },
+  });
+
+  const fetchOpenRouterModels = useMutation({
+    mutationFn: async () => {
+      const minTotal = Number(orMinTotal);
+      const maxTotal = Number(orMaxTotal);
+      const limit = Number(orLimit);
+      return apiGetOpenRouterModels(base, {
+        apiKey: apiKey || undefined,
+        openrouterBaseUrl: "https://openrouter.ai/api/v1",
+        minTotal: Number.isFinite(minTotal) ? minTotal : 0.01,
+        maxTotal: Number.isFinite(maxTotal) ? maxTotal : 0.5,
+        requireMultimodalInput: orRequireMultimodal,
+        requireTools: orRequireTools,
+        includeFree: false,
+        limit: Number.isFinite(limit) ? limit : 50,
+        refresh: true,
+      });
+    },
+    onSuccess: (v) => {
+      setOpenrouterModels(v);
+      if (v.ok && v.recommended_model && typeof v.recommended_model === "string" && v.recommended_model.length > 0) {
+        // Convenience: prime the model field with the recommended choice.
+        setModel(v.recommended_model);
+        setBaseUrl("https://openrouter.ai/api/v1");
+      }
     },
   });
 
@@ -555,6 +589,117 @@ export default function App() {
                 </div>
               </div>
             ) : null}
+
+            <div className="mt-4">
+              <div className="mb-2 text-xs font-semibold text-white/70">OpenRouter model picker</div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label>Min total $/1M</Label>
+                  <input
+                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                    value={orMinTotal}
+                    onChange={(e) => setOrMinTotal(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label>Max total $/1M</Label>
+                  <input
+                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                    value={orMaxTotal}
+                    onChange={(e) => setOrMaxTotal(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <Label>Limit</Label>
+                  <input
+                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                    value={orLimit}
+                    onChange={(e) => setOrLimit(e.target.value)}
+                  />
+                </div>
+                <div className="mt-6 flex items-center gap-2">
+                  <input
+                    id="orRequireMultimodal"
+                    type="checkbox"
+                    checked={orRequireMultimodal}
+                    onChange={(e) => setOrRequireMultimodal(e.target.checked)}
+                  />
+                  <label htmlFor="orRequireMultimodal" className="text-sm text-white/70">
+                    Require multimodal input
+                  </label>
+                </div>
+                <div className="col-span-2 flex items-center gap-2">
+                  <input
+                    id="orRequireTools"
+                    type="checkbox"
+                    checked={orRequireTools}
+                    onChange={(e) => setOrRequireTools(e.target.checked)}
+                  />
+                  <label htmlFor="orRequireTools" className="text-sm text-white/70">
+                    Require tools
+                  </label>
+                </div>
+              </div>
+
+              <button
+                className="mt-3 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                onClick={() => fetchOpenRouterModels.mutate()}
+                disabled={fetchOpenRouterModels.isPending}
+                type="button"
+              >
+                {fetchOpenRouterModels.isPending ? "Fetching…" : "Fetch OpenRouter models"}
+              </button>
+
+              {fetchOpenRouterModels.isError ? (
+                <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+                  Failed: {String(fetchOpenRouterModels.error)}
+                </div>
+              ) : null}
+
+              {openrouterModels?.ok && Array.isArray(openrouterModels.models) ? (
+                <div className="mt-3 max-h-72 overflow-auto rounded-md border border-white/10 bg-black/20">
+                  <div className="sticky top-0 grid grid-cols-5 gap-2 border-b border-white/10 bg-black/40 px-3 py-2 text-[11px] font-semibold text-white/70">
+                    <div>Total</div>
+                    <div>Prompt</div>
+                    <div>Compl</div>
+                    <div>Ctx</div>
+                    <div>Model</div>
+                  </div>
+                  {openrouterModels.models.map((m: any) => (
+                    <div key={m.id} className="grid grid-cols-5 gap-2 px-3 py-2 text-[11px] text-white/80 hover:bg-white/5">
+                      <div>{typeof m.total_usd_per_million === "number" ? m.total_usd_per_million.toFixed(3) : ""}</div>
+                      <div>{typeof m.prompt_usd_per_million === "number" ? m.prompt_usd_per_million.toFixed(3) : ""}</div>
+                      <div>
+                        {typeof m.completion_usd_per_million === "number" ? m.completion_usd_per_million.toFixed(3) : ""}
+                      </div>
+                      <div>{m.context_length ?? ""}</div>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="truncate font-mono">{m.id}</div>
+                        <button
+                          className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/80 hover:bg-black/40"
+                          onClick={() => {
+                            setModel(String(m.id || ""));
+                            setBaseUrl("https://openrouter.ai/api/v1");
+                          }}
+                          type="button"
+                        >
+                          Use
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : openrouterModels && !openrouterModels.ok ? (
+                <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+                  {openrouterModels.error || "OpenRouter models fetch failed"}
+                </div>
+              ) : null}
+
+              <div className="mt-2 text-[11px] text-white/40">
+                Uses the daemon endpoint <code>/api/v1/openrouter/models</code>. If you set an API key above, the UI will send it as an
+                Authorization header.
+              </div>
+            </div>
           </div>
         ) : null}
 

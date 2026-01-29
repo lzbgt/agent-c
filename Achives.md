@@ -99,3 +99,7 @@ Completed milestones and notable tasks.
   - daemon supports `stream_assistant: true` for `tools="none"` and emits incremental `assistant_delta` events (`daemon/src/main.cpp`)
   - added a small reusable SSE parser + unit test (`cli/src/sse_parser.cpp`, `tests/test_sse_parser.cpp`)
   - added an agentd integration smoke for assistant streaming (`tests/agentd_stream_assistant_smoke.sh`)
+- Added OpenRouter model catalog discovery via daemon for picking verification models:
+  - `GET /api/v1/openrouter/models` filters by modalities+tool support and sorts by price (`daemon/src/main.cpp`)
+  - Web UI includes an OpenRouter model picker and can apply selected model ids (`ui/src/App.tsx`)
+  - Added daemon smoke test (`tests/agentd_openrouter_models_smoke.sh`)

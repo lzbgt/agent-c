@@ -252,6 +252,7 @@ Decision:
 Initial endpoints (implemented in `agentd`):
 - `GET /api/v1/health` → `{ ok, service, version }`
 - `GET /api/v1/tools` → returns the active tool registry (`name`, `description`, `parameters_json`) for the requested toolset.
+- `GET /api/v1/openrouter/models` → fetches + filters OpenRouter’s model catalog (for picking a cheap verification model).
 - `POST /api/v1/run` → runs one user prompt against an LLM backend with optional tool loop.
 - `POST /api/v1/run_async` → starts a background run and returns `{ ok, job_id }` (UI polls job status).
 - `GET /api/v1/job?job_id=...` → returns `{ ok, status, result? }` for async runs.

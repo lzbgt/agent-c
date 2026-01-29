@@ -28,6 +28,7 @@
 #include <map>
 #include <mutex>
 #include <thread>
+#include <functional>
 #include <unistd.h>
 #include <cerrno>
 
@@ -295,6 +296,68 @@ static std::string json_try_extract_assistant_content_from_completion(const Json
   const auto& text = choices[0]["text"];
   if (text.isString()) return text.asString();
   return "";
+}
+
+static std::string trim_slashes(std::string s) {
+  while (!s.empty() && s.back() == '/') s.pop_back();
+  return s;
+}
+
+static std::string header_get_ci(const std::map<std::string, std::string>& headers, const std::string& key_lc) {
+  auto it = headers.find(key_lc);
+  if (it == headers.end()) return "";
+  return it->second;
+}
+
+static std::string bearer_token_from_auth_header(const std::string& auth) {
+  // Headers were lowercased at parse time, but values are case-preserved. Accept common "Bearer " prefix.
+  const std::string prefix = "bearer ";
+  if (auth.size() >= prefix.size()) {
+    std::string head = auth.substr(0, prefix.size());
+    for (char& c : head) c = (char)std::tolower((unsigned char)c);
+    if (head == prefix) {
+      return auth.substr(prefix.size());
+    }
+  }
+  return "";
+}
+
+static double pricing_to_per_million(const Json::Value& v) {
+  // OpenRouter pricing fields are strings like "0.000000075" USD per token.
+  // Convert to USD per 1M tokens.
+  double per_token = 0.0;
+  if (v.isString()) {
+    try {
+      per_token = std::stod(v.asString());
+    } catch (...) {
+      per_token = 0.0;
+    }
+  } else if (v.isNumeric()) {
+    per_token = v.asDouble();
+  }
+  return per_token * 1'000'000.0;
+}
+
+static bool model_supports_tools(const Json::Value& model) {
+  const auto& sp = model["supported_parameters"];
+  if (!sp.isArray()) return false;
+  for (const auto& x : sp) {
+    if (x.isString() && x.asString() == "tools") return true;
+  }
+  return false;
+}
+
+static bool model_has_multimodal_input(const Json::Value& model) {
+  const auto& arch = model["architecture"];
+  if (!arch.isObject()) return false;
+  const auto& inputs = arch["input_modalities"];
+  if (!inputs.isArray()) return false;
+  for (const auto& m : inputs) {
+    if (!m.isString()) continue;
+    const std::string s = m.asString();
+    if (s == "image" || s == "audio" || s == "video") return true;
+  }
+  return false;
 }
 
 static void job_set_status(const std::string& id, const std::string& status, const std::string& error) {
@@ -1198,6 +1261,234 @@ int main(int argc, char** argv) {
     if (need_destroy_executor) {
       toolset_host_destroy(&executor);
     }
+
+    resp->body = json_stringify(out);
+    return;
+#endif
+  });
+
+  server.handle("GET", "/api/v1/openrouter/models", [&](const HttpRequest& req, HttpResponse* resp) {
+    add_cors(resp);
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+#if !defined(AGENT_HAVE_JSONCPP)
+    resp->status = 500;
+    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
+    return;
+#else
+    // Query params:
+    // - min_total/max_total: total $/1M tokens (prompt+completion)
+    // - require_multimodal_input: 1/0
+    // - require_tools: 1/0
+    // - include_free: 1/0
+    // - limit: max rows
+    // - refresh: bypass cache
+    const double min_total = [&]() -> double {
+      const auto q = query_get(req.query, "min_total");
+      if (!q || q->empty()) return 0.01;
+      try { return std::stod(*q); } catch (...) { return 0.01; }
+    }();
+    const double max_total = [&]() -> double {
+      const auto q = query_get(req.query, "max_total");
+      if (!q || q->empty()) return 0.50;
+      try { return std::stod(*q); } catch (...) { return 0.50; }
+    }();
+    const bool require_multimodal_input = [&]() -> bool {
+      const auto q = query_get(req.query, "require_multimodal_input");
+      if (!q) return true;
+      return string_to_bool(*q);
+    }();
+    const bool require_tools = [&]() -> bool {
+      const auto q = query_get(req.query, "require_tools");
+      if (!q) return true;
+      return string_to_bool(*q);
+    }();
+    const bool include_free = [&]() -> bool {
+      const auto q = query_get(req.query, "include_free");
+      if (!q) return false;
+      return string_to_bool(*q);
+    }();
+    const int limit = [&]() -> int {
+      const auto q = query_get(req.query, "limit");
+      if (!q || q->empty()) return 50;
+      try { return std::max(1, std::min(200, std::stoi(*q))); } catch (...) { return 50; }
+    }();
+    const bool refresh = [&]() -> bool {
+      const auto q = query_get(req.query, "refresh");
+      if (!q) return false;
+      return string_to_bool(*q);
+    }();
+
+    // Base url for OpenRouter models endpoint.
+    const std::string base_url = [&]() -> std::string {
+      const auto q = query_get(req.query, "base_url");
+      if (q && !q->empty()) return *q;
+      const char* b = getenv_s("OPENROUTER_API_BASE");
+      return b && b[0] ? std::string(b) : std::string("https://openrouter.ai/api/v1");
+    }();
+    const std::string models_url = trim_slashes(base_url) + "/models";
+
+    // API key precedence:
+    // 1) Authorization header (Bearer ...)
+    // 2) env OPENROUTER_API_KEY
+    // 3) env OPENAI_API_KEY (fallback)
+    std::string key;
+    {
+      const std::string auth = header_get_ci(req.headers, "authorization");
+      key = bearer_token_from_auth_header(auth);
+      if (key.empty()) {
+        if (const char* k = getenv_s("OPENROUTER_API_KEY")) key = k;
+        else if (const char* k2 = getenv_s("OPENAI_API_KEY")) key = k2;
+      }
+    }
+    if (key.empty()) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"missing OpenRouter key (set OPENROUTER_API_KEY or send Authorization: Bearer ...)\"}";
+      return;
+    }
+
+    struct Cache {
+      std::mutex mu;
+      int64_t fetched_unix_ms = 0;
+      std::string cache_key;
+      Json::Value payload;
+    };
+    static Cache cache;
+
+    const auto cache_key = [&]() -> std::string {
+      const size_t kh = std::hash<std::string>{}(key);
+      return models_url + "|" + std::to_string((unsigned long long)kh);
+    }();
+    const int64_t now = now_unix_ms();
+    const int64_t ttl_ms = 10 * 60 * 1000;
+
+    Json::Value payload;
+    bool cached = false;
+    {
+      std::lock_guard<std::mutex> lk(cache.mu);
+      if (!refresh && cache.cache_key == cache_key && cache.payload.isObject() && (now - cache.fetched_unix_ms) < ttl_ms) {
+        payload = cache.payload;
+        cached = true;
+      }
+    }
+
+    long http_status = 0;
+    std::string raw_body;
+    if (!cached) {
+      OpenAIClientConfig cfg2 = ocfg;
+      cfg2.base_url = models_url; // unused by GET
+      cfg2.api_key = key;
+
+      OpenAIRawResult r = openai_http_get_raw(cfg2, models_url, {});
+      http_status = r.http_status;
+      raw_body = r.response_body;
+      if (http_status < 200 || http_status >= 300) {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "failed to fetch OpenRouter models";
+        o["http_status"] = (Json::Int64)http_status;
+        o["http_body"] = raw_body;
+        resp->status = 502;
+        resp->body = json_stringify(o);
+        return;
+      }
+      std::string perr;
+      if (!json_parse_any(raw_body, &payload, &perr) || !payload.isObject()) {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "failed to parse OpenRouter models JSON";
+        o["parse_error"] = perr;
+        o["http_status"] = (Json::Int64)http_status;
+        resp->status = 502;
+        resp->body = json_stringify(o);
+        return;
+      }
+      {
+        std::lock_guard<std::mutex> lk(cache.mu);
+        cache.cache_key = cache_key;
+        cache.payload = payload;
+        cache.fetched_unix_ms = now;
+      }
+    }
+
+    const auto& data = payload["data"];
+    if (!data.isArray()) {
+      resp->status = 502;
+      resp->body = "{\"ok\":false,\"error\":\"unexpected OpenRouter models response (missing data array)\"}";
+      return;
+    }
+
+    struct Row {
+      double total = 0.0;
+      double prompt = 0.0;
+      double completion = 0.0;
+      Json::Value model;
+    };
+    std::vector<Row> rows;
+    rows.reserve((size_t)data.size());
+    for (const auto& m : data) {
+      if (!m.isObject()) continue;
+      const auto& pricing = m["pricing"];
+      const double prompt_pm = pricing_to_per_million(pricing["prompt"]);
+      const double completion_pm = pricing_to_per_million(pricing["completion"]);
+      const double total = prompt_pm + completion_pm;
+      if (!include_free && total <= 0.0) continue;
+      if (total < min_total || total > max_total) continue;
+      if (require_tools && !model_supports_tools(m)) continue;
+      if (require_multimodal_input && !model_has_multimodal_input(m)) continue;
+      Row r;
+      r.total = total;
+      r.prompt = prompt_pm;
+      r.completion = completion_pm;
+      r.model = m;
+      rows.push_back(std::move(r));
+    }
+    std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) {
+      if (a.total != b.total) return a.total < b.total;
+      if (a.prompt != b.prompt) return a.prompt < b.prompt;
+      if (a.completion != b.completion) return a.completion < b.completion;
+      const std::string ida = a.model.isMember("id") && a.model["id"].isString() ? a.model["id"].asString() : "";
+      const std::string idb = b.model.isMember("id") && b.model["id"].isString() ? b.model["id"].asString() : "";
+      return ida < idb;
+    });
+
+    Json::Value out(Json::objectValue);
+    out["ok"] = true;
+    out["source"] = "openrouter";
+    out["base_url"] = base_url;
+    out["models_url"] = models_url;
+    out["cached"] = cached;
+    out["fetched_unix_ms"] = (Json::Int64)(cached ? cache.fetched_unix_ms : now);
+    out["min_total"] = min_total;
+    out["max_total"] = max_total;
+    out["require_multimodal_input"] = require_multimodal_input;
+    out["require_tools"] = require_tools;
+    out["include_free"] = include_free;
+    out["limit"] = limit;
+    out["total_models"] = (Json::UInt64)data.size();
+
+    Json::Value arr(Json::arrayValue);
+    for (int i = 0; i < limit && i < (int)rows.size(); i++) {
+      const auto& r = rows[(size_t)i];
+      const auto& m = r.model;
+      Json::Value e(Json::objectValue);
+      e["id"] = m.isMember("id") && m["id"].isString() ? m["id"].asString() : "";
+      e["name"] = m.isMember("name") && m["name"].isString() ? m["name"].asString() : "";
+      e["context_length"] = m.isMember("context_length") ? m["context_length"] : Json::Value(0);
+      e["total_usd_per_million"] = r.total;
+      e["prompt_usd_per_million"] = r.prompt;
+      e["completion_usd_per_million"] = r.completion;
+      e["supports_tools"] = model_supports_tools(m);
+      e["supports_multimodal_input"] = model_has_multimodal_input(m);
+      const auto& arch = m["architecture"];
+      if (arch.isObject()) {
+        e["input_modalities"] = arch["input_modalities"];
+        e["output_modalities"] = arch["output_modalities"];
+      }
+      arr.append(e);
+    }
+    out["count"] = (Json::UInt64)arr.size();
+    out["models"] = arr;
+    out["recommended_model"] = arr.size() > 0 ? arr[0]["id"] : Json::Value("");
 
     resp->body = json_stringify(out);
     return;

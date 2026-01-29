@@ -1,6 +1,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 struct OpenAIClientConfig {
   std::string base_url;  // e.g. https://api.openai.com/v1
@@ -32,6 +33,14 @@ OpenAIChatResult openai_chat_completions(
 OpenAIRawResult openai_chat_completions_raw(
   const OpenAIClientConfig& cfg,
   const std::string& request_body_json
+);
+
+// Minimal GET helper (host-only) with the same proxy + timeout policy as POST.
+// Intended for provider metadata endpoints (e.g. OpenRouter /models).
+OpenAIRawResult openai_http_get_raw(
+  const OpenAIClientConfig& cfg,
+  const std::string& url,
+  const std::vector<std::string>& extra_headers
 );
 
 // Streaming helper for OpenAI-compatible `stream: true` responses (SSE).

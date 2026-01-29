@@ -83,6 +83,78 @@ export async function apiGetTools(
   return ToolDefsRespSchema.parse(j);
 }
 
+export const OpenRouterModelsRespSchema = z.object({
+  ok: z.boolean(),
+  source: z.string().optional(),
+  base_url: z.string().optional(),
+  models_url: z.string().optional(),
+  cached: z.boolean().optional(),
+  fetched_unix_ms: z.number().optional(),
+  min_total: z.number().optional(),
+  max_total: z.number().optional(),
+  require_multimodal_input: z.boolean().optional(),
+  require_tools: z.boolean().optional(),
+  include_free: z.boolean().optional(),
+  limit: z.number().optional(),
+  total_models: z.number().optional(),
+  count: z.number().optional(),
+  recommended_model: z.string().optional(),
+  models: z
+    .array(
+      z.object({
+        id: z.string(),
+        name: z.string().optional(),
+        context_length: z.any().optional(),
+        total_usd_per_million: z.number().optional(),
+        prompt_usd_per_million: z.number().optional(),
+        completion_usd_per_million: z.number().optional(),
+        supports_tools: z.boolean().optional(),
+        supports_multimodal_input: z.boolean().optional(),
+        input_modalities: z.any().optional(),
+        output_modalities: z.any().optional(),
+      }),
+    )
+    .optional(),
+  error: z.string().optional(),
+  http_status: z.number().optional(),
+  http_body: z.string().optional(),
+});
+export type OpenRouterModelsResp = z.infer<typeof OpenRouterModelsRespSchema>;
+
+export async function apiGetOpenRouterModels(
+  base: string,
+  opts: {
+    apiKey?: string;
+    openrouterBaseUrl?: string;
+    minTotal?: number;
+    maxTotal?: number;
+    requireMultimodalInput?: boolean;
+    requireTools?: boolean;
+    includeFree?: boolean;
+    limit?: number;
+    refresh?: boolean;
+  },
+): Promise<OpenRouterModelsResp> {
+  const q = new URLSearchParams();
+  if (opts.openrouterBaseUrl) q.set("base_url", opts.openrouterBaseUrl);
+  if (typeof opts.minTotal === "number") q.set("min_total", String(opts.minTotal));
+  if (typeof opts.maxTotal === "number") q.set("max_total", String(opts.maxTotal));
+  if (typeof opts.requireMultimodalInput === "boolean")
+    q.set("require_multimodal_input", opts.requireMultimodalInput ? "1" : "0");
+  if (typeof opts.requireTools === "boolean") q.set("require_tools", opts.requireTools ? "1" : "0");
+  if (typeof opts.includeFree === "boolean") q.set("include_free", opts.includeFree ? "1" : "0");
+  if (typeof opts.limit === "number") q.set("limit", String(opts.limit));
+  if (opts.refresh) q.set("refresh", "1");
+
+  const headers: Record<string, string> = {};
+  if (opts.apiKey && opts.apiKey.trim().length > 0) {
+    headers["Authorization"] = `Bearer ${opts.apiKey.trim()}`;
+  }
+  const r = await fetch(`${base}/api/v1/openrouter/models?${q.toString()}`, { headers });
+  const j = await r.json();
+  return OpenRouterModelsRespSchema.parse(j);
+}
+
 export async function apiGetHealth(base: string): Promise<Health> {
   const r = await fetch(`${base}/api/v1/health`);
   const j = await r.json();

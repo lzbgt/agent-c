@@ -177,6 +177,11 @@ Tool schema introspection (extensible tools):
   `name`, `description`, `parameters_json` (OpenAI-compatible JSON Schema).
 - This is intended for “day-1 rich UI” features (rendering tool info, validating tool-call args) and for future clients.
 
+OpenRouter model discovery (for verification + multimodal/tools filtering):
+- `GET /api/v1/openrouter/models?min_total=0.01&max_total=0.50&require_multimodal_input=1&require_tools=1&limit=50`
+  fetches OpenRouter’s `/models` catalog (using `OPENROUTER_API_KEY` or an `Authorization: Bearer ...` header),
+  filters it, sorts by total price ($/1M prompt+completion), and returns a recommended cheapest model id.
+
 Session browsing:
 - `GET /api/v1/sessions` lists known sessions.
 - `GET /api/v1/session?session_id=<id>` returns the message history.

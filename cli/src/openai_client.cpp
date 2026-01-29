@@ -188,6 +188,86 @@ static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::
   return result;
 }
 
+static OpenAIRawResult http_get_raw(const OpenAIClientConfig& cfg, const std::string& url, const std::vector<std::string>& extra_headers) {
+  OpenAIRawResult result;
+  result.http_status = 0;
+
+  ensure_curl_global_init();
+
+  const char* https_proxy = std::getenv("HTTPS_PROXY");
+  if (!https_proxy || !https_proxy[0]) {
+    https_proxy = std::getenv("https_proxy");
+  }
+  const bool have_proxy = (https_proxy && https_proxy[0]);
+
+  CURL* curl = curl_easy_init();
+  if (!curl) {
+    result.response_body = "curl_easy_init failed";
+    return result;
+  }
+
+  struct curl_slist* headers = nullptr;
+  headers = curl_slist_append(headers, "Accept: application/json");
+  if (!cfg.api_key.empty()) {
+    headers = curl_slist_append(headers, ("Authorization: Bearer " + cfg.api_key).c_str());
+  }
+  if (!cfg.openrouter_http_referer.empty()) {
+    headers = curl_slist_append(headers, ("HTTP-Referer: " + cfg.openrouter_http_referer).c_str());
+  }
+  if (!cfg.openrouter_x_title.empty()) {
+    headers = curl_slist_append(headers, ("X-Title: " + cfg.openrouter_x_title).c_str());
+  }
+  for (const auto& h : extra_headers) {
+    if (!h.empty()) {
+      headers = curl_slist_append(headers, h.c_str());
+    }
+  }
+
+  std::string response;
+  curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+  curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+  // Enable built-in content decoding (gzip/br/etc when supported by libcurl).
+  curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+  curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, cfg.timeout_ms);
+  const long connect_timeout_ms = (cfg.timeout_ms > 0) ? std::min<long>(cfg.timeout_ms, 15000L) : 15000L;
+  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, connect_timeout_ms);
+  curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+
+  if (have_proxy) {
+    curl_easy_setopt(curl, CURLOPT_PROXY, https_proxy);
+    curl_easy_setopt(curl, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
+    curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 1L);
+    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+  }
+
+  CURLcode rc = curl_easy_perform(curl);
+  if (rc != CURLE_OK && have_proxy) {
+    response.clear();
+    curl_easy_setopt(curl, CURLOPT_PROXY, "");
+    curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 0L);
+    rc = curl_easy_perform(curl);
+  }
+  if (rc != CURLE_OK) {
+    result.response_body = std::string("curl_easy_perform failed: ") + curl_easy_strerror(rc);
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+    return result;
+  }
+
+  long http_status = 0;
+  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status);
+  result.http_status = http_status;
+  result.response_body = response;
+
+  curl_slist_free_all(headers);
+  curl_easy_cleanup(curl);
+  return result;
+}
+
 static OpenAIStreamResult http_post_json_stream(
   const OpenAIClientConfig& cfg,
   const std::string& url,
@@ -391,6 +471,10 @@ OpenAIRawResult openai_chat_completions_raw(const OpenAIClientConfig& cfg, const
   const std::string base = normalize_base_url(cfg.base_url);
   const std::string url = join_url(base, "/chat/completions");
   return http_post_json(cfg, url, request_body_json);
+}
+
+OpenAIRawResult openai_http_get_raw(const OpenAIClientConfig& cfg, const std::string& url, const std::vector<std::string>& extra_headers) {
+  return http_get_raw(cfg, url, extra_headers);
 }
 
 OpenAIStreamResult openai_chat_completions_raw_stream(
