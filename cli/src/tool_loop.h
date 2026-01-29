@@ -12,6 +12,7 @@
 // Optional callback for streaming tool-loop events as they occur.
 // `data_json` is a JSON object string for the event's `data` field.
 using ToolLoopEventCallback = void (*)(void* ctx, const char* type, const char* data_json);
+using ToolLoopCancelCallback = bool (*)(void* ctx);
 
 struct ToolLoopOptions {
   std::string force_tool;    // optional tool name to force on first request
@@ -46,6 +47,11 @@ struct ToolLoopOptions {
   // This is used by the daemon/UI to show progress while long requests are running.
   ToolLoopEventCallback on_event = nullptr;
   void* on_event_ctx = nullptr;
+
+  // Optional cooperative cancellation hook.
+  // When set and it returns true, the tool loop aborts at the next safe boundary (between requests/tool calls).
+  ToolLoopCancelCallback should_cancel = nullptr;
+  void* should_cancel_ctx = nullptr;
 };
 
 // Tool call record (captured during the tool loop) that can be persisted into host sessions

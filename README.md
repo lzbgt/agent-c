@@ -181,6 +181,7 @@ Verbose inspection:
   (LLM request/response, tool calls, tool results).
 - Pass `trace: true` to also return a plain-text transcript (`trace_text`).
 - Optional: pass `max_capture_bytes` to cap large verbose event payloads for UI stability (default: 256KB; daemon clamps for tool loops).
+- `agentd` ignores `SIGPIPE` so client disconnects (UI refresh, SSE close) do not terminate the daemon.
 - The daemon also serves files for previews at `GET /api/v1/file?path=<...>&yolo=0|1` (up to 10MB).
 
 Assistant streaming (provider-dependent):
@@ -211,6 +212,12 @@ Async runs (UI-friendly):
 - `GET /api/v1/job/stream?job_id=<id>&cursor=<n>` streams job progress via SSE:
   - emits `agent_event` (same objects as the `events` array)
   - ends with `job_done` containing the final `result`
+
+Job cancellation (best-effort):
+- `POST /api/v1/job/cancel?job_id=<id>` requests cancellation.
+- Cancellation is cooperative:
+  - the tool loop will stop at safe boundaries (between tool calls / LLM requests)
+  - long-running host tools (`shell_exec` / `proc_exec`) will terminate their subprocess when cancellation is requested
 
 ### Run the Web UI
 

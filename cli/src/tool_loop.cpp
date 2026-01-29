@@ -354,6 +354,19 @@ bool run_tool_loop(
   }
 
   for (size_t step = 0; options.max_steps == 0 || step < options.max_steps; step++) {
+    if (options.should_cancel && options.should_cancel(options.should_cancel_ctx)) {
+      if (out_error) {
+        *out_error = "cancelled";
+      }
+      {
+        Json::Value d(Json::objectValue);
+        d["step"] = (Json::UInt64)step;
+        d["reason"] = "cancel_requested";
+        push_event("cancelled", d);
+      }
+      return false;
+    }
+
     {
       ToolLoopCompactionReport rep;
       if (tool_loop_compaction_maybe_compact(&messages, compact_opt, &rep)) {
@@ -617,6 +630,17 @@ bool run_tool_loop(
     }
 
     for (const auto& call : calls) {
+      if (options.should_cancel && options.should_cancel(options.should_cancel_ctx)) {
+        if (out_error) {
+          *out_error = "cancelled";
+        }
+        Json::Value d(Json::objectValue);
+        d["step"] = (Json::UInt64)step;
+        d["reason"] = "cancel_requested";
+        push_event("cancelled", d);
+        return false;
+      }
+
       const std::string tool_name = call.name;
       const std::string tool_args_json = call.arguments_json;
       const std::string tool_call_id = call.id;
@@ -679,7 +703,9 @@ bool run_tool_loop(
         d["status"] = (Json::Int64)st;
       if (options.verbose) {
         bool trunc = false;
-        const std::string capped = truncate_str(tool_out, options.max_capture_bytes, &trunc);
+        // Keep tool results JSON-shaped when possible so UIs can render structured views
+        // even when event payloads are capped.
+        const std::string capped = tool_loop_cap_tool_output_for_prompt(tool_out, options.max_capture_bytes, &trunc);
         note_capture(capped);
         d["content"] = capped;
         d["content_truncated"] = trunc;
@@ -695,6 +721,17 @@ bool run_tool_loop(
       // Avoid blowing up the context window: cap tool results before they enter the prompt.
       tm["content"] = out_result->tool_records.back().result_string_for_prompt;
       messages.append(tm);
+
+      if (options.should_cancel && options.should_cancel(options.should_cancel_ctx)) {
+        if (out_error) {
+          *out_error = "cancelled";
+        }
+        Json::Value d(Json::objectValue);
+        d["step"] = (Json::UInt64)step;
+        d["reason"] = "cancel_requested";
+        push_event("cancelled", d);
+        return false;
+      }
     }
   }
 

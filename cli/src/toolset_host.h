@@ -4,6 +4,8 @@
 
 #include <string>
 
+using HostCancelCallback = bool (*)(void* ctx);
+
 struct HostToolsetConfig {
   // Optional root directory for host-side tools.
   //
@@ -12,6 +14,11 @@ struct HostToolsetConfig {
   //   and run patch application under that directory (via `git -C <root_dir> apply ...`).
   // - When empty, host tools run from the current working directory in unrestricted "YOLO" mode.
   std::string root_dir;
+
+  // Optional cooperative cancellation hook.
+  // If set and it returns true, long-running tools (shell/proc exec) will terminate their subprocess and return early.
+  HostCancelCallback should_cancel = nullptr;
+  void* should_cancel_ctx = nullptr;
 };
 
 // Creates a "host" tool registry + executor suitable for CLI/daemon usage:

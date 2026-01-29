@@ -6,6 +6,7 @@ import {
   apiGetJobProgress,
   apiGetOpenRouterModels,
   apiGetTools,
+  apiCancelJob,
   apiListSessions,
   apiRun,
   apiRunAsync,
@@ -779,6 +780,22 @@ export default function App() {
                 Status: <span className="text-white/90">{jobStatus ?? "running"}</span>
               </div>
               {jobUpdatedMs ? <div>Updated: {new Date(jobUpdatedMs).toISOString()}</div> : null}
+              <div className="mt-2 flex gap-2">
+                <button
+                  className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200 hover:bg-rose-500/15"
+                  onClick={async () => {
+                    try {
+                      await apiCancelJob(base, activeJobId);
+                      setJobError("cancel requested");
+                    } catch (e) {
+                      setJobError(`cancel failed: ${String(e)}`);
+                    }
+                  }}
+                  type="button"
+                >
+                  Cancel job
+                </button>
+              </div>
             </div>
           ) : null}
           {jobError ? (

@@ -31,6 +31,7 @@
 #include <functional>
 #include <unistd.h>
 #include <cerrno>
+#include <signal.h>
 
 static const char* getenv_s(const char* k) {
   const char* v = std::getenv(k);
@@ -72,6 +73,40 @@ static std::string json_stringify(const Json::Value& v) {
   Json::StreamWriterBuilder b;
   b["indentation"] = "";
   return Json::writeString(b, v);
+}
+
+static bool json_get_u64_nonneg(const Json::Value& obj, const char* key, uint64_t* out) {
+  if (!out) return false;
+  if (!obj.isObject() || !key || !key[0]) return false;
+  if (!obj.isMember(key)) return false;
+  const Json::Value& v = obj[key];
+  if (v.isUInt64()) {
+    *out = v.asUInt64();
+    return true;
+  }
+  if (v.isInt64()) {
+    const Json::Int64 x = v.asInt64();
+    if (x < 0) return false;
+    *out = (uint64_t)x;
+    return true;
+  }
+  if (v.isUInt()) {
+    *out = (uint64_t)v.asUInt();
+    return true;
+  }
+  if (v.isInt()) {
+    const int x = v.asInt();
+    if (x < 0) return false;
+    *out = (uint64_t)x;
+    return true;
+  }
+  if (v.isDouble()) {
+    const double x = v.asDouble();
+    if (!(x >= 0.0)) return false;
+    *out = (uint64_t)x;
+    return true;
+  }
+  return false;
 }
 
 static bool json_parse_object(const std::string& s, Json::Value* out, std::string* out_err) {
@@ -207,6 +242,7 @@ static agent_status_t provider_generate(
 struct JobState {
   std::string id;
   std::string status; // queued|running|done|error
+  bool cancel_requested = false;
   Json::Value result; // final JSON result (same shape as /api/v1/run)
   std::string error;
   // Live event stream (best-effort) captured while a job is running. This is used by the UI
@@ -454,6 +490,25 @@ static bool job_delete(const std::string& id) {
   return true;
 }
 
+static bool job_request_cancel(const std::string& id) {
+  std::lock_guard<std::mutex> lk(g_jobs_mu);
+  auto it = g_jobs.find(id);
+  if (it == g_jobs.end()) return false;
+  if (it->second.status != "running" && it->second.status != "queued") {
+    return false;
+  }
+  it->second.cancel_requested = true;
+  it->second.updated_unix_ms = now_unix_ms();
+  return true;
+}
+
+static bool job_is_cancel_requested(const std::string& id) {
+  std::lock_guard<std::mutex> lk(g_jobs_mu);
+  auto it = g_jobs.find(id);
+  if (it == g_jobs.end()) return false;
+  return it->second.cancel_requested;
+}
+
 // Parses the daemon run request body and returns a response JSON object (HTTP-level errors are represented in JSON).
 static Json::Value run_request_to_json(
   const DaemonConfig& daemon_cfg,
@@ -504,22 +559,27 @@ static Json::Value run_request_to_json(
   if (yolo) {
     tools_root.clear();
   }
-  const size_t max_steps = args.isMember("max_steps") && args["max_steps"].isUInt64() ? (size_t)args["max_steps"].asUInt64() : 0;
-  const size_t max_chars = args.isMember("max_chars") && args["max_chars"].isUInt64()
-                             ? (size_t)args["max_chars"].asUInt64()
+  uint64_t max_steps_u64 = 0;
+  const size_t max_steps = json_get_u64_nonneg(args, "max_steps", &max_steps_u64) ? (size_t)max_steps_u64 : 0;
+  uint64_t max_chars_u64 = 0;
+  const size_t max_chars = json_get_u64_nonneg(args, "max_chars", &max_chars_u64)
+                             ? (size_t)max_chars_u64
                              : daemon_cfg.max_chars_default;
-  const size_t keep_last = args.isMember("keep_last") && args["keep_last"].isUInt64()
-                             ? (size_t)args["keep_last"].asUInt64()
+  uint64_t keep_last_u64 = 0;
+  const size_t keep_last = json_get_u64_nonneg(args, "keep_last", &keep_last_u64)
+                             ? (size_t)keep_last_u64
                              : daemon_cfg.keep_last_default;
   const bool trace = !(args.isMember("trace") && args["trace"].isBool() && args["trace"].asBool() == false);
   const bool verbose = args.isMember("verbose") && args["verbose"].isBool() ? args["verbose"].asBool() : false;
   const bool stream_assistant =
     args.isMember("stream_assistant") && args["stream_assistant"].isBool() ? args["stream_assistant"].asBool() : false;
+  uint64_t max_capture_bytes_u64 = 0;
   const size_t max_capture_bytes =
-    args.isMember("max_capture_bytes") && args["max_capture_bytes"].isUInt64() ? (size_t)args["max_capture_bytes"].asUInt64() : (size_t)256 * 1024;
+    json_get_u64_nonneg(args, "max_capture_bytes", &max_capture_bytes_u64) ? (size_t)max_capture_bytes_u64 : (size_t)256 * 1024;
 
   const std::string session_id = args.isMember("session_id") && args["session_id"].isString() ? args["session_id"].asString() : "default";
   const bool no_session = args.isMember("no_session") && args["no_session"].isBool() ? args["no_session"].asBool() : false;
+  std::string job_id_local = (job_id_or_null && job_id_or_null[0]) ? std::string(job_id_or_null) : std::string();
 
   agent_session_t* session = nullptr;
   SessionStoreConfig store_cfg;
@@ -574,6 +634,15 @@ static Json::Value run_request_to_json(
   } else if (tools == "host") {
     HostToolsetConfig hcfg;
     hcfg.root_dir = tools_root;
+    if (!job_id_local.empty()) {
+      // Cooperative cancellation for long-running host tools (sleep/build/etc).
+      hcfg.should_cancel = [](void* vctx) -> bool {
+        if (!vctx) return false;
+        const auto* jid = static_cast<const std::string*>(vctx);
+        return jid && job_is_cancel_requested(*jid);
+      };
+      hcfg.should_cancel_ctx = (void*)&job_id_local;
+    }
     if (toolset_host_create(hcfg, &registry, &executor) != AGENT_OK) {
       Json::Value o(Json::objectValue);
       o["ok"] = false;
@@ -601,28 +670,32 @@ static Json::Value run_request_to_json(
   std::ostream* trace_stream = trace ? &trace_buf : nullptr;
   Json::Value events_out;
 
-  if (use_tool_loop) {
+    if (use_tool_loop) {
     ToolLoopOptions opt;
     opt.max_steps = max_steps;
     opt.verbose = verbose;
-    // Avoid UI freezes when verbose tracing captures huge request/response/tool blobs.
-    // Full fidelity remains available in `trace_text`.
-    opt.max_capture_bytes = max_capture_bytes == 0 ? (size_t)64 * 1024 : std::min<size_t>(max_capture_bytes, (size_t)1024 * 1024);
-    opt.max_chars = max_chars;
-    opt.keep_last_messages = keep_last;
-    if (args.isMember("force_tool") && args["force_tool"].isString()) opt.force_tool = args["force_tool"].asString();
-    opt.require_tool_call = args.isMember("require_tool_call") && args["require_tool_call"].isBool() ? args["require_tool_call"].asBool() : false;
+      // Avoid UI freezes when verbose tracing captures huge request/response/tool blobs.
+      // Full fidelity remains available in `trace_text`.
+      opt.max_capture_bytes = max_capture_bytes == 0 ? (size_t)64 * 1024 : std::min<size_t>(max_capture_bytes, (size_t)1024 * 1024);
+      opt.max_chars = max_chars;
+      opt.keep_last_messages = keep_last;
+      if (args.isMember("force_tool") && args["force_tool"].isString()) opt.force_tool = args["force_tool"].asString();
+      opt.require_tool_call = args.isMember("require_tool_call") && args["require_tool_call"].isBool() ? args["require_tool_call"].asBool() : false;
 
-    std::string job_id;
-    if (job_id_or_null && job_id_or_null[0]) {
-      job_id = job_id_or_null;
-      opt.on_event = [](void* ctx, const char* type, const char* data_json) {
-        if (!ctx || !type) return;
-        const auto* jid = static_cast<const std::string*>(ctx);
-        job_append_event(*jid, type, data_json ? data_json : "");
-      };
-      opt.on_event_ctx = &job_id;
-    }
+      if (!job_id_local.empty()) {
+        opt.on_event = [](void* ctx, const char* type, const char* data_json) {
+          if (!ctx || !type) return;
+          const auto* jid = static_cast<const std::string*>(ctx);
+          job_append_event(*jid, type, data_json ? data_json : "");
+        };
+        opt.on_event_ctx = (void*)&job_id_local;
+        opt.should_cancel = [](void* vctx) -> bool {
+          if (!vctx) return false;
+          const auto* jid = static_cast<const std::string*>(vctx);
+          return jid && job_is_cancel_requested(*jid);
+        };
+        opt.should_cancel_ctx = (void*)&job_id_local;
+      }
 
     ToolLoopResult r;
     try {
@@ -663,11 +736,11 @@ static Json::Value run_request_to_json(
       }
       agent_session_add_message(session, AGENT_ROLE_ASSISTANT, assistant_text.c_str());
     }
-  } else {
-    agent_session_add_message(session, AGENT_ROLE_USER, prompt.c_str());
+    } else {
+      agent_session_add_message(session, AGENT_ROLE_USER, prompt.c_str());
 
-    events_out = Json::Value(Json::arrayValue);
-    auto push_ev = [&](const std::string& type, const Json::Value& data) {
+      events_out = Json::Value(Json::arrayValue);
+      auto push_ev = [&](const std::string& type, const Json::Value& data) {
       Json::Value e(Json::objectValue);
       e["type"] = type;
       e["data"] = data;
@@ -678,27 +751,40 @@ static Json::Value run_request_to_json(
         job_append_event(job_id_or_null, type, Json::writeString(wb, data));
       }
     };
-    {
-      Json::Value d(Json::objectValue);
-      d["model"] = run_cfg.model;
-      d["tools"] = "none";
-      d["verbose"] = verbose;
-      d["stream_assistant"] = stream_assistant;
-      push_ev("start", d);
-    }
+      {
+        Json::Value d(Json::objectValue);
+        d["model"] = run_cfg.model;
+        d["tools"] = "none";
+        d["verbose"] = verbose;
+        d["stream_assistant"] = stream_assistant;
+        push_ev("start", d);
+      }
 
-    if (stream_assistant) {
-      // Retry loop for providers that reject over-long contexts.
-      // For stateless providers, retrying with a tighter compaction budget is equivalent to "spawning a new session".
-      size_t attempt_max_chars = (max_chars == 0 ? 20000 : max_chars);
-      const size_t keep = (keep_last == 0 ? 16 : keep_last);
+      auto is_cancelled_job = [&]() -> bool {
+        return !job_id_local.empty() && job_is_cancel_requested(job_id_local);
+      };
 
-      for (int attempt = 0; attempt < 3; attempt++) {
-        // Apply core compaction policy (same as agent_run_once) and surface a compaction event.
-        agent_compact_report_t compact{};
-        const agent_status_t cst = agent_session_compact_char_budget(session, attempt_max_chars, keep, nullptr, &compact);
-        if (cst != AGENT_OK) {
-          ok = false;
+      if (stream_assistant) {
+        // Retry loop for providers that reject over-long contexts.
+        // For stateless providers, retrying with a tighter compaction budget is equivalent to "spawning a new session".
+        size_t attempt_max_chars = (max_chars == 0 ? 20000 : max_chars);
+        const size_t keep = (keep_last == 0 ? 16 : keep_last);
+
+        for (int attempt = 0; attempt < 3; attempt++) {
+          if (is_cancelled_job()) {
+            ok = false;
+            err = "cancelled";
+            Json::Value d(Json::objectValue);
+            d["attempt"] = attempt;
+            d["reason"] = "cancel_requested";
+            push_ev("cancelled", d);
+            break;
+          }
+          // Apply core compaction policy (same as agent_run_once) and surface a compaction event.
+          agent_compact_report_t compact{};
+          const agent_status_t cst = agent_session_compact_char_budget(session, attempt_max_chars, keep, nullptr, &compact);
+          if (cst != AGENT_OK) {
+            ok = false;
           err = "session compaction failed";
           Json::Value d(Json::objectValue);
           d["attempt"] = attempt;
@@ -896,6 +982,15 @@ static Json::Value run_request_to_json(
 
       size_t attempt_max_chars = (max_chars == 0 ? 20000 : max_chars);
       for (int attempt = 0; attempt < 3; attempt++) {
+        if (is_cancelled_job()) {
+          ok = false;
+          err = "cancelled";
+          Json::Value d(Json::objectValue);
+          d["attempt"] = attempt;
+          d["reason"] = "cancel_requested";
+          push_ev("cancelled", d);
+          break;
+        }
         run_opt.max_chars = attempt_max_chars;
 
         agent_run_report_t rep{};
@@ -1106,6 +1201,11 @@ static std::string truncate_for_event(const std::string& s, size_t max_bytes, bo
 }
 
 int main(int argc, char** argv) {
+  // On macOS (and many POSIX systems), writing to a closed socket can raise SIGPIPE,
+  // which terminates the process by default. Our HTTP server uses plain ::write(),
+  // so we must ignore SIGPIPE to avoid daemon exits that look like "hangs" to clients.
+  (void)::signal(SIGPIPE, SIG_IGN);
+
   DaemonConfig cfg;
   cfg.host_scope_root = std::filesystem::current_path().string();
   // Minimal flag parsing (daemon is host-only; core remains argv/env-free).
@@ -2039,6 +2139,45 @@ int main(int argc, char** argv) {
     if (s.status == "done" || s.status == "error") {
       o["result"] = s.result;
     }
+    resp->body = json_stringify(o);
+    return;
+#endif
+  });
+
+  server.handle("POST", "/api/v1/job/cancel", [&](const HttpRequest& req, HttpResponse* resp) {
+    (void)req;
+    add_cors(resp);
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+#if !defined(AGENT_HAVE_JSONCPP)
+    resp->status = 500;
+    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
+    return;
+#else
+    const auto jid = query_get(req.query, "job_id");
+    if (!jid || jid->empty()) {
+      resp->status = 400;
+      resp->body = R"({"ok":false,"error":"missing job_id"})";
+      return;
+    }
+    if (!job_request_cancel(*jid)) {
+      resp->status = 409;
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "cannot cancel job (not found or already finished)";
+      o["job_id"] = *jid;
+      resp->body = json_stringify(o);
+      return;
+    }
+    // Best-effort: surface cancellation request to any connected UI.
+    {
+      Json::Value d(Json::objectValue);
+      d["job_id"] = *jid;
+      d["ts_unix_ms"] = (Json::Int64)now_unix_ms();
+      job_append_event(*jid, "cancel_requested", json_stringify(d));
+    }
+    Json::Value o(Json::objectValue);
+    o["ok"] = true;
+    o["job_id"] = *jid;
     resp->body = json_stringify(o);
     return;
 #endif

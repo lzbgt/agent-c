@@ -85,6 +85,14 @@ export async function apiGetTools(
   return ToolDefsRespSchema.parse(j);
 }
 
+export async function apiCancelJob(base: string, jobId: string): Promise<any> {
+  const r = await fetch(`${base}/api/v1/job/cancel?job_id=${encodeURIComponent(jobId)}`, {
+    method: "POST",
+  });
+  const j = await r.json();
+  return j;
+}
+
 export const OpenRouterModelsRespSchema = z.object({
   ok: z.boolean(),
   source: z.string().optional(),

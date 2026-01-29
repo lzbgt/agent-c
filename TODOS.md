@@ -45,6 +45,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
     - [ ] `tools=basic/host`: stream while still supporting tool calls (harder)
   - make event log fully structured (typed payloads; truncation metadata; stable schema)
 - [x] Add async runs (`/api/v1/run_async` + `/api/v1/job`) so UIs can poll long-running jobs without blocking.
+- [x] Add job cancellation (`POST /api/v1/job/cancel`) and UI Cancel button (cooperative; kills host subprocess tools).
 - [x] Add live job progress via event tailing:
   - `GET /api/v1/job?job_id=...&include_events=1&cursor=...` (cursor-based incremental event polling).
 - [ ] Add a daemon-level “sandbox policy” model:

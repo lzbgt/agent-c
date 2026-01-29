@@ -130,6 +130,26 @@ export default function ConversationView({
         );
         return;
       }
+      if (type === "cancel_requested") {
+        items.push(
+          <Card key={`cr-${idx}`} title="Cancel requested">
+            <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100">
+              {JSON.stringify(data, null, 2)}
+            </pre>
+          </Card>,
+        );
+        return;
+      }
+      if (type === "cancelled") {
+        items.push(
+          <Card key={`cx-${idx}`} title="Cancelled">
+            <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-rose-500/30 bg-rose-500/10 p-3 text-xs leading-relaxed text-rose-100">
+              {JSON.stringify(data, null, 2)}
+            </pre>
+          </Card>,
+        );
+        return;
+      }
       if (type === "compaction") {
         items.push(
           <Card key={`cp-${idx}`} title="Compaction">

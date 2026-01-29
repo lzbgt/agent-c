@@ -35,9 +35,37 @@ static void test_json_content_field_truncation() {
   assert(out.size() <= 300);
 }
 
+static void test_json_entries_array_truncation() {
+  // Simulate a bounded directory listing tool that still produces a large JSON array payload.
+  std::string in = "{\"ok\":true,\"data\":{\"tool\":\"fs_list\",\"entries\":[";
+  for (int i = 0; i < 200; i++) {
+    if (i) in += ",";
+    in += "{\"path\":\"/very/long/path/";
+    in += std::to_string(i);
+    in += "_";
+    in += std::string(80, 'x');
+    in += "\",\"type\":\"file\"}";
+  }
+  in += "]}}";
+
+  bool truncated = false;
+  const std::string out = tool_loop_cap_tool_output_for_prompt(in, 400, &truncated);
+  assert(truncated);
+  assert(out.size() <= 400);
+  // Should remain JSON-shaped enough for UIs/clients to parse.
+  assert(out.find("\"prompt_truncated\"") != std::string::npos);
+  // Prefer entries truncation/dropping over invalid JSON string chopping.
+  assert(
+    out.find("\"entries_truncated\"") != std::string::npos ||
+    out.find("\"entries_dropped\"") != std::string::npos ||
+    out.find("tool_output_truncated") != std::string::npos
+  );
+}
+
 int main() {
   test_plain_text_truncation();
   test_json_output_field_truncation();
   test_json_content_field_truncation();
+  test_json_entries_array_truncation();
   return 0;
 }

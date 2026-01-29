@@ -111,3 +111,15 @@ Completed milestones and notable tasks.
 - Added explicit proxy plumbing to reduce “hangs” in environments where outbound HTTPS requires a local proxy:
   - `OpenAIClientConfig.proxy_url` override (else env `HTTPS_PROXY`/`http_proxy`) (`cli/src/openai_client.h`, `cli/src/openai_client.cpp`)
   - CLI flag `--proxy`, daemon flag `--proxy`, and Web UI “HTTPS proxy” setting (request field `proxy`)
+- Added cooperative cancellation for daemon jobs:
+  - `POST /api/v1/job/cancel?job_id=...` requests cancellation and emits a `cancel_requested` event
+  - tool loop aborts at safe boundaries and emits `cancelled`
+  - long-running host tools (`shell_exec` / `proc_exec`) kill their subprocess when cancelled
+  - added smoke test `agentd_cancel_smoke`
+- Fixed a class of “agentd hangs” caused by daemon exits on broken pipes:
+  - ignore `SIGPIPE` so client disconnects (UI refresh/SSE close) don’t terminate `agentd`
+- Hardened daemon request parsing for UI-provided numeric fields:
+  - `max_steps`, `max_chars`, `keep_last`, and `max_capture_bytes` now accept signed/int JSON numbers (not only `UInt64`)
+- Improved verbose tool result capture for UIs:
+  - tool result payload capping now preserves JSON envelope shape (and truncates `data.entries` lists when needed) instead of producing invalid JSON
+- Fixed `agentd_cancel_smoke` to handle expected non-zero probe exit codes under `set -e`.

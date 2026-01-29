@@ -54,10 +54,16 @@ static agent_status_t set_result(agent_string_t* out, const std::string& s) {
   return agent_string_set_copy(out, s.c_str(), s.size());
 }
 
-struct HostToolCtx {
-  std::filesystem::path root;
-  bool unrestricted = false;
-};
+	struct HostToolCtx {
+	  std::filesystem::path root;
+	  bool unrestricted = false;
+	  HostCancelCallback should_cancel = nullptr;
+	  void* should_cancel_ctx = nullptr;
+	};
+
+	static bool is_cancelled(const HostToolCtx* ctx) {
+	  return ctx && ctx->should_cancel && ctx->should_cancel(ctx->should_cancel_ctx);
+	}
 
 static std::string to_generic_string(const std::filesystem::path& p) {
   // Prefer a stable "/"-separated form for JSON/tool output.
@@ -118,6 +124,9 @@ static agent_status_t tool_fs_stat(HostToolCtx* ctx, const char* arguments_json,
 #if !defined(AGENT_HAVE_JSONCPP)
   return set_result(out_result, "{\"ok\":false,\"error\":\"fs_stat requires jsoncpp\"}");
 #else
+  if (is_cancelled(ctx)) {
+    return set_result(out_result, "{\"ok\":false,\"error\":\"cancelled\"}");
+  }
   auto write_envelope = [&](bool ok, const std::string& error, const Json::Value& data) -> agent_status_t {
     Json::Value o(Json::objectValue);
     o["ok"] = ok;
@@ -193,6 +202,9 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
 #if !defined(AGENT_HAVE_JSONCPP)
   return set_result(out_result, "{\"ok\":false,\"error\":\"fs_list requires jsoncpp\"}");
 #else
+  if (is_cancelled(ctx)) {
+    return set_result(out_result, "{\"ok\":false,\"error\":\"cancelled\"}");
+  }
   auto write_envelope = [&](bool ok, const std::string& error, const Json::Value& data) -> agent_status_t {
     Json::Value o(Json::objectValue);
     o["ok"] = ok;
@@ -313,6 +325,9 @@ static agent_status_t tool_fs_read(HostToolCtx* ctx, const char* arguments_json,
 #if !defined(AGENT_HAVE_JSONCPP)
   return set_result(out_result, "{\"ok\":false,\"error\":\"fs_read requires jsoncpp\"}");
 #else
+  if (is_cancelled(ctx)) {
+    return set_result(out_result, "{\"ok\":false,\"error\":\"cancelled\"}");
+  }
   auto write_envelope = [&](bool ok, const std::string& error, const Json::Value& data) -> agent_status_t {
     Json::Value o(Json::objectValue);
     o["ok"] = ok;
@@ -449,6 +464,7 @@ struct ExecResult {
   int exit_code = -1;
   bool timed_out = false;
   bool truncated = false;
+  bool cancelled = false;
   std::string output;
 };
 
@@ -479,7 +495,13 @@ static std::optional<std::filesystem::path> write_temp_file(const std::string& c
   return std::filesystem::path(std::string(buf.data()));
 }
 
-static ExecResult run_shell_exec(const std::string& cmd, int timeout_ms, size_t max_output_bytes) {
+static ExecResult run_shell_exec(
+  const std::string& cmd,
+  int timeout_ms,
+  size_t max_output_bytes,
+  HostCancelCallback should_cancel,
+  void* should_cancel_ctx
+) {
   ExecResult r;
   int pipefd[2];
   if (pipe(pipefd) != 0) {
@@ -516,6 +538,12 @@ static ExecResult run_shell_exec(const std::string& cmd, int timeout_ms, size_t 
   int status = 0;
 
   while (true) {
+    if (should_cancel && should_cancel(should_cancel_ctx)) {
+      r.cancelled = true;
+      kill(pid, SIGKILL);
+      (void)waitpid(pid, &status, 0);
+      break;
+    }
     // Drain output.
     char buf[4096];
     while (r.output.size() < max_output_bytes) {
@@ -578,13 +606,15 @@ static ExecResult run_shell_exec(const std::string& cmd, int timeout_ms, size_t 
 }
 
 static agent_status_t tool_shell_exec(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
-  (void)ctx;
   if (!out_result) {
     return AGENT_ERR_INVALID_ARGUMENT;
   }
 #if !defined(AGENT_HAVE_JSONCPP)
   return set_result(out_result, "{\"ok\":false,\"error\":\"shell_exec requires jsoncpp\"}");
 #else
+  if (is_cancelled(ctx)) {
+    return set_result(out_result, "{\"ok\":false,\"error\":\"cancelled\"}");
+  }
   auto write_envelope = [&](bool ok, const std::string& error, const Json::Value& data) -> agent_status_t {
     Json::Value o(Json::objectValue);
     o["ok"] = ok;
@@ -607,20 +637,27 @@ static agent_status_t tool_shell_exec(HostToolCtx* ctx, const char* arguments_js
   const int timeout_ms = args.isMember("timeout_ms") && args["timeout_ms"].isInt() ? args["timeout_ms"].asInt() : 30000;
   const int max_output = args.isMember("max_output_bytes") && args["max_output_bytes"].isInt() ? args["max_output_bytes"].asInt() : 65536;
 
-  ExecResult r = run_shell_exec(cmd, timeout_ms, (size_t)max_output);
+  ExecResult r = run_shell_exec(cmd, timeout_ms, (size_t)max_output, ctx ? ctx->should_cancel : nullptr, ctx ? ctx->should_cancel_ctx : nullptr);
 
   Json::Value data(Json::objectValue);
   data["exit_code"] = r.exit_code;
   data["timed_out"] = r.timed_out;
   data["truncated"] = r.truncated;
+  data["cancelled"] = r.cancelled;
   data["output"] = r.output;
   // Note: ok is a hint only; the model should still judge based on output for cases like pip warnings.
-  const bool ok_hint = (!r.timed_out && r.exit_code == 0);
-  return write_envelope(ok_hint, "", data);
+  const bool ok_hint = (!r.timed_out && !r.cancelled && r.exit_code == 0);
+  return write_envelope(ok_hint, r.cancelled ? "cancelled" : "", data);
 #endif
 }
 
-static ExecResult run_proc_exec(const std::vector<std::string>& argv, int timeout_ms, size_t max_output_bytes) {
+static ExecResult run_proc_exec(
+  const std::vector<std::string>& argv,
+  int timeout_ms,
+  size_t max_output_bytes,
+  HostCancelCallback should_cancel,
+  void* should_cancel_ctx
+) {
   ExecResult r;
   if (argv.empty()) {
     r.output = "argv is empty";
@@ -666,6 +703,12 @@ static ExecResult run_proc_exec(const std::vector<std::string>& argv, int timeou
   int status = 0;
 
   while (true) {
+    if (should_cancel && should_cancel(should_cancel_ctx)) {
+      r.cancelled = true;
+      kill(pid, SIGKILL);
+      (void)waitpid(pid, &status, 0);
+      break;
+    }
     char buf[4096];
     while (r.output.size() < max_output_bytes) {
       ssize_t n = read(pipefd[0], buf, sizeof(buf));
@@ -726,13 +769,15 @@ static ExecResult run_proc_exec(const std::vector<std::string>& argv, int timeou
 }
 
 static agent_status_t tool_proc_exec(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
-  (void)ctx;
   if (!out_result) {
     return AGENT_ERR_INVALID_ARGUMENT;
   }
 #if !defined(AGENT_HAVE_JSONCPP)
   return set_result(out_result, "{\"ok\":false,\"error\":\"proc_exec requires jsoncpp\"}");
 #else
+  if (is_cancelled(ctx)) {
+    return set_result(out_result, "{\"ok\":false,\"error\":\"cancelled\"}");
+  }
   auto write_envelope = [&](bool ok, const std::string& error, const Json::Value& data) -> agent_status_t {
     Json::Value o(Json::objectValue);
     o["ok"] = ok;
@@ -764,7 +809,7 @@ static agent_status_t tool_proc_exec(HostToolCtx* ctx, const char* arguments_jso
   const int timeout_ms = args.isMember("timeout_ms") && args["timeout_ms"].isInt() ? args["timeout_ms"].asInt() : 30000;
   const int max_output = args.isMember("max_output_bytes") && args["max_output_bytes"].isInt() ? args["max_output_bytes"].asInt() : 65536;
 
-  ExecResult r = run_proc_exec(argv, timeout_ms, (size_t)max_output);
+  ExecResult r = run_proc_exec(argv, timeout_ms, (size_t)max_output, ctx ? ctx->should_cancel : nullptr, ctx ? ctx->should_cancel_ctx : nullptr);
   Json::Value data(Json::objectValue);
   data["argv"] = Json::Value(Json::arrayValue);
   for (const auto& s : argv) {
@@ -773,9 +818,10 @@ static agent_status_t tool_proc_exec(HostToolCtx* ctx, const char* arguments_jso
   data["exit_code"] = r.exit_code;
   data["timed_out"] = r.timed_out;
   data["truncated"] = r.truncated;
+  data["cancelled"] = r.cancelled;
   data["output"] = r.output;
-  const bool ok_hint = (!r.timed_out && r.exit_code == 0);
-  return write_envelope(ok_hint, "", data);
+  const bool ok_hint = (!r.timed_out && !r.cancelled && r.exit_code == 0);
+  return write_envelope(ok_hint, r.cancelled ? "cancelled" : "", data);
 #endif
 }
 
@@ -786,6 +832,9 @@ static agent_status_t tool_file_apply_patch(HostToolCtx* ctx, const char* argume
 #if !defined(AGENT_HAVE_JSONCPP)
   return set_result(out_result, "{\"ok\":false,\"error\":\"file_apply_patch requires jsoncpp\"}");
 #else
+  if (is_cancelled(ctx)) {
+    return set_result(out_result, "{\"ok\":false,\"error\":\"cancelled\"}");
+  }
   auto write_envelope = [&](bool ok, const std::string& error, const Json::Value& data) -> agent_status_t {
     Json::Value o(Json::objectValue);
     o["ok"] = ok;
@@ -835,7 +884,7 @@ static agent_status_t tool_file_apply_patch(HostToolCtx* ctx, const char* argume
       argv.push_back(a);
     }
     argv.push_back(tmp->string());
-    return run_proc_exec(argv, timeout_ms, (size_t)max_output);
+    return run_proc_exec(argv, timeout_ms, (size_t)max_output, ctx ? ctx->should_cancel : nullptr, ctx ? ctx->should_cancel_ctx : nullptr);
   };
 
   ExecResult check = run_git_apply({"--check"});
@@ -1030,6 +1079,8 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
   ctx->unrestricted = cfg.root_dir.empty();
   ctx->root = cfg.root_dir.empty() ? std::filesystem::current_path()
                                    : std::filesystem::path(cfg.root_dir);
+  ctx->should_cancel = cfg.should_cancel;
+  ctx->should_cancel_ctx = cfg.should_cancel_ctx;
   {
     // Normalize to reduce symlink/canonical mismatch (e.g. /var vs /private/var on macOS).
     std::error_code ec;
