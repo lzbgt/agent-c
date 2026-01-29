@@ -83,6 +83,13 @@ static void test_fs_stat_list_read() {
   std::filesystem::remove_all(root);
   std::filesystem::create_directories(root / "dir");
 
+  // Create a large-ish directory that should be excluded by default for token efficiency.
+  std::filesystem::create_directories(root / "node_modules" / "pkg");
+  {
+    std::ofstream f(root / "node_modules" / "pkg" / "big.txt", std::ios::binary);
+    f << "hello\n";
+  }
+
   // Create a file with enough lines to exercise pagination.
   {
     std::ofstream f(root / "dir" / "many.txt", std::ios::binary);
@@ -138,6 +145,57 @@ static void test_fs_stat_list_read() {
       }
     }
     assert(found);
+    agent_string_free(&out);
+  }
+
+  // fs_list (recursive, default excludes should hide node_modules)
+  {
+    Json::Value args(Json::objectValue);
+    args["path"] = ".";
+    args["recursive"] = true;
+    args["max_entries"] = 2000;
+    args["max_depth"] = 4;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "fs_list", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    const auto& entries = resp["data"]["entries"];
+    assert(entries.isArray());
+    for (Json::ArrayIndex i = 0; i < entries.size(); i++) {
+      if (entries[i].isObject() && entries[i]["path"].isString()) {
+        // Should not surface huge dependency trees unless explicitly requested.
+        assert(entries[i]["path"].asString().find("node_modules") == std::string::npos);
+      }
+    }
+    agent_string_free(&out);
+  }
+
+  // fs_list (recursive, disable default excludes should allow node_modules)
+  {
+    Json::Value args(Json::objectValue);
+    args["path"] = ".";
+    args["recursive"] = true;
+    args["use_default_excludes"] = false;
+    args["max_entries"] = 2000;
+    args["max_depth"] = 4;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "fs_list", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    const auto& entries = resp["data"]["entries"];
+    assert(entries.isArray());
+    bool saw = false;
+    for (Json::ArrayIndex i = 0; i < entries.size(); i++) {
+      if (entries[i].isObject() && entries[i]["path"].isString()) {
+        if (entries[i]["path"].asString().find("node_modules") != std::string::npos) {
+          saw = true;
+          break;
+        }
+      }
+    }
+    assert(saw);
     agent_string_free(&out);
   }
 

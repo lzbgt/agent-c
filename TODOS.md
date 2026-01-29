@@ -29,6 +29,9 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add “session rotation” retries for `tools="none"` when providers reject an over-long context (CLI + daemon).
 - [x] Support explicit proxy override (`--proxy` / request `proxy`) to avoid network hangs when env proxy is required.
 - [ ] Add more network smokes for host tools beyond `shell_exec` (e.g. `fs_read` paging) to reduce regressions.
+- [ ] Improve host filesystem tools defaults to avoid noise:
+  - exclude `node_modules`/`build`/`dist` by default in `fs_list` (configurable)
+  - consider optional `respect_gitignore`/`exclude_globs` (future)
 
 ## Mid-term (daemon + broker)
 

@@ -235,3 +235,8 @@ UI rendering notes:
 - Markdown is rendered with GFM + syntax highlighting for code blocks.
 - The settings panel is collapsible and all settings persist in the browser via `localStorage`.
 - If outbound networking requires a proxy, set **HTTPS proxy** in the UI settings (it is sent as `proxy` in `POST /api/v1/run`).
+
+Host filesystem tools (token safety):
+- `fs_list` is designed for bounded output and now excludes common huge directories by default (e.g. `node_modules`, `build`, `dist`).
+  - To include them, pass `use_default_excludes: false` (and/or `exclude_names` to fine-tune).
+- `fs_read` supports paging (`start_line`, `max_lines`, `end_line`) and a character cap (`max_chars`).

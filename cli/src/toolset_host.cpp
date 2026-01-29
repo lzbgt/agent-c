@@ -225,6 +225,8 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
   const int max_entries = args.isMember("max_entries") && args["max_entries"].isInt() ? args["max_entries"].asInt() : 200;
   const int max_depth = args.isMember("max_depth") && args["max_depth"].isInt() ? args["max_depth"].asInt() : 4;
   const bool include_hidden = args.isMember("include_hidden") && args["include_hidden"].isBool() ? args["include_hidden"].asBool() : false;
+  const bool use_default_excludes =
+    !(args.isMember("use_default_excludes") && args["use_default_excludes"].isBool() && args["use_default_excludes"].asBool() == false);
 
   const auto resolved = resolve_under_root(ctx->root, path, ctx->unrestricted);
   if (!resolved) {
@@ -235,12 +237,48 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
     return write_envelope(false, "not a directory", Json::Value(Json::objectValue));
   }
 
+  std::vector<std::string> exclude_names;
+  if (use_default_excludes) {
+    // Token-efficiency defaults. These directories commonly contain huge trees and almost never help
+    // the model understand project architecture without a targeted question.
+    exclude_names.push_back("node_modules");
+    exclude_names.push_back(".git");
+    exclude_names.push_back("build");
+    exclude_names.push_back("dist");
+    exclude_names.push_back("out");
+    exclude_names.push_back(".cache");
+    exclude_names.push_back("__pycache__");
+    exclude_names.push_back(".venv");
+    exclude_names.push_back("venv");
+    exclude_names.push_back(".DS_Store");
+  }
+  if (args.isMember("exclude_names") && args["exclude_names"].isArray()) {
+    for (Json::ArrayIndex i = 0; i < args["exclude_names"].size(); i++) {
+      const auto& v = args["exclude_names"][i];
+      if (v.isString()) {
+        const std::string s = v.asString();
+        if (!s.empty()) exclude_names.push_back(s);
+      }
+    }
+  }
+
   Json::Value arr(Json::arrayValue);
   int count = 0;
+  int excluded_entries = 0;
+  int excluded_dirs = 0;
   const auto should_skip = [&](const std::filesystem::path& p) -> bool {
-    if (include_hidden) return false;
     const auto name = p.filename().string();
-    return !name.empty() && name[0] == '.';
+    if (!include_hidden && !name.empty() && name[0] == '.') {
+      return true;
+    }
+    if (!exclude_names.empty() && !name.empty()) {
+      for (const auto& ex : exclude_names) {
+        if (name == ex) {
+          return true;
+        }
+      }
+    }
+    return false;
   };
 
   if (recursive) {
@@ -250,7 +288,14 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
         it.disable_recursion_pending();
         continue;
       }
-      if (should_skip(it->path())) continue;
+      if (should_skip(it->path())) {
+        excluded_entries++;
+        if (it->is_directory()) {
+          excluded_dirs++;
+          it.disable_recursion_pending();
+        }
+        continue;
+      }
       Json::Value e(Json::objectValue);
       if (ctx->unrestricted) {
         e["path"] = to_generic_string(it->path().lexically_normal());
@@ -268,7 +313,11 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
   } else {
     for (auto it = std::filesystem::directory_iterator(*resolved, ec); !ec && it != std::filesystem::directory_iterator(); ++it) {
       if (count >= max_entries) break;
-      if (should_skip(it->path())) continue;
+      if (should_skip(it->path())) {
+        excluded_entries++;
+        if (it->is_directory()) excluded_dirs++;
+        continue;
+      }
       Json::Value e(Json::objectValue);
       if (ctx->unrestricted) {
         e["path"] = to_generic_string(it->path().lexically_normal());
@@ -297,11 +346,32 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
   data["max_entries"] = max_entries;
   data["max_depth"] = max_depth;
   data["include_hidden"] = include_hidden;
+  data["use_default_excludes"] = use_default_excludes;
+  data["excluded_entries"] = excluded_entries;
+  data["excluded_dirs"] = excluded_dirs;
+  {
+    Json::Value ex(Json::arrayValue);
+    for (const auto& s : exclude_names) ex.append(s);
+    data["exclude_names"] = ex;
+  }
   {
     std::ostringstream oss;
     oss << "path: " << path << "\n";
     oss << "resolved_path: " << to_generic_string(*resolved) << "\n";
     oss << "recursive: " << (recursive ? "true" : "false") << "\n";
+    oss << "use_default_excludes: " << (use_default_excludes ? "true" : "false") << "\n";
+    if (!exclude_names.empty()) {
+      oss << "exclude_names: ";
+      for (size_t i = 0; i < exclude_names.size(); i++) {
+        if (i) oss << ", ";
+        oss << exclude_names[i];
+      }
+      oss << "\n";
+    }
+    if (excluded_entries > 0) {
+      oss << "excluded_entries: " << excluded_entries << "\n";
+      oss << "excluded_dirs: " << excluded_dirs << "\n";
+    }
     oss << "entries: " << count << (count >= max_entries ? " (truncated)\n" : "\n");
     for (Json::ArrayIndex i = 0; i < arr.size(); i++) {
       const auto& e = arr[i];
@@ -1045,7 +1115,9 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     "  \"recursive\":{\"type\":\"boolean\"},"
     "  \"max_entries\":{\"type\":\"integer\",\"description\":\"Max entries to return (default: 200)\"},"
     "  \"max_depth\":{\"type\":\"integer\",\"description\":\"Max recursion depth when recursive=true (default: 4)\"},"
-    "  \"include_hidden\":{\"type\":\"boolean\"}"
+    "  \"include_hidden\":{\"type\":\"boolean\"},"
+    "  \"use_default_excludes\":{\"type\":\"boolean\",\"description\":\"When true (default), skips common huge dirs like node_modules/build/dist unless explicitly requested.\"},"
+    "  \"exclude_names\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Extra directory/file basenames to exclude.\"}"
     "}"
     "}"
   );
