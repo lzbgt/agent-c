@@ -170,6 +170,9 @@ Async runs (UI-friendly):
   - For live UI progress without SSE/WebSocket:
     - Add `include_events=1` to include the tool/LLM `events` captured so far (best-effort).
     - Use `cursor=<n>&max_events=<m>` to tail new events incrementally while the job is running.
+- `GET /api/v1/job/stream?job_id=<id>&cursor=<n>` streams job progress via SSE:
+  - emits `agent_event` (same objects as the `events` array)
+  - ends with `job_done` containing the final `result`
 
 ### Run the Web UI
 

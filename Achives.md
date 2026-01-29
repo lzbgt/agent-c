@@ -75,3 +75,6 @@ Completed milestones and notable tasks.
 - Made the Web UI refresh-safe and less cluttered:
   - settings panel can be shown/hidden
   - settings persist via browser `localStorage`
+- Added SSE streaming for job progress (preferred over polling):
+  - `GET /api/v1/job/stream?job_id=...&cursor=...` streams `agent_event` and ends with `job_done`
+  - daemon HTTP server is now concurrent (per-connection thread) so streaming does not block other requests

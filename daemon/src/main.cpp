@@ -28,6 +28,8 @@
 #include <map>
 #include <mutex>
 #include <thread>
+#include <unistd.h>
+#include <cerrno>
 
 static const char* getenv_s(const char* k) {
   const char* v = std::getenv(k);
@@ -217,6 +219,49 @@ static std::string new_job_id() {
 
 static std::mutex g_jobs_mu;
 static std::map<std::string, JobState> g_jobs;
+
+static bool write_all_fd(int fd, const char* data, size_t n) {
+  size_t off = 0;
+  while (off < n) {
+    ssize_t w = ::write(fd, data + off, n - off);
+    if (w > 0) {
+      off += (size_t)w;
+      continue;
+    }
+    if (w == -1 && (errno == EINTR)) {
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+static bool write_all_fd(int fd, const std::string& s) {
+  return write_all_fd(fd, s.data(), s.size());
+}
+
+static bool sse_send(int fd, const std::string& event, const std::string& data_json, const std::string& id = "") {
+  std::string out;
+  out.reserve(event.size() + data_json.size() + 64);
+  if (!event.empty()) {
+    out += "event: ";
+    out += event;
+    out += "\n";
+  }
+  if (!id.empty()) {
+    out += "id: ";
+    out += id;
+    out += "\n";
+  }
+  out += "data: ";
+  out += data_json;
+  out += "\n\n";
+  return write_all_fd(fd, out);
+}
+
+static bool sse_ping(int fd) {
+  return write_all_fd(fd, ": ping\n\n");
+}
 
 static bool json_parse_any(const std::string& s, Json::Value* out, std::string* out_err) {
   if (out_err) out_err->clear();
@@ -1292,6 +1337,118 @@ int main(int argc, char** argv) {
     }
     resp->body = json_stringify(o);
     return;
+#endif
+  });
+
+  // Server-Sent Events stream for job progress (preferred UI path vs polling).
+  // This endpoint streams `agent_event` events (same object shape as entries in the `events` array) and ends with `job_done`.
+  server.handle_stream("GET", "/api/v1/job/stream", [&](const HttpRequest& req, int client_fd) {
+#if !defined(AGENT_HAVE_JSONCPP)
+    (void)req;
+    const std::string wire =
+      "HTTP/1.1 500 Internal Server Error\r\n"
+      "Content-Type: application/json; charset=utf-8\r\n"
+      "Connection: close\r\n"
+      "\r\n"
+      "{\"ok\":false,\"error\":\"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)\"}";
+    (void)write_all_fd(client_fd, wire);
+    return;
+#else
+    const auto jid = query_get(req.query, "job_id");
+    if (!jid || jid->empty()) {
+      const std::string wire =
+        "HTTP/1.1 400 Bad Request\r\n"
+        "Content-Type: application/json; charset=utf-8\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "{\"ok\":false,\"error\":\"missing job_id\"}";
+      (void)write_all_fd(client_fd, wire);
+      return;
+    }
+
+    uint64_t cursor = 0;
+    const auto cursor_q = query_get(req.query, "cursor");
+    if (cursor_q && !cursor_q->empty()) {
+      try {
+        cursor = (uint64_t)std::stoull(*cursor_q);
+      } catch (...) {
+        cursor = 0;
+      }
+    }
+
+    // SSE headers
+    std::ostringstream hdr;
+    hdr << "HTTP/1.1 200 OK\r\n";
+    hdr << "Content-Type: text/event-stream\r\n";
+    hdr << "Cache-Control: no-cache\r\n";
+    hdr << "Connection: keep-alive\r\n";
+    hdr << "Access-Control-Allow-Origin: *\r\n";
+    hdr << "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n";
+    hdr << "Access-Control-Allow-Headers: Content-Type, Authorization\r\n";
+    hdr << "\r\n";
+    if (!write_all_fd(client_fd, hdr.str())) {
+      return;
+    }
+
+    auto last_send = std::chrono::steady_clock::now();
+    for (;;) {
+      JobState s;
+      if (!job_get(*jid, &s)) {
+        (void)sse_send(client_fd, "error", R"({"ok":false,"error":"job not found"})");
+        return;
+      }
+
+      const uint64_t base = s.events_offset;
+      const uint64_t end = base + (uint64_t)s.events.size();
+
+      if (cursor < base) {
+        Json::Value d(Json::objectValue);
+        d["reason"] = "cursor_too_old";
+        d["cursor_base"] = (Json::UInt64)base;
+        d["cursor_end"] = (Json::UInt64)end;
+        if (!sse_send(client_fd, "reset", json_stringify(d))) {
+          return;
+        }
+        cursor = base;
+        last_send = std::chrono::steady_clock::now();
+      }
+
+      bool sent_any = false;
+      while (cursor < end) {
+        const uint64_t idx = cursor - base;
+        const Json::Value& ev = s.events[(Json::ArrayIndex)idx];
+        if (!sse_send(client_fd, "agent_event", json_stringify(ev), std::to_string((unsigned long long)cursor))) {
+          return;
+        }
+        cursor++;
+        sent_any = true;
+      }
+      if (sent_any) {
+        last_send = std::chrono::steady_clock::now();
+      }
+
+      if (s.status == "done" || s.status == "error") {
+        Json::Value out(Json::objectValue);
+        out["ok"] = (s.status == "done");
+        out["job_id"] = s.id;
+        out["status"] = s.status;
+        out["error"] = s.error;
+        out["result"] = s.result;
+        out["events_cursor_next"] = (Json::UInt64)cursor;
+        (void)sse_send(client_fd, "job_done", json_stringify(out));
+        return;
+      }
+
+      const auto now = std::chrono::steady_clock::now();
+      if (std::chrono::duration_cast<std::chrono::seconds>(now - last_send).count() >= 15) {
+        if (!sse_ping(client_fd)) {
+          return;
+        }
+        last_send = now;
+      }
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
 #endif
   });
 

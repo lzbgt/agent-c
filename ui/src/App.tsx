@@ -129,50 +129,141 @@ export default function App() {
     let cancelled = false;
     const jobId = activeJobId;
 
-    (async () => {
-      // Poll job progress + stream events via cursor.
-      for (;;) {
-        if (cancelled) return;
-        const job = await apiGetJobProgress(base, jobId, { cursor: cursorRef.current, maxEvents: 256 });
+    const startPolling = () => {
+      (async () => {
+        // Poll job progress + stream events via cursor.
+        for (;;) {
+          if (cancelled) return;
+          const job = await apiGetJobProgress(base, jobId, { cursor: cursorRef.current, maxEvents: 256 });
 
-        if (cancelled) return;
-        setJobStatus(job.status ?? null);
-        setJobError(job.error ?? null);
-        setJobUpdatedMs(typeof job.updated_unix_ms === "number" ? job.updated_unix_ms : null);
+          if (cancelled) return;
+          setJobStatus(job.status ?? null);
+          setJobError(job.error ?? null);
+          setJobUpdatedMs(typeof job.updated_unix_ms === "number" ? job.updated_unix_ms : null);
 
-        const ev = Array.isArray(job.events) ? job.events : [];
-        const next = typeof job.events_cursor_next === "number" ? job.events_cursor_next : cursorRef.current + ev.length;
-        if (ev.length > 0) {
-          if (job.events_reset) {
-            setLiveEvents(ev);
-          } else {
-            setLiveEvents((prev) => prev.concat(ev));
+          const ev = Array.isArray(job.events) ? job.events : [];
+          const next = typeof job.events_cursor_next === "number" ? job.events_cursor_next : cursorRef.current + ev.length;
+          if (ev.length > 0) {
+            if (job.events_reset) {
+              setLiveEvents(ev);
+            } else {
+              setLiveEvents((prev) => prev.concat(ev));
+            }
+            cursorRef.current = next;
           }
-          cursorRef.current = next;
-        }
 
-        if (job.status === "done" || job.status === "error") {
-          if (job.result) {
-            setResult(job.result);
-          } else {
-            setJobError("job completed but missing result");
+          if (job.status === "done" || job.status === "error") {
+            if (job.result) {
+              setResult(job.result);
+            } else {
+              setJobError("job completed but missing result");
+            }
+            setActiveJobId(null);
+            void audit.refetch();
+            void sessions.refetch();
+            return;
+          }
+
+          await sleep(500);
+        }
+      })().catch((e) => {
+        if (cancelled) return;
+        setJobError(String(e));
+        setActiveJobId(null);
+      });
+    };
+
+    // Prefer SSE streaming when available. Fall back to polling.
+    let es: EventSource | null = null;
+    let opened = false;
+    const trySse =
+      typeof EventSource !== "undefined" &&
+      typeof base === "string" &&
+      (base.startsWith("http://") || base.startsWith("https://"));
+
+    if (trySse) {
+      try {
+        const url = `${base}/api/v1/job/stream?job_id=${encodeURIComponent(jobId)}&cursor=${encodeURIComponent(
+          String(cursorRef.current),
+        )}`;
+        es = new EventSource(url);
+        setJobStatus("running");
+        setJobUpdatedMs(null);
+        es.onopen = () => {
+          opened = true;
+        };
+        es.addEventListener("reset", (evt: any) => {
+          if (cancelled) return;
+          try {
+            const data = JSON.parse(String(evt.data || "{}"));
+            if (typeof data?.cursor_base === "number") {
+              cursorRef.current = data.cursor_base;
+            }
+          } catch {
+            // ignore
+          }
+          setLiveEvents([]);
+        });
+        es.addEventListener("agent_event", (evt: any) => {
+          if (cancelled) return;
+          try {
+            const ev = JSON.parse(String(evt.data || "{}"));
+            if (evt && typeof evt.lastEventId === "string" && evt.lastEventId.length > 0) {
+              const n = Number(evt.lastEventId);
+              if (Number.isFinite(n)) cursorRef.current = n + 1;
+            }
+            setLiveEvents((prev) => prev.concat(ev));
+          } catch {
+            // ignore malformed
+          }
+        });
+        es.addEventListener("job_done", (evt: any) => {
+          if (cancelled) return;
+          try {
+            const data = JSON.parse(String(evt.data || "{}"));
+            setJobStatus(typeof data?.status === "string" ? data.status : "done");
+            setJobError(typeof data?.error === "string" ? data.error : null);
+            if (data?.result) {
+              setResult(data.result);
+            }
+          } catch {
+            setJobError("failed to parse job_done event");
           }
           setActiveJobId(null);
+          try {
+            es?.close();
+          } catch {
+            // ignore
+          }
           void audit.refetch();
           void sessions.refetch();
-          return;
-        }
-
-        await sleep(500);
+        });
+        es.onerror = () => {
+          if (cancelled) return;
+          try {
+            es?.close();
+          } catch {
+            // ignore
+          }
+          // If SSE couldn't even open, fall back immediately.
+          if (!opened) {
+            startPolling();
+          }
+        };
+      } catch {
+        startPolling();
       }
-    })().catch((e) => {
-      if (cancelled) return;
-      setJobError(String(e));
-      setActiveJobId(null);
-    });
+    } else {
+      startPolling();
+    }
 
     return () => {
       cancelled = true;
+      try {
+        es?.close();
+      } catch {
+        // ignore
+      }
     };
   }, [activeJobId, base, audit, sessions]);
 

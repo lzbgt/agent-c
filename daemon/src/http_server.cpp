@@ -6,6 +6,7 @@
 #include <cstring>
 #include <sstream>
 #include <string_view>
+#include <thread>
 
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -16,10 +17,6 @@
 static std::string lower(std::string s) {
   for (char& c : s) c = (char)std::tolower((unsigned char)c);
   return s;
-}
-
-static bool starts_with(std::string_view s, std::string_view prefix) {
-  return s.size() >= prefix.size() && s.substr(0, prefix.size()) == prefix;
 }
 
 static void trim_inplace(std::string& s) {
@@ -180,8 +177,13 @@ void HttpServer::handle(const std::string& method, const std::string& path, Hand
   routes_[k] = std::move(handler);
 }
 
+void HttpServer::handle_stream(const std::string& method, const std::string& path, StreamHandler handler) {
+  RouteKey k{method, path};
+  stream_routes_[k] = std::move(handler);
+}
+
 void HttpServer::stop() {
-  stop_ = true;
+  stop_.store(true);
   if (listen_fd_ >= 0) {
     ::shutdown(listen_fd_, SHUT_RDWR);
   }
@@ -189,7 +191,7 @@ void HttpServer::stop() {
 
 bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_error) {
   if (out_error) out_error->clear();
-  stop_ = false;
+  stop_.store(false);
 
   listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
   if (listen_fd_ < 0) {
@@ -228,57 +230,74 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
     return false;
   }
 
-  while (!stop_) {
+  // Handle each client in its own thread to keep the daemon responsive even when
+  // a request is long-running (e.g., SSE streaming endpoint).
+  while (!stop_.load()) {
     int client = ::accept(listen_fd_, nullptr, nullptr);
     if (client < 0) {
-      if (stop_) break;
+      if (stop_.load()) break;
       continue;
     }
 
-    std::string head;
-    if (!read_until(client, &head, "\r\n\r\n", 1024 * 1024)) {
-      ::close(client);
-      continue;
-    }
-
-    HttpRequest req;
-    size_t header_bytes = 0;
-    size_t content_len = 0;
-    if (!parse_request(head, &req, &header_bytes, &content_len)) {
-      HttpResponse resp;
-      resp.status = 400;
-      resp.body = R"({"ok":false,"error":"bad request"})";
-      const std::string wire = build_response(resp, default_headers_);
-      (void)::write(client, wire.data(), wire.size());
-      ::close(client);
-      continue;
-    }
-
-    // If head included bytes after headers, treat them as start of body.
-    std::string body_already;
-    if (head.size() > header_bytes) {
-      body_already = head.substr(header_bytes);
-    }
-    if (content_len > 0) {
-      if (body_already.size() >= content_len) {
-        req.body = body_already.substr(0, content_len);
-      } else {
-        std::string rest;
-        if (!read_exact(client, &rest, content_len - body_already.size())) {
-          ::close(client);
-          continue;
-        }
-        req.body = body_already + rest;
+    std::thread([this, client]() {
+      std::string head;
+      if (!read_until(client, &head, "\r\n\r\n", 1024 * 1024)) {
+        ::close(client);
+        return;
       }
-    }
 
-    HttpResponse resp;
+      HttpRequest req;
+      size_t header_bytes = 0;
+      size_t content_len = 0;
+      if (!parse_request(head, &req, &header_bytes, &content_len)) {
+        HttpResponse resp;
+        resp.status = 400;
+        resp.body = R"({"ok":false,"error":"bad request"})";
+        const std::string wire = build_response(resp, default_headers_);
+        (void)::write(client, wire.data(), wire.size());
+        ::close(client);
+        return;
+      }
 
-    // Basic CORS preflight.
-    if (req.method == "OPTIONS") {
-      resp.status = 204;
-      resp.body.clear();
-    } else {
+      // If head included bytes after headers, treat them as start of body.
+      std::string body_already;
+      if (head.size() > header_bytes) {
+        body_already = head.substr(header_bytes);
+      }
+      if (content_len > 0) {
+        if (body_already.size() >= content_len) {
+          req.body = body_already.substr(0, content_len);
+        } else {
+          std::string rest;
+          if (!read_exact(client, &rest, content_len - body_already.size())) {
+            ::close(client);
+            return;
+          }
+          req.body = body_already + rest;
+        }
+      }
+
+      // Basic CORS preflight.
+      if (req.method == "OPTIONS") {
+        HttpResponse resp;
+        resp.status = 204;
+        resp.body.clear();
+        const std::string wire = build_response(resp, default_headers_);
+        (void)::write(client, wire.data(), wire.size());
+        ::close(client);
+        return;
+      }
+
+      // Prefer streaming routes when registered.
+      auto sit = stream_routes_.find(RouteKey{req.method, req.path});
+      if (sit != stream_routes_.end()) {
+        sit->second(req, client);
+        // Server closes socket after handler returns.
+        ::close(client);
+        return;
+      }
+
+      HttpResponse resp;
       auto it = routes_.find(RouteKey{req.method, req.path});
       if (it == routes_.end()) {
         resp.status = 404;
@@ -286,11 +305,11 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
       } else {
         it->second(req, &resp);
       }
-    }
 
-    const std::string wire = build_response(resp, default_headers_);
-    (void)::write(client, wire.data(), wire.size());
-    ::close(client);
+      const std::string wire = build_response(resp, default_headers_);
+      (void)::write(client, wire.data(), wire.size());
+      ::close(client);
+    }).detach();
   }
 
   return true;

@@ -243,6 +243,7 @@ Initial endpoints (implemented in `agentd`):
   - Progress polling for UIs:
     - `include_events=1` to include tool/LLM events captured so far (best-effort).
     - `cursor=<n>&max_events=<m>` to tail events incrementally (cursor-based pagination).
+- `GET /api/v1/job/stream?job_id=...&cursor=...` → streams events as Server-Sent Events (SSE) for responsive UIs.
 - `GET /api/v1/file?path=...&yolo=0|1` → returns a file for UI preview (images/audio/video/text; size capped).
 - `GET /api/v1/sessions` → list session ids.
 - `GET /api/v1/session?session_id=...` → get session messages.

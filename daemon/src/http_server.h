@@ -4,6 +4,7 @@
 #include <functional>
 #include <map>
 #include <string>
+#include <atomic>
 
 // Minimal HTTP/1.1 server for localhost development.
 //
@@ -34,6 +35,7 @@ struct HttpResponse {
 class HttpServer {
  public:
   using Handler = std::function<void(const HttpRequest&, HttpResponse*)>;
+  using StreamHandler = std::function<void(const HttpRequest&, int client_fd)>;
 
   HttpServer();
   ~HttpServer();
@@ -43,6 +45,10 @@ class HttpServer {
 
   void set_default_headers(std::map<std::string, std::string> headers);
   void handle(const std::string& method, const std::string& path, Handler handler);
+  // Registers a handler that writes directly to the client socket (e.g., SSE).
+  // The handler must write a full HTTP response (status line + headers + body streaming).
+  // The server will close the socket after the handler returns.
+  void handle_stream(const std::string& method, const std::string& path, StreamHandler handler);
 
   // Blocks until stop() is called or accept fails.
   // Returns false on bind/listen failure.
@@ -61,7 +67,8 @@ class HttpServer {
   };
 
   std::map<RouteKey, Handler> routes_;
+  std::map<RouteKey, StreamHandler> stream_routes_;
   std::map<std::string, std::string> default_headers_;
   int listen_fd_ = -1;
-  bool stop_ = false;
+  std::atomic<bool> stop_{false};
 };

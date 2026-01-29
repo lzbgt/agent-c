@@ -33,8 +33,8 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
   - list sessions, get session, delete session
   - fetch per-run audit entries
 - [ ] Add streaming responses (SSE/WebSocket) for UI responsiveness.
-  - start with tool events streaming (even without token streaming)
-  - streaming responses (SSE/WebSocket)
+  - [x] stream job events via SSE (`GET /api/v1/job/stream`) for responsive UIs
+  - [ ] stream assistant token deltas (provider-dependent)
   - make event log fully structured (typed payloads; truncation metadata; stable schema)
 - [x] Add async runs (`/api/v1/run_async` + `/api/v1/job`) so UIs can poll long-running jobs without blocking.
 - [x] Add live job progress via event tailing:
