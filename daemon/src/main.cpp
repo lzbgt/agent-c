@@ -99,6 +99,7 @@ struct DaemonConfig {
   std::string base_url = "https://api.openai.com/v1";
   std::string api_key;
   std::string model = "gpt-4o-mini";
+  std::string proxy_url; // optional explicit proxy override (else env)
   long timeout_ms = 60000;
   std::string tools = "host";     // none|basic|host
   std::string tools_root = "";    // empty => CWD (unrestricted file edits)
@@ -483,6 +484,7 @@ static Json::Value run_request_to_json(
   if (args.isMember("model") && args["model"].isString()) run_cfg.model = args["model"].asString();
   if (args.isMember("base_url") && args["base_url"].isString()) run_cfg.base_url = args["base_url"].asString();
   if (args.isMember("api_key") && args["api_key"].isString()) run_cfg.api_key = args["api_key"].asString();
+  if (args.isMember("proxy") && args["proxy"].isString()) run_cfg.proxy_url = args["proxy"].asString();
   if (args.isMember("timeout_ms") && args["timeout_ms"].isInt64()) {
     const long t = (long)args["timeout_ms"].asInt64();
     if (t > 0) run_cfg.timeout_ms = t;
@@ -1138,6 +1140,11 @@ int main(int argc, char** argv) {
         std::cerr << "Missing value for --api-key\n";
         return 2;
       }
+    } else if (a == "--proxy") {
+      if (!take(&cfg.proxy_url)) {
+        std::cerr << "Missing value for --proxy\n";
+        return 2;
+      }
     } else if (a == "--timeout-ms") {
       std::string v;
       if (!take(&v)) {
@@ -1179,6 +1186,7 @@ int main(int argc, char** argv) {
         << "  --model <name>       Default model\n"
         << "  --base-url <url>     Default base url\n"
         << "  --api-key <key>      Default API key (else env)\n"
+        << "  --proxy <url>        Optional HTTP proxy override (else env HTTPS_PROXY/http_proxy)\n"
         << "  --timeout-ms <n>     Provider HTTP timeout in ms (default: 60000)\n"
         << "  --tools host|basic|none   Default toolset (default: host)\n"
         << "  --tools-root <path>  Root/working dir for file edits (default: unrestricted)\n"
@@ -1231,6 +1239,7 @@ int main(int argc, char** argv) {
   ocfg.base_url = cfg.base_url;
   ocfg.api_key = cfg.api_key;
   ocfg.model = cfg.model;
+  ocfg.proxy_url = cfg.proxy_url;
   ocfg.timeout_ms = cfg.timeout_ms;
   if (const char* r = getenv_s("OPENROUTER_HTTP_REFERER")) {
     ocfg.openrouter_http_referer = r;

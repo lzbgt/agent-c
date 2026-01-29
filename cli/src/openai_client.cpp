@@ -106,17 +106,29 @@ static std::string normalize_base_url(std::string base_url) {
   return base_url + "/v1";
 }
 
+static const char* pick_env_proxy() {
+  const char* p = std::getenv("HTTPS_PROXY");
+  if (!p || !p[0]) p = std::getenv("https_proxy");
+  if (!p || !p[0]) p = std::getenv("HTTP_PROXY");
+  if (!p || !p[0]) p = std::getenv("http_proxy");
+  return (p && p[0]) ? p : nullptr;
+}
+
+static const char* effective_proxy(const OpenAIClientConfig& cfg) {
+  if (!cfg.proxy_url.empty()) {
+    return cfg.proxy_url.c_str();
+  }
+  return pick_env_proxy();
+}
+
 static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::string& url, const std::string& body) {
   OpenAIRawResult result;
   result.http_status = 0;
 
   ensure_curl_global_init();
 
-  const char* https_proxy = std::getenv("HTTPS_PROXY");
-  if (!https_proxy || !https_proxy[0]) {
-    https_proxy = std::getenv("https_proxy");
-  }
-  const bool have_proxy = (https_proxy && https_proxy[0]);
+  const char* proxy = effective_proxy(cfg);
+  const bool have_proxy = (proxy && proxy[0]);
 
   CURL* curl = curl_easy_init();
   if (!curl) {
@@ -156,7 +168,7 @@ static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::
 
   if (have_proxy) {
     // Force libcurl to honor the proxy explicitly (and allow us to retry cleanly on failure).
-    curl_easy_setopt(curl, CURLOPT_PROXY, https_proxy);
+    curl_easy_setopt(curl, CURLOPT_PROXY, proxy);
     curl_easy_setopt(curl, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
     curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 1L);
     // Some local HTTP proxies are not happy with HTTP/2 over CONNECT.
@@ -194,11 +206,8 @@ static OpenAIRawResult http_get_raw(const OpenAIClientConfig& cfg, const std::st
 
   ensure_curl_global_init();
 
-  const char* https_proxy = std::getenv("HTTPS_PROXY");
-  if (!https_proxy || !https_proxy[0]) {
-    https_proxy = std::getenv("https_proxy");
-  }
-  const bool have_proxy = (https_proxy && https_proxy[0]);
+  const char* proxy = effective_proxy(cfg);
+  const bool have_proxy = (proxy && proxy[0]);
 
   CURL* curl = curl_easy_init();
   if (!curl) {
@@ -238,7 +247,7 @@ static OpenAIRawResult http_get_raw(const OpenAIClientConfig& cfg, const std::st
   curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
 
   if (have_proxy) {
-    curl_easy_setopt(curl, CURLOPT_PROXY, https_proxy);
+    curl_easy_setopt(curl, CURLOPT_PROXY, proxy);
     curl_easy_setopt(curl, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
     curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 1L);
     curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
@@ -282,11 +291,8 @@ static OpenAIStreamResult http_post_json_stream(
 
   ensure_curl_global_init();
 
-  const char* https_proxy = std::getenv("HTTPS_PROXY");
-  if (!https_proxy || !https_proxy[0]) {
-    https_proxy = std::getenv("https_proxy");
-  }
-  const bool have_proxy = (https_proxy && https_proxy[0]);
+  const char* proxy = effective_proxy(cfg);
+  const bool have_proxy = (proxy && proxy[0]);
 
   CURL* curl = curl_easy_init();
   if (!curl) {
@@ -326,7 +332,7 @@ static OpenAIStreamResult http_post_json_stream(
   curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
 
   if (have_proxy) {
-    curl_easy_setopt(curl, CURLOPT_PROXY, https_proxy);
+    curl_easy_setopt(curl, CURLOPT_PROXY, proxy);
     curl_easy_setopt(curl, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
     curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 1L);
     curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);

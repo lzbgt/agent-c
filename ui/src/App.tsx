@@ -40,6 +40,7 @@ export default function App() {
   const [model, setModel] = useLocalStorageState("agentui.model", "deepseek-chat");
   const [baseUrl, setBaseUrl] = useLocalStorageState("agentui.baseUrl", "https://api.deepseek.com");
   const [apiKey, setApiKey] = useLocalStorageState("agentui.apiKey", "");
+  const [proxyUrl, setProxyUrl] = useLocalStorageState("agentui.proxyUrl", "");
   const [timeoutMs, setTimeoutMs] = useLocalStorageState("agentui.timeoutMs", "60000");
   const [streamAssistant, setStreamAssistant] = useLocalStorageState("agentui.streamAssistant", false);
   const [orMinTotal, setOrMinTotal] = useLocalStorageState("agentui.orMinTotal", "0.01");
@@ -52,6 +53,10 @@ export default function App() {
   const [keepLast, setKeepLast] = useLocalStorageState("agentui.keepLast", "16");
   const [trace, setTrace] = useLocalStorageState("agentui.trace", true);
   const [useAsync, setUseAsync] = useLocalStorageState("agentui.useAsync", true);
+  const [showDebugInConversation, setShowDebugInConversation] = useLocalStorageState(
+    "agentui.showDebugInConversation",
+    false,
+  );
   const [lastRunPrompt, setLastRunPrompt] = React.useState("");
 
   const [activeJobId, setActiveJobId] = React.useState<string | null>(null);
@@ -102,6 +107,7 @@ export default function App() {
         model: model || undefined,
         base_url: baseUrl || undefined,
         api_key: apiKey || undefined,
+        proxy: proxyUrl && proxyUrl.trim().length > 0 ? proxyUrl.trim() : undefined,
         timeout_ms: Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0 ? Number(timeoutMs) : undefined,
         stream_assistant: streamAssistant,
         max_steps: Number.isFinite(Number(maxSteps)) ? Number(maxSteps) : 0,
@@ -514,6 +520,18 @@ export default function App() {
                   onChange={(e) => setApiKey(e.target.value)}
                 />
               </div>
+              <div className="col-span-2">
+                <Label>HTTPS proxy (optional)</Label>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={proxyUrl}
+                  placeholder="e.g. http://localhost:8120 (leave empty to use daemon env)"
+                  onChange={(e) => setProxyUrl(e.target.value)}
+                />
+                <div className="mt-1 text-[11px] text-white/40">
+                  If outbound networking requires a proxy, set it here to avoid “hangs”.
+                </div>
+              </div>
               <div>
                 <Label>Timeout (ms)</Label>
                 <input
@@ -545,6 +563,18 @@ export default function App() {
               <input id="verbose" type="checkbox" checked={verbose} onChange={(e) => setVerbose(e.target.checked)} />
               <label htmlFor="verbose" className="text-sm text-white/70">
                 Verbose (capture tool output + LLM request/response)
+              </label>
+            </div>
+
+            <div className="mt-3 flex items-center gap-2">
+              <input
+                id="showDebugInConversation"
+                type="checkbox"
+                checked={showDebugInConversation}
+                onChange={(e) => setShowDebugInConversation(e.target.checked)}
+              />
+              <label htmlFor="showDebugInConversation" className="text-sm text-white/70">
+                Show debug events in conversation
               </label>
             </div>
 
@@ -771,14 +801,26 @@ export default function App() {
         {activeJobId && liveEvents.length > 0 ? (
           <div>
             <div className="mb-2 text-sm font-semibold text-white/80">Conversation (live)</div>
-            <ConversationView baseUrl={base} yolo={yolo} prompt={lastRunPrompt || prompt} events={liveEvents} />
+            <ConversationView
+              baseUrl={base}
+              yolo={yolo}
+              prompt={lastRunPrompt || prompt}
+              events={liveEvents}
+              showDebugEvents={showDebugInConversation}
+            />
           </div>
         ) : null}
 
         {!activeJobId && result?.events && result.events.length > 0 ? (
           <div>
             <div className="mb-2 text-sm font-semibold text-white/80">Conversation</div>
-            <ConversationView baseUrl={base} yolo={yolo} prompt={lastRunPrompt || prompt} events={result.events} />
+            <ConversationView
+              baseUrl={base}
+              yolo={yolo}
+              prompt={lastRunPrompt || prompt}
+              events={result.events}
+              showDebugEvents={showDebugInConversation}
+            />
           </div>
         ) : null}
 
@@ -826,7 +868,13 @@ export default function App() {
                       <div className="mt-3">
                         <div className="text-xs font-semibold text-white/70">Conversation</div>
                         <div className="mt-2">
-                          <ConversationView baseUrl={base} yolo={yolo} prompt={String(e.prompt ?? "")} events={e.events} />
+                          <ConversationView
+                            baseUrl={base}
+                            yolo={yolo}
+                            prompt={String(e.prompt ?? "")}
+                            events={e.events}
+                            showDebugEvents={showDebugInConversation}
+                          />
                         </div>
                         <div className="mt-3 text-xs font-semibold text-white/70">Events (raw)</div>
                         <div className="mt-2">

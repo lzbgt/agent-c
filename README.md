@@ -31,6 +31,14 @@ export OPENAI_API_KEY=...
 
 This uses session id `default` and stores it at `~/.agent/sessions/default.json`.
 
+### Proxy (when outbound networking requires it)
+
+If your environment requires an HTTP proxy for outbound HTTPS, pass an explicit proxy URL (or set env `HTTPS_PROXY` / `http_proxy`):
+
+```bash
+./build/agent run "hello" --proxy http://localhost:8120
+```
+
 ### Explicit session id
 
 ```bash
@@ -151,6 +159,12 @@ The recommended UX direction is **daemon-first**: run `agentd` locally and use t
 ./build/agentd --host 127.0.0.1 --port 8123
 ```
 
+Proxy override:
+
+```bash
+./build/agentd --host 127.0.0.1 --port 8123 --proxy http://localhost:8120
+```
+
 Health check:
 
 ```bash
@@ -212,3 +226,4 @@ UI rendering notes:
   user prompt → assistant messages → tool calls/results.
 - Markdown is rendered with GFM + syntax highlighting for code blocks.
 - The settings panel is collapsible and all settings persist in the browser via `localStorage`.
+- If outbound networking requires a proxy, set **HTTPS proxy** in the UI settings (it is sent as `proxy` in `POST /api/v1/run`).

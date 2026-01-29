@@ -9,6 +9,9 @@ struct OpenAIClientConfig {
   std::string model;
   std::string openrouter_http_referer;
   std::string openrouter_x_title;
+  // Optional explicit proxy override (e.g. http://localhost:8120).
+  // If empty, falls back to env (HTTPS_PROXY/https_proxy/HTTP_PROXY/http_proxy).
+  std::string proxy_url;
   long timeout_ms = 60000;
 };
 

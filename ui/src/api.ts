@@ -16,6 +16,7 @@ export const RunRequestSchema = z.object({
   model: z.string().optional(),
   base_url: z.string().optional(),
   api_key: z.string().optional(),
+  proxy: z.string().optional(),
   timeout_ms: z.number().int().positive().optional(),
   stream_assistant: z.boolean().optional(),
   tools: z.enum(["host", "basic", "none"]).optional(),

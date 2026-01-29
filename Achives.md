@@ -108,3 +108,6 @@ Completed milestones and notable tasks.
   - added retry loops for `tools="none"` in daemon (streaming + non-stream) and CLI (compact more, retry) (`daemon/src/main.cpp`, `cli/src/main.cpp`)
   - bounded verbose event payloads (`llm_request`/`llm_response`) to keep the Web UI responsive while preserving full transcripts in `trace_text`
   - added a small unit test for the context-too-long heuristic (`tests/test_openai_errors.cpp`)
+- Added explicit proxy plumbing to reduce “hangs” in environments where outbound HTTPS requires a local proxy:
+  - `OpenAIClientConfig.proxy_url` override (else env `HTTPS_PROXY`/`http_proxy`) (`cli/src/openai_client.h`, `cli/src/openai_client.cpp`)
+  - CLI flag `--proxy`, daemon flag `--proxy`, and Web UI “HTTPS proxy” setting (request field `proxy`)

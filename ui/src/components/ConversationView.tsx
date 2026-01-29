@@ -46,11 +46,13 @@ export default function ConversationView({
   yolo,
   prompt,
   events,
+  showDebugEvents,
 }: {
   baseUrl: string;
   yolo: boolean;
   prompt: string;
   events: AgentEvent[];
+  showDebugEvents?: boolean;
 }) {
   const items: Array<React.ReactNode> = [];
   let streamedAssistant = "";
@@ -115,6 +117,39 @@ export default function ConversationView({
         </Card>,
       );
       return;
+    }
+
+    if (showDebugEvents) {
+      if (type === "retry") {
+        items.push(
+          <Card key={`rt-${idx}`} title="Retry">
+            <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-100">
+              {JSON.stringify(data, null, 2)}
+            </pre>
+          </Card>,
+        );
+        return;
+      }
+      if (type === "compaction") {
+        items.push(
+          <Card key={`cp-${idx}`} title="Compaction">
+            <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
+              {JSON.stringify(data, null, 2)}
+            </pre>
+          </Card>,
+        );
+        return;
+      }
+      if (type === "llm_request" || type === "llm_response" || type === "start" || type === "end" || type === "done") {
+        items.push(
+          <Card key={`dbg-${type}-${idx}`} title={`Debug: ${type}`}>
+            <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
+              {typeof data === "string" ? data : JSON.stringify(data, null, 2)}
+            </pre>
+          </Card>,
+        );
+        return;
+      }
     }
 
     // Hide low-level transport/debug events by default; those remain visible in the “Events” timeline.

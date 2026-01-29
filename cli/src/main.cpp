@@ -76,6 +76,7 @@ static void usage() {
     << "  --model <name>            Model name (default: gpt-4o-mini)\n"
     << "  --base-url <url>          API base url (default: https://api.openai.com/v1)\n"
     << "  --api-key <key>           API key (default: OPENAI_API_KEY)\n"
+    << "  --proxy <url>             Optional HTTP proxy override (else env HTTPS_PROXY/http_proxy)\n"
     << "  --timeout-ms <n>          HTTP timeout in ms (default: 60000)\n"
     << "  --trace                   Print full request/response/tool transcript to stderr (default: on)\n"
     << "  --quiet                   Suppress transcript; print assistant text only\n"
@@ -233,6 +234,7 @@ int main(int argc, char** argv) {
   std::string model = "gpt-4o-mini";
   std::string base_url = "https://api.openai.com/v1";
   std::string api_key;
+  std::string proxy_url;
   std::string session_id = "default";
   bool no_session = false;
   std::string system_msg;
@@ -258,6 +260,10 @@ int main(int argc, char** argv) {
   }
   if (!take_flag(args, "--api-key", &api_key)) {
     std::cerr << "Missing value for --api-key\n";
+    return 2;
+  }
+  if (!take_flag(args, "--proxy", &proxy_url)) {
+    std::cerr << "Missing value for --proxy\n";
     return 2;
   }
   if (!take_flag_u64(args, "--timeout-ms", &timeout_ms)) {
@@ -392,6 +398,7 @@ int main(int argc, char** argv) {
   pctx.cfg.base_url = base_url;
   pctx.cfg.api_key = api_key;
   pctx.cfg.model = model;
+  pctx.cfg.proxy_url = proxy_url;
   pctx.cfg.timeout_ms = (long)timeout_ms;
   if (const char* r = getenv_s("OPENROUTER_HTTP_REFERER")) {
     pctx.cfg.openrouter_http_referer = r;
