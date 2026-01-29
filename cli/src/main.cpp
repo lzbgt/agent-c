@@ -592,8 +592,18 @@ int main(int argc, char** argv) {
       run_opt.summary_or_null = nullptr;
 
       size_t attempt_max_chars = (max_chars == 0 ? 20000 : max_chars);
+      int final_attempt = -1;
+      bool ok = false;
+      long http_status = 0;
+      std::string err;
+      std::string assistant_text;
+      agent_run_report_t rep_final{};
+
       for (int attempt = 0; attempt < 3; attempt++) {
+        final_attempt = attempt;
         run_opt.max_chars = attempt_max_chars;
+        run_opt.summary_or_null = nullptr;
+
         std::string summary_buf;
         if (attempt == 0 && !summary_model.empty() && agent_session_estimated_chars(session) > attempt_max_chars) {
           SummaryCompactionInput input = build_summary_compaction_input(session, keep_last);
@@ -619,26 +629,19 @@ int main(int argc, char** argv) {
         agent_run_report_t rep{};
         const agent_status_t st = agent_run_once(session, &provider, &run_opt, &rep);
         if (st == AGENT_OK) {
-          if (trace) {
-            std::cerr << "=== REQUEST (attempt=" << attempt << ") ===\n";
-            if (!pctx.last_request_body.empty()) {
-              std::cerr << pctx.last_request_body << "\n";
-            } else {
-              std::cerr << "(request body unavailable)\n";
-            }
-            std::cerr << "=== RESPONSE ===\n";
-            if (!pctx.last_body.empty()) {
-              std::cerr << pctx.last_body << "\n";
-            }
-            std::cerr << "=== COMPACTION ===\n";
-            std::cerr << "before_chars=" << rep.compact.before_chars
-                      << " after_chars=" << rep.compact.after_chars
-                      << " dropped=" << rep.compact.dropped_messages
-                      << " inserted_summary=" << (int)rep.compact.inserted_summary
-                      << "\n";
-          }
-          std::cout << std::string(rep.assistant_view.content, rep.assistant_view.content_len) << "\n";
-          return 0;
+          ok = true;
+          rep_final = rep;
+          assistant_text = std::string(rep.assistant_view.content, rep.assistant_view.content_len);
+          break;
+        }
+
+        http_status = pctx.last_http_status;
+        if (!pctx.last_error.empty()) {
+          err = pctx.last_error;
+        } else if (pctx.last_http_status) {
+          err = openai_format_http_error(pctx.last_http_status, pctx.last_body);
+        } else {
+          err = std::string("agent_run_once failed: ") + std::to_string((int)st);
         }
 
         // Retry on context-too-long rejections by compacting more aggressively (session rotation).
@@ -653,23 +656,68 @@ int main(int argc, char** argv) {
           attempt_max_chars = next;
           continue;
         }
+        break;
+      }
 
-        if (pctx.last_http_status) {
-          if (!pctx.last_error.empty()) {
-            std::cerr << pctx.last_error << "\n";
+      // Append a per-run audit record for tools=none runs (host-only; session messages remain clean).
+      if (!no_session && !session_id.empty()) {
+#if defined(AGENT_HAVE_JSONCPP)
+        Json::Value record(Json::objectValue);
+        record["ts_unix_ms"] = (Json::Int64)now_unix_ms();
+        record["prompt"] = user_prompt;
+        record["ok"] = ok;
+        record["tools"] = "none";
+        record["model"] = model;
+        record["base_url"] = pctx.cfg.base_url;
+        record["attempt"] = final_attempt;
+        record["http_status"] = (Json::Int64)(ok ? pctx.last_http_status : http_status);
+        if (!ok) record["error"] = err;
+        if (ok) record["assistant_text"] = assistant_text;
+        {
+          Json::Value c(Json::objectValue);
+          c["before_chars"] = (Json::UInt64)rep_final.compact.before_chars;
+          c["after_chars"] = (Json::UInt64)rep_final.compact.after_chars;
+          c["dropped_messages"] = (Json::UInt64)rep_final.compact.dropped_messages;
+          c["inserted_summary"] = (bool)rep_final.compact.inserted_summary;
+          record["compaction"] = c;
+        }
+        Json::StreamWriterBuilder wb;
+        wb["indentation"] = "";
+        (void)session_store_append_audit_jsonl(store_cfg, session_id, Json::writeString(wb, record));
+#endif
+      }
+
+      if (ok) {
+        if (trace) {
+          std::cerr << "=== REQUEST (attempt=" << final_attempt << ") ===\n";
+          if (!pctx.last_request_body.empty()) {
+            std::cerr << pctx.last_request_body << "\n";
           } else {
-            std::cerr << openai_format_http_error(pctx.last_http_status, pctx.last_body) << "\n";
+            std::cerr << "(request body unavailable)\n";
           }
+          std::cerr << "=== RESPONSE ===\n";
           if (!pctx.last_body.empty()) {
             std::cerr << pctx.last_body << "\n";
           }
-        } else {
-          std::cerr << "agent_run_once failed: " << (int)st << "\n";
+          std::cerr << "=== COMPACTION ===\n";
+          std::cerr << "before_chars=" << rep_final.compact.before_chars
+                    << " after_chars=" << rep_final.compact.after_chars
+                    << " dropped=" << rep_final.compact.dropped_messages
+                    << " inserted_summary=" << (int)rep_final.compact.inserted_summary
+                    << "\n";
         }
-        return 1;
+        std::cout << assistant_text << "\n";
+        return 0;
       }
 
-      std::cerr << "agent_run_once failed after retries\n";
+      if (!err.empty()) {
+        std::cerr << err << "\n";
+      }
+      if (!pctx.last_body.empty()) {
+        std::cerr << pctx.last_body << "\n";
+      } else if (final_attempt >= 2 && openai_is_context_too_long_error(pctx.last_http_status, pctx.last_body)) {
+        std::cerr << "agent_run_once failed after retries\n";
+      }
       return 1;
     };
 

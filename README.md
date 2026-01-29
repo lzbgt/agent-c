@@ -20,6 +20,9 @@ export AGENT_DISABLE_NETWORK_TESTS=1
 Network tests also assume an HTTP proxy may be required; the scripts default to `http://localhost:8120`
 via `https_proxy` / `http_proxy`.
 
+Note: there are additional host-tool network smokes (DeepSeek/OpenRouter) that validate bounded tools like
+`fs_read` and `fs_find` end-to-end (model → tool call → tool output).
+
 ## CLI usage
 
 ### One prompt (persisted session by default)
