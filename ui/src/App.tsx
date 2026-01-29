@@ -14,6 +14,7 @@ import {
 import TraceView from "./components/TraceView";
 import EventTimeline from "./components/EventTimeline";
 import Markdown from "./components/Markdown";
+import ConversationView from "./components/ConversationView";
 
 function Label({ children }: { children: React.ReactNode }) {
   return <div className="text-xs font-medium text-white/70">{children}</div>;
@@ -39,6 +40,7 @@ export default function App() {
   const [keepLast, setKeepLast] = React.useState("16");
   const [trace, setTrace] = React.useState(true);
   const [useAsync, setUseAsync] = React.useState(true);
+  const [lastRunPrompt, setLastRunPrompt] = React.useState("");
 
   const [activeJobId, setActiveJobId] = React.useState<string | null>(null);
   const [jobStatus, setJobStatus] = React.useState<string | null>(null);
@@ -88,6 +90,7 @@ export default function App() {
       };
 
       // Reset UI state for a new run.
+      setLastRunPrompt(prompt);
       setResult(undefined);
       setJobError(null);
       setJobStatus(null);
@@ -427,6 +430,20 @@ export default function App() {
 
         {activeJobId && liveEvents.length > 0 ? (
           <div>
+            <div className="mb-2 text-sm font-semibold text-white/80">Conversation (live)</div>
+            <ConversationView baseUrl={base} yolo={yolo} prompt={lastRunPrompt || prompt} events={liveEvents} />
+          </div>
+        ) : null}
+
+        {!activeJobId && result?.events && result.events.length > 0 ? (
+          <div>
+            <div className="mb-2 text-sm font-semibold text-white/80">Conversation</div>
+            <ConversationView baseUrl={base} yolo={yolo} prompt={lastRunPrompt || prompt} events={result.events} />
+          </div>
+        ) : null}
+
+        {activeJobId && liveEvents.length > 0 ? (
+          <div>
             <div className="mb-2 text-sm font-semibold text-white/80">Live Events</div>
             <EventTimeline baseUrl={base} yolo={yolo} events={liveEvents} />
           </div>
@@ -467,7 +484,11 @@ export default function App() {
                     ) : null}
                     {Array.isArray(e.events) ? (
                       <div className="mt-3">
-                        <div className="text-xs font-semibold text-white/70">Events</div>
+                        <div className="text-xs font-semibold text-white/70">Conversation</div>
+                        <div className="mt-2">
+                          <ConversationView baseUrl={base} yolo={yolo} prompt={String(e.prompt ?? "")} events={e.events} />
+                        </div>
+                        <div className="mt-3 text-xs font-semibold text-white/70">Events (raw)</div>
                         <div className="mt-2">
                           <EventTimeline baseUrl={base} yolo={yolo} events={e.events} />
                         </div>

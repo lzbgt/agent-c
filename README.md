@@ -173,3 +173,8 @@ npm run dev
 ```
 
 Then open the dev server URL (defaults to `http://localhost:5173`) and point it at the daemon base URL.
+
+UI rendering notes:
+- The UI renders a **Conversation** (message cards) derived from the daemon `events` stream:
+  user prompt → assistant messages → tool calls/results.
+- Markdown is rendered with GFM + syntax highlighting for code blocks.

@@ -65,3 +65,7 @@ Completed milestones and notable tasks.
 - Improved daemon observability and resilience:
   - prints per-request start/end logs with duration
   - catches uncaught async-thread exceptions and marks jobs as error instead of leaving them stuck "running"
+- Improved Web UI rendering (day-1 “rich UX” direction):
+  - renders runs as a conversation (message cards) instead of dumping event JSON blobs
+  - tool results render as structured cards (stdout/diff) with a Markdown-vs-text toggle
+  - code blocks in assistant/tool Markdown render with syntax highlighting
