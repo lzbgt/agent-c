@@ -4,6 +4,7 @@
 
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
 static void test_compaction_preserves_pinned_and_suffix(void) {
   agent_session_t* s = NULL;
@@ -54,6 +55,41 @@ static void test_compaction_with_summary_inserts_after_pinned(void) {
   agent_message_view_t v2 = {0};
   assert(agent_session_get_message(s, 2, &v2) == AGENT_OK);
   assert(v2.role == AGENT_ROLE_SYSTEM);
+
+  agent_session_destroy(s);
+}
+
+static void test_summary_marker_is_not_pinned(void) {
+  agent_session_t* s = NULL;
+  assert(agent_session_create(&s) == AGENT_OK);
+
+  // One pinned system message.
+  assert(agent_session_add_message(s, AGENT_ROLE_SYSTEM, "Pinned A") == AGENT_OK);
+  // Insert a host-style summary marker. This should NOT be treated as pinned on future compactions.
+  assert(agent_session_add_message(s, AGENT_ROLE_SYSTEM, AGENT_SESSION_SUMMARY_PREFIX "\nOld summary") == AGENT_OK);
+
+  // Add enough content so compaction has to drop something.
+  for (int i = 0; i < 20; i++) {
+    assert(agent_session_add_message(s, AGENT_ROLE_USER, "User says hello hello hello hello hello.") == AGENT_OK);
+    assert(agent_session_add_message(s, AGENT_ROLE_ASSISTANT, "Assistant replies blah blah blah blah blah.") == AGENT_OK);
+  }
+
+  // Tight budget; keep a small suffix. The summary marker should be droppable.
+  agent_compact_report_t rep = {0};
+  assert(agent_session_compact_char_budget(s, 400, 4, NULL, &rep) == AGENT_OK);
+
+  agent_message_view_t v0 = {0};
+  assert(agent_session_get_message(s, 0, &v0) == AGENT_OK);
+  assert(v0.role == AGENT_ROLE_SYSTEM);
+
+  // After compaction, the second message should not be the summary marker (it should have been droppable).
+  if (agent_session_message_count(s) > 1) {
+    agent_message_view_t v1 = {0};
+    assert(agent_session_get_message(s, 1, &v1) == AGENT_OK);
+    if (v1.role == AGENT_ROLE_SYSTEM && v1.content_len >= strlen(AGENT_SESSION_SUMMARY_PREFIX)) {
+      assert(strncmp(v1.content, AGENT_SESSION_SUMMARY_PREFIX, strlen(AGENT_SESSION_SUMMARY_PREFIX)) != 0);
+    }
+  }
 
   agent_session_destroy(s);
 }
@@ -118,6 +154,7 @@ static void test_tool_registry_roundtrip(void) {
 int main(void) {
   test_compaction_preserves_pinned_and_suffix();
   test_compaction_with_summary_inserts_after_pinned();
+  test_summary_marker_is_not_pinned();
   test_message_parts_roundtrip();
   test_tool_registry_roundtrip();
   extern void test_runner_module(void);

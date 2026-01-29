@@ -204,6 +204,11 @@ static size_t agent_count_pinned_system_prefix(const agent_session_t* session) {
   size_t pinned = 0;
   for (size_t i = 0; i < session->count; i++) {
     if (session->messages[i].role == AGENT_ROLE_SYSTEM) {
+      const char* c = session->messages[i].content ? session->messages[i].content : "";
+      // Do not pin host-generated compaction summaries; they should be replaceable over time.
+      if (strncmp(c, AGENT_SESSION_SUMMARY_PREFIX, strlen(AGENT_SESSION_SUMMARY_PREFIX)) == 0) {
+        break;
+      }
       pinned += 1;
       continue;
     }
@@ -280,7 +285,10 @@ agent_status_t agent_session_compact_char_budget(
 
   size_t pinned = agent_count_pinned_system_prefix(session);
   if (pinned == 0 && session->count > 0 && session->messages[0].role == AGENT_ROLE_SYSTEM) {
-    pinned = 1;
+    const char* c0 = session->messages[0].content ? session->messages[0].content : "";
+    if (strncmp(c0, AGENT_SESSION_SUMMARY_PREFIX, strlen(AGENT_SESSION_SUMMARY_PREFIX)) != 0) {
+      pinned = 1;
+    }
   }
 
   if (want_summary) {

@@ -64,6 +64,11 @@ typedef struct agent_compact_report {
   uint8_t inserted_summary;
 } agent_compact_report_t;
 
+// Convention: host-generated compaction summaries (inserted as system messages) should start with
+// this prefix. The core treats such messages as *not pinned* so they can be replaced/compacted
+// over time (otherwise pinned system prefixes could grow without bound).
+#define AGENT_SESSION_SUMMARY_PREFIX "AGENT_SESSION_SUMMARY:"
+
 // Compacts to satisfy `max_chars` by preserving pinned system messages (leading system messages)
 // plus the last `keep_last_messages` messages. If `summary_or_null` is provided and non-empty,
 // it is inserted as a system message after pinned system messages.

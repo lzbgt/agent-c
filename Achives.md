@@ -126,3 +126,8 @@ Completed milestones and notable tasks.
 - Improved UI responsiveness for long-running async runs:
   - daemon emits lightweight `heartbeat` events when jobs go quiet for a short time (slow provider / long tool execution)
   - added smoke test `agentd_heartbeat_smoke`
+- Added optional LLM-generated compaction summaries for `--tools none` sessions:
+  - CLI flags: `--summary-model`, `--summary-max-chars`
+  - daemon request fields: `summary_model`, `summary_max_chars` (and daemon defaults via flags)
+  - UI settings: summary model + max chars stored in `localStorage`
+  - summaries are tagged with `AGENT_SESSION_SUMMARY_PREFIX` so they are not treated as pinned forever

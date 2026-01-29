@@ -20,7 +20,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 
 - [x] Add `agent chat` REPL mode (session-backed, incremental turns).
 - [x] Improve error messages (HTTP status + provider error extraction).
-- [ ] Add `--summary-model` option (host-generated summary insertion).
+- [x] Add `--summary-model` option (host-generated compaction summary insertion for `--tools none`).
 - [x] Implement extensible host toolsets (subprocess exec + diff-based file edits) for CLI/daemon (`--tools host`).
 - [x] Add bounded filesystem inspection tools (`fs_stat`, `fs_list`, `fs_read`) for token-efficient inspection (paged reads; entry caps).
 - [x] Add an OpenRouter **tool-call** smoke test (host toolset) using a cheap model that supports `tools`.

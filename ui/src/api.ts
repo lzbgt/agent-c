@@ -14,6 +14,8 @@ export const RunRequestSchema = z.object({
   system: z.string().optional(),
   no_default_system: z.boolean().optional(),
   model: z.string().optional(),
+  summary_model: z.string().optional(),
+  summary_max_chars: z.number().int().nonnegative().optional(),
   base_url: z.string().optional(),
   api_key: z.string().optional(),
   proxy: z.string().optional(),

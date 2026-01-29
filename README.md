@@ -134,6 +134,13 @@ Default host system hint (CLI/daemon):
 - Daemon: disable with `./build/agentd --no-default-system` or per-request with `no_default_system: true`;
   override per-request with `system: "<your prompt>"`.
 
+Optional LLM summaries for compaction (`--tools none`):
+- In `--tools none` mode, you can optionally provide `--summary-model <name>` to generate a short LLM summary of the
+  messages that are about to be dropped during compaction.
+- The host inserts the summary as a `system` message starting with `AGENT_SESSION_SUMMARY_PREFIX` so the core can treat it
+  as **not pinned** (allowing it to be replaced/compacted later instead of growing the pinned prefix forever).
+- This is optional because it costs an extra model call; the default compaction behavior does not require it.
+
 ### Chat REPL
 
 ```bash

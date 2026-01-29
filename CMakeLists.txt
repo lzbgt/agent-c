@@ -35,6 +35,8 @@ add_library(agent_host STATIC
   cli/src/openai_client.cpp
   cli/src/sse_parser.cpp
   cli/src/session_store.cpp
+  cli/src/summary_compaction.cpp
+  cli/src/summary_llm.cpp
   cli/src/tool_loop.cpp
   cli/src/tool_loop_compaction.cpp
   cli/src/tool_loop_truncation.cpp
@@ -164,6 +166,12 @@ if(PKG_CONFIG_FOUND AND JSONCPP_FOUND)
   )
   target_link_libraries(tool_loop_truncation_tests PRIVATE agent_host)
   add_test(NAME tool_loop_truncation_tests COMMAND tool_loop_truncation_tests)
+
+  add_executable(summary_compaction_tests
+    tests/test_summary_compaction.cpp
+  )
+  target_link_libraries(summary_compaction_tests PRIVATE agent_host)
+  add_test(NAME summary_compaction_tests COMMAND summary_compaction_tests)
 
   add_executable(openai_error_tests
     tests/test_openai_errors.cpp

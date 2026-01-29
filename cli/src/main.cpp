@@ -3,6 +3,8 @@
 
 #include "openai_client.h"
 #include "session_store.h"
+#include "summary_compaction.h"
+#include "summary_llm.h"
 #include "tool_loop.h"
 #include "toolset_basic.h"
 #include "toolset_host.h"
@@ -87,6 +89,8 @@ static void usage() {
     << "  --no-default-system       Disable the default host system hint (host tools only)\n"
     << "  --max-chars <n>           Auto-compact when session exceeds n chars (default: 20000)\n"
     << "  --keep-last <n>           Keep last n messages during compaction (default: 16)\n"
+    << "  --summary-model <name>    Optional model used to summarize dropped messages during compaction (tools=none)\n"
+    << "  --summary-max-chars <n>   Max chars for inserted summary system message (default: 1200)\n"
     << "  --tools none|basic|host   Select toolset (default: host)\n"
     << "  --tools-root <path>       Root/working dir for host file edits (file_apply_patch) (default: current dir)\n"
     << "  --force-tool <name>       Force a tool call on first step (verification)\n"
@@ -242,6 +246,8 @@ int main(int argc, char** argv) {
   bool no_default_system = false;
   size_t max_chars = 20000;
   size_t keep_last = 16;
+  std::string summary_model;
+  size_t summary_max_chars = 1200;
   size_t timeout_ms = 60000;
   std::string tools_mode = "host";
   std::string tools_root; // empty => unrestricted (YOLO)
@@ -304,6 +310,14 @@ int main(int argc, char** argv) {
   }
   if (!take_flag_u64(args, "--keep-last", &keep_last)) {
     std::cerr << "Invalid value for --keep-last\n";
+    return 2;
+  }
+  if (!take_flag(args, "--summary-model", &summary_model)) {
+    std::cerr << "Missing value for --summary-model\n";
+    return 2;
+  }
+  if (!take_flag_u64(args, "--summary-max-chars", &summary_max_chars)) {
+    std::cerr << "Invalid value for --summary-max-chars\n";
     return 2;
   }
   if (!take_enum(args, "--tools", &tools_mode)) {
@@ -545,6 +559,27 @@ int main(int argc, char** argv) {
       size_t attempt_max_chars = (max_chars == 0 ? 20000 : max_chars);
       for (int attempt = 0; attempt < 3; attempt++) {
         run_opt.max_chars = attempt_max_chars;
+        std::string summary_buf;
+        if (attempt == 0 && !summary_model.empty() && agent_session_estimated_chars(session) > attempt_max_chars) {
+          SummaryCompactionInput input = build_summary_compaction_input(session, keep_last);
+          if (input.dropped_messages > 0 && !input.excerpt.empty()) {
+            const size_t max_out = summary_max_chars == 0 ? 1200 : summary_max_chars;
+            CompactionSummaryResult sr = generate_compaction_summary_via_llm(pctx.cfg, summary_model, input, max_out);
+            if (sr.ok && !sr.summary_text.empty()) {
+              summary_buf = std::string(AGENT_SESSION_SUMMARY_PREFIX) + "\n" + sr.summary_text;
+              run_opt.summary_or_null = summary_buf.c_str();
+              if (trace) {
+                std::cerr << "=== SUMMARY MODEL ===\n";
+                std::cerr << "model=" << summary_model << " dropped_messages=" << input.dropped_messages
+                          << " excerpt_truncated=" << (input.truncated ? "true" : "false") << "\n";
+              }
+            } else if (trace) {
+              std::cerr << "=== SUMMARY MODEL FAILED ===\n";
+              std::cerr << "model=" << summary_model << " http_status=" << sr.http_status << "\n";
+              if (!sr.error.empty()) std::cerr << sr.error << "\n";
+            }
+          }
+        }
 
         agent_run_report_t rep{};
         const agent_status_t st = agent_run_once(session, &provider, &run_opt, &rep);

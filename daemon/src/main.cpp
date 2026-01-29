@@ -6,6 +6,8 @@
 
 #include "openai_client.h"
 #include "session_store.h"
+#include "summary_compaction.h"
+#include "summary_llm.h"
 #include "tool_loop.h"
 #include "toolset_basic.h"
 #include "toolset_host.h"
@@ -135,6 +137,8 @@ struct DaemonConfig {
   std::string base_url = "https://api.openai.com/v1";
   std::string api_key;
   std::string model = "gpt-4o-mini";
+  std::string summary_model;  // optional: model used to summarize dropped messages during compaction (tools=none)
+  size_t summary_max_chars = 1200;
   std::string proxy_url; // optional explicit proxy override (else env)
   long timeout_ms = 60000;
   std::string tools = "host";     // none|basic|host
@@ -614,6 +618,11 @@ static Json::Value run_request_to_json(
   const size_t keep_last = json_get_u64_nonneg(args, "keep_last", &keep_last_u64)
                              ? (size_t)keep_last_u64
                              : daemon_cfg.keep_last_default;
+  const std::string summary_model =
+    args.isMember("summary_model") && args["summary_model"].isString() ? args["summary_model"].asString() : daemon_cfg.summary_model;
+  uint64_t summary_max_chars_u64 = 0;
+  const size_t summary_max_chars =
+    json_get_u64_nonneg(args, "summary_max_chars", &summary_max_chars_u64) ? (size_t)summary_max_chars_u64 : daemon_cfg.summary_max_chars;
   const bool trace = !(args.isMember("trace") && args["trace"].isBool() && args["trace"].asBool() == false);
   const bool verbose = args.isMember("verbose") && args["verbose"].isBool() ? args["verbose"].asBool() : false;
   const bool stream_assistant =
@@ -1058,7 +1067,6 @@ static Json::Value run_request_to_json(
       agent_run_options_t run_opt{};
       run_opt.model = run_cfg.model.c_str();
       run_opt.keep_last_messages = keep_last;
-      run_opt.summary_or_null = nullptr;
 
       size_t attempt_max_chars = (max_chars == 0 ? 20000 : max_chars);
       for (int attempt = 0; attempt < 3; attempt++) {
@@ -1072,6 +1080,38 @@ static Json::Value run_request_to_json(
           break;
         }
         run_opt.max_chars = attempt_max_chars;
+        run_opt.summary_or_null = nullptr;
+        std::string summary_buf;
+
+        if (attempt == 0 && !summary_model.empty() && agent_session_estimated_chars(session) > attempt_max_chars) {
+          SummaryCompactionInput input = build_summary_compaction_input(session, keep_last);
+          if (input.dropped_messages > 0 && !input.excerpt.empty()) {
+            const size_t max_out = summary_max_chars == 0 ? 1200 : summary_max_chars;
+            CompactionSummaryResult sr = generate_compaction_summary_via_llm(run_cfg, summary_model, input, max_out);
+
+            Json::Value d(Json::objectValue);
+            d["attempt"] = attempt;
+            d["summary_model"] = summary_model;
+            d["dropped_messages"] = (Json::UInt64)input.dropped_messages;
+            d["excerpt_truncated"] = input.truncated;
+            d["ok"] = sr.ok;
+            d["http_status"] = (Json::Int64)sr.http_status;
+            if (!sr.ok && !sr.error.empty()) {
+              d["error"] = sr.error;
+            }
+            if (verbose && sr.ok) {
+              bool trunc = false;
+              d["summary_text"] = truncate_for_event(sr.summary_text, 2048, &trunc);
+              d["summary_text_truncated"] = trunc;
+            }
+            push_ev("summary", d);
+
+            if (sr.ok && !sr.summary_text.empty()) {
+              summary_buf = std::string(AGENT_SESSION_SUMMARY_PREFIX) + "\n" + sr.summary_text;
+              run_opt.summary_or_null = summary_buf.c_str();
+            }
+          }
+        }
 
         agent_run_report_t rep{};
         const agent_status_t st = agent_run_once(session, &provider, &run_opt, &rep);
@@ -1324,6 +1364,23 @@ int main(int argc, char** argv) {
         std::cerr << "Missing value for --model\n";
         return 2;
       }
+    } else if (a == "--summary-model") {
+      if (!take(&cfg.summary_model)) {
+        std::cerr << "Missing value for --summary-model\n";
+        return 2;
+      }
+    } else if (a == "--summary-max-chars") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --summary-max-chars\n";
+        return 2;
+      }
+      try {
+        cfg.summary_max_chars = (size_t)std::stoull(v);
+      } catch (...) {
+        std::cerr << "Invalid --summary-max-chars\n";
+        return 2;
+      }
     } else if (a == "--base-url") {
       if (!take(&cfg.base_url)) {
         std::cerr << "Missing value for --base-url\n";
@@ -1378,6 +1435,8 @@ int main(int argc, char** argv) {
         << "  --host <ip>          Listen host (default: 127.0.0.1)\n"
         << "  --port <n>           Listen port (default: 8123)\n"
         << "  --model <name>       Default model\n"
+        << "  --summary-model <name>   Optional model for compaction summaries (tools=none)\n"
+        << "  --summary-max-chars <n>  Max chars for inserted summary (default: 1200)\n"
         << "  --base-url <url>     Default base url\n"
         << "  --api-key <key>      Default API key (else env)\n"
         << "  --proxy <url>        Optional HTTP proxy override (else env HTTPS_PROXY/http_proxy)\n"

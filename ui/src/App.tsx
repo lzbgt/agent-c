@@ -39,6 +39,8 @@ export default function App() {
   const [yolo, setYolo] = useLocalStorageState("agentui.yolo", true);
   const [verbose, setVerbose] = useLocalStorageState("agentui.verbose", false);
   const [model, setModel] = useLocalStorageState("agentui.model", "deepseek-chat");
+  const [summaryModel, setSummaryModel] = useLocalStorageState("agentui.summaryModel", "");
+  const [summaryMaxChars, setSummaryMaxChars] = useLocalStorageState("agentui.summaryMaxChars", "1200");
   const [baseUrl, setBaseUrl] = useLocalStorageState("agentui.baseUrl", "https://api.deepseek.com");
   const [apiKey, setApiKey] = useLocalStorageState("agentui.apiKey", "");
   const [proxyUrl, setProxyUrl] = useLocalStorageState("agentui.proxyUrl", "");
@@ -107,6 +109,9 @@ export default function App() {
         yolo,
         verbose,
         model: model || undefined,
+        summary_model: summaryModel && summaryModel.trim().length > 0 ? summaryModel.trim() : undefined,
+        summary_max_chars:
+          Number.isFinite(Number(summaryMaxChars)) && Number(summaryMaxChars) >= 0 ? Number(summaryMaxChars) : undefined,
         base_url: baseUrl || undefined,
         api_key: apiKey || undefined,
         proxy: proxyUrl && proxyUrl.trim().length > 0 ? proxyUrl.trim() : undefined,
@@ -516,12 +521,32 @@ export default function App() {
                 />
               </div>
               <div>
+                <Label>Summary model (tools=none)</Label>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={summaryModel}
+                  placeholder="optional (e.g. gpt-4o-mini or deepseek-chat)"
+                  onChange={(e) => setSummaryModel(e.target.value)}
+                />
+                <div className="mt-1 text-[11px] text-white/40">
+                  Used to summarize dropped messages when compaction triggers (host inserts a system summary).
+                </div>
+              </div>
+              <div>
                 <Label>API key (optional)</Label>
                 <input
                   className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
                   value={apiKey}
                   placeholder="leave empty to use daemon env"
                   onChange={(e) => setApiKey(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>Summary max chars</Label>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={summaryMaxChars}
+                  onChange={(e) => setSummaryMaxChars(e.target.value)}
                 />
               </div>
               <div className="col-span-2">
