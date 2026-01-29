@@ -21,6 +21,8 @@ static std::string json_stringify(const Json::Value& v) {
   return Json::writeString(builder, v);
 }
 
+static constexpr const char* kCompactionSummaryName = "__agent_compaction_summary__";
+
 static std::string truncate_str(const std::string& s, size_t max_bytes) {
   if (max_bytes == 0 || s.size() <= max_bytes) {
     return s;
@@ -118,6 +120,26 @@ static std::string build_compaction_summary(
   return s;
 }
 
+static size_t pinned_system_prefix_count_json(const Json::Value& messages) {
+  if (!messages.isArray()) {
+    return 0;
+  }
+  size_t pinned = 0;
+  for (Json::ArrayIndex i = 0; i < messages.size(); i++) {
+    const auto& m = messages[i];
+    if (!m.isObject()) break;
+    const auto& role = m["role"];
+    if (!role.isString() || role.asString() != "system") break;
+    const auto& name = m["name"];
+    if (name.isString() && name.asString() == kCompactionSummaryName) {
+      // Treat compaction summary messages as *not pinned* so future compactions can replace them.
+      break;
+    }
+    pinned++;
+  }
+  return pinned;
+}
+
 static Json::Value session_to_compacted_json_messages(
   const agent_session_t* session,
   const std::string& user_prompt,
@@ -181,6 +203,7 @@ static Json::Value session_to_compacted_json_messages(
   if (inserted_summary && !summary.empty()) {
     Json::Value m(Json::objectValue);
     m["role"] = "system";
+    m["name"] = kCompactionSummaryName;
     m["content"] = summary;
     messages.append(m);
   }
@@ -214,6 +237,189 @@ static Json::Value session_to_compacted_json_messages(
   }
 
   return messages;
+}
+
+static size_t estimate_messages_chars_json(const Json::Value& messages) {
+  if (!messages.isArray()) {
+    return 0;
+  }
+  size_t total = 0;
+  for (Json::ArrayIndex i = 0; i < messages.size(); i++) {
+    const auto& m = messages[i];
+    if (!m.isObject()) continue;
+    const auto& role = m["role"];
+    const auto& content = m["content"];
+    if (role.isString()) total += role.asString().size();
+    if (content.isString()) total += content.asString().size();
+    // Rough JSON overhead.
+    total += 8;
+  }
+  return total;
+}
+
+static std::string summarize_for_compaction_json(const Json::Value& msg, size_t snippet_chars) {
+  std::string role = msg.isObject() && msg["role"].isString() ? msg["role"].asString() : "unknown";
+  std::string content = msg.isObject() && msg["content"].isString() ? msg["content"].asString() : "";
+  const size_t nl = content.find('\n');
+  if (nl != std::string::npos) {
+    content.resize(nl);
+  }
+  content.erase(std::remove(content.begin(), content.end(), '\r'), content.end());
+  auto ltrim = [&](std::string& s) {
+    size_t i = 0;
+    while (i < s.size() && std::isspace((unsigned char)s[i])) i++;
+    s.erase(0, i);
+  };
+  auto rtrim = [&](std::string& s) {
+    size_t i = s.size();
+    while (i > 0 && std::isspace((unsigned char)s[i - 1])) i--;
+    s.resize(i);
+  };
+  ltrim(content);
+  rtrim(content);
+  if (snippet_chars > 0 && content.size() > snippet_chars) {
+    content.resize(snippet_chars - 1);
+    rtrim(content);
+    content += "…";
+  }
+  if (content.empty()) return role;
+  return role + ": " + content;
+}
+
+static std::string build_compaction_summary_json(
+  const Json::Value& messages,
+  size_t drop_begin,
+  size_t drop_end, // exclusive
+  const ToolLoopOptions& opt
+) {
+  if (!messages.isArray() || drop_end <= drop_begin) {
+    return "";
+  }
+  const size_t dropped = (size_t)(drop_end - drop_begin);
+  std::ostringstream oss;
+  oss << "Previous conversation truncated (" << (unsigned long long)dropped
+      << " earlier messages omitted) to stay within the model context window.\n";
+  const size_t preview_n = std::min(opt.summary_preview_items, dropped);
+  const size_t preview_start = drop_end - preview_n;
+  for (size_t i = 0; i < preview_n; i++) {
+    const Json::ArrayIndex idx = (Json::ArrayIndex)(preview_start + i);
+    if (idx >= messages.size()) break;
+    oss << (i + 1) << ". " << summarize_for_compaction_json(messages[idx], opt.summary_snippet_chars) << "\n";
+  }
+  std::string s = oss.str();
+  if (!s.empty() && s.back() == '\n') s.pop_back();
+  if (opt.summary_max_chars > 0 && s.size() > opt.summary_max_chars) {
+    s.resize(opt.summary_max_chars - 1);
+    s += "…";
+  }
+  return s;
+}
+
+static bool maybe_compact_messages_json(
+  Json::Value* inout_messages,
+  const ToolLoopOptions& opt,
+  uint64_t epoch,
+  size_t step,
+  Json::Value* out_event_data
+) {
+  if (!inout_messages || !inout_messages->isArray()) {
+    return false;
+  }
+  const size_t max_chars = opt.max_chars == 0 ? 20000 : opt.max_chars;
+  const size_t keep_last = opt.keep_last_messages == 0 ? 16 : opt.keep_last_messages;
+  if (max_chars == 0) {
+    return false;
+  }
+
+  const size_t before = estimate_messages_chars_json(*inout_messages);
+  if (before <= max_chars) {
+    return false;
+  }
+
+  const size_t pinned = pinned_system_prefix_count_json(*inout_messages);
+  const size_t n = (size_t)inout_messages->size();
+  const size_t suffix_start = (n > keep_last) ? (n - keep_last) : pinned;
+  const size_t drop_begin = pinned;
+  const size_t drop_end = std::min(suffix_start, n);
+  if (drop_end <= drop_begin) {
+    return false;
+  }
+
+  const size_t dropped = drop_end - drop_begin;
+  std::string summary;
+  if (opt.insert_compaction_summary) {
+    summary = build_compaction_summary_json(*inout_messages, drop_begin, drop_end, opt);
+  }
+
+  Json::Value out(Json::arrayValue);
+  // Prefix: pinned system messages.
+  for (size_t i = 0; i < pinned; i++) {
+    out.append((*inout_messages)[(Json::ArrayIndex)i]);
+  }
+  // Replace/insert a single summary (not pinned).
+  if (opt.insert_compaction_summary && !summary.empty()) {
+    Json::Value m(Json::objectValue);
+    m["role"] = "system";
+    m["name"] = kCompactionSummaryName;
+    m["content"] = summary;
+    out.append(m);
+  }
+  // Suffix.
+  for (size_t i = drop_end; i < n; i++) {
+    out.append((*inout_messages)[(Json::ArrayIndex)i]);
+  }
+
+  *inout_messages = out;
+
+  if (out_event_data) {
+    Json::Value d(Json::objectValue);
+    d["epoch"] = (Json::UInt64)epoch;
+    d["step"] = (Json::UInt64)step;
+    d["before_chars"] = (Json::UInt64)before;
+    d["after_chars"] = (Json::UInt64)estimate_messages_chars_json(*inout_messages);
+    d["max_chars"] = (Json::UInt64)max_chars;
+    d["keep_last_messages"] = (Json::UInt64)keep_last;
+    d["pinned_system_messages"] = (Json::UInt64)pinned;
+    d["dropped_messages"] = (Json::UInt64)dropped;
+    d["inserted_summary"] = opt.insert_compaction_summary;
+    if (opt.verbose && opt.insert_compaction_summary && !summary.empty()) {
+      d["summary"] = truncate_str(summary, opt.max_capture_bytes);
+    }
+    *out_event_data = d;
+  }
+
+  return true;
+}
+
+static bool is_context_too_long_error(long http_status, const std::string& response_body) {
+  if (http_status < 400) {
+    return false;
+  }
+  std::string msg = openai_try_extract_error_message(response_body);
+  if (msg.empty()) {
+    msg = response_body;
+  }
+  // Lowercase scan.
+  std::string s;
+  s.reserve(msg.size());
+  for (char c : msg) s.push_back((char)std::tolower((unsigned char)c));
+  const char* needles[] = {
+    "context length",
+    "maximum context",
+    "max context",
+    "too many tokens",
+    "token limit",
+    "prompt is too long",
+    "request too large",
+    "reduce the length",
+    "exceeds the maximum",
+  };
+  for (const char* n : needles) {
+    if (s.find(n) != std::string::npos) {
+      return true;
+    }
+  }
+  return false;
 }
 
 static bool extract_choice0_message(const Json::Value& root, Json::Value* out_message) {
@@ -382,6 +588,7 @@ bool run_tool_loop(
   bool events_truncated = false;
   size_t events_count = 0;
   size_t captured_bytes = 0;
+  uint64_t context_epoch = 0;
 
   const size_t max_events = 2048;
   const size_t max_total_capture = options.max_capture_bytes == 0 ? (256 * 1024 * 8) : (options.max_capture_bytes * 8);
@@ -442,9 +649,12 @@ bool run_tool_loop(
     d["verbose"] = options.verbose;
     d["max_chars"] = (Json::UInt64)(options.max_chars == 0 ? 20000 : options.max_chars);
     d["keep_last_messages"] = (Json::UInt64)(options.keep_last_messages == 0 ? 16 : options.keep_last_messages);
+    d["epoch"] = (Json::UInt64)context_epoch;
     push_event("start", d);
   }
   if (compaction_data.isObject()) {
+    compaction_data["epoch"] = (Json::UInt64)context_epoch;
+    compaction_data["step"] = (Json::UInt64)0;
     push_event("compaction", compaction_data);
   }
 
@@ -456,6 +666,15 @@ bool run_tool_loop(
   }
 
   for (size_t step = 0; options.max_steps == 0 || step < options.max_steps; step++) {
+    {
+      Json::Value d;
+      if (maybe_compact_messages_json(&messages, options, context_epoch, step, &d)) {
+        context_epoch++;
+        d["epoch_after"] = (Json::UInt64)context_epoch;
+        push_event("compaction", d);
+      }
+    }
+
     Json::Value req(Json::objectValue);
     req["model"] = cfg.model;
     req["stream"] = false;
@@ -487,7 +706,32 @@ bool run_tool_loop(
       push_event("llm_request", d);
     }
 
-    const OpenAIRawResult raw = openai_chat_completions_raw(cfg, request_json);
+    OpenAIRawResult raw = openai_chat_completions_raw(cfg, request_json);
+    // If the request is rejected due to context length, compact more aggressively and retry.
+    // This is equivalent to "spawning a new session" on stateless providers: restart with a smaller window + summary.
+    for (int retry = 0; retry < 2 && raw.http_status >= 400 && is_context_too_long_error(raw.http_status, raw.response_body); retry++) {
+      Json::Value d(Json::objectValue);
+      d["step"] = (Json::UInt64)step;
+      d["epoch"] = (Json::UInt64)context_epoch;
+      d["http_status"] = (Json::Int64)raw.http_status;
+      d["reason"] = "context_too_long_retry";
+      push_event("retry", d);
+
+      // Shrink budget and compact in-place, then rebuild request JSON.
+      ToolLoopOptions tighter = options;
+      const size_t cur = tighter.max_chars == 0 ? 20000 : tighter.max_chars;
+      tighter.max_chars = std::max<size_t>(2000, (cur * 3) / 4);
+      Json::Value cdata;
+      if (maybe_compact_messages_json(&messages, tighter, context_epoch, step, &cdata)) {
+        context_epoch++;
+        cdata["epoch_after"] = (Json::UInt64)context_epoch;
+        push_event("compaction", cdata);
+      }
+
+      req["messages"] = messages;
+      const std::string retry_json = json_stringify(req);
+      raw = openai_chat_completions_raw(cfg, retry_json);
+    }
     if (out_http_status) {
       *out_http_status = raw.http_status;
     }

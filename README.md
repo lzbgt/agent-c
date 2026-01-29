@@ -98,6 +98,8 @@ Seamless compaction for tool loops:
   keep pinned `system` prefix + keep last `K` messages.
 - When messages are dropped, a short deterministic `system` summary is inserted into the request so the model
   has some continuity (no extra model call).
+- If the provider rejects a request as too large (context length / too many tokens), the tool loop retries after
+  compacting more aggressively. This is effectively “spawning a new session” for stateless backends.
 
 Host tool names:
 - `shell_exec` (runs `/bin/sh -lc <cmd>`, returns JSON envelope with `exit_code`, `timed_out`, `truncated`, `output`)

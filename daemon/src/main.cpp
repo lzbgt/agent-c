@@ -403,8 +403,8 @@ static Json::Value run_request_to_json(
 
     agent_run_options_t run_opt{};
     run_opt.model = run_cfg.model.c_str();
-    run_opt.max_chars = 0;
-    run_opt.keep_last_messages = 0;
+    run_opt.max_chars = max_chars;
+    run_opt.keep_last_messages = keep_last;
     run_opt.summary_or_null = nullptr;
 
     agent_run_report_t rep{};

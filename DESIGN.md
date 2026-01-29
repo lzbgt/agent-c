@@ -136,6 +136,15 @@ The tool-call loop uses the same char-budget idea, but performs compaction at th
 
 This mirrors the approach in `ref/ds-cli` (Sophon) where compaction summaries are lightweight and do not require a second model call.
 
+### “Session rotation” when context runs out
+
+Because most providers are stateless, “spawning a new provider session” is implemented as **session rotation**:
+
+- When the assembled request exceeds the configured context budget (or the provider rejects it as too large),
+  the agent compacts more aggressively and retries.
+- This produces a new “epoch” of context: pinned system prefix + one compaction-summary + last `K` messages.
+- The tool-loop emits `compaction` events with an `epoch` counter so UIs can display when rotations happen.
+
 Note on provider caching:
 - DeepSeek supports automatic “context caching” for repeated request **prefixes** (KV-cache on disk).
 - Our compaction policy preserves pinned `system` prefixes and (after a compaction event) a stable summary prefix,

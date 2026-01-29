@@ -13,6 +13,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
   - appends assistant text to session
 - [ ] Add a persistence interface (optional) so host apps can supply file/SQLite/NVS implementations.
 - [ ] Expand unit tests for compaction edge cases (overlap prefix/suffix; empty; all system messages).
+- [ ] Add a small unit test for tool-loop compaction/rotation logic (JSON message arrays) to prevent regressions.
 
 ## Near-term (CLI ergonomics)
 
