@@ -96,6 +96,7 @@ struct DaemonConfig {
   std::string base_url = "https://api.openai.com/v1";
   std::string api_key;
   std::string model = "gpt-4o-mini";
+  long timeout_ms = 60000;
   std::string tools = "host";     // none|basic|host
   std::string tools_root = "";    // empty => CWD (unrestricted file edits)
   std::string host_scope_root;    // default: daemon process CWD (for "@host" tool root mode)
@@ -156,6 +157,10 @@ static std::optional<std::string> query_get(const std::string& query, const std:
     start = amp + 1;
   }
   return std::nullopt;
+}
+
+static bool string_to_bool(const std::string& s) {
+  return s == "1" || s == "true" || s == "yes" || s == "on";
 }
 
 static std::string content_type_from_path(const std::filesystem::path& p) {
@@ -402,6 +407,10 @@ static Json::Value run_request_to_json(
   if (args.isMember("model") && args["model"].isString()) run_cfg.model = args["model"].asString();
   if (args.isMember("base_url") && args["base_url"].isString()) run_cfg.base_url = args["base_url"].asString();
   if (args.isMember("api_key") && args["api_key"].isString()) run_cfg.api_key = args["api_key"].asString();
+  if (args.isMember("timeout_ms") && args["timeout_ms"].isInt64()) {
+    const long t = (long)args["timeout_ms"].asInt64();
+    if (t > 0) run_cfg.timeout_ms = t;
+  }
 
   const std::string tools = args.isMember("tools") && args["tools"].isString() ? args["tools"].asString() : daemon_cfg.tools;
   const bool yolo = args.isMember("yolo") && args["yolo"].isBool() ? args["yolo"].asBool() : daemon_cfg.yolo_default;
@@ -661,6 +670,7 @@ static Json::Value run_request_to_json(
   out["trace_text"] = trace_buf.str();
   out["effective_tools_root"] = tools_root;
   out["effective_yolo"] = yolo;
+  out["effective_timeout_ms"] = (Json::Int64)run_cfg.timeout_ms;
   out["verbose"] = verbose;
   if (events_out.isArray()) {
     out["events"] = events_out;
@@ -799,6 +809,18 @@ int main(int argc, char** argv) {
         std::cerr << "Missing value for --api-key\n";
         return 2;
       }
+    } else if (a == "--timeout-ms") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --timeout-ms\n";
+        return 2;
+      }
+      try {
+        cfg.timeout_ms = (long)std::stoll(v);
+      } catch (...) {
+        std::cerr << "Invalid --timeout-ms\n";
+        return 2;
+      }
     } else if (a == "--tools") {
       if (!take(&cfg.tools)) {
         std::cerr << "Missing value for --tools\n";
@@ -828,6 +850,7 @@ int main(int argc, char** argv) {
         << "  --model <name>       Default model\n"
         << "  --base-url <url>     Default base url\n"
         << "  --api-key <key>      Default API key (else env)\n"
+        << "  --timeout-ms <n>     Provider HTTP timeout in ms (default: 60000)\n"
         << "  --tools host|basic|none   Default toolset (default: host)\n"
         << "  --tools-root <path>  Root/working dir for file edits (default: unrestricted)\n"
         << "  --host-scope <path>  Host scope root for tools_root=\"@host\" (default: current dir)\n"
@@ -879,6 +902,7 @@ int main(int argc, char** argv) {
   ocfg.base_url = cfg.base_url;
   ocfg.api_key = cfg.api_key;
   ocfg.model = cfg.model;
+  ocfg.timeout_ms = cfg.timeout_ms;
   if (const char* r = getenv_s("OPENROUTER_HTTP_REFERER")) {
     ocfg.openrouter_http_referer = r;
   }
@@ -898,6 +922,98 @@ int main(int argc, char** argv) {
     add_cors(resp);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
     resp->body = R"({"ok":true,"service":"agentd","version":"0.1"})";
+  });
+
+  server.handle("GET", "/api/v1/tools", [&](const HttpRequest& req, HttpResponse* resp) {
+    add_cors(resp);
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+#if !defined(AGENT_HAVE_JSONCPP)
+    resp->status = 500;
+    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
+    return;
+#else
+    std::string tools = cfg.tools;
+    if (const auto q = query_get(req.query, "tools"); q && !q->empty()) {
+      tools = *q;
+    }
+    // Allow callers to request the daemon's host scope via tools_root=@host.
+    std::string tools_root = cfg.tools_root;
+    if (const auto q = query_get(req.query, "tools_root"); q) {
+      tools_root = *q;
+    }
+    bool yolo = cfg.yolo_default;
+    if (const auto q = query_get(req.query, "yolo"); q) {
+      yolo = string_to_bool(*q);
+    }
+
+    if (tools_root == "@host") {
+      tools_root = cfg.host_scope_root;
+    } else if (tools_root == "@cwd") {
+      tools_root = "";
+    }
+    if (yolo) {
+      tools_root.clear();
+    }
+
+    Json::Value out(Json::objectValue);
+    out["ok"] = true;
+    out["tools"] = tools;
+    out["effective_tools_root"] = tools_root;
+    out["effective_yolo"] = yolo;
+
+    agent_tool_registry_t* registry = nullptr;
+    agent_tool_executor_t executor{};
+    bool need_destroy_executor = false;
+
+    if (tools == "none") {
+      out["count"] = 0;
+      out["defs"] = Json::Value(Json::arrayValue);
+      resp->body = json_stringify(out);
+      return;
+    }
+    if (tools == "basic") {
+      if (toolset_basic_create(&registry, &executor) != AGENT_OK) {
+        resp->status = 500;
+        resp->body = R"({"ok":false,"error":"failed to init toolset_basic"})";
+        return;
+      }
+    } else if (tools == "host") {
+      HostToolsetConfig hcfg;
+      hcfg.root_dir = tools_root;
+      if (toolset_host_create(hcfg, &registry, &executor) != AGENT_OK) {
+        resp->status = 500;
+        resp->body = R"({"ok":false,"error":"failed to init toolset_host"})";
+        return;
+      }
+      need_destroy_executor = true;
+    } else {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid tools (expected: none|basic|host)\"}";
+      return;
+    }
+
+    Json::Value arr(Json::arrayValue);
+    const size_t n = agent_tool_registry_count(registry);
+    for (size_t i = 0; i < n; i++) {
+      agent_tool_def_view_t v{};
+      if (agent_tool_registry_get(registry, i, &v) != AGENT_OK) continue;
+      Json::Value d(Json::objectValue);
+      d["name"] = v.name ? v.name : "";
+      d["description"] = v.description ? v.description : "";
+      d["parameters_json"] = v.parameters_json ? v.parameters_json : "";
+      arr.append(d);
+    }
+    out["count"] = (Json::UInt64)arr.size();
+    out["defs"] = arr;
+
+    agent_tool_registry_destroy(registry);
+    if (need_destroy_executor) {
+      toolset_host_destroy(&executor);
+    }
+
+    resp->body = json_stringify(out);
+    return;
+#endif
   });
 
   server.handle("GET", "/api/v1/file", [&](const HttpRequest& req, HttpResponse* resp) {

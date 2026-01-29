@@ -168,6 +168,11 @@ Verbose inspection:
 - Pass `trace: true` to also return a plain-text transcript (`trace_text`).
 - The daemon also serves files for previews at `GET /api/v1/file?path=<...>&yolo=0|1` (up to 10MB).
 
+Tool schema introspection (extensible tools):
+- `GET /api/v1/tools?tools=host|basic|none&tools_root=@host|@cwd|...&yolo=0|1` returns the tool registry the daemon will expose:
+  `name`, `description`, `parameters_json` (OpenAI-compatible JSON Schema).
+- This is intended for “day-1 rich UI” features (rendering tool info, validating tool-call args) and for future clients.
+
 Session browsing:
 - `GET /api/v1/sessions` lists known sessions.
 - `GET /api/v1/session?session_id=<id>` returns the message history.

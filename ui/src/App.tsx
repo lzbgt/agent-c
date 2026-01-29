@@ -4,6 +4,7 @@ import {
   apiGetAudit,
   apiGetHealth,
   apiGetJobProgress,
+  apiGetTools,
   apiListSessions,
   apiRun,
   apiRunAsync,
@@ -38,6 +39,7 @@ export default function App() {
   const [model, setModel] = useLocalStorageState("agentui.model", "deepseek-chat");
   const [baseUrl, setBaseUrl] = useLocalStorageState("agentui.baseUrl", "https://api.deepseek.com");
   const [apiKey, setApiKey] = useLocalStorageState("agentui.apiKey", "");
+  const [timeoutMs, setTimeoutMs] = useLocalStorageState("agentui.timeoutMs", "60000");
   const [maxSteps, setMaxSteps] = useLocalStorageState("agentui.maxSteps", "0");
   const [maxChars, setMaxChars] = useLocalStorageState("agentui.maxChars", "20000");
   const [keepLast, setKeepLast] = useLocalStorageState("agentui.keepLast", "16");
@@ -64,6 +66,12 @@ export default function App() {
     retry: 1,
   });
 
+  const toolsDefs = useQuery({
+    queryKey: ["tools", base, tools, toolsRoot, yolo],
+    queryFn: () => apiGetTools(base, { tools, toolsRoot, yolo }),
+    retry: 1,
+  });
+
   const audit = useQuery({
     queryKey: ["audit", base, sessionId],
     queryFn: () => apiGetAudit(base, sessionId),
@@ -86,6 +94,7 @@ export default function App() {
         model: model || undefined,
         base_url: baseUrl || undefined,
         api_key: apiKey || undefined,
+        timeout_ms: Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0 ? Number(timeoutMs) : undefined,
         max_steps: Number.isFinite(Number(maxSteps)) ? Number(maxSteps) : 0,
         max_chars: Number.isFinite(Number(maxChars)) ? Number(maxChars) : 20000,
         keep_last: Number.isFinite(Number(keepLast)) ? Number(keepLast) : 16,
@@ -334,6 +343,13 @@ export default function App() {
               </button>
               <button
                 className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+                onClick={() => toolsDefs.refetch()}
+                type="button"
+              >
+                Refresh tools
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
                 onClick={() => audit.refetch()}
                 type="button"
                 disabled={!sessionId}
@@ -356,6 +372,16 @@ export default function App() {
               ))}
             </div>
             <div className="mt-3 text-xs text-white/50">Audit entries: {audit.data?.entries ? audit.data.entries.length : 0}</div>
+            <div className="mt-2 text-xs text-white/50">
+              Tools:{" "}
+              {toolsDefs.isFetching
+                ? "loading…"
+                : toolsDefs.isError
+                  ? "failed"
+                  : toolsDefs.data?.ok
+                    ? `${toolsDefs.data?.count ?? 0}`
+                    : "error"}
+            </div>
           </div>
         ) : null}
 
@@ -452,6 +478,17 @@ export default function App() {
                   onChange={(e) => setApiKey(e.target.value)}
                 />
               </div>
+              <div>
+                <Label>Timeout (ms)</Label>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={timeoutMs}
+                  onChange={(e) => setTimeoutMs(e.target.value)}
+                />
+                <div className="mt-1 text-[11px] text-white/40">
+                  Provider HTTP timeout (daemon passes through to libcurl).
+                </div>
+              </div>
             </div>
 
             <div className="mt-4 flex items-center gap-2">
@@ -485,6 +522,25 @@ export default function App() {
             <div className="mt-3 text-[11px] text-white/40">
               Settings are persisted in this browser tab via <code>localStorage</code>.
             </div>
+
+            {toolsDefs.data?.ok && Array.isArray(toolsDefs.data.defs) && toolsDefs.data.defs.length > 0 ? (
+              <div className="mt-4">
+                <div className="mb-2 text-xs font-semibold text-white/70">Active tool schemas</div>
+                <div className="max-h-56 overflow-auto rounded-md border border-white/10 bg-black/20 p-2 text-xs text-white/80">
+                  {toolsDefs.data.defs.map((d) => (
+                    <div key={d.name} className="border-b border-white/5 py-2 last:border-b-0">
+                      <div className="font-semibold">{d.name}</div>
+                      {d.description ? <div className="mt-1 text-white/60">{d.description}</div> : null}
+                      {d.parameters_json ? (
+                        <pre className="mt-2 overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/80">
+                          {d.parameters_json}
+                        </pre>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 

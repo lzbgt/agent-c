@@ -251,6 +251,7 @@ Decision:
 
 Initial endpoints (implemented in `agentd`):
 - `GET /api/v1/health` → `{ ok, service, version }`
+- `GET /api/v1/tools` → returns the active tool registry (`name`, `description`, `parameters_json`) for the requested toolset.
 - `POST /api/v1/run` → runs one user prompt against an LLM backend with optional tool loop.
 - `POST /api/v1/run_async` → starts a background run and returns `{ ok, job_id }` (UI polls job status).
 - `GET /api/v1/job?job_id=...` → returns `{ ok, status, result? }` for async runs.
@@ -269,6 +270,7 @@ Initial endpoints (implemented in `agentd`):
 - `session_id` (string, default `"default"`)
 - `no_session` (bool, default `false`)
 - `model`, `base_url`, `api_key` (optional overrides; if omitted, daemon uses env/config)
+- `timeout_ms` (number; optional; provider HTTP timeout for this run)
 - `tools` (`"host"|"basic"|"none"`, default `"host"`)
 - `tools_root` (string; used for diff-based edits in host tools)
   - `""` or `@cwd` means unrestricted (current working directory)
@@ -285,6 +287,7 @@ Response (JSON):
 - `http_status`, `http_body` (best-effort diagnostics)
 - `error` (best-effort message)
 - `effective_yolo` (bool) and `effective_tools_root` (string) so clients can display what actually applied.
+- `effective_timeout_ms` (number) so clients can display the provider timeout that actually applied.
 - `events` (array; structured event log for UIs)
 
 Note on “thinking process”:

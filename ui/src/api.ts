@@ -16,6 +16,7 @@ export const RunRequestSchema = z.object({
   model: z.string().optional(),
   base_url: z.string().optional(),
   api_key: z.string().optional(),
+  timeout_ms: z.number().int().positive().optional(),
   tools: z.enum(["host", "basic", "none"]).optional(),
   tools_root: z.string().optional(),
   max_steps: z.number().int().nonnegative().optional(),
@@ -42,10 +43,43 @@ export const RunResponseSchema = z.object({
   trace_text: z.string().optional(),
   effective_tools_root: z.string().optional(),
   effective_yolo: z.boolean().optional(),
+  effective_timeout_ms: z.number().optional(),
   verbose: z.boolean().optional(),
   events: z.array(EventSchema).optional(),
 });
 export type RunResponse = z.infer<typeof RunResponseSchema>;
+
+export const ToolDefsRespSchema = z.object({
+  ok: z.boolean(),
+  tools: z.string().optional(),
+  effective_tools_root: z.string().optional(),
+  effective_yolo: z.boolean().optional(),
+  count: z.number().optional(),
+  defs: z
+    .array(
+      z.object({
+        name: z.string(),
+        description: z.string().optional(),
+        parameters_json: z.string().optional(),
+      }),
+    )
+    .optional(),
+  error: z.string().optional(),
+});
+export type ToolDefsResp = z.infer<typeof ToolDefsRespSchema>;
+
+export async function apiGetTools(
+  base: string,
+  opts?: { tools?: "host" | "basic" | "none"; toolsRoot?: string; yolo?: boolean },
+): Promise<ToolDefsResp> {
+  const q = new URLSearchParams();
+  if (opts?.tools) q.set("tools", opts.tools);
+  if (typeof opts?.toolsRoot === "string") q.set("tools_root", opts.toolsRoot);
+  if (typeof opts?.yolo === "boolean") q.set("yolo", opts.yolo ? "1" : "0");
+  const r = await fetch(`${base}/api/v1/tools?${q.toString()}`);
+  const j = await r.json();
+  return ToolDefsRespSchema.parse(j);
+}
 
 export async function apiGetHealth(base: string): Promise<Health> {
   const r = await fetch(`${base}/api/v1/health`);

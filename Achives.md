@@ -91,3 +91,7 @@ Completed milestones and notable tasks.
   - DeepSeek `fs_read` paging smoke (`tests/deepseek_fs_read_smoke.sh`)
   - OpenRouter `fs_read` paging smoke (`tests/openrouter_fs_read_smoke.sh`)
   - Daemon host tool smoke using DeepSeek + `shell_exec` (`tests/agentd_host_tools_smoke.sh`)
+- Added daemon tool schema introspection and UI support:
+  - `GET /api/v1/tools` endpoint to return the active tool registry (name/description/parameters schema) (`daemon/src/main.cpp`)
+  - Web UI shows the active tool schemas and supports per-run provider timeout (`ui/src/App.tsx`, `ui/src/api.ts`)
+  - Added non-network smoke test for `/api/v1/tools` (`tests/agentd_tools_list_smoke.sh`)
