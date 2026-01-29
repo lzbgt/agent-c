@@ -19,6 +19,13 @@ static std::string json_stringify(const Json::Value& v) {
   return Json::writeString(builder, v);
 }
 
+static std::string truncate_str(const std::string& s, size_t max_bytes) {
+  if (max_bytes == 0 || s.size() <= max_bytes) {
+    return s;
+  }
+  return s.substr(0, max_bytes) + "...(truncated)";
+}
+
 static Json::Value session_to_json_messages(const agent_session_t* session) {
   Json::Value messages(Json::arrayValue);
   const size_t n = agent_session_message_count(session);
@@ -77,6 +84,35 @@ static bool parse_json_object(const std::string& s, Json::Value* out_obj) {
   }
   *out_obj = v;
   return true;
+}
+
+static Json::Value summarize_tool_output(const std::string& tool_out) {
+  Json::Value obj;
+  if (!parse_json_object(tool_out, &obj)) {
+    Json::Value s(Json::objectValue);
+    s["kind"] = "text";
+    s["bytes"] = (Json::UInt64)tool_out.size();
+    return s;
+  }
+  Json::Value summary(Json::objectValue);
+  summary["kind"] = "json_envelope";
+  if (obj.isMember("ok")) summary["ok"] = obj["ok"];
+  if (obj.isMember("error")) summary["error"] = obj["error"];
+  const auto& data = obj["data"];
+  if (data.isObject()) {
+    if (data.isMember("exit_code")) summary["exit_code"] = data["exit_code"];
+    if (data.isMember("timed_out")) summary["timed_out"] = data["timed_out"];
+    if (data.isMember("truncated")) summary["truncated"] = data["truncated"];
+    if (data.isMember("argv")) summary["argv"] = data["argv"];
+    if (data.isMember("tool")) summary["tool"] = data["tool"];
+    if (data.isMember("check") && data["check"].isObject() && data["check"].isMember("exit_code")) {
+      summary["check_exit_code"] = data["check"]["exit_code"];
+    }
+    if (data.isMember("apply") && data["apply"].isObject() && data["apply"].isMember("exit_code")) {
+      summary["apply_exit_code"] = data["apply"]["exit_code"];
+    }
+  }
+  return summary;
 }
 
 static bool build_openai_tools_json(const agent_tool_registry_t* registry, Json::Value* out_tools, std::string* out_error) {
@@ -168,6 +204,14 @@ bool run_tool_loop(
     return false;
   }
 
+  Json::Value events(Json::arrayValue);
+  auto push_event = [&](const std::string& type, const Json::Value& data) {
+    Json::Value e(Json::objectValue);
+    e["type"] = type;
+    e["data"] = data;
+    events.append(e);
+  };
+
   if (trace_stream) {
     *trace_stream << "=== TOOL LOOP START ===\n";
     *trace_stream << "model=" << cfg.model << " max_steps=" << options.max_steps << "\n";
@@ -201,6 +245,14 @@ bool run_tool_loop(
     return false;
   }
 
+  {
+    Json::Value d(Json::objectValue);
+    d["model"] = cfg.model;
+    d["max_steps"] = (Json::UInt64)options.max_steps;
+    d["verbose"] = options.verbose;
+    push_event("start", d);
+  }
+
   for (size_t step = 0; options.max_steps == 0 || step < options.max_steps; step++) {
     Json::Value req(Json::objectValue);
     req["model"] = cfg.model;
@@ -222,6 +274,14 @@ bool run_tool_loop(
       *trace_stream << "=== TOOL LOOP STEP " << step << " REQUEST ===\n";
       *trace_stream << request_json << "\n";
     }
+    {
+      Json::Value d(Json::objectValue);
+      d["step"] = (Json::UInt64)step;
+      if (options.verbose) {
+        d["request_json"] = truncate_str(request_json, options.max_capture_bytes);
+      }
+      push_event("llm_request", d);
+    }
 
     const OpenAIRawResult raw = openai_chat_completions_raw(cfg, request_json);
     if (out_http_status) {
@@ -234,9 +294,24 @@ bool run_tool_loop(
       *trace_stream << "=== TOOL LOOP STEP " << step << " RESPONSE (HTTP " << raw.http_status << ") ===\n";
       *trace_stream << raw.response_body << "\n";
     }
+    {
+      Json::Value d(Json::objectValue);
+      d["step"] = (Json::UInt64)step;
+      d["http_status"] = (Json::Int64)raw.http_status;
+      if (options.verbose) {
+        d["response_body"] = truncate_str(raw.response_body, options.max_capture_bytes);
+      }
+      push_event("llm_response", d);
+    }
     if (raw.http_status < 200 || raw.http_status >= 300) {
       if (out_error) {
         *out_error = openai_format_http_error(raw.http_status, raw.response_body);
+      }
+      {
+        Json::Value d(Json::objectValue);
+        d["step"] = (Json::UInt64)step;
+        d["error"] = out_error ? *out_error : std::string("http error");
+        push_event("error", d);
       }
       return false;
     }
@@ -249,6 +324,12 @@ bool run_tool_loop(
       if (out_error) {
         *out_error = "failed to parse JSON response";
       }
+      {
+        Json::Value d(Json::objectValue);
+        d["step"] = (Json::UInt64)step;
+        d["error"] = "failed to parse JSON response";
+        push_event("error", d);
+      }
       return false;
     }
 
@@ -256,6 +337,12 @@ bool run_tool_loop(
     if (!extract_choice0_message(root, &assistant_msg)) {
       if (out_error) {
         *out_error = "missing choices[0].message";
+      }
+      {
+        Json::Value d(Json::objectValue);
+        d["step"] = (Json::UInt64)step;
+        d["error"] = "missing choices[0].message";
+        push_event("error", d);
       }
       return false;
     }
@@ -269,10 +356,26 @@ bool run_tool_loop(
 
     // Append assistant message as-is (includes tool_calls).
     messages.append(assistant_msg);
+    {
+      Json::Value d(Json::objectValue);
+      d["step"] = (Json::UInt64)step;
+      d["assistant_content"] = out_result->final_assistant_text;
+      d["has_tool_calls"] = has_tools;
+      if (options.verbose) {
+        d["assistant_message_json"] = truncate_str(json_stringify(assistant_msg), options.max_capture_bytes);
+      }
+      push_event("assistant_message", d);
+    }
 
     if (!has_tools) {
       if (trace_stream) {
         *trace_stream << "=== TOOL LOOP DONE (no tool calls) ===\n";
+      }
+      {
+        Json::Value d(Json::objectValue);
+        d["step"] = (Json::UInt64)step;
+        d["reason"] = "no tool calls";
+        push_event("done", d);
       }
       break;
     }
@@ -300,6 +403,16 @@ bool run_tool_loop(
         *trace_stream << "=== TOOL CALL " << tool_name << " ARGS ===\n";
         *trace_stream << tool_args_json << "\n";
       }
+      {
+        Json::Value d(Json::objectValue);
+        d["step"] = (Json::UInt64)step;
+        d["tool_call_id"] = idv.asString();
+        d["tool_name"] = tool_name;
+        if (options.verbose) {
+          d["arguments_json"] = truncate_str(tool_args_json, options.max_capture_bytes);
+        }
+        push_event("tool_call", d);
+      }
 
       agent_string_t tool_result{};
       agent_status_t st = executor->execute(executor->ctx, tool_name.c_str(), tool_args_json.c_str(), &tool_result);
@@ -321,6 +434,19 @@ bool run_tool_loop(
         *trace_stream << "=== TOOL CALL " << tool_name << " RESULT ===\n";
         *trace_stream << tool_out << "\n";
       }
+      {
+        Json::Value d(Json::objectValue);
+        d["step"] = (Json::UInt64)step;
+        d["tool_call_id"] = idv.asString();
+        d["tool_name"] = tool_name;
+        d["status"] = (Json::Int64)st;
+        if (options.verbose) {
+          d["content"] = truncate_str(tool_out, options.max_capture_bytes);
+        } else {
+          d["summary"] = summarize_tool_output(tool_out);
+        }
+        push_event("tool_result", d);
+      }
 
       Json::Value tm(Json::objectValue);
       tm["role"] = "tool";
@@ -334,12 +460,20 @@ bool run_tool_loop(
     if (out_error) {
       *out_error = "no tool call occurred";
     }
+    {
+      Json::Value d(Json::objectValue);
+      d["error"] = "no tool call occurred";
+      push_event("error", d);
+    }
     return false;
   }
 
   if (trace_stream) {
     *trace_stream << "=== TOOL LOOP END ===\n";
   }
+  push_event("end", Json::Value(Json::objectValue));
+
+  out_result->events_json = truncate_str(json_stringify(events), options.max_capture_bytes * 8);
   return true;
 #endif
 }

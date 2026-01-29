@@ -194,6 +194,7 @@ Decision:
 Initial endpoints (implemented in `agentd`):
 - `GET /api/v1/health` → `{ ok, service, version }`
 - `POST /api/v1/run` → runs one user prompt against an LLM backend with optional tool loop.
+- `GET /api/v1/file?path=...&yolo=0|1` → returns a file for UI preview (images/audio/video/text; size capped).
 
 `POST /api/v1/run` request (JSON):
 - `prompt` (string, required)
@@ -207,6 +208,7 @@ Initial endpoints (implemented in `agentd`):
 - `max_steps` (number; `0` means unlimited)
 - `trace` (bool; include transcript text)
 - `yolo` (bool; if true, disables tool scoping and forces unrestricted mode)
+- `verbose` (bool; if true, captures full tool outputs and raw request/response bodies into `events`)
 
 Response (JSON):
 - `ok` (bool)
@@ -215,6 +217,11 @@ Response (JSON):
 - `http_status`, `http_body` (best-effort diagnostics)
 - `error` (best-effort message)
 - `effective_yolo` (bool) and `effective_tools_root` (string) so clients can display what actually applied.
+- `events` (array; structured event log for UIs)
+
+Note on “thinking process”:
+- The UI can display **tool calls/results and request/response transcripts**.
+- We do **not** expose hidden chain-of-thought. If a model includes reasoning in the visible assistant message, it will be displayed as part of the assistant content.
 
 Security notes (future):
 - Binding to `127.0.0.1` avoids LAN exposure by default.

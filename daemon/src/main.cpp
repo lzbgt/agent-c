@@ -15,10 +15,13 @@
 #endif
 
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <optional>
 #include <sstream>
 #include <string>
+#include <vector>
+#include <cstring>
 
 static const char* getenv_s(const char* k) {
   const char* v = std::getenv(k);
@@ -75,6 +78,75 @@ static void add_cors(HttpResponse* resp) {
   resp->headers["Access-Control-Allow-Origin"] = "*";
   resp->headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
   resp->headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
+}
+
+static std::string url_decode(std::string_view s) {
+  std::string out;
+  out.reserve(s.size());
+  for (size_t i = 0; i < s.size(); i++) {
+    const char c = s[i];
+    if (c == '%' && i + 2 < s.size()) {
+      auto hex = [](char x) -> int {
+        if (x >= '0' && x <= '9') return x - '0';
+        if (x >= 'a' && x <= 'f') return 10 + (x - 'a');
+        if (x >= 'A' && x <= 'F') return 10 + (x - 'A');
+        return -1;
+      };
+      const int hi = hex(s[i + 1]);
+      const int lo = hex(s[i + 2]);
+      if (hi >= 0 && lo >= 0) {
+        out.push_back((char)((hi << 4) | lo));
+        i += 2;
+        continue;
+      }
+    }
+    if (c == '+') {
+      out.push_back(' ');
+    } else {
+      out.push_back(c);
+    }
+  }
+  return out;
+}
+
+static std::optional<std::string> query_get(const std::string& query, const std::string& key) {
+  size_t start = 0;
+  while (start <= query.size()) {
+    size_t amp = query.find('&', start);
+    if (amp == std::string::npos) amp = query.size();
+    const std::string_view part(query.data() + start, amp - start);
+    const size_t eq = part.find('=');
+    std::string_view k = eq == std::string_view::npos ? part : part.substr(0, eq);
+    std::string_view v = eq == std::string_view::npos ? std::string_view() : part.substr(eq + 1);
+    if (k == key) {
+      return url_decode(v);
+    }
+    start = amp + 1;
+  }
+  return std::nullopt;
+}
+
+static std::string content_type_from_path(const std::filesystem::path& p) {
+  const std::string ext = p.extension().string();
+  auto eqi = [&](const char* s) {
+    if (ext.size() != std::strlen(s)) return false;
+    for (size_t i = 0; i < ext.size(); i++) {
+      if (std::tolower((unsigned char)ext[i]) != std::tolower((unsigned char)s[i])) return false;
+    }
+    return true;
+  };
+  if (eqi(".png")) return "image/png";
+  if (eqi(".jpg") || eqi(".jpeg")) return "image/jpeg";
+  if (eqi(".gif")) return "image/gif";
+  if (eqi(".webp")) return "image/webp";
+  if (eqi(".svg")) return "image/svg+xml";
+  if (eqi(".mp3")) return "audio/mpeg";
+  if (eqi(".wav")) return "audio/wav";
+  if (eqi(".mp4")) return "video/mp4";
+  if (eqi(".webm")) return "video/webm";
+  if (eqi(".mov")) return "video/quicktime";
+  if (eqi(".txt") || eqi(".md")) return "text/plain; charset=utf-8";
+  return "application/octet-stream";
 }
 
 struct ProviderCtx {
@@ -264,6 +336,103 @@ int main(int argc, char** argv) {
     resp->body = R"({"ok":true,"service":"agentd","version":"0.1"})";
   });
 
+  server.handle("GET", "/api/v1/file", [&](const HttpRequest& req, HttpResponse* resp) {
+    add_cors(resp);
+    const auto path_q = query_get(req.query, "path");
+    const auto yolo_q = query_get(req.query, "yolo");
+    const bool yolo = yolo_q && (*yolo_q == "1" || *yolo_q == "true");
+    if (!path_q || path_q->empty()) {
+      resp->status = 400;
+      resp->headers["Content-Type"] = "application/json; charset=utf-8";
+      resp->body = R"({"ok":false,"error":"missing path"})";
+      return;
+    }
+
+    const std::filesystem::path user_path(*path_q);
+    const std::filesystem::path cwd = std::filesystem::current_path();
+    const std::filesystem::path scope_root = std::filesystem::path(cfg.host_scope_root);
+
+    std::filesystem::path resolved;
+    if (yolo) {
+      resolved = user_path.is_absolute() ? user_path : (cwd / user_path);
+    } else {
+      if (user_path.is_absolute()) {
+        resp->status = 400;
+        resp->headers["Content-Type"] = "application/json; charset=utf-8";
+        resp->body = R"({"ok":false,"error":"absolute path requires yolo=1"})";
+        return;
+      }
+      resolved = (scope_root / user_path);
+    }
+    resolved = resolved.lexically_normal();
+
+    // Containment check when not yolo.
+    if (!yolo) {
+      std::error_code ec;
+      const auto canon_root = std::filesystem::weakly_canonical(scope_root, ec);
+      if (ec) {
+        resp->status = 500;
+        resp->headers["Content-Type"] = "application/json; charset=utf-8";
+        resp->body = R"({"ok":false,"error":"failed to canonicalize host scope root"})";
+        return;
+      }
+      ec.clear();
+      const auto canon_file = std::filesystem::weakly_canonical(resolved, ec);
+      if (ec) {
+        resp->status = 404;
+        resp->headers["Content-Type"] = "application/json; charset=utf-8";
+        resp->body = R"({"ok":false,"error":"file not found"})";
+        return;
+      }
+      const auto root_s = canon_root.native();
+      const auto file_s = canon_file.native();
+      if (file_s.size() < root_s.size() || file_s.compare(0, root_s.size(), root_s) != 0) {
+        resp->status = 403;
+        resp->headers["Content-Type"] = "application/json; charset=utf-8";
+        resp->body = R"({"ok":false,"error":"path escapes host scope"})";
+        return;
+      }
+    }
+
+    std::error_code ec;
+    if (!std::filesystem::exists(resolved, ec) || !std::filesystem::is_regular_file(resolved, ec)) {
+      resp->status = 404;
+      resp->headers["Content-Type"] = "application/json; charset=utf-8";
+      resp->body = R"({"ok":false,"error":"file not found"})";
+      return;
+    }
+
+    const uintmax_t max_bytes = 10ULL * 1024ULL * 1024ULL;
+    const uintmax_t sz = std::filesystem::file_size(resolved, ec);
+    if (ec || sz > max_bytes) {
+      resp->status = 400;
+      resp->headers["Content-Type"] = "application/json; charset=utf-8";
+      resp->body = R"({"ok":false,"error":"file too large"})";
+      return;
+    }
+
+    std::ifstream in(resolved, std::ios::binary);
+    if (!in.is_open()) {
+      resp->status = 500;
+      resp->headers["Content-Type"] = "application/json; charset=utf-8";
+      resp->body = R"({"ok":false,"error":"failed to open file"})";
+      return;
+    }
+    std::string bytes;
+    bytes.resize((size_t)sz);
+    in.read(bytes.data(), (std::streamsize)bytes.size());
+    if (!in) {
+      resp->status = 500;
+      resp->headers["Content-Type"] = "application/json; charset=utf-8";
+      resp->body = R"({"ok":false,"error":"failed to read file"})";
+      return;
+    }
+
+    resp->status = 200;
+    resp->headers["Content-Type"] = content_type_from_path(resolved);
+    resp->body = std::move(bytes);
+  });
+
   server.handle("POST", "/api/v1/run", [&](const HttpRequest& req, HttpResponse* resp) {
     add_cors(resp);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
@@ -315,6 +484,7 @@ int main(int argc, char** argv) {
     }
     const size_t max_steps = args.isMember("max_steps") && args["max_steps"].isUInt64() ? (size_t)args["max_steps"].asUInt64() : 0;
     const bool trace = !(args.isMember("trace") && args["trace"].isBool() && args["trace"].asBool() == false);
+    const bool verbose = args.isMember("verbose") && args["verbose"].isBool() ? args["verbose"].asBool() : false;
 
     const std::string session_id = args.isMember("session_id") && args["session_id"].isString() ? args["session_id"].asString() : "default";
     const bool no_session = args.isMember("no_session") && args["no_session"].isBool() ? args["no_session"].asBool() : false;
@@ -391,16 +561,27 @@ int main(int argc, char** argv) {
     std::string http_body;
     std::ostringstream trace_buf;
     std::ostream* trace_stream = trace ? &trace_buf : nullptr;
+    Json::Value events_out; // optional, populated when tool loop captures structured events
 
     if (use_tool_loop) {
       ToolLoopOptions opt;
       opt.max_steps = max_steps;
+      opt.verbose = verbose;
       if (args.isMember("force_tool") && args["force_tool"].isString()) opt.force_tool = args["force_tool"].asString();
       opt.require_tool_call = args.isMember("require_tool_call") && args["require_tool_call"].isBool() ? args["require_tool_call"].asBool() : false;
 
       ToolLoopResult r;
       ok = run_tool_loop(run_cfg, session, prompt, registry, &executor, opt, trace_stream, &r, &err, &http_status, &http_body);
       assistant_text = r.final_assistant_text;
+      if (!r.events_json.empty()) {
+        Json::CharReaderBuilder rb;
+        std::string errs;
+        std::istringstream iss(r.events_json);
+        Json::Value ev;
+        if (Json::parseFromStream(rb, iss, &ev, &errs) && ev.isArray()) {
+          events_out = ev;
+        }
+      }
       if (ok) {
         agent_session_add_message(session, AGENT_ROLE_USER, prompt.c_str());
         agent_session_add_message(session, AGENT_ROLE_ASSISTANT, assistant_text.c_str());
@@ -460,6 +641,11 @@ int main(int argc, char** argv) {
     out["trace_text"] = trace_buf.str();
     out["effective_tools_root"] = tools_root;
     out["effective_yolo"] = yolo;
+    out["verbose"] = verbose;
+    // Structured event log for UIs (LLM requests/responses + tool calls/results).
+    if (use_tool_loop && events_out.isArray()) {
+      out["events"] = events_out;
+    }
     resp->body = json_stringify(out);
 #endif
   });

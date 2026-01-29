@@ -2,6 +2,8 @@ import React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiGetHealth, apiRun, RunRequest, RunResponse } from "./api";
 import TraceView from "./components/TraceView";
+import EventTimeline from "./components/EventTimeline";
+import Markdown from "./components/Markdown";
 
 function Label({ children }: { children: React.ReactNode }) {
   return <div className="text-xs font-medium text-white/70">{children}</div>;
@@ -14,6 +16,7 @@ export default function App() {
   const [tools, setTools] = React.useState<"host" | "basic" | "none">("host");
   const [toolsRoot, setToolsRoot] = React.useState(".");
   const [yolo, setYolo] = React.useState(true);
+  const [verbose, setVerbose] = React.useState(false);
   const [model, setModel] = React.useState("deepseek-chat");
   const [baseUrl, setBaseUrl] = React.useState("https://api.deepseek.com");
   const [apiKey, setApiKey] = React.useState("");
@@ -35,6 +38,7 @@ export default function App() {
         tools,
         tools_root: toolsRoot,
         yolo,
+        verbose,
         model: model || undefined,
         base_url: baseUrl || undefined,
         api_key: apiKey || undefined,
@@ -133,6 +137,13 @@ export default function App() {
               YOLO (no tool restrictions)
             </label>
           </div>
+
+          <div className="mt-3 flex items-center gap-2">
+            <input id="verbose" type="checkbox" checked={verbose} onChange={(e) => setVerbose(e.target.checked)} />
+            <label htmlFor="verbose" className="text-sm text-white/70">
+              Verbose (capture tool output + LLM request/response)
+            </label>
+          </div>
         </div>
 
         <div className="rounded-xl border border-white/10 bg-white/5 p-4">
@@ -194,9 +205,11 @@ export default function App() {
       <div className="mt-6 grid gap-4">
         <div className="rounded-xl border border-white/10 bg-white/5 p-4">
           <div className="mb-2 text-sm font-semibold">Assistant</div>
-          <pre className="whitespace-pre-wrap text-sm leading-relaxed text-white/90">
-            {result?.assistant_text || (run.isPending ? "" : "(no output yet)")}
-          </pre>
+          {result?.assistant_text ? (
+            <Markdown text={result.assistant_text} />
+          ) : (
+            <div className="text-sm text-white/60">{run.isPending ? "" : "(no output yet)"}</div>
+          )}
           {!result?.ok && result?.error ? (
             <div className="mt-3 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
               {result.error}
@@ -211,6 +224,13 @@ export default function App() {
             </div>
           ) : null}
         </div>
+
+        {result?.events && result.events.length > 0 ? (
+          <div>
+            <div className="mb-2 text-sm font-semibold text-white/80">Events</div>
+            <EventTimeline baseUrl={base} yolo={yolo} events={result.events} />
+          </div>
+        ) : null}
 
         {result?.trace_text ? <TraceView trace={result.trace_text} /> : null}
       </div>

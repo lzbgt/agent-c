@@ -13,10 +13,18 @@ struct ToolLoopOptions {
   // Max number of tool-loop steps.
   // 0 means "unlimited" (run until the model stops producing tool calls).
   size_t max_steps = 0;
+  // When true, captures full request/response bodies and tool I/O into `events_json`.
+  // When false, captures a lightweight event log without large blobs.
+  bool verbose = false;
+  // Max bytes captured per field in events (best-effort).
+  size_t max_capture_bytes = 256 * 1024;
 };
 
 struct ToolLoopResult {
   std::string final_assistant_text;
+  // Structured event log as a JSON array string (best-effort).
+  // This is intended for UIs; do not assume a fixed schema beyond `type`.
+  std::string events_json;
   bool saw_tool_call = false;
 };
 

@@ -90,7 +90,16 @@ static bool parse_request(const std::string& head, HttpRequest* out_req, size_t*
     return false;
   }
   out_req->method = method;
+  out_req->raw_path = path;
   out_req->path = path;
+  out_req->query.clear();
+  {
+    const size_t q = out_req->path.find('?');
+    if (q != std::string::npos) {
+      out_req->query = out_req->path.substr(q + 1);
+      out_req->path = out_req->path.substr(0, q);
+    }
+  }
 
   std::string line;
   while (std::getline(iss, line)) {
@@ -271,22 +280,8 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
     } else {
       auto it = routes_.find(RouteKey{req.method, req.path});
       if (it == routes_.end()) {
-        // Allow calling handlers without query string parsing by stripping ?...
-        const size_t q = req.path.find('?');
-        if (q != std::string::npos) {
-          HttpRequest rq2 = req;
-          rq2.path = req.path.substr(0, q);
-          it = routes_.find(RouteKey{rq2.method, rq2.path});
-          if (it != routes_.end()) {
-            it->second(rq2, &resp);
-          } else {
-            resp.status = 404;
-            resp.body = R"({"ok":false,"error":"not found"})";
-          }
-        } else {
-          resp.status = 404;
-          resp.body = R"({"ok":false,"error":"not found"})";
-        }
+        resp.status = 404;
+        resp.body = R"({"ok":false,"error":"not found"})";
       } else {
         it->second(req, &resp);
       }

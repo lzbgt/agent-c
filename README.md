@@ -125,6 +125,12 @@ YOLO vs host-scoped tools:
 - To scope file edits to a workspace root, set `tools_root` to `@host` (host scope configured by daemon).
 - Clients can also pass `yolo: false` + `tools_root: "@host"` in `POST /api/v1/run`.
 
+Verbose inspection:
+- Pass `verbose: true` to `POST /api/v1/run` to return a structured `events` log suitable for UIs
+  (LLM request/response, tool calls, tool results).
+- Pass `trace: true` to also return a plain-text transcript (`trace_text`).
+- The daemon also serves files for previews at `GET /api/v1/file?path=<...>&yolo=0|1` (up to 10MB).
+
 ### Run the Web UI
 
 ```bash

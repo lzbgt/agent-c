@@ -19,8 +19,15 @@ export const RunRequestSchema = z.object({
   max_steps: z.number().int().nonnegative().optional(),
   trace: z.boolean().optional(),
   yolo: z.boolean().optional(),
+  verbose: z.boolean().optional(),
 });
 export type RunRequest = z.infer<typeof RunRequestSchema>;
+
+export const EventSchema = z.object({
+  type: z.string(),
+  data: z.any().optional(),
+});
+export type AgentEvent = z.infer<typeof EventSchema>;
 
 export const RunResponseSchema = z.object({
   ok: z.boolean(),
@@ -31,6 +38,8 @@ export const RunResponseSchema = z.object({
   trace_text: z.string().optional(),
   effective_tools_root: z.string().optional(),
   effective_yolo: z.boolean().optional(),
+  verbose: z.boolean().optional(),
+  events: z.array(EventSchema).optional(),
 });
 export type RunResponse = z.infer<typeof RunResponseSchema>;
 

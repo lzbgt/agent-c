@@ -18,7 +18,9 @@
 
 struct HttpRequest {
   std::string method;
-  std::string path; // no query parsing yet
+  std::string raw_path; // includes optional query string
+  std::string path;     // path only (no query)
+  std::string query;    // portion after '?', without '?'
   std::map<std::string, std::string> headers; // lower-cased keys
   std::string body;
 };
@@ -63,4 +65,3 @@ class HttpServer {
   int listen_fd_ = -1;
   bool stop_ = false;
 };
-
