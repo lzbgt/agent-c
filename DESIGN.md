@@ -195,6 +195,11 @@ The CLI/daemon toolset is designed around **OS-native tooling**:
 - Use a dedicated diff-based editing tool (`file_apply_patch`) so file edits are auditable in the transcript
   (the tool result includes the unified diff that was applied).
 
+Host default system hint (policy):
+- When using the host toolset, host apps inject a one-time `system` message into an empty session to encourage
+  **incremental inspection** (e.g. `rg/grep`, `head`, `tail`, `awk`, `sed -n`) instead of reading entire files.
+- This is host policy only (not a core concept) and can be disabled/overridden by the host or client.
+
 `--tools-root` (when set) is primarily used to control the working directory for `file_apply_patch`
 (via `git -C <root> apply ...`). It is not intended as a strong security boundary (since `proc_exec`
 can still invoke arbitrary commands in a YOLO host configuration).

@@ -110,6 +110,13 @@ Notes:
 - For host-side file operations (read/list/remove/move), prefer OS-native commands via `proc_exec` / `shell_exec` (e.g. `ls`, `find`, `cat`, `rg`, `rm`).
 - For file edits, prefer `file_apply_patch` so the tool output includes a diff-style record of the change.
 
+Default host system hint (CLI/daemon):
+- When using `--tools host`, the CLI/daemon injects a one-time `system` message into an empty session to encourage
+  **fast incremental inspection** (use `rg/grep`, `head`, `tail`, `awk`, `sed -n`) instead of reading large files wholesale.
+- CLI: disable with `--no-default-system` or override with `--system "<your prompt>"`.
+- Daemon: disable with `./build/agentd --no-default-system` or per-request with `no_default_system: true`;
+  override per-request with `system: "<your prompt>"`.
+
 ### Chat REPL
 
 ```bash
@@ -178,3 +185,4 @@ UI rendering notes:
 - The UI renders a **Conversation** (message cards) derived from the daemon `events` stream:
   user prompt → assistant messages → tool calls/results.
 - Markdown is rendered with GFM + syntax highlighting for code blocks.
+- The settings panel is collapsible and all settings persist in the browser via `localStorage`.

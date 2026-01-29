@@ -43,6 +43,27 @@ static std::string home_dir_best_effort() {
   return std::filesystem::current_path().string();
 }
 
+static const char* default_host_system_prompt() {
+  // This prompt is host-only policy (CLI/daemon), not core behavior.
+  //
+  // Goal: push the model toward fast, incremental inspection instead of reading huge files,
+  // and toward auditable file edits.
+  return
+    "You are a host-side coding agent with access to system tools (shell/proc exec) and a diff-based file edit tool.\n"
+    "\n"
+    "Efficiency rules (important):\n"
+    "- Prefer incremental inspection over reading full files. Use tools like: rg/grep, head, tail, sed -n '1,120p', awk, find, ls.\n"
+    "- Avoid dumping large directories or entire files unless strictly needed.\n"
+    "- When exploring code, start narrow (file list, search hits) then open only the relevant sections.\n"
+    "\n"
+    "Edits:\n"
+    "- Use the diff-based edit tool for changing files so edits are auditable.\n"
+    "- For one-off inspection, prefer read-only commands.\n"
+    "\n"
+    "Tool outputs:\n"
+    "- Tool success is not just exit code; judge using tool output content.\n";
+}
+
 static void usage() {
   std::cerr
     << "Usage:\n"
@@ -58,6 +79,7 @@ static void usage() {
     << "  --session <id>            Session id to load/save (default: default)\n"
     << "  --no-session              Disable persistence (ephemeral run)\n"
     << "  --system <text>           Add a system message at the start (one time)\n"
+    << "  --no-default-system       Disable the default host system hint (host tools only)\n"
     << "  --max-chars <n>           Auto-compact when session exceeds n chars (default: 20000)\n"
     << "  --keep-last <n>           Keep last n messages during compaction (default: 16)\n"
     << "  --tools none|basic|host   Select toolset (default: host)\n"
@@ -211,6 +233,7 @@ int main(int argc, char** argv) {
   std::string session_id = "default";
   bool no_session = false;
   std::string system_msg;
+  bool no_default_system = false;
   size_t max_chars = 20000;
   size_t keep_last = 16;
   size_t timeout_ms = 60000;
@@ -259,6 +282,10 @@ int main(int argc, char** argv) {
   }
   if (!take_flag(args, "--system", &system_msg)) {
     std::cerr << "Missing value for --system\n";
+    return 2;
+  }
+  if (!take_switch(args, "--no-default-system", &no_default_system)) {
+    std::cerr << "Invalid flag: --no-default-system\n";
     return 2;
   }
   if (!take_flag_u64(args, "--max-chars", &max_chars)) {
@@ -373,6 +400,13 @@ int main(int argc, char** argv) {
   if (tools_mode == "yolo") {
     tools_mode = "host";
   }
+
+  // Add host-only default system message (one-time) when using host tools and the session is empty.
+  // This encourages incremental inspection (rg/head/awk) instead of full file dumps.
+  if (!no_default_system && system_msg.empty() && tools_mode == "host" && agent_session_message_count(session) == 0) {
+    agent_session_add_message(session, AGENT_ROLE_SYSTEM, default_host_system_prompt());
+  }
+
   if (tools_mode != "none") {
     agent_tool_registry_t* registry = nullptr;
     agent_tool_executor_t executor{};

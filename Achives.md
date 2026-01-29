@@ -69,3 +69,9 @@ Completed milestones and notable tasks.
   - renders runs as a conversation (message cards) instead of dumping event JSON blobs
   - tool results render as structured cards (stdout/diff) with a Markdown-vs-text toggle
   - code blocks in assistant/tool Markdown render with syntax highlighting
+- Added host-only “efficiency” system hint for host tools:
+  - encourages using `rg/grep`, `head`, `tail`, `awk`, `sed -n` to peek instead of reading large files wholesale
+  - configurable/disableable in CLI/daemon; core remains env/runtime agnostic
+- Made the Web UI refresh-safe and less cluttered:
+  - settings panel can be shown/hidden
+  - settings persist via browser `localStorage`

@@ -15,6 +15,7 @@ import TraceView from "./components/TraceView";
 import EventTimeline from "./components/EventTimeline";
 import Markdown from "./components/Markdown";
 import ConversationView from "./components/ConversationView";
+import useLocalStorageState from "./hooks/useLocalStorageState";
 
 function Label({ children }: { children: React.ReactNode }) {
   return <div className="text-xs font-medium text-white/70">{children}</div>;
@@ -25,21 +26,23 @@ function sleep(ms: number) {
 }
 
 export default function App() {
-  const [base, setBase] = React.useState("http://127.0.0.1:8123");
-  const [prompt, setPrompt] = React.useState("inspect this project and explain");
-  const [sessionId, setSessionId] = React.useState("default");
-  const [tools, setTools] = React.useState<"host" | "basic" | "none">("host");
-  const [toolsRoot, setToolsRoot] = React.useState(".");
-  const [yolo, setYolo] = React.useState(true);
-  const [verbose, setVerbose] = React.useState(false);
-  const [model, setModel] = React.useState("deepseek-chat");
-  const [baseUrl, setBaseUrl] = React.useState("https://api.deepseek.com");
-  const [apiKey, setApiKey] = React.useState("");
-  const [maxSteps, setMaxSteps] = React.useState("0");
-  const [maxChars, setMaxChars] = React.useState("20000");
-  const [keepLast, setKeepLast] = React.useState("16");
-  const [trace, setTrace] = React.useState(true);
-  const [useAsync, setUseAsync] = React.useState(true);
+  const [showSettings, setShowSettings] = useLocalStorageState("agentui.showSettings", true);
+
+  const [base, setBase] = useLocalStorageState("agentui.base", "http://127.0.0.1:8123");
+  const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "inspect this project and explain");
+  const [sessionId, setSessionId] = useLocalStorageState("agentui.sessionId", "default");
+  const [tools, setTools] = useLocalStorageState<"host" | "basic" | "none">("agentui.tools", "host");
+  const [toolsRoot, setToolsRoot] = useLocalStorageState("agentui.toolsRoot", ".");
+  const [yolo, setYolo] = useLocalStorageState("agentui.yolo", true);
+  const [verbose, setVerbose] = useLocalStorageState("agentui.verbose", false);
+  const [model, setModel] = useLocalStorageState("agentui.model", "deepseek-chat");
+  const [baseUrl, setBaseUrl] = useLocalStorageState("agentui.baseUrl", "https://api.deepseek.com");
+  const [apiKey, setApiKey] = useLocalStorageState("agentui.apiKey", "");
+  const [maxSteps, setMaxSteps] = useLocalStorageState("agentui.maxSteps", "0");
+  const [maxChars, setMaxChars] = useLocalStorageState("agentui.maxChars", "20000");
+  const [keepLast, setKeepLast] = useLocalStorageState("agentui.keepLast", "16");
+  const [trace, setTrace] = useLocalStorageState("agentui.trace", true);
+  const [useAsync, setUseAsync] = useLocalStorageState("agentui.useAsync", true);
   const [lastRunPrompt, setLastRunPrompt] = React.useState("");
 
   const [activeJobId, setActiveJobId] = React.useState<string | null>(null);
@@ -191,185 +194,193 @@ export default function App() {
             )}
           </div>
         </div>
+        <button
+          className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+          onClick={() => setShowSettings((v) => !v)}
+          type="button"
+        >
+          {showSettings ? "Hide settings" : "Show settings"}
+        </button>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
-        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-          <div className="mb-3 text-sm font-semibold">Sessions</div>
-          <div className="text-xs text-white/60">
-            {sessions.isFetching ? "Loading…" : sessions.isError ? "Failed to load" : null}
-          </div>
-          <div className="mt-3 flex gap-2">
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-              onClick={() => sessions.refetch()}
-              type="button"
-            >
-              Refresh
-            </button>
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-              onClick={() => audit.refetch()}
-              type="button"
-              disabled={!sessionId}
-            >
-              Load audit
-            </button>
-          </div>
-          <div className="mt-3 max-h-80 overflow-auto rounded-md border border-white/10 bg-black/20">
-            {(sessions.data?.sessions ?? []).map((sid) => (
+        {showSettings ? (
+          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+            <div className="mb-3 text-sm font-semibold">Sessions</div>
+            <div className="text-xs text-white/60">
+              {sessions.isFetching ? "Loading…" : sessions.isError ? "Failed to load" : null}
+            </div>
+            <div className="mt-3 flex gap-2">
               <button
-                key={sid}
-                className={`block w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${
-                  sid === sessionId ? "bg-white/10" : ""
-                }`}
-                onClick={() => setSessionId(sid)}
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+                onClick={() => sessions.refetch()}
                 type="button"
               >
-                {sid}
+                Refresh
               </button>
-            ))}
-          </div>
-          <div className="mt-3 text-xs text-white/50">
-            Audit entries: {audit.data?.entries ? audit.data.entries.length : 0}
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-          <div className="mb-3 text-sm font-semibold">Connection</div>
-          <Label>Daemon base URL</Label>
-          <input
-            className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-            value={base}
-            onChange={(e) => setBase(e.target.value)}
-          />
-
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <div>
-              <Label>Session</Label>
-              <input
-                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                value={sessionId}
-                onChange={(e) => setSessionId(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label>Tools</Label>
-              <select
-                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                value={tools}
-                onChange={(e) => setTools(e.target.value as any)}
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+                onClick={() => audit.refetch()}
+                type="button"
+                disabled={!sessionId}
               >
-                <option value="host">host</option>
-                <option value="basic">basic</option>
-                <option value="none">none</option>
-              </select>
+                Load audit
+              </button>
             </div>
-            <div>
-              <Label>Tools root</Label>
-              <input
-                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                value={toolsRoot}
-                onChange={(e) => setToolsRoot(e.target.value)}
-                disabled={yolo}
-              />
-              <div className="mt-1 text-[11px] text-white/40">
-                Supports special values: <code>@host</code> (daemon host scope), <code>@cwd</code> (unrestricted).
+            <div className="mt-3 max-h-80 overflow-auto rounded-md border border-white/10 bg-black/20">
+              {(sessions.data?.sessions ?? []).map((sid) => (
+                <button
+                  key={sid}
+                  className={`block w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${
+                    sid === sessionId ? "bg-white/10" : ""
+                  }`}
+                  onClick={() => setSessionId(sid)}
+                  type="button"
+                >
+                  {sid}
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 text-xs text-white/50">Audit entries: {audit.data?.entries ? audit.data.entries.length : 0}</div>
+          </div>
+        ) : null}
+
+        {showSettings ? (
+          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+            <div className="mb-3 text-sm font-semibold">Settings</div>
+
+            <Label>Daemon base URL</Label>
+            <input
+              className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+              value={base}
+              onChange={(e) => setBase(e.target.value)}
+            />
+
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <div>
+                <Label>Session</Label>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={sessionId}
+                  onChange={(e) => setSessionId(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>Tools</Label>
+                <select
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={tools}
+                  onChange={(e) => setTools(e.target.value as any)}
+                >
+                  <option value="host">host</option>
+                  <option value="basic">basic</option>
+                  <option value="none">none</option>
+                </select>
+              </div>
+              <div>
+                <Label>Tools root</Label>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={toolsRoot}
+                  onChange={(e) => setToolsRoot(e.target.value)}
+                  disabled={yolo}
+                />
+                <div className="mt-1 text-[11px] text-white/40">
+                  Supports special values: <code>@host</code> (daemon host scope), <code>@cwd</code> (unrestricted).
+                </div>
+              </div>
+              <div>
+                <Label>Max steps (0=∞)</Label>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={maxSteps}
+                  onChange={(e) => setMaxSteps(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>Max chars</Label>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={maxChars}
+                  onChange={(e) => setMaxChars(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>Keep last</Label>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={keepLast}
+                  onChange={(e) => setKeepLast(e.target.value)}
+                />
+              </div>
+              <div className="col-span-2">
+                <Label>LLM Base URL</Label>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>Model</Label>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={model}
+                  onChange={(e) => setModel(e.target.value)}
+                />
+              </div>
+              <div>
+                <Label>API key (optional)</Label>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={apiKey}
+                  placeholder="leave empty to use daemon env"
+                  onChange={(e) => setApiKey(e.target.value)}
+                />
               </div>
             </div>
-            <div>
-              <Label>Max steps (0=∞)</Label>
-              <input
-                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                value={maxSteps}
-                onChange={(e) => setMaxSteps(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label>Max chars</Label>
-              <input
-                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                value={maxChars}
-                onChange={(e) => setMaxChars(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label>Keep last</Label>
-              <input
-                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                value={keepLast}
-                onChange={(e) => setKeepLast(e.target.value)}
-              />
-            </div>
-          </div>
 
-          <div className="mt-4 flex items-center gap-2">
-            <input id="trace" type="checkbox" checked={trace} onChange={(e) => setTrace(e.target.checked)} />
-            <label htmlFor="trace" className="text-sm text-white/70">
-              Include transcript
-            </label>
-          </div>
-
-          <div className="mt-3 flex items-center gap-2">
-            <input id="yolo" type="checkbox" checked={yolo} onChange={(e) => setYolo(e.target.checked)} />
-            <label htmlFor="yolo" className="text-sm text-white/70">
-              YOLO (no tool restrictions)
-            </label>
-          </div>
-
-          <div className="mt-3 flex items-center gap-2">
-            <input id="verbose" type="checkbox" checked={verbose} onChange={(e) => setVerbose(e.target.checked)} />
-            <label htmlFor="verbose" className="text-sm text-white/70">
-              Verbose (capture tool output + LLM request/response)
-            </label>
-          </div>
-
-          <div className="mt-3 flex items-center gap-2">
-            <input id="async" type="checkbox" checked={useAsync} onChange={(e) => setUseAsync(e.target.checked)} />
-            <label htmlFor="async" className="text-sm text-white/70">
-              Async run (poll jobs)
-            </label>
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-white/10 bg-white/5 p-4 md:col-span-1">
-          <div className="mb-3 text-sm font-semibold">LLM backend</div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2">
-              <Label>Base URL</Label>
-              <input
-                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
-              />
+            <div className="mt-4 flex items-center gap-2">
+              <input id="trace" type="checkbox" checked={trace} onChange={(e) => setTrace(e.target.checked)} />
+              <label htmlFor="trace" className="text-sm text-white/70">
+                Include transcript
+              </label>
             </div>
-            <div>
-              <Label>Model</Label>
-              <input
-                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-              />
+
+            <div className="mt-3 flex items-center gap-2">
+              <input id="yolo" type="checkbox" checked={yolo} onChange={(e) => setYolo(e.target.checked)} />
+              <label htmlFor="yolo" className="text-sm text-white/70">
+                YOLO (no tool restrictions)
+              </label>
             </div>
-            <div>
-              <Label>API key (optional)</Label>
-              <input
-                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                value={apiKey}
-                placeholder="leave empty to use daemon env"
-                onChange={(e) => setApiKey(e.target.value)}
-              />
+
+            <div className="mt-3 flex items-center gap-2">
+              <input id="verbose" type="checkbox" checked={verbose} onChange={(e) => setVerbose(e.target.checked)} />
+              <label htmlFor="verbose" className="text-sm text-white/70">
+                Verbose (capture tool output + LLM request/response)
+              </label>
+            </div>
+
+            <div className="mt-3 flex items-center gap-2">
+              <input id="async" type="checkbox" checked={useAsync} onChange={(e) => setUseAsync(e.target.checked)} />
+              <label htmlFor="async" className="text-sm text-white/70">
+                Async run (poll jobs)
+              </label>
+            </div>
+
+            <div className="mt-3 text-[11px] text-white/40">
+              Settings are persisted in this browser tab via <code>localStorage</code>.
             </div>
           </div>
+        ) : null}
 
-          <div className="mt-4">
-            <Label>Prompt</Label>
-            <textarea
-              className="mt-1 h-32 w-full resize-none rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-            />
-          </div>
+        <div className={`rounded-xl border border-white/10 bg-white/5 p-4 ${showSettings ? "md:col-span-1" : "md:col-span-3"}`}>
+          <div className="mb-3 text-sm font-semibold">Prompt</div>
+          <textarea
+            className="mt-1 h-32 w-full resize-none rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+          />
 
           <button
             className="mt-4 w-full rounded-md bg-indigo-500 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-400 disabled:opacity-50"

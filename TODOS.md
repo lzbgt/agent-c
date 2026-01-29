@@ -49,6 +49,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Render code blocks with syntax highlighting in the UI (Markdown + highlight.js).
 - [x] Render tool outputs with a JSON-aware view (diff + stdout/stderr previews).
 - [x] Render runs as a conversation (message cards) derived from `events` (user → assistant → tool calls/results).
+- [x] Persist UI settings in `localStorage` (refresh-safe) and allow toggling the settings panel.
 - [x] Add a daemon file endpoint for UI previews (`/api/v1/file`) for images/audio/video artifacts.
 - [ ] Add a daemon skeleton with:
   - local control socket / HTTP

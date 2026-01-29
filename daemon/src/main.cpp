@@ -41,6 +41,24 @@ static std::string home_dir_best_effort() {
   return std::filesystem::current_path().string();
 }
 
+static const char* default_host_system_prompt() {
+  // Host-only policy (daemon/CLI), not core behavior. This is intended to reduce wasted tokens/time
+  // by steering the model toward incremental inspection (search/head/tail) instead of full file reads.
+  return
+    "You are a host-side coding agent with access to system tools (shell/proc exec) and a diff-based file edit tool.\n"
+    "\n"
+    "Efficiency rules (important):\n"
+    "- Prefer incremental inspection over reading full files. Use: rg/grep, head, tail, sed -n '1,120p', awk, find, ls.\n"
+    "- Avoid dumping large directories or entire files unless strictly needed.\n"
+    "- When exploring code, start narrow (file list, search hits) then open only relevant sections.\n"
+    "\n"
+    "Edits:\n"
+    "- Use the diff-based edit tool for changing files so edits are auditable.\n"
+    "\n"
+    "Tool outputs:\n"
+    "- Tool success is not just exit code; judge using tool output content.\n";
+}
+
 #if defined(AGENT_HAVE_JSONCPP)
 static std::string json_stringify(const Json::Value& v) {
   Json::StreamWriterBuilder b;
@@ -77,6 +95,7 @@ struct DaemonConfig {
   std::string tools_root = "";    // empty => CWD (unrestricted file edits)
   std::string host_scope_root;    // default: daemon process CWD (for "@host" tool root mode)
   bool yolo_default = true;       // default to unrestricted unless client requests scoped mode
+  bool no_default_system = false; // when false, host tool runs insert a default system hint (one time)
   size_t max_chars_default = 20000;
   size_t keep_last_default = 16;
 };
@@ -338,6 +357,9 @@ static Json::Value run_request_to_json(
 
   const std::string tools = args.isMember("tools") && args["tools"].isString() ? args["tools"].asString() : daemon_cfg.tools;
   const bool yolo = args.isMember("yolo") && args["yolo"].isBool() ? args["yolo"].asBool() : daemon_cfg.yolo_default;
+  const bool no_default_system =
+    args.isMember("no_default_system") && args["no_default_system"].isBool() ? args["no_default_system"].asBool() : daemon_cfg.no_default_system;
+  const std::string system_msg = args.isMember("system") && args["system"].isString() ? args["system"].asString() : "";
   std::string tools_root = args.isMember("tools_root") && args["tools_root"].isString() ? args["tools_root"].asString() : daemon_cfg.tools_root;
   if (tools_root == "@host") {
     tools_root = daemon_cfg.host_scope_root;
@@ -382,6 +404,17 @@ static Json::Value run_request_to_json(
       o["error"] = "failed to create session";
       o["status"] = (Json::Int64)st;
       return o;
+    }
+  }
+
+  // One-time system message insertion for host tools:
+  // - If `system` is provided in the request, it wins (inserted only when the session is empty).
+  // - Otherwise, when using host tools, insert a default host system hint unless disabled.
+  if (agent_session_message_count(session) == 0) {
+    if (!system_msg.empty()) {
+      agent_session_add_message(session, AGENT_ROLE_SYSTEM, system_msg.c_str());
+    } else if (!no_default_system && tools == "host") {
+      agent_session_add_message(session, AGENT_ROLE_SYSTEM, default_host_system_prompt());
     }
   }
 
@@ -737,6 +770,8 @@ int main(int argc, char** argv) {
       cfg.yolo_default = true;
     } else if (a == "--no-yolo") {
       cfg.yolo_default = false;
+    } else if (a == "--no-default-system") {
+      cfg.no_default_system = true;
     } else if (a == "--help" || a == "-h") {
       std::cerr
         << "Usage: agentd [options]\n"
@@ -748,7 +783,8 @@ int main(int argc, char** argv) {
         << "  --tools host|basic|none   Default toolset (default: host)\n"
         << "  --tools-root <path>  Root/working dir for file edits (default: unrestricted)\n"
         << "  --host-scope <path>  Host scope root for tools_root=\"@host\" (default: current dir)\n"
-        << "  --yolo / --no-yolo   Default unrestricted mode (default: yolo)\n";
+        << "  --yolo / --no-yolo   Default unrestricted mode (default: yolo)\n"
+        << "  --no-default-system  Disable default host system hint (host tools only)\n";
       return 0;
     } else {
       std::cerr << "Unknown arg: " << a << "\n";

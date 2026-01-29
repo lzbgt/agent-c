@@ -11,6 +11,8 @@ export const RunRequestSchema = z.object({
   prompt: z.string().min(1),
   session_id: z.string().optional(),
   no_session: z.boolean().optional(),
+  system: z.string().optional(),
+  no_default_system: z.boolean().optional(),
   model: z.string().optional(),
   base_url: z.string().optional(),
   api_key: z.string().optional(),
