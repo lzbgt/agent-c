@@ -1,0 +1,50 @@
+import { z } from "zod";
+
+export const HealthSchema = z.object({
+  ok: z.boolean(),
+  service: z.string().optional(),
+  version: z.string().optional(),
+});
+export type Health = z.infer<typeof HealthSchema>;
+
+export const RunRequestSchema = z.object({
+  prompt: z.string().min(1),
+  session_id: z.string().optional(),
+  no_session: z.boolean().optional(),
+  model: z.string().optional(),
+  base_url: z.string().optional(),
+  api_key: z.string().optional(),
+  tools: z.enum(["host", "basic", "none"]).optional(),
+  tools_root: z.string().optional(),
+  max_steps: z.number().int().nonnegative().optional(),
+  trace: z.boolean().optional(),
+});
+export type RunRequest = z.infer<typeof RunRequestSchema>;
+
+export const RunResponseSchema = z.object({
+  ok: z.boolean(),
+  assistant_text: z.string().optional(),
+  error: z.string().optional(),
+  http_status: z.number().optional(),
+  http_body: z.string().optional(),
+  trace_text: z.string().optional(),
+});
+export type RunResponse = z.infer<typeof RunResponseSchema>;
+
+export async function apiGetHealth(base: string): Promise<Health> {
+  const r = await fetch(`${base}/api/v1/health`);
+  const j = await r.json();
+  return HealthSchema.parse(j);
+}
+
+export async function apiRun(base: string, req: RunRequest): Promise<RunResponse> {
+  const payload = RunRequestSchema.parse(req);
+  const r = await fetch(`${base}/api/v1/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json();
+  return RunResponseSchema.parse(j);
+}
+

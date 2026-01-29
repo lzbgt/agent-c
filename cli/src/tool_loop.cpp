@@ -201,7 +201,7 @@ bool run_tool_loop(
     return false;
   }
 
-  for (size_t step = 0; step < options.max_steps; step++) {
+  for (size_t step = 0; options.max_steps == 0 || step < options.max_steps; step++) {
     Json::Value req(Json::objectValue);
     req["model"] = cfg.model;
     req["stream"] = false;

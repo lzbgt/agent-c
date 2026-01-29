@@ -33,6 +33,9 @@ Completed milestones and notable tasks.
 - Improved CLI error reporting for OpenAI-compatible backends by extracting provider error messages from non-2xx responses:
   - `cli/src/openai_client.cpp`
   - `cli/src/tool_loop.cpp`
+- Added a daemon-first direction and initial implementation:
+  - `agentd` executable with a minimal local HTTP+JSON API (`GET /api/v1/health`, `POST /api/v1/run`)
+  - `ui/` Web UI scaffold (React + Vite + Tailwind) to drive the daemon day 1
 - Added a simple interactive REPL (`agent chat`) supporting the same session + tools flow:
   - `cli/src/main.cpp`
 - Added unit tests (`tests/test_session.c`) and integration smoke tests (OpenRouter + DeepSeek) that can read test keys from `project.md`.

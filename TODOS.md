@@ -21,9 +21,15 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [ ] Add `--summary-model` option (host-generated summary insertion).
 - [x] Implement extensible host toolsets (subprocess exec + diff-based file edits) for CLI/daemon (`--tools host`).
 - [ ] Decide how to persist **tool-call transcripts** (tool_call_id + tool messages) without breaking OpenAI-compatible request formats.
+- [x] Make tool-loop `--max-steps` default unlimited (0 means unlimited).
 
 ## Mid-term (daemon + broker)
 
+- [x] Add a minimal local daemon (`agentd`) with HTTP+JSON endpoints for a Web UI client.
+- [ ] Expand daemon RPC surface:
+  - list sessions, get session, delete session
+  - streaming responses (SSE/WebSocket)
+  - structured event log (not just trace text)
 - [ ] Add a daemon skeleton with:
   - local control socket / HTTP
   - broker client abstraction (MQTT)
@@ -39,3 +45,4 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 ## Hygiene
 
 - [x] Add `.gitignore` for `build/`, logs, and local session artifacts.
+- [x] Add a local Web UI scaffold (`ui/`) to exercise daemon RPC day 1.

@@ -4,3 +4,6 @@ build/
 ~/.agent/
 .agent/
 ref/ds-cli/
+ui/node_modules/
+ui/dist/
+ui/.vite/

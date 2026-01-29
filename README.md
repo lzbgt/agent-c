@@ -103,3 +103,29 @@ Commands:
 - Header: `core/include/agent/agent.h`
 - Scope: session model + char-budget compaction + role helpers
 - No environment variable access in the core (host-only concern).
+
+## Daemon + Web UI (day-1)
+
+The recommended UX direction is **daemon-first**: run `agentd` locally and use the Web UI (or CLI) as a client.
+
+### Run the daemon
+
+```bash
+./build/agentd --host 127.0.0.1 --port 8123
+```
+
+Health check:
+
+```bash
+curl http://127.0.0.1:8123/api/v1/health
+```
+
+### Run the Web UI
+
+```bash
+cd ui
+NPM_CONFIG_CACHE=../build/npm-cache npm install
+npm run dev
+```
+
+Then open the dev server URL (defaults to `http://localhost:5173`) and point it at the daemon base URL.

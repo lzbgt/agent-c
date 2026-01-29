@@ -19,12 +19,19 @@ target_include_directories(agent_core PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/core/include
 )
 
+include(FindPkgConfig)
+if(PKG_CONFIG_FOUND)
+  pkg_check_modules(JSONCPP jsoncpp)
+endif()
+
 target_compile_options(agent_core PRIVATE
   $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wpedantic>
 )
 
-add_executable(agent
-  cli/src/main.cpp
+find_package(CURL REQUIRED)
+
+# Host-side adapter library shared by CLI and daemon.
+add_library(agent_host STATIC
   cli/src/openai_client.cpp
   cli/src/session_store.cpp
   cli/src/tool_loop.cpp
@@ -32,26 +39,44 @@ add_executable(agent
   cli/src/toolset_host.cpp
 )
 
+target_compile_options(agent_host PRIVATE
+  $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+)
+
+target_include_directories(agent_host PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/cli/src
+)
+
+target_link_libraries(agent_host PUBLIC agent_core CURL::libcurl)
+
+if(PKG_CONFIG_FOUND AND JSONCPP_FOUND)
+  target_include_directories(agent_host PUBLIC ${JSONCPP_INCLUDE_DIRS})
+  target_link_directories(agent_host PUBLIC ${JSONCPP_LIBRARY_DIRS})
+  target_link_libraries(agent_host PUBLIC ${JSONCPP_LIBRARIES})
+  target_compile_definitions(agent_host PUBLIC AGENT_HAVE_JSONCPP=1)
+  target_compile_definitions(agent_core PRIVATE AGENT_HAVE_JSONCPP=1)
+endif()
+
+add_executable(agent
+  cli/src/main.cpp
+)
+
 target_compile_options(agent PRIVATE
   $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
 )
 
-target_link_libraries(agent PRIVATE agent_core)
+target_link_libraries(agent PRIVATE agent_host)
 
-find_package(CURL REQUIRED)
-target_link_libraries(agent PRIVATE CURL::libcurl)
+add_executable(agentd
+  daemon/src/main.cpp
+  daemon/src/http_server.cpp
+)
 
-include(FindPkgConfig)
-if(PKG_CONFIG_FOUND)
-  pkg_check_modules(JSONCPP jsoncpp)
-  if(JSONCPP_FOUND)
-    target_include_directories(agent PRIVATE ${JSONCPP_INCLUDE_DIRS})
-    target_link_directories(agent PRIVATE ${JSONCPP_LIBRARY_DIRS})
-    target_link_libraries(agent PRIVATE ${JSONCPP_LIBRARIES})
-    target_compile_definitions(agent PRIVATE AGENT_HAVE_JSONCPP=1)
-    target_compile_definitions(agent_core PRIVATE AGENT_HAVE_JSONCPP=1)
-  endif()
-endif()
+target_compile_options(agentd PRIVATE
+  $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+)
+
+target_link_libraries(agentd PRIVATE agent_host)
 
 enable_testing()
 add_executable(agent_core_tests
@@ -73,17 +98,10 @@ set_tests_properties(agent_deepseek_tools_smoke PROPERTIES SKIP_RETURN_CODE 77)
 add_test(NAME agent_deepseek_reasoner_tools_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/deepseek_reasoner_tools_smoke.sh $<TARGET_FILE:agent>)
 set_tests_properties(agent_deepseek_reasoner_tools_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
-if(JSONCPP_FOUND)
+if(PKG_CONFIG_FOUND AND JSONCPP_FOUND)
   add_executable(host_toolset_tests
     tests/test_host_toolset.cpp
-    cli/src/toolset_host.cpp
   )
-  target_include_directories(host_toolset_tests PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/cli/src
-    ${JSONCPP_INCLUDE_DIRS}
-  )
-  target_link_directories(host_toolset_tests PRIVATE ${JSONCPP_LIBRARY_DIRS})
-  target_link_libraries(host_toolset_tests PRIVATE agent_core ${JSONCPP_LIBRARIES})
-  target_compile_definitions(host_toolset_tests PRIVATE AGENT_HAVE_JSONCPP=1)
+  target_link_libraries(host_toolset_tests PRIVATE agent_host)
   add_test(NAME host_toolset_tests COMMAND host_toolset_tests)
 endif()

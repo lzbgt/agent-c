@@ -74,6 +74,24 @@ Responsibilities:
 - `agent_daemon`: long-running broker-connected service (MQTT or similar), remote auth, remote clients.
 - `agent_embed`: bindings for ESP32 / Oren AVM with minimal storage and transport.
 
+## Day-1 Product Direction (Decision)
+
+We prioritize a **daemon-first** architecture with multiple clients:
+
+- `agentd` (daemon) is the **source of truth** for:
+  - session persistence and compaction policy
+  - tool loop execution and tool plugins
+  - transcript/audit logging (LLM requests, responses, tool calls, tool outputs)
+  - optional broker connectivity (future)
+- Clients are replaceable front-ends:
+  - `agent` CLI is a **thin client** (plus a useful debug surface).
+  - Local Web UI is the **primary “beautiful UX”** surface (rich interactions, diff views, filtering, etc.).
+
+Rationale:
+- Terminal TUIs are expensive to make “feature-rich” (diff viewers, tool panes, multimodal previews, search/filter).
+- A browser UI makes rich inspection and editing workflows much easier.
+- A daemon aligns naturally with the future goal of outbound broker connectivity behind NAT.
+
 ## Data Model
 
 ### Message
@@ -162,3 +180,38 @@ Therefore tools should return **structured results** (recommended JSON envelope)
 - `data` (object) contains the raw tool output (stdout/stderr text, state fields, measurements, etc.)
 
 The LLM (and higher-level agent policy) should judge success based on the returned `data`.
+
+## Local RPC / API (Daemon ↔ UI)
+
+Day-1 RPC goals:
+- Simple, debuggable, OpenAPI-friendly.
+- Works for local Web UI and future remote/broker bridging.
+
+Decision:
+- Use **HTTP + JSON** locally (bind to `127.0.0.1` by default).
+- Version endpoints under `/api/v1/...`.
+
+Initial endpoints (implemented in `agentd`):
+- `GET /api/v1/health` → `{ ok, service, version }`
+- `POST /api/v1/run` → runs one user prompt against an LLM backend with optional tool loop.
+
+`POST /api/v1/run` request (JSON):
+- `prompt` (string, required)
+- `session_id` (string, default `"default"`)
+- `no_session` (bool, default `false`)
+- `model`, `base_url`, `api_key` (optional overrides; if omitted, daemon uses env/config)
+- `tools` (`"host"|"basic"|"none"`, default `"host"`)
+- `tools_root` (string, default `""`; used for diff-based edits in host tools)
+- `max_steps` (number; `0` means unlimited)
+- `trace` (bool; include transcript text)
+
+Response (JSON):
+- `ok` (bool)
+- `assistant_text` (string)
+- `trace_text` (string; full transcript between daemon↔LLM↔tools)
+- `http_status`, `http_body` (best-effort diagnostics)
+- `error` (best-effort message)
+
+Security notes (future):
+- Binding to `127.0.0.1` avoids LAN exposure by default.
+- Once broker/remote control is added, the daemon must implement an auth story (device provisioning, rotating tokens).

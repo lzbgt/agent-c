@@ -10,7 +10,9 @@
 struct ToolLoopOptions {
   std::string force_tool;    // optional tool name to force on first request
   bool require_tool_call = false;
-  size_t max_steps = 8;
+  // Max number of tool-loop steps.
+  // 0 means "unlimited" (run until the model stops producing tool calls).
+  size_t max_steps = 0;
 };
 
 struct ToolLoopResult {

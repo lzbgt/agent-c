@@ -51,7 +51,7 @@ static void usage() {
     << "  --tools-root <path>       Root/working dir for host file edits (file_apply_patch) (default: current dir)\n"
     << "  --force-tool <name>       Force a tool call on first step (verification)\n"
     << "  --require-tool-call       Fail if no tool call occurred\n"
-    << "  --max-steps <n>           Max tool loop steps (default: 8)\n";
+    << "  --max-steps <n>           Max tool loop steps (default: unlimited; 0 means unlimited)\n";
 }
 
 static bool take_switch(std::vector<std::string>& args, const std::string& flag, bool* out_enabled) {
@@ -205,7 +205,7 @@ int main(int argc, char** argv) {
   std::string tools_root; // empty => unrestricted (YOLO)
   std::string force_tool;
   bool require_tool_call = false;
-  size_t max_steps = 8;
+  size_t max_steps = 0; // unlimited unless explicitly set
   bool trace = true;
   bool quiet = false;
 
