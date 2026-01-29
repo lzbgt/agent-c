@@ -48,6 +48,7 @@ Responsibilities:
 - Session model: messages, roles, timestamps (optional), metadata.
 - Compaction policy: decide when to compact and what to keep (portable char budget).
 - Deterministic prompt assembly decisions (ordering, pinned messages).
+- Tool abstractions: portable tool registry + host-provided tool executor callbacks.
 - No assumptions about env, filesystem, argv, network availability.
 
 Prohibitions:
@@ -66,6 +67,7 @@ Responsibilities:
 - Provide transport implementation (libcurl).
 - Provide persistence implementation (file-based session store initially; can evolve to SQLite).
 - Call core APIs to manage session and compaction.
+- Provide host toolsets (filesystem operations, process execution) for tool-calling models.
 
 ### 3) Future host adapters
 
@@ -124,3 +126,39 @@ Responsibilities:
   - Optional compaction (`--max-chars`, `--keep-last`)
   - OpenAI-compatible chat completion call (`/v1/chat/completions`)
 - `agent_core` session + compaction APIs with unit/smoke tests.
+
+## Tools (Host vs Embedded)
+
+### Core tool contracts
+
+- Core stores tool definitions in a portable registry (`name`, `description`, `parameters_json`).
+- Tool execution is a host callback: `execute(ctx, tool_name, arguments_json) -> result_string`.
+- Core does not assume tools correspond to shell commands; tools can represent:
+  - CLI/daemon: filesystem, subprocess execution, network requests, code search, etc.
+  - Embedded: GPIO output, I2C/SPI transactions, camera capture, audio playback, BLE scan, etc.
+
+### Host toolset (CLI/daemon)
+
+The CLI/daemon toolset is designed around **OS-native tooling**:
+- Use `proc_exec` / `shell_exec` to run system-installed binaries for project inspection and file operations
+  (`ls`, `find`, `cat`, `rg`, `rm`, `git`, language toolchains, etc.).
+- Use a dedicated diff-based editing tool (`file_apply_patch`) so file edits are auditable in the transcript
+  (the tool result includes the unified diff that was applied).
+
+`--tools-root` (when set) is primarily used to control the working directory for `file_apply_patch`
+(via `git -C <root> apply ...`). It is not intended as a strong security boundary (since `proc_exec`
+can still invoke arbitrary commands in a YOLO host configuration).
+
+### Tool success semantics (important)
+
+Tool success is not solely a return/exit code:
+- For host tools like `shell_exec`, a non-zero exit code can still produce useful output (or partial progress),
+  while exit code 0 may still contain warnings/errors that matter (e.g. `pip install` logs).
+- For embedded tools like GPIO/I2C, “success” may depend on returned sensor readings or device state.
+
+Therefore tools should return **structured results** (recommended JSON envelope):
+- `ok` (boolean) is a hint only
+- `error` (string, optional) describes execution-level failure
+- `data` (object) contains the raw tool output (stdout/stderr text, state fields, measurements, etc.)
+
+The LLM (and higher-level agent policy) should judge success based on the returned `data`.

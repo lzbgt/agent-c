@@ -38,6 +38,14 @@ typedef struct agent_message_view {
   size_t content_len;      // bytes, excluding terminator
 } agent_message_view_t;
 
+typedef struct agent_string {
+  char* data;
+  size_t len; // bytes, excluding terminator
+} agent_string_t;
+
+agent_status_t agent_string_set_copy(agent_string_t* s, const char* data, size_t len);
+void agent_string_free(agent_string_t* s);
+
 agent_status_t agent_session_create(agent_session_t** out_session);
 void agent_session_destroy(agent_session_t* session);
 
@@ -73,4 +81,3 @@ agent_status_t agent_role_from_string(const char* s, agent_role_t* out_role);
 #ifdef __cplusplus
 }  // extern "C"
 #endif
-

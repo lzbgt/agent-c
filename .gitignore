@@ -1,0 +1,6 @@
+build/
+**/*.log
+.DS_Store
+~/.agent/
+.agent/
+ref/ds-cli/

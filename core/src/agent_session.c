@@ -1,14 +1,30 @@
 #include "agent/agent.h"
+#include "agent/parts.h"
 
 #include "agent_alloc.h"
 #include "agent_string.h"
 
 #include <string.h>
 
+typedef struct agent_part {
+  agent_part_type_t type;
+  char* text;
+  size_t text_len;
+  char* url;
+  size_t url_len;
+  uint8_t* bytes;
+  size_t bytes_len;
+  char* mime;
+  size_t mime_len;
+} agent_part_t;
+
 typedef struct agent_message {
   agent_role_t role;
   char* content;
   size_t content_len;
+  agent_part_t* parts;
+  size_t part_count;
+  size_t part_cap;
 } agent_message_t;
 
 struct agent_session {
@@ -16,6 +32,32 @@ struct agent_session {
   size_t count;
   size_t cap;
 };
+
+static void agent_part_destroy(agent_part_t* part) {
+  if (!part) {
+    return;
+  }
+  if (part->text) {
+    agent_free(part->text);
+    part->text = NULL;
+  }
+  if (part->url) {
+    agent_free(part->url);
+    part->url = NULL;
+  }
+  if (part->bytes) {
+    agent_free(part->bytes);
+    part->bytes = NULL;
+  }
+  if (part->mime) {
+    agent_free(part->mime);
+    part->mime = NULL;
+  }
+  part->text_len = 0;
+  part->url_len = 0;
+  part->bytes_len = 0;
+  part->mime_len = 0;
+}
 
 static void agent_message_destroy(agent_message_t* msg) {
   if (!msg) {
@@ -25,7 +67,16 @@ static void agent_message_destroy(agent_message_t* msg) {
     agent_free(msg->content);
     msg->content = NULL;
   }
+  if (msg->parts) {
+    for (size_t i = 0; i < msg->part_count; i++) {
+      agent_part_destroy(&msg->parts[i]);
+    }
+    agent_free(msg->parts);
+    msg->parts = NULL;
+  }
   msg->content_len = 0;
+  msg->part_count = 0;
+  msg->part_cap = 0;
 }
 
 static agent_status_t agent_session_reserve(agent_session_t* s, size_t need_cap) {
@@ -104,6 +155,9 @@ agent_status_t agent_session_add_message(agent_session_t* session, agent_role_t 
   msg->role = role;
   msg->content = owned;
   msg->content_len = len;
+  msg->parts = NULL;
+  msg->part_count = 0;
+  msg->part_cap = 0;
   session->count += 1;
   return AGENT_OK;
 }
@@ -136,6 +190,12 @@ size_t agent_session_estimated_chars(const agent_session_t* session) {
     // Conservative overhead per message for role labels / separators.
     sum += 16;
     sum += msg->content_len;
+    for (size_t j = 0; j < msg->part_count; j++) {
+      // Add a small overhead plus any binary payload size (worst-case).
+      sum += 8;
+      sum += msg->parts[j].bytes_len;
+      sum += msg->parts[j].url_len;
+    }
   }
   return sum;
 }
@@ -177,6 +237,9 @@ static agent_status_t agent_session_insert_message(agent_session_t* session, siz
   session->messages[index].role = role;
   session->messages[index].content = owned;
   session->messages[index].content_len = strlen(owned);
+  session->messages[index].parts = NULL;
+  session->messages[index].part_count = 0;
+  session->messages[index].part_cap = 0;
   return AGENT_OK;
 }
 
@@ -320,3 +383,185 @@ agent_status_t agent_role_from_string(const char* s, agent_role_t* out_role) {
   return AGENT_ERR_INVALID_ARGUMENT;
 }
 
+static agent_status_t agent_message_reserve_parts(agent_message_t* msg, size_t need_cap) {
+  if (need_cap <= msg->part_cap) {
+    return AGENT_OK;
+  }
+  size_t new_cap = msg->part_cap == 0 ? 4 : msg->part_cap;
+  while (new_cap < need_cap) {
+    new_cap *= 2;
+  }
+  agent_part_t* new_parts = (agent_part_t*)agent_malloc(new_cap * sizeof(agent_part_t));
+  if (!new_parts) {
+    return AGENT_ERR_OOM;
+  }
+  memset(new_parts, 0, new_cap * sizeof(agent_part_t));
+  for (size_t i = 0; i < msg->part_count; i++) {
+    new_parts[i] = msg->parts[i];
+  }
+  if (msg->parts) {
+    agent_free(msg->parts);
+  }
+  msg->parts = new_parts;
+  msg->part_cap = new_cap;
+  return AGENT_OK;
+}
+
+static agent_status_t agent_part_copy(agent_part_t* dst, const agent_content_part_t* src) {
+  memset(dst, 0, sizeof(*dst));
+  dst->type = src->type;
+  if (src->text_or_null) {
+    dst->text = agent_strdup(src->text_or_null);
+    if (!dst->text) {
+      return AGENT_ERR_OOM;
+    }
+    dst->text_len = strlen(dst->text);
+  }
+  if (src->url_or_null) {
+    dst->url = agent_strdup(src->url_or_null);
+    if (!dst->url) {
+      agent_part_destroy(dst);
+      return AGENT_ERR_OOM;
+    }
+    dst->url_len = strlen(dst->url);
+  }
+  if (src->mime_or_null) {
+    dst->mime = agent_strdup(src->mime_or_null);
+    if (!dst->mime) {
+      agent_part_destroy(dst);
+      return AGENT_ERR_OOM;
+    }
+    dst->mime_len = strlen(dst->mime);
+  }
+  if (src->bytes_or_null && src->bytes_len) {
+    uint8_t* b = (uint8_t*)agent_malloc(src->bytes_len);
+    if (!b) {
+      agent_part_destroy(dst);
+      return AGENT_ERR_OOM;
+    }
+    memcpy(b, src->bytes_or_null, src->bytes_len);
+    dst->bytes = b;
+    dst->bytes_len = src->bytes_len;
+  }
+  return AGENT_OK;
+}
+
+static agent_status_t agent_message_derive_text_content(agent_message_t* msg) {
+  // Compatibility: keep msg->content as concatenation of TEXT parts (joined by '\n').
+  // If no TEXT parts exist, content is an empty string.
+  size_t needed = 0;
+  size_t text_parts = 0;
+  for (size_t i = 0; i < msg->part_count; i++) {
+    if (msg->parts[i].type == AGENT_PART_TEXT && msg->parts[i].text) {
+      needed += msg->parts[i].text_len;
+      text_parts += 1;
+    }
+  }
+  if (text_parts > 1) {
+    needed += (text_parts - 1); // '\n' separators
+  }
+
+  char* buf = (char*)agent_malloc(needed + 1);
+  if (!buf) {
+    return AGENT_ERR_OOM;
+  }
+  size_t off = 0;
+  size_t written_parts = 0;
+  for (size_t i = 0; i < msg->part_count; i++) {
+    if (msg->parts[i].type != AGENT_PART_TEXT || !msg->parts[i].text) {
+      continue;
+    }
+    if (written_parts) {
+      buf[off++] = '\n';
+    }
+    memcpy(buf + off, msg->parts[i].text, msg->parts[i].text_len);
+    off += msg->parts[i].text_len;
+    written_parts += 1;
+  }
+  buf[off] = '\0';
+
+  if (msg->content) {
+    agent_free(msg->content);
+  }
+  msg->content = buf;
+  msg->content_len = needed;
+  return AGENT_OK;
+}
+
+agent_status_t agent_session_add_message_parts(
+  agent_session_t* session,
+  agent_role_t role,
+  const agent_content_part_t* parts,
+  size_t part_count
+) {
+  if (!session || !parts || part_count == 0) {
+    return AGENT_ERR_INVALID_ARGUMENT;
+  }
+  agent_status_t st = agent_session_reserve(session, session->count + 1);
+  if (st != AGENT_OK) {
+    return st;
+  }
+
+  agent_message_t* msg = &session->messages[session->count];
+  memset(msg, 0, sizeof(*msg));
+  msg->role = role;
+
+  st = agent_message_reserve_parts(msg, part_count);
+  if (st != AGENT_OK) {
+    agent_message_destroy(msg);
+    return st;
+  }
+  for (size_t i = 0; i < part_count; i++) {
+    st = agent_part_copy(&msg->parts[msg->part_count], &parts[i]);
+    if (st != AGENT_OK) {
+      agent_message_destroy(msg);
+      return st;
+    }
+    msg->part_count += 1;
+  }
+
+  st = agent_message_derive_text_content(msg);
+  if (st != AGENT_OK) {
+    agent_message_destroy(msg);
+    return st;
+  }
+
+  session->count += 1;
+  return AGENT_OK;
+}
+
+size_t agent_session_message_part_count(const agent_session_t* session, size_t message_index) {
+  if (!session || message_index >= session->count) {
+    return 0;
+  }
+  return session->messages[message_index].part_count;
+}
+
+agent_status_t agent_session_get_message_part(
+  const agent_session_t* session,
+  size_t message_index,
+  size_t part_index,
+  agent_content_part_view_t* out_view
+) {
+  if (!session || !out_view) {
+    return AGENT_ERR_INVALID_ARGUMENT;
+  }
+  if (message_index >= session->count) {
+    return AGENT_ERR_BOUNDS;
+  }
+  const agent_message_t* msg = &session->messages[message_index];
+  if (part_index >= msg->part_count) {
+    return AGENT_ERR_BOUNDS;
+  }
+  const agent_part_t* p = &msg->parts[part_index];
+  out_view->type = p->type;
+  out_view->text = p->text ? p->text : "";
+  out_view->text_len = p->text_len;
+  out_view->url = p->url ? p->url : "";
+  out_view->url_len = p->url_len;
+  out_view->bytes = p->bytes;
+  out_view->bytes_len = p->bytes_len;
+  out_view->mime = p->mime ? p->mime : "";
+  out_view->mime_len = p->mime_len;
+  return AGENT_OK;
+}
