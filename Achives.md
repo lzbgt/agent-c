@@ -98,3 +98,4 @@ Completed milestones and notable tasks.
 - Added first-cut assistant streaming (provider-dependent):
   - daemon supports `stream_assistant: true` for `tools="none"` and emits incremental `assistant_delta` events (`daemon/src/main.cpp`)
   - added a small reusable SSE parser + unit test (`cli/src/sse_parser.cpp`, `tests/test_sse_parser.cpp`)
+  - added an agentd integration smoke for assistant streaming (`tests/agentd_stream_assistant_smoke.sh`)

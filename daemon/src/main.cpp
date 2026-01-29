@@ -669,6 +669,7 @@ static Json::Value run_request_to_json(
 
       struct StreamCtx {
         std::string assistant;
+        std::string pending_delta;
         bool verbose = false;
         int chunks = 0;
         decltype(push_ev)* push = nullptr;
@@ -695,16 +696,21 @@ static Json::Value run_request_to_json(
         const std::string dstr = content.asString();
         if (dstr.empty()) return;
         s->assistant += dstr;
+        s->pending_delta += dstr;
 
-        Json::Value d(Json::objectValue);
-        d["delta"] = dstr;
-        d["total_len"] = (Json::UInt64)s->assistant.size();
-        if (s->verbose) {
-          const size_t n = s->assistant.size();
-          const size_t start = (n > 200) ? (n - 200) : 0;
-          d["assistant_tail"] = s->assistant.substr(start);
+        // Coalesce small deltas to avoid flooding the daemon/UI with thousands of events.
+        if (s->pending_delta.size() >= 128) {
+          Json::Value d(Json::objectValue);
+          d["delta"] = s->pending_delta;
+          d["total_len"] = (Json::UInt64)s->assistant.size();
+          if (s->verbose) {
+            const size_t n = s->assistant.size();
+            const size_t start = (n > 200) ? (n - 200) : 0;
+            d["assistant_tail"] = s->assistant.substr(start);
+          }
+          (*s->push)("assistant_delta", d);
+          s->pending_delta.clear();
         }
-        (*s->push)("assistant_delta", d);
       };
 
       OpenAIStreamResult sr = openai_chat_completions_raw_stream(run_cfg, request_json, on_chunk, &sctx, 256 * 1024);
@@ -743,6 +749,18 @@ static Json::Value run_request_to_json(
           d["http_status"] = (Json::Int64)http_status;
           push_ev("error", d);
         } else {
+          if (!sctx.pending_delta.empty()) {
+            Json::Value d(Json::objectValue);
+            d["delta"] = sctx.pending_delta;
+            d["total_len"] = (Json::UInt64)sctx.assistant.size();
+            if (verbose) {
+              const size_t n = sctx.assistant.size();
+              const size_t start = (n > 200) ? (n - 200) : 0;
+              d["assistant_tail"] = sctx.assistant.substr(start);
+            }
+            push_ev("assistant_delta", d);
+            sctx.pending_delta.clear();
+          }
           agent_session_add_message(session, AGENT_ROLE_ASSISTANT, assistant_text.c_str());
         }
       }
