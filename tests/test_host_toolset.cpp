@@ -242,6 +242,50 @@ static void test_fs_stat_list_read() {
     agent_string_free(&out);
   }
 
+  // fs_read end_line should stop early and signal "has_more"
+  {
+    Json::Value args(Json::objectValue);
+    args["path"] = "dir/many.txt";
+    args["start_line"] = 1;
+    args["end_line"] = 5;
+    args["max_lines"] = 200;
+    args["max_chars"] = 20000;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "fs_read", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    assert(resp["data"]["lines_returned"].asInt() == 5);
+    assert(resp["data"]["has_more"].asBool());
+    assert(resp["data"]["next_start_line"].asInt() == 6);
+    assert(resp["data"]["stopped_due_to"].asString() == "end_line");
+    const std::string content = resp["data"]["content"].asString();
+    assert(content.find("L1\n") != std::string::npos);
+    assert(content.find("L5\n") != std::string::npos);
+    assert(content.find("L6\n") == std::string::npos);
+    agent_string_free(&out);
+  }
+
+  // fs_read with_line_numbers
+  {
+    Json::Value args(Json::objectValue);
+    args["path"] = "dir/many.txt";
+    args["start_line"] = 1;
+    args["max_lines"] = 3;
+    args["max_chars"] = 20000;
+    args["with_line_numbers"] = true;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "fs_read", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    const std::string content = resp["data"]["content"].asString();
+    assert(content.find("1: L1\n") != std::string::npos);
+    assert(content.find("2: L2\n") != std::string::npos);
+    assert(content.find("3: L3\n") != std::string::npos);
+    agent_string_free(&out);
+  }
+
   agent_tool_registry_destroy(reg);
   toolset_host_destroy(&exec);
   std::filesystem::remove_all(root);

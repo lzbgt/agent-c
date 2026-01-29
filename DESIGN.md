@@ -172,6 +172,8 @@ Some event fields (especially `llm_request.request_json` and `llm_response.respo
 when verbose tracing is enabled. To keep the Web UI responsive:
 - Event payloads are **bounded** (truncated with a `*_truncated` flag) for UI transport.
 - Full fidelity request/response bodies remain available in the per-run `trace_text` transcript.
+- The Web UI keeps the **last completed** run visible while an async job is running, and transient fetch/SSE errors
+  do not clear the conversation (reduces the perception of “hangs”).
 
 ### Optional summary insertion (future-friendly)
 

@@ -63,7 +63,10 @@ export default function App() {
     "agentui.showDebugInConversation",
     false,
   );
+  // Keep prompts separate so an active async run does not overwrite the "last completed" view.
   const [lastRunPrompt, setLastRunPrompt] = React.useState("");
+  const [lastCompletedPrompt, setLastCompletedPrompt] = React.useState("");
+  const lastRunPromptRef = React.useRef<string>("");
 
   const [activeJobId, setActiveJobId] = React.useState<string | null>(null);
   const [jobStatus, setJobStatus] = React.useState<string | null>(null);
@@ -143,7 +146,9 @@ export default function App() {
     onSuccess: (v) => {
       if (v.mode === "sync") {
         // Only replace history once we have a new result (prevents "fetch failed" from wiping the UI).
+        lastRunPromptRef.current = v.req.prompt;
         setLastRunPrompt(v.req.prompt);
+        setLastCompletedPrompt(v.req.prompt);
         setResult(v.out);
         setLiveEvents([]);
         setJobError(null);
@@ -158,8 +163,8 @@ export default function App() {
         return;
       }
       // Only reset/replace history after the job has been successfully created.
+      lastRunPromptRef.current = v.req.prompt;
       setLastRunPrompt(v.req.prompt);
-      setResult(undefined);
       setJobError(null);
       setJobStatus(null);
       setJobUpdatedMs(null);
@@ -241,6 +246,7 @@ export default function App() {
           if (job.status === "done" || job.status === "error") {
             if (job.result) {
               setResult(job.result);
+              setLastCompletedPrompt(lastRunPromptRef.current);
             } else {
               setJobError("job completed but missing result");
             }
@@ -318,6 +324,7 @@ export default function App() {
             setJobError(typeof data?.error === "string" ? data.error : null);
             if (data?.result) {
               setResult(data.result);
+              setLastCompletedPrompt(lastRunPromptRef.current);
             }
           } catch {
             setJobError("failed to parse job_done event");
@@ -847,9 +854,22 @@ export default function App() {
 
       <div className="mt-6 grid gap-4">
         <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-          <div className="mb-2 text-sm font-semibold">Assistant</div>
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-sm font-semibold">Assistant</div>
+            {activeJobId ? (
+              <div className="text-xs text-white/60">
+                Active job: <span className="text-white/80">{activeJobId}</span> ({jobStatus ?? "running"})
+              </div>
+            ) : null}
+          </div>
+
           {result?.assistant_text ? (
-            <Markdown text={result.assistant_text} />
+            <div>
+              <div className="mb-2 text-xs font-semibold text-white/70">
+                {activeJobId ? "Last completed" : "Latest"}
+              </div>
+              <Markdown text={result.assistant_text} />
+            </div>
           ) : (
             <div className="text-sm text-white/60">
               {activeJobId ? `Running… (${jobStatus ?? "running"})` : run.isPending ? "Starting…" : "(no output yet)"}
@@ -870,9 +890,14 @@ export default function App() {
           ) : null}
         </div>
 
-        {activeJobId && liveEvents.length > 0 ? (
+        {activeJobId ? (
           <div>
             <div className="mb-2 text-sm font-semibold text-white/80">Conversation (live)</div>
+            {liveEvents.length === 0 ? (
+              <div className="mb-2 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/70">
+                Waiting for live events from the daemon (SSE/polling). If this stays empty, check the daemon base URL and network proxy.
+              </div>
+            ) : null}
             <ConversationView
               baseUrl={effectiveBase}
               yolo={yolo}
@@ -883,13 +908,13 @@ export default function App() {
           </div>
         ) : null}
 
-        {!activeJobId && result?.events && result.events.length > 0 ? (
+        {result?.events && result.events.length > 0 ? (
           <div>
-            <div className="mb-2 text-sm font-semibold text-white/80">Conversation</div>
+            <div className="mb-2 text-sm font-semibold text-white/80">{activeJobId ? "Conversation (last completed)" : "Conversation"}</div>
             <ConversationView
               baseUrl={effectiveBase}
               yolo={yolo}
-              prompt={lastRunPrompt || prompt}
+              prompt={lastCompletedPrompt || prompt}
               events={result.events}
               showDebugEvents={showDebugInConversation}
             />
@@ -905,7 +930,7 @@ export default function App() {
 
         {result?.events && result.events.length > 0 ? (
           <div>
-            <div className="mb-2 text-sm font-semibold text-white/80">Events</div>
+            <div className="mb-2 text-sm font-semibold text-white/80">{activeJobId ? "Events (last completed)" : "Events"}</div>
             <EventTimeline baseUrl={effectiveBase} yolo={yolo} events={result.events} />
           </div>
         ) : null}

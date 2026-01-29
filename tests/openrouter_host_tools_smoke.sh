@@ -72,8 +72,10 @@ if [[ -z "${out}" ]]; then
   exit 1
 fi
 
-trimmed="$(echo "${out}" | tr -d '\r' | awk '{$1=$1;print}')"
-if [[ "${trimmed}" != "OK" ]]; then
+# Some OpenRouter models occasionally add extra commentary even when instructed to return exactly "OK".
+# Treat this as success when the first non-empty line is exactly "OK" (smoke-level robustness).
+first_line="$(printf '%s\n' "${out}" | tr -d '\r' | awk 'NF {print; exit}')"
+if [[ "${first_line}" != "OK" ]]; then
   echo "unexpected output: ${out}" >&2
   exit 1
 fi

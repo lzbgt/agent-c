@@ -144,3 +144,13 @@ Completed milestones and notable tasks.
 - Added DeepSeek/OpenRouter integration smokes for `fs_find` to reduce regressions:
   - `tests/deepseek_fs_find_smoke.sh`
   - `tests/openrouter_fs_find_smoke.sh`
+- Improved Web UI resilience during async runs:
+  - keep the last completed run visible while a job is running (prevents "fetch failed" from wiping the conversation)
+  - add a lightweight "waiting for events" hint when live events are still empty
+  - `ui/src/App.tsx`
+- Improved daemon diagnosability for “hang” reports by logging async job acceptance immediately:
+  - `daemon/src/main.cpp`
+- Hardened integration tests against OpenRouter model verbosity (smoke-level tolerance):
+  - `tests/openrouter_host_tools_smoke.sh`
+- Added extra `fs_read` host tool unit coverage for paging controls:
+  - `tests/test_host_toolset.cpp`

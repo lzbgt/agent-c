@@ -2150,6 +2150,11 @@ int main(int argc, char** argv) {
       return;
     }
 
+    // Log immediately in the request handler (before the background thread starts).
+    // This helps diagnose "hangs" where the UI is pointed at the wrong daemon base URL,
+    // or where the request never reaches the daemon.
+    std::cerr << "agentd: /api/v1/run_async accepted job=" << job_id << " bytes=" << req.body.size() << "\n";
+
     const std::string body_copy = req.body;
     std::thread([job_id, body_copy, cfg, ocfg]() mutable {
       const auto started = std::chrono::steady_clock::now();
