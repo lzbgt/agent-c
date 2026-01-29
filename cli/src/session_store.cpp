@@ -9,6 +9,19 @@
 #include <sstream>
 #include <algorithm>
 
+static bool is_portable_tool_transcript_marker(agent_role_t role, const std::string& content) {
+  // Older versions stored tool calls/results as assistant text markers in the session message list:
+  //   "[tool_call] name=...\\n{...json...}"
+  //   "[tool_result] name=...\\n{...json...}"
+  //
+  // This is useful for a fully portable transcript, but it bloats context windows and pollutes tools=none runs.
+  // We now persist tool details to the per-session audit JSONL, while session messages store only user/assistant text.
+  if (role != AGENT_ROLE_ASSISTANT) return false;
+  if (content.rfind("[tool_call] name=", 0) == 0) return true;
+  if (content.rfind("[tool_result] name=", 0) == 0) return true;
+  return false;
+}
+
 static std::filesystem::path session_path(const SessionStoreConfig& cfg, const std::string& session_id) {
   return std::filesystem::path(cfg.root_dir) / (session_id + ".json");
 }
@@ -68,7 +81,11 @@ agent_status_t session_store_load(const SessionStoreConfig& cfg, const std::stri
       if (agent_role_from_string(role_s.asCString(), &role) != AGENT_OK) {
         continue;
       }
-      agent_session_add_message(s, role, content_s.asCString());
+      const std::string content = content_s.asString();
+      if (is_portable_tool_transcript_marker(role, content)) {
+        continue;
+      }
+      agent_session_add_message(s, role, content.c_str());
     }
   }
 #else
@@ -100,9 +117,13 @@ agent_status_t session_store_save(const SessionStoreConfig& cfg, const std::stri
     if (agent_session_get_message(session, i, &view) != AGENT_OK) {
       continue;
     }
+    const std::string content(view.content, view.content_len);
+    if (is_portable_tool_transcript_marker(view.role, content)) {
+      continue;
+    }
     Json::Value msg(Json::objectValue);
     msg["role"] = agent_role_to_string(view.role);
-    msg["content"] = std::string(view.content, view.content_len);
+    msg["content"] = content;
     messages.append(msg);
   }
   root["messages"] = messages;

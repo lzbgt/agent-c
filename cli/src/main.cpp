@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 #include <cctype>
+#include <chrono>
 
 #if defined(AGENT_HAVE_JSONCPP)
 #include <json/json.h>
@@ -43,6 +44,11 @@ static std::string home_dir_best_effort() {
   }
   // Fallback to current directory.
   return std::filesystem::current_path().string();
+}
+
+static int64_t now_unix_ms() {
+  using namespace std::chrono;
+  return (int64_t)duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 }
 
 static const char* default_host_system_prompt() {
@@ -487,22 +493,49 @@ int main(int argc, char** argv) {
 
       // Persist a portable transcript into the session:
       // - user prompt
-      // - tool calls + tool results as assistant text markers (do not store raw "tool" role messages,
-      //   because OpenAI-compatible APIs often require tool_call_id fields we don't store in core sessions).
       // - final assistant message
       agent_session_add_message(session, AGENT_ROLE_USER, user_prompt.c_str());
-      for (const auto& rec : r.tool_records) {
-        std::string call = "[tool_call] name=" + rec.tool_name;
-        if (!rec.tool_call_id.empty()) call += " id=" + rec.tool_call_id;
-        call += "\n" + rec.arguments_json;
-        agent_session_add_message(session, AGENT_ROLE_ASSISTANT, call.c_str());
-
-        std::string out = "[tool_result] name=" + rec.tool_name;
-        if (!rec.tool_call_id.empty()) out += " id=" + rec.tool_call_id;
-        out += "\n" + (rec.result_string_for_prompt.empty() ? rec.result_string : rec.result_string_for_prompt);
-        agent_session_add_message(session, AGENT_ROLE_ASSISTANT, out.c_str());
-      }
       agent_session_add_message(session, AGENT_ROLE_ASSISTANT, r.final_assistant_text.c_str());
+
+      // Persist detailed tool timeline to the per-session audit log (host-only).
+      if (!no_session && !session_id.empty()) {
+#if defined(AGENT_HAVE_JSONCPP)
+        Json::Value record(Json::objectValue);
+        record["ts_unix_ms"] = (Json::Int64)now_unix_ms();
+        record["prompt"] = user_prompt;
+        record["assistant_text"] = r.final_assistant_text;
+        record["tools"] = tools_mode;
+        record["model"] = model;
+        record["base_url"] = pctx.cfg.base_url;
+        if (!r.events_json.empty()) {
+          Json::CharReaderBuilder rb;
+          std::string errs;
+          std::istringstream iss(r.events_json);
+          Json::Value ev;
+          if (Json::parseFromStream(rb, iss, &ev, &errs) && ev.isArray()) {
+            record["events"] = ev;
+          } else {
+            record["events_json"] = r.events_json;
+          }
+        }
+        if (!r.tool_records.empty()) {
+          Json::Value tr(Json::arrayValue);
+          for (const auto& rec : r.tool_records) {
+            Json::Value t(Json::objectValue);
+            t["tool_name"] = rec.tool_name;
+            if (!rec.tool_call_id.empty()) t["tool_call_id"] = rec.tool_call_id;
+            if (!rec.arguments_json.empty()) t["arguments_json"] = rec.arguments_json;
+            const std::string out_for_audit = rec.result_string_for_prompt.empty() ? rec.result_string : rec.result_string_for_prompt;
+            if (!out_for_audit.empty()) t["result"] = out_for_audit;
+            tr.append(t);
+          }
+          record["tool_records"] = tr;
+        }
+        Json::StreamWriterBuilder wb;
+        wb["indentation"] = "";
+        (void)session_store_append_audit_jsonl(store_cfg, session_id, Json::writeString(wb, record));
+#endif
+      }
       std::cout << r.final_assistant_text << "\n";
       return 0;
     };

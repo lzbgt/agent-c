@@ -112,6 +112,11 @@ Seamless compaction for tool loops:
 - If the provider rejects a request as too large (context length / too many tokens), the tool loop retries after
   compacting more aggressively. This is effectively “spawning a new session” for stateless backends.
 
+Session vs audit:
+- Session message history (`~/.agent/sessions/<id>.json`) stores **user/assistant conversation** only.
+- Detailed tool timelines (tool calls/results + LLM request/response events) are stored in the per-session audit log
+  (`~/.agent/sessions/<id>.events.jsonl`) and surfaced via daemon/UI (and CLI `--trace` output).
+
 Host tool names:
 - `shell_exec` (runs `/bin/sh -lc <cmd>`, returns JSON envelope with `exit_code`, `timed_out`, `truncated`, `output`)
 - `proc_exec` (runs an argv array via `posix_spawnp`, no shell; returns JSON envelope with `argv`, `exit_code`, `timed_out`, `truncated`, `output`)

@@ -801,22 +801,12 @@ static Json::Value run_request_to_json(
       }
     }
     if (ok) {
-      // Persist a portable transcript into the session:
+      // Persist the conversational session:
       // - user prompt
-      // - tool calls + tool results as assistant text markers (portable)
       // - final assistant message
+      //
+      // Tool calls/results are stored in the session audit JSONL (host-only) and returned via `events`.
       agent_session_add_message(session, AGENT_ROLE_USER, prompt.c_str());
-      for (const auto& rec : r.tool_records) {
-        std::string call = "[tool_call] name=" + rec.tool_name;
-        if (!rec.tool_call_id.empty()) call += " id=" + rec.tool_call_id;
-        call += "\n" + rec.arguments_json;
-        agent_session_add_message(session, AGENT_ROLE_ASSISTANT, call.c_str());
-
-        std::string out = "[tool_result] name=" + rec.tool_name;
-        if (!rec.tool_call_id.empty()) out += " id=" + rec.tool_call_id;
-        out += "\n" + (rec.result_string_for_prompt.empty() ? rec.result_string : rec.result_string_for_prompt);
-        agent_session_add_message(session, AGENT_ROLE_ASSISTANT, out.c_str());
-      }
       agent_session_add_message(session, AGENT_ROLE_ASSISTANT, assistant_text.c_str());
     }
   } else {

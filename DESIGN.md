@@ -232,12 +232,14 @@ Host default system hint (policy):
 (via `git -C <root> apply ...`). It is not intended as a strong security boundary (since `proc_exec`
 can still invoke arbitrary commands in a YOLO host configuration).
 
-Tool transcript persistence (day-1 pragmatic choice):
-- The OpenAI tool-calling message schema uses fields like `tool_call_id` that are not yet part of the portable core session model.
-- Therefore, CLI/daemon persist tool usage into the session as **assistant text markers**:
-  - `[tool_call] name=... id=...` + args JSON
-  - `[tool_result] name=... id=...` + tool output string
-- This keeps sessions provider-compatible (no malformed `tool` role messages) while still preserving useful context for later turns.
+Tool transcript persistence (host-only, day-1 pragmatic choice):
+- The portable core session model is intentionally minimal and does not yet represent OpenAI tool-call metadata
+  like `tool_call_id` and structured `tool` role messages.
+- For host apps, the correct place to store full tool timelines is a **per-session audit log** (JSONL):
+  - CLI/daemon write per-run audit records to `~/.agent/sessions/<session>.events.jsonl`
+  - Each record includes the prompt, final assistant text, and the structured `events` timeline (tool calls/results, LLM I/O).
+- Session **messages** are kept clean (user/assistant content only), so future turns are not polluted by verbose tool output.
+  This reduces token usage and avoids context blowups when switching between `tools=host` and `tools=none`.
 
 ### Tool success semantics (important)
 

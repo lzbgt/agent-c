@@ -135,3 +135,6 @@ Completed milestones and notable tasks.
   - `text_search` tool (bounded substring search with default excludes and file size caps) (`cli/src/toolset_host.cpp`)
   - UI renders `text_search` results as a matches table (`ui/src/components/ToolResultView.tsx`)
   - Tool-loop prompt capping preserves/truncates `data.matches` arrays to stay JSON-shaped (`cli/src/tool_loop_truncation.cpp`)
+- Moved verbose tool transcripts out of session message history:
+  - Session messages remain user/assistant only (avoids token blowups when switching toolsets)
+  - Full tool timelines are stored in `~/.agent/sessions/<id>.events.jsonl` and used by daemon/UI (`cli/src/session_store.cpp`, `daemon/src/main.cpp`, `cli/src/main.cpp`)

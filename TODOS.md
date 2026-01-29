@@ -24,7 +24,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Implement extensible host toolsets (subprocess exec + diff-based file edits) for CLI/daemon (`--tools host`).
 - [x] Add bounded filesystem inspection tools (`fs_stat`, `fs_list`, `fs_read`) for token-efficient inspection (paged reads; entry caps).
 - [x] Add an OpenRouter **tool-call** smoke test (host toolset) using a cheap model that supports `tools`.
-- [x] Persist **tool-call transcripts** in sessions in a portable form (assistant text markers for tool calls/results) without breaking OpenAI-compatible request formats.
+- [x] Persist **tool-call transcripts** in a host-only audit log (`~/.agent/sessions/<id>.events.jsonl`) so session messages stay clean (token-safe).
 - [x] Make tool-loop `--max-steps` default unlimited (0 means unlimited).
 - [x] Add “session rotation” retries for `tools="none"` when providers reject an over-long context (CLI + daemon).
 - [x] Support explicit proxy override (`--proxy` / request `proxy`) to avoid network hangs when env proxy is required.
