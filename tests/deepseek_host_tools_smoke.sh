@@ -34,21 +34,21 @@ fi
 BASE_URL="${DEEPSEEK_API_BASE:-https://api.deepseek.com}"
 MODEL="${AGENT_TEST_DEEPSEEK_TOOL_MODEL:-deepseek-chat}"
 
-# This test uses forced tool selection (`--force-tool`) for deterministic verification.
-# `deepseek-chat` supports this flow; `deepseek-reasoner` may reject forced tool_choice.
-out="$("${AGENT_BIN}" run "Use the calculator tool to compute (2+2)*10. Return exactly: 40" \
+# Deterministic host tool verification: force shell_exec.
+out="$("${AGENT_BIN}" run "Use the shell_exec tool to run: echo OK. Then return exactly: OK" \
   --no-session \
   --timeout-ms 30000 \
   --base-url "${BASE_URL}" \
   --api-key "${DEEPSEEK_KEY}" \
   --model "${MODEL}" \
-  --tools basic \
-  --force-tool calculator \
+  --tools host \
+  --force-tool shell_exec \
   --require-tool-call \
-  --max-steps 6)"
+  --max-steps 4)"
 
 trimmed="$(echo "${out}" | tr -d '\r' | awk '{$1=$1;print}')"
-if [[ "${trimmed}" != "40" ]]; then
+if [[ "${trimmed}" != "OK" ]]; then
   echo "unexpected output: ${out}" >&2
   exit 1
 fi
+

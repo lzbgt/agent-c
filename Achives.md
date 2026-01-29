@@ -46,3 +46,6 @@ Completed milestones and notable tasks.
 - Added a simple interactive REPL (`agent chat`) supporting the same session + tools flow:
   - `cli/src/main.cpp`
 - Added unit tests (`tests/test_session.c`) and integration smoke tests (OpenRouter + DeepSeek) that can read test keys from `project.md`.
+- Refactored `agentd` `POST /api/v1/run` to share a single implementation path (`run_request_to_json`) and added `rpc_status` hints for request validation errors.
+- Improved OpenRouter model catalog tool (`tools/openrouter_models.py`) to filter for models supporting OpenAI tool calls and to include this in the report table.
+- Added a DeepSeek host-tool smoke test to verify non-calculator tool calling (`tests/deepseek_host_tools_smoke.sh`).

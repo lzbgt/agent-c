@@ -23,6 +23,10 @@
 #include <vector>
 #include <cstring>
 #include <chrono>
+#include <atomic>
+#include <map>
+#include <mutex>
+#include <thread>
 
 static const char* getenv_s(const char* k) {
   const char* v = std::getenv(k);
@@ -157,6 +161,348 @@ struct ProviderCtx {
   std::string last_request_body;
   std::string last_error;
 };
+
+static agent_status_t provider_generate(
+  void* vctx,
+  const agent_generate_request_t* req,
+  agent_generate_response_t* out_resp
+);
+
+struct JobState {
+  std::string id;
+  std::string status; // queued|running|done|error
+  Json::Value result; // final JSON result (same shape as /api/v1/run)
+  std::string error;
+  int64_t created_unix_ms = 0;
+  int64_t updated_unix_ms = 0;
+};
+
+static int64_t now_unix_ms() {
+  return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+           std::chrono::system_clock::now().time_since_epoch()
+         ).count();
+}
+
+static std::string new_job_id() {
+  static std::atomic<uint64_t> counter{0};
+  const uint64_t n = ++counter;
+  return "job_" + std::to_string((long long)now_unix_ms()) + "_" + std::to_string((long long)n);
+}
+
+static std::mutex g_jobs_mu;
+static std::map<std::string, JobState> g_jobs;
+
+static void job_set_status(const std::string& id, const std::string& status, const std::string& error) {
+  std::lock_guard<std::mutex> lk(g_jobs_mu);
+  auto it = g_jobs.find(id);
+  if (it == g_jobs.end()) return;
+  it->second.status = status;
+  it->second.error = error;
+  it->second.updated_unix_ms = now_unix_ms();
+}
+
+static void job_set_result(const std::string& id, const Json::Value& result) {
+  std::lock_guard<std::mutex> lk(g_jobs_mu);
+  auto it = g_jobs.find(id);
+  if (it == g_jobs.end()) return;
+  it->second.result = result;
+  it->second.status = result.isObject() && result.isMember("ok") && result["ok"].asBool() ? "done" : "error";
+  it->second.updated_unix_ms = now_unix_ms();
+}
+
+static bool job_get(const std::string& id, JobState* out) {
+  std::lock_guard<std::mutex> lk(g_jobs_mu);
+  auto it = g_jobs.find(id);
+  if (it == g_jobs.end()) return false;
+  if (out) *out = it->second;
+  return true;
+}
+
+static bool job_create(const std::string& id) {
+  std::lock_guard<std::mutex> lk(g_jobs_mu);
+  if (g_jobs.find(id) != g_jobs.end()) return false;
+  JobState s;
+  s.id = id;
+  s.status = "queued";
+  s.created_unix_ms = now_unix_ms();
+  s.updated_unix_ms = s.created_unix_ms;
+  g_jobs[id] = s;
+  return true;
+}
+
+static bool job_delete(const std::string& id) {
+  std::lock_guard<std::mutex> lk(g_jobs_mu);
+  auto it = g_jobs.find(id);
+  if (it == g_jobs.end()) return false;
+  // Only allow deletion when not running.
+  if (it->second.status == "running" || it->second.status == "queued") {
+    return false;
+  }
+  g_jobs.erase(it);
+  return true;
+}
+
+// Parses the daemon run request body and returns a response JSON object (HTTP-level errors are represented in JSON).
+static Json::Value run_request_to_json(
+  const DaemonConfig& daemon_cfg,
+  const OpenAIClientConfig& ocfg,
+  const std::string& request_body
+) {
+  Json::Value args;
+  std::string perr;
+  if (!json_parse_object(request_body, &args, &perr)) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["rpc_status"] = 400;
+    o["error"] = std::string("invalid JSON: ") + perr;
+    return o;
+  }
+
+  const std::string prompt = args.isMember("prompt") && args["prompt"].isString() ? args["prompt"].asString() : "";
+  if (prompt.empty()) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["rpc_status"] = 400;
+    o["error"] = "missing prompt";
+    return o;
+  }
+
+  OpenAIClientConfig run_cfg = ocfg;
+  if (args.isMember("model") && args["model"].isString()) run_cfg.model = args["model"].asString();
+  if (args.isMember("base_url") && args["base_url"].isString()) run_cfg.base_url = args["base_url"].asString();
+  if (args.isMember("api_key") && args["api_key"].isString()) run_cfg.api_key = args["api_key"].asString();
+
+  const std::string tools = args.isMember("tools") && args["tools"].isString() ? args["tools"].asString() : daemon_cfg.tools;
+  const bool yolo = args.isMember("yolo") && args["yolo"].isBool() ? args["yolo"].asBool() : daemon_cfg.yolo_default;
+  std::string tools_root = args.isMember("tools_root") && args["tools_root"].isString() ? args["tools_root"].asString() : daemon_cfg.tools_root;
+  if (tools_root == "@host") {
+    tools_root = daemon_cfg.host_scope_root;
+  } else if (tools_root == "@cwd") {
+    tools_root = "";
+  }
+  if (yolo) {
+    tools_root.clear();
+  }
+  const size_t max_steps = args.isMember("max_steps") && args["max_steps"].isUInt64() ? (size_t)args["max_steps"].asUInt64() : 0;
+  const bool trace = !(args.isMember("trace") && args["trace"].isBool() && args["trace"].asBool() == false);
+  const bool verbose = args.isMember("verbose") && args["verbose"].isBool() ? args["verbose"].asBool() : false;
+
+  const std::string session_id = args.isMember("session_id") && args["session_id"].isString() ? args["session_id"].asString() : "default";
+  const bool no_session = args.isMember("no_session") && args["no_session"].isBool() ? args["no_session"].asBool() : false;
+
+  agent_session_t* session = nullptr;
+  SessionStoreConfig store_cfg;
+  store_cfg.root_dir = (std::filesystem::path(home_dir_best_effort()) / ".agent" / "sessions").string();
+  if (!no_session) {
+    const agent_status_t st = session_store_load(store_cfg, session_id, &session);
+    if (st != AGENT_OK) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["rpc_status"] = 500;
+      o["error"] = "failed to load session";
+      o["status"] = (Json::Int64)st;
+      return o;
+    }
+  } else {
+    const agent_status_t st = agent_session_create(&session);
+    if (st != AGENT_OK) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["rpc_status"] = 500;
+      o["error"] = "failed to create session";
+      o["status"] = (Json::Int64)st;
+      return o;
+    }
+  }
+
+  agent_tool_registry_t* registry = nullptr;
+  agent_tool_executor_t executor{};
+  bool need_destroy_executor = false;
+  const bool use_tool_loop = (tools != "none");
+
+  if (tools == "basic") {
+    if (toolset_basic_create(&registry, &executor) != AGENT_OK) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["rpc_status"] = 500;
+      o["error"] = "failed to init toolset_basic";
+      agent_session_destroy(session);
+      return o;
+    }
+  } else if (tools == "host") {
+    HostToolsetConfig hcfg;
+    hcfg.root_dir = tools_root;
+    if (toolset_host_create(hcfg, &registry, &executor) != AGENT_OK) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["rpc_status"] = 500;
+      o["error"] = "failed to init toolset_host";
+      agent_session_destroy(session);
+      return o;
+    }
+    need_destroy_executor = true;
+  } else if (tools != "none") {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["rpc_status"] = 400;
+    o["error"] = "invalid tools (expected: none|basic|host)";
+    agent_session_destroy(session);
+    return o;
+  }
+
+  bool ok = false;
+  std::string assistant_text;
+  std::string err;
+  long http_status = 0;
+  std::string http_body;
+  std::ostringstream trace_buf;
+  std::ostream* trace_stream = trace ? &trace_buf : nullptr;
+  Json::Value events_out;
+
+  if (use_tool_loop) {
+    ToolLoopOptions opt;
+    opt.max_steps = max_steps;
+    opt.verbose = verbose;
+    if (args.isMember("force_tool") && args["force_tool"].isString()) opt.force_tool = args["force_tool"].asString();
+    opt.require_tool_call = args.isMember("require_tool_call") && args["require_tool_call"].isBool() ? args["require_tool_call"].asBool() : false;
+
+    ToolLoopResult r;
+    ok = run_tool_loop(run_cfg, session, prompt, registry, &executor, opt, trace_stream, &r, &err, &http_status, &http_body);
+    assistant_text = r.final_assistant_text;
+    if (!r.events_json.empty()) {
+      Json::CharReaderBuilder rb;
+      std::string errs;
+      std::istringstream iss(r.events_json);
+      Json::Value ev;
+      if (Json::parseFromStream(rb, iss, &ev, &errs) && ev.isArray()) {
+        events_out = ev;
+      }
+    }
+    if (ok) {
+      agent_session_add_message(session, AGENT_ROLE_USER, prompt.c_str());
+      agent_session_add_message(session, AGENT_ROLE_ASSISTANT, assistant_text.c_str());
+    }
+  } else {
+    agent_session_add_message(session, AGENT_ROLE_USER, prompt.c_str());
+
+    ProviderCtx pctx;
+    pctx.cfg = run_cfg;
+    agent_provider_t provider;
+    provider.ctx = &pctx;
+    provider.generate = provider_generate;
+
+    agent_run_options_t run_opt{};
+    run_opt.model = run_cfg.model.c_str();
+    run_opt.max_chars = 0;
+    run_opt.keep_last_messages = 0;
+    run_opt.summary_or_null = nullptr;
+
+    agent_run_report_t rep{};
+    const agent_status_t st = agent_run_once(session, &provider, &run_opt, &rep);
+    ok = (st == AGENT_OK);
+    assistant_text = ok ? std::string(rep.assistant_view.content, rep.assistant_view.content_len) : "";
+    if (!ok) {
+      err = pctx.last_error.empty() ? "agent_run_once failed" : pctx.last_error;
+      http_status = pctx.last_http_status;
+      http_body = pctx.last_body;
+    } else {
+      agent_session_add_message(session, AGENT_ROLE_ASSISTANT, assistant_text.c_str());
+    }
+    if (trace_stream) {
+      *trace_stream << "=== REQUEST ===\n";
+      *trace_stream << (pctx.last_request_body.empty() ? "(request body unavailable)\n" : (pctx.last_request_body + "\n"));
+      *trace_stream << "=== RESPONSE ===\n";
+      *trace_stream << (pctx.last_body.empty() ? "" : (pctx.last_body + "\n"));
+    }
+
+    events_out = Json::Value(Json::arrayValue);
+    auto push_ev = [&](const std::string& type, const Json::Value& data) {
+      Json::Value e(Json::objectValue);
+      e["type"] = type;
+      e["data"] = data;
+      events_out.append(e);
+    };
+    {
+      Json::Value d(Json::objectValue);
+      d["model"] = run_cfg.model;
+      d["tools"] = "none";
+      d["verbose"] = verbose;
+      push_ev("start", d);
+    }
+    {
+      Json::Value d(Json::objectValue);
+      if (verbose) d["request_json"] = pctx.last_request_body;
+      push_ev("llm_request", d);
+    }
+    {
+      Json::Value d(Json::objectValue);
+      d["http_status"] = (Json::Int64)pctx.last_http_status;
+      if (verbose) d["response_body"] = pctx.last_body;
+      push_ev("llm_response", d);
+    }
+    {
+      Json::Value d(Json::objectValue);
+      d["assistant_content"] = assistant_text;
+      d["has_tool_calls"] = false;
+      push_ev("assistant_message", d);
+    }
+    {
+      Json::Value d(Json::objectValue);
+      d["truncated"] = false;
+      push_ev("end", d);
+    }
+  }
+
+  if (ok && !no_session) {
+    (void)session_store_save(store_cfg, session_id, session);
+  }
+
+  if (registry) {
+    agent_tool_registry_destroy(registry);
+  }
+  if (need_destroy_executor) {
+    toolset_host_destroy(&executor);
+  }
+  agent_session_destroy(session);
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = ok;
+  out["assistant_text"] = assistant_text;
+  if (!ok && !err.empty()) out["error"] = err;
+  out["http_status"] = (Json::Int64)http_status;
+  out["http_body"] = http_body;
+  out["trace_text"] = trace_buf.str();
+  out["effective_tools_root"] = tools_root;
+  out["effective_yolo"] = yolo;
+  out["verbose"] = verbose;
+  if (events_out.isArray()) {
+    out["events"] = events_out;
+  }
+
+  if (!no_session && !session_id.empty()) {
+    Json::Value record(Json::objectValue);
+    record["ts_unix_ms"] = (Json::Int64)now_unix_ms();
+    record["session_id"] = session_id;
+    record["ok"] = ok;
+    record["model"] = run_cfg.model;
+    record["base_url"] = run_cfg.base_url;
+    record["tools"] = tools;
+    record["yolo"] = yolo;
+    record["tools_root"] = tools_root;
+    record["prompt"] = prompt;
+    record["assistant_text"] = assistant_text;
+    record["http_status"] = (Json::Int64)http_status;
+    record["error"] = err;
+    if (events_out.isArray()) {
+      record["events"] = events_out;
+    }
+    Json::StreamWriterBuilder wb;
+    wb["indentation"] = "";
+    (void)session_store_append_audit_jsonl(store_cfg, session_id, Json::writeString(wb, record));
+  }
+
+  return out;
+}
 
 static agent_status_t provider_generate(void* vctx, const agent_generate_request_t* req, agent_generate_response_t* out_resp) {
   if (!vctx || !req || !out_resp) {
@@ -601,276 +947,10 @@ int main(int argc, char** argv) {
     resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
     return;
 #else
-    Json::Value args;
-    std::string perr;
-    if (!json_parse_object(req.body, &args, &perr)) {
-      resp->status = 400;
-      resp->body = json_stringify(Json::Value(Json::objectValue));
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["error"] = std::string("invalid JSON: ") + perr;
-      resp->body = json_stringify(o);
-      return;
+    Json::Value out = run_request_to_json(cfg, ocfg, req.body);
+    if (out.isObject() && out.isMember("rpc_status") && out["rpc_status"].isInt()) {
+      resp->status = out["rpc_status"].asInt();
     }
-
-    const std::string prompt = args.isMember("prompt") && args["prompt"].isString() ? args["prompt"].asString() : "";
-    if (prompt.empty()) {
-      resp->status = 400;
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["error"] = "missing prompt";
-      resp->body = json_stringify(o);
-      return;
-    }
-
-    OpenAIClientConfig run_cfg = ocfg;
-    if (args.isMember("model") && args["model"].isString()) run_cfg.model = args["model"].asString();
-    if (args.isMember("base_url") && args["base_url"].isString()) run_cfg.base_url = args["base_url"].asString();
-    if (args.isMember("api_key") && args["api_key"].isString()) run_cfg.api_key = args["api_key"].asString();
-
-    const std::string tools = args.isMember("tools") && args["tools"].isString() ? args["tools"].asString() : cfg.tools;
-    const bool yolo = args.isMember("yolo") && args["yolo"].isBool() ? args["yolo"].asBool() : cfg.yolo_default;
-    std::string tools_root = args.isMember("tools_root") && args["tools_root"].isString() ? args["tools_root"].asString() : cfg.tools_root;
-    if (tools_root == "@host") {
-      tools_root = cfg.host_scope_root;
-    } else if (tools_root == "@cwd") {
-      tools_root = "";
-    }
-    if (yolo) {
-      // YOLO means "no restriction" for host tools. In practice this currently controls
-      // file edit scoping (`file_apply_patch` root + unsafe paths).
-      tools_root.clear();
-    }
-    const size_t max_steps = args.isMember("max_steps") && args["max_steps"].isUInt64() ? (size_t)args["max_steps"].asUInt64() : 0;
-    const bool trace = !(args.isMember("trace") && args["trace"].isBool() && args["trace"].asBool() == false);
-    const bool verbose = args.isMember("verbose") && args["verbose"].isBool() ? args["verbose"].asBool() : false;
-
-    const std::string session_id = args.isMember("session_id") && args["session_id"].isString() ? args["session_id"].asString() : "default";
-    const bool no_session = args.isMember("no_session") && args["no_session"].isBool() ? args["no_session"].asBool() : false;
-
-    agent_session_t* session = nullptr;
-    SessionStoreConfig store_cfg;
-    store_cfg.root_dir = (std::filesystem::path(home_dir_best_effort()) / ".agent" / "sessions").string();
-    if (!no_session) {
-      const agent_status_t st = session_store_load(store_cfg, session_id, &session);
-      if (st != AGENT_OK) {
-        resp->status = 500;
-        Json::Value o(Json::objectValue);
-        o["ok"] = false;
-        o["error"] = "failed to load session";
-        o["status"] = (int)st;
-        resp->body = json_stringify(o);
-        return;
-      }
-    } else {
-      const agent_status_t st = agent_session_create(&session);
-      if (st != AGENT_OK) {
-        resp->status = 500;
-        Json::Value o(Json::objectValue);
-        o["ok"] = false;
-        o["error"] = "failed to create session";
-        o["status"] = (int)st;
-        resp->body = json_stringify(o);
-        return;
-      }
-    }
-
-    agent_tool_registry_t* registry = nullptr;
-    agent_tool_executor_t executor{};
-    bool need_destroy_executor = false;
-    const bool use_tool_loop = (tools != "none");
-
-    if (tools == "basic") {
-      if (toolset_basic_create(&registry, &executor) != AGENT_OK) {
-        resp->status = 500;
-        Json::Value o(Json::objectValue);
-        o["ok"] = false;
-        o["error"] = "failed to init toolset_basic";
-        resp->body = json_stringify(o);
-        agent_session_destroy(session);
-        return;
-      }
-    } else if (tools == "host") {
-      HostToolsetConfig hcfg;
-      hcfg.root_dir = tools_root;
-      if (toolset_host_create(hcfg, &registry, &executor) != AGENT_OK) {
-        resp->status = 500;
-        Json::Value o(Json::objectValue);
-        o["ok"] = false;
-        o["error"] = "failed to init toolset_host";
-        resp->body = json_stringify(o);
-        agent_session_destroy(session);
-        return;
-      }
-      need_destroy_executor = true;
-    } else if (tools != "none") {
-      resp->status = 400;
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["error"] = "invalid tools (expected: none|basic|host)";
-      resp->body = json_stringify(o);
-      agent_session_destroy(session);
-      return;
-    }
-
-    bool ok = false;
-    std::string assistant_text;
-    std::string err;
-    long http_status = 0;
-    std::string http_body;
-    std::ostringstream trace_buf;
-    std::ostream* trace_stream = trace ? &trace_buf : nullptr;
-    Json::Value events_out; // optional, populated when tool loop captures structured events
-
-    if (use_tool_loop) {
-      ToolLoopOptions opt;
-      opt.max_steps = max_steps;
-      opt.verbose = verbose;
-      if (args.isMember("force_tool") && args["force_tool"].isString()) opt.force_tool = args["force_tool"].asString();
-      opt.require_tool_call = args.isMember("require_tool_call") && args["require_tool_call"].isBool() ? args["require_tool_call"].asBool() : false;
-
-      ToolLoopResult r;
-      ok = run_tool_loop(run_cfg, session, prompt, registry, &executor, opt, trace_stream, &r, &err, &http_status, &http_body);
-      assistant_text = r.final_assistant_text;
-      if (!r.events_json.empty()) {
-        Json::CharReaderBuilder rb;
-        std::string errs;
-        std::istringstream iss(r.events_json);
-        Json::Value ev;
-        if (Json::parseFromStream(rb, iss, &ev, &errs) && ev.isArray()) {
-          events_out = ev;
-        }
-      }
-      if (ok) {
-        agent_session_add_message(session, AGENT_ROLE_USER, prompt.c_str());
-        agent_session_add_message(session, AGENT_ROLE_ASSISTANT, assistant_text.c_str());
-      }
-    } else {
-      agent_session_add_message(session, AGENT_ROLE_USER, prompt.c_str());
-
-      ProviderCtx pctx;
-      pctx.cfg = run_cfg;
-      agent_provider_t provider;
-      provider.ctx = &pctx;
-      provider.generate = provider_generate;
-
-      agent_run_options_t run_opt{};
-      run_opt.model = run_cfg.model.c_str();
-      run_opt.max_chars = 0; // daemon does not enforce compaction yet
-      run_opt.keep_last_messages = 0;
-      run_opt.summary_or_null = nullptr;
-
-      agent_run_report_t rep{};
-      const agent_status_t st = agent_run_once(session, &provider, &run_opt, &rep);
-      ok = (st == AGENT_OK);
-      assistant_text = ok ? std::string(rep.assistant_view.content, rep.assistant_view.content_len) : "";
-      if (!ok) {
-        err = pctx.last_error.empty() ? "agent_run_once failed" : pctx.last_error;
-        http_status = pctx.last_http_status;
-        http_body = pctx.last_body;
-      } else {
-        agent_session_add_message(session, AGENT_ROLE_ASSISTANT, assistant_text.c_str());
-      }
-      if (trace_stream) {
-        *trace_stream << "=== REQUEST ===\n";
-        *trace_stream << (pctx.last_request_body.empty() ? "(request body unavailable)\n" : (pctx.last_request_body + "\n"));
-        *trace_stream << "=== RESPONSE ===\n";
-        *trace_stream << (pctx.last_body.empty() ? "" : (pctx.last_body + "\n"));
-      }
-
-      // Provide a minimal events timeline for tools=none as well, so UIs can render consistently.
-      events_out = Json::Value(Json::arrayValue);
-      auto push_ev = [&](const std::string& type, const Json::Value& data) {
-        Json::Value e(Json::objectValue);
-        e["type"] = type;
-        e["data"] = data;
-        events_out.append(e);
-      };
-      {
-        Json::Value d(Json::objectValue);
-        d["model"] = run_cfg.model;
-        d["tools"] = "none";
-        d["verbose"] = verbose;
-        push_ev("start", d);
-      }
-      {
-        Json::Value d(Json::objectValue);
-        if (verbose) d["request_json"] = pctx.last_request_body;
-        push_ev("llm_request", d);
-      }
-      {
-        Json::Value d(Json::objectValue);
-        d["http_status"] = (Json::Int64)pctx.last_http_status;
-        if (verbose) d["response_body"] = pctx.last_body;
-        push_ev("llm_response", d);
-      }
-      {
-        Json::Value d(Json::objectValue);
-        d["assistant_content"] = assistant_text;
-        d["has_tool_calls"] = false;
-        push_ev("assistant_message", d);
-      }
-      {
-        Json::Value d(Json::objectValue);
-        d["truncated"] = false;
-        push_ev("end", d);
-      }
-    }
-
-    if (ok && !no_session) {
-      (void)session_store_save(store_cfg, session_id, session);
-    }
-
-    if (registry) {
-      agent_tool_registry_destroy(registry);
-    }
-    if (need_destroy_executor) {
-      toolset_host_destroy(&executor);
-    }
-    agent_session_destroy(session);
-
-    Json::Value out(Json::objectValue);
-    out["ok"] = ok;
-    out["assistant_text"] = assistant_text;
-    if (!ok && !err.empty()) out["error"] = err;
-    out["http_status"] = (Json::Int64)http_status;
-    out["http_body"] = http_body;
-    out["trace_text"] = trace_buf.str();
-    out["effective_tools_root"] = tools_root;
-    out["effective_yolo"] = yolo;
-    out["verbose"] = verbose;
-    // Structured event log for UIs (LLM requests/responses + tool calls/results).
-    if (events_out.isArray()) {
-      out["events"] = events_out;
-    }
-
-    // Persist per-run audit record separately from the chat history to avoid breaking request formats.
-    if (!no_session && !session_id.empty()) {
-      Json::Value record(Json::objectValue);
-      record["ts_unix_ms"] = (Json::Int64)(
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::system_clock::now().time_since_epoch()
-        ).count()
-      );
-      record["session_id"] = session_id;
-      record["ok"] = ok;
-      record["model"] = run_cfg.model;
-      record["base_url"] = run_cfg.base_url;
-      record["tools"] = tools;
-      record["yolo"] = yolo;
-      record["tools_root"] = tools_root;
-      record["prompt"] = prompt;
-      record["assistant_text"] = assistant_text;
-      record["http_status"] = (Json::Int64)http_status;
-      record["error"] = err;
-      if (events_out.isArray()) {
-        record["events"] = events_out;
-      }
-      Json::StreamWriterBuilder wb;
-      wb["indentation"] = "";
-      (void)session_store_append_audit_jsonl(store_cfg, session_id, Json::writeString(wb, record));
-    }
-
     resp->body = json_stringify(out);
 #endif
   });

@@ -44,10 +44,23 @@ This uses session id `default` and stores it at `~/.agent/sessions/default.json`
 
 ```bash
 export OPENROUTER_API_KEY=...
-export OPENROUTER_API_BASE=https://openrouter.ai/api
+export OPENROUTER_API_BASE=https://openrouter.ai/api/v1
 export OPENROUTER_HTTP_REFERER=https://example.com
 export OPENROUTER_X_TITLE="agent"
 ./build/agent run "hi" --base-url "$OPENROUTER_API_BASE" --model "google/gemini-2.0-flash-001"
+```
+
+### Pick an OpenRouter verification model (cheap + tools + multimodal)
+
+This repo includes a small host/dev utility that fetches OpenRouter's model catalog, filters to:
+- multimodal-capable inputs (image/audio/video)
+- OpenAI tools/tool_choice support
+- total pricing within a range (default: $0.01–$0.50 per 1M tokens, prompt+completion)
+
+It writes a report to `ref/openrouter/multimodal_latest.md` and prints a recommended model id:
+
+```bash
+python3 tools/openrouter_models.py --write
 ```
 
 ### DeepSeek tool use (calculator)

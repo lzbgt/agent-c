@@ -13,9 +13,8 @@ if [[ "${AGENT_DISABLE_NETWORK_TESTS:-}" == "1" ]]; then
 fi
 
 # Always set proxy for network tests (can be required in some environments).
-# The HTTP client may still fall back to direct if the proxy is unreachable.
-export https_proxy="http://localhost:8120"
-export http_proxy="http://localhost:8120"
+export https_proxy="${https_proxy:-${HTTPS_PROXY:-http://localhost:8120}}"
+export http_proxy="${http_proxy:-${HTTP_PROXY:-http://localhost:8120}}"
 export HTTPS_PROXY="${https_proxy}"
 export HTTP_PROXY="${http_proxy}"
 

@@ -96,11 +96,20 @@ def is_multimodal_input(model: Dict[str, Any]) -> bool:
     return False
 
 
+def supports_tools(model: Dict[str, Any]) -> bool:
+    sp = model.get("supported_parameters") or []
+    if not isinstance(sp, list):
+        return False
+    # OpenRouter's model catalog indicates tool calling support via supported_parameters.
+    return "tools" in sp
+
+
 def filter_models(
     models: List[Dict[str, Any]],
     min_total: float,
     max_total: float,
     require_multimodal_input: bool,
+    require_tools: bool,
     include_free: bool,
 ) -> List[Tuple[float, float, float, Dict[str, Any]]]:
     out: List[Tuple[float, float, float, Dict[str, Any]]] = []
@@ -114,6 +123,8 @@ def filter_models(
             continue
         if require_multimodal_input and not is_multimodal_input(m):
             continue
+        if require_tools and not supports_tools(m):
+            continue
         if total < min_total or total > max_total:
             continue
         out.append((total, prompt_pm, completion_pm, m))
@@ -123,16 +134,17 @@ def filter_models(
 
 def render_markdown(rows: List[Tuple[float, float, float, Dict[str, Any]]], limit: int) -> str:
     lines: List[str] = []
-    lines.append("| total $/1M | prompt $/1M | completion $/1M | id | ctx | input | output |")
-    lines.append("|---:|---:|---:|---|---:|---|---|")
+    lines.append("| total $/1M | prompt $/1M | completion $/1M | tools | id | ctx | input | output |")
+    lines.append("|---:|---:|---:|:---:|---|---:|---|---|")
     for total, prompt_pm, completion_pm, m in rows[:limit]:
         arch = m.get("architecture") or {}
         inputs = ",".join(arch.get("input_modalities") or [])
         outputs = ",".join(arch.get("output_modalities") or [])
+        tools = "yes" if supports_tools(m) else ""
         ctx = m.get("context_length") or 0
         mid = m.get("id", "")
         lines.append(
-            f"| {total:.3f} | {prompt_pm:.3f} | {completion_pm:.3f} | `{mid}` | {ctx} | {inputs} | {outputs} |"
+            f"| {total:.3f} | {prompt_pm:.3f} | {completion_pm:.3f} | {tools} | `{mid}` | {ctx} | {inputs} | {outputs} |"
         )
     return "\n".join(lines) + "\n"
 
@@ -145,7 +157,20 @@ def main() -> int:
     ap.add_argument("--min-total", type=float, default=0.01, help="Min total prompt+completion $/1M")
     ap.add_argument("--max-total", type=float, default=0.50, help="Max total prompt+completion $/1M")
     ap.add_argument("--include-free", action="store_true")
-    ap.add_argument("--require-multimodal-input", action="store_true", default=True)
+    ap.add_argument("--require-multimodal-input", dest="require_multimodal_input", action="store_true", default=True)
+    ap.add_argument(
+        "--allow-text-only",
+        dest="require_multimodal_input",
+        action="store_false",
+        help="Do not require image/audio/video input modalities",
+    )
+    ap.add_argument("--require-tools", dest="require_tools", action="store_true", default=True)
+    ap.add_argument(
+        "--allow-no-tools",
+        dest="require_tools",
+        action="store_false",
+        help="Do not require OpenAI tools/tool_choice support in supported_parameters",
+    )
     ap.add_argument("--limit", type=int, default=50)
     ap.add_argument("--write", action="store_true", help="Write ref/openrouter/models_raw.json and ref/openrouter/multimodal_latest.md")
     ap.add_argument("--snapshot", action="store_true", help="Also write timestamped snapshot files under ref/openrouter/")
@@ -190,6 +215,7 @@ def main() -> int:
         min_total=args.min_total,
         max_total=args.max_total,
         require_multimodal_input=args.require_multimodal_input,
+        require_tools=args.require_tools,
         include_free=args.include_free,
     )
 
