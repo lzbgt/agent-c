@@ -180,6 +180,7 @@ Verbose inspection:
 - Pass `verbose: true` to `POST /api/v1/run` to return a structured `events` log suitable for UIs
   (LLM request/response, tool calls, tool results).
 - Pass `trace: true` to also return a plain-text transcript (`trace_text`).
+- Optional: pass `max_capture_bytes` to cap large verbose event payloads for UI stability (default: 256KB; daemon clamps for tool loops).
 - The daemon also serves files for previews at `GET /api/v1/file?path=<...>&yolo=0|1` (up to 10MB).
 
 Assistant streaming (provider-dependent):

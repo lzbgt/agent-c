@@ -42,6 +42,7 @@ export default function App() {
   const [apiKey, setApiKey] = useLocalStorageState("agentui.apiKey", "");
   const [proxyUrl, setProxyUrl] = useLocalStorageState("agentui.proxyUrl", "");
   const [timeoutMs, setTimeoutMs] = useLocalStorageState("agentui.timeoutMs", "60000");
+  const [maxCaptureBytes, setMaxCaptureBytes] = useLocalStorageState("agentui.maxCaptureBytes", "65536");
   const [streamAssistant, setStreamAssistant] = useLocalStorageState("agentui.streamAssistant", false);
   const [orMinTotal, setOrMinTotal] = useLocalStorageState("agentui.orMinTotal", "0.01");
   const [orMaxTotal, setOrMaxTotal] = useLocalStorageState("agentui.orMaxTotal", "0.50");
@@ -110,6 +111,8 @@ export default function App() {
         proxy: proxyUrl && proxyUrl.trim().length > 0 ? proxyUrl.trim() : undefined,
         timeout_ms: Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0 ? Number(timeoutMs) : undefined,
         stream_assistant: streamAssistant,
+        max_capture_bytes:
+          Number.isFinite(Number(maxCaptureBytes)) && Number(maxCaptureBytes) >= 0 ? Number(maxCaptureBytes) : undefined,
         max_steps: Number.isFinite(Number(maxSteps)) ? Number(maxSteps) : 0,
         max_chars: Number.isFinite(Number(maxChars)) ? Number(maxChars) : 20000,
         keep_last: Number.isFinite(Number(keepLast)) ? Number(keepLast) : 16,
@@ -541,6 +544,17 @@ export default function App() {
                 />
                 <div className="mt-1 text-[11px] text-white/40">
                   Provider HTTP timeout (daemon passes through to libcurl).
+                </div>
+              </div>
+              <div>
+                <Label>Max capture bytes</Label>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={maxCaptureBytes}
+                  onChange={(e) => setMaxCaptureBytes(e.target.value)}
+                />
+                <div className="mt-1 text-[11px] text-white/40">
+                  Caps verbose event payloads (`llm_request`/`llm_response`/tool output) for UI stability. Full transcript is in `trace_text`.
                 </div>
               </div>
             </div>

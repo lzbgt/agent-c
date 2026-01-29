@@ -515,6 +515,8 @@ static Json::Value run_request_to_json(
   const bool verbose = args.isMember("verbose") && args["verbose"].isBool() ? args["verbose"].asBool() : false;
   const bool stream_assistant =
     args.isMember("stream_assistant") && args["stream_assistant"].isBool() ? args["stream_assistant"].asBool() : false;
+  const size_t max_capture_bytes =
+    args.isMember("max_capture_bytes") && args["max_capture_bytes"].isUInt64() ? (size_t)args["max_capture_bytes"].asUInt64() : (size_t)256 * 1024;
 
   const std::string session_id = args.isMember("session_id") && args["session_id"].isString() ? args["session_id"].asString() : "default";
   const bool no_session = args.isMember("no_session") && args["no_session"].isBool() ? args["no_session"].asBool() : false;
@@ -603,6 +605,9 @@ static Json::Value run_request_to_json(
     ToolLoopOptions opt;
     opt.max_steps = max_steps;
     opt.verbose = verbose;
+    // Avoid UI freezes when verbose tracing captures huge request/response/tool blobs.
+    // Full fidelity remains available in `trace_text`.
+    opt.max_capture_bytes = max_capture_bytes == 0 ? (size_t)64 * 1024 : std::min<size_t>(max_capture_bytes, (size_t)1024 * 1024);
     opt.max_chars = max_chars;
     opt.keep_last_messages = keep_last;
     if (args.isMember("force_tool") && args["force_tool"].isString()) opt.force_tool = args["force_tool"].asString();
@@ -791,7 +796,7 @@ static Json::Value run_request_to_json(
           }
         };
 
-        OpenAIStreamResult sr = openai_chat_completions_raw_stream(run_cfg, request_json, on_chunk, &sctx, 256 * 1024);
+        OpenAIStreamResult sr = openai_chat_completions_raw_stream(run_cfg, request_json, on_chunk, &sctx, max_capture_bytes);
         http_status = sr.http_status;
         http_body = sr.response_body;
 
@@ -808,7 +813,11 @@ static Json::Value run_request_to_json(
           d["http_status"] = (Json::Int64)http_status;
           d["stream"] = true;
           d["chunks"] = (Json::Int64)sctx.chunks;
-          if (verbose) d["response_body_capture"] = http_body;
+          if (verbose) {
+            bool trunc = false;
+            d["response_body_capture"] = truncate_for_event(http_body, 64 * 1024, &trunc);
+            d["response_truncated"] = trunc;
+          }
           push_ev("llm_response", d);
         }
 

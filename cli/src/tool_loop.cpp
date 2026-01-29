@@ -23,12 +23,14 @@ static std::string json_stringify(const Json::Value& v) {
   return Json::writeString(builder, v);
 }
 
-static std::string truncate_str(const std::string& s, size_t max_bytes) {
-  if (max_bytes == 0 || s.size() <= max_bytes) {
-    return s;
+  static std::string truncate_str(const std::string& s, size_t max_bytes, bool* out_truncated = nullptr) {
+    if (out_truncated) *out_truncated = false;
+    if (max_bytes == 0 || s.size() <= max_bytes) {
+      return s;
+    }
+    if (out_truncated) *out_truncated = true;
+    return s.substr(0, max_bytes) + "...(truncated)";
   }
-  return s.substr(0, max_bytes) + "...(truncated)";
-}
 
 static Json::Value session_to_json_messages(const agent_session_t* session) {
   Json::Value messages(Json::arrayValue);
@@ -77,7 +79,9 @@ static Json::Value session_to_compacted_json_messages(
     d["dropped_messages"] = (Json::UInt64)rep.dropped_messages;
     d["inserted_summary"] = did && rep.inserted_summary;
     if (opt.verbose && rep.inserted_summary && !rep.summary.empty()) {
-      d["summary"] = truncate_str(rep.summary, opt.max_capture_bytes);
+      bool trunc = false;
+      d["summary"] = truncate_str(rep.summary, opt.max_capture_bytes, &trunc);
+      d["summary_truncated"] = trunc;
     }
     *out_compaction_event_data = d;
   }
@@ -364,10 +368,12 @@ bool run_tool_loop(
         d["dropped_messages"] = (Json::UInt64)rep.dropped_messages;
         d["inserted_summary"] = rep.inserted_summary;
         if (options.verbose && rep.inserted_summary && !rep.summary.empty()) {
-          const std::string capped = truncate_str(rep.summary, options.max_capture_bytes);
-          note_capture(capped);
-          d["summary"] = capped;
-        }
+        bool trunc = false;
+        const std::string capped = truncate_str(rep.summary, options.max_capture_bytes, &trunc);
+        note_capture(capped);
+        d["summary"] = capped;
+        d["summary_truncated"] = trunc;
+      }
         context_epoch++;
         d["epoch_after"] = (Json::UInt64)context_epoch;
         push_event("compaction", d);
@@ -398,9 +404,11 @@ bool run_tool_loop(
       Json::Value d(Json::objectValue);
       d["step"] = (Json::UInt64)step;
       if (options.verbose) {
-        const std::string capped = truncate_str(request_json, options.max_capture_bytes);
+        bool trunc = false;
+        const std::string capped = truncate_str(request_json, options.max_capture_bytes, &trunc);
         note_capture(capped);
         d["request_json"] = capped;
+        d["request_truncated"] = trunc;
       }
       push_event("llm_request", d);
     }
@@ -433,9 +441,11 @@ bool run_tool_loop(
         cdata["dropped_messages"] = (Json::UInt64)rep.dropped_messages;
         cdata["inserted_summary"] = rep.inserted_summary;
         if (options.verbose && rep.inserted_summary && !rep.summary.empty()) {
-          const std::string capped = truncate_str(rep.summary, options.max_capture_bytes);
+          bool trunc = false;
+          const std::string capped = truncate_str(rep.summary, options.max_capture_bytes, &trunc);
           note_capture(capped);
           cdata["summary"] = capped;
+          cdata["summary_truncated"] = trunc;
         }
         context_epoch++;
         cdata["epoch_after"] = (Json::UInt64)context_epoch;
@@ -461,9 +471,11 @@ bool run_tool_loop(
       d["step"] = (Json::UInt64)step;
       d["http_status"] = (Json::Int64)raw.http_status;
       if (options.verbose) {
-        const std::string capped = truncate_str(raw.response_body, options.max_capture_bytes);
+        bool trunc = false;
+        const std::string capped = truncate_str(raw.response_body, options.max_capture_bytes, &trunc);
         note_capture(capped);
         d["response_body"] = capped;
+        d["response_truncated"] = trunc;
       }
       push_event("llm_response", d);
     }
@@ -526,9 +538,11 @@ bool run_tool_loop(
       d["assistant_content"] = out_result->final_assistant_text;
       d["has_tool_calls"] = has_tools;
       if (options.verbose) {
-        const std::string capped = truncate_str(json_stringify(assistant_msg), options.max_capture_bytes);
+        bool trunc = false;
+        const std::string capped = truncate_str(json_stringify(assistant_msg), options.max_capture_bytes, &trunc);
         note_capture(capped);
         d["assistant_message_json"] = capped;
+        d["assistant_message_truncated"] = trunc;
       }
       push_event("assistant_message", d);
     }
@@ -616,13 +630,15 @@ bool run_tool_loop(
         d["step"] = (Json::UInt64)step;
         d["tool_call_id"] = tool_call_id;
         d["tool_name"] = tool_name;
-        if (options.verbose) {
-          const std::string capped = truncate_str(tool_args_json, options.max_capture_bytes);
-          note_capture(capped);
-          d["arguments_json"] = capped;
-        }
-        push_event("tool_call", d);
+      if (options.verbose) {
+        bool trunc = false;
+        const std::string capped = truncate_str(tool_args_json, options.max_capture_bytes, &trunc);
+        note_capture(capped);
+        d["arguments_json"] = capped;
+        d["arguments_truncated"] = trunc;
       }
+      push_event("tool_call", d);
+    }
 
       agent_string_t tool_result{};
       agent_status_t st = executor->execute(executor->ctx, tool_name.c_str(), tool_args_json.c_str(), &tool_result);
@@ -661,15 +677,17 @@ bool run_tool_loop(
         d["tool_call_id"] = tool_call_id;
         d["tool_name"] = tool_name;
         d["status"] = (Json::Int64)st;
-        if (options.verbose) {
-          const std::string capped = truncate_str(tool_out, options.max_capture_bytes);
-          note_capture(capped);
-          d["content"] = capped;
-        } else {
-          d["summary"] = summarize_tool_output(tool_out);
-        }
-        push_event("tool_result", d);
+      if (options.verbose) {
+        bool trunc = false;
+        const std::string capped = truncate_str(tool_out, options.max_capture_bytes, &trunc);
+        note_capture(capped);
+        d["content"] = capped;
+        d["content_truncated"] = trunc;
+      } else {
+        d["summary"] = summarize_tool_output(tool_out);
       }
+      push_event("tool_result", d);
+    }
 
       Json::Value tm(Json::objectValue);
       tm["role"] = "tool";

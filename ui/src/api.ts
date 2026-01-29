@@ -19,6 +19,7 @@ export const RunRequestSchema = z.object({
   proxy: z.string().optional(),
   timeout_ms: z.number().int().positive().optional(),
   stream_assistant: z.boolean().optional(),
+  max_capture_bytes: z.number().int().nonnegative().optional(),
   tools: z.enum(["host", "basic", "none"]).optional(),
   tools_root: z.string().optional(),
   max_steps: z.number().int().nonnegative().optional(),
