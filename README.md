@@ -131,6 +131,11 @@ Verbose inspection:
 - Pass `trace: true` to also return a plain-text transcript (`trace_text`).
 - The daemon also serves files for previews at `GET /api/v1/file?path=<...>&yolo=0|1` (up to 10MB).
 
+Session browsing:
+- `GET /api/v1/sessions` lists known sessions.
+- `GET /api/v1/session?session_id=<id>` returns the message history.
+- `GET /api/v1/session/audit?session_id=<id>` returns recent per-run audit entries (prompt + assistant + events).
+
 ### Run the Web UI
 
 ```bash

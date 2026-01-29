@@ -22,6 +22,7 @@
 #include <string>
 #include <vector>
 #include <cstring>
+#include <chrono>
 
 static const char* getenv_s(const char* k) {
   const char* v = std::getenv(k);
@@ -433,6 +434,164 @@ int main(int argc, char** argv) {
     resp->body = std::move(bytes);
   });
 
+  server.handle("GET", "/api/v1/sessions", [&](const HttpRequest&, HttpResponse* resp) {
+    add_cors(resp);
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+#if !defined(AGENT_HAVE_JSONCPP)
+    resp->status = 500;
+    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
+    return;
+#else
+    SessionStoreConfig store_cfg;
+    store_cfg.root_dir = (std::filesystem::path(home_dir_best_effort()) / ".agent" / "sessions").string();
+    std::vector<std::string> ids;
+    const agent_status_t st = session_store_list(store_cfg, &ids);
+    Json::Value out(Json::objectValue);
+    out["ok"] = (st == AGENT_OK);
+    if (st != AGENT_OK) {
+      out["error"] = "failed to list sessions";
+      out["status"] = (Json::Int64)st;
+    }
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : ids) {
+      arr.append(s);
+    }
+    out["sessions"] = arr;
+    resp->body = json_stringify(out);
+    return;
+#endif
+  });
+
+  server.handle("GET", "/api/v1/session", [&](const HttpRequest& req, HttpResponse* resp) {
+    add_cors(resp);
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+#if !defined(AGENT_HAVE_JSONCPP)
+    resp->status = 500;
+    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
+    return;
+#else
+    const auto sid = query_get(req.query, "session_id");
+    if (!sid || sid->empty()) {
+      resp->status = 400;
+      resp->body = R"({"ok":false,"error":"missing session_id"})";
+      return;
+    }
+
+    SessionStoreConfig store_cfg;
+    store_cfg.root_dir = (std::filesystem::path(home_dir_best_effort()) / ".agent" / "sessions").string();
+    agent_session_t* session = nullptr;
+    const agent_status_t st = session_store_load(store_cfg, *sid, &session);
+    if (st != AGENT_OK || !session) {
+      resp->status = 500;
+      Json::Value out(Json::objectValue);
+      out["ok"] = false;
+      out["error"] = "failed to load session";
+      out["status"] = (Json::Int64)st;
+      resp->body = json_stringify(out);
+      return;
+    }
+
+    Json::Value out(Json::objectValue);
+    out["ok"] = true;
+    out["session_id"] = *sid;
+    Json::Value msgs(Json::arrayValue);
+    const size_t n = agent_session_message_count(session);
+    for (size_t i = 0; i < n; i++) {
+      agent_message_view_t v{};
+      if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
+      Json::Value m(Json::objectValue);
+      m["role"] = agent_role_to_string(v.role);
+      m["content"] = std::string(v.content, v.content_len);
+      msgs.append(m);
+    }
+    out["messages"] = msgs;
+    agent_session_destroy(session);
+    resp->body = json_stringify(out);
+    return;
+#endif
+  });
+
+  server.handle("GET", "/api/v1/session/audit", [&](const HttpRequest& req, HttpResponse* resp) {
+    add_cors(resp);
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+#if !defined(AGENT_HAVE_JSONCPP)
+    resp->status = 500;
+    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
+    return;
+#else
+    const auto sid = query_get(req.query, "session_id");
+    if (!sid || sid->empty()) {
+      resp->status = 400;
+      resp->body = R"({"ok":false,"error":"missing session_id"})";
+      return;
+    }
+    size_t max_bytes = 1024 * 1024;
+    if (const auto mb = query_get(req.query, "max_bytes")) {
+      try {
+        max_bytes = (size_t)std::stoull(*mb);
+      } catch (...) {
+      }
+    }
+    SessionStoreConfig store_cfg;
+    store_cfg.root_dir = (std::filesystem::path(home_dir_best_effort()) / ".agent" / "sessions").string();
+    std::string tail;
+    const agent_status_t st = session_store_read_audit_tail(store_cfg, *sid, max_bytes, &tail);
+    Json::Value out(Json::objectValue);
+    out["ok"] = (st == AGENT_OK);
+    out["session_id"] = *sid;
+    if (st != AGENT_OK) {
+      out["error"] = "failed to read audit log";
+      out["status"] = (Json::Int64)st;
+    }
+    // Parse JSONL into entries (best-effort).
+    Json::Value entries(Json::arrayValue);
+    std::istringstream iss(tail);
+    std::string line;
+    Json::CharReaderBuilder rb;
+    while (std::getline(iss, line)) {
+      if (line.empty()) continue;
+      std::string errs;
+      std::istringstream lss(line);
+      Json::Value v;
+      if (Json::parseFromStream(rb, lss, &v, &errs) && v.isObject()) {
+        entries.append(v);
+      }
+    }
+    out["entries"] = entries;
+    resp->body = json_stringify(out);
+    return;
+#endif
+  });
+
+  server.handle("DELETE", "/api/v1/session", [&](const HttpRequest& req, HttpResponse* resp) {
+    add_cors(resp);
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+#if !defined(AGENT_HAVE_JSONCPP)
+    resp->status = 500;
+    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
+    return;
+#else
+    const auto sid = query_get(req.query, "session_id");
+    if (!sid || sid->empty()) {
+      resp->status = 400;
+      resp->body = R"({"ok":false,"error":"missing session_id"})";
+      return;
+    }
+    SessionStoreConfig store_cfg;
+    store_cfg.root_dir = (std::filesystem::path(home_dir_best_effort()) / ".agent" / "sessions").string();
+    const agent_status_t st = session_store_delete(store_cfg, *sid);
+    Json::Value out(Json::objectValue);
+    out["ok"] = (st == AGENT_OK);
+    out["session_id"] = *sid;
+    if (st != AGENT_OK) {
+      out["error"] = "failed to delete session";
+      out["status"] = (Json::Int64)st;
+    }
+    resp->body = json_stringify(out);
+    return;
+#endif
+  });
+
   server.handle("POST", "/api/v1/run", [&](const HttpRequest& req, HttpResponse* resp) {
     add_cors(resp);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
@@ -646,6 +805,34 @@ int main(int argc, char** argv) {
     if (use_tool_loop && events_out.isArray()) {
       out["events"] = events_out;
     }
+
+    // Persist per-run audit record separately from the chat history to avoid breaking request formats.
+    if (!no_session && !session_id.empty()) {
+      Json::Value record(Json::objectValue);
+      record["ts_unix_ms"] = (Json::Int64)(
+        std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::system_clock::now().time_since_epoch()
+        ).count()
+      );
+      record["session_id"] = session_id;
+      record["ok"] = ok;
+      record["model"] = run_cfg.model;
+      record["base_url"] = run_cfg.base_url;
+      record["tools"] = tools;
+      record["yolo"] = yolo;
+      record["tools_root"] = tools_root;
+      record["prompt"] = prompt;
+      record["assistant_text"] = assistant_text;
+      record["http_status"] = (Json::Int64)http_status;
+      record["error"] = err;
+      if (events_out.isArray()) {
+        record["events"] = events_out;
+      }
+      Json::StreamWriterBuilder wb;
+      wb["indentation"] = "";
+      (void)session_store_append_audit_jsonl(store_cfg, session_id, Json::writeString(wb, record));
+    }
+
     resp->body = json_stringify(out);
 #endif
   });

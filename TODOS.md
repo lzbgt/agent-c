@@ -27,8 +27,11 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 
 - [x] Add a minimal local daemon (`agentd`) with HTTP+JSON endpoints for a Web UI client.
 - [x] Add a structured event log (`events`) for UIs (LLM + tool timeline).
-- [ ] Expand daemon RPC surface:
+- [x] Expand daemon RPC surface:
   - list sessions, get session, delete session
+  - fetch per-run audit entries
+- [ ] Add streaming responses (SSE/WebSocket) for UI responsiveness.
+  - start with tool events streaming (even without token streaming)
   - streaming responses (SSE/WebSocket)
   - make event log fully structured (typed payloads; truncation metadata; stable schema)
 - [ ] Add a daemon-level “sandbox policy” model:

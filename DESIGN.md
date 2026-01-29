@@ -195,6 +195,10 @@ Initial endpoints (implemented in `agentd`):
 - `GET /api/v1/health` → `{ ok, service, version }`
 - `POST /api/v1/run` → runs one user prompt against an LLM backend with optional tool loop.
 - `GET /api/v1/file?path=...&yolo=0|1` → returns a file for UI preview (images/audio/video/text; size capped).
+- `GET /api/v1/sessions` → list session ids.
+- `GET /api/v1/session?session_id=...` → get session messages.
+- `DELETE /api/v1/session?session_id=...` → delete a session (messages + audit log).
+- `GET /api/v1/session/audit?session_id=...` → fetch recent per-run audit entries (JSONL parsed to array).
 
 `POST /api/v1/run` request (JSON):
 - `prompt` (string, required)

@@ -205,11 +205,32 @@ bool run_tool_loop(
   }
 
   Json::Value events(Json::arrayValue);
+  bool events_truncated = false;
+  size_t events_count = 0;
+  size_t captured_bytes = 0;
+
+  const size_t max_events = 2048;
+  const size_t max_total_capture = options.max_capture_bytes == 0 ? (256 * 1024 * 8) : (options.max_capture_bytes * 8);
+
+  auto note_capture = [&](const std::string& s) {
+    if (!events_truncated) {
+      captured_bytes += s.size();
+      if (captured_bytes > max_total_capture) {
+        events_truncated = true;
+      }
+    }
+  };
+
   auto push_event = [&](const std::string& type, const Json::Value& data) {
+    if (events_truncated || events_count >= max_events) {
+      events_truncated = true;
+      return;
+    }
     Json::Value e(Json::objectValue);
     e["type"] = type;
     e["data"] = data;
     events.append(e);
+    events_count++;
   };
 
   if (trace_stream) {
@@ -278,7 +299,9 @@ bool run_tool_loop(
       Json::Value d(Json::objectValue);
       d["step"] = (Json::UInt64)step;
       if (options.verbose) {
-        d["request_json"] = truncate_str(request_json, options.max_capture_bytes);
+        const std::string capped = truncate_str(request_json, options.max_capture_bytes);
+        note_capture(capped);
+        d["request_json"] = capped;
       }
       push_event("llm_request", d);
     }
@@ -299,7 +322,9 @@ bool run_tool_loop(
       d["step"] = (Json::UInt64)step;
       d["http_status"] = (Json::Int64)raw.http_status;
       if (options.verbose) {
-        d["response_body"] = truncate_str(raw.response_body, options.max_capture_bytes);
+        const std::string capped = truncate_str(raw.response_body, options.max_capture_bytes);
+        note_capture(capped);
+        d["response_body"] = capped;
       }
       push_event("llm_response", d);
     }
@@ -362,7 +387,9 @@ bool run_tool_loop(
       d["assistant_content"] = out_result->final_assistant_text;
       d["has_tool_calls"] = has_tools;
       if (options.verbose) {
-        d["assistant_message_json"] = truncate_str(json_stringify(assistant_msg), options.max_capture_bytes);
+        const std::string capped = truncate_str(json_stringify(assistant_msg), options.max_capture_bytes);
+        note_capture(capped);
+        d["assistant_message_json"] = capped;
       }
       push_event("assistant_message", d);
     }
@@ -409,7 +436,9 @@ bool run_tool_loop(
         d["tool_call_id"] = idv.asString();
         d["tool_name"] = tool_name;
         if (options.verbose) {
-          d["arguments_json"] = truncate_str(tool_args_json, options.max_capture_bytes);
+          const std::string capped = truncate_str(tool_args_json, options.max_capture_bytes);
+          note_capture(capped);
+          d["arguments_json"] = capped;
         }
         push_event("tool_call", d);
       }
@@ -441,7 +470,9 @@ bool run_tool_loop(
         d["tool_name"] = tool_name;
         d["status"] = (Json::Int64)st;
         if (options.verbose) {
-          d["content"] = truncate_str(tool_out, options.max_capture_bytes);
+          const std::string capped = truncate_str(tool_out, options.max_capture_bytes);
+          note_capture(capped);
+          d["content"] = capped;
         } else {
           d["summary"] = summarize_tool_output(tool_out);
         }
@@ -471,9 +502,18 @@ bool run_tool_loop(
   if (trace_stream) {
     *trace_stream << "=== TOOL LOOP END ===\n";
   }
-  push_event("end", Json::Value(Json::objectValue));
+  {
+    Json::Value d(Json::objectValue);
+    d["truncated"] = events_truncated;
+    d["captured_bytes"] = (Json::UInt64)captured_bytes;
+    d["max_total_capture_bytes"] = (Json::UInt64)max_total_capture;
+    d["events_count"] = (Json::UInt64)events_count;
+    d["max_events"] = (Json::UInt64)max_events;
+    push_event("end", d);
+  }
 
-  out_result->events_json = truncate_str(json_stringify(events), options.max_capture_bytes * 8);
+  // Important: do NOT truncate the final JSON string, or it becomes unparsable.
+  out_result->events_json = json_stringify(events);
   return true;
 #endif
 }

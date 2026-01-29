@@ -40,6 +40,9 @@ Completed milestones and notable tasks.
   - daemon returns structured `events` for verbose inspection (LLM + tool timeline)
   - UI renders assistant markdown and tool outputs (including diff patches)
   - daemon can serve local artifacts for preview (`GET /api/v1/file`)
+- Added session browsing + audit log persistence:
+  - `GET /api/v1/sessions`, `GET /api/v1/session`, `GET /api/v1/session/audit`, `DELETE /api/v1/session`
+  - per-run audit records stored under `~/.agent/sessions/<id>.events.jsonl`
 - Added a simple interactive REPL (`agent chat`) supporting the same session + tools flow:
   - `cli/src/main.cpp`
 - Added unit tests (`tests/test_session.c`) and integration smoke tests (OpenRouter + DeepSeek) that can read test keys from `project.md`.

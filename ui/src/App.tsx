@@ -1,6 +1,6 @@
 import React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiGetHealth, apiRun, RunRequest, RunResponse } from "./api";
+import { apiGetAudit, apiGetHealth, apiGetSession, apiListSessions, apiRun, RunRequest, RunResponse } from "./api";
 import TraceView from "./components/TraceView";
 import EventTimeline from "./components/EventTimeline";
 import Markdown from "./components/Markdown";
@@ -26,6 +26,19 @@ export default function App() {
   const health = useQuery({
     queryKey: ["health", base],
     queryFn: () => apiGetHealth(base),
+    retry: 1,
+  });
+
+  const sessions = useQuery({
+    queryKey: ["sessions", base],
+    queryFn: () => apiListSessions(base),
+    retry: 1,
+  });
+
+  const audit = useQuery({
+    queryKey: ["audit", base, sessionId],
+    queryFn: () => apiGetAudit(base, sessionId),
+    enabled: !!sessionId,
     retry: 1,
   });
 
@@ -71,7 +84,48 @@ export default function App() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+          <div className="mb-3 text-sm font-semibold">Sessions</div>
+          <div className="text-xs text-white/60">
+            {sessions.isFetching ? "Loading…" : sessions.isError ? "Failed to load" : null}
+          </div>
+          <div className="mt-3 flex gap-2">
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+              onClick={() => sessions.refetch()}
+              type="button"
+            >
+              Refresh
+            </button>
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+              onClick={() => audit.refetch()}
+              type="button"
+              disabled={!sessionId}
+            >
+              Load audit
+            </button>
+          </div>
+          <div className="mt-3 max-h-80 overflow-auto rounded-md border border-white/10 bg-black/20">
+            {(sessions.data?.sessions ?? []).map((sid) => (
+              <button
+                key={sid}
+                className={`block w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${
+                  sid === sessionId ? "bg-white/10" : ""
+                }`}
+                onClick={() => setSessionId(sid)}
+                type="button"
+              >
+                {sid}
+              </button>
+            ))}
+          </div>
+          <div className="mt-3 text-xs text-white/50">
+            Audit entries: {audit.data?.entries ? audit.data.entries.length : 0}
+          </div>
+        </div>
+
         <div className="rounded-xl border border-white/10 bg-white/5 p-4">
           <div className="mb-3 text-sm font-semibold">Connection</div>
           <Label>Daemon base URL</Label>
@@ -146,7 +200,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+        <div className="rounded-xl border border-white/10 bg-white/5 p-4 md:col-span-1">
           <div className="mb-3 text-sm font-semibold">LLM backend</div>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
@@ -229,6 +283,46 @@ export default function App() {
           <div>
             <div className="mb-2 text-sm font-semibold text-white/80">Events</div>
             <EventTimeline baseUrl={base} yolo={yolo} events={result.events} />
+          </div>
+        ) : null}
+
+        {audit.data?.entries && audit.data.entries.length > 0 ? (
+          <div>
+            <div className="mb-2 text-sm font-semibold text-white/80">Session Audit (latest)</div>
+            <div className="grid gap-3">
+              {audit.data.entries
+                .slice(-10)
+                .reverse()
+                .map((e: any, idx: number) => (
+                  <div key={idx} className="rounded-lg border border-white/10 bg-white/5 p-3">
+                    <div className="text-xs text-white/50">
+                      {typeof e.ts_unix_ms === "number" ? new Date(e.ts_unix_ms).toISOString() : ""}
+                    </div>
+                    {typeof e.prompt === "string" ? (
+                      <div className="mt-2">
+                        <div className="text-xs font-semibold text-white/70">Prompt</div>
+                        <pre className="mt-1 whitespace-pre-wrap text-xs text-white/80">{e.prompt}</pre>
+                      </div>
+                    ) : null}
+                    {typeof e.assistant_text === "string" ? (
+                      <div className="mt-2">
+                        <div className="text-xs font-semibold text-white/70">Assistant</div>
+                        <div className="mt-1">
+                          <Markdown text={e.assistant_text} />
+                        </div>
+                      </div>
+                    ) : null}
+                    {Array.isArray(e.events) ? (
+                      <div className="mt-3">
+                        <div className="text-xs font-semibold text-white/70">Events</div>
+                        <div className="mt-2">
+                          <EventTimeline baseUrl={base} yolo={yolo} events={e.events} />
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ))}
+            </div>
           </div>
         ) : null}
 

@@ -6,9 +6,15 @@
 
 #include <filesystem>
 #include <fstream>
+#include <sstream>
+#include <algorithm>
 
 static std::filesystem::path session_path(const SessionStoreConfig& cfg, const std::string& session_id) {
   return std::filesystem::path(cfg.root_dir) / (session_id + ".json");
+}
+
+static std::filesystem::path session_audit_path(const SessionStoreConfig& cfg, const std::string& session_id) {
+  return std::filesystem::path(cfg.root_dir) / (session_id + ".events.jsonl");
 }
 
 static agent_status_t ensure_dir(const std::string& dir) {
@@ -112,3 +118,104 @@ agent_status_t session_store_save(const SessionStoreConfig& cfg, const std::stri
   return AGENT_OK;
 }
 
+agent_status_t session_store_list(const SessionStoreConfig& cfg, std::vector<std::string>* out_session_ids) {
+  if (!out_session_ids) {
+    return AGENT_ERR_INVALID_ARGUMENT;
+  }
+  out_session_ids->clear();
+
+  std::error_code ec;
+  if (!std::filesystem::exists(cfg.root_dir, ec)) {
+    return AGENT_OK;
+  }
+
+  for (const auto& entry : std::filesystem::directory_iterator(cfg.root_dir, ec)) {
+    if (ec) {
+      break;
+    }
+    if (!entry.is_regular_file(ec)) {
+      continue;
+    }
+    const auto p = entry.path();
+    if (p.extension() != ".json") {
+      continue;
+    }
+    // Skip audit files if someone misnames them.
+    const std::string filename = p.filename().string();
+    if (filename.size() >= std::string(".events.jsonl").size() &&
+        filename.rfind(".events.jsonl") == filename.size() - std::string(".events.jsonl").size()) {
+      continue;
+    }
+    out_session_ids->push_back(p.stem().string());
+  }
+  std::sort(out_session_ids->begin(), out_session_ids->end());
+  return AGENT_OK;
+}
+
+agent_status_t session_store_delete(const SessionStoreConfig& cfg, const std::string& session_id) {
+  agent_status_t st = ensure_dir(cfg.root_dir);
+  if (st != AGENT_OK) {
+    return st;
+  }
+  std::error_code ec;
+  std::filesystem::remove(session_path(cfg, session_id), ec);
+  ec.clear();
+  std::filesystem::remove(session_audit_path(cfg, session_id), ec);
+  return AGENT_OK;
+}
+
+agent_status_t session_store_append_audit_jsonl(const SessionStoreConfig& cfg, const std::string& session_id, const std::string& record_json) {
+  agent_status_t st = ensure_dir(cfg.root_dir);
+  if (st != AGENT_OK) {
+    return st;
+  }
+  const auto p = session_audit_path(cfg, session_id);
+  std::ofstream out(p, std::ios::app);
+  if (!out.is_open()) {
+    return AGENT_ERR_INTERNAL;
+  }
+  out << record_json << "\n";
+  return AGENT_OK;
+}
+
+agent_status_t session_store_read_audit_tail(const SessionStoreConfig& cfg, const std::string& session_id, size_t max_bytes, std::string* out_text) {
+  if (!out_text) {
+    return AGENT_ERR_INVALID_ARGUMENT;
+  }
+  out_text->clear();
+
+  const auto p = session_audit_path(cfg, session_id);
+  std::ifstream in(p, std::ios::binary);
+  if (!in.is_open()) {
+    return AGENT_OK;
+  }
+
+  in.seekg(0, std::ios::end);
+  std::streamoff size = in.tellg();
+  if (size <= 0) {
+    return AGENT_OK;
+  }
+  const std::streamoff want = (std::streamoff)std::min<size_t>((size_t)size, max_bytes);
+  in.seekg(size - want, std::ios::beg);
+
+  std::string buf;
+  buf.resize((size_t)want);
+  in.read(buf.data(), want);
+  if (!in) {
+    // Best-effort: partial read.
+    buf.resize((size_t)in.gcount());
+  }
+
+  // If we started mid-line, drop until next newline so caller can parse JSONL.
+  if (want < size) {
+    const size_t nl = buf.find('\n');
+    if (nl != std::string::npos) {
+      buf = buf.substr(nl + 1);
+    } else {
+      buf.clear();
+    }
+  }
+
+  *out_text = buf;
+  return AGENT_OK;
+}
