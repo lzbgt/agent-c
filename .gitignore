@@ -9,3 +9,8 @@ ui/node_modules/
 ui/dist/
 ui/.vite/
 project.local.md
+
+# Local one-off camera capture artifacts (dev only).
+capture_image*.py
+captured_image*.jpg
+python_captured*.jpg

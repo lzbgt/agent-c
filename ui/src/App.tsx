@@ -739,6 +739,16 @@ export default function App() {
                       {daemonConfig.data.sandbox?.tools_root ?? "(default / cwd)"}
                     </code>
                   </div>
+                  {daemonConfig.data.daemon?.state_dir ? (
+                    <div className="col-span-2">
+                      state dir: <code className="text-white/70">{daemonConfig.data.daemon.state_dir}</code>
+                    </div>
+                  ) : null}
+                  {daemonConfig.data.daemon?.sessions_root_dir ? (
+                    <div className="col-span-2">
+                      sessions root: <code className="text-white/70">{daemonConfig.data.daemon.sessions_root_dir}</code>
+                    </div>
+                  ) : null}
                   <div className="col-span-2">
                     job gc:{" "}
                     <code className="text-white/70">
