@@ -1,6 +1,7 @@
 #include "agent/agent.h"
 #include "agent/runner.h"
 
+#include "file_persistor.h"
 #include "openai_client.h"
 #include "default_system_prompt.h"
 #include "session_store.h"
@@ -372,16 +373,24 @@ int main(int argc, char** argv) {
   SessionStoreConfig store_cfg;
   store_cfg.root_dir = (std::filesystem::path(home_dir_best_effort()) / ".agent" / "sessions").string();
 
+  agent_persistor_t persistor{};
+  if (agent_file_persistor_create(store_cfg.root_dir.c_str(), &persistor) != AGENT_OK) {
+    std::cerr << "Failed to initialize persistor\n";
+    return 1;
+  }
+
   if (!no_session && !session_id.empty()) {
-    const agent_status_t st = session_store_load(store_cfg, session_id, &session);
+    const agent_status_t st = persistor.load(persistor.ctx, session_id.c_str(), &session);
     if (st != AGENT_OK) {
       std::cerr << "Failed to load session: " << (int)st << "\n";
+      agent_persistor_destroy(&persistor);
       return 1;
     }
   } else {
     const agent_status_t st = agent_session_create(&session);
     if (st != AGENT_OK) {
       std::cerr << "Failed to create session: " << (int)st << "\n";
+      agent_persistor_destroy(&persistor);
       return 1;
     }
   }
@@ -539,7 +548,7 @@ int main(int argc, char** argv) {
     }
 
     if (!no_session && !session_id.empty()) {
-      const agent_status_t st = session_store_save(store_cfg, session_id, session);
+      const agent_status_t st = persistor.save(persistor.ctx, session_id.c_str(), session);
       if (st != AGENT_OK) {
         std::cerr << "Failed to save session: " << (int)st << "\n";
         rc = 1;
@@ -551,6 +560,7 @@ int main(int argc, char** argv) {
       toolset_host_destroy(&executor);
     }
     agent_session_destroy(session);
+    agent_persistor_destroy(&persistor);
     return rc;
   } else {
     auto run_one = [&](const std::string& user_prompt) -> int {
@@ -719,7 +729,7 @@ int main(int argc, char** argv) {
     }
 
     if (!no_session && !session_id.empty()) {
-      const agent_status_t st = session_store_save(store_cfg, session_id, session);
+      const agent_status_t st = persistor.save(persistor.ctx, session_id.c_str(), session);
       if (st != AGENT_OK) {
         std::cerr << "Failed to save session: " << (int)st << "\n";
         rc = 1;
@@ -727,6 +737,7 @@ int main(int argc, char** argv) {
     }
 
     agent_session_destroy(session);
+    agent_persistor_destroy(&persistor);
     return rc;
   }
 

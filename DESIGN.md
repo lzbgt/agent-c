@@ -33,6 +33,13 @@ Date: 2026-01-29
    - Hosts may additionally write an OpenAI-ish JSON view (`.json`) when JSONCPP is available, but the portable `.sess` format
      is treated as the primary persisted session file.
 
+   Planned portability port (Milestone 2.1):
+   - Core defines an optional **persistence interface** (`agent/persist.h`) so hosts/embedded targets can supply:
+     - filesystem persistence (`.sess` on desktop)
+     - SQLite (desktop/daemon)
+     - NVS/flash key-value storage (MCU)
+   - The core itself remains storage-agnostic and does not assume POSIX paths or env vars.
+
 3) **Transport is an injected interface**
    - Embedded environments may not support libcurl/POSIX sockets.
    - Therefore: core defines a transport “port” (function pointers / vtable).

@@ -24,6 +24,11 @@ ctest --test-dir build-core --output-on-failure
 
 This builds `agent_core` and `agent_core_tests`, but skips `agent_host`, `agent`, `agentd`, and host/network smokes.
 
+### Persistence port (hosts/embedded)
+
+Core defines an optional persistence interface (`core/include/agent/persist.h`) so hosts can swap persistence implementations
+without changing the core call sites (filesystem `.sess`, SQLite, NVS/flash, etc.).
+
 ### Daemon longevity (job GC)
 
 `agentd` keeps async job state in memory for UI progress streaming. Finished jobs are garbage-collected:

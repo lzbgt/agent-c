@@ -46,6 +46,7 @@ if(AGENT_BUILD_HOST)
   # Host-side adapter library shared by CLI and daemon.
   add_library(agent_host STATIC
     cli/src/default_system_prompt.cpp
+    cli/src/file_persistor.cpp
     cli/src/openai_client.cpp
     cli/src/openai_tool_provider.cpp
     cli/src/sse_parser.cpp
@@ -183,6 +184,12 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
   )
   target_link_libraries(session_store_tests PRIVATE agent_host)
   add_test(NAME session_store_tests COMMAND session_store_tests)
+
+  add_executable(file_persistor_tests
+    tests/test_file_persistor.cpp
+  )
+  target_link_libraries(file_persistor_tests PRIVATE agent_host)
+  add_test(NAME file_persistor_tests COMMAND file_persistor_tests)
 
   add_executable(job_manager_tests
     tests/test_job_manager.cpp

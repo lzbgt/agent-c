@@ -8,6 +8,7 @@
 #include "string_util.h"
 
 #include "default_system_prompt.h"
+#include "file_persistor.h"
 #include "openai_client.h"
 #include "session_store.h"
 #include "summary_compaction.h"
@@ -173,8 +174,27 @@ static Json::Value run_request_to_json(
   agent_session_t* session = nullptr;
   SessionStoreConfig store_cfg;
   store_cfg.root_dir = (std::filesystem::path(home_dir_best_effort()) / ".agent" / "sessions").string();
+
+  agent_persistor_t persistor{};
+  struct PersistorGuard {
+    agent_persistor_t* p;
+    ~PersistorGuard() { agent_persistor_destroy(p); }
+  } pers_guard{&persistor};
+
+  {
+    const agent_status_t st = agent_file_persistor_create(store_cfg.root_dir.c_str(), &persistor);
+    if (st != AGENT_OK) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["rpc_status"] = 500;
+      o["error"] = "failed to init persistor";
+      o["status"] = (Json::Int64)st;
+      return o;
+    }
+  }
+
   if (!no_session) {
-    const agent_status_t st = session_store_load(store_cfg, session_id, &session);
+    const agent_status_t st = persistor.load(persistor.ctx, session_id.c_str(), &session);
     if (st != AGENT_OK) {
       Json::Value o(Json::objectValue);
       o["ok"] = false;
@@ -725,7 +745,7 @@ static Json::Value run_request_to_json(
   }
 
   if (ok && !no_session) {
-    (void)session_store_save(store_cfg, session_id, session);
+    (void)persistor.save(persistor.ctx, session_id.c_str(), session);
   }
 
   if (registry) {
@@ -1485,8 +1505,20 @@ int main(int argc, char** argv) {
 #else
     SessionStoreConfig store_cfg;
     store_cfg.root_dir = (std::filesystem::path(home_dir_best_effort()) / ".agent" / "sessions").string();
+
+    agent_persistor_t p{};
+    const agent_status_t pst = agent_file_persistor_create(store_cfg.root_dir.c_str(), &p);
     std::vector<std::string> ids;
-    const agent_status_t st = session_store_list(store_cfg, &ids);
+    agent_status_t st = pst;
+    if (pst == AGENT_OK && p.list) {
+      auto sink = [](void* vctx, const char* id) {
+        auto* vec = static_cast<std::vector<std::string>*>(vctx);
+        vec->push_back(id ? id : "");
+      };
+      st = p.list(p.ctx, sink, &ids);
+    }
+    agent_persistor_destroy(&p);
+
     Json::Value out(Json::objectValue);
     out["ok"] = (st == AGENT_OK);
     if (st != AGENT_OK) {
@@ -1521,7 +1553,10 @@ int main(int argc, char** argv) {
     SessionStoreConfig store_cfg;
     store_cfg.root_dir = (std::filesystem::path(home_dir_best_effort()) / ".agent" / "sessions").string();
     agent_session_t* session = nullptr;
-    const agent_status_t st = session_store_load(store_cfg, *sid, &session);
+    agent_persistor_t p{};
+    const agent_status_t pst = agent_file_persistor_create(store_cfg.root_dir.c_str(), &p);
+    const agent_status_t st = (pst == AGENT_OK) ? p.load(p.ctx, sid->c_str(), &session) : pst;
+    agent_persistor_destroy(&p);
     if (st != AGENT_OK || !session) {
       resp->status = 500;
       Json::Value out(Json::objectValue);
@@ -1620,7 +1655,10 @@ int main(int argc, char** argv) {
     }
     SessionStoreConfig store_cfg;
     store_cfg.root_dir = (std::filesystem::path(home_dir_best_effort()) / ".agent" / "sessions").string();
-    const agent_status_t st = session_store_delete(store_cfg, *sid);
+    agent_persistor_t p{};
+    const agent_status_t pst = agent_file_persistor_create(store_cfg.root_dir.c_str(), &p);
+    const agent_status_t st = (pst == AGENT_OK) ? p.del(p.ctx, sid->c_str()) : pst;
+    agent_persistor_destroy(&p);
     Json::Value out(Json::objectValue);
     out["ok"] = (st == AGENT_OK);
     out["session_id"] = *sid;
