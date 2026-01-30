@@ -101,4 +101,5 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Refactor oversized `daemon/src/main.cpp` into smaller modules (job manager, JSON/HTTP helpers, etc.).
 - [x] Deduplicate agentd smoke scripts via shared bash lib (`tests/lib/agentd_smoke_lib.sh`).
 - [x] Add `tools/verify.sh`/`tools/publish.sh` for consistent build+test(+push) workflow with logs.
+- [x] Add key-free local daemon smokes for critical UI paths (async jobs, SSE, streamed assistant deltas, session audit) using stub OpenAI servers.
 - [ ] Configure a git remote so `git push` works in this workspace (see `tools/setup_git_remote.sh`, supports `project.local.md: git_remote`).

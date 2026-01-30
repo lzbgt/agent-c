@@ -1,10 +1,5 @@
 #include "http_server.h"
 
-#include "agent/agent.h"
-#include "agent/provider.h"
-#include "agent/runner.h"
-
-#include "http_util.h"
 #include "cors.h"
 #include "daemon_auth.h"
 #include "daemon_config.h"
@@ -19,38 +14,16 @@
 #include "job_endpoints.h"
 #include "run_endpoints.h"
 
-#include "default_system_prompt.h"
-#include "file_persistor.h"
 #include "openai_client.h"
-#include "openai_provider.h"
-#include "session_store.h"
-#include "summary_compaction.h"
-#include "summary_llm.h"
-#include "tool_loop.h"
-#include "toolset_basic.h"
-#include "toolset_host.h"
 
-#include <json/json.h>
-#include "json_util.h"
 #include "job_manager.h"
 #include "openrouter_util.h"
 
 #include <filesystem>
 #include <iostream>
-#include <optional>
-#include <sstream>
 #include <string>
-#include <vector>
-#include <cctype>
-#include <cstring>
 #include <chrono>
-#include <atomic>
-#include <map>
-#include <mutex>
 #include <thread>
-#include <functional>
-#include <unistd.h>
-#include <cerrno>
 #include <signal.h>
 
 using namespace agentd;

@@ -202,6 +202,12 @@ Completed milestones and notable tasks.
   - ensured `stream_assistant` runs capture `http_status`/`http_body` and persist the final assistant message to the session
 - Added a local, non-network smoke test that validates daemon audit logging end-to-end:
   - `tests/agentd_session_audit_smoke.sh` hits `/api/v1/run` then `/api/v1/session/audit` against a stub OpenAI server
+- Added a local, non-network smoke test that validates async host tool-loop + heartbeat + SSE end-to-end:
+  - `tests/agentd_local_async_host_tools_smoke.sh` runs `/api/v1/run_async` with tools=`host` against a stub OpenAI server that triggers `shell_exec sleep 2`
+  - asserts `tool_call`, `tool_result`, and at least one `heartbeat` event between them, plus `job_done` on SSE
+- Added a local, non-network smoke test for streamed assistant deltas (`tools=none`, `stream_assistant=true`):
+  - `tests/agentd_local_stream_assistant_smoke.sh` uses an SSE stub provider to emit `data: {choices:[{delta:{content:...}}]}` chunks and `[DONE]`
+  - asserts at least one `assistant_delta` event and that the final assistant message is persisted to the session
 - Improved UI live streaming when daemon auth is enabled:
   - UI uses a fetch-based SSE reader (so it can send `Authorization: Bearer ...`) instead of `EventSource`
   - added a non-network smoke test `tests/agentd_sse_auth_smoke.sh` using a local OpenAI stub server
