@@ -340,7 +340,7 @@ Assistant streaming (provider-dependent):
 - Clients can set `stream_assistant: true` to request OpenAI-compatible SSE streaming (`stream: true`).
   - `tools: "none"`: the daemon emits `assistant_delta` events while the assistant message is streaming.
   - `tools: "basic"` / `"host"`: the daemon uses streaming requests for tool-loop steps and (best-effort) reconstructs tool calls
-    from streamed `delta.tool_calls`. It also emits `assistant_delta` events during the final assistant step (provider-dependent).
+    from streamed `delta.tool_calls` (and legacy `delta.function_call`). It also emits `assistant_delta` events during the final assistant step (provider-dependent).
     Note: some providers ignore `stream: true` and return a normal JSON completion; the daemon falls back to non-stream parsing.
   - Implementation notes: `docs/STREAMING.md`
 

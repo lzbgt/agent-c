@@ -226,6 +226,8 @@ Completed milestones and notable tasks.
 - Deduplicated OpenAI-compatible streaming chunk parsing:
   - added a shared streaming decoder (`cli/src/openai_stream_decoder.{h,cpp}`) used by CLI, daemon, and the host tool-provider
   - added a small unit test target `openai_stream_decoder_tests` (`tests/test_openai_stream_decoder.cpp`)
+- Expanded streaming tool-call compatibility:
+  - support legacy streamed `delta.function_call` (in addition to `delta.tool_calls`) and cover it in unit tests (`tests/test_openai_tool_provider_stream.cpp`)
 - Improved UI live streaming when daemon auth is enabled:
   - UI uses a fetch-based SSE reader (so it can send `Authorization: Bearer ...`) instead of `EventSource`
   - added a non-network smoke test `tests/agentd_sse_auth_smoke.sh` using a local OpenAI stub server

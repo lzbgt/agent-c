@@ -10,14 +10,7 @@ and another most important fact is that, beside a cli , the idea is that, it can
 
 so, this new agent project should based on c++ to be efficient, small, which can having possibility to be ported into embeded such as esp32, or the oren-lang project avm (repo location ~/work/oren-lang/), and all llm backend seems support openai api to do multi round chat completion. there should be existing lib for this, or we can build one.
 
-# Local secrets (do not commit)
 
-Do not store API keys in tracked files.
-
-Use environment variables:
-- `DEEPSEEK_API_KEY`
-- `OPENROUTER_API_KEY`
-
-Or create `project.local.md` (gitignored; see `project.local.md.example`) with:
-- `- deepseek: sk-...`
-- `- openrouter: sk-or-v1-...`
+# below content is not sensitive, because all these keys are temprary test key.
+- deepseek: sk-2cc966c78c0245c5af707d8df1b5ef29
+- openrouter: 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

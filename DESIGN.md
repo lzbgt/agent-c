@@ -477,7 +477,8 @@ Assistant streaming (provider-dependent):
   `assistant_delta` events while the request is in-flight.
 - For `tools="none"`, this provides streaming tokens for the assistant message.
 - For tool-calling loops (`tools="basic"`/`"host"`), the host tool-provider reconstructs tool calls incrementally from streaming
-  `delta.tool_calls` (best-effort) and may also emit `assistant_delta` events on the final assistant step (provider-dependent).
+  `delta.tool_calls` (best-effort; also supports legacy `delta.function_call`) and may also emit `assistant_delta` events on the
+  final assistant step (provider-dependent).
   - Non-goal for the first cut: full coverage of every streaming variant across providers (some ignore `stream: true`).
   - `assistant_delta` event payloads include:
     - `delta` (string): incremental assistant text
