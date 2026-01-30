@@ -133,6 +133,8 @@ Logs are written under `build/e2e/`.
 Notes:
 - The harness expects provider keys to be available via env or `.not_in_repo` (preferred).
 - `agentd` now also supports **daemon-side** key loading per-run based on the request `base_url`, so the Web UI can omit `api_key`.
+- The Web UI sends a `client` identity with each run (e.g. `client.kind="webui"`). `agentd` can use this to inject a
+  client-specific system prompt “profile” for default presentation/DoD semantics. See `docs/CLIENT_PROFILES.md`.
 
 ### Daemon config snapshot (debug)
 

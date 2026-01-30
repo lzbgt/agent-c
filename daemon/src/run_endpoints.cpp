@@ -1,6 +1,7 @@
 #include "run_endpoints.h"
 
 #include "daemon_auth.h"
+#include "client_profiles.h"
 #include "default_system_prompt.h"
 #include "file_persistor.h"
 #include "http_util.h"
@@ -131,6 +132,11 @@ static Json::Value run_request_to_json(
   const bool no_default_system =
     args.isMember("no_default_system") && args["no_default_system"].isBool() ? args["no_default_system"].asBool() : daemon_cfg.no_default_system;
   const std::string system_msg = args.isMember("system") && args["system"].isString() ? args["system"].asString() : "";
+  std::string client_kind;
+  if (args.isMember("client") && args["client"].isObject()) {
+    const Json::Value& c = args["client"];
+    if (c.isMember("kind") && c["kind"].isString()) client_kind = c["kind"].asString();
+  }
   const bool requested_tools_root_set = args.isMember("tools_root") && args["tools_root"].isString();
   const std::string requested_tools_root = requested_tools_root_set ? args["tools_root"].asString() : "";
   std::string tools_root;
@@ -290,6 +296,12 @@ static Json::Value run_request_to_json(
       agent_session_add_message(session, AGENT_ROLE_SYSTEM, system_msg.c_str());
     } else if (!no_default_system && tools == "host") {
       agent_session_add_message(session, AGENT_ROLE_SYSTEM, default_host_system_prompt());
+    }
+    if (!no_default_system && tools == "host" && !client_kind.empty()) {
+      const std::string profile = client_profile_system_prompt(client_kind);
+      if (!profile.empty()) {
+        agent_session_add_message(session, AGENT_ROLE_SYSTEM, profile.c_str());
+      }
     }
   }
 

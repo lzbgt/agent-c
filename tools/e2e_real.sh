@@ -19,6 +19,16 @@ agentd_log="${log_dir}/agentd_${ts}.log"
 ui_log="${log_dir}/ui_${ts}.log"
 e2e_log="${log_dir}/playwright_${ts}.log"
 pw_install_log="${log_dir}/playwright_install_${ts}.log"
+state_dir="${log_dir}/state_${ts}"
+
+# Best-effort: load local env keys (user requested `source ~/.env`).
+# Keep it silent and do not echo any variables.
+if [[ -f "${HOME}/.env" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "${HOME}/.env" >/dev/null 2>&1 || true
+  set +a
+fi
 
 cleanup() {
   set +e
@@ -44,7 +54,8 @@ fi
 
 # Start agentd. If you want daemon auth, set AGENTD_AUTH_TOKEN and update UI settings accordingly.
 echo "[e2e] starting agentd (log: ${agentd_log})"
-"${ROOT}/build/agentd" >"${agentd_log}" 2>&1 &
+mkdir -p "${state_dir}"
+"${ROOT}/build/agentd" --state-dir "${state_dir}" >"${agentd_log}" 2>&1 &
 AGENTD_PID="$!"
 
 # Start UI dev server.

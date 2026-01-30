@@ -17,10 +17,12 @@ that the UI/user completed it.
 - Be cooperative with daemon job cancellation (`/api/v1/job/cancel`).
 - Keep tool output bounded and machine-readable.
 
-## Non-goals (for now)
+## Current state (facts)
 
-- Real-time push notifications into the tool-loop (this tool polls the session event log).
-- Arbitrary complex matching expressions.
+- The `ui_wait_*` tools are implemented as polling against the session-scoped client event log. This is reliable and portable,
+  but not a low-latency push channel.
+- Matching is intentionally bounded (partial object match, exact scalars/arrays) to keep evaluation safe and deterministic.
+  If you need richer logic, use `client_rpc` and/or a scriptable probe in the client runtime.
 
 ## Persistence model
 

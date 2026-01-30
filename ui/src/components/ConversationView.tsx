@@ -311,9 +311,23 @@ export default function ConversationView({
 
         const canRun = !!rpcId && typeof sessionId === "string" && sessionId.trim().length > 0;
         const canRunAuto = !!allowClientRpcs && (!sideEffectsRequested || !!allowClientEffects);
-        const autoRun = canRunAuto && (action?.auto_run === true || action?.auto === true);
+        const autoRunRequested =
+          typeof action?.auto_run === "boolean" ? action.auto_run : typeof action?.auto === "boolean" ? action.auto : true;
+        const autoRun = canRunAuto && autoRunRequested;
 
         const postRpcResult = async (ok: boolean, payload: any) => {
+          const capForEvent = (v: any) => {
+            // Prevent client event logs from ballooning (e.g. script_eval returning huge arrays).
+            // Keep it coarse and predictable: if the JSON form is too large, replace with a bounded summary.
+            try {
+              const s = JSON.stringify(v);
+              const max = 32 * 1024;
+              if (s.length <= max) return v;
+              return { kind: "truncated", bytes: s.length, preview: s.slice(0, 2000) };
+            } catch {
+              return { kind: "unserializable" };
+            }
+          };
           const base = {
             rpc_id: rpcId,
             request_tool_call_id: toolCallId,
@@ -321,7 +335,7 @@ export default function ConversationView({
             ok,
             elapsed_ms: payload?.elapsed_ms,
           };
-          const data = ok ? { ...base, result: payload?.result } : { ...base, error: payload?.error };
+          const data = ok ? { ...base, result: capForEvent(payload?.result) } : { ...base, error: String(payload?.error ?? "") };
           await postClientEvent("client_rpc_result", data);
           // Legacy alias: if the request was a client_probe, emit the old event name too.
           if (atype === "client_probe") {
@@ -332,7 +346,7 @@ export default function ConversationView({
               ok,
               elapsed_ms: payload?.elapsed_ms,
             };
-            const legacyData = ok ? { ...legacyBase, result: payload?.result } : { ...legacyBase, error: payload?.error };
+            const legacyData = ok ? { ...legacyBase, result: capForEvent(payload?.result) } : { ...legacyBase, error: String(payload?.error ?? "") };
             await postClientEvent("client_probe_result", legacyData);
           }
         };
@@ -580,7 +594,83 @@ export default function ConversationView({
               if (!onSceneApply) {
                 throw new Error("entity_apply not supported (no scene handler)");
               }
-              const ops = Array.isArray(args?.ops) ? args.ops : [];
+              // Preferred shape: explicit ops array (create/update/delete/action/clear).
+              if (Array.isArray(args?.ops)) {
+                return onSceneApply(args.ops);
+              }
+
+              // Compatibility: accept an "entities" list (older/alternate schema).
+              // Each entity becomes a create+update op bundle.
+              if (Array.isArray(args?.entities)) {
+                const ops: any[] = [];
+                const ents = args.entities as any[];
+                for (const ent of ents.slice(0, 50)) {
+                  if (!ent || typeof ent !== "object") continue;
+                  const id = safeTrunc(String(ent?.id ?? ""), 200);
+                  const entityKind = safeTrunc(String(ent?.entity_kind ?? ent?.entityKind ?? ent?.type ?? ent?.kind ?? ""), 100);
+                  if (!id || !entityKind) continue;
+                  const title = typeof ent?.title === "string" ? safeTrunc(String(ent.title), 200) : undefined;
+                  const props = safeObject(ent?.props ?? ent ?? {});
+                  ops.push({ op: "create", id, entity_kind: entityKind, title, props });
+                  // Optional: actions array is converted into generic action ops (data only).
+                  const actions = Array.isArray(ent?.actions) ? ent.actions : [];
+                  for (const a of actions.slice(0, 20)) {
+                    const name = safeTrunc(String(a?.name ?? a?.action ?? a?.kind ?? ""), 80);
+                    if (!name) continue;
+                    ops.push({ op: "action", id, action: name, args: safeObject(a?.args ?? a ?? {}) });
+                  }
+                }
+                return onSceneApply(ops);
+              }
+
+              // Compatibility: accept the older "id/type/props/actions" shorthand that many models
+              // naturally invent even if they weren't given the exact ops schema.
+              const id = safeTrunc(String(args?.id ?? ""), 200);
+              const entityKind = safeTrunc(
+                String(args?.entity_kind ?? args?.entityKind ?? args?.type ?? args?.kind ?? ""),
+                100,
+              );
+              const props = safeObject(args?.props ?? {});
+              const titleFromProps = typeof props?.title === "string" ? safeTrunc(String(props.title), 200) : "";
+              const titleFromArgs = typeof args?.title === "string" ? safeTrunc(String(args.title), 200) : "";
+              const title = titleFromArgs || titleFromProps || "";
+
+              const ops: any[] = [];
+
+              // Upsert/create.
+              if (id && entityKind && (Object.keys(props).length > 0 || title)) {
+                ops.push({
+                  op: "create",
+                  id,
+                  entity_kind: entityKind,
+                  title: title || undefined,
+                  props,
+                });
+              } else if (id && Object.keys(props).length > 0) {
+                // Patch/update (kind unknown).
+                ops.push({ op: "update", id, props });
+              }
+
+              // Action(s).
+              const actions = Array.isArray(args?.actions) ? args.actions : [];
+              for (const a of actions.slice(0, 20)) {
+                const name = safeTrunc(String(a?.name ?? a?.action ?? ""), 80);
+                if (!name) continue;
+                ops.push({ op: "action", id, action: name, args: safeObject(a?.args ?? {}) });
+              }
+              const singleAction = safeTrunc(String(args?.action ?? ""), 80);
+              if (singleAction) {
+                ops.push({ op: "action", id, action: singleAction, args: safeObject(args?.args ?? {}) });
+              }
+
+              // Delete/clear shorthands.
+              if (args?.delete === true || args?.remove === true) {
+                ops.push({ op: "delete", id });
+              }
+              if (args?.clear === true) {
+                ops.push({ op: "clear", entity_kind: entityKind || undefined });
+              }
+
               return onSceneApply(ops);
             };
 

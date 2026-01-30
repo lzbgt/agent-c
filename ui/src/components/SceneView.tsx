@@ -17,6 +17,12 @@ export type SceneEntity = {
   updated_ms?: number;
 };
 
+function toTestIdPart(v: string): string {
+  // Keep Playwright selectors stable even if ids contain punctuation.
+  // data-testid accepts any string, but normalizing avoids surprises.
+  return v.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 120) || "empty";
+}
+
 function clampInt(n: any, lo: number, hi: number, def: number): number {
   const v = typeof n === "number" ? n : Number(n);
   if (!Number.isFinite(v)) return def;
@@ -37,6 +43,9 @@ function Canvas2DEntityView({ entity }: { entity: SceneEntity }) {
   const width = clampInt(props?.width, 64, 4096, 640);
   const height = clampInt(props?.height, 64, 4096, 240);
   const draw: DrawOp[] = Array.isArray(props?.draw) ? props.draw : [];
+  const scriptRaw = safeString(props?.script || props?.js || props?.code);
+  const script = scriptRaw.length > 100_000 ? scriptRaw.slice(0, 100_000) : scriptRaw;
+  const scriptArgs = props?.script_args ?? props?.args ?? {};
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
@@ -49,6 +58,32 @@ function Canvas2DEntityView({ entity }: { entity: SceneEntity }) {
 
     // Default background clear.
     ctx.clearRect(0, 0, width, height);
+
+    // Power mode: execute arbitrary JS provided by the agent (stored in entity props).
+    // This is intentionally "no hardcoded ops": the agent can draw anything it wants, as long as it
+    // uses the provided {ctx, canvas, width, height} and respects browser policies.
+    if (script && script.trim().length > 0) {
+      try {
+        // eslint-disable-next-line no-new-func
+        const fn = new Function("ctx", "canvas", "width", "height", "props", "args", `"use strict";\n${script}`);
+        // Allow scripts to be either sync or async (best-effort).
+        const maybePromise = fn(ctx, canvas, width, height, props, scriptArgs);
+        if (maybePromise && typeof (maybePromise as any).then === "function") {
+          void (maybePromise as any).catch(() => {});
+        }
+      } catch (e) {
+        try {
+          ctx.save();
+          ctx.fillStyle = "#fca5a5";
+          ctx.font = "12px ui-sans-serif";
+          ctx.fillText(`canvas script error: ${String(e).slice(0, 200)}`, 8, 16);
+          ctx.restore();
+        } catch {
+          // ignore
+        }
+      }
+      return;
+    }
 
     for (const op of draw.slice(0, 2000)) {
       if (!op || typeof op !== "object") continue;
@@ -135,11 +170,15 @@ export default function SceneView({
 }) {
   const sid = typeof sessionId === "string" ? sessionId.trim() : "";
   return (
-    <div className="mt-6 rounded-lg border border-white/10 bg-white/5">
+    <div className="mt-6 rounded-lg border border-white/10 bg-white/5" data-testid="scene">
       <div className="flex items-center justify-between px-3 py-2">
-        <div className="text-sm font-semibold">Scene</div>
+        <div className="text-sm font-semibold" data-testid="scene-header">
+          Scene
+        </div>
         <div className="flex items-center gap-2">
-          <div className="text-[11px] text-white/40">{sid ? `session=${sid}` : ""}</div>
+          <div className="text-[11px] text-white/40" data-testid="scene-session">
+            {sid ? `session=${sid}` : ""}
+          </div>
           <button
             className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
             type="button"
@@ -158,8 +197,9 @@ export default function SceneView({
           <div className="space-y-3">
             {entities.map((e) => {
               const title = e.title || `${e.kind}:${e.id}`;
+              const entityTid = `scene-entity-${toTestIdPart(e.id)}`;
               return (
-                <div key={e.id} className="rounded-md border border-white/10 bg-black/10 p-3">
+                <div key={e.id} className="rounded-md border border-white/10 bg-black/10 p-3" data-testid={entityTid}>
                   <div className="flex items-center justify-between gap-2">
                     <div className="text-xs font-semibold text-white/80">{title}</div>
                     <div className="text-[11px] text-white/40">
@@ -176,4 +216,3 @@ export default function SceneView({
     </div>
   );
 }
-

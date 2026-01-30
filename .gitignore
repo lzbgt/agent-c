@@ -5,6 +5,9 @@ build*/
 ~/.agent/
 .agent/
 .agent_deps/
+out/
+ui/test-results/
+create_pptx.py
 ref/ds-cli/
 ui/node_modules/
 ui/dist/

@@ -126,18 +126,10 @@ export default function App() {
     false,
   );
   const [allowAutoplay, setAllowAutoplay] = useLocalStorageState("agentui.allowAutoplay", true);
-  const initialAllowClientRpcs = (() => {
-    try {
-      if (typeof window === "undefined") return false;
-      const raw = window.localStorage.getItem("agentui.allowClientProbes");
-      if (!raw) return false;
-      return !!JSON.parse(raw);
-    } catch {
-      return false;
-    }
-  })();
-  const [allowClientRpcs, setAllowClientRpcs] = useLocalStorageState("agentui.allowClientRpcs", initialAllowClientRpcs);
-  const [allowClientEffects, setAllowClientEffects] = useLocalStorageState("agentui.allowClientEffects", false);
+  // This project treats the Web UI as a collaboration surface (a “scene”) where the agent is expected
+  // to act with side-effects by default. Users can still disable these via Settings (persisted).
+  const [allowClientRpcs, setAllowClientRpcs] = useLocalStorageState("agentui.allowClientRpcs", true);
+  const [allowClientEffects, setAllowClientEffects] = useLocalStorageState("agentui.allowClientEffects", true);
   const [allowUnsafePageEval, setAllowUnsafePageEval] = useLocalStorageState("agentui.allowUnsafePageEval", false);
   const [dbRunsOnlyErrors, setDbRunsOnlyErrors] = useLocalStorageState("agentui.dbRunsOnlyErrors", true);
   const [dbRunsStopReason, setDbRunsStopReason] = useLocalStorageState("agentui.dbRunsStopReason", "");
@@ -172,37 +164,6 @@ export default function App() {
       const now = Date.now();
       const results: any[] = [];
       const genId = () => `ent-${now}-${Math.random().toString(16).slice(2)}`;
-
-      const applyAction = (entity: SceneEntity, action: string, args: any) => {
-        if (entity.kind === "canvas2d" && action === "plot_sine") {
-          const a = typeof args?.amplitude === "number" ? args.amplitude : 1;
-          const f = typeof args?.frequency === "number" ? args.frequency : 1;
-          const phase = typeof args?.phase === "number" ? args.phase : 0;
-          const samples = typeof args?.samples === "number" ? Math.min(Math.max(args.samples, 16), 4096) : 512;
-          const w = typeof entity.props?.width === "number" ? entity.props.width : 640;
-          const h = typeof entity.props?.height === "number" ? entity.props.height : 240;
-          const pts: Array<{ x: number; y: number }> = [];
-          for (let i = 0; i < samples; i++) {
-            const t = i / (samples - 1);
-            const x = t * (w - 1);
-            const y0 = Math.sin(2 * Math.PI * f * t + phase) * a;
-            // Map [-a,a] to [h*0.1,h*0.9]
-            const y = (h * 0.5) - y0 * (h * 0.4);
-            pts.push({ x, y });
-          }
-          entity.props = {
-            ...(entity.props ?? {}),
-            draw: [
-              { op: "clear", color: "#0b1220" },
-              { op: "line", x1: 0, y1: h * 0.5, x2: w, y2: h * 0.5, strokeStyle: "#334155", lineWidth: 1 },
-              { op: "polyline", points: pts, strokeStyle: "#60a5fa", lineWidth: 2 },
-              { op: "text", x: 8, y: 16, text: `sin(2π*${f}*t+${phase})`, fillStyle: "#cbd5e1", font: "12px ui-sans-serif" },
-            ],
-          };
-          return { ok: true, action: "plot_sine", samples };
-        }
-        return { ok: false, error: `unsupported entity action: ${entity.kind}:${action}` };
-      };
 
       const getCreateKind = (op: any): string => {
         const k = typeof op?.entity_kind === "string" ? op.entity_kind : typeof op?.entityKind === "string" ? op.entityKind : "";
@@ -267,9 +228,14 @@ export default function App() {
             if (!action) throw new Error("action requires action");
             const existing = store[id];
             if (!existing) throw new Error("entity not found");
-            const out = applyAction(existing, action, op.args ?? {});
+            // Intentionally generic: actions are *data*, not hardcoded behavior.
+            // If the client wants to interpret actions, it can do so in the renderer (e.g. execute JS script in a canvas entity).
+            existing.props = {
+              ...(existing.props ?? {}),
+              last_action: { name: action, args: op.args ?? {}, ts_unix_ms: now },
+            };
             existing.updated_ms = now;
-            results.push({ op: "action", id, ...out });
+            results.push({ ok: true, op: "action", id, action });
             continue;
           }
           throw new Error(`unsupported op: ${kind}`);
@@ -563,6 +529,7 @@ export default function App() {
         prompt,
         session_id: sessionId || undefined,
         no_session: false,
+        client,
         tools,
         tools_root: toolsRoot,
         host_policy: tools === "host" ? hostPolicy : undefined,
@@ -963,6 +930,7 @@ export default function App() {
                 type="button"
                 disabled={newSession.isPending}
                 title="Create a new unique session id"
+                data-testid="new-session"
               >
                 New session
               </button>

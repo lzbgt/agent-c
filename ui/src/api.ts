@@ -83,6 +83,13 @@ export const RunRequestSchema = z.object({
   prompt: z.string().min(1),
   session_id: z.string().optional(),
   no_session: z.boolean().optional(),
+  client: z
+    .object({
+      id: z.string().optional(),
+      kind: z.string().optional(),
+      instance_id: z.string().optional(),
+    })
+    .optional(),
   system: z.string().optional(),
   no_default_system: z.boolean().optional(),
   model: z.string().optional(),

@@ -105,6 +105,7 @@ if(AGENT_BUILD_HOST)
   add_executable(agentd
     daemon/src/main.cpp
     daemon/src/agent_db.cpp
+    daemon/src/client_profiles.cpp
     daemon/src/config_endpoint.cpp
     daemon/src/cors.cpp
     daemon/src/db_query_endpoints.cpp

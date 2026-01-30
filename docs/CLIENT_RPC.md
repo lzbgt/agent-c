@@ -28,6 +28,24 @@ DOM is Web-specific. The client-agnostic abstraction is **entities**:
 
 See: `docs/CLIENT_ENTITIES.md`.
 
+## Web UI: Canvas2D scripts (power mode)
+
+For the Web UI client (`client.kind="webui"`), the recommended “no hardcoded ops” approach for drawing is:
+
+- Create a `canvas2d` entity via `entity_apply` with explicit `props.width`/`props.height`
+- Provide arbitrary drawing logic as `props.script` (JavaScript)
+
+The script is executed in the browser with:
+
+- `ctx`: a 2D canvas rendering context
+- `canvas`: the canvas element
+- `width`, `height`: canvas dimensions (numbers)
+- `props`: the entity props object
+- `args`: `props.script_args` (or `props.args`)
+
+This keeps user prompts succinct (“draw a sine plot”), while the client profile injected by `agentd` provides the operational defaults.
+See `docs/CLIENT_PROFILES.md`.
+
 ## Goals
 
 - Provide a universal agent ↔ client collaboration protocol usable across client types.

@@ -18,11 +18,14 @@ This makes the system truly **bidirectional**:
 - Persist these events in the troubleshooting DB so operators can debug “why did the agent repeat X?”
 - Optionally append a compact representation into the session message history so the next run can take it into account.
 
-## Non-goals (for now)
+## Current state (facts)
 
-- Mid-run interrupts that change an in-flight tool-loop decision (that needs a cooperative “wait/ack” tool).
-- Stable public API guarantees (rolling project).
-- Browser autoplay bypass (still requires user gesture).
+- **Mid-run coordination**: this endpoint alone is not sufficient to change an in-flight tool-loop decision. The intended
+  workflow is: agent requests a UI-side action/RPC → client posts a correlated event → agent waits deterministically using
+  a cooperative wait tool (`ui_wait_event` / `ui_wait_any` / `ui_wait_all`) within the same run.
+- **Rolling API**: the schema is expected to evolve quickly; avoid hard dependencies on exact payload shapes.
+- **Browser autoplay**: user-gesture policies are enforced by standards-compliant browsers. Clients should attempt autoplay,
+  report whether it succeeded, and fall back to a deterministic “gesture handshake” when blocked.
 
 ## Endpoint: `POST /api/v1/session/client_event` (preferred)
 
