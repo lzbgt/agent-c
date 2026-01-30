@@ -188,6 +188,8 @@ if(AGENT_BUILD_HOST)
 
   add_test(NAME agentd_ui_action_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_ui_action_smoke.sh $<TARGET_FILE:agentd>)
 
+  add_test(NAME agentd_client_probe_rpc_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_client_probe_rpc_smoke.sh $<TARGET_FILE:agentd>)
+
   add_test(NAME agentd_ui_wait_event_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_ui_wait_event_smoke.sh $<TARGET_FILE:agentd>)
 
   add_test(NAME agentd_ui_wait_any_all_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_ui_wait_any_all_smoke.sh $<TARGET_FILE:agentd>)

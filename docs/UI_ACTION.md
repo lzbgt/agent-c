@@ -75,6 +75,16 @@ Initial allowlist (v1):
 - `notify`: show a UI notification card (no side effects)
 - `play_audio`: render an audio player for `path` and optionally attempt autoplay (requires UI opt-in)
 - `request_client_state`: request a bounded client snapshot (client responds with a `client_event` of type `client_state`)
+- `client_probe`: request a bounded, read-only probe; client responds with `client_probe_result` (see `docs/CLIENT_PROBE.md`)
+
+### `client_probe` action shape (v1)
+
+For `type="client_probe"`, clients should expect additional fields:
+
+- `probe_id` (string, required): correlation id for matching the eventual `client_probe_result` event.
+  - Recommended: set it equal to the originating tool call id.
+- `probe` (object, required): allowlisted probe request payload; see `docs/CLIENT_PROBE.md`.
+- `auto_run` (bool, optional): request immediate probe execution when the client has opted into agent probes.
 
 ### Consent
 

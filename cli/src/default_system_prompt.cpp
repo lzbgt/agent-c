@@ -32,5 +32,7 @@ const char* default_host_system_prompt() {
     "- For Definition-of-Done handshakes requiring multiple acknowledgements, use client_wait_any (OR) or client_wait_all (AND).\n"
     "- Legacy aliases still exist: ui_wait_event/ui_wait_any/ui_wait_all.\n"
     "- Common ack event types include: artifact_rendered, ui_action_shown, audio_play_finished, notification_ack.\n"
+    "- If you need client \"world state\" (DOM/media/location) for an autonomous decision, request a bounded probe via ui_action(type=\"client_probe\", probe_id=..., probe={kind:...}) and then wait for client_probe_result with client_wait_event (or join multiple probe_ids with client_wait_any/all).\n"
+    "- Use client_peek(event_type=\"client_capabilities\") to inspect what the current client claims it supports before requesting probes.\n"
     "- For camera input, prefer the single-shot camera_capture tool over repeated proc_exec capture scripts.\n";
 }

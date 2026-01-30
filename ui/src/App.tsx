@@ -17,6 +17,7 @@ import {
   apiCancelJob,
   apiListSessions,
   apiNewSession,
+  apiPostSessionUiEvent,
   apiRun,
   apiRunAsync,
   daemonHeaders,
@@ -124,6 +125,7 @@ export default function App() {
     false,
   );
   const [allowAutoplay, setAllowAutoplay] = useLocalStorageState("agentui.allowAutoplay", false);
+  const [allowClientProbes, setAllowClientProbes] = useLocalStorageState("agentui.allowClientProbes", false);
   const [dbRunsOnlyErrors, setDbRunsOnlyErrors] = useLocalStorageState("agentui.dbRunsOnlyErrors", true);
   const [dbRunsStopReason, setDbRunsStopReason] = useLocalStorageState("agentui.dbRunsStopReason", "");
   // Keep prompts separate so an active async run does not overwrite the "last completed" view.
@@ -144,6 +146,32 @@ export default function App() {
     const withScheme = /^https?:\/\//i.test(b) ? b : `http://${b}`;
     return withScheme.replace(/\/+$/, "");
   }, [base]);
+
+  const postedCapsRef = React.useRef<Record<string, boolean>>({});
+  React.useEffect(() => {
+    const sid = typeof sessionId === "string" ? sessionId.trim() : "";
+    if (!sid) return;
+    const key = `${effectiveBase}::${sid}`;
+    if (postedCapsRef.current[key]) return;
+    postedCapsRef.current[key] = true;
+    void apiPostSessionUiEvent(
+      effectiveBase,
+      {
+        session_id: sid,
+        type: "client_capabilities",
+        client,
+        data: {
+          probes: [
+            { kind: "dom_query", description: "Read-only DOM query (selector + bounded fields)." },
+            { kind: "media_snapshot", description: "Snapshot audio/video elements (paused/currentTime/duration)." },
+            { kind: "location", description: "Browser location (href/origin/path/search)." },
+          ],
+        },
+        append_to_session: false,
+      },
+      daemonAuthToken,
+    ).catch(() => {});
+  }, [client, daemonAuthToken, effectiveBase, sessionId]);
 
   const health = useQuery({
     queryKey: ["health", effectiveBase, daemonAuthToken],
@@ -1357,6 +1385,21 @@ export default function App() {
                   When enabled and the agent emits an <code>artifact</code> event with <code>autoplay=true</code>, the UI will try to play the audio.
                   Browsers may still block autoplay; you can always click “Play”.
                 </div>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <div className="text-xs font-semibold text-white/70">Client probes</div>
+                  <label className="flex items-center gap-2 text-[11px] text-white/70">
+                    <input
+                      type="checkbox"
+                      checked={allowClientProbes}
+                      onChange={(e) => setAllowClientProbes(e.target.checked)}
+                    />
+                    Allow agent-requested client probes
+                  </label>
+                </div>
+                <div className="mt-1 text-[11px] text-white/40">
+                  When enabled, the UI may execute allowlisted, read-only probes (DOM/media/location) requested by the agent via <code>ui_action</code>{" "}
+                  (<code>type=client_probe</code>). This does not allow arbitrary code execution.
+                </div>
               </div>
               <div>
                 <Label>Tools root</Label>
@@ -1835,6 +1878,7 @@ export default function App() {
               events={liveEvents}
               showDebugEvents={showDebugInConversation}
               allowAutoplay={allowAutoplay}
+              allowClientProbes={allowClientProbes}
             />
           </div>
         ) : null}
@@ -1852,6 +1896,7 @@ export default function App() {
               events={result.events}
               showDebugEvents={showDebugInConversation}
               allowAutoplay={allowAutoplay}
+              allowClientProbes={allowClientProbes}
             />
           </div>
         ) : null}
@@ -1910,6 +1955,7 @@ export default function App() {
                             events={e.events}
                             showDebugEvents={showDebugInConversation}
                             allowAutoplay={allowAutoplay}
+                            allowClientProbes={allowClientProbes}
                           />
                         </div>
                         <div className="mt-3 text-xs font-semibold text-white/70">Events (raw)</div>

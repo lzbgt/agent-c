@@ -47,6 +47,21 @@ function safeTrunc(s: string, max: number): string {
   return s.slice(0, Math.max(0, max - 1)) + "…";
 }
 
+function isSensitiveKey(k: string): boolean {
+  const s = String(k || "").toLowerCase();
+  return (
+    s.includes("secret") ||
+    s.includes("token") ||
+    s.includes("auth") ||
+    s.includes("apikey") ||
+    s.includes("api_key") ||
+    s.includes("password") ||
+    s.includes("passwd") ||
+    s.includes("session") ||
+    s.includes("cookie")
+  );
+}
+
 function tryParseUrl(s: string): URL | null {
   try {
     return new URL(s);
@@ -65,6 +80,7 @@ export default function ConversationView({
   events,
   showDebugEvents,
   allowAutoplay,
+  allowClientProbes,
 }: {
   baseUrl: string;
   yolo: boolean;
@@ -75,6 +91,7 @@ export default function ConversationView({
   events: AgentEvent[];
   showDebugEvents?: boolean;
   allowAutoplay: boolean;
+  allowClientProbes: boolean;
 }) {
   const [ackError, setAckError] = React.useState<string | null>(null);
   const [ackedKeys, setAckedKeys] = React.useState<Record<string, boolean>>({});
@@ -101,7 +118,7 @@ export default function ConversationView({
         throw new Error(resp.error || "client_event failed");
       }
     },
-    [baseUrl, daemonAuthToken, sessionId],
+    [baseUrl, client, daemonAuthToken, sessionId],
   );
 
   // Fundamental DoD handshake: when the UI renders a derived ui_action event, emit a client event so the agent
@@ -127,6 +144,8 @@ export default function ConversationView({
   let sawFinalAssistant = false;
   let sawToolOrAssistant = false;
   let lastHeartbeat: any = null;
+
+  const probeRanRef = React.useRef<Record<string, boolean>>({});
 
   if (prompt.trim().length > 0) {
     items.push(
@@ -219,6 +238,196 @@ export default function ConversationView({
       const atype = String(action?.type ?? "");
       const title = String(action?.title ?? (atype ? `ui_action: ${atype}` : "ui_action"));
       const toolCallId = String(data?.tool_call_id ?? "");
+
+      if (atype === "client_probe") {
+        const probeId = String(action?.probe_id ?? toolCallId ?? "").trim();
+        const probe = action?.probe ?? {};
+        const probeKind = String(probe?.kind ?? "").trim();
+        const canRun = !!probeId && typeof sessionId === "string" && sessionId.trim().length > 0;
+        const autoRun = !!allowClientProbes && (action?.auto_run === true || action?.auto === true);
+
+        const runProbe = async () => {
+          if (!canRun) throw new Error("missing session/probe_id");
+          if (!probeKind) throw new Error("missing probe.kind");
+          const t0 = Date.now();
+          try {
+            const safeFieldSet = new Set([
+              "tag",
+              "text",
+              "value",
+              "checked",
+              "dataset",
+              "attrs",
+              "currentSrc",
+              "paused",
+              "ended",
+              "currentTime",
+              "duration",
+            ]);
+            const makeDomQuery = () => {
+              const selector = safeTrunc(String(probe?.selector ?? ""), 200);
+              const limit = Math.min(Math.max(Number(probe?.limit ?? 10) || 10, 1), 20);
+              const fieldsRaw = Array.isArray(probe?.fields) ? probe.fields : [];
+              let fields = fieldsRaw
+                .map((x: any) => String(x))
+                .filter((f: string) => safeFieldSet.has(f))
+                .slice(0, 20);
+              if (fields.length === 0) fields = ["tag", "text"];
+              if (!selector) throw new Error("dom_query requires selector");
+              const els = Array.from(document.querySelectorAll(selector)).slice(0, limit);
+              const items = els.map((el) => {
+                const out: any = {};
+                const asAny: any = el as any;
+                if (fields.includes("tag")) out.tag = el.tagName.toLowerCase();
+                if (fields.includes("text")) out.text = safeTrunc(String(el.textContent ?? "").trim(), 400);
+                if (fields.includes("value") && "value" in asAny) {
+                  const inputType =
+                    typeof (asAny as HTMLInputElement)?.type === "string" ? String((asAny as HTMLInputElement).type).toLowerCase() : "";
+                  if (inputType === "password") out.value = "(redacted)";
+                  else out.value = safeTrunc(String(asAny.value ?? ""), 200);
+                }
+                if (fields.includes("checked") && "checked" in asAny) out.checked = !!asAny.checked;
+                if (fields.includes("dataset")) {
+                  const ds: any = asAny.dataset ?? {};
+                  const keys = Object.keys(ds).slice(0, 20);
+                  const dso: any = {};
+                  keys.forEach((k: string) => {
+                    dso[k] = isSensitiveKey(k) ? "(redacted)" : safeTrunc(String(ds[k] ?? ""), 200);
+                  });
+                  out.dataset = dso;
+                }
+                if (fields.includes("attrs")) {
+                  const names = Array.from(el.getAttributeNames ? el.getAttributeNames() : []).slice(0, 20);
+                  const attrs: any = {};
+                  names.forEach((n) => {
+                    attrs[n] = isSensitiveKey(n) ? "(redacted)" : safeTrunc(String(el.getAttribute(n) ?? ""), 200);
+                  });
+                  out.attrs = attrs;
+                }
+                if (fields.includes("currentSrc") && "currentSrc" in asAny) out.currentSrc = safeTrunc(String(asAny.currentSrc ?? ""), 300);
+                if (fields.includes("paused") && "paused" in asAny) out.paused = !!asAny.paused;
+                if (fields.includes("ended") && "ended" in asAny) out.ended = !!asAny.ended;
+                if (fields.includes("currentTime") && "currentTime" in asAny) out.currentTime = asAny.currentTime;
+                if (fields.includes("duration") && "duration" in asAny) out.duration = asAny.duration;
+                return out;
+              });
+              return { kind: "dom_query", selector, limit, fields, items };
+            };
+
+            const makeMediaSnapshot = () => {
+              const els = Array.from(document.querySelectorAll("audio,video")).slice(0, 20) as HTMLMediaElement[];
+              const items = els.map((el) => {
+                const isVideo = el.tagName.toLowerCase() === "video";
+                const ds: any = (el as any).dataset || {};
+                const src = el.currentSrc || el.src || "";
+                const u = src ? tryParseUrl(src) : null;
+                const fromFilePath = u && u.pathname.endsWith("/api/v1/file") ? u.searchParams.get("path") || "" : "";
+                return {
+                  kind: isVideo ? "video" : "audio",
+                  tool_call_id: ds.toolCallId || undefined,
+                  path: safeTrunc(String(ds.path || fromFilePath || ""), 200),
+                  src: safeTrunc(String(src || ""), 300),
+                  paused: el.paused,
+                  ended: (el as any).ended,
+                  current_time: Number.isFinite(el.currentTime) ? el.currentTime : 0,
+                  duration: Number.isFinite(el.duration) ? el.duration : 0,
+                };
+              });
+              return { kind: "media_snapshot", items };
+            };
+
+            const makeLocation = () => {
+              const href = String(window?.location?.href ?? "");
+              const u = href ? tryParseUrl(href) : null;
+              const sp = u ? u.searchParams : null;
+              const searchParams: any = {};
+              let hasSensitive = false;
+              if (sp) {
+                const keys = Array.from(sp.keys()).slice(0, 40);
+                keys.forEach((k) => {
+                  const v = sp.get(k);
+                  const sensitive = isSensitiveKey(k);
+                  if (sensitive) hasSensitive = true;
+                  searchParams[k] = sensitive ? "(redacted)" : safeTrunc(String(v ?? ""), 200);
+                });
+              }
+              return {
+                kind: "location",
+                href: safeTrunc(href, 400),
+                origin: safeTrunc(String(window?.location?.origin ?? ""), 200),
+                pathname: safeTrunc(String(window?.location?.pathname ?? ""), 200),
+                search: safeTrunc(String(window?.location?.search ?? ""), 200),
+                hash: safeTrunc(String(window?.location?.hash ?? ""), 200),
+                search_params: searchParams,
+                has_sensitive_query: hasSensitive,
+                title: safeTrunc(String(document?.title ?? ""), 200),
+              };
+            };
+
+            let result: any = null;
+            if (probeKind === "dom_query") result = makeDomQuery();
+            else if (probeKind === "media_snapshot") result = makeMediaSnapshot();
+            else if (probeKind === "location") result = makeLocation();
+            else throw new Error(`unsupported probe.kind: ${probeKind}`);
+
+            await postClientEvent("client_probe_result", {
+              probe_id: probeId,
+              request_tool_call_id: toolCallId,
+              probe_kind: probeKind,
+              ok: true,
+              elapsed_ms: Date.now() - t0,
+              result,
+            });
+          } catch (e) {
+            await postClientEvent("client_probe_result", {
+              probe_id: probeId,
+              request_tool_call_id: toolCallId,
+              probe_kind: probeKind,
+              ok: false,
+              elapsed_ms: Date.now() - t0,
+              error: String(e),
+            });
+          }
+        };
+
+        const ackKey = `probe:${probeId || toolCallId || idx}`;
+        const alreadyRan = !!probeRanRef.current[ackKey];
+        if (autoRun && !alreadyRan && canRun) {
+          probeRanRef.current[ackKey] = true;
+          void runProbe().catch(() => {});
+        }
+
+        items.push(
+          <Card key={`ua-${idx}`} title={`UI action: ${title}`}>
+            <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/80">
+              Client probe requested: <code>{probeKind || "(missing kind)"}</code>
+              {probeId ? (
+                <span className="ml-2 text-[11px] text-white/50">
+                  probe_id=<code>{probeId}</code>
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={!canRun || !allowClientProbes}
+                title={!allowClientProbes ? "Enable “Allow agent-requested client probes” in settings to run probes" : ""}
+                onClick={() => {
+                  probeRanRef.current[ackKey] = true;
+                  void runProbe().catch(() => {});
+                }}
+              >
+                Run probe
+              </button>
+              {!allowClientProbes ? (
+                <div className="text-[11px] text-white/40">Disabled by settings</div>
+              ) : null}
+            </div>
+          </Card>,
+        );
+        return;
+      }
 
       if (atype === "request_client_state" || atype === "request_state") {
         const queryId = String(action?.query_id ?? toolCallId ?? "").trim();

@@ -89,6 +89,8 @@ This is intentionally open-ended, but common initial types:
 - `artifact_rendered`
 - `ui_action_shown`
 - `client_state`
+- `client_capabilities`
+- `client_probe_result`
 - `notification_shown`
 - `notification_ack`
 - `artifact_viewed`
@@ -109,5 +111,15 @@ Recommended payloads:
 - For `client_state`, include:
   - `query_id` (recommended when responding to `request_client_state`)
   - `media` (bounded list): objects containing `{ kind, paused, ended, current_time?, duration?, tool_call_id?, path? }`
+
+- For `client_capabilities`, include:
+  - `probes` (bounded list): objects containing `{ kind, description? }`
+
+- For `client_probe_result`, include:
+  - `probe_id` (string, required): correlation id (usually the originating tool call id)
+  - `request_tool_call_id` (string, optional): tool call id for troubleshooting
+  - `probe_kind` (string, optional): allowlisted probe kind
+  - `ok` (bool)
+  - `result` (object, optional; bounded) when `ok=true`, else `error` (string)
 
 The daemon does not enforce an allowlist for types; UIs should keep payloads small.
