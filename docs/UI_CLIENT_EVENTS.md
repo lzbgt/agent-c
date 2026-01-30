@@ -60,6 +60,12 @@ Regardless of DB settings, agentd appends every UI client event as a JSONL line 
 This file is the canonical source for the host tool `ui_wait_event` (see `docs/UI_WAIT_EVENT.md`), so tool-loop runs can
 wait for UI acknowledgements even when the SQLite DB is disabled.
 
+Retention:
+- The daemon keeps this log **bounded** by rotating it when it grows too large:
+  - current: `<session_id>.client_events.jsonl`
+  - backups: `<session_id>.client_events.jsonl.1`, `.2`, ...
+- For long-term troubleshooting history, prefer the SQLite DB mirror when enabled (`--db-path`).
+
 Query endpoint:
 - `GET /api/v1/db/client_events?session_id=...&limit=...&offset=...`
 

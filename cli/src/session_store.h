@@ -2,11 +2,25 @@
 
 #include "agent/agent.h"
 
+#include <cstddef>
 #include <string>
 #include <vector>
 
 struct SessionStoreConfig {
   std::string root_dir; // e.g. ~/.agent/sessions
+
+  // Bounded UI client event log retention (prevents unbounded growth on long-running daemons).
+  //
+  // File: <root>/<id>.client_events.jsonl
+  // Backups: <root>/<id>.client_events.jsonl.1, .2, ...
+  //
+  // Semantics:
+  // - `client_events_max_bytes == 0` disables rotation (not recommended).
+  // - `client_events_max_files == 0` means "keep only the active file" (truncate/overwrite when rotating).
+  // - Rotation is best-effort and process-local (intended for a single daemon instance per sessions_root_dir).
+  size_t client_events_max_bytes = 2 * 1024 * 1024;
+  size_t client_events_max_files = 3;
+  size_t client_events_max_event_bytes = 256 * 1024;
 };
 
 // File-backed store:
@@ -38,3 +52,15 @@ agent_status_t session_store_append_client_event_jsonl(const SessionStoreConfig&
 
 // Reads up to `max_bytes` from the end of <root>/<id>.client_events.jsonl (best-effort).
 agent_status_t session_store_read_client_event_tail(const SessionStoreConfig& cfg, const std::string& session_id, size_t max_bytes, std::string* out_text);
+
+// Reads up to `max_bytes` of the newest client events, optionally including rotated backups
+// (<id>.client_events.jsonl.1, .2, ...) if the current file does not fill the budget.
+//
+// Returned text is JSONL (one JSON object per line), best-effort parseable.
+agent_status_t session_store_read_client_event_tail_multi(
+  const SessionStoreConfig& cfg,
+  const std::string& session_id,
+  size_t max_bytes,
+  size_t max_files,
+  std::string* out_text
+);

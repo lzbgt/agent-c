@@ -102,6 +102,16 @@ per-tool map:
 This exists to prevent pathological “capture camera → send to UI → repeat” loops when the model does not infer a natural stop
 condition from the conversation alone.
 
+## Tool registry introspection (UI → agentd)
+
+The UI can query the daemon’s effective tool registry (schemas) to render tool docs and validate tool-call arguments:
+
+- `GET /api/v1/tools?tools=host|basic|none&tools_root=...&yolo=0|1&host_policy=full|readonly&session_id=<id>`
+
+Notes:
+- When `session_id` is provided (and `tools=host`), the returned registry may include **session-scoped tools**
+  such as `ui_wait_event` (which depends on a per-session client event log).
+
 ## UI Actions (agent → UI)
 
 Artifacts cover “render this file”; some workflows need explicit UI intent (e.g. show a notification, request an audio play).
@@ -123,9 +133,11 @@ See: `docs/UI_CLIENT_EVENTS.md`.
 
 For debugging without enabling SQLite, UIs can read the tail of the session-scoped client event log:
 
-- `GET /api/v1/session/client_events?session_id=...&max_bytes=...`
+- `GET /api/v1/session/client_events?session_id=...&max_bytes=...&include_rotated=0|1&max_files=...`
 
 This reads from `<sessions_root>/<session_id>.client_events.jsonl` and returns parsed JSON objects.
+When `include_rotated=1`, the daemon may also include data from rotated backups (`.client_events.jsonl.1`, `.2`, …)
+to fill the requested `max_bytes` budget.
 
 ## Waiting for UI acknowledgements (host tool)
 

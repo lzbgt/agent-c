@@ -589,7 +589,7 @@ int main(int argc, char** argv) {
   });
 
   server.handle("GET", "/api/v1/tools", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_tools_endpoint(cfg, cors_cfg, req, resp);
+    handle_tools_endpoint(cfg, cors_cfg, cfg.sessions_root_dir, req, resp);
   });
 
   server.handle("GET", "/api/v1/openrouter/models", [&](const HttpRequest& req, HttpResponse* resp) {

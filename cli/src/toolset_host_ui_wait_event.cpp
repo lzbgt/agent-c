@@ -25,49 +25,76 @@ static agent_status_t write_result(agent_string_t* out, const Json::Value& v) {
   return set_result(out, Json::writeString(wb, v));
 }
 
+static bool json_value_matches(const Json::Value& expected, const Json::Value& actual, int depth, int* budget) {
+  if (!budget || *budget <= 0) return false;
+  (*budget)--;
+  if (depth > 8) return false;
+
+  if (expected.isObject()) {
+    if (!actual.isObject()) return false;
+    for (const auto& k : expected.getMemberNames()) {
+      if (!json_value_matches(expected[k], actual[k], depth + 1, budget)) return false;
+    }
+    return true;
+  }
+  if (expected.isArray()) {
+    if (!actual.isArray()) return false;
+    if (actual.size() != expected.size()) return false;
+    for (Json::ArrayIndex i = 0; i < expected.size(); i++) {
+      if (!json_value_matches(expected[i], actual[i], depth + 1, budget)) return false;
+    }
+    return true;
+  }
+  if (expected.isString()) {
+    return actual.isString() && actual.asString() == expected.asString();
+  }
+  if (expected.isBool()) {
+    return actual.isBool() && actual.asBool() == expected.asBool();
+  }
+  if (expected.isNull()) {
+    return actual.isNull();
+  }
+  if (expected.isDouble()) {
+    if (!(actual.isDouble() || actual.isInt() || actual.isInt64() || actual.isUInt() || actual.isUInt64())) return false;
+    return actual.asDouble() == expected.asDouble();
+  }
+  if (expected.isInt() || expected.isInt64()) {
+    const int64_t ex = expected.isInt64() ? expected.asInt64() : (int64_t)expected.asInt();
+    int64_t av = 0;
+    if (actual.isInt64()) av = actual.asInt64();
+    else if (actual.isUInt64()) av = (int64_t)actual.asUInt64();
+    else if (actual.isInt()) av = (int64_t)actual.asInt();
+    else if (actual.isUInt()) av = (int64_t)actual.asUInt();
+    else return false;
+    return av == ex;
+  }
+  if (expected.isUInt() || expected.isUInt64()) {
+    const uint64_t ex = expected.isUInt64() ? expected.asUInt64() : (uint64_t)expected.asUInt();
+    uint64_t av = 0;
+    if (actual.isUInt64()) av = actual.asUInt64();
+    else if (actual.isInt64()) {
+      const int64_t v = actual.asInt64();
+      if (v < 0) return false;
+      av = (uint64_t)v;
+    } else if (actual.isUInt()) av = (uint64_t)actual.asUInt();
+    else if (actual.isInt()) {
+      const int v = actual.asInt();
+      if (v < 0) return false;
+      av = (uint64_t)v;
+    } else return false;
+    return av == ex;
+  }
+  // Unknown expected type: fail closed to avoid surprising matches.
+  return false;
+}
+
 static bool data_matches(const Json::Value& payload, const Json::Value& data_match) {
   if (!data_match.isObject()) return true;
   if (!payload.isObject()) return false;
   const auto& d = payload["data"];
   if (!d.isObject()) return false;
-  for (const auto& k : data_match.getMemberNames()) {
-    const auto& expected = data_match[k];
-    const auto& actual = d[k];
-    if (expected.isString()) {
-      if (!actual.isString() || actual.asString() != expected.asString()) return false;
-      continue;
-    }
-    if (expected.isBool()) {
-      if (!actual.isBool() || actual.asBool() != expected.asBool()) return false;
-      continue;
-    }
-    if (expected.isInt() || expected.isInt64()) {
-      const int64_t ex = expected.isInt64() ? expected.asInt64() : (int64_t)expected.asInt();
-      int64_t av = 0;
-      if (actual.isInt64()) av = actual.asInt64();
-      else if (actual.isUInt64()) av = (int64_t)actual.asUInt64();
-      else if (actual.isInt()) av = (int64_t)actual.asInt();
-      else return false;
-      if (av != ex) return false;
-      continue;
-    }
-    if (expected.isUInt() || expected.isUInt64()) {
-      const uint64_t ex = expected.isUInt64() ? expected.asUInt64() : (uint64_t)expected.asUInt();
-      uint64_t av = 0;
-      if (actual.isUInt64()) av = actual.asUInt64();
-      else if (actual.isInt64()) {
-        const int64_t v = actual.asInt64();
-        if (v < 0) return false;
-        av = (uint64_t)v;
-      } else if (actual.isUInt()) av = (uint64_t)actual.asUInt();
-      else return false;
-      if (av != ex) return false;
-      continue;
-    }
-    // Unknown expected type: fail closed to avoid surprising matches.
-    return false;
-  }
-  return true;
+  int budget = 256;
+  return json_value_matches(data_match, d, 0, &budget);
 }
 
 static bool event_matches(

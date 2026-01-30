@@ -8,6 +8,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <sstream>
 #include <algorithm>
 #include <unordered_set>
@@ -41,6 +42,14 @@ static std::filesystem::path session_client_events_path(const SessionStoreConfig
   return std::filesystem::path(cfg.root_dir) / (session_id + ".client_events.jsonl");
 }
 
+static std::filesystem::path session_client_events_path_rotated(
+  const SessionStoreConfig& cfg,
+  const std::string& session_id,
+  size_t index
+) {
+  return std::filesystem::path(cfg.root_dir) / (session_id + ".client_events.jsonl." + std::to_string(index));
+}
+
 static agent_status_t ensure_dir(const std::string& dir) {
   std::error_code ec;
   std::filesystem::create_directories(dir, ec);
@@ -67,6 +76,46 @@ static agent_status_t read_file_all(const std::filesystem::path& p, std::string*
   std::ostringstream ss;
   ss << in.rdbuf();
   *out = ss.str();
+  return AGENT_OK;
+}
+
+static agent_status_t read_jsonl_tail_file(const std::filesystem::path& p, size_t max_bytes, std::string* out_text) {
+  if (!out_text) {
+    return AGENT_ERR_INVALID_ARGUMENT;
+  }
+  out_text->clear();
+
+  std::ifstream in(p, std::ios::binary);
+  if (!in.is_open()) {
+    return AGENT_OK;
+  }
+
+  in.seekg(0, std::ios::end);
+  std::streamoff size = in.tellg();
+  if (size <= 0) {
+    return AGENT_OK;
+  }
+  const std::streamoff want = (std::streamoff)std::min<size_t>((size_t)size, max_bytes);
+  in.seekg(size - want, std::ios::beg);
+
+  std::string buf;
+  buf.resize((size_t)want);
+  in.read(buf.data(), want);
+  if (!in) {
+    buf.resize((size_t)in.gcount());
+  }
+
+  // If we started mid-line, drop until next newline so caller can parse JSONL.
+  if (want < size) {
+    const size_t nl = buf.find('\n');
+    if (nl != std::string::npos) {
+      buf = buf.substr(nl + 1);
+    } else {
+      buf.clear();
+    }
+  }
+
+  *out_text = buf;
   return AGENT_OK;
 }
 
@@ -356,53 +405,71 @@ agent_status_t session_store_append_audit_jsonl(const SessionStoreConfig& cfg, c
 }
 
 agent_status_t session_store_read_audit_tail(const SessionStoreConfig& cfg, const std::string& session_id, size_t max_bytes, std::string* out_text) {
-  if (!out_text) {
-    return AGENT_ERR_INVALID_ARGUMENT;
-  }
-  out_text->clear();
-
   const auto p = session_audit_path(cfg, session_id);
-  std::ifstream in(p, std::ios::binary);
-  if (!in.is_open()) {
-    return AGENT_OK;
-  }
-
-  in.seekg(0, std::ios::end);
-  std::streamoff size = in.tellg();
-  if (size <= 0) {
-    return AGENT_OK;
-  }
-  const std::streamoff want = (std::streamoff)std::min<size_t>((size_t)size, max_bytes);
-  in.seekg(size - want, std::ios::beg);
-
-  std::string buf;
-  buf.resize((size_t)want);
-  in.read(buf.data(), want);
-  if (!in) {
-    // Best-effort: partial read.
-    buf.resize((size_t)in.gcount());
-  }
-
-  // If we started mid-line, drop until next newline so caller can parse JSONL.
-  if (want < size) {
-    const size_t nl = buf.find('\n');
-    if (nl != std::string::npos) {
-      buf = buf.substr(nl + 1);
-    } else {
-      buf.clear();
-    }
-  }
-
-  *out_text = buf;
-  return AGENT_OK;
+  return read_jsonl_tail_file(p, max_bytes, out_text);
 }
 
 agent_status_t session_store_append_client_event_jsonl(const SessionStoreConfig& cfg, const std::string& session_id, const std::string& event_json) {
+  static std::mutex mu;
+  std::lock_guard<std::mutex> lock(mu);
+
   agent_status_t st = ensure_dir(cfg.root_dir);
   if (st != AGENT_OK) {
     return st;
   }
+  if (cfg.client_events_max_event_bytes > 0 && event_json.size() > cfg.client_events_max_event_bytes) {
+    return AGENT_ERR_LIMIT;
+  }
   const auto p = session_client_events_path(cfg, session_id);
+
+  // Best-effort rotation to keep the log bounded.
+  if (cfg.client_events_max_bytes > 0) {
+    std::error_code ec;
+    const uint64_t current_size = std::filesystem::exists(p, ec) ? (uint64_t)std::filesystem::file_size(p, ec) : 0;
+    const uint64_t next_size = current_size + (uint64_t)event_json.size() + 1;
+    if (!ec && next_size > (uint64_t)cfg.client_events_max_bytes) {
+      const size_t max_files = cfg.client_events_max_files;
+      if (max_files <= 1) {
+        // Keep only the active file: truncate in place.
+        std::ofstream trunc(p, std::ios::binary | std::ios::trunc);
+      } else {
+        // Shift backups: .(N-1) -> .N ... current -> .1
+        const size_t max_backup = max_files - 1;
+        const auto oldest = session_client_events_path_rotated(cfg, session_id, max_backup);
+        std::filesystem::remove(oldest, ec);
+        ec.clear();
+        for (size_t i = max_backup; i >= 2; i--) {
+          const auto src = session_client_events_path_rotated(cfg, session_id, i - 1);
+          const auto dst = session_client_events_path_rotated(cfg, session_id, i);
+          if (!std::filesystem::exists(src, ec)) {
+            ec.clear();
+            continue;
+          }
+          std::filesystem::rename(src, dst, ec);
+          if (ec) {
+            ec.clear();
+            std::filesystem::remove(dst, ec);
+            ec.clear();
+            std::filesystem::rename(src, dst, ec);
+          }
+          ec.clear();
+        }
+        // current -> .1
+        const auto dst1 = session_client_events_path_rotated(cfg, session_id, 1);
+        if (std::filesystem::exists(p, ec)) {
+          ec.clear();
+          std::filesystem::rename(p, dst1, ec);
+          if (ec) {
+            ec.clear();
+            std::filesystem::remove(dst1, ec);
+            ec.clear();
+            std::filesystem::rename(p, dst1, ec);
+          }
+        }
+      }
+    }
+  }
+
   std::ofstream out(p, std::ios::app);
   if (!out.is_open()) {
     return AGENT_ERR_INTERNAL;
@@ -412,42 +479,49 @@ agent_status_t session_store_append_client_event_jsonl(const SessionStoreConfig&
 }
 
 agent_status_t session_store_read_client_event_tail(const SessionStoreConfig& cfg, const std::string& session_id, size_t max_bytes, std::string* out_text) {
+  const auto p = session_client_events_path(cfg, session_id);
+  return read_jsonl_tail_file(p, max_bytes, out_text);
+}
+
+agent_status_t session_store_read_client_event_tail_multi(
+  const SessionStoreConfig& cfg,
+  const std::string& session_id,
+  size_t max_bytes,
+  size_t max_files,
+  std::string* out_text
+) {
   if (!out_text) {
     return AGENT_ERR_INVALID_ARGUMENT;
   }
   out_text->clear();
 
-  const auto p = session_client_events_path(cfg, session_id);
-  std::ifstream in(p, std::ios::binary);
-  if (!in.is_open()) {
-    return AGENT_OK;
+  const size_t want_files = max_files == 0 ? 1 : max_files;
+  size_t remaining = max_bytes;
+
+  std::string result;
+  {
+    const auto p = session_client_events_path(cfg, session_id);
+    std::string chunk;
+    (void)read_jsonl_tail_file(p, remaining, &chunk);
+    remaining = remaining > chunk.size() ? (remaining - chunk.size()) : 0;
+    result = std::move(chunk);
   }
 
-  in.seekg(0, std::ios::end);
-  std::streamoff size = in.tellg();
-  if (size <= 0) {
-    return AGENT_OK;
-  }
-  const std::streamoff want = (std::streamoff)std::min<size_t>((size_t)size, max_bytes);
-  in.seekg(size - want, std::ios::beg);
-
-  std::string buf;
-  buf.resize((size_t)want);
-  in.read(buf.data(), want);
-  if (!in) {
-    buf.resize((size_t)in.gcount());
-  }
-
-  // If we started mid-line, drop until next newline so caller can parse JSONL.
-  if (want < size) {
-    const size_t nl = buf.find('\n');
-    if (nl != std::string::npos) {
-      buf = buf.substr(nl + 1);
-    } else {
-      buf.clear();
+  // Prepend rotated tails until the byte budget is filled or we hit the file cap.
+  for (size_t i = 1; i < want_files && remaining > 0; i++) {
+    const auto p = session_client_events_path_rotated(cfg, session_id, i);
+    std::string chunk;
+    (void)read_jsonl_tail_file(p, remaining, &chunk);
+    if (chunk.empty()) {
+      continue;
     }
+    remaining = remaining > chunk.size() ? (remaining - chunk.size()) : 0;
+    if (!chunk.empty() && !result.empty() && chunk.back() != '\n') {
+      chunk.push_back('\n');
+    }
+    result = chunk + result;
   }
 
-  *out_text = buf;
+  *out_text = result;
   return AGENT_OK;
 }

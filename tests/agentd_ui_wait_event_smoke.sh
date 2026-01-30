@@ -88,7 +88,7 @@ class H(BaseHTTPRequestHandler):
                   "type": "function",
                   "function": {
                     "name": "ui_wait_event",
-                    "arguments": json.dumps({"type":"smoke_client_event","timeout_ms":5000,"data_match":{"k":"v"}}),
+                    "arguments": json.dumps({"type":"smoke_client_event","timeout_ms":5000,"data_match":{"outer":{"k":"v"}}}),
                   },
                 }
               ],
@@ -125,7 +125,7 @@ import json
 print(json.dumps({
   "session_id": "${SESSION_ID}",
   "type": "smoke_client_event",
-  "data": {"k":"v"},
+  "data": {"outer":{"k":"v","n":1}},
   "append_to_session": False
 }))
 PY

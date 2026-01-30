@@ -3,6 +3,9 @@
 #include "daemon_auth.h"
 #include "http_util.h"
 #include "json_util.h"
+#include "string_util.h"
+
+#include "session_id_util.h"
 
 #include "agent/agent.h"
 
@@ -18,26 +21,6 @@
 #include <vector>
 
 namespace agentd {
-
-static bool is_safe_session_id(const std::string& s) {
-  if (s.empty()) return false;
-  if (s.size() > 200) return false;
-  // Session ids become filenames; reject path traversal and separators.
-  if (s.find('/') != std::string::npos) return false;
-  if (s.find('\\') != std::string::npos) return false;
-  if (s == "." || s == "..") return false;
-  if (s.find("..") != std::string::npos) return false;
-  for (unsigned char c : s) {
-    if ((c >= 'a' && c <= 'z') ||
-        (c >= 'A' && c <= 'Z') ||
-        (c >= '0' && c <= '9') ||
-        c == '_' || c == '-' || c == '.') {
-      continue;
-    }
-    return false;
-  }
-  return true;
-}
 
 static std::string make_uuidish_session_id() {
   // Best-effort UUIDv4-ish without external deps. Good enough to avoid collisions in practice.
@@ -143,7 +126,7 @@ void handle_session_new_endpoint(
   }
 
   std::string sid = requested_id.empty() ? make_uuidish_session_id() : requested_id;
-  if (!is_safe_session_id(sid)) {
+  if (!session_id_is_safe(sid)) {
     resp->status = 400;
     resp->body = R"({"ok":false,"error":"invalid session_id"})";
     return;
@@ -286,7 +269,7 @@ void handle_session_ui_event_endpoint(
       std::chrono::system_clock::now().time_since_epoch()).count();
   }
 
-  if (!is_safe_session_id(session_id)) {
+  if (!session_id_is_safe(session_id)) {
     resp->status = 400;
     resp->body = R"({"ok":false,"error":"invalid session_id"})";
     return;
@@ -310,12 +293,16 @@ void handle_session_ui_event_endpoint(
   wb["indentation"] = "";
   const std::string payload_json = Json::writeString(wb, payload);
 
+  bool logged_to_client_events = false;
+  agent_status_t client_events_status = AGENT_OK;
+
   // Always append to the session-scoped UI client event log (host-only).
   // This is the canonical source for the `ui_wait_event` host tool, and works even when the DB is disabled.
   {
     SessionStoreConfig store_cfg;
     store_cfg.root_dir = sessions_root_dir;
-    (void)session_store_append_client_event_jsonl(store_cfg, session_id, payload_json);
+    client_events_status = session_store_append_client_event_jsonl(store_cfg, session_id, payload_json);
+    logged_to_client_events = (client_events_status == AGENT_OK);
   }
 
   bool appended = false;
@@ -377,6 +364,10 @@ void handle_session_ui_event_endpoint(
   out["session_id"] = session_id;
   out["type"] = type;
   out["appended_to_session"] = appended;
+  out["logged_to_client_events"] = logged_to_client_events;
+  if (!logged_to_client_events) {
+    out["client_events_status"] = (Json::Int64)client_events_status;
+  }
   resp->status = 200;
   resp->body = json_stringify(out);
 }
@@ -396,6 +387,11 @@ void handle_session_audit_endpoint(
   if (!sid || sid->empty()) {
     resp->status = 400;
     resp->body = R"({"ok":false,"error":"missing session_id"})";
+    return;
+  }
+  if (!session_id_is_safe(*sid)) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"invalid session_id"})";
     return;
   }
   size_t max_bytes = 1024 * 1024;
@@ -453,6 +449,11 @@ void handle_session_client_events_endpoint(
     resp->body = R"({"ok":false,"error":"missing session_id"})";
     return;
   }
+  if (!session_id_is_safe(*sid)) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    return;
+  }
 
   size_t max_bytes = 1024 * 1024;
   if (const auto mb = query_get(req.query, "max_bytes")) {
@@ -463,19 +464,60 @@ void handle_session_client_events_endpoint(
   }
   if (max_bytes > 4 * 1024 * 1024) max_bytes = 4 * 1024 * 1024;
 
+  bool include_rotated = false;
+  if (const auto ir = query_get(req.query, "include_rotated"); ir && !ir->empty()) {
+    include_rotated = string_to_bool(*ir);
+  }
+  size_t max_files = 0;
+  if (const auto mf = query_get(req.query, "max_files")) {
+    try {
+      max_files = (size_t)std::stoull(*mf);
+    } catch (...) {
+    }
+  }
+  if (max_files > 10) max_files = 10;
+
   SessionStoreConfig store_cfg;
   store_cfg.root_dir = sessions_root_dir;
+  if (max_files == 0) max_files = store_cfg.client_events_max_files;
 
   std::string tail;
-  const agent_status_t st = session_store_read_client_event_tail(store_cfg, *sid, max_bytes, &tail);
+  const agent_status_t st = include_rotated
+    ? session_store_read_client_event_tail_multi(store_cfg, *sid, max_bytes, max_files, &tail)
+    : session_store_read_client_event_tail(store_cfg, *sid, max_bytes, &tail);
 
   Json::Value out(Json::objectValue);
   out["ok"] = (st == AGENT_OK);
   out["session_id"] = *sid;
   out["max_bytes"] = (Json::UInt64)max_bytes;
+  out["include_rotated"] = include_rotated;
+  out["max_files"] = (Json::UInt64)max_files;
   if (st != AGENT_OK) {
     out["error"] = "failed to read client event log";
     out["status"] = (Json::Int64)st;
+  }
+
+  // Best-effort size metadata for troubleshooting.
+  {
+    std::error_code ec;
+    const std::filesystem::path root(sessions_root_dir);
+    const std::filesystem::path current = root / (*sid + ".client_events.jsonl");
+    if (std::filesystem::exists(current, ec)) {
+      ec.clear();
+      out["file_size_bytes"] = (Json::UInt64)std::filesystem::file_size(current, ec);
+    }
+    Json::Value rotated(Json::arrayValue);
+    for (size_t i = 1; i < max_files; i++) {
+      ec.clear();
+      const std::filesystem::path p = root / (*sid + ".client_events.jsonl." + std::to_string(i));
+      if (!std::filesystem::exists(p, ec)) continue;
+      ec.clear();
+      Json::Value e(Json::objectValue);
+      e["index"] = (Json::UInt64)i;
+      e["size_bytes"] = (Json::UInt64)std::filesystem::file_size(p, ec);
+      rotated.append(e);
+    }
+    out["rotated_files"] = rotated;
   }
 
   Json::Value entries(Json::arrayValue);
@@ -514,6 +556,11 @@ void handle_session_artifacts_endpoint(
   if (!sid || sid->empty()) {
     resp->status = 400;
     resp->body = R"({"ok":false,"error":"missing session_id"})";
+    return;
+  }
+  if (!session_id_is_safe(*sid)) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"invalid session_id"})";
     return;
   }
   size_t max_bytes = 2 * 1024 * 1024;

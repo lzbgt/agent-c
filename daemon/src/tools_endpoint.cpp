@@ -5,6 +5,7 @@
 #include "json_util.h"
 #include "string_util.h"
 #include "sandbox_policy.h"
+#include "session_id_util.h"
 
 #include "agent/agent.h"
 #include "agent/tools.h"
@@ -19,6 +20,7 @@ namespace agentd {
 void handle_tools_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
+  const std::string& sessions_root_dir,
   const HttpRequest& req,
   HttpResponse* resp
 ) {
@@ -78,6 +80,17 @@ void handle_tools_endpoint(
   out["effective_yolo"] = yolo;
   out["effective_host_policy"] = host_policy_to_string(effective_policy);
 
+  std::string session_id;
+  if (const auto q = query_get(req.query, "session_id"); q && !q->empty()) {
+    session_id = *q;
+    if (!session_id_is_safe(session_id)) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid session_id\"}";
+      return;
+    }
+    out["effective_session_id"] = session_id;
+  }
+
   agent_tool_registry_t* registry = nullptr;
   agent_tool_executor_t executor{};
   bool need_destroy_executor = false;
@@ -100,6 +113,10 @@ void handle_tools_endpoint(
     hcfg.policy = effective_policy;
     hcfg.enable_process_exec = yolo;
     hcfg.allow_symlinks = yolo;
+    if (!session_id.empty()) {
+      hcfg.sessions_root_dir = sessions_root_dir;
+      hcfg.session_id = session_id;
+    }
     if (toolset_host_create(hcfg, &registry, &executor) != AGENT_OK) {
       resp->status = 500;
       resp->body = R"({"ok":false,"error":"failed to init toolset_host"})";

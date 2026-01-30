@@ -163,13 +163,14 @@ export type ToolDefsResp = z.infer<typeof ToolDefsRespSchema>;
 export async function apiGetTools(
   base: string,
   authToken?: string,
-  opts?: { tools?: "host" | "basic" | "none"; toolsRoot?: string; yolo?: boolean; hostPolicy?: "full" | "readonly" },
+  opts?: { tools?: "host" | "basic" | "none"; toolsRoot?: string; yolo?: boolean; hostPolicy?: "full" | "readonly"; sessionId?: string },
 ): Promise<ToolDefsResp> {
   const q = new URLSearchParams();
   if (opts?.tools) q.set("tools", opts.tools);
   if (typeof opts?.toolsRoot === "string") q.set("tools_root", opts.toolsRoot);
   if (typeof opts?.yolo === "boolean") q.set("yolo", opts.yolo ? "1" : "0");
   if (opts?.hostPolicy) q.set("host_policy", opts.hostPolicy);
+  if (typeof opts?.sessionId === "string" && opts.sessionId.length > 0) q.set("session_id", opts.sessionId);
   const r = await fetch(`${base}/api/v1/tools?${q.toString()}`, { headers: daemonHeaders(authToken) });
   const j = await r.json();
   return ToolDefsRespSchema.parse(j);

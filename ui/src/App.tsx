@@ -244,9 +244,15 @@ export default function App() {
   }, [sessionId, sessions.isSuccess, sessions.data?.sessions, newSession]);
 
   const toolsDefs = useQuery({
-    queryKey: ["tools", effectiveBase, daemonAuthToken, tools, toolsRoot, yolo, hostPolicy],
+    queryKey: ["tools", effectiveBase, daemonAuthToken, tools, toolsRoot, yolo, hostPolicy, sessionId],
     queryFn: () =>
-      apiGetTools(effectiveBase, daemonAuthToken, { tools, toolsRoot, yolo, hostPolicy: tools === "host" ? hostPolicy : undefined }),
+      apiGetTools(effectiveBase, daemonAuthToken, {
+        tools,
+        toolsRoot,
+        yolo,
+        hostPolicy: tools === "host" ? hostPolicy : undefined,
+        sessionId,
+      }),
     retry: 1,
   });
 

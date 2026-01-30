@@ -93,6 +93,9 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add a DB-backed troubleshooting view for `ui_actions` (list recent actions, click through to run detail).
 - [x] Add a UI → daemon “client events” channel (`/api/v1/session/ui_event`) and mirror it into the troubleshooting DB.
 - [x] Add a cooperative `ui_wait_event` host tool so agents can wait for UI acknowledgements *within a single run* (reduces retry loops without relying on hard limits).
+- [x] Make `GET /api/v1/tools` accept `session_id` so UIs can see session-scoped tools (e.g. `ui_wait_event`) during tool introspection.
+- [x] Keep `<session>.client_events.jsonl` bounded via best-effort rotation + backups; expose `include_rotated` tail reading in `GET /api/v1/session/client_events`.
+- [x] Extend `ui_wait_event` matching to support nested `data_match` objects (safe, bounded recursion) and cover it with a smoke test.
 - [ ] Add a daemon skeleton with:
   - local control socket / HTTP
   - broker client abstraction (MQTT)

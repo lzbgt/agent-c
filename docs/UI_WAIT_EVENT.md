@@ -46,8 +46,10 @@ Arguments (JSON):
 - `timeout_ms` (int, optional, default `30000`, max `300000`)
 - `after_unix_ms` (number, optional): ignore events older than this timestamp
 - `path` (string, optional): convenience filter for `payload.data.path`
-- `data_match` (object, optional): exact-match filters applied to `payload.data`
-  - values must be scalar: string/bool/int/uint
+- `data_match` (object, optional): partial-match filters applied to `payload.data`
+  - objects are matched by requiring the specified keys/values (extra keys in the payload are allowed)
+  - arrays are matched exactly (same length + element equality)
+  - scalar values match by exact equality (string/bool/number/null)
 - `max_bytes` (int, optional, default `262144`): max bytes read from the end of the JSONL file each poll
 
 Example: wait for a notification acknowledgement for a specific tool call:
