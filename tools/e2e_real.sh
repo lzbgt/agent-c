@@ -18,6 +18,7 @@ mkdir -p "${log_dir}"
 agentd_log="${log_dir}/agentd_${ts}.log"
 ui_log="${log_dir}/ui_${ts}.log"
 e2e_log="${log_dir}/playwright_${ts}.log"
+pw_install_log="${log_dir}/playwright_install_${ts}.log"
 
 cleanup() {
   set +e
@@ -59,11 +60,18 @@ for i in {1..120}; do
   sleep 0.25
 done
 
+echo "[e2e] ensuring Playwright browsers are installed (log: ${pw_install_log})"
+(cd ui && npx playwright install chromium) >"${pw_install_log}" 2>&1 || {
+  echo "[e2e] Playwright install failed. See: ${pw_install_log}" >&2
+  exit 1
+}
+
 echo "[e2e] running playwright (log: ${e2e_log})"
 (cd ui && npm run e2e) >"${e2e_log}" 2>&1 || {
   echo "[e2e] FAILED. See logs:" >&2
   echo "  - ${agentd_log}" >&2
   echo "  - ${ui_log}" >&2
+  echo "  - ${pw_install_log}" >&2
   echo "  - ${e2e_log}" >&2
   exit 1
 }
