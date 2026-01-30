@@ -3,6 +3,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   apiGetAudit,
   apiGetConfig,
+  apiGetDbRun,
+  apiGetDbRuns,
   apiGetHealth,
   apiGetJobProgress,
   apiGetOpenRouterModels,
@@ -23,6 +25,7 @@ import EventTimeline from "./components/EventTimeline";
 import Markdown from "./components/Markdown";
 import ConversationView from "./components/ConversationView";
 import ArtifactView from "./components/ArtifactView";
+import DbRunsView from "./components/DbRunsView";
 import useLocalStorageState from "./hooks/useLocalStorageState";
 import { readSseStream } from "./sse";
 
@@ -136,6 +139,23 @@ export default function App() {
     retry: 1,
   });
 
+  const dbRuns = useQuery({
+    queryKey: ["db_runs", effectiveBase, daemonAuthToken, sessionId],
+    queryFn: () => apiGetDbRuns(effectiveBase, sessionId, daemonAuthToken, { limit: 50, offset: 0 }),
+    enabled: false,
+    retry: 1,
+  });
+  const [selectedDbRunId, setSelectedDbRunId] = React.useState<number | null>(null);
+  const dbRunDetail = useQuery({
+    queryKey: ["db_run", effectiveBase, daemonAuthToken, selectedDbRunId],
+    queryFn: () =>
+      selectedDbRunId
+        ? apiGetDbRun(effectiveBase, selectedDbRunId, daemonAuthToken, { includeEvents: true, includeTools: true, includeArtifacts: true })
+        : Promise.resolve({ ok: false, error: "no run selected" }),
+    enabled: selectedDbRunId !== null,
+    retry: 1,
+  });
+
   const newSession = useMutation({
     mutationFn: async () => {
       const r = await apiNewSession(effectiveBase, daemonAuthToken);
@@ -147,6 +167,7 @@ export default function App() {
         void sessions.refetch();
         void audit.refetch();
         void sessionArtifacts.refetch();
+        setSelectedDbRunId(null);
       }
     },
   });
@@ -612,6 +633,18 @@ export default function App() {
               >
                 Load artifacts
               </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                onClick={() => {
+                  setSelectedDbRunId(null);
+                  void dbRuns.refetch();
+                }}
+                type="button"
+                disabled={!sessionId || dbRuns.isFetching}
+                title="Query the optional SQLite troubleshooting DB (requires agentd --db-path)"
+              >
+                Load DB runs
+              </button>
             </div>
             <div className="mt-3 max-h-80 overflow-auto rounded-md border border-white/10 bg-black/20">
               {(sessions.data?.sessions ?? []).map((sid) => (
@@ -637,6 +670,10 @@ export default function App() {
                   : sessionArtifacts.data?.ok
                     ? `${sessionArtifacts.data?.count ?? 0}`
                     : "error"}
+            </div>
+            <div className="mt-1 text-xs text-white/50">
+              DB runs:{" "}
+              {dbRuns.isFetching ? "loading…" : dbRuns.isError ? "failed" : dbRuns.data?.ok ? `${dbRuns.data?.count ?? 0}` : "(disabled)"}
             </div>
             <div className="mt-2 text-xs text-white/50">
               Tools:{" "}
@@ -677,6 +714,47 @@ export default function App() {
                     })}
                 </div>
               </div>
+            ) : null}
+
+            {dbRuns.data?.ok && Array.isArray(dbRuns.data.runs) ? (
+              <div className="mt-3">
+                <DbRunsView
+                  runs={dbRuns.data.runs as any[]}
+                  onSelectRunId={(runId) => {
+                    setSelectedDbRunId(runId);
+                  }}
+                />
+                {selectedDbRunId && dbRunDetail.isFetching ? (
+                  <div className="mt-2 text-[11px] text-white/50">loading run {selectedDbRunId}…</div>
+                ) : selectedDbRunId && dbRunDetail.data?.ok ? (
+                  <div className="mt-2 rounded-md border border-white/10 bg-black/20 p-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="text-xs font-semibold text-white/70">Run {selectedDbRunId}</div>
+                      <button
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                        type="button"
+                        onClick={() => setSelectedDbRunId(null)}
+                      >
+                        Close
+                      </button>
+                    </div>
+                    <div className="mt-2 text-[11px] text-white/50">
+                      events={Array.isArray(dbRunDetail.data.events) ? dbRunDetail.data.events.length : 0},{" "}
+                      tools={Array.isArray(dbRunDetail.data.tool_records) ? dbRunDetail.data.tool_records.length : 0},{" "}
+                      artifacts={Array.isArray(dbRunDetail.data.artifacts) ? dbRunDetail.data.artifacts.length : 0}
+                    </div>
+                    <pre className="mt-2 max-h-[220px] overflow-auto whitespace-pre-wrap break-words text-[11px] text-white/70">
+                      {JSON.stringify(dbRunDetail.data.run ?? {}, null, 2)}
+                    </pre>
+                  </div>
+                ) : selectedDbRunId && dbRunDetail.isError ? (
+                  <div className="mt-2 text-[11px] text-amber-200/80">failed to load run {selectedDbRunId}</div>
+                ) : null}
+              </div>
+            ) : dbRuns.isFetching ? (
+              <div className="mt-2 text-[11px] text-white/50">loading db runs…</div>
+            ) : dbRuns.data && !dbRuns.data.ok ? (
+              <div className="mt-2 text-[11px] text-white/40">db: {dbRuns.data.error ?? "(disabled)"}</div>
             ) : null}
           </div>
         ) : null}

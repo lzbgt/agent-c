@@ -113,5 +113,5 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add key-free local daemon smokes for critical UI paths (async jobs, SSE, streamed assistant deltas, session audit) using stub OpenAI servers.
 - [x] Add an optional SQLite troubleshooting store for agentd (mirror sessions/runs/events/tool records) (`docs/DB.md`).
 - [x] Mirror explicit `artifact` events into the SQLite store (schema v2) for debugging “runaway capture” loops.
-- [ ] (Optional) Add daemon endpoints to query SQLite directly (runs/events/artifacts) for UI-native troubleshooting views.
+- [x] Add daemon endpoints to query SQLite directly (runs/events/artifacts) for UI-native troubleshooting views.
 - [ ] Configure a git remote so `git push` works in this workspace (see `tools/setup_git_remote.sh`, supports `project.local.md: git_remote`).

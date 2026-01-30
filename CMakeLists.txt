@@ -105,6 +105,7 @@ if(AGENT_BUILD_HOST)
     daemon/src/agent_db.cpp
     daemon/src/config_endpoint.cpp
     daemon/src/cors.cpp
+    daemon/src/db_query_endpoints.cpp
     daemon/src/daemon_auth.cpp
     daemon/src/file_endpoint.cpp
     daemon/src/http_util.cpp
@@ -191,9 +192,10 @@ if(AGENT_BUILD_HOST)
 
   add_test(NAME agentd_local_stream_tool_loop_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_local_stream_tool_loop_smoke.sh $<TARGET_FILE:agentd>)
 
-  if(AGENT_ENABLE_SQLITE3)
-    add_test(NAME agentd_db_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_smoke.sh $<TARGET_FILE:agentd>)
-  endif()
+	  if(AGENT_ENABLE_SQLITE3)
+	    add_test(NAME agentd_db_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_smoke.sh $<TARGET_FILE:agentd>)
+	    add_test(NAME agentd_db_query_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_query_smoke.sh $<TARGET_FILE:agentd>)
+	  endif()
 
   add_test(
     NAME agentd_non_loopback_auth_guard_smoke

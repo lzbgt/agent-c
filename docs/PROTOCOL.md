@@ -7,6 +7,7 @@ with a focus on:
 
 - multi-agent-safe session handling (UI can create/list/resume sessions without collisions)
 - explicit “artifact” signaling (agent can register host files like images/audio/video and provide playback hints)
+- optional DB-backed troubleshooting queries (agentd can expose read-only DB endpoints when `--db-path` is enabled)
 
 This project is rolling; schema may evolve, but **typed events** are preferred over UI heuristics.
 

@@ -13,6 +13,7 @@
 #include "session_endpoints.h"
 #include "job_endpoints.h"
 #include "run_endpoints.h"
+#include "db_query_endpoints.h"
 
 #include "agent_db.h"
 
@@ -499,6 +500,17 @@ int main(int argc, char** argv) {
 
   server.handle("DELETE", "/api/v1/session", [&](const HttpRequest& req, HttpResponse* resp) {
     handle_session_delete_endpoint(cfg, cors_cfg, db_or_null, sessions_root_dir, req, resp);
+  });
+
+  // Optional: read-only troubleshooting DB queries (enabled only when DB is enabled at startup).
+  server.handle("GET", "/api/v1/db/runs", [&](const HttpRequest& req, HttpResponse* resp) {
+    handle_db_runs_endpoint(cfg, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/db/run", [&](const HttpRequest& req, HttpResponse* resp) {
+    handle_db_run_endpoint(cfg, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/db/artifacts", [&](const HttpRequest& req, HttpResponse* resp) {
+    handle_db_artifacts_endpoint(cfg, cors_cfg, db_or_null, req, resp);
   });
 
   server.handle("POST", "/api/v1/run", [&](const HttpRequest& req, HttpResponse* resp) {

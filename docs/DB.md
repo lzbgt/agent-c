@@ -209,3 +209,14 @@ GROUP BY r.run_id
 HAVING artifacts >= 5
 ORDER BY artifacts DESC;
 ```
+
+## Daemon query endpoints (optional)
+
+If you want to query the DB from the Web UI (or via `curl`) without opening SQLite manually, `agentd` exposes a small read-only
+API when DB is enabled:
+
+- `GET /api/v1/db/runs?session_id=...`
+- `GET /api/v1/db/run?run_id=...&include_events=1&include_tools=1&include_artifacts=1`
+- `GET /api/v1/db/artifacts?session_id=...`
+
+See `docs/DB_QUERY.md`.

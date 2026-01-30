@@ -328,6 +328,38 @@ export const SessionArtifactsSchema = z.object({
 });
 export type SessionArtifactsResp = z.infer<typeof SessionArtifactsSchema>;
 
+export const DbRunsSchema = z.object({
+  ok: z.boolean(),
+  session_id: z.string().optional(),
+  limit: z.number().optional(),
+  offset: z.number().optional(),
+  count: z.number().optional(),
+  runs: z.array(z.any()).optional(),
+  error: z.string().optional(),
+});
+export type DbRunsResp = z.infer<typeof DbRunsSchema>;
+
+export const DbRunSchema = z.object({
+  ok: z.boolean(),
+  run: z.any().optional(),
+  events: z.array(z.any()).optional(),
+  tool_records: z.array(z.any()).optional(),
+  artifacts: z.array(z.any()).optional(),
+  error: z.string().optional(),
+});
+export type DbRunResp = z.infer<typeof DbRunSchema>;
+
+export const DbArtifactsSchema = z.object({
+  ok: z.boolean(),
+  session_id: z.string().optional(),
+  limit: z.number().optional(),
+  offset: z.number().optional(),
+  count: z.number().optional(),
+  artifacts: z.array(z.any()).optional(),
+  error: z.string().optional(),
+});
+export type DbArtifactsResp = z.infer<typeof DbArtifactsSchema>;
+
 export async function apiGetSessionArtifacts(
   base: string,
   sessionId: string,
@@ -344,6 +376,58 @@ export async function apiGetSessionArtifacts(
   );
   const j = await r.json();
   return SessionArtifactsSchema.parse(j);
+}
+
+export async function apiGetDbRuns(
+  base: string,
+  sessionId: string,
+  authToken?: string,
+  opts?: { limit?: number; offset?: number },
+): Promise<DbRunsResp> {
+  const limit = typeof opts?.limit === "number" ? opts.limit : 50;
+  const offset = typeof opts?.offset === "number" ? opts.offset : 0;
+  const r = await fetch(
+    `${base}/api/v1/db/runs?session_id=${encodeURIComponent(sessionId)}&limit=${encodeURIComponent(
+      String(limit),
+    )}&offset=${encodeURIComponent(String(offset))}`,
+    { headers: daemonHeaders(authToken) },
+  );
+  const j = await r.json();
+  return DbRunsSchema.parse(j);
+}
+
+export async function apiGetDbRun(
+  base: string,
+  runId: number,
+  authToken?: string,
+  opts?: { includeEvents?: boolean; includeTools?: boolean; includeArtifacts?: boolean },
+): Promise<DbRunResp> {
+  const q = new URLSearchParams();
+  q.set("run_id", String(runId));
+  if (opts?.includeEvents) q.set("include_events", "1");
+  if (opts?.includeTools) q.set("include_tools", "1");
+  if (opts?.includeArtifacts) q.set("include_artifacts", "1");
+  const r = await fetch(`${base}/api/v1/db/run?${q.toString()}`, { headers: daemonHeaders(authToken) });
+  const j = await r.json();
+  return DbRunSchema.parse(j);
+}
+
+export async function apiGetDbArtifacts(
+  base: string,
+  sessionId: string,
+  authToken?: string,
+  opts?: { limit?: number; offset?: number },
+): Promise<DbArtifactsResp> {
+  const limit = typeof opts?.limit === "number" ? opts.limit : 50;
+  const offset = typeof opts?.offset === "number" ? opts.offset : 0;
+  const r = await fetch(
+    `${base}/api/v1/db/artifacts?session_id=${encodeURIComponent(sessionId)}&limit=${encodeURIComponent(
+      String(limit),
+    )}&offset=${encodeURIComponent(String(offset))}`,
+    { headers: daemonHeaders(authToken) },
+  );
+  const j = await r.json();
+  return DbArtifactsSchema.parse(j);
 }
 
 export async function apiRun(base: string, req: RunRequest, authToken?: string): Promise<RunResponse> {

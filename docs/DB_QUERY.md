@@ -1,0 +1,77 @@
+# Agentd DB Query API (Troubleshooting) — Draft
+
+Date: 2026-01-30
+
+When `agentd` is started with `--db-path` (or `AGENTD_DB_PATH`), it mirrors runs/events/tool records/artifacts into an SQLite DB
+(`docs/DB.md`). This document defines a small, read-only HTTP surface so operators and the Web UI can query that DB directly for
+troubleshooting.
+
+These endpoints are intentionally **not** a stable public API; they are a debugging convenience.
+
+## Goals
+
+- Provide a reliable way to inspect daemon history when:
+  - the JSONL audit file is too large to manually inspect
+  - the UI wants to show “last runs” / “recent errors”
+  - you need to correlate runaway tool loops with artifacts / tool calls
+- Keep endpoints read-only and safe:
+  - require daemon auth when configured (same as other endpoints)
+  - return bounded, paged results
+
+## Non-goals
+
+- Replacing the canonical `.sess` / `.events.jsonl` stores.
+- Advanced analytics (use `sqlite3` directly for that).
+
+## Endpoints
+
+All endpoints return JSON with:
+- `ok` (bool)
+- `error` (string, optional)
+
+### List runs
+
+`GET /api/v1/db/runs?session_id=...&limit=...&offset=...`
+
+Response fields:
+- `runs` (array)
+  - `run_id` (number)
+  - `session_id` (string)
+  - `job_id` (string|null)
+  - `ts_unix_ms` (number)
+  - `tools` (string)
+  - `model` (string|null)
+  - `ok` (bool)
+  - `error` (string|null)
+
+### Fetch run details
+
+`GET /api/v1/db/run?run_id=...&include_events=1&include_tools=1&include_artifacts=1`
+
+Response fields:
+- `run` (object) basic run fields
+- `events` (array, optional) ordered by `event_id`
+- `tool_records` (array, optional) ordered by `id`
+- `artifacts` (array, optional) ordered by `id`
+
+### List artifacts
+
+`GET /api/v1/db/artifacts?session_id=...&limit=...&offset=...`
+
+Response fields:
+- `artifacts` (array)
+  - `id` (number)
+  - `run_id` (number)
+  - `ts_unix_ms` (number)
+  - `path` (string)
+  - `kind` (string|null)
+  - `mime` (string|null)
+  - `title` (string|null)
+  - `repeat` (number)
+  - `autoplay` (bool)
+
+## Notes
+
+- If the DB is disabled, endpoints return `404` (not found) or `{ok:false,error:"db disabled"}` depending on call site.
+- For richer queries, use `sqlite3` directly against `db_path` shown in `/api/v1/config`.
+
