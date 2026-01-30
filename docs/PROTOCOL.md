@@ -53,7 +53,7 @@ Notes:
 
 ### Endpoint: list recent artifacts for a session (from audit)
 
-- `GET /api/v1/session/artifacts?session_id=...&max_bytes=...&max_artifacts=...`
+- `GET /api/v1/session/artifacts?session_id=...&max_bytes=...&max_artifacts=...&include_rotated=0|1&max_files=...`
 
 Response (JSON):
 - `ok` (bool)
@@ -64,6 +64,16 @@ Response (JSON):
 Notes:
 - This endpoint is intended for UI indexing/browsing (cross-run).
 - Artifact payload schema matches the `artifact` event described below.
+
+### Endpoint: read session audit tail (file-backed)
+
+UIs can inspect recent per-run audit entries (prompt + events) from the session-scoped audit JSONL:
+
+- `GET /api/v1/session/audit?session_id=...&max_bytes=...&include_rotated=0|1&max_files=...`
+
+The audit file may be rotated when it grows large:
+- current: `<session_id>.events.jsonl`
+- backups: `<session_id>.events.jsonl.1`, `.2`, ...
 
 ## Runs (UI → agentd)
 

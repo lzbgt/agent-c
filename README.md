@@ -422,7 +422,7 @@ OpenRouter model discovery (for verification + multimodal/tools filtering):
 Session browsing:
 - `GET /api/v1/sessions` lists known sessions.
 - `GET /api/v1/session?session_id=<id>` returns the message history.
-- `GET /api/v1/session/audit?session_id=<id>` returns recent per-run audit entries (prompt + assistant + events).
+- `GET /api/v1/session/audit?session_id=<id>&include_rotated=0|1` returns recent per-run audit entries (prompt + assistant + events).
 
 Async runs (UI-friendly):
 - `POST /api/v1/run_async` starts a background run and returns `{ ok, job_id }`.

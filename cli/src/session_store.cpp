@@ -38,6 +38,14 @@ static std::filesystem::path session_audit_path(const SessionStoreConfig& cfg, c
   return std::filesystem::path(cfg.root_dir) / (session_id + ".events.jsonl");
 }
 
+static std::filesystem::path session_audit_path_rotated(
+  const SessionStoreConfig& cfg,
+  const std::string& session_id,
+  size_t index
+) {
+  return std::filesystem::path(cfg.root_dir) / (session_id + ".events.jsonl." + std::to_string(index));
+}
+
 static std::filesystem::path session_client_events_path(const SessionStoreConfig& cfg, const std::string& session_id) {
   return std::filesystem::path(cfg.root_dir) / (session_id + ".client_events.jsonl");
 }
@@ -391,11 +399,63 @@ agent_status_t session_store_delete(const SessionStoreConfig& cfg, const std::st
 }
 
 agent_status_t session_store_append_audit_jsonl(const SessionStoreConfig& cfg, const std::string& session_id, const std::string& record_json) {
+  static std::mutex mu;
+  std::lock_guard<std::mutex> lock(mu);
+
   agent_status_t st = ensure_dir(cfg.root_dir);
   if (st != AGENT_OK) {
     return st;
   }
+  if (cfg.audit_max_record_bytes > 0 && record_json.size() > cfg.audit_max_record_bytes) {
+    return AGENT_ERR_LIMIT;
+  }
   const auto p = session_audit_path(cfg, session_id);
+
+  // Best-effort rotation to keep the audit log bounded.
+  if (cfg.audit_max_bytes > 0) {
+    std::error_code ec;
+    const uint64_t current_size = std::filesystem::exists(p, ec) ? (uint64_t)std::filesystem::file_size(p, ec) : 0;
+    const uint64_t next_size = current_size + (uint64_t)record_json.size() + 1;
+    if (!ec && next_size > (uint64_t)cfg.audit_max_bytes) {
+      const size_t max_files = cfg.audit_max_files;
+      if (max_files <= 1) {
+        std::ofstream trunc(p, std::ios::binary | std::ios::trunc);
+      } else {
+        const size_t max_backup = max_files - 1;
+        const auto oldest = session_audit_path_rotated(cfg, session_id, max_backup);
+        std::filesystem::remove(oldest, ec);
+        ec.clear();
+        for (size_t i = max_backup; i >= 2; i--) {
+          const auto src = session_audit_path_rotated(cfg, session_id, i - 1);
+          const auto dst = session_audit_path_rotated(cfg, session_id, i);
+          if (!std::filesystem::exists(src, ec)) {
+            ec.clear();
+            continue;
+          }
+          std::filesystem::rename(src, dst, ec);
+          if (ec) {
+            ec.clear();
+            std::filesystem::remove(dst, ec);
+            ec.clear();
+            std::filesystem::rename(src, dst, ec);
+          }
+          ec.clear();
+        }
+        const auto dst1 = session_audit_path_rotated(cfg, session_id, 1);
+        if (std::filesystem::exists(p, ec)) {
+          ec.clear();
+          std::filesystem::rename(p, dst1, ec);
+          if (ec) {
+            ec.clear();
+            std::filesystem::remove(dst1, ec);
+            ec.clear();
+            std::filesystem::rename(p, dst1, ec);
+          }
+        }
+      }
+    }
+  }
+
   std::ofstream out(p, std::ios::app);
   if (!out.is_open()) {
     return AGENT_ERR_INTERNAL;
@@ -407,6 +467,48 @@ agent_status_t session_store_append_audit_jsonl(const SessionStoreConfig& cfg, c
 agent_status_t session_store_read_audit_tail(const SessionStoreConfig& cfg, const std::string& session_id, size_t max_bytes, std::string* out_text) {
   const auto p = session_audit_path(cfg, session_id);
   return read_jsonl_tail_file(p, max_bytes, out_text);
+}
+
+agent_status_t session_store_read_audit_tail_multi(
+  const SessionStoreConfig& cfg,
+  const std::string& session_id,
+  size_t max_bytes,
+  size_t max_files,
+  std::string* out_text
+) {
+  if (!out_text) {
+    return AGENT_ERR_INVALID_ARGUMENT;
+  }
+  out_text->clear();
+
+  const size_t want_files = max_files == 0 ? 1 : max_files;
+  size_t remaining = max_bytes;
+
+  std::string result;
+  {
+    const auto p = session_audit_path(cfg, session_id);
+    std::string chunk;
+    (void)read_jsonl_tail_file(p, remaining, &chunk);
+    remaining = remaining > chunk.size() ? (remaining - chunk.size()) : 0;
+    result = std::move(chunk);
+  }
+
+  for (size_t i = 1; i < want_files && remaining > 0; i++) {
+    const auto p = session_audit_path_rotated(cfg, session_id, i);
+    std::string chunk;
+    (void)read_jsonl_tail_file(p, remaining, &chunk);
+    if (chunk.empty()) {
+      continue;
+    }
+    remaining = remaining > chunk.size() ? (remaining - chunk.size()) : 0;
+    if (!chunk.empty() && !result.empty() && chunk.back() != '\n') {
+      chunk.push_back('\n');
+    }
+    result = chunk + result;
+  }
+
+  *out_text = result;
+  return AGENT_OK;
 }
 
 agent_status_t session_store_append_client_event_jsonl(const SessionStoreConfig& cfg, const std::string& session_id, const std::string& event_json) {

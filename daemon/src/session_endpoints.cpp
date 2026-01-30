@@ -191,6 +191,11 @@ void handle_session_get_endpoint(
     resp->body = R"({"ok":false,"error":"missing session_id"})";
     return;
   }
+  if (!session_id_is_safe(*sid)) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    return;
+  }
 
   SessionStoreConfig store_cfg;
   store_cfg.root_dir = sessions_root_dir;
@@ -405,11 +410,29 @@ void handle_session_audit_endpoint(
   SessionStoreConfig store_cfg;
   store_cfg.root_dir = sessions_root_dir;
 
+  bool include_rotated = false;
+  if (const auto ir = query_get(req.query, "include_rotated"); ir && !ir->empty()) {
+    include_rotated = string_to_bool(*ir);
+  }
+  size_t max_files = 0;
+  if (const auto mf = query_get(req.query, "max_files")) {
+    try {
+      max_files = (size_t)std::stoull(*mf);
+    } catch (...) {
+    }
+  }
+  if (max_files > 10) max_files = 10;
+  if (max_files == 0) max_files = store_cfg.audit_max_files;
+
   std::string tail;
-  const agent_status_t st = session_store_read_audit_tail(store_cfg, *sid, max_bytes, &tail);
+  const agent_status_t st = include_rotated
+    ? session_store_read_audit_tail_multi(store_cfg, *sid, max_bytes, max_files, &tail)
+    : session_store_read_audit_tail(store_cfg, *sid, max_bytes, &tail);
   Json::Value out(Json::objectValue);
   out["ok"] = (st == AGENT_OK);
   out["session_id"] = *sid;
+  out["include_rotated"] = include_rotated;
+  out["max_files"] = (Json::UInt64)max_files;
   if (st != AGENT_OK) {
     out["error"] = "failed to read audit log";
     out["status"] = (Json::Int64)st;
@@ -581,14 +604,32 @@ void handle_session_artifacts_endpoint(
   SessionStoreConfig store_cfg;
   store_cfg.root_dir = sessions_root_dir;
 
+  bool include_rotated = false;
+  if (const auto ir = query_get(req.query, "include_rotated"); ir && !ir->empty()) {
+    include_rotated = string_to_bool(*ir);
+  }
+  size_t max_files = 0;
+  if (const auto mf = query_get(req.query, "max_files")) {
+    try {
+      max_files = (size_t)std::stoull(*mf);
+    } catch (...) {
+    }
+  }
+  if (max_files > 10) max_files = 10;
+  if (max_files == 0) max_files = store_cfg.audit_max_files;
+
   std::string tail;
-  const agent_status_t st = session_store_read_audit_tail(store_cfg, *sid, max_bytes, &tail);
+  const agent_status_t st = include_rotated
+    ? session_store_read_audit_tail_multi(store_cfg, *sid, max_bytes, max_files, &tail)
+    : session_store_read_audit_tail(store_cfg, *sid, max_bytes, &tail);
 
   Json::Value out(Json::objectValue);
   out["ok"] = (st == AGENT_OK);
   out["session_id"] = *sid;
   out["max_bytes"] = (Json::UInt64)max_bytes;
   out["max_artifacts"] = (Json::UInt64)max_artifacts;
+  out["include_rotated"] = include_rotated;
+  out["max_files"] = (Json::UInt64)max_files;
   if (st != AGENT_OK) {
     out["error"] = "failed to read audit log";
     out["status"] = (Json::Int64)st;

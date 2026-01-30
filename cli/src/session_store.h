@@ -9,6 +9,16 @@
 struct SessionStoreConfig {
   std::string root_dir; // e.g. ~/.agent/sessions
 
+  // Bounded per-session audit log retention:
+  // - File: <root>/<id>.events.jsonl
+  // - Backups: <root>/<id>.events.jsonl.1, .2, ...
+  //
+  // This audit log can grow quickly during tool loops (full prompts/tool calls/results),
+  // so the default is intentionally larger than `client_events_*`.
+  size_t audit_max_bytes = 16 * 1024 * 1024;
+  size_t audit_max_files = 3;
+  size_t audit_max_record_bytes = 1024 * 1024;
+
   // Bounded UI client event log retention (prevents unbounded growth on long-running daemons).
   //
   // File: <root>/<id>.client_events.jsonl
@@ -42,6 +52,16 @@ agent_status_t session_store_append_audit_jsonl(const SessionStoreConfig& cfg, c
 
 // Reads up to `max_bytes` from the end of <root>/<id>.events.jsonl (best-effort).
 agent_status_t session_store_read_audit_tail(const SessionStoreConfig& cfg, const std::string& session_id, size_t max_bytes, std::string* out_text);
+
+// Reads up to `max_bytes` of the newest audit entries, optionally including rotated backups
+// (<id>.events.jsonl.1, .2, ...) if the current file does not fill the budget.
+agent_status_t session_store_read_audit_tail_multi(
+  const SessionStoreConfig& cfg,
+  const std::string& session_id,
+  size_t max_bytes,
+  size_t max_files,
+  std::string* out_text
+);
 
 // UI client events (bidirectional UI→daemon protocol):
 // - Each line is a single JSON object string.
