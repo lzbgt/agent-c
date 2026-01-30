@@ -113,6 +113,12 @@ Or use the helper script (does not guess a URL):
 AGENT_GIT_REMOTE_URL="<your_repo_url>" tools/setup_git_remote.sh --push
 ```
 
+To run a full local verify + push in one command:
+
+```bash
+tools/publish.sh --skip-ui
+```
+
 The helper can also read `git_remote` from your gitignored `project.local.md`:
 
 ```bash

@@ -100,4 +100,5 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add a local Web UI scaffold (`ui/`) to exercise daemon RPC day 1.
 - [x] Refactor oversized `daemon/src/main.cpp` into smaller modules (job manager, JSON/HTTP helpers, etc.).
 - [x] Deduplicate agentd smoke scripts via shared bash lib (`tests/lib/agentd_smoke_lib.sh`).
+- [x] Add `tools/verify.sh`/`tools/publish.sh` for consistent build+test(+push) workflow with logs.
 - [ ] Configure a git remote so `git push` works in this workspace (see `tools/setup_git_remote.sh`, supports `project.local.md: git_remote`).
