@@ -337,8 +337,11 @@ Verbose inspection:
   Note: `yolo=1` is ignored when the daemon is started with `--no-yolo` (requests cannot loosen sandbox settings).
 
 Assistant streaming (provider-dependent):
-- For `tools: "none"` runs, clients can set `stream_assistant: true` to request OpenAI-compatible SSE streaming (`stream: true`).
-  The daemon will emit `assistant_delta` events during the run so the UI doesn’t look stuck.
+- Clients can set `stream_assistant: true` to request OpenAI-compatible SSE streaming (`stream: true`).
+  - `tools: "none"`: the daemon emits `assistant_delta` events while the assistant message is streaming.
+  - `tools: "basic"` / `"host"`: the daemon uses streaming requests for tool-loop steps and (best-effort) reconstructs tool calls
+    from streamed `delta.tool_calls`. It also emits `assistant_delta` events during the final assistant step (provider-dependent).
+    Note: some providers ignore `stream: true` and return a normal JSON completion; the daemon falls back to non-stream parsing.
 
 Tool schema introspection (extensible tools):
 - `GET /api/v1/tools?tools=host|basic|none&tools_root=@host|@cwd|...&yolo=0|1&host_policy=full|readonly` returns the tool registry the daemon will expose:

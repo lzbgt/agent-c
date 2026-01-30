@@ -17,6 +17,9 @@ using ToolLoopCancelCallback = bool (*)(void* ctx);
 struct ToolLoopOptions {
   std::string force_tool;    // optional tool name to force on first request
   bool require_tool_call = false;
+  // When true, request OpenAI-compatible SSE streaming (`stream: true`) and emit `assistant_delta` events.
+  // Applies to `tools=basic|host` tool loops (provider-dependent).
+  bool stream_assistant = false;
   // Max number of tool-loop steps.
   // 0 means "unlimited" (run until the model stops producing tool calls).
   size_t max_steps = 0;

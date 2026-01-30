@@ -231,6 +231,7 @@ bool run_tool_loop(
   pctx.cfg = cfg;
   pctx.on_event = sink_on_event;
   pctx.on_event_ctx = &sink;
+  pctx.stream_assistant = options.stream_assistant;
   pctx.verbose_events = options.verbose;
   pctx.max_capture_chars = options.max_capture_bytes;
 

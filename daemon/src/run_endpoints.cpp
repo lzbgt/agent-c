@@ -286,6 +286,7 @@ static Json::Value run_request_to_json(
     ToolLoopOptions opt;
     opt.max_steps = max_steps;
     opt.verbose = verbose;
+    opt.stream_assistant = stream_assistant;
     // Avoid UI freezes when verbose tracing captures huge request/response/tool blobs.
     // Full fidelity remains available in `trace_text`.
     opt.max_capture_bytes = max_capture_bytes == 0 ? (size_t)64 * 1024 : std::min<size_t>(max_capture_bytes, (size_t)1024 * 1024);

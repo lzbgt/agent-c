@@ -19,6 +19,10 @@ struct OpenAIToolProviderCtx {
   agent_tool_loop_event_fn on_event = nullptr;
   void* on_event_ctx = nullptr;
 
+  // When true, uses OpenAI-compatible SSE streaming (`stream: true`) and emits `assistant_delta` events.
+  // Tool calls are reconstructed incrementally from streamed `delta.tool_calls` when present (best-effort).
+  bool stream_assistant = false;
+
   bool verbose_events = false;
   size_t max_capture_chars = 256 * 1024;
 

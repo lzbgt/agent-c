@@ -443,7 +443,7 @@ Daemon authentication (optional, recommended when exposed beyond localhost):
 - `no_session` (bool, default `false`)
 - `model`, `base_url`, `api_key` (optional overrides; if omitted, daemon uses env/config)
 - `timeout_ms` (number; optional; provider HTTP timeout for this run)
-- `stream_assistant` (bool; optional; when `tools="none"`, request SSE streaming and emit `assistant_delta` events)
+- `stream_assistant` (bool; optional; request OpenAI-compatible SSE streaming (`stream: true`) and emit incremental `assistant_delta` events)
 - `tools` (`"host"|"basic"|"none"`, default `"host"`)
 - `tools_root` (string; used for diff-based edits in host tools)
   - `""` or `@cwd` means unrestricted (current working directory)
@@ -473,10 +473,12 @@ Event log sizing:
 - The overall event log has a maximum event count and capture budget; if exceeded the final `end` event includes `truncated=true`.
 
 Assistant streaming (provider-dependent):
-- When `tools="none"`, clients may request `stream_assistant=true` to have the daemon use OpenAI-compatible SSE streaming
-  (`stream: true`) and emit incremental `assistant_delta` events while the request is in-flight.
-- Tool-calling loops (`tools="basic"`/`"host"`) still use non-streaming calls in milestone 1; streaming tool calls requires
-  reconstructing tool-call JSON incrementally and is deferred.
+- When `stream_assistant=true`, the daemon requests OpenAI-compatible SSE streaming (`stream: true`) and emits incremental
+  `assistant_delta` events while the request is in-flight.
+- For `tools="none"`, this provides streaming tokens for the assistant message.
+- For tool-calling loops (`tools="basic"`/`"host"`), the host tool-provider reconstructs tool calls incrementally from streaming
+  `delta.tool_calls` (best-effort) and may also emit `assistant_delta` events on the final assistant step (provider-dependent).
+  - Non-goal for the first cut: full coverage of every streaming variant across providers (some ignore `stream: true`).
 
 Security notes (future):
 - Binding to `127.0.0.1` avoids LAN exposure by default.

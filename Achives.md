@@ -208,6 +208,10 @@ Completed milestones and notable tasks.
 - Added a local, non-network smoke test for streamed assistant deltas (`tools=none`, `stream_assistant=true`):
   - `tests/agentd_local_stream_assistant_smoke.sh` uses an SSE stub provider to emit `data: {choices:[{delta:{content:...}}]}` chunks and `[DONE]`
   - asserts at least one `assistant_delta` event and that the final assistant message is persisted to the session
+- Implemented streaming support for tool-calling loops (provider-dependent, best-effort):
+  - when `stream_assistant=true` and `tools=basic|host`, the OpenAI tool-provider uses SSE streaming (`stream: true`) and reconstructs tool calls from `delta.tool_calls`
+  - emits `assistant_delta` events during streamed assistant output (including the final assistant step)
+  - added a local smoke test `tests/agentd_local_stream_tool_loop_smoke.sh` to lock this path in without external API keys
 - Improved UI live streaming when daemon auth is enabled:
   - UI uses a fetch-based SSE reader (so it can send `Authorization: Bearer ...`) instead of `EventSource`
   - added a non-network smoke test `tests/agentd_sse_auth_smoke.sh` using a local OpenAI stub server
