@@ -106,6 +106,8 @@ export default function ConversationView({
   allowAutoplay,
   allowClientRpcs,
   allowClientEffects,
+  sceneEntities,
+  onSceneApply,
 }: {
   baseUrl: string;
   yolo: boolean;
@@ -118,6 +120,8 @@ export default function ConversationView({
   allowAutoplay: boolean;
   allowClientRpcs: boolean;
   allowClientEffects: boolean;
+  sceneEntities?: any[];
+  onSceneApply?: (ops: any[]) => any;
 }) {
   const [ackError, setAckError] = React.useState<string | null>(null);
   const [ackedKeys, setAckedKeys] = React.useState<Record<string, boolean>>({});
@@ -288,7 +292,15 @@ export default function ConversationView({
         const rpc = action?.rpc ?? action?.probe ?? {};
         const rpcKind = String(rpc?.kind ?? "").trim();
         const rpcArgs = typeof rpc?.args === "object" && rpc?.args ? rpc.args : rpc;
-        const sideEffectKinds = new Set(["dom_click", "dom_set_value", "dom_apply", "media_play", "media_observe", "navigate"]);
+        const sideEffectKinds = new Set([
+          "dom_click",
+          "dom_set_value",
+          "dom_apply",
+          "entity_apply",
+          "media_play",
+          "media_observe",
+          "navigate",
+        ]);
         const sideEffectsRequested = rpc?.side_effects === true || action?.side_effects === true || sideEffectKinds.has(rpcKind);
 
         const canRun = !!rpcId && typeof sessionId === "string" && sessionId.trim().length > 0;
@@ -558,6 +570,26 @@ export default function ConversationView({
               return { kind: "dom_apply", ops: results, applied: results.filter((r) => r && r.ok).length, total: results.length };
             };
 
+            const makeEntityApply = (args: any) => {
+              if (!onSceneApply) {
+                throw new Error("entity_apply not supported (no scene handler)");
+              }
+              const ops = Array.isArray(args?.ops) ? args.ops : [];
+              return onSceneApply(ops);
+            };
+
+            const makeEntityQuery = (args: any) => {
+              const ents = Array.isArray(sceneEntities) ? sceneEntities : [];
+              const kind = typeof args?.entity_kind === "string" ? String(args.entity_kind).trim() : typeof args?.kind === "string" ? String(args.kind).trim() : "";
+              const idPrefix = typeof args?.id_prefix === "string" ? String(args.id_prefix).trim() : "";
+              const limit = clampInt(args?.limit, 1, 200, 50);
+              const items = ents
+                .filter((e: any) => (kind ? String(e?.kind ?? "") === kind : true))
+                .filter((e: any) => (idPrefix ? String(e?.id ?? "").startsWith(idPrefix) : true))
+                .slice(0, limit);
+              return { kind: "entity_query", entity_kind: kind || undefined, id_prefix: idPrefix || undefined, count: items.length, items };
+            };
+
             const makeMediaSnapshot = () => {
               const els = Array.from(document.querySelectorAll("audio,video")).slice(0, 20) as HTMLMediaElement[];
               const items = els.map((el) => {
@@ -761,6 +793,17 @@ export default function ConversationView({
                     setValue: (q) => call("dom.set_value", q || {}),
                     apply: (q) => call("dom.apply", q || {}),
                   },
+                  scene: {
+                    apply: (q) => call("scene.apply", q || {}),
+                    query: (q) => call("scene.query", q || {}),
+                    create: (kind, props, title) =>
+                      call("scene.apply", { ops: [{ op: "create", entity_kind: String(kind || ""), title: title || undefined, props: props || {} }] }),
+                    update: (id, patch) => call("scene.apply", { ops: [{ op: "update", id: String(id || ""), props: patch || {} }] }),
+                    remove: (id) => call("scene.apply", { ops: [{ op: "delete", id: String(id || "") }] }),
+                    clear: (entityKind) => call("scene.apply", { ops: [{ op: "clear", entity_kind: entityKind || "" }] }),
+                    action: (id, action, a) =>
+                      call("scene.apply", { ops: [{ op: "action", id: String(id || ""), action: String(action || ""), args: a || {} }] }),
+                  },
                   media: {
                     snapshot: () => call("media.snapshot", {}),
                     play: (q) => call("media.play", q || {}),
@@ -818,7 +861,15 @@ export default function ConversationView({
                     const cargs = msg.args ?? {};
                     void (async () => {
                       try {
-                        const sideEffectMethods = new Set(["dom.click", "dom.set_value", "dom.apply", "media.play", "media.observe", "nav.go"]);
+                        const sideEffectMethods = new Set([
+                          "dom.click",
+                          "dom.set_value",
+                          "dom.apply",
+                          "scene.apply",
+                          "media.play",
+                          "media.observe",
+                          "nav.go",
+                        ]);
                         if (sideEffectMethods.has(method) && !allowClientEffects) {
                           throw new Error("side effects disabled by settings");
                         }
@@ -827,6 +878,8 @@ export default function ConversationView({
                         else if (method === "dom.click") out = makeDomClick(cargs);
                         else if (method === "dom.set_value") out = makeDomSetValue(cargs);
                         else if (method === "dom.apply") out = makeDomApply(cargs);
+                        else if (method === "scene.apply") out = makeEntityApply(cargs);
+                        else if (method === "scene.query") out = makeEntityQuery(cargs);
                         else if (method === "media.snapshot") out = makeMediaSnapshot();
                         else if (method === "media.play") out = await makeMediaPlay(cargs);
                         else if (method === "media.observe") out = await makeMediaObserve(cargs);
@@ -878,6 +931,8 @@ export default function ConversationView({
             let result: any = null;
             if (rpcKind === "dom_query") result = makeDomQuery(rpcArgs);
             else if (rpcKind === "dom_apply") result = makeDomApply(rpcArgs);
+            else if (rpcKind === "entity_apply") result = makeEntityApply(rpcArgs);
+            else if (rpcKind === "entity_query") result = makeEntityQuery(rpcArgs);
             else if (rpcKind === "media_snapshot") result = makeMediaSnapshot();
             else if (rpcKind === "location") result = makeLocation();
             else if (rpcKind === "state_snapshot") result = makeStateSnapshot();

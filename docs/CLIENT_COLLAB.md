@@ -57,6 +57,7 @@ Agents can:
 - probe: `client_peek` to inspect recent client event state without blocking
 - request snapshots + wait deterministically (see `docs/CLIENT_STATE.md`)
 - request bounded client RPCs + wait deterministically (see `docs/CLIENT_RPC.md`)
+- model collaboration UI as entities (create/update/delete/action/query) (see `docs/CLIENT_ENTITIES.md`)
 
 ## Endpoints
 

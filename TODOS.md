@@ -103,6 +103,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add a universal client RPC surface (`ui_action type=client_rpc` + `client_rpc_result`/`client_rpc_progress`) so agents can request bounded client introspection and (optionally) side-effecting actions deterministically.
 - [x] Add a scriptable client RPC kind (`rpc.kind=script_eval`) so the agent can send task-specific “probe code” (killable worker + API bridge).
 - [x] Add `rpc.kind=dom_apply` to support DOM create/edit/delete/dispatch as a first-class client-side side-effect surface.
+- [x] Add `rpc.kind=entity_apply/entity_query` to support client-agnostic scene entities (create/update/delete/action/query), with a WebUI implementation (`SceneView` + `canvas2d`).
 - [ ] Add an unsafe “page eval” client RPC engine (explicit opt-in; manual approval per call; reload as kill switch).
 - [ ] Add a higher-level browser automation layer (navigation flows + wait/assert primitives; possibly via Playwright/CDP) built on top of client RPC.
 - [ ] Add a daemon skeleton with:

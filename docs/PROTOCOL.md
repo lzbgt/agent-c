@@ -138,7 +138,7 @@ In addition to prompts/runs, the UI can send structured client events back to th
 These are optionally appended into the session message history and (when `--db-path` is enabled) mirrored into the troubleshooting DB.
 
 See: `docs/UI_CLIENT_EVENTS.md`.
-See also: `docs/CLIENT_COLLAB.md`, `docs/CLIENT_STATE.md`, `docs/CLIENT_RPC.md`, `docs/CLIENT_PROBE.md`.
+See also: `docs/CLIENT_COLLAB.md`, `docs/CLIENT_STATE.md`, `docs/CLIENT_RPC.md`, `docs/CLIENT_ENTITIES.md`, `docs/CLIENT_PROBE.md`.
 
 ### Endpoint: list client events (file-backed)
 

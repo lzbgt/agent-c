@@ -90,7 +90,7 @@ For `type="client_rpc"`, clients should expect additional fields:
 
 ### Consent
 
-- `autoplay=true` is only honored when the UI setting “Allow agent-requested audio autoplay” is enabled.
+- `autoplay=true` is only honored when the UI setting “Allow agent-requested audio autoplay” is enabled (default: enabled).
 - Even then, browsers may still require a user gesture; UI should fall back to a “Play” button.
 
 ## Relationship to loop prevention

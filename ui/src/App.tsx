@@ -34,6 +34,7 @@ import DbRunsView from "./components/DbRunsView";
 import DbUiActionsView from "./components/DbUiActionsView";
 import DbMessagesView from "./components/DbMessagesView";
 import DbClientEventsView from "./components/DbClientEventsView";
+import SceneView, { type SceneEntity } from "./components/SceneView";
 import useLocalStorageState from "./hooks/useLocalStorageState";
 import { readSseStream } from "./sse";
 
@@ -124,7 +125,7 @@ export default function App() {
     "agentui.showDebugInConversation",
     false,
   );
-  const [allowAutoplay, setAllowAutoplay] = useLocalStorageState("agentui.allowAutoplay", false);
+  const [allowAutoplay, setAllowAutoplay] = useLocalStorageState("agentui.allowAutoplay", true);
   const initialAllowClientRpcs = (() => {
     try {
       if (typeof window === "undefined") return false;
@@ -150,6 +151,144 @@ export default function App() {
   const [jobUpdatedMs, setJobUpdatedMs] = React.useState<number | null>(null);
   const [liveEvents, setLiveEvents] = React.useState<AgentEvent[]>([]);
   const cursorRef = React.useRef<number>(0);
+
+  // Session-scoped client-side scene entities (collaboration surface objects).
+  const sceneBySessionRef = React.useRef<Record<string, Record<string, SceneEntity>>>({});
+  const [sceneVersion, setSceneVersion] = React.useState<number>(0);
+  const sceneEntities = React.useMemo(() => {
+    const sid = typeof sessionId === "string" ? sessionId.trim() : "";
+    const m = (sid && sceneBySessionRef.current[sid]) || {};
+    return Object.values(m);
+  }, [sceneVersion, sessionId]);
+
+  const applySceneOps = React.useCallback(
+    (sid: string, ops: any[]) => {
+      const sessionKey = String(sid || "").trim();
+      if (!sessionKey) throw new Error("missing session_id for scene ops");
+      if (!sceneBySessionRef.current[sessionKey]) sceneBySessionRef.current[sessionKey] = {};
+      const store = sceneBySessionRef.current[sessionKey];
+
+      const now = Date.now();
+      const results: any[] = [];
+      const genId = () => `ent-${now}-${Math.random().toString(16).slice(2)}`;
+
+      const applyAction = (entity: SceneEntity, action: string, args: any) => {
+        if (entity.kind === "canvas2d" && action === "plot_sine") {
+          const a = typeof args?.amplitude === "number" ? args.amplitude : 1;
+          const f = typeof args?.frequency === "number" ? args.frequency : 1;
+          const phase = typeof args?.phase === "number" ? args.phase : 0;
+          const samples = typeof args?.samples === "number" ? Math.min(Math.max(args.samples, 16), 4096) : 512;
+          const w = typeof entity.props?.width === "number" ? entity.props.width : 640;
+          const h = typeof entity.props?.height === "number" ? entity.props.height : 240;
+          const pts: Array<{ x: number; y: number }> = [];
+          for (let i = 0; i < samples; i++) {
+            const t = i / (samples - 1);
+            const x = t * (w - 1);
+            const y0 = Math.sin(2 * Math.PI * f * t + phase) * a;
+            // Map [-a,a] to [h*0.1,h*0.9]
+            const y = (h * 0.5) - y0 * (h * 0.4);
+            pts.push({ x, y });
+          }
+          entity.props = {
+            ...(entity.props ?? {}),
+            draw: [
+              { op: "clear", color: "#0b1220" },
+              { op: "line", x1: 0, y1: h * 0.5, x2: w, y2: h * 0.5, strokeStyle: "#334155", lineWidth: 1 },
+              { op: "polyline", points: pts, strokeStyle: "#60a5fa", lineWidth: 2 },
+              { op: "text", x: 8, y: 16, text: `sin(2π*${f}*t+${phase})`, fillStyle: "#cbd5e1", font: "12px ui-sans-serif" },
+            ],
+          };
+          return { ok: true, action: "plot_sine", samples };
+        }
+        return { ok: false, error: `unsupported entity action: ${entity.kind}:${action}` };
+      };
+
+      const getCreateKind = (op: any): string => {
+        const k = typeof op?.entity_kind === "string" ? op.entity_kind : typeof op?.entityKind === "string" ? op.entityKind : "";
+        return String(k || "").trim();
+      };
+
+      for (const opRaw of (Array.isArray(ops) ? ops : []).slice(0, 100)) {
+        try {
+          const op = opRaw && typeof opRaw === "object" ? opRaw : {};
+          const kind = String(op.op ?? op.kind ?? "").trim();
+          if (!kind) throw new Error("missing op");
+          if (kind === "create") {
+            const id = String(op.id ?? "").trim() || genId();
+            const entityKind = getCreateKind(op);
+            if (!entityKind) throw new Error("create requires entity_kind");
+            const ent: SceneEntity = {
+              id,
+              kind: entityKind,
+              title: typeof op.title === "string" ? op.title : undefined,
+              props: op.props ?? {},
+              created_ms: now,
+              updated_ms: now,
+            };
+            store[id] = ent;
+            results.push({ ok: true, op: "create", id });
+            continue;
+          }
+          if (kind === "update") {
+            const id = String(op.id ?? "").trim();
+            if (!id) throw new Error("update requires id");
+            const existing = store[id];
+            if (!existing) throw new Error("entity not found");
+            const patch = op.props ?? {};
+            existing.props = { ...(existing.props ?? {}), ...(patch ?? {}) };
+            existing.updated_ms = now;
+            results.push({ ok: true, op: "update", id });
+            continue;
+          }
+          if (kind === "delete" || kind === "remove") {
+            const id = String(op.id ?? "").trim();
+            if (!id) throw new Error("delete requires id");
+            const existed = !!store[id];
+            delete store[id];
+            results.push({ ok: true, op: "delete", id, existed });
+            continue;
+          }
+          if (kind === "clear") {
+            const filterKind = typeof op.entity_kind === "string" ? op.entity_kind : typeof op.kind2 === "string" ? op.kind2 : "";
+            let removed = 0;
+            Object.keys(store).forEach((id) => {
+              if (filterKind && store[id]?.kind !== filterKind) return;
+              delete store[id];
+              removed += 1;
+            });
+            results.push({ ok: true, op: "clear", removed, kind: filterKind || undefined });
+            continue;
+          }
+          if (kind === "action") {
+            const id = String(op.id ?? "").trim();
+            const action = String(op.action ?? "").trim();
+            if (!id) throw new Error("action requires id");
+            if (!action) throw new Error("action requires action");
+            const existing = store[id];
+            if (!existing) throw new Error("entity not found");
+            const out = applyAction(existing, action, op.args ?? {});
+            existing.updated_ms = now;
+            results.push({ op: "action", id, ...out });
+            continue;
+          }
+          throw new Error(`unsupported op: ${kind}`);
+        } catch (e) {
+          results.push({ ok: false, error: String(e) });
+        }
+      }
+
+      setSceneVersion((v) => v + 1);
+      return { ok: true, results, count: Object.keys(store).length };
+    },
+    [setSceneVersion],
+  );
+
+  const clearScene = React.useCallback(() => {
+    const sid = typeof sessionId === "string" ? sessionId.trim() : "";
+    if (!sid) return;
+    sceneBySessionRef.current[sid] = {};
+    setSceneVersion((v) => v + 1);
+  }, [sessionId]);
 
   const effectiveBase = React.useMemo(() => {
     const b = String(base || "").trim();
@@ -177,6 +316,8 @@ export default function App() {
             { kind: "media_snapshot", side_effects: false, description: "Snapshot audio/video elements (paused/currentTime/duration)." },
             { kind: "location", side_effects: false, description: "Browser location (href/origin/path/search; query redacted)." },
             { kind: "state_snapshot", side_effects: false, description: "Combined snapshot (location + media_snapshot)." },
+            { kind: "entity_query", side_effects: false, description: "Query client-side entities (scene objects)." },
+            { kind: "entity_apply", side_effects: true, description: "Create/update/delete/action client-side entities (scene objects)." },
             { kind: "dom_apply", side_effects: true, description: "Apply a DOM patch (create/edit/delete/dispatch) by selector." },
             { kind: "dom_click", side_effects: true, description: "Click a DOM element by selector (side effects)." },
             { kind: "dom_set_value", side_effects: true, description: "Set input/textarea value by selector (side effects)." },
@@ -1923,6 +2064,8 @@ export default function App() {
               allowAutoplay={allowAutoplay}
               allowClientRpcs={allowClientRpcs}
               allowClientEffects={allowClientEffects}
+              sceneEntities={sceneEntities}
+              onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
             />
           </div>
         ) : null}
@@ -1942,9 +2085,13 @@ export default function App() {
               allowAutoplay={allowAutoplay}
               allowClientRpcs={allowClientRpcs}
               allowClientEffects={allowClientEffects}
+              sceneEntities={sceneEntities}
+              onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
             />
           </div>
         ) : null}
+
+        <SceneView sessionId={sessionId} entities={sceneEntities} onClear={() => clearScene()} />
 
         {activeJobId && liveEvents.length > 0 ? (
           <div>
@@ -2002,6 +2149,8 @@ export default function App() {
                             allowAutoplay={allowAutoplay}
                             allowClientRpcs={allowClientRpcs}
                             allowClientEffects={allowClientEffects}
+                            sceneEntities={sceneEntities}
+                            onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
                           />
                         </div>
                         <div className="mt-3 text-xs font-semibold text-white/70">Events (raw)</div>

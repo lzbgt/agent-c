@@ -21,6 +21,13 @@ This replaces brittle “hardcoded state” patterns with a universal request/re
 - controlled side effects (when explicitly enabled; “client YOLO”)
 - generic completion criteria (DoD) via correlated result/progress events
 
+## Entities (client-agnostic collaboration surface)
+
+DOM is Web-specific. The client-agnostic abstraction is **entities**:
+- query / create / update / action / delete
+
+See: `docs/CLIENT_ENTITIES.md`.
+
 ## Goals
 
 - Provide a universal agent ↔ client collaboration protocol usable across client types.
