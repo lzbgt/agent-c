@@ -64,6 +64,18 @@ Notes:
 - This endpoint is intended for UI indexing/browsing (cross-run).
 - Artifact payload schema matches the `artifact` event described below.
 
+## Runs (UI → agentd)
+
+The Web UI drives the daemon by posting run requests (sync or async). In addition to standard settings (provider config,
+tools mode, sandbox knobs), the daemon supports an explicit runaway-loop safety knob:
+
+- `max_repeated_tool_calls` (int, optional): stops a run if the model repeats the **exact same tool call** too many times.
+  - default: `12`
+  - `0` disables the guard (not recommended)
+
+This exists to prevent pathological “capture camera → send to UI → repeat” loops when the model does not infer a natural stop
+condition from the conversation alone.
+
 ## Artifacts
 
 ### Problem

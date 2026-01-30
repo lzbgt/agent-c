@@ -47,9 +47,23 @@ If DB is disabled, daemon behavior is unchanged (file-based session + JSONL audi
 Note: DB mirroring respects `no_session: true` requests. If a run is marked ephemeral, the daemon will not persist it
 to disk (including the DB mirror).
 
-## Schema (v1)
+## Schema versioning
+
+The DB includes a small `meta` table with a single key:
+
+- `schema_version` (integer stored as text)
+
+The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
+binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
+
+## Schema (v2)
 
 All timestamps are Unix milliseconds.
+
+### `meta`
+
+- `key TEXT PRIMARY KEY`
+- `value TEXT NOT NULL`
 
 ### `sessions`
 
@@ -118,6 +132,31 @@ Mirrors the host tool records captured during the tool loop.
 Index:
 - `CREATE INDEX tool_records_by_run ON tool_records(run_id, id)`
 
+### `artifacts`
+
+Mirrors explicit `artifact` events emitted by the tool loop (see `docs/PROTOCOL.md`).
+
+The DB does not store binary blobs; it stores file references + playback hints and includes the original artifact JSON
+for forward-compatibility.
+
+- `id INTEGER PRIMARY KEY AUTOINCREMENT`
+- `run_id INTEGER NOT NULL`
+- `ts_unix_ms INTEGER NOT NULL`
+- `session_id TEXT NOT NULL`
+- `tool_call_id TEXT` (optional)
+- `path TEXT NOT NULL` (host path; typically relative to tools root / session state)
+- `kind TEXT` (optional; `image|audio|video|text|file`)
+- `mime TEXT` (optional)
+- `title TEXT` (optional)
+- `autoplay INTEGER NOT NULL` (0/1)
+- `repeat INTEGER NOT NULL`
+- `artifact_json TEXT NOT NULL` (JSON object string; stable fallback for future schema changes)
+
+Indexes:
+- `CREATE INDEX artifacts_by_run ON artifacts(run_id, id)`
+- `CREATE INDEX artifacts_by_session ON artifacts(session_id, ts_unix_ms DESC)`
+- `CREATE INDEX artifacts_by_path ON artifacts(path)`
+
 ## Example queries
 
 Last 20 runs for a session:
@@ -146,6 +185,27 @@ Show the event timeline for a run:
 ```sql
 SELECT event_id, type, data_json
 FROM events
-WHERE run_id = 123
-ORDER BY event_id;
+	WHERE run_id = 123
+	ORDER BY event_id;
+```
+
+List recent artifacts for a session:
+
+```sql
+SELECT ts_unix_ms, path, kind, mime, title, repeat, autoplay
+FROM artifacts
+WHERE session_id = 'default'
+ORDER BY ts_unix_ms DESC
+LIMIT 50;
+```
+
+Find runs that produced many artifacts (e.g. runaway camera captures):
+
+```sql
+SELECT r.run_id, r.ts_unix_ms, COUNT(*) AS artifacts
+FROM artifacts a
+JOIN runs r ON r.run_id = a.run_id
+GROUP BY r.run_id
+HAVING artifacts >= 5
+ORDER BY artifacts DESC;
 ```

@@ -243,6 +243,14 @@ Host toolset usage:
 ./build/agent run "List files, then show README.md" --tools host --tools-root .
 ```
 
+### Runaway tool-call guard (repeat limit)
+
+Some failure modes look like “capture camera → register artifact → repeat forever”. To keep runs bounded, the tool loop has a
+guard that stops if the model repeats the **exact same tool call** too many times:
+
+- CLI: `--max-repeated-tool-calls <n>` (default: `12`; set `0` to disable)
+- Daemon/UI: request field `max_repeated_tool_calls` (see `docs/PROTOCOL.md`)
+
 Seamless compaction for tool loops:
 - In `--tools basic` / `--tools host` mode, the tool loop applies the same char-budget policy as the core runner:
   keep pinned `system` prefix + keep last `K` messages.

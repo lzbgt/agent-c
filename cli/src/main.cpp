@@ -83,6 +83,7 @@ static void usage() {
     << "  --force-tool <name>       Force a tool call on first step (verification)\n"
     << "  --require-tool-call       Fail if no tool call occurred\n"
     << "  --max-steps <n>           Max tool loop steps (default: unlimited; 0 means unlimited)\n"
+    << "  --max-repeated-tool-calls <n>  Stop runaway loops when repeating identical tool calls (default: 12; 0 disables)\n"
     << "  --stream-assistant        Stream assistant deltas (tools=none|basic|host; provider-dependent)\n";
 }
 
@@ -176,6 +177,7 @@ int main(int argc, char** argv) {
   std::string force_tool;
   bool require_tool_call = false;
   size_t max_steps = 0; // unlimited unless explicitly set
+  size_t max_repeated_tool_calls = 12;
   bool stream_assistant = false;
   bool trace = true;
   bool quiet = false;
@@ -265,6 +267,10 @@ int main(int argc, char** argv) {
   }
   if (!take_flag_u64(args, "--max-steps", &max_steps)) {
     std::cerr << "Invalid value for --max-steps\n";
+    return 2;
+  }
+  if (!take_flag_u64(args, "--max-repeated-tool-calls", &max_repeated_tool_calls)) {
+    std::cerr << "Invalid value for --max-repeated-tool-calls\n";
     return 2;
   }
   if (!take_switch(args, "--stream-assistant", &stream_assistant)) {
@@ -407,6 +413,7 @@ int main(int argc, char** argv) {
     opt.force_tool = force_tool;
     opt.require_tool_call = require_tool_call;
     opt.max_steps = max_steps;
+    opt.max_repeated_tool_calls = max_repeated_tool_calls;
     opt.max_chars = max_chars;
     opt.keep_last_messages = keep_last;
     opt.stream_assistant = stream_assistant;

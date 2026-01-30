@@ -26,6 +26,15 @@ static int64_t query_i64(sqlite3* db, const char* sql) {
   return v;
 }
 
+static void exec_sql(sqlite3* db, const char* sql) {
+  char* err = nullptr;
+  if (sqlite3_exec(db, sql, nullptr, nullptr, &err) != SQLITE_OK) {
+    std::fprintf(stderr, "exec failed: %s\n", err ? err : sqlite3_errmsg(db));
+    if (err) sqlite3_free(err);
+    std::abort();
+  }
+}
+
 int main() {
 #if !defined(AGENT_HAVE_SQLITE3)
   // Build should generally enable sqlite on desktop, but allow skipping on minimal environments.
@@ -87,6 +96,23 @@ int main() {
     return 1;
   }
 
+  agentd::AgentDb::ArtifactRow ar;
+  ar.run_id = run_id;
+  ar.ts_unix_ms = now;
+  ar.session_id = "s1";
+  ar.tool_call_id = "call_2";
+  ar.path = "build/demo.wav";
+  ar.kind = "audio";
+  ar.mime = "audio/wav";
+  ar.title = "demo clip";
+  ar.autoplay = true;
+  ar.repeat = 2;
+  ar.artifact_json = "{\"path\":\"build/demo.wav\",\"kind\":\"audio\"}";
+  if (!db.insert_artifact(ar, &err)) {
+    std::fprintf(stderr, "insert_artifact failed: %s\n", err.c_str());
+    return 1;
+  }
+
   // Open a second handle and verify row counts.
   sqlite3* raw = nullptr;
   if (sqlite3_open_v2(tmp.string().c_str(), &raw, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
@@ -98,6 +124,7 @@ int main() {
   const int64_t runs = query_i64(raw, "SELECT COUNT(*) FROM runs;");
   const int64_t events = query_i64(raw, "SELECT COUNT(*) FROM events;");
   const int64_t tools = query_i64(raw, "SELECT COUNT(*) FROM tool_records;");
+  const int64_t arts = query_i64(raw, "SELECT COUNT(*) FROM artifacts;");
   sqlite3_close(raw);
 
   assert(sessions == 1);
@@ -105,9 +132,44 @@ int main() {
   assert(runs == 1);
   assert(events == 1);
   assert(tools == 1);
+  assert(arts == 1);
+
+  // Migration smoke: open an older (v1) DB and ensure it upgrades to v2 with the artifacts table.
+  const std::filesystem::path tmp2 =
+    std::filesystem::temp_directory_path() / ("agentd_db_migrate_test_" + std::to_string((long long)getpid()) + ".sqlite");
+  std::filesystem::remove(tmp2, ec);
+  {
+    sqlite3* pre = nullptr;
+    if (sqlite3_open_v2(tmp2.string().c_str(), &pre, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr) != SQLITE_OK) {
+      std::fprintf(stderr, "sqlite3_open_v2 precreate failed\n");
+      return 1;
+    }
+    exec_sql(pre, "CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value TEXT NOT NULL);");
+    exec_sql(pre, "INSERT OR REPLACE INTO meta(key,value) VALUES('schema_version','1');");
+    sqlite3_close(pre);
+  }
+
+  agentd::AgentDb db2;
+  if (!db2.open(tmp2.string(), &err)) {
+    std::fprintf(stderr, "db2.open failed: %s\n", err.c_str());
+    return 1;
+  }
+  db2.close();
+
+  sqlite3* raw2 = nullptr;
+  if (sqlite3_open_v2(tmp2.string().c_str(), &raw2, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+    std::fprintf(stderr, "sqlite3_open_v2 raw2 failed\n");
+    return 1;
+  }
+  const int64_t ver = query_i64(raw2, "SELECT CAST(value AS INTEGER) FROM meta WHERE key='schema_version' LIMIT 1;");
+  const int64_t arts2 = query_i64(raw2, "SELECT COUNT(*) FROM artifacts;");
+  sqlite3_close(raw2);
+  assert(ver == 2);
+  assert(arts2 == 0);
 
   db.close();
   std::filesystem::remove(tmp, ec);
+  std::filesystem::remove(tmp2, ec);
   return 0;
 #endif
 }

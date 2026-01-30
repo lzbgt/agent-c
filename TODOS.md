@@ -64,6 +64,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add live job progress via event tailing:
   - `GET /api/v1/job?job_id=...&include_events=1&cursor=...` (cursor-based incremental event polling).
 - [x] Emit lightweight `heartbeat` events for async jobs during long tool execution / slow providers (avoids "hang" perception).
+- [x] Add a tool-loop runaway guard (`max_repeated_tool_calls`) and expose it end-to-end (daemon request + UI setting + CLI flag).
 - [ ] Add a daemon-level “sandbox policy” model:
   - YOLO vs host-scoped tools-root
   - future: per-tool allow/deny and command restrictions for `proc_exec` / `shell_exec`
@@ -110,4 +111,6 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add `tools/verify.sh`/`tools/publish.sh` for consistent build+test(+push) workflow with logs.
 - [x] Add key-free local daemon smokes for critical UI paths (async jobs, SSE, streamed assistant deltas, session audit) using stub OpenAI servers.
 - [x] Add an optional SQLite troubleshooting store for agentd (mirror sessions/runs/events/tool records) (`docs/DB.md`).
+- [x] Mirror explicit `artifact` events into the SQLite store (schema v2) for debugging “runaway capture” loops.
+- [ ] (Optional) Add daemon endpoints to query SQLite directly (runs/events/artifacts) for UI-native troubleshooting views.
 - [ ] Configure a git remote so `git push` works in this workspace (see `tools/setup_git_remote.sh`, supports `project.local.md: git_remote`).

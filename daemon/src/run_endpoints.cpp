@@ -292,6 +292,10 @@ static Json::Value run_request_to_json(
     opt.max_steps = max_steps;
     opt.verbose = verbose;
     opt.stream_assistant = stream_assistant;
+    if (args.isMember("max_repeated_tool_calls") && args["max_repeated_tool_calls"].isInt()) {
+      const int v = args["max_repeated_tool_calls"].asInt();
+      if (v >= 0) opt.max_repeated_tool_calls = (size_t)v;
+    }
     // Avoid UI freezes when verbose tracing captures huge request/response/tool blobs.
     // Full fidelity remains available in `trace_text`.
     opt.max_capture_bytes = max_capture_bytes == 0 ? (size_t)64 * 1024 : std::min<size_t>(max_capture_bytes, (size_t)1024 * 1024);
@@ -755,6 +759,28 @@ static Json::Value run_request_to_json(
           const auto& d = ev["data"];
           if (!t.isString() || !d.isObject()) continue;
           (void)db_or_null->insert_event(run_id, run_ts_ms, t.asString(), Json::writeString(wb, d), nullptr);
+
+          if (t.asString() == "artifact") {
+            const auto& art = d["artifact"];
+            if (art.isObject()) {
+              AgentDb::ArtifactRow ar;
+              ar.run_id = run_id;
+              ar.ts_unix_ms = run_ts_ms;
+              ar.session_id = session_id;
+              if (d.isMember("tool_call_id") && d["tool_call_id"].isString()) ar.tool_call_id = d["tool_call_id"].asString();
+              if (art.isMember("path") && art["path"].isString()) ar.path = art["path"].asString();
+              if (art.isMember("kind") && art["kind"].isString()) ar.kind = art["kind"].asString();
+              if (art.isMember("mime") && art["mime"].isString()) ar.mime = art["mime"].asString();
+              if (art.isMember("title") && art["title"].isString()) ar.title = art["title"].asString();
+              if (art.isMember("autoplay") && art["autoplay"].isBool()) ar.autoplay = art["autoplay"].asBool();
+              if (art.isMember("repeat") && art["repeat"].isInt()) ar.repeat = std::max(1, art["repeat"].asInt());
+              ar.artifact_json = Json::writeString(wb, art);
+              // Best-effort; ignore failures (DB is troubleshooting mirror).
+              if (!ar.path.empty()) {
+                (void)db_or_null->insert_artifact(ar, nullptr);
+              }
+            }
+          }
         }
       }
       if (use_tool_loop && !tool_loop_result.tool_records.empty()) {

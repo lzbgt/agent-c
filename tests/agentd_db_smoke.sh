@@ -166,6 +166,11 @@ cur.execute("SELECT COUNT(*) FROM runs WHERE session_id=?", (r'''${SESSION_ID}''
 runs = cur.fetchone()[0]
 cur.execute("SELECT COUNT(*) FROM tool_records")
 tools = cur.fetchone()[0]
+cur.execute("SELECT value FROM meta WHERE key='schema_version' LIMIT 1")
+schema_version_raw = cur.fetchone()
+schema_version = int(schema_version_raw[0]) if schema_version_raw and schema_version_raw[0] else 0
+cur.execute("SELECT COUNT(*) FROM artifacts")
+artifacts = cur.fetchone()[0]
 db.close()
 if sessions != 1:
   print("expected sessions=1 got", sessions, file=sys.stderr)
@@ -179,5 +184,10 @@ if runs != 1:
 if tools < 1:
   print("expected tool_records>=1 got", tools, file=sys.stderr)
   raise SystemExit(1)
+if schema_version < 2:
+  print("expected schema_version>=2 got", schema_version, file=sys.stderr)
+  raise SystemExit(1)
+if artifacts < 0:
+  print("expected artifacts>=0 got", artifacts, file=sys.stderr)
+  raise SystemExit(1)
 PY
-

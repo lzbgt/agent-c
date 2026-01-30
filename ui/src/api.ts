@@ -25,6 +25,8 @@ export const DaemonConfigSchema = z
       .object({
         listen_host: z.string().optional(),
         listen_port: z.number().optional(),
+        state_dir: z.string().optional(),
+        sessions_root_dir: z.string().optional(),
         base_url: z.string().optional(),
         model: z.string().optional(),
         summary_model: z.string().nullable().optional(),
@@ -84,6 +86,7 @@ export const RunRequestSchema = z.object({
   tools_root: z.string().optional(),
   host_policy: z.enum(["full", "readonly"]).optional(),
   max_steps: z.number().int().nonnegative().optional(),
+  max_repeated_tool_calls: z.number().int().nonnegative().optional(),
   max_chars: z.number().int().nonnegative().optional(),
   keep_last: z.number().int().nonnegative().optional(),
   trace: z.boolean().optional(),

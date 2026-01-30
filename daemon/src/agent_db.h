@@ -70,6 +70,21 @@ class AgentDb {
   };
   bool insert_tool_record(const ToolRecordRow& row, std::string* out_error);
 
+  struct ArtifactRow {
+    int64_t run_id = 0;
+    int64_t ts_unix_ms = 0;
+    std::string session_id;
+    std::string tool_call_id;
+    std::string path;
+    std::string kind;
+    std::string mime;
+    std::string title;
+    bool autoplay = false;
+    int repeat = 1;
+    std::string artifact_json; // JSON object string (required; stable fallback for future schema changes)
+  };
+  bool insert_artifact(const ArtifactRow& row, std::string* out_error);
+
  private:
   bool ensure_schema_locked(std::string* out_error);
   bool exec_locked(const std::string& sql, std::string* out_error);

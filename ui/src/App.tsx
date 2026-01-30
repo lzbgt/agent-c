@@ -63,6 +63,7 @@ export default function App() {
   const [orRequireTools, setOrRequireTools] = useLocalStorageState("agentui.orRequireTools", true);
   const [orLimit, setOrLimit] = useLocalStorageState("agentui.orLimit", "50");
   const [maxSteps, setMaxSteps] = useLocalStorageState("agentui.maxSteps", "0");
+  const [maxRepeatedToolCalls, setMaxRepeatedToolCalls] = useLocalStorageState("agentui.maxRepeatedToolCalls", "12");
   const [maxChars, setMaxChars] = useLocalStorageState("agentui.maxChars", "20000");
   const [keepLast, setKeepLast] = useLocalStorageState("agentui.keepLast", "16");
   const [trace, setTrace] = useLocalStorageState("agentui.trace", true);
@@ -186,6 +187,8 @@ export default function App() {
         max_capture_bytes:
           Number.isFinite(Number(maxCaptureBytes)) && Number(maxCaptureBytes) >= 0 ? Number(maxCaptureBytes) : undefined,
         max_steps: Number.isFinite(Number(maxSteps)) ? Number(maxSteps) : 0,
+        max_repeated_tool_calls:
+          Number.isFinite(Number(maxRepeatedToolCalls)) && Number(maxRepeatedToolCalls) >= 0 ? Number(maxRepeatedToolCalls) : undefined,
         max_chars: Number.isFinite(Number(maxChars)) ? Number(maxChars) : 20000,
         keep_last: Number.isFinite(Number(keepLast)) ? Number(keepLast) : 16,
         trace,
@@ -838,6 +841,17 @@ export default function App() {
                   value={maxSteps}
                   onChange={(e) => setMaxSteps(e.target.value)}
                 />
+              </div>
+              <div>
+                <Label>Max repeated tool calls</Label>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={maxRepeatedToolCalls}
+                  onChange={(e) => setMaxRepeatedToolCalls(e.target.value)}
+                />
+                <div className="mt-1 text-[11px] text-white/40">
+                  Stops runaway loops when the model repeats the exact same tool call. Set <code>0</code> to disable.
+                </div>
               </div>
               <div>
                 <Label>Max chars</Label>
