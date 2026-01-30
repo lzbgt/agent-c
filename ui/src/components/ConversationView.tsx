@@ -3,6 +3,7 @@ import { apiPostSessionUiEvent, type AgentEvent } from "../api";
 import Markdown from "./Markdown";
 import ToolResultView from "./ToolResultView";
 import ArtifactView from "./ArtifactView";
+import LlmDebugView from "./LlmDebugView";
 
 function safeJsonParse(s: string): any | null {
   try {
@@ -1508,6 +1509,22 @@ export default function ConversationView({
         return;
       }
       if (type === "llm_request" || type === "llm_response" || type === "start" || type === "end" || type === "done") {
+        if (type === "llm_request") {
+          items.push(
+            <Card key={`dbg-${type}-${idx}`} title="LLM request">
+              <LlmDebugView kind="request" data={data} />
+            </Card>,
+          );
+          return;
+        }
+        if (type === "llm_response") {
+          items.push(
+            <Card key={`dbg-${type}-${idx}`} title="LLM response">
+              <LlmDebugView kind="response" data={data} />
+            </Card>,
+          );
+          return;
+        }
         items.push(
           <Card key={`dbg-${type}-${idx}`} title={`Debug: ${type}`}>
             <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">

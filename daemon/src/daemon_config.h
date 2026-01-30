@@ -48,29 +48,19 @@ struct DaemonConfig {
   size_t max_chars_default = 20000;
   size_t keep_last_default = 16;
   // Default tool-loop step limit when requests omit `max_steps`.
-  // 0 means unlimited (not recommended for long-running daemons).
-  size_t max_steps_default = 32;
+  // 0 means unlimited.
+  size_t max_steps_default = 0;
   // Default cap on total tool calls when requests omit it.
   // 0 means unlimited.
-  size_t max_tool_calls_total_default = 128;
+  size_t max_tool_calls_total_default = 0;
   // Default per-tool cap when requests omit it.
   // 0 means unlimited / disabled.
   size_t max_tool_calls_per_tool_default = 0;
 
   // Default explicit per-tool tool-call limits when requests omit them.
   // These are applied in addition to (and take precedence over) max_tool_calls_per_tool_default.
-  //
-  // Recommended defaults aim to bound high-risk/high-noise tools without breaking benign workflows.
-  // Operators can override via flags/env.
-  std::vector<std::pair<std::string, size_t>> tool_call_limits_default = {
-    {"proc_exec", 4},
-    {"shell_exec", 16},
-    // UI/media signaling can also be spammed in runaway loops; keep it bounded by default.
-    {"artifact_register", 16},
-    {"ui_action", 16},
-    // Single-shot tool: keep it extremely bounded by default. Override per-run if you need more frames.
-    {"camera_capture", 1},
-  };
+  // Empty means "no explicit per-tool caps by default".
+  std::vector<std::pair<std::string, size_t>> tool_call_limits_default = {};
 
   // Async job GC (daemon longevity): finished jobs are kept only for a bounded time/count.
   int64_t job_ttl_ms = 30 * 60 * 1000; // 30 minutes

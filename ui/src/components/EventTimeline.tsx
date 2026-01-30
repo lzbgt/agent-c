@@ -1,6 +1,7 @@
 import React from "react";
 import type { AgentEvent } from "../api";
 import Markdown from "./Markdown";
+import LlmDebugView from "./LlmDebugView";
 import ToolResultView from "./ToolResultView";
 
 function safeJsonParse(s: string): any | null {
@@ -83,13 +84,9 @@ function EventCard({
                 : "(enable verbose to capture arguments)"}
             </pre>
           ) : type === "llm_request" ? (
-            <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
-              {data.request_json ? String(data.request_json) : "(enable verbose to capture request body)"}
-            </pre>
+            <LlmDebugView kind="request" data={data} />
           ) : type === "llm_response" ? (
-            <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
-              {data.response_body ? String(data.response_body) : "(enable verbose to capture response body)"}
-            </pre>
+            <LlmDebugView kind="response" data={data} />
           ) : (
             <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
               {typeof data === "string" ? data : JSON.stringify(data, null, 2)}

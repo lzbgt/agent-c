@@ -83,7 +83,7 @@ static void usage() {
     << "  --force-tool <name>       Force a tool call on first step (verification)\n"
     << "  --require-tool-call       Fail if no tool call occurred\n"
     << "  --max-steps <n>           Max tool loop steps (default: unlimited; 0 means unlimited)\n"
-    << "  --max-repeated-tool-calls <n>  Stop runaway loops when repeating identical tool calls (default: 12; 0 disables)\n"
+    << "  --max-repeated-tool-calls <n>  Stop runaway loops when repeating identical tool calls (default: 0; 0 disables)\n"
     << "  --max-tool-calls-total <n>     Max total tool calls (default: unlimited; 0 means unlimited)\n"
     << "  --max-tool-calls-per-tool <n>  Max tool calls per tool name (default: unlimited; 0 means unlimited)\n"
     << "  --tool-call-limit <tool>=<n>  Per-tool call cap (repeatable; 0 means unlimited for that tool)\n"
@@ -220,7 +220,7 @@ int main(int argc, char** argv) {
   std::string force_tool;
   bool require_tool_call = false;
   size_t max_steps = 0; // unlimited unless explicitly set
-  size_t max_repeated_tool_calls = 12;
+  size_t max_repeated_tool_calls = 0;
   size_t max_tool_calls_total = 0;
   size_t max_tool_calls_per_tool = 0;
   std::vector<std::string> tool_call_limit_specs;

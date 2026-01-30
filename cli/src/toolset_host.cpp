@@ -2071,16 +2071,14 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     if (st != AGENT_OK) goto fail;
   }
 
-  // Camera capture is intentionally gated behind exec-enabled sandbox:
-  // - On daemon, exec-enabled implies yolo=true.
-  // - On CLI, exec-enabled is typically true.
-  // This prevents scoped/safe inspection runs from exposing device/capture tools that may confuse the model
-  // (and avoids returning mock captures by default in scoped mode).
-  if (cfg.policy == HostToolsetPolicyMode::Full && cfg.enable_process_exec) {
+  // Camera capture:
+  // - If exec is disabled (scoped/safe runs), the tool still exists but will default to backend=mock.
+  // - If exec is enabled, backend=ffmpeg is available (subject to local ffmpeg/device permissions).
+  if (cfg.policy == HostToolsetPolicyMode::Full) {
     st = add_tool(
       r,
       "camera_capture",
-      "Capture a single image from the host camera (or mock backend). Returns JSON envelope with data.artifact for UI rendering; the tool loop emits a derived artifact event.",
+      "Capture a single image from the host camera (or mock backend). In scoped/no-exec runs, prefer backend=mock. Returns JSON envelope with data.artifact for UI rendering; the tool loop emits a derived artifact event.",
       "{"
       "\"type\":\"object\","
       "\"properties\":{"

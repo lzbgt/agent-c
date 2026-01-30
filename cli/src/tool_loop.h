@@ -31,7 +31,7 @@ struct ToolLoopOptions {
   // Repetition guard: abort if the same tool call (same tool name + arguments) is repeated
   // more than this many times consecutively. Helps prevent runaway loops (e.g. repeated camera capture).
   // 0 disables the guard.
-  size_t max_repeated_tool_calls = 12;
+  size_t max_repeated_tool_calls = 0;
   // Cap total tool calls across the entire run. 0 disables.
   // Useful when a model requests many tool calls in a single step.
   size_t max_tool_calls_total = 0;

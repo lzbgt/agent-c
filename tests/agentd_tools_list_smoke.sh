@@ -39,6 +39,7 @@ if missing:
 PY
 
 # scoped (yolo=0) should omit exec tools but keep patch + fs inspection.
+# camera_capture remains available and should default to backend=mock when exec is disabled.
 resp_scoped="$(curl -fsS --noproxy "*" --max-time 5 "${DAEMON_URL}/api/v1/tools?tools=host&yolo=0")"
 
 python3 - <<PY
@@ -52,12 +53,12 @@ if obj.get("effective_yolo") not in (False, 0):
   raise SystemExit(1)
 defs = obj.get("defs") or []
 names = {d.get("name") for d in defs if isinstance(d, dict)}
-must_absent = {"shell_exec", "proc_exec", "camera_capture"}
+must_absent = {"shell_exec", "proc_exec"}
 present = sorted(must_absent & names)
 if present:
   print("exec tools should be omitted in scoped mode:", present, file=sys.stderr)
   raise SystemExit(1)
-must_present = {"file_apply_patch", "fs_read", "fs_list", "fs_stat", "fs_find", "text_search"}
+must_present = {"file_apply_patch", "fs_read", "fs_list", "fs_stat", "fs_find", "text_search", "camera_capture"}
 missing = sorted(must_present - names)
 if missing:
   print("missing scoped tools:", missing, file=sys.stderr)

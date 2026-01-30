@@ -47,11 +47,11 @@ function sleep(ms: number) {
 }
 
 export default function App() {
-  const [showSettings, setShowSettings] = useLocalStorageState("agentui.showSettings", true);
+  const [showSettings, setShowSettings] = useLocalStorageState("agentui.showSettings", false);
 
   const [base, setBase] = useLocalStorageState("agentui.base", "http://127.0.0.1:8123");
   const [daemonAuthToken, setDaemonAuthToken] = useLocalStorageState("agentui.daemonAuthToken", "");
-  const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "inspect this project and explain");
+  const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "");
   const [sessionId, setSessionId] = useLocalStorageState("agentui.sessionId", "default");
   const [clientId] = useLocalStorageState(
     "agentui.clientId",
@@ -109,11 +109,11 @@ export default function App() {
   const [orRequireMultimodal, setOrRequireMultimodal] = useLocalStorageState("agentui.orRequireMultimodal", true);
   const [orRequireTools, setOrRequireTools] = useLocalStorageState("agentui.orRequireTools", true);
   const [orLimit, setOrLimit] = useLocalStorageState("agentui.orLimit", "50");
-  // Blank means "use daemon default". This avoids accidental infinite loops.
+  // Blank means "use daemon default" (which may be unlimited). If you want a hard stop, set an explicit limit.
   // Explicit `0` is still supported and means unlimited.
   const [maxSteps, setMaxSteps] = useLocalStorageState("agentui.maxSteps", "");
   const [maxStepsUserSet, setMaxStepsUserSet] = useLocalStorageState("agentui.maxStepsUserSet", false);
-  const [maxRepeatedToolCalls, setMaxRepeatedToolCalls] = useLocalStorageState("agentui.maxRepeatedToolCalls", "12");
+  const [maxRepeatedToolCalls, setMaxRepeatedToolCalls] = useLocalStorageState("agentui.maxRepeatedToolCalls", "0");
   const [maxToolCallsTotal, setMaxToolCallsTotal] = useLocalStorageState("agentui.maxToolCallsTotal", "");
   const [maxToolCallsPerTool, setMaxToolCallsPerTool] = useLocalStorageState("agentui.maxToolCallsPerTool", "");
   const [toolCallLimits, setToolCallLimits] = useLocalStorageState("agentui.toolCallLimits", "");
@@ -130,7 +130,7 @@ export default function App() {
   // to act with side-effects by default. Users can still disable these via Settings (persisted).
   const [allowClientRpcs, setAllowClientRpcs] = useLocalStorageState("agentui.allowClientRpcs", true);
   const [allowClientEffects, setAllowClientEffects] = useLocalStorageState("agentui.allowClientEffects", true);
-  const [allowUnsafePageEval, setAllowUnsafePageEval] = useLocalStorageState("agentui.allowUnsafePageEval", false);
+  const [allowUnsafePageEval, setAllowUnsafePageEval] = useLocalStorageState("agentui.allowUnsafePageEval", true);
   const [dbRunsOnlyErrors, setDbRunsOnlyErrors] = useLocalStorageState("agentui.dbRunsOnlyErrors", true);
   const [dbRunsStopReason, setDbRunsStopReason] = useLocalStorageState("agentui.dbRunsStopReason", "");
   // Keep prompts separate so an active async run does not overwrite the "last completed" view.
@@ -413,6 +413,19 @@ export default function App() {
     },
     onSuccess: (v) => {
       if (v.ok && v.session_id) {
+        // New session is expected to be a "clean slate" UX.
+        // Clear run UI state and any persisted prompt so the user doesn't see stale history from a prior session.
+        setPrompt("");
+        lastRunPromptRef.current = "";
+        setLastRunPrompt("");
+        setLastCompletedPrompt("");
+        setResult(undefined);
+        setLiveEvents([]);
+        setActiveJobId(null);
+        setJobStatus(null);
+        setJobError(null);
+        setJobUpdatedMs(null);
+        cursorRef.current = 0;
         setSessionId(v.session_id);
         void sessions.refetch();
         void audit.refetch();
@@ -916,7 +929,7 @@ export default function App() {
             <div className="text-xs text-white/60">
               {sessions.isFetching ? "Loading…" : sessions.isError ? "Failed to load" : null}
             </div>
-            <div className="mt-3 flex gap-2">
+            <div className="mt-3 flex flex-wrap gap-2">
               <button
                 className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
                 onClick={() => sessions.refetch()}
@@ -934,84 +947,84 @@ export default function App() {
               >
                 New session
               </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-                onClick={() => toolsDefs.refetch()}
-                type="button"
-              >
-                Refresh tools
-              </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-                onClick={() => audit.refetch()}
-                type="button"
-                disabled={!sessionId}
-              >
-                Load audit
-              </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-                onClick={() => sessionClientEvents.refetch()}
-                type="button"
-                disabled={!sessionId}
-                title="Reads <session>.client_events.jsonl (works even if DB is disabled)"
-              >
-                Load client events
-              </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-                onClick={() => sessionArtifacts.refetch()}
-                type="button"
-                disabled={!sessionId}
-              >
-                Load artifacts
-              </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
-                onClick={() => {
-                  setSelectedDbRunId(null);
-                  void dbRuns.refetch();
-                }}
-                type="button"
-                disabled={!sessionId || dbRuns.isFetching}
-                title="Query the optional SQLite troubleshooting DB (requires agentd --db-path)"
-              >
-                Load DB runs
-              </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
-                onClick={() => {
-                  void dbUiActions.refetch();
-                }}
-                type="button"
-                disabled={!sessionId || dbUiActions.isFetching}
-                title="Query the optional SQLite troubleshooting DB (requires agentd --db-path)"
-              >
-                Load DB ui_actions
-              </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
-                onClick={() => {
-                  void dbMessages.refetch();
-                }}
-                type="button"
-                disabled={!sessionId || dbMessages.isFetching}
-                title="Query the optional SQLite troubleshooting DB (requires agentd --db-path)"
-              >
-                Load DB messages
-              </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
-                onClick={() => {
-                  void dbClientEvents.refetch();
-                }}
-                type="button"
-                disabled={!sessionId || dbClientEvents.isFetching}
-                title="Query the optional SQLite troubleshooting DB (requires agentd --db-path)"
-              >
-                Load DB client_events
-              </button>
             </div>
+
+            <details className="mt-3 rounded-md border border-white/10 bg-black/20 p-3">
+              <summary className="cursor-pointer text-xs font-semibold text-white/70">Troubleshooting</summary>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+                  onClick={() => toolsDefs.refetch()}
+                  type="button"
+                >
+                  Refresh tools
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+                  onClick={() => audit.refetch()}
+                  type="button"
+                  disabled={!sessionId}
+                >
+                  Load audit
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+                  onClick={() => sessionClientEvents.refetch()}
+                  type="button"
+                  disabled={!sessionId}
+                  title="Reads <session>.client_events.jsonl (works even if DB is disabled)"
+                >
+                  Load client events
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+                  onClick={() => sessionArtifacts.refetch()}
+                  type="button"
+                  disabled={!sessionId}
+                >
+                  Load artifacts
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                  onClick={() => {
+                    setSelectedDbRunId(null);
+                    void dbRuns.refetch();
+                  }}
+                  type="button"
+                  disabled={!sessionId || dbRuns.isFetching}
+                  title="Query the optional SQLite troubleshooting DB (requires agentd --db-path)"
+                >
+                  Load DB runs
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                  onClick={() => void dbUiActions.refetch()}
+                  type="button"
+                  disabled={!sessionId || dbUiActions.isFetching}
+                  title="Query the optional SQLite troubleshooting DB (requires agentd --db-path)"
+                >
+                  Load DB ui_actions
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                  onClick={() => void dbMessages.refetch()}
+                  type="button"
+                  disabled={!sessionId || dbMessages.isFetching}
+                  title="Query the optional SQLite troubleshooting DB (requires agentd --db-path)"
+                >
+                  Load DB messages
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                  onClick={() => void dbClientEvents.refetch()}
+                  type="button"
+                  disabled={!sessionId || dbClientEvents.isFetching}
+                  title="Query the optional SQLite troubleshooting DB (requires agentd --db-path)"
+                >
+                  Load DB client_events
+                </button>
+              </div>
+            </details>
             <div className="mt-3 max-h-80 overflow-auto rounded-md border border-white/10 bg-black/20">
               {(sessions.data?.sessions ?? []).map((sid) => (
                 <button
@@ -1592,7 +1605,7 @@ export default function App() {
                 <input
                   className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
                   value={maxSteps}
-                  placeholder={String(daemonConfig.data?.daemon?.max_steps_default ?? "32")}
+                  placeholder={String(daemonConfig.data?.daemon?.max_steps_default ?? "0")}
                   onChange={(e) => {
                     setMaxStepsUserSet(true);
                     setMaxSteps(e.target.value);
@@ -1600,7 +1613,7 @@ export default function App() {
                 />
                 {String(maxSteps).trim() === "0" ? (
                   <div className="mt-1 text-[11px] text-amber-200/80">
-                    Unlimited steps can loop forever. Prefer blank (daemon default) or a small cap (e.g. 16–64).
+                    Unlimited steps can loop forever. If you want a hard stop, set a small cap (e.g. 16–64).
                   </div>
                 ) : null}
               </div>
@@ -1620,7 +1633,7 @@ export default function App() {
                 <input
                   className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
                   value={maxToolCallsTotal}
-                  placeholder={String(daemonConfig.data?.daemon?.max_tool_calls_total_default ?? "128")}
+                  placeholder={String(daemonConfig.data?.daemon?.max_tool_calls_total_default ?? "0")}
                   onChange={(e) => setMaxToolCallsTotal(e.target.value)}
                 />
                 <div className="mt-1 text-[11px] text-white/40">
@@ -2116,105 +2129,122 @@ export default function App() {
           )}
         </div>
 
-        {activeJobId && liveEvents.length > 0 ? (
-          <div>
-            <div className="mb-2 text-sm font-semibold text-white/80">Live Events</div>
-            <EventTimeline baseUrl={effectiveBase} yolo={yolo} events={liveEvents} />
-          </div>
-        ) : null}
+        {(showSettings && activeJobId && liveEvents.length > 0) ||
+        (showSettings && result?.events && result.events.length > 0) ||
+        (showSettings && audit.data?.entries && audit.data.entries.length > 0) ||
+        (showSettings &&
+          sessionClientEvents.data?.ok &&
+          Array.isArray(sessionClientEvents.data.events) &&
+          sessionClientEvents.data.events.length > 0) ||
+        (showSettings && result?.trace_text) ? (
+          <details className="rounded-lg border border-white/10 bg-white/5 p-3">
+            <summary className="cursor-pointer text-xs font-semibold text-white/70">Debug / diagnostics</summary>
 
-        {result?.events && result.events.length > 0 ? (
-          <div>
-            <div className="mb-2 text-sm font-semibold text-white/80">{activeJobId ? "Events (last completed)" : "Events"}</div>
-            <EventTimeline baseUrl={effectiveBase} yolo={yolo} events={result.events} />
-          </div>
-        ) : null}
+            {activeJobId && liveEvents.length > 0 ? (
+              <div className="mt-4">
+                <div className="mb-2 text-sm font-semibold text-white/80">Live Events</div>
+                <EventTimeline baseUrl={effectiveBase} yolo={yolo} events={liveEvents} />
+              </div>
+            ) : null}
 
-        {audit.data?.entries && audit.data.entries.length > 0 ? (
-          <div>
-            <div className="mb-2 text-sm font-semibold text-white/80">Session Audit (latest)</div>
-            <div className="grid gap-3">
-              {audit.data.entries
-                .slice(-10)
-                .reverse()
-                .map((e: any, idx: number) => (
-                  <div key={idx} className="rounded-lg border border-white/10 bg-white/5 p-3">
-                    <div className="text-xs text-white/50">
-                      {typeof e.ts_unix_ms === "number" ? new Date(e.ts_unix_ms).toISOString() : ""}
-                    </div>
-                    {typeof e.prompt === "string" ? (
-                      <div className="mt-2">
-                        <div className="text-xs font-semibold text-white/70">Prompt</div>
-                        <pre className="mt-1 whitespace-pre-wrap text-xs text-white/80">{e.prompt}</pre>
-                      </div>
-                    ) : null}
-                    {typeof e.assistant_text === "string" ? (
-                      <div className="mt-2">
-                        <div className="text-xs font-semibold text-white/70">Assistant</div>
-                        <div className="mt-1">
-                          <Markdown text={e.assistant_text} />
+            {result?.events && result.events.length > 0 ? (
+              <div className="mt-6">
+                <div className="mb-2 text-sm font-semibold text-white/80">{activeJobId ? "Events (last completed)" : "Events"}</div>
+                <EventTimeline baseUrl={effectiveBase} yolo={yolo} events={result.events} />
+              </div>
+            ) : null}
+
+            {audit.data?.entries && audit.data.entries.length > 0 ? (
+              <div className="mt-6">
+                <div className="mb-2 text-sm font-semibold text-white/80">Session Audit (latest)</div>
+                <div className="grid gap-3">
+                  {audit.data.entries
+                    .slice(-10)
+                    .reverse()
+                    .map((e: any, idx: number) => (
+                      <div key={idx} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                        <div className="text-xs text-white/50">
+                          {typeof e.ts_unix_ms === "number" ? new Date(e.ts_unix_ms).toISOString() : ""}
                         </div>
+                        {typeof e.prompt === "string" ? (
+                          <div className="mt-2">
+                            <div className="text-xs font-semibold text-white/70">Prompt</div>
+                            <pre className="mt-1 whitespace-pre-wrap text-xs text-white/80">{e.prompt}</pre>
+                          </div>
+                        ) : null}
+                        {typeof e.assistant_text === "string" ? (
+                          <div className="mt-2">
+                            <div className="text-xs font-semibold text-white/70">Assistant</div>
+                            <div className="mt-1">
+                              <Markdown text={e.assistant_text} />
+                            </div>
+                          </div>
+                        ) : null}
+                        {Array.isArray(e.events) ? (
+                          <div className="mt-3">
+                            <div className="text-xs font-semibold text-white/70">Conversation</div>
+                            <div className="mt-2">
+                              <ConversationView
+                                baseUrl={effectiveBase}
+                                yolo={yolo}
+                                sessionId={sessionId}
+                                client={client}
+                                daemonAuthToken={daemonAuthToken}
+                                prompt={String(e.prompt ?? "")}
+                                events={e.events}
+                                showDebugEvents={showDebugInConversation}
+                                allowAutoplay={allowAutoplay}
+                                allowClientRpcs={allowClientRpcs}
+                                allowClientEffects={allowClientEffects}
+                                allowUnsafePageEval={allowUnsafePageEval}
+                                sceneEntities={sceneEntities}
+                                onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
+                              />
+                            </div>
+                            <div className="mt-3 text-xs font-semibold text-white/70">Events (raw)</div>
+                            <div className="mt-2">
+                              <EventTimeline baseUrl={effectiveBase} yolo={yolo} events={e.events} />
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
-                    ) : null}
-                    {Array.isArray(e.events) ? (
-                      <div className="mt-3">
-                        <div className="text-xs font-semibold text-white/70">Conversation</div>
+                    ))}
+                </div>
+              </div>
+            ) : null}
+
+            {sessionClientEvents.data?.ok &&
+            Array.isArray(sessionClientEvents.data.events) &&
+            sessionClientEvents.data.events.length > 0 ? (
+              <div className="mt-6">
+                <div className="mb-2 text-sm font-semibold text-white/80">Session Client Events (latest)</div>
+                <div className="grid gap-3">
+                  {sessionClientEvents.data.events
+                    .slice(-20)
+                    .reverse()
+                    .map((e: any, idx: number) => (
+                      <div key={idx} className="rounded-lg border border-white/10 bg-black/20 p-3">
+                        <div className="text-xs text-white/50">
+                          {typeof e.ts_unix_ms === "number" ? new Date(e.ts_unix_ms).toISOString() : ""}
+                        </div>
                         <div className="mt-2">
-                          <ConversationView
-                            baseUrl={effectiveBase}
-                            yolo={yolo}
-                            sessionId={sessionId}
-                            client={client}
-                            daemonAuthToken={daemonAuthToken}
-                            prompt={String(e.prompt ?? "")}
-                            events={e.events}
-                            showDebugEvents={showDebugInConversation}
-                            allowAutoplay={allowAutoplay}
-                            allowClientRpcs={allowClientRpcs}
-                            allowClientEffects={allowClientEffects}
-                            allowUnsafePageEval={allowUnsafePageEval}
-                            sceneEntities={sceneEntities}
-                            onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
-                          />
-                        </div>
-                        <div className="mt-3 text-xs font-semibold text-white/70">Events (raw)</div>
-                        <div className="mt-2">
-                          <EventTimeline baseUrl={effectiveBase} yolo={yolo} events={e.events} />
+                          <pre className="max-h-[220px] overflow-auto whitespace-pre-wrap break-words text-xs text-white/80">
+                            {JSON.stringify(e, null, 2)}
+                          </pre>
                         </div>
                       </div>
-                    ) : null}
-                  </div>
-                ))}
-            </div>
-          </div>
-        ) : null}
+                    ))}
+                </div>
+              </div>
+            ) : null}
 
-        {sessionClientEvents.data?.ok &&
-        Array.isArray(sessionClientEvents.data.events) &&
-        sessionClientEvents.data.events.length > 0 ? (
-          <div>
-            <div className="mb-2 text-sm font-semibold text-white/80">Session Client Events (latest)</div>
-            <div className="grid gap-3">
-              {sessionClientEvents.data.events
-                .slice(-20)
-                .reverse()
-                .map((e: any, idx: number) => (
-                  <div key={idx} className="rounded-lg border border-white/10 bg-white/5 p-3">
-                    <div className="text-xs text-white/50">
-                      {typeof e.ts_unix_ms === "number" ? new Date(e.ts_unix_ms).toISOString() : ""}
-                    </div>
-                    <div className="mt-2">
-                      <pre className="max-h-[220px] overflow-auto whitespace-pre-wrap break-words text-xs text-white/80">
-                        {JSON.stringify(e, null, 2)}
-                      </pre>
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </div>
+            {result?.trace_text ? (
+              <div className="mt-6">
+                <TraceView trace={result.trace_text} />
+              </div>
+            ) : null}
+          </details>
         ) : null}
-
-        {result?.trace_text ? <TraceView trace={result.trace_text} /> : null}
       </div>
     </div>
   );
