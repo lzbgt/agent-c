@@ -65,6 +65,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
   - future: per-tool allow/deny and command restrictions for `proc_exec` / `shell_exec`
   - [x] add `--host-policy full|readonly` (readonly omits exec + patch tools)
   - [x] support per-request `host_policy` and `/api/v1/tools?host_policy=...` (can only tighten vs daemon default)
+  - [x] Tighten `yolo` + `tools_root` the same way (requests can only reduce scope), including `/api/v1/file`
   - [x] add `/api/v1/tools` for clients to query active tool schemas
 
 ## Near-term (UI polish)

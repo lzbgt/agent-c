@@ -5,7 +5,9 @@
 #include "agent/runner.h"
 
 #include "http_util.h"
+#include "sandbox_policy.h"
 #include "string_util.h"
+#include "openrouter_models_endpoint.h"
 
 #include "default_system_prompt.h"
 #include "file_persistor.h"
@@ -85,34 +87,6 @@ struct DaemonConfig {
   size_t max_jobs = 256;
 };
 
-static const char* host_policy_to_string(HostToolsetPolicyMode p) {
-  return (p == HostToolsetPolicyMode::ReadOnly) ? "readonly" : "full";
-}
-
-static bool host_policy_from_string(const std::string& s, HostToolsetPolicyMode* out) {
-  if (!out) return false;
-  if (s == "full") {
-    *out = HostToolsetPolicyMode::Full;
-    return true;
-  }
-  if (s == "readonly") {
-    *out = HostToolsetPolicyMode::ReadOnly;
-    return true;
-  }
-  return false;
-}
-
-// Policy tightening: a request can only *reduce* capabilities compared to the daemon default.
-static HostToolsetPolicyMode tighten_host_policy(HostToolsetPolicyMode base, HostToolsetPolicyMode requested) {
-  if (base == HostToolsetPolicyMode::ReadOnly) {
-    return HostToolsetPolicyMode::ReadOnly;
-  }
-  if (requested == HostToolsetPolicyMode::ReadOnly) {
-    return HostToolsetPolicyMode::ReadOnly;
-  }
-  return HostToolsetPolicyMode::Full;
-}
-
 static bool daemon_auth_ok(const DaemonConfig& cfg, const HttpRequest& req) {
   if (cfg.auth_token.empty()) {
     return true;
@@ -172,11 +146,15 @@ static Json::Value run_request_to_json(
   }
 
   const std::string tools = args.isMember("tools") && args["tools"].isString() ? args["tools"].asString() : daemon_cfg.tools;
-  const bool yolo = args.isMember("yolo") && args["yolo"].isBool() ? args["yolo"].asBool() : daemon_cfg.yolo_default;
+  const bool requested_yolo_set = args.isMember("yolo") && args["yolo"].isBool();
+  const bool requested_yolo = requested_yolo_set ? args["yolo"].asBool() : daemon_cfg.yolo_default;
+  const bool yolo = sandbox_tighten_yolo(daemon_cfg.yolo_default, requested_yolo, requested_yolo_set);
   const bool no_default_system =
     args.isMember("no_default_system") && args["no_default_system"].isBool() ? args["no_default_system"].asBool() : daemon_cfg.no_default_system;
   const std::string system_msg = args.isMember("system") && args["system"].isString() ? args["system"].asString() : "";
-  std::string tools_root = args.isMember("tools_root") && args["tools_root"].isString() ? args["tools_root"].asString() : daemon_cfg.tools_root;
+  const bool requested_tools_root_set = args.isMember("tools_root") && args["tools_root"].isString();
+  const std::string requested_tools_root = requested_tools_root_set ? args["tools_root"].asString() : "";
+  std::string tools_root;
   HostToolsetPolicyMode requested_policy = daemon_cfg.host_policy;
   if (args.isMember("host_policy") && args["host_policy"].isString()) {
     HostToolsetPolicyMode p{};
@@ -191,13 +169,23 @@ static Json::Value run_request_to_json(
     requested_policy = p;
   }
   const HostToolsetPolicyMode effective_policy = tighten_host_policy(daemon_cfg.host_policy, requested_policy);
-  if (tools_root == "@host") {
-    tools_root = daemon_cfg.host_scope_root;
-  } else if (tools_root == "@cwd") {
-    tools_root = "";
-  }
-  if (yolo) {
-    tools_root.clear();
+  {
+    std::string root_err;
+    if (!sandbox_resolve_tools_root(
+          daemon_cfg.host_scope_root,
+          yolo,
+          daemon_cfg.tools_root,
+          requested_tools_root,
+          requested_tools_root_set,
+          &tools_root,
+          &root_err
+        )) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["rpc_status"] = 403;
+      o["error"] = root_err.empty() ? "invalid tools_root" : root_err;
+      return o;
+    }
   }
   uint64_t max_steps_u64 = 0;
   const size_t max_steps = json_get_u64_nonneg(args, "max_steps", &max_steps_u64) ? (size_t)max_steps_u64 : 0;
@@ -1121,15 +1109,15 @@ int main(int argc, char** argv) {
     if (const auto q = query_get(req.query, "tools"); q && !q->empty()) {
       tools = *q;
     }
-    // Allow callers to request the daemon's host scope via tools_root=@host.
-    std::string tools_root = cfg.tools_root;
-    if (const auto q = query_get(req.query, "tools_root"); q) {
-      tools_root = *q;
-    }
-    bool yolo = cfg.yolo_default;
-    if (const auto q = query_get(req.query, "yolo"); q) {
-      yolo = string_to_bool(*q);
-    }
+    const auto q_tools_root = query_get(req.query, "tools_root");
+    const bool requested_tools_root_set = q_tools_root && !q_tools_root->empty();
+    const std::string requested_tools_root = requested_tools_root_set ? *q_tools_root : "";
+
+    const auto q_yolo = query_get(req.query, "yolo");
+    const bool requested_yolo_set = q_yolo.has_value();
+    const bool requested_yolo = requested_yolo_set ? string_to_bool(*q_yolo) : cfg.yolo_default;
+    const bool yolo = sandbox_tighten_yolo(cfg.yolo_default, requested_yolo, requested_yolo_set);
+    std::string tools_root;
     HostToolsetPolicyMode requested_policy = cfg.host_policy;
     if (const auto q = query_get(req.query, "host_policy"); q && !q->empty()) {
       HostToolsetPolicyMode p{};
@@ -1141,14 +1129,21 @@ int main(int argc, char** argv) {
       requested_policy = p;
     }
     const HostToolsetPolicyMode effective_policy = tighten_host_policy(cfg.host_policy, requested_policy);
-
-    if (tools_root == "@host") {
-      tools_root = cfg.host_scope_root;
-    } else if (tools_root == "@cwd") {
-      tools_root = "";
-    }
-    if (yolo) {
-      tools_root.clear();
+    {
+      std::string root_err;
+      if (!sandbox_resolve_tools_root(
+            cfg.host_scope_root,
+            yolo,
+            cfg.tools_root,
+            requested_tools_root,
+            requested_tools_root_set,
+            &tools_root,
+            &root_err
+          )) {
+        resp->status = 403;
+        resp->body = std::string("{\"ok\":false,\"error\":") + json_stringify(Json::Value(root_err.empty() ? "invalid tools_root" : root_err)) + "}";
+        return;
+      }
     }
 
     Json::Value out(Json::objectValue);
@@ -1223,228 +1218,7 @@ int main(int argc, char** argv) {
     resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
     return;
 #else
-    // Query params:
-    // - min_total/max_total: total $/1M tokens (prompt+completion)
-    // - require_multimodal_input: 1/0
-    // - require_tools: 1/0
-    // - include_free: 1/0
-    // - limit: max rows
-    // - refresh: bypass cache
-    const double min_total = [&]() -> double {
-      const auto q = query_get(req.query, "min_total");
-      if (!q || q->empty()) return 0.01;
-      try { return std::stod(*q); } catch (...) { return 0.01; }
-    }();
-    const double max_total = [&]() -> double {
-      const auto q = query_get(req.query, "max_total");
-      if (!q || q->empty()) return 0.50;
-      try { return std::stod(*q); } catch (...) { return 0.50; }
-    }();
-    const bool require_multimodal_input = [&]() -> bool {
-      const auto q = query_get(req.query, "require_multimodal_input");
-      if (!q) return true;
-      return string_to_bool(*q);
-    }();
-    const bool require_tools = [&]() -> bool {
-      const auto q = query_get(req.query, "require_tools");
-      if (!q) return true;
-      return string_to_bool(*q);
-    }();
-    const bool include_free = [&]() -> bool {
-      const auto q = query_get(req.query, "include_free");
-      if (!q) return false;
-      return string_to_bool(*q);
-    }();
-    const int limit = [&]() -> int {
-      const auto q = query_get(req.query, "limit");
-      if (!q || q->empty()) return 50;
-      try { return std::max(1, std::min(200, std::stoi(*q))); } catch (...) { return 50; }
-    }();
-    const bool refresh = [&]() -> bool {
-      const auto q = query_get(req.query, "refresh");
-      if (!q) return false;
-      return string_to_bool(*q);
-    }();
-
-    // Base url for OpenRouter models endpoint.
-    const std::string base_url = [&]() -> std::string {
-      const auto q = query_get(req.query, "base_url");
-      if (q && !q->empty()) return *q;
-      const char* b = getenv_s("OPENROUTER_API_BASE");
-      return b && b[0] ? std::string(b) : std::string("https://openrouter.ai/api/v1");
-    }();
-    const std::string models_url = trim_slashes(base_url) + "/models";
-
-    // API key precedence (provider key; distinct from daemon auth):
-    // 1) X-OpenRouter-Key header
-    // 2) Authorization header (Bearer ...) ONLY when daemon auth is disabled
-    // 3) env OPENROUTER_API_KEY
-    // 4) env OPENAI_API_KEY (fallback)
-    std::string key;
-    {
-      const std::string xk = header_get_ci(req.headers, "x-openrouter-key");
-      if (!xk.empty()) {
-        key = xk;
-      } else if (cfg.auth_token.empty()) {
-        const std::string auth = header_get_ci(req.headers, "authorization");
-        key = bearer_token_from_auth_header(auth);
-      }
-      if (key.empty()) {
-        if (const char* k = getenv_s("OPENROUTER_API_KEY")) key = k;
-        else if (const char* k2 = getenv_s("OPENAI_API_KEY")) key = k2;
-      }
-    }
-    if (key.empty()) {
-      resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"missing OpenRouter key (set OPENROUTER_API_KEY or send X-OpenRouter-Key)\"}";
-      return;
-    }
-
-    struct Cache {
-      std::mutex mu;
-      int64_t fetched_unix_ms = 0;
-      std::string cache_key;
-      Json::Value payload;
-    };
-    static Cache cache;
-
-    const auto cache_key = [&]() -> std::string {
-      const size_t kh = std::hash<std::string>{}(key);
-      return models_url + "|" + std::to_string((unsigned long long)kh);
-    }();
-    const int64_t now = now_unix_ms();
-    const int64_t ttl_ms = 10 * 60 * 1000;
-
-    Json::Value payload;
-    bool cached = false;
-    {
-      std::lock_guard<std::mutex> lk(cache.mu);
-      if (!refresh && cache.cache_key == cache_key && cache.payload.isObject() && (now - cache.fetched_unix_ms) < ttl_ms) {
-        payload = cache.payload;
-        cached = true;
-      }
-    }
-
-    long http_status = 0;
-    std::string raw_body;
-    if (!cached) {
-      OpenAIClientConfig cfg2 = ocfg;
-      cfg2.base_url = models_url; // unused by GET
-      cfg2.api_key = key;
-
-      OpenAIRawResult r = openai_http_get_raw(cfg2, models_url, {});
-      http_status = r.http_status;
-      raw_body = r.response_body;
-      if (http_status < 200 || http_status >= 300) {
-        Json::Value o(Json::objectValue);
-        o["ok"] = false;
-        o["error"] = "failed to fetch OpenRouter models";
-        o["http_status"] = (Json::Int64)http_status;
-        o["http_body"] = raw_body;
-        resp->status = 502;
-        resp->body = json_stringify(o);
-        return;
-      }
-      std::string perr;
-      if (!json_parse_any(raw_body, &payload, &perr) || !payload.isObject()) {
-        Json::Value o(Json::objectValue);
-        o["ok"] = false;
-        o["error"] = "failed to parse OpenRouter models JSON";
-        o["parse_error"] = perr;
-        o["http_status"] = (Json::Int64)http_status;
-        resp->status = 502;
-        resp->body = json_stringify(o);
-        return;
-      }
-      {
-        std::lock_guard<std::mutex> lk(cache.mu);
-        cache.cache_key = cache_key;
-        cache.payload = payload;
-        cache.fetched_unix_ms = now;
-      }
-    }
-
-    const auto& data = payload["data"];
-    if (!data.isArray()) {
-      resp->status = 502;
-      resp->body = "{\"ok\":false,\"error\":\"unexpected OpenRouter models response (missing data array)\"}";
-      return;
-    }
-
-    struct Row {
-      double total = 0.0;
-      double prompt = 0.0;
-      double completion = 0.0;
-      Json::Value model;
-    };
-    std::vector<Row> rows;
-    rows.reserve((size_t)data.size());
-    for (const auto& m : data) {
-      if (!m.isObject()) continue;
-      const auto& pricing = m["pricing"];
-      const double prompt_pm = pricing_to_per_million(pricing["prompt"]);
-      const double completion_pm = pricing_to_per_million(pricing["completion"]);
-      const double total = prompt_pm + completion_pm;
-      if (!include_free && total <= 0.0) continue;
-      if (total < min_total || total > max_total) continue;
-      if (require_tools && !model_supports_tools(m)) continue;
-      if (require_multimodal_input && !model_has_multimodal_input(m)) continue;
-      Row r;
-      r.total = total;
-      r.prompt = prompt_pm;
-      r.completion = completion_pm;
-      r.model = m;
-      rows.push_back(std::move(r));
-    }
-    std::sort(rows.begin(), rows.end(), [](const Row& a, const Row& b) {
-      if (a.total != b.total) return a.total < b.total;
-      if (a.prompt != b.prompt) return a.prompt < b.prompt;
-      if (a.completion != b.completion) return a.completion < b.completion;
-      const std::string ida = a.model.isMember("id") && a.model["id"].isString() ? a.model["id"].asString() : "";
-      const std::string idb = b.model.isMember("id") && b.model["id"].isString() ? b.model["id"].asString() : "";
-      return ida < idb;
-    });
-
-    Json::Value out(Json::objectValue);
-    out["ok"] = true;
-    out["source"] = "openrouter";
-    out["base_url"] = base_url;
-    out["models_url"] = models_url;
-    out["cached"] = cached;
-    out["fetched_unix_ms"] = (Json::Int64)(cached ? cache.fetched_unix_ms : now);
-    out["min_total"] = min_total;
-    out["max_total"] = max_total;
-    out["require_multimodal_input"] = require_multimodal_input;
-    out["require_tools"] = require_tools;
-    out["include_free"] = include_free;
-    out["limit"] = limit;
-    out["total_models"] = (Json::UInt64)data.size();
-
-    Json::Value arr(Json::arrayValue);
-    for (int i = 0; i < limit && i < (int)rows.size(); i++) {
-      const auto& r = rows[(size_t)i];
-      const auto& m = r.model;
-      Json::Value e(Json::objectValue);
-      e["id"] = m.isMember("id") && m["id"].isString() ? m["id"].asString() : "";
-      e["name"] = m.isMember("name") && m["name"].isString() ? m["name"].asString() : "";
-      e["context_length"] = m.isMember("context_length") ? m["context_length"] : Json::Value(0);
-      e["total_usd_per_million"] = r.total;
-      e["prompt_usd_per_million"] = r.prompt;
-      e["completion_usd_per_million"] = r.completion;
-      e["supports_tools"] = model_supports_tools(m);
-      e["supports_multimodal_input"] = model_has_multimodal_input(m);
-      const auto& arch = m["architecture"];
-      if (arch.isObject()) {
-        e["input_modalities"] = arch["input_modalities"];
-        e["output_modalities"] = arch["output_modalities"];
-      }
-      arr.append(e);
-    }
-    out["count"] = (Json::UInt64)arr.size();
-    out["models"] = arr;
-    out["recommended_model"] = arr.size() > 0 ? arr[0]["id"] : Json::Value("");
-
-    resp->body = json_stringify(out);
+    handle_openrouter_models_endpoint(ocfg, !cfg.auth_token.empty(), req, resp);
     return;
 #endif
   });
@@ -1454,7 +1228,9 @@ int main(int argc, char** argv) {
     if (!daemon_require_auth(cfg, req, resp)) return;
     const auto path_q = query_get(req.query, "path");
     const auto yolo_q = query_get(req.query, "yolo");
-    const bool yolo = yolo_q && (*yolo_q == "1" || *yolo_q == "true");
+    const bool requested_yolo_set = yolo_q.has_value();
+    const bool requested_yolo = requested_yolo_set ? string_to_bool(*yolo_q) : cfg.yolo_default;
+    const bool yolo = sandbox_tighten_yolo(cfg.yolo_default, requested_yolo, requested_yolo_set);
     if (!path_q || path_q->empty()) {
       resp->status = 400;
       resp->headers["Content-Type"] = "application/json; charset=utf-8";
@@ -1464,16 +1240,26 @@ int main(int argc, char** argv) {
 
     const std::filesystem::path user_path(*path_q);
     const std::filesystem::path cwd = std::filesystem::current_path();
-    const std::filesystem::path scope_root = std::filesystem::path(cfg.host_scope_root);
+    std::string scope_root_str;
+    {
+      std::string root_err;
+      if (!sandbox_resolve_tools_root(cfg.host_scope_root, false, cfg.tools_root, "", false, &scope_root_str, &root_err)) {
+        resp->status = 500;
+        resp->headers["Content-Type"] = "application/json; charset=utf-8";
+        resp->body = R"({"ok":false,"error":"invalid daemon tools_root/host_scope_root"})";
+        return;
+      }
+    }
+    const std::filesystem::path scope_root = std::filesystem::path(scope_root_str);
 
     std::filesystem::path resolved;
     if (yolo) {
       resolved = user_path.is_absolute() ? user_path : (cwd / user_path);
     } else {
       if (user_path.is_absolute()) {
-        resp->status = 400;
+        resp->status = 403;
         resp->headers["Content-Type"] = "application/json; charset=utf-8";
-        resp->body = R"({"ok":false,"error":"absolute path requires yolo=1"})";
+        resp->body = "{\"ok\":false,\"error\":\"absolute paths disabled (daemon yolo disabled)\"}";
         return;
       }
       resolved = (scope_root / user_path);
@@ -1498,9 +1284,17 @@ int main(int argc, char** argv) {
         resp->body = R"({"ok":false,"error":"file not found"})";
         return;
       }
-      const auto root_s = canon_root.native();
-      const auto file_s = canon_file.native();
-      if (file_s.size() < root_s.size() || file_s.compare(0, root_s.size(), root_s) != 0) {
+      // Component-wise prefix check (safer than string prefix).
+      auto it_r = canon_root.begin();
+      auto it_p = canon_file.begin();
+      bool within = true;
+      for (; it_r != canon_root.end(); ++it_r, ++it_p) {
+        if (it_p == canon_file.end() || *it_r != *it_p) {
+          within = false;
+          break;
+        }
+      }
+      if (!within) {
         resp->status = 403;
         resp->headers["Content-Type"] = "application/json; charset=utf-8";
         resp->body = R"({"ok":false,"error":"path escapes host scope"})";

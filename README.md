@@ -250,6 +250,7 @@ Verbose inspection:
 - Optional: pass `max_capture_bytes` to cap large verbose event payloads for UI stability (default: 256KB; daemon clamps for tool loops).
 - `agentd` ignores `SIGPIPE` so client disconnects (UI refresh, SSE close) do not terminate the daemon.
 - The daemon also serves files for previews at `GET /api/v1/file?path=<...>&yolo=0|1` (up to 10MB).
+  Note: `yolo=1` is ignored when the daemon is started with `--no-yolo` (requests cannot loosen sandbox settings).
 
 Assistant streaming (provider-dependent):
 - For `tools: "none"` runs, clients can set `stream_assistant: true` to request OpenAI-compatible SSE streaming (`stream: true`).

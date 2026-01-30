@@ -96,6 +96,8 @@ if(AGENT_BUILD_HOST)
     daemon/src/http_server.cpp
     daemon/src/job_manager.cpp
     daemon/src/json_util.cpp
+    daemon/src/openrouter_models_endpoint.cpp
+    daemon/src/sandbox_policy.cpp
     daemon/src/openrouter_util.cpp
     daemon/src/string_util.cpp
   )
@@ -136,6 +138,8 @@ if(AGENT_BUILD_HOST)
   add_test(NAME agentd_tools_list_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_tools_list_smoke.sh $<TARGET_FILE:agentd>)
 
   add_test(NAME agentd_auth_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_auth_smoke.sh $<TARGET_FILE:agentd>)
+
+  add_test(NAME agentd_sandbox_tighten_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_sandbox_tighten_smoke.sh $<TARGET_FILE:agentd>)
 
   add_test(NAME agentd_host_tools_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_host_tools_smoke.sh $<TARGET_FILE:agentd>)
   set_tests_properties(agentd_host_tools_smoke PROPERTIES SKIP_RETURN_CODE 77)
