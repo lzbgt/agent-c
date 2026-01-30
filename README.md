@@ -95,7 +95,8 @@ For debugging client/daemon mismatches (CORS, sandbox defaults, job GC), `agentd
 - `GET /api/v1/config`
 
 This endpoint requires auth when `--auth-token` is set. It intentionally does not include secrets (auth token, provider API keys).
-The Web UI surfaces this snapshot in the Settings panel as “Daemon config”.
+The Web UI surfaces this snapshot in the Settings panel as “Daemon config”, including the effective `state_dir`, `sessions_root_dir`,
+and optional `db_path` when enabled.
 
 ### Daemon state dir / multi-agent safety
 

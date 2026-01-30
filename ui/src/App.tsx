@@ -753,6 +753,9 @@ export default function App() {
                     </div>
                   ) : null}
                   <div className="col-span-2">
+                    db: <code className="text-white/70">{daemonConfig.data.daemon?.db_path ?? "(disabled)"}</code>
+                  </div>
+                  <div className="col-span-2">
                     job gc:{" "}
                     <code className="text-white/70">
                       ttl={daemonConfig.data.jobs?.job_ttl_ms ?? "?"}ms, max_jobs={daemonConfig.data.jobs?.max_jobs ?? "?"}

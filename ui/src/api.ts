@@ -25,8 +25,9 @@ export const DaemonConfigSchema = z
       .object({
         listen_host: z.string().optional(),
         listen_port: z.number().optional(),
-        state_dir: z.string().optional(),
-        sessions_root_dir: z.string().optional(),
+        db_path: z.string().nullable().optional(),
+        state_dir: z.string().nullable().optional(),
+        sessions_root_dir: z.string().nullable().optional(),
         base_url: z.string().optional(),
         model: z.string().optional(),
         summary_model: z.string().nullable().optional(),
