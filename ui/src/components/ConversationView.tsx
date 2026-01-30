@@ -53,6 +53,11 @@ function clampInt(n: unknown, lo: number, hi: number, def: number): number {
   return Math.min(Math.max(Math.trunc(v), lo), hi);
 }
 
+function safeObject(v: any): Record<string, any> {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+  return v as Record<string, any>;
+}
+
 function isSensitiveKey(k: string): boolean {
   const s = String(k || "").toLowerCase();
   return (
@@ -278,12 +283,12 @@ export default function ConversationView({
       const title = String(action?.title ?? (atype ? `ui_action: ${atype}` : "ui_action"));
       const toolCallId = String(data?.tool_call_id ?? "");
 
-      if (atype === "client_rpc" || atype === "client_probe") {
+      if (atype === "client_rpc" || atype === "collab_rpc" || atype === "client_probe") {
         const rpcId = String(action?.rpc_id ?? action?.probe_id ?? toolCallId ?? "").trim();
         const rpc = action?.rpc ?? action?.probe ?? {};
         const rpcKind = String(rpc?.kind ?? "").trim();
         const rpcArgs = typeof rpc?.args === "object" && rpc?.args ? rpc.args : rpc;
-        const sideEffectKinds = new Set(["dom_click", "dom_set_value", "media_play", "media_observe", "navigate"]);
+        const sideEffectKinds = new Set(["dom_click", "dom_set_value", "dom_apply", "media_play", "media_observe", "navigate"]);
         const sideEffectsRequested = rpc?.side_effects === true || action?.side_effects === true || sideEffectKinds.has(rpcKind);
 
         const canRun = !!rpcId && typeof sessionId === "string" && sessionId.trim().length > 0;
@@ -392,6 +397,165 @@ export default function ConversationView({
                 return out;
               });
               return { kind: "dom_query", selector, limit, fields, items };
+            };
+
+            const makeDomApply = (args: any) => {
+              const opsRaw = Array.isArray(args?.ops) ? args.ops : [];
+              const ops = opsRaw.slice(0, 100);
+              const results: any[] = [];
+
+              const applyOne = (op: any) => {
+                const o = safeObject(op);
+                const kind = String(o.op ?? o.kind ?? "").trim();
+                if (!kind) throw new Error("dom_apply op missing op");
+
+                const limit = clampInt(o.limit, 1, 50, 1);
+
+                if (kind === "create") {
+                  const tag = String(o.tag ?? "div").toLowerCase().replace(/[^a-z0-9_-]/g, "");
+                  if (!tag) throw new Error("create requires tag");
+                  const el = document.createElement(tag);
+
+                  const attrs = safeObject(o.attrs);
+                  Object.keys(attrs).slice(0, 50).forEach((k) => {
+                    const name = String(k);
+                    const value = String(attrs[k] ?? "");
+                    try {
+                      el.setAttribute(name, value.slice(0, 2000));
+                    } catch {
+                      // ignore invalid attrs
+                    }
+                  });
+
+                  if (o.text !== undefined) {
+                    el.textContent = String(o.text ?? "").slice(0, 20000);
+                  }
+                  if (o.html !== undefined) {
+                    const html = String(o.html ?? "");
+                    el.innerHTML = html.length > 50000 ? html.slice(0, 50000) : html;
+                  }
+
+                  const parentSel = String(o.parent_selector ?? o.parent ?? "body");
+                  const parent = (parentSel ? document.querySelector(parentSel) : document.body) ?? document.body;
+                  const insert = String(o.insert ?? "append");
+                  if (insert === "prepend" && "prepend" in parent) (parent as any).prepend(el);
+                  else (parent as any).append(el);
+                  return { op: "create", tag, parent_selector: parentSel, inserted: true };
+                }
+
+                const selector = String(o.selector ?? "");
+                if (!selector) throw new Error(`${kind} requires selector`);
+                const nodes = Array.from(document.querySelectorAll(selector)).slice(0, limit) as any[];
+
+                if (kind === "remove") {
+                  let removed = 0;
+                  nodes.forEach((n) => {
+                    try {
+                      n.remove();
+                      removed += 1;
+                    } catch {
+                      // ignore
+                    }
+                  });
+                  return { op: "remove", selector, removed };
+                }
+
+                if (kind === "set_attr") {
+                  const name = String(o.name ?? "");
+                  const value = String(o.value ?? "");
+                  if (!name) throw new Error("set_attr requires name");
+                  let set = 0;
+                  nodes.forEach((n) => {
+                    try {
+                      n.setAttribute(name, value.slice(0, 2000));
+                      set += 1;
+                    } catch {
+                      // ignore
+                    }
+                  });
+                  return { op: "set_attr", selector, name, set };
+                }
+
+                if (kind === "remove_attr") {
+                  const name = String(o.name ?? "");
+                  if (!name) throw new Error("remove_attr requires name");
+                  let removed = 0;
+                  nodes.forEach((n) => {
+                    try {
+                      n.removeAttribute(name);
+                      removed += 1;
+                    } catch {
+                      // ignore
+                    }
+                  });
+                  return { op: "remove_attr", selector, name, removed };
+                }
+
+                if (kind === "set_text") {
+                  const text = String(o.text ?? "").slice(0, 20000);
+                  let set = 0;
+                  nodes.forEach((n) => {
+                    try {
+                      n.textContent = text;
+                      set += 1;
+                    } catch {
+                      // ignore
+                    }
+                  });
+                  return { op: "set_text", selector, set, bytes: text.length };
+                }
+
+                if (kind === "set_html" || kind === "append_html") {
+                  const html = String(o.html ?? "");
+                  const bounded = html.length > 50000 ? html.slice(0, 50000) : html;
+                  let set = 0;
+                  nodes.forEach((n) => {
+                    try {
+                      if (kind === "append_html") n.insertAdjacentHTML("beforeend", bounded);
+                      else n.innerHTML = bounded;
+                      set += 1;
+                    } catch {
+                      // ignore
+                    }
+                  });
+                  return { op: kind, selector, set, bytes: bounded.length };
+                }
+
+                if (kind === "dispatch") {
+                  const eventType = String(o.event ?? o.type ?? "click");
+                  const init = safeObject(o.event_init ?? o.init);
+                  const bubbles = init.bubbles !== undefined ? !!init.bubbles : true;
+                  const cancelable = init.cancelable !== undefined ? !!init.cancelable : true;
+                  let fired = 0;
+                  nodes.forEach((n) => {
+                    try {
+                      let ev: Event;
+                      if (["click", "mousedown", "mouseup", "mousemove"].includes(eventType)) {
+                        ev = new MouseEvent(eventType, { bubbles, cancelable });
+                      } else {
+                        ev = new Event(eventType, { bubbles, cancelable });
+                      }
+                      n.dispatchEvent(ev);
+                      fired += 1;
+                    } catch {
+                      // ignore
+                    }
+                  });
+                  return { op: "dispatch", selector, event: eventType, fired };
+                }
+
+                throw new Error(`unsupported dom_apply op: ${kind}`);
+              };
+
+              for (const op of ops) {
+                try {
+                  results.push({ ok: true, ...applyOne(op) });
+                } catch (e) {
+                  results.push({ ok: false, error: String(e) });
+                }
+              }
+
+              return { kind: "dom_apply", ops: results, applied: results.filter((r) => r && r.ok).length, total: results.length };
             };
 
             const makeMediaSnapshot = () => {
@@ -595,6 +759,7 @@ export default function ConversationView({
                     query: (q) => call("dom.query", q || {}),
                     click: (q) => call("dom.click", q || {}),
                     setValue: (q) => call("dom.set_value", q || {}),
+                    apply: (q) => call("dom.apply", q || {}),
                   },
                   media: {
                     snapshot: () => call("media.snapshot", {}),
@@ -653,7 +818,7 @@ export default function ConversationView({
                     const cargs = msg.args ?? {};
                     void (async () => {
                       try {
-                        const sideEffectMethods = new Set(["dom.click", "dom.set_value", "media.play", "media.observe", "nav.go"]);
+                        const sideEffectMethods = new Set(["dom.click", "dom.set_value", "dom.apply", "media.play", "media.observe", "nav.go"]);
                         if (sideEffectMethods.has(method) && !allowClientEffects) {
                           throw new Error("side effects disabled by settings");
                         }
@@ -661,6 +826,7 @@ export default function ConversationView({
                         if (method === "dom.query") out = makeDomQuery(cargs);
                         else if (method === "dom.click") out = makeDomClick(cargs);
                         else if (method === "dom.set_value") out = makeDomSetValue(cargs);
+                        else if (method === "dom.apply") out = makeDomApply(cargs);
                         else if (method === "media.snapshot") out = makeMediaSnapshot();
                         else if (method === "media.play") out = await makeMediaPlay(cargs);
                         else if (method === "media.observe") out = await makeMediaObserve(cargs);
@@ -711,6 +877,7 @@ export default function ConversationView({
 
             let result: any = null;
             if (rpcKind === "dom_query") result = makeDomQuery(rpcArgs);
+            else if (rpcKind === "dom_apply") result = makeDomApply(rpcArgs);
             else if (rpcKind === "media_snapshot") result = makeMediaSnapshot();
             else if (rpcKind === "location") result = makeLocation();
             else if (rpcKind === "state_snapshot") result = makeStateSnapshot();

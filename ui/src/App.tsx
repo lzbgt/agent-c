@@ -177,6 +177,7 @@ export default function App() {
             { kind: "media_snapshot", side_effects: false, description: "Snapshot audio/video elements (paused/currentTime/duration)." },
             { kind: "location", side_effects: false, description: "Browser location (href/origin/path/search; query redacted)." },
             { kind: "state_snapshot", side_effects: false, description: "Combined snapshot (location + media_snapshot)." },
+            { kind: "dom_apply", side_effects: true, description: "Apply a DOM patch (create/edit/delete/dispatch) by selector." },
             { kind: "dom_click", side_effects: true, description: "Click a DOM element by selector (side effects)." },
             { kind: "dom_set_value", side_effects: true, description: "Set input/textarea value by selector (side effects)." },
             { kind: "media_play", side_effects: true, description: "Attempt to play audio/video by selector (browser policies apply)." },

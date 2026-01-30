@@ -186,6 +186,7 @@ Read-only:
 Side-effecting (requires explicit client “side effects” enablement):
 - `dom_click`: click by selector
 - `dom_set_value`: set input/textarea value by selector (does not echo value back)
+- `dom_apply`: apply a DOM patch (create/edit/delete/dispatch). This is the “native surface” primitive for collaboration UI changes.
 - `media_play`: attempt `HTMLMediaElement.play()` by selector (browser policies apply)
 - `media_observe`: attach media listeners and emit `client_rpc_progress` events correlated by `rpc_id`
 - `navigate`: navigate to a new URL (likely reloads the client)
@@ -193,6 +194,32 @@ Side-effecting (requires explicit client “side effects” enablement):
 Scriptable (must-have power primitive):
 - `script_eval`: run agent-provided script code (prefer killable engines like Web Workers) and expose DOM/media/location via an API bridge.
   - scripts can probe only what they care about, and can implement their own “wait/act” logic using client RPC progress events.
+
+### `dom_apply` schema (v1, Web UI client)
+
+`rpc.kind="dom_apply"` with:
+
+```json
+{
+  "ops": [
+    {"op":"create","tag":"div","parent_selector":"#root","attrs":{"data-x":"1"},"text":"hello"},
+    {"op":"set_attr","selector":"#root","name":"data-ready","value":"1"},
+    {"op":"append_html","selector":"#root","html":"<button id=\\"b\\">Click</button>"},
+    {"op":"dispatch","selector":"#b","event":"click"}
+  ]
+}
+```
+
+Supported ops (bounded):
+- `create`: `{tag, parent_selector?, insert?, attrs?, text?, html?}`
+- `remove`: `{selector, limit?}`
+- `set_attr`: `{selector, name, value, limit?}`
+- `remove_attr`: `{selector, name, limit?}`
+- `set_text`: `{selector, text, limit?}`
+- `set_html` / `append_html`: `{selector, html, limit?}`
+- `dispatch`: `{selector, event, event_init?, limit?}`
+
+Return value includes `{applied,total,ops:[...]}` with per-op success/errors.
 
 ## Relationship to DoD (stop conditions)
 

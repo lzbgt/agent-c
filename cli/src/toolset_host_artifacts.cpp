@@ -202,6 +202,40 @@ agent_status_t tool_ui_action(HostToolCtx* ctx, const char* arguments_json, agen
   action["autoplay"] = autoplay;
   action["repeat"] = repeat;
 
+  // Pass through structured payload fields for collaboration RPCs and other UI-driven flows.
+  //
+  // Important: The daemon emits the derived `ui_action` event based on the tool output `data.action`.
+  // If we drop fields here (e.g. rpc_id/rpc/code), the client cannot execute the requested action.
+  auto pass_string = [&](const char* k) {
+    if (!args.isMember(k) || !args[k].isString()) return;
+    // Keep a very large but finite cap to avoid pathological memory usage.
+    std::string v = args[k].asString();
+    const size_t kMax = 256 * 1024;
+    if (v.size() > kMax) v.resize(kMax);
+    action[k] = v;
+  };
+  auto pass_bool = [&](const char* k) {
+    if (!args.isMember(k) || !args[k].isBool()) return;
+    action[k] = args[k].asBool();
+  };
+  auto pass_object = [&](const char* k) {
+    if (!args.isMember(k) || !args[k].isObject()) return;
+    action[k] = args[k];
+  };
+
+  pass_string("rpc_id");
+  pass_object("rpc");
+  pass_bool("side_effects");
+  pass_bool("auto_run");
+  pass_bool("auto");
+
+  // Legacy / compatibility payloads.
+  pass_string("probe_id");
+  pass_object("probe");
+
+  // Client snapshot request/response correlation.
+  pass_string("query_id");
+
   // Media actions can reference host files; validate and normalize metadata.
   if (type == "play_audio") {
     if (!args.isMember("path") || !args["path"].isString()) {

@@ -76,6 +76,7 @@ Initial allowlist (v1):
 - `play_audio`: render an audio player for `path` and optionally attempt autoplay (requires UI opt-in)
 - `request_client_state`: request a bounded client snapshot (client responds with a `client_event` of type `client_state`)
 - `client_rpc`: request a bounded client RPC (read-only by default; may be side-effecting when explicitly enabled); client responds with `client_rpc_result` (see `docs/CLIENT_RPC.md`)
+- `collab_rpc` (alias): client-side collaboration RPC; treated like `client_rpc` by the Web UI (preferred naming in docs, but `client_rpc` remains canonical for compatibility)
 - `client_probe` (legacy): older name for a read-only subset; clients may treat it as an alias for `client_rpc` (see `docs/CLIENT_PROBE.md`)
 
 ### `client_rpc` action shape (v1)
