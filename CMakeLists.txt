@@ -103,6 +103,7 @@ if(AGENT_BUILD_HOST)
     daemon/src/job_manager.cpp
     daemon/src/json_util.cpp
     daemon/src/openrouter_models_endpoint.cpp
+    daemon/src/run_endpoints.cpp
     daemon/src/session_endpoints.cpp
     daemon/src/tools_endpoint.cpp
     daemon/src/sandbox_policy.cpp
