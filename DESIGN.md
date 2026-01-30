@@ -341,6 +341,13 @@ Initial endpoints (implemented in `agentd`):
 - `DELETE /api/v1/session?session_id=...` → delete a session (messages + audit log).
 - `GET /api/v1/session/audit?session_id=...` → fetch recent per-run audit entries (JSONL parsed to array).
 
+Job lifecycle (daemon robustness):
+- Async jobs (`run_async`) maintain an in-memory `JobState` with a bounded event ring buffer for UI progress.
+- To keep the daemon safe for long-running usage, finished jobs are garbage-collected:
+  - keep only a bounded number of recent jobs
+  - drop jobs that have been done/error for longer than a TTL
+  - cancellation flags are cooperative and checked at safe boundaries
+
 `POST /api/v1/run` request (JSON):
 - `prompt` (string, required)
 - `session_id` (string, default `"default"`)

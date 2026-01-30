@@ -5,6 +5,8 @@
 #include <cerrno>
 #include <map>
 #include <mutex>
+#include <vector>
+#include <algorithm>
 #include <sstream>
 #include <thread>
 
@@ -199,6 +201,57 @@ bool job_is_cancel_requested(const std::string& id) {
   auto it = g_jobs.find(id);
   if (it == g_jobs.end()) return false;
   return it->second.cancel_requested;
+}
+
+void job_gc(int64_t ttl_ms, size_t max_jobs) {
+  const int64_t now = now_unix_ms();
+  if (ttl_ms < 0) ttl_ms = 0;
+
+  std::lock_guard<std::mutex> lk(g_jobs_mu);
+  if (g_jobs.empty()) {
+    return;
+  }
+
+  auto is_finished = [](const JobState& s) {
+    return s.status == "done" || s.status == "error";
+  };
+
+  // TTL-based pruning.
+  if (ttl_ms > 0) {
+    for (auto it = g_jobs.begin(); it != g_jobs.end();) {
+      const JobState& s = it->second;
+      if (is_finished(s) && s.updated_unix_ms > 0 && (now - s.updated_unix_ms) > ttl_ms) {
+        it = g_jobs.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+
+  // Count-based pruning (keeps queued/running jobs regardless of max_jobs).
+  if (max_jobs > 0 && g_jobs.size() > max_jobs) {
+    struct Candidate {
+      std::string id;
+      int64_t updated_ms = 0;
+    };
+    std::vector<Candidate> finished;
+    finished.reserve(g_jobs.size());
+    for (const auto& kv : g_jobs) {
+      const JobState& s = kv.second;
+      if (!is_finished(s)) continue;
+      finished.push_back(Candidate{kv.first, s.updated_unix_ms});
+    }
+    std::sort(finished.begin(), finished.end(), [](const Candidate& a, const Candidate& b) {
+      return a.updated_ms < b.updated_ms;
+    });
+
+    // Remove oldest finished jobs first until within budget.
+    size_t i = 0;
+    while (g_jobs.size() > max_jobs && i < finished.size()) {
+      g_jobs.erase(finished[i].id);
+      i++;
+    }
+  }
 }
 
 void daemon_job_on_tool_loop_event(void* vctx, const char* type, const char* data_json) {

@@ -151,6 +151,16 @@ agent_status_t session_store_load(const SessionStoreConfig& cfg, const std::stri
   const auto json_path = session_path_json(cfg, session_id);
   const auto sess_path = session_path_sess(cfg, session_id);
 
+  // Prefer the portable JSON-free session format when present (it is the primary persisted format).
+  // Fall back to .json for older sessions or if the .sess file is corrupt/unreadable.
+  if (file_exists(sess_path)) {
+    agent_status_t st = load_sess_file_filtered(sess_path, out_session);
+    if (st == AGENT_OK && *out_session) {
+      return AGENT_OK;
+    }
+    // Best-effort fallback: try .json next.
+  }
+
 #if defined(AGENT_HAVE_JSONCPP)
   if (file_exists(json_path)) {
     agent_session_t* s = nullptr;
@@ -202,10 +212,6 @@ agent_status_t session_store_load(const SessionStoreConfig& cfg, const std::stri
   }
 #endif
 
-  if (file_exists(sess_path)) {
-    return load_sess_file_filtered(sess_path, out_session);
-  }
-
   agent_session_t* s = nullptr;
   agent_status_t st = agent_session_create(&s);
   if (st != AGENT_OK) {
@@ -223,7 +229,7 @@ agent_status_t session_store_save(const SessionStoreConfig& cfg, const std::stri
 
   // Always write the portable JSON-free session codec.
   {
-    agent_string_t encoded = {0};
+    agent_string_t encoded{};
     st = agent_session_codec_encode_v1(session, &encoded);
     if (st != AGENT_OK) {
       return st;

@@ -24,6 +24,12 @@ ctest --test-dir build-core --output-on-failure
 
 This builds `agent_core` and `agent_core_tests`, but skips `agent_host`, `agent`, `agentd`, and host/network smokes.
 
+### Daemon longevity (job GC)
+
+`agentd` keeps async job state in memory for UI progress streaming. Finished jobs are garbage-collected:
+- `--job-ttl-ms <n>`: remove done/error jobs older than `n` ms (default: 1800000)
+- `--max-jobs <n>`: keep at most `n` jobs in memory (default: 256)
+
 `ctest` includes two network smoke tests (OpenRouter + DeepSeek). They will run if keys are present
 either via environment variables or `project.local.md` (gitignored). Disable them with:
 

@@ -178,6 +178,22 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
   target_link_libraries(host_toolset_tests PRIVATE agent_host)
   add_test(NAME host_toolset_tests COMMAND host_toolset_tests)
 
+  add_executable(session_store_tests
+    tests/test_session_store.cpp
+  )
+  target_link_libraries(session_store_tests PRIVATE agent_host)
+  add_test(NAME session_store_tests COMMAND session_store_tests)
+
+  add_executable(job_manager_tests
+    tests/test_job_manager.cpp
+    daemon/src/job_manager.cpp
+    daemon/src/json_util.cpp
+  )
+  target_include_directories(job_manager_tests PRIVATE daemon/src ${JSONCPP_INCLUDE_DIRS})
+  target_link_directories(job_manager_tests PRIVATE ${JSONCPP_LIBRARY_DIRS})
+  target_link_libraries(job_manager_tests PRIVATE ${JSONCPP_LIBRARIES})
+  add_test(NAME job_manager_tests COMMAND job_manager_tests)
+
   add_executable(sse_parser_tests
     tests/test_sse_parser.cpp
     cli/src/sse_parser.cpp

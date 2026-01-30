@@ -73,6 +73,10 @@ struct DaemonConfig {
   bool no_default_system = false; // when false, host tool runs insert a default system hint (one time)
   size_t max_chars_default = 20000;
   size_t keep_last_default = 16;
+
+  // Async job GC (daemon longevity): finished jobs are kept only for a bounded time/count.
+  int64_t job_ttl_ms = 30 * 60 * 1000; // 30 minutes
+  size_t max_jobs = 256;
 };
 
 struct ProviderCtx {
@@ -908,6 +912,31 @@ int main(int argc, char** argv) {
         std::cerr << "Invalid --timeout-ms\n";
         return 2;
       }
+    } else if (a == "--job-ttl-ms") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --job-ttl-ms\n";
+        return 2;
+      }
+      try {
+        cfg.job_ttl_ms = (int64_t)std::stoll(v);
+        if (cfg.job_ttl_ms < 0) cfg.job_ttl_ms = 0;
+      } catch (...) {
+        std::cerr << "Invalid --job-ttl-ms\n";
+        return 2;
+      }
+    } else if (a == "--max-jobs") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --max-jobs\n";
+        return 2;
+      }
+      try {
+        cfg.max_jobs = (size_t)std::stoull(v);
+      } catch (...) {
+        std::cerr << "Invalid --max-jobs\n";
+        return 2;
+      }
     } else if (a == "--tools") {
       if (!take(&cfg.tools)) {
         std::cerr << "Missing value for --tools\n";
@@ -941,6 +970,8 @@ int main(int argc, char** argv) {
         << "  --api-key <key>      Default API key (else env)\n"
         << "  --proxy <url>        Optional HTTP proxy override (else env HTTPS_PROXY/http_proxy)\n"
         << "  --timeout-ms <n>     Provider HTTP timeout in ms (default: 60000)\n"
+        << "  --job-ttl-ms <n>     GC finished jobs older than n ms (default: 1800000)\n"
+        << "  --max-jobs <n>       Keep at most n jobs in memory (default: 256)\n"
         << "  --tools host|basic|none   Default toolset (default: host)\n"
         << "  --tools-root <path>  Root/working dir for file edits (default: unrestricted)\n"
         << "  --host-scope <path>  Host scope root for tools_root=\"@host\" (default: current dir)\n"
@@ -1008,6 +1039,18 @@ int main(int argc, char** argv) {
     {"Access-Control-Allow-Methods", "GET, POST, OPTIONS"},
     {"Access-Control-Allow-Headers", "Content-Type, Authorization"},
   });
+
+  // Background GC for finished jobs (keeps daemon memory bounded for long-running usage).
+  if (cfg.job_ttl_ms > 0 || cfg.max_jobs > 0) {
+    const int64_t ttl_ms = cfg.job_ttl_ms;
+    const size_t max_jobs = cfg.max_jobs;
+    std::thread([ttl_ms, max_jobs]() {
+      for (;;) {
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+        job_gc(ttl_ms, max_jobs);
+      }
+    }).detach();
+  }
 
   server.handle("GET", "/api/v1/health", [&](const HttpRequest&, HttpResponse* resp) {
     add_cors(resp);

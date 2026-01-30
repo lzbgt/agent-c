@@ -184,6 +184,7 @@ Completed milestones and notable tasks.
 - Made host components optional in CMake (`-DAGENT_BUILD_HOST=OFF`) so `agent_core` can be built/tested without CURL.
 - Refactored `daemon/src/main.cpp` (was >2000 LOC) into focused modules (`job_manager`, `json_util`, `http_util`, `openrouter_util`, `string_util`)
   and deduped the default host system prompt via `cli/src/default_system_prompt.cpp`.
+- Added daemon job garbage collection (TTL + max jobs) and unit tests to keep long-running `agentd` memory bounded.
 
 - Moved the tool-call loop into the portable core (Milestone 2 groundwork):
   - added core tool-loop API + provider contract (`core/include/agent/tool_loop.h`, `core/include/agent/tool_provider.h`, `core/include/agent/chat.h`)
