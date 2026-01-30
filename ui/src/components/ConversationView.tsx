@@ -47,6 +47,12 @@ function safeTrunc(s: string, max: number): string {
   return s.slice(0, Math.max(0, max - 1)) + "…";
 }
 
+function clampInt(n: unknown, lo: number, hi: number, def: number): number {
+  const v = typeof n === "number" ? n : Number(n);
+  if (!Number.isFinite(v)) return def;
+  return Math.min(Math.max(Math.trunc(v), lo), hi);
+}
+
 function isSensitiveKey(k: string): boolean {
   const s = String(k || "").toLowerCase();
   return (
@@ -68,6 +74,19 @@ function tryParseUrl(s: string): URL | null {
   } catch {
     return null;
   }
+}
+
+function createInlineWorker(source: string): Worker {
+  const blob = new Blob([source], { type: "text/javascript" });
+  const url = URL.createObjectURL(blob);
+  const w = new Worker(url);
+  // Best-effort: release URL immediately; Worker holds its own reference.
+  try {
+    URL.revokeObjectURL(url);
+  } catch {
+    // ignore
+  }
+  return w;
 }
 
 export default function ConversationView({
@@ -264,7 +283,7 @@ export default function ConversationView({
         const rpc = action?.rpc ?? action?.probe ?? {};
         const rpcKind = String(rpc?.kind ?? "").trim();
         const rpcArgs = typeof rpc?.args === "object" && rpc?.args ? rpc.args : rpc;
-        const sideEffectKinds = new Set(["dom_click", "dom_set_value", "media_play", "media_observe"]);
+        const sideEffectKinds = new Set(["dom_click", "dom_set_value", "media_play", "media_observe", "navigate"]);
         const sideEffectsRequested = rpc?.side_effects === true || action?.side_effects === true || sideEffectKinds.has(rpcKind);
 
         const canRun = !!rpcId && typeof sessionId === "string" && sessionId.trim().length > 0;
@@ -325,10 +344,10 @@ export default function ConversationView({
               "currentTime",
               "duration",
             ]);
-            const makeDomQuery = () => {
-              const selector = safeTrunc(String(rpcArgs?.selector ?? ""), 200);
-              const limit = Math.min(Math.max(Number(rpcArgs?.limit ?? 10) || 10, 1), 20);
-              const fieldsRaw = Array.isArray(rpcArgs?.fields) ? rpcArgs.fields : [];
+            const makeDomQuery = (args: any) => {
+              const selector = safeTrunc(String(args?.selector ?? ""), 200);
+              const limit = clampInt(args?.limit, 1, 20, 10);
+              const fieldsRaw = Array.isArray(args?.fields) ? args.fields : [];
               let fields = fieldsRaw
                 .map((x: any) => String(x))
                 .filter((f: string) => safeFieldSet.has(f))
@@ -397,8 +416,8 @@ export default function ConversationView({
               return { kind: "media_snapshot", items };
             };
 
-            const makeDomClick = () => {
-              const selector = safeTrunc(String(rpcArgs?.selector ?? ""), 200);
+            const makeDomClick = (args: any) => {
+              const selector = safeTrunc(String(args?.selector ?? ""), 200);
               if (!selector) throw new Error("dom_click requires selector");
               const el = document.querySelector(selector) as any;
               if (!el) return { kind: "dom_click", selector, clicked: false };
@@ -409,16 +428,16 @@ export default function ConversationView({
               throw new Error("element has no click()");
             };
 
-            const makeDomSetValue = () => {
-              const selector = safeTrunc(String(rpcArgs?.selector ?? ""), 200);
-              const rawValue = String(rpcArgs?.value ?? "");
+            const makeDomSetValue = (args: any) => {
+              const selector = safeTrunc(String(args?.selector ?? ""), 200);
+              const rawValue = String(args?.value ?? "");
               const value = rawValue.length > 2000 ? rawValue.slice(0, 2000) : rawValue;
               if (!selector) throw new Error("dom_set_value requires selector");
               const el = document.querySelector(selector) as any;
               if (!el) return { kind: "dom_set_value", selector, set: false };
               if (!("value" in el)) throw new Error("element has no value");
               el.value = value;
-              const dispatch = rpcArgs?.dispatch_events !== false;
+              const dispatch = args?.dispatch_events !== false;
               if (dispatch) {
                 try {
                   el.dispatchEvent(new Event("input", { bubbles: true }));
@@ -430,8 +449,8 @@ export default function ConversationView({
               return { kind: "dom_set_value", selector, set: true };
             };
 
-            const makeMediaPlay = async () => {
-              const selector = safeTrunc(String(rpcArgs?.selector ?? "audio,video"), 200);
+            const makeMediaPlay = async (args: any) => {
+              const selector = safeTrunc(String(args?.selector ?? "audio,video"), 200);
               const el = document.querySelector(selector) as any;
               if (!el) return { kind: "media_play", selector, ok: false, error: "no element matched" };
               if (typeof el.play !== "function") return { kind: "media_play", selector, ok: false, error: "element has no play()" };
@@ -471,15 +490,15 @@ export default function ConversationView({
               };
             };
 
-            const makeMediaObserve = async () => {
-              const eventsRaw = Array.isArray(rpcArgs?.events) ? rpcArgs.events : ["play", "pause", "ended", "error"];
+            const makeMediaObserve = async (args: any) => {
+              const eventsRaw = Array.isArray(args?.events) ? args.events : ["play", "pause", "ended", "error"];
               const allowed = new Set(["play", "pause", "ended", "error", "timeupdate"]);
               const events: string[] = eventsRaw
                 .map((x: any) => String(x))
                 .filter((x: string) => allowed.has(x))
                 .slice(0, 5);
-              const selectorFromArgs = safeTrunc(String(rpcArgs?.selector ?? ""), 200);
-              const toolId = safeTrunc(String(rpcArgs?.tool_call_id ?? ""), 120);
+              const selectorFromArgs = safeTrunc(String(args?.selector ?? ""), 200);
+              const toolId = safeTrunc(String(args?.tool_call_id ?? ""), 120);
               // Prefer matching by tool_call_id (artifact media elements set data-tool-call-id).
               // Fall back to selector, then to all audio/video.
               // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -536,15 +555,171 @@ export default function ConversationView({
               return { kind: "state_snapshot", location: loc, media: media.items ?? [] };
             };
 
+            const makeNavigate = (args: any) => {
+              const url = safeTrunc(String(args?.url ?? args?.href ?? ""), 2000);
+              if (!url) throw new Error("navigate requires url");
+              // This is intentionally side-effecting and may reload the page.
+              window.location.assign(url);
+              return { kind: "navigate", url };
+            };
+
+            const makeScriptEval = async (args: any) => {
+              const code = String(args?.code ?? "");
+              if (!code) throw new Error("script_eval requires code");
+
+              const timeoutMs = clampInt(args?.timeout_ms ?? args?.timeoutMs, 50, 60000, 8000);
+              const userArgs = typeof args?.args === "object" && args?.args ? args.args : {};
+
+              const workerSource = `
+                "use strict";
+                // Best-effort hardening: remove common network primitives.
+                try { self.fetch = undefined; } catch {}
+                try { self.WebSocket = undefined; } catch {}
+                try { self.importScripts = undefined; } catch {}
+
+                const pending = new Map();
+                let seq = 1;
+
+                function call(method, args) {
+                  return new Promise((resolve, reject) => {
+                    const id = seq++;
+                    pending.set(id, { resolve, reject });
+                    self.postMessage({ type: "call", id, method, args });
+                  });
+                }
+
+                const api = {
+                  call,
+                  progress: (name, payload) => call("rpc.progress", { name, payload }),
+                  dom: {
+                    query: (q) => call("dom.query", q || {}),
+                    click: (q) => call("dom.click", q || {}),
+                    setValue: (q) => call("dom.set_value", q || {}),
+                  },
+                  media: {
+                    snapshot: () => call("media.snapshot", {}),
+                    play: (q) => call("media.play", q || {}),
+                    observe: (q) => call("media.observe", q || {}),
+                  },
+                  location: {
+                    get: () => call("location.get", {}),
+                  },
+                  nav: {
+                    go: (q) => call("nav.go", q || {}),
+                  },
+                  sleep: (ms) => new Promise((r) => setTimeout(r, Math.max(0, Number(ms) || 0))),
+                };
+
+                self.onmessage = async (evt) => {
+                  const msg = evt && evt.data ? evt.data : {};
+                  if (msg.type === "resp") {
+                    const p = pending.get(msg.id);
+                    if (!p) return;
+                    pending.delete(msg.id);
+                    if (msg.ok) p.resolve(msg.result);
+                    else p.reject(new Error(String(msg.error || "call failed")));
+                    return;
+                  }
+                  if (msg.type !== "run") return;
+                  const runId = String(msg.run_id || "");
+                  const code = String(msg.code || "");
+                  const args = msg.args || {};
+                  try {
+                    // Execute user code as an async IIFE so it can use await.
+                    // Note: if user code blocks the worker event loop, the host must terminate the worker.
+                    const fn = new Function("api", "args", '"use strict"; return (async () => {\\n' + code + '\\n})();');
+                    const result = await fn(api, args);
+                    self.postMessage({ type: "done", run_id: runId, ok: true, result });
+                  } catch (e) {
+                    self.postMessage({ type: "done", run_id: runId, ok: false, error: String(e) });
+                  }
+                };
+              `;
+
+              const worker = createInlineWorker(workerSource);
+              const runId = `${rpcId}::${Date.now()}::${Math.random().toString(16).slice(2)}`;
+              let finished = false;
+
+              const respond = (id: number, ok: boolean, payload: any) => {
+                worker.postMessage({ type: "resp", id, ok, ...(ok ? { result: payload } : { error: payload }) });
+              };
+
+              const donePromise = new Promise<any>((resolve, reject) => {
+                worker.onmessage = (evt) => {
+                  const msg: any = evt && evt.data ? evt.data : {};
+                  if (msg.type === "call") {
+                    const id = Number(msg.id);
+                    const method = String(msg.method || "");
+                    const cargs = msg.args ?? {};
+                    void (async () => {
+                      try {
+                        const sideEffectMethods = new Set(["dom.click", "dom.set_value", "media.play", "media.observe", "nav.go"]);
+                        if (sideEffectMethods.has(method) && !allowClientEffects) {
+                          throw new Error("side effects disabled by settings");
+                        }
+                        let out: any = null;
+                        if (method === "dom.query") out = makeDomQuery(cargs);
+                        else if (method === "dom.click") out = makeDomClick(cargs);
+                        else if (method === "dom.set_value") out = makeDomSetValue(cargs);
+                        else if (method === "media.snapshot") out = makeMediaSnapshot();
+                        else if (method === "media.play") out = await makeMediaPlay(cargs);
+                        else if (method === "media.observe") out = await makeMediaObserve(cargs);
+                        else if (method === "location.get") out = makeLocation();
+                        else if (method === "nav.go") out = makeNavigate(cargs);
+                        else if (method === "rpc.progress") {
+                          const name = String(cargs?.name ?? "progress");
+                          await postRpcProgress(name, cargs?.payload ?? {});
+                          out = true;
+                        } else {
+                          throw new Error(`unsupported script api method: ${method}`);
+                        }
+                        respond(id, true, out);
+                      } catch (e) {
+                        respond(id, false, String(e));
+                      }
+                    })();
+                    return;
+                  }
+                  if (msg.type === "done" && String(msg.run_id || "") === runId) {
+                    finished = true;
+                    if (msg.ok) resolve(msg.result);
+                    else reject(new Error(String(msg.error || "script failed")));
+                  }
+                };
+                worker.onerror = (e) => {
+                  if (finished) return;
+                  reject(new Error(`worker error: ${String((e as any)?.message ?? e)}`));
+                };
+              });
+
+              const timeoutPromise = new Promise<never>((_, reject) => {
+                setTimeout(() => reject(new Error(`script timeout after ${timeoutMs}ms`)), timeoutMs);
+              });
+
+              try {
+                worker.postMessage({ type: "run", run_id: runId, code, args: userArgs });
+                const result = await Promise.race([donePromise, timeoutPromise]);
+                return { kind: "script_eval", ok: true, timeout_ms: timeoutMs, result };
+              } finally {
+                try {
+                  worker.terminate();
+                } catch {
+                  // ignore
+                }
+              }
+            };
+
             let result: any = null;
-            if (rpcKind === "dom_query") result = makeDomQuery();
+            if (rpcKind === "dom_query") result = makeDomQuery(rpcArgs);
             else if (rpcKind === "media_snapshot") result = makeMediaSnapshot();
             else if (rpcKind === "location") result = makeLocation();
             else if (rpcKind === "state_snapshot") result = makeStateSnapshot();
-            else if (rpcKind === "dom_click") result = makeDomClick();
-            else if (rpcKind === "dom_set_value") result = makeDomSetValue();
-            else if (rpcKind === "media_play") result = await makeMediaPlay();
-            else if (rpcKind === "media_observe") result = await makeMediaObserve();
+            else if (rpcKind === "dom_click") result = makeDomClick(rpcArgs);
+            else if (rpcKind === "dom_set_value") result = makeDomSetValue(rpcArgs);
+            else if (rpcKind === "media_play") result = await makeMediaPlay(rpcArgs);
+            else if (rpcKind === "media_observe") result = await makeMediaObserve(rpcArgs);
+            else if (rpcKind === "navigate") result = makeNavigate(rpcArgs);
+            else if (rpcKind === "script_eval") result = await makeScriptEval(rpcArgs);
             else throw new Error(`unsupported rpc.kind: ${rpcKind}`);
 
             await postRpcResult(true, { elapsed_ms: Date.now() - t0, result });

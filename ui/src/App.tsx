@@ -181,6 +181,8 @@ export default function App() {
             { kind: "dom_set_value", side_effects: true, description: "Set input/textarea value by selector (side effects)." },
             { kind: "media_play", side_effects: true, description: "Attempt to play audio/video by selector (browser policies apply)." },
             { kind: "media_observe", side_effects: true, description: "Attach media listeners and emit correlated progress events." },
+            { kind: "navigate", side_effects: true, description: "Navigate the browser to a new URL (likely reloads the app)." },
+            { kind: "script_eval", side_effects: false, description: "Run agent-provided script code in a killable worker with a DOM/media/location API bridge." },
           ],
           // Legacy alias (probe-only clients); kept small and read-only.
           probes: [
@@ -1420,7 +1422,9 @@ export default function App() {
                 </div>
                 <div className="mt-1 text-[11px] text-white/40">
                   When enabled, the UI may execute allowlisted, bounded RPC handlers (DOM/media/location) requested by the agent via{" "}
-                  <code>ui_action</code> (<code>type=client_rpc</code>). This does not allow arbitrary code execution.
+                  <code>ui_action</code> (<code>type=client_rpc</code>).
+                  In addition to fixed RPC kinds, the client can also support agent-provided scripts (e.g. <code>rpc.kind=script_eval</code>) that
+                  call an API bridge (DOM/media/location). Side effects remain separately gated.
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3">
                   <div className="text-xs font-semibold text-white/70">Client RPC (YOLO)</div>

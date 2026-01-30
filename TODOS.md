@@ -101,6 +101,9 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Generalize UI events into a client collaboration protocol: `/session/client_event`, `client` identity, and client-agnostic wait/probe tools (`client_wait_*`, `client_peek`).
 - [x] Add a client state snapshot protocol (`client_state`) + client-side media telemetry (video play events) so agents can proactively reason about client environment state.
 - [x] Add a universal client RPC surface (`ui_action type=client_rpc` + `client_rpc_result`/`client_rpc_progress`) so agents can request bounded client introspection and (optionally) side-effecting actions deterministically.
+- [x] Add a scriptable client RPC kind (`rpc.kind=script_eval`) so the agent can send task-specific “probe code” (killable worker + API bridge).
+- [ ] Add an unsafe “page eval” client RPC engine (explicit opt-in; manual approval per call; reload as kill switch).
+- [ ] Add a higher-level browser automation layer (navigation flows + wait/assert primitives; possibly via Playwright/CDP) built on top of client RPC.
 - [ ] Add a daemon skeleton with:
   - local control socket / HTTP
   - broker client abstraction (MQTT)

@@ -35,11 +35,30 @@ This replaces brittle “hardcoded state” patterns with a universal request/re
   - bounded inputs/outputs
   - explicit consent gates for side effects
 
-## Non-goals (for now)
+## Power features (staged, but MUST-have)
 
-- “Run arbitrary code” in the client runtime (too dangerous, too easy to exfiltrate secrets or infinite-loop).
-- Full browser automation (navigation/click-recording) as a single generic primitive.
-- Guaranteed autoplay / bypassing browser permission policies.
+This project is explicitly about agents and humans collaborating through a client surface.
+That implies the system must support progressively more powerful capabilities over time:
+
+1) **Scriptable probing (remote “probe code”)**
+   - The agent can send runnable code that performs *task-specific* inspection and reasoning, rather than relying on fixed snapshots.
+   - This is the general solution to “the agent should probe only what it cares about”.
+
+2) **Scriptable side effects (client YOLO)**
+   - In “client YOLO” mode, the agent can cause client-side changes (clicks, typing, observers/subscriptions, navigation).
+   - This is core to real autonomy: the agent must be able to act on the collaboration surface.
+
+3) **Full browser automation**
+   - Long-term, higher-level automation (navigation flows, record/replay) should be expressible either as:
+     - a set of primitives (click/type/navigate/wait/assert), and/or
+     - a script engine that composes primitives into workflows.
+
+4) **Media playback policies (autoplay)**
+   - Browsers enforce user-gesture policies. A client can:
+     - attempt autoplay
+     - report whether it succeeded
+     - fall back to a deterministic “gesture handshake” (ask user to click play, then ack).
+   - “Guaranteed autoplay bypass” is not generally achievable in standards-compliant browsers, but deterministic UX is achievable.
 
 ## Safety model (critical)
 
@@ -57,6 +76,12 @@ Clients should implement:
 Side effects must be opt-in:
 - a client may support “Allow agent client RPCs (read-only)”
 - and a separate “Allow agent client RPCs with side effects (YOLO)”
+
+Important engineering reality:
+- Some classes of “arbitrary code” are not safely preemptible in the browser main thread (an infinite loop can block timers).
+- Therefore, **killability** matters:
+  - prefer script engines that can be terminated (e.g. Web Worker execution) and that interact with DOM via an API bridge.
+  - for truly unsafe “page eval”, require explicit user enablement and accept that the page may need a reload as the kill switch.
 
 ## Agent → client request (via `ui_action`)
 
@@ -163,6 +188,11 @@ Side-effecting (requires explicit client “side effects” enablement):
 - `dom_set_value`: set input/textarea value by selector (does not echo value back)
 - `media_play`: attempt `HTMLMediaElement.play()` by selector (browser policies apply)
 - `media_observe`: attach media listeners and emit `client_rpc_progress` events correlated by `rpc_id`
+- `navigate`: navigate to a new URL (likely reloads the client)
+
+Scriptable (must-have power primitive):
+- `script_eval`: run agent-provided script code (prefer killable engines like Web Workers) and expose DOM/media/location via an API bridge.
+  - scripts can probe only what they care about, and can implement their own “wait/act” logic using client RPC progress events.
 
 ## Relationship to DoD (stop conditions)
 
