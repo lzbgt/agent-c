@@ -10,6 +10,18 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
+### Core-only build (portable; no CURL required)
+
+If you only want the portable core library + core unit tests (e.g. embedded/toolchain bring-up), disable host builds:
+
+```bash
+cmake -S . -B build-core -DAGENT_BUILD_HOST=OFF
+cmake --build build-core -j
+ctest --test-dir build-core --output-on-failure
+```
+
+This builds `agent_core` and `agent_core_tests`, but skips `agent_host`, `agent`, `agentd`, and host/network smokes.
+
 `ctest` includes two network smoke tests (OpenRouter + DeepSeek). They will run if keys are present
 either via environment variables or `project.local.md` (gitignored). Disable them with:
 

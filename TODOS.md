@@ -8,6 +8,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Define a stable **tool registry + executor interface** in the core (host-pluggable tools: GPIO, sensors, etc.).
 - [x] Move the **tool-call loop** into core so daemon/embedded can reuse it (host provides JSON + transport adapters).
 - [x] Add a portable, JSON-free **session persistence codec** (`.sess`) and make the host session store load/save both `.sess` and `.json`.
+- [x] Decouple `agent_core` from host-only dependencies in CMake (`-DAGENT_BUILD_HOST=OFF`).
 - [x] Implement a core **runner** that:
   - compacts session before calls (char budget)
   - calls provider

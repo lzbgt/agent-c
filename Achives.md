@@ -181,6 +181,7 @@ Completed milestones and notable tasks.
   - updated smoke tests and host tools to read keys from env or `project.local.md`
 - Added a portable, JSON-free session persistence codec (line-based `.sess`) in the core and updated the host session store
   to load/save both `.sess` and `.json` (when JSONCPP is available).
+- Made host components optional in CMake (`-DAGENT_BUILD_HOST=OFF`) so `agent_core` can be built/tested without CURL.
 
 - Moved the tool-call loop into the portable core (Milestone 2 groundwork):
   - added core tool-loop API + provider contract (`core/include/agent/tool_loop.h`, `core/include/agent/tool_provider.h`, `core/include/agent/chat.h`)
