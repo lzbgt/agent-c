@@ -15,6 +15,56 @@ export const HealthSchema = z.object({
 });
 export type Health = z.infer<typeof HealthSchema>;
 
+export const DaemonConfigSchema = z
+  .object({
+    ok: z.boolean(),
+    service: z.string().optional(),
+    version: z.string().optional(),
+    have_jsoncpp: z.boolean().optional(),
+    daemon: z
+      .object({
+        listen_host: z.string().optional(),
+        listen_port: z.number().optional(),
+        base_url: z.string().optional(),
+        model: z.string().optional(),
+        summary_model: z.string().nullable().optional(),
+        summary_max_chars: z.number().optional(),
+        timeout_ms: z.number().optional(),
+        proxy_url_set: z.boolean().optional(),
+        api_key_set: z.boolean().optional(),
+        auth_enabled: z.boolean().optional(),
+        allow_unauthenticated_non_loopback: z.boolean().optional(),
+      })
+      .optional(),
+    cors: z
+      .object({
+        enabled: z.boolean().optional(),
+        origins: z.array(z.string()).optional(),
+        allow_headers: z.string().optional(),
+        allow_methods: z.string().optional(),
+        max_age_seconds: z.number().optional(),
+      })
+      .optional(),
+    sandbox: z
+      .object({
+        tools: z.string().optional(),
+        tools_root: z.string().nullable().optional(),
+        host_scope_root: z.string().nullable().optional(),
+        yolo_default: z.boolean().optional(),
+        host_policy: z.enum(["full", "readonly"]).optional(),
+      })
+      .optional(),
+    jobs: z
+      .object({
+        job_ttl_ms: z.number().optional(),
+        max_jobs: z.number().optional(),
+      })
+      .optional(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+export type DaemonConfigResp = z.infer<typeof DaemonConfigSchema>;
+
 export const RunRequestSchema = z.object({
   prompt: z.string().min(1),
   session_id: z.string().optional(),
@@ -186,6 +236,12 @@ export async function apiGetHealth(base: string, authToken?: string): Promise<He
   const r = await fetch(`${base}/api/v1/health`, { headers: daemonHeaders(authToken) });
   const j = await r.json();
   return HealthSchema.parse(j);
+}
+
+export async function apiGetConfig(base: string, authToken?: string): Promise<DaemonConfigResp> {
+  const r = await fetch(`${base}/api/v1/config`, { headers: daemonHeaders(authToken) });
+  const j = await r.json();
+  return DaemonConfigSchema.parse(j);
 }
 
 export const SessionsSchema = z.object({

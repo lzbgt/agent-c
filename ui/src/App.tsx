@@ -2,6 +2,7 @@ import React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   apiGetAudit,
+  apiGetConfig,
   apiGetHealth,
   apiGetJobProgress,
   apiGetOpenRouterModels,
@@ -89,6 +90,12 @@ export default function App() {
   const health = useQuery({
     queryKey: ["health", effectiveBase, daemonAuthToken],
     queryFn: () => apiGetHealth(effectiveBase, daemonAuthToken),
+    retry: 1,
+  });
+
+  const daemonConfig = useQuery({
+    queryKey: ["config", effectiveBase, daemonAuthToken],
+    queryFn: () => apiGetConfig(effectiveBase, daemonAuthToken),
     retry: 1,
   });
 
@@ -581,6 +588,71 @@ export default function App() {
               <div className="mt-1 text-[11px] text-white/40">
                 Use when `agentd` is started with <code>--auth-token</code> (or env <code>AGENTD_AUTH_TOKEN</code>).
               </div>
+            </div>
+
+            <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-xs font-semibold text-white/70">
+                  Daemon config <span className="text-white/40">(GET /api/v1/config)</span>
+                </div>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                  onClick={() => daemonConfig.refetch()}
+                  type="button"
+                  disabled={daemonConfig.isFetching}
+                  title="Refetch daemon config"
+                >
+                  Refresh
+                </button>
+              </div>
+
+              {daemonConfig.isFetching ? (
+                <div className="mt-2 text-[11px] text-white/50">loading…</div>
+              ) : daemonConfig.isError ? (
+                <div className="mt-2 text-[11px] text-amber-200/80">failed to load config</div>
+              ) : daemonConfig.data?.ok ? (
+                <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-white/60">
+                  <div>
+                    auth:{" "}
+                    <code className="text-white/70">{daemonConfig.data.daemon?.auth_enabled ? "enabled" : "disabled"}</code>
+                  </div>
+                  <div>
+                    cors:{" "}
+                    <code className="text-white/70">{daemonConfig.data.cors?.enabled ? "enabled" : "disabled"}</code>
+                  </div>
+                  <div className="col-span-2">
+                    cors origins:{" "}
+                    <code className="text-white/70">
+                      {daemonConfig.data.cors?.origins && daemonConfig.data.cors.origins.length > 0
+                        ? daemonConfig.data.cors.origins.join(", ")
+                        : "(none)"}
+                    </code>
+                  </div>
+                  <div>
+                    yolo default: <code className="text-white/70">{daemonConfig.data.sandbox?.yolo_default ? "true" : "false"}</code>
+                  </div>
+                  <div>
+                    host policy:{" "}
+                    <code className="text-white/70">{daemonConfig.data.sandbox?.host_policy ?? "(unknown)"}</code>
+                  </div>
+                  <div className="col-span-2">
+                    tools root:{" "}
+                    <code className="text-white/70">
+                      {daemonConfig.data.sandbox?.tools_root ?? "(default / cwd)"}
+                    </code>
+                  </div>
+                  <div className="col-span-2">
+                    job gc:{" "}
+                    <code className="text-white/70">
+                      ttl={daemonConfig.data.jobs?.job_ttl_ms ?? "?"}ms, max_jobs={daemonConfig.data.jobs?.max_jobs ?? "?"}
+                    </code>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-2 text-[11px] text-amber-200/80">
+                  {daemonConfig.data?.error ? `error: ${daemonConfig.data.error}` : "error"}
+                </div>
+              )}
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-3">
