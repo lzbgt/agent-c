@@ -187,6 +187,8 @@ Completed milestones and notable tasks.
 - Added daemon job garbage collection (TTL + max jobs) and unit tests to keep long-running `agentd` memory bounded.
 - Added a core persistence port (`core/include/agent/persist.h`) and migrated CLI/daemon to use a file-backed persistor adapter,
   enabling future SQLite/NVS implementations without changing core call sites.
+- Added optional daemon auth token support (`--auth-token` / `AGENTD_AUTH_TOKEN`) and updated the Web UI to send
+  `Authorization: Bearer ...` when configured (provider keys remain separate, e.g. `X-OpenRouter-Key`).
 
 - Moved the tool-call loop into the portable core (Milestone 2 groundwork):
   - added core tool-loop API + provider contract (`core/include/agent/tool_loop.h`, `core/include/agent/tool_provider.h`, `core/include/agent/chat.h`)

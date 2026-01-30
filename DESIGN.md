@@ -355,6 +355,13 @@ Job lifecycle (daemon robustness):
   - drop jobs that have been done/error for longer than a TTL
   - cancellation flags are cooperative and checked at safe boundaries
 
+Daemon authentication (optional, recommended when exposed beyond localhost):
+- By default `agentd` binds to `127.0.0.1` and does not require auth.
+- If `--auth-token` (or env `AGENTD_AUTH_TOKEN`) is set, daemon endpoints require:
+  - `Authorization: Bearer <token>`
+- This token is *daemon control-plane auth* and is distinct from provider API keys.
+  - Provider keys are passed via request JSON (e.g. `api_key`) or via provider-specific headers (e.g. `X-OpenRouter-Key`).
+
 `POST /api/v1/run` request (JSON):
 - `prompt` (string, required)
 - `session_id` (string, default `"default"`)

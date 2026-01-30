@@ -60,6 +60,9 @@ static std::string home_dir_best_effort() {
 struct DaemonConfig {
   std::string listen_host = "127.0.0.1";
   uint16_t listen_port = 8123;
+  // Optional daemon auth (control-plane). When set, all endpoints (except /health) require
+  // Authorization: Bearer <token>. This is distinct from provider API keys.
+  std::string auth_token;
   std::string base_url = "https://api.openai.com/v1";
   std::string api_key;
   std::string model = "gpt-4o-mini";
@@ -79,6 +82,28 @@ struct DaemonConfig {
   int64_t job_ttl_ms = 30 * 60 * 1000; // 30 minutes
   size_t max_jobs = 256;
 };
+
+static bool daemon_auth_ok(const DaemonConfig& cfg, const HttpRequest& req) {
+  if (cfg.auth_token.empty()) {
+    return true;
+  }
+  const std::string auth = header_get_ci(req.headers, "authorization");
+  const std::string got = bearer_token_from_auth_header(auth);
+  return !got.empty() && got == cfg.auth_token;
+}
+
+static bool daemon_require_auth(const DaemonConfig& cfg, const HttpRequest& req, HttpResponse* resp) {
+  if (daemon_auth_ok(cfg, req)) {
+    return true;
+  }
+  if (resp) {
+    resp->status = 401;
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    resp->headers["WWW-Authenticate"] = "Bearer";
+    resp->body = R"({"ok":false,"error":"unauthorized"})";
+  }
+  return false;
+}
 
 struct ProviderCtx {
   OpenAIClientConfig cfg;
@@ -870,6 +895,11 @@ int main(int argc, char** argv) {
         std::cerr << "Missing value for --host\n";
         return 2;
       }
+    } else if (a == "--auth-token") {
+      if (!take(&cfg.auth_token)) {
+        std::cerr << "Missing value for --auth-token\n";
+        return 2;
+      }
     } else if (a == "--port") {
       std::string v;
       if (!take(&v)) {
@@ -982,6 +1012,7 @@ int main(int argc, char** argv) {
       std::cerr
         << "Usage: agentd [options]\n"
         << "  --host <ip>          Listen host (default: 127.0.0.1)\n"
+        << "  --auth-token <tok>   Require Authorization: Bearer <tok> (default: disabled)\n"
         << "  --port <n>           Listen port (default: 8123)\n"
         << "  --model <name>       Default model\n"
         << "  --summary-model <name>   Optional model for compaction summaries (tools=none)\n"
@@ -1038,6 +1069,11 @@ int main(int argc, char** argv) {
       cfg.model = m;
     }
   }
+  if (cfg.auth_token.empty()) {
+    if (const char* t = getenv_s("AGENTD_AUTH_TOKEN")) {
+      cfg.auth_token = t;
+    }
+  }
 
   OpenAIClientConfig ocfg;
   ocfg.base_url = cfg.base_url;
@@ -1081,6 +1117,7 @@ int main(int argc, char** argv) {
   server.handle("GET", "/api/v1/tools", [&](const HttpRequest& req, HttpResponse* resp) {
     add_cors(resp);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    if (!daemon_require_auth(cfg, req, resp)) return;
 #if !defined(AGENT_HAVE_JSONCPP)
     resp->status = 500;
     resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
@@ -1173,6 +1210,7 @@ int main(int argc, char** argv) {
   server.handle("GET", "/api/v1/openrouter/models", [&](const HttpRequest& req, HttpResponse* resp) {
     add_cors(resp);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    if (!daemon_require_auth(cfg, req, resp)) return;
 #if !defined(AGENT_HAVE_JSONCPP)
     resp->status = 500;
     resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
@@ -1230,14 +1268,20 @@ int main(int argc, char** argv) {
     }();
     const std::string models_url = trim_slashes(base_url) + "/models";
 
-    // API key precedence:
-    // 1) Authorization header (Bearer ...)
-    // 2) env OPENROUTER_API_KEY
-    // 3) env OPENAI_API_KEY (fallback)
+    // API key precedence (provider key; distinct from daemon auth):
+    // 1) X-OpenRouter-Key header
+    // 2) Authorization header (Bearer ...) ONLY when daemon auth is disabled
+    // 3) env OPENROUTER_API_KEY
+    // 4) env OPENAI_API_KEY (fallback)
     std::string key;
     {
-      const std::string auth = header_get_ci(req.headers, "authorization");
-      key = bearer_token_from_auth_header(auth);
+      const std::string xk = header_get_ci(req.headers, "x-openrouter-key");
+      if (!xk.empty()) {
+        key = xk;
+      } else if (cfg.auth_token.empty()) {
+        const std::string auth = header_get_ci(req.headers, "authorization");
+        key = bearer_token_from_auth_header(auth);
+      }
       if (key.empty()) {
         if (const char* k = getenv_s("OPENROUTER_API_KEY")) key = k;
         else if (const char* k2 = getenv_s("OPENAI_API_KEY")) key = k2;
@@ -1245,7 +1289,7 @@ int main(int argc, char** argv) {
     }
     if (key.empty()) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"missing OpenRouter key (set OPENROUTER_API_KEY or send Authorization: Bearer ...)\"}";
+      resp->body = "{\"ok\":false,\"error\":\"missing OpenRouter key (set OPENROUTER_API_KEY or send X-OpenRouter-Key)\"}";
       return;
     }
 
@@ -1400,6 +1444,7 @@ int main(int argc, char** argv) {
 
   server.handle("GET", "/api/v1/file", [&](const HttpRequest& req, HttpResponse* resp) {
     add_cors(resp);
+    if (!daemon_require_auth(cfg, req, resp)) return;
     const auto path_q = query_get(req.query, "path");
     const auto yolo_q = query_get(req.query, "yolo");
     const bool yolo = yolo_q && (*yolo_q == "1" || *yolo_q == "true");
@@ -1495,9 +1540,10 @@ int main(int argc, char** argv) {
     resp->body = std::move(bytes);
   });
 
-  server.handle("GET", "/api/v1/sessions", [&](const HttpRequest&, HttpResponse* resp) {
+  server.handle("GET", "/api/v1/sessions", [&](const HttpRequest& req, HttpResponse* resp) {
     add_cors(resp);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    if (!daemon_require_auth(cfg, req, resp)) return;
 #if !defined(AGENT_HAVE_JSONCPP)
     resp->status = 500;
     resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
@@ -1538,6 +1584,7 @@ int main(int argc, char** argv) {
   server.handle("GET", "/api/v1/session", [&](const HttpRequest& req, HttpResponse* resp) {
     add_cors(resp);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    if (!daemon_require_auth(cfg, req, resp)) return;
 #if !defined(AGENT_HAVE_JSONCPP)
     resp->status = 500;
     resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
@@ -1590,6 +1637,7 @@ int main(int argc, char** argv) {
   server.handle("GET", "/api/v1/session/audit", [&](const HttpRequest& req, HttpResponse* resp) {
     add_cors(resp);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    if (!daemon_require_auth(cfg, req, resp)) return;
 #if !defined(AGENT_HAVE_JSONCPP)
     resp->status = 500;
     resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
@@ -1642,6 +1690,7 @@ int main(int argc, char** argv) {
   server.handle("DELETE", "/api/v1/session", [&](const HttpRequest& req, HttpResponse* resp) {
     add_cors(resp);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    if (!daemon_require_auth(cfg, req, resp)) return;
 #if !defined(AGENT_HAVE_JSONCPP)
     resp->status = 500;
     resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
@@ -1674,6 +1723,7 @@ int main(int argc, char** argv) {
   server.handle("POST", "/api/v1/run", [&](const HttpRequest& req, HttpResponse* resp) {
     add_cors(resp);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    if (!daemon_require_auth(cfg, req, resp)) return;
 
 #if !defined(AGENT_HAVE_JSONCPP)
     resp->status = 500;
@@ -1697,6 +1747,7 @@ int main(int argc, char** argv) {
   server.handle("POST", "/api/v1/run_async", [&](const HttpRequest& req, HttpResponse* resp) {
     add_cors(resp);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    if (!daemon_require_auth(cfg, req, resp)) return;
 
 #if !defined(AGENT_HAVE_JSONCPP)
     resp->status = 500;
@@ -1792,6 +1843,7 @@ int main(int argc, char** argv) {
   server.handle("GET", "/api/v1/job", [&](const HttpRequest& req, HttpResponse* resp) {
     add_cors(resp);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    if (!daemon_require_auth(cfg, req, resp)) return;
 #if !defined(AGENT_HAVE_JSONCPP)
     resp->status = 500;
     resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
@@ -1875,9 +1927,9 @@ int main(int argc, char** argv) {
   });
 
   server.handle("POST", "/api/v1/job/cancel", [&](const HttpRequest& req, HttpResponse* resp) {
-    (void)req;
     add_cors(resp);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    if (!daemon_require_auth(cfg, req, resp)) return;
 #if !defined(AGENT_HAVE_JSONCPP)
     resp->status = 500;
     resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
@@ -1927,6 +1979,20 @@ int main(int argc, char** argv) {
     (void)write_all_fd(client_fd, wire);
     return;
 #else
+    if (!daemon_auth_ok(cfg, req)) {
+      const std::string wire =
+        "HTTP/1.1 401 Unauthorized\r\n"
+        "Content-Type: application/json; charset=utf-8\r\n"
+        "WWW-Authenticate: Bearer\r\n"
+        "Access-Control-Allow-Origin: *\r\n"
+        "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
+        "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
+        "Connection: close\r\n"
+        "\r\n"
+        "{\"ok\":false,\"error\":\"unauthorized\"}";
+      (void)write_all_fd(client_fd, wire);
+      return;
+    }
     const auto jid = query_get(req.query, "job_id");
     if (!jid || jid->empty()) {
       const std::string wire =
@@ -2028,6 +2094,7 @@ int main(int argc, char** argv) {
   server.handle("DELETE", "/api/v1/job", [&](const HttpRequest& req, HttpResponse* resp) {
     add_cors(resp);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    if (!daemon_require_auth(cfg, req, resp)) return;
 #if !defined(AGENT_HAVE_JSONCPP)
     resp->status = 500;
     resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";

@@ -35,6 +35,16 @@ without changing the core call sites (filesystem `.sess`, SQLite, NVS/flash, etc
 - `--job-ttl-ms <n>`: remove done/error jobs older than `n` ms (default: 1800000)
 - `--max-jobs <n>`: keep at most `n` jobs in memory (default: 256)
 
+### Daemon auth (optional)
+
+If you bind `agentd` to non-loopback (e.g. `--host 0.0.0.0`), set an auth token:
+
+```bash
+./build/agentd --auth-token "your_token"
+```
+
+Clients must send `Authorization: Bearer your_token` to all endpoints (except `/api/v1/health`).
+
 `ctest` includes two network smoke tests (OpenRouter + DeepSeek). They will run if keys are present
 either via environment variables or `project.local.md` (gitignored). Disable them with:
 

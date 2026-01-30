@@ -32,6 +32,7 @@ export default function App() {
   const [showSettings, setShowSettings] = useLocalStorageState("agentui.showSettings", true);
 
   const [base, setBase] = useLocalStorageState("agentui.base", "http://127.0.0.1:8123");
+  const [daemonAuthToken, setDaemonAuthToken] = useLocalStorageState("agentui.daemonAuthToken", "");
   const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "inspect this project and explain");
   const [sessionId, setSessionId] = useLocalStorageState("agentui.sessionId", "default");
   const [tools, setTools] = useLocalStorageState<"host" | "basic" | "none">("agentui.tools", "host");
@@ -83,26 +84,26 @@ export default function App() {
   }, [base]);
 
   const health = useQuery({
-    queryKey: ["health", effectiveBase],
-    queryFn: () => apiGetHealth(effectiveBase),
+    queryKey: ["health", effectiveBase, daemonAuthToken],
+    queryFn: () => apiGetHealth(effectiveBase, daemonAuthToken),
     retry: 1,
   });
 
   const sessions = useQuery({
-    queryKey: ["sessions", effectiveBase],
-    queryFn: () => apiListSessions(effectiveBase),
+    queryKey: ["sessions", effectiveBase, daemonAuthToken],
+    queryFn: () => apiListSessions(effectiveBase, daemonAuthToken),
     retry: 1,
   });
 
   const toolsDefs = useQuery({
-    queryKey: ["tools", effectiveBase, tools, toolsRoot, yolo],
-    queryFn: () => apiGetTools(effectiveBase, { tools, toolsRoot, yolo }),
+    queryKey: ["tools", effectiveBase, daemonAuthToken, tools, toolsRoot, yolo],
+    queryFn: () => apiGetTools(effectiveBase, daemonAuthToken, { tools, toolsRoot, yolo }),
     retry: 1,
   });
 
   const audit = useQuery({
-    queryKey: ["audit", effectiveBase, sessionId],
-    queryFn: () => apiGetAudit(effectiveBase, sessionId),
+    queryKey: ["audit", effectiveBase, daemonAuthToken, sessionId],
+    queryFn: () => apiGetAudit(effectiveBase, sessionId, daemonAuthToken),
     enabled: !!sessionId,
     retry: 1,
   });
@@ -137,10 +138,10 @@ export default function App() {
         trace,
       };
       if (useAsync) {
-        const job = await apiRunAsync(effectiveBase, req);
+        const job = await apiRunAsync(effectiveBase, req, daemonAuthToken);
         return { mode: "async" as const, job, req };
       }
-      const out = await apiRun(effectiveBase, req);
+      const out = await apiRun(effectiveBase, req, daemonAuthToken);
       return { mode: "sync" as const, out, req };
     },
     onSuccess: (v) => {
@@ -185,6 +186,7 @@ export default function App() {
       const maxTotal = Number(orMaxTotal);
       const limit = Number(orLimit);
       return apiGetOpenRouterModels(effectiveBase, {
+        daemonAuthToken: daemonAuthToken || undefined,
         apiKey: apiKey || undefined,
         openrouterBaseUrl: "https://openrouter.ai/api/v1",
         minTotal: Number.isFinite(minTotal) ? minTotal : 0.01,
@@ -218,7 +220,7 @@ export default function App() {
           if (cancelled) return;
           let job: any;
           try {
-            job = await apiGetJobProgress(effectiveBase, jobId, { cursor: cursorRef.current, maxEvents: 256 });
+            job = await apiGetJobProgress(effectiveBase, jobId, daemonAuthToken, { cursor: cursorRef.current, maxEvents: 256 });
           } catch (e) {
             // Transient fetch failures should not invalidate the visible conversation.
             // Keep the current liveEvents and keep the job active; retry with backoff.
@@ -465,8 +467,8 @@ export default function App() {
         ) : null}
 
         {showSettings ? (
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-            <div className="mb-3 text-sm font-semibold">Settings</div>
+            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
+              <div className="mb-3 text-sm font-semibold">Settings</div>
 
             <Label>Daemon base URL</Label>
             <input
@@ -479,6 +481,19 @@ export default function App() {
                 Tip: include scheme (e.g. <code>http://127.0.0.1:8123</code>). Missing scheme will default to <code>http://</code>.
               </div>
             ) : null}
+
+            <div className="mt-4">
+              <Label>Daemon auth token (optional)</Label>
+              <input
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                value={daemonAuthToken}
+                placeholder="sent as Authorization: Bearer <token>"
+                onChange={(e) => setDaemonAuthToken(e.target.value)}
+              />
+              <div className="mt-1 text-[11px] text-white/40">
+                Use when `agentd` is started with <code>--auth-token</code> (or env <code>AGENTD_AUTH_TOKEN</code>).
+              </div>
+            </div>
 
             <div className="mt-4 grid grid-cols-2 gap-3">
               <div>
@@ -800,7 +815,7 @@ export default function App() {
 
               <div className="mt-2 text-[11px] text-white/40">
                 Uses the daemon endpoint <code>/api/v1/openrouter/models</code>. If you set an API key above, the UI will send it as an
-                Authorization header.
+                <code>X-OpenRouter-Key</code> header. Daemon auth (if enabled) is sent separately as <code>Authorization: Bearer ...</code>.
               </div>
             </div>
           </div>
@@ -843,7 +858,7 @@ export default function App() {
                   className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200 hover:bg-rose-500/15"
                   onClick={async () => {
                     try {
-                      await apiCancelJob(effectiveBase, activeJobId);
+                      await apiCancelJob(effectiveBase, activeJobId, daemonAuthToken);
                       setJobError("cancel requested");
                     } catch (e) {
                       setJobError(`cancel failed: ${String(e)}`);

@@ -1,5 +1,13 @@
 import { z } from "zod";
 
+function daemonHeaders(authToken?: string, extra?: Record<string, string>): Record<string, string> {
+  const h: Record<string, string> = { ...(extra ?? {}) };
+  if (authToken && authToken.trim().length > 0) {
+    h["Authorization"] = `Bearer ${authToken.trim()}`;
+  }
+  return h;
+}
+
 export const HealthSchema = z.object({
   ok: z.boolean(),
   service: z.string().optional(),
@@ -76,20 +84,22 @@ export type ToolDefsResp = z.infer<typeof ToolDefsRespSchema>;
 
 export async function apiGetTools(
   base: string,
+  authToken?: string,
   opts?: { tools?: "host" | "basic" | "none"; toolsRoot?: string; yolo?: boolean },
 ): Promise<ToolDefsResp> {
   const q = new URLSearchParams();
   if (opts?.tools) q.set("tools", opts.tools);
   if (typeof opts?.toolsRoot === "string") q.set("tools_root", opts.toolsRoot);
   if (typeof opts?.yolo === "boolean") q.set("yolo", opts.yolo ? "1" : "0");
-  const r = await fetch(`${base}/api/v1/tools?${q.toString()}`);
+  const r = await fetch(`${base}/api/v1/tools?${q.toString()}`, { headers: daemonHeaders(authToken) });
   const j = await r.json();
   return ToolDefsRespSchema.parse(j);
 }
 
-export async function apiCancelJob(base: string, jobId: string): Promise<any> {
+export async function apiCancelJob(base: string, jobId: string, authToken?: string): Promise<any> {
   const r = await fetch(`${base}/api/v1/job/cancel?job_id=${encodeURIComponent(jobId)}`, {
     method: "POST",
+    headers: daemonHeaders(authToken),
   });
   const j = await r.json();
   return j;
@@ -136,6 +146,7 @@ export type OpenRouterModelsResp = z.infer<typeof OpenRouterModelsRespSchema>;
 export async function apiGetOpenRouterModels(
   base: string,
   opts: {
+    daemonAuthToken?: string;
     apiKey?: string;
     openrouterBaseUrl?: string;
     minTotal?: number;
@@ -158,17 +169,17 @@ export async function apiGetOpenRouterModels(
   if (typeof opts.limit === "number") q.set("limit", String(opts.limit));
   if (opts.refresh) q.set("refresh", "1");
 
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = daemonHeaders(opts.daemonAuthToken);
   if (opts.apiKey && opts.apiKey.trim().length > 0) {
-    headers["Authorization"] = `Bearer ${opts.apiKey.trim()}`;
+    headers["X-OpenRouter-Key"] = opts.apiKey.trim();
   }
   const r = await fetch(`${base}/api/v1/openrouter/models?${q.toString()}`, { headers });
   const j = await r.json();
   return OpenRouterModelsRespSchema.parse(j);
 }
 
-export async function apiGetHealth(base: string): Promise<Health> {
-  const r = await fetch(`${base}/api/v1/health`);
+export async function apiGetHealth(base: string, authToken?: string): Promise<Health> {
+  const r = await fetch(`${base}/api/v1/health`, { headers: daemonHeaders(authToken) });
   const j = await r.json();
   return HealthSchema.parse(j);
 }
@@ -180,8 +191,8 @@ export const SessionsSchema = z.object({
 });
 export type SessionsResp = z.infer<typeof SessionsSchema>;
 
-export async function apiListSessions(base: string): Promise<SessionsResp> {
-  const r = await fetch(`${base}/api/v1/sessions`);
+export async function apiListSessions(base: string, authToken?: string): Promise<SessionsResp> {
+  const r = await fetch(`${base}/api/v1/sessions`, { headers: daemonHeaders(authToken) });
   const j = await r.json();
   return SessionsSchema.parse(j);
 }
@@ -194,8 +205,8 @@ export const SessionSchema = z.object({
 });
 export type SessionResp = z.infer<typeof SessionSchema>;
 
-export async function apiGetSession(base: string, sessionId: string): Promise<SessionResp> {
-  const r = await fetch(`${base}/api/v1/session?session_id=${encodeURIComponent(sessionId)}`);
+export async function apiGetSession(base: string, sessionId: string, authToken?: string): Promise<SessionResp> {
+  const r = await fetch(`${base}/api/v1/session?session_id=${encodeURIComponent(sessionId)}`, { headers: daemonHeaders(authToken) });
   const j = await r.json();
   return SessionSchema.parse(j);
 }
@@ -208,17 +219,19 @@ export const AuditSchema = z.object({
 });
 export type AuditResp = z.infer<typeof AuditSchema>;
 
-export async function apiGetAudit(base: string, sessionId: string): Promise<AuditResp> {
-  const r = await fetch(`${base}/api/v1/session/audit?session_id=${encodeURIComponent(sessionId)}&max_bytes=1048576`);
+export async function apiGetAudit(base: string, sessionId: string, authToken?: string): Promise<AuditResp> {
+  const r = await fetch(`${base}/api/v1/session/audit?session_id=${encodeURIComponent(sessionId)}&max_bytes=1048576`, {
+    headers: daemonHeaders(authToken),
+  });
   const j = await r.json();
   return AuditSchema.parse(j);
 }
 
-export async function apiRun(base: string, req: RunRequest): Promise<RunResponse> {
+export async function apiRun(base: string, req: RunRequest, authToken?: string): Promise<RunResponse> {
   const payload = RunRequestSchema.parse(req);
   const r = await fetch(`${base}/api/v1/run`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: daemonHeaders(authToken, { "Content-Type": "application/json" }),
     body: JSON.stringify(payload),
   });
   const j = await r.json();
@@ -248,19 +261,19 @@ export const JobRespSchema = z.object({
 });
 export type JobResp = z.infer<typeof JobRespSchema>;
 
-export async function apiRunAsync(base: string, req: RunRequest): Promise<RunAsyncResp> {
+export async function apiRunAsync(base: string, req: RunRequest, authToken?: string): Promise<RunAsyncResp> {
   const payload = RunRequestSchema.parse(req);
   const r = await fetch(`${base}/api/v1/run_async`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: daemonHeaders(authToken, { "Content-Type": "application/json" }),
     body: JSON.stringify(payload),
   });
   const j = await r.json();
   return RunAsyncRespSchema.parse(j);
 }
 
-export async function apiGetJob(base: string, jobId: string): Promise<JobResp> {
-  const r = await fetch(`${base}/api/v1/job?job_id=${encodeURIComponent(jobId)}`);
+export async function apiGetJob(base: string, jobId: string, authToken?: string): Promise<JobResp> {
+  const r = await fetch(`${base}/api/v1/job?job_id=${encodeURIComponent(jobId)}`, { headers: daemonHeaders(authToken) });
   const j = await r.json();
   return JobRespSchema.parse(j);
 }
@@ -268,6 +281,7 @@ export async function apiGetJob(base: string, jobId: string): Promise<JobResp> {
 export async function apiGetJobProgress(
   base: string,
   jobId: string,
+  authToken?: string,
   opts?: { cursor?: number; maxEvents?: number },
 ): Promise<JobResp> {
   const cursor = opts?.cursor ?? 0;
@@ -276,6 +290,7 @@ export async function apiGetJobProgress(
     `${base}/api/v1/job?job_id=${encodeURIComponent(jobId)}&include_events=1&cursor=${encodeURIComponent(
       String(cursor),
     )}&max_events=${encodeURIComponent(String(maxEvents))}`,
+    { headers: daemonHeaders(authToken) },
   );
   const j = await r.json();
   return JobRespSchema.parse(j);
@@ -288,6 +303,7 @@ function sleep(ms: number) {
 export async function apiRunMaybeAsync(
   base: string,
   req: RunRequest,
+  authToken?: string,
   opts?: { pollMs?: number; timeoutMs?: number },
 ): Promise<RunResponse> {
   const pollMs = opts?.pollMs ?? 500;
@@ -297,22 +313,22 @@ export async function apiRunMaybeAsync(
   // Prefer async when available; fall back to sync if endpoint missing.
   let asyncResp: RunAsyncResp | undefined;
   try {
-    asyncResp = await apiRunAsync(base, req);
+    asyncResp = await apiRunAsync(base, req, authToken);
   } catch {
     // likely 404 or JSON mismatch; fall back to sync.
-    return apiRun(base, req);
+    return apiRun(base, req, authToken);
   }
 
   if (!asyncResp.ok || !asyncResp.job_id) {
     // If daemon reported an error, fall back to sync as best-effort.
-    return apiRun(base, req);
+    return apiRun(base, req, authToken);
   }
 
   while (true) {
     if (Date.now() - started > timeoutMs) {
       throw new Error(`Timed out waiting for job ${asyncResp.job_id}`);
     }
-    const job = await apiGetJob(base, asyncResp.job_id);
+    const job = await apiGetJob(base, asyncResp.job_id, authToken);
     if (!job.ok) {
       throw new Error(job.error || "job failed");
     }

@@ -43,6 +43,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add a minimal local daemon (`agentd`) with HTTP+JSON endpoints for a Web UI client.
 - [x] Add a structured event log (`events`) for UIs (LLM + tool timeline).
 - [x] Add daemon job garbage collection (TTL + max jobs) so long-running `agentd` stays memory-bounded.
+- [x] Add optional daemon auth token (`--auth-token` / `AGENTD_AUTH_TOKEN`) for safe non-loopback deployments.
 - [x] Expand daemon RPC surface:
   - list sessions, get session, delete session
   - fetch per-run audit entries
