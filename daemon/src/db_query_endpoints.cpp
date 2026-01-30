@@ -587,4 +587,105 @@ void handle_db_artifacts_endpoint(
 #endif
 }
 
+void handle_db_ui_actions_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  const auto sid = query_get(req.query, "session_id");
+  if (!sid || sid->empty()) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["rpc_status"] = 400;
+    o["error"] = "missing session_id";
+    resp->status = 400;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  uint64_t limit = 50;
+  uint64_t offset = 0;
+  uint64_t tmp = 0;
+  if (parse_u64_param(query_get(req.query, "limit"), &tmp)) limit = tmp;
+  if (parse_u64_param(query_get(req.query, "offset"), &tmp)) offset = tmp;
+  limit = clamp_u64(limit, 1, 200);
+  offset = clamp_u64(offset, 0, 1000000);
+
+  DbHandle h;
+  Json::Value o = open_db_or_error(db_or_null, &h, nullptr);
+  if (!o.isObject() || !o.get("ok", false).asBool()) {
+    const int st = o.isMember("rpc_status") && o["rpc_status"].isInt() ? o["rpc_status"].asInt() : 500;
+    resp->status = st;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+#if !defined(AGENT_HAVE_SQLITE3)
+  resp->status = 500;
+  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  return;
+#else
+  sqlite3_stmt* st = nullptr;
+  const char* sql =
+    "SELECT id, run_id, ts_unix_ms, tool_call_id, type, title, message, path, mime, autoplay, repeat, action_json "
+    "FROM ui_actions WHERE session_id=? ORDER BY ts_unix_ms DESC LIMIT ? OFFSET ?;";
+  if (sqlite3_prepare_v2(h.db, sql, -1, &st, nullptr) != SQLITE_OK) {
+    Json::Value err(Json::objectValue);
+    err["ok"] = false;
+    err["rpc_status"] = 500;
+    err["error"] = sqlite3_errmsg(h.db);
+    resp->status = 500;
+    resp->body = json_stringify(err);
+    return;
+  }
+  (void)sqlite3_bind_text(st, 1, sid->c_str(), (int)sid->size(), SQLITE_TRANSIENT);
+  (void)sqlite3_bind_int64(st, 2, (sqlite3_int64)limit);
+  (void)sqlite3_bind_int64(st, 3, (sqlite3_int64)offset);
+
+  Json::Value rows(Json::arrayValue);
+  while (sqlite3_step(st) == SQLITE_ROW) {
+    Json::Value a(Json::objectValue);
+    a["id"] = (Json::Int64)sqlite3_column_int64(st, 0);
+    a["run_id"] = (Json::Int64)sqlite3_column_int64(st, 1);
+    a["ts_unix_ms"] = (Json::Int64)sqlite3_column_int64(st, 2);
+    a["tool_call_id"] = stmt_to_row(st, 3);
+    a["type"] = stmt_to_row(st, 4);
+    a["title"] = stmt_to_row(st, 5);
+    a["message"] = stmt_to_row(st, 6);
+    a["path"] = stmt_to_row(st, 7);
+    a["mime"] = stmt_to_row(st, 8);
+    a["autoplay"] = sqlite3_column_int(st, 9) ? true : false;
+    a["repeat"] = (Json::Int64)sqlite3_column_int64(st, 10);
+    const Json::Value action_json_v = stmt_to_row(st, 11);
+    a["action_json"] = action_json_v;
+    if (action_json_v.isString() && !action_json_v.asString().empty()) {
+      Json::Value parsed;
+      std::string perr;
+      if (json_parse_object(action_json_v.asString(), &parsed, &perr)) {
+        a["action"] = parsed;
+      }
+    }
+    rows.append(a);
+  }
+  sqlite3_finalize(st);
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = true;
+  out["session_id"] = *sid;
+  out["limit"] = (Json::UInt64)limit;
+  out["offset"] = (Json::UInt64)offset;
+  out["count"] = (Json::UInt64)rows.size();
+  out["ui_actions"] = rows;
+  resp->status = 200;
+  resp->body = json_stringify(out);
+  return;
+#endif
+}
+
 }  // namespace agentd

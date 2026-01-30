@@ -34,5 +34,12 @@ void handle_db_artifacts_endpoint(
   HttpResponse* resp
 );
 
-}  // namespace agentd
+void handle_db_ui_actions_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
 
+}  // namespace agentd

@@ -7,6 +7,10 @@ type DbRunRow = {
   tools?: string;
   model?: string | null;
   error?: string | null;
+  stop_reason?: string | null;
+  steps_executed?: number | null;
+  tool_calls_total?: number | null;
+  last_error_reason?: string | null;
   last_error?: any;
 };
 
@@ -44,6 +48,9 @@ export default function DbRunsView({
                 <th className="px-3 py-2">tools</th>
                 <th className="px-3 py-2">model</th>
                 <th className="px-3 py-2">ok</th>
+                <th className="px-3 py-2">stop</th>
+                <th className="px-3 py-2">steps</th>
+                <th className="px-3 py-2">tool calls</th>
                 <th className="px-3 py-2">last error</th>
               </tr>
             </thead>
@@ -52,10 +59,14 @@ export default function DbRunsView({
                 const id = typeof r.run_id === "number" ? r.run_id : 0;
                 const ok = typeof r.ok === "boolean" ? r.ok : undefined;
                 const clickable = id > 0 && typeof onSelectRunId === "function";
+                const stopReason = String(r.stop_reason ?? "");
+                const steps = typeof r.steps_executed === "number" ? r.steps_executed : "";
+                const toolCalls = typeof r.tool_calls_total === "number" ? r.tool_calls_total : "";
                 const lastReason =
-                  r.last_error && typeof r.last_error === "object"
+                  (r.last_error_reason && String(r.last_error_reason)) ||
+                  (r.last_error && typeof r.last_error === "object"
                     ? String(r.last_error.reason ?? r.last_error.error ?? "")
-                    : "";
+                    : "");
                 return (
                   <tr
                     key={`${id}_${idx}`}
@@ -78,6 +89,9 @@ export default function DbRunsView({
                         <span className="text-amber-200/80">false</span>
                       )}
                     </td>
+                    <td className="px-3 py-2 text-white/60">{stopReason}</td>
+                    <td className="px-3 py-2 text-white/60">{steps}</td>
+                    <td className="px-3 py-2 text-white/60">{toolCalls}</td>
                     <td className="px-3 py-2 text-white/60">{lastReason}</td>
                   </tr>
                 );

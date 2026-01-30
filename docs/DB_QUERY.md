@@ -89,6 +89,25 @@ Response fields:
   - `repeat` (number)
   - `autoplay` (bool)
 
+### List UI actions
+
+`GET /api/v1/db/ui_actions?session_id=...&limit=...&offset=...`
+
+Response fields:
+- `ui_actions` (array)
+  - `id` (number)
+  - `run_id` (number)
+  - `ts_unix_ms` (number)
+  - `type` (string|null)
+  - `title` (string|null)
+  - `message` (string|null)
+  - `path` (string|null)
+  - `mime` (string|null)
+  - `repeat` (number)
+  - `autoplay` (bool)
+  - `action_json` (string|null)
+  - `action` (object, optional): parsed form of `action_json` when parsing succeeds
+
 ## Notes
 
 - If the DB is disabled, endpoints return `404` (not found) or `{ok:false,error:"db disabled"}` depending on call site.

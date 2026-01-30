@@ -142,7 +142,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 3;
+  const int kSchemaVersion = 4;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -279,6 +279,33 @@ CREATE INDEX IF NOT EXISTS runs_by_last_error_reason ON runs(last_error_reason);
 )SQL";
     if (!exec_locked(schema_v3, out_error)) return false;
     cur_ver = 3;
+  }
+
+  if (cur_ver < 4) {
+    const char* schema_v4 = R"SQL(
+CREATE TABLE IF NOT EXISTS ui_actions(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  run_id INTEGER NOT NULL,
+  ts_unix_ms INTEGER NOT NULL,
+  session_id TEXT NOT NULL,
+  tool_call_id TEXT,
+  type TEXT,
+  title TEXT,
+  message TEXT,
+  path TEXT,
+  mime TEXT,
+  autoplay INTEGER NOT NULL,
+  repeat INTEGER NOT NULL,
+  action_json TEXT NOT NULL,
+  FOREIGN KEY(run_id) REFERENCES runs(run_id) ON DELETE CASCADE,
+  FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS ui_actions_by_run ON ui_actions(run_id, id);
+CREATE INDEX IF NOT EXISTS ui_actions_by_session ON ui_actions(session_id, ts_unix_ms DESC);
+CREATE INDEX IF NOT EXISTS ui_actions_by_type ON ui_actions(type);
+)SQL";
+    if (!exec_locked(schema_v4, out_error)) return false;
+    cur_ver = 4;
   }
 
   // Record schema version.
@@ -643,6 +670,75 @@ bool AgentDb::insert_artifact(const ArtifactRow& row, std::string* out_error) {
   ok = ok && bind_i32(st, 9, row.autoplay ? 1 : 0);
   ok = ok && bind_i32(st, 10, row.repeat);
   ok = ok && bind_text(st, 11, row.artifact_json);
+
+  if (!ok) {
+    if (out_error) *out_error = sqlite_err(db_);
+    sqlite3_finalize(st);
+    return false;
+  }
+
+  if (!step_done(st)) {
+    if (out_error) *out_error = sqlite_err(db_);
+    sqlite3_finalize(st);
+    return false;
+  }
+
+  sqlite3_finalize(st);
+  return true;
+#endif
+}
+
+bool AgentDb::insert_ui_action(const UiActionRow& row, std::string* out_error) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)row;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (row.session_id.empty()) {
+    if (out_error) *out_error = "insert_ui_action: session_id is empty";
+    return false;
+  }
+  if (row.action_json.empty()) {
+    if (out_error) *out_error = "insert_ui_action: action_json is empty";
+    return false;
+  }
+
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+
+  // Ensure session row exists (for foreign key).
+  if (!upsert_session_locked(row.session_id, row.ts_unix_ms, out_error)) {
+    return false;
+  }
+
+  const char* sql =
+    "INSERT INTO ui_actions(run_id, ts_unix_ms, session_id, tool_call_id, type, title, message, path, mime, autoplay, repeat, action_json) "
+    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?);";
+  sqlite3_stmt* st = nullptr;
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    if (st) sqlite3_finalize(st);
+    return false;
+  }
+
+  bool ok = true;
+  ok = ok && bind_i64(st, 1, row.run_id);
+  ok = ok && bind_i64(st, 2, row.ts_unix_ms);
+  ok = ok && bind_text(st, 3, row.session_id);
+  if (row.tool_call_id.empty()) ok = ok && (sqlite3_bind_null(st, 4) == SQLITE_OK);
+  else ok = ok && bind_text(st, 4, row.tool_call_id);
+  ok = ok && (row.type.empty() ? (sqlite3_bind_null(st, 5) == SQLITE_OK) : bind_text(st, 5, row.type));
+  ok = ok && (row.title.empty() ? (sqlite3_bind_null(st, 6) == SQLITE_OK) : bind_text(st, 6, row.title));
+  ok = ok && (row.message.empty() ? (sqlite3_bind_null(st, 7) == SQLITE_OK) : bind_text(st, 7, row.message));
+  ok = ok && (row.path.empty() ? (sqlite3_bind_null(st, 8) == SQLITE_OK) : bind_text(st, 8, row.path));
+  ok = ok && (row.mime.empty() ? (sqlite3_bind_null(st, 9) == SQLITE_OK) : bind_text(st, 9, row.mime));
+  ok = ok && bind_i32(st, 10, row.autoplay ? 1 : 0);
+  ok = ok && bind_i32(st, 11, row.repeat);
+  ok = ok && bind_text(st, 12, row.action_json);
 
   if (!ok) {
     if (out_error) *out_error = sqlite_err(db_);

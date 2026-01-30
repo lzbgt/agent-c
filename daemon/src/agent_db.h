@@ -96,6 +96,22 @@ class AgentDb {
   };
   bool insert_artifact(const ArtifactRow& row, std::string* out_error);
 
+  struct UiActionRow {
+    int64_t run_id = 0;
+    int64_t ts_unix_ms = 0;
+    std::string session_id;
+    std::string tool_call_id;
+    std::string type;
+    std::string title;
+    std::string message;
+    std::string path;
+    std::string mime;
+    bool autoplay = false;
+    int repeat = 1;
+    std::string action_json; // JSON object string (required; stable fallback)
+  };
+  bool insert_ui_action(const UiActionRow& row, std::string* out_error);
+
  private:
   bool ensure_schema_locked(std::string* out_error);
   bool exec_locked(const std::string& sql, std::string* out_error);

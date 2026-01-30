@@ -184,8 +184,8 @@ if runs != 1:
 if tools < 1:
   print("expected tool_records>=1 got", tools, file=sys.stderr)
   raise SystemExit(1)
-if schema_version < 2:
-  print("expected schema_version>=2 got", schema_version, file=sys.stderr)
+if schema_version < 4:
+  print("expected schema_version>=4 got", schema_version, file=sys.stderr)
   raise SystemExit(1)
 if artifacts < 0:
   print("expected artifacts>=0 got", artifacts, file=sys.stderr)

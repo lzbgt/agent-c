@@ -640,6 +640,9 @@ int main(int argc, char** argv) {
   server.handle("GET", "/api/v1/db/artifacts", [&](const HttpRequest& req, HttpResponse* resp) {
     handle_db_artifacts_endpoint(cfg, cors_cfg, db_or_null, req, resp);
   });
+  server.handle("GET", "/api/v1/db/ui_actions", [&](const HttpRequest& req, HttpResponse* resp) {
+    handle_db_ui_actions_endpoint(cfg, cors_cfg, db_or_null, req, resp);
+  });
 
   server.handle("POST", "/api/v1/run", [&](const HttpRequest& req, HttpResponse* resp) {
     handle_run_endpoint(cfg, ocfg, cors_cfg, db_or_null, sessions_root_dir, req, resp);

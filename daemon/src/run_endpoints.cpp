@@ -879,6 +879,25 @@ static Json::Value run_request_to_json(
               }
             }
           }
+          if (t.asString() == "ui_action") {
+            const auto& act = d["action"];
+            if (act.isObject()) {
+              AgentDb::UiActionRow ur;
+              ur.run_id = run_id;
+              ur.ts_unix_ms = run_ts_ms;
+              ur.session_id = session_id;
+              if (d.isMember("tool_call_id") && d["tool_call_id"].isString()) ur.tool_call_id = d["tool_call_id"].asString();
+              if (act.isMember("type") && act["type"].isString()) ur.type = act["type"].asString();
+              if (act.isMember("title") && act["title"].isString()) ur.title = act["title"].asString();
+              if (act.isMember("message") && act["message"].isString()) ur.message = act["message"].asString();
+              if (act.isMember("path") && act["path"].isString()) ur.path = act["path"].asString();
+              if (act.isMember("mime") && act["mime"].isString()) ur.mime = act["mime"].asString();
+              if (act.isMember("autoplay") && act["autoplay"].isBool()) ur.autoplay = act["autoplay"].asBool();
+              if (act.isMember("repeat") && act["repeat"].isInt()) ur.repeat = std::max(1, act["repeat"].asInt());
+              ur.action_json = Json::writeString(wb, act);
+              (void)db_or_null->insert_ui_action(ur, nullptr);
+            }
+          }
         }
       }
       if (use_tool_loop && !tool_loop_result.tool_records.empty()) {

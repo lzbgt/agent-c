@@ -113,6 +113,22 @@ int main() {
     return 1;
   }
 
+  agentd::AgentDb::UiActionRow ur;
+  ur.run_id = run_id;
+  ur.ts_unix_ms = now;
+  ur.session_id = "s1";
+  ur.tool_call_id = "call_3";
+  ur.type = "notify";
+  ur.title = "hello";
+  ur.message = "world";
+  ur.autoplay = false;
+  ur.repeat = 1;
+  ur.action_json = "{\"type\":\"notify\",\"title\":\"hello\",\"message\":\"world\"}";
+  if (!db.insert_ui_action(ur, &err)) {
+    std::fprintf(stderr, "insert_ui_action failed: %s\n", err.c_str());
+    return 1;
+  }
+
   // Open a second handle and verify row counts.
   sqlite3* raw = nullptr;
   if (sqlite3_open_v2(tmp.string().c_str(), &raw, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
@@ -125,6 +141,7 @@ int main() {
   const int64_t events = query_i64(raw, "SELECT COUNT(*) FROM events;");
   const int64_t tools = query_i64(raw, "SELECT COUNT(*) FROM tool_records;");
   const int64_t arts = query_i64(raw, "SELECT COUNT(*) FROM artifacts;");
+  const int64_t uas = query_i64(raw, "SELECT COUNT(*) FROM ui_actions;");
   sqlite3_close(raw);
 
   assert(sessions == 1);
@@ -133,6 +150,7 @@ int main() {
   assert(events == 1);
   assert(tools == 1);
   assert(arts == 1);
+  assert(uas == 1);
 
   // Migration smoke: open an older (v1) DB and ensure it upgrades to the latest schema.
   const std::filesystem::path tmp2 =
@@ -165,10 +183,13 @@ int main() {
   const int64_t arts2 = query_i64(raw2, "SELECT COUNT(*) FROM artifacts;");
   const int64_t stop_reason_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('runs') WHERE name='stop_reason';");
+  const int64_t ua_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('ui_actions') WHERE name='action_json';");
   sqlite3_close(raw2);
-  assert(ver == 3);
+  assert(ver == 4);
   assert(arts2 == 0);
   assert(stop_reason_cols == 1);
+  assert(ua_cols == 1);
 
   db.close();
   std::filesystem::remove(tmp, ec);

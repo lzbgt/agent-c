@@ -331,3 +331,23 @@ if not obj.get("ok"):
   print("db/artifacts failed:", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
+
+db_ui_actions="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/ui_actions?session_id=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("""'${SESSION_ID}'"""))')&limit=20&offset=0")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${db_ui_actions}''')
+if not obj.get("ok"):
+  print("db/ui_actions failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+rows = obj.get("ui_actions")
+if rows is None:
+  print("expected ui_actions field", file=sys.stderr)
+  raise SystemExit(1)
+if not isinstance(rows, list):
+  print("expected ui_actions list; got:", type(rows), file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+echo "agentd_db_query_smoke OK"

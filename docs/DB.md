@@ -56,7 +56,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v3)
+## Schema (v4)
 
 All timestamps are Unix milliseconds.
 
@@ -162,6 +162,31 @@ Indexes:
 - `CREATE INDEX artifacts_by_session ON artifacts(session_id, ts_unix_ms DESC)`
 - `CREATE INDEX artifacts_by_path ON artifacts(path)`
 
+### `ui_actions`
+
+Mirrors explicit `ui_action` events emitted by the tool loop (see `docs/UI_ACTION.md`).
+
+The DB does not execute actions; it stores them for troubleshooting and UI indexing.
+
+- `id INTEGER PRIMARY KEY AUTOINCREMENT`
+- `run_id INTEGER NOT NULL`
+- `ts_unix_ms INTEGER NOT NULL`
+- `session_id TEXT NOT NULL`
+- `tool_call_id TEXT` (optional)
+- `type TEXT` (optional; `notify|play_audio|...`)
+- `title TEXT` (optional)
+- `message TEXT` (optional)
+- `path TEXT` (optional; for media actions)
+- `mime TEXT` (optional)
+- `autoplay INTEGER NOT NULL` (0/1)
+- `repeat INTEGER NOT NULL`
+- `action_json TEXT NOT NULL` (JSON object string; stable fallback for future schema changes)
+
+Indexes:
+- `CREATE INDEX ui_actions_by_run ON ui_actions(run_id, id)`
+- `CREATE INDEX ui_actions_by_session ON ui_actions(session_id, ts_unix_ms DESC)`
+- `CREATE INDEX ui_actions_by_type ON ui_actions(type)`
+
 ## Example queries
 
 Last 20 runs for a session:
@@ -213,6 +238,16 @@ JOIN runs r ON r.run_id = a.run_id
 GROUP BY r.run_id
 HAVING artifacts >= 5
 ORDER BY artifacts DESC;
+```
+
+Find recent UI actions for a session:
+
+```sql
+SELECT ts_unix_ms, type, title, message, path, repeat, autoplay
+FROM ui_actions
+WHERE session_id = 'default'
+ORDER BY ts_unix_ms DESC
+LIMIT 50;
 ```
 
 ## Daemon query endpoints (optional)
