@@ -200,6 +200,8 @@ Completed milestones and notable tasks.
   - restored per-run audit JSONL appends for daemon runs (used by `/api/v1/session/audit`)
   - aligned `tools=none` non-stream runs with the current core runner (`agent_run_once`) + host summary generation (`generate_compaction_summary_via_llm`)
   - ensured `stream_assistant` runs capture `http_status`/`http_body` and persist the final assistant message to the session
+- Added a local, non-network smoke test that validates daemon audit logging end-to-end:
+  - `tests/agentd_session_audit_smoke.sh` hits `/api/v1/run` then `/api/v1/session/audit` against a stub OpenAI server
 - Improved UI live streaming when daemon auth is enabled:
   - UI uses a fetch-based SSE reader (so it can send `Authorization: Bearer ...`) instead of `EventSource`
   - added a non-network smoke test `tests/agentd_sse_auth_smoke.sh` using a local OpenAI stub server
