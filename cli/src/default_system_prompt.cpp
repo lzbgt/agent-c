@@ -23,5 +23,8 @@ const char* default_host_system_prompt() {
     "- For one-off inspection, prefer read-only commands.\n"
     "\n"
     "Tool outputs:\n"
-    "- Tool success is not just exit code; judge using tool output content.\n";
+    "- Tool success is not just exit code; judge using tool output content.\n"
+    "\n"
+    "Artifacts (UI/media):\n"
+    "- If you create or reference a host file meant for the user to view/listen (image/audio/video), call artifact_register so the Web UI can render it explicitly.\n";
 }

@@ -6,6 +6,7 @@ import {
   apiGetHealth,
   apiGetJobProgress,
   apiGetOpenRouterModels,
+  apiGetSessionArtifacts,
   apiGetTools,
   apiCancelJob,
   apiListSessions,
@@ -21,6 +22,7 @@ import TraceView from "./components/TraceView";
 import EventTimeline from "./components/EventTimeline";
 import Markdown from "./components/Markdown";
 import ConversationView from "./components/ConversationView";
+import ArtifactView from "./components/ArtifactView";
 import useLocalStorageState from "./hooks/useLocalStorageState";
 import { readSseStream } from "./sse";
 
@@ -107,6 +109,20 @@ export default function App() {
     retry: 1,
   });
 
+  const audit = useQuery({
+    queryKey: ["audit", effectiveBase, daemonAuthToken, sessionId],
+    queryFn: () => apiGetAudit(effectiveBase, sessionId, daemonAuthToken),
+    enabled: !!sessionId,
+    retry: 1,
+  });
+
+  const sessionArtifacts = useQuery({
+    queryKey: ["session_artifacts", effectiveBase, daemonAuthToken, sessionId],
+    queryFn: () => apiGetSessionArtifacts(effectiveBase, sessionId, daemonAuthToken, { maxBytes: 2 * 1024 * 1024, maxArtifacts: 64 }),
+    enabled: !!sessionId,
+    retry: 1,
+  });
+
   const newSession = useMutation({
     mutationFn: async () => {
       const r = await apiNewSession(effectiveBase, daemonAuthToken);
@@ -117,6 +133,7 @@ export default function App() {
         setSessionId(v.session_id);
         void sessions.refetch();
         void audit.refetch();
+        void sessionArtifacts.refetch();
       }
     },
   });
@@ -140,13 +157,6 @@ export default function App() {
     queryKey: ["tools", effectiveBase, daemonAuthToken, tools, toolsRoot, yolo, hostPolicy],
     queryFn: () =>
       apiGetTools(effectiveBase, daemonAuthToken, { tools, toolsRoot, yolo, hostPolicy: tools === "host" ? hostPolicy : undefined }),
-    retry: 1,
-  });
-
-  const audit = useQuery({
-    queryKey: ["audit", effectiveBase, daemonAuthToken, sessionId],
-    queryFn: () => apiGetAudit(effectiveBase, sessionId, daemonAuthToken),
-    enabled: !!sessionId,
     retry: 1,
   });
 
@@ -572,6 +582,14 @@ export default function App() {
               >
                 Load audit
               </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+                onClick={() => sessionArtifacts.refetch()}
+                type="button"
+                disabled={!sessionId}
+              >
+                Load artifacts
+              </button>
             </div>
             <div className="mt-3 max-h-80 overflow-auto rounded-md border border-white/10 bg-black/20">
               {(sessions.data?.sessions ?? []).map((sid) => (
@@ -588,6 +606,16 @@ export default function App() {
               ))}
             </div>
             <div className="mt-3 text-xs text-white/50">Audit entries: {audit.data?.entries ? audit.data.entries.length : 0}</div>
+            <div className="mt-1 text-xs text-white/50">
+              Artifacts:{" "}
+              {sessionArtifacts.isFetching
+                ? "loading…"
+                : sessionArtifacts.isError
+                  ? "failed"
+                  : sessionArtifacts.data?.ok
+                    ? `${sessionArtifacts.data?.count ?? 0}`
+                    : "error"}
+            </div>
             <div className="mt-2 text-xs text-white/50">
               Tools:{" "}
               {toolsDefs.isFetching
@@ -598,6 +626,36 @@ export default function App() {
                     ? `${toolsDefs.data?.count ?? 0}`
                     : "error"}
             </div>
+
+            {sessionId &&
+            sessionArtifacts.data?.ok &&
+            Array.isArray(sessionArtifacts.data.artifacts) &&
+            sessionArtifacts.data.artifacts.length > 0 ? (
+              <div className="mt-3">
+                <div className="text-xs font-semibold text-white/70">Artifacts (latest)</div>
+                <div className="mt-2 grid gap-2">
+                  {sessionArtifacts.data.artifacts
+                    .slice(-6)
+                    .reverse()
+                    .map((a: any, idx: number) => {
+                      const ts = typeof a?.ts_unix_ms === "number" ? new Date(a.ts_unix_ms).toISOString() : "";
+                      const artifact = a?.data?.artifact ?? {};
+                      const title = String(artifact?.title ?? artifact?.path ?? "artifact");
+                      return (
+                        <div key={idx} className="rounded-md border border-white/10 bg-black/10 p-2">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <div className="text-[11px] text-white/50">{ts}</div>
+                            <div className="text-[11px] text-white/40">{title}</div>
+                          </div>
+                          <div className="mt-2">
+                            <ArtifactView baseUrl={effectiveBase} yolo={yolo} artifact={artifact} allowAutoplay={allowAutoplay} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
 

@@ -33,6 +33,14 @@ void handle_session_audit_endpoint(
   HttpResponse* resp
 );
 
+void handle_session_artifacts_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const std::string& sessions_root_dir,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
 void handle_session_delete_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,

@@ -24,6 +24,17 @@ struct DaemonConfig {
   size_t summary_max_chars = 1200;
   std::string proxy_url; // optional explicit proxy override (else env)
   long timeout_ms = 60000;
+
+  // State directories (host-only):
+  // - state_dir: base directory for daemon state (future: caches, etc.)
+  // - sessions_root_dir: directory containing <session>.sess / <session>.events.jsonl
+  //
+  // Defaults:
+  // - state_dir: "~/.agent" (best-effort HOME-based)
+  // - sessions_root_dir: "<state_dir>/sessions"
+  std::string state_dir;
+  std::string sessions_root_dir;
+
   // Optional troubleshooting DB mirror (SQLite). When set, agentd mirrors sessions/runs/events into this DB.
   // Empty means disabled.
   std::string db_path;

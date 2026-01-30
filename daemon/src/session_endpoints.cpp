@@ -300,6 +300,99 @@ void handle_session_audit_endpoint(
   resp->body = json_stringify(out);
 }
 
+void handle_session_artifacts_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const std::string& sessions_root_dir,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  const auto sid = query_get(req.query, "session_id");
+  if (!sid || sid->empty()) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"missing session_id"})";
+    return;
+  }
+  size_t max_bytes = 2 * 1024 * 1024;
+  if (const auto mb = query_get(req.query, "max_bytes")) {
+    try {
+      max_bytes = (size_t)std::stoull(*mb);
+    } catch (...) {
+    }
+  }
+  size_t max_artifacts = 64;
+  if (const auto ma = query_get(req.query, "max_artifacts")) {
+    try {
+      max_artifacts = (size_t)std::stoull(*ma);
+    } catch (...) {
+    }
+  }
+
+  SessionStoreConfig store_cfg;
+  store_cfg.root_dir = sessions_root_dir;
+
+  std::string tail;
+  const agent_status_t st = session_store_read_audit_tail(store_cfg, *sid, max_bytes, &tail);
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = (st == AGENT_OK);
+  out["session_id"] = *sid;
+  out["max_bytes"] = (Json::UInt64)max_bytes;
+  out["max_artifacts"] = (Json::UInt64)max_artifacts;
+  if (st != AGENT_OK) {
+    out["error"] = "failed to read audit log";
+    out["status"] = (Json::Int64)st;
+    out["artifacts"] = Json::Value(Json::arrayValue);
+    resp->body = json_stringify(out);
+    return;
+  }
+
+  Json::Value artifacts(Json::arrayValue);
+  Json::CharReaderBuilder rb;
+  std::istringstream iss(tail);
+  std::string line;
+
+  while (std::getline(iss, line)) {
+    if (artifacts.size() >= (Json::ArrayIndex)max_artifacts) break;
+    if (line.empty()) continue;
+    std::string errs;
+    std::istringstream lss(line);
+    Json::Value rec;
+    if (!Json::parseFromStream(rb, lss, &rec, &errs) || !rec.isObject()) {
+      continue;
+    }
+    const int64_t ts = rec.isMember("ts_unix_ms") && rec["ts_unix_ms"].isInt64() ? rec["ts_unix_ms"].asInt64() : 0;
+    const std::string prompt = rec.isMember("prompt") && rec["prompt"].isString() ? rec["prompt"].asString() : "";
+
+    const Json::Value evs = rec["events"];
+    if (!evs.isArray()) continue;
+    for (Json::ArrayIndex i = 0; i < evs.size(); i++) {
+      if (artifacts.size() >= (Json::ArrayIndex)max_artifacts) break;
+      const auto& ev = evs[i];
+      if (!ev.isObject()) continue;
+      const auto& t = ev["type"];
+      if (!t.isString() || t.asString() != "artifact") continue;
+      Json::Value a(Json::objectValue);
+      a["ts_unix_ms"] = (Json::Int64)ts;
+      if (!prompt.empty()) a["prompt"] = prompt;
+      if (ev.isMember("data")) {
+        a["data"] = ev["data"];
+      } else {
+        a["data"] = Json::Value(Json::objectValue);
+      }
+      artifacts.append(a);
+    }
+  }
+
+  out["count"] = (Json::UInt64)artifacts.size();
+  out["artifacts"] = artifacts;
+  resp->body = json_stringify(out);
+}
+
 void handle_session_delete_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,

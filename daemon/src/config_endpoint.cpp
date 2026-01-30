@@ -41,6 +41,8 @@ void handle_config_endpoint(
   daemon["auth_enabled"] = !cfg.auth_token.empty();
   daemon["allow_unauthenticated_non_loopback"] = cfg.allow_unauthenticated_non_loopback;
   daemon["db_path"] = cfg.db_path.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.db_path);
+  daemon["state_dir"] = cfg.state_dir.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.state_dir);
+  daemon["sessions_root_dir"] = cfg.sessions_root_dir.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.sessions_root_dir);
   out["daemon"] = daemon;
 
   Json::Value cors(Json::objectValue);

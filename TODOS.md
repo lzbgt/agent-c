@@ -84,8 +84,8 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add a daemon file endpoint for UI previews (`/api/v1/file`) for images/audio/video artifacts.
 - [x] Add multi-client-safe session creation (`POST /api/v1/session/new`) and a UI “New session” action.
 - [x] Add explicit artifact events (`artifact`) so UI can render media without regex guessing.
-- [ ] Add an “Artifacts” panel that indexes artifacts from session audit/DB (cross-run browsing).
-- [ ] Add an operator-friendly daemon `--state-dir` / `--sessions-root` so multiple agentd instances never share the same state by accident.
+- [x] Add an “Artifacts” panel that indexes artifacts from session audit (cross-run browsing).
+- [x] Add an operator-friendly daemon `--state-dir` / `--sessions-root` so multiple agentd instances never share the same state by accident.
 - [ ] Add a daemon skeleton with:
   - local control socket / HTTP
   - broker client abstraction (MQTT)

@@ -97,6 +97,26 @@ For debugging client/daemon mismatches (CORS, sandbox defaults, job GC), `agentd
 This endpoint requires auth when `--auth-token` is set. It intentionally does not include secrets (auth token, provider API keys).
 The Web UI surfaces this snapshot in the Settings panel as “Daemon config”.
 
+### Daemon state dir / multi-agent safety
+
+By default, `agentd` uses a shared session store at `~/.agent/sessions`. If you run multiple `agentd` instances and want to
+avoid accidental session collisions, start each daemon with a distinct state root:
+
+```bash
+./build/agentd --state-dir /tmp/agentd_state_1
+./build/agentd --state-dir /tmp/agentd_state_2
+```
+
+Or override the session store directory directly:
+
+```bash
+./build/agentd --sessions-root /tmp/agentd_sessions
+```
+
+Environment variables:
+- `AGENTD_STATE_DIR`
+- `AGENTD_SESSIONS_ROOT`
+
 ## Git remote (publishing)
 
 This workspace may not have a git remote configured. If `git push` fails with “No configured push destination”,

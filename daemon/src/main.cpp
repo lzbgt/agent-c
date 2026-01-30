@@ -42,8 +42,8 @@ static std::string home_dir_best_effort() {
   return std::filesystem::current_path().string();
 }
 
-static std::string sessions_root_dir_best_effort() {
-  return (std::filesystem::path(home_dir_best_effort()) / ".agent" / "sessions").string();
+static std::string state_dir_best_effort() {
+  return (std::filesystem::path(home_dir_best_effort()) / ".agent").string();
 }
 
 static bool host_is_loopback(std::string host) {
@@ -99,6 +99,16 @@ int main(int argc, char** argv) {
     } else if (a == "--model") {
       if (!take(&cfg.model)) {
         std::cerr << "Missing value for --model\n";
+        return 2;
+      }
+    } else if (a == "--state-dir") {
+      if (!take(&cfg.state_dir)) {
+        std::cerr << "Missing value for --state-dir\n";
+        return 2;
+      }
+    } else if (a == "--sessions-root") {
+      if (!take(&cfg.sessions_root_dir)) {
+        std::cerr << "Missing value for --sessions-root\n";
         return 2;
       }
     } else if (a == "--summary-model") {
@@ -265,6 +275,8 @@ int main(int argc, char** argv) {
         << "  --base-url <url>     Default base url\n"
         << "  --api-key <key>      Default API key (else env)\n"
         << "  --proxy <url>        Optional HTTP proxy override (else env HTTPS_PROXY/http_proxy)\n"
+        << "  --state-dir <dir>    Base state dir (default: ~/.agent)\n"
+        << "  --sessions-root <dir> Session store root (default: <state-dir>/sessions)\n"
         << "  --db-path <path>     Optional SQLite DB path (troubleshooting mirror; default: disabled)\n"
         << "  --no-db              Disable DB mirror even if AGENTD_DB_PATH is set\n"
         << "  --timeout-ms <n>     Provider HTTP timeout in ms (default: 60000)\n"
@@ -350,6 +362,25 @@ int main(int argc, char** argv) {
     }
   }
 
+  if (cfg.state_dir.empty()) {
+    if (const char* d = getenv_s("AGENTD_STATE_DIR")) {
+      cfg.state_dir = d;
+    }
+  }
+  if (cfg.sessions_root_dir.empty()) {
+    if (const char* d = getenv_s("AGENTD_SESSIONS_ROOT")) {
+      cfg.sessions_root_dir = d;
+    }
+  }
+
+  // Make the effective state/session roots explicit (so /api/v1/config can report them).
+  if (cfg.state_dir.empty()) {
+    cfg.state_dir = state_dir_best_effort();
+  }
+  if (cfg.sessions_root_dir.empty()) {
+    cfg.sessions_root_dir = (std::filesystem::path(cfg.state_dir) / "sessions").string();
+  }
+
   OpenAIClientConfig ocfg;
   ocfg.base_url = cfg.base_url;
   ocfg.api_key = cfg.api_key;
@@ -423,7 +454,7 @@ int main(int argc, char** argv) {
     handle_file_endpoint(cfg, cors_cfg, req, resp);
   });
 
-  const std::string sessions_root_dir = sessions_root_dir_best_effort();
+  const std::string sessions_root_dir = cfg.sessions_root_dir;
 
   server.handle("GET", "/api/v1/sessions", [&](const HttpRequest& req, HttpResponse* resp) {
     handle_sessions_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
@@ -439,6 +470,10 @@ int main(int argc, char** argv) {
 
   server.handle("GET", "/api/v1/session/audit", [&](const HttpRequest& req, HttpResponse* resp) {
     handle_session_audit_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
+  });
+
+  server.handle("GET", "/api/v1/session/artifacts", [&](const HttpRequest& req, HttpResponse* resp) {
+    handle_session_artifacts_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
   });
 
   server.handle("DELETE", "/api/v1/session", [&](const HttpRequest& req, HttpResponse* resp) {

@@ -179,6 +179,8 @@ if(AGENT_BUILD_HOST)
 
   add_test(NAME agentd_local_tool_loop_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_local_tool_loop_smoke.sh $<TARGET_FILE:agentd>)
 
+  add_test(NAME agentd_sessions_root_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_sessions_root_smoke.sh $<TARGET_FILE:agentd>)
+
   add_test(NAME agentd_artifact_protocol_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_artifact_protocol_smoke.sh $<TARGET_FILE:agentd>)
 
   add_test(NAME agentd_session_audit_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_session_audit_smoke.sh $<TARGET_FILE:agentd>)

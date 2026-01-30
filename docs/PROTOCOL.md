@@ -50,6 +50,20 @@ Notes:
   - generating **unique** session ids by default (UUID-ish)
   - allowing daemon operators to set separate state/session roots per daemon instance
 
+### Endpoint: list recent artifacts for a session (from audit)
+
+- `GET /api/v1/session/artifacts?session_id=...&max_bytes=...&max_artifacts=...`
+
+Response (JSON):
+- `ok` (bool)
+- `session_id` (string)
+- `count` (number)
+- `artifacts` (array): flattened list of `artifact` events extracted from per-run audit JSONL
+
+Notes:
+- This endpoint is intended for UI indexing/browsing (cross-run).
+- Artifact payload schema matches the `artifact` event described below.
+
 ## Artifacts
 
 ### Problem
@@ -116,4 +130,3 @@ UI behavior:
 ### Backwards compatibility
 
 The UI may keep heuristic media extraction as a fallback, but should prefer explicit `artifact` events.
-
