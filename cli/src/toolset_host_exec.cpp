@@ -432,7 +432,9 @@ agent_status_t tool_file_apply_patch(HostToolCtx* ctx, const char* arguments_jso
 
   const int timeout_ms = args.isMember("timeout_ms") && args["timeout_ms"].isInt() ? args["timeout_ms"].asInt() : 30000;
   const int max_output = args.isMember("max_output_bytes") && args["max_output_bytes"].isInt() ? args["max_output_bytes"].asInt() : 65536;
-  const bool unsafe_paths = args.isMember("unsafe_paths") && args["unsafe_paths"].isBool() ? args["unsafe_paths"].asBool() : ctx->unrestricted;
+  // Never allow --unsafe-paths in scoped mode: it can enable patch path traversal.
+  const bool unsafe_paths = ctx->unrestricted &&
+    (args.isMember("unsafe_paths") && args["unsafe_paths"].isBool() ? args["unsafe_paths"].asBool() : true);
 
   std::string tmp_err;
   const std::optional<std::filesystem::path> tmp = write_temp_file(patch, &tmp_err);

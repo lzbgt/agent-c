@@ -59,6 +59,7 @@ struct GitignoreCache {
 struct HostToolCtx {
   std::filesystem::path root;
   bool unrestricted = false;
+  bool exec_enabled = true;
   HostToolsetPolicyMode policy = HostToolsetPolicyMode::Full;
   HostCancelCallback should_cancel = nullptr;
   void* should_cancel_ctx = nullptr;

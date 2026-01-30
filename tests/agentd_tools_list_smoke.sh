@@ -70,6 +70,32 @@ if missing:
   raise SystemExit(1)
 PY
 
+# scoped (yolo=0) should omit exec tools but keep patch + fs inspection.
+resp_scoped="$(curl -fsS --noproxy "*" --max-time 5 "${DAEMON_URL}/api/v1/tools?tools=host&yolo=0")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${resp_scoped}''')
+if not obj.get("ok"):
+  print(obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("effective_yolo") not in (False, 0):
+  print("unexpected effective_yolo:", obj.get("effective_yolo"), file=sys.stderr)
+  raise SystemExit(1)
+defs = obj.get("defs") or []
+names = {d.get("name") for d in defs if isinstance(d, dict)}
+must_absent = {"shell_exec", "proc_exec"}
+present = sorted(must_absent & names)
+if present:
+  print("exec tools should be omitted in scoped mode:", present, file=sys.stderr)
+  raise SystemExit(1)
+must_present = {"file_apply_patch", "fs_read", "fs_list", "fs_stat", "fs_find", "text_search"}
+missing = sorted(must_present - names)
+if missing:
+  print("missing scoped tools:", missing, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 # readonly should omit mutating / exec tools even when daemon default is full.
 resp_ro="$(curl -fsS --noproxy "*" --max-time 5 "${DAEMON_URL}/api/v1/tools?tools=host&yolo=1&host_policy=readonly")"
 

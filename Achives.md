@@ -201,6 +201,10 @@ Completed milestones and notable tasks.
 - Added a small unit test target `cors_tests` to lock in CORS behavior (`tests/test_cors.cpp`).
 - Added a helper script to configure a git remote from an explicit URL and optionally push (`tools/setup_git_remote.sh`).
 - Moved daemon HTTP server types (`HttpRequest`/`HttpResponse`/`HttpServer`) into the `agentd` namespace to avoid global namespace pollution.
+- Tightened daemon scoped mode (`yolo=false`) so host tools no longer expose arbitrary process execution:
+  - added `HostToolsetConfig.enable_process_exec` (daemon disables exec tools when scoped)
+  - `shell_exec` / `proc_exec` are omitted from the tool registry in scoped mode and rejected by the executor (defense in depth)
+  - `file_apply_patch` no longer allows `unsafe_paths` unless running in unrestricted mode (prevents path traversal)
 
 - Moved the tool-call loop into the portable core (Milestone 2 groundwork):
   - added core tool-loop API + provider contract (`core/include/agent/tool_loop.h`, `core/include/agent/tool_provider.h`, `core/include/agent/chat.h`)

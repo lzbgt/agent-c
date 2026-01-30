@@ -23,6 +23,15 @@ struct HostToolsetConfig {
   // Safety policy for which host tools are exposed via the tool registry/executor.
   HostToolsetPolicyMode policy = HostToolsetPolicyMode::Full;
 
+  // When false, omit process execution tools from the registry and reject them in the executor
+  // (defense in depth). This does not affect bounded filesystem inspection tools.
+  //
+  // Daemon note:
+  // - When the daemon runs with `yolo=false` (scoped tools_root), it may disable exec tools even if policy=full.
+  // CLI note:
+  // - The CLI may keep exec tools enabled even when root_dir is set (local, interactive usage).
+  bool enable_process_exec = true;
+
   // Optional cooperative cancellation hook.
   // If set and it returns true, long-running tools (shell/proc exec) will terminate their subprocess and return early.
   HostCancelCallback should_cancel = nullptr;

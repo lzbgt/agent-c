@@ -130,6 +130,49 @@ static void test_readonly_policy_disables_exec_and_patch() {
   std::filesystem::remove_all(root);
 }
 
+static void test_scoped_mode_disables_exec_tools_but_keeps_patch() {
+  const auto root = std::filesystem::temp_directory_path() / ("agent_host_tools_scoped_" + std::to_string((long long)getpid()));
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+
+  HostToolsetConfig cfg;
+  cfg.root_dir = root.string();
+  cfg.policy = HostToolsetPolicyMode::Full;
+  cfg.enable_process_exec = false;
+
+  agent_tool_registry_t* reg = nullptr;
+  agent_tool_executor_t exec{};
+  assert(toolset_host_create(cfg, &reg, &exec) == AGENT_OK);
+  assert(reg != nullptr);
+  assert(exec.execute != nullptr);
+
+  assert(!registry_contains(reg, "shell_exec"));
+  assert(!registry_contains(reg, "proc_exec"));
+  assert(registry_contains(reg, "file_apply_patch"));
+  assert(registry_contains(reg, "fs_stat"));
+  assert(registry_contains(reg, "fs_list"));
+  assert(registry_contains(reg, "fs_find"));
+  assert(registry_contains(reg, "fs_read"));
+  assert(registry_contains(reg, "text_search"));
+
+  // Defense-in-depth: executor rejects disabled exec tools even if called directly.
+  {
+    Json::Value args(Json::objectValue);
+    args["cmd"] = "echo hi";
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "shell_exec", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(!resp["ok"].asBool());
+    assert(resp["error"].asString().find("disabled") != std::string::npos);
+    agent_string_free(&out);
+  }
+
+  agent_tool_registry_destroy(reg);
+  toolset_host_destroy(&exec);
+  std::filesystem::remove_all(root);
+}
+
 static void test_fs_stat_list_read() {
   const auto root = std::filesystem::temp_directory_path() / ("agent_host_tools_fs_" + std::to_string((long long)getpid()));
   std::filesystem::remove_all(root);
@@ -762,6 +805,7 @@ static void test_fs_find() {
 int main() {
   test_file_apply_patch();
   test_readonly_policy_disables_exec_and_patch();
+  test_scoped_mode_disables_exec_tools_but_keeps_patch();
   test_fs_stat_list_read();
   test_shell_exec();
   test_proc_exec();

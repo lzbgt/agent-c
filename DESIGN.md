@@ -123,6 +123,12 @@ Policy modes (first milestone):
 - `readonly`: disable process execution + patch application (`shell_exec`, `proc_exec`, `file_apply_patch`), keeping only
   bounded inspection tools (`fs_*`, `text_search`).
 
+Additional sandbox knob:
+
+- `yolo` (daemon request/query): when disabled, the daemon provides a **scoped tools_root** and also disables process execution tools
+  (`shell_exec` / `proc_exec`) even if `host_policy=full`. This prevents “scoped filesystem” runs from still having arbitrary
+  host command execution.
+
 Implementation notes:
 
 - The policy should be applied at the **tool registry** layer (omit disabled tool schemas) to prevent models from discovering

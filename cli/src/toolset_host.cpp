@@ -1606,6 +1606,24 @@ static agent_status_t host_tools_execute(void* vctx, const char* tool_name, cons
 #endif
     }
   }
+  if (!ctx->exec_enabled) {
+    if (name == "shell_exec" || name == "proc_exec") {
+#if !defined(AGENT_HAVE_JSONCPP)
+      return set_result(out_result, "{\"ok\":false,\"error\":\"tool disabled by sandbox\",\"data\":{}}");
+#else
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "tool disabled by sandbox";
+      Json::Value d(Json::objectValue);
+      d["tool_name"] = name;
+      d["sandbox"] = "scoped";
+      o["data"] = d;
+      Json::StreamWriterBuilder wb;
+      wb["indentation"] = "";
+      return set_result(out_result, Json::writeString(wb, o));
+#endif
+    }
+  }
   if (name == "shell_exec") {
     return tool_shell_exec(ctx, arguments_json, out_result);
   }
@@ -1655,39 +1673,41 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     return st;
   }
 
-  // Process exec (primary mechanism for host-side tooling).
+  // Process exec and patch (host-only tooling).
   if (cfg.policy == HostToolsetPolicyMode::Full) {
-    st = add_tool(
-      r,
-      "shell_exec",
-      "Execute /bin/sh -lc <cmd>. Returns JSON envelope: {ok, error?, data:{exit_code, timed_out, output}}. ok is a hint; judge success from output.",
-      "{"
-      "\"type\":\"object\","
-      "\"properties\":{"
-      "  \"cmd\":{\"type\":\"string\"},"
-      "  \"timeout_ms\":{\"type\":\"integer\"},"
-      "  \"max_output_bytes\":{\"type\":\"integer\"}"
-      "},"
-      "\"required\":[\"cmd\"]"
-      "}"
-    );
-    if (st != AGENT_OK) goto fail;
+    if (cfg.enable_process_exec) {
+      st = add_tool(
+        r,
+        "shell_exec",
+        "Execute /bin/sh -lc <cmd>. Returns JSON envelope: {ok, error?, data:{exit_code, timed_out, output}}. ok is a hint; judge success from output.",
+        "{"
+        "\"type\":\"object\","
+        "\"properties\":{"
+        "  \"cmd\":{\"type\":\"string\"},"
+        "  \"timeout_ms\":{\"type\":\"integer\"},"
+        "  \"max_output_bytes\":{\"type\":\"integer\"}"
+        "},"
+        "\"required\":[\"cmd\"]"
+        "}"
+      );
+      if (st != AGENT_OK) goto fail;
 
-    st = add_tool(
-      r,
-      "proc_exec",
-      "Execute a process without a shell (posix_spawnp). Returns JSON envelope: {ok, error?, data:{argv, exit_code, timed_out, truncated, output}}.",
-      "{"
-      "\"type\":\"object\","
-      "\"properties\":{"
-      "  \"argv\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},"
-      "  \"timeout_ms\":{\"type\":\"integer\"},"
-      "  \"max_output_bytes\":{\"type\":\"integer\"}"
-      "},"
-      "\"required\":[\"argv\"]"
-      "}"
-    );
-    if (st != AGENT_OK) goto fail;
+      st = add_tool(
+        r,
+        "proc_exec",
+        "Execute a process without a shell (posix_spawnp). Returns JSON envelope: {ok, error?, data:{argv, exit_code, timed_out, truncated, output}}.",
+        "{"
+        "\"type\":\"object\","
+        "\"properties\":{"
+        "  \"argv\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},"
+        "  \"timeout_ms\":{\"type\":\"integer\"},"
+        "  \"max_output_bytes\":{\"type\":\"integer\"}"
+        "},"
+        "\"required\":[\"argv\"]"
+        "}"
+      );
+      if (st != AGENT_OK) goto fail;
+    }
 
     st = add_tool(
       r,
@@ -1826,6 +1846,7 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
   ctx->root = cfg.root_dir.empty() ? std::filesystem::current_path()
                                    : std::filesystem::path(cfg.root_dir);
   ctx->policy = cfg.policy;
+  ctx->exec_enabled = (cfg.policy == HostToolsetPolicyMode::Full) && cfg.enable_process_exec;
   ctx->should_cancel = cfg.should_cancel;
   ctx->should_cancel_ctx = cfg.should_cancel_ctx;
   {
