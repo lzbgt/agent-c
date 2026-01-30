@@ -215,6 +215,9 @@ Completed milestones and notable tasks.
 - Improved testability of the OpenAI tool-provider by adding injectable streaming/raw call hooks:
   - `cli/src/openai_tool_provider.h` supports `chat_raw_fn` / `chat_stream_fn` for deterministic unit tests (no network/subprocess)
   - added `openai_tool_provider_stream_tests` (`tests/test_openai_tool_provider_stream.cpp`) to lock in streaming tool-call reconstruction and `assistant_delta` emission
+- Exposed tool-loop assistant streaming in the CLI:
+  - `agent run` / `agent chat` accept `--stream-assistant` for `--tools basic|host`
+  - added a local smoke test `tests/agent_local_stream_tool_loop_smoke.sh` that requires `stream: true` and validates tool-call reconstruction + streamed output end-to-end
 - Improved UI live streaming when daemon auth is enabled:
   - UI uses a fetch-based SSE reader (so it can send `Authorization: Bearer ...`) instead of `EventSource`
   - added a non-network smoke test `tests/agentd_sse_auth_smoke.sh` using a local OpenAI stub server

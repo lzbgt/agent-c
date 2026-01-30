@@ -15,6 +15,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <iostream>
+#include <sstream>
 #include <string>
 #include <vector>
 #include <cctype>
@@ -80,7 +81,8 @@ static void usage() {
     << "  --host-policy full|readonly  Host tool safety policy (default: full; host tools only)\n"
     << "  --force-tool <name>       Force a tool call on first step (verification)\n"
     << "  --require-tool-call       Fail if no tool call occurred\n"
-    << "  --max-steps <n>           Max tool loop steps (default: unlimited; 0 means unlimited)\n";
+    << "  --max-steps <n>           Max tool loop steps (default: unlimited; 0 means unlimited)\n"
+    << "  --stream-assistant        Stream assistant deltas during tool loops (tools=basic|host; provider-dependent)\n";
 }
 
 static bool take_switch(std::vector<std::string>& args, const std::string& flag, bool* out_enabled) {
@@ -173,6 +175,7 @@ int main(int argc, char** argv) {
   std::string force_tool;
   bool require_tool_call = false;
   size_t max_steps = 0; // unlimited unless explicitly set
+  bool stream_assistant = false;
   bool trace = true;
   bool quiet = false;
 
@@ -261,6 +264,10 @@ int main(int argc, char** argv) {
   }
   if (!take_flag_u64(args, "--max-steps", &max_steps)) {
     std::cerr << "Invalid value for --max-steps\n";
+    return 2;
+  }
+  if (!take_switch(args, "--stream-assistant", &stream_assistant)) {
+    std::cerr << "Invalid flag: --stream-assistant\n";
     return 2;
   }
 
@@ -401,6 +408,26 @@ int main(int argc, char** argv) {
     opt.max_steps = max_steps;
     opt.max_chars = max_chars;
     opt.keep_last_messages = keep_last;
+    opt.stream_assistant = stream_assistant;
+
+#if defined(AGENT_HAVE_JSONCPP)
+    auto on_event = [](void* vctx, const char* type, const char* data_json) {
+      if (!vctx || !type || !data_json) return;
+      auto* saw = static_cast<bool*>(vctx);
+      if (std::string(type) != "assistant_delta") return;
+      Json::CharReaderBuilder rb;
+      std::string errs;
+      std::istringstream iss(data_json);
+      Json::Value v;
+      if (!Json::parseFromStream(rb, iss, &v, &errs) || !v.isObject()) return;
+      const auto& d = v["delta"];
+      if (!d.isString()) return;
+      const std::string s = d.asString();
+      if (s.empty()) return;
+      *saw = true;
+      std::cout << s << std::flush;
+    };
+#endif
 
     auto run_one = [&](const std::string& user_prompt) -> int {
       ToolLoopResult r;
@@ -408,6 +435,13 @@ int main(int argc, char** argv) {
       long http_status = 0;
       std::string http_body;
       std::ostream* trace_stream = trace ? &std::cerr : nullptr;
+#if defined(AGENT_HAVE_JSONCPP)
+      bool saw_stream_delta = false;
+      if (stream_assistant) {
+        opt.on_event = on_event;
+        opt.on_event_ctx = &saw_stream_delta;
+      }
+#endif
       if (!run_tool_loop(pctx.cfg, session, user_prompt, registry, &executor, opt, trace_stream, &r, &err, &http_status, &http_body)) {
         if (http_status) {
           std::cerr << openai_format_http_error(http_status, http_body) << "\n";
@@ -467,7 +501,16 @@ int main(int argc, char** argv) {
         (void)session_store_append_audit_jsonl(store_cfg, session_id, Json::writeString(wb, record));
 #endif
       }
+#if defined(AGENT_HAVE_JSONCPP)
+      if (stream_assistant && saw_stream_delta) {
+        // Deltas were already streamed to stdout; terminate with a newline for shell ergonomics.
+        std::cout << "\n";
+      } else {
+        std::cout << r.final_assistant_text << "\n";
+      }
+#else
       std::cout << r.final_assistant_text << "\n";
+#endif
       return 0;
     };
 
