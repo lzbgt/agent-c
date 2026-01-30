@@ -218,6 +218,11 @@ Completed milestones and notable tasks.
 - Exposed tool-loop assistant streaming in the CLI:
   - `agent run` / `agent chat` accept `--stream-assistant` for `--tools basic|host`
   - added a local smoke test `tests/agent_local_stream_tool_loop_smoke.sh` that requires `stream: true` and validates tool-call reconstruction + streamed output end-to-end
+- Extended CLI assistant streaming to `--tools none`:
+  - `agent run` / `agent chat` now support `--stream-assistant` for a single `tools=none` request (OpenAI-compatible `stream: true`)
+  - added a local smoke test `tests/agent_local_stream_assistant_smoke.sh` that requires `stream: true` and validates streamed output end-to-end
+- Standardized `assistant_delta` event payloads for daemon streaming:
+  - `assistant_delta` now includes `step` and `epoch` fields for `tools=none` streaming (matching tool-loop streaming payload shape)
 - Improved UI live streaming when daemon auth is enabled:
   - UI uses a fetch-based SSE reader (so it can send `Authorization: Bearer ...`) instead of `EventSource`
   - added a non-network smoke test `tests/agentd_sse_auth_smoke.sh` using a local OpenAI stub server

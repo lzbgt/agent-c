@@ -34,6 +34,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add “session rotation” retries for `tools="none"` when providers reject an over-long context (CLI + daemon).
 - [x] Support explicit proxy override (`--proxy` / request `proxy`) to avoid network hangs when env proxy is required.
 - [x] Add `--stream-assistant` for tool loops (CLI) to emit incremental `assistant_delta` output (provider-dependent).
+- [x] Support `--stream-assistant` for `--tools none` (CLI) to stream assistant output to stdout (provider-dependent).
 - [x] Add more network smokes for host tools beyond `shell_exec` (e.g. `fs_read` paging) to reduce regressions.
 - [x] Add a host-tool network smoke for `text_search` (DeepSeek + daemon) to reduce regressions.
 - [x] Improve host filesystem tools defaults to avoid noise:

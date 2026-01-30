@@ -82,7 +82,7 @@ static void usage() {
     << "  --force-tool <name>       Force a tool call on first step (verification)\n"
     << "  --require-tool-call       Fail if no tool call occurred\n"
     << "  --max-steps <n>           Max tool loop steps (default: unlimited; 0 means unlimited)\n"
-    << "  --stream-assistant        Stream assistant deltas during tool loops (tools=basic|host; provider-dependent)\n";
+    << "  --stream-assistant        Stream assistant deltas (tools=none|basic|host; provider-dependent)\n";
 }
 
 static bool take_switch(std::vector<std::string>& args, const std::string& flag, bool* out_enabled) {
@@ -554,6 +554,240 @@ int main(int argc, char** argv) {
     return rc;
   } else {
     auto run_one = [&](const std::string& user_prompt) -> int {
+      if (stream_assistant) {
+#if !defined(AGENT_HAVE_JSONCPP)
+        std::cerr << "--stream-assistant requires jsoncpp (AGENT_HAVE_JSONCPP)\n";
+        return 2;
+#else
+        agent_session_add_message(session, AGENT_ROLE_USER, user_prompt.c_str());
+
+        const OpenAIClientConfig run_cfg = pctx.cfg;
+        const size_t keep = (keep_last == 0 ? 16 : keep_last);
+
+        size_t attempt_max_chars = (max_chars == 0 ? 20000 : max_chars);
+        int final_attempt = -1;
+        bool ok = false;
+        long http_status = 0;
+        std::string http_body;
+        std::string err;
+        std::string assistant_text;
+        agent_compact_report_t compact_final{};
+        bool saw_stream_delta = false;
+
+        for (int attempt = 0; attempt < 3; attempt++) {
+          final_attempt = attempt;
+
+          const char* summary_or_null = nullptr;
+          std::string summary_buf;
+          if (attempt == 0 && !summary_model.empty() && agent_session_estimated_chars(session) > attempt_max_chars) {
+            SummaryCompactionInput input = build_summary_compaction_input(session, keep);
+            if (input.dropped_messages > 0 && !input.excerpt.empty()) {
+              const size_t max_out = summary_max_chars == 0 ? 1200 : summary_max_chars;
+              CompactionSummaryResult sr = generate_compaction_summary_via_llm(run_cfg, summary_model, input, max_out);
+              if (sr.ok && !sr.summary_text.empty()) {
+                summary_buf = std::string(AGENT_SESSION_SUMMARY_PREFIX) + "\n" + sr.summary_text;
+                summary_or_null = summary_buf.c_str();
+                if (trace) {
+                  std::cerr << "=== SUMMARY MODEL ===\n";
+                  std::cerr << "model=" << summary_model << " dropped_messages=" << input.dropped_messages
+                            << " excerpt_truncated=" << (input.truncated ? "true" : "false") << "\n";
+                }
+              } else if (trace) {
+                std::cerr << "=== SUMMARY MODEL FAILED ===\n";
+                std::cerr << "model=" << summary_model << " http_status=" << sr.http_status << "\n";
+                if (!sr.error.empty()) std::cerr << sr.error << "\n";
+              }
+            }
+          }
+
+          // Apply the same compaction policy as the non-stream `agent_run_once` path, but then issue an explicit
+          // OpenAI-compatible `stream: true` request so we can emit incremental stdout deltas.
+          agent_compact_report_t compact{};
+          const agent_status_t cst = agent_session_compact_char_budget(session, attempt_max_chars, keep, summary_or_null, &compact);
+          if (cst != AGENT_OK) {
+            ok = false;
+            err = std::string("session compaction failed: ") + std::to_string((int)cst);
+            break;
+          }
+
+          // Build OpenAI-compatible request JSON from the compacted session.
+          std::string request_json;
+          {
+            Json::Value root(Json::objectValue);
+            root["model"] = run_cfg.model;
+            root["stream"] = true;
+            Json::Value messages(Json::arrayValue);
+            const size_t n = agent_session_message_count(session);
+            for (size_t i = 0; i < n; i++) {
+              agent_message_view_t v{};
+              if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
+              Json::Value m(Json::objectValue);
+              m["role"] = agent_role_to_string(v.role);
+              m["content"] = std::string(v.content, v.content_len);
+              messages.append(m);
+            }
+            root["messages"] = messages;
+            Json::StreamWriterBuilder wb;
+            wb["indentation"] = "";
+            request_json = Json::writeString(wb, root);
+          }
+
+          struct StreamCtx {
+            std::ostream* out = nullptr;
+            std::string assistant;
+            std::string pending;
+            bool saw_delta = false;
+          } sctx;
+          sctx.out = &std::cout;
+
+          auto on_chunk = [](void* vctx, const char* chunk_json, size_t chunk_len) {
+            auto* s = static_cast<StreamCtx*>(vctx);
+            if (!s || !s->out || !chunk_json || chunk_len == 0) return;
+
+            Json::CharReaderBuilder rb;
+            std::string errs;
+            std::istringstream iss(std::string(chunk_json, chunk_len));
+            Json::Value root;
+            if (!Json::parseFromStream(rb, iss, &root, &errs)) return;
+
+            const auto& choices = root["choices"];
+            if (!choices.isArray() || choices.empty()) return;
+            const auto& delta = choices[0]["delta"];
+            if (!delta.isObject()) return;
+            const auto& content = delta["content"];
+            if (!content.isString()) return;
+            const std::string d = content.asString();
+            if (d.empty()) return;
+
+            s->assistant += d;
+            s->pending += d;
+            s->saw_delta = true;
+            // Avoid a flush on every single token-sized chunk.
+            if (s->pending.size() >= 64) {
+              (*s->out) << s->pending << std::flush;
+              s->pending.clear();
+            }
+          };
+
+          OpenAIStreamResult sr = openai_chat_completions_raw_stream(run_cfg, request_json, on_chunk, &sctx);
+          http_status = sr.http_status;
+          http_body = sr.response_body;
+          compact_final = compact;
+
+          if (trace) {
+            std::cerr << "=== REQUEST (stream=true attempt=" << attempt << ") ===\n";
+            std::cerr << request_json << "\n";
+            std::cerr << "=== RESPONSE (stream capture) ===\n";
+            if (!sr.response_body.empty()) std::cerr << sr.response_body << "\n";
+            std::cerr << "=== COMPACTION ===\n";
+            std::cerr << "before_chars=" << compact.before_chars
+                      << " after_chars=" << compact.after_chars
+                      << " dropped=" << compact.dropped_messages
+                      << " inserted_summary=" << (int)compact.inserted_summary
+                      << "\n";
+          }
+
+          // Flush buffered stdout deltas.
+          if (!sctx.pending.empty()) {
+            std::cout << sctx.pending << std::flush;
+            sctx.pending.clear();
+          }
+          saw_stream_delta = saw_stream_delta || sctx.saw_delta;
+
+          if (sr.http_status < 200 || sr.http_status >= 300) {
+            // Retry on context-too-long rejections by compacting more aggressively (session rotation).
+            if (attempt < 2 && openai_is_context_too_long_error(sr.http_status, sr.response_body)) {
+              const size_t next = std::max<size_t>(2000, (attempt_max_chars * 3) / 4);
+              if (trace) {
+                std::cerr << "=== RETRY (context too long) ===\n";
+                std::cerr << "attempt=" << attempt << " http_status=" << sr.http_status
+                          << " max_chars_before=" << attempt_max_chars
+                          << " max_chars_after=" << next << "\n";
+              }
+              attempt_max_chars = next;
+              continue;
+            }
+            ok = false;
+            err = (!sr.error_message.empty() ? sr.error_message : openai_format_http_error(sr.http_status, sr.response_body));
+            break;
+          }
+
+          // Provider may have ignored streaming; fall back to extracting assistant content from a normal JSON completion.
+          assistant_text = sctx.assistant;
+          if (assistant_text.empty() && !sr.response_body.empty() && sr.response_body.size() < (4u * 1024u * 1024u) &&
+              sr.response_body[0] == '{') {
+            Json::CharReaderBuilder rb;
+            std::string errs;
+            std::istringstream iss(sr.response_body);
+            Json::Value parsed;
+            if (Json::parseFromStream(rb, iss, &parsed, &errs) && parsed.isObject()) {
+              const auto& choices = parsed["choices"];
+              if (choices.isArray() && !choices.empty()) {
+                const auto& msg = choices[0]["message"];
+                const auto& content = msg["content"];
+                if (content.isString()) {
+                  assistant_text = content.asString();
+                } else {
+                  const auto& text = choices[0]["text"];
+                  if (text.isString()) assistant_text = text.asString();
+                }
+              }
+            }
+          }
+
+          if (assistant_text.empty()) {
+            ok = false;
+            err = "streamed completion returned no assistant content";
+            break;
+          }
+
+          agent_session_add_message(session, AGENT_ROLE_ASSISTANT, assistant_text.c_str());
+          ok = true;
+          break;
+        }
+
+        // Append a per-run audit record for tools=none runs (host-only; session messages remain clean).
+        if (!no_session && !session_id.empty()) {
+          Json::Value record(Json::objectValue);
+          record["ts_unix_ms"] = (Json::Int64)now_unix_ms();
+          record["prompt"] = user_prompt;
+          record["ok"] = ok;
+          record["tools"] = "none";
+          record["model"] = model;
+          record["base_url"] = run_cfg.base_url;
+          record["stream_assistant"] = true;
+          record["attempt"] = final_attempt;
+          record["http_status"] = (Json::Int64)http_status;
+          if (!ok) record["error"] = err;
+          if (ok) record["assistant_text"] = assistant_text;
+          {
+            Json::Value c(Json::objectValue);
+            c["before_chars"] = (Json::UInt64)compact_final.before_chars;
+            c["after_chars"] = (Json::UInt64)compact_final.after_chars;
+            c["dropped_messages"] = (Json::UInt64)compact_final.dropped_messages;
+            c["inserted_summary"] = (bool)compact_final.inserted_summary;
+            record["compaction"] = c;
+          }
+          Json::StreamWriterBuilder wb;
+          wb["indentation"] = "";
+          (void)session_store_append_audit_jsonl(store_cfg, session_id, Json::writeString(wb, record));
+        }
+
+        if (!ok) {
+          if (!err.empty()) std::cerr << err << "\n";
+          if (!http_body.empty()) std::cerr << http_body << "\n";
+          return 1;
+        }
+
+        if (saw_stream_delta) {
+          std::cout << "\n";
+        } else {
+          std::cout << assistant_text << "\n";
+        }
+        return 0;
+#endif
+      }
+
       agent_session_add_message(session, AGENT_ROLE_USER, user_prompt.c_str());
 
       const agent_provider_t provider = openai_make_provider(&pctx);

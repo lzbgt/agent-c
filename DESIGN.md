@@ -479,6 +479,10 @@ Assistant streaming (provider-dependent):
 - For tool-calling loops (`tools="basic"`/`"host"`), the host tool-provider reconstructs tool calls incrementally from streaming
   `delta.tool_calls` (best-effort) and may also emit `assistant_delta` events on the final assistant step (provider-dependent).
   - Non-goal for the first cut: full coverage of every streaming variant across providers (some ignore `stream: true`).
+  - `assistant_delta` event payloads include:
+    - `delta` (string): incremental assistant text
+    - `step` (number): tool-loop step (0 for `tools="none"`)
+    - `epoch` (number): context-rotation epoch / streaming attempt
 
 Security notes (future):
 - Binding to `127.0.0.1` avoids LAN exposure by default.

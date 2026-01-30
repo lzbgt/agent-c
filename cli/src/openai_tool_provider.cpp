@@ -327,10 +327,12 @@ static agent_status_t openai_tool_provider_generate(
 
     if (sr.http_status < 200 || sr.http_status >= 300) {
       if (openai_is_context_too_long_error(sr.http_status, sr.response_body)) {
-        (void)set_error(out_resp, openai_format_http_error(sr.http_status, sr.response_body));
+        const std::string msg = (!sr.error_message.empty() ? sr.error_message : openai_format_http_error(sr.http_status, sr.response_body));
+        (void)set_error(out_resp, msg);
         return AGENT_ERR_CONTEXT_TOO_LONG;
       }
-      (void)set_error(out_resp, openai_format_http_error(sr.http_status, sr.response_body));
+      const std::string msg = (!sr.error_message.empty() ? sr.error_message : openai_format_http_error(sr.http_status, sr.response_body));
+      (void)set_error(out_resp, msg);
       return AGENT_ERR_INTERNAL;
     }
 

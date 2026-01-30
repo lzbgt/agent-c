@@ -452,10 +452,14 @@ static Json::Value run_request_to_json(
           std::string pending_delta;
           bool verbose = false;
           int chunks = 0;
+          uint64_t step = 0;
+          uint64_t epoch = 0;
           decltype(push_ev)* push = nullptr;
         } sctx;
         sctx.verbose = verbose;
         sctx.push = &push_ev;
+        sctx.step = 0;
+        sctx.epoch = (uint64_t)attempt;
 
         auto on_chunk = [](void* vctx, const char* chunk_json, size_t chunk_len) {
           auto* s = static_cast<StreamCtx*>(vctx);
@@ -481,6 +485,8 @@ static Json::Value run_request_to_json(
           // Coalesce small deltas to avoid flooding the daemon/UI with thousands of events.
           if (s->pending_delta.size() >= 128) {
             Json::Value d(Json::objectValue);
+            d["step"] = (Json::UInt64)s->step;
+            d["epoch"] = (Json::UInt64)s->epoch;
             d["delta"] = s->pending_delta;
             (*s->push)("assistant_delta", d);
             s->pending_delta.clear();
@@ -513,15 +519,17 @@ static Json::Value run_request_to_json(
         // Flush any pending deltas.
         if (!sctx.pending_delta.empty()) {
           Json::Value d(Json::objectValue);
+          d["step"] = (Json::UInt64)sctx.step;
+          d["epoch"] = (Json::UInt64)sctx.epoch;
           d["delta"] = sctx.pending_delta;
           push_ev("assistant_delta", d);
           sctx.pending_delta.clear();
         }
 
         // Provider may have ignored streaming and returned a normal JSON completion.
-        if (sr.http_status >= 400) {
+        if (sr.http_status < 200 || sr.http_status >= 300) {
           ok = false;
-          err = openai_format_http_error(sr.http_status, sr.response_body);
+          err = !sr.error_message.empty() ? sr.error_message : openai_format_http_error(sr.http_status, sr.response_body);
         } else {
           const std::string final_text = sctx.assistant.empty()
             ? json_try_extract_assistant_content_from_completion([&]() -> Json::Value {
@@ -545,7 +553,7 @@ static Json::Value run_request_to_json(
           break;
         }
 
-        if (sr.http_status == 400 || sr.http_status == 413) {
+        if (openai_is_context_too_long_error(sr.http_status, sr.response_body)) {
           attempt_max_chars = std::max<size_t>(256, attempt_max_chars / 2);
           continue;
         }

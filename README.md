@@ -343,9 +343,10 @@ Assistant streaming (provider-dependent):
     from streamed `delta.tool_calls`. It also emits `assistant_delta` events during the final assistant step (provider-dependent).
     Note: some providers ignore `stream: true` and return a normal JSON completion; the daemon falls back to non-stream parsing.
 
-CLI streaming (host tools):
-- For `agent run` / `agent chat` when `--tools basic|host`, pass `--stream-assistant` to stream assistant deltas to stdout
-  while the tool loop is in flight (provider-dependent).
+CLI streaming (stdout):
+- For `agent run` / `agent chat`, pass `--stream-assistant` to stream assistant deltas to stdout (provider-dependent).
+  - `--tools none`: streams the assistant message for a single request (`stream: true`).
+  - `--tools basic|host`: streams assistant deltas during tool-loop steps (best-effort; depends on provider streaming + `delta.tool_calls`).
 
 Tool schema introspection (extensible tools):
 - `GET /api/v1/tools?tools=host|basic|none&tools_root=@host|@cwd|...&yolo=0|1&host_policy=full|readonly` returns the tool registry the daemon will expose:
