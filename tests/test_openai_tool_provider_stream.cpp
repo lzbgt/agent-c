@@ -101,6 +101,31 @@ static OpenAIStreamResult fake_stream_assistant_text(
   return r;
 }
 
+static OpenAIStreamResult fake_stream_legacy_function_call(
+  const OpenAIClientConfig& /*cfg*/,
+  const std::string& /*request_body_json*/,
+  OpenAIStreamChunkCallback on_chunk,
+  void* on_chunk_ctx,
+  size_t /*max_capture_bytes*/
+) {
+  // Legacy streaming shape: delta.function_call.{name,arguments}, with fragmented arguments.
+  const char* c1 =
+    R"({"choices":[{"delta":{"function_call":{"name":"fs_read","arguments":"{\"path\":\"README.md\","}}}]})";
+  const char* c2 =
+    R"({"choices":[{"delta":{"function_call":{"arguments":"\"max_lines\":5,\"max_chars\":20000}"}}}]})";
+
+  if (on_chunk) {
+    on_chunk(on_chunk_ctx, c1, std::strlen(c1));
+    on_chunk(on_chunk_ctx, c2, std::strlen(c2));
+  }
+
+  OpenAIStreamResult r;
+  r.http_status = 200;
+  r.response_body = "stub_stream";
+  r.saw_done = true;
+  return r;
+}
+
 static agent_tool_registry_t* make_minimal_registry() {
   agent_tool_registry_t* r = nullptr;
   const agent_status_t st = agent_tool_registry_create(&r);
@@ -152,6 +177,37 @@ int main() {
     agent_tool_provider_response_t resp{};
     const agent_status_t st = p.generate(p.ctx, &req, &resp);
     expect_true(st == AGENT_OK, "stream tool_call status");
+    expect_streq(std::string(resp.assistant_content.data ? resp.assistant_content.data : ""), "", "assistant content empty");
+    expect_eq(resp.tool_call_count, 1u, "tool_call_count");
+    expect_true(resp.tool_calls != nullptr, "tool_calls allocated");
+    expect_streq(std::string(resp.tool_calls[0].name.data, resp.tool_calls[0].name.len), "fs_read", "tool name");
+    expect_streq(
+      std::string(resp.tool_calls[0].arguments_json.data, resp.tool_calls[0].arguments_json.len),
+      R"({"path":"README.md","max_lines":5,"max_chars":20000})",
+      "tool arguments reconstructed"
+    );
+
+    agent_tool_provider_response_free(&resp);
+    agent_tool_registry_destroy(tools);
+  }
+
+  {
+    // Streaming legacy function_call reconstruction (delta.function_call) without assistant text.
+    agent_tool_registry_t* tools = make_minimal_registry();
+
+    OpenAIToolProviderCtx ctx;
+    ctx.cfg.base_url = "http://stub";
+    ctx.cfg.api_key = "dummy";
+    ctx.cfg.model = "stub";
+    ctx.stream_assistant = true;
+    ctx.chat_stream_fn = fake_stream_legacy_function_call;
+
+    agent_tool_provider_t p = openai_make_tool_provider(&ctx);
+
+    agent_tool_provider_request_t req = make_req(tools);
+    agent_tool_provider_response_t resp{};
+    const agent_status_t st = p.generate(p.ctx, &req, &resp);
+    expect_true(st == AGENT_OK, "stream legacy function_call status");
     expect_streq(std::string(resp.assistant_content.data ? resp.assistant_content.data : ""), "", "assistant content empty");
     expect_eq(resp.tool_call_count, 1u, "tool_call_count");
     expect_true(resp.tool_calls != nullptr, "tool_calls allocated");
