@@ -121,6 +121,16 @@ static Json::Value run_request_to_json(
   uint64_t max_steps_u64 = 0;
   const size_t max_steps =
     json_get_u64_nonneg(args, "max_steps", &max_steps_u64) ? (size_t)max_steps_u64 : daemon_cfg.max_steps_default;
+  uint64_t max_tool_calls_total_u64 = 0;
+  const size_t max_tool_calls_total =
+    json_get_u64_nonneg(args, "max_tool_calls_total", &max_tool_calls_total_u64)
+      ? (size_t)max_tool_calls_total_u64
+      : daemon_cfg.max_tool_calls_total_default;
+  uint64_t max_tool_calls_per_tool_u64 = 0;
+  const size_t max_tool_calls_per_tool =
+    json_get_u64_nonneg(args, "max_tool_calls_per_tool", &max_tool_calls_per_tool_u64)
+      ? (size_t)max_tool_calls_per_tool_u64
+      : daemon_cfg.max_tool_calls_per_tool_default;
   uint64_t max_chars_u64 = 0;
   const size_t max_chars = json_get_u64_nonneg(args, "max_chars", &max_chars_u64)
                              ? (size_t)max_chars_u64
@@ -291,6 +301,8 @@ static Json::Value run_request_to_json(
   if (use_tool_loop) {
     ToolLoopOptions opt;
     opt.max_steps = max_steps;
+    opt.max_tool_calls_total = max_tool_calls_total;
+    opt.max_tool_calls_per_tool = max_tool_calls_per_tool;
     opt.verbose = verbose;
     opt.stream_assistant = stream_assistant;
     if (args.isMember("max_repeated_tool_calls") && args["max_repeated_tool_calls"].isInt()) {

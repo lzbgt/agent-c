@@ -130,6 +130,41 @@ static agent_status_t always_tool_call_provider_generate(
   return AGENT_OK;
 }
 
+static agent_status_t many_tool_calls_in_one_step_provider_generate(
+  void* /*vctx*/,
+  const agent_tool_provider_request_t* req,
+  agent_tool_provider_response_t* out_resp
+) {
+  agent_tool_provider_response_free(out_resp);
+  const char* content = "";
+  assert(agent_string_set_copy(&out_resp->assistant_content, content, strlen(content)) == AGENT_OK);
+
+  // Only step 0 requests many tools; later steps stop.
+  if (req->step != 0) {
+    const char* done = "DONE";
+    agent_tool_provider_response_free(out_resp);
+    assert(agent_string_set_copy(&out_resp->assistant_content, done, strlen(done)) == AGENT_OK);
+    return AGENT_OK;
+  }
+
+  const int n = 10;
+  out_resp->tool_calls = (agent_tool_call_t*)agent_malloc(sizeof(agent_tool_call_t) * (size_t)n);
+  assert(out_resp->tool_calls != NULL);
+  memset(out_resp->tool_calls, 0, sizeof(agent_tool_call_t) * (size_t)n);
+  out_resp->tool_call_count = (size_t)n;
+
+  for (int i = 0; i < n; i++) {
+    char idbuf[64];
+    snprintf(idbuf, sizeof(idbuf), "call_0_%d", i);
+    assert(agent_string_set_copy(&out_resp->tool_calls[i].id, idbuf, strlen(idbuf)) == AGENT_OK);
+    assert(agent_string_set_copy(&out_resp->tool_calls[i].name, "echo", strlen("echo")) == AGENT_OK);
+    char argbuf[64];
+    snprintf(argbuf, sizeof(argbuf), "{\"i\":%d}", i);
+    assert(agent_string_set_copy(&out_resp->tool_calls[i].arguments_json, argbuf, strlen(argbuf)) == AGENT_OK);
+  }
+  return AGENT_OK;
+}
+
 static void test_tool_loop_happy_path(void) {
   agent_tool_registry_t* reg = NULL;
   assert(agent_tool_registry_create(&reg) == AGENT_OK);
@@ -234,6 +269,78 @@ static void test_tool_loop_max_steps_guard(void) {
   const agent_status_t st = agent_tool_loop_run(&provider, reg, &exec, seed, "hello", &opt, NULL, &out);
   assert(st == AGENT_ERR_LIMIT);
   assert(out.error_message.data && strstr(out.error_message.data, "max steps") != NULL);
+
+  agent_tool_loop_result_free(&out);
+  agent_session_destroy(seed);
+  agent_tool_registry_destroy(reg);
+}
+
+static void test_tool_loop_max_tool_calls_total_guard(void) {
+  agent_tool_registry_t* reg = NULL;
+  assert(agent_tool_registry_create(&reg) == AGENT_OK);
+  assert(agent_tool_registry_add(reg, "echo", "echo tool", "{\"type\":\"object\"}") == AGENT_OK);
+
+  agent_tool_executor_t exec = {0};
+  exec.ctx = NULL;
+  exec.execute = fake_tool_execute;
+
+  agent_session_t* seed = NULL;
+  assert(agent_session_create(&seed) == AGENT_OK);
+  assert(agent_session_add_message(seed, AGENT_ROLE_SYSTEM, "sys") == AGENT_OK);
+
+  agent_tool_provider_t provider = {0};
+  provider.ctx = NULL;
+  provider.generate = many_tool_calls_in_one_step_provider_generate;
+
+  agent_tool_loop_options_t opt = {0};
+  opt.model = "fake";
+  opt.max_chars = 20000;
+  opt.keep_last_messages = 16;
+  opt.max_tool_result_chars = 200;
+  opt.max_steps = 0;
+  opt.max_repeated_tool_calls = 0;
+  opt.max_tool_calls_total = 3;
+
+  agent_tool_loop_result_t out = {0};
+  const agent_status_t st = agent_tool_loop_run(&provider, reg, &exec, seed, "hello", &opt, NULL, &out);
+  assert(st == AGENT_ERR_LIMIT);
+  assert(out.error_message.data && strstr(out.error_message.data, "max tool calls") != NULL);
+
+  agent_tool_loop_result_free(&out);
+  agent_session_destroy(seed);
+  agent_tool_registry_destroy(reg);
+}
+
+static void test_tool_loop_max_tool_calls_per_tool_guard(void) {
+  agent_tool_registry_t* reg = NULL;
+  assert(agent_tool_registry_create(&reg) == AGENT_OK);
+  assert(agent_tool_registry_add(reg, "echo", "echo tool", "{\"type\":\"object\"}") == AGENT_OK);
+
+  agent_tool_executor_t exec = {0};
+  exec.ctx = NULL;
+  exec.execute = fake_tool_execute;
+
+  agent_session_t* seed = NULL;
+  assert(agent_session_create(&seed) == AGENT_OK);
+  assert(agent_session_add_message(seed, AGENT_ROLE_SYSTEM, "sys") == AGENT_OK);
+
+  agent_tool_provider_t provider = {0};
+  provider.ctx = NULL;
+  provider.generate = always_tool_call_provider_generate;
+
+  agent_tool_loop_options_t opt = {0};
+  opt.model = "fake";
+  opt.max_chars = 20000;
+  opt.keep_last_messages = 16;
+  opt.max_tool_result_chars = 200;
+  opt.max_steps = 0;
+  opt.max_repeated_tool_calls = 0;
+  opt.max_tool_calls_per_tool = 2;
+
+  agent_tool_loop_result_t out = {0};
+  const agent_status_t st = agent_tool_loop_run(&provider, reg, &exec, seed, "hello", &opt, NULL, &out);
+  assert(st == AGENT_ERR_LIMIT);
+  assert(out.error_message.data && strstr(out.error_message.data, "per tool") != NULL);
 
   agent_tool_loop_result_free(&out);
   agent_session_destroy(seed);
@@ -360,6 +467,8 @@ void test_tool_loop_module(void) {
   test_tool_loop_happy_path();
   test_tool_loop_repeated_tool_call_guard();
   test_tool_loop_max_steps_guard();
+  test_tool_loop_max_tool_calls_total_guard();
+  test_tool_loop_max_tool_calls_per_tool_guard();
   test_tool_loop_context_too_long_retries();
   test_tool_loop_require_tool_call_errors();
   test_tool_loop_cancel();

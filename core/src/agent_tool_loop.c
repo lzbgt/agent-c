@@ -811,6 +811,14 @@ agent_status_t agent_tool_loop_run(
   uint64_t last_tool_sig = 0;
   size_t repeated_tool_calls = 0;
 
+  size_t total_tool_calls = 0;
+  typedef struct tl_tool_count_entry {
+    uint64_t tool_name_sig;
+    size_t count;
+  } tl_tool_count_entry_t;
+  tl_tool_count_entry_t tool_counts[32];
+  size_t tool_counts_len = 0;
+
   uint64_t epoch = 0;
   {
     tl_buf_t d = {0};
@@ -1116,6 +1124,66 @@ agent_status_t agent_tool_loop_run(
         tool_call_id = tool_call_id_buf;
       }
       const char* args_json = call->arguments_json.data ? call->arguments_json.data : "{}";
+
+      // Total/per-tool call guards (count each tool call, even within a single provider step).
+      total_tool_calls++;
+      if (options->max_tool_calls_total > 0 && total_tool_calls > options->max_tool_calls_total) {
+        const char* msg = "max tool calls exceeded";
+        (void)agent_string_set_copy(&res.error_message, msg, strlen(msg));
+        tl_buf_t d = {0};
+        uint8_t first = 1;
+        (void)tl_buf_append_char(&d, '{');
+        (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
+        (void)tl_json_append_string_field(&d, "reason", "max_tool_calls_exceeded", strlen("max_tool_calls_exceeded"), &first);
+        (void)tl_json_append_u64_field(&d, "tool_calls_executed", (unsigned long long)total_tool_calls, &first);
+        (void)tl_json_append_u64_field(&d, "max_tool_calls_total", (unsigned long long)options->max_tool_calls_total, &first);
+        (void)tl_json_append_string_field(&d, "error", msg, strlen(msg), &first);
+        (void)tl_buf_append_char(&d, '}');
+        tl_emit_event(hooks, "error", d.data ? d.data : "{}");
+        tl_buf_free(&d);
+        status = AGENT_ERR_LIMIT;
+        goto cleanup;
+      }
+      if (options->max_tool_calls_per_tool > 0) {
+        const uint64_t name_sig = tl_fnv1a64(tool_name, strlen(tool_name));
+        size_t* cnt_ptr = NULL;
+        for (size_t k = 0; k < tool_counts_len; k++) {
+          if (tool_counts[k].tool_name_sig == name_sig) {
+            cnt_ptr = &tool_counts[k].count;
+            break;
+          }
+        }
+        if (!cnt_ptr) {
+          if (tool_counts_len < (sizeof(tool_counts) / sizeof(tool_counts[0]))) {
+            tool_counts[tool_counts_len].tool_name_sig = name_sig;
+            tool_counts[tool_counts_len].count = 0;
+            cnt_ptr = &tool_counts[tool_counts_len].count;
+            tool_counts_len++;
+          }
+        }
+        if (cnt_ptr) {
+          (*cnt_ptr)++;
+          if (*cnt_ptr > options->max_tool_calls_per_tool) {
+            const char* msg = "max tool calls per tool exceeded";
+            (void)agent_string_set_copy(&res.error_message, msg, strlen(msg));
+            tl_buf_t d = {0};
+            uint8_t first = 1;
+            (void)tl_buf_append_char(&d, '{');
+            (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
+            (void)tl_json_append_string_field(&d, "reason", "max_tool_calls_per_tool_exceeded",
+                                              strlen("max_tool_calls_per_tool_exceeded"), &first);
+            (void)tl_json_append_string_field(&d, "tool_name", tool_name, strlen(tool_name), &first);
+            (void)tl_json_append_u64_field(&d, "tool_calls_for_tool", (unsigned long long)(*cnt_ptr), &first);
+            (void)tl_json_append_u64_field(&d, "max_tool_calls_per_tool", (unsigned long long)options->max_tool_calls_per_tool, &first);
+            (void)tl_json_append_string_field(&d, "error", msg, strlen(msg), &first);
+            (void)tl_buf_append_char(&d, '}');
+            tl_emit_event(hooks, "error", d.data ? d.data : "{}");
+            tl_buf_free(&d);
+            status = AGENT_ERR_LIMIT;
+            goto cleanup;
+          }
+        }
+      }
 
       // Repetition guard: stop runaway loops where the model repeats the exact same tool call endlessly.
       if (options->max_repeated_tool_calls > 0) {

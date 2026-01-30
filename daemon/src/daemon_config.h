@@ -50,6 +50,12 @@ struct DaemonConfig {
   // Default tool-loop step limit when requests omit `max_steps`.
   // 0 means unlimited (not recommended for long-running daemons).
   size_t max_steps_default = 32;
+  // Default cap on total tool calls when requests omit it.
+  // 0 means unlimited.
+  size_t max_tool_calls_total_default = 128;
+  // Default per-tool cap when requests omit it.
+  // 0 means unlimited / disabled.
+  size_t max_tool_calls_per_tool_default = 0;
 
   // Async job GC (daemon longevity): finished jobs are kept only for a bounded time/count.
   int64_t job_ttl_ms = 30 * 60 * 1000; // 30 minutes

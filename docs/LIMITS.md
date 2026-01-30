@@ -49,6 +49,31 @@ It exists because:
     - `max_repeats`
   - return `AGENT_ERR_LIMIT`
 
+### `max_tool_calls_total`
+
+- Definition: maximum number of tool calls executed in total (across all steps).
+  - This is distinct from `max_steps`: a single step can contain **multiple** tool calls in a provider response.
+- `max_tool_calls_total = 0` means unlimited.
+- When triggered, the core must:
+  - emit an `error` event with:
+    - `reason = "max_tool_calls_exceeded"`
+    - `tool_calls_executed`
+    - `max_tool_calls_total`
+  - return `AGENT_ERR_LIMIT`
+
+### `max_tool_calls_per_tool`
+
+- Definition: maximum number of tool calls executed for a given tool name across the entire run.
+  - This catches “same tool, varying args” loops that bypass the exact-call repetition guard.
+- `max_tool_calls_per_tool = 0` means unlimited.
+- When triggered, the core must:
+  - emit an `error` event with:
+    - `reason = "max_tool_calls_per_tool_exceeded"`
+    - `tool_name`
+    - `tool_calls_for_tool`
+    - `max_tool_calls_per_tool`
+  - return `AGENT_ERR_LIMIT`
+
 ## Host/daemon defaults
 
 ### Daemon default `max_steps`
@@ -61,6 +86,14 @@ To protect long-running `agentd` instances, the daemon should apply a default `m
   - explicit `0` → unlimited (operator accepts risk)
 
 This keeps new users safe while still allowing intentional long runs.
+
+### Daemon default `max_tool_calls_total`
+
+To protect against a single model response that requests many tool calls at once, `agentd` should apply a default cap on total
+tool calls when requests omit it.
+
+- Proposed default: `128` tool calls.
+- The UI should allow blank/unset to use daemon defaults and explicit `0` to disable.
 
 ## Related docs
 

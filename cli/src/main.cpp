@@ -84,6 +84,8 @@ static void usage() {
     << "  --require-tool-call       Fail if no tool call occurred\n"
     << "  --max-steps <n>           Max tool loop steps (default: unlimited; 0 means unlimited)\n"
     << "  --max-repeated-tool-calls <n>  Stop runaway loops when repeating identical tool calls (default: 12; 0 disables)\n"
+    << "  --max-tool-calls-total <n>     Max total tool calls (default: unlimited; 0 means unlimited)\n"
+    << "  --max-tool-calls-per-tool <n>  Max tool calls per tool name (default: unlimited; 0 means unlimited)\n"
     << "  --stream-assistant        Stream assistant deltas (tools=none|basic|host; provider-dependent)\n";
 }
 
@@ -178,6 +180,8 @@ int main(int argc, char** argv) {
   bool require_tool_call = false;
   size_t max_steps = 0; // unlimited unless explicitly set
   size_t max_repeated_tool_calls = 12;
+  size_t max_tool_calls_total = 0;
+  size_t max_tool_calls_per_tool = 0;
   bool stream_assistant = false;
   bool trace = true;
   bool quiet = false;
@@ -271,6 +275,14 @@ int main(int argc, char** argv) {
   }
   if (!take_flag_u64(args, "--max-repeated-tool-calls", &max_repeated_tool_calls)) {
     std::cerr << "Invalid value for --max-repeated-tool-calls\n";
+    return 2;
+  }
+  if (!take_flag_u64(args, "--max-tool-calls-total", &max_tool_calls_total)) {
+    std::cerr << "Invalid value for --max-tool-calls-total\n";
+    return 2;
+  }
+  if (!take_flag_u64(args, "--max-tool-calls-per-tool", &max_tool_calls_per_tool)) {
+    std::cerr << "Invalid value for --max-tool-calls-per-tool\n";
     return 2;
   }
   if (!take_switch(args, "--stream-assistant", &stream_assistant)) {
@@ -414,6 +426,8 @@ int main(int argc, char** argv) {
     opt.require_tool_call = require_tool_call;
     opt.max_steps = max_steps;
     opt.max_repeated_tool_calls = max_repeated_tool_calls;
+    opt.max_tool_calls_total = max_tool_calls_total;
+    opt.max_tool_calls_per_tool = max_tool_calls_per_tool;
     opt.max_chars = max_chars;
     opt.keep_last_messages = keep_last;
     opt.stream_assistant = stream_assistant;

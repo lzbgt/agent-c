@@ -80,6 +80,15 @@ Additionally, tool loops can be bounded by step count:
   - omitted → daemon default applies (see `/api/v1/config: daemon.max_steps_default`)
   - `0` means unlimited (not recommended for long-running daemons)
 
+For robust runaway protection (especially when a model requests many tool calls in a single step), runs can also be bounded by:
+
+- `max_tool_calls_total` (int, optional): max number of tool calls executed in total.
+  - omitted → daemon default applies
+  - `0` means unlimited
+- `max_tool_calls_per_tool` (int, optional): max number of tool calls executed per tool name.
+  - omitted → daemon default applies (often `0`/disabled)
+  - `0` means unlimited
+
 This exists to prevent pathological “capture camera → send to UI → repeat” loops when the model does not infer a natural stop
 condition from the conversation alone.
 

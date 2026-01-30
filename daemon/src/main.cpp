@@ -201,6 +201,30 @@ int main(int argc, char** argv) {
         std::cerr << "Invalid --max-steps-default\n";
         return 2;
       }
+    } else if (a == "--max-tool-calls-total-default") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --max-tool-calls-total-default\n";
+        return 2;
+      }
+      try {
+        cfg.max_tool_calls_total_default = (size_t)std::stoull(v);
+      } catch (...) {
+        std::cerr << "Invalid --max-tool-calls-total-default\n";
+        return 2;
+      }
+    } else if (a == "--max-tool-calls-per-tool-default") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --max-tool-calls-per-tool-default\n";
+        return 2;
+      }
+      try {
+        cfg.max_tool_calls_per_tool_default = (size_t)std::stoull(v);
+      } catch (...) {
+        std::cerr << "Invalid --max-tool-calls-per-tool-default\n";
+        return 2;
+      }
     } else if (a == "--tools") {
       if (!take(&cfg.tools)) {
         std::cerr << "Missing value for --tools\n";
@@ -296,6 +320,8 @@ int main(int argc, char** argv) {
         << "  --job-ttl-ms <n>     GC finished jobs older than n ms (default: 1800000)\n"
         << "  --max-jobs <n>       Keep at most n jobs in memory (default: 256)\n"
         << "  --max-steps-default <n> Default tool-loop max steps when requests omit it (default: 32; 0 means unlimited)\n"
+        << "  --max-tool-calls-total-default <n> Default tool-loop total tool calls cap when requests omit it (default: 128; 0 means unlimited)\n"
+        << "  --max-tool-calls-per-tool-default <n> Default tool-loop per-tool call cap when requests omit it (default: 0; 0 means unlimited)\n"
         << "  --tools host|basic|none   Default toolset (default: host)\n"
         << "  --tools-root <path>  Root/working dir for file edits (default: unrestricted)\n"
         << "  --host-policy full|readonly  Host tool safety policy (default: full)\n"
@@ -364,6 +390,20 @@ int main(int argc, char** argv) {
       cfg.max_steps_default = (size_t)std::stoull(ms);
     } catch (...) {
       std::cerr << "Invalid AGENTD_MAX_STEPS_DEFAULT; ignoring\n";
+    }
+  }
+  if (const char* ms = getenv_s("AGENTD_MAX_TOOL_CALLS_TOTAL_DEFAULT")) {
+    try {
+      cfg.max_tool_calls_total_default = (size_t)std::stoull(ms);
+    } catch (...) {
+      std::cerr << "Invalid AGENTD_MAX_TOOL_CALLS_TOTAL_DEFAULT; ignoring\n";
+    }
+  }
+  if (const char* ms = getenv_s("AGENTD_MAX_TOOL_CALLS_PER_TOOL_DEFAULT")) {
+    try {
+      cfg.max_tool_calls_per_tool_default = (size_t)std::stoull(ms);
+    } catch (...) {
+      std::cerr << "Invalid AGENTD_MAX_TOOL_CALLS_PER_TOOL_DEFAULT; ignoring\n";
     }
   }
   if (cfg.model.empty()) {

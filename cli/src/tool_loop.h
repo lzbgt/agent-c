@@ -27,6 +27,11 @@ struct ToolLoopOptions {
   // more than this many times consecutively. Helps prevent runaway loops (e.g. repeated camera capture).
   // 0 disables the guard.
   size_t max_repeated_tool_calls = 12;
+  // Cap total tool calls across the entire run. 0 disables.
+  // Useful when a model requests many tool calls in a single step.
+  size_t max_tool_calls_total = 0;
+  // Cap tool calls per tool name across the entire run. 0 disables.
+  size_t max_tool_calls_per_tool = 0;
   // When true, captures full request/response bodies and tool I/O into `events_json`.
   // When false, captures a lightweight event log without large blobs.
   bool verbose = false;

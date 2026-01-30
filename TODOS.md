@@ -66,6 +66,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Emit lightweight `heartbeat` events for async jobs during long tool execution / slow providers (avoids "hang" perception).
 - [x] Add a tool-loop runaway guard (`max_repeated_tool_calls`) and expose it end-to-end (daemon request + UI setting + CLI flag).
 - [x] Fix tool loop limit semantics: hitting `max_steps` is an error (`AGENT_ERR_LIMIT`) and daemon has a safe default when omitted.
+- [x] Add additional tool-loop runaway caps beyond step-count: `max_tool_calls_total` and `max_tool_calls_per_tool` (daemon defaults + UI/CLI overrides).
 - [ ] Add a daemon-level “sandbox policy” model:
   - YOLO vs host-scoped tools-root
   - future: per-tool allow/deny and command restrictions for `proc_exec` / `shell_exec`

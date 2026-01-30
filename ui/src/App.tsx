@@ -70,6 +70,8 @@ export default function App() {
   const [maxSteps, setMaxSteps] = useLocalStorageState("agentui.maxSteps", "");
   const [maxStepsUserSet, setMaxStepsUserSet] = useLocalStorageState("agentui.maxStepsUserSet", false);
   const [maxRepeatedToolCalls, setMaxRepeatedToolCalls] = useLocalStorageState("agentui.maxRepeatedToolCalls", "12");
+  const [maxToolCallsTotal, setMaxToolCallsTotal] = useLocalStorageState("agentui.maxToolCallsTotal", "");
+  const [maxToolCallsPerTool, setMaxToolCallsPerTool] = useLocalStorageState("agentui.maxToolCallsPerTool", "");
   const [maxChars, setMaxChars] = useLocalStorageState("agentui.maxChars", "20000");
   const [keepLast, setKeepLast] = useLocalStorageState("agentui.keepLast", "16");
   const [trace, setTrace] = useLocalStorageState("agentui.trace", true);
@@ -206,6 +208,20 @@ export default function App() {
           : Number.isFinite(Number(maxStepsTrim)) && Number(maxStepsTrim) >= 0
             ? Number(maxStepsTrim)
             : undefined;
+      const maxToolCallsTotalTrim = String(maxToolCallsTotal ?? "").trim();
+      const parsedMaxToolCallsTotal =
+        maxToolCallsTotalTrim.length === 0
+          ? undefined
+          : Number.isFinite(Number(maxToolCallsTotalTrim)) && Number(maxToolCallsTotalTrim) >= 0
+            ? Number(maxToolCallsTotalTrim)
+            : undefined;
+      const maxToolCallsPerToolTrim = String(maxToolCallsPerTool ?? "").trim();
+      const parsedMaxToolCallsPerTool =
+        maxToolCallsPerToolTrim.length === 0
+          ? undefined
+          : Number.isFinite(Number(maxToolCallsPerToolTrim)) && Number(maxToolCallsPerToolTrim) >= 0
+            ? Number(maxToolCallsPerToolTrim)
+            : undefined;
       const req: RunRequest = {
         prompt,
         session_id: sessionId || undefined,
@@ -229,6 +245,8 @@ export default function App() {
         max_steps: parsedMaxSteps,
         max_repeated_tool_calls:
           Number.isFinite(Number(maxRepeatedToolCalls)) && Number(maxRepeatedToolCalls) >= 0 ? Number(maxRepeatedToolCalls) : undefined,
+        max_tool_calls_total: parsedMaxToolCallsTotal,
+        max_tool_calls_per_tool: parsedMaxToolCallsPerTool,
         max_chars: Number.isFinite(Number(maxChars)) ? Number(maxChars) : 20000,
         keep_last: Number.isFinite(Number(keepLast)) ? Number(keepLast) : 16,
         trace,
@@ -893,6 +911,13 @@ export default function App() {
                     db: <code className="text-white/70">{daemonConfig.data.daemon?.db_path ?? "(disabled)"}</code>
                   </div>
                   <div className="col-span-2">
+                    run limits:{" "}
+                    <code className="text-white/70">
+                      max_steps_default={daemonConfig.data.daemon?.max_steps_default ?? "?"}, max_tool_calls_total_default=
+                      {daemonConfig.data.daemon?.max_tool_calls_total_default ?? "?"}
+                    </code>
+                  </div>
+                  <div className="col-span-2">
                     job gc:{" "}
                     <code className="text-white/70">
                       ttl={daemonConfig.data.jobs?.job_ttl_ms ?? "?"}ms, max_jobs={daemonConfig.data.jobs?.max_jobs ?? "?"}
@@ -1000,6 +1025,30 @@ export default function App() {
                 />
                 <div className="mt-1 text-[11px] text-white/40">
                   Stops runaway loops when the model repeats the exact same tool call. Set <code>0</code> to disable.
+                </div>
+              </div>
+              <div>
+                <Label>Max tool calls total (blank=daemon default; 0=∞)</Label>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={maxToolCallsTotal}
+                  placeholder={String(daemonConfig.data?.daemon?.max_tool_calls_total_default ?? "128")}
+                  onChange={(e) => setMaxToolCallsTotal(e.target.value)}
+                />
+                <div className="mt-1 text-[11px] text-white/40">
+                  Caps total tool calls even if a single model step requests many tools.
+                </div>
+              </div>
+              <div>
+                <Label>Max tool calls per tool (blank=daemon default; 0=∞)</Label>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={maxToolCallsPerTool}
+                  placeholder={String(daemonConfig.data?.daemon?.max_tool_calls_per_tool_default ?? "0")}
+                  onChange={(e) => setMaxToolCallsPerTool(e.target.value)}
+                />
+                <div className="mt-1 text-[11px] text-white/40">
+                  Caps tool calls per tool name, catching loops with varying args that bypass the exact-repeat guard.
                 </div>
               </div>
               <div>

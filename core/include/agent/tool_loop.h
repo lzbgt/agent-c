@@ -69,6 +69,15 @@ typedef struct agent_tool_loop_options {
   // 0 disables the guard.
   size_t max_repeated_tool_calls;
 
+  // Cap total tool calls across the entire run.
+  // This complements max_steps because a single step can include multiple tool calls.
+  // 0 disables the guard.
+  size_t max_tool_calls_total;
+
+  // Cap tool calls per tool name across the entire run.
+  // 0 disables the guard.
+  size_t max_tool_calls_per_tool;
+
   // Seamless compaction (char budget heuristic).
   // 0 means default (20000).
   size_t max_chars;

@@ -296,6 +296,8 @@ bool run_tool_loop(
   opt.require_tool_call = options.require_tool_call ? 1 : 0;
   opt.max_steps = options.max_steps;
   opt.max_repeated_tool_calls = options.max_repeated_tool_calls;
+  opt.max_tool_calls_total = options.max_tool_calls_total;
+  opt.max_tool_calls_per_tool = options.max_tool_calls_per_tool;
   opt.max_chars = options.max_chars;
   opt.keep_last_messages = options.keep_last_messages;
   opt.insert_compaction_summary = options.insert_compaction_summary ? 1 : 0;
