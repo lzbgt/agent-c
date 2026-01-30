@@ -89,6 +89,47 @@ To set keys via a local file, copy `project.local.md.example` to `project.local.
 Network tests also assume an HTTP proxy may be required; the scripts default to `http://localhost:8120`
 via `https_proxy` / `http_proxy`.
 
+### Local secrets file: `.not_in_repo` (preferred)
+
+For local development, you can store provider keys in a gitignored file named `.not_in_repo` at the repo root.
+This keeps keys out of the UI/browser, and lets `agentd` load them automatically.
+
+Accepted formats (either style; one per line):
+
+```text
+DEEPSEEK_API_KEY=sk-...
+OPENROUTER_API_KEY=sk-...
+```
+
+or:
+
+```text
+- deepseek: sk-...
+- openrouter: sk-...
+```
+
+Notes:
+- `.not_in_repo` is gitignored; do not commit keys.
+- `agentd` prefers `.not_in_repo` over `project.local.md` when auto-loading provider keys.
+
+## Real end-to-end (agentd + browser) test
+
+This repo includes a “real” E2E harness that drives the Web UI in a real browser (headless) using Playwright and makes real
+provider calls via `agentd`.
+
+Prereqs:
+- `.not_in_repo` populated with your provider key(s) (or env vars set)
+- `./build/agentd` built (`tools/verify.sh`)
+- UI deps installed (`cd ui && npm install`)
+
+Run:
+
+```bash
+tools/e2e_real.sh
+```
+
+Logs are written under `build/e2e/`.
+
 ### Daemon config snapshot (debug)
 
 For debugging client/daemon mismatches (CORS, sandbox defaults, job GC), `agentd` exposes:

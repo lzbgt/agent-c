@@ -1389,6 +1389,7 @@ export default function App() {
             <Label>Daemon base URL</Label>
             <input
               className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+              data-testid="daemon-base"
               value={base}
               onChange={(e) => setBase(e.target.value)}
             />
@@ -1402,6 +1403,7 @@ export default function App() {
               <Label>Daemon auth token (optional)</Label>
               <input
                 className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                data-testid="daemon-auth-token"
                 value={daemonAuthToken}
                 placeholder="sent as Authorization: Bearer <token>"
                 onChange={(e) => setDaemonAuthToken(e.target.value)}
@@ -1972,6 +1974,7 @@ export default function App() {
           <div className="mb-3 text-sm font-semibold">Prompt</div>
           <textarea
             className="mt-1 h-32 w-full resize-none rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+            data-testid="prompt"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
           />
@@ -1981,6 +1984,7 @@ export default function App() {
             onClick={() => run.mutate()}
             disabled={run.isPending || !!activeJobId}
             type="button"
+            data-testid="run"
           >
             {run.isPending || activeJobId ? "Running…" : "Run"}
           </button>
@@ -2064,36 +2068,62 @@ export default function App() {
           ) : null}
         </div>
 
-        {activeJobId ? (
-          <div>
-            <div className="mb-2 text-sm font-semibold text-white/80">Conversation (live)</div>
-            {liveEvents.length === 0 ? (
-              <div className="mb-2 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/70">
-                Waiting for live events from the daemon (SSE/polling). If this stays empty, check the daemon base URL and network proxy.
-              </div>
-            ) : null}
-            <ConversationView
-              baseUrl={effectiveBase}
-              yolo={yolo}
-              sessionId={sessionId}
-              client={client}
-              daemonAuthToken={daemonAuthToken}
-              prompt={lastRunPrompt || prompt}
-              events={liveEvents}
-              showDebugEvents={showDebugInConversation}
-              allowAutoplay={allowAutoplay}
-              allowClientRpcs={allowClientRpcs}
-              allowClientEffects={allowClientEffects}
-              allowUnsafePageEval={allowUnsafePageEval}
-              sceneEntities={sceneEntities}
-              onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
-            />
-          </div>
-        ) : null}
+        <SceneView sessionId={sessionId} entities={sceneEntities} onClear={() => clearScene()} />
 
-        {result?.events && result.events.length > 0 ? (
-          <div>
-            <div className="mb-2 text-sm font-semibold text-white/80">{activeJobId ? "Conversation (last completed)" : "Conversation"}</div>
+        <div className="mt-6">
+          <div className="mb-2 text-sm font-semibold text-white/80">History</div>
+
+          {activeJobId ? (
+            <div>
+              {liveEvents.length === 0 ? (
+                <div className="mb-2 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/70">
+                  Waiting for live events from the daemon (SSE/polling). If this stays empty, check the daemon base URL and network proxy.
+                </div>
+              ) : null}
+              <ConversationView
+                baseUrl={effectiveBase}
+                yolo={yolo}
+                sessionId={sessionId}
+                client={client}
+                daemonAuthToken={daemonAuthToken}
+                prompt={lastRunPrompt || prompt}
+                events={liveEvents}
+                showDebugEvents={showDebugInConversation}
+                allowAutoplay={allowAutoplay}
+                allowClientRpcs={allowClientRpcs}
+                allowClientEffects={allowClientEffects}
+                allowUnsafePageEval={allowUnsafePageEval}
+                reverseOrder={true}
+                sceneEntities={sceneEntities}
+                onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
+              />
+
+              {result?.events && result.events.length > 0 ? (
+                <details className="mt-4 rounded-lg border border-white/10 bg-white/5 p-3">
+                  <summary className="cursor-pointer text-xs font-semibold text-white/70">Last completed run</summary>
+                  <div className="mt-3">
+                    <ConversationView
+                      baseUrl={effectiveBase}
+                      yolo={yolo}
+                      sessionId={sessionId}
+                      client={client}
+                      daemonAuthToken={daemonAuthToken}
+                      prompt={lastCompletedPrompt || prompt}
+                      events={result.events}
+                      showDebugEvents={showDebugInConversation}
+                      allowAutoplay={allowAutoplay}
+                      allowClientRpcs={allowClientRpcs}
+                      allowClientEffects={allowClientEffects}
+                      allowUnsafePageEval={allowUnsafePageEval}
+                      reverseOrder={true}
+                      sceneEntities={sceneEntities}
+                      onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
+                    />
+                  </div>
+                </details>
+              ) : null}
+            </div>
+          ) : result?.events && result.events.length > 0 ? (
             <ConversationView
               baseUrl={effectiveBase}
               yolo={yolo}
@@ -2107,13 +2137,16 @@ export default function App() {
               allowClientRpcs={allowClientRpcs}
               allowClientEffects={allowClientEffects}
               allowUnsafePageEval={allowUnsafePageEval}
+              reverseOrder={true}
               sceneEntities={sceneEntities}
               onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
             />
-          </div>
-        ) : null}
-
-        <SceneView sessionId={sessionId} entities={sceneEntities} onClear={() => clearScene()} />
+          ) : (
+            <div className="rounded-md border border-white/10 bg-black/20 px-3 py-3 text-xs text-white/60">
+              No history yet. Run a prompt to populate the timeline.
+            </div>
+          )}
+        </div>
 
         {activeJobId && liveEvents.length > 0 ? (
           <div>

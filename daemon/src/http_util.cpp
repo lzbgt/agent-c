@@ -74,6 +74,7 @@ std::string content_type_from_path(const std::filesystem::path& p) {
   if (eqi(".mp4")) return "video/mp4";
   if (eqi(".webm")) return "video/webm";
   if (eqi(".mov")) return "video/quicktime";
+  if (eqi(".pptx")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
   if (eqi(".txt") || eqi(".md")) return "text/plain; charset=utf-8";
   return "application/octet-stream";
 }

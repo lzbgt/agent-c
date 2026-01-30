@@ -106,6 +106,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add `rpc.kind=entity_apply/entity_query` to support client-agnostic scene entities (create/update/delete/action/query), with a WebUI implementation (`SceneView` + `canvas2d`).
 - [x] Add an unsafe `page_eval` client RPC engine (explicit opt-in; reload as kill switch).
 - [ ] Add a higher-level browser automation layer (navigation flows + wait/assert primitives; possibly via Playwright/CDP) built on top of client RPC.
+- [x] Add a real browser E2E harness (Playwright) for validating client RPC + artifact flows against a running agentd/UI.
 - [ ] Add a daemon skeleton with:
   - local control socket / HTTP
   - broker client abstraction (MQTT)

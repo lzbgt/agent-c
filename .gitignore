@@ -4,11 +4,13 @@ build*/
 .DS_Store
 ~/.agent/
 .agent/
+.agent_deps/
 ref/ds-cli/
 ui/node_modules/
 ui/dist/
 ui/.vite/
 project.local.md
+.not_in_repo
 
 # Local one-off camera capture artifacts (dev only).
 capture_image*.py

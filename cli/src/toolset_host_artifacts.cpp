@@ -40,6 +40,10 @@ static std::string guess_kind_from_ext(const std::string& path) {
 
 static std::string guess_mime_from_kind_and_ext(const std::string& kind, const std::string& path) {
   const std::string p = lower_copy(path);
+  // File-type overrides (independent of kind).
+  if (p.size() >= 5 && p.rfind(".pptx") == p.size() - 5) {
+    return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+  }
   if (kind == "image") {
     if (p.size() >= 4 && p.rfind(".png") == p.size() - 4) return "image/png";
     if (p.size() >= 4 && (p.rfind(".jpg") == p.size() - 4 || p.rfind(".jpeg") == p.size() - 5)) return "image/jpeg";

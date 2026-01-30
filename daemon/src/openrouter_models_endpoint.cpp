@@ -3,6 +3,7 @@
 #include "http_util.h"
 #include "json_util.h"
 #include "openrouter_util.h"
+#include "secrets_file.h"
 
 #include <algorithm>
 #include <chrono>
@@ -105,6 +106,11 @@ void handle_openrouter_models_endpoint(
     if (key.empty()) {
       if (const char* k = getenv_s("OPENROUTER_API_KEY")) key = k;
       else if (const char* k2 = getenv_s("OPENAI_API_KEY")) key = k2;
+    }
+    if (key.empty()) {
+      if (auto k = load_provider_key_best_effort("openrouter")) {
+        key = *k;
+      }
     }
   }
   if (key.empty()) {
@@ -261,4 +267,3 @@ void handle_openrouter_models_endpoint(
 }
 
 }  // namespace agentd
-

@@ -107,6 +107,7 @@ export default function ConversationView({
   allowClientRpcs,
   allowClientEffects,
   allowUnsafePageEval,
+  reverseOrder,
   sceneEntities,
   onSceneApply,
 }: {
@@ -122,6 +123,7 @@ export default function ConversationView({
   allowClientRpcs: boolean;
   allowClientEffects: boolean;
   allowUnsafePageEval: boolean;
+  reverseOrder?: boolean;
   sceneEntities?: any[];
   onSceneApply?: (ops: any[]) => any;
 }) {
@@ -1467,5 +1469,6 @@ export default function ConversationView({
     );
   }
 
-  return <div className="grid gap-3">{items}</div>;
+  const displayItems = reverseOrder ? [...items].reverse() : items;
+  return <div className="grid gap-3">{displayItems}</div>;
 }

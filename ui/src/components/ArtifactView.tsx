@@ -52,6 +52,52 @@ export default function ArtifactView({
   const toolCallId = safeStringOrNull(artifact?.tool_call_id) ?? safeStringOrNull(artifact?.source_tool_call_id);
 
   const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(path)}&yolo=${yolo ? "1" : "0"}`;
+  const authToken = safeString(daemonAuthToken).trim();
+  const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
+
+  // `/api/v1/file` always requires daemon auth when configured, but media tags cannot set custom headers.
+  // For authenticated daemons, fetch the bytes with Authorization and use a blob: URL for preview/download.
+  React.useEffect(() => {
+    if (!path) {
+      setBlobUrl(null);
+      return;
+    }
+    if (!authToken) {
+      setBlobUrl(null);
+      return;
+    }
+    const ac = new AbortController();
+    let revoked: string | null = null;
+    void (async () => {
+      try {
+        const r = await fetch(src, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${authToken}` },
+          signal: ac.signal,
+        });
+        if (!r.ok) throw new Error(`file fetch failed: ${r.status}`);
+        const b = await r.blob();
+        const u = URL.createObjectURL(b);
+        revoked = u;
+        setBlobUrl(u);
+      } catch {
+        // Best-effort: if blob fetch fails, fall back to direct URL (works when auth is disabled).
+        setBlobUrl(null);
+      }
+    })();
+    return () => {
+      ac.abort();
+      if (revoked) {
+        try {
+          URL.revokeObjectURL(revoked);
+        } catch {
+          // ignore
+        }
+      }
+    };
+  }, [authToken, path, src]);
+
+  const mediaSrc = blobUrl || src;
 
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
@@ -224,7 +270,7 @@ export default function ArtifactView({
       {path ? <div className="mt-1 text-[11px] text-white/40">{path}</div> : null}
 
       {kind === "image" ? (
-        <img src={src} className="mt-3 max-h-80 w-full rounded-md object-contain" />
+        <img src={mediaSrc} className="mt-3 max-h-80 w-full rounded-md object-contain" />
       ) : kind === "video" ? (
         <video
           ref={videoRef}
@@ -233,12 +279,12 @@ export default function ArtifactView({
           data-tool-call-id={toolCallId ?? ""}
           data-path={path ?? ""}
         >
-          <source src={src} />
+          <source src={mediaSrc} />
         </video>
       ) : kind === "audio" ? (
         <div className="mt-3">
           <audio ref={audioRef} controls className="w-full" data-tool-call-id={toolCallId ?? ""} data-path={path ?? ""}>
-            <source src={src} />
+            <source src={mediaSrc} />
           </audio>
           <div className="mt-2 flex flex-wrap gap-2">
             <button
@@ -274,9 +320,10 @@ export default function ArtifactView({
         <div className="mt-3 text-xs text-white/70">
           <a
             className="text-sky-200 hover:underline"
-            href={src}
+            href={mediaSrc}
             target="_blank"
             rel="noreferrer"
+            download={path ? path.split("/").pop() || "artifact" : undefined}
           >
             Download / open file
           </a>

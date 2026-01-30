@@ -14,6 +14,7 @@
 #include "job_endpoints.h"
 #include "run_endpoints.h"
 #include "db_query_endpoints.h"
+#include "secrets_file.h"
 
 #include "agent_db.h"
 
@@ -461,6 +462,15 @@ int main(int argc, char** argv) {
       if (const char* k = getenv_s("OPENAI_API_KEY")) cfg.api_key = k;
       else if (const char* k2 = getenv_s("OPENROUTER_API_KEY")) cfg.api_key = k2;
       else if (const char* k3 = getenv_s("DEEPSEEK_API_KEY")) cfg.api_key = k3;
+    }
+  }
+  if (cfg.api_key.empty()) {
+    // Best-effort local secret file discovery to keep provider keys out of browser storage.
+    // Preferred: .not_in_repo; fallback: project.local.md
+    const std::string provider =
+      url_contains_ci(cfg.base_url, "deepseek") ? "deepseek" : url_contains_ci(cfg.base_url, "openrouter") ? "openrouter" : "openai";
+    if (auto k = load_provider_key_best_effort(provider)) {
+      cfg.api_key = *k;
     }
   }
 
