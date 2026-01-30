@@ -168,8 +168,10 @@ Because most providers are stateless, “spawning a new provider session” is i
 - The tool-loop emits `compaction` events with an `epoch` counter so UIs can display when rotations happen.
 
 Host implementation notes (day-1):
-- The daemon and CLI treat “context too long” as a best-effort heuristic (`openai_is_context_too_long_error(...)`)
-  based on HTTP status (e.g. `413`) and error message substrings (“maximum context”, “too many tokens”, etc.).
+- The OpenAI-compatible host provider adapter treats “context too long” as a best-effort heuristic
+  (`openai_is_context_too_long_error(...)`) based on HTTP status (e.g. `413`) and error message substrings
+  (“maximum context”, “too many tokens”, etc.), and maps it to the stable core status `AGENT_ERR_CONTEXT_TOO_LONG`.
+  This lets hosts (CLI/daemon) implement “session rotation” retries without duplicating provider-specific string matching.
 - For `tools="none"` runs (both non-streaming and `stream_assistant=true`), the host applies the same idea:
   on a context-too-long rejection it retries up to 2 times, each time reducing `max_chars` (≈ 3/4) and compacting again.
   This is functionally equivalent to “spawning a new provider session” on stateless APIs.

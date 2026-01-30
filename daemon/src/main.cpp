@@ -10,6 +10,7 @@
 #include "default_system_prompt.h"
 #include "file_persistor.h"
 #include "openai_client.h"
+#include "openai_provider.h"
 #include "session_store.h"
 #include "summary_compaction.h"
 #include "summary_llm.h"
@@ -104,20 +105,6 @@ static bool daemon_require_auth(const DaemonConfig& cfg, const HttpRequest& req,
   }
   return false;
 }
-
-struct ProviderCtx {
-  OpenAIClientConfig cfg;
-  long last_http_status = 0;
-  std::string last_body;
-  std::string last_request_body;
-  std::string last_error;
-};
-
-static agent_status_t provider_generate(
-  void* vctx,
-  const agent_generate_request_t* req,
-  agent_generate_response_t* out_resp
-);
 
 // Parses the daemon run request body and returns a response JSON object (HTTP-level errors are represented in JSON).
 static Json::Value run_request_to_json(
@@ -628,11 +615,9 @@ static Json::Value run_request_to_json(
         break;
       }
     } else {
-      ProviderCtx pctx;
+      OpenAIProviderCtx pctx;
       pctx.cfg = run_cfg;
-      agent_provider_t provider;
-      provider.ctx = &pctx;
-      provider.generate = provider_generate;
+      const agent_provider_t provider = openai_make_provider(&pctx);
 
       agent_run_options_t run_opt{};
       run_opt.model = run_cfg.model.c_str();
@@ -734,7 +719,7 @@ static Json::Value run_request_to_json(
           break;
         }
 
-        if (attempt < 2 && openai_is_context_too_long_error(pctx.last_http_status, pctx.last_body)) {
+        if (attempt < 2 && st == AGENT_ERR_CONTEXT_TOO_LONG) {
           const size_t next = std::max<size_t>(2000, (attempt_max_chars * 3) / 4);
           Json::Value d(Json::objectValue);
           d["attempt"] = attempt;
@@ -820,58 +805,6 @@ static Json::Value run_request_to_json(
   }
 
   return out;
-}
-
-static agent_status_t provider_generate(void* vctx, const agent_generate_request_t* req, agent_generate_response_t* out_resp) {
-  if (!vctx || !req || !out_resp) {
-    return AGENT_ERR_INVALID_ARGUMENT;
-  }
-  auto* ctx = static_cast<ProviderCtx*>(vctx);
-  ctx->last_http_status = 0;
-  ctx->last_body.clear();
-  ctx->last_request_body.clear();
-  ctx->last_error.clear();
-
-  OpenAIClientConfig cfg = ctx->cfg;
-  if (req->model && req->model[0]) {
-    cfg.model = req->model;
-  }
-
-#if defined(AGENT_HAVE_JSONCPP)
-  {
-    Json::Value root(Json::objectValue);
-    root["model"] = cfg.model;
-    root["stream"] = false;
-    Json::Value messages(Json::arrayValue);
-    for (size_t i = 0; i < req->message_count; i++) {
-      Json::Value m(Json::objectValue);
-      m["role"] = agent_role_to_string(req->messages[i].role);
-      m["content"] = std::string(req->messages[i].content, req->messages[i].content_len);
-      messages.append(m);
-    }
-    root["messages"] = messages;
-    Json::StreamWriterBuilder wb;
-    wb["indentation"] = "";
-    ctx->last_request_body = Json::writeString(wb, root);
-  }
-#endif
-
-  const OpenAIChatResult r = openai_chat_completions(cfg, req->messages, req->message_count);
-  ctx->last_http_status = r.http_status;
-  ctx->last_body = r.response_body;
-  ctx->last_error = r.error_message;
-
-  if (r.http_status < 200 || r.http_status >= 300) {
-    if (ctx->last_error.empty()) {
-      ctx->last_error = openai_format_http_error(r.http_status, r.response_body);
-    }
-    return AGENT_ERR_INTERNAL;
-  }
-  if (r.assistant_text.empty()) {
-    ctx->last_error = "failed to extract assistant text from response";
-    return AGENT_ERR_INTERNAL;
-  }
-  return agent_string_set_copy(&out_resp->assistant_text, r.assistant_text.c_str(), r.assistant_text.size());
 }
 
 int main(int argc, char** argv) {

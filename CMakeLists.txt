@@ -48,6 +48,7 @@ if(AGENT_BUILD_HOST)
     cli/src/default_system_prompt.cpp
     cli/src/file_persistor.cpp
     cli/src/openai_client.cpp
+    cli/src/openai_provider.cpp
     cli/src/openai_tool_provider.cpp
     cli/src/sse_parser.cpp
     cli/src/session_store.cpp
@@ -234,4 +235,10 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
   )
   target_link_libraries(openai_error_tests PRIVATE agent_host)
   add_test(NAME openai_error_tests COMMAND openai_error_tests)
+
+  add_executable(openai_provider_tests
+    tests/test_openai_provider.cpp
+  )
+  target_link_libraries(openai_provider_tests PRIVATE agent_host)
+  add_test(NAME openai_provider_tests COMMAND openai_provider_tests)
  endif()
