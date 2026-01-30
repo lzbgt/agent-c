@@ -150,6 +150,38 @@ if txt != "OK":
   raise SystemExit(1)
 PY
 
+resp2="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Content-Type: application/json" \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "prompt": "Read README.md then say OK (but hit max_steps)",
+  "session_id": "${SESSION_ID}",
+  "tools": "host",
+  "yolo": False,
+  "tools_root": "@host",
+  "base_url": "${STUB_BASE}",
+  "api_key": "dummy",
+  "model": "stub",
+  "max_steps": 1,
+  "verbose": True
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/run")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${resp2}''')
+if obj.get("ok"):
+  print("expected failing run but ok=true:", obj, file=sys.stderr)
+  raise SystemExit(1)
+err = (obj.get("error") or "").lower()
+if "max steps" not in err:
+  print("expected max steps error; got:", obj.get("error"), file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 db_runs="$(curl -fsS --noproxy "*" --max-time 10 \
   "${DAEMON_URL}/api/v1/db/runs?session_id=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("""'${SESSION_ID}'"""))')&limit=20&offset=0")"
 
@@ -166,6 +198,10 @@ if not runs:
 rid = runs[0].get("run_id")
 if not isinstance(rid, int) or rid <= 0:
   print("invalid run_id:", rid, file=sys.stderr)
+  raise SystemExit(1)
+has_last_error = any(isinstance(r, dict) and isinstance(r.get("last_error"), dict) for r in runs)
+if not has_last_error:
+  print("expected at least one row with parsed last_error", file=sys.stderr)
   raise SystemExit(1)
 print(rid)
 PY

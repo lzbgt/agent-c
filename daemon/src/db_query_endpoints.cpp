@@ -164,7 +164,8 @@ void handle_db_runs_endpoint(
 #else
   sqlite3_stmt* st = nullptr;
   const char* sql =
-    "SELECT run_id, session_id, job_id, ts_unix_ms, tools, model, ok, error "
+    "SELECT run_id, session_id, job_id, ts_unix_ms, tools, model, ok, error, "
+    "(SELECT data_json FROM events e WHERE e.run_id = runs.run_id AND e.type='error' ORDER BY e.event_id DESC LIMIT 1) AS last_error_json "
     "FROM runs WHERE session_id=? ORDER BY ts_unix_ms DESC LIMIT ? OFFSET ?;";
   if (sqlite3_prepare_v2(h.db, sql, -1, &st, nullptr) != SQLITE_OK) {
     Json::Value err(Json::objectValue);
@@ -190,6 +191,15 @@ void handle_db_runs_endpoint(
     r["model"] = stmt_to_row(st, 5);
     r["ok"] = sqlite3_column_int(st, 6) ? true : false;
     r["error"] = stmt_to_row(st, 7);
+    const Json::Value last_err_json = stmt_to_row(st, 8);
+    r["last_error_json"] = last_err_json;
+    if (last_err_json.isString() && !last_err_json.asString().empty()) {
+      Json::Value parsed;
+      std::string perr;
+      if (json_parse_object(last_err_json.asString(), &parsed, &perr)) {
+        r["last_error"] = parsed;
+      }
+    }
     runs.append(r);
   }
   sqlite3_finalize(st);
@@ -353,9 +363,26 @@ void handle_db_run_endpoint(
         tr["id"] = (Json::Int64)sqlite3_column_int64(st2, 0);
         tr["tool_name"] = stmt_to_row(st2, 1);
         tr["tool_call_id"] = stmt_to_row(st2, 2);
-        tr["arguments_json"] = stmt_to_row(st2, 3);
-        tr["result_text"] = stmt_to_row(st2, 4);
-        tr["result_for_prompt_text"] = stmt_to_row(st2, 5);
+        const Json::Value args_json_v = stmt_to_row(st2, 3);
+        tr["arguments_json"] = args_json_v;
+        if (args_json_v.isString() && !args_json_v.asString().empty()) {
+          Json::Value parsed;
+          std::string perr;
+          if (json_parse_any(args_json_v.asString(), &parsed, &perr)) {
+            tr["arguments"] = parsed;
+          }
+        }
+        const Json::Value result_v = stmt_to_row(st2, 4);
+        tr["result_text"] = result_v;
+        if (result_v.isString() && !result_v.asString().empty()) {
+          Json::Value parsed;
+          std::string perr;
+          if (json_parse_any(result_v.asString(), &parsed, &perr)) {
+            tr["result"] = parsed;
+          }
+        }
+        const Json::Value result_prompt_v = stmt_to_row(st2, 5);
+        tr["result_for_prompt_text"] = result_prompt_v;
         tr["result_truncated_for_prompt"] = sqlite3_column_int(st2, 6) ? true : false;
         tools.append(tr);
       }

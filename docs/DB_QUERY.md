@@ -43,6 +43,8 @@ Response fields:
   - `model` (string|null)
   - `ok` (bool)
   - `error` (string|null)
+  - `last_error_json` (string|null): raw JSON object string for the most recent `events.type="error"` row for this run
+  - `last_error` (object, optional): parsed form of `last_error_json` when parsing succeeds
 
 ### Fetch run details
 

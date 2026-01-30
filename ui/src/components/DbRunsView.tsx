@@ -7,6 +7,7 @@ type DbRunRow = {
   tools?: string;
   model?: string | null;
   error?: string | null;
+  last_error?: any;
 };
 
 function fmtTs(ts?: number) {
@@ -43,6 +44,7 @@ export default function DbRunsView({
                 <th className="px-3 py-2">tools</th>
                 <th className="px-3 py-2">model</th>
                 <th className="px-3 py-2">ok</th>
+                <th className="px-3 py-2">last error</th>
               </tr>
             </thead>
             <tbody>
@@ -50,6 +52,10 @@ export default function DbRunsView({
                 const id = typeof r.run_id === "number" ? r.run_id : 0;
                 const ok = typeof r.ok === "boolean" ? r.ok : undefined;
                 const clickable = id > 0 && typeof onSelectRunId === "function";
+                const lastReason =
+                  r.last_error && typeof r.last_error === "object"
+                    ? String(r.last_error.reason ?? r.last_error.error ?? "")
+                    : "";
                 return (
                   <tr
                     key={`${id}_${idx}`}
@@ -72,6 +78,7 @@ export default function DbRunsView({
                         <span className="text-amber-200/80">false</span>
                       )}
                     </td>
+                    <td className="px-3 py-2 text-white/60">{lastReason}</td>
                   </tr>
                 );
               })}
@@ -82,4 +89,3 @@ export default function DbRunsView({
     </div>
   );
 }
-

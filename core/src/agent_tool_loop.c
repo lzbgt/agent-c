@@ -1032,6 +1032,8 @@ agent_status_t agent_tool_loop_run(
       uint8_t first = 1;
       (void)tl_buf_append_char(&d, '{');
       (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
+      (void)tl_json_append_string_field(&d, "reason", "provider_error", strlen("provider_error"), &first);
+      (void)tl_json_append_i64_field(&d, "status", (long long)stp, &first);
       (void)tl_json_append_string_field(&d, "error", res.error_message.data ? res.error_message.data : "", res.error_message.len, &first);
       (void)tl_buf_append_char(&d, '}');
       tl_emit_event(hooks, "error", d.data ? d.data : "{}");
@@ -1174,6 +1176,7 @@ agent_status_t agent_tool_loop_run(
         uint8_t first = 1;
         (void)tl_buf_append_char(&d, '{');
         (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
+        (void)tl_json_append_string_field(&d, "reason", "tool_execution_failed", strlen("tool_execution_failed"), &first);
         (void)tl_json_append_string_field(&d, "tool_name", tool_name, strlen(tool_name), &first);
         (void)tl_json_append_i64_field(&d, "status", (long long)st_tool, &first);
         (void)tl_json_append_string_field(&d, "error", res.error_message.data ? res.error_message.data : "", res.error_message.len, &first);
@@ -1267,6 +1270,7 @@ agent_status_t agent_tool_loop_run(
     tl_buf_t d = {0};
     uint8_t first = 1;
     (void)tl_buf_append_char(&d, '{');
+    (void)tl_json_append_string_field(&d, "reason", "require_tool_call_unsatisfied", strlen("require_tool_call_unsatisfied"), &first);
     (void)tl_json_append_string_field(&d, "error", res.error_message.data ? res.error_message.data : "", res.error_message.len, &first);
     (void)tl_buf_append_char(&d, '}');
     tl_emit_event(hooks, "error", d.data ? d.data : "{}");

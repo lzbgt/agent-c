@@ -334,22 +334,9 @@ bool run_tool_loop(
   if (out_http_status) *out_http_status = pctx.last_http_status;
   if (out_http_body) *out_http_body = pctx.last_response_body;
 
-  if (st != AGENT_OK) {
-    if (out_error) {
-      if (core_res.error_message.data && core_res.error_message.data[0]) {
-        *out_error = std::string(core_res.error_message.data, core_res.error_message.len);
-      } else if (pctx.last_http_status) {
-        *out_error = openai_format_http_error(pctx.last_http_status, pctx.last_response_body);
-      } else if (st == AGENT_ERR_CANCELLED) {
-        *out_error = "cancelled";
-      } else {
-        *out_error = "tool loop failed";
-      }
-    }
-    agent_tool_loop_result_free(&core_res);
-    return false;
-  }
-
+  // Always populate best-effort outputs for troubleshooting, even on failure. This is used by:
+  // - daemon/UI streaming: show why a job stopped (limits, provider errors, cancellation)
+  // - session audit log: preserve the tool timeline even when the run failed
   out_result->final_assistant_text = core_res.final_assistant_text.data ? core_res.final_assistant_text.data : "";
   out_result->saw_tool_call = core_res.saw_tool_call != 0;
 
@@ -370,6 +357,11 @@ bool run_tool_loop(
   // End event (host-side envelope stats).
   {
     Json::Value d(Json::objectValue);
+    d["ok"] = (st == AGENT_OK);
+    d["status"] = (Json::Int64)st;
+    if (core_res.error_message.data && core_res.error_message.data[0]) {
+      d["error"] = std::string(core_res.error_message.data, core_res.error_message.len);
+    }
     d["truncated"] = sink.events_truncated;
     d["captured_bytes"] = (Json::UInt64)sink.captured_bytes;
     d["max_total_capture_bytes"] = (Json::UInt64)sink.max_total_capture_bytes;
@@ -382,6 +374,23 @@ bool run_tool_loop(
   }
 
   out_result->events_json = json_stringify(sink.events);
+
+  if (st != AGENT_OK) {
+    if (out_error) {
+      if (core_res.error_message.data && core_res.error_message.data[0]) {
+        *out_error = std::string(core_res.error_message.data, core_res.error_message.len);
+      } else if (pctx.last_http_status) {
+        *out_error = openai_format_http_error(pctx.last_http_status, pctx.last_response_body);
+      } else if (st == AGENT_ERR_CANCELLED) {
+        *out_error = "cancelled";
+      } else {
+        *out_error = "tool loop failed";
+      }
+    }
+    agent_tool_loop_result_free(&core_res);
+    return false;
+  }
+
   agent_tool_loop_result_free(&core_res);
   return true;
 #endif
