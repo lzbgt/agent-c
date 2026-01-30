@@ -263,5 +263,6 @@ Host filesystem tools (token safety):
 - `fs_list` is designed for bounded output and now excludes common huge directories by default (e.g. `node_modules`, `build`, `dist`).
   - To include them, pass `use_default_excludes: false` (and/or `exclude_names` to fine-tune).
 - `fs_list`, `fs_find`, and `text_search` support `exclude_globs` (fnmatch) to filter out noisy paths (generated files, vendored code, etc.).
+- `fs_list`, `fs_find`, and `text_search` support `respect_gitignore: true` to skip `.gitignore`d paths (best-effort; currently reads the repo-root `.gitignore`).
 - `fs_stat` supports an optional bounded line count for small text files (`count_lines: true`) so the model can decide whether a file is huge without dumping it.
 - `fs_read` supports paging (`start_line`, `max_lines`, `end_line`) and a character cap (`max_chars`).

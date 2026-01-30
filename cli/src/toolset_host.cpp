@@ -7,6 +7,7 @@
 #endif
 
 #include <chrono>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -56,16 +57,45 @@ static agent_status_t set_result(agent_string_t* out, const std::string& s) {
   return agent_string_set_copy(out, s.c_str(), s.size());
 }
 
-	struct HostToolCtx {
-	  std::filesystem::path root;
-	  bool unrestricted = false;
-	  HostCancelCallback should_cancel = nullptr;
-	  void* should_cancel_ctx = nullptr;
-	};
+struct GitignoreRule {
+  bool negated = false;
+  bool subtree = false;   // pattern ended with '/'
+  bool anchored = false;  // pattern started with '/'
+  bool has_slash = false; // pattern contains '/'
+  std::string pattern;
+};
 
-	static bool is_cancelled(const HostToolCtx* ctx) {
-	  return ctx && ctx->should_cancel && ctx->should_cancel(ctx->should_cancel_ctx);
-	}
+struct GitignoreCache {
+  bool ready = false;
+  std::filesystem::path root; // directory containing .gitignore we loaded
+  std::filesystem::path file; // root/.gitignore
+  int64_t mtime_unix_ms = 0;
+  std::vector<GitignoreRule> rules;
+};
+
+struct HostToolCtx {
+  std::filesystem::path root;
+  bool unrestricted = false;
+  HostCancelCallback should_cancel = nullptr;
+  void* should_cancel_ctx = nullptr;
+  GitignoreCache gitignore;
+};
+
+static bool is_cancelled(const HostToolCtx* ctx) {
+  return ctx && ctx->should_cancel && ctx->should_cancel(ctx->should_cancel_ctx);
+}
+
+static std::string trim_ascii(std::string s) {
+  size_t a = 0;
+  while (a < s.size() && std::isspace((unsigned char)s[a])) a++;
+  size_t b = s.size();
+  while (b > a && std::isspace((unsigned char)s[b - 1])) b--;
+  return s.substr(a, b - a);
+}
+
+static bool str_contains(const std::string& s, char c) {
+  return s.find(c) != std::string::npos;
+}
 
 static std::string to_generic_string(const std::filesystem::path& p) {
   // Prefer a stable "/"-separated form for JSON/tool output.
@@ -109,6 +139,44 @@ static int64_t file_time_to_unix_ms(std::filesystem::file_time_type ft) {
   return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(sctp.time_since_epoch()).count();
 }
 
+static std::string normalize_gitignore_pattern(std::string p) {
+  // Best-effort compatibility:
+  // - treat ** like * (fnmatch doesn't implement git's ** semantics)
+  // - keep pattern otherwise intact (including '?', '*', '[]')
+  size_t pos = 0;
+  while ((pos = p.find("**", pos)) != std::string::npos) {
+    p.replace(pos, 2, "*");
+    pos += 1;
+  }
+  return p;
+}
+
+static std::optional<std::filesystem::path> find_git_root_best_effort(std::filesystem::path start) {
+  std::error_code ec;
+  start = std::filesystem::weakly_canonical(start, ec);
+  if (ec) start = start.lexically_normal();
+  std::filesystem::path cur = start;
+  for (int depth = 0; depth < 64; depth++) {
+    if (cur.empty()) break;
+    if (std::filesystem::exists(cur / ".git", ec) && std::filesystem::is_directory(cur / ".git", ec)) {
+      return cur;
+    }
+    const std::filesystem::path parent = cur.parent_path();
+    if (parent == cur) break;
+    cur = parent;
+  }
+  return std::nullopt;
+}
+
+static std::string relpath_for_match(const std::filesystem::path& root, const std::filesystem::path& p) {
+  std::error_code ec;
+  std::filesystem::path rel = std::filesystem::relative(p, root, ec);
+  if (ec) {
+    rel = p.lexically_relative(root);
+  }
+  return rel.generic_string();
+}
+
 static int64_t unix_ms_from_timespec(int64_t sec, int64_t nsec) {
   if (nsec < 0) nsec = 0;
   return sec * 1000 + nsec / 1000000;
@@ -145,6 +213,173 @@ static bool posix_stat_times_best_effort(
   }
 #endif
   return true;
+}
+
+static bool gitignore_rule_matches(
+  const GitignoreRule& r,
+  const std::string& relpath,
+  const std::string& basename,
+  bool is_dir
+) {
+  if (r.pattern.empty()) return false;
+  const std::string& pat = r.pattern;
+
+  auto fnm = [&](const std::string& candidate, const std::string& patt, int flags) -> bool {
+    return ::fnmatch(patt.c_str(), candidate.c_str(), flags) == 0;
+  };
+
+  // If rule is "dir/" style, it should ignore the directory and everything under it.
+  if (r.subtree) {
+    if (r.has_slash) {
+      const int flags = FNM_PATHNAME;
+      if (r.anchored) {
+        if (fnm(relpath, pat, flags)) return true;
+        if (fnm(relpath, pat + "/*", flags)) return true;
+        return false;
+      }
+      if (fnm(relpath, pat, flags)) return true;
+      if (fnm(relpath, pat + "/*", flags)) return true;
+      for (size_t i = 0; i < relpath.size(); i++) {
+        if (relpath[i] != '/') continue;
+        const std::string suffix = relpath.substr(i + 1);
+        if (fnm(suffix, pat, flags)) return true;
+        if (fnm(suffix, pat + "/*", flags)) return true;
+      }
+      return false;
+    }
+
+    // No-slash directory pattern like "build/": match any segment (directory itself or its descendants).
+    if (basename.empty()) return false;
+    if (is_dir && fnm(basename, pat, 0)) return true;
+    size_t start = 0;
+    for (;;) {
+      const size_t slash = relpath.find('/', start);
+      const std::string seg = (slash == std::string::npos) ? relpath.substr(start) : relpath.substr(start, slash - start);
+      if (!seg.empty() && fnm(seg, pat, 0)) return true;
+      if (slash == std::string::npos) break;
+      start = slash + 1;
+    }
+    return false;
+  }
+
+  if (!r.has_slash) {
+    return fnm(basename, pat, 0);
+  }
+
+  const int flags = FNM_PATHNAME;
+  if (r.anchored) {
+    return fnm(relpath, pat, flags);
+  }
+  if (fnm(relpath, pat, flags)) return true;
+  for (size_t i = 0; i < relpath.size(); i++) {
+    if (relpath[i] != '/') continue;
+    const std::string suffix = relpath.substr(i + 1);
+    if (fnm(suffix, pat, flags)) return true;
+  }
+  return false;
+}
+
+static bool load_gitignore_from_file(const std::filesystem::path& gitignore_path, std::vector<GitignoreRule>* out_rules) {
+  if (!out_rules) return false;
+  out_rules->clear();
+
+  std::ifstream in(gitignore_path);
+  if (!in.is_open()) return false;
+
+  std::string line;
+  while (std::getline(in, line)) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    line = trim_ascii(line);
+    if (line.empty()) continue;
+    if (line[0] == '#') continue;
+
+    // Handle escaped leading comment/negation markers.
+    if (line.size() >= 2 && line[0] == '\\' && (line[1] == '#' || line[1] == '!')) {
+      line = line.substr(1);
+    }
+
+    GitignoreRule r;
+    if (!line.empty() && line[0] == '!') {
+      r.negated = true;
+      line = line.substr(1);
+      line = trim_ascii(line);
+      if (line.empty()) continue;
+    }
+    if (!line.empty() && line[0] == '/') {
+      r.anchored = true;
+      line = line.substr(1);
+    }
+    if (!line.empty() && line.back() == '/') {
+      r.subtree = true;
+      line.pop_back();
+    }
+    line = normalize_gitignore_pattern(line);
+    if (line.empty()) continue;
+    r.has_slash = str_contains(line, '/');
+    r.pattern = line;
+    out_rules->push_back(std::move(r));
+  }
+  return true;
+}
+
+static bool ensure_gitignore_cache(HostToolCtx* ctx) {
+  if (!ctx) return false;
+
+  // Prefer the actual git root if present; otherwise fall back to the tool root.
+  std::filesystem::path root = ctx->root;
+  if (auto gr = find_git_root_best_effort(ctx->root)) {
+    root = *gr;
+  }
+  const std::filesystem::path gi = root / ".gitignore";
+
+  std::error_code ec;
+  if (!std::filesystem::exists(gi, ec) || !std::filesystem::is_regular_file(gi, ec)) {
+    ctx->gitignore.ready = false;
+    ctx->gitignore.rules.clear();
+    ctx->gitignore.root = root;
+    ctx->gitignore.file = gi;
+    ctx->gitignore.mtime_unix_ms = 0;
+    return false;
+  }
+
+  const auto mtime = std::filesystem::last_write_time(gi, ec);
+  const int64_t mtime_ms = ec ? 0 : file_time_to_unix_ms(mtime);
+  if (ctx->gitignore.ready && ctx->gitignore.file == gi && ctx->gitignore.mtime_unix_ms == mtime_ms) {
+    return true;
+  }
+
+  std::vector<GitignoreRule> rules;
+  if (!load_gitignore_from_file(gi, &rules)) {
+    ctx->gitignore.ready = false;
+    ctx->gitignore.rules.clear();
+    ctx->gitignore.root = root;
+    ctx->gitignore.file = gi;
+    ctx->gitignore.mtime_unix_ms = mtime_ms;
+    return false;
+  }
+  ctx->gitignore.ready = true;
+  ctx->gitignore.root = root;
+  ctx->gitignore.file = gi;
+  ctx->gitignore.mtime_unix_ms = mtime_ms;
+  ctx->gitignore.rules = std::move(rules);
+  return true;
+}
+
+static bool gitignore_is_ignored(HostToolCtx* ctx, const std::filesystem::path& entry_path, bool is_dir) {
+  if (!ctx) return false;
+  if (!ctx->gitignore.ready) return false;
+
+  std::string rel = relpath_for_match(ctx->gitignore.root, entry_path.lexically_normal());
+  if (rel.empty() || rel == "." || rel == "..") return false;
+  while (!rel.empty() && rel.front() == '/') rel.erase(rel.begin());
+  const std::string basename = entry_path.filename().string();
+
+  bool ignored = false;
+  for (const auto& r : ctx->gitignore.rules) {
+    if (!gitignore_rule_matches(r, rel, basename, is_dir)) continue;
+    ignored = !r.negated;
+  }
+  return ignored;
 }
 
 static bool glob_matches_any(const std::vector<std::string>& globs, const std::string& text) {
@@ -349,6 +584,8 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
   const bool include_hidden = args.isMember("include_hidden") && args["include_hidden"].isBool() ? args["include_hidden"].asBool() : false;
   const bool use_default_excludes =
     !(args.isMember("use_default_excludes") && args["use_default_excludes"].isBool() && args["use_default_excludes"].asBool() == false);
+  const bool respect_gitignore =
+    args.isMember("respect_gitignore") && args["respect_gitignore"].isBool() ? args["respect_gitignore"].asBool() : false;
 
   const auto resolved = resolve_under_root(ctx->root, path, ctx->unrestricted);
   if (!resolved) {
@@ -399,6 +636,10 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
   int excluded_entries = 0;
   int excluded_dirs = 0;
   int excluded_by_glob = 0;
+  int excluded_by_gitignore = 0;
+  if (respect_gitignore) {
+    (void)ensure_gitignore_cache(ctx);
+  }
   const auto should_skip = [&](const std::filesystem::path& p) -> bool {
     const auto name = p.filename().string();
     if (!include_hidden && !name.empty() && name[0] == '.') {
@@ -416,6 +657,14 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
                                                        : p.lexically_relative(ctx->root).generic_string();
       if (glob_matches_any(exclude_globs, entry_path)) {
         excluded_by_glob++;
+        return true;
+      }
+    }
+    if (respect_gitignore && ctx->gitignore.ready) {
+      std::error_code ec2;
+      const bool is_dir = std::filesystem::is_directory(p, ec2);
+      if (gitignore_is_ignored(ctx, p, is_dir)) {
+        excluded_by_gitignore++;
         return true;
       }
     }
@@ -488,9 +737,16 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
   data["max_depth"] = max_depth;
   data["include_hidden"] = include_hidden;
   data["use_default_excludes"] = use_default_excludes;
+  data["respect_gitignore"] = respect_gitignore;
   data["excluded_entries"] = excluded_entries;
   data["excluded_dirs"] = excluded_dirs;
   data["excluded_by_glob"] = excluded_by_glob;
+  data["excluded_by_gitignore"] = excluded_by_gitignore;
+  if (respect_gitignore && ctx->gitignore.ready) {
+    data["gitignore_root"] = to_generic_string(ctx->gitignore.root);
+    data["gitignore_file"] = to_generic_string(ctx->gitignore.file);
+    data["gitignore_rules"] = (Json::UInt64)ctx->gitignore.rules.size();
+  }
   {
     Json::Value ex(Json::arrayValue);
     for (const auto& s : exclude_names) ex.append(s);
@@ -528,6 +784,9 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
       oss << "excluded_dirs: " << excluded_dirs << "\n";
       if (excluded_by_glob > 0) {
         oss << "excluded_by_glob: " << excluded_by_glob << "\n";
+      }
+      if (excluded_by_gitignore > 0) {
+        oss << "excluded_by_gitignore: " << excluded_by_gitignore << "\n";
       }
     }
     oss << "entries: " << count << (count >= max_entries ? " (truncated)\n" : "\n");
@@ -579,6 +838,8 @@ static agent_status_t tool_fs_find(HostToolCtx* ctx, const char* arguments_json,
   const bool include_hidden = args.isMember("include_hidden") && args["include_hidden"].isBool() ? args["include_hidden"].asBool() : false;
   const bool use_default_excludes =
     !(args.isMember("use_default_excludes") && args["use_default_excludes"].isBool() && args["use_default_excludes"].asBool() == false);
+  const bool respect_gitignore =
+    args.isMember("respect_gitignore") && args["respect_gitignore"].isBool() ? args["respect_gitignore"].asBool() : false;
   const std::string type = args.isMember("type") && args["type"].isString() ? args["type"].asString() : "any";
   const std::string name_substring =
     args.isMember("name_substring") && args["name_substring"].isString() ? args["name_substring"].asString() : "";
@@ -637,6 +898,10 @@ static agent_status_t tool_fs_find(HostToolCtx* ctx, const char* arguments_json,
   }
 
   int skipped_by_glob = 0;
+  int skipped_by_gitignore = 0;
+  if (respect_gitignore) {
+    (void)ensure_gitignore_cache(ctx);
+  }
   const auto should_skip = [&](const std::filesystem::path& p) -> bool {
     const auto name = p.filename().string();
     if (!include_hidden && !name.empty() && name[0] == '.') return true;
@@ -650,6 +915,14 @@ static agent_status_t tool_fs_find(HostToolCtx* ctx, const char* arguments_json,
                                                        : p.lexically_relative(ctx->root).generic_string();
       if (glob_matches_any(exclude_globs, entry_path)) {
         skipped_by_glob++;
+        return true;
+      }
+    }
+    if (respect_gitignore && ctx->gitignore.ready) {
+      std::error_code ec2;
+      const bool is_dir = std::filesystem::is_directory(p, ec2);
+      if (gitignore_is_ignored(ctx, p, is_dir)) {
+        skipped_by_gitignore++;
         return true;
       }
     }
@@ -768,6 +1041,7 @@ static agent_status_t tool_fs_find(HostToolCtx* ctx, const char* arguments_json,
   data["max_depth"] = max_depth;
   data["include_hidden"] = include_hidden;
   data["use_default_excludes"] = use_default_excludes;
+  data["respect_gitignore"] = respect_gitignore;
   data["type"] = type;
   if (!name_substring.empty()) data["name_substring"] = name_substring;
   data["entries"] = entries;
@@ -776,6 +1050,12 @@ static agent_status_t tool_fs_find(HostToolCtx* ctx, const char* arguments_json,
   data["files_seen"] = files_seen;
   data["files_skipped_by_ext"] = files_skipped_by_ext;
   data["skipped_by_glob"] = skipped_by_glob;
+  data["skipped_by_gitignore"] = skipped_by_gitignore;
+  if (respect_gitignore && ctx->gitignore.ready) {
+    data["gitignore_root"] = to_generic_string(ctx->gitignore.root);
+    data["gitignore_file"] = to_generic_string(ctx->gitignore.file);
+    data["gitignore_rules"] = (Json::UInt64)ctx->gitignore.rules.size();
+  }
   if (!extensions.empty()) {
     Json::Value exts(Json::arrayValue);
     for (const auto& s : extensions) exts.append(s);
@@ -809,6 +1089,11 @@ static agent_status_t tool_fs_find(HostToolCtx* ctx, const char* arguments_json,
         oss << exclude_globs[i];
       }
       oss << "\n";
+    }
+    if (respect_gitignore && ctx->gitignore.ready) {
+      oss << "respect_gitignore: true\n";
+      oss << "gitignore_file: " << to_generic_string(ctx->gitignore.file) << "\n";
+      oss << "gitignore_rules: " << ctx->gitignore.rules.size() << "\n";
     }
     oss << "use_default_excludes: " << (use_default_excludes ? "true" : "false") << "\n";
     oss << "entries: " << added << (truncated ? " (truncated)\n" : "\n");
@@ -1032,6 +1317,8 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
     args.isMember("include_hidden") && args["include_hidden"].isBool() ? args["include_hidden"].asBool() : false;
   const bool use_default_excludes =
     !(args.isMember("use_default_excludes") && args["use_default_excludes"].isBool() && args["use_default_excludes"].asBool() == false);
+  const bool respect_gitignore =
+    args.isMember("respect_gitignore") && args["respect_gitignore"].isBool() ? args["respect_gitignore"].asBool() : false;
 
   auto lower_ascii = [](std::string s) {
     for (char& c : s) c = (char)std::tolower((unsigned char)c);
@@ -1115,6 +1402,10 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
   };
 
   int skipped_by_glob = 0;
+  int skipped_by_gitignore = 0;
+  if (respect_gitignore) {
+    (void)ensure_gitignore_cache(ctx);
+  }
   const auto should_skip = [&](const std::filesystem::path& p) -> bool {
     const auto name = p.filename().string();
     if (!include_hidden && !name.empty() && name[0] == '.') return true;
@@ -1128,6 +1419,14 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
                                                        : p.lexically_relative(ctx->root).generic_string();
       if (glob_matches_any(exclude_globs, entry_path)) {
         skipped_by_glob++;
+        return true;
+      }
+    }
+    if (respect_gitignore && ctx->gitignore.ready) {
+      std::error_code ec2;
+      const bool is_dir = std::filesystem::is_directory(p, ec2);
+      if (gitignore_is_ignored(ctx, p, is_dir)) {
+        skipped_by_gitignore++;
         return true;
       }
     }
@@ -1262,6 +1561,13 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
     for (const auto& s : exclude_globs) ex.append(s);
     data["exclude_globs"] = ex;
   }
+  data["respect_gitignore"] = respect_gitignore;
+  data["skipped_by_gitignore"] = skipped_by_gitignore;
+  if (respect_gitignore && ctx->gitignore.ready) {
+    data["gitignore_root"] = to_generic_string(ctx->gitignore.root);
+    data["gitignore_file"] = to_generic_string(ctx->gitignore.file);
+    data["gitignore_rules"] = (Json::UInt64)ctx->gitignore.rules.size();
+  }
   data["max_results"] = max_results;
   data["max_file_bytes"] = max_file_bytes;
   data["max_line_chars"] = max_line_chars;
@@ -1304,6 +1610,11 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
       }
       oss << "\n";
     }
+    if (respect_gitignore && ctx->gitignore.ready) {
+      oss << "respect_gitignore: true\n";
+      oss << "gitignore_file: " << to_generic_string(ctx->gitignore.file) << "\n";
+      oss << "gitignore_rules: " << ctx->gitignore.rules.size() << "\n";
+    }
     oss << "use_default_excludes: " << (use_default_excludes ? "true" : "false") << "\n";
     oss << "matches: " << (unsigned long long)matches.size() << (truncated ? " (truncated)\n" : "\n");
     oss << "files_scanned: " << files_scanned << "\n";
@@ -1312,6 +1623,7 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
     if (files_skipped_by_ext) oss << "files_skipped_by_ext: " << files_skipped_by_ext << "\n";
     if (dirs_skipped) oss << "dirs_skipped: " << dirs_skipped << "\n";
     if (skipped_by_glob) oss << "skipped_by_glob: " << skipped_by_glob << "\n";
+    if (skipped_by_gitignore) oss << "skipped_by_gitignore: " << skipped_by_gitignore << "\n";
     for (Json::ArrayIndex i = 0; i < matches.size() && i < 50; i++) {
       const auto& m = matches[i];
       const std::string mp = m.isMember("path") && m["path"].isString() ? m["path"].asString() : "";
@@ -1922,6 +2234,7 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     "  \"max_entries\":{\"type\":\"integer\",\"description\":\"Max entries to return (default: 200)\"},"
     "  \"max_depth\":{\"type\":\"integer\",\"description\":\"Max recursion depth when recursive=true (default: 4)\"},"
     "  \"include_hidden\":{\"type\":\"boolean\"},"
+    "  \"respect_gitignore\":{\"type\":\"boolean\",\"description\":\"When true, skip paths matched by the repo .gitignore (best-effort).\"},"
     "  \"use_default_excludes\":{\"type\":\"boolean\",\"description\":\"When true (default), skips common huge dirs like node_modules/build/dist unless explicitly requested.\"},"
     "  \"exclude_names\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Extra directory/file basenames to exclude.\"},"
     "  \"exclude_globs\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Optional glob patterns (fnmatch) applied to returned entry paths.\"}"
@@ -1942,6 +2255,7 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     "  \"max_results\":{\"type\":\"integer\",\"description\":\"Max entries to return (default: 200)\"},"
     "  \"max_depth\":{\"type\":\"integer\",\"description\":\"Max recursion depth when recursive=true (default: 6)\"},"
     "  \"include_hidden\":{\"type\":\"boolean\",\"description\":\"Include dotfiles (default: false).\"},"
+    "  \"respect_gitignore\":{\"type\":\"boolean\",\"description\":\"When true, skip paths matched by the repo .gitignore (best-effort).\"},"
     "  \"type\":{\"type\":\"string\",\"description\":\"Entry type filter: any|file|dir (default: any).\"},"
     "  \"name_substring\":{\"type\":\"string\",\"description\":\"Optional substring filter on basename.\"},"
     "  \"extensions\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Optional file extension filters (e.g. [\\\".cpp\\\",\\\".h\\\"]).\"},"
@@ -1984,6 +2298,7 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     "  \"recursive\":{\"type\":\"boolean\",\"description\":\"When path is a directory, recurse (default: true).\"},"
     "  \"case_sensitive\":{\"type\":\"boolean\",\"description\":\"Case-sensitive search (default: false).\"},"
     "  \"include_hidden\":{\"type\":\"boolean\",\"description\":\"Include dotfiles (default: false).\"},"
+    "  \"respect_gitignore\":{\"type\":\"boolean\",\"description\":\"When true, skip paths matched by the repo .gitignore (best-effort).\"},"
     "  \"max_results\":{\"type\":\"integer\",\"description\":\"Max matches to return (default: 200).\"},"
     "  \"max_file_bytes\":{\"type\":\"integer\",\"description\":\"Skip files larger than this many bytes (default: 524288). 0 disables size limit.\"},"
     "  \"max_line_chars\":{\"type\":\"integer\",\"description\":\"Max chars per snippet line (default: 400).\"},"

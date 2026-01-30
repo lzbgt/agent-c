@@ -62,6 +62,7 @@ static const char* default_host_system_prompt() {
     "  - Use fs_find for token-safe file discovery instead of `find`/`tree`.\n"
     "    - Note: fs_list excludes common huge dirs (node_modules/build/dist) by default; disable with use_default_excludes=false.\n"
     "    - Tip: fs_list/fs_find/text_search support exclude_globs (fnmatch) to skip generated/noisy paths.\n"
+    "    - Tip: fs_list/fs_find/text_search support respect_gitignore=true to skip .gitignore'd paths (best-effort).\n"
     "  - Use text_search for token-safe code search instead of dumping whole files.\n"
     "  - Use fs_read with start_line/max_lines (and optional end_line) for paging through files.\n"
     "  - Use rg/grep/head/tail/sed/awk for narrow, targeted inspection when appropriate.\n"
