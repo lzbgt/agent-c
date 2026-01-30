@@ -131,6 +131,38 @@ static Json::Value run_request_to_json(
     json_get_u64_nonneg(args, "max_tool_calls_per_tool", &max_tool_calls_per_tool_u64)
       ? (size_t)max_tool_calls_per_tool_u64
       : daemon_cfg.max_tool_calls_per_tool_default;
+
+  // Explicit per-tool call limits (more precise than max_tool_calls_per_tool).
+  std::vector<ToolCallLimit> tool_call_limits;
+  auto upsert_limit = [&](std::string tool, size_t max_calls) {
+    if (tool.empty()) return;
+    for (auto& x : tool_call_limits) {
+      if (x.tool == tool) {
+        x.max_calls = max_calls;
+        return;
+      }
+    }
+    ToolCallLimit x;
+    x.tool = std::move(tool);
+    x.max_calls = max_calls;
+    tool_call_limits.push_back(std::move(x));
+  };
+  if (args.isMember("tool_call_limits") && args["tool_call_limits"].isArray()) {
+    const Json::Value arr = args["tool_call_limits"];
+    for (Json::ArrayIndex i = 0; i < arr.size(); i++) {
+      const Json::Value item = arr[i];
+      if (!item.isObject()) continue;
+      if (!item.isMember("tool") || !item["tool"].isString()) continue;
+      const std::string tool = item["tool"].asString();
+      uint64_t n_u64 = 0;
+      if (!json_get_u64_nonneg(item, "max_calls", &n_u64)) continue;
+      upsert_limit(tool, (size_t)n_u64);
+    }
+  } else {
+    for (const auto& p : daemon_cfg.tool_call_limits_default) {
+      upsert_limit(p.first, p.second);
+    }
+  }
   uint64_t max_chars_u64 = 0;
   const size_t max_chars = json_get_u64_nonneg(args, "max_chars", &max_chars_u64)
                              ? (size_t)max_chars_u64
@@ -303,6 +335,7 @@ static Json::Value run_request_to_json(
     opt.max_steps = max_steps;
     opt.max_tool_calls_total = max_tool_calls_total;
     opt.max_tool_calls_per_tool = max_tool_calls_per_tool;
+    opt.tool_call_limits = std::move(tool_call_limits);
     opt.verbose = verbose;
     opt.stream_assistant = stream_assistant;
     if (args.isMember("max_repeated_tool_calls") && args["max_repeated_tool_calls"].isInt()) {

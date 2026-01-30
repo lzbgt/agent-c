@@ -290,6 +290,16 @@ bool run_tool_loop(
 
   agent_tool_provider_t provider = openai_make_tool_provider(&pctx);
 
+  std::vector<agent_tool_call_limit_t> core_tool_call_limits;
+  core_tool_call_limits.reserve(options.tool_call_limits.size());
+  for (const auto& lim : options.tool_call_limits) {
+    if (lim.tool.empty()) continue;
+    agent_tool_call_limit_t x{};
+    x.tool_name = lim.tool.c_str();
+    x.max_calls = lim.max_calls;
+    core_tool_call_limits.push_back(x);
+  }
+
   agent_tool_loop_options_t opt{};
   opt.model = cfg.model.c_str();
   opt.force_tool_or_null = options.force_tool.empty() ? nullptr : options.force_tool.c_str();
@@ -298,6 +308,8 @@ bool run_tool_loop(
   opt.max_repeated_tool_calls = options.max_repeated_tool_calls;
   opt.max_tool_calls_total = options.max_tool_calls_total;
   opt.max_tool_calls_per_tool = options.max_tool_calls_per_tool;
+  opt.tool_call_limits = core_tool_call_limits.empty() ? nullptr : core_tool_call_limits.data();
+  opt.tool_call_limits_count = core_tool_call_limits.size();
   opt.max_chars = options.max_chars;
   opt.keep_last_messages = options.keep_last_messages;
   opt.insert_compaction_summary = options.insert_compaction_summary ? 1 : 0;

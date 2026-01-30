@@ -31,6 +31,14 @@ export const DaemonConfigSchema = z
         max_steps_default: z.number().int().nonnegative().optional(),
         max_tool_calls_total_default: z.number().int().nonnegative().optional(),
         max_tool_calls_per_tool_default: z.number().int().nonnegative().optional(),
+        tool_call_limits_default: z
+          .array(
+            z.object({
+              tool: z.string(),
+              max_calls: z.number().int().nonnegative(),
+            })
+          )
+          .optional(),
         base_url: z.string().optional(),
         model: z.string().optional(),
         summary_model: z.string().nullable().optional(),
@@ -93,6 +101,14 @@ export const RunRequestSchema = z.object({
   max_repeated_tool_calls: z.number().int().nonnegative().optional(),
   max_tool_calls_total: z.number().int().nonnegative().optional(),
   max_tool_calls_per_tool: z.number().int().nonnegative().optional(),
+  tool_call_limits: z
+    .array(
+      z.object({
+        tool: z.string(),
+        max_calls: z.number().int().nonnegative(),
+      })
+    )
+    .optional(),
   max_chars: z.number().int().nonnegative().optional(),
   keep_last: z.number().int().nonnegative().optional(),
   trace: z.boolean().optional(),

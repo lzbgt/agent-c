@@ -86,6 +86,7 @@ static void usage() {
     << "  --max-repeated-tool-calls <n>  Stop runaway loops when repeating identical tool calls (default: 12; 0 disables)\n"
     << "  --max-tool-calls-total <n>     Max total tool calls (default: unlimited; 0 means unlimited)\n"
     << "  --max-tool-calls-per-tool <n>  Max tool calls per tool name (default: unlimited; 0 means unlimited)\n"
+    << "  --tool-call-limit <tool>=<n>  Per-tool call cap (repeatable; 0 means unlimited for that tool)\n"
     << "  --stream-assistant        Stream assistant deltas (tools=none|basic|host; provider-dependent)\n";
 }
 
@@ -112,6 +113,46 @@ static bool take_flag(std::vector<std::string>& args, const std::string& flag, s
     }
   }
   return true;
+}
+
+static bool take_multi_flag(std::vector<std::string>& args, const std::string& flag, std::vector<std::string>* out_values) {
+  if (!out_values) return false;
+  for (size_t i = 0; i < args.size();) {
+    if (args[i] == flag) {
+      if (i + 1 >= args.size()) {
+        return false;
+      }
+      out_values->push_back(args[i + 1]);
+      args.erase(args.begin() + (long)i, args.begin() + (long)i + 2);
+      continue;
+    }
+    i++;
+  }
+  return true;
+}
+
+static std::string trim_copy(std::string s) {
+  while (!s.empty() && (s.front() == ' ' || s.front() == '\t' || s.front() == '\n' || s.front() == '\r')) s.erase(s.begin());
+  while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '\n' || s.back() == '\r')) s.pop_back();
+  return s;
+}
+
+static bool parse_tool_call_limit_spec(const std::string& spec, ToolCallLimit* out_limit) {
+  if (!out_limit) return false;
+  *out_limit = ToolCallLimit{};
+  const std::string s = trim_copy(spec);
+  const size_t eq = s.find('=');
+  if (eq == std::string::npos) return false;
+  const std::string tool = trim_copy(s.substr(0, eq));
+  const std::string num = trim_copy(s.substr(eq + 1));
+  if (tool.empty() || num.empty()) return false;
+  try {
+    out_limit->tool = tool;
+    out_limit->max_calls = (size_t)std::stoull(num);
+    return true;
+  } catch (...) {
+    return false;
+  }
 }
 
 static bool take_flag_u64(std::vector<std::string>& args, const std::string& flag, size_t* out_value) {
@@ -182,6 +223,7 @@ int main(int argc, char** argv) {
   size_t max_repeated_tool_calls = 12;
   size_t max_tool_calls_total = 0;
   size_t max_tool_calls_per_tool = 0;
+  std::vector<std::string> tool_call_limit_specs;
   bool stream_assistant = false;
   bool trace = true;
   bool quiet = false;
@@ -285,6 +327,10 @@ int main(int argc, char** argv) {
     std::cerr << "Invalid value for --max-tool-calls-per-tool\n";
     return 2;
   }
+  if (!take_multi_flag(args, "--tool-call-limit", &tool_call_limit_specs)) {
+    std::cerr << "Missing value for --tool-call-limit\n";
+    return 2;
+  }
   if (!take_switch(args, "--stream-assistant", &stream_assistant)) {
     std::cerr << "Invalid flag: --stream-assistant\n";
     return 2;
@@ -298,6 +344,26 @@ int main(int argc, char** argv) {
       return 2;
     }
     prompt = args[0];
+  }
+
+  std::vector<ToolCallLimit> tool_call_limits;
+  tool_call_limits.reserve(tool_call_limit_specs.size());
+  for (const auto& spec : tool_call_limit_specs) {
+    ToolCallLimit lim;
+    if (!parse_tool_call_limit_spec(spec, &lim) || lim.tool.empty()) {
+      std::cerr << "Invalid --tool-call-limit (expected: tool=max_calls): " << spec << "\n";
+      return 2;
+    }
+    // Upsert (last wins).
+    bool replaced = false;
+    for (auto& x : tool_call_limits) {
+      if (x.tool == lim.tool) {
+        x.max_calls = lim.max_calls;
+        replaced = true;
+        break;
+      }
+    }
+    if (!replaced) tool_call_limits.push_back(std::move(lim));
   }
 
   // Host-side env defaults (core remains env-free).
@@ -428,6 +494,7 @@ int main(int argc, char** argv) {
     opt.max_repeated_tool_calls = max_repeated_tool_calls;
     opt.max_tool_calls_total = max_tool_calls_total;
     opt.max_tool_calls_per_tool = max_tool_calls_per_tool;
+    opt.tool_call_limits = std::move(tool_call_limits);
     opt.max_chars = max_chars;
     opt.keep_last_messages = keep_last;
     opt.stream_assistant = stream_assistant;

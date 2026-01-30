@@ -89,6 +89,16 @@ For robust runaway protection (especially when a model requests many tool calls 
   - omitted → daemon default applies (often `0`/disabled)
   - `0` means unlimited
 
+For targeted safety (and to avoid breaking benign high-frequency tools like `fs_read`), runs may also specify an explicit
+per-tool map:
+
+- `tool_call_limits` (array, optional): list of `{ tool: string, max_calls: int }`.
+  - If an entry exists for a tool name:
+    - `max_calls = 0` means unlimited for that tool (explicit disable).
+    - otherwise the tool is capped at `max_calls`.
+  - If no entry exists for a tool name, the tool falls back to `max_tool_calls_per_tool` (if set) or unlimited.
+  - omitted → daemon default applies (see `/api/v1/config: daemon.tool_call_limits_default`)
+
 This exists to prevent pathological “capture camera → send to UI → repeat” loops when the model does not infer a natural stop
 condition from the conversation alone.
 

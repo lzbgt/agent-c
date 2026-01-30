@@ -1144,7 +1144,7 @@ agent_status_t agent_tool_loop_run(
         status = AGENT_ERR_LIMIT;
         goto cleanup;
       }
-      if (options->max_tool_calls_per_tool > 0) {
+      if (options->max_tool_calls_per_tool > 0 || (options->tool_call_limits && options->tool_call_limits_count > 0)) {
         const uint64_t name_sig = tl_fnv1a64(tool_name, strlen(tool_name));
         size_t* cnt_ptr = NULL;
         for (size_t k = 0; k < tool_counts_len; k++) {
@@ -1163,18 +1163,37 @@ agent_status_t agent_tool_loop_run(
         }
         if (cnt_ptr) {
           (*cnt_ptr)++;
-          if (*cnt_ptr > options->max_tool_calls_per_tool) {
-            const char* msg = "max tool calls per tool exceeded";
+          size_t tool_limit = options->max_tool_calls_per_tool;
+          const char* limit_source = "max_tool_calls_per_tool";
+          if (options->tool_call_limits && options->tool_call_limits_count > 0) {
+            // Prefer explicit per-tool overrides.
+            for (size_t li = 0; li < options->tool_call_limits_count; li++) {
+              const agent_tool_call_limit_t* lim = &options->tool_call_limits[li];
+              const char* lim_name = (lim && lim->tool_name) ? lim->tool_name : "";
+              if (!lim_name[0]) continue;
+              // Hash compare first (cheap), then exact string match (avoid hash collision).
+              const uint64_t lim_sig = tl_fnv1a64(lim_name, strlen(lim_name));
+              if (lim_sig == name_sig && strcmp(lim_name, tool_name) == 0) {
+                tool_limit = lim->max_calls;
+                limit_source = "tool_call_limits";
+                break;
+              }
+            }
+          }
+
+          if (tool_limit > 0 && *cnt_ptr > tool_limit) {
+            const char* msg = "max tool calls for tool exceeded";
             (void)agent_string_set_copy(&res.error_message, msg, strlen(msg));
             tl_buf_t d = {0};
             uint8_t first = 1;
             (void)tl_buf_append_char(&d, '{');
             (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
-            (void)tl_json_append_string_field(&d, "reason", "max_tool_calls_per_tool_exceeded",
-                                              strlen("max_tool_calls_per_tool_exceeded"), &first);
+            (void)tl_json_append_string_field(&d, "reason", "max_tool_calls_for_tool_exceeded",
+                                              strlen("max_tool_calls_for_tool_exceeded"), &first);
             (void)tl_json_append_string_field(&d, "tool_name", tool_name, strlen(tool_name), &first);
             (void)tl_json_append_u64_field(&d, "tool_calls_for_tool", (unsigned long long)(*cnt_ptr), &first);
-            (void)tl_json_append_u64_field(&d, "max_tool_calls_per_tool", (unsigned long long)options->max_tool_calls_per_tool, &first);
+            (void)tl_json_append_u64_field(&d, "max_tool_calls_for_tool", (unsigned long long)tool_limit, &first);
+            (void)tl_json_append_string_field(&d, "limit_source", limit_source, strlen(limit_source), &first);
             (void)tl_json_append_string_field(&d, "error", msg, strlen(msg), &first);
             (void)tl_buf_append_char(&d, '}');
             tl_emit_event(hooks, "error", d.data ? d.data : "{}");

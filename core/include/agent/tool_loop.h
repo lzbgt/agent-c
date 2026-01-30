@@ -56,6 +56,11 @@ typedef struct agent_tool_loop_hooks {
   void* summarize_tool_output_ctx;
 } agent_tool_loop_hooks_t;
 
+typedef struct agent_tool_call_limit {
+  const char* tool_name;   // tool name (exact match)
+  size_t max_calls;        // 0 means unlimited for this tool
+} agent_tool_call_limit_t;
+
 typedef struct agent_tool_loop_options {
   const char* model; // required
   const char* force_tool_or_null; // optional hint for step 0
@@ -77,6 +82,14 @@ typedef struct agent_tool_loop_options {
   // Cap tool calls per tool name across the entire run.
   // 0 disables the guard.
   size_t max_tool_calls_per_tool;
+
+  // Explicit per-tool call limits. This is more precise than `max_tool_calls_per_tool`.
+  // - If an entry exists for a tool name:
+  //   - max_calls=0 means unlimited for that tool (explicit disable).
+  //   - otherwise max_calls is enforced for that tool name.
+  // - Tools without an entry fall back to max_tool_calls_per_tool (if non-zero).
+  const agent_tool_call_limit_t* tool_call_limits;
+  size_t tool_call_limits_count;
 
   // Seamless compaction (char budget heuristic).
   // 0 means default (20000).

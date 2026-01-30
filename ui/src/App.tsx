@@ -72,6 +72,7 @@ export default function App() {
   const [maxRepeatedToolCalls, setMaxRepeatedToolCalls] = useLocalStorageState("agentui.maxRepeatedToolCalls", "12");
   const [maxToolCallsTotal, setMaxToolCallsTotal] = useLocalStorageState("agentui.maxToolCallsTotal", "");
   const [maxToolCallsPerTool, setMaxToolCallsPerTool] = useLocalStorageState("agentui.maxToolCallsPerTool", "");
+  const [toolCallLimits, setToolCallLimits] = useLocalStorageState("agentui.toolCallLimits", "");
   const [maxChars, setMaxChars] = useLocalStorageState("agentui.maxChars", "20000");
   const [keepLast, setKeepLast] = useLocalStorageState("agentui.keepLast", "16");
   const [trace, setTrace] = useLocalStorageState("agentui.trace", true);
@@ -222,6 +223,51 @@ export default function App() {
           : Number.isFinite(Number(maxToolCallsPerToolTrim)) && Number(maxToolCallsPerToolTrim) >= 0
             ? Number(maxToolCallsPerToolTrim)
             : undefined;
+
+      const toolCallLimitsTrim = String(toolCallLimits ?? "").trim();
+      let parsedToolCallLimits: { tool: string; max_calls: number }[] | undefined = undefined;
+      if (toolCallLimitsTrim.length > 0) {
+        const s = toolCallLimitsTrim;
+        if (s.startsWith("[") || s.startsWith("{")) {
+          try {
+            const v: any = JSON.parse(s);
+            const arr = Array.isArray(v) ? v : [v];
+            parsedToolCallLimits = arr
+              .map((item) => {
+                const tool = String(item?.tool ?? item?.name ?? "").trim();
+                const max_calls = Number(item?.max_calls ?? item?.maxCalls ?? item?.max ?? item?.limit ?? NaN);
+                if (!tool) return null;
+                if (!Number.isFinite(max_calls) || max_calls < 0) return null;
+                return { tool, max_calls: Math.floor(max_calls) };
+              })
+              .filter(Boolean) as any;
+          } catch (e) {
+            throw new Error(`Invalid tool call limits JSON: ${String(e)}`);
+          }
+        } else {
+          const parts = s
+            .split(/[,\n]+/g)
+            .map((x) => x.trim())
+            .filter((x) => x.length > 0);
+          const out: { tool: string; max_calls: number }[] = [];
+          for (const p of parts) {
+            const eq = p.indexOf("=");
+            if (eq <= 0) throw new Error(`Invalid tool call limit (expected tool=max_calls): ${p}`);
+            const tool = p.slice(0, eq).trim();
+            const n = Number(p.slice(eq + 1).trim());
+            if (!tool) throw new Error(`Invalid tool call limit tool name: ${p}`);
+            if (!Number.isFinite(n) || n < 0) throw new Error(`Invalid tool call limit value: ${p}`);
+            const max_calls = Math.floor(n);
+            const existing = out.find((x) => x.tool === tool);
+            if (existing) existing.max_calls = max_calls;
+            else out.push({ tool, max_calls });
+          }
+          parsedToolCallLimits = out;
+        }
+        if (parsedToolCallLimits && parsedToolCallLimits.length === 0) {
+          parsedToolCallLimits = undefined;
+        }
+      }
       const req: RunRequest = {
         prompt,
         session_id: sessionId || undefined,
@@ -247,6 +293,7 @@ export default function App() {
           Number.isFinite(Number(maxRepeatedToolCalls)) && Number(maxRepeatedToolCalls) >= 0 ? Number(maxRepeatedToolCalls) : undefined,
         max_tool_calls_total: parsedMaxToolCallsTotal,
         max_tool_calls_per_tool: parsedMaxToolCallsPerTool,
+        tool_call_limits: parsedToolCallLimits,
         max_chars: Number.isFinite(Number(maxChars)) ? Number(maxChars) : 20000,
         keep_last: Number.isFinite(Number(keepLast)) ? Number(keepLast) : 16,
         trace,
@@ -914,7 +961,10 @@ export default function App() {
                     run limits:{" "}
                     <code className="text-white/70">
                       max_steps_default={daemonConfig.data.daemon?.max_steps_default ?? "?"}, max_tool_calls_total_default=
-                      {daemonConfig.data.daemon?.max_tool_calls_total_default ?? "?"}
+                      {daemonConfig.data.daemon?.max_tool_calls_total_default ?? "?"}, tool_call_limits_default=
+                      {(daemonConfig.data.daemon?.tool_call_limits_default ?? [])
+                        .map((x) => `${x.tool}=${x.max_calls}`)
+                        .join(", ") || "(none)"}
                     </code>
                   </div>
                   <div className="col-span-2">
@@ -1049,6 +1099,20 @@ export default function App() {
                 />
                 <div className="mt-1 text-[11px] text-white/40">
                   Caps tool calls per tool name, catching loops with varying args that bypass the exact-repeat guard.
+                </div>
+              </div>
+              <div className="col-span-2">
+                <Label>Tool call limits (blank=daemon default)</Label>
+                <textarea
+                  className="mt-1 h-20 w-full resize-none rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={toolCallLimits}
+                  placeholder={(daemonConfig.data?.daemon?.tool_call_limits_default ?? [])
+                    .map((x) => `${x.tool}=${x.max_calls}`)
+                    .join("\n")}
+                  onChange={(e) => setToolCallLimits(e.target.value)}
+                />
+                <div className="mt-1 text-[11px] text-white/40">
+                  Repeatable per-tool caps (one per line, or comma-separated): <code>proc_exec=4</code>. Set <code>=0</code> to disable for a tool.
                 </div>
               </div>
               <div>

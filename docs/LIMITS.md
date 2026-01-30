@@ -68,10 +68,33 @@ It exists because:
 - `max_tool_calls_per_tool = 0` means unlimited.
 - When triggered, the core must:
   - emit an `error` event with:
-    - `reason = "max_tool_calls_per_tool_exceeded"`
+    - `reason = "max_tool_calls_for_tool_exceeded"`
     - `tool_name`
     - `tool_calls_for_tool`
-    - `max_tool_calls_per_tool`
+    - `max_tool_calls_for_tool` (same numeric value as `max_tool_calls_per_tool`)
+    - `limit_source = "max_tool_calls_per_tool"`
+  - return `AGENT_ERR_LIMIT`
+
+### `tool_call_limits` (per-tool map)
+
+- Definition: an explicit per-tool call limit map applied across the entire run.
+  - Each entry is `(tool_name, max_calls)`.
+  - This is more precise than `max_tool_calls_per_tool` and avoids breaking common workflows that legitimately call
+    low-risk tools many times (e.g. `fs_read`) while still bounding high-risk tools (`proc_exec`, `shell_exec`).
+- Semantics:
+  - If a tool name has an explicit entry in `tool_call_limits`:
+    - `max_calls = 0` means unlimited for that tool (explicit disable).
+    - Otherwise `max_calls` is enforced for that tool name.
+  - If a tool name does not have an explicit entry:
+    - fall back to `max_tool_calls_per_tool` (if non-zero)
+    - otherwise unlimited for that tool name.
+- When triggered, the core must:
+  - emit an `error` event with:
+    - `reason = "max_tool_calls_for_tool_exceeded"`
+    - `tool_name`
+    - `tool_calls_for_tool`
+    - `max_tool_calls_for_tool`
+    - `limit_source = "tool_call_limits" | "max_tool_calls_per_tool"`
   - return `AGENT_ERR_LIMIT`
 
 ## Host/daemon defaults
@@ -94,6 +117,15 @@ tool calls when requests omit it.
 
 - Proposed default: `128` tool calls.
 - The UI should allow blank/unset to use daemon defaults and explicit `0` to disable.
+
+### Daemon default `tool_call_limits`
+
+For long-running daemons, it is often better to bound the most dangerous/high-noise tools directly, rather than applying
+a global per-tool cap that can break benign workflows.
+
+Recommended defaults (can be tuned per operator):
+- `proc_exec=4` (prevents runaway camera-capture or repeated subprocess loops)
+- `shell_exec=16` (still allows normal build/test flows; encourages batching multiple commands in one call)
 
 ## Related docs
 

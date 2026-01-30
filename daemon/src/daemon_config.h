@@ -57,6 +57,16 @@ struct DaemonConfig {
   // 0 means unlimited / disabled.
   size_t max_tool_calls_per_tool_default = 0;
 
+  // Default explicit per-tool tool-call limits when requests omit them.
+  // These are applied in addition to (and take precedence over) max_tool_calls_per_tool_default.
+  //
+  // Recommended defaults aim to bound high-risk/high-noise tools without breaking benign workflows.
+  // Operators can override via flags/env.
+  std::vector<std::pair<std::string, size_t>> tool_call_limits_default = {
+    {"proc_exec", 4},
+    {"shell_exec", 16},
+  };
+
   // Async job GC (daemon longevity): finished jobs are kept only for a bounded time/count.
   int64_t job_ttl_ms = 30 * 60 * 1000; // 30 minutes
   size_t max_jobs = 256;

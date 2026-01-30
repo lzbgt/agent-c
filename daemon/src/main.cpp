@@ -56,6 +56,71 @@ static bool host_is_loopback(std::string host) {
   return false;
 }
 
+static std::string trim_copy(std::string s) {
+  while (!s.empty() && (s.front() == ' ' || s.front() == '\t' || s.front() == '\n' || s.front() == '\r')) s.erase(s.begin());
+  while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '\n' || s.back() == '\r')) s.pop_back();
+  return s;
+}
+
+static bool parse_tool_call_limit_spec(const std::string& spec, std::string* out_tool, size_t* out_max_calls) {
+  if (out_tool) out_tool->clear();
+  if (out_max_calls) *out_max_calls = 0;
+  const std::string s = trim_copy(spec);
+  const size_t eq = s.find('=');
+  if (eq == std::string::npos) return false;
+  const std::string tool = trim_copy(s.substr(0, eq));
+  const std::string num = trim_copy(s.substr(eq + 1));
+  if (tool.empty() || num.empty()) return false;
+  try {
+    const size_t v = (size_t)std::stoull(num);
+    if (out_tool) *out_tool = tool;
+    if (out_max_calls) *out_max_calls = v;
+    return true;
+  } catch (...) {
+    return false;
+  }
+}
+
+static void upsert_tool_call_limit(std::vector<std::pair<std::string, size_t>>* limits, std::string tool, size_t max_calls) {
+  if (!limits) return;
+  if (tool.empty()) return;
+  for (auto& p : *limits) {
+    if (p.first == tool) {
+      p.second = max_calls;
+      return;
+    }
+  }
+  limits->push_back({std::move(tool), max_calls});
+}
+
+static bool parse_tool_call_limits_csv(
+  const std::string& csv,
+  std::vector<std::pair<std::string, size_t>>* out_limits,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (!out_limits) return false;
+  out_limits->clear();
+
+  size_t i = 0;
+  while (i < csv.size()) {
+    size_t j = csv.find(',', i);
+    if (j == std::string::npos) j = csv.size();
+    std::string tok = trim_copy(csv.substr(i, j - i));
+    if (!tok.empty()) {
+      std::string tool;
+      size_t n = 0;
+      if (!parse_tool_call_limit_spec(tok, &tool, &n)) {
+        if (out_error) *out_error = std::string("invalid tool call limit spec: '") + tok + "'";
+        return false;
+      }
+      upsert_tool_call_limit(out_limits, tool, n);
+    }
+    i = j + 1;
+  }
+  return true;
+}
+
 int main(int argc, char** argv) {
   // On macOS (and many POSIX systems), writing to a closed socket can raise SIGPIPE,
   // which terminates the process by default. Our HTTP server uses plain ::write(),
@@ -225,6 +290,19 @@ int main(int argc, char** argv) {
         std::cerr << "Invalid --max-tool-calls-per-tool-default\n";
         return 2;
       }
+    } else if (a == "--tool-call-limit") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --tool-call-limit\n";
+        return 2;
+      }
+      std::string tool;
+      size_t max_calls = 0;
+      if (!parse_tool_call_limit_spec(v, &tool, &max_calls)) {
+        std::cerr << "Invalid --tool-call-limit (expected: tool=max_calls)\n";
+        return 2;
+      }
+      upsert_tool_call_limit(&cfg.tool_call_limits_default, std::move(tool), max_calls);
     } else if (a == "--tools") {
       if (!take(&cfg.tools)) {
         std::cerr << "Missing value for --tools\n";
@@ -322,6 +400,7 @@ int main(int argc, char** argv) {
         << "  --max-steps-default <n> Default tool-loop max steps when requests omit it (default: 32; 0 means unlimited)\n"
         << "  --max-tool-calls-total-default <n> Default tool-loop total tool calls cap when requests omit it (default: 128; 0 means unlimited)\n"
         << "  --max-tool-calls-per-tool-default <n> Default tool-loop per-tool call cap when requests omit it (default: 0; 0 means unlimited)\n"
+        << "  --tool-call-limit <tool>=<n> Default per-tool call limit (repeatable; 0 means unlimited for that tool)\n"
         << "  --tools host|basic|none   Default toolset (default: host)\n"
         << "  --tools-root <path>  Root/working dir for file edits (default: unrestricted)\n"
         << "  --host-policy full|readonly  Host tool safety policy (default: full)\n"
@@ -404,6 +483,15 @@ int main(int argc, char** argv) {
       cfg.max_tool_calls_per_tool_default = (size_t)std::stoull(ms);
     } catch (...) {
       std::cerr << "Invalid AGENTD_MAX_TOOL_CALLS_PER_TOOL_DEFAULT; ignoring\n";
+    }
+  }
+  if (const char* s = getenv_s("AGENTD_TOOL_CALL_LIMITS_DEFAULT")) {
+    std::vector<std::pair<std::string, size_t>> parsed;
+    std::string perr;
+    if (parse_tool_call_limits_csv(s, &parsed, &perr)) {
+      cfg.tool_call_limits_default = std::move(parsed);
+    } else {
+      std::cerr << "Invalid AGENTD_TOOL_CALL_LIMITS_DEFAULT; ignoring: " << perr << "\n";
     }
   }
   if (cfg.model.empty()) {

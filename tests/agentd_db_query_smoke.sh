@@ -45,6 +45,17 @@ def has_tool_result(messages):
       return True
   return False
 
+def is_loop_fs_read(messages):
+  for m in messages:
+    if not isinstance(m, dict):
+      continue
+    if m.get("role") != "user":
+      continue
+    c = m.get("content")
+    if isinstance(c, str) and "loop_fs_read" in c:
+      return True
+  return False
+
 class H(BaseHTTPRequestHandler):
   def log_message(self, fmt, *args):
     return
@@ -62,7 +73,34 @@ class H(BaseHTTPRequestHandler):
       req = {}
     messages = req.get("messages") if isinstance(req.get("messages"), list) else []
 
-    if has_tool_result(messages):
+    if is_loop_fs_read(messages):
+      body = {
+        "id": "cmpl_stub_loop",
+        "object": "chat.completion",
+        "created": 0,
+        "model": "stub",
+        "choices": [
+          {
+            "index": 0,
+            "message": {
+              "role": "assistant",
+              "content": "",
+              "tool_calls": [
+                {
+                  "id": "call_loop_1",
+                  "type": "function",
+                  "function": {
+                    "name": "fs_read",
+                    "arguments": json.dumps({"path": "README.md", "max_lines": 10, "max_chars": 20000}),
+                  },
+                }
+              ],
+            },
+            "finish_reason": "tool_calls",
+          }
+        ],
+      }
+    elif has_tool_result(messages):
       body = {
         "id": "cmpl_stub_2",
         "object": "chat.completion",
@@ -179,6 +217,39 @@ if obj.get("ok"):
 err = (obj.get("error") or "").lower()
 if "max steps" not in err:
   print("expected max steps error; got:", obj.get("error"), file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+resp3="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Content-Type: application/json" \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "prompt": "loop_fs_read: repeatedly read README.md until stopped (should hit per-tool limit)",
+  "session_id": "${SESSION_ID}",
+  "tools": "host",
+  "yolo": False,
+  "tools_root": "@host",
+  "base_url": "${STUB_BASE}",
+  "api_key": "dummy",
+  "model": "stub",
+  "max_repeated_tool_calls": 0,
+  "tool_call_limits": [{"tool":"fs_read","max_calls":2}],
+  "verbose": True
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/run")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${resp3}''')
+if obj.get("ok"):
+  print("expected failing run but ok=true:", obj, file=sys.stderr)
+  raise SystemExit(1)
+err = (obj.get("error") or "").lower()
+if "max tool calls" not in err:
+  print("expected tool call limit error; got:", obj.get("error"), file=sys.stderr)
   raise SystemExit(1)
 PY
 

@@ -340,7 +340,50 @@ static void test_tool_loop_max_tool_calls_per_tool_guard(void) {
   agent_tool_loop_result_t out = {0};
   const agent_status_t st = agent_tool_loop_run(&provider, reg, &exec, seed, "hello", &opt, NULL, &out);
   assert(st == AGENT_ERR_LIMIT);
-  assert(out.error_message.data && strstr(out.error_message.data, "per tool") != NULL);
+  assert(out.error_message.data && strstr(out.error_message.data, "for tool") != NULL);
+
+  agent_tool_loop_result_free(&out);
+  agent_session_destroy(seed);
+  agent_tool_registry_destroy(reg);
+}
+
+static void test_tool_loop_tool_call_limits_map(void) {
+  agent_tool_registry_t* reg = NULL;
+  assert(agent_tool_registry_create(&reg) == AGENT_OK);
+  assert(agent_tool_registry_add(reg, "echo", "echo tool", "{\"type\":\"object\"}") == AGENT_OK);
+
+  agent_tool_executor_t exec = {0};
+  exec.ctx = NULL;
+  exec.execute = fake_tool_execute;
+
+  agent_session_t* seed = NULL;
+  assert(agent_session_create(&seed) == AGENT_OK);
+  assert(agent_session_add_message(seed, AGENT_ROLE_SYSTEM, "sys") == AGENT_OK);
+
+  agent_tool_provider_t provider = {0};
+  provider.ctx = NULL;
+  provider.generate = always_tool_call_provider_generate;
+
+  agent_tool_call_limit_t limits[1];
+  memset(limits, 0, sizeof(limits));
+  limits[0].tool_name = "echo";
+  limits[0].max_calls = 2;
+
+  agent_tool_loop_options_t opt = {0};
+  opt.model = "fake";
+  opt.max_chars = 20000;
+  opt.keep_last_messages = 16;
+  opt.max_tool_result_chars = 200;
+  opt.max_steps = 0;
+  opt.max_repeated_tool_calls = 0;
+  opt.max_tool_calls_per_tool = 0; // ensure the explicit map is what triggers.
+  opt.tool_call_limits = limits;
+  opt.tool_call_limits_count = 1;
+
+  agent_tool_loop_result_t out = {0};
+  const agent_status_t st = agent_tool_loop_run(&provider, reg, &exec, seed, "hello", &opt, NULL, &out);
+  assert(st == AGENT_ERR_LIMIT);
+  assert(out.error_message.data && strstr(out.error_message.data, "for tool") != NULL);
 
   agent_tool_loop_result_free(&out);
   agent_session_destroy(seed);
@@ -469,6 +512,7 @@ void test_tool_loop_module(void) {
   test_tool_loop_max_steps_guard();
   test_tool_loop_max_tool_calls_total_guard();
   test_tool_loop_max_tool_calls_per_tool_guard();
+  test_tool_loop_tool_call_limits_map();
   test_tool_loop_context_too_long_retries();
   test_tool_loop_require_tool_call_errors();
   test_tool_loop_cancel();

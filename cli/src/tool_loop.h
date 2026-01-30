@@ -14,6 +14,11 @@
 using ToolLoopEventCallback = void (*)(void* ctx, const char* type, const char* data_json);
 using ToolLoopCancelCallback = bool (*)(void* ctx);
 
+struct ToolCallLimit {
+  std::string tool;
+  size_t max_calls = 0; // 0 means unlimited for this tool
+};
+
 struct ToolLoopOptions {
   std::string force_tool;    // optional tool name to force on first request
   bool require_tool_call = false;
@@ -32,6 +37,9 @@ struct ToolLoopOptions {
   size_t max_tool_calls_total = 0;
   // Cap tool calls per tool name across the entire run. 0 disables.
   size_t max_tool_calls_per_tool = 0;
+  // Explicit per-tool call limits (more precise than max_tool_calls_per_tool).
+  // When non-empty, entries override max_tool_calls_per_tool for matching tool names.
+  std::vector<ToolCallLimit> tool_call_limits;
   // When true, captures full request/response bodies and tool I/O into `events_json`.
   // When false, captures a lightweight event log without large blobs.
   bool verbose = false;
