@@ -35,6 +35,93 @@ struct ExecResult {
   std::string output;
 };
 
+static std::string trim_ws(std::string s) {
+  while (!s.empty() && (s.back() == '\r' || s.back() == '\n' || s.back() == ' ' || s.back() == '\t')) s.pop_back();
+  size_t i = 0;
+  while (i < s.size() && (s[i] == ' ' || s[i] == '\t')) i++;
+  return s.substr(i);
+}
+
+static bool patch_path_is_safe_scoped(std::string p) {
+  p = trim_ws(std::move(p));
+  if (p.empty()) return true;
+  if (p == "/dev/null") return true;
+  if (p.rfind("a/", 0) == 0) p = p.substr(2);
+  if (p.rfind("b/", 0) == 0) p = p.substr(2);
+
+  std::filesystem::path fp(p);
+  if (fp.is_absolute()) return false;
+  for (const auto& comp : fp) {
+    if (comp == "..") return false;
+  }
+  return true;
+}
+
+static bool patch_is_safe_scoped(const std::string& patch, std::string* out_error) {
+  if (out_error) out_error->clear();
+  size_t off = 0;
+  while (off < patch.size()) {
+    size_t end = patch.find('\n', off);
+    if (end == std::string::npos) end = patch.size();
+    std::string line = patch.substr(off, end - off);
+    off = (end < patch.size()) ? (end + 1) : end;
+
+    if (line.rfind("+++ ", 0) == 0 || line.rfind("--- ", 0) == 0) {
+      const std::string p = line.substr(4);
+      if (!patch_path_is_safe_scoped(p)) {
+        if (out_error) *out_error = "patch contains unsafe path: " + trim_ws(p);
+        return false;
+      }
+      continue;
+    }
+    if (line.rfind("diff --git ", 0) == 0) {
+      std::string rest = trim_ws(line.substr(std::string("diff --git ").size()));
+      const size_t sp = rest.find(' ');
+      if (sp == std::string::npos) continue;
+      const std::string a = rest.substr(0, sp);
+      const std::string b = trim_ws(rest.substr(sp + 1));
+      if (!patch_path_is_safe_scoped(a) || !patch_path_is_safe_scoped(b)) {
+        if (out_error) *out_error = "patch contains unsafe path in diff header";
+        return false;
+      }
+      continue;
+    }
+    if (line.rfind("rename from ", 0) == 0) {
+      const std::string p = line.substr(std::string("rename from ").size());
+      if (!patch_path_is_safe_scoped(p)) {
+        if (out_error) *out_error = "patch contains unsafe path in rename from";
+        return false;
+      }
+      continue;
+    }
+    if (line.rfind("rename to ", 0) == 0) {
+      const std::string p = line.substr(std::string("rename to ").size());
+      if (!patch_path_is_safe_scoped(p)) {
+        if (out_error) *out_error = "patch contains unsafe path in rename to";
+        return false;
+      }
+      continue;
+    }
+    if (line.rfind("copy from ", 0) == 0) {
+      const std::string p = line.substr(std::string("copy from ").size());
+      if (!patch_path_is_safe_scoped(p)) {
+        if (out_error) *out_error = "patch contains unsafe path in copy from";
+        return false;
+      }
+      continue;
+    }
+    if (line.rfind("copy to ", 0) == 0) {
+      const std::string p = line.substr(std::string("copy to ").size());
+      if (!patch_path_is_safe_scoped(p)) {
+        if (out_error) *out_error = "patch contains unsafe path in copy to";
+        return false;
+      }
+      continue;
+    }
+  }
+  return true;
+}
+
 static std::optional<std::filesystem::path> write_temp_file(const std::string& content, std::string* out_error) {
   std::string tmpl = (std::filesystem::temp_directory_path() / "agent_patch_XXXXXX").string();
   std::vector<char> buf(tmpl.begin(), tmpl.end());
@@ -435,6 +522,20 @@ agent_status_t tool_file_apply_patch(HostToolCtx* ctx, const char* arguments_jso
   // Never allow --unsafe-paths in scoped mode: it can enable patch path traversal.
   const bool unsafe_paths = ctx->unrestricted &&
     (args.isMember("unsafe_paths") && args["unsafe_paths"].isBool() ? args["unsafe_paths"].asBool() : true);
+
+  if (!ctx->unrestricted) {
+    std::string unsafe_err;
+    if (!patch_is_safe_scoped(patch, &unsafe_err)) {
+      Json::Value data(Json::objectValue);
+      data["tool"] = "git apply";
+      data["root_dir"] = ctx->root.string();
+      data["unsafe_paths"] = false;
+      data["patch"] = patch;
+      data["rejected"] = true;
+      data["reject_reason"] = unsafe_err.empty() ? "unsafe patch path" : unsafe_err;
+      return write_envelope(false, data["reject_reason"].asString(), data);
+    }
+  }
 
   std::string tmp_err;
   const std::optional<std::filesystem::path> tmp = write_temp_file(patch, &tmp_err);

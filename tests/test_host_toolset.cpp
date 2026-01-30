@@ -83,6 +83,27 @@ static void test_file_apply_patch() {
     assert(ss.str() == "bye\n");
   }
 
+  // Security: in scoped mode (root_dir set), unsafe_paths must not allow path traversal.
+  {
+    const std::string escape_name = std::string("escape_") + std::to_string((long long)getpid()) + ".txt";
+    Json::Value args(Json::objectValue);
+    args["patch"] = std::string("--- /dev/null\n") +
+      "+++ ../" + escape_name + "\n" +
+      "@@ -0,0 +1 @@\n"
+      "+nope\n";
+    args["unsafe_paths"] = true;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "file_apply_patch", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(!resp["ok"].asBool());
+    agent_string_free(&out);
+    // Ensure the escaped file was not created.
+    const auto escaped = root.parent_path() / escape_name;
+    std::error_code ec;
+    assert(!std::filesystem::exists(escaped, ec));
+  }
+
   agent_tool_registry_destroy(reg);
   toolset_host_destroy(&exec);
   std::filesystem::remove_all(root);

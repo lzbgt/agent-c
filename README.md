@@ -81,7 +81,7 @@ configure `origin` explicitly:
 
 ```bash
 git remote add origin <your_repo_url>
-git push -u origin master
+git push -u origin "$(git rev-parse --abbrev-ref HEAD)"
 ```
 
 Or use the helper script (does not guess a URL):

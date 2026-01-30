@@ -40,9 +40,9 @@ done
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
 
-if git remote -v | rg -q '^origin\\s'; then
+if git remote -v | grep -Eq '^origin[[:space:]]'; then
   echo "origin remote already configured:"
-  git remote -v | rg '^origin\\s' || true
+  git remote -v | grep -E '^origin[[:space:]]' || true
 else
   if [[ -z "${URL}" ]]; then
     echo "No git remote configured." >&2
@@ -60,4 +60,3 @@ if [[ "${DO_PUSH}" == "1" ]]; then
   echo "Pushing ${branch} -> origin/${branch}"
   git push -u origin "${branch}"
 fi
-

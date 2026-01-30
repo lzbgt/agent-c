@@ -1719,7 +1719,7 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
       "  \"patch\":{\"type\":\"string\"},"
       "  \"timeout_ms\":{\"type\":\"integer\"},"
       "  \"max_output_bytes\":{\"type\":\"integer\"},"
-      "  \"unsafe_paths\":{\"type\":\"boolean\"}"
+      "  \"unsafe_paths\":{\"type\":\"boolean\",\"description\":\"Only honored in unrestricted mode (root_dir empty).\"}"
       "},"
       "\"required\":[\"patch\"]"
       "}"
