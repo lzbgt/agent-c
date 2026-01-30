@@ -13,6 +13,11 @@ typedef enum agent_status {
   AGENT_ERR_OOM = 2,
   AGENT_ERR_BOUNDS = 3,
   AGENT_ERR_INTERNAL = 4,
+  // The provider rejected the request as too large for its context window.
+  // Hosts/loops can treat this as a retryable condition after more aggressive compaction.
+  AGENT_ERR_CONTEXT_TOO_LONG = 5,
+  // Cooperative cancellation requested by the host/user.
+  AGENT_ERR_CANCELLED = 6,
 } agent_status_t;
 
 typedef enum agent_role {
@@ -29,6 +34,12 @@ typedef struct agent_allocator {
 
 // Optional: call once at process startup. If not called, libc malloc/free are used.
 agent_status_t agent_set_allocator(const agent_allocator_t* allocator);
+
+// Convenience allocation helpers using the active allocator (either libc or the allocator installed via
+// agent_set_allocator). These are primarily intended for cross-boundary allocations where the core will free
+// memory that a host/provider allocated.
+void* agent_malloc(size_t size);
+void agent_free(void* ptr);
 
 typedef struct agent_session agent_session_t;
 

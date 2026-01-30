@@ -235,6 +235,8 @@ int main(void) {
   test_tool_registry_roundtrip();
   extern void test_runner_module(void);
   test_runner_module();
+  extern void test_tool_loop_module(void);
+  test_tool_loop_module();
   printf("agent_core_tests OK\n");
   return 0;
 }

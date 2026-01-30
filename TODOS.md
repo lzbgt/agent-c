@@ -6,7 +6,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 
 - [x] Define a stable **LLM provider interface** in the core (no HTTP/JSON assumptions).
 - [x] Define a stable **tool registry + executor interface** in the core (host-pluggable tools: GPIO, sensors, etc.).
-- [ ] Move the **tool-call loop** into core so daemon/embedded can reuse it (host provides JSON + transport adapters).
+- [x] Move the **tool-call loop** into core so daemon/embedded can reuse it (host provides JSON + transport adapters).
 - [x] Implement a core **runner** that:
   - compacts session before calls (char budget)
   - calls provider

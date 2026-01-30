@@ -1,20 +1,19 @@
 #include "tool_loop.h"
 
-#include "agent/agent.h"
-#include "agent/tools.h"
+#include "agent/tool_loop.h"
+
+#include "openai_client.h"
+#include "openai_tool_provider.h"
+#include "tool_loop_truncation.h"
 
 #if defined(AGENT_HAVE_JSONCPP)
 #include <json/json.h>
 #endif
 
-#include <ostream>
-#include <sstream>
 #include <algorithm>
 #include <cctype>
-
-#include "openai_client.h"
-#include "tool_loop_compaction.h"
-#include "tool_loop_truncation.h"
+#include <ostream>
+#include <sstream>
 
 #if defined(AGENT_HAVE_JSONCPP)
 static std::string json_stringify(const Json::Value& v) {
@@ -23,122 +22,26 @@ static std::string json_stringify(const Json::Value& v) {
   return Json::writeString(builder, v);
 }
 
-  static std::string truncate_str(const std::string& s, size_t max_bytes, bool* out_truncated = nullptr) {
-    if (out_truncated) *out_truncated = false;
-    if (max_bytes == 0 || s.size() <= max_bytes) {
-      return s;
-    }
-    if (out_truncated) *out_truncated = true;
-    return s.substr(0, max_bytes) + "...(truncated)";
-  }
-
-static Json::Value session_to_json_messages(const agent_session_t* session) {
-  Json::Value messages(Json::arrayValue);
-  const size_t n = agent_session_message_count(session);
-  for (size_t i = 0; i < n; i++) {
-    agent_message_view_t view{};
-    if (agent_session_get_message(session, i, &view) != AGENT_OK) {
-      continue;
-    }
-    Json::Value m(Json::objectValue);
-    m["role"] = agent_role_to_string(view.role);
-    m["content"] = std::string(view.content, view.content_len);
-    messages.append(m);
-  }
-  return messages;
-}
-
-static Json::Value session_to_compacted_json_messages(
-  const agent_session_t* session,
-  const std::string& user_prompt,
-  const ToolLoopOptions& opt,
-  Json::Value* out_compaction_event_data
-) {
-  Json::Value messages = session_to_json_messages(session);
-
-  ToolLoopCompactionOptions copt;
-  copt.max_chars = opt.max_chars;
-  copt.keep_last_messages = opt.keep_last_messages;
-  copt.insert_summary = opt.insert_compaction_summary;
-  copt.summary_preview_items = opt.summary_preview_items;
-  copt.summary_snippet_chars = opt.summary_snippet_chars;
-  copt.summary_max_chars = opt.summary_max_chars;
-
-  const size_t max_chars = copt.max_chars == 0 ? 20000 : copt.max_chars;
-  // Reserve space for the new user prompt that will be appended after compaction.
-  const size_t budget_for_history = max_chars > user_prompt.size() ? (max_chars - user_prompt.size()) : 1;
-
-  ToolLoopCompactionReport rep;
-  const bool did = tool_loop_compaction_maybe_compact_with_budget(&messages, budget_for_history, copt, &rep);
-  if (out_compaction_event_data) {
-    Json::Value d(Json::objectValue);
-    d["before_chars"] = (Json::UInt64)(rep.before_chars + user_prompt.size());
-    d["max_chars"] = (Json::UInt64)max_chars;
-    d["keep_last_messages"] = (Json::UInt64)(copt.keep_last_messages == 0 ? 16 : copt.keep_last_messages);
-    d["pinned_system_messages"] = (Json::UInt64)rep.pinned_system_messages;
-    d["dropped_messages"] = (Json::UInt64)rep.dropped_messages;
-    d["inserted_summary"] = did && rep.inserted_summary;
-    if (opt.verbose && rep.inserted_summary && !rep.summary.empty()) {
-      bool trunc = false;
-      d["summary"] = truncate_str(rep.summary, opt.max_capture_bytes, &trunc);
-      d["summary_truncated"] = trunc;
-    }
-    *out_compaction_event_data = d;
-  }
-
-  return messages;
-}
-
-  static bool extract_choice0_message(const Json::Value& root, Json::Value* out_message) {
-    if (!out_message) {
-      return false;
-    }
-  const auto& choices = root["choices"];
-  if (!choices.isArray() || choices.empty()) {
-    return false;
-  }
-  const auto& msg = choices[0]["message"];
-  if (!msg.isObject()) {
-    return false;
-  }
-  *out_message = msg;
-  return true;
-}
-
-static std::string extract_assistant_content(const Json::Value& message) {
-  const auto& content = message["content"];
-  if (content.isString()) {
-    return content.asString();
-  }
-  return "";
-}
-
-static bool message_has_tool_calls(const Json::Value& message) {
-  const auto& tc = message["tool_calls"];
-  if (tc.isArray() && !tc.empty()) {
-    return true;
-  }
-  // Older/alternate schema (function calling v0): {"function_call": {"name": "...", "arguments": "..."}}
-  const auto& fc = message["function_call"];
-  return fc.isObject() && fc.isMember("name") && fc.isMember("arguments");
-}
-
-static bool parse_json_object(const std::string& s, Json::Value* out_obj) {
+static bool parse_json_any(const std::string& s, Json::Value* out_v) {
+  if (!out_v) return false;
   Json::CharReaderBuilder rb;
   std::string errs;
   std::istringstream iss(s);
   Json::Value v;
-  if (!Json::parseFromStream(rb, iss, &v, &errs)) {
-    return false;
-  }
-  if (!v.isObject()) {
-    return false;
-  }
+  if (!Json::parseFromStream(rb, iss, &v, &errs)) return false;
+  *out_v = v;
+  return true;
+}
+
+static bool parse_json_object(const std::string& s, Json::Value* out_obj) {
+  Json::Value v;
+  if (!parse_json_any(s, &v)) return false;
+  if (!v.isObject()) return false;
   *out_obj = v;
   return true;
 }
 
-static Json::Value summarize_tool_output(const std::string& tool_out) {
+static Json::Value summarize_tool_output_json(const std::string& tool_out) {
   Json::Value obj;
   if (!parse_json_object(tool_out, &obj)) {
     Json::Value s(Json::objectValue);
@@ -167,41 +70,119 @@ static Json::Value summarize_tool_output(const std::string& tool_out) {
   return summary;
 }
 
-static bool build_openai_tools_json(const agent_tool_registry_t* registry, Json::Value* out_tools, std::string* out_error) {
-  if (!registry || !out_tools) {
-    if (out_error) {
-      *out_error = "missing tool registry";
-    }
-    return false;
-  }
-  Json::Value tools(Json::arrayValue);
-  const size_t n = agent_tool_registry_count(registry);
-  for (size_t i = 0; i < n; i++) {
-    agent_tool_def_view_t def{};
-    if (agent_tool_registry_get(registry, i, &def) != AGENT_OK) {
-      continue;
-    }
-    Json::Value params(Json::objectValue);
-    if (!parse_json_object(def.parameters_json ? def.parameters_json : "{}", &params)) {
-      if (out_error) {
-        *out_error = std::string("invalid parameters_json for tool: ") + (def.name ? def.name : "");
-      }
-      return false;
-    }
+struct EventSink {
+  Json::Value events = Json::Value(Json::arrayValue);
+  bool events_truncated = false;
 
-    Json::Value t(Json::objectValue);
-    t["type"] = "function";
-    Json::Value fn(Json::objectValue);
-    fn["name"] = def.name ? def.name : "";
-    fn["description"] = def.description ? def.description : "";
-    fn["parameters"] = params;
-    t["function"] = fn;
-    tools.append(t);
+  size_t captured_bytes = 0;
+  size_t max_total_capture_bytes = 2 * 1024 * 1024;
+
+  size_t events_count = 0;
+  size_t max_events = 4000;
+
+  ToolLoopEventCallback forward_cb = nullptr;
+  void* forward_ctx = nullptr;
+
+  std::ostream* trace_stream = nullptr;
+};
+
+static void sink_note_capture(EventSink* sink, const std::string& s) {
+  if (!sink) return;
+  if (s.size() > sink->max_total_capture_bytes) {
+    sink->captured_bytes += sink->max_total_capture_bytes;
+  } else {
+    sink->captured_bytes += s.size();
   }
-  *out_tools = tools;
-  return true;
 }
-#endif
+
+static void sink_on_event(void* vctx, const char* type, const char* data_json) {
+  auto* sink = static_cast<EventSink*>(vctx);
+  if (!sink || !type) return;
+
+  if (sink->events_count >= sink->max_events) {
+    sink->events_truncated = true;
+    return;
+  }
+
+  Json::Value data;
+  std::string perr;
+  if (data_json && data_json[0]) {
+    if (!parse_json_any(data_json, &data)) {
+      data = std::string(data_json);
+    }
+  } else {
+    data = Json::Value(Json::objectValue);
+  }
+
+  Json::Value e(Json::objectValue);
+  e["type"] = type;
+  e["data"] = data;
+  sink->events.append(e);
+  sink->events_count++;
+
+  if (data_json) sink_note_capture(sink, data_json);
+
+  // Optional trace output (best-effort).
+  if (sink->trace_stream) {
+    const std::string t(type);
+    if (t == "llm_request") {
+      sink->trace_stream->flush();
+      *sink->trace_stream << "=== TOOL LOOP LLM REQUEST ===\n";
+      if (data.isObject() && data.isMember("request_json") && data["request_json"].isString()) {
+        *sink->trace_stream << data["request_json"].asString() << "\n";
+      }
+    } else if (t == "llm_response") {
+      sink->trace_stream->flush();
+      *sink->trace_stream << "=== TOOL LOOP LLM RESPONSE ===\n";
+      if (data.isObject() && data.isMember("http_status")) {
+        *sink->trace_stream << "HTTP " << data["http_status"].asInt64() << "\n";
+      }
+      if (data.isObject() && data.isMember("response_body") && data["response_body"].isString()) {
+        *sink->trace_stream << data["response_body"].asString() << "\n";
+      }
+    }
+  }
+
+  if (sink->forward_cb) {
+    sink->forward_cb(sink->forward_ctx, type, data_json ? data_json : "");
+  }
+}
+
+static uint8_t sink_should_cancel(void* vctx) {
+  auto* opt = static_cast<ToolLoopOptions*>(vctx);
+  if (!opt || !opt->should_cancel) return 0;
+  return opt->should_cancel(opt->should_cancel_ctx) ? 1 : 0;
+}
+
+static agent_status_t cap_tool_output_cb(
+  void* /*ctx*/,
+  const char* tool_out,
+  size_t tool_out_len,
+  size_t max_chars,
+  agent_string_t* out_capped,
+  uint8_t* out_truncated
+) {
+  if (!out_capped) return AGENT_ERR_INVALID_ARGUMENT;
+  if (out_truncated) *out_truncated = 0;
+  const std::string in(tool_out ? tool_out : "", tool_out_len);
+  bool trunc = false;
+  const std::string capped = tool_loop_cap_tool_output_for_prompt(in, max_chars, &trunc);
+  if (out_truncated) *out_truncated = trunc ? 1 : 0;
+  return agent_string_set_copy(out_capped, capped.data(), capped.size());
+}
+
+static agent_status_t summarize_tool_output_cb(
+  void* /*ctx*/,
+  const char* tool_out,
+  size_t tool_out_len,
+  agent_string_t* out_summary_json
+) {
+  if (!out_summary_json) return AGENT_ERR_INVALID_ARGUMENT;
+  const std::string in(tool_out ? tool_out : "", tool_out_len);
+  const Json::Value summary = summarize_tool_output_json(in);
+  const std::string s = json_stringify(summary);
+  return agent_string_set_copy(out_summary_json, s.data(), s.size());
+}
 
 bool run_tool_loop(
   const OpenAIClientConfig& cfg,
@@ -216,552 +197,139 @@ bool run_tool_loop(
   long* out_http_status,
   std::string* out_http_body
 ) {
-  if (out_error) {
-    out_error->clear();
-  }
-  if (out_http_status) {
-    *out_http_status = 0;
-  }
-  if (out_http_body) {
-    out_http_body->clear();
-  }
+  if (out_error) out_error->clear();
+  if (out_http_status) *out_http_status = 0;
+  if (out_http_body) out_http_body->clear();
   if (!out_result) {
-    if (out_error) {
-      *out_error = "invalid out_result";
-    }
+    if (out_error) *out_error = "invalid out_result";
     return false;
   }
   *out_result = ToolLoopResult{};
 
 #if !defined(AGENT_HAVE_JSONCPP)
-  if (out_error) {
-    *out_error = "tool loop requires jsoncpp (AGENT_HAVE_JSONCPP)";
-  }
+  if (out_error) *out_error = "tool loop requires jsoncpp (AGENT_HAVE_JSONCPP)";
   (void)cfg;
   (void)seed_session;
   (void)user_prompt;
+  (void)tools_registry;
+  (void)executor;
   (void)options;
+  (void)trace_stream;
   return false;
 #else
-  if (!seed_session) {
-    if (out_error) {
-      *out_error = "seed session is null";
-    }
-    return false;
-  }
-  if (!tools_registry || !executor || !executor->execute) {
-    if (out_error) {
-      *out_error = "missing tool registry or executor";
-    }
+  if (!seed_session || !tools_registry || !executor || !executor->execute) {
+    if (out_error) *out_error = "invalid inputs (seed_session/tools/executor)";
     return false;
   }
 
-  Json::Value events(Json::arrayValue);
-  bool events_truncated = false;
-  size_t events_count = 0;
-  size_t captured_bytes = 0;
-  uint64_t context_epoch = 0;
+  EventSink sink;
+  sink.forward_cb = options.on_event;
+  sink.forward_ctx = options.on_event_ctx;
+  sink.trace_stream = trace_stream;
 
-  const size_t max_events = 2048;
-  const size_t max_total_capture = options.max_capture_bytes == 0 ? (256 * 1024 * 8) : (options.max_capture_bytes * 8);
+  OpenAIToolProviderCtx pctx;
+  pctx.cfg = cfg;
+  pctx.on_event = sink_on_event;
+  pctx.on_event_ctx = &sink;
+  pctx.verbose_events = options.verbose;
+  pctx.max_capture_chars = options.max_capture_bytes;
 
-  auto note_capture = [&](const std::string& s) {
-    if (!events_truncated) {
-      captured_bytes += s.size();
-      if (captured_bytes > max_total_capture) {
-        events_truncated = true;
-      }
-    }
-  };
+  agent_tool_provider_t provider = openai_make_tool_provider(&pctx);
 
-  auto push_event = [&](const std::string& type, const Json::Value& data) {
-    if (options.on_event) {
-      try {
-        const std::string data_json = json_stringify(data);
-        options.on_event(options.on_event_ctx, type.c_str(), data_json.c_str());
-      } catch (...) {
-        // Best-effort: never allow observer failures to break the tool loop.
-      }
-    }
-    if (events_truncated || events_count >= max_events) {
-      events_truncated = true;
-      return;
-    }
-    Json::Value e(Json::objectValue);
-    e["type"] = type;
-    e["data"] = data;
-    events.append(e);
-    events_count++;
-  };
+  agent_tool_loop_options_t opt{};
+  opt.model = cfg.model.c_str();
+  opt.force_tool_or_null = options.force_tool.empty() ? nullptr : options.force_tool.c_str();
+  opt.require_tool_call = options.require_tool_call ? 1 : 0;
+  opt.max_steps = options.max_steps;
+  opt.max_chars = options.max_chars;
+  opt.keep_last_messages = options.keep_last_messages;
+  opt.insert_compaction_summary = options.insert_compaction_summary ? 1 : 0;
+  opt.summary_preview_items = options.summary_preview_items;
+  opt.summary_snippet_chars = options.summary_snippet_chars;
+  opt.summary_max_chars = options.summary_max_chars;
+  opt.max_tool_result_chars = options.max_tool_result_chars;
+  opt.max_context_too_long_retries = 2;
+  opt.verbose_events = options.verbose ? 1 : 0;
+  opt.max_capture_chars = options.max_capture_bytes;
 
-  if (trace_stream) {
-    *trace_stream << "=== TOOL LOOP START ===\n";
-    *trace_stream << "model=" << cfg.model << " max_steps=" << options.max_steps << "\n";
-    *trace_stream << "tools=[";
-    const size_t tn = agent_tool_registry_count(tools_registry);
-    for (size_t i = 0; i < tn; i++) {
-      agent_tool_def_view_t def{};
-      if (agent_tool_registry_get(tools_registry, i, &def) != AGENT_OK) {
-        continue;
-      }
-      if (i) *trace_stream << ",";
-      *trace_stream << (def.name ? def.name : "");
-    }
-    *trace_stream << "]\n";
-  }
+  agent_tool_loop_hooks_t hooks{};
+  hooks.on_event = sink_on_event;
+  hooks.on_event_ctx = &sink;
+  hooks.should_cancel = options.should_cancel ? sink_should_cancel : nullptr;
+  hooks.should_cancel_ctx = const_cast<ToolLoopOptions*>(&options);
+  hooks.cap_tool_output_for_prompt = cap_tool_output_cb;
+  hooks.cap_tool_output_for_prompt_ctx = nullptr;
+  hooks.cap_tool_output_for_event = cap_tool_output_cb;
+  hooks.cap_tool_output_for_event_ctx = nullptr;
+  hooks.summarize_tool_output = summarize_tool_output_cb;
+  hooks.summarize_tool_output_ctx = nullptr;
 
-  Json::Value compaction_data;
-  Json::Value messages = session_to_compacted_json_messages(seed_session, user_prompt, options, &compaction_data);
+  agent_tool_loop_result_t core_res{};
+  const agent_status_t st = agent_tool_loop_run(
+    &provider,
+    tools_registry,
+    executor,
+    seed_session,
+    user_prompt.c_str(),
+    &opt,
+    &hooks,
+    &core_res
+  );
 
-  ToolLoopCompactionOptions compact_opt;
-  compact_opt.max_chars = options.max_chars;
-  compact_opt.keep_last_messages = options.keep_last_messages;
-  compact_opt.insert_summary = options.insert_compaction_summary;
-  compact_opt.summary_preview_items = options.summary_preview_items;
-  compact_opt.summary_snippet_chars = options.summary_snippet_chars;
-  compact_opt.summary_max_chars = options.summary_max_chars;
+  if (out_http_status) *out_http_status = pctx.last_http_status;
+  if (out_http_body) *out_http_body = pctx.last_response_body;
 
-  Json::Value tools(Json::arrayValue);
-  std::string tools_err;
-  if (!build_openai_tools_json(tools_registry, &tools, &tools_err)) {
+  if (st != AGENT_OK) {
     if (out_error) {
-      *out_error = tools_err.empty() ? "failed to build tools JSON" : tools_err;
-    }
-    return false;
-  }
-
-  {
-    Json::Value d(Json::objectValue);
-    d["model"] = cfg.model;
-    d["max_steps"] = (Json::UInt64)options.max_steps;
-    d["verbose"] = options.verbose;
-    d["max_chars"] = (Json::UInt64)(options.max_chars == 0 ? 20000 : options.max_chars);
-    d["keep_last_messages"] = (Json::UInt64)(options.keep_last_messages == 0 ? 16 : options.keep_last_messages);
-    d["epoch"] = (Json::UInt64)context_epoch;
-    push_event("start", d);
-  }
-  if (compaction_data.isObject()) {
-    compaction_data["epoch"] = (Json::UInt64)context_epoch;
-    compaction_data["step"] = (Json::UInt64)0;
-    push_event("compaction", compaction_data);
-  }
-
-  {
-    Json::Value um(Json::objectValue);
-    um["role"] = "user";
-    um["content"] = user_prompt;
-    messages.append(um);
-  }
-
-  for (size_t step = 0; options.max_steps == 0 || step < options.max_steps; step++) {
-    if (options.should_cancel && options.should_cancel(options.should_cancel_ctx)) {
-      if (out_error) {
+      if (core_res.error_message.data && core_res.error_message.data[0]) {
+        *out_error = std::string(core_res.error_message.data, core_res.error_message.len);
+      } else if (pctx.last_http_status) {
+        *out_error = openai_format_http_error(pctx.last_http_status, pctx.last_response_body);
+      } else if (st == AGENT_ERR_CANCELLED) {
         *out_error = "cancelled";
-      }
-      {
-        Json::Value d(Json::objectValue);
-        d["step"] = (Json::UInt64)step;
-        d["reason"] = "cancel_requested";
-        push_event("cancelled", d);
-      }
-      return false;
-    }
-
-    {
-      ToolLoopCompactionReport rep;
-      if (tool_loop_compaction_maybe_compact(&messages, compact_opt, &rep)) {
-        Json::Value d(Json::objectValue);
-        d["epoch"] = (Json::UInt64)context_epoch;
-        d["step"] = (Json::UInt64)step;
-        d["before_chars"] = (Json::UInt64)rep.before_chars;
-        d["after_chars"] = (Json::UInt64)rep.after_chars;
-        d["max_chars"] = (Json::UInt64)(compact_opt.max_chars == 0 ? 20000 : compact_opt.max_chars);
-        d["keep_last_messages"] = (Json::UInt64)(compact_opt.keep_last_messages == 0 ? 16 : compact_opt.keep_last_messages);
-        d["pinned_system_messages"] = (Json::UInt64)rep.pinned_system_messages;
-        d["dropped_messages"] = (Json::UInt64)rep.dropped_messages;
-        d["inserted_summary"] = rep.inserted_summary;
-        if (options.verbose && rep.inserted_summary && !rep.summary.empty()) {
-        bool trunc = false;
-        const std::string capped = truncate_str(rep.summary, options.max_capture_bytes, &trunc);
-        note_capture(capped);
-        d["summary"] = capped;
-        d["summary_truncated"] = trunc;
-      }
-        context_epoch++;
-        d["epoch_after"] = (Json::UInt64)context_epoch;
-        push_event("compaction", d);
-      }
-    }
-
-    Json::Value req(Json::objectValue);
-    req["model"] = cfg.model;
-    req["stream"] = false;
-    req["messages"] = messages;
-    req["tools"] = tools;
-
-    if (!options.force_tool.empty() && step == 0) {
-      Json::Value tc(Json::objectValue);
-      tc["type"] = "function";
-      Json::Value fn(Json::objectValue);
-      fn["name"] = options.force_tool;
-      tc["function"] = fn;
-      req["tool_choice"] = tc;
-    }
-
-    const std::string request_json = json_stringify(req);
-    if (trace_stream) {
-      *trace_stream << "=== TOOL LOOP STEP " << step << " REQUEST ===\n";
-      *trace_stream << request_json << "\n";
-    }
-    {
-      Json::Value d(Json::objectValue);
-      d["step"] = (Json::UInt64)step;
-      if (options.verbose) {
-        bool trunc = false;
-        const std::string capped = truncate_str(request_json, options.max_capture_bytes, &trunc);
-        note_capture(capped);
-        d["request_json"] = capped;
-        d["request_truncated"] = trunc;
-      }
-      push_event("llm_request", d);
-    }
-
-    OpenAIRawResult raw = openai_chat_completions_raw(cfg, request_json);
-    // If the request is rejected due to context length, compact more aggressively and retry.
-    // This is equivalent to "spawning a new session" on stateless providers: restart with a smaller window + summary.
-    for (int retry = 0; retry < 2 && raw.http_status >= 400 && openai_is_context_too_long_error(raw.http_status, raw.response_body); retry++) {
-      Json::Value d(Json::objectValue);
-      d["step"] = (Json::UInt64)step;
-      d["epoch"] = (Json::UInt64)context_epoch;
-      d["http_status"] = (Json::Int64)raw.http_status;
-      d["reason"] = "context_too_long_retry";
-      push_event("retry", d);
-
-      // Shrink budget and compact in-place, then rebuild request JSON.
-      ToolLoopCompactionOptions tighter = compact_opt;
-      const size_t cur = tighter.max_chars == 0 ? 20000 : tighter.max_chars;
-      tighter.max_chars = std::max<size_t>(2000, (cur * 3) / 4);
-      ToolLoopCompactionReport rep;
-      if (tool_loop_compaction_maybe_compact(&messages, tighter, &rep)) {
-        Json::Value cdata(Json::objectValue);
-        cdata["epoch"] = (Json::UInt64)context_epoch;
-        cdata["step"] = (Json::UInt64)step;
-        cdata["before_chars"] = (Json::UInt64)rep.before_chars;
-        cdata["after_chars"] = (Json::UInt64)rep.after_chars;
-        cdata["max_chars"] = (Json::UInt64)(tighter.max_chars == 0 ? 20000 : tighter.max_chars);
-        cdata["keep_last_messages"] = (Json::UInt64)(tighter.keep_last_messages == 0 ? 16 : tighter.keep_last_messages);
-        cdata["pinned_system_messages"] = (Json::UInt64)rep.pinned_system_messages;
-        cdata["dropped_messages"] = (Json::UInt64)rep.dropped_messages;
-        cdata["inserted_summary"] = rep.inserted_summary;
-        if (options.verbose && rep.inserted_summary && !rep.summary.empty()) {
-          bool trunc = false;
-          const std::string capped = truncate_str(rep.summary, options.max_capture_bytes, &trunc);
-          note_capture(capped);
-          cdata["summary"] = capped;
-          cdata["summary_truncated"] = trunc;
-        }
-        context_epoch++;
-        cdata["epoch_after"] = (Json::UInt64)context_epoch;
-        push_event("compaction", cdata);
-      }
-
-      req["messages"] = messages;
-      const std::string retry_json = json_stringify(req);
-      raw = openai_chat_completions_raw(cfg, retry_json);
-    }
-    if (out_http_status) {
-      *out_http_status = raw.http_status;
-    }
-    if (out_http_body) {
-      *out_http_body = raw.response_body;
-    }
-    if (trace_stream) {
-      *trace_stream << "=== TOOL LOOP STEP " << step << " RESPONSE (HTTP " << raw.http_status << ") ===\n";
-      *trace_stream << raw.response_body << "\n";
-    }
-    {
-      Json::Value d(Json::objectValue);
-      d["step"] = (Json::UInt64)step;
-      d["http_status"] = (Json::Int64)raw.http_status;
-      if (options.verbose) {
-        bool trunc = false;
-        const std::string capped = truncate_str(raw.response_body, options.max_capture_bytes, &trunc);
-        note_capture(capped);
-        d["response_body"] = capped;
-        d["response_truncated"] = trunc;
-      }
-      push_event("llm_response", d);
-    }
-    if (raw.http_status < 200 || raw.http_status >= 300) {
-      if (out_error) {
-        *out_error = openai_format_http_error(raw.http_status, raw.response_body);
-      }
-      {
-        Json::Value d(Json::objectValue);
-        d["step"] = (Json::UInt64)step;
-        d["error"] = out_error ? *out_error : std::string("http error");
-        push_event("error", d);
-      }
-      return false;
-    }
-
-    Json::CharReaderBuilder rb;
-    std::string errs;
-    std::istringstream iss(raw.response_body);
-    Json::Value root;
-    if (!Json::parseFromStream(rb, iss, &root, &errs)) {
-      if (out_error) {
-        *out_error = "failed to parse JSON response";
-      }
-      {
-        Json::Value d(Json::objectValue);
-        d["step"] = (Json::UInt64)step;
-        d["error"] = "failed to parse JSON response";
-        push_event("error", d);
-      }
-      return false;
-    }
-
-    Json::Value assistant_msg;
-    if (!extract_choice0_message(root, &assistant_msg)) {
-      if (out_error) {
-        *out_error = "missing choices[0].message";
-      }
-      {
-        Json::Value d(Json::objectValue);
-        d["step"] = (Json::UInt64)step;
-        d["error"] = "missing choices[0].message";
-        push_event("error", d);
-      }
-      return false;
-    }
-
-    out_result->final_assistant_text = extract_assistant_content(assistant_msg);
-
-    const bool has_tools = message_has_tool_calls(assistant_msg);
-    if (has_tools) {
-      out_result->saw_tool_call = true;
-    }
-
-    // Append assistant message as-is (includes tool_calls).
-    messages.append(assistant_msg);
-    {
-      Json::Value d(Json::objectValue);
-      d["step"] = (Json::UInt64)step;
-      d["assistant_content"] = out_result->final_assistant_text;
-      d["has_tool_calls"] = has_tools;
-      if (options.verbose) {
-        bool trunc = false;
-        const std::string capped = truncate_str(json_stringify(assistant_msg), options.max_capture_bytes, &trunc);
-        note_capture(capped);
-        d["assistant_message_json"] = capped;
-        d["assistant_message_truncated"] = trunc;
-      }
-      push_event("assistant_message", d);
-    }
-
-    if (!has_tools) {
-      if (trace_stream) {
-        *trace_stream << "=== TOOL LOOP DONE (no tool calls) ===\n";
-      }
-      {
-        Json::Value d(Json::objectValue);
-        d["step"] = (Json::UInt64)step;
-        d["reason"] = "no tool calls";
-        push_event("done", d);
-      }
-      break;
-    }
-
-    struct ParsedToolCall {
-      std::string id;
-      std::string name;
-      std::string arguments_json;
-    };
-
-    std::vector<ParsedToolCall> calls;
-    const auto& tool_calls = assistant_msg["tool_calls"];
-    if (tool_calls.isArray()) {
-      size_t i = 0;
-      for (const auto& call : tool_calls) {
-        const auto& type = call["type"];
-        const auto& fn = call["function"];
-        if (!type.isString() || type.asString() != "function") {
-          i++;
-          continue;
-        }
-        if (!fn.isObject()) {
-          i++;
-          continue;
-        }
-        const auto& namev = fn["name"];
-        const auto& argv = fn["arguments"];
-        if (!namev.isString() || !argv.isString()) {
-          i++;
-          continue;
-        }
-        const auto& idv = call["id"];
-        std::string id = idv.isString() ? idv.asString() : (std::string("call_") + std::to_string(step) + "_" + std::to_string(i));
-        calls.push_back(ParsedToolCall{id, namev.asString(), argv.asString()});
-        i++;
-      }
-    } else {
-      const auto& fc = assistant_msg["function_call"];
-      if (fc.isObject()) {
-        const auto& namev = fc["name"];
-        const auto& argv = fc["arguments"];
-        if (namev.isString() && argv.isString()) {
-          calls.push_back(ParsedToolCall{std::string("call_") + std::to_string(step) + "_0", namev.asString(), argv.asString()});
-        }
-      }
-    }
-
-    if (calls.empty()) {
-      if (out_error) {
-        *out_error = "model returned tool calls but none were parseable";
-      }
-      {
-        Json::Value d(Json::objectValue);
-        d["step"] = (Json::UInt64)step;
-        d["error"] = "model returned tool calls but none were parseable";
-        push_event("error", d);
-      }
-      return false;
-    }
-
-    for (const auto& call : calls) {
-      if (options.should_cancel && options.should_cancel(options.should_cancel_ctx)) {
-        if (out_error) {
-          *out_error = "cancelled";
-        }
-        Json::Value d(Json::objectValue);
-        d["step"] = (Json::UInt64)step;
-        d["reason"] = "cancel_requested";
-        push_event("cancelled", d);
-        return false;
-      }
-
-      const std::string tool_name = call.name;
-      const std::string tool_args_json = call.arguments_json;
-      const std::string tool_call_id = call.id;
-
-      if (trace_stream) {
-        *trace_stream << "=== TOOL CALL " << tool_name << " ARGS ===\n";
-        *trace_stream << tool_args_json << "\n";
-      }
-      {
-        Json::Value d(Json::objectValue);
-        d["step"] = (Json::UInt64)step;
-        d["tool_call_id"] = tool_call_id;
-        d["tool_name"] = tool_name;
-      if (options.verbose) {
-        bool trunc = false;
-        const std::string capped = truncate_str(tool_args_json, options.max_capture_bytes, &trunc);
-        note_capture(capped);
-        d["arguments_json"] = capped;
-        d["arguments_truncated"] = trunc;
-      }
-      push_event("tool_call", d);
-    }
-
-      agent_string_t tool_result{};
-      agent_status_t st = executor->execute(executor->ctx, tool_name.c_str(), tool_args_json.c_str(), &tool_result);
-      std::string tool_out;
-      if (st == AGENT_OK && tool_result.data) {
-        tool_out.assign(tool_result.data, tool_result.len);
       } else {
-        Json::Value o(Json::objectValue);
-        o["ok"] = false;
-        o["error"] = "tool execution failed";
-        o["status"] = (int)st;
-        Json::StreamWriterBuilder wb;
-        wb["indentation"] = "";
-        tool_out = Json::writeString(wb, o);
-      }
-      agent_string_free(&tool_result);
-
-      // Capture tool transcript for host session persistence (portable plain-text record).
-      {
-        ToolLoopToolRecord rec;
-        rec.tool_name = tool_name;
-        rec.tool_call_id = tool_call_id;
-        rec.arguments_json = tool_args_json;
-        rec.result_string = tool_out;
-        rec.result_string_for_prompt = tool_loop_cap_tool_output_for_prompt(tool_out, options.max_tool_result_chars, &rec.result_truncated_for_prompt);
-        out_result->tool_records.push_back(std::move(rec));
-      }
-
-      if (trace_stream) {
-        *trace_stream << "=== TOOL CALL " << tool_name << " RESULT ===\n";
-        *trace_stream << tool_out << "\n";
-      }
-      {
-        Json::Value d(Json::objectValue);
-        d["step"] = (Json::UInt64)step;
-        d["tool_call_id"] = tool_call_id;
-        d["tool_name"] = tool_name;
-        d["status"] = (Json::Int64)st;
-      if (options.verbose) {
-        bool trunc = false;
-        // Keep tool results JSON-shaped when possible so UIs can render structured views
-        // even when event payloads are capped.
-        const std::string capped = tool_loop_cap_tool_output_for_prompt(tool_out, options.max_capture_bytes, &trunc);
-        note_capture(capped);
-        d["content"] = capped;
-        d["content_truncated"] = trunc;
-      } else {
-        d["summary"] = summarize_tool_output(tool_out);
-      }
-      push_event("tool_result", d);
-    }
-
-      Json::Value tm(Json::objectValue);
-      tm["role"] = "tool";
-      tm["tool_call_id"] = tool_call_id;
-      // Avoid blowing up the context window: cap tool results before they enter the prompt.
-      tm["content"] = out_result->tool_records.back().result_string_for_prompt;
-      messages.append(tm);
-
-      if (options.should_cancel && options.should_cancel(options.should_cancel_ctx)) {
-        if (out_error) {
-          *out_error = "cancelled";
-        }
-        Json::Value d(Json::objectValue);
-        d["step"] = (Json::UInt64)step;
-        d["reason"] = "cancel_requested";
-        push_event("cancelled", d);
-        return false;
+        *out_error = "tool loop failed";
       }
     }
-  }
-
-  if (options.require_tool_call && !out_result->saw_tool_call) {
-    if (out_error) {
-      *out_error = "no tool call occurred";
-    }
-    {
-      Json::Value d(Json::objectValue);
-      d["error"] = "no tool call occurred";
-      push_event("error", d);
-    }
+    agent_tool_loop_result_free(&core_res);
     return false;
   }
 
-  if (trace_stream) {
-    *trace_stream << "=== TOOL LOOP END ===\n";
-  }
-  {
-    Json::Value d(Json::objectValue);
-    d["truncated"] = events_truncated;
-    d["captured_bytes"] = (Json::UInt64)captured_bytes;
-    d["max_total_capture_bytes"] = (Json::UInt64)max_total_capture;
-    d["events_count"] = (Json::UInt64)events_count;
-    d["max_events"] = (Json::UInt64)max_events;
-    push_event("end", d);
+  out_result->final_assistant_text = core_res.final_assistant_text.data ? core_res.final_assistant_text.data : "";
+  out_result->saw_tool_call = core_res.saw_tool_call != 0;
+
+  // Copy tool records for host audit logging.
+  out_result->tool_records.reserve(core_res.tool_record_count);
+  for (size_t i = 0; i < core_res.tool_record_count; i++) {
+    const agent_tool_record_t& r = core_res.tool_records[i];
+    ToolLoopToolRecord rec;
+    rec.tool_name = r.tool_name.data ? r.tool_name.data : "";
+    rec.tool_call_id = r.tool_call_id.data ? r.tool_call_id.data : "";
+    rec.arguments_json = r.arguments_json.data ? r.arguments_json.data : "";
+    rec.result_string = r.result_string.data ? r.result_string.data : "";
+    rec.result_string_for_prompt = r.result_string_for_prompt.data ? r.result_string_for_prompt.data : "";
+    rec.result_truncated_for_prompt = r.result_truncated_for_prompt != 0;
+    out_result->tool_records.push_back(std::move(rec));
   }
 
-  // Important: do NOT truncate the final JSON string, or it becomes unparsable.
-  out_result->events_json = json_stringify(events);
+  // End event (host-side envelope stats).
+  {
+    Json::Value d(Json::objectValue);
+    d["truncated"] = sink.events_truncated;
+    d["captured_bytes"] = (Json::UInt64)sink.captured_bytes;
+    d["max_total_capture_bytes"] = (Json::UInt64)sink.max_total_capture_bytes;
+    d["events_count"] = (Json::UInt64)sink.events_count;
+    d["max_events"] = (Json::UInt64)sink.max_events;
+    Json::Value e(Json::objectValue);
+    e["type"] = "end";
+    e["data"] = d;
+    sink.events.append(e);
+  }
+
+  out_result->events_json = json_stringify(sink.events);
+  agent_tool_loop_result_free(&core_res);
   return true;
 #endif
 }
+
+#endif  // AGENT_HAVE_JSONCPP

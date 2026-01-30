@@ -12,6 +12,8 @@ add_library(agent_core STATIC
   core/src/agent_runner.c
   core/src/agent_session.c
   core/src/agent_string.c
+  core/src/agent_tool_loop.c
+  core/src/agent_tool_provider.c
   core/src/agent_tools.c
 )
 
@@ -33,6 +35,7 @@ find_package(CURL REQUIRED)
 # Host-side adapter library shared by CLI and daemon.
 add_library(agent_host STATIC
   cli/src/openai_client.cpp
+  cli/src/openai_tool_provider.cpp
   cli/src/sse_parser.cpp
   cli/src/session_store.cpp
   cli/src/summary_compaction.cpp
@@ -86,6 +89,7 @@ target_link_libraries(agentd PRIVATE agent_host)
 enable_testing()
 add_executable(agent_core_tests
   tests/test_session.c
+  tests/test_tool_loop.c
   tests/test_runner.c
 )
 target_link_libraries(agent_core_tests PRIVATE agent_core)

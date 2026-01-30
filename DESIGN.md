@@ -212,6 +212,55 @@ when verbose tracing is enabled. To keep the Web UI responsive:
   - CLI/daemon: filesystem, subprocess execution, network requests, code search, etc.
   - Embedded: GPIO output, I2C/SPI transactions, camera capture, audio playback, BLE scan, etc.
 
+## Core Tool-Loop (Milestone 2)
+
+Goal: move the **tool-call loop** (call LLM → parse tool calls → execute tools → feed tool results → repeat) into
+the **portable core** so daemon/embedded targets can reuse the same control-flow and compaction policy.
+
+### Goals
+
+- **Core-owned loop control-flow**: retries, step limits, and compaction are consistent across hosts.
+- **Core remains transport-agnostic**: no HTTP, no libcurl, no filesystem assumptions.
+- **Core remains JSON-agnostic**:
+  - It does not *parse* provider-specific JSON.
+  - Tool arguments and tool results are treated as opaque UTF-8 strings (often JSON envelopes).
+- **Host/provider adapters stay responsible for protocol shapes**:
+  - OpenAI-compatible JSON request/response formatting/parsing stays in the host adapter.
+  - Embedded providers can implement other formats while still using the same core loop.
+
+### Non-goals (for the first cut)
+
+- Full multimodal tool-loop content parts (text+image/audio/video) in the loop transcript.
+- Stable long-term “event schema” across UI versions (rolling project; schemas may evolve).
+
+### Architecture
+
+Core introduces:
+
+- `agent_chat_message_view_t`: a richer message view used by tool providers that can represent:
+  - normal text messages (`role`, `content`)
+  - assistant messages that include `tool_calls[]`
+  - tool result messages that include `tool_call_id`
+  - optional `name` (used for non-pinned compaction summary markers)
+- `agent_tool_provider_t`: a host-supplied callback interface:
+  - input: message transcript views + tool registry
+  - output: assistant message (`content` + optional `tool_calls[]`)
+  - providers can return `AGENT_ERR_CONTEXT_TOO_LONG` to request a “rotation” retry.
+- `agent_tool_loop_run(...)`: the portable loop engine:
+  - applies char-budget compaction (with deterministic summary insertion)
+  - calls the provider
+  - executes tools via `agent_tool_executor_t`
+  - caps tool outputs before appending them back into the transcript
+  - retries on context-too-long errors (host/provider signals via status)
+
+Host adapters (CLI/daemon) provide:
+
+- An OpenAI-compatible tool provider implemented with JSONCPP:
+  - builds `/chat/completions` request JSON (`tools`, `tool_choice`, tool call/result message shapes)
+  - parses tool calls from the response and returns them as structured tool calls
+- Optional helpers for “tool output capping” and “tool output summary” that are JSON-aware (UI-friendly),
+  while the core only treats tool outputs as strings.
+
 ### Host toolset (CLI/daemon)
 
 The CLI/daemon toolset is designed around **OS-native tooling** plus **bounded filesystem inspection**:

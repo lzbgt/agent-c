@@ -179,3 +179,9 @@ Completed milestones and notable tasks.
 - Removed API keys from tracked docs and moved “local keys” discovery to gitignored `project.local.md`:
   - added `project.local.md.example`
   - updated smoke tests and host tools to read keys from env or `project.local.md`
+
+- Moved the tool-call loop into the portable core (Milestone 2 groundwork):
+  - added core tool-loop API + provider contract (`core/include/agent/tool_loop.h`, `core/include/agent/tool_provider.h`, `core/include/agent/chat.h`)
+  - implemented a JSON-free core loop engine with context-too-long retries (`core/src/agent_tool_loop.c`)
+  - refactored host tool-loop to a thin wrapper over the core loop + OpenAI JSON adapter (`cli/src/tool_loop.cpp`, `cli/src/openai_tool_provider.cpp`)
+  - added core unit tests for tool-loop behavior (fake provider + executor) (`tests/test_tool_loop.c`)
