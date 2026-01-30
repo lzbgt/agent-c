@@ -188,6 +188,15 @@ tools = obj.get("tool_records") or []
 if len(tools) < 1:
   print("expected tool_records >= 1", file=sys.stderr)
   raise SystemExit(1)
+events = obj.get("events") or []
+if not isinstance(events, list) or len(events) < 1:
+  print("expected events >= 1", file=sys.stderr)
+  raise SystemExit(1)
+# If server parsed data_json successfully, it should expose `data` for at least some rows.
+has_parsed = any(isinstance(e, dict) and isinstance(e.get("data"), dict) for e in events)
+if not has_parsed:
+  print("expected at least one parsed event.data dict", file=sys.stderr)
+  raise SystemExit(1)
 PY
 
 db_arts="$(curl -fsS --noproxy "*" --max-time 10 \
@@ -200,4 +209,3 @@ if not obj.get("ok"):
   print("db/artifacts failed:", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
-

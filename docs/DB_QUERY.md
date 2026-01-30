@@ -51,8 +51,15 @@ Response fields:
 Response fields:
 - `run` (object) basic run fields
 - `events` (array, optional) ordered by `event_id`
+- Each event row includes:
+  - `type` (string)
+  - `data_json` (string|null): raw JSON object string
+  - `data` (object, optional): parsed form of `data_json` when parsing succeeds
 - `tool_records` (array, optional) ordered by `id`
 - `artifacts` (array, optional) ordered by `id`
+- Each artifact row includes:
+  - `artifact_json` (string): raw JSON object string
+  - `artifact` (object, optional): parsed form of `artifact_json` when parsing succeeds
 
 ### List artifacts
 
@@ -74,4 +81,3 @@ Response fields:
 
 - If the DB is disabled, endpoints return `404` (not found) or `{ok:false,error:"db disabled"}` depending on call site.
 - For richer queries, use `sqlite3` directly against `db_path` shown in `/api/v1/config`.
-

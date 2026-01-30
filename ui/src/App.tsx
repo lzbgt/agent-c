@@ -743,9 +743,49 @@ export default function App() {
                       tools={Array.isArray(dbRunDetail.data.tool_records) ? dbRunDetail.data.tool_records.length : 0},{" "}
                       artifacts={Array.isArray(dbRunDetail.data.artifacts) ? dbRunDetail.data.artifacts.length : 0}
                     </div>
+                    {Array.isArray(dbRunDetail.data.events) ? (
+                      (() => {
+                        const evs = dbRunDetail.data.events as any[];
+                        const lastErr = [...evs].reverse().find((e) => e?.type === "error");
+                        const reason = lastErr?.data?.reason ?? "";
+                        const msg = lastErr?.data?.error ?? "";
+                        if (!reason && !msg) return null;
+                        return (
+                          <div className="mt-2 text-[11px] text-amber-200/80">
+                            last error: <code>{String(reason || msg)}</code>
+                          </div>
+                        );
+                      })()
+                    ) : null}
                     <pre className="mt-2 max-h-[220px] overflow-auto whitespace-pre-wrap break-words text-[11px] text-white/70">
                       {JSON.stringify(dbRunDetail.data.run ?? {}, null, 2)}
                     </pre>
+                    {Array.isArray(dbRunDetail.data.artifacts) && dbRunDetail.data.artifacts.length > 0 ? (
+                      <div className="mt-2">
+                        <div className="text-xs font-semibold text-white/70">Artifacts</div>
+                        <div className="mt-2 grid gap-2">
+                          {(dbRunDetail.data.artifacts as any[]).slice(0, 6).map((a, idx) => {
+                            const artifact = a?.artifact ?? {
+                              path: a?.path,
+                              kind: a?.kind,
+                              mime: a?.mime,
+                              title: a?.title,
+                              autoplay: a?.autoplay,
+                              repeat: a?.repeat,
+                            };
+                            const title = String(artifact?.title ?? artifact?.path ?? "artifact");
+                            return (
+                              <div key={idx} className="rounded-md border border-white/10 bg-black/10 p-2">
+                                <div className="text-[11px] text-white/50">{title}</div>
+                                <div className="mt-2">
+                                  <ArtifactView baseUrl={effectiveBase} yolo={yolo} artifact={artifact} allowAutoplay={allowAutoplay} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 ) : selectedDbRunId && dbRunDetail.isError ? (
                   <div className="mt-2 text-[11px] text-amber-200/80">failed to load run {selectedDbRunId}</div>

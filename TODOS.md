@@ -114,4 +114,5 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add an optional SQLite troubleshooting store for agentd (mirror sessions/runs/events/tool records) (`docs/DB.md`).
 - [x] Mirror explicit `artifact` events into the SQLite store (schema v2) for debugging “runaway capture” loops.
 - [x] Add daemon endpoints to query SQLite directly (runs/events/artifacts) for UI-native troubleshooting views.
+- [x] Parse DB event/artifact JSON into structured payloads in `/api/v1/db/run` (still includes raw `*_json` fields).
 - [ ] Configure a git remote so `git push` works in this workspace (see `tools/setup_git_remote.sh`, supports `project.local.md: git_remote`).

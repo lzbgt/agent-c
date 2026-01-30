@@ -321,7 +321,15 @@ void handle_db_run_endpoint(
         e["event_id"] = (Json::Int64)sqlite3_column_int64(st2, 0);
         e["ts_unix_ms"] = (Json::Int64)sqlite3_column_int64(st2, 1);
         e["type"] = stmt_to_row(st2, 2);
-        e["data_json"] = stmt_to_row(st2, 3);
+        const Json::Value data_json_v = stmt_to_row(st2, 3);
+        e["data_json"] = data_json_v;
+        if (data_json_v.isString() && !data_json_v.asString().empty()) {
+          Json::Value parsed;
+          std::string perr;
+          if (json_parse_object(data_json_v.asString(), &parsed, &perr)) {
+            e["data"] = parsed;
+          }
+        }
         events.append(e);
       }
       sqlite3_finalize(st2);
@@ -362,7 +370,7 @@ void handle_db_run_endpoint(
     Json::Value arts(Json::arrayValue);
     sqlite3_stmt* st2 = nullptr;
     if (sqlite3_prepare_v2(h.db,
-                           "SELECT id, run_id, ts_unix_ms, session_id, tool_call_id, path, kind, mime, title, autoplay, repeat "
+                           "SELECT id, run_id, ts_unix_ms, session_id, tool_call_id, path, kind, mime, title, autoplay, repeat, artifact_json "
                            "FROM artifacts WHERE run_id=? ORDER BY id LIMIT ?;",
                            -1, &st2, nullptr) == SQLITE_OK && st2) {
       (void)sqlite3_bind_int64(st2, 1, (sqlite3_int64)run_id);
@@ -380,6 +388,15 @@ void handle_db_run_endpoint(
         a["title"] = stmt_to_row(st2, 8);
         a["autoplay"] = sqlite3_column_int(st2, 9) ? true : false;
         a["repeat"] = (Json::Int64)sqlite3_column_int64(st2, 10);
+        const Json::Value artifact_json_v = stmt_to_row(st2, 11);
+        a["artifact_json"] = artifact_json_v;
+        if (artifact_json_v.isString() && !artifact_json_v.asString().empty()) {
+          Json::Value parsed;
+          std::string perr;
+          if (json_parse_object(artifact_json_v.asString(), &parsed, &perr)) {
+            a["artifact"] = parsed;
+          }
+        }
         arts.append(a);
       }
       sqlite3_finalize(st2);
@@ -441,7 +458,7 @@ void handle_db_artifacts_endpoint(
 #else
   sqlite3_stmt* st = nullptr;
   const char* sql =
-    "SELECT id, run_id, ts_unix_ms, path, kind, mime, title, autoplay, repeat "
+    "SELECT id, run_id, ts_unix_ms, path, kind, mime, title, autoplay, repeat, artifact_json "
     "FROM artifacts WHERE session_id=? ORDER BY ts_unix_ms DESC LIMIT ? OFFSET ?;";
   if (sqlite3_prepare_v2(h.db, sql, -1, &st, nullptr) != SQLITE_OK) {
     Json::Value err(Json::objectValue);
@@ -468,6 +485,15 @@ void handle_db_artifacts_endpoint(
     a["title"] = stmt_to_row(st, 6);
     a["autoplay"] = sqlite3_column_int(st, 7) ? true : false;
     a["repeat"] = (Json::Int64)sqlite3_column_int64(st, 8);
+    const Json::Value artifact_json_v = stmt_to_row(st, 9);
+    a["artifact_json"] = artifact_json_v;
+    if (artifact_json_v.isString() && !artifact_json_v.asString().empty()) {
+      Json::Value parsed;
+      std::string perr;
+      if (json_parse_object(artifact_json_v.asString(), &parsed, &perr)) {
+        a["artifact"] = parsed;
+      }
+    }
     arts.append(a);
   }
   sqlite3_finalize(st);
@@ -486,4 +512,3 @@ void handle_db_artifacts_endpoint(
 }
 
 }  // namespace agentd
-

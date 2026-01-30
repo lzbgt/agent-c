@@ -1131,6 +1131,7 @@ agent_status_t agent_tool_loop_run(
           uint8_t first = 1;
           (void)tl_buf_append_char(&d, '{');
           (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
+          (void)tl_json_append_string_field(&d, "reason", "repeated_tool_call_guard", strlen("repeated_tool_call_guard"), &first);
           (void)tl_json_append_string_field(&d, "tool_name", tool_name, strlen(tool_name), &first);
           (void)tl_json_append_u64_field(&d, "repeats", (unsigned long long)repeated_tool_calls, &first);
           (void)tl_json_append_u64_field(&d, "max_repeats", (unsigned long long)options->max_repeated_tool_calls, &first);
