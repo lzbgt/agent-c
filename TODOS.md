@@ -99,7 +99,8 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add join-wait host tools (`ui_wait_any`, `ui_wait_all`) so agents can deterministically wait for one-of or all-of multiple UI acknowledgements.
 - [x] Add UI auto-ack client events (`ui_action_shown`, `artifact_rendered`) so “present to UI” tasks have an observable DoD without relying on tool-call caps.
 - [x] Generalize UI events into a client collaboration protocol: `/session/client_event`, `client` identity, and client-agnostic wait/probe tools (`client_wait_*`, `client_peek`).
-- [ ] Add a client state snapshot protocol (`client_state`) + client-side media telemetry (video play events) so agents can proactively reason about client environment state.
+- [x] Add a client state snapshot protocol (`client_state`) + client-side media telemetry (video play events) so agents can proactively reason about client environment state.
+- [x] Add a bounded client probe RPC (`ui_action type=client_probe` + `client_probe_result`) so agents can request read-only DOM/media/location facts deterministically.
 - [ ] Add a daemon skeleton with:
   - local control socket / HTTP
   - broker client abstraction (MQTT)
@@ -130,4 +131,4 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Parse DB event/artifact JSON into structured payloads in `/api/v1/db/run` (still includes raw `*_json` fields).
 - [x] Parse `tool_records.arguments_json` and `tool_records.result_text` into structured payloads in `/api/v1/db/run`.
 - [x] Support `include_ui_actions=1` in `/api/v1/db/run` so a single run view can show artifacts + UI actions together.
-- [ ] Configure a git remote so `git push` works in this workspace (see `tools/setup_git_remote.sh`, supports `project.local.md: git_remote`).
+- [x] Configure a git remote so `git push` works in this workspace (origin set; `git push` succeeds).
