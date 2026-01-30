@@ -6,4 +6,4 @@ Copy this file to `project.local.md` and fill in real keys.
 
 - deepseek: <DEEPSEEK_API_KEY>
 - openrouter: <OPENROUTER_API_KEY>
-
+- git_remote: <YOUR_GIT_REMOTE_URL>

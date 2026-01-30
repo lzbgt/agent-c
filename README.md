@@ -74,6 +74,13 @@ To set keys via a local file, copy `project.local.md.example` to `project.local.
 Network tests also assume an HTTP proxy may be required; the scripts default to `http://localhost:8120`
 via `https_proxy` / `http_proxy`.
 
+### Daemon config snapshot (debug)
+
+For debugging client/daemon mismatches (CORS, sandbox defaults, job GC), `agentd` exposes:
+- `GET /api/v1/config`
+
+This endpoint requires auth when `--auth-token` is set. It intentionally does not include secrets (auth token, provider API keys).
+
 ## Git remote (publishing)
 
 This workspace may not have a git remote configured. If `git push` fails with “No configured push destination”,
@@ -88,6 +95,21 @@ Or use the helper script (does not guess a URL):
 
 ```bash
 AGENT_GIT_REMOTE_URL="<your_repo_url>" tools/setup_git_remote.sh --push
+```
+
+The helper can also read `git_remote` from your gitignored `project.local.md`:
+
+```bash
+cp project.local.md.example project.local.md
+# edit project.local.md and set:
+# - git_remote: <your_repo_url>
+tools/setup_git_remote.sh --push
+```
+
+If `origin` exists but points to the wrong place, pass `--force` to update it:
+
+```bash
+tools/setup_git_remote.sh --url "<your_repo_url>" --force --push
 ```
 
 Note: there are additional host-tool network smokes (DeepSeek/OpenRouter) that validate bounded tools like

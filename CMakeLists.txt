@@ -141,6 +141,8 @@ if(AGENT_BUILD_HOST)
 
   add_test(NAME agentd_auth_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_auth_smoke.sh $<TARGET_FILE:agentd>)
 
+  add_test(NAME agentd_config_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_config_smoke.sh $<TARGET_FILE:agentd>)
+
   add_test(NAME agentd_sandbox_tighten_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_sandbox_tighten_smoke.sh $<TARGET_FILE:agentd>)
 
   add_test(NAME agentd_cors_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_cors_smoke.sh $<TARGET_FILE:agentd>)
