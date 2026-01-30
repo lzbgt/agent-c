@@ -146,6 +146,13 @@ void handle_db_runs_endpoint(
   limit = clamp_u64(limit, 1, 200);
   offset = clamp_u64(offset, 0, 1000000);
 
+  const bool only_errors = parse_bool_param(query_get(req.query, "only_errors"), false);
+  std::optional<std::string> stop_reason = query_get(req.query, "stop_reason");
+  if ((!stop_reason || stop_reason->empty()) && query_get(req.query, "reason")) {
+    stop_reason = query_get(req.query, "reason");
+  }
+  if (stop_reason && stop_reason->empty()) stop_reason.reset();
+
   DbHandle h;
   std::string path;
   Json::Value o = open_db_or_error(db_or_null, &h, &path);
@@ -163,11 +170,19 @@ void handle_db_runs_endpoint(
   return;
 #else
   sqlite3_stmt* st = nullptr;
-  const char* sql =
+  std::string sql =
     "SELECT run_id, session_id, job_id, ts_unix_ms, tools, model, ok, error, stop_reason, steps_executed, tool_calls_total, tool_calls_by_tool_json, last_error_reason, "
     "(SELECT data_json FROM events e WHERE e.run_id = runs.run_id AND e.type='error' ORDER BY e.event_id DESC LIMIT 1) AS last_error_json "
-    "FROM runs WHERE session_id=? ORDER BY ts_unix_ms DESC LIMIT ? OFFSET ?;";
-  if (sqlite3_prepare_v2(h.db, sql, -1, &st, nullptr) != SQLITE_OK) {
+    "FROM runs WHERE session_id=?";
+  if (only_errors) {
+    sql += " AND ok=0";
+  }
+  if (stop_reason) {
+    sql += " AND stop_reason=?";
+  }
+  sql += " ORDER BY ts_unix_ms DESC LIMIT ? OFFSET ?;";
+
+  if (sqlite3_prepare_v2(h.db, sql.c_str(), -1, &st, nullptr) != SQLITE_OK) {
     Json::Value err(Json::objectValue);
     err["ok"] = false;
     err["rpc_status"] = 500;
@@ -176,9 +191,13 @@ void handle_db_runs_endpoint(
     resp->body = json_stringify(err);
     return;
   }
-  (void)sqlite3_bind_text(st, 1, sid->c_str(), (int)sid->size(), SQLITE_TRANSIENT);
-  (void)sqlite3_bind_int64(st, 2, (sqlite3_int64)limit);
-  (void)sqlite3_bind_int64(st, 3, (sqlite3_int64)offset);
+  int bi = 1;
+  (void)sqlite3_bind_text(st, bi++, sid->c_str(), (int)sid->size(), SQLITE_TRANSIENT);
+  if (stop_reason) {
+    (void)sqlite3_bind_text(st, bi++, stop_reason->c_str(), (int)stop_reason->size(), SQLITE_TRANSIENT);
+  }
+  (void)sqlite3_bind_int64(st, bi++, (sqlite3_int64)limit);
+  (void)sqlite3_bind_int64(st, bi++, (sqlite3_int64)offset);
 
   Json::Value runs(Json::arrayValue);
   while (sqlite3_step(st) == SQLITE_ROW) {
@@ -222,6 +241,8 @@ void handle_db_runs_endpoint(
   out["session_id"] = *sid;
   out["limit"] = (Json::UInt64)limit;
   out["offset"] = (Json::UInt64)offset;
+  out["only_errors"] = only_errors;
+  out["stop_reason"] = stop_reason ? Json::Value(*stop_reason) : Json::Value(Json::nullValue);
   out["count"] = (Json::UInt64)runs.size();
   out["runs"] = runs;
   resp->status = 200;

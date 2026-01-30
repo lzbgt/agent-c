@@ -33,6 +33,10 @@ All endpoints return JSON with:
 
 `GET /api/v1/db/runs?session_id=...&limit=...&offset=...`
 
+Optional filters:
+- `only_errors=1` to return only failing runs (`ok=0`)
+- `stop_reason=<reason>` (or `reason=<reason>`) to filter by an exact stop reason (e.g. `max_steps_exceeded`)
+
 Response fields:
 - `runs` (array)
   - `run_id` (number)

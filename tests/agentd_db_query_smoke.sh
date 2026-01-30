@@ -278,6 +278,21 @@ print(rid)
 PY
 )"
 
+db_runs_filtered="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/runs?session_id=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("""'${SESSION_ID}'"""))')&limit=50&offset=0&only_errors=1&stop_reason=max_steps_exceeded")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${db_runs_filtered}''')
+if not obj.get("ok"):
+  print("db/runs filtered failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+rows = obj.get("runs") or []
+if not rows:
+  print("expected at least 1 filtered error row", file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 db_run="$(curl -fsS --noproxy "*" --max-time 10 \
   "${DAEMON_URL}/api/v1/db/run?run_id=${RUN_ID}&include_events=1&include_tools=1&include_artifacts=1")"
 

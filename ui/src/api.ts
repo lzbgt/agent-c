@@ -402,14 +402,18 @@ export async function apiGetDbRuns(
   base: string,
   sessionId: string,
   authToken?: string,
-  opts?: { limit?: number; offset?: number },
+  opts?: { limit?: number; offset?: number; onlyErrors?: boolean; stopReason?: string },
 ): Promise<DbRunsResp> {
   const limit = typeof opts?.limit === "number" ? opts.limit : 50;
   const offset = typeof opts?.offset === "number" ? opts.offset : 0;
+  const onlyErrors = !!opts?.onlyErrors;
+  const stopReason = typeof opts?.stopReason === "string" ? opts.stopReason : "";
   const r = await fetch(
     `${base}/api/v1/db/runs?session_id=${encodeURIComponent(sessionId)}&limit=${encodeURIComponent(
       String(limit),
-    )}&offset=${encodeURIComponent(String(offset))}`,
+    )}&offset=${encodeURIComponent(String(offset))}&only_errors=${encodeURIComponent(onlyErrors ? "1" : "0")}${
+      stopReason.trim().length > 0 ? `&stop_reason=${encodeURIComponent(stopReason.trim())}` : ""
+    }`,
     { headers: daemonHeaders(authToken) },
   );
   const j = await r.json();

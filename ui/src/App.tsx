@@ -82,6 +82,8 @@ export default function App() {
     false,
   );
   const [allowAutoplay, setAllowAutoplay] = useLocalStorageState("agentui.allowAutoplay", false);
+  const [dbRunsOnlyErrors, setDbRunsOnlyErrors] = useLocalStorageState("agentui.dbRunsOnlyErrors", true);
+  const [dbRunsStopReason, setDbRunsStopReason] = useLocalStorageState("agentui.dbRunsStopReason", "");
   // Keep prompts separate so an active async run does not overwrite the "last completed" view.
   const [lastRunPrompt, setLastRunPrompt] = React.useState("");
   const [lastCompletedPrompt, setLastCompletedPrompt] = React.useState("");
@@ -143,8 +145,14 @@ export default function App() {
   });
 
   const dbRuns = useQuery({
-    queryKey: ["db_runs", effectiveBase, daemonAuthToken, sessionId],
-    queryFn: () => apiGetDbRuns(effectiveBase, sessionId, daemonAuthToken, { limit: 50, offset: 0 }),
+    queryKey: ["db_runs", effectiveBase, daemonAuthToken, sessionId, dbRunsOnlyErrors, dbRunsStopReason],
+    queryFn: () =>
+      apiGetDbRuns(effectiveBase, sessionId, daemonAuthToken, {
+        limit: 50,
+        offset: 0,
+        onlyErrors: dbRunsOnlyErrors,
+        stopReason: dbRunsStopReason,
+      }),
     enabled: false,
     retry: 1,
   });
@@ -739,6 +747,46 @@ export default function App() {
             <div className="mt-1 text-xs text-white/50">
               DB runs:{" "}
               {dbRuns.isFetching ? "loading…" : dbRuns.isError ? "failed" : dbRuns.data?.ok ? `${dbRuns.data?.count ?? 0}` : "(disabled)"}
+            </div>
+            <div className="mt-2 rounded-md border border-white/10 bg-black/10 p-2">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-xs font-semibold text-white/70">DB filters</div>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                  onClick={() => {
+                    setSelectedDbRunId(null);
+                    void dbRuns.refetch();
+                  }}
+                  type="button"
+                  disabled={!sessionId || dbRuns.isFetching}
+                  title="Re-run the DB query with the filters below"
+                >
+                  Apply
+                </button>
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <label className="flex items-center gap-2 text-[11px] text-white/70">
+                  <input
+                    type="checkbox"
+                    checked={!!dbRunsOnlyErrors}
+                    onChange={(e) => setDbRunsOnlyErrors(e.target.checked)}
+                  />
+                  Errors only
+                </label>
+                <div />
+                <div className="col-span-2">
+                  <Label>Stop reason (exact match)</Label>
+                  <input
+                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                    value={dbRunsStopReason}
+                    placeholder="e.g. max_steps_exceeded, repeated_tool_call_guard, max_tool_calls_for_tool_exceeded"
+                    onChange={(e) => setDbRunsStopReason(e.target.value)}
+                  />
+                  <div className="mt-1 text-[11px] text-white/40">
+                    Uses <code>/api/v1/db/runs?only_errors=...</code> and <code>stop_reason=...</code>.
+                  </div>
+                </div>
+              </div>
             </div>
             <div className="mt-2 text-xs text-white/50">
               Tools:{" "}
