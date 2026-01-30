@@ -46,6 +46,14 @@ function Canvas2DEntityView({ entity }: { entity: SceneEntity }) {
   const scriptRaw = safeString(props?.script || props?.js || props?.code);
   const script = scriptRaw.length > 100_000 ? scriptRaw.slice(0, 100_000) : scriptRaw;
   const scriptArgs = props?.script_args ?? props?.args ?? {};
+  const scriptArgsJson = React.useMemo(() => {
+    try {
+      const s = JSON.stringify(scriptArgs ?? {});
+      return s.length > 32_000 ? s.slice(0, 32_000) : s;
+    } catch {
+      return "{}";
+    }
+  }, [scriptArgs]);
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
@@ -142,7 +150,7 @@ function Canvas2DEntityView({ entity }: { entity: SceneEntity }) {
         continue;
       }
     }
-  }, [draw, height, width]);
+  }, [draw, height, width, script, scriptArgsJson]);
 
   return (
     <div className="mt-2 overflow-auto rounded-md border border-white/10 bg-black/20 p-2">

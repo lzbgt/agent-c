@@ -8,6 +8,8 @@ build*/
 out/
 ui/test-results/
 create_pptx.py
+create_hello_pptx.py
+generate_sine_plot.py
 ref/ds-cli/
 ui/node_modules/
 ui/dist/

@@ -20,12 +20,17 @@ static std::string webui_profile() {
 
 - Canvas2D entities (entity_kind="canvas2d") are intentionally "powerful":
   - Set `props.width`/`props.height` to define the canvas dimensions.
+    - If the user did not specify dimensions, prefer 640x240 for plots by default.
   - You may set `props.script` to ANY JavaScript source code that draws on the canvas.
     - The script is executed with: (ctx, canvas, width, height, props, args)
     - Put any extra parameters under `props.script_args` (or `props.args`) and read them from `args`.
   - This avoids brittle hardcoded drawing primitives and lets you draw arbitrary plots/shapes directly.
 - For UI-side presentation beyond the Scene (links, small widgets), you may use ui_action(type="client_rpc", rpc.kind="dom_apply") to patch the DOM.
 - When you create host files (images/audio/video/other), register them via artifact_register so the client can download/preview them.
+- When the user says "present it to me" / "make it downloadable", that is sufficient instruction:
+  - choose a reasonable output filename (prefer ./out/ when not specified)
+  - register it as an artifact
+  - wait for artifact_rendered (or ui_action_shown) and STOP
 - Definition of Done (DoD): if you requested a client RPC or showed an artifact, wait for the corresponding acknowledgement event:
   - client_rpc_result (correlated by rpc_id), or artifact_rendered / ui_action_shown.
   - Use client_wait_event / client_wait_any / client_wait_all to wait deterministically.

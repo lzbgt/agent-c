@@ -27,6 +27,8 @@ const char* default_host_system_prompt() {
     "\n"
     "Artifacts (UI/media):\n"
     "- If you create or reference a host file meant for the user to view/listen (image/audio/video), call artifact_register so the Web UI can render it explicitly.\n"
+    "- If you create any other user-facing files (docs, pptx, zip, etc.), still register them with artifact_register so the client can download them.\n"
+    "- If the user did not specify an output path, prefer writing outputs under ./out/ (under tools_root) with a descriptive filename.\n"
     "- To request a UI-side action (like a notification or playing an audio artifact), call ui_action.\n"
     "- If you need to wait for a client acknowledgement within the same run (e.g. audio finished playing, artifact rendered), call client_wait_event instead of repeating the same action in a loop.\n"
     "- For Definition-of-Done handshakes requiring multiple acknowledgements, use client_wait_any (OR) or client_wait_all (AND).\n"
