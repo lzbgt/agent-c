@@ -870,6 +870,56 @@ export default function App() {
                         );
                       })()
                     ) : null}
+                    {(() => {
+                      const run = (dbRunDetail.data.run ?? {}) as any;
+                      const stopReason = String(run?.stop_reason ?? "");
+                      const steps = typeof run?.steps_executed === "number" ? run.steps_executed : null;
+                      const toolCalls = typeof run?.tool_calls_total === "number" ? run.tool_calls_total : null;
+                      const byTool = run?.tool_calls_by_tool && typeof run.tool_calls_by_tool === "object" ? run.tool_calls_by_tool : null;
+                      if (!stopReason && steps === null && toolCalls === null && !byTool) return null;
+                      return (
+                        <div className="mt-2 rounded-md border border-white/10 bg-black/10 p-2 text-[11px] text-white/70">
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            <div>
+                              stop_reason: <code className="text-white/80">{stopReason || "(unknown)"}</code>
+                            </div>
+                            {typeof steps === "number" ? (
+                              <div>
+                                steps: <code className="text-white/80">{steps}</code>
+                              </div>
+                            ) : null}
+                            {typeof toolCalls === "number" ? (
+                              <div>
+                                tool_calls: <code className="text-white/80">{toolCalls}</code>
+                              </div>
+                            ) : null}
+                            {stopReason ? (
+                              <button
+                                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                                type="button"
+                                title="Set DB filter stop_reason and refetch"
+                                onClick={() => {
+                                  setDbRunsStopReason(stopReason);
+                                  setDbRunsOnlyErrors(true);
+                                  setSelectedDbRunId(null);
+                                  void dbRuns.refetch();
+                                }}
+                              >
+                                Filter by reason
+                              </button>
+                            ) : null}
+                          </div>
+                          {byTool ? (
+                            <div className="mt-2">
+                              <div className="text-[11px] text-white/50">tool_calls_by_tool</div>
+                              <pre className="mt-1 max-h-[140px] overflow-auto whitespace-pre-wrap break-words text-[11px] text-white/70">
+                                {JSON.stringify(byTool, null, 2)}
+                              </pre>
+                            </div>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
                     <pre className="mt-2 max-h-[220px] overflow-auto whitespace-pre-wrap break-words text-[11px] text-white/70">
                       {JSON.stringify(dbRunDetail.data.run ?? {}, null, 2)}
                     </pre>

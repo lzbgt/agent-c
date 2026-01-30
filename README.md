@@ -255,8 +255,8 @@ guard that stops if the model repeats the **exact same tool call** too many time
 - For worst-case safety, daemon also applies a default cap on total tool calls (`/api/v1/config: daemon.max_tool_calls_total_default`).
 - For targeted safety (without breaking benign high-frequency tools like `fs_read`), daemon can apply explicit per-tool limits:
   - daemon defaults are visible at `/api/v1/config: daemon.tool_call_limits_default`
-  - configure via `agentd --tool-call-limit proc_exec=4 --tool-call-limit shell_exec=16`
-  - or via env: `AGENTD_TOOL_CALL_LIMITS_DEFAULT="proc_exec=4,shell_exec=16"`
+  - configure via `agentd --tool-call-limit proc_exec=4 --tool-call-limit shell_exec=16 --tool-call-limit artifact_register=16 --tool-call-limit ui_action=16`
+  - or via env: `AGENTD_TOOL_CALL_LIMITS_DEFAULT="proc_exec=4,shell_exec=16,artifact_register=16,ui_action=16"`
   - per-run overrides: request field `tool_call_limits` (see `docs/PROTOCOL.md`)
 
 Seamless compaction for tool loops:

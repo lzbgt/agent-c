@@ -65,6 +65,9 @@ struct DaemonConfig {
   std::vector<std::pair<std::string, size_t>> tool_call_limits_default = {
     {"proc_exec", 4},
     {"shell_exec", 16},
+    // UI/media signaling can also be spammed in runaway loops; keep it bounded by default.
+    {"artifact_register", 16},
+    {"ui_action", 16},
   };
 
   // Async job GC (daemon longevity): finished jobs are kept only for a bounded time/count.

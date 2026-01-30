@@ -147,6 +147,11 @@ static Json::Value run_request_to_json(
     x.max_calls = max_calls;
     tool_call_limits.push_back(std::move(x));
   };
+  // Start from daemon defaults and apply per-run overrides (if any).
+  // This keeps operators safe by default while still allowing per-run tightening/loosening.
+  for (const auto& p : daemon_cfg.tool_call_limits_default) {
+    upsert_limit(p.first, p.second);
+  }
   if (args.isMember("tool_call_limits") && args["tool_call_limits"].isArray()) {
     const Json::Value arr = args["tool_call_limits"];
     for (Json::ArrayIndex i = 0; i < arr.size(); i++) {
@@ -157,10 +162,6 @@ static Json::Value run_request_to_json(
       uint64_t n_u64 = 0;
       if (!json_get_u64_nonneg(item, "max_calls", &n_u64)) continue;
       upsert_limit(tool, (size_t)n_u64);
-    }
-  } else {
-    for (const auto& p : daemon_cfg.tool_call_limits_default) {
-      upsert_limit(p.first, p.second);
     }
   }
   uint64_t max_chars_u64 = 0;
