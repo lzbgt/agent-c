@@ -99,4 +99,4 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add `.gitignore` for `build/`, logs, and local session artifacts.
 - [x] Add a local Web UI scaffold (`ui/`) to exercise daemon RPC day 1.
 - [x] Refactor oversized `daemon/src/main.cpp` into smaller modules (job manager, JSON/HTTP helpers, etc.).
-- [ ] Configure a git remote so `git push` works in this workspace.
+- [ ] Configure a git remote so `git push` works in this workspace (see `tools/setup_git_remote.sh`, supports `project.local.md: git_remote`).
