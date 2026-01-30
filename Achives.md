@@ -204,7 +204,7 @@ Completed milestones and notable tasks.
 - Tightened daemon scoped mode (`yolo=false`) so host tools no longer expose arbitrary process execution:
   - added `HostToolsetConfig.enable_process_exec` (daemon disables exec tools when scoped)
   - `shell_exec` / `proc_exec` are omitted from the tool registry in scoped mode and rejected by the executor (defense in depth)
-  - `file_apply_patch` no longer allows `unsafe_paths` unless running in unrestricted mode (prevents path traversal)
+  - `file_apply_patch` rejects unsafe patch paths in scoped mode (prevents path traversal) and ignores `unsafe_paths` unless running in unrestricted mode
 
 - Moved the tool-call loop into the portable core (Milestone 2 groundwork):
   - added core tool-loop API + provider contract (`core/include/agent/tool_loop.h`, `core/include/agent/tool_provider.h`, `core/include/agent/chat.h`)
