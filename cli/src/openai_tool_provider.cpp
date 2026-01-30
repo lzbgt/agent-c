@@ -199,7 +199,7 @@ static agent_status_t openai_tool_provider_generate(
     d["epoch"] = (Json::UInt64)req->epoch;
     if (ctx->verbose_events) {
       bool trunc = false;
-      d["request_json"] = truncate_str(request_json, ctx->max_capture_chars, &trunc);
+      d["request_json"] = truncate_str(request_json, ctx->max_event_chars, &trunc);
       d["request_truncated"] = trunc;
     }
     provider_emit_event(ctx, "llm_request", d);
@@ -254,7 +254,7 @@ static agent_status_t openai_tool_provider_generate(
     };
 
     const auto stream_fn = ctx->chat_stream_fn ? ctx->chat_stream_fn : openai_chat_completions_raw_stream;
-    OpenAIStreamResult sr = stream_fn(ctx->cfg, request_json, on_chunk, &acc, ctx->max_capture_chars);
+    OpenAIStreamResult sr = stream_fn(ctx->cfg, request_json, on_chunk, &acc, ctx->max_capture_bytes);
     ctx->last_http_status = sr.http_status;
     ctx->last_response_body = sr.response_body;
 
@@ -267,7 +267,7 @@ static agent_status_t openai_tool_provider_generate(
       d["saw_done"] = sr.saw_done;
       if (ctx->verbose_events) {
         bool trunc = false;
-        d["response_body"] = truncate_str(sr.response_body, ctx->max_capture_chars, &trunc);
+        d["response_body"] = truncate_str(sr.response_body, ctx->max_event_chars, &trunc);
         d["response_truncated"] = trunc;
       }
       provider_emit_event(ctx, "llm_response", d);
@@ -330,7 +330,7 @@ static agent_status_t openai_tool_provider_generate(
       d["stream"] = false;
       if (ctx->verbose_events) {
         bool trunc = false;
-        d["response_body"] = truncate_str(raw.response_body, ctx->max_capture_chars, &trunc);
+        d["response_body"] = truncate_str(raw.response_body, ctx->max_event_chars, &trunc);
         d["response_truncated"] = trunc;
       }
       provider_emit_event(ctx, "llm_response", d);

@@ -233,7 +233,8 @@ bool run_tool_loop(
   pctx.on_event_ctx = &sink;
   pctx.stream_assistant = options.stream_assistant;
   pctx.verbose_events = options.verbose;
-  pctx.max_capture_chars = options.max_capture_bytes;
+  pctx.max_capture_bytes = options.max_capture_bytes;
+  pctx.max_event_chars = options.max_capture_bytes;
 
   agent_tool_provider_t provider = openai_make_tool_provider(&pctx);
 

@@ -35,7 +35,11 @@ struct OpenAIToolProviderCtx {
   bool stream_assistant = false;
 
   bool verbose_events = false;
-  size_t max_capture_chars = 256 * 1024;
+  // Caps the captured streaming wire body (best-effort) returned as `last_response_body`.
+  // This only applies to streaming calls (openai_chat_completions_raw_stream).
+  size_t max_capture_bytes = 256 * 1024;
+  // Caps large fields included in emitted events (best-effort), e.g. request_json/response_body.
+  size_t max_event_chars = 256 * 1024;
 
   // Last HTTP response (best-effort) for callers that want to surface provider errors.
   long last_http_status = 0;
