@@ -11,10 +11,66 @@
 
 #include <json/json.h>
 
+#include <chrono>
+#include <filesystem>
+#include <random>
 #include <sstream>
 #include <vector>
 
 namespace agentd {
+
+static bool is_safe_session_id(const std::string& s) {
+  if (s.empty()) return false;
+  if (s.size() > 200) return false;
+  // Session ids become filenames; reject path traversal and separators.
+  if (s.find('/') != std::string::npos) return false;
+  if (s.find('\\') != std::string::npos) return false;
+  if (s == "." || s == "..") return false;
+  if (s.find("..") != std::string::npos) return false;
+  for (unsigned char c : s) {
+    if ((c >= 'a' && c <= 'z') ||
+        (c >= 'A' && c <= 'Z') ||
+        (c >= '0' && c <= '9') ||
+        c == '_' || c == '-' || c == '.') {
+      continue;
+    }
+    return false;
+  }
+  return true;
+}
+
+static std::string make_uuidish_session_id() {
+  // Best-effort UUIDv4-ish without external deps. Good enough to avoid collisions in practice.
+  std::random_device rd;
+  std::mt19937_64 gen(((uint64_t)rd() << 32) ^ (uint64_t)rd());
+  std::uniform_int_distribution<uint32_t> dist(0, 0xffffffffu);
+
+  uint32_t a = dist(gen);
+  uint16_t b = (uint16_t)(dist(gen) & 0xffffu);
+  uint16_t c = (uint16_t)(dist(gen) & 0xffffu);
+  uint16_t d = (uint16_t)(dist(gen) & 0xffffu);
+  uint64_t e = ((uint64_t)dist(gen) << 32) ^ (uint64_t)dist(gen);
+
+  // v4 + variant.
+  c = (uint16_t)((c & 0x0fffu) | 0x4000u);
+  d = (uint16_t)((d & 0x3fffu) | 0x8000u);
+
+  char buf[64];
+  (void)snprintf(buf, sizeof(buf), "%08x-%04x-%04x-%04x-%012llx",
+                 a, (unsigned)b, (unsigned)c, (unsigned)d, (unsigned long long)(e & 0xffffffffffffull));
+  return std::string(buf);
+}
+
+static bool session_files_exist(const std::string& sessions_root_dir, const std::string& session_id) {
+  std::error_code ec;
+  const std::filesystem::path root(sessions_root_dir);
+  const std::filesystem::path sess = root / (session_id + ".sess");
+  const std::filesystem::path json = root / (session_id + ".json");
+  if (std::filesystem::exists(sess, ec)) return true;
+  ec.clear();
+  if (std::filesystem::exists(json, ec)) return true;
+  return false;
+}
 
 void handle_sessions_endpoint(
   const DaemonConfig& cfg,
@@ -54,6 +110,84 @@ void handle_sessions_endpoint(
     arr.append(s);
   }
   out["sessions"] = arr;
+  resp->body = json_stringify(out);
+}
+
+void handle_session_new_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const std::string& sessions_root_dir,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  std::string requested_id;
+  bool create_files = true;
+  if (!req.body.empty()) {
+    Json::Value body(Json::objectValue);
+    std::string err;
+    if (!json_parse_object(req.body, &body, &err)) {
+      resp->status = 400;
+      resp->body = R"({"ok":false,"error":"invalid JSON body"})";
+      return;
+    }
+    if (body.isMember("session_id") && body["session_id"].isString()) {
+      requested_id = body["session_id"].asString();
+    }
+    if (body.isMember("create_files") && body["create_files"].isBool()) {
+      create_files = body["create_files"].asBool();
+    }
+  }
+
+  std::string sid = requested_id.empty() ? make_uuidish_session_id() : requested_id;
+  if (!is_safe_session_id(sid)) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    return;
+  }
+
+  // Avoid collisions when autogenerating. (requested ids are allowed to already exist)
+  if (requested_id.empty()) {
+    for (int i = 0; i < 8 && session_files_exist(sessions_root_dir, sid); i++) {
+      sid = make_uuidish_session_id();
+    }
+  }
+
+  const bool existed = session_files_exist(sessions_root_dir, sid);
+
+  if (create_files && !existed) {
+    agent_session_t* session = nullptr;
+    agent_status_t st = agent_session_create(&session);
+    if (st != AGENT_OK || !session) {
+      resp->status = 500;
+      resp->body = R"({"ok":false,"error":"failed to create session"})";
+      return;
+    }
+
+    agent_persistor_t p{};
+    const agent_status_t pst = agent_file_persistor_create(sessions_root_dir.c_str(), &p);
+    st = (pst == AGENT_OK && p.save) ? p.save(p.ctx, sid.c_str(), session) : pst;
+    agent_persistor_destroy(&p);
+    agent_session_destroy(session);
+
+    if (st != AGENT_OK) {
+      resp->status = 500;
+      Json::Value out(Json::objectValue);
+      out["ok"] = false;
+      out["error"] = "failed to save session";
+      out["status"] = (Json::Int64)st;
+      resp->body = json_stringify(out);
+      return;
+    }
+  }
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = true;
+  out["session_id"] = sid;
+  out["created"] = !existed;
   resp->body = json_stringify(out);
 }
 

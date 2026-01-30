@@ -420,6 +420,7 @@ Initial endpoints (implemented in `agentd`):
 - `GET /api/v1/job/stream?job_id=...&cursor=...` → streams events as Server-Sent Events (SSE) for responsive UIs.
 - `GET /api/v1/file?path=...&yolo=0|1` → returns a file for UI preview (images/audio/video/text; size capped).
 - `GET /api/v1/sessions` → list session ids.
+- `POST /api/v1/session/new` → create a new unique session id (multi-client safe).
 - `GET /api/v1/session?session_id=...` → get session messages.
 - `DELETE /api/v1/session?session_id=...` → delete a session (messages + audit log).
 - `GET /api/v1/session/audit?session_id=...` → fetch recent per-run audit entries (JSONL parsed to array).

@@ -271,6 +271,33 @@ export async function apiGetSession(base: string, sessionId: string, authToken?:
   return SessionSchema.parse(j);
 }
 
+export const NewSessionRespSchema = z
+  .object({
+    ok: z.boolean(),
+    session_id: z.string().optional(),
+    created: z.boolean().optional(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+export type NewSessionResp = z.infer<typeof NewSessionRespSchema>;
+
+export async function apiNewSession(
+  base: string,
+  authToken?: string,
+  opts?: { sessionId?: string; createFiles?: boolean },
+): Promise<NewSessionResp> {
+  const payload: any = {};
+  if (opts?.sessionId) payload.session_id = String(opts.sessionId);
+  if (typeof opts?.createFiles === "boolean") payload.create_files = opts.createFiles;
+  const r = await fetch(`${base}/api/v1/session/new`, {
+    method: "POST",
+    headers: daemonHeaders(authToken, { "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json();
+  return NewSessionRespSchema.parse(j);
+}
+
 export const AuditSchema = z.object({
   ok: z.boolean(),
   session_id: z.string().optional(),

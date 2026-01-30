@@ -429,6 +429,10 @@ int main(int argc, char** argv) {
     handle_sessions_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
   });
 
+  server.handle("POST", "/api/v1/session/new", [&](const HttpRequest& req, HttpResponse* resp) {
+    handle_session_new_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
+  });
+
   server.handle("GET", "/api/v1/session", [&](const HttpRequest& req, HttpResponse* resp) {
     handle_session_get_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
   });

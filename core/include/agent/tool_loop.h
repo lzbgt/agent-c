@@ -64,6 +64,11 @@ typedef struct agent_tool_loop_options {
   // 0 means unlimited.
   size_t max_steps;
 
+  // Repetition guard: abort if the same tool call (same tool name + arguments) is repeated
+  // more than this many times consecutively. This prevents runaway loops (e.g. repeated camera capture).
+  // 0 disables the guard.
+  size_t max_repeated_tool_calls;
+
   // Seamless compaction (char budget heuristic).
   // 0 means default (20000).
   size_t max_chars;
@@ -127,4 +132,3 @@ agent_status_t agent_tool_loop_run(
 #ifdef __cplusplus
 }  // extern "C"
 #endif
-

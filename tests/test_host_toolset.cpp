@@ -132,6 +132,7 @@ static void test_readonly_policy_disables_exec_and_patch() {
   assert(registry_contains(reg, "fs_find"));
   assert(registry_contains(reg, "fs_read"));
   assert(registry_contains(reg, "text_search"));
+  assert(registry_contains(reg, "artifact_register"));
 
   // Defense-in-depth: executor rejects disabled tools even if called directly.
   {
@@ -175,6 +176,7 @@ static void test_scoped_mode_disables_exec_tools_but_keeps_patch() {
   assert(registry_contains(reg, "fs_find"));
   assert(registry_contains(reg, "fs_read"));
   assert(registry_contains(reg, "text_search"));
+  assert(registry_contains(reg, "artifact_register"));
 
   // Defense-in-depth: executor rejects disabled exec tools even if called directly.
   {
@@ -952,11 +954,55 @@ static void test_fs_find() {
   std::filesystem::remove_all(root);
 }
 
+static void test_artifact_register() {
+  const auto root = std::filesystem::temp_directory_path() / ("agent_host_artifact_" + std::to_string((long long)getpid()));
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+
+  HostToolsetConfig cfg;
+  cfg.root_dir = root.string();
+  cfg.policy = HostToolsetPolicyMode::ReadOnly;
+
+  agent_tool_registry_t* reg = nullptr;
+  agent_tool_executor_t exec{};
+  assert(toolset_host_create(cfg, &reg, &exec) == AGENT_OK);
+  assert(registry_contains(reg, "artifact_register"));
+
+  const auto p = root / "hello.wav";
+  {
+    std::ofstream f(p, std::ios::binary);
+    f << "RIFF";
+  }
+
+  Json::Value args(Json::objectValue);
+  args["path"] = "hello.wav";
+  args["autoplay"] = true;
+  args["repeat"] = 2;
+  args["title"] = "test clip";
+  const std::string req = json_stringify(args);
+  agent_string_t out{};
+  assert(exec.execute(exec.ctx, "artifact_register", req.c_str(), &out) == AGENT_OK);
+  const Json::Value resp = json_parse(std::string(out.data, out.len));
+  assert(resp["ok"].asBool());
+  assert(resp["data"]["tool"].asString() == "artifact_register");
+  assert(resp["data"]["artifact"]["path"].asString() == "hello.wav");
+  assert(resp["data"]["artifact"]["kind"].asString() == "audio");
+  assert(resp["data"]["artifact"]["autoplay"].asBool());
+  assert(resp["data"]["artifact"]["repeat"].asInt() == 2);
+  assert(resp["data"]["artifact"]["title"].asString() == "test clip");
+  agent_string_free(&out);
+
+  agent_tool_registry_destroy(reg);
+  toolset_host_destroy(&exec);
+  std::filesystem::remove_all(root);
+}
+
 int main() {
   test_file_apply_patch();
   test_readonly_policy_disables_exec_and_patch();
   test_scoped_mode_disables_exec_tools_but_keeps_patch();
   test_scoped_mode_denies_symlink_escapes();
+  test_artifact_register();
   test_fs_stat_list_read();
   test_shell_exec();
   test_proc_exec();

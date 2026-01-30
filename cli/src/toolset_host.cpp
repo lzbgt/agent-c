@@ -40,77 +40,6 @@ static bool str_contains(const std::string& s, char c) {
   return s.find(c) != std::string::npos;
 }
 
-static std::string to_generic_string(const std::filesystem::path& p) {
-  // Prefer a stable "/"-separated form for JSON/tool output.
-  return p.generic_string();
-}
-
-static bool path_is_within(const std::filesystem::path& root, const std::filesystem::path& p) {
-  auto it_r = root.begin();
-  auto it_p = p.begin();
-  for (; it_r != root.end(); ++it_r, ++it_p) {
-    if (it_p == p.end()) return false;
-    if (*it_r != *it_p) return false;
-  }
-  return true;
-}
-
-static bool is_symlink_path(const std::filesystem::path& p) {
-  std::error_code ec;
-  const auto st = std::filesystem::symlink_status(p, ec);
-  if (ec) return false;
-  return std::filesystem::is_symlink(st);
-}
-
-static bool path_contains_symlink_component(const std::filesystem::path& root, const std::filesystem::path& p) {
-  // Assume p is under root (lexically). Walk components and reject if any existing prefix is a symlink.
-  std::filesystem::path cur = root;
-  // IMPORTANT: use lexically_relative, not std::filesystem::relative, because relative() may resolve
-  // symlinks and "erase" the very symlink component we want to detect.
-  std::filesystem::path rel = p.lexically_relative(root);
-  if (rel.empty()) return false;
-  for (const auto& comp : rel) {
-    cur /= comp;
-    std::error_code ec;
-    std::filesystem::file_status st = std::filesystem::symlink_status(cur, ec);
-    if (ec) {
-      // If a prefix doesn't exist, stop checking further prefixes (can't be a symlink).
-      break;
-    }
-    if (std::filesystem::is_symlink(st)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-static std::optional<std::filesystem::path> resolve_under_root(
-  const std::filesystem::path& root,
-  const std::string& user_path,
-  bool unrestricted
-) {
-  std::filesystem::path p(user_path);
-  if (!unrestricted && p.is_absolute()) {
-    return std::nullopt;
-  }
-  std::filesystem::path resolved = p.is_absolute() ? p : (root / p);
-  resolved = resolved.lexically_normal();
-  if (!unrestricted) {
-    const std::filesystem::path norm_root = root.lexically_normal();
-    if (!path_is_within(norm_root, resolved)) {
-      return std::nullopt;
-    }
-  }
-  return resolved;
-}
-
-static int64_t file_time_to_unix_ms(std::filesystem::file_time_type ft) {
-  using file_clock = std::filesystem::file_time_type::clock;
-  using sys_clock = std::chrono::system_clock;
-  const auto sctp = std::chrono::time_point_cast<sys_clock::duration>(ft - file_clock::now() + sys_clock::now());
-  return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(sctp.time_since_epoch()).count();
-}
-
 static std::string normalize_gitignore_pattern(std::string p) {
   // Best-effort compatibility:
   // - treat ** like * (fnmatch doesn't implement git's ** semantics)
@@ -1720,6 +1649,9 @@ static agent_status_t host_tools_execute(void* vctx, const char* tool_name, cons
   if (name == "text_search") {
     return tool_text_search(ctx, arguments_json, out_result);
   }
+  if (name == "artifact_register") {
+    return tool_artifact_register(ctx, arguments_json, out_result);
+  }
   // Keep the response machine-readable so the LLM can reason about failures.
   return set_result(out_result, "{\"ok\":false,\"error\":\"unknown tool\",\"data\":{}}");
 }
@@ -1905,6 +1837,14 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     "},"
     "\"required\":[\"query\"]"
     "}"
+  );
+  if (st != AGENT_OK) goto fail;
+
+  st = add_tool(
+    r,
+    "artifact_register",
+    "Register a host file (image/audio/video/etc) as an artifact for the UI to render. Returns JSON envelope with data.artifact metadata and playback hints.",
+    "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"kind\":{\"type\":\"string\",\"description\":\"image|audio|video|text|file\"},\"mime\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"autoplay\":{\"type\":\"boolean\"},\"repeat\":{\"type\":\"integer\"}},\"required\":[\"path\"]}"
   );
   if (st != AGENT_OK) goto fail;
 

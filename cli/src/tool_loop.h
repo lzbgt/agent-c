@@ -23,6 +23,10 @@ struct ToolLoopOptions {
   // Max number of tool-loop steps.
   // 0 means "unlimited" (run until the model stops producing tool calls).
   size_t max_steps = 0;
+  // Repetition guard: abort if the same tool call (same tool name + arguments) is repeated
+  // more than this many times consecutively. Helps prevent runaway loops (e.g. repeated camera capture).
+  // 0 disables the guard.
+  size_t max_repeated_tool_calls = 12;
   // When true, captures full request/response bodies and tool I/O into `events_json`.
   // When false, captures a lightweight event log without large blobs.
   bool verbose = false;

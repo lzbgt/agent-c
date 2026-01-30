@@ -60,6 +60,12 @@ static Json::Value summarize_tool_output_json(const std::string& tool_out) {
     if (data.isMember("truncated")) summary["truncated"] = data["truncated"];
     if (data.isMember("argv")) summary["argv"] = data["argv"];
     if (data.isMember("tool")) summary["tool"] = data["tool"];
+    // Special-case: keep artifact metadata even when verbose events are disabled.
+    if (data.isMember("tool") && data["tool"].isString() && data["tool"].asString() == "artifact_register") {
+      if (data.isMember("artifact") && data["artifact"].isObject()) {
+        summary["artifact"] = data["artifact"];
+      }
+    }
     if (data.isMember("check") && data["check"].isObject() && data["check"].isMember("exit_code")) {
       summary["check_exit_code"] = data["check"]["exit_code"];
     }
@@ -121,6 +127,52 @@ static void sink_on_event(void* vctx, const char* type, const char* data_json) {
   sink->events_count++;
 
   if (data_json) sink_note_capture(sink, data_json);
+
+  // Derived UI event: artifact
+  if (data.isObject() && std::string(type) == "tool_result") {
+    const std::string tool_name = data.isMember("tool_name") && data["tool_name"].isString() ? data["tool_name"].asString() : "";
+    if (tool_name == "artifact_register") {
+      Json::Value artifact;
+      if (data.isMember("summary") && data["summary"].isObject()) {
+        const auto& s = data["summary"];
+        if (s.isMember("artifact") && s["artifact"].isObject()) {
+          artifact = s["artifact"];
+        }
+      }
+      if (artifact.isNull() && data.isMember("content") && data["content"].isString()) {
+        Json::Value content_obj;
+        if (parse_json_object(data["content"].asString(), &content_obj)) {
+          if (content_obj.isMember("data") && content_obj["data"].isObject()) {
+            const auto& cd = content_obj["data"];
+            if (cd.isMember("tool") && cd["tool"].isString() && cd["tool"].asString() == "artifact_register") {
+              if (cd.isMember("artifact") && cd["artifact"].isObject()) {
+                artifact = cd["artifact"];
+              }
+            }
+          }
+        }
+      }
+
+      if (artifact.isObject() && sink->events_count < sink->max_events) {
+        Json::Value ad(Json::objectValue);
+        if (data.isMember("step")) ad["step"] = data["step"];
+        if (data.isMember("tool_call_id")) ad["tool_call_id"] = data["tool_call_id"];
+        ad["tool_name"] = tool_name;
+        ad["artifact"] = artifact;
+
+        Json::Value ae(Json::objectValue);
+        ae["type"] = "artifact";
+        ae["data"] = ad;
+        sink->events.append(ae);
+        sink->events_count++;
+
+        const std::string aj = json_stringify(ad);
+        if (sink->forward_cb) {
+          sink->forward_cb(sink->forward_ctx, "artifact", aj.c_str());
+        }
+      }
+    }
+  }
 
   // Optional trace output (best-effort).
   if (sink->trace_stream) {
@@ -243,6 +295,7 @@ bool run_tool_loop(
   opt.force_tool_or_null = options.force_tool.empty() ? nullptr : options.force_tool.c_str();
   opt.require_tool_call = options.require_tool_call ? 1 : 0;
   opt.max_steps = options.max_steps;
+  opt.max_repeated_tool_calls = options.max_repeated_tool_calls;
   opt.max_chars = options.max_chars;
   opt.keep_last_messages = options.keep_last_messages;
   opt.insert_compaction_summary = options.insert_compaction_summary ? 1 : 0;

@@ -9,6 +9,7 @@ import {
   apiGetTools,
   apiCancelJob,
   apiListSessions,
+  apiNewSession,
   apiRun,
   apiRunAsync,
   daemonHeaders,
@@ -68,6 +69,7 @@ export default function App() {
     "agentui.showDebugInConversation",
     false,
   );
+  const [allowAutoplay, setAllowAutoplay] = useLocalStorageState("agentui.allowAutoplay", false);
   // Keep prompts separate so an active async run does not overwrite the "last completed" view.
   const [lastRunPrompt, setLastRunPrompt] = React.useState("");
   const [lastCompletedPrompt, setLastCompletedPrompt] = React.useState("");
@@ -104,6 +106,35 @@ export default function App() {
     queryFn: () => apiListSessions(effectiveBase, daemonAuthToken),
     retry: 1,
   });
+
+  const newSession = useMutation({
+    mutationFn: async () => {
+      const r = await apiNewSession(effectiveBase, daemonAuthToken);
+      return r;
+    },
+    onSuccess: (v) => {
+      if (v.ok && v.session_id) {
+        setSessionId(v.session_id);
+        void sessions.refetch();
+        void audit.refetch();
+      }
+    },
+  });
+
+  const autoSessionInitRef = React.useRef(false);
+  React.useEffect(() => {
+    if (autoSessionInitRef.current) return;
+    if (!sessions.isSuccess) return;
+    const ids = sessions.data?.sessions ?? [];
+    // If the UI is still on the historical "default" placeholder but no such session exists,
+    // create a new unique session id to avoid collisions across tabs/clients.
+    if (sessionId === "default" && !ids.includes("default")) {
+      autoSessionInitRef.current = true;
+      void newSession.mutateAsync().catch(() => {
+        // keep default; user can retry via button
+      });
+    }
+  }, [sessionId, sessions.isSuccess, sessions.data?.sessions, newSession]);
 
   const toolsDefs = useQuery({
     queryKey: ["tools", effectiveBase, daemonAuthToken, tools, toolsRoot, yolo, hostPolicy],
@@ -518,6 +549,15 @@ export default function App() {
                 Refresh
               </button>
               <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                onClick={() => newSession.mutate()}
+                type="button"
+                disabled={newSession.isPending}
+                title="Create a new unique session id"
+              >
+                New session
+              </button>
+              <button
                 className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
                 onClick={() => toolsDefs.refetch()}
                 type="button"
@@ -693,6 +733,23 @@ export default function App() {
                     effective: <code>{toolsDefs.data.effective_host_policy}</code>
                   </div>
                 ) : null}
+              </div>
+              <div className="col-span-2 rounded-md border border-white/10 bg-black/20 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-xs font-semibold text-white/70">Agent media</div>
+                  <label className="flex items-center gap-2 text-[11px] text-white/70">
+                    <input
+                      type="checkbox"
+                      checked={allowAutoplay}
+                      onChange={(e) => setAllowAutoplay(e.target.checked)}
+                    />
+                    Allow agent-requested audio autoplay
+                  </label>
+                </div>
+                <div className="mt-1 text-[11px] text-white/40">
+                  When enabled and the agent emits an <code>artifact</code> event with <code>autoplay=true</code>, the UI will try to play the audio.
+                  Browsers may still block autoplay; you can always click “Play”.
+                </div>
               </div>
               <div>
                 <Label>Tools root</Label>
@@ -1109,6 +1166,7 @@ export default function App() {
               prompt={lastRunPrompt || prompt}
               events={liveEvents}
               showDebugEvents={showDebugInConversation}
+              allowAutoplay={allowAutoplay}
             />
           </div>
         ) : null}
@@ -1122,6 +1180,7 @@ export default function App() {
               prompt={lastCompletedPrompt || prompt}
               events={result.events}
               showDebugEvents={showDebugInConversation}
+              allowAutoplay={allowAutoplay}
             />
           </div>
         ) : null}
@@ -1176,6 +1235,7 @@ export default function App() {
                             prompt={String(e.prompt ?? "")}
                             events={e.events}
                             showDebugEvents={showDebugInConversation}
+                            allowAutoplay={allowAutoplay}
                           />
                         </div>
                         <div className="mt-3 text-xs font-semibold text-white/70">Events (raw)</div>

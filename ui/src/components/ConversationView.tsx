@@ -2,6 +2,7 @@ import React from "react";
 import type { AgentEvent } from "../api";
 import Markdown from "./Markdown";
 import ToolResultView from "./ToolResultView";
+import ArtifactView from "./ArtifactView";
 
 function safeJsonParse(s: string): any | null {
   try {
@@ -47,12 +48,14 @@ export default function ConversationView({
   prompt,
   events,
   showDebugEvents,
+  allowAutoplay,
 }: {
   baseUrl: string;
   yolo: boolean;
   prompt: string;
   events: AgentEvent[];
   showDebugEvents?: boolean;
+  allowAutoplay: boolean;
 }) {
   const items: Array<React.ReactNode> = [];
   let streamedAssistant = "";
@@ -120,6 +123,18 @@ export default function ConversationView({
           <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
             {data.summary ? JSON.stringify(data.summary, null, 2) : "(enable verbose to capture tool output)"}
           </pre>
+        </Card>,
+      );
+      return;
+    }
+
+    if (type === "artifact") {
+      sawToolOrAssistant = true;
+      const artifact = data?.artifact ?? {};
+      const title = String(artifact?.title ?? artifact?.path ?? "artifact");
+      items.push(
+        <Card key={`af-${idx}`} title={`Artifact: ${title}`}>
+          <ArtifactView baseUrl={baseUrl} yolo={yolo} artifact={artifact} allowAutoplay={allowAutoplay} />
         </Card>,
       );
       return;

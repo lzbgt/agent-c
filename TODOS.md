@@ -82,6 +82,8 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Surface daemon config snapshot (`GET /api/v1/config`) in the Settings panel for debugging.
 - [x] Keep the last completed run visible during async runs and transient fetch/SSE errors (avoid “history wiped” perception).
 - [x] Add a daemon file endpoint for UI previews (`/api/v1/file`) for images/audio/video artifacts.
+- [x] Add multi-client-safe session creation (`POST /api/v1/session/new`) and a UI “New session” action.
+- [x] Add explicit artifact events (`artifact`) so UI can render media without regex guessing.
 - [ ] Add a daemon skeleton with:
   - local control socket / HTTP
   - broker client abstraction (MQTT)

@@ -8,6 +8,25 @@
 
 static const char* kCompactionSummaryName = "__agent_compaction_summary__";
 
+static uint64_t tl_fnv1a64(const char* s, size_t n) {
+  const unsigned char* p = (const unsigned char*)s;
+  uint64_t h = 1469598103934665603ull;
+  for (size_t i = 0; i < n; i++) {
+    h ^= (uint64_t)p[i];
+    h *= 1099511628211ull;
+  }
+  return h;
+}
+
+static uint64_t tl_tool_call_sig(const char* tool_name, const char* args_json) {
+  if (!tool_name) tool_name = "";
+  if (!args_json) args_json = "";
+  const uint64_t a = tl_fnv1a64(tool_name, strlen(tool_name));
+  const uint64_t b = tl_fnv1a64(args_json, strlen(args_json));
+  // Mix two hashes (cheap).
+  return a ^ (b + 0x9e3779b97f4a7c15ull + (a << 6) + (a >> 2));
+}
+
 const char* agent_tool_loop_compaction_summary_name(void) {
   return kCompactionSummaryName;
 }
@@ -789,6 +808,9 @@ agent_status_t agent_tool_loop_run(
   const size_t max_tool_result_chars = options->max_tool_result_chars;
   const size_t max_retries = options->max_context_too_long_retries == 0 ? 2 : options->max_context_too_long_retries;
 
+  uint64_t last_tool_sig = 0;
+  size_t repeated_tool_calls = 0;
+
   uint64_t epoch = 0;
   {
     tl_buf_t d = {0};
@@ -1089,6 +1111,34 @@ agent_status_t agent_tool_loop_run(
         tool_call_id = tool_call_id_buf;
       }
       const char* args_json = call->arguments_json.data ? call->arguments_json.data : "{}";
+
+      // Repetition guard: stop runaway loops where the model repeats the exact same tool call endlessly.
+      if (options->max_repeated_tool_calls > 0) {
+        const uint64_t sig = tl_tool_call_sig(tool_name, args_json);
+        if (sig == last_tool_sig) {
+          repeated_tool_calls++;
+        } else {
+          last_tool_sig = sig;
+          repeated_tool_calls = 1;
+        }
+        if (repeated_tool_calls > options->max_repeated_tool_calls) {
+          const char* msg = "repeated tool call detected (guard)";
+          (void)agent_string_set_copy(&res.error_message, msg, strlen(msg));
+          tl_buf_t d = {0};
+          uint8_t first = 1;
+          (void)tl_buf_append_char(&d, '{');
+          (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
+          (void)tl_json_append_string_field(&d, "tool_name", tool_name, strlen(tool_name), &first);
+          (void)tl_json_append_u64_field(&d, "repeats", (unsigned long long)repeated_tool_calls, &first);
+          (void)tl_json_append_u64_field(&d, "max_repeats", (unsigned long long)options->max_repeated_tool_calls, &first);
+          (void)tl_json_append_string_field(&d, "error", msg, strlen(msg), &first);
+          (void)tl_buf_append_char(&d, '}');
+          tl_emit_event(hooks, "error", d.data ? d.data : "{}");
+          tl_buf_free(&d);
+          status = AGENT_ERR_INTERNAL;
+          goto cleanup;
+        }
+      }
 
       // tool_call event
       {
