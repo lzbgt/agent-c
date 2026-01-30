@@ -1,6 +1,6 @@
 # Agent Project – Architecture & Design (Draft)
 
-Date: 2026-01-29
+Date: 2026-01-30
 
 ## Goals
 
@@ -129,6 +129,41 @@ Implementation notes:
   tools they are not allowed to call.
 - The executor should still reject disabled tool names (defense in depth) in case a provider returns tool calls that are not
   present in the tool schema set.
+
+## HTTP CORS Policy (Daemon)
+
+Problem:
+- The daemon serves a local Web UI and is often accessed cross-origin (e.g. UI dev server `http://localhost:5173` → daemon `http://127.0.0.1:8123`).
+- CORS was previously hard-coded to `Access-Control-Allow-Origin: *` and a limited header allowlist, which is:
+  - too permissive by default when binding to non-loopback; and
+  - too restrictive for the UI’s `X-OpenRouter-Key` header.
+
+Goals:
+- Safe defaults that work for the local UI on loopback.
+- No implicit “public API” behavior when binding to non-loopback.
+- Consistent behavior across JSON endpoints and SSE endpoints, including `OPTIONS` preflight.
+- Easy to reason about and test (centralized policy, minimal per-handler duplication).
+
+Non-goals (for this milestone):
+- Cookie-based auth / `Access-Control-Allow-Credentials` support.
+- Per-route origin policies or complex regex matching.
+
+Policy:
+- Default:
+  - If daemon binds to loopback (`127.0.0.1`, `localhost`): enable permissive CORS (`*`) for developer ergonomics.
+  - If daemon binds to a non-loopback host: CORS is disabled unless explicitly configured.
+- Configuration:
+  - `--cors-origin <origin|*>` (repeatable):
+    - `*` enables `Access-Control-Allow-Origin: *`.
+    - Otherwise, only the configured exact origins are allowed; when a request has an `Origin` header matching the allowlist,
+      the daemon reflects that origin and adds `Vary: Origin`.
+  - `--cors-allow-headers <csv>` defaults to at least: `Content-Type, Authorization, X-OpenRouter-Key`.
+  - `--cors-allow-methods <csv>` defaults to at least: `GET, POST, DELETE, OPTIONS`.
+
+Implementation shape:
+- Introduce a `CorsConfig` and a single function that applies CORS headers given `HttpRequest` + config.
+- Teach the HTTP server to dispatch `OPTIONS` requests to a configurable preflight handler so preflight responses can include
+  policy-derived headers (including dynamic origin reflection).
 
 ## Data Model
 

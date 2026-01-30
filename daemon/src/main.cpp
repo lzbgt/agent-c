@@ -5,9 +5,11 @@
 #include "agent/runner.h"
 
 #include "http_util.h"
+#include "cors.h"
 #include "sandbox_policy.h"
 #include "string_util.h"
 #include "openrouter_models_endpoint.h"
+#include "job_stream_endpoint.h"
 
 #include "default_system_prompt.h"
 #include "file_persistor.h"
@@ -88,6 +90,16 @@ struct DaemonConfig {
   // Async job GC (daemon longevity): finished jobs are kept only for a bounded time/count.
   int64_t job_ttl_ms = 30 * 60 * 1000; // 30 minutes
   size_t max_jobs = 256;
+
+  // CORS (for browser-based clients). Defaults depend on listen host:
+  // - loopback: allow any origin ("*") for local UI dev
+  // - non-loopback: disabled unless explicitly configured via --cors-origin
+  bool cors_origins_set = false;
+  bool cors_disabled = false;
+  std::vector<std::string> cors_origins; // values are exact match, or "*"
+  std::string cors_allow_headers;
+  std::string cors_allow_methods;
+  int cors_max_age_seconds = 600;
 };
 
 static bool host_is_loopback(std::string host) {
@@ -1003,6 +1015,40 @@ int main(int argc, char** argv) {
       cfg.yolo_default = false;
     } else if (a == "--no-default-system") {
       cfg.no_default_system = true;
+    } else if (a == "--cors-origin") {
+      std::string v;
+      if (!take(&v) || v.empty()) {
+        std::cerr << "Missing value for --cors-origin\n";
+        return 2;
+      }
+      cfg.cors_origins_set = true;
+      cfg.cors_origins.push_back(v);
+    } else if (a == "--cors-allow-headers") {
+      if (!take(&cfg.cors_allow_headers)) {
+        std::cerr << "Missing value for --cors-allow-headers\n";
+        return 2;
+      }
+    } else if (a == "--cors-allow-methods") {
+      if (!take(&cfg.cors_allow_methods)) {
+        std::cerr << "Missing value for --cors-allow-methods\n";
+        return 2;
+      }
+    } else if (a == "--cors-max-age") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --cors-max-age\n";
+        return 2;
+      }
+      try {
+        cfg.cors_max_age_seconds = std::max(0, std::stoi(v));
+      } catch (...) {
+        std::cerr << "Invalid --cors-max-age\n";
+        return 2;
+      }
+    } else if (a == "--no-cors") {
+      cfg.cors_disabled = true;
+      cfg.cors_origins_set = true;
+      cfg.cors_origins.clear();
     } else if (a == "--help" || a == "-h") {
       std::cerr
         << "Usage: agentd [options]\n"
@@ -1010,6 +1056,11 @@ int main(int argc, char** argv) {
         << "  --auth-token <tok>   Require Authorization: Bearer <tok> (default: disabled)\n"
         << "  --allow-unauth       Allow non-loopback without auth (INSECURE)\n"
         << "  --port <n>           Listen port (default: 8123)\n"
+        << "  --cors-origin <origin|*>   Allowed browser Origin (repeatable; default: '*' on loopback, else disabled)\n"
+        << "  --cors-allow-headers <csv> Allow headers (default includes Authorization, X-OpenRouter-Key)\n"
+        << "  --cors-allow-methods <csv> Allow methods (default: GET, POST, DELETE, OPTIONS)\n"
+        << "  --cors-max-age <n>         Preflight cache max-age seconds (default: 600)\n"
+        << "  --no-cors                  Disable CORS headers entirely\n"
         << "  --model <name>       Default model\n"
         << "  --summary-model <name>   Optional model for compaction summaries (tools=none)\n"
         << "  --summary-max-chars <n>  Max chars for inserted summary (default: 1200)\n"
@@ -1029,6 +1080,26 @@ int main(int argc, char** argv) {
     } else {
       std::cerr << "Unknown arg: " << a << "\n";
       return 2;
+    }
+  }
+
+  CorsConfig cors_cfg;
+  cors_cfg.max_age_seconds = cfg.cors_max_age_seconds;
+  cors_cfg.allow_headers = cfg.cors_allow_headers.empty()
+    ? std::string("Content-Type, Authorization, X-OpenRouter-Key")
+    : cfg.cors_allow_headers;
+  cors_cfg.allow_methods = cfg.cors_allow_methods.empty()
+    ? std::string("GET, POST, DELETE, OPTIONS")
+    : cfg.cors_allow_methods;
+  if (cfg.cors_disabled) {
+    cors_cfg.origins.clear();
+  } else if (cfg.cors_origins_set) {
+    cors_cfg.origins = cfg.cors_origins;
+  } else {
+    if (host_is_loopback(cfg.listen_host)) {
+      cors_cfg.origins = {"*"};
+    } else {
+      cors_cfg.origins.clear();
     }
   }
 
@@ -1088,9 +1159,11 @@ int main(int argc, char** argv) {
   HttpServer server;
   server.set_default_headers({
     {"Server", "agentd/0.1"},
-    {"Access-Control-Allow-Origin", "*"},
-    {"Access-Control-Allow-Methods", "GET, POST, OPTIONS"},
-    {"Access-Control-Allow-Headers", "Content-Type, Authorization"},
+  });
+  server.set_options_handler([&](const HttpRequest& req, HttpResponse* resp) {
+    resp->status = 204;
+    resp->body.clear();
+    cors_apply(req, resp, cors_cfg);
   });
 
   // Background GC for finished jobs (keeps daemon memory bounded for long-running usage).
@@ -1105,14 +1178,14 @@ int main(int argc, char** argv) {
     }).detach();
   }
 
-  server.handle("GET", "/api/v1/health", [&](const HttpRequest&, HttpResponse* resp) {
-    add_cors(resp);
+  server.handle("GET", "/api/v1/health", [&](const HttpRequest& req, HttpResponse* resp) {
+    cors_apply(req, resp, cors_cfg);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
     resp->body = R"({"ok":true,"service":"agentd","version":"0.1"})";
   });
 
   server.handle("GET", "/api/v1/tools", [&](const HttpRequest& req, HttpResponse* resp) {
-    add_cors(resp);
+    cors_apply(req, resp, cors_cfg);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
     if (!daemon_require_auth(cfg, req, resp)) return;
 #if !defined(AGENT_HAVE_JSONCPP)
@@ -1225,7 +1298,7 @@ int main(int argc, char** argv) {
   });
 
   server.handle("GET", "/api/v1/openrouter/models", [&](const HttpRequest& req, HttpResponse* resp) {
-    add_cors(resp);
+    cors_apply(req, resp, cors_cfg);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
     if (!daemon_require_auth(cfg, req, resp)) return;
 #if !defined(AGENT_HAVE_JSONCPP)
@@ -1239,7 +1312,7 @@ int main(int argc, char** argv) {
   });
 
   server.handle("GET", "/api/v1/file", [&](const HttpRequest& req, HttpResponse* resp) {
-    add_cors(resp);
+    cors_apply(req, resp, cors_cfg);
     if (!daemon_require_auth(cfg, req, resp)) return;
     const auto path_q = query_get(req.query, "path");
     const auto yolo_q = query_get(req.query, "yolo");
@@ -1357,7 +1430,7 @@ int main(int argc, char** argv) {
   });
 
   server.handle("GET", "/api/v1/sessions", [&](const HttpRequest& req, HttpResponse* resp) {
-    add_cors(resp);
+    cors_apply(req, resp, cors_cfg);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
     if (!daemon_require_auth(cfg, req, resp)) return;
 #if !defined(AGENT_HAVE_JSONCPP)
@@ -1398,7 +1471,7 @@ int main(int argc, char** argv) {
   });
 
   server.handle("GET", "/api/v1/session", [&](const HttpRequest& req, HttpResponse* resp) {
-    add_cors(resp);
+    cors_apply(req, resp, cors_cfg);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
     if (!daemon_require_auth(cfg, req, resp)) return;
 #if !defined(AGENT_HAVE_JSONCPP)
@@ -1451,7 +1524,7 @@ int main(int argc, char** argv) {
   });
 
   server.handle("GET", "/api/v1/session/audit", [&](const HttpRequest& req, HttpResponse* resp) {
-    add_cors(resp);
+    cors_apply(req, resp, cors_cfg);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
     if (!daemon_require_auth(cfg, req, resp)) return;
 #if !defined(AGENT_HAVE_JSONCPP)
@@ -1504,7 +1577,7 @@ int main(int argc, char** argv) {
   });
 
   server.handle("DELETE", "/api/v1/session", [&](const HttpRequest& req, HttpResponse* resp) {
-    add_cors(resp);
+    cors_apply(req, resp, cors_cfg);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
     if (!daemon_require_auth(cfg, req, resp)) return;
 #if !defined(AGENT_HAVE_JSONCPP)
@@ -1537,7 +1610,7 @@ int main(int argc, char** argv) {
   });
 
   server.handle("POST", "/api/v1/run", [&](const HttpRequest& req, HttpResponse* resp) {
-    add_cors(resp);
+    cors_apply(req, resp, cors_cfg);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
     if (!daemon_require_auth(cfg, req, resp)) return;
 
@@ -1561,7 +1634,7 @@ int main(int argc, char** argv) {
 
   // Async run: returns a job id immediately and completes in the background.
   server.handle("POST", "/api/v1/run_async", [&](const HttpRequest& req, HttpResponse* resp) {
-    add_cors(resp);
+    cors_apply(req, resp, cors_cfg);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
     if (!daemon_require_auth(cfg, req, resp)) return;
 
@@ -1657,7 +1730,7 @@ int main(int argc, char** argv) {
   });
 
   server.handle("GET", "/api/v1/job", [&](const HttpRequest& req, HttpResponse* resp) {
-    add_cors(resp);
+    cors_apply(req, resp, cors_cfg);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
     if (!daemon_require_auth(cfg, req, resp)) return;
 #if !defined(AGENT_HAVE_JSONCPP)
@@ -1743,7 +1816,7 @@ int main(int argc, char** argv) {
   });
 
   server.handle("POST", "/api/v1/job/cancel", [&](const HttpRequest& req, HttpResponse* resp) {
-    add_cors(resp);
+    cors_apply(req, resp, cors_cfg);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
     if (!daemon_require_auth(cfg, req, resp)) return;
 #if !defined(AGENT_HAVE_JSONCPP)
@@ -1784,131 +1857,11 @@ int main(int argc, char** argv) {
   // Server-Sent Events stream for job progress (preferred UI path vs polling).
   // This endpoint streams `agent_event` events (same object shape as entries in the `events` array) and ends with `job_done`.
   server.handle_stream("GET", "/api/v1/job/stream", [&](const HttpRequest& req, int client_fd) {
-#if !defined(AGENT_HAVE_JSONCPP)
-    (void)req;
-    const std::string wire =
-      "HTTP/1.1 500 Internal Server Error\r\n"
-      "Content-Type: application/json; charset=utf-8\r\n"
-      "Connection: close\r\n"
-      "\r\n"
-      "{\"ok\":false,\"error\":\"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)\"}";
-    (void)write_all_fd(client_fd, wire);
-    return;
-#else
-    if (!daemon_auth_ok(cfg, req)) {
-      const std::string wire =
-        "HTTP/1.1 401 Unauthorized\r\n"
-        "Content-Type: application/json; charset=utf-8\r\n"
-        "WWW-Authenticate: Bearer\r\n"
-        "Access-Control-Allow-Origin: *\r\n"
-        "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n"
-        "Access-Control-Allow-Headers: Content-Type, Authorization\r\n"
-        "Connection: close\r\n"
-        "\r\n"
-        "{\"ok\":false,\"error\":\"unauthorized\"}";
-      (void)write_all_fd(client_fd, wire);
-      return;
-    }
-    const auto jid = query_get(req.query, "job_id");
-    if (!jid || jid->empty()) {
-      const std::string wire =
-        "HTTP/1.1 400 Bad Request\r\n"
-        "Content-Type: application/json; charset=utf-8\r\n"
-        "Connection: close\r\n"
-        "\r\n"
-        "{\"ok\":false,\"error\":\"missing job_id\"}";
-      (void)write_all_fd(client_fd, wire);
-      return;
-    }
-
-    uint64_t cursor = 0;
-    const auto cursor_q = query_get(req.query, "cursor");
-    if (cursor_q && !cursor_q->empty()) {
-      try {
-        cursor = (uint64_t)std::stoull(*cursor_q);
-      } catch (...) {
-        cursor = 0;
-      }
-    }
-
-    // SSE headers
-    std::ostringstream hdr;
-    hdr << "HTTP/1.1 200 OK\r\n";
-    hdr << "Content-Type: text/event-stream\r\n";
-    hdr << "Cache-Control: no-cache\r\n";
-    hdr << "Connection: keep-alive\r\n";
-    hdr << "Access-Control-Allow-Origin: *\r\n";
-    hdr << "Access-Control-Allow-Methods: GET, POST, OPTIONS\r\n";
-    hdr << "Access-Control-Allow-Headers: Content-Type, Authorization\r\n";
-    hdr << "\r\n";
-    if (!write_all_fd(client_fd, hdr.str())) {
-      return;
-    }
-
-    auto last_send = std::chrono::steady_clock::now();
-    for (;;) {
-      JobState s;
-      if (!job_get(*jid, &s)) {
-        (void)sse_send(client_fd, "error", R"({"ok":false,"error":"job not found"})");
-        return;
-      }
-
-      const uint64_t base = s.events_offset;
-      const uint64_t end = base + (uint64_t)s.events.size();
-
-      if (cursor < base) {
-        Json::Value d(Json::objectValue);
-        d["reason"] = "cursor_too_old";
-        d["cursor_base"] = (Json::UInt64)base;
-        d["cursor_end"] = (Json::UInt64)end;
-        if (!sse_send(client_fd, "reset", json_stringify(d))) {
-          return;
-        }
-        cursor = base;
-        last_send = std::chrono::steady_clock::now();
-      }
-
-      bool sent_any = false;
-      while (cursor < end) {
-        const uint64_t idx = cursor - base;
-        const Json::Value& ev = s.events[(Json::ArrayIndex)idx];
-        if (!sse_send(client_fd, "agent_event", json_stringify(ev), std::to_string((unsigned long long)cursor))) {
-          return;
-        }
-        cursor++;
-        sent_any = true;
-      }
-      if (sent_any) {
-        last_send = std::chrono::steady_clock::now();
-      }
-
-      if (s.status == "done" || s.status == "error") {
-        Json::Value out(Json::objectValue);
-        out["ok"] = (s.status == "done");
-        out["job_id"] = s.id;
-        out["status"] = s.status;
-        out["error"] = s.error;
-        out["result"] = s.result;
-        out["events_cursor_next"] = (Json::UInt64)cursor;
-        (void)sse_send(client_fd, "job_done", json_stringify(out));
-        return;
-      }
-
-      const auto now = std::chrono::steady_clock::now();
-      if (std::chrono::duration_cast<std::chrono::seconds>(now - last_send).count() >= 15) {
-        if (!sse_ping(client_fd)) {
-          return;
-        }
-        last_send = now;
-      }
-
-      std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    }
-#endif
+    handle_job_stream_endpoint(cfg.auth_token, cors_cfg, req, client_fd);
   });
 
   server.handle("DELETE", "/api/v1/job", [&](const HttpRequest& req, HttpResponse* resp) {
-    add_cors(resp);
+    cors_apply(req, resp, cors_cfg);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
     if (!daemon_require_auth(cfg, req, resp)) return;
 #if !defined(AGENT_HAVE_JSONCPP)

@@ -92,8 +92,10 @@ if(AGENT_BUILD_HOST)
 
   add_executable(agentd
     daemon/src/main.cpp
+    daemon/src/cors.cpp
     daemon/src/http_util.cpp
     daemon/src/http_server.cpp
+    daemon/src/job_stream_endpoint.cpp
     daemon/src/job_manager.cpp
     daemon/src/json_util.cpp
     daemon/src/openrouter_models_endpoint.cpp
@@ -140,6 +142,8 @@ if(AGENT_BUILD_HOST)
   add_test(NAME agentd_auth_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_auth_smoke.sh $<TARGET_FILE:agentd>)
 
   add_test(NAME agentd_sandbox_tighten_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_sandbox_tighten_smoke.sh $<TARGET_FILE:agentd>)
+
+  add_test(NAME agentd_cors_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_cors_smoke.sh $<TARGET_FILE:agentd>)
 
   add_test(
     NAME agentd_non_loopback_auth_guard_smoke

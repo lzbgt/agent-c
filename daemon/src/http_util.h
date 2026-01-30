@@ -10,7 +10,6 @@
 
 namespace agentd {
 
-void add_cors(HttpResponse* resp);
 std::string url_decode(std::string_view s);
 std::optional<std::string> query_get(const std::string& query, const std::string& key);
 bool string_to_bool(const std::string& s);
@@ -21,4 +20,3 @@ std::string header_get_ci(const std::map<std::string, std::string>& headers, con
 std::string bearer_token_from_auth_header(const std::string& auth);
 
 }  // namespace agentd
-

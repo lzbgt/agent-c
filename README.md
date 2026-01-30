@@ -45,6 +45,23 @@ If you bind `agentd` to non-loopback (e.g. `--host 0.0.0.0`), you must set an au
 
 Clients must send `Authorization: Bearer your_token` to all endpoints (except `/api/v1/health`).
 
+### Daemon CORS (browser clients)
+
+The Web UI typically runs on a different origin (e.g. `http://localhost:5173`) than the daemon (`http://127.0.0.1:8123`),
+so `agentd` emits CORS headers for browser fetches:
+
+- When binding to loopback (`127.0.0.1` / `localhost`): CORS defaults to `Access-Control-Allow-Origin: *` for local dev ergonomics.
+- When binding to a non-loopback host: CORS is **disabled by default**. Enable it explicitly with one or more `--cors-origin` values.
+
+Example (remote UI origin allowlist):
+
+```bash
+./build/agentd --host 0.0.0.0 --auth-token "your_token" --cors-origin "https://your-ui.example"
+```
+
+By default, `agentd` allows common headers needed by the UI, including `Authorization` (daemon auth) and `X-OpenRouter-Key`
+(provider key for the OpenRouter model catalog endpoint).
+
 `ctest` includes two network smoke tests (OpenRouter + DeepSeek). They will run if keys are present
 either via environment variables or `project.local.md` (gitignored). Disable them with:
 

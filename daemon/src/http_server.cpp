@@ -174,6 +174,10 @@ void HttpServer::set_default_headers(std::map<std::string, std::string> headers)
   default_headers_ = std::move(headers);
 }
 
+void HttpServer::set_options_handler(OptionsHandler handler) {
+  options_handler_ = std::move(handler);
+}
+
 void HttpServer::handle(const std::string& method, const std::string& path, Handler handler) {
   RouteKey k{method, path};
   routes_[k] = std::move(handler);
@@ -279,11 +283,14 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
         }
       }
 
-      // Basic CORS preflight.
       if (req.method == "OPTIONS") {
         HttpResponse resp;
-        resp.status = 204;
-        resp.body.clear();
+        if (options_handler_) {
+          options_handler_(req, &resp);
+        } else {
+          resp.status = 204;
+          resp.body.clear();
+        }
         const std::string wire = build_response(resp, default_headers_);
         (void)::write(client, wire.data(), wire.size());
         ::close(client);

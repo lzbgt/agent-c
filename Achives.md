@@ -189,6 +189,12 @@ Completed milestones and notable tasks.
   enabling future SQLite/NVS implementations without changing core call sites.
 - Added optional daemon auth token support (`--auth-token` / `AGENTD_AUTH_TOKEN`) and updated the Web UI to send
   `Authorization: Bearer ...` when configured (provider keys remain separate, e.g. `X-OpenRouter-Key`).
+- Hardened daemon CORS defaults and made CORS configurable:
+  - loopback defaults to permissive `*` for local UI development
+  - non-loopback defaults to no CORS headers unless explicitly configured via `--cors-origin`
+  - allow headers include `X-OpenRouter-Key` for the OpenRouter model catalog endpoint
+  - added local smoke test `tests/agentd_cors_smoke.sh`
+- Refactored `/api/v1/job/stream` SSE endpoint into `daemon/src/job_stream_endpoint.cpp` to keep `daemon/src/main.cpp` lean.
 
 - Moved the tool-call loop into the portable core (Milestone 2 groundwork):
   - added core tool-loop API + provider contract (`core/include/agent/tool_loop.h`, `core/include/agent/tool_provider.h`, `core/include/agent/chat.h`)

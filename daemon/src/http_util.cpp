@@ -5,13 +5,6 @@
 
 namespace agentd {
 
-void add_cors(HttpResponse* resp) {
-  // Localhost-friendly defaults for a local web UI dev server.
-  resp->headers["Access-Control-Allow-Origin"] = "*";
-  resp->headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
-  resp->headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
-}
-
 std::string url_decode(std::string_view s) {
   std::string out;
   out.reserve(s.size());
@@ -110,4 +103,3 @@ std::string bearer_token_from_auth_header(const std::string& auth) {
 }
 
 }  // namespace agentd
-
