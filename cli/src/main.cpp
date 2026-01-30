@@ -4,6 +4,7 @@
 #include "file_persistor.h"
 #include "openai_client.h"
 #include "openai_provider.h"
+#include "openai_stream_decoder.h"
 #include "default_system_prompt.h"
 #include "session_store.h"
 #include "summary_compaction.h"
@@ -644,19 +645,9 @@ int main(int argc, char** argv) {
             auto* s = static_cast<StreamCtx*>(vctx);
             if (!s || !s->out || !chunk_json || chunk_len == 0) return;
 
-            Json::CharReaderBuilder rb;
-            std::string errs;
-            std::istringstream iss(std::string(chunk_json, chunk_len));
-            Json::Value root;
-            if (!Json::parseFromStream(rb, iss, &root, &errs)) return;
-
-            const auto& choices = root["choices"];
-            if (!choices.isArray() || choices.empty()) return;
-            const auto& delta = choices[0]["delta"];
-            if (!delta.isObject()) return;
-            const auto& content = delta["content"];
-            if (!content.isString()) return;
-            const std::string d = content.asString();
+            OpenAIStreamChunk chunk;
+            if (!openai_stream_parse_chunk_json(chunk_json, chunk_len, &chunk)) return;
+            const std::string d = chunk.content_delta;
             if (d.empty()) return;
 
             s->assistant += d;

@@ -1,6 +1,7 @@
 #include "openai_tool_provider.h"
 
 #include "agent/agent.h"
+#include "openai_stream_decoder.h"
 
 #if defined(AGENT_HAVE_JSONCPP)
 #include <json/json.h>
@@ -212,11 +213,6 @@ static agent_status_t openai_tool_provider_generate(
   std::vector<ParsedToolCall> calls;
 
   if (ctx->stream_assistant) {
-    struct StreamCallAccum {
-      std::string id;
-      std::string name;
-      std::string arguments;
-    };
     struct StreamAccum {
       OpenAIToolProviderCtx* ctx = nullptr;
       uint64_t step = 0;
@@ -224,7 +220,7 @@ static agent_status_t openai_tool_provider_generate(
 
       std::string assistant;
       std::string pending_delta;
-      std::vector<StreamCallAccum> tool_calls;
+      OpenAIToolCallStreamAccumulator tool_calls;
       std::string finish_reason;
     } acc;
 
@@ -236,66 +232,24 @@ static agent_status_t openai_tool_provider_generate(
       auto* a = static_cast<StreamAccum*>(vctx);
       if (!a || !a->ctx || !chunk_json || chunk_len == 0) return;
 
-      Json::Value root;
-      if (!parse_json_object(std::string(chunk_json, chunk_len), &root)) {
+      OpenAIStreamChunk chunk;
+      if (!openai_stream_parse_chunk_json(chunk_json, chunk_len, &chunk)) {
         return;
       }
-      const auto& choices = root["choices"];
-      if (!choices.isArray() || choices.empty()) return;
+      if (!chunk.finish_reason.empty()) a->finish_reason = chunk.finish_reason;
 
-      const auto& choice0 = choices[0u];
-      const auto& fr = choice0["finish_reason"];
-      if (fr.isString()) {
-        a->finish_reason = fr.asString();
-      }
-
-      const auto& delta = choice0["delta"];
-      if (!delta.isObject()) return;
-
-      const auto& content = delta["content"];
-      if (content.isString()) {
-        const std::string d = content.asString();
-        if (!d.empty()) {
-          a->assistant += d;
-          a->pending_delta += d;
-          // Coalesce small deltas to avoid flooding event logs/UIs.
-          if (a->pending_delta.size() >= 128) {
-            provider_emit_delta(a->ctx, a->step, a->epoch, a->pending_delta);
-            a->pending_delta.clear();
-          }
+      if (!chunk.content_delta.empty()) {
+        a->assistant += chunk.content_delta;
+        a->pending_delta += chunk.content_delta;
+        // Coalesce small deltas to avoid flooding event logs/UIs.
+        if (a->pending_delta.size() >= 128) {
+          provider_emit_delta(a->ctx, a->step, a->epoch, a->pending_delta);
+          a->pending_delta.clear();
         }
       }
 
-      const auto& tc = delta["tool_calls"];
-      if (tc.isArray()) {
-        for (Json::ArrayIndex i = 0; i < tc.size(); i++) {
-          const auto& call = tc[i];
-          if (!call.isObject()) continue;
-
-          int index = -1;
-          const auto& iv = call["index"];
-          if (iv.isInt()) {
-            index = iv.asInt();
-          } else {
-            index = (int)i;
-          }
-          if (index < 0) continue;
-          if ((size_t)index >= a->tool_calls.size()) {
-            a->tool_calls.resize((size_t)index + 1);
-          }
-
-          auto& dst = a->tool_calls[(size_t)index];
-          const auto& idv = call["id"];
-          if (idv.isString()) dst.id = idv.asString();
-
-          const auto& fn = call["function"];
-          if (fn.isObject()) {
-            const auto& namev = fn["name"];
-            if (namev.isString()) dst.name = namev.asString();
-            const auto& argv = fn["arguments"];
-            if (argv.isString()) dst.arguments += argv.asString();
-          }
-        }
+      if (!chunk.tool_call_deltas.empty()) {
+        a->tool_calls.apply(chunk.tool_call_deltas);
       }
     };
 
@@ -339,7 +293,7 @@ static agent_status_t openai_tool_provider_generate(
     // Some providers ignore `stream: true` and return a normal JSON response.
     // If we didn't decode any deltas/tool_calls, fall back to parsing the raw body.
     bool decoded_any = (!acc.assistant.empty());
-    for (const auto& c : acc.tool_calls) {
+    for (const auto& c : acc.tool_calls.calls()) {
       if (!c.name.empty()) {
         decoded_any = true;
         break;
@@ -354,8 +308,9 @@ static agent_status_t openai_tool_provider_generate(
     } else {
       parsed_is_stream = true;
       assistant_content = acc.assistant;
-      for (size_t i = 0; i < acc.tool_calls.size(); i++) {
-        const auto& c = acc.tool_calls[i];
+      const auto& tool_calls = acc.tool_calls.calls();
+      for (size_t i = 0; i < tool_calls.size(); i++) {
+        const auto& c = tool_calls[i];
         if (c.name.empty()) continue;
         const std::string id = c.id.empty() ? (std::string("call_") + std::to_string(req->step) + "_" + std::to_string(i)) : c.id;
         calls.push_back(ParsedToolCall{id, c.name, c.arguments.empty() ? "{}" : c.arguments});

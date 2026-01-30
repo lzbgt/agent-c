@@ -223,6 +223,9 @@ Completed milestones and notable tasks.
   - added a local smoke test `tests/agent_local_stream_assistant_smoke.sh` that requires `stream: true` and validates streamed output end-to-end
 - Standardized `assistant_delta` event payloads for daemon streaming:
   - `assistant_delta` now includes `step` and `epoch` fields for `tools=none` streaming (matching tool-loop streaming payload shape)
+- Deduplicated OpenAI-compatible streaming chunk parsing:
+  - added a shared streaming decoder (`cli/src/openai_stream_decoder.{h,cpp}`) used by CLI, daemon, and the host tool-provider
+  - added a small unit test target `openai_stream_decoder_tests` (`tests/test_openai_stream_decoder.cpp`)
 - Improved UI live streaming when daemon auth is enabled:
   - UI uses a fetch-based SSE reader (so it can send `Authorization: Bearer ...`) instead of `EventSource`
   - added a non-network smoke test `tests/agentd_sse_auth_smoke.sh` using a local OpenAI stub server

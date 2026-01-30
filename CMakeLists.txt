@@ -49,6 +49,7 @@ if(AGENT_BUILD_HOST)
     cli/src/file_persistor.cpp
     cli/src/openai_client.cpp
     cli/src/openai_provider.cpp
+    cli/src/openai_stream_decoder.cpp
     cli/src/openai_tool_provider.cpp
     cli/src/sse_parser.cpp
     cli/src/session_store.cpp
@@ -287,6 +288,12 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
   )
   target_link_libraries(openai_tool_provider_stream_tests PRIVATE agent_host)
   add_test(NAME openai_tool_provider_stream_tests COMMAND openai_tool_provider_stream_tests)
+
+  add_executable(openai_stream_decoder_tests
+    tests/test_openai_stream_decoder.cpp
+  )
+  target_link_libraries(openai_stream_decoder_tests PRIVATE agent_host)
+  add_test(NAME openai_stream_decoder_tests COMMAND openai_stream_decoder_tests)
 endif()
 
 if(AGENT_BUILD_HOST)

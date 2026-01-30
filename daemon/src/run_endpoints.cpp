@@ -16,6 +16,8 @@
 #include "toolset_basic.h"
 #include "toolset_host.h"
 
+#include "openai_stream_decoder.h"
+
 #include "agent/agent.h"
 #include "agent/runner.h"
 
@@ -466,18 +468,9 @@ static Json::Value run_request_to_json(
           if (!s || !chunk_json || chunk_len == 0 || !s->push) return;
 
           s->chunks++;
-          Json::Value root;
-          std::string perr;
-          if (!json_parse_any(std::string(chunk_json, chunk_len), &root, &perr)) {
-            return;
-          }
-          const auto& choices = root["choices"];
-          if (!choices.isArray() || choices.empty()) return;
-          const auto& delta = choices[0]["delta"];
-          if (!delta.isObject()) return;
-          const auto& content = delta["content"];
-          if (!content.isString()) return;
-          const std::string dstr = content.asString();
+          OpenAIStreamChunk chunk;
+          if (!openai_stream_parse_chunk_json(chunk_json, chunk_len, &chunk)) return;
+          const std::string dstr = chunk.content_delta;
           if (dstr.empty()) return;
           s->assistant += dstr;
           s->pending_delta += dstr;

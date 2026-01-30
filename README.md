@@ -342,6 +342,7 @@ Assistant streaming (provider-dependent):
   - `tools: "basic"` / `"host"`: the daemon uses streaming requests for tool-loop steps and (best-effort) reconstructs tool calls
     from streamed `delta.tool_calls`. It also emits `assistant_delta` events during the final assistant step (provider-dependent).
     Note: some providers ignore `stream: true` and return a normal JSON completion; the daemon falls back to non-stream parsing.
+  - Implementation notes: `docs/STREAMING.md`
 
 CLI streaming (stdout):
 - For `agent run` / `agent chat`, pass `--stream-assistant` to stream assistant deltas to stdout (provider-dependent).
