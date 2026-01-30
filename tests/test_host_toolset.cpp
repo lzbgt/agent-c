@@ -238,6 +238,67 @@ static void test_scoped_mode_denies_symlink_escapes() {
     agent_string_free(&out);
   }
 
+  // fs_list should not expose symlink entry in scoped no-symlinks mode.
+  {
+    Json::Value args(Json::objectValue);
+    args["path"] = ".";
+    args["recursive"] = true;
+    args["max_entries"] = 200;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "fs_list", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    const auto& entries = resp["data"]["entries"];
+    assert(entries.isArray());
+    for (Json::ArrayIndex i = 0; i < entries.size(); i++) {
+      if (!entries[i].isObject() || !entries[i]["path"].isString()) continue;
+      const std::string p = entries[i]["path"].asString();
+      assert(p.find("out") == std::string::npos);
+    }
+    agent_string_free(&out);
+  }
+
+  // fs_find should not traverse the symlink and reveal the secret file.
+  {
+    Json::Value args(Json::objectValue);
+    args["path"] = ".";
+    args["recursive"] = true;
+    args["max_results"] = 200;
+    args["name_substring"] = secret.filename().string();
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "fs_find", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    const auto& entries = resp["data"]["entries"];
+    assert(entries.isArray());
+    for (Json::ArrayIndex i = 0; i < entries.size(); i++) {
+      if (!entries[i].isObject() || !entries[i]["path"].isString()) continue;
+      const std::string p = entries[i]["path"].asString();
+      assert(p.find(secret.filename().string()) == std::string::npos);
+    }
+    agent_string_free(&out);
+  }
+
+  // text_search should not traverse the symlink and find the secret contents.
+  {
+    Json::Value args(Json::objectValue);
+    args["query"] = "TOP_SECRET";
+    args["path"] = ".";
+    args["recursive"] = true;
+    args["max_results"] = 50;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "text_search", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    const auto& matches = resp["data"]["matches"];
+    assert(matches.isArray());
+    assert(matches.empty());
+    agent_string_free(&out);
+  }
+
   // file_apply_patch should reject writing through the symlink.
   {
     const std::string escape_name = std::string("escape_via_symlink_") + std::to_string((long long)getpid()) + ".txt";

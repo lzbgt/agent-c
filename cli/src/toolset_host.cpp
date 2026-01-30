@@ -55,6 +55,13 @@ static bool path_is_within(const std::filesystem::path& root, const std::filesys
   return true;
 }
 
+static bool is_symlink_path(const std::filesystem::path& p) {
+  std::error_code ec;
+  const auto st = std::filesystem::symlink_status(p, ec);
+  if (ec) return false;
+  return std::filesystem::is_symlink(st);
+}
+
 static bool path_contains_symlink_component(const std::filesystem::path& root, const std::filesystem::path& p) {
   // Assume p is under root (lexically). Walk components and reject if any existing prefix is a symlink.
   std::filesystem::path cur = root;
@@ -612,11 +619,16 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
   int excluded_dirs = 0;
   int excluded_by_glob = 0;
   int excluded_by_gitignore = 0;
+  int excluded_by_symlink = 0;
   if (respect_gitignore) {
     (void)ensure_gitignore_cache(ctx);
   }
   const auto should_skip = [&](const std::filesystem::path& p) -> bool {
     const auto name = p.filename().string();
+    if (!ctx->unrestricted && !ctx->allow_symlinks && is_symlink_path(p)) {
+      excluded_by_symlink++;
+      return true;
+    }
     if (!include_hidden && !name.empty() && name[0] == '.') {
       return true;
     }
@@ -717,6 +729,7 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
   data["excluded_dirs"] = excluded_dirs;
   data["excluded_by_glob"] = excluded_by_glob;
   data["excluded_by_gitignore"] = excluded_by_gitignore;
+  data["excluded_by_symlink"] = excluded_by_symlink;
   if (respect_gitignore && ctx->gitignore.ready) {
     data["gitignore_root"] = to_generic_string(ctx->gitignore.root);
     data["gitignore_file"] = to_generic_string(ctx->gitignore.file);
@@ -879,11 +892,16 @@ static agent_status_t tool_fs_find(HostToolCtx* ctx, const char* arguments_json,
 
   int skipped_by_glob = 0;
   int skipped_by_gitignore = 0;
+  int skipped_by_symlink = 0;
   if (respect_gitignore) {
     (void)ensure_gitignore_cache(ctx);
   }
   const auto should_skip = [&](const std::filesystem::path& p) -> bool {
     const auto name = p.filename().string();
+    if (!ctx->unrestricted && !ctx->allow_symlinks && is_symlink_path(p)) {
+      skipped_by_symlink++;
+      return true;
+    }
     if (!include_hidden && !name.empty() && name[0] == '.') return true;
     if (!exclude_names.empty() && !name.empty()) {
       for (const auto& ex : exclude_names) {
@@ -1031,6 +1049,7 @@ static agent_status_t tool_fs_find(HostToolCtx* ctx, const char* arguments_json,
   data["files_skipped_by_ext"] = files_skipped_by_ext;
   data["skipped_by_glob"] = skipped_by_glob;
   data["skipped_by_gitignore"] = skipped_by_gitignore;
+  data["skipped_by_symlink"] = skipped_by_symlink;
   if (respect_gitignore && ctx->gitignore.ready) {
     data["gitignore_root"] = to_generic_string(ctx->gitignore.root);
     data["gitignore_file"] = to_generic_string(ctx->gitignore.file);
@@ -1393,11 +1412,16 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
 
   int skipped_by_glob = 0;
   int skipped_by_gitignore = 0;
+  int skipped_by_symlink = 0;
   if (respect_gitignore) {
     (void)ensure_gitignore_cache(ctx);
   }
   const auto should_skip = [&](const std::filesystem::path& p) -> bool {
     const auto name = p.filename().string();
+    if (!ctx->unrestricted && !ctx->allow_symlinks && is_symlink_path(p)) {
+      skipped_by_symlink++;
+      return true;
+    }
     if (!include_hidden && !name.empty() && name[0] == '.') return true;
     if (!exclude_names.empty() && !name.empty()) {
       for (const auto& ex : exclude_names) {
@@ -1567,6 +1591,7 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
   data["files_skipped_by_ext"] = files_skipped_by_ext;
   data["dirs_skipped"] = dirs_skipped;
   data["skipped_by_glob"] = skipped_by_glob;
+  data["skipped_by_symlink"] = skipped_by_symlink;
   data["matches"] = matches;
   data["matches_count"] = (Json::UInt64)matches.size();
   data["truncated"] = truncated;
