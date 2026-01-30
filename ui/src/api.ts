@@ -374,6 +374,31 @@ export async function apiGetAudit(base: string, sessionId: string, authToken?: s
   return AuditSchema.parse(j);
 }
 
+export const SessionClientEventsSchema = z.object({
+  ok: z.boolean(),
+  session_id: z.string().optional(),
+  max_bytes: z.number().optional(),
+  count: z.number().optional(),
+  events: z.array(z.any()).optional(),
+  error: z.string().optional(),
+});
+export type SessionClientEventsResp = z.infer<typeof SessionClientEventsSchema>;
+
+export async function apiGetSessionClientEvents(
+  base: string,
+  sessionId: string,
+  authToken?: string,
+  opts?: { maxBytes?: number },
+): Promise<SessionClientEventsResp> {
+  const maxBytes = typeof opts?.maxBytes === "number" ? opts.maxBytes : 1024 * 1024;
+  const r = await fetch(
+    `${base}/api/v1/session/client_events?session_id=${encodeURIComponent(sessionId)}&max_bytes=${encodeURIComponent(String(maxBytes))}`,
+    { headers: daemonHeaders(authToken) },
+  );
+  const j = await r.json();
+  return SessionClientEventsSchema.parse(j);
+}
+
 export const SessionArtifactsSchema = z.object({
   ok: z.boolean(),
   session_id: z.string().optional(),

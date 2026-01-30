@@ -8,6 +8,7 @@ import {
   apiGetDbUiActions,
   apiGetDbMessages,
   apiGetDbClientEvents,
+  apiGetSessionClientEvents,
   apiGetHealth,
   apiGetJobProgress,
   apiGetOpenRouterModels,
@@ -143,6 +144,13 @@ export default function App() {
     retry: 1,
   });
 
+  const sessionClientEvents = useQuery({
+    queryKey: ["session_client_events", effectiveBase, daemonAuthToken, sessionId],
+    queryFn: () => apiGetSessionClientEvents(effectiveBase, sessionId, daemonAuthToken, { maxBytes: 1024 * 1024 }),
+    enabled: !!sessionId,
+    retry: 1,
+  });
+
   const sessionArtifacts = useQuery({
     queryKey: ["session_artifacts", effectiveBase, daemonAuthToken, sessionId],
     queryFn: () => apiGetSessionArtifacts(effectiveBase, sessionId, daemonAuthToken, { maxBytes: 2 * 1024 * 1024, maxArtifacts: 64 }),
@@ -210,6 +218,7 @@ export default function App() {
         setSessionId(v.session_id);
         void sessions.refetch();
         void audit.refetch();
+        void sessionClientEvents.refetch();
         void sessionArtifacts.refetch();
         void dbUiActions.refetch();
         void dbMessages.refetch();
@@ -736,6 +745,15 @@ export default function App() {
               </button>
               <button
                 className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+                onClick={() => sessionClientEvents.refetch()}
+                type="button"
+                disabled={!sessionId}
+                title="Reads <session>.client_events.jsonl (works even if DB is disabled)"
+              >
+                Load client events
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
                 onClick={() => sessionArtifacts.refetch()}
                 type="button"
                 disabled={!sessionId}
@@ -803,6 +821,16 @@ export default function App() {
               ))}
             </div>
             <div className="mt-3 text-xs text-white/50">Audit entries: {audit.data?.entries ? audit.data.entries.length : 0}</div>
+            <div className="mt-1 text-xs text-white/50">
+              Client events:{" "}
+              {sessionClientEvents.isFetching
+                ? "loading…"
+                : sessionClientEvents.isError
+                  ? "failed"
+                  : sessionClientEvents.data?.ok
+                    ? `${sessionClientEvents.data?.count ?? 0}`
+                    : "error"}
+            </div>
             <div className="mt-1 text-xs text-white/50">
               Artifacts:{" "}
               {sessionArtifacts.isFetching
@@ -1846,6 +1874,31 @@ export default function App() {
                         </div>
                       </div>
                     ) : null}
+                  </div>
+                ))}
+            </div>
+          </div>
+        ) : null}
+
+        {sessionClientEvents.data?.ok &&
+        Array.isArray(sessionClientEvents.data.events) &&
+        sessionClientEvents.data.events.length > 0 ? (
+          <div>
+            <div className="mb-2 text-sm font-semibold text-white/80">Session Client Events (latest)</div>
+            <div className="grid gap-3">
+              {sessionClientEvents.data.events
+                .slice(-20)
+                .reverse()
+                .map((e: any, idx: number) => (
+                  <div key={idx} className="rounded-lg border border-white/10 bg-white/5 p-3">
+                    <div className="text-xs text-white/50">
+                      {typeof e.ts_unix_ms === "number" ? new Date(e.ts_unix_ms).toISOString() : ""}
+                    </div>
+                    <div className="mt-2">
+                      <pre className="max-h-[220px] overflow-auto whitespace-pre-wrap break-words text-xs text-white/80">
+                        {JSON.stringify(e, null, 2)}
+                      </pre>
+                    </div>
                   </div>
                 ))}
             </div>

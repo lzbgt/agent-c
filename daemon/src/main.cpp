@@ -622,6 +622,10 @@ int main(int argc, char** argv) {
     handle_session_audit_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
   });
 
+  server.handle("GET", "/api/v1/session/client_events", [&](const HttpRequest& req, HttpResponse* resp) {
+    handle_session_client_events_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
+  });
+
   server.handle("GET", "/api/v1/session/artifacts", [&](const HttpRequest& req, HttpResponse* resp) {
     handle_session_artifacts_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
   });

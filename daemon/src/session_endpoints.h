@@ -67,4 +67,12 @@ void handle_session_ui_event_endpoint(
   HttpResponse* resp
 );
 
+void handle_session_client_events_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const std::string& sessions_root_dir,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
 }  // namespace agentd

@@ -43,6 +43,7 @@ Notes:
 - This endpoint requires daemon auth when enabled (same as other `/api/v1/*` endpoints).
 - This endpoint does not require the DB to be enabled; when the DB is disabled, it still returns `ok:true`
   (but DB mirroring is skipped).
+- The UI/client event log can be read back (tail) via `GET /api/v1/session/client_events`.
 
 ## DB mirror
 

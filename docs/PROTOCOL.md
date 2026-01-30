@@ -119,6 +119,14 @@ These are optionally appended into the session message history and (when `--db-p
 
 See: `docs/UI_CLIENT_EVENTS.md`.
 
+### Endpoint: list client events (file-backed)
+
+For debugging without enabling SQLite, UIs can read the tail of the session-scoped client event log:
+
+- `GET /api/v1/session/client_events?session_id=...&max_bytes=...`
+
+This reads from `<sessions_root>/<session_id>.client_events.jsonl` and returns parsed JSON objects.
+
 ## Waiting for UI acknowledgements (host tool)
 
 When using tool loops, an agent may need to wait for a UI/user acknowledgement within a single run (e.g. audio playback finished).

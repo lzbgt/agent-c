@@ -436,6 +436,69 @@ void handle_session_audit_endpoint(
   resp->body = json_stringify(out);
 }
 
+void handle_session_client_events_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const std::string& sessions_root_dir,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  const auto sid = query_get(req.query, "session_id");
+  if (!sid || sid->empty()) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"missing session_id"})";
+    return;
+  }
+
+  size_t max_bytes = 1024 * 1024;
+  if (const auto mb = query_get(req.query, "max_bytes")) {
+    try {
+      max_bytes = (size_t)std::stoull(*mb);
+    } catch (...) {
+    }
+  }
+  if (max_bytes > 4 * 1024 * 1024) max_bytes = 4 * 1024 * 1024;
+
+  SessionStoreConfig store_cfg;
+  store_cfg.root_dir = sessions_root_dir;
+
+  std::string tail;
+  const agent_status_t st = session_store_read_client_event_tail(store_cfg, *sid, max_bytes, &tail);
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = (st == AGENT_OK);
+  out["session_id"] = *sid;
+  out["max_bytes"] = (Json::UInt64)max_bytes;
+  if (st != AGENT_OK) {
+    out["error"] = "failed to read client event log";
+    out["status"] = (Json::Int64)st;
+  }
+
+  Json::Value entries(Json::arrayValue);
+  if (!tail.empty()) {
+    std::istringstream iss(tail);
+    std::string line;
+    Json::CharReaderBuilder rb;
+    std::string errs;
+    while (std::getline(iss, line)) {
+      if (line.empty()) continue;
+      Json::Value obj;
+      std::istringstream lss(line);
+      if (!Json::parseFromStream(rb, lss, &obj, &errs)) {
+        continue;
+      }
+      entries.append(obj);
+    }
+  }
+  out["count"] = (Json::UInt64)entries.size();
+  out["events"] = entries;
+  resp->body = json_stringify(out);
+}
+
 void handle_session_artifacts_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
