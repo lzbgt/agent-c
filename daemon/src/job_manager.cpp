@@ -1,5 +1,7 @@
 #include "job_manager.h"
 
+#include "json_util.h"
+
 #include <chrono>
 #include <cctype>
 #include <cerrno>
@@ -13,27 +15,6 @@
 #include <unistd.h>
 
 namespace agentd {
-
-static std::string json_stringify(const Json::Value& v) {
-  Json::StreamWriterBuilder b;
-  b["indentation"] = "";
-  return Json::writeString(b, v);
-}
-
-static bool json_parse_any(const std::string& s, Json::Value* out, std::string* out_err) {
-  if (out_err) out_err->clear();
-  if (!out) return false;
-  Json::CharReaderBuilder rb;
-  std::string errs;
-  std::istringstream iss(s);
-  Json::Value v;
-  if (!Json::parseFromStream(rb, iss, &v, &errs)) {
-    if (out_err) *out_err = errs;
-    return false;
-  }
-  *out = v;
-  return true;
-}
 
 static std::mutex g_jobs_mu;
 static std::map<std::string, JobState> g_jobs;
