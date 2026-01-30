@@ -154,3 +154,9 @@ Completed milestones and notable tasks.
   - `tests/openrouter_host_tools_smoke.sh`
 - Added extra `fs_read` host tool unit coverage for paging controls:
   - `tests/test_host_toolset.cpp`
+- Improved token-safe filesystem metadata for host tools:
+  - `fs_stat` / `fs_read` now include `ctime_unix_ms` (and `birthtime_unix_ms` on macOS) for better inspection without dumping file contents
+  - `cli/src/toolset_host.cpp`
+- Improved Web UI daemon connectivity diagnostics:
+  - show daemon base URL in the header and surface health-check errors explicitly
+  - `ui/src/App.tsx`

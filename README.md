@@ -245,11 +245,12 @@ Job cancellation (best-effort):
 
 ```bash
 cd ui
-NPM_CONFIG_CACHE=../build/npm-cache npm install
+NPM_CONFIG_CACHE=../build/npm-cache npm ci
 npm run dev
 ```
 
 Then open the dev server URL (defaults to `http://localhost:5173`) and point it at the daemon base URL.
+Using a repo-local `NPM_CONFIG_CACHE` avoids permission issues with the global npm cache in some environments.
 
 UI rendering notes:
 - The UI renders a **Conversation** (message cards) derived from the daemon `events` stream:

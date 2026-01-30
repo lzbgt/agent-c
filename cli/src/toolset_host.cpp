@@ -22,6 +22,7 @@
 #include <poll.h>
 #include <signal.h>
 #include <spawn.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -107,6 +108,44 @@ static int64_t file_time_to_unix_ms(std::filesystem::file_time_type ft) {
   return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(sctp.time_since_epoch()).count();
 }
 
+static int64_t unix_ms_from_timespec(int64_t sec, int64_t nsec) {
+  if (nsec < 0) nsec = 0;
+  return sec * 1000 + nsec / 1000000;
+}
+
+static bool posix_stat_times_best_effort(
+  const std::filesystem::path& p,
+  int64_t* out_ctime_unix_ms,
+  int64_t* out_birthtime_unix_ms
+) {
+  if (out_ctime_unix_ms) *out_ctime_unix_ms = 0;
+  if (out_birthtime_unix_ms) *out_birthtime_unix_ms = 0;
+
+  struct stat st{};
+  if (::stat(p.c_str(), &st) != 0) {
+    return false;
+  }
+
+#if defined(__APPLE__)
+  if (out_ctime_unix_ms) {
+    *out_ctime_unix_ms = unix_ms_from_timespec((int64_t)st.st_ctimespec.tv_sec, (int64_t)st.st_ctimespec.tv_nsec);
+  }
+  if (out_birthtime_unix_ms) {
+    *out_birthtime_unix_ms = unix_ms_from_timespec((int64_t)st.st_birthtimespec.tv_sec, (int64_t)st.st_birthtimespec.tv_nsec);
+  }
+#elif defined(__linux__)
+  if (out_ctime_unix_ms) {
+    *out_ctime_unix_ms = unix_ms_from_timespec((int64_t)st.st_ctim.tv_sec, (int64_t)st.st_ctim.tv_nsec);
+  }
+#else
+  // Fallback: second-granularity ctime (inode change time on most POSIX systems).
+  if (out_ctime_unix_ms) {
+    *out_ctime_unix_ms = (int64_t)st.st_ctime * 1000;
+  }
+#endif
+  return true;
+}
+
 static bool is_probably_binary(const std::filesystem::path& path) {
   std::ifstream in(path, std::ios::binary);
   if (!in.is_open()) return false;
@@ -175,6 +214,14 @@ static agent_status_t tool_fs_stat(HostToolCtx* ctx, const char* arguments_json,
     data["mtime_unix_ms"] = (Json::Int64)file_time_to_unix_ms(mtime);
   }
   {
+    int64_t ctime_ms = 0;
+    int64_t birth_ms = 0;
+    if (posix_stat_times_best_effort(*resolved, &ctime_ms, &birth_ms)) {
+      if (ctime_ms > 0) data["ctime_unix_ms"] = (Json::Int64)ctime_ms;
+      if (birth_ms > 0) data["birthtime_unix_ms"] = (Json::Int64)birth_ms;
+    }
+  }
+  {
     // Human-friendly output for UIs. Keep structured fields for the LLM.
     std::ostringstream oss;
     oss << "path: " << path << "\n";
@@ -187,6 +234,12 @@ static agent_status_t tool_fs_stat(HostToolCtx* ctx, const char* arguments_json,
     }
     if (data.isMember("mtime_unix_ms")) {
       oss << "mtime_unix_ms: " << (long long)data["mtime_unix_ms"].asInt64() << "\n";
+    }
+    if (data.isMember("ctime_unix_ms")) {
+      oss << "ctime_unix_ms: " << (long long)data["ctime_unix_ms"].asInt64() << "\n";
+    }
+    if (data.isMember("birthtime_unix_ms")) {
+      oss << "birthtime_unix_ms: " << (long long)data["birthtime_unix_ms"].asInt64() << "\n";
     }
     if (data.isMember("is_binary")) {
       oss << "is_binary: " << (data["is_binary"].asBool() ? "true" : "false") << "\n";
@@ -705,6 +758,14 @@ static agent_status_t tool_fs_read(HostToolCtx* ctx, const char* arguments_json,
   if (!ec) data["size_bytes"] = (Json::UInt64)sz;
   const auto mtime = std::filesystem::last_write_time(*resolved, ec);
   if (!ec) data["mtime_unix_ms"] = (Json::Int64)file_time_to_unix_ms(mtime);
+  {
+    int64_t ctime_ms = 0;
+    int64_t birth_ms = 0;
+    if (posix_stat_times_best_effort(*resolved, &ctime_ms, &birth_ms)) {
+      if (ctime_ms > 0) data["ctime_unix_ms"] = (Json::Int64)ctime_ms;
+      if (birth_ms > 0) data["birthtime_unix_ms"] = (Json::Int64)birth_ms;
+    }
+  }
 
   const bool is_bin = is_probably_binary(*resolved);
   data["is_binary"] = is_bin;

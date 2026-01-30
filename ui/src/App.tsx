@@ -372,7 +372,7 @@ export default function App() {
         <div>
           <div className="text-xl font-semibold">agent UI</div>
           <div className="text-sm text-white/60">
-            daemon:{" "}
+            daemon: <span className="font-mono text-[12px] text-white/70">{effectiveBase}</span>{" "}
             {health.isSuccess ? (
               <span className="text-emerald-300">
                 ok ({health.data.service ?? "agentd"} {health.data.version ?? ""})
@@ -382,15 +382,27 @@ export default function App() {
             ) : (
               <span className="text-rose-300">offline</span>
             )}
+            {health.isError ? (
+              <div className="mt-1 text-[11px] text-rose-200/80">health check failed: {String(health.error)}</div>
+            ) : null}
           </div>
         </div>
-        <button
-          className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-          onClick={() => setShowSettings((v) => !v)}
-          type="button"
-        >
-          {showSettings ? "Hide settings" : "Show settings"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+            onClick={() => health.refetch()}
+            type="button"
+          >
+            Recheck
+          </button>
+          <button
+            className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+            onClick={() => setShowSettings((v) => !v)}
+            type="button"
+          >
+            {showSettings ? "Hide settings" : "Show settings"}
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">

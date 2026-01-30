@@ -118,6 +118,8 @@ static void test_fs_stat_list_read() {
     assert(resp["data"]["exists"].asBool());
     assert(resp["data"]["size_bytes"].asUInt64() > 0);
     assert(resp["data"]["is_binary"].asBool() == false);
+    assert(resp["data"].isMember("mtime_unix_ms"));
+    assert(resp["data"].isMember("ctime_unix_ms"));
     assert(resp["data"]["output"].asString().find("many.txt") != std::string::npos);
     agent_string_free(&out);
   }
@@ -212,6 +214,8 @@ static void test_fs_stat_list_read() {
     const Json::Value resp = json_parse(std::string(out.data, out.len));
     assert(resp["ok"].asBool());
     assert(resp["data"]["is_binary"].asBool() == false);
+    assert(resp["data"].isMember("mtime_unix_ms"));
+    assert(resp["data"].isMember("ctime_unix_ms"));
     assert(resp["data"]["lines_returned"].asInt() == 100);
     assert(resp["data"]["has_more"].asBool());
     assert(resp["data"]["next_start_line"].asInt() == 101);
