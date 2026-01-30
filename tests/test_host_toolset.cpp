@@ -97,6 +97,10 @@ static void test_fs_stat_list_read() {
       f << "L" << i << "\n";
     }
   }
+  {
+    std::ofstream f(root / "dir" / "skip.log", std::ios::binary);
+    f << "SKIPME_TOKEN_123\n";
+  }
 
   HostToolsetConfig cfg;
   cfg.root_dir = root.string();
@@ -150,6 +154,68 @@ static void test_fs_stat_list_read() {
       }
     }
     assert(found);
+    agent_string_free(&out);
+  }
+
+  // fs_list exclude_globs should filter returned entry paths
+  {
+    Json::Value args(Json::objectValue);
+    args["path"] = "dir";
+    args["recursive"] = false;
+    args["max_entries"] = 50;
+    Json::Value globs(Json::arrayValue);
+    globs.append("*skip.log");
+    args["exclude_globs"] = globs;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "fs_list", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    const auto& entries = resp["data"]["entries"];
+    assert(entries.isArray());
+    bool saw_many = false;
+    bool saw_skip = false;
+    for (Json::ArrayIndex i = 0; i < entries.size(); i++) {
+      if (!entries[i].isObject() || !entries[i]["path"].isString()) continue;
+      const std::string p = entries[i]["path"].asString();
+      if (p.find("many.txt") != std::string::npos) saw_many = true;
+      if (p.find("skip.log") != std::string::npos) saw_skip = true;
+    }
+    assert(saw_many);
+    assert(!saw_skip);
+    agent_string_free(&out);
+  }
+
+  // text_search exclude_globs should filter scanned files
+  {
+    Json::Value args(Json::objectValue);
+    args["query"] = "SKIPME_TOKEN_123";
+    args["path"] = "dir";
+    args["recursive"] = true;
+    args["max_results"] = 20;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "text_search", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    assert(resp["data"]["matches_count"].asUInt64() >= 1);
+    agent_string_free(&out);
+  }
+  {
+    Json::Value args(Json::objectValue);
+    args["query"] = "SKIPME_TOKEN_123";
+    args["path"] = "dir";
+    args["recursive"] = true;
+    args["max_results"] = 20;
+    Json::Value globs(Json::arrayValue);
+    globs.append("*skip.log");
+    args["exclude_globs"] = globs;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "text_search", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    assert(resp["data"]["matches_count"].asUInt64() == 0);
     agent_string_free(&out);
   }
 

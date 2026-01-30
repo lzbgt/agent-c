@@ -160,6 +160,9 @@ Completed milestones and notable tasks.
 - Extended `fs_stat` with optional bounded line counting (token-safe “is this file huge?” check):
   - `count_lines`, `max_count_bytes`, `max_count_lines`
   - `tests/test_host_toolset.cpp`
+- Added `exclude_globs` (fnmatch) support to token-safe discovery/search tools:
+  - `fs_list`, `fs_find`, `text_search` accept `exclude_globs` to skip generated/noisy paths without dumping huge trees
+  - covered by unit tests (`tests/test_host_toolset.cpp`)
 - Improved Web UI daemon connectivity diagnostics:
   - show daemon base URL in the header and surface health-check errors explicitly
   - `ui/src/App.tsx`

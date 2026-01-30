@@ -19,6 +19,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <fnmatch.h>
 #include <poll.h>
 #include <signal.h>
 #include <spawn.h>
@@ -144,6 +145,17 @@ static bool posix_stat_times_best_effort(
   }
 #endif
   return true;
+}
+
+static bool glob_matches_any(const std::vector<std::string>& globs, const std::string& text) {
+  if (globs.empty() || text.empty()) return false;
+  for (const auto& g : globs) {
+    if (g.empty()) continue;
+    if (::fnmatch(g.c_str(), text.c_str(), 0) == 0) {
+      return true;
+    }
+  }
+  return false;
 }
 
 static bool is_probably_binary(const std::filesystem::path& path) {
@@ -348,6 +360,7 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
   }
 
   std::vector<std::string> exclude_names;
+  std::vector<std::string> exclude_globs;
   if (use_default_excludes) {
     // Token-efficiency defaults. These directories commonly contain huge trees and almost never help
     // the model understand project architecture without a targeted question.
@@ -371,11 +384,21 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
       }
     }
   }
+  if (args.isMember("exclude_globs") && args["exclude_globs"].isArray()) {
+    for (Json::ArrayIndex i = 0; i < args["exclude_globs"].size(); i++) {
+      const auto& v = args["exclude_globs"][i];
+      if (v.isString()) {
+        const std::string s = v.asString();
+        if (!s.empty()) exclude_globs.push_back(s);
+      }
+    }
+  }
 
   Json::Value arr(Json::arrayValue);
   int count = 0;
   int excluded_entries = 0;
   int excluded_dirs = 0;
+  int excluded_by_glob = 0;
   const auto should_skip = [&](const std::filesystem::path& p) -> bool {
     const auto name = p.filename().string();
     if (!include_hidden && !name.empty() && name[0] == '.') {
@@ -386,6 +409,14 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
         if (name == ex) {
           return true;
         }
+      }
+    }
+    if (!exclude_globs.empty()) {
+      const std::string entry_path = ctx->unrestricted ? to_generic_string(p.lexically_normal())
+                                                       : p.lexically_relative(ctx->root).generic_string();
+      if (glob_matches_any(exclude_globs, entry_path)) {
+        excluded_by_glob++;
+        return true;
       }
     }
     return false;
@@ -459,10 +490,16 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
   data["use_default_excludes"] = use_default_excludes;
   data["excluded_entries"] = excluded_entries;
   data["excluded_dirs"] = excluded_dirs;
+  data["excluded_by_glob"] = excluded_by_glob;
   {
     Json::Value ex(Json::arrayValue);
     for (const auto& s : exclude_names) ex.append(s);
     data["exclude_names"] = ex;
+  }
+  {
+    Json::Value ex(Json::arrayValue);
+    for (const auto& s : exclude_globs) ex.append(s);
+    data["exclude_globs"] = ex;
   }
   {
     std::ostringstream oss;
@@ -478,9 +515,20 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
       }
       oss << "\n";
     }
+    if (!exclude_globs.empty()) {
+      oss << "exclude_globs: ";
+      for (size_t i = 0; i < exclude_globs.size(); i++) {
+        if (i) oss << ", ";
+        oss << exclude_globs[i];
+      }
+      oss << "\n";
+    }
     if (excluded_entries > 0) {
       oss << "excluded_entries: " << excluded_entries << "\n";
       oss << "excluded_dirs: " << excluded_dirs << "\n";
+      if (excluded_by_glob > 0) {
+        oss << "excluded_by_glob: " << excluded_by_glob << "\n";
+      }
     }
     oss << "entries: " << count << (count >= max_entries ? " (truncated)\n" : "\n");
     for (Json::ArrayIndex i = 0; i < arr.size(); i++) {
@@ -544,6 +592,7 @@ static agent_status_t tool_fs_find(HostToolCtx* ctx, const char* arguments_json,
   };
 
   std::vector<std::string> exclude_names;
+  std::vector<std::string> exclude_globs;
   if (use_default_excludes) {
     exclude_names = {"node_modules", ".git", "build", "dist", "out", ".cache", "__pycache__", ".venv", "venv", ".DS_Store"};
   }
@@ -553,6 +602,15 @@ static agent_status_t tool_fs_find(HostToolCtx* ctx, const char* arguments_json,
       if (v.isString()) {
         const std::string s = v.asString();
         if (!s.empty()) exclude_names.push_back(s);
+      }
+    }
+  }
+  if (args.isMember("exclude_globs") && args["exclude_globs"].isArray()) {
+    for (Json::ArrayIndex i = 0; i < args["exclude_globs"].size(); i++) {
+      const auto& v = args["exclude_globs"][i];
+      if (v.isString()) {
+        const std::string s = v.asString();
+        if (!s.empty()) exclude_globs.push_back(s);
       }
     }
   }
@@ -578,12 +636,21 @@ static agent_status_t tool_fs_find(HostToolCtx* ctx, const char* arguments_json,
     return write_envelope(false, "path does not exist", Json::Value(Json::objectValue));
   }
 
+  int skipped_by_glob = 0;
   const auto should_skip = [&](const std::filesystem::path& p) -> bool {
     const auto name = p.filename().string();
     if (!include_hidden && !name.empty() && name[0] == '.') return true;
     if (!exclude_names.empty() && !name.empty()) {
       for (const auto& ex : exclude_names) {
         if (name == ex) return true;
+      }
+    }
+    if (!exclude_globs.empty()) {
+      const std::string entry_path = ctx->unrestricted ? to_generic_string(p.lexically_normal())
+                                                       : p.lexically_relative(ctx->root).generic_string();
+      if (glob_matches_any(exclude_globs, entry_path)) {
+        skipped_by_glob++;
+        return true;
       }
     }
     return false;
@@ -646,7 +713,7 @@ static agent_status_t tool_fs_find(HostToolCtx* ctx, const char* arguments_json,
 
   if (std::filesystem::is_regular_file(*resolved, ec)) {
     std::filesystem::directory_entry de(*resolved, ec);
-    if (!ec) consider(de);
+    if (!ec && !should_skip(de.path())) consider(de);
   } else if (std::filesystem::is_directory(*resolved, ec)) {
     if (recursive) {
       for (auto it = std::filesystem::recursive_directory_iterator(*resolved, ec);
@@ -708,10 +775,16 @@ static agent_status_t tool_fs_find(HostToolCtx* ctx, const char* arguments_json,
   data["dirs_skipped"] = dirs_skipped;
   data["files_seen"] = files_seen;
   data["files_skipped_by_ext"] = files_skipped_by_ext;
+  data["skipped_by_glob"] = skipped_by_glob;
   if (!extensions.empty()) {
     Json::Value exts(Json::arrayValue);
     for (const auto& s : extensions) exts.append(s);
     data["extensions"] = exts;
+  }
+  if (!exclude_globs.empty()) {
+    Json::Value ex(Json::arrayValue);
+    for (const auto& s : exclude_globs) ex.append(s);
+    data["exclude_globs"] = ex;
   }
 
   {
@@ -726,6 +799,14 @@ static agent_status_t tool_fs_find(HostToolCtx* ctx, const char* arguments_json,
       for (size_t i = 0; i < extensions.size(); i++) {
         if (i) oss << ", ";
         oss << extensions[i];
+      }
+      oss << "\n";
+    }
+    if (!exclude_globs.empty()) {
+      oss << "exclude_globs: ";
+      for (size_t i = 0; i < exclude_globs.size(); i++) {
+        if (i) oss << ", ";
+        oss << exclude_globs[i];
       }
       oss << "\n";
     }
@@ -981,6 +1062,7 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
   }
 
   std::vector<std::string> exclude_names;
+  std::vector<std::string> exclude_globs;
   if (use_default_excludes) {
     exclude_names.push_back("node_modules");
     exclude_names.push_back(".git");
@@ -999,6 +1081,15 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
       if (v.isString()) {
         const std::string s = v.asString();
         if (!s.empty()) exclude_names.push_back(s);
+      }
+    }
+  }
+  if (args.isMember("exclude_globs") && args["exclude_globs"].isArray()) {
+    for (Json::ArrayIndex i = 0; i < args["exclude_globs"].size(); i++) {
+      const auto& v = args["exclude_globs"][i];
+      if (v.isString()) {
+        const std::string s = v.asString();
+        if (!s.empty()) exclude_globs.push_back(s);
       }
     }
   }
@@ -1023,12 +1114,21 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
     return false;
   };
 
+  int skipped_by_glob = 0;
   const auto should_skip = [&](const std::filesystem::path& p) -> bool {
     const auto name = p.filename().string();
     if (!include_hidden && !name.empty() && name[0] == '.') return true;
     if (!exclude_names.empty() && !name.empty()) {
       for (const auto& ex : exclude_names) {
         if (name == ex) return true;
+      }
+    }
+    if (!exclude_globs.empty()) {
+      const std::string entry_path = ctx->unrestricted ? to_generic_string(p.lexically_normal())
+                                                       : p.lexically_relative(ctx->root).generic_string();
+      if (glob_matches_any(exclude_globs, entry_path)) {
+        skipped_by_glob++;
+        return true;
       }
     }
     return false;
@@ -1101,7 +1201,9 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
     const auto st = std::filesystem::status(p, ec3);
     if (ec3) return;
     if (std::filesystem::is_regular_file(st)) {
-      scan_file(p);
+      if (!should_skip(p)) {
+        scan_file(p);
+      }
       return;
     }
     if (!std::filesystem::is_directory(st)) return;
@@ -1155,6 +1257,11 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
     for (const auto& s : exclude_names) ex.append(s);
     data["exclude_names"] = ex;
   }
+  if (!exclude_globs.empty()) {
+    Json::Value ex(Json::arrayValue);
+    for (const auto& s : exclude_globs) ex.append(s);
+    data["exclude_globs"] = ex;
+  }
   data["max_results"] = max_results;
   data["max_file_bytes"] = max_file_bytes;
   data["max_line_chars"] = max_line_chars;
@@ -1163,6 +1270,7 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
   data["files_skipped_too_large"] = files_skipped_too_large;
   data["files_skipped_by_ext"] = files_skipped_by_ext;
   data["dirs_skipped"] = dirs_skipped;
+  data["skipped_by_glob"] = skipped_by_glob;
   data["matches"] = matches;
   data["matches_count"] = (Json::UInt64)matches.size();
   data["truncated"] = truncated;
@@ -1188,6 +1296,14 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
       }
       oss << "\n";
     }
+    if (!exclude_globs.empty()) {
+      oss << "exclude_globs: ";
+      for (size_t i = 0; i < exclude_globs.size(); i++) {
+        if (i) oss << ", ";
+        oss << exclude_globs[i];
+      }
+      oss << "\n";
+    }
     oss << "use_default_excludes: " << (use_default_excludes ? "true" : "false") << "\n";
     oss << "matches: " << (unsigned long long)matches.size() << (truncated ? " (truncated)\n" : "\n");
     oss << "files_scanned: " << files_scanned << "\n";
@@ -1195,6 +1311,7 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
     if (files_skipped_too_large) oss << "files_skipped_too_large: " << files_skipped_too_large << "\n";
     if (files_skipped_by_ext) oss << "files_skipped_by_ext: " << files_skipped_by_ext << "\n";
     if (dirs_skipped) oss << "dirs_skipped: " << dirs_skipped << "\n";
+    if (skipped_by_glob) oss << "skipped_by_glob: " << skipped_by_glob << "\n";
     for (Json::ArrayIndex i = 0; i < matches.size() && i < 50; i++) {
       const auto& m = matches[i];
       const std::string mp = m.isMember("path") && m["path"].isString() ? m["path"].asString() : "";
@@ -1806,7 +1923,8 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     "  \"max_depth\":{\"type\":\"integer\",\"description\":\"Max recursion depth when recursive=true (default: 4)\"},"
     "  \"include_hidden\":{\"type\":\"boolean\"},"
     "  \"use_default_excludes\":{\"type\":\"boolean\",\"description\":\"When true (default), skips common huge dirs like node_modules/build/dist unless explicitly requested.\"},"
-    "  \"exclude_names\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Extra directory/file basenames to exclude.\"}"
+    "  \"exclude_names\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Extra directory/file basenames to exclude.\"},"
+    "  \"exclude_globs\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Optional glob patterns (fnmatch) applied to returned entry paths.\"}"
     "}"
     "}"
   );
@@ -1828,7 +1946,8 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     "  \"name_substring\":{\"type\":\"string\",\"description\":\"Optional substring filter on basename.\"},"
     "  \"extensions\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Optional file extension filters (e.g. [\\\".cpp\\\",\\\".h\\\"]).\"},"
     "  \"use_default_excludes\":{\"type\":\"boolean\",\"description\":\"When true (default), skips common huge dirs like node_modules/build/dist unless explicitly requested.\"},"
-    "  \"exclude_names\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Extra directory/file basenames to exclude.\"}"
+    "  \"exclude_names\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Extra directory/file basenames to exclude.\"},"
+    "  \"exclude_globs\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Optional glob patterns (fnmatch) applied to returned entry paths.\"}"
     "}"
     "}"
   );
@@ -1870,7 +1989,8 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     "  \"max_line_chars\":{\"type\":\"integer\",\"description\":\"Max chars per snippet line (default: 400).\"},"
     "  \"extensions\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Optional file extension filters (e.g. [\\\".cpp\\\",\\\".h\\\"]).\"},"
     "  \"use_default_excludes\":{\"type\":\"boolean\",\"description\":\"When true (default), skips common huge dirs like node_modules/build/dist unless explicitly requested.\"},"
-    "  \"exclude_names\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Extra directory/file basenames to exclude.\"}"
+    "  \"exclude_names\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Extra directory/file basenames to exclude.\"},"
+    "  \"exclude_globs\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Optional glob patterns (fnmatch) applied to returned match paths.\"}"
     "},"
     "\"required\":[\"query\"]"
     "}"
