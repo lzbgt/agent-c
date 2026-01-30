@@ -10,6 +10,8 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
+Host builds (`agent` / `agentd`) require `libcurl` and `jsoncpp` (via `pkg-config`).
+
 ### Core-only build (portable; no CURL required)
 
 If you only want the portable core library + core unit tests (e.g. embedded/toolchain bring-up), disable host builds:

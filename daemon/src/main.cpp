@@ -4,6 +4,10 @@
 #include "agent/provider.h"
 #include "agent/runner.h"
 
+#include "http_util.h"
+#include "string_util.h"
+
+#include "default_system_prompt.h"
 #include "openai_client.h"
 #include "session_store.h"
 #include "summary_compaction.h"
@@ -14,6 +18,9 @@
 
 #if defined(AGENT_HAVE_JSONCPP)
 #include <json/json.h>
+#include "json_util.h"
+#include "job_manager.h"
+#include "openrouter_util.h"
 #endif
 
 #include <filesystem>
@@ -35,12 +42,12 @@
 #include <cerrno>
 #include <signal.h>
 
+using namespace agentd;
+
 static const char* getenv_s(const char* k) {
   const char* v = std::getenv(k);
   return (v && v[0]) ? v : nullptr;
 }
-
-static std::string truncate_for_event(const std::string& s, size_t max_bytes, bool* out_truncated = nullptr);
 
 static std::string home_dir_best_effort() {
   if (const char* h = getenv_s("HOME")) {
@@ -48,93 +55,6 @@ static std::string home_dir_best_effort() {
   }
   return std::filesystem::current_path().string();
 }
-
-static const char* default_host_system_prompt() {
-  // Host-only policy (daemon/CLI), not core behavior. This is intended to reduce wasted tokens/time
-  // by steering the model toward incremental inspection (search/head/tail) instead of full file reads.
-  return
-    "You are a host-side coding agent with access to system tools (shell/proc exec), bounded filesystem read tools, and a diff-based file edit tool.\n"
-    "\n"
-    "Efficiency rules (important):\n"
-    "- Prefer bounded/paginated inspection over reading full files.\n"
-    "  - Use fs_list/fs_stat to inspect directories/files with predictable output size.\n"
-    "    - Tip: fs_stat supports count_lines=true (bounded) to quickly estimate file length.\n"
-    "  - Use fs_find for token-safe file discovery instead of `find`/`tree`.\n"
-    "    - Note: fs_list excludes common huge dirs (node_modules/build/dist) by default; disable with use_default_excludes=false.\n"
-    "    - Tip: fs_list/fs_find/text_search support exclude_globs (fnmatch) to skip generated/noisy paths.\n"
-    "    - Tip: fs_list/fs_find/text_search support respect_gitignore=true to skip .gitignore'd paths (best-effort).\n"
-    "  - Use text_search for token-safe code search instead of dumping whole files.\n"
-    "  - Use fs_read with start_line/max_lines (and optional end_line) for paging through files.\n"
-    "  - Use rg/grep/head/tail/sed/awk for narrow, targeted inspection when appropriate.\n"
-    "- Avoid dumping large directories or entire files unless strictly needed.\n"
-    "- When exploring code, start narrow (file list, search hits) then open only relevant sections.\n"
-    "\n"
-    "Edits:\n"
-    "- Use the diff-based edit tool for changing files so edits are auditable.\n"
-    "\n"
-    "Tool outputs:\n"
-    "- Tool success is not just exit code; judge using tool output content.\n";
-}
-
-#if defined(AGENT_HAVE_JSONCPP)
-static std::string json_stringify(const Json::Value& v) {
-  Json::StreamWriterBuilder b;
-  b["indentation"] = "";
-  return Json::writeString(b, v);
-}
-
-static bool json_get_u64_nonneg(const Json::Value& obj, const char* key, uint64_t* out) {
-  if (!out) return false;
-  if (!obj.isObject() || !key || !key[0]) return false;
-  if (!obj.isMember(key)) return false;
-  const Json::Value& v = obj[key];
-  if (v.isUInt64()) {
-    *out = v.asUInt64();
-    return true;
-  }
-  if (v.isInt64()) {
-    const Json::Int64 x = v.asInt64();
-    if (x < 0) return false;
-    *out = (uint64_t)x;
-    return true;
-  }
-  if (v.isUInt()) {
-    *out = (uint64_t)v.asUInt();
-    return true;
-  }
-  if (v.isInt()) {
-    const int x = v.asInt();
-    if (x < 0) return false;
-    *out = (uint64_t)x;
-    return true;
-  }
-  if (v.isDouble()) {
-    const double x = v.asDouble();
-    if (!(x >= 0.0)) return false;
-    *out = (uint64_t)x;
-    return true;
-  }
-  return false;
-}
-
-static bool json_parse_object(const std::string& s, Json::Value* out, std::string* out_err) {
-  if (out_err) out_err->clear();
-  Json::CharReaderBuilder rb;
-  std::string errs;
-  std::istringstream iss(s);
-  Json::Value v;
-  if (!Json::parseFromStream(rb, iss, &v, &errs)) {
-    if (out_err) *out_err = errs;
-    return false;
-  }
-  if (!v.isObject()) {
-    if (out_err) *out_err = "expected JSON object";
-    return false;
-  }
-  *out = v;
-  return true;
-}
-#endif
 
 struct DaemonConfig {
   std::string listen_host = "127.0.0.1";
@@ -155,86 +75,6 @@ struct DaemonConfig {
   size_t keep_last_default = 16;
 };
 
-static void add_cors(HttpResponse* resp) {
-  // Localhost-friendly defaults for a local web UI dev server.
-  resp->headers["Access-Control-Allow-Origin"] = "*";
-  resp->headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS";
-  resp->headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
-}
-
-static std::string url_decode(std::string_view s) {
-  std::string out;
-  out.reserve(s.size());
-  for (size_t i = 0; i < s.size(); i++) {
-    const char c = s[i];
-    if (c == '%' && i + 2 < s.size()) {
-      auto hex = [](char x) -> int {
-        if (x >= '0' && x <= '9') return x - '0';
-        if (x >= 'a' && x <= 'f') return 10 + (x - 'a');
-        if (x >= 'A' && x <= 'F') return 10 + (x - 'A');
-        return -1;
-      };
-      const int hi = hex(s[i + 1]);
-      const int lo = hex(s[i + 2]);
-      if (hi >= 0 && lo >= 0) {
-        out.push_back((char)((hi << 4) | lo));
-        i += 2;
-        continue;
-      }
-    }
-    if (c == '+') {
-      out.push_back(' ');
-    } else {
-      out.push_back(c);
-    }
-  }
-  return out;
-}
-
-static std::optional<std::string> query_get(const std::string& query, const std::string& key) {
-  size_t start = 0;
-  while (start <= query.size()) {
-    size_t amp = query.find('&', start);
-    if (amp == std::string::npos) amp = query.size();
-    const std::string_view part(query.data() + start, amp - start);
-    const size_t eq = part.find('=');
-    std::string_view k = eq == std::string_view::npos ? part : part.substr(0, eq);
-    std::string_view v = eq == std::string_view::npos ? std::string_view() : part.substr(eq + 1);
-    if (k == key) {
-      return url_decode(v);
-    }
-    start = amp + 1;
-  }
-  return std::nullopt;
-}
-
-static bool string_to_bool(const std::string& s) {
-  return s == "1" || s == "true" || s == "yes" || s == "on";
-}
-
-static std::string content_type_from_path(const std::filesystem::path& p) {
-  const std::string ext = p.extension().string();
-  auto eqi = [&](const char* s) {
-    if (ext.size() != std::strlen(s)) return false;
-    for (size_t i = 0; i < ext.size(); i++) {
-      if (std::tolower((unsigned char)ext[i]) != std::tolower((unsigned char)s[i])) return false;
-    }
-    return true;
-  };
-  if (eqi(".png")) return "image/png";
-  if (eqi(".jpg") || eqi(".jpeg")) return "image/jpeg";
-  if (eqi(".gif")) return "image/gif";
-  if (eqi(".webp")) return "image/webp";
-  if (eqi(".svg")) return "image/svg+xml";
-  if (eqi(".mp3")) return "audio/mpeg";
-  if (eqi(".wav")) return "audio/wav";
-  if (eqi(".mp4")) return "video/mp4";
-  if (eqi(".webm")) return "video/webm";
-  if (eqi(".mov")) return "video/quicktime";
-  if (eqi(".txt") || eqi(".md")) return "text/plain; charset=utf-8";
-  return "application/octet-stream";
-}
-
 struct ProviderCtx {
   OpenAIClientConfig cfg;
   long last_http_status = 0;
@@ -248,320 +88,6 @@ static agent_status_t provider_generate(
   const agent_generate_request_t* req,
   agent_generate_response_t* out_resp
 );
-
-struct JobState {
-  std::string id;
-  std::string status; // queued|running|done|error
-  bool cancel_requested = false;
-  Json::Value result; // final JSON result (same shape as /api/v1/run)
-  std::string error;
-  // Live event stream (best-effort) captured while a job is running. This is used by the UI
-  // to show progress instead of appearing to "hang" during long tool loops.
-  Json::Value events = Json::Value(Json::arrayValue);
-  uint64_t events_offset = 0; // number of events dropped from the front (cursor base)
-  int64_t created_unix_ms = 0;
-  int64_t updated_unix_ms = 0;
-};
-
-static int64_t now_unix_ms() {
-  return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
-           std::chrono::system_clock::now().time_since_epoch()
-         ).count();
-}
-
-static std::string new_job_id() {
-  static std::atomic<uint64_t> counter{0};
-  const uint64_t n = ++counter;
-  return "job_" + std::to_string((long long)now_unix_ms()) + "_" + std::to_string((long long)n);
-}
-
-static std::mutex g_jobs_mu;
-static std::map<std::string, JobState> g_jobs;
-
-static bool write_all_fd(int fd, const char* data, size_t n) {
-  size_t off = 0;
-  while (off < n) {
-    ssize_t w = ::write(fd, data + off, n - off);
-    if (w > 0) {
-      off += (size_t)w;
-      continue;
-    }
-    if (w == -1 && (errno == EINTR)) {
-      continue;
-    }
-    return false;
-  }
-  return true;
-}
-
-static bool write_all_fd(int fd, const std::string& s) {
-  return write_all_fd(fd, s.data(), s.size());
-}
-
-static bool sse_send(int fd, const std::string& event, const std::string& data_json, const std::string& id = "") {
-  std::string out;
-  out.reserve(event.size() + data_json.size() + 64);
-  if (!event.empty()) {
-    out += "event: ";
-    out += event;
-    out += "\n";
-  }
-  if (!id.empty()) {
-    out += "id: ";
-    out += id;
-    out += "\n";
-  }
-  out += "data: ";
-  out += data_json;
-  out += "\n\n";
-  return write_all_fd(fd, out);
-}
-
-static bool sse_ping(int fd) {
-  return write_all_fd(fd, ": ping\n\n");
-}
-
-static bool json_parse_any(const std::string& s, Json::Value* out, std::string* out_err) {
-  if (out_err) out_err->clear();
-  if (!out) return false;
-  Json::CharReaderBuilder rb;
-  std::string errs;
-  std::istringstream iss(s);
-  Json::Value v;
-  if (!Json::parseFromStream(rb, iss, &v, &errs)) {
-    if (out_err) *out_err = errs;
-    return false;
-  }
-  *out = v;
-  return true;
-}
-
-static std::string json_try_extract_assistant_content_from_completion(const Json::Value& root) {
-  const auto& choices = root["choices"];
-  if (!choices.isArray() || choices.empty()) return "";
-  const auto& msg = choices[0]["message"];
-  const auto& content = msg["content"];
-  if (content.isString()) return content.asString();
-  const auto& text = choices[0]["text"];
-  if (text.isString()) return text.asString();
-  return "";
-}
-
-static std::string trim_slashes(std::string s) {
-  while (!s.empty() && s.back() == '/') s.pop_back();
-  return s;
-}
-
-static std::string header_get_ci(const std::map<std::string, std::string>& headers, const std::string& key_lc) {
-  auto it = headers.find(key_lc);
-  if (it == headers.end()) return "";
-  return it->second;
-}
-
-static std::string bearer_token_from_auth_header(const std::string& auth) {
-  // Headers were lowercased at parse time, but values are case-preserved. Accept common "Bearer " prefix.
-  const std::string prefix = "bearer ";
-  if (auth.size() >= prefix.size()) {
-    std::string head = auth.substr(0, prefix.size());
-    for (char& c : head) c = (char)std::tolower((unsigned char)c);
-    if (head == prefix) {
-      return auth.substr(prefix.size());
-    }
-  }
-  return "";
-}
-
-static double pricing_to_per_million(const Json::Value& v) {
-  // OpenRouter pricing fields are strings like "0.000000075" USD per token.
-  // Convert to USD per 1M tokens.
-  double per_token = 0.0;
-  if (v.isString()) {
-    try {
-      per_token = std::stod(v.asString());
-    } catch (...) {
-      per_token = 0.0;
-    }
-  } else if (v.isNumeric()) {
-    per_token = v.asDouble();
-  }
-  return per_token * 1'000'000.0;
-}
-
-static bool model_supports_tools(const Json::Value& model) {
-  const auto& sp = model["supported_parameters"];
-  if (!sp.isArray()) return false;
-  for (const auto& x : sp) {
-    if (x.isString() && x.asString() == "tools") return true;
-  }
-  return false;
-}
-
-static bool model_has_multimodal_input(const Json::Value& model) {
-  const auto& arch = model["architecture"];
-  if (!arch.isObject()) return false;
-  const auto& inputs = arch["input_modalities"];
-  if (!inputs.isArray()) return false;
-  for (const auto& m : inputs) {
-    if (!m.isString()) continue;
-    const std::string s = m.asString();
-    if (s == "image" || s == "audio" || s == "video") return true;
-  }
-  return false;
-}
-
-static void job_set_status(const std::string& id, const std::string& status, const std::string& error) {
-  std::lock_guard<std::mutex> lk(g_jobs_mu);
-  auto it = g_jobs.find(id);
-  if (it == g_jobs.end()) return;
-  it->second.status = status;
-  it->second.error = error;
-  it->second.updated_unix_ms = now_unix_ms();
-}
-
-static void job_append_event(const std::string& id, const std::string& type, const std::string& data_json) {
-  constexpr Json::ArrayIndex kHardMax = 4096;
-  constexpr Json::ArrayIndex kSoftMax = 4608; // rebuild window to avoid O(n) per event
-
-  std::lock_guard<std::mutex> lk(g_jobs_mu);
-  auto it = g_jobs.find(id);
-  if (it == g_jobs.end()) return;
-
-  Json::Value data;
-  std::string perr;
-  if (!data_json.empty() && json_parse_any(data_json, &data, &perr)) {
-    // ok
-  } else {
-    data = data_json;
-  }
-
-  Json::Value e(Json::objectValue);
-  e["type"] = type;
-  e["data"] = data;
-  it->second.events.append(e);
-  it->second.updated_unix_ms = now_unix_ms();
-
-  const Json::ArrayIndex sz = it->second.events.size();
-  if (sz > kSoftMax) {
-    // Keep the last kHardMax events.
-    const Json::ArrayIndex start = (sz > kHardMax) ? (sz - kHardMax) : 0;
-    Json::Value trimmed(Json::arrayValue);
-    for (Json::ArrayIndex i = start; i < sz; i++) {
-      trimmed.append(it->second.events[i]);
-    }
-    it->second.events_offset += (uint64_t)start;
-    it->second.events = std::move(trimmed);
-  }
-}
-
-static void job_set_result(const std::string& id, const Json::Value& result) {
-  std::lock_guard<std::mutex> lk(g_jobs_mu);
-  auto it = g_jobs.find(id);
-  if (it == g_jobs.end()) return;
-  it->second.result = result;
-  const bool ok = result.isObject() && result.isMember("ok") && result["ok"].isBool() && result["ok"].asBool();
-  it->second.status = ok ? "done" : "error";
-  if (!ok && result.isObject() && result.isMember("error") && result["error"].isString()) {
-    it->second.error = result["error"].asString();
-  }
-  it->second.updated_unix_ms = now_unix_ms();
-}
-
-enum JobProgressPhase {
-  kPhaseIdle = 0,
-  kPhaseWaitingLlm = 1,
-  kPhaseRunningTool = 2,
-};
-
-struct DaemonJobEventHookCtx {
-  std::string job_id;
-  std::atomic<int64_t>* last_any_event_ms = nullptr;
-  std::atomic<int64_t>* last_non_heartbeat_ms = nullptr;
-  std::atomic<int>* phase = nullptr;
-};
-
-static void daemon_job_on_tool_loop_event(void* vctx, const char* type, const char* data_json) {
-  if (!vctx || !type) return;
-  auto* ctx = static_cast<DaemonJobEventHookCtx*>(vctx);
-  const int64_t now = now_unix_ms();
-  if (ctx->last_any_event_ms) ctx->last_any_event_ms->store(now);
-  if (ctx->last_non_heartbeat_ms) ctx->last_non_heartbeat_ms->store(now);
-  if (ctx->phase) {
-    const std::string t(type);
-    if (t == "llm_request") ctx->phase->store(kPhaseWaitingLlm);
-    else if (t == "llm_response") ctx->phase->store(kPhaseIdle);
-    else if (t == "tool_call") ctx->phase->store(kPhaseRunningTool);
-    else if (t == "tool_result") ctx->phase->store(kPhaseIdle);
-  }
-  job_append_event(ctx->job_id, type, data_json ? data_json : "");
-}
-
-static void daemon_job_emit_heartbeat(
-  const std::string& job_id,
-  int phase,
-  int64_t since_non_heartbeat_ms,
-  int64_t since_any_event_ms
-) {
-  Json::Value d(Json::objectValue);
-  d["job_id"] = job_id;
-  d["ts_unix_ms"] = (Json::Int64)now_unix_ms();
-  d["phase"] = phase;
-  d["since_last_non_heartbeat_ms"] = (Json::Int64)since_non_heartbeat_ms;
-  d["since_last_any_event_ms"] = (Json::Int64)since_any_event_ms;
-  job_append_event(job_id, "heartbeat", json_stringify(d));
-}
-
-static bool job_get(const std::string& id, JobState* out) {
-  std::lock_guard<std::mutex> lk(g_jobs_mu);
-  auto it = g_jobs.find(id);
-  if (it == g_jobs.end()) return false;
-  if (out) *out = it->second;
-  return true;
-}
-
-static bool job_create(const std::string& id) {
-  std::lock_guard<std::mutex> lk(g_jobs_mu);
-  if (g_jobs.find(id) != g_jobs.end()) return false;
-  JobState s;
-  s.id = id;
-  s.status = "queued";
-  s.created_unix_ms = now_unix_ms();
-  s.updated_unix_ms = s.created_unix_ms;
-  s.events = Json::Value(Json::arrayValue);
-  s.events_offset = 0;
-  g_jobs[id] = s;
-  return true;
-}
-
-static bool job_delete(const std::string& id) {
-  std::lock_guard<std::mutex> lk(g_jobs_mu);
-  auto it = g_jobs.find(id);
-  if (it == g_jobs.end()) return false;
-  // Only allow deletion when not running.
-  if (it->second.status == "running" || it->second.status == "queued") {
-    return false;
-  }
-  g_jobs.erase(it);
-  return true;
-}
-
-static bool job_request_cancel(const std::string& id) {
-  std::lock_guard<std::mutex> lk(g_jobs_mu);
-  auto it = g_jobs.find(id);
-  if (it == g_jobs.end()) return false;
-  if (it->second.status != "running" && it->second.status != "queued") {
-    return false;
-  }
-  it->second.cancel_requested = true;
-  it->second.updated_unix_ms = now_unix_ms();
-  return true;
-}
-
-static bool job_is_cancel_requested(const std::string& id) {
-  std::lock_guard<std::mutex> lk(g_jobs_mu);
-  auto it = g_jobs.find(id);
-  if (it == g_jobs.end()) return false;
-  return it->second.cancel_requested;
-}
 
 // Parses the daemon run request body and returns a response JSON object (HTTP-level errors are represented in JSON).
 static Json::Value run_request_to_json(
@@ -1297,27 +823,6 @@ static agent_status_t provider_generate(void* vctx, const agent_generate_request
     return AGENT_ERR_INTERNAL;
   }
   return agent_string_set_copy(&out_resp->assistant_text, r.assistant_text.c_str(), r.assistant_text.size());
-}
-
-static std::string lower_copy(std::string s) {
-  for (char& c : s) c = (char)std::tolower((unsigned char)c);
-  return s;
-}
-
-static bool url_contains_ci(const std::string& url, const std::string& needle) {
-  if (needle.empty()) return false;
-  const std::string u = lower_copy(url);
-  const std::string n = lower_copy(needle);
-  return u.find(n) != std::string::npos;
-}
-
-static std::string truncate_for_event(const std::string& s, size_t max_bytes, bool* out_truncated) {
-  if (out_truncated) *out_truncated = false;
-  if (max_bytes == 0 || s.size() <= max_bytes) {
-    return s;
-  }
-  if (out_truncated) *out_truncated = true;
-  return s.substr(0, max_bytes) + "...(truncated)";
 }
 
 int main(int argc, char** argv) {

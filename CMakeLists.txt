@@ -39,9 +39,13 @@ target_compile_options(agent_core PRIVATE
 
 if(AGENT_BUILD_HOST)
   find_package(CURL REQUIRED)
+  if(NOT AGENT_ENABLE_JSONCPP)
+    message(FATAL_ERROR "AGENT_BUILD_HOST=ON requires jsoncpp (pkg-config: jsoncpp). Use -DAGENT_BUILD_HOST=OFF for core-only builds.")
+  endif()
 
   # Host-side adapter library shared by CLI and daemon.
   add_library(agent_host STATIC
+    cli/src/default_system_prompt.cpp
     cli/src/openai_client.cpp
     cli/src/openai_tool_provider.cpp
     cli/src/sse_parser.cpp
@@ -85,7 +89,12 @@ if(AGENT_BUILD_HOST)
 
   add_executable(agentd
     daemon/src/main.cpp
+    daemon/src/http_util.cpp
     daemon/src/http_server.cpp
+    daemon/src/job_manager.cpp
+    daemon/src/json_util.cpp
+    daemon/src/openrouter_util.cpp
+    daemon/src/string_util.cpp
   )
 
   target_compile_options(agentd PRIVATE

@@ -2,6 +2,7 @@
 #include "agent/runner.h"
 
 #include "openai_client.h"
+#include "default_system_prompt.h"
 #include "session_store.h"
 #include "summary_compaction.h"
 #include "summary_llm.h"
@@ -49,36 +50,6 @@ static std::string home_dir_best_effort() {
 static int64_t now_unix_ms() {
   using namespace std::chrono;
   return (int64_t)duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
-}
-
-static const char* default_host_system_prompt() {
-  // This prompt is host-only policy (CLI/daemon), not core behavior.
-  //
-  // Goal: push the model toward fast, incremental inspection instead of reading huge files,
-  // and toward auditable file edits.
-  return
-    "You are a host-side coding agent with access to system tools (shell/proc exec), bounded filesystem read tools, and a diff-based file edit tool.\n"
-    "\n"
-    "Efficiency rules (important):\n"
-    "- Prefer bounded/paginated inspection over reading full files.\n"
-    "  - Use fs_list/fs_stat to inspect directories/files with predictable output size.\n"
-    "    - Tip: fs_stat supports count_lines=true (bounded) to quickly estimate file length.\n"
-    "  - Use fs_find for token-safe file discovery instead of `find`/`tree`.\n"
-    "    - Note: fs_list excludes common huge dirs (node_modules/build/dist) by default; disable with use_default_excludes=false.\n"
-    "    - Tip: fs_list/fs_find/text_search support exclude_globs (fnmatch) to skip generated/noisy paths.\n"
-    "    - Tip: fs_list/fs_find/text_search support respect_gitignore=true to skip .gitignore'd paths (best-effort).\n"
-    "  - Use text_search for token-safe code search instead of dumping whole files.\n"
-    "  - Use fs_read with start_line/max_lines (and optional end_line) for paging through files.\n"
-    "  - Use rg/grep/head/tail/sed/awk for narrow, targeted inspection when appropriate.\n"
-    "- Avoid dumping large directories or entire files unless strictly needed.\n"
-    "- When exploring code, start narrow (file list, search hits) then open only the relevant sections.\n"
-    "\n"
-    "Edits:\n"
-    "- Use the diff-based edit tool for changing files so edits are auditable.\n"
-    "- For one-off inspection, prefer read-only commands.\n"
-    "\n"
-    "Tool outputs:\n"
-    "- Tool success is not just exit code; judge using tool output content.\n";
 }
 
 static void usage() {
