@@ -32,6 +32,14 @@ struct HostToolsetConfig {
   // - The CLI may keep exec tools enabled even when root_dir is set (local, interactive usage).
   bool enable_process_exec = true;
 
+  // When false and `root_dir` is set (scoped mode), reject paths that traverse through symlinks
+  // under the root. This prevents "symlink escapes" where a directory entry inside the root
+  // points outside of it (e.g. root/out -> /).
+  //
+  // Default: true for backwards compatibility and local CLI ergonomics.
+  // Daemon note: recommended false when yolo is disabled.
+  bool allow_symlinks = true;
+
   // Optional cooperative cancellation hook.
   // If set and it returns true, long-running tools (shell/proc exec) will terminate their subprocess and return early.
   HostCancelCallback should_cancel = nullptr;

@@ -382,6 +382,7 @@ int main(int argc, char** argv) {
       cfg.root_dir = tools_root;
       cfg.policy = (host_policy == "readonly") ? HostToolsetPolicyMode::ReadOnly : HostToolsetPolicyMode::Full;
       cfg.enable_process_exec = true;
+      cfg.allow_symlinks = true;
       if (toolset_host_create(cfg, &registry, &executor) != AGENT_OK) {
         std::cerr << "Failed to initialize host toolset\n";
         agent_session_destroy(session);

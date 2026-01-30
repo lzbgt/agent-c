@@ -198,6 +198,7 @@ Session vs audit:
 Host tool names:
 - In `--host-policy readonly`, the host tool registry omits `shell_exec`, `proc_exec`, and `file_apply_patch` (read-only inspection only).
 - In daemon scoped mode (`yolo=false`), the host tool registry omits `shell_exec` and `proc_exec` even when `host_policy=full`.
+  Scoped mode also rejects following symlinks under `tools_root` to prevent sandbox escapes (e.g. `tools_root/out -> /`).
 - `shell_exec` (runs `/bin/sh -lc <cmd>`, returns JSON envelope with `exit_code`, `timed_out`, `truncated`, `output`)
 - `proc_exec` (runs an argv array via `posix_spawnp`, no shell; returns JSON envelope with `argv`, `exit_code`, `timed_out`, `truncated`, `output`)
 - `file_apply_patch` (applies a unified diff via `git apply`; returns the patch as a diff-style audit trail)

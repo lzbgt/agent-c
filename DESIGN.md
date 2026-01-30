@@ -128,6 +128,8 @@ Additional sandbox knob:
 - `yolo` (daemon request/query): when disabled, the daemon provides a **scoped tools_root** and also disables process execution tools
   (`shell_exec` / `proc_exec`) even if `host_policy=full`. This prevents “scoped filesystem” runs from still having arbitrary
   host command execution.
+- In scoped mode, the daemon also disables following symlinks inside `tools_root` to prevent “symlink escapes” (e.g. a symlink
+  in the project pointing to `/` which would allow reading arbitrary files via `fs_read`).
 
 Implementation notes:
 

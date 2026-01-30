@@ -42,6 +42,25 @@ static std::string trim_ws(std::string s) {
   return s.substr(i);
 }
 
+static bool path_contains_symlink_component(const std::filesystem::path& root, const std::filesystem::path& p) {
+  std::filesystem::path cur = root;
+  // IMPORTANT: use lexically_relative so we can detect symlink components in the original path.
+  std::filesystem::path rel = p.lexically_relative(root);
+  if (rel.empty()) return false;
+  for (const auto& comp : rel) {
+    cur /= comp;
+    std::error_code ec;
+    std::filesystem::file_status st = std::filesystem::symlink_status(cur, ec);
+    if (ec) {
+      break;
+    }
+    if (std::filesystem::is_symlink(st)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static bool patch_path_is_safe_scoped(std::string p) {
   p = trim_ws(std::move(p));
   if (p.empty()) return true;
@@ -57,8 +76,28 @@ static bool patch_path_is_safe_scoped(std::string p) {
   return true;
 }
 
-static bool patch_is_safe_scoped(const std::string& patch, std::string* out_error) {
+static bool patch_is_safe_scoped(const HostToolCtx* ctx, const std::string& patch, std::string* out_error) {
   if (out_error) out_error->clear();
+  const bool check_symlinks = ctx && !ctx->unrestricted && !ctx->allow_symlinks;
+
+  auto validate_path = [&](std::string p) -> bool {
+    p = trim_ws(std::move(p));
+    if (!patch_path_is_safe_scoped(p)) {
+      if (out_error) *out_error = "patch contains unsafe path: " + p;
+      return false;
+    }
+    if (!check_symlinks) return true;
+    if (p == "/dev/null") return true;
+    if (p.rfind("a/", 0) == 0) p = p.substr(2);
+    if (p.rfind("b/", 0) == 0) p = p.substr(2);
+    const std::filesystem::path abs = ctx->root / std::filesystem::path(p);
+    if (path_contains_symlink_component(ctx->root, abs.lexically_normal())) {
+      if (out_error) *out_error = "patch path traverses a symlink: " + p;
+      return false;
+    }
+    return true;
+  };
+
   size_t off = 0;
   while (off < patch.size()) {
     size_t end = patch.find('\n', off);
@@ -67,11 +106,7 @@ static bool patch_is_safe_scoped(const std::string& patch, std::string* out_erro
     off = (end < patch.size()) ? (end + 1) : end;
 
     if (line.rfind("+++ ", 0) == 0 || line.rfind("--- ", 0) == 0) {
-      const std::string p = line.substr(4);
-      if (!patch_path_is_safe_scoped(p)) {
-        if (out_error) *out_error = "patch contains unsafe path: " + trim_ws(p);
-        return false;
-      }
+      if (!validate_path(line.substr(4))) return false;
       continue;
     }
     if (line.rfind("diff --git ", 0) == 0) {
@@ -80,42 +115,24 @@ static bool patch_is_safe_scoped(const std::string& patch, std::string* out_erro
       if (sp == std::string::npos) continue;
       const std::string a = rest.substr(0, sp);
       const std::string b = trim_ws(rest.substr(sp + 1));
-      if (!patch_path_is_safe_scoped(a) || !patch_path_is_safe_scoped(b)) {
-        if (out_error) *out_error = "patch contains unsafe path in diff header";
-        return false;
-      }
+      if (!validate_path(a)) return false;
+      if (!validate_path(b)) return false;
       continue;
     }
     if (line.rfind("rename from ", 0) == 0) {
-      const std::string p = line.substr(std::string("rename from ").size());
-      if (!patch_path_is_safe_scoped(p)) {
-        if (out_error) *out_error = "patch contains unsafe path in rename from";
-        return false;
-      }
+      if (!validate_path(line.substr(std::string("rename from ").size()))) return false;
       continue;
     }
     if (line.rfind("rename to ", 0) == 0) {
-      const std::string p = line.substr(std::string("rename to ").size());
-      if (!patch_path_is_safe_scoped(p)) {
-        if (out_error) *out_error = "patch contains unsafe path in rename to";
-        return false;
-      }
+      if (!validate_path(line.substr(std::string("rename to ").size()))) return false;
       continue;
     }
     if (line.rfind("copy from ", 0) == 0) {
-      const std::string p = line.substr(std::string("copy from ").size());
-      if (!patch_path_is_safe_scoped(p)) {
-        if (out_error) *out_error = "patch contains unsafe path in copy from";
-        return false;
-      }
+      if (!validate_path(line.substr(std::string("copy from ").size()))) return false;
       continue;
     }
     if (line.rfind("copy to ", 0) == 0) {
-      const std::string p = line.substr(std::string("copy to ").size());
-      if (!patch_path_is_safe_scoped(p)) {
-        if (out_error) *out_error = "patch contains unsafe path in copy to";
-        return false;
-      }
+      if (!validate_path(line.substr(std::string("copy to ").size()))) return false;
       continue;
     }
   }
@@ -525,7 +542,7 @@ agent_status_t tool_file_apply_patch(HostToolCtx* ctx, const char* arguments_jso
 
   if (!ctx->unrestricted) {
     std::string unsafe_err;
-    if (!patch_is_safe_scoped(patch, &unsafe_err)) {
+    if (!patch_is_safe_scoped(ctx, patch, &unsafe_err)) {
       Json::Value data(Json::objectValue);
       data["tool"] = "git apply";
       data["root_dir"] = ctx->root.string();

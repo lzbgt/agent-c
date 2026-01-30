@@ -55,6 +55,28 @@ static bool path_is_within(const std::filesystem::path& root, const std::filesys
   return true;
 }
 
+static bool path_contains_symlink_component(const std::filesystem::path& root, const std::filesystem::path& p) {
+  // Assume p is under root (lexically). Walk components and reject if any existing prefix is a symlink.
+  std::filesystem::path cur = root;
+  // IMPORTANT: use lexically_relative, not std::filesystem::relative, because relative() may resolve
+  // symlinks and "erase" the very symlink component we want to detect.
+  std::filesystem::path rel = p.lexically_relative(root);
+  if (rel.empty()) return false;
+  for (const auto& comp : rel) {
+    cur /= comp;
+    std::error_code ec;
+    std::filesystem::file_status st = std::filesystem::symlink_status(cur, ec);
+    if (ec) {
+      // If a prefix doesn't exist, stop checking further prefixes (can't be a symlink).
+      break;
+    }
+    if (std::filesystem::is_symlink(st)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static std::optional<std::filesystem::path> resolve_under_root(
   const std::filesystem::path& root,
   const std::string& user_path,
@@ -383,6 +405,11 @@ static agent_status_t tool_fs_stat(HostToolCtx* ctx, const char* arguments_json,
   if (!resolved) {
     return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
   }
+  if (!ctx->unrestricted && !ctx->allow_symlinks) {
+    if (path_contains_symlink_component(ctx->root, *resolved)) {
+      return write_envelope(false, "path escapes via symlink", Json::Value(Json::objectValue));
+    }
+  }
   std::error_code ec;
   auto st = std::filesystem::status(*resolved, ec);
   if (ec) {
@@ -533,6 +560,11 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
   const auto resolved = resolve_under_root(ctx->root, path, ctx->unrestricted);
   if (!resolved) {
     return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
+  }
+  if (!ctx->unrestricted && !ctx->allow_symlinks) {
+    if (path_contains_symlink_component(ctx->root, *resolved)) {
+      return write_envelope(false, "path escapes via symlink", Json::Value(Json::objectValue));
+    }
   }
   std::error_code ec;
   if (!std::filesystem::exists(*resolved, ec) || !std::filesystem::is_directory(*resolved, ec)) {
@@ -835,6 +867,11 @@ static agent_status_t tool_fs_find(HostToolCtx* ctx, const char* arguments_json,
   if (!resolved) {
     return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
   }
+  if (!ctx->unrestricted && !ctx->allow_symlinks) {
+    if (path_contains_symlink_component(ctx->root, *resolved)) {
+      return write_envelope(false, "path escapes via symlink", Json::Value(Json::objectValue));
+    }
+  }
   std::error_code ec;
   if (!std::filesystem::exists(*resolved, ec)) {
     return write_envelope(false, "path does not exist", Json::Value(Json::objectValue));
@@ -1103,6 +1140,11 @@ static agent_status_t tool_fs_read(HostToolCtx* ctx, const char* arguments_json,
   if (!resolved) {
     return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
   }
+  if (!ctx->unrestricted && !ctx->allow_symlinks) {
+    if (path_contains_symlink_component(ctx->root, *resolved)) {
+      return write_envelope(false, "path escapes via symlink", Json::Value(Json::objectValue));
+    }
+  }
   std::error_code ec;
   if (!std::filesystem::exists(*resolved, ec) || !std::filesystem::is_regular_file(*resolved, ec)) {
     return write_envelope(false, "not a regular file", Json::Value(Json::objectValue));
@@ -1327,6 +1369,11 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
   const auto resolved = resolve_under_root(ctx->root, path, ctx->unrestricted);
   if (!resolved) {
     return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
+  }
+  if (!ctx->unrestricted && !ctx->allow_symlinks) {
+    if (path_contains_symlink_component(ctx->root, *resolved)) {
+      return write_envelope(false, "path escapes via symlink", Json::Value(Json::objectValue));
+    }
   }
   std::error_code ec;
   if (!std::filesystem::exists(*resolved, ec)) {
@@ -1847,6 +1894,7 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
                                    : std::filesystem::path(cfg.root_dir);
   ctx->policy = cfg.policy;
   ctx->exec_enabled = (cfg.policy == HostToolsetPolicyMode::Full) && cfg.enable_process_exec;
+  ctx->allow_symlinks = cfg.allow_symlinks;
   ctx->should_cancel = cfg.should_cancel;
   ctx->should_cancel_ctx = cfg.should_cancel_ctx;
   {

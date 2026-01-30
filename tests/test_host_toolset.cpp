@@ -194,6 +194,74 @@ static void test_scoped_mode_disables_exec_tools_but_keeps_patch() {
   std::filesystem::remove_all(root);
 }
 
+static void test_scoped_mode_denies_symlink_escapes() {
+  const auto root = std::filesystem::temp_directory_path() / ("agent_host_tools_symlink_" + std::to_string((long long)getpid()));
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+
+  // Create a file outside root, and a symlink inside root pointing to the parent dir.
+  const auto outside_dir = root.parent_path();
+  const auto secret = outside_dir / ("secret_" + std::to_string((long long)getpid()) + ".txt");
+  {
+    std::ofstream f(secret, std::ios::binary);
+    f << "TOP_SECRET\n";
+  }
+  const auto link = root / "out";
+  std::error_code ec;
+  std::filesystem::create_directory_symlink(outside_dir, link, ec);
+  if (ec) {
+    // Some environments restrict symlink creation; skip this test in that case.
+    std::filesystem::remove_all(root);
+    std::filesystem::remove(secret, ec);
+    return;
+  }
+
+  HostToolsetConfig cfg;
+  cfg.root_dir = root.string();
+  cfg.policy = HostToolsetPolicyMode::Full;
+  cfg.enable_process_exec = false;
+  cfg.allow_symlinks = false;
+
+  agent_tool_registry_t* reg = nullptr;
+  agent_tool_executor_t exec{};
+  assert(toolset_host_create(cfg, &reg, &exec) == AGENT_OK);
+
+  // fs_read should reject traversing the symlink.
+  {
+    Json::Value args(Json::objectValue);
+    args["path"] = std::string("out/") + secret.filename().string();
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "fs_read", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(!resp["ok"].asBool());
+    agent_string_free(&out);
+  }
+
+  // file_apply_patch should reject writing through the symlink.
+  {
+    const std::string escape_name = std::string("escape_via_symlink_") + std::to_string((long long)getpid()) + ".txt";
+    Json::Value args(Json::objectValue);
+    args["patch"] = std::string("--- /dev/null\n") +
+      "+++ out/" + escape_name + "\n" +
+      "@@ -0,0 +1 @@\n"
+      "+nope\n";
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "file_apply_patch", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(!resp["ok"].asBool());
+    agent_string_free(&out);
+    // Ensure the escaped file was not created (it would have landed outside root via symlink).
+    assert(!std::filesystem::exists(outside_dir / escape_name, ec));
+  }
+
+  agent_tool_registry_destroy(reg);
+  toolset_host_destroy(&exec);
+  std::filesystem::remove_all(root);
+  std::filesystem::remove(secret, ec);
+}
+
 static void test_fs_stat_list_read() {
   const auto root = std::filesystem::temp_directory_path() / ("agent_host_tools_fs_" + std::to_string((long long)getpid()));
   std::filesystem::remove_all(root);
@@ -827,6 +895,7 @@ int main() {
   test_file_apply_patch();
   test_readonly_policy_disables_exec_and_patch();
   test_scoped_mode_disables_exec_tools_but_keeps_patch();
+  test_scoped_mode_denies_symlink_escapes();
   test_fs_stat_list_read();
   test_shell_exec();
   test_proc_exec();

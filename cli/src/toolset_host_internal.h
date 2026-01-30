@@ -60,6 +60,7 @@ struct HostToolCtx {
   std::filesystem::path root;
   bool unrestricted = false;
   bool exec_enabled = true;
+  bool allow_symlinks = true;
   HostToolsetPolicyMode policy = HostToolsetPolicyMode::Full;
   HostCancelCallback should_cancel = nullptr;
   void* should_cancel_ctx = nullptr;

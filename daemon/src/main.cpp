@@ -314,6 +314,7 @@ static Json::Value run_request_to_json(
     // In scoped mode (yolo=false), omit process exec tools so "scoped filesystem" doesn't still mean
     // arbitrary host command execution.
     hcfg.enable_process_exec = yolo;
+    hcfg.allow_symlinks = yolo;
     if (!job_id_local.empty()) {
       // Cooperative cancellation for long-running host tools (sleep/build/etc).
       hcfg.should_cancel = [](void* vctx) -> bool {
@@ -1265,6 +1266,7 @@ int main(int argc, char** argv) {
       hcfg.root_dir = tools_root;
       hcfg.policy = effective_policy;
       hcfg.enable_process_exec = yolo;
+      hcfg.allow_symlinks = yolo;
       if (toolset_host_create(hcfg, &registry, &executor) != AGENT_OK) {
         resp->status = 500;
         resp->body = R"({"ok":false,"error":"failed to init toolset_host"})";
