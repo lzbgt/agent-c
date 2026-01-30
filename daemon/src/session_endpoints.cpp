@@ -18,6 +18,8 @@
 #include <filesystem>
 #include <random>
 #include <sstream>
+#include <unordered_map>
+#include <algorithm>
 #include <vector>
 
 namespace agentd {
@@ -264,6 +266,24 @@ void handle_session_ui_event_endpoint(
   const bool append_to_session =
     body.isMember("append_to_session") && body["append_to_session"].isBool() ? body["append_to_session"].asBool() : true;
 
+  // Optional client identity (collaboration protocol):
+  // - preferred: body.client.{id,kind,instance_id}
+  // - legacy: body.client_id / body.client_kind / body.client_instance_id
+  std::string client_id;
+  std::string client_kind;
+  std::string client_instance_id;
+  if (body.isMember("client") && body["client"].isObject()) {
+    const auto& c = body["client"];
+    if (c.isMember("id") && c["id"].isString()) client_id = c["id"].asString();
+    if (c.isMember("kind") && c["kind"].isString()) client_kind = c["kind"].asString();
+    if (c.isMember("instance_id") && c["instance_id"].isString()) client_instance_id = c["instance_id"].asString();
+  }
+  if (client_id.empty() && body.isMember("client_id") && body["client_id"].isString()) client_id = body["client_id"].asString();
+  if (client_kind.empty() && body.isMember("client_kind") && body["client_kind"].isString()) client_kind = body["client_kind"].asString();
+  if (client_instance_id.empty() && body.isMember("client_instance_id") && body["client_instance_id"].isString()) {
+    client_instance_id = body["client_instance_id"].asString();
+  }
+
   int64_t ts_unix_ms = 0;
   if (body.isMember("ts_unix_ms") && body["ts_unix_ms"].isInt64()) {
     ts_unix_ms = body["ts_unix_ms"].asInt64();
@@ -285,9 +305,30 @@ void handle_session_ui_event_endpoint(
     return;
   }
 
+  auto is_safe_client_field = [](const std::string& s) -> bool {
+    if (s.empty()) return true;
+    if (s.size() > 200) return false;
+    for (unsigned char c : s) {
+      if (c < 0x20) return false;
+    }
+    return true;
+  };
+  if (!is_safe_client_field(client_id) || !is_safe_client_field(client_kind) || !is_safe_client_field(client_instance_id)) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"invalid client identity"})";
+    return;
+  }
+
   Json::Value payload(Json::objectValue);
   payload["type"] = type;
   payload["ts_unix_ms"] = (Json::Int64)ts_unix_ms;
+  if (!client_id.empty() || !client_kind.empty() || !client_instance_id.empty()) {
+    Json::Value c(Json::objectValue);
+    if (!client_id.empty()) c["id"] = client_id;
+    if (!client_kind.empty()) c["kind"] = client_kind;
+    if (!client_instance_id.empty()) c["instance_id"] = client_instance_id;
+    payload["client"] = c;
+  }
   if (body.isMember("data") && body["data"].isObject()) {
     payload["data"] = body["data"];
   } else {
@@ -301,8 +342,8 @@ void handle_session_ui_event_endpoint(
   bool logged_to_client_events = false;
   agent_status_t client_events_status = AGENT_OK;
 
-  // Always append to the session-scoped UI client event log (host-only).
-  // This is the canonical source for the `ui_wait_event` host tool, and works even when the DB is disabled.
+  // Always append to the session-scoped client event log (host-only).
+  // This is the canonical source for the client-wait host tools, and works even when the DB is disabled.
   {
     SessionStoreConfig store_cfg;
     store_cfg.root_dir = sessions_root_dir;
@@ -325,7 +366,7 @@ void handle_session_ui_event_endpoint(
     }
 
     if (st == AGENT_OK && session) {
-      std::string msg = "[ui_event] ";
+      std::string msg = "[client_event] ";
       msg += payload_json;
       if (msg.size() > 4096) {
         msg.resize(4096);
@@ -561,6 +602,147 @@ void handle_session_client_events_endpoint(
   }
   out["count"] = (Json::UInt64)entries.size();
   out["events"] = entries;
+  resp->body = json_stringify(out);
+}
+
+void handle_session_clients_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const std::string& sessions_root_dir,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  const auto sid = query_get(req.query, "session_id");
+  if (!sid || sid->empty()) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"missing session_id"})";
+    return;
+  }
+  if (!session_id_is_safe(*sid)) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    return;
+  }
+
+  size_t max_bytes = 1024 * 1024;
+  if (const auto mb = query_get(req.query, "max_bytes")) {
+    try {
+      max_bytes = (size_t)std::stoull(*mb);
+    } catch (...) {
+    }
+  }
+  if (max_bytes > 4 * 1024 * 1024) max_bytes = 4 * 1024 * 1024;
+
+  bool include_rotated = false;
+  if (const auto ir = query_get(req.query, "include_rotated"); ir && !ir->empty()) {
+    include_rotated = string_to_bool(*ir);
+  }
+  size_t max_files = 0;
+  if (const auto mf = query_get(req.query, "max_files")) {
+    try {
+      max_files = (size_t)std::stoull(*mf);
+    } catch (...) {
+    }
+  }
+  if (max_files > 10) max_files = 10;
+
+  SessionStoreConfig store_cfg;
+  store_cfg.root_dir = sessions_root_dir;
+  if (max_files == 0) max_files = store_cfg.client_events_max_files;
+
+  std::string tail;
+  const agent_status_t st = include_rotated
+    ? session_store_read_client_event_tail_multi(store_cfg, *sid, max_bytes, max_files, &tail)
+    : session_store_read_client_event_tail(store_cfg, *sid, max_bytes, &tail);
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = (st == AGENT_OK);
+  out["session_id"] = *sid;
+  out["max_bytes"] = (Json::UInt64)max_bytes;
+  out["include_rotated"] = include_rotated;
+  out["max_files"] = (Json::UInt64)max_files;
+  if (st != AGENT_OK) {
+    out["error"] = "failed to read client event log";
+    out["status"] = (Json::Int64)st;
+    out["clients"] = Json::Value(Json::arrayValue);
+    resp->body = json_stringify(out);
+    return;
+  }
+
+  struct ClientSeen {
+    std::string id;
+    std::string kind;
+    std::string instance_id;
+    int64_t ts_unix_ms = 0;
+    std::string last_type;
+  };
+  std::unordered_map<std::string, ClientSeen> seen;
+
+  if (!tail.empty()) {
+    std::istringstream iss(tail);
+    std::string line;
+    Json::CharReaderBuilder rb;
+    std::string errs;
+    while (std::getline(iss, line)) {
+      if (line.empty()) continue;
+      Json::Value obj;
+      std::istringstream lss(line);
+      if (!Json::parseFromStream(rb, lss, &obj, &errs) || !obj.isObject()) {
+        continue;
+      }
+      const auto& c = obj["client"];
+      if (!c.isObject()) continue;
+      const auto& cid = c["id"];
+      if (!cid.isString() || cid.asString().empty()) continue;
+      const std::string id = cid.asString();
+      const std::string kind = c.isMember("kind") && c["kind"].isString() ? c["kind"].asString() : "";
+      const std::string inst = c.isMember("instance_id") && c["instance_id"].isString() ? c["instance_id"].asString() : "";
+
+      int64_t ts = 0;
+      const auto& tsv = obj["ts_unix_ms"];
+      if (tsv.isInt64()) ts = tsv.asInt64();
+      else if (tsv.isUInt64()) ts = (int64_t)tsv.asUInt64();
+      const std::string et = obj.isMember("type") && obj["type"].isString() ? obj["type"].asString() : "";
+
+      const std::string key = id + "\n" + inst + "\n" + kind;
+      auto it = seen.find(key);
+      if (it == seen.end() || ts >= it->second.ts_unix_ms) {
+        ClientSeen cs;
+        cs.id = id;
+        cs.kind = kind;
+        cs.instance_id = inst;
+        cs.ts_unix_ms = ts;
+        cs.last_type = et;
+        seen[key] = std::move(cs);
+      }
+    }
+  }
+
+  std::vector<ClientSeen> clients;
+  clients.reserve(seen.size());
+  for (auto& kv : seen) {
+    clients.push_back(std::move(kv.second));
+  }
+  std::sort(clients.begin(), clients.end(), [](const ClientSeen& a, const ClientSeen& b) {
+    return a.ts_unix_ms > b.ts_unix_ms;
+  });
+
+  Json::Value arr(Json::arrayValue);
+  for (const auto& c : clients) {
+    Json::Value v(Json::objectValue);
+    v["id"] = c.id;
+    if (!c.kind.empty()) v["kind"] = c.kind;
+    if (!c.instance_id.empty()) v["instance_id"] = c.instance_id;
+    v["last_ts_unix_ms"] = (Json::Int64)c.ts_unix_ms;
+    if (!c.last_type.empty()) v["last_type"] = c.last_type;
+    arr.append(v);
+  }
+  out["count"] = (Json::UInt64)arr.size();
+  out["clients"] = arr;
   resp->body = json_stringify(out);
 }
 

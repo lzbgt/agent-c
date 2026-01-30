@@ -1,13 +1,13 @@
-# UI → agentd Client Events (Draft)
+# Client → agentd Client Events (Draft)
 
 Date: 2026-01-30
 
-This document specifies a minimal **UI → agentd** event channel so the Web UI can send structured “user actions”
+This document specifies a minimal **client → agentd** event channel so a client can send structured “user actions”
 back to the daemon, not just text prompts.
 
 This makes the system truly **bidirectional**:
-- agent/tools → UI: via typed events like `artifact` and `ui_action`
-- UI/user → agentd: via `client_event` posts (persisted for troubleshooting and optionally appended to the session)
+- agent/tools → client: via typed events like `artifact` and `ui_action` (as rendered by a client)
+- client/user → agentd: via `client_event` posts (persisted for troubleshooting and optionally appended to the session)
 
 ## Goals
 
@@ -24,12 +24,16 @@ This makes the system truly **bidirectional**:
 - Stable public API guarantees (rolling project).
 - Browser autoplay bypass (still requires user gesture).
 
-## Endpoint: `POST /api/v1/session/ui_event`
+## Endpoint: `POST /api/v1/session/client_event` (preferred)
 
 Request JSON:
 - `session_id` (string, required)
 - `type` (string, required): event type (e.g. `audio_played`, `notification_ack`)
 - `ts_unix_ms` (number, optional): if omitted, daemon uses current time
+- `client` (object, optional): client identity
+  - `id` (string, optional)
+  - `kind` (string, optional)
+  - `instance_id` (string, optional)
 - `data` (object, optional): arbitrary payload (JSON object)
 - `append_to_session` (bool, optional, default `true`):
   - when true: append a minimal textual marker to the session as a normal message (so future runs can see it)
@@ -44,6 +48,7 @@ Notes:
 - This endpoint does not require the DB to be enabled; when the DB is disabled, it still returns `ok:true`
   (but DB mirroring is skipped).
 - The UI/client event log can be read back (tail) via `GET /api/v1/session/client_events`.
+- Legacy alias: `POST /api/v1/session/ui_event` (same semantics).
 
 ## DB mirror
 
@@ -68,6 +73,9 @@ Retention:
 
 Query endpoint:
 - `GET /api/v1/db/client_events?session_id=...&limit=...&offset=...`
+
+Troubleshooting helper:
+- `GET /api/v1/session/clients?session_id=...` lists distinct clients observed in the client event log (based on `payload.client`).
 
 ## Suggested event types
 

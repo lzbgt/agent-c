@@ -51,6 +51,41 @@ export default function App() {
   const [daemonAuthToken, setDaemonAuthToken] = useLocalStorageState("agentui.daemonAuthToken", "");
   const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "inspect this project and explain");
   const [sessionId, setSessionId] = useLocalStorageState("agentui.sessionId", "default");
+  const [clientId] = useLocalStorageState(
+    "agentui.clientId",
+    (() => {
+      try {
+        // Stable per-browser-profile id (shared across tabs); used as client.id.
+        // A per-tab instance id is generated separately.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const g: any = typeof globalThis !== "undefined" ? globalThis : {};
+        if (g.crypto && typeof g.crypto.randomUUID === "function") {
+          return `webui-${g.crypto.randomUUID()}`;
+        }
+      } catch {
+        // ignore
+      }
+      return `webui-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    })(),
+  );
+  const clientInstanceIdRef = React.useRef<string>(
+    (() => {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const g: any = typeof globalThis !== "undefined" ? globalThis : {};
+        if (g.crypto && typeof g.crypto.randomUUID === "function") {
+          return `tab-${g.crypto.randomUUID()}`;
+        }
+      } catch {
+        // ignore
+      }
+      return `tab-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    })(),
+  );
+  const client = React.useMemo(
+    () => ({ id: String(clientId || "webui"), kind: "webui", instance_id: clientInstanceIdRef.current }),
+    [clientId],
+  );
   const [tools, setTools] = useLocalStorageState<"host" | "basic" | "none">("agentui.tools", "host");
   const [toolsRoot, setToolsRoot] = useLocalStorageState("agentui.toolsRoot", ".");
   const [yolo, setYolo] = useLocalStorageState("agentui.yolo", true);
@@ -1794,6 +1829,7 @@ export default function App() {
               baseUrl={effectiveBase}
               yolo={yolo}
               sessionId={sessionId}
+              client={client}
               daemonAuthToken={daemonAuthToken}
               prompt={lastRunPrompt || prompt}
               events={liveEvents}
@@ -1810,6 +1846,7 @@ export default function App() {
               baseUrl={effectiveBase}
               yolo={yolo}
               sessionId={sessionId}
+              client={client}
               daemonAuthToken={daemonAuthToken}
               prompt={lastCompletedPrompt || prompt}
               events={result.events}
@@ -1867,6 +1904,7 @@ export default function App() {
                             baseUrl={effectiveBase}
                             yolo={yolo}
                             sessionId={sessionId}
+                            client={client}
                             daemonAuthToken={daemonAuthToken}
                             prompt={String(e.prompt ?? "")}
                             events={e.events}

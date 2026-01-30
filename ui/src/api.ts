@@ -301,6 +301,14 @@ export const SessionUiEventReqSchema = z.object({
   session_id: z.string().min(1),
   type: z.string().min(1),
   ts_unix_ms: z.number().optional(),
+  // Optional client identity (collaboration protocol).
+  client: z
+    .object({
+      id: z.string().optional(),
+      kind: z.string().optional(),
+      instance_id: z.string().optional(),
+    })
+    .optional(),
   data: z.any().optional(),
   append_to_session: z.boolean().optional(),
 });
@@ -323,7 +331,8 @@ export async function apiPostSessionUiEvent(
   authToken?: string,
 ): Promise<SessionUiEventResp> {
   const payload = SessionUiEventReqSchema.parse(req);
-  const r = await fetch(`${base}/api/v1/session/ui_event`, {
+  // Preferred endpoint name is /session/client_event; /session/ui_event remains as a legacy alias.
+  const r = await fetch(`${base}/api/v1/session/client_event`, {
     method: "POST",
     headers: daemonHeaders(authToken, { "Content-Type": "application/json" }),
     body: JSON.stringify(payload),

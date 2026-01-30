@@ -71,6 +71,7 @@ if(AGENT_BUILD_HOST)
     cli/src/toolset_host_artifacts.cpp
     cli/src/toolset_host_exec.cpp
     cli/src/toolset_host_ui_wait_event.cpp
+    cli/src/toolset_host_client_peek.cpp
   )
 
   target_compile_options(agent_host PRIVATE
@@ -196,6 +197,7 @@ if(AGENT_BUILD_HOST)
   add_test(NAME agentd_session_audit_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_session_audit_smoke.sh $<TARGET_FILE:agentd>)
 
   add_test(NAME agentd_session_client_events_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_session_client_events_smoke.sh $<TARGET_FILE:agentd>)
+  add_test(NAME agentd_session_clients_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_session_clients_smoke.sh $<TARGET_FILE:agentd>)
 
   add_test(NAME agentd_local_async_host_tools_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_local_async_host_tools_smoke.sh $<TARGET_FILE:agentd>)
 

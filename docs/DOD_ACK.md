@@ -11,7 +11,7 @@ The core issue:
 Therefore, for UI-visible effects (artifacts, notifications, playback), a reliable DoD requires a **handshake**:
 
 1) Agent produces an effect (artifact registered / UI action requested).
-2) UI confirms it actually rendered/performed it (client event).
+2) Client confirms it actually rendered/performed it (client event).
 3) Agent waits for that confirmation once (no retry loop).
 
 This is complementary to hard bounds (`max_steps`, tool call limits). Bounds are guardrails; the handshake is the root-cause fix.
@@ -41,8 +41,8 @@ This is complementary to hard bounds (`max_steps`, tool call limits). Bounds are
 
 ### Effect acknowledgement (UI → agentd)
 
-The UI posts client events via:
-- `POST /api/v1/session/ui_event`
+The client posts client events via:
+- `POST /api/v1/session/client_event` (preferred; `ui_event` is a legacy alias)
 
 Canonical storage:
 - `<sessions_root>/<session_id>.client_events.jsonl`
@@ -97,4 +97,3 @@ A future-safe design would introduce “tool jobs”:
 
 This enables the agent to reason about multiple ongoing tasks (peek status) and join them deterministically, but is intentionally
 deferred until the tool/job API surface is stabilized.
-

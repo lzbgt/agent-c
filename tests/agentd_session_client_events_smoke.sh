@@ -43,7 +43,7 @@ print(json.dumps({
 }))
 PY
 )" \
-  "${DAEMON_URL}/api/v1/session/ui_event" >/dev/null
+  "${DAEMON_URL}/api/v1/session/client_event" >/dev/null
 
 resp="$(curl -fsS --noproxy "*" --max-time 10 \
   "${DAEMON_URL}/api/v1/session/client_events?session_id=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("""'${SESSION_ID}'"""))')&max_bytes=1048576")"

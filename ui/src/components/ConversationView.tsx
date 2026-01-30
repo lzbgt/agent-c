@@ -46,6 +46,7 @@ export default function ConversationView({
   baseUrl,
   yolo,
   sessionId,
+  client,
   daemonAuthToken,
   prompt,
   events,
@@ -55,6 +56,7 @@ export default function ConversationView({
   baseUrl: string;
   yolo: boolean;
   sessionId?: string;
+  client?: { id?: string; kind?: string; instance_id?: string };
   daemonAuthToken?: string;
   prompt: string;
   events: AgentEvent[];
@@ -76,13 +78,14 @@ export default function ConversationView({
         {
           session_id: sid,
           type,
+          client: client ?? { id: "webui", kind: "webui" },
           data: data ?? {},
           append_to_session: false,
         },
         daemonAuthToken,
       );
       if (!resp.ok) {
-        throw new Error(resp.error || "ui_event failed");
+        throw new Error(resp.error || "client_event failed");
       }
     },
     [baseUrl, daemonAuthToken, sessionId],
@@ -189,6 +192,7 @@ export default function ConversationView({
             artifact={artifact}
             allowAutoplay={allowAutoplay}
             sessionId={sessionId}
+            client={client}
             daemonAuthToken={daemonAuthToken}
           />
         </Card>,
@@ -261,6 +265,7 @@ export default function ConversationView({
               artifact={artifact}
               allowAutoplay={allowAutoplay}
               sessionId={sessionId}
+              client={client}
               daemonAuthToken={daemonAuthToken}
             />
           </Card>,

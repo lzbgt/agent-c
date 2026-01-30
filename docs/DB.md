@@ -189,7 +189,7 @@ Indexes:
 
 ### `client_events`
 
-Mirrors explicit UI → daemon client events posted via `POST /api/v1/session/ui_event`
+Mirrors explicit client → daemon events posted via `POST /api/v1/session/client_event` (legacy alias: `/session/ui_event`)
 (see `docs/UI_CLIENT_EVENTS.md`).
 
 These are useful for troubleshooting “did the user/UI actually do X?” and for allowing future runs to incorporate

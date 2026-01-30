@@ -1664,6 +1664,18 @@ static agent_status_t host_tools_execute(void* vctx, const char* tool_name, cons
   if (name == "ui_wait_all") {
     return tool_ui_wait_all(ctx, arguments_json, out_result);
   }
+  if (name == "client_wait_event") {
+    return tool_client_wait_event(ctx, arguments_json, out_result);
+  }
+  if (name == "client_wait_any") {
+    return tool_client_wait_any(ctx, arguments_json, out_result);
+  }
+  if (name == "client_wait_all") {
+    return tool_client_wait_all(ctx, arguments_json, out_result);
+  }
+  if (name == "client_peek") {
+    return tool_client_peek(ctx, arguments_json, out_result);
+  }
   if (name == "camera_capture") {
     return tool_camera_capture(ctx, arguments_json, out_result);
   }
@@ -1887,11 +1899,12 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     st = add_tool(
       r,
       "ui_wait_event",
-      "Wait for a UI client event (posted via agentd /api/v1/session/ui_event) for this session. Useful for acknowledgements like audio_play_finished.",
+      "Wait for a client event (posted via agentd /api/v1/session/client_event) for this session. Useful for acknowledgements like audio_play_finished. (Deprecated name; prefer client_wait_event.)",
       "{"
       "\"type\":\"object\","
       "\"properties\":{"
       "  \"type\":{\"type\":\"string\",\"description\":\"Client event type to wait for (e.g. audio_play_finished).\"},"
+      "  \"client_id\":{\"type\":\"string\",\"description\":\"Optional filter for payload.client.id (e.g. webui, slack).\"},"
       "  \"timeout_ms\":{\"type\":\"integer\",\"description\":\"Max wait time (default: 30000). 0 means no-wait (immediate timeout).\"},"
       "  \"after_unix_ms\":{\"type\":\"integer\",\"description\":\"Ignore events older than this timestamp (optional).\"},"
       "  \"path\":{\"type\":\"string\",\"description\":\"Optional filter for payload.data.path.\"},"
@@ -1906,19 +1919,20 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     st = add_tool(
       r,
       "ui_wait_any",
-      "Wait until any of multiple UI client event predicates matches (OR join). Useful to block until the user does one of several actions.",
+      "Wait until any of multiple client event predicates matches (OR join). (Deprecated name; prefer client_wait_any.)",
       "{"
       "\"type\":\"object\","
       "\"properties\":{"
       "  \"predicates\":{\"type\":\"array\",\"description\":\"List of event predicates to match.\",\"items\":{"
-      "    \"type\":\"object\","
-      "    \"properties\":{"
-      "      \"type\":{\"type\":\"string\"},"
-      "      \"after_unix_ms\":{\"type\":\"integer\"},"
-      "      \"path\":{\"type\":\"string\"},"
-      "      \"data_match\":{\"type\":\"object\"}"
-      "    },"
-      "    \"required\":[\"type\"]"
+        "    \"type\":\"object\","
+        "    \"properties\":{"
+          "      \"type\":{\"type\":\"string\"},"
+          "      \"client_id\":{\"type\":\"string\"},"
+          "      \"after_unix_ms\":{\"type\":\"integer\"},"
+          "      \"path\":{\"type\":\"string\"},"
+          "      \"data_match\":{\"type\":\"object\"}"
+        "    },"
+        "    \"required\":[\"type\"]"
       "  }},"
       "  \"timeout_ms\":{\"type\":\"integer\",\"description\":\"Max wait time (default: 30000). 0 means no-wait (immediate timeout).\"},"
       "  \"max_bytes\":{\"type\":\"integer\",\"description\":\"Max bytes read from the end of the client event log (default: 262144).\"},"
@@ -1932,25 +1946,117 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     st = add_tool(
       r,
       "ui_wait_all",
-      "Wait until all of multiple UI client event predicates match (AND join). Useful for Definition-of-Done handshakes across multiple UI-visible effects.",
+      "Wait until all of multiple client event predicates match (AND join). (Deprecated name; prefer client_wait_all.)",
       "{"
       "\"type\":\"object\","
       "\"properties\":{"
       "  \"predicates\":{\"type\":\"array\",\"description\":\"List of event predicates to match.\",\"items\":{"
-      "    \"type\":\"object\","
-      "    \"properties\":{"
-      "      \"type\":{\"type\":\"string\"},"
-      "      \"after_unix_ms\":{\"type\":\"integer\"},"
-      "      \"path\":{\"type\":\"string\"},"
-      "      \"data_match\":{\"type\":\"object\"}"
-      "    },"
-      "    \"required\":[\"type\"]"
+        "    \"type\":\"object\","
+        "    \"properties\":{"
+          "      \"type\":{\"type\":\"string\"},"
+          "      \"client_id\":{\"type\":\"string\"},"
+          "      \"after_unix_ms\":{\"type\":\"integer\"},"
+          "      \"path\":{\"type\":\"string\"},"
+          "      \"data_match\":{\"type\":\"object\"}"
+        "    },"
+        "    \"required\":[\"type\"]"
       "  }},"
       "  \"timeout_ms\":{\"type\":\"integer\",\"description\":\"Max wait time (default: 30000). 0 means no-wait (immediate timeout).\"},"
       "  \"max_bytes\":{\"type\":\"integer\",\"description\":\"Max bytes read from the end of the client event log (default: 262144).\"},"
       "  \"max_files\":{\"type\":\"integer\",\"description\":\"Max rotated log files to consider (default: daemon/session store default).\"}"
       "},"
       "\"required\":[\"predicates\"]"
+      "}"
+    );
+    if (st != AGENT_OK) goto fail;
+
+    st = add_tool(
+      r,
+      "client_wait_event",
+      "Wait for a client event (posted via agentd /api/v1/session/client_event) for this session. This is the preferred name (client-agnostic).",
+      "{"
+      "\"type\":\"object\","
+      "\"properties\":{"
+      "  \"type\":{\"type\":\"string\"},"
+      "  \"client_id\":{\"type\":\"string\"},"
+      "  \"timeout_ms\":{\"type\":\"integer\"},"
+      "  \"after_unix_ms\":{\"type\":\"integer\"},"
+      "  \"path\":{\"type\":\"string\"},"
+      "  \"data_match\":{\"type\":\"object\"},"
+      "  \"max_bytes\":{\"type\":\"integer\"}"
+      "},"
+      "\"required\":[\"type\"]"
+      "}"
+    );
+    if (st != AGENT_OK) goto fail;
+
+    st = add_tool(
+      r,
+      "client_wait_any",
+      "Wait until any predicate matches (OR join). Preferred name (client-agnostic).",
+      "{"
+      "\"type\":\"object\","
+      "\"properties\":{"
+      "  \"predicates\":{\"type\":\"array\",\"items\":{"
+      "    \"type\":\"object\","
+      "    \"properties\":{"
+      "      \"type\":{\"type\":\"string\"},"
+      "      \"client_id\":{\"type\":\"string\"},"
+      "      \"after_unix_ms\":{\"type\":\"integer\"},"
+      "      \"path\":{\"type\":\"string\"},"
+      "      \"data_match\":{\"type\":\"object\"}"
+      "    },"
+      "    \"required\":[\"type\"]"
+      "  }},"
+      "  \"timeout_ms\":{\"type\":\"integer\"},"
+      "  \"max_bytes\":{\"type\":\"integer\"},"
+      "  \"max_files\":{\"type\":\"integer\"}"
+      "},"
+      "\"required\":[\"predicates\"]"
+      "}"
+    );
+    if (st != AGENT_OK) goto fail;
+
+    st = add_tool(
+      r,
+      "client_wait_all",
+      "Wait until all predicates match (AND join). Preferred name (client-agnostic).",
+      "{"
+      "\"type\":\"object\","
+      "\"properties\":{"
+      "  \"predicates\":{\"type\":\"array\",\"items\":{"
+      "    \"type\":\"object\","
+      "    \"properties\":{"
+      "      \"type\":{\"type\":\"string\"},"
+      "      \"client_id\":{\"type\":\"string\"},"
+      "      \"after_unix_ms\":{\"type\":\"integer\"},"
+      "      \"path\":{\"type\":\"string\"},"
+      "      \"data_match\":{\"type\":\"object\"}"
+      "    },"
+      "    \"required\":[\"type\"]"
+      "  }},"
+      "  \"timeout_ms\":{\"type\":\"integer\"},"
+      "  \"max_bytes\":{\"type\":\"integer\"},"
+      "  \"max_files\":{\"type\":\"integer\"}"
+      "},"
+      "\"required\":[\"predicates\"]"
+      "}"
+    );
+    if (st != AGENT_OK) goto fail;
+
+    st = add_tool(
+      r,
+      "client_peek",
+      "Probe recent client event state for this session (non-blocking). Useful for reasoning about client environment/state without waiting.",
+      "{"
+      "\"type\":\"object\","
+      "\"properties\":{"
+      "  \"client_id\":{\"type\":\"string\",\"description\":\"Optional filter for client.id.\"},"
+      "  \"max_bytes\":{\"type\":\"integer\",\"description\":\"Bytes to scan from the tail (default: 262144).\"},"
+      "  \"max_files\":{\"type\":\"integer\",\"description\":\"Max rotated log files to consider.\"},"
+      "  \"include_data\":{\"type\":\"boolean\",\"description\":\"When true, include a bounded view of the last event payload.\"},"
+      "  \"max_data_bytes\":{\"type\":\"integer\",\"description\":\"Max bytes of last_event.data before it is summarized/truncated.\"}"
+      "}"
       "}"
     );
     if (st != AGENT_OK) goto fail;

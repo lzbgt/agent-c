@@ -149,6 +149,14 @@ This reads from `<sessions_root>/<session_id>.client_events.jsonl` and returns p
 When `include_rotated=1`, the daemon may also include data from rotated backups (`.client_events.jsonl.1`, `.2`, …)
 to fill the requested `max_bytes` budget.
 
+### Endpoint: list observed clients (file-backed)
+
+For multi-client debugging, the daemon can list distinct clients that have posted events recently:
+
+- `GET /api/v1/session/clients?session_id=...&max_bytes=...&include_rotated=0|1&max_files=...`
+
+Clients are reported based on the `payload.client` identity fields in the client event log.
+
 ## Waiting for UI acknowledgements (host tool)
 
 When using tool loops, an agent may need to wait for a UI/user acknowledgement within a single run (e.g. audio playback finished).

@@ -386,13 +386,13 @@ print(json.dumps({
 }))
 PY
 )" \
-  "${DAEMON_URL}/api/v1/session/ui_event")"
+  "${DAEMON_URL}/api/v1/session/client_event")"
 
 python3 - <<PY
 import json, sys
 obj = json.loads(r'''${ui_evt_resp}''')
 if not obj.get("ok"):
-  print("session/ui_event failed:", obj, file=sys.stderr)
+  print("session/client_event failed:", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 
@@ -423,8 +423,8 @@ if not isinstance(m0, dict):
 if "content_truncated" not in m0 or "content_bytes" not in m0:
   print("expected content_truncated/content_bytes fields", m0, file=sys.stderr)
   raise SystemExit(1)
-if not any(isinstance(m, dict) and isinstance(m.get("content"), str) and "[ui_event]" in m.get("content") for m in rows):
-  print("expected at least one [ui_event] message", file=sys.stderr)
+if not any(isinstance(m, dict) and isinstance(m.get("content"), str) and "[client_event]" in m.get("content") for m in rows):
+  print("expected at least one [client_event] message", file=sys.stderr)
   raise SystemExit(1)
 PY
 

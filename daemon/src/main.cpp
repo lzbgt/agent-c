@@ -626,11 +626,20 @@ int main(int argc, char** argv) {
     handle_session_client_events_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
   });
 
+  server.handle("GET", "/api/v1/session/clients", [&](const HttpRequest& req, HttpResponse* resp) {
+    handle_session_clients_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
+  });
+
   server.handle("GET", "/api/v1/session/artifacts", [&](const HttpRequest& req, HttpResponse* resp) {
     handle_session_artifacts_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
   });
 
   server.handle("POST", "/api/v1/session/ui_event", [&](const HttpRequest& req, HttpResponse* resp) {
+    handle_session_ui_event_endpoint(cfg, cors_cfg, db_or_null, sessions_root_dir, req, resp);
+  });
+
+  // Client collaboration protocol (preferred name). This is an alias of /session/ui_event.
+  server.handle("POST", "/api/v1/session/client_event", [&](const HttpRequest& req, HttpResponse* resp) {
     handle_session_ui_event_endpoint(cfg, cors_cfg, db_or_null, sessions_root_dir, req, resp);
   });
 

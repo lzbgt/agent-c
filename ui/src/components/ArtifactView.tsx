@@ -33,6 +33,7 @@ export default function ArtifactView({
   artifact,
   allowAutoplay,
   sessionId,
+  client,
   daemonAuthToken,
 }: {
   baseUrl: string;
@@ -40,6 +41,7 @@ export default function ArtifactView({
   artifact: any;
   allowAutoplay: boolean;
   sessionId?: string;
+  client?: { id?: string; kind?: string; instance_id?: string };
   daemonAuthToken?: string;
 }) {
   const path = safeString(artifact?.path);
@@ -67,6 +69,7 @@ export default function ArtifactView({
           {
             session_id: sid,
             type: etype,
+            client: client ?? { id: "webui", kind: "webui" },
             data: data ?? {},
             append_to_session: typeof appendToSession === "boolean" ? appendToSession : false,
           },
@@ -76,7 +79,7 @@ export default function ArtifactView({
         // Best-effort: never block media playback on event posting.
       }
     },
-    [baseUrl, daemonAuthToken, sessionId],
+    [baseUrl, client, daemonAuthToken, sessionId],
   );
 
   const playTimes = React.useCallback(

@@ -63,9 +63,9 @@ agent_status_t session_store_read_audit_tail_multi(
   std::string* out_text
 );
 
-// UI client events (bidirectional UI→daemon protocol):
+// Client events (bidirectional client→daemon collaboration protocol):
 // - Each line is a single JSON object string.
-// - Used by `POST /api/v1/session/ui_event` and the `ui_wait_event` host tool.
+// - Used by `POST /api/v1/session/client_event` (legacy alias: `/session/ui_event`) and the client-wait host tools.
 //
 // File path: <root>/<id>.client_events.jsonl
 agent_status_t session_store_append_client_event_jsonl(const SessionStoreConfig& cfg, const std::string& session_id, const std::string& event_json);

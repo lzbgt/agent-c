@@ -75,4 +75,13 @@ void handle_session_client_events_endpoint(
   HttpResponse* resp
 );
 
+// Lists distinct clients observed in the session-scoped client event log.
+void handle_session_clients_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const std::string& sessions_root_dir,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
 }  // namespace agentd

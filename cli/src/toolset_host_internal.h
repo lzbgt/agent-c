@@ -159,5 +159,9 @@ agent_status_t tool_camera_capture(HostToolCtx* ctx, const char* arguments_json,
 agent_status_t tool_ui_wait_event(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 agent_status_t tool_ui_wait_any(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 agent_status_t tool_ui_wait_all(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
+agent_status_t tool_client_wait_event(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
+agent_status_t tool_client_wait_any(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
+agent_status_t tool_client_wait_all(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
+agent_status_t tool_client_peek(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 
 } // namespace host_tools_internal

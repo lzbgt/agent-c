@@ -31,8 +31,8 @@ cleanup() {
 trap cleanup EXIT
 
 # OpenAI-compatible stub:
-# - 0 tool results: call ui_wait_any(predicates=[A,B])
-# - 1 tool result: call ui_wait_all(predicates=[C,D])
+# - 0 tool results: call client_wait_any(predicates=[A,B])
+# - 1 tool result: call client_wait_all(predicates=[C,D])
 # - 2+ tool results: assistant "OK"
 python3 -u - <<PY > "${LOG_DIR}/agentd_ui_wait_any_all_smoke.stub.stdout.log" 2> "${LOG_DIR}/agentd_ui_wait_any_all_smoke.stub.stderr.log" &
 import json
@@ -90,7 +90,7 @@ class H(BaseHTTPRequestHandler):
                   "id": "call_wait_all_1",
                   "type": "function",
                   "function": {
-                    "name": "ui_wait_all",
+                    "name": "client_wait_all",
                     "arguments": json.dumps({
                       "timeout_ms": 8000,
                       "predicates": [
@@ -123,7 +123,7 @@ class H(BaseHTTPRequestHandler):
                   "id": "call_wait_any_1",
                   "type": "function",
                   "function": {
-                    "name": "ui_wait_any",
+                    "name": "client_wait_any",
                     "arguments": json.dumps({
                       "timeout_ms": 8000,
                       "predicates": [
@@ -172,7 +172,7 @@ print(json.dumps({
 }))
 PY
 )" \
-    "${DAEMON_URL}/api/v1/session/ui_event" >/dev/null
+    "${DAEMON_URL}/api/v1/session/client_event" >/dev/null
 
   sleep 0.8
   curl -fsS --noproxy "*" --max-time 10 \
@@ -187,7 +187,7 @@ print(json.dumps({
 }))
 PY
 )" \
-    "${DAEMON_URL}/api/v1/session/ui_event" >/dev/null
+    "${DAEMON_URL}/api/v1/session/client_event" >/dev/null
 
   sleep 0.2
   curl -fsS --noproxy "*" --max-time 10 \
@@ -202,7 +202,7 @@ print(json.dumps({
 }))
 PY
 )" \
-    "${DAEMON_URL}/api/v1/session/ui_event" >/dev/null
+    "${DAEMON_URL}/api/v1/session/client_event" >/dev/null
 ) &
 
 resp="$(curl -fsS --noproxy "*" --max-time 25 \
@@ -239,11 +239,11 @@ def has_tool_result(name):
       if d.get("tool_name") == name:
         return True
   return False
-if not has_tool_result("ui_wait_any"):
-  print("expected tool_result for ui_wait_any; got:", ev, file=sys.stderr)
+if not has_tool_result("client_wait_any"):
+  print("expected tool_result for client_wait_any; got:", ev, file=sys.stderr)
   raise SystemExit(1)
-if not has_tool_result("ui_wait_all"):
-  print("expected tool_result for ui_wait_all; got:", ev, file=sys.stderr)
+if not has_tool_result("client_wait_all"):
+  print("expected tool_result for client_wait_all; got:", ev, file=sys.stderr)
   raise SystemExit(1)
 txt = (obj.get("assistant_text") or "").strip()
 if txt != "OK":
@@ -252,4 +252,3 @@ if txt != "OK":
 PY
 
 echo "agentd_ui_wait_any_all_smoke OK"
-

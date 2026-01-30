@@ -31,7 +31,7 @@ cleanup() {
 trap cleanup EXIT
 
 # OpenAI-compatible stub:
-# - first response: tool call to ui_wait_event(type=smoke_client_event, data_match.k=v)
+# - first response: tool call to client_wait_event(type=smoke_client_event, data_match.k=v)
 # - second response: assistant "OK"
 python3 -u - <<PY > "${LOG_DIR}/agentd_ui_wait_event_smoke.stub.stdout.log" 2> "${LOG_DIR}/agentd_ui_wait_event_smoke.stub.stderr.log" &
 import json
@@ -87,7 +87,7 @@ class H(BaseHTTPRequestHandler):
                   "id": "call_wait_1",
                   "type": "function",
                   "function": {
-                    "name": "ui_wait_event",
+                    "name": "client_wait_event",
                     "arguments": json.dumps({"type":"smoke_client_event","timeout_ms":5000,"data_match":{"outer":{"k":"v"}}}),
                   },
                 }
@@ -130,7 +130,7 @@ print(json.dumps({
 }))
 PY
 )" \
-    "${DAEMON_URL}/api/v1/session/ui_event" >/dev/null
+    "${DAEMON_URL}/api/v1/session/client_event" >/dev/null
 ) &
 
 resp="$(curl -fsS --noproxy "*" --max-time 20 \
@@ -160,8 +160,8 @@ if not obj.get("ok"):
   print("run failed:", obj, file=sys.stderr)
   raise SystemExit(1)
 ev = obj.get("events") or []
-if not any(isinstance(e, dict) and e.get("type") == "tool_result" and isinstance(e.get("data"), dict) and e["data"].get("tool_name") == "ui_wait_event" for e in ev):
-  print("expected tool_result for ui_wait_event; got:", ev, file=sys.stderr)
+if not any(isinstance(e, dict) and e.get("type") == "tool_result" and isinstance(e.get("data"), dict) and e["data"].get("tool_name") == "client_wait_event" for e in ev):
+  print("expected tool_result for client_wait_event; got:", ev, file=sys.stderr)
   raise SystemExit(1)
 txt = (obj.get("assistant_text") or "").strip()
 if txt != "OK":

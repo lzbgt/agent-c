@@ -29,6 +29,21 @@ agent_status_t tool_ui_wait_all(HostToolCtx* ctx, const char* arguments_json, ag
   (void)arguments_json;
   return set_result(out_result, "{\"ok\":false,\"error\":\"jsoncpp required\",\"data\":{\"tool\":\"ui_wait_all\"}}");
 }
+agent_status_t tool_client_wait_event(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
+  (void)ctx;
+  (void)arguments_json;
+  return set_result(out_result, "{\"ok\":false,\"error\":\"jsoncpp required\",\"data\":{\"tool\":\"client_wait_event\"}}");
+}
+agent_status_t tool_client_wait_any(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
+  (void)ctx;
+  (void)arguments_json;
+  return set_result(out_result, "{\"ok\":false,\"error\":\"jsoncpp required\",\"data\":{\"tool\":\"client_wait_any\"}}");
+}
+agent_status_t tool_client_wait_all(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
+  (void)ctx;
+  (void)arguments_json;
+  return set_result(out_result, "{\"ok\":false,\"error\":\"jsoncpp required\",\"data\":{\"tool\":\"client_wait_all\"}}");
+}
 #else
 
 static agent_status_t write_result(agent_string_t* out, const Json::Value& v) {
@@ -112,6 +127,7 @@ static bool data_matches(const Json::Value& payload, const Json::Value& data_mat
 static bool event_matches(
   const Json::Value& payload,
   const std::string& type,
+  const std::string& client_id,
   int64_t after_unix_ms,
   const std::string& path,
   const Json::Value& data_match
@@ -119,6 +135,12 @@ static bool event_matches(
   if (!payload.isObject()) return false;
   const auto& t = payload["type"];
   if (!t.isString() || t.asString() != type) return false;
+  if (!client_id.empty()) {
+    const auto& c = payload["client"];
+    if (!c.isObject()) return false;
+    const auto& cid = c["id"];
+    if (!cid.isString() || cid.asString() != client_id) return false;
+  }
   const auto& ts = payload["ts_unix_ms"];
   if (after_unix_ms > 0) {
     int64_t v = 0;
@@ -138,6 +160,7 @@ static bool event_matches(
 
 struct UiWaitPredicate {
   std::string type;
+  std::string client_id;
   int64_t after_unix_ms = 0;
   std::string path;
   Json::Value data_match = Json::Value(Json::nullValue);
@@ -155,6 +178,7 @@ static bool parse_predicate(const Json::Value& v, UiWaitPredicate* out, std::str
     if (out_err) *out_err = "predicate missing type";
     return false;
   }
+  out->client_id = v.isMember("client_id") && v["client_id"].isString() ? v["client_id"].asString() : "";
   if (v.isMember("after_unix_ms")) {
     const auto& a = v["after_unix_ms"];
     if (a.isInt64()) out->after_unix_ms = a.asInt64();
@@ -181,8 +205,8 @@ static agent_status_t read_client_events_tail(const HostToolCtx* ctx, size_t max
   return session_store_read_client_event_tail_multi(store_cfg, ctx->session_id, max_bytes, max_files, out_tail);
 }
 
-agent_status_t tool_ui_wait_event(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
-  if (!ctx || !out_result) return AGENT_ERR_INVALID_ARGUMENT;
+static agent_status_t ui_wait_event_impl(HostToolCtx* ctx, const char* tool_name, const char* arguments_json, agent_string_t* out_result) {
+  if (!ctx || !out_result || !tool_name) return AGENT_ERR_INVALID_ARGUMENT;
 
   std::string err;
   Json::Value args;
@@ -191,7 +215,7 @@ agent_status_t tool_ui_wait_event(HostToolCtx* ctx, const char* arguments_json, 
     o["ok"] = false;
     o["error"] = err;
     Json::Value d(Json::objectValue);
-    d["tool"] = "ui_wait_event";
+    d["tool"] = tool_name;
     o["data"] = d;
     return write_result(out_result, o);
   }
@@ -202,10 +226,12 @@ agent_status_t tool_ui_wait_event(HostToolCtx* ctx, const char* arguments_json, 
     o["ok"] = false;
     o["error"] = "missing type";
     Json::Value d(Json::objectValue);
-    d["tool"] = "ui_wait_event";
+    d["tool"] = tool_name;
     o["data"] = d;
     return write_result(out_result, o);
   }
+
+  const std::string client_id = args.isMember("client_id") && args["client_id"].isString() ? args["client_id"].asString() : "";
 
   int timeout_ms = 30000;
   if (args.isMember("timeout_ms") && args["timeout_ms"].isInt()) timeout_ms = args["timeout_ms"].asInt();
@@ -231,9 +257,9 @@ agent_status_t tool_ui_wait_event(HostToolCtx* ctx, const char* arguments_json, 
   if (ctx->sessions_root_dir.empty() || ctx->session_id.empty()) {
     Json::Value o(Json::objectValue);
     o["ok"] = false;
-    o["error"] = "ui_wait_event requires session context (session_id + sessions_root_dir)";
+    o["error"] = std::string(tool_name) + " requires session context (session_id + sessions_root_dir)";
     Json::Value d(Json::objectValue);
-    d["tool"] = "ui_wait_event";
+    d["tool"] = tool_name;
     o["data"] = d;
     return write_result(out_result, o);
   }
@@ -248,7 +274,7 @@ agent_status_t tool_ui_wait_event(HostToolCtx* ctx, const char* arguments_json, 
       o["ok"] = false;
       o["error"] = "cancelled";
       Json::Value d(Json::objectValue);
-      d["tool"] = "ui_wait_event";
+      d["tool"] = tool_name;
       d["cancelled"] = true;
       o["data"] = d;
       return write_result(out_result, o);
@@ -272,7 +298,7 @@ agent_status_t tool_ui_wait_event(HostToolCtx* ctx, const char* arguments_json, 
       if (!Json::parseFromStream(rb, lss, &payload, &perr)) {
         continue;
       }
-      if (!event_matches(payload, type, after_unix_ms, path, data_match)) {
+      if (!event_matches(payload, type, client_id, after_unix_ms, path, data_match)) {
         continue;
       }
       int64_t ts = 0;
@@ -289,7 +315,7 @@ agent_status_t tool_ui_wait_event(HostToolCtx* ctx, const char* arguments_json, 
       Json::Value o(Json::objectValue);
       o["ok"] = true;
       Json::Value d(Json::objectValue);
-      d["tool"] = "ui_wait_event";
+      d["tool"] = tool_name;
       d["timed_out"] = false;
       d["event"] = matched;
       o["data"] = d;
@@ -301,7 +327,7 @@ agent_status_t tool_ui_wait_event(HostToolCtx* ctx, const char* arguments_json, 
       o["ok"] = false;
       o["error"] = "timeout";
       Json::Value d(Json::objectValue);
-      d["tool"] = "ui_wait_event";
+      d["tool"] = tool_name;
       d["timed_out"] = true;
       o["data"] = d;
       return write_result(out_result, o);
@@ -313,7 +339,7 @@ agent_status_t tool_ui_wait_event(HostToolCtx* ctx, const char* arguments_json, 
       o["ok"] = false;
       o["error"] = "timeout";
       Json::Value d(Json::objectValue);
-      d["tool"] = "ui_wait_event";
+      d["tool"] = tool_name;
       d["timed_out"] = true;
       o["data"] = d;
       return write_result(out_result, o);
@@ -321,6 +347,10 @@ agent_status_t tool_ui_wait_event(HostToolCtx* ctx, const char* arguments_json, 
 
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
+}
+
+agent_status_t tool_ui_wait_event(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
+  return ui_wait_event_impl(ctx, "ui_wait_event", arguments_json, out_result);
 }
 
 static agent_status_t ui_wait_join_impl(
@@ -442,7 +472,7 @@ static agent_status_t ui_wait_join_impl(
       for (size_t i = 0; i < predicates.size(); i++) {
         if (matched[i]) continue;
         const UiWaitPredicate& p = predicates[i];
-        if (!event_matches(payload, p.type, p.after_unix_ms, p.path, p.data_match)) continue;
+        if (!event_matches(payload, p.type, p.client_id, p.after_unix_ms, p.path, p.data_match)) continue;
         matched[i] = 1;
         matched_events[i] = payload;
         if (!require_all) {
@@ -530,6 +560,18 @@ agent_status_t tool_ui_wait_any(HostToolCtx* ctx, const char* arguments_json, ag
 
 agent_status_t tool_ui_wait_all(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
   return ui_wait_join_impl(ctx, "ui_wait_all", arguments_json, true, out_result);
+}
+
+agent_status_t tool_client_wait_event(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
+  return ui_wait_event_impl(ctx, "client_wait_event", arguments_json, out_result);
+}
+
+agent_status_t tool_client_wait_any(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
+  return ui_wait_join_impl(ctx, "client_wait_any", arguments_json, false, out_result);
+}
+
+agent_status_t tool_client_wait_all(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
+  return ui_wait_join_impl(ctx, "client_wait_all", arguments_json, true, out_result);
 }
 
 #endif

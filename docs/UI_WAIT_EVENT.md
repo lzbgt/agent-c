@@ -2,8 +2,8 @@
 
 Date: 2026-01-30
 
-This document defines a cooperative host tool, `ui_wait_event`, which allows an agent/tool-loop run to **wait**
-for a UI acknowledgement (posted via `POST /api/v1/session/ui_event`) within the **same run**.
+This document defines cooperative host tools (`ui_wait_*`) which allow an agent/tool-loop run to **wait**
+for a client acknowledgement (posted via `POST /api/v1/session/client_event`) within the **same run**.
 
 This reduces runaway loops where the model keeps repeating the same action because it has no way to observe
 that the UI/user completed it.
@@ -24,7 +24,7 @@ that the UI/user completed it.
 
 ## Persistence model
 
-When `POST /api/v1/session/ui_event` is called, agentd appends a line to:
+When `POST /api/v1/session/client_event` is called, agentd appends a line to:
 - `<sessions_root>/<session_id>.client_events.jsonl`
 
 Each line is a JSON object (the “payload”) with:
