@@ -36,5 +36,18 @@ int main() {
     expect_true(acc.calls()[0].arguments.find("\"max_lines\"") != std::string::npos, "arguments contains max_lines");
   }
 
+  {
+    // Legacy function_call streaming shape (no tool_calls array).
+    const char* c1 = R"({"choices":[{"delta":{"function_call":{"name":"calculator","arguments":"{\"expression\":\"1+1\"}"}}}]})";
+    OpenAIStreamChunk c;
+    expect_true(openai_stream_parse_chunk_json(c1, std::strlen(c1), &c), "parse legacy function_call chunk");
+    expect_true(c.tool_call_deltas.size() == 1, "one legacy tool_call_delta");
+    OpenAIToolCallStreamAccumulator acc;
+    acc.apply(c.tool_call_deltas);
+    expect_true(acc.calls().size() == 1, "one reconstructed legacy tool call");
+    expect_true(acc.calls()[0].name == "calculator", "legacy tool call name");
+    expect_true(acc.calls()[0].arguments.find("expression") != std::string::npos, "legacy arguments");
+  }
+
   return 0;
 }

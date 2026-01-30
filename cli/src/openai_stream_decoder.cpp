@@ -38,6 +38,11 @@ bool openai_stream_parse_chunk_json(const char* chunk_json, size_t chunk_len, Op
 
   const auto& content = delta["content"];
   if (content.isString()) out_chunk->content_delta = content.asString();
+  // Some older/alternate providers stream "text" instead of "content".
+  if (out_chunk->content_delta.empty()) {
+    const auto& text = delta["text"];
+    if (text.isString()) out_chunk->content_delta = text.asString();
+  }
 
   const auto& tc = delta["tool_calls"];
   if (tc.isArray()) {
@@ -65,6 +70,23 @@ bool openai_stream_parse_chunk_json(const char* chunk_json, size_t chunk_len, Op
     }
   }
 
+  // Legacy streamed function call shape:
+  //   {"choices":[{"delta":{"function_call":{"name":"...","arguments":"..."}}}]}
+  //
+  // Treat as a single tool call at index 0.
+  const auto& fc = delta["function_call"];
+  if (fc.isObject()) {
+    OpenAIStreamToolCallDelta d;
+    d.index = 0;
+    const auto& namev = fc["name"];
+    if (namev.isString()) d.name = namev.asString();
+    const auto& argv = fc["arguments"];
+    if (argv.isString()) d.arguments_delta = argv.asString();
+    if (!d.name.empty() || !d.arguments_delta.empty()) {
+      out_chunk->tool_call_deltas.push_back(std::move(d));
+    }
+  }
+
   return true;
 #endif
 }
@@ -85,4 +107,3 @@ void OpenAIToolCallStreamAccumulator::apply(const std::vector<OpenAIStreamToolCa
     if (!d.arguments_delta.empty()) dst.arguments += d.arguments_delta;
   }
 }
-

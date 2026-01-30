@@ -18,6 +18,7 @@ and the shared implementation used by:
 - **Best-effort compatibility** across OpenAI-ish providers:
   - missing `index` in `delta.tool_calls`
   - tool-call arguments fragmented across many chunks
+  - legacy `delta.function_call` streaming shape (treated as a single tool call at index 0)
   - providers that ignore `stream: true` and return a normal JSON completion body
 - **Minimal coupling**: keep streaming decode logic independent from daemon job/event plumbing.
 
@@ -45,4 +46,3 @@ Host streaming emits `assistant_delta` events (daemon SSE and tool-loop events a
 - `epoch` (number): retry/rotation epoch (daemon uses attempt index for `tools="none"`)
 
 The CLI streaming mode prints deltas to stdout (not an event stream), but uses the same decoded content deltas.
-
