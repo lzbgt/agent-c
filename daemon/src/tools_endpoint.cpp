@@ -12,9 +12,7 @@
 #include "toolset_basic.h"
 #include "toolset_host.h"
 
-#if defined(AGENT_HAVE_JSONCPP)
 #include <json/json.h>
-#endif
 
 namespace agentd {
 
@@ -28,11 +26,6 @@ void handle_tools_endpoint(
   resp->headers["Content-Type"] = "application/json; charset=utf-8";
   if (!daemon_require_auth(cfg, req, resp)) return;
 
-#if !defined(AGENT_HAVE_JSONCPP)
-  resp->status = 500;
-  resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
-  return;
-#else
   std::string tools = cfg.tools;
   if (const auto q = query_get(req.query, "tools"); q && !q->empty()) {
     tools = *q;
@@ -140,8 +133,6 @@ void handle_tools_endpoint(
 
   resp->body = json_stringify(out);
   return;
-#endif
 }
 
 }  // namespace agentd
-

@@ -3,9 +3,7 @@
 #include "daemon_auth.h"
 #include "json_util.h"
 
-#if defined(AGENT_HAVE_JSONCPP)
 #include <json/json.h>
-#endif
 
 namespace agentd {
 
@@ -19,11 +17,6 @@ void handle_config_endpoint(
   resp->headers["Content-Type"] = "application/json; charset=utf-8";
   if (!daemon_require_auth(cfg, req, resp)) return;
 
-#if !defined(AGENT_HAVE_JSONCPP)
-  resp->status = 500;
-  resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
-  return;
-#else
   Json::Value out(Json::objectValue);
   out["ok"] = true;
   out["service"] = "agentd";
@@ -69,8 +62,6 @@ void handle_config_endpoint(
 
   resp->body = json_stringify(out);
   return;
-#endif
 }
 
 }  // namespace agentd
-

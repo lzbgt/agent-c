@@ -98,10 +98,12 @@ if(AGENT_BUILD_HOST)
     daemon/src/file_endpoint.cpp
     daemon/src/http_util.cpp
     daemon/src/http_server.cpp
+    daemon/src/job_endpoints.cpp
     daemon/src/job_stream_endpoint.cpp
     daemon/src/job_manager.cpp
     daemon/src/json_util.cpp
     daemon/src/openrouter_models_endpoint.cpp
+    daemon/src/session_endpoints.cpp
     daemon/src/tools_endpoint.cpp
     daemon/src/sandbox_policy.cpp
     daemon/src/openrouter_util.cpp

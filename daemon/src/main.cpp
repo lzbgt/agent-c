@@ -15,6 +15,8 @@
 #include "openrouter_models_endpoint.h"
 #include "job_stream_endpoint.h"
 #include "tools_endpoint.h"
+#include "session_endpoints.h"
+#include "job_endpoints.h"
 
 #include "default_system_prompt.h"
 #include "file_persistor.h"
@@ -27,15 +29,12 @@
 #include "toolset_basic.h"
 #include "toolset_host.h"
 
-#if defined(AGENT_HAVE_JSONCPP)
 #include <json/json.h>
 #include "json_util.h"
 #include "job_manager.h"
 #include "openrouter_util.h"
-#endif
 
 #include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <optional>
 #include <sstream>
@@ -65,6 +64,10 @@ static std::string home_dir_best_effort() {
     return h;
   }
   return std::filesystem::current_path().string();
+}
+
+static std::string sessions_root_dir_best_effort() {
+  return (std::filesystem::path(home_dir_best_effort()) / ".agent" / "sessions").string();
 }
 
 static bool host_is_loopback(std::string host) {
@@ -1143,210 +1146,36 @@ int main(int argc, char** argv) {
     cors_apply(req, resp, cors_cfg);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
     if (!daemon_require_auth(cfg, req, resp)) return;
-#if !defined(AGENT_HAVE_JSONCPP)
-    resp->status = 500;
-    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
-    return;
-#else
     handle_openrouter_models_endpoint(ocfg, !cfg.auth_token.empty(), req, resp);
     return;
-#endif
   });
 
   server.handle("GET", "/api/v1/file", [&](const HttpRequest& req, HttpResponse* resp) {
     handle_file_endpoint(cfg, cors_cfg, req, resp);
   });
 
+  const std::string sessions_root_dir = sessions_root_dir_best_effort();
+
   server.handle("GET", "/api/v1/sessions", [&](const HttpRequest& req, HttpResponse* resp) {
-    cors_apply(req, resp, cors_cfg);
-    resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    if (!daemon_require_auth(cfg, req, resp)) return;
-#if !defined(AGENT_HAVE_JSONCPP)
-    resp->status = 500;
-    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
-    return;
-#else
-    SessionStoreConfig store_cfg;
-    store_cfg.root_dir = (std::filesystem::path(home_dir_best_effort()) / ".agent" / "sessions").string();
-
-    agent_persistor_t p{};
-    const agent_status_t pst = agent_file_persistor_create(store_cfg.root_dir.c_str(), &p);
-    std::vector<std::string> ids;
-    agent_status_t st = pst;
-    if (pst == AGENT_OK && p.list) {
-      auto sink = [](void* vctx, const char* id) {
-        auto* vec = static_cast<std::vector<std::string>*>(vctx);
-        vec->push_back(id ? id : "");
-      };
-      st = p.list(p.ctx, sink, &ids);
-    }
-    agent_persistor_destroy(&p);
-
-    Json::Value out(Json::objectValue);
-    out["ok"] = (st == AGENT_OK);
-    if (st != AGENT_OK) {
-      out["error"] = "failed to list sessions";
-      out["status"] = (Json::Int64)st;
-    }
-    Json::Value arr(Json::arrayValue);
-    for (const auto& s : ids) {
-      arr.append(s);
-    }
-    out["sessions"] = arr;
-    resp->body = json_stringify(out);
-    return;
-#endif
+    handle_sessions_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
   });
 
   server.handle("GET", "/api/v1/session", [&](const HttpRequest& req, HttpResponse* resp) {
-    cors_apply(req, resp, cors_cfg);
-    resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    if (!daemon_require_auth(cfg, req, resp)) return;
-#if !defined(AGENT_HAVE_JSONCPP)
-    resp->status = 500;
-    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
-    return;
-#else
-    const auto sid = query_get(req.query, "session_id");
-    if (!sid || sid->empty()) {
-      resp->status = 400;
-      resp->body = R"({"ok":false,"error":"missing session_id"})";
-      return;
-    }
-
-    SessionStoreConfig store_cfg;
-    store_cfg.root_dir = (std::filesystem::path(home_dir_best_effort()) / ".agent" / "sessions").string();
-    agent_session_t* session = nullptr;
-    agent_persistor_t p{};
-    const agent_status_t pst = agent_file_persistor_create(store_cfg.root_dir.c_str(), &p);
-    const agent_status_t st = (pst == AGENT_OK) ? p.load(p.ctx, sid->c_str(), &session) : pst;
-    agent_persistor_destroy(&p);
-    if (st != AGENT_OK || !session) {
-      resp->status = 500;
-      Json::Value out(Json::objectValue);
-      out["ok"] = false;
-      out["error"] = "failed to load session";
-      out["status"] = (Json::Int64)st;
-      resp->body = json_stringify(out);
-      return;
-    }
-
-    Json::Value out(Json::objectValue);
-    out["ok"] = true;
-    out["session_id"] = *sid;
-    Json::Value msgs(Json::arrayValue);
-    const size_t n = agent_session_message_count(session);
-    for (size_t i = 0; i < n; i++) {
-      agent_message_view_t v{};
-      if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
-      Json::Value m(Json::objectValue);
-      m["role"] = agent_role_to_string(v.role);
-      m["content"] = std::string(v.content, v.content_len);
-      msgs.append(m);
-    }
-    out["messages"] = msgs;
-    agent_session_destroy(session);
-    resp->body = json_stringify(out);
-    return;
-#endif
+    handle_session_get_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
   });
 
   server.handle("GET", "/api/v1/session/audit", [&](const HttpRequest& req, HttpResponse* resp) {
-    cors_apply(req, resp, cors_cfg);
-    resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    if (!daemon_require_auth(cfg, req, resp)) return;
-#if !defined(AGENT_HAVE_JSONCPP)
-    resp->status = 500;
-    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
-    return;
-#else
-    const auto sid = query_get(req.query, "session_id");
-    if (!sid || sid->empty()) {
-      resp->status = 400;
-      resp->body = R"({"ok":false,"error":"missing session_id"})";
-      return;
-    }
-    size_t max_bytes = 1024 * 1024;
-    if (const auto mb = query_get(req.query, "max_bytes")) {
-      try {
-        max_bytes = (size_t)std::stoull(*mb);
-      } catch (...) {
-      }
-    }
-    SessionStoreConfig store_cfg;
-    store_cfg.root_dir = (std::filesystem::path(home_dir_best_effort()) / ".agent" / "sessions").string();
-    std::string tail;
-    const agent_status_t st = session_store_read_audit_tail(store_cfg, *sid, max_bytes, &tail);
-    Json::Value out(Json::objectValue);
-    out["ok"] = (st == AGENT_OK);
-    out["session_id"] = *sid;
-    if (st != AGENT_OK) {
-      out["error"] = "failed to read audit log";
-      out["status"] = (Json::Int64)st;
-    }
-    // Parse JSONL into entries (best-effort).
-    Json::Value entries(Json::arrayValue);
-    std::istringstream iss(tail);
-    std::string line;
-    Json::CharReaderBuilder rb;
-    while (std::getline(iss, line)) {
-      if (line.empty()) continue;
-      std::string errs;
-      std::istringstream lss(line);
-      Json::Value v;
-      if (Json::parseFromStream(rb, lss, &v, &errs) && v.isObject()) {
-        entries.append(v);
-      }
-    }
-    out["entries"] = entries;
-    resp->body = json_stringify(out);
-    return;
-#endif
+    handle_session_audit_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
   });
 
   server.handle("DELETE", "/api/v1/session", [&](const HttpRequest& req, HttpResponse* resp) {
-    cors_apply(req, resp, cors_cfg);
-    resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    if (!daemon_require_auth(cfg, req, resp)) return;
-#if !defined(AGENT_HAVE_JSONCPP)
-    resp->status = 500;
-    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
-    return;
-#else
-    const auto sid = query_get(req.query, "session_id");
-    if (!sid || sid->empty()) {
-      resp->status = 400;
-      resp->body = R"({"ok":false,"error":"missing session_id"})";
-      return;
-    }
-    SessionStoreConfig store_cfg;
-    store_cfg.root_dir = (std::filesystem::path(home_dir_best_effort()) / ".agent" / "sessions").string();
-    agent_persistor_t p{};
-    const agent_status_t pst = agent_file_persistor_create(store_cfg.root_dir.c_str(), &p);
-    const agent_status_t st = (pst == AGENT_OK) ? p.del(p.ctx, sid->c_str()) : pst;
-    agent_persistor_destroy(&p);
-    Json::Value out(Json::objectValue);
-    out["ok"] = (st == AGENT_OK);
-    out["session_id"] = *sid;
-    if (st != AGENT_OK) {
-      out["error"] = "failed to delete session";
-      out["status"] = (Json::Int64)st;
-    }
-    resp->body = json_stringify(out);
-    return;
-#endif
+    handle_session_delete_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
   });
 
   server.handle("POST", "/api/v1/run", [&](const HttpRequest& req, HttpResponse* resp) {
     cors_apply(req, resp, cors_cfg);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
     if (!daemon_require_auth(cfg, req, resp)) return;
-
-#if !defined(AGENT_HAVE_JSONCPP)
-    resp->status = 500;
-    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
-    return;
-#else
     const auto started = std::chrono::steady_clock::now();
     std::cerr << "agentd: /api/v1/run start bytes=" << req.body.size() << "\n";
     Json::Value out = run_request_to_json(cfg, ocfg, req.body, nullptr);
@@ -1357,7 +1186,6 @@ int main(int argc, char** argv) {
       resp->status = out["rpc_status"].asInt();
     }
     resp->body = json_stringify(out);
-#endif
   });
 
   // Async run: returns a job id immediately and completes in the background.
@@ -1365,12 +1193,6 @@ int main(int argc, char** argv) {
     cors_apply(req, resp, cors_cfg);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
     if (!daemon_require_auth(cfg, req, resp)) return;
-
-#if !defined(AGENT_HAVE_JSONCPP)
-    resp->status = 500;
-    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
-    return;
-#else
     Json::Value args;
     std::string perr;
     if (!json_parse_object(req.body, &args, &perr)) {
@@ -1454,132 +1276,14 @@ int main(int argc, char** argv) {
     o["job_id"] = job_id;
     resp->body = json_stringify(o);
     return;
-#endif
   });
 
   server.handle("GET", "/api/v1/job", [&](const HttpRequest& req, HttpResponse* resp) {
-    cors_apply(req, resp, cors_cfg);
-    resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    if (!daemon_require_auth(cfg, req, resp)) return;
-#if !defined(AGENT_HAVE_JSONCPP)
-    resp->status = 500;
-    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
-    return;
-#else
-    const auto jid = query_get(req.query, "job_id");
-    if (!jid || jid->empty()) {
-      resp->status = 400;
-      resp->body = R"({"ok":false,"error":"missing job_id"})";
-      return;
-    }
-    JobState s;
-    if (!job_get(*jid, &s)) {
-      resp->status = 404;
-      resp->body = R"({"ok":false,"error":"job not found"})";
-      return;
-    }
-    Json::Value o(Json::objectValue);
-    o["ok"] = true;
-    o["job_id"] = s.id;
-    o["status"] = s.status;
-    o["error"] = s.error;
-    o["created_unix_ms"] = (Json::Int64)s.created_unix_ms;
-    o["updated_unix_ms"] = (Json::Int64)s.updated_unix_ms;
-    // Optional live events for progress (polling UI).
-    const auto include_ev = query_get(req.query, "include_events");
-    const bool want_events = include_ev && (*include_ev == "1" || *include_ev == "true");
-    const auto cursor_q = query_get(req.query, "cursor");
-    const auto max_q = query_get(req.query, "max_events");
-    uint64_t cursor = 0;
-    if (cursor_q && !cursor_q->empty()) {
-      try {
-        cursor = (uint64_t)std::stoull(*cursor_q);
-      } catch (...) {
-        cursor = 0;
-      }
-    }
-    size_t max_events = 256;
-    if (max_q && !max_q->empty()) {
-      try {
-        max_events = (size_t)std::stoull(*max_q);
-      } catch (...) {
-        max_events = 256;
-      }
-    }
-    if (max_events == 0) max_events = 256;
-    if (max_events > 2048) max_events = 2048;
-
-    o["events_cursor_base"] = (Json::UInt64)s.events_offset;
-    o["events_cursor_end"] = (Json::UInt64)(s.events_offset + (uint64_t)s.events.size());
-    if (want_events) {
-      Json::Value slice(Json::arrayValue);
-      const uint64_t base = s.events_offset;
-      const uint64_t end = base + (uint64_t)s.events.size();
-      bool reset = false;
-      uint64_t cur = cursor;
-      if (cur < base) {
-        reset = true;
-        cur = base;
-      }
-      if (cur > end) {
-        cur = end;
-      }
-      const uint64_t start_idx = cur - base;
-      const uint64_t avail = end - cur;
-      const uint64_t take = std::min<uint64_t>((uint64_t)max_events, avail);
-      for (uint64_t i = 0; i < take; i++) {
-        slice.append(s.events[(Json::ArrayIndex)(start_idx + i)]);
-      }
-      o["events"] = slice;
-      o["events_cursor_next"] = (Json::UInt64)(cur + take);
-      o["events_reset"] = reset;
-    }
-
-    if (s.status == "done" || s.status == "error") {
-      o["result"] = s.result;
-    }
-    resp->body = json_stringify(o);
-    return;
-#endif
+    handle_job_get_endpoint(cfg, cors_cfg, req, resp);
   });
 
   server.handle("POST", "/api/v1/job/cancel", [&](const HttpRequest& req, HttpResponse* resp) {
-    cors_apply(req, resp, cors_cfg);
-    resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    if (!daemon_require_auth(cfg, req, resp)) return;
-#if !defined(AGENT_HAVE_JSONCPP)
-    resp->status = 500;
-    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
-    return;
-#else
-    const auto jid = query_get(req.query, "job_id");
-    if (!jid || jid->empty()) {
-      resp->status = 400;
-      resp->body = R"({"ok":false,"error":"missing job_id"})";
-      return;
-    }
-    if (!job_request_cancel(*jid)) {
-      resp->status = 409;
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["error"] = "cannot cancel job (not found or already finished)";
-      o["job_id"] = *jid;
-      resp->body = json_stringify(o);
-      return;
-    }
-    // Best-effort: surface cancellation request to any connected UI.
-    {
-      Json::Value d(Json::objectValue);
-      d["job_id"] = *jid;
-      d["ts_unix_ms"] = (Json::Int64)now_unix_ms();
-      job_append_event(*jid, "cancel_requested", json_stringify(d));
-    }
-    Json::Value o(Json::objectValue);
-    o["ok"] = true;
-    o["job_id"] = *jid;
-    resp->body = json_stringify(o);
-    return;
-#endif
+    handle_job_cancel_endpoint(cfg, cors_cfg, req, resp);
   });
 
   // Server-Sent Events stream for job progress (preferred UI path vs polling).
@@ -1589,35 +1293,7 @@ int main(int argc, char** argv) {
   });
 
   server.handle("DELETE", "/api/v1/job", [&](const HttpRequest& req, HttpResponse* resp) {
-    cors_apply(req, resp, cors_cfg);
-    resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    if (!daemon_require_auth(cfg, req, resp)) return;
-#if !defined(AGENT_HAVE_JSONCPP)
-    resp->status = 500;
-    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
-    return;
-#else
-    const auto jid = query_get(req.query, "job_id");
-    if (!jid || jid->empty()) {
-      resp->status = 400;
-      resp->body = R"({"ok":false,"error":"missing job_id"})";
-      return;
-    }
-    if (!job_delete(*jid)) {
-      resp->status = 409;
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["error"] = "cannot delete job (still running or not found)";
-      o["job_id"] = *jid;
-      resp->body = json_stringify(o);
-      return;
-    }
-    Json::Value o(Json::objectValue);
-    o["ok"] = true;
-    o["job_id"] = *jid;
-    resp->body = json_stringify(o);
-    return;
-#endif
+    handle_job_delete_endpoint(cfg, cors_cfg, req, resp);
   });
 
   std::string err;

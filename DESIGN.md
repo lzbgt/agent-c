@@ -173,6 +173,18 @@ Implementation shape:
 - Teach the HTTP server to dispatch `OPTIONS` requests to a configurable preflight handler so preflight responses can include
   policy-derived headers (including dynamic origin reflection).
 
+## Daemon Endpoint Structure (Hygiene)
+
+As `agentd` grows, keep `daemon/src/main.cpp` focused on:
+- process/flag initialization
+- wiring configs (CORS/sandbox/provider defaults)
+- HTTP route registration
+
+Endpoint handler logic should live in dedicated modules under `daemon/src/` to keep responsibilities small and testable:
+- `*_endpoint.{h,cpp}` for JSON endpoints (`/api/v1/config`, `/api/v1/tools`, `/api/v1/file`, etc.)
+- `job_stream_endpoint.{h,cpp}` for SSE endpoints
+- shared helpers (auth, sandbox policy) in single-purpose headers
+
 ## Data Model
 
 ### Message

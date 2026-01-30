@@ -2,10 +2,8 @@
 
 #include "http_util.h"
 
-#if defined(AGENT_HAVE_JSONCPP)
 #include "job_manager.h"
 #include "json_util.h"
-#endif
 
 #include <chrono>
 #include <sstream>
@@ -14,21 +12,6 @@
 
 namespace agentd {
 
-#if !defined(AGENT_HAVE_JSONCPP)
-static bool write_all_fd_fallback(int fd, const std::string& s) {
-  const char* p = s.data();
-  size_t n = s.size();
-  while (n > 0) {
-    ssize_t w = ::write(fd, p, n);
-    if (w <= 0) return false;
-    p += (size_t)w;
-    n -= (size_t)w;
-  }
-  return true;
-}
-#endif
-
-#if defined(AGENT_HAVE_JSONCPP)
 static bool auth_ok(const std::string& daemon_auth_token, const HttpRequest& req) {
   if (daemon_auth_token.empty()) {
     return true;
@@ -37,7 +20,6 @@ static bool auth_ok(const std::string& daemon_auth_token, const HttpRequest& req
   const std::string got = bearer_token_from_auth_header(auth);
   return !got.empty() && got == daemon_auth_token;
 }
-#endif
 
 void handle_job_stream_endpoint(
   const std::string& daemon_auth_token,
@@ -45,19 +27,6 @@ void handle_job_stream_endpoint(
   const HttpRequest& req,
   int client_fd
 ) {
-#if !defined(AGENT_HAVE_JSONCPP)
-  (void)daemon_auth_token;
-  (void)cors_cfg;
-  (void)req;
-  const std::string wire =
-    "HTTP/1.1 500 Internal Server Error\r\n"
-    "Content-Type: application/json; charset=utf-8\r\n"
-    "Connection: close\r\n"
-    "\r\n"
-    "{\"ok\":false,\"error\":\"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)\"}";
-  (void)write_all_fd_fallback(client_fd, wire);
-  return;
-#else
   if (!auth_ok(daemon_auth_token, req)) {
     std::ostringstream hdr;
     hdr << "HTTP/1.1 401 Unauthorized\r\n";
@@ -166,7 +135,6 @@ void handle_job_stream_endpoint(
 
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
   }
-#endif
 }
 
 }  // namespace agentd
