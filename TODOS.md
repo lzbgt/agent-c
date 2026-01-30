@@ -100,7 +100,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add UI auto-ack client events (`ui_action_shown`, `artifact_rendered`) so “present to UI” tasks have an observable DoD without relying on tool-call caps.
 - [x] Generalize UI events into a client collaboration protocol: `/session/client_event`, `client` identity, and client-agnostic wait/probe tools (`client_wait_*`, `client_peek`).
 - [x] Add a client state snapshot protocol (`client_state`) + client-side media telemetry (video play events) so agents can proactively reason about client environment state.
-- [x] Add a bounded client probe RPC (`ui_action type=client_probe` + `client_probe_result`) so agents can request read-only DOM/media/location facts deterministically.
+- [x] Add a universal client RPC surface (`ui_action type=client_rpc` + `client_rpc_result`/`client_rpc_progress`) so agents can request bounded client introspection and (optionally) side-effecting actions deterministically.
 - [ ] Add a daemon skeleton with:
   - local control socket / HTTP
   - broker client abstraction (MQTT)
