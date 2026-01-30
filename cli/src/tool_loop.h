@@ -91,6 +91,8 @@ struct ToolLoopResult {
   // This is intended for UIs; do not assume a fixed schema beyond `type`.
   std::string events_json;
   bool saw_tool_call = false;
+  size_t steps_executed = 0;
+  size_t tool_calls_executed = 0;
   // Tool transcript captured during execution (best-effort).
   std::vector<ToolLoopToolRecord> tool_records;
 };

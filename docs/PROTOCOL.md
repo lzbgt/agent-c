@@ -102,6 +102,16 @@ per-tool map:
 This exists to prevent pathological “capture camera → send to UI → repeat” loops when the model does not infer a natural stop
 condition from the conversation alone.
 
+## UI Actions (agent → UI)
+
+Artifacts cover “render this file”; some workflows need explicit UI intent (e.g. show a notification, request an audio play).
+
+Protocol:
+- Host tool `ui_action` returns a JSON envelope with `data.tool="ui_action"` and `data.action={...}`.
+- The host tool loop emits a derived `ui_action` event to the UI (similar to derived `artifact` events).
+
+See: `docs/UI_ACTION.md`.
+
 ## Artifacts
 
 ### Problem

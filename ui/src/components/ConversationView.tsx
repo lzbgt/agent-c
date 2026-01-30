@@ -140,6 +140,50 @@ export default function ConversationView({
       return;
     }
 
+    if (type === "ui_action") {
+      sawToolOrAssistant = true;
+      const action = data?.action ?? {};
+      const atype = String(action?.type ?? "");
+      const title = String(action?.title ?? (atype ? `ui_action: ${atype}` : "ui_action"));
+      if (atype === "notify") {
+        const msg = String(action?.message ?? "");
+        items.push(
+          <Card key={`ua-${idx}`} title={`UI action: ${title}`}>
+            <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/80">
+              {msg || "(no message)"}
+            </div>
+          </Card>,
+        );
+        return;
+      }
+      if (atype === "play_audio") {
+        const path = String(action?.path ?? "");
+        const artifact = {
+          path,
+          kind: "audio",
+          mime: action?.mime,
+          title,
+          autoplay: action?.autoplay,
+          repeat: action?.repeat,
+        };
+        items.push(
+          <Card key={`ua-${idx}`} title={`UI action: ${title}`}>
+            <ArtifactView baseUrl={baseUrl} yolo={yolo} artifact={artifact} allowAutoplay={allowAutoplay} />
+          </Card>,
+        );
+        return;
+      }
+
+      items.push(
+        <Card key={`ua-${idx}`} title={`UI action: ${title}`}>
+          <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
+            {JSON.stringify(action, null, 2)}
+          </pre>
+        </Card>,
+      );
+      return;
+    }
+
     if (type === "heartbeat") {
       lastHeartbeat = data ?? {};
       return;

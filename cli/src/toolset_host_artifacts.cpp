@@ -143,11 +143,105 @@ agent_status_t tool_artifact_register(HostToolCtx* ctx, const char* arguments_js
 
   return write_envelope(true, "", data);
 }
+
+agent_status_t tool_ui_action(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
+  if (!ctx || !out_result) return AGENT_ERR_INVALID_ARGUMENT;
+  if (is_cancelled(ctx)) {
+    return set_result(out_result, "{\"ok\":false,\"error\":\"cancelled\"}");
+  }
+
+  auto write_envelope = [&](bool ok, const std::string& error, const Json::Value& data) -> agent_status_t {
+    Json::Value o(Json::objectValue);
+    o["ok"] = ok;
+    if (!error.empty()) o["error"] = error;
+    o["data"] = data;
+    Json::StreamWriterBuilder wb;
+    wb["indentation"] = "";
+    return set_result(out_result, Json::writeString(wb, o));
+  };
+
+  Json::Value args;
+  std::string err;
+  if (!parse_json(arguments_json, &args, &err) || !args.isObject()) {
+    return write_envelope(false, "invalid args", Json::Value(Json::objectValue));
+  }
+  if (!args.isMember("type") || !args["type"].isString()) {
+    return write_envelope(false, "missing string field 'type'", Json::Value(Json::objectValue));
+  }
+
+  const std::string type = args["type"].asString();
+  const std::string title = args.isMember("title") && args["title"].isString() ? args["title"].asString() : "";
+  const std::string message = args.isMember("message") && args["message"].isString() ? args["message"].asString() : "";
+  const bool autoplay = args.isMember("autoplay") && args["autoplay"].isBool() ? args["autoplay"].asBool() : false;
+  int repeat = args.isMember("repeat") && args["repeat"].isInt() ? args["repeat"].asInt() : 1;
+  if (repeat < 1) repeat = 1;
+  if (repeat > 16) repeat = 16;
+
+  Json::Value action(Json::objectValue);
+  action["type"] = type;
+  if (!title.empty()) action["title"] = title;
+  if (!message.empty()) action["message"] = message;
+  action["autoplay"] = autoplay;
+  action["repeat"] = repeat;
+
+  // Media actions can reference host files; validate and normalize metadata.
+  if (type == "play_audio") {
+    if (!args.isMember("path") || !args["path"].isString()) {
+      return write_envelope(false, "missing string field 'path' for play_audio", Json::Value(Json::objectValue));
+    }
+    const std::string path = args["path"].asString();
+    const auto resolved = resolve_under_root(ctx->root, path, ctx->unrestricted);
+    if (!resolved) {
+      return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
+    }
+    if (!ctx->unrestricted && !ctx->allow_symlinks) {
+      if (path_contains_symlink_component(ctx->root, *resolved)) {
+        return write_envelope(false, "path escapes via symlink", Json::Value(Json::objectValue));
+      }
+    }
+
+    std::error_code ec;
+    if (!std::filesystem::exists(*resolved, ec) || !std::filesystem::is_regular_file(*resolved, ec)) {
+      return write_envelope(false, "file not found", Json::Value(Json::objectValue));
+    }
+
+    std::string mime = args.isMember("mime") && args["mime"].isString() ? args["mime"].asString() : "";
+    if (mime.empty()) {
+      mime = guess_mime_from_kind_and_ext("audio", path);
+    }
+    action["path"] = path;
+    action["resolved_path"] = to_generic_string(*resolved);
+    action["root_dir"] = to_generic_string(ctx->root);
+    action["unrestricted"] = ctx->unrestricted;
+    action["mime"] = mime;
+  } else if (type == "notify") {
+    if (title.empty() && message.empty()) {
+      return write_envelope(false, "notify requires title or message", Json::Value(Json::objectValue));
+    }
+  } else {
+    // Unknown action types are allowed at the tool level (for rolling evolution),
+    // but the UI is expected to implement an allowlist and render unknown types safely.
+  }
+
+  Json::Value data(Json::objectValue);
+  data["tool"] = "ui_action";
+  data["action"] = action;
+  if (type == "notify") {
+    data["output"] = "ui_action notify";
+  } else {
+    data["output"] = "ui_action " + type;
+  }
+
+  return write_envelope(true, "", data);
+}
 #else
 agent_status_t tool_artifact_register(HostToolCtx* /*ctx*/, const char* /*arguments_json*/, agent_string_t* out_result) {
   return set_result(out_result, "{\"ok\":false,\"error\":\"artifact_register requires jsoncpp\",\"data\":{}}");
 }
+
+agent_status_t tool_ui_action(HostToolCtx* /*ctx*/, const char* /*arguments_json*/, agent_string_t* out_result) {
+  return set_result(out_result, "{\"ok\":false,\"error\":\"ui_action requires jsoncpp\",\"data\":{}}");
+}
 #endif
 
 }  // namespace host_tools_internal
-

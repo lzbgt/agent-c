@@ -50,6 +50,17 @@ class AgentDb {
     std::string base_url;
     bool stream_assistant = false;
     bool ok = false;
+    // Best-effort stop reason:
+    // - ok=true: typically "done"
+    // - ok=false: typically the last error event's `reason` (e.g. max_steps_exceeded)
+    std::string stop_reason;
+    // Tool loop counters (best-effort; 0 for tools=none).
+    int64_t steps_executed = 0;
+    int64_t tool_calls_total = 0;
+    // JSON object string mapping tool_name -> count (best-effort).
+    std::string tool_calls_by_tool_json;
+    // Convenience copy of the last error reason (when known).
+    std::string last_error_reason;
     std::string error;
     long http_status = 0;
     std::string http_body;

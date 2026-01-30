@@ -164,7 +164,7 @@ void handle_db_runs_endpoint(
 #else
   sqlite3_stmt* st = nullptr;
   const char* sql =
-    "SELECT run_id, session_id, job_id, ts_unix_ms, tools, model, ok, error, "
+    "SELECT run_id, session_id, job_id, ts_unix_ms, tools, model, ok, error, stop_reason, steps_executed, tool_calls_total, tool_calls_by_tool_json, last_error_reason, "
     "(SELECT data_json FROM events e WHERE e.run_id = runs.run_id AND e.type='error' ORDER BY e.event_id DESC LIMIT 1) AS last_error_json "
     "FROM runs WHERE session_id=? ORDER BY ts_unix_ms DESC LIMIT ? OFFSET ?;";
   if (sqlite3_prepare_v2(h.db, sql, -1, &st, nullptr) != SQLITE_OK) {
@@ -191,7 +191,20 @@ void handle_db_runs_endpoint(
     r["model"] = stmt_to_row(st, 5);
     r["ok"] = sqlite3_column_int(st, 6) ? true : false;
     r["error"] = stmt_to_row(st, 7);
-    const Json::Value last_err_json = stmt_to_row(st, 8);
+    r["stop_reason"] = stmt_to_row(st, 8);
+    r["steps_executed"] = (Json::Int64)sqlite3_column_int64(st, 9);
+    r["tool_calls_total"] = (Json::Int64)sqlite3_column_int64(st, 10);
+    const Json::Value tool_calls_by_tool_json = stmt_to_row(st, 11);
+    r["tool_calls_by_tool_json"] = tool_calls_by_tool_json;
+    if (tool_calls_by_tool_json.isString() && !tool_calls_by_tool_json.asString().empty()) {
+      Json::Value parsed;
+      std::string perr;
+      if (json_parse_object(tool_calls_by_tool_json.asString(), &parsed, &perr)) {
+        r["tool_calls_by_tool"] = parsed;
+      }
+    }
+    r["last_error_reason"] = stmt_to_row(st, 12);
+    const Json::Value last_err_json = stmt_to_row(st, 13);
     r["last_error_json"] = last_err_json;
     if (last_err_json.isString() && !last_err_json.asString().empty()) {
       Json::Value parsed;
@@ -275,7 +288,9 @@ void handle_db_run_endpoint(
   // Run row
   sqlite3_stmt* st = nullptr;
   const char* sql =
-    "SELECT run_id, session_id, job_id, ts_unix_ms, prompt, tools, model, base_url, stream_assistant, ok, error, http_status "
+    "SELECT run_id, session_id, job_id, ts_unix_ms, prompt, tools, model, base_url, stream_assistant, ok, "
+    "stop_reason, steps_executed, tool_calls_total, tool_calls_by_tool_json, last_error_reason, "
+    "error, http_status "
     "FROM runs WHERE run_id=? LIMIT 1;";
   if (sqlite3_prepare_v2(h.db, sql, -1, &st, nullptr) != SQLITE_OK) {
     Json::Value err(Json::objectValue);
@@ -309,8 +324,21 @@ void handle_db_run_endpoint(
   run["base_url"] = stmt_to_row(st, 7);
   run["stream_assistant"] = sqlite3_column_int(st, 8) ? true : false;
   run["ok"] = sqlite3_column_int(st, 9) ? true : false;
-  run["error"] = stmt_to_row(st, 10);
-  run["http_status"] = stmt_to_row(st, 11);
+  run["stop_reason"] = stmt_to_row(st, 10);
+  run["steps_executed"] = (Json::Int64)sqlite3_column_int64(st, 11);
+  run["tool_calls_total"] = (Json::Int64)sqlite3_column_int64(st, 12);
+  const Json::Value tool_calls_by_tool_json = stmt_to_row(st, 13);
+  run["tool_calls_by_tool_json"] = tool_calls_by_tool_json;
+  if (tool_calls_by_tool_json.isString() && !tool_calls_by_tool_json.asString().empty()) {
+    Json::Value parsed;
+    std::string perr;
+    if (json_parse_object(tool_calls_by_tool_json.asString(), &parsed, &perr)) {
+      run["tool_calls_by_tool"] = parsed;
+    }
+  }
+  run["last_error_reason"] = stmt_to_row(st, 14);
+  run["error"] = stmt_to_row(st, 15);
+  run["http_status"] = stmt_to_row(st, 16);
   sqlite3_finalize(st);
 
   Json::Value out(Json::objectValue);

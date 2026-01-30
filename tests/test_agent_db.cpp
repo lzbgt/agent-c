@@ -134,7 +134,7 @@ int main() {
   assert(tools == 1);
   assert(arts == 1);
 
-  // Migration smoke: open an older (v1) DB and ensure it upgrades to v2 with the artifacts table.
+  // Migration smoke: open an older (v1) DB and ensure it upgrades to the latest schema.
   const std::filesystem::path tmp2 =
     std::filesystem::temp_directory_path() / ("agentd_db_migrate_test_" + std::to_string((long long)getpid()) + ".sqlite");
   std::filesystem::remove(tmp2, ec);
@@ -163,9 +163,12 @@ int main() {
   }
   const int64_t ver = query_i64(raw2, "SELECT CAST(value AS INTEGER) FROM meta WHERE key='schema_version' LIMIT 1;");
   const int64_t arts2 = query_i64(raw2, "SELECT COUNT(*) FROM artifacts;");
+  const int64_t stop_reason_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('runs') WHERE name='stop_reason';");
   sqlite3_close(raw2);
-  assert(ver == 2);
+  assert(ver == 3);
   assert(arts2 == 0);
+  assert(stop_reason_cols == 1);
 
   db.close();
   std::filesystem::remove(tmp, ec);

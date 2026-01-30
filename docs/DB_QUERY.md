@@ -42,6 +42,12 @@ Response fields:
   - `tools` (string)
   - `model` (string|null)
   - `ok` (bool)
+  - `stop_reason` (string|null): best-effort stop reason summary (`done` or last error `reason`)
+  - `steps_executed` (number|null): tool-loop steps executed (0 for tools=none)
+  - `tool_calls_total` (number|null): total tool calls executed
+  - `tool_calls_by_tool_json` (string|null): JSON object string mapping `tool -> count`
+  - `tool_calls_by_tool` (object, optional): parsed form of `tool_calls_by_tool_json` when parsing succeeds
+  - `last_error_reason` (string|null): last `error` event's `reason` (when known)
   - `error` (string|null)
   - `last_error_json` (string|null): raw JSON object string for the most recent `events.type="error"` row for this run
   - `last_error` (object, optional): parsed form of `last_error_json` when parsing succeeds

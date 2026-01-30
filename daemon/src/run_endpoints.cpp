@@ -790,6 +790,57 @@ static Json::Value run_request_to_json(
     rr.base_url = run_cfg.base_url;
     rr.stream_assistant = stream_assistant;
     rr.ok = ok;
+    rr.steps_executed = use_tool_loop ? (int64_t)tool_loop_result.steps_executed : 0;
+    rr.tool_calls_total = use_tool_loop ? (int64_t)tool_loop_result.tool_records.size() : 0;
+    {
+      // stop_reason: best-effort extracted from events.
+      // - ok=true: "done"
+      // - ok=false: error event's `reason` when present, else "error"
+      std::string stop_reason = ok ? "done" : "error";
+      std::string last_err_reason;
+      if (events_out.isArray()) {
+        for (Json::ArrayIndex i = 0; i < events_out.size(); i++) {
+          const auto& ev = events_out[i];
+          if (!ev.isObject()) continue;
+          const auto& t = ev["type"];
+          const auto& d = ev["data"];
+          if (!t.isString() || !d.isObject()) continue;
+          if (t.asString() == "error") {
+            if (d.isMember("reason") && d["reason"].isString()) {
+              last_err_reason = d["reason"].asString();
+            }
+          }
+          if (t.asString() == "done") {
+            stop_reason = ok ? "done" : stop_reason;
+          }
+          if (t.asString() == "cancelled") {
+            if (d.isMember("reason") && d["reason"].isString()) {
+              stop_reason = d["reason"].asString();
+            } else {
+              stop_reason = "cancelled";
+            }
+          }
+        }
+      }
+      if (!ok && !last_err_reason.empty()) {
+        stop_reason = last_err_reason;
+      }
+      rr.stop_reason = stop_reason;
+      rr.last_error_reason = last_err_reason;
+    }
+    if (use_tool_loop) {
+      // tool_calls_by_tool_json: compact map for troubleshooting.
+      Json::Value m(Json::objectValue);
+      for (const auto& tr : tool_loop_result.tool_records) {
+        if (tr.tool_name.empty()) continue;
+        const auto key = tr.tool_name;
+        if (!m.isMember(key)) m[key] = (Json::UInt64)0;
+        m[key] = (Json::UInt64)(m[key].asUInt64() + 1);
+      }
+      Json::StreamWriterBuilder wb;
+      wb["indentation"] = "";
+      rr.tool_calls_by_tool_json = Json::writeString(wb, m);
+    }
     rr.error = err;
     rr.http_status = http_status;
     rr.http_body = http_body;

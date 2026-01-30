@@ -283,6 +283,13 @@ Host tool names:
 - `proc_exec` (runs an argv array via `posix_spawnp`, no shell; returns JSON envelope with `argv`, `exit_code`, `timed_out`, `truncated`, `output`)
 - `file_apply_patch` (applies a unified diff via `git apply`; returns the patch as a diff-style audit trail)
 - `fs_stat` (file/dir metadata; returns structured fields + a human-readable `output`)
+
+### UI actions (bidirectional UX)
+
+In addition to `artifact_register` (explicit media artifacts), host tools include `ui_action` so the model can request
+UI-side actions in a **typed** and **allowlisted** way (e.g. notifications, audio playback UI).
+
+See `docs/UI_ACTION.md`.
 - `fs_list` (bounded directory listing; returns structured `entries` + `output`)
 - `fs_find` (bounded file discovery; returns structured `entries` + `output`)
 - `fs_read` (bounded file read with pagination by line; returns `content`/`output` + `has_more` + `next_start_line`)

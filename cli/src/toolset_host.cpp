@@ -1652,6 +1652,9 @@ static agent_status_t host_tools_execute(void* vctx, const char* tool_name, cons
   if (name == "artifact_register") {
     return tool_artifact_register(ctx, arguments_json, out_result);
   }
+  if (name == "ui_action") {
+    return tool_ui_action(ctx, arguments_json, out_result);
+  }
   // Keep the response machine-readable so the LLM can reason about failures.
   return set_result(out_result, "{\"ok\":false,\"error\":\"unknown tool\",\"data\":{}}");
 }
@@ -1845,6 +1848,26 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     "artifact_register",
     "Register a host file (image/audio/video/etc) as an artifact for the UI to render. Returns JSON envelope with data.artifact metadata and playback hints.",
     "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"kind\":{\"type\":\"string\",\"description\":\"image|audio|video|text|file\"},\"mime\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"autoplay\":{\"type\":\"boolean\"},\"repeat\":{\"type\":\"integer\"}},\"required\":[\"path\"]}"
+  );
+  if (st != AGENT_OK) goto fail;
+
+  st = add_tool(
+    r,
+    "ui_action",
+    "Request a UI action (no host side effects). Returns JSON envelope with data.action; the tool loop emits a derived ui_action event to the UI.",
+    "{"
+    "\"type\":\"object\","
+    "\"properties\":{"
+    "  \"type\":{\"type\":\"string\",\"description\":\"Action type (e.g. notify, play_audio).\"},"
+    "  \"title\":{\"type\":\"string\"},"
+    "  \"message\":{\"type\":\"string\"},"
+    "  \"path\":{\"type\":\"string\",\"description\":\"For media actions like play_audio.\"},"
+    "  \"mime\":{\"type\":\"string\"},"
+    "  \"repeat\":{\"type\":\"integer\"},"
+    "  \"autoplay\":{\"type\":\"boolean\"}"
+    "},"
+    "\"required\":[\"type\"]"
+    "}"
   );
   if (st != AGENT_OK) goto fail;
 

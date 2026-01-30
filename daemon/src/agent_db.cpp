@@ -142,7 +142,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 2;
+  const int kSchemaVersion = 3;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -265,6 +265,20 @@ CREATE INDEX IF NOT EXISTS artifacts_by_path ON artifacts(path);
 )SQL";
     if (!exec_locked(schema_v2, out_error)) return false;
     cur_ver = 2;
+  }
+
+  if (cur_ver < 3) {
+    const char* schema_v3 = R"SQL(
+ALTER TABLE runs ADD COLUMN stop_reason TEXT;
+ALTER TABLE runs ADD COLUMN steps_executed INTEGER;
+ALTER TABLE runs ADD COLUMN tool_calls_total INTEGER;
+ALTER TABLE runs ADD COLUMN tool_calls_by_tool_json TEXT;
+ALTER TABLE runs ADD COLUMN last_error_reason TEXT;
+CREATE INDEX IF NOT EXISTS runs_by_stop_reason ON runs(stop_reason);
+CREATE INDEX IF NOT EXISTS runs_by_last_error_reason ON runs(last_error_reason);
+)SQL";
+    if (!exec_locked(schema_v3, out_error)) return false;
+    cur_ver = 3;
   }
 
   // Record schema version.
@@ -449,8 +463,10 @@ bool AgentDb::insert_run(const RunRow& row, int64_t* out_run_id, std::string* ou
 
   sqlite3_stmt* st = nullptr;
   const char* sql =
-    "INSERT INTO runs(session_id, job_id, ts_unix_ms, prompt, tools, model, base_url, stream_assistant, ok, error, http_status, http_body) "
-    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?);";
+    "INSERT INTO runs(session_id, job_id, ts_unix_ms, prompt, tools, model, base_url, stream_assistant, ok, "
+    "stop_reason, steps_executed, tool_calls_total, tool_calls_by_tool_json, last_error_reason, "
+    "error, http_status, http_body) "
+    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);";
   if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
     if (out_error) *out_error = sqlite_err(db_);
     (void)exec_locked("ROLLBACK;", nullptr);
@@ -467,9 +483,14 @@ bool AgentDb::insert_run(const RunRow& row, int64_t* out_run_id, std::string* ou
     bind_text(st, 7, row.base_url) &&
     bind_i32(st, 8, row.stream_assistant ? 1 : 0) &&
     bind_i32(st, 9, row.ok ? 1 : 0) &&
-    bind_text(st, 10, row.error) &&
-    bind_i32(st, 11, (int)row.http_status) &&
-    bind_text(st, 12, row.http_body) &&
+    bind_text(st, 10, row.stop_reason) &&
+    bind_i64(st, 11, row.steps_executed) &&
+    bind_i64(st, 12, row.tool_calls_total) &&
+    bind_text(st, 13, row.tool_calls_by_tool_json) &&
+    bind_text(st, 14, row.last_error_reason) &&
+    bind_text(st, 15, row.error) &&
+    bind_i32(st, 16, (int)row.http_status) &&
+    bind_text(st, 17, row.http_body) &&
     step_done(st);
 
   if (!ok && out_error) *out_error = sqlite_err(db_);
