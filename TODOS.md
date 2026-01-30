@@ -89,6 +89,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add explicit artifact events (`artifact`) so UI can render media without regex guessing.
 - [x] Add an “Artifacts” panel that indexes artifacts from session audit (cross-run browsing).
 - [x] Add an operator-friendly daemon `--state-dir` / `--sessions-root` so multiple agentd instances never share the same state by accident.
+- [ ] Add an explicit `ui_action` event type (agent → UI) with an allowlist and user consent (e.g. play audio for an artifact, focus an artifact).
 - [ ] Add a daemon skeleton with:
   - local control socket / HTTP
   - broker client abstraction (MQTT)
