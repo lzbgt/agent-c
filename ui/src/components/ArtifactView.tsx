@@ -83,6 +83,24 @@ export default function ArtifactView({
     [baseUrl, client, daemonAuthToken, sessionId],
   );
 
+  const postRpcProgress = React.useCallback(
+    async (name: string, payload?: any) => {
+      if (!toolCallId) return;
+      await postUiEvent(
+        "client_rpc_progress",
+        {
+          rpc_id: toolCallId,
+          rpc_kind: "artifact_play",
+          name: String(name || "progress"),
+          ts_unix_ms: Date.now(),
+          payload: payload ?? {},
+        },
+        false,
+      );
+    },
+    [postUiEvent, toolCallId],
+  );
+
   const playTimes = React.useCallback(
     async (n: number) => {
       const el = audioRef.current;
@@ -98,13 +116,15 @@ export default function ArtifactView({
           { path, title, repeat_requested: playRemainingRef.current, autoplay, tool_call_id: toolCallId },
           false,
         );
+        void postRpcProgress("started", { path, kind: "audio", repeat_requested: playRemainingRef.current, autoplay }).catch(() => {});
       } catch (e) {
         playRemainingRef.current = 0;
         setPlayError(String(e));
         void postUiEvent("audio_play_failed", { path, title, error: String(e), autoplay, tool_call_id: toolCallId }, false);
+        void postRpcProgress("failed", { path, kind: "audio", error: String(e), autoplay }).catch(() => {});
       }
     },
-    [audioRef, autoplay, path, postUiEvent, title, toolCallId],
+    [audioRef, autoplay, path, postRpcProgress, postUiEvent, title, toolCallId],
   );
 
   React.useEffect(() => {
@@ -119,6 +139,9 @@ export default function ArtifactView({
     const el = audioRef.current;
     if (!el) return;
     const onEnded = () => {
+      void postRpcProgress("ended", { path, kind: "audio", autoplay, remaining: Math.max(0, playRemainingRef.current - 1) }).catch(
+        () => {},
+      );
       if (playRemainingRef.current <= 1) {
         const last = lastPlayRequestRef.current;
         lastPlayRequestRef.current = null;
@@ -136,6 +159,9 @@ export default function ArtifactView({
           },
           false,
         );
+        void postRpcProgress("finished", { path, kind: "audio", repeat_requested: last?.n ?? 1, autoplay: last?.autoplay ?? false }).catch(
+          () => {},
+        );
         return;
       }
       playRemainingRef.current -= 1;
@@ -144,13 +170,45 @@ export default function ArtifactView({
         playRemainingRef.current = 0;
         setPlayError(String(e));
         void postUiEvent("audio_play_failed", { path, title, error: String(e), autoplay, tool_call_id: toolCallId }, false);
+        void postRpcProgress("failed", { path, kind: "audio", error: String(e), autoplay }).catch(() => {});
       });
     };
     el.addEventListener("ended", onEnded);
     return () => {
       el.removeEventListener("ended", onEnded);
     };
-  }, [audioRef, autoplay, path, postUiEvent, title, toolCallId]);
+  }, [audioRef, autoplay, path, postRpcProgress, postUiEvent, title, toolCallId]);
+
+  React.useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    if (!toolCallId) return;
+
+    const onPlay = () => {
+      void postRpcProgress("started", { path, kind: "video", autoplay: false }).catch(() => {});
+    };
+    const onPause = () => {
+      void postRpcProgress("pause", { path, kind: "video" }).catch(() => {});
+    };
+    const onEnded = () => {
+      void postRpcProgress("ended", { path, kind: "video" }).catch(() => {});
+      void postRpcProgress("finished", { path, kind: "video" }).catch(() => {});
+    };
+    const onError = () => {
+      void postRpcProgress("failed", { path, kind: "video", error: "media error" }).catch(() => {});
+    };
+
+    el.addEventListener("play", onPlay);
+    el.addEventListener("pause", onPause);
+    el.addEventListener("ended", onEnded);
+    el.addEventListener("error", onError);
+    return () => {
+      el.removeEventListener("play", onPlay);
+      el.removeEventListener("pause", onPause);
+      el.removeEventListener("ended", onEnded);
+      el.removeEventListener("error", onError);
+    };
+  }, [path, postRpcProgress, toolCallId, videoRef]);
 
   React.useEffect(() => {
     if (kind !== "audio") return;

@@ -25,11 +25,16 @@ This is complementary to hard bounds (`max_steps`, tool call limits). Bounds are
 - Keep behavior robust when DB is disabled (file-backed client events are canonical).
 - Keep everything bounded (time, bytes, recursion depth).
 
-## Non-goals (for now)
+## Scope notes
 
-- True concurrent tool execution within a single tool-loop step.
-- Complex boolean logic DSL for matching.
-- Browser autoplay bypass (user gesture policies still apply).
+This document is narrowly about a **deterministic stop condition** (“did the UI/client actually observe the effect?”).
+
+This project explicitly **demands power capabilities** (automation, entity creation/editing/actions, DOM mutation, media control).
+The DoD handshake is what makes those capabilities usable in practice: powerful systems that cannot tell when they are done will
+retry forever and appear “broken”.
+
+This document does not try to “bypass” browser permission policies (e.g. autoplay gesture requirements). Instead, it specifies the
+handshake so agents can act powerfully *and still stop* based on observable facts.
 
 ## Protocol primitives
 
@@ -78,6 +83,11 @@ Agents should use host tools (session-scoped):
 2) Wait:
    - `ui_wait_event(type="audio_play_finished", data_match={ tool_call_id: "<tool_call_id>" })`
 
+Alternative (fully client-RPC-shaped):
+1) `ui_action(type="client_rpc", rpc_id="<tool_call_id>", rpc={kind:"artifact_play", side_effects:true, args:{path:"...", kind:"audio", repeat:N, wait_for:"finished"}}, auto_run=true)`
+2) Wait:
+   - `client_wait_event(type="client_rpc_progress", data_match={rpc_id:"<tool_call_id>", rpc_kind:"artifact_play", name:"finished"})`
+
 ### Join multiple UI acknowledgements
 
 Example: show notification + play audio, continue after both:
@@ -95,6 +105,19 @@ When an agent must decide based on client state (DOM/media/location), use a clie
 For long-running conditions (like “wait until media ended”), prefer observation:
 - `ui_action(type="client_rpc", rpc_id="<id>", rpc={kind:"media_observe", side_effects:true, args:{tool_call_id:"<call>"}}, auto_run=true)`
 - `client_wait_event(type="client_rpc_progress", data_match={rpc_id:"<id>", name:"ended"})`
+
+### “Do side-effecting client automation and stop”
+
+When an agent uses the collaboration surface to cause side effects (DOM edits, entity operations, playback, navigation), the DoD is
+still a handshake:
+
+1) Request the side effect as a client RPC:
+   - `ui_action(type="client_rpc", rpc_id="<tool_call_id>", rpc={kind:"dom_apply"|"...", side_effects:true, args:{...}}, auto_run=true)`
+2) Wait once for the correlated outcome:
+   - `client_wait_event(type="client_rpc_result", data_match={rpc_id:"<tool_call_id>", ok:true})`
+
+If the action is long-running, prefer progress events and wait for a phase:
+- `client_wait_event(type="client_rpc_progress", data_match={rpc_id:"<tool_call_id>", name:"finished"})`
 
 ## Future: concurrent jobs (design sketch)
 

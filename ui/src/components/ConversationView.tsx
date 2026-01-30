@@ -106,6 +106,7 @@ export default function ConversationView({
   allowAutoplay,
   allowClientRpcs,
   allowClientEffects,
+  allowUnsafePageEval,
   sceneEntities,
   onSceneApply,
 }: {
@@ -120,6 +121,7 @@ export default function ConversationView({
   allowAutoplay: boolean;
   allowClientRpcs: boolean;
   allowClientEffects: boolean;
+  allowUnsafePageEval: boolean;
   sceneEntities?: any[];
   onSceneApply?: (ops: any[]) => any;
 }) {
@@ -299,7 +301,9 @@ export default function ConversationView({
           "entity_apply",
           "media_play",
           "media_observe",
+          "artifact_play",
           "navigate",
+          "page_eval",
         ]);
         const sideEffectsRequested = rpc?.side_effects === true || action?.side_effects === true || sideEffectKinds.has(rpcKind);
 
@@ -928,6 +932,222 @@ export default function ConversationView({
               }
             };
 
+            const makePageEval = async (args: any) => {
+              if (!allowUnsafePageEval) throw new Error("page_eval disabled by settings");
+              const code = String(args?.code ?? "");
+              if (!code) throw new Error("page_eval requires code");
+
+              const timeoutMs = clampInt(args?.timeout_ms ?? args?.timeoutMs, 50, 60000, 8000);
+              const userArgs = typeof args?.args === "object" && args?.args ? args.args : {};
+
+              const api = {
+                progress: async (name: string, payload?: any) => {
+                  await postRpcProgress(name, payload ?? {});
+                  return true;
+                },
+                dom: {
+                  query: async (q: any) => makeDomQuery(q || {}),
+                  click: async (q: any) => makeDomClick(q || {}),
+                  setValue: async (q: any) => makeDomSetValue(q || {}),
+                  apply: async (q: any) => makeDomApply(q || {}),
+                },
+                scene: {
+                  apply: async (q: any) => makeEntityApply(q || {}),
+                  query: async (q: any) => makeEntityQuery(q || {}),
+                },
+                media: {
+                  snapshot: async () => makeMediaSnapshot(),
+                  play: async (q: any) => makeMediaPlay(q || {}),
+                  observe: async (q: any) => makeMediaObserve(q || {}),
+                },
+                location: {
+                  get: async () => makeLocation(),
+                },
+                nav: {
+                  go: async (q: any) => makeNavigate(q || {}),
+                },
+                sleep: async (ms: any) => new Promise((r) => setTimeout(r, Math.max(0, Number(ms) || 0))),
+              };
+
+              // WARNING: This executes on the browser main thread and cannot preempt infinite loops.
+              // Prefer `script_eval` in a worker when possible.
+              const runPromise = (async () => {
+                // eslint-disable-next-line no-new-func
+                const fn = new Function(
+                  "api",
+                  "args",
+                  '"use strict"; return (async () => {\\n' + code + "\\n})();",
+                ) as (api: any, args: any) => Promise<any>;
+                return await fn(api, userArgs);
+              })();
+
+              const timeoutPromise = new Promise<never>((_, reject) => {
+                setTimeout(() => reject(new Error(`page_eval timeout after ${timeoutMs}ms`)), timeoutMs);
+              });
+
+              const result = await Promise.race([runPromise, timeoutPromise]);
+              return { kind: "page_eval", ok: true, timeout_ms: timeoutMs, result };
+            };
+
+            const makeArtifactPlay = async (args: any) => {
+              const path = safeTrunc(String(args?.path ?? ""), 400);
+              if (!path) throw new Error("artifact_play requires path");
+              const kindHint = String(args?.kind ?? args?.media_kind ?? "").toLowerCase().trim();
+              const repeat = clampInt(args?.repeat, 1, 16, 1);
+              const autoplay = args?.autoplay !== undefined ? !!args.autoplay : true;
+              const waitFor = String(args?.wait_for ?? "started").toLowerCase();
+              const timeoutMs = clampInt(args?.timeout_ms ?? args?.timeoutMs, 50, 60000, 60000);
+
+              const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(path)}&yolo=${yolo ? "1" : "0"}`;
+              const isVideo = kindHint === "video" || /\.(mp4|webm|mov)$/i.test(path);
+
+              // Replace any previous playback for this rpc_id (idempotent per rpc_id).
+              if (rpcCleanupRef.current[rpcId]) {
+                rpcCleanupRef.current[rpcId].forEach((fn) => {
+                  try {
+                    fn();
+                  } catch {
+                    // ignore
+                  }
+                });
+                delete rpcCleanupRef.current[rpcId];
+              }
+
+              let remaining = repeat;
+              let started = false;
+              let finished = false;
+
+              const el: HTMLMediaElement = isVideo ? document.createElement("video") : document.createElement("audio");
+              el.src = src;
+              el.preload = "auto";
+              try {
+                (el as any).dataset.rpcId = rpcId;
+                if (toolCallId) (el as any).dataset.toolCallId = toolCallId;
+                (el as any).dataset.path = path;
+              } catch {
+                // ignore
+              }
+
+              // Attach video elements so playback is more likely (and so it can be inspected via DOM).
+              if (isVideo) {
+                const v = el as HTMLVideoElement;
+                v.muted = true; // best-effort autoplay aid
+                v.playsInline = true;
+                v.style.position = "fixed";
+                v.style.left = "-9999px";
+                v.style.top = "0";
+                v.style.width = "1px";
+                v.style.height = "1px";
+                document.body.appendChild(v);
+              }
+
+              const stop = () => {
+                try {
+                  el.pause();
+                } catch {
+                  // ignore
+                }
+                try {
+                  el.removeAttribute("src");
+                  (el as any).load?.();
+                } catch {
+                  // ignore
+                }
+                try {
+                  if (isVideo) (el as any).remove?.();
+                } catch {
+                  // ignore
+                }
+              };
+
+              const onEnded = () => {
+                if (finished) return;
+                void postRpcProgress("ended", {
+                  path,
+                  kind: isVideo ? "video" : "audio",
+                  current_time: Number.isFinite((el as any).currentTime) ? (el as any).currentTime : 0,
+                  duration: Number.isFinite((el as any).duration) ? (el as any).duration : 0,
+                  remaining: Math.max(0, remaining - 1),
+                }).catch(() => {});
+                if (remaining <= 1) {
+                  finished = true;
+                  stop();
+                  void postRpcProgress("finished", { path, kind: isVideo ? "video" : "audio", repeat }).catch(() => {});
+                  return;
+                }
+                remaining -= 1;
+                try {
+                  (el as any).currentTime = 0;
+                } catch {
+                  // ignore
+                }
+                void (el as any)
+                  .play()
+                  .then(() => {})
+                  .catch((e: any) => {
+                    finished = true;
+                    stop();
+                    void postRpcProgress("failed", { path, error: String(e), kind: isVideo ? "video" : "audio" }).catch(() => {});
+                  });
+              };
+
+              const onError = (e: any) => {
+                if (finished) return;
+                finished = true;
+                stop();
+                void postRpcProgress("failed", { path, error: String(e?.message ?? "media error"), kind: isVideo ? "video" : "audio" }).catch(
+                  () => {},
+                );
+              };
+
+              el.addEventListener("ended", onEnded);
+              el.addEventListener("error", onError as any);
+              rpcCleanupRef.current[rpcId] = [
+                () => el.removeEventListener("ended", onEnded),
+                () => el.removeEventListener("error", onError as any),
+                stop,
+              ];
+
+              if (!autoplay) {
+                await postRpcProgress("ready", { path, kind: isVideo ? "video" : "audio", repeat }).catch(() => {});
+                return { kind: "artifact_play", ok: true, autoplay: false, repeat };
+              }
+
+              try {
+                await (el as any).play();
+                started = true;
+                await postRpcProgress("started", { path, kind: isVideo ? "video" : "audio", repeat }).catch(() => {});
+              } catch (e) {
+                stop();
+                return { kind: "artifact_play", ok: false, error: String(e), autoplay: true, repeat };
+              }
+
+              if (waitFor === "finished" || waitFor === "ended") {
+                await new Promise<void>((resolve, reject) => {
+                  const t0 = Date.now();
+                  const interval = setInterval(() => {
+                    const elapsed = Date.now() - t0;
+                    if (elapsed > timeoutMs) {
+                      clearInterval(interval);
+                      reject(new Error(`artifact_play wait_for=${waitFor} timed out after ${timeoutMs}ms`));
+                      return;
+                    }
+                    if (waitFor === "finished" && finished) {
+                      clearInterval(interval);
+                      resolve();
+                      return;
+                    }
+                    if (waitFor === "ended" && started && (el as any).ended) {
+                      clearInterval(interval);
+                      resolve();
+                    }
+                  }, 50);
+                });
+              }
+
+              return { kind: "artifact_play", ok: true, autoplay: true, repeat };
+            };
+
             let result: any = null;
             if (rpcKind === "dom_query") result = makeDomQuery(rpcArgs);
             else if (rpcKind === "dom_apply") result = makeDomApply(rpcArgs);
@@ -942,6 +1162,8 @@ export default function ConversationView({
             else if (rpcKind === "media_observe") result = await makeMediaObserve(rpcArgs);
             else if (rpcKind === "navigate") result = makeNavigate(rpcArgs);
             else if (rpcKind === "script_eval") result = await makeScriptEval(rpcArgs);
+            else if (rpcKind === "page_eval") result = await makePageEval(rpcArgs);
+            else if (rpcKind === "artifact_play") result = await makeArtifactPlay(rpcArgs);
             else throw new Error(`unsupported rpc.kind: ${rpcKind}`);
 
             await postRpcResult(true, { elapsed_ms: Date.now() - t0, result });

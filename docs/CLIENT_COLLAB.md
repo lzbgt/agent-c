@@ -17,6 +17,19 @@ The key requirement is that the agent can make **stateful decisions** based on w
 
 This is the root-cause fix for “agent repeats the same action forever”: make “done” observable.
 
+## Power direction (required)
+
+This protocol is not just a notification channel. It is the **collaboration surface** where agents (and humans) act on the world.
+To be practically useful, clients must be able to expose powerful primitives (client-dependent, but conceptually universal):
+
+- Query state (“what exists / what is currently happening?”)
+- Create entities (“show a new canvas / widget / message block”)
+- Edit entities / DOM / native views
+- Trigger actions (“play”, “pause”, “dispatch”, “animate”, “navigate”)
+- Delete / clean up (“remove temporary UI”, “clear the scene”)
+
+The universal mechanism is `client_rpc` (request → correlated result/progress), plus the entity/scene abstraction for client-agnostic UI.
+
 ## Concepts
 
 ### Session

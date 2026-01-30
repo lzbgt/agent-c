@@ -138,6 +138,7 @@ export default function App() {
   })();
   const [allowClientRpcs, setAllowClientRpcs] = useLocalStorageState("agentui.allowClientRpcs", initialAllowClientRpcs);
   const [allowClientEffects, setAllowClientEffects] = useLocalStorageState("agentui.allowClientEffects", false);
+  const [allowUnsafePageEval, setAllowUnsafePageEval] = useLocalStorageState("agentui.allowUnsafePageEval", false);
   const [dbRunsOnlyErrors, setDbRunsOnlyErrors] = useLocalStorageState("agentui.dbRunsOnlyErrors", true);
   const [dbRunsStopReason, setDbRunsStopReason] = useLocalStorageState("agentui.dbRunsStopReason", "");
   // Keep prompts separate so an active async run does not overwrite the "last completed" view.
@@ -323,8 +324,10 @@ export default function App() {
             { kind: "dom_set_value", side_effects: true, description: "Set input/textarea value by selector (side effects)." },
             { kind: "media_play", side_effects: true, description: "Attempt to play audio/video by selector (browser policies apply)." },
             { kind: "media_observe", side_effects: true, description: "Attach media listeners and emit correlated progress events." },
+            { kind: "artifact_play", side_effects: true, description: "Play an artifact (audio/video) by path and emit correlated progress events." },
             { kind: "navigate", side_effects: true, description: "Navigate the browser to a new URL (likely reloads the app)." },
             { kind: "script_eval", side_effects: false, description: "Run agent-provided script code in a killable worker with a DOM/media/location API bridge." },
+            { kind: "page_eval", side_effects: true, description: "UNSAFE: run agent-provided JS on the main thread with access to DOM via an API bridge (cooperative async only)." },
           ],
           // Legacy alias (probe-only clients); kept small and read-only.
           probes: [
@@ -1584,6 +1587,23 @@ export default function App() {
                 <div className="mt-1 text-[11px] text-white/40">
                   Side effects include clicks, form edits, and attaching observers. Enable only when you explicitly want the agent to act on the client surface.
                 </div>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <div className="text-xs font-semibold text-white/70">Client RPC (unsafe)</div>
+                  <label className="flex items-center gap-2 text-[11px] text-white/70">
+                    <input
+                      type="checkbox"
+                      checked={allowUnsafePageEval}
+                      onChange={(e) => setAllowUnsafePageEval(e.target.checked)}
+                      disabled={!allowClientEffects}
+                      title={!allowClientEffects ? "Enable client RPC side effects first" : undefined}
+                    />
+                    Allow <code>rpc.kind=page_eval</code> (main-thread eval)
+                  </label>
+                </div>
+                <div className="mt-1 text-[11px] text-white/40">
+                  This enables running agent-provided JS on the browser main thread. It is powerful but not safely preemptible (a bad script can freeze the tab).
+                  Prefer <code>script_eval</code> (killable worker) when possible.
+                </div>
               </div>
               <div>
                 <Label>Tools root</Label>
@@ -2064,6 +2084,7 @@ export default function App() {
               allowAutoplay={allowAutoplay}
               allowClientRpcs={allowClientRpcs}
               allowClientEffects={allowClientEffects}
+              allowUnsafePageEval={allowUnsafePageEval}
               sceneEntities={sceneEntities}
               onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
             />
@@ -2085,6 +2106,7 @@ export default function App() {
               allowAutoplay={allowAutoplay}
               allowClientRpcs={allowClientRpcs}
               allowClientEffects={allowClientEffects}
+              allowUnsafePageEval={allowUnsafePageEval}
               sceneEntities={sceneEntities}
               onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
             />
@@ -2149,6 +2171,7 @@ export default function App() {
                             allowAutoplay={allowAutoplay}
                             allowClientRpcs={allowClientRpcs}
                             allowClientEffects={allowClientEffects}
+                            allowUnsafePageEval={allowUnsafePageEval}
                             sceneEntities={sceneEntities}
                             onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
                           />

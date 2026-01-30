@@ -196,11 +196,16 @@ Side-effecting (requires explicit client “side effects” enablement):
 - `dom_apply`: apply a DOM patch (create/edit/delete/dispatch). This is the “native surface” primitive for collaboration UI changes.
 - `media_play`: attempt `HTMLMediaElement.play()` by selector (browser policies apply)
 - `media_observe`: attach media listeners and emit `client_rpc_progress` events correlated by `rpc_id`
+- `artifact_play`: play an artifact (audio/video) by `path` (no DOM selector required) and emit correlated progress events
 - `navigate`: navigate to a new URL (likely reloads the client)
 
 Scriptable (must-have power primitive):
 - `script_eval`: run agent-provided script code (prefer killable engines like Web Workers) and expose DOM/media/location via an API bridge.
   - scripts can probe only what they care about, and can implement their own “wait/act” logic using client RPC progress events.
+
+Unsafe (main-thread; optional but powerful):
+- `page_eval`: run agent-provided JS on the browser main thread with access to the same API bridge.
+  - Not safely preemptible if the script blocks the event loop; treat “reload the page” as the kill switch.
 
 ### `dom_apply` schema (v1, Web UI client)
 
@@ -227,6 +232,67 @@ Supported ops (bounded):
 - `dispatch`: `{selector, event, event_init?, limit?}`
 
 Return value includes `{applied,total,ops:[...]}` with per-op success/errors.
+
+### `artifact_play` schema (v1, Web UI client)
+
+`rpc.kind="artifact_play"` is a side-effecting primitive that does **not** require DOM selectors.
+It is a collaboration surface “play this thing” primitive:
+
+```json
+{
+  "path": "out/hello.wav",
+  "kind": "audio",
+  "autoplay": true,
+  "repeat": 2,
+  "wait_for": "finished",
+  "timeout_ms": 60000
+}
+```
+
+Fields:
+- `path` (string, required): host file path (same path you would use for `artifact_register`).
+- `kind` (string, optional): `"audio"|"video"`; if omitted, the client guesses from extension.
+- `autoplay` (bool, optional): default `true` (clients may still be blocked by browser policies).
+- `repeat` (int, optional): `1..16` (default `1`).
+- `wait_for` (string, optional): `"started" | "ended" | "finished"` (default `"started"`).
+  - `"finished"` means “after repeat loops finished” (best-effort).
+- `timeout_ms` (int, optional): max time to wait when `wait_for` is `"ended"`/`"finished"`.
+
+Progress events (example):
+- `client_rpc_progress` `name="ready"` / `"started"` / `"ended"` / `"finished"` / `"failed"`
+
+### `script_eval` schema (killable worker; MUST-have)
+
+`rpc.kind="script_eval"` runs agent-provided code in a **killable Web Worker** with an API bridge:
+
+```json
+{
+  "code": "await api.progress('begin'); const s = await api.location.get(); return { href: s.href };",
+  "args": { "note": "optional user args" },
+  "timeout_ms": 8000
+}
+```
+
+Notes:
+- The worker is terminated on timeout or completion.
+- Side-effecting bridge methods are rejected unless client “side effects” is enabled.
+
+### `page_eval` schema (unsafe main-thread; power option)
+
+`rpc.kind="page_eval"` runs agent-provided JS on the browser main thread with the same API bridge shape.
+This is intentionally powerful and should be used for things a worker cannot do directly.
+
+```json
+{
+  "code": "await api.dom.apply({ ops: [{ op:'set_attr', selector:'body', name:'data-agent', value:'1' }] }); return 'ok';",
+  "args": {},
+  "timeout_ms": 8000
+}
+```
+
+Important:
+- It is **not** safely preemptible if the script blocks the event loop.
+- Treat “reload the page” as the kill switch.
 
 ## Relationship to DoD (stop conditions)
 
