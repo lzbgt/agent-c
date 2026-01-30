@@ -129,6 +129,16 @@ int main() {
     return 1;
   }
 
+  agentd::AgentDb::ClientEventRow cer;
+  cer.ts_unix_ms = now;
+  cer.session_id = "s1";
+  cer.type = "audio_play_finished";
+  cer.data_json = "{\"type\":\"audio_play_finished\",\"ts_unix_ms\":1700000000000,\"data\":{\"path\":\"build/demo.wav\"}}";
+  if (!db.insert_client_event(cer, &err)) {
+    std::fprintf(stderr, "insert_client_event failed: %s\n", err.c_str());
+    return 1;
+  }
+
   // Open a second handle and verify row counts.
   sqlite3* raw = nullptr;
   if (sqlite3_open_v2(tmp.string().c_str(), &raw, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
@@ -142,6 +152,7 @@ int main() {
   const int64_t tools = query_i64(raw, "SELECT COUNT(*) FROM tool_records;");
   const int64_t arts = query_i64(raw, "SELECT COUNT(*) FROM artifacts;");
   const int64_t uas = query_i64(raw, "SELECT COUNT(*) FROM ui_actions;");
+  const int64_t ces = query_i64(raw, "SELECT COUNT(*) FROM client_events;");
   sqlite3_close(raw);
 
   assert(sessions == 1);
@@ -151,6 +162,7 @@ int main() {
   assert(tools == 1);
   assert(arts == 1);
   assert(uas == 1);
+  assert(ces == 1);
 
   // Migration smoke: open an older (v1) DB and ensure it upgrades to the latest schema.
   const std::filesystem::path tmp2 =
@@ -185,11 +197,14 @@ int main() {
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('runs') WHERE name='stop_reason';");
   const int64_t ua_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('ui_actions') WHERE name='action_json';");
+  const int64_t ce_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('client_events') WHERE name='data_json';");
   sqlite3_close(raw2);
-  assert(ver == 4);
+  assert(ver == 5);
   assert(arts2 == 0);
   assert(stop_reason_cols == 1);
   assert(ua_cols == 1);
+  assert(ce_cols == 1);
 
   db.close();
   std::filesystem::remove(tmp, ec);

@@ -296,6 +296,41 @@ export async function apiGetSession(base: string, sessionId: string, authToken?:
   return SessionSchema.parse(j);
 }
 
+export const SessionUiEventReqSchema = z.object({
+  session_id: z.string().min(1),
+  type: z.string().min(1),
+  ts_unix_ms: z.number().optional(),
+  data: z.any().optional(),
+  append_to_session: z.boolean().optional(),
+});
+export type SessionUiEventReq = z.infer<typeof SessionUiEventReqSchema>;
+
+export const SessionUiEventRespSchema = z
+  .object({
+    ok: z.boolean(),
+    session_id: z.string().optional(),
+    type: z.string().optional(),
+    appended_to_session: z.boolean().optional(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+export type SessionUiEventResp = z.infer<typeof SessionUiEventRespSchema>;
+
+export async function apiPostSessionUiEvent(
+  base: string,
+  req: SessionUiEventReq,
+  authToken?: string,
+): Promise<SessionUiEventResp> {
+  const payload = SessionUiEventReqSchema.parse(req);
+  const r = await fetch(`${base}/api/v1/session/ui_event`, {
+    method: "POST",
+    headers: daemonHeaders(authToken, { "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json();
+  return SessionUiEventRespSchema.parse(j);
+}
+
 export const NewSessionRespSchema = z
   .object({
     ok: z.boolean(),
@@ -392,6 +427,39 @@ export const DbUiActionsSchema = z.object({
 });
 export type DbUiActionsResp = z.infer<typeof DbUiActionsSchema>;
 
+export const DbSessionsSchema = z.object({
+  ok: z.boolean(),
+  limit: z.number().optional(),
+  offset: z.number().optional(),
+  count: z.number().optional(),
+  sessions: z.array(z.any()).optional(),
+  error: z.string().optional(),
+});
+export type DbSessionsResp = z.infer<typeof DbSessionsSchema>;
+
+export const DbMessagesSchema = z.object({
+  ok: z.boolean(),
+  session_id: z.string().optional(),
+  limit: z.number().optional(),
+  offset: z.number().optional(),
+  max_content_bytes: z.number().optional(),
+  count: z.number().optional(),
+  messages: z.array(z.any()).optional(),
+  error: z.string().optional(),
+});
+export type DbMessagesResp = z.infer<typeof DbMessagesSchema>;
+
+export const DbClientEventsSchema = z.object({
+  ok: z.boolean(),
+  session_id: z.string().optional(),
+  limit: z.number().optional(),
+  offset: z.number().optional(),
+  count: z.number().optional(),
+  client_events: z.array(z.any()).optional(),
+  error: z.string().optional(),
+});
+export type DbClientEventsResp = z.infer<typeof DbClientEventsSchema>;
+
 export async function apiGetSessionArtifacts(
   base: string,
   sessionId: string,
@@ -483,6 +551,58 @@ export async function apiGetDbUiActions(
   );
   const j = await r.json();
   return DbUiActionsSchema.parse(j);
+}
+
+export async function apiGetDbSessions(
+  base: string,
+  authToken?: string,
+  opts?: { limit?: number; offset?: number },
+): Promise<DbSessionsResp> {
+  const limit = typeof opts?.limit === "number" ? opts.limit : 50;
+  const offset = typeof opts?.offset === "number" ? opts.offset : 0;
+  const r = await fetch(
+    `${base}/api/v1/db/sessions?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`,
+    { headers: daemonHeaders(authToken) },
+  );
+  const j = await r.json();
+  return DbSessionsSchema.parse(j);
+}
+
+export async function apiGetDbMessages(
+  base: string,
+  sessionId: string,
+  authToken?: string,
+  opts?: { limit?: number; offset?: number; maxContentBytes?: number },
+): Promise<DbMessagesResp> {
+  const limit = typeof opts?.limit === "number" ? opts.limit : 50;
+  const offset = typeof opts?.offset === "number" ? opts.offset : 0;
+  const maxContentBytes = typeof opts?.maxContentBytes === "number" ? opts.maxContentBytes : 8192;
+  const r = await fetch(
+    `${base}/api/v1/db/messages?session_id=${encodeURIComponent(sessionId)}&limit=${encodeURIComponent(
+      String(limit),
+    )}&offset=${encodeURIComponent(String(offset))}&max_content_bytes=${encodeURIComponent(String(maxContentBytes))}`,
+    { headers: daemonHeaders(authToken) },
+  );
+  const j = await r.json();
+  return DbMessagesSchema.parse(j);
+}
+
+export async function apiGetDbClientEvents(
+  base: string,
+  sessionId: string,
+  authToken?: string,
+  opts?: { limit?: number; offset?: number },
+): Promise<DbClientEventsResp> {
+  const limit = typeof opts?.limit === "number" ? opts.limit : 50;
+  const offset = typeof opts?.offset === "number" ? opts.offset : 0;
+  const r = await fetch(
+    `${base}/api/v1/db/client_events?session_id=${encodeURIComponent(sessionId)}&limit=${encodeURIComponent(
+      String(limit),
+    )}&offset=${encodeURIComponent(String(offset))}`,
+    { headers: daemonHeaders(authToken) },
+  );
+  const j = await r.json();
+  return DbClientEventsSchema.parse(j);
 }
 
 export async function apiRun(base: string, req: RunRequest, authToken?: string): Promise<RunResponse> {

@@ -42,4 +42,28 @@ void handle_db_ui_actions_endpoint(
   HttpResponse* resp
 );
 
+void handle_db_sessions_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
+void handle_db_messages_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
+void handle_db_client_events_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
 }  // namespace agentd

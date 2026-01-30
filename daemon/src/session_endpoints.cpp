@@ -245,6 +245,134 @@ void handle_session_get_endpoint(
   resp->body = json_stringify(out);
 }
 
+void handle_session_ui_event_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const std::string& sessions_root_dir,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  if (req.body.empty()) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"missing JSON body"})";
+    return;
+  }
+
+  Json::Value body(Json::objectValue);
+  std::string perr;
+  if (!json_parse_object(req.body, &body, &perr)) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"invalid JSON body"})";
+    return;
+  }
+
+  const std::string session_id = body.isMember("session_id") && body["session_id"].isString() ? body["session_id"].asString() : "";
+  const std::string type = body.isMember("type") && body["type"].isString() ? body["type"].asString() : "";
+  const bool append_to_session =
+    body.isMember("append_to_session") && body["append_to_session"].isBool() ? body["append_to_session"].asBool() : true;
+
+  int64_t ts_unix_ms = 0;
+  if (body.isMember("ts_unix_ms") && body["ts_unix_ms"].isInt64()) {
+    ts_unix_ms = body["ts_unix_ms"].asInt64();
+  } else if (body.isMember("ts_unix_ms") && body["ts_unix_ms"].isUInt64()) {
+    ts_unix_ms = (int64_t)body["ts_unix_ms"].asUInt64();
+  } else {
+    ts_unix_ms = (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::system_clock::now().time_since_epoch()).count();
+  }
+
+  if (!is_safe_session_id(session_id)) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    return;
+  }
+  if (type.empty()) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"missing type"})";
+    return;
+  }
+
+  Json::Value payload(Json::objectValue);
+  payload["type"] = type;
+  payload["ts_unix_ms"] = (Json::Int64)ts_unix_ms;
+  if (body.isMember("data") && body["data"].isObject()) {
+    payload["data"] = body["data"];
+  } else {
+    payload["data"] = Json::Value(Json::objectValue);
+  }
+
+  Json::StreamWriterBuilder wb;
+  wb["indentation"] = "";
+  const std::string payload_json = Json::writeString(wb, payload);
+
+  bool appended = false;
+  if (append_to_session) {
+    agent_persistor_t p{};
+    const agent_status_t pst = agent_file_persistor_create(sessions_root_dir.c_str(), &p);
+    agent_session_t* session = nullptr;
+    agent_status_t st = pst;
+    if (pst == AGENT_OK && p.load) {
+      st = p.load(p.ctx, session_id.c_str(), &session);
+    }
+    if (st != AGENT_OK || !session) {
+      // Best-effort: create the session if it does not exist yet.
+      st = agent_session_create(&session);
+    }
+
+    if (st == AGENT_OK && session) {
+      std::string msg = "[ui_event] ";
+      msg += payload_json;
+      if (msg.size() > 4096) {
+        msg.resize(4096);
+        msg += "…";
+      }
+      (void)agent_session_add_message(session, AGENT_ROLE_USER, msg.c_str());
+      appended = true;
+
+      if (pst == AGENT_OK && p.save) {
+        (void)p.save(p.ctx, session_id.c_str(), session);
+      }
+
+      // Best-effort DB mirror refresh for this session.
+      if (db_or_null && db_or_null->is_open()) {
+        std::vector<std::pair<std::string, std::string>> msgs;
+        msgs.reserve(agent_session_message_count(session));
+        for (size_t i = 0; i < agent_session_message_count(session); i++) {
+          agent_message_view_t v{};
+          if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
+          msgs.emplace_back(agent_role_to_string(v.role), std::string(v.content, v.content_len));
+        }
+        (void)db_or_null->replace_session_messages(session_id, msgs, ts_unix_ms, nullptr);
+      }
+
+      agent_session_destroy(session);
+    }
+    agent_persistor_destroy(&p);
+  }
+
+  if (db_or_null && db_or_null->is_open()) {
+    AgentDb::ClientEventRow er;
+    er.ts_unix_ms = ts_unix_ms;
+    er.session_id = session_id;
+    er.type = type;
+    er.data_json = payload_json;
+    (void)db_or_null->insert_client_event(er, nullptr);
+  }
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = true;
+  out["session_id"] = session_id;
+  out["type"] = type;
+  out["appended_to_session"] = appended;
+  resp->status = 200;
+  resp->body = json_stringify(out);
+}
+
 void handle_session_audit_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,

@@ -187,6 +187,24 @@ Indexes:
 - `CREATE INDEX ui_actions_by_session ON ui_actions(session_id, ts_unix_ms DESC)`
 - `CREATE INDEX ui_actions_by_type ON ui_actions(type)`
 
+### `client_events`
+
+Mirrors explicit UI → daemon client events posted via `POST /api/v1/session/ui_event`
+(see `docs/UI_CLIENT_EVENTS.md`).
+
+These are useful for troubleshooting “did the user/UI actually do X?” and for allowing future runs to incorporate
+UI-side acknowledgements.
+
+- `id INTEGER PRIMARY KEY AUTOINCREMENT`
+- `ts_unix_ms INTEGER NOT NULL`
+- `session_id TEXT NOT NULL`
+- `type TEXT NOT NULL`
+- `data_json TEXT NOT NULL` (JSON object string; stable fallback for future schema changes)
+
+Indexes:
+- `CREATE INDEX client_events_by_session ON client_events(session_id, ts_unix_ms DESC)`
+- `CREATE INDEX client_events_by_type ON client_events(type)`
+
 ## Example queries
 
 Last 20 runs for a session:

@@ -112,6 +112,13 @@ Protocol:
 
 See: `docs/UI_ACTION.md`.
 
+## Client events (UI → agentd)
+
+In addition to prompts/runs, the UI can send structured client events back to the daemon (e.g. “audio finished playing”).
+These are optionally appended into the session message history and (when `--db-path` is enabled) mirrored into the troubleshooting DB.
+
+See: `docs/UI_CLIENT_EVENTS.md`.
+
 ## Artifacts
 
 ### Problem

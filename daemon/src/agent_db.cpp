@@ -142,7 +142,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 4;
+  const int kSchemaVersion = 5;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -306,6 +306,23 @@ CREATE INDEX IF NOT EXISTS ui_actions_by_type ON ui_actions(type);
 )SQL";
     if (!exec_locked(schema_v4, out_error)) return false;
     cur_ver = 4;
+  }
+
+  if (cur_ver < 5) {
+    const char* schema_v5 = R"SQL(
+CREATE TABLE IF NOT EXISTS client_events(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ts_unix_ms INTEGER NOT NULL,
+  session_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  data_json TEXT NOT NULL,
+  FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS client_events_by_session ON client_events(session_id, ts_unix_ms DESC);
+CREATE INDEX IF NOT EXISTS client_events_by_type ON client_events(type);
+)SQL";
+    if (!exec_locked(schema_v5, out_error)) return false;
+    cur_ver = 5;
   }
 
   // Record schema version.
@@ -739,6 +756,68 @@ bool AgentDb::insert_ui_action(const UiActionRow& row, std::string* out_error) {
   ok = ok && bind_i32(st, 10, row.autoplay ? 1 : 0);
   ok = ok && bind_i32(st, 11, row.repeat);
   ok = ok && bind_text(st, 12, row.action_json);
+
+  if (!ok) {
+    if (out_error) *out_error = sqlite_err(db_);
+    sqlite3_finalize(st);
+    return false;
+  }
+
+  if (!step_done(st)) {
+    if (out_error) *out_error = sqlite_err(db_);
+    sqlite3_finalize(st);
+    return false;
+  }
+
+  sqlite3_finalize(st);
+  return true;
+#endif
+}
+
+bool AgentDb::insert_client_event(const ClientEventRow& row, std::string* out_error) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)row;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (row.session_id.empty()) {
+    if (out_error) *out_error = "insert_client_event: session_id is empty";
+    return false;
+  }
+  if (row.type.empty()) {
+    if (out_error) *out_error = "insert_client_event: type is empty";
+    return false;
+  }
+  if (row.data_json.empty()) {
+    if (out_error) *out_error = "insert_client_event: data_json is empty";
+    return false;
+  }
+
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+
+  // Ensure session row exists (for foreign key).
+  if (!upsert_session_locked(row.session_id, row.ts_unix_ms, out_error)) {
+    return false;
+  }
+
+  const char* sql = "INSERT INTO client_events(ts_unix_ms, session_id, type, data_json) VALUES(?,?,?,?);";
+  sqlite3_stmt* st = nullptr;
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    if (st) sqlite3_finalize(st);
+    return false;
+  }
+
+  bool ok = true;
+  ok = ok && bind_i64(st, 1, row.ts_unix_ms);
+  ok = ok && bind_text(st, 2, row.session_id);
+  ok = ok && bind_text(st, 3, row.type);
+  ok = ok && bind_text(st, 4, row.data_json);
 
   if (!ok) {
     if (out_error) *out_error = sqlite_err(db_);

@@ -6,6 +6,8 @@ import {
   apiGetDbRun,
   apiGetDbRuns,
   apiGetDbUiActions,
+  apiGetDbMessages,
+  apiGetDbClientEvents,
   apiGetHealth,
   apiGetJobProgress,
   apiGetOpenRouterModels,
@@ -28,6 +30,8 @@ import ConversationView from "./components/ConversationView";
 import ArtifactView from "./components/ArtifactView";
 import DbRunsView from "./components/DbRunsView";
 import DbUiActionsView from "./components/DbUiActionsView";
+import DbMessagesView from "./components/DbMessagesView";
+import DbClientEventsView from "./components/DbClientEventsView";
 import useLocalStorageState from "./hooks/useLocalStorageState";
 import { readSseStream } from "./sse";
 
@@ -166,6 +170,20 @@ export default function App() {
     retry: 1,
   });
 
+  const dbMessages = useQuery({
+    queryKey: ["db_messages", effectiveBase, daemonAuthToken, sessionId],
+    queryFn: () => apiGetDbMessages(effectiveBase, sessionId, daemonAuthToken, { limit: 80, offset: 0, maxContentBytes: 8192 }),
+    enabled: false,
+    retry: 1,
+  });
+
+  const dbClientEvents = useQuery({
+    queryKey: ["db_client_events", effectiveBase, daemonAuthToken, sessionId],
+    queryFn: () => apiGetDbClientEvents(effectiveBase, sessionId, daemonAuthToken, { limit: 100, offset: 0 }),
+    enabled: false,
+    retry: 1,
+  });
+
   const [selectedDbRunId, setSelectedDbRunId] = React.useState<number | null>(null);
   const dbRunDetail = useQuery({
     queryKey: ["db_run", effectiveBase, daemonAuthToken, selectedDbRunId],
@@ -194,6 +212,8 @@ export default function App() {
         void audit.refetch();
         void sessionArtifacts.refetch();
         void dbUiActions.refetch();
+        void dbMessages.refetch();
+        void dbClientEvents.refetch();
         setSelectedDbRunId(null);
       }
     },
@@ -745,6 +765,28 @@ export default function App() {
               >
                 Load DB ui_actions
               </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                onClick={() => {
+                  void dbMessages.refetch();
+                }}
+                type="button"
+                disabled={!sessionId || dbMessages.isFetching}
+                title="Query the optional SQLite troubleshooting DB (requires agentd --db-path)"
+              >
+                Load DB messages
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                onClick={() => {
+                  void dbClientEvents.refetch();
+                }}
+                type="button"
+                disabled={!sessionId || dbClientEvents.isFetching}
+                title="Query the optional SQLite troubleshooting DB (requires agentd --db-path)"
+              >
+                Load DB client_events
+              </button>
             </div>
             <div className="mt-3 max-h-80 overflow-auto rounded-md border border-white/10 bg-black/20">
               {(sessions.data?.sessions ?? []).map((sid) => (
@@ -783,6 +825,26 @@ export default function App() {
                   ? "failed"
                   : dbUiActions.data?.ok
                     ? `${dbUiActions.data?.count ?? 0}`
+                    : "(disabled)"}
+            </div>
+            <div className="mt-1 text-xs text-white/50">
+              DB messages:{" "}
+              {dbMessages.isFetching
+                ? "loading…"
+                : dbMessages.isError
+                  ? "failed"
+                  : dbMessages.data?.ok
+                    ? `${dbMessages.data?.count ?? 0}`
+                    : "(disabled)"}
+            </div>
+            <div className="mt-1 text-xs text-white/50">
+              DB client_events:{" "}
+              {dbClientEvents.isFetching
+                ? "loading…"
+                : dbClientEvents.isError
+                  ? "failed"
+                  : dbClientEvents.data?.ok
+                    ? `${dbClientEvents.data?.count ?? 0}`
                     : "(disabled)"}
             </div>
             <div className="mt-2 rounded-md border border-white/10 bg-black/10 p-2">
@@ -857,7 +919,14 @@ export default function App() {
                             <div className="text-[11px] text-white/40">{title}</div>
                           </div>
                           <div className="mt-2">
-                            <ArtifactView baseUrl={effectiveBase} yolo={yolo} artifact={artifact} allowAutoplay={allowAutoplay} />
+                            <ArtifactView
+                              baseUrl={effectiveBase}
+                              yolo={yolo}
+                              artifact={artifact}
+                              allowAutoplay={allowAutoplay}
+                              sessionId={sessionId}
+                              daemonAuthToken={daemonAuthToken}
+                            />
                           </div>
                         </div>
                       );
@@ -979,7 +1048,14 @@ export default function App() {
                               <div key={idx} className="rounded-md border border-white/10 bg-black/10 p-2">
                                 <div className="text-[11px] text-white/50">{title}</div>
                                 <div className="mt-2">
-                                  <ArtifactView baseUrl={effectiveBase} yolo={yolo} artifact={artifact} allowAutoplay={allowAutoplay} />
+                                  <ArtifactView
+                                    baseUrl={effectiveBase}
+                                    yolo={yolo}
+                                    artifact={artifact}
+                                    allowAutoplay={allowAutoplay}
+                                    sessionId={sessionId}
+                                    daemonAuthToken={daemonAuthToken}
+                                  />
                                 </div>
                               </div>
                             );
@@ -1016,6 +1092,26 @@ export default function App() {
               <div className="mt-2 text-[11px] text-white/50">loading db ui_actions…</div>
             ) : dbUiActions.data && !dbUiActions.data.ok ? (
               <div className="mt-2 text-[11px] text-white/40">db: {dbUiActions.data.error ?? "(disabled)"}</div>
+            ) : null}
+
+            {dbMessages.data?.ok && Array.isArray(dbMessages.data.messages) ? (
+              <div className="mt-3">
+                <DbMessagesView messages={dbMessages.data.messages as any[]} />
+              </div>
+            ) : dbMessages.isFetching ? (
+              <div className="mt-2 text-[11px] text-white/50">loading db messages…</div>
+            ) : dbMessages.data && !dbMessages.data.ok ? (
+              <div className="mt-2 text-[11px] text-white/40">db: {dbMessages.data.error ?? "(disabled)"}</div>
+            ) : null}
+
+            {dbClientEvents.data?.ok && Array.isArray(dbClientEvents.data.client_events) ? (
+              <div className="mt-3">
+                <DbClientEventsView events={dbClientEvents.data.client_events as any[]} />
+              </div>
+            ) : dbClientEvents.isFetching ? (
+              <div className="mt-2 text-[11px] text-white/50">loading db client_events…</div>
+            ) : dbClientEvents.data && !dbClientEvents.data.ok ? (
+              <div className="mt-2 text-[11px] text-white/40">db: {dbClientEvents.data.error ?? "(disabled)"}</div>
             ) : null}
           </div>
         ) : null}
@@ -1663,6 +1759,8 @@ export default function App() {
             <ConversationView
               baseUrl={effectiveBase}
               yolo={yolo}
+              sessionId={sessionId}
+              daemonAuthToken={daemonAuthToken}
               prompt={lastRunPrompt || prompt}
               events={liveEvents}
               showDebugEvents={showDebugInConversation}
@@ -1677,6 +1775,8 @@ export default function App() {
             <ConversationView
               baseUrl={effectiveBase}
               yolo={yolo}
+              sessionId={sessionId}
+              daemonAuthToken={daemonAuthToken}
               prompt={lastCompletedPrompt || prompt}
               events={result.events}
               showDebugEvents={showDebugInConversation}
@@ -1732,6 +1832,8 @@ export default function App() {
                           <ConversationView
                             baseUrl={effectiveBase}
                             yolo={yolo}
+                            sessionId={sessionId}
+                            daemonAuthToken={daemonAuthToken}
                             prompt={String(e.prompt ?? "")}
                             events={e.events}
                             showDebugEvents={showDebugInConversation}

@@ -45,6 +45,8 @@ function prettyJsonOrRaw(s: string) {
 export default function ConversationView({
   baseUrl,
   yolo,
+  sessionId,
+  daemonAuthToken,
   prompt,
   events,
   showDebugEvents,
@@ -52,6 +54,8 @@ export default function ConversationView({
 }: {
   baseUrl: string;
   yolo: boolean;
+  sessionId?: string;
+  daemonAuthToken?: string;
   prompt: string;
   events: AgentEvent[];
   showDebugEvents?: boolean;
@@ -134,7 +138,14 @@ export default function ConversationView({
       const title = String(artifact?.title ?? artifact?.path ?? "artifact");
       items.push(
         <Card key={`af-${idx}`} title={`Artifact: ${title}`}>
-          <ArtifactView baseUrl={baseUrl} yolo={yolo} artifact={artifact} allowAutoplay={allowAutoplay} />
+          <ArtifactView
+            baseUrl={baseUrl}
+            yolo={yolo}
+            artifact={artifact}
+            allowAutoplay={allowAutoplay}
+            sessionId={sessionId}
+            daemonAuthToken={daemonAuthToken}
+          />
         </Card>,
       );
       return;
@@ -168,7 +179,14 @@ export default function ConversationView({
         };
         items.push(
           <Card key={`ua-${idx}`} title={`UI action: ${title}`}>
-            <ArtifactView baseUrl={baseUrl} yolo={yolo} artifact={artifact} allowAutoplay={allowAutoplay} />
+            <ArtifactView
+              baseUrl={baseUrl}
+              yolo={yolo}
+              artifact={artifact}
+              allowAutoplay={allowAutoplay}
+              sessionId={sessionId}
+              daemonAuthToken={daemonAuthToken}
+            />
           </Card>,
         );
         return;

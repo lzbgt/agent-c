@@ -355,4 +355,95 @@ if not isinstance(rows, list):
   raise SystemExit(1)
 PY
 
+db_sessions="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/sessions?limit=50&offset=0")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${db_sessions}''')
+if not obj.get("ok"):
+  print("db/sessions failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+rows = obj.get("sessions") or []
+if not isinstance(rows, list):
+  print("expected sessions list; got:", type(rows), file=sys.stderr)
+  raise SystemExit(1)
+sid = """${SESSION_ID}"""
+if not any(isinstance(r, dict) and r.get("session_id") == sid for r in rows):
+  print("expected to find session_id in db/sessions:", sid, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+ui_evt_resp="$(curl -fsS --noproxy "*" --max-time 10 -X POST \
+  -H 'Content-Type: application/json' \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "session_id": "${SESSION_ID}",
+  "type": "smoke_client_event",
+  "data": {"k":"v"},
+  "append_to_session": True,
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/ui_event")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${ui_evt_resp}''')
+if not obj.get("ok"):
+  print("session/ui_event failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+db_msgs="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/messages?session_id=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("""'${SESSION_ID}'"""))')&limit=50&offset=0&max_content_bytes=128")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${db_msgs}''')
+if not obj.get("ok"):
+  print("db/messages failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+rows = obj.get("messages")
+if rows is None:
+  print("expected messages field", file=sys.stderr)
+  raise SystemExit(1)
+if not isinstance(rows, list):
+  print("expected messages list; got:", type(rows), file=sys.stderr)
+  raise SystemExit(1)
+if len(rows) < 1:
+  print("expected messages >= 1", file=sys.stderr)
+  raise SystemExit(1)
+m0 = rows[0]
+if not isinstance(m0, dict):
+  print("expected message row object; got:", type(m0), file=sys.stderr)
+  raise SystemExit(1)
+# Ensure truncation metadata exists (even if not truncated).
+if "content_truncated" not in m0 or "content_bytes" not in m0:
+  print("expected content_truncated/content_bytes fields", m0, file=sys.stderr)
+  raise SystemExit(1)
+if not any(isinstance(m, dict) and isinstance(m.get("content"), str) and "[ui_event]" in m.get("content") for m in rows):
+  print("expected at least one [ui_event] message", file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+db_client_events="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/client_events?session_id=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("""'${SESSION_ID}'"""))')&limit=20&offset=0")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${db_client_events}''')
+if not obj.get("ok"):
+  print("db/client_events failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+rows = obj.get("client_events") or []
+if not isinstance(rows, list):
+  print("expected client_events list; got:", type(rows), file=sys.stderr)
+  raise SystemExit(1)
+if not any(isinstance(r, dict) and r.get("type") == "smoke_client_event" for r in rows):
+  print("expected to find smoke_client_event", rows, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 echo "agentd_db_query_smoke OK"

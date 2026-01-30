@@ -112,6 +112,14 @@ class AgentDb {
   };
   bool insert_ui_action(const UiActionRow& row, std::string* out_error);
 
+  struct ClientEventRow {
+    int64_t ts_unix_ms = 0;
+    std::string session_id;
+    std::string type;
+    std::string data_json; // JSON object string (required; stable fallback)
+  };
+  bool insert_client_event(const ClientEventRow& row, std::string* out_error);
+
  private:
   bool ensure_schema_locked(std::string* out_error);
   bool exec_locked(const std::string& sql, std::string* out_error);

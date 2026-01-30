@@ -626,6 +626,10 @@ int main(int argc, char** argv) {
     handle_session_artifacts_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
   });
 
+  server.handle("POST", "/api/v1/session/ui_event", [&](const HttpRequest& req, HttpResponse* resp) {
+    handle_session_ui_event_endpoint(cfg, cors_cfg, db_or_null, sessions_root_dir, req, resp);
+  });
+
   server.handle("DELETE", "/api/v1/session", [&](const HttpRequest& req, HttpResponse* resp) {
     handle_session_delete_endpoint(cfg, cors_cfg, db_or_null, sessions_root_dir, req, resp);
   });
@@ -642,6 +646,15 @@ int main(int argc, char** argv) {
   });
   server.handle("GET", "/api/v1/db/ui_actions", [&](const HttpRequest& req, HttpResponse* resp) {
     handle_db_ui_actions_endpoint(cfg, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/db/sessions", [&](const HttpRequest& req, HttpResponse* resp) {
+    handle_db_sessions_endpoint(cfg, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/db/messages", [&](const HttpRequest& req, HttpResponse* resp) {
+    handle_db_messages_endpoint(cfg, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/db/client_events", [&](const HttpRequest& req, HttpResponse* resp) {
+    handle_db_client_events_endpoint(cfg, cors_cfg, db_or_null, req, resp);
   });
 
   server.handle("POST", "/api/v1/run", [&](const HttpRequest& req, HttpResponse* resp) {

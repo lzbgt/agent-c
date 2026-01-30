@@ -1,4 +1,5 @@
 import React from "react";
+import { apiPostSessionUiEvent } from "../api";
 
 function safeString(v: any): string {
   return typeof v === "string" ? v : "";
@@ -26,11 +27,15 @@ export default function ArtifactView({
   yolo,
   artifact,
   allowAutoplay,
+  sessionId,
+  daemonAuthToken,
 }: {
   baseUrl: string;
   yolo: boolean;
   artifact: any;
   allowAutoplay: boolean;
+  sessionId?: string;
+  daemonAuthToken?: string;
 }) {
   const path = safeString(artifact?.path);
   const title = safeString(artifact?.title) || path || "artifact";
@@ -43,6 +48,29 @@ export default function ArtifactView({
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
   const [playError, setPlayError] = React.useState<string | null>(null);
   const playRemainingRef = React.useRef<number>(0);
+  const lastPlayRequestRef = React.useRef<{ n: number; autoplay: boolean; started_ms: number } | null>(null);
+
+  const postUiEvent = React.useCallback(
+    async (etype: string, data?: any) => {
+      const sid = typeof sessionId === "string" ? sessionId.trim() : "";
+      if (sid.length === 0) return;
+      try {
+        await apiPostSessionUiEvent(
+          baseUrl,
+          {
+            session_id: sid,
+            type: etype,
+            data: data ?? {},
+            append_to_session: true,
+          },
+          daemonAuthToken,
+        );
+      } catch {
+        // Best-effort: never block media playback on event posting.
+      }
+    },
+    [baseUrl, daemonAuthToken, sessionId],
+  );
 
   const playTimes = React.useCallback(
     async (n: number) => {
@@ -50,15 +78,18 @@ export default function ArtifactView({
       if (!el) return;
       setPlayError(null);
       playRemainingRef.current = Math.min(Math.max(n, 1), 16);
+      lastPlayRequestRef.current = { n: playRemainingRef.current, autoplay, started_ms: Date.now() };
       try {
         el.currentTime = 0;
         await el.play();
+        void postUiEvent("audio_play_started", { path, title, repeat_requested: playRemainingRef.current, autoplay });
       } catch (e) {
         playRemainingRef.current = 0;
         setPlayError(String(e));
+        void postUiEvent("audio_play_failed", { path, title, error: String(e), autoplay });
       }
     },
-    [audioRef],
+    [audioRef, autoplay, path, postUiEvent, title],
   );
 
   React.useEffect(() => {
@@ -66,7 +97,17 @@ export default function ArtifactView({
     if (!el) return;
     const onEnded = () => {
       if (playRemainingRef.current <= 1) {
+        const last = lastPlayRequestRef.current;
+        lastPlayRequestRef.current = null;
         playRemainingRef.current = 0;
+        void postUiEvent("audio_play_finished", {
+          path,
+          title,
+          repeat_requested: last?.n ?? 1,
+          autoplay: last?.autoplay ?? false,
+          started_ms: last?.started_ms ?? 0,
+          finished_ms: Date.now(),
+        });
         return;
       }
       playRemainingRef.current -= 1;
@@ -74,13 +115,14 @@ export default function ArtifactView({
       void el.play().catch((e) => {
         playRemainingRef.current = 0;
         setPlayError(String(e));
+        void postUiEvent("audio_play_failed", { path, title, error: String(e), autoplay });
       });
     };
     el.addEventListener("ended", onEnded);
     return () => {
       el.removeEventListener("ended", onEnded);
     };
-  }, [audioRef]);
+  }, [audioRef, autoplay, path, postUiEvent, title]);
 
   React.useEffect(() => {
     if (kind !== "audio") return;
@@ -151,4 +193,3 @@ export default function ArtifactView({
     </div>
   );
 }
-

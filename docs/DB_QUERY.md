@@ -112,6 +112,46 @@ Response fields:
   - `action_json` (string|null)
   - `action` (object, optional): parsed form of `action_json` when parsing succeeds
 
+### List DB sessions (most recently updated)
+
+`GET /api/v1/db/sessions?limit=...&offset=...`
+
+Response fields:
+- `sessions` (array)
+  - `session_id` (string)
+  - `created_unix_ms` (number)
+  - `updated_unix_ms` (number)
+
+### List session messages (DB mirror)
+
+`GET /api/v1/db/messages?session_id=...&limit=...&offset=...&max_content_bytes=...`
+
+Notes:
+- This reads from the DB mirror `messages` table (not from `.sess` directly).
+- To keep UI responsive, `content` can be truncated based on `max_content_bytes` (default `8192`).
+
+Response fields:
+- `messages` (array)
+  - `id` (number)
+  - `idx` (number)
+  - `role` (string)
+  - `created_unix_ms` (number)
+  - `content` (string; possibly truncated)
+  - `content_truncated` (bool)
+  - `content_bytes` (number): original byte size in DB
+
+### List UI client events
+
+`GET /api/v1/db/client_events?session_id=...&limit=...&offset=...`
+
+Response fields:
+- `client_events` (array)
+  - `id` (number)
+  - `ts_unix_ms` (number)
+  - `type` (string)
+  - `data_json` (string|null)
+  - `data` (object, optional): parsed form of `data_json` when parsing succeeds
+
 ## Notes
 
 - If the DB is disabled, endpoints return `404` (not found) or `{ok:false,error:"db disabled"}` depending on call site.
