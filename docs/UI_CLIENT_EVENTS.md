@@ -82,8 +82,13 @@ Troubleshooting helper:
 This is intentionally open-ended, but common initial types:
 - `audio_play_started`
 - `audio_play_finished`
+- `video_play_started`
+- `video_play_paused`
+- `video_play_finished`
+- `video_play_failed`
 - `artifact_rendered`
 - `ui_action_shown`
+- `client_state`
 - `notification_shown`
 - `notification_ack`
 - `artifact_viewed`
@@ -100,5 +105,9 @@ Recommended payloads:
 - For `ui_action_shown`, include:
   - `tool_call_id` (preferred)
   - `action_type`, `title` (optional)
+
+- For `client_state`, include:
+  - `query_id` (recommended when responding to `request_client_state`)
+  - `media` (bounded list): objects containing `{ kind, paused, ended, current_time?, duration?, tool_call_id?, path? }`
 
 The daemon does not enforce an allowlist for types; UIs should keep payloads small.

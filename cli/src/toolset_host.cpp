@@ -2052,6 +2052,7 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
       "\"type\":\"object\","
       "\"properties\":{"
       "  \"client_id\":{\"type\":\"string\",\"description\":\"Optional filter for client.id.\"},"
+      "  \"event_type\":{\"type\":\"string\",\"description\":\"Optional filter for payload.type (e.g. client_state).\"},"
       "  \"max_bytes\":{\"type\":\"integer\",\"description\":\"Bytes to scan from the tail (default: 262144).\"},"
       "  \"max_files\":{\"type\":\"integer\",\"description\":\"Max rotated log files to consider.\"},"
       "  \"include_data\":{\"type\":\"boolean\",\"description\":\"When true, include a bounded view of the last event payload.\"},"

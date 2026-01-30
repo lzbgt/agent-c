@@ -54,6 +54,7 @@ export default function ArtifactView({
   const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(path)}&yolo=${yolo ? "1" : "0"}`;
 
   const audioRef = React.useRef<HTMLAudioElement | null>(null);
+  const videoRef = React.useRef<HTMLVideoElement | null>(null);
   const [playError, setPlayError] = React.useState<string | null>(null);
   const playRemainingRef = React.useRef<number>(0);
   const lastPlayRequestRef = React.useRef<{ n: number; autoplay: boolean; started_ms: number } | null>(null);
@@ -152,6 +153,42 @@ export default function ArtifactView({
   }, [audioRef, autoplay, path, postUiEvent, title, toolCallId]);
 
   React.useEffect(() => {
+    const el = videoRef.current;
+    if (!el) return;
+    if (kind !== "video") return;
+
+    const onPlay = () => {
+      void postUiEvent("video_play_started", { path, title, tool_call_id: toolCallId, current_time: el.currentTime }, false);
+    };
+    const onPause = () => {
+      // Pause fires on ended too; keep it as a signal anyway.
+      void postUiEvent("video_play_paused", { path, title, tool_call_id: toolCallId, current_time: el.currentTime }, false);
+    };
+    const onEnded = () => {
+      void postUiEvent("video_play_finished", { path, title, tool_call_id: toolCallId, finished_ms: Date.now() }, false);
+    };
+    const onError = () => {
+      const mediaErr: any = (el as any).error;
+      void postUiEvent(
+        "video_play_failed",
+        { path, title, tool_call_id: toolCallId, error: mediaErr ? String(mediaErr.code ?? "error") : "error" },
+        false,
+      );
+    };
+
+    el.addEventListener("play", onPlay);
+    el.addEventListener("pause", onPause);
+    el.addEventListener("ended", onEnded);
+    el.addEventListener("error", onError);
+    return () => {
+      el.removeEventListener("play", onPlay);
+      el.removeEventListener("pause", onPause);
+      el.removeEventListener("ended", onEnded);
+      el.removeEventListener("error", onError);
+    };
+  }, [kind, path, postUiEvent, title, toolCallId]);
+
+  React.useEffect(() => {
     if (kind !== "audio") return;
     if (!autoplay) return;
     if (!allowAutoplay) return;
@@ -167,12 +204,18 @@ export default function ArtifactView({
       {kind === "image" ? (
         <img src={src} className="mt-3 max-h-80 w-full rounded-md object-contain" />
       ) : kind === "video" ? (
-        <video controls className="mt-3 w-full rounded-md">
+        <video
+          ref={videoRef}
+          controls
+          className="mt-3 w-full rounded-md"
+          data-tool-call-id={toolCallId ?? ""}
+          data-path={path ?? ""}
+        >
           <source src={src} />
         </video>
       ) : kind === "audio" ? (
         <div className="mt-3">
-          <audio ref={audioRef} controls className="w-full">
+          <audio ref={audioRef} controls className="w-full" data-tool-call-id={toolCallId ?? ""} data-path={path ?? ""}>
             <source src={src} />
           </audio>
           <div className="mt-2 flex flex-wrap gap-2">

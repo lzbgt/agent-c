@@ -107,6 +107,7 @@ agent_status_t tool_client_peek(HostToolCtx* ctx, const char* arguments_json, ag
   max_files = std::min<size_t>(max_files, 10);
 
   const std::string only_client_id = args.isMember("client_id") && args["client_id"].isString() ? args["client_id"].asString() : "";
+  const std::string only_event_type = args.isMember("event_type") && args["event_type"].isString() ? args["event_type"].asString() : "";
   const bool include_data = args.isMember("include_data") && args["include_data"].isBool() ? args["include_data"].asBool() : false;
   size_t max_data_bytes = 8192;
   if (args.isMember("max_data_bytes") && args["max_data_bytes"].isInt()) {
@@ -156,6 +157,7 @@ agent_status_t tool_client_peek(HostToolCtx* ctx, const char* arguments_json, ag
     if (tsv.isInt64()) ts = tsv.asInt64();
     else if (tsv.isUInt64()) ts = (int64_t)tsv.asUInt64();
     const std::string et = payload.isMember("type") && payload["type"].isString() ? payload["type"].asString() : "";
+    if (!only_event_type.empty() && et != only_event_type) continue;
 
     const std::string key = cid + "\n" + inst + "\n" + kind;
     auto it = seen.find(key);
@@ -219,6 +221,7 @@ agent_status_t tool_client_peek(HostToolCtx* ctx, const char* arguments_json, ag
   d["max_bytes"] = (Json::UInt64)max_bytes;
   d["max_files"] = (Json::UInt64)max_files;
   if (!only_client_id.empty()) d["client_id"] = only_client_id;
+  if (!only_event_type.empty()) d["event_type"] = only_event_type;
   d["count"] = (Json::UInt64)arr.size();
   d["clients"] = arr;
   o["data"] = d;
@@ -228,4 +231,3 @@ agent_status_t tool_client_peek(HostToolCtx* ctx, const char* arguments_json, ag
 #endif
 
 } // namespace host_tools_internal
-

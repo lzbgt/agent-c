@@ -55,6 +55,7 @@ Agents can:
 - wait (`ui_wait_event` / `ui_wait_any` / `ui_wait_all`) for deterministic DoD handshakes
 - wait (preferred names): `client_wait_event` / `client_wait_any` / `client_wait_all`
 - probe: `client_peek` to inspect recent client event state without blocking
+- request snapshots + wait deterministically (see `docs/CLIENT_STATE.md`)
 
 ## Endpoints
 

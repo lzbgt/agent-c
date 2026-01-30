@@ -74,6 +74,7 @@ The UI must only implement a small allowlist of actions. Unknown `action.type` v
 Initial allowlist (v1):
 - `notify`: show a UI notification card (no side effects)
 - `play_audio`: render an audio player for `path` and optionally attempt autoplay (requires UI opt-in)
+- `request_client_state`: request a bounded client snapshot (client responds with a `client_event` of type `client_state`)
 
 ### Consent
 

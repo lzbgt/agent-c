@@ -138,6 +138,7 @@ In addition to prompts/runs, the UI can send structured client events back to th
 These are optionally appended into the session message history and (when `--db-path` is enabled) mirrored into the troubleshooting DB.
 
 See: `docs/UI_CLIENT_EVENTS.md`.
+See also: `docs/CLIENT_COLLAB.md`, `docs/CLIENT_STATE.md`.
 
 ### Endpoint: list client events (file-backed)
 
@@ -166,6 +167,10 @@ For this, the host toolset exposes a cooperative polling tool:
 - `ui_wait_all` (AND join)
 
 See: `docs/UI_WAIT_EVENT.md`.
+Preferred (client-agnostic) names for the same tools:
+- `client_wait_event`
+- `client_wait_any`
+- `client_wait_all`
 
 ## Artifacts
 
