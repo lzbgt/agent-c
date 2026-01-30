@@ -26,7 +26,8 @@ static void test_compaction_preserves_pinned_and_suffix(void) {
   agent_compact_report_t rep = {0};
   assert(agent_session_compact_char_budget(s, 800, 6, NULL, &rep) == AGENT_OK);
   assert(rep.before_chars == before);
-  assert(rep.after_chars <= 800 || rep.after_chars == agent_session_estimated_chars(s));
+  assert(rep.after_chars == agent_session_estimated_chars(s));
+  assert(rep.after_chars <= 800 || rep.after_chars == before);
   assert(agent_session_message_count(s) >= 2); // pinned still present
 
   agent_message_view_t v0 = {0};
@@ -35,6 +36,73 @@ static void test_compaction_preserves_pinned_and_suffix(void) {
   assert(agent_session_get_message(s, 1, &v1) == AGENT_OK);
   assert(v0.role == AGENT_ROLE_SYSTEM);
   assert(v1.role == AGENT_ROLE_SYSTEM);
+
+  agent_session_destroy(s);
+}
+
+static void test_compaction_overlap_prefix_suffix_does_not_drop_first_system(void) {
+  agent_session_t* s = NULL;
+  assert(agent_session_create(&s) == AGENT_OK);
+
+  assert(agent_session_add_message(s, AGENT_ROLE_SYSTEM, "Pinned system") == AGENT_OK);
+  for (int i = 0; i < 10; i++) {
+    assert(agent_session_add_message(s, AGENT_ROLE_USER, "U") == AGENT_OK);
+    assert(agent_session_add_message(s, AGENT_ROLE_ASSISTANT, "A") == AGENT_OK);
+  }
+
+  const size_t count_before = agent_session_message_count(s);
+  const size_t chars_before = agent_session_estimated_chars(s);
+  assert(count_before > 0);
+  assert(chars_before > 0);
+
+  // keep_last == count forces prefix/suffix overlap (no droppable "middle" region).
+  // This is an edge case: compaction may be unable to reach max_chars, but it must not
+  // delete the first (non-summary) system message.
+  agent_compact_report_t rep = {0};
+  assert(agent_session_compact_char_budget(s, 8, count_before, NULL, &rep) == AGENT_OK);
+  assert(rep.after_chars == agent_session_estimated_chars(s));
+
+  agent_message_view_t v0 = {0};
+  assert(agent_session_get_message(s, 0, &v0) == AGENT_OK);
+  assert(v0.role == AGENT_ROLE_SYSTEM);
+  assert(v0.content_len == strlen("Pinned system"));
+  assert(strncmp(v0.content, "Pinned system", v0.content_len) == 0);
+
+  agent_session_destroy(s);
+}
+
+static void test_compaction_all_system_messages_preserves_first_system(void) {
+  agent_session_t* s = NULL;
+  assert(agent_session_create(&s) == AGENT_OK);
+
+  assert(agent_session_add_message(s, AGENT_ROLE_SYSTEM, "System 0") == AGENT_OK);
+  for (int i = 0; i < 40; i++) {
+    assert(agent_session_add_message(s, AGENT_ROLE_SYSTEM, "System rule blah blah blah blah blah") == AGENT_OK);
+  }
+
+  agent_compact_report_t rep = {0};
+  assert(agent_session_compact_char_budget(s, 120, 2, NULL, &rep) == AGENT_OK);
+  assert(rep.after_chars == agent_session_estimated_chars(s));
+
+  agent_message_view_t v0 = {0};
+  assert(agent_session_get_message(s, 0, &v0) == AGENT_OK);
+  assert(v0.role == AGENT_ROLE_SYSTEM);
+  assert(v0.content_len == strlen("System 0"));
+  assert(strncmp(v0.content, "System 0", v0.content_len) == 0);
+  assert(rep.dropped_messages > 0);
+
+  agent_session_destroy(s);
+}
+
+static void test_compaction_empty_session_is_ok(void) {
+  agent_session_t* s = NULL;
+  assert(agent_session_create(&s) == AGENT_OK);
+  assert(agent_session_message_count(s) == 0);
+
+  agent_compact_report_t rep = {0};
+  assert(agent_session_compact_char_budget(s, 32, 4, NULL, &rep) == AGENT_OK);
+  assert(rep.after_chars == 0);
+  assert(agent_session_message_count(s) == 0);
 
   agent_session_destroy(s);
 }
@@ -49,12 +117,16 @@ static void test_compaction_with_summary_inserts_after_pinned(void) {
   assert(agent_session_add_message(s, AGENT_ROLE_ASSISTANT, "Hi") == AGENT_OK);
 
   agent_compact_report_t rep = {0};
-  assert(agent_session_compact_char_budget(s, 64, 2, "Session summary: ...", &rep) == AGENT_OK);
+  const char* summary = AGENT_SESSION_SUMMARY_PREFIX "Session summary: ...";
+  assert(agent_session_compact_char_budget(s, 1024, 2, summary, &rep) == AGENT_OK);
+  assert(rep.after_chars == agent_session_estimated_chars(s));
   assert(rep.inserted_summary == 1);
 
   agent_message_view_t v2 = {0};
   assert(agent_session_get_message(s, 2, &v2) == AGENT_OK);
   assert(v2.role == AGENT_ROLE_SYSTEM);
+  assert(v2.content_len >= strlen(AGENT_SESSION_SUMMARY_PREFIX));
+  assert(strncmp(v2.content, AGENT_SESSION_SUMMARY_PREFIX, strlen(AGENT_SESSION_SUMMARY_PREFIX)) == 0);
 
   agent_session_destroy(s);
 }
@@ -77,6 +149,7 @@ static void test_summary_marker_is_not_pinned(void) {
   // Tight budget; keep a small suffix. The summary marker should be droppable.
   agent_compact_report_t rep = {0};
   assert(agent_session_compact_char_budget(s, 400, 4, NULL, &rep) == AGENT_OK);
+  assert(rep.after_chars == agent_session_estimated_chars(s));
 
   agent_message_view_t v0 = {0};
   assert(agent_session_get_message(s, 0, &v0) == AGENT_OK);
@@ -153,6 +226,9 @@ static void test_tool_registry_roundtrip(void) {
 
 int main(void) {
   test_compaction_preserves_pinned_and_suffix();
+  test_compaction_overlap_prefix_suffix_does_not_drop_first_system();
+  test_compaction_all_system_messages_preserves_first_system();
+  test_compaction_empty_session_is_ok();
   test_compaction_with_summary_inserts_after_pinned();
   test_summary_marker_is_not_pinned();
   test_message_parts_roundtrip();

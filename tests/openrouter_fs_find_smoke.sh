@@ -21,13 +21,10 @@ export HTTP_PROXY="${http_proxy}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-OPENROUTER_KEY="${OPENROUTER_API_KEY:-}"
-PROJECT_MD="${PROJECT_ROOT}/project.md"
-if [[ -z "${OPENROUTER_KEY}" && -f "${PROJECT_MD}" ]]; then
-  OPENROUTER_KEY="$(grep -F -- "- openrouter:" "${PROJECT_MD}" | head -n 1 | sed -E 's/.*- openrouter:[[:space:]]*//')"
-fi
+source "${PROJECT_ROOT}/tests/test_keys.sh"
+OPENROUTER_KEY="$(agent_test_get_key openrouter 2>/dev/null || true)"
 if [[ -z "${OPENROUTER_KEY}" ]]; then
-  echo "SKIP: OPENROUTER_API_KEY not set and not found in project.md" >&2
+  echo "SKIP: OPENROUTER_API_KEY not set and not found in project.local.md" >&2
   exit 77
 fi
 
@@ -92,4 +89,3 @@ fi
 
 echo "unexpected output: ${out}" >&2
 exit 1
-

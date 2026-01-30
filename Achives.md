@@ -169,3 +169,13 @@ Completed milestones and notable tasks.
 - Improved Web UI daemon connectivity diagnostics:
   - show daemon base URL in the header and surface health-check errors explicitly
   - `ui/src/App.tsx`
+
+## 2026-01-30
+
+- Hardened core char-budget compaction:
+  - preserve at least one non-summary leading `system` message when possible
+  - avoid repeated `agent_session_estimated_chars(...)` recomputation during dropping
+  - add unit tests for overlap/empty/all-system edge cases
+- Removed API keys from tracked docs and moved “local keys” discovery to gitignored `project.local.md`:
+  - added `project.local.md.example`
+  - updated smoke tests and host tools to read keys from env or `project.local.md`

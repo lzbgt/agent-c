@@ -29,8 +29,8 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEFAULT_CATALOG_URL = "https://openrouter.ai/api/v1/models"
 
 
-def read_project_md_key(provider: str) -> Optional[str]:
-    project_md = PROJECT_ROOT / "project.md"
+def read_project_local_md_key(provider: str) -> Optional[str]:
+    project_md = PROJECT_ROOT / "project.local.md"
     if not project_md.exists():
         return None
     # Lines are like:
@@ -50,7 +50,7 @@ def get_openrouter_key(args_key: Optional[str]) -> Optional[str]:
     env_key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY")
     if env_key:
         return env_key
-    return read_project_md_key("openrouter")
+    return read_project_local_md_key("openrouter")
 
 
 def fetch_json(url: str, headers: Dict[str, str], timeout_s: int, use_proxy: bool) -> Dict[str, Any]:
@@ -152,7 +152,7 @@ def render_markdown(rows: List[Tuple[float, float, float, Dict[str, Any]]], limi
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default=DEFAULT_CATALOG_URL)
-    ap.add_argument("--key", default=None, help="OpenRouter API key (defaults: env or project.md)")
+    ap.add_argument("--key", default=None, help="OpenRouter API key (defaults: env or project.local.md)")
     ap.add_argument("--timeout-s", type=int, default=60)
     ap.add_argument("--min-total", type=float, default=0.01, help="Min total prompt+completion $/1M")
     ap.add_argument("--max-total", type=float, default=0.50, help="Max total prompt+completion $/1M")
@@ -180,7 +180,7 @@ def main() -> int:
 
     key = get_openrouter_key(args.key)
     if not key:
-        print("Missing OpenRouter key: provide --key, set OPENROUTER_API_KEY, or add to project.md", file=sys.stderr)
+        print("Missing OpenRouter key: provide --key, set OPENROUTER_API_KEY, or add to project.local.md", file=sys.stderr)
         return 2
 
     headers = {

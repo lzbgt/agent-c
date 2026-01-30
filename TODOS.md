@@ -12,7 +12,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
   - calls provider
   - appends assistant text to session
 - [ ] Add a persistence interface (optional) so host apps can supply file/SQLite/NVS implementations.
-- [ ] Expand unit tests for compaction edge cases (overlap prefix/suffix; empty; all system messages).
+- [x] Expand unit tests for compaction edge cases (overlap prefix/suffix; empty; all system messages).
 - [x] Add a small unit test for tool-loop compaction/rotation logic (JSON message arrays) to prevent regressions.
 - [x] Add a unit test to ensure tool result truncation stays JSON-shaped and capped.
 
@@ -34,7 +34,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add a host-tool network smoke for `text_search` (DeepSeek + daemon) to reduce regressions.
 - [x] Improve host filesystem tools defaults to avoid noise:
   - [x] exclude `node_modules`/`build`/`dist` by default in `fs_list` (configurable)
-  - [ ] consider optional `respect_gitignore`/`exclude_globs` (future)
+  - [x] support optional `respect_gitignore`/`exclude_globs`
 
 ## Mid-term (daemon + broker)
 

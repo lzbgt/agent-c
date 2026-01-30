@@ -22,12 +22,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 DEEPSEEK_KEY="${DEEPSEEK_API_KEY:-}"
-PROJECT_MD="${PROJECT_ROOT}/project.md"
-if [[ -z "${DEEPSEEK_KEY}" && -f "${PROJECT_MD}" ]]; then
-  DEEPSEEK_KEY="$(grep -F -- "- deepseek:" "${PROJECT_MD}" | head -n 1 | sed -E 's/.*- deepseek:[[:space:]]*//')"
-fi
+source "${PROJECT_ROOT}/tests/test_keys.sh"
+DEEPSEEK_KEY="$(agent_test_get_key deepseek 2>/dev/null || true)"
 if [[ -z "${DEEPSEEK_KEY}" ]]; then
-  echo "SKIP: DEEPSEEK_API_KEY not set and not found in project.md" >&2
+  echo "SKIP: DEEPSEEK_API_KEY not set and not found in project.local.md" >&2
   exit 77
 fi
 
@@ -71,4 +69,3 @@ fi
 
 echo "unexpected output: ${out}" >&2
 exit 1
-

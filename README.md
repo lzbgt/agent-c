@@ -11,11 +11,13 @@ ctest --test-dir build --output-on-failure
 ```
 
 `ctest` includes two network smoke tests (OpenRouter + DeepSeek). They will run if keys are present
-either via environment variables or `project.md`. Disable them with:
+either via environment variables or `project.local.md` (gitignored). Disable them with:
 
 ```bash
 export AGENT_DISABLE_NETWORK_TESTS=1
 ```
+
+To set keys via a local file, copy `project.local.md.example` to `project.local.md` and fill in real values.
 
 Network tests also assume an HTTP proxy may be required; the scripts default to `http://localhost:8120`
 via `https_proxy` / `http_proxy`.

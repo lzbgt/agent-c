@@ -1,0 +1,9 @@
+# Local secrets (not committed)
+
+Copy this file to `project.local.md` and fill in real keys.
+
+`project.local.md` is gitignored so keys don’t get committed.
+
+- deepseek: <DEEPSEEK_API_KEY>
+- openrouter: <OPENROUTER_API_KEY>
+

@@ -200,13 +200,47 @@ size_t agent_session_estimated_chars(const agent_session_t* session) {
   return sum;
 }
 
+static uint8_t agent_message_is_summary_marker(const agent_message_t* msg) {
+  if (!msg || msg->role != AGENT_ROLE_SYSTEM) {
+    return 0;
+  }
+  const char* c = msg->content ? msg->content : "";
+  return (strncmp(c, AGENT_SESSION_SUMMARY_PREFIX, strlen(AGENT_SESSION_SUMMARY_PREFIX)) == 0) ? 1 : 0;
+}
+
+static uint8_t agent_session_has_pinnable_first_system_message(const agent_session_t* session) {
+  if (!session || session->count == 0) {
+    return 0;
+  }
+  const agent_message_t* m0 = &session->messages[0];
+  if (m0->role != AGENT_ROLE_SYSTEM) {
+    return 0;
+  }
+  if (agent_message_is_summary_marker(m0)) {
+    return 0;
+  }
+  return 1;
+}
+
+static size_t agent_message_estimated_chars(const agent_message_t* msg) {
+  if (!msg) {
+    return 0;
+  }
+  size_t sum = 16 + msg->content_len;
+  for (size_t j = 0; j < msg->part_count; j++) {
+    sum += 8;
+    sum += msg->parts[j].bytes_len;
+    sum += msg->parts[j].url_len;
+  }
+  return sum;
+}
+
 static size_t agent_count_pinned_system_prefix(const agent_session_t* session) {
   size_t pinned = 0;
   for (size_t i = 0; i < session->count; i++) {
     if (session->messages[i].role == AGENT_ROLE_SYSTEM) {
-      const char* c = session->messages[i].content ? session->messages[i].content : "";
       // Do not pin host-generated compaction summaries; they should be replaceable over time.
-      if (strncmp(c, AGENT_SESSION_SUMMARY_PREFIX, strlen(AGENT_SESSION_SUMMARY_PREFIX)) == 0) {
+      if (agent_message_is_summary_marker(&session->messages[i])) {
         break;
       }
       pinned += 1;
@@ -278,17 +312,16 @@ agent_status_t agent_session_compact_char_budget(
   }
 
   agent_compact_report_t report = {0};
-  report.before_chars = agent_session_estimated_chars(session);
-  report.after_chars = report.before_chars;
+  size_t current_chars = agent_session_estimated_chars(session);
+  report.before_chars = current_chars;
+  report.after_chars = current_chars;
 
   const uint8_t want_summary = (summary_or_null != NULL && summary_or_null[0] != '\0');
 
   size_t pinned = agent_count_pinned_system_prefix(session);
-  if (pinned == 0 && session->count > 0 && session->messages[0].role == AGENT_ROLE_SYSTEM) {
-    const char* c0 = session->messages[0].content ? session->messages[0].content : "";
-    if (strncmp(c0, AGENT_SESSION_SUMMARY_PREFIX, strlen(AGENT_SESSION_SUMMARY_PREFIX)) != 0) {
-      pinned = 1;
-    }
+  const size_t pinned_min = agent_session_has_pinnable_first_system_message(session) ? 1u : 0u;
+  if (pinned == 0 && pinned_min == 1u) {
+    pinned = 1;
   }
 
   if (want_summary) {
@@ -297,10 +330,12 @@ agent_status_t agent_session_compact_char_budget(
       return st;
     }
     report.inserted_summary = 1;
+    // Add the inserted summary size to our rolling estimate.
+    current_chars += agent_message_estimated_chars(&session->messages[pinned]);
   }
 
-  if (agent_session_estimated_chars(session) <= max_chars) {
-    report.after_chars = agent_session_estimated_chars(session);
+  if (current_chars <= max_chars) {
+    report.after_chars = current_chars;
     if (out_report) {
       *out_report = report;
     }
@@ -312,41 +347,40 @@ agent_status_t agent_session_compact_char_budget(
   if (keep_last > session->count) {
     keep_last = session->count;
   }
-  const size_t suffix_start = session->count - keep_last;
-
-  // Drop from the middle, starting right after pinned + optional summary.
-  size_t protected_prefix = pinned + (want_summary ? 1u : 0u);
-
-  // If prefix and suffix overlap, we can't drop anything; in that case, drop from just before suffix.
-  if (protected_prefix > suffix_start) {
-    protected_prefix = suffix_start;
-  }
+  // First try to keep the full pinned prefix (+ inserted summary), but never protect fewer than pinned_min.
+  const size_t protected_prefix_pref = pinned + (want_summary ? 1u : 0u);
+  const size_t protected_prefix_min = pinned_min;
 
   size_t dropped = 0;
-  while (session->count > 0 && agent_session_estimated_chars(session) > max_chars) {
+  while (session->count > 0 && current_chars > max_chars) {
     const size_t current_keep_last = keep_last > session->count ? session->count : keep_last;
     const size_t current_suffix_start = session->count - current_keep_last;
 
-    size_t drop_index = protected_prefix;
-    if (drop_index >= current_suffix_start) {
-      // Nowhere safe in the middle; drop the oldest non-pinned before suffix if possible.
-      if (current_suffix_start > 0) {
-        drop_index = current_suffix_start - 1;
-        if (drop_index < protected_prefix) {
-          // Only pinned/suffix remain; stop to avoid deleting protected messages.
-          break;
-        }
-      } else {
-        break;
-      }
+    size_t drop_index = (size_t)-1;
+    if (protected_prefix_pref < current_suffix_start) {
+      drop_index = protected_prefix_pref;
+    } else if (protected_prefix_min < current_suffix_start) {
+      // Overlap between preferred prefix and suffix. As a fallback, allow dropping from after the
+      // first pinnable system message so compaction can still make progress without deleting that first message.
+      drop_index = protected_prefix_min;
+    } else {
+      // Only the protected prefix and/or suffix remain; we can't delete anything without violating invariants.
+      break;
     }
+
+    const size_t dropped_chars = agent_message_estimated_chars(&session->messages[drop_index]);
 
     agent_session_drop_range(session, drop_index, drop_index + 1);
     dropped += 1;
+    if (current_chars >= dropped_chars) {
+      current_chars -= dropped_chars;
+    } else {
+      current_chars = agent_session_estimated_chars(session); // best-effort resync
+    }
   }
 
   report.dropped_messages = dropped;
-  report.after_chars = agent_session_estimated_chars(session);
+  report.after_chars = current_chars;
   if (out_report) {
     *out_report = report;
   }
