@@ -258,3 +258,12 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
   target_link_libraries(openai_provider_tests PRIVATE agent_host)
   add_test(NAME openai_provider_tests COMMAND openai_provider_tests)
  endif()
+
+if(AGENT_BUILD_HOST)
+  add_executable(cors_tests
+    tests/test_cors.cpp
+    daemon/src/cors.cpp
+  )
+  target_include_directories(cors_tests PRIVATE daemon/src)
+  add_test(NAME cors_tests COMMAND cors_tests)
+endif()

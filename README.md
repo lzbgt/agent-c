@@ -74,6 +74,22 @@ To set keys via a local file, copy `project.local.md.example` to `project.local.
 Network tests also assume an HTTP proxy may be required; the scripts default to `http://localhost:8120`
 via `https_proxy` / `http_proxy`.
 
+## Git remote (publishing)
+
+This workspace may not have a git remote configured. If `git push` fails with “No configured push destination”,
+configure `origin` explicitly:
+
+```bash
+git remote add origin <your_repo_url>
+git push -u origin master
+```
+
+Or use the helper script (does not guess a URL):
+
+```bash
+AGENT_GIT_REMOTE_URL="<your_repo_url>" tools/setup_git_remote.sh --push
+```
+
 Note: there are additional host-tool network smokes (DeepSeek/OpenRouter) that validate bounded tools like
 `fs_read` and `fs_find` end-to-end (model → tool call → tool output).
 
