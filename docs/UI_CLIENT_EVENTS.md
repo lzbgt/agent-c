@@ -82,15 +82,13 @@ Troubleshooting helper:
 This is intentionally open-ended, but common initial types:
 - `audio_play_started`
 - `audio_play_finished`
-- `video_play_started`
-- `video_play_paused`
-- `video_play_finished`
-- `video_play_failed`
 - `artifact_rendered`
 - `ui_action_shown`
 - `client_state`
 - `client_capabilities`
-- `client_probe_result`
+- `client_rpc_result`
+- `client_rpc_progress`
+- `client_probe_result` (legacy)
 - `notification_shown`
 - `notification_ack`
 - `artifact_viewed`
@@ -113,13 +111,20 @@ Recommended payloads:
   - `media` (bounded list): objects containing `{ kind, paused, ended, current_time?, duration?, tool_call_id?, path? }`
 
 - For `client_capabilities`, include:
-  - `probes` (bounded list): objects containing `{ kind, description? }`
+  - `rpcs` (bounded list): objects containing `{ kind, side_effects, description? }`
+  - optional legacy alias: `probes` (bounded list) for older probe-only clients
 
-- For `client_probe_result`, include:
-  - `probe_id` (string, required): correlation id (usually the originating tool call id)
+- For `client_rpc_result`, include:
+  - `rpc_id` (string, required): correlation id (usually the originating tool call id)
   - `request_tool_call_id` (string, optional): tool call id for troubleshooting
-  - `probe_kind` (string, optional): allowlisted probe kind
+  - `rpc_kind` (string, optional): allowlisted rpc kind
   - `ok` (bool)
   - `result` (object, optional; bounded) when `ok=true`, else `error` (string)
+
+- For `client_rpc_progress`, include:
+  - `rpc_id` (string, required)
+  - `rpc_kind` (string, optional)
+  - `name` (string, required): a phase/event name (client-defined but small/consistent)
+  - `payload` (object, optional; bounded)
 
 The daemon does not enforce an allowlist for types; UIs should keep payloads small.

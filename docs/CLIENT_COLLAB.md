@@ -12,7 +12,7 @@ The Web UI is one client. Others can be:
 
 The key requirement is that the agent can make **stateful decisions** based on what the client actually did:
 - “the image was rendered”
-- “the video finished playing”
+- “the media finished playing”
 - “the user acknowledged the notification”
 
 This is the root-cause fix for “agent repeats the same action forever”: make “done” observable.
@@ -56,7 +56,7 @@ Agents can:
 - wait (preferred names): `client_wait_event` / `client_wait_any` / `client_wait_all`
 - probe: `client_peek` to inspect recent client event state without blocking
 - request snapshots + wait deterministically (see `docs/CLIENT_STATE.md`)
-- request bounded probe RPCs + wait deterministically (see `docs/CLIENT_PROBE.md`)
+- request bounded client RPCs + wait deterministically (see `docs/CLIENT_RPC.md`)
 
 ## Endpoints
 

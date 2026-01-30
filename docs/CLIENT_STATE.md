@@ -13,6 +13,10 @@ Browsers and chat platforms do not allow a daemon to directly read DOM state. In
 
 This document defines a minimal snapshot event: `client_state`.
 
+Note: newer workflows may prefer the universal client RPC protocol:
+- request `ui_action(type="client_rpc", rpc.kind="state_snapshot")`
+- wait for `client_rpc_result` correlated by `rpc_id`
+
 ## Event: `client_state`
 
 Posted by a client via:
@@ -60,7 +64,11 @@ This makes “probe client state” deterministic for the agent within a single 
 ## Complement: media telemetry events
 
 For some decisions, snapshots are too heavy and too stale. Clients should also emit event-style telemetry:
-- `video_play_started` / `video_play_paused` / `video_play_finished` / `video_play_failed`
-- `audio_play_started` / `audio_play_finished` / `audio_play_failed`
+- Prefer a generic client RPC approach instead of hardcoded media state events:
+  - `ui_action(type="client_rpc", rpc.kind="media_snapshot")` for polling-style checks
+  - `ui_action(type="client_rpc", rpc.kind="media_observe")` for correlated progress events (`client_rpc_progress`)
+
+Audio playback acknowledgements (`audio_play_*`) may still be emitted by clients for DoD, but long-term
+the intent is to converge on `client_rpc_*` correlation for universal waiting/joining.
 
 These are high-signal, low-volume “facts” that the agent can wait on deterministically (DoD).

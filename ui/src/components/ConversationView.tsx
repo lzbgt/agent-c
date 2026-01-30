@@ -80,7 +80,8 @@ export default function ConversationView({
   events,
   showDebugEvents,
   allowAutoplay,
-  allowClientProbes,
+  allowClientRpcs,
+  allowClientEffects,
 }: {
   baseUrl: string;
   yolo: boolean;
@@ -91,7 +92,8 @@ export default function ConversationView({
   events: AgentEvent[];
   showDebugEvents?: boolean;
   allowAutoplay: boolean;
-  allowClientProbes: boolean;
+  allowClientRpcs: boolean;
+  allowClientEffects: boolean;
 }) {
   const [ackError, setAckError] = React.useState<string | null>(null);
   const [ackedKeys, setAckedKeys] = React.useState<Record<string, boolean>>({});
@@ -146,6 +148,24 @@ export default function ConversationView({
   let lastHeartbeat: any = null;
 
   const probeRanRef = React.useRef<Record<string, boolean>>({});
+  const rpcCleanupRef = React.useRef<Record<string, Array<() => void>>>({});
+
+  React.useEffect(() => {
+    return () => {
+      const all = rpcCleanupRef.current || {};
+      Object.keys(all).forEach((k) => {
+        const cleanups = all[k] || [];
+        cleanups.forEach((fn) => {
+          try {
+            fn();
+          } catch {
+            // ignore
+          }
+        });
+      });
+      rpcCleanupRef.current = {};
+    };
+  }, []);
 
   if (prompt.trim().length > 0) {
     items.push(
@@ -239,16 +259,57 @@ export default function ConversationView({
       const title = String(action?.title ?? (atype ? `ui_action: ${atype}` : "ui_action"));
       const toolCallId = String(data?.tool_call_id ?? "");
 
-      if (atype === "client_probe") {
-        const probeId = String(action?.probe_id ?? toolCallId ?? "").trim();
-        const probe = action?.probe ?? {};
-        const probeKind = String(probe?.kind ?? "").trim();
-        const canRun = !!probeId && typeof sessionId === "string" && sessionId.trim().length > 0;
-        const autoRun = !!allowClientProbes && (action?.auto_run === true || action?.auto === true);
+      if (atype === "client_rpc" || atype === "client_probe") {
+        const rpcId = String(action?.rpc_id ?? action?.probe_id ?? toolCallId ?? "").trim();
+        const rpc = action?.rpc ?? action?.probe ?? {};
+        const rpcKind = String(rpc?.kind ?? "").trim();
+        const rpcArgs = typeof rpc?.args === "object" && rpc?.args ? rpc.args : rpc;
+        const sideEffectKinds = new Set(["dom_click", "dom_set_value", "media_play", "media_observe"]);
+        const sideEffectsRequested = rpc?.side_effects === true || action?.side_effects === true || sideEffectKinds.has(rpcKind);
 
-        const runProbe = async () => {
-          if (!canRun) throw new Error("missing session/probe_id");
-          if (!probeKind) throw new Error("missing probe.kind");
+        const canRun = !!rpcId && typeof sessionId === "string" && sessionId.trim().length > 0;
+        const canRunAuto = !!allowClientRpcs && (!sideEffectsRequested || !!allowClientEffects);
+        const autoRun = canRunAuto && (action?.auto_run === true || action?.auto === true);
+
+        const postRpcResult = async (ok: boolean, payload: any) => {
+          const base = {
+            rpc_id: rpcId,
+            request_tool_call_id: toolCallId,
+            rpc_kind: rpcKind,
+            ok,
+            elapsed_ms: payload?.elapsed_ms,
+          };
+          const data = ok ? { ...base, result: payload?.result } : { ...base, error: payload?.error };
+          await postClientEvent("client_rpc_result", data);
+          // Legacy alias: if the request was a client_probe, emit the old event name too.
+          if (atype === "client_probe") {
+            const legacyBase = {
+              probe_id: rpcId,
+              request_tool_call_id: toolCallId,
+              probe_kind: rpcKind,
+              ok,
+              elapsed_ms: payload?.elapsed_ms,
+            };
+            const legacyData = ok ? { ...legacyBase, result: payload?.result } : { ...legacyBase, error: payload?.error };
+            await postClientEvent("client_probe_result", legacyData);
+          }
+        };
+
+        const postRpcProgress = async (name: string, payload?: any) => {
+          await postClientEvent("client_rpc_progress", {
+            rpc_id: rpcId,
+            rpc_kind: rpcKind,
+            name: String(name || "progress"),
+            ts_unix_ms: Date.now(),
+            payload: payload ?? {},
+          });
+        };
+
+        const runRpc = async () => {
+          if (!canRun) throw new Error("missing session/rpc_id");
+          if (!rpcKind) throw new Error("missing rpc.kind");
+          if (!allowClientRpcs) throw new Error("client RPC disabled by settings");
+          if (sideEffectsRequested && !allowClientEffects) throw new Error("client RPC side effects disabled by settings");
           const t0 = Date.now();
           try {
             const safeFieldSet = new Set([
@@ -265,9 +326,9 @@ export default function ConversationView({
               "duration",
             ]);
             const makeDomQuery = () => {
-              const selector = safeTrunc(String(probe?.selector ?? ""), 200);
-              const limit = Math.min(Math.max(Number(probe?.limit ?? 10) || 10, 1), 20);
-              const fieldsRaw = Array.isArray(probe?.fields) ? probe.fields : [];
+              const selector = safeTrunc(String(rpcArgs?.selector ?? ""), 200);
+              const limit = Math.min(Math.max(Number(rpcArgs?.limit ?? 10) || 10, 1), 20);
+              const fieldsRaw = Array.isArray(rpcArgs?.fields) ? rpcArgs.fields : [];
               let fields = fieldsRaw
                 .map((x: any) => String(x))
                 .filter((f: string) => safeFieldSet.has(f))
@@ -336,6 +397,52 @@ export default function ConversationView({
               return { kind: "media_snapshot", items };
             };
 
+            const makeDomClick = () => {
+              const selector = safeTrunc(String(rpcArgs?.selector ?? ""), 200);
+              if (!selector) throw new Error("dom_click requires selector");
+              const el = document.querySelector(selector) as any;
+              if (!el) return { kind: "dom_click", selector, clicked: false };
+              if (typeof el.click === "function") {
+                el.click();
+                return { kind: "dom_click", selector, clicked: true, tag: String(el.tagName || "").toLowerCase() };
+              }
+              throw new Error("element has no click()");
+            };
+
+            const makeDomSetValue = () => {
+              const selector = safeTrunc(String(rpcArgs?.selector ?? ""), 200);
+              const rawValue = String(rpcArgs?.value ?? "");
+              const value = rawValue.length > 2000 ? rawValue.slice(0, 2000) : rawValue;
+              if (!selector) throw new Error("dom_set_value requires selector");
+              const el = document.querySelector(selector) as any;
+              if (!el) return { kind: "dom_set_value", selector, set: false };
+              if (!("value" in el)) throw new Error("element has no value");
+              el.value = value;
+              const dispatch = rpcArgs?.dispatch_events !== false;
+              if (dispatch) {
+                try {
+                  el.dispatchEvent(new Event("input", { bubbles: true }));
+                  el.dispatchEvent(new Event("change", { bubbles: true }));
+                } catch {
+                  // ignore
+                }
+              }
+              return { kind: "dom_set_value", selector, set: true };
+            };
+
+            const makeMediaPlay = async () => {
+              const selector = safeTrunc(String(rpcArgs?.selector ?? "audio,video"), 200);
+              const el = document.querySelector(selector) as any;
+              if (!el) return { kind: "media_play", selector, ok: false, error: "no element matched" };
+              if (typeof el.play !== "function") return { kind: "media_play", selector, ok: false, error: "element has no play()" };
+              try {
+                await el.play();
+                return { kind: "media_play", selector, ok: true };
+              } catch (e) {
+                return { kind: "media_play", selector, ok: false, error: String(e) };
+              }
+            };
+
             const makeLocation = () => {
               const href = String(window?.location?.href ?? "");
               const u = href ? tryParseUrl(href) : null;
@@ -364,46 +471,102 @@ export default function ConversationView({
               };
             };
 
-            let result: any = null;
-            if (probeKind === "dom_query") result = makeDomQuery();
-            else if (probeKind === "media_snapshot") result = makeMediaSnapshot();
-            else if (probeKind === "location") result = makeLocation();
-            else throw new Error(`unsupported probe.kind: ${probeKind}`);
+            const makeMediaObserve = async () => {
+              const eventsRaw = Array.isArray(rpcArgs?.events) ? rpcArgs.events : ["play", "pause", "ended", "error"];
+              const allowed = new Set(["play", "pause", "ended", "error", "timeupdate"]);
+              const events: string[] = eventsRaw
+                .map((x: any) => String(x))
+                .filter((x: string) => allowed.has(x))
+                .slice(0, 5);
+              const selectorFromArgs = safeTrunc(String(rpcArgs?.selector ?? ""), 200);
+              const toolId = safeTrunc(String(rpcArgs?.tool_call_id ?? ""), 120);
+              // Prefer matching by tool_call_id (artifact media elements set data-tool-call-id).
+              // Fall back to selector, then to all audio/video.
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              const g: any = typeof globalThis !== "undefined" ? globalThis : {};
+              const cssEscape = typeof g?.CSS?.escape === "function" ? g.CSS.escape : (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, "");
+              const sel =
+                toolId.length > 0
+                  ? `audio[data-tool-call-id="${cssEscape(toolId)}"],video[data-tool-call-id="${cssEscape(toolId)}"]`
+                  : selectorFromArgs.length > 0
+                    ? selectorFromArgs
+                    : "audio,video";
 
-            await postClientEvent("client_probe_result", {
-              probe_id: probeId,
-              request_tool_call_id: toolCallId,
-              probe_kind: probeKind,
-              ok: true,
-              elapsed_ms: Date.now() - t0,
-              result,
-            });
+              const els = Array.from(document.querySelectorAll(sel)).slice(0, 10) as HTMLMediaElement[];
+              if (els.length === 0) return { kind: "media_observe", selector: sel, observing: 0 };
+
+              const mkPayload = (el: HTMLMediaElement) => ({
+                kind: el.tagName.toLowerCase() === "video" ? "video" : "audio",
+                current_time: Number.isFinite(el.currentTime) ? el.currentTime : 0,
+                duration: Number.isFinite(el.duration) ? el.duration : 0,
+                paused: !!el.paused,
+                ended: !!(el as any).ended,
+              });
+
+              // Attach listeners (idempotent per rpc_id).
+              if (!rpcCleanupRef.current[rpcId]) {
+                const cleanups: Array<() => void> = [];
+                els.forEach((el) => {
+                  events.forEach((evName) => {
+                    const handler = () => {
+                      void postRpcProgress(evName, mkPayload(el)).catch(() => {});
+                    };
+                    el.addEventListener(evName, handler);
+                    cleanups.push(() => {
+                      try {
+                        el.removeEventListener(evName, handler);
+                      } catch {
+                        // ignore
+                      }
+                    });
+                  });
+                });
+                rpcCleanupRef.current[rpcId] = cleanups;
+              }
+
+              // Emit an initial snapshot as progress so agents can reason without waiting for a change.
+              await postRpcProgress("attached", { selector: sel, observing: els.length });
+              els.forEach((el) => void postRpcProgress("snapshot", mkPayload(el)).catch(() => {}));
+              return { kind: "media_observe", selector: sel, observing: els.length, events };
+            };
+
+            const makeStateSnapshot = () => {
+              const loc = makeLocation();
+              const media = makeMediaSnapshot();
+              return { kind: "state_snapshot", location: loc, media: media.items ?? [] };
+            };
+
+            let result: any = null;
+            if (rpcKind === "dom_query") result = makeDomQuery();
+            else if (rpcKind === "media_snapshot") result = makeMediaSnapshot();
+            else if (rpcKind === "location") result = makeLocation();
+            else if (rpcKind === "state_snapshot") result = makeStateSnapshot();
+            else if (rpcKind === "dom_click") result = makeDomClick();
+            else if (rpcKind === "dom_set_value") result = makeDomSetValue();
+            else if (rpcKind === "media_play") result = await makeMediaPlay();
+            else if (rpcKind === "media_observe") result = await makeMediaObserve();
+            else throw new Error(`unsupported rpc.kind: ${rpcKind}`);
+
+            await postRpcResult(true, { elapsed_ms: Date.now() - t0, result });
           } catch (e) {
-            await postClientEvent("client_probe_result", {
-              probe_id: probeId,
-              request_tool_call_id: toolCallId,
-              probe_kind: probeKind,
-              ok: false,
-              elapsed_ms: Date.now() - t0,
-              error: String(e),
-            });
+            await postRpcResult(false, { elapsed_ms: Date.now() - t0, error: String(e) });
           }
         };
 
-        const ackKey = `probe:${probeId || toolCallId || idx}`;
+        const ackKey = `rpc:${rpcId || toolCallId || idx}`;
         const alreadyRan = !!probeRanRef.current[ackKey];
         if (autoRun && !alreadyRan && canRun) {
           probeRanRef.current[ackKey] = true;
-          void runProbe().catch(() => {});
+          void runRpc().catch(() => {});
         }
 
         items.push(
           <Card key={`ua-${idx}`} title={`UI action: ${title}`}>
             <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/80">
-              Client probe requested: <code>{probeKind || "(missing kind)"}</code>
-              {probeId ? (
+              Client RPC requested: <code>{rpcKind || "(missing kind)"}</code>
+              {rpcId ? (
                 <span className="ml-2 text-[11px] text-white/50">
-                  probe_id=<code>{probeId}</code>
+                  rpc_id=<code>{rpcId}</code>
                 </span>
               ) : null}
             </div>
@@ -411,17 +574,25 @@ export default function ConversationView({
               <button
                 className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
                 type="button"
-                disabled={!canRun || !allowClientProbes}
-                title={!allowClientProbes ? "Enable “Allow agent-requested client probes” in settings to run probes" : ""}
+                disabled={!canRun || !allowClientRpcs || (sideEffectsRequested && !allowClientEffects)}
+                title={
+                  !allowClientRpcs
+                    ? "Enable “Allow agent-requested client RPCs” in settings to run"
+                    : sideEffectsRequested && !allowClientEffects
+                      ? "Enable “Allow agent-requested client RPCs with side effects” in settings to run"
+                      : ""
+                }
                 onClick={() => {
                   probeRanRef.current[ackKey] = true;
-                  void runProbe().catch(() => {});
+                  void runRpc().catch(() => {});
                 }}
               >
-                Run probe
+                Run RPC
               </button>
-              {!allowClientProbes ? (
+              {!allowClientRpcs ? (
                 <div className="text-[11px] text-white/40">Disabled by settings</div>
+              ) : sideEffectsRequested && !allowClientEffects ? (
+                <div className="text-[11px] text-white/40">Side effects disabled</div>
               ) : null}
             </div>
           </Card>,

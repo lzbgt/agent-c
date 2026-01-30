@@ -125,7 +125,18 @@ export default function App() {
     false,
   );
   const [allowAutoplay, setAllowAutoplay] = useLocalStorageState("agentui.allowAutoplay", false);
-  const [allowClientProbes, setAllowClientProbes] = useLocalStorageState("agentui.allowClientProbes", false);
+  const initialAllowClientRpcs = (() => {
+    try {
+      if (typeof window === "undefined") return false;
+      const raw = window.localStorage.getItem("agentui.allowClientProbes");
+      if (!raw) return false;
+      return !!JSON.parse(raw);
+    } catch {
+      return false;
+    }
+  })();
+  const [allowClientRpcs, setAllowClientRpcs] = useLocalStorageState("agentui.allowClientRpcs", initialAllowClientRpcs);
+  const [allowClientEffects, setAllowClientEffects] = useLocalStorageState("agentui.allowClientEffects", false);
   const [dbRunsOnlyErrors, setDbRunsOnlyErrors] = useLocalStorageState("agentui.dbRunsOnlyErrors", true);
   const [dbRunsStopReason, setDbRunsStopReason] = useLocalStorageState("agentui.dbRunsStopReason", "");
   // Keep prompts separate so an active async run does not overwrite the "last completed" view.
@@ -161,10 +172,21 @@ export default function App() {
         type: "client_capabilities",
         client,
         data: {
+          rpcs: [
+            { kind: "dom_query", side_effects: false, description: "Read-only DOM query (selector + bounded fields)." },
+            { kind: "media_snapshot", side_effects: false, description: "Snapshot audio/video elements (paused/currentTime/duration)." },
+            { kind: "location", side_effects: false, description: "Browser location (href/origin/path/search; query redacted)." },
+            { kind: "state_snapshot", side_effects: false, description: "Combined snapshot (location + media_snapshot)." },
+            { kind: "dom_click", side_effects: true, description: "Click a DOM element by selector (side effects)." },
+            { kind: "dom_set_value", side_effects: true, description: "Set input/textarea value by selector (side effects)." },
+            { kind: "media_play", side_effects: true, description: "Attempt to play audio/video by selector (browser policies apply)." },
+            { kind: "media_observe", side_effects: true, description: "Attach media listeners and emit correlated progress events." },
+          ],
+          // Legacy alias (probe-only clients); kept small and read-only.
           probes: [
             { kind: "dom_query", description: "Read-only DOM query (selector + bounded fields)." },
-            { kind: "media_snapshot", description: "Snapshot audio/video elements (paused/currentTime/duration)." },
-            { kind: "location", description: "Browser location (href/origin/path/search)." },
+            { kind: "media_snapshot", description: "Snapshot audio/video elements." },
+            { kind: "location", description: "Browser location." },
           ],
         },
         append_to_session: false,
@@ -1386,19 +1408,35 @@ export default function App() {
                   Browsers may still block autoplay; you can always click “Play”.
                 </div>
                 <div className="mt-3 flex items-center justify-between gap-3">
-                  <div className="text-xs font-semibold text-white/70">Client probes</div>
+                  <div className="text-xs font-semibold text-white/70">Client RPC</div>
                   <label className="flex items-center gap-2 text-[11px] text-white/70">
                     <input
                       type="checkbox"
-                      checked={allowClientProbes}
-                      onChange={(e) => setAllowClientProbes(e.target.checked)}
+                      checked={allowClientRpcs}
+                      onChange={(e) => setAllowClientRpcs(e.target.checked)}
                     />
-                    Allow agent-requested client probes
+                    Allow agent-requested client RPCs (read-only)
                   </label>
                 </div>
                 <div className="mt-1 text-[11px] text-white/40">
-                  When enabled, the UI may execute allowlisted, read-only probes (DOM/media/location) requested by the agent via <code>ui_action</code>{" "}
-                  (<code>type=client_probe</code>). This does not allow arbitrary code execution.
+                  When enabled, the UI may execute allowlisted, bounded RPC handlers (DOM/media/location) requested by the agent via{" "}
+                  <code>ui_action</code> (<code>type=client_rpc</code>). This does not allow arbitrary code execution.
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <div className="text-xs font-semibold text-white/70">Client RPC (YOLO)</div>
+                  <label className="flex items-center gap-2 text-[11px] text-white/70">
+                    <input
+                      type="checkbox"
+                      checked={allowClientEffects}
+                      onChange={(e) => setAllowClientEffects(e.target.checked)}
+                      disabled={!allowClientRpcs}
+                      title={!allowClientRpcs ? "Enable read-only client RPCs first" : undefined}
+                    />
+                    Allow agent-requested client RPCs with side effects
+                  </label>
+                </div>
+                <div className="mt-1 text-[11px] text-white/40">
+                  Side effects include clicks, form edits, and attaching observers. Enable only when you explicitly want the agent to act on the client surface.
                 </div>
               </div>
               <div>
@@ -1878,7 +1916,8 @@ export default function App() {
               events={liveEvents}
               showDebugEvents={showDebugInConversation}
               allowAutoplay={allowAutoplay}
-              allowClientProbes={allowClientProbes}
+              allowClientRpcs={allowClientRpcs}
+              allowClientEffects={allowClientEffects}
             />
           </div>
         ) : null}
@@ -1896,7 +1935,8 @@ export default function App() {
               events={result.events}
               showDebugEvents={showDebugInConversation}
               allowAutoplay={allowAutoplay}
-              allowClientProbes={allowClientProbes}
+              allowClientRpcs={allowClientRpcs}
+              allowClientEffects={allowClientEffects}
             />
           </div>
         ) : null}
@@ -1955,7 +1995,8 @@ export default function App() {
                             events={e.events}
                             showDebugEvents={showDebugInConversation}
                             allowAutoplay={allowAutoplay}
-                            allowClientProbes={allowClientProbes}
+                            allowClientRpcs={allowClientRpcs}
+                            allowClientEffects={allowClientEffects}
                           />
                         </div>
                         <div className="mt-3 text-xs font-semibold text-white/70">Events (raw)</div>

@@ -19,7 +19,7 @@ PORT_STUB="$(agentd_smoke_pick_port)"
 HOST="127.0.0.1"
 STUB_BASE="http://${HOST}:${PORT_STUB}/v1"
 
-SESSION_ID="agentd_client_probe_rpc_smoke_$(date +%s)_$RANDOM"
+SESSION_ID="agentd_client_rpc_smoke_$(date +%s)_$RANDOM"
 
 cleanup() {
   agentd_smoke_stop
@@ -31,10 +31,10 @@ cleanup() {
 trap cleanup EXIT
 
 # OpenAI-compatible stub:
-# - 0 tool results: call ui_action(type=client_probe, probe_id=p1, probe.kind=location)
-# - 1 tool result: call client_wait_event(type=client_probe_result, data_match.probe_id=p1)
+# - 0 tool results: call ui_action(type=client_rpc, rpc_id=r1, rpc.kind=location)
+# - 1 tool result: call client_wait_event(type=client_rpc_result, data_match.rpc_id=r1)
 # - 2+ tool results: assistant "OK"
-python3 -u - <<PY > "${LOG_DIR}/agentd_client_probe_rpc_smoke.stub.stdout.log" 2> "${LOG_DIR}/agentd_client_probe_rpc_smoke.stub.stderr.log" &
+python3 -u - <<PY > "${LOG_DIR}/agentd_client_rpc_smoke.stub.stdout.log" 2> "${LOG_DIR}/agentd_client_rpc_smoke.stub.stderr.log" &
 import json
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
@@ -91,7 +91,7 @@ class H(BaseHTTPRequestHandler):
                   "type": "function",
                   "function": {
                     "name": "client_wait_event",
-                    "arguments": json.dumps({"type":"client_probe_result","timeout_ms":5000,"data_match":{"probe_id":"p1"}}),
+                    "arguments": json.dumps({"type":"client_rpc_result","timeout_ms":5000,"data_match":{"rpc_id":"r1"}}),
                   },
                 }
               ],
@@ -119,10 +119,10 @@ class H(BaseHTTPRequestHandler):
                   "function": {
                     "name": "ui_action",
                     "arguments": json.dumps({
-                      "type": "client_probe",
-                      "title": "probe location",
-                      "probe_id": "p1",
-                      "probe": {"kind": "location"},
+                      "type": "client_rpc",
+                      "title": "rpc location",
+                      "rpc_id": "r1",
+                      "rpc": {"kind": "location", "args": {}},
                       "auto_run": True,
                     }),
                   },
@@ -145,13 +145,13 @@ HTTPServer(("127.0.0.1", ${PORT_STUB}), H).serve_forever()
 PY
 STUB_PID=$!
 
-agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_client_probe_rpc_smoke" \
+agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_client_rpc_smoke" \
   --tools host \
   --no-yolo
 
 agentd_smoke_wait_health "${DAEMON_URL}"
 
-# Post the probe result shortly after the run starts so client_wait_event blocks briefly.
+# Post the rpc result shortly after the run starts so client_wait_event blocks briefly.
 (
   sleep 1.2
   curl -fsS --noproxy "*" --max-time 10 \
@@ -160,9 +160,9 @@ agentd_smoke_wait_health "${DAEMON_URL}"
 import json
 print(json.dumps({
   "session_id": "${SESSION_ID}",
-  "type": "client_probe_result",
+  "type": "client_rpc_result",
   "client": {"id":"smoke-client","kind":"test","instance_id":"one"},
-  "data": {"probe_id":"p1","ok": True, "probe_kind":"location", "result":{"kind":"location","href":"http://example","title":"x"}},
+  "data": {"rpc_id":"r1","ok": True, "rpc_kind":"location", "result":{"kind":"location","href":"http://example","title":"x"}},
   "append_to_session": False
 }))
 PY
@@ -175,7 +175,7 @@ resp="$(curl -fsS --noproxy "*" --max-time 25 \
   -d "$(python3 - <<PY
 import json
 print(json.dumps({
-  "prompt": "request a client probe, wait for its result, then say OK",
+  "prompt": "request a client rpc, wait for its result, then say OK",
   "session_id": "${SESSION_ID}",
   "tools": "host",
   "yolo": False,
@@ -219,12 +219,12 @@ def has_ui_action_probe():
     if isinstance(e, dict) and e.get("type") == "ui_action":
       d = e.get("data") if isinstance(e.get("data"), dict) else {}
       a = d.get("action") if isinstance(d.get("action"), dict) else {}
-      if a.get("type") == "client_probe":
+      if a.get("type") == "client_rpc":
         return True
   return False
 
 if not has_ui_action_probe():
-  print("expected ui_action event with type=client_probe; got:", ev, file=sys.stderr)
+  print("expected ui_action event with type=client_rpc; got:", ev, file=sys.stderr)
   raise SystemExit(1)
 
 txt = (obj.get("assistant_text") or "").strip()
@@ -233,5 +233,4 @@ if txt != "OK":
   raise SystemExit(1)
 PY
 
-echo "agentd_client_probe_rpc_smoke OK"
-
+echo "agentd_client_rpc_smoke OK"

@@ -1,6 +1,14 @@
-# Client Probe RPC (Draft)
+# Client Probe RPC (Legacy) — Draft
 
 Date: 2026-01-30
+
+This document is kept for backward reference.
+
+The project has moved to a more general concept: **client RPC** (which can be read-only or side-effecting when explicitly enabled).
+
+See: `docs/CLIENT_RPC.md`.
+
+---
 
 Agents need **world state** to make autonomous decisions. For remote clients (browser, mobile app, Slack),
 the daemon cannot directly inspect the client runtime (DOM, playback, UI tree) due to sandbox/security boundaries.
