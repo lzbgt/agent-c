@@ -5,6 +5,7 @@ import {
   apiGetConfig,
   apiGetDbRun,
   apiGetDbRuns,
+  apiGetDbUiActions,
   apiGetHealth,
   apiGetJobProgress,
   apiGetOpenRouterModels,
@@ -26,6 +27,7 @@ import Markdown from "./components/Markdown";
 import ConversationView from "./components/ConversationView";
 import ArtifactView from "./components/ArtifactView";
 import DbRunsView from "./components/DbRunsView";
+import DbUiActionsView from "./components/DbUiActionsView";
 import useLocalStorageState from "./hooks/useLocalStorageState";
 import { readSseStream } from "./sse";
 
@@ -156,12 +158,25 @@ export default function App() {
     enabled: false,
     retry: 1,
   });
+
+  const dbUiActions = useQuery({
+    queryKey: ["db_ui_actions", effectiveBase, daemonAuthToken, sessionId],
+    queryFn: () => apiGetDbUiActions(effectiveBase, sessionId, daemonAuthToken, { limit: 100, offset: 0 }),
+    enabled: false,
+    retry: 1,
+  });
+
   const [selectedDbRunId, setSelectedDbRunId] = React.useState<number | null>(null);
   const dbRunDetail = useQuery({
     queryKey: ["db_run", effectiveBase, daemonAuthToken, selectedDbRunId],
     queryFn: () =>
       selectedDbRunId
-        ? apiGetDbRun(effectiveBase, selectedDbRunId, daemonAuthToken, { includeEvents: true, includeTools: true, includeArtifacts: true })
+        ? apiGetDbRun(effectiveBase, selectedDbRunId, daemonAuthToken, {
+            includeEvents: true,
+            includeTools: true,
+            includeArtifacts: true,
+            includeUiActions: true,
+          })
         : Promise.resolve({ ok: false, error: "no run selected" }),
     enabled: selectedDbRunId !== null,
     retry: 1,
@@ -178,6 +193,7 @@ export default function App() {
         void sessions.refetch();
         void audit.refetch();
         void sessionArtifacts.refetch();
+        void dbUiActions.refetch();
         setSelectedDbRunId(null);
       }
     },
@@ -718,6 +734,17 @@ export default function App() {
               >
                 Load DB runs
               </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                onClick={() => {
+                  void dbUiActions.refetch();
+                }}
+                type="button"
+                disabled={!sessionId || dbUiActions.isFetching}
+                title="Query the optional SQLite troubleshooting DB (requires agentd --db-path)"
+              >
+                Load DB ui_actions
+              </button>
             </div>
             <div className="mt-3 max-h-80 overflow-auto rounded-md border border-white/10 bg-black/20">
               {(sessions.data?.sessions ?? []).map((sid) => (
@@ -747,6 +774,16 @@ export default function App() {
             <div className="mt-1 text-xs text-white/50">
               DB runs:{" "}
               {dbRuns.isFetching ? "loading…" : dbRuns.isError ? "failed" : dbRuns.data?.ok ? `${dbRuns.data?.count ?? 0}` : "(disabled)"}
+            </div>
+            <div className="mt-1 text-xs text-white/50">
+              DB ui_actions:{" "}
+              {dbUiActions.isFetching
+                ? "loading…"
+                : dbUiActions.isError
+                  ? "failed"
+                  : dbUiActions.data?.ok
+                    ? `${dbUiActions.data?.count ?? 0}`
+                    : "(disabled)"}
             </div>
             <div className="mt-2 rounded-md border border-white/10 bg-black/10 p-2">
               <div className="flex items-center justify-between gap-2">
@@ -854,7 +891,8 @@ export default function App() {
                     <div className="mt-2 text-[11px] text-white/50">
                       events={Array.isArray(dbRunDetail.data.events) ? dbRunDetail.data.events.length : 0},{" "}
                       tools={Array.isArray(dbRunDetail.data.tool_records) ? dbRunDetail.data.tool_records.length : 0},{" "}
-                      artifacts={Array.isArray(dbRunDetail.data.artifacts) ? dbRunDetail.data.artifacts.length : 0}
+                      artifacts={Array.isArray(dbRunDetail.data.artifacts) ? dbRunDetail.data.artifacts.length : 0},{" "}
+                      ui_actions={Array.isArray(dbRunDetail.data.ui_actions) ? dbRunDetail.data.ui_actions.length : 0}
                     </div>
                     {Array.isArray(dbRunDetail.data.events) ? (
                       (() => {
@@ -949,6 +987,11 @@ export default function App() {
                         </div>
                       </div>
                     ) : null}
+                    {Array.isArray(dbRunDetail.data.ui_actions) && dbRunDetail.data.ui_actions.length > 0 ? (
+                      <div className="mt-2">
+                        <DbUiActionsView uiActions={dbRunDetail.data.ui_actions as any[]} />
+                      </div>
+                    ) : null}
                   </div>
                 ) : selectedDbRunId && dbRunDetail.isError ? (
                   <div className="mt-2 text-[11px] text-amber-200/80">failed to load run {selectedDbRunId}</div>
@@ -958,6 +1001,21 @@ export default function App() {
               <div className="mt-2 text-[11px] text-white/50">loading db runs…</div>
             ) : dbRuns.data && !dbRuns.data.ok ? (
               <div className="mt-2 text-[11px] text-white/40">db: {dbRuns.data.error ?? "(disabled)"}</div>
+            ) : null}
+
+            {dbUiActions.data?.ok && Array.isArray(dbUiActions.data.ui_actions) ? (
+              <div className="mt-3">
+                <DbUiActionsView
+                  uiActions={dbUiActions.data.ui_actions as any[]}
+                  onSelectRunId={(runId) => {
+                    setSelectedDbRunId(runId);
+                  }}
+                />
+              </div>
+            ) : dbUiActions.isFetching ? (
+              <div className="mt-2 text-[11px] text-white/50">loading db ui_actions…</div>
+            ) : dbUiActions.data && !dbUiActions.data.ok ? (
+              <div className="mt-2 text-[11px] text-white/40">db: {dbUiActions.data.error ?? "(disabled)"}</div>
             ) : null}
           </div>
         ) : null}

@@ -365,6 +365,7 @@ export const DbRunSchema = z.object({
   events: z.array(z.any()).optional(),
   tool_records: z.array(z.any()).optional(),
   artifacts: z.array(z.any()).optional(),
+  ui_actions: z.array(z.any()).optional(),
   error: z.string().optional(),
 });
 export type DbRunResp = z.infer<typeof DbRunSchema>;
@@ -379,6 +380,17 @@ export const DbArtifactsSchema = z.object({
   error: z.string().optional(),
 });
 export type DbArtifactsResp = z.infer<typeof DbArtifactsSchema>;
+
+export const DbUiActionsSchema = z.object({
+  ok: z.boolean(),
+  session_id: z.string().optional(),
+  limit: z.number().optional(),
+  offset: z.number().optional(),
+  count: z.number().optional(),
+  ui_actions: z.array(z.any()).optional(),
+  error: z.string().optional(),
+});
+export type DbUiActionsResp = z.infer<typeof DbUiActionsSchema>;
 
 export async function apiGetSessionArtifacts(
   base: string,
@@ -424,13 +436,14 @@ export async function apiGetDbRun(
   base: string,
   runId: number,
   authToken?: string,
-  opts?: { includeEvents?: boolean; includeTools?: boolean; includeArtifacts?: boolean },
+  opts?: { includeEvents?: boolean; includeTools?: boolean; includeArtifacts?: boolean; includeUiActions?: boolean },
 ): Promise<DbRunResp> {
   const q = new URLSearchParams();
   q.set("run_id", String(runId));
   if (opts?.includeEvents) q.set("include_events", "1");
   if (opts?.includeTools) q.set("include_tools", "1");
   if (opts?.includeArtifacts) q.set("include_artifacts", "1");
+  if (opts?.includeUiActions) q.set("include_ui_actions", "1");
   const r = await fetch(`${base}/api/v1/db/run?${q.toString()}`, { headers: daemonHeaders(authToken) });
   const j = await r.json();
   return DbRunSchema.parse(j);
@@ -452,6 +465,24 @@ export async function apiGetDbArtifacts(
   );
   const j = await r.json();
   return DbArtifactsSchema.parse(j);
+}
+
+export async function apiGetDbUiActions(
+  base: string,
+  sessionId: string,
+  authToken?: string,
+  opts?: { limit?: number; offset?: number },
+): Promise<DbUiActionsResp> {
+  const limit = typeof opts?.limit === "number" ? opts.limit : 50;
+  const offset = typeof opts?.offset === "number" ? opts.offset : 0;
+  const r = await fetch(
+    `${base}/api/v1/db/ui_actions?session_id=${encodeURIComponent(sessionId)}&limit=${encodeURIComponent(
+      String(limit),
+    )}&offset=${encodeURIComponent(String(offset))}`,
+    { headers: daemonHeaders(authToken) },
+  );
+  const j = await r.json();
+  return DbUiActionsSchema.parse(j);
 }
 
 export async function apiRun(base: string, req: RunRequest, authToken?: string): Promise<RunResponse> {

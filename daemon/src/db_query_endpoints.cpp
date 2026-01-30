@@ -291,6 +291,7 @@ void handle_db_run_endpoint(
   const bool include_events = parse_bool_param(query_get(req.query, "include_events"), false);
   const bool include_tools = parse_bool_param(query_get(req.query, "include_tools"), false);
   const bool include_artifacts = parse_bool_param(query_get(req.query, "include_artifacts"), false);
+  const bool include_ui_actions = parse_bool_param(query_get(req.query, "include_ui_actions"), false);
 
   DbHandle h;
   Json::Value o = open_db_or_error(db_or_null, &h, nullptr);
@@ -480,6 +481,47 @@ void handle_db_run_endpoint(
       sqlite3_finalize(st2);
     }
     out["artifacts"] = arts;
+  }
+
+  if (include_ui_actions) {
+    Json::Value rows(Json::arrayValue);
+    sqlite3_stmt* st2 = nullptr;
+    if (sqlite3_prepare_v2(h.db,
+                           "SELECT id, run_id, ts_unix_ms, session_id, tool_call_id, type, title, message, path, mime, autoplay, repeat, action_json "
+                           "FROM ui_actions WHERE run_id=? ORDER BY id LIMIT ?;",
+                           -1, &st2, nullptr) == SQLITE_OK && st2) {
+      (void)sqlite3_bind_int64(st2, 1, (sqlite3_int64)run_id);
+      (void)sqlite3_bind_int(st2, 2, kMaxRows);
+      while (sqlite3_step(st2) == SQLITE_ROW) {
+        Json::Value a(Json::objectValue);
+        a["id"] = (Json::Int64)sqlite3_column_int64(st2, 0);
+        a["run_id"] = (Json::Int64)sqlite3_column_int64(st2, 1);
+        a["ts_unix_ms"] = (Json::Int64)sqlite3_column_int64(st2, 2);
+        a["session_id"] = stmt_to_row(st2, 3);
+        a["tool_call_id"] = stmt_to_row(st2, 4);
+        a["type"] = stmt_to_row(st2, 5);
+        a["title"] = stmt_to_row(st2, 6);
+        a["message"] = stmt_to_row(st2, 7);
+        a["path"] = stmt_to_row(st2, 8);
+        a["mime"] = stmt_to_row(st2, 9);
+        a["autoplay"] = sqlite3_column_int(st2, 10) ? true : false;
+        a["repeat"] = (Json::Int64)sqlite3_column_int64(st2, 11);
+        const Json::Value action_json_v = stmt_to_row(st2, 12);
+        a["action_json"] = action_json_v;
+        if (action_json_v.isString() && !action_json_v.asString().empty()) {
+          Json::Value parsed;
+          std::string perr;
+          if (json_parse_object(action_json_v.asString(), &parsed, &perr)) {
+            a["action"] = parsed;
+          }
+        }
+        rows.append(a);
+      }
+      sqlite3_finalize(st2);
+    } else if (st2) {
+      sqlite3_finalize(st2);
+    }
+    out["ui_actions"] = rows;
   }
 
   resp->status = 200;

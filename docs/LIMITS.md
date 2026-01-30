@@ -128,7 +128,7 @@ Recommended defaults (can be tuned per operator):
 - `shell_exec=16` (still allows normal build/test flows; encourages batching multiple commands in one call)
 - `artifact_register=16` (prevents runaway artifact spamming)
 - `ui_action=16` (prevents runaway UI action spamming)
-- `camera_capture=4` (single-shot capture tool; prefer over repeated `proc_exec` capture scripts)
+- `camera_capture=1` (single-shot capture tool; prefer over repeated `proc_exec` capture scripts)
 
 ## Related docs
 

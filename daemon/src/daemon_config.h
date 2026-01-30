@@ -68,8 +68,8 @@ struct DaemonConfig {
     // UI/media signaling can also be spammed in runaway loops; keep it bounded by default.
     {"artifact_register", 16},
     {"ui_action", 16},
-    // Prefer a dedicated single-shot tool over repeated proc_exec camera loops.
-    {"camera_capture", 4},
+    // Single-shot tool: keep it extremely bounded by default. Override per-run if you need more frames.
+    {"camera_capture", 1},
   };
 
   // Async job GC (daemon longevity): finished jobs are kept only for a bounded time/count.

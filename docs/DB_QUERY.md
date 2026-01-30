@@ -58,7 +58,7 @@ Response fields:
 
 ### Fetch run details
 
-`GET /api/v1/db/run?run_id=...&include_events=1&include_tools=1&include_artifacts=1`
+`GET /api/v1/db/run?run_id=...&include_events=1&include_tools=1&include_artifacts=1&include_ui_actions=1`
 
 Response fields:
 - `run` (object) basic run fields
@@ -72,6 +72,10 @@ Response fields:
 - Each artifact row includes:
   - `artifact_json` (string): raw JSON object string
   - `artifact` (object, optional): parsed form of `artifact_json` when parsing succeeds
+- `ui_actions` (array, optional) ordered by `id`
+- Each ui_action row includes:
+  - `action_json` (string|null): raw JSON object string
+  - `action` (object, optional): parsed form of `action_json` when parsing succeeds
 
 ### List artifacts
 

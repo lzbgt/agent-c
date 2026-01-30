@@ -294,7 +294,7 @@ if not rows:
 PY
 
 db_run="$(curl -fsS --noproxy "*" --max-time 10 \
-  "${DAEMON_URL}/api/v1/db/run?run_id=${RUN_ID}&include_events=1&include_tools=1&include_artifacts=1")"
+  "${DAEMON_URL}/api/v1/db/run?run_id=${RUN_ID}&include_events=1&include_tools=1&include_artifacts=1&include_ui_actions=1")"
 
 python3 - <<PY
 import json, sys
@@ -313,6 +313,11 @@ if len(tools) < 1:
 events = obj.get("events") or []
 if not isinstance(events, list) or len(events) < 1:
   print("expected events >= 1", file=sys.stderr)
+  raise SystemExit(1)
+# `include_ui_actions=1` should always return a list (possibly empty).
+uia = obj.get("ui_actions")
+if not isinstance(uia, list):
+  print("expected ui_actions to be a list", type(uia), file=sys.stderr)
   raise SystemExit(1)
 # If server parsed data_json successfully, it should expose `data` for at least some rows.
 has_parsed = any(isinstance(e, dict) and isinstance(e.get("data"), dict) for e in events)

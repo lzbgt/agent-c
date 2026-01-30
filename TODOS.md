@@ -90,6 +90,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add an “Artifacts” panel that indexes artifacts from session audit (cross-run browsing).
 - [x] Add an operator-friendly daemon `--state-dir` / `--sessions-root` so multiple agentd instances never share the same state by accident.
 - [x] Add an explicit `ui_action` event type (agent → UI) with an allowlist and user consent (e.g. play audio for an artifact, focus an artifact).
+- [x] Add a DB-backed troubleshooting view for `ui_actions` (list recent actions, click through to run detail).
 - [ ] Add a daemon skeleton with:
   - local control socket / HTTP
   - broker client abstraction (MQTT)
@@ -119,4 +120,5 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add daemon endpoints to query SQLite directly (runs/events/artifacts) for UI-native troubleshooting views.
 - [x] Parse DB event/artifact JSON into structured payloads in `/api/v1/db/run` (still includes raw `*_json` fields).
 - [x] Parse `tool_records.arguments_json` and `tool_records.result_text` into structured payloads in `/api/v1/db/run`.
+- [x] Support `include_ui_actions=1` in `/api/v1/db/run` so a single run view can show artifacts + UI actions together.
 - [ ] Configure a git remote so `git push` works in this workspace (see `tools/setup_git_remote.sh`, supports `project.local.md: git_remote`).
