@@ -208,6 +208,7 @@ Completed milestones and notable tasks.
 - Tightened daemon scoped mode further by disallowing symlink escapes in host tools (`fs_*`, `text_search`, `file_apply_patch`) via `HostToolsetConfig.allow_symlinks=false`.
 - Hardened host filesystem tools against symlink traversal during recursive scans (e.g. `fs_list`/`fs_find`/`text_search`), not just direct path resolution.
 - Hardened `/api/v1/file` in scoped mode by reading from the canonical path after containment checks (reduces symlink TOCTOU risk) and added a local smoke test `tests/agentd_file_symlink_smoke.sh`.
+- Added a fully local, non-network daemon smoke for host tool loops (`tests/agentd_local_tool_loop_smoke.sh`) using an OpenAI-compatible stub server.
 
 - Moved the tool-call loop into the portable core (Milestone 2 groundwork):
   - added core tool-loop API + provider contract (`core/include/agent/tool_loop.h`, `core/include/agent/tool_provider.h`, `core/include/agent/chat.h`)
