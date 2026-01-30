@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=tests/lib/agentd_smoke_lib.sh
+source "${SCRIPT_DIR}/lib/agentd_smoke_lib.sh"
+
 AGENTD_BIN="${1:-}"
 if [[ -z "${AGENTD_BIN}" ]]; then
   echo "missing agentd binary path arg" >&2
@@ -21,59 +25,26 @@ export HTTP_PROXY="${http_proxy}"
 export no_proxy="${no_proxy:-${NO_PROXY:-127.0.0.1,localhost}}"
 export NO_PROXY="${no_proxy}"
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-
 OPENROUTER_KEY="${OPENROUTER_API_KEY:-}"
-source "${PROJECT_ROOT}/tests/test_keys.sh"
+source "${SCRIPT_DIR}/test_keys.sh"
 OPENROUTER_KEY="$(agent_test_get_key openrouter 2>/dev/null || true)"
 if [[ -z "${OPENROUTER_KEY}" ]]; then
   echo "SKIP: OPENROUTER_API_KEY not set and not found in project.local.md" >&2
   exit 77
 fi
 
-PORT="$(( (RANDOM % 20000) + 20000 ))"
 HOST="127.0.0.1"
-DAEMON_URL="http://${HOST}:${PORT}"
+PORT="$(agentd_smoke_pick_port)"
 
-cleanup() {
-  if [[ -n "${AGENTD_PID:-}" ]]; then
-    kill -TERM "${AGENTD_PID}" >/dev/null 2>&1 || true
-    for _ in $(seq 1 30); do
-      if ! kill -0 "${AGENTD_PID}" >/dev/null 2>&1; then
-        break
-      fi
-      sleep 0.1
-    done
-    if kill -0 "${AGENTD_PID}" >/dev/null 2>&1; then
-      kill -KILL "${AGENTD_PID}" >/dev/null 2>&1 || true
-    fi
-    wait "${AGENTD_PID}" >/dev/null 2>&1 || true
-  fi
-}
-trap cleanup EXIT
+trap agentd_smoke_stop EXIT
 
-LOG_DIR="${PROJECT_ROOT}/build"
+LOG_DIR="$(agentd_smoke_log_dir)"
 mkdir -p "${LOG_DIR}"
 
-OPENROUTER_API_KEY="${OPENROUTER_KEY}" "${AGENTD_BIN}" \
-  --host "${HOST}" \
-  --port "${PORT}" \
-  --tools none \
-  > "${LOG_DIR}/agentd_openrouter_models_smoke.stdout.log" 2> "${LOG_DIR}/agentd_openrouter_models_smoke.stderr.log" &
-AGENTD_PID=$!
+OPENROUTER_API_KEY="${OPENROUTER_KEY}" agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT}" "agentd_openrouter_models_smoke" \
+  --tools none
 
-# Wait for health endpoint.
-for _ in $(seq 1 60); do
-  if curl -fsS --noproxy "*" --max-time 2 "${DAEMON_URL}/api/v1/health" >/dev/null 2>&1; then
-    break
-  fi
-  sleep 0.1
-done
-if ! curl -fsS --noproxy "*" --max-time 2 "${DAEMON_URL}/api/v1/health" >/dev/null 2>&1; then
-  echo "agentd did not become healthy: ${DAEMON_URL}" >&2
-  exit 1
-fi
+agentd_smoke_wait_health "${DAEMON_URL}"
 
 resp="$(curl -fsS --noproxy "*" --max-time 45 \
   "${DAEMON_URL}/api/v1/openrouter/models?min_total=0.01&max_total=0.50&require_multimodal_input=1&require_tools=1&limit=20&refresh=1")"

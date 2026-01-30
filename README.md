@@ -18,6 +18,9 @@ tools/verify.sh
 
 Host builds (`agent` / `agentd`) require `libcurl` and `jsoncpp` (via `pkg-config`).
 
+Smoke tests:
+- `ctest` includes many bash-based `agentd_*_smoke.sh` tests that start/stop the daemon; shared helpers live in `tests/lib/agentd_smoke_lib.sh`.
+
 ### Core-only build (portable; no CURL required)
 
 If you only want the portable core library + core unit tests (e.g. embedded/toolchain bring-up), disable host builds:

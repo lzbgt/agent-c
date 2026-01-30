@@ -1,47 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=tests/lib/agentd_smoke_lib.sh
+source "${SCRIPT_DIR}/lib/agentd_smoke_lib.sh"
+
 AGENTD_BIN="${1:-}"
 if [[ -z "${AGENTD_BIN}" ]]; then
   echo "missing agentd binary path arg" >&2
   exit 2
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-LOG_DIR="${PROJECT_ROOT}/build"
-mkdir -p "${LOG_DIR}"
-
-DAEMON_PID=""
-
-cleanup() {
-  if [[ -n "${DAEMON_PID}" ]]; then
-    kill -TERM "${DAEMON_PID}" >/dev/null 2>&1 || true
-    for _ in $(seq 1 30); do
-      if ! kill -0 "${DAEMON_PID}" >/dev/null 2>&1; then
-        break
-      fi
-      sleep 0.1
-    done
-    if kill -0 "${DAEMON_PID}" >/dev/null 2>&1; then
-      kill -KILL "${DAEMON_PID}" >/dev/null 2>&1 || true
-    fi
-    wait "${DAEMON_PID}" >/dev/null 2>&1 || true
-    DAEMON_PID=""
-  fi
-}
-trap cleanup EXIT
-
-wait_healthy() {
-  local url="$1"
-  for _ in $(seq 1 60); do
-    if curl -fsS --noproxy "*" --max-time 2 "${url}/api/v1/health" >/dev/null 2>&1; then
-      return 0
-    fi
-    sleep 0.1
-  done
-  return 1
-}
+trap agentd_smoke_stop EXIT
 
 curl_headers() {
   local method="$1"
@@ -115,55 +85,42 @@ health_headers() {
 }
 
 # 1) Loopback defaults: allow any origin (*) and include X-OpenRouter-Key in allow headers.
-cleanup
-PORT="$(( (RANDOM % 20000) + 20000 ))"
+agentd_smoke_stop
+PORT="$(agentd_smoke_pick_port)"
 HOST="127.0.0.1"
 BASE="http://${HOST}:${PORT}"
 
-"${AGENTD_BIN}" \
-  --host "${HOST}" \
-  --port "${PORT}" \
-  > "${LOG_DIR}/agentd_cors_smoke.loopback.stdout.log" 2> "${LOG_DIR}/agentd_cors_smoke.loopback.stderr.log" &
-DAEMON_PID=$!
-
-wait_healthy "${BASE}"
+agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT}" "agentd_cors_smoke.loopback"
+agentd_smoke_wait_health "${BASE}"
 
 hdr="$(preflight_headers "${BASE}" "${ORIGIN_OK}")"
 assert_cors_headers "${hdr}" "*" "1"
 
 # 2) Non-loopback defaults: CORS disabled unless explicitly configured.
-cleanup
-PORT="$(( (RANDOM % 20000) + 20000 ))"
-HOST="0.0.0.0"
+agentd_smoke_stop
+PORT="$(agentd_smoke_pick_port)"
+BIND_HOST="0.0.0.0"
+CONNECT_HOST="127.0.0.1"
 BASE="http://127.0.0.1:${PORT}"
 
-"${AGENTD_BIN}" \
-  --host "${HOST}" \
-  --port "${PORT}" \
-  --auth-token "t" \
-  > "${LOG_DIR}/agentd_cors_smoke.nonloopback_default.stdout.log" 2> "${LOG_DIR}/agentd_cors_smoke.nonloopback_default.stderr.log" &
-DAEMON_PID=$!
-
-wait_healthy "${BASE}"
+agentd_smoke_start_bind "${AGENTD_BIN}" "${BIND_HOST}" "${CONNECT_HOST}" "${PORT}" "agentd_cors_smoke.nonloopback_default" \
+  --auth-token "t"
+agentd_smoke_wait_health "${BASE}"
 
 hdr="$(preflight_headers "${BASE}" "${ORIGIN_OK}")"
 assert_cors_headers "${hdr}" "__absent__" "0"
 
 # 3) Non-loopback explicit allowlist: reflect allowed origin, deny others.
-cleanup
-PORT="$(( (RANDOM % 20000) + 20000 ))"
-HOST="0.0.0.0"
+agentd_smoke_stop
+PORT="$(agentd_smoke_pick_port)"
+BIND_HOST="0.0.0.0"
+CONNECT_HOST="127.0.0.1"
 BASE="http://127.0.0.1:${PORT}"
 
-"${AGENTD_BIN}" \
-  --host "${HOST}" \
-  --port "${PORT}" \
+agentd_smoke_start_bind "${AGENTD_BIN}" "${BIND_HOST}" "${CONNECT_HOST}" "${PORT}" "agentd_cors_smoke.nonloopback_allowlist" \
   --auth-token "t" \
-  --cors-origin "${ORIGIN_OK}" \
-  > "${LOG_DIR}/agentd_cors_smoke.nonloopback_allowlist.stdout.log" 2> "${LOG_DIR}/agentd_cors_smoke.nonloopback_allowlist.stderr.log" &
-DAEMON_PID=$!
-
-wait_healthy "${BASE}"
+  --cors-origin "${ORIGIN_OK}"
+agentd_smoke_wait_health "${BASE}"
 
 hdr="$(preflight_headers "${BASE}" "${ORIGIN_OK}")"
 assert_cors_headers "${hdr}" "${ORIGIN_OK}" "1"
@@ -173,4 +130,3 @@ assert_cors_headers "${hdr2}" "${ORIGIN_OK}" "0"
 
 hdr3="$(preflight_headers "${BASE}" "${ORIGIN_BAD}")"
 assert_cors_headers "${hdr3}" "__absent__" "0"
-

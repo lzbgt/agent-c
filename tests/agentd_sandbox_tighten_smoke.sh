@@ -1,35 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=tests/lib/agentd_smoke_lib.sh
+source "${SCRIPT_DIR}/lib/agentd_smoke_lib.sh"
+
 AGENTD_BIN="${1:-}"
 if [[ -z "${AGENTD_BIN}" ]]; then
   echo "missing agentd binary path arg" >&2
   exit 2
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-
-PORT="$(( (RANDOM % 20000) + 20000 ))"
 HOST="127.0.0.1"
-DAEMON_URL="http://${HOST}:${PORT}"
+PORT="$(agentd_smoke_pick_port)"
 
 SCOPE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/agentd_scope_XXXXXX")"
 OUTSIDE_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/agentd_outside_XXXXXX")"
 
 cleanup() {
+  agentd_smoke_stop
   if [[ -n "${AGENTD_PID:-}" ]]; then
-    kill -TERM "${AGENTD_PID}" >/dev/null 2>&1 || true
-    for _ in $(seq 1 30); do
-      if ! kill -0 "${AGENTD_PID}" >/dev/null 2>&1; then
-        break
-      fi
-      sleep 0.1
-    done
-    if kill -0 "${AGENTD_PID}" >/dev/null 2>&1; then
-      kill -KILL "${AGENTD_PID}" >/dev/null 2>&1 || true
-    fi
-    wait "${AGENTD_PID}" >/dev/null 2>&1 || true
+    :
   fi
   rm -rf "${SCOPE_ROOT}" "${OUTSIDE_ROOT}" || true
 }
@@ -38,30 +29,16 @@ trap cleanup EXIT
 echo "inside" > "${SCOPE_ROOT}/inside.txt"
 echo "outside" > "${OUTSIDE_ROOT}/outside.txt"
 
-LOG_DIR="${PROJECT_ROOT}/build"
+LOG_DIR="$(agentd_smoke_log_dir)"
 mkdir -p "${LOG_DIR}"
 
-"${AGENTD_BIN}" \
-  --host "${HOST}" \
-  --port "${PORT}" \
+agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT}" "agentd_sandbox_tighten_smoke" \
   --tools host \
   --no-yolo \
   --host-scope "${SCOPE_ROOT}" \
-  --tools-root "@host" \
-  > "${LOG_DIR}/agentd_sandbox_tighten_smoke.stdout.log" 2> "${LOG_DIR}/agentd_sandbox_tighten_smoke.stderr.log" &
-AGENTD_PID=$!
+  --tools-root "@host"
 
-# Wait for health endpoint.
-for _ in $(seq 1 60); do
-  if curl -fsS --noproxy "*" --max-time 2 "${DAEMON_URL}/api/v1/health" >/dev/null 2>&1; then
-    break
-  fi
-  sleep 0.1
-done
-if ! curl -fsS --noproxy "*" --max-time 2 "${DAEMON_URL}/api/v1/health" >/dev/null 2>&1; then
-  echo "agentd did not become healthy: ${DAEMON_URL}" >&2
-  exit 1
-fi
+agentd_smoke_wait_health "${DAEMON_URL}"
 
 # 1) A client cannot loosen to yolo=1 via query params when daemon is --no-yolo.
 resp="$(curl -fsS --noproxy "*" --max-time 5 "${DAEMON_URL}/api/v1/tools?tools=host&yolo=1&tools_root=@cwd")"

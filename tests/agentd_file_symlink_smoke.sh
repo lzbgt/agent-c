@@ -1,34 +1,27 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=tests/lib/agentd_smoke_lib.sh
+source "${SCRIPT_DIR}/lib/agentd_smoke_lib.sh"
+
 AGENTD_BIN="${1:-}"
 if [[ -z "${AGENTD_BIN}" ]]; then
   echo "missing agentd binary path arg" >&2
   exit 2
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-LOG_DIR="${PROJECT_ROOT}/build"
+LOG_DIR="$(agentd_smoke_log_dir)"
 mkdir -p "${LOG_DIR}"
 
-PORT="$(( (RANDOM % 20000) + 20000 ))"
 HOST="127.0.0.1"
-DAEMON_URL="http://${HOST}:${PORT}"
+PORT="$(agentd_smoke_pick_port)"
 
 cleanup() {
+  agentd_smoke_stop
   if [[ -n "${AGENTD_PID:-}" ]]; then
-    kill -TERM "${AGENTD_PID}" >/dev/null 2>&1 || true
-    for _ in $(seq 1 30); do
-      if ! kill -0 "${AGENTD_PID}" >/dev/null 2>&1; then
-        break
-      fi
-      sleep 0.1
-    done
-    if kill -0 "${AGENTD_PID}" >/dev/null 2>&1; then
-      kill -KILL "${AGENTD_PID}" >/dev/null 2>&1 || true
-    fi
-    wait "${AGENTD_PID}" >/dev/null 2>&1 || true
+    :
   fi
   rm -f "${PROJECT_ROOT}/build/agentd_file_symlink_out" >/dev/null 2>&1 || true
   rm -rf "${TMPDIR_CREATED:-}" >/dev/null 2>&1 || true
@@ -45,25 +38,11 @@ if [[ ! -L "${PROJECT_ROOT}/build/agentd_file_symlink_out" ]]; then
   exit 77
 fi
 
-"${AGENTD_BIN}" \
-  --host "${HOST}" \
-  --port "${PORT}" \
+agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT}" "agentd_file_symlink_smoke" \
   --no-yolo \
-  --tools host \
-  > "${LOG_DIR}/agentd_file_symlink_smoke.stdout.log" 2> "${LOG_DIR}/agentd_file_symlink_smoke.stderr.log" &
-AGENTD_PID=$!
+  --tools host
 
-# Wait for health endpoint.
-for _ in $(seq 1 60); do
-  if curl -fsS --noproxy "*" --max-time 2 "${DAEMON_URL}/api/v1/health" >/dev/null 2>&1; then
-    break
-  fi
-  sleep 0.1
-done
-if ! curl -fsS --noproxy "*" --max-time 2 "${DAEMON_URL}/api/v1/health" >/dev/null 2>&1; then
-  echo "agentd did not become healthy: ${DAEMON_URL}" >&2
-  exit 1
-fi
+agentd_smoke_wait_health "${DAEMON_URL}"
 
 # Scoped file endpoint must reject reading through symlink escapes.
 code="$(curl -sS --noproxy "*" --max-time 5 -o /dev/null -w '%{http_code}' \
@@ -77,4 +56,3 @@ if [[ "${code}" != "403" && "${code}" != "404" ]]; then
   echo "expected 403/404 for symlink escape file read, got ${code}" >&2
   exit 1
 fi
-

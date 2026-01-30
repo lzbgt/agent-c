@@ -1,28 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=tests/lib/agentd_smoke_lib.sh
+source "${SCRIPT_DIR}/lib/agentd_smoke_lib.sh"
+
 AGENTD_BIN="${1:-}"
 if [[ -z "${AGENTD_BIN}" ]]; then
   echo "missing agentd binary path arg" >&2
   exit 2
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-LOG_DIR="${PROJECT_ROOT}/build"
+LOG_DIR="$(agentd_smoke_log_dir)"
 mkdir -p "${LOG_DIR}"
 
-PORT_DAEMON="$(( (RANDOM % 20000) + 20000 ))"
-PORT_STUB="$(( (RANDOM % 20000) + 20000 ))"
+PORT_DAEMON="$(agentd_smoke_pick_port)"
+PORT_STUB="$(agentd_smoke_pick_port)"
 HOST="127.0.0.1"
-DAEMON_URL="http://${HOST}:${PORT_DAEMON}"
 STUB_BASE="http://${HOST}:${PORT_STUB}/v1"
 
 cleanup() {
-  if [[ -n "${AGENTD_PID:-}" ]]; then
-    kill -TERM "${AGENTD_PID}" >/dev/null 2>&1 || true
-    wait "${AGENTD_PID}" >/dev/null 2>&1 || true
-  fi
+  agentd_smoke_stop
   if [[ -n "${STUB_PID:-}" ]]; then
     kill -TERM "${STUB_PID}" >/dev/null 2>&1 || true
     wait "${STUB_PID}" >/dev/null 2>&1 || true
@@ -109,25 +107,11 @@ HTTPServer(("127.0.0.1", ${PORT_STUB}), H).serve_forever()
 PY
 STUB_PID=$!
 
-"${AGENTD_BIN}" \
-  --host "${HOST}" \
-  --port "${PORT_DAEMON}" \
+agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_local_tool_loop_smoke" \
   --tools host \
-  --no-yolo \
-  > "${LOG_DIR}/agentd_local_tool_loop_smoke.stdout.log" 2> "${LOG_DIR}/agentd_local_tool_loop_smoke.stderr.log" &
-AGENTD_PID=$!
+  --no-yolo
 
-# Wait for health endpoint.
-for _ in $(seq 1 60); do
-  if curl -fsS --noproxy "*" --max-time 2 "${DAEMON_URL}/api/v1/health" >/dev/null 2>&1; then
-    break
-  fi
-  sleep 0.1
-done
-if ! curl -fsS --noproxy "*" --max-time 2 "${DAEMON_URL}/api/v1/health" >/dev/null 2>&1; then
-  echo "agentd did not become healthy: ${DAEMON_URL}" >&2
-  exit 1
-fi
+agentd_smoke_wait_health "${DAEMON_URL}"
 
 resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Content-Type: application/json" \
@@ -168,4 +152,3 @@ if txt != "OK":
   print("unexpected assistant_text:", txt, file=sys.stderr)
   raise SystemExit(1)
 PY
-
