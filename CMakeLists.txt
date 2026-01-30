@@ -59,6 +59,7 @@ if(AGENT_BUILD_HOST)
     cli/src/tool_loop_truncation.cpp
     cli/src/toolset_basic.cpp
     cli/src/toolset_host.cpp
+    cli/src/toolset_host_exec.cpp
   )
 
   target_compile_options(agent_host PRIVATE

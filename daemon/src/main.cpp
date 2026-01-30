@@ -75,6 +75,7 @@ struct DaemonConfig {
   std::string tools_root = "";    // empty => CWD (unrestricted file edits)
   std::string host_scope_root;    // default: daemon process CWD (for "@host" tool root mode)
   bool yolo_default = true;       // default to unrestricted unless client requests scoped mode
+  HostToolsetPolicyMode host_policy = HostToolsetPolicyMode::Full; // host tools: full|readonly
   bool no_default_system = false; // when false, host tool runs insert a default system hint (one time)
   size_t max_chars_default = 20000;
   size_t keep_last_default = 16;
@@ -255,6 +256,7 @@ static Json::Value run_request_to_json(
   } else if (tools == "host") {
     HostToolsetConfig hcfg;
     hcfg.root_dir = tools_root;
+    hcfg.policy = daemon_cfg.host_policy;
     if (!job_id_local.empty()) {
       // Cooperative cancellation for long-running host tools (sleep/build/etc).
       hcfg.should_cancel = [](void* vctx) -> bool {
@@ -775,6 +777,7 @@ static Json::Value run_request_to_json(
   out["trace_text"] = trace_buf.str();
   out["effective_tools_root"] = tools_root;
   out["effective_yolo"] = yolo;
+  out["effective_host_policy"] = (daemon_cfg.host_policy == HostToolsetPolicyMode::ReadOnly) ? "readonly" : "full";
   out["effective_timeout_ms"] = (Json::Int64)run_cfg.timeout_ms;
   out["effective_stream_assistant"] = stream_assistant;
   out["verbose"] = verbose;
@@ -792,6 +795,7 @@ static Json::Value run_request_to_json(
     record["tools"] = tools;
     record["yolo"] = yolo;
     record["tools_root"] = tools_root;
+    record["host_policy"] = (daemon_cfg.host_policy == HostToolsetPolicyMode::ReadOnly) ? "readonly" : "full";
     record["prompt"] = prompt;
     record["assistant_text"] = assistant_text;
     record["http_status"] = (Json::Int64)http_status;
@@ -930,6 +934,20 @@ int main(int argc, char** argv) {
         std::cerr << "Missing value for --tools-root\n";
         return 2;
       }
+    } else if (a == "--host-policy") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --host-policy\n";
+        return 2;
+      }
+      if (v == "full") {
+        cfg.host_policy = HostToolsetPolicyMode::Full;
+      } else if (v == "readonly") {
+        cfg.host_policy = HostToolsetPolicyMode::ReadOnly;
+      } else {
+        std::cerr << "Invalid --host-policy (expected: full|readonly)\n";
+        return 2;
+      }
     } else if (a == "--host-scope") {
       if (!take(&cfg.host_scope_root)) {
         std::cerr << "Missing value for --host-scope\n";
@@ -958,6 +976,7 @@ int main(int argc, char** argv) {
         << "  --max-jobs <n>       Keep at most n jobs in memory (default: 256)\n"
         << "  --tools host|basic|none   Default toolset (default: host)\n"
         << "  --tools-root <path>  Root/working dir for file edits (default: unrestricted)\n"
+        << "  --host-policy full|readonly  Host tool safety policy (default: full)\n"
         << "  --host-scope <path>  Host scope root for tools_root=\"@host\" (default: current dir)\n"
         << "  --yolo / --no-yolo   Default unrestricted mode (default: yolo)\n"
         << "  --no-default-system  Disable default host system hint (host tools only)\n";
@@ -1084,6 +1103,7 @@ int main(int argc, char** argv) {
     out["tools"] = tools;
     out["effective_tools_root"] = tools_root;
     out["effective_yolo"] = yolo;
+    out["effective_host_policy"] = (cfg.host_policy == HostToolsetPolicyMode::ReadOnly) ? "readonly" : "full";
 
     agent_tool_registry_t* registry = nullptr;
     agent_tool_executor_t executor{};
@@ -1104,6 +1124,7 @@ int main(int argc, char** argv) {
     } else if (tools == "host") {
       HostToolsetConfig hcfg;
       hcfg.root_dir = tools_root;
+      hcfg.policy = cfg.host_policy;
       if (toolset_host_create(hcfg, &registry, &executor) != AGENT_OK) {
         resp->status = 500;
         resp->body = R"({"ok":false,"error":"failed to init toolset_host"})";

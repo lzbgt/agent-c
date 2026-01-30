@@ -77,6 +77,7 @@ static void usage() {
     << "  --summary-max-chars <n>   Max chars for inserted summary system message (default: 1200)\n"
     << "  --tools none|basic|host   Select toolset (default: host)\n"
     << "  --tools-root <path>       Root/working dir for host file edits (file_apply_patch) (default: current dir)\n"
+    << "  --host-policy full|readonly  Host tool safety policy (default: full; host tools only)\n"
     << "  --force-tool <name>       Force a tool call on first step (verification)\n"
     << "  --require-tool-call       Fail if no tool call occurred\n"
     << "  --max-steps <n>           Max tool loop steps (default: unlimited; 0 means unlimited)\n";
@@ -168,6 +169,7 @@ int main(int argc, char** argv) {
   size_t timeout_ms = 60000;
   std::string tools_mode = "host";
   std::string tools_root; // empty => unrestricted (YOLO)
+  std::string host_policy = "full";
   std::string force_tool;
   bool require_tool_call = false;
   size_t max_steps = 0; // unlimited unless explicitly set
@@ -243,6 +245,10 @@ int main(int argc, char** argv) {
   }
   if (!take_flag(args, "--tools-root", &tools_root)) {
     std::cerr << "Missing value for --tools-root\n";
+    return 2;
+  }
+  if (!take_enum(args, "--host-policy", &host_policy)) {
+    std::cerr << "Missing value for --host-policy\n";
     return 2;
   }
   if (!take_flag(args, "--force-tool", &force_tool)) {
@@ -350,6 +356,10 @@ int main(int argc, char** argv) {
   if (tools_mode == "yolo") {
     tools_mode = "host";
   }
+  if (host_policy != "full" && host_policy != "readonly") {
+    std::cerr << "Unsupported --host-policy: " << host_policy << "\n";
+    return 2;
+  }
 
   // Add host-only default system message (one-time) when using host tools and the session is empty.
   // This encourages incremental inspection (rg/head/awk) instead of full file dumps.
@@ -370,6 +380,7 @@ int main(int argc, char** argv) {
     } else if (tools_mode == "host") {
       HostToolsetConfig cfg;
       cfg.root_dir = tools_root;
+      cfg.policy = (host_policy == "readonly") ? HostToolsetPolicyMode::ReadOnly : HostToolsetPolicyMode::Full;
       if (toolset_host_create(cfg, &registry, &executor) != AGENT_OK) {
         std::cerr << "Failed to initialize host toolset\n";
         agent_session_destroy(session);

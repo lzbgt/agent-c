@@ -63,6 +63,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [ ] Add a daemon-level “sandbox policy” model:
   - YOLO vs host-scoped tools-root
   - future: per-tool allow/deny and command restrictions for `proc_exec` / `shell_exec`
+  - [x] add `--host-policy full|readonly` (readonly omits exec + patch tools)
   - [x] add `/api/v1/tools` for clients to query active tool schemas
 
 ## Near-term (UI polish)

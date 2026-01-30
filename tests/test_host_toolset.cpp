@@ -27,6 +27,16 @@ static Json::Value json_parse(const std::string& s) {
   return v;
 }
 
+static bool registry_contains(agent_tool_registry_t* reg, const std::string& name) {
+  const size_t n = agent_tool_registry_count(reg);
+  for (size_t i = 0; i < n; i++) {
+    agent_tool_def_view_t v{};
+    if (agent_tool_registry_get(reg, i, &v) != AGENT_OK) continue;
+    if (v.name && name == v.name) return true;
+  }
+  return false;
+}
+
 static void test_file_apply_patch() {
   const auto root = std::filesystem::temp_directory_path() / ("agent_host_tools_" + std::to_string((long long)getpid()));
   std::filesystem::remove_all(root);
@@ -71,6 +81,48 @@ static void test_file_apply_patch() {
     std::stringstream ss;
     ss << f.rdbuf();
     assert(ss.str() == "bye\n");
+  }
+
+  agent_tool_registry_destroy(reg);
+  toolset_host_destroy(&exec);
+  std::filesystem::remove_all(root);
+}
+
+static void test_readonly_policy_disables_exec_and_patch() {
+  const auto root = std::filesystem::temp_directory_path() / ("agent_host_tools_ro_" + std::to_string((long long)getpid()));
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+
+  HostToolsetConfig cfg;
+  cfg.root_dir = root.string();
+  cfg.policy = HostToolsetPolicyMode::ReadOnly;
+
+  agent_tool_registry_t* reg = nullptr;
+  agent_tool_executor_t exec{};
+  assert(toolset_host_create(cfg, &reg, &exec) == AGENT_OK);
+  assert(reg != nullptr);
+  assert(exec.execute != nullptr);
+
+  assert(!registry_contains(reg, "shell_exec"));
+  assert(!registry_contains(reg, "proc_exec"));
+  assert(!registry_contains(reg, "file_apply_patch"));
+  assert(registry_contains(reg, "fs_stat"));
+  assert(registry_contains(reg, "fs_list"));
+  assert(registry_contains(reg, "fs_find"));
+  assert(registry_contains(reg, "fs_read"));
+  assert(registry_contains(reg, "text_search"));
+
+  // Defense-in-depth: executor rejects disabled tools even if called directly.
+  {
+    Json::Value args(Json::objectValue);
+    args["cmd"] = "echo hi";
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "shell_exec", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(!resp["ok"].asBool());
+    assert(resp["error"].asString().find("disabled") != std::string::npos);
+    agent_string_free(&out);
   }
 
   agent_tool_registry_destroy(reg);
@@ -709,6 +761,7 @@ static void test_fs_find() {
 
 int main() {
   test_file_apply_patch();
+  test_readonly_policy_disables_exec_and_patch();
   test_fs_stat_list_read();
   test_shell_exec();
   test_proc_exec();

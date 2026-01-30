@@ -6,6 +6,11 @@
 
 using HostCancelCallback = bool (*)(void* ctx);
 
+enum class HostToolsetPolicyMode {
+  Full = 0,     // all host tools enabled (exec + patch + fs)
+  ReadOnly = 1, // no process execution or patch application
+};
+
 struct HostToolsetConfig {
   // Optional root directory for host-side tools.
   //
@@ -14,6 +19,9 @@ struct HostToolsetConfig {
   //   and run patch application under that directory (via `git -C <root_dir> apply ...`).
   // - When empty, host tools run from the current working directory in unrestricted "YOLO" mode.
   std::string root_dir;
+
+  // Safety policy for which host tools are exposed via the tool registry/executor.
+  HostToolsetPolicyMode policy = HostToolsetPolicyMode::Full;
 
   // Optional cooperative cancellation hook.
   // If set and it returns true, long-running tools (shell/proc exec) will terminate their subprocess and return early.

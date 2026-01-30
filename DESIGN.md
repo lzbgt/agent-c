@@ -112,6 +112,24 @@ Rationale:
 - A browser UI makes rich inspection and editing workflows much easier.
 - A daemon aligns naturally with the future goal of outbound broker connectivity behind NAT.
 
+## Host Tool Sandbox Policy (Daemon/CLI)
+
+When enabling host tools (filesystem inspection, process execution, patch application), we need an explicit safety knob that
+works both for local CLI runs and for daemon deployments that may be reachable over a network.
+
+Policy modes (first milestone):
+
+- `full`: enable all host tools (`shell_exec`, `proc_exec`, `file_apply_patch`, `fs_*`, `text_search`).
+- `readonly`: disable process execution + patch application (`shell_exec`, `proc_exec`, `file_apply_patch`), keeping only
+  bounded inspection tools (`fs_*`, `text_search`).
+
+Implementation notes:
+
+- The policy should be applied at the **tool registry** layer (omit disabled tool schemas) to prevent models from discovering
+  tools they are not allowed to call.
+- The executor should still reject disabled tool names (defense in depth) in case a provider returns tool calls that are not
+  present in the tool schema set.
+
 ## Data Model
 
 ### Message

@@ -163,6 +163,7 @@ Session vs audit:
   (`~/.agent/sessions/<id>.events.jsonl`) and surfaced via daemon/UI (and CLI `--trace` output).
 
 Host tool names:
+- In `--host-policy readonly`, the host tool registry omits `shell_exec`, `proc_exec`, and `file_apply_patch` (read-only inspection only).
 - `shell_exec` (runs `/bin/sh -lc <cmd>`, returns JSON envelope with `exit_code`, `timed_out`, `truncated`, `output`)
 - `proc_exec` (runs an argv array via `posix_spawnp`, no shell; returns JSON envelope with `argv`, `exit_code`, `timed_out`, `truncated`, `output`)
 - `file_apply_patch` (applies a unified diff via `git apply`; returns the patch as a diff-style audit trail)
@@ -237,6 +238,9 @@ YOLO vs host-scoped tools:
 - Default daemon mode is YOLO (unrestricted) to match local development needs.
 - To scope file edits to a workspace root, set `tools_root` to `@host` (host scope configured by daemon).
 - Clients can also pass `yolo: false` + `tools_root: "@host"` in `POST /api/v1/run`.
+- For safer deployments, `agentd` supports `--host-policy full|readonly`:
+  - `full`: enables process exec + patch application + filesystem inspection (`shell_exec`, `proc_exec`, `file_apply_patch`, `fs_*`, `text_search`)
+  - `readonly`: disables process exec and patch application (keeps only `fs_*` + `text_search`)
 
 Verbose inspection:
 - Pass `verbose: true` to `POST /api/v1/run` to return a structured `events` log suitable for UIs
@@ -253,6 +257,7 @@ Assistant streaming (provider-dependent):
 Tool schema introspection (extensible tools):
 - `GET /api/v1/tools?tools=host|basic|none&tools_root=@host|@cwd|...&yolo=0|1` returns the tool registry the daemon will expose:
   `name`, `description`, `parameters_json` (OpenAI-compatible JSON Schema).
+- Tool exposure is also constrained by the daemon's `--host-policy` (response includes `effective_host_policy`).
 - This is intended for “day-1 rich UI” features (rendering tool info, validating tool-call args) and for future clients.
 
 OpenRouter model discovery (for verification + multimodal/tools filtering):
