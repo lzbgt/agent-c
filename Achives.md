@@ -195,6 +195,9 @@ Completed milestones and notable tasks.
   - allow headers include `X-OpenRouter-Key` for the OpenRouter model catalog endpoint
   - added local smoke test `tests/agentd_cors_smoke.sh`
 - Refactored `/api/v1/job/stream` SSE endpoint into `daemon/src/job_stream_endpoint.cpp` to keep `daemon/src/main.cpp` lean.
+- Improved UI live streaming when daemon auth is enabled:
+  - UI uses a fetch-based SSE reader (so it can send `Authorization: Bearer ...`) instead of `EventSource`
+  - added a non-network smoke test `tests/agentd_sse_auth_smoke.sh` using a local OpenAI stub server
 
 - Moved the tool-call loop into the portable core (Milestone 2 groundwork):
   - added core tool-loop API + provider contract (`core/include/agent/tool_loop.h`, `core/include/agent/tool_provider.h`, `core/include/agent/chat.h`)

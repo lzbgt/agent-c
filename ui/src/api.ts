@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-function daemonHeaders(authToken?: string, extra?: Record<string, string>): Record<string, string> {
+export function daemonHeaders(authToken?: string, extra?: Record<string, string>): Record<string, string> {
   const h: Record<string, string> = { ...(extra ?? {}) };
   if (authToken && authToken.trim().length > 0) {
     h["Authorization"] = `Bearer ${authToken.trim()}`;

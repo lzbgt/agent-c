@@ -10,6 +10,7 @@ import {
   apiListSessions,
   apiRun,
   apiRunAsync,
+  daemonHeaders,
   RunRequest,
   RunResponse,
   type AgentEvent,
@@ -19,6 +20,7 @@ import EventTimeline from "./components/EventTimeline";
 import Markdown from "./components/Markdown";
 import ConversationView from "./components/ConversationView";
 import useLocalStorageState from "./hooks/useLocalStorageState";
+import { readSseStream } from "./sse";
 
 function Label({ children }: { children: React.ReactNode }) {
   return <div className="text-xs font-medium text-white/70">{children}</div>;
@@ -272,9 +274,15 @@ export default function App() {
 
     // Prefer SSE streaming when available. Fall back to polling.
     let es: EventSource | null = null;
-    let opened = false;
-    const trySse =
+    let fetchAbort: AbortController | null = null;
+    let fetchFinished = false;
+    const canUseEventSource =
       typeof EventSource !== "undefined" &&
+      (!daemonAuthToken || daemonAuthToken.trim().length === 0) &&
+      typeof effectiveBase === "string" &&
+      (effectiveBase.startsWith("http://") || effectiveBase.startsWith("https://"));
+    const canUseFetchSse =
+      typeof fetch !== "undefined" &&
       typeof effectiveBase === "string" &&
       (effectiveBase.startsWith("http://") || effectiveBase.startsWith("https://"));
 
@@ -285,7 +293,77 @@ export default function App() {
       startPolling();
     };
 
-    if (trySse) {
+    const startFetchSse = () => {
+      const url = `${effectiveBase}/api/v1/job/stream?job_id=${encodeURIComponent(jobId)}&cursor=${encodeURIComponent(
+        String(cursorRef.current),
+      )}`;
+      const controller = new AbortController();
+      fetchAbort = controller;
+      setJobStatus("running");
+      setJobUpdatedMs(null);
+
+      (async () => {
+        const resp = await fetch(url, {
+          headers: daemonHeaders(daemonAuthToken || undefined),
+          signal: controller.signal,
+        });
+        if (!resp.ok) {
+          throw new Error(`SSE fetch failed: HTTP ${resp.status}`);
+        }
+        await readSseStream(resp, (evt) => {
+          if (cancelled) return;
+          if (evt.id && evt.id.length > 0) {
+            const n = Number(evt.id);
+            if (Number.isFinite(n)) cursorRef.current = n + 1;
+          }
+          if (evt.event === "reset") {
+            try {
+              const data = JSON.parse(String(evt.data || "{}"));
+              if (typeof data?.cursor_base === "number") {
+                cursorRef.current = data.cursor_base;
+              }
+            } catch {
+              // ignore
+            }
+            setLiveEvents([]);
+          } else if (evt.event === "agent_event") {
+            try {
+              const ev = JSON.parse(String(evt.data || "{}"));
+              setLiveEvents((prev) => prev.concat(ev));
+            } catch {
+              // ignore malformed
+            }
+          } else if (evt.event === "job_done") {
+            if (cancelled) return;
+            try {
+              const data = JSON.parse(String(evt.data || "{}"));
+              setJobStatus(typeof data?.status === "string" ? data.status : "done");
+              setJobError(typeof data?.error === "string" ? data.error : null);
+              if (data?.result) {
+                setResult(data.result);
+                setLastCompletedPrompt(lastRunPromptRef.current);
+              }
+            } catch {
+              setJobError("failed to parse job_done event");
+            }
+            fetchFinished = true;
+            setActiveJobId(null);
+            void audit.refetch();
+            void sessions.refetch();
+          }
+        });
+        if (!cancelled && !fetchFinished) {
+          // Stream ended without a terminal job_done event; fall back to polling so the UI still progresses.
+          fallbackToPolling();
+        }
+      })().catch((e) => {
+        if (cancelled || fetchFinished) return;
+        setJobError(`SSE fetch failed: ${String(e)}`);
+        fallbackToPolling();
+      });
+    };
+
+    if (canUseEventSource) {
       try {
         const url = `${effectiveBase}/api/v1/job/stream?job_id=${encodeURIComponent(jobId)}&cursor=${encodeURIComponent(
           String(cursorRef.current),
@@ -294,7 +372,7 @@ export default function App() {
         setJobStatus("running");
         setJobUpdatedMs(null);
         es.onopen = () => {
-          opened = true;
+          // ok
         };
         es.addEventListener("reset", (evt: any) => {
           if (cancelled) return;
@@ -357,6 +435,8 @@ export default function App() {
       } catch {
         fallbackToPolling();
       }
+    } else if (canUseFetchSse) {
+      startFetchSse();
     } else {
       fallbackToPolling();
     }
@@ -365,6 +445,11 @@ export default function App() {
       cancelled = true;
       try {
         es?.close();
+      } catch {
+        // ignore
+      }
+      try {
+        fetchAbort?.abort();
       } catch {
         // ignore
       }
