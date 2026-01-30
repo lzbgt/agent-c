@@ -233,6 +233,8 @@ int main(void) {
   test_summary_marker_is_not_pinned();
   test_message_parts_roundtrip();
   test_tool_registry_roundtrip();
+  extern void test_session_codec_module(void);
+  test_session_codec_module();
   extern void test_runner_module(void);
   test_runner_module();
   extern void test_tool_loop_module(void);

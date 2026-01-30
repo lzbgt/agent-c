@@ -11,6 +11,7 @@ add_library(agent_core STATIC
   core/src/agent_alloc.c
   core/src/agent_runner.c
   core/src/agent_session.c
+  core/src/agent_session_codec.c
   core/src/agent_string.c
   core/src/agent_tool_loop.c
   core/src/agent_tool_provider.c
@@ -89,6 +90,7 @@ target_link_libraries(agentd PRIVATE agent_host)
 enable_testing()
 add_executable(agent_core_tests
   tests/test_session.c
+  tests/test_session_codec.c
   tests/test_tool_loop.c
   tests/test_runner.c
 )

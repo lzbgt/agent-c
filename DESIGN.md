@@ -27,6 +27,12 @@ Date: 2026-01-29
    - CLI/daemon benefit from persisted sessions; embedded often cannot afford large histories.
    - Therefore: core owns the in-memory *session model*, while persistence is provided by the host.
 
+   Practical compromise (Milestone 1.5):
+   - Core provides a **JSON-free, line-based session codec** (`agent/session_codec.h`) so hosts can persist/restore sessions
+     without a JSON library (embedded-friendly).
+   - Hosts may additionally write an OpenAI-ish JSON view (`.json`) when JSONCPP is available, but the portable `.sess` format
+     is treated as the primary persisted session file.
+
 3) **Transport is an injected interface**
    - Embedded environments may not support libcurl/POSIX sockets.
    - Therefore: core defines a transport “port” (function pointers / vtable).

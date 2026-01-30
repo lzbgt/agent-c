@@ -34,7 +34,9 @@ export OPENAI_API_KEY=...
 ./build/agent run "hello"
 ```
 
-This uses session id `default` and stores it at `~/.agent/sessions/default.json`.
+This uses session id `default` and stores it at `~/.agent/sessions/default.sess` (portable, JSON-free). If built with JSONCPP,
+it also writes `~/.agent/sessions/default.json` for debugging/interoperability.
+If this project is built without JSONCPP, `.sess` is the only persisted session format.
 
 ### Proxy (when outbound networking requires it)
 
@@ -118,7 +120,10 @@ Seamless compaction for tool loops:
   compacting more aggressively. This is effectively “spawning a new session” for stateless backends.
 
 Session vs audit:
-- Session message history (`~/.agent/sessions/<id>.json`) stores **user/assistant conversation** only.
+- Session message history:
+  - `~/.agent/sessions/<id>.sess` (portable, JSON-free; primary)
+  - `~/.agent/sessions/<id>.json` (optional, written when built with JSONCPP)
+  stores **user/assistant conversation** only.
 - Detailed tool timelines (tool calls/results + LLM request/response events) are stored in the per-session audit log
   (`~/.agent/sessions/<id>.events.jsonl`) and surfaced via daemon/UI (and CLI `--trace` output).
 
