@@ -10,6 +10,12 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
+For a single command that runs configure/build/tests (and writes timestamped logs under `build/`), use:
+
+```bash
+tools/verify.sh
+```
+
 Host builds (`agent` / `agentd`) require `libcurl` and `jsoncpp` (via `pkg-config`).
 
 ### Core-only build (portable; no CURL required)
@@ -20,6 +26,12 @@ If you only want the portable core library + core unit tests (e.g. embedded/tool
 cmake -S . -B build-core -DAGENT_BUILD_HOST=OFF
 cmake --build build-core -j
 ctest --test-dir build-core --output-on-failure
+```
+
+Or:
+
+```bash
+tools/verify.sh --core-only
 ```
 
 This builds `agent_core` and `agent_core_tests`, but skips `agent_host`, `agent`, `agentd`, and host/network smokes.
