@@ -14,6 +14,8 @@
 #include "job_endpoints.h"
 #include "run_endpoints.h"
 
+#include "agent_db.h"
+
 #include "openai_client.h"
 
 #include "job_manager.h"
@@ -131,6 +133,14 @@ int main(int argc, char** argv) {
         std::cerr << "Missing value for --proxy\n";
         return 2;
       }
+    } else if (a == "--db-path") {
+      if (!take(&cfg.db_path)) {
+        std::cerr << "Missing value for --db-path\n";
+        return 2;
+      }
+    } else if (a == "--no-db") {
+      cfg.db_path.clear();
+      cfg.db_disabled = true;
     } else if (a == "--timeout-ms") {
       std::string v;
       if (!take(&v)) {
@@ -255,6 +265,8 @@ int main(int argc, char** argv) {
         << "  --base-url <url>     Default base url\n"
         << "  --api-key <key>      Default API key (else env)\n"
         << "  --proxy <url>        Optional HTTP proxy override (else env HTTPS_PROXY/http_proxy)\n"
+        << "  --db-path <path>     Optional SQLite DB path (troubleshooting mirror; default: disabled)\n"
+        << "  --no-db              Disable DB mirror even if AGENTD_DB_PATH is set\n"
         << "  --timeout-ms <n>     Provider HTTP timeout in ms (default: 60000)\n"
         << "  --job-ttl-ms <n>     GC finished jobs older than n ms (default: 1800000)\n"
         << "  --max-jobs <n>       Keep at most n jobs in memory (default: 256)\n"
@@ -330,6 +342,13 @@ int main(int argc, char** argv) {
       cfg.auth_token = t;
     }
   }
+  if (cfg.db_path.empty()) {
+    if (!cfg.db_disabled) {
+      if (const char* p = getenv_s("AGENTD_DB_PATH")) {
+      cfg.db_path = p;
+      }
+    }
+  }
 
   OpenAIClientConfig ocfg;
   ocfg.base_url = cfg.base_url;
@@ -342,6 +361,18 @@ int main(int argc, char** argv) {
   }
   if (const char* t = getenv_s("OPENROUTER_X_TITLE")) {
     ocfg.openrouter_x_title = t;
+  }
+
+  AgentDb db;
+  AgentDb* db_or_null = nullptr;
+  if (!cfg.db_path.empty()) {
+    std::string db_err;
+    if (!db.open(cfg.db_path, &db_err)) {
+      std::cerr << "Failed to open agentd DB: " << db_err << "\n";
+      std::cerr << "db_path=" << cfg.db_path << "\n";
+      return 1;
+    }
+    db_or_null = &db;
   }
 
   HttpServer server;
@@ -407,16 +438,16 @@ int main(int argc, char** argv) {
   });
 
   server.handle("DELETE", "/api/v1/session", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_session_delete_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
+    handle_session_delete_endpoint(cfg, cors_cfg, db_or_null, sessions_root_dir, req, resp);
   });
 
   server.handle("POST", "/api/v1/run", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_run_endpoint(cfg, ocfg, cors_cfg, sessions_root_dir, req, resp);
+    handle_run_endpoint(cfg, ocfg, cors_cfg, db_or_null, sessions_root_dir, req, resp);
   });
 
   // Async run: returns a job id immediately and completes in the background.
   server.handle("POST", "/api/v1/run_async", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_run_async_endpoint(cfg, ocfg, cors_cfg, sessions_root_dir, req, resp);
+    handle_run_async_endpoint(cfg, ocfg, cors_cfg, db_or_null, sessions_root_dir, req, resp);
   });
 
   server.handle("GET", "/api/v1/job", [&](const HttpRequest& req, HttpResponse* resp) {

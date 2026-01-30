@@ -169,6 +169,7 @@ void handle_session_audit_endpoint(
 void handle_session_delete_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
   const std::string& sessions_root_dir,
   const HttpRequest& req,
   HttpResponse* resp
@@ -198,8 +199,14 @@ void handle_session_delete_endpoint(
     out["error"] = "failed to delete session";
     out["status"] = (Json::Int64)st;
   }
+
+  // Best-effort DB mirror cleanup (only if DB is enabled).
+  if (db_or_null && db_or_null->is_open()) {
+    std::string db_err;
+    (void)db_or_null->delete_session(*sid, &db_err);
+  }
+
   resp->body = json_stringify(out);
 }
 
 }  // namespace agentd
-

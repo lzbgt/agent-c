@@ -24,6 +24,10 @@ struct DaemonConfig {
   size_t summary_max_chars = 1200;
   std::string proxy_url; // optional explicit proxy override (else env)
   long timeout_ms = 60000;
+  // Optional troubleshooting DB mirror (SQLite). When set, agentd mirrors sessions/runs/events into this DB.
+  // Empty means disabled.
+  std::string db_path;
+  bool db_disabled = false; // set by --no-db to ignore AGENTD_DB_PATH
   std::string tools = "host";     // none|basic|host
   std::string tools_root = "";    // empty => CWD (unrestricted file edits)
   std::string host_scope_root;    // default: daemon process CWD (for "@host" tool root mode)
@@ -49,4 +53,3 @@ struct DaemonConfig {
 };
 
 }  // namespace agentd
-

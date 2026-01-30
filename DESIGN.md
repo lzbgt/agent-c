@@ -378,6 +378,7 @@ Tool transcript persistence (host-only, day-1 pragmatic choice):
   like `tool_call_id` and structured `tool` role messages.
 - For host apps, the correct place to store full tool timelines is a **per-session audit log** (JSONL):
   - CLI/daemon write per-run audit records to `~/.agent/sessions/<session>.events.jsonl`
+  - Optional (agentd): mirror sessions/runs/events into an SQLite DB for queryable troubleshooting (`docs/DB.md`)
   - Each record includes the prompt, final assistant text, and the structured `events` timeline (tool calls/results, LLM I/O).
 - Session **messages** are kept clean (user/assistant content only), so future turns are not polluted by verbose tool output.
   This reduces token usage and avoids context blowups when switching between `tools=host` and `tools=none`.

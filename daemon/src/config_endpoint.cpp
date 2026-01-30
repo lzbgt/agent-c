@@ -22,6 +22,11 @@ void handle_config_endpoint(
   out["service"] = "agentd";
   out["version"] = "0.1";
   out["have_jsoncpp"] = true;
+#if defined(AGENT_HAVE_SQLITE3)
+  out["have_sqlite3"] = true;
+#else
+  out["have_sqlite3"] = false;
+#endif
 
   Json::Value daemon(Json::objectValue);
   daemon["listen_host"] = cfg.listen_host;
@@ -35,6 +40,7 @@ void handle_config_endpoint(
   daemon["api_key_set"] = !cfg.api_key.empty();
   daemon["auth_enabled"] = !cfg.auth_token.empty();
   daemon["allow_unauthenticated_non_loopback"] = cfg.allow_unauthenticated_non_loopback;
+  daemon["db_path"] = cfg.db_path.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.db_path);
   out["daemon"] = daemon;
 
   Json::Value cors(Json::objectValue);

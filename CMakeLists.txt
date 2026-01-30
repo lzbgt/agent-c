@@ -33,6 +33,14 @@ if(PKG_CONFIG_FOUND)
   endif()
 endif()
 
+set(AGENT_ENABLE_SQLITE3 OFF)
+if(PKG_CONFIG_FOUND)
+  pkg_check_modules(SQLITE3 sqlite3)
+  if(SQLITE3_FOUND)
+    set(AGENT_ENABLE_SQLITE3 ON)
+  endif()
+endif()
+
 target_compile_options(agent_core PRIVATE
   $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wpedantic>
 )
@@ -93,6 +101,7 @@ if(AGENT_BUILD_HOST)
 
   add_executable(agentd
     daemon/src/main.cpp
+    daemon/src/agent_db.cpp
     daemon/src/config_endpoint.cpp
     daemon/src/cors.cpp
     daemon/src/daemon_auth.cpp
@@ -117,6 +126,13 @@ if(AGENT_BUILD_HOST)
   )
 
   target_link_libraries(agentd PRIVATE agent_host)
+
+  if(AGENT_ENABLE_SQLITE3)
+    target_include_directories(agentd PRIVATE ${SQLITE3_INCLUDE_DIRS})
+    target_link_directories(agentd PRIVATE ${SQLITE3_LIBRARY_DIRS})
+    target_link_libraries(agentd PRIVATE ${SQLITE3_LIBRARIES})
+    target_compile_definitions(agentd PRIVATE AGENT_HAVE_SQLITE3=1)
+  endif()
 endif()
 
 enable_testing()
@@ -169,6 +185,10 @@ if(AGENT_BUILD_HOST)
   add_test(NAME agentd_local_stream_assistant_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_local_stream_assistant_smoke.sh $<TARGET_FILE:agentd>)
 
   add_test(NAME agentd_local_stream_tool_loop_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_local_stream_tool_loop_smoke.sh $<TARGET_FILE:agentd>)
+
+  if(AGENT_ENABLE_SQLITE3)
+    add_test(NAME agentd_db_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_smoke.sh $<TARGET_FILE:agentd>)
+  endif()
 
   add_test(
     NAME agentd_non_loopback_auth_guard_smoke
@@ -294,6 +314,18 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
   )
   target_link_libraries(openai_stream_decoder_tests PRIVATE agent_host)
   add_test(NAME openai_stream_decoder_tests COMMAND openai_stream_decoder_tests)
+
+  if(AGENT_ENABLE_SQLITE3)
+    add_executable(agent_db_tests
+      tests/test_agent_db.cpp
+      daemon/src/agent_db.cpp
+    )
+    target_include_directories(agent_db_tests PRIVATE daemon/src ${SQLITE3_INCLUDE_DIRS})
+    target_link_directories(agent_db_tests PRIVATE ${SQLITE3_LIBRARY_DIRS})
+    target_link_libraries(agent_db_tests PRIVATE ${SQLITE3_LIBRARIES})
+    target_compile_definitions(agent_db_tests PRIVATE AGENT_HAVE_SQLITE3=1)
+    add_test(NAME agent_db_tests COMMAND agent_db_tests)
+  endif()
 endif()
 
 if(AGENT_BUILD_HOST)

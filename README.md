@@ -312,6 +312,14 @@ Proxy override:
 ./build/agentd --host 127.0.0.1 --port 8123 --proxy http://localhost:8120
 ```
 
+Troubleshooting DB (optional, SQLite):
+
+```bash
+./build/agentd --host 127.0.0.1 --port 8123 --db-path "$HOME/.agent/agentd.sqlite"
+```
+
+The DB mirror stores sessions, runs, events, and tool records for queryable troubleshooting. See `docs/DB.md`.
+
 Health check:
 
 ```bash

@@ -42,6 +42,7 @@ namespace {
 static Json::Value run_request_to_json(
   const DaemonConfig& daemon_cfg,
   const OpenAIClientConfig& ocfg,
+  AgentDb* db_or_null,
   const std::string& sessions_root_dir,
   const std::string& request_body,
   const char* job_id_or_null
@@ -143,6 +144,7 @@ static Json::Value run_request_to_json(
   const std::string session_id = args.isMember("session_id") && args["session_id"].isString() ? args["session_id"].asString() : "default";
   const bool no_session = args.isMember("no_session") && args["no_session"].isBool() ? args["no_session"].asBool() : false;
   std::string job_id_local = (job_id_or_null && job_id_or_null[0]) ? std::string(job_id_or_null) : std::string();
+  const int64_t run_ts_ms = now_unix_ms();
 
   agent_session_t* session = nullptr;
   SessionStoreConfig store_cfg;
@@ -256,6 +258,7 @@ static Json::Value run_request_to_json(
   std::ostringstream trace_buf;
   std::ostream* trace_stream = trace ? &trace_buf : nullptr;
   Json::Value events_out;
+  ToolLoopResult tool_loop_result;
 
   std::atomic<bool> heartbeat_stop{false};
   std::atomic<int64_t> heartbeat_last_any_event_ms{now_unix_ms()};
@@ -313,9 +316,10 @@ static Json::Value run_request_to_json(
       opt.should_cancel_ctx = (void*)&job_id_local;
     }
 
-    ToolLoopResult r;
     try {
-      ok = run_tool_loop(run_cfg, session, prompt, registry, &executor, opt, trace_stream, &r, &err, &http_status, &http_body);
+      ok = run_tool_loop(
+        run_cfg, session, prompt, registry, &executor, opt, trace_stream, &tool_loop_result, &err, &http_status, &http_body
+      );
     } catch (const std::exception& e) {
       ok = false;
       err = std::string("tool loop threw exception: ") + e.what();
@@ -323,11 +327,11 @@ static Json::Value run_request_to_json(
       ok = false;
       err = "tool loop threw unknown exception";
     }
-    assistant_text = r.final_assistant_text;
-    if (!r.events_json.empty()) {
+    assistant_text = tool_loop_result.final_assistant_text;
+    if (!tool_loop_result.events_json.empty()) {
       Json::CharReaderBuilder rb;
       std::string errs;
-      std::istringstream iss(r.events_json);
+      std::istringstream iss(tool_loop_result.events_json);
       Json::Value ev;
       if (Json::parseFromStream(rb, iss, &ev, &errs) && ev.isArray()) {
         events_out = ev;
@@ -712,10 +716,67 @@ static Json::Value run_request_to_json(
     (void)persistor.save(persistor.ctx, session_id.c_str(), session);
   }
 
+  // Optional DB mirror for troubleshooting.
+  //
+  // Respect `no_session`: "ephemeral" runs should not persist anything to disk, including the DB mirror.
+  if (!no_session && db_or_null && db_or_null->is_open()) {
+    // Mirror session messages (as of the end of this run).
+    std::vector<std::pair<std::string, std::string>> msgs;
+    msgs.reserve(agent_session_message_count(session));
+    for (size_t i = 0; i < agent_session_message_count(session); i++) {
+      agent_message_view_t v{};
+      if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
+      msgs.emplace_back(agent_role_to_string(v.role), std::string(v.content, v.content_len));
+    }
+    (void)db_or_null->replace_session_messages(session_id, msgs, run_ts_ms, nullptr);
+
+    AgentDb::RunRow rr;
+    rr.session_id = session_id;
+    rr.job_id = job_id_local;
+    rr.ts_unix_ms = run_ts_ms;
+    rr.prompt = prompt;
+    rr.tools = tools;
+    rr.model = run_cfg.model;
+    rr.base_url = run_cfg.base_url;
+    rr.stream_assistant = stream_assistant;
+    rr.ok = ok;
+    rr.error = err;
+    rr.http_status = http_status;
+    rr.http_body = http_body;
+
+    int64_t run_id = 0;
+    if (db_or_null->insert_run(rr, &run_id, nullptr) && run_id > 0) {
+      Json::StreamWriterBuilder wb;
+      wb["indentation"] = "";
+      if (events_out.isArray()) {
+        for (const auto& ev : events_out) {
+          if (!ev.isObject()) continue;
+          const auto& t = ev["type"];
+          const auto& d = ev["data"];
+          if (!t.isString() || !d.isObject()) continue;
+          (void)db_or_null->insert_event(run_id, run_ts_ms, t.asString(), Json::writeString(wb, d), nullptr);
+        }
+      }
+      if (use_tool_loop && !tool_loop_result.tool_records.empty()) {
+        for (const auto& tr : tool_loop_result.tool_records) {
+          AgentDb::ToolRecordRow trr;
+          trr.run_id = run_id;
+          trr.tool_name = tr.tool_name;
+          trr.tool_call_id = tr.tool_call_id;
+          trr.arguments_json = tr.arguments_json;
+          trr.result_text = tr.result_string;
+          trr.result_for_prompt_text = tr.result_string_for_prompt;
+          trr.result_truncated_for_prompt = tr.result_truncated_for_prompt;
+          (void)db_or_null->insert_tool_record(trr, nullptr);
+        }
+      }
+    }
+  }
+
   // Append a per-run audit record (host-only; used by `/api/v1/session/audit`).
   if (!no_session && !session_id.empty()) {
     Json::Value record(Json::objectValue);
-    record["ts_unix_ms"] = (Json::Int64)now_unix_ms();
+    record["ts_unix_ms"] = (Json::Int64)run_ts_ms;
     record["session_id"] = session_id;
     record["ok"] = ok;
     record["model"] = run_cfg.model;
@@ -747,6 +808,7 @@ void handle_run_endpoint(
   const DaemonConfig& cfg,
   const OpenAIClientConfig& ocfg,
   const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
   const std::string& sessions_root_dir,
   const HttpRequest& req,
   HttpResponse* resp
@@ -757,7 +819,7 @@ void handle_run_endpoint(
 
   const auto started = std::chrono::steady_clock::now();
   std::cerr << "agentd: /api/v1/run start bytes=" << req.body.size() << "\n";
-  Json::Value out = run_request_to_json(cfg, ocfg, sessions_root_dir, req.body, nullptr);
+  Json::Value out = run_request_to_json(cfg, ocfg, db_or_null, sessions_root_dir, req.body, nullptr);
   const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
   const bool ok = out.isObject() && out.isMember("ok") && out["ok"].isBool() && out["ok"].asBool();
   std::cerr << "agentd: /api/v1/run done ok=" << (ok ? "true" : "false") << " ms=" << ms << "\n";
@@ -771,6 +833,7 @@ void handle_run_async_endpoint(
   const DaemonConfig& cfg,
   const OpenAIClientConfig& ocfg,
   const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
   const std::string& sessions_root_dir,
   const HttpRequest& req,
   HttpResponse* resp
@@ -821,7 +884,7 @@ void handle_run_async_endpoint(
   std::cerr << "agentd: /api/v1/run_async accepted job=" << job_id << " bytes=" << req.body.size() << "\n";
 
   const std::string body_copy = req.body;
-  std::thread([job_id, body_copy, cfg, ocfg, sessions_root_dir]() mutable {
+  std::thread([job_id, body_copy, cfg, ocfg, db_or_null, sessions_root_dir]() mutable {
     const auto started = std::chrono::steady_clock::now();
     std::cerr << "agentd: /api/v1/run_async job=" << job_id << " start bytes=" << body_copy.size() << "\n";
     job_set_status(job_id, "running", "");
@@ -836,7 +899,7 @@ void handle_run_async_endpoint(
       job_append_event(job_id, "start", json_stringify(d));
     }
     try {
-      Json::Value out = run_request_to_json(cfg, ocfg, sessions_root_dir, body_copy, job_id.c_str());
+      Json::Value out = run_request_to_json(cfg, ocfg, db_or_null, sessions_root_dir, body_copy, job_id.c_str());
       job_set_result(job_id, out);
     } catch (const std::exception& e) {
       Json::Value o(Json::objectValue);

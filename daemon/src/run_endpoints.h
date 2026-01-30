@@ -4,6 +4,7 @@
 #include "daemon_config.h"
 #include "http_server.h"
 #include "openai_client.h"
+#include "agent_db.h"
 
 #include <string>
 
@@ -13,6 +14,7 @@ void handle_run_endpoint(
   const DaemonConfig& cfg,
   const OpenAIClientConfig& ocfg,
   const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
   const std::string& sessions_root_dir,
   const HttpRequest& req,
   HttpResponse* resp
@@ -22,10 +24,10 @@ void handle_run_async_endpoint(
   const DaemonConfig& cfg,
   const OpenAIClientConfig& ocfg,
   const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
   const std::string& sessions_root_dir,
   const HttpRequest& req,
   HttpResponse* resp
 );
 
 }  // namespace agentd
-

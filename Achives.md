@@ -228,6 +228,10 @@ Completed milestones and notable tasks.
   - added a small unit test target `openai_stream_decoder_tests` (`tests/test_openai_stream_decoder.cpp`)
 - Expanded streaming tool-call compatibility:
   - support legacy streamed `delta.function_call` (in addition to `delta.tool_calls`) and cover it in unit tests (`tests/test_openai_tool_provider_stream.cpp`)
+- Added an optional SQLite troubleshooting DB mirror for agentd:
+  - daemon flag `--db-path` / env `AGENTD_DB_PATH` enables a local SQLite file storing sessions, runs, events, and tool records
+  - per-run writes are bounded and intended for queryable troubleshooting (see `docs/DB.md`)
+  - added `agentd_db_smoke` + `agent_db_tests` to prevent regressions
 - Improved UI live streaming when daemon auth is enabled:
   - UI uses a fetch-based SSE reader (so it can send `Authorization: Bearer ...`) instead of `EventSource`
   - added a non-network smoke test `tests/agentd_sse_auth_smoke.sh` using a local OpenAI stub server
