@@ -85,6 +85,34 @@ struct DaemonConfig {
   size_t max_jobs = 256;
 };
 
+static const char* host_policy_to_string(HostToolsetPolicyMode p) {
+  return (p == HostToolsetPolicyMode::ReadOnly) ? "readonly" : "full";
+}
+
+static bool host_policy_from_string(const std::string& s, HostToolsetPolicyMode* out) {
+  if (!out) return false;
+  if (s == "full") {
+    *out = HostToolsetPolicyMode::Full;
+    return true;
+  }
+  if (s == "readonly") {
+    *out = HostToolsetPolicyMode::ReadOnly;
+    return true;
+  }
+  return false;
+}
+
+// Policy tightening: a request can only *reduce* capabilities compared to the daemon default.
+static HostToolsetPolicyMode tighten_host_policy(HostToolsetPolicyMode base, HostToolsetPolicyMode requested) {
+  if (base == HostToolsetPolicyMode::ReadOnly) {
+    return HostToolsetPolicyMode::ReadOnly;
+  }
+  if (requested == HostToolsetPolicyMode::ReadOnly) {
+    return HostToolsetPolicyMode::ReadOnly;
+  }
+  return HostToolsetPolicyMode::Full;
+}
+
 static bool daemon_auth_ok(const DaemonConfig& cfg, const HttpRequest& req) {
   if (cfg.auth_token.empty()) {
     return true;
@@ -149,6 +177,20 @@ static Json::Value run_request_to_json(
     args.isMember("no_default_system") && args["no_default_system"].isBool() ? args["no_default_system"].asBool() : daemon_cfg.no_default_system;
   const std::string system_msg = args.isMember("system") && args["system"].isString() ? args["system"].asString() : "";
   std::string tools_root = args.isMember("tools_root") && args["tools_root"].isString() ? args["tools_root"].asString() : daemon_cfg.tools_root;
+  HostToolsetPolicyMode requested_policy = daemon_cfg.host_policy;
+  if (args.isMember("host_policy") && args["host_policy"].isString()) {
+    HostToolsetPolicyMode p{};
+    const std::string s = args["host_policy"].asString();
+    if (!host_policy_from_string(s, &p)) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["rpc_status"] = 400;
+      o["error"] = "invalid host_policy (expected: full|readonly)";
+      return o;
+    }
+    requested_policy = p;
+  }
+  const HostToolsetPolicyMode effective_policy = tighten_host_policy(daemon_cfg.host_policy, requested_policy);
   if (tools_root == "@host") {
     tools_root = daemon_cfg.host_scope_root;
   } else if (tools_root == "@cwd") {
@@ -256,7 +298,7 @@ static Json::Value run_request_to_json(
   } else if (tools == "host") {
     HostToolsetConfig hcfg;
     hcfg.root_dir = tools_root;
-    hcfg.policy = daemon_cfg.host_policy;
+    hcfg.policy = effective_policy;
     if (!job_id_local.empty()) {
       // Cooperative cancellation for long-running host tools (sleep/build/etc).
       hcfg.should_cancel = [](void* vctx) -> bool {
@@ -777,7 +819,7 @@ static Json::Value run_request_to_json(
   out["trace_text"] = trace_buf.str();
   out["effective_tools_root"] = tools_root;
   out["effective_yolo"] = yolo;
-  out["effective_host_policy"] = (daemon_cfg.host_policy == HostToolsetPolicyMode::ReadOnly) ? "readonly" : "full";
+  out["effective_host_policy"] = host_policy_to_string(effective_policy);
   out["effective_timeout_ms"] = (Json::Int64)run_cfg.timeout_ms;
   out["effective_stream_assistant"] = stream_assistant;
   out["verbose"] = verbose;
@@ -795,7 +837,7 @@ static Json::Value run_request_to_json(
     record["tools"] = tools;
     record["yolo"] = yolo;
     record["tools_root"] = tools_root;
-    record["host_policy"] = (daemon_cfg.host_policy == HostToolsetPolicyMode::ReadOnly) ? "readonly" : "full";
+    record["host_policy"] = host_policy_to_string(effective_policy);
     record["prompt"] = prompt;
     record["assistant_text"] = assistant_text;
     record["http_status"] = (Json::Int64)http_status;
@@ -1088,6 +1130,17 @@ int main(int argc, char** argv) {
     if (const auto q = query_get(req.query, "yolo"); q) {
       yolo = string_to_bool(*q);
     }
+    HostToolsetPolicyMode requested_policy = cfg.host_policy;
+    if (const auto q = query_get(req.query, "host_policy"); q && !q->empty()) {
+      HostToolsetPolicyMode p{};
+      if (!host_policy_from_string(*q, &p)) {
+        resp->status = 400;
+        resp->body = "{\"ok\":false,\"error\":\"invalid host_policy (expected: full|readonly)\"}";
+        return;
+      }
+      requested_policy = p;
+    }
+    const HostToolsetPolicyMode effective_policy = tighten_host_policy(cfg.host_policy, requested_policy);
 
     if (tools_root == "@host") {
       tools_root = cfg.host_scope_root;
@@ -1103,7 +1156,7 @@ int main(int argc, char** argv) {
     out["tools"] = tools;
     out["effective_tools_root"] = tools_root;
     out["effective_yolo"] = yolo;
-    out["effective_host_policy"] = (cfg.host_policy == HostToolsetPolicyMode::ReadOnly) ? "readonly" : "full";
+    out["effective_host_policy"] = host_policy_to_string(effective_policy);
 
     agent_tool_registry_t* registry = nullptr;
     agent_tool_executor_t executor{};
@@ -1124,7 +1177,7 @@ int main(int argc, char** argv) {
     } else if (tools == "host") {
       HostToolsetConfig hcfg;
       hcfg.root_dir = tools_root;
-      hcfg.policy = cfg.host_policy;
+      hcfg.policy = effective_policy;
       if (toolset_host_create(hcfg, &registry, &executor) != AGENT_OK) {
         resp->status = 500;
         resp->body = R"({"ok":false,"error":"failed to init toolset_host"})";

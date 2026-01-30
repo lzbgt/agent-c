@@ -32,6 +32,7 @@ export const RunRequestSchema = z.object({
   max_capture_bytes: z.number().int().nonnegative().optional(),
   tools: z.enum(["host", "basic", "none"]).optional(),
   tools_root: z.string().optional(),
+  host_policy: z.enum(["full", "readonly"]).optional(),
   max_steps: z.number().int().nonnegative().optional(),
   max_chars: z.number().int().nonnegative().optional(),
   keep_last: z.number().int().nonnegative().optional(),
@@ -56,6 +57,7 @@ export const RunResponseSchema = z.object({
   trace_text: z.string().optional(),
   effective_tools_root: z.string().optional(),
   effective_yolo: z.boolean().optional(),
+  effective_host_policy: z.enum(["full", "readonly"]).optional(),
   effective_timeout_ms: z.number().optional(),
   effective_stream_assistant: z.boolean().optional(),
   verbose: z.boolean().optional(),
@@ -68,6 +70,7 @@ export const ToolDefsRespSchema = z.object({
   tools: z.string().optional(),
   effective_tools_root: z.string().optional(),
   effective_yolo: z.boolean().optional(),
+  effective_host_policy: z.enum(["full", "readonly"]).optional(),
   count: z.number().optional(),
   defs: z
     .array(
@@ -85,12 +88,13 @@ export type ToolDefsResp = z.infer<typeof ToolDefsRespSchema>;
 export async function apiGetTools(
   base: string,
   authToken?: string,
-  opts?: { tools?: "host" | "basic" | "none"; toolsRoot?: string; yolo?: boolean },
+  opts?: { tools?: "host" | "basic" | "none"; toolsRoot?: string; yolo?: boolean; hostPolicy?: "full" | "readonly" },
 ): Promise<ToolDefsResp> {
   const q = new URLSearchParams();
   if (opts?.tools) q.set("tools", opts.tools);
   if (typeof opts?.toolsRoot === "string") q.set("tools_root", opts.toolsRoot);
   if (typeof opts?.yolo === "boolean") q.set("yolo", opts.yolo ? "1" : "0");
+  if (opts?.hostPolicy) q.set("host_policy", opts.hostPolicy);
   const r = await fetch(`${base}/api/v1/tools?${q.toString()}`, { headers: daemonHeaders(authToken) });
   const j = await r.json();
   return ToolDefsRespSchema.parse(j);

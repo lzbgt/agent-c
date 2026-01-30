@@ -38,6 +38,7 @@ export default function App() {
   const [tools, setTools] = useLocalStorageState<"host" | "basic" | "none">("agentui.tools", "host");
   const [toolsRoot, setToolsRoot] = useLocalStorageState("agentui.toolsRoot", ".");
   const [yolo, setYolo] = useLocalStorageState("agentui.yolo", true);
+  const [hostPolicy, setHostPolicy] = useLocalStorageState<"full" | "readonly">("agentui.hostPolicy", "full");
   const [verbose, setVerbose] = useLocalStorageState("agentui.verbose", false);
   const [model, setModel] = useLocalStorageState("agentui.model", "deepseek-chat");
   const [summaryModel, setSummaryModel] = useLocalStorageState("agentui.summaryModel", "");
@@ -96,8 +97,9 @@ export default function App() {
   });
 
   const toolsDefs = useQuery({
-    queryKey: ["tools", effectiveBase, daemonAuthToken, tools, toolsRoot, yolo],
-    queryFn: () => apiGetTools(effectiveBase, daemonAuthToken, { tools, toolsRoot, yolo }),
+    queryKey: ["tools", effectiveBase, daemonAuthToken, tools, toolsRoot, yolo, hostPolicy],
+    queryFn: () =>
+      apiGetTools(effectiveBase, daemonAuthToken, { tools, toolsRoot, yolo, hostPolicy: tools === "host" ? hostPolicy : undefined }),
     retry: 1,
   });
 
@@ -119,6 +121,7 @@ export default function App() {
         no_session: false,
         tools,
         tools_root: toolsRoot,
+        host_policy: tools === "host" ? hostPolicy : undefined,
         yolo,
         verbose,
         model: model || undefined,
@@ -515,6 +518,24 @@ export default function App() {
                   <option value="basic">basic</option>
                   <option value="none">none</option>
                 </select>
+              </div>
+              <div>
+                <Label>Host policy</Label>
+                <select
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={hostPolicy}
+                  onChange={(e) => setHostPolicy(e.target.value as any)}
+                  disabled={tools !== "host"}
+                  title={tools !== "host" ? "Only applies when tools=host" : undefined}
+                >
+                  <option value="full">full</option>
+                  <option value="readonly">readonly</option>
+                </select>
+                {toolsDefs.data?.effective_host_policy ? (
+                  <div className="mt-1 text-[11px] text-white/40">
+                    effective: <code>{toolsDefs.data.effective_host_policy}</code>
+                  </div>
+                ) : null}
               </div>
               <div>
                 <Label>Tools root</Label>

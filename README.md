@@ -241,6 +241,7 @@ YOLO vs host-scoped tools:
 - For safer deployments, `agentd` supports `--host-policy full|readonly`:
   - `full`: enables process exec + patch application + filesystem inspection (`shell_exec`, `proc_exec`, `file_apply_patch`, `fs_*`, `text_search`)
   - `readonly`: disables process exec and patch application (keeps only `fs_*` + `text_search`)
+  - Requests can also pass `host_policy: "readonly"` to *tighten* permissions for that run (cannot expand beyond daemon default).
 
 Verbose inspection:
 - Pass `verbose: true` to `POST /api/v1/run` to return a structured `events` log suitable for UIs
@@ -255,7 +256,7 @@ Assistant streaming (provider-dependent):
   The daemon will emit `assistant_delta` events during the run so the UI doesn’t look stuck.
 
 Tool schema introspection (extensible tools):
-- `GET /api/v1/tools?tools=host|basic|none&tools_root=@host|@cwd|...&yolo=0|1` returns the tool registry the daemon will expose:
+- `GET /api/v1/tools?tools=host|basic|none&tools_root=@host|@cwd|...&yolo=0|1&host_policy=full|readonly` returns the tool registry the daemon will expose:
   `name`, `description`, `parameters_json` (OpenAI-compatible JSON Schema).
 - Tool exposure is also constrained by the daemon's `--host-policy` (response includes `effective_host_policy`).
 - This is intended for “day-1 rich UI” features (rendering tool info, validating tool-call args) and for future clients.
