@@ -26,5 +26,8 @@ const char* default_host_system_prompt() {
     "- Tool success is not just exit code; judge using tool output content.\n"
     "\n"
     "Artifacts (UI/media):\n"
-    "- If you create or reference a host file meant for the user to view/listen (image/audio/video), call artifact_register so the Web UI can render it explicitly.\n";
+    "- If you create or reference a host file meant for the user to view/listen (image/audio/video), call artifact_register so the Web UI can render it explicitly.\n"
+    "- To request a UI-side action (like a notification or playing an audio artifact), call ui_action.\n"
+    "- If you need to wait for a user/UI acknowledgement within the same run (e.g. audio finished playing), call ui_wait_event instead of repeating the same action in a loop.\n"
+    "- For camera input, prefer the single-shot camera_capture tool over repeated proc_exec capture scripts.\n";
 }

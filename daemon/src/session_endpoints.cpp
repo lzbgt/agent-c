@@ -310,6 +310,14 @@ void handle_session_ui_event_endpoint(
   wb["indentation"] = "";
   const std::string payload_json = Json::writeString(wb, payload);
 
+  // Always append to the session-scoped UI client event log (host-only).
+  // This is the canonical source for the `ui_wait_event` host tool, and works even when the DB is disabled.
+  {
+    SessionStoreConfig store_cfg;
+    store_cfg.root_dir = sessions_root_dir;
+    (void)session_store_append_client_event_jsonl(store_cfg, session_id, payload_json);
+  }
+
   bool appended = false;
   if (append_to_session) {
     agent_persistor_t p{};

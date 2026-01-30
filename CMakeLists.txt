@@ -70,6 +70,7 @@ if(AGENT_BUILD_HOST)
     cli/src/toolset_host.cpp
     cli/src/toolset_host_artifacts.cpp
     cli/src/toolset_host_exec.cpp
+    cli/src/toolset_host_ui_wait_event.cpp
   )
 
   target_compile_options(agent_host PRIVATE
@@ -185,6 +186,8 @@ if(AGENT_BUILD_HOST)
   add_test(NAME agentd_artifact_protocol_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_artifact_protocol_smoke.sh $<TARGET_FILE:agentd>)
 
   add_test(NAME agentd_ui_action_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_ui_action_smoke.sh $<TARGET_FILE:agentd>)
+
+  add_test(NAME agentd_ui_wait_event_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_ui_wait_event_smoke.sh $<TARGET_FILE:agentd>)
 
   add_test(NAME agentd_camera_capture_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_camera_capture_smoke.sh $<TARGET_FILE:agentd>)
 

@@ -51,7 +51,7 @@ export default function ArtifactView({
   const lastPlayRequestRef = React.useRef<{ n: number; autoplay: boolean; started_ms: number } | null>(null);
 
   const postUiEvent = React.useCallback(
-    async (etype: string, data?: any) => {
+    async (etype: string, data?: any, appendToSession?: boolean) => {
       const sid = typeof sessionId === "string" ? sessionId.trim() : "";
       if (sid.length === 0) return;
       try {
@@ -61,7 +61,7 @@ export default function ArtifactView({
             session_id: sid,
             type: etype,
             data: data ?? {},
-            append_to_session: true,
+            append_to_session: typeof appendToSession === "boolean" ? appendToSession : false,
           },
           daemonAuthToken,
         );
@@ -82,11 +82,11 @@ export default function ArtifactView({
       try {
         el.currentTime = 0;
         await el.play();
-        void postUiEvent("audio_play_started", { path, title, repeat_requested: playRemainingRef.current, autoplay });
+        void postUiEvent("audio_play_started", { path, title, repeat_requested: playRemainingRef.current, autoplay }, false);
       } catch (e) {
         playRemainingRef.current = 0;
         setPlayError(String(e));
-        void postUiEvent("audio_play_failed", { path, title, error: String(e), autoplay });
+        void postUiEvent("audio_play_failed", { path, title, error: String(e), autoplay }, false);
       }
     },
     [audioRef, autoplay, path, postUiEvent, title],
@@ -100,14 +100,18 @@ export default function ArtifactView({
         const last = lastPlayRequestRef.current;
         lastPlayRequestRef.current = null;
         playRemainingRef.current = 0;
-        void postUiEvent("audio_play_finished", {
+        void postUiEvent(
+          "audio_play_finished",
+          {
           path,
           title,
           repeat_requested: last?.n ?? 1,
           autoplay: last?.autoplay ?? false,
           started_ms: last?.started_ms ?? 0,
           finished_ms: Date.now(),
-        });
+          },
+          false,
+        );
         return;
       }
       playRemainingRef.current -= 1;
@@ -115,7 +119,7 @@ export default function ArtifactView({
       void el.play().catch((e) => {
         playRemainingRef.current = 0;
         setPlayError(String(e));
-        void postUiEvent("audio_play_failed", { path, title, error: String(e), autoplay });
+        void postUiEvent("audio_play_failed", { path, title, error: String(e), autoplay }, false);
       });
     };
     el.addEventListener("ended", onEnded);

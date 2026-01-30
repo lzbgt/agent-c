@@ -51,6 +51,14 @@ When `--db-path` is enabled, the daemon mirrors client events into:
 
 This keeps UI events queryable even when `.sess` compaction collapses older text messages.
 
+## File-backed log (always enabled)
+
+Regardless of DB settings, agentd appends every UI client event as a JSONL line to:
+- `<sessions_root>/<session_id>.client_events.jsonl`
+
+This file is the canonical source for the host tool `ui_wait_event` (see `docs/UI_WAIT_EVENT.md`), so tool-loop runs can
+wait for UI acknowledgements even when the SQLite DB is disabled.
+
 Query endpoint:
 - `GET /api/v1/db/client_events?session_id=...&limit=...&offset=...`
 
@@ -64,4 +72,3 @@ This is intentionally open-ended, but common initial types:
 - `artifact_viewed`
 
 The daemon does not enforce an allowlist for types; UIs should keep payloads small.
-

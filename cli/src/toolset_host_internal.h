@@ -136,6 +136,10 @@ struct HostToolCtx {
   HostToolsetPolicyMode policy = HostToolsetPolicyMode::Full;
   HostCancelCallback should_cancel = nullptr;
   void* should_cancel_ctx = nullptr;
+  // Optional session context (daemon runs). When set, tools like `ui_wait_event`
+  // can read session-scoped UI client events.
+  std::filesystem::path sessions_root_dir;
+  std::string session_id;
   GitignoreCache gitignore;
 };
 
@@ -152,5 +156,6 @@ agent_status_t tool_file_apply_patch(HostToolCtx* ctx, const char* arguments_jso
 agent_status_t tool_artifact_register(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 agent_status_t tool_ui_action(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 agent_status_t tool_camera_capture(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
+agent_status_t tool_ui_wait_event(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 
 } // namespace host_tools_internal

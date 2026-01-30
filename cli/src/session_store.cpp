@@ -37,6 +37,10 @@ static std::filesystem::path session_audit_path(const SessionStoreConfig& cfg, c
   return std::filesystem::path(cfg.root_dir) / (session_id + ".events.jsonl");
 }
 
+static std::filesystem::path session_client_events_path(const SessionStoreConfig& cfg, const std::string& session_id) {
+  return std::filesystem::path(cfg.root_dir) / (session_id + ".client_events.jsonl");
+}
+
 static agent_status_t ensure_dir(const std::string& dir) {
   std::error_code ec;
   std::filesystem::create_directories(dir, ec);
@@ -302,6 +306,11 @@ agent_status_t session_store_list(const SessionStoreConfig& cfg, std::vector<std
         filename.rfind(".events.jsonl") == filename.size() - std::string(".events.jsonl").size()) {
       continue;
     }
+    // Skip client event logs if someone misnames them.
+    if (filename.size() >= std::string(".client_events.jsonl").size() &&
+        filename.rfind(".client_events.jsonl") == filename.size() - std::string(".client_events.jsonl").size()) {
+      continue;
+    }
 
     const auto ext = p.extension().string();
     if (ext != ".json" && ext != ".sess") {
@@ -327,6 +336,8 @@ agent_status_t session_store_delete(const SessionStoreConfig& cfg, const std::st
   std::filesystem::remove(session_path_sess(cfg, session_id), ec);
   ec.clear();
   std::filesystem::remove(session_audit_path(cfg, session_id), ec);
+  ec.clear();
+  std::filesystem::remove(session_client_events_path(cfg, session_id), ec);
   return AGENT_OK;
 }
 
@@ -369,6 +380,61 @@ agent_status_t session_store_read_audit_tail(const SessionStoreConfig& cfg, cons
   in.read(buf.data(), want);
   if (!in) {
     // Best-effort: partial read.
+    buf.resize((size_t)in.gcount());
+  }
+
+  // If we started mid-line, drop until next newline so caller can parse JSONL.
+  if (want < size) {
+    const size_t nl = buf.find('\n');
+    if (nl != std::string::npos) {
+      buf = buf.substr(nl + 1);
+    } else {
+      buf.clear();
+    }
+  }
+
+  *out_text = buf;
+  return AGENT_OK;
+}
+
+agent_status_t session_store_append_client_event_jsonl(const SessionStoreConfig& cfg, const std::string& session_id, const std::string& event_json) {
+  agent_status_t st = ensure_dir(cfg.root_dir);
+  if (st != AGENT_OK) {
+    return st;
+  }
+  const auto p = session_client_events_path(cfg, session_id);
+  std::ofstream out(p, std::ios::app);
+  if (!out.is_open()) {
+    return AGENT_ERR_INTERNAL;
+  }
+  out << event_json << "\n";
+  return AGENT_OK;
+}
+
+agent_status_t session_store_read_client_event_tail(const SessionStoreConfig& cfg, const std::string& session_id, size_t max_bytes, std::string* out_text) {
+  if (!out_text) {
+    return AGENT_ERR_INVALID_ARGUMENT;
+  }
+  out_text->clear();
+
+  const auto p = session_client_events_path(cfg, session_id);
+  std::ifstream in(p, std::ios::binary);
+  if (!in.is_open()) {
+    return AGENT_OK;
+  }
+
+  in.seekg(0, std::ios::end);
+  std::streamoff size = in.tellg();
+  if (size <= 0) {
+    return AGENT_OK;
+  }
+  const std::streamoff want = (std::streamoff)std::min<size_t>((size_t)size, max_bytes);
+  in.seekg(size - want, std::ios::beg);
+
+  std::string buf;
+  buf.resize((size_t)want);
+  in.read(buf.data(), want);
+  if (!in) {
     buf.resize((size_t)in.gcount());
   }
 

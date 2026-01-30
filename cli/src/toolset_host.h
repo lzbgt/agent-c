@@ -44,6 +44,16 @@ struct HostToolsetConfig {
   // If set and it returns true, long-running tools (shell/proc exec) will terminate their subprocess and return early.
   HostCancelCallback should_cancel = nullptr;
   void* should_cancel_ctx = nullptr;
+
+  // Optional session context (daemon / UI integration).
+  //
+  // When set (non-empty), some host tools can coordinate with session-scoped UI events.
+  // - sessions_root_dir: directory containing <session_id>.client_events.jsonl (written by agentd).
+  // - session_id: current run's session id.
+  //
+  // This is intentionally optional so CLI runs can ignore it.
+  std::string sessions_root_dir;
+  std::string session_id;
 };
 
 // Creates a "host" tool registry + executor suitable for CLI/daemon usage:

@@ -1655,6 +1655,9 @@ static agent_status_t host_tools_execute(void* vctx, const char* tool_name, cons
   if (name == "ui_action") {
     return tool_ui_action(ctx, arguments_json, out_result);
   }
+  if (name == "ui_wait_event") {
+    return tool_ui_wait_event(ctx, arguments_json, out_result);
+  }
   if (name == "camera_capture") {
     return tool_camera_capture(ctx, arguments_json, out_result);
   }
@@ -1874,6 +1877,26 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
   );
   if (st != AGENT_OK) goto fail;
 
+  if (!cfg.sessions_root_dir.empty() && !cfg.session_id.empty()) {
+    st = add_tool(
+      r,
+      "ui_wait_event",
+      "Wait for a UI client event (posted via agentd /api/v1/session/ui_event) for this session. Useful for acknowledgements like audio_play_finished.",
+      "{"
+      "\"type\":\"object\","
+      "\"properties\":{"
+      "  \"type\":{\"type\":\"string\",\"description\":\"Client event type to wait for (e.g. audio_play_finished).\"},"
+      "  \"timeout_ms\":{\"type\":\"integer\",\"description\":\"Max wait time (default: 30000). 0 means no-wait (immediate timeout).\"},"
+      "  \"after_unix_ms\":{\"type\":\"integer\",\"description\":\"Ignore events older than this timestamp (optional).\"},"
+      "  \"path\":{\"type\":\"string\",\"description\":\"Optional filter for payload.data.path.\"},"
+      "  \"max_bytes\":{\"type\":\"integer\",\"description\":\"Max bytes read from the end of the client event log (default: 262144).\"}"
+      "},"
+      "\"required\":[\"type\"]"
+      "}"
+    );
+    if (st != AGENT_OK) goto fail;
+  }
+
   // Camera capture is intentionally gated behind exec-enabled sandbox:
   // - On daemon, exec-enabled implies yolo=true.
   // - On CLI, exec-enabled is typically true.
@@ -1913,6 +1936,10 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
   ctx->allow_symlinks = cfg.allow_symlinks;
   ctx->should_cancel = cfg.should_cancel;
   ctx->should_cancel_ctx = cfg.should_cancel_ctx;
+  if (!cfg.sessions_root_dir.empty()) {
+    ctx->sessions_root_dir = std::filesystem::path(cfg.sessions_root_dir);
+  }
+  ctx->session_id = cfg.session_id;
   {
     // Normalize to reduce symlink/canonical mismatch (e.g. /var vs /private/var on macOS).
     std::error_code ec;

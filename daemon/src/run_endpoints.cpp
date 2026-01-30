@@ -276,6 +276,11 @@ static Json::Value run_request_to_json(
       };
       hcfg.should_cancel_ctx = (void*)&job_id_local;
     }
+    // Session context for UI coordination tools (e.g. ui_wait_event). Only valid for session-backed runs.
+    if (!no_session) {
+      hcfg.sessions_root_dir = sessions_root_dir;
+      hcfg.session_id = session_id;
+    }
     if (toolset_host_create(hcfg, &registry, &executor) != AGENT_OK) {
       Json::Value o(Json::objectValue);
       o["ok"] = false;

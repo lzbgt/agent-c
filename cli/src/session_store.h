@@ -28,3 +28,13 @@ agent_status_t session_store_append_audit_jsonl(const SessionStoreConfig& cfg, c
 
 // Reads up to `max_bytes` from the end of <root>/<id>.events.jsonl (best-effort).
 agent_status_t session_store_read_audit_tail(const SessionStoreConfig& cfg, const std::string& session_id, size_t max_bytes, std::string* out_text);
+
+// UI client events (bidirectional UI→daemon protocol):
+// - Each line is a single JSON object string.
+// - Used by `POST /api/v1/session/ui_event` and the `ui_wait_event` host tool.
+//
+// File path: <root>/<id>.client_events.jsonl
+agent_status_t session_store_append_client_event_jsonl(const SessionStoreConfig& cfg, const std::string& session_id, const std::string& event_json);
+
+// Reads up to `max_bytes` from the end of <root>/<id>.client_events.jsonl (best-effort).
+agent_status_t session_store_read_client_event_tail(const SessionStoreConfig& cfg, const std::string& session_id, size_t max_bytes, std::string* out_text);

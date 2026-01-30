@@ -92,7 +92,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add an explicit `ui_action` event type (agent → UI) with an allowlist and user consent (e.g. play audio for an artifact, focus an artifact).
 - [x] Add a DB-backed troubleshooting view for `ui_actions` (list recent actions, click through to run detail).
 - [x] Add a UI → daemon “client events” channel (`/api/v1/session/ui_event`) and mirror it into the troubleshooting DB.
-- [ ] Add a cooperative `ui_wait_event` host tool so agents can wait for UI acknowledgements *within a single run* (reduces retry loops without relying on hard limits).
+- [x] Add a cooperative `ui_wait_event` host tool so agents can wait for UI acknowledgements *within a single run* (reduces retry loops without relying on hard limits).
 - [ ] Add a daemon skeleton with:
   - local control socket / HTTP
   - broker client abstraction (MQTT)

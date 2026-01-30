@@ -119,6 +119,14 @@ These are optionally appended into the session message history and (when `--db-p
 
 See: `docs/UI_CLIENT_EVENTS.md`.
 
+## Waiting for UI acknowledgements (host tool)
+
+When using tool loops, an agent may need to wait for a UI/user acknowledgement within a single run (e.g. audio playback finished).
+For this, the host toolset exposes a cooperative polling tool:
+- `ui_wait_event`
+
+See: `docs/UI_WAIT_EVENT.md`.
+
 ## Artifacts
 
 ### Problem
