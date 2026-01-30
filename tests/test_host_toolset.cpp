@@ -109,6 +109,7 @@ static void test_fs_stat_list_read() {
   {
     Json::Value args(Json::objectValue);
     args["path"] = "dir/many.txt";
+    args["count_lines"] = true;
     const std::string req = json_stringify(args);
     agent_string_t out{};
     assert(exec.execute(exec.ctx, "fs_stat", req.c_str(), &out) == AGENT_OK);
@@ -120,6 +121,8 @@ static void test_fs_stat_list_read() {
     assert(resp["data"]["is_binary"].asBool() == false);
     assert(resp["data"].isMember("mtime_unix_ms"));
     assert(resp["data"].isMember("ctime_unix_ms"));
+    assert(resp["data"]["line_count_available"].asBool());
+    assert(resp["data"]["total_lines"].asInt() == 250);
     assert(resp["data"]["output"].asString().find("many.txt") != std::string::npos);
     agent_string_free(&out);
   }

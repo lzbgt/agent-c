@@ -184,6 +184,10 @@ static agent_status_t tool_fs_stat(HostToolCtx* ctx, const char* arguments_json,
   if (!args["path"].isString()) {
     return write_envelope(false, "missing string field 'path'", Json::Value(Json::objectValue));
   }
+  const bool count_lines = args.isMember("count_lines") && args["count_lines"].isBool() ? args["count_lines"].asBool() : false;
+  const int max_count_bytes = args.isMember("max_count_bytes") && args["max_count_bytes"].isInt() ? args["max_count_bytes"].asInt() : (2 * 1024 * 1024);
+  const int max_count_lines = args.isMember("max_count_lines") && args["max_count_lines"].isInt() ? args["max_count_lines"].asInt() : 200000;
+
   const std::string path = args["path"].asString();
   const auto resolved = resolve_under_root(ctx->root, path, ctx->unrestricted);
   if (!resolved) {
@@ -221,6 +225,46 @@ static agent_status_t tool_fs_stat(HostToolCtx* ctx, const char* arguments_json,
       if (birth_ms > 0) data["birthtime_unix_ms"] = (Json::Int64)birth_ms;
     }
   }
+
+  if (count_lines && data["exists"].asBool() && data["is_file"].asBool() && data.isMember("size_bytes")) {
+    data["count_lines"] = true;
+    data["max_count_bytes"] = max_count_bytes;
+    data["max_count_lines"] = max_count_lines;
+
+    const bool is_bin = data.isMember("is_binary") && data["is_binary"].isBool() && data["is_binary"].asBool();
+    const uint64_t sz = data["size_bytes"].isUInt64() ? data["size_bytes"].asUInt64() : 0;
+
+    if (is_bin) {
+      data["line_count_available"] = false;
+      data["line_count_reason"] = "binary_file";
+    } else if (max_count_bytes > 0 && sz > (uint64_t)max_count_bytes) {
+      data["line_count_available"] = false;
+      data["line_count_reason"] = "file_too_large";
+    } else if (max_count_lines < 1) {
+      data["line_count_available"] = false;
+      data["line_count_reason"] = "invalid_max_count_lines";
+    } else {
+      std::ifstream in(*resolved);
+      if (!in.is_open()) {
+        data["line_count_available"] = false;
+        data["line_count_reason"] = "open_failed";
+      } else {
+        int64_t lines = 0;
+        std::string line;
+        while (std::getline(in, line)) {
+          lines++;
+          if (lines >= (int64_t)max_count_lines) {
+            break;
+          }
+        }
+        data["line_count_available"] = true;
+        data["total_lines"] = (Json::Int64)lines;
+        if (lines >= (int64_t)max_count_lines) {
+          data["total_lines_truncated"] = true;
+        }
+      }
+    }
+  }
   {
     // Human-friendly output for UIs. Keep structured fields for the LLM.
     std::ostringstream oss;
@@ -243,6 +287,19 @@ static agent_status_t tool_fs_stat(HostToolCtx* ctx, const char* arguments_json,
     }
     if (data.isMember("is_binary")) {
       oss << "is_binary: " << (data["is_binary"].asBool() ? "true" : "false") << "\n";
+    }
+    if (data.isMember("count_lines") && data["count_lines"].isBool() && data["count_lines"].asBool()) {
+      if (data.isMember("line_count_available") && data["line_count_available"].isBool() && data["line_count_available"].asBool()) {
+        if (data.isMember("total_lines")) {
+          oss << "total_lines: " << (long long)data["total_lines"].asInt64();
+          if (data.isMember("total_lines_truncated") && data["total_lines_truncated"].isBool() && data["total_lines_truncated"].asBool()) {
+            oss << " (truncated)";
+          }
+          oss << "\n";
+        }
+      } else if (data.isMember("line_count_reason") && data["line_count_reason"].isString()) {
+        oss << "total_lines: (unavailable: " << data["line_count_reason"].asString() << ")\n";
+      }
     }
     data["output"] = oss.str();
   }
@@ -1726,7 +1783,10 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     "{"
     "\"type\":\"object\","
     "\"properties\":{"
-    "  \"path\":{\"type\":\"string\",\"description\":\"File/directory path (relative to tools root unless yolo/unrestricted).\"}"
+    "  \"path\":{\"type\":\"string\",\"description\":\"File/directory path (relative to tools root unless yolo/unrestricted).\"},"
+    "  \"count_lines\":{\"type\":\"boolean\",\"description\":\"When true, count lines for small text files (bounded).\"},"
+    "  \"max_count_bytes\":{\"type\":\"integer\",\"description\":\"Only count lines when file size <= this many bytes (default: 2097152).\"},"
+    "  \"max_count_lines\":{\"type\":\"integer\",\"description\":\"Stop counting after this many lines (default: 200000).\"}"
     "},"
     "\"required\":[\"path\"]"
     "}"

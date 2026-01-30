@@ -157,6 +157,9 @@ Completed milestones and notable tasks.
 - Improved token-safe filesystem metadata for host tools:
   - `fs_stat` / `fs_read` now include `ctime_unix_ms` (and `birthtime_unix_ms` on macOS) for better inspection without dumping file contents
   - `cli/src/toolset_host.cpp`
+- Extended `fs_stat` with optional bounded line counting (token-safe “is this file huge?” check):
+  - `count_lines`, `max_count_bytes`, `max_count_lines`
+  - `tests/test_host_toolset.cpp`
 - Improved Web UI daemon connectivity diagnostics:
   - show daemon base URL in the header and surface health-check errors explicitly
   - `ui/src/App.tsx`

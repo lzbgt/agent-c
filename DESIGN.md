@@ -216,7 +216,7 @@ when verbose tracing is enabled. To keep the Web UI responsive:
 
 The CLI/daemon toolset is designed around **OS-native tooling** plus **bounded filesystem inspection**:
 - For **inspection** (read/list/stat), prefer bounded filesystem tools:
-  - `fs_stat`: metadata (exists/type/size/mtime/ctime and binary hint; `birthtime` on platforms that support it).
+  - `fs_stat`: metadata (exists/type/size/mtime/ctime and binary hint; `birthtime` on platforms that support it); optional bounded line counting for small text files.
   - `fs_list`: bounded directory listing (supports recursion with depth/entry caps).
   - `fs_find`: bounded file discovery (find files/dirs with depth/result caps; supports extension filters).
   - `fs_read`: bounded text reads with line-based pagination (`start_line`, `max_lines`, optional `end_line`) plus file timestamps.
