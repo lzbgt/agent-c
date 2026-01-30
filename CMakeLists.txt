@@ -278,7 +278,13 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
   )
   target_link_libraries(openai_provider_tests PRIVATE agent_host)
   add_test(NAME openai_provider_tests COMMAND openai_provider_tests)
- endif()
+
+  add_executable(openai_tool_provider_stream_tests
+    tests/test_openai_tool_provider_stream.cpp
+  )
+  target_link_libraries(openai_tool_provider_stream_tests PRIVATE agent_host)
+  add_test(NAME openai_tool_provider_stream_tests COMMAND openai_tool_provider_stream_tests)
+endif()
 
 if(AGENT_BUILD_HOST)
   add_executable(cors_tests

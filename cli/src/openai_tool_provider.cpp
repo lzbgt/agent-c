@@ -299,7 +299,8 @@ static agent_status_t openai_tool_provider_generate(
       }
     };
 
-    OpenAIStreamResult sr = openai_chat_completions_raw_stream(ctx->cfg, request_json, on_chunk, &acc, ctx->max_capture_chars);
+    const auto stream_fn = ctx->chat_stream_fn ? ctx->chat_stream_fn : openai_chat_completions_raw_stream;
+    OpenAIStreamResult sr = stream_fn(ctx->cfg, request_json, on_chunk, &acc, ctx->max_capture_chars);
     ctx->last_http_status = sr.http_status;
     ctx->last_response_body = sr.response_body;
 
@@ -359,7 +360,8 @@ static agent_status_t openai_tool_provider_generate(
       }
     }
   } else {
-    OpenAIRawResult raw = openai_chat_completions_raw(ctx->cfg, request_json);
+    const auto raw_fn = ctx->chat_raw_fn ? ctx->chat_raw_fn : openai_chat_completions_raw;
+    OpenAIRawResult raw = raw_fn(ctx->cfg, request_json);
     ctx->last_http_status = raw.http_status;
     ctx->last_response_body = raw.response_body;
 

@@ -19,6 +19,17 @@ struct OpenAIToolProviderCtx {
   agent_tool_loop_event_fn on_event = nullptr;
   void* on_event_ctx = nullptr;
 
+  // Optional injection points for deterministic unit tests (no network).
+  // When null, defaults to the real OpenAI-compatible HTTP client.
+  OpenAIRawResult (*chat_raw_fn)(const OpenAIClientConfig& cfg, const std::string& request_body_json) = nullptr;
+  OpenAIStreamResult (*chat_stream_fn)(
+    const OpenAIClientConfig& cfg,
+    const std::string& request_body_json,
+    OpenAIStreamChunkCallback on_chunk,
+    void* on_chunk_ctx,
+    size_t max_capture_bytes
+  ) = nullptr;
+
   // When true, uses OpenAI-compatible SSE streaming (`stream: true`) and emits `assistant_delta` events.
   // Tool calls are reconstructed incrementally from streamed `delta.tool_calls` when present (best-effort).
   bool stream_assistant = false;
