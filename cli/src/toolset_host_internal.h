@@ -151,5 +151,6 @@ agent_status_t tool_file_apply_patch(HostToolCtx* ctx, const char* arguments_jso
 // Artifact/UI signaling tool(s) (also in separate TU).
 agent_status_t tool_artifact_register(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 agent_status_t tool_ui_action(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
+agent_status_t tool_camera_capture(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 
 } // namespace host_tools_internal

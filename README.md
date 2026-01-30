@@ -290,6 +290,13 @@ In addition to `artifact_register` (explicit media artifacts), host tools includ
 UI-side actions in a **typed** and **allowlisted** way (e.g. notifications, audio playback UI).
 
 See `docs/UI_ACTION.md`.
+
+### Camera capture (single-shot)
+
+To avoid models looping on camera capture via repeated `proc_exec` calls, host tools include `camera_capture`.
+
+By default, smoke tests use `backend=mock` which writes a small SVG image (no camera hardware required). On macOS, a best-effort
+`ffmpeg` backend exists (requires camera permission + ffmpeg availability); see `docs/CAMERA_CAPTURE.md`.
 - `fs_list` (bounded directory listing; returns structured `entries` + `output`)
 - `fs_find` (bounded file discovery; returns structured `entries` + `output`)
 - `fs_read` (bounded file read with pagination by line; returns `content`/`output` + `has_more` + `next_start_line`)

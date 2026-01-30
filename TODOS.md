@@ -104,7 +104,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [ ] Extend message model to support **content parts** (text/image/audio/video URL or bytes).
 - [ ] Provide streaming I/O hooks (audio in/out) at the host layer.
 - [ ] Add compile-time feature flags for MCU builds (disable persistence, disable large buffers).
-- [ ] Add a dedicated `camera_capture` host tool (single-shot) that returns an `artifact` + optional `ui_action play_audio/notify` to reduce capture loops.
+- [x] Add a dedicated `camera_capture` host tool (single-shot) that returns an `artifact` + optional `ui_action play_audio/notify` to reduce capture loops.
 
 ## Hygiene
 

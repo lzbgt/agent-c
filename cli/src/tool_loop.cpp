@@ -72,6 +72,15 @@ static Json::Value summarize_tool_output_json(const std::string& tool_out) {
         summary["action"] = data["action"];
       }
     }
+    // Special-case: camera_capture can contain an artifact and/or a ui_action.
+    if (data.isMember("tool") && data["tool"].isString() && data["tool"].asString() == "camera_capture") {
+      if (data.isMember("artifact") && data["artifact"].isObject()) {
+        summary["artifact"] = data["artifact"];
+      }
+      if (data.isMember("action") && data["action"].isObject()) {
+        summary["action"] = data["action"];
+      }
+    }
     if (data.isMember("check") && data["check"].isObject() && data["check"].isMember("exit_code")) {
       summary["check_exit_code"] = data["check"]["exit_code"];
     }
@@ -201,6 +210,67 @@ static void sink_on_event(void* vctx, const char* type, const char* data_json) {
         }
       }
 
+      if (action.isObject() && sink->events_count < sink->max_events) {
+        Json::Value ad(Json::objectValue);
+        if (data.isMember("step")) ad["step"] = data["step"];
+        if (data.isMember("tool_call_id")) ad["tool_call_id"] = data["tool_call_id"];
+        ad["tool_name"] = tool_name;
+        ad["action"] = action;
+
+        Json::Value ae(Json::objectValue);
+        ae["type"] = "ui_action";
+        ae["data"] = ad;
+        sink->events.append(ae);
+        sink->events_count++;
+
+        const std::string aj = json_stringify(ad);
+        if (sink->forward_cb) {
+          sink->forward_cb(sink->forward_ctx, "ui_action", aj.c_str());
+        }
+      }
+    }
+
+    // Derived UI events: camera_capture can emit both artifact and ui_action.
+    if (tool_name == "camera_capture") {
+      Json::Value artifact;
+      Json::Value action;
+
+      if (data.isMember("summary") && data["summary"].isObject()) {
+        const auto& s = data["summary"];
+        if (s.isMember("artifact") && s["artifact"].isObject()) artifact = s["artifact"];
+        if (s.isMember("action") && s["action"].isObject()) action = s["action"];
+      }
+      if ((artifact.isNull() || action.isNull()) && data.isMember("content") && data["content"].isString()) {
+        Json::Value content_obj;
+        if (parse_json_object(data["content"].asString(), &content_obj)) {
+          if (content_obj.isMember("data") && content_obj["data"].isObject()) {
+            const auto& cd = content_obj["data"];
+            if (cd.isMember("tool") && cd["tool"].isString() && cd["tool"].asString() == "camera_capture") {
+              if (artifact.isNull() && cd.isMember("artifact") && cd["artifact"].isObject()) artifact = cd["artifact"];
+              if (action.isNull() && cd.isMember("action") && cd["action"].isObject()) action = cd["action"];
+            }
+          }
+        }
+      }
+
+      if (artifact.isObject() && sink->events_count < sink->max_events) {
+        Json::Value ad(Json::objectValue);
+        if (data.isMember("step")) ad["step"] = data["step"];
+        if (data.isMember("tool_call_id")) ad["tool_call_id"] = data["tool_call_id"];
+        ad["tool_name"] = tool_name;
+        ad["artifact"] = artifact;
+
+        Json::Value ae(Json::objectValue);
+        ae["type"] = "artifact";
+        ae["data"] = ad;
+        sink->events.append(ae);
+        sink->events_count++;
+
+        const std::string aj = json_stringify(ad);
+        if (sink->forward_cb) {
+          sink->forward_cb(sink->forward_ctx, "artifact", aj.c_str());
+        }
+      }
       if (action.isObject() && sink->events_count < sink->max_events) {
         Json::Value ad(Json::objectValue);
         if (data.isMember("step")) ad["step"] = data["step"];

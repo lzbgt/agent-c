@@ -1655,6 +1655,9 @@ static agent_status_t host_tools_execute(void* vctx, const char* tool_name, cons
   if (name == "ui_action") {
     return tool_ui_action(ctx, arguments_json, out_result);
   }
+  if (name == "camera_capture") {
+    return tool_camera_capture(ctx, arguments_json, out_result);
+  }
   // Keep the response machine-readable so the LLM can reason about failures.
   return set_result(out_result, "{\"ok\":false,\"error\":\"unknown tool\",\"data\":{}}");
 }
@@ -1867,6 +1870,24 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     "  \"autoplay\":{\"type\":\"boolean\"}"
     "},"
     "\"required\":[\"type\"]"
+    "}"
+  );
+  if (st != AGENT_OK) goto fail;
+
+  st = add_tool(
+    r,
+    "camera_capture",
+    "Capture a single image from the host camera (or mock backend). Returns JSON envelope with data.artifact for UI rendering; the tool loop emits a derived artifact event.",
+    "{"
+    "\"type\":\"object\","
+    "\"properties\":{"
+    "  \"path\":{\"type\":\"string\",\"description\":\"Output file path (relative to tools root in scoped mode).\"},"
+    "  \"backend\":{\"type\":\"string\",\"description\":\"auto|ffmpeg|mock\"},"
+    "  \"timeout_ms\":{\"type\":\"integer\"},"
+    "  \"title\":{\"type\":\"string\"},"
+    "  \"register_artifact\":{\"type\":\"boolean\"},"
+    "  \"notify\":{\"type\":\"boolean\"}"
+    "}"
     "}"
   );
   if (st != AGENT_OK) goto fail;

@@ -178,3 +178,10 @@ UI behavior:
 ### Backwards compatibility
 
 The UI may keep heuristic media extraction as a fallback, but should prefer explicit `artifact` events.
+
+## Camera capture (host tool)
+
+To avoid models repeatedly capturing camera frames via `proc_exec` loops, the host toolset includes a dedicated
+single-shot tool: `camera_capture`.
+
+See: `docs/CAMERA_CAPTURE.md`.
