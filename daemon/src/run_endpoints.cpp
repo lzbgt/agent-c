@@ -9,6 +9,7 @@
 #include "openai_provider.h"
 #include "sandbox_policy.h"
 #include "session_store.h"
+#include "secrets_file.h"
 #include "string_util.h"
 #include "summary_compaction.h"
 #include "summary_llm.h"
@@ -37,6 +38,17 @@
 
 namespace agentd {
 namespace {
+
+static const char* getenv_s(const char* k) {
+  const char* v = std::getenv(k);
+  return (v && v[0]) ? v : nullptr;
+}
+
+static std::string provider_from_base_url(const std::string& base_url) {
+  if (url_contains_ci(base_url, "deepseek")) return "deepseek";
+  if (url_contains_ci(base_url, "openrouter")) return "openrouter";
+  return "openai";
+}
 
 // Parses the daemon run request body and returns a response JSON object (HTTP-level errors are represented in JSON).
 static Json::Value run_request_to_json(
@@ -67,13 +79,49 @@ static Json::Value run_request_to_json(
   }
 
   OpenAIClientConfig run_cfg = ocfg;
+  const bool base_url_explicit = args.isMember("base_url") && args["base_url"].isString();
+  const bool api_key_explicit = args.isMember("api_key") && args["api_key"].isString();
   if (args.isMember("model") && args["model"].isString()) run_cfg.model = args["model"].asString();
   if (args.isMember("base_url") && args["base_url"].isString()) run_cfg.base_url = args["base_url"].asString();
-  if (args.isMember("api_key") && args["api_key"].isString()) run_cfg.api_key = args["api_key"].asString();
+  if (api_key_explicit) run_cfg.api_key = args["api_key"].asString();
   if (args.isMember("proxy") && args["proxy"].isString()) run_cfg.proxy_url = args["proxy"].asString();
   if (args.isMember("timeout_ms") && args["timeout_ms"].isInt64()) {
     const long t = (long)args["timeout_ms"].asInt64();
     if (t > 0) run_cfg.timeout_ms = t;
+  }
+
+  // Provider key fallback (framework responsibility):
+  // If the request omitted api_key, load a provider-matching key based on run_cfg.base_url.
+  //
+  // Important: ocfg.api_key may be set at daemon startup; if the UI changes base_url per run, that key may be wrong.
+  if (!api_key_explicit) {
+    const std::string run_provider = provider_from_base_url(run_cfg.base_url);
+    const std::string daemon_provider = provider_from_base_url(ocfg.base_url);
+    const bool provider_mismatch = base_url_explicit && (run_provider != daemon_provider);
+    if (run_cfg.api_key.empty() || provider_mismatch) {
+      std::string key;
+      if (run_provider == "deepseek") {
+        if (const char* k = getenv_s("DEEPSEEK_API_KEY")) key = k;
+        else if (const char* k2 = getenv_s("OPENAI_API_KEY")) key = k2;
+        else if (const char* k3 = getenv_s("OPENROUTER_API_KEY")) key = k3;
+      } else if (run_provider == "openrouter") {
+        if (const char* k = getenv_s("OPENROUTER_API_KEY")) key = k;
+        else if (const char* k2 = getenv_s("OPENAI_API_KEY")) key = k2;
+        else if (const char* k3 = getenv_s("DEEPSEEK_API_KEY")) key = k3;
+      } else {
+        if (const char* k = getenv_s("OPENAI_API_KEY")) key = k;
+        else if (const char* k2 = getenv_s("OPENROUTER_API_KEY")) key = k2;
+        else if (const char* k3 = getenv_s("DEEPSEEK_API_KEY")) key = k3;
+      }
+      if (key.empty()) {
+        if (auto k = load_provider_key_best_effort(run_provider)) {
+          key = *k;
+        }
+      }
+      if (!key.empty()) {
+        run_cfg.api_key = key;
+      }
+    }
   }
 
   const std::string tools = args.isMember("tools") && args["tools"].isString() ? args["tools"].asString() : daemon_cfg.tools;

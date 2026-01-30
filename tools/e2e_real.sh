@@ -31,6 +31,16 @@ if [[ ! -x "${ROOT}/build/agentd" ]]; then
   exit 2
 fi
 
+# Provider key check (best-effort).
+# We do not print keys; we just detect whether one exists.
+if [[ -z "${DEEPSEEK_API_KEY:-}" && -z "${OPENROUTER_API_KEY:-}" && -z "${OPENAI_API_KEY:-}" ]]; then
+  if [[ ! -f "${ROOT}/.not_in_repo" && ! -f "${ROOT}/project.local.md" ]]; then
+    echo "[e2e] Missing provider keys. Create ${ROOT}/.not_in_repo (gitignored) or set env DEEPSEEK_API_KEY/OPENROUTER_API_KEY/OPENAI_API_KEY." >&2
+    echo "[e2e] See README.md section 'Local secrets file: .not_in_repo'." >&2
+    exit 2
+  fi
+fi
+
 # Start agentd. If you want daemon auth, set AGENTD_AUTH_TOKEN and update UI settings accordingly.
 echo "[e2e] starting agentd (log: ${agentd_log})"
 "${ROOT}/build/agentd" >"${agentd_log}" 2>&1 &
@@ -50,7 +60,12 @@ for i in {1..120}; do
 done
 
 echo "[e2e] running playwright (log: ${e2e_log})"
-(cd ui && npm run e2e) >"${e2e_log}" 2>&1
+(cd ui && npm run e2e) >"${e2e_log}" 2>&1 || {
+  echo "[e2e] FAILED. See logs:" >&2
+  echo "  - ${agentd_log}" >&2
+  echo "  - ${ui_log}" >&2
+  echo "  - ${e2e_log}" >&2
+  exit 1
+}
 
 echo "[e2e] OK"
-

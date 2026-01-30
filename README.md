@@ -130,6 +130,10 @@ tools/e2e_real.sh
 
 Logs are written under `build/e2e/`.
 
+Notes:
+- The harness expects provider keys to be available via env or `.not_in_repo` (preferred).
+- `agentd` now also supports **daemon-side** key loading per-run based on the request `base_url`, so the Web UI can omit `api_key`.
+
 ### Daemon config snapshot (debug)
 
 For debugging client/daemon mismatches (CORS, sandbox defaults, job GC), `agentd` exposes:
