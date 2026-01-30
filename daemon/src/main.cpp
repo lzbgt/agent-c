@@ -1347,6 +1347,8 @@ int main(int argc, char** argv) {
     const std::filesystem::path scope_root = std::filesystem::path(scope_root_str);
 
     std::filesystem::path resolved;
+    std::filesystem::path canon_root;
+    std::filesystem::path canon_file;
     if (yolo) {
       resolved = user_path.is_absolute() ? user_path : (cwd / user_path);
     } else {
@@ -1363,7 +1365,7 @@ int main(int argc, char** argv) {
     // Containment check when not yolo.
     if (!yolo) {
       std::error_code ec;
-      const auto canon_root = std::filesystem::weakly_canonical(scope_root, ec);
+      canon_root = std::filesystem::weakly_canonical(scope_root, ec);
       if (ec) {
         resp->status = 500;
         resp->headers["Content-Type"] = "application/json; charset=utf-8";
@@ -1371,7 +1373,7 @@ int main(int argc, char** argv) {
         return;
       }
       ec.clear();
-      const auto canon_file = std::filesystem::weakly_canonical(resolved, ec);
+      canon_file = std::filesystem::weakly_canonical(resolved, ec);
       if (ec) {
         resp->status = 404;
         resp->headers["Content-Type"] = "application/json; charset=utf-8";
@@ -1394,6 +1396,10 @@ int main(int argc, char** argv) {
         resp->body = R"({"ok":false,"error":"path escapes host scope"})";
         return;
       }
+
+      // Use the canonical path for the actual read to avoid symlink TOCTOU between
+      // containment check and file open/read.
+      resolved = canon_file;
     }
 
     std::error_code ec;

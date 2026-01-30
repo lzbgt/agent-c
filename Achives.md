@@ -206,6 +206,7 @@ Completed milestones and notable tasks.
   - `shell_exec` / `proc_exec` are omitted from the tool registry in scoped mode and rejected by the executor (defense in depth)
   - `file_apply_patch` rejects unsafe patch paths in scoped mode (prevents path traversal) and ignores `unsafe_paths` unless running in unrestricted mode
 - Tightened daemon scoped mode further by disallowing symlink escapes in host tools (`fs_*`, `text_search`, `file_apply_patch`) via `HostToolsetConfig.allow_symlinks=false`.
+- Hardened `/api/v1/file` in scoped mode by reading from the canonical path after containment checks (reduces symlink TOCTOU risk) and added a local smoke test `tests/agentd_file_symlink_smoke.sh`.
 
 - Moved the tool-call loop into the portable core (Milestone 2 groundwork):
   - added core tool-loop API + provider contract (`core/include/agent/tool_loop.h`, `core/include/agent/tool_provider.h`, `core/include/agent/chat.h`)

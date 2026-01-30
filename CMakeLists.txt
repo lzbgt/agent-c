@@ -145,6 +145,8 @@ if(AGENT_BUILD_HOST)
 
   add_test(NAME agentd_cors_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_cors_smoke.sh $<TARGET_FILE:agentd>)
 
+  add_test(NAME agentd_file_symlink_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_file_symlink_smoke.sh $<TARGET_FILE:agentd>)
+
   add_test(
     NAME agentd_non_loopback_auth_guard_smoke
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_non_loopback_auth_guard_smoke.sh $<TARGET_FILE:agentd>
