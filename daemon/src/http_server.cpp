@@ -14,6 +14,8 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+namespace agentd {
+
 static std::string lower(std::string s) {
   for (char& c : s) c = (char)std::tolower((unsigned char)c);
   return s;
@@ -323,3 +325,5 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
 
   return true;
 }
+
+}  // namespace agentd

@@ -7,8 +7,8 @@ using agentd::CorsConfig;
 using agentd::cors_apply;
 using agentd::cors_wire_headers;
 
-using HttpRequest = ::HttpRequest;
-using HttpResponse = ::HttpResponse;
+using HttpRequest = agentd::HttpRequest;
+using HttpResponse = agentd::HttpResponse;
 
 static std::string header_get(const HttpResponse& resp, const char* key) {
   auto it = resp.headers.find(key);

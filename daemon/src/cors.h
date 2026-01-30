@@ -26,4 +26,3 @@ void cors_apply(const HttpRequest& req, HttpResponse* resp, const CorsConfig& cf
 std::string cors_wire_headers(const HttpRequest& req, const CorsConfig& cfg);
 
 }  // namespace agentd
-

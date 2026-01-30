@@ -200,6 +200,7 @@ Completed milestones and notable tasks.
   - added a non-network smoke test `tests/agentd_sse_auth_smoke.sh` using a local OpenAI stub server
 - Added a small unit test target `cors_tests` to lock in CORS behavior (`tests/test_cors.cpp`).
 - Added a helper script to configure a git remote from an explicit URL and optionally push (`tools/setup_git_remote.sh`).
+- Moved daemon HTTP server types (`HttpRequest`/`HttpResponse`/`HttpServer`) into the `agentd` namespace to avoid global namespace pollution.
 
 - Moved the tool-call loop into the portable core (Milestone 2 groundwork):
   - added core tool-loop API + provider contract (`core/include/agent/tool_loop.h`, `core/include/agent/tool_provider.h`, `core/include/agent/chat.h`)

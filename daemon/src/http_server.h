@@ -17,6 +17,8 @@
 // - Content-Length bodies (no chunked encoding)
 // - Concurrent per-connection handling (accept loop spawns a thread per client)
 
+namespace agentd {
+
 struct HttpRequest {
   std::string method;
   std::string raw_path; // includes optional query string
@@ -77,3 +79,5 @@ class HttpServer {
   int listen_fd_ = -1;
   std::atomic<bool> stop_{false};
 };
+
+}  // namespace agentd
