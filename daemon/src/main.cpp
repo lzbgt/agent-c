@@ -6,10 +6,15 @@
 
 #include "http_util.h"
 #include "cors.h"
+#include "daemon_auth.h"
+#include "daemon_config.h"
+#include "config_endpoint.h"
+#include "file_endpoint.h"
 #include "sandbox_policy.h"
 #include "string_util.h"
 #include "openrouter_models_endpoint.h"
 #include "job_stream_endpoint.h"
+#include "tools_endpoint.h"
 
 #include "default_system_prompt.h"
 #include "file_persistor.h"
@@ -62,74 +67,12 @@ static std::string home_dir_best_effort() {
   return std::filesystem::current_path().string();
 }
 
-struct DaemonConfig {
-  std::string listen_host = "127.0.0.1";
-  uint16_t listen_port = 8123;
-  // Optional daemon auth (control-plane). When set, all endpoints (except /health) require
-  // Authorization: Bearer <token>. This is distinct from provider API keys.
-  std::string auth_token;
-  // Safety guard: when binding to a non-loopback host (0.0.0.0, LAN IP), refuse to start unless auth is enabled,
-  // unless explicitly overridden (insecure).
-  bool allow_unauthenticated_non_loopback = false;
-  std::string base_url = "https://api.openai.com/v1";
-  std::string api_key;
-  std::string model = "gpt-4o-mini";
-  std::string summary_model;  // optional: model used to summarize dropped messages during compaction (tools=none)
-  size_t summary_max_chars = 1200;
-  std::string proxy_url; // optional explicit proxy override (else env)
-  long timeout_ms = 60000;
-  std::string tools = "host";     // none|basic|host
-  std::string tools_root = "";    // empty => CWD (unrestricted file edits)
-  std::string host_scope_root;    // default: daemon process CWD (for "@host" tool root mode)
-  bool yolo_default = true;       // default to unrestricted unless client requests scoped mode
-  HostToolsetPolicyMode host_policy = HostToolsetPolicyMode::Full; // host tools: full|readonly
-  bool no_default_system = false; // when false, host tool runs insert a default system hint (one time)
-  size_t max_chars_default = 20000;
-  size_t keep_last_default = 16;
-
-  // Async job GC (daemon longevity): finished jobs are kept only for a bounded time/count.
-  int64_t job_ttl_ms = 30 * 60 * 1000; // 30 minutes
-  size_t max_jobs = 256;
-
-  // CORS (for browser-based clients). Defaults depend on listen host:
-  // - loopback: allow any origin ("*") for local UI dev
-  // - non-loopback: disabled unless explicitly configured via --cors-origin
-  bool cors_origins_set = false;
-  bool cors_disabled = false;
-  std::vector<std::string> cors_origins; // values are exact match, or "*"
-  std::string cors_allow_headers;
-  std::string cors_allow_methods;
-  int cors_max_age_seconds = 600;
-};
-
 static bool host_is_loopback(std::string host) {
   host = lower_copy(std::move(host));
   if (host == "localhost") return true;
   if (host == "::1" || host == "[::1]") return true;
   if (host.rfind("127.", 0) == 0) return true;
   if (host == "127.0.0.1") return true;
-  return false;
-}
-
-static bool daemon_auth_ok(const DaemonConfig& cfg, const HttpRequest& req) {
-  if (cfg.auth_token.empty()) {
-    return true;
-  }
-  const std::string auth = header_get_ci(req.headers, "authorization");
-  const std::string got = bearer_token_from_auth_header(auth);
-  return !got.empty() && got == cfg.auth_token;
-}
-
-static bool daemon_require_auth(const DaemonConfig& cfg, const HttpRequest& req, HttpResponse* resp) {
-  if (daemon_auth_ok(cfg, req)) {
-    return true;
-  }
-  if (resp) {
-    resp->status = 401;
-    resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    resp->headers["WWW-Authenticate"] = "Bearer";
-    resp->body = R"({"ok":false,"error":"unauthorized"})";
-  }
   return false;
 }
 
@@ -1188,178 +1131,12 @@ int main(int argc, char** argv) {
     resp->body = R"({"ok":true,"service":"agentd","version":"0.1"})";
   });
 
-  // Debug-friendly daemon configuration snapshot (auth required when enabled).
-  // Intentionally does not include secrets (auth token, provider API keys).
   server.handle("GET", "/api/v1/config", [&](const HttpRequest& req, HttpResponse* resp) {
-    cors_apply(req, resp, cors_cfg);
-    resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    if (!daemon_require_auth(cfg, req, resp)) return;
-#if !defined(AGENT_HAVE_JSONCPP)
-    resp->status = 500;
-    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
-    return;
-#else
-    Json::Value out(Json::objectValue);
-    out["ok"] = true;
-    out["service"] = "agentd";
-    out["version"] = "0.1";
-    out["have_jsoncpp"] = true;
-
-    Json::Value daemon(Json::objectValue);
-    daemon["listen_host"] = cfg.listen_host;
-    daemon["listen_port"] = (Json::UInt64)cfg.listen_port;
-    daemon["base_url"] = cfg.base_url;
-    daemon["model"] = cfg.model;
-    daemon["summary_model"] = cfg.summary_model.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.summary_model);
-    daemon["summary_max_chars"] = (Json::UInt64)cfg.summary_max_chars;
-    daemon["timeout_ms"] = (Json::Int64)cfg.timeout_ms;
-    daemon["proxy_url_set"] = !cfg.proxy_url.empty();
-    daemon["api_key_set"] = !cfg.api_key.empty();
-    daemon["auth_enabled"] = !cfg.auth_token.empty();
-    daemon["allow_unauthenticated_non_loopback"] = cfg.allow_unauthenticated_non_loopback;
-    out["daemon"] = daemon;
-
-    Json::Value cors(Json::objectValue);
-    cors["enabled"] = !cors_cfg.origins.empty();
-    Json::Value origins(Json::arrayValue);
-    for (const auto& o : cors_cfg.origins) origins.append(o);
-    cors["origins"] = origins;
-    cors["allow_headers"] = cors_cfg.allow_headers;
-    cors["allow_methods"] = cors_cfg.allow_methods;
-    cors["max_age_seconds"] = cors_cfg.max_age_seconds;
-    out["cors"] = cors;
-
-    Json::Value sandbox(Json::objectValue);
-    sandbox["tools"] = cfg.tools;
-    sandbox["tools_root"] = cfg.tools_root.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.tools_root);
-    sandbox["host_scope_root"] = cfg.host_scope_root.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.host_scope_root);
-    sandbox["yolo_default"] = cfg.yolo_default;
-    sandbox["host_policy"] = host_policy_to_string(cfg.host_policy);
-    out["sandbox"] = sandbox;
-
-    Json::Value jobs(Json::objectValue);
-    jobs["job_ttl_ms"] = (Json::Int64)cfg.job_ttl_ms;
-    jobs["max_jobs"] = (Json::UInt64)cfg.max_jobs;
-    out["jobs"] = jobs;
-
-    resp->body = json_stringify(out);
-    return;
-#endif
+    handle_config_endpoint(cfg, cors_cfg, req, resp);
   });
 
   server.handle("GET", "/api/v1/tools", [&](const HttpRequest& req, HttpResponse* resp) {
-    cors_apply(req, resp, cors_cfg);
-    resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    if (!daemon_require_auth(cfg, req, resp)) return;
-#if !defined(AGENT_HAVE_JSONCPP)
-    resp->status = 500;
-    resp->body = R"({"ok":false,"error":"agentd requires jsoncpp (AGENT_HAVE_JSONCPP)"})";
-    return;
-#else
-    std::string tools = cfg.tools;
-    if (const auto q = query_get(req.query, "tools"); q && !q->empty()) {
-      tools = *q;
-    }
-    const auto q_tools_root = query_get(req.query, "tools_root");
-    const bool requested_tools_root_set = q_tools_root && !q_tools_root->empty();
-    const std::string requested_tools_root = requested_tools_root_set ? *q_tools_root : "";
-
-    const auto q_yolo = query_get(req.query, "yolo");
-    const bool requested_yolo_set = q_yolo.has_value();
-    const bool requested_yolo = requested_yolo_set ? string_to_bool(*q_yolo) : cfg.yolo_default;
-    const bool yolo = sandbox_tighten_yolo(cfg.yolo_default, requested_yolo, requested_yolo_set);
-    std::string tools_root;
-    HostToolsetPolicyMode requested_policy = cfg.host_policy;
-    if (const auto q = query_get(req.query, "host_policy"); q && !q->empty()) {
-      HostToolsetPolicyMode p{};
-      if (!host_policy_from_string(*q, &p)) {
-        resp->status = 400;
-        resp->body = "{\"ok\":false,\"error\":\"invalid host_policy (expected: full|readonly)\"}";
-        return;
-      }
-      requested_policy = p;
-    }
-    const HostToolsetPolicyMode effective_policy = tighten_host_policy(cfg.host_policy, requested_policy);
-    {
-      std::string root_err;
-      if (!sandbox_resolve_tools_root(
-            cfg.host_scope_root,
-            yolo,
-            cfg.tools_root,
-            requested_tools_root,
-            requested_tools_root_set,
-            &tools_root,
-            &root_err
-          )) {
-        resp->status = 403;
-        resp->body = std::string("{\"ok\":false,\"error\":") + json_stringify(Json::Value(root_err.empty() ? "invalid tools_root" : root_err)) + "}";
-        return;
-      }
-    }
-
-    Json::Value out(Json::objectValue);
-    out["ok"] = true;
-    out["tools"] = tools;
-    out["effective_tools_root"] = tools_root;
-    out["effective_yolo"] = yolo;
-    out["effective_host_policy"] = host_policy_to_string(effective_policy);
-
-    agent_tool_registry_t* registry = nullptr;
-    agent_tool_executor_t executor{};
-    bool need_destroy_executor = false;
-
-    if (tools == "none") {
-      out["count"] = 0;
-      out["defs"] = Json::Value(Json::arrayValue);
-      resp->body = json_stringify(out);
-      return;
-    }
-    if (tools == "basic") {
-      if (toolset_basic_create(&registry, &executor) != AGENT_OK) {
-        resp->status = 500;
-        resp->body = R"({"ok":false,"error":"failed to init toolset_basic"})";
-        return;
-      }
-    } else if (tools == "host") {
-      HostToolsetConfig hcfg;
-      hcfg.root_dir = tools_root;
-      hcfg.policy = effective_policy;
-      hcfg.enable_process_exec = yolo;
-      hcfg.allow_symlinks = yolo;
-      if (toolset_host_create(hcfg, &registry, &executor) != AGENT_OK) {
-        resp->status = 500;
-        resp->body = R"({"ok":false,"error":"failed to init toolset_host"})";
-        return;
-      }
-      need_destroy_executor = true;
-    } else {
-      resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid tools (expected: none|basic|host)\"}";
-      return;
-    }
-
-    Json::Value arr(Json::arrayValue);
-    const size_t n = agent_tool_registry_count(registry);
-    for (size_t i = 0; i < n; i++) {
-      agent_tool_def_view_t v{};
-      if (agent_tool_registry_get(registry, i, &v) != AGENT_OK) continue;
-      Json::Value d(Json::objectValue);
-      d["name"] = v.name ? v.name : "";
-      d["description"] = v.description ? v.description : "";
-      d["parameters_json"] = v.parameters_json ? v.parameters_json : "";
-      arr.append(d);
-    }
-    out["count"] = (Json::UInt64)arr.size();
-    out["defs"] = arr;
-
-    agent_tool_registry_destroy(registry);
-    if (need_destroy_executor) {
-      toolset_host_destroy(&executor);
-    }
-
-    resp->body = json_stringify(out);
-    return;
-#endif
+    handle_tools_endpoint(cfg, cors_cfg, req, resp);
   });
 
   server.handle("GET", "/api/v1/openrouter/models", [&](const HttpRequest& req, HttpResponse* resp) {
@@ -1377,127 +1154,7 @@ int main(int argc, char** argv) {
   });
 
   server.handle("GET", "/api/v1/file", [&](const HttpRequest& req, HttpResponse* resp) {
-    cors_apply(req, resp, cors_cfg);
-    if (!daemon_require_auth(cfg, req, resp)) return;
-    const auto path_q = query_get(req.query, "path");
-    const auto yolo_q = query_get(req.query, "yolo");
-    const bool requested_yolo_set = yolo_q.has_value();
-    const bool requested_yolo = requested_yolo_set ? string_to_bool(*yolo_q) : cfg.yolo_default;
-    const bool yolo = sandbox_tighten_yolo(cfg.yolo_default, requested_yolo, requested_yolo_set);
-    if (!path_q || path_q->empty()) {
-      resp->status = 400;
-      resp->headers["Content-Type"] = "application/json; charset=utf-8";
-      resp->body = R"({"ok":false,"error":"missing path"})";
-      return;
-    }
-
-    const std::filesystem::path user_path(*path_q);
-    const std::filesystem::path cwd = std::filesystem::current_path();
-    std::string scope_root_str;
-    {
-      std::string root_err;
-      if (!sandbox_resolve_tools_root(cfg.host_scope_root, false, cfg.tools_root, "", false, &scope_root_str, &root_err)) {
-        resp->status = 500;
-        resp->headers["Content-Type"] = "application/json; charset=utf-8";
-        resp->body = R"({"ok":false,"error":"invalid daemon tools_root/host_scope_root"})";
-        return;
-      }
-    }
-    const std::filesystem::path scope_root = std::filesystem::path(scope_root_str);
-
-    std::filesystem::path resolved;
-    std::filesystem::path canon_root;
-    std::filesystem::path canon_file;
-    if (yolo) {
-      resolved = user_path.is_absolute() ? user_path : (cwd / user_path);
-    } else {
-      if (user_path.is_absolute()) {
-        resp->status = 403;
-        resp->headers["Content-Type"] = "application/json; charset=utf-8";
-        resp->body = "{\"ok\":false,\"error\":\"absolute paths disabled (daemon yolo disabled)\"}";
-        return;
-      }
-      resolved = (scope_root / user_path);
-    }
-    resolved = resolved.lexically_normal();
-
-    // Containment check when not yolo.
-    if (!yolo) {
-      std::error_code ec;
-      canon_root = std::filesystem::weakly_canonical(scope_root, ec);
-      if (ec) {
-        resp->status = 500;
-        resp->headers["Content-Type"] = "application/json; charset=utf-8";
-        resp->body = R"({"ok":false,"error":"failed to canonicalize host scope root"})";
-        return;
-      }
-      ec.clear();
-      canon_file = std::filesystem::weakly_canonical(resolved, ec);
-      if (ec) {
-        resp->status = 404;
-        resp->headers["Content-Type"] = "application/json; charset=utf-8";
-        resp->body = R"({"ok":false,"error":"file not found"})";
-        return;
-      }
-      // Component-wise prefix check (safer than string prefix).
-      auto it_r = canon_root.begin();
-      auto it_p = canon_file.begin();
-      bool within = true;
-      for (; it_r != canon_root.end(); ++it_r, ++it_p) {
-        if (it_p == canon_file.end() || *it_r != *it_p) {
-          within = false;
-          break;
-        }
-      }
-      if (!within) {
-        resp->status = 403;
-        resp->headers["Content-Type"] = "application/json; charset=utf-8";
-        resp->body = R"({"ok":false,"error":"path escapes host scope"})";
-        return;
-      }
-
-      // Use the canonical path for the actual read to avoid symlink TOCTOU between
-      // containment check and file open/read.
-      resolved = canon_file;
-    }
-
-    std::error_code ec;
-    if (!std::filesystem::exists(resolved, ec) || !std::filesystem::is_regular_file(resolved, ec)) {
-      resp->status = 404;
-      resp->headers["Content-Type"] = "application/json; charset=utf-8";
-      resp->body = R"({"ok":false,"error":"file not found"})";
-      return;
-    }
-
-    const uintmax_t max_bytes = 10ULL * 1024ULL * 1024ULL;
-    const uintmax_t sz = std::filesystem::file_size(resolved, ec);
-    if (ec || sz > max_bytes) {
-      resp->status = 400;
-      resp->headers["Content-Type"] = "application/json; charset=utf-8";
-      resp->body = R"({"ok":false,"error":"file too large"})";
-      return;
-    }
-
-    std::ifstream in(resolved, std::ios::binary);
-    if (!in.is_open()) {
-      resp->status = 500;
-      resp->headers["Content-Type"] = "application/json; charset=utf-8";
-      resp->body = R"({"ok":false,"error":"failed to open file"})";
-      return;
-    }
-    std::string bytes;
-    bytes.resize((size_t)sz);
-    in.read(bytes.data(), (std::streamsize)bytes.size());
-    if (!in) {
-      resp->status = 500;
-      resp->headers["Content-Type"] = "application/json; charset=utf-8";
-      resp->body = R"({"ok":false,"error":"failed to read file"})";
-      return;
-    }
-
-    resp->status = 200;
-    resp->headers["Content-Type"] = content_type_from_path(resolved);
-    resp->body = std::move(bytes);
+    handle_file_endpoint(cfg, cors_cfg, req, resp);
   });
 
   server.handle("GET", "/api/v1/sessions", [&](const HttpRequest& req, HttpResponse* resp) {

@@ -92,13 +92,17 @@ if(AGENT_BUILD_HOST)
 
   add_executable(agentd
     daemon/src/main.cpp
+    daemon/src/config_endpoint.cpp
     daemon/src/cors.cpp
+    daemon/src/daemon_auth.cpp
+    daemon/src/file_endpoint.cpp
     daemon/src/http_util.cpp
     daemon/src/http_server.cpp
     daemon/src/job_stream_endpoint.cpp
     daemon/src/job_manager.cpp
     daemon/src/json_util.cpp
     daemon/src/openrouter_models_endpoint.cpp
+    daemon/src/tools_endpoint.cpp
     daemon/src/sandbox_policy.cpp
     daemon/src/openrouter_util.cpp
     daemon/src/string_util.cpp
