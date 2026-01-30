@@ -63,6 +63,7 @@ export default function ConversationView({
 }) {
   const [ackError, setAckError] = React.useState<string | null>(null);
   const [ackedKeys, setAckedKeys] = React.useState<Record<string, boolean>>({});
+  const shownUiActionRef = React.useRef<Record<string, boolean>>({});
 
   const postClientEvent = React.useCallback(
     async (type: string, data: any) => {
@@ -86,6 +87,24 @@ export default function ConversationView({
     },
     [baseUrl, daemonAuthToken, sessionId],
   );
+
+  // Fundamental DoD handshake: when the UI renders a derived ui_action event, emit a client event so the agent
+  // can deterministically stop repeating the same “show/play/notify” requests.
+  React.useEffect(() => {
+    const sid = typeof sessionId === "string" ? sessionId.trim() : "";
+    if (sid.length === 0) return;
+    events.forEach((ev) => {
+      if (ev.type !== "ui_action") return;
+      const data: any = normalizeEventData(ev.data);
+      const toolCallId = String(data?.tool_call_id ?? "");
+      if (!toolCallId) return;
+      if (shownUiActionRef.current[toolCallId]) return;
+      const action = data?.action ?? {};
+      const atype = String(action?.type ?? "");
+      shownUiActionRef.current[toolCallId] = true;
+      void postClientEvent("ui_action_shown", { tool_call_id: toolCallId, action_type: atype, title: action?.title }).catch(() => {});
+    });
+  }, [events, postClientEvent, sessionId]);
 
   const items: Array<React.ReactNode> = [];
   let streamedAssistant = "";

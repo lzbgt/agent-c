@@ -99,3 +99,29 @@ Cancelled:
 - This tool is only exposed when the run is session-backed (i.e., `no_session=false`) and the daemon has a sessions root.
 - For best results, the UI should post `append_to_session=false` for high-frequency events (like audio playback),
   and allow the agent to use `ui_wait_event` instead of polluting the session transcript with dozens of UI markers.
+
+## Join waits (multiple predicates)
+
+For workflows where “done” requires **multiple** UI acknowledgements (or where the user may do one of several actions),
+the host toolset also exposes:
+
+- `ui_wait_any`: OR-join. Returns when the first predicate matches.
+- `ui_wait_all`: AND-join. Returns when all predicates match.
+
+Arguments (both tools):
+- `predicates` (array, required): list of `{ type, after_unix_ms?, path?, data_match? }`
+- `timeout_ms` (int, optional, default `30000`)
+- `max_bytes` (int, optional, default `262144`)
+- `max_files` (int, optional): consider rotated client event logs up to this many files
+
+Example: wait until both “artifact was rendered” and “audio finished”:
+
+```json
+{
+  "predicates": [
+    { "type": "artifact_rendered", "data_match": { "tool_call_id": "call_af_1" } },
+    { "type": "audio_play_finished", "data_match": { "tool_call_id": "call_audio_1" } }
+  ],
+  "timeout_ms": 60000
+}
+```

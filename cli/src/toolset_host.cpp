@@ -1658,6 +1658,12 @@ static agent_status_t host_tools_execute(void* vctx, const char* tool_name, cons
   if (name == "ui_wait_event") {
     return tool_ui_wait_event(ctx, arguments_json, out_result);
   }
+  if (name == "ui_wait_any") {
+    return tool_ui_wait_any(ctx, arguments_json, out_result);
+  }
+  if (name == "ui_wait_all") {
+    return tool_ui_wait_all(ctx, arguments_json, out_result);
+  }
   if (name == "camera_capture") {
     return tool_camera_capture(ctx, arguments_json, out_result);
   }
@@ -1889,10 +1895,62 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
       "  \"timeout_ms\":{\"type\":\"integer\",\"description\":\"Max wait time (default: 30000). 0 means no-wait (immediate timeout).\"},"
       "  \"after_unix_ms\":{\"type\":\"integer\",\"description\":\"Ignore events older than this timestamp (optional).\"},"
       "  \"path\":{\"type\":\"string\",\"description\":\"Optional filter for payload.data.path.\"},"
-      "  \"data_match\":{\"type\":\"object\",\"description\":\"Optional exact-match filter applied to payload.data (string/bool/int/uint values).\"},"
+      "  \"data_match\":{\"type\":\"object\",\"description\":\"Optional partial-match filter applied to payload.data (nested objects supported; arrays match exactly).\"},"
       "  \"max_bytes\":{\"type\":\"integer\",\"description\":\"Max bytes read from the end of the client event log (default: 262144).\"}"
       "},"
       "\"required\":[\"type\"]"
+      "}"
+    );
+    if (st != AGENT_OK) goto fail;
+
+    st = add_tool(
+      r,
+      "ui_wait_any",
+      "Wait until any of multiple UI client event predicates matches (OR join). Useful to block until the user does one of several actions.",
+      "{"
+      "\"type\":\"object\","
+      "\"properties\":{"
+      "  \"predicates\":{\"type\":\"array\",\"description\":\"List of event predicates to match.\",\"items\":{"
+      "    \"type\":\"object\","
+      "    \"properties\":{"
+      "      \"type\":{\"type\":\"string\"},"
+      "      \"after_unix_ms\":{\"type\":\"integer\"},"
+      "      \"path\":{\"type\":\"string\"},"
+      "      \"data_match\":{\"type\":\"object\"}"
+      "    },"
+      "    \"required\":[\"type\"]"
+      "  }},"
+      "  \"timeout_ms\":{\"type\":\"integer\",\"description\":\"Max wait time (default: 30000). 0 means no-wait (immediate timeout).\"},"
+      "  \"max_bytes\":{\"type\":\"integer\",\"description\":\"Max bytes read from the end of the client event log (default: 262144).\"},"
+      "  \"max_files\":{\"type\":\"integer\",\"description\":\"Max rotated log files to consider (default: daemon/session store default).\"}"
+      "},"
+      "\"required\":[\"predicates\"]"
+      "}"
+    );
+    if (st != AGENT_OK) goto fail;
+
+    st = add_tool(
+      r,
+      "ui_wait_all",
+      "Wait until all of multiple UI client event predicates match (AND join). Useful for Definition-of-Done handshakes across multiple UI-visible effects.",
+      "{"
+      "\"type\":\"object\","
+      "\"properties\":{"
+      "  \"predicates\":{\"type\":\"array\",\"description\":\"List of event predicates to match.\",\"items\":{"
+      "    \"type\":\"object\","
+      "    \"properties\":{"
+      "      \"type\":{\"type\":\"string\"},"
+      "      \"after_unix_ms\":{\"type\":\"integer\"},"
+      "      \"path\":{\"type\":\"string\"},"
+      "      \"data_match\":{\"type\":\"object\"}"
+      "    },"
+      "    \"required\":[\"type\"]"
+      "  }},"
+      "  \"timeout_ms\":{\"type\":\"integer\",\"description\":\"Max wait time (default: 30000). 0 means no-wait (immediate timeout).\"},"
+      "  \"max_bytes\":{\"type\":\"integer\",\"description\":\"Max bytes read from the end of the client event log (default: 262144).\"},"
+      "  \"max_files\":{\"type\":\"integer\",\"description\":\"Max rotated log files to consider (default: daemon/session store default).\"}"
+      "},"
+      "\"required\":[\"predicates\"]"
       "}"
     );
     if (st != AGENT_OK) goto fail;

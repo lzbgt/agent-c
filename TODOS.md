@@ -96,6 +96,8 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Make `GET /api/v1/tools` accept `session_id` so UIs can see session-scoped tools (e.g. `ui_wait_event`) during tool introspection.
 - [x] Keep `<session>.client_events.jsonl` bounded via best-effort rotation + backups; expose `include_rotated` tail reading in `GET /api/v1/session/client_events`.
 - [x] Extend `ui_wait_event` matching to support nested `data_match` objects (safe, bounded recursion) and cover it with a smoke test.
+- [x] Add join-wait host tools (`ui_wait_any`, `ui_wait_all`) so agents can deterministically wait for one-of or all-of multiple UI acknowledgements.
+- [x] Add UI auto-ack client events (`ui_action_shown`, `artifact_rendered`) so “present to UI” tasks have an observable DoD without relying on tool-call caps.
 - [ ] Add a daemon skeleton with:
   - local control socket / HTTP
   - broker client abstraction (MQTT)

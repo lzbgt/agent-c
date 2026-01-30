@@ -55,6 +55,7 @@ export default function ArtifactView({
   const [playError, setPlayError] = React.useState<string | null>(null);
   const playRemainingRef = React.useRef<number>(0);
   const lastPlayRequestRef = React.useRef<{ n: number; autoplay: boolean; started_ms: number } | null>(null);
+  const renderedSentRef = React.useRef<boolean>(false);
 
   const postUiEvent = React.useCallback(
     async (etype: string, data?: any, appendToSession?: boolean) => {
@@ -101,6 +102,14 @@ export default function ArtifactView({
     },
     [audioRef, autoplay, path, postUiEvent, title, toolCallId],
   );
+
+  React.useEffect(() => {
+    if (renderedSentRef.current) return;
+    if (!path) return;
+    if (!toolCallId) return; // avoid spamming acks for historic/browsed artifacts without a deterministic key
+    renderedSentRef.current = true;
+    void postUiEvent("artifact_rendered", { path, kind, title, tool_call_id: toolCallId }, false);
+  }, [kind, path, postUiEvent, title, toolCallId]);
 
   React.useEffect(() => {
     const el = audioRef.current;

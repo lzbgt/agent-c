@@ -74,6 +74,8 @@ Query endpoint:
 This is intentionally open-ended, but common initial types:
 - `audio_play_started`
 - `audio_play_finished`
+- `artifact_rendered`
+- `ui_action_shown`
 - `notification_shown`
 - `notification_ack`
 - `artifact_viewed`
@@ -82,5 +84,13 @@ Recommended payloads:
 - For `notification_ack`, include enough fields for deterministic matching (so the agent can use `ui_wait_event` with `data_match`):
   - `tool_call_id` (when known; preferred)
   - `title`, `message`
+
+- For `artifact_rendered`, include:
+  - `tool_call_id` (preferred; enables deterministic DoD waits)
+  - `path`, `kind`, `title` (optional)
+
+- For `ui_action_shown`, include:
+  - `tool_call_id` (preferred)
+  - `action_type`, `title` (optional)
 
 The daemon does not enforce an allowlist for types; UIs should keep payloads small.

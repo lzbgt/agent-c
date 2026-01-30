@@ -157,5 +157,7 @@ agent_status_t tool_artifact_register(HostToolCtx* ctx, const char* arguments_js
 agent_status_t tool_ui_action(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 agent_status_t tool_camera_capture(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 agent_status_t tool_ui_wait_event(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
+agent_status_t tool_ui_wait_any(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
+agent_status_t tool_ui_wait_all(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 
 } // namespace host_tools_internal

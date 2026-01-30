@@ -154,6 +154,8 @@ to fill the requested `max_bytes` budget.
 When using tool loops, an agent may need to wait for a UI/user acknowledgement within a single run (e.g. audio playback finished).
 For this, the host toolset exposes a cooperative polling tool:
 - `ui_wait_event`
+- `ui_wait_any` (OR join)
+- `ui_wait_all` (AND join)
 
 See: `docs/UI_WAIT_EVENT.md`.
 
