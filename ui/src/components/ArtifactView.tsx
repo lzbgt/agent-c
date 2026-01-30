@@ -14,6 +14,11 @@ function safeInt(v: any, def: number): number {
   return Math.trunc(v);
 }
 
+function safeStringOrNull(v: any): string | null {
+  const s = typeof v === "string" ? v.trim() : "";
+  return s.length > 0 ? s : null;
+}
+
 function guessKind(path: string): "image" | "audio" | "video" | "text" | "file" {
   const lower = (path || "").toLowerCase();
   if (/\.(png|jpe?g|gif|webp|svg)$/.test(lower)) return "image";
@@ -42,6 +47,7 @@ export default function ArtifactView({
   const kind: string = safeString(artifact?.kind) || guessKind(path);
   const autoplay = safeBool(artifact?.autoplay);
   const repeat = Math.min(Math.max(safeInt(artifact?.repeat, 1), 1), 16);
+  const toolCallId = safeStringOrNull(artifact?.tool_call_id) ?? safeStringOrNull(artifact?.source_tool_call_id);
 
   const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(path)}&yolo=${yolo ? "1" : "0"}`;
 
@@ -82,14 +88,18 @@ export default function ArtifactView({
       try {
         el.currentTime = 0;
         await el.play();
-        void postUiEvent("audio_play_started", { path, title, repeat_requested: playRemainingRef.current, autoplay }, false);
+        void postUiEvent(
+          "audio_play_started",
+          { path, title, repeat_requested: playRemainingRef.current, autoplay, tool_call_id: toolCallId },
+          false,
+        );
       } catch (e) {
         playRemainingRef.current = 0;
         setPlayError(String(e));
-        void postUiEvent("audio_play_failed", { path, title, error: String(e), autoplay }, false);
+        void postUiEvent("audio_play_failed", { path, title, error: String(e), autoplay, tool_call_id: toolCallId }, false);
       }
     },
-    [audioRef, autoplay, path, postUiEvent, title],
+    [audioRef, autoplay, path, postUiEvent, title, toolCallId],
   );
 
   React.useEffect(() => {
@@ -109,6 +119,7 @@ export default function ArtifactView({
           autoplay: last?.autoplay ?? false,
           started_ms: last?.started_ms ?? 0,
           finished_ms: Date.now(),
+          tool_call_id: toolCallId,
           },
           false,
         );
@@ -119,14 +130,14 @@ export default function ArtifactView({
       void el.play().catch((e) => {
         playRemainingRef.current = 0;
         setPlayError(String(e));
-        void postUiEvent("audio_play_failed", { path, title, error: String(e), autoplay }, false);
+        void postUiEvent("audio_play_failed", { path, title, error: String(e), autoplay, tool_call_id: toolCallId }, false);
       });
     };
     el.addEventListener("ended", onEnded);
     return () => {
       el.removeEventListener("ended", onEnded);
     };
-  }, [audioRef, autoplay, path, postUiEvent, title]);
+  }, [audioRef, autoplay, path, postUiEvent, title, toolCallId]);
 
   React.useEffect(() => {
     if (kind !== "audio") return;

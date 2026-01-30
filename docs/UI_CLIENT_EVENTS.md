@@ -72,4 +72,9 @@ This is intentionally open-ended, but common initial types:
 - `notification_ack`
 - `artifact_viewed`
 
+Recommended payloads:
+- For `notification_ack`, include enough fields for deterministic matching (so the agent can use `ui_wait_event` with `data_match`):
+  - `tool_call_id` (when known; preferred)
+  - `title`, `message`
+
 The daemon does not enforce an allowlist for types; UIs should keep payloads small.

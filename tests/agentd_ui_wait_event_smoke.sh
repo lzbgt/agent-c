@@ -31,7 +31,7 @@ cleanup() {
 trap cleanup EXIT
 
 # OpenAI-compatible stub:
-# - first response: tool call to ui_wait_event(type=smoke_client_event)
+# - first response: tool call to ui_wait_event(type=smoke_client_event, data_match.k=v)
 # - second response: assistant "OK"
 python3 -u - <<PY > "${LOG_DIR}/agentd_ui_wait_event_smoke.stub.stdout.log" 2> "${LOG_DIR}/agentd_ui_wait_event_smoke.stub.stderr.log" &
 import json
@@ -88,7 +88,7 @@ class H(BaseHTTPRequestHandler):
                   "type": "function",
                   "function": {
                     "name": "ui_wait_event",
-                    "arguments": json.dumps({"type":"smoke_client_event","timeout_ms":5000}),
+                    "arguments": json.dumps({"type":"smoke_client_event","timeout_ms":5000,"data_match":{"k":"v"}}),
                   },
                 }
               ],
@@ -170,4 +170,3 @@ if txt != "OK":
 PY
 
 echo "agentd_ui_wait_event_smoke OK"
-

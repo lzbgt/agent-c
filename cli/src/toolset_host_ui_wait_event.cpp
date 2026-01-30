@@ -25,7 +25,58 @@ static agent_status_t write_result(agent_string_t* out, const Json::Value& v) {
   return set_result(out, Json::writeString(wb, v));
 }
 
-static bool event_matches(const Json::Value& payload, const std::string& type, int64_t after_unix_ms, const std::string& path) {
+static bool data_matches(const Json::Value& payload, const Json::Value& data_match) {
+  if (!data_match.isObject()) return true;
+  if (!payload.isObject()) return false;
+  const auto& d = payload["data"];
+  if (!d.isObject()) return false;
+  for (const auto& k : data_match.getMemberNames()) {
+    const auto& expected = data_match[k];
+    const auto& actual = d[k];
+    if (expected.isString()) {
+      if (!actual.isString() || actual.asString() != expected.asString()) return false;
+      continue;
+    }
+    if (expected.isBool()) {
+      if (!actual.isBool() || actual.asBool() != expected.asBool()) return false;
+      continue;
+    }
+    if (expected.isInt() || expected.isInt64()) {
+      const int64_t ex = expected.isInt64() ? expected.asInt64() : (int64_t)expected.asInt();
+      int64_t av = 0;
+      if (actual.isInt64()) av = actual.asInt64();
+      else if (actual.isUInt64()) av = (int64_t)actual.asUInt64();
+      else if (actual.isInt()) av = (int64_t)actual.asInt();
+      else return false;
+      if (av != ex) return false;
+      continue;
+    }
+    if (expected.isUInt() || expected.isUInt64()) {
+      const uint64_t ex = expected.isUInt64() ? expected.asUInt64() : (uint64_t)expected.asUInt();
+      uint64_t av = 0;
+      if (actual.isUInt64()) av = actual.asUInt64();
+      else if (actual.isInt64()) {
+        const int64_t v = actual.asInt64();
+        if (v < 0) return false;
+        av = (uint64_t)v;
+      } else if (actual.isUInt()) av = (uint64_t)actual.asUInt();
+      else return false;
+      if (av != ex) return false;
+      continue;
+    }
+    // Unknown expected type: fail closed to avoid surprising matches.
+    return false;
+  }
+  return true;
+}
+
+static bool event_matches(
+  const Json::Value& payload,
+  const std::string& type,
+  int64_t after_unix_ms,
+  const std::string& path,
+  const Json::Value& data_match
+) {
   if (!payload.isObject()) return false;
   const auto& t = payload["type"];
   if (!t.isString() || t.asString() != type) return false;
@@ -42,6 +93,7 @@ static bool event_matches(const Json::Value& payload, const std::string& type, i
     const auto& p = d["path"];
     if (!p.isString() || p.asString() != path) return false;
   }
+  if (!data_matches(payload, data_match)) return false;
   return true;
 }
 
@@ -90,6 +142,7 @@ agent_status_t tool_ui_wait_event(HostToolCtx* ctx, const char* arguments_json, 
   max_bytes = std::min<size_t>(max_bytes, 1024 * 1024);
 
   const std::string path = args.isMember("path") && args["path"].isString() ? args["path"].asString() : "";
+  const Json::Value data_match = args.isMember("data_match") && args["data_match"].isObject() ? args["data_match"] : Json::Value(Json::nullValue);
 
   if (ctx->sessions_root_dir.empty() || ctx->session_id.empty()) {
     Json::Value o(Json::objectValue);
@@ -135,7 +188,7 @@ agent_status_t tool_ui_wait_event(HostToolCtx* ctx, const char* arguments_json, 
       if (!Json::parseFromStream(rb, lss, &payload, &perr)) {
         continue;
       }
-      if (!event_matches(payload, type, after_unix_ms, path)) {
+      if (!event_matches(payload, type, after_unix_ms, path, data_match)) {
         continue;
       }
       int64_t ts = 0;
@@ -189,4 +242,3 @@ agent_status_t tool_ui_wait_event(HostToolCtx* ctx, const char* arguments_json, 
 #endif
 
 } // namespace host_tools_internal
-

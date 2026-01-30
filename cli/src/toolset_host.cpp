@@ -1889,6 +1889,7 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
       "  \"timeout_ms\":{\"type\":\"integer\",\"description\":\"Max wait time (default: 30000). 0 means no-wait (immediate timeout).\"},"
       "  \"after_unix_ms\":{\"type\":\"integer\",\"description\":\"Ignore events older than this timestamp (optional).\"},"
       "  \"path\":{\"type\":\"string\",\"description\":\"Optional filter for payload.data.path.\"},"
+      "  \"data_match\":{\"type\":\"object\",\"description\":\"Optional exact-match filter applied to payload.data (string/bool/int/uint values).\"},"
       "  \"max_bytes\":{\"type\":\"integer\",\"description\":\"Max bytes read from the end of the client event log (default: 262144).\"}"
       "},"
       "\"required\":[\"type\"]"

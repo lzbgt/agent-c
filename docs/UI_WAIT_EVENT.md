@@ -46,7 +46,19 @@ Arguments (JSON):
 - `timeout_ms` (int, optional, default `30000`, max `300000`)
 - `after_unix_ms` (number, optional): ignore events older than this timestamp
 - `path` (string, optional): convenience filter for `payload.data.path`
+- `data_match` (object, optional): exact-match filters applied to `payload.data`
+  - values must be scalar: string/bool/int/uint
 - `max_bytes` (int, optional, default `262144`): max bytes read from the end of the JSONL file each poll
+
+Example: wait for a notification acknowledgement for a specific tool call:
+
+```json
+{
+  "type": "notification_ack",
+  "timeout_ms": 60000,
+  "data_match": { "tool_call_id": "call_ua_1" }
+}
+```
 
 Return:
 
@@ -85,4 +97,3 @@ Cancelled:
 - This tool is only exposed when the run is session-backed (i.e., `no_session=false`) and the daemon has a sessions root.
 - For best results, the UI should post `append_to_session=false` for high-frequency events (like audio playback),
   and allow the agent to use `ui_wait_event` instead of polluting the session transcript with dozens of UI markers.
-

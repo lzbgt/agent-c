@@ -1,5 +1,5 @@
 import React from "react";
-import type { AgentEvent } from "../api";
+import { apiPostSessionUiEvent, type AgentEvent } from "../api";
 import Markdown from "./Markdown";
 import ToolResultView from "./ToolResultView";
 import ArtifactView from "./ArtifactView";
@@ -61,6 +61,32 @@ export default function ConversationView({
   showDebugEvents?: boolean;
   allowAutoplay: boolean;
 }) {
+  const [ackError, setAckError] = React.useState<string | null>(null);
+  const [ackedKeys, setAckedKeys] = React.useState<Record<string, boolean>>({});
+
+  const postClientEvent = React.useCallback(
+    async (type: string, data: any) => {
+      const sid = typeof sessionId === "string" ? sessionId.trim() : "";
+      if (sid.length === 0) {
+        throw new Error("missing session_id");
+      }
+      const resp = await apiPostSessionUiEvent(
+        baseUrl,
+        {
+          session_id: sid,
+          type,
+          data: data ?? {},
+          append_to_session: false,
+        },
+        daemonAuthToken,
+      );
+      if (!resp.ok) {
+        throw new Error(resp.error || "ui_event failed");
+      }
+    },
+    [baseUrl, daemonAuthToken, sessionId],
+  );
+
   const items: Array<React.ReactNode> = [];
   let streamedAssistant = "";
   let sawFinalAssistant = false;
@@ -134,7 +160,7 @@ export default function ConversationView({
 
     if (type === "artifact") {
       sawToolOrAssistant = true;
-      const artifact = data?.artifact ?? {};
+      const artifact = { ...(data?.artifact ?? {}), tool_call_id: String(data?.tool_call_id ?? "") };
       const title = String(artifact?.title ?? artifact?.path ?? "artifact");
       items.push(
         <Card key={`af-${idx}`} title={`Artifact: ${title}`}>
@@ -156,12 +182,42 @@ export default function ConversationView({
       const action = data?.action ?? {};
       const atype = String(action?.type ?? "");
       const title = String(action?.title ?? (atype ? `ui_action: ${atype}` : "ui_action"));
+      const toolCallId = String(data?.tool_call_id ?? "");
       if (atype === "notify") {
         const msg = String(action?.message ?? "");
+        const ackKey = toolCallId ? `tool_call:${toolCallId}` : `notify:${title}:${msg}`;
+        const canAck = typeof sessionId === "string" && sessionId.trim().length > 0;
         items.push(
           <Card key={`ua-${idx}`} title={`UI action: ${title}`}>
             <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-sm text-white/80">
               {msg || "(no message)"}
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={!canAck || !!ackedKeys[ackKey]}
+                title={!canAck ? "Select a session first" : toolCallId ? `tool_call_id=${toolCallId}` : ""}
+                onClick={() => {
+                  setAckError(null);
+                  void (async () => {
+                    try {
+                      await postClientEvent("notification_ack", {
+                        tool_call_id: toolCallId,
+                        action_type: "notify",
+                        title,
+                        message: msg,
+                      });
+                      setAckedKeys((prev) => ({ ...prev, [ackKey]: true }));
+                    } catch (e) {
+                      setAckError(String(e));
+                    }
+                  })();
+                }}
+              >
+                {ackedKeys[ackKey] ? "Acknowledged" : "Acknowledge"}
+              </button>
+              {ackError ? <div className="text-[11px] text-amber-200/80">ack failed: {ackError}</div> : null}
             </div>
           </Card>,
         );
@@ -176,6 +232,7 @@ export default function ConversationView({
           title,
           autoplay: action?.autoplay,
           repeat: action?.repeat,
+          source_tool_call_id: toolCallId,
         };
         items.push(
           <Card key={`ua-${idx}`} title={`UI action: ${title}`}>
