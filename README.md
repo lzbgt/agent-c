@@ -37,7 +37,7 @@ without changing the core call sites (filesystem `.sess`, SQLite, NVS/flash, etc
 
 ### Daemon auth (optional)
 
-If you bind `agentd` to non-loopback (e.g. `--host 0.0.0.0`), set an auth token:
+If you bind `agentd` to non-loopback (e.g. `--host 0.0.0.0`), you must set an auth token (agentd refuses to start otherwise):
 
 ```bash
 ./build/agentd --auth-token "your_token"
@@ -221,6 +221,10 @@ The recommended UX direction is **daemon-first**: run `agentd` locally and use t
 ```bash
 ./build/agentd --host 127.0.0.1 --port 8123
 ```
+
+Safety:
+- `agentd` refuses to bind to non-loopback hosts unless `--auth-token` is set.
+- Override (insecure): `./build/agentd --host 0.0.0.0 --port 8123 --allow-unauth`
 
 Proxy override:
 

@@ -141,6 +141,11 @@ if(AGENT_BUILD_HOST)
 
   add_test(NAME agentd_sandbox_tighten_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_sandbox_tighten_smoke.sh $<TARGET_FILE:agentd>)
 
+  add_test(
+    NAME agentd_non_loopback_auth_guard_smoke
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_non_loopback_auth_guard_smoke.sh $<TARGET_FILE:agentd>
+  )
+
   add_test(NAME agentd_host_tools_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_host_tools_smoke.sh $<TARGET_FILE:agentd>)
   set_tests_properties(agentd_host_tools_smoke PROPERTIES SKIP_RETURN_CODE 77)
 

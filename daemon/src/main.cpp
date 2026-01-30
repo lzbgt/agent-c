@@ -66,6 +66,9 @@ struct DaemonConfig {
   // Optional daemon auth (control-plane). When set, all endpoints (except /health) require
   // Authorization: Bearer <token>. This is distinct from provider API keys.
   std::string auth_token;
+  // Safety guard: when binding to a non-loopback host (0.0.0.0, LAN IP), refuse to start unless auth is enabled,
+  // unless explicitly overridden (insecure).
+  bool allow_unauthenticated_non_loopback = false;
   std::string base_url = "https://api.openai.com/v1";
   std::string api_key;
   std::string model = "gpt-4o-mini";
@@ -86,6 +89,15 @@ struct DaemonConfig {
   int64_t job_ttl_ms = 30 * 60 * 1000; // 30 minutes
   size_t max_jobs = 256;
 };
+
+static bool host_is_loopback(std::string host) {
+  host = lower_copy(std::move(host));
+  if (host == "localhost") return true;
+  if (host == "::1" || host == "[::1]") return true;
+  if (host.rfind("127.", 0) == 0) return true;
+  if (host == "127.0.0.1") return true;
+  return false;
+}
 
 static bool daemon_auth_ok(const DaemonConfig& cfg, const HttpRequest& req) {
   if (cfg.auth_token.empty()) {
@@ -867,6 +879,8 @@ int main(int argc, char** argv) {
         std::cerr << "Missing value for --auth-token\n";
         return 2;
       }
+    } else if (a == "--allow-unauth") {
+      cfg.allow_unauthenticated_non_loopback = true;
     } else if (a == "--port") {
       std::string v;
       if (!take(&v)) {
@@ -994,6 +1008,7 @@ int main(int argc, char** argv) {
         << "Usage: agentd [options]\n"
         << "  --host <ip>          Listen host (default: 127.0.0.1)\n"
         << "  --auth-token <tok>   Require Authorization: Bearer <tok> (default: disabled)\n"
+        << "  --allow-unauth       Allow non-loopback without auth (INSECURE)\n"
         << "  --port <n>           Listen port (default: 8123)\n"
         << "  --model <name>       Default model\n"
         << "  --summary-model <name>   Optional model for compaction summaries (tools=none)\n"
@@ -1925,6 +1940,12 @@ int main(int argc, char** argv) {
   });
 
   std::string err;
+  if (!host_is_loopback(cfg.listen_host) && cfg.auth_token.empty() && !cfg.allow_unauthenticated_non_loopback) {
+    std::cerr << "Refusing to bind agentd to non-loopback host without auth.\n";
+    std::cerr << "Provide --auth-token <token> (recommended) or pass --allow-unauth to override (insecure).\n";
+    std::cerr << "host=" << cfg.listen_host << "\n";
+    return 2;
+  }
   std::cerr << "agentd listening on http://" << cfg.listen_host << ":" << cfg.listen_port << "\n";
   if (!server.serve(cfg.listen_host, cfg.listen_port, &err)) {
     std::cerr << "agentd failed: " << err << "\n";
