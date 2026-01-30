@@ -65,3 +65,17 @@ agent_test_get_key() {
   return 0
 }
 
+agent_test_setup_proxy_env() {
+  # Some environments require an HTTP proxy for outbound HTTPS. Many of this repo's network tests assume one
+  # is present at localhost:8120 by default.
+  local default_proxy="${1:-http://localhost:8120}"
+
+  export https_proxy="${https_proxy:-${HTTPS_PROXY:-${default_proxy}}}"
+  export http_proxy="${http_proxy:-${HTTP_PROXY:-${default_proxy}}}"
+  export HTTPS_PROXY="${https_proxy}"
+  export HTTP_PROXY="${http_proxy}"
+
+  # Do not proxy localhost daemon traffic.
+  export no_proxy="${no_proxy:-${NO_PROXY:-127.0.0.1,localhost}}"
+  export NO_PROXY="${no_proxy}"
+}

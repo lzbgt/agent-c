@@ -16,15 +16,8 @@ if [[ "${AGENT_DISABLE_NETWORK_TESTS:-}" == "1" ]]; then
   exit 77
 fi
 
-# Always set proxy for network tests (can be required in some environments).
-export https_proxy="${https_proxy:-${HTTPS_PROXY:-http://localhost:8120}}"
-export http_proxy="${http_proxy:-${HTTP_PROXY:-http://localhost:8120}}"
-export HTTPS_PROXY="${https_proxy}"
-export HTTP_PROXY="${http_proxy}"
-export no_proxy="${no_proxy:-${NO_PROXY:-127.0.0.1,localhost}}"
-export NO_PROXY="${no_proxy}"
-
 source "${SCRIPT_DIR}/test_keys.sh"
+agent_test_setup_proxy_env
 DEEPSEEK_KEY="$(agent_test_get_key deepseek 2>/dev/null || true)"
 if [[ -z "${DEEPSEEK_KEY}" ]]; then
   echo "SKIP: DEEPSEEK_API_KEY not set and not found in project.local.md" >&2
