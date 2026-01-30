@@ -31,7 +31,7 @@ if not obj.get("ok"):
   raise SystemExit(1)
 defs = obj.get("defs") or []
 names = {d.get("name") for d in defs if isinstance(d, dict)}
-need = {"shell_exec", "proc_exec", "file_apply_patch", "fs_read", "fs_list", "fs_stat"}
+need = {"shell_exec", "proc_exec", "file_apply_patch", "fs_read", "fs_list", "fs_stat", "camera_capture"}
 missing = sorted(need - names)
 if missing:
   print("missing tools:", missing, file=sys.stderr)
@@ -52,7 +52,7 @@ if obj.get("effective_yolo") not in (False, 0):
   raise SystemExit(1)
 defs = obj.get("defs") or []
 names = {d.get("name") for d in defs if isinstance(d, dict)}
-must_absent = {"shell_exec", "proc_exec"}
+must_absent = {"shell_exec", "proc_exec", "camera_capture"}
 present = sorted(must_absent & names)
 if present:
   print("exec tools should be omitted in scoped mode:", present, file=sys.stderr)
@@ -78,7 +78,7 @@ if obj.get("effective_host_policy") not in ("readonly",):
   raise SystemExit(1)
 defs = obj.get("defs") or []
 names = {d.get("name") for d in defs if isinstance(d, dict)}
-must_absent = {"shell_exec", "proc_exec", "file_apply_patch"}
+must_absent = {"shell_exec", "proc_exec", "file_apply_patch", "camera_capture"}
 present = sorted(must_absent & names)
 if present:
   print("tools should be omitted in readonly policy:", present, file=sys.stderr)

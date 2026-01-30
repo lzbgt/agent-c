@@ -1590,7 +1590,7 @@ static agent_status_t host_tools_execute(void* vctx, const char* tool_name, cons
   HostToolCtx* ctx = (HostToolCtx*)vctx;
   const std::string name(tool_name);
   if (ctx->policy == HostToolsetPolicyMode::ReadOnly) {
-    if (name == "shell_exec" || name == "proc_exec" || name == "file_apply_patch") {
+    if (name == "shell_exec" || name == "proc_exec" || name == "file_apply_patch" || name == "camera_capture") {
 #if !defined(AGENT_HAVE_JSONCPP)
       return set_result(out_result, "{\"ok\":false,\"error\":\"tool disabled by policy\",\"data\":{}}");
 #else
@@ -1608,7 +1608,7 @@ static agent_status_t host_tools_execute(void* vctx, const char* tool_name, cons
     }
   }
   if (!ctx->exec_enabled) {
-    if (name == "shell_exec" || name == "proc_exec") {
+    if (name == "shell_exec" || name == "proc_exec" || name == "camera_capture") {
 #if !defined(AGENT_HAVE_JSONCPP)
       return set_result(out_result, "{\"ok\":false,\"error\":\"tool disabled by sandbox\",\"data\":{}}");
 #else
@@ -1874,23 +1874,30 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
   );
   if (st != AGENT_OK) goto fail;
 
-  st = add_tool(
-    r,
-    "camera_capture",
-    "Capture a single image from the host camera (or mock backend). Returns JSON envelope with data.artifact for UI rendering; the tool loop emits a derived artifact event.",
-    "{"
-    "\"type\":\"object\","
-    "\"properties\":{"
-    "  \"path\":{\"type\":\"string\",\"description\":\"Output file path (relative to tools root in scoped mode).\"},"
-    "  \"backend\":{\"type\":\"string\",\"description\":\"auto|ffmpeg|mock\"},"
-    "  \"timeout_ms\":{\"type\":\"integer\"},"
-    "  \"title\":{\"type\":\"string\"},"
-    "  \"register_artifact\":{\"type\":\"boolean\"},"
-    "  \"notify\":{\"type\":\"boolean\"}"
-    "}"
-    "}"
-  );
-  if (st != AGENT_OK) goto fail;
+  // Camera capture is intentionally gated behind exec-enabled sandbox:
+  // - On daemon, exec-enabled implies yolo=true.
+  // - On CLI, exec-enabled is typically true.
+  // This prevents scoped/safe inspection runs from exposing device/capture tools that may confuse the model
+  // (and avoids returning mock captures by default in scoped mode).
+  if (cfg.policy == HostToolsetPolicyMode::Full && cfg.enable_process_exec) {
+    st = add_tool(
+      r,
+      "camera_capture",
+      "Capture a single image from the host camera (or mock backend). Returns JSON envelope with data.artifact for UI rendering; the tool loop emits a derived artifact event.",
+      "{"
+      "\"type\":\"object\","
+      "\"properties\":{"
+      "  \"path\":{\"type\":\"string\",\"description\":\"Output file path (relative to tools root in scoped mode).\"},"
+      "  \"backend\":{\"type\":\"string\",\"description\":\"auto|ffmpeg|mock\"},"
+      "  \"timeout_ms\":{\"type\":\"integer\"},"
+      "  \"title\":{\"type\":\"string\"},"
+      "  \"register_artifact\":{\"type\":\"boolean\"},"
+      "  \"notify\":{\"type\":\"boolean\"}"
+      "}"
+      "}"
+    );
+    if (st != AGENT_OK) goto fail;
+  }
 
   // Executor context (owned by host; for CLI we just heap-allocate).
   ctx = new (std::nothrow) HostToolCtx();

@@ -70,3 +70,9 @@ And still keep global bounds:
 - `max_steps_default`
 - `max_tool_calls_total_default`
 
+## Sandbox / policy notes
+
+- In `agentd`, `camera_capture` is only exposed when the request is **exec-enabled** (daemon `yolo=true`), to avoid
+  scoped/safe inspection runs from advertising device/capture tools.
+- In `host_policy=readonly`, the tool is omitted and rejected (defense-in-depth), because it writes a file and may interact
+  with device hardware.

@@ -113,7 +113,7 @@ STUB_PID=$!
 
 agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_camera_capture_smoke" \
   --tools host \
-  --no-yolo \
+  --yolo \
   --host-scope "${LOG_DIR}"
 
 agentd_smoke_wait_health "${DAEMON_URL}"
@@ -126,7 +126,7 @@ print(json.dumps({
   "prompt": "capture one image and say OK",
   "session_id": "${SESSION_ID}",
   "tools": "host",
-  "yolo": False,
+  "yolo": True,
   "tools_root": "@host",
   "base_url": "${STUB_BASE}",
   "api_key": "dummy",
@@ -162,4 +162,3 @@ if not os.path.exists(out_path):
 PY
 
 echo "agentd_camera_capture_smoke OK"
-
