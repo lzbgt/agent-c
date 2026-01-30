@@ -885,6 +885,8 @@ agent_status_t agent_tool_loop_run(
     goto cleanup;
   }
 
+  uint8_t stopped_normally = 0;
+
   for (size_t step = 0; options->max_steps == 0 || step < options->max_steps; step++) {
     res.steps_executed = step + 1;
     if (tl_should_cancel(hooks)) {
@@ -1082,6 +1084,7 @@ agent_status_t agent_tool_loop_run(
       tl_emit_event(hooks, "done", d.data ? d.data : "{}");
       tl_buf_free(&d);
       agent_tool_provider_response_free(&presp);
+      stopped_normally = 1;
       break;
     }
 
@@ -1135,7 +1138,7 @@ agent_status_t agent_tool_loop_run(
           (void)tl_buf_append_char(&d, '}');
           tl_emit_event(hooks, "error", d.data ? d.data : "{}");
           tl_buf_free(&d);
-          status = AGENT_ERR_INTERNAL;
+          status = AGENT_ERR_LIMIT;
           goto cleanup;
         }
       }
@@ -1239,6 +1242,23 @@ agent_status_t agent_tool_loop_run(
     }
 
     agent_tool_provider_response_free(&presp);
+  }
+
+  if (status == AGENT_OK && !stopped_normally && options->max_steps > 0 && res.steps_executed >= options->max_steps) {
+    const char* msg = "max steps exceeded";
+    (void)agent_string_set_copy(&res.error_message, msg, strlen(msg));
+    tl_buf_t d = {0};
+    uint8_t first = 1;
+    (void)tl_buf_append_char(&d, '{');
+    (void)tl_json_append_string_field(&d, "reason", "max_steps_exceeded", strlen("max_steps_exceeded"), &first);
+    (void)tl_json_append_u64_field(&d, "steps_executed", (unsigned long long)res.steps_executed, &first);
+    (void)tl_json_append_u64_field(&d, "max_steps", (unsigned long long)options->max_steps, &first);
+    (void)tl_json_append_string_field(&d, "error", msg, strlen(msg), &first);
+    (void)tl_buf_append_char(&d, '}');
+    tl_emit_event(hooks, "error", d.data ? d.data : "{}");
+    tl_buf_free(&d);
+    status = AGENT_ERR_LIMIT;
+    goto cleanup;
   }
 
   if (options->require_tool_call && !res.saw_tool_call) {

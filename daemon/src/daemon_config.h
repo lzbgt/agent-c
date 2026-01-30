@@ -47,6 +47,9 @@ struct DaemonConfig {
   bool no_default_system = false; // when false, host tool runs insert a default system hint (one time)
   size_t max_chars_default = 20000;
   size_t keep_last_default = 16;
+  // Default tool-loop step limit when requests omit `max_steps`.
+  // 0 means unlimited (not recommended for long-running daemons).
+  size_t max_steps_default = 32;
 
   // Async job GC (daemon longevity): finished jobs are kept only for a bounded time/count.
   int64_t job_ttl_ms = 30 * 60 * 1000; // 30 minutes

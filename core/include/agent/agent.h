@@ -18,6 +18,8 @@ typedef enum agent_status {
   AGENT_ERR_CONTEXT_TOO_LONG = 5,
   // Cooperative cancellation requested by the host/user.
   AGENT_ERR_CANCELLED = 6,
+  // A configured safety limit was reached (max steps, repetition guard, etc).
+  AGENT_ERR_LIMIT = 7,
 } agent_status_t;
 
 typedef enum agent_role {

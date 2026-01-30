@@ -73,6 +73,12 @@ tools mode, sandbox knobs), the daemon supports an explicit runaway-loop safety 
   - default: `12`
   - `0` disables the guard (not recommended)
 
+Additionally, tool loops can be bounded by step count:
+
+- `max_steps` (int, optional): max number of tool-loop steps (provider calls).
+  - omitted → daemon default applies (see `/api/v1/config: daemon.max_steps_default`)
+  - `0` means unlimited (not recommended for long-running daemons)
+
 This exists to prevent pathological “capture camera → send to UI → repeat” loops when the model does not infer a natural stop
 condition from the conversation alone.
 

@@ -251,6 +251,7 @@ guard that stops if the model repeats the **exact same tool call** too many time
 
 - CLI: `--max-repeated-tool-calls <n>` (default: `12`; set `0` to disable)
 - Daemon/UI: request field `max_repeated_tool_calls` (see `docs/PROTOCOL.md`)
+- For daemon runs, `max_steps` can be left blank in the UI to use the daemon’s default step cap (`/api/v1/config: daemon.max_steps_default`).
 
 Seamless compaction for tool loops:
 - In `--tools basic` / `--tools host` mode, the tool loop applies the same char-budget policy as the core runner:

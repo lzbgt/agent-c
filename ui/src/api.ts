@@ -28,6 +28,7 @@ export const DaemonConfigSchema = z
         db_path: z.string().nullable().optional(),
         state_dir: z.string().nullable().optional(),
         sessions_root_dir: z.string().nullable().optional(),
+        max_steps_default: z.number().int().nonnegative().optional(),
         base_url: z.string().optional(),
         model: z.string().optional(),
         summary_model: z.string().nullable().optional(),

@@ -43,6 +43,7 @@ void handle_config_endpoint(
   daemon["db_path"] = cfg.db_path.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.db_path);
   daemon["state_dir"] = cfg.state_dir.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.state_dir);
   daemon["sessions_root_dir"] = cfg.sessions_root_dir.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.sessions_root_dir);
+  daemon["max_steps_default"] = (Json::UInt64)cfg.max_steps_default;
   out["daemon"] = daemon;
 
   Json::Value cors(Json::objectValue);

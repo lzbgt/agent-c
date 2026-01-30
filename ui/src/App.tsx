@@ -62,7 +62,10 @@ export default function App() {
   const [orRequireMultimodal, setOrRequireMultimodal] = useLocalStorageState("agentui.orRequireMultimodal", true);
   const [orRequireTools, setOrRequireTools] = useLocalStorageState("agentui.orRequireTools", true);
   const [orLimit, setOrLimit] = useLocalStorageState("agentui.orLimit", "50");
-  const [maxSteps, setMaxSteps] = useLocalStorageState("agentui.maxSteps", "0");
+  // Blank means "use daemon default". This avoids accidental infinite loops.
+  // Explicit `0` is still supported and means unlimited.
+  const [maxSteps, setMaxSteps] = useLocalStorageState("agentui.maxSteps", "");
+  const [maxStepsUserSet, setMaxStepsUserSet] = useLocalStorageState("agentui.maxStepsUserSet", false);
   const [maxRepeatedToolCalls, setMaxRepeatedToolCalls] = useLocalStorageState("agentui.maxRepeatedToolCalls", "12");
   const [maxChars, setMaxChars] = useLocalStorageState("agentui.maxChars", "20000");
   const [keepLast, setKeepLast] = useLocalStorageState("agentui.keepLast", "16");
@@ -97,6 +100,15 @@ export default function App() {
     queryFn: () => apiGetHealth(effectiveBase, daemonAuthToken),
     retry: 1,
   });
+
+  // Migration: older UI versions defaulted `maxSteps` to "0" (unlimited).
+  // If the user never explicitly set a value, move to blank so daemon defaults apply.
+  React.useEffect(() => {
+    if (maxStepsUserSet) return;
+    if (String(maxSteps) === "0") {
+      setMaxSteps("");
+    }
+  }, [maxSteps, maxStepsUserSet, setMaxSteps]);
 
   const daemonConfig = useQuery({
     queryKey: ["config", effectiveBase, daemonAuthToken],
@@ -166,6 +178,13 @@ export default function App() {
 
   const run = useMutation({
     mutationFn: async () => {
+      const maxStepsTrim = String(maxSteps ?? "").trim();
+      const parsedMaxSteps =
+        maxStepsTrim.length === 0
+          ? undefined
+          : Number.isFinite(Number(maxStepsTrim)) && Number(maxStepsTrim) >= 0
+            ? Number(maxStepsTrim)
+            : undefined;
       const req: RunRequest = {
         prompt,
         session_id: sessionId || undefined,
@@ -186,7 +205,7 @@ export default function App() {
         stream_assistant: streamAssistant,
         max_capture_bytes:
           Number.isFinite(Number(maxCaptureBytes)) && Number(maxCaptureBytes) >= 0 ? Number(maxCaptureBytes) : undefined,
-        max_steps: Number.isFinite(Number(maxSteps)) ? Number(maxSteps) : 0,
+        max_steps: parsedMaxSteps,
         max_repeated_tool_calls:
           Number.isFinite(Number(maxRepeatedToolCalls)) && Number(maxRepeatedToolCalls) >= 0 ? Number(maxRepeatedToolCalls) : undefined,
         max_chars: Number.isFinite(Number(maxChars)) ? Number(maxChars) : 20000,
@@ -838,12 +857,21 @@ export default function App() {
                 </div>
               </div>
               <div>
-                <Label>Max steps (0=∞)</Label>
+                <Label>Max steps (blank=daemon default; 0=∞)</Label>
                 <input
                   className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
                   value={maxSteps}
-                  onChange={(e) => setMaxSteps(e.target.value)}
+                  placeholder={String(daemonConfig.data?.daemon?.max_steps_default ?? "32")}
+                  onChange={(e) => {
+                    setMaxStepsUserSet(true);
+                    setMaxSteps(e.target.value);
+                  }}
                 />
+                {String(maxSteps).trim() === "0" ? (
+                  <div className="mt-1 text-[11px] text-amber-200/80">
+                    Unlimited steps can loop forever. Prefer blank (daemon default) or a small cap (e.g. 16–64).
+                  </div>
+                ) : null}
               </div>
               <div>
                 <Label>Max repeated tool calls</Label>

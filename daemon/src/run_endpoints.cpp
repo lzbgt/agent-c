@@ -119,7 +119,8 @@ static Json::Value run_request_to_json(
     }
   }
   uint64_t max_steps_u64 = 0;
-  const size_t max_steps = json_get_u64_nonneg(args, "max_steps", &max_steps_u64) ? (size_t)max_steps_u64 : 0;
+  const size_t max_steps =
+    json_get_u64_nonneg(args, "max_steps", &max_steps_u64) ? (size_t)max_steps_u64 : daemon_cfg.max_steps_default;
   uint64_t max_chars_u64 = 0;
   const size_t max_chars = json_get_u64_nonneg(args, "max_chars", &max_chars_u64)
                              ? (size_t)max_chars_u64

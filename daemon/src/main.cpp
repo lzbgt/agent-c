@@ -188,6 +188,18 @@ int main(int argc, char** argv) {
         std::cerr << "Invalid --max-jobs\n";
         return 2;
       }
+    } else if (a == "--max-steps-default") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --max-steps-default\n";
+        return 2;
+      }
+      try {
+        cfg.max_steps_default = (size_t)std::stoull(v);
+      } catch (...) {
+        std::cerr << "Invalid --max-steps-default\n";
+        return 2;
+      }
     } else if (a == "--tools") {
       if (!take(&cfg.tools)) {
         std::cerr << "Missing value for --tools\n";
@@ -282,6 +294,7 @@ int main(int argc, char** argv) {
         << "  --timeout-ms <n>     Provider HTTP timeout in ms (default: 60000)\n"
         << "  --job-ttl-ms <n>     GC finished jobs older than n ms (default: 1800000)\n"
         << "  --max-jobs <n>       Keep at most n jobs in memory (default: 256)\n"
+        << "  --max-steps-default <n> Default tool-loop max steps when requests omit it (default: 32; 0 means unlimited)\n"
         << "  --tools host|basic|none   Default toolset (default: host)\n"
         << "  --tools-root <path>  Root/working dir for file edits (default: unrestricted)\n"
         << "  --host-policy full|readonly  Host tool safety policy (default: full)\n"
@@ -342,6 +355,14 @@ int main(int argc, char** argv) {
       if (const char* k = getenv_s("OPENAI_API_KEY")) cfg.api_key = k;
       else if (const char* k2 = getenv_s("OPENROUTER_API_KEY")) cfg.api_key = k2;
       else if (const char* k3 = getenv_s("DEEPSEEK_API_KEY")) cfg.api_key = k3;
+    }
+  }
+
+  if (const char* ms = getenv_s("AGENTD_MAX_STEPS_DEFAULT")) {
+    try {
+      cfg.max_steps_default = (size_t)std::stoull(ms);
+    } catch (...) {
+      std::cerr << "Invalid AGENTD_MAX_STEPS_DEFAULT; ignoring\n";
     }
   }
   if (cfg.model.empty()) {
