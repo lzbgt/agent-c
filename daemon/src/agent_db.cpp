@@ -142,7 +142,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 5;
+  const int kSchemaVersion = 6;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -325,6 +325,23 @@ CREATE INDEX IF NOT EXISTS client_events_by_type ON client_events(type);
     cur_ver = 5;
   }
 
+  if (cur_ver < 6) {
+    const char* schema_v6 = R"SQL(
+CREATE TABLE IF NOT EXISTS audit_records(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  ts_unix_ms INTEGER NOT NULL,
+  run_id INTEGER,
+  record_json TEXT NOT NULL,
+  FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE CASCADE,
+  FOREIGN KEY(run_id) REFERENCES runs(run_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS audit_records_by_session ON audit_records(session_id, ts_unix_ms DESC, id DESC);
+)SQL";
+    if (!exec_locked(schema_v6, out_error)) return false;
+    cur_ver = 6;
+  }
+
   // Record schema version.
   {
     std::ostringstream oss;
@@ -332,6 +349,379 @@ CREATE INDEX IF NOT EXISTS client_events_by_type ON client_events(type);
 	  if (!exec_locked(oss.str(), out_error)) return false;
 	  }
 	  return true;
+#endif
+}
+
+bool AgentDb::meta_get(const std::string& key, std::string* out_value, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (out_value) out_value->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)key;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = "SELECT value FROM meta WHERE key=? LIMIT 1;";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = bind_text(st, 1, key);
+  std::string v;
+  if (ok && step_row(st)) {
+    const unsigned char* txt = sqlite3_column_text(st, 0);
+    if (txt) v = (const char*)txt;
+  } else {
+    // Missing key is not an error.
+    ok = true;
+  }
+  if (!ok && out_error) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  if (out_value) *out_value = v;
+  return ok;
+#endif
+}
+
+bool AgentDb::meta_set(const std::string& key, const std::string& value, std::string* out_error) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)key;
+  (void)value;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = "INSERT OR REPLACE INTO meta(key,value) VALUES(?,?);";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  const bool ok = bind_text(st, 1, key) && bind_text(st, 2, value) && step_done(st);
+  if (!ok && out_error) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  return ok;
+#endif
+}
+
+bool AgentDb::load_session_messages(
+  const std::string& session_id,
+  std::vector<std::pair<std::string, std::string>>* out_role_and_content,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_role_and_content) out_role_and_content->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)session_id;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = "SELECT role, content FROM messages WHERE session_id=? ORDER BY idx ASC;";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = bind_text(st, 1, session_id);
+  std::vector<std::pair<std::string, std::string>> rows;
+  while (ok && step_row(st)) {
+    const unsigned char* role = sqlite3_column_text(st, 0);
+    const unsigned char* content = sqlite3_column_text(st, 1);
+    rows.emplace_back(role ? (const char*)role : "", content ? (const char*)content : "");
+    if (rows.size() > 200000) {
+      ok = false;
+      if (out_error) *out_error = "too many messages";
+      break;
+    }
+  }
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  if (ok && out_role_and_content) *out_role_and_content = std::move(rows);
+  return ok;
+#endif
+}
+
+bool AgentDb::list_sessions(std::vector<std::string>* out_session_ids_desc, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (out_session_ids_desc) out_session_ids_desc->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = "SELECT session_id FROM sessions ORDER BY updated_unix_ms DESC LIMIT 5000;";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  std::vector<std::string> ids;
+  while (step_row(st)) {
+    const unsigned char* txt = sqlite3_column_text(st, 0);
+    if (txt) ids.push_back((const char*)txt);
+  }
+  sqlite3_finalize(st);
+  if (out_session_ids_desc) *out_session_ids_desc = std::move(ids);
+  return true;
+#endif
+}
+
+bool AgentDb::insert_audit_record(
+  const std::string& session_id,
+  int64_t ts_unix_ms,
+  int64_t run_id,
+  const std::string& record_json,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)session_id;
+  (void)ts_unix_ms;
+  (void)run_id;
+  (void)record_json;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  if (!exec_locked("BEGIN IMMEDIATE TRANSACTION;", out_error)) return false;
+  if (!upsert_session_locked(session_id, ts_unix_ms, out_error)) {
+    (void)exec_locked("ROLLBACK;", nullptr);
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = "INSERT INTO audit_records(session_id, ts_unix_ms, run_id, record_json) VALUES(?,?,?,?);";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    (void)exec_locked("ROLLBACK;", nullptr);
+    return false;
+  }
+  const bool ok =
+    bind_text(st, 1, session_id) &&
+    bind_i64(st, 2, ts_unix_ms) &&
+    ((run_id > 0) ? bind_i64(st, 3, run_id) : (sqlite3_bind_null(st, 3) == SQLITE_OK)) &&
+    bind_text(st, 4, record_json) &&
+    step_done(st);
+  if (!ok && out_error) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  if (!ok) {
+    (void)exec_locked("ROLLBACK;", nullptr);
+    return false;
+  }
+  if (!exec_locked("COMMIT;", out_error)) {
+    (void)exec_locked("ROLLBACK;", nullptr);
+    return false;
+  }
+  return true;
+#endif
+}
+
+bool AgentDb::read_audit_records_tail(
+  const std::string& session_id,
+  size_t max_bytes,
+  size_t max_records,
+  std::vector<std::string>* out_record_json_desc,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_record_json_desc) out_record_json_desc->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)session_id;
+  (void)max_bytes;
+  (void)max_records;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  if (max_bytes == 0) max_bytes = 1024 * 1024;
+  if (max_records == 0) max_records = 200;
+  if (max_records > 2000) max_records = 2000;
+
+  sqlite3_stmt* st = nullptr;
+  const char* sql =
+    "SELECT record_json FROM audit_records WHERE session_id=? ORDER BY ts_unix_ms DESC, id DESC LIMIT ?;";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = bind_text(st, 1, session_id) && sqlite3_bind_int(st, 2, (int)max_records) == SQLITE_OK;
+  std::vector<std::string> rows;
+  size_t used = 0;
+  while (ok && step_row(st)) {
+    const unsigned char* txt = sqlite3_column_text(st, 0);
+    const std::string s = txt ? (const char*)txt : "";
+    if (s.empty()) continue;
+    if (used + s.size() > max_bytes) break;
+    used += s.size();
+    rows.push_back(s);
+  }
+  if (!ok && out_error) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  if (ok && out_record_json_desc) *out_record_json_desc = std::move(rows);
+  return ok;
+#endif
+}
+
+bool AgentDb::list_artifacts_by_session(
+  const std::string& session_id,
+  size_t max_artifacts,
+  std::vector<ArtifactRow>* out_rows_desc,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_rows_desc) out_rows_desc->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)session_id;
+  (void)max_artifacts;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  if (max_artifacts == 0) max_artifacts = 64;
+  if (max_artifacts > 512) max_artifacts = 512;
+
+  sqlite3_stmt* st = nullptr;
+  const char* sql =
+    "SELECT run_id, ts_unix_ms, session_id, tool_call_id, path, kind, mime, title, autoplay, repeat, artifact_json "
+    "FROM artifacts WHERE session_id=? ORDER BY ts_unix_ms DESC, id DESC LIMIT ?;";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = bind_text(st, 1, session_id) && sqlite3_bind_int(st, 2, (int)max_artifacts) == SQLITE_OK;
+  std::vector<ArtifactRow> rows;
+  while (ok && step_row(st)) {
+    ArtifactRow r;
+    r.run_id = sqlite3_column_int64(st, 0);
+    r.ts_unix_ms = sqlite3_column_int64(st, 1);
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 2);
+      if (txt) r.session_id = (const char*)txt;
+    }
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 3);
+      if (txt) r.tool_call_id = (const char*)txt;
+    }
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 4);
+      if (txt) r.path = (const char*)txt;
+    }
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 5);
+      if (txt) r.kind = (const char*)txt;
+    }
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 6);
+      if (txt) r.mime = (const char*)txt;
+    }
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 7);
+      if (txt) r.title = (const char*)txt;
+    }
+    r.autoplay = sqlite3_column_int(st, 8) != 0;
+    r.repeat = sqlite3_column_int(st, 9);
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 10);
+      if (txt) r.artifact_json = (const char*)txt;
+    }
+    rows.push_back(std::move(r));
+  }
+  if (!ok && out_error) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  if (ok && out_rows_desc) *out_rows_desc = std::move(rows);
+  return ok;
+#endif
+}
+
+bool AgentDb::read_client_events_tail_jsonl(
+  const std::string& session_id,
+  size_t max_bytes,
+  size_t max_events,
+  std::string* out_jsonl,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_jsonl) out_jsonl->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)session_id;
+  (void)max_bytes;
+  (void)max_events;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  if (!out_jsonl) {
+    if (out_error) *out_error = "missing out_jsonl";
+    return false;
+  }
+  if (max_bytes == 0) max_bytes = 256 * 1024;
+  if (max_bytes > 1024 * 1024) max_bytes = 1024 * 1024;
+  if (max_events == 0) max_events = 2000;
+  if (max_events > 5000) max_events = 5000;
+
+  sqlite3_stmt* st = nullptr;
+  const char* sql =
+    "SELECT data_json FROM client_events WHERE session_id=? ORDER BY ts_unix_ms DESC, id DESC LIMIT ?;";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = bind_text(st, 1, session_id) && sqlite3_bind_int(st, 2, (int)max_events) == SQLITE_OK;
+  std::vector<std::string> lines_desc;
+  size_t used = 0;
+  while (ok && step_row(st)) {
+    const unsigned char* txt = sqlite3_column_text(st, 0);
+    const std::string s = txt ? (const char*)txt : "";
+    if (s.empty()) continue;
+    const size_t add = s.size() + 1;
+    if (used + add > max_bytes) break;
+    used += add;
+    lines_desc.push_back(s);
+  }
+  if (!ok && out_error) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  if (!ok) return false;
+
+  // Convert to JSONL in chronological order (oldest first).
+  std::ostringstream oss;
+  for (auto it = lines_desc.rbegin(); it != lines_desc.rend(); ++it) {
+    oss << *it << "\n";
+  }
+  *out_jsonl = oss.str();
+  return true;
 #endif
 }
 
@@ -345,6 +735,37 @@ bool AgentDb::upsert_session(const std::string& session_id, int64_t now_unix_ms,
 #else
   std::lock_guard<std::mutex> lock(mu_);
   return upsert_session_locked(session_id, now_unix_ms, out_error);
+#endif
+}
+
+bool AgentDb::session_exists(const std::string& session_id, bool* out_exists, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (out_exists) *out_exists = false;
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)session_id;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = "SELECT 1 FROM sessions WHERE session_id=? LIMIT 1;";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = bind_text(st, 1, session_id);
+  bool exists = false;
+  if (ok && step_row(st)) {
+    exists = true;
+  }
+  if (!ok && out_error) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  if (out_exists) *out_exists = exists;
+  return ok;
 #endif
 }
 

@@ -31,7 +31,7 @@ if not obj.get("ok"):
   raise SystemExit(1)
 defs = obj.get("defs") or []
 names = {d.get("name") for d in defs if isinstance(d, dict)}
-need = {"shell_exec", "proc_exec", "file_apply_patch", "fs_read", "fs_list", "fs_stat", "camera_capture"}
+need = {"shell_exec", "proc_exec", "file_apply_patch", "fs_read", "fs_list", "fs_stat"}
 missing = sorted(need - names)
 if missing:
   print("missing tools:", missing, file=sys.stderr)
@@ -39,7 +39,6 @@ if missing:
 PY
 
 # scoped (yolo=0) should omit exec tools but keep patch + fs inspection.
-# camera_capture remains available and should default to backend=mock when exec is disabled.
 resp_scoped="$(curl -fsS --noproxy "*" --max-time 5 "${DAEMON_URL}/api/v1/tools?tools=host&yolo=0")"
 
 python3 - <<PY
@@ -58,7 +57,7 @@ present = sorted(must_absent & names)
 if present:
   print("exec tools should be omitted in scoped mode:", present, file=sys.stderr)
   raise SystemExit(1)
-must_present = {"file_apply_patch", "fs_read", "fs_list", "fs_stat", "fs_find", "text_search", "camera_capture"}
+must_present = {"file_apply_patch", "fs_read", "fs_list", "fs_stat", "fs_find", "text_search"}
 missing = sorted(must_present - names)
 if missing:
   print("missing scoped tools:", missing, file=sys.stderr)
@@ -79,7 +78,7 @@ if obj.get("effective_host_policy") not in ("readonly",):
   raise SystemExit(1)
 defs = obj.get("defs") or []
 names = {d.get("name") for d in defs if isinstance(d, dict)}
-must_absent = {"shell_exec", "proc_exec", "file_apply_patch", "camera_capture"}
+must_absent = {"shell_exec", "proc_exec", "file_apply_patch"}
 present = sorted(must_absent & names)
 if present:
   print("tools should be omitted in readonly policy:", present, file=sys.stderr)

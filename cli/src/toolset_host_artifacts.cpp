@@ -5,7 +5,6 @@
 #endif
 
 #include <filesystem>
-#include <fstream>
 #include <string>
 
 namespace host_tools_internal {
@@ -16,6 +15,37 @@ static std::string lower_copy(std::string s) {
     if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
   }
   return s;
+}
+
+static std::string stable_rel_path_under_root(
+  const std::filesystem::path& root,
+  const std::filesystem::path& resolved,
+  const std::string& fallback_user_path
+) {
+  // Prefer returning a stable *relative* path rooted at `root` when possible.
+  // This makes artifact URLs deterministic for WebUI clients:
+  //   GET /api/v1/file?path=<relative>&yolo=0|1
+  //
+  // If we cannot safely compute a relative path, return the original user path.
+  std::error_code ec;
+  const std::filesystem::path canon_root = std::filesystem::weakly_canonical(root, ec);
+  if (ec) return fallback_user_path;
+  ec.clear();
+  const std::filesystem::path canon_file = std::filesystem::weakly_canonical(resolved, ec);
+  if (ec) return fallback_user_path;
+
+  if (!path_is_within(canon_root, canon_file)) {
+    return fallback_user_path;
+  }
+  ec.clear();
+  std::filesystem::path rel = std::filesystem::relative(canon_file, canon_root, ec);
+  if (ec) return fallback_user_path;
+  rel = rel.lexically_normal();
+  if (rel.empty() || rel.is_absolute()) return fallback_user_path;
+  for (const auto& comp : rel) {
+    if (comp == "..") return fallback_user_path;
+  }
+  return to_generic_string(rel);
 }
 
 static std::string guess_kind_from_ext(const std::string& path) {
@@ -67,23 +97,6 @@ static std::string guess_mime_from_kind_and_ext(const std::string& kind, const s
   return "application/octet-stream";
 }
 
-static std::string svg_escape_text(std::string s) {
-  // Minimal escaping for embedding arbitrary text into SVG <text>.
-  std::string out;
-  out.reserve(s.size() + 16);
-  for (char c : s) {
-    switch (c) {
-      case '&': out += "&amp;"; break;
-      case '<': out += "&lt;"; break;
-      case '>': out += "&gt;"; break;
-      case '"': out += "&quot;"; break;
-      case '\'': out += "&apos;"; break;
-      default: out += c; break;
-    }
-  }
-  return out;
-}
-
 agent_status_t tool_artifact_register(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
   if (!ctx || !out_result) return AGENT_ERR_INVALID_ARGUMENT;
   if (is_cancelled(ctx)) {
@@ -125,6 +138,8 @@ agent_status_t tool_artifact_register(HostToolCtx* ctx, const char* arguments_js
     return write_envelope(false, "file not found", Json::Value(Json::objectValue));
   }
 
+  const std::string stable_path = stable_rel_path_under_root(ctx->root, *resolved, path);
+
   const std::string kind =
     args.isMember("kind") && args["kind"].isString() ? args["kind"].asString() : guess_kind_from_ext(path);
   const std::string mime =
@@ -136,7 +151,7 @@ agent_status_t tool_artifact_register(HostToolCtx* ctx, const char* arguments_js
   if (repeat > 16) repeat = 16;
 
   Json::Value artifact(Json::objectValue);
-  artifact["path"] = path;
+  artifact["path"] = stable_path;
   artifact["resolved_path"] = to_generic_string(*resolved);
   artifact["root_dir"] = to_generic_string(ctx->root);
   artifact["unrestricted"] = ctx->unrestricted;
@@ -240,37 +255,15 @@ agent_status_t tool_ui_action(HostToolCtx* ctx, const char* arguments_json, agen
   // Client snapshot request/response correlation.
   pass_string("query_id");
 
-  // Media actions can reference host files; validate and normalize metadata.
+  // Explicitly reject deprecated/brittle UI actions.
+  // The Web UI is a generic collaboration client surface; presentation should be driven via:
+  // - artifact_register (for files)
+  // - client_rpc (dom_apply/page_eval/script_eval/entity_apply)
   if (type == "play_audio") {
-    if (!args.isMember("path") || !args["path"].isString()) {
-      return write_envelope(false, "missing string field 'path' for play_audio", Json::Value(Json::objectValue));
-    }
-    const std::string path = args["path"].asString();
-    const auto resolved = resolve_under_root(ctx->root, path, ctx->unrestricted);
-    if (!resolved) {
-      return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
-    }
-    if (!ctx->unrestricted && !ctx->allow_symlinks) {
-      if (path_contains_symlink_component(ctx->root, *resolved)) {
-        return write_envelope(false, "path escapes via symlink", Json::Value(Json::objectValue));
-      }
-    }
+    return write_envelope(false, "ui_action type=play_audio is deprecated; use artifact_register + client_rpc instead", Json::Value(Json::objectValue));
+  }
 
-    std::error_code ec;
-    if (!std::filesystem::exists(*resolved, ec) || !std::filesystem::is_regular_file(*resolved, ec)) {
-      return write_envelope(false, "file not found", Json::Value(Json::objectValue));
-    }
-
-    std::string mime = args.isMember("mime") && args["mime"].isString() ? args["mime"].asString() : "";
-    if (mime.empty()) {
-      mime = guess_mime_from_kind_and_ext("audio", path);
-    }
-    action["path"] = path;
-    action["resolved_path"] = to_generic_string(*resolved);
-    action["root_dir"] = to_generic_string(ctx->root);
-    action["unrestricted"] = ctx->unrestricted;
-    action["mime"] = mime;
-  } else if (type == "notify") {
+  if (type == "notify") {
     if (title.empty() && message.empty()) {
       return write_envelope(false, "notify requires title or message", Json::Value(Json::objectValue));
     }
@@ -290,194 +283,6 @@ agent_status_t tool_ui_action(HostToolCtx* ctx, const char* arguments_json, agen
 
   return write_envelope(true, "", data);
 }
-
-agent_status_t tool_camera_capture(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
-  if (!ctx || !out_result) return AGENT_ERR_INVALID_ARGUMENT;
-  if (is_cancelled(ctx)) {
-    return set_result(out_result, "{\"ok\":false,\"error\":\"cancelled\"}");
-  }
-
-  auto write_envelope = [&](bool ok, const std::string& error, const Json::Value& data) -> agent_status_t {
-    Json::Value o(Json::objectValue);
-    o["ok"] = ok;
-    if (!error.empty()) o["error"] = error;
-    o["data"] = data;
-    Json::StreamWriterBuilder wb;
-    wb["indentation"] = "";
-    return set_result(out_result, Json::writeString(wb, o));
-  };
-
-  Json::Value args;
-  std::string err;
-  if (!parse_json(arguments_json, &args, &err) || !args.isObject()) {
-    return write_envelope(false, "invalid args", Json::Value(Json::objectValue));
-  }
-
-  const std::string backend =
-    args.isMember("backend") && args["backend"].isString() ? args["backend"].asString() : "auto";
-  const bool register_artifact =
-    !(args.isMember("register_artifact") && args["register_artifact"].isBool() && args["register_artifact"].asBool() == false);
-  const bool notify = args.isMember("notify") && args["notify"].isBool() ? args["notify"].asBool() : false;
-  const std::string title = args.isMember("title") && args["title"].isString() ? args["title"].asString() : "";
-  const int timeout_ms = args.isMember("timeout_ms") && args["timeout_ms"].isInt() ? args["timeout_ms"].asInt() : 8000;
-
-  const bool use_mock = (backend == "mock") || (backend == "auto" && !ctx->exec_enabled);
-  std::string path = args.isMember("path") && args["path"].isString() ? args["path"].asString() : "";
-  if (path.empty()) {
-    path = use_mock ? "camera_capture.svg" : "camera_capture.jpg";
-  }
-
-  const auto resolved = resolve_under_root(ctx->root, path, ctx->unrestricted);
-  if (!resolved) {
-    return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
-  }
-  if (!ctx->unrestricted && !ctx->allow_symlinks) {
-    if (path_contains_symlink_component(ctx->root, *resolved)) {
-      return write_envelope(false, "path escapes via symlink", Json::Value(Json::objectValue));
-    }
-  }
-  {
-    std::error_code ec;
-    std::filesystem::create_directories(resolved->parent_path(), ec);
-    if (ec) {
-      return write_envelope(false, "failed to create output directory", Json::Value(Json::objectValue));
-    }
-  }
-
-  std::string chosen_backend = use_mock ? "mock" : (backend == "auto" ? "ffmpeg" : backend);
-  if (chosen_backend == "ffmpeg") {
-    if (!ctx->exec_enabled) {
-      return write_envelope(false, "camera_capture(ffmpeg) requires exec-enabled sandbox (yolo)", Json::Value(Json::objectValue));
-    }
-
-    // Reuse proc_exec tool logic to run ffmpeg and capture output with timeout.
-    Json::Value pargs(Json::objectValue);
-    Json::Value argv(Json::arrayValue);
-    argv.append("ffmpeg");
-    argv.append("-f");
-    argv.append("avfoundation");
-    argv.append("-video_device_index");
-    argv.append("0");
-    argv.append("-i");
-    argv.append("default");
-    argv.append("-frames:v");
-    argv.append("1");
-    argv.append("-update");
-    argv.append("1");
-    argv.append("-y");
-    argv.append(to_generic_string(*resolved));
-    pargs["argv"] = argv;
-    pargs["timeout_ms"] = std::max(1000, timeout_ms);
-    pargs["max_output_bytes"] = 64 * 1024;
-
-    Json::StreamWriterBuilder wb;
-    wb["indentation"] = "";
-    agent_string_t tmp{};
-    const agent_status_t est = tool_proc_exec(ctx, Json::writeString(wb, pargs).c_str(), &tmp);
-    std::string tool_out = tmp.data ? std::string(tmp.data, tmp.len) : std::string();
-    agent_string_free(&tmp);
-    if (est != AGENT_OK) {
-      return write_envelope(false, "ffmpeg backend failed to execute", Json::Value(Json::objectValue));
-    }
-
-    Json::Value env;
-    std::string jerr;
-    if (!parse_json(tool_out.c_str(), &env, &jerr) || !env.isObject()) {
-      return write_envelope(false, "ffmpeg backend returned non-JSON", Json::Value(Json::objectValue));
-    }
-    const bool ok = env.isMember("ok") && env["ok"].isBool() ? env["ok"].asBool() : false;
-    if (!ok) {
-      const std::string e = env.isMember("error") && env["error"].isString() ? env["error"].asString() : "ffmpeg failed";
-      Json::Value data(Json::objectValue);
-      data["tool"] = "camera_capture";
-      data["backend"] = chosen_backend;
-      data["path"] = path;
-      data["resolved_path"] = to_generic_string(*resolved);
-      data["ffmpeg"] = env;
-      data["output"] = "ffmpeg capture failed; try backend=mock or install/permit ffmpeg camera access";
-      return write_envelope(false, e, data);
-    }
-  } else if (chosen_backend == "mock") {
-    // Write a deterministic SVG so tests do not require camera hardware.
-    std::ofstream out(*resolved, std::ios::binary);
-    if (!out.is_open()) {
-      return write_envelope(false, "failed to open output file", Json::Value(Json::objectValue));
-    }
-    const std::string label = title.empty() ? std::string("camera_capture mock") : title;
-    const std::string text = svg_escape_text(label);
-    out <<
-      "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"640\" height=\"480\" viewBox=\"0 0 640 480\">"
-      "<rect width=\"640\" height=\"480\" fill=\"#111827\"/>"
-      "<rect x=\"20\" y=\"20\" width=\"600\" height=\"440\" rx=\"12\" fill=\"#0b1220\" stroke=\"#334155\"/>"
-      "<text x=\"40\" y=\"80\" fill=\"#e5e7eb\" font-family=\"ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace\" font-size=\"22\">"
-      "mock capture"
-      "</text>"
-      "<text x=\"40\" y=\"120\" fill=\"#94a3b8\" font-family=\"ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace\" font-size=\"16\">"
-      << text <<
-      "</text>"
-      "<text x=\"40\" y=\"160\" fill=\"#94a3b8\" font-family=\"ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace\" font-size=\"14\">"
-      "file: " << svg_escape_text(to_generic_string(*resolved)) <<
-      "</text>"
-      "</svg>";
-    out.close();
-    if (!out) {
-      return write_envelope(false, "failed to write output file", Json::Value(Json::objectValue));
-    }
-  } else {
-    return write_envelope(false, "unsupported backend (expected: auto|ffmpeg|mock)", Json::Value(Json::objectValue));
-  }
-
-  std::error_code ec;
-  if (!std::filesystem::exists(*resolved, ec) || !std::filesystem::is_regular_file(*resolved, ec)) {
-    Json::Value data(Json::objectValue);
-    data["tool"] = "camera_capture";
-    data["backend"] = chosen_backend;
-    data["path"] = path;
-    data["resolved_path"] = to_generic_string(*resolved);
-    data["output"] = "capture did not produce a regular file";
-    return write_envelope(false, "capture failed", data);
-  }
-
-  const std::string kind = "image";
-  const std::string mime = guess_mime_from_kind_and_ext(kind, path);
-
-  Json::Value data(Json::objectValue);
-  data["tool"] = "camera_capture";
-  data["backend"] = chosen_backend;
-  data["path"] = path;
-  data["resolved_path"] = to_generic_string(*resolved);
-  data["mime"] = mime;
-  ec.clear();
-  const uintmax_t sz = std::filesystem::file_size(*resolved, ec);
-  if (!ec) data["size_bytes"] = (Json::UInt64)sz;
-
-  if (register_artifact) {
-    Json::Value artifact(Json::objectValue);
-    artifact["path"] = path;
-    artifact["resolved_path"] = to_generic_string(*resolved);
-    artifact["root_dir"] = to_generic_string(ctx->root);
-    artifact["unrestricted"] = ctx->unrestricted;
-    artifact["kind"] = kind;
-    artifact["mime"] = mime;
-    if (!title.empty()) artifact["title"] = title;
-    if (!ec) artifact["size_bytes"] = (Json::UInt64)sz;
-    ec.clear();
-    const auto mtime = std::filesystem::last_write_time(*resolved, ec);
-    if (!ec) artifact["mtime_unix_ms"] = (Json::Int64)file_time_to_unix_ms(mtime);
-    data["artifact"] = artifact;
-  }
-
-  if (notify) {
-    Json::Value action(Json::objectValue);
-    action["type"] = "notify";
-    action["title"] = title.empty() ? "camera_capture" : title;
-    action["message"] = std::string("captured: ") + path;
-    data["action"] = action;
-  }
-
-  data["output"] = std::string("captured image via ") + chosen_backend + ": " + path;
-  return write_envelope(true, "", data);
-}
 #else
 agent_status_t tool_artifact_register(HostToolCtx* /*ctx*/, const char* /*arguments_json*/, agent_string_t* out_result) {
   return set_result(out_result, "{\"ok\":false,\"error\":\"artifact_register requires jsoncpp\",\"data\":{}}");
@@ -485,10 +290,6 @@ agent_status_t tool_artifact_register(HostToolCtx* /*ctx*/, const char* /*argume
 
 agent_status_t tool_ui_action(HostToolCtx* /*ctx*/, const char* /*arguments_json*/, agent_string_t* out_result) {
   return set_result(out_result, "{\"ok\":false,\"error\":\"ui_action requires jsoncpp\",\"data\":{}}");
-}
-
-agent_status_t tool_camera_capture(HostToolCtx* /*ctx*/, const char* /*arguments_json*/, agent_string_t* out_result) {
-  return set_result(out_result, "{\"ok\":false,\"error\":\"camera_capture requires jsoncpp\",\"data\":{}}");
 }
 #endif
 

@@ -16,6 +16,15 @@ bool url_contains_ci(const std::string& url, const std::string& needle) {
   return u.find(n) != std::string::npos;
 }
 
+std::string trim_copy(const std::string& s) {
+  size_t start = 0;
+  while (start < s.size() && std::isspace((unsigned char)s[start])) start++;
+  if (start == s.size()) return "";
+  size_t end = s.size();
+  while (end > start && std::isspace((unsigned char)s[end - 1])) end--;
+  return s.substr(start, end - start);
+}
+
 std::string truncate_for_event(const std::string& s, size_t max_bytes, bool* out_truncated) {
   if (out_truncated) *out_truncated = false;
   if (max_bytes == 0 || s.size() <= max_bytes) {
@@ -28,4 +37,3 @@ std::string truncate_for_event(const std::string& s, size_t max_bytes, bool* out
 }
 
 }  // namespace agentd
-

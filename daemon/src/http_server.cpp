@@ -194,6 +194,9 @@ void HttpServer::stop() {
   stop_.store(true);
   if (listen_fd_ >= 0) {
     ::shutdown(listen_fd_, SHUT_RDWR);
+    // Ensure any blocking accept() wakes up promptly.
+    ::close(listen_fd_);
+    listen_fd_ = -1;
   }
 }
 

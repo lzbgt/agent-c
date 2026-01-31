@@ -1,7 +1,7 @@
 #pragma once
 
 #include "cors.h"
-#include "http_server.h"
+#include "agentd/http_types.h"
 
 #include <string>
 
@@ -17,4 +17,3 @@ void handle_job_stream_endpoint(
 );
 
 }  // namespace agentd
-

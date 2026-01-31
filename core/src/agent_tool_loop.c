@@ -614,6 +614,10 @@ static void tl_emit_event(const agent_tool_loop_hooks_t* hooks, const char* type
   hooks->on_event(hooks->on_event_ctx, type, data_json ? data_json : "");
 }
 
+static uint8_t tl_events_enabled(const agent_tool_loop_hooks_t* hooks) {
+  return (hooks && hooks->on_event) ? 1 : 0;
+}
+
 static uint8_t tl_should_cancel(const agent_tool_loop_hooks_t* hooks) {
   if (!hooks || !hooks->should_cancel) return 0;
   return hooks->should_cancel(hooks->should_cancel_ctx) ? 1 : 0;
@@ -670,6 +674,7 @@ static agent_status_t tl_summarize_output(
 
 static agent_status_t tl_append_tool_record(
   agent_tool_loop_result_t* out,
+  size_t* io_cap,
   const char* tool_name,
   const char* tool_call_id,
   const char* args_json,
@@ -677,21 +682,26 @@ static agent_status_t tl_append_tool_record(
   const agent_string_t* result_for_prompt,
   uint8_t truncated_for_prompt
 ) {
-  if (!out || !tool_name || !args_json || !result_string || !result_for_prompt) return AGENT_ERR_INVALID_ARGUMENT;
+  if (!out || !io_cap || !tool_name || !args_json || !result_string || !result_for_prompt) return AGENT_ERR_INVALID_ARGUMENT;
 
   const size_t n = out->tool_record_count;
-  agent_tool_record_t* p = (agent_tool_record_t*)agent_malloc((n + 1) * sizeof(agent_tool_record_t));
-  if (!p) return AGENT_ERR_OOM;
-  memset(p, 0, (n + 1) * sizeof(agent_tool_record_t));
-
-  for (size_t i = 0; i < n; i++) {
-    p[i] = out->tool_records[i];
+  size_t cap = *io_cap;
+  if (n >= cap) {
+    const size_t new_cap = (cap == 0) ? 4 : (cap * 2);
+    agent_tool_record_t* p = (agent_tool_record_t*)agent_malloc(new_cap * sizeof(agent_tool_record_t));
+    if (!p) return AGENT_ERR_OOM;
+    memset(p, 0, new_cap * sizeof(agent_tool_record_t));
+    for (size_t i = 0; i < n; i++) {
+      p[i] = out->tool_records[i];
+    }
+    if (out->tool_records) agent_free(out->tool_records);
+    out->tool_records = p;
+    cap = new_cap;
+    *io_cap = new_cap;
   }
-  if (out->tool_records) agent_free(out->tool_records);
-  out->tool_records = p;
-  out->tool_record_count = n + 1;
 
   agent_tool_record_t* r = &out->tool_records[n];
+  out->tool_record_count = n + 1;
   agent_status_t st = AGENT_OK;
   st = agent_string_set_copy(&r->tool_name, tool_name, strlen(tool_name));
   if (st != AGENT_OK) return st;
@@ -807,6 +817,7 @@ agent_status_t agent_tool_loop_run(
   const size_t max_capture = options->max_capture_chars == 0 ? (256 * 1024) : options->max_capture_chars;
   const size_t max_tool_result_chars = options->max_tool_result_chars;
   const size_t max_retries = options->max_context_too_long_retries == 0 ? 2 : options->max_context_too_long_retries;
+  size_t tool_record_cap = 0;
 
   uint64_t last_tool_sig = 0;
   size_t repeated_tool_calls = 0;
@@ -820,7 +831,7 @@ agent_status_t agent_tool_loop_run(
   size_t tool_counts_len = 0;
 
   uint64_t epoch = 0;
-  {
+  if (tl_events_enabled(hooks)) {
     tl_buf_t d = {0};
     uint8_t first = 1;
     (void)tl_buf_append_char(&d, '{');
@@ -857,31 +868,33 @@ agent_status_t agent_tool_loop_run(
     goto cleanup;
   }
   if (crep.dropped_messages > 0) {
-    tl_buf_t d = {0};
-    uint8_t first = 1;
-    (void)tl_buf_append_char(&d, '{');
-    (void)tl_json_append_u64_field(&d, "epoch", (unsigned long long)epoch, &first);
-    (void)tl_json_append_u64_field(&d, "step", 0, &first);
-    (void)tl_json_append_u64_field(&d, "before_chars", (unsigned long long)(crep.before_chars + prompt_len), &first);
-    (void)tl_json_append_u64_field(&d, "after_chars", (unsigned long long)(crep.after_chars + prompt_len), &first);
-    (void)tl_json_append_u64_field(&d, "max_chars", (unsigned long long)max_chars, &first);
-    (void)tl_json_append_u64_field(&d, "keep_last_messages", (unsigned long long)keep_last, &first);
-    (void)tl_json_append_u64_field(&d, "pinned_system_messages", (unsigned long long)crep.pinned_system_messages, &first);
-    (void)tl_json_append_u64_field(&d, "dropped_messages", (unsigned long long)crep.dropped_messages, &first);
-    (void)tl_json_append_u64_field(&d, "inserted_summary", (unsigned long long)crep.inserted_summary, &first);
-    if (options->verbose_events && crep.inserted_summary && crep.summary.data) {
-      // Cap summary content for event capture.
-      agent_string_t capped = {0};
-      uint8_t trunc = 0;
-      (void)tl_cap_output(hooks ? hooks->cap_tool_output_for_event : NULL, hooks ? hooks->cap_tool_output_for_event_ctx : NULL,
-                          crep.summary.data, crep.summary.len, max_capture, &capped, &trunc);
-      (void)tl_json_append_string_field(&d, "summary", capped.data ? capped.data : "", capped.len, &first);
-      (void)tl_json_append_u64_field(&d, "summary_truncated", (unsigned long long)trunc, &first);
-      agent_string_free(&capped);
+    if (tl_events_enabled(hooks)) {
+      tl_buf_t d = {0};
+      uint8_t first = 1;
+      (void)tl_buf_append_char(&d, '{');
+      (void)tl_json_append_u64_field(&d, "epoch", (unsigned long long)epoch, &first);
+      (void)tl_json_append_u64_field(&d, "step", 0, &first);
+      (void)tl_json_append_u64_field(&d, "before_chars", (unsigned long long)(crep.before_chars + prompt_len), &first);
+      (void)tl_json_append_u64_field(&d, "after_chars", (unsigned long long)(crep.after_chars + prompt_len), &first);
+      (void)tl_json_append_u64_field(&d, "max_chars", (unsigned long long)max_chars, &first);
+      (void)tl_json_append_u64_field(&d, "keep_last_messages", (unsigned long long)keep_last, &first);
+      (void)tl_json_append_u64_field(&d, "pinned_system_messages", (unsigned long long)crep.pinned_system_messages, &first);
+      (void)tl_json_append_u64_field(&d, "dropped_messages", (unsigned long long)crep.dropped_messages, &first);
+      (void)tl_json_append_u64_field(&d, "inserted_summary", (unsigned long long)crep.inserted_summary, &first);
+      if (options->verbose_events && crep.inserted_summary && crep.summary.data) {
+        // Cap summary content for event capture.
+        agent_string_t capped = {0};
+        uint8_t trunc = 0;
+        (void)tl_cap_output(hooks ? hooks->cap_tool_output_for_event : NULL, hooks ? hooks->cap_tool_output_for_event_ctx : NULL,
+                            crep.summary.data, crep.summary.len, max_capture, &capped, &trunc);
+        (void)tl_json_append_string_field(&d, "summary", capped.data ? capped.data : "", capped.len, &first);
+        (void)tl_json_append_u64_field(&d, "summary_truncated", (unsigned long long)trunc, &first);
+        agent_string_free(&capped);
+      }
+      (void)tl_buf_append_char(&d, '}');
+      tl_emit_event(hooks, "compaction", d.data ? d.data : "{}");
+      tl_buf_free(&d);
     }
-    (void)tl_buf_append_char(&d, '}');
-    tl_emit_event(hooks, "compaction", d.data ? d.data : "{}");
-    tl_buf_free(&d);
     epoch++;
   }
   tl_compaction_report_destroy(&crep);
@@ -899,14 +912,16 @@ agent_status_t agent_tool_loop_run(
     res.steps_executed = step + 1;
     if (tl_should_cancel(hooks)) {
       (void)agent_string_set_copy(&res.error_message, "cancelled", strlen("cancelled"));
-      tl_buf_t d = {0};
-      uint8_t first = 1;
-      (void)tl_buf_append_char(&d, '{');
-      (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
-      (void)tl_json_append_string_field(&d, "reason", "cancel_requested", strlen("cancel_requested"), &first);
-      (void)tl_buf_append_char(&d, '}');
-      tl_emit_event(hooks, "cancelled", d.data ? d.data : "{}");
-      tl_buf_free(&d);
+      if (tl_events_enabled(hooks)) {
+        tl_buf_t d = {0};
+        uint8_t first = 1;
+        (void)tl_buf_append_char(&d, '{');
+        (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
+        (void)tl_json_append_string_field(&d, "reason", "cancel_requested", strlen("cancel_requested"), &first);
+        (void)tl_buf_append_char(&d, '}');
+        tl_emit_event(hooks, "cancelled", d.data ? d.data : "{}");
+        tl_buf_free(&d);
+      }
       status = AGENT_ERR_CANCELLED;
       goto cleanup;
     }
@@ -920,31 +935,33 @@ agent_status_t agent_tool_loop_run(
       goto cleanup;
     }
     if (rep.dropped_messages > 0) {
-      tl_buf_t d = {0};
-      uint8_t first = 1;
-      (void)tl_buf_append_char(&d, '{');
-      (void)tl_json_append_u64_field(&d, "epoch", (unsigned long long)epoch, &first);
-      (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
-      (void)tl_json_append_u64_field(&d, "before_chars", (unsigned long long)rep.before_chars, &first);
-      (void)tl_json_append_u64_field(&d, "after_chars", (unsigned long long)rep.after_chars, &first);
-      (void)tl_json_append_u64_field(&d, "max_chars", (unsigned long long)max_chars, &first);
-      (void)tl_json_append_u64_field(&d, "keep_last_messages", (unsigned long long)keep_last, &first);
-      (void)tl_json_append_u64_field(&d, "pinned_system_messages", (unsigned long long)rep.pinned_system_messages, &first);
-      (void)tl_json_append_u64_field(&d, "dropped_messages", (unsigned long long)rep.dropped_messages, &first);
-      (void)tl_json_append_u64_field(&d, "inserted_summary", (unsigned long long)rep.inserted_summary, &first);
-      if (options->verbose_events && rep.inserted_summary && rep.summary.data) {
-        agent_string_t capped = {0};
-        uint8_t trunc = 0;
-        (void)tl_cap_output(hooks ? hooks->cap_tool_output_for_event : NULL, hooks ? hooks->cap_tool_output_for_event_ctx : NULL,
-                            rep.summary.data, rep.summary.len, max_capture, &capped, &trunc);
-        (void)tl_json_append_string_field(&d, "summary", capped.data ? capped.data : "", capped.len, &first);
-        (void)tl_json_append_u64_field(&d, "summary_truncated", (unsigned long long)trunc, &first);
-        agent_string_free(&capped);
+      if (tl_events_enabled(hooks)) {
+        tl_buf_t d = {0};
+        uint8_t first = 1;
+        (void)tl_buf_append_char(&d, '{');
+        (void)tl_json_append_u64_field(&d, "epoch", (unsigned long long)epoch, &first);
+        (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
+        (void)tl_json_append_u64_field(&d, "before_chars", (unsigned long long)rep.before_chars, &first);
+        (void)tl_json_append_u64_field(&d, "after_chars", (unsigned long long)rep.after_chars, &first);
+        (void)tl_json_append_u64_field(&d, "max_chars", (unsigned long long)max_chars, &first);
+        (void)tl_json_append_u64_field(&d, "keep_last_messages", (unsigned long long)keep_last, &first);
+        (void)tl_json_append_u64_field(&d, "pinned_system_messages", (unsigned long long)rep.pinned_system_messages, &first);
+        (void)tl_json_append_u64_field(&d, "dropped_messages", (unsigned long long)rep.dropped_messages, &first);
+        (void)tl_json_append_u64_field(&d, "inserted_summary", (unsigned long long)rep.inserted_summary, &first);
+        if (options->verbose_events && rep.inserted_summary && rep.summary.data) {
+          agent_string_t capped = {0};
+          uint8_t trunc = 0;
+          (void)tl_cap_output(hooks ? hooks->cap_tool_output_for_event : NULL, hooks ? hooks->cap_tool_output_for_event_ctx : NULL,
+                              rep.summary.data, rep.summary.len, max_capture, &capped, &trunc);
+          (void)tl_json_append_string_field(&d, "summary", capped.data ? capped.data : "", capped.len, &first);
+          (void)tl_json_append_u64_field(&d, "summary_truncated", (unsigned long long)trunc, &first);
+          agent_string_free(&capped);
+        }
+        (void)tl_json_append_u64_field(&d, "epoch_after", (unsigned long long)(epoch + 1), &first);
+        (void)tl_buf_append_char(&d, '}');
+        tl_emit_event(hooks, "compaction", d.data ? d.data : "{}");
+        tl_buf_free(&d);
       }
-      (void)tl_json_append_u64_field(&d, "epoch_after", (unsigned long long)(epoch + 1), &first);
-      (void)tl_buf_append_char(&d, '}');
-      tl_emit_event(hooks, "compaction", d.data ? d.data : "{}");
-      tl_buf_free(&d);
       epoch++;
     }
     tl_compaction_report_destroy(&rep);
@@ -983,15 +1000,17 @@ agent_status_t agent_tool_loop_run(
 
       if (stp == AGENT_ERR_CONTEXT_TOO_LONG && retry < max_retries) {
         // Emit a retry event.
-        tl_buf_t d = {0};
-        uint8_t first = 1;
-        (void)tl_buf_append_char(&d, '{');
-        (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
-        (void)tl_json_append_u64_field(&d, "epoch", (unsigned long long)epoch, &first);
-        (void)tl_json_append_string_field(&d, "reason", "context_too_long_retry", strlen("context_too_long_retry"), &first);
-        (void)tl_buf_append_char(&d, '}');
-        tl_emit_event(hooks, "retry", d.data ? d.data : "{}");
-        tl_buf_free(&d);
+        if (tl_events_enabled(hooks)) {
+          tl_buf_t d = {0};
+          uint8_t first = 1;
+          (void)tl_buf_append_char(&d, '{');
+          (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
+          (void)tl_json_append_u64_field(&d, "epoch", (unsigned long long)epoch, &first);
+          (void)tl_json_append_string_field(&d, "reason", "context_too_long_retry", strlen("context_too_long_retry"), &first);
+          (void)tl_buf_append_char(&d, '}');
+          tl_emit_event(hooks, "retry", d.data ? d.data : "{}");
+          tl_buf_free(&d);
+        }
 
         // Shrink budget and compact.
         agent_tool_loop_options_t tighter = *options;
@@ -1006,22 +1025,24 @@ agent_status_t agent_tool_loop_run(
           break;
         }
         if (r2.dropped_messages > 0) {
-          tl_buf_t cdata = {0};
-          uint8_t f2 = 1;
-          (void)tl_buf_append_char(&cdata, '{');
-          (void)tl_json_append_u64_field(&cdata, "epoch", (unsigned long long)epoch, &f2);
-          (void)tl_json_append_u64_field(&cdata, "step", (unsigned long long)step, &f2);
-          (void)tl_json_append_u64_field(&cdata, "before_chars", (unsigned long long)r2.before_chars, &f2);
-          (void)tl_json_append_u64_field(&cdata, "after_chars", (unsigned long long)r2.after_chars, &f2);
-          (void)tl_json_append_u64_field(&cdata, "max_chars", (unsigned long long)tighter.max_chars, &f2);
-          (void)tl_json_append_u64_field(&cdata, "keep_last_messages", (unsigned long long)(tighter.keep_last_messages == 0 ? 16 : tighter.keep_last_messages), &f2);
-          (void)tl_json_append_u64_field(&cdata, "pinned_system_messages", (unsigned long long)r2.pinned_system_messages, &f2);
-          (void)tl_json_append_u64_field(&cdata, "dropped_messages", (unsigned long long)r2.dropped_messages, &f2);
-          (void)tl_json_append_u64_field(&cdata, "inserted_summary", (unsigned long long)r2.inserted_summary, &f2);
-          (void)tl_json_append_u64_field(&cdata, "epoch_after", (unsigned long long)(epoch + 1), &f2);
-          (void)tl_buf_append_char(&cdata, '}');
-          tl_emit_event(hooks, "compaction", cdata.data ? cdata.data : "{}");
-          tl_buf_free(&cdata);
+          if (tl_events_enabled(hooks)) {
+            tl_buf_t cdata = {0};
+            uint8_t f2 = 1;
+            (void)tl_buf_append_char(&cdata, '{');
+            (void)tl_json_append_u64_field(&cdata, "epoch", (unsigned long long)epoch, &f2);
+            (void)tl_json_append_u64_field(&cdata, "step", (unsigned long long)step, &f2);
+            (void)tl_json_append_u64_field(&cdata, "before_chars", (unsigned long long)r2.before_chars, &f2);
+            (void)tl_json_append_u64_field(&cdata, "after_chars", (unsigned long long)r2.after_chars, &f2);
+            (void)tl_json_append_u64_field(&cdata, "max_chars", (unsigned long long)tighter.max_chars, &f2);
+            (void)tl_json_append_u64_field(&cdata, "keep_last_messages", (unsigned long long)(tighter.keep_last_messages == 0 ? 16 : tighter.keep_last_messages), &f2);
+            (void)tl_json_append_u64_field(&cdata, "pinned_system_messages", (unsigned long long)r2.pinned_system_messages, &f2);
+            (void)tl_json_append_u64_field(&cdata, "dropped_messages", (unsigned long long)r2.dropped_messages, &f2);
+            (void)tl_json_append_u64_field(&cdata, "inserted_summary", (unsigned long long)r2.inserted_summary, &f2);
+            (void)tl_json_append_u64_field(&cdata, "epoch_after", (unsigned long long)(epoch + 1), &f2);
+            (void)tl_buf_append_char(&cdata, '}');
+            tl_emit_event(hooks, "compaction", cdata.data ? cdata.data : "{}");
+            tl_buf_free(&cdata);
+          }
           epoch++;
         }
         tl_compaction_report_destroy(&r2);
@@ -1036,16 +1057,18 @@ agent_status_t agent_tool_loop_run(
       } else {
         (void)agent_string_set_copy(&res.error_message, "provider error", strlen("provider error"));
       }
-      tl_buf_t d = {0};
-      uint8_t first = 1;
-      (void)tl_buf_append_char(&d, '{');
-      (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
-      (void)tl_json_append_string_field(&d, "reason", "provider_error", strlen("provider_error"), &first);
-      (void)tl_json_append_i64_field(&d, "status", (long long)stp, &first);
-      (void)tl_json_append_string_field(&d, "error", res.error_message.data ? res.error_message.data : "", res.error_message.len, &first);
-      (void)tl_buf_append_char(&d, '}');
-      tl_emit_event(hooks, "error", d.data ? d.data : "{}");
-      tl_buf_free(&d);
+      if (tl_events_enabled(hooks)) {
+        tl_buf_t d = {0};
+        uint8_t first = 1;
+        (void)tl_buf_append_char(&d, '{');
+        (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
+        (void)tl_json_append_string_field(&d, "reason", "provider_error", strlen("provider_error"), &first);
+        (void)tl_json_append_i64_field(&d, "status", (long long)stp, &first);
+        (void)tl_json_append_string_field(&d, "error", res.error_message.data ? res.error_message.data : "", res.error_message.len, &first);
+        (void)tl_buf_append_char(&d, '}');
+        tl_emit_event(hooks, "error", d.data ? d.data : "{}");
+        tl_buf_free(&d);
+      }
 
       agent_tool_provider_response_free(&presp);
       status = stp;
@@ -1070,7 +1093,7 @@ agent_status_t agent_tool_loop_run(
     }
 
     // assistant_message event
-    {
+    if (tl_events_enabled(hooks)) {
       tl_buf_t d = {0};
       uint8_t first = 1;
       (void)tl_buf_append_char(&d, '{');
@@ -1085,14 +1108,16 @@ agent_status_t agent_tool_loop_run(
     }
 
     if (!has_tool_calls) {
-      tl_buf_t d = {0};
-      uint8_t first = 1;
-      (void)tl_buf_append_char(&d, '{');
-      (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
-      (void)tl_json_append_string_field(&d, "reason", "no tool calls", strlen("no tool calls"), &first);
-      (void)tl_buf_append_char(&d, '}');
-      tl_emit_event(hooks, "done", d.data ? d.data : "{}");
-      tl_buf_free(&d);
+      if (tl_events_enabled(hooks)) {
+        tl_buf_t d = {0};
+        uint8_t first = 1;
+        (void)tl_buf_append_char(&d, '{');
+        (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
+        (void)tl_json_append_string_field(&d, "reason", "no tool calls", strlen("no tool calls"), &first);
+        (void)tl_buf_append_char(&d, '}');
+        tl_emit_event(hooks, "done", d.data ? d.data : "{}");
+        tl_buf_free(&d);
+      }
       agent_tool_provider_response_free(&presp);
       stopped_normally = 1;
       break;
@@ -1101,14 +1126,16 @@ agent_status_t agent_tool_loop_run(
     for (size_t i = 0; i < presp.tool_call_count; i++) {
       if (tl_should_cancel(hooks)) {
         (void)agent_string_set_copy(&res.error_message, "cancelled", strlen("cancelled"));
-        tl_buf_t d = {0};
-        uint8_t first = 1;
-        (void)tl_buf_append_char(&d, '{');
-        (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
-        (void)tl_json_append_string_field(&d, "reason", "cancel_requested", strlen("cancel_requested"), &first);
-        (void)tl_buf_append_char(&d, '}');
-        tl_emit_event(hooks, "cancelled", d.data ? d.data : "{}");
-        tl_buf_free(&d);
+        if (tl_events_enabled(hooks)) {
+          tl_buf_t d = {0};
+          uint8_t first = 1;
+          (void)tl_buf_append_char(&d, '{');
+          (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
+          (void)tl_json_append_string_field(&d, "reason", "cancel_requested", strlen("cancel_requested"), &first);
+          (void)tl_buf_append_char(&d, '}');
+          tl_emit_event(hooks, "cancelled", d.data ? d.data : "{}");
+          tl_buf_free(&d);
+        }
         agent_tool_provider_response_free(&presp);
         status = AGENT_ERR_CANCELLED;
         goto cleanup;
@@ -1130,17 +1157,19 @@ agent_status_t agent_tool_loop_run(
       if (options->max_tool_calls_total > 0 && total_tool_calls > options->max_tool_calls_total) {
         const char* msg = "max tool calls exceeded";
         (void)agent_string_set_copy(&res.error_message, msg, strlen(msg));
-        tl_buf_t d = {0};
-        uint8_t first = 1;
-        (void)tl_buf_append_char(&d, '{');
-        (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
-        (void)tl_json_append_string_field(&d, "reason", "max_tool_calls_exceeded", strlen("max_tool_calls_exceeded"), &first);
-        (void)tl_json_append_u64_field(&d, "tool_calls_executed", (unsigned long long)total_tool_calls, &first);
-        (void)tl_json_append_u64_field(&d, "max_tool_calls_total", (unsigned long long)options->max_tool_calls_total, &first);
-        (void)tl_json_append_string_field(&d, "error", msg, strlen(msg), &first);
-        (void)tl_buf_append_char(&d, '}');
-        tl_emit_event(hooks, "error", d.data ? d.data : "{}");
-        tl_buf_free(&d);
+        if (tl_events_enabled(hooks)) {
+          tl_buf_t d = {0};
+          uint8_t first = 1;
+          (void)tl_buf_append_char(&d, '{');
+          (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
+          (void)tl_json_append_string_field(&d, "reason", "max_tool_calls_exceeded", strlen("max_tool_calls_exceeded"), &first);
+          (void)tl_json_append_u64_field(&d, "tool_calls_executed", (unsigned long long)total_tool_calls, &first);
+          (void)tl_json_append_u64_field(&d, "max_tool_calls_total", (unsigned long long)options->max_tool_calls_total, &first);
+          (void)tl_json_append_string_field(&d, "error", msg, strlen(msg), &first);
+          (void)tl_buf_append_char(&d, '}');
+          tl_emit_event(hooks, "error", d.data ? d.data : "{}");
+          tl_buf_free(&d);
+        }
         status = AGENT_ERR_LIMIT;
         goto cleanup;
       }
@@ -1184,20 +1213,22 @@ agent_status_t agent_tool_loop_run(
           if (tool_limit > 0 && *cnt_ptr > tool_limit) {
             const char* msg = "max tool calls for tool exceeded";
             (void)agent_string_set_copy(&res.error_message, msg, strlen(msg));
-            tl_buf_t d = {0};
-            uint8_t first = 1;
-            (void)tl_buf_append_char(&d, '{');
-            (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
-            (void)tl_json_append_string_field(&d, "reason", "max_tool_calls_for_tool_exceeded",
-                                              strlen("max_tool_calls_for_tool_exceeded"), &first);
-            (void)tl_json_append_string_field(&d, "tool_name", tool_name, strlen(tool_name), &first);
-            (void)tl_json_append_u64_field(&d, "tool_calls_for_tool", (unsigned long long)(*cnt_ptr), &first);
-            (void)tl_json_append_u64_field(&d, "max_tool_calls_for_tool", (unsigned long long)tool_limit, &first);
-            (void)tl_json_append_string_field(&d, "limit_source", limit_source, strlen(limit_source), &first);
-            (void)tl_json_append_string_field(&d, "error", msg, strlen(msg), &first);
-            (void)tl_buf_append_char(&d, '}');
-            tl_emit_event(hooks, "error", d.data ? d.data : "{}");
-            tl_buf_free(&d);
+            if (tl_events_enabled(hooks)) {
+              tl_buf_t d = {0};
+              uint8_t first = 1;
+              (void)tl_buf_append_char(&d, '{');
+              (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
+              (void)tl_json_append_string_field(&d, "reason", "max_tool_calls_for_tool_exceeded",
+                                                strlen("max_tool_calls_for_tool_exceeded"), &first);
+              (void)tl_json_append_string_field(&d, "tool_name", tool_name, strlen(tool_name), &first);
+              (void)tl_json_append_u64_field(&d, "tool_calls_for_tool", (unsigned long long)(*cnt_ptr), &first);
+              (void)tl_json_append_u64_field(&d, "max_tool_calls_for_tool", (unsigned long long)tool_limit, &first);
+              (void)tl_json_append_string_field(&d, "limit_source", limit_source, strlen(limit_source), &first);
+              (void)tl_json_append_string_field(&d, "error", msg, strlen(msg), &first);
+              (void)tl_buf_append_char(&d, '}');
+              tl_emit_event(hooks, "error", d.data ? d.data : "{}");
+              tl_buf_free(&d);
+            }
             status = AGENT_ERR_LIMIT;
             goto cleanup;
           }
@@ -1216,25 +1247,27 @@ agent_status_t agent_tool_loop_run(
         if (repeated_tool_calls > options->max_repeated_tool_calls) {
           const char* msg = "repeated tool call detected (guard)";
           (void)agent_string_set_copy(&res.error_message, msg, strlen(msg));
-          tl_buf_t d = {0};
-          uint8_t first = 1;
-          (void)tl_buf_append_char(&d, '{');
-          (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
-          (void)tl_json_append_string_field(&d, "reason", "repeated_tool_call_guard", strlen("repeated_tool_call_guard"), &first);
-          (void)tl_json_append_string_field(&d, "tool_name", tool_name, strlen(tool_name), &first);
-          (void)tl_json_append_u64_field(&d, "repeats", (unsigned long long)repeated_tool_calls, &first);
-          (void)tl_json_append_u64_field(&d, "max_repeats", (unsigned long long)options->max_repeated_tool_calls, &first);
-          (void)tl_json_append_string_field(&d, "error", msg, strlen(msg), &first);
-          (void)tl_buf_append_char(&d, '}');
-          tl_emit_event(hooks, "error", d.data ? d.data : "{}");
-          tl_buf_free(&d);
+          if (tl_events_enabled(hooks)) {
+            tl_buf_t d = {0};
+            uint8_t first = 1;
+            (void)tl_buf_append_char(&d, '{');
+            (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
+            (void)tl_json_append_string_field(&d, "reason", "repeated_tool_call_guard", strlen("repeated_tool_call_guard"), &first);
+            (void)tl_json_append_string_field(&d, "tool_name", tool_name, strlen(tool_name), &first);
+            (void)tl_json_append_u64_field(&d, "repeats", (unsigned long long)repeated_tool_calls, &first);
+            (void)tl_json_append_u64_field(&d, "max_repeats", (unsigned long long)options->max_repeated_tool_calls, &first);
+            (void)tl_json_append_string_field(&d, "error", msg, strlen(msg), &first);
+            (void)tl_buf_append_char(&d, '}');
+            tl_emit_event(hooks, "error", d.data ? d.data : "{}");
+            tl_buf_free(&d);
+          }
           status = AGENT_ERR_LIMIT;
           goto cleanup;
         }
       }
 
       // tool_call event
-      {
+      if (tl_events_enabled(hooks)) {
         tl_buf_t d = {0};
         uint8_t first = 1;
         (void)tl_buf_append_char(&d, '{');
@@ -1259,17 +1292,19 @@ agent_status_t agent_tool_loop_run(
       agent_status_t st_tool = executor->execute(executor->ctx, tool_name, args_json, &tool_out);
       if (st_tool != AGENT_OK) {
         (void)agent_string_set_copy(&res.error_message, "tool execution failed", strlen("tool execution failed"));
-        tl_buf_t d = {0};
-        uint8_t first = 1;
-        (void)tl_buf_append_char(&d, '{');
-        (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
-        (void)tl_json_append_string_field(&d, "reason", "tool_execution_failed", strlen("tool_execution_failed"), &first);
-        (void)tl_json_append_string_field(&d, "tool_name", tool_name, strlen(tool_name), &first);
-        (void)tl_json_append_i64_field(&d, "status", (long long)st_tool, &first);
-        (void)tl_json_append_string_field(&d, "error", res.error_message.data ? res.error_message.data : "", res.error_message.len, &first);
-        (void)tl_buf_append_char(&d, '}');
-        tl_emit_event(hooks, "error", d.data ? d.data : "{}");
-        tl_buf_free(&d);
+        if (tl_events_enabled(hooks)) {
+          tl_buf_t d = {0};
+          uint8_t first = 1;
+          (void)tl_buf_append_char(&d, '{');
+          (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
+          (void)tl_json_append_string_field(&d, "reason", "tool_execution_failed", strlen("tool_execution_failed"), &first);
+          (void)tl_json_append_string_field(&d, "tool_name", tool_name, strlen(tool_name), &first);
+          (void)tl_json_append_i64_field(&d, "status", (long long)st_tool, &first);
+          (void)tl_json_append_string_field(&d, "error", res.error_message.data ? res.error_message.data : "", res.error_message.len, &first);
+          (void)tl_buf_append_char(&d, '}');
+          tl_emit_event(hooks, "error", d.data ? d.data : "{}");
+          tl_buf_free(&d);
+        }
         agent_string_free(&tool_out);
         agent_tool_provider_response_free(&presp);
         status = st_tool;
@@ -1283,10 +1318,12 @@ agent_status_t agent_tool_loop_run(
                           tool_out.data ? tool_out.data : "", tool_out.len, max_tool_result_chars, &tool_out_for_prompt, &trunc_prompt);
 
       // Store tool record.
-      (void)tl_append_tool_record(&res, tool_name, tool_call_id, args_json, &tool_out, &tool_out_for_prompt, trunc_prompt);
+      if (!options->disable_tool_records) {
+        (void)tl_append_tool_record(&res, &tool_record_cap, tool_name, tool_call_id, args_json, &tool_out, &tool_out_for_prompt, trunc_prompt);
+      }
 
       // tool_result event
-      {
+      if (tl_events_enabled(hooks)) {
         tl_buf_t d = {0};
         uint8_t first = 1;
         (void)tl_buf_append_char(&d, '{');
@@ -1338,30 +1375,34 @@ agent_status_t agent_tool_loop_run(
   if (status == AGENT_OK && !stopped_normally && options->max_steps > 0 && res.steps_executed >= options->max_steps) {
     const char* msg = "max steps exceeded";
     (void)agent_string_set_copy(&res.error_message, msg, strlen(msg));
-    tl_buf_t d = {0};
-    uint8_t first = 1;
-    (void)tl_buf_append_char(&d, '{');
-    (void)tl_json_append_string_field(&d, "reason", "max_steps_exceeded", strlen("max_steps_exceeded"), &first);
-    (void)tl_json_append_u64_field(&d, "steps_executed", (unsigned long long)res.steps_executed, &first);
-    (void)tl_json_append_u64_field(&d, "max_steps", (unsigned long long)options->max_steps, &first);
-    (void)tl_json_append_string_field(&d, "error", msg, strlen(msg), &first);
-    (void)tl_buf_append_char(&d, '}');
-    tl_emit_event(hooks, "error", d.data ? d.data : "{}");
-    tl_buf_free(&d);
+    if (tl_events_enabled(hooks)) {
+      tl_buf_t d = {0};
+      uint8_t first = 1;
+      (void)tl_buf_append_char(&d, '{');
+      (void)tl_json_append_string_field(&d, "reason", "max_steps_exceeded", strlen("max_steps_exceeded"), &first);
+      (void)tl_json_append_u64_field(&d, "steps_executed", (unsigned long long)res.steps_executed, &first);
+      (void)tl_json_append_u64_field(&d, "max_steps", (unsigned long long)options->max_steps, &first);
+      (void)tl_json_append_string_field(&d, "error", msg, strlen(msg), &first);
+      (void)tl_buf_append_char(&d, '}');
+      tl_emit_event(hooks, "error", d.data ? d.data : "{}");
+      tl_buf_free(&d);
+    }
     status = AGENT_ERR_LIMIT;
     goto cleanup;
   }
 
   if (options->require_tool_call && !res.saw_tool_call) {
     (void)agent_string_set_copy(&res.error_message, "no tool call occurred", strlen("no tool call occurred"));
-    tl_buf_t d = {0};
-    uint8_t first = 1;
-    (void)tl_buf_append_char(&d, '{');
-    (void)tl_json_append_string_field(&d, "reason", "require_tool_call_unsatisfied", strlen("require_tool_call_unsatisfied"), &first);
-    (void)tl_json_append_string_field(&d, "error", res.error_message.data ? res.error_message.data : "", res.error_message.len, &first);
-    (void)tl_buf_append_char(&d, '}');
-    tl_emit_event(hooks, "error", d.data ? d.data : "{}");
-    tl_buf_free(&d);
+    if (tl_events_enabled(hooks)) {
+      tl_buf_t d = {0};
+      uint8_t first = 1;
+      (void)tl_buf_append_char(&d, '{');
+      (void)tl_json_append_string_field(&d, "reason", "require_tool_call_unsatisfied", strlen("require_tool_call_unsatisfied"), &first);
+      (void)tl_json_append_string_field(&d, "error", res.error_message.data ? res.error_message.data : "", res.error_message.len, &first);
+      (void)tl_buf_append_char(&d, '}');
+      tl_emit_event(hooks, "error", d.data ? d.data : "{}");
+      tl_buf_free(&d);
+    }
     status = AGENT_ERR_INTERNAL;
     goto cleanup;
   }

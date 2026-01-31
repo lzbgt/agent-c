@@ -8,6 +8,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(AGENT_BUILD_HOST "Build CLI/daemon host components (requires CURL; JSONCPP optional)" ON)
+option(AGENTD_ENABLE_HTTP "Build agentd HTTP server + agentd executable" ON)
 
 add_library(agent_core STATIC
   core/src/agent_alloc.c
@@ -102,9 +103,11 @@ if(AGENT_BUILD_HOST)
 
   target_link_libraries(agent PRIVATE agent_host)
 
-  add_executable(agentd
-    daemon/src/main.cpp
+  # Build the daemon as an embeddable library. HTTP serving is optional and controlled by
+  # `AGENTD_ENABLE_HTTP` (useful for app embedding where a cloud broker / custom transport is used).
+  set(AGENTD_LIB_SOURCES
     daemon/src/agent_db.cpp
+    daemon/src/agentd_api.cpp
     daemon/src/client_profiles.cpp
     daemon/src/config_endpoint.cpp
     daemon/src/cors.cpp
@@ -112,12 +115,12 @@ if(AGENT_BUILD_HOST)
     daemon/src/daemon_auth.cpp
     daemon/src/file_endpoint.cpp
     daemon/src/http_util.cpp
-    daemon/src/http_server.cpp
     daemon/src/job_endpoints.cpp
-    daemon/src/job_stream_endpoint.cpp
     daemon/src/job_manager.cpp
     daemon/src/json_util.cpp
     daemon/src/openrouter_models_endpoint.cpp
+    daemon/src/provider_util.cpp
+    daemon/src/runtime_config.cpp
     daemon/src/secrets_file.cpp
     daemon/src/run_endpoints.cpp
     daemon/src/session_endpoints.cpp
@@ -127,17 +130,49 @@ if(AGENT_BUILD_HOST)
     daemon/src/string_util.cpp
   )
 
-  target_compile_options(agentd PRIVATE
+  if(AGENTD_ENABLE_HTTP)
+    list(APPEND AGENTD_LIB_SOURCES
+      daemon/src/agentd_service.cpp
+      daemon/src/http_server.cpp
+      daemon/src/job_stream_endpoint.cpp
+    )
+  endif()
+
+  add_library(agentd_lib STATIC ${AGENTD_LIB_SOURCES})
+
+  target_compile_options(agentd_lib PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
   )
 
-  target_link_libraries(agentd PRIVATE agent_host)
+  target_include_directories(agentd_lib PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/daemon/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/daemon/src
+  )
+
+  target_link_libraries(agentd_lib PUBLIC agent_host)
 
   if(AGENT_ENABLE_SQLITE3)
-    target_include_directories(agentd PRIVATE ${SQLITE3_INCLUDE_DIRS})
-    target_link_directories(agentd PRIVATE ${SQLITE3_LIBRARY_DIRS})
-    target_link_libraries(agentd PRIVATE ${SQLITE3_LIBRARIES})
-    target_compile_definitions(agentd PRIVATE AGENT_HAVE_SQLITE3=1)
+    target_include_directories(agentd_lib PRIVATE ${SQLITE3_INCLUDE_DIRS})
+    target_link_directories(agentd_lib PRIVATE ${SQLITE3_LIBRARY_DIRS})
+    target_link_libraries(agentd_lib PUBLIC ${SQLITE3_LIBRARIES})
+    target_compile_definitions(agentd_lib PRIVATE AGENT_HAVE_SQLITE3=1)
+  endif()
+
+  if(AGENTD_ENABLE_HTTP)
+    add_executable(agentd
+      daemon/src/main.cpp
+    )
+
+    target_compile_options(agentd PRIVATE
+      $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+    )
+
+    target_link_libraries(agentd PRIVATE agentd_lib)
+    target_compile_definitions(agentd PRIVATE AGENTD_ENABLE_HTTP=1)
+  endif()
+
+  if(AGENTD_ENABLE_HTTP)
+    target_compile_definitions(agentd_lib PUBLIC AGENTD_ENABLE_HTTP=1)
   endif()
 endif()
 
@@ -167,82 +202,67 @@ if(AGENT_BUILD_HOST)
   add_test(NAME agent_local_stream_tool_loop_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agent_local_stream_tool_loop_smoke.sh $<TARGET_FILE:agent>)
   add_test(NAME agent_local_stream_assistant_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agent_local_stream_assistant_smoke.sh $<TARGET_FILE:agent>)
 
-  add_test(NAME agentd_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_smoke.sh $<TARGET_FILE:agentd>)
-  set_tests_properties(agentd_smoke PROPERTIES SKIP_RETURN_CODE 77)
+  if(AGENTD_ENABLE_HTTP)
+    add_test(NAME agentd_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_smoke.sh $<TARGET_FILE:agentd>)
+    set_tests_properties(agentd_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
-  add_test(NAME agentd_tools_list_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_tools_list_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_tools_list_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_tools_list_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_auth_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_auth_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_config_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_config_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_sandbox_tighten_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_sandbox_tighten_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_cors_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_cors_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_file_symlink_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_file_symlink_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_local_tool_loop_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_local_tool_loop_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_sessions_root_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_sessions_root_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_artifact_protocol_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_artifact_protocol_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_ui_action_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_ui_action_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_client_profile_injection_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_client_profile_injection_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_missing_tool_calls_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_missing_tool_calls_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_client_rpc_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_client_rpc_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_client_rpc_progress_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_client_rpc_progress_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_client_rpc_dom_apply_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_client_rpc_dom_apply_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_client_rpc_entity_apply_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_client_rpc_entity_apply_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_ui_wait_event_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_ui_wait_event_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_ui_wait_any_all_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_ui_wait_any_all_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_session_audit_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_session_audit_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_session_client_events_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_session_client_events_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_session_clients_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_session_clients_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_local_async_host_tools_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_local_async_host_tools_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_local_stream_assistant_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_local_stream_assistant_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_local_stream_tool_loop_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_local_stream_tool_loop_smoke.sh $<TARGET_FILE:agentd>)
 
-  add_test(NAME agentd_auth_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_auth_smoke.sh $<TARGET_FILE:agentd>)
+    if(AGENT_ENABLE_SQLITE3)
+      add_test(NAME agentd_db_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_smoke.sh $<TARGET_FILE:agentd>)
+      add_test(NAME agentd_db_query_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_query_smoke.sh $<TARGET_FILE:agentd>)
+    endif()
 
-  add_test(NAME agentd_config_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_config_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(
+      NAME agentd_non_loopback_auth_guard_smoke
+      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_non_loopback_auth_guard_smoke.sh $<TARGET_FILE:agentd>
+    )
 
-  add_test(NAME agentd_sandbox_tighten_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_sandbox_tighten_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_host_tools_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_host_tools_smoke.sh $<TARGET_FILE:agentd>)
+    set_tests_properties(agentd_host_tools_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
-  add_test(NAME agentd_cors_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_cors_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_stream_assistant_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_stream_assistant_smoke.sh $<TARGET_FILE:agentd>)
+    set_tests_properties(agentd_stream_assistant_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
-  add_test(NAME agentd_file_symlink_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_file_symlink_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_sse_auth_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_sse_auth_smoke.sh $<TARGET_FILE:agentd>)
 
-  add_test(NAME agentd_local_tool_loop_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_local_tool_loop_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_openrouter_models_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_openrouter_models_smoke.sh $<TARGET_FILE:agentd>)
+    set_tests_properties(agentd_openrouter_models_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
-  add_test(NAME agentd_sessions_root_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_sessions_root_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_async_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_async_smoke.sh $<TARGET_FILE:agentd>)
+    set_tests_properties(agentd_async_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
-  add_test(NAME agentd_artifact_protocol_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_artifact_protocol_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_sse_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_sse_smoke.sh $<TARGET_FILE:agentd>)
+    set_tests_properties(agentd_sse_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
-  add_test(NAME agentd_ui_action_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_ui_action_smoke.sh $<TARGET_FILE:agentd>)
-
-  add_test(NAME agentd_client_rpc_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_client_rpc_smoke.sh $<TARGET_FILE:agentd>)
-  add_test(NAME agentd_client_rpc_progress_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_client_rpc_progress_smoke.sh $<TARGET_FILE:agentd>)
-  add_test(NAME agentd_client_rpc_dom_apply_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_client_rpc_dom_apply_smoke.sh $<TARGET_FILE:agentd>)
-  add_test(NAME agentd_client_rpc_entity_apply_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_client_rpc_entity_apply_smoke.sh $<TARGET_FILE:agentd>)
-
-  add_test(NAME agentd_ui_wait_event_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_ui_wait_event_smoke.sh $<TARGET_FILE:agentd>)
-
-  add_test(NAME agentd_ui_wait_any_all_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_ui_wait_any_all_smoke.sh $<TARGET_FILE:agentd>)
-
-  add_test(NAME agentd_camera_capture_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_camera_capture_smoke.sh $<TARGET_FILE:agentd>)
-
-  add_test(NAME agentd_session_audit_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_session_audit_smoke.sh $<TARGET_FILE:agentd>)
-
-  add_test(NAME agentd_session_client_events_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_session_client_events_smoke.sh $<TARGET_FILE:agentd>)
-  add_test(NAME agentd_session_clients_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_session_clients_smoke.sh $<TARGET_FILE:agentd>)
-
-  add_test(NAME agentd_local_async_host_tools_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_local_async_host_tools_smoke.sh $<TARGET_FILE:agentd>)
-
-  add_test(NAME agentd_local_stream_assistant_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_local_stream_assistant_smoke.sh $<TARGET_FILE:agentd>)
-
-  add_test(NAME agentd_local_stream_tool_loop_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_local_stream_tool_loop_smoke.sh $<TARGET_FILE:agentd>)
-
-	  if(AGENT_ENABLE_SQLITE3)
-	    add_test(NAME agentd_db_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_smoke.sh $<TARGET_FILE:agentd>)
-	    add_test(NAME agentd_db_query_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_query_smoke.sh $<TARGET_FILE:agentd>)
-	  endif()
-
-  add_test(
-    NAME agentd_non_loopback_auth_guard_smoke
-    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_non_loopback_auth_guard_smoke.sh $<TARGET_FILE:agentd>
-  )
-
-  add_test(NAME agentd_host_tools_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_host_tools_smoke.sh $<TARGET_FILE:agentd>)
-  set_tests_properties(agentd_host_tools_smoke PROPERTIES SKIP_RETURN_CODE 77)
-
-  add_test(NAME agentd_stream_assistant_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_stream_assistant_smoke.sh $<TARGET_FILE:agentd>)
-  set_tests_properties(agentd_stream_assistant_smoke PROPERTIES SKIP_RETURN_CODE 77)
-
-  add_test(NAME agentd_sse_auth_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_sse_auth_smoke.sh $<TARGET_FILE:agentd>)
-
-  add_test(NAME agentd_openrouter_models_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_openrouter_models_smoke.sh $<TARGET_FILE:agentd>)
-  set_tests_properties(agentd_openrouter_models_smoke PROPERTIES SKIP_RETURN_CODE 77)
-
-  add_test(NAME agentd_async_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_async_smoke.sh $<TARGET_FILE:agentd>)
-  set_tests_properties(agentd_async_smoke PROPERTIES SKIP_RETURN_CODE 77)
-
-  add_test(NAME agentd_sse_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_sse_smoke.sh $<TARGET_FILE:agentd>)
-  set_tests_properties(agentd_sse_smoke PROPERTIES SKIP_RETURN_CODE 77)
-
-  add_test(NAME agentd_cancel_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_cancel_smoke.sh $<TARGET_FILE:agentd>)
-  set_tests_properties(agentd_cancel_smoke PROPERTIES SKIP_RETURN_CODE 77)
-  add_test(NAME agentd_heartbeat_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_heartbeat_smoke.sh $<TARGET_FILE:agentd>)
-  set_tests_properties(agentd_heartbeat_smoke PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME agentd_cancel_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_cancel_smoke.sh $<TARGET_FILE:agentd>)
+    set_tests_properties(agentd_cancel_smoke PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME agentd_heartbeat_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_heartbeat_smoke.sh $<TARGET_FILE:agentd>)
+    set_tests_properties(agentd_heartbeat_smoke PROPERTIES SKIP_RETURN_CODE 77)
+  endif()
 
   add_test(NAME agent_deepseek_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/deepseek_smoke.sh $<TARGET_FILE:agent>)
   set_tests_properties(agent_deepseek_smoke PROPERTIES SKIP_RETURN_CODE 77)
@@ -352,6 +372,14 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
     target_link_libraries(agent_db_tests PRIVATE ${SQLITE3_LIBRARIES})
     target_compile_definitions(agent_db_tests PRIVATE AGENT_HAVE_SQLITE3=1)
     add_test(NAME agent_db_tests COMMAND agent_db_tests)
+
+    if(AGENTD_ENABLE_HTTP)
+      add_executable(agentd_service_tests
+        tests/test_agentd_service.cpp
+      )
+      target_link_libraries(agentd_service_tests PRIVATE agentd_lib)
+      add_test(NAME agentd_service_tests COMMAND agentd_service_tests)
+    endif()
   endif()
 endif()
 
@@ -360,6 +388,6 @@ if(AGENT_BUILD_HOST)
     tests/test_cors.cpp
     daemon/src/cors.cpp
   )
-  target_include_directories(cors_tests PRIVATE daemon/src)
+  target_include_directories(cors_tests PRIVATE daemon/src daemon/include)
   add_test(NAME cors_tests COMMAND cors_tests)
 endif()

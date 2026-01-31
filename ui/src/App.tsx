@@ -10,11 +10,14 @@ import {
   apiGetDbClientEvents,
   apiGetSessionClientEvents,
   apiGetHealth,
+  apiGetJob,
   apiGetJobProgress,
   apiGetOpenRouterModels,
   apiGetSessionArtifacts,
   apiGetTools,
+  apiUpdateDaemonConfig,
   apiCancelJob,
+  apiDeleteSession,
   apiListSessions,
   apiNewSession,
   apiPostSessionUiEvent,
@@ -50,9 +53,17 @@ export default function App() {
   const [showSettings, setShowSettings] = useLocalStorageState("agentui.showSettings", false);
 
   const [base, setBase] = useLocalStorageState("agentui.base", "http://127.0.0.1:8123");
+
+  const effectiveBase = React.useMemo(() => {
+    const b = String(base || "").trim();
+    if (b.length === 0) return "http://127.0.0.1:8123";
+    const withScheme = /^https?:\/\//i.test(b) ? b : `http://${b}`;
+    return withScheme.replace(/\/+$/, "");
+  }, [base]);
+
   const [daemonAuthToken, setDaemonAuthToken] = useLocalStorageState("agentui.daemonAuthToken", "");
   const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "");
-  const [sessionId, setSessionId] = useLocalStorageState("agentui.sessionId", "default");
+
   const [clientId] = useLocalStorageState(
     "agentui.clientId",
     (() => {
@@ -92,7 +103,8 @@ export default function App() {
   const [toolsRoot, setToolsRoot] = useLocalStorageState("agentui.toolsRoot", ".");
   const [yolo, setYolo] = useLocalStorageState("agentui.yolo", true);
   const [hostPolicy, setHostPolicy] = useLocalStorageState<"full" | "readonly">("agentui.hostPolicy", "full");
-  const [verbose, setVerbose] = useLocalStorageState("agentui.verbose", false);
+  // Production UX: tool visibility should be on by default so users can audit shell/proc commands and tool outputs.
+  const [verbose, setVerbose] = useLocalStorageState("agentui.verbose", true);
   const [model, setModel] = useLocalStorageState("agentui.model", "deepseek-chat");
   const [summaryModel, setSummaryModel] = useLocalStorageState("agentui.summaryModel", "");
   const [summaryMaxChars, setSummaryMaxChars] = useLocalStorageState("agentui.summaryMaxChars", "1200");
@@ -123,7 +135,7 @@ export default function App() {
   const [useAsync, setUseAsync] = useLocalStorageState("agentui.useAsync", true);
   const [showDebugInConversation, setShowDebugInConversation] = useLocalStorageState(
     "agentui.showDebugInConversation",
-    false,
+    true,
   );
   const [allowAutoplay, setAllowAutoplay] = useLocalStorageState("agentui.allowAutoplay", true);
   // This project treats the Web UI as a collaboration surface (a “scene”) where the agent is expected
@@ -145,14 +157,139 @@ export default function App() {
   const [liveEvents, setLiveEvents] = React.useState<AgentEvent[]>([]);
   const cursorRef = React.useRef<number>(0);
 
+  // Persist job_id + cursor so a browser refresh can reliably resume a running session.
+  // Stored per session_id (since multiple sessions can exist and the UI allows switching).
+  const [jobsBySessionJson, setJobsBySessionJson] = useLocalStorageState("agentui.jobsBySession", "{}");
+
+  const topbarRef = React.useRef<HTMLElement | null>(null);
+  const promptbarRef = React.useRef<HTMLDivElement | null>(null);
+  const [topbarHeightPx, setTopbarHeightPx] = React.useState<number>(56);
+  const [promptbarHeightPx, setPromptbarHeightPx] = React.useState<number>(220);
+
   // Session-scoped client-side scene entities (collaboration surface objects).
   const sceneBySessionRef = React.useRef<Record<string, Record<string, SceneEntity>>>({});
   const [sceneVersion, setSceneVersion] = React.useState<number>(0);
+  const scenePersistTimersRef = React.useRef<Record<string, number>>({});
+
+  const loadJson = (raw: string): any => {
+    try {
+      const v = JSON.parse(String(raw || ""));
+      return v && typeof v === "object" ? v : null;
+    } catch {
+      return null;
+    }
+  };
+
+  // Session selection is scoped by daemon base URL.
+  // This avoids "lost session" issues when switching between multiple local agentd instances (different ports).
+  const [sessionByBaseJson, setSessionByBaseJson] = useLocalStorageState("agentui.sessionByBase", "{}");
+  const sessionId = React.useMemo(() => {
+    const m = (loadJson(sessionByBaseJson) as Record<string, any>) || {};
+    const sid = typeof m?.[effectiveBase] === "string" ? String(m[effectiveBase]) : "";
+    return sid.trim().length > 0 ? sid.trim() : "default";
+  }, [effectiveBase, sessionByBaseJson]);
+  const setSessionId = React.useCallback(
+    (sid: string) => {
+      const nextSid = String(sid || "").trim() || "default";
+      setSessionByBaseJson((prevRaw) => {
+        const prev = (loadJson(String(prevRaw || "")) as Record<string, any>) || {};
+        const next = { ...prev, [effectiveBase]: nextSid };
+        try {
+          return JSON.stringify(next);
+        } catch {
+          return JSON.stringify(prev);
+        }
+      });
+    },
+    [effectiveBase, setSessionByBaseJson],
+  );
+
   const sceneEntities = React.useMemo(() => {
     const sid = typeof sessionId === "string" ? sessionId.trim() : "";
     const m = (sid && sceneBySessionRef.current[sid]) || {};
     return Object.values(m);
   }, [sceneVersion, sessionId]);
+
+  // Migration: older UI versions stored a single global `agentui.sessionId` not scoped by base URL.
+  // If present, use it as the initial session for the current daemon base.
+  React.useEffect(() => {
+    if (typeof window === "undefined" || !window.localStorage) return;
+    const key = "agentui.sessionId";
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return;
+    let legacy = "";
+    try {
+      const v = JSON.parse(raw);
+      if (typeof v === "string") legacy = v;
+    } catch {
+      // ignore
+    }
+    const legacyTrim = String(legacy || "").trim();
+    if (!legacyTrim) return;
+    let parsed: Record<string, any> = {};
+    try {
+      const v = JSON.parse(String(sessionByBaseJson || ""));
+      parsed = v && typeof v === "object" ? (v as any) : {};
+    } catch {
+      parsed = {};
+    }
+    const m = parsed;
+    const have = typeof m?.[effectiveBase] === "string" && String(m[effectiveBase]).trim().length > 0;
+    if (have) return;
+    setSessionId(legacyTrim);
+  }, [effectiveBase, sessionByBaseJson, setSessionId]);
+
+  const parseJobsBySession = React.useCallback(() => {
+    const v = loadJson(jobsBySessionJson);
+    return v && typeof v === "object" ? (v as Record<string, any>) : {};
+  }, [jobsBySessionJson]);
+
+  const writeJobsBySession = React.useCallback(
+    (mutate: (prev: Record<string, any>) => Record<string, any>) => {
+      setJobsBySessionJson((prevRaw) => {
+        const prev = (loadJson(String(prevRaw || "")) as Record<string, any>) || {};
+        const next = mutate(prev);
+        try {
+          return JSON.stringify(next);
+        } catch {
+          return JSON.stringify(prev);
+        }
+      });
+    },
+    [setJobsBySessionJson],
+  );
+
+  const sceneStorageKey = React.useCallback((sid: string) => `agentui.scene.${sid}`, []);
+  const persistSceneSoon = React.useCallback(
+    (sid: string) => {
+      const sessionKey = String(sid || "").trim();
+      if (!sessionKey) return;
+      if (typeof window === "undefined" || !window.localStorage) return;
+      const existingTimer = scenePersistTimersRef.current[sessionKey];
+      if (existingTimer) {
+        try {
+          window.clearTimeout(existingTimer);
+        } catch {
+          // ignore
+        }
+      }
+      const t = window.setTimeout(() => {
+        try {
+          const store = sceneBySessionRef.current[sessionKey] || {};
+          const bounded: Record<string, SceneEntity> = {};
+          const ids = Object.keys(store).slice(0, 512);
+          for (const id of ids) {
+            bounded[id] = store[id];
+          }
+          window.localStorage.setItem(sceneStorageKey(sessionKey), JSON.stringify(bounded));
+        } catch {
+          // ignore storage failures (quota, private mode, etc.)
+        }
+      }, 150);
+      scenePersistTimersRef.current[sessionKey] = t as any;
+    },
+    [sceneStorageKey],
+  );
 
   const applySceneOps = React.useCallback(
     (sid: string, ops: any[]) => {
@@ -245,9 +382,10 @@ export default function App() {
       }
 
       setSceneVersion((v) => v + 1);
+      persistSceneSoon(sessionKey);
       return { ok: true, results, count: Object.keys(store).length };
     },
-    [setSceneVersion],
+    [persistSceneSoon, setSceneVersion],
   );
 
   const clearScene = React.useCallback(() => {
@@ -255,14 +393,45 @@ export default function App() {
     if (!sid) return;
     sceneBySessionRef.current[sid] = {};
     setSceneVersion((v) => v + 1);
-  }, [sessionId]);
+    try {
+      window.localStorage?.removeItem(sceneStorageKey(sid));
+    } catch {
+      // ignore
+    }
+  }, [sceneStorageKey, sessionId]);
 
-  const effectiveBase = React.useMemo(() => {
-    const b = String(base || "").trim();
-    if (b.length === 0) return "http://127.0.0.1:8123";
-    const withScheme = /^https?:\/\//i.test(b) ? b : `http://${b}`;
-    return withScheme.replace(/\/+$/, "");
-  }, [base]);
+  // Keep layout CSS vars in sync with actual measured bars (so Scene can truly fill the viewport).
+  React.useLayoutEffect(() => {
+    const measure = () => {
+      try {
+        const th = topbarRef.current?.getBoundingClientRect().height;
+        const ph = promptbarRef.current?.getBoundingClientRect().height;
+        if (typeof th === "number" && Number.isFinite(th) && th > 0) setTopbarHeightPx(Math.round(th));
+        if (typeof ph === "number" && Number.isFinite(ph) && ph > 0) setPromptbarHeightPx(Math.round(ph));
+      } catch {
+        // ignore
+      }
+    };
+
+    measure();
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== "undefined") {
+      ro = new ResizeObserver(() => measure());
+      if (topbarRef.current) ro.observe(topbarRef.current);
+      if (promptbarRef.current) ro.observe(promptbarRef.current);
+    }
+
+    window.addEventListener("resize", measure);
+    return () => {
+      window.removeEventListener("resize", measure);
+      try {
+        ro?.disconnect();
+      } catch {
+        // ignore
+      }
+    };
+  }, []);
 
   const postedCapsRef = React.useRef<Record<string, boolean>>({});
   React.useEffect(() => {
@@ -290,8 +459,13 @@ export default function App() {
             { kind: "dom_set_value", side_effects: true, description: "Set input/textarea value by selector (side effects)." },
             { kind: "media_play", side_effects: true, description: "Attempt to play audio/video by selector (browser policies apply)." },
             { kind: "media_observe", side_effects: true, description: "Attach media listeners and emit correlated progress events." },
-            { kind: "artifact_play", side_effects: true, description: "Play an artifact (audio/video) by path and emit correlated progress events." },
             { kind: "navigate", side_effects: true, description: "Navigate the browser to a new URL (likely reloads the app)." },
+            {
+              kind: "artifact_url",
+              side_effects: false,
+              description:
+                "Resolve a daemon-served artifact path (out/...) to a browser-usable URL. Returns blob: URL when daemon auth is enabled.",
+            },
             { kind: "script_eval", side_effects: false, description: "Run agent-provided script code in a killable worker with a DOM/media/location API bridge." },
             { kind: "page_eval", side_effects: true, description: "UNSAFE: run agent-provided JS on the main thread with access to DOM via an API bridge (cooperative async only)." },
           ],
@@ -307,6 +481,74 @@ export default function App() {
       daemonAuthToken,
     ).catch(() => {});
   }, [client, daemonAuthToken, effectiveBase, sessionId]);
+
+  // Restore persisted scene snapshot on load/session switch.
+  React.useEffect(() => {
+    const sid = typeof sessionId === "string" ? sessionId.trim() : "";
+    if (!sid) return;
+    try {
+      const raw = window.localStorage?.getItem(sceneStorageKey(sid)) ?? "";
+      if (!raw) return;
+      const parsed = loadJson(raw);
+      if (!parsed || typeof parsed !== "object") return;
+      // Only replace if we don't already have state for this session in-memory.
+      if (!sceneBySessionRef.current[sid] || Object.keys(sceneBySessionRef.current[sid]).length === 0) {
+        sceneBySessionRef.current[sid] = parsed as any;
+        setSceneVersion((v) => v + 1);
+      }
+    } catch {
+      // ignore
+    }
+  }, [sceneStorageKey, sessionId]);
+
+  // Restore a running job after a browser refresh (best-effort).
+  React.useEffect(() => {
+    if (activeJobId) return;
+    const sid = typeof sessionId === "string" ? sessionId.trim() : "";
+    if (!sid) return;
+    const jobs = parseJobsBySession();
+    const rec = jobs[sid];
+    const jobId = typeof rec?.job_id === "string" ? rec.job_id : "";
+    if (!jobId) return;
+    const cursor = typeof rec?.cursor === "number" && Number.isFinite(rec.cursor) && rec.cursor >= 0 ? Math.floor(rec.cursor) : 0;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const job = await apiGetJob(effectiveBase, jobId, daemonAuthToken);
+        if (cancelled) return;
+        if (!job.ok) {
+          writeJobsBySession((prev) => {
+            const next = { ...prev };
+            delete next[sid];
+            return next;
+          });
+          return;
+        }
+        const st = typeof job.status === "string" ? job.status : "";
+        if (st === "queued" || st === "running") {
+          cursorRef.current = cursor;
+          setJobError(null);
+          setJobStatus(st);
+          setJobUpdatedMs(typeof job.updated_unix_ms === "number" ? job.updated_unix_ms : null);
+          setLiveEvents([]);
+          setActiveJobId(jobId);
+          return;
+        }
+        // Job already finished; clear persisted pointer.
+        writeJobsBySession((prev) => {
+          const next = { ...prev };
+          delete next[sid];
+          return next;
+        });
+      } catch {
+        // ignore; user can retry by reloading or the daemon UI.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeJobId, daemonAuthToken, effectiveBase, parseJobsBySession, sessionId, writeJobsBySession]);
 
   const health = useQuery({
     queryKey: ["health", effectiveBase, daemonAuthToken],
@@ -342,6 +584,36 @@ export default function App() {
     retry: 1,
   });
 
+  const auditEntriesDesc = React.useMemo(() => {
+    const raw = audit.data?.ok && Array.isArray(audit.data?.entries) ? (audit.data.entries as any[]) : [];
+    const entries = raw.filter((e) => e && typeof e === "object");
+    entries.sort((a: any, b: any) => {
+      const ta = typeof a?.ts_unix_ms === "number" ? a.ts_unix_ms : 0;
+      const tb = typeof b?.ts_unix_ms === "number" ? b.ts_unix_ms : 0;
+      return tb - ta;
+    });
+    return entries;
+  }, [audit.data]);
+
+  // While an async job is running, surface its live event stream as the top "history" entry so:
+  // - the user sees progress immediately (tool calls, streaming deltas, artifacts)
+  // - client RPCs (including entity_apply) can update the Scene during the run
+  const historyEntriesDesc = React.useMemo(() => {
+    if (!activeJobId) return auditEntriesDesc;
+    const ts = typeof jobUpdatedMs === "number" && jobUpdatedMs > 0 ? jobUpdatedMs : Date.now();
+    const live = {
+      ts_unix_ms: ts,
+      prompt: lastRunPromptRef.current || lastRunPrompt || "",
+      assistant_text: "",
+      events: liveEvents,
+      ok: undefined,
+      job_id: activeJobId,
+      job_status: jobStatus ?? "running",
+      live: true,
+    };
+    return [live, ...auditEntriesDesc];
+  }, [activeJobId, auditEntriesDesc, jobStatus, jobUpdatedMs, lastRunPrompt, liveEvents]);
+
   const sessionClientEvents = useQuery({
     queryKey: ["session_client_events", effectiveBase, daemonAuthToken, sessionId],
     queryFn: () => apiGetSessionClientEvents(effectiveBase, sessionId, daemonAuthToken, { maxBytes: 1024 * 1024 }),
@@ -372,7 +644,8 @@ export default function App() {
   const dbUiActions = useQuery({
     queryKey: ["db_ui_actions", effectiveBase, daemonAuthToken, sessionId],
     queryFn: () => apiGetDbUiActions(effectiveBase, sessionId, daemonAuthToken, { limit: 100, offset: 0 }),
-    enabled: false,
+    enabled: !!sessionId && allowClientRpcs && allowClientEffects,
+    refetchInterval: activeJobId ? 1500 : 5000,
     retry: 1,
   });
 
@@ -386,7 +659,8 @@ export default function App() {
   const dbClientEvents = useQuery({
     queryKey: ["db_client_events", effectiveBase, daemonAuthToken, sessionId],
     queryFn: () => apiGetDbClientEvents(effectiveBase, sessionId, daemonAuthToken, { limit: 100, offset: 0 }),
-    enabled: false,
+    enabled: !!sessionId && allowClientRpcs && allowClientEffects,
+    refetchInterval: activeJobId ? 1500 : 5000,
     retry: 1,
   });
 
@@ -436,6 +710,54 @@ export default function App() {
         void dbClientEvents.refetch();
         setSelectedDbRunId(null);
       }
+    },
+  });
+
+  const deleteSession = useMutation({
+    mutationFn: async (sid: string) => {
+      const s = String(sid || "").trim();
+      if (!s) throw new Error("missing session id");
+      const r = await apiDeleteSession(effectiveBase, s, daemonAuthToken);
+      if (!r.ok) throw new Error(r.error || "delete failed");
+      return { session_id: s };
+    },
+    onSuccess: async (v) => {
+      await sessions.refetch();
+      // If we deleted the active session, move to a clean slate.
+      if (v.session_id === String(sessionId || "").trim()) {
+        await newSession.mutateAsync();
+      } else {
+        await audit.refetch();
+      }
+    },
+  });
+
+  const updateDaemonDefaults = useMutation({
+    mutationFn: async (payload: any) => {
+      const r = await apiUpdateDaemonConfig(effectiveBase, payload, daemonAuthToken);
+      if (!r.ok) throw new Error(r.error || "update failed");
+      return r;
+    },
+    onSuccess: async () => {
+      await daemonConfig.refetch();
+    },
+  });
+
+  const clearAllSessions = useMutation({
+    mutationFn: async () => {
+      const r = await apiListSessions(effectiveBase, daemonAuthToken);
+      if (!r.ok) throw new Error(r.error || "failed to list sessions");
+      const ids = (r.sessions ?? []).slice();
+      // Delete deterministically (serial) to keep daemon load predictable and to make failures clear.
+      for (const sid of ids) {
+        const d = await apiDeleteSession(effectiveBase, sid, daemonAuthToken);
+        if (!d.ok) throw new Error(d.error || `failed to delete session: ${sid}`);
+      }
+      return { deleted: ids.length };
+    },
+    onSuccess: async () => {
+      await sessions.refetch();
+      await newSession.mutateAsync();
     },
   });
 
@@ -605,6 +927,14 @@ export default function App() {
       cursorRef.current = 0;
       setActiveJobId(v.job.job_id);
       setJobStatus("queued");
+
+      const sid = String(sessionId || "").trim();
+      if (sid) {
+        writeJobsBySession((prev) => ({
+          ...prev,
+          [sid]: { job_id: v.job.job_id, cursor: 0, started_unix_ms: Date.now() },
+        }));
+      }
     },
     onError: (e) => {
       // Keep the last conversation visible when a run cannot be started.
@@ -639,6 +969,304 @@ export default function App() {
       }
     },
   });
+
+  // Persist job cursor while running (best-effort). This lets refresh resume from a stable point.
+  React.useEffect(() => {
+    if (!activeJobId) return;
+    const sid = String(sessionId || "").trim();
+    if (!sid) return;
+    const jobId = activeJobId;
+
+    const t = window.setInterval(() => {
+      const cursor = cursorRef.current;
+      writeJobsBySession((prev) => {
+        const cur = prev[sid];
+        if (!cur || cur.job_id !== jobId) return prev;
+        if (cur.cursor === cursor) return prev;
+        return { ...prev, [sid]: { ...cur, cursor, updated_unix_ms: Date.now() } };
+      });
+    }, 1000);
+    return () => {
+      try {
+        window.clearInterval(t);
+      } catch {
+        // ignore
+      }
+    };
+  }, [activeJobId, sessionId, writeJobsBySession]);
+
+  // Execute any persisted entity_apply RPCs from DB ui_actions that have not yet been acknowledged.
+  // This makes client RPC execution reliable across refreshes and SSE dropouts.
+  const appliedUiActionIdsRef = React.useRef<Record<string, boolean>>({});
+  React.useEffect(() => {
+    if (!allowClientRpcs || !allowClientEffects) return;
+    const sid = String(sessionId || "").trim();
+    if (!sid) return;
+    const actionsRaw = dbUiActions.data?.ok && Array.isArray(dbUiActions.data?.ui_actions) ? (dbUiActions.data.ui_actions as any[]) : [];
+    const clientEventsRaw =
+      dbClientEvents.data?.ok && Array.isArray(dbClientEvents.data?.client_events) ? (dbClientEvents.data.client_events as any[]) : [];
+
+    const ackedRpcIds = new Set<string>();
+    for (const ce of clientEventsRaw) {
+      const t = typeof ce?.type === "string" ? ce.type : "";
+      if (t !== "client_rpc_result") continue;
+      const data = ce?.data ?? ce?.data_json ?? {};
+      const rpcId = typeof data?.rpc_id === "string" ? data.rpc_id : typeof data?.probe_id === "string" ? data.probe_id : "";
+      if (rpcId) ackedRpcIds.add(rpcId);
+    }
+
+    // DB endpoint sorts desc; apply older first so patches are deterministic.
+    const actions = actionsRaw
+      .slice()
+      .reverse()
+      .filter((a) => a && typeof a === "object");
+
+    const safeObject = (v: any) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
+    const entityApplyArgsToOps = (args: any): any[] => {
+      if (Array.isArray(args?.ops)) return args.ops.slice(0, 100);
+      if (Array.isArray(args?.operations)) return args.operations.slice(0, 100);
+      if (Array.isArray(args?.entities)) {
+        const ops: any[] = [];
+        for (const ent of (args.entities as any[]).slice(0, 50)) {
+          if (!ent || typeof ent !== "object") continue;
+          const id = String(ent?.id ?? "").slice(0, 200);
+          const entityKind = String(ent?.entity_kind ?? ent?.entityKind ?? ent?.type ?? ent?.kind ?? "").slice(0, 100);
+          if (!id || !entityKind) continue;
+          const title = typeof ent?.title === "string" ? String(ent.title).slice(0, 200) : undefined;
+          const props = safeObject(ent?.props ?? ent ?? {});
+          ops.push({ op: "create", id, entity_kind: entityKind, title, props });
+        }
+        return ops;
+      }
+      return [];
+    };
+
+    const postClientEvent = async (type: string, data: any) => {
+      await apiPostSessionUiEvent(
+        effectiveBase,
+        {
+          session_id: sid,
+          type,
+          client,
+          data,
+          append_to_session: true,
+        },
+        daemonAuthToken,
+      );
+    };
+
+    for (const row of actions) {
+      const id = typeof row?.id === "number" ? row.id : Number(row?.id ?? NaN);
+      if (!Number.isFinite(id)) continue;
+      const key = `${sid}::ui_action_id::${id}`;
+      if (appliedUiActionIdsRef.current[key]) continue;
+
+      const action = row?.action ?? {};
+      const atype = typeof action?.type === "string" ? action.type : "";
+      if (atype !== "client_rpc" && atype !== "collab_rpc" && atype !== "client_probe") continue;
+      const toolCallId = typeof row?.tool_call_id === "string" ? String(row.tool_call_id) : "";
+      const rpcId = String(action?.rpc_id ?? action?.probe_id ?? toolCallId ?? "").trim();
+      if (!rpcId) continue;
+      if (ackedRpcIds.has(rpcId)) {
+        appliedUiActionIdsRef.current[key] = true;
+        continue;
+      }
+      const rpc = action?.rpc ?? action?.probe ?? {};
+      const rpcKind = String(rpc?.kind ?? "").trim();
+      if (rpcKind !== "entity_apply") continue;
+      const autoRunRequested =
+        typeof action?.auto_run === "boolean" ? action.auto_run : typeof action?.auto === "boolean" ? action.auto : true;
+      if (!autoRunRequested) continue;
+
+      const args = typeof rpc?.args === "object" && rpc?.args ? rpc.args : rpc;
+      const ops = entityApplyArgsToOps(args);
+      if (!Array.isArray(ops) || ops.length === 0) continue;
+
+      // Mark before executing to prevent loops if the apply throws (we still want to send a failure).
+      appliedUiActionIdsRef.current[key] = true;
+      const t0 = Date.now();
+      try {
+        const result = applySceneOps(sid, ops);
+        void postClientEvent("client_rpc_result", {
+          rpc_id: rpcId,
+          request_tool_call_id: toolCallId,
+          rpc_kind: rpcKind,
+          ok: true,
+          elapsed_ms: Date.now() - t0,
+          result,
+        }).catch(() => {});
+      } catch (e) {
+        void postClientEvent("client_rpc_result", {
+          rpc_id: rpcId,
+          request_tool_call_id: toolCallId,
+          rpc_kind: rpcKind,
+          ok: false,
+          elapsed_ms: Date.now() - t0,
+          error: String(e),
+        }).catch(() => {});
+      }
+    }
+  }, [
+    allowClientEffects,
+    allowClientRpcs,
+    applySceneOps,
+    client,
+    daemonAuthToken,
+    dbClientEvents.data,
+    dbUiActions.data,
+    effectiveBase,
+    sessionId,
+  ]);
+
+  // Mirror artifacts into the Scene so media is visible in the "collaboration surface" by default.
+  React.useEffect(() => {
+    const sid = String(sessionId || "").trim();
+    if (!sid) return;
+    const rows = sessionArtifacts.data?.ok && Array.isArray(sessionArtifacts.data?.artifacts) ? (sessionArtifacts.data.artifacts as any[]) : [];
+    if (rows.length === 0) return;
+
+    const store = sceneBySessionRef.current[sid] || (sceneBySessionRef.current[sid] = {});
+    let changed = false;
+
+    for (const rec of rows.slice(0, 200)) {
+      const data = rec?.data ?? {};
+      const artifact = data?.artifact ?? rec?.artifact ?? {};
+      if (!artifact || typeof artifact !== "object") continue;
+      const path = typeof artifact?.path === "string" ? artifact.path : "";
+      if (!path) continue;
+      const toolCallId = typeof data?.tool_call_id === "string" ? data.tool_call_id : typeof rec?.tool_call_id === "string" ? rec.tool_call_id : "";
+      const stable = toolCallId ? `artifact:${toolCallId}` : `artifact:${path.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64)}`;
+      const existing = store[stable];
+      const title = typeof artifact?.title === "string" ? artifact.title : path.split("/").pop() || "artifact";
+      if (!existing) {
+        store[stable] = {
+          id: stable,
+          kind: "artifact",
+          title: `Artifact: ${title}`,
+          props: { artifact },
+          created_ms: Date.now(),
+          updated_ms: Date.now(),
+        };
+        changed = true;
+      } else {
+        // Keep in sync with DB in case resolved_path/mime/autoplay changes.
+        existing.kind = "artifact";
+        existing.title = existing.title || `Artifact: ${title}`;
+        existing.props = { ...(existing.props ?? {}), artifact };
+        existing.updated_ms = Date.now();
+        changed = true;
+      }
+    }
+    if (changed) {
+      setSceneVersion((v) => v + 1);
+      persistSceneSoon(sid);
+    }
+  }, [persistSceneSoon, sessionArtifacts.data, sessionId]);
+
+  // Reliability: post artifact_rendered / artifact_render_failed acknowledgements even when the History panel is collapsed.
+  //
+  // Agents often use `client_wait_event(type="artifact_rendered", data_match={tool_call_id:...})` as a deterministic DoD.
+  // If acknowledgements depend on whether an ArtifactView component is mounted (History expanded), runs can time out.
+  // This effect ensures new artifacts are fetch-verified and acknowledged promptly based on session_artifacts polling.
+  const artifactAckedRef = React.useRef<Record<string, boolean>>({});
+  React.useEffect(() => {
+    const sid = String(sessionId || "").trim();
+    if (!sid) return;
+    const rows = sessionArtifacts.data?.ok && Array.isArray(sessionArtifacts.data?.artifacts) ? (sessionArtifacts.data.artifacts as any[]) : [];
+    if (rows.length === 0) return;
+
+    const safeString = (v: any) => (typeof v === "string" ? v : "");
+    const isAbsoluteLikePath = (p: string): boolean => {
+      const s = (p || "").trim();
+      if (!s) return false;
+      if (s.startsWith("/")) return true;
+      if (/^[a-zA-Z]:[\\/]/.test(s)) return true;
+      if (s.startsWith("\\\\")) return true;
+      return false;
+    };
+
+    const post = async (etype: string, data: any) => {
+      await apiPostSessionUiEvent(
+        effectiveBase,
+        {
+          session_id: sid,
+          type: etype,
+          client,
+          data,
+          append_to_session: false,
+        },
+        daemonAuthToken,
+      );
+    };
+
+    // Keep bounded: only try to ack a small number of newest artifacts per poll cycle.
+    const candidates = rows
+      .slice(0, 32)
+      .map((rec: any) => {
+        const data = rec?.data ?? {};
+        const artifact = data?.artifact ?? rec?.artifact ?? {};
+        const toolCallId = typeof data?.tool_call_id === "string" ? data.tool_call_id : typeof rec?.tool_call_id === "string" ? rec.tool_call_id : "";
+        return { artifact, toolCallId };
+      })
+      .filter((x) => x.toolCallId && x.artifact && typeof x.artifact === "object")
+      .slice(0, 8);
+
+    candidates.forEach((c) => {
+      const toolCallId = String(c.toolCallId || "").trim();
+      if (!toolCallId) return;
+      const key = `${effectiveBase}::${sid}::${toolCallId}`;
+      if (artifactAckedRef.current[key]) return;
+      artifactAckedRef.current[key] = true;
+
+      const artifact: any = c.artifact;
+      const path = safeString(artifact?.path);
+      const resolvedPath = safeString(artifact?.resolved_path);
+      const kind = safeString(artifact?.kind);
+      const title = safeString(artifact?.title) || path || "artifact";
+
+      const preferredFetchPath = path && !isAbsoluteLikePath(path) ? path : yolo && resolvedPath ? resolvedPath : path;
+      const fallbackFetchPath =
+        yolo && preferredFetchPath === path && path && !isAbsoluteLikePath(path) && resolvedPath && isAbsoluteLikePath(resolvedPath) ? resolvedPath : "";
+
+      const authToken = safeString(daemonAuthToken).trim();
+
+      void (async () => {
+        const tryPaths = [preferredFetchPath, fallbackFetchPath].filter((p) => typeof p === "string" && p.trim().length > 0);
+        let lastErr: any = null;
+        for (const p of tryPaths) {
+          const src = `${effectiveBase}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${yolo ? "1" : "0"}`;
+          try {
+            const r = await fetch(src, { headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
+            if (!r.ok) throw new Error(`file fetch failed: ${r.status}`);
+            const ct = String(r.headers.get("content-type") || "").trim();
+            // Consume bytes to actually verify fetchability (and avoid keeping the response open).
+            await r.arrayBuffer();
+            await post("artifact_rendered", {
+              path,
+              resolved_path: resolvedPath || undefined,
+              fetch_path: p,
+              kind,
+              title,
+              tool_call_id: toolCallId,
+              content_type: ct || undefined,
+            });
+            return;
+          } catch (e) {
+            lastErr = e;
+          }
+        }
+        await post("artifact_render_failed", {
+          path,
+          resolved_path: resolvedPath || undefined,
+          fetch_path: preferredFetchPath || undefined,
+          kind,
+          title,
+          tool_call_id: toolCallId,
+          error: String(lastErr || "failed"),
+        });
+      })().catch(() => {});
+    });
+  }, [client, daemonAuthToken, effectiveBase, sessionArtifacts.data, sessionId, yolo]);
 
   React.useEffect(() => {
     if (!activeJobId) return;
@@ -685,6 +1313,14 @@ export default function App() {
               setJobError("job completed but missing result");
             }
             setActiveJobId(null);
+            const sid = String(sessionId || "").trim();
+            if (sid) {
+              writeJobsBySession((prev) => {
+                const nextm = { ...prev };
+                delete nextm[sid];
+                return nextm;
+              });
+            }
             void audit.refetch();
             void sessions.refetch();
             return;
@@ -775,6 +1411,14 @@ export default function App() {
             }
             fetchFinished = true;
             setActiveJobId(null);
+            const sid = String(sessionId || "").trim();
+            if (sid) {
+              writeJobsBySession((prev) => {
+                const nextm = { ...prev };
+                delete nextm[sid];
+                return nextm;
+              });
+            }
             void audit.refetch();
             void sessions.refetch();
           }
@@ -840,6 +1484,14 @@ export default function App() {
             setJobError("failed to parse job_done event");
           }
           setActiveJobId(null);
+          const sid = String(sessionId || "").trim();
+          if (sid) {
+            writeJobsBySession((prev) => {
+              const nextm = { ...prev };
+              delete nextm[sid];
+              return nextm;
+            });
+          }
           try {
             es?.close();
           } catch {
@@ -884,501 +1536,242 @@ export default function App() {
   }, [activeJobId, effectiveBase, audit, sessions]);
 
   return (
-    <div className="mx-auto max-w-5xl px-6 py-8">
-      <div className="mb-6 flex items-baseline justify-between">
-        <div>
-          <div className="text-xl font-semibold">agent UI</div>
-          <div className="text-sm text-white/60">
-            daemon: <span className="font-mono text-[12px] text-white/70">{effectiveBase}</span>{" "}
-            {health.isSuccess ? (
-              <span className="text-emerald-300">
-                ok ({health.data.service ?? "agentd"} {health.data.version ?? ""})
-              </span>
-            ) : health.isFetching ? (
-              <span className="text-white/60">checking…</span>
-            ) : (
-              <span className="text-rose-300">offline</span>
-            )}
-            {health.isError ? (
-              <div className="mt-1 text-[11px] text-rose-200/80">health check failed: {String(health.error)}</div>
-            ) : null}
+    <div
+      className="h-screen w-full bg-slate-950 text-white"
+      style={{
+        ["--topbar-h" as any]: `${topbarHeightPx}px`,
+        ["--promptbar-h" as any]: `${promptbarHeightPx}px`,
+      }}
+    >
+      <header ref={topbarRef} className="sticky top-0 z-30 border-b border-white/10 bg-slate-950/80 backdrop-blur">
+        <div className="flex h-14 items-center justify-between px-4">
+          <div>
+            <div className="text-sm font-semibold">agent UI</div>
+            <div className="text-[11px] text-white/60">
+              daemon: <span className="font-mono text-[11px] text-white/70">{effectiveBase}</span>{" "}
+              {health.isSuccess ? (
+                <span className="text-emerald-300">
+                  ok ({health.data.service ?? "agentd"} {health.data.version ?? ""})
+                </span>
+              ) : health.isFetching ? (
+                <span className="text-white/60">checking…</span>
+              ) : (
+                <span className="text-rose-300">offline</span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+              onClick={() => health.refetch()}
+              type="button"
+            >
+              Recheck
+            </button>
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+              onClick={() => setShowSettings(true)}
+              type="button"
+            >
+              Settings
+            </button>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-            onClick={() => health.refetch()}
-            type="button"
-          >
-            Recheck
-          </button>
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-            onClick={() => setShowSettings((v) => !v)}
-            type="button"
-          >
-            {showSettings ? "Hide settings" : "Show settings"}
-          </button>
+      </header>
+
+      <main className="h-[calc(100vh-var(--topbar-h))] overflow-y-auto px-4 py-3 pb-[var(--promptbar-h)]">
+        <div className="mx-auto max-w-5xl">
+          <div className="min-h-0">
+            <div className="h-[calc(100vh-var(--topbar-h)-var(--promptbar-h)-24px)] min-h-0">
+              <SceneView
+                baseUrl={effectiveBase}
+                yolo={yolo}
+                allowAutoplay={allowAutoplay}
+                client={client}
+                daemonAuthToken={daemonAuthToken}
+                sessionId={sessionId}
+                entities={sceneEntities}
+                onClear={() => clearScene()}
+                className="h-full"
+              />
+            </div>
+          </div>
+
+          <div className="mt-4">
+            <div className="mb-2 text-sm font-semibold text-white/80">History</div>
+            {historyEntriesDesc.length === 0 ? (
+              <div className="rounded-md border border-white/10 bg-black/20 px-3 py-3 text-xs text-white/60">
+                No history yet. Run a prompt to populate the timeline.
+              </div>
+            ) : (
+              <div className="grid gap-2">
+                {historyEntriesDesc.map((e: any, idx: number) => {
+                  const ts = typeof e?.ts_unix_ms === "number" ? e.ts_unix_ms : 0;
+                  const when = ts ? new Date(ts).toLocaleString() : "";
+                  const promptText = typeof e?.prompt === "string" ? e.prompt : "";
+                  const assistantText = typeof e?.assistant_text === "string" ? e.assistant_text : "";
+                  const evs = Array.isArray(e?.events) ? (e.events as any[]) : [];
+                  const ok = typeof e?.ok === "boolean" ? e.ok : undefined;
+                  const isLive = e?.live === true;
+                  const jobId = typeof e?.job_id === "string" ? e.job_id : "";
+                  const jobSt = typeof e?.job_status === "string" ? e.job_status : "";
+                  const status = ok === true ? "ok" : ok === false ? "error" : "";
+                  const summary = promptText.trim().length > 0 ? promptText.trim().slice(0, 200) : "(no prompt)";
+
+                  return (
+                    <details
+                      key={`${ts}-${idx}`}
+                      open={idx === 0}
+                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-2"
+                    >
+                      <summary className="cursor-pointer select-none text-xs text-white/80">
+                        <span className="text-white/60">{when}</span>
+                        {isLive ? (
+                          <span className="ml-2 text-indigo-300">
+                            running{jobSt ? ` (${jobSt})` : ""} {jobId ? <code className="text-indigo-200/80">{jobId}</code> : null}
+                          </span>
+                        ) : null}
+                        {status ? (
+                          <span className={`ml-2 ${status === "ok" ? "text-emerald-300" : "text-rose-300"}`}>{status}</span>
+                        ) : null}
+                        <span className="ml-2">{summary}</span>
+                        <span className="ml-2 text-white/40">({evs.length} events)</span>
+                      </summary>
+                      <div className="mt-3 grid gap-3">
+                        {assistantText ? (
+                          <div className="rounded-md border border-white/10 bg-black/20 p-3">
+                            <div className="text-[11px] font-semibold text-white/70">Assistant</div>
+                            <div className="mt-2">
+                              <Markdown text={assistantText} />
+                            </div>
+                          </div>
+                        ) : null}
+                        {evs.length > 0 ? (
+                          <ConversationView
+                            baseUrl={effectiveBase}
+                            yolo={yolo}
+                            sessionId={sessionId}
+                            client={client}
+                            daemonAuthToken={daemonAuthToken}
+                            prompt={promptText}
+                            events={evs as any}
+                            showDebugEvents={showDebugInConversation}
+                            allowAutoplay={allowAutoplay}
+                            allowClientRpcs={allowClientRpcs}
+                            allowClientEffects={allowClientEffects}
+                            allowUnsafePageEval={allowUnsafePageEval}
+                            reverseOrder={true}
+                            disableAutoClientRpcs={idx !== 0}
+                            sceneEntities={sceneEntities}
+                            onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
+                          />
+                        ) : null}
+                      </div>
+                    </details>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </main>
+
+      <div ref={promptbarRef} className="fixed bottom-0 left-0 right-0 z-30 border-t border-white/10 bg-slate-950/90 backdrop-blur">
+        <div className="mx-auto max-w-5xl px-4 py-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-[11px] text-white/60">
+              session=<code className="text-white/70">{String(sessionId || "").trim() || "(none)"}</code> tools=
+              <code className="text-white/70">{String(tools || "")}</code>{" "}
+              {activeJobId ? (
+                <>
+                  job=<code className="text-white/70">{activeJobId}</code> status=
+                  <code className="text-white/70">{jobStatus ?? "running"}</code>
+                </>
+              ) : null}
+            </div>
+            <div className="flex items-center gap-2">
+              {activeJobId ? (
+                <button
+                  className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200 hover:bg-rose-500/15"
+                  onClick={async () => {
+                    try {
+                      await apiCancelJob(effectiveBase, activeJobId, daemonAuthToken);
+                      setJobError("cancel requested");
+                    } catch (e) {
+                      setJobError(`cancel failed: ${String(e)}`);
+                    }
+                  }}
+                  type="button"
+                >
+                  Cancel
+                </button>
+              ) : null}
+              <button
+                className="rounded-md bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400 disabled:opacity-50"
+                onClick={() => run.mutate()}
+                disabled={run.isPending || !!activeJobId}
+                type="button"
+                data-testid="run"
+              >
+                {run.isPending || activeJobId ? "Running…" : "Run"}
+              </button>
+            </div>
+          </div>
+
+          <textarea
+            className="mt-2 h-[140px] w-full resize-none rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+            data-testid="prompt"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+          />
+
+          {run.isError ? (
+            <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+              Failed: {String(run.error)}
+            </div>
+          ) : null}
+          {jobError ? (
+            <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+              {jobError}
+            </div>
+          ) : null}
+          {!result?.ok && result?.error ? (
+            <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+              {result.error}
+            </div>
+          ) : null}
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
-        {showSettings ? (
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-            <div className="mb-3 text-sm font-semibold">Sessions</div>
-            <div className="text-xs text-white/60">
-              {sessions.isFetching ? "Loading…" : sessions.isError ? "Failed to load" : null}
-            </div>
-            <div className="mt-3 flex flex-wrap gap-2">
+      {showSettings ? (
+        <div className="fixed inset-0 z-40">
+          <div
+            className="absolute inset-0 bg-black/60"
+            onClick={() => setShowSettings(false)}
+            role="button"
+            tabIndex={0}
+          />
+          <div className="absolute right-0 top-0 h-full w-[440px] max-w-[92vw] overflow-auto border-l border-white/10 bg-slate-950 p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-semibold">Settings</div>
               <button
                 className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-                onClick={() => sessions.refetch()}
+                onClick={() => setShowSettings(false)}
                 type="button"
               >
-                Refresh
-              </button>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
-                onClick={() => newSession.mutate()}
-                type="button"
-                disabled={newSession.isPending}
-                title="Create a new unique session id"
-                data-testid="new-session"
-              >
-                New session
+                Close
               </button>
             </div>
 
-            <details className="mt-3 rounded-md border border-white/10 bg-black/20 p-3">
-              <summary className="cursor-pointer text-xs font-semibold text-white/70">Troubleshooting</summary>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-                  onClick={() => toolsDefs.refetch()}
-                  type="button"
-                >
-                  Refresh tools
-                </button>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-                  onClick={() => audit.refetch()}
-                  type="button"
-                  disabled={!sessionId}
-                >
-                  Load audit
-                </button>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-                  onClick={() => sessionClientEvents.refetch()}
-                  type="button"
-                  disabled={!sessionId}
-                  title="Reads <session>.client_events.jsonl (works even if DB is disabled)"
-                >
-                  Load client events
-                </button>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-                  onClick={() => sessionArtifacts.refetch()}
-                  type="button"
-                  disabled={!sessionId}
-                >
-                  Load artifacts
-                </button>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
-                  onClick={() => {
-                    setSelectedDbRunId(null);
-                    void dbRuns.refetch();
-                  }}
-                  type="button"
-                  disabled={!sessionId || dbRuns.isFetching}
-                  title="Query the optional SQLite troubleshooting DB (requires agentd --db-path)"
-                >
-                  Load DB runs
-                </button>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
-                  onClick={() => void dbUiActions.refetch()}
-                  type="button"
-                  disabled={!sessionId || dbUiActions.isFetching}
-                  title="Query the optional SQLite troubleshooting DB (requires agentd --db-path)"
-                >
-                  Load DB ui_actions
-                </button>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
-                  onClick={() => void dbMessages.refetch()}
-                  type="button"
-                  disabled={!sessionId || dbMessages.isFetching}
-                  title="Query the optional SQLite troubleshooting DB (requires agentd --db-path)"
-                >
-                  Load DB messages
-                </button>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
-                  onClick={() => void dbClientEvents.refetch()}
-                  type="button"
-                  disabled={!sessionId || dbClientEvents.isFetching}
-                  title="Query the optional SQLite troubleshooting DB (requires agentd --db-path)"
-                >
-                  Load DB client_events
-                </button>
-              </div>
-            </details>
-            <div className="mt-3 max-h-80 overflow-auto rounded-md border border-white/10 bg-black/20">
-              {(sessions.data?.sessions ?? []).map((sid) => (
-                <button
-                  key={sid}
-                  className={`block w-full px-3 py-2 text-left text-sm hover:bg-white/5 ${
-                    sid === sessionId ? "bg-white/10" : ""
-                  }`}
-                  onClick={() => setSessionId(sid)}
-                  type="button"
-                >
-                  {sid}
-                </button>
-              ))}
+            <div className="mt-4">
+              <Label>Daemon base URL</Label>
+              <input
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                data-testid="daemon-base"
+                value={base}
+                onChange={(e) => setBase(e.target.value)}
+              />
             </div>
-            <div className="mt-3 text-xs text-white/50">Audit entries: {audit.data?.entries ? audit.data.entries.length : 0}</div>
-            <div className="mt-1 text-xs text-white/50">
-              Client events:{" "}
-              {sessionClientEvents.isFetching
-                ? "loading…"
-                : sessionClientEvents.isError
-                  ? "failed"
-                  : sessionClientEvents.data?.ok
-                    ? `${sessionClientEvents.data?.count ?? 0}`
-                    : "error"}
-            </div>
-            <div className="mt-1 text-xs text-white/50">
-              Artifacts:{" "}
-              {sessionArtifacts.isFetching
-                ? "loading…"
-                : sessionArtifacts.isError
-                  ? "failed"
-                  : sessionArtifacts.data?.ok
-                    ? `${sessionArtifacts.data?.count ?? 0}`
-                    : "error"}
-            </div>
-            <div className="mt-1 text-xs text-white/50">
-              DB runs:{" "}
-              {dbRuns.isFetching ? "loading…" : dbRuns.isError ? "failed" : dbRuns.data?.ok ? `${dbRuns.data?.count ?? 0}` : "(disabled)"}
-            </div>
-            <div className="mt-1 text-xs text-white/50">
-              DB ui_actions:{" "}
-              {dbUiActions.isFetching
-                ? "loading…"
-                : dbUiActions.isError
-                  ? "failed"
-                  : dbUiActions.data?.ok
-                    ? `${dbUiActions.data?.count ?? 0}`
-                    : "(disabled)"}
-            </div>
-            <div className="mt-1 text-xs text-white/50">
-              DB messages:{" "}
-              {dbMessages.isFetching
-                ? "loading…"
-                : dbMessages.isError
-                  ? "failed"
-                  : dbMessages.data?.ok
-                    ? `${dbMessages.data?.count ?? 0}`
-                    : "(disabled)"}
-            </div>
-            <div className="mt-1 text-xs text-white/50">
-              DB client_events:{" "}
-              {dbClientEvents.isFetching
-                ? "loading…"
-                : dbClientEvents.isError
-                  ? "failed"
-                  : dbClientEvents.data?.ok
-                    ? `${dbClientEvents.data?.count ?? 0}`
-                    : "(disabled)"}
-            </div>
-            <div className="mt-2 rounded-md border border-white/10 bg-black/10 p-2">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-xs font-semibold text-white/70">DB filters</div>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-                  onClick={() => {
-                    setSelectedDbRunId(null);
-                    void dbRuns.refetch();
-                  }}
-                  type="button"
-                  disabled={!sessionId || dbRuns.isFetching}
-                  title="Re-run the DB query with the filters below"
-                >
-                  Apply
-                </button>
-              </div>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <label className="flex items-center gap-2 text-[11px] text-white/70">
-                  <input
-                    type="checkbox"
-                    checked={!!dbRunsOnlyErrors}
-                    onChange={(e) => setDbRunsOnlyErrors(e.target.checked)}
-                  />
-                  Errors only
-                </label>
-                <div />
-                <div className="col-span-2">
-                  <Label>Stop reason (exact match)</Label>
-                  <input
-                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                    value={dbRunsStopReason}
-                    placeholder="e.g. max_steps_exceeded, repeated_tool_call_guard, max_tool_calls_for_tool_exceeded"
-                    onChange={(e) => setDbRunsStopReason(e.target.value)}
-                  />
-                  <div className="mt-1 text-[11px] text-white/40">
-                    Uses <code>/api/v1/db/runs?only_errors=...</code> and <code>stop_reason=...</code>.
-                  </div>
-                </div>
-              </div>
-            </div>
-            <div className="mt-2 text-xs text-white/50">
-              Tools:{" "}
-              {toolsDefs.isFetching
-                ? "loading…"
-                : toolsDefs.isError
-                  ? "failed"
-                  : toolsDefs.data?.ok
-                    ? `${toolsDefs.data?.count ?? 0}`
-                    : "error"}
-            </div>
-
-            {sessionId &&
-            sessionArtifacts.data?.ok &&
-            Array.isArray(sessionArtifacts.data.artifacts) &&
-            sessionArtifacts.data.artifacts.length > 0 ? (
-              <div className="mt-3">
-                <div className="text-xs font-semibold text-white/70">Artifacts (latest)</div>
-                <div className="mt-2 grid gap-2">
-                  {sessionArtifacts.data.artifacts
-                    .slice(-6)
-                    .reverse()
-                    .map((a: any, idx: number) => {
-                      const ts = typeof a?.ts_unix_ms === "number" ? new Date(a.ts_unix_ms).toISOString() : "";
-                      const artifact = a?.data?.artifact ?? {};
-                      const title = String(artifact?.title ?? artifact?.path ?? "artifact");
-                      return (
-                        <div key={idx} className="rounded-md border border-white/10 bg-black/10 p-2">
-                          <div className="flex items-baseline justify-between gap-2">
-                            <div className="text-[11px] text-white/50">{ts}</div>
-                            <div className="text-[11px] text-white/40">{title}</div>
-                          </div>
-                          <div className="mt-2">
-                            <ArtifactView
-                              baseUrl={effectiveBase}
-                              yolo={yolo}
-                              artifact={artifact}
-                              allowAutoplay={allowAutoplay}
-                              sessionId={sessionId}
-                              daemonAuthToken={daemonAuthToken}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
-            ) : null}
-
-            {dbRuns.data?.ok && Array.isArray(dbRuns.data.runs) ? (
-              <div className="mt-3">
-                <DbRunsView
-                  runs={dbRuns.data.runs as any[]}
-                  onSelectRunId={(runId) => {
-                    setSelectedDbRunId(runId);
-                  }}
-                />
-                {selectedDbRunId && dbRunDetail.isFetching ? (
-                  <div className="mt-2 text-[11px] text-white/50">loading run {selectedDbRunId}…</div>
-                ) : selectedDbRunId && dbRunDetail.data?.ok ? (
-                  <div className="mt-2 rounded-md border border-white/10 bg-black/20 p-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="text-xs font-semibold text-white/70">Run {selectedDbRunId}</div>
-                      <button
-                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                        type="button"
-                        onClick={() => setSelectedDbRunId(null)}
-                      >
-                        Close
-                      </button>
-                    </div>
-                    <div className="mt-2 text-[11px] text-white/50">
-                      events={Array.isArray(dbRunDetail.data.events) ? dbRunDetail.data.events.length : 0},{" "}
-                      tools={Array.isArray(dbRunDetail.data.tool_records) ? dbRunDetail.data.tool_records.length : 0},{" "}
-                      artifacts={Array.isArray(dbRunDetail.data.artifacts) ? dbRunDetail.data.artifacts.length : 0},{" "}
-                      ui_actions={Array.isArray(dbRunDetail.data.ui_actions) ? dbRunDetail.data.ui_actions.length : 0}
-                    </div>
-                    {Array.isArray(dbRunDetail.data.events) ? (
-                      (() => {
-                        const evs = dbRunDetail.data.events as any[];
-                        const lastErr = [...evs].reverse().find((e) => e?.type === "error");
-                        const reason = lastErr?.data?.reason ?? "";
-                        const msg = lastErr?.data?.error ?? "";
-                        if (!reason && !msg) return null;
-                        return (
-                          <div className="mt-2 text-[11px] text-amber-200/80">
-                            last error: <code>{String(reason || msg)}</code>
-                          </div>
-                        );
-                      })()
-                    ) : null}
-                    {(() => {
-                      const run = (dbRunDetail.data.run ?? {}) as any;
-                      const stopReason = String(run?.stop_reason ?? "");
-                      const steps = typeof run?.steps_executed === "number" ? run.steps_executed : null;
-                      const toolCalls = typeof run?.tool_calls_total === "number" ? run.tool_calls_total : null;
-                      const byTool = run?.tool_calls_by_tool && typeof run.tool_calls_by_tool === "object" ? run.tool_calls_by_tool : null;
-                      if (!stopReason && steps === null && toolCalls === null && !byTool) return null;
-                      return (
-                        <div className="mt-2 rounded-md border border-white/10 bg-black/10 p-2 text-[11px] text-white/70">
-                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                            <div>
-                              stop_reason: <code className="text-white/80">{stopReason || "(unknown)"}</code>
-                            </div>
-                            {typeof steps === "number" ? (
-                              <div>
-                                steps: <code className="text-white/80">{steps}</code>
-                              </div>
-                            ) : null}
-                            {typeof toolCalls === "number" ? (
-                              <div>
-                                tool_calls: <code className="text-white/80">{toolCalls}</code>
-                              </div>
-                            ) : null}
-                            {stopReason ? (
-                              <button
-                                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                                type="button"
-                                title="Set DB filter stop_reason and refetch"
-                                onClick={() => {
-                                  setDbRunsStopReason(stopReason);
-                                  setDbRunsOnlyErrors(true);
-                                  setSelectedDbRunId(null);
-                                  void dbRuns.refetch();
-                                }}
-                              >
-                                Filter by reason
-                              </button>
-                            ) : null}
-                          </div>
-                          {byTool ? (
-                            <div className="mt-2">
-                              <div className="text-[11px] text-white/50">tool_calls_by_tool</div>
-                              <pre className="mt-1 max-h-[140px] overflow-auto whitespace-pre-wrap break-words text-[11px] text-white/70">
-                                {JSON.stringify(byTool, null, 2)}
-                              </pre>
-                            </div>
-                          ) : null}
-                        </div>
-                      );
-                    })()}
-                    <pre className="mt-2 max-h-[220px] overflow-auto whitespace-pre-wrap break-words text-[11px] text-white/70">
-                      {JSON.stringify(dbRunDetail.data.run ?? {}, null, 2)}
-                    </pre>
-                    {Array.isArray(dbRunDetail.data.artifacts) && dbRunDetail.data.artifacts.length > 0 ? (
-                      <div className="mt-2">
-                        <div className="text-xs font-semibold text-white/70">Artifacts</div>
-                        <div className="mt-2 grid gap-2">
-                          {(dbRunDetail.data.artifacts as any[]).slice(0, 6).map((a, idx) => {
-                            const artifact = a?.artifact ?? {
-                              path: a?.path,
-                              kind: a?.kind,
-                              mime: a?.mime,
-                              title: a?.title,
-                              autoplay: a?.autoplay,
-                              repeat: a?.repeat,
-                            };
-                            const title = String(artifact?.title ?? artifact?.path ?? "artifact");
-                            return (
-                              <div key={idx} className="rounded-md border border-white/10 bg-black/10 p-2">
-                                <div className="text-[11px] text-white/50">{title}</div>
-                                <div className="mt-2">
-                                  <ArtifactView
-                                    baseUrl={effectiveBase}
-                                    yolo={yolo}
-                                    artifact={artifact}
-                                    allowAutoplay={allowAutoplay}
-                                    sessionId={sessionId}
-                                    daemonAuthToken={daemonAuthToken}
-                                  />
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ) : null}
-                    {Array.isArray(dbRunDetail.data.ui_actions) && dbRunDetail.data.ui_actions.length > 0 ? (
-                      <div className="mt-2">
-                        <DbUiActionsView uiActions={dbRunDetail.data.ui_actions as any[]} />
-                      </div>
-                    ) : null}
-                  </div>
-                ) : selectedDbRunId && dbRunDetail.isError ? (
-                  <div className="mt-2 text-[11px] text-amber-200/80">failed to load run {selectedDbRunId}</div>
-                ) : null}
-              </div>
-            ) : dbRuns.isFetching ? (
-              <div className="mt-2 text-[11px] text-white/50">loading db runs…</div>
-            ) : dbRuns.data && !dbRuns.data.ok ? (
-              <div className="mt-2 text-[11px] text-white/40">db: {dbRuns.data.error ?? "(disabled)"}</div>
-            ) : null}
-
-            {dbUiActions.data?.ok && Array.isArray(dbUiActions.data.ui_actions) ? (
-              <div className="mt-3">
-                <DbUiActionsView
-                  uiActions={dbUiActions.data.ui_actions as any[]}
-                  onSelectRunId={(runId) => {
-                    setSelectedDbRunId(runId);
-                  }}
-                />
-              </div>
-            ) : dbUiActions.isFetching ? (
-              <div className="mt-2 text-[11px] text-white/50">loading db ui_actions…</div>
-            ) : dbUiActions.data && !dbUiActions.data.ok ? (
-              <div className="mt-2 text-[11px] text-white/40">db: {dbUiActions.data.error ?? "(disabled)"}</div>
-            ) : null}
-
-            {dbMessages.data?.ok && Array.isArray(dbMessages.data.messages) ? (
-              <div className="mt-3">
-                <DbMessagesView messages={dbMessages.data.messages as any[]} />
-              </div>
-            ) : dbMessages.isFetching ? (
-              <div className="mt-2 text-[11px] text-white/50">loading db messages…</div>
-            ) : dbMessages.data && !dbMessages.data.ok ? (
-              <div className="mt-2 text-[11px] text-white/40">db: {dbMessages.data.error ?? "(disabled)"}</div>
-            ) : null}
-
-            {dbClientEvents.data?.ok && Array.isArray(dbClientEvents.data.client_events) ? (
-              <div className="mt-3">
-                <DbClientEventsView events={dbClientEvents.data.client_events as any[]} />
-              </div>
-            ) : dbClientEvents.isFetching ? (
-              <div className="mt-2 text-[11px] text-white/50">loading db client_events…</div>
-            ) : dbClientEvents.data && !dbClientEvents.data.ok ? (
-              <div className="mt-2 text-[11px] text-white/40">db: {dbClientEvents.data.error ?? "(disabled)"}</div>
-            ) : null}
-          </div>
-        ) : null}
-
-        {showSettings ? (
-            <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-              <div className="mb-3 text-sm font-semibold">Settings</div>
-
-            <Label>Daemon base URL</Label>
-            <input
-              className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-              data-testid="daemon-base"
-              value={base}
-              onChange={(e) => setBase(e.target.value)}
-            />
-            {!/^https?:\/\//i.test(String(base || "").trim()) ? (
-              <div className="mt-1 text-[11px] text-amber-200/80">
-                Tip: include scheme (e.g. <code>http://127.0.0.1:8123</code>). Missing scheme will default to <code>http://</code>.
-              </div>
-            ) : null}
 
             <div className="mt-4">
               <Label>Daemon auth token (optional)</Label>
@@ -1386,104 +1779,12 @@ export default function App() {
                 className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
                 data-testid="daemon-auth-token"
                 value={daemonAuthToken}
-                placeholder="sent as Authorization: Bearer <token>"
                 onChange={(e) => setDaemonAuthToken(e.target.value)}
               />
-              <div className="mt-1 text-[11px] text-white/40">
-                Use when `agentd` is started with <code>--auth-token</code> (or env <code>AGENTD_AUTH_TOKEN</code>).
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-xs font-semibold text-white/70">
-                  Daemon config <span className="text-white/40">(GET /api/v1/config)</span>
-                </div>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-                  onClick={() => daemonConfig.refetch()}
-                  type="button"
-                  disabled={daemonConfig.isFetching}
-                  title="Refetch daemon config"
-                >
-                  Refresh
-                </button>
-              </div>
-
-              {daemonConfig.isFetching ? (
-                <div className="mt-2 text-[11px] text-white/50">loading…</div>
-              ) : daemonConfig.isError ? (
-                <div className="mt-2 text-[11px] text-amber-200/80">failed to load config</div>
-              ) : daemonConfig.data?.ok ? (
-                <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-white/60">
-                  <div>
-                    auth:{" "}
-                    <code className="text-white/70">{daemonConfig.data.daemon?.auth_enabled ? "enabled" : "disabled"}</code>
-                  </div>
-                  <div>
-                    cors:{" "}
-                    <code className="text-white/70">{daemonConfig.data.cors?.enabled ? "enabled" : "disabled"}</code>
-                  </div>
-                  <div className="col-span-2">
-                    cors origins:{" "}
-                    <code className="text-white/70">
-                      {daemonConfig.data.cors?.origins && daemonConfig.data.cors.origins.length > 0
-                        ? daemonConfig.data.cors.origins.join(", ")
-                        : "(none)"}
-                    </code>
-                  </div>
-                  <div>
-                    yolo default: <code className="text-white/70">{daemonConfig.data.sandbox?.yolo_default ? "true" : "false"}</code>
-                  </div>
-                  <div>
-                    host policy:{" "}
-                    <code className="text-white/70">{daemonConfig.data.sandbox?.host_policy ?? "(unknown)"}</code>
-                  </div>
-                  <div className="col-span-2">
-                    tools root:{" "}
-                    <code className="text-white/70">
-                      {daemonConfig.data.sandbox?.tools_root ?? "(default / cwd)"}
-                    </code>
-                  </div>
-                  {daemonConfig.data.daemon?.state_dir ? (
-                    <div className="col-span-2">
-                      state dir: <code className="text-white/70">{daemonConfig.data.daemon.state_dir}</code>
-                    </div>
-                  ) : null}
-                  {daemonConfig.data.daemon?.sessions_root_dir ? (
-                    <div className="col-span-2">
-                      sessions root: <code className="text-white/70">{daemonConfig.data.daemon.sessions_root_dir}</code>
-                    </div>
-                  ) : null}
-                  <div className="col-span-2">
-                    db: <code className="text-white/70">{daemonConfig.data.daemon?.db_path ?? "(disabled)"}</code>
-                  </div>
-                  <div className="col-span-2">
-                    run limits:{" "}
-                    <code className="text-white/70">
-                      max_steps_default={daemonConfig.data.daemon?.max_steps_default ?? "?"}, max_tool_calls_total_default=
-                      {daemonConfig.data.daemon?.max_tool_calls_total_default ?? "?"}, tool_call_limits_default=
-                      {(daemonConfig.data.daemon?.tool_call_limits_default ?? [])
-                        .map((x) => `${x.tool}=${x.max_calls}`)
-                        .join(", ") || "(none)"}
-                    </code>
-                  </div>
-                  <div className="col-span-2">
-                    job gc:{" "}
-                    <code className="text-white/70">
-                      ttl={daemonConfig.data.jobs?.job_ttl_ms ?? "?"}ms, max_jobs={daemonConfig.data.jobs?.max_jobs ?? "?"}
-                    </code>
-                  </div>
-                </div>
-              ) : (
-                <div className="mt-2 text-[11px] text-amber-200/80">
-                  {daemonConfig.data?.error ? `error: ${daemonConfig.data.error}` : "error"}
-                </div>
-              )}
             </div>
 
             <div className="mt-4 grid grid-cols-2 gap-3">
-              <div>
+              <div className="col-span-2">
                 <Label>Session</Label>
                 <input
                   className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
@@ -1510,742 +1811,231 @@ export default function App() {
                   value={hostPolicy}
                   onChange={(e) => setHostPolicy(e.target.value as any)}
                   disabled={tools !== "host"}
-                  title={tools !== "host" ? "Only applies when tools=host" : undefined}
                 >
                   <option value="full">full</option>
                   <option value="readonly">readonly</option>
                 </select>
-                {toolsDefs.data?.effective_host_policy ? (
-                  <div className="mt-1 text-[11px] text-white/40">
-                    effective: <code>{toolsDefs.data.effective_host_policy}</code>
-                  </div>
-                ) : null}
-              </div>
-              <div className="col-span-2 rounded-md border border-white/10 bg-black/20 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-xs font-semibold text-white/70">Agent media</div>
-                  <label className="flex items-center gap-2 text-[11px] text-white/70">
-                    <input
-                      type="checkbox"
-                      checked={allowAutoplay}
-                      onChange={(e) => setAllowAutoplay(e.target.checked)}
-                    />
-                    Allow agent-requested audio autoplay
-                  </label>
-                </div>
-                <div className="mt-1 text-[11px] text-white/40">
-                  When enabled and the agent emits an <code>artifact</code> event with <code>autoplay=true</code>, the UI will try to play the audio.
-                  Browsers may still block autoplay; you can always click “Play”.
-                </div>
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  <div className="text-xs font-semibold text-white/70">Client RPC</div>
-                  <label className="flex items-center gap-2 text-[11px] text-white/70">
-                    <input
-                      type="checkbox"
-                      checked={allowClientRpcs}
-                      onChange={(e) => setAllowClientRpcs(e.target.checked)}
-                    />
-                    Allow agent-requested client RPCs (read-only)
-                  </label>
-                </div>
-                <div className="mt-1 text-[11px] text-white/40">
-                  When enabled, the UI may execute allowlisted, bounded RPC handlers (DOM/media/location) requested by the agent via{" "}
-                  <code>ui_action</code> (<code>type=client_rpc</code>).
-                  In addition to fixed RPC kinds, the client can also support agent-provided scripts (e.g. <code>rpc.kind=script_eval</code>) that
-                  call an API bridge (DOM/media/location). Side effects remain separately gated.
-                </div>
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  <div className="text-xs font-semibold text-white/70">Client RPC (YOLO)</div>
-                  <label className="flex items-center gap-2 text-[11px] text-white/70">
-                    <input
-                      type="checkbox"
-                      checked={allowClientEffects}
-                      onChange={(e) => setAllowClientEffects(e.target.checked)}
-                      disabled={!allowClientRpcs}
-                      title={!allowClientRpcs ? "Enable read-only client RPCs first" : undefined}
-                    />
-                    Allow agent-requested client RPCs with side effects
-                  </label>
-                </div>
-                <div className="mt-1 text-[11px] text-white/40">
-                  Side effects include clicks, form edits, and attaching observers. Enable only when you explicitly want the agent to act on the client surface.
-                </div>
-                <div className="mt-3 flex items-center justify-between gap-3">
-                  <div className="text-xs font-semibold text-white/70">Client RPC (unsafe)</div>
-                  <label className="flex items-center gap-2 text-[11px] text-white/70">
-                    <input
-                      type="checkbox"
-                      checked={allowUnsafePageEval}
-                      onChange={(e) => setAllowUnsafePageEval(e.target.checked)}
-                      disabled={!allowClientEffects}
-                      title={!allowClientEffects ? "Enable client RPC side effects first" : undefined}
-                    />
-                    Allow <code>rpc.kind=page_eval</code> (main-thread eval)
-                  </label>
-                </div>
-                <div className="mt-1 text-[11px] text-white/40">
-                  This enables running agent-provided JS on the browser main thread. It is powerful but not safely preemptible (a bad script can freeze the tab).
-                  Prefer <code>script_eval</code> (killable worker) when possible.
-                </div>
-              </div>
-              <div>
-                <Label>Tools root</Label>
-                <input
-                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                  value={toolsRoot}
-                  onChange={(e) => setToolsRoot(e.target.value)}
-                  disabled={yolo}
-                />
-                <div className="mt-1 text-[11px] text-white/40">
-                  Supports special values: <code>@host</code> (daemon host scope), <code>@cwd</code> (unrestricted).
-                </div>
-              </div>
-              <div>
-                <Label>Max steps (blank=daemon default; 0=∞)</Label>
-                <input
-                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                  value={maxSteps}
-                  placeholder={String(daemonConfig.data?.daemon?.max_steps_default ?? "0")}
-                  onChange={(e) => {
-                    setMaxStepsUserSet(true);
-                    setMaxSteps(e.target.value);
-                  }}
-                />
-                {String(maxSteps).trim() === "0" ? (
-                  <div className="mt-1 text-[11px] text-amber-200/80">
-                    Unlimited steps can loop forever. If you want a hard stop, set a small cap (e.g. 16–64).
-                  </div>
-                ) : null}
-              </div>
-              <div>
-                <Label>Max repeated tool calls</Label>
-                <input
-                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                  value={maxRepeatedToolCalls}
-                  onChange={(e) => setMaxRepeatedToolCalls(e.target.value)}
-                />
-                <div className="mt-1 text-[11px] text-white/40">
-                  Stops runaway loops when the model repeats the exact same tool call. Set <code>0</code> to disable.
-                </div>
-              </div>
-              <div>
-                <Label>Max tool calls total (blank=daemon default; 0=∞)</Label>
-                <input
-                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                  value={maxToolCallsTotal}
-                  placeholder={String(daemonConfig.data?.daemon?.max_tool_calls_total_default ?? "0")}
-                  onChange={(e) => setMaxToolCallsTotal(e.target.value)}
-                />
-                <div className="mt-1 text-[11px] text-white/40">
-                  Caps total tool calls even if a single model step requests many tools.
-                </div>
-              </div>
-              <div>
-                <Label>Max tool calls per tool (blank=daemon default; 0=∞)</Label>
-                <input
-                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                  value={maxToolCallsPerTool}
-                  placeholder={String(daemonConfig.data?.daemon?.max_tool_calls_per_tool_default ?? "0")}
-                  onChange={(e) => setMaxToolCallsPerTool(e.target.value)}
-                />
-                <div className="mt-1 text-[11px] text-white/40">
-                  Caps tool calls per tool name, catching loops with varying args that bypass the exact-repeat guard.
-                </div>
-              </div>
-              <div className="col-span-2">
-                <Label>Tool call limits (blank=daemon default)</Label>
-                <textarea
-                  className="mt-1 h-20 w-full resize-none rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                  value={toolCallLimits}
-                  placeholder={(daemonConfig.data?.daemon?.tool_call_limits_default ?? [])
-                    .map((x) => `${x.tool}=${x.max_calls}`)
-                    .join("\n")}
-                  onChange={(e) => setToolCallLimits(e.target.value)}
-                />
-                <div className="mt-1 text-[11px] text-white/40">
-                  Repeatable per-tool caps (one per line, or comma-separated): <code>proc_exec=4</code>. Set <code>=0</code> to disable for a tool.
-                </div>
-              </div>
-              <div>
-                <Label>Max chars</Label>
-                <input
-                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                  value={maxChars}
-                  onChange={(e) => setMaxChars(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label>Keep last</Label>
-                <input
-                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                  value={keepLast}
-                  onChange={(e) => setKeepLast(e.target.value)}
-                />
-              </div>
-              <div className="col-span-2">
-                <Label>LLM Base URL</Label>
-                <input
-                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                  value={baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label>Model</Label>
-                <input
-                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label>Summary model (tools=none)</Label>
-                <input
-                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                  value={summaryModel}
-                  placeholder="optional (e.g. gpt-4o-mini or deepseek-chat)"
-                  onChange={(e) => setSummaryModel(e.target.value)}
-                />
-                <div className="mt-1 text-[11px] text-white/40">
-                  Used to summarize dropped messages when compaction triggers (host inserts a system summary).
-                </div>
-              </div>
-              <div>
-                <Label>API key (optional)</Label>
-                <input
-                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                  value={apiKey}
-                  placeholder="leave empty to use daemon env"
-                  onChange={(e) => setApiKey(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label>Summary max chars</Label>
-                <input
-                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                  value={summaryMaxChars}
-                  onChange={(e) => setSummaryMaxChars(e.target.value)}
-                />
-              </div>
-              <div className="col-span-2">
-                <Label>HTTPS proxy (optional)</Label>
-                <input
-                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                  value={proxyUrl}
-                  placeholder="e.g. http://localhost:8120 (leave empty to use daemon env)"
-                  onChange={(e) => setProxyUrl(e.target.value)}
-                />
-                <div className="mt-1 text-[11px] text-white/40">
-                  If outbound networking requires a proxy, set it here to avoid “hangs”.
-                </div>
-              </div>
-              <div>
-                <Label>Timeout (ms)</Label>
-                <input
-                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                  value={timeoutMs}
-                  onChange={(e) => setTimeoutMs(e.target.value)}
-                />
-                <div className="mt-1 text-[11px] text-white/40">
-                  Provider HTTP timeout (daemon passes through to libcurl).
-                </div>
-              </div>
-              <div>
-                <Label>Max capture bytes</Label>
-                <input
-                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                  value={maxCaptureBytes}
-                  onChange={(e) => setMaxCaptureBytes(e.target.value)}
-                />
-                <div className="mt-1 text-[11px] text-white/40">
-                  Caps verbose event payloads (`llm_request`/`llm_response`/tool output) for UI stability. Full transcript is in `trace_text`.
-                </div>
               </div>
             </div>
 
-            <div className="mt-4 flex items-center gap-2">
-              <input id="trace" type="checkbox" checked={trace} onChange={(e) => setTrace(e.target.checked)} />
-              <label htmlFor="trace" className="text-sm text-white/70">
-                Include transcript
-              </label>
-            </div>
-
-            <div className="mt-3 flex items-center gap-2">
-              <input id="yolo" type="checkbox" checked={yolo} onChange={(e) => setYolo(e.target.checked)} />
-              <label htmlFor="yolo" className="text-sm text-white/70">
-                YOLO (no tool restrictions)
-              </label>
-            </div>
-
-            <div className="mt-3 flex items-center gap-2">
-              <input id="verbose" type="checkbox" checked={verbose} onChange={(e) => setVerbose(e.target.checked)} />
-              <label htmlFor="verbose" className="text-sm text-white/70">
-                Verbose (capture tool output + LLM request/response)
-              </label>
-            </div>
-
-            <div className="mt-3 flex items-center gap-2">
-              <input
-                id="showDebugInConversation"
-                type="checkbox"
-                checked={showDebugInConversation}
-                onChange={(e) => setShowDebugInConversation(e.target.checked)}
-              />
-              <label htmlFor="showDebugInConversation" className="text-sm text-white/70">
-                Show debug events in conversation
-              </label>
-            </div>
-
-            <div className="mt-3 flex items-center gap-2">
-              <input id="async" type="checkbox" checked={useAsync} onChange={(e) => setUseAsync(e.target.checked)} />
-              <label htmlFor="async" className="text-sm text-white/70">
-                Async run (poll jobs)
-              </label>
-            </div>
-
-            <div className="mt-3 flex items-center gap-2">
-              <input
-                id="streamAssistant"
-                type="checkbox"
-                checked={streamAssistant}
-                onChange={(e) => setStreamAssistant(e.target.checked)}
-              />
-              <label htmlFor="streamAssistant" className="text-sm text-white/70">
-                Stream assistant tokens (tools=none)
-              </label>
-            </div>
-
-            <div className="mt-3 text-[11px] text-white/40">
-              Settings are persisted in this browser tab via <code>localStorage</code>.
-            </div>
-
-            {toolsDefs.data?.ok && Array.isArray(toolsDefs.data.defs) && toolsDefs.data.defs.length > 0 ? (
-              <div className="mt-4">
-                <div className="mb-2 text-xs font-semibold text-white/70">Active tool schemas</div>
-                <div className="max-h-56 overflow-auto rounded-md border border-white/10 bg-black/20 p-2 text-xs text-white/80">
-                  {toolsDefs.data.defs.map((d) => (
-                    <div key={d.name} className="border-b border-white/5 py-2 last:border-b-0">
-                      <div className="font-semibold">{d.name}</div>
-                      {d.description ? <div className="mt-1 text-white/60">{d.description}</div> : null}
-                      {d.parameters_json ? (
-                        <pre className="mt-2 overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/80">
-                          {d.parameters_json}
-                        </pre>
-                      ) : null}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="mt-4">
-              <div className="mb-2 text-xs font-semibold text-white/70">OpenRouter model picker</div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label>Min total $/1M</Label>
-                  <input
-                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                    value={orMinTotal}
-                    onChange={(e) => setOrMinTotal(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label>Max total $/1M</Label>
-                  <input
-                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                    value={orMaxTotal}
-                    onChange={(e) => setOrMaxTotal(e.target.value)}
-                  />
-                </div>
-                <div>
-                  <Label>Limit</Label>
-                  <input
-                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                    value={orLimit}
-                    onChange={(e) => setOrLimit(e.target.value)}
-                  />
-                </div>
-                <div className="mt-6 flex items-center gap-2">
-                  <input
-                    id="orRequireMultimodal"
-                    type="checkbox"
-                    checked={orRequireMultimodal}
-                    onChange={(e) => setOrRequireMultimodal(e.target.checked)}
-                  />
-                  <label htmlFor="orRequireMultimodal" className="text-sm text-white/70">
-                    Require multimodal input
-                  </label>
-                </div>
-                <div className="col-span-2 flex items-center gap-2">
-                  <input
-                    id="orRequireTools"
-                    type="checkbox"
-                    checked={orRequireTools}
-                    onChange={(e) => setOrRequireTools(e.target.checked)}
-                  />
-                  <label htmlFor="orRequireTools" className="text-sm text-white/70">
-                    Require tools
-                  </label>
-                </div>
-              </div>
-
-              <button
-                className="mt-3 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
-                onClick={() => fetchOpenRouterModels.mutate()}
-                disabled={fetchOpenRouterModels.isPending}
-                type="button"
-              >
-                {fetchOpenRouterModels.isPending ? "Fetching…" : "Fetch OpenRouter models"}
-              </button>
-
-              {fetchOpenRouterModels.isError ? (
-                <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-                  Failed: {String(fetchOpenRouterModels.error)}
-                </div>
-              ) : null}
-
-              {openrouterModels?.ok && Array.isArray(openrouterModels.models) ? (
-                <div className="mt-3 max-h-72 overflow-auto rounded-md border border-white/10 bg-black/20">
-                  <div className="sticky top-0 grid grid-cols-5 gap-2 border-b border-white/10 bg-black/40 px-3 py-2 text-[11px] font-semibold text-white/70">
-                    <div>Total</div>
-                    <div>Prompt</div>
-                    <div>Compl</div>
-                    <div>Ctx</div>
-                    <div>Model</div>
-                  </div>
-                  {openrouterModels.models.map((m: any) => (
-                    <div key={m.id} className="grid grid-cols-5 gap-2 px-3 py-2 text-[11px] text-white/80 hover:bg-white/5">
-                      <div>{typeof m.total_usd_per_million === "number" ? m.total_usd_per_million.toFixed(3) : ""}</div>
-                      <div>{typeof m.prompt_usd_per_million === "number" ? m.prompt_usd_per_million.toFixed(3) : ""}</div>
-                      <div>
-                        {typeof m.completion_usd_per_million === "number" ? m.completion_usd_per_million.toFixed(3) : ""}
-                      </div>
-                      <div>{m.context_length ?? ""}</div>
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="truncate font-mono">{m.id}</div>
-                        <button
-                          className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/80 hover:bg-black/40"
-                          onClick={() => {
-                            setModel(String(m.id || ""));
-                            setBaseUrl("https://openrouter.ai/api/v1");
-                          }}
-                          type="button"
-                        >
-                          Use
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : openrouterModels && !openrouterModels.ok ? (
-                <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-                  {openrouterModels.error || "OpenRouter models fetch failed"}
-                </div>
-              ) : null}
-
-              <div className="mt-2 text-[11px] text-white/40">
-                Uses the daemon endpoint <code>/api/v1/openrouter/models</code>. If you set an API key above, the UI will send it as an
-                <code>X-OpenRouter-Key</code> header. Daemon auth (if enabled) is sent separately as <code>Authorization: Bearer ...</code>.
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        <div className={`rounded-xl border border-white/10 bg-white/5 p-4 ${showSettings ? "md:col-span-1" : "md:col-span-3"}`}>
-          <div className="mb-3 text-sm font-semibold">Prompt</div>
-          <textarea
-            className="mt-1 h-32 w-full resize-none rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-            data-testid="prompt"
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-          />
-
-          <button
-            className="mt-4 w-full rounded-md bg-indigo-500 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-400 disabled:opacity-50"
-            onClick={() => run.mutate()}
-            disabled={run.isPending || !!activeJobId}
-            type="button"
-            data-testid="run"
-          >
-            {run.isPending || activeJobId ? "Running…" : "Run"}
-          </button>
-
-          {run.isError ? (
-            <div className="mt-3 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-              Failed: {String(run.error)}
-            </div>
-          ) : null}
-
-          {activeJobId ? (
-            <div className="mt-3 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/70">
-              <div>
-                Job: <span className="text-white/90">{activeJobId}</span>
-              </div>
-              <div>
-                Status: <span className="text-white/90">{jobStatus ?? "running"}</span>
-              </div>
-              {jobUpdatedMs ? <div>Updated: {new Date(jobUpdatedMs).toISOString()}</div> : null}
-              <div className="mt-2 flex gap-2">
+            <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-xs font-semibold text-white/70">Client</div>
                 <button
-                  className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200 hover:bg-rose-500/15"
-                  onClick={async () => {
-                    try {
-                      await apiCancelJob(effectiveBase, activeJobId, daemonAuthToken);
-                      setJobError("cancel requested");
-                    } catch (e) {
-                      setJobError(`cancel failed: ${String(e)}`);
-                    }
-                  }}
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                  onClick={() => daemonConfig.refetch()}
                   type="button"
+                  disabled={daemonConfig.isFetching}
                 >
-                  Cancel job
+                  Refresh config
                 </button>
               </div>
-            </div>
-          ) : null}
-          {jobError ? (
-            <div className="mt-3 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-              {jobError}
-            </div>
-          ) : null}
-        </div>
-      </div>
-
-      <div className="mt-6 grid gap-4">
-        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="text-sm font-semibold">Assistant</div>
-            {activeJobId ? (
-              <div className="text-xs text-white/60">
-                Active job: <span className="text-white/80">{activeJobId}</span> ({jobStatus ?? "running"})
+              <div className="mt-2 grid gap-2 text-[11px] text-white/70">
+                <label className="flex items-center justify-between gap-2">
+                  <span>Allow audio autoplay</span>
+                  <input type="checkbox" checked={allowAutoplay} onChange={(e) => setAllowAutoplay(e.target.checked)} />
+                </label>
+                <label className="flex items-center justify-between gap-2">
+                  <span>Allow client RPCs</span>
+                  <input type="checkbox" checked={allowClientRpcs} onChange={(e) => setAllowClientRpcs(e.target.checked)} />
+                </label>
+                <label className="flex items-center justify-between gap-2">
+                  <span>Allow client RPC side effects</span>
+                  <input
+                    type="checkbox"
+                    checked={allowClientEffects}
+                    onChange={(e) => setAllowClientEffects(e.target.checked)}
+                    disabled={!allowClientRpcs}
+                  />
+                </label>
               </div>
-            ) : null}
-          </div>
+            </div>
 
-          {result?.assistant_text ? (
-            <div>
-              <div className="mb-2 text-xs font-semibold text-white/70">
-                {activeJobId ? "Last completed" : "Latest"}
+            <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-xs font-semibold text-white/70">Daemon Defaults (persisted)</div>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                  onClick={() => daemonConfig.refetch()}
+                  type="button"
+                  disabled={daemonConfig.isFetching}
+                >
+                  Refresh
+                </button>
               </div>
-              <Markdown text={result.assistant_text} />
-            </div>
-          ) : (
-            <div className="text-sm text-white/60">
-              {activeJobId ? `Running… (${jobStatus ?? "running"})` : run.isPending ? "Starting…" : "(no output yet)"}
-            </div>
-          )}
-          {!result?.ok && result?.error ? (
-            <div className="mt-3 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
-              {result.error}
-            </div>
-          ) : null}
-          {result?.http_status ? (
-            <div className="mt-3 text-xs text-white/50">HTTP status: {result.http_status}</div>
-          ) : null}
-          {typeof result?.effective_yolo === "boolean" ? (
-            <div className="mt-1 text-xs text-white/50">
-              Effective: yolo={String(result.effective_yolo)} tools_root={result.effective_tools_root ?? ""}
-            </div>
-          ) : null}
-        </div>
-
-        <SceneView sessionId={sessionId} entities={sceneEntities} onClear={() => clearScene()} />
-
-        <div className="mt-6">
-          <div className="mb-2 text-sm font-semibold text-white/80">History</div>
-
-          {activeJobId ? (
-            <div>
-              {liveEvents.length === 0 ? (
-                <div className="mb-2 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/70">
-                  Waiting for live events from the daemon (SSE/polling). If this stays empty, check the daemon base URL and network proxy.
+              <div className="mt-2 text-[11px] text-white/60">
+                Saves to daemon state (server-side). This avoids keeping provider keys in browser storage.
+              </div>
+              <div className="mt-3 grid gap-2">
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                  type="button"
+                  disabled={updateDaemonDefaults.isPending}
+                  onClick={() => {
+                    const tms = Number(timeoutMs);
+                    const smc = Number(summaryMaxChars);
+                    void updateDaemonDefaults
+                      .mutateAsync({
+                        base_url: baseUrl || undefined,
+                        model: model || undefined,
+                        summary_model: summaryModel && summaryModel.trim().length > 0 ? summaryModel.trim() : null,
+                        summary_max_chars: Number.isFinite(smc) && smc >= 0 ? smc : undefined,
+                        proxy_url: proxyUrl && proxyUrl.trim().length > 0 ? proxyUrl.trim() : null,
+                        timeout_ms: Number.isFinite(tms) && tms > 0 ? tms : undefined,
+                      })
+                      .catch(() => {});
+                  }}
+                >
+                  Save model/base_url/proxy/timeout to daemon
+                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    className="flex-1 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                    type="button"
+                    disabled={updateDaemonDefaults.isPending}
+                    onClick={() => {
+                      const b = String(baseUrl || "").toLowerCase();
+                      const provider = b.includes("deepseek") ? "deepseek" : b.includes("openrouter") ? "openrouter" : "openai";
+                      void updateDaemonDefaults
+                        .mutateAsync({
+                          provider,
+                          api_key: String(apiKey || "").trim(),
+                        })
+                        .catch(() => {});
+                    }}
+                    title="Stores the provider key on the daemon host (in state_dir/runtime_secrets.env)."
+                  >
+                    Save API key to daemon (current provider)
+                  </button>
+                  <button
+                    className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200 hover:bg-rose-500/15 disabled:opacity-50"
+                    type="button"
+                    disabled={updateDaemonDefaults.isPending}
+                    onClick={() => {
+                      const b = String(baseUrl || "").toLowerCase();
+                      const provider = b.includes("deepseek") ? "deepseek" : b.includes("openrouter") ? "openrouter" : "openai";
+                      if (!confirm(`Clear daemon-stored key for provider '${provider}'?`)) return;
+                      void updateDaemonDefaults
+                        .mutateAsync({
+                          provider,
+                          api_key: "",
+                        })
+                        .catch(() => {});
+                    }}
+                  >
+                    Clear key
+                  </button>
                 </div>
-              ) : null}
-              <ConversationView
-                baseUrl={effectiveBase}
-                yolo={yolo}
-                sessionId={sessionId}
-                client={client}
-                daemonAuthToken={daemonAuthToken}
-                prompt={lastRunPrompt || prompt}
-                events={liveEvents}
-                showDebugEvents={showDebugInConversation}
-                allowAutoplay={allowAutoplay}
-                allowClientRpcs={allowClientRpcs}
-                allowClientEffects={allowClientEffects}
-                allowUnsafePageEval={allowUnsafePageEval}
-                reverseOrder={true}
-                sceneEntities={sceneEntities}
-                onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
-              />
-
-              {result?.events && result.events.length > 0 ? (
-                <details className="mt-4 rounded-lg border border-white/10 bg-white/5 p-3">
-                  <summary className="cursor-pointer text-xs font-semibold text-white/70">Last completed run</summary>
-                  <div className="mt-3">
-                    <ConversationView
-                      baseUrl={effectiveBase}
-                      yolo={yolo}
-                      sessionId={sessionId}
-                      client={client}
-                      daemonAuthToken={daemonAuthToken}
-                      prompt={lastCompletedPrompt || prompt}
-                      events={result.events}
-                      showDebugEvents={showDebugInConversation}
-                      allowAutoplay={allowAutoplay}
-                      allowClientRpcs={allowClientRpcs}
-                      allowClientEffects={allowClientEffects}
-                      allowUnsafePageEval={allowUnsafePageEval}
-                      reverseOrder={true}
-                      sceneEntities={sceneEntities}
-                      onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
-                    />
+                {updateDaemonDefaults.isError ? (
+                  <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+                    Save failed: {String(updateDaemonDefaults.error)}
                   </div>
-                </details>
+                ) : null}
+                {updateDaemonDefaults.isSuccess ? (
+                  <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+                    Saved.
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="mt-4 grid gap-2 text-[11px] text-white/70">
+              <label className="flex items-center justify-between gap-2">
+                <span>YOLO (no tool restrictions)</span>
+                <input type="checkbox" checked={yolo} onChange={(e) => setYolo(e.target.checked)} />
+              </label>
+              <label className="flex items-center justify-between gap-2">
+                <span>Verbose</span>
+                <input type="checkbox" checked={verbose} onChange={(e) => setVerbose(e.target.checked)} />
+              </label>
+              <label className="flex items-center justify-between gap-2">
+                <span>Async run</span>
+                <input type="checkbox" checked={useAsync} onChange={(e) => setUseAsync(e.target.checked)} />
+              </label>
+              <label className="flex items-center justify-between gap-2">
+                <span>Show debug in conversation</span>
+                <input
+                  type="checkbox"
+                  checked={showDebugInConversation}
+                  onChange={(e) => setShowDebugInConversation(e.target.checked)}
+                />
+              </label>
+            </div>
+
+            <div className="mt-4">
+              <div className="text-xs font-semibold text-white/70">Sessions</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+                  onClick={() => sessions.refetch()}
+                  type="button"
+                >
+                  Refresh
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                  onClick={() => newSession.mutate()}
+                  type="button"
+                  disabled={newSession.isPending}
+                >
+                  New session
+                </button>
+                <button
+                  className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200 hover:bg-rose-500/15 disabled:opacity-50"
+                  onClick={() => {
+                    const ids = sessions.data?.sessions ?? [];
+                    const n = ids.length;
+                    if (n === 0) return;
+                    if (!confirm(`Delete ALL ${n} sessions? This cannot be undone.`)) return;
+                    void clearAllSessions.mutateAsync().catch(() => {});
+                  }}
+                  type="button"
+                  disabled={clearAllSessions.isPending}
+                  title="Danger: deletes all sessions on the daemon."
+                >
+                  Clear all
+                </button>
+              </div>
+              <div className="mt-2 max-h-64 overflow-auto rounded-md border border-white/10 bg-black/20">
+                {(sessions.data?.sessions ?? []).map((sid) => {
+                  const selected = sid === sessionId;
+                  return (
+                    <div
+                      key={sid}
+                      className={`flex items-center justify-between gap-2 px-3 py-2 text-xs ${selected ? "bg-white/10" : ""}`}
+                    >
+                      <button className="flex-1 text-left hover:underline" onClick={() => setSessionId(sid)} type="button">
+                        {sid}
+                      </button>
+                      <button
+                        className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200 hover:bg-rose-500/15 disabled:opacity-50"
+                        type="button"
+                        disabled={deleteSession.isPending}
+                        onClick={() => {
+                          if (!confirm(`Delete session '${sid}'?`)) return;
+                          void deleteSession.mutateAsync(sid).catch(() => {});
+                        }}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+              {deleteSession.isError ? (
+                <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+                  Delete failed: {String(deleteSession.error)}
+                </div>
+              ) : null}
+              {clearAllSessions.isError ? (
+                <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+                  Clear all failed: {String(clearAllSessions.error)}
+                </div>
               ) : null}
             </div>
-          ) : result?.events && result.events.length > 0 ? (
-            <ConversationView
-              baseUrl={effectiveBase}
-              yolo={yolo}
-              sessionId={sessionId}
-              client={client}
-              daemonAuthToken={daemonAuthToken}
-              prompt={lastCompletedPrompt || prompt}
-              events={result.events}
-              showDebugEvents={showDebugInConversation}
-              allowAutoplay={allowAutoplay}
-              allowClientRpcs={allowClientRpcs}
-              allowClientEffects={allowClientEffects}
-              allowUnsafePageEval={allowUnsafePageEval}
-              reverseOrder={true}
-              sceneEntities={sceneEntities}
-              onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
-            />
-          ) : (
-            <div className="rounded-md border border-white/10 bg-black/20 px-3 py-3 text-xs text-white/60">
-              No history yet. Run a prompt to populate the timeline.
-            </div>
-          )}
+          </div>
         </div>
-
-        {(showSettings && activeJobId && liveEvents.length > 0) ||
-        (showSettings && result?.events && result.events.length > 0) ||
-        (showSettings && audit.data?.entries && audit.data.entries.length > 0) ||
-        (showSettings &&
-          sessionClientEvents.data?.ok &&
-          Array.isArray(sessionClientEvents.data.events) &&
-          sessionClientEvents.data.events.length > 0) ||
-        (showSettings && result?.trace_text) ? (
-          <details className="rounded-lg border border-white/10 bg-white/5 p-3">
-            <summary className="cursor-pointer text-xs font-semibold text-white/70">Debug / diagnostics</summary>
-
-            {activeJobId && liveEvents.length > 0 ? (
-              <div className="mt-4">
-                <div className="mb-2 text-sm font-semibold text-white/80">Live Events</div>
-                <EventTimeline baseUrl={effectiveBase} yolo={yolo} events={liveEvents} />
-              </div>
-            ) : null}
-
-            {result?.events && result.events.length > 0 ? (
-              <div className="mt-6">
-                <div className="mb-2 text-sm font-semibold text-white/80">{activeJobId ? "Events (last completed)" : "Events"}</div>
-                <EventTimeline baseUrl={effectiveBase} yolo={yolo} events={result.events} />
-              </div>
-            ) : null}
-
-            {audit.data?.entries && audit.data.entries.length > 0 ? (
-              <div className="mt-6">
-                <div className="mb-2 text-sm font-semibold text-white/80">Session Audit (latest)</div>
-                <div className="grid gap-3">
-                  {audit.data.entries
-                    .slice(-10)
-                    .reverse()
-                    .map((e: any, idx: number) => (
-                      <div key={idx} className="rounded-lg border border-white/10 bg-black/20 p-3">
-                        <div className="text-xs text-white/50">
-                          {typeof e.ts_unix_ms === "number" ? new Date(e.ts_unix_ms).toISOString() : ""}
-                        </div>
-                        {typeof e.prompt === "string" ? (
-                          <div className="mt-2">
-                            <div className="text-xs font-semibold text-white/70">Prompt</div>
-                            <pre className="mt-1 whitespace-pre-wrap text-xs text-white/80">{e.prompt}</pre>
-                          </div>
-                        ) : null}
-                        {typeof e.assistant_text === "string" ? (
-                          <div className="mt-2">
-                            <div className="text-xs font-semibold text-white/70">Assistant</div>
-                            <div className="mt-1">
-                              <Markdown text={e.assistant_text} />
-                            </div>
-                          </div>
-                        ) : null}
-                        {Array.isArray(e.events) ? (
-                          <div className="mt-3">
-                            <div className="text-xs font-semibold text-white/70">Conversation</div>
-                            <div className="mt-2">
-                              <ConversationView
-                                baseUrl={effectiveBase}
-                                yolo={yolo}
-                                sessionId={sessionId}
-                                client={client}
-                                daemonAuthToken={daemonAuthToken}
-                                prompt={String(e.prompt ?? "")}
-                                events={e.events}
-                                showDebugEvents={showDebugInConversation}
-                                allowAutoplay={allowAutoplay}
-                                allowClientRpcs={allowClientRpcs}
-                                allowClientEffects={allowClientEffects}
-                                allowUnsafePageEval={allowUnsafePageEval}
-                                sceneEntities={sceneEntities}
-                                onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
-                              />
-                            </div>
-                            <div className="mt-3 text-xs font-semibold text-white/70">Events (raw)</div>
-                            <div className="mt-2">
-                              <EventTimeline baseUrl={effectiveBase} yolo={yolo} events={e.events} />
-                            </div>
-                          </div>
-                        ) : null}
-                      </div>
-                    ))}
-                </div>
-              </div>
-            ) : null}
-
-            {sessionClientEvents.data?.ok &&
-            Array.isArray(sessionClientEvents.data.events) &&
-            sessionClientEvents.data.events.length > 0 ? (
-              <div className="mt-6">
-                <div className="mb-2 text-sm font-semibold text-white/80">Session Client Events (latest)</div>
-                <div className="grid gap-3">
-                  {sessionClientEvents.data.events
-                    .slice(-20)
-                    .reverse()
-                    .map((e: any, idx: number) => (
-                      <div key={idx} className="rounded-lg border border-white/10 bg-black/20 p-3">
-                        <div className="text-xs text-white/50">
-                          {typeof e.ts_unix_ms === "number" ? new Date(e.ts_unix_ms).toISOString() : ""}
-                        </div>
-                        <div className="mt-2">
-                          <pre className="max-h-[220px] overflow-auto whitespace-pre-wrap break-words text-xs text-white/80">
-                            {JSON.stringify(e, null, 2)}
-                          </pre>
-                        </div>
-                      </div>
-                    ))}
-                </div>
-              </div>
-            ) : null}
-
-            {result?.trace_text ? (
-              <div className="mt-6">
-                <TraceView trace={result.trace_text} />
-              </div>
-            ) : null}
-          </details>
-        ) : null}
-      </div>
+      ) : null}
     </div>
   );
 }

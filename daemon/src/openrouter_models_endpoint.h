@@ -1,6 +1,6 @@
 #pragma once
 
-#include "http_server.h"
+#include "agentd/http_types.h"
 
 #include "openai_client.h"
 
@@ -16,4 +16,3 @@ void handle_openrouter_models_endpoint(
 );
 
 }  // namespace agentd
-

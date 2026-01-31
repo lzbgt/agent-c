@@ -432,6 +432,17 @@ agent_status_t tool_shell_exec(HostToolCtx* ctx, const char* arguments_json, age
   ExecResult r = run_shell_exec(cmd, timeout_ms, (size_t)max_output, ctx ? ctx->should_cancel : nullptr, ctx ? ctx->should_cancel_ctx : nullptr);
 
   Json::Value data(Json::objectValue);
+  // Include the command for UI observability/debugging (production requirement).
+  // Keep a bounded copy to avoid unbounded session logs.
+  {
+    std::string cmd_echo = cmd;
+    const size_t kMax = 64 * 1024;
+    if (cmd_echo.size() > kMax) {
+      cmd_echo.resize(kMax);
+      cmd_echo += "…";
+    }
+    data["cmd"] = cmd_echo;
+  }
   data["exit_code"] = r.exit_code;
   data["timed_out"] = r.timed_out;
   data["truncated"] = r.truncated;

@@ -82,6 +82,23 @@ function tryParseUrl(s: string): URL | null {
   }
 }
 
+function globalAutoRunOnceMap(): Record<string, boolean> {
+  // React StrictMode in dev may mount/unmount/mount components, which resets refs.
+  // Use a tiny global cache to avoid auto-running the same client RPC twice per page load.
+  const g = globalThis as any;
+  if (!g.__agentui_auto_run_once || typeof g.__agentui_auto_run_once !== "object") {
+    g.__agentui_auto_run_once = {};
+  }
+  const m = g.__agentui_auto_run_once as Record<string, boolean>;
+  try {
+    const n = Object.keys(m).length;
+    if (n > 2000) g.__agentui_auto_run_once = {};
+  } catch {
+    // ignore
+  }
+  return (g.__agentui_auto_run_once as Record<string, boolean>) || {};
+}
+
 function createInlineWorker(source: string): Worker {
   const blob = new Blob([source], { type: "text/javascript" });
   const url = URL.createObjectURL(blob);
@@ -109,6 +126,7 @@ export default function ConversationView({
   allowClientEffects,
   allowUnsafePageEval,
   reverseOrder,
+  disableAutoClientRpcs,
   sceneEntities,
   onSceneApply,
 }: {
@@ -125,12 +143,14 @@ export default function ConversationView({
   allowClientEffects: boolean;
   allowUnsafePageEval: boolean;
   reverseOrder?: boolean;
+  disableAutoClientRpcs?: boolean;
   sceneEntities?: any[];
   onSceneApply?: (ops: any[]) => any;
 }) {
   const [ackError, setAckError] = React.useState<string | null>(null);
   const [ackedKeys, setAckedKeys] = React.useState<Record<string, boolean>>({});
   const shownUiActionRef = React.useRef<Record<string, boolean>>({});
+  const autoSceneApplyRef = React.useRef<Record<string, boolean>>({});
 
   const postClientEvent = React.useCallback(
     async (type: string, data: any) => {
@@ -174,6 +194,178 @@ export default function ConversationView({
     });
   }, [events, postClientEvent, sessionId]);
 
+  // Auto-run: entity_apply should update the Scene (collaboration surface). In production, do this in an effect
+  // (not during render) so it reliably runs and so failures can be surfaced via client_rpc_result.
+  React.useEffect(() => {
+    if (disableAutoClientRpcs) return;
+    if (!allowClientRpcs) return;
+    if (!allowClientEffects) return;
+    if (!onSceneApply) return;
+    const sid = typeof sessionId === "string" ? sessionId.trim() : "";
+    if (!sid) return;
+
+    const safeTrunc = (s: string, max: number) => (s.length > max ? s.slice(0, max) : s);
+    const safeObject = (v: any) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
+
+    const entityApplyArgsToOps = (args: any): any[] => {
+      // Preferred shape: explicit ops array (create/update/delete/action/clear).
+      if (Array.isArray(args?.ops)) return args.ops;
+
+      // Compatibility: accept an "entities" list (alternate schema).
+      if (Array.isArray(args?.entities)) {
+        const ops: any[] = [];
+        const ents = args.entities as any[];
+        for (const ent of ents.slice(0, 50)) {
+          if (!ent || typeof ent !== "object") continue;
+          const id = safeTrunc(String(ent?.id ?? ""), 200);
+          const entityKind = safeTrunc(String(ent?.entity_kind ?? ent?.entityKind ?? ent?.type ?? ent?.kind ?? ""), 100);
+          if (!id || !entityKind) continue;
+          const title = typeof ent?.title === "string" ? safeTrunc(String(ent.title), 200) : undefined;
+          const props = safeObject(ent?.props ?? ent ?? {});
+          ops.push({ op: "create", id, entity_kind: entityKind, title, props });
+          const actions = Array.isArray(ent?.actions) ? ent.actions : [];
+          for (const a of actions.slice(0, 20)) {
+            const name = safeTrunc(String(a?.name ?? a?.action ?? a?.kind ?? ""), 80);
+            if (!name) continue;
+            ops.push({ op: "action", id, action: name, args: safeObject(a?.args ?? a ?? {}) });
+          }
+        }
+        return ops;
+      }
+
+      // Compatibility: accept the older "id/type/props/actions" shorthand.
+      const id = safeTrunc(String(args?.id ?? ""), 200);
+      const entityKind = safeTrunc(String(args?.entity_kind ?? args?.entityKind ?? args?.type ?? args?.kind ?? ""), 100);
+      const props = safeObject(args?.props ?? {});
+      const titleFromProps = typeof (props as any)?.title === "string" ? safeTrunc(String((props as any).title), 200) : "";
+      const titleFromArgs = typeof args?.title === "string" ? safeTrunc(String(args.title), 200) : "";
+      const title = titleFromArgs || titleFromProps || "";
+
+      const ops: any[] = [];
+      if (id && entityKind && (Object.keys(props).length > 0 || title)) {
+        ops.push({ op: "create", id, entity_kind: entityKind, title: title || undefined, props });
+      } else if (id && Object.keys(props).length > 0) {
+        ops.push({ op: "update", id, props });
+      }
+      const actions = Array.isArray(args?.actions) ? args.actions : [];
+      for (const a of actions.slice(0, 20)) {
+        const name = safeTrunc(String(a?.name ?? a?.action ?? ""), 80);
+        if (!name) continue;
+        ops.push({ op: "action", id, action: name, args: safeObject(a?.args ?? {}) });
+      }
+      const singleAction = safeTrunc(String(args?.action ?? ""), 80);
+      if (singleAction) {
+        ops.push({ op: "action", id, action: singleAction, args: safeObject(args?.args ?? {}) });
+      }
+      if (args?.delete === true || args?.remove === true) {
+        ops.push({ op: "delete", id });
+      }
+      if (args?.clear === true) {
+        ops.push({ op: "clear", entity_kind: entityKind || undefined });
+      }
+      return ops;
+    };
+
+    const capForEvent = (v: any) => {
+      try {
+        const s = JSON.stringify(v);
+        const max = 32 * 1024;
+        if (s.length <= max) return v;
+        return { kind: "truncated", bytes: s.length, preview: s.slice(0, 2000) };
+      } catch {
+        return { kind: "unserializable" };
+      }
+    };
+
+    events.forEach((ev, idx) => {
+      if (ev.type !== "ui_action") return;
+      const data: any = normalizeEventData(ev.data);
+      const toolCallId = String(data?.tool_call_id ?? "").trim();
+      const action = data?.action ?? {};
+      const atype = String(action?.type ?? "").trim();
+      if (atype !== "client_rpc" && atype !== "collab_rpc" && atype !== "client_probe") return;
+
+      const rpcId = String(action?.rpc_id ?? action?.probe_id ?? toolCallId ?? "").trim();
+      const rpc = action?.rpc ?? action?.probe ?? {};
+      const rpcKind = String(rpc?.kind ?? "").trim();
+      if (rpcKind !== "entity_apply") return;
+
+      const autoRunRequested =
+        typeof action?.auto_run === "boolean" ? action.auto_run : typeof action?.auto === "boolean" ? action.auto : true;
+      if (!autoRunRequested) return;
+      if (!rpcId) return;
+
+      const ackKey = `entity_apply:${toolCallId || rpcId || idx}`;
+      if (autoSceneApplyRef.current[ackKey]) return;
+      autoSceneApplyRef.current[ackKey] = true;
+
+      const rpcArgs = typeof rpc?.args === "object" && rpc?.args ? rpc.args : rpc;
+      const ops = entityApplyArgsToOps(rpcArgs);
+      try {
+        const result = onSceneApply(ops);
+        void postClientEvent("client_rpc_result", {
+          rpc_id: rpcId,
+          request_tool_call_id: toolCallId,
+          rpc_kind: rpcKind,
+          ok: true,
+          elapsed_ms: 0,
+          result: capForEvent(result),
+        }).catch(() => {});
+        if (atype === "client_probe") {
+          void postClientEvent("client_probe_result", {
+            probe_id: rpcId,
+            request_tool_call_id: toolCallId,
+            probe_kind: rpcKind,
+            ok: true,
+            elapsed_ms: 0,
+            result: capForEvent(result),
+          }).catch(() => {});
+        }
+      } catch (e) {
+        void postClientEvent("client_rpc_result", {
+          rpc_id: rpcId,
+          request_tool_call_id: toolCallId,
+          rpc_kind: rpcKind,
+          ok: false,
+          elapsed_ms: 0,
+          error: String(e),
+        }).catch(() => {});
+        if (atype === "client_probe") {
+          void postClientEvent("client_probe_result", {
+            probe_id: rpcId,
+            request_tool_call_id: toolCallId,
+            probe_kind: rpcKind,
+            ok: false,
+            elapsed_ms: 0,
+            error: String(e),
+          }).catch(() => {});
+        }
+      }
+    });
+  }, [allowClientEffects, allowClientRpcs, disableAutoClientRpcs, events, onSceneApply, postClientEvent, sessionId]);
+
+  const toolCallSummaryById = React.useMemo(() => {
+    const m: Record<string, { cmd?: string; argv?: string }> = {};
+    for (const ev of events) {
+      if (ev.type !== "tool_result") continue;
+      const data: any = normalizeEventData(ev.data);
+      const toolCallId = typeof data?.tool_call_id === "string" ? String(data.tool_call_id) : "";
+      if (!toolCallId) continue;
+      const summary = data?.summary && typeof data.summary === "object" ? data.summary : null;
+      if (!summary) continue;
+      const cmd = typeof summary?.cmd === "string" ? String(summary.cmd) : "";
+      const argvArr = Array.isArray(summary?.argv) ? summary.argv : null;
+      const argv =
+        argvArr && argvArr.length > 0
+          ? argvArr.map((x: any) => (typeof x === "string" ? x : "")).filter((x: string) => x.length > 0).join(" ")
+          : "";
+      if (cmd || argv) {
+        m[toolCallId] = { cmd: cmd || undefined, argv: argv || undefined };
+      }
+    }
+    return m;
+  }, [events]);
+
   const items: Array<React.ReactNode> = [];
   let streamedAssistant = "";
   let sawFinalAssistant = false;
@@ -181,7 +373,23 @@ export default function ConversationView({
   let lastHeartbeat: any = null;
 
   const probeRanRef = React.useRef<Record<string, boolean>>({});
+  const pendingAutoRunsRef = React.useRef<Record<string, () => void>>({});
   const rpcCleanupRef = React.useRef<Record<string, Array<() => void>>>({});
+  const artifactBlobUrlsRef = React.useRef<string[]>([]);
+
+  React.useEffect(() => {
+    const pending = pendingAutoRunsRef.current || {};
+    const keys = Object.keys(pending);
+    if (keys.length === 0) return;
+    pendingAutoRunsRef.current = {};
+    keys.forEach((k) => {
+      try {
+        pending[k]?.();
+      } catch {
+        // ignore
+      }
+    });
+  });
 
   React.useEffect(() => {
     return () => {
@@ -197,6 +405,16 @@ export default function ConversationView({
         });
       });
       rpcCleanupRef.current = {};
+
+      // Best-effort cleanup of blob: URLs created by artifact_url RPCs.
+      for (const u of artifactBlobUrlsRef.current) {
+        try {
+          URL.revokeObjectURL(u);
+        } catch {
+          // ignore
+        }
+      }
+      artifactBlobUrlsRef.current = [];
     };
   }, []);
 
@@ -233,11 +451,53 @@ export default function ConversationView({
     if (type === "tool_call") {
       sawToolOrAssistant = true;
       const name = String(data.tool_name ?? "");
-      const args = typeof data.arguments_json === "string" ? data.arguments_json : "";
+      const toolCallId = typeof data?.tool_call_id === "string" ? String(data.tool_call_id) : "";
+      const args =
+        typeof data.arguments_json === "string"
+          ? data.arguments_json
+          : data.arguments && typeof data.arguments === "object"
+            ? JSON.stringify(data.arguments)
+            : typeof data.args === "object" && data.args
+              ? JSON.stringify(data.args)
+              : "";
+      const parsedArgs = args ? safeJsonParse(args) : null;
+      const toolCallSummary = (() => {
+        if (!parsedArgs || typeof parsedArgs !== "object") return null;
+        if (name === "shell_exec") {
+          const cmd = typeof (parsedArgs as any)?.cmd === "string" ? String((parsedArgs as any).cmd) : "";
+          return cmd ? { label: "cmd", value: cmd } : null;
+        }
+        if (name === "proc_exec") {
+          const argvRaw = (parsedArgs as any)?.argv;
+          const argv = Array.isArray(argvRaw) ? argvRaw.map((x) => (typeof x === "string" ? x : "")).filter((x) => x.length > 0) : [];
+          return argv.length > 0 ? { label: "argv", value: argv.join(" ") } : null;
+        }
+        return null;
+      })();
+      const summaryFromResult = toolCallId && toolCallSummaryById[toolCallId] ? toolCallSummaryById[toolCallId] : null;
+      const inferredSummary = (() => {
+        if (toolCallSummary) return toolCallSummary;
+        if (!summaryFromResult) return null;
+        if (name === "shell_exec" && summaryFromResult.cmd) return { label: "cmd", value: summaryFromResult.cmd };
+        if (name === "proc_exec" && summaryFromResult.argv) return { label: "argv", value: summaryFromResult.argv };
+        return null;
+      })();
+      const title = (() => {
+        if (!inferredSummary) return `Tool call: ${name || "(unknown)"}`;
+        return `Tool call: ${name || "(unknown)"} — ${inferredSummary.label}: ${safeTrunc(String(inferredSummary.value || ""), 120)}`;
+      })();
       items.push(
-        <Card key={`tc-${idx}`} title={`Tool call: ${name || "(unknown)"}`}>
+        <Card key={`tc-${idx}`} title={title}>
+          {inferredSummary ? (
+            <div className="mb-2 rounded-md border border-white/10 bg-black/20 p-3 text-xs text-white/85">
+              <div className="mb-1 text-[11px] font-semibold text-white/70">Command</div>
+              <pre className="overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-white/90">
+                {inferredSummary.label}: {inferredSummary.value}
+              </pre>
+            </div>
+          ) : null}
           <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
-            {args ? prettyJsonOrRaw(args) : "(enable verbose to capture arguments)"}
+            {args ? prettyJsonOrRaw(args) : inferredSummary ? "(arguments omitted; see command above)" : "(enable verbose to capture arguments)"}
           </pre>
         </Card>,
       );
@@ -251,6 +511,20 @@ export default function ConversationView({
         items.push(
           <Card key={`tr-${idx}`} title={`Tool result: ${name || "(unknown)"}`}>
             <ToolResultView baseUrl={baseUrl} yolo={yolo} content={data.content} />
+          </Card>,
+        );
+        return;
+      }
+      if (data.summary && typeof data.summary === "object") {
+        let envelope = "";
+        try {
+          envelope = JSON.stringify({ ok: (data.summary as any)?.ok ?? true, data: { ...(data.summary as any), tool: name } });
+        } catch {
+          envelope = JSON.stringify({ ok: true, data: { tool: name } });
+        }
+        items.push(
+          <Card key={`tr-${idx}`} title={`Tool result: ${name || "(unknown)"}`}>
+            <ToolResultView baseUrl={baseUrl} yolo={yolo} content={envelope} />
           </Card>,
         );
         return;
@@ -304,7 +578,6 @@ export default function ConversationView({
           "entity_apply",
           "media_play",
           "media_observe",
-          "artifact_play",
           "navigate",
           "page_eval",
         ]);
@@ -363,12 +636,12 @@ export default function ConversationView({
         };
 
         const runRpc = async () => {
-          if (!canRun) throw new Error("missing session/rpc_id");
-          if (!rpcKind) throw new Error("missing rpc.kind");
-          if (!allowClientRpcs) throw new Error("client RPC disabled by settings");
-          if (sideEffectsRequested && !allowClientEffects) throw new Error("client RPC side effects disabled by settings");
           const t0 = Date.now();
           try {
+            if (!canRun) throw new Error("missing session/rpc_id");
+            if (!rpcKind) throw new Error("missing rpc.kind");
+            if (!allowClientRpcs) throw new Error("client RPC disabled by settings");
+            if (sideEffectsRequested && !allowClientEffects) throw new Error("client RPC side effects disabled by settings");
             const safeFieldSet = new Set([
               "tag",
               "text",
@@ -742,16 +1015,144 @@ export default function ConversationView({
               return { kind: "dom_set_value", selector, set: true };
             };
 
+            const makeArtifactUrl = async (args: any) => {
+              const token = typeof daemonAuthToken === "string" ? daemonAuthToken.trim() : "";
+              const path = safeTrunc(String(args?.path ?? args?.artifact?.path ?? ""), 4000).trim();
+              const resolvedPath = safeTrunc(
+                String(args?.resolved_path ?? args?.resolvedPath ?? args?.artifact?.resolved_path ?? ""),
+                4000,
+              ).trim();
+              const wantYolo = typeof args?.yolo === "boolean" ? args.yolo : yolo;
+
+              if (!path && !resolvedPath) throw new Error("artifact_url requires path or resolved_path");
+
+              const tryPaths: string[] = [];
+              if (path) tryPaths.push(path);
+              // In YOLO mode, absolute paths are allowed on /api/v1/file. This provides a crucial fallback
+              // when the daemon default tools_root differs from the run's effective tools_root.
+              if (wantYolo && resolvedPath && !tryPaths.includes(resolvedPath)) tryPaths.push(resolvedPath);
+
+              let lastErr: any = null;
+              for (const p of tryPaths) {
+                const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${wantYolo ? "1" : "0"}`;
+                try {
+                  const r = await fetch(src, {
+                    method: "GET",
+                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                  });
+                  if (!r.ok) throw new Error(`file fetch failed: ${r.status}`);
+                  const ct = String(r.headers.get("content-type") || "").trim();
+                  const b = await r.blob();
+                  const u = URL.createObjectURL(b);
+
+                  artifactBlobUrlsRef.current.push(u);
+                  while (artifactBlobUrlsRef.current.length > 32) {
+                    const old = artifactBlobUrlsRef.current.shift();
+                    if (!old) break;
+                    try {
+                      URL.revokeObjectURL(old);
+                    } catch {
+                      // ignore
+                    }
+                  }
+
+                  return {
+                    kind: "artifact_url",
+                    ok: true,
+                    url: u,
+                    source_path: p,
+                    content_type: ct || undefined,
+                    size_bytes: typeof (b as any)?.size === "number" ? (b as any).size : undefined,
+                  };
+                } catch (e) {
+                  lastErr = e;
+                }
+              }
+              throw lastErr || new Error("artifact_url failed");
+            };
+
             const makeMediaPlay = async (args: any) => {
-              const selector = safeTrunc(String(args?.selector ?? "audio,video"), 200);
-              const el = document.querySelector(selector) as any;
-              if (!el) return { kind: "media_play", selector, ok: false, error: "no element matched" };
-              if (typeof el.play !== "function") return { kind: "media_play", selector, ok: false, error: "element has no play()" };
+              const urlRaw = String(args?.url ?? args?.src ?? "").trim();
+              const pathRaw = String(args?.path ?? "").trim();
+              const resolvedPathRaw = String(args?.resolved_path ?? args?.resolvedPath ?? "").trim();
+
+              // Preferred: play an explicit selector (existing element).
+              const selector = safeTrunc(String(args?.selector ?? ""), 200).trim();
+              if (selector) {
+                const el = document.querySelector(selector) as any;
+                if (!el) return { kind: "media_play", selector, ok: false, error: "no element matched" };
+                if (typeof el.play !== "function") return { kind: "media_play", selector, ok: false, error: "element has no play()" };
+                try {
+                  await el.play();
+                  return { kind: "media_play", selector, ok: true };
+                } catch (e) {
+                  return { kind: "media_play", selector, ok: false, error: String(e) };
+                }
+              }
+
+              // Convenience: if the agent provides a URL or artifact path, create (or reuse) an element and attempt play.
+              // This is intentionally powerful; autoplay may still be blocked by browser gesture policies.
+              const id = safeTrunc(String(args?.id ?? args?.element_id ?? ""), 80).trim();
+              const tagRaw = String(args?.tag ?? args?.element ?? args?.kind ?? "").toLowerCase();
+              const tag = tagRaw.includes("video") ? "video" : "audio";
+
+              let url = urlRaw;
+              if (!url && (pathRaw || resolvedPathRaw)) {
+                const u = await makeArtifactUrl({ path: pathRaw, resolved_path: resolvedPathRaw, yolo: typeof args?.yolo === "boolean" ? args.yolo : yolo });
+                url = String((u as any)?.url ?? "").trim();
+              }
+              if (!url) return { kind: "media_play", ok: false, error: "media_play requires selector or url/path" };
+
+              let el: any = null;
+              if (id) el = document.getElementById(id);
+              if (!el) {
+                el = document.createElement(tag);
+                if (id) el.id = id;
+                try {
+                  document.body.appendChild(el);
+                } catch {
+                  // ignore
+                }
+              }
+              if (!el) return { kind: "media_play", ok: false, error: "failed to create element" };
+
+              // Set common properties in a bounded way.
+              try {
+                el.controls = args?.controls !== false;
+              } catch {
+                // ignore
+              }
+              try {
+                if (typeof args?.autoplay === "boolean") el.autoplay = args.autoplay;
+              } catch {
+                // ignore
+              }
+              try {
+                if (typeof args?.loop === "boolean") el.loop = args.loop;
+              } catch {
+                // ignore
+              }
+              try {
+                if (typeof args?.muted === "boolean") el.muted = args.muted;
+              } catch {
+                // ignore
+              }
+              try {
+                if (typeof args?.volume === "number" && Number.isFinite(args.volume)) el.volume = Math.min(1, Math.max(0, args.volume));
+              } catch {
+                // ignore
+              }
+              try {
+                el.src = url;
+              } catch {
+                // ignore
+              }
+
               try {
                 await el.play();
-                return { kind: "media_play", selector, ok: true };
+                return { kind: "media_play", ok: true, created: true, tag, id: id || undefined, url: safeTrunc(url, 300) };
               } catch (e) {
-                return { kind: "media_play", selector, ok: false, error: String(e) };
+                return { kind: "media_play", ok: false, created: true, tag, id: id || undefined, url: safeTrunc(url, 300), error: String(e) };
               }
             };
 
@@ -1082,165 +1483,6 @@ export default function ConversationView({
               return { kind: "page_eval", ok: true, timeout_ms: timeoutMs, result };
             };
 
-            const makeArtifactPlay = async (args: any) => {
-              const path = safeTrunc(String(args?.path ?? ""), 400);
-              if (!path) throw new Error("artifact_play requires path");
-              const kindHint = String(args?.kind ?? args?.media_kind ?? "").toLowerCase().trim();
-              const repeat = clampInt(args?.repeat, 1, 16, 1);
-              const autoplay = args?.autoplay !== undefined ? !!args.autoplay : true;
-              const waitFor = String(args?.wait_for ?? "started").toLowerCase();
-              const timeoutMs = clampInt(args?.timeout_ms ?? args?.timeoutMs, 50, 60000, 60000);
-
-              const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(path)}&yolo=${yolo ? "1" : "0"}`;
-              const isVideo = kindHint === "video" || /\.(mp4|webm|mov)$/i.test(path);
-
-              // Replace any previous playback for this rpc_id (idempotent per rpc_id).
-              if (rpcCleanupRef.current[rpcId]) {
-                rpcCleanupRef.current[rpcId].forEach((fn) => {
-                  try {
-                    fn();
-                  } catch {
-                    // ignore
-                  }
-                });
-                delete rpcCleanupRef.current[rpcId];
-              }
-
-              let remaining = repeat;
-              let started = false;
-              let finished = false;
-
-              const el: HTMLMediaElement = isVideo ? document.createElement("video") : document.createElement("audio");
-              el.src = src;
-              el.preload = "auto";
-              try {
-                (el as any).dataset.rpcId = rpcId;
-                if (toolCallId) (el as any).dataset.toolCallId = toolCallId;
-                (el as any).dataset.path = path;
-              } catch {
-                // ignore
-              }
-
-              // Attach video elements so playback is more likely (and so it can be inspected via DOM).
-              if (isVideo) {
-                const v = el as HTMLVideoElement;
-                v.muted = true; // best-effort autoplay aid
-                v.playsInline = true;
-                v.style.position = "fixed";
-                v.style.left = "-9999px";
-                v.style.top = "0";
-                v.style.width = "1px";
-                v.style.height = "1px";
-                document.body.appendChild(v);
-              }
-
-              const stop = () => {
-                try {
-                  el.pause();
-                } catch {
-                  // ignore
-                }
-                try {
-                  el.removeAttribute("src");
-                  (el as any).load?.();
-                } catch {
-                  // ignore
-                }
-                try {
-                  if (isVideo) (el as any).remove?.();
-                } catch {
-                  // ignore
-                }
-              };
-
-              const onEnded = () => {
-                if (finished) return;
-                void postRpcProgress("ended", {
-                  path,
-                  kind: isVideo ? "video" : "audio",
-                  current_time: Number.isFinite((el as any).currentTime) ? (el as any).currentTime : 0,
-                  duration: Number.isFinite((el as any).duration) ? (el as any).duration : 0,
-                  remaining: Math.max(0, remaining - 1),
-                }).catch(() => {});
-                if (remaining <= 1) {
-                  finished = true;
-                  stop();
-                  void postRpcProgress("finished", { path, kind: isVideo ? "video" : "audio", repeat }).catch(() => {});
-                  return;
-                }
-                remaining -= 1;
-                try {
-                  (el as any).currentTime = 0;
-                } catch {
-                  // ignore
-                }
-                void (el as any)
-                  .play()
-                  .then(() => {})
-                  .catch((e: any) => {
-                    finished = true;
-                    stop();
-                    void postRpcProgress("failed", { path, error: String(e), kind: isVideo ? "video" : "audio" }).catch(() => {});
-                  });
-              };
-
-              const onError = (e: any) => {
-                if (finished) return;
-                finished = true;
-                stop();
-                void postRpcProgress("failed", { path, error: String(e?.message ?? "media error"), kind: isVideo ? "video" : "audio" }).catch(
-                  () => {},
-                );
-              };
-
-              el.addEventListener("ended", onEnded);
-              el.addEventListener("error", onError as any);
-              rpcCleanupRef.current[rpcId] = [
-                () => el.removeEventListener("ended", onEnded),
-                () => el.removeEventListener("error", onError as any),
-                stop,
-              ];
-
-              if (!autoplay) {
-                await postRpcProgress("ready", { path, kind: isVideo ? "video" : "audio", repeat }).catch(() => {});
-                return { kind: "artifact_play", ok: true, autoplay: false, repeat };
-              }
-
-              try {
-                await (el as any).play();
-                started = true;
-                await postRpcProgress("started", { path, kind: isVideo ? "video" : "audio", repeat }).catch(() => {});
-              } catch (e) {
-                stop();
-                return { kind: "artifact_play", ok: false, error: String(e), autoplay: true, repeat };
-              }
-
-              if (waitFor === "finished" || waitFor === "ended") {
-                await new Promise<void>((resolve, reject) => {
-                  const t0 = Date.now();
-                  const interval = setInterval(() => {
-                    const elapsed = Date.now() - t0;
-                    if (elapsed > timeoutMs) {
-                      clearInterval(interval);
-                      reject(new Error(`artifact_play wait_for=${waitFor} timed out after ${timeoutMs}ms`));
-                      return;
-                    }
-                    if (waitFor === "finished" && finished) {
-                      clearInterval(interval);
-                      resolve();
-                      return;
-                    }
-                    if (waitFor === "ended" && started && (el as any).ended) {
-                      clearInterval(interval);
-                      resolve();
-                    }
-                  }, 50);
-                });
-              }
-
-              return { kind: "artifact_play", ok: true, autoplay: true, repeat };
-            };
-
             let result: any = null;
             if (rpcKind === "dom_query") result = makeDomQuery(rpcArgs);
             else if (rpcKind === "dom_apply") result = makeDomApply(rpcArgs);
@@ -1254,9 +1496,9 @@ export default function ConversationView({
             else if (rpcKind === "media_play") result = await makeMediaPlay(rpcArgs);
             else if (rpcKind === "media_observe") result = await makeMediaObserve(rpcArgs);
             else if (rpcKind === "navigate") result = makeNavigate(rpcArgs);
+            else if (rpcKind === "artifact_url") result = await makeArtifactUrl(rpcArgs);
             else if (rpcKind === "script_eval") result = await makeScriptEval(rpcArgs);
             else if (rpcKind === "page_eval") result = await makePageEval(rpcArgs);
-            else if (rpcKind === "artifact_play") result = await makeArtifactPlay(rpcArgs);
             else throw new Error(`unsupported rpc.kind: ${rpcKind}`);
 
             await postRpcResult(true, { elapsed_ms: Date.now() - t0, result });
@@ -1265,11 +1507,22 @@ export default function ConversationView({
           }
         };
 
-        const ackKey = `rpc:${rpcId || toolCallId || idx}`;
-        const alreadyRan = !!probeRanRef.current[ackKey];
-        if (autoRun && !alreadyRan && canRun) {
+        // Key auto-run de-duping by tool_call_id first (unique per request).
+        // Some agents may reuse rpc_id strings across multiple requests (e.g. "get_artifact_url").
+        // If we de-dupe by rpc_id first, later requests would never auto-run, causing client_wait_event timeouts.
+        const ackKey = `rpc:${toolCallId || rpcId || idx}`;
+        const sidKey = typeof sessionId === "string" ? sessionId.trim() : "";
+        const globalKey = `${sidKey || "no_session"}::${ackKey}`;
+        const globalOnce = globalAutoRunOnceMap();
+        const alreadyRan = !!probeRanRef.current[ackKey] || !!globalOnce[globalKey];
+        // Avoid running entity_apply during render; it is handled in an effect so Scene updates reliably.
+        // Also allow callers (e.g. history views) to disable auto-running client RPCs entirely.
+        if (!disableAutoClientRpcs && autoRun && rpcKind !== "entity_apply" && !alreadyRan && canRun) {
           probeRanRef.current[ackKey] = true;
-          void runRpc().catch(() => {});
+          globalOnce[globalKey] = true;
+          pendingAutoRunsRef.current[globalKey] = () => {
+            void runRpc().catch(() => {});
+          };
         }
 
         items.push(
@@ -1282,6 +1535,23 @@ export default function ConversationView({
                 </span>
               ) : null}
             </div>
+            <details className="mt-2 rounded-md border border-white/10 bg-black/20 px-3 py-2">
+              <summary className="cursor-pointer select-none text-[11px] font-semibold text-white/70">Request payload</summary>
+              <pre className="mt-2 overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-white/90">
+                {JSON.stringify(
+                  {
+                    type: atype,
+                    tool_call_id: toolCallId || undefined,
+                    rpc_id: rpcId,
+                    rpc: { kind: rpcKind, args: rpcArgs },
+                    side_effects: sideEffectsRequested,
+                    auto_run: autoRunRequested,
+                  },
+                  null,
+                  2,
+                )}
+              </pre>
+            </details>
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <button
                 className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
@@ -1421,32 +1691,6 @@ export default function ConversationView({
               </button>
               {ackError ? <div className="text-[11px] text-amber-200/80">ack failed: {ackError}</div> : null}
             </div>
-          </Card>,
-        );
-        return;
-      }
-      if (atype === "play_audio") {
-        const path = String(action?.path ?? "");
-        const artifact = {
-          path,
-          kind: "audio",
-          mime: action?.mime,
-          title,
-          autoplay: action?.autoplay,
-          repeat: action?.repeat,
-          source_tool_call_id: toolCallId,
-        };
-        items.push(
-          <Card key={`ua-${idx}`} title={`UI action: ${title}`}>
-            <ArtifactView
-              baseUrl={baseUrl}
-              yolo={yolo}
-              artifact={artifact}
-              allowAutoplay={allowAutoplay}
-              sessionId={sessionId}
-              client={client}
-              daemonAuthToken={daemonAuthToken}
-            />
           </Card>,
         );
         return;

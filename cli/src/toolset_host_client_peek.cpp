@@ -69,6 +69,24 @@ static Json::Value summarize_data(const Json::Value& data, size_t max_keys) {
   return s;
 }
 
+static agent_status_t read_client_events_tail(const HostToolCtx* ctx, size_t max_bytes, size_t max_files, std::string* out_tail) {
+  if (!out_tail) return AGENT_ERR_INVALID_ARGUMENT;
+  out_tail->clear();
+  if (!ctx) return AGENT_ERR_INVALID_ARGUMENT;
+  if (ctx->session_id.empty()) return AGENT_ERR_INVALID_ARGUMENT;
+
+  if (ctx->read_client_events_tail_cb) {
+    return ctx->read_client_events_tail_cb(ctx->read_client_events_tail_ctx, ctx->session_id, max_bytes, max_files, out_tail);
+  }
+  if (ctx->sessions_root_dir.empty()) return AGENT_ERR_INVALID_ARGUMENT;
+
+  SessionStoreConfig store_cfg;
+  store_cfg.root_dir = ctx->sessions_root_dir.string();
+  if (max_files == 0) max_files = store_cfg.client_events_max_files;
+  max_files = std::min<size_t>(max_files, 10);
+  return session_store_read_client_event_tail_multi(store_cfg, ctx->session_id, max_bytes, max_files, out_tail);
+}
+
 agent_status_t tool_client_peek(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
   if (!ctx || !out_result) return AGENT_ERR_INVALID_ARGUMENT;
 
@@ -84,10 +102,10 @@ agent_status_t tool_client_peek(HostToolCtx* ctx, const char* arguments_json, ag
     return write_result(out_result, o);
   }
 
-  if (ctx->sessions_root_dir.empty() || ctx->session_id.empty()) {
+  if (ctx->session_id.empty() || (!ctx->read_client_events_tail_cb && ctx->sessions_root_dir.empty())) {
     Json::Value o(Json::objectValue);
     o["ok"] = false;
-    o["error"] = "client_peek requires session context (session_id + sessions_root_dir)";
+    o["error"] = "client_peek requires session context (session_id + client event log)";
     Json::Value d(Json::objectValue);
     d["tool"] = "client_peek";
     o["data"] = d;
@@ -115,12 +133,8 @@ agent_status_t tool_client_peek(HostToolCtx* ctx, const char* arguments_json, ag
   }
   max_data_bytes = std::min<size_t>(max_data_bytes, 64 * 1024);
 
-  SessionStoreConfig store_cfg;
-  store_cfg.root_dir = ctx->sessions_root_dir.string();
-  if (max_files == 0) max_files = store_cfg.client_events_max_files;
-
   std::string tail;
-  (void)session_store_read_client_event_tail_multi(store_cfg, ctx->session_id, max_bytes, max_files, &tail);
+  (void)read_client_events_tail(ctx, max_bytes, max_files, &tail);
 
   struct SeenClient {
     std::string id;

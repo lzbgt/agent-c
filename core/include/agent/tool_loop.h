@@ -113,6 +113,11 @@ typedef struct agent_tool_loop_options {
   // When true, emit verbose tool_result events including capped content; otherwise emit summaries (when available).
   uint8_t verbose_events;
   size_t max_capture_chars; // caps event fields (best-effort). 0 means default (256k).
+
+  // When true, the tool loop will not store per-tool-call transcript records in `agent_tool_loop_result_t`.
+  // This reduces allocations and duplicated strings, and is recommended for embedded/low-memory builds.
+  // Note: this does not affect the in-loop transcript used for compaction and provider requests.
+  uint8_t disable_tool_records;
 } agent_tool_loop_options_t;
 
 typedef struct agent_tool_record {

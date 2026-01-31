@@ -1,0 +1,171 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init-multi-db.sql:/docker-entrypoint-initdb.d/01-init-multi-db.sql:ro
+    ports:
+      - "${POSTGRES_PUBLISHED_PORT:-5433}:5432"
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command:
+      - start-dev
+      - --http-port=8080
+      - --import-realm
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: postgres
+      KC_DB_PASSWORD: postgres
+      KC_HOSTNAME_STRICT: "false"
+      KC_HOSTNAME_STRICT_HTTPS: "false"
+      KC_HTTP_ENABLED: "true"
+      # Ensure tokens are minted with a stable issuer that both host tooling and in-cluster services can validate.
+      # We use an "always 127.0.0.1" dev domain, and map it to the docker host gateway inside containers.
+      # - on host: keycloak.lvh.me -> 127.0.0.1 (public DNS)
+      # - in containers (broker): keycloak.lvh.me -> host-gateway (extra_hosts)
+      KC_HOSTNAME: keycloak.lvh.me
+      KC_HOSTNAME_PORT: ${KEYCLOAK_PUBLISHED_PORT:-8081}
+    depends_on:
+      - postgres
+    volumes:
+      - ./docker/keycloak/realm-agentd.json:/opt/keycloak/data/import/realm-agentd.json:ro
+    ports:
+      - "${KEYCLOAK_PUBLISHED_PORT:-8081}:8080"
+
+  broker:
+    build:
+      context: .
+      dockerfile: docker/broker/Dockerfile
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-}
+        GOPROXY: ${GOPROXY:-direct}
+        GOSUMDB: ${GOSUMDB:-sum.golang.org}
+    depends_on:
+      postgres:
+        condition: service_started
+      keycloak:
+        condition: service_started
+    environment:
+      AGENTD_BROKER_DB_DSN: postgres://postgres:postgres@postgres:5432/agentd_broker?sslmode=disable
+    command:
+      - /usr/local/bin/agentd-broker
+      - --listen
+      - :8443
+      - --tls-cert
+      - /mtls/server.pem
+      - --tls-key
+      - /mtls/server.key.pem
+      - --tls-client-ca
+      - /mtls/ca.pem
+      - --db-dsn
+      - postgres://postgres:postgres@postgres:5432/agentd_broker?sslmode=disable
+      - --oidc-issuer
+      - http://keycloak.lvh.me:${KEYCLOAK_PUBLISHED_PORT:-8081}/realms/agentd
+      - --oidc-audience
+      - agentd-broker-dev
+    volumes:
+      - ./tools/_compose_mtls:/mtls:ro
+    extra_hosts:
+      - "keycloak.lvh.me:host-gateway"
+    ports:
+      - "${BROKER_PUBLISHED_PORT:-8443}:8443"
+
+  agentd:
+    build:
+      context: .
+      dockerfile: docker/agentd/Dockerfile
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-}
+    environment:
+      # Optional: load real provider keys by placing them in a local ".env" file before running compose.
+      # agentd also supports storing provider keys server-side via /api/v1/config/update.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+    command:
+      - /usr/local/bin/agentd
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8123"
+      - --auth-token
+      - "dev-agentd-token"
+      - --cors-origin
+      - "http://127.0.0.1:${WEBUI_PUBLISHED_PORT:-8100}"
+      - --cors-origin
+      - "http://localhost:${WEBUI_PUBLISHED_PORT:-8100}"
+      - --tools
+      - host
+      - --yolo
+      - --host-scope
+      - "/data"
+      - --tools-root
+      - "@host"
+      - --db-path
+      - "/data/agentd.db"
+    volumes:
+      - agentd_data:/data
+    ports:
+      - "${AGENTD_PUBLISHED_PORT:-8123}:8123"
+
+  connector:
+    build:
+      context: .
+      dockerfile: docker/broker/Dockerfile
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-}
+        GOPROXY: ${GOPROXY:-direct}
+        GOSUMDB: ${GOSUMDB:-sum.golang.org}
+    depends_on:
+      broker:
+        condition: service_started
+      agentd:
+        condition: service_started
+    command:
+      - /usr/local/bin/agentd-connector
+      - --broker
+      - wss://broker:8443/v1/agent/connect
+      - --local-agentd
+      - http://agentd:8123
+      - --tls-ca
+      - /mtls/ca.pem
+      - --tls-cert
+      - /mtls/client_agent1.pem
+      - --tls-key
+      - /mtls/client_agent1.key.pem
+      - --agent-cn-prefix
+      - agentd-
+      - --agent-id
+      - agent1
+    volumes:
+      - ./tools/_compose_mtls:/mtls:ro
+    restart: always
+
+  webui:
+    build:
+      context: .
+      dockerfile: docker/ui/Dockerfile
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+        NO_PROXY: ${NO_PROXY:-}
+    ports:
+      - "${WEBUI_PUBLISHED_PORT:-8100}:80"
+
+volumes:
+  pgdata:
+  agentd_data:

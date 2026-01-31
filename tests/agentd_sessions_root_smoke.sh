@@ -42,14 +42,19 @@ sid="$(curl -fsS --noproxy "*" --max-time 10 \
   "${DAEMON_URL}/api/v1/session/new" | python3 -c 'import json,sys; obj=json.load(sys.stdin); assert obj.get("ok") and obj.get("session_id"); print(obj["session_id"])'
 )"
 
+db_path="$(curl -fsS --noproxy "*" --max-time 10 "${DAEMON_URL}/api/v1/config" \
+  | python3 -c 'import json,sys; obj=json.load(sys.stdin); d=obj.get("daemon") or {}; p=d.get("db_path") or ""; assert isinstance(p,str) and p; print(p)')"
+
 python3 - <<PY
 from pathlib import Path
-sid = "${sid}"
-root = Path("${TMP_ROOT}")
-sess = root / f"{sid}.sess"
-if not sess.exists():
-  raise SystemExit(f"missing session file: {sess}")
+p = Path("${db_path}")
+if not p.exists():
+  raise SystemExit(f"missing db file: {p}")
 PY
+
+# /api/v1/session should be DB-backed (canonical state store).
+curl -fsS --noproxy "*" --max-time 10 "${DAEMON_URL}/api/v1/session?session_id=${sid}" \
+  | python3 -c 'import json,sys; obj=json.load(sys.stdin); assert obj.get("ok"); assert obj.get("session_id")==sys.argv[1]' "${sid}"
 
 # /api/v1/sessions should list it (best-effort; ordering not guaranteed).
 curl -fsS --noproxy "*" --max-time 10 "${DAEMON_URL}/api/v1/sessions" \

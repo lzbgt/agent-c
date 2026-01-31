@@ -42,7 +42,6 @@ handshake so agents can act powerfully *and still stop* based on observable fact
 
 - `artifact_register` host tool → derived `artifact` event
 - `ui_action` host tool → derived `ui_action` event
-- `camera_capture` host tool → derived `artifact` and/or `ui_action`
 
 ### Effect acknowledgement (UI → agentd)
 
@@ -57,7 +56,6 @@ Recommended event types:
   - payload: `{ path, kind, title?, tool_call_id? }`
 - `ui_action_shown`: UI rendered a UI-action card.
   - payload: `{ action_type, title?, tool_call_id? }`
-- `audio_play_started` / `audio_play_finished` / `audio_play_failed`: already supported for audio playback.
 - `notification_ack`: user explicitly acknowledged a notification (manual DoD).
 
 ### Waiting / joining acks (agent tool)
@@ -77,21 +75,20 @@ Agents should use host tools (session-scoped):
    - `ui_wait_event(type="artifact_rendered", data_match={ tool_call_id: "<tool_call_id>" })`
 4) Respond with a short “done” assistant message and stop
 
-### “Play audio and continue after finished”
+### “Present an artifact and stop (generic)”
 
-1) `artifact_register(kind=audio, autoplay=true, repeat=N)` or `ui_action(type=play_audio, ...)`
-2) Wait:
-   - `ui_wait_event(type="audio_play_finished", data_match={ tool_call_id: "<tool_call_id>" })`
+1) Produce a host file (any format) under the daemon tools root
+2) `artifact_register(path=..., kind=..., title=...)`
+3) Wait once:
+   - `client_wait_event(type="artifact_rendered", data_match={ tool_call_id: "<tool_call_id>" })`
 
-Alternative (fully client-RPC-shaped):
-1) `ui_action(type="client_rpc", rpc_id="<tool_call_id>", rpc={kind:"artifact_play", side_effects:true, args:{path:"...", kind:"audio", repeat:N, wait_for:"finished"}}, auto_run=true)`
-2) Wait:
-   - `client_wait_event(type="client_rpc_progress", data_match={rpc_id:"<tool_call_id>", rpc_kind:"artifact_play", name:"finished"})`
+If the task requires active client-side interaction (e.g. playback, DOM edits), request it as a `client_rpc`
+(`dom_apply` / `page_eval` / `script_eval` / `media_play`) and wait for `client_rpc_result` instead of assuming it happened.
 
 ### Join multiple UI acknowledgements
 
 Example: show notification + play audio, continue after both:
-- `ui_wait_all(predicates=[ notification_ack(tool_call_id=...), audio_play_finished(tool_call_id=...) ])`
+- `ui_wait_all(predicates=[ notification_ack(tool_call_id=...), client_rpc_result(rpc_id=...) ])`
 
 ### “Wait for a client-side condition (generic)”
 

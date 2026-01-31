@@ -61,7 +61,7 @@ Fields:
 
 The protocol uses an append-only event log (`*.client_events.jsonl`) rather than mutable shared state.
 Clients can send:
-- “facts” (`artifact_rendered`, `audio_play_finished`, `notification_ack`, …)
+- “facts” (`artifact_rendered`, `client_rpc_result`, `notification_ack`, …)
 - optional periodic “snapshots” (`client_state`) if polling is needed
 
 Agents can:

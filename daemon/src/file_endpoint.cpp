@@ -32,24 +32,25 @@ void handle_file_endpoint(
   }
 
   const std::filesystem::path user_path(*path_q);
-  const std::filesystem::path cwd = std::filesystem::current_path();
-  std::string scope_root_str;
+  std::string effective_root_str;
   {
     std::string root_err;
-    if (!sandbox_resolve_tools_root(cfg.host_scope_root, false, cfg.tools_root, "", false, &scope_root_str, &root_err)) {
+    // Resolve an effective root for relative paths. In YOLO mode this does NOT restrict access
+    // (absolute paths are still allowed), but it provides a stable anchor for relative file fetches.
+    if (!sandbox_resolve_tools_root(cfg.host_scope_root, yolo, cfg.tools_root, "", false, &effective_root_str, &root_err)) {
       resp->status = 500;
       resp->headers["Content-Type"] = "application/json; charset=utf-8";
       resp->body = R"({"ok":false,"error":"invalid daemon tools_root/host_scope_root"})";
       return;
     }
   }
-  const std::filesystem::path scope_root = std::filesystem::path(scope_root_str);
+  const std::filesystem::path effective_root = std::filesystem::path(effective_root_str);
 
   std::filesystem::path resolved;
   std::filesystem::path canon_root;
   std::filesystem::path canon_file;
   if (yolo) {
-    resolved = user_path.is_absolute() ? user_path : (cwd / user_path);
+    resolved = user_path.is_absolute() ? user_path : (effective_root / user_path);
   } else {
     if (user_path.is_absolute()) {
       resp->status = 403;
@@ -57,14 +58,14 @@ void handle_file_endpoint(
       resp->body = "{\"ok\":false,\"error\":\"absolute paths disabled (daemon yolo disabled)\"}";
       return;
     }
-    resolved = (scope_root / user_path);
+    resolved = (effective_root / user_path);
   }
   resolved = resolved.lexically_normal();
 
   // Containment check when not yolo.
   if (!yolo) {
     std::error_code ec;
-    canon_root = std::filesystem::weakly_canonical(scope_root, ec);
+    canon_root = std::filesystem::weakly_canonical(effective_root, ec);
     if (ec) {
       resp->status = 500;
       resp->headers["Content-Type"] = "application/json; charset=utf-8";
@@ -141,4 +142,3 @@ void handle_file_endpoint(
 }
 
 }  // namespace agentd
-

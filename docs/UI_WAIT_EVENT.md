@@ -116,13 +116,13 @@ Arguments (both tools):
 - `max_bytes` (int, optional, default `262144`)
 - `max_files` (int, optional): consider rotated client event logs up to this many files
 
-Example: wait until both “artifact was rendered” and “audio finished”:
+Example: wait until both “artifact was rendered” and “client RPC completed”:
 
 ```json
 {
   "predicates": [
     { "type": "artifact_rendered", "data_match": { "tool_call_id": "call_af_1" } },
-    { "type": "audio_play_finished", "data_match": { "tool_call_id": "call_audio_1" } }
+    { "type": "client_rpc_result", "data_match": { "rpc_id": "rpc_123", "ok": true } }
   ],
   "timeout_ms": 60000
 }

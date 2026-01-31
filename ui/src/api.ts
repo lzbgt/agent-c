@@ -46,6 +46,13 @@ export const DaemonConfigSchema = z
         timeout_ms: z.number().optional(),
         proxy_url_set: z.boolean().optional(),
         api_key_set: z.boolean().optional(),
+        provider_keys_set: z
+          .object({
+            deepseek: z.boolean().optional(),
+            openrouter: z.boolean().optional(),
+            openai: z.boolean().optional(),
+          })
+          .optional(),
         auth_enabled: z.boolean().optional(),
         allow_unauthenticated_non_loopback: z.boolean().optional(),
       })
@@ -79,6 +86,49 @@ export const DaemonConfigSchema = z
   .passthrough();
 export type DaemonConfigResp = z.infer<typeof DaemonConfigSchema>;
 
+export const DaemonConfigUpdateReqSchema = z
+  .object({
+    base_url: z.string().optional(),
+    model: z.string().optional(),
+    summary_model: z.string().nullable().optional(),
+    summary_max_chars: z.number().int().nonnegative().optional(),
+    proxy_url: z.string().nullable().optional(),
+    timeout_ms: z.number().int().positive().optional(),
+    // Either set explicit mapping...
+    provider_keys: z.record(z.string(), z.string().nullable()).optional(),
+    // ...or set a single key for inferred/explicit provider.
+    provider: z.string().optional(),
+    api_key: z.string().optional(),
+  })
+  .passthrough();
+export type DaemonConfigUpdateReq = z.infer<typeof DaemonConfigUpdateReqSchema>;
+
+export const DaemonConfigUpdateRespSchema = z
+  .object({
+    ok: z.boolean(),
+    base_url: z.string().optional(),
+    model: z.string().optional(),
+    summary_model: z.string().nullable().optional(),
+    summary_max_chars: z.number().optional(),
+    timeout_ms: z.number().optional(),
+    proxy_url_set: z.boolean().optional(),
+    provider_keys_set: z.any().optional(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+export type DaemonConfigUpdateResp = z.infer<typeof DaemonConfigUpdateRespSchema>;
+
+export async function apiUpdateDaemonConfig(base: string, req: DaemonConfigUpdateReq, authToken?: string): Promise<DaemonConfigUpdateResp> {
+  const payload = DaemonConfigUpdateReqSchema.parse(req);
+  const r = await fetch(`${base}/api/v1/config/update`, {
+    method: "POST",
+    headers: daemonHeaders(authToken, { "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json();
+  return DaemonConfigUpdateRespSchema.parse(j);
+}
+
 export const RunRequestSchema = z.object({
   prompt: z.string().min(1),
   session_id: z.string().optional(),
@@ -90,6 +140,9 @@ export const RunRequestSchema = z.object({
       instance_id: z.string().optional(),
     })
     .optional(),
+  // When true, the daemon should only mark a run as successful once the client has acknowledged
+  // any requested UI actions/artifacts (prevents "false done" reports in interactive UIs).
+  require_client_acks: z.boolean().optional(),
   system: z.string().optional(),
   no_default_system: z.boolean().optional(),
   model: z.string().optional(),
@@ -373,6 +426,24 @@ export async function apiNewSession(
   });
   const j = await r.json();
   return NewSessionRespSchema.parse(j);
+}
+
+export const DeleteSessionRespSchema = z
+  .object({
+    ok: z.boolean(),
+    session_id: z.string().optional(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+export type DeleteSessionResp = z.infer<typeof DeleteSessionRespSchema>;
+
+export async function apiDeleteSession(base: string, sessionId: string, authToken?: string): Promise<DeleteSessionResp> {
+  const r = await fetch(`${base}/api/v1/session?session_id=${encodeURIComponent(sessionId)}`, {
+    method: "DELETE",
+    headers: daemonHeaders(authToken),
+  });
+  const j = await r.json();
+  return DeleteSessionRespSchema.parse(j);
 }
 
 export const AuditSchema = z.object({

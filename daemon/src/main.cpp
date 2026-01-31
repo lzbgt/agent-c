@@ -15,6 +15,8 @@
 #include "run_endpoints.h"
 #include "db_query_endpoints.h"
 #include "secrets_file.h"
+#include "config_store.h"
+#include "runtime_config.h"
 
 #include "agent_db.h"
 
@@ -55,12 +57,6 @@ static bool host_is_loopback(std::string host) {
   if (host.rfind("127.", 0) == 0) return true;
   if (host == "127.0.0.1") return true;
   return false;
-}
-
-static std::string trim_copy(std::string s) {
-  while (!s.empty() && (s.front() == ' ' || s.front() == '\t' || s.front() == '\n' || s.front() == '\r')) s.erase(s.begin());
-  while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '\n' || s.back() == '\r')) s.pop_back();
-  return s;
 }
 
 static bool parse_tool_call_limit_spec(const std::string& spec, std::string* out_tool, size_t* out_max_calls) {
@@ -215,9 +211,6 @@ int main(int argc, char** argv) {
         std::cerr << "Missing value for --db-path\n";
         return 2;
       }
-    } else if (a == "--no-db") {
-      cfg.db_path.clear();
-      cfg.db_disabled = true;
     } else if (a == "--timeout-ms") {
       std::string v;
       if (!take(&v)) {
@@ -393,8 +386,7 @@ int main(int argc, char** argv) {
         << "  --proxy <url>        Optional HTTP proxy override (else env HTTPS_PROXY/http_proxy)\n"
         << "  --state-dir <dir>    Base state dir (default: ~/.agent)\n"
         << "  --sessions-root <dir> Session store root (default: <state-dir>/sessions)\n"
-        << "  --db-path <path>     Optional SQLite DB path (troubleshooting mirror; default: disabled)\n"
-        << "  --no-db              Disable DB mirror even if AGENTD_DB_PATH is set\n"
+        << "  --db-path <path>     SQLite DB path (default: ./agentd.db)\n"
         << "  --timeout-ms <n>     Provider HTTP timeout in ms (default: 60000)\n"
         << "  --job-ttl-ms <n>     GC finished jobs older than n ms (default: 1800000)\n"
         << "  --max-jobs <n>       Keep at most n jobs in memory (default: 256)\n"
@@ -515,10 +507,8 @@ int main(int argc, char** argv) {
     }
   }
   if (cfg.db_path.empty()) {
-    if (!cfg.db_disabled) {
-      if (const char* p = getenv_s("AGENTD_DB_PATH")) {
+    if (const char* p = getenv_s("AGENTD_DB_PATH")) {
       cfg.db_path = p;
-      }
     }
   }
 
@@ -541,30 +531,56 @@ int main(int argc, char** argv) {
     cfg.sessions_root_dir = (std::filesystem::path(cfg.state_dir) / "sessions").string();
   }
 
-  OpenAIClientConfig ocfg;
-  ocfg.base_url = cfg.base_url;
-  ocfg.api_key = cfg.api_key;
-  ocfg.model = cfg.model;
-  ocfg.proxy_url = cfg.proxy_url;
-  ocfg.timeout_ms = cfg.timeout_ms;
-  if (const char* r = getenv_s("OPENROUTER_HTTP_REFERER")) {
-    ocfg.openrouter_http_referer = r;
-  }
-  if (const char* t = getenv_s("OPENROUTER_X_TITLE")) {
-    ocfg.openrouter_x_title = t;
+  // DB is mandatory (canonical daemon state store). Default to agentd.db in the daemon working directory.
+  if (cfg.db_path.empty()) {
+    cfg.db_path = (std::filesystem::current_path() / "agentd.db").string();
+  } else {
+    // Make db_path absolute for clearer /api/v1/config output.
+    std::error_code ec;
+    const std::filesystem::path p(cfg.db_path);
+    if (p.is_relative()) {
+      cfg.db_path = (std::filesystem::current_path() / p).lexically_normal().string();
+    }
   }
 
   AgentDb db;
-  AgentDb* db_or_null = nullptr;
-  if (!cfg.db_path.empty()) {
+  {
     std::string db_err;
     if (!db.open(cfg.db_path, &db_err)) {
       std::cerr << "Failed to open agentd DB: " << db_err << "\n";
       std::cerr << "db_path=" << cfg.db_path << "\n";
       return 1;
     }
-    db_or_null = &db;
   }
+
+  // Load runtime-configured daemon defaults (model/base_url/proxy/timeout + provider keys) from the DB.
+  // This keeps provider keys out of browser storage and ensures all daemon state is in agentd.db.
+  {
+    std::string err;
+    if (!load_runtime_config_best_effort(db, &cfg, &err)) {
+      std::cerr << "Warning: failed to load runtime config from DB: " << err << "\n";
+    }
+  }
+
+  // Runtime-mutable daemon config store (requests are handled concurrently).
+  DaemonConfigStore cfg_store(cfg);
+
+  const std::string openrouter_http_referer = getenv_s("OPENROUTER_HTTP_REFERER") ? getenv_s("OPENROUTER_HTTP_REFERER") : "";
+  const std::string openrouter_x_title = getenv_s("OPENROUTER_X_TITLE") ? getenv_s("OPENROUTER_X_TITLE") : "";
+
+  auto ocfg_from_cfg = [&](const DaemonConfig& c) -> OpenAIClientConfig {
+    OpenAIClientConfig ocfg;
+    ocfg.base_url = c.base_url;
+    ocfg.api_key = c.api_key;
+    ocfg.model = c.model;
+    ocfg.proxy_url = c.proxy_url;
+    ocfg.timeout_ms = c.timeout_ms;
+    if (!openrouter_http_referer.empty()) ocfg.openrouter_http_referer = openrouter_http_referer;
+    if (!openrouter_x_title.empty()) ocfg.openrouter_x_title = openrouter_x_title;
+    return ocfg;
+  };
+
+  AgentDb* db_or_null = &db;
 
   HttpServer server;
   server.set_default_headers({
@@ -577,15 +593,18 @@ int main(int argc, char** argv) {
   });
 
   // Background GC for finished jobs (keeps daemon memory bounded for long-running usage).
-  if (cfg.job_ttl_ms > 0 || cfg.max_jobs > 0) {
-    const int64_t ttl_ms = cfg.job_ttl_ms;
-    const size_t max_jobs = cfg.max_jobs;
+  {
+    const DaemonConfig cfg0 = cfg_store.snapshot();
+    if (cfg0.job_ttl_ms > 0 || cfg0.max_jobs > 0) {
+      const int64_t ttl_ms = cfg0.job_ttl_ms;
+      const size_t max_jobs = cfg0.max_jobs;
     std::thread([ttl_ms, max_jobs]() {
       for (;;) {
         std::this_thread::sleep_for(std::chrono::seconds(2));
         job_gc(ttl_ms, max_jobs);
       }
     }).detach();
+    }
   }
 
   server.handle("GET", "/api/v1/health", [&](const HttpRequest& req, HttpResponse* resp) {
@@ -595,127 +614,162 @@ int main(int argc, char** argv) {
   });
 
   server.handle("GET", "/api/v1/config", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_config_endpoint(cfg, cors_cfg, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_config_endpoint(cur, cors_cfg, req, resp);
+  });
+
+  server.handle("POST", "/api/v1/config/update", [&](const HttpRequest& req, HttpResponse* resp) {
+    handle_config_update_endpoint(&cfg_store, db_or_null, cors_cfg, req, resp);
   });
 
   server.handle("GET", "/api/v1/tools", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_tools_endpoint(cfg, cors_cfg, cfg.sessions_root_dir, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_tools_endpoint(cur, cors_cfg, cur.sessions_root_dir, /*tool_ext_or_null=*/nullptr, req, resp);
   });
 
   server.handle("GET", "/api/v1/openrouter/models", [&](const HttpRequest& req, HttpResponse* resp) {
     cors_apply(req, resp, cors_cfg);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    if (!daemon_require_auth(cfg, req, resp)) return;
-    handle_openrouter_models_endpoint(ocfg, !cfg.auth_token.empty(), req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    if (!daemon_require_auth(cur, req, resp)) return;
+    const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
+    handle_openrouter_models_endpoint(ocfg, !cur.auth_token.empty(), req, resp);
     return;
   });
 
   server.handle("GET", "/api/v1/file", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_file_endpoint(cfg, cors_cfg, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_file_endpoint(cur, cors_cfg, req, resp);
   });
 
-  const std::string sessions_root_dir = cfg.sessions_root_dir;
+  const std::string sessions_root_dir = cfg_store.snapshot().sessions_root_dir;
 
   server.handle("GET", "/api/v1/sessions", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_sessions_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_sessions_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   server.handle("POST", "/api/v1/session/new", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_session_new_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_session_new_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   server.handle("GET", "/api/v1/session", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_session_get_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_session_get_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   server.handle("GET", "/api/v1/session/audit", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_session_audit_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_session_audit_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   server.handle("GET", "/api/v1/session/client_events", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_session_client_events_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_session_client_events_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   server.handle("GET", "/api/v1/session/clients", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_session_clients_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_session_clients_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   server.handle("GET", "/api/v1/session/artifacts", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_session_artifacts_endpoint(cfg, cors_cfg, sessions_root_dir, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_session_artifacts_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   server.handle("POST", "/api/v1/session/ui_event", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_session_ui_event_endpoint(cfg, cors_cfg, db_or_null, sessions_root_dir, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_session_ui_event_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   // Client collaboration protocol (preferred name). This is an alias of /session/ui_event.
   server.handle("POST", "/api/v1/session/client_event", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_session_ui_event_endpoint(cfg, cors_cfg, db_or_null, sessions_root_dir, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_session_ui_event_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   server.handle("DELETE", "/api/v1/session", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_session_delete_endpoint(cfg, cors_cfg, db_or_null, sessions_root_dir, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_session_delete_endpoint(cur, cors_cfg, db_or_null, sessions_root_dir, req, resp);
   });
 
   // Optional: read-only troubleshooting DB queries (enabled only when DB is enabled at startup).
   server.handle("GET", "/api/v1/db/runs", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_db_runs_endpoint(cfg, cors_cfg, db_or_null, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_db_runs_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
   server.handle("GET", "/api/v1/db/run", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_db_run_endpoint(cfg, cors_cfg, db_or_null, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_db_run_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
   server.handle("GET", "/api/v1/db/artifacts", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_db_artifacts_endpoint(cfg, cors_cfg, db_or_null, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_db_artifacts_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
   server.handle("GET", "/api/v1/db/ui_actions", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_db_ui_actions_endpoint(cfg, cors_cfg, db_or_null, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_db_ui_actions_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
   server.handle("GET", "/api/v1/db/sessions", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_db_sessions_endpoint(cfg, cors_cfg, db_or_null, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_db_sessions_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
   server.handle("GET", "/api/v1/db/messages", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_db_messages_endpoint(cfg, cors_cfg, db_or_null, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_db_messages_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
   server.handle("GET", "/api/v1/db/client_events", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_db_client_events_endpoint(cfg, cors_cfg, db_or_null, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_db_client_events_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   server.handle("POST", "/api/v1/run", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_run_endpoint(cfg, ocfg, cors_cfg, db_or_null, sessions_root_dir, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
+    handle_run_endpoint(cur, ocfg, cors_cfg, db_or_null, /*tool_ext_or_null=*/nullptr, sessions_root_dir, req, resp);
   });
 
   // Async run: returns a job id immediately and completes in the background.
   server.handle("POST", "/api/v1/run_async", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_run_async_endpoint(cfg, ocfg, cors_cfg, db_or_null, sessions_root_dir, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
+    handle_run_async_endpoint(cur, ocfg, cors_cfg, db_or_null, /*tool_ext_or_null=*/nullptr, sessions_root_dir, req, resp);
   });
 
   server.handle("GET", "/api/v1/job", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_job_get_endpoint(cfg, cors_cfg, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_job_get_endpoint(cur, cors_cfg, req, resp);
   });
 
   server.handle("POST", "/api/v1/job/cancel", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_job_cancel_endpoint(cfg, cors_cfg, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_job_cancel_endpoint(cur, cors_cfg, req, resp);
   });
 
   // Server-Sent Events stream for job progress (preferred UI path vs polling).
   // This endpoint streams `agent_event` events (same object shape as entries in the `events` array) and ends with `job_done`.
   server.handle_stream("GET", "/api/v1/job/stream", [&](const HttpRequest& req, int client_fd) {
-    handle_job_stream_endpoint(cfg.auth_token, cors_cfg, req, client_fd);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_job_stream_endpoint(cur.auth_token, cors_cfg, req, client_fd);
   });
 
   server.handle("DELETE", "/api/v1/job", [&](const HttpRequest& req, HttpResponse* resp) {
-    handle_job_delete_endpoint(cfg, cors_cfg, req, resp);
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_job_delete_endpoint(cur, cors_cfg, req, resp);
   });
 
   std::string err;
-  if (!host_is_loopback(cfg.listen_host) && cfg.auth_token.empty() && !cfg.allow_unauthenticated_non_loopback) {
+  const DaemonConfig cfg_final = cfg_store.snapshot();
+  if (!host_is_loopback(cfg_final.listen_host) && cfg_final.auth_token.empty() && !cfg_final.allow_unauthenticated_non_loopback) {
     std::cerr << "Refusing to bind agentd to non-loopback host without auth.\n";
     std::cerr << "Provide --auth-token <token> (recommended) or pass --allow-unauth to override (insecure).\n";
-    std::cerr << "host=" << cfg.listen_host << "\n";
+    std::cerr << "host=" << cfg_final.listen_host << "\n";
     return 2;
   }
-  std::cerr << "agentd listening on http://" << cfg.listen_host << ":" << cfg.listen_port << "\n";
-  if (!server.serve(cfg.listen_host, cfg.listen_port, &err)) {
+  std::cerr << "agentd listening on http://" << cfg_final.listen_host << ":" << cfg_final.listen_port << "\n";
+  if (!server.serve(cfg_final.listen_host, cfg_final.listen_port, &err)) {
     std::cerr << "agentd failed: " << err << "\n";
     return 1;
   }

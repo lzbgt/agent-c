@@ -1,10 +1,12 @@
 #pragma once
 
+#include "agentd/http_types.h"
+
+#include <atomic>
 #include <cstdint>
 #include <functional>
 #include <map>
 #include <string>
-#include <atomic>
 
 // Minimal HTTP/1.1 server for local daemon development.
 //
@@ -18,21 +20,6 @@
 // - Concurrent per-connection handling (accept loop spawns a thread per client)
 
 namespace agentd {
-
-struct HttpRequest {
-  std::string method;
-  std::string raw_path; // includes optional query string
-  std::string path;     // path only (no query)
-  std::string query;    // portion after '?', without '?'
-  std::map<std::string, std::string> headers; // lower-cased keys
-  std::string body;
-};
-
-struct HttpResponse {
-  int status = 200;
-  std::map<std::string, std::string> headers;
-  std::string body;
-};
 
 class HttpServer {
  public:

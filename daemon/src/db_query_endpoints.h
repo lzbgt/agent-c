@@ -2,7 +2,7 @@
 
 #include "daemon_config.h"
 #include "cors.h"
-#include "http_server.h"
+#include "agentd/http_types.h"
 
 #include "agent_db.h"
 

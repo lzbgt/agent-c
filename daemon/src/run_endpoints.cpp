@@ -8,6 +8,7 @@
 #include "job_manager.h"
 #include "json_util.h"
 #include "openai_provider.h"
+#include "provider_util.h"
 #include "sandbox_policy.h"
 #include "session_store.h"
 #include "secrets_file.h"
@@ -27,14 +28,17 @@
 
 #include <atomic>
 #include <chrono>
+#include <cstring>
 #include <functional>
 #include <iostream>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <optional>
 #include <sstream>
 #include <string>
 #include <thread>
+#include <unordered_set>
 #include <vector>
 
 namespace agentd {
@@ -45,10 +49,476 @@ static const char* getenv_s(const char* k) {
   return (v && v[0]) ? v : nullptr;
 }
 
-static std::string provider_from_base_url(const std::string& base_url) {
-  if (url_contains_ci(base_url, "deepseek")) return "deepseek";
-  if (url_contains_ci(base_url, "openrouter")) return "openrouter";
-  return "openai";
+struct ExtendedToolExecutorCtx {
+  agent_tool_executor_t base{};
+  ToolExtension ext{};
+  std::unordered_set<std::string> ext_tool_names;
+};
+
+static agent_status_t extended_tool_execute(
+  void* vctx,
+  const char* tool_name,
+  const char* arguments_json,
+  agent_string_t* out_result
+) {
+  if (!vctx) return AGENT_ERR_INVALID_ARGUMENT;
+  auto* ctx = static_cast<ExtendedToolExecutorCtx*>(vctx);
+  const char* name = tool_name ? tool_name : "";
+  if (ctx->ext.execute_tool && ctx->ext_tool_names.find(name) != ctx->ext_tool_names.end()) {
+    return ctx->ext.execute_tool(ctx->ext.ctx, tool_name, arguments_json, out_result);
+  }
+  if (!ctx->base.execute) return AGENT_ERR_INVALID_ARGUMENT;
+  return ctx->base.execute(ctx->base.ctx, tool_name, arguments_json, out_result);
+}
+
+static agent_status_t host_read_client_events_tail_from_db(
+  void* vctx,
+  const std::string& session_id,
+  size_t max_bytes,
+  size_t /*max_files*/,
+  std::string* out_tail_jsonl
+) {
+  if (!out_tail_jsonl) return AGENT_ERR_INVALID_ARGUMENT;
+  out_tail_jsonl->clear();
+  auto* db = static_cast<AgentDb*>(vctx);
+  if (!db || !db->is_open()) return AGENT_ERR_INVALID_ARGUMENT;
+  std::string err;
+  if (!db->read_client_events_tail_jsonl(session_id, max_bytes, /*max_events=*/0, out_tail_jsonl, &err)) {
+    return AGENT_ERR_INTERNAL;
+  }
+  return AGENT_OK;
+}
+
+static bool load_session_from_db(
+  AgentDb& db,
+  const std::string& session_id,
+  agent_session_t** out_session,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (!out_session) return false;
+  *out_session = nullptr;
+
+  std::vector<std::pair<std::string, std::string>> msgs;
+  std::string err;
+  if (!db.load_session_messages(session_id, &msgs, &err)) {
+    if (out_error) *out_error = err.empty() ? "failed to load session messages" : err;
+    return false;
+  }
+
+  agent_session_t* session = nullptr;
+  if (agent_session_create(&session) != AGENT_OK || !session) {
+    if (out_error) *out_error = "failed to create session";
+    return false;
+  }
+
+  for (const auto& rc : msgs) {
+    agent_role_t role = AGENT_ROLE_USER;
+    if (!rc.first.empty()) {
+      (void)agent_role_from_string(rc.first.c_str(), &role);
+    }
+    (void)agent_session_add_message(session, role, rc.second.c_str());
+  }
+
+  *out_session = session;
+  return true;
+}
+
+static bool persist_session_to_db(
+  AgentDb& db,
+  const std::string& session_id,
+  const agent_session_t* session,
+  int64_t now_unix_ms,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (!session) {
+    if (out_error) *out_error = "missing session";
+    return false;
+  }
+  std::vector<std::pair<std::string, std::string>> msgs;
+  msgs.reserve(agent_session_message_count(session));
+  for (size_t i = 0; i < agent_session_message_count(session); i++) {
+    agent_message_view_t v{};
+    if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
+    msgs.emplace_back(agent_role_to_string(v.role), std::string(v.content ? v.content : "", v.content_len));
+  }
+  return db.replace_session_messages(session_id, msgs, now_unix_ms, out_error);
+}
+
+static bool session_leading_system_has_prefix(const agent_session_t* session, const char* prefix) {
+  if (!session || !prefix || !prefix[0]) return false;
+  const size_t prefix_len = std::strlen(prefix);
+  const size_t n = agent_session_message_count(session);
+  for (size_t i = 0; i < n && i < 8; i++) {
+    agent_message_view_t v{};
+    if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
+    if (v.role != AGENT_ROLE_SYSTEM || !v.content) return false;
+    if (v.content_len >= prefix_len && std::memcmp(v.content, prefix, prefix_len) == 0) return true;
+  }
+  return false;
+}
+
+static bool session_leading_system_has_substring(const agent_session_t* session, const char* needle) {
+  if (!session || !needle || !needle[0]) return false;
+  const std::string n(needle);
+  const size_t count = agent_session_message_count(session);
+  for (size_t i = 0; i < count && i < 8; i++) {
+    agent_message_view_t v{};
+    if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
+    if (v.role != AGENT_ROLE_SYSTEM || !v.content) return false;
+    const std::string s(v.content, v.content_len);
+    if (s.find(n) != std::string::npos) return true;
+  }
+  return false;
+}
+
+[[maybe_unused]] static bool session_has_any_system_prefix(const agent_session_t* session, const char* prefix) {
+  if (!session || !prefix || !prefix[0]) return false;
+  const size_t prefix_len = std::strlen(prefix);
+  const size_t n = agent_session_message_count(session);
+  for (size_t i = 0; i < n; i++) {
+    agent_message_view_t v{};
+    if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
+    if (v.role != AGENT_ROLE_SYSTEM || !v.content) continue;
+    if (v.content_len >= prefix_len && std::memcmp(v.content, prefix, prefix_len) == 0) return true;
+  }
+  return false;
+}
+
+[[maybe_unused]] static bool session_has_any_system_substring(const agent_session_t* session, const char* needle) {
+  if (!session || !needle || !needle[0]) return false;
+  const std::string n(needle);
+  const size_t count = agent_session_message_count(session);
+  for (size_t i = 0; i < count; i++) {
+    agent_message_view_t v{};
+    if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
+    if (v.role != AGENT_ROLE_SYSTEM || !v.content) continue;
+    const std::string s(v.content, v.content_len);
+    if (s.find(n) != std::string::npos) return true;
+  }
+  return false;
+}
+
+static bool ensure_pinned_host_system_prompts(
+  agent_session_t** session_io,
+  const std::string& tools,
+  bool no_default_system,
+  const std::string& client_kind,
+  bool allow_default_host_prompt
+) {
+  if (!session_io || !*session_io) return false;
+  if (no_default_system) return false;
+  if (tools != "host") return false;
+
+  // These are intentionally substring/prefix checks, not exact-string matches:
+  // - allows prompt evolution without breaking the "present in session" detection
+  // - avoids repeated insertion across runs in a long-lived session.
+  const char* kHostPrefix = "You are a host-side coding agent";
+  const char* kClientProfilePrefix = "CLIENT_PROFILE=";
+
+  agent_session_t* session = *session_io;
+
+  const bool want_host = allow_default_host_prompt;
+  const bool want_profile = !client_kind.empty();
+  const std::string profile = want_profile ? client_profile_system_prompt(client_kind) : std::string();
+  const std::string profile_marker = want_profile ? (std::string("CLIENT_PROFILE=") + client_kind) : std::string();
+
+  const bool have_host_leading = session_leading_system_has_prefix(session, kHostPrefix);
+  const bool have_profile_leading = want_profile ? session_leading_system_has_substring(session, profile_marker.c_str()) : true;
+
+  if ((want_host && !have_host_leading) || (want_profile && !have_profile_leading)) {
+    // Rebuild the session so the required system messages are *leading* (pinned by core compaction policy).
+    // This is required because agent_session_add_message only appends; appended system messages are not pinned
+    // and can be dropped during char-budget compaction (leading system messages are the pinned prefix).
+    struct Msg {
+      agent_role_t role;
+      std::string content;
+    };
+    std::vector<Msg> msgs;
+    msgs.reserve(agent_session_message_count(session));
+    for (size_t i = 0; i < agent_session_message_count(session); i++) {
+      agent_message_view_t v{};
+      if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
+      msgs.push_back(Msg{v.role, std::string(v.content ? v.content : "", v.content_len)});
+    }
+
+    agent_session_t* ns = nullptr;
+    if (agent_session_create(&ns) != AGENT_OK || !ns) {
+      return false;
+    }
+
+    if (want_host) {
+      (void)agent_session_add_message(ns, AGENT_ROLE_SYSTEM, default_host_system_prompt());
+    }
+    if (want_profile && !profile.empty()) {
+      // Always pin the active client's profile for this run. Any older profile strings (possibly for a different client)
+      // are deduplicated below to avoid mixing semantics in a shared session.
+      (void)agent_session_add_message(ns, AGENT_ROLE_SYSTEM, profile.c_str());
+    }
+
+    for (const auto& m : msgs) {
+      // Deduplicate older/stray copies of these injected prompts to keep the session stable.
+      if (m.role == AGENT_ROLE_SYSTEM) {
+        if (!m.content.empty()) {
+          if (m.content.rfind(kHostPrefix, 0) == 0) continue;
+          if (m.content.rfind(kClientProfilePrefix, 0) == 0) continue;
+        }
+      }
+      (void)agent_session_add_message(ns, m.role, m.content.c_str());
+    }
+
+    agent_session_destroy(session);
+    *session_io = ns;
+    return true;
+  }
+  return false;
+}
+
+struct ExpectedClientAck {
+  // category: "artifact" | "client_rpc" | "client_probe" | "ui_action"
+  std::string category;
+  std::string tool_call_id;
+  std::string rpc_id;
+  std::string rpc_kind;
+};
+
+static std::vector<ExpectedClientAck> collect_expected_client_acks(const Json::Value& events_out) {
+  std::vector<ExpectedClientAck> out;
+  if (!events_out.isArray()) return out;
+
+  for (Json::ArrayIndex i = 0; i < events_out.size(); i++) {
+    const auto& ev = events_out[i];
+    if (!ev.isObject()) continue;
+    const auto& t = ev["type"];
+    const auto& d = ev["data"];
+    if (!t.isString() || !d.isObject()) continue;
+
+    const std::string type = t.asString();
+    if (type == "artifact") {
+      ExpectedClientAck ex;
+      ex.category = "artifact";
+      if (d.isMember("tool_call_id") && d["tool_call_id"].isString()) ex.tool_call_id = d["tool_call_id"].asString();
+      if (!ex.tool_call_id.empty()) out.push_back(std::move(ex));
+      continue;
+    }
+
+    if (type == "ui_action") {
+      const auto& act = d["action"];
+      if (!act.isObject()) continue;
+      const std::string atype = act.isMember("type") && act["type"].isString() ? act["type"].asString() : "";
+      const std::string tool_call_id = d.isMember("tool_call_id") && d["tool_call_id"].isString() ? d["tool_call_id"].asString() : "";
+      if (tool_call_id.empty()) continue;
+
+      if (atype == "client_rpc" || atype == "collab_rpc") {
+        ExpectedClientAck ex;
+        ex.category = "client_rpc";
+        ex.tool_call_id = tool_call_id;
+        if (act.isMember("rpc_id") && act["rpc_id"].isString()) ex.rpc_id = act["rpc_id"].asString();
+        if (act.isMember("rpc") && act["rpc"].isObject() && act["rpc"].isMember("kind") && act["rpc"]["kind"].isString()) {
+          ex.rpc_kind = act["rpc"]["kind"].asString();
+        }
+        out.push_back(std::move(ex));
+        continue;
+      }
+
+      if (atype == "client_probe") {
+        ExpectedClientAck ex;
+        ex.category = "client_probe";
+        ex.tool_call_id = tool_call_id;
+        if (act.isMember("probe_id") && act["probe_id"].isString()) ex.rpc_id = act["probe_id"].asString();
+        if (act.isMember("probe") && act["probe"].isObject() && act["probe"].isMember("kind") && act["probe"]["kind"].isString()) {
+          ex.rpc_kind = act["probe"]["kind"].asString();
+        }
+        out.push_back(std::move(ex));
+        continue;
+      }
+
+      ExpectedClientAck ex;
+      ex.category = "ui_action";
+      ex.tool_call_id = tool_call_id;
+      out.push_back(std::move(ex));
+      continue;
+    }
+  }
+
+  // Deduplicate by category+tool_call_id.
+  std::unordered_set<std::string> seen;
+  std::vector<ExpectedClientAck> dedup;
+  dedup.reserve(out.size());
+  for (const auto& ex : out) {
+    const std::string k = ex.category + ":" + ex.tool_call_id;
+    if (k.empty() || seen.find(k) != seen.end()) continue;
+    seen.insert(k);
+    dedup.push_back(ex);
+  }
+  return dedup;
+}
+
+static bool client_event_matches_tool_call_id(const Json::Value& ev, const char* field, const std::string& tool_call_id) {
+  if (!ev.isObject() || tool_call_id.empty() || !field) return false;
+  const auto& d = ev["data"];
+  if (!d.isObject()) return false;
+  const auto& f = d[field];
+  return f.isString() && f.asString() == tool_call_id;
+}
+
+static Json::Value verify_expected_client_acks(
+  AgentDb& db,
+  const std::string& session_id,
+  int64_t after_unix_ms,
+  const std::vector<ExpectedClientAck>& expected,
+  int timeout_ms
+) {
+  Json::Value report(Json::objectValue);
+  report["ok"] = true;
+  report["session_id"] = session_id;
+  report["expected"] = (Json::UInt64)expected.size();
+  report["timeout_ms"] = timeout_ms;
+
+  if (expected.empty()) return report;
+
+  const int64_t deadline = now_unix_ms() + std::max<int>(0, timeout_ms);
+  Json::CharReaderBuilder rb;
+
+  struct Found {
+    bool ok = false;
+    std::string type;
+    std::string error;
+  };
+  std::unordered_map<std::string, Found> found;
+  auto key_for = [&](const ExpectedClientAck& ex) -> std::string { return ex.category + ":" + ex.tool_call_id; };
+  for (const auto& ex : expected) {
+    found[key_for(ex)] = Found{};
+  }
+
+  auto all_satisfied = [&]() -> bool {
+    for (const auto& kv : found) {
+      if (!kv.second.ok && kv.second.type.empty() && kv.second.error.empty()) return false;
+    }
+    return true;
+  };
+
+  while (now_unix_ms() <= deadline) {
+    std::string tail;
+    std::string err;
+    if (!db.read_client_events_tail_jsonl(session_id, /*max_bytes=*/1024 * 1024, /*max_events=*/0, &tail, &err)) {
+      report["ok"] = false;
+      report["error"] = err.empty() ? "failed to read client events" : err;
+      return report;
+    }
+
+    if (!tail.empty()) {
+      std::istringstream iss(tail);
+      std::string line;
+      while (std::getline(iss, line)) {
+        if (line.empty()) continue;
+        std::string perr;
+        Json::Value ev;
+        std::istringstream lss(line);
+        if (!Json::parseFromStream(rb, lss, &ev, &perr) || !ev.isObject()) continue;
+
+        // Ignore events from before this run (best-effort).
+        if (after_unix_ms > 0 && ev.isMember("ts_unix_ms")) {
+          const auto& ts = ev["ts_unix_ms"];
+          int64_t tms = 0;
+          if (ts.isInt64()) tms = ts.asInt64();
+          else if (ts.isUInt64()) tms = (int64_t)ts.asUInt64();
+          else if (ts.isInt()) tms = (int64_t)ts.asInt();
+          if (tms > 0 && tms < after_unix_ms) continue;
+        }
+
+        const std::string type = ev.isMember("type") && ev["type"].isString() ? ev["type"].asString() : "";
+        if (type.empty()) continue;
+
+        for (const auto& ex : expected) {
+          const std::string key = key_for(ex);
+          auto it = found.find(key);
+          if (it == found.end()) continue;
+          if (it->second.ok || !it->second.type.empty() || !it->second.error.empty()) continue;
+
+          if (ex.category == "artifact") {
+            if (type == "artifact_rendered" && client_event_matches_tool_call_id(ev, "tool_call_id", ex.tool_call_id)) {
+              it->second.ok = true;
+              it->second.type = type;
+            } else if (type == "artifact_render_failed" && client_event_matches_tool_call_id(ev, "tool_call_id", ex.tool_call_id)) {
+              it->second.ok = false;
+              it->second.type = type;
+              const auto& d = ev["data"];
+              it->second.error = (d.isObject() && d.isMember("error") && d["error"].isString()) ? d["error"].asString() : "artifact failed";
+            }
+            continue;
+          }
+
+          if (ex.category == "client_rpc") {
+            if (type == "client_rpc_result" && client_event_matches_tool_call_id(ev, "request_tool_call_id", ex.tool_call_id)) {
+              it->second.type = type;
+              const auto& d = ev["data"];
+              const bool ok = d.isObject() && d.isMember("ok") && d["ok"].isBool() ? d["ok"].asBool() : false;
+              it->second.ok = ok;
+              if (!ok) {
+                it->second.error = (d.isObject() && d.isMember("error") && d["error"].isString()) ? d["error"].asString() : "client_rpc failed";
+              }
+            }
+            continue;
+          }
+
+          if (ex.category == "client_probe") {
+            if (type == "client_probe_result" && client_event_matches_tool_call_id(ev, "request_tool_call_id", ex.tool_call_id)) {
+              it->second.type = type;
+              const auto& d = ev["data"];
+              const bool ok = d.isObject() && d.isMember("ok") && d["ok"].isBool() ? d["ok"].asBool() : false;
+              it->second.ok = ok;
+              if (!ok) {
+                it->second.error = (d.isObject() && d.isMember("error") && d["error"].isString()) ? d["error"].asString() : "client_probe failed";
+              }
+            }
+            continue;
+          }
+
+          if (ex.category == "ui_action") {
+            if (type == "ui_action_shown" && client_event_matches_tool_call_id(ev, "tool_call_id", ex.tool_call_id)) {
+              it->second.ok = true;
+              it->second.type = type;
+            }
+            continue;
+          }
+        }
+      }
+    }
+
+    if (all_satisfied()) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+
+  Json::Value details(Json::arrayValue);
+  bool ok_all = true;
+  for (const auto& ex : expected) {
+    const std::string key = key_for(ex);
+    const auto it = found.find(key);
+    Json::Value row(Json::objectValue);
+    row["category"] = ex.category;
+    row["tool_call_id"] = ex.tool_call_id;
+    if (!ex.rpc_id.empty()) row["rpc_id"] = ex.rpc_id;
+    if (!ex.rpc_kind.empty()) row["rpc_kind"] = ex.rpc_kind;
+    if (it == found.end() || (it->second.type.empty() && it->second.error.empty())) {
+      row["ok"] = false;
+      row["status"] = "missing";
+      ok_all = false;
+    } else {
+      row["ok"] = it->second.ok;
+      row["status"] = it->second.type;
+      if (!it->second.ok) {
+        row["error"] = it->second.error;
+        ok_all = false;
+      }
+    }
+    details.append(row);
+  }
+  report["ok"] = ok_all;
+  report["details"] = details;
+  if (!ok_all) report["error"] = "client acknowledgement verification failed";
+  return report;
 }
 
 // Parses the daemon run request body and returns a response JSON object (HTTP-level errors are represented in JSON).
@@ -56,6 +526,7 @@ static Json::Value run_request_to_json(
   const DaemonConfig& daemon_cfg,
   const OpenAIClientConfig& ocfg,
   AgentDb* db_or_null,
+  const ToolExtension* tool_ext_or_null,
   const std::string& sessions_root_dir,
   const std::string& request_body,
   const char* job_id_or_null
@@ -99,8 +570,17 @@ static Json::Value run_request_to_json(
     const std::string run_provider = provider_from_base_url(run_cfg.base_url);
     const std::string daemon_provider = provider_from_base_url(ocfg.base_url);
     const bool provider_mismatch = base_url_explicit && (run_provider != daemon_provider);
+    // If a daemon-side provider-specific key exists, prefer it over a single global api_key.
+    {
+      const auto it = daemon_cfg.provider_keys.find(run_provider);
+      if (it != daemon_cfg.provider_keys.end() && !it->second.empty()) {
+        run_cfg.api_key = it->second;
+      }
+    }
+
     if (run_cfg.api_key.empty() || provider_mismatch) {
       std::string key;
+      // Environment variable fallback (common deployment style).
       if (run_provider == "deepseek") {
         if (const char* k = getenv_s("DEEPSEEK_API_KEY")) key = k;
         else if (const char* k2 = getenv_s("OPENAI_API_KEY")) key = k2;
@@ -114,6 +594,7 @@ static Json::Value run_request_to_json(
         else if (const char* k2 = getenv_s("OPENROUTER_API_KEY")) key = k2;
         else if (const char* k3 = getenv_s("DEEPSEEK_API_KEY")) key = k3;
       }
+      // Repo-local secrets discovery (gitignored .not_in_repo / project.local.md).
       if (key.empty()) {
         if (auto k = load_provider_key_best_effort(run_provider)) {
           key = *k;
@@ -137,6 +618,10 @@ static Json::Value run_request_to_json(
     const Json::Value& c = args["client"];
     if (c.isMember("kind") && c["kind"].isString()) client_kind = c["kind"].asString();
   }
+  const bool require_client_acks =
+    args.isMember("require_client_acks") && args["require_client_acks"].isBool()
+      ? args["require_client_acks"].asBool()
+      : false;
   const bool requested_tools_root_set = args.isMember("tools_root") && args["tools_root"].isString();
   const std::string requested_tools_root = requested_tools_root_set ? args["tools_root"].asString() : "";
   std::string tools_root;
@@ -245,35 +730,20 @@ static Json::Value run_request_to_json(
   const int64_t run_ts_ms = now_unix_ms();
 
   agent_session_t* session = nullptr;
-  SessionStoreConfig store_cfg;
-  store_cfg.root_dir = sessions_root_dir;
-
-  agent_persistor_t persistor{};
-  struct PersistorGuard {
-    agent_persistor_t* p;
-    ~PersistorGuard() { agent_persistor_destroy(p); }
-  } pers_guard{&persistor};
-
-  {
-    const agent_status_t st = agent_file_persistor_create(store_cfg.root_dir.c_str(), &persistor);
-    if (st != AGENT_OK) {
+  if (!no_session) {
+    if (!db_or_null || !db_or_null->is_open()) {
       Json::Value o(Json::objectValue);
       o["ok"] = false;
       o["rpc_status"] = 500;
-      o["error"] = "failed to init persistor";
-      o["status"] = (Json::Int64)st;
+      o["error"] = "db not available (session persistence required)";
       return o;
     }
-  }
-
-  if (!no_session) {
-    const agent_status_t st = persistor.load(persistor.ctx, session_id.c_str(), &session);
-    if (st != AGENT_OK) {
+    std::string load_err;
+    if (!load_session_from_db(*db_or_null, session_id, &session, &load_err)) {
       Json::Value o(Json::objectValue);
       o["ok"] = false;
       o["rpc_status"] = 500;
-      o["error"] = "failed to load session";
-      o["status"] = (Json::Int64)st;
+      o["error"] = load_err.empty() ? "failed to load session from db" : load_err;
       return o;
     }
   } else {
@@ -294,24 +764,47 @@ static Json::Value run_request_to_json(
   if (agent_session_message_count(session) == 0) {
     if (!system_msg.empty()) {
       agent_session_add_message(session, AGENT_ROLE_SYSTEM, system_msg.c_str());
-    } else if (!no_default_system && tools == "host") {
-      agent_session_add_message(session, AGENT_ROLE_SYSTEM, default_host_system_prompt());
+      // Even when the caller provides a custom system message, still inject the client profile
+      // (DoD semantics / UI-specific RPC guidance) if enabled.
+      if (!no_default_system && tools == "host" && !client_kind.empty()) {
+        const std::string profile = client_profile_system_prompt(client_kind);
+        if (!profile.empty()) {
+          agent_session_add_message(session, AGENT_ROLE_SYSTEM, profile.c_str());
+        }
+      }
+    } else {
+      if (!no_default_system && tools == "host") {
+        agent_session_add_message(session, AGENT_ROLE_SYSTEM, default_host_system_prompt());
+        if (!client_kind.empty()) {
+          const std::string profile = client_profile_system_prompt(client_kind);
+          if (!profile.empty()) {
+            agent_session_add_message(session, AGENT_ROLE_SYSTEM, profile.c_str());
+          }
+        }
+      }
     }
-    if (!no_default_system && tools == "host" && !client_kind.empty()) {
-      const std::string profile = client_profile_system_prompt(client_kind);
-      if (!profile.empty()) {
-        agent_session_add_message(session, AGENT_ROLE_SYSTEM, profile.c_str());
+  } else {
+    // For long-lived sessions (e.g. Web UI "default"), do not rely on "empty session" to ensure
+    // essential host/tool + DoD guidance is present. If the session was created via tools=none or
+    // imported from an older version, it may have no system prompt at all.
+    const bool changed = ensure_pinned_host_system_prompts(&session, tools, no_default_system, client_kind, /*allow_default_host_prompt=*/true);
+    if (changed && !no_session) {
+      // Persist the prefix change even if the run later fails, so subsequent runs don't regress.
+      if (db_or_null && db_or_null->is_open()) {
+        (void)persist_session_to_db(*db_or_null, session_id, session, run_ts_ms, nullptr);
       }
     }
   }
 
   agent_tool_registry_t* registry = nullptr;
+  agent_tool_executor_t base_executor{};
   agent_tool_executor_t executor{};
-  bool need_destroy_executor = false;
+  std::unique_ptr<ExtendedToolExecutorCtx> extended_executor;
+  bool need_destroy_host_executor = false;
   const bool use_tool_loop = (tools != "none");
 
   if (tools == "basic") {
-    if (toolset_basic_create(&registry, &executor) != AGENT_OK) {
+    if (toolset_basic_create(&registry, &base_executor) != AGENT_OK) {
       Json::Value o(Json::objectValue);
       o["ok"] = false;
       o["rpc_status"] = 500;
@@ -319,6 +812,7 @@ static Json::Value run_request_to_json(
       agent_session_destroy(session);
       return o;
     }
+    executor = base_executor;
   } else if (tools == "host") {
     HostToolsetConfig hcfg;
     hcfg.root_dir = tools_root;
@@ -340,8 +834,12 @@ static Json::Value run_request_to_json(
     if (!no_session) {
       hcfg.sessions_root_dir = sessions_root_dir;
       hcfg.session_id = session_id;
+      if (db_or_null && db_or_null->is_open()) {
+        hcfg.read_client_events_tail = host_read_client_events_tail_from_db;
+        hcfg.read_client_events_tail_ctx = (void*)db_or_null;
+      }
     }
-    if (toolset_host_create(hcfg, &registry, &executor) != AGENT_OK) {
+    if (toolset_host_create(hcfg, &registry, &base_executor) != AGENT_OK) {
       Json::Value o(Json::objectValue);
       o["ok"] = false;
       o["rpc_status"] = 500;
@@ -349,7 +847,8 @@ static Json::Value run_request_to_json(
       agent_session_destroy(session);
       return o;
     }
-    need_destroy_executor = true;
+    need_destroy_host_executor = true;
+    executor = base_executor;
   } else if (tools != "none") {
     Json::Value o(Json::objectValue);
     o["ok"] = false;
@@ -357,6 +856,41 @@ static Json::Value run_request_to_json(
     o["error"] = "invalid tools (expected: none|basic|host)";
     agent_session_destroy(session);
     return o;
+  }
+
+  // Optional tool extension: allow embedding hosts to append extra tools and execute them.
+  // We only dispatch names added by the extension.
+  if (registry && tool_ext_or_null && tool_ext_or_null->register_tools) {
+    const size_t before = agent_tool_registry_count(registry);
+    const agent_status_t st = tool_ext_or_null->register_tools(tool_ext_or_null->ctx, registry);
+    if (st != AGENT_OK) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["rpc_status"] = 500;
+      o["error"] = "tool extension register_tools failed";
+      agent_tool_registry_destroy(registry);
+      if (need_destroy_host_executor) {
+        toolset_host_destroy(&base_executor);
+      }
+      agent_session_destroy(session);
+      return o;
+    }
+    const size_t after = agent_tool_registry_count(registry);
+    if (after > before && tool_ext_or_null->execute_tool) {
+      extended_executor = std::make_unique<ExtendedToolExecutorCtx>();
+      extended_executor->base = base_executor;
+      extended_executor->ext = *tool_ext_or_null;
+      for (size_t i = before; i < after; i++) {
+        agent_tool_def_view_t v{};
+        if (agent_tool_registry_get(registry, i, &v) != AGENT_OK) continue;
+        if (!v.name || !v.name[0]) continue;
+        extended_executor->ext_tool_names.insert(v.name);
+      }
+      if (!extended_executor->ext_tool_names.empty()) {
+        executor.ctx = extended_executor.get();
+        executor.execute = extended_tool_execute;
+      }
+    }
   }
 
   bool ok = false;
@@ -453,6 +987,7 @@ static Json::Value run_request_to_json(
         events_out = ev;
       }
     }
+
     if (ok) {
       // Persist the conversational session:
       // - user prompt
@@ -807,8 +1342,33 @@ static Json::Value run_request_to_json(
   if (registry) {
     agent_tool_registry_destroy(registry);
   }
-  if (need_destroy_executor) {
-    toolset_host_destroy(&executor);
+  if (need_destroy_host_executor) {
+    toolset_host_destroy(&base_executor);
+  }
+
+  // Client acknowledgement verification (prevents "false done" reports in interactive UIs).
+  //
+  // IMPORTANT: only enforce for async jobs (job_id present). For sync `/api/v1/run`, the client receives events
+  // only at the end of the request, so blocking here would deadlock the UI (it can't ack what it can't render yet).
+  if (ok && require_client_acks && !job_id_local.empty() && !no_session && db_or_null && db_or_null->is_open()) {
+    const std::vector<ExpectedClientAck> expected = collect_expected_client_acks(events_out);
+    if (!expected.empty()) {
+      Json::Value report = verify_expected_client_acks(*db_or_null, session_id, run_ts_ms, expected, /*timeout_ms=*/5000);
+      {
+        Json::Value d(Json::objectValue);
+        d["require_client_acks"] = true;
+        d["report"] = report;
+        if (!events_out.isArray()) events_out = Json::Value(Json::arrayValue);
+        Json::Value e(Json::objectValue);
+        e["type"] = "client_ack_verify";
+        e["data"] = d;
+        events_out.append(e);
+      }
+      if (report.isObject() && report.isMember("ok") && report["ok"].isBool() && report["ok"].asBool() == false) {
+        ok = false;
+        err = report.isMember("error") && report["error"].isString() ? report["error"].asString() : "client acknowledgement verification failed";
+      }
+    }
   }
 
   Json::Value out(Json::objectValue);
@@ -823,18 +1383,13 @@ static Json::Value run_request_to_json(
   out["effective_host_policy"] = host_policy_to_string(effective_policy);
   out["effective_timeout_ms"] = (Json::Int64)run_cfg.timeout_ms;
   out["effective_stream_assistant"] = stream_assistant;
+  out["effective_require_client_acks"] = require_client_acks;
   out["verbose"] = verbose;
   out["events"] = events_out;
 
-  // Persist session if enabled.
-  if (ok && !no_session) {
-    // Best-effort save.
-    (void)persistor.save(persistor.ctx, session_id.c_str(), session);
-  }
-
-  // Optional DB mirror for troubleshooting.
+  // Canonical persistence: sessions + audit + telemetry in SQLite.
   //
-  // Respect `no_session`: "ephemeral" runs should not persist anything to disk, including the DB mirror.
+  // Respect `no_session`: "ephemeral" runs should not persist anything to disk.
   if (!no_session && db_or_null && db_or_null->is_open()) {
     // Mirror session messages (as of the end of this run).
     std::vector<std::pair<std::string, std::string>> msgs;
@@ -979,31 +1534,31 @@ static Json::Value run_request_to_json(
         }
       }
     }
-  }
 
-  // Append a per-run audit record (host-only; used by `/api/v1/session/audit`).
-  if (!no_session && !session_id.empty()) {
-    Json::Value record(Json::objectValue);
-    record["ts_unix_ms"] = (Json::Int64)run_ts_ms;
-    record["session_id"] = session_id;
-    record["ok"] = ok;
-    record["model"] = run_cfg.model;
-    record["base_url"] = run_cfg.base_url;
-    record["tools"] = tools;
-    record["yolo"] = yolo;
-    record["tools_root"] = tools_root;
-    record["host_policy"] = host_policy_to_string(effective_policy);
-    record["prompt"] = prompt;
-    record["assistant_text"] = assistant_text;
-    if (http_status) record["http_status"] = (Json::Int64)http_status;
-    if (!http_body.empty()) record["http_body"] = http_body;
-    if (!ok) record["error"] = err;
-    if (events_out.isArray()) {
-      record["events"] = events_out;
+    // Append a per-run audit record (used by `/api/v1/session/audit`).
+    if (!session_id.empty()) {
+      Json::Value record(Json::objectValue);
+      record["ts_unix_ms"] = (Json::Int64)run_ts_ms;
+      record["session_id"] = session_id;
+      record["ok"] = ok;
+      record["model"] = run_cfg.model;
+      record["base_url"] = run_cfg.base_url;
+      record["tools"] = tools;
+      record["yolo"] = yolo;
+      record["tools_root"] = tools_root;
+      record["host_policy"] = host_policy_to_string(effective_policy);
+      record["prompt"] = prompt;
+      record["assistant_text"] = assistant_text;
+      if (http_status) record["http_status"] = (Json::Int64)http_status;
+      if (!http_body.empty()) record["http_body"] = http_body;
+      if (!ok) record["error"] = err;
+      if (events_out.isArray()) {
+        record["events"] = events_out;
+      }
+      Json::StreamWriterBuilder wb;
+      wb["indentation"] = "";
+      (void)db_or_null->insert_audit_record(session_id, run_ts_ms, run_id, Json::writeString(wb, record), nullptr);
     }
-    Json::StreamWriterBuilder wb;
-    wb["indentation"] = "";
-    (void)session_store_append_audit_jsonl(store_cfg, session_id, Json::writeString(wb, record));
   }
 
   agent_session_destroy(session);
@@ -1017,6 +1572,7 @@ void handle_run_endpoint(
   const OpenAIClientConfig& ocfg,
   const CorsConfig& cors_cfg,
   AgentDb* db_or_null,
+  const ToolExtension* tool_ext_or_null,
   const std::string& sessions_root_dir,
   const HttpRequest& req,
   HttpResponse* resp
@@ -1027,7 +1583,7 @@ void handle_run_endpoint(
 
   const auto started = std::chrono::steady_clock::now();
   std::cerr << "agentd: /api/v1/run start bytes=" << req.body.size() << "\n";
-  Json::Value out = run_request_to_json(cfg, ocfg, db_or_null, sessions_root_dir, req.body, nullptr);
+  Json::Value out = run_request_to_json(cfg, ocfg, db_or_null, tool_ext_or_null, sessions_root_dir, req.body, nullptr);
   const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
   const bool ok = out.isObject() && out.isMember("ok") && out["ok"].isBool() && out["ok"].asBool();
   std::cerr << "agentd: /api/v1/run done ok=" << (ok ? "true" : "false") << " ms=" << ms << "\n";
@@ -1042,6 +1598,7 @@ void handle_run_async_endpoint(
   const OpenAIClientConfig& ocfg,
   const CorsConfig& cors_cfg,
   AgentDb* db_or_null,
+  const ToolExtension* tool_ext_or_null,
   const std::string& sessions_root_dir,
   const HttpRequest& req,
   HttpResponse* resp
@@ -1092,7 +1649,7 @@ void handle_run_async_endpoint(
   std::cerr << "agentd: /api/v1/run_async accepted job=" << job_id << " bytes=" << req.body.size() << "\n";
 
   const std::string body_copy = req.body;
-  std::thread([job_id, body_copy, cfg, ocfg, db_or_null, sessions_root_dir]() mutable {
+  std::thread([job_id, body_copy, cfg, ocfg, db_or_null, tool_ext_or_null, sessions_root_dir]() mutable {
     const auto started = std::chrono::steady_clock::now();
     std::cerr << "agentd: /api/v1/run_async job=" << job_id << " start bytes=" << body_copy.size() << "\n";
     job_set_status(job_id, "running", "");
@@ -1107,7 +1664,7 @@ void handle_run_async_endpoint(
       job_append_event(job_id, "start", json_stringify(d));
     }
     try {
-      Json::Value out = run_request_to_json(cfg, ocfg, db_or_null, sessions_root_dir, body_copy, job_id.c_str());
+      Json::Value out = run_request_to_json(cfg, ocfg, db_or_null, tool_ext_or_null, sessions_root_dir, body_copy, job_id.c_str());
       job_set_result(job_id, out);
     } catch (const std::exception& e) {
       Json::Value o(Json::objectValue);

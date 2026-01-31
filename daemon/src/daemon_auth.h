@@ -1,7 +1,7 @@
 #pragma once
 
 #include "daemon_config.h"
-#include "http_server.h"
+#include "agentd/http_types.h"
 
 namespace agentd {
 
@@ -11,4 +11,3 @@ bool daemon_auth_ok(const DaemonConfig& cfg, const HttpRequest& req);
 bool daemon_require_auth(const DaemonConfig& cfg, const HttpRequest& req, HttpResponse* resp);
 
 }  // namespace agentd
-

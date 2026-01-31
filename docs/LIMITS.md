@@ -124,11 +124,10 @@ For long-running daemons, it is often better to bound the most dangerous/high-no
 a global per-tool cap that can break benign workflows.
 
 Recommended defaults (can be tuned per operator):
-- `proc_exec=4` (prevents runaway camera-capture or repeated subprocess loops)
+- `proc_exec=4` (prevents runaway capture attempts or repeated subprocess loops)
 - `shell_exec=16` (still allows normal build/test flows; encourages batching multiple commands in one call)
 - `artifact_register=16` (prevents runaway artifact spamming)
 - `ui_action=16` (prevents runaway UI action spamming)
-- `camera_capture=1` (single-shot capture tool; prefer over repeated `proc_exec` capture scripts)
 
 ## Related docs
 

@@ -1,20 +1,22 @@
-# Agentd SQLite DB (Troubleshooting Store)
+# Agentd SQLite DB (Canonical Daemon Store)
 
-Date: 2026-01-30
+Date: 2026-01-31
 
-This repo currently persists:
+As of 2026-01-31, `agentd` stores its canonical daemon state in SQLite:
+- sessions + message history
+- runs + events + tool records
+- artifacts + UI actions
+- client events (client ↔ daemon collaboration)
+- audit records (the Web UI “History” feed)
 
-- session messages (conversation): `~/.agent/sessions/<id>.sess` (+ optional `.json`)
-- detailed tool/LLM timeline (“audit”): `~/.agent/sessions/<id>.events.jsonl`
-
-Those files are convenient and portable, but they are awkward to query when debugging problems like:
+This is convenient for debugging problems like:
 
 - “Why did the daemon keep running a tool after the job finished?”
 - “How many times did we call `shell_exec` in this job?”
 - “Show me all tool outputs larger than N bytes.”
 - “Which runs produced repeated camera captures?”
 
-This document specifies an **optional SQLite store** that mirrors daemon runs/sessions into a queryable database.
+Note: the CLI (`./build/agent`) still uses the portable file-backed session store under `~/.agent/sessions/` by default.
 
 ## Goals
 
@@ -31,21 +33,17 @@ This document specifies an **optional SQLite store** that mirrors daemon runs/se
 
 ## Non-goals
 
-- Replace the portable `.sess` format (the DB is a mirror / troubleshooting store first).
 - Provide a full “analytics” layer (we just want reliable storage + simple queries).
 - Store binary blobs (images/audio). Those should be stored as files, with DB rows referencing paths.
 
 ## Enabling
 
-`agentd` adds:
+`agentd` always uses SQLite. You can choose where the DB lives:
+- `--db-path <path>` (optional): set an explicit SQLite file path.
+- `AGENTD_DB_PATH` env var (optional): alternative to the flag.
+- Default: `./agentd.db` in the daemon working directory.
 
-- `--db-path <path>` (optional): enables the DB mirror and writes to the given SQLite file.
-- `AGENTD_DB_PATH` env var (optional) as an alternative to the flag.
-
-If DB is disabled, daemon behavior is unchanged (file-based session + JSONL audit only).
-
-Note: DB mirroring respects `no_session: true` requests. If a run is marked ephemeral, the daemon will not persist it
-to disk (including the DB mirror).
+Note: DB persistence respects `no_session: true` requests. If a run is marked ephemeral, the daemon will not persist it to disk.
 
 ## Schema versioning
 
@@ -56,7 +54,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v4)
+## Schema (v6)
 
 All timestamps are Unix milliseconds.
 
@@ -173,7 +171,7 @@ The DB does not execute actions; it stores them for troubleshooting and UI index
 - `ts_unix_ms INTEGER NOT NULL`
 - `session_id TEXT NOT NULL`
 - `tool_call_id TEXT` (optional)
-- `type TEXT` (optional; `notify|play_audio|...`)
+- `type TEXT` (optional; `notify|client_rpc|...`)
 - `title TEXT` (optional)
 - `message TEXT` (optional)
 - `path TEXT` (optional; for media actions)
@@ -204,6 +202,22 @@ UI-side acknowledgements.
 Indexes:
 - `CREATE INDEX client_events_by_session ON client_events(session_id, ts_unix_ms DESC)`
 - `CREATE INDEX client_events_by_type ON client_events(type)`
+
+### `audit_records`
+
+Stores the per-run “History” records returned by `GET /api/v1/session/audit`.
+
+Each row stores the original JSON object string (the same shape returned by the endpoint) so schema changes remain
+forward-compatible.
+
+- `id INTEGER PRIMARY KEY AUTOINCREMENT`
+- `session_id TEXT NOT NULL`
+- `ts_unix_ms INTEGER NOT NULL`
+- `run_id INTEGER` (nullable)
+- `record_json TEXT NOT NULL` (JSON object string)
+
+Index:
+- `CREATE INDEX audit_records_by_session ON audit_records(session_id, ts_unix_ms DESC, id DESC)`
 
 ## Example queries
 

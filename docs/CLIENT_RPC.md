@@ -110,7 +110,38 @@ Important engineering reality:
 
 ## Agent → client request (via `ui_action`)
 
-Agent emits:
+Agent emits a **tool call** to `ui_action` whose arguments JSON contains a structured action payload.
+
+Canonical arguments shape (exact field names):
+
+```json
+{
+  "type": "client_rpc",
+  "title": "Optional short title for UI",
+  "rpc_id": "rpc_123",
+  "rpc": {
+    "kind": "dom_query",
+    "args": { "selector": "#app", "fields": ["tag", "id"] }
+  },
+  "auto_run": true,
+  "side_effects": false
+}
+```
+
+Notes:
+- `type` must be `"client_rpc"` for this collaboration protocol.
+- `rpc_id` is the deterministic correlation key. Recommended: set it equal to the originating `tool_call_id`.
+- `rpc.kind` is the allowlisted RPC kind for the client.
+- `rpc.args` is a kind-specific object (bounded).
+- `auto_run` requests that the client executes immediately when settings allow.
+- `side_effects` is advisory; clients can also infer side-effect expectations by `rpc.kind`.
+
+Equivalent legacy shapes are still accepted by the Web UI (for backwards compatibility):
+- `rpc_id` may be omitted if `tool_call_id` exists (client will correlate by `tool_call_id`)
+- `rpc.args` may be omitted and the client will treat `rpc` as the args object
+- `side_effects` may also be provided as `rpc.side_effects`
+
+Example:
 
 ```json
 {
@@ -119,7 +150,6 @@ Agent emits:
   "rpc_id": "rpc_123",
   "rpc": {
     "kind": "media_observe",
-    "side_effects": true,
     "args": {
       "tool_call_id": "call_abc",
       "events": ["play", "pause", "ended", "error"]
@@ -206,15 +236,15 @@ Read-only:
 - `location`: bounded URL/title snapshot (query params redacted when they look sensitive)
 - `media_snapshot`: bounded audio/video snapshot (paused/currentTime/duration)
 - `dom_query`: bounded DOM query (selector + allowlisted fields)
+- `artifact_url`: resolve an artifact path to a **browser-usable URL** (typically a `blob:` URL) so the agent can embed it via DOM ops
 - `state_snapshot`: convenience combo of `location` + `media_snapshot`
 
 Side-effecting (requires explicit client “side effects” enablement):
 - `dom_click`: click by selector
 - `dom_set_value`: set input/textarea value by selector (does not echo value back)
 - `dom_apply`: apply a DOM patch (create/edit/delete/dispatch). This is the “native surface” primitive for collaboration UI changes.
-- `media_play`: attempt `HTMLMediaElement.play()` by selector (browser policies apply)
+- `media_play`: attempt to play media (browser policies apply)
 - `media_observe`: attach media listeners and emit `client_rpc_progress` events correlated by `rpc_id`
-- `artifact_play`: play an artifact (audio/video) by `path` (no DOM selector required) and emit correlated progress events
 - `navigate`: navigate to a new URL (likely reloads the client)
 
 Scriptable (must-have power primitive):
@@ -224,6 +254,16 @@ Scriptable (must-have power primitive):
 Unsafe (main-thread; optional but powerful):
 - `page_eval`: run agent-provided JS on the browser main thread with access to the same API bridge.
   - Not safely preemptible if the script blocks the event loop; treat “reload the page” as the kill switch.
+
+### Full-power DOM note (Web UI)
+
+If you need **unbounded DOM power** (create arbitrary elements, attach handlers, query state, do complex presentation),
+use `page_eval`. This is the generic solution for **interactive media presentation tasks** where “download/open link” is not sufficient:
+- It runs in the browser main thread.
+- It can access `window` / `document` directly (it is not limited to the API bridge).
+- Use it when `dom_apply` is too limiting.
+
+Because main-thread JS cannot be safely preempted, keep code short and use async/await (avoid infinite loops).
 
 ### `dom_apply` schema (v1, Web UI client)
 
@@ -251,33 +291,68 @@ Supported ops (bounded):
 
 Return value includes `{applied,total,ops:[...]}` with per-op success/errors.
 
-### `artifact_play` schema (v1, Web UI client)
+### `media_play` schema (v1, Web UI client)
 
-`rpc.kind="artifact_play"` is a side-effecting primitive that does **not** require DOM selectors.
-It is a collaboration surface “play this thing” primitive:
+`rpc.kind="media_play"` is side-effecting. It supports:
+
+1) **Play an existing element** (recommended):
+
+```json
+{ "selector": "#player" }
+```
+
+2) **Convenience: create/reuse an element and play a URL or artifact path**:
+
+```json
+{ "id": "player", "url": "blob:..." }
+```
+
+or (artifact paths; the client resolves to a `blob:` URL internally, including daemon auth headers when needed):
+
+```json
+{ "id": "player", "path": "out/hello.mp3", "resolved_path": "/abs/.../out/hello.mp3", "yolo": true }
+```
+
+Notes:
+- Autoplay may be blocked without a user gesture; the result will include an error string in that case.
+- Prefer explicitly creating a UI player (controls) via `page_eval`/`dom_apply` and using `media_observe` to verify a `play` event.
+
+### Media presentation note
+
+This repo intentionally does **not** expose a dedicated `artifact_play` RPC in the Web UI client.
+Instead, agents should:
+- register files via `artifact_register` and rely on `/api/v1/file` for download/preview, and/or
+- use `dom_apply` / `page_eval` / `script_eval` to create whatever UI elements are appropriate for the client surface.
+
+### `artifact_url` schema (v1, Web UI client)
+
+`rpc.kind="artifact_url"` with:
 
 ```json
 {
   "path": "out/hello.wav",
-  "kind": "audio",
-  "autoplay": true,
-  "repeat": 2,
-  "wait_for": "finished",
-  "timeout_ms": 60000
+  "resolved_path": "/abs/path/to/out/hello.wav",
+  "yolo": true
 }
 ```
 
-Fields:
-- `path` (string, required): host file path (same path you would use for `artifact_register`).
-- `kind` (string, optional): `"audio"|"video"`; if omitted, the client guesses from extension.
-- `autoplay` (bool, optional): default `true` (clients may still be blocked by browser policies).
-- `repeat` (int, optional): `1..16` (default `1`).
-- `wait_for` (string, optional): `"started" | "ended" | "finished"` (default `"started"`).
-  - `"finished"` means “after repeat loops finished” (best-effort).
-- `timeout_ms` (int, optional): max time to wait when `wait_for` is `"ended"`/`"finished"`.
+Behavior:
+- The client fetches bytes from `GET /api/v1/file?path=...&yolo=...` (including `Authorization` if the daemon requires it),
+  then returns a `blob:` URL that can be used in DOM (`<audio src>`, `<video src>`, `<img src>`, download links, etc.).
+- In YOLO mode, the client may fall back from `path` to `resolved_path` (absolute) if the daemon tools root differs from the run tools root.
 
-Progress events (example):
-- `client_rpc_progress` `name="ready"` / `"started"` / `"ended"` / `"finished"` / `"failed"`
+Return example:
+
+```json
+{
+  "kind": "artifact_url",
+  "ok": true,
+  "url": "blob:https://.../....",
+  "source_path": "out/hello.wav",
+  "content_type": "audio/wav",
+  "size_bytes": 12345
+}
+```
 
 ### `script_eval` schema (killable worker; MUST-have)
 

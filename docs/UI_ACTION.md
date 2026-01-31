@@ -7,7 +7,7 @@ This document defines a **safe, explicit** mechanism for the agent to request **
 It complements `docs/PROTOCOL.md` and `docs/LIMITS.md`:
 - `artifact` events solve *media presentation* (render files like images/audio/video).
 - `ui_action` events solve *UI intent* (ask the UI to perform a user-facing action like showing a notification, or preparing
-  an audio player with “play N times” controls).
+  a client-side RPC / DOM patch / scene update).
 
 ## Goals
 
@@ -39,10 +39,8 @@ It complements `docs/PROTOCOL.md` and `docs/LIMITS.md`:
     - `type` (string): action type (allowlisted)
     - `title` (string, optional): UI label
     - `message` (string, optional): notification text
-    - `path` (string, optional): file path for media actions (resolved via `/api/v1/file`)
+    - `path` (string, optional): file path for presentation helpers (resolved via `/api/v1/file`)
     - `mime` (string, optional)
-    - `repeat` (int, optional): e.g. play audio N times (clamped by UI)
-    - `autoplay` (bool, optional): request autoplay (UI may require user opt-in)
 
 ## Host tool: `ui_action` (tools=host)
 
@@ -55,8 +53,6 @@ The agent can request a UI action by calling:
   - `message` (string, optional)
   - `path` (string, optional)
   - `mime` (string, optional)
-  - `repeat` (int, optional)
-  - `autoplay` (bool, optional)
 
 Return (tool output string; JSON envelope):
 - `ok` (bool)
@@ -73,7 +69,6 @@ The UI must only implement a small allowlist of actions. Unknown `action.type` v
 
 Initial allowlist (v1):
 - `notify`: show a UI notification card (no side effects)
-- `play_audio`: render an audio player for `path` and optionally attempt autoplay (requires UI opt-in)
 - `request_client_state`: request a bounded client snapshot (client responds with a `client_event` of type `client_state`)
 - `client_rpc`: request a bounded client RPC (read-only by default; may be side-effecting when explicitly enabled); client responds with `client_rpc_result` (see `docs/CLIENT_RPC.md`)
 - `collab_rpc` (alias): client-side collaboration RPC; treated like `client_rpc` by the Web UI (preferred naming in docs, but `client_rpc` remains canonical for compatibility)
@@ -87,11 +82,6 @@ For `type="client_rpc"`, clients should expect additional fields:
   - Recommended: set it equal to the originating tool call id.
 - `rpc` (object, required): allowlisted RPC request payload; see `docs/CLIENT_RPC.md`.
 - `auto_run` (bool, optional): request immediate execution when permitted by client settings.
-
-### Consent
-
-- `autoplay=true` is only honored when the UI setting “Allow agent-requested audio autoplay” is enabled (default: enabled).
-- Even then, browsers may still require a user gesture; UI should fall back to a “Play” button.
 
 ## Relationship to loop prevention
 

@@ -16,6 +16,13 @@ For a single command that runs configure/build/tests (and writes timestamped log
 tools/verify.sh
 ```
 
+To run the same verification pass but first source `${HOME}/.env` (so provider keys like `DEEPSEEK_API_KEY` are available
+to smoke tests), use:
+
+```bash
+tools/verify_prod.sh
+```
+
 Host builds (`agent` / `agentd`) require `libcurl` and `jsoncpp` (via `pkg-config`).
 
 Smoke tests:
@@ -143,19 +150,51 @@ For debugging client/daemon mismatches (CORS, sandbox defaults, job GC), `agentd
 
 This endpoint requires auth when `--auth-token` is set. It intentionally does not include secrets (auth token, provider API keys).
 The Web UI surfaces this snapshot in the Settings panel as “Daemon config”, including the effective `state_dir`, `sessions_root_dir`,
-and optional `db_path` when enabled.
+and `db_path` (SQLite; canonical daemon state store).
+
+### Update daemon defaults at runtime (model/base_url + server-side keys)
+
+`agentd` supports updating its defaults **at runtime** (persisted in `agentd`’s SQLite DB at `db_path`) so the browser UI does not need
+to store provider keys.
+
+Endpoint:
+- `POST /api/v1/config/update`
+
+Example (set default provider + model):
+
+```bash
+curl -fsS \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_AGENTD_TOKEN" \
+  -d '{"base_url":"https://api.deepseek.com","model":"deepseek-chat"}' \
+  http://127.0.0.1:8123/api/v1/config/update
+```
+
+Example (store a provider key server-side; do **not** do this over an unauthenticated network):
+
+```bash
+curl -fsS \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_AGENTD_TOKEN" \
+  -d '{"provider":"deepseek","api_key":"sk-REDACTED"}' \
+  http://127.0.0.1:8123/api/v1/config/update
+```
+
+Notes:
+- The response intentionally never includes secrets. Use `GET /api/v1/config` to see booleans like `provider_keys_set`.
+- The Web UI also exposes buttons in Settings to “Save defaults to daemon” and “Save API key to daemon”.
 
 ### Daemon state dir / multi-agent safety
 
-By default, `agentd` uses a shared session store at `~/.agent/sessions`. If you run multiple `agentd` instances and want to
-avoid accidental session collisions, start each daemon with a distinct state root:
+`agentd` stores its canonical state in SQLite (`--db-path`, default: `./agentd.db` relative to the daemon working directory).
+If you run multiple `agentd` instances and want to avoid accidental session collisions, use a distinct DB path per daemon:
 
 ```bash
-./build/agentd --state-dir /tmp/agentd_state_1
-./build/agentd --state-dir /tmp/agentd_state_2
+./build/agentd --db-path /tmp/agentd_state_1.db
+./build/agentd --db-path /tmp/agentd_state_2.db
 ```
 
-Or override the session store directory directly:
+Legacy (non-canonical) session-store directories are still configurable for backwards compatibility and best-effort cleanup:
 
 ```bash
 ./build/agentd --sessions-root /tmp/agentd_sessions
@@ -164,6 +203,131 @@ Or override the session store directory directly:
 Environment variables:
 - `AGENTD_STATE_DIR`
 - `AGENTD_SESSIONS_ROOT`
+- `AGENTD_DB_PATH`
+
+## Run in production (agentd + WebUI)
+
+This repo’s “production” shape is:
+- `agentd` runs as the backend daemon (tools + persistence + HTTP API)
+- the Web UI runs as a separate static site (Vite build) that talks to `agentd` via HTTP
+
+### 1) Start agentd (prod defaults: YOLO + host tools)
+
+Recommended: pick a stable working directory (so relative artifact paths like `out/foo.wav` are always resolvable) and keep
+all generated files under it.
+
+Example (local machine, loopback only; no auth required):
+
+```bash
+cd /path/to/agent
+./build/agentd \
+  --host 127.0.0.1 \
+  --port 8123 \
+  --tools host \
+  --yolo \
+  --host-scope "$(pwd)" \
+  --tools-root "@host" \
+  --db-path "$(pwd)/agentd.db"
+```
+
+Example (LAN / production; requires auth + explicit CORS allowlist):
+
+```bash
+cd /path/to/agent
+
+# Optional: load real provider keys for the daemon process (do NOT commit secrets)
+set -a
+source "${HOME}/.env"
+set +a
+
+./build/agentd \
+  --host 0.0.0.0 \
+  --port 8123 \
+  --auth-token "REPLACE_WITH_RANDOM_TOKEN" \
+  --cors-origin "http://127.0.0.1:5173" \
+  --cors-origin "http://127.0.0.1:8100" \
+  --tools host \
+  --yolo \
+  --host-scope "$(pwd)" \
+  --tools-root "@host" \
+  --db-path "$(pwd)/agentd.db"
+```
+
+Notes:
+- `--yolo` enables unrestricted host tools (fully autonomous, side effects allowed). The Web UI defaults to requesting this.
+- `--tools-root "@host"` makes relative paths stable (anchored to `--host-scope`). This avoids brittle “depends on process CWD”
+  behavior for artifact fetches like `GET /api/v1/file?path=out/foo.wav&yolo=1`.
+- If you omit `--db-path`, `agentd` defaults to creating/using `./agentd.db` in its working directory.
+- If you bind to non-loopback (`--host 0.0.0.0`), `agentd` refuses to start without `--auth-token` unless you pass `--allow-unauth`.
+
+### 2) Start the Web UI
+
+Dev (hot reload):
+
+```bash
+cd ui
+npm install
+npm run dev -- --port 5173
+```
+
+If you prefer port `8100`:
+
+```bash
+cd ui
+npm run dev -- --port 8100
+```
+
+Production build + local preview:
+
+```bash
+cd ui
+npm ci
+npm run build
+npm run preview -- --host 127.0.0.1 --port 8100
+```
+
+Then open the UI and set:
+- Daemon base URL: `http://127.0.0.1:8123`
+- Daemon auth token (if enabled): the same token passed to `agentd --auth-token`
+
+The Web UI defaults to:
+- YOLO enabled
+- client RPC enabled
+- client RPC side effects enabled
+- full tool-call/event visibility in History (so users can inspect tool arguments/results)
+
+Reliability notes (important for production UX):
+- The UI persists the active async `job_id` + SSE cursor in `localStorage`, so a browser refresh can resume a running job stream.
+- The UI persists the selected `session_id` per daemon base URL in `localStorage` (helps when running multiple local daemons).
+- The UI persists the Scene (client-side entities) per `session_id` in `localStorage`.
+- The UI posts client acknowledgement events (`ui_action_shown`, `client_rpc_result`, `artifact_rendered`/`artifact_render_failed`)
+  so agents can implement deterministic “Definition of Done” handshakes (see `docs/DOD_ACK.md`).
+
+## Docker Compose (prod-like local verification)
+
+If you want a **prod-like stack** locally (Postgres + Keycloak OIDC + broker + connector + agentd + WebUI):
+
+```bash
+./tools/verify_compose_stack.sh
+```
+
+Notes:
+- The script will auto-pick free host ports for services that commonly conflict (Broker/Keycloak/Postgres) and export:
+  - `BROKER_PUBLISHED_PORT` (default 8443)
+  - `KEYCLOAK_PUBLISHED_PORT` (default 8081)
+  - `POSTGRES_PUBLISHED_PORT` (default 5433)
+- It will also auto-pick free host ports for the user-facing services:
+  - `WEBUI_PUBLISHED_PORT` (default 8100)
+  - `AGENTD_PUBLISHED_PORT` (default 8123)
+- It sets `COMPOSE_PROJECT_NAME` automatically (defaults to `agent_${WEBUI_PUBLISHED_PORT}`) so you can run multiple stacks concurrently.
+- Keycloak is intentionally accessed via `keycloak.lvh.me` (resolves to `127.0.0.1`) so the `iss` claim in minted JWTs
+  matches what the broker validates. If you request tokens via `http://127.0.0.1:<port>`, you’ll get issuer-mismatch errors.
+
+This starts:
+- WebUI: `http://127.0.0.1:${WEBUI_PUBLISHED_PORT}`
+- agentd: `http://127.0.0.1:${AGENTD_PUBLISHED_PORT}` (auth token: `dev-agentd-token`)
+- Keycloak: `http://keycloak.lvh.me:${KEYCLOAK_PUBLISHED_PORT}` (realm: `agentd`, user/pass: `test`/`test`)
+- Broker: `https://127.0.0.1:${BROKER_PUBLISHED_PORT}` (self-signed CA for local dev; mTLS for connectors)
 
 ## Git remote (publishing)
 
@@ -320,7 +484,9 @@ Session vs audit:
   - `~/.agent/sessions/<id>.json` (optional, written when built with JSONCPP)
   stores **user/assistant conversation** only.
 - Detailed tool timelines (tool calls/results + LLM request/response events) are stored in the per-session audit log
-  (`~/.agent/sessions/<id>.events.jsonl`) and surfaced via daemon/UI (and CLI `--trace` output).
+  (`~/.agent/sessions/<id>.events.jsonl`) and surfaced via CLI `--trace` output.
+- Daemon (`agentd`) state is separate: sessions + audit live in SQLite (`db_path`, default: `./agentd.db`) and are exposed via
+  endpoints like `GET /api/v1/session` and `GET /api/v1/session/audit`.
 
 Host tool names:
 - In `--host-policy readonly`, the host tool registry omits `shell_exec`, `proc_exec`, and `file_apply_patch` (read-only inspection only).
@@ -330,6 +496,10 @@ Host tool names:
 - `proc_exec` (runs an argv array via `posix_spawnp`, no shell; returns JSON envelope with `argv`, `exit_code`, `timed_out`, `truncated`, `output`)
 - `file_apply_patch` (applies a unified diff via `git apply`; returns the patch as a diff-style audit trail)
 - `fs_stat` (file/dir metadata; returns structured fields + a human-readable `output`)
+- `fs_list` (bounded directory listing; returns structured `entries` + `output`)
+- `fs_find` (bounded file discovery; returns structured `entries` + `output`)
+- `fs_read` (bounded file read with pagination by line; returns `content`/`output` + `has_more` + `next_start_line`)
+- `text_search` (token-safe substring search; returns structured `matches` + `output`)
 
 ### UI actions (bidirectional UX)
 
@@ -337,17 +507,6 @@ In addition to `artifact_register` (explicit media artifacts), host tools includ
 UI-side actions in a **typed** and **allowlisted** way (e.g. notifications, audio playback UI).
 
 See `docs/UI_ACTION.md`.
-
-### Camera capture (single-shot)
-
-To avoid models looping on camera capture via repeated `proc_exec` calls, host tools include `camera_capture`.
-
-By default, smoke tests use `backend=mock` which writes a small SVG image (no camera hardware required). On macOS, a best-effort
-`ffmpeg` backend exists (requires camera permission + ffmpeg availability); see `docs/CAMERA_CAPTURE.md`.
-- `fs_list` (bounded directory listing; returns structured `entries` + `output`)
-- `fs_find` (bounded file discovery; returns structured `entries` + `output`)
-- `fs_read` (bounded file read with pagination by line; returns `content`/`output` + `has_more` + `next_start_line`)
-- `text_search` (token-safe substring search; returns structured `matches` + `output`)
 
 Notes:
 - For **inspection** (read/list/stat), prefer `fs_list` / `fs_read` / `fs_stat` because they provide bounded output and pagination
@@ -409,13 +568,17 @@ Proxy override:
 ./build/agentd --host 127.0.0.1 --port 8123 --proxy http://localhost:8120
 ```
 
-Troubleshooting DB (optional, SQLite):
+SQLite DB (mandatory; canonical daemon state):
 
 ```bash
-./build/agentd --host 127.0.0.1 --port 8123 --db-path "$HOME/.agent/agentd.sqlite"
+./build/agentd --host 127.0.0.1 --port 8123
+
+# or pin it explicitly (recommended for production / multi-daemon):
+./build/agentd --host 127.0.0.1 --port 8123 --db-path "$HOME/.agent/agentd.db"
 ```
 
-The DB mirror stores sessions, runs, events, and tool records for queryable troubleshooting. See `docs/DB.md`.
+The DB stores sessions, runs, events, tool records, artifacts, UI actions, client events, and audit records for debugging/replay.
+See `docs/DB.md` for query examples.
 
 Health check:
 

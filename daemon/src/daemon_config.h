@@ -3,6 +3,7 @@
 #include "sandbox_policy.h"
 
 #include <cstdint>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -19,6 +20,10 @@ struct DaemonConfig {
   bool allow_unauthenticated_non_loopback = false;
   std::string base_url = "https://api.openai.com/v1";
   std::string api_key;
+  // Optional provider-specific keys (preferred over a single global api_key when multiple providers are used).
+  // Keys are stored only in memory and (optionally) in a local runtime secrets file under state_dir.
+  // Never expose these in /api/v1/config responses.
+  std::map<std::string, std::string> provider_keys;
   std::string model = "gpt-4o-mini";
   std::string summary_model;  // optional: model used to summarize dropped messages during compaction (tools=none)
   size_t summary_max_chars = 1200;
@@ -36,9 +41,9 @@ struct DaemonConfig {
   std::string sessions_root_dir;
 
   // Optional troubleshooting DB mirror (SQLite). When set, agentd mirrors sessions/runs/events into this DB.
-  // Empty means disabled.
+  // As of 2026-01-31, the DB is intended to be the canonical daemon state store.
+  // If empty, agentd will default to "./agentd.db" (resolved relative to the daemon working directory).
   std::string db_path;
-  bool db_disabled = false; // set by --no-db to ignore AGENTD_DB_PATH
   std::string tools = "host";     // none|basic|host
   std::string tools_root = "";    // empty => CWD (unrestricted file edits)
   std::string host_scope_root;    // default: daemon process CWD (for "@host" tool root mode)

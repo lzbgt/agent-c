@@ -992,6 +992,20 @@ static void test_artifact_register() {
   assert(resp["data"]["artifact"]["title"].asString() == "test clip");
   agent_string_free(&out);
 
+  // Path normalization: even if the caller provides a weird-but-contained relative path,
+  // the tool should return a stable relative path for WebUI/agentd fetch agreement.
+  {
+    Json::Value args2(Json::objectValue);
+    args2["path"] = "out/../hello.wav";
+    const std::string req2 = json_stringify(args2);
+    agent_string_t out2{};
+    assert(exec.execute(exec.ctx, "artifact_register", req2.c_str(), &out2) == AGENT_OK);
+    const Json::Value resp2 = json_parse(std::string(out2.data, out2.len));
+    assert(resp2["ok"].asBool());
+    assert(resp2["data"]["artifact"]["path"].asString() == "hello.wav");
+    agent_string_free(&out2);
+  }
+
   agent_tool_registry_destroy(reg);
   toolset_host_destroy(&exec);
   std::filesystem::remove_all(root);

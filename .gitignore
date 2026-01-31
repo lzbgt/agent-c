@@ -7,6 +7,8 @@ build*/
 .agent_deps/
 out/
 state/
+db/
+agentd.db
 ui/test-results/
 create_pptx.py
 create_hello_pptx.py
@@ -18,6 +20,8 @@ ui/dist/
 ui/.vite/
 project.local.md
 .not_in_repo
+tools/_agentd_broker_mtls_test_certs/
+tools/_compose_mtls/
 
 # Local one-off camera capture artifacts (dev only).
 capture_image*.py

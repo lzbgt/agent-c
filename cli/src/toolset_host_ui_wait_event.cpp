@@ -196,7 +196,12 @@ static agent_status_t read_client_events_tail(const HostToolCtx* ctx, size_t max
   if (!out_tail) return AGENT_ERR_INVALID_ARGUMENT;
   out_tail->clear();
   if (!ctx) return AGENT_ERR_INVALID_ARGUMENT;
-  if (ctx->sessions_root_dir.empty() || ctx->session_id.empty()) return AGENT_ERR_INVALID_ARGUMENT;
+  if (ctx->session_id.empty()) return AGENT_ERR_INVALID_ARGUMENT;
+
+  if (ctx->read_client_events_tail_cb) {
+    return ctx->read_client_events_tail_cb(ctx->read_client_events_tail_ctx, ctx->session_id, max_bytes, max_files, out_tail);
+  }
+  if (ctx->sessions_root_dir.empty()) return AGENT_ERR_INVALID_ARGUMENT;
 
   SessionStoreConfig store_cfg;
   store_cfg.root_dir = ctx->sessions_root_dir.string();
@@ -286,6 +291,9 @@ static agent_status_t ui_wait_event_impl(HostToolCtx* ctx, const char* tool_name
     // Parse JSONL and search for the newest matching event.
     Json::Value matched(Json::nullValue);
     int64_t matched_ts = 0;
+    int64_t newest_ts = 0;
+    std::string newest_type;
+    std::string newest_client_id;
 
     Json::CharReaderBuilder rb;
     std::string perr;
@@ -297,6 +305,20 @@ static agent_status_t ui_wait_event_impl(HostToolCtx* ctx, const char* tool_name
       std::istringstream lss(line);
       if (!Json::parseFromStream(rb, lss, &payload, &perr)) {
         continue;
+      }
+      int64_t ts_any = 0;
+      const auto& tsv_any = payload["ts_unix_ms"];
+      if (tsv_any.isInt64()) ts_any = tsv_any.asInt64();
+      else if (tsv_any.isUInt64()) ts_any = (int64_t)tsv_any.asUInt64();
+      if (ts_any >= newest_ts) {
+        newest_ts = ts_any;
+        newest_type = payload.isMember("type") && payload["type"].isString() ? payload["type"].asString() : "";
+        if (payload.isMember("client") && payload["client"].isObject()) {
+          const auto& c = payload["client"];
+          newest_client_id = c.isMember("id") && c["id"].isString() ? c["id"].asString() : "";
+        } else {
+          newest_client_id.clear();
+        }
       }
       if (!event_matches(payload, type, client_id, after_unix_ms, path, data_match)) {
         continue;
@@ -329,6 +351,17 @@ static agent_status_t ui_wait_event_impl(HostToolCtx* ctx, const char* tool_name
       Json::Value d(Json::objectValue);
       d["tool"] = tool_name;
       d["timed_out"] = true;
+      d["wait_for_type"] = type;
+      if (!client_id.empty()) d["client_id"] = client_id;
+      d["timeout_ms"] = timeout_ms;
+      d["after_unix_ms"] = (Json::Int64)after_unix_ms;
+      if (!path.empty()) d["path"] = path;
+      if (!data_match.isNull()) d["data_match"] = data_match;
+      if (newest_ts > 0) {
+        d["last_ts_unix_ms"] = (Json::Int64)newest_ts;
+        if (!newest_type.empty()) d["last_type"] = newest_type;
+        if (!newest_client_id.empty()) d["last_client_id"] = newest_client_id;
+      }
       o["data"] = d;
       return write_result(out_result, o);
     }
@@ -341,6 +374,17 @@ static agent_status_t ui_wait_event_impl(HostToolCtx* ctx, const char* tool_name
       Json::Value d(Json::objectValue);
       d["tool"] = tool_name;
       d["timed_out"] = true;
+      d["wait_for_type"] = type;
+      if (!client_id.empty()) d["client_id"] = client_id;
+      d["timeout_ms"] = timeout_ms;
+      d["after_unix_ms"] = (Json::Int64)after_unix_ms;
+      if (!path.empty()) d["path"] = path;
+      if (!data_match.isNull()) d["data_match"] = data_match;
+      if (newest_ts > 0) {
+        d["last_ts_unix_ms"] = (Json::Int64)newest_ts;
+        if (!newest_type.empty()) d["last_type"] = newest_type;
+        if (!newest_client_id.empty()) d["last_client_id"] = newest_client_id;
+      }
       o["data"] = d;
       return write_result(out_result, o);
     }
@@ -457,6 +501,9 @@ static agent_status_t ui_wait_join_impl(
     (void)read_client_events_tail(ctx, max_bytes, max_files, &tail);
 
     // Scan tail once, try to satisfy predicates.
+    int64_t newest_ts = 0;
+    std::string newest_type;
+    std::string newest_client_id;
     Json::CharReaderBuilder rb;
     std::string perr;
     std::istringstream iss(tail);
@@ -467,6 +514,20 @@ static agent_status_t ui_wait_join_impl(
       std::istringstream lss(line);
       if (!Json::parseFromStream(rb, lss, &payload, &perr)) {
         continue;
+      }
+      int64_t ts_any = 0;
+      const auto& tsv_any = payload["ts_unix_ms"];
+      if (tsv_any.isInt64()) ts_any = tsv_any.asInt64();
+      else if (tsv_any.isUInt64()) ts_any = (int64_t)tsv_any.asUInt64();
+      if (ts_any >= newest_ts) {
+        newest_ts = ts_any;
+        newest_type = payload.isMember("type") && payload["type"].isString() ? payload["type"].asString() : "";
+        if (payload.isMember("client") && payload["client"].isObject()) {
+          const auto& c = payload["client"];
+          newest_client_id = c.isMember("id") && c["id"].isString() ? c["id"].asString() : "";
+        } else {
+          newest_client_id.clear();
+        }
       }
 
       for (size_t i = 0; i < predicates.size(); i++) {
@@ -523,10 +584,18 @@ static agent_status_t ui_wait_join_impl(
       Json::Value d(Json::objectValue);
       d["tool"] = tool_name;
       d["timed_out"] = true;
+      d["timeout_ms"] = timeout_ms;
+      d["max_bytes"] = (Json::UInt64)max_bytes;
+      d["max_files"] = (Json::UInt64)max_files;
       if (require_all) {
         Json::Value mm(Json::arrayValue);
         for (size_t i = 0; i < matched.size(); i++) mm.append((bool)matched[i]);
         d["matched"] = mm;
+      }
+      if (newest_ts > 0) {
+        d["last_ts_unix_ms"] = (Json::Int64)newest_ts;
+        if (!newest_type.empty()) d["last_type"] = newest_type;
+        if (!newest_client_id.empty()) d["last_client_id"] = newest_client_id;
       }
       o["data"] = d;
       return write_result(out_result, o);
@@ -541,10 +610,18 @@ static agent_status_t ui_wait_join_impl(
       Json::Value d(Json::objectValue);
       d["tool"] = tool_name;
       d["timed_out"] = true;
+      d["timeout_ms"] = timeout_ms;
+      d["max_bytes"] = (Json::UInt64)max_bytes;
+      d["max_files"] = (Json::UInt64)max_files;
       if (require_all) {
         Json::Value mm(Json::arrayValue);
         for (size_t i = 0; i < matched.size(); i++) mm.append((bool)matched[i]);
         d["matched"] = mm;
+      }
+      if (newest_ts > 0) {
+        d["last_ts_unix_ms"] = (Json::Int64)newest_ts;
+        if (!newest_type.empty()) d["last_type"] = newest_type;
+        if (!newest_client_id.empty()) d["last_client_id"] = newest_client_id;
       }
       o["data"] = d;
       return write_result(out_result, o);

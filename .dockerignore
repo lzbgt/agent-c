@@ -1,0 +1,14 @@
+.git
+.github
+out
+build
+build-*
+db
+state
+broker/.git
+ui/node_modules
+ui/dist
+tools/_agentd_broker_mtls_test_certs
+**/*.log
+**/*.wav
+**/*.mp3

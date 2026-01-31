@@ -1,0 +1,209 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Prod-like local verification harness for the docker-compose stack.
+#
+# What it verifies (minimal but end-to-end):
+# - Postgres + Keycloak (OIDC) are reachable
+# - Broker starts with Postgres + OIDC config
+# - Agentd starts and serves /api/v1/health (auth enabled)
+# - Connector can connect via broker mTLS and proxy to agentd
+#
+# Notes:
+# - Uses Keycloak password grant for local dev convenience.
+# - Uses curl -k for broker HTTPS because we generate a local self-signed CA.
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUT_DIR="${ROOT}/out"
+mkdir -p "${OUT_DIR}"
+
+LOG_UP="${OUT_DIR}/compose_up_$(date +%Y-%m-%d_%H%M%S).log"
+
+MTLS_DIR="${ROOT}/tools/_compose_mtls"
+
+is_port_free() {
+  local port="$1"
+  # We consider a port "free" only if it is unused on BOTH IPv4 loopback and IPv6 loopback.
+  # This avoids false-positives where one service listens on 127.0.0.1:<port> (IPv4) while
+  # docker binds *:port (IPv6), which would still conflict for users hitting 127.0.0.1.
+  python3 - "${port}" <<'PY'
+import socket, sys
+port = int(sys.argv[1])
+
+def loopback_is_free(host: str, family: int) -> bool:
+  try:
+    s = socket.socket(family, socket.SOCK_STREAM)
+  except Exception:
+    # If the platform doesn't support this family (e.g. IPv6 disabled), ignore it.
+    return True
+  try:
+    s.settimeout(0.15)
+    rc = s.connect_ex((host, port))
+    # rc==0 means a listener accepted the TCP connect -> NOT free.
+    return rc != 0
+  finally:
+    try:
+      s.close()
+    except Exception:
+      pass
+
+ok = loopback_is_free("127.0.0.1", socket.AF_INET) and loopback_is_free("::1", socket.AF_INET6)
+print("yes" if ok else "no")
+PY
+}
+
+pick_port() {
+  local preferred="$1"
+  local label="${2:-port}"
+  local p
+  for p in "${preferred}" "$((preferred + 1))" "$((preferred + 2))" "$((preferred + 10))" "$((preferred + 100))"; do
+    if [[ "$(is_port_free "${p}")" == "yes" ]]; then
+      echo "${p}"
+      return 0
+    fi
+  done
+  echo "[compose] ERROR: no free ${label} found near ${preferred}" >&2
+  return 1
+}
+
+export BROKER_PUBLISHED_PORT="${BROKER_PUBLISHED_PORT:-$(pick_port 8443 broker)}"
+export KEYCLOAK_PUBLISHED_PORT="${KEYCLOAK_PUBLISHED_PORT:-$(pick_port 8081 keycloak)}"
+export POSTGRES_PUBLISHED_PORT="${POSTGRES_PUBLISHED_PORT:-$(pick_port 5433 postgres)}"
+export AGENTD_PUBLISHED_PORT="${AGENTD_PUBLISHED_PORT:-$(pick_port 8123 agentd)}"
+export WEBUI_PUBLISHED_PORT="${WEBUI_PUBLISHED_PORT:-$(pick_port 8100 webui)}"
+
+# Allow multiple stacks concurrently by default by making the compose project name stable-per-port.
+# Users can still override explicitly via COMPOSE_PROJECT_NAME.
+export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-agent_${WEBUI_PUBLISHED_PORT}}"
+
+BROKER_BASE="https://127.0.0.1:${BROKER_PUBLISHED_PORT}"
+# Use a stable dev hostname so the token issuer matches what the broker validates.
+# keycloak.lvh.me resolves to 127.0.0.1 on the host; inside containers we map it to host-gateway.
+KEYCLOAK_BASE="http://keycloak.lvh.me:${KEYCLOAK_PUBLISHED_PORT}"
+AGENTD_BASE="http://127.0.0.1:${AGENTD_PUBLISHED_PORT}"
+WEBUI_BASE="http://127.0.0.1:${WEBUI_PUBLISHED_PORT}"
+
+echo "[compose] bringing stack up (logs: ${LOG_UP})"
+(
+  cd "${ROOT}"
+  # Host-generated mTLS certs (keeps compose deterministic; avoids "apk add" in init containers).
+  rm -rf "${MTLS_DIR}"
+  mkdir -p "${MTLS_DIR}"
+  bash tools/gen_agentd_broker_mtls_test_certs.sh "${MTLS_DIR}" agent1 >/dev/null
+
+  if [[ "${COMPOSE_CLEAN:-1}" == "1" ]]; then
+    docker compose down -v --remove-orphans >/dev/null 2>&1 || true
+  fi
+  docker compose up -d --build
+) >"${LOG_UP}" 2>&1
+
+wait_http_ok() {
+  local url="$1"
+  local timeout_s="${2:-120}"
+  local started
+  started="$(date +%s)"
+  while true; do
+    if curl -fsS "${url}" >/dev/null 2>&1; then
+      return 0
+    fi
+    local now
+    now="$(date +%s)"
+    if (( now - started > timeout_s )); then
+      echo "[compose] ERROR: timeout waiting for ${url}" >&2
+      return 1
+    fi
+    sleep 1
+  done
+}
+
+echo "[compose] waiting for keycloak OIDC discovery..."
+wait_http_ok "${KEYCLOAK_BASE}/realms/agentd/.well-known/openid-configuration" 240
+
+echo "[compose] waiting for agentd health..."
+wait_http_ok "${AGENTD_BASE}/api/v1/health" 240 || true
+
+get_token() {
+  local token_json
+  token_json="$(
+    curl -fsS \
+      -d "grant_type=password" \
+      -d "client_id=agentd-broker-dev" \
+      -d "username=test" \
+      -d "password=test" \
+      "${KEYCLOAK_BASE}/realms/agentd/protocol/openid-connect/token"
+  )"
+  echo "${token_json}" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("access_token",""))'
+}
+
+echo "[compose] acquiring OIDC token (dev password grant)..."
+OIDC_JWT="$(get_token)"
+if [[ -z "${OIDC_JWT}" ]]; then
+  echo "[compose] ERROR: failed to fetch OIDC token" >&2
+  exit 2
+fi
+
+echo "[compose] creating broker agent record agent_id=agent1 (wait/retry)..."
+started="$(date +%s)"
+while true; do
+  if curl -fsS -k \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    -H "Content-Type: application/json" \
+    -d '{"agent_id":"agent1"}' \
+    "${BROKER_BASE}/v1/agents" >/dev/null 2>&1; then
+    break
+  fi
+  now="$(date +%s)"
+  if (( now - started > 240 )); then
+    echo "[compose] ERROR: broker did not accept create agent in time" >&2
+    exit 4
+  fi
+  sleep 1
+done
+
+echo "[compose] waiting for connector to connect (agent1 connected=true)..."
+started="$(date +%s)"
+while true; do
+  j="$(curl -fsS -k -H "Authorization: Bearer ${OIDC_JWT}" "${BROKER_BASE}/v1/agents" || true)"
+  ok="$(python3 - "${j}" <<'PY'
+import json,sys
+raw = sys.argv[1] if len(sys.argv) > 1 else ""
+try:
+  obj = json.loads(raw or "{}")
+  for a in (obj.get("agents") or []):
+    if a.get("agent_id") == "agent1" and a.get("connected") is True:
+      print("yes")
+      raise SystemExit(0)
+except Exception:
+  pass
+print("no")
+PY
+)"
+  if [[ "${ok}" == "yes" ]]; then
+    break
+  fi
+  now="$(date +%s)"
+  if (( now - started > 240 )); then
+    echo "[compose] ERROR: connector did not become connected in time" >&2
+    echo "[compose] broker /v1/agents response:" >&2
+    echo "${j}" >&2
+    exit 3
+  fi
+  sleep 1
+done
+
+echo "[compose] verifying broker proxy to agentd /api/v1/health..."
+curl -fsS -k -H "Authorization: Bearer ${OIDC_JWT}" \
+  "${BROKER_BASE}/v1/agents/agent1/proxy/api/v1/health" | python3 -m json.tool >/dev/null
+
+echo "[compose] verifying direct agentd health (auth enabled)..."
+curl -fsS -H "Authorization: Bearer dev-agentd-token" \
+  "${AGENTD_BASE}/api/v1/health" | python3 -m json.tool >/dev/null
+
+echo "[compose] verifying webui is served..."
+curl -fsS "${WEBUI_BASE}/" >/dev/null
+
+echo "[compose] OK"
+echo "  - WebUI:    ${WEBUI_BASE} (set Daemon auth token: dev-agentd-token)"
+echo "  - agentd:   ${AGENTD_BASE}"
+echo "  - Keycloak: ${KEYCLOAK_BASE} (realm=agentd user=test pass=test)"
+echo "  - Broker:   ${BROKER_BASE} (OIDC aud=agentd-broker-dev agent_id=agent1)"

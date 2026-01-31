@@ -1,6 +1,6 @@
 #pragma once
 
-#include "http_server.h"
+#include "agentd/http_types.h"
 
 #include <string>
 #include <vector>

@@ -1590,7 +1590,7 @@ static agent_status_t host_tools_execute(void* vctx, const char* tool_name, cons
   HostToolCtx* ctx = (HostToolCtx*)vctx;
   const std::string name(tool_name);
   if (ctx->policy == HostToolsetPolicyMode::ReadOnly) {
-    if (name == "shell_exec" || name == "proc_exec" || name == "file_apply_patch" || name == "camera_capture") {
+    if (name == "shell_exec" || name == "proc_exec" || name == "file_apply_patch") {
 #if !defined(AGENT_HAVE_JSONCPP)
       return set_result(out_result, "{\"ok\":false,\"error\":\"tool disabled by policy\",\"data\":{}}");
 #else
@@ -1608,7 +1608,7 @@ static agent_status_t host_tools_execute(void* vctx, const char* tool_name, cons
     }
   }
   if (!ctx->exec_enabled) {
-    if (name == "shell_exec" || name == "proc_exec" || name == "camera_capture") {
+    if (name == "shell_exec" || name == "proc_exec") {
 #if !defined(AGENT_HAVE_JSONCPP)
       return set_result(out_result, "{\"ok\":false,\"error\":\"tool disabled by sandbox\",\"data\":{}}");
 #else
@@ -1675,9 +1675,6 @@ static agent_status_t host_tools_execute(void* vctx, const char* tool_name, cons
   }
   if (name == "client_peek") {
     return tool_client_peek(ctx, arguments_json, out_result);
-  }
-  if (name == "camera_capture") {
-    return tool_camera_capture(ctx, arguments_json, out_result);
   }
   // Keep the response machine-readable so the LLM can reason about failures.
   return set_result(out_result, "{\"ok\":false,\"error\":\"unknown tool\",\"data\":{}}");
@@ -1882,10 +1879,10 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     "{"
     "\"type\":\"object\","
     "\"properties\":{"
-    "  \"type\":{\"type\":\"string\",\"description\":\"Action type (e.g. notify, play_audio).\"},"
+    "  \"type\":{\"type\":\"string\",\"description\":\"Action type (e.g. notify, client_rpc).\"},"
     "  \"title\":{\"type\":\"string\"},"
     "  \"message\":{\"type\":\"string\"},"
-    "  \"path\":{\"type\":\"string\",\"description\":\"For media actions like play_audio.\"},"
+    "  \"path\":{\"type\":\"string\",\"description\":\"Optional host path for presentation helpers (prefer artifact_register for files).\"},"
     "  \"mime\":{\"type\":\"string\"},"
     "  \"repeat\":{\"type\":\"integer\"},"
     "  \"autoplay\":{\"type\":\"boolean\"},"
@@ -1903,15 +1900,15 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
   );
   if (st != AGENT_OK) goto fail;
 
-  if (!cfg.sessions_root_dir.empty() && !cfg.session_id.empty()) {
+  if (!cfg.session_id.empty() && (!cfg.sessions_root_dir.empty() || cfg.read_client_events_tail)) {
     st = add_tool(
       r,
       "ui_wait_event",
-      "Wait for a client event (posted via agentd /api/v1/session/client_event) for this session. Useful for acknowledgements like audio_play_finished. (Deprecated name; prefer client_wait_event.)",
+      "Wait for a client event (posted via agentd /api/v1/session/client_event) for this session. Useful for acknowledgements like artifact_rendered or client_rpc_result. (Deprecated name; prefer client_wait_event.)",
       "{"
       "\"type\":\"object\","
       "\"properties\":{"
-      "  \"type\":{\"type\":\"string\",\"description\":\"Client event type to wait for (e.g. audio_play_finished).\"},"
+      "  \"type\":{\"type\":\"string\",\"description\":\"Client event type to wait for (e.g. artifact_rendered, client_rpc_result).\"},"
       "  \"client_id\":{\"type\":\"string\",\"description\":\"Optional filter for payload.client.id (e.g. webui, slack).\"},"
       "  \"timeout_ms\":{\"type\":\"integer\",\"description\":\"Max wait time (default: 30000). 0 means no-wait (immediate timeout).\"},"
       "  \"after_unix_ms\":{\"type\":\"integer\",\"description\":\"Ignore events older than this timestamp (optional).\"},"
@@ -2071,29 +2068,6 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     if (st != AGENT_OK) goto fail;
   }
 
-  // Camera capture:
-  // - If exec is disabled (scoped/safe runs), the tool still exists but will default to backend=mock.
-  // - If exec is enabled, backend=ffmpeg is available (subject to local ffmpeg/device permissions).
-  if (cfg.policy == HostToolsetPolicyMode::Full) {
-    st = add_tool(
-      r,
-      "camera_capture",
-      "Capture a single image from the host camera (or mock backend). In scoped/no-exec runs, prefer backend=mock. Returns JSON envelope with data.artifact for UI rendering; the tool loop emits a derived artifact event.",
-      "{"
-      "\"type\":\"object\","
-      "\"properties\":{"
-      "  \"path\":{\"type\":\"string\",\"description\":\"Output file path (relative to tools root in scoped mode).\"},"
-      "  \"backend\":{\"type\":\"string\",\"description\":\"auto|ffmpeg|mock\"},"
-      "  \"timeout_ms\":{\"type\":\"integer\"},"
-      "  \"title\":{\"type\":\"string\"},"
-      "  \"register_artifact\":{\"type\":\"boolean\"},"
-      "  \"notify\":{\"type\":\"boolean\"}"
-      "}"
-      "}"
-    );
-    if (st != AGENT_OK) goto fail;
-  }
-
   // Executor context (owned by host; for CLI we just heap-allocate).
   ctx = new (std::nothrow) HostToolCtx();
   if (!ctx) {
@@ -2112,6 +2086,8 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     ctx->sessions_root_dir = std::filesystem::path(cfg.sessions_root_dir);
   }
   ctx->session_id = cfg.session_id;
+  ctx->read_client_events_tail_cb = cfg.read_client_events_tail;
+  ctx->read_client_events_tail_ctx = cfg.read_client_events_tail_ctx;
   {
     // Normalize to reduce symlink/canonical mismatch (e.g. /var vs /private/var on macOS).
     std::error_code ec;

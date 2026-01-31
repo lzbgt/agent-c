@@ -81,7 +81,28 @@ bool sandbox_resolve_tools_root(
   }
 
   if (effective_yolo) {
-    *out_effective_root = "";
+    // In YOLO mode we do not enforce containment, but we still want a stable
+    // "working directory" root for *relative* paths (so behavior does not depend
+    // on process CWD/chdir and so UIs can reliably fetch artifacts by relative path).
+    //
+    // Absolute paths remain allowed by the host toolset when in unrestricted mode.
+    std::string base = expand_special_root(daemon_tools_root, host_scope_root);
+    if (base.empty()) {
+      base = host_scope_root;
+    }
+    std::string chosen = base;
+    if (requested_tools_root_set) {
+      chosen = expand_special_root(requested_tools_root, host_scope_root);
+      if (chosen.empty()) {
+        chosen = base;
+      }
+    }
+    std::filesystem::path root_path(chosen);
+    if (root_path.is_relative()) {
+      root_path = std::filesystem::path(host_scope_root) / root_path;
+    }
+    root_path = canonicalize_best_effort(root_path);
+    *out_effective_root = root_path.string();
     return true;
   }
 

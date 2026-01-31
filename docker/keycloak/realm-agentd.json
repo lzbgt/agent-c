@@ -1,0 +1,38 @@
+{
+  "realm": "agentd",
+  "enabled": true,
+  "sslRequired": "none",
+  "displayName": "agentd dev realm",
+  "users": [
+    {
+      "username": "test",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "test@example.com",
+      "firstName": "Test",
+      "lastName": "User",
+      "credentials": [
+        { "type": "password", "value": "test", "temporary": false }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "agentd-broker-dev",
+      "enabled": true,
+      "publicClient": true,
+      "directAccessGrantsEnabled": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": [
+        "http://127.0.0.1:8100/*",
+        "http://localhost:8100/*"
+      ],
+      "webOrigins": [
+        "http://127.0.0.1:8100",
+        "http://localhost:8100"
+      ]
+    }
+  ]
+}

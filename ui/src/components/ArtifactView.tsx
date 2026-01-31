@@ -5,15 +5,6 @@ function safeString(v: any): string {
   return typeof v === "string" ? v : "";
 }
 
-function safeBool(v: any): boolean {
-  return typeof v === "boolean" ? v : false;
-}
-
-function safeInt(v: any, def: number): number {
-  if (typeof v !== "number" || !Number.isFinite(v)) return def;
-  return Math.trunc(v);
-}
-
 function safeStringOrNull(v: any): string | null {
   const s = typeof v === "string" ? v.trim() : "";
   return s.length > 0 ? s : null;
@@ -22,15 +13,31 @@ function safeStringOrNull(v: any): string | null {
 function guessKind(path: string): "image" | "audio" | "video" | "text" | "file" {
   const lower = (path || "").toLowerCase();
   if (/\.(png|jpe?g|gif|webp|svg)$/.test(lower)) return "image";
-  if (/\.(mp3|wav)$/.test(lower)) return "audio";
+  if (/\.(mp3|wav|aiff|aif|aifc|m4a|ogg)$/.test(lower)) return "audio";
   if (/\.(mp4|webm|mov)$/.test(lower)) return "video";
+  if (/\.(txt|md|json|log|csv)$/.test(lower)) return "text";
   return "file";
+}
+
+function isAbsoluteLikePath(p: string): boolean {
+  const s = (p || "").trim();
+  if (!s) return false;
+  // Unix absolute
+  if (s.startsWith("/")) return true;
+  // Windows drive absolute: C:\...
+  if (/^[a-zA-Z]:[\\/]/.test(s)) return true;
+  // Windows UNC: \\server\share
+  if (s.startsWith("\\\\")) return true;
+  return false;
 }
 
 export default function ArtifactView({
   baseUrl,
   yolo,
   artifact,
+  // Kept for backwards compatibility with existing call sites.
+  // The Web UI should not hardcode audio playback; the agent can drive client-side presentation via RPCs.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   allowAutoplay,
   sessionId,
   client,
@@ -45,69 +52,52 @@ export default function ArtifactView({
   daemonAuthToken?: string;
 }) {
   const path = safeString(artifact?.path);
-  const title = safeString(artifact?.title) || path || "artifact";
+  const resolvedPath = safeString(artifact?.resolved_path);
   const kind: string = safeString(artifact?.kind) || guessKind(path);
-  const autoplay = safeBool(artifact?.autoplay);
-  const repeat = Math.min(Math.max(safeInt(artifact?.repeat, 1), 1), 16);
+  const title = safeString(artifact?.title) || path || "artifact";
   const toolCallId = safeStringOrNull(artifact?.tool_call_id) ?? safeStringOrNull(artifact?.source_tool_call_id);
 
-  const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(path)}&yolo=${yolo ? "1" : "0"}`;
-  const authToken = safeString(daemonAuthToken).trim();
-  const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
+  // Artifact path agreement (WebUI client profile):
+  // - Prefer a *relative* `artifact.path` so agentd can serve it from its configured tools root.
+  // - Fall back to `resolved_path` only when the tool/agent produced an absolute path (or omitted `path`).
+  const preferredFetchPath = path && !isAbsoluteLikePath(path) ? path : yolo && resolvedPath ? resolvedPath : path;
+  const fallbackFetchPath =
+    yolo && preferredFetchPath === path && path && !isAbsoluteLikePath(path) && resolvedPath && isAbsoluteLikePath(resolvedPath)
+      ? resolvedPath
+      : "";
 
-  // `/api/v1/file` always requires daemon auth when configured, but media tags cannot set custom headers.
-  // For authenticated daemons, fetch the bytes with Authorization and use a blob: URL for preview/download.
+  const [activeFetchPath, setActiveFetchPath] = React.useState<string>(preferredFetchPath);
   React.useEffect(() => {
-    if (!path) {
-      setBlobUrl(null);
-      return;
-    }
-    if (!authToken) {
-      setBlobUrl(null);
-      return;
-    }
-    const ac = new AbortController();
-    let revoked: string | null = null;
-    void (async () => {
-      try {
-        const r = await fetch(src, {
-          method: "GET",
-          headers: { Authorization: `Bearer ${authToken}` },
-          signal: ac.signal,
-        });
-        if (!r.ok) throw new Error(`file fetch failed: ${r.status}`);
-        const b = await r.blob();
-        const u = URL.createObjectURL(b);
-        revoked = u;
-        setBlobUrl(u);
-      } catch {
-        // Best-effort: if blob fetch fails, fall back to direct URL (works when auth is disabled).
-        setBlobUrl(null);
-      }
-    })();
-    return () => {
-      ac.abort();
-      if (revoked) {
-        try {
-          URL.revokeObjectURL(revoked);
-        } catch {
-          // ignore
-        }
-      }
-    };
-  }, [authToken, path, src]);
+    setActiveFetchPath(preferredFetchPath);
+  }, [preferredFetchPath]);
 
-  const mediaSrc = blobUrl || src;
+  const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(activeFetchPath)}&yolo=${yolo ? "1" : "0"}`;
+  const authToken = safeString(daemonAuthToken).trim();
 
-  const audioRef = React.useRef<HTMLAudioElement | null>(null);
-  const videoRef = React.useRef<HTMLVideoElement | null>(null);
-  const [playError, setPlayError] = React.useState<string | null>(null);
-  const playRemainingRef = React.useRef<number>(0);
-  const lastPlayRequestRef = React.useRef<{ n: number; autoplay: boolean; started_ms: number } | null>(null);
+  const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
+  const [fetchError, setFetchError] = React.useState<string | null>(null);
+  const [contentType, setContentType] = React.useState<string>("");
+  const [retryNonce, setRetryNonce] = React.useState<number>(0);
+  const [loading, setLoading] = React.useState<boolean>(false);
+  const failedSrcRef = React.useRef<string>("");
   const renderedSentRef = React.useRef<boolean>(false);
+  const renderFailedSentRef = React.useRef<boolean>(false);
+  const globalAckMap = React.useMemo(() => {
+    const g: any = typeof globalThis !== "undefined" ? (globalThis as any) : {};
+    if (!g.__agentui_artifact_acked || typeof g.__agentui_artifact_acked !== "object") {
+      g.__agentui_artifact_acked = {};
+    }
+    return g.__agentui_artifact_acked as Record<string, boolean>;
+  }, []);
+
+  // Reset per-artifact ack state when switching to a different artifact (or different fetch path).
+  React.useEffect(() => {
+    renderedSentRef.current = false;
+    renderFailedSentRef.current = false;
+  }, [activeFetchPath, toolCallId]);
 
   const postUiEvent = React.useCallback(
-    async (etype: string, data?: any, appendToSession?: boolean) => {
+    async (etype: string, data?: any) => {
       const sid = typeof sessionId === "string" ? sessionId.trim() : "";
       if (sid.length === 0) return;
       try {
@@ -118,217 +108,213 @@ export default function ArtifactView({
             type: etype,
             client: client ?? { id: "webui", kind: "webui" },
             data: data ?? {},
-            append_to_session: typeof appendToSession === "boolean" ? appendToSession : false,
+            append_to_session: false,
           },
           daemonAuthToken,
         );
       } catch {
-        // Best-effort: never block media playback on event posting.
+        // Best-effort: never block UI rendering on event posting.
       }
     },
     [baseUrl, client, daemonAuthToken, sessionId],
   );
 
-  const postRpcProgress = React.useCallback(
-    async (name: string, payload?: any) => {
-      if (!toolCallId) return;
-      await postUiEvent(
-        "client_rpc_progress",
-        {
-          rpc_id: toolCallId,
-          rpc_kind: "artifact_play",
-          name: String(name || "progress"),
-          ts_unix_ms: Date.now(),
-          payload: payload ?? {},
-        },
-        false,
-      );
-    },
-    [postUiEvent, toolCallId],
-  );
-
-  const playTimes = React.useCallback(
-    async (n: number) => {
-      const el = audioRef.current;
-      if (!el) return;
-      setPlayError(null);
-      playRemainingRef.current = Math.min(Math.max(n, 1), 16);
-      lastPlayRequestRef.current = { n: playRemainingRef.current, autoplay, started_ms: Date.now() };
-      try {
-        el.currentTime = 0;
-        await el.play();
-        void postUiEvent(
-          "audio_play_started",
-          { path, title, repeat_requested: playRemainingRef.current, autoplay, tool_call_id: toolCallId },
-          false,
-        );
-        void postRpcProgress("started", { path, kind: "audio", repeat_requested: playRemainingRef.current, autoplay }).catch(() => {});
-      } catch (e) {
-        playRemainingRef.current = 0;
-        setPlayError(String(e));
-        void postUiEvent("audio_play_failed", { path, title, error: String(e), autoplay, tool_call_id: toolCallId }, false);
-        void postRpcProgress("failed", { path, kind: "audio", error: String(e), autoplay }).catch(() => {});
-      }
-    },
-    [audioRef, autoplay, path, postRpcProgress, postUiEvent, title, toolCallId],
-  );
-
-  React.useEffect(() => {
+  const postArtifactRendered = React.useCallback(async () => {
     if (renderedSentRef.current) return;
-    if (!path) return;
+    if (renderFailedSentRef.current) return;
+    if (!activeFetchPath) return;
     if (!toolCallId) return; // avoid spamming acks for historic/browsed artifacts without a deterministic key
+    const sid = typeof sessionId === "string" ? sessionId.trim() : "";
+    const gk = `${baseUrl}::${sid}::${toolCallId}`;
+    if (globalAckMap[gk]) return;
     renderedSentRef.current = true;
-    void postUiEvent("artifact_rendered", { path, kind, title, tool_call_id: toolCallId }, false);
-  }, [kind, path, postUiEvent, title, toolCallId]);
+    globalAckMap[gk] = true;
+    await postUiEvent("artifact_rendered", {
+      path,
+      resolved_path: resolvedPath || undefined,
+      fetch_path: activeFetchPath,
+      kind,
+      title,
+      tool_call_id: toolCallId,
+      content_type: contentType || undefined,
+    });
+  }, [activeFetchPath, contentType, kind, path, postUiEvent, resolvedPath, title, toolCallId]);
 
-  React.useEffect(() => {
-    const el = audioRef.current;
-    if (!el) return;
-    const onEnded = () => {
-      void postRpcProgress("ended", { path, kind: "audio", autoplay, remaining: Math.max(0, playRemainingRef.current - 1) }).catch(
-        () => {},
-      );
-      if (playRemainingRef.current <= 1) {
-        const last = lastPlayRequestRef.current;
-        lastPlayRequestRef.current = null;
-        playRemainingRef.current = 0;
-        void postUiEvent(
-          "audio_play_finished",
-          {
-          path,
-          title,
-          repeat_requested: last?.n ?? 1,
-          autoplay: last?.autoplay ?? false,
-          started_ms: last?.started_ms ?? 0,
-          finished_ms: Date.now(),
-          tool_call_id: toolCallId,
-          },
-          false,
-        );
-        void postRpcProgress("finished", { path, kind: "audio", repeat_requested: last?.n ?? 1, autoplay: last?.autoplay ?? false }).catch(
-          () => {},
-        );
-        return;
-      }
-      playRemainingRef.current -= 1;
-      el.currentTime = 0;
-      void el.play().catch((e) => {
-        playRemainingRef.current = 0;
-        setPlayError(String(e));
-        void postUiEvent("audio_play_failed", { path, title, error: String(e), autoplay, tool_call_id: toolCallId }, false);
-        void postRpcProgress("failed", { path, kind: "audio", error: String(e), autoplay }).catch(() => {});
+  const postArtifactRenderFailed = React.useCallback(
+    async (reason: string) => {
+      if (renderFailedSentRef.current) return;
+      if (renderedSentRef.current) return;
+      if (!activeFetchPath) return;
+      if (!toolCallId) return;
+      const sid = typeof sessionId === "string" ? sessionId.trim() : "";
+      const gk = `${baseUrl}::${sid}::${toolCallId}`;
+      if (globalAckMap[gk]) return;
+      renderFailedSentRef.current = true;
+      globalAckMap[gk] = true;
+      await postUiEvent("artifact_render_failed", {
+        path,
+        resolved_path: resolvedPath || undefined,
+        fetch_path: activeFetchPath,
+        kind,
+        title,
+        tool_call_id: toolCallId,
+        content_type: contentType || undefined,
+        error: String(reason || "failed"),
       });
-    };
-    el.addEventListener("ended", onEnded);
-    return () => {
-      el.removeEventListener("ended", onEnded);
-    };
-  }, [audioRef, autoplay, path, postRpcProgress, postUiEvent, title, toolCallId]);
+    },
+    [activeFetchPath, contentType, kind, path, postUiEvent, resolvedPath, title, toolCallId],
+  );
 
+  // Fetch bytes (with Authorization when configured) so:
+  // - authenticated daemons still work (media tags cannot set headers)
+  // - we can deterministically mark artifact_rendered vs artifact_render_failed
+  //
+  // NOTE: the UI intentionally does not hardcode media presentation (no <audio>/<video>).
+  // The agent can present/play/visualize via client RPCs (dom_apply/page_eval/script_eval/entity_apply).
   React.useEffect(() => {
-    const el = videoRef.current;
-    if (!el) return;
+    if (!activeFetchPath) {
+      setBlobUrl(null);
+      setFetchError(null);
+      setContentType("");
+      setLoading(false);
+      return;
+    }
+    if (failedSrcRef.current === src && retryNonce === 0) {
+      return;
+    }
+
+    const ac = new AbortController();
+    let revoked: string | null = null;
+    setLoading(true);
+
+    void (async () => {
+      try {
+        setFetchError(null);
+        setContentType("");
+
+        const r = await fetch(src, {
+          method: "GET",
+          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+          signal: ac.signal,
+        });
+        if (!r.ok) {
+          // In YOLO mode, try an absolute resolved_path fallback. This avoids brittle coupling between
+          // the run's tools_root and the daemon's default tools_root for /api/v1/file.
+          if (fallbackFetchPath && activeFetchPath !== fallbackFetchPath) {
+            setActiveFetchPath(fallbackFetchPath);
+            return;
+          }
+          failedSrcRef.current = src;
+          throw new Error(`file fetch failed: ${r.status}`);
+        }
+        const ct = String(r.headers.get("content-type") || "").trim();
+        if (ct) setContentType(ct);
+
+        const b = await r.blob();
+        const u = URL.createObjectURL(b);
+        revoked = u;
+        setBlobUrl(u);
+      } catch (e) {
+        const name = typeof (e as any)?.name === "string" ? String((e as any).name) : "";
+        if (ac.signal.aborted || name === "AbortError") {
+          return;
+        }
+        setFetchError(String(e));
+        setBlobUrl(null);
+      } finally {
+        setLoading(false);
+      }
+    })();
+
+    return () => {
+      ac.abort();
+      if (revoked) {
+        try {
+          URL.revokeObjectURL(revoked);
+        } catch {
+          // ignore
+        }
+      }
+    };
+  }, [activeFetchPath, authToken, fallbackFetchPath, retryNonce, src]);
+
+  // Deterministic acknowledgements.
+  React.useEffect(() => {
+    if (!activeFetchPath) return;
     if (!toolCallId) return;
-
-    const onPlay = () => {
-      void postRpcProgress("started", { path, kind: "video", autoplay: false }).catch(() => {});
-    };
-    const onPause = () => {
-      void postRpcProgress("pause", { path, kind: "video" }).catch(() => {});
-    };
-    const onEnded = () => {
-      void postRpcProgress("ended", { path, kind: "video" }).catch(() => {});
-      void postRpcProgress("finished", { path, kind: "video" }).catch(() => {});
-    };
-    const onError = () => {
-      void postRpcProgress("failed", { path, kind: "video", error: "media error" }).catch(() => {});
-    };
-
-    el.addEventListener("play", onPlay);
-    el.addEventListener("pause", onPause);
-    el.addEventListener("ended", onEnded);
-    el.addEventListener("error", onError);
-    return () => {
-      el.removeEventListener("play", onPlay);
-      el.removeEventListener("pause", onPause);
-      el.removeEventListener("ended", onEnded);
-      el.removeEventListener("error", onError);
-    };
-  }, [path, postRpcProgress, toolCallId, videoRef]);
+    if (fetchError) return;
+    if (blobUrl) void postArtifactRendered().catch(() => {});
+  }, [activeFetchPath, blobUrl, fetchError, postArtifactRendered, toolCallId]);
 
   React.useEffect(() => {
-    if (kind !== "audio") return;
-    if (!autoplay) return;
-    if (!allowAutoplay) return;
-    // Best-effort: browsers may block autoplay without user gesture.
-    void playTimes(repeat);
-  }, [allowAutoplay, autoplay, kind, playTimes, repeat]);
+    if (!activeFetchPath) return;
+    if (!toolCallId) return;
+    if (fetchError) void postArtifactRenderFailed(fetchError).catch(() => {});
+  }, [activeFetchPath, fetchError, postArtifactRenderFailed, toolCallId]);
+
+  const openHref = blobUrl || src;
 
   return (
     <div className="rounded-md border border-white/10 bg-black/20 p-3">
       <div className="text-xs text-white/60">{title}</div>
       {path ? <div className="mt-1 text-[11px] text-white/40">{path}</div> : null}
+      {resolvedPath && resolvedPath !== path ? (
+        <div className="mt-1 text-[11px] text-white/30">
+          resolved: <span className="font-mono">{resolvedPath}</span>
+        </div>
+      ) : null}
 
-      {kind === "image" ? (
-        <img src={mediaSrc} className="mt-3 max-h-80 w-full rounded-md object-contain" />
-      ) : kind === "video" ? (
-        <video
-          ref={videoRef}
-          controls
-          className="mt-3 w-full rounded-md"
-          data-tool-call-id={toolCallId ?? ""}
-          data-path={path ?? ""}
-        >
-          <source src={mediaSrc} />
-        </video>
-      ) : kind === "audio" ? (
-        <div className="mt-3">
-          <audio ref={audioRef} controls className="w-full" data-tool-call-id={toolCallId ?? ""} data-path={path ?? ""}>
-            <source src={mediaSrc} />
-          </audio>
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-              type="button"
-              onClick={() => void playTimes(1)}
-            >
-              Play once
-            </button>
-            {repeat > 1 ? (
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                type="button"
-                onClick={() => void playTimes(repeat)}
-                title="Uses best-effort looping; browser autoplay policies may apply."
-              >
-                Play x{repeat}
-              </button>
-            ) : null}
-            {autoplay ? (
-              <div className="text-[11px] text-white/50">
-                agent requested autoplay{repeat > 1 ? ` x${repeat}` : ""} {allowAutoplay ? "(enabled)" : "(disabled)"}
-              </div>
+      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/50">
+        {kind ? (
+          <span>
+            kind=<code className="text-white/70">{kind}</code>
+          </span>
+        ) : null}
+        {contentType ? (
+          <span>
+            content-type=<code className="text-white/70">{contentType}</code>
+          </span>
+        ) : null}
+        {loading ? <span className="text-white/60">loading…</span> : null}
+      </div>
+
+      {fetchError ? (
+        <div className="mt-3 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+          <div className="font-semibold">Load failed</div>
+          <div className="mt-1 text-rose-200/90">
+            {fetchError}{" "}
+            {activeFetchPath ? (
+              <>
+                (<code className="text-rose-100/90">{activeFetchPath}</code>)
+              </>
             ) : null}
           </div>
-          {playError ? (
-            <div className="mt-2 text-[11px] text-amber-200/80">
-              Audio playback failed (likely blocked by browser autoplay policy): {playError}
-            </div>
-          ) : null}
+          <div className="mt-2">
+            <button
+              className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200 hover:bg-rose-500/15"
+              type="button"
+              onClick={() => {
+                failedSrcRef.current = "";
+                setRetryNonce((n) => n + 1);
+              }}
+            >
+              Retry
+            </button>
+          </div>
         </div>
-      ) : (
-        <div className="mt-3 text-xs text-white/70">
-          <a
-            className="text-sky-200 hover:underline"
-            href={mediaSrc}
-            target="_blank"
-            rel="noreferrer"
-            download={path ? path.split("/").pop() || "artifact" : undefined}
-          >
-            Download / open file
-          </a>
-        </div>
-      )}
+      ) : null}
+
+      <div className="mt-3 text-xs text-white/70">
+        <a
+          className="text-sky-200 hover:underline"
+          href={openHref}
+          target="_blank"
+          rel="noreferrer"
+          download={activeFetchPath ? activeFetchPath.split("/").pop() || "artifact" : undefined}
+        >
+          Download / open file
+        </a>
+      </div>
     </div>
   );
 }

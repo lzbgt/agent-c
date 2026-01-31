@@ -2,7 +2,7 @@
 
 #include "cors.h"
 #include "daemon_config.h"
-#include "http_server.h"
+#include "agentd/http_types.h"
 #include "agent_db.h"
 
 #include <string>
@@ -12,7 +12,7 @@ namespace agentd {
 void handle_sessions_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
-  const std::string& sessions_root_dir,
+  AgentDb* db,
   const HttpRequest& req,
   HttpResponse* resp
 );
@@ -20,7 +20,7 @@ void handle_sessions_endpoint(
 void handle_session_get_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
-  const std::string& sessions_root_dir,
+  AgentDb* db,
   const HttpRequest& req,
   HttpResponse* resp
 );
@@ -28,7 +28,7 @@ void handle_session_get_endpoint(
 void handle_session_audit_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
-  const std::string& sessions_root_dir,
+  AgentDb* db,
   const HttpRequest& req,
   HttpResponse* resp
 );
@@ -36,7 +36,7 @@ void handle_session_audit_endpoint(
 void handle_session_artifacts_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
-  const std::string& sessions_root_dir,
+  AgentDb* db,
   const HttpRequest& req,
   HttpResponse* resp
 );
@@ -44,7 +44,7 @@ void handle_session_artifacts_endpoint(
 void handle_session_delete_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
-  AgentDb* db_or_null,
+  AgentDb* db,
   const std::string& sessions_root_dir,
   const HttpRequest& req,
   HttpResponse* resp
@@ -53,7 +53,7 @@ void handle_session_delete_endpoint(
 void handle_session_new_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
-  const std::string& sessions_root_dir,
+  AgentDb* db,
   const HttpRequest& req,
   HttpResponse* resp
 );
@@ -61,8 +61,7 @@ void handle_session_new_endpoint(
 void handle_session_ui_event_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
-  AgentDb* db_or_null,
-  const std::string& sessions_root_dir,
+  AgentDb* db,
   const HttpRequest& req,
   HttpResponse* resp
 );
@@ -70,7 +69,7 @@ void handle_session_ui_event_endpoint(
 void handle_session_client_events_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
-  const std::string& sessions_root_dir,
+  AgentDb* db,
   const HttpRequest& req,
   HttpResponse* resp
 );
@@ -79,7 +78,7 @@ void handle_session_client_events_endpoint(
 void handle_session_clients_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
-  const std::string& sessions_root_dir,
+  AgentDb* db,
   const HttpRequest& req,
   HttpResponse* resp
 );

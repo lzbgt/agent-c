@@ -21,6 +21,7 @@ void handle_tools_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
   const std::string& sessions_root_dir,
+  const ToolExtension* tool_ext_or_null,
   const HttpRequest& req,
   HttpResponse* resp
 ) {
@@ -127,6 +128,19 @@ void handle_tools_endpoint(
     resp->status = 400;
     resp->body = "{\"ok\":false,\"error\":\"invalid tools (expected: none|basic|host)\"}";
     return;
+  }
+
+  if (tool_ext_or_null && tool_ext_or_null->register_tools) {
+    const agent_status_t st = tool_ext_or_null->register_tools(tool_ext_or_null->ctx, registry);
+    if (st != AGENT_OK) {
+      resp->status = 500;
+      resp->body = "{\"ok\":false,\"error\":\"tool extension register_tools failed\"}";
+      agent_tool_registry_destroy(registry);
+      if (need_destroy_executor) {
+        toolset_host_destroy(&executor);
+      }
+      return;
+    }
   }
 
   Json::Value arr(Json::arrayValue);

@@ -83,8 +83,6 @@ Troubleshooting helper:
 ## Suggested event types
 
 This is intentionally open-ended, but common initial types:
-- `audio_play_started`
-- `audio_play_finished`
 - `artifact_rendered`
 - `ui_action_shown`
 - `client_state`

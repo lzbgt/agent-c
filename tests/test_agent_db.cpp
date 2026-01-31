@@ -132,8 +132,8 @@ int main() {
   agentd::AgentDb::ClientEventRow cer;
   cer.ts_unix_ms = now;
   cer.session_id = "s1";
-  cer.type = "audio_play_finished";
-  cer.data_json = "{\"type\":\"audio_play_finished\",\"ts_unix_ms\":1700000000000,\"data\":{\"path\":\"build/demo.wav\"}}";
+  cer.type = "artifact_rendered";
+  cer.data_json = "{\"type\":\"artifact_rendered\",\"ts_unix_ms\":1700000000000,\"data\":{\"path\":\"build/demo.wav\"}}";
   if (!db.insert_client_event(cer, &err)) {
     std::fprintf(stderr, "insert_client_event failed: %s\n", err.c_str());
     return 1;
@@ -199,12 +199,15 @@ int main() {
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('ui_actions') WHERE name='action_json';");
   const int64_t ce_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('client_events') WHERE name='data_json';");
+  const int64_t audit_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('audit_records') WHERE name='record_json';");
   sqlite3_close(raw2);
-  assert(ver == 5);
+  assert(ver == 6);
   assert(arts2 == 0);
   assert(stop_reason_cols == 1);
   assert(ua_cols == 1);
   assert(ce_cols == 1);
+  assert(audit_cols == 1);
 
   db.close();
   std::filesystem::remove(tmp, ec);

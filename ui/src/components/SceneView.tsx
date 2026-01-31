@@ -1,5 +1,7 @@
 import React from "react";
 
+import ArtifactView from "./ArtifactView";
+
 type CanvasPoint = { x: number; y: number };
 
 type DrawOp =
@@ -168,18 +170,34 @@ function JsonEntityView({ entity }: { entity: SceneEntity }) {
 }
 
 export default function SceneView({
+  baseUrl,
+  yolo,
+  allowAutoplay,
+  client,
+  daemonAuthToken,
   sessionId,
   entities,
   onClear,
+  className,
 }: {
+  baseUrl?: string;
+  yolo?: boolean;
+  allowAutoplay?: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  client?: any;
+  daemonAuthToken?: string;
   sessionId?: string;
   entities: SceneEntity[];
   onClear?: () => void;
+  className?: string;
 }) {
   const sid = typeof sessionId === "string" ? sessionId.trim() : "";
   return (
-    <div className="mt-6 rounded-lg border border-white/10 bg-white/5" data-testid="scene">
-      <div className="flex items-center justify-between px-3 py-2">
+    <div
+      className={["flex min-h-0 flex-col rounded-lg border border-white/10 bg-white/5", className].filter(Boolean).join(" ")}
+      data-testid="scene"
+    >
+      <div className="flex shrink-0 items-center justify-between px-3 py-2">
         <div className="text-sm font-semibold" data-testid="scene-header">
           Scene
         </div>
@@ -198,14 +216,15 @@ export default function SceneView({
           </button>
         </div>
       </div>
-      <div className="px-3 pb-3">
+      <div className="min-h-0 flex-1 overflow-auto px-3 pb-3">
         {entities.length === 0 ? (
-          <div className="text-xs text-white/50">No scene entities.</div>
+          <div className="py-6 text-xs text-white/50">No scene entities.</div>
         ) : (
           <div className="space-y-3">
             {entities.map((e) => {
               const title = e.title || `${e.kind}:${e.id}`;
               const entityTid = `scene-entity-${toTestIdPart(e.id)}`;
+              const props = e.props ?? {};
               return (
                 <div key={e.id} className="rounded-md border border-white/10 bg-black/10 p-3" data-testid={entityTid}>
                   <div className="flex items-center justify-between gap-2">
@@ -214,7 +233,23 @@ export default function SceneView({
                       <code>{e.id}</code>
                     </div>
                   </div>
-                  {e.kind === "canvas2d" ? <Canvas2DEntityView entity={e} /> : <JsonEntityView entity={e} />}
+                  {e.kind === "canvas2d" ? (
+                    <Canvas2DEntityView entity={e} />
+                  ) : e.kind === "artifact" && baseUrl && typeof yolo === "boolean" ? (
+                    <div className="mt-2">
+                      <ArtifactView
+                        baseUrl={baseUrl}
+                        yolo={yolo}
+                        artifact={props?.artifact ?? props}
+                        allowAutoplay={!!allowAutoplay}
+                        sessionId={sessionId}
+                        client={client}
+                        daemonAuthToken={daemonAuthToken}
+                      />
+                    </div>
+                  ) : (
+                    <JsonEntityView entity={e} />
+                  )}
                 </div>
               );
             })}

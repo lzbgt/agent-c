@@ -68,7 +68,7 @@ For some decisions, snapshots are too heavy and too stale. Clients should also e
   - `ui_action(type="client_rpc", rpc.kind="media_snapshot")` for polling-style checks
   - `ui_action(type="client_rpc", rpc.kind="media_observe")` for correlated progress events (`client_rpc_progress`)
 
-Audio playback acknowledgements (`audio_play_*`) may still be emitted by clients for DoD, but long-term
-the intent is to converge on `client_rpc_*` correlation for universal waiting/joining.
+Clients may emit additional telemetry events when useful, but long-term the intent is to converge on
+`client_rpc_result` / `client_rpc_progress` correlation for universal waiting/joining.
 
 These are high-signal, low-volume “facts” that the agent can wait on deterministically (DoD).

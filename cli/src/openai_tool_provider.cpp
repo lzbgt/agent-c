@@ -20,6 +20,20 @@ static std::string json_stringify(const Json::Value& v) {
   return Json::writeString(builder, v);
 }
 
+static std::string lower_copy(std::string s) {
+  for (char& c : s) {
+    if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+  }
+  return s;
+}
+
+static bool url_contains_ci(const std::string& url, const std::string& needle) {
+  if (needle.empty()) return false;
+  const std::string u = lower_copy(url);
+  const std::string n = lower_copy(needle);
+  return u.find(n) != std::string::npos;
+}
+
 static std::string truncate_str(const std::string& s, size_t max_chars, bool* out_truncated = nullptr) {
   if (out_truncated) *out_truncated = false;
   if (max_chars == 0 || s.size() <= max_chars) return s;
@@ -114,13 +128,22 @@ static agent_status_t set_error(agent_tool_provider_response_t* out_resp, const 
   return agent_string_set_copy(&out_resp->error_message, s.c_str(), s.size());
 }
 
-static Json::Value build_messages_json(const agent_chat_message_view_t* messages, size_t message_count) {
+static Json::Value build_messages_json(
+  const agent_chat_message_view_t* messages,
+  size_t message_count,
+  bool include_reasoning_content
+) {
   Json::Value out(Json::arrayValue);
   for (size_t i = 0; i < message_count; i++) {
     const agent_chat_message_view_t& v = messages[i];
     Json::Value m(Json::objectValue);
     m["role"] = agent_role_to_string(v.role);
     m["content"] = std::string(v.content ? v.content : "", v.content_len);
+    // DeepSeek thinking-mode models (e.g. deepseek-reasoner) require a `reasoning_content` field
+    // in assistant messages for tool-calling flows. If omitted, DeepSeek may return HTTP 400.
+    if (include_reasoning_content && v.role == AGENT_ROLE_ASSISTANT) {
+      m["reasoning_content"] = "";
+    }
     if (v.name && v.name[0]) m["name"] = v.name;
     if (v.role == AGENT_ROLE_TOOL && v.tool_call_id && v.tool_call_id[0]) {
       m["tool_call_id"] = v.tool_call_id;
@@ -178,7 +201,10 @@ static agent_status_t openai_tool_provider_generate(
   Json::Value root(Json::objectValue);
   root["model"] = req->model ? req->model : "";
   root["stream"] = ctx->stream_assistant;
-  root["messages"] = build_messages_json(req->messages, req->message_count);
+  const bool deepseek_reasoner =
+    url_contains_ci(ctx->cfg.base_url, "deepseek") &&
+    (url_contains_ci(root["model"].asString(), "reasoner") || url_contains_ci(root["model"].asString(), "deepseek-reasoner"));
+  root["messages"] = build_messages_json(req->messages, req->message_count, deepseek_reasoner);
   root["tools"] = tools;
 
   if (req->force_tool_or_null && req->force_tool_or_null[0]) {

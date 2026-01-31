@@ -48,6 +48,20 @@ agentd_smoke_start() {
 
   DAEMON_URL="http://${bind_host}:${port}"
 
+  # Hermetic DB for smoke tests:
+  # - agentd now uses SQLite as a primary state store, so always give tests their own DB file
+  #   unless they explicitly pass --db-path.
+  local has_db="0"
+  for a in "$@"; do
+    if [[ "${a}" == "--db-path" ]]; then
+      has_db="1"
+      break
+    fi
+  done
+  if [[ "${has_db}" == "0" ]]; then
+    set -- --db-path "${LOG_DIR}/${name}_${port}.sqlite" "$@"
+  fi
+
   "${bin}" \
     --host "${bind_host}" \
     --port "${port}" \
@@ -77,6 +91,18 @@ agentd_smoke_start_bind() {
   mkdir -p "${LOG_DIR}"
 
   DAEMON_URL="http://${connect_host}:${port}"
+
+  # Hermetic DB for smoke tests unless explicitly passed.
+  local has_db="0"
+  for a in "$@"; do
+    if [[ "${a}" == "--db-path" ]]; then
+      has_db="1"
+      break
+    fi
+  done
+  if [[ "${has_db}" == "0" ]]; then
+    set -- --db-path "${LOG_DIR}/${name}_${port}.sqlite" "$@"
+  fi
 
   "${bin}" \
     --host "${bind_host}" \

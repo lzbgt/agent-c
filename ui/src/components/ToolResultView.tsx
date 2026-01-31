@@ -41,6 +41,12 @@ function looksLikeMarkdown(s: string) {
   return false;
 }
 
+function firstNLines(s: string, n: number): { head: string; totalLines: number } {
+  const lines = String(s || "").split("\n");
+  const head = lines.slice(0, Math.max(0, n)).join("\n");
+  return { head, totalLines: lines.length };
+}
+
 function SearchMatchesView({ matches }: { matches: any[] }) {
   const items = Array.isArray(matches) ? matches : [];
   if (items.length === 0) return null;
@@ -128,20 +134,18 @@ export default function ToolResultView({
 }) {
   const [showRaw, setShowRaw] = React.useState(false);
   const [renderMode, setRenderMode] = React.useState<"auto" | "text" | "markdown">("auto");
+  const [showFullOutput, setShowFullOutput] = React.useState<boolean>(false);
 
   const parsed = safeJsonParse(content);
   if (parsed && typeof parsed === "object") {
     const toolName = typeof parsed?.data?.tool === "string" ? parsed.data.tool : "";
     const patch = typeof parsed?.data?.patch === "string" ? parsed.data.patch : null;
-    const output = typeof parsed?.data?.output === "string" ? parsed.data.output : null;
+    const hasOutput = typeof parsed?.data?.output === "string";
+    const output = hasOutput ? (parsed.data.output as string) : null;
+    const cmd = typeof parsed?.data?.cmd === "string" ? parsed.data.cmd : null;
+    const argv = Array.isArray(parsed?.data?.argv) ? parsed.data.argv : null;
     const matches = Array.isArray(parsed?.data?.matches) ? parsed.data.matches : null;
     const entries = Array.isArray(parsed?.data?.entries) ? parsed.data.entries : null;
-    const hasMore = typeof parsed?.data?.has_more === "boolean" ? parsed.data.has_more : null;
-    const nextStartLine =
-      typeof parsed?.data?.next_start_line === "number" ? parsed.data.next_start_line : null;
-    const truncated = typeof parsed?.data?.truncated === "boolean" ? parsed.data.truncated : null;
-    const truncatedReason =
-      typeof parsed?.data?.truncated_reason === "string" ? parsed.data.truncated_reason : null;
     const toolPath = typeof parsed?.data?.path === "string" ? parsed.data.path : null;
     const exitCode =
       typeof parsed?.data?.exit_code === "number"
@@ -151,6 +155,24 @@ export default function ToolResultView({
           : null;
     const ok = typeof parsed?.ok === "boolean" ? parsed.ok : null;
     const error = typeof parsed?.error === "string" ? parsed.error : null;
+    const timedOut = typeof parsed?.data?.timed_out === "boolean" ? parsed.data.timed_out : null;
+    const waitForType = typeof parsed?.data?.wait_for_type === "string" ? String(parsed.data.wait_for_type) : null;
+    const waitTimeoutMs = typeof parsed?.data?.timeout_ms === "number" ? parsed.data.timeout_ms : null;
+    const lastType = typeof parsed?.data?.last_type === "string" ? String(parsed.data.last_type) : null;
+    const lastTsUnixMs = typeof parsed?.data?.last_ts_unix_ms === "number" ? parsed.data.last_ts_unix_ms : null;
+
+    const isWaitTool = new Set([
+      "client_wait_event",
+      "client_wait_any",
+      "client_wait_all",
+      "ui_wait_event",
+      "ui_wait_any",
+      "ui_wait_all",
+    ]).has(toolName);
+    const isTimeout = !!isWaitTool && ok === false && (error === "timeout" || timedOut === true);
+
+    const peek = output !== null ? firstNLines(output, 5) : null;
+    const outputIsLong = output !== null && (((peek?.totalLines ?? 0) > 5) || output.length > 2000);
 
     const effectiveMode: "text" | "markdown" =
       renderMode === "markdown"
@@ -164,34 +186,32 @@ export default function ToolResultView({
     return (
       <div>
         <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-white/70">
+          {toolName ? <span className="rounded-md bg-white/10 px-2 py-1">{toolName}</span> : null}
           {ok !== null ? (
             <span
               className={`rounded-md px-2 py-1 ${
                 ok ? "bg-emerald-500/15 text-emerald-200" : "bg-rose-500/15 text-rose-200"
               }`}
             >
-              ok={String(ok)}
+              {ok ? "ok" : "error"}
             </span>
           ) : null}
           {exitCode !== null ? <span className="rounded-md bg-white/10 px-2 py-1">exit_code={exitCode}</span> : null}
-          {toolName ? <span className="rounded-md bg-white/10 px-2 py-1">{toolName}</span> : null}
           {toolPath ? <span className="rounded-md bg-white/10 px-2 py-1">path={toolPath}</span> : null}
-          {hasMore !== null ? (
-            <span className="rounded-md bg-white/10 px-2 py-1">has_more={String(hasMore)}</span>
-          ) : null}
-          {nextStartLine !== null ? (
-            <span className="rounded-md bg-white/10 px-2 py-1">next_start_line={nextStartLine}</span>
-          ) : null}
-          {truncated !== null ? (
-            <span className="rounded-md bg-white/10 px-2 py-1">truncated={String(truncated)}</span>
-          ) : null}
-          {truncatedReason ? (
-            <span className="rounded-md bg-white/10 px-2 py-1">reason={truncatedReason}</span>
-          ) : null}
+          {timedOut === true ? <span className="rounded-md bg-amber-500/10 px-2 py-1 text-amber-200">timed_out</span> : null}
           {error ? <span className="rounded-md bg-rose-500/10 px-2 py-1 text-rose-200">{error}</span> : null}
 
-          {output ? (
+          {hasOutput ? (
             <div className="ml-auto flex items-center gap-2">
+              {outputIsLong ? (
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/70 hover:bg-black/40"
+                  onClick={() => setShowFullOutput((v) => !v)}
+                  type="button"
+                >
+                  {showFullOutput ? "Collapse output" : "Expand output"}
+                </button>
+              ) : null}
               <select
                 className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/80"
                 value={renderMode}
@@ -220,27 +240,76 @@ export default function ToolResultView({
           )}
         </div>
 
-        {output ? (
-          <div>
-            <div className="mb-1 text-xs font-semibold text-white/70">Output</div>
-            {effectiveMode === "markdown" ? (
-              <div className="rounded-md border border-white/10 bg-black/20 p-3">
-                <Markdown text={output} />
+        {isTimeout ? (
+          <div className="mb-3 rounded-md border border-amber-400/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100/90">
+            <div className="font-semibold">Timed out waiting for an event</div>
+            {waitForType || waitTimeoutMs !== null ? (
+              <div className="mt-1 font-mono text-[11px] text-amber-100/80">
+                wait_for_type={waitForType || "(unknown)"} timeout_ms={waitTimeoutMs ?? "(unknown)"}
+                {lastType ? ` last_type=${lastType}` : ""}
+                {lastTsUnixMs ? ` last_ts_unix_ms=${lastTsUnixMs}` : ""}
               </div>
+            ) : null}
+            <div className="mt-1 text-amber-100/80">
+              The client may not have been connected (or may have missed the request). If this was a client RPC flow, prefer
+              requesting a deterministic follow-up RPC (dom_query/entity_query/state_snapshot) instead of looping on retries.
+            </div>
+          </div>
+        ) : null}
+
+        {hasOutput ? (
+          <div>
+            {toolName === "shell_exec" && cmd ? (
+              <div className="mb-3 rounded-md border border-white/10 bg-black/20 p-3">
+                <div className="mb-1 text-[11px] font-semibold text-white/70">Command</div>
+                <pre className="overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-white/90">
+                  cmd: {cmd}
+                </pre>
+              </div>
+            ) : toolName === "proc_exec" && argv ? (
+              <div className="mb-3 rounded-md border border-white/10 bg-black/20 p-3">
+                <div className="mb-1 text-[11px] font-semibold text-white/70">Command</div>
+                <pre className="overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-white/90">
+                  argv: {(argv as any[]).map((x) => (typeof x === "string" ? x : "")).filter((x) => x.length > 0).join(" ")}
+                </pre>
+              </div>
+            ) : null}
+            <div className="mb-1 text-xs font-semibold text-white/70">Output</div>
+            {peek ? (
+              <div className="mb-2">
+                <div className="mb-1 text-[11px] text-white/60">
+                  Peek (first 5 lines){peek.totalLines > 5 ? ` of ${peek.totalLines}` : ""}:
+                </div>
+                <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
+                  {peek.head}
+                </pre>
+              </div>
+            ) : null}
+
+            {!outputIsLong || showFullOutput ? (
+              effectiveMode === "markdown" ? (
+                <div className="rounded-md border border-white/10 bg-black/20 p-3">
+                  <Markdown text={output ?? ""} />
+                </div>
+              ) : (
+                <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
+                  {output ?? ""}
+                </pre>
+              )
             ) : (
-              <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
-                {output}
-              </pre>
+              <div className="text-[11px] text-white/50">Output collapsed. Expand to view full content.</div>
             )}
-            <MediaPreviews baseUrl={baseUrl} yolo={yolo} text={output} />
+            <MediaPreviews baseUrl={baseUrl} yolo={yolo} text={output ?? ""} />
           </div>
         ) : null}
 
         {typeof patch === "string" ? (
-          <div className="mt-3">
-            <div className="mb-1 text-xs font-semibold text-white/70">Diff</div>
-            <DiffBlock text={patch} />
-          </div>
+          <details className="mt-3 rounded-md border border-white/10 bg-black/20 px-3 py-2">
+            <summary className="cursor-pointer select-none text-xs font-semibold text-white/70">Diff</summary>
+            <div className="mt-2">
+              <DiffBlock text={patch} />
+            </div>
+          </details>
         ) : null}
 
         {toolName === "text_search" && matches ? <SearchMatchesView matches={matches} /> : null}
@@ -262,9 +331,41 @@ export default function ToolResultView({
 
   return (
     <div>
-      <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
-        {content}
-      </pre>
+      {(() => {
+        const peek = firstNLines(content, 5);
+        const isLong = peek.totalLines > 5 || content.length > 2000;
+        return (
+          <div>
+            <div className="mb-1 text-xs font-semibold text-white/70">Output</div>
+            <div className="mb-2">
+              <div className="mb-1 text-[11px] text-white/60">
+                Peek (first 5 lines){peek.totalLines > 5 ? ` of ${peek.totalLines}` : ""}:
+              </div>
+              <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
+                {peek.head}
+              </pre>
+            </div>
+
+            {!isLong || showFullOutput ? (
+              <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
+                {content}
+              </pre>
+            ) : (
+              <div className="text-[11px] text-white/50">Output collapsed. Expand to view full content.</div>
+            )}
+
+            {isLong ? (
+              <button
+                className="mt-2 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/70 hover:bg-black/40"
+                onClick={() => setShowFullOutput((v) => !v)}
+                type="button"
+              >
+                {showFullOutput ? "Collapse output" : "Expand output"}
+              </button>
+            ) : null}
+          </div>
+        );
+      })()}
       <MediaPreviews baseUrl={baseUrl} yolo={yolo} text={content} />
     </div>
   );

@@ -2,9 +2,12 @@
 
 #include "agent/tools.h"
 
+#include <cstddef>
 #include <string>
 
 using HostCancelCallback = bool (*)(void* ctx);
+using HostReadClientEventsTailCallback =
+  agent_status_t (*)(void* ctx, const std::string& session_id, size_t max_bytes, size_t max_files, std::string* out_tail_jsonl);
 
 enum class HostToolsetPolicyMode {
   Full = 0,     // all host tools enabled (exec + patch + fs)
@@ -54,6 +57,15 @@ struct HostToolsetConfig {
   // This is intentionally optional so CLI runs can ignore it.
   std::string sessions_root_dir;
   std::string session_id;
+
+  // Optional: DB-backed session client event log reader (preferred).
+  //
+  // This enables tools like `client_wait_event` and `client_peek` to read session client events even when
+  // agentd stores them in SQLite instead of session-scoped JSONL files.
+  //
+  // When set, host tools prefer this callback over reading files from sessions_root_dir.
+  HostReadClientEventsTailCallback read_client_events_tail = nullptr;
+  void* read_client_events_tail_ctx = nullptr;
 };
 
 // Creates a "host" tool registry + executor suitable for CLI/daemon usage:

@@ -2,7 +2,7 @@
 
 #include "cors.h"
 #include "daemon_config.h"
-#include "http_server.h"
+#include "agentd/http_types.h"
 
 namespace agentd {
 
@@ -14,4 +14,3 @@ void handle_file_endpoint(
 );
 
 }  // namespace agentd
-

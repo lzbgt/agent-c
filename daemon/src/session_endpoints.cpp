@@ -7,11 +7,6 @@
 
 #include "session_id_util.h"
 
-#include "agent/agent.h"
-
-#include "file_persistor.h"
-#include "session_store.h"
-
 #include <json/json.h>
 
 #include <chrono>
@@ -46,21 +41,10 @@ static std::string make_uuidish_session_id() {
   return std::string(buf);
 }
 
-static bool session_files_exist(const std::string& sessions_root_dir, const std::string& session_id) {
-  std::error_code ec;
-  const std::filesystem::path root(sessions_root_dir);
-  const std::filesystem::path sess = root / (session_id + ".sess");
-  const std::filesystem::path json = root / (session_id + ".json");
-  if (std::filesystem::exists(sess, ec)) return true;
-  ec.clear();
-  if (std::filesystem::exists(json, ec)) return true;
-  return false;
-}
-
 void handle_sessions_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
-  const std::string& sessions_root_dir,
+  AgentDb* db,
   const HttpRequest& req,
   HttpResponse* resp
 ) {
@@ -68,28 +52,25 @@ void handle_sessions_endpoint(
   resp->headers["Content-Type"] = "application/json; charset=utf-8";
   if (!daemon_require_auth(cfg, req, resp)) return;
 
-  SessionStoreConfig store_cfg;
-  store_cfg.root_dir = sessions_root_dir;
-
-  agent_persistor_t p{};
-  const agent_status_t pst = agent_file_persistor_create(store_cfg.root_dir.c_str(), &p);
-  std::vector<std::string> ids;
-  agent_status_t st = pst;
-  if (pst == AGENT_OK && p.list) {
-    auto sink = [](void* vctx, const char* id) {
-      auto* vec = static_cast<std::vector<std::string>*>(vctx);
-      vec->push_back(id ? id : "");
-    };
-    st = p.list(p.ctx, sink, &ids);
-  }
-  agent_persistor_destroy(&p);
-
   Json::Value out(Json::objectValue);
-  out["ok"] = (st == AGENT_OK);
-  if (st != AGENT_OK) {
-    out["error"] = "failed to list sessions";
-    out["status"] = (Json::Int64)st;
+  out["ok"] = false;
+  if (!db || !db->is_open()) {
+    out["error"] = "db not available";
+    resp->status = 500;
+    resp->body = json_stringify(out);
+    return;
   }
+
+  std::vector<std::string> ids;
+  std::string err;
+  if (!db->list_sessions(&ids, &err)) {
+    out["error"] = err.empty() ? "failed to list sessions" : err;
+    resp->status = 500;
+    resp->body = json_stringify(out);
+    return;
+  }
+
+  out["ok"] = true;
   Json::Value arr(Json::arrayValue);
   for (const auto& s : ids) {
     arr.append(s);
@@ -101,7 +82,7 @@ void handle_sessions_endpoint(
 void handle_session_new_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
-  const std::string& sessions_root_dir,
+  AgentDb* db,
   const HttpRequest& req,
   HttpResponse* resp
 ) {
@@ -110,7 +91,7 @@ void handle_session_new_endpoint(
   if (!daemon_require_auth(cfg, req, resp)) return;
 
   std::string requested_id;
-  bool create_files = true;
+  bool create_session = true;
   if (!req.body.empty()) {
     Json::Value body(Json::objectValue);
     std::string err;
@@ -123,7 +104,8 @@ void handle_session_new_endpoint(
       requested_id = body["session_id"].asString();
     }
     if (body.isMember("create_files") && body["create_files"].isBool()) {
-      create_files = body["create_files"].asBool();
+      // Legacy name kept: now means "create session rows in DB".
+      create_session = body["create_files"].asBool();
     }
   }
 
@@ -134,36 +116,44 @@ void handle_session_new_endpoint(
     return;
   }
 
-  // Avoid collisions when autogenerating. (requested ids are allowed to already exist)
-  if (requested_id.empty()) {
-    for (int i = 0; i < 8 && session_files_exist(sessions_root_dir, sid); i++) {
-      sid = make_uuidish_session_id();
-    }
+  if (!db || !db->is_open()) {
+    resp->status = 500;
+    resp->body = R"({"ok":false,"error":"db not available"})";
+    return;
   }
 
-  const bool existed = session_files_exist(sessions_root_dir, sid);
-
-  if (create_files && !existed) {
-    agent_session_t* session = nullptr;
-    agent_status_t st = agent_session_create(&session);
-    if (st != AGENT_OK || !session) {
-      resp->status = 500;
-      resp->body = R"({"ok":false,"error":"failed to create session"})";
-      return;
-    }
-
-    agent_persistor_t p{};
-    const agent_status_t pst = agent_file_persistor_create(sessions_root_dir.c_str(), &p);
-    st = (pst == AGENT_OK && p.save) ? p.save(p.ctx, sid.c_str(), session) : pst;
-    agent_persistor_destroy(&p);
-    agent_session_destroy(session);
-
-    if (st != AGENT_OK) {
+  bool existed = false;
+  {
+    std::string err;
+    if (!db->session_exists(sid, &existed, &err)) {
       resp->status = 500;
       Json::Value out(Json::objectValue);
       out["ok"] = false;
-      out["error"] = "failed to save session";
-      out["status"] = (Json::Int64)st;
+      out["error"] = err.empty() ? "failed to query session existence" : err;
+      resp->body = json_stringify(out);
+      return;
+    }
+  }
+
+  // Avoid collisions when autogenerating. (requested ids are allowed to already exist)
+  if (requested_id.empty()) {
+    for (int i = 0; i < 12 && existed; i++) {
+      sid = make_uuidish_session_id();
+      std::string err;
+      if (!db->session_exists(sid, &existed, &err)) break;
+    }
+  }
+
+  if (create_session && !existed) {
+    std::string err;
+    const int64_t now_ms = (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::system_clock::now().time_since_epoch()).count();
+    std::vector<std::pair<std::string, std::string>> empty;
+    if (!db->replace_session_messages(sid, empty, now_ms, &err)) {
+      resp->status = 500;
+      Json::Value out(Json::objectValue);
+      out["ok"] = false;
+      out["error"] = err.empty() ? "failed to create session" : err;
       resp->body = json_stringify(out);
       return;
     }
@@ -179,7 +169,7 @@ void handle_session_new_endpoint(
 void handle_session_get_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
-  const std::string& sessions_root_dir,
+  AgentDb* db,
   const HttpRequest& req,
   HttpResponse* resp
 ) {
@@ -199,53 +189,72 @@ void handle_session_get_endpoint(
     return;
   }
 
-  SessionStoreConfig store_cfg;
-  store_cfg.root_dir = sessions_root_dir;
-
-  agent_session_t* session = nullptr;
-  agent_persistor_t p{};
-  const agent_status_t pst = agent_file_persistor_create(store_cfg.root_dir.c_str(), &p);
-  const agent_status_t st = (pst == AGENT_OK) ? p.load(p.ctx, sid->c_str(), &session) : pst;
-  agent_persistor_destroy(&p);
-  if (st != AGENT_OK || !session) {
+  if (!db || !db->is_open()) {
     resp->status = 500;
-    Json::Value out(Json::objectValue);
-    out["ok"] = false;
-    out["error"] = "failed to load session";
-    out["status"] = (Json::Int64)st;
-    resp->body = json_stringify(out);
+    resp->body = R"({"ok":false,"error":"db not available"})";
     return;
+  }
+
+  bool exists = false;
+  {
+    std::string err;
+    if (!db->session_exists(*sid, &exists, &err)) {
+      resp->status = 500;
+      Json::Value out(Json::objectValue);
+      out["ok"] = false;
+      out["error"] = err.empty() ? "failed to query session" : err;
+      resp->body = json_stringify(out);
+      return;
+    }
+  }
+  if (!exists) {
+    resp->status = 404;
+    resp->body = R"({"ok":false,"error":"session not found"})";
+    return;
+  }
+
+  std::vector<std::pair<std::string, std::string>> msgs;
+  {
+    std::string err;
+    if (!db->load_session_messages(*sid, &msgs, &err)) {
+      resp->status = 500;
+      Json::Value out(Json::objectValue);
+      out["ok"] = false;
+      out["error"] = err.empty() ? "failed to load session" : err;
+      resp->body = json_stringify(out);
+      return;
+    }
   }
 
   Json::Value out(Json::objectValue);
   out["ok"] = true;
   out["session_id"] = *sid;
-  Json::Value msgs(Json::arrayValue);
-  const size_t n = agent_session_message_count(session);
-  for (size_t i = 0; i < n; i++) {
-    agent_message_view_t v{};
-    if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
-    Json::Value m(Json::objectValue);
-    m["role"] = agent_role_to_string(v.role);
-    m["content"] = std::string(v.content, v.content_len);
-    msgs.append(m);
+  Json::Value arr(Json::arrayValue);
+  for (const auto& rc : msgs) {
+    Json::Value mv(Json::objectValue);
+    mv["role"] = rc.first;
+    mv["content"] = rc.second;
+    arr.append(mv);
   }
-  out["messages"] = msgs;
-  agent_session_destroy(session);
+  out["messages"] = arr;
   resp->body = json_stringify(out);
 }
 
 void handle_session_ui_event_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
-  AgentDb* db_or_null,
-  const std::string& sessions_root_dir,
+  AgentDb* db,
   const HttpRequest& req,
   HttpResponse* resp
 ) {
   cors_apply(req, resp, cors_cfg);
   resp->headers["Content-Type"] = "application/json; charset=utf-8";
   if (!daemon_require_auth(cfg, req, resp)) return;
+  if (!db || !db->is_open()) {
+    resp->status = 500;
+    resp->body = R"({"ok":false,"error":"db not available"})";
+    return;
+  }
 
   if (req.body.empty()) {
     resp->status = 400;
@@ -339,70 +348,40 @@ void handle_session_ui_event_endpoint(
   wb["indentation"] = "";
   const std::string payload_json = Json::writeString(wb, payload);
 
-  bool logged_to_client_events = false;
-  agent_status_t client_events_status = AGENT_OK;
-
-  // Always append to the session-scoped client event log (host-only).
-  // This is the canonical source for the client-wait host tools, and works even when the DB is disabled.
-  {
-    SessionStoreConfig store_cfg;
-    store_cfg.root_dir = sessions_root_dir;
-    client_events_status = session_store_append_client_event_jsonl(store_cfg, session_id, payload_json);
-    logged_to_client_events = (client_events_status == AGENT_OK);
-  }
-
   bool appended = false;
   if (append_to_session) {
-    agent_persistor_t p{};
-    const agent_status_t pst = agent_file_persistor_create(sessions_root_dir.c_str(), &p);
-    agent_session_t* session = nullptr;
-    agent_status_t st = pst;
-    if (pst == AGENT_OK && p.load) {
-      st = p.load(p.ctx, session_id.c_str(), &session);
+    std::vector<std::pair<std::string, std::string>> msgs;
+    std::string err;
+    (void)db->load_session_messages(session_id, &msgs, &err); // missing session => empty
+
+    std::string msg = "[client_event] ";
+    msg += payload_json;
+    if (msg.size() > 4096) {
+      msg.resize(4096);
+      msg += "…";
     }
-    if (st != AGENT_OK || !session) {
-      // Best-effort: create the session if it does not exist yet.
-      st = agent_session_create(&session);
+    msgs.emplace_back("user", msg);
+    appended = true;
+
+    err.clear();
+    if (!db->replace_session_messages(session_id, msgs, ts_unix_ms, &err)) {
+      resp->status = 500;
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = err.empty() ? "failed to append to session" : err;
+      resp->body = json_stringify(o);
+      return;
     }
-
-    if (st == AGENT_OK && session) {
-      std::string msg = "[client_event] ";
-      msg += payload_json;
-      if (msg.size() > 4096) {
-        msg.resize(4096);
-        msg += "…";
-      }
-      (void)agent_session_add_message(session, AGENT_ROLE_USER, msg.c_str());
-      appended = true;
-
-      if (pst == AGENT_OK && p.save) {
-        (void)p.save(p.ctx, session_id.c_str(), session);
-      }
-
-      // Best-effort DB mirror refresh for this session.
-      if (db_or_null && db_or_null->is_open()) {
-        std::vector<std::pair<std::string, std::string>> msgs;
-        msgs.reserve(agent_session_message_count(session));
-        for (size_t i = 0; i < agent_session_message_count(session); i++) {
-          agent_message_view_t v{};
-          if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
-          msgs.emplace_back(agent_role_to_string(v.role), std::string(v.content, v.content_len));
-        }
-        (void)db_or_null->replace_session_messages(session_id, msgs, ts_unix_ms, nullptr);
-      }
-
-      agent_session_destroy(session);
-    }
-    agent_persistor_destroy(&p);
   }
 
-  if (db_or_null && db_or_null->is_open()) {
+  {
     AgentDb::ClientEventRow er;
     er.ts_unix_ms = ts_unix_ms;
     er.session_id = session_id;
     er.type = type;
     er.data_json = payload_json;
-    (void)db_or_null->insert_client_event(er, nullptr);
+    std::string err;
+    (void)db->insert_client_event(er, &err);
   }
 
   Json::Value out(Json::objectValue);
@@ -410,10 +389,7 @@ void handle_session_ui_event_endpoint(
   out["session_id"] = session_id;
   out["type"] = type;
   out["appended_to_session"] = appended;
-  out["logged_to_client_events"] = logged_to_client_events;
-  if (!logged_to_client_events) {
-    out["client_events_status"] = (Json::Int64)client_events_status;
-  }
+  out["logged_to_client_events"] = true;
   resp->status = 200;
   resp->body = json_stringify(out);
 }
@@ -421,13 +397,18 @@ void handle_session_ui_event_endpoint(
 void handle_session_audit_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
-  const std::string& sessions_root_dir,
+  AgentDb* db,
   const HttpRequest& req,
   HttpResponse* resp
 ) {
   cors_apply(req, resp, cors_cfg);
   resp->headers["Content-Type"] = "application/json; charset=utf-8";
   if (!daemon_require_auth(cfg, req, resp)) return;
+  if (!db || !db->is_open()) {
+    resp->status = 500;
+    resp->body = R"({"ok":false,"error":"db not available"})";
+    return;
+  }
 
   const auto sid = query_get(req.query, "session_id");
   if (!sid || sid->empty()) {
@@ -448,49 +429,25 @@ void handle_session_audit_endpoint(
     }
   }
 
-  SessionStoreConfig store_cfg;
-  store_cfg.root_dir = sessions_root_dir;
-
-  bool include_rotated = false;
-  if (const auto ir = query_get(req.query, "include_rotated"); ir && !ir->empty()) {
-    include_rotated = string_to_bool(*ir);
-  }
-  size_t max_files = 0;
-  if (const auto mf = query_get(req.query, "max_files")) {
-    try {
-      max_files = (size_t)std::stoull(*mf);
-    } catch (...) {
-    }
-  }
-  if (max_files > 10) max_files = 10;
-  if (max_files == 0) max_files = store_cfg.audit_max_files;
-
-  std::string tail;
-  const agent_status_t st = include_rotated
-    ? session_store_read_audit_tail_multi(store_cfg, *sid, max_bytes, max_files, &tail)
-    : session_store_read_audit_tail(store_cfg, *sid, max_bytes, &tail);
+  std::vector<std::string> recs_desc;
+  std::string err;
+  const bool ok = db->read_audit_records_tail(*sid, max_bytes, /*max_records=*/0, &recs_desc, &err);
   Json::Value out(Json::objectValue);
-  out["ok"] = (st == AGENT_OK);
+  out["ok"] = ok;
   out["session_id"] = *sid;
-  out["include_rotated"] = include_rotated;
-  out["max_files"] = (Json::UInt64)max_files;
-  if (st != AGENT_OK) {
-    out["error"] = "failed to read audit log";
-    out["status"] = (Json::Int64)st;
+  out["max_bytes"] = (Json::UInt64)max_bytes;
+  if (!ok) {
+    out["error"] = err.empty() ? "failed to read audit records" : err;
   }
-  // Parse JSONL into entries (best-effort).
+  // Parse stored JSON objects into entries (best-effort).
   Json::Value entries(Json::arrayValue);
-  std::istringstream iss(tail);
-  std::string line;
   Json::CharReaderBuilder rb;
-  while (std::getline(iss, line)) {
-    if (line.empty()) continue;
-    std::string errs;
-    std::istringstream lss(line);
+  for (const auto& s : recs_desc) {
+    if (s.empty()) continue;
+    std::string perr;
+    std::istringstream iss(s);
     Json::Value v;
-    if (Json::parseFromStream(rb, lss, &v, &errs) && v.isObject()) {
-      entries.append(v);
-    }
+    if (Json::parseFromStream(rb, iss, &v, &perr) && v.isObject()) entries.append(v);
   }
   out["entries"] = entries;
   resp->body = json_stringify(out);
@@ -499,13 +456,18 @@ void handle_session_audit_endpoint(
 void handle_session_client_events_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
-  const std::string& sessions_root_dir,
+  AgentDb* db,
   const HttpRequest& req,
   HttpResponse* resp
 ) {
   cors_apply(req, resp, cors_cfg);
   resp->headers["Content-Type"] = "application/json; charset=utf-8";
   if (!daemon_require_auth(cfg, req, resp)) return;
+  if (!db || !db->is_open()) {
+    resp->status = 500;
+    resp->body = R"({"ok":false,"error":"db not available"})";
+    return;
+  }
 
   const auto sid = query_get(req.query, "session_id");
   if (!sid || sid->empty()) {
@@ -528,60 +490,16 @@ void handle_session_client_events_endpoint(
   }
   if (max_bytes > 4 * 1024 * 1024) max_bytes = 4 * 1024 * 1024;
 
-  bool include_rotated = false;
-  if (const auto ir = query_get(req.query, "include_rotated"); ir && !ir->empty()) {
-    include_rotated = string_to_bool(*ir);
-  }
-  size_t max_files = 0;
-  if (const auto mf = query_get(req.query, "max_files")) {
-    try {
-      max_files = (size_t)std::stoull(*mf);
-    } catch (...) {
-    }
-  }
-  if (max_files > 10) max_files = 10;
-
-  SessionStoreConfig store_cfg;
-  store_cfg.root_dir = sessions_root_dir;
-  if (max_files == 0) max_files = store_cfg.client_events_max_files;
-
   std::string tail;
-  const agent_status_t st = include_rotated
-    ? session_store_read_client_event_tail_multi(store_cfg, *sid, max_bytes, max_files, &tail)
-    : session_store_read_client_event_tail(store_cfg, *sid, max_bytes, &tail);
+  std::string err;
+  const bool ok_tail = db->read_client_events_tail_jsonl(*sid, max_bytes, /*max_events=*/0, &tail, &err);
 
   Json::Value out(Json::objectValue);
-  out["ok"] = (st == AGENT_OK);
+  out["ok"] = ok_tail;
   out["session_id"] = *sid;
   out["max_bytes"] = (Json::UInt64)max_bytes;
-  out["include_rotated"] = include_rotated;
-  out["max_files"] = (Json::UInt64)max_files;
-  if (st != AGENT_OK) {
-    out["error"] = "failed to read client event log";
-    out["status"] = (Json::Int64)st;
-  }
-
-  // Best-effort size metadata for troubleshooting.
-  {
-    std::error_code ec;
-    const std::filesystem::path root(sessions_root_dir);
-    const std::filesystem::path current = root / (*sid + ".client_events.jsonl");
-    if (std::filesystem::exists(current, ec)) {
-      ec.clear();
-      out["file_size_bytes"] = (Json::UInt64)std::filesystem::file_size(current, ec);
-    }
-    Json::Value rotated(Json::arrayValue);
-    for (size_t i = 1; i < max_files; i++) {
-      ec.clear();
-      const std::filesystem::path p = root / (*sid + ".client_events.jsonl." + std::to_string(i));
-      if (!std::filesystem::exists(p, ec)) continue;
-      ec.clear();
-      Json::Value e(Json::objectValue);
-      e["index"] = (Json::UInt64)i;
-      e["size_bytes"] = (Json::UInt64)std::filesystem::file_size(p, ec);
-      rotated.append(e);
-    }
-    out["rotated_files"] = rotated;
+  if (!ok_tail) {
+    out["error"] = err.empty() ? "failed to read client event log" : err;
   }
 
   Json::Value entries(Json::arrayValue);
@@ -608,13 +526,18 @@ void handle_session_client_events_endpoint(
 void handle_session_clients_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
-  const std::string& sessions_root_dir,
+  AgentDb* db,
   const HttpRequest& req,
   HttpResponse* resp
 ) {
   cors_apply(req, resp, cors_cfg);
   resp->headers["Content-Type"] = "application/json; charset=utf-8";
   if (!daemon_require_auth(cfg, req, resp)) return;
+  if (!db || !db->is_open()) {
+    resp->status = 500;
+    resp->body = R"({"ok":false,"error":"db not available"})";
+    return;
+  }
 
   const auto sid = query_get(req.query, "session_id");
   if (!sid || sid->empty()) {
@@ -641,33 +564,18 @@ void handle_session_clients_endpoint(
   if (const auto ir = query_get(req.query, "include_rotated"); ir && !ir->empty()) {
     include_rotated = string_to_bool(*ir);
   }
-  size_t max_files = 0;
-  if (const auto mf = query_get(req.query, "max_files")) {
-    try {
-      max_files = (size_t)std::stoull(*mf);
-    } catch (...) {
-    }
-  }
-  if (max_files > 10) max_files = 10;
-
-  SessionStoreConfig store_cfg;
-  store_cfg.root_dir = sessions_root_dir;
-  if (max_files == 0) max_files = store_cfg.client_events_max_files;
+  (void)include_rotated;
 
   std::string tail;
-  const agent_status_t st = include_rotated
-    ? session_store_read_client_event_tail_multi(store_cfg, *sid, max_bytes, max_files, &tail)
-    : session_store_read_client_event_tail(store_cfg, *sid, max_bytes, &tail);
+  std::string terr;
+  const bool ok_tail = db->read_client_events_tail_jsonl(*sid, max_bytes, /*max_events=*/0, &tail, &terr);
 
   Json::Value out(Json::objectValue);
-  out["ok"] = (st == AGENT_OK);
+  out["ok"] = ok_tail;
   out["session_id"] = *sid;
   out["max_bytes"] = (Json::UInt64)max_bytes;
-  out["include_rotated"] = include_rotated;
-  out["max_files"] = (Json::UInt64)max_files;
-  if (st != AGENT_OK) {
-    out["error"] = "failed to read client event log";
-    out["status"] = (Json::Int64)st;
+  if (!ok_tail) {
+    out["error"] = terr.empty() ? "failed to read client event log" : terr;
     out["clients"] = Json::Value(Json::arrayValue);
     resp->body = json_stringify(out);
     return;
@@ -749,13 +657,18 @@ void handle_session_clients_endpoint(
 void handle_session_artifacts_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
-  const std::string& sessions_root_dir,
+  AgentDb* db,
   const HttpRequest& req,
   HttpResponse* resp
 ) {
   cors_apply(req, resp, cors_cfg);
   resp->headers["Content-Type"] = "application/json; charset=utf-8";
   if (!daemon_require_auth(cfg, req, resp)) return;
+  if (!db || !db->is_open()) {
+    resp->status = 500;
+    resp->body = R"({"ok":false,"error":"db not available"})";
+    return;
+  }
 
   const auto sid = query_get(req.query, "session_id");
   if (!sid || sid->empty()) {
@@ -782,81 +695,63 @@ void handle_session_artifacts_endpoint(
     } catch (...) {
     }
   }
-
-  SessionStoreConfig store_cfg;
-  store_cfg.root_dir = sessions_root_dir;
-
-  bool include_rotated = false;
-  if (const auto ir = query_get(req.query, "include_rotated"); ir && !ir->empty()) {
-    include_rotated = string_to_bool(*ir);
-  }
-  size_t max_files = 0;
-  if (const auto mf = query_get(req.query, "max_files")) {
-    try {
-      max_files = (size_t)std::stoull(*mf);
-    } catch (...) {
-    }
-  }
-  if (max_files > 10) max_files = 10;
-  if (max_files == 0) max_files = store_cfg.audit_max_files;
-
-  std::string tail;
-  const agent_status_t st = include_rotated
-    ? session_store_read_audit_tail_multi(store_cfg, *sid, max_bytes, max_files, &tail)
-    : session_store_read_audit_tail(store_cfg, *sid, max_bytes, &tail);
+  if (max_artifacts > 512) max_artifacts = 512;
 
   Json::Value out(Json::objectValue);
-  out["ok"] = (st == AGENT_OK);
+  out["ok"] = false;
   out["session_id"] = *sid;
   out["max_bytes"] = (Json::UInt64)max_bytes;
   out["max_artifacts"] = (Json::UInt64)max_artifacts;
-  out["include_rotated"] = include_rotated;
-  out["max_files"] = (Json::UInt64)max_files;
-  if (st != AGENT_OK) {
-    out["error"] = "failed to read audit log";
-    out["status"] = (Json::Int64)st;
+
+  std::vector<AgentDb::ArtifactRow> rows;
+  std::string err;
+  if (!db->list_artifacts_by_session(*sid, max_artifacts, &rows, &err)) {
+    out["error"] = err.empty() ? "failed to list artifacts" : err;
     out["artifacts"] = Json::Value(Json::arrayValue);
+    resp->status = 500;
     resp->body = json_stringify(out);
     return;
   }
 
   Json::Value artifacts(Json::arrayValue);
   Json::CharReaderBuilder rb;
-  std::istringstream iss(tail);
-  std::string line;
+  size_t used = 0;
+  for (const auto& r : rows) {
+    if ((size_t)artifacts.size() >= max_artifacts) break;
+    const std::string aj = r.artifact_json.empty() ? std::string("{}") : r.artifact_json;
+    const size_t add = aj.size();
+    if (used + add > max_bytes && artifacts.size() > 0) break;
+    used += add;
 
-  while (std::getline(iss, line)) {
-    if (artifacts.size() >= (Json::ArrayIndex)max_artifacts) break;
-    if (line.empty()) continue;
-    std::string errs;
-    std::istringstream lss(line);
-    Json::Value rec;
-    if (!Json::parseFromStream(rb, lss, &rec, &errs) || !rec.isObject()) {
-      continue;
-    }
-    const int64_t ts = rec.isMember("ts_unix_ms") && rec["ts_unix_ms"].isInt64() ? rec["ts_unix_ms"].asInt64() : 0;
-    const std::string prompt = rec.isMember("prompt") && rec["prompt"].isString() ? rec["prompt"].asString() : "";
-
-    const Json::Value evs = rec["events"];
-    if (!evs.isArray()) continue;
-    for (Json::ArrayIndex i = 0; i < evs.size(); i++) {
-      if (artifacts.size() >= (Json::ArrayIndex)max_artifacts) break;
-      const auto& ev = evs[i];
-      if (!ev.isObject()) continue;
-      const auto& t = ev["type"];
-      if (!t.isString() || t.asString() != "artifact") continue;
-      Json::Value a(Json::objectValue);
-      a["ts_unix_ms"] = (Json::Int64)ts;
-      if (!prompt.empty()) a["prompt"] = prompt;
-      if (ev.isMember("data")) {
-        a["data"] = ev["data"];
+    Json::Value artifact_obj(Json::objectValue);
+    {
+      std::string perr;
+      std::istringstream iss(aj);
+      Json::Value v;
+      if (Json::parseFromStream(rb, iss, &v, &perr) && v.isObject()) {
+        artifact_obj = v;
       } else {
-        a["data"] = Json::Value(Json::objectValue);
+        artifact_obj["path"] = r.path;
+        if (!r.kind.empty()) artifact_obj["kind"] = r.kind;
+        if (!r.mime.empty()) artifact_obj["mime"] = r.mime;
+        if (!r.title.empty()) artifact_obj["title"] = r.title;
+        artifact_obj["autoplay"] = r.autoplay;
+        artifact_obj["repeat"] = r.repeat;
       }
-      artifacts.append(a);
     }
+
+    Json::Value data(Json::objectValue);
+    if (!r.tool_call_id.empty()) data["tool_call_id"] = r.tool_call_id;
+    data["tool_name"] = "artifact_register";
+    data["artifact"] = artifact_obj;
+
+    Json::Value rec(Json::objectValue);
+    rec["ts_unix_ms"] = (Json::Int64)r.ts_unix_ms;
+    rec["data"] = data;
+    artifacts.append(rec);
   }
 
+  out["ok"] = true;
   out["count"] = (Json::UInt64)artifacts.size();
   out["artifacts"] = artifacts;
   resp->body = json_stringify(out);
@@ -880,27 +775,57 @@ void handle_session_delete_endpoint(
     resp->body = R"({"ok":false,"error":"missing session_id"})";
     return;
   }
-
-  SessionStoreConfig store_cfg;
-  store_cfg.root_dir = sessions_root_dir;
-
-  agent_persistor_t p{};
-  const agent_status_t pst = agent_file_persistor_create(store_cfg.root_dir.c_str(), &p);
-  const agent_status_t st = (pst == AGENT_OK) ? p.del(p.ctx, sid->c_str()) : pst;
-  agent_persistor_destroy(&p);
-  Json::Value out(Json::objectValue);
-  out["ok"] = (st == AGENT_OK);
-  out["session_id"] = *sid;
-  if (st != AGENT_OK) {
-    out["error"] = "failed to delete session";
-    out["status"] = (Json::Int64)st;
+  if (!session_id_is_safe(*sid)) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    return;
   }
 
-  // Best-effort DB mirror cleanup (only if DB is enabled).
+  Json::Value out(Json::objectValue);
+  out["ok"] = false;
+  out["session_id"] = *sid;
+
   if (db_or_null && db_or_null->is_open()) {
     std::string db_err;
-    (void)db_or_null->delete_session(*sid, &db_err);
+    if (!db_or_null->delete_session(*sid, &db_err)) {
+      out["error"] = db_err.empty() ? "failed to delete session from db" : db_err;
+      resp->status = 500;
+      resp->body = json_stringify(out);
+      return;
+    }
+    out["ok"] = true;
+    out["deleted_from_db"] = true;
+  } else {
+    out["error"] = "db not available";
+    resp->status = 500;
+    resp->body = json_stringify(out);
+    return;
   }
+
+  // Best-effort legacy file cleanup (non-canonical).
+  bool legacy_attempted = false;
+  bool legacy_any_deleted = false;
+  if (!sessions_root_dir.empty()) {
+    legacy_attempted = true;
+    std::error_code ec;
+    const std::filesystem::path root(sessions_root_dir);
+    const std::string id = *sid;
+    const std::vector<std::filesystem::path> paths = {
+      root / (id + ".sess"),
+      root / (id + ".json"),
+      root / (id + ".events.jsonl"),
+      root / (id + ".client_events.jsonl"),
+    };
+    for (const auto& p : paths) {
+      ec.clear();
+      if (std::filesystem::exists(p, ec)) {
+        ec.clear();
+        if (std::filesystem::remove(p, ec) && !ec) legacy_any_deleted = true;
+      }
+    }
+  }
+  out["legacy_cleanup_attempted"] = legacy_attempted;
+  out["legacy_any_deleted"] = legacy_any_deleted;
 
   resp->body = json_stringify(out);
 }

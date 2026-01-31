@@ -29,14 +29,26 @@ class AgentDb {
   bool is_open() const { return db_ != nullptr; }
   std::string path() const { return path_; }
 
-  // Session mirror.
+  // Generic key/value store (daemon-local; used for persisted runtime defaults and other small blobs).
+  // Values are opaque UTF-8 strings (typically JSON).
+  bool meta_get(const std::string& key, std::string* out_value, std::string* out_error);
+  bool meta_set(const std::string& key, const std::string& value, std::string* out_error);
+
+  // Session state (canonical).
   bool upsert_session(const std::string& session_id, int64_t now_unix_ms, std::string* out_error);
+  bool session_exists(const std::string& session_id, bool* out_exists, std::string* out_error);
   bool replace_session_messages(
     const std::string& session_id,
     const std::vector<std::pair<std::string, std::string>>& role_and_content,
     int64_t now_unix_ms,
     std::string* out_error
   );
+  bool load_session_messages(
+    const std::string& session_id,
+    std::vector<std::pair<std::string, std::string>>* out_role_and_content,
+    std::string* out_error
+  );
+  bool list_sessions(std::vector<std::string>* out_session_ids_desc, std::string* out_error);
   bool delete_session(const std::string& session_id, std::string* out_error);
 
   // Run mirror.
@@ -69,6 +81,20 @@ class AgentDb {
   // Inserts a run and returns the new run_id.
   bool insert_run(const RunRow& row, int64_t* out_run_id, std::string* out_error);
   bool insert_event(int64_t run_id, int64_t ts_unix_ms, const std::string& type, const std::string& data_json, std::string* out_error);
+  bool insert_audit_record(
+    const std::string& session_id,
+    int64_t ts_unix_ms,
+    int64_t run_id,
+    const std::string& record_json,
+    std::string* out_error
+  );
+  bool read_audit_records_tail(
+    const std::string& session_id,
+    size_t max_bytes,
+    size_t max_records,
+    std::vector<std::string>* out_record_json_desc,
+    std::string* out_error
+  );
 
   struct ToolRecordRow {
     int64_t run_id = 0;
@@ -95,6 +121,12 @@ class AgentDb {
     std::string artifact_json; // JSON object string (required; stable fallback for future schema changes)
   };
   bool insert_artifact(const ArtifactRow& row, std::string* out_error);
+  bool list_artifacts_by_session(
+    const std::string& session_id,
+    size_t max_artifacts,
+    std::vector<ArtifactRow>* out_rows_desc,
+    std::string* out_error
+  );
 
   struct UiActionRow {
     int64_t run_id = 0;
@@ -119,6 +151,13 @@ class AgentDb {
     std::string data_json; // JSON object string (required; stable fallback)
   };
   bool insert_client_event(const ClientEventRow& row, std::string* out_error);
+  bool read_client_events_tail_jsonl(
+    const std::string& session_id,
+    size_t max_bytes,
+    size_t max_events,
+    std::string* out_jsonl,
+    std::string* out_error
+  );
 
  private:
   bool ensure_schema_locked(std::string* out_error);
