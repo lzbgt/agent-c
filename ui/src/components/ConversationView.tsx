@@ -510,7 +510,7 @@ export default function ConversationView({
       if (typeof data.content === "string") {
         items.push(
           <Card key={`tr-${idx}`} title={`Tool result: ${name || "(unknown)"}`}>
-            <ToolResultView baseUrl={baseUrl} yolo={yolo} content={data.content} />
+            <ToolResultView baseUrl={baseUrl} yolo={yolo} daemonAuthToken={daemonAuthToken} content={data.content} />
           </Card>,
         );
         return;
@@ -524,7 +524,7 @@ export default function ConversationView({
         }
         items.push(
           <Card key={`tr-${idx}`} title={`Tool result: ${name || "(unknown)"}`}>
-            <ToolResultView baseUrl={baseUrl} yolo={yolo} content={envelope} />
+            <ToolResultView baseUrl={baseUrl} yolo={yolo} daemonAuthToken={daemonAuthToken} content={envelope} />
           </Card>,
         );
         return;

@@ -89,6 +89,7 @@ This is intentionally open-ended, but common initial types:
 - `client_capabilities`
 - `client_rpc_result`
 - `client_rpc_progress`
+- `scene_error` (e.g. Canvas2D script exceptions in the Scene)
 - `client_probe_result` (legacy)
 - `notification_shown`
 - `notification_ack`

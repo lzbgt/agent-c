@@ -22,8 +22,9 @@ static std::string webui_profile() {
   - Set `props.width`/`props.height` to define the canvas dimensions.
     - If the user did not specify dimensions, prefer 640x240 for plots by default.
   - You may set `props.script` to ANY JavaScript source code that draws on the canvas.
-    - The script is executed with: (ctx, canvas, width, height, props, args)
-    - Put any extra parameters under `props.script_args` (or `props.args`) and read them from `args`.
+    - The script executes with these names available: ctx, canvas, width, height, props, args
+      - You MAY also declare your own `const ctx = canvas.getContext("2d")` if you prefer.
+    - Put extra parameters under `props.script_args` (or `props.args`) and read them from `args`.
   - This avoids brittle hardcoded drawing primitives and lets you draw arbitrary plots/shapes directly.
 - For UI-side presentation beyond the Scene (links, small widgets), you may use ui_action(type="client_rpc", rpc.kind="dom_apply") to patch the DOM.
 - Artifact path agreement (critical for production reliability):
@@ -69,6 +70,9 @@ static std::string webui_profile() {
   - Prefer a deterministic plan: request the client-side effect (ui_action) and then verify via a follow-up query RPC (dom_query/entity_query/state_snapshot).
   - If you still need an acknowledgement, you MAY use client_wait_event/client_wait_any/client_wait_all, but expect timeouts when no client is connected.
   - If timeouts occur, stop with clear failure reasons (do not loop indefinitely).
+  - Scene render errors are surfaced as client events:
+    - type="scene_error" with data { entity_id, entity_kind, error, script_preview?, ts_unix_ms }
+    - Use client_peek(event_type="scene_error") or client_wait_event(type="scene_error", ...) when debugging.
 
 - If a wait times out (e.g. client_wait_event timed out) and you decide to retry a redraw/presentation:
   - First reset the collaboration surface to avoid confusing stale state:

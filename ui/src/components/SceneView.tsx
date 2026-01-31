@@ -1,6 +1,7 @@
 import React from "react";
 
 import ArtifactView from "./ArtifactView";
+import { apiPostSessionUiEvent } from "../api";
 
 type CanvasPoint = { x: number; y: number };
 
@@ -39,7 +40,13 @@ function safeNumber(v: any, def: number): number {
   return typeof v === "number" && Number.isFinite(v) ? v : def;
 }
 
-function Canvas2DEntityView({ entity }: { entity: SceneEntity }) {
+function Canvas2DEntityView({
+  entity,
+  onScriptError,
+}: {
+  entity: SceneEntity;
+  onScriptError?: (args: { entity_id: string; entity_kind: string; error: string; script_preview?: string }) => void;
+}) {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const props = entity.props ?? {};
   const width = clampInt(props?.width, 64, 4096, 640);
@@ -73,24 +80,63 @@ function Canvas2DEntityView({ entity }: { entity: SceneEntity }) {
     // This is intentionally "no hardcoded ops": the agent can draw anything it wants, as long as it
     // uses the provided {ctx, canvas, width, height} and respects browser policies.
     if (script && script.trim().length > 0) {
-      try {
-        // eslint-disable-next-line no-new-func
-        const fn = new Function("ctx", "canvas", "width", "height", "props", "args", `"use strict";\n${script}`);
-        // Allow scripts to be either sync or async (best-effort).
-        const maybePromise = fn(ctx, canvas, width, height, props, scriptArgs);
-        if (maybePromise && typeof (maybePromise as any).then === "function") {
-          void (maybePromise as any).catch(() => {});
-        }
-      } catch (e) {
+      const reportError = (e: any) => {
+        const msg = String(e || "unknown error");
         try {
           ctx.save();
           ctx.fillStyle = "#fca5a5";
           ctx.font = "12px ui-sans-serif";
-          ctx.fillText(`canvas script error: ${String(e).slice(0, 200)}`, 8, 16);
+          ctx.fillText(`canvas script error: ${msg.slice(0, 200)}`, 8, 16);
           ctx.restore();
         } catch {
           // ignore
         }
+        try {
+          onScriptError?.({
+            entity_id: entity.id,
+            entity_kind: entity.kind,
+            error: msg,
+            script_preview: script.slice(0, 800),
+          });
+        } catch {
+          // ignore
+        }
+      };
+      try {
+        // Execute the agent-provided script in a "power mode" sandbox.
+        //
+        // Important compatibility behavior:
+        // - We do NOT pass a parameter named `ctx`, because many scripts naturally start with:
+        //     const ctx = canvas.getContext('2d');
+        //   which would throw "Identifier 'ctx' has already been declared" if `ctx` were also a function parameter.
+        // - We expose common names via a `with` scope, so scripts can either use `ctx` directly,
+        //   or declare their own `const ctx = ...` without colliding.
+        //
+        // eslint-disable-next-line no-new-func
+        const fn = new Function(
+          "__ctx",
+          "canvas",
+          "width",
+          "height",
+          "props",
+          "args",
+          `
+try {
+  with ({ ctx: __ctx, canvas, width, height, props, args }) {
+    ${script}
+  }
+} catch (e) {
+  throw e;
+}
+`,
+        );
+        // Allow scripts to be either sync or async (best-effort).
+        const maybePromise = fn(ctx, canvas, width, height, props, scriptArgs);
+        if (maybePromise && typeof (maybePromise as any).then === "function") {
+          void (maybePromise as any).catch((e: any) => reportError(e));
+        }
+      } catch (e) {
+        reportError(e);
       }
       return;
     }
@@ -192,6 +238,38 @@ export default function SceneView({
   className?: string;
 }) {
   const sid = typeof sessionId === "string" ? sessionId.trim() : "";
+  const lastSceneErrorRef = React.useRef<Record<string, { ts: number; sig: string }>>({});
+
+  const postSceneError = React.useCallback(
+    async (payload: { entity_id: string; entity_kind: string; error: string; script_preview?: string }) => {
+      if (!baseUrl) return;
+      if (!sid) return;
+      const cid = client && typeof client === "object" ? client : { id: "webui", kind: "webui" };
+      const sig = `${payload.entity_id}:${payload.error}`;
+      const now = Date.now();
+      const prev = lastSceneErrorRef.current[payload.entity_id];
+      // De-dupe noisy repeated errors (e.g. repeated renders) for 10 seconds unless the error changes.
+      if (prev && prev.sig === sig && now - prev.ts < 10_000) return;
+      lastSceneErrorRef.current[payload.entity_id] = { ts: now, sig };
+
+      try {
+        await apiPostSessionUiEvent(
+          baseUrl,
+          {
+            session_id: sid,
+            type: "scene_error",
+            client: cid,
+            data: { ...payload, ts_unix_ms: now },
+            append_to_session: false,
+          },
+          daemonAuthToken,
+        );
+      } catch {
+        // ignore
+      }
+    },
+    [baseUrl, client, daemonAuthToken, sid],
+  );
   return (
     <div
       className={["flex min-h-0 flex-col rounded-lg border border-white/10 bg-white/5", className].filter(Boolean).join(" ")}
@@ -234,7 +312,7 @@ export default function SceneView({
                     </div>
                   </div>
                   {e.kind === "canvas2d" ? (
-                    <Canvas2DEntityView entity={e} />
+                    <Canvas2DEntityView entity={e} onScriptError={postSceneError} />
                   ) : e.kind === "artifact" && baseUrl && typeof yolo === "boolean" ? (
                     <div className="mt-2">
                       <ArtifactView

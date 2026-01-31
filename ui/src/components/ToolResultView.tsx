@@ -126,10 +126,12 @@ function EntriesView({ entries, title }: { entries: any[]; title?: string }) {
 export default function ToolResultView({
   baseUrl,
   yolo,
+  daemonAuthToken,
   content,
 }: {
   baseUrl: string;
   yolo: boolean;
+  daemonAuthToken?: string;
   content: string;
 }) {
   const [showRaw, setShowRaw] = React.useState(false);
@@ -299,7 +301,7 @@ export default function ToolResultView({
             ) : (
               <div className="text-[11px] text-white/50">Output collapsed. Expand to view full content.</div>
             )}
-            <MediaPreviews baseUrl={baseUrl} yolo={yolo} text={output ?? ""} />
+            <MediaPreviews baseUrl={baseUrl} yolo={yolo} daemonAuthToken={daemonAuthToken} text={output ?? ""} />
           </div>
         ) : null}
 
@@ -366,7 +368,7 @@ export default function ToolResultView({
           </div>
         );
       })()}
-      <MediaPreviews baseUrl={baseUrl} yolo={yolo} text={content} />
+      <MediaPreviews baseUrl={baseUrl} yolo={yolo} daemonAuthToken={daemonAuthToken} text={content} />
     </div>
   );
 }
