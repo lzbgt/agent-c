@@ -1,5 +1,4 @@
 import React from "react";
-import MediaPreviews from "./MediaPreviews";
 import Markdown from "./Markdown";
 
 function safeJsonParse(s: string): any | null {
@@ -300,7 +299,6 @@ export default function ToolResultView({
             ) : (
               <div className="text-[11px] text-white/50">Output collapsed. Expand to view full content.</div>
             )}
-            <MediaPreviews baseUrl={baseUrl} yolo={yolo} daemonAuthToken={daemonAuthToken} text={output ?? ""} />
           </div>
         ) : null}
 
@@ -368,7 +366,6 @@ export default function ToolResultView({
           </div>
         );
       })()}
-      <MediaPreviews baseUrl={baseUrl} yolo={yolo} daemonAuthToken={daemonAuthToken} text={content} />
     </div>
   );
 }
