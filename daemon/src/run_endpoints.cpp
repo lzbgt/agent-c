@@ -10,6 +10,8 @@
 #include "openai_provider.h"
 #include "provider_util.h"
 #include "sandbox_policy.h"
+#include "session_id_util.h"
+#include "session_paths.h"
 #include "session_store.h"
 #include "scene_store.h"
 #include "secrets_file.h"
@@ -318,18 +320,15 @@ static std::string read_file_capped(const std::filesystem::path& p, size_t max_b
 }
 
 static bool build_memory_context_text(
-  const std::string& sessions_root_dir,
+  const std::string& state_dir,
   const std::string& session_id,
   std::string* out_text
 ) {
   if (out_text) out_text->clear();
   if (!out_text) return false;
-  if (sessions_root_dir.empty()) return false;
-
-  const std::filesystem::path sessions_root(sessions_root_dir);
-  const std::filesystem::path state_dir = sessions_root.parent_path();
   if (state_dir.empty()) return false;
-  const std::filesystem::path mem_root = state_dir / "memory";
+
+  const std::filesystem::path mem_root = std::filesystem::path(state_dir) / "memory";
 
   std::error_code ec;
   if (!std::filesystem::exists(mem_root, ec) || !std::filesystem::is_directory(mem_root, ec)) {
@@ -763,9 +762,23 @@ static Json::Value run_request_to_json(
     args.isMember("require_client_acks") && args["require_client_acks"].isBool()
       ? args["require_client_acks"].asBool()
       : false;
-  const bool requested_tools_root_set = args.isMember("tools_root") && args["tools_root"].isString();
-  const std::string requested_tools_root = requested_tools_root_set ? args["tools_root"].asString() : "";
-  std::string tools_root;
+
+  const std::string session_id = args.isMember("session_id") && args["session_id"].isString() ? args["session_id"].asString() : "default";
+  const bool no_session = args.isMember("no_session") && args["no_session"].isBool() ? args["no_session"].asBool() : false;
+  if (!session_id_is_safe(session_id)) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["rpc_status"] = 400;
+    o["error"] = "invalid session_id";
+    return o;
+  }
+  if (args.isMember("tools_root")) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["rpc_status"] = 400;
+    o["error"] = "tools_root was removed; omit it and use explicit paths or session_id";
+    return o;
+  }
   HostToolsetPolicyMode requested_policy = daemon_cfg.host_policy;
   if (args.isMember("host_policy") && args["host_policy"].isString()) {
     HostToolsetPolicyMode p{};
@@ -780,23 +793,19 @@ static Json::Value run_request_to_json(
     requested_policy = p;
   }
   const HostToolsetPolicyMode effective_policy = tighten_host_policy(daemon_cfg.host_policy, requested_policy);
-  {
-    std::string root_err;
-    if (!sandbox_resolve_tools_root(
-          daemon_cfg.host_scope_root,
-          yolo,
-          daemon_cfg.tools_root,
-          requested_tools_root,
-          requested_tools_root_set,
-          &tools_root,
-          &root_err
-        )) {
+  if (!no_session && !sessions_root_dir.empty()) {
+    const std::filesystem::path sr = session_root_path(sessions_root_dir, session_id);
+    if (sr.empty()) {
       Json::Value o(Json::objectValue);
       o["ok"] = false;
-      o["rpc_status"] = 403;
-      o["error"] = root_err.empty() ? "invalid tools_root" : root_err;
+      o["rpc_status"] = 400;
+      o["error"] = "invalid session_id";
       return o;
     }
+    std::error_code ec;
+    (void)std::filesystem::create_directories(sr / "work", ec);
+    ec.clear();
+    (void)std::filesystem::create_directories(sr / "out", ec);
   }
   uint64_t max_steps_u64 = 0;
   const size_t max_steps =
@@ -865,8 +874,6 @@ static Json::Value run_request_to_json(
   const size_t max_capture_bytes =
     json_get_u64_nonneg(args, "max_capture_bytes", &max_capture_bytes_u64) ? (size_t)max_capture_bytes_u64 : (size_t)256 * 1024;
 
-  const std::string session_id = args.isMember("session_id") && args["session_id"].isString() ? args["session_id"].asString() : "default";
-  const bool no_session = args.isMember("no_session") && args["no_session"].isBool() ? args["no_session"].asBool() : false;
   std::string job_id_local = (job_id_or_null && job_id_or_null[0]) ? std::string(job_id_or_null) : std::string();
   const int64_t run_ts_ms = now_unix_ms();
 
@@ -956,7 +963,6 @@ static Json::Value run_request_to_json(
     executor = base_executor;
   } else if (tools == "host") {
     HostToolsetConfig hcfg;
-    hcfg.root_dir = tools_root;
     hcfg.policy = effective_policy;
     // In scoped mode (yolo=false), omit process exec tools so "scoped filesystem" doesn't still mean
     // arbitrary host command execution.
@@ -1113,16 +1119,16 @@ static Json::Value run_request_to_json(
 	      }
 	    };
 	    std::unique_ptr<agent_session_t, SessionDel> ephemeral_seed;
-	    const agent_session_t* seed_for_run = session;
-	    if (!no_default_system && tools == "host" && !no_session) {
-	      std::string mem_ctx;
-	      if (build_memory_context_text(sessions_root_dir, session_id, &mem_ctx)) {
-	        if (agent_session_t* tmp = clone_session_with_memory_context(session, mem_ctx)) {
-	          ephemeral_seed.reset(tmp);
-	          seed_for_run = tmp;
-	        }
-	      }
-	    }
+		    const agent_session_t* seed_for_run = session;
+		    if (!no_default_system && tools == "host" && !no_session) {
+		      std::string mem_ctx;
+		      if (build_memory_context_text(daemon_cfg.state_dir, session_id, &mem_ctx)) {
+		        if (agent_session_t* tmp = clone_session_with_memory_context(session, mem_ctx)) {
+		          ephemeral_seed.reset(tmp);
+		          seed_for_run = tmp;
+		        }
+		      }
+		    }
 
 	    try {
 	      ok = run_tool_loop(
@@ -1536,7 +1542,6 @@ static Json::Value run_request_to_json(
   if (http_status) out["http_status"] = (Json::Int64)http_status;
   if (!http_body.empty()) out["http_body"] = http_body;
   if (trace_stream) out["trace_text"] = trace_buf.str();
-  out["effective_tools_root"] = tools_root;
   out["effective_yolo"] = yolo;
   out["effective_host_policy"] = host_policy_to_string(effective_policy);
   out["effective_timeout_ms"] = (Json::Int64)run_cfg.timeout_ms;
@@ -1723,7 +1728,6 @@ static Json::Value run_request_to_json(
       record["base_url"] = run_cfg.base_url;
       record["tools"] = tools;
       record["yolo"] = yolo;
-      record["tools_root"] = tools_root;
       record["host_policy"] = host_policy_to_string(effective_policy);
       record["prompt"] = prompt;
       record["assistant_text"] = assistant_text;

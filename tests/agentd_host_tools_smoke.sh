@@ -42,8 +42,7 @@ mkdir -p "${LOG_DIR}"
 DEEPSEEK_API_KEY="${DEEPSEEK_KEY}" agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT}" "agentd_host_tools_smoke" \
   --base-url "${BASE_URL}" \
   --model "${MODEL}" \
-  --tools host \
-  --host-scope "${PROJECT_ROOT}"
+  --tools host
 
 agentd_smoke_wait_health "${DAEMON_URL}"
 
@@ -91,10 +90,9 @@ resp2="$(curl -fsS \
   -d "$(python3 - <<PY
 import json
 print(json.dumps({
-  "prompt": "Use the text_search tool with query=tool_text_search and path=. (repo root). After the tool returns, return exactly: OK",
+  "prompt": "Use the text_search tool with query=tool_text_search and path=${PROJECT_ROOT} (absolute). After the tool returns, return exactly: OK",
   "session_id": "${SESSION_ID}",
   "tools": "host",
-  "tools_root": "@host",
   "force_tool": "text_search",
   "require_tool_call": True,
   "max_steps": 4,
@@ -138,7 +136,7 @@ data = env.get("data") or {}
 if data.get("query") != "tool_text_search":
   print("unexpected query", data.get("query"), file=sys.stderr)
   raise SystemExit(1)
-if data.get("path") != ".":
+if data.get("path") != r'''${PROJECT_ROOT}''':
   print("unexpected path", data.get("path"), file=sys.stderr)
   raise SystemExit(1)
 matches = data.get("matches") or []

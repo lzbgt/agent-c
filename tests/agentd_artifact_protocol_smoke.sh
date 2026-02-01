@@ -11,6 +11,7 @@ if [[ -z "${AGENTD_BIN}" ]]; then
   exit 2
 fi
 
+PROJECT_ROOT="$(agentd_smoke_project_root)"
 LOG_DIR="$(agentd_smoke_log_dir)"
 mkdir -p "${LOG_DIR}"
 
@@ -19,7 +20,8 @@ PORT_STUB="$(agentd_smoke_pick_port)"
 HOST="127.0.0.1"
 STUB_BASE="http://${HOST}:${PORT_STUB}/v1"
 
-ART_PATH="build/agentd_artifact_protocol_smoke_${PORT_DAEMON}.wav"
+ART_PATH="${PROJECT_ROOT}/build/agentd_artifact_protocol_smoke_${PORT_DAEMON}.wav"
+ART_NAME="$(basename "${ART_PATH}")"
 
 cleanup() {
   agentd_smoke_stop
@@ -31,7 +33,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Create a small dummy file under the daemon host scope root (repo root).
+# Create a small dummy file under the repo root (where the agentd process runs).
 python3 - <<PY
 from pathlib import Path
 p = Path("${ART_PATH}")
@@ -141,7 +143,6 @@ print(json.dumps({
   "no_session": False,
   "tools": "host",
   "yolo": False,
-  "tools_root": "@host",
   "base_url": "${STUB_BASE}",
   "api_key": "dummy",
   "model": "stub",
@@ -167,8 +168,9 @@ arts = [e.get("data", {}).get("artifact") for e in events if isinstance(e, dict)
 if not arts or not isinstance(arts[0], dict):
   print("missing artifact payload", file=sys.stderr)
   raise SystemExit(1)
-if arts[0].get("path") != "${ART_PATH}":
-  print("unexpected artifact.path:", arts[0].get("path"), file=sys.stderr)
+ap = arts[0].get("path") or ""
+if not isinstance(ap, str) or not ap.startswith("out/") or not ap.endswith("${ART_NAME}"):
+  print("unexpected artifact.path:", ap, file=sys.stderr)
   raise SystemExit(1)
 txt = (obj.get("assistant_text") or "").strip()
 if txt != "OK":
@@ -176,11 +178,15 @@ if txt != "OK":
   raise SystemExit(1)
 PY
 
-# The file endpoint should serve the artifact when yolo is disabled (scoped to host root).
+# The file endpoint should serve the session-scoped artifact when yolo is disabled.
 curl -fsS --noproxy "*" --max-time 10 \
-  "${DAEMON_URL}/api/v1/file?path=$(python3 - <<PY
+  "${DAEMON_URL}/api/v1/file?session_id=$(python3 - <<PY
 import urllib.parse
-print(urllib.parse.quote("${ART_PATH}", safe=""))
+print(urllib.parse.quote("${sid}", safe=""))
+PY
+)&path=$(python3 - <<PY
+import urllib.parse
+print(urllib.parse.quote("out/${ART_NAME}", safe=""))
 PY
 )&yolo=0" \
   > "${LOG_DIR}/agentd_artifact_protocol_smoke.file.bin"

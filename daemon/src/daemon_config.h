@@ -35,18 +35,16 @@ struct DaemonConfig {
   // - sessions_root_dir: directory containing <session>.sess / <session>.events.jsonl
   //
   // Defaults:
-  // - state_dir: "~/.agent" (best-effort HOME-based)
-  // - sessions_root_dir: "<state_dir>/sessions"
+  // - state_dir: "<daemon startup working directory>" (best-effort; or env AGENT_WD / AGENTD_STATE_DIR)
+  // - sessions_root_dir: "<state_dir>" (so session root is "<state_dir>/session_<session_id>/")
   std::string state_dir;
   std::string sessions_root_dir;
 
   // Optional troubleshooting DB mirror (SQLite). When set, agentd mirrors sessions/runs/events into this DB.
   // As of 2026-01-31, the DB is intended to be the canonical daemon state store.
-  // If empty, agentd will default to "./agentd.db" (resolved relative to the daemon working directory).
+  // If empty, agentd will default to "<state_dir>/agentd.db".
   std::string db_path;
   std::string tools = "host";     // none|basic|host
-  std::string tools_root = "";    // empty => CWD (unrestricted file edits)
-  std::string host_scope_root;    // default: daemon process CWD (for "@host" tool root mode)
   bool yolo_default = true;       // default to unrestricted unless client requests scoped mode
   HostToolsetPolicyMode host_policy = HostToolsetPolicyMode::Full; // host tools: full|readonly
   bool no_default_system = false; // when false, host tool runs insert a default system hint (one time)

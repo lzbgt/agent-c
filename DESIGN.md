@@ -125,11 +125,11 @@ Policy modes (first milestone):
 
 Additional sandbox knob:
 
-- `yolo` (daemon request/query): when disabled, the daemon provides a **scoped tools_root** and also disables process execution tools
-  (`shell_exec` / `proc_exec`) even if `host_policy=full`. This prevents “scoped filesystem” runs from still having arbitrary
+- `yolo` (daemon request/query): when disabled, the daemon **disables process execution tools**
+  (`shell_exec` / `proc_exec`) even if `host_policy=full`. This prevents “readonly-ish” UI runs from still having arbitrary
   host command execution.
-- In scoped mode, the daemon also disables following symlinks inside `tools_root` to prevent “symlink escapes” (e.g. a symlink
-  in the project pointing to `/` which would allow reading arbitrary files via `fs_read`).
+- `agentd` no longer enforces a runtime filesystem sandbox (`tools_root`) for host tools. For multi-tenant isolation,
+  run separate daemon instances (e.g. separate containers).
 
 Implementation notes:
 
@@ -369,16 +369,18 @@ Host default system hint (policy):
   **incremental inspection** (e.g. `rg/grep`, `head`, `tail`, `awk`, `sed -n`, and `fs_read` paging) instead of reading entire files.
 - This is host policy only (not a core concept) and can be disabled/overridden by the host or client.
 
-`--tools-root` (when set) is primarily used to control the working directory for `file_apply_patch`
+CLI-only: `--tools-root` (when set) is primarily used to control the working directory for `file_apply_patch`
 (via `git -C <root> apply ...`). It is not intended as a strong security boundary (since `proc_exec`
 can still invoke arbitrary commands in a YOLO host configuration).
+
+Daemon note: `agentd` does not expose `tools_root` as an API parameter; session isolation is expected to be container/process-level.
 
 Tool transcript persistence (host-only, day-1 pragmatic choice):
 - The portable core session model is intentionally minimal and does not yet represent OpenAI tool-call metadata
   like `tool_call_id` and structured `tool` role messages.
 - For host apps, the correct place to store full tool timelines is a **per-session audit log** (JSONL):
-  - CLI/daemon write per-run audit records to `~/.agent/sessions/<session>.events.jsonl`
-  - Optional (agentd): mirror sessions/runs/events into an SQLite DB for queryable troubleshooting (`docs/DB.md`)
+  - CLI writes per-run audit records to `~/.agent/sessions/<session>.events.jsonl`
+  - `agentd` stores canonical state in SQLite (`docs/DB.md`) and exposes structured endpoints for history/replay.
   - Each record includes the prompt, final assistant text, and the structured `events` timeline (tool calls/results, LLM I/O).
 - Session **messages** are kept clean (user/assistant content only), so future turns are not polluted by verbose tool output.
   This reduces token usage and avoids context blowups when switching between `tools=host` and `tools=none`.
@@ -447,12 +449,9 @@ Daemon authentication (optional, recommended when exposed beyond localhost):
 - `timeout_ms` (number; optional; provider HTTP timeout for this run)
 - `stream_assistant` (bool; optional; request OpenAI-compatible SSE streaming (`stream: true`) and emit incremental `assistant_delta` events)
 - `tools` (`"host"|"basic"|"none"`, default `"host"`)
-- `tools_root` (string; used for diff-based edits in host tools)
-  - `""` or `@cwd` means unrestricted (current working directory)
-  - `@host` means “daemon host scope” (configured by daemon, typically project/workspace root)
 - `max_steps` (number; `0` means unlimited)
 - `trace` (bool; include transcript text)
-- `yolo` (bool; if true, disables tool scoping and forces unrestricted mode)
+- `yolo` (bool; if true, enables process execution tools; if false, exec tools are omitted)
 - `verbose` (bool; if true, captures full tool outputs and raw request/response bodies into `events`)
 
 Response (JSON):
@@ -461,7 +460,7 @@ Response (JSON):
 - `trace_text` (string; full transcript between daemon↔LLM↔tools)
 - `http_status`, `http_body` (best-effort diagnostics)
 - `error` (best-effort message)
-- `effective_yolo` (bool) and `effective_tools_root` (string) so clients can display what actually applied.
+- `effective_yolo` (bool) so clients can display whether process execution tools were enabled.
 - `effective_timeout_ms` (number) so clients can display the provider timeout that actually applied.
 - `effective_stream_assistant` (bool) so clients can display whether assistant streaming was requested.
 - `events` (array; structured event log for UIs)

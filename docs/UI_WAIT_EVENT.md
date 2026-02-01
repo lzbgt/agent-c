@@ -27,7 +27,7 @@ that the UI/user completed it.
 ## Persistence model
 
 When `POST /api/v1/session/client_event` is called, agentd appends a line to:
-- `<sessions_root>/<session_id>.client_events.jsonl`
+- Legacy (file-backed): `<sessions_root>/<session_id>.client_events.jsonl` (current canonical store is the DB)
 
 Each line is a JSON object (the “payload”) with:
 - `type` (string)

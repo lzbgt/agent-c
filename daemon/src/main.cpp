@@ -47,7 +47,13 @@ static std::string home_dir_best_effort() {
 }
 
 static std::string state_dir_best_effort() {
-  return (std::filesystem::path(home_dir_best_effort()) / ".agent").string();
+  // Default daemon state to its startup working directory (container-friendly).
+  // Operators should set the daemon's working directory (or AGENT_WD/AGENTD_STATE_DIR) to control where
+  // session folders and agentd.db are created.
+  std::error_code ec;
+  const auto cwd = std::filesystem::current_path(ec);
+  if (!ec && !cwd.empty()) return cwd.string();
+  return home_dir_best_effort();
 }
 
 static bool host_is_loopback(std::string host) {
@@ -125,7 +131,6 @@ int main(int argc, char** argv) {
   (void)::signal(SIGPIPE, SIG_IGN);
 
   DaemonConfig cfg;
-  cfg.host_scope_root = std::filesystem::current_path().string();
   // Minimal flag parsing (daemon is host-only; core remains argv/env-free).
   for (int i = 1; i < argc; i++) {
     const std::string a = argv[i] ? argv[i] : "";
@@ -302,11 +307,6 @@ int main(int argc, char** argv) {
         std::cerr << "Missing value for --tools\n";
         return 2;
       }
-    } else if (a == "--tools-root") {
-      if (!take(&cfg.tools_root)) {
-        std::cerr << "Missing value for --tools-root\n";
-        return 2;
-      }
     } else if (a == "--host-policy") {
       std::string v;
       if (!take(&v)) {
@@ -319,11 +319,6 @@ int main(int argc, char** argv) {
         cfg.host_policy = HostToolsetPolicyMode::ReadOnly;
       } else {
         std::cerr << "Invalid --host-policy (expected: full|readonly)\n";
-        return 2;
-      }
-    } else if (a == "--host-scope") {
-      if (!take(&cfg.host_scope_root)) {
-        std::cerr << "Missing value for --host-scope\n";
         return 2;
       }
     } else if (a == "--yolo") {
@@ -384,9 +379,9 @@ int main(int argc, char** argv) {
         << "  --base-url <url>     Default base url\n"
         << "  --api-key <key>      Default API key (else env)\n"
         << "  --proxy <url>        Optional HTTP proxy override (else env HTTPS_PROXY/http_proxy)\n"
-        << "  --state-dir <dir>    Base state dir (default: ~/.agent)\n"
-        << "  --sessions-root <dir> Session store root (default: <state-dir>/sessions)\n"
-        << "  --db-path <path>     SQLite DB path (default: ./agentd.db)\n"
+        << "  --state-dir <dir>    Base state dir (default: daemon startup working directory; or env AGENT_WD)\n"
+        << "  --sessions-root <dir> Session store root (default: <state-dir>)\n"
+        << "  --db-path <path>     SQLite DB path (default: <state-dir>/agentd.db)\n"
         << "  --timeout-ms <n>     Provider HTTP timeout in ms (default: 60000)\n"
         << "  --job-ttl-ms <n>     GC finished jobs older than n ms (default: 1800000)\n"
         << "  --max-jobs <n>       Keep at most n jobs in memory (default: 256)\n"
@@ -395,9 +390,7 @@ int main(int argc, char** argv) {
         << "  --max-tool-calls-per-tool-default <n> Default tool-loop per-tool call cap when requests omit it (default: 0; 0 means unlimited)\n"
         << "  --tool-call-limit <tool>=<n> Default per-tool call limit (repeatable; 0 means unlimited for that tool)\n"
         << "  --tools host|basic|none   Default toolset (default: host)\n"
-        << "  --tools-root <path>  Root/working dir for file edits (default: unrestricted)\n"
         << "  --host-policy full|readonly  Host tool safety policy (default: full)\n"
-        << "  --host-scope <path>  Host scope root for tools_root=\"@host\" (default: current dir)\n"
         << "  --yolo / --no-yolo   Default unrestricted mode (default: yolo)\n"
         << "  --no-default-system  Disable default host system hint (host tools only)\n";
       return 0;
@@ -513,11 +506,17 @@ int main(int argc, char** argv) {
   }
 
   if (cfg.state_dir.empty()) {
+    if (const char* d = getenv_s("AGENT_WD")) {
+      cfg.state_dir = d;
+    }
     if (const char* d = getenv_s("AGENTD_STATE_DIR")) {
       cfg.state_dir = d;
     }
   }
   if (cfg.sessions_root_dir.empty()) {
+    if (const char* d = getenv_s("AGENT_WD")) {
+      cfg.sessions_root_dir = d;
+    }
     if (const char* d = getenv_s("AGENTD_SESSIONS_ROOT")) {
       cfg.sessions_root_dir = d;
     }
@@ -525,21 +524,24 @@ int main(int argc, char** argv) {
 
   // Make the effective state/session roots explicit (so /api/v1/config can report them).
   if (cfg.state_dir.empty()) {
-    cfg.state_dir = state_dir_best_effort();
+    // If sessions_root_dir was explicitly configured (e.g. --sessions-root), use it as the default state_dir too
+    // so the daemon DB and session folders live under the same operator-chosen root.
+    cfg.state_dir = cfg.sessions_root_dir.empty() ? state_dir_best_effort() : cfg.sessions_root_dir;
   }
   if (cfg.sessions_root_dir.empty()) {
-    cfg.sessions_root_dir = (std::filesystem::path(cfg.state_dir) / "sessions").string();
+    // Session root directory is `<state_dir>/session_<session_id>/`.
+    cfg.sessions_root_dir = cfg.state_dir;
   }
 
-  // DB is mandatory (canonical daemon state store). Default to agentd.db in the daemon working directory.
+  // DB is mandatory (canonical daemon state store). Default to agentd.db under state_dir.
   if (cfg.db_path.empty()) {
-    cfg.db_path = (std::filesystem::current_path() / "agentd.db").string();
+    cfg.db_path = (std::filesystem::path(cfg.state_dir) / "agentd.db").string();
   } else {
     // Make db_path absolute for clearer /api/v1/config output.
     std::error_code ec;
     const std::filesystem::path p(cfg.db_path);
     if (p.is_relative()) {
-      cfg.db_path = (std::filesystem::current_path() / p).lexically_normal().string();
+      cfg.db_path = (std::filesystem::path(cfg.state_dir) / p).lexically_normal().string();
     }
   }
 

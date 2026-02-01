@@ -84,8 +84,6 @@ void handle_config_endpoint(
 
   Json::Value sandbox(Json::objectValue);
   sandbox["tools"] = cfg.tools;
-  sandbox["tools_root"] = cfg.tools_root.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.tools_root);
-  sandbox["host_scope_root"] = cfg.host_scope_root.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.host_scope_root);
   sandbox["yolo_default"] = cfg.yolo_default;
   sandbox["host_policy"] = host_policy_to_string(cfg.host_policy);
   out["sandbox"] = sandbox;

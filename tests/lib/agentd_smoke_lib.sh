@@ -47,6 +47,8 @@ agentd_smoke_start() {
   mkdir -p "${LOG_DIR}"
 
   DAEMON_URL="http://${bind_host}:${port}"
+  local project_root
+  project_root="$(agentd_smoke_project_root)"
 
   # Hermetic DB for smoke tests:
   # - agentd now uses SQLite as a primary state store, so always give tests their own DB file
@@ -76,11 +78,13 @@ agentd_smoke_start() {
     set -- --state-dir "${LOG_DIR}/${name}_${port}.state" "$@"
   fi
 
-  "${bin}" \
-    --host "${bind_host}" \
-    --port "${port}" \
-    "$@" \
-    > "${LOG_DIR}/${name}.stdout.log" 2> "${LOG_DIR}/${name}.stderr.log" &
+  (
+    cd "${project_root}"
+    "${bin}" \
+      --host "${bind_host}" \
+      --port "${port}" \
+      "$@"
+  ) > "${LOG_DIR}/${name}.stdout.log" 2> "${LOG_DIR}/${name}.stderr.log" &
   AGENTD_PID=$!
 }
 
@@ -105,6 +109,8 @@ agentd_smoke_start_bind() {
   mkdir -p "${LOG_DIR}"
 
   DAEMON_URL="http://${connect_host}:${port}"
+  local project_root
+  project_root="$(agentd_smoke_project_root)"
 
   # Hermetic DB for smoke tests unless explicitly passed.
   local has_db="0"
@@ -130,11 +136,13 @@ agentd_smoke_start_bind() {
     set -- --state-dir "${LOG_DIR}/${name}_${port}.state" "$@"
   fi
 
-  "${bin}" \
-    --host "${bind_host}" \
-    --port "${port}" \
-    "$@" \
-    > "${LOG_DIR}/${name}.stdout.log" 2> "${LOG_DIR}/${name}.stderr.log" &
+  (
+    cd "${project_root}"
+    "${bin}" \
+      --host "${bind_host}" \
+      --port "${port}" \
+      "$@"
+  ) > "${LOG_DIR}/${name}.stdout.log" 2> "${LOG_DIR}/${name}.stderr.log" &
   AGENTD_PID=$!
 }
 

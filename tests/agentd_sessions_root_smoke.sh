@@ -42,6 +42,21 @@ sid="$(curl -fsS --noproxy "*" --max-time 10 \
   "${DAEMON_URL}/api/v1/session/new" | python3 -c 'import json,sys; obj=json.load(sys.stdin); assert obj.get("ok") and obj.get("session_id"); print(obj["session_id"])'
 )"
 
+# Session directories are created lazily (when tools/run endpoints are hit). Verify the on-disk layout:
+#   <sessions_root>/session_<session_id>/{work,out}/...
+curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/tools?tools=host&yolo=0&session_id=${sid}" >/dev/null
+
+python3 - <<PY
+from pathlib import Path
+root = Path(r'''${TMP_ROOT}''')
+sid = r'''${sid}'''
+sr = root / ("session_" + sid)
+for p in [sr, sr / "work", sr / "out"]:
+  if not p.exists() or not p.is_dir():
+    raise SystemExit(f"missing expected session dir: {p}")
+PY
+
 db_path="$(curl -fsS --noproxy "*" --max-time 10 "${DAEMON_URL}/api/v1/config" \
   | python3 -c 'import json,sys; obj=json.load(sys.stdin); d=obj.get("daemon") or {}; p=d.get("db_path") or ""; assert isinstance(p,str) and p; print(p)')"
 

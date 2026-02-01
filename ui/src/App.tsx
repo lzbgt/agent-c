@@ -104,7 +104,6 @@ export default function App() {
     [clientId],
   );
   const [tools, setTools] = useLocalStorageState<"host" | "basic" | "none">("agentui.tools", "host");
-  const [toolsRoot, setToolsRoot] = useLocalStorageState("agentui.toolsRoot", ".");
   const [yolo, setYolo] = useLocalStorageState("agentui.yolo", true);
   const [hostPolicy, setHostPolicy] = useLocalStorageState<"full" | "readonly">("agentui.hostPolicy", "full");
   // Production UX: tool visibility should be on by default so users can audit shell/proc commands and tool outputs.
@@ -854,11 +853,10 @@ export default function App() {
   const sessionsRefetch = sessions.refetch;
 
   const toolsDefs = useQuery({
-    queryKey: ["tools", effectiveBase, daemonAuthToken, tools, toolsRoot, yolo, hostPolicy, sessionId],
+    queryKey: ["tools", effectiveBase, daemonAuthToken, tools, yolo, hostPolicy, sessionId],
     queryFn: () =>
       apiGetTools(effectiveBase, daemonAuthToken, {
         tools,
-        toolsRoot,
         yolo,
         hostPolicy: tools === "host" ? hostPolicy : undefined,
         sessionId,
@@ -943,7 +941,6 @@ export default function App() {
         no_session: false,
         client,
         tools,
-        tools_root: toolsRoot,
         host_policy: tools === "host" ? hostPolicy : undefined,
         yolo,
         verbose,
@@ -1269,7 +1266,8 @@ export default function App() {
         const tryPaths = [preferredFetchPath, fallbackFetchPath].filter((p) => typeof p === "string" && p.trim().length > 0);
         let lastErr: any = null;
         for (const p of tryPaths) {
-          const src = `${effectiveBase}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${yolo ? "1" : "0"}`;
+          const sidQ = sid ? `&session_id=${encodeURIComponent(sid)}` : "";
+          const src = `${effectiveBase}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${yolo ? "1" : "0"}${sidQ}`;
           try {
             const r = await fetch(src, { headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
             if (!r.ok) throw new Error(`file fetch failed: ${r.status}`);

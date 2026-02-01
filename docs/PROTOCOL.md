@@ -132,7 +132,7 @@ condition from the conversation alone.
 
 The UI can query the daemon’s effective tool registry (schemas) to render tool docs and validate tool-call arguments:
 
-- `GET /api/v1/tools?tools=host|basic|none&tools_root=...&yolo=0|1&host_policy=full|readonly&session_id=<id>`
+- `GET /api/v1/tools?tools=host|basic|none&yolo=0|1&host_policy=full|readonly&session_id=<id>`
 
 Notes:
 - When `session_id` is provided (and `tools=host`), the returned registry may include **session-scoped tools**
@@ -162,7 +162,7 @@ For debugging without enabling SQLite, UIs can read the tail of the session-scop
 
 - `GET /api/v1/session/client_events?session_id=...&max_bytes=...&include_rotated=0|1&max_files=...`
 
-This reads from `<sessions_root>/<session_id>.client_events.jsonl` and returns parsed JSON objects.
+Legacy note: older builds read from `<sessions_root>/<session_id>.client_events.jsonl`. Current agentd builds store client events in the DB (canonical).
 When `include_rotated=1`, the daemon may also include data from rotated backups (`.client_events.jsonl.1`, `.2`, …)
 to fill the requested `max_bytes` budget.
 
@@ -211,7 +211,9 @@ Purpose:
 - Tell the UI “this host file is an artifact; please render it as media and apply playback hints”.
 
 Arguments (JSON):
-- `path` (string, required): path to the file (relative to tools root when in scoped mode)
+- `path` (string, required): filesystem path to the file (absolute or relative)
+  - In agentd sessions, `artifact_register` will **copy** the file into the session’s `out/` directory (best-effort) and return a session-relative `artifact.path` like `out/<name>`.
+  - UIs should fetch it via `GET /api/v1/file?session_id=<sid>&path=<artifact.path>`.
 - `kind` (string, optional): `"image" | "audio" | "video" | "text" | "file"`
 - `mime` (string, optional): explicit MIME type (else best-effort from extension)
 - `title` (string, optional): UI title/label
@@ -245,7 +247,7 @@ Event object (same envelope shape as other `events` entries):
   - `artifact` (object): same as returned from tool output
 
 UI behavior:
-- Render images/videos/audio using `GET /api/v1/file?path=...&yolo=...`
+- Render images/videos/audio using `GET /api/v1/file?session_id=<sid>&path=<artifact.path>`
 - For audio:
   - show a normal audio player
   - if `autoplay=true`, the UI may attempt playback only after explicit user opt-in

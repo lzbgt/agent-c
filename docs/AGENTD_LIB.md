@@ -132,7 +132,7 @@ agentd::AgentdService svc(opt);
 
 - The HTTP server is intentionally minimal (no TLS, no chunked encoding). For production remote exposure, put a reverse proxy in front or extend `HttpServer`.
 - `stop()` now closes the listening socket to ensure `serve()` unblocks promptly (important for embedding and tests).
-- Tool execution semantics are still controlled by `tools=host|basic|none` and safety knobs (`yolo`, `host_policy`, `tools_root`) at runtime.
+- Tool execution semantics are still controlled by `tools=host|basic|none` and safety knobs (`yolo`, `host_policy`) at runtime.
 
 ## Transport-agnostic API (`AgentdApi`)
 

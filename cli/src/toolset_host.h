@@ -30,7 +30,7 @@ struct HostToolsetConfig {
   // (defense in depth). This does not affect bounded filesystem inspection tools.
   //
   // Daemon note:
-  // - When the daemon runs with `yolo=false` (scoped tools_root), it may disable exec tools even if policy=full.
+  // - When the daemon runs with `yolo=false`, it may disable exec tools even if policy=full.
   // CLI note:
   // - The CLI may keep exec tools enabled even when root_dir is set (local, interactive usage).
   bool enable_process_exec = true;
@@ -51,7 +51,8 @@ struct HostToolsetConfig {
   // Optional session context (daemon / UI integration).
   //
   // When set (non-empty), some host tools can coordinate with session-scoped UI events.
-  // - sessions_root_dir: directory containing <session_id>.client_events.jsonl (written by agentd).
+  // - sessions_root_dir: daemon session root directory (agentd creates per-session folders like
+  //   <sessions_root_dir>/session_<session_id>/{work,out}/...).
   // - session_id: current run's session id.
   //
   // This is intentionally optional so CLI runs can ignore it.

@@ -44,15 +44,15 @@ agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT}" "agentd_file_symlink_smok
 
 agentd_smoke_wait_health "${DAEMON_URL}"
 
-# Scoped file endpoint must reject reading through symlink escapes.
-code="$(curl -sS --noproxy "*" --max-time 5 -o /dev/null -w '%{http_code}' \
-  "${DAEMON_URL}/api/v1/file?yolo=0&path=$(python3 - <<PY
+# File endpoint: no tools_root/host_scope sandboxing; reading through a symlink is allowed.
+qpath="$(python3 - <<'PY'
 import urllib.parse
 print(urllib.parse.quote('build/agentd_file_symlink_out/secret.txt'))
 PY
-)")"
+)"
+body="$(curl -fsS --noproxy "*" --max-time 5 "${DAEMON_URL}/api/v1/file?path=${qpath}")"
 
-if [[ "${code}" != "403" && "${code}" != "404" ]]; then
-  echo "expected 403/404 for symlink escape file read, got ${code}" >&2
+if [[ "${body}" != "SECRET_FILE" ]]; then
+  echo "unexpected file body: ${body}" >&2
   exit 1
 fi

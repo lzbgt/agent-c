@@ -1031,6 +1031,7 @@ export default function ConversationView({
 
             const makeArtifactUrl = async (args: any) => {
               const token = typeof daemonAuthToken === "string" ? daemonAuthToken.trim() : "";
+              const sid = typeof sessionId === "string" ? sessionId.trim() : "";
               const path = safeTrunc(String(args?.path ?? args?.artifact?.path ?? ""), 4000).trim();
               const resolvedPath = safeTrunc(
                 String(args?.resolved_path ?? args?.resolvedPath ?? args?.artifact?.resolved_path ?? ""),
@@ -1042,13 +1043,14 @@ export default function ConversationView({
 
               const tryPaths: string[] = [];
               if (path) tryPaths.push(path);
-              // In YOLO mode, absolute paths are allowed on /api/v1/file. This provides a crucial fallback
-              // when the daemon default tools_root differs from the run's effective tools_root.
+              // In YOLO mode, absolute paths are allowed on /api/v1/file. This provides a fallback when the
+              // artifact payload includes a resolved absolute path.
               if (wantYolo && resolvedPath && !tryPaths.includes(resolvedPath)) tryPaths.push(resolvedPath);
 
               let lastErr: any = null;
               for (const p of tryPaths) {
-                const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${wantYolo ? "1" : "0"}`;
+                const sidQ = sid ? `&session_id=${encodeURIComponent(sid)}` : "";
+                const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${wantYolo ? "1" : "0"}${sidQ}`;
                 try {
                   const r = await fetch(src, {
                     method: "GET",

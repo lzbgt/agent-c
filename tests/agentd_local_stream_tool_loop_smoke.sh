@@ -131,7 +131,6 @@ print(json.dumps({
   "no_session": True,
   "tools": "host",
   "yolo": False,
-  "tools_root": "@host",
   "base_url": "${STUB_BASE}",
   "api_key": "dummy",
   "model": "stub",
@@ -169,4 +168,3 @@ if "assistant_delta" not in types:
   print("expected assistant_delta in tool loop events", types, file=sys.stderr)
   raise SystemExit(1)
 PY
-

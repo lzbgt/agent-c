@@ -121,7 +121,6 @@ print(json.dumps({
   "no_session": True,
   "tools": "host",
   "yolo": True,
-  "tools_root": "@host",
   "base_url": "${STUB_BASE}",
   "api_key": "dummy",
   "model": "stub",
@@ -277,4 +276,3 @@ import urllib.parse
 print(urllib.parse.quote('${job_id}'))
 PY
 )" --max-time 5 >/dev/null || true
-

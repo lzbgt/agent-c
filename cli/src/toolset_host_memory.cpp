@@ -111,7 +111,10 @@ static std::string local_date_ymd() {
 static std::filesystem::path memory_root_from_ctx(const HostToolCtx* ctx) {
   if (!ctx) return {};
   if (ctx->sessions_root_dir.empty()) return {};
-  const std::filesystem::path state_dir = ctx->sessions_root_dir.parent_path();
+  // Historical layout: sessions_root_dir = <state_dir>/sessions
+  // Current default layout: sessions_root_dir = <state_dir>
+  const std::filesystem::path sr = ctx->sessions_root_dir;
+  const std::filesystem::path state_dir = (sr.filename() == "sessions") ? sr.parent_path() : sr;
   if (state_dir.empty()) return {};
   return state_dir / "memory";
 }

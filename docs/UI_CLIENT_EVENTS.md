@@ -63,7 +63,7 @@ This keeps UI events queryable even when `.sess` compaction collapses older text
 ## File-backed log (always enabled)
 
 Regardless of DB settings, agentd appends every UI client event as a JSONL line to:
-- `<sessions_root>/<session_id>.client_events.jsonl`
+- Legacy (file-backed): `<sessions_root>/<session_id>.client_events.jsonl` (current canonical store is the DB)
 
 This file is the canonical source for the host tool `ui_wait_event` (see `docs/UI_WAIT_EVENT.md`), so tool-loop runs can
 wait for UI acknowledgements even when the SQLite DB is disabled.

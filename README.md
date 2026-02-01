@@ -490,8 +490,8 @@ Session vs audit:
 
 Host tool names:
 - In `--host-policy readonly`, the host tool registry omits `shell_exec`, `proc_exec`, and `file_apply_patch` (read-only inspection only).
-- In daemon scoped mode (`yolo=false`), the host tool registry omits `shell_exec` and `proc_exec` even when `host_policy=full`.
-  Scoped mode also rejects following symlinks under `tools_root` to prevent sandbox escapes (e.g. `tools_root/out -> /`).
+- In daemon restricted mode (`yolo=false`), the host tool registry omits `shell_exec` and `proc_exec` even when `host_policy=full`.
+  Filesystem tools remain available; agentd no longer enforces a `tools_root` sandbox at runtime (use container-level isolation for multi-tenant safety).
 - `shell_exec` (runs `/bin/sh -lc <cmd>`, returns JSON envelope with `exit_code`, `timed_out`, `truncated`, `output`)
 - `proc_exec` (runs an argv array via `posix_spawnp`, no shell; returns JSON envelope with `argv`, `exit_code`, `timed_out`, `truncated`, `output`)
 - `file_apply_patch` (applies a unified diff via `git apply`; returns the patch as a diff-style audit trail)
@@ -588,8 +588,7 @@ curl http://127.0.0.1:8123/api/v1/health
 
 YOLO vs host-scoped tools:
 - Default daemon mode is YOLO (unrestricted) to match local development needs.
-- To scope file edits to a workspace root, set `tools_root` to `@host` (host scope configured by daemon).
-- Clients can also pass `yolo: false` + `tools_root: "@host"` in `POST /api/v1/run`.
+- `yolo` is now a *tool exposure* knob (primarily enabling/disabling process execution tools). It does not sandbox filesystem paths.
 - For safer deployments, `agentd` supports `--host-policy full|readonly`:
   - `full`: enables process exec + patch application + filesystem inspection (`shell_exec`, `proc_exec`, `file_apply_patch`, `fs_*`, `text_search`)
   - `readonly`: disables process exec and patch application (keeps only `fs_*` + `text_search`)
@@ -601,8 +600,9 @@ Verbose inspection:
 - Pass `trace: true` to also return a plain-text transcript (`trace_text`).
 - Optional: pass `max_capture_bytes` to cap large verbose event payloads for UI stability (default: 256KB; daemon clamps for tool loops).
 - `agentd` ignores `SIGPIPE` so client disconnects (UI refresh, SSE close) do not terminate the daemon.
-- The daemon also serves files for previews at `GET /api/v1/file?path=<...>&yolo=0|1` (up to 10MB).
-  Note: `yolo=1` is ignored when the daemon is started with `--no-yolo` (requests cannot loosen sandbox settings).
+- The daemon also serves files for previews at `GET /api/v1/file?path=<...>&session_id=<sid>` (up to 10MB).
+  - If `session_id` is provided and `path` is relative, the file is resolved under `<sessions_root>/<sid>/...`.
+  - If `path` is absolute, it is served directly.
 
 Assistant streaming (provider-dependent):
 - Clients can set `stream_assistant: true` to request OpenAI-compatible SSE streaming (`stream: true`).
@@ -618,7 +618,7 @@ CLI streaming (stdout):
   - `--tools basic|host`: streams assistant deltas during tool-loop steps (best-effort; depends on provider streaming + `delta.tool_calls`).
 
 Tool schema introspection (extensible tools):
-- `GET /api/v1/tools?tools=host|basic|none&tools_root=@host|@cwd|...&yolo=0|1&host_policy=full|readonly&session_id=<id>` returns the tool registry the daemon will expose:
+- `GET /api/v1/tools?tools=host|basic|none&yolo=0|1&host_policy=full|readonly&session_id=<id>` returns the tool registry the daemon will expose:
   `name`, `description`, `parameters_json` (OpenAI-compatible JSON Schema).
 - Tool exposure is also constrained by the daemon's `--host-policy` (response includes `effective_host_policy`).
 - When `session_id` is provided (and `tools=host`), the registry may include **session-scoped tools** such as `ui_wait_event`.

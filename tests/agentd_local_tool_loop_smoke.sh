@@ -122,7 +122,6 @@ print(json.dumps({
   "no_session": True,
   "tools": "host",
   "yolo": False,
-  "tools_root": "@host",
   "base_url": "${STUB_BASE}",
   "api_key": "dummy",
   "model": "stub",

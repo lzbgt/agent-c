@@ -17,6 +17,24 @@
 
 namespace host_tools_internal {
 
+inline std::string sanitize_session_id_component(std::string sid) {
+  // Session ids typically come from UUIDs, but clients may send arbitrary strings.
+  // Keep this path component safe and deterministic.
+  std::string out;
+  out.reserve(sid.size());
+  for (char c : sid) {
+    const bool ok =
+      (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' || c == '_' || c == '.' || c == ':';
+    out.push_back(ok ? c : '_');
+    if (out.size() >= 200) break;
+  }
+  // Avoid empty directory names.
+  if (out.empty()) out = "default";
+  // Avoid leading '.' which can hide the directory.
+  if (!out.empty() && out[0] == '.') out[0] = '_';
+  return out;
+}
+
 inline std::string to_generic_string(const std::filesystem::path& p) {
   // Prefer a stable "/"-separated form for JSON/tool output.
   return p.generic_string();
@@ -148,6 +166,48 @@ struct HostToolCtx {
 
 inline bool is_cancelled(const HostToolCtx* ctx) {
   return ctx && ctx->should_cancel && ctx->should_cancel(ctx->should_cancel_ctx);
+}
+
+inline std::filesystem::path session_root_dir(const HostToolCtx* ctx) {
+  if (!ctx) return {};
+  const std::string sid = ctx->session_id;
+  if (sid.empty()) return {};
+  const std::string dir = std::string("session_") + sanitize_session_id_component(sid);
+  // Prefer agentd's sessions root when available. This keeps per-session artifacts/logs
+  // independent of the daemon's working directory / repository checkout.
+  if (!ctx->sessions_root_dir.empty()) {
+    return ctx->sessions_root_dir / dir;
+  }
+  // Fallback for CLI usage (no daemon session store available).
+  return ctx->root / dir;
+}
+
+inline std::filesystem::path session_work_dir(const HostToolCtx* ctx) {
+  const auto sr = session_root_dir(ctx);
+  if (sr.empty()) return {};
+  return sr / "work";
+}
+
+inline std::filesystem::path session_out_dir(const HostToolCtx* ctx) {
+  const auto sr = session_root_dir(ctx);
+  if (sr.empty()) return {};
+  return sr / "out";
+}
+
+inline std::optional<std::filesystem::path> resolve_under_ctx_root(const HostToolCtx* ctx, const std::string& user_path) {
+  if (!ctx) return std::nullopt;
+  std::filesystem::path p(user_path);
+
+  // Design requirement (agentd): no path constraints. Tools may read/write outside the session directory.
+  // Default relative paths to the session root directory (or fall back to the toolset root / process CWD).
+  if (p.is_absolute()) {
+    return p.lexically_normal();
+  }
+
+  // Default relative paths to the session root directory (when running under agentd), else toolset root.
+  const std::filesystem::path sr = session_root_dir(ctx);
+  const std::filesystem::path base = sr.empty() ? ctx->root : sr;
+  return (base / p).lexically_normal();
 }
 
 // Exec-capable tools (moved to a separate TU to keep files < 2000 LOC).

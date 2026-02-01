@@ -6,6 +6,7 @@
 #include "string_util.h"
 #include "sandbox_policy.h"
 #include "session_id_util.h"
+#include "session_paths.h"
 
 #include "agent/agent.h"
 #include "agent/tools.h"
@@ -14,6 +15,8 @@
 #include "toolset_host.h"
 
 #include <json/json.h>
+
+#include <filesystem>
 
 namespace agentd {
 
@@ -29,20 +32,22 @@ void handle_tools_endpoint(
   resp->headers["Content-Type"] = "application/json; charset=utf-8";
   if (!daemon_require_auth(cfg, req, resp)) return;
 
+  if (query_get(req.query, "tools_root").has_value()) {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"tools_root was removed; omit it and use explicit paths or session_id\"}";
+    return;
+  }
+
   std::string tools = cfg.tools;
   if (const auto q = query_get(req.query, "tools"); q && !q->empty()) {
     tools = *q;
   }
-  const auto q_tools_root = query_get(req.query, "tools_root");
-  const bool requested_tools_root_set = q_tools_root && !q_tools_root->empty();
-  const std::string requested_tools_root = requested_tools_root_set ? *q_tools_root : "";
 
   const auto q_yolo = query_get(req.query, "yolo");
   const bool requested_yolo_set = q_yolo.has_value();
   const bool requested_yolo = requested_yolo_set ? string_to_bool(*q_yolo) : cfg.yolo_default;
   const bool yolo = sandbox_tighten_yolo(cfg.yolo_default, requested_yolo, requested_yolo_set);
 
-  std::string tools_root;
   HostToolsetPolicyMode requested_policy = cfg.host_policy;
   if (const auto q = query_get(req.query, "host_policy"); q && !q->empty()) {
     HostToolsetPolicyMode p{};
@@ -54,33 +59,6 @@ void handle_tools_endpoint(
     requested_policy = p;
   }
   const HostToolsetPolicyMode effective_policy = tighten_host_policy(cfg.host_policy, requested_policy);
-  {
-    std::string root_err;
-    if (!sandbox_resolve_tools_root(
-          cfg.host_scope_root,
-          yolo,
-          cfg.tools_root,
-          requested_tools_root,
-          requested_tools_root_set,
-          &tools_root,
-          &root_err
-        )) {
-      resp->status = 403;
-      resp->body =
-        std::string("{\"ok\":false,\"error\":") +
-        json_stringify(Json::Value(root_err.empty() ? "invalid tools_root" : root_err)) +
-        "}";
-      return;
-    }
-  }
-
-  Json::Value out(Json::objectValue);
-  out["ok"] = true;
-  out["tools"] = tools;
-  out["effective_tools_root"] = tools_root;
-  out["effective_yolo"] = yolo;
-  out["effective_host_policy"] = host_policy_to_string(effective_policy);
-
   std::string session_id;
   if (const auto q = query_get(req.query, "session_id"); q && !q->empty()) {
     session_id = *q;
@@ -89,6 +67,26 @@ void handle_tools_endpoint(
       resp->body = "{\"ok\":false,\"error\":\"invalid session_id\"}";
       return;
     }
+  }
+  if (!session_id.empty() && !sessions_root_dir.empty()) {
+    const std::filesystem::path sr = session_root_path(sessions_root_dir, session_id);
+    if (sr.empty()) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid session_id\"}";
+      return;
+    }
+    std::error_code ec;
+    (void)std::filesystem::create_directories(sr / "work", ec);
+    ec.clear();
+    (void)std::filesystem::create_directories(sr / "out", ec);
+  }
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = true;
+  out["tools"] = tools;
+  out["effective_yolo"] = yolo;
+  out["effective_host_policy"] = host_policy_to_string(effective_policy);
+  if (!session_id.empty()) {
     out["effective_session_id"] = session_id;
   }
 
@@ -110,7 +108,6 @@ void handle_tools_endpoint(
     }
   } else if (tools == "host") {
     HostToolsetConfig hcfg;
-    hcfg.root_dir = tools_root;
     hcfg.policy = effective_policy;
     hcfg.enable_process_exec = yolo;
     hcfg.allow_symlinks = yolo;

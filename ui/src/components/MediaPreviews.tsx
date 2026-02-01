@@ -16,11 +16,13 @@ export default function MediaPreviews({
   baseUrl,
   yolo,
   daemonAuthToken,
+  sessionId,
   text,
 }: {
   baseUrl: string;
   yolo: boolean;
   daemonAuthToken?: string;
+  sessionId?: string;
   text: string;
 }) {
   // Best-effort: extract file-looking tokens from text output.
@@ -38,6 +40,8 @@ export default function MediaPreviews({
   if (files.length === 0) return null;
 
   const token = typeof daemonAuthToken === "string" ? daemonAuthToken.trim() : "";
+  const sid = typeof sessionId === "string" ? sessionId.trim() : "";
+  const sidQ = sid ? `&session_id=${encodeURIComponent(sid)}` : "";
   const [blobByPath, setBlobByPath] = React.useState<Record<string, { url: string; contentType?: string; error?: string }>>({});
 
   React.useEffect(() => {
@@ -64,7 +68,7 @@ export default function MediaPreviews({
     (async () => {
       for (const path of files) {
         if (cancelled) return;
-        const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(path)}&yolo=${yolo ? "1" : "0"}`;
+        const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(path)}&yolo=${yolo ? "1" : "0"}${sidQ}`;
         try {
           const r = await fetch(src, { headers: { Authorization: `Bearer ${token}` } });
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -99,7 +103,7 @@ export default function MediaPreviews({
       {files.map((path) => {
         const kind = guessKind(path);
         if (!kind) return null;
-        const directSrc = `${baseUrl}/api/v1/file?path=${encodeURIComponent(path)}&yolo=${yolo ? "1" : "0"}`;
+        const directSrc = `${baseUrl}/api/v1/file?path=${encodeURIComponent(path)}&yolo=${yolo ? "1" : "0"}${sidQ}`;
         const blob = blobByPath[path];
         const src = token ? (blob?.url || "") : directSrc;
         return (

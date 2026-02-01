@@ -178,7 +178,6 @@ print(json.dumps({
   "session_id": "${SESSION_ID}",
   "tools": "host",
   "yolo": False,
-  "tools_root": "@host",
   "base_url": "${STUB_BASE}",
   "api_key": "dummy",
   "model": "stub",
@@ -220,4 +219,3 @@ if txt != "OK":
 PY
 
 echo "agentd_client_rpc_entity_apply_smoke OK"
-

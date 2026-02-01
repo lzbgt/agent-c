@@ -49,7 +49,7 @@ The client posts client events via:
 - `POST /api/v1/session/client_event` (preferred; `ui_event` is a legacy alias)
 
 Canonical storage:
-- `<sessions_root>/<session_id>.client_events.jsonl`
+- Legacy (file-backed): `<sessions_root>/<session_id>.client_events.jsonl` (current canonical store is the DB)
 
 Recommended event types:
 - `artifact_rendered`: UI mounted the artifact renderer for a specific artifact/tool call.

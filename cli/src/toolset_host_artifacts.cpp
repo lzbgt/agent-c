@@ -123,22 +123,90 @@ agent_status_t tool_artifact_register(HostToolCtx* ctx, const char* arguments_js
   }
 
   const std::string path = args["path"].asString();
-  const auto resolved = resolve_under_root(ctx->root, path, ctx->unrestricted);
-  if (!resolved) {
+  // Prefer session-relative resolution when running under agentd. This makes artifact URLs stable per session.
+  // If that fails, fall back to root-relative (legacy) resolution so we can copy artifacts into the session folder.
+  std::filesystem::path source_resolved;
+  {
+    const auto r1 = resolve_under_ctx_root(ctx, path);
+    if (r1) {
+      source_resolved = *r1;
+    } else if (!ctx->session_id.empty()) {
+      // In session mode, accept legacy root-relative artifact paths as an input source to re-home into the session.
+      const auto r2 = resolve_under_root(ctx->root, path, ctx->unrestricted);
+      if (r2) source_resolved = *r2;
+    }
+  }
+  if (source_resolved.empty()) {
     return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
   }
   if (!ctx->unrestricted && !ctx->allow_symlinks) {
-    if (path_contains_symlink_component(ctx->root, *resolved)) {
+    if (path_contains_symlink_component(ctx->root, source_resolved)) {
       return write_envelope(false, "path escapes via symlink", Json::Value(Json::objectValue));
     }
   }
 
   std::error_code ec;
-  if (!std::filesystem::exists(*resolved, ec) || !std::filesystem::is_regular_file(*resolved, ec)) {
+  if (!std::filesystem::exists(source_resolved, ec) || !std::filesystem::is_regular_file(source_resolved, ec)) {
     return write_envelope(false, "file not found", Json::Value(Json::objectValue));
   }
 
-  const std::string stable_path = stable_rel_path_under_root(ctx->root, *resolved, path);
+  // Enforce "no global artifacts" policy for agentd sessions:
+  // - A session's artifacts should live under <sessions_root_dir>/session_<session_id>/out/.
+  // - If the source file is outside that directory, copy it in (best-effort), then register the session-local path.
+  std::filesystem::path final_resolved = source_resolved;
+  if (!ctx->session_id.empty()) {
+    const std::filesystem::path out_dir = session_out_dir(ctx);
+    if (!out_dir.empty()) {
+      ec.clear();
+      (void)std::filesystem::create_directories(out_dir, ec);
+
+      const std::filesystem::path norm_out = out_dir.lexically_normal();
+      const std::filesystem::path norm_src = source_resolved.lexically_normal();
+      const bool already_in_session_out = path_is_within(norm_out, norm_src);
+      if (!already_in_session_out) {
+        std::filesystem::path base = source_resolved.filename();
+        if (base.empty()) base = "artifact";
+        std::filesystem::path dest = out_dir / base;
+
+        // Avoid overwriting an existing file (from the same or another run). Generate a unique name if needed.
+        if (std::filesystem::exists(dest, ec)) {
+          const std::string stem = dest.stem().string();
+          const std::string ext = dest.extension().string();
+          for (int i = 1; i <= 1000; i++) {
+            dest = out_dir / std::filesystem::path(stem + "_" + std::to_string(i) + ext);
+            ec.clear();
+            if (!std::filesystem::exists(dest, ec)) break;
+          }
+        }
+
+        ec.clear();
+        if (std::filesystem::copy_file(source_resolved, dest, std::filesystem::copy_options::none, ec)) {
+          final_resolved = dest;
+        } else {
+          // If we couldn't copy, fall back to the original path (best-effort).
+          final_resolved = source_resolved;
+        }
+      }
+    }
+  }
+
+  // Prefer a stable relative path rooted at the session directory when available.
+  // This is the canonical artifact addressing mode for agentd clients:
+  //   GET /api/v1/file?session_id=<sid>&path=<relative>&yolo=...
+  std::filesystem::path stable_root = ctx->root;
+  if (!ctx->session_id.empty()) {
+    const auto sr = session_root_dir(ctx);
+    if (!sr.empty()) stable_root = sr;
+  }
+  std::string stable_fallback = path;
+  {
+    std::error_code ec2;
+    std::filesystem::path rel = std::filesystem::relative(final_resolved, stable_root, ec2);
+    if (!ec2 && !rel.empty() && !rel.is_absolute()) {
+      stable_fallback = to_generic_string(rel.lexically_normal());
+    }
+  }
+  const std::string stable_path = stable_rel_path_under_root(stable_root, final_resolved, stable_fallback);
 
   const std::string kind =
     args.isMember("kind") && args["kind"].isString() ? args["kind"].asString() : guess_kind_from_ext(path);
@@ -152,8 +220,9 @@ agent_status_t tool_artifact_register(HostToolCtx* ctx, const char* arguments_js
 
   Json::Value artifact(Json::objectValue);
   artifact["path"] = stable_path;
-  artifact["resolved_path"] = to_generic_string(*resolved);
-  artifact["root_dir"] = to_generic_string(ctx->root);
+  artifact["resolved_path"] = to_generic_string(final_resolved);
+  artifact["source_resolved_path"] = to_generic_string(source_resolved);
+  artifact["root_dir"] = to_generic_string(stable_root);
   artifact["unrestricted"] = ctx->unrestricted;
   artifact["kind"] = kind;
   artifact["mime"] = mime;
@@ -163,10 +232,10 @@ agent_status_t tool_artifact_register(HostToolCtx* ctx, const char* arguments_js
     artifact["title"] = args["title"].asString();
   }
   ec.clear();
-  const uintmax_t sz = std::filesystem::file_size(*resolved, ec);
+  const uintmax_t sz = std::filesystem::file_size(final_resolved, ec);
   if (!ec) artifact["size_bytes"] = (Json::UInt64)sz;
   ec.clear();
-  const auto mtime = std::filesystem::last_write_time(*resolved, ec);
+  const auto mtime = std::filesystem::last_write_time(final_resolved, ec);
   if (!ec) artifact["mtime_unix_ms"] = (Json::Int64)file_time_to_unix_ms(mtime);
 
   Json::Value data(Json::objectValue);

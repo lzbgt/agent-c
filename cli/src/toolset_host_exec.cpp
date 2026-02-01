@@ -21,6 +21,8 @@ namespace {
 
 using host_tools_internal::HostToolCtx;
 using host_tools_internal::is_cancelled;
+using host_tools_internal::session_root_dir;
+using host_tools_internal::session_work_dir;
 using host_tools_internal::set_result;
 
 #if defined(AGENT_HAVE_JSONCPP)
@@ -40,6 +42,31 @@ static std::string trim_ws(std::string s) {
   size_t i = 0;
   while (i < s.size() && (s[i] == ' ' || s[i] == '\t')) i++;
   return s.substr(i);
+}
+
+static std::string shell_quote_single(const std::string& s) {
+  std::string out;
+  out.reserve(s.size() + 2);
+  out.push_back('\'');
+  for (char c : s) {
+    if (c == '\'') {
+      out += "'\"'\"'";
+    } else {
+      out.push_back(c);
+    }
+  }
+  out.push_back('\'');
+  return out;
+}
+
+static std::string default_exec_cwd(const HostToolCtx* ctx) {
+  if (!ctx) return "";
+  if (ctx->session_id.empty()) return "";
+  const auto sr = session_root_dir(ctx);
+  if (!sr.empty()) return sr.string();
+  const auto wd = session_work_dir(ctx);
+  if (!wd.empty()) return wd.string();
+  return "";
 }
 
 static bool path_contains_symlink_component(const std::filesystem::path& root, const std::filesystem::path& p) {
@@ -393,6 +420,128 @@ static ExecResult run_proc_exec(
   return r;
 }
 
+static ExecResult run_proc_exec_with_cwd(
+  const std::vector<std::string>& argv,
+  const std::string& cwd,
+  int timeout_ms,
+  size_t max_output_bytes,
+  HostCancelCallback should_cancel,
+  void* should_cancel_ctx
+) {
+  ExecResult r;
+  if (argv.empty()) {
+    r.output = "argv is empty";
+    return r;
+  }
+
+  int pipefd[2];
+  if (pipe(pipefd) != 0) {
+    r.output = "pipe failed";
+    return r;
+  }
+  int flags = fcntl(pipefd[0], F_GETFL, 0);
+  if (flags >= 0) {
+    (void)fcntl(pipefd[0], F_SETFL, flags | O_NONBLOCK);
+  }
+
+  std::vector<char*> cargv;
+  cargv.reserve(argv.size() + 1);
+  for (const auto& s : argv) {
+    cargv.push_back(const_cast<char*>(s.c_str()));
+  }
+  cargv.push_back(nullptr);
+
+  pid_t pid = fork();
+  if (pid < 0) {
+    close(pipefd[0]);
+    close(pipefd[1]);
+    r.output = std::string("fork failed: ") + std::strerror(errno);
+    return r;
+  }
+  if (pid == 0) {
+    if (!cwd.empty()) {
+      (void)chdir(cwd.c_str());
+    }
+    (void)dup2(pipefd[1], STDOUT_FILENO);
+    (void)dup2(pipefd[1], STDERR_FILENO);
+    close(pipefd[0]);
+    close(pipefd[1]);
+    execvp(cargv[0], cargv.data());
+    _exit(127);
+  }
+
+  close(pipefd[1]);
+
+  const auto start = std::chrono::steady_clock::now();
+  bool child_done = false;
+  int status = 0;
+
+  while (true) {
+    if (should_cancel && should_cancel(should_cancel_ctx)) {
+      r.cancelled = true;
+      kill(pid, SIGKILL);
+      (void)waitpid(pid, &status, 0);
+      break;
+    }
+    char buf[4096];
+    while (r.output.size() < max_output_bytes) {
+      ssize_t n = read(pipefd[0], buf, sizeof(buf));
+      if (n > 0) {
+        size_t to_add = (size_t)n;
+        if (r.output.size() + to_add > max_output_bytes) {
+          to_add = max_output_bytes - r.output.size();
+        }
+        r.output.append(buf, buf + to_add);
+        if (to_add < (size_t)n) {
+          r.truncated = true;
+          break;
+        }
+      } else if (n == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+        break;
+      } else {
+        break;
+      }
+    }
+
+    if (!child_done) {
+      pid_t w = waitpid(pid, &status, WNOHANG);
+      if (w == pid) {
+        child_done = true;
+      }
+    }
+
+    if (child_done) {
+      break;
+    }
+
+    const auto now = std::chrono::steady_clock::now();
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(now - start).count();
+    if (timeout_ms > 0 && elapsed > timeout_ms) {
+      r.timed_out = true;
+      kill(pid, SIGKILL);
+      (void)waitpid(pid, &status, 0);
+      break;
+    }
+
+    struct pollfd pfd;
+    pfd.fd = pipefd[0];
+    pfd.events = POLLIN;
+    (void)poll(&pfd, 1, 50);
+  }
+
+  close(pipefd[0]);
+
+  if (WIFEXITED(status)) {
+    r.exit_code = WEXITSTATUS(status);
+  } else if (WIFSIGNALED(status)) {
+    r.exit_code = 128 + WTERMSIG(status);
+  } else {
+    r.exit_code = -1;
+  }
+
+  return r;
+}
+
 } // namespace
 
 namespace host_tools_internal {
@@ -426,22 +575,32 @@ agent_status_t tool_shell_exec(HostToolCtx* ctx, const char* arguments_json, age
     return write_envelope(false, "missing string field 'cmd'", Json::Value(Json::objectValue));
   }
   const std::string cmd = args["cmd"].asString();
+  const std::string cwd =
+    args.isMember("cwd") && args["cwd"].isString() ? args["cwd"].asString() : default_exec_cwd(ctx);
   const int timeout_ms = args.isMember("timeout_ms") && args["timeout_ms"].isInt() ? args["timeout_ms"].asInt() : 30000;
   const int max_output = args.isMember("max_output_bytes") && args["max_output_bytes"].isInt() ? args["max_output_bytes"].asInt() : 65536;
 
-  ExecResult r = run_shell_exec(cmd, timeout_ms, (size_t)max_output, ctx ? ctx->should_cancel : nullptr, ctx ? ctx->should_cancel_ctx : nullptr);
+  std::string cmd_run = cmd;
+  if (!trim_ws(cwd).empty()) {
+    cmd_run = "cd -- " + shell_quote_single(cwd) + " && (" + cmd + ")";
+  }
+  ExecResult r =
+    run_shell_exec(cmd_run, timeout_ms, (size_t)max_output, ctx ? ctx->should_cancel : nullptr, ctx ? ctx->should_cancel_ctx : nullptr);
 
   Json::Value data(Json::objectValue);
   // Include the command for UI observability/debugging (production requirement).
   // Keep a bounded copy to avoid unbounded session logs.
   {
-    std::string cmd_echo = cmd;
+    std::string cmd_echo = cmd_run;
     const size_t kMax = 64 * 1024;
     if (cmd_echo.size() > kMax) {
       cmd_echo.resize(kMax);
       cmd_echo += "…";
     }
     data["cmd"] = cmd_echo;
+  }
+  if (!trim_ws(cwd).empty()) {
+    data["cwd"] = cwd;
   }
   data["exit_code"] = r.exit_code;
   data["timed_out"] = r.timed_out;
@@ -492,14 +651,24 @@ agent_status_t tool_proc_exec(HostToolCtx* ctx, const char* arguments_json, agen
   if (argv.empty()) {
     return write_envelope(false, "argv is empty", Json::Value(Json::objectValue));
   }
+  const std::string cwd =
+    args.isMember("cwd") && args["cwd"].isString() ? args["cwd"].asString() : default_exec_cwd(ctx);
   const int timeout_ms = args.isMember("timeout_ms") && args["timeout_ms"].isInt() ? args["timeout_ms"].asInt() : 30000;
   const int max_output = args.isMember("max_output_bytes") && args["max_output_bytes"].isInt() ? args["max_output_bytes"].asInt() : 65536;
 
-  ExecResult r = run_proc_exec(argv, timeout_ms, (size_t)max_output, ctx ? ctx->should_cancel : nullptr, ctx ? ctx->should_cancel_ctx : nullptr);
+  ExecResult r;
+  if (!trim_ws(cwd).empty()) {
+    r = run_proc_exec_with_cwd(argv, cwd, timeout_ms, (size_t)max_output, ctx ? ctx->should_cancel : nullptr, ctx ? ctx->should_cancel_ctx : nullptr);
+  } else {
+    r = run_proc_exec(argv, timeout_ms, (size_t)max_output, ctx ? ctx->should_cancel : nullptr, ctx ? ctx->should_cancel_ctx : nullptr);
+  }
   Json::Value data(Json::objectValue);
   data["argv"] = Json::Value(Json::arrayValue);
   for (const auto& s : argv) {
     data["argv"].append(s);
+  }
+  if (!trim_ws(cwd).empty()) {
+    data["cwd"] = cwd;
   }
   data["exit_code"] = r.exit_code;
   data["timed_out"] = r.timed_out;

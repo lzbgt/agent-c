@@ -82,10 +82,25 @@ This list matches daemon route registration in `daemon/src/agentd_api.cpp`.
 
 ### Tools + Files
 
-- `GET /api/v1/tools?tools=host|basic|none&tools_root=...&yolo=0|1&host_policy=full|readonly&session_id=...`
+- `GET /api/v1/tools?tools=host|basic|none&yolo=0|1&host_policy=full|readonly&session_id=...`
   - returns the effective tool registry (`defs[]` with `name`, `description`, `parameters_json`)
-- `GET /api/v1/file?path=...&yolo=0|1`
+- `GET /api/v1/file?path=...&session_id=...`
   - serves a (size-capped) file for UI preview (image/audio/video/text)
+
+Notes:
+- `yolo` no longer controls filesystem path restrictions. It only affects which *tools* are exposed (notably process execution tools like `shell_exec` / `proc_exec`).
+- Session folder root:
+  - The daemon uses a single base directory for state + session folders. You can set it explicitly with env `AGENT_WD` (operator-friendly) or `AGENTD_STATE_DIR` / `AGENTD_SESSIONS_ROOT`.
+  - If not set, it defaults to the daemon process **startup working directory**.
+- File path resolution:
+  - If `path` is absolute, it is served directly.
+  - If `path` is relative and `session_id` is provided, it is resolved relative to the session directory (`<sessions_root>/session_<session_id>/...`).
+  - If `path` is relative and `session_id` is omitted, it is resolved relative to the daemon process working directory.
+- Host tool default working directory (important for client implementers):
+  - When `session_id` is set, host exec tools (`shell_exec`, `proc_exec`) run with default `cwd` = the session root directory (`<sessions_root>/session_<session_id>/`).
+  - Convention:
+    - write intermediate files under `work/`
+    - write user-facing artifacts under `out/` and then call `artifact_register` with `path: "out/<file>"`.
 
 ### Sessions (messages / audit / artifacts / client events)
 
@@ -176,6 +191,18 @@ Some daemon builds also expose:
 - `GET /api/v1/job/stream?job_id=...&cursor=...` (SSE for incremental job progress)
 
 See `docs/STREAMING.md` for streaming semantics.
+
+Reconnect / continuity guidance:
+- `agentd` should continue executing an **async** job even if a client disconnects (tab refresh, app restart, network flap).
+  - Only an explicit `POST /api/v1/job/cancel?job_id=...` should stop the job.
+- Clients that want refresh-stable UX should persist:
+  - `session_id` (the conversation namespace)
+  - `job_id` (if an async run is active)
+  - `cursor` (if consuming SSE/job tail incrementally)
+- On reconnect, a client can:
+  - `GET /api/v1/job?job_id=...` to get current status and (when done) the final result
+  - resume `/api/v1/job/stream?job_id=...&cursor=...` or polling (`include_events=1`) to render progress
+  - `GET /api/v1/session/audit?session_id=...` to reconstruct history if needed
 
 ### DB query endpoints (optional; read-only)
 

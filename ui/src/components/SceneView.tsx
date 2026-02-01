@@ -45,12 +45,14 @@ function Canvas2DEntityView({
   entity,
   baseUrl,
   yolo,
+  sessionId,
   daemonAuthToken,
   onScriptError,
 }: {
   entity: SceneEntity;
   baseUrl?: string;
   yolo?: boolean;
+  sessionId?: string;
   daemonAuthToken?: string;
   onScriptError?: (args: {
     entity_id: string;
@@ -149,7 +151,8 @@ function Canvas2DEntityView({
         // We intentionally avoid pre-declaring `ctx`/`canvas` as variables to prevent
         // collisions with scripts that naturally start with `const ctx = ...`.
         const authToken = safeString(daemonAuthToken).trim();
-        const daemon = { base_url: baseUrl || "", yolo: !!yolo, auth_token: authToken };
+        const sid = safeString(sessionId).trim();
+        const daemon = { base_url: baseUrl || "", yolo: !!yolo, auth_token: authToken, session_id: sid || undefined };
         const api: any = {
           root: canvas,
           ctx,
@@ -162,7 +165,8 @@ function Canvas2DEntityView({
               const p = String(path ?? "").trim();
               if (!p) throw new Error("artifact.url requires path");
               if (!baseUrl) throw new Error("artifact.url requires baseUrl");
-              const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${yolo ? "1" : "0"}`;
+              const sidQ = sid ? `&session_id=${encodeURIComponent(sid)}` : "";
+              const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${yolo ? "1" : "0"}${sidQ}`;
               const r = await fetch(src, { headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
               if (!r.ok) throw new Error(`file fetch failed: ${r.status}`);
               const b = await r.blob();
@@ -326,12 +330,14 @@ function DomEntityView({
   entity,
   baseUrl,
   yolo,
+  sessionId,
   daemonAuthToken,
   onScriptError,
 }: {
   entity: SceneEntity;
   baseUrl?: string;
   yolo?: boolean;
+  sessionId?: string;
   daemonAuthToken?: string;
   onScriptError?: (args: {
     entity_id: string;
@@ -409,7 +415,8 @@ function DomEntityView({
     if (!script || script.trim().length === 0) return;
 
     const authToken = safeString(daemonAuthToken).trim();
-    const daemon = { base_url: baseUrl, yolo: !!yolo, auth_token: authToken };
+    const sid = safeString(sessionId).trim();
+    const daemon = { base_url: baseUrl, yolo: !!yolo, auth_token: authToken, session_id: sid || undefined };
     const api: any = {
       root,
       daemon,
@@ -417,7 +424,8 @@ function DomEntityView({
         url: async (path: any) => {
           const p = String(path ?? "").trim();
           if (!p) throw new Error("artifact.url requires path");
-          const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${yolo ? "1" : "0"}`;
+          const sidQ = sid ? `&session_id=${encodeURIComponent(sid)}` : "";
+          const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${yolo ? "1" : "0"}${sidQ}`;
           const r = await fetch(src, { headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
           if (!r.ok) throw new Error(`file fetch failed: ${r.status}`);
           const b = await r.blob();
@@ -646,9 +654,23 @@ export default function SceneView({
                     {!expanded ? (
                       <div className="mt-2 text-[11px] text-white/40">Collapsed</div>
                     ) : e.kind === "canvas2d" ? (
-                      <Canvas2DEntityView entity={e} baseUrl={baseUrl} yolo={yolo} daemonAuthToken={daemonAuthToken} onScriptError={postSceneError} />
+                      <Canvas2DEntityView
+                        entity={e}
+                        baseUrl={baseUrl}
+                        yolo={yolo}
+                        sessionId={sessionId}
+                        daemonAuthToken={daemonAuthToken}
+                        onScriptError={postSceneError}
+                      />
                     ) : e.kind === "dom" ? (
-                      <DomEntityView entity={e} baseUrl={baseUrl} yolo={yolo} daemonAuthToken={daemonAuthToken} onScriptError={postSceneError} />
+                      <DomEntityView
+                        entity={e}
+                        baseUrl={baseUrl}
+                        yolo={yolo}
+                        sessionId={sessionId}
+                        daemonAuthToken={daemonAuthToken}
+                        onScriptError={postSceneError}
+                      />
                     ) : e.kind === "artifact" && baseUrl && typeof yolo === "boolean" ? (
                       <div className="mt-2">
                         <ArtifactView

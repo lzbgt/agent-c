@@ -69,7 +69,6 @@ export const DaemonConfigSchema = z
     sandbox: z
       .object({
         tools: z.string().optional(),
-        tools_root: z.string().nullable().optional(),
         host_scope_root: z.string().nullable().optional(),
         yolo_default: z.boolean().optional(),
         host_policy: z.enum(["full", "readonly"]).optional(),
@@ -155,7 +154,6 @@ export const RunRequestSchema = z.object({
   stream_assistant: z.boolean().optional(),
   max_capture_bytes: z.number().int().nonnegative().optional(),
   tools: z.enum(["host", "basic", "none"]).optional(),
-  tools_root: z.string().optional(),
   host_policy: z.enum(["full", "readonly"]).optional(),
   max_steps: z.number().int().nonnegative().optional(),
   max_repeated_tool_calls: z.number().int().nonnegative().optional(),
@@ -190,7 +188,6 @@ export const RunResponseSchema = z.object({
   http_status: z.number().optional(),
   http_body: z.string().optional(),
   trace_text: z.string().optional(),
-  effective_tools_root: z.string().optional(),
   effective_yolo: z.boolean().optional(),
   effective_host_policy: z.enum(["full", "readonly"]).optional(),
   effective_timeout_ms: z.number().optional(),
@@ -203,7 +200,6 @@ export type RunResponse = z.infer<typeof RunResponseSchema>;
 export const ToolDefsRespSchema = z.object({
   ok: z.boolean(),
   tools: z.string().optional(),
-  effective_tools_root: z.string().optional(),
   effective_yolo: z.boolean().optional(),
   effective_host_policy: z.enum(["full", "readonly"]).optional(),
   count: z.number().optional(),
@@ -223,11 +219,10 @@ export type ToolDefsResp = z.infer<typeof ToolDefsRespSchema>;
 export async function apiGetTools(
   base: string,
   authToken?: string,
-  opts?: { tools?: "host" | "basic" | "none"; toolsRoot?: string; yolo?: boolean; hostPolicy?: "full" | "readonly"; sessionId?: string },
+  opts?: { tools?: "host" | "basic" | "none"; yolo?: boolean; hostPolicy?: "full" | "readonly"; sessionId?: string },
 ): Promise<ToolDefsResp> {
   const q = new URLSearchParams();
   if (opts?.tools) q.set("tools", opts.tools);
-  if (typeof opts?.toolsRoot === "string") q.set("tools_root", opts.toolsRoot);
   if (typeof opts?.yolo === "boolean") q.set("yolo", opts.yolo ? "1" : "0");
   if (opts?.hostPolicy) q.set("host_policy", opts.hostPolicy);
   if (typeof opts?.sessionId === "string" && opts.sessionId.length > 0) q.set("session_id", opts.sessionId);

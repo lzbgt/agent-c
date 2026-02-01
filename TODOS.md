@@ -74,11 +74,11 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Fix tool loop limit semantics: hitting `max_steps` is an error (`AGENT_ERR_LIMIT`) and the daemon default is configurable (`0` means unlimited).
 - [x] Add additional tool-loop runaway caps beyond step-count: `max_tool_calls_total` and `max_tool_calls_per_tool` (daemon defaults are configurable; UI/CLI can override per-run).
 - [ ] Add a daemon-level “sandbox policy” model:
-  - YOLO vs host-scoped tools-root
+  - YOLO vs restricted exec-tool exposure (no `tools_root` sandboxing; isolation is container-level)
   - future: per-tool allow/deny and command restrictions for `proc_exec` / `shell_exec`
   - [x] add `--host-policy full|readonly` (readonly omits exec + patch tools)
   - [x] support per-request `host_policy` and `/api/v1/tools?host_policy=...` (can only tighten vs daemon default)
-  - [x] Tighten `yolo` + `tools_root` the same way (requests can only reduce scope), including `/api/v1/file`
+  - [x] Tighten `yolo` semantics the same way (requests can only reduce capabilities) and remove `tools_root` end-to-end (daemon + WebUI + tests)
   - [x] add `/api/v1/tools` for clients to query active tool schemas
 
 ## Near-term (UI polish)
@@ -93,6 +93,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add a daemon file endpoint for UI previews (`/api/v1/file`) for images/audio/video artifacts.
 - [x] Add multi-client-safe session creation (`POST /api/v1/session/new`) and a UI “New session” action.
 - [x] Add explicit artifact events (`artifact`) so UI can render media without regex guessing.
+- [x] Make artifacts session-scoped: register/copy artifacts under `<sessions_root>/<session_id>/out/` and serve via `GET /api/v1/file?session_id=<sid>&path=...`.
 - [x] Stop auto media previews in tool outputs (`fs_list` etc. should never trigger `/api/v1/file` fetches unless the agent registered an artifact).
 - [x] Add an “Artifacts” panel that indexes artifacts from session audit (cross-run browsing).
 - [x] Add an operator-friendly daemon `--state-dir` / `--sessions-root` so multiple agentd instances never share the same state by accident.

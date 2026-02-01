@@ -40,7 +40,13 @@ static std::string home_dir_best_effort() {
 }
 
 static std::string state_dir_best_effort() {
-  return (std::filesystem::path(home_dir_best_effort()) / ".agent").string();
+  // Default daemon state to its startup working directory (container-friendly).
+  // Operators should set the daemon's working directory (or AGENT_WD/AGENTD_STATE_DIR) to control where
+  // session folders and agentd.db are created.
+  std::error_code ec;
+  const auto cwd = std::filesystem::current_path(ec);
+  if (!ec && !cwd.empty()) return cwd.string();
+  return home_dir_best_effort();
 }
 
 static bool host_is_loopback(std::string host) {
@@ -77,6 +83,12 @@ static CorsConfig cors_cfg_from_config(const DaemonConfig& cfg) {
 
 static void fill_env_defaults(DaemonConfig* cfg) {
   if (!cfg) return;
+
+  // High-level operator-friendly root. If set, it pins default state_dir/sessions_root_dir unless overridden
+  // by the more specific AGENTD_* vars.
+  if (cfg->state_dir.empty()) {
+    if (const char* d = getenv_s("AGENT_WD")) cfg->state_dir = d;
+  }
 
   if (cfg->base_url.empty()) {
     if (const char* b = getenv_s("OPENAI_API_BASE")) cfg->base_url = b;
@@ -122,24 +134,30 @@ static void fill_env_defaults(DaemonConfig* cfg) {
     if (const char* d = getenv_s("AGENTD_STATE_DIR")) cfg->state_dir = d;
   }
   if (cfg->sessions_root_dir.empty()) {
+    if (const char* d = getenv_s("AGENT_WD")) cfg->sessions_root_dir = d;
     if (const char* d = getenv_s("AGENTD_SESSIONS_ROOT")) cfg->sessions_root_dir = d;
   }
 }
 
 static void fill_path_defaults(DaemonConfig* cfg) {
   if (!cfg) return;
-  if (cfg->state_dir.empty()) cfg->state_dir = state_dir_best_effort();
+  if (cfg->state_dir.empty()) {
+    // If sessions_root_dir was explicitly configured (e.g. --sessions-root), use it as the default state_dir too
+    // so the daemon DB and session folders live under the same operator-chosen root.
+    cfg->state_dir = cfg->sessions_root_dir.empty() ? state_dir_best_effort() : cfg->sessions_root_dir;
+  }
   if (cfg->sessions_root_dir.empty()) {
-    cfg->sessions_root_dir = (std::filesystem::path(cfg->state_dir) / "sessions").string();
+    // Session root directory is `<state_dir>/session_<session_id>/`.
+    cfg->sessions_root_dir = cfg->state_dir;
   }
 
-  // DB is mandatory (canonical daemon state store). Default to agentd.db in the daemon working directory.
+  // DB is mandatory (canonical daemon state store). Default to agentd.db under state_dir.
   if (cfg->db_path.empty()) {
-    cfg->db_path = (std::filesystem::current_path() / "agentd.db").string();
+    cfg->db_path = (std::filesystem::path(cfg->state_dir) / "agentd.db").string();
   } else {
     const std::filesystem::path p(cfg->db_path);
     if (p.is_relative()) {
-      cfg->db_path = (std::filesystem::current_path() / p).lexically_normal().string();
+      cfg->db_path = (std::filesystem::path(cfg->state_dir) / p).lexically_normal().string();
     }
   }
 }

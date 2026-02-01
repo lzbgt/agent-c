@@ -337,7 +337,7 @@ static agent_status_t tool_fs_stat(HostToolCtx* ctx, const char* arguments_json,
   const int max_count_lines = args.isMember("max_count_lines") && args["max_count_lines"].isInt() ? args["max_count_lines"].asInt() : 200000;
 
   const std::string path = args["path"].asString();
-  const auto resolved = resolve_under_root(ctx->root, path, ctx->unrestricted);
+  const auto resolved = resolve_under_ctx_root(ctx, path);
   if (!resolved) {
     return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
   }
@@ -493,7 +493,7 @@ static agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json,
   const bool respect_gitignore =
     args.isMember("respect_gitignore") && args["respect_gitignore"].isBool() ? args["respect_gitignore"].asBool() : false;
 
-  const auto resolved = resolve_under_root(ctx->root, path, ctx->unrestricted);
+  const auto resolved = resolve_under_ctx_root(ctx, path);
   if (!resolved) {
     return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
   }
@@ -805,7 +805,7 @@ static agent_status_t tool_fs_find(HostToolCtx* ctx, const char* arguments_json,
     }
   }
 
-  const auto resolved = resolve_under_root(ctx->root, path, ctx->unrestricted);
+  const auto resolved = resolve_under_ctx_root(ctx, path);
   if (!resolved) {
     return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
   }
@@ -1084,7 +1084,7 @@ static agent_status_t tool_fs_read(HostToolCtx* ctx, const char* arguments_json,
     return write_envelope(false, "max_lines must be >= 1", Json::Value(Json::objectValue));
   }
 
-  const auto resolved = resolve_under_root(ctx->root, path, ctx->unrestricted);
+  const auto resolved = resolve_under_ctx_root(ctx, path);
   if (!resolved) {
     return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
   }
@@ -1314,7 +1314,7 @@ static agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_j
     }
   }
 
-  const auto resolved = resolve_under_root(ctx->root, path, ctx->unrestricted);
+  const auto resolved = resolve_under_ctx_root(ctx, path);
   if (!resolved) {
     return write_envelope(false, "invalid path", Json::Value(Json::objectValue));
   }
@@ -1727,6 +1727,7 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
         "\"type\":\"object\","
         "\"properties\":{"
         "  \"cmd\":{\"type\":\"string\"},"
+        "  \"cwd\":{\"type\":\"string\",\"description\":\"Optional working directory for the command.\"},"
         "  \"timeout_ms\":{\"type\":\"integer\"},"
         "  \"max_output_bytes\":{\"type\":\"integer\"}"
         "},"
@@ -1743,6 +1744,7 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
         "\"type\":\"object\","
         "\"properties\":{"
         "  \"argv\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},"
+        "  \"cwd\":{\"type\":\"string\",\"description\":\"Optional working directory for the process.\"},"
         "  \"timeout_ms\":{\"type\":\"integer\"},"
         "  \"max_output_bytes\":{\"type\":\"integer\"}"
         "},"
@@ -2181,7 +2183,9 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     st = AGENT_ERR_OOM;
     goto fail;
   }
-  ctx->unrestricted = cfg.root_dir.empty();
+  // Design requirement (agentd): tools have no path constraints (even in scoped mode).
+  // We detect daemon usage via a non-empty session_id.
+  ctx->unrestricted = cfg.root_dir.empty() || !cfg.session_id.empty();
   ctx->root = cfg.root_dir.empty() ? std::filesystem::current_path()
                                    : std::filesystem::path(cfg.root_dir);
   ctx->policy = cfg.policy;
@@ -2204,6 +2208,19 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     } else {
       ctx->root = ctx->root.lexically_normal();
     }
+  }
+  if (!ctx->session_id.empty()) {
+    // Best-effort per-session working directory. Artifacts are expected to live under:
+    //   <sessions_root_dir>/session_<session_id>/{work,out}/...
+    std::error_code ec;
+    const auto sr = session_root_dir(ctx);
+    const auto wd = session_work_dir(ctx);
+    const auto outd = session_out_dir(ctx);
+    if (!sr.empty()) (void)std::filesystem::create_directories(sr, ec);
+    ec.clear();
+    if (!wd.empty()) (void)std::filesystem::create_directories(wd, ec);
+    ec.clear();
+    if (!outd.empty()) (void)std::filesystem::create_directories(outd, ec);
   }
 
   out_executor->ctx = ctx;

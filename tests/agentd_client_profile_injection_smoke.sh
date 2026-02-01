@@ -151,8 +151,7 @@ STUB_PID=$!
 
 agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_client_profile_injection_smoke" \
   --tools host \
-  --yolo \
-  --host-scope "${LOG_DIR}"
+  --yolo
 
 agentd_smoke_wait_health "${DAEMON_URL}"
 
@@ -204,7 +203,6 @@ print(json.dumps({
   "session_id": os.environ["SESSION_ID"],
   "tools": "host",
   "yolo": True,
-  "tools_root": "@host",
   "base_url": os.environ["STUB_BASE"],
   "api_key": "dummy",
   "model": "stub",

@@ -58,7 +58,7 @@ export default function ArtifactView({
   const toolCallId = safeStringOrNull(artifact?.tool_call_id) ?? safeStringOrNull(artifact?.source_tool_call_id);
 
   // Artifact path agreement (WebUI client profile):
-  // - Prefer a *relative* `artifact.path` so agentd can serve it from its configured tools root.
+  // - Prefer a *relative* `artifact.path` so agentd can serve it from the session folder.
   // - Fall back to `resolved_path` only when the tool/agent produced an absolute path (or omitted `path`).
   const preferredFetchPath = path && !isAbsoluteLikePath(path) ? path : yolo && resolvedPath ? resolvedPath : path;
   const fallbackFetchPath =
@@ -71,7 +71,9 @@ export default function ArtifactView({
     setActiveFetchPath(preferredFetchPath);
   }, [preferredFetchPath]);
 
-  const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(activeFetchPath)}&yolo=${yolo ? "1" : "0"}`;
+  const sid = safeStringOrNull(sessionId) ?? "";
+  const sidQ = sid ? `&session_id=${encodeURIComponent(sid)}` : "";
+  const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(activeFetchPath)}&yolo=${yolo ? "1" : "0"}${sidQ}`;
   const authToken = safeString(daemonAuthToken).trim();
 
   const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
@@ -198,8 +200,7 @@ export default function ArtifactView({
           signal: ac.signal,
         });
         if (!r.ok) {
-          // In YOLO mode, try an absolute resolved_path fallback. This avoids brittle coupling between
-          // the run's tools_root and the daemon's default tools_root for /api/v1/file.
+          // In YOLO mode, try an absolute resolved_path fallback.
           if (fallbackFetchPath && activeFetchPath !== fallbackFetchPath) {
             setActiveFetchPath(fallbackFetchPath);
             return;

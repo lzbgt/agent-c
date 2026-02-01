@@ -36,4 +36,31 @@ std::string truncate_for_event(const std::string& s, size_t max_bytes, bool* out
   return out;
 }
 
+std::string sanitize_filename_component_ascii(std::string s, const std::string& fallback) {
+  std::string out;
+  out.reserve(s.size());
+  for (const unsigned char c : s) {
+    const bool ok =
+      (c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9') ||
+      c == '-' || c == '_' || c == '.' || c == ':';
+    out.push_back(ok ? (char)c : '_');
+    if (out.size() >= 200) break;
+  }
+  if (out.empty()) out = fallback.empty() ? "default" : fallback;
+  if (!out.empty() && out[0] == '.') out[0] = '_';
+  if (out == "." || out == "..") out = fallback.empty() ? "default" : fallback;
+  // Avoid accidental traversal-ish strings like "..foo".
+  if (out.find("..") != std::string::npos) {
+    for (size_t i = 0; i + 1 < out.size(); i++) {
+      if (out[i] == '.' && out[i + 1] == '.') {
+        out[i] = '_';
+        out[i + 1] = '_';
+      }
+    }
+  }
+  return out;
+}
+
 }  // namespace agentd
