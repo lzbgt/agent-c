@@ -489,11 +489,11 @@ export default function ConversationView({
       items.push(
         <Card key={`tc-${idx}`} title={title}>
           {inferredSummary ? (
-            <pre className="mb-2 overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/20 p-2 font-mono text-[11px] leading-relaxed text-white/90">
-              {inferredSummary.value}
-            </pre>
+          <pre className="mb-2 overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/20 p-2 font-mono text-[11px] leading-relaxed text-white/90">
+            {inferredSummary.value}
+          </pre>
           ) : null}
-          <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
+          <pre className="overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
             {args ? prettyJsonOrRaw(args) : inferredSummary ? "(arguments omitted; see command above)" : "(enable verbose to capture arguments)"}
           </pre>
         </Card>,

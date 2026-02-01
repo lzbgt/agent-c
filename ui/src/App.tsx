@@ -1717,17 +1717,27 @@ export default function App() {
                       className="rounded-lg border border-white/10 bg-white/5 px-3 py-2"
                     >
                       <summary className="cursor-pointer select-none text-xs text-white/80">
-                        <span className="text-white/60">{when}</span>
-                        {isLive ? (
-                          <span className="ml-2 text-indigo-300">
-                            running{jobSt ? ` (${jobSt})` : ""} {jobId ? <code className="text-indigo-200/80">{jobId}</code> : null}
-                          </span>
-                        ) : null}
-                        {status ? (
-                          <span className={`ml-2 ${status === "ok" ? "text-emerald-300" : "text-rose-300"}`}>{status}</span>
-                        ) : null}
-                        <span className="ml-2">{summary}</span>
-                        <span className="ml-2 text-white/40">({evs.length} events)</span>
+                        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+                          <span className="shrink-0 text-white/60">{when}</span>
+                          {isLive ? (
+                            <span className="shrink-0 text-indigo-300">
+                              running{jobSt ? ` (${jobSt})` : ""}
+                              {jobId ? (
+                                <>
+                                  {" "}
+                                  <code className="inline-block max-w-[50vw] truncate align-bottom text-indigo-200/80" title={jobId}>
+                                    {jobId}
+                                  </code>
+                                </>
+                              ) : null}
+                            </span>
+                          ) : null}
+                          {status ? (
+                            <span className={`${status === "ok" ? "text-emerald-300" : "text-rose-300"}`}>{status}</span>
+                          ) : null}
+                          <span className="min-w-0 flex-1">{summary}</span>
+                          <span className="shrink-0 text-white/40">({evs.length} events)</span>
+                        </div>
                       </summary>
                       <div className="mt-3 grid gap-3">
                         {assistantText ? (

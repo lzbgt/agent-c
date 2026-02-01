@@ -17,6 +17,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Expand unit tests for compaction edge cases (overlap prefix/suffix; empty; all system messages).
 - [x] Add a small unit test for tool-loop compaction/rotation logic (JSON message arrays) to prevent regressions.
 - [x] Add a unit test to ensure tool result truncation stays JSON-shaped and capped.
+- [x] Add an ESP32 simulation harness (`esp32sim`) to validate the embedded tool surface on desktop (logs + JSONL sessions).
 
 ## Near-term (CLI ergonomics)
 
@@ -40,6 +41,8 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Improve host filesystem tools defaults to avoid noise:
   - [x] exclude `node_modules`/`build`/`dist` by default in `fs_list` (configurable)
   - [x] support optional `respect_gitignore`/`exclude_globs`
+- [x] Remove experimental Codex-auth CLI flags (`--auth codex`) and standardize on `--base-url` + `--api-key` (or env vars).
+- [x] Improve host system prompt to gate complex tasks (assess complexity -> intent/constraints -> options -> decision -> execute + verify).
 
 ## Mid-term (daemon + broker)
 
@@ -63,6 +66,9 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add job cancellation (`POST /api/v1/job/cancel`) and UI Cancel button (cooperative; kills host subprocess tools).
 - [x] Add live job progress via event tailing:
   - `GET /api/v1/job?job_id=...&include_events=1&cursor=...` (cursor-based incremental event polling).
+- [x] Make async jobs UI-disconnect tolerant:
+  - SSE disconnect does not cancel a job (only explicit `POST /api/v1/job/cancel` cancels)
+  - Web UI can resume a running job after refresh via persisted `job_id` + `cursor` (best-effort)
 - [x] Emit lightweight `heartbeat` events for async jobs during long tool execution / slow providers (avoids "hang" perception).
 - [x] Add a tool-loop runaway guard (`max_repeated_tool_calls`) and expose it end-to-end (daemon request + UI setting + CLI flag).
 - [x] Fix tool loop limit semantics: hitting `max_steps` is an error (`AGENT_ERR_LIMIT`) and the daemon default is configurable (`0` means unlimited).
@@ -87,6 +93,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add a daemon file endpoint for UI previews (`/api/v1/file`) for images/audio/video artifacts.
 - [x] Add multi-client-safe session creation (`POST /api/v1/session/new`) and a UI “New session” action.
 - [x] Add explicit artifact events (`artifact`) so UI can render media without regex guessing.
+- [x] Stop auto media previews in tool outputs (`fs_list` etc. should never trigger `/api/v1/file` fetches unless the agent registered an artifact).
 - [x] Add an “Artifacts” panel that indexes artifacts from session audit (cross-run browsing).
 - [x] Add an operator-friendly daemon `--state-dir` / `--sessions-root` so multiple agentd instances never share the same state by accident.
 - [x] Add an explicit `ui_action` event type (agent → UI) with an allowlist and user consent (e.g. play audio for an artifact, focus an artifact).
@@ -106,6 +113,8 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add `rpc.kind=entity_apply/entity_query` to support client-agnostic scene entities (create/update/delete/action/query), with a WebUI implementation (`SceneView` + `canvas2d`).
 - [x] Add an unsafe `page_eval` client RPC engine (explicit opt-in; reload as kill switch).
 - [x] Add client-kind system prompt extensions (“client profiles”) so user prompts stay clean while the agent still knows default presentation/DoD semantics for the active collaboration surface.
+- [x] Make view state refresh-stable (expanded/collapsed History entries, Scene entity expand state, tool-output expand state, and scroll position).
+- [x] Replace destructive `confirm()` prompts with inline two-step confirmation for dangerous actions (e.g. “Clear all sessions”).
 - [ ] Add a higher-level browser automation layer (navigation flows + wait/assert primitives; possibly via Playwright/CDP) built on top of client RPC.
 - [x] Add a real browser E2E harness (Playwright) for validating client RPC + artifact flows against a running agentd/UI.
 - [ ] Add a daemon skeleton with:

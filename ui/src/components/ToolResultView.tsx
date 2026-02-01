@@ -19,7 +19,7 @@ function safeJsonParse(s: string): any | null {
 function DiffBlock({ text }: { text: string }) {
   const lines = text.split("\n");
   return (
-    <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-indigo-400/20 bg-indigo-500/10 p-3 text-xs leading-relaxed text-indigo-50">
+    <pre className="overflow-auto whitespace-pre-wrap break-words rounded-md border border-indigo-400/20 bg-indigo-500/10 p-3 text-xs leading-relaxed text-indigo-50">
       {lines.map((l, i) => {
         const klass =
           l.startsWith("+") && !l.startsWith("+++")
@@ -333,14 +333,14 @@ export default function ToolResultView({
             {toolName === "shell_exec" && cmd ? (
               <div className="mb-2 rounded-md border border-white/10 bg-black/20 p-2">
                 <div className="mb-1 text-[11px] font-semibold text-white/70">Command</div>
-                <pre className="overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-white/90">
+                <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-white/90">
                   cmd: {cmd}
                 </pre>
               </div>
             ) : toolName === "proc_exec" && argv ? (
               <div className="mb-2 rounded-md border border-white/10 bg-black/20 p-2">
                 <div className="mb-1 text-[11px] font-semibold text-white/70">Command</div>
-                <pre className="overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-white/90">
+                <pre className="overflow-auto whitespace-pre-wrap break-words font-mono text-[11px] leading-relaxed text-white/90">
                   argv: {(argv as any[]).map((x) => (typeof x === "string" ? x : "")).filter((x) => x.length > 0).join(" ")}
                 </pre>
               </div>
@@ -351,7 +351,7 @@ export default function ToolResultView({
                   Peek (first 5 lines){peek.totalLines > 5 ? ` of ${peek.totalLines}` : ""}:
                 </div>
                 <pre
-                  className="cursor-pointer overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90 hover:bg-black/35"
+                  className="cursor-pointer overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90 hover:bg-black/35"
                   title="Click to expand/collapse output"
                   onClick={() => setShowFullOutput(!showFullOutput)}
                 >
@@ -366,7 +366,7 @@ export default function ToolResultView({
                   <Markdown text={output ?? ""} />
                 </div>
               ) : (
-                <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90">
+                <pre className="overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90">
                   {output ?? ""}
                 </pre>
               )
@@ -393,7 +393,7 @@ export default function ToolResultView({
         {showRaw ? (
           <div className="mt-2">
             <div className="mb-1 text-xs font-semibold text-white/70">Raw JSON</div>
-            <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90">
+            <pre className="overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90">
               {JSON.stringify(parsed, null, 2)}
             </pre>
           </div>
@@ -415,7 +415,7 @@ export default function ToolResultView({
                   Peek (first 5 lines){peek.totalLines > 5 ? ` of ${peek.totalLines}` : ""}:
                 </div>
                 <pre
-                  className="cursor-pointer overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90 hover:bg-black/35"
+                  className="cursor-pointer overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90 hover:bg-black/35"
                   title="Click to expand/collapse output"
                   onClick={() => setShowFullOutput(!showFullOutput)}
                 >
@@ -425,7 +425,7 @@ export default function ToolResultView({
             ) : null}
 
             {!isLong || showFullOutput ? (
-              <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90">
+              <pre className="overflow-auto whitespace-pre-wrap break-words rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90">
                 {content}
               </pre>
             ) : (
