@@ -157,6 +157,7 @@ agent_status_t tool_file_apply_patch(HostToolCtx* ctx, const char* arguments_jso
 
 // Artifact/UI signaling tool(s) (also in separate TU).
 agent_status_t tool_artifact_register(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
+agent_status_t tool_scene_apply(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 agent_status_t tool_ui_action(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 agent_status_t tool_ui_wait_event(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 agent_status_t tool_ui_wait_any(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
@@ -165,5 +166,9 @@ agent_status_t tool_client_wait_event(HostToolCtx* ctx, const char* arguments_js
 agent_status_t tool_client_wait_any(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 agent_status_t tool_client_wait_all(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 agent_status_t tool_client_peek(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
+agent_status_t tool_memory_write(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
+agent_status_t tool_memory_get(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
+agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
+agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 
 } // namespace host_tools_internal

@@ -37,7 +37,7 @@ this causes collisions and makes debugging confusing.
 
 Request (JSON, optional fields):
 - `session_id` (string, optional): request a specific id (must be safe filename)
-- `create_files` (bool, optional, default `true`): whether to create an empty session on disk immediately
+- `create_files` (bool, optional, default `true`): legacy name; currently means “eagerly create the session row in the DB” (by writing empty messages)
 
 Response (JSON):
 - `ok` (bool)
@@ -74,6 +74,22 @@ UIs can inspect recent per-run audit entries (prompt + events) from the session-
 The audit file may be rotated when it grows large:
 - current: `<session_id>.events.jsonl`
 - backups: `<session_id>.events.jsonl.1`, `.2`, ...
+
+## Durable Scene (server-owned, DB-backed)
+
+For UIs that render a “Scene” panel, agentd supports a **durable, server-owned Scene snapshot** per session.
+This is intended to make Scene rendering refresh-proof without relying on browser storage.
+
+Endpoints:
+- `GET /api/v1/session/scene?session_id=...` → `{ ok, session_id, updated_unix_ms, scene }`
+- `POST /api/v1/session/scene/apply` with `{ session_id, ops:[...] }` → `{ ok, apply, scene }`
+
+Notes:
+- These endpoints require the daemon DB to be enabled/open.
+- The `clear` op exists server-side, but clients should treat it as destructive.
+  - WebUI disables one-click “Clear Scene” and does not send `clear` ops from the browser.
+
+Quick reference (client implementers): `docs/CLIENT_AGENTD_SPEC.md`.
 
 ## Runs (UI → agentd)
 

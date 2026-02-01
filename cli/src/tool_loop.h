@@ -63,6 +63,14 @@ struct ToolLoopOptions {
   size_t summary_snippet_chars = 160;
   size_t summary_max_chars = 600;
 
+  // Automatic pre-compaction memory flush (OpenClaw-style):
+  // before dropping transcript history for compaction, run a short internal sub-turn that encourages
+  // writing/consolidating durable memory (memory_write/memory_put).
+  bool memory_flush_enabled = true;
+  size_t memory_flush_max_excerpt_chars = 8000;
+  size_t memory_flush_max_messages = 32;
+  size_t memory_flush_per_message_chars = 800;
+
   // Optional live event hook. When set, run_tool_loop will invoke this callback for every event.
   // This is used by the daemon/UI to show progress while long requests are running.
   ToolLoopEventCallback on_event = nullptr;

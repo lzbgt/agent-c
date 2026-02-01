@@ -11,6 +11,7 @@
 #include "provider_util.h"
 #include "sandbox_policy.h"
 #include "session_store.h"
+#include "scene_store.h"
 #include "secrets_file.h"
 #include "string_util.h"
 #include "summary_compaction.h"
@@ -27,8 +28,12 @@
 #include <json/json.h>
 
 #include <atomic>
+#include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <functional>
 #include <iostream>
 #include <map>
@@ -273,6 +278,142 @@ static bool ensure_pinned_host_system_prompts(
     return true;
   }
   return false;
+}
+
+static bool is_safe_filename_component_ascii(const std::string& s) {
+  if (s.empty() || s.size() > 160) return false;
+  for (const char c : s) {
+    const bool ok =
+      (c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9') ||
+      c == '-' || c == '_' || c == '.' || c == ':';
+    if (!ok) return false;
+  }
+  return true;
+}
+
+static std::string local_date_ymd_days_ago(int days_ago) {
+  const auto now = std::chrono::system_clock::now() - std::chrono::hours(24 * std::max(0, days_ago));
+  std::time_t t = std::chrono::system_clock::to_time_t(now);
+  std::tm tm{};
+#if defined(_WIN32)
+  localtime_s(&tm, &t);
+#else
+  localtime_r(&t, &tm);
+#endif
+  char buf[32];
+  std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+  return std::string(buf);
+}
+
+static std::string read_file_capped(const std::filesystem::path& p, size_t max_bytes) {
+  std::ifstream in(p, std::ios::binary);
+  if (!in.is_open()) return "";
+  std::stringstream ss;
+  ss << in.rdbuf();
+  std::string s = ss.str();
+  if (s.size() > max_bytes) s.resize(max_bytes);
+  return s;
+}
+
+static bool build_memory_context_text(
+  const std::string& sessions_root_dir,
+  const std::string& session_id,
+  std::string* out_text
+) {
+  if (out_text) out_text->clear();
+  if (!out_text) return false;
+  if (sessions_root_dir.empty()) return false;
+
+  const std::filesystem::path sessions_root(sessions_root_dir);
+  const std::filesystem::path state_dir = sessions_root.parent_path();
+  if (state_dir.empty()) return false;
+  const std::filesystem::path mem_root = state_dir / "memory";
+
+  std::error_code ec;
+  if (!std::filesystem::exists(mem_root, ec) || !std::filesystem::is_directory(mem_root, ec)) {
+    return false;
+  }
+
+  struct Candidate {
+    std::string label;
+    std::filesystem::path path;
+    size_t cap;
+  };
+  std::vector<Candidate> cands;
+  cands.push_back(Candidate{"MEMORY.md", mem_root / "MEMORY.md", 6000});
+  cands.push_back(Candidate{local_date_ymd_days_ago(0) + ".md", mem_root / (local_date_ymd_days_ago(0) + ".md"), 2200});
+  cands.push_back(Candidate{local_date_ymd_days_ago(1) + ".md", mem_root / (local_date_ymd_days_ago(1) + ".md"), 2200});
+  if (is_safe_filename_component_ascii(session_id)) {
+    cands.push_back(Candidate{"sessions/" + session_id + ".md", mem_root / "sessions" / (session_id + ".md"), 2400});
+  }
+
+  std::ostringstream oss;
+  oss
+    << "DURABLE_MEMORY_CONTEXT\n"
+    << "- The following notes are loaded from durable Markdown memory files on disk.\n"
+    << "- Treat these as authoritative *if still current*.\n"
+    << "- If you discover a requirement has changed (\"used to be true\" -> \"no longer true\"), update memory to remove contradictions.\n"
+    << "- Use memory_get/memory_search to inspect and memory_write/memory_put to persist/consolidate.\n";
+
+  int included = 0;
+  for (const auto& c : cands) {
+    ec.clear();
+    if (!std::filesystem::exists(c.path, ec) || !std::filesystem::is_regular_file(c.path, ec)) continue;
+    std::string content = read_file_capped(c.path, c.cap);
+    if (trim_copy(content).empty()) continue;
+    included++;
+    oss << "\n[" << c.label << "]\n";
+    oss << content;
+    if (!content.empty() && content.back() != '\n') oss << "\n";
+  }
+  if (included == 0) return false;
+
+  std::string s = oss.str();
+  const size_t kTotalCap = 12000;
+  if (s.size() > kTotalCap) s.resize(kTotalCap);
+  *out_text = std::move(s);
+  return true;
+}
+
+static agent_session_t* clone_session_with_memory_context(const agent_session_t* src, const std::string& memory_context) {
+  if (!src) return nullptr;
+  if (memory_context.empty()) return nullptr;
+
+  agent_session_t* ns = nullptr;
+  if (agent_session_create(&ns) != AGENT_OK || !ns) return nullptr;
+
+  const size_t n = agent_session_message_count(src);
+  size_t pinned_system = 0;
+  for (size_t i = 0; i < n; i++) {
+    agent_message_view_t v{};
+    if (agent_session_get_message(src, i, &v) != AGENT_OK) continue;
+    if (v.role != AGENT_ROLE_SYSTEM) break;
+    pinned_system++;
+  }
+
+  auto add_msg = [&](agent_role_t role, const agent_message_view_t& v) {
+    const std::string content(v.content ? v.content : "", v.content_len);
+    if (role == AGENT_ROLE_SYSTEM && !content.empty() && content.rfind("DURABLE_MEMORY_CONTEXT", 0) == 0) return;
+    (void)agent_session_add_message(ns, role, content.c_str());
+  };
+
+  for (size_t i = 0; i < pinned_system; i++) {
+    agent_message_view_t v{};
+    if (agent_session_get_message(src, i, &v) != AGENT_OK) continue;
+    add_msg(v.role, v);
+  }
+
+  (void)agent_session_add_message(ns, AGENT_ROLE_SYSTEM, memory_context.c_str());
+
+  for (size_t i = pinned_system; i < n; i++) {
+    agent_message_view_t v{};
+    if (agent_session_get_message(src, i, &v) != AGENT_OK) continue;
+    add_msg(v.role, v);
+  }
+
+  return ns;
 }
 
 struct ExpectedClientAck {
@@ -951,8 +1092,8 @@ static Json::Value run_request_to_json(
     opt.require_tool_call = args.isMember("require_tool_call") && args["require_tool_call"].isBool() ? args["require_tool_call"].asBool() : false;
 
     DaemonJobEventHookCtx hook;
-    if (!job_id_local.empty()) {
-      hook.job_id = job_id_local;
+	    if (!job_id_local.empty()) {
+	      hook.job_id = job_id_local;
       hook.last_any_event_ms = &heartbeat_last_any_event_ms;
       hook.last_non_heartbeat_ms = &heartbeat_last_non_ms;
       hook.phase = &heartbeat_phase;
@@ -963,16 +1104,33 @@ static Json::Value run_request_to_json(
         const auto* jid = static_cast<const std::string*>(vctx);
         return jid && job_is_cancel_requested(*jid);
       };
-      opt.should_cancel_ctx = (void*)&job_id_local;
-    }
+	      opt.should_cancel_ctx = (void*)&job_id_local;
+	    }
 
-    try {
-      ok = run_tool_loop(
-        run_cfg, session, prompt, registry, &executor, opt, trace_stream, &tool_loop_result, &err, &http_status, &http_body
-      );
-    } catch (const std::exception& e) {
-      ok = false;
-      err = std::string("tool loop threw exception: ") + e.what();
+	    struct SessionDel {
+	      void operator()(agent_session_t* s) const {
+	        if (s) agent_session_destroy(s);
+	      }
+	    };
+	    std::unique_ptr<agent_session_t, SessionDel> ephemeral_seed;
+	    const agent_session_t* seed_for_run = session;
+	    if (!no_default_system && tools == "host" && !no_session) {
+	      std::string mem_ctx;
+	      if (build_memory_context_text(sessions_root_dir, session_id, &mem_ctx)) {
+	        if (agent_session_t* tmp = clone_session_with_memory_context(session, mem_ctx)) {
+	          ephemeral_seed.reset(tmp);
+	          seed_for_run = tmp;
+	        }
+	      }
+	    }
+
+	    try {
+	      ok = run_tool_loop(
+	        run_cfg, seed_for_run, prompt, registry, &executor, opt, trace_stream, &tool_loop_result, &err, &http_status, &http_body
+	      );
+	    } catch (const std::exception& e) {
+	      ok = false;
+	      err = std::string("tool loop threw exception: ") + e.what();
     } catch (...) {
       ok = false;
       err = "tool loop threw unknown exception";
@@ -1471,6 +1629,16 @@ static Json::Value run_request_to_json(
       Json::StreamWriterBuilder wb;
       wb["indentation"] = "";
       if (events_out.isArray()) {
+        int64_t last_scene_update_ms = 0;
+        auto next_scene_ts_ms = [&]() -> int64_t {
+          const int64_t now_ms = (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+                                   std::chrono::system_clock::now().time_since_epoch())
+                                   .count();
+          int64_t v = now_ms;
+          if (v <= last_scene_update_ms) v = last_scene_update_ms + 1;
+          last_scene_update_ms = v;
+          return v;
+        };
         for (const auto& ev : events_out) {
           if (!ev.isObject()) continue;
           const auto& t = ev["type"];
@@ -1496,7 +1664,17 @@ static Json::Value run_request_to_json(
               // Best-effort; ignore failures (DB is troubleshooting mirror).
               if (!ar.path.empty()) {
                 (void)db_or_null->insert_artifact(ar, nullptr);
+                // High-leverage UX: mirror artifacts into the durable server-owned Scene so they're visible
+                // in the collaboration surface even after refresh (and even if no client RPCs run).
+                (void)scene_store_mirror_artifact(db_or_null, session_id, art, ar.tool_call_id, next_scene_ts_ms(), nullptr);
               }
+            }
+          }
+          if (t.asString() == "scene_apply") {
+            // Durable Scene update requested by the agent (server-side; refresh-proof).
+            const auto& ops = d["ops"];
+            if (ops.isArray()) {
+              (void)scene_store_apply_ops(db_or_null, session_id, ops, next_scene_ts_ms(), nullptr, nullptr, nullptr);
             }
           }
           if (t.asString() == "ui_action") {

@@ -29,10 +29,10 @@ function Card({
 }) {
   return (
     <div className="rounded-lg border border-white/10 bg-white/5">
-      <div className="flex items-center justify-between px-3 py-2">
+      <div className="flex items-center justify-between px-3 py-1.5">
         <div className="text-sm font-semibold">{title}</div>
       </div>
-      <div className="px-3 pb-3">{children}</div>
+      <div className="px-3 pb-2">{children}</div>
     </div>
   );
 }
@@ -261,7 +261,7 @@ export default function ConversationView({
         ops.push({ op: "delete", id });
       }
       if (args?.clear === true) {
-        ops.push({ op: "clear", entity_kind: entityKind || undefined });
+        throw new Error("scene clear is disabled in WebUI");
       }
       return ops;
     };
@@ -509,9 +509,9 @@ export default function ConversationView({
       const name = String(data.tool_name ?? "");
       if (typeof data.content === "string") {
         items.push(
-          <Card key={`tr-${idx}`} title={`Tool result: ${name || "(unknown)"}`}>
+          <div key={`tr-${idx}`} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
             <ToolResultView baseUrl={baseUrl} yolo={yolo} daemonAuthToken={daemonAuthToken} content={data.content} />
-          </Card>,
+          </div>,
         );
         return;
       }
@@ -523,9 +523,9 @@ export default function ConversationView({
           envelope = JSON.stringify({ ok: true, data: { tool: name } });
         }
         items.push(
-          <Card key={`tr-${idx}`} title={`Tool result: ${name || "(unknown)"}`}>
+          <div key={`tr-${idx}`} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
             <ToolResultView baseUrl={baseUrl} yolo={yolo} daemonAuthToken={daemonAuthToken} content={envelope} />
-          </Card>,
+          </div>,
         );
         return;
       }
@@ -870,6 +870,8 @@ export default function ConversationView({
               }
               // Preferred shape: explicit ops array (create/update/delete/action/clear).
               if (Array.isArray(args?.ops)) {
+                const hasClear = args.ops.some((op: any) => String(op?.op ?? op?.kind ?? "").trim() === "clear");
+                if (hasClear) throw new Error("scene clear is disabled in WebUI");
                 return onSceneApply(args.ops);
               }
 
@@ -942,7 +944,7 @@ export default function ConversationView({
                 ops.push({ op: "delete", id });
               }
               if (args?.clear === true) {
-                ops.push({ op: "clear", entity_kind: entityKind || undefined });
+                throw new Error("scene clear is disabled in WebUI");
               }
 
               return onSceneApply(ops);
@@ -1298,7 +1300,6 @@ export default function ConversationView({
                       call("scene.apply", { ops: [{ op: "create", entity_kind: String(kind || ""), title: title || undefined, props: props || {} }] }),
                     update: (id, patch) => call("scene.apply", { ops: [{ op: "update", id: String(id || ""), props: patch || {} }] }),
                     remove: (id) => call("scene.apply", { ops: [{ op: "delete", id: String(id || "") }] }),
-                    clear: (entityKind) => call("scene.apply", { ops: [{ op: "clear", entity_kind: entityKind || "" }] }),
                     action: (id, action, a) =>
                       call("scene.apply", { ops: [{ op: "action", id: String(id || ""), action: String(action || ""), args: a || {} }] }),
                   },
@@ -1333,7 +1334,7 @@ export default function ConversationView({
                   try {
                     // Execute user code as an async IIFE so it can use await.
                     // Note: if user code blocks the worker event loop, the host must terminate the worker.
-                    const fn = new Function("api", "args", '"use strict"; return (async () => {\\n' + code + '\\n})();');
+                    const fn = new Function("api", "args", '"use strict"; return (async function() {\\n' + code + '\\n})();');
                     const result = await fn(api, args);
                     self.postMessage({ type: "done", run_id: runId, ok: true, result });
                   } catch (e) {
@@ -1470,7 +1471,8 @@ export default function ConversationView({
                 const fn = new Function(
                   "api",
                   "args",
-                  '"use strict"; return (async () => {\\n' + code + "\\n})();",
+                  // Use an async function expression (not an async arrow) for maximum browser compatibility.
+                  '"use strict"; return (async function() {\n' + code + "\n})();",
                 ) as (api: any, args: any) => Promise<any>;
                 return await fn(api, userArgs);
               })();

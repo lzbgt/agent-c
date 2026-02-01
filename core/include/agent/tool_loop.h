@@ -103,6 +103,26 @@ typedef struct agent_tool_loop_options {
   size_t summary_snippet_chars;
   size_t summary_max_chars;
 
+  // Automatic pre-compaction memory flush (OpenClaw-style concept).
+  //
+  // When enabled, if the tool loop is about to compact/drop earlier messages to satisfy `max_chars`,
+  // it will first run a short "memory flush" sub-turn that presents an excerpt of the to-be-dropped
+  // transcript and encourages the model to persist durable facts/preferences using memory tools.
+  //
+  // This is intended to reduce "legacy memory" problems where earlier requirements linger after they
+  // become obsolete: the flush prompt should steer the model to consolidate/overwrite core memory (MEMORY.md)
+  // and deprecate outdated facts rather than leaving contradictory statements.
+  uint8_t memory_flush_enabled;
+  // Maximum characters for the dropped-window excerpt passed to the memory flush prompt.
+  // 0 means default (8000).
+  size_t memory_flush_max_excerpt_chars;
+  // Maximum number of dropped messages to include in the excerpt (in order).
+  // 0 means default (32).
+  size_t memory_flush_max_messages;
+  // Maximum characters per message included in the excerpt (best-effort).
+  // 0 means default (800).
+  size_t memory_flush_per_message_chars;
+
   // Caps tool outputs before they enter the prompt context (best-effort).
   // 0 means "no extra capping".
   size_t max_tool_result_chars;

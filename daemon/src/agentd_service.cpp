@@ -326,6 +326,16 @@ struct AgentdService::Impl {
       handle_session_artifacts_endpoint(cur, cors_cfg, &db, req, resp);
     });
 
+    server.handle("GET", "/api/v1/session/scene", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_session_scene_get_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+
+    server.handle("POST", "/api/v1/session/scene/apply", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_session_scene_apply_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+
     server.handle("POST", "/api/v1/session/ui_event", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_session_ui_event_endpoint(cur, cors_cfg, &db, req, resp);
@@ -461,4 +471,3 @@ uint16_t AgentdService::listen_port() const { return impl_->options.cfg.listen_p
 std::string AgentdService::db_path() const { return impl_->options.cfg.db_path; }
 
 }  // namespace agentd
-

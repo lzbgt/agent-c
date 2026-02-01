@@ -6,6 +6,7 @@
 #include "string_util.h"
 
 #include "session_id_util.h"
+#include "scene_store.h"
 
 #include <json/json.h>
 
@@ -754,6 +755,131 @@ void handle_session_artifacts_endpoint(
   out["ok"] = true;
   out["count"] = (Json::UInt64)artifacts.size();
   out["artifacts"] = artifacts;
+  resp->body = json_stringify(out);
+}
+
+void handle_session_scene_get_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = false;
+  if (!db || !db->is_open()) {
+    out["error"] = "db not available";
+    resp->status = 500;
+    resp->body = json_stringify(out);
+    return;
+  }
+
+  const auto sid = query_get(req.query, "session_id");
+  if (!sid || sid->empty() || !session_id_is_safe(*sid)) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    return;
+  }
+
+  Json::Value scene(Json::objectValue);
+  int64_t updated = 0;
+  std::string err;
+  if (!scene_store_get(db, *sid, &scene, &updated, &err)) {
+    out["error"] = err.empty() ? "failed to read scene" : err;
+    resp->status = 500;
+    resp->body = json_stringify(out);
+    return;
+  }
+
+  out["ok"] = true;
+  out["session_id"] = *sid;
+  out["updated_unix_ms"] = (Json::Int64)updated;
+  out["scene"] = scene;
+  resp->body = json_stringify(out);
+}
+
+void handle_session_scene_apply_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = false;
+  if (!db || !db->is_open()) {
+    out["error"] = "db not available";
+    resp->status = 500;
+    resp->body = json_stringify(out);
+    return;
+  }
+
+  if (req.body.empty()) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"missing JSON body"})";
+    return;
+  }
+
+  Json::Value body(Json::objectValue);
+  std::string perr;
+  if (!json_parse_object(req.body, &body, &perr)) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"invalid JSON body"})";
+    return;
+  }
+  const std::string sid = body.isMember("session_id") && body["session_id"].isString() ? body["session_id"].asString() : "";
+  if (sid.empty() || !session_id_is_safe(sid)) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    return;
+  }
+  const Json::Value ops = body.isMember("ops") ? body["ops"] : Json::Value(Json::arrayValue);
+  if (!ops.isArray()) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"ops must be an array"})";
+    return;
+  }
+
+  const int64_t now = (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+                        std::chrono::system_clock::now().time_since_epoch())
+                        .count();
+
+  Json::Value apply_result(Json::objectValue);
+  int64_t updated = 0;
+  std::string err;
+  if (!scene_store_apply_ops(db, sid, ops, now, &apply_result, &updated, &err)) {
+    out["error"] = err.empty() ? "failed to apply scene ops" : err;
+    resp->status = 500;
+    resp->body = json_stringify(out);
+    return;
+  }
+
+  Json::Value scene(Json::objectValue);
+  int64_t read_updated = 0;
+  std::string get_err;
+  if (!scene_store_get(db, sid, &scene, &read_updated, &get_err)) {
+    out["ok"] = true;
+    out["session_id"] = sid;
+    out["updated_unix_ms"] = (Json::Int64)updated;
+    out["apply"] = apply_result;
+    out["warning"] = get_err.empty() ? "applied but failed to read scene" : get_err;
+    resp->body = json_stringify(out);
+    return;
+  }
+
+  out["ok"] = true;
+  out["session_id"] = sid;
+  out["updated_unix_ms"] = (Json::Int64)read_updated;
+  out["apply"] = apply_result;
+  out["scene"] = scene;
   resp->body = json_stringify(out);
 }
 

@@ -357,6 +357,57 @@ export async function apiGetSession(base: string, sessionId: string, authToken?:
   return SessionSchema.parse(j);
 }
 
+export const SessionSceneSchema = z
+  .object({
+    ok: z.boolean(),
+    session_id: z.string().optional(),
+    updated_unix_ms: z.number().optional(),
+    scene: z.record(z.any()).optional(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+export type SessionSceneResp = z.infer<typeof SessionSceneSchema>;
+
+export async function apiGetSessionScene(base: string, sessionId: string, authToken?: string): Promise<SessionSceneResp> {
+  const r = await fetch(`${base}/api/v1/session/scene?session_id=${encodeURIComponent(sessionId)}`, { headers: daemonHeaders(authToken) });
+  const j = await r.json();
+  return SessionSceneSchema.parse(j);
+}
+
+export const SessionSceneApplyReqSchema = z.object({
+  session_id: z.string().min(1),
+  ops: z.array(z.any()),
+});
+export type SessionSceneApplyReq = z.infer<typeof SessionSceneApplyReqSchema>;
+
+export const SessionSceneApplyRespSchema = z
+  .object({
+    ok: z.boolean(),
+    session_id: z.string().optional(),
+    updated_unix_ms: z.number().optional(),
+    apply: z.any().optional(),
+    scene: z.record(z.any()).optional(),
+    warning: z.string().optional(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+export type SessionSceneApplyResp = z.infer<typeof SessionSceneApplyRespSchema>;
+
+export async function apiPostSessionSceneApply(
+  base: string,
+  req: SessionSceneApplyReq,
+  authToken?: string,
+): Promise<SessionSceneApplyResp> {
+  const payload = SessionSceneApplyReqSchema.parse(req);
+  const r = await fetch(`${base}/api/v1/session/scene/apply`, {
+    method: "POST",
+    headers: daemonHeaders(authToken, { "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json();
+  return SessionSceneApplyRespSchema.parse(j);
+}
+
 export const SessionUiEventReqSchema = z.object({
   session_id: z.string().min(1),
   type: z.string().min(1),

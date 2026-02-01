@@ -108,6 +108,17 @@ class H(BaseHTTPRequestHandler):
         raise AssertionError("missing default host system prompt in messages")
       if not find_substr(messages, "system", "CLIENT_PROFILE=webui"):
         raise AssertionError("missing CLIENT_PROFILE=webui in messages")
+      # Regression guard: webui profile must mention durable server-owned Scene + scene_apply.
+      if not any_content_substr(messages, "scene_apply"):
+        raise AssertionError("missing scene_apply guidance in system prompts")
+      if not any_content_substr(messages, "entity_kind=\"dom\"") and not any_content_substr(messages, "entity_kind='dom'") and not any_content_substr(messages, "entity_kind=dom"):
+        # Be tolerant: any mention of dom entity_kind is acceptable (exact quoting may vary).
+        raise AssertionError("missing dom entity guidance in system prompts")
+      # Durable memory context should be injected when memory files exist.
+      if not any_content_substr(messages, "DURABLE_MEMORY_CONTEXT"):
+        raise AssertionError("missing durable memory context injection in messages")
+      if not any_content_substr(messages, "feature set A is deprecated"):
+        raise AssertionError("missing expected durable memory content in messages")
     except Exception as e:
       err = {"error": str(e), "req_count": REQ_COUNT, "roles": [m.get("role") for m in messages if isinstance(m, dict)]}
       data = json.dumps(err).encode("utf-8")
@@ -173,6 +184,13 @@ if not obj.get("ok"):
   print("seed run failed:", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
+
+# Write a durable memory file in the hermetic state directory so the next run can inject it.
+STATE_DIR="${LOG_DIR}/agentd_client_profile_injection_smoke_${PORT_DAEMON}.state"
+mkdir -p "${STATE_DIR}/memory"
+cat > "${STATE_DIR}/memory/MEMORY.md" <<'EOF'
+- feature set A is deprecated; no longer required
+EOF
 
 # 2) Run again with tools=host. The provider request must include the host system prompt + webui profile.
 resp2="$(curl -fsS --noproxy "*" --max-time 10 \

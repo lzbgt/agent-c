@@ -1,0 +1,271 @@
+# Client ↔ agentd API + Collaboration Spec (Living)
+
+Date: 2026-02-01
+
+This document is a **quick reference** for implementing new clients (mobile app, Slack bot, CLI front-end, etc.)
+that talk to `agentd` over HTTP.
+
+It focuses on:
+
+- the HTTP API surface (`/api/v1/...`)
+- how clients identify themselves
+- how clients and the agent coordinate via events
+- how the **durable Scene** works (server-owned, persisted in the DB)
+
+For deeper dives, see the linked draft docs:
+
+- `docs/PROTOCOL.md` (overall UI↔agentd protocol; runs, artifacts, tools)
+- `docs/CLIENT_COLLAB.md` (event-driven collaboration + DoD patterns)
+- `docs/CLIENT_ENTITIES.md` (entity/scene abstraction for client-agnostic UI)
+- `docs/UI_ACTION.md`, `docs/UI_CLIENT_EVENTS.md`, `docs/UI_WAIT_EVENT.md` (concrete event/tool schemas)
+
+## Terminology
+
+- **client**: any UI/integration that drives the daemon (WebUI, Slack, mobile).
+- **session**: the namespace for message history + durable Scene + client event log.
+- **run**: one LLM prompt execution (sync or async).
+- **event**: structured log record; used for artifacts, UI actions, client acknowledgements, etc.
+- **Scene (durable)**: a per-session, server-owned JSON object mapping `entity_id -> entity`.
+
+## Authentication
+
+Most endpoints call `daemon_require_auth(...)`.
+
+- If `agentd` is started **without** an auth token (`cfg.auth_token` empty), requests are accepted without auth.
+- If `agentd` is started **with** an auth token, clients must send:
+  - `Authorization: Bearer <token>`
+
+The health endpoint is always unauthenticated:
+- `GET /api/v1/health`
+
+## Session IDs (safety contract)
+
+`session_id` is treated like a filename key. It must pass `session_id_is_safe()`:
+
+- length: `1..200`
+- characters: `[A-Za-z0-9_.-]` only
+- must not contain `/`, `\\`, `".."`, `"."`, or `".."`-like traversal
+
+Clients should treat invalid IDs as a client-side bug (don’t retry).
+
+## Common Response Pattern
+
+Most JSON responses follow:
+
+```json
+{"ok": true, "...": "..."}
+```
+
+On failure:
+
+```json
+{"ok": false, "error": "human-readable error string"}
+```
+
+HTTP status codes are meaningful:
+- `400` for invalid/missing arguments
+- `401` for auth failures (when auth is enabled)
+- `500` for server/database failures
+
+## Endpoint Catalog (HTTP)
+
+This list matches daemon route registration in `daemon/src/agentd_api.cpp`.
+
+### Service / Config
+
+- `GET /api/v1/health`
+  - returns `{ ok, service:"agentd", version:"0.1" }`
+- `GET /api/v1/config`
+  - returns daemon config **without secrets** (booleans like `api_key_set` / `provider_keys_set`)
+- `POST /api/v1/config/update`
+  - persists runtime defaults (model/base_url/proxy/timeout + provider keys) into the DB
+
+### Tools + Files
+
+- `GET /api/v1/tools?tools=host|basic|none&tools_root=...&yolo=0|1&host_policy=full|readonly&session_id=...`
+  - returns the effective tool registry (`defs[]` with `name`, `description`, `parameters_json`)
+- `GET /api/v1/file?path=...&yolo=0|1`
+  - serves a (size-capped) file for UI preview (image/audio/video/text)
+
+### Sessions (messages / audit / artifacts / client events)
+
+- `GET /api/v1/sessions`
+  - returns `{ ok, sessions:[...] }`
+- `POST /api/v1/session/new`
+  - request JSON: `{ session_id?, create_files? }`
+    - `create_files` is a legacy name; currently it means “eagerly create the session row in the DB” (by writing empty messages).
+  - response: `{ ok, session_id, created }`
+- `GET /api/v1/session?session_id=...`
+  - returns `{ ok, session_id, messages:[{role,content}, ...] }`
+- `DELETE /api/v1/session?session_id=...`
+  - deletes session data from the DB (and attempts best-effort legacy file cleanup)
+- `GET /api/v1/session/audit?session_id=...&max_bytes=...`
+  - returns per-run audit entries (parsed JSON objects)
+- `GET /api/v1/session/artifacts?session_id=...&max_bytes=...&max_artifacts=...`
+  - returns recent artifacts derived from DB-backed artifact records
+
+### Client events (client → agentd)
+
+These two endpoints currently share the same handler and semantics:
+
+- `POST /api/v1/session/client_event`
+- `POST /api/v1/session/ui_event` (legacy alias; same behavior)
+
+Request JSON (shape):
+
+```json
+{
+  "session_id": "sess-...",
+  "type": "artifact_rendered",
+  "ts_unix_ms": 1730000000000,
+  "client": { "id": "slack", "kind": "slack", "instance_id": "workspace-A" },
+  "data": { "tool_call_id": "call_123", "path": "out/foo.wav" },
+  "append_to_session": true
+}
+```
+
+Notes:
+- `ts_unix_ms` is optional; if omitted, the daemon sets it to “now”.
+- `client` is optional but strongly recommended for multi-client debugging.
+- `append_to_session` default is `true`:
+  - when true, the daemon appends a synthetic `role="user"` message of the form:
+    - `[client_event] { ...json payload... }`
+  - this makes the event visible to the LLM via session history
+
+Client fields (`client.id`, `client.kind`, `client.instance_id`) are bounded:
+- max length `200`
+- must not contain control characters
+
+Read-back endpoints for debugging:
+
+- `GET /api/v1/session/client_events?session_id=...&max_bytes=...`
+  - returns `{ ok, events:[{type,ts_unix_ms,client?,data}, ...] }`
+- `GET /api/v1/session/clients?session_id=...&max_bytes=...`
+  - returns `{ ok, clients:[{id,kind?,instance_id?,last_ts_unix_ms,last_type?}, ...] }`
+
+### Durable Scene (server-owned, refresh-proof)
+
+The durable Scene is stored in the daemon DB and is the **post-refresh source of truth** for UIs that render a Scene panel.
+
+- `GET /api/v1/session/scene?session_id=...`
+  - returns `{ ok, session_id, updated_unix_ms, scene }`
+  - `scene` is an object mapping `entity_id -> entity object`
+
+- `POST /api/v1/session/scene/apply`
+  - request JSON: `{ session_id, ops:[...] }`
+  - response JSON:
+    - `{ ok, session_id, updated_unix_ms, apply, scene }`
+    - `apply` contains per-op results (`ok`, `op`, ids, errors, etc.)
+
+If the DB is not available, these endpoints return `{ ok:false, error:"db not available" }` with HTTP 500.
+
+### Runs / Jobs
+
+- `POST /api/v1/run`
+  - sync run; response can include `assistant_text` and (optionally) `events[]` if `verbose=true`
+- `POST /api/v1/run_async`
+  - returns `{ ok, job_id }` and runs in the background
+- `GET /api/v1/job?job_id=...`
+  - returns `{ ok, status, result? }`
+- `POST /api/v1/job/cancel?job_id=...`
+  - requests cancellation
+- `DELETE /api/v1/job?job_id=...`
+  - deletes job state (if supported by the server build)
+
+Some daemon builds also expose:
+- `GET /api/v1/job/stream?job_id=...&cursor=...` (SSE for incremental job progress)
+
+See `docs/STREAMING.md` for streaming semantics.
+
+### DB query endpoints (optional; read-only)
+
+When DB support is enabled, the daemon exposes read-only debugging endpoints:
+
+- `GET /api/v1/db/sessions`
+- `GET /api/v1/db/messages?session_id=...`
+- `GET /api/v1/db/runs?session_id=...`
+- `GET /api/v1/db/run?...`
+- `GET /api/v1/db/artifacts?session_id=...`
+- `GET /api/v1/db/ui_actions?session_id=...`
+- `GET /api/v1/db/client_events?session_id=...`
+
+These are intended for troubleshooting and UI indexing, not for core client functionality.
+
+## Scene Management Spec (Durable Scene)
+
+### Scene state schema (server-side)
+
+`scene` is a JSON object mapping `entity_id` to an entity:
+
+```json
+{
+  "ent-1": {
+    "id": "ent-1",
+    "kind": "canvas2d",
+    "title": "Plot",
+    "props": { "width": 640, "height": 240 },
+    "created_ms": 1730000000000,
+    "updated_ms": 1730000000500
+  }
+}
+```
+
+Entity fields:
+- `id` (string): stable identifier (key in the map)
+- `kind` (string): entity type (`canvas2d`, `dom`, `artifact`, …)
+- `title` (string, optional)
+- `props` (object, optional): client-defined JSON data
+- `created_ms` / `updated_ms` (int64): unix ms timestamps (set by daemon when applying ops)
+
+### Apply ops schema
+
+`POST /api/v1/session/scene/apply` accepts an array of ops. Supported ops:
+
+- `create`
+  - `{ op:"create", id?, entity_kind, title?, props? }`
+  - `id` is optional; if omitted, the daemon generates one
+- `update`
+  - `{ op:"update", id, props }`
+  - merges `props` shallowly into existing `props`
+- `delete` / `remove`
+  - `{ op:"delete", id }`
+- `action`
+  - `{ op:"action", id, action, args? }`
+  - daemon records this as `props.last_action = { name, args, ts_unix_ms }`
+- `clear` (destructive)
+  - `{ op:"clear", entity_kind? }`
+  - removes all entities (or only matching `entity_kind` if provided)
+
+Each op yields a result record in `apply.results[]`:
+- successful ops include `ok:true`, `op`, and ids/counts
+- failed ops include `ok:false` and `error`
+
+The daemon persists the updated scene state even if some ops fail.
+
+### Safety guidance (for clients)
+
+The durable Scene is persisted in the daemon DB; destructive operations affect what users see after refresh.
+
+Client guidance:
+- Prefer **targeted delete** (`{op:"delete", id:"..."}`) over any global wipe.
+- Prefer creating a **new session** over wiping a session’s durable Scene.
+- If you implement `clear`, gate it behind explicit confirmation / debug mode.
+
+WebUI policy (current):
+- the WebUI frontend disables sending `clear` ops (including removing the one-click “Clear Scene” button).
+
+## Minimal client implementation checklist
+
+To get a new client working end-to-end:
+
+1. Choose/create a session:
+   - `POST /api/v1/session/new` and store `session_id`
+2. Start runs:
+   - `POST /api/v1/run` (simple) or `POST /api/v1/run_async` + `GET /api/v1/job`
+3. Render artifacts and UI actions:
+   - parse `events[]` (when `verbose=true`) and/or poll audit/artifacts endpoints
+4. Post acknowledgements as client events:
+   - `POST /api/v1/session/client_event` with `{type, client, data}`
+5. If you render a Scene:
+   - `GET /api/v1/session/scene` to hydrate on startup/refresh
+   - `POST /api/v1/session/scene/apply` to persist durable updates (create/update/delete/action)

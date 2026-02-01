@@ -1652,6 +1652,9 @@ static agent_status_t host_tools_execute(void* vctx, const char* tool_name, cons
   if (name == "artifact_register") {
     return tool_artifact_register(ctx, arguments_json, out_result);
   }
+  if (name == "scene_apply") {
+    return tool_scene_apply(ctx, arguments_json, out_result);
+  }
   if (name == "ui_action") {
     return tool_ui_action(ctx, arguments_json, out_result);
   }
@@ -1675,6 +1678,18 @@ static agent_status_t host_tools_execute(void* vctx, const char* tool_name, cons
   }
   if (name == "client_peek") {
     return tool_client_peek(ctx, arguments_json, out_result);
+  }
+  if (name == "memory_write") {
+    return tool_memory_write(ctx, arguments_json, out_result);
+  }
+  if (name == "memory_get") {
+    return tool_memory_get(ctx, arguments_json, out_result);
+  }
+  if (name == "memory_search") {
+    return tool_memory_search(ctx, arguments_json, out_result);
+  }
+  if (name == "memory_put") {
+    return tool_memory_put(ctx, arguments_json, out_result);
   }
   // Keep the response machine-readable so the LLM can reason about failures.
   return set_result(out_result, "{\"ok\":false,\"error\":\"unknown tool\",\"data\":{}}");
@@ -1864,11 +1879,103 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
   );
   if (st != AGENT_OK) goto fail;
 
+  if (!cfg.sessions_root_dir.empty()) {
+    if (cfg.policy == HostToolsetPolicyMode::Full) {
+      st = add_tool(
+        r,
+        "memory_write",
+        "Append a durable memory note into the daemon state directory (Markdown; canonical source-of-truth). Layers: core|daily|session. Intended for facts/preferences you want to persist across runs.",
+        "{"
+        "\"type\":\"object\","
+        "\"properties\":{"
+        "  \"text\":{\"type\":\"string\",\"description\":\"Markdown text to append.\"},"
+        "  \"layer\":{\"type\":\"string\",\"description\":\"core|daily|session (default: daily).\"},"
+        "  \"path\":{\"type\":\"string\",\"description\":\"Optional relative .md path under the daemon memory directory (overrides layer).\"},"
+        "  \"title\":{\"type\":\"string\",\"description\":\"Optional short title for a generated heading.\"},"
+        "  \"with_heading\":{\"type\":\"boolean\",\"description\":\"When true (default), prepend a timestamp heading.\"}"
+        "},"
+        "\"required\":[\"text\"]"
+        "}"
+      );
+      if (st != AGENT_OK) goto fail;
+    }
+
+    st = add_tool(
+      r,
+      "memory_search",
+      "Search durable memory Markdown files under the daemon state directory (bounded, explainable: returns file + line + snippet).",
+      "{"
+      "\"type\":\"object\","
+      "\"properties\":{"
+      "  \"query\":{\"type\":\"string\"},"
+      "  \"max_results\":{\"type\":\"integer\",\"description\":\"Max matches to return (default: 20).\"},"
+      "  \"daily_days\":{\"type\":\"integer\",\"description\":\"Scan the last N daily memory files (default: 14). 0 disables daily scan.\"},"
+      "  \"case_sensitive\":{\"type\":\"boolean\",\"description\":\"Case-sensitive match (default: false).\"},"
+      "  \"context_lines\":{\"type\":\"integer\",\"description\":\"Context lines around the match (default: 2).\"},"
+      "  \"max_snippet_chars\":{\"type\":\"integer\",\"description\":\"Max chars per snippet (default: 600).\"}"
+      "},"
+      "\"required\":[\"query\"]"
+      "}"
+    );
+    if (st != AGENT_OK) goto fail;
+
+    st = add_tool(
+      r,
+      "memory_get",
+      "Read a durable memory Markdown file under the daemon state directory (bounded/paginated).",
+      "{"
+      "\"type\":\"object\","
+      "\"properties\":{"
+      "  \"path\":{\"type\":\"string\",\"description\":\"Relative .md path under the daemon memory directory (e.g. MEMORY.md or 2026-02-01.md).\"},"
+      "  \"from_line\":{\"type\":\"integer\",\"description\":\"1-based starting line (default: 1).\"},"
+      "  \"max_lines\":{\"type\":\"integer\",\"description\":\"Max lines to return (default: 200).\"}"
+      "},"
+      "\"required\":[\"path\"]"
+      "}"
+    );
+    if (st != AGENT_OK) goto fail;
+
+    if (cfg.policy == HostToolsetPolicyMode::Full) {
+      st = add_tool(
+        r,
+        "memory_put",
+        "Overwrite a durable memory Markdown file under the daemon state directory (used for consolidation: deprecate outdated facts, keep core memory accurate).",
+        "{"
+        "\"type\":\"object\","
+        "\"properties\":{"
+        "  \"path\":{\"type\":\"string\",\"description\":\"Relative .md path under the daemon memory directory.\"},"
+        "  \"text\":{\"type\":\"string\",\"description\":\"Full file contents to write.\"}"
+        "},"
+        "\"required\":[\"path\",\"text\"]"
+        "}"
+      );
+      if (st != AGENT_OK) goto fail;
+    }
+  }
+
   st = add_tool(
     r,
     "artifact_register",
     "Register a host file (image/audio/video/etc) as an artifact for the UI to render. Returns JSON envelope with data.artifact metadata and playback hints.",
     "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"kind\":{\"type\":\"string\",\"description\":\"image|audio|video|text|file\"},\"mime\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"autoplay\":{\"type\":\"boolean\"},\"repeat\":{\"type\":\"integer\"}},\"required\":[\"path\"]}"
+  );
+  if (st != AGENT_OK) goto fail;
+
+  st = add_tool(
+    r,
+    "scene_apply",
+    "Update the server-owned Scene (durable, refresh-proof). Accepts an ops array (create/update/delete/clear/action). Returns JSON envelope with data.ops; the daemon persists the resulting scene state per session.",
+    "{"
+    "\"type\":\"object\","
+    "\"properties\":{"
+    "  \"ops\":{"
+    "    \"type\":\"array\","
+    "    \"description\":\"Array of Scene operations (create/update/delete/clear/action).\","
+    "    \"items\":{\"type\":\"object\"}"
+    "  }"
+    "},"
+    "\"required\":[\"ops\"]"
+    "}"
   );
   if (st != AGENT_OK) goto fail;
 

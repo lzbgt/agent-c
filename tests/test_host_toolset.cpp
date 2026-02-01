@@ -1011,12 +1011,118 @@ static void test_artifact_register() {
   std::filesystem::remove_all(root);
 }
 
+static void test_memory_tools() {
+  const auto root = std::filesystem::temp_directory_path() / ("agent_host_mem_tools_" + std::to_string((long long)getpid()));
+  std::filesystem::remove_all(root);
+  std::filesystem::create_directories(root);
+
+  const auto sessions_root = root / "sessions";
+  std::filesystem::create_directories(sessions_root);
+
+  HostToolsetConfig cfg;
+  cfg.root_dir = root.string();
+  cfg.sessions_root_dir = sessions_root.string();
+  cfg.session_id = "s1";
+
+  agent_tool_registry_t* reg = nullptr;
+  agent_tool_executor_t exec{};
+  assert(toolset_host_create(cfg, &reg, &exec) == AGENT_OK);
+  assert(registry_contains(reg, "memory_write"));
+  assert(registry_contains(reg, "memory_search"));
+  assert(registry_contains(reg, "memory_get"));
+
+  // Write to core memory.
+  {
+    Json::Value args(Json::objectValue);
+    args["layer"] = "core";
+    args["title"] = "prefs";
+    args["text"] = "- The user prefers Scene-based, refresh-proof UI rendering.\n";
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "memory_write", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    assert(resp["data"]["tool"].asString() == "memory_write");
+    assert(resp["data"]["path"].asString() == "MEMORY.md");
+    agent_string_free(&out);
+  }
+
+  // Search should find the entry.
+  {
+    Json::Value args(Json::objectValue);
+    args["query"] = "refresh-proof";
+    args["max_results"] = 5;
+    args["daily_days"] = 0; // core only
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "memory_search", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    const auto& results = resp["data"]["results"];
+    assert(results.isArray());
+    assert(results.size() >= 1);
+    agent_string_free(&out);
+  }
+
+  // Read back.
+  {
+    Json::Value args(Json::objectValue);
+    args["path"] = "MEMORY.md";
+    args["from_line"] = 1;
+    args["max_lines"] = 200;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "memory_get", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    const std::string text = resp["data"]["text"].asString();
+    assert(text.find("refresh-proof") != std::string::npos);
+    agent_string_free(&out);
+  }
+
+  // Consolidation primitive: overwrite MEMORY.md via memory_put.
+  {
+    Json::Value args(Json::objectValue);
+    args["path"] = "MEMORY.md";
+    args["text"] = "# Core memory\n\n## Active\n- Scene rendering should be server-owned and refresh-proof.\n\n## Deprecated\n- Feature set A (deprecated; no longer required).\n";
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "memory_put", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    assert(resp["data"]["tool"].asString() == "memory_put");
+    agent_string_free(&out);
+  }
+
+  // Verify overwrite took effect.
+  {
+    Json::Value args(Json::objectValue);
+    args["path"] = "MEMORY.md";
+    args["from_line"] = 1;
+    args["max_lines"] = 200;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "memory_get", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    const std::string text = resp["data"]["text"].asString();
+    assert(text.find("## Deprecated") != std::string::npos);
+    assert(text.find("Feature set A") != std::string::npos);
+    agent_string_free(&out);
+  }
+
+  agent_tool_registry_destroy(reg);
+  toolset_host_destroy(&exec);
+  std::filesystem::remove_all(root);
+}
+
 int main() {
   test_file_apply_patch();
   test_readonly_policy_disables_exec_and_patch();
   test_scoped_mode_disables_exec_tools_but_keeps_patch();
   test_scoped_mode_denies_symlink_escapes();
   test_artifact_register();
+  test_memory_tools();
   test_fs_stat_list_read();
   test_shell_exec();
   test_proc_exec();

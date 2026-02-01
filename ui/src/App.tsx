@@ -14,12 +14,14 @@ import {
   apiGetJobProgress,
   apiGetOpenRouterModels,
   apiGetSessionArtifacts,
+  apiGetSessionScene,
   apiGetTools,
   apiUpdateDaemonConfig,
   apiCancelJob,
   apiDeleteSession,
   apiListSessions,
   apiNewSession,
+  apiPostSessionSceneApply,
   apiPostSessionUiEvent,
   apiRun,
   apiRunAsync,
@@ -169,7 +171,6 @@ export default function App() {
   // Session-scoped client-side scene entities (collaboration surface objects).
   const sceneBySessionRef = React.useRef<Record<string, Record<string, SceneEntity>>>({});
   const [sceneVersion, setSceneVersion] = React.useState<number>(0);
-  const scenePersistTimersRef = React.useRef<Record<string, number>>({});
 
   const loadJson = (raw: string): any => {
     try {
@@ -259,37 +260,8 @@ export default function App() {
     [setJobsBySessionJson],
   );
 
-  const sceneStorageKey = React.useCallback((sid: string) => `agentui.scene.${sid}`, []);
-  const persistSceneSoon = React.useCallback(
-    (sid: string) => {
-      const sessionKey = String(sid || "").trim();
-      if (!sessionKey) return;
-      if (typeof window === "undefined" || !window.localStorage) return;
-      const existingTimer = scenePersistTimersRef.current[sessionKey];
-      if (existingTimer) {
-        try {
-          window.clearTimeout(existingTimer);
-        } catch {
-          // ignore
-        }
-      }
-      const t = window.setTimeout(() => {
-        try {
-          const store = sceneBySessionRef.current[sessionKey] || {};
-          const bounded: Record<string, SceneEntity> = {};
-          const ids = Object.keys(store).slice(0, 512);
-          for (const id of ids) {
-            bounded[id] = store[id];
-          }
-          window.localStorage.setItem(sceneStorageKey(sessionKey), JSON.stringify(bounded));
-        } catch {
-          // ignore storage failures (quota, private mode, etc.)
-        }
-      }, 150);
-      scenePersistTimersRef.current[sessionKey] = t as any;
-    },
-    [sceneStorageKey],
-  );
+  // Track the last observed daemon-updated scene timestamp per session so refresh/polling is stable.
+  const lastSceneUpdatedMsRef = React.useRef<Record<string, number>>({});
 
   const applySceneOps = React.useCallback(
     (sid: string, ops: any[]) => {
@@ -302,15 +274,23 @@ export default function App() {
       const results: any[] = [];
       const genId = () => `ent-${now}-${Math.random().toString(16).slice(2)}`;
 
+      const getOpKind = (op: any): string => {
+        const k = typeof op?.op === "string" ? op.op : typeof op?.kind === "string" ? op.kind : "";
+        return String(k || "").trim();
+      };
+
       const getCreateKind = (op: any): string => {
         const k = typeof op?.entity_kind === "string" ? op.entity_kind : typeof op?.entityKind === "string" ? op.entityKind : "";
         return String(k || "").trim();
       };
 
+      // WebUI safety: never persist a "clear" op to the daemon (it would wipe durable DB state).
+      const persistOps = (Array.isArray(ops) ? ops : []).filter((op) => getOpKind(op) !== "clear");
+
       for (const opRaw of (Array.isArray(ops) ? ops : []).slice(0, 100)) {
         try {
           const op = opRaw && typeof opRaw === "object" ? opRaw : {};
-          const kind = String(op.op ?? op.kind ?? "").trim();
+          const kind = getOpKind(op);
           if (!kind) throw new Error("missing op");
           if (kind === "create") {
             const id = String(op.id ?? "").trim() || genId();
@@ -348,14 +328,7 @@ export default function App() {
             continue;
           }
           if (kind === "clear") {
-            const filterKind = typeof op.entity_kind === "string" ? op.entity_kind : typeof op.kind2 === "string" ? op.kind2 : "";
-            let removed = 0;
-            Object.keys(store).forEach((id) => {
-              if (filterKind && store[id]?.kind !== filterKind) return;
-              delete store[id];
-              removed += 1;
-            });
-            results.push({ ok: true, op: "clear", removed, kind: filterKind || undefined });
+            results.push({ ok: false, op: "clear", error: "scene clear is disabled in WebUI" });
             continue;
           }
           if (kind === "action") {
@@ -382,23 +355,27 @@ export default function App() {
       }
 
       setSceneVersion((v) => v + 1);
-      persistSceneSoon(sessionKey);
+      // Best-effort: persist to daemon so the Scene is durable across refresh.
+      if (persistOps.length > 0) {
+        void apiPostSessionSceneApply(effectiveBase, { session_id: sessionKey, ops: persistOps }, daemonAuthToken)
+          .then((r) => {
+            if (!r || r.ok !== true) return;
+            const updated = typeof r.updated_unix_ms === "number" ? r.updated_unix_ms : 0;
+            const key = `${effectiveBase}::${sessionKey}`;
+            if (updated > 0) lastSceneUpdatedMsRef.current[key] = Math.max(lastSceneUpdatedMsRef.current[key] || 0, updated);
+            // If the daemon returns a scene snapshot, prefer it (authoritative).
+            const scene = r.scene && typeof r.scene === "object" && !Array.isArray(r.scene) ? (r.scene as any) : null;
+            if (scene) {
+              sceneBySessionRef.current[sessionKey] = scene;
+              setSceneVersion((v) => v + 1);
+            }
+          })
+          .catch(() => {});
+      }
       return { ok: true, results, count: Object.keys(store).length };
     },
-    [persistSceneSoon, setSceneVersion],
+    [daemonAuthToken, effectiveBase, setSceneVersion],
   );
-
-  const clearScene = React.useCallback(() => {
-    const sid = typeof sessionId === "string" ? sessionId.trim() : "";
-    if (!sid) return;
-    sceneBySessionRef.current[sid] = {};
-    setSceneVersion((v) => v + 1);
-    try {
-      window.localStorage?.removeItem(sceneStorageKey(sid));
-    } catch {
-      // ignore
-    }
-  }, [sceneStorageKey, sessionId]);
 
   // Keep layout CSS vars in sync with actual measured bars (so Scene can truly fill the viewport).
   React.useLayoutEffect(() => {
@@ -481,25 +458,6 @@ export default function App() {
       daemonAuthToken,
     ).catch(() => {});
   }, [client, daemonAuthToken, effectiveBase, sessionId]);
-
-  // Restore persisted scene snapshot on load/session switch.
-  React.useEffect(() => {
-    const sid = typeof sessionId === "string" ? sessionId.trim() : "";
-    if (!sid) return;
-    try {
-      const raw = window.localStorage?.getItem(sceneStorageKey(sid)) ?? "";
-      if (!raw) return;
-      const parsed = loadJson(raw);
-      if (!parsed || typeof parsed !== "object") return;
-      // Only replace if we don't already have state for this session in-memory.
-      if (!sceneBySessionRef.current[sid] || Object.keys(sceneBySessionRef.current[sid]).length === 0) {
-        sceneBySessionRef.current[sid] = parsed as any;
-        setSceneVersion((v) => v + 1);
-      }
-    } catch {
-      // ignore
-    }
-  }, [sceneStorageKey, sessionId]);
 
   // Restore a running job after a browser refresh (best-effort).
   React.useEffect(() => {
@@ -628,6 +586,33 @@ export default function App() {
     retry: 1,
   });
 
+  const sessionScene = useQuery({
+    queryKey: ["session_scene", effectiveBase, daemonAuthToken, sessionId],
+    queryFn: () => apiGetSessionScene(effectiveBase, sessionId, daemonAuthToken),
+    enabled: !!sessionId,
+    refetchInterval: activeJobId ? 750 : 2500,
+    retry: 1,
+  });
+
+  // Hydrate/refresh the local Scene from the daemon-owned durable scene snapshot.
+  // This makes the Scene refresh-proof without relying on browser storage.
+  React.useEffect(() => {
+    const sid = typeof sessionId === "string" ? sessionId.trim() : "";
+    if (!sid) return;
+    if (!sessionScene.data || sessionScene.data.ok !== true) return;
+    const updated = typeof (sessionScene.data as any)?.updated_unix_ms === "number" ? (sessionScene.data as any).updated_unix_ms : 0;
+    const key = `${effectiveBase}::${sid}`;
+    const hasPrev = Object.prototype.hasOwnProperty.call(lastSceneUpdatedMsRef.current, key);
+    const prev = hasPrev ? lastSceneUpdatedMsRef.current[key] || 0 : -1;
+    if (hasPrev && updated <= prev) return;
+
+    const scene = (sessionScene.data as any)?.scene;
+    if (!scene || typeof scene !== "object" || Array.isArray(scene)) return;
+    sceneBySessionRef.current[sid] = scene as any;
+    lastSceneUpdatedMsRef.current[key] = updated;
+    setSceneVersion((v) => v + 1);
+  }, [effectiveBase, sessionId, sessionScene.data]);
+
   const dbRuns = useQuery({
     queryKey: ["db_runs", effectiveBase, daemonAuthToken, sessionId, dbRunsOnlyErrors, dbRunsStopReason],
     queryFn: () =>
@@ -705,6 +690,7 @@ export default function App() {
         void audit.refetch();
         void sessionClientEvents.refetch();
         void sessionArtifacts.refetch();
+        void sessionScene.refetch();
         void dbUiActions.refetch();
         void dbMessages.refetch();
         void dbClientEvents.refetch();
@@ -775,6 +761,11 @@ export default function App() {
       });
     }
   }, [sessionId, sessions.isSuccess, sessions.data?.sessions, newSession]);
+
+  // `useQuery` return objects are not stable across renders; depending on them in other effects can
+  // cause accidental teardown/reconnect loops (notably for long-lived SSE streams).
+  const auditRefetch = audit.refetch;
+  const sessionsRefetch = sessions.refetch;
 
   const toolsDefs = useQuery({
     queryKey: ["tools", effectiveBase, daemonAuthToken, tools, toolsRoot, yolo, hostPolicy, sessionId],
@@ -1118,50 +1109,8 @@ export default function App() {
     sessionId,
   ]);
 
-  // Mirror artifacts into the Scene so media is visible in the "collaboration surface" by default.
-  React.useEffect(() => {
-    const sid = String(sessionId || "").trim();
-    if (!sid) return;
-    const rows = sessionArtifacts.data?.ok && Array.isArray(sessionArtifacts.data?.artifacts) ? (sessionArtifacts.data.artifacts as any[]) : [];
-    if (rows.length === 0) return;
-
-    const store = sceneBySessionRef.current[sid] || (sceneBySessionRef.current[sid] = {});
-    let changed = false;
-
-    for (const rec of rows.slice(0, 200)) {
-      const data = rec?.data ?? {};
-      const artifact = data?.artifact ?? rec?.artifact ?? {};
-      if (!artifact || typeof artifact !== "object") continue;
-      const path = typeof artifact?.path === "string" ? artifact.path : "";
-      if (!path) continue;
-      const toolCallId = typeof data?.tool_call_id === "string" ? data.tool_call_id : typeof rec?.tool_call_id === "string" ? rec.tool_call_id : "";
-      const stable = toolCallId ? `artifact:${toolCallId}` : `artifact:${path.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64)}`;
-      const existing = store[stable];
-      const title = typeof artifact?.title === "string" ? artifact.title : path.split("/").pop() || "artifact";
-      if (!existing) {
-        store[stable] = {
-          id: stable,
-          kind: "artifact",
-          title: `Artifact: ${title}`,
-          props: { artifact },
-          created_ms: Date.now(),
-          updated_ms: Date.now(),
-        };
-        changed = true;
-      } else {
-        // Keep in sync with DB in case resolved_path/mime/autoplay changes.
-        existing.kind = "artifact";
-        existing.title = existing.title || `Artifact: ${title}`;
-        existing.props = { ...(existing.props ?? {}), artifact };
-        existing.updated_ms = Date.now();
-        changed = true;
-      }
-    }
-    if (changed) {
-      setSceneVersion((v) => v + 1);
-      persistSceneSoon(sid);
-    }
-  }, [persistSceneSoon, sessionArtifacts.data, sessionId]);
+  // Note: artifacts are mirrored into the durable Scene by the daemon itself (server-side),
+  // so the WebUI does not need to synthesize them into client-only scene state.
 
   // Reliability: post artifact_rendered / artifact_render_failed acknowledgements even when the History panel is collapsed.
   //
@@ -1272,6 +1221,7 @@ export default function App() {
     if (!activeJobId) return;
     let cancelled = false;
     const jobId = activeJobId;
+    let watchdogTimer: any = null;
 
     const startPolling = () => {
       (async () => {
@@ -1321,8 +1271,8 @@ export default function App() {
                 return nextm;
               });
             }
-            void audit.refetch();
-            void sessions.refetch();
+            void auditRefetch();
+            void sessionsRefetch();
             return;
           }
 
@@ -1355,6 +1305,42 @@ export default function App() {
       fallbackStarted = true;
       startPolling();
     };
+
+    // Watchdog: even if SSE/streaming is flaky, ensure we eventually observe terminal state.
+    // This avoids "stuck Running…" UIs when the stream drops before a job_done event.
+    watchdogTimer = setInterval(() => {
+      if (cancelled) return;
+      void (async () => {
+        try {
+          const job = await apiGetJob(effectiveBase, jobId, daemonAuthToken);
+          if (!job?.ok) return;
+          if (job.status === "done" || job.status === "error") {
+            // Trigger the same completion path as streaming.
+            if (job.result) {
+              setResult(job.result);
+              setLastCompletedPrompt(lastRunPromptRef.current);
+              setJobStatus(job.status);
+              setJobError(job.error ?? null);
+            } else {
+              setJobError("job completed but missing result");
+            }
+            setActiveJobId(null);
+            const sid = String(sessionId || "").trim();
+            if (sid) {
+              writeJobsBySession((prev) => {
+                const nextm = { ...prev };
+                delete nextm[sid];
+                return nextm;
+              });
+            }
+            void auditRefetch();
+            void sessionsRefetch();
+          }
+        } catch {
+          // ignore; watchdog is best-effort
+        }
+      })();
+    }, 3000);
 
     const startFetchSse = () => {
       const url = `${effectiveBase}/api/v1/job/stream?job_id=${encodeURIComponent(jobId)}&cursor=${encodeURIComponent(
@@ -1419,8 +1405,8 @@ export default function App() {
                 return nextm;
               });
             }
-            void audit.refetch();
-            void sessions.refetch();
+            void auditRefetch();
+            void sessionsRefetch();
           }
         });
         if (!cancelled && !fetchFinished) {
@@ -1485,21 +1471,21 @@ export default function App() {
           }
           setActiveJobId(null);
           const sid = String(sessionId || "").trim();
-          if (sid) {
-            writeJobsBySession((prev) => {
-              const nextm = { ...prev };
-              delete nextm[sid];
-              return nextm;
-            });
-          }
-          try {
-            es?.close();
-          } catch {
-            // ignore
-          }
-          void audit.refetch();
-          void sessions.refetch();
-        });
+            if (sid) {
+              writeJobsBySession((prev) => {
+                const nextm = { ...prev };
+                delete nextm[sid];
+                return nextm;
+              });
+            }
+            try {
+              es?.close();
+            } catch {
+              // ignore
+            }
+            void auditRefetch();
+            void sessionsRefetch();
+          });
         es.onerror = () => {
           if (cancelled) return;
           try {
@@ -1523,6 +1509,11 @@ export default function App() {
     return () => {
       cancelled = true;
       try {
+        if (watchdogTimer) clearInterval(watchdogTimer);
+      } catch {
+        // ignore
+      }
+      try {
         es?.close();
       } catch {
         // ignore
@@ -1533,7 +1524,7 @@ export default function App() {
         // ignore
       }
     };
-  }, [activeJobId, effectiveBase, audit, sessions]);
+  }, [activeJobId, effectiveBase, daemonAuthToken, sessionId, auditRefetch, sessionsRefetch]);
 
   return (
     <div
@@ -1579,8 +1570,8 @@ export default function App() {
         </div>
       </header>
 
-      <main className="h-[calc(100vh-var(--topbar-h))] overflow-y-auto px-4 py-3 pb-[var(--promptbar-h)]">
-        <div className="mx-auto max-w-5xl">
+      <main className="h-[calc(100vh-var(--topbar-h))] overflow-y-auto px-3 py-3 pb-[var(--promptbar-h)]">
+        <div className="mx-auto max-w-7xl">
           <div className="min-h-0">
             <div className="h-[calc(100vh-var(--topbar-h)-var(--promptbar-h)-24px)] min-h-0">
               <SceneView
@@ -1591,7 +1582,6 @@ export default function App() {
                 daemonAuthToken={daemonAuthToken}
                 sessionId={sessionId}
                 entities={sceneEntities}
-                onClear={() => clearScene()}
                 className="h-full"
               />
             </div>
@@ -1639,10 +1629,12 @@ export default function App() {
                       </summary>
                       <div className="mt-3 grid gap-3">
                         {assistantText ? (
-                          <div className="rounded-md border border-white/10 bg-black/20 p-3">
-                            <div className="text-[11px] font-semibold text-white/70">Assistant</div>
-                            <div className="mt-2">
-                              <Markdown text={assistantText} />
+                          <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2">
+                            <div className="flex items-start gap-2">
+                              <div className="shrink-0 text-[11px] font-semibold text-white/60">Assistant</div>
+                              <div className="min-w-0 flex-1">
+                                <Markdown text={assistantText} />
+                              </div>
                             </div>
                           </div>
                         ) : null}
@@ -1677,7 +1669,7 @@ export default function App() {
       </main>
 
       <div ref={promptbarRef} className="fixed bottom-0 left-0 right-0 z-30 border-t border-white/10 bg-slate-950/90 backdrop-blur">
-        <div className="mx-auto max-w-5xl px-4 py-3">
+        <div className="mx-auto max-w-7xl px-3 py-3">
           <div className="flex items-center justify-between gap-3">
             <div className="text-[11px] text-white/60">
               session=<code className="text-white/70">{String(sessionId || "").trim() || "(none)"}</code> tools=
@@ -1719,8 +1711,9 @@ export default function App() {
           </div>
 
           <textarea
-            className="mt-2 h-[140px] w-full resize-none rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+            className="mt-2 w-full resize-y rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm leading-relaxed"
             data-testid="prompt"
+            rows={5}
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
           />

@@ -679,6 +679,16 @@ int main(int argc, char** argv) {
     handle_session_artifacts_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
+  server.handle("GET", "/api/v1/session/scene", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_session_scene_get_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+
+  server.handle("POST", "/api/v1/session/scene/apply", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_session_scene_apply_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+
   server.handle("POST", "/api/v1/session/ui_event", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_session_ui_event_endpoint(cur, cors_cfg, db_or_null, req, resp);

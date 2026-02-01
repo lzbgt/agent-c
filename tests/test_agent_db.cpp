@@ -201,13 +201,16 @@ int main() {
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('client_events') WHERE name='data_json';");
   const int64_t audit_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('audit_records') WHERE name='record_json';");
+  const int64_t scene_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('scene_states') WHERE name='scene_json';");
   sqlite3_close(raw2);
-  assert(ver == 6);
+  assert(ver == 7);
   assert(arts2 == 0);
   assert(stop_reason_cols == 1);
   assert(ua_cols == 1);
   assert(ce_cols == 1);
   assert(audit_cols == 1);
+  assert(scene_cols == 1);
 
   db.close();
   std::filesystem::remove(tmp, ec);

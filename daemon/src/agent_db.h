@@ -159,6 +159,23 @@ class AgentDb {
     std::string* out_error
   );
 
+  // Durable Scene state (server-owned; used to re-render the WebUI Scene after refresh).
+  // Stored as a JSON object string mapping entity_id -> entity object.
+  //
+  // The canonical update mechanism is "apply ops then upsert state" (see scene_store.*).
+  bool get_scene_state(
+    const std::string& session_id,
+    std::string* out_scene_json,
+    int64_t* out_updated_unix_ms,
+    std::string* out_error
+  );
+  bool put_scene_state(
+    const std::string& session_id,
+    const std::string& scene_json,
+    int64_t updated_unix_ms,
+    std::string* out_error
+  );
+
  private:
   bool ensure_schema_locked(std::string* out_error);
   bool exec_locked(const std::string& sql, std::string* out_error);

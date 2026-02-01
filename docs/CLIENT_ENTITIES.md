@@ -23,6 +23,21 @@ Different clients implement entities differently:
 
 This is the real collaboration surface: it lets the agent create “meaningful things” (canvas plots, widgets) and clean them up deterministically.
 
+## Durable Scene vs. client-local Scene
+
+This repo has **two related “scene” concepts**:
+
+1) **Client-local scene** (conceptual protocol)
+- The client maintains entities and applies `entity_apply` ops to its own UI (web DOM, native views, Slack blocks, …).
+
+2) **agentd durable Scene** (server-side persistence)
+- The daemon can persist a per-session Scene snapshot in its DB and expose it via:
+  - `GET /api/v1/session/scene`
+  - `POST /api/v1/session/scene/apply`
+- This is used to make Scene rendering refresh-proof in the WebUI (and can be reused by other clients).
+
+Quick reference: `docs/CLIENT_AGENTD_SPEC.md`.
+
 ## RPC kinds
 
 This repo uses client RPC kinds:
@@ -80,7 +95,7 @@ Supported ops (v1):
 - `create`: `{id?, entity_kind, title?, props?}`
 - `update`: `{id, props}` (shallow merge)
 - `delete`: `{id}`
-- `clear`: `{entity_kind?}` (optional filter)
+- `clear`: `{entity_kind?}` (optional filter; **destructive**, see below)
 - `action`: `{id, action, args?}` (client-defined)
 
 Clients return an operation result list so the agent can debug and proceed deterministically.
@@ -94,7 +109,9 @@ Clients return an operation result list so the agent can debug and proceed deter
 - `client_wait_event(type="client_rpc_result", data_match={rpc_id:"..."})`
 
 3) When done, clean the scene:
-- `entity_apply` with `{op:"delete", id:"plot-1"}` OR `{op:"clear", entity_kind:"canvas2d"}`
+- Prefer: `entity_apply` with `{op:"delete", id:"plot-1"}`
+- Optional: `{op:"clear", entity_kind:"canvas2d"}` but only if the client treats it as a **gated / debug** operation.
+  - For durable server-owned Scenes, a “clear” wipe affects post-refresh state and should not be exposed as a one-click UI action.
 
 ## Relationship to scripts (`script_eval`)
 
@@ -103,4 +120,3 @@ Clients return an operation result list so the agent can debug and proceed deter
 - query and react to entity state
 
 This keeps the “probe only what I care about” property while still grounding results in a deterministic, inspectable scene model.
-

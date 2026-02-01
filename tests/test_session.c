@@ -239,6 +239,8 @@ int main(void) {
   test_runner_module();
   extern void test_tool_loop_module(void);
   test_tool_loop_module();
+  extern void test_tool_loop_memory_flush_module(void);
+  test_tool_loop_memory_flush_module();
   printf("agent_core_tests OK\n");
   return 0;
 }

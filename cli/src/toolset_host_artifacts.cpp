@@ -181,6 +181,46 @@ agent_status_t tool_artifact_register(HostToolCtx* ctx, const char* arguments_js
   return write_envelope(true, "", data);
 }
 
+agent_status_t tool_scene_apply(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
+  if (!ctx || !out_result) return AGENT_ERR_INVALID_ARGUMENT;
+  if (is_cancelled(ctx)) {
+    return set_result(out_result, "{\"ok\":false,\"error\":\"cancelled\"}");
+  }
+
+  auto write_envelope = [&](bool ok, const std::string& error, const Json::Value& data) -> agent_status_t {
+    Json::Value o(Json::objectValue);
+    o["ok"] = ok;
+    if (!error.empty()) o["error"] = error;
+    o["data"] = data;
+    Json::StreamWriterBuilder wb;
+    wb["indentation"] = "";
+    return set_result(out_result, Json::writeString(wb, o));
+  };
+
+  Json::Value args;
+  std::string err;
+  if (!parse_json(arguments_json, &args, &err) || !args.isObject()) {
+    return write_envelope(false, "invalid args", Json::Value(Json::objectValue));
+  }
+  if (!args.isMember("ops") || !args["ops"].isArray()) {
+    return write_envelope(false, "missing array field 'ops'", Json::Value(Json::objectValue));
+  }
+
+  // Keep a large but finite cap to avoid pathological memory usage.
+  Json::Value ops(Json::arrayValue);
+  const Json::Value in_ops = args["ops"];
+  const Json::ArrayIndex max_ops = std::min<Json::ArrayIndex>(in_ops.size(), 2000U);
+  for (Json::ArrayIndex i = 0; i < max_ops; i++) {
+    ops.append(in_ops[i]);
+  }
+
+  Json::Value data(Json::objectValue);
+  data["tool"] = "scene_apply";
+  data["ops"] = ops;
+  data["output"] = "scene_apply ops=" + std::to_string((unsigned)ops.size());
+  return write_envelope(true, "", data);
+}
+
 agent_status_t tool_ui_action(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
   if (!ctx || !out_result) return AGENT_ERR_INVALID_ARGUMENT;
   if (is_cancelled(ctx)) {
@@ -286,6 +326,10 @@ agent_status_t tool_ui_action(HostToolCtx* ctx, const char* arguments_json, agen
 #else
 agent_status_t tool_artifact_register(HostToolCtx* /*ctx*/, const char* /*arguments_json*/, agent_string_t* out_result) {
   return set_result(out_result, "{\"ok\":false,\"error\":\"artifact_register requires jsoncpp\",\"data\":{}}");
+}
+
+agent_status_t tool_scene_apply(HostToolCtx* /*ctx*/, const char* /*arguments_json*/, agent_string_t* out_result) {
+  return set_result(out_result, "{\"ok\":false,\"error\":\"scene_apply requires jsoncpp\",\"data\":{}}");
 }
 
 agent_status_t tool_ui_action(HostToolCtx* /*ctx*/, const char* /*arguments_json*/, agent_string_t* out_result) {

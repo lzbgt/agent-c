@@ -41,6 +41,23 @@ void handle_session_artifacts_endpoint(
   HttpResponse* resp
 );
 
+// Durable, server-owned Scene state (refresh-proof).
+void handle_session_scene_get_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
+void handle_session_scene_apply_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
 void handle_session_delete_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,

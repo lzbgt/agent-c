@@ -292,6 +292,16 @@ bool AgentdApi::init(std::string* out_error) {
     const DaemonConfig cur = self->cfg_store->snapshot();
     handle_session_artifacts_endpoint(cur, self->cors_cfg, &self->db, req, resp);
   });
+  impl_->route("GET", "/api/v1/session/scene", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_session_scene_get_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route("POST", "/api/v1/session/scene/apply", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_session_scene_apply_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
   impl_->route("POST", "/api/v1/session/ui_event", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();

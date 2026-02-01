@@ -86,6 +86,12 @@ static Json::Value summarize_tool_output_json(const std::string& tool_out) {
         summary["action"] = data["action"];
       }
     }
+    // Special-case: keep scene_apply metadata even when verbose events are disabled.
+    if (data.isMember("tool") && data["tool"].isString() && data["tool"].asString() == "scene_apply") {
+      if (data.isMember("ops") && data["ops"].isArray()) {
+        summary["ops"] = data["ops"];
+      }
+    }
     if (data.isMember("check") && data["check"].isObject() && data["check"].isMember("exit_code")) {
       summary["check_exit_code"] = data["check"]["exit_code"];
     }
@@ -235,6 +241,49 @@ static void sink_on_event(void* vctx, const char* type, const char* data_json) {
       }
     }
 
+    // Derived UI event: scene_apply (server-owned Scene ops; durable).
+    if (tool_name == "scene_apply") {
+      Json::Value ops;
+      if (data.isMember("summary") && data["summary"].isObject()) {
+        const auto& s = data["summary"];
+        if (s.isMember("ops") && s["ops"].isArray()) {
+          ops = s["ops"];
+        }
+      }
+      if (ops.isNull() && data.isMember("content") && data["content"].isString()) {
+        Json::Value content_obj;
+        if (parse_json_object(data["content"].asString(), &content_obj)) {
+          if (content_obj.isMember("data") && content_obj["data"].isObject()) {
+            const auto& cd = content_obj["data"];
+            if (cd.isMember("tool") && cd["tool"].isString() && cd["tool"].asString() == "scene_apply") {
+              if (cd.isMember("ops") && cd["ops"].isArray()) {
+                ops = cd["ops"];
+              }
+            }
+          }
+        }
+      }
+
+      if (ops.isArray() && sink->events_count < sink->max_events) {
+        Json::Value ad(Json::objectValue);
+        if (data.isMember("step")) ad["step"] = data["step"];
+        if (data.isMember("tool_call_id")) ad["tool_call_id"] = data["tool_call_id"];
+        ad["tool_name"] = tool_name;
+        ad["ops"] = ops;
+
+        Json::Value ae(Json::objectValue);
+        ae["type"] = "scene_apply";
+        ae["data"] = ad;
+        sink->events.append(ae);
+        sink->events_count++;
+
+        const std::string aj = json_stringify(ad);
+        if (sink->forward_cb) {
+          sink->forward_cb(sink->forward_ctx, "scene_apply", aj.c_str());
+        }
+      }
+    }
+
   }
 
   // Optional trace output (best-effort).
@@ -379,6 +428,10 @@ bool run_tool_loop(
   opt.summary_preview_items = options.summary_preview_items;
   opt.summary_snippet_chars = options.summary_snippet_chars;
   opt.summary_max_chars = options.summary_max_chars;
+  opt.memory_flush_enabled = options.memory_flush_enabled ? 1 : 0;
+  opt.memory_flush_max_excerpt_chars = options.memory_flush_max_excerpt_chars;
+  opt.memory_flush_max_messages = options.memory_flush_max_messages;
+  opt.memory_flush_per_message_chars = options.memory_flush_per_message_chars;
   opt.max_tool_result_chars = options.max_tool_result_chars;
   opt.max_context_too_long_retries = 2;
   opt.verbose_events = options.verbose ? 1 : 0;

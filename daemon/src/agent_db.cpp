@@ -1,5 +1,6 @@
 #include "agent_db.h"
 
+#include <chrono>
 #include <filesystem>
 #include <sstream>
 
@@ -8,6 +9,12 @@ namespace {
 
 #if defined(AGENT_HAVE_SQLITE3)
 #include <sqlite3.h>
+
+static int64_t unix_ms_now() {
+  return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+           std::chrono::system_clock::now().time_since_epoch())
+    .count();
+}
 
 static std::string sqlite_err(sqlite3* db) {
   if (!db) return "sqlite: (db is null)";
@@ -142,7 +149,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 6;
+  const int kSchemaVersion = 7;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -342,6 +349,20 @@ CREATE INDEX IF NOT EXISTS audit_records_by_session ON audit_records(session_id,
     cur_ver = 6;
   }
 
+  if (cur_ver < 7) {
+    const char* schema_v7 = R"SQL(
+CREATE TABLE IF NOT EXISTS scene_states(
+  session_id TEXT PRIMARY KEY,
+  updated_unix_ms INTEGER NOT NULL,
+  scene_json TEXT NOT NULL,
+  FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS scene_states_by_updated ON scene_states(updated_unix_ms DESC);
+)SQL";
+    if (!exec_locked(schema_v7, out_error)) return false;
+    cur_ver = 7;
+  }
+
   // Record schema version.
   {
     std::ostringstream oss;
@@ -349,6 +370,104 @@ CREATE INDEX IF NOT EXISTS audit_records_by_session ON audit_records(session_id,
 	  if (!exec_locked(oss.str(), out_error)) return false;
 	  }
 	  return true;
+#endif
+}
+
+bool AgentDb::get_scene_state(
+  const std::string& session_id,
+  std::string* out_scene_json,
+  int64_t* out_updated_unix_ms,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_scene_json) out_scene_json->clear();
+  if (out_updated_unix_ms) *out_updated_unix_ms = 0;
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)session_id;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (session_id.empty()) {
+    if (out_error) *out_error = "get_scene_state: session_id is empty";
+    return false;
+  }
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = "SELECT updated_unix_ms, scene_json FROM scene_states WHERE session_id=? LIMIT 1;";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = bind_text(st, 1, session_id);
+  if (ok && step_row(st)) {
+    if (out_updated_unix_ms) *out_updated_unix_ms = sqlite3_column_int64(st, 0);
+    const unsigned char* txt = sqlite3_column_text(st, 1);
+    if (out_scene_json && txt) *out_scene_json = (const char*)txt;
+  } else {
+    // Missing row is not an error; treat as empty scene.
+  }
+  sqlite3_finalize(st);
+  return ok;
+#endif
+}
+
+bool AgentDb::put_scene_state(
+  const std::string& session_id,
+  const std::string& scene_json,
+  int64_t updated_unix_ms,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)session_id;
+  (void)scene_json;
+  (void)updated_unix_ms;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (session_id.empty()) {
+    if (out_error) *out_error = "put_scene_state: session_id is empty";
+    return false;
+  }
+  if (scene_json.empty()) {
+    if (out_error) *out_error = "put_scene_state: scene_json is empty";
+    return false;
+  }
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  // Ensure parent session row exists (FK target).
+  if (!upsert_session_locked(session_id, updated_unix_ms > 0 ? updated_unix_ms : unix_ms_now(), out_error)) {
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql =
+    "INSERT INTO scene_states(session_id, updated_unix_ms, scene_json) "
+    "VALUES(?,?,?) "
+    "ON CONFLICT(session_id) DO UPDATE SET updated_unix_ms=excluded.updated_unix_ms, scene_json=excluded.scene_json;";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_text(st, 1, session_id);
+  ok = ok && bind_i64(st, 2, updated_unix_ms > 0 ? updated_unix_ms : unix_ms_now());
+  ok = ok && bind_text(st, 3, scene_json);
+  if (ok) {
+    const int rc = sqlite3_step(st);
+    if (rc != SQLITE_DONE) {
+      ok = false;
+      if (out_error) *out_error = sqlite_err(db_);
+    }
+  }
+  sqlite3_finalize(st);
+  return ok;
 #endif
 }
 

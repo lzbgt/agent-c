@@ -73,6 +73,7 @@ if(AGENT_BUILD_HOST)
     cli/src/toolset_host_exec.cpp
     cli/src/toolset_host_ui_wait_event.cpp
     cli/src/toolset_host_client_peek.cpp
+    cli/src/toolset_host_memory.cpp
   )
 
   target_compile_options(agent_host PRIVATE
@@ -123,6 +124,7 @@ if(AGENT_BUILD_HOST)
     daemon/src/runtime_config.cpp
     daemon/src/secrets_file.cpp
     daemon/src/run_endpoints.cpp
+    daemon/src/scene_store.cpp
     daemon/src/session_endpoints.cpp
     daemon/src/tools_endpoint.cpp
     daemon/src/sandbox_policy.cpp
@@ -181,6 +183,7 @@ add_executable(agent_core_tests
   tests/test_session.c
   tests/test_session_codec.c
   tests/test_tool_loop.c
+  tests/test_tool_loop_memory_flush.c
   tests/test_runner.c
 )
 target_link_libraries(agent_core_tests PRIVATE agent_core)
@@ -372,6 +375,15 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
     target_link_libraries(agent_db_tests PRIVATE ${SQLITE3_LIBRARIES})
     target_compile_definitions(agent_db_tests PRIVATE AGENT_HAVE_SQLITE3=1)
     add_test(NAME agent_db_tests COMMAND agent_db_tests)
+
+    if(AGENT_ENABLE_JSONCPP)
+      add_executable(scene_store_mirror_artifact_tests
+        tests/test_scene_store_mirror_artifact.cpp
+      )
+      target_link_libraries(scene_store_mirror_artifact_tests PRIVATE agentd_lib)
+      target_compile_definitions(scene_store_mirror_artifact_tests PRIVATE AGENT_HAVE_SQLITE3=1 AGENT_HAVE_JSONCPP=1)
+      add_test(NAME scene_store_mirror_artifact_tests COMMAND scene_store_mirror_artifact_tests)
+    endif()
 
     if(AGENTD_ENABLE_HTTP)
       add_executable(agentd_service_tests

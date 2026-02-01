@@ -42,12 +42,26 @@ function safeNumber(v: any, def: number): number {
 
 function Canvas2DEntityView({
   entity,
+  baseUrl,
+  yolo,
+  daemonAuthToken,
   onScriptError,
 }: {
   entity: SceneEntity;
-  onScriptError?: (args: { entity_id: string; entity_kind: string; error: string; script_preview?: string }) => void;
+  baseUrl?: string;
+  yolo?: boolean;
+  daemonAuthToken?: string;
+  onScriptError?: (args: {
+    entity_id: string;
+    entity_kind: string;
+    error: string;
+    stack_preview?: string;
+    script_preview?: string;
+  }) => void;
 }) {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
+  const blobUrlsRef = React.useRef<string[]>([]);
+  const cleanupRef = React.useRef<null | (() => void)>(null);
   const props = entity.props ?? {};
   const width = clampInt(props?.width, 64, 4096, 640);
   const height = clampInt(props?.height, 64, 4096, 240);
@@ -80,8 +94,25 @@ function Canvas2DEntityView({
     // This is intentionally "no hardcoded ops": the agent can draw anything it wants, as long as it
     // uses the provided {ctx, canvas, width, height} and respects browser policies.
     if (script && script.trim().length > 0) {
+      // Stop any previous animation/handlers for this entity.
+      try {
+        cleanupRef.current?.();
+      } catch {
+        // ignore
+      }
+      cleanupRef.current = null;
+      blobUrlsRef.current.forEach((u) => {
+        try {
+          URL.revokeObjectURL(u);
+        } catch {
+          // ignore
+        }
+      });
+      blobUrlsRef.current = [];
+
       const reportError = (e: any) => {
         const msg = String(e || "unknown error");
+        const stack = e && typeof e === "object" && typeof e.stack === "string" ? e.stack : "";
         try {
           ctx.save();
           ctx.fillStyle = "#fca5a5";
@@ -96,6 +127,7 @@ function Canvas2DEntityView({
             entity_id: entity.id,
             entity_kind: entity.kind,
             error: msg,
+            stack_preview: typeof stack === "string" ? stack.slice(0, 1200) : "",
             script_preview: script.slice(0, 800),
           });
         } catch {
@@ -105,36 +137,94 @@ function Canvas2DEntityView({
       try {
         // Execute the agent-provided script in a "power mode" sandbox.
         //
-        // Important compatibility behavior:
-        // - We do NOT pass a parameter named `ctx`, because many scripts naturally start with:
-        //     const ctx = canvas.getContext('2d');
-        //   which would throw "Identifier 'ctx' has already been declared" if `ctx` were also a function parameter.
-        // - We expose common names via a `with` scope, so scripts can either use `ctx` directly,
-        //   or declare their own `const ctx = ...` without colliding.
+        // Compatibility goals (important):
+        // - Support scripts written as an async function BODY (so `await` + `return cleanup` work):
+        //     // uses api.root/api.ctx
+        //     ...
+        //     return () => { ... }
+        // - Also support scripts written as a FUNCTION EXPRESSION (common model output):
+        //     async (api, args) => { ... return () => {...} }
         //
-        // eslint-disable-next-line no-new-func
-        const fn = new Function(
-          "__ctx",
-          "canvas",
-          "width",
-          "height",
-          "props",
-          "args",
-          `
-try {
-  with ({ ctx: __ctx, canvas, width, height, props, args }) {
-    ${script}
-  }
-} catch (e) {
-  throw e;
+        // We intentionally avoid pre-declaring `ctx`/`canvas` as variables to prevent
+        // collisions with scripts that naturally start with `const ctx = ...`.
+        const authToken = safeString(daemonAuthToken).trim();
+        const daemon = { base_url: baseUrl || "", yolo: !!yolo, auth_token: authToken };
+        const api: any = {
+          root: canvas,
+          ctx,
+          width,
+          height,
+          props,
+          daemon,
+          artifact: {
+            url: async (path: any) => {
+              const p = String(path ?? "").trim();
+              if (!p) throw new Error("artifact.url requires path");
+              if (!baseUrl) throw new Error("artifact.url requires baseUrl");
+              const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${yolo ? "1" : "0"}`;
+              const r = await fetch(src, { headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
+              if (!r.ok) throw new Error(`file fetch failed: ${r.status}`);
+              const b = await r.blob();
+              const u = URL.createObjectURL(b);
+              blobUrlsRef.current.push(u);
+              return u;
+            },
+          },
+        };
+
+        const trimmed = script.trim();
+        const looksLikeFnExpr =
+          trimmed.startsWith("function") ||
+          trimmed.startsWith("async function") ||
+          trimmed.startsWith("(") ||
+          trimmed.startsWith("async (") ||
+          trimmed.startsWith("async(") ||
+          /^[a-zA-Z_$][\\w$]*\\s*=>/.test(trimmed);
+
+        const body = looksLikeFnExpr
+          ? `
+const __fn = (${script});
+if (typeof __fn === "function") return await __fn(api, args);
+return __fn;
+`
+          : `
+with ({ api, args, ctx: api.ctx, canvas: api.root, width: api.width, height: api.height, props: api.props, artifact: api.artifact, daemon: api.daemon }) {
+  ${script}
 }
-`,
-        );
-        // Allow scripts to be either sync or async (best-effort).
-        const maybePromise = fn(ctx, canvas, width, height, props, scriptArgs);
-        if (maybePromise && typeof (maybePromise as any).then === "function") {
-          void (maybePromise as any).catch((e: any) => reportError(e));
-        }
+`;
+
+        // eslint-disable-next-line no-new-func
+        const fn = new Function("api", "args", `return (async function() {\n${body}\n})();`) as (api: any, args: any) => Promise<any>;
+
+        let cancelled = false;
+        void (async () => {
+          try {
+            const res = await fn(api, scriptArgs);
+            if (cancelled) return;
+            if (typeof res === "function") cleanupRef.current = res as any;
+            else if (res && typeof res === "object" && typeof (res as any).cleanup === "function") cleanupRef.current = (res as any).cleanup;
+          } catch (e) {
+            if (!cancelled) reportError(e);
+          }
+        })();
+
+        return () => {
+          cancelled = true;
+          try {
+            cleanupRef.current?.();
+          } catch {
+            // ignore
+          }
+          cleanupRef.current = null;
+          blobUrlsRef.current.forEach((u) => {
+            try {
+              URL.revokeObjectURL(u);
+            } catch {
+              // ignore
+            }
+          });
+          blobUrlsRef.current = [];
+        };
       } catch (e) {
         reportError(e);
       }
@@ -198,7 +288,23 @@ try {
         continue;
       }
     }
-  }, [draw, height, width, script, scriptArgsJson]);
+    return () => {
+      try {
+        cleanupRef.current?.();
+      } catch {
+        // ignore
+      }
+      cleanupRef.current = null;
+      blobUrlsRef.current.forEach((u) => {
+        try {
+          URL.revokeObjectURL(u);
+        } catch {
+          // ignore
+        }
+      });
+      blobUrlsRef.current = [];
+    };
+  }, [baseUrl, daemonAuthToken, draw, height, width, script, scriptArgsJson, yolo]);
 
   return (
     <div className="mt-2 overflow-auto rounded-md border border-white/10 bg-black/20 p-2">
@@ -215,6 +321,158 @@ function JsonEntityView({ entity }: { entity: SceneEntity }) {
   );
 }
 
+function DomEntityView({
+  entity,
+  baseUrl,
+  yolo,
+  daemonAuthToken,
+  onScriptError,
+}: {
+  entity: SceneEntity;
+  baseUrl?: string;
+  yolo?: boolean;
+  daemonAuthToken?: string;
+  onScriptError?: (args: {
+    entity_id: string;
+    entity_kind: string;
+    error: string;
+    stack_preview?: string;
+    script_preview?: string;
+  }) => void;
+}) {
+  const rootRef = React.useRef<HTMLDivElement | null>(null);
+  const cleanupRef = React.useRef<null | (() => void)>(null);
+  const blobUrlsRef = React.useRef<string[]>([]);
+
+  const props = entity.props ?? {};
+  const htmlRaw = safeString(props?.html ?? props?.markup ?? props?.inner_html ?? props?.innerHTML);
+  const html = htmlRaw.length > 1_000_000 ? htmlRaw.slice(0, 1_000_000) : htmlRaw;
+
+  const scriptRaw = safeString(props?.script ?? props?.js ?? props?.code);
+  const script = scriptRaw.length > 1_000_000 ? scriptRaw.slice(0, 1_000_000) : scriptRaw;
+
+  const scriptArgs = props?.script_args ?? props?.args ?? {};
+  const scriptArgsJson = React.useMemo(() => {
+    try {
+      const s = JSON.stringify(scriptArgs ?? {});
+      return s.length > 128_000 ? s.slice(0, 128_000) : s;
+    } catch {
+      return "{}";
+    }
+  }, [scriptArgs]);
+
+  React.useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+
+    // Reset previous run (cleanup + blob URLs).
+    try {
+      cleanupRef.current?.();
+    } catch {
+      // ignore
+    }
+    cleanupRef.current = null;
+    blobUrlsRef.current.forEach((u) => {
+      try {
+        URL.revokeObjectURL(u);
+      } catch {
+        // ignore
+      }
+    });
+    blobUrlsRef.current = [];
+
+    // Render HTML into the container (DOM is intentionally "unleashed" for this entity kind).
+    try {
+      root.innerHTML = html || "";
+    } catch {
+      // ignore
+    }
+
+    const reportError = (e: any) => {
+      const msg = String(e || "unknown error");
+      const stack = e && typeof e === "object" && typeof e.stack === "string" ? e.stack : "";
+      try {
+        onScriptError?.({
+          entity_id: entity.id,
+          entity_kind: entity.kind,
+          error: msg,
+          stack_preview: typeof stack === "string" ? stack.slice(0, 1200) : "",
+          script_preview: script.slice(0, 800),
+        });
+      } catch {
+        // ignore
+      }
+    };
+
+    if (!baseUrl || typeof yolo !== "boolean") return;
+    if (!script || script.trim().length === 0) return;
+
+    const authToken = safeString(daemonAuthToken).trim();
+    const daemon = { base_url: baseUrl, yolo: !!yolo, auth_token: authToken };
+    const api: any = {
+      root,
+      daemon,
+      artifact: {
+        url: async (path: any) => {
+          const p = String(path ?? "").trim();
+          if (!p) throw new Error("artifact.url requires path");
+          const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${yolo ? "1" : "0"}`;
+          const r = await fetch(src, { headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
+          if (!r.ok) throw new Error(`file fetch failed: ${r.status}`);
+          const b = await r.blob();
+          const u = URL.createObjectURL(b);
+          blobUrlsRef.current.push(u);
+          return u;
+        },
+      },
+    };
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        // eslint-disable-next-line no-new-func
+        // Build the function body with REAL newlines. (Using a literal `\\n` in source breaks parsing.)
+        // Use an async function expression (not an async arrow) for maximum browser compatibility.
+        const fn = new Function("api", "args", '"use strict"; return (async function() {\n' + script + "\n})();") as (
+          api: any,
+          args: any,
+        ) => Promise<any>;
+        const res = await fn(api, scriptArgs);
+        if (cancelled) return;
+        if (typeof res === "function") cleanupRef.current = res as any;
+        else if (res && typeof res === "object" && typeof (res as any).cleanup === "function") cleanupRef.current = (res as any).cleanup;
+      } catch (e) {
+        if (cancelled) return;
+        reportError(e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      try {
+        cleanupRef.current?.();
+      } catch {
+        // ignore
+      }
+      cleanupRef.current = null;
+      blobUrlsRef.current.forEach((u) => {
+        try {
+          URL.revokeObjectURL(u);
+        } catch {
+          // ignore
+        }
+      });
+      blobUrlsRef.current = [];
+    };
+  }, [baseUrl, daemonAuthToken, entity.id, entity.kind, html, onScriptError, script, scriptArgsJson, yolo]);
+
+  return (
+    <div className="mt-2 overflow-auto rounded-md border border-white/10 bg-black/20 p-2">
+      <div ref={rootRef} />
+    </div>
+  );
+}
+
 export default function SceneView({
   baseUrl,
   yolo,
@@ -223,7 +481,6 @@ export default function SceneView({
   daemonAuthToken,
   sessionId,
   entities,
-  onClear,
   className,
 }: {
   baseUrl?: string;
@@ -234,14 +491,45 @@ export default function SceneView({
   daemonAuthToken?: string;
   sessionId?: string;
   entities: SceneEntity[];
-  onClear?: () => void;
   className?: string;
 }) {
   const sid = typeof sessionId === "string" ? sessionId.trim() : "";
   const lastSceneErrorRef = React.useRef<Record<string, { ts: number; sig: string }>>({});
+  const defaultExpandedCount = 1;
+
+  const sortedEntities = React.useMemo(() => {
+    const copy = [...entities];
+    copy.sort((a: any, b: any) => {
+      const ta = typeof a?.updated_ms === "number" ? a.updated_ms : typeof a?.created_ms === "number" ? a.created_ms : 0;
+      const tb = typeof b?.updated_ms === "number" ? b.updated_ms : typeof b?.created_ms === "number" ? b.created_ms : 0;
+      if (ta !== tb) return tb - ta;
+      return String(b?.id || "").localeCompare(String(a?.id || ""));
+    });
+    return copy;
+  }, [entities]);
+
+  const [expandedById, setExpandedById] = React.useState<Record<string, boolean>>({});
+  React.useEffect(() => {
+    // Keep UX stable as the Scene updates:
+    // - Newly appeared entities default to expanded if they are among the latest N.
+    // - Old entries remain in the user's chosen expanded/collapsed state.
+    // - Removed entities are pruned from the map.
+    setExpandedById((prev) => {
+      const next: Record<string, boolean> = {};
+      const seen = new Set<string>();
+      for (let i = 0; i < sortedEntities.length; i++) {
+        const id = String(sortedEntities[i]?.id || "");
+        if (!id) continue;
+        seen.add(id);
+        if (Object.prototype.hasOwnProperty.call(prev, id)) next[id] = !!prev[id];
+        else next[id] = i < defaultExpandedCount;
+      }
+      return next;
+    });
+  }, [defaultExpandedCount, sid, sortedEntities]);
 
   const postSceneError = React.useCallback(
-    async (payload: { entity_id: string; entity_kind: string; error: string; script_preview?: string }) => {
+    async (payload: { entity_id: string; entity_kind: string; error: string; stack_preview?: string; script_preview?: string }) => {
       if (!baseUrl) return;
       if (!sid) return;
       const cid = client && typeof client === "object" ? client : { id: "webui", kind: "webui" };
@@ -283,57 +571,99 @@ export default function SceneView({
           <div className="text-[11px] text-white/40" data-testid="scene-session">
             {sid ? `session=${sid}` : ""}
           </div>
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-            type="button"
-            onClick={() => onClear?.()}
-            disabled={!onClear || entities.length === 0}
-            title="Clear the client-side scene entities (local UI state)."
-          >
-            Clear
-          </button>
         </div>
-      </div>
-      <div className="min-h-0 flex-1 overflow-auto px-3 pb-3">
-        {entities.length === 0 ? (
-          <div className="py-6 text-xs text-white/50">No scene entities.</div>
-        ) : (
-          <div className="space-y-3">
-            {entities.map((e) => {
-              const title = e.title || `${e.kind}:${e.id}`;
-              const entityTid = `scene-entity-${toTestIdPart(e.id)}`;
-              const props = e.props ?? {};
-              return (
-                <div key={e.id} className="rounded-md border border-white/10 bg-black/10 p-3" data-testid={entityTid}>
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-xs font-semibold text-white/80">{title}</div>
-                    <div className="text-[11px] text-white/40">
-                      <code>{e.id}</code>
-                    </div>
-                  </div>
-                  {e.kind === "canvas2d" ? (
-                    <Canvas2DEntityView entity={e} onScriptError={postSceneError} />
-                  ) : e.kind === "artifact" && baseUrl && typeof yolo === "boolean" ? (
-                    <div className="mt-2">
-                      <ArtifactView
-                        baseUrl={baseUrl}
-                        yolo={yolo}
-                        artifact={props?.artifact ?? props}
-                        allowAutoplay={!!allowAutoplay}
-                        sessionId={sessionId}
-                        client={client}
-                        daemonAuthToken={daemonAuthToken}
-                      />
-                    </div>
-                  ) : (
-                    <JsonEntityView entity={e} />
-                  )}
+	      </div>
+	      <div className="min-h-0 flex-1 overflow-auto px-3 pb-3">
+	        {entities.length === 0 ? (
+	          <div className="py-6 text-xs text-white/50">No scene entities.</div>
+	        ) : (
+	          <div className="space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="text-[11px] text-white/40">
+                  Showing latest {defaultExpandedCount} expanded; older collapsed.
                 </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                    type="button"
+                    onClick={() =>
+                      setExpandedById((prev) => {
+                        const next = { ...prev };
+                        for (const e of sortedEntities) next[e.id] = true;
+                        return next;
+                      })
+                    }
+                    disabled={sortedEntities.length === 0}
+                    title="Expand all scene entities."
+                  >
+                    Expand all
+                  </button>
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                    type="button"
+                    onClick={() =>
+                      setExpandedById((prev) => {
+                        const next = { ...prev };
+                        for (const e of sortedEntities) next[e.id] = false;
+                        return next;
+                      })
+                    }
+                    disabled={sortedEntities.length === 0}
+                    title="Collapse all scene entities."
+                  >
+                    Collapse all
+                  </button>
+                </div>
+              </div>
+
+	            {sortedEntities.map((e, idx) => {
+	              const title = e.title || `${e.kind}:${e.id}`;
+	              const entityTid = `scene-entity-${toTestIdPart(e.id)}`;
+	              const props = e.props ?? {};
+                const expanded = Object.prototype.hasOwnProperty.call(expandedById, e.id) ? !!expandedById[e.id] : idx < defaultExpandedCount;
+                const ts = typeof e.updated_ms === "number" ? e.updated_ms : typeof e.created_ms === "number" ? e.created_ms : 0;
+	              return (
+	                <div key={e.id} className="rounded-md border border-white/10 bg-black/10 p-3" data-testid={entityTid}>
+	                  <button
+                      className="flex w-full items-center justify-between gap-2 text-left"
+                      type="button"
+                      onClick={() => setExpandedById((prev) => ({ ...prev, [e.id]: !expanded }))}
+                      title={expanded ? "Collapse" : "Expand"}
+                    >
+	                    <div className="text-xs font-semibold text-white/80">{title}</div>
+	                    <div className="flex items-center gap-2 text-[11px] text-white/40">
+                        {ts > 0 ? <span>{new Date(ts).toLocaleString()}</span> : null}
+	                      <code>{e.id}</code>
+	                    </div>
+	                  </button>
+
+                    {!expanded ? (
+                      <div className="mt-2 text-[11px] text-white/40">Collapsed</div>
+                    ) : e.kind === "canvas2d" ? (
+                      <Canvas2DEntityView entity={e} baseUrl={baseUrl} yolo={yolo} daemonAuthToken={daemonAuthToken} onScriptError={postSceneError} />
+                    ) : e.kind === "dom" ? (
+                      <DomEntityView entity={e} baseUrl={baseUrl} yolo={yolo} daemonAuthToken={daemonAuthToken} onScriptError={postSceneError} />
+                    ) : e.kind === "artifact" && baseUrl && typeof yolo === "boolean" ? (
+                      <div className="mt-2">
+                        <ArtifactView
+                          baseUrl={baseUrl}
+                          yolo={yolo}
+                          artifact={props?.artifact ?? props}
+                          allowAutoplay={!!allowAutoplay}
+                          sessionId={sessionId}
+                          client={client}
+                          daemonAuthToken={daemonAuthToken}
+                        />
+                      </div>
+                    ) : (
+                      <JsonEntityView entity={e} />
+                    )}
+                  </div>
+	              );
+	            })}
+	          </div>
+	        )}
+	      </div>
+	    </div>
   );
 }

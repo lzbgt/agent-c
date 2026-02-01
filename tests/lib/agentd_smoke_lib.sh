@@ -62,6 +62,20 @@ agentd_smoke_start() {
     set -- --db-path "${LOG_DIR}/${name}_${port}.sqlite" "$@"
   fi
 
+  # Hermetic state dir for smoke tests:
+  # - Avoid polluting ~/.agent (default) and avoid coupling to any existing user memory/session files.
+  # - This also keeps memory tools deterministic when tests enable them.
+  local has_state="0"
+  for a in "$@"; do
+    if [[ "${a}" == "--state-dir" ]]; then
+      has_state="1"
+      break
+    fi
+  done
+  if [[ "${has_state}" == "0" ]]; then
+    set -- --state-dir "${LOG_DIR}/${name}_${port}.state" "$@"
+  fi
+
   "${bin}" \
     --host "${bind_host}" \
     --port "${port}" \
@@ -102,6 +116,18 @@ agentd_smoke_start_bind() {
   done
   if [[ "${has_db}" == "0" ]]; then
     set -- --db-path "${LOG_DIR}/${name}_${port}.sqlite" "$@"
+  fi
+
+  # Hermetic state dir for smoke tests unless explicitly passed.
+  local has_state="0"
+  for a in "$@"; do
+    if [[ "${a}" == "--state-dir" ]]; then
+      has_state="1"
+      break
+    fi
+  done
+  if [[ "${has_state}" == "0" ]]; then
+    set -- --state-dir "${LOG_DIR}/${name}_${port}.state" "$@"
   fi
 
   "${bin}" \

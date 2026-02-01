@@ -609,9 +609,50 @@ static agent_status_t tl_compact_in_place(
   return AGENT_OK;
 }
 
+// Forward declarations (used by memory flush helper).
+static agent_status_t tl_build_message_views(
+  const tl_msg_list_t* l,
+  agent_chat_message_view_t** out_views,
+  agent_chat_tool_call_view_t** out_call_views,
+  size_t* out_total_call_views
+);
+
+static agent_status_t tl_cap_output(
+  agent_tool_loop_cap_output_fn fn,
+  void* fn_ctx,
+  const char* tool_out,
+  size_t tool_out_len,
+  size_t max_chars,
+  agent_string_t* out_capped,
+  uint8_t* out_truncated
+);
+
+static agent_status_t tl_append_tool_record(
+  agent_tool_loop_result_t* out,
+  size_t* io_cap,
+  const char* tool_name,
+  const char* tool_call_id,
+  const char* args_json,
+  const agent_string_t* result_string,
+  const agent_string_t* result_for_prompt,
+  uint8_t truncated_for_prompt
+);
+
 static void tl_emit_event(const agent_tool_loop_hooks_t* hooks, const char* type, const char* data_json) {
   if (!hooks || !hooks->on_event || !type) return;
   hooks->on_event(hooks->on_event_ctx, type, data_json ? data_json : "");
+}
+
+static uint8_t tl_tools_has(const agent_tool_registry_t* tools, const char* name) {
+  if (!tools || !name || !name[0]) return 0;
+  const size_t n = agent_tool_registry_count(tools);
+  for (size_t i = 0; i < n; i++) {
+    agent_tool_def_view_t v = {0};
+    if (agent_tool_registry_get(tools, i, &v) != AGENT_OK) continue;
+    if (!v.name || !v.name[0]) continue;
+    if (strcmp(v.name, name) == 0) return 1;
+  }
+  return 0;
 }
 
 static uint8_t tl_events_enabled(const agent_tool_loop_hooks_t* hooks) {
@@ -621,6 +662,317 @@ static uint8_t tl_events_enabled(const agent_tool_loop_hooks_t* hooks) {
 static uint8_t tl_should_cancel(const agent_tool_loop_hooks_t* hooks) {
   if (!hooks || !hooks->should_cancel) return 0;
   return hooks->should_cancel(hooks->should_cancel_ctx) ? 1 : 0;
+}
+
+static agent_status_t tl_build_dropped_excerpt(
+  const tl_msg_list_t* l,
+  size_t drop_begin,
+  size_t drop_end,
+  size_t max_excerpt_chars,
+  size_t max_messages,
+  size_t per_message_chars,
+  agent_string_t* out_excerpt,
+  uint8_t* out_truncated
+) {
+  if (out_truncated) *out_truncated = 0;
+  if (!out_excerpt) return AGENT_ERR_INVALID_ARGUMENT;
+  agent_string_free(out_excerpt);
+  if (!l || drop_end <= drop_begin || drop_end > l->count) {
+    return agent_string_set_copy(out_excerpt, "", 0);
+  }
+
+  const size_t excerpt_cap = (max_excerpt_chars == 0) ? 8000 : max_excerpt_chars;
+  const size_t max_msgs = (max_messages == 0) ? 32 : max_messages;
+  const size_t per_cap = (per_message_chars == 0) ? 800 : per_message_chars;
+
+  tl_buf_t b = {0};
+  size_t included = 0;
+  uint8_t truncated = 0;
+
+  const size_t to_take = (drop_end - drop_begin) > max_msgs ? max_msgs : (drop_end - drop_begin);
+  for (size_t i = 0; i < to_take; i++) {
+    const size_t idx = drop_begin + i;
+    if (idx >= l->count) { truncated = 1; break; }
+    const tl_message_t* m = &l->msgs[idx];
+    const char* r = agent_role_to_string(m->role);
+    const char* content = m->content.data ? m->content.data : "";
+    size_t content_len = m->content.len;
+
+    if (content_len > per_cap) {
+      content_len = per_cap;
+      truncated = 1;
+    }
+
+    (void)tl_buf_append_cstr(&b, "[");
+    (void)tl_buf_append_cstr(&b, r ? r : "unknown");
+    (void)tl_buf_append_cstr(&b, "]\n");
+    (void)tl_buf_append_bytes(&b, content, content_len);
+    (void)tl_buf_append_cstr(&b, "\n\n");
+    included++;
+
+    if (b.len >= excerpt_cap) {
+      truncated = 1;
+      break;
+    }
+  }
+
+  if (b.len > excerpt_cap) {
+    b.len = excerpt_cap;
+    truncated = 1;
+  }
+  if (included < (drop_end - drop_begin)) {
+    truncated = 1;
+  }
+
+  agent_status_t st = agent_string_set_copy(out_excerpt, b.data ? b.data : "", b.len);
+  tl_buf_free(&b);
+  if (out_truncated) *out_truncated = truncated;
+  return st;
+}
+
+static agent_status_t tl_run_memory_flush_best_effort(
+  const agent_tool_provider_t* provider,
+  const agent_tool_registry_t* tools,
+  const agent_tool_executor_t* executor,
+  const agent_tool_loop_options_t* options,
+  const agent_tool_loop_hooks_t* hooks,
+  const tl_msg_list_t* messages,
+  size_t drop_begin,
+  size_t drop_end,
+  uint64_t epoch,
+  agent_tool_loop_result_t* io_res,
+  size_t* io_tool_record_cap
+) {
+  if (!provider || !provider->generate || !tools || !executor || !executor->execute || !options || !io_res || !io_tool_record_cap) {
+    return AGENT_ERR_INVALID_ARGUMENT;
+  }
+  if (!messages || drop_end <= drop_begin || drop_end > messages->count) {
+    return AGENT_OK;
+  }
+
+  // Only attempt a flush when memory tools are available.
+  if (!tl_tools_has(tools, "memory_write") && !tl_tools_has(tools, "memory_put")) {
+    return AGENT_OK;
+  }
+
+  // Silent hooks: preserve capping + cancellation, but do not emit tool_call/tool_result spam.
+  agent_tool_loop_hooks_t silent = {0};
+  if (hooks) {
+    silent.should_cancel = hooks->should_cancel;
+    silent.should_cancel_ctx = hooks->should_cancel_ctx;
+    silent.cap_tool_output_for_prompt = hooks->cap_tool_output_for_prompt;
+    silent.cap_tool_output_for_prompt_ctx = hooks->cap_tool_output_for_prompt_ctx;
+    silent.cap_tool_output_for_event = hooks->cap_tool_output_for_event;
+    silent.cap_tool_output_for_event_ctx = hooks->cap_tool_output_for_event_ctx;
+    silent.summarize_tool_output = hooks->summarize_tool_output;
+    silent.summarize_tool_output_ctx = hooks->summarize_tool_output_ctx;
+  }
+
+  agent_string_t excerpt = {0};
+  uint8_t excerpt_trunc = 0;
+  agent_status_t ste = tl_build_dropped_excerpt(
+    messages,
+    drop_begin,
+    drop_end,
+    options->memory_flush_max_excerpt_chars,
+    options->memory_flush_max_messages,
+    options->memory_flush_per_message_chars,
+    &excerpt,
+    &excerpt_trunc
+  );
+  if (ste != AGENT_OK) {
+    agent_string_free(&excerpt);
+    return ste;
+  }
+
+  if (tl_events_enabled(hooks)) {
+    tl_buf_t d = {0};
+    uint8_t first = 1;
+    (void)tl_buf_append_char(&d, '{');
+    (void)tl_json_append_string_field(&d, "phase", "start", strlen("start"), &first);
+    (void)tl_json_append_u64_field(&d, "epoch", (unsigned long long)epoch, &first);
+    (void)tl_json_append_u64_field(&d, "dropped_messages", (unsigned long long)(drop_end - drop_begin), &first);
+    (void)tl_json_append_u64_field(&d, "excerpt_truncated", (unsigned long long)excerpt_trunc, &first);
+    (void)tl_buf_append_char(&d, '}');
+    tl_emit_event(hooks, "memory_flush", d.data ? d.data : "{}");
+    tl_buf_free(&d);
+  }
+
+  tl_msg_list_t flush = {0};
+  agent_tool_provider_response_t presp = {0};
+  agent_status_t status = AGENT_OK;
+  agent_status_t flush_status = AGENT_OK;
+  size_t tool_calls_requested = 0;
+  size_t tool_calls_executed = 0;
+  uint8_t assistant_appended = 0;
+
+  const char* sys =
+    "INTERNAL MEMORY FLUSH (silent)\n"
+    "- Session history will be compacted and older messages dropped.\n"
+    "- Persist durable facts/preferences NOW using memory tools:\n"
+    "  - memory_write: append durable notes (daily log or session memory)\n"
+    "  - memory_get/memory_search: inspect existing memory\n"
+    "  - memory_put: consolidate MEMORY.md so it contains only current/active facts; deprecate outdated facts.\n"
+    "- Goal: avoid legacy memory (contradictory/stale requirements). If an earlier requirement is no longer true,\n"
+    "  update core memory to reflect the current truth and mark the old requirement as deprecated.\n"
+    "- Reply with NO_REPLY when done.\n";
+
+  // Keep the user prompt short: provide only the excerpt (bounded).
+  const char* user_prefix =
+    "The following excerpt is from the portion of the transcript that is about to be dropped.\n"
+    "Extract durable facts/preferences/decisions (especially requirements changes) and persist them.\n"
+    "If something previously required is now not required, consolidate core memory accordingly.\n"
+    "\n"
+    "=== DROPPED EXCERPT START ===\n";
+  const char* user_suffix = "=== DROPPED EXCERPT END ===\n";
+
+  // Build user content.
+  tl_buf_t ub = {0};
+  (void)tl_buf_append_cstr(&ub, user_prefix);
+  (void)tl_buf_append_bytes(&ub, excerpt.data ? excerpt.data : "", excerpt.len);
+  (void)tl_buf_append_cstr(&ub, "\n");
+  (void)tl_buf_append_cstr(&ub, user_suffix);
+  (void)tl_buf_append_cstr(&ub, "\nWrite memories now. Then reply with NO_REPLY.\n");
+
+  status = tl_list_push_message_copy(&flush, AGENT_ROLE_SYSTEM, sys, NULL, NULL);
+  if (status != AGENT_OK) goto flush_cleanup;
+  status = tl_list_push_message_copy(&flush, AGENT_ROLE_USER, ub.data ? ub.data : "", NULL, NULL);
+  if (status != AGENT_OK) goto flush_cleanup;
+
+  // Provider call 0: request memory tool calls.
+  {
+    agent_chat_message_view_t* views = NULL;
+    agent_chat_tool_call_view_t* call_views = NULL;
+    size_t total_call_views = 0;
+    status = tl_build_message_views(&flush, &views, &call_views, &total_call_views);
+    if (status != AGENT_OK) goto flush_cleanup;
+
+    agent_tool_provider_request_t preq = {0};
+    preq.model = options->model;
+    preq.messages = views;
+    preq.message_count = flush.count;
+    preq.tools = tools;
+    preq.force_tool_or_null = NULL;
+    preq.step = 0;
+    preq.epoch = epoch;
+
+    agent_tool_provider_response_free(&presp);
+    status = provider->generate(provider->ctx, &preq, &presp);
+    if (views) agent_free(views);
+    if (call_views) agent_free(call_views);
+    (void)total_call_views;
+    if (status != AGENT_OK) goto flush_cleanup;
+
+    tool_calls_requested = presp.tool_call_count;
+
+    // Append assistant message (including tool call metadata). Best-effort: tool execution is the main goal.
+    {
+      const agent_status_t st_append = tl_list_push_assistant_with_tool_calls(&flush, &presp);
+      if (st_append == AGENT_OK) {
+        assistant_appended = 1;
+      } else {
+        // Preserve the failure for telemetry, but continue so tool calls can still be executed.
+        flush_status = st_append;
+      }
+    }
+
+    // Execute tool calls (bounded).
+    const size_t max_flush_tool_calls = 12;
+    const size_t n_calls = presp.tool_call_count > max_flush_tool_calls ? max_flush_tool_calls : presp.tool_call_count;
+    for (size_t i = 0; i < n_calls; i++) {
+      if (tl_should_cancel(&silent)) { status = AGENT_ERR_CANCELLED; goto flush_cleanup; }
+      const agent_tool_call_t* call = &presp.tool_calls[i];
+      const char* tool_name = call->name.data ? call->name.data : "";
+      char tool_call_id_buf[64];
+      const char* tool_call_id = call->id.data ? call->id.data : "";
+      if (!tool_call_id[0]) {
+        (void)snprintf(tool_call_id_buf, sizeof(tool_call_id_buf), "flush_%llu_%llu",
+                       (unsigned long long)epoch, (unsigned long long)i);
+        tool_call_id = tool_call_id_buf;
+      }
+      const char* args_json = call->arguments_json.data ? call->arguments_json.data : "{}";
+
+      agent_string_t tool_out = {0};
+      agent_status_t st_tool = executor->execute(executor->ctx, tool_name, args_json, &tool_out);
+      if (st_tool != AGENT_OK) {
+        agent_string_free(&tool_out);
+        flush_status = st_tool;
+        status = st_tool;
+        goto flush_cleanup;
+      }
+      tool_calls_executed += 1;
+
+      agent_string_t tool_out_for_prompt = {0};
+      uint8_t trunc_prompt = 0;
+      (void)tl_cap_output(silent.cap_tool_output_for_prompt, silent.cap_tool_output_for_prompt_ctx,
+                          tool_out.data ? tool_out.data : "", tool_out.len,
+                          options->max_tool_result_chars,
+                          &tool_out_for_prompt, &trunc_prompt);
+
+      if (!options->disable_tool_records) {
+        (void)tl_append_tool_record(io_res, io_tool_record_cap, tool_name, tool_call_id, args_json, &tool_out, &tool_out_for_prompt, trunc_prompt);
+      }
+
+      status = tl_list_push_message_copy(&flush, AGENT_ROLE_TOOL,
+                                         tool_out_for_prompt.data ? tool_out_for_prompt.data : "",
+                                         NULL,
+                                         tool_call_id);
+      agent_string_free(&tool_out);
+      agent_string_free(&tool_out_for_prompt);
+      if (status != AGENT_OK) {
+        flush_status = status;
+        goto flush_cleanup;
+      }
+    }
+  }
+
+  // Provider call 1: allow model to conclude (best-effort, ignore failures).
+  {
+    agent_chat_message_view_t* views = NULL;
+    agent_chat_tool_call_view_t* call_views = NULL;
+    size_t total_call_views = 0;
+    agent_status_t stv = tl_build_message_views(&flush, &views, &call_views, &total_call_views);
+    if (stv == AGENT_OK) {
+      agent_tool_provider_request_t preq = {0};
+      preq.model = options->model;
+      preq.messages = views;
+      preq.message_count = flush.count;
+      preq.tools = tools;
+      preq.force_tool_or_null = NULL;
+      preq.step = 1;
+      preq.epoch = epoch;
+      agent_tool_provider_response_t done = {0};
+      (void)provider->generate(provider->ctx, &preq, &done);
+      agent_tool_provider_response_free(&done);
+    }
+    if (views) agent_free(views);
+    if (call_views) agent_free(call_views);
+    (void)total_call_views;
+  }
+
+  status = AGENT_OK;
+
+flush_cleanup:
+  if (tl_events_enabled(hooks)) {
+    tl_buf_t d = {0};
+    uint8_t first = 1;
+    (void)tl_buf_append_char(&d, '{');
+    (void)tl_json_append_string_field(&d, "phase", "end", strlen("end"), &first);
+    (void)tl_json_append_u64_field(&d, "epoch", (unsigned long long)epoch, &first);
+    (void)tl_json_append_u64_field(&d, "ok", (unsigned long long)(flush_status == AGENT_OK && status == AGENT_OK), &first);
+    (void)tl_json_append_u64_field(&d, "assistant_appended", (unsigned long long)assistant_appended, &first);
+    (void)tl_json_append_u64_field(&d, "tool_calls_requested", (unsigned long long)tool_calls_requested, &first);
+    (void)tl_json_append_u64_field(&d, "tool_calls_executed", (unsigned long long)tool_calls_executed, &first);
+    (void)tl_buf_append_char(&d, '}');
+    tl_emit_event(hooks, "memory_flush", d.data ? d.data : "{}");
+    tl_buf_free(&d);
+  }
+  agent_tool_provider_response_free(&presp);
+  for (size_t k = 0; k < flush.count; k++) tl_message_destroy(&flush.msgs[k]);
+  if (flush.msgs) agent_free(flush.msgs);
+  tl_buf_free(&ub);
+  agent_string_free(&excerpt);
+  return AGENT_OK; // best-effort: never fail the main run due to flush errors
 }
 
 static agent_status_t tl_cap_output_default(
@@ -843,6 +1195,7 @@ agent_status_t agent_tool_loop_run(
   }
 
   tl_msg_list_t messages = {0};
+  uint64_t last_memory_flush_epoch = (uint64_t)(~0ull);
 
   // Seed transcript from the session.
   const size_t n_seed = agent_session_message_count(seed_session);
@@ -860,6 +1213,28 @@ agent_status_t agent_tool_loop_run(
   // Initial compaction with budget reserved for the new user prompt.
   const size_t prompt_len = strlen(user_prompt);
   const size_t budget_for_history = max_chars > prompt_len ? (max_chars - prompt_len) : 1;
+
+  if (options->memory_flush_enabled && tl_estimated_chars_list(&messages) > budget_for_history && epoch != last_memory_flush_epoch) {
+    // Compute drop range (same logic as tl_compact_in_place) and flush before dropping.
+    const size_t keep_last2 = options->keep_last_messages == 0 ? 16 : options->keep_last_messages;
+    const size_t pinned2 = tl_pinned_system_prefix_count(&messages);
+    const size_t n2 = messages.count;
+    size_t suffix_start2 = (n2 > keep_last2) ? (n2 - keep_last2) : pinned2;
+    if (suffix_start2 < pinned2) suffix_start2 = pinned2;
+    if (suffix_start2 < n2 && messages.msgs[suffix_start2].role == AGENT_ROLE_TOOL) {
+      size_t s2 = suffix_start2;
+      while (s2 > pinned2 && messages.msgs[s2 - 1].role == AGENT_ROLE_TOOL) s2--;
+      if (s2 > pinned2 && messages.msgs[s2 - 1].role == AGENT_ROLE_ASSISTANT) suffix_start2 = s2 - 1;
+      else suffix_start2 = s2;
+    }
+    const size_t drop_begin2 = pinned2;
+    const size_t drop_end2 = (suffix_start2 < n2) ? suffix_start2 : n2;
+    if (drop_end2 > drop_begin2) {
+      (void)tl_run_memory_flush_best_effort(provider, tools, executor, options, hooks, &messages, drop_begin2, drop_end2, epoch, &res, &tool_record_cap);
+      last_memory_flush_epoch = epoch;
+    }
+  }
+
   tl_compaction_report_t crep = {0};
   agent_status_t stc = tl_compact_in_place(&messages, budget_for_history, options, &crep);
   if (stc != AGENT_OK) {
@@ -927,6 +1302,25 @@ agent_status_t agent_tool_loop_run(
     }
 
     // Regular compaction to max_chars.
+    if (options->memory_flush_enabled && tl_estimated_chars_list(&messages) > max_chars && epoch != last_memory_flush_epoch) {
+      const size_t keep_last2 = options->keep_last_messages == 0 ? 16 : options->keep_last_messages;
+      const size_t pinned2 = tl_pinned_system_prefix_count(&messages);
+      const size_t n2 = messages.count;
+      size_t suffix_start2 = (n2 > keep_last2) ? (n2 - keep_last2) : pinned2;
+      if (suffix_start2 < pinned2) suffix_start2 = pinned2;
+      if (suffix_start2 < n2 && messages.msgs[suffix_start2].role == AGENT_ROLE_TOOL) {
+        size_t s2 = suffix_start2;
+        while (s2 > pinned2 && messages.msgs[s2 - 1].role == AGENT_ROLE_TOOL) s2--;
+        if (s2 > pinned2 && messages.msgs[s2 - 1].role == AGENT_ROLE_ASSISTANT) suffix_start2 = s2 - 1;
+        else suffix_start2 = s2;
+      }
+      const size_t drop_begin2 = pinned2;
+      const size_t drop_end2 = (suffix_start2 < n2) ? suffix_start2 : n2;
+      if (drop_end2 > drop_begin2) {
+        (void)tl_run_memory_flush_best_effort(provider, tools, executor, options, hooks, &messages, drop_begin2, drop_end2, epoch, &res, &tool_record_cap);
+        last_memory_flush_epoch = epoch;
+      }
+    }
     tl_compaction_report_t rep = {0};
     agent_status_t st_comp = tl_compact_in_place(&messages, max_chars, options, &rep);
     if (st_comp != AGENT_OK) {
@@ -1017,6 +1411,26 @@ agent_status_t agent_tool_loop_run(
         const size_t cur = tighter.max_chars == 0 ? 20000 : tighter.max_chars;
         tighter.max_chars = (cur * 3) / 4;
         if (tighter.max_chars < 2000) tighter.max_chars = 2000;
+
+        if (options->memory_flush_enabled && tl_estimated_chars_list(&messages) > tighter.max_chars && epoch != last_memory_flush_epoch) {
+          const size_t keep_last2 = tighter.keep_last_messages == 0 ? 16 : tighter.keep_last_messages;
+          const size_t pinned2 = tl_pinned_system_prefix_count(&messages);
+          const size_t n2 = messages.count;
+          size_t suffix_start2 = (n2 > keep_last2) ? (n2 - keep_last2) : pinned2;
+          if (suffix_start2 < pinned2) suffix_start2 = pinned2;
+          if (suffix_start2 < n2 && messages.msgs[suffix_start2].role == AGENT_ROLE_TOOL) {
+            size_t s2 = suffix_start2;
+            while (s2 > pinned2 && messages.msgs[s2 - 1].role == AGENT_ROLE_TOOL) s2--;
+            if (s2 > pinned2 && messages.msgs[s2 - 1].role == AGENT_ROLE_ASSISTANT) suffix_start2 = s2 - 1;
+            else suffix_start2 = s2;
+          }
+          const size_t drop_begin2 = pinned2;
+          const size_t drop_end2 = (suffix_start2 < n2) ? suffix_start2 : n2;
+          if (drop_end2 > drop_begin2) {
+            (void)tl_run_memory_flush_best_effort(provider, tools, executor, &tighter, hooks, &messages, drop_begin2, drop_end2, epoch, &res, &tool_record_cap);
+            last_memory_flush_epoch = epoch;
+          }
+        }
 
         tl_compaction_report_t r2 = {0};
         agent_status_t st2 = tl_compact_in_place(&messages, tighter.max_chars, &tighter, &r2);
