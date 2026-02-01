@@ -6,6 +6,7 @@
 #include "openai_client.h"
 
 #include <string>
+#include <unordered_map>
 
 // OpenAI-compatible tool provider adapter (host-side, JSONCPP-based).
 //
@@ -45,6 +46,10 @@ struct OpenAIToolProviderCtx {
   long last_http_status = 0;
   std::string last_response_body;
   std::string last_request_json;
+
+  // Best-effort carry-forward for providers that require reasoning content to be present
+  // during multi-step tool calling (keyed by tool call ids).
+  std::unordered_map<std::string, std::string> reasoning_by_tool_call_ids;
 };
 
 // Creates an `agent_tool_provider_t` backed by the given ctx.

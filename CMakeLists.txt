@@ -55,6 +55,7 @@ if(AGENT_BUILD_HOST)
 
   # Host-side adapter library shared by CLI and daemon.
   add_library(agent_host STATIC
+    cli/src/base64.cpp
     cli/src/default_system_prompt.cpp
     cli/src/file_persistor.cpp
     cli/src/openai_client.cpp

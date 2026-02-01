@@ -6,12 +6,16 @@
 #include "string_util.h"
 
 #include "session_id_util.h"
+#include "session_paths.h"
 #include "scene_store.h"
+
+#include "base64.h"
 
 #include <json/json.h>
 
 #include <chrono>
 #include <filesystem>
+#include <fstream>
 #include <random>
 #include <sstream>
 #include <unordered_map>
@@ -19,6 +23,52 @@
 #include <vector>
 
 namespace agentd {
+
+static int64_t now_unix_ms() {
+  using namespace std::chrono;
+  return (int64_t)duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+}
+
+static bool path_is_within_root(const std::filesystem::path& root, const std::filesystem::path& p) {
+  std::error_code ec;
+  const std::filesystem::path abs_root = std::filesystem::weakly_canonical(root, ec);
+  if (ec) return false;
+  ec.clear();
+  const std::filesystem::path abs_p = std::filesystem::weakly_canonical(p, ec);
+  if (ec) return false;
+
+  auto it_r = abs_root.begin();
+  auto it_p = abs_p.begin();
+  for (; it_r != abs_root.end(); ++it_r, ++it_p) {
+    if (it_p == abs_p.end()) return false;
+    if (*it_r != *it_p) return false;
+  }
+  return true;
+}
+
+static bool is_safe_filename_ascii(const std::string& s) {
+  if (s.empty() || s.size() > 160) return false;
+  for (char c : s) {
+    const bool ok =
+      (c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9') ||
+      c == '-' || c == '_' || c == '.' || c == ' ';
+    if (!ok) return false;
+  }
+  if (s.find('/') != std::string::npos || s.find('\\') != std::string::npos) return false;
+  if (s.find("..") != std::string::npos) return false;
+  return true;
+}
+
+static std::string kind_from_mime(const std::string& mime) {
+  const std::string m = lower_copy(trim_copy(mime));
+  if (m.rfind("image/", 0) == 0) return "image";
+  if (m.rfind("audio/", 0) == 0) return "audio";
+  if (m.rfind("video/", 0) == 0) return "video";
+  if (m.rfind("text/", 0) == 0) return "text";
+  return "file";
+}
 
 static std::string make_uuidish_session_id() {
   // Best-effort UUIDv4-ish without external deps. Good enough to avoid collisions in practice.
@@ -652,6 +702,139 @@ void handle_session_clients_endpoint(
   }
   out["count"] = (Json::UInt64)arr.size();
   out["clients"] = arr;
+  resp->body = json_stringify(out);
+}
+
+void handle_session_upload_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  if (!db || !db->is_open()) {
+    resp->status = 500;
+    resp->body = R"({"ok":false,"error":"db not available"})";
+    return;
+  }
+  if (cfg.sessions_root_dir.empty()) {
+    resp->status = 500;
+    resp->body = R"({"ok":false,"error":"sessions_root_dir not configured"})";
+    return;
+  }
+
+  Json::Value body(Json::objectValue);
+  std::string jerr;
+  if (!json_parse_object(req.body, &body, &jerr)) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"invalid JSON body"})";
+    return;
+  }
+
+  const std::string session_id = body.isMember("session_id") && body["session_id"].isString() ? body["session_id"].asString() : "";
+  if (!session_id_is_safe(session_id)) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    return;
+  }
+
+  const Json::Value& files = body["files"];
+  if (!files.isArray() || files.empty()) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"missing files array"})";
+    return;
+  }
+
+  const std::filesystem::path session_root = session_root_path(cfg.sessions_root_dir, session_id);
+  if (session_root.empty()) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    return;
+  }
+  std::error_code ec;
+  (void)std::filesystem::create_directories(session_root / "uploads", ec);
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = true;
+  out["session_id"] = session_id;
+  Json::Value out_files(Json::arrayValue);
+
+  const int64_t ts_ms = now_unix_ms();
+  for (Json::ArrayIndex i = 0; i < files.size(); i++) {
+    const Json::Value& f = files[i];
+    if (!f.isObject()) continue;
+    const std::string name = f.isMember("name") && f["name"].isString() ? f["name"].asString() : "";
+    const std::string mime = f.isMember("mime") && f["mime"].isString() ? f["mime"].asString() : "";
+    const std::string data_b64 = f.isMember("data_base64") && f["data_base64"].isString() ? f["data_base64"].asString() : "";
+    if (!is_safe_filename_ascii(name) || data_b64.empty()) {
+      continue;
+    }
+
+    std::string bytes;
+    std::string berr;
+    if (!base64_decode(data_b64, &bytes, &berr)) {
+      continue;
+    }
+
+    // Keep server memory bounded: reject huge uploads in a single request.
+    const size_t kMaxBytes = 32u * 1024u * 1024u;
+    if (bytes.size() > kMaxBytes) {
+      continue;
+    }
+
+    const std::string filename = std::to_string(ts_ms) + "_" + std::to_string((unsigned long long)i) + "_" + name;
+    const std::filesystem::path dst = (session_root / "uploads" / filename).lexically_normal();
+    if (!path_is_within_root(session_root, dst)) {
+      continue;
+    }
+
+    std::ofstream os(dst, std::ios::binary);
+    if (!os.is_open()) continue;
+    os.write(bytes.data(), (std::streamsize)bytes.size());
+    if (!os) continue;
+
+    const std::string rel = (std::filesystem::path("uploads") / filename).generic_string();
+    const std::string kind = kind_from_mime(mime);
+
+    // Best-effort mirror into artifacts so the UI can preview via /api/v1/session/artifacts.
+    {
+      Json::Value artifact(Json::objectValue);
+      artifact["path"] = rel;
+      if (!kind.empty()) artifact["kind"] = kind;
+      if (!mime.empty()) artifact["mime"] = mime;
+      if (!name.empty()) artifact["title"] = name;
+
+      Json::StreamWriterBuilder wb;
+      wb["indentation"] = "";
+      AgentDb::ArtifactRow row;
+      row.run_id = 0;
+      row.ts_unix_ms = ts_ms;
+      row.session_id = session_id;
+      row.tool_call_id.clear();
+      row.path = rel;
+      row.kind = kind;
+      row.mime = mime;
+      row.title = name;
+      row.autoplay = false;
+      row.repeat = 1;
+      row.artifact_json = Json::writeString(wb, artifact);
+      (void)db->insert_artifact(row, nullptr);
+    }
+
+    Json::Value of(Json::objectValue);
+    of["name"] = name;
+    if (!mime.empty()) of["mime"] = mime;
+    if (!kind.empty()) of["kind"] = kind;
+    of["path"] = rel;
+    of["bytes"] = (Json::UInt64)bytes.size();
+    out_files.append(of);
+  }
+
+  out["files"] = out_files;
   resp->body = json_stringify(out);
 }
 

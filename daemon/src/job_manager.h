@@ -22,6 +22,37 @@ struct JobState {
   int64_t updated_unix_ms = 0;
 };
 
+// Lightweight job snapshot returned to APIs/streamers.
+//
+// Important: job events can grow large (thousands). Avoid copying the entire `JobState` in hot paths:
+// - the SSE stream loops frequently
+// - the polling endpoint can be called frequently by UIs
+//
+// This snapshot includes:
+// - metadata (status/error/result timestamps)
+// - event cursor base/end
+// - optionally a bounded slice of events starting at a cursor
+struct JobSnapshot {
+  std::string id;
+  std::string status; // queued|running|done|error
+  bool cancel_requested = false;
+  Json::Value result; // only meaningful for done/error
+  std::string error;
+
+  int64_t created_unix_ms = 0;
+  int64_t updated_unix_ms = 0;
+
+  uint64_t events_cursor_base = 0;
+  uint64_t events_cursor_end = 0;
+
+  // When include_events was requested:
+  bool events_included = false;
+  bool events_reset = false;        // true when requested cursor < cursor_base
+  uint64_t events_cursor_start = 0; // effective cursor used for the slice (after clamping)
+  uint64_t events_cursor_next = 0;  // cursor after the returned slice
+  Json::Value events = Json::Value(Json::arrayValue);
+};
+
 enum JobProgressPhase {
   kPhaseIdle = 0,
   kPhaseWaitingLlm = 1,
@@ -47,6 +78,10 @@ bool job_create(const std::string& id);
 bool job_delete(const std::string& id);
 bool job_request_cancel(const std::string& id);
 bool job_is_cancel_requested(const std::string& id);
+
+// Gets a lightweight snapshot of a job. If include_events is true, returns at most max_events events starting
+// from cursor (using absolute cursors based on events_offset).
+bool job_get_snapshot(const std::string& id, uint64_t cursor, size_t max_events, bool include_events, JobSnapshot* out);
 
 // Best-effort GC for long-running daemons.
 // - Removes jobs with status done/error older than ttl_ms (based on updated_unix_ms).

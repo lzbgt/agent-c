@@ -23,6 +23,7 @@ import {
   apiNewSession,
   apiPostSessionSceneApply,
   apiPostSessionUiEvent,
+  apiPostSessionUpload,
   apiRun,
   apiRunAsync,
   daemonHeaders,
@@ -67,6 +68,8 @@ export default function App() {
 
   const [daemonAuthToken, setDaemonAuthToken] = useLocalStorageState("agentui.daemonAuthToken", "");
   const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "");
+  const [attachmentsBySessionJson, setAttachmentsBySessionJson] = useLocalStorageState("agentui.attachmentsBySession", "{}");
+  const [uploadBusy, setUploadBusy] = React.useState<boolean>(false);
 
   const [clientId] = useLocalStorageState(
     "agentui.clientId",
@@ -156,9 +159,31 @@ export default function App() {
   const [activeJobId, setActiveJobId] = React.useState<string | null>(null);
   const [jobStatus, setJobStatus] = React.useState<string | null>(null);
   const [jobError, setJobError] = React.useState<string | null>(null);
+  // Non-fatal job transport/status messages (e.g. SSE dropped, polling hiccups).
+  // Keep separate from `jobError` so the UI does not claim the job failed when only the connection failed.
+  const [jobNotice, setJobNotice] = React.useState<string | null>(null);
   const [jobUpdatedMs, setJobUpdatedMs] = React.useState<number | null>(null);
   const [liveEvents, setLiveEvents] = React.useState<AgentEvent[]>([]);
   const cursorRef = React.useRef<number>(0);
+
+  const lastHeartbeat = React.useMemo(() => {
+    for (let i = liveEvents.length - 1; i >= 0; i--) {
+      const ev: any = liveEvents[i];
+      if (ev && typeof ev === "object" && ev.type === "heartbeat") {
+        return ev.data ?? null;
+      }
+    }
+    return null;
+  }, [liveEvents]);
+
+  const jobProgressLabel = React.useMemo(() => {
+    const hb: any = lastHeartbeat && typeof lastHeartbeat === "object" ? lastHeartbeat : null;
+    const phase = hb && typeof hb.phase === "number" ? hb.phase : null;
+    if (phase === 1) return "waiting_llm";
+    if (phase === 2) return "running_tool";
+    if (phase === 0) return "idle";
+    return "";
+  }, [lastHeartbeat]);
 
   // Persist job_id + cursor so a browser refresh can reliably resume a running session.
   // Stored per session_id (since multiple sessions can exist and the UI allows switching).
@@ -182,6 +207,37 @@ export default function App() {
     }
   };
 
+  type Attachment = { path: string; name?: string; mime?: string; kind?: string; bytes?: number };
+
+  const guessMimeFromName = React.useCallback((name: string): string => {
+    const lower = String(name || "").toLowerCase();
+    if (lower.endsWith(".png")) return "image/png";
+    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+    if (lower.endsWith(".gif")) return "image/gif";
+    if (lower.endsWith(".webp")) return "image/webp";
+    if (lower.endsWith(".svg")) return "image/svg+xml";
+    if (lower.endsWith(".mp3")) return "audio/mpeg";
+    if (lower.endsWith(".wav")) return "audio/wav";
+    if (lower.endsWith(".mp4")) return "video/mp4";
+    if (lower.endsWith(".webm")) return "video/webm";
+    if (lower.endsWith(".mov")) return "video/quicktime";
+    if (lower.endsWith(".txt") || lower.endsWith(".md")) return "text/plain";
+    return "";
+  }, []);
+
+  const fileToBase64 = React.useCallback(async (file: File): Promise<string> => {
+    return await new Promise((resolve, reject) => {
+      const fr = new FileReader();
+      fr.onload = () => {
+        const res = String(fr.result ?? "");
+        const idx = res.indexOf(",");
+        resolve(idx >= 0 ? res.slice(idx + 1) : res);
+      };
+      fr.onerror = () => reject(fr.error || new Error("FileReader failed"));
+      fr.readAsDataURL(file);
+    });
+  }, []);
+
   // Session selection is scoped by daemon base URL.
   // This avoids "lost session" issues when switching between multiple local agentd instances (different ports).
   const [sessionByBaseJson, setSessionByBaseJson] = useLocalStorageState("agentui.sessionByBase", "{}");
@@ -190,6 +246,51 @@ export default function App() {
     const sid = typeof m?.[effectiveBase] === "string" ? String(m[effectiveBase]) : "";
     return sid.trim().length > 0 ? sid.trim() : "default";
   }, [effectiveBase, sessionByBaseJson]);
+
+  const attachmentsKey = React.useMemo(() => `${effectiveBase}::${String(sessionId || "").trim() || "default"}`, [effectiveBase, sessionId]);
+  const attachments = React.useMemo(() => {
+    const m = (loadJson(attachmentsBySessionJson) as Record<string, any>) || {};
+    const arr = m[attachmentsKey];
+    if (!Array.isArray(arr)) return [] as Attachment[];
+    return arr
+      .map((x) => {
+        const o = x && typeof x === "object" ? x : null;
+        const path = o && typeof o.path === "string" ? o.path : "";
+        if (!path) return null;
+        return {
+          path,
+          name: typeof o.name === "string" ? o.name : undefined,
+          mime: typeof o.mime === "string" ? o.mime : undefined,
+          kind: typeof o.kind === "string" ? o.kind : undefined,
+          bytes: typeof o.bytes === "number" && Number.isFinite(o.bytes) ? o.bytes : undefined,
+        } as Attachment;
+      })
+      .filter(Boolean) as Attachment[];
+  }, [attachmentsBySessionJson, attachmentsKey]);
+
+  const setAttachments = React.useCallback(
+    (nextArr: Attachment[]) => {
+      setAttachmentsBySessionJson((prevRaw) => {
+        const prev = (loadJson(String(prevRaw || "")) as Record<string, any>) || {};
+        const next = { ...prev, [attachmentsKey]: nextArr };
+        try {
+          return JSON.stringify(next);
+        } catch {
+          return JSON.stringify(prev);
+        }
+      });
+    },
+    [attachmentsKey, setAttachmentsBySessionJson],
+  );
+
+  const removeAttachment = React.useCallback(
+    (path: string) => {
+      const p = String(path || "").trim();
+      if (!p) return;
+      setAttachments(attachments.filter((a) => a.path !== p));
+    },
+    [attachments, setAttachments],
+  );
 
   const historyUiKey = React.useMemo(() => {
     const sid = String(sessionId || "").trim();
@@ -939,6 +1040,15 @@ export default function App() {
         prompt,
         session_id: sessionId || undefined,
         no_session: false,
+        input_files:
+          attachments.length > 0
+            ? attachments.map((a) => ({
+                path: a.path,
+                name: a.name,
+                mime: a.mime,
+                kind: a.kind,
+              }))
+            : undefined,
         client,
         tools,
         host_policy: tools === "host" ? hostPolicy : undefined,
@@ -981,6 +1091,7 @@ export default function App() {
         setResult(v.out);
         setLiveEvents([]);
         setJobError(null);
+        setJobNotice(null);
         setJobStatus(null);
         setJobUpdatedMs(null);
         void audit.refetch();
@@ -989,12 +1100,14 @@ export default function App() {
       }
       if (!v.job.ok || !v.job.job_id) {
         setJobError(v.job.error ?? "failed to start async job");
+        setJobNotice(null);
         return;
       }
       // Only reset/replace history after the job has been successfully created.
       lastRunPromptRef.current = v.req.prompt;
       setLastRunPrompt(v.req.prompt);
       setJobError(null);
+      setJobNotice(null);
       setJobStatus(null);
       setJobUpdatedMs(null);
       setLiveEvents([]);
@@ -1013,6 +1126,7 @@ export default function App() {
     onError: (e) => {
       // Keep the last conversation visible when a run cannot be started.
       setJobError(`run failed: ${String(e)}`);
+      setJobNotice(null);
     },
   });
 
@@ -1318,14 +1432,15 @@ export default function App() {
           } catch (e) {
             // Transient fetch failures should not invalidate the visible conversation.
             // Keep the current liveEvents and keep the job active; retry with backoff.
-            setJobError(`job fetch failed: ${String(e)}`);
+            setJobNotice(`job fetch failed (retrying): ${String(e)}`);
             await sleep(1000);
             continue;
           }
 
           if (cancelled) return;
           setJobStatus(job.status ?? null);
-          setJobError(job.error ?? null);
+          setJobError(job.status === "error" ? (job.error ?? null) : null);
+          setJobNotice(null);
           setJobUpdatedMs(typeof job.updated_unix_ms === "number" ? job.updated_unix_ms : null);
 
           const ev = Array.isArray(job.events) ? job.events : [];
@@ -1346,6 +1461,7 @@ export default function App() {
             } else {
               setJobError("job completed but missing result");
             }
+            setJobNotice(null);
             setActiveJobId(null);
             const sid = String(sessionId || "").trim();
             if (sid) {
@@ -1365,7 +1481,7 @@ export default function App() {
       })().catch((e) => {
         if (cancelled) return;
         // Keep job state visible; do not invalidate the conversation on unexpected polling loop errors.
-        setJobError(`polling loop failed: ${String(e)}`);
+        setJobNotice(`polling loop failed (retrying): ${String(e)}`);
       });
     };
 
@@ -1404,9 +1520,11 @@ export default function App() {
               setResult(job.result);
               setLastCompletedPrompt(lastRunPromptRef.current);
               setJobStatus(job.status);
-              setJobError(job.error ?? null);
+              setJobError(job.status === "error" ? (job.error ?? null) : null);
+              setJobNotice(null);
             } else {
               setJobError("job completed but missing result");
+              setJobNotice(null);
             }
             setActiveJobId(null);
             const sid = String(sessionId || "").trim();
@@ -1471,13 +1589,16 @@ export default function App() {
             try {
               const data = JSON.parse(String(evt.data || "{}"));
               setJobStatus(typeof data?.status === "string" ? data.status : "done");
-              setJobError(typeof data?.error === "string" ? data.error : null);
+              setJobError(
+                typeof data?.status === "string" && data.status === "error" ? (typeof data?.error === "string" ? data.error : null) : null,
+              );
+              setJobNotice(null);
               if (data?.result) {
                 setResult(data.result);
                 setLastCompletedPrompt(lastRunPromptRef.current);
               }
             } catch {
-              setJobError("failed to parse job_done event");
+              setJobNotice("failed to parse job_done event (falling back to polling)");
             }
             fetchFinished = true;
             setActiveJobId(null);
@@ -1499,7 +1620,7 @@ export default function App() {
         }
       })().catch((e) => {
         if (cancelled || fetchFinished) return;
-        setJobError(`SSE fetch failed: ${String(e)}`);
+        setJobNotice(`job stream dropped (retrying via polling): ${String(e)}`);
         fallbackToPolling();
       });
     };
@@ -1545,13 +1666,16 @@ export default function App() {
           try {
             const data = JSON.parse(String(evt.data || "{}"));
             setJobStatus(typeof data?.status === "string" ? data.status : "done");
-            setJobError(typeof data?.error === "string" ? data.error : null);
+            setJobError(
+              typeof data?.status === "string" && data.status === "error" ? (typeof data?.error === "string" ? data.error : null) : null,
+            );
+            setJobNotice(null);
             if (data?.result) {
               setResult(data.result);
               setLastCompletedPrompt(lastRunPromptRef.current);
             }
           } catch {
-            setJobError("failed to parse job_done event");
+            setJobNotice("failed to parse job_done event (falling back to polling)");
           }
           setActiveJobId(null);
           const sid = String(sessionId || "").trim();
@@ -1579,6 +1703,7 @@ export default function App() {
           }
           // Any SSE failure should fall back to polling (cursor-based) so the UI keeps progressing.
           // Do not clear liveEvents; keep the conversation visible.
+          setJobNotice("job stream dropped (retrying via polling)");
           fallbackToPolling();
         };
       } catch {
@@ -1789,6 +1914,12 @@ export default function App() {
                 <>
                   job=<code className="text-white/70 break-all">{activeJobId}</code> status=
                   <code className="text-white/70 break-all">{jobStatus ?? "running"}</code>
+                  {jobProgressLabel ? (
+                    <>
+                      {" "}
+                      phase=<code className="text-white/70 break-all">{jobProgressLabel}</code>
+                    </>
+                  ) : null}
                 </>
               ) : null}
             </div>
@@ -1799,9 +1930,9 @@ export default function App() {
                   onClick={async () => {
                     try {
                       await apiCancelJob(effectiveBase, activeJobId, daemonAuthToken);
-                      setJobError("cancel requested");
+                      setJobNotice("cancel requested");
                     } catch (e) {
-                      setJobError(`cancel failed: ${String(e)}`);
+                      setJobNotice(`cancel failed: ${String(e)}`);
                     }
                   }}
                   type="button"
@@ -1829,6 +1960,120 @@ export default function App() {
             onChange={(e) => setPrompt(e.target.value)}
           />
 
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input
+              type="file"
+              multiple
+              className="hidden"
+              id="agentui-file-input"
+              onChange={async (e) => {
+                const files = Array.from(e.target.files || []);
+                // Reset so selecting the same file twice still triggers onChange.
+                e.currentTarget.value = "";
+                if (files.length === 0) return;
+                if (uploadBusy) return;
+                const sid = String(sessionId || "").trim() || "default";
+                setUploadBusy(true);
+                setJobNotice(null);
+                try {
+                  const payloadFiles: { name: string; mime?: string; data_base64: string }[] = [];
+                  for (const f of files.slice(0, 16)) {
+                    // Keep client memory bounded; server has its own cap too.
+                    const maxBytes = 32 * 1024 * 1024;
+                    if (typeof (f as any)?.size === "number" && (f as any).size > maxBytes) {
+                      continue;
+                    }
+                    const name = String(f.name || "upload.bin");
+                    const mime = String(f.type || "").trim() || guessMimeFromName(name) || undefined;
+                    const data_base64 = await fileToBase64(f);
+                    payloadFiles.push({ name, mime, data_base64 });
+                  }
+                  if (payloadFiles.length === 0) {
+                    setJobNotice("no files uploaded (too large or invalid)");
+                    return;
+                  }
+                  const resp = await apiPostSessionUpload(
+                    effectiveBase,
+                    { session_id: sid, files: payloadFiles },
+                    daemonAuthToken || undefined,
+                  );
+                  if (!resp.ok) {
+                    setJobNotice(resp.error ? `upload failed: ${resp.error}` : "upload failed");
+                    return;
+                  }
+                  const newOnes =
+                    (resp.files || [])
+                      .map((x: any) => {
+                        const path = typeof x?.path === "string" ? x.path : "";
+                        if (!path) return null;
+                        return {
+                          path,
+                          name: typeof x?.name === "string" ? x.name : undefined,
+                          mime: typeof x?.mime === "string" ? x.mime : undefined,
+                          kind: typeof x?.kind === "string" ? x.kind : undefined,
+                          bytes: typeof x?.bytes === "number" ? x.bytes : undefined,
+                        } as Attachment;
+                      })
+                      .filter(Boolean) as Attachment[];
+                  if (newOnes.length === 0) {
+                    setJobNotice("upload succeeded but returned no file paths");
+                    return;
+                  }
+                  const merged = [...attachments];
+                  for (const a of newOnes) {
+                    if (!merged.some((m) => m.path === a.path)) merged.push(a);
+                  }
+                  setAttachments(merged);
+                  setJobNotice(`uploaded ${newOnes.length} file(s)`);
+                } catch (err) {
+                  setJobNotice(`upload failed: ${String(err)}`);
+                } finally {
+                  setUploadBusy(false);
+                }
+              }}
+            />
+            <label
+              htmlFor="agentui-file-input"
+              className={`inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 ${uploadBusy ? "opacity-50 pointer-events-none" : ""}`}
+            >
+              {uploadBusy ? "Uploading…" : "Attach files"}
+            </label>
+            {attachments.length > 0 ? (
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/70 hover:bg-black/40"
+                type="button"
+                onClick={() => setAttachments([])}
+              >
+                Clear attachments ({attachments.length})
+              </button>
+            ) : null}
+          </div>
+
+          {attachments.length > 0 ? (
+            <div className="mt-2 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/70">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="text-white/60">Attached:</div>
+                {attachments.slice(0, 12).map((a) => (
+                  <div
+                    key={a.path}
+                    className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-black/30 px-2 py-1"
+                    title={a.path}
+                  >
+                    <span className="max-w-[240px] truncate text-white/80">{a.name || a.path}</span>
+                    <button
+                      className="text-white/60 hover:text-white"
+                      type="button"
+                      onClick={() => removeAttachment(a.path)}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+                {attachments.length > 12 ? <div className="text-white/50">+{attachments.length - 12} more</div> : null}
+              </div>
+            </div>
+          ) : null}
+
           {run.isError ? (
             <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
               Failed: {String(run.error)}
@@ -1837,6 +2082,11 @@ export default function App() {
           {jobError ? (
             <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
               {jobError}
+            </div>
+          ) : null}
+          {jobNotice ? (
+            <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
+              {jobNotice}
             </div>
           ) : null}
           {!result?.ok && result?.error ? (

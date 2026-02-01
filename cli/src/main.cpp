@@ -12,15 +12,18 @@
 #include "tool_loop.h"
 #include "toolset_basic.h"
 #include "toolset_host.h"
+#include "base64.h"
 
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <vector>
 #include <cctype>
 #include <chrono>
+#include <cstring>
 
 #if defined(AGENT_HAVE_JSONCPP)
 #include <json/json.h>
@@ -51,10 +54,563 @@ static std::string home_dir_best_effort() {
   return std::filesystem::current_path().string();
 }
 
+static bool looks_like_key(const std::string& s) {
+  if (s.size() < 6) return false;
+  if (s.rfind("sk-", 0) != 0) return false;
+  for (char c : s) {
+    const bool ok =
+      (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-' || c == '.';
+    if (!ok) return false;
+  }
+  return true;
+}
+
+static std::string trim_copy(std::string s) {
+  while (!s.empty() && (s.front() == ' ' || s.front() == '\t' || s.front() == '\n' || s.front() == '\r')) s.erase(s.begin());
+  while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '\n' || s.back() == '\r')) s.pop_back();
+  return s;
+}
+
+static std::string try_load_key_from_dotenv_best_effort(const std::vector<std::string>& env_vars) {
+  if (env_vars.empty()) return "";
+  const std::filesystem::path p = std::filesystem::path(home_dir_best_effort()) / ".env";
+  std::ifstream in(p);
+  if (!in.is_open()) return "";
+
+  std::string line;
+  while (std::getline(in, line)) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    std::string s = trim_copy(line);
+    if (s.empty() || s[0] == '#') continue;
+    if (s.rfind("export ", 0) == 0) s = trim_copy(s.substr(std::strlen("export ")));
+    const size_t eq = s.find('=');
+    if (eq == std::string::npos) continue;
+    const std::string k = trim_copy(s.substr(0, eq));
+    const std::string v = trim_copy(s.substr(eq + 1));
+    if (k.empty() || v.empty()) continue;
+    for (const auto& want : env_vars) {
+      if (k == want) {
+        // Basic de-quoting.
+        std::string vv = v;
+        if (vv.size() >= 2 && ((vv.front() == '"' && vv.back() == '"') || (vv.front() == '\'' && vv.back() == '\''))) {
+          vv = vv.substr(1, vv.size() - 2);
+        }
+        vv = trim_copy(vv);
+        if (looks_like_key(vv)) return vv;
+      }
+    }
+  }
+  return "";
+}
+
 static int64_t now_unix_ms() {
   using namespace std::chrono;
   return (int64_t)duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 }
+
+#if defined(AGENT_HAVE_JSONCPP)
+static const char* kMultimodalPrefix = "__AGENT_MM_V1__";
+
+static bool read_file_bytes_capped(
+  const std::filesystem::path& p,
+  size_t max_bytes,
+  std::string* out_bytes,
+  bool* out_truncated = nullptr
+) {
+  if (!out_bytes) return false;
+  out_bytes->clear();
+  if (out_truncated) *out_truncated = false;
+
+  std::error_code ec;
+  const auto sz = std::filesystem::file_size(p, ec);
+  if (!ec && max_bytes > 0 && sz > max_bytes) {
+    if (out_truncated) *out_truncated = true;
+  }
+
+  std::ifstream in(p, std::ios::binary);
+  if (!in.is_open()) return false;
+  std::string buf;
+  buf.resize(max_bytes);
+  in.read(buf.data(), (std::streamsize)buf.size());
+  const std::streamsize n = in.gcount();
+  if (n <= 0) return false;
+  buf.resize((size_t)n);
+  *out_bytes = std::move(buf);
+  return true;
+}
+
+static bool looks_texty(const std::string& bytes) {
+  if (bytes.empty()) return false;
+  size_t bad = 0;
+  for (unsigned char c : bytes) {
+    if (c == 0) return false;
+    if (c == '\n' || c == '\r' || c == '\t') continue;
+    if (c >= 32 && c < 127) continue;
+    bad++;
+  }
+  // Allow a small amount of non-ASCII noise (e.g., UTF-8) without trying to decode.
+  return bad * 20 < bytes.size(); // <5% suspicious bytes
+}
+
+static std::string content_type_from_path(const std::filesystem::path& p) {
+  const std::string ext = lower_copy(p.extension().string());
+  if (ext == ".png") return "image/png";
+  if (ext == ".jpg" || ext == ".jpeg") return "image/jpeg";
+  if (ext == ".gif") return "image/gif";
+  if (ext == ".webp") return "image/webp";
+  if (ext == ".svg") return "image/svg+xml";
+  if (ext == ".mp3") return "audio/mpeg";
+  if (ext == ".wav") return "audio/wav";
+  if (ext == ".mp4") return "video/mp4";
+  if (ext == ".webm") return "video/webm";
+  if (ext == ".mov") return "video/quicktime";
+  if (ext == ".txt" || ext == ".md") return "text/plain";
+  return "application/octet-stream";
+}
+
+static bool try_parse_multimodal_prefix(
+  const std::string& content,
+  std::string* out_text,
+  Json::Value* out_mm
+) {
+  if (out_text) *out_text = content;
+  if (out_mm) *out_mm = Json::Value(Json::nullValue);
+  if (!out_text || !out_mm) return false;
+
+  if (content.rfind(kMultimodalPrefix, 0) != 0) return false;
+  const size_t nl = content.find('\n');
+  if (nl == std::string::npos) return false;
+  const size_t prefix_len = std::strlen(kMultimodalPrefix);
+  if (nl < prefix_len) return false;
+  const std::string json_part = content.substr(prefix_len, nl - prefix_len);
+  if (json_part.empty()) return false;
+
+  Json::CharReaderBuilder rb;
+  std::string errs;
+  std::istringstream iss(json_part);
+  Json::Value v;
+  if (!Json::parseFromStream(rb, iss, &v, &errs) || !v.isObject()) return false;
+
+  *out_mm = v;
+  *out_text = content.substr(nl + 1);
+  return true;
+}
+
+static Json::Value multimodal_content_from_parts(const std::string& text, const Json::Value& mm) {
+  const bool have_images = mm.isMember("images") && mm["images"].isArray() && !mm["images"].empty();
+  const bool have_files = mm.isMember("files") && mm["files"].isArray() && !mm["files"].empty();
+  if (!have_images && !have_files) return Json::Value(text);
+
+  Json::Value arr(Json::arrayValue);
+  if (!text.empty()) {
+    Json::Value t(Json::objectValue);
+    t["type"] = "text";
+    t["text"] = text;
+    arr.append(t);
+  }
+
+  if (have_files) {
+    for (const auto& f : mm["files"]) {
+      if (!f.isObject()) continue;
+      const std::string name = f.isMember("name") && f["name"].isString() ? f["name"].asString() : "";
+      const std::string mime = f.isMember("mime") && f["mime"].isString() ? f["mime"].asString() : "";
+      const std::string ft = f.isMember("text") && f["text"].isString() ? f["text"].asString() : "";
+      const bool trunc = f.isMember("truncated") && f["truncated"].isBool() ? f["truncated"].asBool() : false;
+      if (ft.empty()) continue;
+      std::string block;
+      block += "[Attachment";
+      if (!name.empty()) block += ": " + name;
+      if (!mime.empty()) block += " (" + mime + ")";
+      block += "]\n";
+      block += ft;
+      if (trunc) block += "\n...(truncated)";
+
+      Json::Value t(Json::objectValue);
+      t["type"] = "text";
+      t["text"] = block;
+      arr.append(t);
+    }
+  }
+
+  if (have_images) {
+    for (const auto& im : mm["images"]) {
+      if (!im.isObject()) continue;
+      const std::string mime = im.isMember("mime") && im["mime"].isString() ? im["mime"].asString() : "image/png";
+      const std::string b64 = im.isMember("b64") && im["b64"].isString() ? im["b64"].asString() : "";
+      if (b64.empty()) continue;
+      const std::string url = std::string("data:") + mime + ";base64," + b64;
+
+      Json::Value part(Json::objectValue);
+      part["type"] = "image_url";
+      Json::Value iu(Json::objectValue);
+      iu["url"] = url;
+      part["image_url"] = iu;
+      arr.append(part);
+    }
+  }
+  return arr;
+}
+
+static std::string json_stringify(const Json::Value& v) {
+  Json::StreamWriterBuilder builder;
+  builder["indentation"] = "";
+  return Json::writeString(builder, v);
+}
+
+static std::string wrap_prompt_with_attachments(
+  const std::string& prompt,
+  const std::vector<std::string>& attach_paths,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (attach_paths.empty()) return prompt;
+
+  Json::Value mm(Json::objectValue);
+  Json::Value images(Json::arrayValue);
+  Json::Value files(Json::arrayValue);
+
+  const size_t kMaxAttachments = 16;
+  for (size_t i = 0; i < attach_paths.size() && i < kMaxAttachments; i++) {
+    const std::string raw = attach_paths[i];
+    if (raw.empty()) continue;
+    const std::filesystem::path p = std::filesystem::path(raw);
+    std::error_code ec;
+    if (!std::filesystem::exists(p, ec) || ec) {
+      if (out_error) *out_error = "attachment not found: " + raw;
+      continue;
+    }
+    const std::string name = p.filename().string();
+    const std::string mime = content_type_from_path(p);
+    const std::string kind = (mime.rfind("image/", 0) == 0) ? "image" : "file";
+
+    if (kind == "image") {
+      const size_t kMaxImageBytes = 6u * 1024u * 1024u;
+      std::string bytes;
+      bool trunc = false;
+      if (!read_file_bytes_capped(p, kMaxImageBytes, &bytes, &trunc) || bytes.empty() || trunc) {
+        // Avoid sending partial image bytes (invalid base64/image). Treat as a non-inlined file hint instead.
+        Json::Value f(Json::objectValue);
+        f["name"] = name;
+        f["mime"] = mime;
+        f["text"] = std::string("Image attachment too large to inline: ") + raw;
+        f["truncated"] = true;
+        files.append(f);
+      } else {
+        const std::string b64 = base64_encode(bytes.data(), bytes.size());
+        Json::Value im(Json::objectValue);
+        im["name"] = name;
+        im["mime"] = mime.empty() ? std::string("image/png") : mime;
+        im["b64"] = b64;
+        images.append(im);
+      }
+      continue;
+    }
+
+    // Non-image: inline small text files, otherwise add a hint.
+    const size_t kMaxFileBytes = 256u * 1024u;
+    std::string bytes;
+    bool trunc = false;
+    if (read_file_bytes_capped(p, kMaxFileBytes, &bytes, &trunc) && looks_texty(bytes)) {
+      Json::Value f(Json::objectValue);
+      f["name"] = name;
+      f["mime"] = mime;
+      f["text"] = bytes;
+      f["truncated"] = trunc;
+      files.append(f);
+    } else {
+      Json::Value f(Json::objectValue);
+      f["name"] = name;
+      f["mime"] = mime;
+      f["text"] = std::string("Attachment available at path: ") + raw;
+      f["truncated"] = true;
+      files.append(f);
+    }
+  }
+
+  if (!images.empty()) mm["images"] = images;
+  if (!files.empty()) mm["files"] = files;
+  if (mm.empty()) return prompt;
+  return std::string(kMultimodalPrefix) + json_stringify(mm) + "\n" + prompt;
+}
+#endif  // AGENT_HAVE_JSONCPP
+
+#if defined(AGENT_HAVE_JSONCPP)
+// CLI output is designed to be human-readable and audit-friendly (Codex/Gemini style):
+// - show prompts, tool calls, tool outputs, and final answers
+// - avoid JSON in the UI output (unless the tool output itself is JSON)
+// - do not print chain-of-thought / reasoning tokens
+
+static bool cli_parse_json_any(const std::string& s, Json::Value* out_v) {
+  if (!out_v) return false;
+  Json::CharReaderBuilder rb;
+  std::string errs;
+  std::istringstream iss(s);
+  Json::Value v;
+  if (!Json::parseFromStream(rb, iss, &v, &errs)) return false;
+  *out_v = v;
+  return true;
+}
+
+static bool cli_parse_json_object(const std::string& s, Json::Value* out_obj) {
+  Json::Value v;
+  if (!cli_parse_json_any(s, &v)) return false;
+  if (!v.isObject()) return false;
+  if (out_obj) *out_obj = v;
+  return true;
+}
+
+static std::string cli_json_get_string(const Json::Value& obj, const char* key) {
+  if (!obj.isObject() || !key) return "";
+  const auto& v = obj[key];
+  if (v.isString()) return v.asString();
+  return "";
+}
+
+static int64_t cli_json_get_i64(const Json::Value& obj, const char* key, int64_t def = 0) {
+  if (!obj.isObject() || !key) return def;
+  const auto& v = obj[key];
+  if (v.isInt64()) return v.asInt64();
+  if (v.isUInt64()) return (int64_t)v.asUInt64();
+  if (v.isInt()) return (int64_t)v.asInt();
+  if (v.isUInt()) return (int64_t)v.asUInt();
+  return def;
+}
+
+static std::string cli_join_argv(const Json::Value& argv) {
+  if (!argv.isArray()) return "";
+  std::string out;
+  for (Json::ArrayIndex i = 0; i < argv.size(); i++) {
+    const auto& a = argv[i];
+    if (!a.isString()) continue;
+    if (!out.empty()) out += " ";
+    out += a.asString();
+  }
+  return out;
+}
+
+static void cli_print_kv_inline(std::ostream& os, const Json::Value& v) {
+  if (v.isString()) os << v.asString();
+  else if (v.isBool()) os << (v.asBool() ? "true" : "false");
+  else if (v.isInt64()) os << v.asInt64();
+  else if (v.isUInt64()) os << (unsigned long long)v.asUInt64();
+  else if (v.isDouble()) os << v.asDouble();
+  else if (v.isNull()) os << "null";
+  else if (v.isArray()) os << "[...]";
+  else if (v.isObject()) os << "{...}";
+  else os << "?";
+}
+
+static void cli_pretty_print_tool_call(std::ostream& os, const std::string& tool_name, const std::string& args_json) {
+  Json::Value args;
+  if (!cli_parse_json_object(args_json, &args)) {
+    if (!args_json.empty()) os << "args: " << args_json << "\n";
+    return;
+  }
+
+  if (tool_name == "shell_exec") {
+    const std::string cmd = cli_json_get_string(args, "cmd");
+    const std::string cwd = cli_json_get_string(args, "cwd");
+    if (!cwd.empty()) os << "cwd: " << cwd << "\n";
+    os << "$ " << cmd << "\n";
+    return;
+  }
+  if (tool_name == "proc_exec") {
+    const auto& argv = args["argv"];
+    const std::string cwd = cli_json_get_string(args, "cwd");
+    if (!cwd.empty()) os << "cwd: " << cwd << "\n";
+    os << "> " << cli_join_argv(argv) << "\n";
+    return;
+  }
+  if (tool_name == "file_apply_patch") {
+    const std::string patch = cli_json_get_string(args, "patch");
+    os << "patch:\n";
+    os << patch;
+    if (!patch.empty() && patch.back() != '\n') os << "\n";
+    return;
+  }
+
+  // Generic key=value list for other tools (avoid printing raw JSON when possible).
+  const auto names = args.getMemberNames();
+  for (const auto& k : names) {
+    os << k << ": ";
+    cli_print_kv_inline(os, args[k]);
+    os << "\n";
+  }
+}
+
+static void cli_pretty_print_tool_result(std::ostream& os, const std::string& tool_name, const std::string& tool_out) {
+  Json::Value env;
+  if (!cli_parse_json_object(tool_out, &env)) {
+    os << tool_out;
+    if (!tool_out.empty() && tool_out.back() != '\n') os << "\n";
+    return;
+  }
+
+  const bool ok = env.isMember("ok") && env["ok"].isBool() ? env["ok"].asBool() : false;
+  const std::string err = cli_json_get_string(env, "error");
+  const auto& data = env["data"];
+
+  if (!ok) {
+    os << "status: error\n";
+    if (!err.empty()) os << "error: " << err << "\n";
+  }
+
+  if (data.isObject()) {
+    bool printed_any_data = false;
+    if (data.isMember("exit_code")) os << "exit_code: " << cli_json_get_i64(data, "exit_code", 0) << "\n";
+    if (data.isMember("timed_out") && data["timed_out"].isBool()) os << "timed_out: " << (data["timed_out"].asBool() ? "true" : "false") << "\n";
+    if (data.isMember("truncated") && data["truncated"].isBool()) os << "truncated: " << (data["truncated"].asBool() ? "true" : "false") << "\n";
+    if (data.isMember("cmd") && data["cmd"].isString()) os << "cmd: " << data["cmd"].asString() << "\n";
+    if (data.isMember("argv") && data["argv"].isArray()) {
+      const std::string a = cli_join_argv(data["argv"]);
+      if (!a.empty()) os << "argv: " << a << "\n";
+    }
+    if (data.isMember("exit_code") || data.isMember("timed_out") || data.isMember("truncated") || data.isMember("cmd") || data.isMember("argv")) {
+      printed_any_data = true;
+    }
+
+    if (tool_name == "file_apply_patch") {
+      const auto& check = data["check"];
+      if (check.isObject()) {
+        if (check.isMember("exit_code")) os << "check_exit_code: " << cli_json_get_i64(check, "exit_code", 0) << "\n";
+        const auto& out = check["output"];
+        if (out.isString() && !out.asString().empty()) {
+          os << "check_output:\n" << out.asString();
+          if (out.asString().back() != '\n') os << "\n";
+        }
+      }
+      const auto& apply = data["apply"];
+      if (apply.isObject()) {
+        if (apply.isMember("exit_code")) os << "apply_exit_code: " << cli_json_get_i64(apply, "exit_code", 0) << "\n";
+        const auto& out = apply["output"];
+        if (out.isString() && !out.asString().empty()) {
+          os << "apply_output:\n" << out.asString();
+          if (out.asString().back() != '\n') os << "\n";
+        }
+      }
+      printed_any_data = true;
+    }
+
+    const auto& out = data["output"];
+    if (out.isString() && !out.asString().empty()) {
+      os << "output:\n" << out.asString();
+      if (out.asString().back() != '\n') os << "\n";
+      printed_any_data = true;
+    }
+
+    // Fallback: print remaining data keys in a readable form (avoid raw JSON).
+    // This covers tools like the basic `calculator` which returns {ok, value, expression}.
+    const auto names = data.getMemberNames();
+    for (const auto& k : names) {
+      if (k == "exit_code" || k == "timed_out" || k == "truncated" || k == "cmd" || k == "argv" || k == "output" || k == "check" || k == "apply") {
+        continue;
+      }
+      const auto& v = data[k];
+      if (v.isString()) {
+        const std::string s = v.asString();
+        if (s.empty()) continue;
+        if (s.size() > 200) {
+          os << k << ":\n" << s;
+          if (s.back() != '\n') os << "\n";
+        } else {
+          os << k << ": " << s << "\n";
+        }
+        printed_any_data = true;
+      } else if (v.isBool() || v.isInt64() || v.isUInt64() || v.isDouble() || v.isNull()) {
+        os << k << ": ";
+        cli_print_kv_inline(os, v);
+        os << "\n";
+        printed_any_data = true;
+      }
+    }
+
+    if (!printed_any_data) {
+      // Last resort: show something rather than being silent.
+      os << "result: (no printable fields)\n";
+    }
+  }
+}
+
+struct CliPrettyLoopPrinter {
+  std::ostream* transcript_os = nullptr;
+  std::ostream* assistant_os = nullptr;
+  uint64_t tool_index = 0;
+  bool stream_deltas = false;
+};
+
+static void cli_pretty_on_tool_loop_event(void* vctx, const char* type, const char* data_json) {
+  auto* p = static_cast<CliPrettyLoopPrinter*>(vctx);
+  if (!p || !type) return;
+  const std::string t(type);
+
+  Json::Value data;
+  if (data_json && data_json[0]) {
+    (void)cli_parse_json_any(std::string(data_json), &data);
+  }
+
+  if (t == "assistant_delta") {
+    if (!p->stream_deltas) return;
+    if (!p->assistant_os) return;
+    if (data.isObject() && data.isMember("delta") && data["delta"].isString()) {
+      (*p->assistant_os) << data["delta"].asString() << std::flush;
+    }
+    return;
+  }
+
+  if (!p->transcript_os) return;
+
+  if (t == "llm_request") {
+    (*p->transcript_os) << "\n[llm] request\n";
+    return;
+  }
+  if (t == "llm_response") {
+    const int64_t hs = data.isObject() ? cli_json_get_i64(data, "http_status", 0) : 0;
+    (*p->transcript_os) << "[llm] response";
+    if (hs) (*p->transcript_os) << " (HTTP " << hs << ")";
+    (*p->transcript_os) << "\n";
+    return;
+  }
+
+  if (t == "tool_call") {
+    const std::string tool = cli_json_get_string(data, "tool_name");
+    const std::string tcid = cli_json_get_string(data, "tool_call_id");
+    const int64_t step = cli_json_get_i64(data, "step", -1);
+    const std::string args_json = cli_json_get_string(data, "arguments_json");
+
+    p->tool_index += 1;
+    (*p->transcript_os) << "\n[tool " << (unsigned long long)p->tool_index << "] " << (tool.empty() ? "(unknown)" : tool);
+    if (step >= 0) (*p->transcript_os) << " (step " << step << ")";
+    if (!tcid.empty()) (*p->transcript_os) << " id=" << tcid;
+    (*p->transcript_os) << "\n";
+    if (!tool.empty()) {
+      cli_pretty_print_tool_call(*p->transcript_os, tool, args_json);
+    } else if (!args_json.empty()) {
+      (*p->transcript_os) << "args: " << args_json << "\n";
+    }
+    return;
+  }
+
+  if (t == "tool_result") {
+    const std::string tool = cli_json_get_string(data, "tool_name");
+    const std::string tcid = cli_json_get_string(data, "tool_call_id");
+    const int64_t step = cli_json_get_i64(data, "step", -1);
+    const int64_t st = cli_json_get_i64(data, "status", 0);
+
+    (*p->transcript_os) << "[tool] result";
+    if (!tool.empty()) (*p->transcript_os) << " " << tool;
+    if (step >= 0) (*p->transcript_os) << " (step " << step << ")";
+    if (!tcid.empty()) (*p->transcript_os) << " id=" << tcid;
+    (*p->transcript_os) << " status=" << st << "\n";
+
+    if (data.isObject() && data.isMember("content") && data["content"].isString()) {
+      cli_pretty_print_tool_result(*p->transcript_os, tool, data["content"].asString());
+    } else if (data.isObject() && data.isMember("summary")) {
+      (*p->transcript_os) << "summary: " << json_stringify(data["summary"]) << "\n";
+    }
+    return;
+  }
+}
+#endif  // AGENT_HAVE_JSONCPP
 
 static void usage() {
   std::cerr
@@ -72,6 +628,7 @@ static void usage() {
     << "  --session <id>            Session id to load/save (default: default)\n"
     << "  --no-session              Disable persistence (ephemeral run)\n"
     << "  --system <text>           Add a system message at the start (one time)\n"
+    << "  --system-profile <name>   Select built-in host system prompt (default: default)\n"
     << "  --no-default-system       Disable the default host system hint (host tools only)\n"
     << "  --max-chars <n>           Auto-compact when session exceeds n chars (default: 20000)\n"
     << "  --keep-last <n>           Keep last n messages during compaction (default: 16)\n"
@@ -87,6 +644,7 @@ static void usage() {
     << "  --max-tool-calls-total <n>     Max total tool calls (default: unlimited; 0 means unlimited)\n"
     << "  --max-tool-calls-per-tool <n>  Max tool calls per tool name (default: unlimited; 0 means unlimited)\n"
     << "  --tool-call-limit <tool>=<n>  Per-tool call cap (repeatable; 0 means unlimited for that tool)\n"
+    << "  --attach <path>           Attach a local file (repeatable; images are sent as base64)\n"
     << "  --stream-assistant        Stream assistant deltas (tools=none|basic|host; provider-dependent)\n";
 }
 
@@ -129,12 +687,6 @@ static bool take_multi_flag(std::vector<std::string>& args, const std::string& f
     i++;
   }
   return true;
-}
-
-static std::string trim_copy(std::string s) {
-  while (!s.empty() && (s.front() == ' ' || s.front() == '\t' || s.front() == '\n' || s.front() == '\r')) s.erase(s.begin());
-  while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '\n' || s.back() == '\r')) s.pop_back();
-  return s;
 }
 
 static bool parse_tool_call_limit_spec(const std::string& spec, ToolCallLimit* out_limit) {
@@ -208,6 +760,7 @@ int main(int argc, char** argv) {
   std::string session_id = "default";
   bool no_session = false;
   std::string system_msg;
+  std::string system_profile = "default";
   bool no_default_system = false;
   size_t max_chars = 20000;
   size_t keep_last = 16;
@@ -224,6 +777,7 @@ int main(int argc, char** argv) {
   size_t max_tool_calls_total = 0;
   size_t max_tool_calls_per_tool = 0;
   std::vector<std::string> tool_call_limit_specs;
+  std::vector<std::string> attach_paths;
   bool stream_assistant = false;
   bool trace = true;
   bool quiet = false;
@@ -269,6 +823,15 @@ int main(int argc, char** argv) {
   }
   if (!take_flag(args, "--system", &system_msg)) {
     std::cerr << "Missing value for --system\n";
+    return 2;
+  }
+  if (!take_flag(args, "--system-profile", &system_profile)) {
+    std::cerr << "Missing value for --system-profile\n";
+    return 2;
+  }
+  system_profile = trim_copy(system_profile);
+  if (!system_profile.empty() && system_profile != "default" && system_profile != "jules_codex") {
+    std::cerr << "Invalid --system-profile (expected: default|jules_codex)\n";
     return 2;
   }
   if (!take_switch(args, "--no-default-system", &no_default_system)) {
@@ -331,6 +894,10 @@ int main(int argc, char** argv) {
     std::cerr << "Missing value for --tool-call-limit\n";
     return 2;
   }
+  if (!take_multi_flag(args, "--attach", &attach_paths)) {
+    std::cerr << "Missing value for --attach\n";
+    return 2;
+  }
   if (!take_switch(args, "--stream-assistant", &stream_assistant)) {
     std::cerr << "Invalid flag: --stream-assistant\n";
     return 2;
@@ -376,6 +943,8 @@ int main(int argc, char** argv) {
       base_url = b3;
     } else if (const char* b4 = getenv_s("DEEPSEEK_API_BASE")) {
       base_url = b4;
+    } else if (const char* b5 = getenv_s("MOONSHOT_API_BASE")) {
+      base_url = b5;
     }
   }
   // Pick the API key that matches the chosen base URL. This prevents accidental mix-ups when the
@@ -389,6 +958,10 @@ int main(int argc, char** argv) {
       if (const char* k = getenv_s("OPENROUTER_API_KEY")) api_key = k;
       else if (const char* k2 = getenv_s("OPENAI_API_KEY")) api_key = k2;
       else if (const char* k3 = getenv_s("DEEPSEEK_API_KEY")) api_key = k3;
+    } else if (url_contains_ci(base_url, "moonshot")) {
+      if (const char* k = getenv_s("KIMI_API_KEY_CN")) api_key = k;
+      else if (const char* k2 = getenv_s("MOONSHOT_API_KEY")) api_key = k2;
+      else if (const char* k3 = getenv_s("OPENAI_API_KEY")) api_key = k3;
     } else {
       if (const char* k = getenv_s("OPENAI_API_KEY")) api_key = k;
       else if (const char* k2 = getenv_s("OPENROUTER_API_KEY")) api_key = k2;
@@ -397,7 +970,21 @@ int main(int argc, char** argv) {
   }
 
   if (api_key.empty()) {
-    std::cerr << "Missing API key. Provide --api-key or set OPENAI_API_KEY / OPENROUTER_API_KEY / DEEPSEEK_API_KEY.\n";
+    // Best-effort developer convenience: allow non-exported keys stored in ~/.env.
+    // (Many setups keep `KIMI_API_KEY_CN=...` without `export`.)
+    if (url_contains_ci(base_url, "moonshot")) {
+      api_key = try_load_key_from_dotenv_best_effort({"KIMI_API_KEY_CN", "MOONSHOT_API_KEY", "MOONSHOT_API_KEY_CN"});
+    } else if (url_contains_ci(base_url, "deepseek")) {
+      api_key = try_load_key_from_dotenv_best_effort({"DEEPSEEK_API_KEY"});
+    } else if (url_contains_ci(base_url, "openrouter")) {
+      api_key = try_load_key_from_dotenv_best_effort({"OPENROUTER_API_KEY"});
+    } else {
+      api_key = try_load_key_from_dotenv_best_effort({"OPENAI_API_KEY"});
+    }
+  }
+
+  if (api_key.empty()) {
+    std::cerr << "Missing API key. Provide --api-key or set OPENAI_API_KEY / OPENROUTER_API_KEY / DEEPSEEK_API_KEY / KIMI_API_KEY_CN.\n";
     return 2;
   }
 
@@ -457,7 +1044,8 @@ int main(int argc, char** argv) {
   // Add host-only default system message (one-time) when using host tools and the session is empty.
   // This encourages incremental inspection (rg/head/awk) instead of full file dumps.
   if (!no_default_system && system_msg.empty() && tools_mode == "host" && agent_session_message_count(session) == 0) {
-    agent_session_add_message(session, AGENT_ROLE_SYSTEM, default_host_system_prompt());
+    const std::string p = system_profile.empty() ? "default" : system_profile;
+    agent_session_add_message(session, AGENT_ROLE_SYSTEM, host_system_prompt_for_profile(p.c_str()));
   }
 
   if (tools_mode != "none") {
@@ -493,49 +1081,58 @@ int main(int argc, char** argv) {
     opt.require_tool_call = require_tool_call;
     opt.max_steps = max_steps;
     opt.max_repeated_tool_calls = max_repeated_tool_calls;
-    opt.max_tool_calls_total = max_tool_calls_total;
-    opt.max_tool_calls_per_tool = max_tool_calls_per_tool;
-    opt.tool_call_limits = std::move(tool_call_limits);
-    opt.max_chars = max_chars;
-    opt.keep_last_messages = keep_last;
-    opt.stream_assistant = stream_assistant;
+	    opt.max_tool_calls_total = max_tool_calls_total;
+	    opt.max_tool_calls_per_tool = max_tool_calls_per_tool;
+	    opt.tool_call_limits = std::move(tool_call_limits);
+	    opt.max_chars = max_chars;
+	    opt.keep_last_messages = keep_last;
+	    opt.stream_assistant = stream_assistant;
+	    // For CLI trace output, we prefer human-friendly (non-JSON) printing based on tool loop events.
+	    // Enable verbose events so we have tool arguments + tool outputs available to print.
+	    opt.verbose = trace && !quiet;
+	    opt.max_capture_bytes = (size_t)1024u * 1024u;
 
+	    auto run_one = [&](const std::string& user_prompt) -> int {
+	      std::string prompt_for_llm = user_prompt;
 #if defined(AGENT_HAVE_JSONCPP)
-    auto on_event = [](void* vctx, const char* type, const char* data_json) {
-      if (!vctx || !type || !data_json) return;
-      auto* saw = static_cast<bool*>(vctx);
-      if (std::string(type) != "assistant_delta") return;
-      Json::CharReaderBuilder rb;
-      std::string errs;
-      std::istringstream iss(data_json);
-      Json::Value v;
-      if (!Json::parseFromStream(rb, iss, &v, &errs) || !v.isObject()) return;
-      const auto& d = v["delta"];
-      if (!d.isString()) return;
-      const std::string s = d.asString();
-      if (s.empty()) return;
-      *saw = true;
-      std::cout << s << std::flush;
-    };
-#endif
-
-    auto run_one = [&](const std::string& user_prompt) -> int {
-      ToolLoopResult r;
-      std::string err;
-      long http_status = 0;
-      std::string http_body;
-      std::ostream* trace_stream = trace ? &std::cerr : nullptr;
-#if defined(AGENT_HAVE_JSONCPP)
-      bool saw_stream_delta = false;
-      if (stream_assistant) {
-        opt.on_event = on_event;
-        opt.on_event_ctx = &saw_stream_delta;
+	      if (!attach_paths.empty()) {
+        std::string mm_err;
+        prompt_for_llm = wrap_prompt_with_attachments(user_prompt, attach_paths, &mm_err);
+        (void)mm_err;
       }
 #endif
-      if (!run_tool_loop(pctx.cfg, session, user_prompt, registry, &executor, opt, trace_stream, &r, &err, &http_status, &http_body)) {
-        if (http_status) {
-          std::cerr << openai_format_http_error(http_status, http_body) << "\n";
-          if (!http_body.empty()) {
+	      ToolLoopResult r;
+	      std::string err;
+	      long http_status = 0;
+	      std::string http_body;
+	      std::ostream* trace_stream = nullptr; // avoid dumping raw JSON traces by default
+#if defined(AGENT_HAVE_JSONCPP)
+	      CliPrettyLoopPrinter printer;
+	      printer.transcript_os = (trace && !quiet) ? &std::cerr : nullptr;
+	      printer.assistant_os = &std::cout;
+	      printer.stream_deltas = stream_assistant;
+
+	      if (printer.transcript_os) {
+	        (*printer.transcript_os)
+	          << "model: " << model << "\n"
+	          << "base_url: " << base_url << "\n"
+	          << "tools: " << tools_mode << "\n";
+	        if (!attach_paths.empty()) {
+	          (*printer.transcript_os) << "attachments:\n";
+	          for (const auto& p : attach_paths) (*printer.transcript_os) << " - " << p << "\n";
+	        }
+	        (*printer.transcript_os) << "\n[user]\n" << user_prompt << "\n";
+	      }
+
+	      // Important: even in --quiet, we may need on_event enabled for assistant deltas.
+	      const bool want_events = stream_assistant || (trace && !quiet);
+	      opt.on_event = want_events ? cli_pretty_on_tool_loop_event : nullptr;
+	      opt.on_event_ctx = want_events ? &printer : nullptr;
+#endif
+	      if (!run_tool_loop(pctx.cfg, session, prompt_for_llm, registry, &executor, opt, trace_stream, &r, &err, &http_status, &http_body)) {
+	        if (http_status) {
+	          std::cerr << openai_format_http_error(http_status, http_body) << "\n";
+	          if (!http_body.empty()) {
             std::cerr << http_body << "\n";
           }
         } else if (!err.empty()) {
@@ -592,17 +1189,17 @@ int main(int argc, char** argv) {
 #endif
       }
 #if defined(AGENT_HAVE_JSONCPP)
-      if (stream_assistant && saw_stream_delta) {
-        // Deltas were already streamed to stdout; terminate with a newline for shell ergonomics.
-        std::cout << "\n";
-      } else {
-        std::cout << r.final_assistant_text << "\n";
-      }
+	      if (stream_assistant) {
+	        // Deltas were already printed; terminate with a newline for shell ergonomics.
+	        std::cout << "\n";
+	      } else {
+	        std::cout << r.final_assistant_text << "\n";
+	      }
 #else
-      std::cout << r.final_assistant_text << "\n";
+	      std::cout << r.final_assistant_text << "\n";
 #endif
-      return 0;
-    };
+	      return 0;
+	    };
 
     int rc = 0;
     if (cmd == "run") {
@@ -644,6 +1241,14 @@ int main(int argc, char** argv) {
     return rc;
   } else {
     auto run_one = [&](const std::string& user_prompt) -> int {
+#if defined(AGENT_HAVE_JSONCPP)
+      std::string prompt_for_llm = user_prompt;
+      if (!attach_paths.empty()) {
+        std::string mm_err;
+        prompt_for_llm = wrap_prompt_with_attachments(user_prompt, attach_paths, &mm_err);
+      }
+      const bool have_mm = (prompt_for_llm != user_prompt);
+#endif
       if (stream_assistant) {
 #if !defined(AGENT_HAVE_JSONCPP)
         std::cerr << "--stream-assistant requires jsoncpp (AGENT_HAVE_JSONCPP)\n";
@@ -713,13 +1318,23 @@ int main(int argc, char** argv) {
               if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
               Json::Value m(Json::objectValue);
               m["role"] = agent_role_to_string(v.role);
-              m["content"] = std::string(v.content, v.content_len);
+              std::string content(v.content, v.content_len);
+              if (have_mm && i + 1 == n && v.role == AGENT_ROLE_USER) {
+                // Substitute multimodal-wrapped prompt for the provider call, while keeping
+                // the persisted session prompt clean.
+                content = prompt_for_llm;
+              }
+              std::string text = content;
+              Json::Value mm(Json::nullValue);
+              if (try_parse_multimodal_prefix(content, &text, &mm) && mm.isObject()) {
+                m["content"] = multimodal_content_from_parts(text, mm);
+              } else {
+                m["content"] = content;
+              }
               messages.append(m);
             }
             root["messages"] = messages;
-            Json::StreamWriterBuilder wb;
-            wb["indentation"] = "";
-            request_json = Json::writeString(wb, root);
+            request_json = json_stringify(root);
           }
 
           struct StreamCtx {
@@ -867,6 +1482,163 @@ int main(int argc, char** argv) {
         return 0;
 #endif
       }
+
+#if defined(AGENT_HAVE_JSONCPP)
+      // Non-stream tools=none + multimodal: bypass agent_run_once so we can override the request body
+      // without persisting the multimodal wrapper into the session transcript.
+      if (have_mm) {
+        agent_session_add_message(session, AGENT_ROLE_USER, user_prompt.c_str());
+
+        const OpenAIClientConfig run_cfg = pctx.cfg;
+        const size_t keep = (keep_last == 0 ? 16 : keep_last);
+
+        size_t attempt_max_chars = (max_chars == 0 ? 20000 : max_chars);
+        int final_attempt = -1;
+        bool ok = false;
+        long http_status = 0;
+        std::string http_body;
+        std::string err;
+        std::string assistant_text;
+        agent_compact_report_t compact_final{};
+
+        for (int attempt = 0; attempt < 3; attempt++) {
+          final_attempt = attempt;
+
+          const char* summary_or_null = nullptr;
+          std::string summary_buf;
+          if (attempt == 0 && !summary_model.empty() && agent_session_estimated_chars(session) > attempt_max_chars) {
+            SummaryCompactionInput input = build_summary_compaction_input(session, keep);
+            if (input.dropped_messages > 0 && !input.excerpt.empty()) {
+              const size_t max_out = summary_max_chars == 0 ? 1200 : summary_max_chars;
+              CompactionSummaryResult sr = generate_compaction_summary_via_llm(run_cfg, summary_model, input, max_out);
+              if (sr.ok && !sr.summary_text.empty()) {
+                summary_buf = std::string(AGENT_SESSION_SUMMARY_PREFIX) + "\n" + sr.summary_text;
+                summary_or_null = summary_buf.c_str();
+              }
+            }
+          }
+
+          agent_compact_report_t compact{};
+          const agent_status_t cst = agent_session_compact_char_budget(session, attempt_max_chars, keep, summary_or_null, &compact);
+          if (cst != AGENT_OK) {
+            ok = false;
+            err = std::string("session compaction failed: ") + std::to_string((int)cst);
+            break;
+          }
+
+          std::string request_json;
+          {
+            Json::Value root(Json::objectValue);
+            root["model"] = run_cfg.model;
+            root["stream"] = false;
+            Json::Value messages(Json::arrayValue);
+            const size_t n = agent_session_message_count(session);
+            for (size_t i = 0; i < n; i++) {
+              agent_message_view_t v{};
+              if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
+              Json::Value m(Json::objectValue);
+              m["role"] = agent_role_to_string(v.role);
+              std::string content(v.content, v.content_len);
+              if (i + 1 == n && v.role == AGENT_ROLE_USER) {
+                content = prompt_for_llm;
+              }
+              std::string text = content;
+              Json::Value mm(Json::nullValue);
+              if (try_parse_multimodal_prefix(content, &text, &mm) && mm.isObject()) {
+                m["content"] = multimodal_content_from_parts(text, mm);
+              } else {
+                m["content"] = content;
+              }
+              messages.append(m);
+            }
+            root["messages"] = messages;
+            request_json = json_stringify(root);
+          }
+
+          OpenAIRawResult raw = openai_chat_completions_raw(run_cfg, request_json);
+          http_status = raw.http_status;
+          http_body = raw.response_body;
+          compact_final = compact;
+
+          if (trace) {
+            std::cerr << "=== REQUEST (stream=false attempt=" << attempt << ") ===\n";
+            std::cerr << request_json << "\n";
+            std::cerr << "=== RESPONSE ===\n";
+            if (!raw.response_body.empty()) std::cerr << raw.response_body << "\n";
+          }
+
+          if (raw.http_status < 200 || raw.http_status >= 300) {
+            if (attempt < 2 && openai_is_context_too_long_error(raw.http_status, raw.response_body)) {
+              attempt_max_chars = std::max<size_t>(2000, (attempt_max_chars * 3) / 4);
+              continue;
+            }
+            ok = false;
+            err = openai_format_http_error(raw.http_status, raw.response_body);
+            break;
+          }
+
+          // Extract assistant content.
+          Json::CharReaderBuilder rb;
+          std::string errs;
+          std::istringstream iss(raw.response_body);
+          Json::Value parsed;
+          if (Json::parseFromStream(rb, iss, &parsed, &errs) && parsed.isObject()) {
+            const auto& choices = parsed["choices"];
+            if (choices.isArray() && !choices.empty()) {
+              const auto& msg = choices[0]["message"];
+              const auto& content = msg["content"];
+              if (content.isString()) assistant_text = content.asString();
+              else {
+                const auto& text = choices[0]["text"];
+                if (text.isString()) assistant_text = text.asString();
+              }
+            }
+          }
+          if (assistant_text.empty()) {
+            ok = false;
+            err = "completion returned no assistant content";
+            break;
+          }
+          agent_session_add_message(session, AGENT_ROLE_ASSISTANT, assistant_text.c_str());
+          ok = true;
+          break;
+        }
+
+        if (!no_session && !session_id.empty()) {
+          Json::Value record(Json::objectValue);
+          record["ts_unix_ms"] = (Json::Int64)now_unix_ms();
+          record["prompt"] = user_prompt;
+          record["ok"] = ok;
+          record["tools"] = "none";
+          record["model"] = model;
+          record["base_url"] = run_cfg.base_url;
+          record["stream_assistant"] = false;
+          record["attempt"] = final_attempt;
+          record["http_status"] = (Json::Int64)http_status;
+          if (!ok) record["error"] = err;
+          if (ok) record["assistant_text"] = assistant_text;
+          {
+            Json::Value c(Json::objectValue);
+            c["before_chars"] = (Json::UInt64)compact_final.before_chars;
+            c["after_chars"] = (Json::UInt64)compact_final.after_chars;
+            c["dropped_messages"] = (Json::UInt64)compact_final.dropped_messages;
+            c["inserted_summary"] = (bool)compact_final.inserted_summary;
+            record["compaction"] = c;
+          }
+          Json::StreamWriterBuilder wb;
+          wb["indentation"] = "";
+          (void)session_store_append_audit_jsonl(store_cfg, session_id, Json::writeString(wb, record));
+        }
+
+        if (!ok) {
+          if (!err.empty()) std::cerr << err << "\n";
+          if (!http_body.empty()) std::cerr << http_body << "\n";
+          return 1;
+        }
+        std::cout << assistant_text << "\n";
+        return 0;
+      }
+#endif
 
       agent_session_add_message(session, AGENT_ROLE_USER, user_prompt.c_str());
 

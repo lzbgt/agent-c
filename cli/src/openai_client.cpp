@@ -13,6 +13,42 @@
 #include <sstream>
 #include <algorithm>
 #include <mutex>
+#include <thread>
+#include <chrono>
+
+static bool is_retryable_http_status(long http_status) {
+  // Common transient statuses across OpenAI-compatible providers.
+  // - 408: request timeout
+  // - 429: rate limit / quota throttling
+  // - 5xx: upstream/provider errors
+  return http_status == 408 || http_status == 429 || (http_status >= 500 && http_status <= 599);
+}
+
+static bool is_retryable_curl_code(CURLcode rc) {
+  // Conservative set of libcurl errors that are generally transient.
+  switch (rc) {
+    case CURLE_OPERATION_TIMEDOUT:
+    case CURLE_COULDNT_RESOLVE_HOST:
+    case CURLE_COULDNT_RESOLVE_PROXY:
+    case CURLE_COULDNT_CONNECT:
+    case CURLE_RECV_ERROR:
+    case CURLE_SEND_ERROR:
+    case CURLE_GOT_NOTHING:
+    case CURLE_SSL_CONNECT_ERROR:
+      return true;
+    default:
+      return false;
+  }
+}
+
+static int retry_sleep_ms(int attempt) {
+  // attempt: 0-based attempt index of the *retry* (not the first try).
+  // Backoff: 250, 500, 1000, 2000... up to 4000ms.
+  const int base = 250;
+  int ms = base << std::max(0, attempt);
+  if (ms > 4000) ms = 4000;
+  return ms;
+}
 
 static size_t write_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
   auto* out = static_cast<std::string*>(userdata);
@@ -127,76 +163,102 @@ static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::
 
   ensure_curl_global_init();
 
-  const char* proxy = effective_proxy(cfg);
-  const bool have_proxy = (proxy && proxy[0]);
+  const int max_retries = std::max(0, cfg.max_retries);
+  for (int attempt = 0; attempt <= max_retries; attempt++) {
+    const char* proxy = effective_proxy(cfg);
+    const bool have_proxy = (proxy && proxy[0]);
 
-  CURL* curl = curl_easy_init();
-  if (!curl) {
-    result.response_body = "curl_easy_init failed";
-    return result;
-  }
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+      result.response_body = "curl_easy_init failed";
+      return result;
+    }
 
-  struct curl_slist* headers = nullptr;
-  headers = curl_slist_append(headers, "Content-Type: application/json");
-  if (!cfg.api_key.empty()) {
-    headers = curl_slist_append(headers, ("Authorization: Bearer " + cfg.api_key).c_str());
-  }
-  if (!cfg.openrouter_http_referer.empty()) {
-    headers = curl_slist_append(headers, ("HTTP-Referer: " + cfg.openrouter_http_referer).c_str());
-  }
-  if (!cfg.openrouter_x_title.empty()) {
-    headers = curl_slist_append(headers, ("X-Title: " + cfg.openrouter_x_title).c_str());
-  }
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    if (!cfg.api_key.empty()) {
+      headers = curl_slist_append(headers, ("Authorization: Bearer " + cfg.api_key).c_str());
+    }
+    if (!cfg.openrouter_http_referer.empty()) {
+      headers = curl_slist_append(headers, ("HTTP-Referer: " + cfg.openrouter_http_referer).c_str());
+    }
+    if (!cfg.openrouter_x_title.empty()) {
+      headers = curl_slist_append(headers, ("X-Title: " + cfg.openrouter_x_title).c_str());
+    }
 
-  std::string response;
-  curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-  curl_easy_setopt(curl, CURLOPT_POST, 1L);
-  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
-  curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body.size());
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-  // Make timeouts reliable even when used from background threads.
-  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-  // Total time budget for the request.
-  curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, cfg.timeout_ms);
-  // Faster failure when the proxy/DNS/route is broken (prevents "hang" perception).
-  const long connect_timeout_ms = (cfg.timeout_ms > 0) ? std::min<long>(cfg.timeout_ms, 15000L) : 15000L;
-  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, connect_timeout_ms);
-  // Keep connections from going half-open silently.
-  curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+    std::string response;
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POST, 1L);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body.size());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    // Make timeouts reliable even when used from background threads.
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    // Total time budget for the request.
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, cfg.timeout_ms);
+    // Faster failure when the proxy/DNS/route is broken (prevents "hang" perception).
+    const long connect_timeout_ms = (cfg.timeout_ms > 0) ? std::min<long>(cfg.timeout_ms, 15000L) : 15000L;
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, connect_timeout_ms);
+    // Keep connections from going half-open silently.
+    curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
 
-  if (have_proxy) {
-    // Force libcurl to honor the proxy explicitly (and allow us to retry cleanly on failure).
-    curl_easy_setopt(curl, CURLOPT_PROXY, proxy);
-    curl_easy_setopt(curl, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
-    curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 1L);
-    // Some local HTTP proxies are not happy with HTTP/2 over CONNECT.
-    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
-  }
+    if (have_proxy) {
+      // Force libcurl to honor the proxy explicitly (and allow us to retry cleanly on failure).
+      curl_easy_setopt(curl, CURLOPT_PROXY, proxy);
+      curl_easy_setopt(curl, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
+      curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 1L);
+      // Some local HTTP proxies are not happy with HTTP/2 over CONNECT.
+      curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+    }
 
-  CURLcode rc = curl_easy_perform(curl);
-  if (rc != CURLE_OK && have_proxy) {
-    // Proxy can be flaky/unavailable. Retry once with proxy disabled so tests can still run.
-    response.clear();
-    curl_easy_setopt(curl, CURLOPT_PROXY, "");
-    curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 0L);
-    rc = curl_easy_perform(curl);
-  }
-  if (rc != CURLE_OK) {
-    result.response_body = std::string("curl_easy_perform failed: ") + curl_easy_strerror(rc);
+    CURLcode rc = curl_easy_perform(curl);
+    if (rc != CURLE_OK && have_proxy) {
+      // Proxy can be flaky/unavailable. Retry once with proxy disabled so tests can still run.
+      response.clear();
+      curl_easy_setopt(curl, CURLOPT_PROXY, "");
+      curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 0L);
+      rc = curl_easy_perform(curl);
+    }
+
+    long http_status = 0;
+    if (rc == CURLE_OK) {
+      curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status);
+    }
+
+    // Success path.
+    if (rc == CURLE_OK && http_status >= 200 && http_status < 300) {
+      result.http_status = http_status;
+      result.response_body = response;
+      curl_slist_free_all(headers);
+      curl_easy_cleanup(curl);
+      return result;
+    }
+
+    // Decide whether to retry.
+    const bool retryable = (rc != CURLE_OK) ? is_retryable_curl_code(rc) : is_retryable_http_status(http_status);
+    const bool can_retry = (attempt < max_retries) && retryable;
+
+    // Populate best-effort result for caller if this is the last attempt.
+    if (!can_retry) {
+      result.http_status = (rc == CURLE_OK) ? http_status : 0;
+      result.response_body = (rc == CURLE_OK) ? response : (std::string("curl_easy_perform failed: ") + curl_easy_strerror(rc));
+      curl_slist_free_all(headers);
+      curl_easy_cleanup(curl);
+      return result;
+    }
+
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
-    return result;
+
+    // Backoff before retry.
+    const int sleep_ms = retry_sleep_ms(attempt);
+    std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
   }
 
-  long http_status = 0;
-  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status);
-  result.http_status = http_status;
-  result.response_body = response;
-
-  curl_slist_free_all(headers);
-  curl_easy_cleanup(curl);
+  // Unreachable, but keep a defensive fallback.
+  result.response_body = "http_post_json: unexpected retry loop exit";
   return result;
 }
 
@@ -206,74 +268,93 @@ static OpenAIRawResult http_get_raw(const OpenAIClientConfig& cfg, const std::st
 
   ensure_curl_global_init();
 
-  const char* proxy = effective_proxy(cfg);
-  const bool have_proxy = (proxy && proxy[0]);
+  const int max_retries = std::max(0, cfg.max_retries);
+  for (int attempt = 0; attempt <= max_retries; attempt++) {
+    const char* proxy = effective_proxy(cfg);
+    const bool have_proxy = (proxy && proxy[0]);
 
-  CURL* curl = curl_easy_init();
-  if (!curl) {
-    result.response_body = "curl_easy_init failed";
-    return result;
-  }
-
-  struct curl_slist* headers = nullptr;
-  headers = curl_slist_append(headers, "Accept: application/json");
-  if (!cfg.api_key.empty()) {
-    headers = curl_slist_append(headers, ("Authorization: Bearer " + cfg.api_key).c_str());
-  }
-  if (!cfg.openrouter_http_referer.empty()) {
-    headers = curl_slist_append(headers, ("HTTP-Referer: " + cfg.openrouter_http_referer).c_str());
-  }
-  if (!cfg.openrouter_x_title.empty()) {
-    headers = curl_slist_append(headers, ("X-Title: " + cfg.openrouter_x_title).c_str());
-  }
-  for (const auto& h : extra_headers) {
-    if (!h.empty()) {
-      headers = curl_slist_append(headers, h.c_str());
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+      result.response_body = "curl_easy_init failed";
+      return result;
     }
-  }
 
-  std::string response;
-  curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-  curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
-  // Enable built-in content decoding (gzip/br/etc when supported by libcurl).
-  curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
-  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-  curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, cfg.timeout_ms);
-  const long connect_timeout_ms = (cfg.timeout_ms > 0) ? std::min<long>(cfg.timeout_ms, 15000L) : 15000L;
-  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, connect_timeout_ms);
-  curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Accept: application/json");
+    if (!cfg.api_key.empty()) {
+      headers = curl_slist_append(headers, ("Authorization: Bearer " + cfg.api_key).c_str());
+    }
+    if (!cfg.openrouter_http_referer.empty()) {
+      headers = curl_slist_append(headers, ("HTTP-Referer: " + cfg.openrouter_http_referer).c_str());
+    }
+    if (!cfg.openrouter_x_title.empty()) {
+      headers = curl_slist_append(headers, ("X-Title: " + cfg.openrouter_x_title).c_str());
+    }
+    for (const auto& h : extra_headers) {
+      if (!h.empty()) {
+        headers = curl_slist_append(headers, h.c_str());
+      }
+    }
 
-  if (have_proxy) {
-    curl_easy_setopt(curl, CURLOPT_PROXY, proxy);
-    curl_easy_setopt(curl, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
-    curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 1L);
-    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
-  }
+    std::string response;
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
+    // Enable built-in content decoding (gzip/br/etc when supported by libcurl).
+    curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, cfg.timeout_ms);
+    const long connect_timeout_ms = (cfg.timeout_ms > 0) ? std::min<long>(cfg.timeout_ms, 15000L) : 15000L;
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, connect_timeout_ms);
+    curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
 
-  CURLcode rc = curl_easy_perform(curl);
-  if (rc != CURLE_OK && have_proxy) {
-    response.clear();
-    curl_easy_setopt(curl, CURLOPT_PROXY, "");
-    curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 0L);
-    rc = curl_easy_perform(curl);
-  }
-  if (rc != CURLE_OK) {
-    result.response_body = std::string("curl_easy_perform failed: ") + curl_easy_strerror(rc);
+    if (have_proxy) {
+      curl_easy_setopt(curl, CURLOPT_PROXY, proxy);
+      curl_easy_setopt(curl, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
+      curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 1L);
+      curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+    }
+
+    CURLcode rc = curl_easy_perform(curl);
+    if (rc != CURLE_OK && have_proxy) {
+      response.clear();
+      curl_easy_setopt(curl, CURLOPT_PROXY, "");
+      curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 0L);
+      rc = curl_easy_perform(curl);
+    }
+
+    long http_status = 0;
+    if (rc == CURLE_OK) {
+      curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status);
+    }
+
+    if (rc == CURLE_OK && http_status >= 200 && http_status < 300) {
+      result.http_status = http_status;
+      result.response_body = response;
+      curl_slist_free_all(headers);
+      curl_easy_cleanup(curl);
+      return result;
+    }
+
+    const bool retryable = (rc != CURLE_OK) ? is_retryable_curl_code(rc) : is_retryable_http_status(http_status);
+    const bool can_retry = (attempt < max_retries) && retryable;
+    if (!can_retry) {
+      result.http_status = (rc == CURLE_OK) ? http_status : 0;
+      result.response_body = (rc == CURLE_OK) ? response : (std::string("curl_easy_perform failed: ") + curl_easy_strerror(rc));
+      curl_slist_free_all(headers);
+      curl_easy_cleanup(curl);
+      return result;
+    }
+
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
-    return result;
+    const int sleep_ms = retry_sleep_ms(attempt);
+    std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
   }
 
-  long http_status = 0;
-  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status);
-  result.http_status = http_status;
-  result.response_body = response;
-
-  curl_slist_free_all(headers);
-  curl_easy_cleanup(curl);
+  result.response_body = "http_get_raw: unexpected retry loop exit";
   return result;
 }
 
@@ -291,88 +372,212 @@ static OpenAIStreamResult http_post_json_stream(
 
   ensure_curl_global_init();
 
-  const char* proxy = effective_proxy(cfg);
-  const bool have_proxy = (proxy && proxy[0]);
+  const int max_retries = std::max(0, cfg.max_retries);
+  for (int attempt = 0; attempt <= max_retries; attempt++) {
+    const char* proxy = effective_proxy(cfg);
+    const bool have_proxy = (proxy && proxy[0]);
 
-  CURL* curl = curl_easy_init();
-  if (!curl) {
-    result.response_body = "curl_easy_init failed";
-    return result;
-  }
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+      result.response_body = "curl_easy_init failed";
+      return result;
+    }
 
-  struct curl_slist* headers = nullptr;
-  headers = curl_slist_append(headers, "Content-Type: application/json");
-  headers = curl_slist_append(headers, "Accept: text/event-stream");
-  if (!cfg.api_key.empty()) {
-    headers = curl_slist_append(headers, ("Authorization: Bearer " + cfg.api_key).c_str());
-  }
-  if (!cfg.openrouter_http_referer.empty()) {
-    headers = curl_slist_append(headers, ("HTTP-Referer: " + cfg.openrouter_http_referer).c_str());
-  }
-  if (!cfg.openrouter_x_title.empty()) {
-    headers = curl_slist_append(headers, ("X-Title: " + cfg.openrouter_x_title).c_str());
-  }
+    struct curl_slist* headers = nullptr;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, "Accept: text/event-stream");
+    if (!cfg.api_key.empty()) {
+      headers = curl_slist_append(headers, ("Authorization: Bearer " + cfg.api_key).c_str());
+    }
+    if (!cfg.openrouter_http_referer.empty()) {
+      headers = curl_slist_append(headers, ("HTTP-Referer: " + cfg.openrouter_http_referer).c_str());
+    }
+    if (!cfg.openrouter_x_title.empty()) {
+      headers = curl_slist_append(headers, ("X-Title: " + cfg.openrouter_x_title).c_str());
+    }
 
-  StreamingWriteCtx wctx;
-  wctx.on_chunk = on_chunk;
-  wctx.on_chunk_ctx = on_chunk_ctx;
-  wctx.capture_limit = max_capture_bytes;
+    StreamingWriteCtx wctx;
+    wctx.on_chunk = on_chunk;
+    wctx.on_chunk_ctx = on_chunk_ctx;
+    wctx.capture_limit = max_capture_bytes;
 
-  curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-  curl_easy_setopt(curl, CURLOPT_POST, 1L);
-  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
-  curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body.size());
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_stream_cb);
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, &wctx);
-  curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-  curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, cfg.timeout_ms);
-  const long connect_timeout_ms = (cfg.timeout_ms > 0) ? std::min<long>(cfg.timeout_ms, 15000L) : 15000L;
-  curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, connect_timeout_ms);
-  curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+    curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POST, 1L);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body.c_str());
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body.size());
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_stream_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &wctx);
+    curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, cfg.timeout_ms);
+    const long connect_timeout_ms = (cfg.timeout_ms > 0) ? std::min<long>(cfg.timeout_ms, 15000L) : 15000L;
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, connect_timeout_ms);
+    curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
 
-  if (have_proxy) {
-    curl_easy_setopt(curl, CURLOPT_PROXY, proxy);
-    curl_easy_setopt(curl, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
-    curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 1L);
-    curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
-  }
+    if (have_proxy) {
+      curl_easy_setopt(curl, CURLOPT_PROXY, proxy);
+      curl_easy_setopt(curl, CURLOPT_PROXYTYPE, CURLPROXY_HTTP);
+      curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 1L);
+      curl_easy_setopt(curl, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+    }
 
-  CURLcode rc = curl_easy_perform(curl);
-  if (rc != CURLE_OK && have_proxy) {
-    // Retry once with proxy disabled.
-    wctx.capture.clear();
-    wctx.parser.reset();
-    curl_easy_setopt(curl, CURLOPT_PROXY, "");
-    curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 0L);
-    rc = curl_easy_perform(curl);
-  }
-  if (rc != CURLE_OK) {
-    result.response_body = wctx.capture;
-    result.error_message = std::string("curl_easy_perform failed: ") + curl_easy_strerror(rc);
+    CURLcode rc = curl_easy_perform(curl);
+    if (rc != CURLE_OK && have_proxy) {
+      // Retry once with proxy disabled.
+      wctx.capture.clear();
+      wctx.parser.reset();
+      wctx.saw_done = false;
+      wctx.chunks = 0;
+      curl_easy_setopt(curl, CURLOPT_PROXY, "");
+      curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 0L);
+      rc = curl_easy_perform(curl);
+    }
+
+    long http_status = 0;
+    if (rc == CURLE_OK) {
+      curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status);
+    }
+
+    // Success (as far as transport is concerned). For streaming, treat non-2xx as error payload.
+    if (rc == CURLE_OK && http_status >= 200 && http_status < 300) {
+      result.http_status = http_status;
+      result.response_body = wctx.capture;
+      result.saw_done = wctx.saw_done;
+      curl_slist_free_all(headers);
+      curl_easy_cleanup(curl);
+      return result;
+    }
+
+    // Only retry streaming calls if we didn't emit any chunks (otherwise we'd duplicate partial output).
+    const bool can_retry_stream = (wctx.chunks == 0 && !wctx.saw_done);
+    const bool retryable =
+      can_retry_stream && ((rc != CURLE_OK) ? is_retryable_curl_code(rc) : is_retryable_http_status(http_status));
+    const bool can_retry = (attempt < max_retries) && retryable;
+
+    if (!can_retry) {
+      result.http_status = (rc == CURLE_OK) ? http_status : 0;
+      result.response_body = wctx.capture;
+      if (rc != CURLE_OK) {
+        result.error_message = std::string("curl_easy_perform failed: ") + curl_easy_strerror(rc);
+      }
+      curl_slist_free_all(headers);
+      curl_easy_cleanup(curl);
+      return result;
+    }
+
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
-    return result;
+    const int sleep_ms = retry_sleep_ms(attempt);
+    std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
   }
 
-  long http_status = 0;
-  curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_status);
-  result.http_status = http_status;
-  result.response_body = wctx.capture;
-  result.saw_done = wctx.saw_done;
-
-  curl_slist_free_all(headers);
-  curl_easy_cleanup(curl);
+  result.error_message = "http_post_json_stream: unexpected retry loop exit";
   return result;
 }
 
 #if defined(AGENT_HAVE_JSONCPP)
+static const char* kMultimodalPrefix = "__AGENT_MM_V1__";
+
+static bool try_parse_multimodal_prefix(
+  const std::string& content,
+  std::string* out_text,
+  Json::Value* out_mm
+) {
+  if (out_text) *out_text = content;
+  if (out_mm) *out_mm = Json::Value(Json::nullValue);
+  if (!out_text || !out_mm) return false;
+
+  if (content.rfind(kMultimodalPrefix, 0) != 0) return false;
+  const size_t nl = content.find('\n');
+  if (nl == std::string::npos) return false;
+  const size_t prefix_len = std::strlen(kMultimodalPrefix);
+  if (nl < prefix_len) return false;
+
+  const std::string json_part = content.substr(prefix_len, nl - prefix_len);
+  if (json_part.empty()) return false;
+
+  Json::CharReaderBuilder rb;
+  std::string errs;
+  std::istringstream iss(json_part);
+  Json::Value v;
+  if (!Json::parseFromStream(rb, iss, &v, &errs) || !v.isObject()) {
+    return false;
+  }
+
+  *out_mm = v;
+  *out_text = content.substr(nl + 1);
+  return true;
+}
+
+static Json::Value multimodal_content_from_parts(const std::string& text, const Json::Value& mm) {
+  const bool have_images = mm.isMember("images") && mm["images"].isArray() && !mm["images"].empty();
+  const bool have_files = mm.isMember("files") && mm["files"].isArray() && !mm["files"].empty();
+  if (!have_images && !have_files) return Json::Value(text);
+
+  Json::Value arr(Json::arrayValue);
+  if (!text.empty()) {
+    Json::Value t(Json::objectValue);
+    t["type"] = "text";
+    t["text"] = text;
+    arr.append(t);
+  }
+
+  if (have_files) {
+    for (const auto& f : mm["files"]) {
+      if (!f.isObject()) continue;
+      const std::string name = f.isMember("name") && f["name"].isString() ? f["name"].asString() : "";
+      const std::string mime = f.isMember("mime") && f["mime"].isString() ? f["mime"].asString() : "";
+      const std::string ft = f.isMember("text") && f["text"].isString() ? f["text"].asString() : "";
+      const bool trunc = f.isMember("truncated") && f["truncated"].isBool() ? f["truncated"].asBool() : false;
+      if (ft.empty()) continue;
+
+      std::string block;
+      block += "[Attachment";
+      if (!name.empty()) block += ": " + name;
+      if (!mime.empty()) block += " (" + mime + ")";
+      block += "]\n";
+      block += ft;
+      if (trunc) block += "\n...(truncated)";
+
+      Json::Value t(Json::objectValue);
+      t["type"] = "text";
+      t["text"] = block;
+      arr.append(t);
+    }
+  }
+
+  if (have_images) {
+    for (const auto& im : mm["images"]) {
+      if (!im.isObject()) continue;
+      const std::string mime = im.isMember("mime") && im["mime"].isString() ? im["mime"].asString() : "image/png";
+      const std::string b64 = im.isMember("b64") && im["b64"].isString() ? im["b64"].asString() : "";
+      if (b64.empty()) continue;
+      const std::string url = std::string("data:") + mime + ";base64," + b64;
+
+      Json::Value part(Json::objectValue);
+      part["type"] = "image_url";
+      Json::Value iu(Json::objectValue);
+      iu["url"] = url;
+      part["image_url"] = iu;
+      arr.append(part);
+    }
+  }
+  return arr;
+}
+
 static void append_message_views_json(Json::Value& messages, const agent_message_view_t* views, size_t n) {
   for (size_t i = 0; i < n; i++) {
     const agent_message_view_t& view = views[i];
     Json::Value msg(Json::objectValue);
     msg["role"] = agent_role_to_string(view.role);
-    msg["content"] = std::string(view.content, view.content_len);
+    const std::string raw(view.content, view.content_len);
+    std::string text = raw;
+    Json::Value mm(Json::nullValue);
+    if (try_parse_multimodal_prefix(raw, &text, &mm) && mm.isObject()) {
+      msg["content"] = multimodal_content_from_parts(text, mm);
+    } else {
+      msg["content"] = raw;
+    }
     messages.append(msg);
   }
 }

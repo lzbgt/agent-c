@@ -10,6 +10,7 @@
 #include <vector>
 #include <sstream>
 #include <cstring>
+#include <unordered_map>
 
 #include "openai_client.h"
 
@@ -32,6 +33,107 @@ static bool url_contains_ci(const std::string& url, const std::string& needle) {
   const std::string u = lower_copy(url);
   const std::string n = lower_copy(needle);
   return u.find(n) != std::string::npos;
+}
+
+static bool is_moonshot_provider(const std::string& base_url) {
+  // Moonshot endpoints include:
+  // - https://api.moonshot.ai/v1
+  // - https://api.moonshot.cn/v1
+  return url_contains_ci(base_url, "moonshot");
+}
+
+static const char* kMultimodalPrefix = "__AGENT_MM_V1__";
+
+static bool try_parse_multimodal_prefix(
+  const std::string& content,
+  std::string* out_text,
+  Json::Value* out_mm
+) {
+  if (out_text) *out_text = content;
+  if (out_mm) *out_mm = Json::Value(Json::nullValue);
+  if (!out_text || !out_mm) return false;
+
+  if (content.rfind(kMultimodalPrefix, 0) != 0) return false;
+  const size_t nl = content.find('\n');
+  if (nl == std::string::npos) return false;
+
+  const std::string json_part = content.substr(std::strlen(kMultimodalPrefix), nl - std::strlen(kMultimodalPrefix));
+  if (json_part.empty()) return false;
+
+  Json::CharReaderBuilder rb;
+  std::string errs;
+  std::istringstream iss(json_part);
+  Json::Value v;
+  if (!Json::parseFromStream(rb, iss, &v, &errs) || !v.isObject()) {
+    return false;
+  }
+
+  *out_mm = v;
+  *out_text = content.substr(nl + 1);
+  return true;
+}
+
+static Json::Value multimodal_content_from_parts(const std::string& text, const Json::Value& mm) {
+  // Expected `mm` shape:
+  //   { "images":[{"mime":"image/png","b64":"...","name":"..."}],
+  //     "files":[{"mime":"text/plain","name":"...","text":"...","truncated":true}] }
+  //
+  // This is *host-internal* and intentionally minimal; callers should not treat it as public API.
+  const bool have_images = mm.isMember("images") && mm["images"].isArray() && !mm["images"].empty();
+  const bool have_files = mm.isMember("files") && mm["files"].isArray() && !mm["files"].empty();
+  if (!have_images && !have_files) {
+    return Json::Value(text);
+  }
+
+  Json::Value arr(Json::arrayValue);
+  if (!text.empty()) {
+    Json::Value t(Json::objectValue);
+    t["type"] = "text";
+    t["text"] = text;
+    arr.append(t);
+  }
+
+  if (have_files) {
+    for (const auto& f : mm["files"]) {
+      if (!f.isObject()) continue;
+      const std::string name = f.isMember("name") && f["name"].isString() ? f["name"].asString() : "";
+      const std::string mime = f.isMember("mime") && f["mime"].isString() ? f["mime"].asString() : "";
+      const std::string ft = f.isMember("text") && f["text"].isString() ? f["text"].asString() : "";
+      const bool trunc = f.isMember("truncated") && f["truncated"].isBool() ? f["truncated"].asBool() : false;
+      if (ft.empty()) continue;
+      std::string block;
+      block += "[Attachment";
+      if (!name.empty()) block += ": " + name;
+      if (!mime.empty()) block += " (" + mime + ")";
+      block += "]\n";
+      block += ft;
+      if (trunc) block += "\n...(truncated)";
+
+      Json::Value t(Json::objectValue);
+      t["type"] = "text";
+      t["text"] = block;
+      arr.append(t);
+    }
+  }
+
+  if (have_images) {
+    for (const auto& im : mm["images"]) {
+      if (!im.isObject()) continue;
+      const std::string mime = im.isMember("mime") && im["mime"].isString() ? im["mime"].asString() : "image/png";
+      const std::string b64 = im.isMember("b64") && im["b64"].isString() ? im["b64"].asString() : "";
+      if (b64.empty()) continue;
+      const std::string url = std::string("data:") + mime + ";base64," + b64;
+
+      Json::Value part(Json::objectValue);
+      part["type"] = "image_url";
+      Json::Value iu(Json::objectValue);
+      iu["url"] = url;
+      part["image_url"] = iu;
+      arr.append(part);
+    }
+  }
+
+  return arr;
 }
 
 static std::string truncate_str(const std::string& s, size_t max_chars, bool* out_truncated = nullptr) {
@@ -129,6 +231,7 @@ static agent_status_t set_error(agent_tool_provider_response_t* out_resp, const 
 }
 
 static Json::Value build_messages_json(
+  OpenAIToolProviderCtx* ctx,
   const agent_chat_message_view_t* messages,
   size_t message_count,
   bool include_reasoning_content
@@ -138,11 +241,34 @@ static Json::Value build_messages_json(
     const agent_chat_message_view_t& v = messages[i];
     Json::Value m(Json::objectValue);
     m["role"] = agent_role_to_string(v.role);
-    m["content"] = std::string(v.content ? v.content : "", v.content_len);
+    const std::string raw(v.content ? v.content : "", v.content_len);
+    std::string text = raw;
+    Json::Value mm(Json::nullValue);
+    (void)try_parse_multimodal_prefix(raw, &text, &mm);
+    if (mm.isObject()) {
+      m["content"] = multimodal_content_from_parts(text, mm);
+    } else {
+      m["content"] = text;
+    }
     // DeepSeek thinking-mode models (e.g. deepseek-reasoner) require a `reasoning_content` field
     // in assistant messages for tool-calling flows. If omitted, DeepSeek may return HTTP 400.
     if (include_reasoning_content && v.role == AGENT_ROLE_ASSISTANT) {
-      m["reasoning_content"] = "";
+      std::string rc;
+      if (ctx && v.tool_call_count > 0 && v.tool_calls) {
+        std::string key;
+        for (size_t j = 0; j < v.tool_call_count; j++) {
+          const auto& c = v.tool_calls[j];
+          if (c.id && c.id[0]) {
+            if (!key.empty()) key += "|";
+            key += c.id;
+          }
+        }
+        if (!key.empty()) {
+          const auto it = ctx->reasoning_by_tool_call_ids.find(key);
+          if (it != ctx->reasoning_by_tool_call_ids.end()) rc = it->second;
+        }
+      }
+      m["reasoning_content"] = rc;
     }
     if (v.name && v.name[0]) m["name"] = v.name;
     if (v.role == AGENT_ROLE_TOOL && v.tool_call_id && v.tool_call_id[0]) {
@@ -200,20 +326,33 @@ static agent_status_t openai_tool_provider_generate(
 
   Json::Value root(Json::objectValue);
   root["model"] = req->model ? req->model : "";
-  root["stream"] = ctx->stream_assistant;
   const bool deepseek_reasoner =
     url_contains_ci(ctx->cfg.base_url, "deepseek") &&
     (url_contains_ci(root["model"].asString(), "reasoner") || url_contains_ci(root["model"].asString(), "deepseek-reasoner"));
-  root["messages"] = build_messages_json(req->messages, req->message_count, deepseek_reasoner);
+  const bool moonshot = is_moonshot_provider(ctx->cfg.base_url);
+  const bool include_reasoning = deepseek_reasoner || moonshot;
+  const bool use_stream_assistant = ctx->stream_assistant && !moonshot;
+  if (moonshot && ctx->stream_assistant) {
+    // Kimi K2.5 tool-use constraints + requirements make streaming tricky:
+    // - reasoning_content must be carried forward across tool-calling turns
+    // - our streaming decoder does not currently capture reasoning deltas
+    //
+    // Use non-streaming calls for correctness.
+  }
+  root["stream"] = use_stream_assistant;
+  root["messages"] = build_messages_json(ctx, req->messages, req->message_count, include_reasoning);
   root["tools"] = tools;
 
   if (req->force_tool_or_null && req->force_tool_or_null[0]) {
-    Json::Value tc(Json::objectValue);
-    tc["type"] = "function";
-    Json::Value fn(Json::objectValue);
-    fn["name"] = req->force_tool_or_null;
-    tc["function"] = fn;
-    root["tool_choice"] = tc;
+    // Some providers (DeepSeek reasoner, Kimi thinking mode) do not support forcing tool_choice.
+    if (!deepseek_reasoner && !moonshot) {
+      Json::Value tc(Json::objectValue);
+      tc["type"] = "function";
+      Json::Value fn(Json::objectValue);
+      fn["name"] = req->force_tool_or_null;
+      tc["function"] = fn;
+      root["tool_choice"] = tc;
+    }
   }
 
   const std::string request_json = json_stringify(root);
@@ -238,7 +377,7 @@ static agent_status_t openai_tool_provider_generate(
   struct ParsedToolCall { std::string id; std::string name; std::string arguments; };
   std::vector<ParsedToolCall> calls;
 
-  if (ctx->stream_assistant) {
+  if (use_stream_assistant) {
     struct StreamAccum {
       OpenAIToolProviderCtx* ctx = nullptr;
       uint64_t step = 0;
@@ -415,6 +554,23 @@ static agent_status_t openai_tool_provider_generate(
           if (namev.isString() && argv.isString()) {
             calls.push_back(ParsedToolCall{std::string("call_") + std::to_string(req->step) + "_0", namev.asString(), argv.asString()});
           }
+        }
+      }
+    }
+
+    // Best-effort reasoning content capture for providers that require it across tool-call turns.
+    if (include_reasoning && assistant_msg.isMember("reasoning_content") && assistant_msg["reasoning_content"].isString()) {
+      const std::string rc = assistant_msg["reasoning_content"].asString();
+      if (!rc.empty() && !calls.empty()) {
+        std::string key;
+        for (const auto& c : calls) {
+          if (!c.id.empty()) {
+            if (!key.empty()) key += "|";
+            key += c.id;
+          }
+        }
+        if (!key.empty()) {
+          ctx->reasoning_by_tool_call_ids[key] = rc;
         }
       }
     }

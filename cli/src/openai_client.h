@@ -13,6 +13,10 @@ struct OpenAIClientConfig {
   // If empty, falls back to env (HTTPS_PROXY/https_proxy/HTTP_PROXY/http_proxy).
   std::string proxy_url;
   long timeout_ms = 60000;
+  // Best-effort retries for transient network/provider failures (timeouts, 5xx, 429).
+  // Note: retries can result in duplicate provider requests if the first attempt succeeded server-side
+  // but the response was lost. Keep this small (default: 1).
+  int max_retries = 1;
 };
 
 struct OpenAIChatResult {

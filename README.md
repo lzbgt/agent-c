@@ -523,8 +523,11 @@ Default host system hint (CLI/daemon):
 - When using `--tools host`, the CLI/daemon injects a one-time `system` message into an empty session to encourage
   **fast incremental inspection** (use `rg/grep`, `head`, `tail`, `awk`, `sed -n`) instead of reading large files wholesale.
 - CLI: disable with `--no-default-system` or override with `--system "<your prompt>"`.
+- CLI: select a built-in prompt profile with `--system-profile default|jules_codex`.
 - Daemon: disable with `./build/agentd --no-default-system` or per-request with `no_default_system: true`;
   override per-request with `system: "<your prompt>"`.
+- Daemon: select a built-in prompt profile with `./build/agentd --system-profile default|jules_codex`, env `AGENTD_SYSTEM_PROFILE`,
+  or per-request with `system_profile: "default" | "jules_codex"`.
 
 Optional LLM summaries for compaction (`--tools none`):
 - In `--tools none` mode, you can optionally provide `--summary-model <name>` to generate a short LLM summary of the

@@ -21,6 +21,68 @@ export type SceneEntity = {
   updated_ms?: number;
 };
 
+function safeToString(v: any): string {
+  try {
+    if (typeof v === "string") return v;
+    if (v && typeof v === "object" && typeof v.message === "string") return v.message;
+    return String(v);
+  } catch {
+    return "";
+  }
+}
+
+function isAutoplayNotAllowedLog(args: any[]): boolean {
+  if (!Array.isArray(args) || args.length === 0) return false;
+  const first = typeof args[0] === "string" ? args[0] : "";
+  if (!/autoplay prevented/i.test(first)) return false;
+  const rest = args.slice(1).map(safeToString).join(" ");
+  const combined = `${first} ${rest}`.trim();
+  return /NotAllowedError|user didn'?t interact|didn'?t interact|play\\(\\) failed/i.test(combined);
+}
+
+function makeSceneConsole(): Console {
+  const real: any = (typeof globalThis !== "undefined" ? (globalThis as any).console : undefined) || {};
+  const wrap = (fn: any) => {
+    return (...args: any[]) => {
+      // Browser policy: unmuted audio/video autoplay is often blocked until user interaction.
+      // Scene scripts frequently log a noisy "Autoplay prevented: NotAllowedError..." message.
+      // This is expected and not actionable for most users; suppress it to avoid "fake errors".
+      if (isAutoplayNotAllowedLog(args)) return;
+      try {
+        if (typeof fn === "function") fn.apply(real, args);
+      } catch {
+        // ignore
+      }
+    };
+  };
+  // Provide a minimally complete console; keep other methods pass-through.
+  return {
+    log: wrap(real.log),
+    info: wrap(real.info),
+    warn: wrap(real.warn),
+    error: wrap(real.error),
+    debug: wrap(real.debug),
+    trace: wrap(real.trace),
+    // Some code checks console.assert/console.clear/etc; forward best-effort.
+    assert: wrap(real.assert),
+    clear: wrap(real.clear),
+    count: wrap(real.count),
+    countReset: wrap(real.countReset),
+    dir: wrap(real.dir),
+    dirxml: wrap(real.dirxml),
+    group: wrap(real.group),
+    groupCollapsed: wrap(real.groupCollapsed),
+    groupEnd: wrap(real.groupEnd),
+    table: wrap(real.table),
+    time: wrap(real.time),
+    timeEnd: wrap(real.timeEnd),
+    timeLog: wrap(real.timeLog),
+    timeStamp: wrap(real.timeStamp),
+    profile: wrap(real.profile),
+    profileEnd: wrap(real.profileEnd),
+  } as any;
+}
+
 function toTestIdPart(v: string): string {
   // Keep Playwright selectors stable even if ids contain punctuation.
   // data-testid accepts any string, but normalizing avoids surprises.
@@ -199,12 +261,17 @@ with ({ api, args, ctx: api.ctx, canvas: api.root, width: api.width, height: api
 `;
 
         // eslint-disable-next-line no-new-func
-        const fn = new Function("api", "args", `return (async function() {\n${body}\n})();`) as (api: any, args: any) => Promise<any>;
+        const fn = new Function(
+          "api",
+          "args",
+          "__console",
+          `const console = __console; return (async function() {\n${body}\n})();`,
+        ) as (api: any, args: any, __console: any) => Promise<any>;
 
         let cancelled = false;
         void (async () => {
           try {
-            const res = await fn(api, scriptArgs);
+            const res = await fn(api, scriptArgs, makeSceneConsole());
             if (cancelled) return;
             if (typeof res === "function") cleanupRef.current = res as any;
             else if (res && typeof res === "object" && typeof (res as any).cleanup === "function") cleanupRef.current = (res as any).cleanup;
@@ -468,11 +535,17 @@ return __fn;
           : script;
 
         // eslint-disable-next-line no-new-func
-        const fn = new Function("api", "args", '"use strict"; return (async function() {\n' + body + "\n})();") as (
+        const fn = new Function(
+          "api",
+          "args",
+          "__console",
+          '"use strict"; const console = __console; return (async function() {\n' + body + "\n})();",
+        ) as (
           api: any,
           args: any,
+          __console: any,
         ) => Promise<any>;
-        const res = await fn(api, scriptArgs);
+        const res = await fn(api, scriptArgs, makeSceneConsole());
         if (cancelled) return;
         if (typeof res === "function") cleanupRef.current = res as any;
         else if (res && typeof res === "object" && typeof (res as any).cleanup === "function") cleanupRef.current = (res as any).cleanup;

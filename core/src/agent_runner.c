@@ -45,7 +45,7 @@ agent_status_t agent_run_once(
   const agent_run_options_t* options,
   agent_run_report_t* out_report
 ) {
-  if (!session || !provider || !provider->generate || !options || !options->model) {
+  if (!session || !provider || (!provider->generate && !provider->generate_ex) || !options || !options->model) {
     return AGENT_ERR_INVALID_ARGUMENT;
   }
 
@@ -82,7 +82,16 @@ agent_status_t agent_run_once(
   memset(&resp, 0, sizeof(resp));
 
   report.provider_called = 1;
-  st = provider->generate(provider->ctx, &req, &resp);
+  if (provider->generate_ex) {
+    agent_generate_request_ex_t req_ex;
+    req_ex.model = options->model;
+    req_ex.session = session;
+    req_ex.messages = views;
+    req_ex.message_count = view_count;
+    st = provider->generate_ex(provider->ctx, &req_ex, &resp);
+  } else {
+    st = provider->generate(provider->ctx, &req, &resp);
+  }
 
   agent_free(views);
 
@@ -112,4 +121,3 @@ agent_status_t agent_run_once(
   }
   return AGENT_OK;
 }
-

@@ -18,6 +18,18 @@ typedef struct agent_generate_request {
   size_t message_count;
 } agent_generate_request_t;
 
+// Extended request that allows providers to access multimodal message parts stored in the session
+// (see agent/parts.h). This is especially important for embedded providers that need to send
+// image+text mixed prompts to OpenAI-compatible backends.
+//
+// If a provider implements `generate_ex`, the core will prefer it over `generate`.
+typedef struct agent_generate_request_ex {
+  const char* model; // required (provider may ignore if it uses a fixed model)
+  const agent_session_t* session; // session that backs `messages` (message i corresponds to session message i)
+  const agent_message_view_t* messages;
+  size_t message_count;
+} agent_generate_request_ex_t;
+
 typedef struct agent_generate_response {
   agent_string_t assistant_text; // UTF-8 text
 } agent_generate_response_t;
@@ -28,12 +40,18 @@ typedef agent_status_t (*agent_provider_generate_fn)(
   agent_generate_response_t* out_resp
 );
 
+typedef agent_status_t (*agent_provider_generate_ex_fn)(
+  void* provider_ctx,
+  const agent_generate_request_ex_t* req,
+  agent_generate_response_t* out_resp
+);
+
 typedef struct agent_provider {
   void* ctx;
   agent_provider_generate_fn generate;
+  agent_provider_generate_ex_fn generate_ex; // optional
 } agent_provider_t;
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif
-

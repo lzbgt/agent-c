@@ -10,6 +10,7 @@
 #include "job_endpoints.h"
 #include "openrouter_models_endpoint.h"
 #include "openrouter_util.h"
+#include "provider_util.h"
 #include "run_endpoints.h"
 #include "runtime_config.h"
 #include "secrets_file.h"
@@ -95,6 +96,7 @@ static void fill_env_defaults(DaemonConfig* cfg) {
     else if (const char* b2 = getenv_s("OPENAI_BASE_URL")) cfg->base_url = b2;
     else if (const char* b3 = getenv_s("OPENROUTER_API_BASE")) cfg->base_url = b3;
     else if (const char* b4 = getenv_s("DEEPSEEK_API_BASE")) cfg->base_url = b4;
+    else if (const char* b5 = getenv_s("MOONSHOT_API_BASE")) cfg->base_url = b5;
   }
 
   if (cfg->api_key.empty()) {
@@ -106,6 +108,10 @@ static void fill_env_defaults(DaemonConfig* cfg) {
       if (const char* k = getenv_s("OPENROUTER_API_KEY")) cfg->api_key = k;
       else if (const char* k2 = getenv_s("OPENAI_API_KEY")) cfg->api_key = k2;
       else if (const char* k3 = getenv_s("DEEPSEEK_API_KEY")) cfg->api_key = k3;
+    } else if (url_contains_ci(cfg->base_url, "moonshot")) {
+      if (const char* k = getenv_s("KIMI_API_KEY_CN")) cfg->api_key = k;
+      else if (const char* k2 = getenv_s("MOONSHOT_API_KEY")) cfg->api_key = k2;
+      else if (const char* k3 = getenv_s("OPENAI_API_KEY")) cfg->api_key = k3;
     } else {
       if (const char* k = getenv_s("OPENAI_API_KEY")) cfg->api_key = k;
       else if (const char* k2 = getenv_s("OPENROUTER_API_KEY")) cfg->api_key = k2;
@@ -114,8 +120,7 @@ static void fill_env_defaults(DaemonConfig* cfg) {
   }
 
   if (cfg->api_key.empty()) {
-    const std::string provider =
-      url_contains_ci(cfg->base_url, "deepseek") ? "deepseek" : url_contains_ci(cfg->base_url, "openrouter") ? "openrouter" : "openai";
+    const std::string provider = provider_from_base_url(cfg->base_url);
     if (auto k = load_provider_key_best_effort(provider)) {
       cfg->api_key = *k;
     }
@@ -329,6 +334,11 @@ bool AgentdApi::init(std::string* out_error) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();
     handle_session_ui_event_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route("POST", "/api/v1/session/upload", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_session_upload_endpoint(cur, self->cors_cfg, &self->db, req, resp);
   });
   impl_->route("DELETE", "/api/v1/session", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);

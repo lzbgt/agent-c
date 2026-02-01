@@ -27,19 +27,6 @@ void handle_job_get_endpoint(
     resp->body = R"({"ok":false,"error":"missing job_id"})";
     return;
   }
-  JobState s;
-  if (!job_get(*jid, &s)) {
-    resp->status = 404;
-    resp->body = R"({"ok":false,"error":"job not found"})";
-    return;
-  }
-  Json::Value o(Json::objectValue);
-  o["ok"] = true;
-  o["job_id"] = s.id;
-  o["status"] = s.status;
-  o["error"] = s.error;
-  o["created_unix_ms"] = (Json::Int64)s.created_unix_ms;
-  o["updated_unix_ms"] = (Json::Int64)s.updated_unix_ms;
 
   // Optional live events for progress (polling UI).
   const auto include_ev = query_get(req.query, "include_events");
@@ -65,30 +52,26 @@ void handle_job_get_endpoint(
   if (max_events == 0) max_events = 256;
   max_events = std::min<size_t>(max_events, 2048);
 
-  o["events_cursor_base"] = (Json::UInt64)s.events_offset;
-  o["events_cursor_end"] = (Json::UInt64)(s.events_offset + (uint64_t)s.events.size());
-  if (want_events) {
-    Json::Value slice(Json::arrayValue);
-    const uint64_t base = s.events_offset;
-    const uint64_t end = base + (uint64_t)s.events.size();
-    bool reset = false;
-    uint64_t cur = cursor;
-    if (cur < base) {
-      reset = true;
-      cur = base;
-    }
-    if (cur > end) {
-      cur = end;
-    }
-    const uint64_t start_idx = cur - base;
-    const uint64_t avail = end - cur;
-    const uint64_t take = std::min<uint64_t>((uint64_t)max_events, avail);
-    for (uint64_t i = 0; i < take; i++) {
-      slice.append(s.events[(Json::ArrayIndex)(start_idx + i)]);
-    }
-    o["events"] = slice;
-    o["events_cursor_next"] = (Json::UInt64)(cur + take);
-    o["events_reset"] = reset;
+  JobSnapshot s;
+  if (!job_get_snapshot(*jid, cursor, max_events, want_events, &s)) {
+    resp->status = 404;
+    resp->body = R"({"ok":false,"error":"job not found"})";
+    return;
+  }
+  Json::Value o(Json::objectValue);
+  o["ok"] = true;
+  o["job_id"] = s.id;
+  o["status"] = s.status;
+  o["error"] = s.error;
+  o["created_unix_ms"] = (Json::Int64)s.created_unix_ms;
+  o["updated_unix_ms"] = (Json::Int64)s.updated_unix_ms;
+
+  o["events_cursor_base"] = (Json::UInt64)s.events_cursor_base;
+  o["events_cursor_end"] = (Json::UInt64)s.events_cursor_end;
+  if (want_events && s.events_included) {
+    o["events"] = s.events;
+    o["events_cursor_next"] = (Json::UInt64)s.events_cursor_next;
+    o["events_reset"] = s.events_reset;
   }
 
   if (s.status == "done" || s.status == "error") {
@@ -167,4 +150,3 @@ void handle_job_delete_endpoint(
 }
 
 }  // namespace agentd
-

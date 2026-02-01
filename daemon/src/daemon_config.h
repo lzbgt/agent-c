@@ -48,6 +48,9 @@ struct DaemonConfig {
   bool yolo_default = true;       // default to unrestricted unless client requests scoped mode
   HostToolsetPolicyMode host_policy = HostToolsetPolicyMode::Full; // host tools: full|readonly
   bool no_default_system = false; // when false, host tool runs insert a default system hint (one time)
+  // Host-only: selects which built-in host system prompt to inject when `system` is not provided.
+  // See `host_system_prompt_for_profile()` for known values.
+  std::string system_profile = "default";
   size_t max_chars_default = 20000;
   size_t keep_last_default = 16;
   // Default tool-loop step limit when requests omit `max_steps`.

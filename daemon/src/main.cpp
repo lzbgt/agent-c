@@ -17,6 +17,7 @@
 #include "secrets_file.h"
 #include "config_store.h"
 #include "runtime_config.h"
+#include "provider_util.h"
 
 #include "agent_db.h"
 
@@ -131,6 +132,7 @@ int main(int argc, char** argv) {
   (void)::signal(SIGPIPE, SIG_IGN);
 
   DaemonConfig cfg;
+  bool system_profile_set = false;
   // Minimal flag parsing (daemon is host-only; core remains argv/env-free).
   for (int i = 1; i < argc; i++) {
     const std::string a = argv[i] ? argv[i] : "";
@@ -327,6 +329,17 @@ int main(int argc, char** argv) {
       cfg.yolo_default = false;
     } else if (a == "--no-default-system") {
       cfg.no_default_system = true;
+    } else if (a == "--system-profile") {
+      if (!take(&cfg.system_profile) || cfg.system_profile.empty()) {
+        std::cerr << "Missing value for --system-profile\n";
+        return 2;
+      }
+      cfg.system_profile = trim_copy(cfg.system_profile);
+      if (!(cfg.system_profile == "default" || cfg.system_profile == "jules_codex")) {
+        std::cerr << "Invalid --system-profile (expected: default|jules_codex)\n";
+        return 2;
+      }
+      system_profile_set = true;
     } else if (a == "--cors-origin") {
       std::string v;
       if (!take(&v) || v.empty()) {
@@ -392,7 +405,8 @@ int main(int argc, char** argv) {
         << "  --tools host|basic|none   Default toolset (default: host)\n"
         << "  --host-policy full|readonly  Host tool safety policy (default: full)\n"
         << "  --yolo / --no-yolo   Default unrestricted mode (default: yolo)\n"
-        << "  --no-default-system  Disable default host system hint (host tools only)\n";
+        << "  --no-default-system  Disable default host system hint (host tools only)\n"
+        << "  --system-profile <name> Host system prompt profile (default: default)\n";
       return 0;
     } else {
       std::cerr << "Unknown arg: " << a << "\n";
@@ -432,6 +446,8 @@ int main(int argc, char** argv) {
       cfg.base_url = b3;
     } else if (const char* b4 = getenv_s("DEEPSEEK_API_BASE")) {
       cfg.base_url = b4;
+    } else if (const char* b5 = getenv_s("MOONSHOT_API_BASE")) {
+      cfg.base_url = b5;
     }
   }
   if (cfg.api_key.empty()) {
@@ -443,6 +459,11 @@ int main(int argc, char** argv) {
       if (const char* k = getenv_s("OPENROUTER_API_KEY")) cfg.api_key = k;
       else if (const char* k2 = getenv_s("OPENAI_API_KEY")) cfg.api_key = k2;
       else if (const char* k3 = getenv_s("DEEPSEEK_API_KEY")) cfg.api_key = k3;
+    } else if (url_contains_ci(cfg.base_url, "moonshot")) {
+      // Moonshot/Kimi: prefer CN key when present.
+      if (const char* k = getenv_s("KIMI_API_KEY_CN")) cfg.api_key = k;
+      else if (const char* k2 = getenv_s("MOONSHOT_API_KEY")) cfg.api_key = k2;
+      else if (const char* k3 = getenv_s("OPENAI_API_KEY")) cfg.api_key = k3;
     } else {
       if (const char* k = getenv_s("OPENAI_API_KEY")) cfg.api_key = k;
       else if (const char* k2 = getenv_s("OPENROUTER_API_KEY")) cfg.api_key = k2;
@@ -452,8 +473,7 @@ int main(int argc, char** argv) {
   if (cfg.api_key.empty()) {
     // Best-effort local secret file discovery to keep provider keys out of browser storage.
     // Preferred: .not_in_repo; fallback: project.local.md
-    const std::string provider =
-      url_contains_ci(cfg.base_url, "deepseek") ? "deepseek" : url_contains_ci(cfg.base_url, "openrouter") ? "openrouter" : "openai";
+    const std::string provider = provider_from_base_url(cfg.base_url);
     if (auto k = load_provider_key_best_effort(provider)) {
       cfg.api_key = *k;
     }
@@ -492,6 +512,12 @@ int main(int argc, char** argv) {
   if (cfg.model.empty()) {
     if (const char* m = getenv_s("AGENT_MODEL")) {
       cfg.model = m;
+    }
+  }
+  if (!system_profile_set) {
+    if (const char* p = getenv_s("AGENTD_SYSTEM_PROFILE")) {
+      const std::string s = trim_copy(p);
+      if (s == "default" || s == "jules_codex") cfg.system_profile = s;
     }
   }
   if (cfg.auth_token.empty()) {
@@ -700,6 +726,12 @@ int main(int argc, char** argv) {
   server.handle("POST", "/api/v1/session/client_event", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_session_ui_event_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+
+  // Session-scoped uploads (UI -> daemon). Returns session-relative paths that can be fetched via /api/v1/file.
+  server.handle("POST", "/api/v1/session/upload", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_session_upload_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   server.handle("DELETE", "/api/v1/session", [&](const HttpRequest& req, HttpResponse* resp) {

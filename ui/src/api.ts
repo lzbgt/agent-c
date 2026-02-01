@@ -50,6 +50,7 @@ export const DaemonConfigSchema = z
           .object({
             deepseek: z.boolean().optional(),
             openrouter: z.boolean().optional(),
+            moonshot: z.boolean().optional(),
             openai: z.boolean().optional(),
           })
           .optional(),
@@ -132,6 +133,23 @@ export const RunRequestSchema = z.object({
   prompt: z.string().min(1),
   session_id: z.string().optional(),
   no_session: z.boolean().optional(),
+  // Optional session-relative attachments uploaded via POST /api/v1/session/upload.
+  // For convenience, items may be strings (paths) or objects with metadata.
+  input_files: z
+    .array(
+      z.union([
+        z.string(),
+        z
+          .object({
+            path: z.string(),
+            name: z.string().optional(),
+            mime: z.string().optional(),
+            kind: z.string().optional(),
+          })
+          .passthrough(),
+      ]),
+    )
+    .optional(),
   client: z
     .object({
       id: z.string().optional(),
@@ -174,6 +192,55 @@ export const RunRequestSchema = z.object({
   verbose: z.boolean().optional(),
 });
 export type RunRequest = z.infer<typeof RunRequestSchema>;
+
+export const SessionUploadReqSchema = z
+  .object({
+    session_id: z.string().min(1),
+    files: z
+      .array(
+        z.object({
+          name: z.string().min(1),
+          mime: z.string().optional(),
+          data_base64: z.string().min(1),
+        }),
+      )
+      .min(1),
+  })
+  .passthrough();
+export type SessionUploadReq = z.infer<typeof SessionUploadReqSchema>;
+
+export const SessionUploadRespSchema = z
+  .object({
+    ok: z.boolean(),
+    session_id: z.string().optional(),
+    files: z
+      .array(
+        z
+          .object({
+            name: z.string().optional(),
+            mime: z.string().optional(),
+            kind: z.string().optional(),
+            path: z.string().optional(),
+            bytes: z.number().optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+export type SessionUploadResp = z.infer<typeof SessionUploadRespSchema>;
+
+export async function apiPostSessionUpload(base: string, req: SessionUploadReq, authToken?: string): Promise<SessionUploadResp> {
+  const payload = SessionUploadReqSchema.parse(req);
+  const r = await fetch(`${base}/api/v1/session/upload`, {
+    method: "POST",
+    headers: daemonHeaders(authToken, { "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json();
+  return SessionUploadRespSchema.parse(j);
+}
 
 export const EventSchema = z.object({
   type: z.string(),

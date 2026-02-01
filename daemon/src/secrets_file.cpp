@@ -5,6 +5,7 @@
 #include <regex>
 #include <string>
 #include <vector>
+#include <cstdlib>
 
 namespace agentd {
 namespace {
@@ -24,14 +25,19 @@ static std::optional<std::string> extract_key_from_file(const std::filesystem::p
   std::ifstream in(file);
   if (!in.is_open()) return std::nullopt;
 
-  std::string env_var;
-  if (provider == "deepseek") env_var = "DEEPSEEK_API_KEY";
-  else if (provider == "openrouter") env_var = "OPENROUTER_API_KEY";
-  else if (provider == "openai") env_var = "OPENAI_API_KEY";
+  std::vector<std::string> env_vars;
+  if (provider == "deepseek") env_vars = {"DEEPSEEK_API_KEY"};
+  else if (provider == "openrouter") env_vars = {"OPENROUTER_API_KEY"};
+  else if (provider == "moonshot") env_vars = {"KIMI_API_KEY_CN", "MOONSHOT_API_KEY", "MOONSHOT_API_KEY_CN"};
+  else if (provider == "openai") env_vars = {"OPENAI_API_KEY"};
   else return std::nullopt;
 
   const std::regex yaml_re("^\\s*-\\s*" + provider + "\\s*:\\s*(sk-[A-Za-z0-9_.-]+)\\s*$");
-  const std::regex env_re("^\\s*" + env_var + "\\s*=\\s*(sk-[A-Za-z0-9_.-]+)\\s*$");
+  std::vector<std::regex> env_res;
+  env_res.reserve(env_vars.size());
+  for (const auto& ev : env_vars) {
+    env_res.emplace_back("^\\s*" + ev + "\\s*=\\s*(sk-[A-Za-z0-9_.-]+)\\s*$");
+  }
 
   std::string line;
   while (std::getline(in, line)) {
@@ -41,9 +47,11 @@ static std::optional<std::string> extract_key_from_file(const std::filesystem::p
       const std::string k = m[1].str();
       if (looks_like_key(k)) return k;
     }
-    if (std::regex_match(line, m, env_re) && m.size() >= 2) {
-      const std::string k = m[1].str();
-      if (looks_like_key(k)) return k;
+    for (const auto& re : env_res) {
+      if (std::regex_match(line, m, re) && m.size() >= 2) {
+        const std::string k = m[1].str();
+        if (looks_like_key(k)) return k;
+      }
     }
   }
   return std::nullopt;
@@ -63,6 +71,12 @@ static std::vector<std::filesystem::path> candidate_secret_files_best_effort() {
     if (parent == cur || parent.empty()) break;
     cur = parent;
   }
+
+  // Developer convenience: allow a user-level env file without requiring `export`.
+  // This is intentionally a late fallback so project-local secrets override it.
+  if (const char* h = std::getenv("HOME")) {
+    if (h[0]) out.push_back(std::filesystem::path(h) / ".env");
+  }
   return out;
 }
 
@@ -79,4 +93,3 @@ std::optional<std::string> load_provider_key_best_effort(const std::string& prov
 }
 
 }  // namespace agentd
-

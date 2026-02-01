@@ -49,6 +49,7 @@ void handle_config_endpoint(
     };
     keys["deepseek"] = has_key("deepseek");
     keys["openrouter"] = has_key("openrouter");
+    keys["moonshot"] = has_key("moonshot");
     keys["openai"] = has_key("openai");
     daemon["provider_keys_set"] = keys;
   }
@@ -86,6 +87,7 @@ void handle_config_endpoint(
   sandbox["tools"] = cfg.tools;
   sandbox["yolo_default"] = cfg.yolo_default;
   sandbox["host_policy"] = host_policy_to_string(cfg.host_policy);
+  sandbox["system_profile"] = cfg.system_profile;
   out["sandbox"] = sandbox;
 
   Json::Value jobs(Json::objectValue);
@@ -155,6 +157,26 @@ void handle_config_update_endpoint(
     const auto n = args["timeout_ms"].asInt64();
     if (n > 0) next.timeout_ms = (long)n;
   }
+  if (args.isMember("system_profile") && args["system_profile"].isString()) {
+    const std::string p = trim_copy(args["system_profile"].asString());
+    auto is_valid = [&](const std::string& s) -> bool {
+      if (s.empty() || s.size() > 64) return false;
+      for (const char c : s) {
+        const bool ok =
+          (c >= 'a' && c <= 'z') ||
+          (c >= 'A' && c <= 'Z') ||
+          (c >= '0' && c <= '9') ||
+          c == '-' || c == '_' || c == '.';
+        if (!ok) return false;
+      }
+      return true;
+    };
+    if (is_valid(p)) {
+      if (p == "default" || p == "jules_codex") {
+        next.system_profile = p;
+      }
+    }
+  }
 
   // Provider keys:
   // - provider_keys: { deepseek:"...", openrouter:"...", openai:"..." }
@@ -216,6 +238,7 @@ void handle_config_update_endpoint(
   o["ok"] = true;
   o["base_url"] = next.base_url;
   o["model"] = next.model;
+  o["system_profile"] = next.system_profile;
   o["summary_model"] = next.summary_model.empty() ? Json::Value(Json::nullValue) : Json::Value(next.summary_model);
   o["summary_max_chars"] = (Json::UInt64)next.summary_max_chars;
   o["timeout_ms"] = (Json::Int64)next.timeout_ms;
@@ -228,6 +251,7 @@ void handle_config_update_endpoint(
     };
     keys["deepseek"] = has_key("deepseek");
     keys["openrouter"] = has_key("openrouter");
+    keys["moonshot"] = has_key("moonshot");
     keys["openai"] = has_key("openai");
     o["provider_keys_set"] = keys;
   }

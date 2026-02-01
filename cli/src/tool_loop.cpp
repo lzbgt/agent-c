@@ -74,6 +74,17 @@ static Json::Value summarize_tool_output_json(const std::string& tool_out) {
       summary["output"] = cap_str(data["output"].asString(), 64 * 1024);
     }
     if (data.isMember("tool")) summary["tool"] = data["tool"];
+    // Include key fields for file tools so the UI is debuggable even when output is empty/truncated.
+    // Example: fs_read on a binary file intentionally returns empty output but sets truncated=true.
+    if (data.isMember("tool") && data["tool"].isString()) {
+      const std::string tool = data["tool"].asString();
+      if (tool == "fs_read") {
+        if (data.isMember("path")) summary["path"] = data["path"];
+        if (data.isMember("resolved_path")) summary["resolved_path"] = data["resolved_path"];
+        if (data.isMember("is_binary")) summary["is_binary"] = data["is_binary"];
+        if (data.isMember("truncated_reason")) summary["truncated_reason"] = data["truncated_reason"];
+      }
+    }
     // Special-case: keep artifact metadata even when verbose events are disabled.
     if (data.isMember("tool") && data["tool"].isString() && data["tool"].asString() == "artifact_register") {
       if (data.isMember("artifact") && data["artifact"].isObject()) {

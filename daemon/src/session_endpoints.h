@@ -100,4 +100,14 @@ void handle_session_clients_endpoint(
   HttpResponse* resp
 );
 
+// Uploads one or more files into the session folder and (best-effort) mirrors them into the artifacts table
+// so UIs can render them via GET /api/v1/file?session_id=...&path=...
+void handle_session_upload_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
 }  // namespace agentd

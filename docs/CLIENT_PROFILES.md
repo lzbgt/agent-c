@@ -23,7 +23,9 @@ Profiles are keyed by `client.kind` in the run request.
   - `client.id` is stable per browser profile
   - `client.instance_id` is stable per tab
 - When starting a **new session** (empty transcript) and `tools="host"`:
-  - `agentd` inserts `default_host_system_prompt()` (unless disabled)
+  - `agentd` inserts a host system prompt (unless disabled):
+    - default: `default_host_system_prompt()`
+    - selectable via `system_profile` ("default" | "jules_codex") in the run request, or `AGENTD_SYSTEM_PROFILE` / `--system-profile` at daemon startup
   - `agentd` then appends `CLIENT_PROFILE=<kind>` when a profile exists (unless disabled)
 
 Implementation: `daemon/src/client_profiles.cpp` and `daemon/src/run_endpoints.cpp`.

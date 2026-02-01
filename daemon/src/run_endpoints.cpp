@@ -22,6 +22,8 @@
 #include "toolset_basic.h"
 #include "toolset_host.h"
 
+#include "base64.h"
+
 #include "openai_stream_decoder.h"
 
 #include "agent/agent.h"
@@ -54,6 +56,137 @@ namespace {
 static const char* getenv_s(const char* k) {
   const char* v = std::getenv(k);
   return (v && v[0]) ? v : nullptr;
+}
+
+static bool path_is_within_root(const std::filesystem::path& root, const std::filesystem::path& p) {
+  std::error_code ec;
+  const std::filesystem::path abs_root = std::filesystem::weakly_canonical(root, ec);
+  if (ec) return false;
+  ec.clear();
+  const std::filesystem::path abs_p = std::filesystem::weakly_canonical(p, ec);
+  if (ec) return false;
+  auto it_r = abs_root.begin();
+  auto it_p = abs_p.begin();
+  for (; it_r != abs_root.end(); ++it_r, ++it_p) {
+    if (it_p == abs_p.end()) return false;
+    if (*it_r != *it_p) return false;
+  }
+  return true;
+}
+
+static bool is_safe_relpath_ascii(const std::string& p) {
+  if (p.empty() || p.size() > 512) return false;
+  if (p.find('\\') != std::string::npos) return false;
+  if (p.find("..") != std::string::npos) return false;
+  if (!p.empty() && p[0] == '/') return false;
+  for (char c : p) {
+    const bool ok =
+      (c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9') ||
+      c == '-' || c == '_' || c == '.' || c == '/' || c == ' ';
+    if (!ok) return false;
+  }
+  return true;
+}
+
+static bool read_file_bytes_capped(const std::filesystem::path& path, size_t max_bytes, std::string* out_bytes) {
+  if (out_bytes) out_bytes->clear();
+  if (!out_bytes) return false;
+  std::error_code ec;
+  if (!std::filesystem::exists(path, ec) || !std::filesystem::is_regular_file(path, ec)) return false;
+  const uintmax_t sz = std::filesystem::file_size(path, ec);
+  if (ec) return false;
+  if (sz > (uintmax_t)max_bytes) return false;
+
+  std::ifstream in(path, std::ios::binary);
+  if (!in.is_open()) return false;
+  out_bytes->resize((size_t)sz);
+  in.read(out_bytes->data(), (std::streamsize)out_bytes->size());
+  return (bool)in;
+}
+
+static bool looks_texty(const std::string& bytes) {
+  if (bytes.empty()) return true;
+  size_t bad = 0;
+  for (unsigned char c : bytes) {
+    if (c == 0) return false;
+    if (c < 0x09) bad++;
+    if (c >= 0x0e && c < 0x20) bad++;
+  }
+  return bad < (bytes.size() / 40 + 1);
+}
+
+static const char* kMultimodalPrefix = "__AGENT_MM_V1__";
+
+static bool try_parse_multimodal_prefix(const std::string& content, Json::Value* out_mm, std::string* out_text) {
+  if (out_mm) *out_mm = Json::Value(Json::nullValue);
+  if (out_text) *out_text = content;
+  if (!out_mm || !out_text) return false;
+  if (content.rfind(kMultimodalPrefix, 0) != 0) return false;
+  const size_t nl = content.find('\n');
+  if (nl == std::string::npos) return false;
+  const std::string json_part = content.substr(std::strlen(kMultimodalPrefix), nl - std::strlen(kMultimodalPrefix));
+  if (json_part.empty()) return false;
+  Json::CharReaderBuilder rb;
+  std::string errs;
+  std::istringstream iss(json_part);
+  Json::Value v;
+  if (!Json::parseFromStream(rb, iss, &v, &errs) || !v.isObject()) return false;
+  *out_mm = v;
+  *out_text = content.substr(nl + 1);
+  return true;
+}
+
+static Json::Value multimodal_content_from_parts(const std::string& text, const Json::Value& mm) {
+  const bool have_images = mm.isMember("images") && mm["images"].isArray() && !mm["images"].empty();
+  const bool have_files = mm.isMember("files") && mm["files"].isArray() && !mm["files"].empty();
+  if (!have_images && !have_files) return Json::Value(text);
+
+  Json::Value arr(Json::arrayValue);
+  if (!text.empty()) {
+    Json::Value t(Json::objectValue);
+    t["type"] = "text";
+    t["text"] = text;
+    arr.append(t);
+  }
+  if (have_files) {
+    for (const auto& f : mm["files"]) {
+      if (!f.isObject()) continue;
+      const std::string name = f.isMember("name") && f["name"].isString() ? f["name"].asString() : "";
+      const std::string mime = f.isMember("mime") && f["mime"].isString() ? f["mime"].asString() : "";
+      const std::string ft = f.isMember("text") && f["text"].isString() ? f["text"].asString() : "";
+      const bool trunc = f.isMember("truncated") && f["truncated"].isBool() ? f["truncated"].asBool() : false;
+      if (ft.empty()) continue;
+      std::string block;
+      block += "[Attachment";
+      if (!name.empty()) block += ": " + name;
+      if (!mime.empty()) block += " (" + mime + ")";
+      block += "]\n";
+      block += ft;
+      if (trunc) block += "\n...(truncated)";
+      Json::Value t(Json::objectValue);
+      t["type"] = "text";
+      t["text"] = block;
+      arr.append(t);
+    }
+  }
+  if (have_images) {
+    for (const auto& im : mm["images"]) {
+      if (!im.isObject()) continue;
+      const std::string mime = im.isMember("mime") && im["mime"].isString() ? im["mime"].asString() : "image/png";
+      const std::string b64 = im.isMember("b64") && im["b64"].isString() ? im["b64"].asString() : "";
+      if (b64.empty()) continue;
+      const std::string url = std::string("data:") + mime + ";base64," + b64;
+      Json::Value part(Json::objectValue);
+      part["type"] = "image_url";
+      Json::Value iu(Json::objectValue);
+      iu["url"] = url;
+      part["image_url"] = iu;
+      arr.append(part);
+    }
+  }
+  return arr;
 }
 
 struct ExtendedToolExecutorCtx {
@@ -211,6 +344,7 @@ static bool ensure_pinned_host_system_prompts(
   agent_session_t** session_io,
   const std::string& tools,
   bool no_default_system,
+  const std::string& host_system_profile,
   const std::string& client_kind,
   bool allow_default_host_prompt
 ) {
@@ -222,6 +356,7 @@ static bool ensure_pinned_host_system_prompts(
   // - allows prompt evolution without breaking the "present in session" detection
   // - avoids repeated insertion across runs in a long-lived session.
   const char* kHostPrefix = "You are a host-side coding agent";
+  const char* kHostProfilePrefix = "HOST_SYSTEM_PROFILE=";
   const char* kClientProfilePrefix = "CLIENT_PROFILE=";
 
   agent_session_t* session = *session_io;
@@ -230,11 +365,13 @@ static bool ensure_pinned_host_system_prompts(
   const bool want_profile = !client_kind.empty();
   const std::string profile = want_profile ? client_profile_system_prompt(client_kind) : std::string();
   const std::string profile_marker = want_profile ? (std::string("CLIENT_PROFILE=") + client_kind) : std::string();
+  const std::string host_profile_marker = std::string("HOST_SYSTEM_PROFILE=") + (host_system_profile.empty() ? "default" : host_system_profile);
 
   const bool have_host_leading = session_leading_system_has_prefix(session, kHostPrefix);
+  const bool have_host_profile_leading = session_leading_system_has_substring(session, host_profile_marker.c_str());
   const bool have_profile_leading = want_profile ? session_leading_system_has_substring(session, profile_marker.c_str()) : true;
 
-  if ((want_host && !have_host_leading) || (want_profile && !have_profile_leading)) {
+  if ((want_host && (!have_host_leading || !have_host_profile_leading)) || (want_profile && !have_profile_leading)) {
     // Rebuild the session so the required system messages are *leading* (pinned by core compaction policy).
     // This is required because agent_session_add_message only appends; appended system messages are not pinned
     // and can be dropped during char-budget compaction (leading system messages are the pinned prefix).
@@ -256,7 +393,7 @@ static bool ensure_pinned_host_system_prompts(
     }
 
     if (want_host) {
-      (void)agent_session_add_message(ns, AGENT_ROLE_SYSTEM, default_host_system_prompt());
+      (void)agent_session_add_message(ns, AGENT_ROLE_SYSTEM, host_system_prompt_for_profile(host_system_profile.c_str()));
     }
     if (want_profile && !profile.empty()) {
       // Always pin the active client's profile for this run. Any older profile strings (possibly for a different client)
@@ -269,6 +406,7 @@ static bool ensure_pinned_host_system_prompts(
       if (m.role == AGENT_ROLE_SYSTEM) {
         if (!m.content.empty()) {
           if (m.content.rfind(kHostPrefix, 0) == 0) continue;
+          if (m.content.rfind(kHostProfilePrefix, 0) == 0) continue;
           if (m.content.rfind(kClientProfilePrefix, 0) == 0) continue;
         }
       }
@@ -752,6 +890,9 @@ static Json::Value run_request_to_json(
   const bool yolo = sandbox_tighten_yolo(daemon_cfg.yolo_default, requested_yolo, requested_yolo_set);
   const bool no_default_system =
     args.isMember("no_default_system") && args["no_default_system"].isBool() ? args["no_default_system"].asBool() : daemon_cfg.no_default_system;
+  const std::string system_profile_raw =
+    args.isMember("system_profile") && args["system_profile"].isString() ? args["system_profile"].asString() : daemon_cfg.system_profile;
+  const std::string system_profile = trim_copy(system_profile_raw) == "jules_codex" ? "jules_codex" : "default";
   const std::string system_msg = args.isMember("system") && args["system"].isString() ? args["system"].asString() : "";
   std::string client_kind;
   if (args.isMember("client") && args["client"].isObject()) {
@@ -807,6 +948,124 @@ static Json::Value run_request_to_json(
     ec.clear();
     (void)std::filesystem::create_directories(sr / "out", ec);
   }
+
+  // Optional multimodal inputs:
+  // - UI uploads files into the session folder via POST /api/v1/session/upload
+  // - Run requests then reference them by session-relative `path` entries in `input_files`
+  //
+  // For OpenAI-compatible providers that support multimodal messages, we translate these into a
+  // `messages[].content` array containing text + image parts.
+  std::string prompt_for_llm = prompt;
+  // Effective stream_assistant may be tightened/overridden internally (e.g., to support multimodal content
+  // for tools=none even when the caller did not request streaming).
+  bool effective_stream_assistant = false;
+  if (args.isMember("input_files") && args["input_files"].isArray() && !args["input_files"].empty()) {
+    if (no_session) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["rpc_status"] = 400;
+      o["error"] = "input_files requires session persistence (no_session=false)";
+      return o;
+    }
+    if (sessions_root_dir.empty()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["rpc_status"] = 500;
+      o["error"] = "sessions_root_dir not configured";
+      return o;
+    }
+
+    const std::filesystem::path sr = session_root_path(sessions_root_dir, session_id);
+    if (sr.empty()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["rpc_status"] = 400;
+      o["error"] = "invalid session_id";
+      return o;
+    }
+
+    Json::Value mm(Json::objectValue);
+    Json::Value images(Json::arrayValue);
+    Json::Value files(Json::arrayValue);
+
+    const Json::Value arr = args["input_files"];
+    for (Json::ArrayIndex i = 0; i < arr.size(); i++) {
+      const Json::Value& item = arr[i];
+      std::string rel;
+      std::string mime;
+      std::string name;
+      std::string kind;
+      if (item.isString()) {
+        rel = item.asString();
+      } else if (item.isObject()) {
+        if (item.isMember("path") && item["path"].isString()) rel = item["path"].asString();
+        if (item.isMember("mime") && item["mime"].isString()) mime = item["mime"].asString();
+        if (item.isMember("name") && item["name"].isString()) name = item["name"].asString();
+        if (item.isMember("kind") && item["kind"].isString()) kind = item["kind"].asString();
+      } else {
+        continue;
+      }
+      if (!is_safe_relpath_ascii(rel)) continue;
+      std::filesystem::path abs = (sr / std::filesystem::path(rel)).lexically_normal();
+      if (!path_is_within_root(sr, abs)) continue;
+
+      if (name.empty()) name = abs.filename().string();
+      if (mime.empty()) mime = content_type_from_path(abs);
+      if (kind.empty()) {
+        const std::string m = lower_copy(mime);
+        if (m.rfind("image/", 0) == 0) kind = "image";
+        else kind = "file";
+      }
+
+      if (kind == "image") {
+        std::string bytes;
+        // Cap image sizes to avoid blowing up the prompt context.
+        const size_t kMaxImageBytes = 6u * 1024u * 1024u;
+        if (read_file_bytes_capped(abs, kMaxImageBytes, &bytes)) {
+          const std::string b64 = base64_encode(bytes.data(), bytes.size());
+          Json::Value im(Json::objectValue);
+          im["name"] = name;
+          im["mime"] = mime.empty() ? std::string("image/png") : mime;
+          im["b64"] = b64;
+          images.append(im);
+        } else {
+          Json::Value f(Json::objectValue);
+          f["name"] = name;
+          f["mime"] = mime;
+          f["text"] = std::string("Attachment stored at ") + rel + " (image too large to inline)";
+          f["truncated"] = true;
+          files.append(f);
+        }
+      } else {
+        std::string bytes;
+        const size_t kMaxFileBytes = 256u * 1024u;
+        if (read_file_bytes_capped(abs, kMaxFileBytes, &bytes) && looks_texty(bytes)) {
+          Json::Value f(Json::objectValue);
+          f["name"] = name;
+          f["mime"] = mime;
+          f["text"] = bytes;
+          f["truncated"] = false;
+          files.append(f);
+        } else {
+          Json::Value f(Json::objectValue);
+          f["name"] = name;
+          f["mime"] = mime;
+          f["text"] = std::string("Attachment stored at ") + rel + " (not inlined; use tools to inspect)";
+          f["truncated"] = true;
+          files.append(f);
+        }
+      }
+    }
+
+    if (!images.empty()) mm["images"] = images;
+    if (!files.empty()) mm["files"] = files;
+    if (!mm.empty()) {
+      Json::StreamWriterBuilder wb;
+      wb["indentation"] = "";
+      prompt_for_llm = std::string(kMultimodalPrefix) + Json::writeString(wb, mm) + "\n" + prompt;
+    }
+  }
+
   uint64_t max_steps_u64 = 0;
   const size_t max_steps =
     json_get_u64_nonneg(args, "max_steps", &max_steps_u64) ? (size_t)max_steps_u64 : daemon_cfg.max_steps_default;
@@ -870,6 +1129,7 @@ static Json::Value run_request_to_json(
   const bool verbose = args.isMember("verbose") && args["verbose"].isBool() ? args["verbose"].asBool() : false;
   const bool stream_assistant =
     args.isMember("stream_assistant") && args["stream_assistant"].isBool() ? args["stream_assistant"].asBool() : false;
+  effective_stream_assistant = stream_assistant;
   uint64_t max_capture_bytes_u64 = 0;
   const size_t max_capture_bytes =
     json_get_u64_nonneg(args, "max_capture_bytes", &max_capture_bytes_u64) ? (size_t)max_capture_bytes_u64 : (size_t)256 * 1024;
@@ -922,7 +1182,7 @@ static Json::Value run_request_to_json(
       }
     } else {
       if (!no_default_system && tools == "host") {
-        agent_session_add_message(session, AGENT_ROLE_SYSTEM, default_host_system_prompt());
+        agent_session_add_message(session, AGENT_ROLE_SYSTEM, host_system_prompt_for_profile(system_profile.c_str()));
         if (!client_kind.empty()) {
           const std::string profile = client_profile_system_prompt(client_kind);
           if (!profile.empty()) {
@@ -935,7 +1195,8 @@ static Json::Value run_request_to_json(
     // For long-lived sessions (e.g. Web UI "default"), do not rely on "empty session" to ensure
     // essential host/tool + DoD guidance is present. If the session was created via tools=none or
     // imported from an older version, it may have no system prompt at all.
-    const bool changed = ensure_pinned_host_system_prompts(&session, tools, no_default_system, client_kind, /*allow_default_host_prompt=*/true);
+    const bool changed = ensure_pinned_host_system_prompts(
+      &session, tools, no_default_system, system_profile, client_kind, /*allow_default_host_prompt=*/true);
     if (changed && !no_session) {
       // Persist the prefix change even if the run later fails, so subsequent runs don't regress.
       if (db_or_null && db_or_null->is_open()) {
@@ -1132,7 +1393,7 @@ static Json::Value run_request_to_json(
 
 	    try {
 	      ok = run_tool_loop(
-	        run_cfg, seed_for_run, prompt, registry, &executor, opt, trace_stream, &tool_loop_result, &err, &http_status, &http_body
+	        run_cfg, seed_for_run, prompt_for_llm, registry, &executor, opt, trace_stream, &tool_loop_result, &err, &http_status, &http_body
 	      );
 	    } catch (const std::exception& e) {
 	      ok = false;
@@ -1164,6 +1425,9 @@ static Json::Value run_request_to_json(
   } else {
     agent_session_add_message(session, AGENT_ROLE_USER, prompt.c_str());
 
+    const bool stream_assistant_none = stream_assistant || (prompt_for_llm != prompt);
+    effective_stream_assistant = stream_assistant_none;
+
     events_out = Json::Value(Json::arrayValue);
     auto push_ev = [&](const std::string& type, const Json::Value& data) {
       Json::Value e(Json::objectValue);
@@ -1188,7 +1452,7 @@ static Json::Value run_request_to_json(
       d["model"] = run_cfg.model;
       d["tools"] = "none";
       d["verbose"] = verbose;
-      d["stream_assistant"] = stream_assistant;
+      d["stream_assistant"] = stream_assistant_none;
       push_ev("start", d);
     }
 
@@ -1196,7 +1460,7 @@ static Json::Value run_request_to_json(
       return !job_id_local.empty() && job_is_cancel_requested(job_id_local);
     };
 
-    if (stream_assistant) {
+    if (stream_assistant_none) {
       // Retry loop for providers that reject over-long contexts.
       // For stateless providers, retrying with a tighter compaction budget is equivalent to "spawning a new session".
       size_t attempt_max_chars = (max_chars == 0 ? 20000 : max_chars);
@@ -1249,7 +1513,19 @@ static Json::Value run_request_to_json(
             if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
             Json::Value m(Json::objectValue);
             m["role"] = agent_role_to_string(v.role);
-            m["content"] = std::string(v.content, v.content_len);
+            std::string content(v.content, v.content_len);
+            if (i + 1 == n && v.role == AGENT_ROLE_USER) {
+              // Substitute multimodal-wrapped prompt for the provider call, while keeping
+              // the persisted session prompt clean.
+              content = prompt_for_llm;
+            }
+            Json::Value mm(Json::nullValue);
+            std::string text = content;
+            if (try_parse_multimodal_prefix(content, &mm, &text) && mm.isObject()) {
+              m["content"] = multimodal_content_from_parts(text, mm);
+            } else {
+              m["content"] = text;
+            }
             messages.append(m);
           }
           root["messages"] = messages;
@@ -1545,7 +1821,7 @@ static Json::Value run_request_to_json(
   out["effective_yolo"] = yolo;
   out["effective_host_policy"] = host_policy_to_string(effective_policy);
   out["effective_timeout_ms"] = (Json::Int64)run_cfg.timeout_ms;
-  out["effective_stream_assistant"] = stream_assistant;
+  out["effective_stream_assistant"] = effective_stream_assistant;
   out["effective_require_client_acks"] = require_client_acks;
   out["verbose"] = verbose;
   out["events"] = events_out;

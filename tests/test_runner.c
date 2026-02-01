@@ -26,8 +26,10 @@ static void test_run_once_appends_assistant(void) {
 
   dummy_provider_ctx_t ctx = {0};
   agent_provider_t p;
+  memset(&p, 0, sizeof(p));
   p.ctx = &ctx;
   p.generate = dummy_generate;
+  p.generate_ex = NULL;
 
   agent_run_options_t opt;
   opt.model = "dummy-model";
@@ -55,4 +57,3 @@ static void test_run_once_appends_assistant(void) {
 void test_runner_module(void) {
   test_run_once_appends_assistant();
 }
-

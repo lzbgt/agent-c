@@ -12,10 +12,12 @@ typedef struct FakeProviderCtx {
 } FakeProviderCtx;
 
 static agent_status_t no_tools_generate(
-  void* /*vctx*/,
-  const agent_tool_provider_request_t* /*req*/,
+  void* vctx,
+  const agent_tool_provider_request_t* req,
   agent_tool_provider_response_t* out_resp
 ) {
+  (void)vctx;
+  (void)req;
   agent_tool_provider_response_free(out_resp);
   const char* done = "DONE";
   assert(agent_string_set_copy(&out_resp->assistant_content, done, strlen(done)) == AGENT_OK);
@@ -69,7 +71,9 @@ static agent_status_t fake_provider_generate(
   return AGENT_OK;
 }
 
-static agent_status_t fake_tool_execute(void* /*ctx*/, const char* tool_name, const char* /*arguments_json*/, agent_string_t* out_result) {
+static agent_status_t fake_tool_execute(void* ctx, const char* tool_name, const char* arguments_json, agent_string_t* out_result) {
+  (void)ctx;
+  (void)arguments_json;
   if (!out_result) return AGENT_ERR_INVALID_ARGUMENT;
   if (!tool_name) return AGENT_ERR_INVALID_ARGUMENT;
   if (strcmp(tool_name, "echo") != 0) return AGENT_ERR_INVALID_ARGUMENT;
@@ -77,22 +81,25 @@ static agent_status_t fake_tool_execute(void* /*ctx*/, const char* tool_name, co
   return agent_string_set_copy(out_result, ok, strlen(ok));
 }
 
-static void event_counter_on_event(void* vctx, const char* type, const char* /*data_json*/) {
+static void event_counter_on_event(void* vctx, const char* type, const char* data_json) {
+  (void)data_json;
   int* retry_count = (int*)vctx;
   if (type && strcmp(type, "retry") == 0) {
     (*retry_count)++;
   }
 }
 
-static uint8_t cancel_immediately(void* /*ctx*/) {
+static uint8_t cancel_immediately(void* ctx) {
+  (void)ctx;
   return 1;
 }
 
 static agent_status_t repeat_tool_call_provider_generate(
-  void* /*vctx*/,
+  void* vctx,
   const agent_tool_provider_request_t* req,
   agent_tool_provider_response_t* out_resp
 ) {
+  (void)vctx;
   agent_tool_provider_response_free(out_resp);
   const char* content = "";
   assert(agent_string_set_copy(&out_resp->assistant_content, content, strlen(content)) == AGENT_OK);
@@ -110,10 +117,11 @@ static agent_status_t repeat_tool_call_provider_generate(
 }
 
 static agent_status_t always_tool_call_provider_generate(
-  void* /*vctx*/,
+  void* vctx,
   const agent_tool_provider_request_t* req,
   agent_tool_provider_response_t* out_resp
 ) {
+  (void)vctx;
   agent_tool_provider_response_free(out_resp);
   const char* content = "";
   assert(agent_string_set_copy(&out_resp->assistant_content, content, strlen(content)) == AGENT_OK);
@@ -131,10 +139,11 @@ static agent_status_t always_tool_call_provider_generate(
 }
 
 static agent_status_t many_tool_calls_in_one_step_provider_generate(
-  void* /*vctx*/,
+  void* vctx,
   const agent_tool_provider_request_t* req,
   agent_tool_provider_response_t* out_resp
 ) {
+  (void)vctx;
   agent_tool_provider_response_free(out_resp);
   const char* content = "";
   assert(agent_string_set_copy(&out_resp->assistant_content, content, strlen(content)) == AGENT_OK);

@@ -39,3 +39,9 @@ agent_status_t openai_provider_generate(
   agent_generate_response_t* out_resp
 );
 
+// Optional extended generate implementation that consumes session multimodal parts (agent/parts.h).
+agent_status_t openai_provider_generate_ex(
+  void* provider_ctx,
+  const agent_generate_request_ex_t* req,
+  agent_generate_response_t* out_resp
+);

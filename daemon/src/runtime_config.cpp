@@ -15,7 +15,7 @@ static const char* kRuntimeConfigMetaKey = "daemon.runtime_config_json";
 static const char* kRuntimeSecretsMetaKey = "daemon.runtime_secrets_json";
 
 static bool is_known_provider(const std::string& provider) {
-  return provider == "deepseek" || provider == "openrouter" || provider == "openai";
+  return provider == "deepseek" || provider == "openrouter" || provider == "moonshot" || provider == "openai";
 }
 
 }  // namespace
@@ -43,6 +43,7 @@ bool load_runtime_config_best_effort(AgentDb& db, DaemonConfig* cfg_io, std::str
 
       if (v.isMember("base_url") && v["base_url"].isString()) cfg_io->base_url = v["base_url"].asString();
       if (v.isMember("model") && v["model"].isString()) cfg_io->model = v["model"].asString();
+      if (v.isMember("system_profile") && v["system_profile"].isString()) cfg_io->system_profile = v["system_profile"].asString();
       if (v.isMember("summary_model")) {
         if (v["summary_model"].isNull()) cfg_io->summary_model.clear();
         else if (v["summary_model"].isString()) cfg_io->summary_model = v["summary_model"].asString();
@@ -101,6 +102,7 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
   Json::Value v(Json::objectValue);
   v["base_url"] = cfg.base_url;
   v["model"] = cfg.model;
+  v["system_profile"] = cfg.system_profile;
   v["summary_model"] = cfg.summary_model.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.summary_model);
   v["summary_max_chars"] = (Json::UInt64)cfg.summary_max_chars;
   v["proxy_url"] = cfg.proxy_url.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.proxy_url);
@@ -116,7 +118,7 @@ bool save_runtime_secrets_best_effort(AgentDb& db, const DaemonConfig& cfg, std:
   if (out_error) out_error->clear();
 
   Json::Value v(Json::objectValue);
-  for (const auto& provider : {"deepseek", "openrouter", "openai"}) {
+  for (const auto& provider : {"deepseek", "openrouter", "moonshot", "openai"}) {
     const auto it = cfg.provider_keys.find(provider);
     if (it == cfg.provider_keys.end() || it->second.empty()) continue;
     v[provider] = it->second;
@@ -129,4 +131,3 @@ bool save_runtime_secrets_best_effort(AgentDb& db, const DaemonConfig& cfg, std:
 }
 
 }  // namespace agentd
-

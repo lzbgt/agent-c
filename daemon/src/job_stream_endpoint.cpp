@@ -77,14 +77,15 @@ void handle_job_stream_endpoint(
 
   auto last_send = std::chrono::steady_clock::now();
   for (;;) {
-    JobState s;
-    if (!job_get(*jid, &s)) {
+    // Pull a bounded slice of events to avoid copying huge job state blobs under lock.
+    JobSnapshot s;
+    if (!job_get_snapshot(*jid, cursor, /*max_events=*/256, /*include_events=*/true, &s)) {
       (void)sse_send(client_fd, "error", R"({"ok":false,"error":"job not found"})");
       return;
     }
 
-    const uint64_t base = s.events_offset;
-    const uint64_t end = base + (uint64_t)s.events.size();
+    const uint64_t base = s.events_cursor_base;
+    const uint64_t end = s.events_cursor_end;
 
     if (cursor < base) {
       Json::Value d(Json::objectValue);
@@ -100,14 +101,18 @@ void handle_job_stream_endpoint(
     }
 
     bool sent_any = false;
-    while (cursor < end) {
-      const uint64_t idx = cursor - base;
-      const Json::Value& ev = s.events[(Json::ArrayIndex)idx];
-      if (!sse_send(client_fd, "agent_event", json_stringify(ev), std::to_string((unsigned long long)cursor))) {
-        return;
+    if (s.events_included && s.events.isArray() && s.events.size() > 0) {
+      const uint64_t start = s.events_cursor_start;
+      const uint64_t next = s.events_cursor_next;
+      for (Json::ArrayIndex i = 0; i < s.events.size(); i++) {
+        const uint64_t ev_cursor = start + (uint64_t)i;
+        const Json::Value& ev = s.events[i];
+        if (!sse_send(client_fd, "agent_event", json_stringify(ev), std::to_string((unsigned long long)ev_cursor))) {
+          return;
+        }
+        sent_any = true;
       }
-      cursor++;
-      sent_any = true;
+      cursor = next;
     }
     if (sent_any) {
       last_send = std::chrono::steady_clock::now();

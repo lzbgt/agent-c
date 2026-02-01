@@ -139,6 +139,60 @@ bool job_get(const std::string& id, JobState* out) {
   return true;
 }
 
+bool job_get_snapshot(const std::string& id, uint64_t cursor, size_t max_events, bool include_events, JobSnapshot* out) {
+  if (!out) return false;
+  *out = JobSnapshot{};
+  if (max_events == 0) max_events = 256;
+  if (max_events > 2048) max_events = 2048;
+
+  std::lock_guard<std::mutex> lk(g_jobs_mu);
+  auto it = g_jobs.find(id);
+  if (it == g_jobs.end()) return false;
+  const JobState& s = it->second;
+
+  out->id = s.id;
+  out->status = s.status;
+  out->cancel_requested = s.cancel_requested;
+  out->error = s.error;
+  out->result = s.result;
+  out->created_unix_ms = s.created_unix_ms;
+  out->updated_unix_ms = s.updated_unix_ms;
+
+  const uint64_t base = s.events_offset;
+  const uint64_t end = base + (uint64_t)s.events.size();
+  out->events_cursor_base = base;
+  out->events_cursor_end = end;
+
+  if (!include_events) {
+    out->events_included = false;
+    return true;
+  }
+
+  out->events_included = true;
+  out->events = Json::Value(Json::arrayValue);
+
+  bool reset = false;
+  uint64_t cur = cursor;
+  if (cur < base) {
+    reset = true;
+    cur = base;
+  }
+  if (cur > end) {
+    cur = end;
+  }
+  out->events_reset = reset;
+  out->events_cursor_start = cur;
+
+  const uint64_t start_idx = cur - base;
+  const uint64_t avail = end - cur;
+  const uint64_t take = std::min<uint64_t>((uint64_t)max_events, avail);
+  for (uint64_t i = 0; i < take; i++) {
+    out->events.append(s.events[(Json::ArrayIndex)(start_idx + i)]);
+  }
+  out->events_cursor_next = cur + take;
+  return true;
+}
+
 bool job_create(const std::string& id) {
   std::lock_guard<std::mutex> lk(g_jobs_mu);
   if (g_jobs.find(id) != g_jobs.end()) return false;
