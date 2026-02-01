@@ -1,5 +1,12 @@
 import React from "react";
 import Markdown from "./Markdown";
+import useLocalStorageState from "../hooks/useLocalStorageState";
+
+type ToolResultUiPrefs = {
+  showRaw?: boolean;
+  showFullOutput?: boolean;
+  renderMode?: "auto" | "text" | "markdown";
+};
 
 function safeJsonParse(s: string): any | null {
   try {
@@ -126,16 +133,79 @@ export default function ToolResultView({
   baseUrl,
   yolo,
   daemonAuthToken,
+  sessionId,
+  toolCallId,
   content,
 }: {
   baseUrl: string;
   yolo: boolean;
   daemonAuthToken?: string;
+  sessionId?: string;
+  toolCallId?: string;
   content: string;
 }) {
-  const [showRaw, setShowRaw] = React.useState(false);
-  const [renderMode, setRenderMode] = React.useState<"auto" | "text" | "markdown">("auto");
-  const [showFullOutput, setShowFullOutput] = React.useState<boolean>(false);
+  const prefsKey = React.useMemo(() => {
+    const b = String(baseUrl || "").trim();
+    const sid = String(sessionId || "").trim();
+    return `agentui.toolResultPrefs:${b}::${sid}`;
+  }, [baseUrl, sessionId]);
+  const [prefsByToolCallId, setPrefsByToolCallId] = useLocalStorageState<Record<string, ToolResultUiPrefs>>(prefsKey, {});
+
+  const tcid = String(toolCallId || "").trim();
+  const canPersist = tcid.length > 0;
+  const [volatileShowRaw, setVolatileShowRaw] = React.useState<boolean>(false);
+  const [volatileShowFullOutput, setVolatileShowFullOutput] = React.useState<boolean>(false);
+  const [volatileRenderMode, setVolatileRenderMode] = React.useState<"auto" | "text" | "markdown">("auto");
+
+  const prefs: ToolResultUiPrefs = (tcid && prefsByToolCallId && typeof prefsByToolCallId === "object" ? prefsByToolCallId[tcid] : null) || {};
+  const showRaw = canPersist ? !!prefs.showRaw : volatileShowRaw;
+  const showFullOutput = canPersist ? !!prefs.showFullOutput : volatileShowFullOutput;
+  const renderMode: "auto" | "text" | "markdown" =
+    canPersist
+      ? prefs.renderMode === "text" || prefs.renderMode === "markdown"
+        ? prefs.renderMode
+        : "auto"
+      : volatileRenderMode;
+
+  const setPrefs = React.useCallback(
+    (patch: Partial<ToolResultUiPrefs>) => {
+      if (!tcid) return;
+      setPrefsByToolCallId((prev) => {
+        const base = prev && typeof prev === "object" ? prev : {};
+        const next: Record<string, ToolResultUiPrefs> = { ...base, [tcid]: { ...(base[tcid] || {}), ...patch } };
+        // Bound growth: keep at most 200 tool call entries per (base, session).
+        const keys = Object.keys(next);
+        if (keys.length > 200) {
+          keys.sort();
+          for (let i = 0; i < keys.length - 200; i++) delete next[keys[i]];
+        }
+        return next;
+      });
+    },
+    [setPrefsByToolCallId, tcid],
+  );
+
+  const setShowRaw = React.useCallback(
+    (v: boolean) => {
+      if (canPersist) setPrefs({ showRaw: v });
+      else setVolatileShowRaw(v);
+    },
+    [canPersist, setPrefs],
+  );
+  const setShowFullOutput = React.useCallback(
+    (v: boolean) => {
+      if (canPersist) setPrefs({ showFullOutput: v });
+      else setVolatileShowFullOutput(v);
+    },
+    [canPersist, setPrefs],
+  );
+  const setRenderMode = React.useCallback(
+    (v: "auto" | "text" | "markdown") => {
+      if (canPersist) setPrefs({ renderMode: v });
+      else setVolatileRenderMode(v);
+    },
+    [canPersist, setPrefs],
+  );
 
   const parsed = safeJsonParse(content);
   if (parsed && typeof parsed === "object") {
@@ -207,7 +277,7 @@ export default function ToolResultView({
               {outputIsLong ? (
                 <button
                   className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                  onClick={() => setShowFullOutput((v) => !v)}
+                  onClick={() => setShowFullOutput(!showFullOutput)}
                   type="button"
                 >
                   {showFullOutput ? "Collapse output" : "Expand output"}
@@ -224,7 +294,7 @@ export default function ToolResultView({
               </select>
               <button
                 className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                onClick={() => setShowRaw((v) => !v)}
+                onClick={() => setShowRaw(!showRaw)}
                 type="button"
               >
                 {showRaw ? "Hide raw" : "Show raw"}
@@ -233,7 +303,7 @@ export default function ToolResultView({
           ) : (
             <button
               className="ml-auto rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-              onClick={() => setShowRaw((v) => !v)}
+              onClick={() => setShowRaw(!showRaw)}
               type="button"
             >
               {showRaw ? "Hide raw" : "Show raw"}
@@ -280,7 +350,11 @@ export default function ToolResultView({
                 <div className="mb-1 text-[11px] text-white/60">
                   Peek (first 5 lines){peek.totalLines > 5 ? ` of ${peek.totalLines}` : ""}:
                 </div>
-                <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90">
+                <pre
+                  className="cursor-pointer overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90 hover:bg-black/35"
+                  title="Click to expand/collapse output"
+                  onClick={() => setShowFullOutput(!showFullOutput)}
+                >
                   {peek.head}
                 </pre>
               </div>
@@ -340,7 +414,11 @@ export default function ToolResultView({
                 <div className="mb-1 text-[11px] text-white/60">
                   Peek (first 5 lines){peek.totalLines > 5 ? ` of ${peek.totalLines}` : ""}:
                 </div>
-                <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90">
+                <pre
+                  className="cursor-pointer overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-2 text-[11px] leading-relaxed text-white/90 hover:bg-black/35"
+                  title="Click to expand/collapse output"
+                  onClick={() => setShowFullOutput(!showFullOutput)}
+                >
                   {peek.head}
                 </pre>
               </div>
@@ -357,7 +435,7 @@ export default function ToolResultView({
             {isLong ? (
               <button
                 className="mt-2 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/70 hover:bg-black/40"
-                onClick={() => setShowFullOutput((v) => !v)}
+                onClick={() => setShowFullOutput(!showFullOutput)}
                 type="button"
               >
                 {showFullOutput ? "Collapse output" : "Expand output"}

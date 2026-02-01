@@ -489,12 +489,9 @@ export default function ConversationView({
       items.push(
         <Card key={`tc-${idx}`} title={title}>
           {inferredSummary ? (
-            <div className="mb-2 rounded-md border border-white/10 bg-black/20 p-3 text-xs text-white/85">
-              <div className="mb-1 text-[11px] font-semibold text-white/70">Command</div>
-              <pre className="overflow-auto whitespace-pre-wrap font-mono text-[11px] leading-relaxed text-white/90">
-                {inferredSummary.label}: {inferredSummary.value}
-              </pre>
-            </div>
+            <pre className="mb-2 overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/20 p-2 font-mono text-[11px] leading-relaxed text-white/90">
+              {inferredSummary.value}
+            </pre>
           ) : null}
           <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
             {args ? prettyJsonOrRaw(args) : inferredSummary ? "(arguments omitted; see command above)" : "(enable verbose to capture arguments)"}
@@ -507,10 +504,18 @@ export default function ConversationView({
     if (type === "tool_result") {
       sawToolOrAssistant = true;
       const name = String(data.tool_name ?? "");
+      const toolCallId = typeof data?.tool_call_id === "string" ? String(data.tool_call_id) : "";
       if (typeof data.content === "string") {
         items.push(
           <div key={`tr-${idx}`} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-            <ToolResultView baseUrl={baseUrl} yolo={yolo} daemonAuthToken={daemonAuthToken} content={data.content} />
+            <ToolResultView
+              baseUrl={baseUrl}
+              yolo={yolo}
+              daemonAuthToken={daemonAuthToken}
+              sessionId={sessionId}
+              toolCallId={toolCallId}
+              content={data.content}
+            />
           </div>,
         );
         return;
@@ -524,7 +529,14 @@ export default function ConversationView({
         }
         items.push(
           <div key={`tr-${idx}`} className="rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-            <ToolResultView baseUrl={baseUrl} yolo={yolo} daemonAuthToken={daemonAuthToken} content={envelope} />
+            <ToolResultView
+              baseUrl={baseUrl}
+              yolo={yolo}
+              daemonAuthToken={daemonAuthToken}
+              sessionId={sessionId}
+              toolCallId={toolCallId}
+              content={envelope}
+            />
           </div>,
         );
         return;

@@ -2,6 +2,7 @@ import React from "react";
 
 import ArtifactView from "./ArtifactView";
 import { apiPostSessionUiEvent } from "../api";
+import useLocalStorageState from "../hooks/useLocalStorageState";
 
 type CanvasPoint = { x: number; y: number };
 
@@ -508,7 +509,12 @@ export default function SceneView({
     return copy;
   }, [entities]);
 
-  const [expandedById, setExpandedById] = React.useState<Record<string, boolean>>({});
+  const expandedKey = React.useMemo(() => {
+    const base = typeof baseUrl === "string" ? baseUrl.trim() : "";
+    const sidKey = typeof sessionId === "string" ? sessionId.trim() : "";
+    return `agentui.scene.expandedById:${base}::${sidKey}`;
+  }, [baseUrl, sessionId]);
+  const [expandedById, setExpandedById] = useLocalStorageState<Record<string, boolean>>(expandedKey, {});
   React.useEffect(() => {
     // Keep UX stable as the Scene updates:
     // - Newly appeared entities default to expanded if they are among the latest N.

@@ -53,6 +53,8 @@ function sleep(ms: number) {
 
 export default function App() {
   const [showSettings, setShowSettings] = useLocalStorageState("agentui.showSettings", false);
+  const [clearAllArmed, setClearAllArmed] = React.useState<boolean>(false);
+  const clearAllArmTimeoutRef = React.useRef<number>(0);
 
   const [base, setBase] = useLocalStorageState("agentui.base", "http://127.0.0.1:8123");
 
@@ -189,6 +191,33 @@ export default function App() {
     const sid = typeof m?.[effectiveBase] === "string" ? String(m[effectiveBase]) : "";
     return sid.trim().length > 0 ? sid.trim() : "default";
   }, [effectiveBase, sessionByBaseJson]);
+
+  const historyUiKey = React.useMemo(() => {
+    const sid = String(sessionId || "").trim();
+    return `agentui.historyUi:${effectiveBase}::${sid}`;
+  }, [effectiveBase, sessionId]);
+  const [historyExpandedByKey, setHistoryExpandedByKey] = useLocalStorageState<Record<string, boolean>>(
+    `${historyUiKey}:expandedByKey`,
+    {},
+  );
+  const [mainScrollTop, setMainScrollTop] = useLocalStorageState<number>(`${historyUiKey}:scrollTop`, 0);
+  const mainScrollRef = React.useRef<HTMLElement | null>(null);
+  const mainScrollRestoredKeyRef = React.useRef<string>("");
+  const mainScrollSaveRafRef = React.useRef<number>(0);
+  const mainScrollLastSavedRef = React.useRef<number>(-1);
+
+  React.useEffect(() => {
+    return () => {
+      if (mainScrollSaveRafRef.current) {
+        try {
+          cancelAnimationFrame(mainScrollSaveRafRef.current);
+        } catch {
+          // ignore
+        }
+      }
+      mainScrollSaveRafRef.current = 0;
+    };
+  }, []);
   const setSessionId = React.useCallback(
     (sid: string) => {
       const nextSid = String(sid || "").trim() || "default";
@@ -535,12 +564,69 @@ export default function App() {
     retry: 1,
   });
 
+  React.useEffect(() => {
+    if (!showSettings) setClearAllArmed(false);
+  }, [showSettings]);
+
+  React.useEffect(() => {
+    return () => {
+      if (clearAllArmTimeoutRef.current) {
+        try {
+          window.clearTimeout(clearAllArmTimeoutRef.current);
+        } catch {
+          // ignore
+        }
+      }
+      clearAllArmTimeoutRef.current = 0;
+    };
+  }, []);
+
   const audit = useQuery({
     queryKey: ["audit", effectiveBase, daemonAuthToken, sessionId],
     queryFn: () => apiGetAudit(effectiveBase, sessionId, daemonAuthToken),
     enabled: !!sessionId,
     retry: 1,
   });
+
+  React.useEffect(() => {
+    const el = mainScrollRef.current;
+    if (!el) return;
+    // Restore scroll once per (base, session) after we have initial content.
+    // This avoids the "refresh jumps me to a random place" UX for long histories.
+    const restoreKey = `${effectiveBase}::${String(sessionId || "").trim()}`;
+    if (mainScrollRestoredKeyRef.current === restoreKey) return;
+    // Wait until we have at least the audit fetch result (even if empty) so layout is stable-ish.
+    if (!audit.isSuccess && !audit.isError) return;
+    mainScrollRestoredKeyRef.current = restoreKey;
+    const target = typeof mainScrollTop === "number" && Number.isFinite(mainScrollTop) ? mainScrollTop : 0;
+    if (target <= 0) return;
+    try {
+      requestAnimationFrame(() => {
+        try {
+          const maxTop = Math.max(0, el.scrollHeight - el.clientHeight);
+          el.scrollTop = Math.min(target, maxTop);
+        } catch {
+          // ignore
+        }
+      });
+    } catch {
+      // ignore
+    }
+  }, [audit.isError, audit.isSuccess, effectiveBase, mainScrollTop, sessionId]);
+
+  const onMainScroll = React.useCallback(() => {
+    const el = mainScrollRef.current;
+    if (!el) return;
+    if (mainScrollSaveRafRef.current) return;
+    mainScrollSaveRafRef.current = requestAnimationFrame(() => {
+      mainScrollSaveRafRef.current = 0;
+      const cur = el.scrollTop;
+      if (!Number.isFinite(cur)) return;
+      if (Math.abs(cur - mainScrollLastSavedRef.current) < 2) return;
+      mainScrollLastSavedRef.current = cur;
+      setMainScrollTop(cur);
+    });
+  }, [setMainScrollTop]);
 
   const auditEntriesDesc = React.useMemo(() => {
     const raw = audit.data?.ok && Array.isArray(audit.data?.entries) ? (audit.data.entries as any[]) : [];
@@ -1573,7 +1659,13 @@ export default function App() {
         </div>
       </header>
 
-      <main className="h-[calc(100vh-var(--topbar-h))] overflow-y-auto px-3 py-3 pb-[var(--promptbar-h)]">
+      <main
+        ref={(el) => {
+          mainScrollRef.current = el;
+        }}
+        onScroll={onMainScroll}
+        className="h-[calc(100vh-var(--topbar-h))] overflow-y-auto px-3 py-3 pb-[var(--promptbar-h)]"
+      >
         <div className="mx-auto max-w-7xl">
           <div className="min-h-0">
             <div className="h-[calc(100vh-var(--topbar-h)-var(--promptbar-h)-24px)] min-h-0">
@@ -1610,11 +1702,18 @@ export default function App() {
                   const jobSt = typeof e?.job_status === "string" ? e.job_status : "";
                   const status = ok === true ? "ok" : ok === false ? "error" : "";
                   const summary = promptText.trim().length > 0 ? promptText.trim().slice(0, 200) : "(no prompt)";
+                  const entryKey = isLive && jobId ? `job:${jobId}` : `ts:${String(ts || 0)}`;
+                  const expanded =
+                    Object.prototype.hasOwnProperty.call(historyExpandedByKey, entryKey) ? !!historyExpandedByKey[entryKey] : idx === 0;
 
                   return (
                     <details
-                      key={`${ts}-${idx}`}
-                      open={idx === 0}
+                      key={entryKey}
+                      open={expanded}
+                      onToggle={(ev) => {
+                        const open = (ev.currentTarget as HTMLDetailsElement).open;
+                        setHistoryExpandedByKey((prev) => ({ ...(prev || {}), [entryKey]: open }));
+                      }}
                       className="rounded-lg border border-white/10 bg-white/5 px-3 py-2"
                     >
                       <summary className="cursor-pointer select-none text-xs text-white/80">
@@ -1983,15 +2082,34 @@ export default function App() {
                     const ids = sessions.data?.sessions ?? [];
                     const n = ids.length;
                     if (n === 0) return;
-                    if (!confirm(`Delete ALL ${n} sessions? This cannot be undone.`)) return;
+                    if (!clearAllArmed) {
+                      setClearAllArmed(true);
+                      try {
+                        if (clearAllArmTimeoutRef.current) window.clearTimeout(clearAllArmTimeoutRef.current);
+                      } catch {
+                        // ignore
+                      }
+                      clearAllArmTimeoutRef.current = window.setTimeout(() => setClearAllArmed(false), 8000);
+                      return;
+                    }
+                    setClearAllArmed(false);
                     void clearAllSessions.mutateAsync().catch(() => {});
                   }}
                   type="button"
                   disabled={clearAllSessions.isPending}
                   title="Danger: deletes all sessions on the daemon."
                 >
-                  Clear all
+                  {clearAllArmed ? `Confirm clear all (${(sessions.data?.sessions ?? []).length})` : "Clear all"}
                 </button>
+                {clearAllArmed ? (
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+                    type="button"
+                    onClick={() => setClearAllArmed(false)}
+                  >
+                    Cancel
+                  </button>
+                ) : null}
               </div>
               <div className="mt-2 max-h-64 overflow-auto rounded-md border border-white/10 bg-black/20">
                 {(sessions.data?.sessions ?? []).map((sid) => {
