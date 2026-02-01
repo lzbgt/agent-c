@@ -15,7 +15,6 @@
 
 #include <cstdlib>
 #include <filesystem>
-#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
@@ -52,57 +51,6 @@ static std::string home_dir_best_effort() {
   return std::filesystem::current_path().string();
 }
 
-static std::string codex_home_dir_best_effort() {
-  if (const char* ch = getenv_s("CODEX_HOME")) {
-    return ch;
-  }
-  return (std::filesystem::path(home_dir_best_effort()) / ".codex").string();
-}
-
-#if defined(AGENT_HAVE_JSONCPP)
-static bool load_codex_access_token(std::string* out_token, std::string* out_error, const std::string& override_path = "") {
-  if (out_error) out_error->clear();
-  if (!out_token) return false;
-  out_token->clear();
-
-  const std::string path =
-    !override_path.empty()
-      ? override_path
-      : (std::filesystem::path(codex_home_dir_best_effort()) / "auth.json").string();
-
-  std::ifstream f(path);
-  if (!f) {
-    if (out_error) *out_error = "failed to open codex auth file: " + path;
-    return false;
-  }
-
-  Json::Value root(Json::objectValue);
-  Json::CharReaderBuilder rb;
-  std::string errs;
-  if (!Json::parseFromStream(rb, f, &root, &errs) || !root.isObject()) {
-    if (out_error) *out_error = "failed to parse codex auth JSON";
-    return false;
-  }
-
-  // Observed shape (do not log secrets):
-  // {
-  //   "tokens": { "access_token": "...", "refresh_token": "...", "id_token": "..." },
-  //   ...
-  // }
-  const Json::Value tokens = root.isMember("tokens") && root["tokens"].isObject() ? root["tokens"] : Json::Value(Json::objectValue);
-  const Json::Value at = tokens.isMember("access_token") && tokens["access_token"].isString() ? tokens["access_token"] : Json::Value(Json::nullValue);
-  const Json::Value it = tokens.isMember("id_token") && tokens["id_token"].isString() ? tokens["id_token"] : Json::Value(Json::nullValue);
-
-  const std::string tok = at.isString() ? at.asString() : (it.isString() ? it.asString() : "");
-  if (tok.empty()) {
-    if (out_error) *out_error = "codex auth file did not contain tokens.access_token (or tokens.id_token)";
-    return false;
-  }
-  *out_token = tok;
-  return true;
-}
-#endif
-
 static int64_t now_unix_ms() {
   using namespace std::chrono;
   return (int64_t)duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
@@ -117,8 +65,6 @@ static void usage() {
     << "  --model <name>            Model name (default: gpt-4o-mini)\n"
     << "  --base-url <url>          API base url (default: https://api.openai.com/v1)\n"
     << "  --api-key <key>           API key (default: OPENAI_API_KEY)\n"
-    << "  --auth api_key|codex      Auth source (default: api_key)\n"
-    << "  --codex-auth-path <path>  Override codex auth file path (default: $CODEX_HOME/auth.json or ~/.codex/auth.json)\n"
     << "  --proxy <url>             Optional HTTP proxy override (else env HTTPS_PROXY/http_proxy)\n"
     << "  --timeout-ms <n>          HTTP timeout in ms (default: 60000)\n"
     << "  --trace                   Print full request/response/tool transcript to stderr (default: on)\n"
@@ -258,8 +204,6 @@ int main(int argc, char** argv) {
   std::string model = "gpt-4o-mini";
   std::string base_url = "https://api.openai.com/v1";
   std::string api_key;
-  std::string auth_source = "api_key";
-  std::string codex_auth_path;
   std::string proxy_url;
   std::string session_id = "default";
   bool no_session = false;
@@ -294,14 +238,6 @@ int main(int argc, char** argv) {
   }
   if (!take_flag(args, "--api-key", &api_key)) {
     std::cerr << "Missing value for --api-key\n";
-    return 2;
-  }
-  if (!take_flag(args, "--auth", &auth_source)) {
-    std::cerr << "Missing value for --auth\n";
-    return 2;
-  }
-  if (!take_flag(args, "--codex-auth-path", &codex_auth_path)) {
-    std::cerr << "Missing value for --codex-auth-path\n";
     return 2;
   }
   if (!take_flag(args, "--proxy", &proxy_url)) {
@@ -444,7 +380,7 @@ int main(int argc, char** argv) {
   }
   // Pick the API key that matches the chosen base URL. This prevents accidental mix-ups when the
   // host environment exports multiple provider keys.
-  if (api_key.empty() && auth_source == "api_key") {
+  if (api_key.empty()) {
     if (url_contains_ci(base_url, "deepseek")) {
       if (const char* k = getenv_s("DEEPSEEK_API_KEY")) api_key = k;
       else if (const char* k2 = getenv_s("OPENAI_API_KEY")) api_key = k2;
@@ -458,30 +394,6 @@ int main(int argc, char** argv) {
       else if (const char* k2 = getenv_s("OPENROUTER_API_KEY")) api_key = k2;
       else if (const char* k3 = getenv_s("DEEPSEEK_API_KEY")) api_key = k3;
     }
-  }
-
-  // Optional auth source: reuse the cached Codex login token (OAuth access token).
-  // This is useful for development when a user has authenticated Codex via `codex login`.
-  if (api_key.empty() && auth_source == "codex") {
-    if (!url_contains_ci(base_url, "openai")) {
-      std::cerr << "--auth codex is only supported with an OpenAI base URL. Got --base-url=" << base_url << "\n";
-      return 2;
-    }
-#if !defined(AGENT_HAVE_JSONCPP)
-    std::cerr << "Codex auth requires jsoncpp (AGENT_HAVE_JSONCPP)\n";
-    return 2;
-#else
-    std::string tok;
-    std::string err;
-    if (!load_codex_access_token(&tok, &err, codex_auth_path)) {
-      std::cerr << "Failed to load Codex auth token";
-      if (!err.empty()) std::cerr << ": " << err;
-      std::cerr << "\n";
-      std::cerr << "Tip: run `codex login` to refresh tokens, or use --api-key/OPENAI_API_KEY.\n";
-      return 2;
-    }
-    api_key = tok;
-#endif
   }
 
   if (api_key.empty()) {
