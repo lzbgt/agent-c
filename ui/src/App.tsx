@@ -1535,11 +1535,14 @@ export default function App() {
       }}
     >
       <header ref={topbarRef} className="sticky top-0 z-30 border-b border-white/10 bg-slate-950/80 backdrop-blur">
-        <div className="flex h-14 items-center justify-between px-4">
-          <div>
+        <div className="flex h-14 min-w-0 items-center justify-between px-4">
+          <div className="min-w-0">
             <div className="text-sm font-semibold">agent UI</div>
             <div className="text-[11px] text-white/60">
-              daemon: <span className="font-mono text-[11px] text-white/70">{effectiveBase}</span>{" "}
+              daemon:{" "}
+              <span className="inline-block max-w-[60vw] truncate align-bottom font-mono text-[11px] text-white/70" title={effectiveBase}>
+                {effectiveBase}
+              </span>{" "}
               {health.isSuccess ? (
                 <span className="text-emerald-300">
                   ok ({health.data.service ?? "agentd"} {health.data.version ?? ""})
@@ -1670,14 +1673,15 @@ export default function App() {
 
       <div ref={promptbarRef} className="fixed bottom-0 left-0 right-0 z-30 border-t border-white/10 bg-slate-950/90 backdrop-blur">
         <div className="mx-auto max-w-7xl px-3 py-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-[11px] text-white/60">
-              session=<code className="text-white/70">{String(sessionId || "").trim() || "(none)"}</code> tools=
-              <code className="text-white/70">{String(tools || "")}</code>{" "}
+          <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0 text-[11px] text-white/60">
+              session=
+              <code className="text-white/70 break-all">{String(sessionId || "").trim() || "(none)"}</code> tools=
+              <code className="text-white/70 break-all">{String(tools || "")}</code>{" "}
               {activeJobId ? (
                 <>
-                  job=<code className="text-white/70">{activeJobId}</code> status=
-                  <code className="text-white/70">{jobStatus ?? "running"}</code>
+                  job=<code className="text-white/70 break-all">{activeJobId}</code> status=
+                  <code className="text-white/70 break-all">{jobStatus ?? "running"}</code>
                 </>
               ) : null}
             </div>
