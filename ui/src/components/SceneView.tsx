@@ -439,10 +439,36 @@ function DomEntityView({
     let cancelled = false;
     void (async () => {
       try {
-        // eslint-disable-next-line no-new-func
+        // Execute the agent-provided script.
+        //
+        // Compatibility goals (important):
+        // - Support scripts written as an async function BODY (so `await` + `return cleanup` work):
+        //     // uses api.root
+        //     ...
+        //     return () => { ... }
+        // - Also support scripts written as a FUNCTION EXPRESSION (common model output):
+        //     async (api, args) => { ... return () => {...} }
+        //
         // Build the function body with REAL newlines. (Using a literal `\\n` in source breaks parsing.)
-        // Use an async function expression (not an async arrow) for maximum browser compatibility.
-        const fn = new Function("api", "args", '"use strict"; return (async function() {\n' + script + "\n})();") as (
+        const trimmed = script.trim();
+        const looksLikeFnExpr =
+          trimmed.startsWith("function") ||
+          trimmed.startsWith("async function") ||
+          trimmed.startsWith("(") ||
+          trimmed.startsWith("async (") ||
+          trimmed.startsWith("async(") ||
+          /^[a-zA-Z_$][\\w$]*\\s*=>/.test(trimmed);
+
+        const body = looksLikeFnExpr
+          ? `
+const __fn = (${script});
+if (typeof __fn === "function") return await __fn(api, args);
+return __fn;
+`
+          : script;
+
+        // eslint-disable-next-line no-new-func
+        const fn = new Function("api", "args", '"use strict"; return (async function() {\n' + body + "\n})();") as (
           api: any,
           args: any,
         ) => Promise<any>;
