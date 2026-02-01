@@ -9,6 +9,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(AGENT_BUILD_HOST "Build CLI/daemon host components (requires CURL; JSONCPP optional)" ON)
 option(AGENTD_ENABLE_HTTP "Build agentd HTTP server + agentd executable" ON)
+option(AGENT_BUILD_ESP32SIM "Build esp32sim host harness for embedded agent_core" ON)
 
 add_library(agent_core STATIC
   core/src/agent_alloc.c
@@ -103,6 +104,18 @@ if(AGENT_BUILD_HOST)
   )
 
   target_link_libraries(agent PRIVATE agent_host)
+
+  if(AGENT_BUILD_ESP32SIM)
+    add_executable(esp32sim
+      tools/esp32sim.cpp
+    )
+
+    target_compile_options(esp32sim PRIVATE
+      $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+    )
+
+    target_link_libraries(esp32sim PRIVATE agent_host)
+  endif()
 
   # Build the daemon as an embeddable library. HTTP serving is optional and controlled by
   # `AGENTD_ENABLE_HTTP` (useful for app embedding where a cloud broker / custom transport is used).

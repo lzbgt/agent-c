@@ -8,6 +8,9 @@ This repo contains a **portable, pure-C core library** (`agent_core`) intended t
 
 The core library **does not** perform HTTP/JSON parsing for you on embedded. That is deliberate: networking and JSON stacks vary wildly across embedded environments.
 
+For a maturity/feasibility assessment and architecture options (remote agent vs on-device), see:
+- `docs/ESP32S3_AGENT_CORE_MATURITY.md`
+
 ## Build: core-only (no host deps)
 
 To build only the embedded-safe core (no libcurl / jsoncpp / daemon / UI):
@@ -196,4 +199,3 @@ On ESP32-S3, treat the core tool loop as a **single task**:
 - Side effects: tools run via `agent_tool_executor_t` only
 
 Keep all persistence (flash/SD/network) and UI outside the core library. This keeps the C API portable and minimizes binary size.
-

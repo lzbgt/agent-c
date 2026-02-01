@@ -3,10 +3,49 @@
 #include "agent_alloc.h"
 
 #include <string.h>
-#include <stdio.h>
 #include <ctype.h>
 
 static const char* kCompactionSummaryName = "__agent_compaction_summary__";
+
+static size_t tl_u64_to_dec(char* out, size_t out_cap, unsigned long long x) {
+  if (!out || out_cap == 0) return 0;
+  // Max decimal digits for uint64 is 20.
+  char tmp[32];
+  size_t n = 0;
+  do {
+    const unsigned digit = (unsigned)(x % 10ull);
+    tmp[n++] = (char)('0' + digit);
+    x /= 10ull;
+  } while (x && n + 1 < sizeof(tmp));
+  if (n + 1 > out_cap) return 0;
+  // Reverse into out.
+  for (size_t i = 0; i < n; i++) {
+    out[i] = tmp[n - 1 - i];
+  }
+  out[n] = '\0';
+  return n;
+}
+
+static size_t tl_i64_to_dec(char* out, size_t out_cap, long long x) {
+  if (!out || out_cap == 0) return 0;
+  unsigned long long u = 0;
+  size_t pos = 0;
+  if (x < 0) {
+    if (out_cap < 2) return 0;
+    out[pos++] = '-';
+    // Avoid overflow on LLONG_MIN.
+    u = (unsigned long long)(-(x + 1ll)) + 1ull;
+  } else {
+    u = (unsigned long long)x;
+  }
+  const size_t wrote = tl_u64_to_dec(out + pos, out_cap - pos, u);
+  if (wrote == 0) return 0;
+  return pos + wrote;
+}
+
+static char tl_hex_nibble(unsigned v) {
+  return (v < 10u) ? (char)('0' + v) : (char)('a' + (v - 10u));
+}
 
 static uint64_t tl_fnv1a64(const char* s, size_t n) {
   const unsigned char* p = (const unsigned char*)s;
@@ -90,6 +129,19 @@ static agent_status_t tl_buf_append_bytes(tl_buf_t* b, const char* s, size_t n) 
   return AGENT_OK;
 }
 
+static agent_status_t tl_buf_append_escaped_u4(tl_buf_t* b, unsigned int x) {
+  if (!b) return AGENT_ERR_INVALID_ARGUMENT;
+  // "\\u" + 4 hex digits
+  char tmp[6];
+  tmp[0] = '\\';
+  tmp[1] = 'u';
+  tmp[2] = tl_hex_nibble((x >> 12) & 0xFu);
+  tmp[3] = tl_hex_nibble((x >> 8) & 0xFu);
+  tmp[4] = tl_hex_nibble((x >> 4) & 0xFu);
+  tmp[5] = tl_hex_nibble(x & 0xFu);
+  return tl_buf_append_bytes(b, tmp, sizeof(tmp));
+}
+
 static agent_status_t tl_buf_append_cstr(tl_buf_t* b, const char* s) {
   if (!s) s = "";
   return tl_buf_append_bytes(b, s, strlen(s));
@@ -100,17 +152,17 @@ static agent_status_t tl_buf_append_char(tl_buf_t* b, char c) {
 }
 
 static agent_status_t tl_buf_append_u64(tl_buf_t* b, unsigned long long x) {
-  char tmp[64];
-  const int n = snprintf(tmp, sizeof(tmp), "%llu", x);
-  if (n <= 0) return AGENT_ERR_INTERNAL;
-  return tl_buf_append_bytes(b, tmp, (size_t)n);
+  char tmp[32];
+  const size_t n = tl_u64_to_dec(tmp, sizeof(tmp), x);
+  if (n == 0) return AGENT_ERR_INTERNAL;
+  return tl_buf_append_bytes(b, tmp, n);
 }
 
 static agent_status_t tl_buf_append_i64(tl_buf_t* b, long long x) {
-  char tmp[64];
-  const int n = snprintf(tmp, sizeof(tmp), "%lld", x);
-  if (n <= 0) return AGENT_ERR_INTERNAL;
-  return tl_buf_append_bytes(b, tmp, (size_t)n);
+  char tmp[32];
+  const size_t n = tl_i64_to_dec(tmp, sizeof(tmp), x);
+  if (n == 0) return AGENT_ERR_INTERNAL;
+  return tl_buf_append_bytes(b, tmp, n);
 }
 
 static agent_status_t tl_json_escape_into(tl_buf_t* b, const char* s, size_t n) {
@@ -145,10 +197,7 @@ static agent_status_t tl_json_escape_into(tl_buf_t* b, const char* s, size_t n) 
       }
       default: {
         if (c < 0x20) {
-          char tmp[8];
-          const int m = snprintf(tmp, sizeof(tmp), "\\u%04x", (unsigned int)c);
-          if (m <= 0) return AGENT_ERR_INTERNAL;
-          agent_status_t st = tl_buf_append_bytes(b, tmp, (size_t)m);
+          agent_status_t st = tl_buf_append_escaped_u4(b, (unsigned int)c);
           if (st != AGENT_OK) return st;
         } else {
           agent_status_t st = tl_buf_append_char(b, (char)c);
@@ -390,6 +439,37 @@ static void tl_trim_in_place(char* s) {
     memmove(s, s + i, out_n);
     s[out_n] = '\0';
   }
+}
+
+static uint8_t tl_format_tool_call_id(char* out, size_t out_cap, const char* prefix, unsigned long long a, unsigned long long b) {
+  if (!out || out_cap == 0) return 0;
+  if (!prefix) prefix = "";
+
+  size_t pos = 0;
+  const size_t pre_len = strlen(prefix);
+  if (pre_len + 1 > out_cap) return 0;
+  if (pre_len) memcpy(out + pos, prefix, pre_len);
+  pos += pre_len;
+
+  if (pos + 1 >= out_cap) return 0;
+  out[pos++] = '_';
+
+  char tmp[32];
+  size_t n = tl_u64_to_dec(tmp, sizeof(tmp), a);
+  if (n == 0 || pos + n + 1 > out_cap) return 0;
+  memcpy(out + pos, tmp, n);
+  pos += n;
+
+  if (pos + 1 >= out_cap) return 0;
+  out[pos++] = '_';
+
+  n = tl_u64_to_dec(tmp, sizeof(tmp), b);
+  if (n == 0 || pos + n + 1 > out_cap) return 0;
+  memcpy(out + pos, tmp, n);
+  pos += n;
+
+  out[pos] = '\0';
+  return 1;
 }
 
 static agent_status_t tl_build_compaction_summary(
@@ -886,8 +966,7 @@ static agent_status_t tl_run_memory_flush_best_effort(
       char tool_call_id_buf[64];
       const char* tool_call_id = call->id.data ? call->id.data : "";
       if (!tool_call_id[0]) {
-        (void)snprintf(tool_call_id_buf, sizeof(tool_call_id_buf), "flush_%llu_%llu",
-                       (unsigned long long)epoch, (unsigned long long)i);
+        (void)tl_format_tool_call_id(tool_call_id_buf, sizeof(tool_call_id_buf), "flush", (unsigned long long)epoch, (unsigned long long)i);
         tool_call_id = tool_call_id_buf;
       }
       const char* args_json = call->arguments_json.data ? call->arguments_json.data : "{}";
@@ -1560,8 +1639,7 @@ agent_status_t agent_tool_loop_run(
       char tool_call_id_buf[64];
       const char* tool_call_id = call->id.data ? call->id.data : "";
       if (!tool_call_id[0]) {
-        (void)snprintf(tool_call_id_buf, sizeof(tool_call_id_buf), "call_%llu_%llu",
-                       (unsigned long long)step, (unsigned long long)i);
+        (void)tl_format_tool_call_id(tool_call_id_buf, sizeof(tool_call_id_buf), "call", (unsigned long long)step, (unsigned long long)i);
         tool_call_id = tool_call_id_buf;
       }
       const char* args_json = call->arguments_json.data ? call->arguments_json.data : "{}";
