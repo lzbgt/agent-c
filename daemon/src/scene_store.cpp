@@ -229,6 +229,8 @@ bool scene_store_apply_ops(
         if (op.isMember("entity_kind") && op["entity_kind"].isString()) filter_kind = op["entity_kind"].asString();
         if (filter_kind.empty() && op.isMember("kind2") && op["kind2"].isString()) filter_kind = op["kind2"].asString();
         if (filter_kind.empty() && op.isMember("kind") && op["kind"].isString()) filter_kind = op["kind"].asString();
+        const bool include_artifacts =
+          op.isMember("include_artifacts") && op["include_artifacts"].isBool() ? op["include_artifacts"].asBool() : false;
 
         int removed = 0;
         const auto ids = scene_obj.getMemberNames();
@@ -237,6 +239,9 @@ bool scene_store_apply_ops(
             const Json::Value ent = scene_obj[id];
             const std::string ek = safe_string(ent["kind"]);
             if (ek != filter_kind) continue;
+          }
+          if (filter_kind.empty() && !include_artifacts) {
+            if (id.rfind("artifact:", 0) == 0) continue;
           }
           scene_obj.removeMember(id);
           removed++;

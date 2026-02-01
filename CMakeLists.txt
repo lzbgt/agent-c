@@ -396,6 +396,13 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
       target_link_libraries(scene_store_mirror_artifact_tests PRIVATE agentd_lib)
       target_compile_definitions(scene_store_mirror_artifact_tests PRIVATE AGENT_HAVE_SQLITE3=1 AGENT_HAVE_JSONCPP=1)
       add_test(NAME scene_store_mirror_artifact_tests COMMAND scene_store_mirror_artifact_tests)
+
+      add_executable(scene_store_clear_preserves_artifacts_tests
+        tests/test_scene_store_clear_preserves_artifacts.cpp
+      )
+      target_link_libraries(scene_store_clear_preserves_artifacts_tests PRIVATE agentd_lib)
+      target_compile_definitions(scene_store_clear_preserves_artifacts_tests PRIVATE AGENT_HAVE_SQLITE3=1 AGENT_HAVE_JSONCPP=1)
+      add_test(NAME scene_store_clear_preserves_artifacts_tests COMMAND scene_store_clear_preserves_artifacts_tests)
     endif()
 
     if(AGENTD_ENABLE_HTTP)

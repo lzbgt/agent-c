@@ -16,13 +16,14 @@ static std::string webui_profile() {
     - { op:"delete", id }
     - { op:"clear", entity_kind? }
   - Use stable ids when useful (e.g. "voice-player") so updates replace rather than duplicate.
+  - Avoid `op:"clear"` unless the user explicitly asked to reset the Scene; prefer targeted updates/deletes.
 
 - Scene entity kinds:
   - entity_kind="dom": arbitrary HTML + JS inside a dedicated container.
     - props.html inserts markup.
     - props.script runs as an **async function body** with (api, args):
       - api.root: container element
-      - api.artifact.url(path): returns a blob: URL for a registered artifact path (auth-safe)
+      - api.artifact.url(path): async; returns a Promise that resolves to a blob: URL (auth-safe). You MUST `await` it.
       - api.daemon.{base_url,yolo,auth_token}
       - args: props.script_args / props.args
     - The script may `await` and may `return () => { ... }` as cleanup.
@@ -37,6 +38,7 @@ static std::string webui_profile() {
   - Write outputs under the tools root (prefer `./out/`).
   - Register artifacts with a **relative** path (e.g. "out/hello.mp3") using `artifact_register`.
   - For audio/video/images, prefer presenting via the Scene. (agentd may also add a basic player for audio artifacts.)
+  - Do not create voice/audio presentations unless the user explicitly asked for voice/audio output.
 
 - Client RPC is **ephemeral** (lost on refresh) but powerful. Use it only when needed:
   - Call `ui_action` with:
