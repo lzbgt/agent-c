@@ -24,6 +24,8 @@
 
 #include "base64.h"
 
+#include "openai_client.h"
+
 #include "openai_stream_decoder.h"
 
 #include "agent/agent.h"
@@ -119,6 +121,52 @@ static bool looks_texty(const std::string& bytes) {
 
 static const char* kMultimodalPrefix = "__AGENT_MM_V1__";
 
+static std::string lower_copy(std::string s) {
+  for (char& c : s) {
+    if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+  }
+  return s;
+}
+
+static bool url_contains_ci(const std::string& url, const std::string& needle) {
+  if (needle.empty()) return false;
+  const std::string u = lower_copy(url);
+  const std::string n = lower_copy(needle);
+  return u.find(n) != std::string::npos;
+}
+
+static bool provider_rejects_image_parts(const std::string& base_url, const std::string& model) {
+  // DeepSeek's OpenAI-compatible API schema only supports `content` parts of `type=text`.
+  // Avoid sending `type=image_url` to prevent 400 deserialization failures.
+  (void)model;
+  return url_contains_ci(base_url, "deepseek");
+}
+
+static bool provider_requires_tools_none_for_vision(const std::string& base_url, const std::string& model) {
+  // Some providers support vision, but only in the tools=none (non tool-calling) schema.
+  // Moonshot/Kimi is known to accept `image_url` parts for vision, but rejects them in tool-calling requests.
+  (void)model;
+  return url_contains_ci(base_url, "moonshot");
+}
+
+static std::string try_extract_assistant_text_from_response_json(const std::string& response_body) {
+  Json::CharReaderBuilder rb;
+  std::string errs;
+  std::istringstream iss(response_body);
+  Json::Value root;
+  if (!Json::parseFromStream(rb, iss, &root, &errs) || !root.isObject()) return "";
+  const auto& choices = root["choices"];
+  if (!choices.isArray() || choices.empty()) return "";
+  const auto& msg = choices[0]["message"];
+  if (msg.isObject()) {
+    const auto& content = msg["content"];
+    if (content.isString()) return content.asString();
+  }
+  const auto& text = choices[0]["text"];
+  if (text.isString()) return text.asString();
+  return "";
+}
+
 static bool try_parse_multimodal_prefix(const std::string& content, Json::Value* out_mm, std::string* out_text) {
   if (out_mm) *out_mm = Json::Value(Json::nullValue);
   if (out_text) *out_text = content;
@@ -138,7 +186,7 @@ static bool try_parse_multimodal_prefix(const std::string& content, Json::Value*
   return true;
 }
 
-static Json::Value multimodal_content_from_parts(const std::string& text, const Json::Value& mm) {
+static Json::Value multimodal_content_from_parts(const std::string& text, const Json::Value& mm, bool allow_image_parts) {
   const bool have_images = mm.isMember("images") && mm["images"].isArray() && !mm["images"].empty();
   const bool have_files = mm.isMember("files") && mm["files"].isArray() && !mm["files"].empty();
   if (!have_images && !have_files) return Json::Value(text);
@@ -174,16 +222,30 @@ static Json::Value multimodal_content_from_parts(const std::string& text, const 
   if (have_images) {
     for (const auto& im : mm["images"]) {
       if (!im.isObject()) continue;
+      const std::string name = im.isMember("name") && im["name"].isString() ? im["name"].asString() : "";
       const std::string mime = im.isMember("mime") && im["mime"].isString() ? im["mime"].asString() : "image/png";
       const std::string b64 = im.isMember("b64") && im["b64"].isString() ? im["b64"].asString() : "";
       if (b64.empty()) continue;
-      const std::string url = std::string("data:") + mime + ";base64," + b64;
-      Json::Value part(Json::objectValue);
-      part["type"] = "image_url";
-      Json::Value iu(Json::objectValue);
-      iu["url"] = url;
-      part["image_url"] = iu;
-      arr.append(part);
+      if (allow_image_parts) {
+        const std::string url = std::string("data:") + mime + ";base64," + b64;
+        Json::Value part(Json::objectValue);
+        part["type"] = "image_url";
+        Json::Value iu(Json::objectValue);
+        iu["url"] = url;
+        part["image_url"] = iu;
+        arr.append(part);
+      } else {
+        std::string hint;
+        hint += "[Image attachment";
+        if (!name.empty()) hint += ": " + name;
+        if (!mime.empty()) hint += " (" + mime + ")";
+        hint += "]\n";
+        hint += "(Image omitted: provider does not accept image_url content parts.)";
+        Json::Value part(Json::objectValue);
+        part["type"] = "text";
+        part["text"] = hint;
+        arr.append(part);
+      }
     }
   }
   return arr;
@@ -959,7 +1021,10 @@ static Json::Value run_request_to_json(
   // Effective stream_assistant may be tightened/overridden internally (e.g., to support multimodal content
   // for tools=none even when the caller did not request streaming).
   bool effective_stream_assistant = false;
+  size_t input_image_count = 0;
+  bool input_had_any_files = false;
   if (args.isMember("input_files") && args["input_files"].isArray() && !args["input_files"].empty()) {
+    input_had_any_files = true;
     if (no_session) {
       Json::Value o(Json::objectValue);
       o["ok"] = false;
@@ -1028,6 +1093,7 @@ static Json::Value run_request_to_json(
           im["mime"] = mime.empty() ? std::string("image/png") : mime;
           im["b64"] = b64;
           images.append(im);
+          input_image_count++;
         } else {
           Json::Value f(Json::objectValue);
           f["name"] = name;
@@ -1065,6 +1131,11 @@ static Json::Value run_request_to_json(
       prompt_for_llm = std::string(kMultimodalPrefix) + Json::writeString(wb, mm) + "\n" + prompt;
     }
   }
+
+  // If tools are enabled and the provider requires tools=none for vision, we keep tools enabled and instead
+  // (optionally) run a lightweight "vision prefetch" call to obtain an image description that can be injected
+  // into the tool-loop prompt as plain text. This keeps tools available for the rest of the turn without
+  // hardcoding tools=none as a startup gate.
 
   uint64_t max_steps_u64 = 0;
   const size_t max_steps =
@@ -1211,6 +1282,8 @@ static Json::Value run_request_to_json(
   std::unique_ptr<ExtendedToolExecutorCtx> extended_executor;
   bool need_destroy_host_executor = false;
   const bool use_tool_loop = (tools != "none");
+  bool vision_prefetch_attempted = false;
+  bool vision_prefetch_ok = false;
 
   if (tools == "basic") {
     if (toolset_basic_create(&registry, &base_executor) != AGENT_OK) {
@@ -1339,6 +1412,109 @@ static Json::Value run_request_to_json(
   }
 
   if (use_tool_loop) {
+    // Optional vision prefetch:
+    // For Moonshot/Kimi, multimodal vision works in tools=none schema, but tool-loop requests can't include image parts.
+    // To keep host tools available while still letting the model "see" the image, do a one-shot tools=none call to
+    // produce a textual description, then inject it into the tool-loop prompt.
+    Json::Value pre_events(Json::arrayValue);
+    std::string prompt_for_tool_loop = prompt_for_llm;
+    {
+      const bool want_prefetch =
+        !(args.isMember("vision_prefetch") && args["vision_prefetch"].isBool() && args["vision_prefetch"].asBool() == false);
+
+      Json::Value mm(Json::nullValue);
+      std::string user_text = prompt_for_llm;
+      const bool has_mm = try_parse_multimodal_prefix(prompt_for_llm, &mm, &user_text) && mm.isObject();
+      const bool has_images = has_mm && mm.isMember("images") && mm["images"].isArray() && !mm["images"].empty();
+      const bool should_prefetch = want_prefetch && has_images && provider_requires_tools_none_for_vision(run_cfg.base_url, run_cfg.model);
+
+      if (should_prefetch) {
+        vision_prefetch_attempted = true;
+        // Build a single-message vision request (tools=none) using OpenAI-compatible multimodal parts.
+        // We do not persist this "internal" call into the session transcript.
+        std::string vision_desc;
+        std::string v_err;
+        long v_http = 0;
+        try {
+          const std::string pre_text =
+            std::string("Describe the attached image(s) in detail so I can answer the user's request.\n")
+            + "User request:\n"
+            + prompt;
+
+          Json::Value root(Json::objectValue);
+          root["model"] = run_cfg.model;
+          root["stream"] = false;
+          Json::Value messages(Json::arrayValue);
+
+          {
+            Json::Value sm(Json::objectValue);
+            sm["role"] = "system";
+            sm["content"] = "You are a vision captioning assistant. Output plain text.";
+            messages.append(sm);
+          }
+          {
+            Json::Value um(Json::objectValue);
+            um["role"] = "user";
+            um["content"] = multimodal_content_from_parts(pre_text, mm, /*allow_image_parts=*/true);
+            messages.append(um);
+          }
+
+          root["messages"] = messages;
+          Json::StreamWriterBuilder wb;
+          wb["indentation"] = "";
+          const std::string req_json = Json::writeString(wb, root);
+
+          OpenAIRawResult raw = openai_chat_completions_raw(run_cfg, req_json);
+          v_http = raw.http_status;
+          if (raw.http_status < 200 || raw.http_status >= 300) {
+            v_err = openai_format_http_error(raw.http_status, raw.response_body);
+          } else {
+            vision_desc = try_extract_assistant_text_from_response_json(raw.response_body);
+            if (vision_desc.empty()) {
+              v_err = "vision prefetch returned empty assistant text";
+            }
+          }
+        } catch (const std::exception& e) {
+          v_err = std::string("vision prefetch threw exception: ") + e.what();
+        } catch (...) {
+          v_err = "vision prefetch threw unknown exception";
+        }
+
+        Json::Value ev(Json::objectValue);
+        ev["type"] = "vision_prefetch";
+        Json::Value d(Json::objectValue);
+        d["ok"] = (bool)v_err.empty();
+        d["provider"] = provider_from_base_url(run_cfg.base_url);
+        d["model"] = run_cfg.model;
+        if (v_http) d["http_status"] = (Json::Int64)v_http;
+        if (!v_err.empty()) d["error"] = v_err;
+        if (!vision_desc.empty()) {
+          d["chars"] = (Json::UInt64)vision_desc.size();
+          // Include a short preview for debugging/UI display (avoid large blobs).
+          const size_t kPreview = 512;
+          d["preview"] = vision_desc.size() <= kPreview ? vision_desc : (vision_desc.substr(0, kPreview) + "…");
+        }
+        ev["data"] = d;
+        pre_events.append(ev);
+
+        if (v_err.empty() && !vision_desc.empty()) {
+          vision_prefetch_ok = true;
+          // Strip images from the multimodal envelope before entering the tool loop
+          // (otherwise the tool-loop provider may add an "image omitted" hint).
+          Json::Value mm2 = mm;
+          if (mm2.isObject() && mm2.isMember("images")) {
+            mm2.removeMember("images");
+          }
+          // Re-wrap without images and append the vision description into the text prompt.
+          Json::StreamWriterBuilder wb;
+          wb["indentation"] = "";
+          prompt_for_tool_loop = std::string(kMultimodalPrefix) + Json::writeString(wb, mm2) + "\n" + user_text;
+          prompt_for_tool_loop += "\n\n[Image description]\n";
+          prompt_for_tool_loop += vision_desc;
+        }
+      }
+    }
+
     ToolLoopOptions opt;
     opt.max_steps = max_steps;
     opt.max_tool_calls_total = max_tool_calls_total;
@@ -1393,7 +1569,7 @@ static Json::Value run_request_to_json(
 
 	    try {
 	      ok = run_tool_loop(
-	        run_cfg, seed_for_run, prompt_for_llm, registry, &executor, opt, trace_stream, &tool_loop_result, &err, &http_status, &http_body
+	        run_cfg, seed_for_run, prompt_for_tool_loop, registry, &executor, opt, trace_stream, &tool_loop_result, &err, &http_status, &http_body
 	      );
 	    } catch (const std::exception& e) {
 	      ok = false;
@@ -1401,7 +1577,7 @@ static Json::Value run_request_to_json(
     } catch (...) {
       ok = false;
       err = "tool loop threw unknown exception";
-    }
+	    }
     assistant_text = tool_loop_result.final_assistant_text;
     if (!tool_loop_result.events_json.empty()) {
       Json::CharReaderBuilder rb;
@@ -1410,6 +1586,12 @@ static Json::Value run_request_to_json(
       Json::Value ev;
       if (Json::parseFromStream(rb, iss, &ev, &errs) && ev.isArray()) {
         events_out = ev;
+      }
+    }
+    if (!pre_events.empty()) {
+      if (!events_out.isArray()) events_out = Json::Value(Json::arrayValue);
+      for (const auto& pe : pre_events) {
+        events_out.append(pe);
       }
     }
 
@@ -1522,7 +1704,8 @@ static Json::Value run_request_to_json(
             Json::Value mm(Json::nullValue);
             std::string text = content;
             if (try_parse_multimodal_prefix(content, &mm, &text) && mm.isObject()) {
-              m["content"] = multimodal_content_from_parts(text, mm);
+              const bool allow_image_parts = !provider_rejects_image_parts(run_cfg.base_url, run_cfg.model);
+              m["content"] = multimodal_content_from_parts(text, mm, allow_image_parts);
             } else {
               m["content"] = text;
             }
@@ -1815,6 +1998,20 @@ static Json::Value run_request_to_json(
   out["ok"] = ok;
   out["assistant_text"] = assistant_text;
   if (!ok) out["error"] = err;
+  // Cancellation is a first-class terminal state for async jobs. Surface an explicit flag so
+  // job state can be `status=cancelled` (instead of overloading `error`).
+  if (!ok && events_out.isArray()) {
+    bool cancelled = false;
+    for (Json::ArrayIndex i = 0; i < events_out.size(); i++) {
+      const auto& ev = events_out[i];
+      if (!ev.isObject()) continue;
+      if (ev.isMember("type") && ev["type"].isString() && ev["type"].asString() == "cancelled") {
+        cancelled = true;
+        break;
+      }
+    }
+    if (cancelled) out["cancelled"] = true;
+  }
   if (http_status) out["http_status"] = (Json::Int64)http_status;
   if (!http_body.empty()) out["http_body"] = http_body;
   if (trace_stream) out["trace_text"] = trace_buf.str();
@@ -1823,6 +2020,25 @@ static Json::Value run_request_to_json(
   out["effective_timeout_ms"] = (Json::Int64)run_cfg.timeout_ms;
   out["effective_stream_assistant"] = effective_stream_assistant;
   out["effective_require_client_acks"] = require_client_acks;
+  out["effective_tools"] = tools;
+  out["effective_input_image_count"] = (Json::UInt64)input_image_count;
+  out["effective_had_input_files"] = input_had_any_files;
+  {
+    std::string mm_mode = "none";
+    if (input_image_count > 0) {
+      const bool provider_rejects = provider_rejects_image_parts(run_cfg.base_url, run_cfg.model);
+      if (!use_tool_loop) {
+        mm_mode = provider_rejects ? "image_omitted" : "direct";
+      } else {
+        if (vision_prefetch_attempted) {
+          mm_mode = vision_prefetch_ok ? "prefetch_ok" : "prefetch_failed";
+        } else {
+          mm_mode = provider_rejects ? "image_omitted" : "direct";
+        }
+      }
+    }
+    out["effective_multimodal"] = mm_mode;
+  }
   out["verbose"] = verbose;
   out["events"] = events_out;
 

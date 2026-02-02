@@ -46,24 +46,17 @@ KIMI_API_KEY_CN="${MOONSHOT_KEY}" agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "
 
 agentd_smoke_wait_health "${DAEMON_URL}"
 
-IMG="${PROJECT_ROOT}/image.png"
-if [[ ! -f "${IMG}" ]]; then
-  echo "missing ${IMG}" >&2
-  exit 2
-fi
-
 upload_body="$(
-  IMG="${IMG}" SESSION_ID="${SESSION_ID}" python3 - <<PY
-import base64, json, os, sys
-img = os.environ["IMG"]
-with open(img, "rb") as f:
-  b64 = base64.b64encode(f.read()).decode("ascii")
+  # Self-contained: tiny 1x1 PNG (base64). Avoid relying on a binary fixture file in the repo.
+  IMG_B64="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGP4z8DwHwAFAAH/iZk9HQAAAABJRU5ErkJggg==" \
+  SESSION_ID="${SESSION_ID}" python3 - <<PY
+import json, os
 print(json.dumps({
   "session_id": os.environ["SESSION_ID"],
   "files": [{
     "name": "image.png",
     "mime": "image/png",
-    "data_base64": b64
+    "data_base64": os.environ["IMG_B64"]
   }]
 }))
 PY

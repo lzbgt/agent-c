@@ -1454,7 +1454,7 @@ export default function App() {
             cursorRef.current = next;
           }
 
-          if (job.status === "done" || job.status === "error") {
+          if (job.status === "done" || job.status === "error" || job.status === "cancelled") {
             if (job.result) {
               setResult(job.result);
               setLastCompletedPrompt(lastRunPromptRef.current);
@@ -1514,7 +1514,7 @@ export default function App() {
         try {
           const job = await apiGetJob(effectiveBase, jobId, daemonAuthToken);
           if (!job?.ok) return;
-          if (job.status === "done" || job.status === "error") {
+          if (job.status === "done" || job.status === "error" || job.status === "cancelled") {
             // Trigger the same completion path as streaming.
             if (job.result) {
               setResult(job.result);
@@ -2070,6 +2070,10 @@ export default function App() {
                   </div>
                 ))}
                 {attachments.length > 12 ? <div className="text-white/50">+{attachments.length - 12} more</div> : null}
+              </div>
+              <div className="mt-2 text-white/50">
+                Note: attachments are best-effort. Some providers/models do not support multimodal inputs (especially image parts) and may return an HTTP 400.
+                If that happens, switch to a vision-capable model or remove the attachments.
               </div>
             </div>
           ) : null}

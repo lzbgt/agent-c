@@ -89,6 +89,20 @@ static std::string json_stringify(const Json::Value& v) {
   return Json::writeString(builder, v);
 }
 
+static std::string lower_copy(std::string s) {
+  for (char& c : s) {
+    if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+  }
+  return s;
+}
+
+static bool url_contains_ci(const std::string& url, const std::string& needle) {
+  if (needle.empty()) return false;
+  const std::string u = lower_copy(url);
+  const std::string n = lower_copy(needle);
+  return u.find(n) != std::string::npos;
+}
+
 static std::string json_try_extract_assistant_text(const Json::Value& root) {
   const auto& choices = root["choices"];
   if (!choices.isArray() || choices.empty()) return "";
@@ -134,6 +148,8 @@ agent_status_t openai_provider_generate_ex(
     cfg.model = req->model;
   }
 
+  const bool deepseek = url_contains_ci(cfg.base_url, "deepseek");
+
   Json::Value root(Json::objectValue);
   root["model"] = cfg.model;
   root["stream"] = false;
@@ -171,12 +187,19 @@ agent_status_t openai_provider_generate_ex(
       if (pv.type == AGENT_PART_IMAGE_URL) {
         std::string u(pv.url ? pv.url : "", pv.url_len);
         if (u.empty()) continue;
-        Json::Value part(Json::objectValue);
-        part["type"] = "image_url";
-        Json::Value iu(Json::objectValue);
-        iu["url"] = u;
-        part["image_url"] = iu;
-        content.append(part);
+        if (deepseek) {
+          Json::Value part(Json::objectValue);
+          part["type"] = "text";
+          part["text"] = "[image omitted: provider does not accept image_url content parts]";
+          content.append(part);
+        } else {
+          Json::Value part(Json::objectValue);
+          part["type"] = "image_url";
+          Json::Value iu(Json::objectValue);
+          iu["url"] = u;
+          part["image_url"] = iu;
+          content.append(part);
+        }
         continue;
       }
 
@@ -188,14 +211,22 @@ agent_status_t openai_provider_generate_ex(
           return s;
         }();
         if (m_lc.rfind("image/", 0) == 0) {
-          const std::string b64 = base64_encode((const char*)pv.bytes, pv.bytes_len);
-          const std::string url = std::string("data:") + (mime.empty() ? "image/png" : mime) + ";base64," + b64;
-          Json::Value part(Json::objectValue);
-          part["type"] = "image_url";
-          Json::Value iu(Json::objectValue);
-          iu["url"] = url;
-          part["image_url"] = iu;
-          content.append(part);
+          if (deepseek) {
+            Json::Value part(Json::objectValue);
+            part["type"] = "text";
+            part["text"] = std::string("[image omitted: provider does not accept image_url content parts; mime=") +
+              (mime.empty() ? "image/png" : mime) + "]";
+            content.append(part);
+          } else {
+            const std::string b64 = base64_encode((const char*)pv.bytes, pv.bytes_len);
+            const std::string url = std::string("data:") + (mime.empty() ? "image/png" : mime) + ";base64," + b64;
+            Json::Value part(Json::objectValue);
+            part["type"] = "image_url";
+            Json::Value iu(Json::objectValue);
+            iu["url"] = url;
+            part["image_url"] = iu;
+            content.append(part);
+          }
         } else {
           Json::Value part(Json::objectValue);
           part["type"] = "text";

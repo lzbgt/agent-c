@@ -56,6 +56,7 @@ if(AGENT_BUILD_HOST)
   # Host-side adapter library shared by CLI and daemon.
   add_library(agent_host STATIC
     cli/src/base64.cpp
+    cli/src/cli_transcript_writer.cpp
     cli/src/default_system_prompt.cpp
     cli/src/file_persistor.cpp
     cli/src/openai_client.cpp
@@ -266,11 +267,19 @@ if(AGENT_BUILD_HOST)
 
     add_test(NAME agentd_sse_auth_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_sse_auth_smoke.sh $<TARGET_FILE:agentd>)
 
-    add_test(NAME agentd_openrouter_models_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_openrouter_models_smoke.sh $<TARGET_FILE:agentd>)
-    set_tests_properties(agentd_openrouter_models_smoke PROPERTIES SKIP_RETURN_CODE 77)
+	  add_test(NAME agentd_openrouter_models_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_openrouter_models_smoke.sh $<TARGET_FILE:agentd>)
+	  set_tests_properties(agentd_openrouter_models_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
-    add_test(NAME agentd_async_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_async_smoke.sh $<TARGET_FILE:agentd>)
-    set_tests_properties(agentd_async_smoke PROPERTIES SKIP_RETURN_CODE 77)
+	  add_test(NAME agentd_deepseek_toolloop_image_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_deepseek_toolloop_image_smoke.sh $<TARGET_FILE:agentd>)
+	  set_tests_properties(agentd_deepseek_toolloop_image_smoke PROPERTIES SKIP_RETURN_CODE 77)
+
+	  add_test(NAME agentd_moonshot_upload_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_moonshot_upload_smoke.sh $<TARGET_FILE:agentd>)
+	  set_tests_properties(agentd_moonshot_upload_smoke PROPERTIES SKIP_RETURN_CODE 77)
+	  add_test(NAME agentd_moonshot_toolloop_image_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_moonshot_toolloop_image_smoke.sh $<TARGET_FILE:agentd>)
+	  set_tests_properties(agentd_moonshot_toolloop_image_smoke PROPERTIES SKIP_RETURN_CODE 77)
+	
+	    add_test(NAME agentd_async_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_async_smoke.sh $<TARGET_FILE:agentd>)
+	    set_tests_properties(agentd_async_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
     add_test(NAME agentd_sse_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_sse_smoke.sh $<TARGET_FILE:agentd>)
     set_tests_properties(agentd_sse_smoke PROPERTIES SKIP_RETURN_CODE 77)

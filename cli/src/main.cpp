@@ -13,6 +13,7 @@
 #include "toolset_basic.h"
 #include "toolset_host.h"
 #include "base64.h"
+#include "cli_transcript_writer.h"
 
 #include <cstdlib>
 #include <filesystem>
@@ -29,9 +30,25 @@
 #include <json/json.h>
 #endif
 
+#if defined(_WIN32)
+#include <io.h>
+#else
+#include <unistd.h>
+#endif
+
 static const char* getenv_s(const char* k) {
   const char* v = std::getenv(k);
   return (v && v[0]) ? v : nullptr;
+}
+
+static bool is_tty_file(FILE* f) {
+#if defined(_WIN32)
+  if (!f) return false;
+  return _isatty(_fileno(f)) != 0;
+#else
+  if (!f) return false;
+  return isatty(fileno(f)) != 0;
+#endif
 }
 
 static std::string lower_copy(std::string s) {
@@ -107,6 +124,14 @@ static int64_t now_unix_ms() {
   using namespace std::chrono;
   return (int64_t)duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
 }
+
+#if defined(AGENT_HAVE_JSONCPP)
+static void cli_transcript_on_tool_loop_event(void* vctx, const char* type, const char* data_json) {
+  auto* w = static_cast<CliTranscriptWriter*>(vctx);
+  if (!w) return;
+  w->on_event(type, data_json);
+}
+#endif
 
 #if defined(AGENT_HAVE_JSONCPP)
 static const char* kMultimodalPrefix = "__AGENT_MM_V1__";
@@ -339,277 +364,6 @@ static std::string wrap_prompt_with_attachments(
 // - show prompts, tool calls, tool outputs, and final answers
 // - avoid JSON in the UI output (unless the tool output itself is JSON)
 // - do not print chain-of-thought / reasoning tokens
-
-static bool cli_parse_json_any(const std::string& s, Json::Value* out_v) {
-  if (!out_v) return false;
-  Json::CharReaderBuilder rb;
-  std::string errs;
-  std::istringstream iss(s);
-  Json::Value v;
-  if (!Json::parseFromStream(rb, iss, &v, &errs)) return false;
-  *out_v = v;
-  return true;
-}
-
-static bool cli_parse_json_object(const std::string& s, Json::Value* out_obj) {
-  Json::Value v;
-  if (!cli_parse_json_any(s, &v)) return false;
-  if (!v.isObject()) return false;
-  if (out_obj) *out_obj = v;
-  return true;
-}
-
-static std::string cli_json_get_string(const Json::Value& obj, const char* key) {
-  if (!obj.isObject() || !key) return "";
-  const auto& v = obj[key];
-  if (v.isString()) return v.asString();
-  return "";
-}
-
-static int64_t cli_json_get_i64(const Json::Value& obj, const char* key, int64_t def = 0) {
-  if (!obj.isObject() || !key) return def;
-  const auto& v = obj[key];
-  if (v.isInt64()) return v.asInt64();
-  if (v.isUInt64()) return (int64_t)v.asUInt64();
-  if (v.isInt()) return (int64_t)v.asInt();
-  if (v.isUInt()) return (int64_t)v.asUInt();
-  return def;
-}
-
-static std::string cli_join_argv(const Json::Value& argv) {
-  if (!argv.isArray()) return "";
-  std::string out;
-  for (Json::ArrayIndex i = 0; i < argv.size(); i++) {
-    const auto& a = argv[i];
-    if (!a.isString()) continue;
-    if (!out.empty()) out += " ";
-    out += a.asString();
-  }
-  return out;
-}
-
-static void cli_print_kv_inline(std::ostream& os, const Json::Value& v) {
-  if (v.isString()) os << v.asString();
-  else if (v.isBool()) os << (v.asBool() ? "true" : "false");
-  else if (v.isInt64()) os << v.asInt64();
-  else if (v.isUInt64()) os << (unsigned long long)v.asUInt64();
-  else if (v.isDouble()) os << v.asDouble();
-  else if (v.isNull()) os << "null";
-  else if (v.isArray()) os << "[...]";
-  else if (v.isObject()) os << "{...}";
-  else os << "?";
-}
-
-static void cli_pretty_print_tool_call(std::ostream& os, const std::string& tool_name, const std::string& args_json) {
-  Json::Value args;
-  if (!cli_parse_json_object(args_json, &args)) {
-    if (!args_json.empty()) os << "args: " << args_json << "\n";
-    return;
-  }
-
-  if (tool_name == "shell_exec") {
-    const std::string cmd = cli_json_get_string(args, "cmd");
-    const std::string cwd = cli_json_get_string(args, "cwd");
-    if (!cwd.empty()) os << "cwd: " << cwd << "\n";
-    os << "$ " << cmd << "\n";
-    return;
-  }
-  if (tool_name == "proc_exec") {
-    const auto& argv = args["argv"];
-    const std::string cwd = cli_json_get_string(args, "cwd");
-    if (!cwd.empty()) os << "cwd: " << cwd << "\n";
-    os << "> " << cli_join_argv(argv) << "\n";
-    return;
-  }
-  if (tool_name == "file_apply_patch") {
-    const std::string patch = cli_json_get_string(args, "patch");
-    os << "patch:\n";
-    os << patch;
-    if (!patch.empty() && patch.back() != '\n') os << "\n";
-    return;
-  }
-
-  // Generic key=value list for other tools (avoid printing raw JSON when possible).
-  const auto names = args.getMemberNames();
-  for (const auto& k : names) {
-    os << k << ": ";
-    cli_print_kv_inline(os, args[k]);
-    os << "\n";
-  }
-}
-
-static void cli_pretty_print_tool_result(std::ostream& os, const std::string& tool_name, const std::string& tool_out) {
-  Json::Value env;
-  if (!cli_parse_json_object(tool_out, &env)) {
-    os << tool_out;
-    if (!tool_out.empty() && tool_out.back() != '\n') os << "\n";
-    return;
-  }
-
-  const bool ok = env.isMember("ok") && env["ok"].isBool() ? env["ok"].asBool() : false;
-  const std::string err = cli_json_get_string(env, "error");
-  const auto& data = env["data"];
-
-  if (!ok) {
-    os << "status: error\n";
-    if (!err.empty()) os << "error: " << err << "\n";
-  }
-
-  if (data.isObject()) {
-    bool printed_any_data = false;
-    if (data.isMember("exit_code")) os << "exit_code: " << cli_json_get_i64(data, "exit_code", 0) << "\n";
-    if (data.isMember("timed_out") && data["timed_out"].isBool()) os << "timed_out: " << (data["timed_out"].asBool() ? "true" : "false") << "\n";
-    if (data.isMember("truncated") && data["truncated"].isBool()) os << "truncated: " << (data["truncated"].asBool() ? "true" : "false") << "\n";
-    if (data.isMember("cmd") && data["cmd"].isString()) os << "cmd: " << data["cmd"].asString() << "\n";
-    if (data.isMember("argv") && data["argv"].isArray()) {
-      const std::string a = cli_join_argv(data["argv"]);
-      if (!a.empty()) os << "argv: " << a << "\n";
-    }
-    if (data.isMember("exit_code") || data.isMember("timed_out") || data.isMember("truncated") || data.isMember("cmd") || data.isMember("argv")) {
-      printed_any_data = true;
-    }
-
-    if (tool_name == "file_apply_patch") {
-      const auto& check = data["check"];
-      if (check.isObject()) {
-        if (check.isMember("exit_code")) os << "check_exit_code: " << cli_json_get_i64(check, "exit_code", 0) << "\n";
-        const auto& out = check["output"];
-        if (out.isString() && !out.asString().empty()) {
-          os << "check_output:\n" << out.asString();
-          if (out.asString().back() != '\n') os << "\n";
-        }
-      }
-      const auto& apply = data["apply"];
-      if (apply.isObject()) {
-        if (apply.isMember("exit_code")) os << "apply_exit_code: " << cli_json_get_i64(apply, "exit_code", 0) << "\n";
-        const auto& out = apply["output"];
-        if (out.isString() && !out.asString().empty()) {
-          os << "apply_output:\n" << out.asString();
-          if (out.asString().back() != '\n') os << "\n";
-        }
-      }
-      printed_any_data = true;
-    }
-
-    const auto& out = data["output"];
-    if (out.isString() && !out.asString().empty()) {
-      os << "output:\n" << out.asString();
-      if (out.asString().back() != '\n') os << "\n";
-      printed_any_data = true;
-    }
-
-    // Fallback: print remaining data keys in a readable form (avoid raw JSON).
-    // This covers tools like the basic `calculator` which returns {ok, value, expression}.
-    const auto names = data.getMemberNames();
-    for (const auto& k : names) {
-      if (k == "exit_code" || k == "timed_out" || k == "truncated" || k == "cmd" || k == "argv" || k == "output" || k == "check" || k == "apply") {
-        continue;
-      }
-      const auto& v = data[k];
-      if (v.isString()) {
-        const std::string s = v.asString();
-        if (s.empty()) continue;
-        if (s.size() > 200) {
-          os << k << ":\n" << s;
-          if (s.back() != '\n') os << "\n";
-        } else {
-          os << k << ": " << s << "\n";
-        }
-        printed_any_data = true;
-      } else if (v.isBool() || v.isInt64() || v.isUInt64() || v.isDouble() || v.isNull()) {
-        os << k << ": ";
-        cli_print_kv_inline(os, v);
-        os << "\n";
-        printed_any_data = true;
-      }
-    }
-
-    if (!printed_any_data) {
-      // Last resort: show something rather than being silent.
-      os << "result: (no printable fields)\n";
-    }
-  }
-}
-
-struct CliPrettyLoopPrinter {
-  std::ostream* transcript_os = nullptr;
-  std::ostream* assistant_os = nullptr;
-  uint64_t tool_index = 0;
-  bool stream_deltas = false;
-};
-
-static void cli_pretty_on_tool_loop_event(void* vctx, const char* type, const char* data_json) {
-  auto* p = static_cast<CliPrettyLoopPrinter*>(vctx);
-  if (!p || !type) return;
-  const std::string t(type);
-
-  Json::Value data;
-  if (data_json && data_json[0]) {
-    (void)cli_parse_json_any(std::string(data_json), &data);
-  }
-
-  if (t == "assistant_delta") {
-    if (!p->stream_deltas) return;
-    if (!p->assistant_os) return;
-    if (data.isObject() && data.isMember("delta") && data["delta"].isString()) {
-      (*p->assistant_os) << data["delta"].asString() << std::flush;
-    }
-    return;
-  }
-
-  if (!p->transcript_os) return;
-
-  if (t == "llm_request") {
-    (*p->transcript_os) << "\n[llm] request\n";
-    return;
-  }
-  if (t == "llm_response") {
-    const int64_t hs = data.isObject() ? cli_json_get_i64(data, "http_status", 0) : 0;
-    (*p->transcript_os) << "[llm] response";
-    if (hs) (*p->transcript_os) << " (HTTP " << hs << ")";
-    (*p->transcript_os) << "\n";
-    return;
-  }
-
-  if (t == "tool_call") {
-    const std::string tool = cli_json_get_string(data, "tool_name");
-    const std::string tcid = cli_json_get_string(data, "tool_call_id");
-    const int64_t step = cli_json_get_i64(data, "step", -1);
-    const std::string args_json = cli_json_get_string(data, "arguments_json");
-
-    p->tool_index += 1;
-    (*p->transcript_os) << "\n[tool " << (unsigned long long)p->tool_index << "] " << (tool.empty() ? "(unknown)" : tool);
-    if (step >= 0) (*p->transcript_os) << " (step " << step << ")";
-    if (!tcid.empty()) (*p->transcript_os) << " id=" << tcid;
-    (*p->transcript_os) << "\n";
-    if (!tool.empty()) {
-      cli_pretty_print_tool_call(*p->transcript_os, tool, args_json);
-    } else if (!args_json.empty()) {
-      (*p->transcript_os) << "args: " << args_json << "\n";
-    }
-    return;
-  }
-
-  if (t == "tool_result") {
-    const std::string tool = cli_json_get_string(data, "tool_name");
-    const std::string tcid = cli_json_get_string(data, "tool_call_id");
-    const int64_t step = cli_json_get_i64(data, "step", -1);
-    const int64_t st = cli_json_get_i64(data, "status", 0);
-
-    (*p->transcript_os) << "[tool] result";
-    if (!tool.empty()) (*p->transcript_os) << " " << tool;
-    if (step >= 0) (*p->transcript_os) << " (step " << step << ")";
-    if (!tcid.empty()) (*p->transcript_os) << " id=" << tcid;
-    (*p->transcript_os) << " status=" << st << "\n";
-
-    if (data.isObject() && data.isMember("content") && data["content"].isString()) {
-      cli_pretty_print_tool_result(*p->transcript_os, tool, data["content"].asString());
-    } else if (data.isObject() && data.isMember("summary")) {
-      (*p->transcript_os) << "summary: " << json_stringify(data["summary"]) << "\n";
-    }
-    return;
-  }
-}
 #endif  // AGENT_HAVE_JSONCPP
 
 static void usage() {
@@ -645,7 +399,8 @@ static void usage() {
     << "  --max-tool-calls-per-tool <n>  Max tool calls per tool name (default: unlimited; 0 means unlimited)\n"
     << "  --tool-call-limit <tool>=<n>  Per-tool call cap (repeatable; 0 means unlimited for that tool)\n"
     << "  --attach <path>           Attach a local file (repeatable; images are sent as base64)\n"
-    << "  --stream-assistant        Stream assistant deltas (tools=none|basic|host; provider-dependent)\n";
+    << "  --stream-assistant        Stream assistant deltas (tools=none|basic|host; provider-dependent)\n"
+    << "  --transcript-jsonl <path> Write tool-loop events as JSONL (append)\n";
 }
 
 static bool take_switch(std::vector<std::string>& args, const std::string& flag, bool* out_enabled) {
@@ -781,6 +536,7 @@ int main(int argc, char** argv) {
   bool stream_assistant = false;
   bool trace = true;
   bool quiet = false;
+  std::string transcript_jsonl;
 
   if (!take_flag(args, "--model", &model)) {
     std::cerr << "Missing value for --model\n";
@@ -900,6 +656,10 @@ int main(int argc, char** argv) {
   }
   if (!take_switch(args, "--stream-assistant", &stream_assistant)) {
     std::cerr << "Invalid flag: --stream-assistant\n";
+    return 2;
+  }
+  if (!take_flag(args, "--transcript-jsonl", &transcript_jsonl)) {
+    std::cerr << "Missing value for --transcript-jsonl\n";
     return 2;
   }
 
@@ -1089,7 +849,7 @@ int main(int argc, char** argv) {
 	    opt.stream_assistant = stream_assistant;
 	    // For CLI trace output, we prefer human-friendly (non-JSON) printing based on tool loop events.
 	    // Enable verbose events so we have tool arguments + tool outputs available to print.
-	    opt.verbose = trace && !quiet;
+	    opt.verbose = (trace && !quiet) || !transcript_jsonl.empty();
 	    opt.max_capture_bytes = (size_t)1024u * 1024u;
 
 	    auto run_one = [&](const std::string& user_prompt) -> int {
@@ -1107,34 +867,27 @@ int main(int argc, char** argv) {
 	      std::string http_body;
 	      std::ostream* trace_stream = nullptr; // avoid dumping raw JSON traces by default
 #if defined(AGENT_HAVE_JSONCPP)
-	      CliPrettyLoopPrinter printer;
-	      printer.transcript_os = (trace && !quiet) ? &std::cerr : nullptr;
-	      printer.assistant_os = &std::cout;
-	      printer.stream_deltas = stream_assistant;
-
-	      if (printer.transcript_os) {
-	        (*printer.transcript_os)
-	          << "model: " << model << "\n"
-	          << "base_url: " << base_url << "\n"
-	          << "tools: " << tools_mode << "\n";
-	        if (!attach_paths.empty()) {
-	          (*printer.transcript_os) << "attachments:\n";
-	          for (const auto& p : attach_paths) (*printer.transcript_os) << " - " << p << "\n";
-	        }
-	        (*printer.transcript_os) << "\n[user]\n" << user_prompt << "\n";
+	      CliTranscriptWriterMux mux;
+	      if (stream_assistant || (trace && !quiet)) {
+	        CliPrettyConsoleWriter::Options wopt;
+	        wopt.out = (trace && !quiet) ? &std::cerr : nullptr;
+	        wopt.assistant_delta_out = &std::cout;
+	        wopt.stream_deltas = stream_assistant;
+	        wopt.style = cli_default_transcript_style(is_tty_file(stderr));
+	        mux.add(std::make_unique<CliPrettyConsoleWriter>(wopt));
+	      }
+	      if (!transcript_jsonl.empty()) {
+	        mux.add(std::make_unique<CliJsonlFileWriter>(transcript_jsonl));
 	      }
 
-	      // Important: even in --quiet, we may need on_event enabled for assistant deltas.
-	      const bool want_events = stream_assistant || (trace && !quiet);
-	      opt.on_event = want_events ? cli_pretty_on_tool_loop_event : nullptr;
-	      opt.on_event_ctx = want_events ? &printer : nullptr;
+	      // Important: even in --quiet, we may need on_event enabled for assistant deltas / JSONL.
+	      const bool want_events = stream_assistant || (trace && !quiet) || !transcript_jsonl.empty();
+	      opt.on_event = want_events ? cli_transcript_on_tool_loop_event : nullptr;
+	      opt.on_event_ctx = want_events ? (void*)&mux : nullptr;
 #endif
 	      if (!run_tool_loop(pctx.cfg, session, prompt_for_llm, registry, &executor, opt, trace_stream, &r, &err, &http_status, &http_body)) {
 	        if (http_status) {
 	          std::cerr << openai_format_http_error(http_status, http_body) << "\n";
-	          if (!http_body.empty()) {
-            std::cerr << http_body << "\n";
-          }
         } else if (!err.empty()) {
           std::cerr << "Tool loop failed: " << err << "\n";
         } else {

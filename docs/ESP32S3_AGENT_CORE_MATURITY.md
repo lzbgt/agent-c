@@ -57,6 +57,7 @@ Observed dependencies (from `core/src` + headers):
 Notes:
 - `agent_core` includes an embedded-friendly persistence codec: `core/include/agent/session_codec.h`
 - multimodal “parts” exist, but persistence codec v1 stores **role + content only** (no parts yet).
+  - For non-tool runs, providers can access parts via `agent_provider_t.generate_ex` (see `core/include/agent/provider.h` and `core/include/agent/parts.h`).
 
 ### `agentd` / `agentd_lib` (desktop/server)
 

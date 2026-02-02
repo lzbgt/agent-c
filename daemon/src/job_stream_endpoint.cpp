@@ -118,7 +118,7 @@ void handle_job_stream_endpoint(
       last_send = std::chrono::steady_clock::now();
     }
 
-    if (s.status == "done" || s.status == "error") {
+    if (s.status == "done" || s.status == "error" || s.status == "cancelled") {
       Json::Value out(Json::objectValue);
       out["ok"] = (s.status == "done");
       out["job_id"] = s.id;

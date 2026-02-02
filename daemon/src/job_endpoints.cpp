@@ -74,7 +74,7 @@ void handle_job_get_endpoint(
     o["events_reset"] = s.events_reset;
   }
 
-  if (s.status == "done" || s.status == "error") {
+  if (s.status == "done" || s.status == "error" || s.status == "cancelled") {
     o["result"] = s.result;
   }
   resp->body = json_stringify(o);

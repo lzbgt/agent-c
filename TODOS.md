@@ -2,6 +2,35 @@
 
 This file tracks the next highest-leverage tasks to reach the goal described in `project.md`, using `DESIGN.md` as the spec (which may evolve).
 
+## Definition: “production ready” (this repo)
+
+Production-ready means the system is safe and reliable enough to run as a **default** daily driver (desktop + cloud),
+and as an embeddable library (desktop app + MCU build variants), with predictable behavior under failure modes.
+
+Concrete bar (must-have):
+
+- **Correctness**
+  - API contracts are documented and stable (or explicitly versioned).
+  - Sessions, jobs, artifacts, and uploads behave deterministically across restarts and client refreshes (or the limitations are explicit).
+  - No deadlocks; bounded memory growth; bounded log growth.
+- **Reliability**
+  - Provider call retry/backoff for transient failures; clear error surfaces for non-retryable failures.
+  - Async jobs never “look timed out” while still running (UI shows running + last heartbeat; client can reconnect).
+  - Cancellation is cooperative but predictable (consistent final job status + reason).
+- **Security / safety**
+  - Remote exposure is gated (auth, CORS allowlist); no secrets returned in API responses.
+  - Host tool surface is policy-controlled (readonly vs full; YOLO vs restricted); defaults are safe.
+  - Path handling is hardened for uploads/artifacts (no traversal; session scoping enforced).
+- **Observability**
+  - Structured event log is stable and includes truncation/limits metadata.
+  - Operator debugging is possible from logs + DB query endpoints without guessing (who did what, when, why it failed).
+- **Portability**
+  - Clear build matrix: `agent` CLI, `agentd` daemon, `agentd_lib` embedding, `agent_core` MCU, `esp32sim` harness.
+  - Feature flags are documented; embedded builds do not accidentally pull in DB/HTTP dependencies.
+- **Release hygiene**
+  - Reproducible builds; smoke tests cover critical flows.
+  - Docs include “how to run” + “how to debug” + “how to deploy safely”.
+
 ## Near-term (core correctness + portability)
 
 - [x] Define a stable **LLM provider interface** in the core (no HTTP/JSON assumptions).
@@ -18,6 +47,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Add a small unit test for tool-loop compaction/rotation logic (JSON message arrays) to prevent regressions.
 - [x] Add a unit test to ensure tool result truncation stays JSON-shaped and capped.
 - [x] Add an ESP32 simulation harness (`esp32sim`) to validate the embedded tool surface on desktop (logs + JSONL sessions).
+- [x] Add a provider extension (`generate_ex`) so providers can access multimodal message parts stored in the session.
 
 ## Near-term (CLI ergonomics)
 
@@ -36,6 +66,8 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Support explicit proxy override (`--proxy` / request `proxy`) to avoid network hangs when env proxy is required.
 - [x] Add `--stream-assistant` for tool loops (CLI) to emit incremental `assistant_delta` output (provider-dependent).
 - [x] Support `--stream-assistant` for `--tools none` (CLI) to stream assistant output to stdout (provider-dependent).
+- [x] Add `--attach <path>` (repeatable) for multimodal prompts (images as base64, files as best-effort text).
+- [x] Make CLI transcript human-readable (non-JSON), and keep assistant output on stdout (transcript on stderr).
 - [x] Add more network smokes for host tools beyond `shell_exec` (e.g. `fs_read` paging) to reduce regressions.
 - [x] Add a host-tool network smoke for `text_search` (DeepSeek + daemon) to reduce regressions.
 - [x] Improve host filesystem tools defaults to avoid noise:
@@ -43,6 +75,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
   - [x] support optional `respect_gitignore`/`exclude_globs`
 - [x] Remove experimental Codex-auth CLI flags (`--auth codex`) and standardize on `--base-url` + `--api-key` (or env vars).
 - [x] Improve host system prompt to gate complex tasks (assess complexity -> intent/constraints -> options -> decision -> execute + verify).
+- [x] Add a built-in Codex-style system profile (`--system-profile jules_codex`) for better agent guidance (CLI + daemon).
 
 ## Mid-term (daemon + broker)
 
@@ -80,6 +113,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
   - [x] support per-request `host_policy` and `/api/v1/tools?host_policy=...` (can only tighten vs daemon default)
   - [x] Tighten `yolo` semantics the same way (requests can only reduce capabilities) and remove `tools_root` end-to-end (daemon + WebUI + tests)
   - [x] add `/api/v1/tools` for clients to query active tool schemas
+- [x] Add session file upload API (`POST /api/v1/session/upload`) and wire WebUI attachments via `input_files`.
 
 ## Near-term (UI polish)
 
@@ -106,6 +140,7 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 - [x] Extend `ui_wait_event` matching to support nested `data_match` objects (safe, bounded recursion) and cover it with a smoke test.
 - [x] Add join-wait host tools (`ui_wait_any`, `ui_wait_all`) so agents can deterministically wait for one-of or all-of multiple UI acknowledgements.
 - [x] Add UI auto-ack client events (`ui_action_shown`, `artifact_rendered`) so “present to UI” tasks have an observable DoD without relying on tool-call caps.
+- [x] Add “Attach files” to WebUI (uploads to the session and references via `input_files`).
 - [x] Generalize UI events into a client collaboration protocol: `/session/client_event`, `client` identity, and client-agnostic wait/probe tools (`client_wait_*`, `client_peek`).
 - [x] Add a client state snapshot protocol (`client_state`) + client-side media telemetry (video play events) so agents can proactively reason about client environment state.
 - [x] Add a universal client RPC surface (`ui_action type=client_rpc` + `client_rpc_result`/`client_rpc_progress`) so agents can request bounded client introspection and (optionally) side-effecting actions deterministically.
@@ -129,10 +164,82 @@ This file tracks the next highest-leverage tasks to reach the goal described in 
 
 ## Mid-term (multimodal + edge)
 
-- [ ] Extend message model to support **content parts** (text/image/audio/video URL or bytes).
+- [~] Extend message model to support **content parts** (text/image/audio/video URL or bytes).
+  - [x] Add `agent/parts.h` in core (in-memory content parts).
+  - [x] Add `agent_provider_t.generate_ex` so providers can access parts in `agent_run_once` flows.
+  - [x] Add CLI `--attach` and WebUI session uploads (`/api/v1/session/upload` + `input_files`) for image+text prompts (OpenAI-compatible providers).
+  - [x] Add `esp32sim --attach` to validate embedded-friendly multimodal paths on desktop.
+  - [ ] Persist parts in the portable session codec (v2) while keeping v1 compatibility.
+  - [ ] Extend the core tool-loop provider surface to allow embedded providers to receive parts without ad-hoc text wrapping.
+  - [ ] Add audio/video part handling end-to-end (UI preview + provider formatting where supported).
 - [ ] Provide streaming I/O hooks (audio in/out) at the host layer.
 - [ ] Add compile-time feature flags for MCU builds (disable persistence, disable large buffers).
 - [x] Avoid a dedicated image capture tool; rely on generic `proc_exec`/`shell_exec` + `artifact_register`, and stop with clear failure reasons when capture isn’t possible.
+
+## Production readiness backlog (next highest leverage)
+
+This section is the “what remains” list for turning the current prototype into a stable, supportable product across:
+CLI, daemon, embeddable libs, MCU builds, and the Web UI.
+
+### Provider reliability (applies to CLI + agentd + embedded gateways)
+
+- [ ] Add a standardized retry policy for provider calls:
+  - retry on transient network errors/timeouts/429/5xx with exponential backoff + jitter
+  - never retry non-idempotent tool execution (only retry model calls)
+  - surface “retry budget exhausted” as a first-class error reason in events
+- [ ] Add a consistent per-provider/model capability note (best-effort):
+  - warn when attachments are present but model rejects images (HTTP 400)
+  - document that “same provider, different model” can differ in tool/multimodal support
+- [ ] Add provider timeouts that distinguish:
+  - connect timeout vs overall request timeout vs streaming idle timeout
+
+### Job lifecycle correctness (daemon + WebUI)
+
+- [ ] Make job progress and health unambiguous:
+  - explicit `job_status` transitions (queued/running/succeeded/failed/cancelled)
+  - heartbeat timestamps + “last event timestamp” surfaced in UI
+  - avoid UI-level “timeout failed” when job is still running (only show “no events received” warnings)
+- [ ] Persist minimal job metadata so jobs can be inspected after daemon restart (even if they cannot resume execution).
+
+### Storage / DB robustness (daemon)
+
+- [ ] Make SQLite usage explicitly safe:
+  - document threading mode + connection ownership (single writer; serialized access)
+  - add busy_timeout/WAL pragmas if not already (and test for concurrency regressions)
+  - add a DB migration story (versioning + forward-only migrations + rollback guidance)
+- [ ] Define a pluggable state store boundary (SQLite now; allow other stores later without rewriting endpoints).
+
+### Security hardening (daemon + WebUI)
+
+- [ ] Tighten the “safe by default” deployment story:
+  - explicit reverse-proxy guidance (TLS termination, rate limiting)
+  - request size limits for uploads, tool outputs, and traces (server-side enforcement + clear errors)
+  - audit that no endpoint ever returns secrets (and add tests)
+- [ ] Expand the sandbox policy model:
+  - per-tool allow/deny in restricted mode
+  - command restrictions for `proc_exec`/`shell_exec` (optional allowlist)
+
+### CLI polish (release-level)
+
+- [ ] Add a config file format + precedence rules (flags > env > ~/.env > config), without leaking secrets to logs.
+- [ ] Add “profiles” (named presets) for common providers/models/tool modes.
+- [ ] Add installer-friendly packaging (Homebrew/Linux packages) and `--version`/`--diagnose` commands.
+
+### WebUI polish (release-level)
+
+- [ ] Add drag-and-drop + upload progress for attachments; show per-file failures.
+- [ ] Add a “provider/model capabilities” hint UI (e.g. “tool calls supported”, “image input supported” when known).
+- [ ] Add accessibility + keyboard navigation pass (focus, contrast, ARIA labels for key controls).
+- [ ] Add production build config (base URL, auth token) that is easy to set via env at deploy time.
+
+### Embedded / MCU readiness (agent_core)
+
+- [ ] Document an MCU integration profile:
+  - expected memory budgets (heap caps), recommended `max_chars/keep_last/max_steps`
+  - “no DB, no HTTP, no filesystem” guarantees for core
+- [ ] Add an ESP-IDF build example (or CI cross-compile) that proves `agent_core` builds on ESP32-S3 toolchain.
+- [ ] Decide and implement the multimodal strategy on MCU:
+  - URL parts (preferred when image is hosted) vs binary parts (base64/bytes) vs gateway upload flow
 
 ## Hygiene
 

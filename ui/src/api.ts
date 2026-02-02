@@ -852,7 +852,7 @@ export type RunAsyncResp = z.infer<typeof RunAsyncRespSchema>;
 export const JobRespSchema = z.object({
   ok: z.boolean(),
   job_id: z.string().optional(),
-  status: z.string().optional(), // queued|running|done|error
+  status: z.string().optional(), // queued|running|done|error|cancelled
   error: z.string().optional(),
   created_unix_ms: z.number().optional(),
   updated_unix_ms: z.number().optional(),

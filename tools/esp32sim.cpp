@@ -5,18 +5,25 @@
 #include "agent/tools.h"
 
 #include "openai_tool_provider.h"
+#include "base64.h"
 
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
+#include <filesystem>
 #include <chrono>
+#include <cctype>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
 #include <vector>
+
+#if defined(AGENT_HAVE_JSONCPP)
+#include <json/json.h>
+#endif
 
 static int64_t unix_ms_now() {
   using namespace std::chrono;
@@ -157,6 +164,134 @@ static std::string truncate_preview(const std::string& s, size_t max_chars) {
   if (s.size() <= max_chars) return s;
   return s.substr(0, max_chars) + "...(truncated)";
 }
+
+#if defined(AGENT_HAVE_JSONCPP)
+static const char* kMultimodalPrefix = "__AGENT_MM_V1__";
+
+static std::string lower_copy(std::string s) {
+  for (char& c : s) c = (char)std::tolower((unsigned char)c);
+  return s;
+}
+
+static std::string content_type_from_path(const std::filesystem::path& p) {
+  const std::string ext = lower_copy(p.extension().string());
+  if (ext == ".png") return "image/png";
+  if (ext == ".jpg" || ext == ".jpeg") return "image/jpeg";
+  if (ext == ".gif") return "image/gif";
+  if (ext == ".webp") return "image/webp";
+  if (ext == ".svg") return "image/svg+xml";
+  if (ext == ".txt" || ext == ".md") return "text/plain";
+  if (ext == ".json") return "application/json";
+  if (ext == ".yaml" || ext == ".yml") return "text/yaml";
+  return "application/octet-stream";
+}
+
+static bool looks_texty(const std::string& bytes) {
+  if (bytes.empty()) return false;
+  size_t bad = 0;
+  for (unsigned char c : bytes) {
+    if (c == 0) return false;
+    if (c == '\n' || c == '\r' || c == '\t') continue;
+    if (c >= 32 && c < 127) continue;
+    bad++;
+  }
+  return bad * 20 < bytes.size(); // <5% suspicious bytes
+}
+
+static bool read_file_bytes_capped(
+  const std::filesystem::path& p,
+  size_t max_bytes,
+  std::string* out_bytes,
+  bool* out_truncated = nullptr
+) {
+  if (!out_bytes) return false;
+  out_bytes->clear();
+  if (out_truncated) *out_truncated = false;
+
+  std::error_code ec;
+  const auto sz = std::filesystem::file_size(p, ec);
+  if (!ec && max_bytes > 0 && sz > max_bytes) {
+    if (out_truncated) *out_truncated = true;
+  }
+
+  std::ifstream in(p, std::ios::binary);
+  if (!in.is_open()) return false;
+  std::string buf;
+  buf.resize(max_bytes);
+  in.read(buf.data(), (std::streamsize)buf.size());
+  const std::streamsize n = in.gcount();
+  if (n <= 0) return false;
+  buf.resize((size_t)n);
+  *out_bytes = std::move(buf);
+  return true;
+}
+
+static std::string wrap_prompt_with_attachments_v1(
+  const std::string& prompt,
+  const std::vector<std::string>& attach_paths,
+  size_t max_file_bytes,
+  size_t max_image_bytes
+) {
+  if (attach_paths.empty()) return prompt;
+
+  Json::Value mm(Json::objectValue);
+  Json::Value images(Json::arrayValue);
+  Json::Value files(Json::arrayValue);
+
+  for (const auto& raw : attach_paths) {
+    if (raw.empty()) continue;
+    const std::filesystem::path p = std::filesystem::path(raw);
+    const std::string name = p.filename().string();
+    const std::string mime = content_type_from_path(p);
+    const bool is_image = (mime.rfind("image/", 0) == 0);
+
+    bool trunc = false;
+    std::string bytes;
+    const size_t cap = is_image ? max_image_bytes : max_file_bytes;
+    if (!read_file_bytes_capped(p, cap, &bytes, &trunc)) {
+      Json::Value f(Json::objectValue);
+      f["name"] = name.empty() ? raw : name;
+      f["mime"] = mime;
+      f["text"] = std::string("[Attachment read failed] ") + raw;
+      files.append(f);
+      continue;
+    }
+
+    if (is_image) {
+      Json::Value im(Json::objectValue);
+      im["mime"] = mime;
+      im["b64"] = base64_encode(bytes.data(), bytes.size());
+      images.append(im);
+      continue;
+    }
+
+    // Non-image attachments are sent as text blocks (best-effort).
+    Json::Value f(Json::objectValue);
+    f["name"] = name.empty() ? raw : name;
+    f["mime"] = mime;
+    f["truncated"] = trunc;
+    if (looks_texty(bytes)) {
+      f["text"] = bytes;
+    } else {
+      // Keep embedded-friendly behavior: represent binary as a short base64 hint.
+      const std::string b64 = base64_encode(bytes.data(), bytes.size());
+      std::string note = "[Binary attachment; base64 preview]\n";
+      note += truncate_preview(b64, 4000);
+      if (trunc) note += "\n...(truncated)";
+      f["text"] = note;
+    }
+    files.append(f);
+  }
+
+  if (!images.empty()) mm["images"] = images;
+  if (!files.empty()) mm["files"] = files;
+
+  Json::StreamWriterBuilder wb;
+  wb["indentation"] = "";
+  const std::string json_line = Json::writeString(wb, mm);
+  return std::string(kMultimodalPrefix) + json_line + "\n" + prompt;
+}
+#endif
 
 struct SimEventCtx {
   LogSink log;
@@ -384,7 +519,10 @@ static void usage() {
     << "  --keep-last <n>        default: 12\n"
     << "  --max-tool-result <n>  default: 1200\n"
     << "  --heap-limit <bytes>   caps agent_malloc/agent_free allocations (default: 0=unlimited)\n"
-    << "  --stream-assistant 0|1 default: 0\n";
+    << "  --stream-assistant 0|1 default: 0\n"
+    << "  --attach <path>        Attach a local file (repeatable; images are sent as base64)\n"
+    << "  --max-attach-bytes <n> default: 65536 (non-image)\n"
+    << "  --max-image-bytes <n>  default: 262144 (image)\n";
 }
 
 static bool parse_u64(const std::string& s, uint64_t* out) {
@@ -412,10 +550,13 @@ int main(int argc, char** argv) {
   uint64_t max_tool_result = 1200;
   uint64_t heap_limit = 0;
   uint64_t timeout_ms = 60'000;
+  uint64_t max_attach_bytes = 65'536;
+  uint64_t max_image_bytes = 262'144;
   bool stream_assistant = false;
   bool quiet = false;
   bool print_llm = true;
   bool log_append = false;
+  std::vector<std::string> attach_paths;
 
   for (int i = 1; i < argc; i++) {
     const std::string a = argv[i] ? argv[i] : "";
@@ -443,6 +584,9 @@ int main(int argc, char** argv) {
     else if (a == "--max-tool-result") { (void)parse_u64(need("--max-tool-result"), &max_tool_result); }
     else if (a == "--heap-limit") { (void)parse_u64(need("--heap-limit"), &heap_limit); }
     else if (a == "--timeout-ms") { (void)parse_u64(need("--timeout-ms"), &timeout_ms); }
+    else if (a == "--attach") attach_paths.push_back(need("--attach"));
+    else if (a == "--max-attach-bytes") { (void)parse_u64(need("--max-attach-bytes"), &max_attach_bytes); }
+    else if (a == "--max-image-bytes") { (void)parse_u64(need("--max-image-bytes"), &max_image_bytes); }
     else if (a == "--stream-assistant") {
       const std::string v = need("--stream-assistant");
       stream_assistant = (v == "1" || v == "true" || v == "yes");
@@ -587,8 +731,20 @@ int main(int argc, char** argv) {
   opt.max_capture_chars = 256 * 1024;
   opt.max_context_too_long_retries = 2;
 
+  std::string prompt_for_llm = prompt;
+#if defined(AGENT_HAVE_JSONCPP)
+  if (!attach_paths.empty()) {
+    prompt_for_llm = wrap_prompt_with_attachments_v1(
+      prompt,
+      attach_paths,
+      (size_t)max_attach_bytes,
+      (size_t)max_image_bytes
+    );
+  }
+#endif
+
   agent_tool_loop_result_t r{};
-  const agent_status_t st = agent_tool_loop_run(&provider, reg, &exec, session, prompt.c_str(), &opt, &hooks, &r);
+  const agent_status_t st = agent_tool_loop_run(&provider, reg, &exec, session, prompt_for_llm.c_str(), &opt, &hooks, &r);
 
   {
     std::ostringstream ss;

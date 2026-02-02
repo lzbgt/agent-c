@@ -10,7 +10,7 @@ namespace agentd {
 
 struct JobState {
   std::string id;
-  std::string status; // queued|running|done|error
+  std::string status; // queued|running|done|error|cancelled
   bool cancel_requested = false;
   Json::Value result; // final JSON result (same shape as /api/v1/run)
   std::string error;
@@ -34,7 +34,7 @@ struct JobState {
 // - optionally a bounded slice of events starting at a cursor
 struct JobSnapshot {
   std::string id;
-  std::string status; // queued|running|done|error
+  std::string status; // queued|running|done|error|cancelled
   bool cancel_requested = false;
   Json::Value result; // only meaningful for done/error
   std::string error;

@@ -124,7 +124,7 @@ if not obj.get("ok"):
   print("job query failed", obj, file=sys.stderr)
   raise SystemExit(1)
 status=obj.get("status")
-if status in ("done","error"):
+if status in ("done","error","cancelled"):
   raise SystemExit(3)
 raise SystemExit(0)
 PY
@@ -155,8 +155,8 @@ obj=json.loads(r'''${final}''')
 if not obj.get("ok"):
   print("job query failed", obj, file=sys.stderr)
   raise SystemExit(1)
-if obj.get("status") not in ("done","error"):
-  print("expected done/error status", obj, file=sys.stderr)
+if obj.get("status") not in ("done","error","cancelled"):
+  print("expected done/error/cancelled status", obj, file=sys.stderr)
   raise SystemExit(1)
 res=obj.get("result") or {}
 if res.get("ok") is True:

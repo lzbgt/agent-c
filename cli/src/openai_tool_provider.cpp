@@ -42,6 +42,19 @@ static bool is_moonshot_provider(const std::string& base_url) {
   return url_contains_ci(base_url, "moonshot");
 }
 
+static bool provider_rejects_image_parts(const std::string& base_url, const std::string& model) {
+  // Some OpenAI-compatible providers only support `content` parts of `{"type":"text","text":"..."}` and will
+  // reject `{"type":"image_url",...}` with a 400 deserialization error.
+  //
+  // Keep this heuristic conservative and prefer correctness over vision in tool-calling flows:
+  // - Moonshot/Kimi tool-call endpoints reject image parts.
+  // - DeepSeek's API schema expects only `text` parts (even when content is an array).
+  (void)model;
+  if (is_moonshot_provider(base_url)) return true;
+  if (url_contains_ci(base_url, "deepseek")) return true;
+  return false;
+}
+
 static const char* kMultimodalPrefix = "__AGENT_MM_V1__";
 
 static bool try_parse_multimodal_prefix(
@@ -73,7 +86,7 @@ static bool try_parse_multimodal_prefix(
   return true;
 }
 
-static Json::Value multimodal_content_from_parts(const std::string& text, const Json::Value& mm) {
+static Json::Value multimodal_content_from_parts(const std::string& text, const Json::Value& mm, bool allow_image_parts) {
   // Expected `mm` shape:
   //   { "images":[{"mime":"image/png","b64":"...","name":"..."}],
   //     "files":[{"mime":"text/plain","name":"...","text":"...","truncated":true}] }
@@ -119,17 +132,33 @@ static Json::Value multimodal_content_from_parts(const std::string& text, const 
   if (have_images) {
     for (const auto& im : mm["images"]) {
       if (!im.isObject()) continue;
+      const std::string name = im.isMember("name") && im["name"].isString() ? im["name"].asString() : "";
       const std::string mime = im.isMember("mime") && im["mime"].isString() ? im["mime"].asString() : "image/png";
       const std::string b64 = im.isMember("b64") && im["b64"].isString() ? im["b64"].asString() : "";
       if (b64.empty()) continue;
-      const std::string url = std::string("data:") + mime + ";base64," + b64;
 
-      Json::Value part(Json::objectValue);
-      part["type"] = "image_url";
-      Json::Value iu(Json::objectValue);
-      iu["url"] = url;
-      part["image_url"] = iu;
-      arr.append(part);
+      if (allow_image_parts) {
+        const std::string url = std::string("data:") + mime + ";base64," + b64;
+        Json::Value part(Json::objectValue);
+        part["type"] = "image_url";
+        Json::Value iu(Json::objectValue);
+        iu["url"] = url;
+        part["image_url"] = iu;
+        arr.append(part);
+      } else {
+        // Moonshot/Kimi tool-call endpoints reject non-text content part variants (e.g. `image_url`).
+        // Keep attachments discoverable without sending image content.
+        std::string hint;
+        hint += "[Image attachment";
+        if (!name.empty()) hint += ": " + name;
+        if (!mime.empty()) hint += " (" + mime + ")";
+        hint += "]\n";
+        hint += "(Image omitted: provider does not accept image parts when tools are enabled.)";
+        Json::Value part(Json::objectValue);
+        part["type"] = "text";
+        part["text"] = hint;
+        arr.append(part);
+      }
     }
   }
 
@@ -234,7 +263,8 @@ static Json::Value build_messages_json(
   OpenAIToolProviderCtx* ctx,
   const agent_chat_message_view_t* messages,
   size_t message_count,
-  bool include_reasoning_content
+  bool include_reasoning_content,
+  bool allow_image_parts
 ) {
   Json::Value out(Json::arrayValue);
   for (size_t i = 0; i < message_count; i++) {
@@ -246,7 +276,7 @@ static Json::Value build_messages_json(
     Json::Value mm(Json::nullValue);
     (void)try_parse_multimodal_prefix(raw, &text, &mm);
     if (mm.isObject()) {
-      m["content"] = multimodal_content_from_parts(text, mm);
+      m["content"] = multimodal_content_from_parts(text, mm, allow_image_parts);
     } else {
       m["content"] = text;
     }
@@ -340,7 +370,8 @@ static agent_status_t openai_tool_provider_generate(
     // Use non-streaming calls for correctness.
   }
   root["stream"] = use_stream_assistant;
-  root["messages"] = build_messages_json(ctx, req->messages, req->message_count, include_reasoning);
+  const bool allow_image_parts = !provider_rejects_image_parts(ctx->cfg.base_url, root["model"].asString());
+  root["messages"] = build_messages_json(ctx, req->messages, req->message_count, include_reasoning, allow_image_parts);
   root["tools"] = tools;
 
   if (req->force_tool_or_null && req->force_tool_or_null[0]) {

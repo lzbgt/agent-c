@@ -124,8 +124,14 @@ void job_set_result(const std::string& id, const Json::Value& result) {
   if (it == g_jobs.end()) return;
   it->second.result = result;
   const bool ok = result.isObject() && result.isMember("ok") && result["ok"].isBool() && result["ok"].asBool();
-  it->second.status = ok ? "done" : "error";
-  if (!ok && result.isObject() && result.isMember("error") && result["error"].isString()) {
+  const bool cancelled =
+    result.isObject() &&
+    ((result.isMember("cancelled") && result["cancelled"].isBool() && result["cancelled"].asBool()) ||
+     (result.isMember("error") && result["error"].isString() && result["error"].asString() == "cancelled"));
+  it->second.status = cancelled ? "cancelled" : (ok ? "done" : "error");
+  if (cancelled) {
+    it->second.error = "cancelled";
+  } else if (!ok && result.isObject() && result.isMember("error") && result["error"].isString()) {
     it->second.error = result["error"].asString();
   }
   it->second.updated_unix_ms = now_unix_ms();
@@ -248,7 +254,7 @@ void job_gc(int64_t ttl_ms, size_t max_jobs) {
   }
 
   auto is_finished = [](const JobState& s) {
-    return s.status == "done" || s.status == "error";
+    return s.status == "done" || s.status == "error" || s.status == "cancelled";
   };
 
   // TTL-based pruning.

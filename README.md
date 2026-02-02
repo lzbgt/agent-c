@@ -378,6 +378,11 @@ export OPENAI_API_KEY=...
 ./build/agent run "hello"
 ```
 
+Notes:
+- The CLI prints the assistant text to **stdout**.
+- When `--trace` is enabled (default), the CLI prints a compact transcript (tool calls + results + errors) to **stderr** so piping stdout remains clean.
+- Use `--transcript-jsonl <path>` to additionally append raw tool-loop events as JSONL (useful for UI replay/debugging).
+
 This uses session id `default` and stores it at `~/.agent/sessions/default.sess` (portable, JSON-free). If built with JSONCPP,
 it also writes `~/.agent/sessions/default.json` for debugging/interoperability.
 If this project is built without JSONCPP, `.sess` is the only persisted session format.
@@ -438,6 +443,39 @@ python3 tools/openrouter_models.py --write
   --tools basic \
   --force-tool calculator \
   --require-tool-call
+```
+
+### Multimodal attachments (images + files)
+
+The CLI supports attaching local files via `--attach <path>` (repeatable).
+
+Behavior:
+- Images (`.png/.jpg/.webp/...`) are sent as base64 `data:` URLs (model must support image inputs).
+- Non-image files are included as **best-effort text excerpts** (binary files get a short base64 preview).
+- Not every provider/model supports multimodal inputs. Even within the same provider, different models may accept/reject images.
+  - If the model rejects the request, you'll typically see an HTTP `400` with a message like “image input not supported”.
+
+Example (OpenAI-compatible vision-capable model):
+
+```bash
+./build/agent run "Describe this image." \
+  --no-session \
+  --tools none \
+  --base-url "https://api.openai.com/v1" \
+  --model "<vision-capable-model-id>" \
+  --attach ./image.png
+```
+
+Example (Moonshot / Kimi K2.5, OpenAI-compatible API; base64 images only):
+
+```bash
+./build/agent run "Describe this image." \
+  --no-session \
+  --tools none \
+  --base-url "https://api.moonshot.cn/v1" \
+  --model "kimi-k2.5" \
+  --api-key "$KIMI_API_KEY_CN" \
+  --attach ./image.png
 ```
 
 ### Extensible tools (embedded-friendly)

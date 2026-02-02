@@ -132,6 +132,38 @@ static agent_tool_provider_t make_provider(void) {
 }
 ```
 
+## Multimodal inputs (image + text)
+
+The core can store multimodal message “parts” (text + image URL / binary image bytes) via `agent/parts.h`.
+
+Important constraints:
+- Parts are currently **in-memory only** (the portable session codec v1 stores role+text only).
+- The **tool loop** (`agent_tool_loop_run`) passes messages to `agent_tool_provider_t` as text strings; it does not currently
+  surface parts to the tool-provider interface.
+- For **non-tool runs** (pure chat), `agent_run_once` can pass the session pointer into the provider via an extended request:
+  implement `agent_provider_t.generate_ex` (see `agent/provider.h`). The core prefers `generate_ex` when present.
+
+Minimal example (non-tool run, with an image URL part):
+
+```c
+#include "agent/agent.h"
+#include "agent/parts.h"
+#include "agent/provider.h"
+#include "agent/runner.h"
+
+agent_session_t* s = NULL;
+agent_session_create(&s);
+
+agent_content_part_t parts[2] = {0};
+parts[0].type = AGENT_PART_TEXT;
+parts[0].text_or_null = "Describe this image.";
+parts[1].type = AGENT_PART_IMAGE_URL;
+parts[1].url_or_null = "https://example.com/image.png";
+agent_session_add_message_parts(s, AGENT_ROLE_USER, parts, 2);
+
+// provider.generate_ex must translate session parts into the provider's multimodal request format.
+```
+
 ## Running the core tool loop
 
 The `agent_tool_loop_run()` function orchestrates:

@@ -51,6 +51,34 @@ Notes:
   - generating **unique** session ids by default (UUID-ish)
   - allowing daemon operators to set separate state/session roots per daemon instance
 
+### Endpoint: upload session files (for multimodal prompts)
+
+The Web UI can upload local files into a session folder, and then reference them in subsequent run requests via `input_files`.
+
+- `POST /api/v1/session/upload`
+
+Request (JSON):
+- `session_id` (string, required)
+- `files` (array, required): list of:
+  - `name` (string, required): safe filename (ASCII, no path separators)
+  - `mime` (string, optional): MIME type hint (used for UI preview + inlining decisions)
+  - `data_base64` (string, required): file bytes (base64)
+
+Response (JSON):
+- `ok` (bool)
+- `session_id` (string)
+- `files` (array): list of accepted uploads:
+  - `name` (string)
+  - `mime` (string, optional)
+  - `kind` (string, optional): `"image" | "audio" | "video" | "text" | "file"`
+  - `path` (string): session-relative path (e.g. `uploads/<ts>_<idx>_<name>`)
+  - `bytes` (number): decoded size
+
+Notes:
+- This endpoint requires daemon DB enabled/open (same as most session endpoints).
+- Uploads are stored under `<sessions_root>/session_<session_id>/uploads/`.
+- Upload size is capped (best-effort) to keep the daemon memory-bounded.
+
 ### Endpoint: list recent artifacts for a session (from audit)
 
 - `GET /api/v1/session/artifacts?session_id=...&max_bytes=...&max_artifacts=...&include_rotated=0|1&max_files=...`
@@ -127,6 +155,21 @@ per-tool map:
 
 This exists to prevent pathological “capture camera → send to UI → repeat” loops when the model does not infer a natural stop
 condition from the conversation alone.
+
+### Multimodal inputs (`input_files`)
+
+Run requests may optionally include `input_files` to reference session-uploaded files (via `POST /api/v1/session/upload`):
+
+- `input_files` (array, optional): each entry is either:
+  - a string `path` (session-relative), or
+  - an object `{ path, name?, mime?, kind? }`
+
+Behavior:
+- `input_files` requires session persistence (`no_session=false`) because files live under the session folder.
+- For OpenAI-compatible providers/models that support multimodal messages, agentd translates these into a `messages[].content` array
+  containing text + image parts (and text blocks for non-image attachments).
+- Not all models support image input. Some models (and some providers) will reject image parts with an HTTP `400`.
+  - In that case, use a vision-capable model, or remove `input_files`.
 
 ## Tool registry introspection (UI → agentd)
 
