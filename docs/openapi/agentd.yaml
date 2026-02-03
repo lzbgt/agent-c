@@ -15,6 +15,7 @@ tags:
   - name: health
   - name: run
   - name: jobs
+  - name: workflows
   - name: tools
   - name: sessions
 
@@ -226,6 +227,89 @@ paths:
                       type: object
                       additionalProperties: true
 
+  /api/v1/workflow/submit:
+    post:
+      tags: [workflows]
+      summary: Submit a durable workflow (DAG)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowSubmitRequest"
+      responses:
+        "200":
+          description: Workflow accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, workflow_id, trace_id]
+                properties:
+                  ok: { type: boolean }
+                  workflow_id: { type: string }
+                  trace_id: { $ref: "#/components/schemas/TraceID" }
+                  session_id: { type: string }
+
+  /api/v1/workflow:
+    get:
+      tags: [workflows]
+      summary: Get workflow status
+      parameters:
+        - in: query
+          name: workflow_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: include_tasks
+          required: false
+          schema: { type: boolean }
+        - in: query
+          name: include_results
+          required: false
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: Workflow snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowGetResponse"
+
+  /api/v1/workflows:
+    get:
+      tags: [workflows]
+      summary: List workflows by status
+      parameters:
+        - in: query
+          name: status
+          required: false
+          schema: { type: string }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, format: int32 }
+      responses:
+        "200":
+          description: Workflow list
+
+  /api/v1/workflow/cancel:
+    post:
+      tags: [workflows]
+      summary: Cancel a workflow (best-effort)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workflow_id]
+              properties:
+                workflow_id: { type: string }
+      responses:
+        "200":
+          description: Cancellation requested
+
   /api/v1/sessions:
     get:
       tags: [sessions]
@@ -320,3 +404,62 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentEvent"
+
+    WorkflowTaskSpec:
+      type: object
+      required: [task_id, request]
+      properties:
+        task_id: { type: string }
+        depends_on:
+          type: array
+          items: { type: string }
+        max_attempts: { type: integer, format: int32 }
+        request:
+          $ref: "#/components/schemas/RunRequest"
+        expect:
+          type: object
+          description: Deterministic correctness assertions (engine-enforced)
+          additionalProperties: true
+
+    WorkflowSubmitRequest:
+      type: object
+      required: [tasks]
+      properties:
+        workflow_id: { type: string }
+        trace_id: { $ref: "#/components/schemas/TraceID" }
+        session_id: { type: string }
+        allow_sessions: { type: boolean }
+        allow_inline_api_keys: { type: boolean }
+        defaults:
+          type: object
+          additionalProperties: true
+        tasks:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkflowTaskSpec"
+
+    WorkflowGetResponse:
+      type: object
+      required: [ok, workflow]
+      properties:
+        ok: { type: boolean }
+        workflow:
+          type: object
+          required: [workflow_id, status, cancel_requested, created_unix_ms, updated_unix_ms]
+          properties:
+            workflow_id: { type: string }
+            status: { type: string }
+            trace_id: { $ref: "#/components/schemas/TraceID" }
+            session_id: { type: string }
+            cancel_requested: { type: boolean }
+            error: { type: string }
+            created_unix_ms: { type: integer, format: int64 }
+            updated_unix_ms: { type: integer, format: int64 }
+        tasks:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+        result:
+          type: object
+          additionalProperties: true

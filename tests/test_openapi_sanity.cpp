@@ -48,6 +48,10 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "agentd openapi drift: missing /api/v1/trace in %s\n", agentd_spec.c_str());
     return 1;
   }
+  if (!contains(a, "/api/v1/workflow/submit:") || !contains(a, "/api/v1/workflow:") || !contains(a, "/api/v1/workflows:")) {
+    std::fprintf(stderr, "agentd openapi drift: missing workflow endpoints in %s\n", agentd_spec.c_str());
+    return 1;
+  }
   if (!contains(a, "trace_id")) {
     std::fprintf(stderr, "agentd openapi drift: expected trace_id in %s\n", agentd_spec.c_str());
     return 1;

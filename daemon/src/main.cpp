@@ -16,6 +16,8 @@
 #include "orchestrate_endpoints.h"
 #include "run_endpoints.h"
 #include "trace_endpoints.h"
+#include "workflow_endpoints.h"
+#include "workflow_engine.h"
 #include "db_query_endpoints.h"
 #include "secrets_file.h"
 #include "config_store.h"
@@ -681,6 +683,22 @@ int main(int argc, char** argv) {
     }
   }
 
+  // Durable workflow scheduler (background).
+  WorkflowEngine wf_engine(
+    db_or_null,
+    [&cfg_store]() { return cfg_store.snapshot(); },
+    ocfg_from_cfg,
+    tool_ext_or_null,
+    cfg.sessions_root_dir,
+    WorkflowEngine::Options{}
+  );
+  {
+    std::string werr;
+    if (!wf_engine.start(&werr)) {
+      std::cerr << "Warning: failed to start workflow engine: " << werr << "\n";
+    }
+  }
+
   server.handle("GET", "/api/v1/health", [&](const HttpRequest& req, HttpResponse* resp) {
     cors_apply(req, resp, cors_cfg);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
@@ -834,6 +852,26 @@ int main(int argc, char** argv) {
     handle_orchestrate_endpoint(cur, ocfg, cors_cfg, db_or_null, tool_ext_or_null, sessions_root_dir, req, resp);
   });
 
+  server.handle("POST", "/api/v1/workflow/submit", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_workflow_submit_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+
+  server.handle("GET", "/api/v1/workflow", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_workflow_get_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+
+  server.handle("GET", "/api/v1/workflows", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_workflow_list_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+
+  server.handle("POST", "/api/v1/workflow/cancel", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_workflow_cancel_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+
   server.handle("GET", "/api/v1/trace", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_trace_lookup_endpoint(cur, cors_cfg, db_or_null, req, resp);
@@ -867,12 +905,15 @@ int main(int argc, char** argv) {
     std::cerr << "Refusing to bind agentd to non-loopback host without auth.\n";
     std::cerr << "Provide --auth-token <token> (recommended) or pass --allow-unauth to override (insecure).\n";
     std::cerr << "host=" << cfg_final.listen_host << "\n";
+    wf_engine.stop();
     return 2;
   }
   std::cerr << "agentd listening on http://" << cfg_final.listen_host << ":" << cfg_final.listen_port << "\n";
   if (!server.serve(cfg_final.listen_host, cfg_final.listen_port, &err)) {
     std::cerr << "agentd failed: " << err << "\n";
+    wf_engine.stop();
     return 1;
   }
+  wf_engine.stop();
   return 0;
 }

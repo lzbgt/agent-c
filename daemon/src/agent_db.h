@@ -205,6 +205,68 @@ class AgentDb {
   // On daemon restart, queued/running jobs cannot be resumed. Mark them as interrupted so UIs can be truthful.
   bool mark_inflight_jobs_interrupted(int64_t now_unix_ms, const std::string& reason, std::string* out_error);
 
+  // Durable workflows (task graphs / DAGs).
+  //
+  // Unlike async jobs, workflows are designed to be resumable after daemon restart. Inflight tasks are
+  // recovered back to queued state (at-least-once execution semantics).
+  struct WorkflowRow {
+    std::string workflow_id;
+    std::string session_id; // optional
+    std::string trace_id;   // optional
+    int64_t created_unix_ms = 0;
+    int64_t updated_unix_ms = 0;
+    std::string status; // queued|running|done|error|cancelled
+    bool cancel_requested = false;
+    std::string error;
+    std::string spec_json;   // JSON object string (submit request, best-effort redacted)
+    std::string result_json; // JSON object string (final aggregated results), optional
+  };
+
+  struct WorkflowTaskRow {
+    std::string workflow_id;
+    std::string task_id;
+    int64_t created_unix_ms = 0;
+    int64_t updated_unix_ms = 0;
+    std::string status; // queued|running|done|error|cancelled
+    int attempt = 0;
+    int max_attempts = 1;
+    int64_t ready_unix_ms = 0;   // do not start before this time (retry/backoff)
+    int64_t started_unix_ms = 0; // best-effort
+    int64_t finished_unix_ms = 0;
+    std::string depends_on_json; // JSON array string of task_ids (optional)
+    std::string request_json;    // JSON object string (run request)
+    std::string expect_json;     // JSON object string (optional)
+    std::string result_json;     // JSON object string (run response)
+    std::string error;
+  };
+
+  // Inserts a workflow and its tasks in a single transaction.
+  bool create_workflow(const WorkflowRow& wf, const std::vector<WorkflowTaskRow>& tasks, std::string* out_error);
+  bool get_workflow(const std::string& workflow_id, WorkflowRow* out_row, std::string* out_error);
+  bool list_workflows_by_status(
+    const std::string& status,
+    size_t max_rows,
+    std::vector<WorkflowRow>* out_rows_desc,
+    std::string* out_error
+  );
+  bool list_workflow_tasks(const std::string& workflow_id, std::vector<WorkflowTaskRow>* out_rows, std::string* out_error);
+
+  // Upserts workflow/task metadata (cheap transition updates).
+  bool upsert_workflow(const WorkflowRow& wf, std::string* out_error);
+  bool upsert_workflow_task(const WorkflowTaskRow& task, std::string* out_error);
+
+  // Attempts to transition a queued task to running. Returns true only when the task was claimed.
+  bool claim_workflow_task(
+    const std::string& workflow_id,
+    const std::string& task_id,
+    int64_t now_unix_ms,
+    int new_attempt,
+    std::string* out_error
+  );
+
+  // Recovery on daemon startup: move running workflows/tasks back to queued so they can resume.
+  bool recover_inflight_workflows(int64_t now_unix_ms, std::string* out_error);
+
  private:
   bool ensure_schema_locked(std::string* out_error);
   bool exec_locked(const std::string& sql, std::string* out_error);

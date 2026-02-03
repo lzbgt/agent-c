@@ -10,6 +10,7 @@ When built with SQLite support (`AGENT_HAVE_SQLITE3`), `agentd` stores its canon
 - audit records (the Web UI “History” feed)
 - durable scene snapshots (`scene_states`)
 - durable async job metadata (`jobs`)
+- durable workflows (`workflows`, `workflow_tasks`)
 
 This is convenient for debugging problems like:
 
@@ -56,7 +57,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v8)
+## Schema (v9)
 
 All timestamps are Unix milliseconds.
 
@@ -250,6 +251,51 @@ Stores durable async job metadata so job state remains inspectable after daemon 
 Indexes:
 - `CREATE INDEX jobs_by_status ON jobs(status, updated_unix_ms DESC)`
 - `CREATE INDEX jobs_by_session ON jobs(session_id, updated_unix_ms DESC)`
+
+### `workflows`
+
+Stores durable workflow metadata. A workflow is a DAG of tasks that can be resumed after daemon restart.
+
+- `workflow_id TEXT PRIMARY KEY`
+- `session_id TEXT` (nullable; workflows can be session-less)
+- `trace_id TEXT` (optional; correlation ID, typically shared across the workflow)
+- `created_unix_ms INTEGER NOT NULL`
+- `updated_unix_ms INTEGER NOT NULL`
+- `status TEXT NOT NULL` (`queued|running|done|error|cancelled`)
+- `cancel_requested INTEGER NOT NULL` (0/1)
+- `error TEXT` (optional; best-effort terminal error summary)
+- `spec_json TEXT NOT NULL` (JSON object string; submit request, best-effort redacted)
+- `result_json TEXT` (optional; aggregated final workflow result)
+
+Indexes:
+- `CREATE INDEX workflows_by_status ON workflows(status, updated_unix_ms DESC)`
+- `CREATE INDEX workflows_by_trace ON workflows(trace_id)`
+- `CREATE INDEX workflows_by_session ON workflows(session_id, updated_unix_ms DESC)`
+
+### `workflow_tasks`
+
+Stores durable workflow tasks. Each task is typically a regular `POST /api/v1/run` request executed by the workflow engine,
+with explicit dependencies and retries.
+
+- `workflow_id TEXT NOT NULL`
+- `task_id TEXT NOT NULL`
+- `created_unix_ms INTEGER NOT NULL`
+- `updated_unix_ms INTEGER NOT NULL`
+- `status TEXT NOT NULL` (`queued|running|done|error|cancelled`)
+- `attempt INTEGER NOT NULL` (number of started attempts)
+- `max_attempts INTEGER NOT NULL` (retry cap)
+- `ready_unix_ms INTEGER NOT NULL` (do not start before this time; used for retry backoff)
+- `started_unix_ms INTEGER` (best-effort; when the first attempt started)
+- `finished_unix_ms INTEGER` (best-effort; when the last attempt finished)
+- `depends_on_json TEXT` (optional; JSON array string of `task_id`s)
+- `request_json TEXT NOT NULL` (JSON object string; run request payload)
+- `expect_json TEXT` (optional; JSON object string; deterministic assertions on the run output)
+- `result_json TEXT` (optional; JSON object string; run response payload)
+- `error TEXT` (optional; best-effort error / expectation failure summary)
+
+Indexes:
+- `CREATE INDEX workflow_tasks_by_workflow ON workflow_tasks(workflow_id, updated_unix_ms DESC)`
+- `CREATE INDEX workflow_tasks_by_status ON workflow_tasks(status, ready_unix_ms, updated_unix_ms DESC)`
 
 ## Source of truth
 

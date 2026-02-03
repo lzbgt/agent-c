@@ -34,12 +34,20 @@ int main(int argc, char** argv) {
 
   // Guardrail: DB schema docs should match the current daemon schema version.
   // If the schema changes, update docs/DB.md and this test in the same PR.
-  if (!contains(s, "## Schema (v8)")) {
-    std::fprintf(stderr, "docs drift: expected '## Schema (v8)' in %s\n", db_doc.c_str());
+  if (!contains(s, "## Schema (v9)")) {
+    std::fprintf(stderr, "docs drift: expected '## Schema (v9)' in %s\n", db_doc.c_str());
     return 1;
   }
   if (!contains(s, "### `jobs`")) {
     std::fprintf(stderr, "docs drift: expected jobs table documented in %s\n", db_doc.c_str());
+    return 1;
+  }
+  if (!contains(s, "### `workflows`")) {
+    std::fprintf(stderr, "docs drift: expected workflows table documented in %s\n", db_doc.c_str());
+    return 1;
+  }
+  if (!contains(s, "### `workflow_tasks`")) {
+    std::fprintf(stderr, "docs drift: expected workflow_tasks table documented in %s\n", db_doc.c_str());
     return 1;
   }
   if (!contains(s, "### `scene_states`")) {
@@ -48,4 +56,3 @@ int main(int argc, char** argv) {
   }
   return 0;
 }
-

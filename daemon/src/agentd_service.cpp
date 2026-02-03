@@ -18,6 +18,8 @@
 #include "provider_util.h"
 #include "run_endpoints.h"
 #include "trace_endpoints.h"
+#include "workflow_endpoints.h"
+#include "workflow_engine.h"
 #include "runtime_config.h"
 #include "sandbox_policy.h"
 #include "secrets_file.h"
@@ -198,6 +200,7 @@ struct AgentdService::Impl {
   CorsConfig cors_cfg{};
   AgentDb db;
   std::unique_ptr<DaemonConfigStore> cfg_store;
+  std::unique_ptr<WorkflowEngine> wf_engine;
   HttpServer server;
 
   std::thread server_thread;
@@ -289,6 +292,23 @@ struct AgentdService::Impl {
             job_gc(ttl_ms, max_jobs);
           }
         }).detach();
+      }
+    }
+
+    // Durable workflow scheduler (background).
+    if (!wf_engine) {
+      const DaemonConfig cfg0 = cfg_store->snapshot();
+      wf_engine = std::make_unique<WorkflowEngine>(
+        &db,
+        [this]() { return cfg_store->snapshot(); },
+        [this](const DaemonConfig& c) { return ocfg_from_cfg(c); },
+        tool_ext_or_null(),
+        cfg0.sessions_root_dir,
+        WorkflowEngine::Options{}
+      );
+      std::string werr;
+      if (!wf_engine->start(&werr)) {
+        std::cerr << "Warning: failed to start workflow engine: " << werr << "\n";
       }
     }
 
@@ -445,6 +465,24 @@ struct AgentdService::Impl {
       handle_trace_lookup_endpoint(cur, cors_cfg, &db, req, resp);
     });
 
+    // Workflow endpoints.
+    server.handle("POST", "/api/v1/workflow/submit", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_workflow_submit_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("GET", "/api/v1/workflow", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_workflow_get_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("GET", "/api/v1/workflows", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_workflow_list_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("POST", "/api/v1/workflow/cancel", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_workflow_cancel_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+
     // Job endpoints.
     server.handle("GET", "/api/v1/job", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
@@ -503,6 +541,7 @@ struct AgentdService::Impl {
   }
 
   void stop() {
+    if (wf_engine) wf_engine->stop();
     server.stop();
     if (server_thread.joinable()) {
       server_thread.join();

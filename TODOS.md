@@ -1,142 +1,137 @@
-# Roadmap / TODOs (next highest leverage)
+# Roadmap / TODOs (highest leverage)
 
 Date: 2026-02-03
 
-This file is the forward-looking roadmap. It intentionally focuses on **framework-level** leverage (capabilities that unlock many downstream features),
-with each item having a concrete “proof” so it can be verified in CI (`tools/verify.sh` / `ctest` / `tools/verify_compose_stack.sh`).
+This roadmap is biased toward “power unleashed” coming from the **agentic framework itself**:
 
-## Baseline (already shipped)
+- autonomous high-efficiency scheduling (priorities, budgets, retries, backoff)
+- task continuity across time (durable + resumable execution)
+- memory architecture that compensates for stateless/context-bounded LLMs
+- rolling consolidation + correlation as time advances
+- result correctness (deterministic checks, replay, validations)
 
-- Broker relay with OIDC + mTLS, plus WebUI broker mode.
-- Provider reliability (retry/backoff/timeouts) + smoke tests.
-- DB-backed job durability + truthful terminal status (`interrupted`) after daemon restart.
-- Structured durable memory + deterministic conflict handling + memory policy knobs per run request.
-- Multi-agent orchestration:
-  - daemon: `POST /api/v1/orchestrate` (fan-out + optional session writeback)
-  - broker: `POST /v1/orchestrate` (fan-out across multiple agents via broker relay)
+Observability (trace/timeline) matters, but it is **not** the origin of capability; it is the proof/debug surface.
 
-## P0 (highest leverage; makes this a “framework”)
+## Recently shipped (proof in CI)
 
-### 1) Tool plugins: make tools composable without recompiling (DONE)
+- Tool plugins (`--tool-plugin`) so tools are composable without rebuilding.
+  - Proof: `ctest` includes `agentd_tool_plugin_smoke`.
+- “Docs as truth” guardrails (DB schema doc + OpenAPI sanity checks).
+  - Proof: `ctest` includes `docs_sanity_tests` + `openapi_sanity_tests`.
+- `trace_id` correlation end-to-end, plus a merged trace timeline across broker ⇄ agentd.
+  - Proof: `ctest` includes `agentd_trace_id_smoke`.
+- Durable workflow engine v1 (DAG + retries + resumable after restart + deterministic expectations).
+  - API:
+    - `POST /api/v1/workflow/submit`
+    - `GET /api/v1/workflow`
+    - `GET /api/v1/workflows`
+    - `POST /api/v1/workflow/cancel`
+  - Engine semantics:
+    - dependency scheduling (`depends_on`)
+    - retries (`max_attempts`) + backoff (`ready_unix_ms`)
+    - correctness assertions (`expect`)
+    - **restart continuity**: running tasks are recovered back to queued (at-least-once)
+    - simple prompt templating: `${task.<id>.assistant_text}`
+  - Proof: `ctest` includes `agentd_workflow_smoke` (validates DAG ordering + templating + restart recovery).
 
-Problem (fact from code/docs):
-- `agentd` has a `ToolExtension` injection point, but it currently requires **in-process embedding** (or code changes) to add tools (`docs/AGENTD_LIB.md`).
-- For an “agentic framework”, adding new capabilities must be a packaging problem, not a fork/rebuild problem.
+## P0 (next: maximize autonomous continuity + correctness)
+
+### 1) Durable async job runner (resume `run_async` jobs)
+
+Problem (fact from code):
+- Async jobs are DB-backed for *status inspection*, but inflight jobs are marked `interrupted` on restart and do not resume.
 
 Deliverables:
-- `agentd` supports `--tool-plugin <path>` (repeatable) to load **tool plugins** at runtime.
-- Stable plugin ABI (dlopen-based) that:
-  - provides a manifest of tool schemas (name/description/parameters)
-  - executes tools and returns JSON result
-- Docs + sample plugin.
+- Add a background “job runner” that can resume queued/running async jobs after daemon restart.
+- Persist enough job execution state to re-run safely (same request body, same session/memory policy).
+- Add best-effort cancellation propagation across restarts.
 
 Proof:
-- A new smoke test starts `agentd` with a plugin, confirms `/api/v1/tools` lists the new tool, and runs a stub tool-loop that invokes it.
+- New smoke test: submit `run_async`, restart daemon mid-run, verify job finishes (not `interrupted`).
 
-### 2) “Docs as truth”: auto-check + sync critical docs with runtime truth (DONE)
-
-Problem (fact from repo):
-- `docs/DB.md` describes schema v6, but the current daemon DB schema is v8 (see `daemon/src/agent_db.cpp`).
-- Drift in docs makes the project hard to extend safely (client integrations depend on accurate schemas).
-
-Deliverables:
-- Update the DB doc to the current schema and add a small “how to verify” section.
-- Add a lightweight automated check (CI/ctest) that fails if docs claim a different schema version than the binary.
-
-Proof:
-- `ctest` includes a unit test that asserts:
-  - doc mentions current schema version
-  - doc includes required tables (`jobs`, `scene_states`, etc.)
-
-### 3) API contracts: ship an OpenAPI spec for agentd + broker (DONE)
+### 2) Workflow engine v2: dataflow + aggregation nodes
 
 Problem:
-- The project already has a rich HTTP surface, but it is only specified in prose (`docs/PROTOCOL.md`, `docs/BROKER.md`).
-- Without a machine-readable spec, clients drift and you can’t generate typed SDKs.
+- DAG ordering is useful, but real workflows need explicit **dataflow** and **aggregation strategies**.
 
 Deliverables:
-- `docs/openapi/agentd.yaml` and `docs/openapi/broker.yaml` capturing endpoints + request/response schemas.
-- WebUI uses generated types (or a checked-in TS client) derived from the spec.
+- Dataflow templates:
+  - `${task.<id>.assistant_text}` (already v1)
+  - `${task.<id>.json:<json_pointer>}` for structured extraction
+  - explicit `inputs` map per task (safer than string templating)
+- Aggregation nodes (no LLM required by default):
+  - `first_ok`, `best_of_n`, `strict_all_ok`, `collect`
+- Optional LLM aggregator (tools=none by default).
 
 Proof:
-- `ctest` includes a spec sanity test (file existence + key endpoints), and `tools/verify.sh` passes.
-- Optional follow-up: add a real OpenAPI linter / typegen (kept out of core build dependencies).
+- Deterministic stub-server test executes a DAG with dataflow and asserts outputs are wired correctly.
 
-### 4) Observability: trace a single user intent across UI ⇄ agentd ⇄ broker (DONE)
+### 3) Workflow streaming + UI surface (without making UI the power source)
+
+Deliverables:
+- `GET /api/v1/workflow/stream` (SSE):
+  - task state transitions
+  - deterministic “workflow_event” records
+- UI view for workflow timeline (reuse trace UI patterns).
+
+Proof:
+- Smoke test validates SSE event ordering and final terminal event.
+
+### 4) Memory v2: semantic retrieval + rolling consolidation
 
 Problem:
-- Debugging distributed agent systems requires correlation IDs and structured logs; otherwise issues become “he said/she said”.
+- Stateless LLM calls and bounded context require a memory system that evolves over time:
+  - consolidates outdated facts
+  - correlates new information with old (conflict resolution)
+  - retrieves relevant memory efficiently
 
 Deliverables:
-- Introduce `trace_id` (client-provided or daemon-generated) and propagate it:
-  - UI requests
-  - daemon run records + events
-  - broker relay audits + orchestrate results
+- Retrieval:
+  - SQLite FTS5 (if available) for `memory_search` indexing, or embedding index as a pluggable backend.
+  - ranking/scoring and dedupe.
+- Rolling consolidation worker:
+  - periodic consolidation checkpoints (time-based + size-based)
+  - versioned facts (supersedes/obsolete markers)
+  - deterministic conflict rules (already partially present in structured memory mode).
 
 Proof:
-- A smoke test asserts `trace_id` round-trips from request → response, and is present in job SSE events for async runs.
-- Daemon persistence stores `trace_id` inside audit/event JSON without a schema migration.
-- Broker relay audit persists `trace_id` via a backwards-compatible DB migration (new column).
+- Unit tests show retrieval ranking and deterministic conflict resolution.
 
-### 4.1) Observability: correlated timeline viewer (DONE)
+### 5) Correctness v2: validators + replayability
 
 Deliverables:
-- Add an endpoint/UI view to pull a run’s correlated timeline (events + tool calls + retries), keyed by `trace_id`.
+- Expand `expect`:
+  - JSON pointer assertions (already v1)
+  - regex, numeric bounds, schema checks
+  - tool-call constraints (e.g., forbid certain tools, require a tool call)
+- “Replay mode”:
+  - re-run a workflow from persisted inputs using a stub provider
+  - deterministic outputs validated by expectations
 
 Proof:
-- Given a `trace_id`, the UI can fetch and render a single merged timeline across:
-  - broker relay audits
-  - orchestrate fan-out via agent audit records (agentd `/api/v1/trace`)
-  - agentd run audit + events
-
-### 5) Workflow engine: orchestration becomes a first-class “agent graph”
-
-Problem:
-- Fan-out is useful, but real multi-agent work needs dependencies (DAG), budgets, and explicit aggregation strategies.
-
-Deliverables:
-- Extend orchestration request to support:
-  - task graph (dependencies)
-  - per-task budgets (steps, tool caps, memory policy)
-  - aggregation strategy (best-of, vote, summarize, strict consensus)
-- Expose an LLM-callable tool (host-side) to invoke orchestration safely (guarded by policy).
-
-Proof:
-- A deterministic stub-server test executes a DAG and validates topological ordering + aggregation behavior.
+- `ctest` includes replay tests that produce identical results under stub providers.
 
 ## P1 (big wins after P0)
 
-### 6) Tool servers (subprocess / stdio) + remote device tools
+### 6) Tool servers (subprocess / stdio) + remote device tool bridges
 
 Deliverables:
-- Spawn a “tool server” process (stdio JSON-RPC or similar) that registers tools and executes them out-of-process.
-- Use this to integrate:
-  - hardware/device tools (ESP32 via serial/MQTT)
-  - browser automation (Playwright) without embedding it directly into agentd
+- Spawn a “tool server” process (stdio JSON-RPC or similar).
+- Use for:
+  - Playwright/browser automation (kept out-of-process)
+  - device tools (ESP32 via serial/MQTT) without embedding
 
 Proof:
-- A smoke test runs a tool server that provides a single tool and verifies end-to-end execution.
+- Smoke test starts a tool server and executes a tool end-to-end.
 
-### 7) Memory v2: semantic retrieval (embeddings / FTS) + dedupe
+### 7) Multi-agent workflows (broker-aware)
 
 Deliverables:
-- Add an indexable memory store (SQLite FTS5 or embedding vectors) and retrieval ranking.
-- Add explicit memory scopes:
-  - per-session, per-agent, per-user (broker identity), and shared team memory.
+- Allow workflow tasks to target:
+  - local agentd
+  - broker-routed agents
+- Add explicit routing policy and identity-scoped memory.
 
 Proof:
-- Unit tests show:
-  - retrieval returns the most relevant memory items
-  - conflicting facts are resolved deterministically
+- Integration test exercises broker fan-out with workflow DAG dependencies.
 
-### 8) “Agent packs”: versioned profiles and shareable capabilities
-
-Deliverables:
-- Define a pack format:
-  - system prompt profile
-  - tool enablement + policy
-  - default model/provider routing
-- WebUI can select packs and export/import them.
-
-Proof:
-- A pack can be exported, imported, and produces deterministic effective config snapshots.

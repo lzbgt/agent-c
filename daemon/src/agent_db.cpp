@@ -26,6 +26,11 @@ static bool bind_text(sqlite3_stmt* st, int idx, const std::string& s) {
   return sqlite3_bind_text(st, idx, s.c_str(), (int)s.size(), SQLITE_TRANSIENT) == SQLITE_OK;
 }
 
+static bool bind_text_or_null(sqlite3_stmt* st, int idx, const std::string& s) {
+  if (s.empty()) return sqlite3_bind_null(st, idx) == SQLITE_OK;
+  return bind_text(st, idx, s);
+}
+
 static bool bind_i64(sqlite3_stmt* st, int idx, int64_t v) {
   return sqlite3_bind_int64(st, idx, (sqlite3_int64)v) == SQLITE_OK;
 }
@@ -149,7 +154,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 8;
+  const int kSchemaVersion = 9;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -384,6 +389,51 @@ CREATE INDEX IF NOT EXISTS jobs_by_session ON jobs(session_id, updated_unix_ms D
     cur_ver = 8;
   }
 
+  if (cur_ver < 9) {
+    const char* schema_v9 = R"SQL(
+CREATE TABLE IF NOT EXISTS workflows(
+  workflow_id TEXT PRIMARY KEY,
+  session_id TEXT,
+  trace_id TEXT,
+  created_unix_ms INTEGER NOT NULL,
+  updated_unix_ms INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  cancel_requested INTEGER NOT NULL,
+  error TEXT,
+  spec_json TEXT NOT NULL,
+  result_json TEXT,
+  FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS workflows_by_status ON workflows(status, updated_unix_ms DESC);
+CREATE INDEX IF NOT EXISTS workflows_by_trace ON workflows(trace_id);
+CREATE INDEX IF NOT EXISTS workflows_by_session ON workflows(session_id, updated_unix_ms DESC);
+
+CREATE TABLE IF NOT EXISTS workflow_tasks(
+  workflow_id TEXT NOT NULL,
+  task_id TEXT NOT NULL,
+  created_unix_ms INTEGER NOT NULL,
+  updated_unix_ms INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  attempt INTEGER NOT NULL,
+  max_attempts INTEGER NOT NULL,
+  ready_unix_ms INTEGER NOT NULL,
+  started_unix_ms INTEGER,
+  finished_unix_ms INTEGER,
+  depends_on_json TEXT,
+  request_json TEXT NOT NULL,
+  expect_json TEXT,
+  result_json TEXT,
+  error TEXT,
+  PRIMARY KEY(workflow_id, task_id),
+  FOREIGN KEY(workflow_id) REFERENCES workflows(workflow_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS workflow_tasks_by_workflow ON workflow_tasks(workflow_id, updated_unix_ms DESC);
+CREATE INDEX IF NOT EXISTS workflow_tasks_by_status ON workflow_tasks(status, ready_unix_ms, updated_unix_ms DESC);
+)SQL";
+    if (!exec_locked(schema_v9, out_error)) return false;
+    cur_ver = 9;
+  }
+
   // Record schema version.
   {
     std::ostringstream oss;
@@ -608,6 +658,538 @@ WHERE status='queued' OR status='running';
   if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
   sqlite3_finalize(st);
   return ok;
+#endif
+}
+
+bool AgentDb::recover_inflight_workflows(int64_t now_unix_ms, std::string* out_error) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)now_unix_ms;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  const int64_t now = now_unix_ms > 0 ? now_unix_ms : unix_ms_now();
+
+  // At-least-once semantics: if a task was running when the daemon died, we cannot know if it completed.
+  // Recover it back to queued so it can resume.
+  if (!exec_locked("BEGIN IMMEDIATE TRANSACTION;", out_error)) return false;
+  bool ok = true;
+  ok = ok && exec_locked("UPDATE workflows SET status='queued', updated_unix_ms=" + std::to_string((long long)now) +
+                           " WHERE status='running';", out_error);
+  ok = ok && exec_locked("UPDATE workflow_tasks SET status='queued', updated_unix_ms=" + std::to_string((long long)now) +
+                           " WHERE status='running';", out_error);
+  if (ok) {
+    ok = exec_locked("COMMIT;", out_error);
+  } else {
+    std::string ign;
+    (void)exec_locked("ROLLBACK;", &ign);
+  }
+  return ok;
+#endif
+}
+
+bool AgentDb::create_workflow(const WorkflowRow& wf, const std::vector<WorkflowTaskRow>& tasks, std::string* out_error) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)wf;
+  (void)tasks;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (wf.workflow_id.empty()) {
+    if (out_error) *out_error = "create_workflow: workflow_id is empty";
+    return false;
+  }
+  if (wf.spec_json.empty()) {
+    if (out_error) *out_error = "create_workflow: spec_json is empty";
+    return false;
+  }
+  if (tasks.empty()) {
+    if (out_error) *out_error = "create_workflow: tasks empty";
+    return false;
+  }
+
+  const int64_t now = wf.updated_unix_ms > 0 ? wf.updated_unix_ms : unix_ms_now();
+  const int64_t created = wf.created_unix_ms > 0 ? wf.created_unix_ms : now;
+  const std::string status = wf.status.empty() ? "queued" : wf.status;
+
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+
+  if (!exec_locked("BEGIN IMMEDIATE TRANSACTION;", out_error)) return false;
+
+  bool ok = true;
+  {
+    sqlite3_stmt* st = nullptr;
+    const char* sql = R"SQL(
+INSERT INTO workflows(
+  workflow_id, session_id, trace_id, created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
+) VALUES(?,?,?,?,?,?,?,?,?,?);
+)SQL";
+    if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+      ok = false;
+      if (out_error) *out_error = sqlite_err(db_);
+    } else {
+      ok = ok && bind_text(st, 1, wf.workflow_id);
+      ok = ok && bind_text_or_null(st, 2, wf.session_id);
+      ok = ok && bind_text(st, 3, wf.trace_id);
+      ok = ok && bind_i64(st, 4, created);
+      ok = ok && bind_i64(st, 5, now);
+      ok = ok && bind_text(st, 6, status);
+      ok = ok && bind_i32(st, 7, wf.cancel_requested ? 1 : 0);
+      ok = ok && bind_text(st, 8, wf.error);
+      ok = ok && bind_text(st, 9, wf.spec_json);
+      ok = ok && bind_text(st, 10, wf.result_json);
+      ok = ok && step_done(st);
+      if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+      sqlite3_finalize(st);
+    }
+  }
+
+  if (ok) {
+    sqlite3_stmt* st = nullptr;
+    const char* sql = R"SQL(
+INSERT INTO workflow_tasks(
+  workflow_id, task_id, created_unix_ms, updated_unix_ms, status, attempt, max_attempts, ready_unix_ms,
+  started_unix_ms, finished_unix_ms, depends_on_json, request_json, expect_json, result_json, error
+) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);
+)SQL";
+    if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+      ok = false;
+      if (out_error) *out_error = sqlite_err(db_);
+    } else {
+      for (const auto& t : tasks) {
+        if (t.task_id.empty() || t.request_json.empty()) {
+          ok = false;
+          if (out_error && out_error->empty()) *out_error = "create_workflow: task missing task_id/request_json";
+          break;
+        }
+        const int64_t t_created = t.created_unix_ms > 0 ? t.created_unix_ms : created;
+        const int64_t t_updated = t.updated_unix_ms > 0 ? t.updated_unix_ms : now;
+        const std::string t_status = t.status.empty() ? "queued" : t.status;
+        const int t_attempt = t.attempt < 0 ? 0 : t.attempt;
+        const int t_max_attempts = t.max_attempts <= 0 ? 1 : t.max_attempts;
+        const int64_t t_ready = t.ready_unix_ms > 0 ? t.ready_unix_ms : 0;
+        const int64_t t_started = t.started_unix_ms > 0 ? t.started_unix_ms : 0;
+        const int64_t t_finished = t.finished_unix_ms > 0 ? t.finished_unix_ms : 0;
+
+        sqlite3_reset(st);
+        sqlite3_clear_bindings(st);
+        ok = ok && bind_text(st, 1, wf.workflow_id);
+        ok = ok && bind_text(st, 2, t.task_id);
+        ok = ok && bind_i64(st, 3, t_created);
+        ok = ok && bind_i64(st, 4, t_updated);
+        ok = ok && bind_text(st, 5, t_status);
+        ok = ok && bind_i32(st, 6, t_attempt);
+        ok = ok && bind_i32(st, 7, t_max_attempts);
+        ok = ok && bind_i64(st, 8, t_ready);
+        ok = ok && bind_i64(st, 9, t_started);
+        ok = ok && bind_i64(st, 10, t_finished);
+        ok = ok && bind_text(st, 11, t.depends_on_json);
+        ok = ok && bind_text(st, 12, t.request_json);
+        ok = ok && bind_text(st, 13, t.expect_json);
+        ok = ok && bind_text(st, 14, t.result_json);
+        ok = ok && bind_text(st, 15, t.error);
+        ok = ok && step_done(st);
+        if (!ok) {
+          if (out_error && out_error->empty()) *out_error = sqlite_err(db_);
+          break;
+        }
+      }
+      sqlite3_finalize(st);
+    }
+  }
+
+  if (ok) {
+    ok = exec_locked("COMMIT;", out_error);
+  } else {
+    std::string ign;
+    (void)exec_locked("ROLLBACK;", &ign);
+  }
+  return ok;
+#endif
+}
+
+bool AgentDb::get_workflow(const std::string& workflow_id, WorkflowRow* out_row, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (out_row) *out_row = WorkflowRow{};
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)workflow_id;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (workflow_id.empty()) {
+    if (out_error) *out_error = "get_workflow: workflow_id is empty";
+    return false;
+  }
+  if (!out_row) return false;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT workflow_id, session_id, trace_id, created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
+FROM workflows
+WHERE workflow_id=?
+LIMIT 1;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = bind_text(st, 1, workflow_id);
+  bool found = false;
+  if (ok && step_row(st)) {
+    found = true;
+    const unsigned char* wid = sqlite3_column_text(st, 0);
+    const unsigned char* sid = sqlite3_column_text(st, 1);
+    const unsigned char* tid = sqlite3_column_text(st, 2);
+    const unsigned char* stxt = sqlite3_column_text(st, 5);
+    const unsigned char* etxt = sqlite3_column_text(st, 7);
+    const unsigned char* spec = sqlite3_column_text(st, 8);
+    const unsigned char* res = sqlite3_column_text(st, 9);
+    out_row->workflow_id = wid ? (const char*)wid : "";
+    out_row->session_id = sid ? (const char*)sid : "";
+    out_row->trace_id = tid ? (const char*)tid : "";
+    out_row->created_unix_ms = sqlite3_column_int64(st, 3);
+    out_row->updated_unix_ms = sqlite3_column_int64(st, 4);
+    out_row->status = stxt ? (const char*)stxt : "";
+    out_row->cancel_requested = sqlite3_column_int(st, 6) != 0;
+    out_row->error = etxt ? (const char*)etxt : "";
+    out_row->spec_json = spec ? (const char*)spec : "";
+    out_row->result_json = res ? (const char*)res : "";
+  }
+  sqlite3_finalize(st);
+  if (!ok) {
+    if (out_error && out_error->empty()) *out_error = sqlite_err(db_);
+    return false;
+  }
+  return found;
+#endif
+}
+
+bool AgentDb::list_workflows_by_status(
+  const std::string& status,
+  size_t max_rows,
+  std::vector<WorkflowRow>* out_rows_desc,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_rows_desc) out_rows_desc->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)status;
+  (void)max_rows;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (!out_rows_desc) return false;
+  if (max_rows == 0) max_rows = 64;
+  if (max_rows > 512) max_rows = 512;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT workflow_id, session_id, trace_id, created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
+FROM workflows
+WHERE status=?
+ORDER BY updated_unix_ms DESC
+LIMIT ?;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_text(st, 1, status);
+  ok = ok && bind_i64(st, 2, (int64_t)max_rows);
+  while (ok && step_row(st)) {
+    WorkflowRow row;
+    const unsigned char* wid = sqlite3_column_text(st, 0);
+    const unsigned char* sid = sqlite3_column_text(st, 1);
+    const unsigned char* tid = sqlite3_column_text(st, 2);
+    const unsigned char* stxt = sqlite3_column_text(st, 5);
+    const unsigned char* etxt = sqlite3_column_text(st, 7);
+    const unsigned char* spec = sqlite3_column_text(st, 8);
+    const unsigned char* res = sqlite3_column_text(st, 9);
+    row.workflow_id = wid ? (const char*)wid : "";
+    row.session_id = sid ? (const char*)sid : "";
+    row.trace_id = tid ? (const char*)tid : "";
+    row.created_unix_ms = sqlite3_column_int64(st, 3);
+    row.updated_unix_ms = sqlite3_column_int64(st, 4);
+    row.status = stxt ? (const char*)stxt : "";
+    row.cancel_requested = sqlite3_column_int(st, 6) != 0;
+    row.error = etxt ? (const char*)etxt : "";
+    row.spec_json = spec ? (const char*)spec : "";
+    row.result_json = res ? (const char*)res : "";
+    out_rows_desc->push_back(std::move(row));
+  }
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  return ok;
+#endif
+}
+
+bool AgentDb::list_workflow_tasks(const std::string& workflow_id, std::vector<WorkflowTaskRow>* out_rows, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (out_rows) out_rows->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)workflow_id;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (workflow_id.empty()) {
+    if (out_error) *out_error = "list_workflow_tasks: workflow_id is empty";
+    return false;
+  }
+  if (!out_rows) return false;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT task_id, created_unix_ms, updated_unix_ms, status, attempt, max_attempts, ready_unix_ms, started_unix_ms, finished_unix_ms,
+       depends_on_json, request_json, expect_json, result_json, error
+FROM workflow_tasks
+WHERE workflow_id=?
+ORDER BY created_unix_ms ASC, task_id ASC;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = bind_text(st, 1, workflow_id);
+  while (ok && step_row(st)) {
+    WorkflowTaskRow row;
+    row.workflow_id = workflow_id;
+    const unsigned char* tid = sqlite3_column_text(st, 0);
+    row.task_id = tid ? (const char*)tid : "";
+    row.created_unix_ms = sqlite3_column_int64(st, 1);
+    row.updated_unix_ms = sqlite3_column_int64(st, 2);
+    const unsigned char* stxt = sqlite3_column_text(st, 3);
+    row.status = stxt ? (const char*)stxt : "";
+    row.attempt = sqlite3_column_int(st, 4);
+    row.max_attempts = sqlite3_column_int(st, 5);
+    row.ready_unix_ms = sqlite3_column_int64(st, 6);
+    row.started_unix_ms = sqlite3_column_int64(st, 7);
+    row.finished_unix_ms = sqlite3_column_int64(st, 8);
+    const unsigned char* deps = sqlite3_column_text(st, 9);
+    const unsigned char* req = sqlite3_column_text(st, 10);
+    const unsigned char* exp = sqlite3_column_text(st, 11);
+    const unsigned char* res = sqlite3_column_text(st, 12);
+    const unsigned char* etxt = sqlite3_column_text(st, 13);
+    row.depends_on_json = deps ? (const char*)deps : "";
+    row.request_json = req ? (const char*)req : "";
+    row.expect_json = exp ? (const char*)exp : "";
+    row.result_json = res ? (const char*)res : "";
+    row.error = etxt ? (const char*)etxt : "";
+    out_rows->push_back(std::move(row));
+  }
+  sqlite3_finalize(st);
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+  return ok;
+#endif
+}
+
+bool AgentDb::upsert_workflow(const WorkflowRow& wf, std::string* out_error) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)wf;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (wf.workflow_id.empty()) {
+    if (out_error) *out_error = "upsert_workflow: workflow_id is empty";
+    return false;
+  }
+  const int64_t now = wf.updated_unix_ms > 0 ? wf.updated_unix_ms : unix_ms_now();
+  const int64_t created = wf.created_unix_ms > 0 ? wf.created_unix_ms : now;
+  const std::string status = wf.status.empty() ? "queued" : wf.status;
+  const std::string spec = wf.spec_json.empty() ? "{}" : wf.spec_json;
+
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+INSERT INTO workflows(
+  workflow_id, session_id, trace_id, created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
+) VALUES(?,?,?,?,?,?,?,?,?,?)
+ON CONFLICT(workflow_id) DO UPDATE SET
+  session_id = CASE WHEN excluded.session_id IS NOT NULL AND excluded.session_id <> '' THEN excluded.session_id ELSE workflows.session_id END,
+  trace_id = CASE WHEN excluded.trace_id IS NOT NULL AND excluded.trace_id <> '' THEN excluded.trace_id ELSE workflows.trace_id END,
+  updated_unix_ms = excluded.updated_unix_ms,
+  status = excluded.status,
+  cancel_requested = excluded.cancel_requested,
+  error = excluded.error,
+  spec_json = excluded.spec_json,
+  result_json = excluded.result_json;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_text(st, 1, wf.workflow_id);
+  ok = ok && bind_text_or_null(st, 2, wf.session_id);
+  ok = ok && bind_text(st, 3, wf.trace_id);
+  ok = ok && bind_i64(st, 4, created);
+  ok = ok && bind_i64(st, 5, now);
+  ok = ok && bind_text(st, 6, status);
+  ok = ok && bind_i32(st, 7, wf.cancel_requested ? 1 : 0);
+  ok = ok && bind_text(st, 8, wf.error);
+  ok = ok && bind_text(st, 9, spec);
+  ok = ok && bind_text(st, 10, wf.result_json);
+  ok = ok && step_done(st);
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  return ok;
+#endif
+}
+
+bool AgentDb::upsert_workflow_task(const WorkflowTaskRow& task, std::string* out_error) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)task;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (task.workflow_id.empty() || task.task_id.empty()) {
+    if (out_error) *out_error = "upsert_workflow_task: workflow_id/task_id empty";
+    return false;
+  }
+  const int64_t now = task.updated_unix_ms > 0 ? task.updated_unix_ms : unix_ms_now();
+  const int64_t created = task.created_unix_ms > 0 ? task.created_unix_ms : now;
+  const std::string status = task.status.empty() ? "queued" : task.status;
+  const int attempt = task.attempt < 0 ? 0 : task.attempt;
+  const int max_attempts = task.max_attempts <= 0 ? 1 : task.max_attempts;
+  const int64_t ready = task.ready_unix_ms > 0 ? task.ready_unix_ms : 0;
+  const int64_t started = task.started_unix_ms > 0 ? task.started_unix_ms : 0;
+  const int64_t finished = task.finished_unix_ms > 0 ? task.finished_unix_ms : 0;
+
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+INSERT INTO workflow_tasks(
+  workflow_id, task_id, created_unix_ms, updated_unix_ms, status, attempt, max_attempts, ready_unix_ms,
+  started_unix_ms, finished_unix_ms, depends_on_json, request_json, expect_json, result_json, error
+) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+ON CONFLICT(workflow_id, task_id) DO UPDATE SET
+  updated_unix_ms = excluded.updated_unix_ms,
+  status = excluded.status,
+  attempt = excluded.attempt,
+  max_attempts = excluded.max_attempts,
+  ready_unix_ms = excluded.ready_unix_ms,
+  started_unix_ms = excluded.started_unix_ms,
+  finished_unix_ms = excluded.finished_unix_ms,
+  depends_on_json = excluded.depends_on_json,
+  request_json = excluded.request_json,
+  expect_json = excluded.expect_json,
+  result_json = excluded.result_json,
+  error = excluded.error;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_text(st, 1, task.workflow_id);
+  ok = ok && bind_text(st, 2, task.task_id);
+  ok = ok && bind_i64(st, 3, created);
+  ok = ok && bind_i64(st, 4, now);
+  ok = ok && bind_text(st, 5, status);
+  ok = ok && bind_i32(st, 6, attempt);
+  ok = ok && bind_i32(st, 7, max_attempts);
+  ok = ok && bind_i64(st, 8, ready);
+  ok = ok && bind_i64(st, 9, started);
+  ok = ok && bind_i64(st, 10, finished);
+  ok = ok && bind_text(st, 11, task.depends_on_json);
+  ok = ok && bind_text(st, 12, task.request_json);
+  ok = ok && bind_text(st, 13, task.expect_json);
+  ok = ok && bind_text(st, 14, task.result_json);
+  ok = ok && bind_text(st, 15, task.error);
+  ok = ok && step_done(st);
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  return ok;
+#endif
+}
+
+bool AgentDb::claim_workflow_task(
+  const std::string& workflow_id,
+  const std::string& task_id,
+  int64_t now_unix_ms,
+  int new_attempt,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)workflow_id;
+  (void)task_id;
+  (void)now_unix_ms;
+  (void)new_attempt;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (workflow_id.empty() || task_id.empty()) {
+    if (out_error) *out_error = "claim_workflow_task: workflow_id/task_id empty";
+    return false;
+  }
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+UPDATE workflow_tasks
+SET
+  status='running',
+  updated_unix_ms=?,
+  started_unix_ms=CASE WHEN started_unix_ms IS NULL OR started_unix_ms=0 THEN ? ELSE started_unix_ms END,
+  attempt=?
+WHERE workflow_id=? AND task_id=? AND status='queued';
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  const int64_t now = now_unix_ms > 0 ? now_unix_ms : unix_ms_now();
+  bool ok = true;
+  ok = ok && bind_i64(st, 1, now);
+  ok = ok && bind_i64(st, 2, now);
+  ok = ok && bind_i32(st, 3, new_attempt < 0 ? 0 : new_attempt);
+  ok = ok && bind_text(st, 4, workflow_id);
+  ok = ok && bind_text(st, 5, task_id);
+  ok = ok && step_done(st);
+  if (!ok) {
+    if (out_error && out_error->empty()) *out_error = sqlite_err(db_);
+    sqlite3_finalize(st);
+    return false;
+  }
+  const int changed = sqlite3_changes(db_);
+  sqlite3_finalize(st);
+  return changed > 0;
 #endif
 }
 
