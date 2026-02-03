@@ -96,6 +96,29 @@ static std::string make_uuidish_trace_id() {
   return std::string(buf);
 }
 
+static std::string sanitize_job_request_json_for_persist(const std::string& request_body_json) {
+  // Durable jobs persist their request JSON (for resume after restart).
+  // Never store secrets in the DB; resumed jobs should use daemon-configured keys.
+  Json::Value v;
+  std::string perr;
+  if (!json_parse_object(request_body_json, &v, &perr) || !v.isObject()) {
+    return "{}";
+  }
+  if (v.isMember("api_key")) v.removeMember("api_key");
+  if (v.isMember("Authorization")) v.removeMember("Authorization");
+  if (v.isMember("auth_token")) v.removeMember("auth_token");
+  if (v.isMember("trace_text")) v.removeMember("trace_text");
+  if (v.isMember("http_body")) v.removeMember("http_body");
+
+  Json::StreamWriterBuilder wb;
+  wb["indentation"] = "";
+  std::string out = Json::writeString(wb, v);
+  // Refuse to persist oversized job requests rather than truncating invalid JSON.
+  // If this returns empty, the job remains runnable in the current process lifetime but will not be resumable after restart.
+  if (out.size() > 256 * 1024) return "";
+  return out;
+}
+
 static bool path_is_within_root(const std::filesystem::path& root, const std::filesystem::path& p) {
   std::error_code ec;
   const std::filesystem::path abs_root = std::filesystem::weakly_canonical(root, ec);
@@ -2563,6 +2586,16 @@ void handle_run_async_endpoint(
   }
   job_set_trace_id(job_id, trace_id);
 
+  // Create the canonical request body for execution and a redacted copy for persistence.
+  Json::StreamWriterBuilder wb;
+  wb["indentation"] = "";
+  const std::string body_copy = Json::writeString(wb, args);
+  const std::string body_persist = sanitize_job_request_json_for_persist(body_copy);
+  if (body_persist.empty()) {
+    std::cerr << "agentd: warning: run_async job request too large to persist safely; job will not be resumable after restart"
+              << " job=" << job_id << " bytes=" << body_copy.size() << "\n";
+  }
+
   // Persist a durable job stub so UIs can still inspect job state after daemon restart.
   const std::string session_id =
     args.isMember("session_id") && args["session_id"].isString() ? args["session_id"].asString() : std::string("default");
@@ -2572,6 +2605,8 @@ void handle_run_async_endpoint(
     AgentDb::JobRow jr;
     jr.job_id = job_id;
     jr.session_id = no_session ? session_id : session_id;
+    jr.trace_id = trace_id;
+    jr.request_json = body_persist;
     jr.created_unix_ms = created_ms;
     jr.updated_unix_ms = created_ms;
     jr.status = "queued";
@@ -2591,9 +2626,6 @@ void handle_run_async_endpoint(
   // or where the request never reaches the daemon.
   std::cerr << "agentd: /api/v1/run_async accepted job=" << job_id << " trace_id=" << trace_id << " bytes=" << req.body.size() << "\n";
 
-  Json::StreamWriterBuilder wb;
-  wb["indentation"] = "";
-  const std::string body_copy = Json::writeString(wb, args);
   std::thread([job_id, body_copy, cfg, ocfg, db_or_null, tool_ext_or_null, sessions_root_dir, session_id, created_ms]() mutable {
     const auto started = std::chrono::steady_clock::now();
     std::cerr << "agentd: /api/v1/run_async job=" << job_id << " start bytes=" << body_copy.size() << "\n";

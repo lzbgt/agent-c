@@ -92,6 +92,7 @@ void handle_job_get_endpoint(
       Json::Value o(Json::objectValue);
       o["ok"] = true;
       o["job_id"] = jr.job_id;
+      if (!jr.trace_id.empty()) o["trace_id"] = jr.trace_id;
       o["status"] = jr.status;
       o["error"] = jr.error;
       o["stop_reason"] = jr.stop_reason;

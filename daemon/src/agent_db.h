@@ -187,6 +187,8 @@ class AgentDb {
   struct JobRow {
     std::string job_id;
     std::string session_id; // best-effort; may be empty for no_session runs
+    std::string trace_id;   // best-effort; used for correlation
+    std::string request_json; // JSON object string (redacted; used for job resume)
     int64_t created_unix_ms = 0;
     int64_t updated_unix_ms = 0;
     std::string status; // queued|running|done|error|cancelled|interrupted
@@ -204,6 +206,20 @@ class AgentDb {
 
   // On daemon restart, queued/running jobs cannot be resumed. Mark them as interrupted so UIs can be truthful.
   bool mark_inflight_jobs_interrupted(int64_t now_unix_ms, const std::string& reason, std::string* out_error);
+
+  // Lists jobs by status (ordered by updated_unix_ms DESC).
+  bool list_jobs_by_status(
+    const std::string& status,
+    size_t max_rows,
+    std::vector<JobRow>* out_rows_desc,
+    std::string* out_error
+  );
+
+  // Attempts to transition a queued job to running. Returns true only when the job was claimed.
+  bool claim_job(const std::string& job_id, int64_t now_unix_ms, std::string* out_error);
+
+  // Recovery on daemon startup: move running -> queued (resumable) and mark any inflight job missing request_json as interrupted.
+  bool recover_inflight_jobs_resumable(int64_t now_unix_ms, std::string* out_error);
 
   // Durable workflows (task graphs / DAGs).
   //

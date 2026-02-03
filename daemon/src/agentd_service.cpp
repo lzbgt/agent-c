@@ -10,6 +10,7 @@
 #include "db_query_endpoints.h"
 #include "file_endpoint.h"
 #include "job_endpoints.h"
+#include "job_engine.h"
 #include "job_manager.h"
 #include "job_stream_endpoint.h"
 #include "orchestrate_endpoints.h"
@@ -200,6 +201,7 @@ struct AgentdService::Impl {
   CorsConfig cors_cfg{};
   AgentDb db;
   std::unique_ptr<DaemonConfigStore> cfg_store;
+  std::unique_ptr<JobEngine> job_engine;
   std::unique_ptr<WorkflowEngine> wf_engine;
   HttpServer server;
 
@@ -254,15 +256,14 @@ struct AgentdService::Impl {
       }
     }
 
-    // Job durability: queued/running jobs from a previous process lifetime cannot be resumed.
-    // Mark them as interrupted so API consumers can get a truthful terminal state after restart.
+    // Job durability: recover inflight jobs to queued so they can resume after restart.
     {
       const int64_t now_ms = (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
                                std::chrono::system_clock::now().time_since_epoch())
                                .count();
       std::string err;
-      if (!db.mark_inflight_jobs_interrupted(now_ms, "daemon_restart", &err)) {
-        std::cerr << "Warning: failed to mark inflight jobs interrupted: " << err << "\n";
+      if (!db.recover_inflight_jobs_resumable(now_ms, &err)) {
+        std::cerr << "Warning: failed to recover inflight jobs: " << err << "\n";
       }
     }
 
@@ -292,6 +293,23 @@ struct AgentdService::Impl {
             job_gc(ttl_ms, max_jobs);
           }
         }).detach();
+      }
+    }
+
+    // Resumable async job scheduler (background).
+    if (!job_engine) {
+      const DaemonConfig cfg0 = cfg_store->snapshot();
+      job_engine = std::make_unique<JobEngine>(
+        &db,
+        [this]() { return cfg_store->snapshot(); },
+        [this](const DaemonConfig& c) { return ocfg_from_cfg(c); },
+        tool_ext_or_null(),
+        cfg0.sessions_root_dir,
+        JobEngine::Options{}
+      );
+      std::string jerr;
+      if (!job_engine->start(&jerr)) {
+        std::cerr << "Warning: failed to start job engine: " << jerr << "\n";
       }
     }
 
@@ -541,6 +559,7 @@ struct AgentdService::Impl {
   }
 
   void stop() {
+    if (job_engine) job_engine->stop();
     if (wf_engine) wf_engine->stop();
     server.stop();
     if (server_thread.joinable()) {

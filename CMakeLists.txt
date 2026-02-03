@@ -133,6 +133,7 @@ if(AGENT_BUILD_HOST)
     daemon/src/http_util.cpp
     daemon/src/job_endpoints.cpp
     daemon/src/job_manager.cpp
+    daemon/src/job_engine.cpp
     daemon/src/json_util.cpp
     daemon/src/openrouter_models_endpoint.cpp
     daemon/src/orchestrate_endpoints.cpp

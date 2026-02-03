@@ -70,7 +70,7 @@ PY
 STUB_PID=$!
 
 # Start agentd (first process lifetime).
-agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "${NAME}" \
+OPENAI_API_KEY="dummy" agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "${NAME}" \
   --db-path "${DB_PATH}" \
   --state-dir "${STATE_DIR}" \
   --tools none
@@ -112,14 +112,29 @@ sleep 0.5
 agentd_smoke_stop
 
 # Restart agentd (second process lifetime) against the same DB.
-agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "${NAME}_restart" \
+OPENAI_API_KEY="dummy" agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "${NAME}_restart" \
   --db-path "${DB_PATH}" \
   --state-dir "${STATE_DIR}" \
   --tools none
 agentd_smoke_wait_health "${DAEMON_URL}"
 
 job_id_q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${job_id}")"
-job="$(curl -fsS --noproxy "*" --max-time 10 "${DAEMON_URL}/api/v1/job?job_id=${job_id_q}")"
+job=""
+for _ in $(seq 1 200); do
+  job="$(curl -fsS --noproxy "*" --max-time 10 "${DAEMON_URL}/api/v1/job?job_id=${job_id_q}")" || true
+  if python3 - <<PY >/dev/null 2>&1
+import json, sys
+obj = json.loads(r'''${job}''') if r'''${job}''' else {}
+st = obj.get("status")
+if st in ("done","error","cancelled","interrupted"):
+  raise SystemExit(0)
+raise SystemExit(1)
+PY
+  then
+    break
+  fi
+  sleep 0.1
+done
 
 python3 - <<PY
 import json, sys
@@ -127,15 +142,17 @@ obj = json.loads(r'''${job}''')
 if not obj.get("ok"):
   print("expected ok job lookup after restart", obj, file=sys.stderr)
   raise SystemExit(1)
-if obj.get("status") != "interrupted":
-  print("expected status=interrupted after restart", obj, file=sys.stderr)
+if obj.get("status") != "done":
+  print("expected status=done after restart resume", obj, file=sys.stderr)
   raise SystemExit(1)
 res = obj.get("result") or {}
 if not isinstance(res, dict):
   print("expected result object", obj, file=sys.stderr)
   raise SystemExit(1)
-if res.get("ok") is not False:
-  print("expected result.ok=false", obj, file=sys.stderr)
+if res.get("ok") is not True:
+  print("expected result.ok=true", obj, file=sys.stderr)
+  raise SystemExit(1)
+if (res.get("assistant_text") or "").strip() != "OK":
+  print("expected assistant_text=OK", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
-

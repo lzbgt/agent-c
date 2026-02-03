@@ -121,8 +121,7 @@ Cancellation semantics:
 
 ## Storage (SQLite)
 
-See `docs/DB.md` (schema v9) for:
+See `docs/DB.md` (schema v10) for:
 
 - `workflows`
 - `workflow_tasks`
-

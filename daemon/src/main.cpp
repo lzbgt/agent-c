@@ -29,6 +29,7 @@
 #include "openai_client.h"
 
 #include "job_manager.h"
+#include "job_engine.h"
 #include "openrouter_util.h"
 
 #include <filesystem>
@@ -604,15 +605,14 @@ int main(int argc, char** argv) {
     }
   }
 
-  // Job durability: queued/running jobs from a previous process lifetime cannot be resumed.
-  // Mark them as interrupted so UIs can show a truthful terminal state after daemon restart.
+  // Job durability: recover inflight jobs to queued so they can resume after restart.
   {
     const int64_t now_ms = (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
                              std::chrono::system_clock::now().time_since_epoch())
                              .count();
     std::string err;
-    if (!db.mark_inflight_jobs_interrupted(now_ms, "daemon_restart", &err)) {
-      std::cerr << "Warning: failed to mark inflight jobs interrupted: " << err << "\n";
+    if (!db.recover_inflight_jobs_resumable(now_ms, &err)) {
+      std::cerr << "Warning: failed to recover inflight jobs: " << err << "\n";
     }
   }
 
@@ -680,6 +680,22 @@ int main(int argc, char** argv) {
         job_gc(ttl_ms, max_jobs);
       }
     }).detach();
+    }
+  }
+
+  // Resumable async job scheduler (background).
+  JobEngine job_engine(
+    db_or_null,
+    [&cfg_store]() { return cfg_store.snapshot(); },
+    ocfg_from_cfg,
+    tool_ext_or_null,
+    cfg.sessions_root_dir,
+    JobEngine::Options{}
+  );
+  {
+    std::string jerr;
+    if (!job_engine.start(&jerr)) {
+      std::cerr << "Warning: failed to start job engine: " << jerr << "\n";
     }
   }
 
@@ -906,14 +922,17 @@ int main(int argc, char** argv) {
     std::cerr << "Provide --auth-token <token> (recommended) or pass --allow-unauth to override (insecure).\n";
     std::cerr << "host=" << cfg_final.listen_host << "\n";
     wf_engine.stop();
+    job_engine.stop();
     return 2;
   }
   std::cerr << "agentd listening on http://" << cfg_final.listen_host << ":" << cfg_final.listen_port << "\n";
   if (!server.serve(cfg_final.listen_host, cfg_final.listen_port, &err)) {
     std::cerr << "agentd failed: " << err << "\n";
     wf_engine.stop();
+    job_engine.stop();
     return 1;
   }
   wf_engine.stop();
+  job_engine.stop();
   return 0;
 }
