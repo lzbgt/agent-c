@@ -100,6 +100,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:-}
+      KIMI_API_KEY_CN: ${KIMI_API_KEY_CN:-}
+      MOONSHOT_API_KEY: ${MOONSHOT_API_KEY:-}
+      MOONSHOT_API_KEY_CN: ${MOONSHOT_API_KEY_CN:-}
     command:
       - /usr/local/bin/agentd
       - --host
@@ -112,13 +115,11 @@ services:
       - "http://127.0.0.1:${WEBUI_PUBLISHED_PORT:-8100}"
       - --cors-origin
       - "http://localhost:${WEBUI_PUBLISHED_PORT:-8100}"
+      - --state-dir
+      - "/data"
       - --tools
       - host
       - --yolo
-      - --host-scope
-      - "/data"
-      - --tools-root
-      - "@host"
       - --db-path
       - "/data/agentd.db"
     volumes:

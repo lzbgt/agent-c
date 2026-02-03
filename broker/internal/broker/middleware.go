@@ -158,7 +158,12 @@ func withCORS(allowedOrigins []string, next http.Handler) http.Handler {
 			// Reflect the allowed origin. Using "*" breaks Authorization-bearing requests in browsers.
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
-			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Request-ID")
+			// Keep allow-headers narrow but sufficient for browser clients.
+			// - Authorization: OIDC bearer token (broker auth)
+			// - X-Agentd-Authorization: optional pass-through bearer token for proxied agentd endpoints
+			// - Content-Type: JSON bodies
+			// - X-Request-ID: tracing
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, X-Agentd-Authorization, Content-Type, X-Request-ID")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID")
 			w.Header().Set("Access-Control-Max-Age", "600")

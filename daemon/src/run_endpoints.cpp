@@ -925,6 +925,14 @@ static Json::Value run_request_to_json(
         if (const char* k = getenv_s("DEEPSEEK_API_KEY")) key = k;
         else if (const char* k2 = getenv_s("OPENAI_API_KEY")) key = k2;
         else if (const char* k3 = getenv_s("OPENROUTER_API_KEY")) key = k3;
+      } else if (run_provider == "moonshot") {
+        // Moonshot/Kimi: commonly stored as KIMI_API_KEY_CN in ~/.env.
+        if (const char* k = getenv_s("KIMI_API_KEY_CN")) key = k;
+        else if (const char* k2 = getenv_s("MOONSHOT_API_KEY")) key = k2;
+        else if (const char* k3 = getenv_s("MOONSHOT_API_KEY_CN")) key = k3;
+        else if (const char* k4 = getenv_s("OPENAI_API_KEY")) key = k4;
+        else if (const char* k5 = getenv_s("OPENROUTER_API_KEY")) key = k5;
+        else if (const char* k6 = getenv_s("DEEPSEEK_API_KEY")) key = k6;
       } else if (run_provider == "openrouter") {
         if (const char* k = getenv_s("OPENROUTER_API_KEY")) key = k;
         else if (const char* k2 = getenv_s("OPENAI_API_KEY")) key = k2;

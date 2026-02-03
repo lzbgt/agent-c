@@ -347,6 +347,13 @@ func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentI
 		headers[k] = vv[0]
 	}
 	headers["X-Agentd-Broker-User"] = p.Sub
+	// Allow callers to pass through an agentd auth header without colliding with broker OIDC auth.
+	// The broker consumes `Authorization: Bearer <oidc_jwt>`; the forwarded request may need a different
+	// bearer token for the agent endpoint behind the connector.
+	if v := strings.TrimSpace(r.Header.Get("X-Agentd-Authorization")); v != "" {
+		headers["Authorization"] = v
+		delete(headers, "X-Agentd-Authorization")
+	}
 
 	start := time.Now()
 	status := 0
@@ -481,6 +488,10 @@ func (s *Server) handleAgentProxySSE(w http.ResponseWriter, r *http.Request, age
 		headers[k] = vv[0]
 	}
 	headers["X-Agentd-Broker-User"] = p.Sub
+	if v := strings.TrimSpace(r.Header.Get("X-Agentd-Authorization")); v != "" {
+		headers["Authorization"] = v
+		delete(headers, "X-Agentd-Authorization")
+	}
 
 	streamID := newID()
 	streamCh, err := a.RegisterStream(streamID)

@@ -1,5 +1,6 @@
 import React from "react";
 import { apiCancelJob, apiPostSessionUpload } from "../api";
+import useLocalStorageState from "../hooks/useLocalStorageState";
 
 export type Attachment = { path: string; name?: string; mime?: string; kind?: string; bytes?: number };
 
@@ -57,6 +58,14 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
   const [attachments, setAttachments] = React.useState<Attachment[]>([]);
   const [drawerOpen, setDrawerOpen] = React.useState<boolean>(false);
   const [uploadBusy, setUploadBusy] = React.useState<boolean>(false);
+  const collapsedKey = React.useMemo(() => `agentui.composer.collapsed:${String(props.effectiveBase || "").trim() || "default"}`, [props.effectiveBase]);
+  const [collapsed, setCollapsed] = useLocalStorageState<boolean>(collapsedKey, false);
+
+  const promptPreview = React.useMemo(() => {
+    const p = String(props.prompt || "").trim();
+    if (!p) return "";
+    return p.length > 140 ? `${p.slice(0, 140)}…` : p;
+  }, [props.prompt]);
 
   React.useEffect(() => {
     setAttachments([]);
@@ -181,7 +190,7 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
                   )}
 
                   <div className="mt-2 text-white/50">
-                    Attachments apply to the next <span className="text-white/70">Run</span> only. After the run starts, the staged list is cleared.
+                    Attachments apply to the next <span className="text-white/70">Run</span> only. After the run is accepted by the daemon (async) or completes (sync), the staged list is cleared.
                     Uploaded files may still remain in the session storage on the daemon.
                   </div>
                 </div>
@@ -214,7 +223,23 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
 
       <div className="mx-auto max-w-7xl px-3 py-3">
         <div className="flex min-w-0 items-center justify-between gap-2">
-          <div className="min-w-0 text-[11px] text-white/60">
+          <div className="flex min-w-0 items-center gap-2 text-[11px] text-white/60">
+            <button
+              className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/70 hover:bg-black/40"
+              type="button"
+              onClick={() => setCollapsed((v) => !v)}
+              aria-expanded={!collapsed}
+              title={collapsed ? "Expand composer" : "Collapse composer"}
+            >
+              {collapsed ? "Expand" : "Collapse"}
+              {collapsed && promptPreview ? <span className="max-w-[48vw] truncate text-white/50">{promptPreview}</span> : null}
+              {attachments.length > 0 ? (
+                <span className="text-white/50">
+                  ({attachments.length} attachment{attachments.length === 1 ? "" : "s"})
+                </span>
+              ) : null}
+            </button>
+
             <button
               className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/70 hover:bg-black/40"
               type="button"
@@ -222,7 +247,6 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
               aria-expanded={drawerOpen}
             >
               {drawerOpen ? "Hide details" : "Show details"}
-              {attachments.length > 0 ? <span className="text-white/50">({attachments.length} attachment{attachments.length === 1 ? "" : "s"})</span> : null}
               {props.jobError || props.runError || props.resultError ? <span className="text-rose-300">•</span> : null}
               {props.jobNotice ? <span className="text-amber-200">•</span> : null}
             </button>
@@ -259,107 +283,111 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
           </div>
         </div>
 
-        <textarea
-          className="mt-2 w-full resize-none rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm leading-relaxed shadow-inner max-h-[30vh] overflow-y-auto"
-          data-testid="prompt"
-          rows={3}
-          value={props.prompt}
-          placeholder="Describe the task… (Ctrl/⌘+Enter to run)"
-          onChange={(e) => props.setPrompt(e.target.value)}
-          onKeyDown={(e) => {
-            if (props.runDisabled) return;
-            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              onRun();
-            }
-          }}
-        />
+        {!collapsed ? (
+          <>
+            <textarea
+              className="mt-2 w-full resize-none rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm leading-relaxed shadow-inner max-h-[30vh] overflow-y-auto"
+              data-testid="prompt"
+              rows={3}
+              value={props.prompt}
+              placeholder="Describe the task… (Ctrl/⌘+Enter to run)"
+              onChange={(e) => props.setPrompt(e.target.value)}
+              onKeyDown={(e) => {
+                if (props.runDisabled) return;
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  onRun();
+                }
+              }}
+            />
 
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <input
-            type="file"
-            multiple
-            className="hidden"
-            id="agentui-file-input"
-            onChange={async (e) => {
-              const files = Array.from(e.target.files || []);
-              e.currentTarget.value = "";
-              if (files.length === 0) return;
-              if (uploadBusy) return;
-              const sid = String(props.sessionId || "").trim() || "default";
-              setUploadBusy(true);
-              props.setJobNotice(null);
-              try {
-                const payloadFiles: { name: string; mime?: string; data_base64: string }[] = [];
-                for (const f of files.slice(0, 16)) {
-                  const maxBytes = 32 * 1024 * 1024;
-                  if (typeof (f as any)?.size === "number" && (f as any).size > maxBytes) continue;
-                  const name = String(f.name || "upload.bin");
-                  const mime = String(f.type || "").trim() || guessMimeFromName(name) || undefined;
-                  const data_base64 = await fileToBase64(f);
-                  payloadFiles.push({ name, mime, data_base64 });
-                }
-                if (payloadFiles.length === 0) {
-                  props.setJobNotice("no files uploaded (too large or invalid)");
-                  return;
-                }
-                const resp = await apiPostSessionUpload(
-                  props.effectiveBase,
-                  { session_id: sid, files: payloadFiles },
-                  props.daemonAuthToken || undefined,
-                );
-                if (!resp.ok) {
-                  props.setJobNotice(resp.error ? `upload failed: ${resp.error}` : "upload failed");
-                  return;
-                }
-                const newOnes =
-                  (resp.files || [])
-                    .map((x: any) => {
-                      const path = typeof x?.path === "string" ? x.path : "";
-                      if (!path) return null;
-                      return {
-                        path,
-                        name: typeof x?.name === "string" ? x.name : undefined,
-                        mime: typeof x?.mime === "string" ? x.mime : undefined,
-                        kind: typeof x?.kind === "string" ? x.kind : undefined,
-                        bytes: typeof x?.bytes === "number" ? x.bytes : undefined,
-                      } as Attachment;
-                    })
-                    .filter(Boolean) as Attachment[];
-                if (newOnes.length === 0) {
-                  props.setJobNotice("upload succeeded but returned no file paths");
-                  return;
-                }
-                setAttachments((prev) => {
-                  const merged = [...prev];
-                  for (const a of newOnes) {
-                    if (!merged.some((m) => m.path === a.path)) merged.push(a);
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <input
+                type="file"
+                multiple
+                className="hidden"
+                id="agentui-file-input"
+                onChange={async (e) => {
+                  const files = Array.from(e.target.files || []);
+                  e.currentTarget.value = "";
+                  if (files.length === 0) return;
+                  if (uploadBusy) return;
+                  const sid = String(props.sessionId || "").trim() || "default";
+                  setUploadBusy(true);
+                  props.setJobNotice(null);
+                  try {
+                    const payloadFiles: { name: string; mime?: string; data_base64: string }[] = [];
+                    for (const f of files.slice(0, 16)) {
+                      const maxBytes = 32 * 1024 * 1024;
+                      if (typeof (f as any)?.size === "number" && (f as any).size > maxBytes) continue;
+                      const name = String(f.name || "upload.bin");
+                      const mime = String(f.type || "").trim() || guessMimeFromName(name) || undefined;
+                      const data_base64 = await fileToBase64(f);
+                      payloadFiles.push({ name, mime, data_base64 });
+                    }
+                    if (payloadFiles.length === 0) {
+                      props.setJobNotice("no files uploaded (too large or invalid)");
+                      return;
+                    }
+                    const resp = await apiPostSessionUpload(
+                      props.effectiveBase,
+                      { session_id: sid, files: payloadFiles },
+                      props.daemonAuthToken || undefined,
+                    );
+                    if (!resp.ok) {
+                      props.setJobNotice(resp.error ? `upload failed: ${resp.error}` : "upload failed");
+                      return;
+                    }
+                    const newOnes =
+                      (resp.files || [])
+                        .map((x: any) => {
+                          const path = typeof x?.path === "string" ? x.path : "";
+                          if (!path) return null;
+                          return {
+                            path,
+                            name: typeof x?.name === "string" ? x.name : undefined,
+                            mime: typeof x?.mime === "string" ? x.mime : undefined,
+                            kind: typeof x?.kind === "string" ? x.kind : undefined,
+                            bytes: typeof x?.bytes === "number" ? x.bytes : undefined,
+                          } as Attachment;
+                        })
+                        .filter(Boolean) as Attachment[];
+                    if (newOnes.length === 0) {
+                      props.setJobNotice("upload succeeded but returned no file paths");
+                      return;
+                    }
+                    setAttachments((prev) => {
+                      const merged = [...prev];
+                      for (const a of newOnes) {
+                        if (!merged.some((m) => m.path === a.path)) merged.push(a);
+                      }
+                      return merged;
+                    });
+                    props.setJobNotice(`uploaded ${newOnes.length} file(s)`);
+                  } catch (err) {
+                    props.setJobNotice(`upload failed: ${String(err)}`);
+                  } finally {
+                    setUploadBusy(false);
                   }
-                  return merged;
-                });
-                props.setJobNotice(`uploaded ${newOnes.length} file(s)`);
-              } catch (err) {
-                props.setJobNotice(`upload failed: ${String(err)}`);
-              } finally {
-                setUploadBusy(false);
-              }
-            }}
-          />
-          <label
-            htmlFor="agentui-file-input"
-            className={`inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 ${uploadBusy ? "opacity-50 pointer-events-none" : ""}`}
-          >
-            {uploadBusy ? "Uploading…" : "Attach files"}
-          </label>
+                }}
+              />
+              <label
+                htmlFor="agentui-file-input"
+                className={`inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 ${uploadBusy ? "opacity-50 pointer-events-none" : ""}`}
+              >
+                {uploadBusy ? "Uploading…" : "Attach files"}
+              </label>
 
-          {attachments.length > 0 ? (
-            <div className="text-xs text-white/60">
-              Staged: <span className="text-white/80">{attachments.length}</span>
+              {attachments.length > 0 ? (
+                <div className="text-xs text-white/60">
+                  Staged: <span className="text-white/80">{attachments.length}</span>
+                </div>
+              ) : (
+                <div className="text-xs text-white/50">No staged attachments</div>
+              )}
             </div>
-          ) : (
-            <div className="text-xs text-white/50">No staged attachments</div>
-          )}
-        </div>
+          </>
+        ) : null}
       </div>
     </div>
   );

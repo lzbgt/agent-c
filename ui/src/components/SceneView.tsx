@@ -625,6 +625,16 @@ export default function SceneView({
     return `agentui.scene.expandedById:${base}::${sidKey}`;
   }, [baseUrl, sessionId]);
   const [expandedById, setExpandedById] = useLocalStorageState<Record<string, boolean>>(expandedKey, {});
+
+  // UX: by default, only show the latest entity(ies) to maximize the "current" view.
+  // Older entities can be shown as a batch via a single toggle (persisted in localStorage).
+  const showAllEntitiesKey = React.useMemo(() => {
+    const base = typeof baseUrl === "string" ? baseUrl.trim() : "";
+    const sidKey = typeof sessionId === "string" ? sessionId.trim() : "";
+    return `agentui.scene.showAllEntities:${base}::${sidKey}`;
+  }, [baseUrl, sessionId]);
+  const [showAllEntities, setShowAllEntities] = useLocalStorageState<boolean>(showAllEntitiesKey, false);
+
   React.useEffect(() => {
     // Keep UX stable as the Scene updates:
     // - Newly appeared entities default to expanded if they are among the latest N.
@@ -674,6 +684,9 @@ export default function SceneView({
     },
     [baseUrl, client, daemonAuthToken, sid],
   );
+  const visibleEntities = showAllEntities ? sortedEntities : sortedEntities.slice(0, defaultExpandedCount);
+  const hiddenEntitiesCount = Math.max(0, sortedEntities.length - visibleEntities.length);
+
   return (
     <div
       className={["flex min-h-0 flex-col rounded-lg border border-white/10 bg-white/5", className].filter(Boolean).join(" ")}
@@ -688,112 +701,133 @@ export default function SceneView({
             {sid ? `session=${sid}` : ""}
           </div>
         </div>
-	      </div>
-	      <div className="min-h-0 flex-1 overflow-auto px-3 pb-3">
-	        {entities.length === 0 ? (
-	          <div className="py-6 text-xs text-white/50">No scene entities.</div>
-	        ) : (
-	          <div className="space-y-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="text-[11px] text-white/40">
-                  Showing latest {defaultExpandedCount} expanded; older collapsed.
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-                    type="button"
-                    onClick={() =>
-                      setExpandedById((prev) => {
-                        const next = { ...prev };
-                        for (const e of sortedEntities) next[e.id] = true;
-                        return next;
-                      })
-                    }
-                    disabled={sortedEntities.length === 0}
-                    title="Expand all scene entities."
-                  >
-                    Expand all
-                  </button>
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-                    type="button"
-                    onClick={() =>
-                      setExpandedById((prev) => {
-                        const next = { ...prev };
-                        for (const e of sortedEntities) next[e.id] = false;
-                        return next;
-                      })
-                    }
-                    disabled={sortedEntities.length === 0}
-                    title="Collapse all scene entities."
-                  >
-                    Collapse all
-                  </button>
-                </div>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-auto px-3 pb-3">
+        {entities.length === 0 ? (
+          <div className="py-6 text-xs text-white/50">No scene entities.</div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-[11px] text-white/40">
+                {showAllEntities ? (
+                  <>Showing all {sortedEntities.length} entities.</>
+                ) : (
+                  <>
+                    Showing latest {Math.min(defaultExpandedCount, sortedEntities.length)}; {hiddenEntitiesCount} hidden.
+                  </>
+                )}
               </div>
-
-	            {sortedEntities.map((e, idx) => {
-	              const title = e.title || `${e.kind}:${e.id}`;
-	              const entityTid = `scene-entity-${toTestIdPart(e.id)}`;
-	              const props = e.props ?? {};
-                const expanded = Object.prototype.hasOwnProperty.call(expandedById, e.id) ? !!expandedById[e.id] : idx < defaultExpandedCount;
-                const ts = typeof e.updated_ms === "number" ? e.updated_ms : typeof e.created_ms === "number" ? e.created_ms : 0;
-	              return (
-	                <div key={e.id} className="rounded-md border border-white/10 bg-black/10 p-3" data-testid={entityTid}>
-	                  <button
-                      className="flex w-full items-center justify-between gap-2 text-left"
+              <div className="flex items-center gap-2">
+                {hiddenEntitiesCount > 0 ? (
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                    type="button"
+                    onClick={() => setShowAllEntities((v) => !v)}
+                    title={showAllEntities ? "Hide older entities" : "Show older entities"}
+                  >
+                    {showAllEntities ? `Hide history (${hiddenEntitiesCount})` : `Show history (${hiddenEntitiesCount})`}
+                  </button>
+                ) : null}
+                {showAllEntities ? (
+                  <>
+                    <button
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
                       type="button"
-                      onClick={() => setExpandedById((prev) => ({ ...prev, [e.id]: !expanded }))}
-                      title={expanded ? "Collapse" : "Expand"}
+                      onClick={() =>
+                        setExpandedById((prev) => {
+                          const next = { ...prev };
+                          for (const e of sortedEntities) next[e.id] = true;
+                          return next;
+                        })
+                      }
+                      disabled={sortedEntities.length === 0}
+                      title="Expand all scene entities."
                     >
-	                    <div className="text-xs font-semibold text-white/80">{title}</div>
-	                    <div className="flex items-center gap-2 text-[11px] text-white/40">
-                        {ts > 0 ? <span>{new Date(ts).toLocaleString()}</span> : null}
-	                      <code>{e.id}</code>
-	                    </div>
-	                  </button>
+                      Expand all
+                    </button>
+                    <button
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                      type="button"
+                      onClick={() =>
+                        setExpandedById((prev) => {
+                          const next = { ...prev };
+                          for (const e of sortedEntities) next[e.id] = false;
+                          return next;
+                        })
+                      }
+                      disabled={sortedEntities.length === 0}
+                      title="Collapse all scene entities."
+                    >
+                      Collapse all
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            </div>
 
-                    {!expanded ? (
-                      <div className="mt-2 text-[11px] text-white/40">Collapsed</div>
-                    ) : e.kind === "canvas2d" ? (
-                      <Canvas2DEntityView
-                        entity={e}
+            {visibleEntities.map((e, idx) => {
+              const title = e.title || `${e.kind}:${e.id}`;
+              const entityTid = `scene-entity-${toTestIdPart(e.id)}`;
+              const props = e.props ?? {};
+              const expanded = Object.prototype.hasOwnProperty.call(expandedById, e.id) ? !!expandedById[e.id] : idx < defaultExpandedCount;
+              const ts = typeof e.updated_ms === "number" ? e.updated_ms : typeof e.created_ms === "number" ? e.created_ms : 0;
+              return (
+                <div key={e.id} className="rounded-md border border-white/10 bg-black/10 p-3" data-testid={entityTid}>
+                  <button
+                    className="flex w-full items-center justify-between gap-2 text-left"
+                    type="button"
+                    onClick={() => setExpandedById((prev) => ({ ...prev, [e.id]: !expanded }))}
+                    title={expanded ? "Collapse" : "Expand"}
+                  >
+                    <div className="text-xs font-semibold text-white/80">{title}</div>
+                    <div className="flex items-center gap-2 text-[11px] text-white/40">
+                      {ts > 0 ? <span>{new Date(ts).toLocaleString()}</span> : null}
+                      <code>{e.id}</code>
+                    </div>
+                  </button>
+
+                  {!expanded ? (
+                    <div className="mt-2 text-[11px] text-white/40">Collapsed</div>
+                  ) : e.kind === "canvas2d" ? (
+                    <Canvas2DEntityView
+                      entity={e}
+                      baseUrl={baseUrl}
+                      yolo={yolo}
+                      sessionId={sessionId}
+                      daemonAuthToken={daemonAuthToken}
+                      onScriptError={postSceneError}
+                    />
+                  ) : e.kind === "dom" ? (
+                    <DomEntityView
+                      entity={e}
+                      baseUrl={baseUrl}
+                      yolo={yolo}
+                      sessionId={sessionId}
+                      daemonAuthToken={daemonAuthToken}
+                      onScriptError={postSceneError}
+                    />
+                  ) : e.kind === "artifact" && baseUrl && typeof yolo === "boolean" ? (
+                    <div className="mt-2">
+                      <ArtifactView
                         baseUrl={baseUrl}
                         yolo={yolo}
+                        artifact={props?.artifact ?? props}
+                        allowAutoplay={!!allowAutoplay}
                         sessionId={sessionId}
+                        client={client}
                         daemonAuthToken={daemonAuthToken}
-                        onScriptError={postSceneError}
                       />
-                    ) : e.kind === "dom" ? (
-                      <DomEntityView
-                        entity={e}
-                        baseUrl={baseUrl}
-                        yolo={yolo}
-                        sessionId={sessionId}
-                        daemonAuthToken={daemonAuthToken}
-                        onScriptError={postSceneError}
-                      />
-                    ) : e.kind === "artifact" && baseUrl && typeof yolo === "boolean" ? (
-                      <div className="mt-2">
-                        <ArtifactView
-                          baseUrl={baseUrl}
-                          yolo={yolo}
-                          artifact={props?.artifact ?? props}
-                          allowAutoplay={!!allowAutoplay}
-                          sessionId={sessionId}
-                          client={client}
-                          daemonAuthToken={daemonAuthToken}
-                        />
-                      </div>
-                    ) : (
-                      <JsonEntityView entity={e} />
-                    )}
-                  </div>
-	              );
-	            })}
-	          </div>
-	        )}
-	      </div>
-	    </div>
+                    </div>
+                  ) : (
+                    <JsonEntityView entity={e} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

@@ -225,6 +225,8 @@ export default function App() {
     const sid = String(sessionId || "").trim();
     return `agentui.historyUi:${effectiveBase}::${sid}`;
   }, [effectiveBase, sessionId]);
+  const [showAllHistoryEntries, setShowAllHistoryEntries] = useLocalStorageState<boolean>(`${historyUiKey}:showAll`, false);
+  const [showHistoryMessages, setShowHistoryMessages] = useLocalStorageState<boolean>(`${historyUiKey}:showMessages`, false);
   const [historyExpandedByKey, setHistoryExpandedByKey] = useLocalStorageState<Record<string, boolean>>(
     `${historyUiKey}:expandedByKey`,
     {},
@@ -598,6 +600,15 @@ export default function App() {
     sessions.data.ok === false &&
     String((sessions.data as any).error || "").toLowerCase() === "unauthorized";
   const missingDaemonAuthToken = String(daemonAuthToken || "").trim().length === 0;
+  const isLocalDaemonBase = React.useMemo(() => {
+    try {
+      const u = new URL(effectiveBase);
+      const host = String(u.hostname || "").toLowerCase();
+      return host === "127.0.0.1" || host === "localhost" || host === "0.0.0.0";
+    } catch {
+      return false;
+    }
+  }, [effectiveBase]);
 
   React.useEffect(() => {
     if (!showSettings) setClearAllArmed(false);
@@ -1742,6 +1753,19 @@ export default function App() {
             {" "}
             If you started via docker-compose, it’s typically <code className="text-amber-50/90">dev-agentd-token</code>.
           </span>
+          {isLocalDaemonBase ? (
+            <>
+              {" "}
+              <button
+                className="ml-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-50/90 hover:bg-amber-500/15"
+                type="button"
+                onClick={() => setDaemonAuthToken("dev-agentd-token")}
+                title="Convenience for local dev. For production, use a real bearer token."
+              >
+                Use dev token
+              </button>
+            </>
+          ) : null}
         </div>
       ) : null}
 
@@ -1769,14 +1793,36 @@ export default function App() {
           </div>
 
           <div className="mt-4">
-            <div className="mb-2 text-sm font-semibold text-white/80">History</div>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="text-sm font-semibold text-white/80">History</div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                  type="button"
+                  onClick={() => setShowHistoryMessages((v) => !v)}
+                  title={showHistoryMessages ? "Hide per-run event transcript" : "Show per-run event transcript"}
+                >
+                  {showHistoryMessages ? "Hide messages" : "Show messages"}
+                </button>
+                {historyEntriesDesc.length > 1 ? (
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                    type="button"
+                    onClick={() => setShowAllHistoryEntries((v) => !v)}
+                    title={showAllHistoryEntries ? "Hide older history entries" : "Show older history entries"}
+                  >
+                    {showAllHistoryEntries ? `Hide history (${historyEntriesDesc.length - 1})` : `Show history (${historyEntriesDesc.length - 1})`}
+                  </button>
+                ) : null}
+              </div>
+            </div>
             {historyEntriesDesc.length === 0 ? (
               <div className="rounded-md border border-white/10 bg-black/20 px-3 py-3 text-xs text-white/60">
                 No history yet. Run a prompt to populate the timeline.
               </div>
             ) : (
               <div className="grid gap-2">
-                {historyEntriesDesc.map((e: any, idx: number) => {
+                {(showAllHistoryEntries ? historyEntriesDesc : historyEntriesDesc.slice(0, 1)).map((e: any, idx: number) => {
                   const ts = typeof e?.ts_unix_ms === "number" ? e.ts_unix_ms : 0;
                   const when = ts ? new Date(ts).toLocaleString() : "";
                   const promptText = typeof e?.prompt === "string" ? e.prompt : "";
@@ -1836,7 +1882,7 @@ export default function App() {
                             </div>
                           </div>
                         ) : null}
-                        {evs.length > 0 ? (
+                        {evs.length > 0 && (isLive || showHistoryMessages) ? (
                           <ConversationView
                             baseUrl={effectiveBase}
                             yolo={yolo}
