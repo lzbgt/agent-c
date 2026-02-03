@@ -1,13 +1,15 @@
 # Agentd SQLite DB (Canonical Daemon Store)
 
-Date: 2026-01-31
+Date: 2026-02-03
 
-As of 2026-01-31, `agentd` stores its canonical daemon state in SQLite:
+When built with SQLite support (`AGENT_HAVE_SQLITE3`), `agentd` stores its canonical daemon state in SQLite:
 - sessions + message history
 - runs + events + tool records
 - artifacts + UI actions
 - client events (client ↔ daemon collaboration)
 - audit records (the Web UI “History” feed)
+- durable scene snapshots (`scene_states`)
+- durable async job metadata (`jobs`)
 
 This is convenient for debugging problems like:
 
@@ -38,7 +40,7 @@ Note: the CLI (`./build/agent`) still uses the portable file-backed session stor
 
 ## Enabling
 
-`agentd` always uses SQLite. You can choose where the DB lives:
+`agentd` uses SQLite when compiled with SQLite support. You can choose where the DB lives:
 - `--db-path <path>` (optional): set an explicit SQLite file path.
 - `AGENTD_DB_PATH` env var (optional): alternative to the flag.
 - Default: `./agentd.db` in the daemon working directory.
@@ -54,7 +56,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v6)
+## Schema (v8)
 
 All timestamps are Unix milliseconds.
 
@@ -218,6 +220,44 @@ forward-compatible.
 
 Index:
 - `CREATE INDEX audit_records_by_session ON audit_records(session_id, ts_unix_ms DESC, id DESC)`
+
+### `scene_states`
+
+Stores the per-session durable “Scene” snapshot (server-owned, DB-backed), used by the Web UI Scene panel.
+
+- `session_id TEXT PRIMARY KEY`
+- `updated_unix_ms INTEGER NOT NULL`
+- `scene_json TEXT NOT NULL` (JSON object string)
+
+Index:
+- `CREATE INDEX scene_states_by_updated ON scene_states(updated_unix_ms DESC)`
+
+### `jobs`
+
+Stores durable async job metadata so job state remains inspectable after daemon restart.
+
+- `job_id TEXT PRIMARY KEY`
+- `session_id TEXT` (nullable; jobs may be session-less)
+- `created_unix_ms INTEGER NOT NULL`
+- `updated_unix_ms INTEGER NOT NULL`
+- `status TEXT NOT NULL` (`queued|running|done|error|cancelled|interrupted`)
+- `cancel_requested INTEGER NOT NULL` (0/1)
+- `error TEXT` (optional; last error string)
+- `stop_reason TEXT` (optional; best-effort terminal reason)
+- `result_json TEXT` (optional; final response JSON blob from the run)
+- `last_heartbeat_unix_ms INTEGER` (optional; best-effort liveness signal)
+
+Indexes:
+- `CREATE INDEX jobs_by_status ON jobs(status, updated_unix_ms DESC)`
+- `CREATE INDEX jobs_by_session ON jobs(session_id, updated_unix_ms DESC)`
+
+## Source of truth
+
+The runtime schema and migration logic live in:
+
+- `daemon/src/agent_db.cpp`
+
+If this doc drifts from the code, treat the code as canonical and update this doc accordingly.
 
 ## Example queries
 

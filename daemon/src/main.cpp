@@ -10,6 +10,7 @@
 #include "openrouter_models_endpoint.h"
 #include "job_stream_endpoint.h"
 #include "tools_endpoint.h"
+#include "tool_plugins.h"
 #include "session_endpoints.h"
 #include "job_endpoints.h"
 #include "orchestrate_endpoints.h"
@@ -134,6 +135,7 @@ int main(int argc, char** argv) {
 
   DaemonConfig cfg;
   bool system_profile_set = false;
+  std::vector<std::string> tool_plugin_paths;
   // Minimal flag parsing (daemon is host-only; core remains argv/env-free).
   for (int i = 1; i < argc; i++) {
     const std::string a = argv[i] ? argv[i] : "";
@@ -341,6 +343,13 @@ int main(int argc, char** argv) {
         return 2;
       }
       system_profile_set = true;
+    } else if (a == "--tool-plugin") {
+      std::string v;
+      if (!take(&v) || v.empty()) {
+        std::cerr << "Missing value for --tool-plugin\n";
+        return 2;
+      }
+      tool_plugin_paths.push_back(v);
     } else if (a == "--cors-origin") {
       std::string v;
       if (!take(&v) || v.empty()) {
@@ -407,7 +416,8 @@ int main(int argc, char** argv) {
         << "  --host-policy full|readonly  Host tool safety policy (default: full)\n"
         << "  --yolo / --no-yolo   Default unrestricted mode (default: yolo)\n"
         << "  --no-default-system  Disable default host system hint (host tools only)\n"
-        << "  --system-profile <name> Host system prompt profile (default: default)\n";
+        << "  --system-profile <name> Host system prompt profile (default: default)\n"
+        << "  --tool-plugin <path> Load a tool plugin (repeatable)\n";
       return 0;
     } else {
       std::cerr << "Unknown arg: " << a << "\n";
@@ -623,6 +633,28 @@ int main(int argc, char** argv) {
 
   AgentDb* db_or_null = &db;
 
+  ToolPluginChain tool_plugins;
+  ToolExtension tool_plugin_ext{};
+  const ToolExtension* tool_ext_or_null = nullptr;
+  if (!tool_plugin_paths.empty()) {
+    std::vector<ToolPluginSpec> specs;
+    specs.reserve(tool_plugin_paths.size());
+    for (const auto& p : tool_plugin_paths) {
+      ToolPluginSpec s;
+      s.path = p;
+      specs.push_back(std::move(s));
+    }
+    std::string terr;
+    if (!tool_plugins.load(specs, &terr)) {
+      std::cerr << "Failed to load tool plugins: " << (terr.empty() ? "unknown error" : terr) << "\n";
+      return 2;
+    }
+    tool_plugin_ext = tool_plugins.as_tool_extension();
+    if (tool_plugin_ext.register_tools && tool_plugin_ext.execute_tool) {
+      tool_ext_or_null = &tool_plugin_ext;
+    }
+  }
+
   HttpServer server;
   server.set_default_headers({
     {"Server", "agentd/0.1"},
@@ -665,7 +697,7 @@ int main(int argc, char** argv) {
 
   server.handle("GET", "/api/v1/tools", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
-    handle_tools_endpoint(cur, cors_cfg, cur.sessions_root_dir, /*tool_ext_or_null=*/nullptr, req, resp);
+    handle_tools_endpoint(cur, cors_cfg, cur.sessions_root_dir, tool_ext_or_null, req, resp);
   });
 
   server.handle("GET", "/api/v1/openrouter/models", [&](const HttpRequest& req, HttpResponse* resp) {
@@ -785,20 +817,20 @@ int main(int argc, char** argv) {
   server.handle("POST", "/api/v1/run", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
-    handle_run_endpoint(cur, ocfg, cors_cfg, db_or_null, /*tool_ext_or_null=*/nullptr, sessions_root_dir, req, resp);
+    handle_run_endpoint(cur, ocfg, cors_cfg, db_or_null, tool_ext_or_null, sessions_root_dir, req, resp);
   });
 
   // Async run: returns a job id immediately and completes in the background.
   server.handle("POST", "/api/v1/run_async", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
-    handle_run_async_endpoint(cur, ocfg, cors_cfg, db_or_null, /*tool_ext_or_null=*/nullptr, sessions_root_dir, req, resp);
+    handle_run_async_endpoint(cur, ocfg, cors_cfg, db_or_null, tool_ext_or_null, sessions_root_dir, req, resp);
   });
 
   server.handle("POST", "/api/v1/orchestrate", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
-    handle_orchestrate_endpoint(cur, ocfg, cors_cfg, db_or_null, /*tool_ext_or_null=*/nullptr, sessions_root_dir, req, resp);
+    handle_orchestrate_endpoint(cur, ocfg, cors_cfg, db_or_null, tool_ext_or_null, sessions_root_dir, req, resp);
   });
 
   server.handle("GET", "/api/v1/job", [&](const HttpRequest& req, HttpResponse* resp) {

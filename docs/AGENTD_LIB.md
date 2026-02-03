@@ -143,3 +143,14 @@ and call the daemon endpoints directly through `AgentdApi`:
 
 It accepts/returns `HttpRequest`/`HttpResponse` objects (`daemon/include/agentd/http_types.h`), which are intentionally
 “HTTP-shaped” so a transport can map its messages onto the same endpoint handlers without rewriting the daemon logic.
+
+## Standalone tool plugins (`--tool-plugin`)
+
+If you are using the standalone `agentd` executable (not embedding), you can still add tools without recompiling by loading
+tool plugins at runtime:
+
+```sh
+./build/agentd --tool-plugin ./build/libagentd_tool_plugin_echo.(so|dylib)
+```
+
+See: `docs/TOOL_PLUGINS.md`.

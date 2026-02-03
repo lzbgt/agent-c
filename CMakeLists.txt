@@ -142,6 +142,7 @@ if(AGENT_BUILD_HOST)
     daemon/src/run_endpoints.cpp
     daemon/src/scene_store.cpp
     daemon/src/session_endpoints.cpp
+    daemon/src/tool_plugins.cpp
     daemon/src/tools_endpoint.cpp
     daemon/src/sandbox_policy.cpp
     daemon/src/openrouter_util.cpp
@@ -168,6 +169,9 @@ if(AGENT_BUILD_HOST)
   )
 
   target_link_libraries(agentd_lib PUBLIC agent_host)
+  if(UNIX AND NOT APPLE)
+    target_link_libraries(agentd_lib PUBLIC dl)
+  endif()
 
   if(AGENT_ENABLE_SQLITE3)
     target_include_directories(agentd_lib PRIVATE ${SQLITE3_INCLUDE_DIRS})
@@ -189,6 +193,14 @@ if(AGENT_BUILD_HOST)
     target_compile_definitions(agentd PRIVATE AGENTD_ENABLE_HTTP=1)
   endif()
 
+  # Demo tool plugin (dlopen-loaded by agentd via --tool-plugin). Also used by a smoke test.
+  add_library(agentd_tool_plugin_echo MODULE
+    tools/agentd_tool_plugin_echo.c
+  )
+  target_compile_options(agentd_tool_plugin_echo PRIVATE
+    $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wpedantic>
+  )
+
   if(AGENTD_ENABLE_HTTP)
     target_compile_definitions(agentd_lib PUBLIC AGENTD_ENABLE_HTTP=1)
   endif()
@@ -206,6 +218,11 @@ target_link_libraries(agent_core_tests PRIVATE agent_core)
 add_test(NAME agent_core_tests COMMAND agent_core_tests)
 
 if(AGENT_BUILD_HOST)
+  add_executable(docs_sanity_tests
+    tests/test_docs_sanity.cpp
+  )
+  add_test(NAME docs_sanity_tests COMMAND docs_sanity_tests ${CMAKE_CURRENT_SOURCE_DIR}/docs/DB.md)
+
   add_test(NAME agent_openrouter_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/openrouter_smoke.sh $<TARGET_FILE:agent>)
   set_tests_properties(agent_openrouter_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
@@ -257,6 +274,13 @@ if(AGENT_BUILD_HOST)
     set_tests_properties(agentd_provider_retry_smoke PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME agentd_stream_provider_retry_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_stream_provider_retry_smoke.sh $<TARGET_FILE:agentd>)
     set_tests_properties(agentd_stream_provider_retry_smoke PROPERTIES SKIP_RETURN_CODE 77)
+
+    add_test(
+      NAME agentd_tool_plugin_smoke
+      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_tool_plugin_smoke.sh
+        $<TARGET_FILE:agentd>
+        $<TARGET_FILE:agentd_tool_plugin_echo>
+    )
 
     if(AGENT_ENABLE_SQLITE3)
       add_test(NAME agentd_db_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_smoke.sh $<TARGET_FILE:agentd>)

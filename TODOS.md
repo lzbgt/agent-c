@@ -1,63 +1,129 @@
-Status (as of 2026-02-03)
+# Roadmap / TODOs (next highest leverage)
 
-- [x] 1) Broker mode is first-class in WebUI (broker proxy + SSE, agent picker).
-- [x] 2) Provider reliability layer (retries/backoff/timeouts + smoke tests).
-- [x] 3) Job lifecycle durability (DB-backed job rows + restart marks inflight as `interrupted`).
-- [x] 4) Structured durable memory + deterministic conflict handling + retrieval policy knobs.
-- [x] 5) Multi-agent orchestration:
+Date: 2026-02-03
+
+This file is the forward-looking roadmap. It intentionally focuses on **framework-level** leverage (capabilities that unlock many downstream features),
+with each item having a concrete “proof” so it can be verified in CI (`tools/verify.sh` / `ctest` / `tools/verify_compose_stack.sh`).
+
+## Baseline (already shipped)
+
+- Broker relay with OIDC + mTLS, plus WebUI broker mode.
+- Provider reliability (retry/backoff/timeouts) + smoke tests.
+- DB-backed job durability + truthful terminal status (`interrupted`) after daemon restart.
+- Structured durable memory + deterministic conflict handling + memory policy knobs per run request.
+- Multi-agent orchestration:
   - daemon: `POST /api/v1/orchestrate` (fan-out + optional session writeback)
   - broker: `POST /v1/orchestrate` (fan-out across multiple agents via broker relay)
 
-1. Make Broker Mode a first-class runtime (end-to-end usability from anywhere)
+## P0 (highest leverage; makes this a “framework”)
 
-  - Why highest leverage: you already built the hardest parts (broker + connector + agentd API shape). Wiring this into the WebUI makes the system
-    “global-by-default” instead of “localhost-by-default”.
-  - Concrete deliverables:
-      - WebUI connection mode: direct agentd vs via broker (agent_id) with two auth types (agentd token vs OIDC token).
-      - Teach WebUI to route normal HTTP endpoints via broker proxy and SSE via broker’s SSE proxy (broker explicitly supports this in docs/
-        BROKER.md:1).
-      - Add minimal UX: agent picker (GET /v1/agents), connectivity indicator (connected/last_seen), and “copy shareable agent link”.
-  - Files/modules this would touch (starting points): ui/src/App.tsx:1 (currently assumes direct daemon base), docs/BROKER.md:1 (proxy shapes), docs/
-    PROTOCOL.md:1 (what UI calls).
-  - Proof: tools/verify_compose_stack.sh:1 becomes a true E2E demo where the WebUI can drive agentd through the broker (not just curl can).
+### 1) Tool plugins: make tools composable without recompiling
 
-  2. Provider reliability layer (turn prototype into daily-driver)
+Problem (fact from code/docs):
+- `agentd` has a `ToolExtension` injection point, but it currently requires **in-process embedding** (or code changes) to add tools (`docs/AGENTD_LIB.md`).
+- For an “agentic framework”, adding new capabilities must be a packaging problem, not a fork/rebuild problem.
 
-  - Why: right now the system is architecturally strong, but “real world” agenting lives/dies on backoff/jitter/timeouts, and consistent error
-    classification—your own backlog calls this out as top production readiness work (TODOS.md:1).
-  - Concrete deliverables:
-      - Unified retry policy for LLM calls (429/5xx/timeouts) with capped exponential backoff + jitter; never retry tool execution.
-      - Separate connect timeout / total timeout / streaming idle timeout.
-      - Emit structured “retry” events so UI + DB can explain what happened (ties into docs/DB.md:1).
-  - Proof: add stub-server tests that force 429→200 and 500→200 flows (there’s already a strong testing culture under tests/:1).
+Deliverables:
+- `agentd` supports `--tool-plugin <path>` (repeatable) to load **tool plugins** at runtime.
+- Stable plugin ABI (dlopen-based) that:
+  - provides a manifest of tool schemas (name/description/parameters)
+  - executes tools and returns JSON result
+- Docs + sample plugin.
 
-  3. Job lifecycle durability (make async runs resilient to UI refresh + daemon restarts)
+Proof:
+- A new smoke test starts `agentd` with a plugin, confirms `/api/v1/tools` lists the new tool, and runs a stub tool-loop that invokes it.
 
-  - Why: you already have async jobs + SSE + DB; the “missing piece” is making job state unambiguous and inspectable after failure/restart
-    (explicitly listed in TODOS.md:1).
-  - Concrete deliverables:
-      - Persist minimal job metadata in SQLite (status transitions + last heartbeat + stop reason).
-      - UI shows: “job still running but connection dropped” vs “job failed” (your UI already has the right conceptual split: see the jobNotice vs
-        jobError intent in ui/src/App.tsx:1).
-  - Proof: a test that starts async job, restarts daemon mid-run, and confirms UI can at least show a truthful terminal state (“interrupted by
-    restart”, not “timed out”).
+### 2) “Docs as truth”: auto-check + sync critical docs with runtime truth
 
-  4. Upgrade “memory” from a log into an agentic subsystem (retrieval + conflict management)
+Problem (fact from repo):
+- `docs/DB.md` describes schema v6, but the current daemon DB schema is v8 (see `daemon/src/agent_db.cpp`).
+- Drift in docs makes the project hard to extend safely (client integrations depend on accurate schemas).
 
-  - Why: memory exists (tools + injection + “memory flush” in core), but today it’s effectively Markdown append/search (see cli/src/
-    toolset_host_memory.cpp:1, and how memory is injected in daemon/src/run_endpoints.cpp:1 via references in the ripgrep output you saw). The next
-    leap is: “reliable retrieval + deconfliction + scope”.
-  - Concrete deliverables:
-      - Define a small schema for durable facts/preferences/tasks (even if stored as Markdown + frontmatter).
-      - Add deterministic conflict resolution rules (newer overrides older; explicit “deprecated” markers) and enforce via memory_put.
-      - Add “session vs core vs daily” retrieval policy knobs in run requests.
-  - Proof: unit tests that show stale facts get replaced, not accumulated.
+Deliverables:
+- Update the DB doc to the current schema and add a small “how to verify” section.
+- Add a lightweight automated check (CI/ctest) that fails if docs claim a different schema version than the binary.
 
-  5. Unlock “agentic versatility” via multi-agent orchestration (local + broker)
+Proof:
+- `ctest` includes a unit test that asserts:
+  - doc mentions current schema version
+  - doc includes required tables (`jobs`, `scene_states`, etc.)
 
-  - Why: once broker mode is real, the system can coordinate multiple connected agents (workstation agent, GPU agent, device agent). That’s the
-    difference between “an agent” and “an agentic system”.
-  - Concrete deliverables:
-      - A daemon-level “orchestrator run” mode: fan-out subtasks to multiple agents, gather results, and write a combined answer back into the
-        originating session.
-      - Explicit budgets + tool policies per sub-agent (ties directly into your limits model in docs/LIMITS.md:1).
+### 3) API contracts: ship an OpenAPI spec for agentd + broker
+
+Problem:
+- The project already has a rich HTTP surface, but it is only specified in prose (`docs/PROTOCOL.md`, `docs/BROKER.md`).
+- Without a machine-readable spec, clients drift and you can’t generate typed SDKs.
+
+Deliverables:
+- `docs/openapi/agentd.yaml` and `docs/openapi/broker.yaml` capturing endpoints + request/response schemas.
+- WebUI uses generated types (or a checked-in TS client) derived from the spec.
+
+Proof:
+- `tools/verify.sh` runs a spec validation step (lint) and WebUI build uses generated types without manual drift.
+
+### 4) Observability: trace a single user intent across UI ⇄ agentd ⇄ broker
+
+Problem:
+- Debugging distributed agent systems requires correlation IDs and structured logs; otherwise issues become “he said/she said”.
+
+Deliverables:
+- Introduce `trace_id` (client-provided or daemon-generated) and propagate it:
+  - UI requests
+  - daemon run records + events
+  - broker relay audits + orchestrate results
+- Add an endpoint/UI view to pull a run’s correlated timeline (events + tool calls + retries).
+
+Proof:
+- A smoke test asserts `trace_id` round-trips from request → DB rows → response.
+
+### 5) Workflow engine: orchestration becomes a first-class “agent graph”
+
+Problem:
+- Fan-out is useful, but real multi-agent work needs dependencies (DAG), budgets, and explicit aggregation strategies.
+
+Deliverables:
+- Extend orchestration request to support:
+  - task graph (dependencies)
+  - per-task budgets (steps, tool caps, memory policy)
+  - aggregation strategy (best-of, vote, summarize, strict consensus)
+- Expose an LLM-callable tool (host-side) to invoke orchestration safely (guarded by policy).
+
+Proof:
+- A deterministic stub-server test executes a DAG and validates topological ordering + aggregation behavior.
+
+## P1 (big wins after P0)
+
+### 6) Tool servers (subprocess / stdio) + remote device tools
+
+Deliverables:
+- Spawn a “tool server” process (stdio JSON-RPC or similar) that registers tools and executes them out-of-process.
+- Use this to integrate:
+  - hardware/device tools (ESP32 via serial/MQTT)
+  - browser automation (Playwright) without embedding it directly into agentd
+
+Proof:
+- A smoke test runs a tool server that provides a single tool and verifies end-to-end execution.
+
+### 7) Memory v2: semantic retrieval (embeddings / FTS) + dedupe
+
+Deliverables:
+- Add an indexable memory store (SQLite FTS5 or embedding vectors) and retrieval ranking.
+- Add explicit memory scopes:
+  - per-session, per-agent, per-user (broker identity), and shared team memory.
+
+Proof:
+- Unit tests show:
+  - retrieval returns the most relevant memory items
+  - conflicting facts are resolved deterministically
+
+### 8) “Agent packs”: versioned profiles and shareable capabilities
+
+Deliverables:
+- Define a pack format:
+  - system prompt profile
+  - tool enablement + policy
+  - default model/provider routing
+- WebUI can select packs and export/import them.
+
+Proof:
+- A pack can be exported, imported, and produces deterministic effective config snapshots.
