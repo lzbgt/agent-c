@@ -62,3 +62,19 @@ func TestParseOrchestrateRequest_InvalidAgentID(t *testing.T) {
 		t.Fatalf("expected error for invalid agent_id")
 	}
 }
+
+func TestParseOrchestrateRequest_InvalidTraceIDFallsBackToDefault(t *testing.T) {
+	body := []byte(`{
+  "trace_id": "not allowed spaces",
+  "tasks": [
+    { "agent_id": "a-1", "request": { "prompt": "hi" } }
+  ]
+}`)
+	parsed, err := parseOrchestrateRequest(body, "trace_default_1")
+	if err != nil {
+		t.Fatalf("parseOrchestrateRequest error: %v", err)
+	}
+	if parsed.TraceID != "trace_default_1" {
+		t.Fatalf("expected fallback trace_id, got %q", parsed.TraceID)
+	}
+}

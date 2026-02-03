@@ -49,7 +49,11 @@ func parseOrchestrateRequest(body []byte, defaultTraceID string) (orchestratePar
 		}
 	}
 	if traceID != "" && !isSafeTraceID(traceID) {
-		traceID = ""
+		// Fall back to the broker-generated trace id instead of dropping correlation entirely.
+		traceID = strings.TrimSpace(defaultTraceID)
+		if traceID != "" && !isSafeTraceID(traceID) {
+			traceID = ""
+		}
 	}
 	out.TraceID = traceID
 
@@ -395,8 +399,7 @@ func (s *Server) handleOrchestrate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	writeJSON(w, map[string]any{
+	respObj := map[string]any{
 		"ok":              true,
 		"trace_id":        parsed.TraceID,
 		"all_ok":          allOK,
@@ -404,5 +407,76 @@ func (s *Server) handleOrchestrate(w http.ResponseWriter, r *http.Request) {
 		"max_concurrency": threads,
 		"timeout_ms":      parsed.TimeoutMS,
 		"results":         out,
-	})
+	}
+
+	// Persist an orchestrate audit row keyed by trace_id so UIs can correlate runs even when
+	// the underlying agentd requests used no_session=true (no agent-side audit persistence).
+	if s.cfg.DB != nil && parsed.TraceID != "" {
+		safeReq := scrubJSONForAudit(body)
+		safeResp := scrubJSONForAudit(mustJSON(respObj))
+		_ = s.cfg.DB.InsertOrchestrateAudit(r.Context(), p.Sub, parsed.TraceID, safeReq, safeResp)
+	}
+
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	writeJSON(w, respObj)
+}
+
+func mustJSON(v any) []byte {
+	b, _ := json.Marshal(v)
+	if len(b) == 0 {
+		return []byte("{}")
+	}
+	return b
+}
+
+func scrubJSONForAudit(raw []byte) []byte {
+	// Best-effort: redact secrets and drop large fields from stored audit blobs.
+	// If parsing fails, store an empty object.
+	var v any
+	if err := json.Unmarshal(raw, &v); err != nil {
+		return []byte("{}")
+	}
+	scrubValue(&v)
+	out, err := json.Marshal(v)
+	if err != nil || len(out) == 0 {
+		return []byte("{}")
+	}
+	// Hard cap to keep broker DB from being used as a blob store.
+	const max = 256 * 1024
+	if len(out) > max {
+		// Replace with a small sentinel.
+		return []byte(`{"ok":true,"truncated":true}`)
+	}
+	return out
+}
+
+func scrubValue(v *any) {
+	if v == nil || *v == nil {
+		return
+	}
+	switch x := (*v).(type) {
+	case map[string]any:
+		for k, vv := range x {
+			kl := strings.ToLower(strings.TrimSpace(k))
+			// Obvious secrets.
+			if kl == "api_key" || kl == "authorization" || kl == "x-agentd-authorization" || kl == "token" || kl == "password" || kl == "secret" {
+				x[k] = "[redacted]"
+				continue
+			}
+			// Large-ish fields we don't want in audit.
+			if kl == "trace_text" || kl == "http_body" || kl == "events" {
+				delete(x, k)
+				continue
+			}
+			child := vv
+			scrubValue(&child)
+			x[k] = child
+		}
+	case []any:
+		for i := range x {
+			child := x[i]
+			scrubValue(&child)
+			x[i] = child
+		}
+	}
 }

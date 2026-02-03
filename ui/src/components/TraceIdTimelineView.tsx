@@ -22,6 +22,7 @@ function fmtTs(ts: number): string {
 
 type TimelineItem =
   | { kind: "broker_relay"; ts: number; row: any }
+  | { kind: "broker_orchestrate"; ts: number; row: any }
   | { kind: "agentd_record"; ts: number; agentId?: string; record: any }
   | { kind: "agentd_error"; ts: number; agentId?: string; row: any };
 
@@ -37,6 +38,11 @@ function buildTimelineFromAgentd(trace: AgentdTraceResp): TimelineItem[] {
 
 function buildTimelineFromBroker(trace: BrokerTraceResp): TimelineItem[] {
   const out: TimelineItem[] = [];
+
+  const orch = Array.isArray((trace as any)?.orchestrate) ? ((trace as any).orchestrate as any[]) : [];
+  for (const row of orch) {
+    out.push({ kind: "broker_orchestrate", ts: safeNum(row?.ts_unix_ms), row });
+  }
 
   const relay = Array.isArray((trace as any)?.relay_audit) ? ((trace as any).relay_audit as any[]) : [];
   for (const row of relay) {
@@ -162,6 +168,63 @@ function BrokerRelayCard({ row }: { row: any }) {
   );
 }
 
+function BrokerOrchestrateCard({ row }: { row: any }) {
+  const ts = safeNum(row?.ts_unix_ms);
+  const when = fmtTs(ts);
+  const traceId = safeStr(row?.trace_id);
+  const req = row?.request_json;
+  const resp = row?.response_json;
+
+  const allOk = typeof resp?.all_ok === "boolean" ? (resp.all_ok as boolean) : undefined;
+  const tasksTotal = safeNum(resp?.tasks_total);
+  const results = Array.isArray(resp?.results) ? (resp.results as any[]) : [];
+
+  const summary = (() => {
+    if (tasksTotal > 0) return `${tasksTotal} tasks`;
+    if (results.length > 0) return `${results.length} results`;
+    return "orchestrate";
+  })();
+
+  return (
+    <details className="rounded-lg border border-white/10 bg-white/5 px-3 py-2" open>
+      <summary className="cursor-pointer select-none text-xs text-white/80">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
+          <span className="shrink-0 text-white/60">{when}</span>
+          <span className="shrink-0 text-fuchsia-300">broker orchestrate</span>
+          {typeof allOk === "boolean" ? (
+            <span className={allOk ? "shrink-0 text-emerald-300" : "shrink-0 text-rose-300"}>{allOk ? "all_ok" : "partial"}</span>
+          ) : null}
+          {traceId ? (
+            <span className="shrink-0 text-white/50">
+              trace <code className="text-white/60">{traceId}</code>
+            </span>
+          ) : null}
+          <span className="min-w-0 flex-1 text-white/70">{summary}</span>
+        </div>
+      </summary>
+      <div className="mt-3 grid gap-3">
+        {req && typeof req === "object" ? (
+          <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2">
+            <div className="text-[11px] font-semibold text-white/60">Request</div>
+            <pre className="mt-2 overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
+              {JSON.stringify(req, null, 2)}
+            </pre>
+          </div>
+        ) : null}
+
+        {resp && typeof resp === "object" ? (
+          <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2">
+            <div className="text-[11px] font-semibold text-white/60">Response</div>
+            <pre className="mt-2 overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
+              {JSON.stringify(resp, null, 2)}
+            </pre>
+          </div>
+        ) : null}
+      </div>
+    </details>
+  );
+}
+
 function AgentdErrorCard({ row, agentId }: { row: any; agentId?: string }) {
   const ok = typeof row?.ok === "boolean" ? (row.ok as boolean) : false;
   const ms = safeNum(row?.ms);
@@ -231,6 +294,9 @@ export default function TraceIdTimelineView({
       ) : (
         <div className="grid gap-2">
           {items.map((it, idx) => {
+            if (it.kind === "broker_orchestrate") {
+              return <BrokerOrchestrateCard key={`orch-${idx}`} row={it.row} />;
+            }
             if (it.kind === "broker_relay") {
               return <BrokerRelayCard key={`relay-${idx}`} row={it.row} />;
             }
@@ -244,4 +310,3 @@ export default function TraceIdTimelineView({
     </div>
   );
 }
-

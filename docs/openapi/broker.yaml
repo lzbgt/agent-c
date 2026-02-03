@@ -156,6 +156,21 @@ paths:
                 properties:
                   ok: { type: boolean }
                   trace_id: { type: string }
+                  orchestrate:
+                    type: array
+                    description: Persisted orchestrate audit rows (request/response JSON), keyed by trace_id
+                    items:
+                      type: object
+                      required: [ts_unix_ms, trace_id, request_json, response_json]
+                      properties:
+                        ts_unix_ms: { type: integer, format: int64 }
+                        trace_id: { type: string }
+                        request_json:
+                          type: object
+                          additionalProperties: true
+                        response_json:
+                          type: object
+                          additionalProperties: true
                   relay_audit:
                     type: array
                     items:

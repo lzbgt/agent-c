@@ -70,6 +70,10 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "broker openapi drift: missing /v1/trace in %s\n", broker_spec.c_str());
     return 1;
   }
+  if (!contains(b, "orchestrate:")) {
+    std::fprintf(stderr, "broker openapi drift: expected orchestrate field documented in %s\n", broker_spec.c_str());
+    return 1;
+  }
   if (!contains(b, "/healthz:") || !contains(b, "/readyz:")) {
     std::fprintf(stderr, "broker openapi drift: missing health endpoints in %s\n", broker_spec.c_str());
     return 1;

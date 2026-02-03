@@ -153,6 +153,13 @@ Response (JSON):
   - server-sent events for the authenticated user
   - emits JSON `data:` payloads with types like `agent_connected`, `agent_disconnected`, `relay_audit`
 
+### Trace correlation (debugging)
+
+- `GET /v1/trace?trace_id=...`
+  - returns broker relay audit rows for the trace id
+  - returns persisted broker orchestrate summaries for the trace id (request/response JSON, redacted)
+  - best-effort: fans out to referenced agents to query their `GET /api/v1/trace?trace_id=...` endpoint (if supported)
+
 ## Multi-agent workflows
 
 The broker supports multi-agent usage by design:

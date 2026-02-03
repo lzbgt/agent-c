@@ -53,6 +53,13 @@ type RelayAudit struct {
 	TraceID   string
 }
 
+type OrchestrateAudit struct {
+	TSUnixMS     int64
+	TraceID      string
+	RequestJSON  json.RawMessage
+	ResponseJSON json.RawMessage
+}
+
 func (d *DB) EnsureUser(ctx context.Context, sub string) error {
 	if d == nil || d.Pool == nil {
 		return errors.New("db not open")
@@ -101,6 +108,77 @@ func (d *DB) ListRelayAuditByTrace(ctx context.Context, userSub, traceID string,
 		if err := rows.Scan(&r.TSUnixMS, &r.AgentID, &r.Method, &r.Path, &r.Status, &r.LatencyMS, &r.Error, &r.TraceID); err != nil {
 			return nil, err
 		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (d *DB) InsertOrchestrateAudit(ctx context.Context, userSub, traceID string, requestJSON, responseJSON []byte) error {
+	if d == nil || d.Pool == nil {
+		return errors.New("db not open")
+	}
+	userSub = strings.TrimSpace(userSub)
+	traceID = strings.TrimSpace(traceID)
+	if userSub == "" || traceID == "" {
+		return errors.New("missing user sub or trace_id")
+	}
+	if err := d.EnsureUser(ctx, userSub); err != nil {
+		return err
+	}
+	req := strings.TrimSpace(string(requestJSON))
+	resp := strings.TrimSpace(string(responseJSON))
+	if req == "" {
+		req = "{}"
+	}
+	if resp == "" {
+		resp = "{}"
+	}
+	_, err := d.Pool.Exec(ctx, `
+		INSERT INTO broker_orchestrate_audit(user_sub, trace_id, request_json, response_json)
+		VALUES($1, $2, $3::jsonb, $4::jsonb)
+	`, userSub, traceID, req, resp)
+	return err
+}
+
+func (d *DB) ListOrchestrateAuditByTrace(ctx context.Context, userSub, traceID string, limit int) ([]OrchestrateAudit, error) {
+	if d == nil || d.Pool == nil {
+		return nil, errors.New("db not open")
+	}
+	userSub = strings.TrimSpace(userSub)
+	traceID = strings.TrimSpace(traceID)
+	if userSub == "" || traceID == "" {
+		return nil, errors.New("missing user sub or trace_id")
+	}
+	if err := d.EnsureUser(ctx, userSub); err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	if limit > 200 {
+		limit = 200
+	}
+	rows, err := d.Pool.Query(ctx, `
+		SELECT CAST(EXTRACT(EPOCH FROM ts)*1000 AS BIGINT), trace_id, request_json::text, response_json::text
+		FROM broker_orchestrate_audit
+		WHERE user_sub=$1 AND trace_id=$2
+		ORDER BY ts DESC, id DESC
+		LIMIT $3
+	`, userSub, traceID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []OrchestrateAudit{}
+	for rows.Next() {
+		var r OrchestrateAudit
+		var req, resp string
+		if err := rows.Scan(&r.TSUnixMS, &r.TraceID, &req, &resp); err != nil {
+			return nil, err
+		}
+		r.RequestJSON = json.RawMessage(req)
+		r.ResponseJSON = json.RawMessage(resp)
 		out = append(out, r)
 	}
 	return out, rows.Err()

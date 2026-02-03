@@ -29,6 +29,13 @@ type traceAgentdResult struct {
 	Body        map[string]any `json:"body,omitempty"`
 }
 
+type traceOrchestrateAuditRow struct {
+	TSUnixMS     int64           `json:"ts_unix_ms"`
+	TraceID      string          `json:"trace_id"`
+	RequestJSON  json.RawMessage `json:"request_json"`
+	ResponseJSON json.RawMessage `json:"response_json"`
+}
+
 func (s *Server) handleTrace(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -63,6 +70,12 @@ func (s *Server) handleTrace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	orchRows, err := s.cfg.DB.ListOrchestrateAuditByTrace(r.Context(), p.Sub, traceID, 50)
+	if err != nil {
+		http.Error(w, "db error", http.StatusInternalServerError)
+		return
+	}
+
 	relay := make([]traceRelayAuditRow, 0, len(rows))
 	agentSet := map[string]bool{}
 	for _, rr := range rows {
@@ -78,6 +91,16 @@ func (s *Server) handleTrace(w http.ResponseWriter, r *http.Request) {
 		if strings.TrimSpace(rr.AgentID) != "" {
 			agentSet[rr.AgentID] = true
 		}
+	}
+
+	orchestrate := make([]traceOrchestrateAuditRow, 0, len(orchRows))
+	for _, o := range orchRows {
+		orchestrate = append(orchestrate, traceOrchestrateAuditRow{
+			TSUnixMS:     o.TSUnixMS,
+			TraceID:      o.TraceID,
+			RequestJSON:  o.RequestJSON,
+			ResponseJSON: o.ResponseJSON,
+		})
 	}
 
 	// Fan-out to referenced agents to pull their agentd audit records for this trace_id.
@@ -147,10 +170,11 @@ func (s *Server) handleTrace(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, map[string]any{
-		"ok":         true,
-		"trace_id":   traceID,
+		"ok":          true,
+		"trace_id":    traceID,
 		"relay_audit": relay,
-		"agentd":     agentd,
+		"orchestrate": orchestrate,
+		"agentd":      agentd,
 	})
 }
 
@@ -182,4 +206,3 @@ func urlQueryEscape(s string) string {
 	// trace_id is already validated to a safe character set, so no escaping is required.
 	return s
 }
-
