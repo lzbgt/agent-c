@@ -120,6 +120,7 @@ func (s *Server) Handler() http.Handler {
 		h = withCORS(s.cfg.AllowedOrigins, h)
 	}
 	h = withRecovery(h)
+	h = withTraceID(h)
 	h = withRequestID(h)
 	return h
 }
@@ -142,11 +143,13 @@ func (s *Server) auditRelay(ctx context.Context, p *Principal, agentID, method, 
 	if p == nil {
 		return
 	}
-	_ = s.cfg.DB.InsertRelayAudit(ctx, p.Sub, agentID, method, agentPath, status, latencyMS, errStr)
+	tid := traceIDFromContext(ctx)
+	_ = s.cfg.DB.InsertRelayAudit(ctx, p.Sub, agentID, method, agentPath, status, latencyMS, errStr, tid)
 	s.cfg.Events.PublishTo([]string{p.Sub}, events.Event{
 		Type:    "relay_audit",
 		AgentID: agentID,
 		UserSub: p.Sub,
+		TraceID: tid,
 		Payload: map[string]any{
 			"method":     method,
 			"path":       agentPath,

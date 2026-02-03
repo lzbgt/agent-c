@@ -17,7 +17,7 @@ with each item having a concrete “proof” so it can be verified in CI (`tools
 
 ## P0 (highest leverage; makes this a “framework”)
 
-### 1) Tool plugins: make tools composable without recompiling
+### 1) Tool plugins: make tools composable without recompiling (DONE)
 
 Problem (fact from code/docs):
 - `agentd` has a `ToolExtension` injection point, but it currently requires **in-process embedding** (or code changes) to add tools (`docs/AGENTD_LIB.md`).
@@ -33,7 +33,7 @@ Deliverables:
 Proof:
 - A new smoke test starts `agentd` with a plugin, confirms `/api/v1/tools` lists the new tool, and runs a stub tool-loop that invokes it.
 
-### 2) “Docs as truth”: auto-check + sync critical docs with runtime truth
+### 2) “Docs as truth”: auto-check + sync critical docs with runtime truth (DONE)
 
 Problem (fact from repo):
 - `docs/DB.md` describes schema v6, but the current daemon DB schema is v8 (see `daemon/src/agent_db.cpp`).
@@ -48,7 +48,7 @@ Proof:
   - doc mentions current schema version
   - doc includes required tables (`jobs`, `scene_states`, etc.)
 
-### 3) API contracts: ship an OpenAPI spec for agentd + broker
+### 3) API contracts: ship an OpenAPI spec for agentd + broker (DONE)
 
 Problem:
 - The project already has a rich HTTP surface, but it is only specified in prose (`docs/PROTOCOL.md`, `docs/BROKER.md`).
@@ -59,9 +59,10 @@ Deliverables:
 - WebUI uses generated types (or a checked-in TS client) derived from the spec.
 
 Proof:
-- `tools/verify.sh` runs a spec validation step (lint) and WebUI build uses generated types without manual drift.
+- `ctest` includes a spec sanity test (file existence + key endpoints), and `tools/verify.sh` passes.
+- Optional follow-up: add a real OpenAPI linter / typegen (kept out of core build dependencies).
 
-### 4) Observability: trace a single user intent across UI ⇄ agentd ⇄ broker
+### 4) Observability: trace a single user intent across UI ⇄ agentd ⇄ broker (DONE)
 
 Problem:
 - Debugging distributed agent systems requires correlation IDs and structured logs; otherwise issues become “he said/she said”.
@@ -71,10 +72,22 @@ Deliverables:
   - UI requests
   - daemon run records + events
   - broker relay audits + orchestrate results
-- Add an endpoint/UI view to pull a run’s correlated timeline (events + tool calls + retries).
 
 Proof:
-- A smoke test asserts `trace_id` round-trips from request → DB rows → response.
+- A smoke test asserts `trace_id` round-trips from request → response, and is present in job SSE events for async runs.
+- Daemon persistence stores `trace_id` inside audit/event JSON without a schema migration.
+- Broker relay audit persists `trace_id` via a backwards-compatible DB migration (new column).
+
+### 4.1) Observability: correlated timeline viewer (NEXT)
+
+Deliverables:
+- Add an endpoint/UI view to pull a run’s correlated timeline (events + tool calls + retries), keyed by `trace_id`.
+
+Proof:
+- Given a `trace_id`, the UI can fetch and render a single merged timeline across:
+  - broker relay audits
+  - orchestrate results
+  - agentd run audit + events
 
 ### 5) Workflow engine: orchestration becomes a first-class “agent graph”
 

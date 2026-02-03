@@ -150,6 +150,7 @@ export async function apiUpdateDaemonConfig(base: string, req: DaemonConfigUpdat
 
 export const RunRequestSchema = z.object({
   prompt: z.string().min(1),
+  trace_id: z.string().optional(),
   session_id: z.string().optional(),
   no_session: z.boolean().optional(),
   // Optional session-relative attachments uploaded via POST /api/v1/session/upload.
@@ -212,6 +213,21 @@ export const RunRequestSchema = z.object({
 });
 export type RunRequest = z.infer<typeof RunRequestSchema>;
 
+function newTraceId(): string {
+  // Must match agentd's safe trace_id character set: [A-Za-z0-9_.:@-]
+  // Prefer a stable, low-collision value when available.
+  const anyCrypto: any = (globalThis as any).crypto;
+  if (anyCrypto && typeof anyCrypto.randomUUID === "function") {
+    return `trace_${anyCrypto.randomUUID()}`;
+  }
+  return `trace_${Date.now()}_${Math.random().toString(16).slice(2)}_${Math.random().toString(16).slice(2)}`;
+}
+
+function ensureTraceId(req: RunRequest): RunRequest {
+  if (typeof req.trace_id === "string" && req.trace_id.length > 0) return req;
+  return { ...req, trace_id: newTraceId() };
+}
+
 export const SessionUploadReqSchema = z
   .object({
     session_id: z.string().min(1),
@@ -263,12 +279,14 @@ export async function apiPostSessionUpload(base: string, req: SessionUploadReq, 
 
 export const EventSchema = z.object({
   type: z.string(),
+  trace_id: z.string().optional(),
   data: z.any().optional(),
 });
 export type AgentEvent = z.infer<typeof EventSchema>;
 
 export const RunResponseSchema = z.object({
   ok: z.boolean(),
+  trace_id: z.string().optional(),
   assistant_text: z.string().optional(),
   error: z.string().optional(),
   http_status: z.number().optional(),
@@ -851,7 +869,7 @@ export async function apiGetDbClientEvents(
 }
 
 export async function apiRun(base: string, req: RunRequest, auth?: ApiAuth): Promise<RunResponse> {
-  const payload = RunRequestSchema.parse(req);
+  const payload = ensureTraceId(RunRequestSchema.parse(req));
   const r = await fetch(`${base}/api/v1/run`, {
     method: "POST",
     headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
@@ -864,6 +882,7 @@ export async function apiRun(base: string, req: RunRequest, auth?: ApiAuth): Pro
 export const RunAsyncRespSchema = z.object({
   ok: z.boolean(),
   job_id: z.string().optional(),
+  trace_id: z.string().optional(),
   error: z.string().optional(),
 });
 export type RunAsyncResp = z.infer<typeof RunAsyncRespSchema>;
@@ -871,6 +890,7 @@ export type RunAsyncResp = z.infer<typeof RunAsyncRespSchema>;
 export const JobRespSchema = z.object({
   ok: z.boolean(),
   job_id: z.string().optional(),
+  trace_id: z.string().optional(),
   status: z.string().optional(), // queued|running|done|error|cancelled
   error: z.string().optional(),
   created_unix_ms: z.number().optional(),
@@ -885,7 +905,7 @@ export const JobRespSchema = z.object({
 export type JobResp = z.infer<typeof JobRespSchema>;
 
 export async function apiRunAsync(base: string, req: RunRequest, auth?: ApiAuth): Promise<RunAsyncResp> {
-  const payload = RunRequestSchema.parse(req);
+  const payload = ensureTraceId(RunRequestSchema.parse(req));
   const r = await fetch(`${base}/api/v1/run_async`, {
     method: "POST",
     headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
@@ -929,6 +949,7 @@ export async function apiRunMaybeAsync(
   auth?: ApiAuth,
   opts?: { pollMs?: number; timeoutMs?: number },
 ): Promise<RunResponse> {
+  req = ensureTraceId(req);
   const pollMs = opts?.pollMs ?? 500;
   const timeoutMs = opts?.timeoutMs ?? 120_000;
   const started = Date.now();

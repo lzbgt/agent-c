@@ -16,7 +16,7 @@ func TestParseOrchestrateRequest_SafeDefaultsAndBigIntsPreserved(t *testing.T) {
   ]
 }`)
 
-	parsed, err := parseOrchestrateRequest(body)
+	parsed, err := parseOrchestrateRequest(body, "trace_test_1")
 	if err != nil {
 		t.Fatalf("parseOrchestrateRequest error: %v", err)
 	}
@@ -41,6 +41,9 @@ func TestParseOrchestrateRequest_SafeDefaultsAndBigIntsPreserved(t *testing.T) {
 	if string(m["tools"]) != `"none"` {
 		t.Fatalf("expected tools=none, got %s", string(m["tools"]))
 	}
+	if string(m["trace_id"]) != `"trace_test_1"` {
+		t.Fatalf("expected trace_id injected, got %s", string(m["trace_id"]))
+	}
 	if string(m["max_tokens"]) != big {
 		t.Fatalf("expected max_tokens preserved as %s, got %s", big, string(m["max_tokens"]))
 	}
@@ -48,15 +51,14 @@ func TestParseOrchestrateRequest_SafeDefaultsAndBigIntsPreserved(t *testing.T) {
 
 func TestParseOrchestrateRequest_MissingPrompt(t *testing.T) {
 	body := []byte(`{"tasks":[{"agent_id":"a-1","request":{"model":"x"}}]}`)
-	if _, err := parseOrchestrateRequest(body); err == nil {
+	if _, err := parseOrchestrateRequest(body, "t"); err == nil {
 		t.Fatalf("expected error for missing prompt")
 	}
 }
 
 func TestParseOrchestrateRequest_InvalidAgentID(t *testing.T) {
 	body := []byte(`{"tasks":[{"agent_id":"no spaces","request":{"prompt":"x"}}]}`)
-	if _, err := parseOrchestrateRequest(body); err == nil {
+	if _, err := parseOrchestrateRequest(body, "t"); err == nil {
 		t.Fatalf("expected error for invalid agent_id")
 	}
 }
-

@@ -1,0 +1,204 @@
+openapi: 3.0.3
+info:
+  title: broker HTTP API
+  version: "v1"
+  description: |
+    Machine-readable contract for the broker relay service.
+
+    Notes:
+    - Authentication/authorization is typically via OIDC (see docs/BROKER.md).
+    - Some endpoints are upgraded to WebSocket or stream via SSE.
+servers:
+  - url: http://127.0.0.1:8081
+
+tags:
+  - name: health
+  - name: agents
+  - name: orchestrate
+  - name: events
+
+paths:
+  /healthz:
+    get:
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean }
+
+  /readyz:
+    get:
+      tags: [health]
+      summary: Readiness check
+      responses:
+        "200":
+          description: Ready
+
+  /v1/agents:
+    get:
+      tags: [agents]
+      summary: List agents for current user
+      responses:
+        "200":
+          description: Agent list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, agents]
+                properties:
+                  ok: { type: boolean }
+                  agents:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AgentInfo"
+    post:
+      tags: [agents]
+      summary: Create/register an agent (DB record)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        "200":
+          description: Created
+
+  /v1/orchestrate:
+    post:
+      tags: [orchestrate]
+      summary: Fan-out orchestration across connected agents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrchestrateRequest"
+      responses:
+        "200":
+          description: Orchestration result
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, results]
+                properties:
+                  ok: { type: boolean }
+                  trace_id:
+                    type: string
+                    description: Correlation id propagated to task run bodies (if present)
+                  all_ok: { type: boolean }
+                  tasks_total: { type: integer, format: int32 }
+                  max_concurrency: { type: integer, format: int32 }
+                  timeout_ms: { type: integer, format: int32 }
+                  results:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/OrchestrateTaskResult"
+
+  /v1/events:
+    get:
+      tags: [events]
+      summary: Server-Sent Events stream for broker events
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /v1/agent/connect:
+    get:
+      tags: [agents]
+      summary: Agent connects to broker (WebSocket upgrade)
+      responses:
+        "101":
+          description: Switching Protocols (WebSocket)
+
+components:
+  schemas:
+    AgentInfo:
+      type: object
+      required: [agent_id, owner_sub, enabled, created_unix_ms, connected]
+      properties:
+        agent_id: { type: string }
+        owner_sub: { type: string }
+        enabled: { type: boolean }
+        created_unix_ms: { type: integer, format: int64 }
+        connected: { type: boolean }
+        connected_unix_ms: { type: integer, format: int64 }
+        last_seen_unix_ms: { type: integer, format: int64 }
+        remote_addr: { type: string }
+        labels:
+          type: object
+          additionalProperties: true
+        meta:
+          type: object
+          additionalProperties: true
+
+    OrchestrateRequest:
+      type: object
+      required: [tasks]
+      properties:
+        trace_id:
+          type: string
+          description: Optional correlation id propagated to task run bodies (if missing)
+        max_concurrency: { type: integer, format: int32 }
+        timeout_ms: { type: integer, format: int32 }
+        allow_sessions: { type: boolean }
+        defaults:
+          type: object
+          description: Default run request keys applied to tasks (missing keys only)
+          additionalProperties: true
+        tasks:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/OrchestrateTask"
+
+    OrchestrateTask:
+      type: object
+      required: [agent_id]
+      description: |
+        A single task forwarded to an agent (default path is `/api/v1/run`).
+
+        Tasks may either include:
+        - `request`: the forwarded agentd request object, or
+        - shorthand keys at the top-level (e.g. `prompt`, `tools`, etc.)
+      properties:
+        task_id: { type: string }
+        agent_id: { type: string }
+        method: { type: string }
+        path: { type: string }
+        query: { type: string }
+        headers:
+          type: object
+          additionalProperties: { type: string }
+        request:
+          type: object
+          additionalProperties: true
+      additionalProperties: true
+
+    OrchestrateTaskResult:
+      type: object
+      required: [task_id, agent_id, ok, ms]
+      properties:
+        task_id: { type: string }
+        agent_id: { type: string }
+        ok: { type: boolean }
+        ms: { type: integer, format: int32 }
+        http_status: { type: integer, format: int32 }
+        error: { type: string }
+        result:
+          type: object
+          additionalProperties: true

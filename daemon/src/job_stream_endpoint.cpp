@@ -166,6 +166,7 @@ void handle_job_stream_endpoint(
       Json::Value out(Json::objectValue);
       out["ok"] = (s.status == "done");
       out["job_id"] = s.id;
+      if (!s.trace_id.empty()) out["trace_id"] = s.trace_id;
       out["status"] = s.status;
       out["error"] = s.error;
       out["result"] = s.result;

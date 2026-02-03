@@ -1,0 +1,281 @@
+openapi: 3.0.3
+info:
+  title: agentd HTTP API
+  version: "v1"
+  description: |
+    Machine-readable contract for the agentd daemon.
+
+    Notes:
+    - Many endpoints accept a Bearer auth token when agentd is started with `--auth-token`.
+    - `trace_id` is an optional client-provided correlation identifier. If omitted, agentd generates one.
+servers:
+  - url: http://127.0.0.1:8080
+
+tags:
+  - name: health
+  - name: run
+  - name: jobs
+  - name: tools
+  - name: sessions
+
+paths:
+  /api/v1/health:
+    get:
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, service, version]
+                properties:
+                  ok: { type: boolean }
+                  service: { type: string }
+                  version: { type: string }
+
+  /api/v1/tools:
+    get:
+      tags: [tools]
+      summary: List available tools
+      responses:
+        "200":
+          description: Tools list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean }
+                  defs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ToolDef"
+
+  /api/v1/run:
+    post:
+      tags: [run]
+      summary: Run a prompt (sync)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunRequest"
+      responses:
+        "200":
+          description: Run result (OK or error; see `ok`)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunResponse"
+
+  /api/v1/run_async:
+    post:
+      tags: [run, jobs]
+      summary: Run a prompt (async job)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunRequest"
+      responses:
+        "202":
+          description: Job accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, job_id, trace_id]
+                properties:
+                  ok: { type: boolean }
+                  job_id: { type: string }
+                  trace_id: { $ref: "#/components/schemas/TraceID" }
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: job_id collision
+
+  /api/v1/job:
+    get:
+      tags: [jobs]
+      summary: Get job status (optionally with bounded events slice)
+      parameters:
+        - in: query
+          name: job_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: include_events
+          required: false
+          schema: { type: boolean }
+        - in: query
+          name: cursor
+          required: false
+          schema: { type: integer, format: uint64 }
+        - in: query
+          name: max_events
+          required: false
+          schema: { type: integer, format: uint64 }
+      responses:
+        "200":
+          description: Job snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobGetResponse"
+    delete:
+      tags: [jobs]
+      summary: Delete a terminal job from memory (best-effort)
+      parameters:
+        - in: query
+          name: job_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Deleted (or already absent)
+
+  /api/v1/job/cancel:
+    post:
+      tags: [jobs]
+      summary: Request job cancellation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [job_id]
+              properties:
+                job_id: { type: string }
+      responses:
+        "200":
+          description: Cancellation requested
+
+  /api/v1/job/stream:
+    get:
+      tags: [jobs]
+      summary: Stream job events (SSE)
+      description: |
+        Streams `agent_event` and terminal `job_done` events as Server-Sent Events.
+      parameters:
+        - in: query
+          name: job_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: cursor
+          required: false
+          schema: { type: integer, format: uint64 }
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /api/v1/sessions:
+    get:
+      tags: [sessions]
+      summary: List sessions
+      responses:
+        "200":
+          description: Sessions list
+
+components:
+  schemas:
+    TraceID:
+      type: string
+      description: Correlation identifier (client-provided or server-generated)
+      maxLength: 128
+      pattern: "^[A-Za-z0-9_.:@-]{1,128}$"
+
+    ErrorResponse:
+      type: object
+      required: [ok, error]
+      properties:
+        ok: { type: boolean, enum: [false] }
+        error: { type: string }
+
+    ToolDef:
+      type: object
+      required: [name, description, parameters]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        parameters:
+          type: object
+          description: JSON Schema-like parameters
+
+    RunRequest:
+      type: object
+      required: [prompt]
+      properties:
+        prompt: { type: string }
+        trace_id: { $ref: "#/components/schemas/TraceID" }
+        session_id: { type: string }
+        no_session: { type: boolean }
+        tools:
+          type: string
+          description: Tool mode
+          enum: [none, basic, host]
+        model: { type: string }
+        base_url: { type: string }
+        api_key: { type: string }
+        max_steps: { type: integer, format: int64 }
+        verbose: { type: boolean }
+
+    AgentEvent:
+      type: object
+      required: [type, data]
+      properties:
+        type: { type: string }
+        trace_id: { $ref: "#/components/schemas/TraceID" }
+        data:
+          type: object
+          additionalProperties: true
+
+    RunResponse:
+      type: object
+      required: [ok, trace_id, assistant_text, events]
+      properties:
+        ok: { type: boolean }
+        trace_id: { $ref: "#/components/schemas/TraceID" }
+        assistant_text: { type: string }
+        error: { type: string }
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentEvent"
+
+    JobGetResponse:
+      type: object
+      required: [ok, job_id, status, cancel_requested, created_unix_ms, updated_unix_ms, events_cursor_base, events_cursor_end]
+      properties:
+        ok: { type: boolean }
+        job_id: { type: string }
+        trace_id: { $ref: "#/components/schemas/TraceID" }
+        status: { type: string }
+        error: { type: string }
+        cancel_requested: { type: boolean }
+        created_unix_ms: { type: integer, format: int64 }
+        updated_unix_ms: { type: integer, format: int64 }
+        events_cursor_base: { type: integer, format: uint64 }
+        events_cursor_end: { type: integer, format: uint64 }
+        events_reset: { type: boolean }
+        events_cursor_next: { type: integer, format: uint64 }
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/AgentEvent"
+

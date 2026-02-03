@@ -15,6 +15,7 @@ import (
 type ctxKey int
 
 const requestIDKey ctxKey = 1
+const traceIDKey ctxKey = 2
 
 func withRequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -33,6 +34,51 @@ func requestIDFromContext(ctx context.Context) string {
 		return ""
 	}
 	v := ctx.Value(requestIDKey)
+	s, _ := v.(string)
+	return s
+}
+
+func isSafeTraceID(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" || len(s) > 128 {
+		return false
+	}
+	for _, r := range s {
+		ok := (r >= 'a' && r <= 'z') ||
+			(r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') ||
+			r == '-' || r == '_' || r == '.' || r == ':' || r == '@'
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func withTraceID(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tid := strings.TrimSpace(r.Header.Get("X-Trace-ID"))
+		if !isSafeTraceID(tid) {
+			tid = ""
+		}
+		if tid == "" {
+			// Default to X-Request-ID so the broker can always correlate logs and SSE.
+			tid = requestIDFromContext(r.Context())
+		}
+		if tid == "" {
+			tid = newID()
+		}
+		w.Header().Set("X-Trace-ID", tid)
+		ctx := context.WithValue(r.Context(), traceIDKey, tid)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+func traceIDFromContext(ctx context.Context) string {
+	if ctx == nil {
+		return ""
+	}
+	v := ctx.Value(traceIDKey)
 	s, _ := v.(string)
 	return s
 }
@@ -103,7 +149,8 @@ func withAccessLog(next http.Handler) http.Handler {
 			status = http.StatusOK
 		}
 		rid := requestIDFromContext(r.Context())
-		log.Printf("broker http method=%s path=%s status=%d bytes=%d dur_ms=%d remote=%s rid=%s",
+		tid := traceIDFromContext(r.Context())
+		log.Printf("broker http method=%s path=%s status=%d bytes=%d dur_ms=%d remote=%s rid=%s trace_id=%s",
 			r.Method,
 			r.URL.Path,
 			status,
@@ -111,6 +158,7 @@ func withAccessLog(next http.Handler) http.Handler {
 			int(dur.Milliseconds()),
 			strings.TrimSpace(r.RemoteAddr),
 			rid,
+			tid,
 		)
 	})
 }
@@ -162,10 +210,10 @@ func withCORS(allowedOrigins []string, next http.Handler) http.Handler {
 			// - Authorization: OIDC bearer token (broker auth)
 			// - X-Agentd-Authorization: optional pass-through bearer token for proxied agentd endpoints
 			// - Content-Type: JSON bodies
-			// - X-Request-ID: tracing
-			w.Header().Set("Access-Control-Allow-Headers", "Authorization, X-Agentd-Authorization, Content-Type, X-Request-ID")
+			// - X-Request-ID / X-Trace-ID: tracing
+			w.Header().Set("Access-Control-Allow-Headers", "Authorization, X-Agentd-Authorization, Content-Type, X-Request-ID, X-Trace-ID")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID")
+			w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID, X-Trace-ID")
 			w.Header().Set("Access-Control-Max-Age", "600")
 		}
 		if r.Method == http.MethodOptions {

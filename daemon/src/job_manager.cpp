@@ -101,6 +101,9 @@ void job_append_event(const std::string& id, const std::string& type, const std:
 
   Json::Value e(Json::objectValue);
   e["type"] = type;
+  if (!it->second.trace_id.empty()) {
+    e["trace_id"] = it->second.trace_id;
+  }
   e["data"] = data;
   it->second.events.append(e);
   it->second.updated_unix_ms = now_unix_ms();
@@ -158,6 +161,7 @@ bool job_get_snapshot(const std::string& id, uint64_t cursor, size_t max_events,
 
   out->id = s.id;
   out->status = s.status;
+  out->trace_id = s.trace_id;
   out->cancel_requested = s.cancel_requested;
   out->error = s.error;
   out->result = s.result;
@@ -242,6 +246,14 @@ bool job_is_cancel_requested(const std::string& id) {
   auto it = g_jobs.find(id);
   if (it == g_jobs.end()) return false;
   return it->second.cancel_requested;
+}
+
+void job_set_trace_id(const std::string& id, const std::string& trace_id) {
+  std::lock_guard<std::mutex> lk(g_jobs_mu);
+  auto it = g_jobs.find(id);
+  if (it == g_jobs.end()) return;
+  it->second.trace_id = trace_id;
+  it->second.updated_unix_ms = now_unix_ms();
 }
 
 void job_gc(int64_t ttl_ms, size_t max_jobs) {

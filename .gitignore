@@ -7,7 +7,7 @@ build*/
 .agent_deps/
 out/
 state/
-db/
+/db/
 agentd.db
 ui/test-results/
 create_pptx.py

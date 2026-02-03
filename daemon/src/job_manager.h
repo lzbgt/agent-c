@@ -11,6 +11,7 @@ namespace agentd {
 struct JobState {
   std::string id;
   std::string status; // queued|running|done|error|cancelled
+  std::string trace_id;
   bool cancel_requested = false;
   Json::Value result; // final JSON result (same shape as /api/v1/run)
   std::string error;
@@ -35,6 +36,7 @@ struct JobState {
 struct JobSnapshot {
   std::string id;
   std::string status; // queued|running|done|error|cancelled
+  std::string trace_id;
   bool cancel_requested = false;
   Json::Value result; // only meaningful for done/error
   std::string error;
@@ -78,6 +80,7 @@ bool job_create(const std::string& id);
 bool job_delete(const std::string& id);
 bool job_request_cancel(const std::string& id);
 bool job_is_cancel_requested(const std::string& id);
+void job_set_trace_id(const std::string& id, const std::string& trace_id);
 
 // Gets a lightweight snapshot of a job. If include_events is true, returns at most max_events events starting
 // from cursor (using absolute cursors based on events_offset).

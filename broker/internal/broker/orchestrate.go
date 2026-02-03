@@ -25,10 +25,11 @@ type orchestrateParsed struct {
 	MaxConcurrency int
 	TimeoutMS      int
 	AllowSessions  bool
+	TraceID        string
 	Tasks          []orchestrateTaskPrepared
 }
 
-func parseOrchestrateRequest(body []byte) (orchestrateParsed, error) {
+func parseOrchestrateRequest(body []byte, defaultTraceID string) (orchestrateParsed, error) {
 	var root map[string]json.RawMessage
 	if err := json.Unmarshal(body, &root); err != nil {
 		return orchestrateParsed{}, errors.New("invalid json")
@@ -39,6 +40,18 @@ func parseOrchestrateRequest(body []byte) (orchestrateParsed, error) {
 		TimeoutMS:      60_000,
 		AllowSessions:  false,
 	}
+
+	traceID := strings.TrimSpace(defaultTraceID)
+	if v, ok := root["trace_id"]; ok && len(v) > 0 && string(v) != "null" {
+		var s string
+		if err := json.Unmarshal(v, &s); err == nil && strings.TrimSpace(s) != "" {
+			traceID = strings.TrimSpace(s)
+		}
+	}
+	if traceID != "" && !isSafeTraceID(traceID) {
+		traceID = ""
+	}
+	out.TraceID = traceID
 
 	if v, ok := root["max_concurrency"]; ok {
 		var mc int
@@ -176,6 +189,13 @@ func parseOrchestrateRequest(body []byte) (orchestrateParsed, error) {
 				runReq["tools"] = json.RawMessage(`"none"`)
 			}
 		}
+		if out.TraceID != "" {
+			if _, ok := runReq["trace_id"]; !ok {
+				if tb, err := json.Marshal(out.TraceID); err == nil && len(tb) > 0 {
+					runReq["trace_id"] = json.RawMessage(tb)
+				}
+			}
+		}
 
 		// Require a prompt so this remains a "run orchestrator" endpoint by default.
 		{
@@ -247,7 +267,7 @@ func (s *Server) handleOrchestrate(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
 		return
 	}
-	parsed, err := parseOrchestrateRequest(body)
+	parsed, err := parseOrchestrateRequest(body, traceIDFromContext(r.Context()))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -299,6 +319,11 @@ func (s *Server) handleOrchestrate(w http.ResponseWriter, r *http.Request) {
 				fwdHeaders[k] = v
 			}
 			fwdHeaders["X-Agentd-Broker-User"] = p.Sub
+			if parsed.TraceID != "" {
+				if _, ok := fwdHeaders["X-Trace-ID"]; !ok {
+					fwdHeaders["X-Trace-ID"] = parsed.TraceID
+				}
+			}
 
 			ctx := r.Context()
 			timeout := time.Duration(parsed.TimeoutMS) * time.Millisecond
@@ -373,6 +398,7 @@ func (s *Server) handleOrchestrate(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	writeJSON(w, map[string]any{
 		"ok":              true,
+		"trace_id":        parsed.TraceID,
 		"all_ok":          allOK,
 		"tasks_total":     len(out),
 		"max_concurrency": threads,

@@ -223,6 +223,16 @@ if(AGENT_BUILD_HOST)
   )
   add_test(NAME docs_sanity_tests COMMAND docs_sanity_tests ${CMAKE_CURRENT_SOURCE_DIR}/docs/DB.md)
 
+  add_executable(openapi_sanity_tests
+    tests/test_openapi_sanity.cpp
+  )
+  add_test(
+    NAME openapi_sanity_tests
+    COMMAND openapi_sanity_tests
+      ${CMAKE_CURRENT_SOURCE_DIR}/docs/openapi/agentd.yaml
+      ${CMAKE_CURRENT_SOURCE_DIR}/docs/openapi/broker.yaml
+  )
+
   add_test(NAME agent_openrouter_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/openrouter_smoke.sh $<TARGET_FILE:agent>)
   set_tests_properties(agent_openrouter_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
@@ -249,6 +259,7 @@ if(AGENT_BUILD_HOST)
     add_test(NAME agentd_cors_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_cors_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_file_symlink_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_file_symlink_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_local_tool_loop_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_local_tool_loop_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_trace_id_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_trace_id_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_sessions_root_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_sessions_root_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_artifact_protocol_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_artifact_protocol_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_ui_action_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_ui_action_smoke.sh $<TARGET_FILE:agentd>)

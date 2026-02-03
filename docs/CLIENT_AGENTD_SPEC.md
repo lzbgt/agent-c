@@ -178,10 +178,15 @@ If the DB is not available, these endpoints return `{ ok:false, error:"db not av
 
 - `POST /api/v1/run`
   - sync run; response can include `assistant_text` and (optionally) `events[]` if `verbose=true`
+  - accepts optional `trace_id` (client-provided correlation id); if omitted, daemon generates one
+  - returns `{ ..., trace_id }` and each `events[]` entry includes `trace_id`
 - `POST /api/v1/run_async`
-  - returns `{ ok, job_id }` and runs in the background
+  - returns `{ ok, job_id, trace_id }` and runs in the background
+  - if request omitted `trace_id`, daemon generates one and uses it consistently for:
+    - SSE job events (`/api/v1/job/stream`)
+    - final job result JSON (`/api/v1/job`)
 - `GET /api/v1/job?job_id=...`
-  - returns `{ ok, status, result? }`
+  - returns `{ ok, status, trace_id?, result? }` (`trace_id` present for in-memory jobs)
 - `POST /api/v1/job/cancel?job_id=...`
   - requests cancellation
 - `DELETE /api/v1/job?job_id=...`

@@ -46,6 +46,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <random>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -58,6 +59,41 @@ namespace {
 static const char* getenv_s(const char* k) {
   const char* v = std::getenv(k);
   return (v && v[0]) ? v : nullptr;
+}
+
+static bool trace_id_is_safe(const std::string& s) {
+  if (s.empty() || s.size() > 128) return false;
+  for (char c : s) {
+    const bool ok =
+      (c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9') ||
+      c == '-' || c == '_' || c == '.' || c == ':' || c == '@';
+    if (!ok) return false;
+  }
+  return true;
+}
+
+static std::string make_uuidish_trace_id() {
+  // Best-effort UUIDv4-ish without external deps. Good enough to avoid collisions in practice.
+  std::random_device rd;
+  std::mt19937_64 gen(((uint64_t)rd() << 32) ^ (uint64_t)rd());
+  std::uniform_int_distribution<uint32_t> dist(0, 0xffffffffu);
+
+  uint32_t a = dist(gen);
+  uint16_t b = (uint16_t)(dist(gen) & 0xffffu);
+  uint16_t c = (uint16_t)(dist(gen) & 0xffffu);
+  uint16_t d = (uint16_t)(dist(gen) & 0xffffu);
+  uint64_t e = ((uint64_t)dist(gen) << 32) ^ (uint64_t)dist(gen);
+
+  // v4 + variant.
+  c = (uint16_t)((c & 0x0fffu) | 0x4000u);
+  d = (uint16_t)((d & 0x3fffu) | 0x8000u);
+
+  char buf[96];
+  (void)snprintf(buf, sizeof(buf), "trace_%08x-%04x-%04x-%04x-%012llx",
+                 a, (unsigned)b, (unsigned)c, (unsigned)d, (unsigned long long)(e & 0xffffffffffffull));
+  return std::string(buf);
 }
 
 static bool path_is_within_root(const std::filesystem::path& root, const std::filesystem::path& p) {
@@ -930,6 +966,17 @@ static Json::Value run_request_to_json_impl(
     return o;
   }
 
+  std::string trace_id;
+  if (args.isMember("trace_id") && args["trace_id"].isString()) trace_id = trim_copy(args["trace_id"].asString());
+  if (!trace_id.empty() && !trace_id_is_safe(trace_id)) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["rpc_status"] = 400;
+    o["error"] = "invalid trace_id";
+    return o;
+  }
+  if (trace_id.empty()) trace_id = make_uuidish_trace_id();
+
   OpenAIClientConfig run_cfg = ocfg;
   const bool base_url_explicit = args.isMember("base_url") && args["base_url"].isString();
   const bool api_key_explicit = args.isMember("api_key") && args["api_key"].isString();
@@ -1304,6 +1351,9 @@ static Json::Value run_request_to_json_impl(
 
   std::string job_id_local = (job_id_or_null && job_id_or_null[0]) ? std::string(job_id_or_null) : std::string();
   const int64_t run_ts_ms = now_unix_ms();
+  if (!job_id_local.empty()) {
+    job_set_trace_id(job_id_local, trace_id);
+  }
 
   agent_session_t* session = nullptr;
   if (!no_session) {
@@ -1480,6 +1530,14 @@ static Json::Value run_request_to_json_impl(
   std::ostream* trace_stream = trace ? &trace_buf : nullptr;
   Json::Value events_out;
   ToolLoopResult tool_loop_result;
+  auto inject_trace_id_into_events = [&](Json::Value* arr) {
+    if (!arr || !arr->isArray() || trace_id.empty()) return;
+    for (Json::ArrayIndex i = 0; i < arr->size(); i++) {
+      Json::Value& ev = (*arr)[i];
+      if (!ev.isObject()) continue;
+      if (!ev.isMember("trace_id")) ev["trace_id"] = trace_id;
+    }
+  };
 
   std::atomic<bool> heartbeat_stop{false};
   std::atomic<int64_t> heartbeat_last_any_event_ms{now_unix_ms()};
@@ -1595,6 +1653,7 @@ static Json::Value run_request_to_json_impl(
 
         Json::Value ev(Json::objectValue);
         ev["type"] = "vision_prefetch";
+        if (!trace_id.empty()) ev["trace_id"] = trace_id;
         Json::Value d(Json::objectValue);
         d["ok"] = (bool)v_err.empty();
         d["provider"] = provider_from_base_url(run_cfg.base_url);
@@ -1699,6 +1758,7 @@ static Json::Value run_request_to_json_impl(
       Json::Value ev;
       if (Json::parseFromStream(rb, iss, &ev, &errs) && ev.isArray()) {
         events_out = ev;
+        inject_trace_id_into_events(&events_out);
       }
     }
     if (!pre_events.empty()) {
@@ -1706,6 +1766,7 @@ static Json::Value run_request_to_json_impl(
       for (const auto& pe : pre_events) {
         events_out.append(pe);
       }
+      inject_trace_id_into_events(&events_out);
     }
 
     if (ok) {
@@ -1727,6 +1788,7 @@ static Json::Value run_request_to_json_impl(
     auto push_ev = [&](const std::string& type, const Json::Value& data) {
       Json::Value e(Json::objectValue);
       e["type"] = type;
+      if (!trace_id.empty()) e["trace_id"] = trace_id;
       e["data"] = data;
       events_out.append(e);
       heartbeat_last_any_event_ms.store(now_unix_ms());
@@ -2119,8 +2181,10 @@ static Json::Value run_request_to_json_impl(
         if (!events_out.isArray()) events_out = Json::Value(Json::arrayValue);
         Json::Value e(Json::objectValue);
         e["type"] = "client_ack_verify";
+        if (!trace_id.empty()) e["trace_id"] = trace_id;
         e["data"] = d;
         events_out.append(e);
+        inject_trace_id_into_events(&events_out);
       }
       if (report.isObject() && report.isMember("ok") && report["ok"].isBool() && report["ok"].asBool() == false) {
         ok = false;
@@ -2131,6 +2195,7 @@ static Json::Value run_request_to_json_impl(
 
   Json::Value out(Json::objectValue);
   out["ok"] = ok;
+  out["trace_id"] = trace_id;
   out["assistant_text"] = assistant_text;
   if (!ok) out["error"] = err;
   // Cancellation is a first-class terminal state for async jobs. Surface an explicit flag so
@@ -2293,7 +2358,9 @@ static Json::Value run_request_to_json_impl(
           const auto& t = ev["type"];
           const auto& d = ev["data"];
           if (!t.isString() || !d.isObject()) continue;
-          (void)db_or_null->insert_event(run_id, run_ts_ms, t.asString(), Json::writeString(wb, d), nullptr);
+          Json::Value d2 = d;
+          if (!trace_id.empty() && !d2.isMember("trace_id")) d2["trace_id"] = trace_id;
+          (void)db_or_null->insert_event(run_id, run_ts_ms, t.asString(), Json::writeString(wb, d2), nullptr);
 
           if (t.asString() == "artifact") {
             const auto& art = d["artifact"];
@@ -2367,6 +2434,7 @@ static Json::Value run_request_to_json_impl(
       Json::Value record(Json::objectValue);
       record["ts_unix_ms"] = (Json::Int64)run_ts_ms;
       record["session_id"] = session_id;
+      record["trace_id"] = trace_id;
       record["ok"] = ok;
       record["model"] = run_cfg.model;
       record["base_url"] = run_cfg.base_url;
@@ -2465,6 +2533,19 @@ void handle_run_async_endpoint(
     return;
   }
 
+  std::string trace_id;
+  if (args.isMember("trace_id") && args["trace_id"].isString()) trace_id = trim_copy(args["trace_id"].asString());
+  if (!trace_id.empty() && !trace_id_is_safe(trace_id)) {
+    resp->status = 400;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = "invalid trace_id";
+    resp->body = json_stringify(o);
+    return;
+  }
+  if (trace_id.empty()) trace_id = make_uuidish_trace_id();
+  args["trace_id"] = trace_id;
+
   const std::string job_id = args.isMember("job_id") && args["job_id"].isString() ? args["job_id"].asString() : new_job_id();
   if (job_id.empty()) {
     resp->status = 400;
@@ -2480,6 +2561,7 @@ void handle_run_async_endpoint(
     resp->body = json_stringify(o);
     return;
   }
+  job_set_trace_id(job_id, trace_id);
 
   // Persist a durable job stub so UIs can still inspect job state after daemon restart.
   const std::string session_id =
@@ -2507,9 +2589,11 @@ void handle_run_async_endpoint(
   // Log immediately in the request handler (before the background thread starts).
   // This helps diagnose "hangs" where the UI is pointed at the wrong daemon base URL,
   // or where the request never reaches the daemon.
-  std::cerr << "agentd: /api/v1/run_async accepted job=" << job_id << " bytes=" << req.body.size() << "\n";
+  std::cerr << "agentd: /api/v1/run_async accepted job=" << job_id << " trace_id=" << trace_id << " bytes=" << req.body.size() << "\n";
 
-  const std::string body_copy = req.body;
+  Json::StreamWriterBuilder wb;
+  wb["indentation"] = "";
+  const std::string body_copy = Json::writeString(wb, args);
   std::thread([job_id, body_copy, cfg, ocfg, db_or_null, tool_ext_or_null, sessions_root_dir, session_id, created_ms]() mutable {
     const auto started = std::chrono::steady_clock::now();
     std::cerr << "agentd: /api/v1/run_async job=" << job_id << " start bytes=" << body_copy.size() << "\n";
@@ -2650,6 +2734,7 @@ void handle_run_async_endpoint(
   Json::Value o(Json::objectValue);
   o["ok"] = true;
   o["job_id"] = job_id;
+  o["trace_id"] = trace_id;
   resp->body = json_stringify(o);
 }
 
