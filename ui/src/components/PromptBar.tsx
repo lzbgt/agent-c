@@ -1,5 +1,5 @@
 import React from "react";
-import { apiCancelJob, apiPostSessionUpload } from "../api";
+import { apiCancelJob, apiPostSessionUpload, type ApiAuth } from "../api";
 import useLocalStorageState from "../hooks/useLocalStorageState";
 
 export type Attachment = { path: string; name?: string; mime?: string; kind?: string; bytes?: number };
@@ -40,7 +40,7 @@ type PromptBarProps = {
   activeJobId: string | null;
   jobStatus: string | null;
   jobProgressLabel: string;
-  daemonAuthToken: string;
+  daemonAuth: ApiAuth;
   prompt: string;
   setPrompt: (next: string) => void;
   runDisabled: boolean;
@@ -260,7 +260,7 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
                   const jobId = props.activeJobId;
                   if (!jobId) return;
                   try {
-                    await apiCancelJob(props.effectiveBase, jobId, props.daemonAuthToken || undefined);
+                    await apiCancelJob(props.effectiveBase, jobId, props.daemonAuth);
                     props.setJobNotice("cancel requested");
                   } catch (e) {
                     props.setJobNotice(`cancel failed: ${String(e)}`);
@@ -332,7 +332,7 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
                     const resp = await apiPostSessionUpload(
                       props.effectiveBase,
                       { session_id: sid, files: payloadFiles },
-                      props.daemonAuthToken || undefined,
+                      props.daemonAuth,
                     );
                     if (!resp.ok) {
                       props.setJobNotice(resp.error ? `upload failed: ${resp.error}` : "upload failed");

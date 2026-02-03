@@ -1,5 +1,5 @@
 import React from "react";
-import { apiPostSessionUiEvent } from "../api";
+import { apiPostSessionUiEvent, daemonHeaders, type ApiAuth } from "../api";
 
 function safeString(v: any): string {
   return typeof v === "string" ? v : "";
@@ -41,7 +41,7 @@ export default function ArtifactView({
   allowAutoplay,
   sessionId,
   client,
-  daemonAuthToken,
+  daemonAuth,
 }: {
   baseUrl: string;
   yolo: boolean;
@@ -49,7 +49,7 @@ export default function ArtifactView({
   allowAutoplay: boolean;
   sessionId?: string;
   client?: { id?: string; kind?: string; instance_id?: string };
-  daemonAuthToken?: string;
+  daemonAuth?: ApiAuth;
 }) {
   const path = safeString(artifact?.path);
   const resolvedPath = safeString(artifact?.resolved_path);
@@ -74,7 +74,6 @@ export default function ArtifactView({
   const sid = safeStringOrNull(sessionId) ?? "";
   const sidQ = sid ? `&session_id=${encodeURIComponent(sid)}` : "";
   const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(activeFetchPath)}&yolo=${yolo ? "1" : "0"}${sidQ}`;
-  const authToken = safeString(daemonAuthToken).trim();
 
   const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
   const [fetchError, setFetchError] = React.useState<string | null>(null);
@@ -112,13 +111,13 @@ export default function ArtifactView({
             data: data ?? {},
             append_to_session: false,
           },
-          daemonAuthToken,
+          daemonAuth,
         );
       } catch {
         // Best-effort: never block UI rendering on event posting.
       }
     },
-    [baseUrl, client, daemonAuthToken, sessionId],
+    [baseUrl, client, daemonAuth, sessionId],
   );
 
   const postArtifactRendered = React.useCallback(async () => {
@@ -196,7 +195,7 @@ export default function ArtifactView({
 
         const r = await fetch(src, {
           method: "GET",
-          headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+          headers: daemonHeaders(daemonAuth),
           signal: ac.signal,
         });
         if (!r.ok) {
@@ -237,7 +236,7 @@ export default function ArtifactView({
         }
       }
     };
-  }, [activeFetchPath, authToken, fallbackFetchPath, retryNonce, src]);
+  }, [activeFetchPath, daemonAuth, fallbackFetchPath, retryNonce, src]);
 
   // Deterministic acknowledgements.
   React.useEffect(() => {

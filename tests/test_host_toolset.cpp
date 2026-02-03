@@ -1111,6 +1111,71 @@ static void test_memory_tools() {
     agent_string_free(&out);
   }
 
+  // Structured memory: deterministic key upserts via memory_put(entries).
+  {
+    Json::Value e0(Json::objectValue);
+    e0["key"] = "ui.rendering";
+    e0["kind"] = "fact";
+    e0["value"] = "Scene is server-owned and refresh-proof";
+    Json::Value e1(Json::objectValue);
+    e1["key"] = "feature.a";
+    e1["kind"] = "fact";
+    e1["value"] = "Feature set A";
+    e1["status"] = "deprecated";
+    Json::Value entries(Json::arrayValue);
+    entries.append(e0);
+    entries.append(e1);
+
+    Json::Value args(Json::objectValue);
+    args["path"] = "STRUCTURED.md";
+    args["entries"] = entries;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "memory_put", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    assert(resp["data"]["tool"].asString() == "memory_put");
+    assert(resp["data"]["structured"].asBool());
+    agent_string_free(&out);
+  }
+
+  // Overwrite the same key and ensure last write wins.
+  {
+    Json::Value e0(Json::objectValue);
+    e0["key"] = "ui.rendering";
+    e0["kind"] = "fact";
+    e0["value"] = "Scene rendering must survive refresh + restart";
+    Json::Value entries(Json::arrayValue);
+    entries.append(e0);
+    Json::Value args(Json::objectValue);
+    args["path"] = "STRUCTURED.md";
+    args["entries"] = entries;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "memory_put", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    agent_string_free(&out);
+  }
+
+  {
+    Json::Value args(Json::objectValue);
+    args["path"] = "STRUCTURED.md";
+    args["from_line"] = 1;
+    args["max_lines"] = 300;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "memory_get", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    const std::string text = resp["data"]["text"].asString();
+    assert(text.find("Structured Memory") != std::string::npos);
+    assert(text.find("ui.rendering") != std::string::npos);
+    assert(text.find("survive refresh + restart") != std::string::npos);
+    assert(text.find("server-owned and refresh-proof") == std::string::npos);
+    agent_string_free(&out);
+  }
+
   agent_tool_registry_destroy(reg);
   toolset_host_destroy(&exec);
   std::filesystem::remove_all(root);

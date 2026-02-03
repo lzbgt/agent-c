@@ -12,6 +12,10 @@
 
 namespace agentd {
 
+static bool is_terminal_status(const std::string& s) {
+  return s == "done" || s == "error" || s == "cancelled" || s == "interrupted";
+}
+
 static bool auth_ok(const std::string& daemon_auth_token, const HttpRequest& req) {
   if (daemon_auth_token.empty()) {
     return true;
@@ -24,6 +28,7 @@ static bool auth_ok(const std::string& daemon_auth_token, const HttpRequest& req
 void handle_job_stream_endpoint(
   const std::string& daemon_auth_token,
   const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
   const HttpRequest& req,
   int client_fd
 ) {
@@ -80,6 +85,45 @@ void handle_job_stream_endpoint(
     // Pull a bounded slice of events to avoid copying huge job state blobs under lock.
     JobSnapshot s;
     if (!job_get_snapshot(*jid, cursor, /*max_events=*/256, /*include_events=*/true, &s)) {
+      // Fallback: DB-only jobs (daemon restarted). If terminal, emit job_done immediately.
+      if (db_or_null && db_or_null->is_open()) {
+        AgentDb::JobRow jr;
+        std::string db_err;
+        if (db_or_null->get_job(*jid, &jr, &db_err)) {
+          if (is_terminal_status(jr.status)) {
+            Json::Value out(Json::objectValue);
+            out["ok"] = (jr.status == "done");
+            out["job_id"] = jr.job_id;
+            out["status"] = jr.status;
+            out["error"] = jr.error;
+            Json::Value r(Json::objectValue);
+            if (!jr.result_json.empty()) {
+              std::string perr;
+              if (!json_parse_object(jr.result_json, &r, &perr)) {
+                r = Json::Value(Json::objectValue);
+                r["ok"] = false;
+                r["error"] = "failed to parse persisted job result";
+                r["parse_error"] = perr;
+              }
+            } else if (jr.status == "interrupted") {
+              r["ok"] = false;
+              r["interrupted"] = true;
+              r["error"] = jr.error.empty() ? "interrupted by restart" : jr.error;
+              if (!jr.stop_reason.empty()) r["stop_reason"] = jr.stop_reason;
+            } else {
+              r["ok"] = false;
+              r["error"] = jr.error.empty() ? "job finished but missing persisted result" : jr.error;
+            }
+            out["result"] = r;
+            out["events_cursor_next"] = (Json::UInt64)cursor;
+            (void)sse_send(client_fd, "job_done", json_stringify(out));
+            return;
+          }
+          (void)sse_send(client_fd, "error", "{\"ok\":false,\"error\":\"job not in memory (daemon restarted?)\"}");
+          return;
+        }
+      }
+
       (void)sse_send(client_fd, "error", R"({"ok":false,"error":"job not found"})");
       return;
     }
@@ -118,7 +162,7 @@ void handle_job_stream_endpoint(
       last_send = std::chrono::steady_clock::now();
     }
 
-    if (s.status == "done" || s.status == "error" || s.status == "cancelled") {
+    if (is_terminal_status(s.status)) {
       Json::Value out(Json::objectValue);
       out["ok"] = (s.status == "done");
       out["job_id"] = s.id;

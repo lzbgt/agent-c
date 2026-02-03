@@ -1,7 +1,7 @@
 import React from "react";
 
 import ArtifactView from "./ArtifactView";
-import { apiPostSessionUiEvent } from "../api";
+import { apiPostSessionUiEvent, daemonHeaders, type ApiAuth } from "../api";
 import useLocalStorageState from "../hooks/useLocalStorageState";
 
 type CanvasPoint = { x: number; y: number };
@@ -108,14 +108,14 @@ function Canvas2DEntityView({
   baseUrl,
   yolo,
   sessionId,
-  daemonAuthToken,
+  daemonAuth,
   onScriptError,
 }: {
   entity: SceneEntity;
   baseUrl?: string;
   yolo?: boolean;
   sessionId?: string;
-  daemonAuthToken?: string;
+  daemonAuth?: ApiAuth;
   onScriptError?: (args: {
     entity_id: string;
     entity_kind: string;
@@ -212,9 +212,18 @@ function Canvas2DEntityView({
         //
         // We intentionally avoid pre-declaring `ctx`/`canvas` as variables to prevent
         // collisions with scripts that naturally start with `const ctx = ...`.
-        const authToken = safeString(daemonAuthToken).trim();
         const sid = safeString(sessionId).trim();
-        const daemon = { base_url: baseUrl || "", yolo: !!yolo, auth_token: authToken, session_id: sid || undefined };
+        const tokenRaw = safeString((daemonAuth as any)?.token).trim();
+        const agentdTokenRaw = safeString((daemonAuth as any)?.agentdToken).trim();
+        const daemon = {
+          base_url: baseUrl || "",
+          yolo: !!yolo,
+          // Backwards-compat convenience for scripts that expect a raw token (not "Bearer ...").
+          auth_token: tokenRaw.replace(/^bearer\\s+/i, "").trim(),
+          agentd_auth_token: agentdTokenRaw.replace(/^bearer\\s+/i, "").trim(),
+          headers: daemonHeaders(daemonAuth),
+          session_id: sid || undefined,
+        };
         const api: any = {
           root: canvas,
           ctx,
@@ -229,7 +238,7 @@ function Canvas2DEntityView({
               if (!baseUrl) throw new Error("artifact.url requires baseUrl");
               const sidQ = sid ? `&session_id=${encodeURIComponent(sid)}` : "";
               const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${yolo ? "1" : "0"}${sidQ}`;
-              const r = await fetch(src, { headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
+              const r = await fetch(src, { headers: daemonHeaders(daemonAuth) });
               if (!r.ok) throw new Error(`file fetch failed: ${r.status}`);
               const b = await r.blob();
               const u = URL.createObjectURL(b);
@@ -376,7 +385,7 @@ with ({ api, args, ctx: api.ctx, canvas: api.root, width: api.width, height: api
       });
       blobUrlsRef.current = [];
     };
-  }, [baseUrl, daemonAuthToken, draw, height, width, script, scriptArgsJson, yolo]);
+  }, [baseUrl, daemonAuth, draw, height, width, script, scriptArgsJson, yolo]);
 
   return (
     <div className="mt-2 overflow-auto rounded-md border border-white/10 bg-black/20 p-2">
@@ -398,14 +407,14 @@ function DomEntityView({
   baseUrl,
   yolo,
   sessionId,
-  daemonAuthToken,
+  daemonAuth,
   onScriptError,
 }: {
   entity: SceneEntity;
   baseUrl?: string;
   yolo?: boolean;
   sessionId?: string;
-  daemonAuthToken?: string;
+  daemonAuth?: ApiAuth;
   onScriptError?: (args: {
     entity_id: string;
     entity_kind: string;
@@ -481,9 +490,17 @@ function DomEntityView({
     if (!baseUrl || typeof yolo !== "boolean") return;
     if (!script || script.trim().length === 0) return;
 
-    const authToken = safeString(daemonAuthToken).trim();
     const sid = safeString(sessionId).trim();
-    const daemon = { base_url: baseUrl, yolo: !!yolo, auth_token: authToken, session_id: sid || undefined };
+    const tokenRaw = safeString((daemonAuth as any)?.token).trim();
+    const agentdTokenRaw = safeString((daemonAuth as any)?.agentdToken).trim();
+    const daemon = {
+      base_url: baseUrl,
+      yolo: !!yolo,
+      auth_token: tokenRaw.replace(/^bearer\\s+/i, "").trim(),
+      agentd_auth_token: agentdTokenRaw.replace(/^bearer\\s+/i, "").trim(),
+      headers: daemonHeaders(daemonAuth),
+      session_id: sid || undefined,
+    };
     const api: any = {
       root,
       daemon,
@@ -493,7 +510,7 @@ function DomEntityView({
           if (!p) throw new Error("artifact.url requires path");
           const sidQ = sid ? `&session_id=${encodeURIComponent(sid)}` : "";
           const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${yolo ? "1" : "0"}${sidQ}`;
-          const r = await fetch(src, { headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
+          const r = await fetch(src, { headers: daemonHeaders(daemonAuth) });
           if (!r.ok) throw new Error(`file fetch failed: ${r.status}`);
           const b = await r.blob();
           const u = URL.createObjectURL(b);
@@ -572,7 +589,7 @@ return __fn;
       });
       blobUrlsRef.current = [];
     };
-  }, [baseUrl, daemonAuthToken, entity.id, entity.kind, html, onScriptError, script, scriptArgsJson, yolo]);
+  }, [baseUrl, daemonAuth, entity.id, entity.kind, html, onScriptError, script, scriptArgsJson, yolo]);
 
 	return (
 		// Render DOM entities on a light surface: most tool-generated HTML assumes light backgrounds and
@@ -589,7 +606,7 @@ export default function SceneView({
   yolo,
   allowAutoplay,
   client,
-  daemonAuthToken,
+  daemonAuth,
   sessionId,
   entities,
   className,
@@ -599,7 +616,7 @@ export default function SceneView({
   allowAutoplay?: boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   client?: any;
-  daemonAuthToken?: string;
+  daemonAuth?: ApiAuth;
   sessionId?: string;
   entities: SceneEntity[];
   className?: string;
@@ -676,13 +693,13 @@ export default function SceneView({
             data: { ...payload, ts_unix_ms: now },
             append_to_session: false,
           },
-          daemonAuthToken,
+          daemonAuth,
         );
       } catch {
         // ignore
       }
     },
-    [baseUrl, client, daemonAuthToken, sid],
+    [baseUrl, client, daemonAuth, sid],
   );
   const visibleEntities = showAllEntities ? sortedEntities : sortedEntities.slice(0, defaultExpandedCount);
   const hiddenEntitiesCount = Math.max(0, sortedEntities.length - visibleEntities.length);
@@ -795,7 +812,7 @@ export default function SceneView({
                       baseUrl={baseUrl}
                       yolo={yolo}
                       sessionId={sessionId}
-                      daemonAuthToken={daemonAuthToken}
+                      daemonAuth={daemonAuth}
                       onScriptError={postSceneError}
                     />
                   ) : e.kind === "dom" ? (
@@ -804,7 +821,7 @@ export default function SceneView({
                       baseUrl={baseUrl}
                       yolo={yolo}
                       sessionId={sessionId}
-                      daemonAuthToken={daemonAuthToken}
+                      daemonAuth={daemonAuth}
                       onScriptError={postSceneError}
                     />
                   ) : e.kind === "artifact" && baseUrl && typeof yolo === "boolean" ? (
@@ -816,7 +833,7 @@ export default function SceneView({
                         allowAutoplay={!!allowAutoplay}
                         sessionId={sessionId}
                         client={client}
-                        daemonAuthToken={daemonAuthToken}
+                        daemonAuth={daemonAuth}
                       />
                     </div>
                   ) : (

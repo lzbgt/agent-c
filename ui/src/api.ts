@@ -1,9 +1,28 @@
 import { z } from "zod";
 
-export function daemonHeaders(authToken?: string, extra?: Record<string, string>): Record<string, string> {
+export type ApiAuth =
+  | { mode: "direct"; token?: string }
+  | { mode: "broker"; token?: string; agentdToken?: string };
+
+function normalizeBearerHeader(raw?: string): string | null {
+  const s = typeof raw === "string" ? raw.trim() : "";
+  if (!s) return null;
+  if (/^bearer\\s+/i.test(s)) {
+    return `Bearer ${s.replace(/^bearer\\s+/i, "").trim()}`;
+  }
+  return `Bearer ${s}`;
+}
+
+// Request headers for talking to:
+// - agentd directly: Authorization: Bearer <agentd_token>
+// - broker: Authorization: Bearer <oidc_jwt> and optional X-Agentd-Authorization: Bearer <agentd_token>
+export function daemonHeaders(auth?: ApiAuth, extra?: Record<string, string>): Record<string, string> {
   const h: Record<string, string> = { ...(extra ?? {}) };
-  if (authToken && authToken.trim().length > 0) {
-    h["Authorization"] = `Bearer ${authToken.trim()}`;
+  const authz = normalizeBearerHeader(auth?.token);
+  if (authz) h["Authorization"] = authz;
+  if (auth && auth.mode === "broker") {
+    const agentd = normalizeBearerHeader(auth.agentdToken);
+    if (agentd) h["X-Agentd-Authorization"] = agentd;
   }
   return h;
 }
@@ -118,11 +137,11 @@ export const DaemonConfigUpdateRespSchema = z
   .passthrough();
 export type DaemonConfigUpdateResp = z.infer<typeof DaemonConfigUpdateRespSchema>;
 
-export async function apiUpdateDaemonConfig(base: string, req: DaemonConfigUpdateReq, authToken?: string): Promise<DaemonConfigUpdateResp> {
+export async function apiUpdateDaemonConfig(base: string, req: DaemonConfigUpdateReq, auth?: ApiAuth): Promise<DaemonConfigUpdateResp> {
   const payload = DaemonConfigUpdateReqSchema.parse(req);
   const r = await fetch(`${base}/api/v1/config/update`, {
     method: "POST",
-    headers: daemonHeaders(authToken, { "Content-Type": "application/json" }),
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
     body: JSON.stringify(payload),
   });
   const j = await r.json();
@@ -231,11 +250,11 @@ export const SessionUploadRespSchema = z
   .passthrough();
 export type SessionUploadResp = z.infer<typeof SessionUploadRespSchema>;
 
-export async function apiPostSessionUpload(base: string, req: SessionUploadReq, authToken?: string): Promise<SessionUploadResp> {
+export async function apiPostSessionUpload(base: string, req: SessionUploadReq, auth?: ApiAuth): Promise<SessionUploadResp> {
   const payload = SessionUploadReqSchema.parse(req);
   const r = await fetch(`${base}/api/v1/session/upload`, {
     method: "POST",
-    headers: daemonHeaders(authToken, { "Content-Type": "application/json" }),
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
     body: JSON.stringify(payload),
   });
   const j = await r.json();
@@ -285,7 +304,7 @@ export type ToolDefsResp = z.infer<typeof ToolDefsRespSchema>;
 
 export async function apiGetTools(
   base: string,
-  authToken?: string,
+  auth?: ApiAuth,
   opts?: { tools?: "host" | "basic" | "none"; yolo?: boolean; hostPolicy?: "full" | "readonly"; sessionId?: string },
 ): Promise<ToolDefsResp> {
   const q = new URLSearchParams();
@@ -293,15 +312,15 @@ export async function apiGetTools(
   if (typeof opts?.yolo === "boolean") q.set("yolo", opts.yolo ? "1" : "0");
   if (opts?.hostPolicy) q.set("host_policy", opts.hostPolicy);
   if (typeof opts?.sessionId === "string" && opts.sessionId.length > 0) q.set("session_id", opts.sessionId);
-  const r = await fetch(`${base}/api/v1/tools?${q.toString()}`, { headers: daemonHeaders(authToken) });
+  const r = await fetch(`${base}/api/v1/tools?${q.toString()}`, { headers: daemonHeaders(auth) });
   const j = await r.json();
   return ToolDefsRespSchema.parse(j);
 }
 
-export async function apiCancelJob(base: string, jobId: string, authToken?: string): Promise<any> {
+export async function apiCancelJob(base: string, jobId: string, auth?: ApiAuth): Promise<any> {
   const r = await fetch(`${base}/api/v1/job/cancel?job_id=${encodeURIComponent(jobId)}`, {
     method: "POST",
-    headers: daemonHeaders(authToken),
+    headers: daemonHeaders(auth),
   });
   const j = await r.json();
   return j;
@@ -348,7 +367,7 @@ export type OpenRouterModelsResp = z.infer<typeof OpenRouterModelsRespSchema>;
 export async function apiGetOpenRouterModels(
   base: string,
   opts: {
-    daemonAuthToken?: string;
+    daemonAuth?: ApiAuth;
     apiKey?: string;
     openrouterBaseUrl?: string;
     minTotal?: number;
@@ -371,7 +390,7 @@ export async function apiGetOpenRouterModels(
   if (typeof opts.limit === "number") q.set("limit", String(opts.limit));
   if (opts.refresh) q.set("refresh", "1");
 
-  const headers: Record<string, string> = daemonHeaders(opts.daemonAuthToken);
+  const headers: Record<string, string> = daemonHeaders(opts.daemonAuth);
   if (opts.apiKey && opts.apiKey.trim().length > 0) {
     headers["X-OpenRouter-Key"] = opts.apiKey.trim();
   }
@@ -380,14 +399,14 @@ export async function apiGetOpenRouterModels(
   return OpenRouterModelsRespSchema.parse(j);
 }
 
-export async function apiGetHealth(base: string, authToken?: string): Promise<Health> {
-  const r = await fetch(`${base}/api/v1/health`, { headers: daemonHeaders(authToken) });
+export async function apiGetHealth(base: string, auth?: ApiAuth): Promise<Health> {
+  const r = await fetch(`${base}/api/v1/health`, { headers: daemonHeaders(auth) });
   const j = await r.json();
   return HealthSchema.parse(j);
 }
 
-export async function apiGetConfig(base: string, authToken?: string): Promise<DaemonConfigResp> {
-  const r = await fetch(`${base}/api/v1/config`, { headers: daemonHeaders(authToken) });
+export async function apiGetConfig(base: string, auth?: ApiAuth): Promise<DaemonConfigResp> {
+  const r = await fetch(`${base}/api/v1/config`, { headers: daemonHeaders(auth) });
   const j = await r.json();
   return DaemonConfigSchema.parse(j);
 }
@@ -399,8 +418,8 @@ export const SessionsSchema = z.object({
 });
 export type SessionsResp = z.infer<typeof SessionsSchema>;
 
-export async function apiListSessions(base: string, authToken?: string): Promise<SessionsResp> {
-  const r = await fetch(`${base}/api/v1/sessions`, { headers: daemonHeaders(authToken) });
+export async function apiListSessions(base: string, auth?: ApiAuth): Promise<SessionsResp> {
+  const r = await fetch(`${base}/api/v1/sessions`, { headers: daemonHeaders(auth) });
   const j = await r.json();
   return SessionsSchema.parse(j);
 }
@@ -413,8 +432,8 @@ export const SessionSchema = z.object({
 });
 export type SessionResp = z.infer<typeof SessionSchema>;
 
-export async function apiGetSession(base: string, sessionId: string, authToken?: string): Promise<SessionResp> {
-  const r = await fetch(`${base}/api/v1/session?session_id=${encodeURIComponent(sessionId)}`, { headers: daemonHeaders(authToken) });
+export async function apiGetSession(base: string, sessionId: string, auth?: ApiAuth): Promise<SessionResp> {
+  const r = await fetch(`${base}/api/v1/session?session_id=${encodeURIComponent(sessionId)}`, { headers: daemonHeaders(auth) });
   const j = await r.json();
   return SessionSchema.parse(j);
 }
@@ -430,8 +449,8 @@ export const SessionSceneSchema = z
   .passthrough();
 export type SessionSceneResp = z.infer<typeof SessionSceneSchema>;
 
-export async function apiGetSessionScene(base: string, sessionId: string, authToken?: string): Promise<SessionSceneResp> {
-  const r = await fetch(`${base}/api/v1/session/scene?session_id=${encodeURIComponent(sessionId)}`, { headers: daemonHeaders(authToken) });
+export async function apiGetSessionScene(base: string, sessionId: string, auth?: ApiAuth): Promise<SessionSceneResp> {
+  const r = await fetch(`${base}/api/v1/session/scene?session_id=${encodeURIComponent(sessionId)}`, { headers: daemonHeaders(auth) });
   const j = await r.json();
   return SessionSceneSchema.parse(j);
 }
@@ -458,12 +477,12 @@ export type SessionSceneApplyResp = z.infer<typeof SessionSceneApplyRespSchema>;
 export async function apiPostSessionSceneApply(
   base: string,
   req: SessionSceneApplyReq,
-  authToken?: string,
+  auth?: ApiAuth,
 ): Promise<SessionSceneApplyResp> {
   const payload = SessionSceneApplyReqSchema.parse(req);
   const r = await fetch(`${base}/api/v1/session/scene/apply`, {
     method: "POST",
-    headers: daemonHeaders(authToken, { "Content-Type": "application/json" }),
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
     body: JSON.stringify(payload),
   });
   const j = await r.json();
@@ -501,13 +520,13 @@ export type SessionUiEventResp = z.infer<typeof SessionUiEventRespSchema>;
 export async function apiPostSessionUiEvent(
   base: string,
   req: SessionUiEventReq,
-  authToken?: string,
+  auth?: ApiAuth,
 ): Promise<SessionUiEventResp> {
   const payload = SessionUiEventReqSchema.parse(req);
   // Preferred endpoint name is /session/client_event; /session/ui_event remains as a legacy alias.
   const r = await fetch(`${base}/api/v1/session/client_event`, {
     method: "POST",
-    headers: daemonHeaders(authToken, { "Content-Type": "application/json" }),
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
     body: JSON.stringify(payload),
   });
   const j = await r.json();
@@ -526,7 +545,7 @@ export type NewSessionResp = z.infer<typeof NewSessionRespSchema>;
 
 export async function apiNewSession(
   base: string,
-  authToken?: string,
+  auth?: ApiAuth,
   opts?: { sessionId?: string; createFiles?: boolean },
 ): Promise<NewSessionResp> {
   const payload: any = {};
@@ -534,7 +553,7 @@ export async function apiNewSession(
   if (typeof opts?.createFiles === "boolean") payload.create_files = opts.createFiles;
   const r = await fetch(`${base}/api/v1/session/new`, {
     method: "POST",
-    headers: daemonHeaders(authToken, { "Content-Type": "application/json" }),
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
     body: JSON.stringify(payload),
   });
   const j = await r.json();
@@ -550,10 +569,10 @@ export const DeleteSessionRespSchema = z
   .passthrough();
 export type DeleteSessionResp = z.infer<typeof DeleteSessionRespSchema>;
 
-export async function apiDeleteSession(base: string, sessionId: string, authToken?: string): Promise<DeleteSessionResp> {
+export async function apiDeleteSession(base: string, sessionId: string, auth?: ApiAuth): Promise<DeleteSessionResp> {
   const r = await fetch(`${base}/api/v1/session?session_id=${encodeURIComponent(sessionId)}`, {
     method: "DELETE",
-    headers: daemonHeaders(authToken),
+    headers: daemonHeaders(auth),
   });
   const j = await r.json();
   return DeleteSessionRespSchema.parse(j);
@@ -567,9 +586,9 @@ export const AuditSchema = z.object({
 });
 export type AuditResp = z.infer<typeof AuditSchema>;
 
-export async function apiGetAudit(base: string, sessionId: string, authToken?: string): Promise<AuditResp> {
+export async function apiGetAudit(base: string, sessionId: string, auth?: ApiAuth): Promise<AuditResp> {
   const r = await fetch(`${base}/api/v1/session/audit?session_id=${encodeURIComponent(sessionId)}&max_bytes=1048576`, {
-    headers: daemonHeaders(authToken),
+    headers: daemonHeaders(auth),
   });
   const j = await r.json();
   return AuditSchema.parse(j);
@@ -588,13 +607,13 @@ export type SessionClientEventsResp = z.infer<typeof SessionClientEventsSchema>;
 export async function apiGetSessionClientEvents(
   base: string,
   sessionId: string,
-  authToken?: string,
+  auth?: ApiAuth,
   opts?: { maxBytes?: number },
 ): Promise<SessionClientEventsResp> {
   const maxBytes = typeof opts?.maxBytes === "number" ? opts.maxBytes : 1024 * 1024;
   const r = await fetch(
     `${base}/api/v1/session/client_events?session_id=${encodeURIComponent(sessionId)}&max_bytes=${encodeURIComponent(String(maxBytes))}`,
-    { headers: daemonHeaders(authToken) },
+    { headers: daemonHeaders(auth) },
   );
   const j = await r.json();
   return SessionClientEventsSchema.parse(j);
@@ -689,7 +708,7 @@ export type DbClientEventsResp = z.infer<typeof DbClientEventsSchema>;
 export async function apiGetSessionArtifacts(
   base: string,
   sessionId: string,
-  authToken?: string,
+  auth?: ApiAuth,
   opts?: { maxBytes?: number; maxArtifacts?: number },
 ): Promise<SessionArtifactsResp> {
   const maxBytes = opts?.maxBytes ?? 2 * 1024 * 1024;
@@ -698,7 +717,7 @@ export async function apiGetSessionArtifacts(
     `${base}/api/v1/session/artifacts?session_id=${encodeURIComponent(sessionId)}&max_bytes=${encodeURIComponent(
       String(maxBytes),
     )}&max_artifacts=${encodeURIComponent(String(maxArtifacts))}`,
-    { headers: daemonHeaders(authToken) },
+    { headers: daemonHeaders(auth) },
   );
   const j = await r.json();
   return SessionArtifactsSchema.parse(j);
@@ -707,7 +726,7 @@ export async function apiGetSessionArtifacts(
 export async function apiGetDbRuns(
   base: string,
   sessionId: string,
-  authToken?: string,
+  auth?: ApiAuth,
   opts?: { limit?: number; offset?: number; onlyErrors?: boolean; stopReason?: string },
 ): Promise<DbRunsResp> {
   const limit = typeof opts?.limit === "number" ? opts.limit : 50;
@@ -720,7 +739,7 @@ export async function apiGetDbRuns(
     )}&offset=${encodeURIComponent(String(offset))}&only_errors=${encodeURIComponent(onlyErrors ? "1" : "0")}${
       stopReason.trim().length > 0 ? `&stop_reason=${encodeURIComponent(stopReason.trim())}` : ""
     }`,
-    { headers: daemonHeaders(authToken) },
+    { headers: daemonHeaders(auth) },
   );
   const j = await r.json();
   return DbRunsSchema.parse(j);
@@ -729,7 +748,7 @@ export async function apiGetDbRuns(
 export async function apiGetDbRun(
   base: string,
   runId: number,
-  authToken?: string,
+  auth?: ApiAuth,
   opts?: { includeEvents?: boolean; includeTools?: boolean; includeArtifacts?: boolean; includeUiActions?: boolean },
 ): Promise<DbRunResp> {
   const q = new URLSearchParams();
@@ -738,7 +757,7 @@ export async function apiGetDbRun(
   if (opts?.includeTools) q.set("include_tools", "1");
   if (opts?.includeArtifacts) q.set("include_artifacts", "1");
   if (opts?.includeUiActions) q.set("include_ui_actions", "1");
-  const r = await fetch(`${base}/api/v1/db/run?${q.toString()}`, { headers: daemonHeaders(authToken) });
+  const r = await fetch(`${base}/api/v1/db/run?${q.toString()}`, { headers: daemonHeaders(auth) });
   const j = await r.json();
   return DbRunSchema.parse(j);
 }
@@ -746,7 +765,7 @@ export async function apiGetDbRun(
 export async function apiGetDbArtifacts(
   base: string,
   sessionId: string,
-  authToken?: string,
+  auth?: ApiAuth,
   opts?: { limit?: number; offset?: number },
 ): Promise<DbArtifactsResp> {
   const limit = typeof opts?.limit === "number" ? opts.limit : 50;
@@ -755,7 +774,7 @@ export async function apiGetDbArtifacts(
     `${base}/api/v1/db/artifacts?session_id=${encodeURIComponent(sessionId)}&limit=${encodeURIComponent(
       String(limit),
     )}&offset=${encodeURIComponent(String(offset))}`,
-    { headers: daemonHeaders(authToken) },
+    { headers: daemonHeaders(auth) },
   );
   const j = await r.json();
   return DbArtifactsSchema.parse(j);
@@ -764,7 +783,7 @@ export async function apiGetDbArtifacts(
 export async function apiGetDbUiActions(
   base: string,
   sessionId: string,
-  authToken?: string,
+  auth?: ApiAuth,
   opts?: { limit?: number; offset?: number },
 ): Promise<DbUiActionsResp> {
   const limit = typeof opts?.limit === "number" ? opts.limit : 50;
@@ -773,7 +792,7 @@ export async function apiGetDbUiActions(
     `${base}/api/v1/db/ui_actions?session_id=${encodeURIComponent(sessionId)}&limit=${encodeURIComponent(
       String(limit),
     )}&offset=${encodeURIComponent(String(offset))}`,
-    { headers: daemonHeaders(authToken) },
+    { headers: daemonHeaders(auth) },
   );
   const j = await r.json();
   return DbUiActionsSchema.parse(j);
@@ -781,14 +800,14 @@ export async function apiGetDbUiActions(
 
 export async function apiGetDbSessions(
   base: string,
-  authToken?: string,
+  auth?: ApiAuth,
   opts?: { limit?: number; offset?: number },
 ): Promise<DbSessionsResp> {
   const limit = typeof opts?.limit === "number" ? opts.limit : 50;
   const offset = typeof opts?.offset === "number" ? opts.offset : 0;
   const r = await fetch(
     `${base}/api/v1/db/sessions?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(offset))}`,
-    { headers: daemonHeaders(authToken) },
+    { headers: daemonHeaders(auth) },
   );
   const j = await r.json();
   return DbSessionsSchema.parse(j);
@@ -797,7 +816,7 @@ export async function apiGetDbSessions(
 export async function apiGetDbMessages(
   base: string,
   sessionId: string,
-  authToken?: string,
+  auth?: ApiAuth,
   opts?: { limit?: number; offset?: number; maxContentBytes?: number },
 ): Promise<DbMessagesResp> {
   const limit = typeof opts?.limit === "number" ? opts.limit : 50;
@@ -807,7 +826,7 @@ export async function apiGetDbMessages(
     `${base}/api/v1/db/messages?session_id=${encodeURIComponent(sessionId)}&limit=${encodeURIComponent(
       String(limit),
     )}&offset=${encodeURIComponent(String(offset))}&max_content_bytes=${encodeURIComponent(String(maxContentBytes))}`,
-    { headers: daemonHeaders(authToken) },
+    { headers: daemonHeaders(auth) },
   );
   const j = await r.json();
   return DbMessagesSchema.parse(j);
@@ -816,7 +835,7 @@ export async function apiGetDbMessages(
 export async function apiGetDbClientEvents(
   base: string,
   sessionId: string,
-  authToken?: string,
+  auth?: ApiAuth,
   opts?: { limit?: number; offset?: number },
 ): Promise<DbClientEventsResp> {
   const limit = typeof opts?.limit === "number" ? opts.limit : 50;
@@ -825,17 +844,17 @@ export async function apiGetDbClientEvents(
     `${base}/api/v1/db/client_events?session_id=${encodeURIComponent(sessionId)}&limit=${encodeURIComponent(
       String(limit),
     )}&offset=${encodeURIComponent(String(offset))}`,
-    { headers: daemonHeaders(authToken) },
+    { headers: daemonHeaders(auth) },
   );
   const j = await r.json();
   return DbClientEventsSchema.parse(j);
 }
 
-export async function apiRun(base: string, req: RunRequest, authToken?: string): Promise<RunResponse> {
+export async function apiRun(base: string, req: RunRequest, auth?: ApiAuth): Promise<RunResponse> {
   const payload = RunRequestSchema.parse(req);
   const r = await fetch(`${base}/api/v1/run`, {
     method: "POST",
-    headers: daemonHeaders(authToken, { "Content-Type": "application/json" }),
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
     body: JSON.stringify(payload),
   });
   const j = await r.json();
@@ -865,19 +884,19 @@ export const JobRespSchema = z.object({
 });
 export type JobResp = z.infer<typeof JobRespSchema>;
 
-export async function apiRunAsync(base: string, req: RunRequest, authToken?: string): Promise<RunAsyncResp> {
+export async function apiRunAsync(base: string, req: RunRequest, auth?: ApiAuth): Promise<RunAsyncResp> {
   const payload = RunRequestSchema.parse(req);
   const r = await fetch(`${base}/api/v1/run_async`, {
     method: "POST",
-    headers: daemonHeaders(authToken, { "Content-Type": "application/json" }),
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
     body: JSON.stringify(payload),
   });
   const j = await r.json();
   return RunAsyncRespSchema.parse(j);
 }
 
-export async function apiGetJob(base: string, jobId: string, authToken?: string): Promise<JobResp> {
-  const r = await fetch(`${base}/api/v1/job?job_id=${encodeURIComponent(jobId)}`, { headers: daemonHeaders(authToken) });
+export async function apiGetJob(base: string, jobId: string, auth?: ApiAuth): Promise<JobResp> {
+  const r = await fetch(`${base}/api/v1/job?job_id=${encodeURIComponent(jobId)}`, { headers: daemonHeaders(auth) });
   const j = await r.json();
   return JobRespSchema.parse(j);
 }
@@ -885,7 +904,7 @@ export async function apiGetJob(base: string, jobId: string, authToken?: string)
 export async function apiGetJobProgress(
   base: string,
   jobId: string,
-  authToken?: string,
+  auth?: ApiAuth,
   opts?: { cursor?: number; maxEvents?: number },
 ): Promise<JobResp> {
   const cursor = opts?.cursor ?? 0;
@@ -894,7 +913,7 @@ export async function apiGetJobProgress(
     `${base}/api/v1/job?job_id=${encodeURIComponent(jobId)}&include_events=1&cursor=${encodeURIComponent(
       String(cursor),
     )}&max_events=${encodeURIComponent(String(maxEvents))}`,
-    { headers: daemonHeaders(authToken) },
+    { headers: daemonHeaders(auth) },
   );
   const j = await r.json();
   return JobRespSchema.parse(j);
@@ -907,7 +926,7 @@ function sleep(ms: number) {
 export async function apiRunMaybeAsync(
   base: string,
   req: RunRequest,
-  authToken?: string,
+  auth?: ApiAuth,
   opts?: { pollMs?: number; timeoutMs?: number },
 ): Promise<RunResponse> {
   const pollMs = opts?.pollMs ?? 500;
@@ -917,22 +936,22 @@ export async function apiRunMaybeAsync(
   // Prefer async when available; fall back to sync if endpoint missing.
   let asyncResp: RunAsyncResp | undefined;
   try {
-    asyncResp = await apiRunAsync(base, req, authToken);
+    asyncResp = await apiRunAsync(base, req, auth);
   } catch {
     // likely 404 or JSON mismatch; fall back to sync.
-    return apiRun(base, req, authToken);
+    return apiRun(base, req, auth);
   }
 
   if (!asyncResp.ok || !asyncResp.job_id) {
     // If daemon reported an error, fall back to sync as best-effort.
-    return apiRun(base, req, authToken);
+    return apiRun(base, req, auth);
   }
 
   while (true) {
     if (Date.now() - started > timeoutMs) {
       throw new Error(`Timed out waiting for job ${asyncResp.job_id}`);
     }
-    const job = await apiGetJob(base, asyncResp.job_id, authToken);
+    const job = await apiGetJob(base, asyncResp.job_id, auth);
     if (!job.ok) {
       throw new Error(job.error || "job failed");
     }
@@ -944,4 +963,38 @@ export async function apiRunMaybeAsync(
     }
     await sleep(pollMs);
   }
+}
+
+// Broker (control plane) helpers.
+export const BrokerAgentsRespSchema = z
+  .object({
+    ok: z.boolean(),
+    agents: z
+      .array(
+        z
+          .object({
+            agent_id: z.string(),
+            enabled: z.boolean().optional(),
+            created_unix_ms: z.number().optional(),
+            owner_sub: z.string().optional(),
+            connected: z.boolean().optional(),
+            connected_unix_ms: z.number().optional(),
+            last_seen_unix_ms: z.number().optional(),
+            remote_addr: z.string().optional(),
+            labels: z.record(z.any()).optional(),
+            meta: z.record(z.any()).optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+export type BrokerAgentsResp = z.infer<typeof BrokerAgentsRespSchema>;
+
+export async function apiBrokerListAgents(brokerBase: string, auth?: ApiAuth): Promise<BrokerAgentsResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const r = await fetch(`${base}/v1/agents`, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return BrokerAgentsRespSchema.parse(j);
 }

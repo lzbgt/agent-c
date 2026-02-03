@@ -3,6 +3,10 @@
 #include <string>
 #include <vector>
 
+// Optional callback for surfacing provider retries to UIs/logs.
+// `data_json` is a JSON object string for the event's `data` field.
+using OpenAIRetryEventCallback = void (*)(void* ctx, const char* data_json);
+
 struct OpenAIClientConfig {
   std::string base_url;  // e.g. https://api.openai.com/v1
   std::string api_key;
@@ -12,11 +16,28 @@ struct OpenAIClientConfig {
   // Optional explicit proxy override (e.g. http://localhost:8120).
   // If empty, falls back to env (HTTPS_PROXY/https_proxy/HTTP_PROXY/http_proxy).
   std::string proxy_url;
+  // Total time budget for a request (0 means "no total timeout").
   long timeout_ms = 60000;
+  // Connection establishment timeout (DNS + TCP + TLS). 0 means "derive from timeout_ms".
+  long connect_timeout_ms = 0;
+  // Streaming idle timeout: abort if transfer speed stays below 1 byte/sec for this many ms.
+  // 0 disables the idle timeout.
+  long stream_idle_timeout_ms = 0;
   // Best-effort retries for transient network/provider failures (timeouts, 5xx, 429).
   // Note: retries can result in duplicate provider requests if the first attempt succeeded server-side
   // but the response was lost. Keep this small (default: 1).
   int max_retries = 1;
+  // Exponential backoff tuning for retries.
+  // Attempt 0 sleep ~= retry_base_ms (subject to jitter/caps), attempt 1 doubles, etc.
+  long retry_base_ms = 250;
+  long retry_max_ms = 4000;
+  // Multiplicative jitter in [0, 1]. 0 disables jitter.
+  double retry_jitter = 0.2;
+  bool respect_retry_after = true;
+
+  // Optional hook invoked immediately before a retry sleep.
+  OpenAIRetryEventCallback on_retry = nullptr;
+  void* on_retry_ctx = nullptr;
 };
 
 struct OpenAIChatResult {

@@ -7,9 +7,22 @@
 #include "agent_db.h"
 #include "tool_extension.h"
 
+#include <json/json.h>
+
 #include <string>
 
 namespace agentd {
+
+// Internal helper (also used by orchestrate endpoint): converts a run request JSON body into a response JSON.
+Json::Value run_request_to_json_internal(
+  const DaemonConfig& daemon_cfg,
+  const OpenAIClientConfig& ocfg,
+  AgentDb* db_or_null,
+  const ToolExtension* tool_ext_or_null,
+  const std::string& sessions_root_dir,
+  const std::string& request_body,
+  const char* job_id_or_null
+);
 
 void handle_run_endpoint(
   const DaemonConfig& cfg,

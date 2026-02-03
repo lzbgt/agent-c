@@ -519,9 +519,39 @@ static std::string read_file_capped(const std::filesystem::path& p, size_t max_b
   return s;
 }
 
+struct MemoryContextPolicy {
+  bool include_structured = true; // memory/STRUCTURED.md
+  bool include_core = true;       // memory/MEMORY.md
+  bool include_daily = true;      // memory/YYYY-MM-DD.md
+  bool include_session = true;    // memory/sessions/<session_id>.md
+  int daily_days = 2;             // includes today + (daily_days-1) previous days
+  size_t total_cap = 12000;
+};
+
+static std::string strip_agent_memory_v1_json_block(const std::string& s) {
+  // Remove the structured JSON blob (which is primarily machine metadata) to keep the injected
+  // memory context human-readable.
+  const std::string begin = "<!-- AGENT_MEMORY_V1_BEGIN -->";
+  const std::string end = "<!-- AGENT_MEMORY_V1_END -->";
+  const size_t a = s.find(begin);
+  if (a == std::string::npos) return s;
+  const size_t b = s.find(end, a + begin.size());
+  if (b == std::string::npos) return s;
+  const size_t end_b = b + end.size();
+  std::string out;
+  out.reserve(s.size());
+  out.append(s.data(), a);
+  out += "<!-- (structured memory metadata omitted) -->\n";
+  if (end_b < s.size()) {
+    out.append(s.data() + end_b, s.size() - end_b);
+  }
+  return out;
+}
+
 static bool build_memory_context_text(
   const std::string& state_dir,
   const std::string& session_id,
+  const MemoryContextPolicy& pol,
   std::string* out_text
 ) {
   if (out_text) out_text->clear();
@@ -541,10 +571,19 @@ static bool build_memory_context_text(
     size_t cap;
   };
   std::vector<Candidate> cands;
-  cands.push_back(Candidate{"MEMORY.md", mem_root / "MEMORY.md", 6000});
-  cands.push_back(Candidate{local_date_ymd_days_ago(0) + ".md", mem_root / (local_date_ymd_days_ago(0) + ".md"), 2200});
-  cands.push_back(Candidate{local_date_ymd_days_ago(1) + ".md", mem_root / (local_date_ymd_days_ago(1) + ".md"), 2200});
-  if (is_safe_filename_component_ascii(session_id)) {
+  if (pol.include_structured) cands.push_back(Candidate{"STRUCTURED.md", mem_root / "STRUCTURED.md", 6000});
+  if (pol.include_core) cands.push_back(Candidate{"MEMORY.md", mem_root / "MEMORY.md", 6000});
+  if (pol.include_daily) {
+    const int days = std::max(0, std::min(pol.daily_days, 31));
+    for (int i = 0; i < days; i++) {
+      cands.push_back(Candidate{
+        local_date_ymd_days_ago(i) + ".md",
+        mem_root / (local_date_ymd_days_ago(i) + ".md"),
+        2200
+      });
+    }
+  }
+  if (pol.include_session && is_safe_filename_component_ascii(session_id)) {
     cands.push_back(Candidate{"sessions/" + session_id + ".md", mem_root / "sessions" / (session_id + ".md"), 2400});
   }
 
@@ -561,6 +600,7 @@ static bool build_memory_context_text(
     ec.clear();
     if (!std::filesystem::exists(c.path, ec) || !std::filesystem::is_regular_file(c.path, ec)) continue;
     std::string content = read_file_capped(c.path, c.cap);
+    content = strip_agent_memory_v1_json_block(content);
     if (trim_copy(content).empty()) continue;
     included++;
     oss << "\n[" << c.label << "]\n";
@@ -570,7 +610,7 @@ static bool build_memory_context_text(
   if (included == 0) return false;
 
   std::string s = oss.str();
-  const size_t kTotalCap = 12000;
+  const size_t kTotalCap = pol.total_cap == 0 ? (size_t)12000 : std::min<size_t>(pol.total_cap, (size_t)40000);
   if (s.size() > kTotalCap) s.resize(kTotalCap);
   *out_text = std::move(s);
   return true;
@@ -862,7 +902,7 @@ static Json::Value verify_expected_client_acks(
 }
 
 // Parses the daemon run request body and returns a response JSON object (HTTP-level errors are represented in JSON).
-static Json::Value run_request_to_json(
+static Json::Value run_request_to_json_impl(
   const DaemonConfig& daemon_cfg,
   const OpenAIClientConfig& ocfg,
   AgentDb* db_or_null,
@@ -900,6 +940,33 @@ static Json::Value run_request_to_json(
   if (args.isMember("timeout_ms") && args["timeout_ms"].isInt64()) {
     const long t = (long)args["timeout_ms"].asInt64();
     if (t > 0) run_cfg.timeout_ms = t;
+  }
+  if (args.isMember("connect_timeout_ms") && args["connect_timeout_ms"].isInt64()) {
+    const long t = (long)args["connect_timeout_ms"].asInt64();
+    if (t >= 0) run_cfg.connect_timeout_ms = t;
+  }
+  if (args.isMember("stream_idle_timeout_ms") && args["stream_idle_timeout_ms"].isInt64()) {
+    const long t = (long)args["stream_idle_timeout_ms"].asInt64();
+    if (t >= 0) run_cfg.stream_idle_timeout_ms = t;
+  }
+  if (args.isMember("max_retries") && args["max_retries"].isInt()) {
+    const int r = args["max_retries"].asInt();
+    run_cfg.max_retries = std::max(0, std::min(r, 8));
+  }
+  if (args.isMember("retry_base_ms") && args["retry_base_ms"].isInt64()) {
+    const long t = (long)args["retry_base_ms"].asInt64();
+    if (t >= 0) run_cfg.retry_base_ms = std::min<long>(t, 60000L);
+  }
+  if (args.isMember("retry_max_ms") && args["retry_max_ms"].isInt64()) {
+    const long t = (long)args["retry_max_ms"].asInt64();
+    if (t >= 0) run_cfg.retry_max_ms = std::min<long>(t, 60000L);
+  }
+  if (args.isMember("retry_jitter") && (args["retry_jitter"].isDouble() || args["retry_jitter"].isInt() || args["retry_jitter"].isInt64())) {
+    const double j = args["retry_jitter"].asDouble();
+    run_cfg.retry_jitter = std::max(0.0, std::min(j, 1.0));
+  }
+  if (args.isMember("respect_retry_after") && args["respect_retry_after"].isBool()) {
+    run_cfg.respect_retry_after = args["respect_retry_after"].asBool();
   }
 
   // Provider key fallback (framework responsibility):
@@ -1213,6 +1280,28 @@ static Json::Value run_request_to_json(
   const size_t max_capture_bytes =
     json_get_u64_nonneg(args, "max_capture_bytes", &max_capture_bytes_u64) ? (size_t)max_capture_bytes_u64 : (size_t)256 * 1024;
 
+  // Memory retrieval policy (durable on-disk Markdown memory injection into the tool loop).
+  MemoryContextPolicy mem_pol;
+  if (args.isMember("memory_include_structured") && args["memory_include_structured"].isBool()) {
+    mem_pol.include_structured = args["memory_include_structured"].asBool();
+  }
+  if (args.isMember("memory_include_core") && args["memory_include_core"].isBool()) {
+    mem_pol.include_core = args["memory_include_core"].asBool();
+  }
+  if (args.isMember("memory_include_daily") && args["memory_include_daily"].isBool()) {
+    mem_pol.include_daily = args["memory_include_daily"].asBool();
+  }
+  if (args.isMember("memory_include_session") && args["memory_include_session"].isBool()) {
+    mem_pol.include_session = args["memory_include_session"].asBool();
+  }
+  if (args.isMember("memory_daily_days") && args["memory_daily_days"].isInt()) {
+    mem_pol.daily_days = std::max(0, std::min(args["memory_daily_days"].asInt(), 31));
+  }
+  if (args.isMember("memory_total_cap") && (args["memory_total_cap"].isInt64() || args["memory_total_cap"].isInt())) {
+    const int64_t v = args["memory_total_cap"].asInt64();
+    if (v >= 0) mem_pol.total_cap = (size_t)std::min<int64_t>(v, 40000);
+  }
+
   std::string job_id_local = (job_id_or_null && job_id_or_null[0]) ? std::string(job_id_or_null) : std::string();
   const int64_t run_ts_ms = now_unix_ms();
 
@@ -1401,6 +1490,7 @@ static Json::Value run_request_to_json(
     heartbeat_thread = std::thread([&]() {
       // Emit a best-effort heartbeat while a job is running to avoid the appearance of "hangs"
       // during long tool exec (sleep/build) or slow LLM responses.
+      int64_t last_db_touch_ms = 0;
       for (;;) {
         if (heartbeat_stop.load()) return;
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -1412,8 +1502,23 @@ static Json::Value run_request_to_json(
         const int64_t since_any = now - heartbeat_last_any_event_ms.load();
         // Only emit when we've been quiet for a while.
         if (since_non >= 1200 && since_any >= 900) {
+          if (job_is_cancel_requested(job_id_local)) return;
           daemon_job_emit_heartbeat(job_id_local, heartbeat_phase.load(), since_non, since_any);
           heartbeat_last_any_event_ms.store(now);
+
+          // Best-effort: persist a heartbeat timestamp so polling UIs can distinguish "stalled" vs "restarted".
+          // Throttle DB writes to keep overhead negligible.
+          if (db_or_null && db_or_null->is_open() && (last_db_touch_ms == 0 || (now - last_db_touch_ms) >= 2000)) {
+            AgentDb::JobRow jr;
+            jr.job_id = job_id_local;
+            jr.updated_unix_ms = now;
+            jr.status = "running";
+            jr.cancel_requested = job_is_cancel_requested(job_id_local);
+            jr.last_heartbeat_unix_ms = now;
+            std::string db_err;
+            (void)db_or_null->upsert_job(jr, &db_err);
+            last_db_touch_ms = now;
+          }
         }
       }
     });
@@ -1567,7 +1672,7 @@ static Json::Value run_request_to_json(
 		    const agent_session_t* seed_for_run = session;
 		    if (!no_default_system && tools == "host" && !no_session) {
 		      std::string mem_ctx;
-		      if (build_memory_context_text(daemon_cfg.state_dir, session_id, &mem_ctx)) {
+		      if (build_memory_context_text(daemon_cfg.state_dir, session_id, mem_pol, &mem_ctx)) {
 		        if (agent_session_t* tmp = clone_session_with_memory_context(session, mem_ctx)) {
 		          ephemeral_seed.reset(tmp);
 		          seed_for_run = tmp;
@@ -1637,6 +1742,28 @@ static Json::Value run_request_to_json(
         job_append_event(job_id_or_null, type, Json::writeString(wb, data));
       }
     };
+
+    // Surface provider retries (429/5xx/timeouts) as structured events so async jobs can explain
+    // "why it was slow" and DB telemetry has enough context for diagnosis.
+    using PushEvFn = decltype(push_ev);
+    struct RetryPushCtx {
+      PushEvFn* push = nullptr;
+    } retry_ctx;
+    retry_ctx.push = &push_ev;
+    run_cfg.on_retry = [](void* vctx, const char* data_json) {
+      auto* c = static_cast<RetryPushCtx*>(vctx);
+      if (!c || !c->push) return;
+      Json::Value d(Json::objectValue);
+      if (data_json && data_json[0]) {
+        std::string perr;
+        if (!json_parse_object(std::string(data_json), &d, &perr)) {
+          d = std::string(data_json);
+        }
+      }
+      if (d.isObject() && !d.isMember("scope")) d["scope"] = "provider";
+      (*c->push)("retry", d);
+    };
+    run_cfg.on_retry_ctx = &retry_ctx;
     {
       Json::Value d(Json::objectValue);
       d["model"] = run_cfg.model;
@@ -2026,9 +2153,26 @@ static Json::Value run_request_to_json(
   out["effective_yolo"] = yolo;
   out["effective_host_policy"] = host_policy_to_string(effective_policy);
   out["effective_timeout_ms"] = (Json::Int64)run_cfg.timeout_ms;
+  out["effective_connect_timeout_ms"] = (Json::Int64)run_cfg.connect_timeout_ms;
+  out["effective_stream_idle_timeout_ms"] = (Json::Int64)run_cfg.stream_idle_timeout_ms;
+  out["effective_max_retries"] = (Json::Int64)run_cfg.max_retries;
+  out["effective_retry_base_ms"] = (Json::Int64)run_cfg.retry_base_ms;
+  out["effective_retry_max_ms"] = (Json::Int64)run_cfg.retry_max_ms;
+  out["effective_retry_jitter"] = run_cfg.retry_jitter;
+  out["effective_respect_retry_after"] = run_cfg.respect_retry_after;
   out["effective_stream_assistant"] = effective_stream_assistant;
   out["effective_require_client_acks"] = require_client_acks;
   out["effective_tools"] = tools;
+  {
+    Json::Value mp(Json::objectValue);
+    mp["include_structured"] = mem_pol.include_structured;
+    mp["include_core"] = mem_pol.include_core;
+    mp["include_daily"] = mem_pol.include_daily;
+    mp["include_session"] = mem_pol.include_session;
+    mp["daily_days"] = (Json::Int64)mem_pol.daily_days;
+    mp["total_cap"] = (Json::UInt64)mem_pol.total_cap;
+    out["effective_memory_policy"] = mp;
+  }
   out["effective_input_image_count"] = (Json::UInt64)input_image_count;
   out["effective_had_input_files"] = input_had_any_files;
   {
@@ -2249,6 +2393,18 @@ static Json::Value run_request_to_json(
 
 }  // namespace
 
+Json::Value run_request_to_json_internal(
+  const DaemonConfig& daemon_cfg,
+  const OpenAIClientConfig& ocfg,
+  AgentDb* db_or_null,
+  const ToolExtension* tool_ext_or_null,
+  const std::string& sessions_root_dir,
+  const std::string& request_body,
+  const char* job_id_or_null
+) {
+  return run_request_to_json_impl(daemon_cfg, ocfg, db_or_null, tool_ext_or_null, sessions_root_dir, request_body, job_id_or_null);
+}
+
 void handle_run_endpoint(
   const DaemonConfig& cfg,
   const OpenAIClientConfig& ocfg,
@@ -2265,7 +2421,7 @@ void handle_run_endpoint(
 
   const auto started = std::chrono::steady_clock::now();
   std::cerr << "agentd: /api/v1/run start bytes=" << req.body.size() << "\n";
-  Json::Value out = run_request_to_json(cfg, ocfg, db_or_null, tool_ext_or_null, sessions_root_dir, req.body, nullptr);
+  Json::Value out = run_request_to_json_impl(cfg, ocfg, db_or_null, tool_ext_or_null, sessions_root_dir, req.body, nullptr);
   const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
   const bool ok = out.isObject() && out.isMember("ok") && out["ok"].isBool() && out["ok"].asBool();
   std::cerr << "agentd: /api/v1/run done ok=" << (ok ? "true" : "false") << " ms=" << ms << "\n";
@@ -2325,16 +2481,56 @@ void handle_run_async_endpoint(
     return;
   }
 
+  // Persist a durable job stub so UIs can still inspect job state after daemon restart.
+  const std::string session_id =
+    args.isMember("session_id") && args["session_id"].isString() ? args["session_id"].asString() : std::string("default");
+  const bool no_session = args.isMember("no_session") && args["no_session"].isBool() ? args["no_session"].asBool() : false;
+  const int64_t created_ms = now_unix_ms();
+  if (db_or_null && db_or_null->is_open()) {
+    AgentDb::JobRow jr;
+    jr.job_id = job_id;
+    jr.session_id = no_session ? session_id : session_id;
+    jr.created_unix_ms = created_ms;
+    jr.updated_unix_ms = created_ms;
+    jr.status = "queued";
+    jr.cancel_requested = false;
+    jr.error.clear();
+    jr.stop_reason.clear();
+    jr.result_json.clear();
+    jr.last_heartbeat_unix_ms = 0;
+    std::string db_err;
+    if (!db_or_null->upsert_job(jr, &db_err)) {
+      std::cerr << "agentd: warning: failed to persist job row: " << db_err << " job=" << job_id << "\n";
+    }
+  }
+
   // Log immediately in the request handler (before the background thread starts).
   // This helps diagnose "hangs" where the UI is pointed at the wrong daemon base URL,
   // or where the request never reaches the daemon.
   std::cerr << "agentd: /api/v1/run_async accepted job=" << job_id << " bytes=" << req.body.size() << "\n";
 
   const std::string body_copy = req.body;
-  std::thread([job_id, body_copy, cfg, ocfg, db_or_null, tool_ext_or_null, sessions_root_dir]() mutable {
+  std::thread([job_id, body_copy, cfg, ocfg, db_or_null, tool_ext_or_null, sessions_root_dir, session_id, created_ms]() mutable {
     const auto started = std::chrono::steady_clock::now();
     std::cerr << "agentd: /api/v1/run_async job=" << job_id << " start bytes=" << body_copy.size() << "\n";
     job_set_status(job_id, "running", "");
+    if (db_or_null && db_or_null->is_open()) {
+      AgentDb::JobRow jr;
+      jr.job_id = job_id;
+      jr.session_id = session_id;
+      jr.created_unix_ms = created_ms;
+      jr.updated_unix_ms = now_unix_ms();
+      jr.status = "running";
+      jr.cancel_requested = false;
+      jr.error.clear();
+      jr.stop_reason.clear();
+      jr.result_json.clear();
+      jr.last_heartbeat_unix_ms = 0;
+      std::string db_err;
+      if (!db_or_null->upsert_job(jr, &db_err)) {
+        std::cerr << "agentd: warning: failed to update job row (running): " << db_err << " job=" << job_id << "\n";
+      }
+    }
     {
       // Emit an immediate event so UIs don't look "stuck" even if the first LLM request is slow
       // or if the run uses tools="none" (no tool-loop events until completion).
@@ -2346,18 +2542,102 @@ void handle_run_async_endpoint(
       job_append_event(job_id, "start", json_stringify(d));
     }
     try {
-      Json::Value out = run_request_to_json(cfg, ocfg, db_or_null, tool_ext_or_null, sessions_root_dir, body_copy, job_id.c_str());
+      Json::Value out = run_request_to_json_impl(cfg, ocfg, db_or_null, tool_ext_or_null, sessions_root_dir, body_copy, job_id.c_str());
       job_set_result(job_id, out);
+
+      if (db_or_null && db_or_null->is_open()) {
+        const bool ok = out.isObject() && out.isMember("ok") && out["ok"].isBool() && out["ok"].asBool();
+        const bool cancelled =
+          out.isObject() && out.isMember("cancelled") && out["cancelled"].isBool() && out["cancelled"].asBool();
+        const std::string status = cancelled ? "cancelled" : (ok ? "done" : "error");
+        std::string error;
+        if (!ok && out.isObject() && out.isMember("error") && out["error"].isString()) error = out["error"].asString();
+        if (cancelled) error = "cancelled";
+
+        std::string stop_reason = ok ? "done" : "error";
+        std::string last_err_reason;
+        if (out.isObject() && out.isMember("events") && out["events"].isArray()) {
+          for (Json::ArrayIndex i = 0; i < out["events"].size(); i++) {
+            const auto& ev = out["events"][i];
+            if (!ev.isObject()) continue;
+            const auto& t = ev["type"];
+            const auto& d = ev["data"];
+            if (!t.isString() || !d.isObject()) continue;
+            if (t.asString() == "error" && d.isMember("reason") && d["reason"].isString()) {
+              last_err_reason = d["reason"].asString();
+            }
+            if (t.asString() == "cancelled") {
+              if (d.isMember("reason") && d["reason"].isString()) stop_reason = d["reason"].asString();
+              else stop_reason = "cancelled";
+            }
+          }
+        }
+        if (!ok && !last_err_reason.empty()) stop_reason = last_err_reason;
+
+        Json::StreamWriterBuilder wb;
+        wb["indentation"] = "";
+        AgentDb::JobRow jr;
+        jr.job_id = job_id;
+        jr.session_id = session_id;
+        jr.created_unix_ms = created_ms;
+        jr.updated_unix_ms = now_unix_ms();
+        jr.status = status;
+        jr.cancel_requested = false;
+        jr.error = error;
+        jr.stop_reason = stop_reason;
+        jr.result_json = Json::writeString(wb, out);
+        jr.last_heartbeat_unix_ms = 0;
+        std::string db_err;
+        if (!db_or_null->upsert_job(jr, &db_err)) {
+          std::cerr << "agentd: warning: failed to persist job result: " << db_err << " job=" << job_id << "\n";
+        }
+      }
     } catch (const std::exception& e) {
       Json::Value o(Json::objectValue);
       o["ok"] = false;
       o["error"] = std::string("uncaught exception: ") + e.what();
       job_set_result(job_id, o);
+
+      if (db_or_null && db_or_null->is_open()) {
+        Json::StreamWriterBuilder wb;
+        wb["indentation"] = "";
+        AgentDb::JobRow jr;
+        jr.job_id = job_id;
+        jr.session_id = session_id;
+        jr.created_unix_ms = created_ms;
+        jr.updated_unix_ms = now_unix_ms();
+        jr.status = "error";
+        jr.cancel_requested = false;
+        jr.error = std::string("uncaught exception: ") + e.what();
+        jr.stop_reason = "exception";
+        jr.result_json = Json::writeString(wb, o);
+        jr.last_heartbeat_unix_ms = 0;
+        std::string db_err;
+        (void)db_or_null->upsert_job(jr, &db_err);
+      }
     } catch (...) {
       Json::Value o(Json::objectValue);
       o["ok"] = false;
       o["error"] = "uncaught unknown exception";
       job_set_result(job_id, o);
+
+      if (db_or_null && db_or_null->is_open()) {
+        Json::StreamWriterBuilder wb;
+        wb["indentation"] = "";
+        AgentDb::JobRow jr;
+        jr.job_id = job_id;
+        jr.session_id = session_id;
+        jr.created_unix_ms = created_ms;
+        jr.updated_unix_ms = now_unix_ms();
+        jr.status = "error";
+        jr.cancel_requested = false;
+        jr.error = "uncaught unknown exception";
+        jr.stop_reason = "exception";
+        jr.result_json = Json::writeString(wb, o);
+        jr.last_heartbeat_unix_ms = 0;
+        std::string db_err;
+        (void)db_or_null->upsert_job(jr, &db_err);
+      }
     }
     const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
     JobState s;

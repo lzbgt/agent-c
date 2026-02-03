@@ -404,6 +404,13 @@ bool run_tool_loop(
 
   OpenAIToolProviderCtx pctx;
   pctx.cfg = cfg;
+  // Surface provider retries (429/5xx/timeouts) into the same event stream as the tool loop so
+  // the daemon/UI can explain "why it was slow" without requiring verbose request/response blobs.
+  pctx.cfg.on_retry = [](void* vctx, const char* data_json) {
+    if (!vctx) return;
+    sink_on_event(vctx, "retry", (data_json && data_json[0]) ? data_json : "{}");
+  };
+  pctx.cfg.on_retry_ctx = &sink;
   pctx.on_event = sink_on_event;
   pctx.on_event_ctx = &sink;
   pctx.stream_assistant = options.stream_assistant;

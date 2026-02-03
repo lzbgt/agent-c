@@ -1,5 +1,6 @@
 #pragma once
 
+#include "agent_db.h"
 #include "cors.h"
 #include "agentd/http_types.h"
 
@@ -12,6 +13,7 @@ namespace agentd {
 void handle_job_stream_endpoint(
   const std::string& daemon_auth_token,
   const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
   const HttpRequest& req,
   int client_fd
 );

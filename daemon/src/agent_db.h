@@ -176,6 +176,28 @@ class AgentDb {
     std::string* out_error
   );
 
+  // Job durability (async run lifecycle).
+  struct JobRow {
+    std::string job_id;
+    std::string session_id; // best-effort; may be empty for no_session runs
+    int64_t created_unix_ms = 0;
+    int64_t updated_unix_ms = 0;
+    std::string status; // queued|running|done|error|cancelled|interrupted
+    bool cancel_requested = false;
+    std::string error;
+    std::string stop_reason; // best-effort; e.g. done|max_steps_exceeded|daemon_restart
+    std::string result_json; // JSON object string; may be empty for non-terminal states
+    int64_t last_heartbeat_unix_ms = 0;
+  };
+
+  // Upserts a job row by job_id. This is intended to be cheap and safe to call on every job transition.
+  bool upsert_job(const JobRow& row, std::string* out_error);
+  bool get_job(const std::string& job_id, JobRow* out_row, std::string* out_error);
+  bool delete_job(const std::string& job_id, std::string* out_error);
+
+  // On daemon restart, queued/running jobs cannot be resumed. Mark them as interrupted so UIs can be truthful.
+  bool mark_inflight_jobs_interrupted(int64_t now_unix_ms, const std::string& reason, std::string* out_error);
+
  private:
   bool ensure_schema_locked(std::string* out_error);
   bool exec_locked(const std::string& sql, std::string* out_error);

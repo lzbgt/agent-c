@@ -12,6 +12,7 @@
 #include "job_endpoints.h"
 #include "job_manager.h"
 #include "job_stream_endpoint.h"
+#include "orchestrate_endpoints.h"
 #include "openrouter_models_endpoint.h"
 #include "openrouter_util.h"
 #include "provider_util.h"
@@ -249,6 +250,18 @@ struct AgentdService::Impl {
       }
     }
 
+    // Job durability: queued/running jobs from a previous process lifetime cannot be resumed.
+    // Mark them as interrupted so API consumers can get a truthful terminal state after restart.
+    {
+      const int64_t now_ms = (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+                               std::chrono::system_clock::now().time_since_epoch())
+                               .count();
+      std::string err;
+      if (!db.mark_inflight_jobs_interrupted(now_ms, "daemon_restart", &err)) {
+        std::cerr << "Warning: failed to mark inflight jobs interrupted: " << err << "\n";
+      }
+    }
+
     // Store final cfg back into options and create config store.
     options.cfg = cfg;
     cfg_store = std::make_unique<DaemonConfigStore>(cfg);
@@ -420,23 +433,28 @@ struct AgentdService::Impl {
       const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
       handle_run_async_endpoint(cur, ocfg, cors_cfg, &db, tool_ext_or_null(), cur.sessions_root_dir, req, resp);
     });
+    server.handle("POST", "/api/v1/orchestrate", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
+      handle_orchestrate_endpoint(cur, ocfg, cors_cfg, &db, tool_ext_or_null(), cur.sessions_root_dir, req, resp);
+    });
 
     // Job endpoints.
     server.handle("GET", "/api/v1/job", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
-      handle_job_get_endpoint(cur, cors_cfg, req, resp);
+      handle_job_get_endpoint(cur, cors_cfg, &db, req, resp);
     });
     server.handle("POST", "/api/v1/job/cancel", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
-      handle_job_cancel_endpoint(cur, cors_cfg, req, resp);
+      handle_job_cancel_endpoint(cur, cors_cfg, &db, req, resp);
     });
     server.handle_stream("GET", "/api/v1/job/stream", [this](const HttpRequest& req, int client_fd) {
       const DaemonConfig cur = cfg_store->snapshot();
-      handle_job_stream_endpoint(cur.auth_token, cors_cfg, req, client_fd);
+      handle_job_stream_endpoint(cur.auth_token, cors_cfg, &db, req, client_fd);
     });
     server.handle("DELETE", "/api/v1/job", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
-      handle_job_delete_endpoint(cur, cors_cfg, req, resp);
+      handle_job_delete_endpoint(cur, cors_cfg, &db, req, resp);
     });
 
     initialized = true;

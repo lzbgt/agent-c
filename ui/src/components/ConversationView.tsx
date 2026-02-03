@@ -1,5 +1,5 @@
 import React from "react";
-import { apiPostSessionUiEvent, type AgentEvent } from "../api";
+import { apiPostSessionUiEvent, daemonHeaders, type AgentEvent, type ApiAuth } from "../api";
 import Markdown from "./Markdown";
 import ToolResultView from "./ToolResultView";
 import ArtifactView from "./ArtifactView";
@@ -117,7 +117,7 @@ export default function ConversationView({
   yolo,
   sessionId,
   client,
-  daemonAuthToken,
+  daemonAuth,
   prompt,
   events,
   showDebugEvents,
@@ -134,7 +134,7 @@ export default function ConversationView({
   yolo: boolean;
   sessionId?: string;
   client?: { id?: string; kind?: string; instance_id?: string };
-  daemonAuthToken?: string;
+  daemonAuth?: ApiAuth;
   prompt: string;
   events: AgentEvent[];
   showDebugEvents?: boolean;
@@ -167,13 +167,13 @@ export default function ConversationView({
           data: data ?? {},
           append_to_session: false,
         },
-        daemonAuthToken,
+        daemonAuth,
       );
       if (!resp.ok) {
         throw new Error(resp.error || "client_event failed");
       }
     },
-    [baseUrl, client, daemonAuthToken, sessionId],
+    [baseUrl, client, daemonAuth, sessionId],
   );
 
   // Fundamental DoD handshake: when the UI renders a derived ui_action event, emit a client event so the agent
@@ -511,7 +511,7 @@ export default function ConversationView({
             <ToolResultView
               baseUrl={baseUrl}
               yolo={yolo}
-              daemonAuthToken={daemonAuthToken}
+              daemonAuth={daemonAuth}
               sessionId={sessionId}
               toolCallId={toolCallId}
               content={data.content}
@@ -532,7 +532,7 @@ export default function ConversationView({
             <ToolResultView
               baseUrl={baseUrl}
               yolo={yolo}
-              daemonAuthToken={daemonAuthToken}
+              daemonAuth={daemonAuth}
               sessionId={sessionId}
               toolCallId={toolCallId}
               content={envelope}
@@ -564,7 +564,7 @@ export default function ConversationView({
             allowAutoplay={allowAutoplay}
             sessionId={sessionId}
             client={client}
-            daemonAuthToken={daemonAuthToken}
+            daemonAuth={daemonAuth}
           />
         </Card>,
       );
@@ -1030,7 +1030,7 @@ export default function ConversationView({
             };
 
             const makeArtifactUrl = async (args: any) => {
-              const token = typeof daemonAuthToken === "string" ? daemonAuthToken.trim() : "";
+              const hdr = daemonHeaders(daemonAuth);
               const sid = typeof sessionId === "string" ? sessionId.trim() : "";
               const path = safeTrunc(String(args?.path ?? args?.artifact?.path ?? ""), 4000).trim();
               const resolvedPath = safeTrunc(
@@ -1054,7 +1054,7 @@ export default function ConversationView({
                 try {
                   const r = await fetch(src, {
                     method: "GET",
-                    headers: token ? { Authorization: `Bearer ${token}` } : {},
+                    headers: hdr,
                   });
                   if (!r.ok) throw new Error(`file fetch failed: ${r.status}`);
                   const ct = String(r.headers.get("content-type") || "").trim();

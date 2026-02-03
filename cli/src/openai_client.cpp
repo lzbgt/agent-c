@@ -12,7 +12,12 @@
 
 #include <sstream>
 #include <algorithm>
+#include <cctype>
+#include <climits>
+#include <cstdio>
+#include <cstring>
 #include <mutex>
+#include <random>
 #include <thread>
 #include <chrono>
 
@@ -42,8 +47,8 @@ static bool is_retryable_curl_code(CURLcode rc) {
 }
 
 static int retry_sleep_ms(int attempt) {
+  // Backwards-compatible fallback for callers that don't supply retry tuning.
   // attempt: 0-based attempt index of the *retry* (not the first try).
-  // Backoff: 250, 500, 1000, 2000... up to 4000ms.
   const int base = 250;
   int ms = base << std::max(0, attempt);
   if (ms > 4000) ms = 4000;
@@ -54,6 +59,216 @@ static size_t write_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
   auto* out = static_cast<std::string*>(userdata);
   out->append(ptr, size * nmemb);
   return size * nmemb;
+}
+
+struct HeaderCaptureCtx {
+  long retry_after_ms = 0;
+};
+
+static bool ascii_istarts_with(const char* s, size_t n, const char* prefix) {
+  if (!s || !prefix) return false;
+  const size_t pn = std::strlen(prefix);
+  if (pn == 0) return true;
+  if (n < pn) return false;
+  for (size_t i = 0; i < pn; i++) {
+    const unsigned char a = (unsigned char)s[i];
+    const unsigned char b = (unsigned char)prefix[i];
+    if ((char)std::tolower(a) != (char)std::tolower(b)) return false;
+  }
+  return true;
+}
+
+static long parse_retry_after_ms(const char* header_line, size_t n) {
+  // Parses `Retry-After: <seconds>` best-effort. Returns 0 on parse failure.
+  if (!header_line || n == 0) return 0;
+  const char* p = header_line;
+  const char* end = header_line + n;
+  // Find ':'.
+  while (p < end && *p != ':') p++;
+  if (p >= end) return 0;
+  p++;  // skip ':'
+  while (p < end && (*p == ' ' || *p == '\t')) p++;
+  if (p >= end) return 0;
+  // Integer seconds only (common across providers / gateways).
+  long sec = 0;
+  bool any = false;
+  while (p < end && *p >= '0' && *p <= '9') {
+    any = true;
+    const int d = *p - '0';
+    if (sec > (LONG_MAX - d) / 10) break;
+    sec = sec * 10 + d;
+    p++;
+  }
+  if (!any || sec <= 0) return 0;
+  // Cap to a reasonable bound to avoid accidental multi-hour waits from malformed headers.
+  const long ms = sec * 1000L;
+  return ms > 0 ? ms : 0;
+}
+
+static size_t header_cb(char* buffer, size_t size, size_t nitems, void* userdata) {
+  const size_t n = size * nitems;
+  auto* cap = static_cast<HeaderCaptureCtx*>(userdata);
+  if (!cap || !buffer || n == 0) return n;
+
+  if (ascii_istarts_with(buffer, n, "Retry-After:")) {
+    const long ms = parse_retry_after_ms(buffer, n);
+    if (ms > 0) {
+      cap->retry_after_ms = ms;
+    }
+  }
+  return n;
+}
+
+static long effective_connect_timeout_ms(const OpenAIClientConfig& cfg) {
+  if (cfg.connect_timeout_ms > 0) return cfg.connect_timeout_ms;
+  // Backwards-compatible default: min(total_timeout, 15000ms), or 15000ms when total is disabled.
+  return (cfg.timeout_ms > 0) ? std::min<long>(cfg.timeout_ms, 15000L) : 15000L;
+}
+
+static long clamp_long(long v, long lo, long hi) {
+  if (v < lo) return lo;
+  if (v > hi) return hi;
+  return v;
+}
+
+static long compute_retry_sleep_ms(const OpenAIClientConfig& cfg, int retry_attempt, long retry_after_ms) {
+  // retry_attempt: 0-based index of the retry (not the first try).
+  if (cfg.retry_base_ms <= 0 || cfg.retry_max_ms <= 0) {
+    const long ms = retry_sleep_ms(retry_attempt);
+    return ms > 0 ? ms : 0;
+  }
+
+  const long base = std::max<long>(1, cfg.retry_base_ms);
+  const long cap = std::max<long>(1, cfg.retry_max_ms);
+  // Prevent overflow for large attempts.
+  const int a = std::max(0, std::min(retry_attempt, 30));
+  long exp = base * (1L << a);
+  if (exp < 0) exp = cap;
+  exp = std::min(exp, cap);
+
+  long sleep_ms = exp;
+  const double jitter = (cfg.retry_jitter < 0.0) ? 0.0 : (cfg.retry_jitter > 1.0 ? 1.0 : cfg.retry_jitter);
+  if (jitter > 0.0) {
+    const long delta = (long)((double)exp * jitter);
+    const long lo = std::max<long>(0, exp - delta);
+    const long hi = std::max<long>(0, exp + delta);
+    if (hi > lo) {
+      thread_local std::mt19937 rng([]() -> uint32_t {
+        std::random_device rd;
+        // Mix in a time component to avoid identical seeds on platforms where random_device is deterministic.
+        const uint64_t t = (uint64_t)std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        return (uint32_t)(rd() ^ (uint32_t)(t & 0xffffffffu) ^ (uint32_t)((t >> 32) & 0xffffffffu));
+      }());
+      std::uniform_int_distribution<long> dist(lo, hi);
+      sleep_ms = dist(rng);
+    }
+  }
+
+  if (cfg.respect_retry_after && retry_after_ms > 0) {
+    sleep_ms = std::max<long>(sleep_ms, retry_after_ms);
+  }
+
+  sleep_ms = clamp_long(sleep_ms, 0, cap);
+  return sleep_ms;
+}
+
+static std::string json_escape_string(const std::string& s) {
+  std::string out;
+  out.reserve(s.size() + 8);
+  for (unsigned char c : s) {
+    switch (c) {
+      case '\\': out += "\\\\"; break;
+      case '"': out += "\\\""; break;
+      case '\n': out += "\\n"; break;
+      case '\r': out += "\\r"; break;
+      case '\t': out += "\\t"; break;
+      default:
+        if (c < 0x20) {
+          char buf[7];
+          std::snprintf(buf, sizeof(buf), "\\u%04x", (unsigned int)c);
+          out += buf;
+        } else {
+          out.push_back((char)c);
+        }
+    }
+  }
+  return out;
+}
+
+static void emit_retry_event(
+  const OpenAIClientConfig& cfg,
+  const char* method,
+  const std::string& url,
+  bool stream,
+  int attempt,
+  int max_retries,
+  long sleep_ms,
+  long retry_after_ms,
+  long http_status,
+  CURLcode rc,
+  const std::string& response_preview,
+  bool proxy_used
+) {
+  if (!cfg.on_retry) return;
+
+  std::string reason;
+  if (rc != CURLE_OK) {
+    reason = "curl_" + std::to_string((int)rc);
+  } else if (http_status) {
+    reason = "http_" + std::to_string(http_status);
+  } else {
+    reason = "unknown";
+  }
+
+  std::string j = "{";
+  bool first = true;
+  auto add_kv_num = [&](const char* k, long v) {
+    if (!k) return;
+    if (!first) j += ",";
+    first = false;
+    j += "\"";
+    j += k;
+    j += "\":";
+    j += std::to_string(v);
+  };
+  auto add_kv_bool = [&](const char* k, bool v) {
+    if (!k) return;
+    if (!first) j += ",";
+    first = false;
+    j += "\"";
+    j += k;
+    j += "\":";
+    j += (v ? "true" : "false");
+  };
+  auto add_kv_str = [&](const char* k, const std::string& v) {
+    if (!k) return;
+    if (!first) j += ",";
+    first = false;
+    j += "\"";
+    j += k;
+    j += "\":\"";
+    j += json_escape_string(v);
+    j += "\"";
+  };
+
+  add_kv_str("reason", reason);
+  add_kv_str("scope", "provider");
+  add_kv_str("method", method ? method : "");
+  add_kv_str("url", url);
+  add_kv_bool("stream", stream);
+  add_kv_bool("will_retry", true);
+  add_kv_num("attempt", attempt);
+  add_kv_num("next_attempt", attempt + 1);
+  add_kv_num("max_retries", max_retries);
+  if (http_status) add_kv_num("http_status", http_status);
+  if (rc != CURLE_OK) add_kv_num("curl_code", (long)rc);
+  add_kv_num("sleep_ms", sleep_ms);
+  if (retry_after_ms > 0) add_kv_num("retry_after_ms", retry_after_ms);
+  add_kv_bool("proxy_used", proxy_used);
+  if (!response_preview.empty()) add_kv_str("response_preview", response_preview);
+
+  j += "}";
+  cfg.on_retry(cfg.on_retry_ctx, j.c_str());
 }
 
 struct StreamingWriteCtx {
@@ -174,6 +389,8 @@ static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::
       return result;
     }
 
+    HeaderCaptureCtx header_cap;
+
     struct curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, "Content-Type: application/json");
     if (!cfg.api_key.empty()) {
@@ -194,13 +411,16 @@ static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::
     curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body.size());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_cb);
+    curl_easy_setopt(curl, CURLOPT_HEADERDATA, &header_cap);
     // Make timeouts reliable even when used from background threads.
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
     // Total time budget for the request.
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, cfg.timeout_ms);
+    if (cfg.timeout_ms > 0) {
+      curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, cfg.timeout_ms);
+    }
     // Faster failure when the proxy/DNS/route is broken (prevents "hang" perception).
-    const long connect_timeout_ms = (cfg.timeout_ms > 0) ? std::min<long>(cfg.timeout_ms, 15000L) : 15000L;
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, connect_timeout_ms);
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, effective_connect_timeout_ms(cfg));
     // Keep connections from going half-open silently.
     curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
 
@@ -217,6 +437,7 @@ static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::
     if (rc != CURLE_OK && have_proxy) {
       // Proxy can be flaky/unavailable. Retry once with proxy disabled so tests can still run.
       response.clear();
+      header_cap.retry_after_ms = 0;
       curl_easy_setopt(curl, CURLOPT_PROXY, "");
       curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 0L);
       rc = curl_easy_perform(curl);
@@ -253,8 +474,12 @@ static OpenAIRawResult http_post_json(const OpenAIClientConfig& cfg, const std::
     curl_easy_cleanup(curl);
 
     // Backoff before retry.
-    const int sleep_ms = retry_sleep_ms(attempt);
-    std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+    const long sleep_ms = compute_retry_sleep_ms(cfg, attempt, header_cap.retry_after_ms);
+    const std::string preview = truncate_for_error(response, 256);
+    emit_retry_event(cfg, "POST", url, /*stream=*/false, attempt, max_retries, sleep_ms, header_cap.retry_after_ms, http_status, rc, preview, have_proxy);
+    if (sleep_ms > 0) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+    }
   }
 
   // Unreachable, but keep a defensive fallback.
@@ -278,6 +503,8 @@ static OpenAIRawResult http_get_raw(const OpenAIClientConfig& cfg, const std::st
       result.response_body = "curl_easy_init failed";
       return result;
     }
+
+    HeaderCaptureCtx header_cap;
 
     struct curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, "Accept: application/json");
@@ -304,10 +531,13 @@ static OpenAIRawResult http_get_raw(const OpenAIClientConfig& cfg, const std::st
     curl_easy_setopt(curl, CURLOPT_ACCEPT_ENCODING, "");
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_cb);
+    curl_easy_setopt(curl, CURLOPT_HEADERDATA, &header_cap);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, cfg.timeout_ms);
-    const long connect_timeout_ms = (cfg.timeout_ms > 0) ? std::min<long>(cfg.timeout_ms, 15000L) : 15000L;
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, connect_timeout_ms);
+    if (cfg.timeout_ms > 0) {
+      curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, cfg.timeout_ms);
+    }
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, effective_connect_timeout_ms(cfg));
     curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
 
     if (have_proxy) {
@@ -320,6 +550,7 @@ static OpenAIRawResult http_get_raw(const OpenAIClientConfig& cfg, const std::st
     CURLcode rc = curl_easy_perform(curl);
     if (rc != CURLE_OK && have_proxy) {
       response.clear();
+      header_cap.retry_after_ms = 0;
       curl_easy_setopt(curl, CURLOPT_PROXY, "");
       curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 0L);
       rc = curl_easy_perform(curl);
@@ -350,8 +581,12 @@ static OpenAIRawResult http_get_raw(const OpenAIClientConfig& cfg, const std::st
 
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
-    const int sleep_ms = retry_sleep_ms(attempt);
-    std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+    const long sleep_ms = compute_retry_sleep_ms(cfg, attempt, header_cap.retry_after_ms);
+    const std::string preview = truncate_for_error(response, 256);
+    emit_retry_event(cfg, "GET", url, /*stream=*/false, attempt, max_retries, sleep_ms, header_cap.retry_after_ms, http_status, rc, preview, have_proxy);
+    if (sleep_ms > 0) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+    }
   }
 
   result.response_body = "http_get_raw: unexpected retry loop exit";
@@ -383,6 +618,8 @@ static OpenAIStreamResult http_post_json_stream(
       return result;
     }
 
+    HeaderCaptureCtx header_cap;
+
     struct curl_slist* headers = nullptr;
     headers = curl_slist_append(headers, "Content-Type: application/json");
     headers = curl_slist_append(headers, "Accept: text/event-stream");
@@ -408,11 +645,19 @@ static OpenAIStreamResult http_post_json_stream(
     curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body.size());
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_stream_cb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &wctx);
+    curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_cb);
+    curl_easy_setopt(curl, CURLOPT_HEADERDATA, &header_cap);
     curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, cfg.timeout_ms);
-    const long connect_timeout_ms = (cfg.timeout_ms > 0) ? std::min<long>(cfg.timeout_ms, 15000L) : 15000L;
-    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, connect_timeout_ms);
+    if (cfg.timeout_ms > 0) {
+      curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, cfg.timeout_ms);
+    }
+    curl_easy_setopt(curl, CURLOPT_CONNECTTIMEOUT_MS, effective_connect_timeout_ms(cfg));
     curl_easy_setopt(curl, CURLOPT_TCP_KEEPALIVE, 1L);
+    if (cfg.stream_idle_timeout_ms > 0) {
+      const long secs = std::max<long>(1, (cfg.stream_idle_timeout_ms + 999L) / 1000L);
+      curl_easy_setopt(curl, CURLOPT_LOW_SPEED_LIMIT, 1L);
+      curl_easy_setopt(curl, CURLOPT_LOW_SPEED_TIME, secs);
+    }
 
     if (have_proxy) {
       curl_easy_setopt(curl, CURLOPT_PROXY, proxy);
@@ -428,6 +673,7 @@ static OpenAIStreamResult http_post_json_stream(
       wctx.parser.reset();
       wctx.saw_done = false;
       wctx.chunks = 0;
+      header_cap.retry_after_ms = 0;
       curl_easy_setopt(curl, CURLOPT_PROXY, "");
       curl_easy_setopt(curl, CURLOPT_HTTPPROXYTUNNEL, 0L);
       rc = curl_easy_perform(curl);
@@ -467,8 +713,12 @@ static OpenAIStreamResult http_post_json_stream(
 
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
-    const int sleep_ms = retry_sleep_ms(attempt);
-    std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+    const long sleep_ms = compute_retry_sleep_ms(cfg, attempt, header_cap.retry_after_ms);
+    const std::string preview = truncate_for_error(wctx.capture, 256);
+    emit_retry_event(cfg, "POST", url, /*stream=*/true, attempt, max_retries, sleep_ms, header_cap.retry_after_ms, http_status, rc, preview, have_proxy);
+    if (sleep_ms > 0) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+    }
   }
 
   result.error_message = "http_post_json_stream: unexpected retry loop exit";

@@ -1,6 +1,7 @@
 import React from "react";
 import Markdown from "./Markdown";
 import useLocalStorageState from "../hooks/useLocalStorageState";
+import type { ApiAuth } from "../api";
 
 type ToolResultUiPrefs = {
   showRaw?: boolean;
@@ -132,14 +133,14 @@ function EntriesView({ entries, title }: { entries: any[]; title?: string }) {
 export default function ToolResultView({
   baseUrl,
   yolo,
-  daemonAuthToken,
+  daemonAuth,
   sessionId,
   toolCallId,
   content,
 }: {
   baseUrl: string;
   yolo: boolean;
-  daemonAuthToken?: string;
+  daemonAuth?: ApiAuth;
   sessionId?: string;
   toolCallId?: string;
   content: string;

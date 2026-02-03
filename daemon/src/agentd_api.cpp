@@ -8,6 +8,7 @@
 #include "db_query_endpoints.h"
 #include "file_endpoint.h"
 #include "job_endpoints.h"
+#include "orchestrate_endpoints.h"
 #include "openrouter_models_endpoint.h"
 #include "openrouter_util.h"
 #include "provider_util.h"
@@ -396,22 +397,28 @@ bool AgentdApi::init(std::string* out_error) {
     const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
     handle_run_async_endpoint(cur, ocfg, self->cors_cfg, &self->db, self->tool_ext_or_null(), cur.sessions_root_dir, req, resp);
   });
+  impl_->route("POST", "/api/v1/orchestrate", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
+    handle_orchestrate_endpoint(cur, ocfg, self->cors_cfg, &self->db, self->tool_ext_or_null(), cur.sessions_root_dir, req, resp);
+  });
 
   // Job endpoints (non-streaming).
   impl_->route("GET", "/api/v1/job", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();
-    handle_job_get_endpoint(cur, self->cors_cfg, req, resp);
+    handle_job_get_endpoint(cur, self->cors_cfg, &self->db, req, resp);
   });
   impl_->route("POST", "/api/v1/job/cancel", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();
-    handle_job_cancel_endpoint(cur, self->cors_cfg, req, resp);
+    handle_job_cancel_endpoint(cur, self->cors_cfg, &self->db, req, resp);
   });
   impl_->route("DELETE", "/api/v1/job", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();
-    handle_job_delete_endpoint(cur, self->cors_cfg, req, resp);
+    handle_job_delete_endpoint(cur, self->cors_cfg, &self->db, req, resp);
   });
 
   impl_->initialized = true;

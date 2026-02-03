@@ -155,6 +155,161 @@ static agent_status_t write_envelope(agent_string_t* out_result, bool ok, const 
   return set_result(out_result, json_stringify_compact(o));
 }
 
+static const char* kAgentMemoryV1Begin = "<!-- AGENT_MEMORY_V1_BEGIN -->";
+static const char* kAgentMemoryV1End = "<!-- AGENT_MEMORY_V1_END -->";
+static const char* kAgentMemoryV1NotesBegin = "<!-- AGENT_MEMORY_V1_NOTES_BEGIN -->";
+static const char* kAgentMemoryV1NotesEnd = "<!-- AGENT_MEMORY_V1_NOTES_END -->";
+
+static std::string extract_block_body(const std::string& s, const std::string& begin, const std::string& end) {
+  const size_t a = s.find(begin);
+  if (a == std::string::npos) return "";
+  const size_t b = s.find(end, a + begin.size());
+  if (b == std::string::npos) return "";
+  const size_t body_a = a + begin.size();
+  const size_t body_b = b;
+  if (body_b <= body_a) return "";
+  return s.substr(body_a, body_b - body_a);
+}
+
+static bool parse_json_object_str(const std::string& s, Json::Value* out_obj, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (out_obj) *out_obj = Json::Value(Json::objectValue);
+  if (!out_obj) return false;
+
+  std::string errs;
+  Json::CharReaderBuilder rb;
+  std::istringstream iss(s);
+  Json::Value v;
+  if (!Json::parseFromStream(rb, iss, &v, &errs) || !v.isObject()) {
+    if (out_err) *out_err = errs.empty() ? "invalid json" : errs;
+    return false;
+  }
+  *out_obj = v;
+  return true;
+}
+
+static std::string markdown_escape_inline(const std::string& s) {
+  // Keep this minimal; we only render bullet summaries.
+  std::string out;
+  out.reserve(s.size());
+  for (char c : s) {
+    if (c == '\n' || c == '\r') {
+      out.push_back(' ');
+      continue;
+    }
+    out.push_back(c);
+  }
+  return out;
+}
+
+static std::string render_structured_memory_markdown(const Json::Value& doc) {
+  // doc: { schema, items: { key: {kind,value,status,updated_utc,...} } }
+  std::vector<std::string> fact_keys;
+  std::vector<std::string> pref_keys;
+  std::vector<std::string> task_keys;
+  std::vector<std::string> dep_keys;
+
+  const auto& items = doc["items"];
+  if (items.isObject()) {
+    for (const auto& key : items.getMemberNames()) {
+      const auto& it = items[key];
+      if (!it.isObject()) continue;
+      const std::string status = it.isMember("status") && it["status"].isString() ? to_lower_ascii(it["status"].asString()) : "active";
+      if (status == "deprecated") {
+        dep_keys.push_back(key);
+        continue;
+      }
+      const std::string kind = it.isMember("kind") && it["kind"].isString() ? to_lower_ascii(it["kind"].asString()) : "fact";
+      if (kind == "preference" || kind == "pref") pref_keys.push_back(key);
+      else if (kind == "task") task_keys.push_back(key);
+      else fact_keys.push_back(key);
+    }
+  }
+  auto sort_keys = [](std::vector<std::string>& v) { std::sort(v.begin(), v.end()); };
+  sort_keys(fact_keys);
+  sort_keys(pref_keys);
+  sort_keys(task_keys);
+  sort_keys(dep_keys);
+
+  auto section = [&](const char* title, const std::vector<std::string>& keys) -> std::string {
+    std::ostringstream oss;
+    oss << "## " << (title ? title : "") << "\n";
+    if (keys.empty()) {
+      oss << "_(empty)_\n";
+      return oss.str();
+    }
+    for (const auto& k : keys) {
+      const auto& it = items[k];
+      const std::string value = it.isMember("value") && it["value"].isString() ? it["value"].asString() : "";
+      const std::string updated = it.isMember("updated_utc") && it["updated_utc"].isString() ? it["updated_utc"].asString() : "";
+      oss << "- **" << markdown_escape_inline(k) << "**: " << markdown_escape_inline(value);
+      if (!updated.empty()) oss << " _(updated " << markdown_escape_inline(updated) << ")_";
+      oss << "\n";
+    }
+    return oss.str();
+  };
+
+  std::ostringstream out;
+  out << "# Structured Memory\n\n";
+  out << "This file is machine-maintained by `memory_put` (structured mode).\n";
+  out << "Edit via tools to avoid merge/conflict issues.\n\n";
+  out << section("Facts", fact_keys) << "\n";
+  out << section("Preferences", pref_keys) << "\n";
+  out << section("Tasks", task_keys) << "\n";
+  out << section("Deprecated", dep_keys) << "\n";
+  return out.str();
+}
+
+static std::string build_structured_memory_file_text(const Json::Value& doc, const std::string& user_notes_md) {
+  std::ostringstream oss;
+  oss << render_structured_memory_markdown(doc);
+  oss << "\n";
+  oss << kAgentMemoryV1Begin << "\n";
+  oss << json_stringify_compact(doc) << "\n";
+  oss << kAgentMemoryV1End << "\n";
+  oss << "\n";
+  oss << kAgentMemoryV1NotesBegin << "\n";
+  if (!trim_ascii(user_notes_md).empty()) {
+    oss << user_notes_md;
+    if (!user_notes_md.empty() && user_notes_md.back() != '\n') oss << "\n";
+  } else {
+    oss << "_(optional freeform notes; preserved across structured updates)_\n";
+  }
+  oss << kAgentMemoryV1NotesEnd << "\n";
+  return oss.str();
+}
+
+static bool parse_structured_memory_doc(const std::string& file_text, Json::Value* out_doc, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (out_doc) *out_doc = Json::Value(Json::objectValue);
+  if (!out_doc) return false;
+
+  const std::string body = extract_block_body(file_text, kAgentMemoryV1Begin, kAgentMemoryV1End);
+  if (trim_ascii(body).empty()) {
+    // Initialize empty doc.
+    Json::Value doc(Json::objectValue);
+    doc["schema"] = "agent_memory_v1";
+    doc["items"] = Json::Value(Json::objectValue);
+    *out_doc = doc;
+    return true;
+  }
+  Json::Value doc;
+  std::string perr;
+  if (!parse_json_object_str(body, &doc, &perr)) {
+    if (out_err) *out_err = perr.empty() ? "failed to parse structured memory json" : perr;
+    return false;
+  }
+  if (!doc.isMember("schema") || !doc["schema"].isString()) doc["schema"] = "agent_memory_v1";
+  if (!doc.isMember("items") || !doc["items"].isObject()) doc["items"] = Json::Value(Json::objectValue);
+  *out_doc = doc;
+  return true;
+}
+
+static std::string extract_user_notes_md(const std::string& file_text) {
+  const std::string notes = extract_block_body(file_text, kAgentMemoryV1NotesBegin, kAgentMemoryV1NotesEnd);
+  return trim_ascii(notes).empty() ? "" : notes;
+}
+
 agent_status_t tool_memory_write(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
   if (!ctx || !out_result) return AGENT_ERR_INVALID_ARGUMENT;
   if (is_cancelled(ctx)) return set_result(out_result, "{\"ok\":false,\"error\":\"cancelled\"}");
@@ -320,9 +475,10 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
   if (!is_safe_relpath_md(rel_path)) {
     return write_envelope(out_result, false, "missing/invalid string field 'path' (must be a safe relative .md path)", Json::Value(Json::objectValue));
   }
-  const std::string text = args.isMember("text") && args["text"].isString() ? args["text"].asString() : "";
-  // Allow empty text (truncate file to empty), but require the field.
-  if (!args.isMember("text") || !args["text"].isString()) {
+  const bool structured = args.isMember("entries") && args["entries"].isArray();
+  const std::string text = (!structured && args.isMember("text") && args["text"].isString()) ? args["text"].asString() : "";
+  // Legacy mode: allow empty text (truncate file to empty), but require the field.
+  if (!structured && (!args.isMember("text") || !args["text"].isString())) {
     return write_envelope(out_result, false, "missing string field 'text'", Json::Value(Json::objectValue));
   }
 
@@ -340,8 +496,63 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
     return write_envelope(out_result, false, "failed to create memory directory", Json::Value(Json::objectValue));
   }
 
-  std::string out_text = text;
-  if (!out_text.empty() && out_text.back() != '\n') out_text.push_back('\n');
+  std::string out_text;
+  if (structured) {
+    // Structured upsert mode: deterministic key conflict resolution for durable facts/preferences/tasks.
+    std::string existing;
+    {
+      std::ifstream in(abs, std::ios::binary);
+      if (in.is_open()) {
+        std::stringstream ss;
+        ss << in.rdbuf();
+        existing = ss.str();
+      }
+    }
+
+    Json::Value doc;
+    std::string derr;
+    if (!parse_structured_memory_doc(existing, &doc, &derr)) {
+      return write_envelope(out_result, false, std::string("failed to parse structured memory doc: ") + derr, Json::Value(Json::objectValue));
+    }
+
+    const std::string user_notes = extract_user_notes_md(existing);
+    const auto& entries = args["entries"];
+    if (!entries.isArray() || entries.empty()) {
+      return write_envelope(out_result, false, "entries must be a non-empty array", Json::Value(Json::objectValue));
+    }
+
+    Json::Value& items = doc["items"];
+    if (!items.isObject()) items = Json::Value(Json::objectValue);
+    int applied = 0;
+    for (Json::ArrayIndex i = 0; i < entries.size(); i++) {
+      const auto& e = entries[i];
+      if (!e.isObject()) continue;
+      const std::string key = e.isMember("key") && e["key"].isString() ? trim_ascii(e["key"].asString()) : "";
+      const std::string kind = e.isMember("kind") && e["kind"].isString() ? trim_ascii(e["kind"].asString()) : "fact";
+      const std::string value = e.isMember("value") && e["value"].isString() ? e["value"].asString() : "";
+      const std::string status = e.isMember("status") && e["status"].isString() ? trim_ascii(e["status"].asString()) : "active";
+      const std::string source = e.isMember("source") && e["source"].isString() ? trim_ascii(e["source"].asString()) : "";
+      if (key.empty() || value.empty()) continue;
+
+      Json::Value rec(Json::objectValue);
+      rec["kind"] = kind;
+      rec["value"] = value;
+      rec["status"] = status.empty() ? "active" : status;
+      rec["updated_utc"] = iso_utc_now();
+      if (!source.empty()) rec["source"] = source;
+      items[key] = rec;  // last write wins
+      applied++;
+    }
+    if (applied == 0) {
+      return write_envelope(out_result, false, "no valid entries applied (each entry requires key + value)", Json::Value(Json::objectValue));
+    }
+
+    out_text = build_structured_memory_file_text(doc, user_notes);
+    if (!out_text.empty() && out_text.back() != '\n') out_text.push_back('\n');
+  } else {
+    out_text = text;
+    if (!out_text.empty() && out_text.back() != '\n') out_text.push_back('\n');
+  }
 
   {
     std::ofstream out(abs, std::ios::binary | std::ios::trunc);
@@ -360,6 +571,7 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
   data["path"] = rel_path;
   data["abs_path"] = to_generic_string(abs);
   data["bytes_written"] = (Json::Int64)out_text.size();
+  if (structured) data["structured"] = true;
   data["ts_unix_ms"] = (Json::Int64)unix_ms_now();
   data["output"] = "memory_put: wrote " + rel_path;
   return write_envelope(out_result, true, "", data);
@@ -371,9 +583,23 @@ static std::vector<std::string> list_candidate_memory_files(const HostToolCtx* c
   if (mem_root.empty()) return out;
 
   const std::filesystem::path core = mem_root / "MEMORY.md";
+  const std::filesystem::path structured = mem_root / "STRUCTURED.md";
   std::error_code ec;
+  if (std::filesystem::exists(structured, ec) && std::filesystem::is_regular_file(structured, ec)) {
+    out.push_back(to_generic_string(structured));
+  }
   if (std::filesystem::exists(core, ec) && std::filesystem::is_regular_file(core, ec)) {
     out.push_back(to_generic_string(core));
+  }
+
+  // Session layer (optional; only when we have a stable session id).
+  const std::string sid = trim_ascii(ctx ? ctx->session_id : "");
+  if (!sid.empty()) {
+    const std::filesystem::path sessionp = mem_root / "sessions" / (sid + ".md");
+    ec.clear();
+    if (std::filesystem::exists(sessionp, ec) && std::filesystem::is_regular_file(sessionp, ec)) {
+      out.push_back(to_generic_string(sessionp));
+    }
   }
 
   if (max_days <= 0) return out;

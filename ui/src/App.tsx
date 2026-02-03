@@ -24,9 +24,11 @@ import {
   apiPostSessionUiEvent,
   apiRun,
   apiRunAsync,
+  apiBrokerListAgents,
   daemonHeaders,
   RunRequest,
   RunResponse,
+  type ApiAuth,
   type AgentEvent,
 } from "./api";
 import TraceView from "./components/TraceView";
@@ -56,7 +58,16 @@ export default function App() {
   const [clearAllArmed, setClearAllArmed] = React.useState<boolean>(false);
   const clearAllArmTimeoutRef = React.useRef<number>(0);
 
+  const [connectionMode, setConnectionMode] = useLocalStorageState<"direct" | "broker">("agentui.connectionMode", "direct");
+
+  // Direct mode: browser talks to agentd directly.
   const [base, setBase] = useLocalStorageState("agentui.base", "http://127.0.0.1:8123");
+
+  // Broker mode: browser talks to broker, which proxies to a specific agent_id.
+  const [brokerBase, setBrokerBase] = useLocalStorageState("agentui.brokerBase", "https://127.0.0.1:8443");
+  const [brokerAgentId, setBrokerAgentId] = useLocalStorageState("agentui.brokerAgentId", "agent1");
+  const [brokerAuthToken, setBrokerAuthToken] = useLocalStorageState("agentui.brokerAuthToken", "");
+
   const webOrigin = React.useMemo(() => {
     try {
       // Used for actionable connectivity hints (CORS).
@@ -66,15 +77,54 @@ export default function App() {
     }
   }, []);
 
-  const effectiveBase = React.useMemo(() => {
-    const b = String(base || "").trim();
-    if (b.length === 0) return "http://127.0.0.1:8123";
-    const withScheme = /^https?:\/\//i.test(b) ? b : `http://${b}`;
-    return withScheme.replace(/\/+$/, "");
-  }, [base]);
-
   const [daemonAuthToken, setDaemonAuthToken] = useLocalStorageState("agentui.daemonAuthToken", "");
   const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "");
+
+  const effectiveBase = React.useMemo(() => {
+    const normalizeHttpBase = (raw: string, fallback: string, defaultScheme: "http" | "https") => {
+      const b = String(raw || "").trim();
+      if (b.length === 0) return fallback;
+      const withScheme = /^https?:\/\//i.test(b) ? b : `${defaultScheme}://${b}`;
+      return withScheme.replace(/\/+$/, "");
+    };
+
+    if (connectionMode === "broker") {
+      const bb = normalizeHttpBase(brokerBase, "https://127.0.0.1:8443", "https");
+      const aid = String(brokerAgentId || "").trim();
+      if (!aid) return bb;
+      return `${bb}/v1/agents/${encodeURIComponent(aid)}/proxy`;
+    }
+
+    return normalizeHttpBase(base, "http://127.0.0.1:8123", "http");
+  }, [base, brokerAgentId, brokerBase, connectionMode]);
+
+  const effectiveSseBase = React.useMemo(() => {
+    if (connectionMode !== "broker") return effectiveBase;
+    const bb = String(brokerBase || "").trim().replace(/\/+$/, "");
+    const withScheme = /^https?:\/\//i.test(bb) ? bb : `https://${bb}`;
+    const aid = String(brokerAgentId || "").trim();
+    if (!aid) return withScheme;
+    return `${withScheme}/v1/agents/${encodeURIComponent(aid)}/proxy_sse`;
+  }, [brokerAgentId, brokerBase, connectionMode, effectiveBase]);
+
+  const daemonAuth = React.useMemo<ApiAuth>(() => {
+    if (connectionMode === "broker") {
+      return { mode: "broker", token: brokerAuthToken, agentdToken: daemonAuthToken };
+    }
+    return { mode: "direct", token: daemonAuthToken };
+  }, [brokerAuthToken, connectionMode, daemonAuthToken]);
+
+  const authKey = React.useMemo(() => {
+    const mode = daemonAuth.mode;
+    const t = typeof daemonAuth.token === "string" ? daemonAuth.token.trim() : "";
+    const at = daemonAuth.mode === "broker" && typeof daemonAuth.agentdToken === "string" ? daemonAuth.agentdToken.trim() : "";
+    // Keep stable and non-secret-ish in query keys: include token lengths only (not the raw token).
+    return mode === "broker" ? `broker:tlen=${t.length}:alen=${at.length}` : `direct:tlen=${t.length}`;
+  }, [daemonAuth]);
+
+  const [brokerAgentsBusy, setBrokerAgentsBusy] = React.useState<boolean>(false);
+  const [brokerAgentsError, setBrokerAgentsError] = React.useState<string | null>(null);
+  const [brokerAgents, setBrokerAgents] = React.useState<any[] | null>(null);
 
   const [clientId] = useLocalStorageState(
     "agentui.clientId",
@@ -417,7 +467,7 @@ export default function App() {
       setSceneVersion((v) => v + 1);
       // Best-effort: persist to daemon so the Scene is durable across refresh.
       if (persistOps.length > 0) {
-        void apiPostSessionSceneApply(effectiveBase, { session_id: sessionKey, ops: persistOps }, daemonAuthToken)
+        void apiPostSessionSceneApply(effectiveBase, { session_id: sessionKey, ops: persistOps }, daemonAuth)
           .then((r) => {
             if (!r || r.ok !== true) return;
             const updated = typeof r.updated_unix_ms === "number" ? r.updated_unix_ms : 0;
@@ -434,7 +484,7 @@ export default function App() {
       }
       return { ok: true, results, count: Object.keys(store).length };
     },
-    [daemonAuthToken, effectiveBase, setSceneVersion],
+    [daemonAuth, effectiveBase, setSceneVersion],
   );
 
   // Keep layout CSS vars in sync with actual measured bars (so Scene can truly fill the viewport).
@@ -515,9 +565,9 @@ export default function App() {
         },
         append_to_session: false,
       },
-      daemonAuthToken,
+      daemonAuth,
     ).catch(() => {});
-  }, [client, daemonAuthToken, effectiveBase, sessionId]);
+  }, [client, daemonAuth, effectiveBase, sessionId]);
 
   // Restore a running job after a browser refresh (best-effort).
   React.useEffect(() => {
@@ -533,7 +583,7 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
-        const job = await apiGetJob(effectiveBase, jobId, daemonAuthToken);
+        const job = await apiGetJob(effectiveBase, jobId, daemonAuth);
         if (cancelled) return;
         if (!job.ok) {
           writeJobsBySession((prev) => {
@@ -566,11 +616,11 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [activeJobId, daemonAuthToken, effectiveBase, parseJobsBySession, sessionId, writeJobsBySession]);
+  }, [activeJobId, daemonAuth, effectiveBase, parseJobsBySession, sessionId, writeJobsBySession]);
 
   const health = useQuery({
-    queryKey: ["health", effectiveBase, daemonAuthToken],
-    queryFn: () => apiGetHealth(effectiveBase, daemonAuthToken),
+    queryKey: ["health", effectiveBase, authKey],
+    queryFn: () => apiGetHealth(effectiveBase, daemonAuth),
     retry: 1,
   });
 
@@ -584,14 +634,14 @@ export default function App() {
   }, [maxSteps, maxStepsUserSet, setMaxSteps]);
 
   const daemonConfig = useQuery({
-    queryKey: ["config", effectiveBase, daemonAuthToken],
-    queryFn: () => apiGetConfig(effectiveBase, daemonAuthToken),
+    queryKey: ["config", effectiveBase, authKey],
+    queryFn: () => apiGetConfig(effectiveBase, daemonAuth),
     retry: 1,
   });
 
   const sessions = useQuery({
-    queryKey: ["sessions", effectiveBase, daemonAuthToken],
-    queryFn: () => apiListSessions(effectiveBase, daemonAuthToken),
+    queryKey: ["sessions", effectiveBase, authKey],
+    queryFn: () => apiListSessions(effectiveBase, daemonAuth),
     retry: 1,
   });
   const sessionsUnauthorized =
@@ -599,6 +649,7 @@ export default function App() {
     sessions.data &&
     sessions.data.ok === false &&
     String((sessions.data as any).error || "").toLowerCase() === "unauthorized";
+  const missingBrokerAuthToken = connectionMode === "broker" && String(brokerAuthToken || "").trim().length === 0;
   const missingDaemonAuthToken = String(daemonAuthToken || "").trim().length === 0;
   const isLocalDaemonBase = React.useMemo(() => {
     try {
@@ -628,8 +679,8 @@ export default function App() {
   }, []);
 
   const audit = useQuery({
-    queryKey: ["audit", effectiveBase, daemonAuthToken, sessionId],
-    queryFn: () => apiGetAudit(effectiveBase, sessionId, daemonAuthToken),
+    queryKey: ["audit", effectiveBase, authKey, sessionId],
+    queryFn: () => apiGetAudit(effectiveBase, sessionId, daemonAuth),
     enabled: !!sessionId,
     retry: 1,
   });
@@ -705,22 +756,22 @@ export default function App() {
   }, [activeJobId, auditEntriesDesc, jobStatus, jobUpdatedMs, lastRunPrompt, liveEvents]);
 
   const sessionClientEvents = useQuery({
-    queryKey: ["session_client_events", effectiveBase, daemonAuthToken, sessionId],
-    queryFn: () => apiGetSessionClientEvents(effectiveBase, sessionId, daemonAuthToken, { maxBytes: 1024 * 1024 }),
+    queryKey: ["session_client_events", effectiveBase, authKey, sessionId],
+    queryFn: () => apiGetSessionClientEvents(effectiveBase, sessionId, daemonAuth, { maxBytes: 1024 * 1024 }),
     enabled: !!sessionId,
     retry: 1,
   });
 
   const sessionArtifacts = useQuery({
-    queryKey: ["session_artifacts", effectiveBase, daemonAuthToken, sessionId],
-    queryFn: () => apiGetSessionArtifacts(effectiveBase, sessionId, daemonAuthToken, { maxBytes: 2 * 1024 * 1024, maxArtifacts: 64 }),
+    queryKey: ["session_artifacts", effectiveBase, authKey, sessionId],
+    queryFn: () => apiGetSessionArtifacts(effectiveBase, sessionId, daemonAuth, { maxBytes: 2 * 1024 * 1024, maxArtifacts: 64 }),
     enabled: !!sessionId,
     retry: 1,
   });
 
   const sessionScene = useQuery({
-    queryKey: ["session_scene", effectiveBase, daemonAuthToken, sessionId],
-    queryFn: () => apiGetSessionScene(effectiveBase, sessionId, daemonAuthToken),
+    queryKey: ["session_scene", effectiveBase, authKey, sessionId],
+    queryFn: () => apiGetSessionScene(effectiveBase, sessionId, daemonAuth),
     enabled: !!sessionId,
     refetchInterval: activeJobId ? 750 : 2500,
     retry: 1,
@@ -746,9 +797,9 @@ export default function App() {
   }, [effectiveBase, sessionId, sessionScene.data]);
 
   const dbRuns = useQuery({
-    queryKey: ["db_runs", effectiveBase, daemonAuthToken, sessionId, dbRunsOnlyErrors, dbRunsStopReason],
+    queryKey: ["db_runs", effectiveBase, authKey, sessionId, dbRunsOnlyErrors, dbRunsStopReason],
     queryFn: () =>
-      apiGetDbRuns(effectiveBase, sessionId, daemonAuthToken, {
+      apiGetDbRuns(effectiveBase, sessionId, daemonAuth, {
         limit: 50,
         offset: 0,
         onlyErrors: dbRunsOnlyErrors,
@@ -759,23 +810,23 @@ export default function App() {
   });
 
   const dbUiActions = useQuery({
-    queryKey: ["db_ui_actions", effectiveBase, daemonAuthToken, sessionId],
-    queryFn: () => apiGetDbUiActions(effectiveBase, sessionId, daemonAuthToken, { limit: 100, offset: 0 }),
+    queryKey: ["db_ui_actions", effectiveBase, authKey, sessionId],
+    queryFn: () => apiGetDbUiActions(effectiveBase, sessionId, daemonAuth, { limit: 100, offset: 0 }),
     enabled: !!sessionId && allowClientRpcs && allowClientEffects,
     refetchInterval: activeJobId ? 1500 : 5000,
     retry: 1,
   });
 
   const dbMessages = useQuery({
-    queryKey: ["db_messages", effectiveBase, daemonAuthToken, sessionId],
-    queryFn: () => apiGetDbMessages(effectiveBase, sessionId, daemonAuthToken, { limit: 80, offset: 0, maxContentBytes: 8192 }),
+    queryKey: ["db_messages", effectiveBase, authKey, sessionId],
+    queryFn: () => apiGetDbMessages(effectiveBase, sessionId, daemonAuth, { limit: 80, offset: 0, maxContentBytes: 8192 }),
     enabled: false,
     retry: 1,
   });
 
   const dbClientEvents = useQuery({
-    queryKey: ["db_client_events", effectiveBase, daemonAuthToken, sessionId],
-    queryFn: () => apiGetDbClientEvents(effectiveBase, sessionId, daemonAuthToken, { limit: 100, offset: 0 }),
+    queryKey: ["db_client_events", effectiveBase, authKey, sessionId],
+    queryFn: () => apiGetDbClientEvents(effectiveBase, sessionId, daemonAuth, { limit: 100, offset: 0 }),
     enabled: !!sessionId && allowClientRpcs && allowClientEffects,
     refetchInterval: activeJobId ? 1500 : 5000,
     retry: 1,
@@ -783,10 +834,10 @@ export default function App() {
 
   const [selectedDbRunId, setSelectedDbRunId] = React.useState<number | null>(null);
   const dbRunDetail = useQuery({
-    queryKey: ["db_run", effectiveBase, daemonAuthToken, selectedDbRunId],
+    queryKey: ["db_run", effectiveBase, authKey, selectedDbRunId],
     queryFn: () =>
       selectedDbRunId
-        ? apiGetDbRun(effectiveBase, selectedDbRunId, daemonAuthToken, {
+        ? apiGetDbRun(effectiveBase, selectedDbRunId, daemonAuth, {
             includeEvents: true,
             includeTools: true,
             includeArtifacts: true,
@@ -799,7 +850,7 @@ export default function App() {
 
   const newSession = useMutation({
     mutationFn: async () => {
-      const r = await apiNewSession(effectiveBase, daemonAuthToken);
+      const r = await apiNewSession(effectiveBase, daemonAuth);
       return r;
     },
     onSuccess: (v) => {
@@ -835,7 +886,7 @@ export default function App() {
     mutationFn: async (sid: string) => {
       const s = String(sid || "").trim();
       if (!s) throw new Error("missing session id");
-      const r = await apiDeleteSession(effectiveBase, s, daemonAuthToken);
+      const r = await apiDeleteSession(effectiveBase, s, daemonAuth);
       if (!r.ok) throw new Error(r.error || "delete failed");
       return { session_id: s };
     },
@@ -852,7 +903,7 @@ export default function App() {
 
   const updateDaemonDefaults = useMutation({
     mutationFn: async (payload: any) => {
-      const r = await apiUpdateDaemonConfig(effectiveBase, payload, daemonAuthToken);
+      const r = await apiUpdateDaemonConfig(effectiveBase, payload, daemonAuth);
       if (!r.ok) throw new Error(r.error || "update failed");
       return r;
     },
@@ -863,12 +914,12 @@ export default function App() {
 
   const clearAllSessions = useMutation({
     mutationFn: async () => {
-      const r = await apiListSessions(effectiveBase, daemonAuthToken);
+      const r = await apiListSessions(effectiveBase, daemonAuth);
       if (!r.ok) throw new Error(r.error || "failed to list sessions");
       const ids = (r.sessions ?? []).slice();
       // Delete deterministically (serial) to keep daemon load predictable and to make failures clear.
       for (const sid of ids) {
-        const d = await apiDeleteSession(effectiveBase, sid, daemonAuthToken);
+        const d = await apiDeleteSession(effectiveBase, sid, daemonAuth);
         if (!d.ok) throw new Error(d.error || `failed to delete session: ${sid}`);
       }
       return { deleted: ids.length };
@@ -900,9 +951,9 @@ export default function App() {
   const sessionsRefetch = sessions.refetch;
 
   const toolsDefs = useQuery({
-    queryKey: ["tools", effectiveBase, daemonAuthToken, tools, yolo, hostPolicy, sessionId],
+    queryKey: ["tools", effectiveBase, authKey, tools, yolo, hostPolicy, sessionId],
     queryFn: () =>
-      apiGetTools(effectiveBase, daemonAuthToken, {
+      apiGetTools(effectiveBase, daemonAuth, {
         tools,
         yolo,
         hostPolicy: tools === "host" ? hostPolicy : undefined,
@@ -1024,10 +1075,10 @@ export default function App() {
         trace,
       };
       if (useAsync) {
-        const job = await apiRunAsync(effectiveBase, req, daemonAuthToken);
+        const job = await apiRunAsync(effectiveBase, req, daemonAuth);
         return { mode: "async" as const, job, req };
       }
-      const out = await apiRun(effectiveBase, req, daemonAuthToken);
+      const out = await apiRun(effectiveBase, req, daemonAuth);
       return { mode: "sync" as const, out, req };
     },
     onSuccess: (v) => {
@@ -1086,7 +1137,7 @@ export default function App() {
       const maxTotal = Number(orMaxTotal);
       const limit = Number(orLimit);
       return apiGetOpenRouterModels(effectiveBase, {
-        daemonAuthToken: daemonAuthToken || undefined,
+        daemonAuth: daemonAuth,
         apiKey: apiKey || undefined,
         openrouterBaseUrl: "https://openrouter.ai/api/v1",
         minTotal: Number.isFinite(minTotal) ? minTotal : 0.01,
@@ -1189,7 +1240,7 @@ export default function App() {
           data,
           append_to_session: true,
         },
-        daemonAuthToken,
+        daemonAuth,
       );
     };
 
@@ -1249,7 +1300,7 @@ export default function App() {
     allowClientRpcs,
     applySceneOps,
     client,
-    daemonAuthToken,
+    daemonAuth,
     dbClientEvents.data,
     dbUiActions.data,
     effectiveBase,
@@ -1291,7 +1342,7 @@ export default function App() {
           data,
           append_to_session: false,
         },
-        daemonAuthToken,
+        daemonAuth,
       );
     };
 
@@ -1324,8 +1375,6 @@ export default function App() {
       const fallbackFetchPath =
         yolo && preferredFetchPath === path && path && !isAbsoluteLikePath(path) && resolvedPath && isAbsoluteLikePath(resolvedPath) ? resolvedPath : "";
 
-      const authToken = safeString(daemonAuthToken).trim();
-
       void (async () => {
         const tryPaths = [preferredFetchPath, fallbackFetchPath].filter((p) => typeof p === "string" && p.trim().length > 0);
         let lastErr: any = null;
@@ -1333,7 +1382,7 @@ export default function App() {
           const sidQ = sid ? `&session_id=${encodeURIComponent(sid)}` : "";
           const src = `${effectiveBase}/api/v1/file?path=${encodeURIComponent(p)}&yolo=${yolo ? "1" : "0"}${sidQ}`;
           try {
-            const r = await fetch(src, { headers: authToken ? { Authorization: `Bearer ${authToken}` } : {} });
+            const r = await fetch(src, { headers: daemonHeaders(daemonAuth) });
             if (!r.ok) throw new Error(`file fetch failed: ${r.status}`);
             const ct = String(r.headers.get("content-type") || "").trim();
             // Consume bytes to actually verify fetchability (and avoid keeping the response open).
@@ -1363,7 +1412,7 @@ export default function App() {
         });
       })().catch(() => {});
     });
-  }, [client, daemonAuthToken, effectiveBase, sessionArtifacts.data, sessionId, yolo]);
+  }, [client, daemonAuth, effectiveBase, sessionArtifacts.data, sessionId, yolo]);
 
   React.useEffect(() => {
     if (!activeJobId) return;
@@ -1378,7 +1427,7 @@ export default function App() {
           if (cancelled) return;
           let job: any;
           try {
-            job = await apiGetJobProgress(effectiveBase, jobId, daemonAuthToken, { cursor: cursorRef.current, maxEvents: 256 });
+            job = await apiGetJobProgress(effectiveBase, jobId, daemonAuth, { cursor: cursorRef.current, maxEvents: 256 });
           } catch (e) {
             // Transient fetch failures should not invalidate the visible conversation.
             // Keep the current liveEvents and keep the job active; retry with backoff.
@@ -1389,7 +1438,7 @@ export default function App() {
 
           if (cancelled) return;
           setJobStatus(job.status ?? null);
-          setJobError(job.status === "error" ? (job.error ?? null) : null);
+          setJobError(job.status === "error" || job.status === "interrupted" ? (job.error ?? null) : null);
           setJobNotice(null);
           setJobUpdatedMs(typeof job.updated_unix_ms === "number" ? job.updated_unix_ms : null);
 
@@ -1404,7 +1453,7 @@ export default function App() {
             cursorRef.current = next;
           }
 
-          if (job.status === "done" || job.status === "error" || job.status === "cancelled") {
+          if (job.status === "done" || job.status === "error" || job.status === "cancelled" || job.status === "interrupted") {
             if (job.result) {
               setResult(job.result);
               setLastCompletedPrompt(lastRunPromptRef.current);
@@ -1441,13 +1490,14 @@ export default function App() {
     let fetchFinished = false;
     const canUseEventSource =
       typeof EventSource !== "undefined" &&
+      connectionMode === "direct" &&
       (!daemonAuthToken || daemonAuthToken.trim().length === 0) &&
-      typeof effectiveBase === "string" &&
-      (effectiveBase.startsWith("http://") || effectiveBase.startsWith("https://"));
+      typeof effectiveSseBase === "string" &&
+      (effectiveSseBase.startsWith("http://") || effectiveSseBase.startsWith("https://"));
     const canUseFetchSse =
       typeof fetch !== "undefined" &&
-      typeof effectiveBase === "string" &&
-      (effectiveBase.startsWith("http://") || effectiveBase.startsWith("https://"));
+      typeof effectiveSseBase === "string" &&
+      (effectiveSseBase.startsWith("http://") || effectiveSseBase.startsWith("https://"));
 
     let fallbackStarted = false;
     const fallbackToPolling = () => {
@@ -1462,15 +1512,15 @@ export default function App() {
       if (cancelled) return;
       void (async () => {
         try {
-          const job = await apiGetJob(effectiveBase, jobId, daemonAuthToken);
+          const job = await apiGetJob(effectiveBase, jobId, daemonAuth);
           if (!job?.ok) return;
-          if (job.status === "done" || job.status === "error" || job.status === "cancelled") {
+          if (job.status === "done" || job.status === "error" || job.status === "cancelled" || job.status === "interrupted") {
             // Trigger the same completion path as streaming.
             if (job.result) {
               setResult(job.result);
               setLastCompletedPrompt(lastRunPromptRef.current);
               setJobStatus(job.status);
-              setJobError(job.status === "error" ? (job.error ?? null) : null);
+              setJobError(job.status === "error" || job.status === "interrupted" ? (job.error ?? null) : null);
               setJobNotice(null);
             } else {
               setJobError("job completed but missing result");
@@ -1495,7 +1545,7 @@ export default function App() {
     }, 3000);
 
     const startFetchSse = () => {
-      const url = `${effectiveBase}/api/v1/job/stream?job_id=${encodeURIComponent(jobId)}&cursor=${encodeURIComponent(
+      const url = `${effectiveSseBase}/api/v1/job/stream?job_id=${encodeURIComponent(jobId)}&cursor=${encodeURIComponent(
         String(cursorRef.current),
       )}`;
       const controller = new AbortController();
@@ -1505,7 +1555,7 @@ export default function App() {
 
       (async () => {
         const resp = await fetch(url, {
-          headers: daemonHeaders(daemonAuthToken || undefined),
+          headers: daemonHeaders(daemonAuth),
           signal: controller.signal,
         });
         if (!resp.ok) {
@@ -1540,7 +1590,9 @@ export default function App() {
               const data = JSON.parse(String(evt.data || "{}"));
               setJobStatus(typeof data?.status === "string" ? data.status : "done");
               setJobError(
-                typeof data?.status === "string" && data.status === "error" ? (typeof data?.error === "string" ? data.error : null) : null,
+                typeof data?.status === "string" && (data.status === "error" || data.status === "interrupted")
+                  ? (typeof data?.error === "string" ? data.error : null)
+                  : null,
               );
               setJobNotice(null);
               if (data?.result) {
@@ -1577,7 +1629,7 @@ export default function App() {
 
     if (canUseEventSource) {
       try {
-        const url = `${effectiveBase}/api/v1/job/stream?job_id=${encodeURIComponent(jobId)}&cursor=${encodeURIComponent(
+        const url = `${effectiveSseBase}/api/v1/job/stream?job_id=${encodeURIComponent(jobId)}&cursor=${encodeURIComponent(
           String(cursorRef.current),
         )}`;
         es = new EventSource(url);
@@ -1617,7 +1669,9 @@ export default function App() {
             const data = JSON.parse(String(evt.data || "{}"));
             setJobStatus(typeof data?.status === "string" ? data.status : "done");
             setJobError(
-              typeof data?.status === "string" && data.status === "error" ? (typeof data?.error === "string" ? data.error : null) : null,
+              typeof data?.status === "string" && (data.status === "error" || data.status === "interrupted")
+                ? (typeof data?.error === "string" ? data.error : null)
+                : null,
             );
             setJobNotice(null);
             if (data?.result) {
@@ -1683,7 +1737,7 @@ export default function App() {
         // ignore
       }
     };
-  }, [activeJobId, effectiveBase, daemonAuthToken, sessionId, auditRefetch, sessionsRefetch]);
+  }, [activeJobId, auditRefetch, connectionMode, daemonAuth, daemonAuthToken, effectiveBase, effectiveSseBase, sessionId, sessionsRefetch]);
 
   return (
     <div
@@ -1734,21 +1788,38 @@ export default function App() {
 
       {health.isError ? (
         <div className="border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-xs text-amber-100">
-          Browser cannot reach <code className="text-amber-50/90">{effectiveBase}</code> (network or CORS).
-          {webOrigin ? (
+          {connectionMode === "broker" && missingBrokerAuthToken ? (
             <>
-              {" "}
-              If <code className="text-amber-50/90">agentd</code> is running, allow this UI origin:{" "}
-              <code className="text-amber-50/90">{webOrigin}</code> (start agentd with{" "}
-              <code className="text-amber-50/90">--cors-origin {webOrigin}</code>).
+              <span className="font-semibold text-amber-50/90">Unauthorized:</span> the broker requires an OIDC bearer token.
+              Set it in{" "}
+              <button className="underline hover:text-white" onClick={() => setShowSettings(true)} type="button">
+                Settings
+              </button>{" "}
+              (<span className="text-amber-50/90">Broker auth token</span>).
             </>
-          ) : null}
+          ) : (
+            <>
+              Browser cannot reach <code className="text-amber-50/90">{effectiveBase}</code> (network, TLS, or CORS).
+              {webOrigin && connectionMode === "direct" ? (
+                <>
+                  {" "}
+                  If <code className="text-amber-50/90">agentd</code> is running, allow this UI origin:{" "}
+                  <code className="text-amber-50/90">{webOrigin}</code> (start agentd with{" "}
+                  <code className="text-amber-50/90">--cors-origin {webOrigin}</code>).
+                </>
+              ) : null}
+            </>
+          )}
         </div>
       ) : sessionsUnauthorized && missingDaemonAuthToken ? (
         <div className="border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-xs text-amber-100">
           <span className="font-semibold text-amber-50/90">Unauthorized:</span> the daemon requires a bearer token.
           Set it in <button className="underline hover:text-white" onClick={() => setShowSettings(true)} type="button">Settings</button>{" "}
-          (<span className="text-amber-50/90">Daemon auth token</span>).
+          (
+          <span className="text-amber-50/90">
+            {connectionMode === "broker" ? "Agentd auth token (X-Agentd-Authorization)" : "Daemon auth token"}
+          </span>
+          ).
           <span className="text-amber-50/80">
             {" "}
             If you started via docker-compose, it’s typically <code className="text-amber-50/90">dev-agentd-token</code>.
@@ -1784,7 +1855,7 @@ export default function App() {
                 yolo={yolo}
                 allowAutoplay={allowAutoplay}
                 client={client}
-                daemonAuthToken={daemonAuthToken}
+                daemonAuth={daemonAuth}
                 sessionId={sessionId}
                 entities={sceneEntities}
                 className="h-full"
@@ -1888,7 +1959,7 @@ export default function App() {
                             yolo={yolo}
                             sessionId={sessionId}
                             client={client}
-                            daemonAuthToken={daemonAuthToken}
+                            daemonAuth={daemonAuth}
                             prompt={promptText}
                             events={evs as any}
                             showDebugEvents={showDebugInConversation}
@@ -1920,7 +1991,7 @@ export default function App() {
         activeJobId={activeJobId}
         jobStatus={jobStatus}
         jobProgressLabel={jobProgressLabel}
-        daemonAuthToken={daemonAuthToken}
+        daemonAuth={daemonAuth}
         prompt={prompt}
         setPrompt={setPrompt}
         runDisabled={run.isPending || !!activeJobId}
@@ -1955,25 +2026,169 @@ export default function App() {
             </div>
 
             <div className="mt-4">
-              <Label>Daemon base URL</Label>
-              <input
+              <Label>Connection</Label>
+              <select
                 className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                data-testid="daemon-base"
-                value={base}
-                onChange={(e) => setBase(e.target.value)}
-              />
+                value={connectionMode}
+                onChange={(e) => setConnectionMode(e.target.value as any)}
+              >
+                <option value="direct">direct (agentd)</option>
+                <option value="broker">broker (OIDC + agent_id)</option>
+              </select>
+              <div className="mt-2 text-[11px] text-white/60">
+                {connectionMode === "direct"
+                  ? "Direct: the browser calls agentd over HTTP."
+                  : "Broker: the browser calls a broker (OIDC), which proxies to a connected agent by id."}
+              </div>
             </div>
 
-            <div className="mt-4">
-              <Label>Daemon auth token (optional)</Label>
-              <input
-                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                data-testid="daemon-auth-token"
-                placeholder='Bearer token (e.g. "dev-agentd-token" in docker-compose)'
-                value={daemonAuthToken}
-                onChange={(e) => setDaemonAuthToken(e.target.value)}
-              />
-            </div>
+            {connectionMode === "direct" ? (
+              <>
+                <div className="mt-4">
+                  <Label>Daemon base URL</Label>
+                  <input
+                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                    data-testid="daemon-base"
+                    value={base}
+                    onChange={(e) => setBase(e.target.value)}
+                  />
+                </div>
+
+                <div className="mt-4">
+                  <Label>Daemon auth token (optional)</Label>
+                  <input
+                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                    data-testid="daemon-auth-token"
+                    placeholder='Bearer token (e.g. "dev-agentd-token" in docker-compose)'
+                    value={daemonAuthToken}
+                    onChange={(e) => setDaemonAuthToken(e.target.value)}
+                  />
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mt-4">
+                  <Label>Broker base URL</Label>
+                  <input
+                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                    value={brokerBase}
+                    onChange={(e) => setBrokerBase(e.target.value)}
+                    placeholder='e.g. "https://broker.example.com" (or "https://127.0.0.1:8443" in docker-compose)'
+                  />
+                </div>
+
+                <div className="mt-4">
+                  <Label>Broker auth token (OIDC)</Label>
+                  <input
+                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                    placeholder="Authorization bearer token for broker (OIDC JWT)"
+                    value={brokerAuthToken}
+                    onChange={(e) => setBrokerAuthToken(e.target.value)}
+                  />
+                  <div className="mt-2 text-[11px] text-white/60">
+                    Uses <code className="font-mono">Authorization: Bearer &lt;jwt&gt;</code> to call broker endpoints.
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <Label>Agent id</Label>
+                  <input
+                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                    value={brokerAgentId}
+                    onChange={(e) => setBrokerAgentId(e.target.value)}
+                    placeholder='e.g. "agent1"'
+                  />
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                      type="button"
+                      disabled={brokerAgentsBusy || String(brokerAuthToken || "").trim().length === 0}
+                      onClick={async () => {
+                        setBrokerAgentsError(null);
+                        setBrokerAgentsBusy(true);
+                        try {
+                          const bb = String(brokerBase || "").trim().replace(/\/+$/, "");
+                          const withScheme = /^https?:\/\//i.test(bb) ? bb : `https://${bb}`;
+                          const r = await apiBrokerListAgents(withScheme, { mode: "broker", token: brokerAuthToken });
+                          const agents = Array.isArray((r as any)?.agents) ? ((r as any).agents as any[]) : [];
+                          setBrokerAgents(agents);
+                          // Best-effort: pick first connected agent if none selected.
+                          if (!String(brokerAgentId || "").trim()) {
+                            const connected = agents.find((a) => a && a.connected === true);
+                            if (connected && typeof connected.agent_id === "string") setBrokerAgentId(connected.agent_id);
+                          }
+                        } catch (e) {
+                          setBrokerAgentsError(String(e));
+                          setBrokerAgents(null);
+                        } finally {
+                          setBrokerAgentsBusy(false);
+                        }
+                      }}
+                      title="Fetches /v1/agents from the broker (OIDC required)."
+                    >
+                      {brokerAgentsBusy ? "Listing…" : "List agents"}
+                    </button>
+                    <div className="text-[11px] text-white/60">
+                      Proxy base:{" "}
+                      <code className="font-mono text-white/70">
+                        {String(effectiveBase || "").trim()}
+                      </code>
+                    </div>
+                  </div>
+                  {brokerAgentsError ? (
+                    <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+                      List agents failed: {brokerAgentsError}
+                    </div>
+                  ) : null}
+                  {brokerAgents && brokerAgents.length > 0 ? (
+                    <div className="mt-2 max-h-40 overflow-auto rounded-md border border-white/10 bg-black/20">
+                      {brokerAgents.map((a: any) => {
+                        const id = typeof a?.agent_id === "string" ? a.agent_id : "";
+                        if (!id) return null;
+                        const connected = a?.connected === true;
+                        const lastSeen = typeof a?.last_seen_unix_ms === "number" ? a.last_seen_unix_ms : 0;
+                        const selected = String(brokerAgentId || "").trim() === id;
+                        return (
+                          <button
+                            key={id}
+                            type="button"
+                            className={[
+                              "flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[11px] hover:bg-white/5",
+                              selected ? "bg-white/10" : "",
+                            ].join(" ")}
+                            onClick={() => setBrokerAgentId(id)}
+                            title={a?.remote_addr ? `remote=${String(a.remote_addr)}` : ""}
+                          >
+                            <span className="font-mono text-white/80">{id}</span>
+                            <span className="text-white/60">
+                              {connected ? (
+                                <span className="text-emerald-300">connected</span>
+                              ) : (
+                                <span className="text-white/40">disconnected</span>
+                              )}
+                              {lastSeen ? ` · last_seen=${new Date(lastSeen).toLocaleString()}` : ""}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className="mt-4">
+                  <Label>Agentd auth token (pass-through)</Label>
+                  <input
+                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                    placeholder='Bearer token forwarded to agentd as "X-Agentd-Authorization" (e.g. "dev-agentd-token")'
+                    value={daemonAuthToken}
+                    onChange={(e) => setDaemonAuthToken(e.target.value)}
+                  />
+                  <div className="mt-2 text-[11px] text-white/60">
+                    Uses <code className="font-mono">X-Agentd-Authorization: Bearer &lt;token&gt;</code> on proxied requests.
+                  </div>
+                </div>
+              </>
+            )}
 
             <div className="mt-4 grid grid-cols-2 gap-3">
               <div className="col-span-2">

@@ -1,4 +1,5 @@
 import React from "react";
+import { daemonHeaders, type ApiAuth } from "../api";
 
 function uniq<T>(arr: T[]): T[] {
   return Array.from(new Set(arr));
@@ -15,13 +16,13 @@ function guessKind(path: string): "image" | "audio" | "video" | null {
 export default function MediaPreviews({
   baseUrl,
   yolo,
-  daemonAuthToken,
+  daemonAuth,
   sessionId,
   text,
 }: {
   baseUrl: string;
   yolo: boolean;
-  daemonAuthToken?: string;
+  daemonAuth?: ApiAuth;
   sessionId?: string;
   text: string;
 }) {
@@ -39,7 +40,10 @@ export default function MediaPreviews({
 
   if (files.length === 0) return null;
 
-  const token = typeof daemonAuthToken === "string" ? daemonAuthToken.trim() : "";
+  const hdr = React.useMemo(() => daemonHeaders(daemonAuth), [daemonAuth]);
+  const hasAuthHeaders = React.useMemo(() => {
+    return typeof hdr.Authorization === "string" || typeof (hdr as any)["X-Agentd-Authorization"] === "string";
+  }, [hdr]);
   const sid = typeof sessionId === "string" ? sessionId.trim() : "";
   const sidQ = sid ? `&session_id=${encodeURIComponent(sid)}` : "";
   const [blobByPath, setBlobByPath] = React.useState<Record<string, { url: string; contentType?: string; error?: string }>>({});
@@ -47,7 +51,7 @@ export default function MediaPreviews({
   React.useEffect(() => {
     // When auth is enabled, media elements cannot attach Authorization headers.
     // Workaround: fetch with headers here and use blob: URLs.
-    if (!token) {
+    if (!hasAuthHeaders) {
       // Cleanup any prior blob URLs.
       const prev = blobByPath;
       Object.values(prev).forEach((v) => {
@@ -70,7 +74,7 @@ export default function MediaPreviews({
         if (cancelled) return;
         const src = `${baseUrl}/api/v1/file?path=${encodeURIComponent(path)}&yolo=${yolo ? "1" : "0"}${sidQ}`;
         try {
-          const r = await fetch(src, { headers: { Authorization: `Bearer ${token}` } });
+          const r = await fetch(src, { headers: hdr });
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
           const ct = String(r.headers.get("content-type") || "").trim();
           const b = await r.blob();
@@ -96,7 +100,7 @@ export default function MediaPreviews({
       });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [baseUrl, yolo, token, files.join("\n")]);
+  }, [baseUrl, hdr, hasAuthHeaders, yolo, files.join("\n")]);
 
   return (
     <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -105,11 +109,11 @@ export default function MediaPreviews({
         if (!kind) return null;
         const directSrc = `${baseUrl}/api/v1/file?path=${encodeURIComponent(path)}&yolo=${yolo ? "1" : "0"}${sidQ}`;
         const blob = blobByPath[path];
-        const src = token ? (blob?.url || "") : directSrc;
+        const src = hasAuthHeaders ? (blob?.url || "") : directSrc;
         return (
           <div key={path} className="rounded-lg border border-white/10 bg-black/20 p-3">
             <div className="mb-2 text-xs text-white/60">Preview: {path}</div>
-            {token && blob?.error ? (
+            {hasAuthHeaders && blob?.error ? (
               <div className="mb-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
                 Load failed: {blob.error}
               </div>
@@ -130,9 +134,13 @@ export default function MediaPreviews({
               ) : null
             ) : null}
             <div className="mt-2 text-[11px] text-white/60">
-              <a className="underline hover:text-white" href={directSrc} target="_blank" rel="noreferrer">
-                Open file
-              </a>
+              {!hasAuthHeaders ? (
+                <a className="underline hover:text-white" href={directSrc} target="_blank" rel="noreferrer">
+                  Open file
+                </a>
+              ) : (
+                <span title="Direct open cannot include Authorization headers (use blob preview).">Open file (auth required)</span>
+              )}
             </div>
           </div>
         );

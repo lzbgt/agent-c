@@ -16,6 +16,7 @@ This directory also includes `agentd-connector`, a lightweight “bridge” that
 - `GET /readyz` — readiness (checks Postgres ping and OIDC provider initialization)
 - `GET /v1/agent/connect` — agent WebSocket (mTLS recommended)
 - `GET /v1/agents` / `POST /v1/agents` — list/create agents (OIDC required)
+- `POST /v1/orchestrate` — fan-out `/api/v1/run` calls across multiple agents (OIDC required)
 - `GET /v1/agents/{agent_id}/proxy/...` — proxy HTTP request to agent (OIDC required)
 - `GET /v1/agents/{agent_id}/proxy_sse/...` — proxy streaming/SSE-like request to agent (OIDC required)
 - `GET /v1/events` — Server-Sent Events stream for the authenticated subject (OIDC required)
@@ -63,4 +64,3 @@ Typical flags:
 
 - For `GET /v1/events` (SSE), ensure your proxy does **not buffer** responses.
   - The broker also sets `X-Accel-Buffering: no` as a hint for Nginx.
-

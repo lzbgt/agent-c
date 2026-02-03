@@ -110,6 +110,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/readyz", s.handleReadyz)
 	mux.HandleFunc("/v1/agent/connect", s.handleAgentConnect)
 	mux.HandleFunc("/v1/agents", s.handleAgents)
+	mux.HandleFunc("/v1/orchestrate", s.handleOrchestrate)
 	mux.HandleFunc("/v1/events", s.handleEventsSSE)
 	// Catch-all for /v1/agents/{id}/... paths.
 	mux.HandleFunc("/v1/agents/", s.handleAgentsSubroutes)
@@ -126,6 +127,138 @@ func (s *Server) Handler() http.Handler {
 type Principal struct {
 	Sub   string
 	Admin bool
+}
+
+type relayOutcome struct {
+	BrokerStatus int
+	AgentStatus  int
+	Headers      map[string]string
+	Body         []byte
+	Err          string
+	LatencyMS    int
+}
+
+func (s *Server) auditRelay(ctx context.Context, p *Principal, agentID, method, agentPath string, status, latencyMS int, errStr string) {
+	if p == nil {
+		return
+	}
+	_ = s.cfg.DB.InsertRelayAudit(ctx, p.Sub, agentID, method, agentPath, status, latencyMS, errStr)
+	s.cfg.Events.PublishTo([]string{p.Sub}, events.Event{
+		Type:    "relay_audit",
+		AgentID: agentID,
+		UserSub: p.Sub,
+		Payload: map[string]any{
+			"method":     method,
+			"path":       agentPath,
+			"status":     status,
+			"latency_ms": latencyMS,
+			"error":      errStr,
+		},
+	})
+}
+
+func (s *Server) relayAgentHTTP(ctx context.Context, p *Principal, agentID, method, agentPath, rawQuery string, headers map[string]string, body []byte) relayOutcome {
+	start := time.Now()
+	out := relayOutcome{
+		Headers: map[string]string{},
+	}
+
+	a, err := s.cfg.Registry.Require(agentID)
+	if err != nil {
+		out.BrokerStatus = http.StatusBadGateway
+		out.Err = "agent not connected"
+		out.LatencyMS = int(time.Since(start).Milliseconds())
+		s.auditRelay(ctx, p, agentID, method, agentPath, 0, out.LatencyMS, out.Err)
+		return out
+	}
+
+	reqID := newID()
+	ch, err := a.RegisterPending(reqID)
+	if err != nil {
+		out.BrokerStatus = http.StatusServiceUnavailable
+		out.Err = "broker overloaded"
+		out.LatencyMS = int(time.Since(start).Milliseconds())
+		s.auditRelay(ctx, p, agentID, method, agentPath, 0, out.LatencyMS, out.Err)
+		return out
+	}
+	defer a.UnregisterPending(reqID)
+
+	msg := proto.RelayRequest{
+		Type: proto.TypeHTTPRequest,
+		ID:   reqID,
+		Req: proto.HTTPRequest{
+			Method:  method,
+			Path:    agentPath,
+			Query:   rawQuery,
+			Headers: headers,
+			BodyB64: base64.StdEncoding.EncodeToString(body),
+		},
+	}
+
+	if err := a.Send(msg); err != nil {
+		s.cfg.Registry.Delete(agentID)
+		out.BrokerStatus = http.StatusBadGateway
+		out.Err = "agent send failed"
+		out.LatencyMS = int(time.Since(start).Milliseconds())
+		s.auditRelay(ctx, p, agentID, method, agentPath, 0, out.LatencyMS, out.Err)
+		return out
+	}
+
+	timeout := 60 * time.Second
+	if dl, ok := ctx.Deadline(); ok {
+		timeout = time.Until(dl)
+	}
+	if timeout < 100*time.Millisecond {
+		timeout = 100 * time.Millisecond
+	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	select {
+	case resp, ok := <-ch:
+		if !ok {
+			out.BrokerStatus = http.StatusBadGateway
+			out.Err = "agent disconnected"
+			out.LatencyMS = int(time.Since(start).Milliseconds())
+			s.auditRelay(ctx, p, agentID, method, agentPath, 0, out.LatencyMS, out.Err)
+			return out
+		}
+		if resp.Err != "" {
+			out.BrokerStatus = http.StatusBadGateway
+			out.Err = resp.Err
+			out.LatencyMS = int(time.Since(start).Milliseconds())
+			s.auditRelay(ctx, p, agentID, method, agentPath, 0, out.LatencyMS, out.Err)
+			return out
+		}
+
+		out.AgentStatus = resp.Resp.Status
+		for k, v := range resp.Resp.Headers {
+			kl := strings.ToLower(k)
+			if kl == "content-length" || kl == "connection" || kl == "transfer-encoding" {
+				continue
+			}
+			out.Headers[k] = v
+		}
+		b, err := base64.StdEncoding.DecodeString(resp.Resp.BodyB64)
+		if err != nil {
+			out.BrokerStatus = http.StatusBadGateway
+			out.Err = "invalid agent body"
+			out.LatencyMS = int(time.Since(start).Milliseconds())
+			s.auditRelay(ctx, p, agentID, method, agentPath, out.AgentStatus, out.LatencyMS, out.Err)
+			return out
+		}
+		out.Body = b
+		out.LatencyMS = int(time.Since(start).Milliseconds())
+		s.auditRelay(ctx, p, agentID, method, agentPath, out.AgentStatus, out.LatencyMS, "")
+		return out
+
+	case <-timer.C:
+		out.BrokerStatus = http.StatusGatewayTimeout
+		out.Err = "agent timeout"
+		out.LatencyMS = int(time.Since(start).Milliseconds())
+		s.auditRelay(ctx, p, agentID, method, agentPath, 0, out.LatencyMS, out.Err)
+		return out
+	}
 }
 
 func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
@@ -319,12 +452,6 @@ func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentI
 		return
 	}
 
-	a, err := s.cfg.Registry.Require(agentID)
-	if err != nil {
-		http.Error(w, "agent not connected", http.StatusBadGateway)
-		return
-	}
-
 	// Read request body (bounded).
 	body, err := readBodyBounded(r.Body, s.cfg.MaxRequestBodySize)
 	if err != nil {
@@ -355,95 +482,16 @@ func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentI
 		delete(headers, "X-Agentd-Authorization")
 	}
 
-	start := time.Now()
-	status := 0
-	errStr := ""
-	reqID := newID()
-	ch, err := a.RegisterPending(reqID)
-	if err != nil {
-		http.Error(w, "broker overloaded", http.StatusServiceUnavailable)
+	ro := s.relayAgentHTTP(r.Context(), p, agentID, r.Method, agentPath, r.URL.RawQuery, headers, body)
+	if ro.BrokerStatus != 0 {
+		http.Error(w, ro.Err, ro.BrokerStatus)
 		return
 	}
-	defer a.UnregisterPending(reqID)
-
-	msg := proto.RelayRequest{
-		Type: proto.TypeHTTPRequest,
-		ID:   reqID,
-		Req: proto.HTTPRequest{
-			Method:  r.Method,
-			Path:    agentPath,
-			Query:   r.URL.RawQuery,
-			Headers: headers,
-			BodyB64: base64.StdEncoding.EncodeToString(body),
-		},
+	for k, v := range ro.Headers {
+		w.Header().Set(k, v)
 	}
-
-	if err := a.Send(msg); err != nil {
-		s.cfg.Registry.Delete(agentID)
-		errStr = "agent send failed"
-		_ = s.cfg.DB.InsertRelayAudit(r.Context(), p.Sub, agentID, r.Method, agentPath, status, int(time.Since(start).Milliseconds()), errStr)
-		http.Error(w, "agent send failed", http.StatusBadGateway)
-		return
-	}
-
-	// Wait for response.
-	timeout := 60 * time.Second
-	if dl, ok := r.Context().Deadline(); ok {
-		timeout = time.Until(dl)
-	}
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-	select {
-	case resp, ok := <-ch:
-		if !ok {
-			errStr = "agent disconnected"
-			_ = s.cfg.DB.InsertRelayAudit(r.Context(), p.Sub, agentID, r.Method, agentPath, status, int(time.Since(start).Milliseconds()), errStr)
-			http.Error(w, "agent disconnected", http.StatusBadGateway)
-			return
-		}
-		if resp.Err != "" {
-			errStr = resp.Err
-			_ = s.cfg.DB.InsertRelayAudit(r.Context(), p.Sub, agentID, r.Method, agentPath, status, int(time.Since(start).Milliseconds()), errStr)
-			http.Error(w, resp.Err, http.StatusBadGateway)
-			return
-		}
-		// Apply response headers (sanitized).
-		for k, v := range resp.Resp.Headers {
-			kl := strings.ToLower(k)
-			if kl == "content-length" || kl == "connection" || kl == "transfer-encoding" {
-				continue
-			}
-			w.Header().Set(k, v)
-		}
-		status = resp.Resp.Status
-		w.WriteHeader(status)
-		b, err := base64.StdEncoding.DecodeString(resp.Resp.BodyB64)
-		if err != nil {
-			errStr = "invalid agent body"
-			_ = s.cfg.DB.InsertRelayAudit(r.Context(), p.Sub, agentID, r.Method, agentPath, status, int(time.Since(start).Milliseconds()), errStr)
-			http.Error(w, "invalid agent body", http.StatusBadGateway)
-			return
-		}
-		_, _ = w.Write(b)
-		_ = s.cfg.DB.InsertRelayAudit(r.Context(), p.Sub, agentID, r.Method, agentPath, status, int(time.Since(start).Milliseconds()), errStr)
-		s.cfg.Events.PublishTo([]string{p.Sub}, events.Event{
-			Type:    "relay_audit",
-			AgentID: agentID,
-			UserSub: p.Sub,
-			Payload: map[string]any{
-				"method":     r.Method,
-				"path":       agentPath,
-				"status":     status,
-				"latency_ms": int(time.Since(start).Milliseconds()),
-				"error":      errStr,
-			},
-		})
-	case <-timer.C:
-		errStr = "agent timeout"
-		_ = s.cfg.DB.InsertRelayAudit(r.Context(), p.Sub, agentID, r.Method, agentPath, status, int(time.Since(start).Milliseconds()), errStr)
-		http.Error(w, "agent timeout", http.StatusGatewayTimeout)
-		return
-	}
+	w.WriteHeader(ro.AgentStatus)
+	_, _ = w.Write(ro.Body)
 }
 
 func (s *Server) handleAgentProxySSE(w http.ResponseWriter, r *http.Request, agentID, agentPath string) {

@@ -149,7 +149,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 7;
+  const int kSchemaVersion = 8;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -363,6 +363,27 @@ CREATE INDEX IF NOT EXISTS scene_states_by_updated ON scene_states(updated_unix_
     cur_ver = 7;
   }
 
+  if (cur_ver < 8) {
+    const char* schema_v8 = R"SQL(
+CREATE TABLE IF NOT EXISTS jobs(
+  job_id TEXT PRIMARY KEY,
+  session_id TEXT,
+  created_unix_ms INTEGER NOT NULL,
+  updated_unix_ms INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  cancel_requested INTEGER NOT NULL,
+  error TEXT,
+  stop_reason TEXT,
+  result_json TEXT,
+  last_heartbeat_unix_ms INTEGER
+);
+CREATE INDEX IF NOT EXISTS jobs_by_status ON jobs(status, updated_unix_ms DESC);
+CREATE INDEX IF NOT EXISTS jobs_by_session ON jobs(session_id, updated_unix_ms DESC);
+)SQL";
+    if (!exec_locked(schema_v8, out_error)) return false;
+    cur_ver = 8;
+  }
+
   // Record schema version.
   {
     std::ostringstream oss;
@@ -370,6 +391,223 @@ CREATE INDEX IF NOT EXISTS scene_states_by_updated ON scene_states(updated_unix_
 	  if (!exec_locked(oss.str(), out_error)) return false;
 	  }
 	  return true;
+#endif
+}
+
+bool AgentDb::upsert_job(const JobRow& row, std::string* out_error) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)row;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (row.job_id.empty()) {
+    if (out_error) *out_error = "upsert_job: job_id is empty";
+    return false;
+  }
+  const int64_t now = (row.updated_unix_ms > 0) ? row.updated_unix_ms : unix_ms_now();
+  const int64_t created = (row.created_unix_ms > 0) ? row.created_unix_ms : now;
+  const std::string status = row.status.empty() ? "queued" : row.status;
+
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+INSERT INTO jobs(
+  job_id, session_id, created_unix_ms, updated_unix_ms, status, cancel_requested, error, stop_reason, result_json, last_heartbeat_unix_ms
+) VALUES(?,?,?,?,?,?,?,?,?,?)
+ON CONFLICT(job_id) DO UPDATE SET
+  session_id = CASE
+    WHEN excluded.session_id IS NOT NULL AND excluded.session_id <> '' THEN excluded.session_id
+    ELSE jobs.session_id
+  END,
+  updated_unix_ms = excluded.updated_unix_ms,
+  status = CASE
+    WHEN jobs.status IN ('done','error','cancelled','interrupted') THEN jobs.status
+    ELSE excluded.status
+  END,
+  cancel_requested = CASE
+    WHEN jobs.cancel_requested = 1 OR excluded.cancel_requested = 1 THEN 1
+    ELSE 0
+  END,
+  error = CASE
+    WHEN excluded.error IS NOT NULL AND excluded.error <> '' THEN excluded.error
+    ELSE jobs.error
+  END,
+  stop_reason = CASE
+    WHEN excluded.stop_reason IS NOT NULL AND excluded.stop_reason <> '' THEN excluded.stop_reason
+    ELSE jobs.stop_reason
+  END,
+  result_json = CASE
+    WHEN excluded.result_json IS NOT NULL AND excluded.result_json <> '' THEN excluded.result_json
+    ELSE jobs.result_json
+  END,
+  last_heartbeat_unix_ms = CASE
+    WHEN excluded.last_heartbeat_unix_ms IS NOT NULL AND excluded.last_heartbeat_unix_ms > COALESCE(jobs.last_heartbeat_unix_ms,0)
+      THEN excluded.last_heartbeat_unix_ms
+    ELSE jobs.last_heartbeat_unix_ms
+  END;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+
+  bool ok = true;
+  ok = ok && bind_text(st, 1, row.job_id);
+  ok = ok && bind_text(st, 2, row.session_id);
+  ok = ok && bind_i64(st, 3, created);
+  ok = ok && bind_i64(st, 4, now);
+  ok = ok && bind_text(st, 5, status);
+  ok = ok && bind_i32(st, 6, row.cancel_requested ? 1 : 0);
+  ok = ok && bind_text(st, 7, row.error);
+  ok = ok && bind_text(st, 8, row.stop_reason);
+  ok = ok && bind_text(st, 9, row.result_json);
+  ok = ok && bind_i64(st, 10, row.last_heartbeat_unix_ms);
+
+  ok = ok && step_done(st);
+  if (!ok && out_error && out_error->empty()) {
+    *out_error = sqlite_err(db_);
+  }
+  sqlite3_finalize(st);
+  return ok;
+#endif
+}
+
+bool AgentDb::get_job(const std::string& job_id, JobRow* out_row, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (out_row) *out_row = JobRow{};
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)job_id;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (job_id.empty()) {
+    if (out_error) *out_error = "get_job: job_id is empty";
+    return false;
+  }
+  if (!out_row) {
+    if (out_error) *out_error = "get_job: out_row is null";
+    return false;
+  }
+
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT
+  job_id, session_id, created_unix_ms, updated_unix_ms, status, cancel_requested, error, stop_reason, result_json, last_heartbeat_unix_ms
+FROM jobs
+WHERE job_id=?
+LIMIT 1;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = bind_text(st, 1, job_id);
+  bool found = false;
+  if (ok && step_row(st)) {
+    found = true;
+    const unsigned char* jid = sqlite3_column_text(st, 0);
+    const unsigned char* sid = sqlite3_column_text(st, 1);
+    out_row->job_id = jid ? (const char*)jid : "";
+    out_row->session_id = sid ? (const char*)sid : "";
+    out_row->created_unix_ms = sqlite3_column_int64(st, 2);
+    out_row->updated_unix_ms = sqlite3_column_int64(st, 3);
+    const unsigned char* stxt = sqlite3_column_text(st, 4);
+    out_row->status = stxt ? (const char*)stxt : "";
+    out_row->cancel_requested = sqlite3_column_int(st, 5) != 0;
+    const unsigned char* etxt = sqlite3_column_text(st, 6);
+    out_row->error = etxt ? (const char*)etxt : "";
+    const unsigned char* srtxt = sqlite3_column_text(st, 7);
+    out_row->stop_reason = srtxt ? (const char*)srtxt : "";
+    const unsigned char* rj = sqlite3_column_text(st, 8);
+    out_row->result_json = rj ? (const char*)rj : "";
+    out_row->last_heartbeat_unix_ms = sqlite3_column_int64(st, 9);
+  }
+  sqlite3_finalize(st);
+  if (!ok) {
+    if (out_error && out_error->empty()) *out_error = sqlite_err(db_);
+    return false;
+  }
+  return found;
+#endif
+}
+
+bool AgentDb::delete_job(const std::string& job_id, std::string* out_error) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)job_id;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (job_id.empty()) {
+    if (out_error) *out_error = "delete_job: job_id is empty";
+    return false;
+  }
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = "DELETE FROM jobs WHERE job_id=?;";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = bind_text(st, 1, job_id);
+  ok = ok && step_done(st);
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  return ok;
+#endif
+}
+
+bool AgentDb::mark_inflight_jobs_interrupted(int64_t now_unix_ms, const std::string& reason, std::string* out_error) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)now_unix_ms;
+  (void)reason;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  const std::string r = reason.empty() ? "daemon_restart" : reason;
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+UPDATE jobs
+SET
+  updated_unix_ms=?,
+  status='interrupted',
+  error=CASE WHEN error IS NULL OR error='' THEN 'interrupted by restart' ELSE error END,
+  stop_reason=?
+WHERE status='queued' OR status='running';
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_i64(st, 1, now_unix_ms > 0 ? now_unix_ms : unix_ms_now());
+  ok = ok && bind_text(st, 2, r);
+  ok = ok && step_done(st);
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  return ok;
 #endif
 }
 

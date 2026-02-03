@@ -12,6 +12,7 @@
 #include "tools_endpoint.h"
 #include "session_endpoints.h"
 #include "job_endpoints.h"
+#include "orchestrate_endpoints.h"
 #include "run_endpoints.h"
 #include "db_query_endpoints.h"
 #include "secrets_file.h"
@@ -590,6 +591,18 @@ int main(int argc, char** argv) {
     }
   }
 
+  // Job durability: queued/running jobs from a previous process lifetime cannot be resumed.
+  // Mark them as interrupted so UIs can show a truthful terminal state after daemon restart.
+  {
+    const int64_t now_ms = (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::system_clock::now().time_since_epoch())
+                             .count();
+    std::string err;
+    if (!db.mark_inflight_jobs_interrupted(now_ms, "daemon_restart", &err)) {
+      std::cerr << "Warning: failed to mark inflight jobs interrupted: " << err << "\n";
+    }
+  }
+
   // Runtime-mutable daemon config store (requests are handled concurrently).
   DaemonConfigStore cfg_store(cfg);
 
@@ -782,26 +795,32 @@ int main(int argc, char** argv) {
     handle_run_async_endpoint(cur, ocfg, cors_cfg, db_or_null, /*tool_ext_or_null=*/nullptr, sessions_root_dir, req, resp);
   });
 
+  server.handle("POST", "/api/v1/orchestrate", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
+    handle_orchestrate_endpoint(cur, ocfg, cors_cfg, db_or_null, /*tool_ext_or_null=*/nullptr, sessions_root_dir, req, resp);
+  });
+
   server.handle("GET", "/api/v1/job", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
-    handle_job_get_endpoint(cur, cors_cfg, req, resp);
+    handle_job_get_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   server.handle("POST", "/api/v1/job/cancel", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
-    handle_job_cancel_endpoint(cur, cors_cfg, req, resp);
+    handle_job_cancel_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   // Server-Sent Events stream for job progress (preferred UI path vs polling).
   // This endpoint streams `agent_event` events (same object shape as entries in the `events` array) and ends with `job_done`.
   server.handle_stream("GET", "/api/v1/job/stream", [&](const HttpRequest& req, int client_fd) {
     const DaemonConfig cur = cfg_store.snapshot();
-    handle_job_stream_endpoint(cur.auth_token, cors_cfg, req, client_fd);
+    handle_job_stream_endpoint(cur.auth_token, cors_cfg, db_or_null, req, client_fd);
   });
 
   server.handle("DELETE", "/api/v1/job", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
-    handle_job_delete_endpoint(cur, cors_cfg, req, resp);
+    handle_job_delete_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   std::string err;

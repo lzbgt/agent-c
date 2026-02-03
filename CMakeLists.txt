@@ -135,6 +135,7 @@ if(AGENT_BUILD_HOST)
     daemon/src/job_manager.cpp
     daemon/src/json_util.cpp
     daemon/src/openrouter_models_endpoint.cpp
+    daemon/src/orchestrate_endpoints.cpp
     daemon/src/provider_util.cpp
     daemon/src/runtime_config.cpp
     daemon/src/secrets_file.cpp
@@ -248,6 +249,14 @@ if(AGENT_BUILD_HOST)
     add_test(NAME agentd_local_async_host_tools_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_local_async_host_tools_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_local_stream_assistant_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_local_stream_assistant_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_local_stream_tool_loop_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_local_stream_tool_loop_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_job_restart_durability_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_job_restart_durability_smoke.sh $<TARGET_FILE:agentd>)
+    set_tests_properties(agentd_job_restart_durability_smoke PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME agentd_orchestrate_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_orchestrate_smoke.sh $<TARGET_FILE:agentd>)
+    set_tests_properties(agentd_orchestrate_smoke PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME agentd_provider_retry_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_provider_retry_smoke.sh $<TARGET_FILE:agentd>)
+    set_tests_properties(agentd_provider_retry_smoke PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME agentd_stream_provider_retry_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_stream_provider_retry_smoke.sh $<TARGET_FILE:agentd>)
+    set_tests_properties(agentd_stream_provider_retry_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
     if(AGENT_ENABLE_SQLITE3)
       add_test(NAME agentd_db_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_smoke.sh $<TARGET_FILE:agentd>)

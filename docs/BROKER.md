@@ -121,6 +121,32 @@ All endpoints below are served by the broker (not by agents).
   - streaming proxy intended for SSE endpoints
   - broker flushes chunks as they arrive from the agent connector
 
+### Orchestration (fan-out)
+
+- `POST /v1/orchestrate`
+  - broker-managed fan-out across multiple agents (OIDC required)
+  - each task becomes an HTTP request to the target agent (defaults to `POST /api/v1/run`)
+  - intended for multi-agent workflows where the client wants one aggregated response
+
+Request (JSON):
+- `tasks` (array, required): each task is:
+  - `agent_id` (string, required)
+  - `task_id` (string, optional)
+  - `request` (object, optional): agentd run request body (if omitted, remaining task keys are treated as the request body)
+  - `headers` (object, optional): forwarded to agentd (broker auth headers are never forwarded)
+  - `method` (string, optional, default `POST`)
+  - `path` (string, optional, default `/api/v1/run`)
+  - `query` (string, optional, default empty)
+- `defaults` (object, optional): merged into each task request (missing keys only)
+- `allow_sessions` (bool, optional, default `false`): when `false`, broker forces `no_session=true` and defaults `tools="none"` for safety
+- `max_concurrency` (int, optional, default `4`, max `16`)
+- `timeout_ms` (int, optional, default `60000`, max `300000`)
+
+Response (JSON):
+- `ok` (bool)
+- `all_ok` (bool)
+- `results` (array): list of `{ task_id, agent_id, ok, http_status?, ms, result?, error? }`
+
 ### Broker events (SSE)
 
 - `GET /v1/events`

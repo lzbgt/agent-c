@@ -203,14 +203,17 @@ int main() {
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('audit_records') WHERE name='record_json';");
   const int64_t scene_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('scene_states') WHERE name='scene_json';");
+  const int64_t job_id_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('jobs') WHERE name='job_id';");
   sqlite3_close(raw2);
-  assert(ver == 7);
+  assert(ver == 8);
   assert(arts2 == 0);
   assert(stop_reason_cols == 1);
   assert(ua_cols == 1);
   assert(ce_cols == 1);
   assert(audit_cols == 1);
   assert(scene_cols == 1);
+  assert(job_id_cols == 1);
 
   db.close();
   std::filesystem::remove(tmp, ec);
