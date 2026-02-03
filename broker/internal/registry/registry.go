@@ -2,6 +2,7 @@ package registry
 
 import (
 	"errors"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,6 +18,10 @@ type AgentConn struct {
 	RemoteAddr string
 	Meta       map[string]any
 	DBConnID   int64
+	// Soft limits to avoid unbounded memory growth under client abuse or agent bugs.
+	// 0 means "unlimited".
+	PendingLimit int
+	StreamLimit  int
 
 	writeMu sync.Mutex
 
@@ -52,6 +57,15 @@ func (a *AgentConn) InitSession() {
 	if a.streams == nil {
 		a.streams = make(map[string]chan any)
 	}
+}
+
+func (a *AgentConn) Done() <-chan struct{} {
+	if a == nil || a.closed == nil {
+		ch := make(chan struct{})
+		close(ch)
+		return ch
+	}
+	return a.closed
 }
 
 func (a *AgentConn) Close() {
@@ -99,7 +113,11 @@ func (a *AgentConn) Deliver(resp proto.RelayResponse) {
 	if ch == nil {
 		return
 	}
-	ch <- resp
+	select {
+	case ch <- resp:
+	default:
+		// Client gave up / timed out; do not block the agent read loop.
+	}
 	close(ch)
 }
 
@@ -115,22 +133,33 @@ func (a *AgentConn) RegisterStream(id string) (chan any, error) {
 	if _, ok := a.streams[id]; ok {
 		return nil, errors.New("duplicate stream id")
 	}
+	if a.StreamLimit > 0 && len(a.streams) >= a.StreamLimit {
+		return nil, errors.New("too many active streams")
+	}
 	ch := make(chan any, 16)
 	a.streams[id] = ch
 	return ch, nil
 }
 
-func (a *AgentConn) DeliverStream(id string, msg any) {
+func (a *AgentConn) DeliverStream(id string, msg any) bool {
 	if a == nil {
-		return
+		return false
 	}
 	a.streamsMu.Lock()
 	ch := a.streams[id]
 	a.streamsMu.Unlock()
 	if ch == nil {
-		return
+		return false
 	}
-	ch <- msg
+	select {
+	case ch <- msg:
+		return true
+	default:
+		// If the client cannot keep up, avoid blocking the agent read loop indefinitely.
+		// The handler will treat this as a stream termination.
+		go a.CloseStream(id)
+		return false
+	}
 }
 
 func (a *AgentConn) CloseStream(id string) {
@@ -175,6 +204,15 @@ func (a *AgentConn) SendAny(v any) error {
 	return a.Conn.WriteJSON(v)
 }
 
+func (a *AgentConn) Ping() error {
+	if a == nil || a.Conn == nil {
+		return errors.New("agent conn unavailable")
+	}
+	a.writeMu.Lock()
+	defer a.writeMu.Unlock()
+	return a.Conn.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(5*time.Second))
+}
+
 func (a *AgentConn) RegisterPending(id string) (chan proto.RelayResponse, error) {
 	if a == nil {
 		return nil, errors.New("nil agent")
@@ -187,9 +225,31 @@ func (a *AgentConn) RegisterPending(id string) (chan proto.RelayResponse, error)
 	if _, ok := a.pending[id]; ok {
 		return nil, errors.New("duplicate request id")
 	}
+	if a.PendingLimit > 0 && len(a.pending) >= a.PendingLimit {
+		return nil, errors.New("too many pending requests")
+	}
 	ch := make(chan proto.RelayResponse, 1)
 	a.pending[id] = ch
 	return ch, nil
+}
+
+func (a *AgentConn) UnregisterPending(id string) {
+	if a == nil {
+		return
+	}
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return
+	}
+	a.pendingMu.Lock()
+	ch := a.pending[id]
+	if ch != nil {
+		delete(a.pending, id)
+	}
+	a.pendingMu.Unlock()
+	if ch != nil {
+		close(ch)
+	}
 }
 
 func (r *Registry) Upsert(agent *AgentConn) {

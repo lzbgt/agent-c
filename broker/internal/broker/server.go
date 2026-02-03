@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"agentd-broker/internal/auth"
@@ -34,6 +35,17 @@ type Config struct {
 	AgentCNPfx         string
 	RequireAgentMTLS   bool
 	MaxRequestBodySize int64
+	MaxPendingPerAgent int
+	MaxStreamsPerAgent int
+
+	// If set, enables CORS for browser clients.
+	// Values should be full origins like "https://example.com".
+	AllowedOrigins []string
+
+	// SSE keepalive comment interval. 0 uses a safe default.
+	SSEKeepaliveInterval time.Duration
+	// Readiness check cache interval. 0 uses a safe default.
+	ReadinessCacheInterval time.Duration
 
 	AdminSubs map[string]bool
 }
@@ -41,6 +53,12 @@ type Config struct {
 type Server struct {
 	cfg Config
 	upg websocket.Upgrader
+
+	readyMu   sync.Mutex
+	readyAt   time.Time
+	readyOK   bool
+	readyErr  string
+	readyBusy bool
 }
 
 func New(cfg Config) (*Server, error) {
@@ -59,13 +77,28 @@ func New(cfg Config) (*Server, error) {
 	if cfg.MaxRequestBodySize == 0 {
 		cfg.MaxRequestBodySize = 64 * 1024 * 1024
 	}
+	if cfg.MaxPendingPerAgent == 0 {
+		cfg.MaxPendingPerAgent = 256
+	}
+	if cfg.MaxStreamsPerAgent == 0 {
+		cfg.MaxStreamsPerAgent = 64
+	}
+	if cfg.SSEKeepaliveInterval == 0 {
+		cfg.SSEKeepaliveInterval = 15 * time.Second
+	}
+	if cfg.ReadinessCacheInterval == 0 {
+		cfg.ReadinessCacheInterval = 5 * time.Second
+	}
 	s := &Server{cfg: cfg}
 	s.upg = websocket.Upgrader{
 		ReadBufferSize:  64 * 1024,
 		WriteBufferSize: 64 * 1024,
 		CheckOrigin: func(r *http.Request) bool {
-			_ = r
-			return true
+			origin := strings.TrimSpace(r.Header.Get("Origin"))
+			if origin == "" {
+				return true
+			}
+			return originAllowed(origin, cfg.AllowedOrigins)
 		},
 	}
 	return s, nil
@@ -73,12 +106,21 @@ func New(cfg Config) (*Server, error) {
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", s.handleHealthz)
+	mux.HandleFunc("/readyz", s.handleReadyz)
 	mux.HandleFunc("/v1/agent/connect", s.handleAgentConnect)
 	mux.HandleFunc("/v1/agents", s.handleAgents)
 	mux.HandleFunc("/v1/events", s.handleEventsSSE)
 	// Catch-all for /v1/agents/{id}/... paths.
 	mux.HandleFunc("/v1/agents/", s.handleAgentsSubroutes)
-	return mux
+	h := http.Handler(mux)
+	h = withAccessLog(h)
+	if s.cfg.AllowedOrigins != nil && len(s.cfg.AllowedOrigins) > 0 {
+		h = withCORS(s.cfg.AllowedOrigins, h)
+	}
+	h = withRecovery(h)
+	h = withRequestID(h)
+	return h
 }
 
 type Principal struct {
@@ -312,9 +354,10 @@ func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentI
 	reqID := newID()
 	ch, err := a.RegisterPending(reqID)
 	if err != nil {
-		http.Error(w, "broker internal error", http.StatusInternalServerError)
+		http.Error(w, "broker overloaded", http.StatusServiceUnavailable)
 		return
 	}
+	defer a.UnregisterPending(reqID)
 
 	msg := proto.RelayRequest{
 		Type: proto.TypeHTTPRequest,
@@ -341,6 +384,8 @@ func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentI
 	if dl, ok := r.Context().Deadline(); ok {
 		timeout = time.Until(dl)
 	}
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
 	select {
 	case resp, ok := <-ch:
 		if !ok {
@@ -386,7 +431,7 @@ func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentI
 				"error":      errStr,
 			},
 		})
-	case <-time.After(timeout):
+	case <-timer.C:
 		errStr = "agent timeout"
 		_ = s.cfg.DB.InsertRelayAudit(r.Context(), p.Sub, agentID, r.Method, agentPath, status, int(time.Since(start).Milliseconds()), errStr)
 		http.Error(w, "agent timeout", http.StatusGatewayTimeout)
@@ -440,7 +485,7 @@ func (s *Server) handleAgentProxySSE(w http.ResponseWriter, r *http.Request, age
 	streamID := newID()
 	streamCh, err := a.RegisterStream(streamID)
 	if err != nil {
-		http.Error(w, "broker internal error", http.StatusInternalServerError)
+		http.Error(w, "broker overloaded", http.StatusServiceUnavailable)
 		return
 	}
 	defer a.CloseStream(streamID)
@@ -598,6 +643,12 @@ func (s *Server) handleAgentConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	conn.SetReadLimit(64 * 1024 * 1024)
+	// Detect dead peers. The connector should answer pings; the read deadline is extended on pong.
+	_ = conn.SetReadDeadline(time.Now().Add(120 * time.Second))
+	conn.SetPongHandler(func(string) error {
+		_ = conn.SetReadDeadline(time.Now().Add(120 * time.Second))
+		return nil
+	})
 
 	// Handshake: require hello message.
 	var hello proto.Hello
@@ -650,6 +701,18 @@ func (s *Server) handleAgentConnect(w http.ResponseWriter, r *http.Request) {
 		RemoteAddr: r.RemoteAddr,
 		Meta:       hello.Meta,
 		DBConnID:   connID,
+		PendingLimit: func() int {
+			if s.cfg.MaxPendingPerAgent < 0 {
+				return 0
+			}
+			return s.cfg.MaxPendingPerAgent
+		}(),
+		StreamLimit: func() int {
+			if s.cfg.MaxStreamsPerAgent < 0 {
+				return 0
+			}
+			return s.cfg.MaxStreamsPerAgent
+		}(),
 	}
 	ac.InitSession()
 	s.cfg.Registry.Upsert(ac)
@@ -665,6 +728,23 @@ func (s *Server) handleAgentConnect(w http.ResponseWriter, r *http.Request) {
 			},
 		})
 	}
+
+	// Keep agent websocket alive and surface dead connections promptly.
+	go func() {
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ac.Done():
+				return
+			case <-t.C:
+				if err := ac.Ping(); err != nil {
+					ac.Close()
+					return
+				}
+			}
+		}
+	}()
 
 	go s.agentReadLoop(ac)
 }
@@ -708,19 +788,23 @@ func (s *Server) agentReadLoop(a *registry.AgentConn) {
 			if err := json.Unmarshal(raw, &st); err != nil {
 				continue
 			}
-			a.DeliverStream(st.ID, st)
+			if ok := a.DeliverStream(st.ID, st); !ok {
+				_ = a.SendAny(proto.StreamCancel{Type: proto.TypeHTTPStreamCancel, ID: st.ID})
+			}
 		case proto.TypeHTTPStreamChunk:
 			var ch proto.StreamChunk
 			if err := json.Unmarshal(raw, &ch); err != nil {
 				continue
 			}
-			a.DeliverStream(ch.ID, ch)
+			if ok := a.DeliverStream(ch.ID, ch); !ok {
+				_ = a.SendAny(proto.StreamCancel{Type: proto.TypeHTTPStreamCancel, ID: ch.ID})
+			}
 		case proto.TypeHTTPStreamEnd:
 			var en proto.StreamEnd
 			if err := json.Unmarshal(raw, &en); err != nil {
 				continue
 			}
-			a.DeliverStream(en.ID, en)
+			_ = a.DeliverStream(en.ID, en)
 			a.CloseStream(en.ID)
 		default:
 			// ignore
@@ -795,6 +879,8 @@ func (s *Server) handleEventsSSE(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+	// Helps Nginx/Envoy deployments keep SSE streaming rather than buffering.
+	w.Header().Set("X-Accel-Buffering", "no")
 
 	ch, cancel := s.cfg.Events.Subscribe(p.Sub)
 	defer cancel()
@@ -802,10 +888,20 @@ func (s *Server) handleEventsSSE(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(":ok\n\n"))
 	fl.Flush()
 
+	keepAlive := s.cfg.SSEKeepaliveInterval
+	if keepAlive <= 0 {
+		keepAlive = 15 * time.Second
+	}
+	t := time.NewTicker(keepAlive)
+	defer t.Stop()
+
 	for {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-t.C:
+			_, _ = w.Write([]byte(":keepalive\n\n"))
+			fl.Flush()
 		case ev, ok := <-ch:
 			if !ok {
 				return
@@ -819,6 +915,99 @@ func (s *Server) handleEventsSSE(w http.ResponseWriter, r *http.Request) {
 			fl.Flush()
 		}
 	}
+}
+
+func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
+	_ = r
+	writeJSON(w, map[string]any{
+		"ok":         true,
+		"ts_unix_ms": time.Now().UnixMilli(),
+	})
+}
+
+func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
+	ok, errStr := s.checkReady(r.Context())
+	if !ok {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		writeJSON(w, map[string]any{
+			"ok":         false,
+			"error":      errStr,
+			"ts_unix_ms": time.Now().UnixMilli(),
+		})
+		return
+	}
+	writeJSON(w, map[string]any{
+		"ok":         true,
+		"ts_unix_ms": time.Now().UnixMilli(),
+	})
+}
+
+func (s *Server) checkReady(ctx context.Context) (bool, string) {
+	if s == nil {
+		return false, "nil server"
+	}
+	cacheFor := s.cfg.ReadinessCacheInterval
+	if cacheFor <= 0 {
+		cacheFor = 5 * time.Second
+	}
+
+	now := time.Now()
+	s.readyMu.Lock()
+	if !s.readyAt.IsZero() && now.Sub(s.readyAt) < cacheFor {
+		ok := s.readyOK
+		errStr := s.readyErr
+		s.readyMu.Unlock()
+		return ok, errStr
+	}
+	// Avoid a thundering herd of readiness checks.
+	if s.readyBusy {
+		ok := s.readyOK
+		errStr := s.readyErr
+		s.readyMu.Unlock()
+		return ok, errStr
+	}
+	s.readyBusy = true
+	s.readyMu.Unlock()
+
+	ok := true
+	errStr := ""
+
+	// DB health.
+	if s.cfg.DB == nil || s.cfg.DB.Pool == nil {
+		ok = false
+		errStr = "db not configured"
+	} else {
+		pctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+		if err := s.cfg.DB.Pool.Ping(pctx); err != nil {
+			ok = false
+			errStr = "db ping failed: " + err.Error()
+		}
+		cancel()
+	}
+
+	// OIDC readiness (issuer/JWKS reachable).
+	if ok {
+		if s.cfg.OIDC == nil {
+			ok = false
+			errStr = "oidc verifier not configured"
+		} else {
+			octx, cancel := context.WithTimeout(ctx, 3*time.Second)
+			if err := s.cfg.OIDC.Init(octx); err != nil {
+				ok = false
+				errStr = "oidc init failed: " + err.Error()
+			}
+			cancel()
+		}
+	}
+
+	s.readyMu.Lock()
+	s.readyBusy = false
+	s.readyAt = now
+	s.readyOK = ok
+	s.readyErr = errStr
+	s.readyMu.Unlock()
+
+	return ok, errStr
 }
 
 func writeJSON(w http.ResponseWriter, v any) {

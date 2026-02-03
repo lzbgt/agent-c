@@ -7,7 +7,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"agentd-broker/internal/auth"
@@ -30,6 +32,12 @@ func main() {
 	var oidcIssuer = flag.String("oidc-issuer", "", "OIDC issuer URL (required)")
 	var oidcAudience = flag.String("oidc-audience", "", "OIDC audience / client_id (required)")
 	var adminSubsCSV = flag.String("admin-subs", "", "comma-separated OIDC sub values treated as admin")
+	var corsOriginsCSV = flag.String("cors-origins", "", "comma-separated allowed CORS origins (e.g. https://ui.example.com)")
+	var maxPendingPerAgent = flag.Int("max-pending-per-agent", 256, "max pending proxied requests per agent (0=unlimited)")
+	var maxStreamsPerAgent = flag.Int("max-streams-per-agent", 64, "max active streams per agent (0=unlimited)")
+	var sseKeepalive = flag.Duration("sse-keepalive", 15*time.Second, "SSE keepalive comment interval")
+	var readyCache = flag.Duration("ready-cache", 5*time.Second, "readiness check cache interval")
+	var shutdownTimeout = flag.Duration("shutdown-timeout", 15*time.Second, "graceful shutdown timeout")
 
 	flag.Parse()
 
@@ -100,6 +108,13 @@ func main() {
 			adminSubs[sub] = true
 		}
 	}
+	allowedOrigins := []string{}
+	for _, part := range strings.Split(*corsOriginsCSV, ",") {
+		o := strings.TrimSpace(part)
+		if o != "" {
+			allowedOrigins = append(allowedOrigins, o)
+		}
+	}
 	s, err := broker.New(broker.Config{
 		OIDC:               ver,
 		DB:                 dbConn,
@@ -108,35 +123,77 @@ func main() {
 		AgentCNPfx:         *agentCNPfx,
 		RequireAgentMTLS:   *requireAgentMTLS,
 		MaxRequestBodySize: 64 * 1024 * 1024,
-		AdminSubs:          adminSubs,
+		MaxPendingPerAgent: *maxPendingPerAgent,
+		MaxStreamsPerAgent: *maxStreamsPerAgent,
+		AllowedOrigins:     allowedOrigins,
+		SSEKeepaliveInterval: func() time.Duration {
+			if *sseKeepalive <= 0 {
+				return 15 * time.Second
+			}
+			return *sseKeepalive
+		}(),
+		ReadinessCacheInterval: func() time.Duration {
+			if *readyCache <= 0 {
+				return 5 * time.Second
+			}
+			return *readyCache
+		}(),
+		AdminSubs: adminSubs,
 	})
 	if err != nil {
 		log.Fatalf("broker init failed: %v", err)
 	}
 
 	srv := &http.Server{
-		Addr:      *listen,
-		Handler:   s.Handler(),
-		TLSConfig: tlsCfg,
+		Addr:              *listen,
+		Handler:           s.Handler(),
+		TLSConfig:         tlsCfg,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	errCh := make(chan error, 1)
+	go func() {
+		if tlsCfg != nil {
+			errCh <- srv.ListenAndServeTLS(strings.TrimSpace(*tlsCert), strings.TrimSpace(*tlsKey))
+			return
+		}
+		errCh <- srv.ListenAndServe()
+	}()
 
 	if tlsCfg != nil {
 		log.Printf("agentd-broker listening on https://%s", *listen)
 		log.Printf("agent mTLS client CA set: %v", strings.TrimSpace(*tlsClientCA) != "")
 		log.Printf("agent mTLS required: %v", *requireAgentMTLS)
 		log.Printf("agent CN prefix: %s", *agentCNPfx)
-		log.Printf("postgres dsn set: %v", dsn != "")
-		log.Printf("oidc issuer: %s", iss)
-		log.Printf("oidc audience: %s", aud)
-		if err := srv.ListenAndServeTLS(strings.TrimSpace(*tlsCert), strings.TrimSpace(*tlsKey)); err != nil {
-			log.Fatal(err)
-		}
 	} else {
 		log.Printf("agentd-broker listening on http://%s (INSECURE)", *listen)
-		log.Printf("postgres dsn set: %v", dsn != "")
-		log.Printf("oidc issuer: %s", iss)
-		log.Printf("oidc audience: %s", aud)
-		if err := srv.ListenAndServe(); err != nil {
+	}
+	log.Printf("postgres dsn set: %v", dsn != "")
+	log.Printf("oidc issuer: %s", iss)
+	log.Printf("oidc audience: %s", aud)
+	log.Printf("cors origins configured: %v", len(allowedOrigins) > 0)
+	log.Printf("limits: max_pending_per_agent=%d max_streams_per_agent=%d", *maxPendingPerAgent, *maxStreamsPerAgent)
+
+	select {
+	case <-ctx.Done():
+		st := *shutdownTimeout
+		if st <= 0 {
+			st = 15 * time.Second
+		}
+		sctx, cancel := context.WithTimeout(context.Background(), st)
+		_ = srv.Shutdown(sctx)
+		cancel()
+		err := <-errCh
+		if err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server error after shutdown: %v", err)
+		}
+	case err := <-errCh:
+		if err != nil && err != http.ErrServerClosed {
 			log.Fatal(err)
 		}
 	}

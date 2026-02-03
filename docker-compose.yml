@@ -77,6 +77,12 @@ services:
       - ./tools/_compose_mtls:/mtls:ro
     extra_hosts:
       - "keycloak.lvh.me:host-gateway"
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- https://127.0.0.1:8443/healthz --no-check-certificate | grep -q '\"ok\":true'"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
     ports:
       - "${BROKER_PUBLISHED_PORT:-8443}:8443"
 
@@ -132,7 +138,7 @@ services:
         GOSUMDB: ${GOSUMDB:-sum.golang.org}
     depends_on:
       broker:
-        condition: service_started
+        condition: service_healthy
       agentd:
         condition: service_started
     command:

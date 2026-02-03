@@ -1,0 +1,66 @@
+# agentd-broker
+
+`agentd-broker` is a small control-plane service that:
+
+- Accepts long-lived **agent connections** over WebSocket (typically `wss://.../v1/agent/connect`), optionally gated by **mTLS**.
+- Exposes **OIDC-authenticated** HTTP endpoints for users to:
+  - Create/list agents
+  - Proxy requests to a connected agent
+  - Subscribe to broker events via SSE
+
+This directory also includes `agentd-connector`, a lightweight “bridge” that connects a local `agentd` instance to the broker.
+
+## Endpoints
+
+- `GET /healthz` — liveness (always `ok: true` if the process is serving HTTP)
+- `GET /readyz` — readiness (checks Postgres ping and OIDC provider initialization)
+- `GET /v1/agent/connect` — agent WebSocket (mTLS recommended)
+- `GET /v1/agents` / `POST /v1/agents` — list/create agents (OIDC required)
+- `GET /v1/agents/{agent_id}/proxy/...` — proxy HTTP request to agent (OIDC required)
+- `GET /v1/agents/{agent_id}/proxy_sse/...` — proxy streaming/SSE-like request to agent (OIDC required)
+- `GET /v1/events` — Server-Sent Events stream for the authenticated subject (OIDC required)
+
+## Production settings (recommended)
+
+### Broker (`cmd/agentd-broker`)
+
+Key flags:
+
+- TLS / agent auth:
+  - `--tls-cert`, `--tls-key` (serve HTTPS)
+  - `--tls-client-ca` (enable optional client cert verification)
+  - `--require-agent-mtls` (default `true`)
+  - `--agent-cn-prefix` (CN prefix used to map client cert CN → agent id)
+- OIDC / DB:
+  - `--db-dsn` (or `AGENTD_BROKER_DB_DSN` / `DATABASE_URL`)
+  - `--oidc-issuer`, `--oidc-audience`
+- Resource limits:
+  - `--max-pending-per-agent` (default `256`)
+  - `--max-streams-per-agent` (default `64`)
+- Browser support:
+  - `--cors-origins` (comma-separated allowed origins)
+  - `--sse-keepalive` (default `15s`)
+- Ops:
+  - `--shutdown-timeout` (default `15s`)
+  - `--ready-cache` (default `5s`)
+
+### Connector (`cmd/agentd-connector`)
+
+The connector:
+
+- Uses a single write-lock to avoid unsafe concurrent WebSocket writes.
+- Reconnects with exponential backoff if the broker connection drops.
+- Sends periodic WebSocket pings and maintains read deadlines via pong handling.
+
+Typical flags:
+
+- `--broker wss://.../v1/agent/connect`
+- `--local-agentd http://127.0.0.1:8123`
+- `--tls-ca`, `--tls-cert`, `--tls-key` (for `wss` + mTLS)
+- `--agent-id` (optional if derivable from cert CN)
+
+## Reverse proxy notes
+
+- For `GET /v1/events` (SSE), ensure your proxy does **not buffer** responses.
+  - The broker also sets `X-Accel-Buffering: no` as a hint for Nginx.
+

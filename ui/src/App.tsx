@@ -17,13 +17,11 @@ import {
   apiGetSessionScene,
   apiGetTools,
   apiUpdateDaemonConfig,
-  apiCancelJob,
   apiDeleteSession,
   apiListSessions,
   apiNewSession,
   apiPostSessionSceneApply,
   apiPostSessionUiEvent,
-  apiPostSessionUpload,
   apiRun,
   apiRunAsync,
   daemonHeaders,
@@ -41,6 +39,7 @@ import DbUiActionsView from "./components/DbUiActionsView";
 import DbMessagesView from "./components/DbMessagesView";
 import DbClientEventsView from "./components/DbClientEventsView";
 import SceneView, { type SceneEntity } from "./components/SceneView";
+import PromptBar, { type Attachment } from "./components/PromptBar";
 import useLocalStorageState from "./hooks/useLocalStorageState";
 import { readSseStream } from "./sse";
 
@@ -68,8 +67,6 @@ export default function App() {
 
   const [daemonAuthToken, setDaemonAuthToken] = useLocalStorageState("agentui.daemonAuthToken", "");
   const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "");
-  const [attachmentsBySessionJson, setAttachmentsBySessionJson] = useLocalStorageState("agentui.attachmentsBySession", "{}");
-  const [uploadBusy, setUploadBusy] = React.useState<boolean>(false);
 
   const [clientId] = useLocalStorageState(
     "agentui.clientId",
@@ -207,37 +204,6 @@ export default function App() {
     }
   };
 
-  type Attachment = { path: string; name?: string; mime?: string; kind?: string; bytes?: number };
-
-  const guessMimeFromName = React.useCallback((name: string): string => {
-    const lower = String(name || "").toLowerCase();
-    if (lower.endsWith(".png")) return "image/png";
-    if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-    if (lower.endsWith(".gif")) return "image/gif";
-    if (lower.endsWith(".webp")) return "image/webp";
-    if (lower.endsWith(".svg")) return "image/svg+xml";
-    if (lower.endsWith(".mp3")) return "audio/mpeg";
-    if (lower.endsWith(".wav")) return "audio/wav";
-    if (lower.endsWith(".mp4")) return "video/mp4";
-    if (lower.endsWith(".webm")) return "video/webm";
-    if (lower.endsWith(".mov")) return "video/quicktime";
-    if (lower.endsWith(".txt") || lower.endsWith(".md")) return "text/plain";
-    return "";
-  }, []);
-
-  const fileToBase64 = React.useCallback(async (file: File): Promise<string> => {
-    return await new Promise((resolve, reject) => {
-      const fr = new FileReader();
-      fr.onload = () => {
-        const res = String(fr.result ?? "");
-        const idx = res.indexOf(",");
-        resolve(idx >= 0 ? res.slice(idx + 1) : res);
-      };
-      fr.onerror = () => reject(fr.error || new Error("FileReader failed"));
-      fr.readAsDataURL(file);
-    });
-  }, []);
-
   // Session selection is scoped by daemon base URL.
   // This avoids "lost session" issues when switching between multiple local agentd instances (different ports).
   const [sessionByBaseJson, setSessionByBaseJson] = useLocalStorageState("agentui.sessionByBase", "{}");
@@ -246,51 +212,6 @@ export default function App() {
     const sid = typeof m?.[effectiveBase] === "string" ? String(m[effectiveBase]) : "";
     return sid.trim().length > 0 ? sid.trim() : "default";
   }, [effectiveBase, sessionByBaseJson]);
-
-  const attachmentsKey = React.useMemo(() => `${effectiveBase}::${String(sessionId || "").trim() || "default"}`, [effectiveBase, sessionId]);
-  const attachments = React.useMemo(() => {
-    const m = (loadJson(attachmentsBySessionJson) as Record<string, any>) || {};
-    const arr = m[attachmentsKey];
-    if (!Array.isArray(arr)) return [] as Attachment[];
-    return arr
-      .map((x) => {
-        const o = x && typeof x === "object" ? x : null;
-        const path = o && typeof o.path === "string" ? o.path : "";
-        if (!path) return null;
-        return {
-          path,
-          name: typeof o.name === "string" ? o.name : undefined,
-          mime: typeof o.mime === "string" ? o.mime : undefined,
-          kind: typeof o.kind === "string" ? o.kind : undefined,
-          bytes: typeof o.bytes === "number" && Number.isFinite(o.bytes) ? o.bytes : undefined,
-        } as Attachment;
-      })
-      .filter(Boolean) as Attachment[];
-  }, [attachmentsBySessionJson, attachmentsKey]);
-
-  const setAttachments = React.useCallback(
-    (nextArr: Attachment[]) => {
-      setAttachmentsBySessionJson((prevRaw) => {
-        const prev = (loadJson(String(prevRaw || "")) as Record<string, any>) || {};
-        const next = { ...prev, [attachmentsKey]: nextArr };
-        try {
-          return JSON.stringify(next);
-        } catch {
-          return JSON.stringify(prev);
-        }
-      });
-    },
-    [attachmentsKey, setAttachmentsBySessionJson],
-  );
-
-  const removeAttachment = React.useCallback(
-    (path: string) => {
-      const p = String(path || "").trim();
-      if (!p) return;
-      setAttachments(attachments.filter((a) => a.path !== p));
-    },
-    [attachments, setAttachments],
-  );
 
   const historyUiKey = React.useMemo(() => {
     const sid = String(sessionId || "").trim();
@@ -967,9 +888,11 @@ export default function App() {
 
   const [result, setResult] = React.useState<RunResponse | undefined>(undefined);
   const [openrouterModels, setOpenrouterModels] = React.useState<any | null>(null);
+  // Incremented when a run successfully starts/completes; used to clear "next run only" UI state (e.g. attachments).
+  const [composerTaskNonce, setComposerTaskNonce] = React.useState<number>(0);
 
   const run = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (vars: { prompt: string; attachments: Attachment[] }) => {
       const maxStepsTrim = String(maxSteps ?? "").trim();
       const parsedMaxSteps =
         maxStepsTrim.length === 0
@@ -1037,12 +960,12 @@ export default function App() {
         }
       }
       const req: RunRequest = {
-        prompt,
+        prompt: vars.prompt,
         session_id: sessionId || undefined,
         no_session: false,
         input_files:
-          attachments.length > 0
-            ? attachments.map((a) => ({
+          vars.attachments.length > 0
+            ? vars.attachments.map((a) => ({
                 path: a.path,
                 name: a.name,
                 mime: a.mime,
@@ -1084,6 +1007,7 @@ export default function App() {
     },
     onSuccess: (v) => {
       if (v.mode === "sync") {
+        setComposerTaskNonce((n) => n + 1);
         // Only replace history once we have a new result (prevents "fetch failed" from wiping the UI).
         lastRunPromptRef.current = v.req.prompt;
         setLastRunPrompt(v.req.prompt);
@@ -1103,6 +1027,7 @@ export default function App() {
         setJobNotice(null);
         return;
       }
+      setComposerTaskNonce((n) => n + 1);
       // Only reset/replace history after the job has been successfully created.
       lastRunPromptRef.current = v.req.prompt;
       setLastRunPrompt(v.req.prompt);
@@ -1903,203 +1828,27 @@ export default function App() {
         </div>
       </main>
 
-      <div ref={promptbarRef} className="fixed bottom-0 left-0 right-0 z-30 border-t border-white/10 bg-slate-950/90 backdrop-blur">
-        <div className="mx-auto max-w-7xl px-3 py-3">
-          <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0 text-[11px] text-white/60">
-              session=
-              <code className="text-white/70 break-all">{String(sessionId || "").trim() || "(none)"}</code> tools=
-              <code className="text-white/70 break-all">{String(tools || "")}</code>{" "}
-              {activeJobId ? (
-                <>
-                  job=<code className="text-white/70 break-all">{activeJobId}</code> status=
-                  <code className="text-white/70 break-all">{jobStatus ?? "running"}</code>
-                  {jobProgressLabel ? (
-                    <>
-                      {" "}
-                      phase=<code className="text-white/70 break-all">{jobProgressLabel}</code>
-                    </>
-                  ) : null}
-                </>
-              ) : null}
-            </div>
-            <div className="flex items-center gap-2">
-              {activeJobId ? (
-                <button
-                  className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200 hover:bg-rose-500/15"
-                  onClick={async () => {
-                    try {
-                      await apiCancelJob(effectiveBase, activeJobId, daemonAuthToken);
-                      setJobNotice("cancel requested");
-                    } catch (e) {
-                      setJobNotice(`cancel failed: ${String(e)}`);
-                    }
-                  }}
-                  type="button"
-                >
-                  Cancel
-                </button>
-              ) : null}
-              <button
-                className="rounded-md bg-indigo-500 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-400 disabled:opacity-50"
-                onClick={() => run.mutate()}
-                disabled={run.isPending || !!activeJobId}
-                type="button"
-                data-testid="run"
-              >
-                {run.isPending || activeJobId ? "Running…" : "Run"}
-              </button>
-            </div>
-          </div>
-
-          <textarea
-            className="mt-2 w-full resize-y rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm leading-relaxed"
-            data-testid="prompt"
-            rows={5}
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-          />
-
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <input
-              type="file"
-              multiple
-              className="hidden"
-              id="agentui-file-input"
-              onChange={async (e) => {
-                const files = Array.from(e.target.files || []);
-                // Reset so selecting the same file twice still triggers onChange.
-                e.currentTarget.value = "";
-                if (files.length === 0) return;
-                if (uploadBusy) return;
-                const sid = String(sessionId || "").trim() || "default";
-                setUploadBusy(true);
-                setJobNotice(null);
-                try {
-                  const payloadFiles: { name: string; mime?: string; data_base64: string }[] = [];
-                  for (const f of files.slice(0, 16)) {
-                    // Keep client memory bounded; server has its own cap too.
-                    const maxBytes = 32 * 1024 * 1024;
-                    if (typeof (f as any)?.size === "number" && (f as any).size > maxBytes) {
-                      continue;
-                    }
-                    const name = String(f.name || "upload.bin");
-                    const mime = String(f.type || "").trim() || guessMimeFromName(name) || undefined;
-                    const data_base64 = await fileToBase64(f);
-                    payloadFiles.push({ name, mime, data_base64 });
-                  }
-                  if (payloadFiles.length === 0) {
-                    setJobNotice("no files uploaded (too large or invalid)");
-                    return;
-                  }
-                  const resp = await apiPostSessionUpload(
-                    effectiveBase,
-                    { session_id: sid, files: payloadFiles },
-                    daemonAuthToken || undefined,
-                  );
-                  if (!resp.ok) {
-                    setJobNotice(resp.error ? `upload failed: ${resp.error}` : "upload failed");
-                    return;
-                  }
-                  const newOnes =
-                    (resp.files || [])
-                      .map((x: any) => {
-                        const path = typeof x?.path === "string" ? x.path : "";
-                        if (!path) return null;
-                        return {
-                          path,
-                          name: typeof x?.name === "string" ? x.name : undefined,
-                          mime: typeof x?.mime === "string" ? x.mime : undefined,
-                          kind: typeof x?.kind === "string" ? x.kind : undefined,
-                          bytes: typeof x?.bytes === "number" ? x.bytes : undefined,
-                        } as Attachment;
-                      })
-                      .filter(Boolean) as Attachment[];
-                  if (newOnes.length === 0) {
-                    setJobNotice("upload succeeded but returned no file paths");
-                    return;
-                  }
-                  const merged = [...attachments];
-                  for (const a of newOnes) {
-                    if (!merged.some((m) => m.path === a.path)) merged.push(a);
-                  }
-                  setAttachments(merged);
-                  setJobNotice(`uploaded ${newOnes.length} file(s)`);
-                } catch (err) {
-                  setJobNotice(`upload failed: ${String(err)}`);
-                } finally {
-                  setUploadBusy(false);
-                }
-              }}
-            />
-            <label
-              htmlFor="agentui-file-input"
-              className={`inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 ${uploadBusy ? "opacity-50 pointer-events-none" : ""}`}
-            >
-              {uploadBusy ? "Uploading…" : "Attach files"}
-            </label>
-            {attachments.length > 0 ? (
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/70 hover:bg-black/40"
-                type="button"
-                onClick={() => setAttachments([])}
-              >
-                Clear attachments ({attachments.length})
-              </button>
-            ) : null}
-          </div>
-
-          {attachments.length > 0 ? (
-            <div className="mt-2 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-xs text-white/70">
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="text-white/60">Attached:</div>
-                {attachments.slice(0, 12).map((a) => (
-                  <div
-                    key={a.path}
-                    className="inline-flex items-center gap-2 rounded-md border border-white/10 bg-black/30 px-2 py-1"
-                    title={a.path}
-                  >
-                    <span className="max-w-[240px] truncate text-white/80">{a.name || a.path}</span>
-                    <button
-                      className="text-white/60 hover:text-white"
-                      type="button"
-                      onClick={() => removeAttachment(a.path)}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-                {attachments.length > 12 ? <div className="text-white/50">+{attachments.length - 12} more</div> : null}
-              </div>
-              <div className="mt-2 text-white/50">
-                Note: attachments are best-effort. Some providers/models do not support multimodal inputs (especially image parts) and may return an HTTP 400.
-                If that happens, switch to a vision-capable model or remove the attachments.
-              </div>
-            </div>
-          ) : null}
-
-          {run.isError ? (
-            <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-              Failed: {String(run.error)}
-            </div>
-          ) : null}
-          {jobError ? (
-            <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-              {jobError}
-            </div>
-          ) : null}
-          {jobNotice ? (
-            <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-100">
-              {jobNotice}
-            </div>
-          ) : null}
-          {!result?.ok && result?.error ? (
-            <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-              {result.error}
-            </div>
-          ) : null}
-        </div>
-      </div>
+      <PromptBar
+        ref={promptbarRef}
+        effectiveBase={effectiveBase}
+        sessionId={sessionId}
+        tools={tools}
+        activeJobId={activeJobId}
+        jobStatus={jobStatus}
+        jobProgressLabel={jobProgressLabel}
+        daemonAuthToken={daemonAuthToken}
+        prompt={prompt}
+        setPrompt={setPrompt}
+        runDisabled={run.isPending || !!activeJobId}
+        runLabel={run.isPending || activeJobId ? "Running…" : "Run"}
+        onRun={(vars) => run.mutate(vars)}
+        setJobNotice={setJobNotice}
+        jobNotice={jobNotice}
+        jobError={jobError}
+        runError={run.isError ? String(run.error) : null}
+        resultError={!result?.ok && result?.error ? result.error : null}
+        clearAttachmentsNonce={composerTaskNonce}
+      />
 
       {showSettings ? (
         <div className="fixed inset-0 z-40">

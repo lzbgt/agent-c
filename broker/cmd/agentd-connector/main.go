@@ -15,8 +15,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"agentd-broker/internal/auth"
@@ -24,6 +26,38 @@ import (
 
 	"github.com/gorilla/websocket"
 )
+
+type safeWS struct {
+	conn *websocket.Conn
+	mu   sync.Mutex
+}
+
+func (s *safeWS) WriteJSON(v any) error {
+	if s == nil || s.conn == nil {
+		return errors.New("nil websocket")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.conn.WriteJSON(v)
+}
+
+func (s *safeWS) WriteControl(messageType int, data []byte, deadline time.Time) error {
+	if s == nil || s.conn == nil {
+		return errors.New("nil websocket")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.conn.WriteControl(messageType, data, deadline)
+}
+
+func (s *safeWS) Close() error {
+	if s == nil || s.conn == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.conn.Close()
+}
 
 func main() {
 	var brokerURL = flag.String("broker", "", "broker websocket URL (wss://host:port/v1/agent/connect)")
@@ -43,6 +77,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("invalid broker url: %v", err)
 	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	tlsConfig := &tls.Config{MinVersion: tls.VersionTLS12}
 	if u.Scheme == "wss" {
@@ -81,44 +118,121 @@ func main() {
 	}
 
 	dialer := websocket.Dialer{TLSClientConfig: tlsConfig}
-	conn, resp, err := dialer.Dial(u.String(), nil)
-	if err != nil {
-		if resp != nil {
-			log.Fatalf("dial failed: %v (http=%d)", err, resp.StatusCode)
+	httpClient := &http.Client{Timeout: 120 * time.Second}
+
+	backoff := 250 * time.Millisecond
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
 		}
-		log.Fatalf("dial failed: %v", err)
+
+		conn, resp, err := dialer.Dial(u.String(), nil)
+		if err != nil {
+			if resp != nil {
+				log.Printf("dial failed: %v (http=%d)", err, resp.StatusCode)
+			} else {
+				log.Printf("dial failed: %v", err)
+			}
+			time.Sleep(backoff)
+			if backoff < 10*time.Second {
+				backoff *= 2
+			}
+			continue
+		}
+		backoff = 250 * time.Millisecond
+
+		conn.SetReadLimit(64 * 1024 * 1024)
+		_ = conn.SetReadDeadline(time.Now().Add(120 * time.Second))
+		conn.SetPongHandler(func(string) error {
+			_ = conn.SetReadDeadline(time.Now().Add(120 * time.Second))
+			return nil
+		})
+
+		ws := &safeWS{conn: conn}
+		err = runSession(ctx, ws, conn, httpClient, strings.TrimSpace(*localBase), strings.TrimSpace(*agentID))
+		_ = ws.Close()
+		if err != nil {
+			log.Printf("session ended: %v", err)
+		}
+		time.Sleep(backoff)
+		if backoff < 10*time.Second {
+			backoff *= 2
+		}
 	}
-	defer conn.Close()
-	conn.SetReadLimit(64 * 1024 * 1024)
+}
+
+func runSession(ctx context.Context, ws *safeWS, conn *websocket.Conn, httpClient *http.Client, localBase, agentID string) error {
+	if ws == nil || conn == nil {
+		return errors.New("nil websocket connection")
+	}
+	if httpClient == nil {
+		return errors.New("nil http client")
+	}
 
 	hello := proto.Hello{
 		Type:    proto.TypeHello,
-		AgentID: strings.TrimSpace(*agentID),
+		AgentID: strings.TrimSpace(agentID),
 		Meta: map[string]any{
-			"local_base": *localBase,
+			"local_base": localBase,
 		},
 	}
-	if err := conn.WriteJSON(hello); err != nil {
-		log.Fatalf("send hello: %v", err)
+	if err := ws.WriteJSON(hello); err != nil {
+		return fmt.Errorf("send hello: %w", err)
 	}
 	var ack proto.HelloAck
 	if err := conn.ReadJSON(&ack); err != nil {
-		log.Fatalf("read hello_ack: %v", err)
+		return fmt.Errorf("read hello_ack: %w", err)
 	}
 	if !ack.OK {
-		log.Fatalf("broker rejected hello: %s", ack.Error)
+		return fmt.Errorf("broker rejected hello: %s", ack.Error)
 	}
 	if ack.AgentID != "" {
 		log.Printf("connected as agent_id=%s", ack.AgentID)
 	}
 
-	httpClient := &http.Client{Timeout: 120 * time.Second}
+	sessionDone := make(chan struct{})
+	defer close(sessionDone)
+
+	// Close the websocket when the process is terminating.
+	go func() {
+		<-ctx.Done()
+		_ = ws.Close()
+	}()
+
+	// Keep broker websocket alive.
+	ping := time.NewTicker(30 * time.Second)
+	defer ping.Stop()
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-sessionDone:
+				return
+			case <-ping.C:
+				_ = ws.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(5*time.Second))
+			}
+		}
+	}()
+
 	var streamsMu sync.Mutex
 	streamCancels := map[string]context.CancelFunc{}
+	defer func() {
+		streamsMu.Lock()
+		for _, cancel := range streamCancels {
+			if cancel != nil {
+				cancel()
+			}
+		}
+		streamsMu.Unlock()
+	}()
+
 	for {
 		_, raw, err := conn.ReadMessage()
 		if err != nil {
-			log.Fatalf("read: %v", err)
+			return fmt.Errorf("read: %w", err)
 		}
 		var env struct {
 			Type string `json:"type"`
@@ -132,9 +246,9 @@ func main() {
 			if err := json.Unmarshal(raw, &rr); err != nil {
 				continue
 			}
-			respMsg := handleLocalAgentd(httpClient, *localBase, rr)
-			if err := conn.WriteJSON(respMsg); err != nil {
-				log.Fatalf("write response: %v", err)
+			respMsg := handleLocalAgentd(httpClient, localBase, rr)
+			if err := ws.WriteJSON(respMsg); err != nil {
+				return fmt.Errorf("write response: %w", err)
 			}
 		case proto.TypeHTTPStreamRequest:
 			var sr proto.StreamRequest
@@ -142,7 +256,7 @@ func main() {
 				continue
 			}
 			go func(req proto.StreamRequest) {
-				ctx, cancel := context.WithCancel(context.Background())
+				sctx, cancel := context.WithCancel(context.Background())
 				streamsMu.Lock()
 				streamCancels[req.ID] = cancel
 				streamsMu.Unlock()
@@ -151,7 +265,7 @@ func main() {
 					delete(streamCancels, req.ID)
 					streamsMu.Unlock()
 				}()
-				handleLocalAgentdStream(ctx, conn, httpClient, *localBase, req)
+				handleLocalAgentdStream(sctx, ws, httpClient, localBase, req)
 			}(sr)
 		case proto.TypeHTTPStreamCancel:
 			var cc proto.StreamCancel
@@ -221,9 +335,9 @@ func handleLocalAgentd(httpClient *http.Client, base string, msg proto.RelayRequ
 	return out
 }
 
-func handleLocalAgentdStream(ctx context.Context, conn *websocket.Conn, httpClient *http.Client, base string, msg proto.StreamRequest) {
+func handleLocalAgentdStream(ctx context.Context, ws *safeWS, httpClient *http.Client, base string, msg proto.StreamRequest) {
 	writeJSON := func(v any) {
-		_ = conn.WriteJSON(v)
+		_ = ws.WriteJSON(v)
 	}
 
 	body, err := base64.StdEncoding.DecodeString(msg.Req.BodyB64)
