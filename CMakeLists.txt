@@ -140,6 +140,7 @@ if(AGENT_BUILD_HOST)
     daemon/src/runtime_config.cpp
     daemon/src/secrets_file.cpp
     daemon/src/run_endpoints.cpp
+    daemon/src/trace_endpoints.cpp
     daemon/src/scene_store.cpp
     daemon/src/session_endpoints.cpp
     daemon/src/tool_plugins.cpp

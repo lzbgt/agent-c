@@ -1019,3 +1019,44 @@ export async function apiBrokerListAgents(brokerBase: string, auth?: ApiAuth): P
   const j = await r.json();
   return BrokerAgentsRespSchema.parse(j);
 }
+
+export const AgentdTraceRespSchema = z
+  .object({
+    ok: z.boolean(),
+    trace_id: z.string().optional(),
+    count: z.number().optional(),
+    records: z.array(z.any()).optional(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+export type AgentdTraceResp = z.infer<typeof AgentdTraceRespSchema>;
+
+export async function apiAgentdTrace(base: string, traceId: string, auth?: ApiAuth): Promise<AgentdTraceResp> {
+  const tid = String(traceId || "").trim();
+  if (!tid) throw new Error("missing trace_id");
+  const r = await fetch(`${base}/api/v1/trace?trace_id=${encodeURIComponent(tid)}&limit=200&max_bytes=1048576`, {
+    headers: daemonHeaders(auth),
+  });
+  const j = await r.json();
+  return AgentdTraceRespSchema.parse(j);
+}
+
+export const BrokerTraceRespSchema = z
+  .object({
+    ok: z.boolean(),
+    trace_id: z.string().optional(),
+    relay_audit: z.array(z.any()).optional(),
+    agentd: z.array(z.any()).optional(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+export type BrokerTraceResp = z.infer<typeof BrokerTraceRespSchema>;
+
+export async function apiBrokerTrace(brokerBase: string, traceId: string, auth?: ApiAuth): Promise<BrokerTraceResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(traceId || "").trim();
+  if (!tid) throw new Error("missing trace_id");
+  const r = await fetch(`${base}/v1/trace?trace_id=${encodeURIComponent(tid)}&limit=200&fanout=1`, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return BrokerTraceRespSchema.parse(j);
+}

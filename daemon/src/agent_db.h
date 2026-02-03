@@ -95,6 +95,13 @@ class AgentDb {
     std::vector<std::string>* out_record_json_desc,
     std::string* out_error
   );
+  bool read_audit_records_by_trace_id(
+    const std::string& trace_id,
+    size_t max_bytes,
+    size_t max_records,
+    std::vector<std::string>* out_record_json_desc,
+    std::string* out_error
+  );
 
   struct ToolRecordRow {
     int64_t run_id = 0;

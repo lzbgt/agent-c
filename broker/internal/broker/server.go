@@ -111,6 +111,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/agent/connect", s.handleAgentConnect)
 	mux.HandleFunc("/v1/agents", s.handleAgents)
 	mux.HandleFunc("/v1/orchestrate", s.handleOrchestrate)
+	mux.HandleFunc("/v1/trace", s.handleTrace)
 	mux.HandleFunc("/v1/events", s.handleEventsSSE)
 	// Catch-all for /v1/agents/{id}/... paths.
 	mux.HandleFunc("/v1/agents/", s.handleAgentsSubroutes)

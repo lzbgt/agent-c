@@ -944,6 +944,79 @@ bool AgentDb::read_audit_records_tail(
 #endif
 }
 
+bool AgentDb::read_audit_records_by_trace_id(
+  const std::string& trace_id,
+  size_t max_bytes,
+  size_t max_records,
+  std::vector<std::string>* out_record_json_desc,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_record_json_desc) out_record_json_desc->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)trace_id;
+  (void)max_bytes;
+  (void)max_records;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  if (trace_id.empty()) {
+    if (out_error) *out_error = "trace_id is empty";
+    return false;
+  }
+  if (max_bytes == 0) max_bytes = 1024 * 1024;
+  if (max_records == 0) max_records = 200;
+  if (max_records > 2000) max_records = 2000;
+
+  // Best-effort JSON search:
+  // - audit records are stored as compact JSON (indentation=""), so the substring pattern is stable.
+  // - This intentionally avoids a schema migration and is good enough for debugging tools.
+  //
+  // Pattern example: %"trace_id":"trace_xxx"%
+  //
+  // Escape LIKE wildcards so trace_ids containing '_' don't become false-positive patterns.
+  auto escape_like = [](std::string s) -> std::string {
+    std::string out;
+    out.reserve(s.size() + 8);
+    for (char c : s) {
+      if (c == '%' || c == '_' || c == '\\') out.push_back('\\');
+      out.push_back(c);
+    }
+    return out;
+  };
+  const std::string needle = std::string("%\"trace_id\":\"") + escape_like(trace_id) + "\"%";
+
+  sqlite3_stmt* st = nullptr;
+  const char* sql =
+    "SELECT record_json FROM audit_records WHERE record_json LIKE ? ESCAPE '\\' "
+    "ORDER BY ts_unix_ms DESC, id DESC LIMIT ?;";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = bind_text(st, 1, needle) && sqlite3_bind_int(st, 2, (int)max_records) == SQLITE_OK;
+  std::vector<std::string> rows;
+  size_t used = 0;
+  while (ok && step_row(st)) {
+    const unsigned char* txt = sqlite3_column_text(st, 0);
+    const std::string s = txt ? (const char*)txt : "";
+    if (s.empty()) continue;
+    if (used + s.size() > max_bytes) break;
+    used += s.size();
+    rows.push_back(s);
+  }
+  if (!ok && out_error) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  if (ok && out_record_json_desc) *out_record_json_desc = std::move(rows);
+  return ok;
+#endif
+}
+
 bool AgentDb::list_artifacts_by_session(
   const std::string& session_id,
   size_t max_artifacts,

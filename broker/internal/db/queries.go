@@ -42,6 +42,17 @@ func (a Agent) Meta() map[string]any {
 	return out
 }
 
+type RelayAudit struct {
+	TSUnixMS  int64
+	AgentID   string
+	Method    string
+	Path      string
+	Status    int
+	LatencyMS int
+	Error     string
+	TraceID   string
+}
+
 func (d *DB) EnsureUser(ctx context.Context, sub string) error {
 	if d == nil || d.Pool == nil {
 		return errors.New("db not open")
@@ -52,6 +63,47 @@ func (d *DB) EnsureUser(ctx context.Context, sub string) error {
 	}
 	_, err := d.Pool.Exec(ctx, `INSERT INTO broker_users(sub) VALUES($1) ON CONFLICT DO NOTHING`, sub)
 	return err
+}
+
+func (d *DB) ListRelayAuditByTrace(ctx context.Context, userSub, traceID string, limit int) ([]RelayAudit, error) {
+	if d == nil || d.Pool == nil {
+		return nil, errors.New("db not open")
+	}
+	userSub = strings.TrimSpace(userSub)
+	traceID = strings.TrimSpace(traceID)
+	if userSub == "" || traceID == "" {
+		return nil, errors.New("missing user sub or trace_id")
+	}
+	if err := d.EnsureUser(ctx, userSub); err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	rows, err := d.Pool.Query(ctx, `
+		SELECT CAST(EXTRACT(EPOCH FROM ts)*1000 AS BIGINT), agent_id, method, path, status, latency_ms, error, trace_id
+		FROM broker_relay_audit
+		WHERE user_sub=$1 AND trace_id=$2
+		ORDER BY ts DESC, id DESC
+		LIMIT $3
+	`, userSub, traceID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []RelayAudit{}
+	for rows.Next() {
+		var r RelayAudit
+		if err := rows.Scan(&r.TSUnixMS, &r.AgentID, &r.Method, &r.Path, &r.Status, &r.LatencyMS, &r.Error, &r.TraceID); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
 }
 
 func (d *DB) CreateAgent(ctx context.Context, ownerSub, agentID string, labels, meta map[string]any) (*Agent, error) {

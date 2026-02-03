@@ -13,6 +13,7 @@
 #include "openrouter_util.h"
 #include "provider_util.h"
 #include "run_endpoints.h"
+#include "trace_endpoints.h"
 #include "runtime_config.h"
 #include "secrets_file.h"
 #include "session_endpoints.h"
@@ -402,6 +403,12 @@ bool AgentdApi::init(std::string* out_error) {
     const DaemonConfig cur = self->cfg_store->snapshot();
     const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
     handle_orchestrate_endpoint(cur, ocfg, self->cors_cfg, &self->db, self->tool_ext_or_null(), cur.sessions_root_dir, req, resp);
+  });
+
+  impl_->route("GET", "/api/v1/trace", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_trace_lookup_endpoint(cur, self->cors_cfg, &self->db, req, resp);
   });
 
   // Job endpoints (non-streaming).

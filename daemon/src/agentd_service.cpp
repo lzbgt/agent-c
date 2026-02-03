@@ -17,6 +17,7 @@
 #include "openrouter_util.h"
 #include "provider_util.h"
 #include "run_endpoints.h"
+#include "trace_endpoints.h"
 #include "runtime_config.h"
 #include "sandbox_policy.h"
 #include "secrets_file.h"
@@ -437,6 +438,11 @@ struct AgentdService::Impl {
       const DaemonConfig cur = cfg_store->snapshot();
       const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
       handle_orchestrate_endpoint(cur, ocfg, cors_cfg, &db, tool_ext_or_null(), cur.sessions_root_dir, req, resp);
+    });
+
+    server.handle("GET", "/api/v1/trace", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_trace_lookup_endpoint(cur, cors_cfg, &db, req, resp);
     });
 
     // Job endpoints.

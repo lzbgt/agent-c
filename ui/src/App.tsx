@@ -24,6 +24,8 @@ import {
   apiPostSessionUiEvent,
   apiRun,
   apiRunAsync,
+  apiAgentdTrace,
+  apiBrokerTrace,
   apiBrokerListAgents,
   daemonHeaders,
   RunRequest,
@@ -33,6 +35,7 @@ import {
 } from "./api";
 import TraceView from "./components/TraceView";
 import EventTimeline from "./components/EventTimeline";
+import TraceIdTimelineView from "./components/TraceIdTimelineView";
 import Markdown from "./components/Markdown";
 import ConversationView from "./components/ConversationView";
 import ArtifactView from "./components/ArtifactView";
@@ -198,6 +201,8 @@ export default function App() {
     "agentui.showDebugInConversation",
     true,
   );
+  const [traceLookupId, setTraceLookupId] = useLocalStorageState("agentui.traceLookupId", "");
+  const [traceLookupOpen, setTraceLookupOpen] = useLocalStorageState("agentui.traceLookupOpen", false);
   const [allowAutoplay, setAllowAutoplay] = useLocalStorageState("agentui.allowAutoplay", true);
   // This project treats the Web UI as a collaboration surface (a “scene”) where the agent is expected
   // to act with side-effects by default. Users can still disable these via Settings (persisted).
@@ -218,6 +223,10 @@ export default function App() {
   // Keep separate from `jobError` so the UI does not claim the job failed when only the connection failed.
   const [jobNotice, setJobNotice] = React.useState<string | null>(null);
   const [jobUpdatedMs, setJobUpdatedMs] = React.useState<number | null>(null);
+
+  const [traceLookupError, setTraceLookupError] = React.useState<string | null>(null);
+  const [traceLookupAgentd, setTraceLookupAgentd] = React.useState<any | null>(null);
+  const [traceLookupBroker, setTraceLookupBroker] = React.useState<any | null>(null);
   const [liveEvents, setLiveEvents] = React.useState<AgentEvent[]>([]);
   const cursorRef = React.useRef<number>(0);
 
@@ -1159,6 +1168,33 @@ export default function App() {
     },
   });
 
+  const traceLookup = useMutation({
+    mutationFn: async (traceIdRaw: string) => {
+      const tid = String(traceIdRaw || "").trim();
+      if (!tid) throw new Error("missing trace_id");
+      setTraceLookupError(null);
+      setTraceLookupAgentd(null);
+      setTraceLookupBroker(null);
+
+      if (connectionMode === "broker") {
+        const bb = String(brokerBase || "").trim();
+        if (!bb) throw new Error("missing broker base");
+        return { mode: "broker" as const, data: await apiBrokerTrace(bb, tid, daemonAuth) };
+      }
+      return { mode: "direct" as const, data: await apiAgentdTrace(effectiveBase, tid, daemonAuth) };
+    },
+    onSuccess: (v) => {
+      if (v.mode === "broker") {
+        setTraceLookupBroker(v.data);
+      } else {
+        setTraceLookupAgentd(v.data);
+      }
+    },
+    onError: (e) => {
+      setTraceLookupError(String(e));
+    },
+  });
+
   // Persist job cursor while running (best-effort). This lets refresh resume from a stable point.
   React.useEffect(() => {
     if (!activeJobId) return;
@@ -1864,6 +1900,73 @@ export default function App() {
           </div>
 
           <div className="mt-4">
+            <details
+              className="mb-4 rounded-lg border border-white/10 bg-white/5 px-3 py-2"
+              open={!!traceLookupOpen}
+              onToggle={(ev) => setTraceLookupOpen((ev.currentTarget as HTMLDetailsElement).open)}
+            >
+              <summary className="cursor-pointer select-none text-xs text-white/80">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="font-semibold text-white/80">Trace lookup</div>
+                  <div className="text-[11px] text-white/50">
+                    Debug a distributed run by <code className="text-white/60">trace_id</code>
+                  </div>
+                </div>
+              </summary>
+              <div className="mt-3 grid gap-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    className="min-w-[260px] flex-1 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                    placeholder="trace_id (e.g. trace_...)"
+                    value={traceLookupId}
+                    onChange={(e) => setTraceLookupId(e.target.value)}
+                  />
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                    type="button"
+                    disabled={traceLookup.isPending || String(traceLookupId || "").trim().length === 0}
+                    onClick={() => void traceLookup.mutateAsync(traceLookupId)}
+                    title={
+                      connectionMode === "broker"
+                        ? "Calls broker /v1/trace (includes relay audits + agent fanout)."
+                        : "Calls agentd /api/v1/trace (audit record search)."
+                    }
+                  >
+                    {traceLookup.isPending ? "Loading…" : "Load"}
+                  </button>
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                    type="button"
+                    disabled={traceLookup.isPending}
+                    onClick={() => {
+                      setTraceLookupError(null);
+                      setTraceLookupAgentd(null);
+                      setTraceLookupBroker(null);
+                    }}
+                  >
+                    Clear
+                  </button>
+                </div>
+
+                {traceLookupError ? (
+                  <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+                    {traceLookupError}
+                  </div>
+                ) : null}
+
+                {String(traceLookupId || "").trim() && (traceLookupAgentd || traceLookupBroker) ? (
+                  <TraceIdTimelineView
+                    mode={connectionMode}
+                    baseUrl={effectiveBase}
+                    yolo={yolo}
+                    traceId={String(traceLookupId || "").trim()}
+                    agentdTrace={traceLookupAgentd}
+                    brokerTrace={traceLookupBroker}
+                  />
+                ) : null}
+              </div>
+            </details>
+
             <div className="mb-2 flex items-center justify-between gap-2">
               <div className="text-sm font-semibold text-white/80">History</div>
               <div className="flex items-center gap-2">
@@ -1903,6 +2006,7 @@ export default function App() {
                   const isLive = e?.live === true;
                   const jobId = typeof e?.job_id === "string" ? e.job_id : "";
                   const jobSt = typeof e?.job_status === "string" ? e.job_status : "";
+                  const traceId = typeof e?.trace_id === "string" ? e.trace_id : "";
                   const status = ok === true ? "ok" : ok === false ? "error" : "";
                   const summary = promptText.trim().length > 0 ? promptText.trim().slice(0, 200) : "(no prompt)";
                   const entryKey = isLive && jobId ? `job:${jobId}` : `ts:${String(ts || 0)}`;
@@ -1937,6 +2041,22 @@ export default function App() {
                           ) : null}
                           {status ? (
                             <span className={`${status === "ok" ? "text-emerald-300" : "text-rose-300"}`}>{status}</span>
+                          ) : null}
+                          {traceId ? (
+                            <button
+                              className="shrink-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                              type="button"
+                              title="Open trace lookup for this run"
+                              onClick={(ev) => {
+                                ev.preventDefault();
+                                ev.stopPropagation();
+                                setTraceLookupId(traceId);
+                                setTraceLookupOpen(true);
+                                void traceLookup.mutateAsync(traceId).catch(() => {});
+                              }}
+                            >
+                              Trace
+                            </button>
                           ) : null}
                           <span className="min-w-0 flex-1">{summary}</span>
                           <span className="shrink-0 text-white/40">({evs.length} events)</span>

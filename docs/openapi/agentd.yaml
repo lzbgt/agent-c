@@ -184,6 +184,48 @@ paths:
               schema:
                 type: string
 
+  /api/v1/trace:
+    get:
+      tags: [run]
+      summary: Lookup persisted audit records by trace_id
+      description: |
+        Returns audit records whose JSON contains the given `trace_id`.
+
+        Notes:
+        - Only runs persisted with `no_session=false` will appear (audit_records are DB-backed).
+        - This is a best-effort query intended for debugging/correlation, not a primary index.
+      parameters:
+        - in: query
+          name: trace_id
+          required: true
+          schema:
+            $ref: "#/components/schemas/TraceID"
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, format: int32 }
+        - in: query
+          name: max_bytes
+          required: false
+          schema: { type: integer, format: int32 }
+      responses:
+        "200":
+          description: Trace lookup response
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, trace_id, records]
+                properties:
+                  ok: { type: boolean }
+                  trace_id: { $ref: "#/components/schemas/TraceID" }
+                  count: { type: integer, format: int32 }
+                  records:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+
   /api/v1/sessions:
     get:
       tags: [sessions]
@@ -278,4 +320,3 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentEvent"
-

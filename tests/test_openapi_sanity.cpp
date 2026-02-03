@@ -44,6 +44,10 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "agentd openapi drift: missing job endpoints in %s\n", agentd_spec.c_str());
     return 1;
   }
+  if (!contains(a, "/api/v1/trace:")) {
+    std::fprintf(stderr, "agentd openapi drift: missing /api/v1/trace in %s\n", agentd_spec.c_str());
+    return 1;
+  }
   if (!contains(a, "trace_id")) {
     std::fprintf(stderr, "agentd openapi drift: expected trace_id in %s\n", agentd_spec.c_str());
     return 1;
@@ -62,10 +66,13 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "broker openapi drift: missing core endpoints in %s\n", broker_spec.c_str());
     return 1;
   }
+  if (!contains(b, "/v1/trace:")) {
+    std::fprintf(stderr, "broker openapi drift: missing /v1/trace in %s\n", broker_spec.c_str());
+    return 1;
+  }
   if (!contains(b, "/healthz:") || !contains(b, "/readyz:")) {
     std::fprintf(stderr, "broker openapi drift: missing health endpoints in %s\n", broker_spec.c_str());
     return 1;
   }
   return 0;
 }
-

@@ -15,6 +15,7 @@
 #include "job_endpoints.h"
 #include "orchestrate_endpoints.h"
 #include "run_endpoints.h"
+#include "trace_endpoints.h"
 #include "db_query_endpoints.h"
 #include "secrets_file.h"
 #include "config_store.h"
@@ -831,6 +832,11 @@ int main(int argc, char** argv) {
     const DaemonConfig cur = cfg_store.snapshot();
     const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
     handle_orchestrate_endpoint(cur, ocfg, cors_cfg, db_or_null, tool_ext_or_null, sessions_root_dir, req, resp);
+  });
+
+  server.handle("GET", "/api/v1/trace", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_trace_lookup_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   server.handle("GET", "/api/v1/job", [&](const HttpRequest& req, HttpResponse* resp) {

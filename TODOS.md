@@ -78,7 +78,7 @@ Proof:
 - Daemon persistence stores `trace_id` inside audit/event JSON without a schema migration.
 - Broker relay audit persists `trace_id` via a backwards-compatible DB migration (new column).
 
-### 4.1) Observability: correlated timeline viewer (NEXT)
+### 4.1) Observability: correlated timeline viewer (DONE)
 
 Deliverables:
 - Add an endpoint/UI view to pull a run’s correlated timeline (events + tool calls + retries), keyed by `trace_id`.
@@ -86,7 +86,7 @@ Deliverables:
 Proof:
 - Given a `trace_id`, the UI can fetch and render a single merged timeline across:
   - broker relay audits
-  - orchestrate results
+  - orchestrate fan-out via agent audit records (agentd `/api/v1/trace`)
   - agentd run audit + events
 
 ### 5) Workflow engine: orchestration becomes a first-class “agent graph”

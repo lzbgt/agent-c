@@ -195,6 +195,11 @@ If the DB is not available, these endpoints return `{ ok:false, error:"db not av
 Some daemon builds also expose:
 - `GET /api/v1/job/stream?job_id=...&cursor=...` (SSE for incremental job progress)
 
+Debug/correlation helper:
+- `GET /api/v1/trace?trace_id=...`
+  - best-effort lookup of persisted audit records for a `trace_id`
+  - only includes runs with `no_session=false` (since it reads from `audit_records`)
+
 See `docs/STREAMING.md` for streaming semantics.
 
 Reconnect / continuity guidance:

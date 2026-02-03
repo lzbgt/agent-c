@@ -125,6 +125,48 @@ paths:
         "101":
           description: Switching Protocols (WebSocket)
 
+  /v1/trace:
+    get:
+      tags: [events]
+      summary: Correlated trace lookup (broker + agent fanout)
+      description: |
+        Returns broker relay audit rows for a `trace_id` and (best-effort) fans out to referenced agents
+        to query their `/api/v1/trace` endpoint for persisted audit records.
+      parameters:
+        - in: query
+          name: trace_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, format: int32 }
+        - in: query
+          name: fanout
+          required: false
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: Trace response
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, trace_id]
+                properties:
+                  ok: { type: boolean }
+                  trace_id: { type: string }
+                  relay_audit:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+                  agentd:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+
 components:
   schemas:
     AgentInfo:

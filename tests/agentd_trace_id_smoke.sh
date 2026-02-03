@@ -163,6 +163,72 @@ if txt != "OK":
   raise SystemExit(1)
 PY
 
+# Persisted run: audit record can be re-fetched by trace_id.
+TRACE_PERSIST="trace_persist_$(date +%s)_$RANDOM"
+SESSION_PERSIST="agentd_trace_id_smoke_sess_$(date +%s)_$RANDOM"
+
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Content-Type: application/json" \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({"session_id":"${SESSION_PERSIST}"}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/session/new" >/dev/null
+
+resp_persist="$(curl -fsS --noproxy "*" --max-time 15 \
+  -H "Content-Type: application/json" \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "prompt": "Read README.md then say OK",
+  "session_id": "${SESSION_PERSIST}",
+  "tools": "host",
+  "yolo": False,
+  "base_url": "${STUB_BASE}",
+  "api_key": "dummy",
+  "model": "stub",
+  "max_steps": 4,
+  "trace_id": "${TRACE_PERSIST}"
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/run")"
+
+trace_q="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/trace?trace_id=$(python3 - <<PY
+import urllib.parse
+print(urllib.parse.quote('${TRACE_PERSIST}'))
+PY
+)&limit=50&max_bytes=1048576")"
+
+python3 - <<PY
+import json, sys
+q = json.loads(r'''${trace_q}''')
+if not q.get("ok"):
+  print("trace query failed:", q, file=sys.stderr)
+  raise SystemExit(1)
+recs = q.get("records") or []
+if not isinstance(recs, list) or len(recs) == 0:
+  print("expected at least 1 record for trace_id", file=sys.stderr)
+  raise SystemExit(1)
+match = None
+for r in recs:
+  if isinstance(r, dict) and r.get("trace_id") == "${TRACE_PERSIST}":
+    match = r
+    break
+if not match:
+  print("no matching record with trace_id found", file=sys.stderr)
+  raise SystemExit(1)
+if match.get("session_id") != "${SESSION_PERSIST}":
+  print("wrong session_id in record:", match.get("session_id"), file=sys.stderr)
+  raise SystemExit(1)
+txt = (match.get("assistant_text") or "").strip()
+if txt != "OK":
+  print("unexpected assistant_text in record:", txt, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 # Async run: daemon-generated trace_id is stable across run_async response, SSE agent_event, and job_done.
 job_json="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Content-Type: application/json" \
@@ -262,4 +328,3 @@ PY
 )" --max-time 5 >/dev/null || true
 
 echo "agentd_trace_id_smoke OK"
-
