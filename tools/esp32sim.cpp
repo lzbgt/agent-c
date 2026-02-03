@@ -35,6 +35,61 @@ static std::string getenv_str(const char* k) {
   return (v && v[0]) ? std::string(v) : std::string();
 }
 
+static bool read_file_all(const std::string& path, std::string* out);
+
+static std::string trim_ws(std::string s) {
+  size_t i = 0;
+  while (i < s.size() && (s[i] == ' ' || s[i] == '\t' || s[i] == '\r' || s[i] == '\n')) i++;
+  s.erase(0, i);
+  while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '\r' || s.back() == '\n')) s.pop_back();
+  return s;
+}
+
+static bool dotenv_parse_line(const std::string& line, std::string* out_key, std::string* out_value) {
+  if (!out_key || !out_value) return false;
+  out_key->clear();
+  out_value->clear();
+  std::string s = trim_ws(line);
+  if (s.empty()) return false;
+  if (s[0] == '#') return false;
+  if (s.rfind("export ", 0) == 0) s = trim_ws(s.substr(std::strlen("export ")));
+  const size_t eq = s.find('=');
+  if (eq == std::string::npos) return false;
+  std::string k = trim_ws(s.substr(0, eq));
+  std::string v = trim_ws(s.substr(eq + 1));
+  if (k.empty()) return false;
+  // Strip inline comments for unquoted values: KEY=abc # comment
+  if (!v.empty() && v[0] != '"' && v[0] != '\'') {
+    const size_t hash = v.find(" #");
+    if (hash != std::string::npos) v = trim_ws(v.substr(0, hash));
+  }
+  if (v.size() >= 2 && ((v.front() == '"' && v.back() == '"') || (v.front() == '\'' && v.back() == '\''))) {
+    v = v.substr(1, v.size() - 2);
+  }
+  *out_key = k;
+  *out_value = v;
+  return true;
+}
+
+static std::string try_load_key_from_home_dotenv_best_effort(const std::vector<std::string>& keys) {
+  const std::string home = getenv_str("HOME");
+  if (home.empty()) return {};
+  const std::string path = home + "/.env";
+  std::string raw;
+  if (!read_file_all(path, &raw) || raw.empty()) return {};
+
+  std::istringstream iss(raw);
+  std::string line;
+  while (std::getline(iss, line)) {
+    std::string k, v;
+    if (!dotenv_parse_line(line, &k, &v)) continue;
+    for (const auto& want : keys) {
+      if (k == want && !v.empty()) return v;
+    }
+  }
+  return {};
+}
+
 static bool read_file_all(const std::string& path, std::string* out) {
   if (!out) return false;
   out->clear();
@@ -501,8 +556,9 @@ static void usage() {
     << "esp32sim (host harness for embedded agent_core)\n\n"
     << "Required:\n"
     << "  --model <id>\n"
-    << "  --api-key <key>        (or set OPENAI_API_KEY)\n\n"
+    << "  --api-key <key>        (or set OPENAI_API_KEY / KIMI_API_KEY_CN)\n\n"
     << "Optional:\n"
+    << "  --provider <id>        openai|moonshot (default: openai)\n"
     << "  --base-url <url>       default: https://api.openai.com/v1 (or set OPENAI_API_BASE)\n"
     << "  --proxy-url <url>      overrides HTTPS_PROXY env (or set OPENAI_PROXY_URL)\n"
     << "  --timeout-ms <n>       default: 60000\n"
@@ -535,6 +591,7 @@ static bool parse_u64(const std::string& s, uint64_t* out) {
 }
 
 int main(int argc, char** argv) {
+  std::string provider_id = "openai";
   std::string base_url;
   std::string api_key;
   std::string model;
@@ -571,6 +628,7 @@ int main(int argc, char** argv) {
     if (a == "--base-url") base_url = need("--base-url");
     else if (a == "--api-key") api_key = need("--api-key");
     else if (a == "--model") model = need("--model");
+    else if (a == "--provider") provider_id = need("--provider");
     else if (a == "--proxy-url") proxy_url = need("--proxy-url");
     else if (a == "--openrouter-referer") openrouter_referer = need("--openrouter-referer");
     else if (a == "--openrouter-title") openrouter_title = need("--openrouter-title");
@@ -605,10 +663,37 @@ int main(int argc, char** argv) {
     }
   }
 
-  if (base_url.empty()) base_url = getenv_str("OPENAI_API_BASE");
-  if (base_url.empty()) base_url = "https://api.openai.com/v1";
-  if (api_key.empty()) api_key = getenv_str("OPENAI_API_KEY");
-  if (model.empty()) model = getenv_str("OPENAI_MODEL");
+  provider_id = trim_ws(provider_id);
+  for (auto& c : provider_id) c = (char)std::tolower((unsigned char)c);
+  if (provider_id == "kimi") provider_id = "moonshot";
+
+  if (provider_id != "openai" && provider_id != "moonshot") {
+    std::cerr << "unknown --provider: " << provider_id << " (expected openai|moonshot)\n";
+    return 2;
+  }
+
+  if (provider_id == "moonshot") {
+    if (base_url.empty()) base_url = getenv_str("OPENAI_API_BASE");
+    if (base_url.empty()) base_url = getenv_str("MOONSHOT_API_BASE");
+    if (base_url.empty()) base_url = "https://api.moonshot.cn/v1";
+
+    if (api_key.empty()) api_key = getenv_str("KIMI_API_KEY_CN");
+    if (api_key.empty()) api_key = getenv_str("MOONSHOT_API_KEY");
+    if (api_key.empty()) api_key = getenv_str("MOONSHOT_API_KEY_CN");
+    // Best-effort load from ~/.env (common for local setups).
+    if (api_key.empty()) {
+      api_key = try_load_key_from_home_dotenv_best_effort({"KIMI_API_KEY_CN", "MOONSHOT_API_KEY", "MOONSHOT_API_KEY_CN"});
+    }
+
+    if (model.empty()) model = getenv_str("OPENAI_MODEL");
+    if (model.empty()) model = getenv_str("AGENT_TEST_MOONSHOT_MODEL");
+    if (model.empty()) model = "kimi-k2.5";
+  } else {
+    if (base_url.empty()) base_url = getenv_str("OPENAI_API_BASE");
+    if (base_url.empty()) base_url = "https://api.openai.com/v1";
+    if (api_key.empty()) api_key = getenv_str("OPENAI_API_KEY");
+    if (model.empty()) model = getenv_str("OPENAI_MODEL");
+  }
   if (proxy_url.empty()) proxy_url = getenv_str("OPENAI_PROXY_URL");
   if (openrouter_referer.empty()) openrouter_referer = getenv_str("OPENROUTER_HTTP_REFERER");
   if (openrouter_title.empty()) openrouter_title = getenv_str("OPENROUTER_X_TITLE");
@@ -624,7 +709,7 @@ int main(int argc, char** argv) {
   }
 
   if (model.empty() || api_key.empty()) {
-    std::cerr << "missing required --model/--api-key (or OPENAI_MODEL/OPENAI_API_KEY)\n";
+    std::cerr << "missing required --model/--api-key (or env). provider=" << provider_id << "\n";
     usage();
     return 2;
   }
