@@ -574,11 +574,14 @@ return __fn;
     };
   }, [baseUrl, daemonAuthToken, entity.id, entity.kind, html, onScriptError, script, scriptArgsJson, yolo]);
 
-  return (
-    <div className="mt-2 overflow-auto rounded-md border border-white/10 bg-black/20 p-2">
-      <div ref={rootRef} />
-    </div>
-  );
+	return (
+		// Render DOM entities on a light surface: most tool-generated HTML assumes light backgrounds and
+		// default (black) text. The app shell is dark, so without an explicit text color the content may
+		// inherit `text-white` and become unreadable on white panels inside the entity.
+		<div className="mt-2 overflow-auto rounded-md border border-black/10 bg-white p-2 text-slate-900">
+			<div ref={rootRef} />
+		</div>
+	);
 }
 
 export default function SceneView({

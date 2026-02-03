@@ -22,6 +22,8 @@ project.local.md
 .not_in_repo
 tools/_agentd_broker_mtls_test_certs/
 tools/_compose_mtls/
+memory/
+session_*/
 
 # Local one-off camera capture artifacts (dev only).
 capture_image*.py

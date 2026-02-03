@@ -1,8 +1,12 @@
 package broker
 
 import (
+	"bufio"
 	"context"
+	"errors"
+	"io"
 	"log"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -51,6 +55,41 @@ func (rw *statusRecorder) Write(p []byte) (int, error) {
 	n, err := rw.ResponseWriter.Write(p)
 	rw.bytes += int64(n)
 	return n, err
+}
+
+func (rw *statusRecorder) Flush() {
+	if f, ok := rw.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (rw *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	h, ok := rw.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, errors.New("hijacker not supported")
+	}
+	return h.Hijack()
+}
+
+func (rw *statusRecorder) Push(target string, opts *http.PushOptions) error {
+	p, ok := rw.ResponseWriter.(http.Pusher)
+	if !ok {
+		return http.ErrNotSupported
+	}
+	return p.Push(target, opts)
+}
+
+func (rw *statusRecorder) ReadFrom(r io.Reader) (int64, error) {
+	// Preserve optimized io.Copy paths when supported by the underlying writer.
+	if rf, ok := rw.ResponseWriter.(io.ReaderFrom); ok {
+		if rw.status == 0 {
+			rw.status = http.StatusOK
+		}
+		n, err := rf.ReadFrom(r)
+		rw.bytes += n
+		return n, err
+	}
+	return io.Copy(rw, r)
 }
 
 func withAccessLog(next http.Handler) http.Handler {

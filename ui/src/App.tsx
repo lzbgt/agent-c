@@ -57,6 +57,14 @@ export default function App() {
   const clearAllArmTimeoutRef = React.useRef<number>(0);
 
   const [base, setBase] = useLocalStorageState("agentui.base", "http://127.0.0.1:8123");
+  const webOrigin = React.useMemo(() => {
+    try {
+      // Used for actionable connectivity hints (CORS).
+      return typeof window !== "undefined" ? String(window.location.origin || "") : "";
+    } catch {
+      return "";
+    }
+  }, []);
 
   const effectiveBase = React.useMemo(() => {
     const b = String(base || "").trim();
@@ -584,6 +592,12 @@ export default function App() {
     queryFn: () => apiListSessions(effectiveBase, daemonAuthToken),
     retry: 1,
   });
+  const sessionsUnauthorized =
+    sessions.isSuccess &&
+    sessions.data &&
+    sessions.data.ok === false &&
+    String((sessions.data as any).error || "").toLowerCase() === "unauthorized";
+  const missingDaemonAuthToken = String(daemonAuthToken || "").trim().length === 0;
 
   React.useEffect(() => {
     if (!showSettings) setClearAllArmed(false);
@@ -1707,6 +1721,30 @@ export default function App() {
         </div>
       </header>
 
+      {health.isError ? (
+        <div className="border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-xs text-amber-100">
+          Browser cannot reach <code className="text-amber-50/90">{effectiveBase}</code> (network or CORS).
+          {webOrigin ? (
+            <>
+              {" "}
+              If <code className="text-amber-50/90">agentd</code> is running, allow this UI origin:{" "}
+              <code className="text-amber-50/90">{webOrigin}</code> (start agentd with{" "}
+              <code className="text-amber-50/90">--cors-origin {webOrigin}</code>).
+            </>
+          ) : null}
+        </div>
+      ) : sessionsUnauthorized && missingDaemonAuthToken ? (
+        <div className="border-b border-amber-500/20 bg-amber-500/10 px-4 py-2 text-xs text-amber-100">
+          <span className="font-semibold text-amber-50/90">Unauthorized:</span> the daemon requires a bearer token.
+          Set it in <button className="underline hover:text-white" onClick={() => setShowSettings(true)} type="button">Settings</button>{" "}
+          (<span className="text-amber-50/90">Daemon auth token</span>).
+          <span className="text-amber-50/80">
+            {" "}
+            If you started via docker-compose, it’s typically <code className="text-amber-50/90">dev-agentd-token</code>.
+          </span>
+        </div>
+      ) : null}
+
       <main
         ref={(el) => {
           mainScrollRef.current = el;
@@ -1885,6 +1923,7 @@ export default function App() {
               <input
                 className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
                 data-testid="daemon-auth-token"
+                placeholder='Bearer token (e.g. "dev-agentd-token" in docker-compose)'
                 value={daemonAuthToken}
                 onChange={(e) => setDaemonAuthToken(e.target.value)}
               />
