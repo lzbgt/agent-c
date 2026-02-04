@@ -94,6 +94,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Proof: `ctest` includes `agentd_workflow_inflight_cap_smoke` (asserts non-overlap under cap=1).
 - Deterministic workflow-only delay task (`kind:"delay"`) for scheduling tests and wait gates (no LLM required).
   - Proof: `ctest` includes `agentd_workflow_inflight_cap_smoke`.
+- Workflow correctness: tool-call constraints in `expect` (enforce “must call / must not call” deterministically).
+  - Proof: `ctest` includes `agentd_workflow_expect_tool_calls_smoke` (uses ext_echo tool plugin).
 
 ## P0 (next: maximize autonomous continuity + correctness)
 

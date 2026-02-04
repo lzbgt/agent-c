@@ -867,6 +867,29 @@ static bool apply_expectations(const std::string& expect_json, const Json::Value
     return false;
   }
 
+  // Gather tool usage from run events (tool_call + tool_result are emitted by the core tool loop).
+  // This is used for deterministic "correctness constraints" like "must call X" or "must not call Y".
+  std::unordered_map<std::string, int64_t> tool_call_count_by_name;
+  int64_t tool_calls_total = 0;
+  if (run_out.isObject() && run_out.isMember("events") && run_out["events"].isArray()) {
+    const auto& events = run_out["events"];
+    for (Json::ArrayIndex i = 0; i < events.size(); i++) {
+      const auto& ev = events[i];
+      if (!ev.isObject()) continue;
+      const std::string type = ev.isMember("type") && ev["type"].isString() ? ev["type"].asString() : "";
+      if (type != "tool_call" && type != "tool_result") continue;
+      const auto& data = ev.isMember("data") && ev["data"].isObject() ? ev["data"] : Json::Value(Json::nullValue);
+      const std::string tool =
+        data.isObject() && data.isMember("tool_name") && data["tool_name"].isString() ? data["tool_name"].asString()
+        : "";
+      if (tool.empty()) continue;
+      if (type == "tool_call") {
+        tool_calls_total++;
+        tool_call_count_by_name[tool] += 1;
+      }
+    }
+  }
+
   if (exp.isMember("ok") && exp["ok"].isBool()) {
     const bool want_ok = exp["ok"].asBool();
     const bool got_ok = run_out.isObject() && run_out.isMember("ok") && run_out["ok"].isBool() && run_out["ok"].asBool();
@@ -1026,6 +1049,104 @@ static bool apply_expectations(const std::string& expect_json, const Json::Value
         }
         if (has_max && x > max_v) {
           if (out_err) *out_err = "expectation failed: value above max";
+          return false;
+        }
+      }
+    }
+  }
+
+  auto normalize_string_or_array = [](const Json::Value& v) -> std::vector<std::string> {
+    std::vector<std::string> out;
+    if (v.isString()) {
+      const std::string s = trim_copy(v.asString());
+      if (!s.empty()) out.push_back(s);
+    } else if (v.isArray()) {
+      for (Json::ArrayIndex i = 0; i < v.size(); i++) {
+        if (!v[i].isString()) continue;
+        const std::string s = trim_copy(v[i].asString());
+        if (!s.empty()) out.push_back(s);
+      }
+    }
+    return out;
+  };
+
+  if (exp.isMember("tool_called")) {
+    const auto want = normalize_string_or_array(exp["tool_called"]);
+    for (const auto& tn : want) {
+      if (tool_call_count_by_name[tn] <= 0) {
+        if (out_err) *out_err = "expectation failed: required tool was not called: " + tn;
+        return false;
+      }
+    }
+  }
+
+  if (exp.isMember("tool_not_called")) {
+    const auto forbid = normalize_string_or_array(exp["tool_not_called"]);
+    for (const auto& tn : forbid) {
+      if (tool_call_count_by_name[tn] > 0) {
+        if (out_err) *out_err = "expectation failed: forbidden tool was called: " + tn;
+        return false;
+      }
+    }
+  }
+
+  if (exp.isMember("tool_calls_total_between") && exp["tool_calls_total_between"].isObject()) {
+    const auto& v = exp["tool_calls_total_between"];
+    bool has_min = false;
+    bool has_max = false;
+    int64_t min_v = 0;
+    int64_t max_v = 0;
+    if (v.isMember("min") && (v["min"].isInt64() || v["min"].isUInt64() || v["min"].isInt())) {
+      has_min = true;
+      min_v = v["min"].asInt64();
+    }
+    if (v.isMember("max") && (v["max"].isInt64() || v["max"].isUInt64() || v["max"].isInt())) {
+      has_max = true;
+      max_v = v["max"].asInt64();
+    }
+    if (has_min && tool_calls_total < min_v) {
+      if (out_err) *out_err = "expectation failed: tool_calls_total below min";
+      return false;
+    }
+    if (has_max && tool_calls_total > max_v) {
+      if (out_err) *out_err = "expectation failed: tool_calls_total above max";
+      return false;
+    }
+  }
+
+  if (exp.isMember("tool_calls_for_tool_between")) {
+    Json::Value arr = exp["tool_calls_for_tool_between"];
+    if (arr.isObject()) {
+      Json::Value one(Json::arrayValue);
+      one.append(arr);
+      arr = one;
+    }
+    if (arr.isArray()) {
+      for (Json::ArrayIndex i = 0; i < arr.size(); i++) {
+        const auto& item = arr[i];
+        if (!item.isObject()) continue;
+        const std::string tool =
+          item.isMember("tool") && item["tool"].isString() ? trim_copy(item["tool"].asString()) : "";
+        if (tool.empty()) continue;
+        const int64_t cnt = tool_call_count_by_name.count(tool) ? tool_call_count_by_name[tool] : 0;
+        bool has_min = false;
+        bool has_max = false;
+        int64_t min_v = 0;
+        int64_t max_v = 0;
+        if (item.isMember("min") && (item["min"].isInt64() || item["min"].isUInt64() || item["min"].isInt())) {
+          has_min = true;
+          min_v = item["min"].asInt64();
+        }
+        if (item.isMember("max") && (item["max"].isInt64() || item["max"].isUInt64() || item["max"].isInt())) {
+          has_max = true;
+          max_v = item["max"].asInt64();
+        }
+        if (has_min && cnt < min_v) {
+          if (out_err) *out_err = "expectation failed: tool call count below min for tool: " + tool;
+          return false;
+        }
+        if (has_max && cnt > max_v) {
+          if (out_err) *out_err = "expectation failed: tool call count above max for tool: " + tool;
           return false;
         }
       }

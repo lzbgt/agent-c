@@ -110,6 +110,16 @@ Supported checks (v1):
   - object `{ pointer: "/some/path", min?: <number>, max?: <number> }`, or
   - array of such objects
   - values may be JSON numbers or numeric strings
+- Tool-call constraints (v1.1):
+  - `tool_called: "tool_name"` (or array of names)
+    - requires that at least one `tool_call` event exists for each named tool
+  - `tool_not_called: "tool_name"` (or array of names)
+    - requires that no `tool_call` event exists for each named tool
+  - `tool_calls_total_between: { min?: <int>, max?: <int> }`
+    - bounds total number of tool calls executed (counted from `tool_call` events)
+  - `tool_calls_for_tool_between`:
+    - object `{ tool: "name", min?: <int>, max?: <int> }`, or
+    - array of such objects
 
 Pointers follow JSON Pointer (`""` for root, otherwise `/key/0/subkey`).
 
