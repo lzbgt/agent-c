@@ -36,6 +36,11 @@ static bool bind_i64(sqlite3_stmt* st, int idx, int64_t v) {
   return sqlite3_bind_int64(st, idx, (sqlite3_int64)v) == SQLITE_OK;
 }
 
+static bool bind_i64_or_null(sqlite3_stmt* st, int idx, int64_t v) {
+  if (v <= 0) return sqlite3_bind_null(st, idx) == SQLITE_OK;
+  return bind_i64(st, idx, v);
+}
+
 static bool bind_i32(sqlite3_stmt* st, int idx, int v) {
   return sqlite3_bind_int(st, idx, v) == SQLITE_OK;
 }
@@ -160,7 +165,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 16;
+  const int kSchemaVersion = 17;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -668,6 +673,22 @@ ALTER TABLE workflow_tasks ADD COLUMN allow_error INTEGER NOT NULL DEFAULT 0;
     cur_ver = 16;
   }
 
+  if (cur_ver < 17) {
+    const char* schema_v17 = R"SQL(
+-- Durable workflow policy columns and submit idempotency (platform-side reliability).
+ALTER TABLE workflows ADD COLUMN deadline_unix_ms INTEGER;
+ALTER TABLE workflows ADD COLUMN idempotency_key TEXT;
+
+-- Indexing: deadline scanning + idempotency dedupe.
+CREATE INDEX IF NOT EXISTS workflows_by_deadline ON workflows(deadline_unix_ms);
+CREATE UNIQUE INDEX IF NOT EXISTS workflows_by_idempotency_scope_key
+  ON workflows(COALESCE(session_id,''), idempotency_key)
+  WHERE idempotency_key IS NOT NULL AND idempotency_key <> '';
+)SQL";
+    if (!exec_locked(schema_v17, out_error)) return false;
+    cur_ver = 17;
+  }
+
   // Record schema version.
   {
     std::ostringstream oss;
@@ -1126,12 +1147,12 @@ bool AgentDb::create_workflow(const WorkflowRow& wf, const std::vector<WorkflowT
   if (!exec_locked("BEGIN IMMEDIATE TRANSACTION;", out_error)) return false;
 
   bool ok = true;
-  {
+	  {
 	    sqlite3_stmt* st = nullptr;
 	    const char* sql = R"SQL(
 	INSERT INTO workflows(
-	  workflow_id, session_id, trace_id, priority, created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
-	) VALUES(?,?,?,?,?,?,?,?,?,?,?);
+	  workflow_id, session_id, trace_id, priority, deadline_unix_ms, idempotency_key, created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
+	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?);
 	)SQL";
 	    if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
 	      ok = false;
@@ -1141,13 +1162,15 @@ bool AgentDb::create_workflow(const WorkflowRow& wf, const std::vector<WorkflowT
 	      ok = ok && bind_text_or_null(st, 2, wf.session_id);
 	      ok = ok && bind_text(st, 3, wf.trace_id);
 	      ok = ok && bind_i32_or_null(st, 4, wf.priority);
-	      ok = ok && bind_i64(st, 5, created);
-	      ok = ok && bind_i64(st, 6, now);
-	      ok = ok && bind_text(st, 7, status);
-	      ok = ok && bind_i32(st, 8, wf.cancel_requested ? 1 : 0);
-	      ok = ok && bind_text(st, 9, wf.error);
-	      ok = ok && bind_text(st, 10, wf.spec_json);
-	      ok = ok && bind_text(st, 11, wf.result_json);
+	      ok = ok && bind_i64_or_null(st, 5, wf.deadline_unix_ms);
+	      ok = ok && bind_text_or_null(st, 6, wf.idempotency_key);
+	      ok = ok && bind_i64(st, 7, created);
+	      ok = ok && bind_i64(st, 8, now);
+	      ok = ok && bind_text(st, 9, status);
+	      ok = ok && bind_i32(st, 10, wf.cancel_requested ? 1 : 0);
+	      ok = ok && bind_text(st, 11, wf.error);
+	      ok = ok && bind_text(st, 12, wf.spec_json);
+	      ok = ok && bind_text(st, 13, wf.result_json);
 	      ok = ok && step_done(st);
 	      if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
 	      sqlite3_finalize(st);
@@ -1240,7 +1263,7 @@ bool AgentDb::get_workflow(const std::string& workflow_id, WorkflowRow* out_row,
   }
 	sqlite3_stmt* st = nullptr;
 	const char* sql = R"SQL(
-	SELECT workflow_id, session_id, trace_id, COALESCE(priority,0), created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
+	SELECT workflow_id, session_id, trace_id, COALESCE(priority,0), COALESCE(deadline_unix_ms,0), COALESCE(idempotency_key,''), created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
 	FROM workflows
 	WHERE workflow_id=?
 	LIMIT 1;
@@ -1256,22 +1279,98 @@ bool AgentDb::get_workflow(const std::string& workflow_id, WorkflowRow* out_row,
 	    const unsigned char* wid = sqlite3_column_text(st, 0);
 	    const unsigned char* sid = sqlite3_column_text(st, 1);
 	    const unsigned char* tid = sqlite3_column_text(st, 2);
-	    const unsigned char* stxt = sqlite3_column_text(st, 6);
-	    const unsigned char* etxt = sqlite3_column_text(st, 8);
-	    const unsigned char* spec = sqlite3_column_text(st, 9);
-	    const unsigned char* res = sqlite3_column_text(st, 10);
+	    const unsigned char* idk = sqlite3_column_text(st, 5);
+	    const unsigned char* stxt = sqlite3_column_text(st, 8);
+	    const unsigned char* etxt = sqlite3_column_text(st, 10);
+	    const unsigned char* spec = sqlite3_column_text(st, 11);
+	    const unsigned char* res = sqlite3_column_text(st, 12);
 	    out_row->workflow_id = wid ? (const char*)wid : "";
 	    out_row->session_id = sid ? (const char*)sid : "";
 	    out_row->trace_id = tid ? (const char*)tid : "";
 	    out_row->priority = sqlite3_column_int(st, 3);
-	    out_row->created_unix_ms = sqlite3_column_int64(st, 4);
-	    out_row->updated_unix_ms = sqlite3_column_int64(st, 5);
+	    out_row->deadline_unix_ms = sqlite3_column_int64(st, 4);
+	    out_row->idempotency_key = idk ? (const char*)idk : "";
+	    out_row->created_unix_ms = sqlite3_column_int64(st, 6);
+	    out_row->updated_unix_ms = sqlite3_column_int64(st, 7);
 	    out_row->status = stxt ? (const char*)stxt : "";
-	    out_row->cancel_requested = sqlite3_column_int(st, 7) != 0;
+	    out_row->cancel_requested = sqlite3_column_int(st, 9) != 0;
 	    out_row->error = etxt ? (const char*)etxt : "";
 	    out_row->spec_json = spec ? (const char*)spec : "";
 	    out_row->result_json = res ? (const char*)res : "";
 	  }
+  sqlite3_finalize(st);
+  if (!ok) {
+    if (out_error && out_error->empty()) *out_error = sqlite_err(db_);
+    return false;
+  }
+  return found;
+#endif
+}
+
+bool AgentDb::get_workflow_by_idempotency_key(
+  const std::string& session_id_or_empty,
+  const std::string& idempotency_key,
+  WorkflowRow* out_row,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_row) *out_row = WorkflowRow{};
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)session_id_or_empty;
+  (void)idempotency_key;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (idempotency_key.empty()) {
+    if (out_error) *out_error = "get_workflow_by_idempotency_key: idempotency_key is empty";
+    return false;
+  }
+  if (!out_row) return false;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT workflow_id, session_id, trace_id, COALESCE(priority,0), COALESCE(deadline_unix_ms,0), COALESCE(idempotency_key,''), created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
+FROM workflows
+WHERE idempotency_key=? AND COALESCE(session_id,'')=?
+ORDER BY created_unix_ms DESC
+LIMIT 1;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_text(st, 1, idempotency_key);
+  ok = ok && bind_text(st, 2, session_id_or_empty);
+  bool found = false;
+  if (ok && step_row(st)) {
+    found = true;
+    const unsigned char* wid = sqlite3_column_text(st, 0);
+    const unsigned char* sid = sqlite3_column_text(st, 1);
+    const unsigned char* tid = sqlite3_column_text(st, 2);
+    const unsigned char* idk = sqlite3_column_text(st, 5);
+    const unsigned char* stxt = sqlite3_column_text(st, 8);
+    const unsigned char* etxt = sqlite3_column_text(st, 10);
+    const unsigned char* spec = sqlite3_column_text(st, 11);
+    const unsigned char* res = sqlite3_column_text(st, 12);
+    out_row->workflow_id = wid ? (const char*)wid : "";
+    out_row->session_id = sid ? (const char*)sid : "";
+    out_row->trace_id = tid ? (const char*)tid : "";
+    out_row->priority = sqlite3_column_int(st, 3);
+    out_row->deadline_unix_ms = sqlite3_column_int64(st, 4);
+    out_row->idempotency_key = idk ? (const char*)idk : "";
+    out_row->created_unix_ms = sqlite3_column_int64(st, 6);
+    out_row->updated_unix_ms = sqlite3_column_int64(st, 7);
+    out_row->status = stxt ? (const char*)stxt : "";
+    out_row->cancel_requested = sqlite3_column_int(st, 9) != 0;
+    out_row->error = etxt ? (const char*)etxt : "";
+    out_row->spec_json = spec ? (const char*)spec : "";
+    out_row->result_json = res ? (const char*)res : "";
+  }
   sqlite3_finalize(st);
   if (!ok) {
     if (out_error && out_error->empty()) *out_error = sqlite_err(db_);
@@ -1305,7 +1404,7 @@ bool AgentDb::list_workflows_by_status(
   }
 	sqlite3_stmt* st = nullptr;
 	const char* sql = R"SQL(
-	SELECT workflow_id, session_id, trace_id, COALESCE(priority,0), created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
+	SELECT workflow_id, session_id, trace_id, COALESCE(priority,0), COALESCE(deadline_unix_ms,0), COALESCE(idempotency_key,''), created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
 	FROM workflows
 	WHERE status=?
 	ORDER BY COALESCE(priority,0) DESC, updated_unix_ms DESC
@@ -1323,18 +1422,21 @@ bool AgentDb::list_workflows_by_status(
 	    const unsigned char* wid = sqlite3_column_text(st, 0);
 	    const unsigned char* sid = sqlite3_column_text(st, 1);
 	    const unsigned char* tid = sqlite3_column_text(st, 2);
-	    const unsigned char* stxt = sqlite3_column_text(st, 6);
-	    const unsigned char* etxt = sqlite3_column_text(st, 8);
-	    const unsigned char* spec = sqlite3_column_text(st, 9);
-	    const unsigned char* res = sqlite3_column_text(st, 10);
+	    const unsigned char* idk = sqlite3_column_text(st, 5);
+	    const unsigned char* stxt = sqlite3_column_text(st, 8);
+	    const unsigned char* etxt = sqlite3_column_text(st, 10);
+	    const unsigned char* spec = sqlite3_column_text(st, 11);
+	    const unsigned char* res = sqlite3_column_text(st, 12);
 	    row.workflow_id = wid ? (const char*)wid : "";
 	    row.session_id = sid ? (const char*)sid : "";
 	    row.trace_id = tid ? (const char*)tid : "";
 	    row.priority = sqlite3_column_int(st, 3);
-	    row.created_unix_ms = sqlite3_column_int64(st, 4);
-	    row.updated_unix_ms = sqlite3_column_int64(st, 5);
+	    row.deadline_unix_ms = sqlite3_column_int64(st, 4);
+	    row.idempotency_key = idk ? (const char*)idk : "";
+	    row.created_unix_ms = sqlite3_column_int64(st, 6);
+	    row.updated_unix_ms = sqlite3_column_int64(st, 7);
 	    row.status = stxt ? (const char*)stxt : "";
-	    row.cancel_requested = sqlite3_column_int(st, 7) != 0;
+	    row.cancel_requested = sqlite3_column_int(st, 9) != 0;
 	    row.error = etxt ? (const char*)etxt : "";
 	    row.spec_json = spec ? (const char*)spec : "";
 	    row.result_json = res ? (const char*)res : "";
@@ -1530,15 +1632,23 @@ bool AgentDb::upsert_workflow(const WorkflowRow& wf, std::string* out_error) {
     if (out_error) *out_error = "db is not open";
     return false;
   }
-  sqlite3_stmt* st = nullptr;
+	sqlite3_stmt* st = nullptr;
 	const char* sql = R"SQL(
 	INSERT INTO workflows(
-	  workflow_id, session_id, trace_id, priority, created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
-	) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+	  workflow_id, session_id, trace_id, priority, deadline_unix_ms, idempotency_key, created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
+	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
 	ON CONFLICT(workflow_id) DO UPDATE SET
 	  session_id = CASE WHEN excluded.session_id IS NOT NULL AND excluded.session_id <> '' THEN excluded.session_id ELSE workflows.session_id END,
 	  trace_id = CASE WHEN excluded.trace_id IS NOT NULL AND excluded.trace_id <> '' THEN excluded.trace_id ELSE workflows.trace_id END,
 	  priority = CASE WHEN excluded.priority IS NOT NULL THEN excluded.priority ELSE workflows.priority END,
+	  deadline_unix_ms = CASE
+	    WHEN excluded.deadline_unix_ms IS NOT NULL AND excluded.deadline_unix_ms > 0 THEN excluded.deadline_unix_ms
+	    ELSE workflows.deadline_unix_ms
+	  END,
+	  idempotency_key = CASE
+	    WHEN excluded.idempotency_key IS NOT NULL AND excluded.idempotency_key <> '' THEN excluded.idempotency_key
+	    ELSE workflows.idempotency_key
+	  END,
 	  updated_unix_ms = excluded.updated_unix_ms,
 	  status = excluded.status,
 	  cancel_requested = excluded.cancel_requested,
@@ -1555,13 +1665,15 @@ bool AgentDb::upsert_workflow(const WorkflowRow& wf, std::string* out_error) {
 	ok = ok && bind_text_or_null(st, 2, wf.session_id);
 	ok = ok && bind_text(st, 3, wf.trace_id);
 	ok = ok && bind_i32_or_null(st, 4, wf.priority);
-	ok = ok && bind_i64(st, 5, created);
-	ok = ok && bind_i64(st, 6, now);
-	ok = ok && bind_text(st, 7, status);
-	ok = ok && bind_i32(st, 8, wf.cancel_requested ? 1 : 0);
-	ok = ok && bind_text(st, 9, wf.error);
-	ok = ok && bind_text(st, 10, spec);
-	ok = ok && bind_text(st, 11, wf.result_json);
+	ok = ok && bind_i64_or_null(st, 5, wf.deadline_unix_ms);
+	ok = ok && bind_text_or_null(st, 6, wf.idempotency_key);
+	ok = ok && bind_i64(st, 7, created);
+	ok = ok && bind_i64(st, 8, now);
+	ok = ok && bind_text(st, 9, status);
+	ok = ok && bind_i32(st, 10, wf.cancel_requested ? 1 : 0);
+	ok = ok && bind_text(st, 11, wf.error);
+	ok = ok && bind_text(st, 12, spec);
+	ok = ok && bind_text(st, 13, wf.result_json);
 	ok = ok && step_done(st);
   if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
   sqlite3_finalize(st);

@@ -535,12 +535,15 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [ok, workflow_id, trace_id]
+                required: [ok, workflow_id, trace_id, deduped]
                 properties:
                   ok: { type: boolean }
                   workflow_id: { type: string }
                   trace_id: { $ref: "#/components/schemas/TraceID" }
                   session_id: { type: string }
+                  deduped:
+                    type: boolean
+                    description: If true, the workflow already existed for the provided idempotency_key and was not re-created.
 
   /api/v1/workflow:
     get:
@@ -599,6 +602,31 @@ paths:
       responses:
         "200":
           description: Workflow list
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, status, workflows]
+                properties:
+                  ok: { type: boolean }
+                  status: { type: string }
+                  workflows:
+                    type: array
+                    items:
+                      type: object
+                      required: [workflow_id, status, priority, cancel_requested, created_unix_ms, updated_unix_ms]
+                      properties:
+                        workflow_id: { type: string }
+                        status: { type: string }
+                        priority: { type: integer, format: int32 }
+                        deadline_unix_ms: { type: integer, format: int64 }
+                        idempotency_key: { type: string }
+                        trace_id: { $ref: "#/components/schemas/TraceID" }
+                        session_id: { type: string }
+                        cancel_requested: { type: boolean }
+                        error: { type: string }
+                        created_unix_ms: { type: integer, format: int64 }
+                        updated_unix_ms: { type: integer, format: int64 }
 
   /api/v1/workflow/cancel:
     post:
@@ -1545,6 +1573,9 @@ components:
         workflow_id: { type: string }
         trace_id: { $ref: "#/components/schemas/TraceID" }
         session_id: { type: string }
+        idempotency_key:
+          type: string
+          description: Submit dedupe key (id-safe, <=128). Uniqueness is scoped by (session_id or empty string).
         deadline_unix_ms:
           type: integer
           format: int64
@@ -1585,6 +1616,13 @@ components:
               type: integer
               format: int32
               description: Higher workflows/tasks run sooner (scheduler hint).
+            deadline_unix_ms:
+              type: integer
+              format: int64
+              description: Scheduler-level workflow deadline (Unix ms). After this time, queued tasks are cancelled best-effort.
+            idempotency_key:
+              type: string
+              description: Optional submit dedupe key (scoped by session_id).
             trace_id: { $ref: "#/components/schemas/TraceID" }
             session_id: { type: string }
             cancel_requested: { type: boolean }

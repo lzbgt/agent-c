@@ -285,6 +285,49 @@ void handle_workflow_submit_endpoint(
     return;
   }
 
+  std::string idempotency_key =
+    args.isMember("idempotency_key") && args["idempotency_key"].isString() ? trim_copy(args["idempotency_key"].asString()) : "";
+  if (args.isMember("idempotency_key") && !args["idempotency_key"].isString() && !args["idempotency_key"].isNull()) {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"invalid idempotency_key (expected string)\"}";
+    return;
+  }
+  if (!idempotency_key.empty() && !id_is_safe(idempotency_key)) {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"invalid idempotency_key\"}";
+    return;
+  }
+  if (!idempotency_key.empty()) {
+    args["idempotency_key"] = idempotency_key; // canonicalize
+  }
+
+  // Idempotency: if the key is provided, return the existing workflow instead of creating a duplicate.
+  if (!idempotency_key.empty()) {
+    const std::string session_scope = allow_sessions ? session_id : "";
+    AgentDb::WorkflowRow existing;
+    std::string derr;
+    const bool found = db_or_null->get_workflow_by_idempotency_key(session_scope, idempotency_key, &existing, &derr);
+    if (!derr.empty()) {
+      resp->status = 500;
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "failed to query idempotency_key";
+      o["detail"] = derr;
+      resp->body = json_stringify_compact(o);
+      return;
+    }
+    if (found && !existing.workflow_id.empty()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = true;
+      o["workflow_id"] = existing.workflow_id;
+      o["trace_id"] = existing.trace_id;
+      if (allow_sessions && !existing.session_id.empty()) o["session_id"] = existing.session_id;
+      o["deduped"] = true;
+      resp->body = json_stringify_compact(o);
+      return;
+    }
+  }
+
   const Json::Value defaults =
     args.isMember("defaults") && args["defaults"].isObject() ? args["defaults"] : Json::Value(Json::nullValue);
 
@@ -761,6 +804,8 @@ void handle_workflow_submit_endpoint(
   wf.session_id = allow_sessions ? session_id : "";
   wf.trace_id = trace_id;
   wf.priority = workflow_priority;
+  wf.deadline_unix_ms = args.isMember("deadline_unix_ms") ? args["deadline_unix_ms"].asInt64() : 0;
+  wf.idempotency_key = idempotency_key;
   wf.created_unix_ms = now;
   wf.updated_unix_ms = now;
   wf.status = "queued";
@@ -782,6 +827,22 @@ void handle_workflow_submit_endpoint(
 
   std::string db_err;
   if (!db_or_null->create_workflow(wf, rows, &db_err)) {
+    if (!idempotency_key.empty()) {
+      const std::string session_scope = allow_sessions ? session_id : "";
+      AgentDb::WorkflowRow existing;
+      std::string derr;
+      const bool found = db_or_null->get_workflow_by_idempotency_key(session_scope, idempotency_key, &existing, &derr);
+      if (found && !existing.workflow_id.empty() && derr.empty()) {
+        Json::Value o(Json::objectValue);
+        o["ok"] = true;
+        o["workflow_id"] = existing.workflow_id;
+        o["trace_id"] = existing.trace_id;
+        if (allow_sessions && !existing.session_id.empty()) o["session_id"] = existing.session_id;
+        o["deduped"] = true;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+    }
     resp->status = 409;
     Json::Value o(Json::objectValue);
     o["ok"] = false;
@@ -813,6 +874,7 @@ void handle_workflow_submit_endpoint(
   o["workflow_id"] = workflow_id;
   o["trace_id"] = trace_id;
   if (allow_sessions && !session_id.empty()) o["session_id"] = session_id;
+  o["deduped"] = false;
   resp->body = json_stringify_compact(o);
 }
 
@@ -861,6 +923,8 @@ void handle_workflow_get_endpoint(
   w["workflow_id"] = wf.workflow_id;
   w["status"] = wf.status;
   w["priority"] = wf.priority;
+  if (wf.deadline_unix_ms > 0) w["deadline_unix_ms"] = (Json::Int64)wf.deadline_unix_ms;
+  if (!wf.idempotency_key.empty()) w["idempotency_key"] = wf.idempotency_key;
   if (!wf.trace_id.empty()) w["trace_id"] = wf.trace_id;
   if (!wf.session_id.empty()) w["session_id"] = wf.session_id;
   w["cancel_requested"] = wf.cancel_requested;
@@ -968,6 +1032,8 @@ void handle_workflow_list_endpoint(
     row["workflow_id"] = wf.workflow_id;
     row["status"] = wf.status;
     row["priority"] = wf.priority;
+    if (wf.deadline_unix_ms > 0) row["deadline_unix_ms"] = (Json::Int64)wf.deadline_unix_ms;
+    if (!wf.idempotency_key.empty()) row["idempotency_key"] = wf.idempotency_key;
     if (!wf.trace_id.empty()) row["trace_id"] = wf.trace_id;
     if (!wf.session_id.empty()) row["session_id"] = wf.session_id;
     row["cancel_requested"] = wf.cancel_requested;

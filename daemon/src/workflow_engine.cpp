@@ -91,6 +91,7 @@ static std::string workflow_task_kind_best_effort(const AgentDb::WorkflowTaskRow
 }
 
 static int64_t workflow_deadline_unix_ms_best_effort(const AgentDb::WorkflowRow& wf) {
+  if (wf.deadline_unix_ms > 0) return wf.deadline_unix_ms;
   if (wf.spec_json.empty()) return 0;
   if (wf.spec_json.find("deadline_unix_ms") == std::string::npos) return 0;
   Json::Value v;

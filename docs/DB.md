@@ -57,7 +57,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v15)
+## Schema (v17)
 
 All timestamps are Unix milliseconds.
 
@@ -265,6 +265,8 @@ Stores durable workflow metadata. A workflow is a DAG of tasks that can be resum
 - `session_id TEXT` (nullable; workflows can be session-less)
 - `trace_id TEXT` (optional; correlation ID, typically shared across the workflow)
 - `priority INTEGER` (optional; higher workflows run sooner; default 0)
+- `deadline_unix_ms INTEGER` (optional; scheduler-level workflow deadline; 0/NULL disables)
+- `idempotency_key TEXT` (optional; submit dedupe key; unique per `COALESCE(session_id,'')`)
 - `created_unix_ms INTEGER NOT NULL`
 - `updated_unix_ms INTEGER NOT NULL`
 - `status TEXT NOT NULL` (`queued|running|done|error|cancelled`)
@@ -278,6 +280,8 @@ Indexes:
 - `CREATE INDEX workflows_by_status_prio ON workflows(status, priority DESC, updated_unix_ms DESC)`
 - `CREATE INDEX workflows_by_trace ON workflows(trace_id)`
 - `CREATE INDEX workflows_by_session ON workflows(session_id, updated_unix_ms DESC)`
+- `CREATE INDEX workflows_by_deadline ON workflows(deadline_unix_ms)`
+- `CREATE UNIQUE INDEX workflows_by_idempotency_scope_key ON workflows(COALESCE(session_id,''), idempotency_key) WHERE idempotency_key IS NOT NULL AND idempotency_key <> ''`
 
 ### `workflow_tasks`
 

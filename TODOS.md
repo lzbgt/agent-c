@@ -1,6 +1,6 @@
 # Roadmap / TODOs (highest leverage)
 
-Date: 2026-02-05
+Date: 2026-02-04
 
 This roadmap is biased toward “power unleashed” coming from the **agentic framework itself**:
 
@@ -114,6 +114,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - Workflow deadline (scheduler-level):
   - Submit `deadline_unix_ms` to cancel queued tasks after a wall-clock cutoff (best-effort; running tasks are not forcibly interrupted).
   - Proof: `ctest` includes `agentd_workflow_deadline_smoke`.
+- Workflow submit idempotency + DB-backed policy columns:
+  - Submit `idempotency_key` to dedupe workflow submits (safe retries / at-least-once upstream delivery).
+  - Workflows now persist `deadline_unix_ms` and `idempotency_key` as dedicated DB columns (schema v17), so the scheduler does not depend on parsing `spec_json`.
+  - Proof: `ctest` includes `agentd_workflow_idempotency_smoke` and `agent_db_tests` asserts the new columns exist.
 
 ## P0 (next: maximize autonomous continuity + correctness)
 

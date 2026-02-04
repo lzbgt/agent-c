@@ -236,6 +236,8 @@ class AgentDb {
     std::string session_id; // optional
     std::string trace_id;   // optional
     int priority = kIntUnset; // higher workflows run sooner; unset => do not modify
+    int64_t deadline_unix_ms = 0; // optional scheduler-level deadline (0 disables)
+    std::string idempotency_key;  // optional submit dedupe key (scoped by session_id)
     int64_t created_unix_ms = 0;
     int64_t updated_unix_ms = 0;
     std::string status; // queued|running|done|error|cancelled
@@ -277,6 +279,12 @@ class AgentDb {
   // Inserts a workflow and its tasks in a single transaction.
   bool create_workflow(const WorkflowRow& wf, const std::vector<WorkflowTaskRow>& tasks, std::string* out_error);
   bool get_workflow(const std::string& workflow_id, WorkflowRow* out_row, std::string* out_error);
+  bool get_workflow_by_idempotency_key(
+    const std::string& session_id_or_empty,
+    const std::string& idempotency_key,
+    WorkflowRow* out_row,
+    std::string* out_error
+  );
   bool list_workflows_by_status(
     const std::string& status,
     size_t max_rows,

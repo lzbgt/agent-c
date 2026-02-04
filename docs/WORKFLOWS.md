@@ -65,6 +65,24 @@ Env equivalents:
   - This implies **at-least-once** execution semantics for inflight tasks.
   - If your tools or external side-effects are not idempotent, design tasks with explicit idempotency keys.
 
+### Workflow submit idempotency (v1.3)
+
+Workflow submission supports an optional **idempotency key** to make client retries safe:
+
+- `idempotency_key` (submit request top-level; `id`-safe string, max 128 chars)
+
+Semantics:
+- If `idempotency_key` is provided and a workflow already exists with the same:
+  - `idempotency_key`, and
+  - `COALESCE(session_id,'')` scope (session-less workflows share one global scope),
+  then `POST /api/v1/workflow/submit` returns the existing workflow and sets `deduped=true`.
+- The second submit does **not** overwrite the existing workflow’s spec; the first accepted submit “wins”.
+
+This is primarily for robustness against:
+- client-side retry loops (HTTP timeouts, disconnections)
+- load balancers that retry POSTs
+- “at-least-once” delivery semantics from upstream systems
+
 ### Task dependency scheduling (DAG)
 
 Each task may declare:
