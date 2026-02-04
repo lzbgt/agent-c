@@ -717,12 +717,76 @@ static std::string expand_prompt_templates(
   return out;
 }
 
+static bool json_pointer_get(const Json::Value& root, const std::string& ptr, const Json::Value** out);
+
 static void expand_templates_in_json_value(
   Json::Value* v,
   const std::unordered_map<std::string, std::string>& assistant_text_by_task,
-  const std::unordered_map<std::string, Json::Value>& result_json_by_task
+  const std::unordered_map<std::string, Json::Value>& result_json_by_task,
+  std::vector<std::string>* out_errors
 ) {
   if (!v) return;
+  if (out_errors) out_errors->reserve(out_errors->size() + 4);
+
+  // JSON-native embedding:
+  // If a value is exactly {"$ref":"task.<id>.(assistant_text|json:<ptr>)"}, replace the entire value with the referenced
+  // value (as JSON). This is the safer dataflow primitive for wiring structured args/payloads.
+  if (v->isObject()) {
+    const auto keys = v->getMemberNames();
+    if (keys.size() == 1 && keys[0] == "$ref" && (*v)["$ref"].isString()) {
+      const std::string ref = trim_copy((*v)["$ref"].asString());
+      const std::string prefix = "task.";
+      if (ref.rfind(prefix, 0) != 0) {
+        if (out_errors) out_errors->push_back("invalid $ref (expected task.<id>...): " + ref);
+        *v = Json::Value(Json::nullValue);
+        return;
+      }
+      const std::string rest = ref.substr(prefix.size());
+      const std::string suffix_text = ".assistant_text";
+      const std::string dot_json = ".json:";
+
+      if (rest.size() > suffix_text.size() && rest.rfind(suffix_text) == (rest.size() - suffix_text.size())) {
+        const std::string task_id = rest.substr(0, rest.size() - suffix_text.size());
+        auto it = assistant_text_by_task.find(task_id);
+        if (it == assistant_text_by_task.end()) {
+          if (out_errors) out_errors->push_back("unresolved $ref assistant_text: " + ref);
+          *v = Json::Value(Json::nullValue);
+          return;
+        }
+        *v = it->second;
+        return;
+      }
+
+      const size_t jpos = rest.find(dot_json);
+      if (jpos != std::string::npos) {
+        const std::string task_id = rest.substr(0, jpos);
+        const std::string ptr = rest.substr(jpos + dot_json.size());
+        auto it = result_json_by_task.find(task_id);
+        if (it == result_json_by_task.end()) {
+          if (out_errors) out_errors->push_back("unresolved $ref json (task missing): " + ref);
+          *v = Json::Value(Json::nullValue);
+          return;
+        }
+        const Json::Value& root = it->second;
+        if (ptr.empty()) {
+          *v = root;
+          return;
+        }
+        const Json::Value* got = nullptr;
+        if (!json_pointer_get(root, ptr, &got) || !got) {
+          if (out_errors) out_errors->push_back("unresolved $ref json pointer: " + ref);
+          *v = Json::Value(Json::nullValue);
+          return;
+        }
+        *v = *got;
+        return;
+      }
+
+      if (out_errors) out_errors->push_back("invalid $ref shape (expected .assistant_text or .json:): " + ref);
+      *v = Json::Value(Json::nullValue);
+      return;
+    }
+  }
   if (v->isString()) {
     const std::string s = v->asString();
     if (s.find("${task.") != std::string::npos) {
@@ -732,13 +796,13 @@ static void expand_templates_in_json_value(
   }
   if (v->isArray()) {
     for (Json::ArrayIndex i = 0; i < v->size(); i++) {
-      expand_templates_in_json_value(&((*v)[i]), assistant_text_by_task, result_json_by_task);
+      expand_templates_in_json_value(&((*v)[i]), assistant_text_by_task, result_json_by_task, out_errors);
     }
     return;
   }
   if (v->isObject()) {
     for (const auto& k : v->getMemberNames()) {
-      expand_templates_in_json_value(&((*v)[k]), assistant_text_by_task, result_json_by_task);
+      expand_templates_in_json_value(&((*v)[k]), assistant_text_by_task, result_json_by_task, out_errors);
     }
     return;
   }
@@ -1289,17 +1353,29 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   std::string request_body = task.request_json;
   Json::Value rr;
   std::string perr;
+  Json::Value out;
   if (json_parse_any_value(task.request_json, &rr, &perr) && rr.isObject()) {
-    expand_templates_in_json_value(&rr, assistant_by_task, result_json_by_task);
+    std::vector<std::string> tmpl_errors;
+    expand_templates_in_json_value(&rr, assistant_by_task, result_json_by_task, &tmpl_errors);
+    if (!tmpl_errors.empty()) {
+      out = Json::Value(Json::objectValue);
+      out["ok"] = false;
+      out["assistant_text"] = "";
+      out["error"] = "template expansion failed";
+      Json::Value arr(Json::arrayValue);
+      for (const auto& e : tmpl_errors) arr.append(e);
+      out["template_errors"] = arr;
+    }
     request_body = json_stringify_compact(rr);
   }
 
   const DaemonConfig cfg = cfg_snapshot_();
   const OpenAIClientConfig ocfg = ocfg_from_cfg_(cfg);
-  Json::Value out;
   std::string kind;
   if (rr.isObject()) kind = json_get_string(rr, "kind");
-  if (kind == "avm_capsule") {
+  if (!out.isNull()) {
+    // Template expansion failed: do not execute provider calls. `out` is already populated as an error.
+  } else if (kind == "avm_capsule") {
     const Json::Value cap = rr.isMember("capsule") && rr["capsule"].isObject() ? rr["capsule"] : Json::Value(Json::nullValue);
     Json::Value avm_out;
     std::string aerr;

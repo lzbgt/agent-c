@@ -112,6 +112,21 @@ As of v2, template expansion is applied recursively to the task’s full request
 - feed prior task outputs into `edge_invoke.args` for MCU actuation
 - wire prior outputs into non-prompt request fields (e.g., structured messages payloads)
 
+### JSON-native embedding (`$ref`)
+
+String templating is convenient but always produces strings. For structured dataflow, tasks may embed JSON from prior task
+results using a special object form:
+
+```json
+{ "$ref": "task.A.json:/some/pointer" }
+```
+
+Supported references:
+- `task.<id>.assistant_text`
+- `task.<id>.json:<json_pointer>`
+
+If the reference cannot be resolved, the task fails deterministically with `error="template expansion failed"`.
+
 ## HTTP API
 
 All endpoints require daemon auth when the daemon is started with `--auth-token`.
