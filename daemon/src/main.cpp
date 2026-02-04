@@ -1061,6 +1061,22 @@ int main(int argc, char** argv) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_avm_job_scan_endpoint(cur, cors_cfg, req, resp);
   });
+  server.handle("POST", "/api/v1/avm/policy_scan", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_avm_policy_scan_endpoint(cur, cors_cfg, req, resp);
+  });
+  server.handle("POST", "/api/v1/avm/inspect", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_avm_inspect_endpoint(cur, cors_cfg, req, resp);
+  });
+  server.handle("POST", "/api/v1/avm/verify_strict", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_avm_verify_strict_endpoint(cur, cors_cfg, req, resp);
+  });
+  server.handle("POST", "/api/v1/avm/trace_hash", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_avm_trace_hash_endpoint(cur, cors_cfg, req, resp);
+  });
 
   server.handle("POST", "/api/v1/workflow/submit", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();

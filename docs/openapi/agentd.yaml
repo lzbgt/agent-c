@@ -123,6 +123,143 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/avm/policy_scan:
+    post:
+      tags: [avm]
+      summary: Scan an AVM capability policy without executing bytecode
+      description: |
+        Runs `AGENTD_AVM_BIN --print-policy-json <tmp.obc>` and returns the parsed policy JSON.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [obc_base64]
+              properties:
+                obc_base64:
+                  type: string
+                  description: Base64-encoded `.obc` bytes
+      responses:
+        "200":
+          description: Policy JSON plus execution metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, policy, exit_code, timed_out, truncated, stdout]
+                properties:
+                  ok: { type: boolean }
+                  policy:
+                    type: object
+                    additionalProperties: true
+                  exit_code: { type: integer, format: int32 }
+                  timed_out: { type: boolean }
+                  truncated: { type: boolean }
+                  stdout: { type: string }
+
+  /api/v1/avm/inspect:
+    post:
+      tags: [avm]
+      summary: Inspect an OBC capsule without executing bytecode
+      description: |
+        Runs `AGENTD_AVM_BIN --inspect-json <tmp.obc>` and returns the parsed inspect JSON.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [obc_base64]
+              properties:
+                obc_base64:
+                  type: string
+                  description: Base64-encoded `.obc` bytes
+      responses:
+        "200":
+          description: Inspect JSON plus execution metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, inspect, exit_code, timed_out, truncated, stdout]
+                properties:
+                  ok: { type: boolean }
+                  inspect:
+                    type: object
+                    additionalProperties: true
+                  exit_code: { type: integer, format: int32 }
+                  timed_out: { type: boolean }
+                  truncated: { type: boolean }
+                  stdout: { type: string }
+
+  /api/v1/avm/verify_strict:
+    post:
+      tags: [avm]
+      summary: Verify OBC strict mode (no execution)
+      description: |
+        Runs `AGENTD_AVM_BIN --verify-strict <tmp.obc>` (verifier only, no bytecode execution).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [obc_base64]
+              properties:
+                obc_base64:
+                  type: string
+                  description: Base64-encoded `.obc` bytes
+      responses:
+        "200":
+          description: Verified OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, exit_code, timed_out, truncated, stdout]
+                properties:
+                  ok: { type: boolean }
+                  exit_code: { type: integer, format: int32 }
+                  timed_out: { type: boolean }
+                  truncated: { type: boolean }
+                  stdout: { type: string }
+        "422":
+          description: Strict verification failed
+
+  /api/v1/avm/trace_hash:
+    post:
+      tags: [avm]
+      summary: Compute AVM TRACE_HASH for an OBC capsule
+      description: |
+        Runs `AGENTD_AVM_BIN --print-trace-hash <tmp.obc>` and extracts the `TRACE_HASH` token from output.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [obc_base64]
+              properties:
+                obc_base64:
+                  type: string
+                  description: Base64-encoded `.obc` bytes
+      responses:
+        "200":
+          description: TRACE_HASH plus execution metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, trace_hash, exit_code, timed_out, truncated, stdout]
+                properties:
+                  ok: { type: boolean }
+                  trace_hash: { type: string }
+                  exit_code: { type: integer, format: int32 }
+                  timed_out: { type: boolean }
+                  truncated: { type: boolean }
+                  stdout: { type: string }
+
   /api/v1/run:
     post:
       tags: [run]
