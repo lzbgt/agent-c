@@ -4,6 +4,7 @@
 #include "daemon_auth.h"
 #include "daemon_config.h"
 #include "config_endpoint.h"
+#include "avm_endpoints.h"
 #include "file_endpoint.h"
 #include "sandbox_policy.h"
 #include "string_util.h"
@@ -1054,6 +1055,11 @@ int main(int argc, char** argv) {
     const DaemonConfig cur = cfg_store.snapshot();
     const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
     handle_orchestrate_endpoint(cur, ocfg, cors_cfg, db_or_null, tool_ext_or_null, sessions_root_dir, req, resp);
+  });
+
+  server.handle("POST", "/api/v1/avm/job_scan", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_avm_job_scan_endpoint(cur, cors_cfg, req, resp);
   });
 
   server.handle("POST", "/api/v1/workflow/submit", [&](const HttpRequest& req, HttpResponse* resp) {

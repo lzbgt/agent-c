@@ -3,6 +3,7 @@
 #include "http_server.h"
 
 #include "agent_db.h"
+#include "avm_endpoints.h"
 #include "config_endpoint.h"
 #include "config_store.h"
 #include "cors.h"
@@ -439,6 +440,11 @@ struct AgentdService::Impl {
     server.handle("GET", "/api/v1/tools", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_tools_endpoint(cur, cors_cfg, cur.sessions_root_dir, tool_ext_or_null(), req, resp);
+    });
+
+    server.handle("POST", "/api/v1/avm/job_scan", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_avm_job_scan_endpoint(cur, cors_cfg, req, resp);
     });
 
     server.handle("GET", "/api/v1/openrouter/models", [this](const HttpRequest& req, HttpResponse* resp) {

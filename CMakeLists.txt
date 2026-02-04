@@ -135,6 +135,7 @@ if(AGENT_BUILD_HOST)
     daemon/src/agentd_api.cpp
     daemon/src/client_profiles.cpp
     daemon/src/config_endpoint.cpp
+    daemon/src/avm_endpoints.cpp
     daemon/src/cors.cpp
     daemon/src/db_query_endpoints.cpp
     daemon/src/daemon_auth.cpp
@@ -276,6 +277,7 @@ if(AGENT_BUILD_HOST)
     set_tests_properties(agentd_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
     add_test(NAME agentd_tools_list_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_tools_list_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_avm_job_scan_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_avm_job_scan_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_auth_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_auth_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_config_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_config_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_sandbox_tighten_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_sandbox_tighten_smoke.sh $<TARGET_FILE:agentd>)
