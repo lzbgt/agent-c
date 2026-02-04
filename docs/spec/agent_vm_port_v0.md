@@ -1,6 +1,6 @@
 # Agent VM Port v0 (Draft Integration Contract)
 
-Date: 2026-02-04
+Date: 2026-02-05
 
 Status: Draft (integration contract proposal)
 
@@ -10,6 +10,11 @@ Purpose:
 
 This is designed to maximize future leverage even if the VM project is not prioritized today:
 we can build the *surface* now and swap in implementations later.
+
+Update (shipped path):
+- `agentd` workflows now support deterministic VM execution as a task kind: `kind: "avm_capsule"`.
+  This is the first concrete “VM port” surface in production code (out-of-process AVM runner).
+  See `docs/spec/avm_capsule_run_v0.md` and the smoke test `agentd_workflow_avm_capsule_smoke`.
 
 ## 1) Design constraints (must hold)
 
@@ -159,4 +164,3 @@ Concrete alignment with `oren-lang` nested universes:
   - `allowed_domains`, `gas_limit`, `deadline_ns`, `mem_bytes`, `io_bytes`, `log_bytes`
   - virtual backend toggles and fixtures as bytes (`vfs_fixtures`, `proc_fixtures`, `net_fixtures`)
   - returns `result_hash`, `state_hash`, and `record_log` bytes
-

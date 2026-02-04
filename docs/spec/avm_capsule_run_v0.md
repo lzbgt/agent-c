@@ -1,6 +1,6 @@
 # AVM Capsule Run Endpoint (v0) — agentd ↔ Oren AVM Integration
 
-Date: 2026-02-04
+Date: 2026-02-05
 
 Status: Draft (rolling)
 
@@ -105,3 +105,32 @@ In this workspace, `oren-lang` typically lives at `../oren-lang`.
 - Enable execution:
   - `export AGENTD_AVM_EXEC=1`
 
+### Optional: build a capsule task from `.oren` source (one-liner)
+
+If you have the `oren-lang` repo available, you can compile a `.oren` source file into `.obc` and
+emit a ready-to-paste workflow task JSON object:
+
+```bash
+tools/oren_capsule_task.sh --src /abs/path/to/prog.oren --task-id AVM
+```
+
+This produces an `{"task_id":"AVM","kind":"avm_capsule","capsule":{...}}` object suitable for
+`POST /api/v1/workflow/submit`.
+
+## 7) Workflow integration (shipped)
+
+Durable workflows support deterministic capsule tasks (no LLM required):
+
+- Task kind: `avm_capsule`
+- Task payload: `capsule: { obc_base64, timeout_ms, gas, mem_bytes, ... }`
+- Execution: agentd runs the configured AVM binary out-of-process under the same operator gates as `/api/v1/avm/capsule_run`.
+
+Minimal example:
+
+```bash
+curl -fsS -H "Content-Type: application/json" -d '{
+  "tasks": [
+    { "task_id": "AVM", "kind": "avm_capsule", "capsule": { "obc_base64": "...", "timeout_ms": 1000 } }
+  ]
+}' http://127.0.0.1:8080/api/v1/workflow/submit
+```

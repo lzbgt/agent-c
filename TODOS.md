@@ -29,6 +29,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
     - `POST /api/v1/avm/trace_hash` (`avm --print-trace-hash`)
     - `POST /api/v1/avm/capsule_run` (exec gated; `avm --capsule --print-run-json ...`)
   - Bring-up helper: `tools/oren_avm_bringup.sh` builds/locates `../oren-lang/avm` and prints its absolute path for `AGENTD_AVM_BIN`.
+  - Capsule task helper: `tools/oren_capsule_task.sh` compiles `.oren` → `.obc` and emits a ready `kind:"avm_capsule"` task JSON.
   - Proof: `ctest` includes `agentd_avm_job_scan_smoke` (stubbed AVM runner for determinism/CI).
 - Durable workflow engine v1 (DAG + retries + resumable after restart + deterministic expectations).
   - API:
