@@ -1,6 +1,6 @@
 # Durable Workflows (agentd)
 
-Date: 2026-02-03
+Date: 2026-02-04
 
 `agentd` includes a durable workflow scheduler: a workflow is a persisted DAG of tasks (typically normal `/api/v1/run` requests)
 that can continue running across daemon restarts.
@@ -101,6 +101,21 @@ Notes:
 
 `GET /api/v1/workflow?workflow_id=...&include_tasks=1&include_results=0|1`
 
+### Workflow events (durable)
+
+`GET /api/v1/workflow/events?workflow_id=...&after_event_id=0&limit=256`
+
+This returns the persisted workflow event log (DB-backed), which is also the source for the SSE stream.
+
+### Workflow streaming (SSE)
+
+`GET /api/v1/workflow/stream?workflow_id=...&cursor=0`
+
+Streams:
+
+- `event: workflow_event` (each durable event record)
+- `event: workflow_done` (terminal summary; stream closes)
+
 ### List workflows
 
 `GET /api/v1/workflows?status=running&limit=50`
@@ -121,7 +136,8 @@ Cancellation semantics:
 
 ## Storage (SQLite)
 
-See `docs/DB.md` (schema v10) for:
+See `docs/DB.md` for:
 
 - `workflows`
 - `workflow_tasks`
+- `workflow_events`

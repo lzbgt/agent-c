@@ -34,8 +34,8 @@ int main(int argc, char** argv) {
 
   // Guardrail: DB schema docs should match the current daemon schema version.
   // If the schema changes, update docs/DB.md and this test in the same PR.
-  if (!contains(s, "## Schema (v10)")) {
-    std::fprintf(stderr, "docs drift: expected '## Schema (v10)' in %s\n", db_doc.c_str());
+  if (!contains(s, "## Schema (v11)")) {
+    std::fprintf(stderr, "docs drift: expected '## Schema (v11)' in %s\n", db_doc.c_str());
     return 1;
   }
   if (!contains(s, "### `jobs`")) {

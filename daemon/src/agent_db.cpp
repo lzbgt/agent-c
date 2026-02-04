@@ -154,7 +154,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 10;
+  const int kSchemaVersion = 11;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -429,6 +429,17 @@ CREATE TABLE IF NOT EXISTS workflow_tasks(
 );
 CREATE INDEX IF NOT EXISTS workflow_tasks_by_workflow ON workflow_tasks(workflow_id, updated_unix_ms DESC);
 CREATE INDEX IF NOT EXISTS workflow_tasks_by_status ON workflow_tasks(status, ready_unix_ms, updated_unix_ms DESC);
+
+CREATE TABLE IF NOT EXISTS workflow_events(
+  event_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workflow_id TEXT NOT NULL,
+  task_id TEXT,
+  ts_unix_ms INTEGER NOT NULL,
+  type TEXT NOT NULL,
+  data_json TEXT NOT NULL,
+  FOREIGN KEY(workflow_id) REFERENCES workflows(workflow_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS workflow_events_by_workflow ON workflow_events(workflow_id, event_id);
 )SQL";
     if (!exec_locked(schema_v9, out_error)) return false;
     cur_ver = 9;
@@ -2430,6 +2441,142 @@ bool AgentDb::insert_client_event(const ClientEventRow& row, std::string* out_er
     if (out_error) *out_error = sqlite_err(db_);
     sqlite3_finalize(st);
     return false;
+  }
+
+  sqlite3_finalize(st);
+  return true;
+#endif
+}
+
+bool AgentDb::insert_workflow_event(const WorkflowEventRow& row, int64_t* out_event_id, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (out_event_id) *out_event_id = 0;
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)row;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (row.workflow_id.empty()) {
+    if (out_error) *out_error = "insert_workflow_event: workflow_id is empty";
+    return false;
+  }
+  if (row.type.empty()) {
+    if (out_error) *out_error = "insert_workflow_event: type is empty";
+    return false;
+  }
+  if (row.data_json.empty()) {
+    if (out_error) *out_error = "insert_workflow_event: data_json is empty";
+    return false;
+  }
+
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+
+  const char* sql = "INSERT INTO workflow_events(workflow_id, task_id, ts_unix_ms, type, data_json) VALUES(?,?,?,?,?);";
+  sqlite3_stmt* st = nullptr;
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    if (st) sqlite3_finalize(st);
+    return false;
+  }
+
+  const int64_t ts = row.ts_unix_ms > 0 ? row.ts_unix_ms : unix_ms_now();
+  bool ok = true;
+  ok = ok && bind_text(st, 1, row.workflow_id);
+  ok = ok && bind_text_or_null(st, 2, row.task_id);
+  ok = ok && bind_i64(st, 3, ts);
+  ok = ok && bind_text(st, 4, row.type);
+  ok = ok && bind_text(st, 5, row.data_json);
+
+  if (!ok) {
+    if (out_error) *out_error = sqlite_err(db_);
+    sqlite3_finalize(st);
+    return false;
+  }
+
+  if (!step_done(st)) {
+    if (out_error) *out_error = sqlite_err(db_);
+    sqlite3_finalize(st);
+    return false;
+  }
+
+  const int64_t eid = (int64_t)sqlite3_last_insert_rowid(db_);
+  sqlite3_finalize(st);
+  if (out_event_id) *out_event_id = eid;
+  return true;
+#endif
+}
+
+bool AgentDb::list_workflow_events(
+  const std::string& workflow_id,
+  int64_t after_event_id,
+  size_t max_rows,
+  std::vector<WorkflowEventRow>* out_rows_asc,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_rows_asc) out_rows_asc->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)workflow_id;
+  (void)after_event_id;
+  (void)max_rows;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (workflow_id.empty()) {
+    if (out_error) *out_error = "list_workflow_events: workflow_id is empty";
+    return false;
+  }
+  if (!out_rows_asc) return false;
+
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+
+  const size_t lim = std::min<size_t>(max_rows == 0 ? 256 : max_rows, 1000);
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT event_id, workflow_id, task_id, ts_unix_ms, type, data_json
+FROM workflow_events
+WHERE workflow_id=? AND event_id>?
+ORDER BY event_id ASC
+LIMIT ?;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    if (st) sqlite3_finalize(st);
+    return false;
+  }
+
+  bool ok = true;
+  ok = ok && bind_text(st, 1, workflow_id);
+  ok = ok && bind_i64(st, 2, after_event_id < 0 ? 0 : after_event_id);
+  ok = ok && bind_i64(st, 3, (int64_t)lim);
+  if (!ok) {
+    if (out_error) *out_error = sqlite_err(db_);
+    sqlite3_finalize(st);
+    return false;
+  }
+
+  while (step_row(st)) {
+    WorkflowEventRow r;
+    r.event_id = sqlite3_column_int64(st, 0);
+    const unsigned char* wid = sqlite3_column_text(st, 1);
+    const unsigned char* tid = sqlite3_column_text(st, 2);
+    r.workflow_id = wid ? (const char*)wid : "";
+    r.task_id = tid ? (const char*)tid : "";
+    r.ts_unix_ms = sqlite3_column_int64(st, 3);
+    const unsigned char* type = sqlite3_column_text(st, 4);
+    const unsigned char* dj = sqlite3_column_text(st, 5);
+    r.type = type ? (const char*)type : "";
+    r.data_json = dj ? (const char*)dj : "";
+    out_rows_asc->push_back(std::move(r));
+    if (out_rows_asc->size() >= lim) break;
   }
 
   sqlite3_finalize(st);

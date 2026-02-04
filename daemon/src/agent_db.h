@@ -256,6 +256,15 @@ class AgentDb {
     std::string error;
   };
 
+  struct WorkflowEventRow {
+    int64_t event_id = 0;
+    std::string workflow_id;
+    std::string task_id; // optional
+    int64_t ts_unix_ms = 0;
+    std::string type;      // workflow_status|task_status|...
+    std::string data_json; // JSON object string (required; stable fallback)
+  };
+
   // Inserts a workflow and its tasks in a single transaction.
   bool create_workflow(const WorkflowRow& wf, const std::vector<WorkflowTaskRow>& tasks, std::string* out_error);
   bool get_workflow(const std::string& workflow_id, WorkflowRow* out_row, std::string* out_error);
@@ -282,6 +291,16 @@ class AgentDb {
 
   // Recovery on daemon startup: move running workflows/tasks back to queued so they can resume.
   bool recover_inflight_workflows(int64_t now_unix_ms, std::string* out_error);
+
+  // Workflow event log (durable; used for workflow SSE streaming and audit/debug).
+  bool insert_workflow_event(const WorkflowEventRow& row, int64_t* out_event_id, std::string* out_error);
+  bool list_workflow_events(
+    const std::string& workflow_id,
+    int64_t after_event_id,
+    size_t max_rows,
+    std::vector<WorkflowEventRow>* out_rows_asc,
+    std::string* out_error
+  );
 
  private:
   bool ensure_schema_locked(std::string* out_error);

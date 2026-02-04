@@ -72,6 +72,13 @@ struct DaemonConfig {
   int64_t job_ttl_ms = 30 * 60 * 1000; // 30 minutes
   size_t max_jobs = 256;
 
+  // Scheduler knobs (high leverage for autonomous efficiency).
+  // These control the background job/workflow engines that claim work from SQLite and execute it.
+  int job_engine_max_concurrency = 2;
+  int job_engine_poll_ms = 200;
+  int workflow_engine_max_concurrency = 4;
+  int workflow_engine_poll_ms = 200;
+
   // Memory consolidation (rolling, deterministic by default).
   //
   // When enabled, the daemon periodically scans recent daily memory files for explicit @mem markers and

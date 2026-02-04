@@ -213,8 +213,12 @@ int main() {
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflows') WHERE name='workflow_id';");
   const int64_t workflow_task_id_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflow_tasks') WHERE name='task_id';");
+  const int64_t workflow_event_id_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflow_events') WHERE name='event_id';");
+  const int64_t workflow_event_type_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflow_events') WHERE name='type';");
   sqlite3_close(raw2);
-  assert(ver == 10);
+  assert(ver == 11);
   assert(arts2 == 0);
   assert(stop_reason_cols == 1);
   assert(ua_cols == 1);
@@ -226,6 +230,8 @@ int main() {
   assert(job_req_cols == 1);
   assert(workflow_id_cols == 1);
   assert(workflow_task_id_cols == 1);
+  assert(workflow_event_id_cols == 1);
+  assert(workflow_event_type_cols == 1);
 
   db.close();
   std::filesystem::remove(tmp, ec);

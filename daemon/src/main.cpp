@@ -20,6 +20,7 @@
 #include "trace_endpoints.h"
 #include "workflow_endpoints.h"
 #include "workflow_engine.h"
+#include "workflow_stream_endpoint.h"
 #include "db_query_endpoints.h"
 #include "secrets_file.h"
 #include "config_store.h"
@@ -264,6 +265,54 @@ int main(int argc, char** argv) {
         std::cerr << "Invalid --max-jobs\n";
         return 2;
       }
+    } else if (a == "--job-concurrency") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --job-concurrency\n";
+        return 2;
+      }
+      try {
+        cfg.job_engine_max_concurrency = std::max(1, std::stoi(v));
+      } catch (...) {
+        std::cerr << "Invalid --job-concurrency\n";
+        return 2;
+      }
+    } else if (a == "--job-poll-ms") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --job-poll-ms\n";
+        return 2;
+      }
+      try {
+        cfg.job_engine_poll_ms = std::max(1, std::stoi(v));
+      } catch (...) {
+        std::cerr << "Invalid --job-poll-ms\n";
+        return 2;
+      }
+    } else if (a == "--workflow-concurrency") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --workflow-concurrency\n";
+        return 2;
+      }
+      try {
+        cfg.workflow_engine_max_concurrency = std::max(1, std::stoi(v));
+      } catch (...) {
+        std::cerr << "Invalid --workflow-concurrency\n";
+        return 2;
+      }
+    } else if (a == "--workflow-poll-ms") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --workflow-poll-ms\n";
+        return 2;
+      }
+      try {
+        cfg.workflow_engine_poll_ms = std::max(1, std::stoi(v));
+      } catch (...) {
+        std::cerr << "Invalid --workflow-poll-ms\n";
+        return 2;
+      }
     } else if (a == "--memory-consolidate-interval-ms") {
       std::string v;
       if (!take(&v)) {
@@ -453,6 +502,10 @@ int main(int argc, char** argv) {
         << "  --timeout-ms <n>     Provider HTTP timeout in ms (default: 60000)\n"
         << "  --job-ttl-ms <n>     GC finished jobs older than n ms (default: 1800000)\n"
         << "  --max-jobs <n>       Keep at most n jobs in memory (default: 256)\n"
+        << "  --job-concurrency <n>       Max concurrent async jobs (default: 2)\n"
+        << "  --job-poll-ms <n>           Job engine idle poll sleep ms (default: 200)\n"
+        << "  --workflow-concurrency <n>  Max concurrent workflow tasks (default: 4)\n"
+        << "  --workflow-poll-ms <n>      Workflow engine idle poll sleep ms (default: 200)\n"
         << "  --memory-consolidate-interval-ms <n>   Run memory consolidation every n ms (default: 0=disabled)\n"
         << "  --memory-consolidate-daily-days <n>    Scan last n daily memory files for @mem markers (default: 14)\n"
         << "  --memory-consolidate-keep-checkpoints <n>  Retain at most n structured checkpoints (default: 100)\n"
@@ -588,6 +641,18 @@ int main(int argc, char** argv) {
     if (const char* p = getenv_s("AGENTD_DB_PATH")) {
       cfg.db_path = p;
     }
+  }
+  if (const char* ms = getenv_s("AGENTD_JOB_CONCURRENCY")) {
+    try { cfg.job_engine_max_concurrency = std::max(1, std::stoi(ms)); } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_JOB_POLL_MS")) {
+    try { cfg.job_engine_poll_ms = std::max(1, std::stoi(ms)); } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_WORKFLOW_CONCURRENCY")) {
+    try { cfg.workflow_engine_max_concurrency = std::max(1, std::stoi(ms)); } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_WORKFLOW_POLL_MS")) {
+    try { cfg.workflow_engine_poll_ms = std::max(1, std::stoi(ms)); } catch (...) {}
   }
   if (const char* ms = getenv_s("AGENTD_MEMORY_CONSOLIDATE_INTERVAL_MS")) {
     try {
@@ -752,7 +817,11 @@ int main(int argc, char** argv) {
     ocfg_from_cfg,
     tool_ext_or_null,
     cfg.sessions_root_dir,
-    JobEngine::Options{}
+    JobEngine::Options{
+      /*max_concurrency=*/std::max(1, cfg.job_engine_max_concurrency),
+      /*poll_ms=*/std::max(1, cfg.job_engine_poll_ms),
+      /*max_scan_jobs=*/JobEngine::Options{}.max_scan_jobs,
+    }
   );
   {
     std::string jerr;
@@ -768,7 +837,11 @@ int main(int argc, char** argv) {
     ocfg_from_cfg,
     tool_ext_or_null,
     cfg.sessions_root_dir,
-    WorkflowEngine::Options{}
+    WorkflowEngine::Options{
+      /*max_concurrency=*/std::max(1, cfg.workflow_engine_max_concurrency),
+      /*poll_ms=*/std::max(1, cfg.workflow_engine_poll_ms),
+      /*max_scan_workflows=*/WorkflowEngine::Options{}.max_scan_workflows,
+    }
   );
   {
     std::string werr;
@@ -965,6 +1038,17 @@ int main(int argc, char** argv) {
   server.handle("POST", "/api/v1/workflow/cancel", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_workflow_cancel_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+
+  server.handle("GET", "/api/v1/workflow/events", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_workflow_events_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+
+  // Server-Sent Events stream for durable workflow progress. Streams `workflow_event` records and ends with `workflow_done`.
+  server.handle_stream("GET", "/api/v1/workflow/stream", [&](const HttpRequest& req, int client_fd) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_workflow_stream_endpoint(cur.auth_token, cors_cfg, db_or_null, req, client_fd);
   });
 
   server.handle("GET", "/api/v1/trace", [&](const HttpRequest& req, HttpResponse* resp) {

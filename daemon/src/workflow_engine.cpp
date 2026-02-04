@@ -62,6 +62,25 @@ static std::string json_stringify_compact_local(const Json::Value& v) {
   return Json::writeString(wb, v);
 }
 
+static void insert_workflow_event_best_effort(
+  AgentDb* db,
+  const std::string& workflow_id,
+  const std::string& task_id,
+  const std::string& type,
+  int64_t ts_unix_ms,
+  const Json::Value& data
+) {
+  if (!db) return;
+  if (workflow_id.empty() || type.empty()) return;
+  AgentDb::WorkflowEventRow ev;
+  ev.workflow_id = workflow_id;
+  ev.task_id = task_id;
+  ev.ts_unix_ms = ts_unix_ms > 0 ? ts_unix_ms : unix_ms_now();
+  ev.type = type;
+  ev.data_json = json_stringify_compact_local(data.isNull() ? Json::Value(Json::objectValue) : data);
+  (void)db->insert_workflow_event(ev, nullptr, nullptr);
+}
+
 // Small ${task.<id>....} expander for prompts.
 //
 // Supported (v1/v2):
@@ -421,6 +440,18 @@ bool WorkflowEngine::pick_and_claim_one(
           t.updated_unix_ms = now_unix_ms;
           t.error = t.error.empty() ? "cancelled" : t.error;
           (void)db_->upsert_workflow_task(t, nullptr);
+          {
+            Json::Value d(Json::objectValue);
+            d["workflow_id"] = wf.workflow_id;
+            d["task_id"] = t.task_id;
+            d["status"] = t.status;
+            d["attempt"] = t.attempt;
+            d["max_attempts"] = t.max_attempts;
+            d["reason"] = "cancel_requested";
+            if (!t.error.empty()) d["error"] = t.error;
+            d["ts_unix_ms"] = (Json::Int64)now_unix_ms;
+            insert_workflow_event_best_effort(db_, wf.workflow_id, t.task_id, "task_status", now_unix_ms, d);
+          }
           any_change = true;
         }
       }
@@ -462,12 +493,30 @@ bool WorkflowEngine::pick_and_claim_one(
         wf.status = "running";
         wf.updated_unix_ms = now_unix_ms;
         (void)db_->upsert_workflow(wf, nullptr);
+        {
+          Json::Value d(Json::objectValue);
+          d["workflow_id"] = wf.workflow_id;
+          d["status"] = wf.status;
+          d["ts_unix_ms"] = (Json::Int64)now_unix_ms;
+          insert_workflow_event_best_effort(db_, wf.workflow_id, "", "workflow_status", now_unix_ms, d);
+        }
       }
 
       t.status = "running";
       t.attempt = new_attempt;
       t.started_unix_ms = now_unix_ms;
       t.updated_unix_ms = now_unix_ms;
+      {
+        Json::Value d(Json::objectValue);
+        d["workflow_id"] = wf.workflow_id;
+        d["task_id"] = t.task_id;
+        d["status"] = "running";
+        d["attempt"] = t.attempt;
+        d["max_attempts"] = t.max_attempts;
+        d["started_unix_ms"] = (Json::Int64)t.started_unix_ms;
+        d["ts_unix_ms"] = (Json::Int64)now_unix_ms;
+        insert_workflow_event_best_effort(db_, wf.workflow_id, t.task_id, "task_status", now_unix_ms, d);
+      }
       *out_wf = wf;
       *out_task = t;
       return true;
@@ -534,6 +583,17 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     upd.error.clear();
     upd.ready_unix_ms = 0;
     (void)db_->upsert_workflow_task(upd, nullptr);
+    {
+      Json::Value d(Json::objectValue);
+      d["workflow_id"] = wf.workflow_id;
+      d["task_id"] = upd.task_id;
+      d["status"] = upd.status;
+      d["attempt"] = upd.attempt;
+      d["max_attempts"] = upd.max_attempts;
+      d["finished_unix_ms"] = (Json::Int64)upd.finished_unix_ms;
+      d["ts_unix_ms"] = (Json::Int64)now;
+      insert_workflow_event_best_effort(db_, wf.workflow_id, upd.task_id, "task_status", now, d);
+    }
     maybe_finalize_workflow(wf.workflow_id);
     return;
   }
@@ -545,12 +605,35 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     upd.status = "queued";
     upd.ready_unix_ms = now + retry_backoff_ms(upd.attempt);
     (void)db_->upsert_workflow_task(upd, nullptr);
+    {
+      Json::Value d(Json::objectValue);
+      d["workflow_id"] = wf.workflow_id;
+      d["task_id"] = upd.task_id;
+      d["status"] = upd.status;
+      d["attempt"] = upd.attempt;
+      d["max_attempts"] = upd.max_attempts;
+      d["ready_unix_ms"] = (Json::Int64)upd.ready_unix_ms;
+      if (!upd.error.empty()) d["error"] = upd.error;
+      d["ts_unix_ms"] = (Json::Int64)now;
+      insert_workflow_event_best_effort(db_, wf.workflow_id, upd.task_id, "task_status", now, d);
+    }
     return;
   }
 
   upd.status = "error";
   upd.ready_unix_ms = 0;
   (void)db_->upsert_workflow_task(upd, nullptr);
+  {
+    Json::Value d(Json::objectValue);
+    d["workflow_id"] = wf.workflow_id;
+    d["task_id"] = upd.task_id;
+    d["status"] = upd.status;
+    d["attempt"] = upd.attempt;
+    d["max_attempts"] = upd.max_attempts;
+    if (!upd.error.empty()) d["error"] = upd.error;
+    d["ts_unix_ms"] = (Json::Int64)now;
+    insert_workflow_event_best_effort(db_, wf.workflow_id, upd.task_id, "task_status", now, d);
+  }
   maybe_finalize_workflow(wf.workflow_id);
 }
 
@@ -645,11 +728,38 @@ void WorkflowEngine::maybe_finalize_workflow(const std::string& workflow_id) {
   }
 
   if (new_status != wf.status || wf_error != wf.error || (!result_json.empty() && result_json != wf.result_json)) {
+    const std::string prev = wf.status;
     wf.status = new_status;
     wf.updated_unix_ms = unix_ms_now();
     wf.error = wf_error;
     if (!result_json.empty()) wf.result_json = result_json;
     (void)db_->upsert_workflow(wf, nullptr);
+
+    {
+      Json::Value d(Json::objectValue);
+      d["workflow_id"] = workflow_id;
+      d["prev_status"] = prev;
+      d["status"] = new_status;
+      d["cancel_requested"] = wf.cancel_requested;
+      if (!wf.trace_id.empty()) d["trace_id"] = wf.trace_id;
+      if (!wf.session_id.empty()) d["session_id"] = wf.session_id;
+      if (!wf.error.empty()) d["error"] = wf.error;
+      d["ts_unix_ms"] = (Json::Int64)wf.updated_unix_ms;
+      insert_workflow_event_best_effort(db_, workflow_id, "", "workflow_status", wf.updated_unix_ms, d);
+    }
+
+    if (new_status == "done" || new_status == "error" || new_status == "cancelled") {
+      Json::Value d(Json::objectValue);
+      d["workflow_id"] = workflow_id;
+      d["ok"] = (new_status == "done");
+      d["status"] = new_status;
+      if (!wf.trace_id.empty()) d["trace_id"] = wf.trace_id;
+      if (!wf.session_id.empty()) d["session_id"] = wf.session_id;
+      if (!wf.error.empty()) d["error"] = wf.error;
+      d["result_json_present"] = !wf.result_json.empty();
+      d["ts_unix_ms"] = (Json::Int64)wf.updated_unix_ms;
+      insert_workflow_event_best_effort(db_, workflow_id, "", "workflow_done", wf.updated_unix_ms, d);
+    }
   }
 }
 

@@ -43,5 +43,13 @@ void handle_workflow_cancel_endpoint(
   HttpResponse* resp
 );
 
-}  // namespace agentd
+// GET /api/v1/workflow/events?workflow_id=...&after_event_id=...&limit=...
+void handle_workflow_events_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
 
+}  // namespace agentd

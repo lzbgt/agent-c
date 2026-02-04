@@ -33,6 +33,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
     - **restart continuity**: running tasks are recovered back to queued (at-least-once)
     - simple prompt templating: `${task.<id>.assistant_text}`
   - Proof: `ctest` includes `agentd_workflow_smoke` (validates DAG ordering + templating + restart recovery).
+- Resumable async jobs: `run_async` requests persist enough state to resume after daemon restart (at-least-once semantics).
+  - Proof: `ctest` includes `agentd_job_restart_durability_smoke` (restart mid-job → finishes done).
 - Memory v2 (retrieval): `memory_search` now prefers a ranked on-disk index (SQLite FTS5) when available, with automatic fallback to bounded substring scan.
   - Also: structured memory updates (`memory_put(entries)`) produce rolling JSON checkpoints under `memory/checkpoints/` for time-correlation.
   - Proof: `ctest` includes `test_host_toolset` (memory tools) plus existing daemon smokes that exercise host tools.
@@ -40,21 +42,32 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Proof: `ctest` includes `agentd_memory_consolidate_smoke` (idempotent; no checkpoint churn on second run).
 - Memory v2.2 (versioned facts + evidence): structured memory entries now keep bounded `sources[]` (evidence) and `versions[]` (superseded history) under schema `agent_memory_v2`.
   - Proof: `ctest` includes `host_toolset_tests` assertions that validate schema upgrade + history retention.
+- Workflow event log + streaming (durable): `agentd` persists workflow events (`workflow_events`) and exposes:
+  - `GET /api/v1/workflow/events` (paged)
+  - `GET /api/v1/workflow/stream` (SSE; ends with `workflow_done`)
+  - Proof: `ctest` includes `agentd_workflow_stream_smoke`.
+- Scheduler knobs (efficiency precursor): `agentd` supports configuring background engine concurrency/polling:
+  - `--job-concurrency`, `--job-poll-ms`, `--workflow-concurrency`, `--workflow-poll-ms` (also reflected in `/api/v1/config`)
 
 ## P0 (next: maximize autonomous continuity + correctness)
 
-### 1) Durable async job runner (resume `run_async` jobs)
+### 1) Budgets + scheduling policy (priorities, concurrency, backpressure)
 
-Problem (fact from code):
-- Async jobs are DB-backed for *status inspection*, but inflight jobs are marked `interrupted` on restart and do not resume.
+Goal:
+- Make the framework “strong by default” under load: predictable progress and fairness across jobs/workflows.
 
 Deliverables:
-- Add a background “job runner” that can resume queued/running async jobs after daemon restart.
-- Persist enough job execution state to re-run safely (same request body, same session/memory policy).
-- Add best-effort cancellation propagation across restarts.
+- Priority scheduling:
+  - per-job / per-workflow `priority`
+  - per-session fairness (avoid one client starving others)
+- Budget + backpressure:
+  - token/step/tool-call budgets enforced at scheduler level (not just per-run)
+  - queue pressure metrics + admission control
+- Cancellation semantics:
+  - deterministic cancellation propagation (queued → cancelled; running → cooperative cancel)
 
 Proof:
-- New smoke test: submit `run_async`, restart daemon mid-run, verify job finishes (not `interrupted`).
+- Stress test (deterministic stub provider): submit N workflows/jobs and assert bounded completion time + fairness.
 
 ### 2) Workflow engine v2: dataflow + aggregation nodes
 
@@ -75,14 +88,11 @@ Proof:
 
 ### 3) Workflow streaming + UI surface (without making UI the power source)
 
-Deliverables:
-- `GET /api/v1/workflow/stream` (SSE):
-  - task state transitions
-  - deterministic “workflow_event” records
-- UI view for workflow timeline (reuse trace UI patterns).
+Status:
+- Shipped v1.5: durable workflow event log + SSE stream + smoke test.
 
-Proof:
-- Smoke test validates SSE event ordering and final terminal event.
+Next:
+- UI view for workflow timeline (reuse trace UI patterns), plus filters (by task_id, by event type).
 
 ### 4) Memory v2: semantic retrieval + rolling consolidation
 

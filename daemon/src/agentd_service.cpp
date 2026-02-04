@@ -23,6 +23,7 @@
 #include "trace_endpoints.h"
 #include "workflow_endpoints.h"
 #include "workflow_engine.h"
+#include "workflow_stream_endpoint.h"
 #include "runtime_config.h"
 #include "sandbox_policy.h"
 #include "secrets_file.h"
@@ -165,6 +166,18 @@ static void fill_env_defaults(DaemonConfig* cfg) {
   }
   if (const char* ms = getenv_s("AGENTD_MAX_TOOL_CALLS_PER_TOOL_DEFAULT")) {
     try { cfg->max_tool_calls_per_tool_default = (size_t)std::stoull(ms); } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_JOB_CONCURRENCY")) {
+    try { cfg->job_engine_max_concurrency = std::max(1, std::stoi(ms)); } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_JOB_POLL_MS")) {
+    try { cfg->job_engine_poll_ms = std::max(1, std::stoi(ms)); } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_WORKFLOW_CONCURRENCY")) {
+    try { cfg->workflow_engine_max_concurrency = std::max(1, std::stoi(ms)); } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_WORKFLOW_POLL_MS")) {
+    try { cfg->workflow_engine_poll_ms = std::max(1, std::stoi(ms)); } catch (...) {}
   }
   if (const char* ms = getenv_s("AGENTD_MEMORY_CONSOLIDATE_INTERVAL_MS")) {
     try {
@@ -320,13 +333,16 @@ struct AgentdService::Impl {
     // Resumable async job scheduler (background).
     if (!job_engine) {
       const DaemonConfig cfg0 = cfg_store->snapshot();
+      JobEngine::Options opt;
+      opt.max_concurrency = std::max(1, cfg0.job_engine_max_concurrency);
+      opt.poll_ms = std::max(1, cfg0.job_engine_poll_ms);
       job_engine = std::make_unique<JobEngine>(
         &db,
         [this]() { return cfg_store->snapshot(); },
         [this](const DaemonConfig& c) { return ocfg_from_cfg(c); },
         tool_ext_or_null(),
         cfg0.sessions_root_dir,
-        JobEngine::Options{}
+        opt
       );
       std::string jerr;
       if (!job_engine->start(&jerr)) {
@@ -337,13 +353,16 @@ struct AgentdService::Impl {
     // Durable workflow scheduler (background).
     if (!wf_engine) {
       const DaemonConfig cfg0 = cfg_store->snapshot();
+      WorkflowEngine::Options opt;
+      opt.max_concurrency = std::max(1, cfg0.workflow_engine_max_concurrency);
+      opt.poll_ms = std::max(1, cfg0.workflow_engine_poll_ms);
       wf_engine = std::make_unique<WorkflowEngine>(
         &db,
         [this]() { return cfg_store->snapshot(); },
         [this](const DaemonConfig& c) { return ocfg_from_cfg(c); },
         tool_ext_or_null(),
         cfg0.sessions_root_dir,
-        WorkflowEngine::Options{}
+        opt
       );
       std::string werr;
       if (!wf_engine->start(&werr)) {
@@ -537,6 +556,14 @@ struct AgentdService::Impl {
     server.handle("POST", "/api/v1/workflow/cancel", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_workflow_cancel_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("GET", "/api/v1/workflow/events", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_workflow_events_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle_stream("GET", "/api/v1/workflow/stream", [this](const HttpRequest& req, int client_fd) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_workflow_stream_endpoint(cur.auth_token, cors_cfg, &db, req, client_fd);
     });
 
     // Job endpoints.

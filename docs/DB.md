@@ -1,6 +1,6 @@
 # Agentd SQLite DB (Canonical Daemon Store)
 
-Date: 2026-02-03
+Date: 2026-02-04
 
 When built with SQLite support (`AGENT_HAVE_SQLITE3`), `agentd` stores its canonical daemon state in SQLite:
 - sessions + message history
@@ -10,7 +10,7 @@ When built with SQLite support (`AGENT_HAVE_SQLITE3`), `agentd` stores its canon
 - audit records (the Web UI “History” feed)
 - durable scene snapshots (`scene_states`)
 - durable async job metadata (`jobs`)
-- durable workflows (`workflows`, `workflow_tasks`)
+- durable workflows (`workflows`, `workflow_tasks`, `workflow_events`)
 
 This is convenient for debugging problems like:
 
@@ -57,7 +57,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v10)
+## Schema (v11)
 
 All timestamps are Unix milliseconds.
 
@@ -299,6 +299,23 @@ with explicit dependencies and retries.
 Indexes:
 - `CREATE INDEX workflow_tasks_by_workflow ON workflow_tasks(workflow_id, updated_unix_ms DESC)`
 - `CREATE INDEX workflow_tasks_by_status ON workflow_tasks(status, ready_unix_ms, updated_unix_ms DESC)`
+
+### `workflow_events`
+
+Durable workflow event log used for:
+
+- workflow progress SSE streaming (`GET /api/v1/workflow/stream`)
+- debugging/correlation (what happened when, in what order)
+
+- `event_id INTEGER PRIMARY KEY AUTOINCREMENT`
+- `workflow_id TEXT NOT NULL`
+- `task_id TEXT` (nullable; task events only)
+- `ts_unix_ms INTEGER NOT NULL`
+- `type TEXT NOT NULL` (e.g. `workflow_created`, `workflow_status`, `task_status`, `workflow_done`)
+- `data_json TEXT NOT NULL` (JSON object string; stable fallback for schema evolution)
+
+Indexes:
+- `CREATE INDEX workflow_events_by_workflow ON workflow_events(workflow_id, event_id)`
 
 ## Source of truth
 

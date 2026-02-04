@@ -381,6 +381,22 @@ void handle_workflow_submit_endpoint(
     return;
   }
 
+  // Workflow event log: initial created marker (best-effort).
+  {
+    Json::Value d(Json::objectValue);
+    d["workflow_id"] = workflow_id;
+    d["status"] = "queued";
+    d["trace_id"] = trace_id;
+    if (allow_sessions && !session_id.empty()) d["session_id"] = session_id;
+    d["ts_unix_ms"] = (Json::Int64)now;
+    AgentDb::WorkflowEventRow ev;
+    ev.workflow_id = workflow_id;
+    ev.ts_unix_ms = now;
+    ev.type = "workflow_created";
+    ev.data_json = json_stringify_compact(d);
+    (void)db_or_null->insert_workflow_event(ev, nullptr, nullptr);
+  }
+
   Json::Value o(Json::objectValue);
   o["ok"] = true;
   o["workflow_id"] = workflow_id;
@@ -586,10 +602,108 @@ void handle_workflow_cancel_endpoint(
   if (wf.status == "queued") wf.status = "running"; // surface cancel in progress
   (void)db_or_null->upsert_workflow(wf, &err);
 
+  // Best-effort: append a cancel_requested event.
+  {
+    const int64_t now = unix_ms_now();
+    Json::Value d(Json::objectValue);
+    d["workflow_id"] = wf.workflow_id;
+    d["status"] = wf.status;
+    d["cancel_requested"] = true;
+    if (!wf.trace_id.empty()) d["trace_id"] = wf.trace_id;
+    if (!wf.session_id.empty()) d["session_id"] = wf.session_id;
+    d["ts_unix_ms"] = (Json::Int64)now;
+    AgentDb::WorkflowEventRow ev;
+    ev.workflow_id = wf.workflow_id;
+    ev.ts_unix_ms = now;
+    ev.type = "workflow_cancel_requested";
+    ev.data_json = json_stringify_compact(d);
+    (void)db_or_null->insert_workflow_event(ev, nullptr, nullptr);
+  }
+
   Json::Value o(Json::objectValue);
   o["ok"] = true;
   o["workflow_id"] = workflow_id;
   resp->body = json_stringify_compact(o);
+}
+
+void handle_workflow_events_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  if (!db_or_null || !db_or_null->is_open()) {
+    resp->status = 503;
+    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    return;
+  }
+
+  const auto wid = query_get(req.query, "workflow_id");
+  if (!wid || wid->empty()) {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"missing workflow_id\"}";
+    return;
+  }
+
+  int64_t after = 0;
+  const auto a = query_get(req.query, "after_event_id");
+  if (a && !a->empty()) {
+    try { after = (int64_t)std::stoll(*a); } catch (...) { after = 0; }
+  }
+
+  size_t limit = 256;
+  const auto l = query_get(req.query, "limit");
+  if (l && !l->empty()) {
+    try { limit = (size_t)std::stoull(*l); } catch (...) { limit = 256; }
+  }
+  limit = std::min<size_t>(limit, 1000);
+
+  std::vector<AgentDb::WorkflowEventRow> rows;
+  std::string err;
+  if (!db_or_null->list_workflow_events(*wid, after, limit, &rows, &err)) {
+    resp->status = 500;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = "failed to list workflow events";
+    o["detail"] = err;
+    resp->body = json_stringify_compact(o);
+    return;
+  }
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = true;
+  out["workflow_id"] = *wid;
+  out["after_event_id"] = (Json::Int64)after;
+  Json::Value arr(Json::arrayValue);
+  int64_t last = after;
+  for (const auto& r : rows) {
+    Json::Value o(Json::objectValue);
+    o["event_id"] = (Json::Int64)r.event_id;
+    o["ts_unix_ms"] = (Json::Int64)r.ts_unix_ms;
+    o["type"] = r.type;
+    if (!r.task_id.empty()) o["task_id"] = r.task_id;
+    Json::Value data;
+    std::string perr;
+    if (!json_parse_any(r.data_json, &data, &perr)) {
+      Json::Value bad(Json::objectValue);
+      bad["ok"] = false;
+      bad["error"] = "failed to parse event data_json";
+      bad["parse_error"] = perr;
+      bad["raw"] = r.data_json;
+      data = bad;
+    }
+    o["data"] = data;
+    arr.append(o);
+    if (r.event_id > last) last = r.event_id;
+  }
+  out["events"] = arr;
+  out["cursor_next"] = (Json::Int64)last;
+  resp->body = json_stringify_compact(out);
 }
 
 }  // namespace agentd

@@ -95,6 +95,13 @@ void handle_config_endpoint(
   jobs["max_jobs"] = (Json::UInt64)cfg.max_jobs;
   out["jobs"] = jobs;
 
+  Json::Value engines(Json::objectValue);
+  engines["job_max_concurrency"] = cfg.job_engine_max_concurrency;
+  engines["job_poll_ms"] = cfg.job_engine_poll_ms;
+  engines["workflow_max_concurrency"] = cfg.workflow_engine_max_concurrency;
+  engines["workflow_poll_ms"] = cfg.workflow_engine_poll_ms;
+  out["engines"] = engines;
+
   Json::Value memory(Json::objectValue);
   memory["consolidate_interval_ms"] = (Json::Int64)cfg.memory_consolidate_interval_ms;
   memory["consolidate_daily_days"] = cfg.memory_consolidate_daily_days;

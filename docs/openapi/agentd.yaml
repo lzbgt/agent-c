@@ -351,6 +351,65 @@ paths:
         "200":
           description: Cancellation requested
 
+  /api/v1/workflow/events:
+    get:
+      tags: [workflows]
+      summary: List workflow events (durable)
+      parameters:
+        - in: query
+          name: workflow_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: after_event_id
+          required: false
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, format: int32 }
+      responses:
+        "200":
+          description: Workflow event slice
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, workflow_id, events, cursor_next]
+                properties:
+                  ok: { type: boolean }
+                  workflow_id: { type: string }
+                  after_event_id: { type: integer, format: int64 }
+                  cursor_next: { type: integer, format: int64 }
+                  events:
+                    type: array
+                    items:
+                      type: object
+                      additionalProperties: true
+
+  /api/v1/workflow/stream:
+    get:
+      tags: [workflows]
+      summary: Stream workflow events (SSE)
+      description: |
+        Streams `workflow_event` events (durable workflow event log) and ends with terminal `workflow_done`.
+      parameters:
+        - in: query
+          name: workflow_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: cursor
+          required: false
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
   /api/v1/sessions:
     get:
       tags: [sessions]
