@@ -183,6 +183,12 @@ static void fill_env_defaults(DaemonConfig* cfg) {
   if (const char* ms = getenv_s("AGENTD_WORKFLOW_POLL_MS")) {
     try { cfg->workflow_engine_poll_ms = std::max(1, std::stoi(ms)); } catch (...) {}
   }
+  if (const char* ms = getenv_s("AGENTD_WORKFLOW_MAX_INFLIGHT_PER_WORKFLOW")) {
+    try { cfg->workflow_engine_max_inflight_per_workflow = std::max(1, std::stoi(ms)); } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_WORKFLOW_MAX_INFLIGHT_PER_SESSION")) {
+    try { cfg->workflow_engine_max_inflight_per_session = std::max(0, std::stoi(ms)); } catch (...) {}
+  }
   if (const char* ms = getenv_s("AGENTD_MEMORY_CONSOLIDATE_INTERVAL_MS")) {
     try {
       cfg->memory_consolidate_interval_ms = (int64_t)std::stoll(ms);
@@ -362,6 +368,8 @@ struct AgentdService::Impl {
       WorkflowEngine::Options opt;
       opt.max_concurrency = std::max(1, cfg0.workflow_engine_max_concurrency);
       opt.poll_ms = std::max(1, cfg0.workflow_engine_poll_ms);
+      opt.max_inflight_per_workflow = std::max(1, cfg0.workflow_engine_max_inflight_per_workflow);
+      opt.max_inflight_per_session = std::max(0, cfg0.workflow_engine_max_inflight_per_session);
       wf_engine = std::make_unique<WorkflowEngine>(
         &db,
         [this]() { return cfg_store->snapshot(); },

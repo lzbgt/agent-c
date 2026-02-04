@@ -1,6 +1,6 @@
 # Durable Workflows (agentd)
 
-Date: 2026-02-04
+Date: 2026-02-05
 
 `agentd` includes a durable workflow scheduler: a workflow is a persisted DAG of tasks (typically normal `/api/v1/run` requests)
 that can continue running across daemon restarts.
@@ -10,7 +10,7 @@ The workflow engine is intended to be the framework’s “power source” for:
 - task continuity across time (durable + resumable)
 - retries + backoff
 - deterministic correctness checks
-- (future) budgets and higher-level scheduling policies
+- budgets and higher-level scheduling policies (fairness/backpressure)
 
 ## Key semantics
 
@@ -26,6 +26,22 @@ Higher priorities are scheduled sooner when multiple runnable tasks exist.
 Notes:
 - The daemon clamps priorities to `[-1000, 1000]` (default `0`).
 - Priority is a scheduling hint, not a correctness guarantee.
+
+### Fairness budgets (v1.1)
+
+Under load, “priority only” is not enough: a single large fan-out workflow can monopolize all workers.
+`agentd` therefore supports **simple scheduler-level fairness caps**:
+
+- `--workflow-max-inflight-per-workflow <n>` (default: `2`)
+  - Limits how many tasks from the same workflow may be `running` concurrently.
+  - Prevents “fan-out storms” from starving other workflows.
+- `--workflow-max-inflight-per-session <n>` (default: `0` = disabled)
+  - Optional multi-tenant cap across all workflows sharing the same `session_id`.
+  - Useful when multiple clients share one daemon and you want predictable fairness.
+
+Env equivalents:
+- `AGENTD_WORKFLOW_MAX_INFLIGHT_PER_WORKFLOW`
+- `AGENTD_WORKFLOW_MAX_INFLIGHT_PER_SESSION`
 
 ### Durability and restart recovery
 
@@ -126,6 +142,24 @@ Supported references:
 - `task.<id>.json:<json_pointer>`
 
 If the reference cannot be resolved, the task fails deterministically with `error="template expansion failed"`.
+
+### Deterministic delay task (`kind:"delay"`)
+
+For deterministic scheduling tests and “wait gates” that do not involve an LLM/provider call, workflows can use:
+
+```json
+{
+  "task_id": "W",
+  "kind": "delay",
+  "delay_ms": 500,
+  "result": { "assistant_text": "woke up" }
+}
+```
+
+Semantics:
+- Sleeps for `delay_ms` (clamped to `0..600000`).
+- Produces a deterministic result object with `ok=true`, plus any merged keys from `result`.
+- If `result.assistant_text` is omitted, `assistant_text` defaults to `"delay:<delay_ms>"`.
 
 ## HTTP API
 

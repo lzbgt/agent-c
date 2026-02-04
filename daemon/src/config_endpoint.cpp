@@ -100,6 +100,8 @@ void handle_config_endpoint(
   engines["job_poll_ms"] = cfg.job_engine_poll_ms;
   engines["workflow_max_concurrency"] = cfg.workflow_engine_max_concurrency;
   engines["workflow_poll_ms"] = cfg.workflow_engine_poll_ms;
+  engines["workflow_max_inflight_per_workflow"] = cfg.workflow_engine_max_inflight_per_workflow;
+  engines["workflow_max_inflight_per_session"] = cfg.workflow_engine_max_inflight_per_session;
   out["engines"] = engines;
 
   Json::Value memory(Json::objectValue);

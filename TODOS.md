@@ -88,6 +88,12 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Proof: `ctest` includes `agentd_workflow_stream_smoke`.
 - Scheduler knobs (efficiency precursor): `agentd` supports configuring background engine concurrency/polling:
   - `--job-concurrency`, `--job-poll-ms`, `--workflow-concurrency`, `--workflow-poll-ms` (also reflected in `/api/v1/config`)
+- Workflow scheduler fairness/budget caps (load resilience precursor):
+  - `--workflow-max-inflight-per-workflow` (prevents one fan-out workflow monopolizing all workers)
+  - `--workflow-max-inflight-per-session` (optional multi-tenant cap; default disabled)
+  - Proof: `ctest` includes `agentd_workflow_inflight_cap_smoke` (asserts non-overlap under cap=1).
+- Deterministic workflow-only delay task (`kind:"delay"`) for scheduling tests and wait gates (no LLM required).
+  - Proof: `ctest` includes `agentd_workflow_inflight_cap_smoke`.
 
 ## P0 (next: maximize autonomous continuity + correctness)
 
@@ -123,6 +129,7 @@ Deliverables:
   - queue pressure metrics + admission control
 - Cancellation semantics:
   - deterministic cancellation propagation (queued → cancelled; running → cooperative cancel)
+ - (shipped) per-workflow in-flight cap + round-robin workflow scan start to reduce starvation.
 
 Proof:
 - Stress test (deterministic stub provider): submit N workflows/jobs and assert bounded completion time + fairness.

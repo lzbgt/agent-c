@@ -317,6 +317,31 @@ int main(int argc, char** argv) {
         std::cerr << "Invalid --workflow-poll-ms\n";
         return 2;
       }
+    } else if (a == "--workflow-max-inflight-per-workflow") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --workflow-max-inflight-per-workflow\n";
+        return 2;
+      }
+      try {
+        cfg.workflow_engine_max_inflight_per_workflow = std::max(1, std::stoi(v));
+      } catch (...) {
+        std::cerr << "Invalid --workflow-max-inflight-per-workflow\n";
+        return 2;
+      }
+    } else if (a == "--workflow-max-inflight-per-session") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --workflow-max-inflight-per-session\n";
+        return 2;
+      }
+      try {
+        const int n = std::stoi(v);
+        cfg.workflow_engine_max_inflight_per_session = std::max(0, n);
+      } catch (...) {
+        std::cerr << "Invalid --workflow-max-inflight-per-session\n";
+        return 2;
+      }
     } else if (a == "--memory-consolidate-interval-ms") {
       std::string v;
       if (!take(&v)) {
@@ -510,6 +535,8 @@ int main(int argc, char** argv) {
         << "  --job-poll-ms <n>           Job engine idle poll sleep ms (default: 200)\n"
         << "  --workflow-concurrency <n>  Max concurrent workflow tasks (default: 4)\n"
         << "  --workflow-poll-ms <n>      Workflow engine idle poll sleep ms (default: 200)\n"
+        << "  --workflow-max-inflight-per-workflow <n>  Workflow fairness cap (default: 2)\n"
+        << "  --workflow-max-inflight-per-session <n>   Optional multi-tenant cap; 0 disables (default: 0)\n"
         << "  --memory-consolidate-interval-ms <n>   Run memory consolidation every n ms (default: 0=disabled)\n"
         << "  --memory-consolidate-daily-days <n>    Scan last n daily memory files for @mem markers (default: 14)\n"
         << "  --memory-consolidate-keep-checkpoints <n>  Retain at most n structured checkpoints (default: 100)\n"
@@ -657,6 +684,12 @@ int main(int argc, char** argv) {
   }
   if (const char* ms = getenv_s("AGENTD_WORKFLOW_POLL_MS")) {
     try { cfg.workflow_engine_poll_ms = std::max(1, std::stoi(ms)); } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_WORKFLOW_MAX_INFLIGHT_PER_WORKFLOW")) {
+    try { cfg.workflow_engine_max_inflight_per_workflow = std::max(1, std::stoi(ms)); } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_WORKFLOW_MAX_INFLIGHT_PER_SESSION")) {
+    try { cfg.workflow_engine_max_inflight_per_session = std::max(0, std::stoi(ms)); } catch (...) {}
   }
   if (const char* ms = getenv_s("AGENTD_MEMORY_CONSOLIDATE_INTERVAL_MS")) {
     try {
@@ -845,6 +878,8 @@ int main(int argc, char** argv) {
       /*max_concurrency=*/std::max(1, cfg.workflow_engine_max_concurrency),
       /*poll_ms=*/std::max(1, cfg.workflow_engine_poll_ms),
       /*max_scan_workflows=*/WorkflowEngine::Options{}.max_scan_workflows,
+      /*max_inflight_per_workflow=*/std::max(1, cfg.workflow_engine_max_inflight_per_workflow),
+      /*max_inflight_per_session=*/std::max(0, cfg.workflow_engine_max_inflight_per_session),
     }
   );
   {

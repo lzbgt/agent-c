@@ -78,6 +78,11 @@ struct DaemonConfig {
   int job_engine_poll_ms = 200;
   int workflow_engine_max_concurrency = 4;
   int workflow_engine_poll_ms = 200;
+  // Workflow fairness/budgets:
+  // - max_inflight_per_workflow: prevents a single fan-out workflow from monopolizing all workers
+  // - max_inflight_per_session: optional multi-tenant fairness guard (0 = unlimited/disabled)
+  int workflow_engine_max_inflight_per_workflow = 2;
+  int workflow_engine_max_inflight_per_session = 0;
 
   // Memory consolidation (rolling, deterministic by default).
   //

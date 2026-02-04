@@ -275,7 +275,8 @@ void handle_workflow_submit_endpoint(
     const bool is_avm = (kind == "avm_capsule");
     const bool is_aggregate = (kind == "aggregate");
     const bool is_edge = (kind == "edge_invoke");
-    const bool is_special = is_avm || is_aggregate || is_edge;
+    const bool is_delay = (kind == "delay");
+    const bool is_special = is_avm || is_aggregate || is_edge || is_delay;
 
     Json::Value run_req = t.isMember("request") && t["request"].isObject() ? t["request"] : t;
     if (!is_special && defaults.isObject()) {
@@ -446,6 +447,45 @@ void handle_workflow_submit_endpoint(
       }
       task_req["kind"] = "edge_invoke";
       task_req["edge"] = edge;
+      task_req["priority"] = task_priority;
+      task_req["trace_id"] = trace_id + ":" + task_id;
+    } else if (is_delay) {
+      int64_t delay_ms = 0;
+      if (t.isMember("delay_ms") && (t["delay_ms"].isInt64() || t["delay_ms"].isUInt64() || t["delay_ms"].isInt())) {
+        delay_ms = t["delay_ms"].asInt64();
+      } else if (t.isMember("delay_ms")) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "delay_ms must be an integer";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+      if (delay_ms < 0) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "delay_ms must be >= 0";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+      if (delay_ms > 600000) delay_ms = 600000;
+      task_req["kind"] = "delay";
+      task_req["delay_ms"] = (Json::Int64)delay_ms;
+      if (t.isMember("result")) {
+        if (!t["result"].isObject() && !t["result"].isNull()) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "delay.result must be an object";
+          o["task_id"] = task_id;
+          resp->body = json_stringify_compact(o);
+          return;
+        }
+        if (t["result"].isObject()) task_req["result"] = t["result"];
+      }
       task_req["priority"] = task_priority;
       task_req["trace_id"] = trace_id + ":" + task_id;
     } else {

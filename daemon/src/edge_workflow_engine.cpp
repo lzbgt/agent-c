@@ -278,9 +278,32 @@ void EdgeWorkflowEngine::worker_main() {
       if (dispatch_budget == 0) break;
       if (wf.workflow_id.empty()) continue;
 
+      // Cancellation/terminal guard:
+      // A workflow may be cancelled while we are mid-tick (after we listed queued/running).
+      // Always refresh the current status from DB and treat terminal states as authoritative.
+      {
+        AgentDb::EdgeWorkflowRow live;
+        std::string werr;
+        if (db_->get_edge_workflow(wf.workflow_id, &live, &werr) && !live.workflow_id.empty()) {
+          wf = std::move(live);
+        }
+        if (wf.status == "CANCELED" || wf.status == "SUCCEEDED" || wf.status == "FAILED") {
+          continue;
+        }
+      }
+
       std::vector<AgentDb::EdgeWorkflowStepRow> steps;
       std::string serr;
       if (!db_->list_edge_workflow_steps(wf.workflow_id, &steps, &serr)) continue;
+
+      // Cancellation guard (again): cancel can race between the workflow status refresh and step listing.
+      {
+        AgentDb::EdgeWorkflowRow live;
+        std::string werr;
+        if (db_->get_edge_workflow(wf.workflow_id, &live, &werr) && live.status == "CANCELED") {
+          continue;
+        }
+      }
 
       std::unordered_map<std::string, AgentDb::EdgeWorkflowStepRow> step_map;
       step_map.reserve(steps.size());
@@ -396,6 +419,17 @@ void EdgeWorkflowEngine::worker_main() {
         if (dispatch_budget == 0) break;
         if (s.kind == "join") continue;
         if (s.state != "PENDING") continue;
+
+        // Cancellation guard: check again before dispatching any step to avoid overriding a fresh cancel.
+        {
+          AgentDb::EdgeWorkflowRow live;
+          std::string werr;
+          if (db_->get_edge_workflow(wf.workflow_id, &live, &werr) && live.status == "CANCELED") {
+            wf = std::move(live);
+            break;
+          }
+        }
+
         if (s.max_attempts < 1) s.max_attempts = 1;
         if (s.attempt < 0) s.attempt = 0;
         if (s.attempt >= s.max_attempts) {
@@ -563,6 +597,14 @@ void EdgeWorkflowEngine::worker_main() {
       }
 
       // Update workflow status based on current steps.
+      {
+        AgentDb::EdgeWorkflowRow live;
+        std::string werr;
+        if (db_->get_edge_workflow(wf.workflow_id, &live, &werr) && live.status == "CANCELED") {
+          // Cancellation is authoritative; do not override with derived status.
+          continue;
+        }
+      }
       std::string next_status;
       std::string next_err;
       compute_workflow_status(steps, &next_status, &next_err);

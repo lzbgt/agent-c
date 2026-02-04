@@ -1064,6 +1064,10 @@ WorkflowEngine::WorkflowEngine(
   if (opt_.poll_ms <= 0) opt_.poll_ms = 50;
   if (opt_.poll_ms > 5000) opt_.poll_ms = 5000;
   if (opt_.max_scan_workflows == 0) opt_.max_scan_workflows = 16;
+  if (opt_.max_inflight_per_workflow <= 0) opt_.max_inflight_per_workflow = 1;
+  if (opt_.max_inflight_per_workflow > 64) opt_.max_inflight_per_workflow = 64;
+  if (opt_.max_inflight_per_session < 0) opt_.max_inflight_per_session = 0;
+  if (opt_.max_inflight_per_session > 1024) opt_.max_inflight_per_session = 1024;
 }
 
 WorkflowEngine::~WorkflowEngine() {
@@ -1180,11 +1184,17 @@ bool WorkflowEngine::pick_and_claim_one(
     const int ar = wf_status_rank(a.status);
     const int br = wf_status_rank(b.status);
     if (ar != br) return ar > br;
-    if (a.updated_unix_ms != b.updated_unix_ms) return a.updated_unix_ms > b.updated_unix_ms;
+    // Fairness: for the same priority/status, prefer older workflows first (avoid starvation).
+    if (a.updated_unix_ms != b.updated_unix_ms) return a.updated_unix_ms < b.updated_unix_ms;
     return a.workflow_id < b.workflow_id;
   });
 
-  for (auto& wf : wfs) {
+  // Round-robin start point across workers to reduce "thundering herd" on the top workflow.
+  const size_t n = wfs.size();
+  const size_t start = n == 0 ? 0 : (size_t)(rr_cursor_.fetch_add(1) % (uint64_t)n);
+
+  for (size_t i = 0; i < n; i++) {
+    auto& wf = wfs[(start + i) % n];
     if (stop_.load()) return false;
     if (wf.workflow_id.empty()) continue;
     if (wf.status != "queued" && wf.status != "running") continue;
@@ -1192,6 +1202,17 @@ bool WorkflowEngine::pick_and_claim_one(
     std::vector<AgentDb::WorkflowTaskRow> tasks;
     if (!db_->list_workflow_tasks(wf.workflow_id, &tasks, &err)) {
       continue;
+    }
+
+    // Fairness/budgets: skip workflows that are already saturating their in-flight budget.
+    if (opt_.max_inflight_per_workflow > 0) {
+      int running_cnt = 0;
+      for (const auto& t : tasks) {
+        if (t.status == "running") running_cnt++;
+      }
+      if (running_cnt >= opt_.max_inflight_per_workflow) {
+        continue;
+      }
     }
 
     // If cancel requested, try to cancel queued tasks best-effort.
@@ -1280,7 +1301,15 @@ bool WorkflowEngine::pick_and_claim_one(
       if (!deps_ok) continue;
 
       const int new_attempt = t.attempt + 1;
-      if (!db_->claim_workflow_task(wf.workflow_id, t.task_id, now_unix_ms, new_attempt, &err)) {
+      if (!db_->claim_workflow_task_budgeted(
+            wf.workflow_id,
+            t.task_id,
+            now_unix_ms,
+            new_attempt,
+            opt_.max_inflight_per_workflow,
+            opt_.max_inflight_per_session,
+            wf.session_id,
+            &err)) {
         continue;
       }
 
@@ -1404,6 +1433,47 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     std::string aerr;
     out = workflow_aggregate_to_json(agg, result_json_by_task, &aerr);
     if (!aerr.empty() && (!out.isMember("error") || !out["error"].isString())) out["error"] = aerr;
+  } else if (kind == "delay") {
+    out = Json::Value(Json::objectValue);
+    out["kind"] = "delay";
+    out["ok"] = false;
+
+    int64_t delay_ms = 0;
+    if (rr.isMember("delay_ms") && (rr["delay_ms"].isInt64() || rr["delay_ms"].isUInt64() || rr["delay_ms"].isInt())) {
+      delay_ms = rr["delay_ms"].asInt64();
+    } else if (rr.isMember("delay_ms")) {
+      out["error"] = "delay_ms must be an integer";
+    }
+
+    if (!out.isMember("error")) {
+      if (delay_ms < 0) {
+        out["error"] = "delay_ms must be >= 0";
+      } else {
+        if (delay_ms > 600000) delay_ms = 600000;
+        if (delay_ms > 0) std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+
+        out["ok"] = true;
+        out["delay_ms"] = (Json::Int64)delay_ms;
+
+        if (rr.isMember("result") && rr["result"].isObject()) {
+          const auto& r = rr["result"];
+          for (const auto& k : r.getMemberNames()) {
+            if (k == "ok" || k == "kind" || k == "delay_ms") continue;
+            out[k] = r[k];
+          }
+        } else if (rr.isMember("result") && !rr["result"].isNull()) {
+          // Keep behavior strict: if provided, result must be an object.
+          out["ok"] = false;
+          out["error"] = "result must be an object";
+        }
+
+        if (out.isMember("ok") && out["ok"].isBool() && out["ok"].asBool()) {
+          if (!out.isMember("assistant_text") || !out["assistant_text"].isString()) {
+            out["assistant_text"] = std::string("delay:") + std::to_string((long long)delay_ms);
+          }
+        }
+      }
+    }
   } else if (kind == "edge_invoke") {
     Json::Value e = rr.isMember("edge") && rr["edge"].isObject() ? rr["edge"] : Json::Value(Json::nullValue);
     out = Json::Value(Json::objectValue);

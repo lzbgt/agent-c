@@ -297,6 +297,24 @@ class AgentDb {
     std::string* out_error
   );
 
+  // Attempts to claim a queued workflow task while enforcing simple fairness/budget caps.
+  // Caps are best-effort but deterministic within a single agentd process (AgentDb is mutex-locked).
+  //
+  // - max_inflight_per_workflow: max number of tasks with status='running' in the same workflow (<=0 disables)
+  // - max_inflight_per_session: max number of tasks with status='running' across all workflows sharing the same session_id (<=0 disables)
+  //
+  // Returns true only when the task was claimed.
+  bool claim_workflow_task_budgeted(
+    const std::string& workflow_id,
+    const std::string& task_id,
+    int64_t now_unix_ms,
+    int new_attempt,
+    int max_inflight_per_workflow,
+    int max_inflight_per_session,
+    const std::string& session_id,
+    std::string* out_error
+  );
+
   // Recovery on daemon startup: move running workflows/tasks back to queued so they can resume.
   bool recover_inflight_workflows(int64_t now_unix_ms, std::string* out_error);
 

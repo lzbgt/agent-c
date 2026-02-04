@@ -1192,17 +1192,20 @@ components:
         - LLM/tool tasks: `request` (a `RunRequest`) with a non-empty `prompt`
         - Deterministic capsule tasks: `kind: avm_capsule` with `capsule` (see `AvmCapsuleRunArgs`)
         - Deterministic aggregation tasks: `kind: aggregate` with `aggregate` (see `WorkflowAggregateSpec`)
+        - Deterministic delay tasks: `kind: delay` with `delay_ms` (no LLM required)
         - Edge collaboration tasks: `kind: edge_invoke` with `edge` (see `WorkflowEdgeInvokeSpec`)
 
         Note: OpenAPI cannot express conditional required fields perfectly; see the server-side behavior:
         - If `kind == avm_capsule`, `capsule.obc_base64` is required and `request.prompt` is not used.
         - If `kind == aggregate`, `aggregate.task_ids` is required and `request.prompt` is not used.
+        - If `kind == delay`, `delay_ms` is optional (default 0) and `request.prompt` is not used.
         - If `kind == edge_invoke`, `edge.tool`/`edge.args` are required and `request.prompt` is not used.
         - Otherwise, `request.prompt` is required (or prompt at the top-level is accepted by the server for legacy reasons).
       oneOf:
         - $ref: "#/components/schemas/WorkflowTaskRunSpec"
         - $ref: "#/components/schemas/WorkflowTaskAvmCapsuleSpec"
         - $ref: "#/components/schemas/WorkflowTaskAggregateSpec"
+        - $ref: "#/components/schemas/WorkflowTaskDelaySpec"
         - $ref: "#/components/schemas/WorkflowTaskEdgeInvokeSpec"
 
     WorkflowTaskRunSpec:
@@ -1277,6 +1280,39 @@ components:
           description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
         aggregate:
           $ref: "#/components/schemas/WorkflowAggregateSpec"
+        expect:
+          type: object
+          description: Deterministic correctness assertions (engine-enforced)
+          additionalProperties: true
+
+    WorkflowTaskDelaySpec:
+      type: object
+      required: [task_id, kind]
+      properties:
+        task_id: { type: string }
+        allow_error:
+          type: boolean
+          description: If true, task failure does not fail the workflow (soft-fail).
+        kind:
+          type: string
+          enum: [delay]
+          description: Deterministic delay task (no LLM required).
+        depends_on:
+          type: array
+          items: { type: string }
+        max_attempts: { type: integer, format: int32 }
+        priority:
+          type: integer
+          format: int32
+          description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+        delay_ms:
+          type: integer
+          format: int64
+          description: Delay duration in milliseconds (clamped to 0..600000; default 0).
+        result:
+          type: object
+          description: Optional object merged into the deterministic output (must be an object if provided).
+          additionalProperties: true
         expect:
           type: object
           description: Deterministic correctness assertions (engine-enforced)

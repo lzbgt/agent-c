@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <filesystem>
+#include <functional>
 #include <sstream>
 
 namespace agentd {
@@ -1571,6 +1572,132 @@ bool AgentDb::claim_workflow_task(
     if (out_error) *out_error = "db is not open";
     return false;
   }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+UPDATE workflow_tasks
+SET
+  status='running',
+  updated_unix_ms=?,
+  started_unix_ms=CASE WHEN started_unix_ms IS NULL OR started_unix_ms=0 THEN ? ELSE started_unix_ms END,
+  attempt=?
+WHERE workflow_id=? AND task_id=? AND status='queued';
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  const int64_t now = now_unix_ms > 0 ? now_unix_ms : unix_ms_now();
+  bool ok = true;
+  ok = ok && bind_i64(st, 1, now);
+  ok = ok && bind_i64(st, 2, now);
+  ok = ok && bind_i32(st, 3, new_attempt < 0 ? 0 : new_attempt);
+  ok = ok && bind_text(st, 4, workflow_id);
+  ok = ok && bind_text(st, 5, task_id);
+  ok = ok && step_done(st);
+  if (!ok) {
+    if (out_error && out_error->empty()) *out_error = sqlite_err(db_);
+    sqlite3_finalize(st);
+    return false;
+  }
+  const int changed = sqlite3_changes(db_);
+  sqlite3_finalize(st);
+  return changed > 0;
+#endif
+}
+
+bool AgentDb::claim_workflow_task_budgeted(
+  const std::string& workflow_id,
+  const std::string& task_id,
+  int64_t now_unix_ms,
+  int new_attempt,
+  int max_inflight_per_workflow,
+  int max_inflight_per_session,
+  const std::string& session_id,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)workflow_id;
+  (void)task_id;
+  (void)now_unix_ms;
+  (void)new_attempt;
+  (void)max_inflight_per_workflow;
+  (void)max_inflight_per_session;
+  (void)session_id;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (workflow_id.empty() || task_id.empty()) {
+    if (out_error) *out_error = "claim_workflow_task_budgeted: workflow_id/task_id empty";
+    return false;
+  }
+  if (max_inflight_per_workflow <= 0 && max_inflight_per_session <= 0) {
+    return claim_workflow_task(workflow_id, task_id, now_unix_ms, new_attempt, out_error);
+  }
+
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+
+  auto count_i64 = [&](const char* sql, std::function<bool(sqlite3_stmt*)> binder, int64_t* out) -> bool {
+    if (!out) return false;
+    *out = 0;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+      if (out_error && out_error->empty()) *out_error = sqlite_err(db_);
+      return false;
+    }
+    bool ok = true;
+    if (binder) ok = ok && binder(st);
+    if (ok) {
+      const int rc = sqlite3_step(st);
+      if (rc == SQLITE_ROW) {
+        *out = sqlite3_column_int64(st, 0);
+        ok = true;
+      } else if (rc == SQLITE_DONE) {
+        *out = 0;
+        ok = true;
+      } else {
+        ok = false;
+      }
+    }
+    if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+    sqlite3_finalize(st);
+    return ok;
+  };
+
+  if (max_inflight_per_workflow > 0) {
+    int64_t running = 0;
+    const char* sql = "SELECT COUNT(1) FROM workflow_tasks WHERE workflow_id=? AND status='running';";
+    if (!count_i64(sql, [&](sqlite3_stmt* st) { return bind_text(st, 1, workflow_id); }, &running)) {
+      return false;
+    }
+    if (running >= (int64_t)max_inflight_per_workflow) {
+      // Budget exceeded: not an error; just don't claim.
+      return false;
+    }
+  }
+
+  if (max_inflight_per_session > 0 && !session_id.empty()) {
+    int64_t running = 0;
+    const char* sql = R"SQL(
+SELECT COUNT(1)
+FROM workflow_tasks t
+JOIN workflows w ON w.workflow_id = t.workflow_id
+WHERE w.session_id=? AND t.status='running';
+)SQL";
+    if (!count_i64(sql, [&](sqlite3_stmt* st) { return bind_text(st, 1, session_id); }, &running)) {
+      return false;
+    }
+    if (running >= (int64_t)max_inflight_per_session) {
+      // Budget exceeded: not an error; just don't claim.
+      return false;
+    }
+  }
+
+  // Claim the task (same semantics as claim_workflow_task).
   sqlite3_stmt* st = nullptr;
   const char* sql = R"SQL(
 UPDATE workflow_tasks

@@ -32,6 +32,8 @@ class WorkflowEngine {
     int max_concurrency = 4;         // number of worker threads
     int poll_ms = 200;              // idle poll sleep
     size_t max_scan_workflows = 64;  // per-iteration bound
+    int max_inflight_per_workflow = 2; // fairness cap; prevents a single workflow from monopolizing all workers
+    int max_inflight_per_session = 0;  // optional multi-tenant cap; 0 disables
   };
 
   WorkflowEngine(
@@ -80,6 +82,7 @@ class WorkflowEngine {
 
   std::atomic<bool> running_{false};
   std::atomic<bool> stop_{false};
+  std::atomic<uint64_t> rr_cursor_{0};
   std::vector<std::thread> workers_;
 };
 
