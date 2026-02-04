@@ -27,6 +27,16 @@ This makes it easy to layer:
 
 …without changing payload semantics.
 
+## Node-initiated collaboration (platform extensions)
+
+In addition to the canonical UM‑EAIS v0.1 message types, `agentd` implements a small set of platform-side extensions that
+enable **node-initiated orchestration** (handoff to the coordinator) over the same ingress pipe:
+
+- `WORKFLOW_SUBMIT` (node → platform): persist a new edge workflow (`edge_workflows`, `edge_workflow_steps`)
+- `WORKFLOW_CANCEL` (node → platform): cancel an edge workflow (`CANCELED`)
+
+Details: `docs/spec/um-eais/um-eais-platform-extensions-v0.1.md`
+
 ## Endpoints
 
 All endpoints require daemon auth when `agentd` is started with `--auth-token`.
@@ -91,8 +101,11 @@ Rules are evaluated during `SENSOR_EVENT` ingestion. The platform enqueues a `TA
 ### Durable edge workflows (UM‑WF)
 
 - `POST /api/v1/edge/workflow/submit`
+- `POST /api/v1/edge/workflow/cancel`
 - `GET /api/v1/edge/workflow?workflow_id=...&include_steps=1`
 - `GET /api/v1/edge/workflows?status=...&limit=...`
+- `GET /api/v1/edge/workflow/events?workflow_id=...&cursor=0&limit=256`
+- `GET /api/v1/edge/workflow/stream?workflow_id=...&cursor=0` (SSE)
 
 Workflows are executed by a background runner in `agentd`:
 - dispatches `invoke_tool`/`run_agent` steps via `TASK_ASSIGN`

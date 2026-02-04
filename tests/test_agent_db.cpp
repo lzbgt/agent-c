@@ -245,10 +245,18 @@ int main() {
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('edge_workflows') WHERE name='workflow_id';");
   const int64_t edge_wf_steps_step_id_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('edge_workflow_steps') WHERE name='step_id';");
+  const int64_t edge_wf_steps_attempt_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('edge_workflow_steps') WHERE name='attempt';");
+  const int64_t edge_wf_steps_max_attempts_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('edge_workflow_steps') WHERE name='max_attempts';");
+  const int64_t edge_wf_steps_next_ready_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('edge_workflow_steps') WHERE name='next_ready_utc_ms';");
+  const int64_t edge_wf_steps_backoff_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('edge_workflow_steps') WHERE name='backoff_ms';");
   const int64_t edge_wf_events_id_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('edge_workflow_events') WHERE name='id';");
   sqlite3_close(raw2);
-  assert(ver == 14);
+  assert(ver == 15);
   assert(arts2 == 0);
   assert(stop_reason_cols == 1);
   assert(ua_cols == 1);
@@ -276,6 +284,10 @@ int main() {
   assert(edge_rules_rule_id_cols == 1);
   assert(edge_workflows_wid_cols == 1);
   assert(edge_wf_steps_step_id_cols == 1);
+  assert(edge_wf_steps_attempt_cols == 1);
+  assert(edge_wf_steps_max_attempts_cols == 1);
+  assert(edge_wf_steps_next_ready_cols == 1);
+  assert(edge_wf_steps_backoff_cols == 1);
   assert(edge_wf_events_id_cols == 1);
 
   db.close();

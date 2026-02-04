@@ -620,6 +620,23 @@ paths:
                   ok: { type: boolean }
                   workflow_id: { type: string }
 
+  /api/v1/edge/workflow/cancel:
+    post:
+      tags: [edge]
+      summary: Cancel an edge workflow
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workflow_id]
+              properties:
+                workflow_id: { type: string }
+      responses:
+        "200":
+          description: Canceled
+
   /api/v1/edge/workflow:
     get:
       tags: [edge]
@@ -636,6 +653,44 @@ paths:
       responses:
         "200":
           description: Workflow
+
+  /api/v1/edge/workflow/events:
+    get:
+      tags: [edge]
+      summary: List edge workflow events (paged)
+      parameters:
+        - in: query
+          name: workflow_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: cursor
+          required: false
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, format: int32 }
+      responses:
+        "200":
+          description: Events list
+
+  /api/v1/edge/workflow/stream:
+    get:
+      tags: [edge]
+      summary: Stream edge workflow events (SSE)
+      parameters:
+        - in: query
+          name: workflow_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: cursor
+          required: false
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: SSE stream (text/event-stream)
 
   /api/v1/edge/workflows:
     get:
@@ -745,6 +800,10 @@ components:
           type: string
           enum: [invoke, agent]
         deadline_utc_ms: { type: integer, format: int64 }
+        attempt:
+          type: integer
+          format: int32
+          description: Optional attempt number (for workflow orchestration/debug; default 0)
         payload:
           type: object
           additionalProperties: true
@@ -793,6 +852,8 @@ components:
                 additionalProperties: true
               join_mode: { type: string, enum: [all, any] }
               deadline_utc_ms: { type: integer, format: int64 }
+              max_attempts: { type: integer, format: int32 }
+              backoff_ms: { type: integer, format: int32 }
 
     ToolDef:
       type: object

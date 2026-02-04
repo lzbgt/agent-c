@@ -57,7 +57,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v14)
+## Schema (v15)
 
 All timestamps are Unix milliseconds.
 
@@ -481,6 +481,10 @@ Durable workflow steps for `edge_workflows`.
 - `payload_json TEXT NOT NULL` (JSON object string)
 - `join_mode TEXT` (optional; `all|any` for `kind=join`)
 - `deadline_utc_ms INTEGER NOT NULL`
+- `attempt INTEGER NOT NULL` (dispatch attempts already performed; starts at 0)
+- `max_attempts INTEGER NOT NULL` (upper bound; default 1)
+- `next_ready_utc_ms INTEGER NOT NULL` (dispatch backoff scheduling; default 0)
+- `backoff_ms INTEGER NOT NULL` (base backoff; default 0)
 - `state TEXT NOT NULL` (`PENDING|QUEUED|RUNNING|SUCCEEDED|FAILED|TIMED_OUT|CANCELED`)
 - `created_utc_ms INTEGER NOT NULL`
 - `updated_utc_ms INTEGER NOT NULL`
@@ -491,6 +495,7 @@ Keys/constraints:
 
 Indexes:
 - `CREATE INDEX edge_workflow_steps_by_state ON edge_workflow_steps(workflow_id, state, updated_utc_ms DESC)`
+- `CREATE INDEX edge_workflow_steps_by_ready ON edge_workflow_steps(workflow_id, state, next_ready_utc_ms, updated_utc_ms DESC)`
 
 ### `edge_workflow_events`
 

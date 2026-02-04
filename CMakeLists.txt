@@ -140,6 +140,9 @@ if(AGENT_BUILD_HOST)
     daemon/src/daemon_auth.cpp
     daemon/src/edge_interop_endpoints.cpp
     daemon/src/edge_deadline_sweeper.cpp
+    daemon/src/edge_rules.cpp
+    daemon/src/edge_util.cpp
+    daemon/src/edge_workflow_endpoints.cpp
     daemon/src/edge_workflow_engine.cpp
     daemon/src/file_endpoint.cpp
     daemon/src/http_util.cpp
@@ -172,6 +175,7 @@ if(AGENT_BUILD_HOST)
       daemon/src/agentd_service.cpp
       daemon/src/http_server.cpp
       daemon/src/job_stream_endpoint.cpp
+      daemon/src/edge_workflow_stream_endpoint.cpp
       daemon/src/workflow_stream_endpoint.cpp
     )
   endif()

@@ -159,7 +159,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 14;
+  const int kSchemaVersion = 15;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -643,6 +643,19 @@ CREATE INDEX IF NOT EXISTS edge_workflow_events_by_workflow ON edge_workflow_eve
 )SQL";
     if (!exec_locked(schema_v14, out_error)) return false;
     cur_ver = 14;
+  }
+
+  if (cur_ver < 15) {
+    const char* schema_v15 = R"SQL(
+-- Edge workflow retries/backoff (platform-side): add attempt tracking and scheduling fields.
+ALTER TABLE edge_workflow_steps ADD COLUMN attempt INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE edge_workflow_steps ADD COLUMN max_attempts INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE edge_workflow_steps ADD COLUMN next_ready_utc_ms INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE edge_workflow_steps ADD COLUMN backoff_ms INTEGER NOT NULL DEFAULT 0;
+CREATE INDEX IF NOT EXISTS edge_workflow_steps_by_ready ON edge_workflow_steps(workflow_id, state, next_ready_utc_ms, updated_utc_ms DESC);
+)SQL";
+    if (!exec_locked(schema_v15, out_error)) return false;
+    cur_ver = 15;
   }
 
   // Record schema version.

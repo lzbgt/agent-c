@@ -108,6 +108,9 @@ void handle_edge_rule_delete_endpoint(
 // - POST /api/v1/edge/workflow/submit
 // - GET  /api/v1/edge/workflow?workflow_id=...&include_steps=1
 // - GET  /api/v1/edge/workflows?status=QUEUED|RUNNING|SUCCEEDED|FAILED|CANCELED&limit=...
+// - POST /api/v1/edge/workflow/cancel
+// - GET  /api/v1/edge/workflow/events?workflow_id=...&cursor=0&limit=256
+// - GET  /api/v1/edge/workflow/stream?workflow_id=...&cursor=0  (SSE; ends with edge_workflow_done)
 void handle_edge_workflow_submit_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
@@ -130,6 +133,30 @@ void handle_edge_workflow_list_endpoint(
   AgentDb* db_or_null,
   const HttpRequest& req,
   HttpResponse* resp
+);
+
+void handle_edge_workflow_cancel_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
+void handle_edge_workflow_events_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
+void handle_edge_workflow_stream_endpoint(
+  const std::string& daemon_auth_token,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  int client_fd
 );
 
 }  // namespace agentd

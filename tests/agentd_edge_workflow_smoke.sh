@@ -156,6 +156,24 @@ if obj.get("workflow_id") != "${WF_ID}":
 print("ok")
 PY
 
+# Ensure workflow events endpoint returns at least the workflow_created record.
+wf_events="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/edge/workflow/events?workflow_id=${WF_ID}&cursor=0&limit=256")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${wf_events}''')
+if not obj.get("ok"):
+  print("events not ok:", obj, file=sys.stderr)
+  raise SystemExit(1)
+events = obj.get("events") or []
+types = [e.get("type") for e in events if isinstance(e, dict)]
+if "workflow_created" not in types:
+  print("missing workflow_created event:", types, file=sys.stderr)
+  raise SystemExit(1)
+print("ok")
+PY
+
 # Wait until both TASK_ASSIGN messages appear in outbox.
 task_ids="$(python3 - <<'PY'
 print("a\nb")
@@ -212,6 +230,7 @@ PY
 done
 
 # Poll workflow until it reaches SUCCEEDED and join step is SUCCEEDED.
+succeeded="0"
 for _ in $(seq 1 80); do
   wf_get="$(curl -fsS --noproxy "*" --max-time 10 \
     "${DAEMON_URL}/api/v1/edge/workflow?workflow_id=${WF_ID}&include_steps=1")"
@@ -232,12 +251,85 @@ else:
 PY
 )"
   if [[ "${ok}" == "1" ]]; then
+    succeeded="1"
+    break
+  fi
+  sleep 0.1
+done
+
+if [[ "${succeeded}" != "1" ]]; then
+  echo "workflow did not reach SUCCEEDED in time" >&2
+  exit 1
+fi
+
+# Cancel path smoke (should be idempotent even if tasks already dispatched).
+WF2_ID="$(python3 - <<'PY'
+import uuid
+print("wf_" + str(uuid.uuid4()))
+PY
+)"
+
+wf2_submit="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Content-Type: application/json" \
+  -d "$(python3 - <<PY
+import json, time
+deadline = int(time.time()*1000) + 120_000
+print(json.dumps({
+  "workflow_id": "${WF2_ID}",
+  "goal": "cancel smoke",
+  "priority": 1,
+  "steps": [
+    {
+      "step_id": "only",
+      "kind": "invoke_tool",
+      "depends_on": [],
+      "target": {"node_id": "${NODE_ID}"},
+      "payload": {"tool":"ui.led.ws2812.control","args":{"action":"solid"}},
+      "deadline_utc_ms": deadline,
+      "max_attempts": 3,
+      "backoff_ms": 250
+    }
+  ]
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/edge/workflow/submit")"
+
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Content-Type: application/json" \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({"workflow_id":"${WF2_ID}"}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/edge/workflow/cancel" >/dev/null
+
+for _ in $(seq 1 80); do
+  wf_get="$(curl -fsS --noproxy "*" --max-time 10 \
+    "${DAEMON_URL}/api/v1/edge/workflow?workflow_id=${WF2_ID}&include_steps=1")"
+  ok="$(python3 - <<PY
+import json
+obj = json.loads(r'''${wf_get}''')
+wf = obj.get("workflow") or {}
+steps = obj.get("steps") or []
+st = wf.get("status")
+step_state = None
+for s in steps:
+  if s.get("step_id") == "only":
+    step_state = s.get("state")
+if st == "CANCELED" and step_state == "CANCELED":
+  print("1")
+else:
+  print("0")
+PY
+)"
+  if [[ "${ok}" == "1" ]]; then
     exit 0
   fi
   sleep 0.1
 done
 
-echo "workflow did not reach SUCCEEDED in time" >&2
+echo "workflow cancel did not reach CANCELED in time" >&2
+exit 1
 echo "${wf_get}" >&2
 exit 1
-

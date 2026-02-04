@@ -1132,9 +1132,21 @@ int main(int argc, char** argv) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_edge_workflow_submit_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
+  server.handle("POST", "/api/v1/edge/workflow/cancel", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_workflow_cancel_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
   server.handle("GET", "/api/v1/edge/workflow", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_edge_workflow_get_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/edge/workflow/events", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_workflow_events_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle_stream("GET", "/api/v1/edge/workflow/stream", [&](const HttpRequest& req, int client_fd) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_workflow_stream_endpoint(cur.auth_token, cors_cfg, db_or_null, req, client_fd);
   });
   server.handle("GET", "/api/v1/edge/workflows", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();

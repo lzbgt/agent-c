@@ -649,9 +649,21 @@ struct AgentdService::Impl {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_edge_workflow_submit_endpoint(cur, cors_cfg, &db, req, resp);
     });
+    server.handle("POST", "/api/v1/edge/workflow/cancel", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_edge_workflow_cancel_endpoint(cur, cors_cfg, &db, req, resp);
+    });
     server.handle("GET", "/api/v1/edge/workflow", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_edge_workflow_get_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("GET", "/api/v1/edge/workflow/events", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_edge_workflow_events_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle_stream("GET", "/api/v1/edge/workflow/stream", [this](const HttpRequest& req, int client_fd) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_edge_workflow_stream_endpoint(cur.auth_token, cors_cfg, &db, req, client_fd);
     });
     server.handle("GET", "/api/v1/edge/workflows", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();

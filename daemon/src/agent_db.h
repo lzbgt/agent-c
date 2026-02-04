@@ -346,8 +346,9 @@ class AgentDb {
 
   // Inserts an inbound message. Dedupe is by msg_id primary key:
   // - returns true when inserted
-  // - returns false on failure (including duplicate msg_id)
-  bool insert_edge_inbox_message(const EdgeInboxMessageRow& row, std::string* out_error);
+  // - returns true and sets out_deduped=true when msg_id already exists
+  // - returns false only on unexpected failure
+  bool insert_edge_inbox_message(const EdgeInboxMessageRow& row, bool* out_deduped, std::string* out_error);
 
   struct EdgeOutboxMessageRow {
     int64_t outbox_id = 0;
@@ -461,7 +462,7 @@ class AgentDb {
   struct EdgeWorkflowRow {
     std::string workflow_id;
     std::string goal;
-    std::string status; // queued|running|done|error|cancelled
+    std::string status; // QUEUED|RUNNING|SUCCEEDED|FAILED|CANCELED
     int priority = 0;
     std::string spec_json; // JSON object string
     int64_t created_utc_ms = 0;
@@ -478,10 +479,22 @@ class AgentDb {
     std::string payload_json;    // JSON object string
     std::string join_mode;       // all|any (join only)
     int64_t deadline_utc_ms = 0;
-    std::string state; // PENDING|DISPATCHED|RUNNING|SUCCEEDED|FAILED|TIMED_OUT|CANCELED|SKIPPED
+    int attempt = 0;
+    int max_attempts = 1;
+    int64_t next_ready_utc_ms = 0;
+    int backoff_ms = 0;
+    std::string state; // PENDING|QUEUED|RUNNING|SUCCEEDED|FAILED|TIMED_OUT|CANCELED
     int64_t created_utc_ms = 0;
     int64_t updated_utc_ms = 0;
     std::string error;
+  };
+
+  struct EdgeWorkflowEventRow {
+    int64_t id = 0;
+    std::string workflow_id;
+    int64_t ts_utc_ms = 0;
+    std::string type;
+    std::string data_json; // JSON object string
   };
 
   bool create_edge_workflow(
@@ -503,6 +516,14 @@ class AgentDb {
     std::string* out_error
   );
   bool upsert_edge_workflow_step(const EdgeWorkflowStepRow& step, std::string* out_error);
+  bool insert_edge_workflow_event(const EdgeWorkflowEventRow& row, int64_t* out_id, std::string* out_error);
+  bool list_edge_workflow_events(
+    const std::string& workflow_id,
+    int64_t after_id,
+    size_t max_rows,
+    std::vector<EdgeWorkflowEventRow>* out_rows_asc,
+    std::string* out_error
+  );
 
 
  private:
