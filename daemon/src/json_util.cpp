@@ -89,5 +89,53 @@ std::string json_try_extract_assistant_content_from_completion(const Json::Value
   return "";
 }
 
-}  // namespace agentd
+bool json_pointer_get(const Json::Value& root, const std::string& ptr, const Json::Value** out) {
+  if (!out) return false;
+  *out = nullptr;
+  if (ptr.empty()) {
+    *out = &root;
+    return true;
+  }
+  if (ptr[0] != '/') return false;
+  const Json::Value* cur = &root;
 
+  size_t i = 1;
+  while (i <= ptr.size()) {
+    size_t slash = ptr.find('/', i);
+    if (slash == std::string::npos) slash = ptr.size();
+    std::string seg = ptr.substr(i, slash - i);
+    // unescape ~0 and ~1
+    for (size_t j = 0; j + 1 < seg.size(); j++) {
+      if (seg[j] == '~') {
+        if (seg[j + 1] == '0') {
+          seg.replace(j, 2, "~");
+        } else if (seg[j + 1] == '1') {
+          seg.replace(j, 2, "/");
+        }
+      }
+    }
+
+    if (cur->isObject()) {
+      if (!cur->isMember(seg)) return false;
+      cur = &((*cur)[seg]);
+    } else if (cur->isArray()) {
+      if (seg.empty()) return false;
+      char* endp = nullptr;
+      long long idx = std::strtoll(seg.c_str(), &endp, 10);
+      if (!endp || *endp != '\0') return false;
+      if (idx < 0) return false;
+      if ((Json::ArrayIndex)idx >= cur->size()) return false;
+      cur = &((*cur)[(Json::ArrayIndex)idx]);
+    } else {
+      return false;
+    }
+
+    if (slash == ptr.size()) break;
+    i = slash + 1;
+  }
+
+  *out = cur;
+  return true;
+}
+
+}  // namespace agentd

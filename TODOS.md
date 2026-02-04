@@ -50,6 +50,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Optional workflow submit dependency inference: `infer_depends_on: true` scans for `${task.<id>...}` / `$ref:"task.<id>..."` and merges into `depends_on`.
   - Proof: `ctest` includes `agentd_workflow_infer_deps_smoke`.
   - Proof: `ctest` includes `agentd_workflow_smoke` (validates DAG ordering + templating + restart recovery).
+- Workflow engine maintainability refactor:
+  - JSON Pointer helper promoted to `daemon/src/json_util.*` (`json_pointer_get`).
+  - Workflow template expander extracted into `daemon/src/workflow_templates.*` (keeps `workflow_engine.cpp` under ~2000 lines).
 - Durable workflows can now run deterministic AVM capsule tasks (no LLM required):
   - Task kind: `kind: "avm_capsule"`
   - Task payload: `capsule: { obc_base64, timeout_ms, gas, mem_bytes, ... }` (same schema as `POST /api/v1/avm/capsule_run`)

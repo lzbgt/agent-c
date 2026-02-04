@@ -168,6 +168,7 @@ if(AGENT_BUILD_HOST)
     daemon/src/openrouter_util.cpp
     daemon/src/string_util.cpp
     daemon/src/workflow_engine.cpp
+    daemon/src/workflow_templates.cpp
     daemon/src/workflow_endpoints.cpp
   )
 

@@ -16,5 +16,8 @@ bool json_parse_any(const std::string& s, Json::Value* out, std::string* out_err
 
 std::string json_try_extract_assistant_content_from_completion(const Json::Value& root);
 
-}  // namespace agentd
+// Minimal JSON Pointer getter (RFC 6901 semantics).
+// Returns false for invalid pointers; returns true and sets out=nullptr if the path does not exist.
+bool json_pointer_get(const Json::Value& root, const std::string& ptr, const Json::Value** out);
 
+}  // namespace agentd
