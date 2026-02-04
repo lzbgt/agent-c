@@ -220,6 +220,33 @@ void handle_workflow_submit_endpoint(
   const Json::Value defaults =
     args.isMember("defaults") && args["defaults"].isObject() ? args["defaults"] : Json::Value(Json::nullValue);
 
+  const Json::Value workflow_inputs =
+    args.isMember("inputs") && args["inputs"].isObject() ? args["inputs"] : Json::Value(Json::nullValue);
+  if (args.isMember("inputs") && !args["inputs"].isObject() && !args["inputs"].isNull()) {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"invalid inputs (expected object)\"}";
+    return;
+  }
+  if (workflow_inputs.isObject()) {
+    const auto keys = workflow_inputs.getMemberNames();
+    if (keys.size() > 256) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"too many inputs (max 256)\"}";
+      return;
+    }
+    for (const auto& k : keys) {
+      if (!id_is_safe(k)) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "invalid input name (expected id-safe)";
+        o["input"] = k;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+    }
+  }
+
   int workflow_priority = 0;
   if (args.isMember("priority")) {
     if (!args["priority"].isInt()) {
@@ -504,6 +531,64 @@ void handle_workflow_submit_endpoint(
         run_req["trace_id"] = trace_id + ":" + task_id;
       }
       task_req = run_req;
+    }
+
+    // Attach merged inputs to every task (special or normal).
+    // - workflow-level args.inputs: defaults for all tasks
+    // - per-task inputs: may be set in task object and/or task.request
+    // - per-task overrides workflow-level keys
+    if (workflow_inputs.isObject() || t.isMember("inputs") || (run_req.isObject() && run_req.isMember("inputs"))) {
+      Json::Value merged(Json::objectValue);
+      if (workflow_inputs.isObject()) {
+        for (const auto& k : workflow_inputs.getMemberNames()) merged[k] = workflow_inputs[k];
+      }
+
+      const Json::Value task_inputs_top =
+        t.isMember("inputs") ? t["inputs"] : Json::Value(Json::nullValue);
+      const Json::Value task_inputs_req =
+        (run_req.isObject() && run_req.isMember("inputs")) ? run_req["inputs"] : Json::Value(Json::nullValue);
+
+      auto merge_inputs = [&](const Json::Value& in, const std::string& where) -> bool {
+        if (in.isNull()) return true;
+        if (!in.isObject()) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = std::string("invalid inputs (expected object) in ") + where;
+          o["task_id"] = task_id;
+          resp->body = json_stringify_compact(o);
+          return false;
+        }
+        const auto keys = in.getMemberNames();
+        if (keys.size() > 256) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = std::string("too many inputs (max 256) in ") + where;
+          o["task_id"] = task_id;
+          resp->body = json_stringify_compact(o);
+          return false;
+        }
+        for (const auto& k : keys) {
+          if (!id_is_safe(k)) {
+            resp->status = 400;
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "invalid input name (expected id-safe)";
+            o["task_id"] = task_id;
+            o["input"] = k;
+            resp->body = json_stringify_compact(o);
+            return false;
+          }
+          merged[k] = in[k];
+        }
+        return true;
+      };
+
+      if (!merge_inputs(task_inputs_top, "task.inputs")) return;
+      if (!merge_inputs(task_inputs_req, "task.request.inputs")) return;
+
+      if (!merged.getMemberNames().empty()) task_req["inputs"] = merged;
     }
 
     Json::Value deps_arr(Json::arrayValue);

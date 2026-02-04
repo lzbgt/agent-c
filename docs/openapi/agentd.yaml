@@ -1134,6 +1134,10 @@ components:
         trace_id: { $ref: "#/components/schemas/TraceID" }
         session_id: { type: string }
         no_session: { type: boolean }
+        inputs:
+          type: object
+          description: Optional workflow/task-local input variables (expanded in durable workflow tasks).
+          additionalProperties: true
         priority:
           type: integer
           format: int32
@@ -1228,6 +1232,10 @@ components:
         allow_error:
           type: boolean
           description: If true, task failure does not fail the workflow (soft-fail).
+        inputs:
+          type: object
+          description: Optional per-task inputs (overrides workflow-level inputs).
+          additionalProperties: true
         depends_on:
           type: array
           items: { type: string }
@@ -1251,6 +1259,10 @@ components:
         allow_error:
           type: boolean
           description: If true, task failure does not fail the workflow (soft-fail).
+        inputs:
+          type: object
+          description: Optional per-task inputs (overrides workflow-level inputs).
+          additionalProperties: true
         kind:
           type: string
           enum: [avm_capsule]
@@ -1278,6 +1290,10 @@ components:
         allow_error:
           type: boolean
           description: If true, task failure does not fail the workflow (soft-fail).
+        inputs:
+          type: object
+          description: Optional per-task inputs (overrides workflow-level inputs).
+          additionalProperties: true
         kind:
           type: string
           enum: [aggregate]
@@ -1305,6 +1321,10 @@ components:
         allow_error:
           type: boolean
           description: If true, task failure does not fail the workflow (soft-fail).
+        inputs:
+          type: object
+          description: Optional per-task inputs (overrides workflow-level inputs).
+          additionalProperties: true
         kind:
           type: string
           enum: [delay]
@@ -1389,6 +1409,10 @@ components:
         allow_error:
           type: boolean
           description: If true, task failure does not fail the workflow (soft-fail).
+        inputs:
+          type: object
+          description: Optional per-task inputs (overrides workflow-level inputs).
+          additionalProperties: true
         kind:
           type: string
           enum: [edge_invoke]
@@ -1525,6 +1549,10 @@ components:
         allow_inline_api_keys: { type: boolean }
         defaults:
           type: object
+          additionalProperties: true
+        inputs:
+          type: object
+          description: Workflow-level inputs copied into each task request (per-task inputs override keys).
           additionalProperties: true
         tasks:
           type: array

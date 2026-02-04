@@ -138,6 +138,29 @@ As of v2, template expansion is applied recursively to the task’s full request
 - feed prior task outputs into `edge_invoke.args` for MCU actuation
 - wire prior outputs into non-prompt request fields (e.g., structured messages payloads)
 
+### Workflow inputs (`inputs`) (v2.1)
+
+For safer, more maintainable dataflow (vs repeating `${task.X...}` everywhere), tasks may carry an `inputs` object
+(`map<string, any-json>`) which is expanded and then made available to later template expansion.
+
+Where `inputs` can be defined:
+- Workflow-level: `POST /api/v1/workflow/submit` top-level `inputs` (copied into every task request)
+- Per-task: `task.inputs` (or `task.request.inputs`) overrides workflow-level keys for that task
+- Runtime: tasks may include `inputs` directly in their persisted request JSON (advanced use / internal tooling)
+
+Inputs are expanded in **two phases**:
+1) Expand `task.*` templates across the full task request JSON (so inputs can reference prior task results).
+2) Build `inputs_by_name` from the resolved `inputs` object and expand `input.*` templates across the request JSON.
+   This is repeated in bounded rounds so `input -> input` chains converge.
+
+Input template forms:
+- `${input.<name>}` (stringifies the whole JSON value if it is not a string)
+- `${input.<name>.json:<json_pointer>}` (extract a JSON Pointer from the input value)
+
+Constraints:
+- Input names must be “id-safe”: `[A-Za-z0-9_-]` (length 1..128).
+- `inputs` is persisted in the workflow DB; do not store secrets unless you intend them to be durable.
+
 ### JSON-native embedding (`$ref`)
 
 String templating is convenient but always produces strings. For structured dataflow, tasks may embed JSON from prior task
@@ -150,6 +173,8 @@ results using a special object form:
 Supported references:
 - `task.<id>.assistant_text`
 - `task.<id>.json:<json_pointer>`
+- `input.<name>`
+- `input.<name>.json:<json_pointer>`
 
 If the reference cannot be resolved, the task fails deterministically with `error="template expansion failed"`.
 

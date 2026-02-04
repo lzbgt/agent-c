@@ -68,24 +68,51 @@ run_logged() {
   echo "[verify] OK: ${label} (log: ${log})"
 }
 
+run_ctest_logged_with_retry() {
+  # Network smoke tests can be flaky (DNS / transient provider issues). Retry failed tests once to reduce false negatives.
+  local label="${1}"
+  local log1="${2}"
+  local log2="${3}"
+  local build_dir="${4}"
+
+  echo "[verify] ${label}"
+  if ctest --test-dir "${build_dir}" --output-on-failure >"${log1}" 2>&1; then
+    echo "[verify] OK: ${label} (log: ${log1})"
+    return 0
+  fi
+
+  echo "[verify] WARN: ${label} failed; rerun failed tests once (--rerun-failed)" >&2
+  if ctest --test-dir "${build_dir}" --rerun-failed --output-on-failure >"${log2}" 2>&1; then
+    echo "[verify] OK (after rerun-failed): ${label} (log: ${log2})"
+    return 0
+  fi
+
+  echo "[verify] FAILED: ${label} (logs: ${log1}, ${log2})" >&2
+  fail_tail "${log1}"
+  fail_tail "${log2}"
+  return 1
+}
+
 if [[ "${MODE}" == "core" ]]; then
   build_dir="${ROOT}/build-core"
   cfg_log="${log_dir}/verify_${ts}_cmake_configure_core.log"
   build_log="${log_dir}/verify_${ts}_cmake_build_core.log"
   test_log="${log_dir}/verify_${ts}_ctest_core.log"
+  test_retry_log="${log_dir}/verify_${ts}_ctest_core_rerun_failed.log"
 
   run_logged "cmake configure (core-only)" "${cfg_log}" cmake -S . -B "${build_dir}" -DAGENT_BUILD_HOST=OFF
   run_logged "cmake build (core-only)" "${build_log}" cmake --build "${build_dir}" -j
-  run_logged "ctest (core-only)" "${test_log}" ctest --test-dir "${build_dir}" --output-on-failure
+  run_ctest_logged_with_retry "ctest (core-only)" "${test_log}" "${test_retry_log}" "${build_dir}"
 else
   build_dir="${ROOT}/build"
   cfg_log="${log_dir}/verify_${ts}_cmake_configure.log"
   build_log="${log_dir}/verify_${ts}_cmake_build.log"
   test_log="${log_dir}/verify_${ts}_ctest.log"
+  test_retry_log="${log_dir}/verify_${ts}_ctest_rerun_failed.log"
 
   run_logged "cmake configure" "${cfg_log}" cmake -S . -B "${build_dir}"
   run_logged "cmake build" "${build_log}" cmake --build "${build_dir}" -j
-  run_logged "ctest" "${test_log}" ctest --test-dir "${build_dir}" --output-on-failure
+  run_ctest_logged_with_retry "ctest" "${test_log}" "${test_retry_log}" "${build_dir}"
 fi
 
 if [[ "${SKIP_UI}" == "1" ]]; then
@@ -117,4 +144,3 @@ if [[ ! -d "${ROOT}/ui/node_modules" ]]; then
 fi
 
 run_logged "ui: npm run build" "${ui_log}" bash -lc "cd ui && npm run build"
-

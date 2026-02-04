@@ -45,6 +45,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - prompt templating (simple but powerful): `${task.<id>.assistant_text}` and `${task.<id>.json:/json_pointer}`
   - v2 template expansion: templates are expanded across the full task request JSON (not only `prompt`), enabling deterministic dataflow into `edge_invoke.args` and other structured fields.
   - v2 JSON-native embedding: `{"$ref":"task.<id>.json:/ptr"}` replaces the entire value with embedded JSON (not a string), enabling structured payload/args wiring.
+  - v2.1 workflow inputs: tasks may carry `inputs` and reference them via `${input.<name>...}` and `{"$ref":"input.<name>..."}` for cleaner dataflow.
+  - Proof: `ctest` includes `agentd_workflow_inputs_smoke`.
   - Proof: `ctest` includes `agentd_workflow_smoke` (validates DAG ordering + templating + restart recovery).
 - Durable workflows can now run deterministic AVM capsule tasks (no LLM required):
   - Task kind: `kind: "avm_capsule"`
@@ -149,7 +151,7 @@ Problem:
 Deliverables:
 - Dataflow model:
   - (shipped) `${task.<id>.assistant_text}` and `${task.<id>.json:/ptr}` template expansion across full task request JSON (prompt + structured fields)
-  - (next) explicit `inputs` map per task (safer than string templating; enables schema validation)
+  - (shipped) explicit `inputs` map per task (shared variables; supports `${input...}` and `{"$ref":"input..."}`; enables schema validation later)
 - Aggregation nodes (no LLM required by default):
   - `first_ok`, `best_of_n`, `strict_all_ok`, `collect`
 - Optional LLM aggregator (tools=none by default).

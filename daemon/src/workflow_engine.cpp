@@ -637,15 +637,18 @@ static void insert_workflow_event_best_effort(
 static std::string expand_prompt_templates(
   const std::string& prompt,
   const std::unordered_map<std::string, std::string>& assistant_text_by_task,
-  const std::unordered_map<std::string, Json::Value>& result_json_by_task
+  const std::unordered_map<std::string, Json::Value>& result_json_by_task,
+  const std::unordered_map<std::string, Json::Value>* inputs_by_name
 ) {
-  if (prompt.find("${task.") == std::string::npos) return prompt;
+  if (prompt.find("${task.") == std::string::npos && prompt.find("${input.") == std::string::npos) return prompt;
   std::string out;
   out.reserve(prompt.size() + 96);
 
   size_t i = 0;
   while (i < prompt.size()) {
-    const size_t p = prompt.find("${task.", i);
+    size_t p = prompt.find("${task.", i);
+    size_t p2 = prompt.find("${input.", i);
+    if (p == std::string::npos || (p2 != std::string::npos && p2 < p)) p = p2;
     if (p == std::string::npos) {
       out.append(prompt, i, std::string::npos);
       break;
@@ -659,21 +662,22 @@ static std::string expand_prompt_templates(
     }
 
     const std::string token = prompt.substr(p + 2, end - (p + 2)); // strip ${ ... }
-    // token starts with task.
-    const std::string prefix = "task.";
-    if (token.rfind(prefix, 0) != 0) {
+    const bool is_task = (token.rfind("task.", 0) == 0);
+    const bool is_input = (token.rfind("input.", 0) == 0);
+    if (!is_task && !is_input) {
       out.append(prompt, p, (end - p) + 1);
       i = end + 1;
       continue;
     }
 
-    const std::string rest = token.substr(prefix.size());
-    // rest: <id>.assistant_text OR <id>.json:/ptr
+    const std::string rest = token.substr(is_task ? std::string("task.").size() : std::string("input.").size());
+    // task rest: <id>.assistant_text OR <id>.json:/ptr
+    // input rest: <name> OR <name>.json:/ptr
     const std::string suffix_text = ".assistant_text";
     const std::string dot_json = ".json:";
 
-    // assistant_text
-    if (rest.size() > suffix_text.size() && rest.rfind(suffix_text) == (rest.size() - suffix_text.size())) {
+    // assistant_text (task only)
+    if (is_task && rest.size() > suffix_text.size() && rest.rfind(suffix_text) == (rest.size() - suffix_text.size())) {
       const std::string task_id = rest.substr(0, rest.size() - suffix_text.size());
       auto it = assistant_text_by_task.find(task_id);
       if (it == assistant_text_by_task.end()) {
@@ -688,17 +692,23 @@ static std::string expand_prompt_templates(
     // json pointer extraction
     const size_t jpos = rest.find(dot_json);
     if (jpos != std::string::npos) {
-      const std::string task_id = rest.substr(0, jpos);
+      const std::string id = rest.substr(0, jpos);
       const std::string ptr = rest.substr(jpos + dot_json.size());
-      auto it = result_json_by_task.find(task_id);
-      if (it == result_json_by_task.end()) {
+      const Json::Value* root = nullptr;
+      if (is_task) {
+        auto it = result_json_by_task.find(id);
+        if (it != result_json_by_task.end()) root = &it->second;
+      } else if (inputs_by_name) {
+        auto it = inputs_by_name->find(id);
+        if (it != inputs_by_name->end()) root = &it->second;
+      }
+      if (!root) {
         out.append(prompt, p, (end - p) + 1);
         i = end + 1;
         continue;
       }
-      const Json::Value& root = it->second;
       const Json::Value* got = nullptr;
-      if (!json_pointer_get(root, ptr, &got) || !got) {
+      if (!json_pointer_get(*root, ptr, &got) || !got) {
         out.append(prompt, p, (end - p) + 1);
         i = end + 1;
         continue;
@@ -707,6 +717,17 @@ static std::string expand_prompt_templates(
       else out += json_stringify_compact_local(*got);
       i = end + 1;
       continue;
+    }
+
+    // input.<name> embeds the entire JSON value (stringified if needed).
+    if (is_input && inputs_by_name) {
+      auto it = inputs_by_name->find(rest);
+      if (it != inputs_by_name->end()) {
+        if (it->second.isString()) out += it->second.asString();
+        else out += json_stringify_compact_local(it->second);
+        i = end + 1;
+        continue;
+      }
     }
 
     // Unknown token shape; keep literal.
@@ -719,33 +740,53 @@ static std::string expand_prompt_templates(
 
 static bool json_pointer_get(const Json::Value& root, const std::string& ptr, const Json::Value** out);
 
-static void expand_templates_in_json_value(
+static bool workflow_input_name_is_safe(const std::string& s) {
+  if (s.empty() || s.size() > 128) return false;
+  for (char c : s) {
+    const unsigned char uc = (unsigned char)c;
+    if ((uc >= 'a' && uc <= 'z') || (uc >= 'A' && uc <= 'Z') || (uc >= '0' && uc <= '9') || c == '_' || c == '-') continue;
+    return false;
+  }
+  return true;
+}
+
+static void expand_templates_in_json_value_impl(
   Json::Value* v,
   const std::unordered_map<std::string, std::string>& assistant_text_by_task,
   const std::unordered_map<std::string, Json::Value>& result_json_by_task,
+  const std::unordered_map<std::string, Json::Value>* inputs_by_name,
+  bool allow_unresolved_refs,
   std::vector<std::string>* out_errors
 ) {
   if (!v) return;
   if (out_errors) out_errors->reserve(out_errors->size() + 4);
 
   // JSON-native embedding:
-  // If a value is exactly {"$ref":"task.<id>.(assistant_text|json:<ptr>)"}, replace the entire value with the referenced
+  // If a value is exactly {"$ref":"task.<id>.(assistant_text|json:<ptr>)"} or {"$ref":"input.<name>(.json:<ptr>)"},
+  // replace the entire value with the referenced
   // value (as JSON). This is the safer dataflow primitive for wiring structured args/payloads.
   if (v->isObject()) {
     const auto keys = v->getMemberNames();
     if (keys.size() == 1 && keys[0] == "$ref" && (*v)["$ref"].isString()) {
       const std::string ref = trim_copy((*v)["$ref"].asString());
-      const std::string prefix = "task.";
-      if (ref.rfind(prefix, 0) != 0) {
-        if (out_errors) out_errors->push_back("invalid $ref (expected task.<id>...): " + ref);
+      const std::string task_prefix = "task.";
+      const std::string input_prefix = "input.";
+      const bool is_task = (ref.rfind(task_prefix, 0) == 0);
+      const bool is_input = (ref.rfind(input_prefix, 0) == 0);
+      if (!is_task && !is_input) {
+        if (out_errors) out_errors->push_back("invalid $ref (expected task.<id>... or input.<name>...): " + ref);
         *v = Json::Value(Json::nullValue);
         return;
       }
-      const std::string rest = ref.substr(prefix.size());
+      if (is_input && !inputs_by_name) {
+        // Defer input.* resolution to a later pass where inputs are available.
+        return;
+      }
+      const std::string rest = ref.substr(is_task ? task_prefix.size() : input_prefix.size());
       const std::string suffix_text = ".assistant_text";
       const std::string dot_json = ".json:";
 
-      if (rest.size() > suffix_text.size() && rest.rfind(suffix_text) == (rest.size() - suffix_text.size())) {
+      if (is_task && rest.size() > suffix_text.size() && rest.rfind(suffix_text) == (rest.size() - suffix_text.size())) {
         const std::string task_id = rest.substr(0, rest.size() - suffix_text.size());
         auto it = assistant_text_by_task.find(task_id);
         if (it == assistant_text_by_task.end()) {
@@ -759,21 +800,34 @@ static void expand_templates_in_json_value(
 
       const size_t jpos = rest.find(dot_json);
       if (jpos != std::string::npos) {
-        const std::string task_id = rest.substr(0, jpos);
+        const std::string id = rest.substr(0, jpos);
         const std::string ptr = rest.substr(jpos + dot_json.size());
-        auto it = result_json_by_task.find(task_id);
-        if (it == result_json_by_task.end()) {
-          if (out_errors) out_errors->push_back("unresolved $ref json (task missing): " + ref);
+        const Json::Value* root = nullptr;
+        if (is_task) {
+          auto it = result_json_by_task.find(id);
+          if (it != result_json_by_task.end()) root = &it->second;
+        } else if (inputs_by_name) {
+          auto it = inputs_by_name->find(id);
+          if (it != inputs_by_name->end()) root = &it->second;
+        }
+        if (!root) {
+          if (allow_unresolved_refs) {
+            return;
+          }
+          if (out_errors) {
+            out_errors->push_back(
+              std::string("unresolved $ref json (") + (is_task ? "task missing" : "input missing") + "): " + ref
+            );
+          }
           *v = Json::Value(Json::nullValue);
           return;
         }
-        const Json::Value& root = it->second;
         if (ptr.empty()) {
-          *v = root;
+          *v = *root;
           return;
         }
         const Json::Value* got = nullptr;
-        if (!json_pointer_get(root, ptr, &got) || !got) {
+        if (!json_pointer_get(*root, ptr, &got) || !got) {
           if (out_errors) out_errors->push_back("unresolved $ref json pointer: " + ref);
           *v = Json::Value(Json::nullValue);
           return;
@@ -782,30 +836,63 @@ static void expand_templates_in_json_value(
         return;
       }
 
-      if (out_errors) out_errors->push_back("invalid $ref shape (expected .assistant_text or .json:): " + ref);
+      if (is_input) {
+        if (!inputs_by_name) {
+          // When inputs are not available, this branch is handled by the earlier defer return.
+          if (!allow_unresolved_refs) {
+            if (out_errors) out_errors->push_back("unresolved $ref input (inputs not available): " + ref);
+            *v = Json::Value(Json::nullValue);
+          }
+          return;
+        }
+        auto it = inputs_by_name->find(rest);
+        if (it == inputs_by_name->end()) {
+          if (allow_unresolved_refs) {
+            return;
+          }
+          if (out_errors) out_errors->push_back("unresolved $ref input: " + ref);
+          *v = Json::Value(Json::nullValue);
+          return;
+        }
+        *v = it->second;
+        return;
+      }
+
+      if (out_errors) out_errors->push_back("invalid $ref shape (expected task.<id>.assistant_text or task|input.<id>.json:): " + ref);
       *v = Json::Value(Json::nullValue);
       return;
     }
   }
   if (v->isString()) {
     const std::string s = v->asString();
-    if (s.find("${task.") != std::string::npos) {
-      *v = expand_prompt_templates(s, assistant_text_by_task, result_json_by_task);
+    if (s.find("${task.") != std::string::npos || s.find("${input.") != std::string::npos) {
+      *v = expand_prompt_templates(s, assistant_text_by_task, result_json_by_task, inputs_by_name);
     }
     return;
   }
   if (v->isArray()) {
     for (Json::ArrayIndex i = 0; i < v->size(); i++) {
-      expand_templates_in_json_value(&((*v)[i]), assistant_text_by_task, result_json_by_task, out_errors);
+      expand_templates_in_json_value_impl(&((*v)[i]), assistant_text_by_task, result_json_by_task, inputs_by_name, allow_unresolved_refs, out_errors);
     }
     return;
   }
   if (v->isObject()) {
     for (const auto& k : v->getMemberNames()) {
-      expand_templates_in_json_value(&((*v)[k]), assistant_text_by_task, result_json_by_task, out_errors);
+      const bool child_allow_unresolved_refs = allow_unresolved_refs || (k == "inputs");
+      expand_templates_in_json_value_impl(&((*v)[k]), assistant_text_by_task, result_json_by_task, inputs_by_name, child_allow_unresolved_refs, out_errors);
     }
     return;
   }
+}
+
+static void expand_templates_in_json_value(
+  Json::Value* v,
+  const std::unordered_map<std::string, std::string>& assistant_text_by_task,
+  const std::unordered_map<std::string, Json::Value>& result_json_by_task,
+  const std::unordered_map<std::string, Json::Value>* inputs_by_name,
+  std::vector<std::string>* out_errors
+) {
+  expand_templates_in_json_value_impl(v, assistant_text_by_task, result_json_by_task, inputs_by_name, /*allow_unresolved_refs=*/false, out_errors);
 }
 
 static bool json_pointer_get(const Json::Value& root, const std::string& ptr, const Json::Value** out) {
@@ -1506,7 +1593,37 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   Json::Value out;
   if (json_parse_any_value(task.request_json, &rr, &perr) && rr.isObject()) {
     std::vector<std::string> tmpl_errors;
-    expand_templates_in_json_value(&rr, assistant_by_task, result_json_by_task, &tmpl_errors);
+    // Template expansion is done across the entire task request JSON (not only "prompt").
+    // Pass 1 expands task.* templates/$ref first (so inputs can reference task outputs).
+    expand_templates_in_json_value(&rr, assistant_by_task, result_json_by_task, nullptr, &tmpl_errors);
+
+    // Pass 2 expands input.* templates/$ref using a derived inputs map. This is done in bounded rounds so inputs can
+    // reference other inputs (input -> input chains) and still be usable in the same request.
+    if (rr.isMember("inputs") && !rr["inputs"].isNull()) {
+      std::unordered_map<std::string, Json::Value> inputs_by_name;
+      for (int iter = 0; iter < 3; iter++) {
+        if (!rr.isMember("inputs") || rr["inputs"].isNull()) break;
+        if (!rr["inputs"].isObject()) {
+          tmpl_errors.push_back("inputs must be an object");
+          break;
+        }
+
+        inputs_by_name.clear();
+        for (const auto& k : rr["inputs"].getMemberNames()) {
+          if (!workflow_input_name_is_safe(k)) {
+            tmpl_errors.push_back("invalid input name (expected id-safe): " + k);
+            continue;
+          }
+          inputs_by_name[k] = rr["inputs"][k];
+        }
+
+        const std::string before = json_stringify_compact_local(rr["inputs"]);
+        expand_templates_in_json_value(&rr, assistant_by_task, result_json_by_task, &inputs_by_name, &tmpl_errors);
+        const std::string after =
+          rr.isMember("inputs") && rr["inputs"].isObject() ? json_stringify_compact_local(rr["inputs"]) : std::string();
+        if (before == after) break;
+      }
+    }
     if (!tmpl_errors.empty()) {
       out = Json::Value(Json::objectValue);
       out["ok"] = false;
