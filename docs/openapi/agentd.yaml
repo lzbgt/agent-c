@@ -1248,12 +1248,16 @@ components:
         - Deterministic aggregation tasks: `kind: aggregate` with `aggregate` (see `WorkflowAggregateSpec`)
         - Deterministic delay tasks: `kind: delay` with `delay_ms` (no LLM required)
         - Edge collaboration tasks: `kind: edge_invoke` with `edge` (see `WorkflowEdgeInvokeSpec`)
+        - Sequential fallback collaboration: `kind: delegate` with `delegate` (see `WorkflowDelegateSpec`)
+        - Parallel collaboration macro: `kind: delegate_parallel` with `delegate` (submit-time expansion into tasks + aggregate join)
 
         Note: OpenAPI cannot express conditional required fields perfectly; see the server-side behavior:
         - If `kind == avm_capsule`, `capsule.obc_base64` is required and `request.prompt` is not used.
         - If `kind == aggregate`, `aggregate.task_ids` is required and `request.prompt` is not used.
         - If `kind == delay`, `delay_ms` is optional (default 0) and `request.prompt` is not used.
         - If `kind == edge_invoke`, `edge.tool`/`edge.args` are required and `request.prompt` is not used.
+        - If `kind == delegate`, `delegate.attempts` is required and `request.prompt` is not used.
+        - If `kind == delegate_parallel`, `delegate.attempts` is required and `request.prompt` is not used (expanded into multiple tasks).
         - Otherwise, `request.prompt` is required (or prompt at the top-level is accepted by the server for legacy reasons).
       oneOf:
         - $ref: "#/components/schemas/WorkflowTaskRunSpec"
@@ -1261,6 +1265,7 @@ components:
         - $ref: "#/components/schemas/WorkflowTaskAggregateSpec"
         - $ref: "#/components/schemas/WorkflowTaskDelaySpec"
         - $ref: "#/components/schemas/WorkflowTaskEdgeInvokeSpec"
+        - $ref: "#/components/schemas/WorkflowTaskDelegateSpec"
 
     WorkflowTaskRunSpec:
       type: object
@@ -1473,6 +1478,76 @@ components:
           type: object
           description: Deterministic correctness assertions (engine-enforced)
           additionalProperties: true
+
+    WorkflowTaskDelegateSpec:
+      type: object
+      required: [task_id, kind, delegate]
+      properties:
+        task_id: { type: string }
+        allow_error:
+          type: boolean
+          description: If true, task failure does not fail the workflow (soft-fail).
+        inputs:
+          type: object
+          description: Optional per-task inputs (overrides workflow-level inputs).
+          additionalProperties: true
+        kind:
+          type: string
+          enum: [delegate, delegate_parallel]
+          description: |
+            Collaboration task:
+            - `delegate`: sequential fallback chain of attempts; returns the chosen attempt's assistant_text
+            - `delegate_parallel`: submit-time macro expanded into parallel attempt tasks + an aggregate join (mode=first_ok)
+        depends_on:
+          type: array
+          items: { type: string }
+        max_attempts: { type: integer, format: int32 }
+        priority:
+          type: integer
+          format: int32
+          description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+        delegate:
+          $ref: "#/components/schemas/WorkflowDelegateSpec"
+        expect:
+          type: object
+          description: Deterministic correctness assertions (engine-enforced)
+          additionalProperties: true
+
+    WorkflowDelegateSpec:
+      type: object
+      required: [attempts]
+      properties:
+        stop_on_ok:
+          type: boolean
+          description: For `kind:delegate`, stop after the first ok attempt. Default true.
+        ok_pointer:
+          type: string
+          description: For `kind:delegate_parallel` expansion, override aggregate ok_pointer (default /ok).
+        value_pointer:
+          type: string
+          description: For `kind:delegate_parallel` expansion, override aggregate value_pointer (default /assistant_text).
+        attempts:
+          type: array
+          items:
+            type: object
+            required: [id, request]
+            properties:
+              id:
+                type: string
+                description: Attempt id (id-safe; used in trace_id and derived task ids for delegate_parallel).
+              allow_error:
+                type: boolean
+                description: Only used by `delegate_parallel` expansion (attempt tasks default allow_error=true).
+              max_attempts:
+                type: integer
+                format: int32
+                description: Only used by `delegate_parallel` expansion (attempt task max_attempts).
+              request:
+                $ref: "#/components/schemas/RunRequest"
+              expect:
+                type: object
+                description: Deterministic correctness assertions evaluated against the attempt run result.
+                additionalProperties: true
 
     WorkflowEdgeInvokeSpec:
       type: object

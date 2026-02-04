@@ -46,6 +46,245 @@ static bool id_is_safe(const std::string& s) {
   return true;
 }
 
+static bool expand_workflow_submit_macros(
+  Json::Value* io_tasks_arr,
+  const Json::Value& workflow_defaults,
+  bool allow_sessions,
+  bool allow_inline_api_keys,
+  const std::string& session_id,
+  const std::string& trace_id,
+  HttpResponse* resp
+) {
+  if (!io_tasks_arr || !io_tasks_arr->isArray()) {
+    if (resp) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid tasks (expected array)\"}";
+    }
+    return false;
+  }
+
+  Json::Value out(Json::arrayValue);
+  for (Json::ArrayIndex i = 0; i < io_tasks_arr->size(); i++) {
+    const Json::Value t = (*io_tasks_arr)[i];
+    if (!t.isObject()) {
+      out.append(t);
+      continue;
+    }
+
+    const std::string kind =
+      t.isMember("kind") && t["kind"].isString() ? trim_copy(t["kind"].asString()) : std::string();
+    if (kind != "delegate_parallel") {
+      out.append(t);
+      continue;
+    }
+
+    const std::string task_id =
+      t.isMember("task_id") && t["task_id"].isString() ? trim_copy(t["task_id"].asString()) : ("task_" + std::to_string((int)i));
+    if (!id_is_safe(task_id)) {
+      if (resp) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "invalid task_id";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+      }
+      return false;
+    }
+
+    if (!t.isMember("delegate") || !t["delegate"].isObject()) {
+      if (resp) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "delegate_parallel task missing delegate object";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+      }
+      return false;
+    }
+
+    const Json::Value del = t["delegate"];
+    const Json::Value attempts = del.isMember("attempts") ? del["attempts"] : Json::Value(Json::nullValue);
+    if (!attempts.isArray() || attempts.empty()) {
+      if (resp) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "delegate_parallel.delegate.attempts must be a non-empty array";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+      }
+      return false;
+    }
+
+    std::vector<std::string> dep_ids;
+    if (t.isMember("depends_on") && t["depends_on"].isArray()) {
+      for (Json::ArrayIndex di = 0; di < t["depends_on"].size(); di++) {
+        if (!t["depends_on"][di].isString()) continue;
+        dep_ids.push_back(trim_copy(t["depends_on"][di].asString()));
+      }
+    }
+
+    int priority = 0;
+    if (t.isMember("priority") && t["priority"].isInt()) priority = t["priority"].asInt();
+
+    Json::Value attempt_task_ids(Json::arrayValue);
+    std::unordered_set<std::string> seen_attempt_ids;
+    for (Json::ArrayIndex ai = 0; ai < attempts.size(); ai++) {
+      const auto& a = attempts[ai];
+      if (!a.isObject()) continue;
+      const std::string attempt_id =
+        a.isMember("id") && a["id"].isString() ? trim_copy(a["id"].asString()) : ("att_" + std::to_string((int)ai));
+      if (attempt_id.empty() || !id_is_safe(attempt_id)) {
+        if (resp) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "delegate_parallel.attempts[].id must be id-safe";
+          o["task_id"] = task_id;
+          o["attempt_id"] = attempt_id;
+          resp->body = json_stringify_compact(o);
+        }
+        return false;
+      }
+      if (!seen_attempt_ids.insert(attempt_id).second) {
+        if (resp) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "duplicate delegate_parallel attempt id";
+          o["task_id"] = task_id;
+          o["attempt_id"] = attempt_id;
+          resp->body = json_stringify_compact(o);
+        }
+        return false;
+      }
+      if (!a.isMember("request") || !a["request"].isObject()) {
+        if (resp) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "delegate_parallel attempt missing request object";
+          o["task_id"] = task_id;
+          o["attempt_id"] = attempt_id;
+          resp->body = json_stringify_compact(o);
+        }
+        return false;
+      }
+
+      const std::string attempt_task_id = task_id + ":" + attempt_id;
+      if (!id_is_safe(attempt_task_id)) {
+        if (resp) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "delegate_parallel produced invalid derived task_id";
+          o["task_id"] = task_id;
+          o["attempt_task_id"] = attempt_task_id;
+          resp->body = json_stringify_compact(o);
+        }
+        return false;
+      }
+
+      Json::Value at(Json::objectValue);
+      at["task_id"] = attempt_task_id;
+      at["allow_error"] =
+        a.isMember("allow_error") && a["allow_error"].isBool() ? a["allow_error"].asBool() : true;
+      if (!dep_ids.empty()) {
+        Json::Value deps(Json::arrayValue);
+        for (const auto& d : dep_ids) deps.append(d);
+        at["depends_on"] = deps;
+      }
+      if (priority != 0) at["priority"] = priority;
+      if (a.isMember("max_attempts") && a["max_attempts"].isInt()) at["max_attempts"] = a["max_attempts"];
+      if (a.isMember("expect") && a["expect"].isObject()) at["expect"] = a["expect"];
+
+      Json::Value areq = a["request"];
+      if (!areq.isObject()) areq = Json::Value(Json::objectValue);
+
+      // Delegate-parallel attempt requests behave like normal workflow tasks:
+      // - workflow-level defaults are merged
+      // - sessions/no_session are defaulted
+      if (workflow_defaults.isObject()) {
+        for (const auto& k : workflow_defaults.getMemberNames()) {
+          if (!areq.isMember(k)) areq[k] = workflow_defaults[k];
+        }
+      }
+
+      if (!allow_sessions) {
+        areq["no_session"] = true;
+        if (!areq.isMember("tools")) areq["tools"] = "none";
+      } else if (!session_id.empty()) {
+        if (!areq.isMember("session_id") && (!areq.isMember("no_session") || !areq["no_session"].isBool() || !areq["no_session"].asBool())) {
+          areq["session_id"] = session_id;
+        }
+      }
+
+      if (areq.isMember("api_key") && areq["api_key"].isString() && !areq["api_key"].asString().empty() && !allow_inline_api_keys) {
+        if (resp) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "inline api_key is not allowed for durable workflows (set daemon api_key/provider_keys or pass allow_inline_api_keys=true)";
+          o["task_id"] = attempt_task_id;
+          resp->body = json_stringify_compact(o);
+        }
+        return false;
+      }
+
+      if (!areq.isMember("trace_id") || !areq["trace_id"].isString() || areq["trace_id"].asString().empty()) {
+        areq["trace_id"] = trace_id + ":" + task_id + ":" + attempt_id;
+      }
+
+      at["request"] = areq;
+      out.append(at);
+      attempt_task_ids.append(attempt_task_id);
+    }
+
+    if (attempt_task_ids.empty()) {
+      if (resp) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "delegate_parallel.attempts must include at least one object";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+      }
+      return false;
+    }
+
+    // Replace the macro task with a deterministic aggregate join at the same task_id.
+    Json::Value join(Json::objectValue);
+    join["task_id"] = task_id;
+    join["kind"] = "aggregate";
+    if (priority != 0) join["priority"] = priority;
+
+    Json::Value deps(Json::arrayValue);
+    for (Json::ArrayIndex k = 0; k < attempt_task_ids.size(); k++) deps.append(attempt_task_ids[k]);
+    join["depends_on"] = deps;
+
+    Json::Value agg(Json::objectValue);
+    agg["mode"] = "first_ok";
+    agg["task_ids"] = attempt_task_ids;
+    if (del.isMember("ok_pointer") && del["ok_pointer"].isString() && !del["ok_pointer"].asString().empty()) {
+      agg["ok_pointer"] = del["ok_pointer"];
+    }
+    if (del.isMember("value_pointer") && del["value_pointer"].isString() && !del["value_pointer"].asString().empty()) {
+      agg["value_pointer"] = del["value_pointer"];
+    }
+    join["aggregate"] = agg;
+
+    if (t.isMember("max_attempts") && t["max_attempts"].isInt()) join["max_attempts"] = t["max_attempts"];
+    if (t.isMember("expect") && t["expect"].isObject()) join["expect"] = t["expect"];
+
+    out.append(join);
+  }
+
+  *io_tasks_arr = out;
+  return true;
+}
+
 static std::string new_workflow_id() {
   std::random_device rd;
   std::mt19937_64 gen(((uint64_t)rd() << 32) ^ (uint64_t)rd());
@@ -233,15 +472,10 @@ void handle_workflow_submit_endpoint(
     return;
   }
 
-  const auto& tasks = args["tasks"];
+  Json::Value tasks = args["tasks"];
   if (!tasks.isArray() || tasks.empty()) {
     resp->status = 400;
     resp->body = "{\"ok\":false,\"error\":\"missing tasks (expected non-empty array)\"}";
-    return;
-  }
-  if (tasks.size() > 128) {
-    resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"too many tasks (max 128)\"}";
     return;
   }
 
@@ -299,6 +533,24 @@ void handle_workflow_submit_endpoint(
   }
   if (!idempotency_key.empty()) {
     args["idempotency_key"] = idempotency_key; // canonicalize
+  }
+
+  const Json::Value defaults =
+    args.isMember("defaults") && args["defaults"].isObject() ? args["defaults"] : Json::Value(Json::nullValue);
+
+  // Expand submit-time macros into scheduler-visible tasks before admission control and DAG validation.
+  // This ensures:
+  // - admission control applies to the expanded task count
+  // - derived tasks participate in fairness caps/budgets and deterministic joins
+  if (!expand_workflow_submit_macros(&tasks, defaults, allow_sessions, allow_inline_api_keys, session_id, trace_id, resp)) {
+    return;
+  }
+  args["tasks"] = tasks;
+
+  if (tasks.size() > 128) {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"too many tasks (max 128)\"}";
+    return;
   }
 
   // Idempotency: if the key is provided, return the existing workflow instead of creating a duplicate.
@@ -392,9 +644,6 @@ void handle_workflow_submit_endpoint(
       }
     }
   }
-
-  const Json::Value defaults =
-    args.isMember("defaults") && args["defaults"].isObject() ? args["defaults"] : Json::Value(Json::nullValue);
 
   const Json::Value workflow_inputs =
     args.isMember("inputs") && args["inputs"].isObject() ? args["inputs"] : Json::Value(Json::nullValue);

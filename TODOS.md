@@ -132,6 +132,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Task kind: `kind:"delegate"` runs a sequence of candidate sub-requests (fallback) with optional per-attempt `expect`,
     returning `delegate.attempts[]` + `delegate.chosen_id` and surfacing chosen `assistant_text`.
   - Proof: `ctest` includes `agentd_workflow_delegate_smoke`.
+- Scheduler-visible parallel collaboration macro (v1.6.1):
+  - Submit-time task macro: `kind:"delegate_parallel"` expands into N attempt tasks + a deterministic `kind:"aggregate"` join (mode `first_ok`).
+  - Attempt tasks default to `allow_error=true` so one failed attempt doesn’t fail the workflow; the join fails only if all attempts fail.
+  - Proof: `ctest` includes `agentd_workflow_delegate_parallel_macro_smoke`.
 
 ## P0 (next: maximize autonomous continuity + correctness)
 
@@ -142,6 +146,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
      - scheduler-visible (true parallelism)
      - budgeted (tokens/tools/wall-time caps per attempt)
      - aggregation-friendly (`kind:"aggregate"` joins)
+   - Status: parallel submit-time macro shipped as `kind:"delegate_parallel"` (v1.6.1). Remaining: budget enforcement + richer join modes.
 
 2) **Memory ↔ workflow correlation + rolling consolidation** (time-advancing correctness)
    - Link memory entries to `trace_id`/workflow/task ids; emit stable evidence excerpts + hashes.

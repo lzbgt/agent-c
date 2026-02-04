@@ -305,6 +305,43 @@ Notes:
 - This is a **sequential** primitive (v1). For true parallel multi-agent collaboration, model the fan-out as separate workflow tasks
   and use `kind:"aggregate"` to join deterministically.
 
+### Parallel collaboration macro (`kind:"delegate_parallel"`) (v1.6.1)
+
+For true scheduler-visible collaboration (parallel execution, fairness caps, per-attempt budgets), `agentd` supports a submit-time
+macro task:
+
+- `kind:"delegate_parallel"`
+
+This is **syntactic sugar**: on submit, the server expands it into:
+- one normal workflow task per attempt (derived task IDs `<task_id>:<attempt_id>`, soft-failing by default via `allow_error=true`)
+- one deterministic `kind:"aggregate"` join task at the original `task_id` (mode `first_ok`)
+
+This means:
+- attempts run in parallel under normal workflow concurrency and fairness caps
+- you can attach `expect` to each attempt (deterministic correctness)
+- a single successful attempt yields the join task `ok=true`, while failed attempts do not fail the workflow
+
+Example:
+
+```json
+{
+  "task_id": "P",
+  "kind": "delegate_parallel",
+  "delegate": {
+    "attempts": [
+      { "id": "primary", "request": { "prompt": "OK", "no_session": true, "tools": "none", "base_url": "http://127.0.0.1:9999/v1", "api_key": "dummy", "model": "stub" } },
+      { "id": "fallback", "request": { "prompt": "OK", "no_session": true, "tools": "none", "base_url": "http://127.0.0.1:9999/v1", "api_key": "dummy", "model": "stub" },
+        "expect": { "assistant_text_contains": "OK" }
+      }
+    ]
+  }
+}
+```
+
+Join result fields live under the normal aggregate output at task `P`:
+- `chosen_task_id` (e.g. `"P:fallback"`)
+- `assistant_text` from the chosen attempt (defaults to `/assistant_text`)
+
 ## HTTP API
 
 All endpoints require daemon auth when the daemon is started with `--auth-token`.
