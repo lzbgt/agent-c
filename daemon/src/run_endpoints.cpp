@@ -968,7 +968,9 @@ static Json::Value run_request_to_json_impl(
   const ToolExtension* tool_ext_or_null,
   const std::string& sessions_root_dir,
   const std::string& request_body,
-  const char* job_id_or_null
+  const char* job_id_or_null,
+  RunCancelCallback should_cancel_or_null,
+  void* should_cancel_ctx_or_null
 ) {
   Json::Value args;
   std::string perr;
@@ -1472,7 +1474,10 @@ static Json::Value run_request_to_json_impl(
     // arbitrary host command execution.
     hcfg.enable_process_exec = yolo;
     hcfg.allow_symlinks = yolo;
-    if (!job_id_local.empty()) {
+    if (should_cancel_or_null) {
+      hcfg.should_cancel = should_cancel_or_null;
+      hcfg.should_cancel_ctx = should_cancel_ctx_or_null;
+    } else if (!job_id_local.empty()) {
       // Cooperative cancellation for long-running host tools (sleep/build/etc).
       hcfg.should_cancel = [](void* vctx) -> bool {
         if (!vctx) return false;
@@ -1737,13 +1742,18 @@ static Json::Value run_request_to_json_impl(
       hook.phase = &heartbeat_phase;
       opt.on_event = daemon_job_on_tool_loop_event;
       opt.on_event_ctx = &hook;
+	    }
+    if (should_cancel_or_null) {
+      opt.should_cancel = should_cancel_or_null;
+      opt.should_cancel_ctx = should_cancel_ctx_or_null;
+    } else if (!job_id_local.empty()) {
       opt.should_cancel = [](void* vctx) -> bool {
         if (!vctx) return false;
         const auto* jid = static_cast<const std::string*>(vctx);
         return jid && job_is_cancel_requested(*jid);
       };
-	      opt.should_cancel_ctx = (void*)&job_id_local;
-	    }
+      opt.should_cancel_ctx = (void*)&job_id_local;
+    }
 
 	    struct SessionDel {
 	      void operator()(agent_session_t* s) const {
@@ -1858,7 +1868,8 @@ static Json::Value run_request_to_json_impl(
       push_ev("start", d);
     }
 
-    auto is_cancelled_job = [&]() -> bool {
+    auto should_cancel_run = [&]() -> bool {
+      if (should_cancel_or_null && should_cancel_or_null(should_cancel_ctx_or_null)) return true;
       return !job_id_local.empty() && job_is_cancel_requested(job_id_local);
     };
 
@@ -1869,7 +1880,7 @@ static Json::Value run_request_to_json_impl(
       const size_t keep = (keep_last == 0 ? 16 : keep_last);
 
       for (int attempt = 0; attempt < 3; attempt++) {
-        if (is_cancelled_job()) {
+        if (should_cancel_run()) {
           ok = false;
           err = "cancelled";
           Json::Value d(Json::objectValue);
@@ -2065,7 +2076,7 @@ static Json::Value run_request_to_json_impl(
       agent_status_t last_st = AGENT_ERR_INTERNAL;
 
       for (int attempt = 0; attempt < 3; attempt++) {
-        if (is_cancelled_job()) {
+        if (should_cancel_run()) {
           ok = false;
           err = "cancelled";
           Json::Value d(Json::objectValue);
@@ -2493,7 +2504,41 @@ Json::Value run_request_to_json_internal(
   const std::string& request_body,
   const char* job_id_or_null
 ) {
-  return run_request_to_json_impl(daemon_cfg, ocfg, db_or_null, tool_ext_or_null, sessions_root_dir, request_body, job_id_or_null);
+  return run_request_to_json_impl(
+    daemon_cfg,
+    ocfg,
+    db_or_null,
+    tool_ext_or_null,
+    sessions_root_dir,
+    request_body,
+    job_id_or_null,
+    nullptr,
+    nullptr
+  );
+}
+
+Json::Value run_request_to_json_internal_cancellable(
+  const DaemonConfig& daemon_cfg,
+  const OpenAIClientConfig& ocfg,
+  AgentDb* db_or_null,
+  const ToolExtension* tool_ext_or_null,
+  const std::string& sessions_root_dir,
+  const std::string& request_body,
+  const char* job_id_or_null,
+  RunCancelCallback should_cancel,
+  void* should_cancel_ctx
+) {
+  return run_request_to_json_impl(
+    daemon_cfg,
+    ocfg,
+    db_or_null,
+    tool_ext_or_null,
+    sessions_root_dir,
+    request_body,
+    job_id_or_null,
+    should_cancel,
+    should_cancel_ctx
+  );
 }
 
 void handle_run_endpoint(
@@ -2512,7 +2557,8 @@ void handle_run_endpoint(
 
   const auto started = std::chrono::steady_clock::now();
   std::cerr << "agentd: /api/v1/run start bytes=" << req.body.size() << "\n";
-  Json::Value out = run_request_to_json_impl(cfg, ocfg, db_or_null, tool_ext_or_null, sessions_root_dir, req.body, nullptr);
+  Json::Value out =
+    run_request_to_json_impl(cfg, ocfg, db_or_null, tool_ext_or_null, sessions_root_dir, req.body, nullptr, nullptr, nullptr);
   const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
   const bool ok = out.isObject() && out.isMember("ok") && out["ok"].isBool() && out["ok"].asBool();
   std::cerr << "agentd: /api/v1/run done ok=" << (ok ? "true" : "false") << " ms=" << ms << "\n";
@@ -2674,7 +2720,17 @@ void handle_run_async_endpoint(
       job_append_event(job_id, "start", json_stringify(d));
     }
     try {
-      Json::Value out = run_request_to_json_impl(cfg, ocfg, db_or_null, tool_ext_or_null, sessions_root_dir, body_copy, job_id.c_str());
+      Json::Value out = run_request_to_json_impl(
+        cfg,
+        ocfg,
+        db_or_null,
+        tool_ext_or_null,
+        sessions_root_dir,
+        body_copy,
+        job_id.c_str(),
+        nullptr,
+        nullptr
+      );
       job_set_result(job_id, out);
 
       if (db_or_null && db_or_null->is_open()) {

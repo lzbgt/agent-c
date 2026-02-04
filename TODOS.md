@@ -112,36 +112,39 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - `GET /api/v1/workflow?workflow_id=...&include_spec=1` returns redacted `spec_json` (+ parsed `spec` when valid).
   - Proof: `ctest` includes `agentd_workflow_get_spec_smoke`.
 - Workflow deadline (scheduler-level):
-  - Submit `deadline_unix_ms` to cancel queued tasks after a wall-clock cutoff (best-effort; running tasks are not forcibly interrupted).
+  - Submit `deadline_unix_ms` to cancel queued tasks after a wall-clock cutoff; running tasks are cooperatively cancelled at safe boundaries (best-effort).
   - Proof: `ctest` includes `agentd_workflow_deadline_smoke`.
 - Workflow submit idempotency + DB-backed policy columns:
   - Submit `idempotency_key` to dedupe workflow submits (safe retries / at-least-once upstream delivery).
   - Workflows now persist `deadline_unix_ms` and `idempotency_key` as dedicated DB columns (schema v17), so the scheduler does not depend on parsing `spec_json`.
   - Proof: `ctest` includes `agentd_workflow_idempotency_smoke` and `agent_db_tests` asserts the new columns exist.
+- Workflow cooperative cancellation for running tasks (v1.4):
+  - `POST /api/v1/workflow/cancel` now cancels running tasks at safe boundaries (tool loop + long-running host tools).
+  - Deadline cancellation (`deadline_unix_ms`) also cancels running tasks best-effort.
+  - Proof: `ctest` includes `agentd_workflow_cancel_running_smoke`.
 
 ## P0 (next: maximize autonomous continuity + correctness)
 
 ### Reweighted next 5 (highest compound impact)
 
-1) **Cooperative cancellation for running tasks** (correctness + cost control)
-   - Today: cancellation is best-effort; queued tasks cancel cleanly, but running tasks are not consistently interrupted.
-   - Next: propagate cancellation into tool-loop/provider calls and `run_async` resumptions; ensure deterministic terminal state.
-
-2) **Admission control + backpressure** (autonomy under load)
+1) **Admission control + backpressure** (autonomy under load)
    - Use `GET /api/v1/workflow/stats` queue pressure plus per-session budgeting to avoid memory/CPU collapse on fan-out storms.
    - Add bounded “max queued tasks per session/workflow” and reject/429 with retry hints.
 
-3) **Agent collaboration primitive (in-framework, not UI)** (power-unleashed)
+2) **Agent collaboration primitive (in-framework, not UI)** (power-unleashed)
    - Add a durable workflow task kind like `kind:"delegate"` / `kind:"broker_orchestrate"` to spawn sub-agents with explicit budgets,
      then join/aggregate their outputs deterministically.
 
-4) **Memory ↔ workflow correlation + rolling consolidation** (time-advancing correctness)
+3) **Memory ↔ workflow correlation + rolling consolidation** (time-advancing correctness)
    - Link memory entries to `trace_id`/workflow/task ids; emit stable evidence excerpts + hashes.
    - Add a deterministic “memory update task” node kind so workflows can write facts only when expectations pass.
 
-5) **Interop spec hardening for MCU/edge handoff** (ecosystem leverage)
+4) **Interop spec hardening for MCU/edge handoff** (ecosystem leverage)
    - Consolidate the UM‑EAIS + durable workflow message conventions into a single versioned spec with explicit idempotency/correlation rules,
      so an MCU agent can safely hand off tasks/workflows and replay proofs across restarts.
+
+5) **Durable budget enforcement at scheduler level** (correctness + cost predictability)
+   - Add explicit per-task and per-workflow budgets (tool-call budget, token budget, wall-time budget) enforced by the engine, not just by providers.
 
 ### 1) AVM capsule execution v0 (next: integrate + attest)
 

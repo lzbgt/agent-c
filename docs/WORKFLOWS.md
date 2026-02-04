@@ -325,7 +325,9 @@ Body:
 
 Cancellation semantics:
 - queued tasks are transitioned to `cancelled` best-effort
-- running tasks are not forcibly interrupted (v1)
+- running tasks are cooperatively cancelled at the next safe boundary (v1.4)
+  - host tools: long-running subprocesses are terminated best-effort
+  - provider calls: cancellation takes effect between requests/tool calls (cannot always interrupt an in-flight HTTP request)
 
 ## Storage (SQLite)
 

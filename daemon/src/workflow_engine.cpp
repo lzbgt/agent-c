@@ -104,6 +104,47 @@ static int64_t workflow_deadline_unix_ms_best_effort(const AgentDb::WorkflowRow&
   return ms > 0 ? ms : 0;
 }
 
+enum class WorkflowCancelReason {
+  None = 0,
+  CancelRequested = 1,
+  DeadlineExceeded = 2,
+};
+
+struct WorkflowRunCancelCtx {
+  AgentDb* db = nullptr;
+  std::string workflow_id;
+  int64_t deadline_unix_ms = 0;
+  int64_t last_check_unix_ms = 0;
+  WorkflowCancelReason reason = WorkflowCancelReason::None;
+};
+
+static bool workflow_run_should_cancel(void* vctx) {
+  auto* c = static_cast<WorkflowRunCancelCtx*>(vctx);
+  if (!c) return false;
+
+  if (c->reason != WorkflowCancelReason::None) return true;
+
+  const int64_t now = unix_ms_now();
+  if (c->deadline_unix_ms > 0 && now > c->deadline_unix_ms) {
+    c->reason = WorkflowCancelReason::DeadlineExceeded;
+    return true;
+  }
+
+  if (!c->db || c->workflow_id.empty()) return false;
+  if (c->last_check_unix_ms > 0 && (now - c->last_check_unix_ms) < 50) {
+    return false;
+  }
+  c->last_check_unix_ms = now;
+  AgentDb::WorkflowRow wf;
+  std::string err;
+  if (!c->db->get_workflow(c->workflow_id, &wf, &err)) return false;
+  if (wf.cancel_requested) {
+    c->reason = WorkflowCancelReason::CancelRequested;
+    return true;
+  }
+  return false;
+}
+
 static Json::Value workflow_aggregate_quorum_hashes_to_json(
   const Json::Value& agg,
   const std::unordered_map<std::string, Json::Value>& result_json_by_task,
@@ -1308,6 +1349,68 @@ bool WorkflowEngine::pick_and_claim_one(
 void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const AgentDb::WorkflowTaskRow& task) {
   const int64_t now = unix_ms_now();
 
+  // Refresh workflow view (cancel_requested/deadline can change after claim).
+  AgentDb::WorkflowRow wf_latest = wf;
+  {
+    AgentDb::WorkflowRow cur;
+    std::string werr;
+    if (db_->get_workflow(wf.workflow_id, &cur, &werr)) {
+      wf_latest = std::move(cur);
+    }
+  }
+
+  WorkflowRunCancelCtx cancel_ctx;
+  cancel_ctx.db = db_;
+  cancel_ctx.workflow_id = wf.workflow_id;
+  cancel_ctx.deadline_unix_ms = workflow_deadline_unix_ms_best_effort(wf_latest);
+
+  auto cancel_task_now = [&](const std::string& reason, const std::string& event_reason) {
+    AgentDb::WorkflowTaskRow upd = task;
+    upd.status = "cancelled";
+    upd.updated_unix_ms = now;
+    upd.finished_unix_ms = now;
+    upd.ready_unix_ms = 0;
+    upd.error = reason.empty() ? "cancelled" : reason;
+    {
+      Json::Value out(Json::objectValue);
+      out["ok"] = false;
+      out["cancelled"] = true;
+      out["assistant_text"] = "";
+      out["error"] = upd.error;
+      upd.result_json = json_stringify_compact(out);
+    }
+    (void)db_->upsert_workflow_task(upd, nullptr);
+    {
+      Json::Value d(Json::objectValue);
+      d["workflow_id"] = wf.workflow_id;
+      d["task_id"] = upd.task_id;
+      d["status"] = upd.status;
+      d["attempt"] = upd.attempt;
+      d["max_attempts"] = upd.max_attempts;
+      d["reason"] = event_reason;
+      if (!upd.error.empty()) d["error"] = upd.error;
+      d["ts_unix_ms"] = (Json::Int64)now;
+      insert_workflow_event_best_effort(db_, wf.workflow_id, upd.task_id, "task_status", now, d);
+    }
+    maybe_finalize_workflow(wf.workflow_id);
+  };
+
+  // If cancellation/deadline is already in effect, do not execute provider/tool calls.
+  if (wf_latest.cancel_requested) {
+    cancel_task_now("cancelled", "cancel_requested");
+    return;
+  }
+  if (cancel_ctx.deadline_unix_ms > 0 && now > cancel_ctx.deadline_unix_ms) {
+    // Ensure the workflow row reflects the deadline cancellation even if no other worker is scanning.
+    AgentDb::WorkflowRow upd = wf_latest;
+    upd.cancel_requested = true;
+    upd.updated_unix_ms = now;
+    if (upd.error.empty()) upd.error = "deadline exceeded";
+    (void)db_->upsert_workflow(upd, nullptr);
+    cancel_task_now("deadline exceeded", "deadline_exceeded");
+    return;
+  }
+
   // Resolve template vars from completed tasks (assistant_text only).
   std::unordered_map<std::string, std::string> assistant_by_task;
   std::unordered_map<std::string, Json::Value> result_json_by_task;
@@ -1401,12 +1504,29 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         out["error"] = "delay_ms must be >= 0";
       } else {
         if (delay_ms > 600000) delay_ms = 600000;
-        if (delay_ms > 0) std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+        if (delay_ms > 0) {
+          const int64_t until = unix_ms_now() + delay_ms;
+          while (!stop_.load()) {
+            if (workflow_run_should_cancel(&cancel_ctx)) {
+              out["ok"] = false;
+              out["cancelled"] = true;
+              out["error"] = cancel_ctx.reason == WorkflowCancelReason::DeadlineExceeded ? "deadline exceeded" : "cancelled";
+              break;
+            }
+            const int64_t now2 = unix_ms_now();
+            if (now2 >= until) break;
+            const int64_t remaining = until - now2;
+            const int64_t chunk = std::min<int64_t>(50, remaining);
+            if (chunk > 0) std::this_thread::sleep_for(std::chrono::milliseconds(chunk));
+          }
+        }
 
-        out["ok"] = true;
-        out["delay_ms"] = (Json::Int64)delay_ms;
+        if (!out.isMember("cancelled")) {
+          out["ok"] = true;
+          out["delay_ms"] = (Json::Int64)delay_ms;
+        }
 
-        if (rr.isMember("result") && rr["result"].isObject()) {
+        if (out.isMember("ok") && out["ok"].isBool() && out["ok"].asBool() && rr.isMember("result") && rr["result"].isObject()) {
           const auto& r = rr["result"];
           for (const auto& k : r.getMemberNames()) {
             if (k == "ok" || k == "kind" || k == "delay_ms") continue;
@@ -1614,17 +1734,68 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
       }
     }
   } else {
-    out = run_request_to_json_internal(cfg, ocfg, db_, tool_ext_or_null_, sessions_root_dir_, request_body, nullptr);
+    out = run_request_to_json_internal_cancellable(
+      cfg,
+      ocfg,
+      db_,
+      tool_ext_or_null_,
+      sessions_root_dir_,
+      request_body,
+      nullptr,
+      workflow_run_should_cancel,
+      &cancel_ctx
+    );
   }
 
   std::string expect_err;
   const bool expect_ok = apply_expectations(task.expect_json, out, &expect_err);
   const bool run_ok = out.isObject() && out.isMember("ok") && out["ok"].isBool() && out["ok"].asBool();
+  const bool run_cancelled =
+    out.isObject() && out.isMember("cancelled") && out["cancelled"].isBool() && out["cancelled"].asBool();
 
   AgentDb::WorkflowTaskRow upd = task;
   upd.updated_unix_ms = now;
   upd.finished_unix_ms = now;
   upd.result_json = json_stringify_compact(out);
+
+  if (run_cancelled) {
+    upd.status = "cancelled";
+    upd.ready_unix_ms = 0;
+    upd.error =
+      out.isObject() && out.isMember("error") && out["error"].isString() && !out["error"].asString().empty()
+      ? out["error"].asString()
+      : (cancel_ctx.reason == WorkflowCancelReason::DeadlineExceeded ? "deadline exceeded" : "cancelled");
+    (void)db_->upsert_workflow_task(upd, nullptr);
+
+    {
+      Json::Value d(Json::objectValue);
+      d["workflow_id"] = wf.workflow_id;
+      d["task_id"] = upd.task_id;
+      d["status"] = upd.status;
+      d["attempt"] = upd.attempt;
+      d["max_attempts"] = upd.max_attempts;
+      d["reason"] = cancel_ctx.reason == WorkflowCancelReason::DeadlineExceeded ? "deadline_exceeded" : "cancel_requested";
+      if (!upd.error.empty()) d["error"] = upd.error;
+      d["ts_unix_ms"] = (Json::Int64)now;
+      insert_workflow_event_best_effort(db_, wf.workflow_id, upd.task_id, "task_status", now, d);
+    }
+
+    // Ensure the workflow is marked cancelled when a running task cooperatively cancels.
+    AgentDb::WorkflowRow wcur;
+    std::string werr;
+    if (db_->get_workflow(wf.workflow_id, &wcur, &werr)) {
+      if (!wcur.cancel_requested || (cancel_ctx.reason == WorkflowCancelReason::DeadlineExceeded && wcur.error != "deadline exceeded")) {
+        wcur.cancel_requested = true;
+        wcur.updated_unix_ms = now;
+        if (cancel_ctx.reason == WorkflowCancelReason::DeadlineExceeded) wcur.error = "deadline exceeded";
+        else if (wcur.error.empty()) wcur.error = "cancelled";
+        (void)db_->upsert_workflow(wcur, nullptr);
+      }
+    }
+
+    maybe_finalize_workflow(wf.workflow_id);
+    return;
+  }
 
   if (run_ok && expect_ok) {
     upd.status = "done";
@@ -1649,7 +1820,16 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   const bool can_retry = upd.attempt < std::max(1, upd.max_attempts);
   upd.error = !expect_ok ? expect_err : (out.isObject() && out.isMember("error") && out["error"].isString() ? out["error"].asString() : "error");
 
-  if (can_retry && !wf.cancel_requested) {
+  bool wf_cancel_requested = wf_latest.cancel_requested;
+  {
+    AgentDb::WorkflowRow cur;
+    std::string werr;
+    if (db_->get_workflow(wf.workflow_id, &cur, &werr)) {
+      wf_cancel_requested = cur.cancel_requested;
+    }
+  }
+
+  if (can_retry && !wf_cancel_requested) {
     upd.status = "queued";
     int64_t delay_ms = retry_backoff_ms(upd.attempt);
     if (out.isObject() && out.isMember("retryable") && out["retryable"].isBool() && out["retryable"].asBool() &&
