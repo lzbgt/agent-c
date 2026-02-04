@@ -40,9 +40,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Engine semantics:
     - dependency scheduling (`depends_on`)
     - retries (`max_attempts`) + backoff (`ready_unix_ms`)
-    - correctness assertions (`expect`)
-    - **restart continuity**: running tasks are recovered back to queued (at-least-once)
-  - simple prompt templating: `${task.<id>.assistant_text}`
+  - correctness assertions (`expect`)
+  - **restart continuity**: running tasks are recovered back to queued (at-least-once)
+  - prompt templating (simple but powerful): `${task.<id>.assistant_text}` and `${task.<id>.json:/json_pointer}`
   - Proof: `ctest` includes `agentd_workflow_smoke` (validates DAG ordering + templating + restart recovery).
 - Durable workflows can now run deterministic AVM capsule tasks (no LLM required):
   - Task kind: `kind: "avm_capsule"`
@@ -108,10 +108,9 @@ Problem:
 - DAG ordering is useful, but real workflows need explicit **dataflow** and **aggregation strategies**.
 
 Deliverables:
-- Dataflow templates:
-  - `${task.<id>.assistant_text}` (already v1)
-  - `${task.<id>.json:<json_pointer>}` for structured extraction
-  - explicit `inputs` map per task (safer than string templating)
+- Dataflow model:
+  - (shipped) `${task.<id>.assistant_text}` and `${task.<id>.json:/ptr}` template expansion inside prompts
+  - (next) explicit `inputs` map per task (safer than string templating; enables schema validation)
 - Aggregation nodes (no LLM required by default):
   - `first_ok`, `best_of_n`, `strict_all_ok`, `collect`
 - Optional LLM aggregator (tools=none by default).
