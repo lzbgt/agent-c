@@ -53,14 +53,28 @@ static std::string json_get_string(const Json::Value& obj, const char* k) {
   return v.isString() ? v.asString() : "";
 }
 
+static bool json_pointer_get(const Json::Value& root, const std::string& ptr, const Json::Value** out);
+
 // Very small ${task.<id>.assistant_text} expander for prompts.
+static std::string json_stringify_compact_local(const Json::Value& v) {
+  Json::StreamWriterBuilder wb;
+  wb["indentation"] = "";
+  return Json::writeString(wb, v);
+}
+
+// Small ${task.<id>....} expander for prompts.
+//
+// Supported (v1/v2):
+// - ${task.<id>.assistant_text}
+// - ${task.<id>.json:<json_pointer>}  (e.g. ${task.A.json:/assistant_text})
 static std::string expand_prompt_templates(
   const std::string& prompt,
-  const std::unordered_map<std::string, std::string>& assistant_text_by_task
+  const std::unordered_map<std::string, std::string>& assistant_text_by_task,
+  const std::unordered_map<std::string, Json::Value>& result_json_by_task
 ) {
   if (prompt.find("${task.") == std::string::npos) return prompt;
   std::string out;
-  out.reserve(prompt.size() + 64);
+  out.reserve(prompt.size() + 96);
 
   size_t i = 0;
   while (i < prompt.size()) {
@@ -78,28 +92,58 @@ static std::string expand_prompt_templates(
     }
 
     const std::string token = prompt.substr(p + 2, end - (p + 2)); // strip ${ ... }
-    // token: task.<id>.assistant_text
+    // token starts with task.
     const std::string prefix = "task.";
     if (token.rfind(prefix, 0) != 0) {
       out.append(prompt, p, (end - p) + 1);
       i = end + 1;
       continue;
     }
+
     const std::string rest = token.substr(prefix.size());
-    const std::string suffix = ".assistant_text";
-    if (rest.size() <= suffix.size() || rest.rfind(suffix) != (rest.size() - suffix.size())) {
-      out.append(prompt, p, (end - p) + 1);
+    // rest: <id>.assistant_text OR <id>.json:/ptr
+    const std::string suffix_text = ".assistant_text";
+    const std::string dot_json = ".json:";
+
+    // assistant_text
+    if (rest.size() > suffix_text.size() && rest.rfind(suffix_text) == (rest.size() - suffix_text.size())) {
+      const std::string task_id = rest.substr(0, rest.size() - suffix_text.size());
+      auto it = assistant_text_by_task.find(task_id);
+      if (it == assistant_text_by_task.end()) {
+        out.append(prompt, p, (end - p) + 1);
+      } else {
+        out += it->second;
+      }
       i = end + 1;
       continue;
     }
-    const std::string task_id = rest.substr(0, rest.size() - suffix.size());
-    auto it = assistant_text_by_task.find(task_id);
-    if (it == assistant_text_by_task.end()) {
-      // Missing dependency result; keep literal.
-      out.append(prompt, p, (end - p) + 1);
-    } else {
-      out += it->second;
+
+    // json pointer extraction
+    const size_t jpos = rest.find(dot_json);
+    if (jpos != std::string::npos) {
+      const std::string task_id = rest.substr(0, jpos);
+      const std::string ptr = rest.substr(jpos + dot_json.size());
+      auto it = result_json_by_task.find(task_id);
+      if (it == result_json_by_task.end()) {
+        out.append(prompt, p, (end - p) + 1);
+        i = end + 1;
+        continue;
+      }
+      const Json::Value& root = it->second;
+      const Json::Value* got = nullptr;
+      if (!json_pointer_get(root, ptr, &got) || !got) {
+        out.append(prompt, p, (end - p) + 1);
+        i = end + 1;
+        continue;
+      }
+      if (got->isString()) out += got->asString();
+      else out += json_stringify_compact_local(*got);
+      i = end + 1;
+      continue;
     }
+
+    // Unknown token shape; keep literal.
+    out.append(prompt, p, (end - p) + 1);
     i = end + 1;
   }
 
@@ -441,6 +485,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 
   // Resolve template vars from completed tasks (assistant_text only).
   std::unordered_map<std::string, std::string> assistant_by_task;
+  std::unordered_map<std::string, Json::Value> result_json_by_task;
   {
     std::vector<AgentDb::WorkflowTaskRow> tasks;
     std::string err;
@@ -454,6 +499,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         if (!json_parse_any_value(t.result_json, &r, &perr) || !r.isObject()) continue;
         const std::string a = json_get_string(r, "assistant_text");
         if (!a.empty()) assistant_by_task[t.task_id] = a;
+        result_json_by_task[t.task_id] = r;
       }
     }
   }
@@ -465,7 +511,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   if (json_parse_any_value(task.request_json, &rr, &perr) && rr.isObject()) {
     const std::string prompt = json_get_string(rr, "prompt");
     if (!prompt.empty()) {
-      rr["prompt"] = expand_prompt_templates(prompt, assistant_by_task);
+      rr["prompt"] = expand_prompt_templates(prompt, assistant_by_task, result_json_by_task);
       request_body = json_stringify_compact(rr);
     }
   }

@@ -109,8 +109,8 @@ submit_resp="$(curl -fsS --noproxy "*" --max-time 20 \
 import json
 tasks = [
   {"task_id":"A","request":{"prompt":"Alpha","no_session":True,"tools":"none","base_url":"${STUB_BASE}","api_key":"dummy","model":"stub","trace":False}},
-  {"task_id":"B","depends_on":["A"],"request":{"prompt":"B got \${task.A.assistant_text}","no_session":True,"tools":"none","base_url":"${STUB_BASE}","api_key":"dummy","model":"stub","trace":False}},
-  {"task_id":"C","depends_on":["B"],"request":{"prompt":"C got \${task.B.assistant_text}","no_session":True,"tools":"none","base_url":"${STUB_BASE}","api_key":"dummy","model":"stub","trace":False},
+  {"task_id":"B","depends_on":["A"],"request":{"prompt":"B got \${task.A.json:/assistant_text}","no_session":True,"tools":"none","base_url":"${STUB_BASE}","api_key":"dummy","model":"stub","trace":False}},
+  {"task_id":"C","depends_on":["B"],"request":{"prompt":"C got \${task.B.json:/assistant_text}","no_session":True,"tools":"none","base_url":"${STUB_BASE}","api_key":"dummy","model":"stub","trace":False},
    "expect":{"assistant_text_contains":"Alpha"}}
 ]
 print(json.dumps({"tasks": tasks, "allow_inline_api_keys": True}))
@@ -214,4 +214,3 @@ if "C got B got Alpha" not in assistant_text("C"):
   print("unexpected C assistant_text", assistant_text("C"), file=sys.stderr)
   raise SystemExit(1)
 PY
-
