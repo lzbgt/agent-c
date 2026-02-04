@@ -402,14 +402,15 @@ bool AgentDb::upsert_edge_task(const EdgeTaskRow& row, std::string* out_error) {
   sqlite3_stmt* st = nullptr;
   const char* sql = R"SQL(
 INSERT INTO edge_tasks(
-  task_id, step_id, node_id, idempotency_key, mode, deadline_utc_ms, payload_json, state, created_utc_ms, updated_utc_ms, result_json, error
-) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+  task_id, step_id, node_id, idempotency_key, mode, tool_name, deadline_utc_ms, payload_json, state, created_utc_ms, updated_utc_ms, result_json, error
+) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(node_id, idempotency_key) DO UPDATE SET
   task_id = edge_tasks.task_id,
   step_id = edge_tasks.step_id,
   node_id = excluded.node_id,
   idempotency_key = excluded.idempotency_key,
   mode = edge_tasks.mode,
+  tool_name = CASE WHEN excluded.tool_name IS NOT NULL AND excluded.tool_name <> '' THEN excluded.tool_name ELSE edge_tasks.tool_name END,
   deadline_utc_ms = CASE WHEN excluded.deadline_utc_ms > 0 THEN excluded.deadline_utc_ms ELSE edge_tasks.deadline_utc_ms END,
   payload_json = edge_tasks.payload_json,
   state = excluded.state,
@@ -429,13 +430,14 @@ ON CONFLICT(node_id, idempotency_key) DO UPDATE SET
   ok = ok && bind_text(st, 3, row.node_id);
   ok = ok && bind_text(st, 4, row.idempotency_key);
   ok = ok && bind_text(st, 5, row.mode);
-  ok = ok && bind_i64(st, 6, row.deadline_utc_ms);
-  ok = ok && bind_text(st, 7, row.payload_json);
-  ok = ok && bind_text(st, 8, row.state);
-  ok = ok && bind_i64(st, 9, created);
-  ok = ok && bind_i64(st, 10, updated);
-  ok = ok && bind_text_or_null(st, 11, row.result_json);
-  ok = ok && bind_text_or_null(st, 12, row.error);
+  ok = ok && bind_text_or_null(st, 6, row.tool_name);
+  ok = ok && bind_i64(st, 7, row.deadline_utc_ms);
+  ok = ok && bind_text(st, 8, row.payload_json);
+  ok = ok && bind_text(st, 9, row.state);
+  ok = ok && bind_i64(st, 10, created);
+  ok = ok && bind_i64(st, 11, updated);
+  ok = ok && bind_text_or_null(st, 12, row.result_json);
+  ok = ok && bind_text_or_null(st, 13, row.error);
 
   ok = ok && step_done(st);
   if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
@@ -462,7 +464,7 @@ bool AgentDb::get_edge_task(const std::string& task_id, const std::string& step_
 
   sqlite3_stmt* st = nullptr;
   const char* sql = R"SQL(
-SELECT task_id, step_id, node_id, idempotency_key, mode, deadline_utc_ms, payload_json, state, created_utc_ms, updated_utc_ms, result_json, error
+SELECT task_id, step_id, node_id, idempotency_key, mode, COALESCE(tool_name,''), deadline_utc_ms, payload_json, state, created_utc_ms, updated_utc_ms, result_json, error
 FROM edge_tasks
 WHERE task_id=? AND step_id=?
 LIMIT 1;
@@ -482,20 +484,22 @@ LIMIT 1;
     const unsigned char* n = sqlite3_column_text(st, 2);
     const unsigned char* k = sqlite3_column_text(st, 3);
     const unsigned char* m = sqlite3_column_text(st, 4);
-    const unsigned char* p = sqlite3_column_text(st, 6);
-    const unsigned char* stt = sqlite3_column_text(st, 7);
-    const unsigned char* r = sqlite3_column_text(st, 10);
-    const unsigned char* e = sqlite3_column_text(st, 11);
+    const unsigned char* tool = sqlite3_column_text(st, 5);
+    const unsigned char* p = sqlite3_column_text(st, 7);
+    const unsigned char* stt = sqlite3_column_text(st, 8);
+    const unsigned char* r = sqlite3_column_text(st, 11);
+    const unsigned char* e = sqlite3_column_text(st, 12);
     out_row->task_id = t ? (const char*)t : "";
     out_row->step_id = s ? (const char*)s : "";
     out_row->node_id = n ? (const char*)n : "";
     out_row->idempotency_key = k ? (const char*)k : "";
     out_row->mode = m ? (const char*)m : "";
-    out_row->deadline_utc_ms = sqlite3_column_int64(st, 5);
+    out_row->tool_name = tool ? (const char*)tool : "";
+    out_row->deadline_utc_ms = sqlite3_column_int64(st, 6);
     out_row->payload_json = p ? (const char*)p : "";
     out_row->state = stt ? (const char*)stt : "";
-    out_row->created_utc_ms = sqlite3_column_int64(st, 8);
-    out_row->updated_utc_ms = sqlite3_column_int64(st, 9);
+    out_row->created_utc_ms = sqlite3_column_int64(st, 9);
+    out_row->updated_utc_ms = sqlite3_column_int64(st, 10);
     out_row->result_json = r ? (const char*)r : "";
     out_row->error = e ? (const char*)e : "";
   }
@@ -530,7 +534,7 @@ bool AgentDb::get_edge_task_by_node_idempotency(
   }
   sqlite3_stmt* st = nullptr;
   const char* sql = R"SQL(
-SELECT task_id, step_id, node_id, idempotency_key, mode, deadline_utc_ms, payload_json, state, created_utc_ms, updated_utc_ms, result_json, error
+SELECT task_id, step_id, node_id, idempotency_key, mode, COALESCE(tool_name,''), deadline_utc_ms, payload_json, state, created_utc_ms, updated_utc_ms, result_json, error
 FROM edge_tasks
 WHERE node_id=? AND idempotency_key=?
 LIMIT 1;
@@ -550,20 +554,22 @@ LIMIT 1;
     const unsigned char* n = sqlite3_column_text(st, 2);
     const unsigned char* k = sqlite3_column_text(st, 3);
     const unsigned char* m = sqlite3_column_text(st, 4);
-    const unsigned char* p = sqlite3_column_text(st, 6);
-    const unsigned char* stt = sqlite3_column_text(st, 7);
-    const unsigned char* r = sqlite3_column_text(st, 10);
-    const unsigned char* e = sqlite3_column_text(st, 11);
+    const unsigned char* tool = sqlite3_column_text(st, 5);
+    const unsigned char* p = sqlite3_column_text(st, 7);
+    const unsigned char* stt = sqlite3_column_text(st, 8);
+    const unsigned char* r = sqlite3_column_text(st, 11);
+    const unsigned char* e = sqlite3_column_text(st, 12);
     out_row->task_id = t ? (const char*)t : "";
     out_row->step_id = s ? (const char*)s : "";
     out_row->node_id = n ? (const char*)n : "";
     out_row->idempotency_key = k ? (const char*)k : "";
     out_row->mode = m ? (const char*)m : "";
-    out_row->deadline_utc_ms = sqlite3_column_int64(st, 5);
+    out_row->tool_name = tool ? (const char*)tool : "";
+    out_row->deadline_utc_ms = sqlite3_column_int64(st, 6);
     out_row->payload_json = p ? (const char*)p : "";
     out_row->state = stt ? (const char*)stt : "";
-    out_row->created_utc_ms = sqlite3_column_int64(st, 8);
-    out_row->updated_utc_ms = sqlite3_column_int64(st, 9);
+    out_row->created_utc_ms = sqlite3_column_int64(st, 9);
+    out_row->updated_utc_ms = sqlite3_column_int64(st, 10);
     out_row->result_json = r ? (const char*)r : "";
     out_row->error = e ? (const char*)e : "";
   }
@@ -605,7 +611,7 @@ bool AgentDb::list_edge_tasks_by_state(
 
   sqlite3_stmt* st = nullptr;
   const char* sql = R"SQL(
-SELECT task_id, step_id, node_id, idempotency_key, mode, deadline_utc_ms, payload_json, state, created_utc_ms, updated_utc_ms, result_json, error
+SELECT task_id, step_id, node_id, idempotency_key, mode, COALESCE(tool_name,''), deadline_utc_ms, payload_json, state, created_utc_ms, updated_utc_ms, result_json, error
 FROM edge_tasks
 WHERE state=?
 ORDER BY updated_utc_ms DESC
@@ -625,26 +631,783 @@ LIMIT ?;
     const unsigned char* n = sqlite3_column_text(st, 2);
     const unsigned char* k = sqlite3_column_text(st, 3);
     const unsigned char* m = sqlite3_column_text(st, 4);
-    const unsigned char* p = sqlite3_column_text(st, 6);
-    const unsigned char* stt = sqlite3_column_text(st, 7);
-    const unsigned char* r = sqlite3_column_text(st, 10);
-    const unsigned char* e = sqlite3_column_text(st, 11);
+    const unsigned char* tool = sqlite3_column_text(st, 5);
+    const unsigned char* p = sqlite3_column_text(st, 7);
+    const unsigned char* stt = sqlite3_column_text(st, 8);
+    const unsigned char* r = sqlite3_column_text(st, 11);
+    const unsigned char* e = sqlite3_column_text(st, 12);
     row.task_id = t ? (const char*)t : "";
     row.step_id = s ? (const char*)s : "";
     row.node_id = n ? (const char*)n : "";
     row.idempotency_key = k ? (const char*)k : "";
     row.mode = m ? (const char*)m : "";
-    row.deadline_utc_ms = sqlite3_column_int64(st, 5);
+    row.tool_name = tool ? (const char*)tool : "";
+    row.deadline_utc_ms = sqlite3_column_int64(st, 6);
     row.payload_json = p ? (const char*)p : "";
     row.state = stt ? (const char*)stt : "";
-    row.created_utc_ms = sqlite3_column_int64(st, 8);
-    row.updated_utc_ms = sqlite3_column_int64(st, 9);
+    row.created_utc_ms = sqlite3_column_int64(st, 9);
+    row.updated_utc_ms = sqlite3_column_int64(st, 10);
     row.result_json = r ? (const char*)r : "";
     row.error = e ? (const char*)e : "";
     out_rows_desc->push_back(std::move(row));
   }
   sqlite3_finalize(st);
   if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+  return ok;
+#endif
+}
+
+bool AgentDb::list_edge_tasks_expired_deadline(
+  int64_t now_utc_ms,
+  size_t max_rows,
+  std::vector<EdgeTaskRow>* out_rows_desc,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_rows_desc) out_rows_desc->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)now_utc_ms;
+  (void)max_rows;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (!out_rows_desc) return false;
+  const int64_t now = now_utc_ms > 0 ? now_utc_ms : unix_ms_now();
+  if (max_rows == 0) max_rows = 64;
+  if (max_rows > 512) max_rows = 512;
+
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT task_id, step_id, node_id, idempotency_key, mode, COALESCE(tool_name,''), deadline_utc_ms, payload_json, state, created_utc_ms, updated_utc_ms, result_json, error
+FROM edge_tasks
+WHERE (state='QUEUED' OR state='RUNNING')
+  AND deadline_utc_ms > 0
+  AND deadline_utc_ms < ?
+ORDER BY deadline_utc_ms ASC
+LIMIT ?;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_i64(st, 1, now);
+  ok = ok && bind_i64(st, 2, (int64_t)max_rows);
+  while (ok && step_row(st)) {
+    EdgeTaskRow row;
+    const unsigned char* t = sqlite3_column_text(st, 0);
+    const unsigned char* s = sqlite3_column_text(st, 1);
+    const unsigned char* n = sqlite3_column_text(st, 2);
+    const unsigned char* k = sqlite3_column_text(st, 3);
+    const unsigned char* m = sqlite3_column_text(st, 4);
+    const unsigned char* tool = sqlite3_column_text(st, 5);
+    const unsigned char* p = sqlite3_column_text(st, 7);
+    const unsigned char* stt = sqlite3_column_text(st, 8);
+    const unsigned char* r = sqlite3_column_text(st, 11);
+    const unsigned char* e = sqlite3_column_text(st, 12);
+    row.task_id = t ? (const char*)t : "";
+    row.step_id = s ? (const char*)s : "";
+    row.node_id = n ? (const char*)n : "";
+    row.idempotency_key = k ? (const char*)k : "";
+    row.mode = m ? (const char*)m : "";
+    row.tool_name = tool ? (const char*)tool : "";
+    row.deadline_utc_ms = sqlite3_column_int64(st, 6);
+    row.payload_json = p ? (const char*)p : "";
+    row.state = stt ? (const char*)stt : "";
+    row.created_utc_ms = sqlite3_column_int64(st, 9);
+    row.updated_utc_ms = sqlite3_column_int64(st, 10);
+    row.result_json = r ? (const char*)r : "";
+    row.error = e ? (const char*)e : "";
+    out_rows_desc->push_back(std::move(row));
+  }
+  sqlite3_finalize(st);
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+  return ok;
+#endif
+}
+
+bool AgentDb::get_edge_tool_rate_state(
+  const std::string& node_id,
+  const std::string& tool_name,
+  EdgeToolRateStateRow* out_row,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_row) *out_row = EdgeToolRateStateRow{};
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)node_id;
+  (void)tool_name;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (node_id.empty() || tool_name.empty() || !out_row) return false;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT node_id, tool_name, window_start_utc_ms, window_count, last_call_utc_ms
+FROM edge_tool_rate_state
+WHERE node_id=? AND tool_name=?
+LIMIT 1;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_text(st, 1, node_id);
+  ok = ok && bind_text(st, 2, tool_name);
+  bool found = false;
+  if (ok && step_row(st)) {
+    found = true;
+    const unsigned char* n = sqlite3_column_text(st, 0);
+    const unsigned char* t = sqlite3_column_text(st, 1);
+    out_row->node_id = n ? (const char*)n : "";
+    out_row->tool_name = t ? (const char*)t : "";
+    out_row->window_start_utc_ms = sqlite3_column_int64(st, 2);
+    out_row->window_count = sqlite3_column_int(st, 3);
+    out_row->last_call_utc_ms = sqlite3_column_int64(st, 4);
+  }
+  sqlite3_finalize(st);
+  if (!ok) {
+    if (out_error && out_error->empty()) *out_error = sqlite_err(db_);
+    return false;
+  }
+  return found;
+#endif
+}
+
+bool AgentDb::upsert_edge_tool_rate_state(const EdgeToolRateStateRow& row, std::string* out_error) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)row;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (row.node_id.empty() || row.tool_name.empty()) {
+    if (out_error) *out_error = "upsert_edge_tool_rate_state: node_id/tool_name empty";
+    return false;
+  }
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+INSERT INTO edge_tool_rate_state(node_id, tool_name, window_start_utc_ms, window_count, last_call_utc_ms)
+VALUES(?,?,?,?,?)
+ON CONFLICT(node_id, tool_name) DO UPDATE SET
+  window_start_utc_ms = excluded.window_start_utc_ms,
+  window_count = excluded.window_count,
+  last_call_utc_ms = excluded.last_call_utc_ms;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_text(st, 1, row.node_id);
+  ok = ok && bind_text(st, 2, row.tool_name);
+  ok = ok && bind_i64(st, 3, row.window_start_utc_ms);
+  ok = ok && (sqlite3_bind_int(st, 4, row.window_count) == SQLITE_OK);
+  ok = ok && bind_i64(st, 5, row.last_call_utc_ms);
+  ok = ok && step_done(st);
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  return ok;
+#endif
+}
+
+bool AgentDb::upsert_edge_rule(const EdgeRuleRow& row, std::string* out_error) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)row;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (row.rule_id.empty() || row.event_type.empty() || row.action_json.empty()) {
+    if (out_error) *out_error = "upsert_edge_rule: missing rule_id/event_type/action_json";
+    return false;
+  }
+  const int64_t now = unix_ms_now();
+  const int64_t created = row.created_utc_ms > 0 ? row.created_utc_ms : now;
+  const int64_t updated = row.updated_utc_ms > 0 ? row.updated_utc_ms : now;
+
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+INSERT INTO edge_rules(
+  rule_id, enabled, event_type, min_confidence, cooldown_ms, last_fired_utc_ms, action_json, created_utc_ms, updated_utc_ms
+) VALUES(?,?,?,?,?,?,?,?,?)
+ON CONFLICT(rule_id) DO UPDATE SET
+  enabled = excluded.enabled,
+  event_type = excluded.event_type,
+  min_confidence = excluded.min_confidence,
+  cooldown_ms = excluded.cooldown_ms,
+  last_fired_utc_ms = excluded.last_fired_utc_ms,
+  action_json = excluded.action_json,
+  updated_utc_ms = excluded.updated_utc_ms;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_text(st, 1, row.rule_id);
+  ok = ok && (sqlite3_bind_int(st, 2, row.enabled ? 1 : 0) == SQLITE_OK);
+  ok = ok && bind_text(st, 3, row.event_type);
+  ok = ok && (sqlite3_bind_double(st, 4, row.min_confidence) == SQLITE_OK);
+  ok = ok && (sqlite3_bind_int(st, 5, row.cooldown_ms) == SQLITE_OK);
+  ok = ok && bind_i64(st, 6, row.last_fired_utc_ms);
+  ok = ok && bind_text(st, 7, row.action_json);
+  ok = ok && bind_i64(st, 8, created);
+  ok = ok && bind_i64(st, 9, updated);
+  ok = ok && step_done(st);
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  return ok;
+#endif
+}
+
+bool AgentDb::get_edge_rule(const std::string& rule_id, EdgeRuleRow* out_row, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (out_row) *out_row = EdgeRuleRow{};
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)rule_id;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (rule_id.empty() || !out_row) return false;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT rule_id, enabled, event_type, min_confidence, cooldown_ms, last_fired_utc_ms, action_json, created_utc_ms, updated_utc_ms
+FROM edge_rules
+WHERE rule_id=?
+LIMIT 1;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_text(st, 1, rule_id);
+  bool found = false;
+  if (ok && step_row(st)) {
+    found = true;
+    const unsigned char* rid = sqlite3_column_text(st, 0);
+    const unsigned char* et = sqlite3_column_text(st, 2);
+    const unsigned char* aj = sqlite3_column_text(st, 6);
+    out_row->rule_id = rid ? (const char*)rid : "";
+    out_row->enabled = sqlite3_column_int(st, 1) != 0;
+    out_row->event_type = et ? (const char*)et : "";
+    out_row->min_confidence = sqlite3_column_double(st, 3);
+    out_row->cooldown_ms = sqlite3_column_int(st, 4);
+    out_row->last_fired_utc_ms = sqlite3_column_int64(st, 5);
+    out_row->action_json = aj ? (const char*)aj : "";
+    out_row->created_utc_ms = sqlite3_column_int64(st, 7);
+    out_row->updated_utc_ms = sqlite3_column_int64(st, 8);
+  }
+  sqlite3_finalize(st);
+  if (!ok) {
+    if (out_error && out_error->empty()) *out_error = sqlite_err(db_);
+    return false;
+  }
+  return found;
+#endif
+}
+
+bool AgentDb::delete_edge_rule(const std::string& rule_id, std::string* out_error) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)rule_id;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (rule_id.empty()) {
+    if (out_error) *out_error = "delete_edge_rule: rule_id empty";
+    return false;
+  }
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = "DELETE FROM edge_rules WHERE rule_id=?;";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_text(st, 1, rule_id);
+  ok = ok && step_done(st);
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  return ok;
+#endif
+}
+
+bool AgentDb::list_edge_rules(size_t max_rows, std::vector<EdgeRuleRow>* out_rows_desc, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (out_rows_desc) out_rows_desc->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)max_rows;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (!out_rows_desc) return false;
+  if (max_rows == 0) max_rows = 64;
+  if (max_rows > 512) max_rows = 512;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT rule_id, enabled, event_type, min_confidence, cooldown_ms, last_fired_utc_ms, action_json, created_utc_ms, updated_utc_ms
+FROM edge_rules
+ORDER BY updated_utc_ms DESC
+LIMIT ?;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_i64(st, 1, (int64_t)max_rows);
+  while (ok && step_row(st)) {
+    EdgeRuleRow row;
+    const unsigned char* rid = sqlite3_column_text(st, 0);
+    const unsigned char* et = sqlite3_column_text(st, 2);
+    const unsigned char* aj = sqlite3_column_text(st, 6);
+    row.rule_id = rid ? (const char*)rid : "";
+    row.enabled = sqlite3_column_int(st, 1) != 0;
+    row.event_type = et ? (const char*)et : "";
+    row.min_confidence = sqlite3_column_double(st, 3);
+    row.cooldown_ms = sqlite3_column_int(st, 4);
+    row.last_fired_utc_ms = sqlite3_column_int64(st, 5);
+    row.action_json = aj ? (const char*)aj : "";
+    row.created_utc_ms = sqlite3_column_int64(st, 7);
+    row.updated_utc_ms = sqlite3_column_int64(st, 8);
+    out_rows_desc->push_back(std::move(row));
+  }
+  sqlite3_finalize(st);
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+  return ok;
+#endif
+}
+
+bool AgentDb::create_edge_workflow(
+  const EdgeWorkflowRow& wf,
+  const std::vector<EdgeWorkflowStepRow>& steps,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)wf;
+  (void)steps;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (wf.workflow_id.empty() || wf.status.empty() || wf.spec_json.empty()) {
+    if (out_error) *out_error = "create_edge_workflow: missing workflow_id/status/spec_json";
+    return false;
+  }
+  if (steps.empty()) {
+    if (out_error) *out_error = "create_edge_workflow: steps empty";
+    return false;
+  }
+  const int64_t now = wf.updated_utc_ms > 0 ? wf.updated_utc_ms : unix_ms_now();
+  const int64_t created = wf.created_utc_ms > 0 ? wf.created_utc_ms : now;
+
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  char* err = nullptr;
+  if (sqlite3_exec((sqlite3*)db_, "BEGIN IMMEDIATE TRANSACTION;", nullptr, nullptr, &err) != SQLITE_OK) {
+    if (out_error) *out_error = err ? err : sqlite_err((sqlite3*)db_);
+    if (err) sqlite3_free(err);
+    return false;
+  }
+  bool ok = true;
+  {
+    sqlite3_stmt* st = nullptr;
+    const char* sql = R"SQL(
+INSERT INTO edge_workflows(workflow_id, goal, status, priority, spec_json, created_utc_ms, updated_utc_ms, error)
+VALUES(?,?,?,?,?,?,?,?);
+)SQL";
+    if (sqlite3_prepare_v2((sqlite3*)db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+      ok = false;
+      if (out_error) *out_error = sqlite_err((sqlite3*)db_);
+    } else {
+      ok = ok && bind_text(st, 1, wf.workflow_id);
+      ok = ok && bind_text_or_null(st, 2, wf.goal);
+      ok = ok && bind_text(st, 3, wf.status);
+      ok = ok && (sqlite3_bind_int(st, 4, wf.priority) == SQLITE_OK);
+      ok = ok && bind_text(st, 5, wf.spec_json);
+      ok = ok && bind_i64(st, 6, created);
+      ok = ok && bind_i64(st, 7, now);
+      ok = ok && bind_text_or_null(st, 8, wf.error);
+      ok = ok && step_done(st);
+      if (!ok && out_error && out_error->empty()) *out_error = sqlite_err((sqlite3*)db_);
+      sqlite3_finalize(st);
+    }
+  }
+
+  if (ok) {
+    sqlite3_stmt* st = nullptr;
+    const char* sql = R"SQL(
+INSERT INTO edge_workflow_steps(
+  workflow_id, step_id, kind, depends_on_json, target_json, payload_json, join_mode, deadline_utc_ms, state, created_utc_ms, updated_utc_ms, error
+) VALUES(?,?,?,?,?,?,?,?,?,?,?,?);
+)SQL";
+    if (sqlite3_prepare_v2((sqlite3*)db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+      ok = false;
+      if (out_error) *out_error = sqlite_err((sqlite3*)db_);
+    } else {
+      for (const auto& s : steps) {
+        if (s.workflow_id.empty() || s.step_id.empty() || s.kind.empty() || s.depends_on_json.empty() || s.target_json.empty() ||
+            s.payload_json.empty() || s.state.empty()) {
+          ok = false;
+          if (out_error && out_error->empty()) *out_error = "create_edge_workflow: invalid step row";
+          break;
+        }
+        sqlite3_reset(st);
+        sqlite3_clear_bindings(st);
+        const int64_t sc = s.created_utc_ms > 0 ? s.created_utc_ms : created;
+        const int64_t su = s.updated_utc_ms > 0 ? s.updated_utc_ms : now;
+        ok = ok && bind_text(st, 1, s.workflow_id);
+        ok = ok && bind_text(st, 2, s.step_id);
+        ok = ok && bind_text(st, 3, s.kind);
+        ok = ok && bind_text(st, 4, s.depends_on_json);
+        ok = ok && bind_text(st, 5, s.target_json);
+        ok = ok && bind_text(st, 6, s.payload_json);
+        ok = ok && bind_text_or_null(st, 7, s.join_mode);
+        ok = ok && bind_i64(st, 8, s.deadline_utc_ms);
+        ok = ok && bind_text(st, 9, s.state);
+        ok = ok && bind_i64(st, 10, sc);
+        ok = ok && bind_i64(st, 11, su);
+        ok = ok && bind_text_or_null(st, 12, s.error);
+        ok = ok && step_done(st);
+        if (!ok) {
+          if (out_error && out_error->empty()) *out_error = sqlite_err((sqlite3*)db_);
+          break;
+        }
+      }
+      sqlite3_finalize(st);
+    }
+  }
+
+  if (ok) {
+    ok = sqlite3_exec((sqlite3*)db_, "COMMIT;", nullptr, nullptr, &err) == SQLITE_OK;
+    if (!ok && out_error && out_error->empty()) *out_error = err ? err : sqlite_err((sqlite3*)db_);
+  } else {
+    (void)sqlite3_exec((sqlite3*)db_, "ROLLBACK;", nullptr, nullptr, nullptr);
+  }
+  if (err) sqlite3_free(err);
+  return ok;
+#endif
+}
+
+bool AgentDb::get_edge_workflow(const std::string& workflow_id, EdgeWorkflowRow* out_row, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (out_row) *out_row = EdgeWorkflowRow{};
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)workflow_id;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (workflow_id.empty() || !out_row) return false;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT workflow_id, COALESCE(goal,''), status, priority, spec_json, created_utc_ms, updated_utc_ms, COALESCE(error,'')
+FROM edge_workflows
+WHERE workflow_id=?
+LIMIT 1;
+)SQL";
+  if (sqlite3_prepare_v2((sqlite3*)db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err((sqlite3*)db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_text(st, 1, workflow_id);
+  bool found = false;
+  if (ok && step_row(st)) {
+    found = true;
+    const unsigned char* wid = sqlite3_column_text(st, 0);
+    const unsigned char* goal = sqlite3_column_text(st, 1);
+    const unsigned char* stt = sqlite3_column_text(st, 2);
+    const unsigned char* spec = sqlite3_column_text(st, 4);
+    const unsigned char* errt = sqlite3_column_text(st, 7);
+    out_row->workflow_id = wid ? (const char*)wid : "";
+    out_row->goal = goal ? (const char*)goal : "";
+    out_row->status = stt ? (const char*)stt : "";
+    out_row->priority = sqlite3_column_int(st, 3);
+    out_row->spec_json = spec ? (const char*)spec : "";
+    out_row->created_utc_ms = sqlite3_column_int64(st, 5);
+    out_row->updated_utc_ms = sqlite3_column_int64(st, 6);
+    out_row->error = errt ? (const char*)errt : "";
+  }
+  sqlite3_finalize(st);
+  if (!ok) {
+    if (out_error && out_error->empty()) *out_error = sqlite_err((sqlite3*)db_);
+    return false;
+  }
+  return found;
+#endif
+}
+
+bool AgentDb::upsert_edge_workflow(const EdgeWorkflowRow& wf, std::string* out_error) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)wf;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (wf.workflow_id.empty() || wf.status.empty() || wf.spec_json.empty()) {
+    if (out_error) *out_error = "upsert_edge_workflow: missing workflow_id/status/spec_json";
+    return false;
+  }
+  const int64_t now = wf.updated_utc_ms > 0 ? wf.updated_utc_ms : unix_ms_now();
+  const int64_t created = wf.created_utc_ms > 0 ? wf.created_utc_ms : now;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+INSERT INTO edge_workflows(workflow_id, goal, status, priority, spec_json, created_utc_ms, updated_utc_ms, error)
+VALUES(?,?,?,?,?,?,?,?)
+ON CONFLICT(workflow_id) DO UPDATE SET
+  goal = excluded.goal,
+  status = excluded.status,
+  priority = excluded.priority,
+  spec_json = excluded.spec_json,
+  updated_utc_ms = excluded.updated_utc_ms,
+  error = excluded.error;
+)SQL";
+  if (sqlite3_prepare_v2((sqlite3*)db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err((sqlite3*)db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_text(st, 1, wf.workflow_id);
+  ok = ok && bind_text_or_null(st, 2, wf.goal);
+  ok = ok && bind_text(st, 3, wf.status);
+  ok = ok && (sqlite3_bind_int(st, 4, wf.priority) == SQLITE_OK);
+  ok = ok && bind_text(st, 5, wf.spec_json);
+  ok = ok && bind_i64(st, 6, created);
+  ok = ok && bind_i64(st, 7, now);
+  ok = ok && bind_text_or_null(st, 8, wf.error);
+  ok = ok && step_done(st);
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err((sqlite3*)db_);
+  sqlite3_finalize(st);
+  return ok;
+#endif
+}
+
+bool AgentDb::list_edge_workflows_by_status(
+  const std::string& status,
+  size_t max_rows,
+  std::vector<EdgeWorkflowRow>* out_rows_desc,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_rows_desc) out_rows_desc->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)status;
+  (void)max_rows;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (!out_rows_desc) return false;
+  if (status.empty()) {
+    if (out_error) *out_error = "list_edge_workflows_by_status: status empty";
+    return false;
+  }
+  if (max_rows == 0) max_rows = 64;
+  if (max_rows > 512) max_rows = 512;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT workflow_id, COALESCE(goal,''), status, priority, spec_json, created_utc_ms, updated_utc_ms, COALESCE(error,'')
+FROM edge_workflows
+WHERE status=?
+ORDER BY priority DESC, updated_utc_ms DESC
+LIMIT ?;
+)SQL";
+  if (sqlite3_prepare_v2((sqlite3*)db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err((sqlite3*)db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_text(st, 1, status);
+  ok = ok && bind_i64(st, 2, (int64_t)max_rows);
+  while (ok && step_row(st)) {
+    EdgeWorkflowRow row;
+    const unsigned char* wid = sqlite3_column_text(st, 0);
+    const unsigned char* goal = sqlite3_column_text(st, 1);
+    const unsigned char* stt = sqlite3_column_text(st, 2);
+    const unsigned char* spec = sqlite3_column_text(st, 4);
+    const unsigned char* errt = sqlite3_column_text(st, 7);
+    row.workflow_id = wid ? (const char*)wid : "";
+    row.goal = goal ? (const char*)goal : "";
+    row.status = stt ? (const char*)stt : "";
+    row.priority = sqlite3_column_int(st, 3);
+    row.spec_json = spec ? (const char*)spec : "";
+    row.created_utc_ms = sqlite3_column_int64(st, 5);
+    row.updated_utc_ms = sqlite3_column_int64(st, 6);
+    row.error = errt ? (const char*)errt : "";
+    out_rows_desc->push_back(std::move(row));
+  }
+  sqlite3_finalize(st);
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err((sqlite3*)db_);
+  return ok;
+#endif
+}
+
+bool AgentDb::list_edge_workflow_steps(const std::string& workflow_id, std::vector<EdgeWorkflowStepRow>* out_rows, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (out_rows) out_rows->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)workflow_id;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (workflow_id.empty()) {
+    if (out_error) *out_error = "list_edge_workflow_steps: workflow_id empty";
+    return false;
+  }
+  if (!out_rows) return false;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT step_id, kind, depends_on_json, target_json, payload_json, COALESCE(join_mode,''), deadline_utc_ms, state, created_utc_ms, updated_utc_ms, COALESCE(error,'')
+FROM edge_workflow_steps
+WHERE workflow_id=?
+ORDER BY step_id ASC;
+)SQL";
+  if (sqlite3_prepare_v2((sqlite3*)db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err((sqlite3*)db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_text(st, 1, workflow_id);
+  while (ok && step_row(st)) {
+    EdgeWorkflowStepRow row;
+    row.workflow_id = workflow_id;
+    const unsigned char* sid = sqlite3_column_text(st, 0);
+    const unsigned char* kind = sqlite3_column_text(st, 1);
+    const unsigned char* deps = sqlite3_column_text(st, 2);
+    const unsigned char* tgt = sqlite3_column_text(st, 3);
+    const unsigned char* pay = sqlite3_column_text(st, 4);
+    const unsigned char* jm = sqlite3_column_text(st, 5);
+    const unsigned char* stt = sqlite3_column_text(st, 7);
+    const unsigned char* errt = sqlite3_column_text(st, 10);
+    row.step_id = sid ? (const char*)sid : "";
+    row.kind = kind ? (const char*)kind : "";
+    row.depends_on_json = deps ? (const char*)deps : "[]";
+    row.target_json = tgt ? (const char*)tgt : "{}";
+    row.payload_json = pay ? (const char*)pay : "{}";
+    row.join_mode = jm ? (const char*)jm : "";
+    row.deadline_utc_ms = sqlite3_column_int64(st, 6);
+    row.state = stt ? (const char*)stt : "";
+    row.created_utc_ms = sqlite3_column_int64(st, 8);
+    row.updated_utc_ms = sqlite3_column_int64(st, 9);
+    row.error = errt ? (const char*)errt : "";
+    out_rows->push_back(std::move(row));
+  }
+  sqlite3_finalize(st);
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err((sqlite3*)db_);
+  return ok;
+#endif
+}
+
+bool AgentDb::upsert_edge_workflow_step(const EdgeWorkflowStepRow& step, std::string* out_error) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)step;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (step.workflow_id.empty() || step.step_id.empty() || step.kind.empty() || step.depends_on_json.empty() || step.target_json.empty() ||
+      step.payload_json.empty() || step.state.empty()) {
+    if (out_error) *out_error = "upsert_edge_workflow_step: missing required fields";
+    return false;
+  }
+  const int64_t now = step.updated_utc_ms > 0 ? step.updated_utc_ms : unix_ms_now();
+  const int64_t created = step.created_utc_ms > 0 ? step.created_utc_ms : now;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+INSERT INTO edge_workflow_steps(
+  workflow_id, step_id, kind, depends_on_json, target_json, payload_json, join_mode, deadline_utc_ms, state, created_utc_ms, updated_utc_ms, error
+) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)
+ON CONFLICT(workflow_id, step_id) DO UPDATE SET
+  state = excluded.state,
+  updated_utc_ms = excluded.updated_utc_ms,
+  error = excluded.error;
+)SQL";
+  if (sqlite3_prepare_v2((sqlite3*)db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err((sqlite3*)db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_text(st, 1, step.workflow_id);
+  ok = ok && bind_text(st, 2, step.step_id);
+  ok = ok && bind_text(st, 3, step.kind);
+  ok = ok && bind_text(st, 4, step.depends_on_json);
+  ok = ok && bind_text(st, 5, step.target_json);
+  ok = ok && bind_text(st, 6, step.payload_json);
+  ok = ok && bind_text_or_null(st, 7, step.join_mode);
+  ok = ok && bind_i64(st, 8, step.deadline_utc_ms);
+  ok = ok && bind_text(st, 9, step.state);
+  ok = ok && bind_i64(st, 10, created);
+  ok = ok && bind_i64(st, 11, now);
+  ok = ok && bind_text_or_null(st, 12, step.error);
+  ok = ok && step_done(st);
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err((sqlite3*)db_);
+  sqlite3_finalize(st);
   return ok;
 #endif
 }
@@ -728,4 +1491,3 @@ bool AgentDb::insert_edge_sensor_event(const EdgeSensorEventRow& row, int64_t* o
 }
 
 }  // namespace agentd
-

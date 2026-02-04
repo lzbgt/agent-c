@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <climits>
 #include <random>
 #include <sstream>
 #include <string>
@@ -117,6 +118,137 @@ static std::string node_to_prefix(const std::string& node_id) {
   return std::string("node:") + node_id;
 }
 
+static bool is_terminal_edge_task_state(const std::string& s) {
+  return s == "SUCCEEDED" || s == "FAILED" || s == "TIMED_OUT" || s == "CANCELED";
+}
+
+struct ToolMeta {
+  std::string side_effect_level;
+  std::unordered_set<std::string> hazards;
+  bool has_rate_limit = false;
+  int max_per_minute = 0;
+  int cooldown_ms = 0;
+};
+
+static bool tool_meta_from_manifest(
+  const Json::Value& manifest,
+  const std::string& tool_name,
+  ToolMeta* out_meta,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_meta) *out_meta = ToolMeta{};
+  if (!out_meta) return false;
+  if (!manifest.isObject()) {
+    if (out_error) *out_error = "manifest is not an object";
+    return false;
+  }
+  if (tool_name.empty()) {
+    if (out_error) *out_error = "tool_name is empty";
+    return false;
+  }
+  const auto& tools = manifest["tools"];
+  if (!tools.isArray()) {
+    if (out_error) *out_error = "manifest.tools missing/invalid";
+    return false;
+  }
+  for (Json::ArrayIndex i = 0; i < tools.size(); i++) {
+    const auto& t = tools[i];
+    if (!t.isObject()) continue;
+    const auto& n = t["name"];
+    if (!n.isString()) continue;
+    if (n.asString() != tool_name) continue;
+
+    ToolMeta m;
+    if (t.isMember("side_effect_level") && t["side_effect_level"].isString()) {
+      m.side_effect_level = t["side_effect_level"].asString();
+    }
+    if (t.isMember("hazards") && t["hazards"].isArray()) {
+      for (Json::ArrayIndex j = 0; j < t["hazards"].size(); j++) {
+        if (t["hazards"][j].isString()) m.hazards.insert(t["hazards"][j].asString());
+      }
+    }
+    if (t.isMember("rate_limit") && t["rate_limit"].isObject()) {
+      const auto& rl = t["rate_limit"];
+      if (rl.isMember("max_per_minute") && rl["max_per_minute"].isInt()) {
+        m.max_per_minute = std::max(0, rl["max_per_minute"].asInt());
+      } else if (rl.isMember("max_per_minute") && rl["max_per_minute"].isUInt()) {
+        m.max_per_minute = (int)std::min((Json::UInt)INT32_MAX, rl["max_per_minute"].asUInt());
+      }
+      if (rl.isMember("cooldown_ms") && rl["cooldown_ms"].isInt()) {
+        m.cooldown_ms = std::max(0, rl["cooldown_ms"].asInt());
+      } else if (rl.isMember("cooldown_ms") && rl["cooldown_ms"].isUInt()) {
+        m.cooldown_ms = (int)std::min((Json::UInt)INT32_MAX, rl["cooldown_ms"].asUInt());
+      }
+      m.has_rate_limit = (m.max_per_minute > 0) || (m.cooldown_ms > 0);
+    }
+    *out_meta = std::move(m);
+    return true;
+  }
+  if (out_error) *out_error = "tool not found in manifest";
+  return false;
+}
+
+static bool edge_rate_limit_check_best_effort(
+  AgentDb* db,
+  const std::string& node_id,
+  const std::string& tool_name,
+  const ToolMeta& meta,
+  int64_t now_utc_ms,
+  AgentDb::EdgeToolRateStateRow* out_next_state,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_next_state) *out_next_state = AgentDb::EdgeToolRateStateRow{};
+  if (!db || !db->is_open()) return false;
+  if (!meta.has_rate_limit) return true;
+  if (node_id.empty() || tool_name.empty()) return true;
+  const int64_t now = now_utc_ms > 0 ? now_utc_ms : unix_ms_now();
+
+  AgentDb::EdgeToolRateStateRow st;
+  std::string err;
+  const bool has = db->get_edge_tool_rate_state(node_id, tool_name, &st, &err);
+  if (!has) {
+    st.node_id = node_id;
+    st.tool_name = tool_name;
+    st.window_start_utc_ms = 0;
+    st.window_count = 0;
+    st.last_call_utc_ms = 0;
+  }
+
+  if (meta.cooldown_ms > 0 && st.last_call_utc_ms > 0) {
+    const int64_t since = now - st.last_call_utc_ms;
+    if (since >= 0 && since < meta.cooldown_ms) {
+      if (out_error) *out_error = "rate_limited: cooldown";
+      return false;
+    }
+  }
+
+  const int64_t window_ms = 60000;
+  if (st.window_start_utc_ms <= 0 || (now - st.window_start_utc_ms) >= window_ms || (now - st.window_start_utc_ms) < 0) {
+    st.window_start_utc_ms = now;
+    st.window_count = 0;
+  }
+  if (meta.max_per_minute > 0 && st.window_count >= meta.max_per_minute) {
+    if (out_error) *out_error = "rate_limited: max_per_minute";
+    return false;
+  }
+
+  st.window_count += 1;
+  st.last_call_utc_ms = now;
+  if (out_next_state) *out_next_state = st;
+  return true;
+}
+
+static void edge_rate_limit_commit_best_effort(
+  AgentDb* db,
+  const AgentDb::EdgeToolRateStateRow& next_state
+) {
+  if (!db || !db->is_open()) return;
+  if (next_state.node_id.empty() || next_state.tool_name.empty()) return;
+  (void)db->upsert_edge_tool_rate_state(next_state, nullptr);
+}
+
 static bool select_node_match_any(
   AgentDb* db,
   const std::vector<std::string>& requires_tools,
@@ -190,6 +322,326 @@ static bool select_node_match_any(
   }
 
   return false;
+}
+
+static bool edge_enqueue_task_assign(
+  AgentDb* db,
+  const std::string& node_id,
+  const std::string& task_id,
+  const std::string& step_id,
+  const std::string& idempotency_key,
+  const std::string& mode,
+  int64_t deadline_utc_ms,
+  const Json::Value& payload,
+  const std::unordered_set<std::string>& allow_hazards,
+  bool allow_high_side_effect,
+  bool enforce_safety,
+  bool enforce_rate_limit,
+  int64_t* out_outbox_id,
+  bool* out_deduped,
+  std::string* out_error,
+  int* out_http_status
+) {
+  if (out_error) out_error->clear();
+  if (out_http_status) *out_http_status = 500;
+  if (out_outbox_id) *out_outbox_id = 0;
+  if (out_deduped) *out_deduped = false;
+  if (!db || !db->is_open()) {
+    if (out_error) *out_error = "db not available";
+    if (out_http_status) *out_http_status = 503;
+    return false;
+  }
+  if (node_id.empty() || !id_is_safe(node_id)) {
+    if (out_error) *out_error = "missing/invalid node_id";
+    if (out_http_status) *out_http_status = 400;
+    return false;
+  }
+  if (task_id.empty() || step_id.empty() || idempotency_key.empty() || (mode != "invoke" && mode != "agent") || deadline_utc_ms <= 0 ||
+      !payload.isObject()) {
+    if (out_error) *out_error = "missing/invalid task fields";
+    if (out_http_status) *out_http_status = 400;
+    return false;
+  }
+
+  std::string tool_name;
+  if (mode == "invoke") {
+    tool_name = payload.isMember("tool") && payload["tool"].isString() ? trim_copy(payload["tool"].asString()) : "";
+    if (tool_name.empty()) {
+      if (out_error) *out_error = "missing payload.tool for mode=invoke";
+      if (out_http_status) *out_http_status = 400;
+      return false;
+    }
+  }
+
+  bool have_rate_state_to_commit = false;
+  AgentDb::EdgeToolRateStateRow next_rate_state;
+
+  // Dedupe on (node_id, idempotency_key).
+  AgentDb::EdgeTaskRow existing;
+  std::string err;
+  const bool has_existing = db->get_edge_task_by_node_idempotency(node_id, idempotency_key, &existing, &err);
+  if (has_existing) {
+    if (out_deduped) *out_deduped = true;
+    if (existing.task_id != task_id || existing.step_id != step_id) {
+      if (out_error) *out_error = "idempotency_key collision with different task_id/step_id";
+      if (out_http_status) *out_http_status = 409;
+      return false;
+    }
+  } else {
+    // UM‑SAFE best-effort guardrails for new work:
+    // - require manifest for mode=invoke (so we can inspect hazards/rate_limit)
+    // - deny privacy_camera by default (unless explicitly allowed)
+    // - require explicit opt-in for side_effect_level="high"
+    // - enforce tool rate_limit using platform-side state
+    if (mode == "invoke" && (enforce_safety || enforce_rate_limit)) {
+      AgentDb::EdgeNodeRow nr;
+      std::string nerr;
+      if (!db->get_edge_node(node_id, &nr, &nerr)) {
+        if (out_error) *out_error = "node not found";
+        if (out_http_status) *out_http_status = 404;
+        return false;
+      }
+      if (nr.manifest_json.empty()) {
+        if (out_error) *out_error = "node has no manifest (caps unknown)";
+        if (out_http_status) *out_http_status = 409;
+        return false;
+      }
+
+      Json::Value manifest;
+      std::string merr;
+      if (!json_parse_any(nr.manifest_json, &manifest, &merr) || !manifest.isObject()) {
+        if (out_error) *out_error = "stored manifest parse failed";
+        if (out_http_status) *out_http_status = 500;
+        return false;
+      }
+
+      ToolMeta meta;
+      std::string terr;
+      if (!tool_meta_from_manifest(manifest, tool_name, &meta, &terr)) {
+        if (out_error) *out_error = std::string("tool not present in node manifest: ") + terr;
+        if (out_http_status) *out_http_status = 409;
+        return false;
+      }
+
+      if (enforce_safety) {
+        // Minimal default denylist per handoff doc.
+        if (meta.hazards.count("privacy_camera") && !allow_hazards.count("privacy_camera")) {
+          if (out_error) *out_error = "denied: hazard privacy_camera";
+          if (out_http_status) *out_http_status = 403;
+          return false;
+        }
+
+        if (meta.side_effect_level == "high" && !allow_high_side_effect) {
+          if (out_error) *out_error = "denied: side_effect_level high (set allow_high_side_effect=true to override)";
+          if (out_http_status) *out_http_status = 403;
+          return false;
+        }
+      }
+
+      if (enforce_rate_limit) {
+        std::string rlerr;
+        if (!edge_rate_limit_check_best_effort(db, node_id, tool_name, meta, unix_ms_now(), &next_rate_state, &rlerr)) {
+          if (out_error) *out_error = rlerr.empty() ? "rate_limited" : rlerr;
+          if (out_http_status) *out_http_status = 429;
+          return false;
+        }
+        if (meta.has_rate_limit) have_rate_state_to_commit = true;
+      }
+    }
+
+    AgentDb::EdgeTaskRow tr;
+    tr.task_id = task_id;
+    tr.step_id = step_id;
+    tr.node_id = node_id;
+    tr.idempotency_key = idempotency_key;
+    tr.mode = mode;
+    tr.tool_name = tool_name;
+    tr.deadline_utc_ms = deadline_utc_ms;
+    tr.payload_json = json_stringify_compact(payload);
+    tr.state = "QUEUED";
+    tr.created_utc_ms = unix_ms_now();
+    tr.updated_utc_ms = tr.created_utc_ms;
+    if (!db->upsert_edge_task(tr, &err)) {
+      if (out_error) *out_error = std::string("failed to persist edge task: ") + err;
+      if (out_http_status) *out_http_status = 500;
+      return false;
+    }
+
+    AgentDb::EdgeTaskEventRow ev;
+    ev.task_id = task_id;
+    ev.step_id = step_id;
+    ev.ts_utc_ms = tr.created_utc_ms;
+    ev.state = "QUEUED";
+    Json::Value d(Json::objectValue);
+    d["task_id"] = task_id;
+    d["step_id"] = step_id;
+    d["node_id"] = node_id;
+    d["state"] = "QUEUED";
+    d["mode"] = mode;
+    d["deadline_utc_ms"] = (Json::Int64)deadline_utc_ms;
+    if (!tool_name.empty()) d["tool"] = tool_name;
+    ev.data_json = json_stringify_compact(d);
+    (void)db->insert_edge_task_event(ev, nullptr, nullptr);
+  }
+
+  // Enqueue UM‑BMP TASK_ASSIGN envelope to node outbox.
+  const int64_t now = unix_ms_now();
+  Json::Value env(Json::objectValue);
+  env["msg_id"] = make_uuidish_msg_id();
+  env["ts_utc_ms"] = (Json::Int64)now;
+  env["type"] = "TASK_ASSIGN";
+  env["from"] = "platform";
+  env["to"] = node_to_prefix(node_id);
+  Json::Value b(Json::objectValue);
+  b["task_id"] = task_id;
+  b["step_id"] = step_id;
+  b["idempotency_key"] = idempotency_key;
+  b["mode"] = mode;
+  b["deadline_utc_ms"] = (Json::Int64)deadline_utc_ms;
+  b["payload"] = payload;
+  env["body"] = b;
+
+  AgentDb::EdgeOutboxMessageRow orow;
+  orow.node_id = node_id;
+  orow.ts_utc_ms = now;
+  orow.envelope_json = json_stringify_compact(env);
+  int64_t outbox_id = 0;
+  if (!db->insert_edge_outbox_message(orow, &outbox_id, &err)) {
+    if (out_error) *out_error = std::string("failed to enqueue outbox message: ") + err;
+    if (out_http_status) *out_http_status = 500;
+    return false;
+  }
+
+  if (out_outbox_id) *out_outbox_id = outbox_id;
+
+  // Best-effort commit of any rate-limit state (if applicable) after successful enqueue.
+  if (!has_existing && enforce_rate_limit && have_rate_state_to_commit) {
+    edge_rate_limit_commit_best_effort(db, next_rate_state);
+  }
+
+  if (out_http_status) *out_http_status = 200;
+  return true;
+}
+
+static void edge_apply_rules_for_sensor_event_best_effort(
+  AgentDb* db,
+  const std::string& sensor_node_id,
+  const std::string& sensor_msg_id,
+  const std::string& event_type,
+  int64_t event_ts_utc_ms,
+  double confidence,
+  const Json::Value& data
+) {
+  if (!db || !db->is_open()) return;
+  if (event_type.empty()) return;
+
+  const int64_t now = unix_ms_now();
+  std::vector<AgentDb::EdgeRuleRow> rules;
+  std::string err;
+  if (!db->list_edge_rules(/*max_rows=*/256, &rules, &err)) return;
+
+  for (auto r : rules) {
+    if (!r.enabled) continue;
+    if (r.event_type != event_type) continue;
+    if (confidence < r.min_confidence) continue;
+    if (r.cooldown_ms > 0 && r.last_fired_utc_ms > 0) {
+      const int64_t since = now - r.last_fired_utc_ms;
+      if (since >= 0 && since < (int64_t)r.cooldown_ms) continue;
+    }
+
+    Json::Value action;
+    std::string perr;
+    if (!json_parse_any(r.action_json, &action, &perr) || !action.isObject()) continue;
+    const std::string type = action.isMember("type") && action["type"].isString() ? action["type"].asString() : "";
+    if (type != "task_assign") continue;
+
+    // Target selection.
+    std::string target_node_id;
+    if (action.isMember("target") && action["target"].isObject()) {
+      const auto& tgt = action["target"];
+      if (tgt.isMember("node_id") && tgt["node_id"].isString()) {
+        target_node_id = trim_copy(tgt["node_id"].asString());
+      } else if (tgt.isMember("match_any") && tgt["match_any"].isObject()) {
+        std::vector<std::string> requires_tools, tags_all, tags_any, tags_none;
+        const auto& m = tgt["match_any"];
+        auto read_arr = [&](const char* k, std::vector<std::string>* out) {
+          if (!out) return;
+          out->clear();
+          if (!m.isMember(k) || !m[k].isArray()) return;
+          for (Json::ArrayIndex i = 0; i < m[k].size(); i++) {
+            if (!m[k][i].isString()) continue;
+            out->push_back(m[k][i].asString());
+          }
+        };
+        read_arr("requires_tools", &requires_tools);
+        read_arr("tags_all", &tags_all);
+        read_arr("tags_any", &tags_any);
+        read_arr("tags_none", &tags_none);
+        (void)select_node_match_any(db, requires_tools, tags_all, tags_any, tags_none, &target_node_id);
+      }
+    }
+    if (target_node_id.empty()) {
+      // Safe default: if rule doesn't specify a target, use the sensor node itself.
+      target_node_id = sensor_node_id;
+    }
+
+    const std::string mode = action.isMember("mode") && action["mode"].isString() ? action["mode"].asString() : "invoke";
+    Json::Value payload = action.isMember("payload") ? action["payload"] : Json::Value(Json::nullValue);
+    if (!payload.isObject()) continue;
+
+    int64_t deadline_in_ms = 60000;
+    if (action.isMember("deadline_in_ms") && (action["deadline_in_ms"].isInt64() || action["deadline_in_ms"].isUInt64())) {
+      deadline_in_ms = action["deadline_in_ms"].isInt64() ? action["deadline_in_ms"].asInt64() : (int64_t)action["deadline_in_ms"].asUInt64();
+    }
+    if (deadline_in_ms < 1000) deadline_in_ms = 1000;
+    if (deadline_in_ms > 24LL * 60 * 60 * 1000) deadline_in_ms = 24LL * 60 * 60 * 1000;
+    const int64_t deadline_utc_ms = now + deadline_in_ms;
+
+    std::string task_id = action.isMember("task_id") && action["task_id"].isString() ? action["task_id"].asString() : "";
+    if (task_id.empty()) task_id = std::string("rule_") + make_uuidish_msg_id();
+    std::string step_id = action.isMember("step_id") && action["step_id"].isString() ? action["step_id"].asString() : "auto";
+    std::string idempotency_key = action.isMember("idempotency_key") && action["idempotency_key"].isString() ? action["idempotency_key"].asString() : "";
+    if (idempotency_key.empty()) {
+      idempotency_key = std::string("rule:") + r.rule_id + ":msg:" + sensor_msg_id;
+    }
+
+    // Automation defaults: do NOT allow hazards or high side-effects by default.
+    std::unordered_set<std::string> allow_hazards;
+    const bool allow_high_side_effect = false;
+
+    int64_t outbox_id = 0;
+    bool deduped = false;
+    std::string derr;
+    int http = 0;
+    if (!edge_enqueue_task_assign(
+          db,
+          target_node_id,
+          task_id,
+          step_id,
+          idempotency_key,
+          mode,
+          deadline_utc_ms,
+          payload,
+          allow_hazards,
+          allow_high_side_effect,
+          /*enforce_safety=*/true,
+          /*enforce_rate_limit=*/true,
+          &outbox_id,
+          &deduped,
+          &derr,
+          &http)) {
+      continue;
+    }
+
+    // Mark rule fired (best-effort).
+    r.last_fired_utc_ms = now;
+    r.updated_utc_ms = now;
+    (void)db->upsert_edge_rule(r, nullptr);
+
+    // Optional: attach light provenance into the task payload for downstream debugging.
+    (void)event_ts_utc_ms;
+    (void)data;
+  }
 }
 
 }  // namespace
@@ -403,18 +855,54 @@ void handle_edge_message_endpoint(
       // Unknown task; ignore to keep ingestion robust.
       return;
     }
-    tr.state = state;
-    tr.updated_utc_ms = ts_utc_ms > 0 ? ts_utc_ms : now;
-    if (!result_json.empty()) tr.result_json = result_json;
-    if (!error_text.empty()) tr.error = error_text;
-    (void)db_or_null->upsert_edge_task(tr, nullptr);
+    const bool terminal = is_terminal_edge_task_state(tr.state);
+    const int64_t ts_eff = ts_utc_ms > 0 ? ts_utc_ms : now;
+
+    // Do not regress/override terminal states set by the platform (e.g. deadline sweeper) or earlier completion.
+    // We still persist the event for observability.
+    const bool apply_update = !terminal;
+    const std::string effective_state = apply_update ? state : tr.state;
+    if (apply_update) {
+      tr.state = state;
+      tr.updated_utc_ms = ts_eff;
+      if (!result_json.empty()) tr.result_json = result_json;
+      if (!error_text.empty()) tr.error = error_text;
+      (void)db_or_null->upsert_edge_task(tr, nullptr);
+    }
     AgentDb::EdgeTaskEventRow ev;
     ev.task_id = task_id;
     ev.step_id = step_id;
-    ev.ts_utc_ms = tr.updated_utc_ms;
+    ev.ts_utc_ms = ts_eff;
     ev.state = state;
-    ev.data_json = json_stringify_compact(event_data.isNull() ? Json::Value(Json::objectValue) : event_data);
+    Json::Value d = event_data.isNull() ? Json::Value(Json::objectValue) : event_data;
+    if (terminal && state != tr.state) {
+      d["_ignored_by_platform"] = true;
+      d["_platform_state"] = tr.state;
+    }
+    ev.data_json = json_stringify_compact(d);
     (void)db_or_null->insert_edge_task_event(ev, nullptr, nullptr);
+
+    // Best-effort: if this task belongs to an edge workflow (task_id == workflow_id), reflect state into the step.
+    if (apply_update || state == effective_state) {
+      AgentDb::EdgeWorkflowRow wf;
+      std::string werr;
+      if (db_or_null->get_edge_workflow(task_id, &wf, &werr)) {
+        std::vector<AgentDb::EdgeWorkflowStepRow> steps;
+        std::string serr;
+        if (db_or_null->list_edge_workflow_steps(task_id, &steps, &serr)) {
+          for (auto& s : steps) {
+            if (s.step_id != step_id) continue;
+            if (s.state != effective_state) {
+              s.state = effective_state;
+              s.updated_utc_ms = ts_eff;
+              if (!error_text.empty()) s.error = error_text;
+              (void)db_or_null->upsert_edge_workflow_step(s, nullptr);
+            }
+            break;
+          }
+        }
+      }
+    }
   };
 
   if (type == "TASK_ACK") {
@@ -488,6 +976,17 @@ void handle_edge_message_endpoint(
     sr.confidence = confidence;
     sr.data_json = json_stringify_compact(data.isNull() ? Json::Value(Json::objectValue) : data);
     (void)db_or_null->insert_edge_sensor_event(sr, nullptr, nullptr);
+
+    // Best-effort automation bridge: apply enabled rules for this event.
+    edge_apply_rules_for_sensor_event_best_effort(
+      db_or_null,
+      node_id,
+      msg_id,
+      event_type,
+      ts2,
+      confidence,
+      data
+    );
     resp->body = "{\"ok\":true}";
     return;
   }
@@ -824,82 +1323,40 @@ void handle_edge_task_assign_endpoint(
     return;
   }
 
-  // Dedupe on (node_id, idempotency_key).
-  AgentDb::EdgeTaskRow existing;
-  std::string err;
-  const bool has_existing = db_or_null->get_edge_task_by_node_idempotency(node_id, idempotency_key, &existing, &err);
-  if (has_existing) {
-    if (existing.task_id != task_id || existing.step_id != step_id) {
-      resp->status = 409;
-      resp->body = "{\"ok\":false,\"error\":\"idempotency_key collision with different task_id/step_id\"}";
-      return;
+  std::unordered_set<std::string> allow_hazards;
+  if (args.isMember("allow_hazards") && args["allow_hazards"].isArray()) {
+    for (Json::ArrayIndex i = 0; i < args["allow_hazards"].size(); i++) {
+      if (args["allow_hazards"][i].isString()) allow_hazards.insert(args["allow_hazards"][i].asString());
     }
-  } else {
-    AgentDb::EdgeTaskRow tr;
-    tr.task_id = task_id;
-    tr.step_id = step_id;
-    tr.node_id = node_id;
-    tr.idempotency_key = idempotency_key;
-    tr.mode = mode;
-    tr.deadline_utc_ms = deadline_utc_ms;
-    tr.payload_json = json_stringify_compact(payload);
-    tr.state = "QUEUED";
-    tr.created_utc_ms = unix_ms_now();
-    tr.updated_utc_ms = tr.created_utc_ms;
-    if (!db_or_null->upsert_edge_task(tr, &err)) {
-      resp->status = 500;
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["error"] = "failed to persist edge task";
-      o["detail"] = err;
-      resp->body = json_stringify_compact(o);
-      return;
-    }
-
-    AgentDb::EdgeTaskEventRow ev;
-    ev.task_id = task_id;
-    ev.step_id = step_id;
-    ev.ts_utc_ms = tr.created_utc_ms;
-    ev.state = "QUEUED";
-    Json::Value d(Json::objectValue);
-    d["task_id"] = task_id;
-    d["step_id"] = step_id;
-    d["node_id"] = node_id;
-    d["state"] = "QUEUED";
-    d["mode"] = mode;
-    d["deadline_utc_ms"] = (Json::Int64)deadline_utc_ms;
-    ev.data_json = json_stringify_compact(d);
-    (void)db_or_null->insert_edge_task_event(ev, nullptr, nullptr);
   }
+  const bool allow_high_side_effect =
+    args.isMember("allow_high_side_effect") && args["allow_high_side_effect"].isBool() ? args["allow_high_side_effect"].asBool() : false;
 
-  // Enqueue UM‑BMP TASK_ASSIGN envelope to node outbox.
-  const int64_t now = unix_ms_now();
-  Json::Value env(Json::objectValue);
-  env["msg_id"] = make_uuidish_msg_id();
-  env["ts_utc_ms"] = (Json::Int64)now;
-  env["type"] = "TASK_ASSIGN";
-  env["from"] = "platform";
-  env["to"] = node_to_prefix(node_id);
-  Json::Value b(Json::objectValue);
-  b["task_id"] = task_id;
-  b["step_id"] = step_id;
-  b["idempotency_key"] = idempotency_key;
-  b["mode"] = mode;
-  b["deadline_utc_ms"] = (Json::Int64)deadline_utc_ms;
-  b["payload"] = payload;
-  env["body"] = b;
-
-  AgentDb::EdgeOutboxMessageRow orow;
-  orow.node_id = node_id;
-  orow.ts_utc_ms = now;
-  orow.envelope_json = json_stringify_compact(env);
   int64_t outbox_id = 0;
-  if (!db_or_null->insert_edge_outbox_message(orow, &outbox_id, &err)) {
-    resp->status = 500;
+  bool deduped = false;
+  std::string derr;
+  int http = 500;
+  if (!edge_enqueue_task_assign(
+        db_or_null,
+        node_id,
+        task_id,
+        step_id,
+        idempotency_key,
+        mode,
+        deadline_utc_ms,
+        payload,
+        allow_hazards,
+        allow_high_side_effect,
+        /*enforce_safety=*/true,
+        /*enforce_rate_limit=*/true,
+        &outbox_id,
+        &deduped,
+        &derr,
+        &http)) {
+    resp->status = http;
     Json::Value o(Json::objectValue);
     o["ok"] = false;
-    o["error"] = "failed to enqueue outbox message";
-    o["detail"] = err;
+    o["error"] = derr.empty() ? "failed to assign edge task" : derr;
     resp->body = json_stringify_compact(o);
     return;
   }
@@ -910,6 +1367,7 @@ void handle_edge_task_assign_endpoint(
   o["task_id"] = task_id;
   o["step_id"] = step_id;
   o["outbox_id"] = (Json::Int64)outbox_id;
+  o["deduped"] = deduped;
   resp->body = json_stringify_compact(o);
 }
 
@@ -973,5 +1431,514 @@ void handle_edge_task_get_endpoint(
   resp->body = json_stringify_compact(o);
 }
 
-}  // namespace agentd
+void handle_edge_rule_upsert_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
 
+  if (!db_or_null || !db_or_null->is_open()) {
+    resp->status = 503;
+    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    return;
+  }
+
+  Json::Value args;
+  std::string perr;
+  if (!json_parse_object(req.body, &args, &perr)) {
+    resp->status = 400;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = std::string("invalid JSON: ") + perr;
+    resp->body = json_stringify_compact(o);
+    return;
+  }
+
+  std::string rule_id = args.isMember("rule_id") && args["rule_id"].isString() ? trim_copy(args["rule_id"].asString()) : "";
+  if (rule_id.empty()) rule_id = std::string("rule:") + make_uuidish_msg_id();
+  if (!id_is_safe(rule_id)) {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"invalid rule_id\"}";
+    return;
+  }
+
+  const std::string event_type =
+    args.isMember("event_type") && args["event_type"].isString() ? trim_copy(args["event_type"].asString()) : "";
+  if (event_type.empty() || !id_is_safe(event_type)) {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"missing/invalid event_type\"}";
+    return;
+  }
+
+  const bool enabled = args.isMember("enabled") && args["enabled"].isBool() ? args["enabled"].asBool() : true;
+
+  double min_conf = 0.0;
+  if (args.isMember("min_confidence") && (args["min_confidence"].isDouble() || args["min_confidence"].isInt())) {
+    min_conf = args["min_confidence"].asDouble();
+    if (min_conf < 0.0) min_conf = 0.0;
+    if (min_conf > 1.0) min_conf = 1.0;
+  }
+
+  int cooldown_ms = 0;
+  if (args.isMember("cooldown_ms") && (args["cooldown_ms"].isInt() || args["cooldown_ms"].isUInt())) {
+    cooldown_ms = args["cooldown_ms"].isInt() ? std::max(0, args["cooldown_ms"].asInt()) : (int)args["cooldown_ms"].asUInt();
+  }
+
+  Json::Value action = args.isMember("action") ? args["action"] : Json::Value(Json::nullValue);
+  if (!action.isObject()) {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"missing/invalid action (expected object)\"}";
+    return;
+  }
+  const std::string atype = action.isMember("type") && action["type"].isString() ? action["type"].asString() : "";
+  if (atype != "task_assign") {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"unsupported action.type (expected task_assign)\"}";
+    return;
+  }
+  const std::string action_json = json_stringify_compact(action);
+  if (action_json.size() > 20000) {
+    resp->status = 413;
+    resp->body = "{\"ok\":false,\"error\":\"action too large\"}";
+    return;
+  }
+
+  const int64_t now = unix_ms_now();
+  AgentDb::EdgeRuleRow existing;
+  std::string gerr;
+  const bool have_existing = db_or_null->get_edge_rule(rule_id, &existing, &gerr);
+
+  AgentDb::EdgeRuleRow row;
+  row.rule_id = rule_id;
+  row.enabled = enabled;
+  row.event_type = event_type;
+  row.min_confidence = min_conf;
+  row.cooldown_ms = cooldown_ms;
+  row.action_json = action_json;
+  row.updated_utc_ms = now;
+  if (have_existing) {
+    row.created_utc_ms = existing.created_utc_ms;
+    row.last_fired_utc_ms = existing.last_fired_utc_ms;
+  } else {
+    row.created_utc_ms = now;
+    row.last_fired_utc_ms = 0;
+  }
+
+  std::string err;
+  if (!db_or_null->upsert_edge_rule(row, &err)) {
+    resp->status = 500;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = "failed to upsert rule";
+    o["detail"] = err;
+    resp->body = json_stringify_compact(o);
+    return;
+  }
+
+  Json::Value o(Json::objectValue);
+  o["ok"] = true;
+  o["rule_id"] = rule_id;
+  resp->body = json_stringify_compact(o);
+}
+
+void handle_edge_rules_list_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  if (!db_or_null || !db_or_null->is_open()) {
+    resp->status = 503;
+    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    return;
+  }
+
+  size_t limit = 200;
+  const auto lim = query_get(req.query, "limit");
+  if (lim && !lim->empty()) {
+    try { limit = (size_t)std::stoull(*lim); } catch (...) {}
+  }
+  limit = std::max<size_t>(1, std::min<size_t>(limit, 512));
+
+  std::vector<AgentDb::EdgeRuleRow> rules;
+  std::string err;
+  if (!db_or_null->list_edge_rules(limit, &rules, &err)) {
+    resp->status = 500;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = "failed to list rules";
+    o["detail"] = err;
+    resp->body = json_stringify_compact(o);
+    return;
+  }
+
+  Json::Value o(Json::objectValue);
+  o["ok"] = true;
+  Json::Value arr(Json::arrayValue);
+  for (const auto& r : rules) {
+    Json::Value row(Json::objectValue);
+    row["rule_id"] = r.rule_id;
+    row["enabled"] = r.enabled;
+    row["event_type"] = r.event_type;
+    row["min_confidence"] = r.min_confidence;
+    row["cooldown_ms"] = r.cooldown_ms;
+    row["last_fired_utc_ms"] = (Json::Int64)r.last_fired_utc_ms;
+    row["created_utc_ms"] = (Json::Int64)r.created_utc_ms;
+    row["updated_utc_ms"] = (Json::Int64)r.updated_utc_ms;
+    if (!r.action_json.empty()) {
+      Json::Value a;
+      std::string perr2;
+      if (json_parse_any(r.action_json, &a, &perr2) && a.isObject()) row["action"] = a;
+      else row["action_raw"] = r.action_json;
+    }
+    arr.append(row);
+  }
+  o["rules"] = arr;
+  resp->body = json_stringify_compact(o);
+}
+
+void handle_edge_rule_delete_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  if (!db_or_null || !db_or_null->is_open()) {
+    resp->status = 503;
+    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    return;
+  }
+
+  const auto rid = query_get(req.query, "rule_id");
+  if (!rid || rid->empty() || !id_is_safe(*rid)) {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"missing/invalid rule_id\"}";
+    return;
+  }
+
+  std::string err;
+  if (!db_or_null->delete_edge_rule(*rid, &err)) {
+    resp->status = 500;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = "failed to delete rule";
+    o["detail"] = err;
+    resp->body = json_stringify_compact(o);
+    return;
+  }
+
+  Json::Value o(Json::objectValue);
+  o["ok"] = true;
+  o["rule_id"] = *rid;
+  resp->body = json_stringify_compact(o);
+}
+
+void handle_edge_workflow_submit_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  if (!db_or_null || !db_or_null->is_open()) {
+    resp->status = 503;
+    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    return;
+  }
+
+  Json::Value args;
+  std::string perr;
+  if (!json_parse_object(req.body, &args, &perr)) {
+    resp->status = 400;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = std::string("invalid JSON: ") + perr;
+    resp->body = json_stringify_compact(o);
+    return;
+  }
+
+  std::string workflow_id = args.isMember("workflow_id") && args["workflow_id"].isString() ? trim_copy(args["workflow_id"].asString()) : "";
+  if (workflow_id.empty()) workflow_id = std::string("wf:") + make_uuidish_msg_id();
+  if (!id_is_safe(workflow_id)) {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"invalid workflow_id\"}";
+    return;
+  }
+
+  std::string goal = args.isMember("goal") && args["goal"].isString() ? args["goal"].asString() : "";
+  int priority = 0;
+  if (args.isMember("priority") && (args["priority"].isInt() || args["priority"].isUInt())) {
+    priority = args["priority"].isInt() ? args["priority"].asInt() : (int)std::min((Json::UInt)INT32_MAX, args["priority"].asUInt());
+  }
+
+  if (!args.isMember("steps") || !args["steps"].isArray() || args["steps"].empty()) {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"missing/invalid steps (expected non-empty array)\"}";
+    return;
+  }
+
+  const int64_t now = unix_ms_now();
+  std::vector<AgentDb::EdgeWorkflowStepRow> steps;
+  steps.reserve(args["steps"].size());
+
+  for (Json::ArrayIndex i = 0; i < args["steps"].size(); i++) {
+    const auto& s = args["steps"][i];
+    if (!s.isObject()) continue;
+    const std::string step_id = s.isMember("step_id") && s["step_id"].isString() ? trim_copy(s["step_id"].asString()) : "";
+    const std::string kind = s.isMember("kind") && s["kind"].isString() ? trim_copy(s["kind"].asString()) : "";
+    if (step_id.empty() || !id_is_safe(step_id) || kind.empty()) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid step (missing step_id/kind)\"}";
+      return;
+    }
+    if (kind != "invoke_tool" && kind != "run_agent" && kind != "join") {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"unsupported step.kind\"}";
+      return;
+    }
+
+    Json::Value depends(Json::arrayValue);
+    if (s.isMember("depends_on") && s["depends_on"].isArray()) depends = s["depends_on"];
+    Json::Value target = s.isMember("target") ? s["target"] : Json::Value(Json::objectValue);
+    Json::Value payload = s.isMember("payload") ? s["payload"] : Json::Value(Json::objectValue);
+    if (kind != "join" && !target.isObject()) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid step.target (expected object)\"}";
+      return;
+    }
+    if (!payload.isObject()) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid step.payload (expected object)\"}";
+      return;
+    }
+
+    std::string join_mode = s.isMember("join_mode") && s["join_mode"].isString() ? trim_copy(s["join_mode"].asString()) : "";
+    if (!join_mode.empty() && join_mode != "all" && join_mode != "any") {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid join_mode (expected all|any)\"}";
+      return;
+    }
+
+    int64_t deadline_utc_ms = 0;
+    if (s.isMember("deadline_utc_ms") && (s["deadline_utc_ms"].isInt64() || s["deadline_utc_ms"].isUInt64())) {
+      deadline_utc_ms = s["deadline_utc_ms"].isInt64() ? s["deadline_utc_ms"].asInt64() : (int64_t)s["deadline_utc_ms"].asUInt64();
+    }
+    if (kind != "join" && deadline_utc_ms <= 0) deadline_utc_ms = now + 60000;
+
+    AgentDb::EdgeWorkflowStepRow row;
+    row.workflow_id = workflow_id;
+    row.step_id = step_id;
+    row.kind = kind;
+    row.depends_on_json = json_stringify_compact(depends);
+    row.target_json = json_stringify_compact(target);
+    row.payload_json = json_stringify_compact(payload);
+    row.join_mode = join_mode;
+    row.deadline_utc_ms = deadline_utc_ms;
+    row.state = "PENDING";
+    row.created_utc_ms = now;
+    row.updated_utc_ms = now;
+    steps.push_back(std::move(row));
+  }
+
+  if (steps.empty()) {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"no valid steps\"}";
+    return;
+  }
+
+  // Persist the original spec with the finalized workflow_id.
+  args["workflow_id"] = workflow_id;
+  const std::string spec_json = json_stringify_compact(args);
+
+  AgentDb::EdgeWorkflowRow wf;
+  wf.workflow_id = workflow_id;
+  wf.goal = goal;
+  wf.status = "QUEUED";
+  wf.priority = priority;
+  wf.spec_json = spec_json;
+  wf.created_utc_ms = now;
+  wf.updated_utc_ms = now;
+
+  std::string err;
+  if (!db_or_null->create_edge_workflow(wf, steps, &err)) {
+    resp->status = 500;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = "failed to create edge workflow";
+    o["detail"] = err;
+    resp->body = json_stringify_compact(o);
+    return;
+  }
+
+  Json::Value o(Json::objectValue);
+  o["ok"] = true;
+  o["workflow_id"] = workflow_id;
+  resp->body = json_stringify_compact(o);
+}
+
+void handle_edge_workflow_get_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  if (!db_or_null || !db_or_null->is_open()) {
+    resp->status = 503;
+    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    return;
+  }
+
+  const auto wid = query_get(req.query, "workflow_id");
+  if (!wid || wid->empty() || !id_is_safe(*wid)) {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"missing/invalid workflow_id\"}";
+    return;
+  }
+  bool include_steps = false;
+  const auto inc = query_get(req.query, "include_steps");
+  if (inc && !inc->empty()) {
+    const std::string v = lower_copy(*inc);
+    include_steps = (v == "1" || v == "true" || v == "yes");
+  }
+
+  AgentDb::EdgeWorkflowRow wf;
+  std::string err;
+  if (!db_or_null->get_edge_workflow(*wid, &wf, &err)) {
+    resp->status = 404;
+    resp->body = "{\"ok\":false,\"error\":\"workflow not found\"}";
+    return;
+  }
+
+  Json::Value o(Json::objectValue);
+  o["ok"] = true;
+  Json::Value w(Json::objectValue);
+  w["workflow_id"] = wf.workflow_id;
+  if (!wf.goal.empty()) w["goal"] = wf.goal;
+  w["status"] = wf.status;
+  w["priority"] = wf.priority;
+  w["created_utc_ms"] = (Json::Int64)wf.created_utc_ms;
+  w["updated_utc_ms"] = (Json::Int64)wf.updated_utc_ms;
+  if (!wf.error.empty()) w["error"] = wf.error;
+  if (!wf.spec_json.empty()) {
+    Json::Value v;
+    std::string perr2;
+    if (json_parse_any(wf.spec_json, &v, &perr2) && v.isObject()) w["spec"] = v;
+  }
+  o["workflow"] = w;
+
+  if (include_steps) {
+    std::vector<AgentDb::EdgeWorkflowStepRow> steps;
+    std::string serr;
+    if (db_or_null->list_edge_workflow_steps(*wid, &steps, &serr)) {
+      Json::Value arr(Json::arrayValue);
+      std::string perr2;
+      for (const auto& s : steps) {
+        Json::Value r(Json::objectValue);
+        r["step_id"] = s.step_id;
+        r["kind"] = s.kind;
+        r["state"] = s.state;
+        if (!s.join_mode.empty()) r["join_mode"] = s.join_mode;
+        if (s.deadline_utc_ms > 0) r["deadline_utc_ms"] = (Json::Int64)s.deadline_utc_ms;
+        r["created_utc_ms"] = (Json::Int64)s.created_utc_ms;
+        r["updated_utc_ms"] = (Json::Int64)s.updated_utc_ms;
+        if (!s.error.empty()) r["error"] = s.error;
+        Json::Value v;
+        if (json_parse_any(s.depends_on_json, &v, &perr2) && v.isArray()) r["depends_on"] = v;
+        if (json_parse_any(s.target_json, &v, &perr2) && v.isObject()) r["target"] = v;
+        if (json_parse_any(s.payload_json, &v, &perr2) && v.isObject()) r["payload"] = v;
+        arr.append(r);
+      }
+      o["steps"] = arr;
+    }
+  }
+  resp->body = json_stringify_compact(o);
+}
+
+void handle_edge_workflow_list_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  if (!db_or_null || !db_or_null->is_open()) {
+    resp->status = 503;
+    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    return;
+  }
+
+  const auto st = query_get(req.query, "status");
+  std::string status = st && !st->empty() ? trim_copy(*st) : "QUEUED";
+  if (status != "QUEUED" && status != "RUNNING" && status != "SUCCEEDED" && status != "FAILED" && status != "CANCELED") {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"invalid status\"}";
+    return;
+  }
+
+  size_t limit = 50;
+  const auto lim = query_get(req.query, "limit");
+  if (lim && !lim->empty()) {
+    try { limit = (size_t)std::stoull(*lim); } catch (...) {}
+  }
+  limit = std::max<size_t>(1, std::min<size_t>(limit, 256));
+
+  std::vector<AgentDb::EdgeWorkflowRow> rows;
+  std::string err;
+  if (!db_or_null->list_edge_workflows_by_status(status, limit, &rows, &err)) {
+    resp->status = 500;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = "failed to list workflows";
+    o["detail"] = err;
+    resp->body = json_stringify_compact(o);
+    return;
+  }
+
+  Json::Value o(Json::objectValue);
+  o["ok"] = true;
+  o["status"] = status;
+  Json::Value arr(Json::arrayValue);
+  for (const auto& wf : rows) {
+    Json::Value w(Json::objectValue);
+    w["workflow_id"] = wf.workflow_id;
+    if (!wf.goal.empty()) w["goal"] = wf.goal;
+    w["status"] = wf.status;
+    w["priority"] = wf.priority;
+    w["created_utc_ms"] = (Json::Int64)wf.created_utc_ms;
+    w["updated_utc_ms"] = (Json::Int64)wf.updated_utc_ms;
+    if (!wf.error.empty()) w["error"] = wf.error;
+    arr.append(w);
+  }
+  o["workflows"] = arr;
+  resp->body = json_stringify_compact(o);
+}
+
+}  // namespace agentd

@@ -521,6 +521,7 @@ paths:
                   task_id: { type: string }
                   step_id: { type: string }
                   outbox_id: { type: integer, format: int64 }
+                  deduped: { type: boolean }
 
   /api/v1/edge/task:
     get:
@@ -548,6 +549,110 @@ paths:
                   task:
                     type: object
                     additionalProperties: true
+
+  /api/v1/edge/rule/upsert:
+    post:
+      tags: [edge]
+      summary: Create or update an automation rule (SENSOR_EVENT -> TASK_ASSIGN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeRuleUpsertRequest"
+      responses:
+        "200":
+          description: Upserted
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, rule_id]
+                properties:
+                  ok: { type: boolean }
+                  rule_id: { type: string }
+
+  /api/v1/edge/rules:
+    get:
+      tags: [edge]
+      summary: List automation rules
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, format: int32 }
+      responses:
+        "200":
+          description: Rules list
+
+  /api/v1/edge/rule:
+    delete:
+      tags: [edge]
+      summary: Delete an automation rule
+      parameters:
+        - in: query
+          name: rule_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Deleted
+
+  /api/v1/edge/workflow/submit:
+    post:
+      tags: [edge]
+      summary: Submit a durable edge workflow (UM-WF)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeWorkflowSubmitRequest"
+      responses:
+        "200":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, workflow_id]
+                properties:
+                  ok: { type: boolean }
+                  workflow_id: { type: string }
+
+  /api/v1/edge/workflow:
+    get:
+      tags: [edge]
+      summary: Get an edge workflow
+      parameters:
+        - in: query
+          name: workflow_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: include_steps
+          required: false
+          schema: { type: string }
+      responses:
+        "200":
+          description: Workflow
+
+  /api/v1/edge/workflows:
+    get:
+      tags: [edge]
+      summary: List edge workflows by status
+      parameters:
+        - in: query
+          name: status
+          required: false
+          schema: { type: string }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, format: int32 }
+      responses:
+        "200":
+          description: Workflows list
 
   /api/v1/sessions:
     get:
@@ -626,6 +731,13 @@ components:
           type: object
           description: Capability-based node selection
           additionalProperties: true
+        allow_hazards:
+          type: array
+          description: Explicitly allowed hazard tags (unsafe; use sparingly)
+          items: { type: string }
+        allow_high_side_effect:
+          type: boolean
+          description: Allow dispatch when tool side_effect_level is high
         task_id: { type: string }
         step_id: { type: string }
         idempotency_key: { type: string }
@@ -636,6 +748,51 @@ components:
         payload:
           type: object
           additionalProperties: true
+
+    EdgeRuleUpsertRequest:
+      type: object
+      required: [event_type, action]
+      properties:
+        rule_id:
+          type: string
+          description: Optional; if omitted, server generates one
+        enabled: { type: boolean }
+        event_type: { type: string }
+        min_confidence: { type: number, format: double }
+        cooldown_ms: { type: integer, format: int32 }
+        action:
+          type: object
+          description: Rule action (currently supports {type:"task_assign", ...})
+          additionalProperties: true
+
+    EdgeWorkflowSubmitRequest:
+      type: object
+      required: [steps]
+      properties:
+        workflow_id:
+          type: string
+          description: Optional; if omitted, server generates one
+        goal: { type: string }
+        priority: { type: integer, format: int32 }
+        steps:
+          type: array
+          items:
+            type: object
+            required: [step_id, kind]
+            properties:
+              step_id: { type: string }
+              kind: { type: string, enum: [invoke_tool, run_agent, join] }
+              depends_on:
+                type: array
+                items: { type: string }
+              target:
+                type: object
+                additionalProperties: true
+              payload:
+                type: object
+                additionalProperties: true
+              join_mode: { type: string, enum: [all, any] }
+              deadline_utc_ms: { type: integer, format: int64 }
 
     ToolDef:
       type: object

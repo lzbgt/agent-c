@@ -67,9 +67,36 @@ Targeting:
 - explicit: `node_id`
 - capability routing: `match_any { requires_tools, tags_all, tags_any, tags_none }`
 
+Safety/rate gates (best-effort, platform-side):
+- For `mode:"invoke"`, the platform requires a stored node manifest (`NODE_CAPS_RSP`) so it can inspect tool metadata.
+- Denies tools tagged with hazard `privacy_camera` by default (unless explicitly allowed via request).
+- Denies `side_effect_level:"high"` by default (unless explicitly allowed via request).
+- Enforces per-tool `rate_limit` from the manifest (`max_per_minute`, `cooldown_ms`) using platform-side state.
+
 ### Task status
 
 `GET /api/v1/edge/task?task_id=...&step_id=...`
+
+### Automation rules (SENSOR_EVENT → TASK_ASSIGN)
+
+- `POST /api/v1/edge/rule/upsert`
+- `GET /api/v1/edge/rules`
+- `DELETE /api/v1/edge/rule?rule_id=...`
+
+Rules are evaluated during `SENSOR_EVENT` ingestion. The platform enqueues a `TASK_ASSIGN` when:
+- `event_type` matches
+- `confidence >= min_confidence`
+- `cooldown_ms` has elapsed since `last_fired_utc_ms`
+
+### Durable edge workflows (UM‑WF)
+
+- `POST /api/v1/edge/workflow/submit`
+- `GET /api/v1/edge/workflow?workflow_id=...&include_steps=1`
+- `GET /api/v1/edge/workflows?status=...&limit=...`
+
+Workflows are executed by a background runner in `agentd`:
+- dispatches `invoke_tool`/`run_agent` steps via `TASK_ASSIGN`
+- supports `depends_on` sequencing, parallel fan-out, and `join` (`all|any`)
 
 ## Quick smoke flow (single node)
 
@@ -87,4 +114,8 @@ DB tables are documented in `docs/DB.md`:
 - `edge_tasks`
 - `edge_task_events`
 - `edge_sensor_events`
-
+- `edge_tool_rate_state`
+- `edge_rules`
+- `edge_workflows`
+- `edge_workflow_steps`
+- `edge_workflow_events`

@@ -9,6 +9,8 @@
 #include "daemon_auth.h"
 #include "db_query_endpoints.h"
 #include "edge_interop_endpoints.h"
+#include "edge_deadline_sweeper.h"
+#include "edge_workflow_engine.h"
 #include "file_endpoint.h"
 #include "job_endpoints.h"
 #include "job_engine.h"
@@ -238,6 +240,8 @@ struct AgentdService::Impl {
   std::unique_ptr<JobEngine> job_engine;
   std::unique_ptr<WorkflowEngine> wf_engine;
   std::unique_ptr<MemoryConsolidatorEngine> mem_engine;
+  std::unique_ptr<EdgeDeadlineSweeperEngine> edge_deadline_engine;
+  std::unique_ptr<EdgeWorkflowEngine> edge_wf_engine;
   HttpServer server;
 
   std::thread server_thread;
@@ -380,6 +384,39 @@ struct AgentdService::Impl {
       std::string merr;
       if (!mem_engine->start(&merr)) {
         std::cerr << "Warning: failed to start memory consolidator engine: " << merr << "\n";
+      }
+    }
+
+    // Edge task deadline sweeper (UM‑EEM deadlines/timeouts; platform-side best-effort).
+    if (!edge_deadline_engine) {
+      EdgeDeadlineSweeperEngine::Options opt;
+      opt.poll_ms = 500;
+      opt.max_scan_rows = 128;
+      edge_deadline_engine = std::make_unique<EdgeDeadlineSweeperEngine>(
+        &db,
+        [this]() { return cfg_store->snapshot(); },
+        opt
+      );
+      std::string derr;
+      if (!edge_deadline_engine->start(&derr)) {
+        std::cerr << "Warning: failed to start edge deadline sweeper: " << derr << "\n";
+      }
+    }
+
+    // Durable edge workflow runner (UM‑WF executed over UM‑BMP TASK_ASSIGN).
+    if (!edge_wf_engine) {
+      EdgeWorkflowEngine::Options opt;
+      opt.poll_ms = 200;
+      opt.max_scan_workflows = 64;
+      opt.max_dispatch_per_tick = 64;
+      edge_wf_engine = std::make_unique<EdgeWorkflowEngine>(
+        &db,
+        [this]() { return cfg_store->snapshot(); },
+        opt
+      );
+      std::string werr;
+      if (!edge_wf_engine->start(&werr)) {
+        std::cerr << "Warning: failed to start edge workflow engine: " << werr << "\n";
       }
     }
 
@@ -596,6 +633,30 @@ struct AgentdService::Impl {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_edge_task_get_endpoint(cur, cors_cfg, &db, req, resp);
     });
+    server.handle("POST", "/api/v1/edge/rule/upsert", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_edge_rule_upsert_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("GET", "/api/v1/edge/rules", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_edge_rules_list_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("DELETE", "/api/v1/edge/rule", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_edge_rule_delete_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("POST", "/api/v1/edge/workflow/submit", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_edge_workflow_submit_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("GET", "/api/v1/edge/workflow", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_edge_workflow_get_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("GET", "/api/v1/edge/workflows", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_edge_workflow_list_endpoint(cur, cors_cfg, &db, req, resp);
+    });
 
     // Job endpoints.
     server.handle("GET", "/api/v1/job", [this](const HttpRequest& req, HttpResponse* resp) {
@@ -657,6 +718,9 @@ struct AgentdService::Impl {
   void stop() {
     if (job_engine) job_engine->stop();
     if (wf_engine) wf_engine->stop();
+    if (mem_engine) mem_engine->stop();
+    if (edge_deadline_engine) edge_deadline_engine->stop();
+    if (edge_wf_engine) edge_wf_engine->stop();
     server.stop();
     if (server_thread.joinable()) {
       server_thread.join();

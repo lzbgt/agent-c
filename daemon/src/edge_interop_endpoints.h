@@ -76,5 +76,60 @@ void handle_edge_task_get_endpoint(
   HttpResponse* resp
 );
 
-}  // namespace agentd
+// Rules (automation): SENSOR_EVENT -> TASK_ASSIGN.
+// - POST   /api/v1/edge/rule/upsert
+// - GET    /api/v1/edge/rules
+// - DELETE /api/v1/edge/rule?rule_id=...
+void handle_edge_rule_upsert_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
 
+void handle_edge_rules_list_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
+void handle_edge_rule_delete_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
+// Durable edge workflows (UM‑WF; executed via edge task dispatch).
+// - POST /api/v1/edge/workflow/submit
+// - GET  /api/v1/edge/workflow?workflow_id=...&include_steps=1
+// - GET  /api/v1/edge/workflows?status=QUEUED|RUNNING|SUCCEEDED|FAILED|CANCELED&limit=...
+void handle_edge_workflow_submit_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
+void handle_edge_workflow_get_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
+void handle_edge_workflow_list_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
+}  // namespace agentd

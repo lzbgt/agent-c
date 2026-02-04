@@ -23,6 +23,8 @@
 #include "workflow_stream_endpoint.h"
 #include "db_query_endpoints.h"
 #include "edge_interop_endpoints.h"
+#include "edge_deadline_sweeper.h"
+#include "edge_workflow_engine.h"
 #include "secrets_file.h"
 #include "config_store.h"
 #include "runtime_config.h"
@@ -863,6 +865,39 @@ int main(int argc, char** argv) {
     }
   }
 
+  // Edge task deadline sweeper (UM‑EEM deadlines/timeouts; platform-side best-effort).
+  EdgeDeadlineSweeperEngine edge_deadline_engine(
+    db_or_null,
+    [&cfg_store]() { return cfg_store.snapshot(); },
+    EdgeDeadlineSweeperEngine::Options{
+      /*poll_ms=*/500,
+      /*max_scan_rows=*/128,
+    }
+  );
+  {
+    std::string derr;
+    if (!edge_deadline_engine.start(&derr)) {
+      std::cerr << "Warning: failed to start edge deadline sweeper: " << derr << "\n";
+    }
+  }
+
+  // Durable edge workflow runner (UM‑WF executed over UM‑BMP TASK_ASSIGN).
+  EdgeWorkflowEngine edge_wf_engine(
+    db_or_null,
+    [&cfg_store]() { return cfg_store.snapshot(); },
+    EdgeWorkflowEngine::Options{
+      /*poll_ms=*/200,
+      /*max_scan_workflows=*/64,
+      /*max_dispatch_per_tick=*/64,
+    }
+  );
+  {
+    std::string werr;
+    if (!edge_wf_engine.start(&werr)) {
+      std::cerr << "Warning: failed to start edge workflow engine: " << werr << "\n";
+    }
+  }
+
   server.handle("GET", "/api/v1/health", [&](const HttpRequest& req, HttpResponse* resp) {
     cors_apply(req, resp, cors_cfg);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
@@ -1081,6 +1116,30 @@ int main(int argc, char** argv) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_edge_task_get_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
+  server.handle("POST", "/api/v1/edge/rule/upsert", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_rule_upsert_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/edge/rules", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_rules_list_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("DELETE", "/api/v1/edge/rule", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_rule_delete_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("POST", "/api/v1/edge/workflow/submit", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_workflow_submit_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/edge/workflow", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_workflow_get_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/edge/workflows", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_workflow_list_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
 
   server.handle("GET", "/api/v1/trace", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
@@ -1115,6 +1174,9 @@ int main(int argc, char** argv) {
     std::cerr << "Refusing to bind agentd to non-loopback host without auth.\n";
     std::cerr << "Provide --auth-token <token> (recommended) or pass --allow-unauth to override (insecure).\n";
     std::cerr << "host=" << cfg_final.listen_host << "\n";
+    edge_wf_engine.stop();
+    edge_deadline_engine.stop();
+    mem_engine.stop();
     wf_engine.stop();
     job_engine.stop();
     return 2;
@@ -1122,10 +1184,16 @@ int main(int argc, char** argv) {
   std::cerr << "agentd listening on http://" << cfg_final.listen_host << ":" << cfg_final.listen_port << "\n";
   if (!server.serve(cfg_final.listen_host, cfg_final.listen_port, &err)) {
     std::cerr << "agentd failed: " << err << "\n";
+    edge_wf_engine.stop();
+    edge_deadline_engine.stop();
+    mem_engine.stop();
     wf_engine.stop();
     job_engine.stop();
     return 1;
   }
+  edge_wf_engine.stop();
+  edge_deadline_engine.stop();
+  mem_engine.stop();
   wf_engine.stop();
   job_engine.stop();
   return 0;

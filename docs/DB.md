@@ -57,7 +57,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v13)
+## Schema (v14)
 
 All timestamps are Unix milliseconds.
 
@@ -377,6 +377,7 @@ Durable platform-side task tracking for UM‑BMP tasking (`TASK_ASSIGN`/`TASK_*`
 - `node_id TEXT NOT NULL`
 - `idempotency_key TEXT NOT NULL`
 - `mode TEXT NOT NULL` (`invoke|agent`)
+- `tool_name TEXT` (optional; best-effort tool name for `mode=invoke`)
 - `deadline_utc_ms INTEGER NOT NULL`
 - `payload_json TEXT NOT NULL` (JSON object string)
 - `state TEXT NOT NULL` (`QUEUED|RUNNING|SUCCEEDED|FAILED|TIMED_OUT|CANCELED`)
@@ -392,6 +393,7 @@ Keys/constraints:
 Indexes:
 - `CREATE INDEX edge_tasks_by_state ON edge_tasks(state, updated_utc_ms DESC)`
 - `CREATE INDEX edge_tasks_by_node ON edge_tasks(node_id, updated_utc_ms DESC)`
+- `CREATE INDEX edge_tasks_by_tool ON edge_tasks(node_id, tool_name, updated_utc_ms DESC)`
 
 ### `edge_task_events`
 
@@ -420,6 +422,88 @@ Durable ingestion of UM‑BMP `SENSOR_EVENT`.
 
 Indexes:
 - `CREATE INDEX edge_sensor_by_type ON edge_sensor_events(event_type, ts_utc_ms DESC, id)`
+
+### `edge_tool_rate_state`
+
+Platform-side per-node per-tool rate limiter state (best-effort guardrail).
+
+- `node_id TEXT NOT NULL`
+- `tool_name TEXT NOT NULL`
+- `window_start_utc_ms INTEGER NOT NULL`
+- `window_count INTEGER NOT NULL`
+- `last_call_utc_ms INTEGER NOT NULL`
+
+Keys/constraints:
+- `PRIMARY KEY(node_id, tool_name)`
+
+### `edge_rules`
+
+Event-triggered automation rules: `SENSOR_EVENT` → `TASK_ASSIGN`.
+
+- `rule_id TEXT PRIMARY KEY`
+- `enabled INTEGER NOT NULL` (0/1)
+- `event_type TEXT NOT NULL`
+- `min_confidence REAL NOT NULL`
+- `cooldown_ms INTEGER NOT NULL`
+- `last_fired_utc_ms INTEGER NOT NULL`
+- `action_json TEXT NOT NULL` (JSON object string; currently supports `{type:"task_assign", ...}`)
+- `created_utc_ms INTEGER NOT NULL`
+- `updated_utc_ms INTEGER NOT NULL`
+
+Indexes:
+- `CREATE INDEX edge_rules_by_event ON edge_rules(event_type, enabled, updated_utc_ms DESC)`
+
+### `edge_workflows`
+
+Durable edge workflows (UM‑WF executed over UM‑BMP `TASK_ASSIGN`), scheduled by the platform.
+
+- `workflow_id TEXT PRIMARY KEY`
+- `goal TEXT` (optional)
+- `status TEXT NOT NULL` (`QUEUED|RUNNING|SUCCEEDED|FAILED|CANCELED`)
+- `priority INTEGER NOT NULL`
+- `spec_json TEXT NOT NULL` (JSON object string; original submitted workflow spec)
+- `created_utc_ms INTEGER NOT NULL`
+- `updated_utc_ms INTEGER NOT NULL`
+- `error TEXT` (optional)
+
+Indexes:
+- `CREATE INDEX edge_workflows_by_status ON edge_workflows(status, priority DESC, updated_utc_ms DESC)`
+
+### `edge_workflow_steps`
+
+Durable workflow steps for `edge_workflows`.
+
+- `workflow_id TEXT NOT NULL`
+- `step_id TEXT NOT NULL`
+- `kind TEXT NOT NULL` (`invoke_tool|run_agent|join`)
+- `depends_on_json TEXT NOT NULL` (JSON array string)
+- `target_json TEXT NOT NULL` (JSON object string)
+- `payload_json TEXT NOT NULL` (JSON object string)
+- `join_mode TEXT` (optional; `all|any` for `kind=join`)
+- `deadline_utc_ms INTEGER NOT NULL`
+- `state TEXT NOT NULL` (`PENDING|QUEUED|RUNNING|SUCCEEDED|FAILED|TIMED_OUT|CANCELED`)
+- `created_utc_ms INTEGER NOT NULL`
+- `updated_utc_ms INTEGER NOT NULL`
+- `error TEXT` (optional)
+
+Keys/constraints:
+- `PRIMARY KEY(workflow_id, step_id)`
+
+Indexes:
+- `CREATE INDEX edge_workflow_steps_by_state ON edge_workflow_steps(workflow_id, state, updated_utc_ms DESC)`
+
+### `edge_workflow_events`
+
+Append-only workflow event log (best-effort debug surface; may be expanded later).
+
+- `id INTEGER PRIMARY KEY AUTOINCREMENT`
+- `workflow_id TEXT NOT NULL`
+- `ts_utc_ms INTEGER NOT NULL`
+- `type TEXT NOT NULL`
+- `data_json TEXT NOT NULL`
+
+Indexes:
+- `CREATE INDEX edge_workflow_events_by_workflow ON edge_workflow_events(workflow_id, id)`
 
 ## Source of truth
 

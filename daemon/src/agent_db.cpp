@@ -159,7 +159,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 13;
+  const int kSchemaVersion = 14;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -571,6 +571,78 @@ CREATE INDEX IF NOT EXISTS edge_sensor_by_type ON edge_sensor_events(event_type,
 )SQL";
     if (!exec_locked(schema_v13, out_error)) return false;
     cur_ver = 13;
+  }
+
+  if (cur_ver < 14) {
+    const char* schema_v14 = R"SQL(
+ALTER TABLE edge_tasks ADD COLUMN tool_name TEXT;
+CREATE INDEX IF NOT EXISTS edge_tasks_by_tool ON edge_tasks(node_id, tool_name, updated_utc_ms DESC);
+
+-- Per-node per-tool rate limiter state (platform-side best-effort guardrail).
+CREATE TABLE IF NOT EXISTS edge_tool_rate_state(
+  node_id TEXT NOT NULL,
+  tool_name TEXT NOT NULL,
+  window_start_utc_ms INTEGER NOT NULL,
+  window_count INTEGER NOT NULL,
+  last_call_utc_ms INTEGER NOT NULL,
+  PRIMARY KEY(node_id, tool_name)
+);
+
+-- Event-triggered automation rules (UM‑SAFE/UM‑WF bridge): SENSOR_EVENT -> TASK_ASSIGN.
+CREATE TABLE IF NOT EXISTS edge_rules(
+  rule_id TEXT PRIMARY KEY,
+  enabled INTEGER NOT NULL,
+  event_type TEXT NOT NULL,
+  min_confidence REAL NOT NULL,
+  cooldown_ms INTEGER NOT NULL,
+  last_fired_utc_ms INTEGER NOT NULL,
+  action_json TEXT NOT NULL,
+  created_utc_ms INTEGER NOT NULL,
+  updated_utc_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS edge_rules_by_event ON edge_rules(event_type, enabled, updated_utc_ms DESC);
+
+-- Durable edge workflows (UM‑WF) executed via edge task dispatch + event ingestion.
+CREATE TABLE IF NOT EXISTS edge_workflows(
+  workflow_id TEXT PRIMARY KEY,
+  goal TEXT,
+  status TEXT NOT NULL,
+  priority INTEGER NOT NULL,
+  spec_json TEXT NOT NULL,
+  created_utc_ms INTEGER NOT NULL,
+  updated_utc_ms INTEGER NOT NULL,
+  error TEXT
+);
+CREATE INDEX IF NOT EXISTS edge_workflows_by_status ON edge_workflows(status, priority DESC, updated_utc_ms DESC);
+
+CREATE TABLE IF NOT EXISTS edge_workflow_steps(
+  workflow_id TEXT NOT NULL,
+  step_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  depends_on_json TEXT NOT NULL,
+  target_json TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  join_mode TEXT,
+  deadline_utc_ms INTEGER NOT NULL,
+  state TEXT NOT NULL,
+  created_utc_ms INTEGER NOT NULL,
+  updated_utc_ms INTEGER NOT NULL,
+  error TEXT,
+  PRIMARY KEY(workflow_id, step_id)
+);
+CREATE INDEX IF NOT EXISTS edge_workflow_steps_by_state ON edge_workflow_steps(workflow_id, state, updated_utc_ms DESC);
+
+CREATE TABLE IF NOT EXISTS edge_workflow_events(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workflow_id TEXT NOT NULL,
+  ts_utc_ms INTEGER NOT NULL,
+  type TEXT NOT NULL,
+  data_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS edge_workflow_events_by_workflow ON edge_workflow_events(workflow_id, id);
+)SQL";
+    if (!exec_locked(schema_v14, out_error)) return false;
+    cur_ver = 14;
   }
 
   // Record schema version.

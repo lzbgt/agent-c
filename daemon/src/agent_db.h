@@ -371,6 +371,7 @@ class AgentDb {
     std::string node_id;
     std::string idempotency_key;
     std::string mode; // invoke|agent
+    std::string tool_name; // for mode=invoke (optional; best-effort)
     int64_t deadline_utc_ms = 0;
     std::string payload_json; // JSON object string (mode-specific)
     std::string state;        // QUEUED|RUNNING|SUCCEEDED|FAILED|TIMED_OUT|CANCELED
@@ -390,6 +391,13 @@ class AgentDb {
   );
   bool list_edge_tasks_by_state(
     const std::string& state,
+    size_t max_rows,
+    std::vector<EdgeTaskRow>* out_rows_desc,
+    std::string* out_error
+  );
+
+  bool list_edge_tasks_expired_deadline(
+    int64_t now_utc_ms,
     size_t max_rows,
     std::vector<EdgeTaskRow>* out_rows_desc,
     std::string* out_error
@@ -416,6 +424,86 @@ class AgentDb {
   };
 
   bool insert_edge_sensor_event(const EdgeSensorEventRow& row, int64_t* out_id, std::string* out_error);
+
+  struct EdgeToolRateStateRow {
+    std::string node_id;
+    std::string tool_name;
+    int64_t window_start_utc_ms = 0;
+    int window_count = 0;
+    int64_t last_call_utc_ms = 0;
+  };
+
+  bool get_edge_tool_rate_state(
+    const std::string& node_id,
+    const std::string& tool_name,
+    EdgeToolRateStateRow* out_row,
+    std::string* out_error
+  );
+  bool upsert_edge_tool_rate_state(const EdgeToolRateStateRow& row, std::string* out_error);
+
+  struct EdgeRuleRow {
+    std::string rule_id;
+    bool enabled = true;
+    std::string event_type;
+    double min_confidence = 0.0;
+    int cooldown_ms = 0;
+    int64_t last_fired_utc_ms = 0;
+    std::string action_json; // JSON object string
+    int64_t created_utc_ms = 0;
+    int64_t updated_utc_ms = 0;
+  };
+
+  bool upsert_edge_rule(const EdgeRuleRow& row, std::string* out_error);
+  bool get_edge_rule(const std::string& rule_id, EdgeRuleRow* out_row, std::string* out_error);
+  bool delete_edge_rule(const std::string& rule_id, std::string* out_error);
+  bool list_edge_rules(size_t max_rows, std::vector<EdgeRuleRow>* out_rows_desc, std::string* out_error);
+
+  struct EdgeWorkflowRow {
+    std::string workflow_id;
+    std::string goal;
+    std::string status; // queued|running|done|error|cancelled
+    int priority = 0;
+    std::string spec_json; // JSON object string
+    int64_t created_utc_ms = 0;
+    int64_t updated_utc_ms = 0;
+    std::string error;
+  };
+
+  struct EdgeWorkflowStepRow {
+    std::string workflow_id;
+    std::string step_id;
+    std::string kind;            // invoke_tool|run_agent|join
+    std::string depends_on_json; // JSON array string
+    std::string target_json;     // JSON object string
+    std::string payload_json;    // JSON object string
+    std::string join_mode;       // all|any (join only)
+    int64_t deadline_utc_ms = 0;
+    std::string state; // PENDING|DISPATCHED|RUNNING|SUCCEEDED|FAILED|TIMED_OUT|CANCELED|SKIPPED
+    int64_t created_utc_ms = 0;
+    int64_t updated_utc_ms = 0;
+    std::string error;
+  };
+
+  bool create_edge_workflow(
+    const EdgeWorkflowRow& wf,
+    const std::vector<EdgeWorkflowStepRow>& steps,
+    std::string* out_error
+  );
+  bool get_edge_workflow(const std::string& workflow_id, EdgeWorkflowRow* out_row, std::string* out_error);
+  bool upsert_edge_workflow(const EdgeWorkflowRow& wf, std::string* out_error);
+  bool list_edge_workflows_by_status(
+    const std::string& status,
+    size_t max_rows,
+    std::vector<EdgeWorkflowRow>* out_rows_desc,
+    std::string* out_error
+  );
+  bool list_edge_workflow_steps(
+    const std::string& workflow_id,
+    std::vector<EdgeWorkflowStepRow>* out_rows,
+    std::string* out_error
+  );
+  bool upsert_edge_workflow_step(const EdgeWorkflowStepRow& step, std::string* out_error);
+
 
  private:
   bool ensure_schema_locked(std::string* out_error);
