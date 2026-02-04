@@ -194,6 +194,30 @@ static bool parse_json_object_str(const std::string& s, Json::Value* out_obj, st
   return true;
 }
 
+static bool json_array_contains_string_ci(const Json::Value& arr, const std::string& s) {
+  if (!arr.isArray()) return false;
+  const std::string t = to_lower_ascii(trim_ascii(s));
+  if (t.empty()) return false;
+  for (Json::ArrayIndex i = 0; i < arr.size(); i++) {
+    if (!arr[i].isString()) continue;
+    if (to_lower_ascii(trim_ascii(arr[i].asString())) == t) return true;
+  }
+  return false;
+}
+
+static void json_array_append_unique_string_ci(Json::Value* arr, const std::string& s, int max_items) {
+  if (!arr) return;
+  if (!arr->isArray()) *arr = Json::Value(Json::arrayValue);
+  const std::string v = trim_ascii(s);
+  if (v.empty()) return;
+  if (json_array_contains_string_ci(*arr, v)) return;
+  arr->append(v);
+  // Keep last N items (drop oldest).
+  while (max_items > 0 && (int)arr->size() > max_items) {
+    arr->removeIndex(0, nullptr);
+  }
+}
+
 static std::string markdown_escape_inline(const std::string& s) {
   // Keep this minimal; we only render bullet summaries.
   std::string out;
@@ -248,8 +272,12 @@ static std::string render_structured_memory_markdown(const Json::Value& doc) {
       const auto& it = items[k];
       const std::string value = it.isMember("value") && it["value"].isString() ? it["value"].asString() : "";
       const std::string updated = it.isMember("updated_utc") && it["updated_utc"].isString() ? it["updated_utc"].asString() : "";
+      const std::string observed = it.isMember("observed_utc") && it["observed_utc"].isString() ? it["observed_utc"].asString() : "";
+      const int sources_n = it.isMember("sources") && it["sources"].isArray() ? (int)it["sources"].size() : 0;
       oss << "- **" << markdown_escape_inline(k) << "**: " << markdown_escape_inline(value);
       if (!updated.empty()) oss << " _(updated " << markdown_escape_inline(updated) << ")_";
+      if (!observed.empty() && observed != updated) oss << " _(observed " << markdown_escape_inline(observed) << ")_";
+      if (sources_n > 0) oss << " _(sources " << sources_n << ")_";
       oss << "\n";
     }
     return oss.str();
@@ -294,7 +322,7 @@ static bool parse_structured_memory_doc(const std::string& file_text, Json::Valu
   if (trim_ascii(body).empty()) {
     // Initialize empty doc.
     Json::Value doc(Json::objectValue);
-    doc["schema"] = "agent_memory_v1";
+    doc["schema"] = "agent_memory_v2";
     doc["items"] = Json::Value(Json::objectValue);
     *out_doc = doc;
     return true;
@@ -305,8 +333,32 @@ static bool parse_structured_memory_doc(const std::string& file_text, Json::Valu
     if (out_err) *out_err = perr.empty() ? "failed to parse structured memory json" : perr;
     return false;
   }
-  if (!doc.isMember("schema") || !doc["schema"].isString()) doc["schema"] = "agent_memory_v1";
+  if (!doc.isMember("schema") || !doc["schema"].isString()) doc["schema"] = "agent_memory_v2";
   if (!doc.isMember("items") || !doc["items"].isObject()) doc["items"] = Json::Value(Json::objectValue);
+
+  // Best-effort upgrade to v2 fields for deterministic versioning/evidence merge.
+  // Keep markers as V1 for backwards compatibility (only schema + payload evolve).
+  const std::string schema = doc["schema"].isString() ? doc["schema"].asString() : "agent_memory_v2";
+  if (schema != "agent_memory_v2") {
+    doc["schema"] = "agent_memory_v2";
+  }
+  Json::Value& items = doc["items"];
+  for (const auto& key : items.getMemberNames()) {
+    Json::Value& it = items[key];
+    if (!it.isObject()) continue;
+    if (!it.isMember("versions") || !it["versions"].isArray()) it["versions"] = Json::Value(Json::arrayValue);
+    if (!it.isMember("sources") || !it["sources"].isArray()) {
+      it["sources"] = Json::Value(Json::arrayValue);
+      if (it.isMember("source") && it["source"].isString() && !trim_ascii(it["source"].asString()).empty()) {
+        it["sources"].append(trim_ascii(it["source"].asString()));
+      }
+    }
+    if (!it.isMember("observed_utc") || !it["observed_utc"].isString()) {
+      if (it.isMember("updated_utc") && it["updated_utc"].isString()) it["observed_utc"] = it["updated_utc"];
+      else it["observed_utc"] = iso_utc_now();
+    }
+  }
+
   *out_doc = doc;
   return true;
 }
@@ -507,6 +559,8 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
   bool structured_doc_present = false;
   int structured_entries_valid = 0;
   int structured_entries_changed = 0;
+  int structured_entries_superseded = 0;
+  int structured_entries_evidence_added = 0;
   if (structured) {
     // Structured upsert mode: deterministic key conflict resolution for durable facts/preferences/tasks.
     std::string existing;
@@ -544,26 +598,70 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
       if (key.empty() || value.empty()) continue;
       structured_entries_valid++;
 
-      // If the record is identical (value/kind/status), treat as no-op to keep updates idempotent and
-      // avoid churn in updated_utc + checkpoints.
-      bool identical = false;
-      if (items.isMember(key) && items[key].isObject()) {
-        const auto& cur = items[key];
-        const std::string cur_kind = cur.isMember("kind") && cur["kind"].isString() ? cur["kind"].asString() : "fact";
-        const std::string cur_value = cur.isMember("value") && cur["value"].isString() ? cur["value"].asString() : "";
-        const std::string cur_status =
-          cur.isMember("status") && cur["status"].isString() ? cur["status"].asString() : "active";
-        identical = eq_ci_ascii(cur_kind, kind) && cur_value == value && eq_ci_ascii(cur_status, status.empty() ? "active" : status);
-      }
-      if (identical) continue;
+      const std::string norm_kind = trim_ascii(kind).empty() ? "fact" : kind;
+      const std::string norm_status = trim_ascii(status).empty() ? "active" : status;
+      const std::string now_utc = iso_utc_now();
 
-      Json::Value rec(Json::objectValue);
-      rec["kind"] = kind;
-      rec["value"] = value;
-      rec["status"] = status.empty() ? "active" : status;
-      rec["updated_utc"] = iso_utc_now();
-      if (!source.empty()) rec["source"] = source;
-      items[key] = rec;  // last write wins
+      if (!items.isMember(key) || !items[key].isObject()) {
+        Json::Value rec(Json::objectValue);
+        rec["kind"] = norm_kind;
+        rec["value"] = value;
+        rec["status"] = norm_status;
+        rec["updated_utc"] = now_utc;
+        rec["observed_utc"] = now_utc;
+        rec["versions"] = Json::Value(Json::arrayValue);
+        rec["sources"] = Json::Value(Json::arrayValue);
+        if (!source.empty()) json_array_append_unique_string_ci(&rec["sources"], source, 20);
+        items[key] = rec;
+        structured_entries_changed++;
+        continue;
+      }
+
+      Json::Value& cur = items[key];
+      if (!cur.isMember("versions") || !cur["versions"].isArray()) cur["versions"] = Json::Value(Json::arrayValue);
+      if (!cur.isMember("sources") || !cur["sources"].isArray()) cur["sources"] = Json::Value(Json::arrayValue);
+      if (!cur.isMember("observed_utc") || !cur["observed_utc"].isString()) {
+        cur["observed_utc"] = cur.isMember("updated_utc") && cur["updated_utc"].isString() ? cur["updated_utc"] : now_utc;
+      }
+
+      const std::string cur_kind = cur.isMember("kind") && cur["kind"].isString() ? cur["kind"].asString() : "fact";
+      const std::string cur_value = cur.isMember("value") && cur["value"].isString() ? cur["value"].asString() : "";
+      const std::string cur_status = cur.isMember("status") && cur["status"].isString() ? cur["status"].asString() : "active";
+
+      const bool same_core = eq_ci_ascii(cur_kind, norm_kind) && cur_value == value && eq_ci_ascii(cur_status, norm_status);
+      const bool need_add_source = !source.empty() && !json_array_contains_string_ci(cur["sources"], source);
+
+      if (same_core) {
+        if (!need_add_source) continue;
+        json_array_append_unique_string_ci(&cur["sources"], source, 20);
+        cur["observed_utc"] = now_utc;
+        structured_entries_evidence_added++;
+        structured_entries_changed++;
+        continue;
+      }
+
+      // Supersede: move previous current to versions, then set new current.
+      Json::Value prev(Json::objectValue);
+      prev["kind"] = cur_kind;
+      prev["value"] = cur_value;
+      prev["status"] = cur_status;
+      if (cur.isMember("updated_utc")) prev["updated_utc"] = cur["updated_utc"];
+      if (cur.isMember("observed_utc")) prev["observed_utc"] = cur["observed_utc"];
+      if (cur.isMember("sources") && cur["sources"].isArray()) prev["sources"] = cur["sources"];
+      prev["superseded_utc"] = now_utc;
+
+      Json::Value& vers = cur["versions"];
+      vers.insert(0U, prev); // newest first
+      while ((int)vers.size() > 20) vers.removeIndex((Json::ArrayIndex)vers.size() - 1, nullptr);
+
+      cur["kind"] = norm_kind;
+      cur["value"] = value;
+      cur["status"] = norm_status;
+      cur["updated_utc"] = now_utc;
+      cur["observed_utc"] = now_utc;
+      cur["sources"] = Json::Value(Json::arrayValue);
+      if (!source.empty()) json_array_append_unique_string_ci(&cur["sources"], source, 20);
+      structured_entries_superseded++;
       structured_entries_changed++;
     }
     if (structured_entries_valid == 0) {
@@ -579,6 +677,8 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
       data["no_changes"] = true;
       data["entries_valid"] = structured_entries_valid;
       data["entries_changed"] = structured_entries_changed;
+      data["entries_superseded"] = structured_entries_superseded;
+      data["entries_evidence_added"] = structured_entries_evidence_added;
       data["bytes_written"] = (Json::Int64)0;
       data["ts_unix_ms"] = (Json::Int64)unix_ms_now();
       data["output"] = "memory_put: no changes for " + rel_path;
@@ -688,6 +788,8 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
   if (structured) {
     data["entries_valid"] = structured_entries_valid;
     data["entries_changed"] = structured_entries_changed;
+    data["entries_superseded"] = structured_entries_superseded;
+    data["entries_evidence_added"] = structured_entries_evidence_added;
     data["checkpoint_ok"] = checkpoint_ok;
     if (!checkpoint_path_rel.empty()) data["checkpoint_path"] = checkpoint_path_rel;
   }

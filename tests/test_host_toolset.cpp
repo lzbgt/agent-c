@@ -27,6 +27,19 @@ static Json::Value json_parse(const std::string& s) {
   return v;
 }
 
+static std::string extract_between(const std::string& s, const char* begin, const char* end) {
+  const std::string b = begin ? begin : "";
+  const std::string e = end ? end : "";
+  const size_t a = s.find(b);
+  if (a == std::string::npos) return "";
+  const size_t c = s.find(e, a + b.size());
+  if (c == std::string::npos) return "";
+  const size_t body_a = a + b.size();
+  const size_t body_b = c;
+  if (body_b <= body_a) return "";
+  return s.substr(body_a, body_b - body_a);
+}
+
 static bool registry_contains(agent_tool_registry_t* reg, const std::string& name) {
   const size_t n = agent_tool_registry_count(reg);
   for (size_t i = 0; i < n; i++) {
@@ -1126,11 +1139,13 @@ static void test_memory_tools() {
     e0["key"] = "ui.rendering";
     e0["kind"] = "fact";
     e0["value"] = "Scene is server-owned and refresh-proof";
+    e0["source"] = "test:s0";
     Json::Value e1(Json::objectValue);
     e1["key"] = "feature.a";
     e1["kind"] = "fact";
     e1["value"] = "Feature set A";
     e1["status"] = "deprecated";
+    e1["source"] = "test:s0";
     Json::Value entries(Json::arrayValue);
     entries.append(e0);
     entries.append(e1);
@@ -1150,12 +1165,13 @@ static void test_memory_tools() {
     agent_string_free(&out);
   }
 
-  // Overwrite the same key and ensure last write wins.
+  // Overwrite the same key and ensure current value changes (history retained in JSON block).
   {
     Json::Value e0(Json::objectValue);
     e0["key"] = "ui.rendering";
     e0["kind"] = "fact";
     e0["value"] = "Scene rendering must survive refresh + restart";
+    e0["source"] = "test:s1";
     Json::Value entries(Json::arrayValue);
     entries.append(e0);
     Json::Value args(Json::objectValue);
@@ -1166,6 +1182,8 @@ static void test_memory_tools() {
     assert(exec.execute(exec.ctx, "memory_put", req.c_str(), &out) == AGENT_OK);
     const Json::Value resp = json_parse(std::string(out.data, out.len));
     assert(resp["ok"].asBool());
+    assert(resp["data"]["entries_changed"].asInt() >= 1);
+    assert(resp["data"]["entries_superseded"].asInt() >= 1);
     agent_string_free(&out);
   }
 
@@ -1183,7 +1201,51 @@ static void test_memory_tools() {
     assert(text.find("Structured Memory") != std::string::npos);
     assert(text.find("ui.rendering") != std::string::npos);
     assert(text.find("survive refresh + restart") != std::string::npos);
-    assert(text.find("server-owned and refresh-proof") == std::string::npos);
+    // Old value should not appear in the human-readable markdown header (but may appear in the embedded JSON history).
+    const size_t m = text.find("<!-- AGENT_MEMORY_V1_BEGIN -->");
+    assert(m != std::string::npos);
+    const std::string md = text.substr(0, m);
+    assert(md.find("server-owned and refresh-proof") == std::string::npos);
+
+    // Parse the embedded JSON doc and verify schema + history.
+    const std::string json_body = extract_between(text, "<!-- AGENT_MEMORY_V1_BEGIN -->", "<!-- AGENT_MEMORY_V1_END -->");
+    assert(!json_body.empty());
+    const Json::Value doc = json_parse(json_body);
+    assert(doc.isObject());
+    assert(doc["schema"].asString() == "agent_memory_v2");
+    const auto& items = doc["items"];
+    assert(items.isObject());
+    const auto& u = items["ui.rendering"];
+    assert(u.isObject());
+    assert(u["value"].asString().find("survive refresh + restart") != std::string::npos);
+    assert(u["versions"].isArray());
+    assert(u["versions"].size() >= 1);
+    assert(u["versions"][0]["value"].asString().find("server-owned and refresh-proof") != std::string::npos);
+    assert(u["sources"].isArray());
+    assert(u["sources"].size() >= 1);
+    agent_string_free(&out);
+  }
+
+  // Evidence-only update: same core value, new source -> no supersede but sources grows.
+  {
+    Json::Value e0(Json::objectValue);
+    e0["key"] = "ui.rendering";
+    e0["kind"] = "fact";
+    e0["value"] = "Scene rendering must survive refresh + restart";
+    e0["source"] = "test:s2";
+    Json::Value entries(Json::arrayValue);
+    entries.append(e0);
+    Json::Value args(Json::objectValue);
+    args["path"] = "STRUCTURED.md";
+    args["entries"] = entries;
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "memory_put", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    assert(resp["data"]["entries_changed"].asInt() >= 1);
+    assert(resp["data"]["entries_superseded"].asInt() == 0);
+    assert(resp["data"]["entries_evidence_added"].asInt() >= 1);
     agent_string_free(&out);
   }
 

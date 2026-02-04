@@ -34,6 +34,39 @@ For durable “facts” that should survive long-running evolution, prefer:
 - write daily/raw observations via `memory_write(layer="daily")`
 - periodically upsert stable facts into `STRUCTURED.md` via `memory_put(path="STRUCTURED.md", entries=[...])`
 
+### Structured memory schema (v2)
+
+`STRUCTURED.md` contains a machine block (JSON) delimited by:
+
+- `<!-- AGENT_MEMORY_V1_BEGIN -->`
+- `<!-- AGENT_MEMORY_V1_END -->`
+
+The delimiter names are historical; the **payload schema** evolves. Current schema:
+
+- `schema: "agent_memory_v2"`
+- `items: { <key>: <record> }`
+
+Each record keeps both:
+
+- **current** value (`kind`, `value`, `status`, `updated_utc`, `observed_utc`, `sources[]`)
+- **history** (`versions[]`) for superseded facts
+
+Deterministic semantics:
+
+- Same `kind/value/status` + same `source` → no-op (idempotent).
+- Same `kind/value/status` + new `source` → evidence-only update:
+  - appends to `sources[]` (deduped)
+  - refreshes `observed_utc`
+  - does **not** change `updated_utc` and does **not** add a new version.
+- Different `kind/value/status` → supersede:
+  - previous current is pushed into `versions[]` (newest-first) with `superseded_utc`
+  - current becomes the new value and its `sources[]` starts from the incoming source.
+
+Bounds (to keep files small):
+
+- `sources[]` capped (oldest dropped)
+- `versions[]` capped (oldest dropped)
+
 ### Deterministic promotion via `@mem` markers (rolling consolidation v2.1)
 
 To enable **deterministic** rolling consolidation (no LLM required), you can write explicit markers into daily memory.
