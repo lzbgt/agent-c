@@ -146,6 +146,8 @@ if(AGENT_BUILD_HOST)
     daemon/src/openrouter_models_endpoint.cpp
     daemon/src/orchestrate_endpoints.cpp
     daemon/src/provider_util.cpp
+    daemon/src/memory_consolidator.cpp
+    daemon/src/memory_endpoints.cpp
     daemon/src/runtime_config.cpp
     daemon/src/secrets_file.cpp
     daemon/src/run_endpoints.cpp
@@ -294,6 +296,7 @@ if(AGENT_BUILD_HOST)
     add_test(NAME agentd_orchestrate_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_orchestrate_smoke.sh $<TARGET_FILE:agentd>)
     set_tests_properties(agentd_orchestrate_smoke PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME agentd_workflow_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_memory_consolidate_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_memory_consolidate_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_provider_retry_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_provider_retry_smoke.sh $<TARGET_FILE:agentd>)
     set_tests_properties(agentd_provider_retry_smoke PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME agentd_stream_provider_retry_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_stream_provider_retry_smoke.sh $<TARGET_FILE:agentd>)

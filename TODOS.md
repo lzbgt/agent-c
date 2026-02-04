@@ -36,6 +36,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - Memory v2 (retrieval): `memory_search` now prefers a ranked on-disk index (SQLite FTS5) when available, with automatic fallback to bounded substring scan.
   - Also: structured memory updates (`memory_put(entries)`) produce rolling JSON checkpoints under `memory/checkpoints/` for time-correlation.
   - Proof: `ctest` includes `test_host_toolset` (memory tools) plus existing daemon smokes that exercise host tools.
+- Memory v2.1 (rolling consolidation, deterministic): `agentd` can promote explicit `@mem ...` markers from daily memory into structured memory via `POST /api/v1/memory/consolidate`, and can run it periodically with `--memory-consolidate-interval-ms`.
+  - Proof: `ctest` includes `agentd_memory_consolidate_smoke` (idempotent; no checkpoint churn on second run).
 
 ## P0 (next: maximize autonomous continuity + correctness)
 
@@ -92,10 +94,13 @@ Deliverables:
 - Retrieval (shipped v2.0):
   - `memory_search` prefers SQLite FTS5-ranked retrieval when available (`use_index=true`), scoped to the same file set as legacy scanning (`daily_days`, core/session/structured).
   - Automatic fallback: bounded substring scan when SQLite/FTS5 is unavailable at runtime.
+- Rolling consolidation + correlation (shipped v2.1, deterministic core):
+  - explicit `@mem` marker promotion (daily → structured) + `POST /api/v1/memory/consolidate`
+  - optional periodic scheduler (`--memory-consolidate-interval-ms`) with a conservative default (disabled)
 - Rolling consolidation + correlation (next):
-  - periodic consolidation checkpoints (time-based + size-based) across **all** memory layers (core/daily/session/structured)
-  - versioned facts (supersedes/obsolete markers) and deterministic conflict rules beyond “last write wins”
-  - optional “consolidation worker” that can run as an internal workflow (LLM optional; deterministic by default)
+  - time/size based consolidation across **all** layers (core/daily/session/structured), not just daily markers
+  - versioned facts: `supersedes`, `observed_utc`/`valid_from`, and multi-source evidence arrays
+  - correlation graph: link memory items to `trace_id`/workflow/job ids and source excerpts
 
 Proof:
 - `ctest` covers memory tools end-to-end (`test_host_toolset`), ensuring `memory_write`→`memory_search`→`memory_get` works.

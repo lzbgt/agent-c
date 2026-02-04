@@ -17,6 +17,7 @@ tags:
   - name: jobs
   - name: workflows
   - name: tools
+  - name: memory
   - name: sessions
 
 paths:
@@ -226,6 +227,46 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
+
+  /api/v1/memory/consolidate:
+    post:
+      tags: [memory]
+      summary: Promote @mem markers into structured memory
+      description: |
+        Deterministic rolling consolidation:
+        - scans recent daily memory files for explicit `@mem` markers
+        - upserts them into `memory/STRUCTURED.md`
+        - writes a checkpoint snapshot (best-effort) when changes occur
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                daily_days: { type: integer, format: int32 }
+                keep_checkpoints: { type: integer, format: int32 }
+                max_entries: { type: integer, format: int32 }
+                dry_run: { type: boolean }
+      responses:
+        "200":
+          description: Consolidation report
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, data]
+                properties:
+                  ok: { type: boolean }
+                  data:
+                    type: object
+                    additionalProperties: true
+        "400":
+          description: Invalid request or consolidation not allowed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/workflow/submit:
     post:

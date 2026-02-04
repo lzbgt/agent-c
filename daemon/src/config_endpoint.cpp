@@ -95,6 +95,12 @@ void handle_config_endpoint(
   jobs["max_jobs"] = (Json::UInt64)cfg.max_jobs;
   out["jobs"] = jobs;
 
+  Json::Value memory(Json::objectValue);
+  memory["consolidate_interval_ms"] = (Json::Int64)cfg.memory_consolidate_interval_ms;
+  memory["consolidate_daily_days"] = cfg.memory_consolidate_daily_days;
+  memory["consolidate_keep_checkpoints"] = cfg.memory_consolidate_keep_checkpoints;
+  out["memory"] = memory;
+
   resp->body = json_stringify(out);
   return;
 }

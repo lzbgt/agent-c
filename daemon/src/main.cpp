@@ -14,6 +14,8 @@
 #include "session_endpoints.h"
 #include "job_endpoints.h"
 #include "orchestrate_endpoints.h"
+#include "memory_endpoints.h"
+#include "memory_consolidator.h"
 #include "run_endpoints.h"
 #include "trace_endpoints.h"
 #include "workflow_endpoints.h"
@@ -262,6 +264,45 @@ int main(int argc, char** argv) {
         std::cerr << "Invalid --max-jobs\n";
         return 2;
       }
+    } else if (a == "--memory-consolidate-interval-ms") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --memory-consolidate-interval-ms\n";
+        return 2;
+      }
+      try {
+        cfg.memory_consolidate_interval_ms = (int64_t)std::stoll(v);
+        if (cfg.memory_consolidate_interval_ms < 0) cfg.memory_consolidate_interval_ms = 0;
+      } catch (...) {
+        std::cerr << "Invalid --memory-consolidate-interval-ms\n";
+        return 2;
+      }
+    } else if (a == "--memory-consolidate-daily-days") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --memory-consolidate-daily-days\n";
+        return 2;
+      }
+      try {
+        cfg.memory_consolidate_daily_days = (int)std::stol(v);
+        if (cfg.memory_consolidate_daily_days < 0) cfg.memory_consolidate_daily_days = 0;
+      } catch (...) {
+        std::cerr << "Invalid --memory-consolidate-daily-days\n";
+        return 2;
+      }
+    } else if (a == "--memory-consolidate-keep-checkpoints") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --memory-consolidate-keep-checkpoints\n";
+        return 2;
+      }
+      try {
+        cfg.memory_consolidate_keep_checkpoints = (int)std::stol(v);
+        if (cfg.memory_consolidate_keep_checkpoints < 1) cfg.memory_consolidate_keep_checkpoints = 1;
+      } catch (...) {
+        std::cerr << "Invalid --memory-consolidate-keep-checkpoints\n";
+        return 2;
+      }
     } else if (a == "--max-steps-default") {
       std::string v;
       if (!take(&v)) {
@@ -412,6 +453,9 @@ int main(int argc, char** argv) {
         << "  --timeout-ms <n>     Provider HTTP timeout in ms (default: 60000)\n"
         << "  --job-ttl-ms <n>     GC finished jobs older than n ms (default: 1800000)\n"
         << "  --max-jobs <n>       Keep at most n jobs in memory (default: 256)\n"
+        << "  --memory-consolidate-interval-ms <n>   Run memory consolidation every n ms (default: 0=disabled)\n"
+        << "  --memory-consolidate-daily-days <n>    Scan last n daily memory files for @mem markers (default: 14)\n"
+        << "  --memory-consolidate-keep-checkpoints <n>  Retain at most n structured checkpoints (default: 100)\n"
         << "  --max-steps-default <n> Default tool-loop max steps when requests omit it (default: 0; 0 means unlimited)\n"
         << "  --max-tool-calls-total-default <n> Default tool-loop total tool calls cap when requests omit it (default: 0; 0 means unlimited)\n"
         << "  --max-tool-calls-per-tool-default <n> Default tool-loop per-tool call cap when requests omit it (default: 0; 0 means unlimited)\n"
@@ -544,6 +588,24 @@ int main(int argc, char** argv) {
     if (const char* p = getenv_s("AGENTD_DB_PATH")) {
       cfg.db_path = p;
     }
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_CONSOLIDATE_INTERVAL_MS")) {
+    try {
+      cfg.memory_consolidate_interval_ms = (int64_t)std::stoll(ms);
+      if (cfg.memory_consolidate_interval_ms < 0) cfg.memory_consolidate_interval_ms = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_CONSOLIDATE_DAILY_DAYS")) {
+    try {
+      cfg.memory_consolidate_daily_days = (int)std::stol(ms);
+      if (cfg.memory_consolidate_daily_days < 0) cfg.memory_consolidate_daily_days = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_CONSOLIDATE_KEEP_CHECKPOINTS")) {
+    try {
+      cfg.memory_consolidate_keep_checkpoints = (int)std::stol(ms);
+      if (cfg.memory_consolidate_keep_checkpoints < 1) cfg.memory_consolidate_keep_checkpoints = 1;
+    } catch (...) {}
   }
 
   if (cfg.state_dir.empty()) {
@@ -715,6 +777,18 @@ int main(int argc, char** argv) {
     }
   }
 
+  // Memory consolidation (background; disabled by default).
+  MemoryConsolidatorEngine mem_engine(
+    [&cfg_store]() { return cfg_store.snapshot(); },
+    MemoryConsolidatorEngine::Options{}
+  );
+  {
+    std::string merr;
+    if (!mem_engine.start(&merr)) {
+      std::cerr << "Warning: failed to start memory consolidator engine: " << merr << "\n";
+    }
+  }
+
   server.handle("GET", "/api/v1/health", [&](const HttpRequest& req, HttpResponse* resp) {
     cors_apply(req, resp, cors_cfg);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
@@ -748,6 +822,11 @@ int main(int argc, char** argv) {
   server.handle("GET", "/api/v1/file", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_file_endpoint(cur, cors_cfg, req, resp);
+  });
+
+  server.handle("POST", "/api/v1/memory/consolidate", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_memory_consolidate_endpoint(cur, cors_cfg, req, resp);
   });
 
   const std::string sessions_root_dir = cfg_store.snapshot().sessions_root_dir;

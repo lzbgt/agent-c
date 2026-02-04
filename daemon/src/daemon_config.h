@@ -72,6 +72,16 @@ struct DaemonConfig {
   int64_t job_ttl_ms = 30 * 60 * 1000; // 30 minutes
   size_t max_jobs = 256;
 
+  // Memory consolidation (rolling, deterministic by default).
+  //
+  // When enabled, the daemon periodically scans recent daily memory files for explicit @mem markers and
+  // promotes them into structured memory (memory/STRUCTURED.md) via an idempotent upsert.
+  //
+  // Default: disabled (0) to avoid surprising background writes for new users.
+  int64_t memory_consolidate_interval_ms = 0;
+  int memory_consolidate_daily_days = 14;
+  int memory_consolidate_keep_checkpoints = 100;
+
   // CORS (for browser-based clients). Defaults depend on listen host:
   // - loopback: allow any origin ("*") for local UI dev
   // - non-loopback: disabled unless explicitly configured via --cors-origin

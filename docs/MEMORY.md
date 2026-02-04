@@ -34,8 +34,38 @@ For durable “facts” that should survive long-running evolution, prefer:
 - write daily/raw observations via `memory_write(layer="daily")`
 - periodically upsert stable facts into `STRUCTURED.md` via `memory_put(path="STRUCTURED.md", entries=[...])`
 
+### Deterministic promotion via `@mem` markers (rolling consolidation v2.1)
+
+To enable **deterministic** rolling consolidation (no LLM required), you can write explicit markers into daily memory.
+The daemon can then promote them into `STRUCTURED.md`:
+
+Marker syntax (one per line, optional bullet prefix):
+
+```text
+@mem fact <key> = <value>
+@mem pref <key> = <value>
+@mem task <key> = <value>
+@mem deprecated <key> = <value>
+```
+
+Example:
+
+```text
+- @mem fact ui.rendering = Scene rendering must survive refresh + restart
+- @mem deprecated feature.a = Feature set A
+```
+
+On demand, call:
+
+- `POST /api/v1/memory/consolidate` (auth required when daemon auth is enabled)
+
+To run periodically, start `agentd` with:
+
+- `--memory-consolidate-interval-ms <n>` (0 disables; default)
+- `--memory-consolidate-daily-days <n>` (default: 14)
+- `--memory-consolidate-keep-checkpoints <n>` (default: 100)
+
 Structured updates produce a time-stamped checkpoint JSON snapshot under `memory/checkpoints/` by default:
 
 - `checkpoint=true|false` (default: true)
 - `keep_checkpoints=<N>` (default: 100)
-

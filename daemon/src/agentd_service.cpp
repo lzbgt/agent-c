@@ -13,6 +13,8 @@
 #include "job_engine.h"
 #include "job_manager.h"
 #include "job_stream_endpoint.h"
+#include "memory_endpoints.h"
+#include "memory_consolidator.h"
 #include "orchestrate_endpoints.h"
 #include "openrouter_models_endpoint.h"
 #include "openrouter_util.h"
@@ -164,6 +166,24 @@ static void fill_env_defaults(DaemonConfig* cfg) {
   if (const char* ms = getenv_s("AGENTD_MAX_TOOL_CALLS_PER_TOOL_DEFAULT")) {
     try { cfg->max_tool_calls_per_tool_default = (size_t)std::stoull(ms); } catch (...) {}
   }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_CONSOLIDATE_INTERVAL_MS")) {
+    try {
+      cfg->memory_consolidate_interval_ms = (int64_t)std::stoll(ms);
+      if (cfg->memory_consolidate_interval_ms < 0) cfg->memory_consolidate_interval_ms = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_CONSOLIDATE_DAILY_DAYS")) {
+    try {
+      cfg->memory_consolidate_daily_days = (int)std::stol(ms);
+      if (cfg->memory_consolidate_daily_days < 0) cfg->memory_consolidate_daily_days = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_CONSOLIDATE_KEEP_CHECKPOINTS")) {
+    try {
+      cfg->memory_consolidate_keep_checkpoints = (int)std::stol(ms);
+      if (cfg->memory_consolidate_keep_checkpoints < 1) cfg->memory_consolidate_keep_checkpoints = 1;
+    } catch (...) {}
+  }
 }
 
 static void fill_path_defaults(DaemonConfig* cfg) {
@@ -203,6 +223,7 @@ struct AgentdService::Impl {
   std::unique_ptr<DaemonConfigStore> cfg_store;
   std::unique_ptr<JobEngine> job_engine;
   std::unique_ptr<WorkflowEngine> wf_engine;
+  std::unique_ptr<MemoryConsolidatorEngine> mem_engine;
   HttpServer server;
 
   std::thread server_thread;
@@ -330,6 +351,18 @@ struct AgentdService::Impl {
       }
     }
 
+    // Memory consolidation (background; disabled by default).
+    if (!mem_engine) {
+      mem_engine = std::make_unique<MemoryConsolidatorEngine>(
+        [this]() { return cfg_store->snapshot(); },
+        MemoryConsolidatorEngine::Options{}
+      );
+      std::string merr;
+      if (!mem_engine->start(&merr)) {
+        std::cerr << "Warning: failed to start memory consolidator engine: " << merr << "\n";
+      }
+    }
+
     // Core routes.
     server.handle("GET", "/api/v1/health", [this](const HttpRequest& req, HttpResponse* resp) {
       cors_apply(req, resp, cors_cfg);
@@ -364,6 +397,11 @@ struct AgentdService::Impl {
     server.handle("GET", "/api/v1/file", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_file_endpoint(cur, cors_cfg, req, resp);
+    });
+
+    server.handle("POST", "/api/v1/memory/consolidate", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_memory_consolidate_endpoint(cur, cors_cfg, req, resp);
     });
 
     server.handle("GET", "/api/v1/sessions", [this](const HttpRequest& req, HttpResponse* resp) {

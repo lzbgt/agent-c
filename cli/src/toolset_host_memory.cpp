@@ -54,6 +54,10 @@ static std::string to_lower_ascii(std::string s) {
   return s;
 }
 
+static bool eq_ci_ascii(const std::string& a, const std::string& b) {
+  return to_lower_ascii(a) == to_lower_ascii(b);
+}
+
 static bool is_safe_relpath_md(const std::string& p) {
   if (p.empty()) return false;
   if (p.size() > 300) return false;
@@ -501,6 +505,8 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
   std::string out_text;
   Json::Value structured_doc_for_checkpoint(Json::objectValue);
   bool structured_doc_present = false;
+  int structured_entries_valid = 0;
+  int structured_entries_changed = 0;
   if (structured) {
     // Structured upsert mode: deterministic key conflict resolution for durable facts/preferences/tasks.
     std::string existing;
@@ -527,7 +533,6 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
 
     Json::Value& items = doc["items"];
     if (!items.isObject()) items = Json::Value(Json::objectValue);
-    int applied = 0;
     for (Json::ArrayIndex i = 0; i < entries.size(); i++) {
       const auto& e = entries[i];
       if (!e.isObject()) continue;
@@ -537,6 +542,20 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
       const std::string status = e.isMember("status") && e["status"].isString() ? trim_ascii(e["status"].asString()) : "active";
       const std::string source = e.isMember("source") && e["source"].isString() ? trim_ascii(e["source"].asString()) : "";
       if (key.empty() || value.empty()) continue;
+      structured_entries_valid++;
+
+      // If the record is identical (value/kind/status), treat as no-op to keep updates idempotent and
+      // avoid churn in updated_utc + checkpoints.
+      bool identical = false;
+      if (items.isMember(key) && items[key].isObject()) {
+        const auto& cur = items[key];
+        const std::string cur_kind = cur.isMember("kind") && cur["kind"].isString() ? cur["kind"].asString() : "fact";
+        const std::string cur_value = cur.isMember("value") && cur["value"].isString() ? cur["value"].asString() : "";
+        const std::string cur_status =
+          cur.isMember("status") && cur["status"].isString() ? cur["status"].asString() : "active";
+        identical = eq_ci_ascii(cur_kind, kind) && cur_value == value && eq_ci_ascii(cur_status, status.empty() ? "active" : status);
+      }
+      if (identical) continue;
 
       Json::Value rec(Json::objectValue);
       rec["kind"] = kind;
@@ -545,10 +564,25 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
       rec["updated_utc"] = iso_utc_now();
       if (!source.empty()) rec["source"] = source;
       items[key] = rec;  // last write wins
-      applied++;
+      structured_entries_changed++;
     }
-    if (applied == 0) {
+    if (structured_entries_valid == 0) {
       return write_envelope(out_result, false, "no valid entries applied (each entry requires key + value)", Json::Value(Json::objectValue));
+    }
+    if (structured_entries_changed == 0) {
+      Json::Value data(Json::objectValue);
+      data["tool"] = "memory_put";
+      data["memory_root"] = to_generic_string(mem_root);
+      data["path"] = rel_path;
+      data["abs_path"] = to_generic_string(abs);
+      data["structured"] = true;
+      data["no_changes"] = true;
+      data["entries_valid"] = structured_entries_valid;
+      data["entries_changed"] = structured_entries_changed;
+      data["bytes_written"] = (Json::Int64)0;
+      data["ts_unix_ms"] = (Json::Int64)unix_ms_now();
+      data["output"] = "memory_put: no changes for " + rel_path;
+      return write_envelope(out_result, true, "", data);
     }
 
     structured_doc_for_checkpoint = doc;
@@ -560,7 +594,13 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
     if (!out_text.empty() && out_text.back() != '\n') out_text.push_back('\n');
   }
 
-  {
+  bool wrote_file = false;
+  if (structured) {
+    wrote_file = structured_entries_changed > 0;
+  } else {
+    wrote_file = true;
+  }
+  if (wrote_file) {
     std::ofstream out(abs, std::ios::binary | std::ios::trunc);
     if (!out.is_open()) {
       return write_envelope(out_result, false, "failed to open memory file for write", Json::Value(Json::objectValue));
@@ -575,7 +615,7 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
   // JSON snapshot for correlation over time (best-effort; does not fail the tool call).
   bool checkpoint_ok = false;
   std::string checkpoint_path_rel;
-  if (structured && structured_doc_present) {
+  if (wrote_file && structured && structured_doc_present) {
     const bool want_checkpoint =
       args.isMember("checkpoint") && args["checkpoint"].isBool() ? args["checkpoint"].asBool() : true;
     const int keep_checkpoints =
@@ -646,6 +686,8 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
   data["bytes_written"] = (Json::Int64)out_text.size();
   if (structured) data["structured"] = true;
   if (structured) {
+    data["entries_valid"] = structured_entries_valid;
+    data["entries_changed"] = structured_entries_changed;
     data["checkpoint_ok"] = checkpoint_ok;
     if (!checkpoint_path_rel.empty()) data["checkpoint_path"] = checkpoint_path_rel;
   }
