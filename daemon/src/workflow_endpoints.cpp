@@ -930,4 +930,55 @@ void handle_workflow_events_endpoint(
   resp->body = json_stringify_compact(out);
 }
 
+void handle_workflow_stats_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  if (!db_or_null || !db_or_null->is_open()) {
+    resp->status = 503;
+    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    return;
+  }
+
+  AgentDb::WorkflowSchedulerStats st;
+  std::string err;
+  if (!db_or_null->get_workflow_scheduler_stats(unix_ms_now(), &st, &err)) {
+    resp->status = 500;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = "failed to read workflow scheduler stats";
+    o["detail"] = err;
+    resp->body = json_stringify_compact(o);
+    return;
+  }
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = true;
+  out["now_unix_ms"] = (Json::Int64)st.now_unix_ms;
+  out["tasks_queued_ready"] = (Json::Int64)st.tasks_queued_ready;
+  out["tasks_queued_not_ready"] = (Json::Int64)st.tasks_queued_not_ready;
+  {
+    Json::Value m(Json::objectValue);
+    for (const auto& kv : st.workflows_by_status) {
+      m[kv.first] = (Json::Int64)kv.second;
+    }
+    out["workflows_by_status"] = m;
+  }
+  {
+    Json::Value m(Json::objectValue);
+    for (const auto& kv : st.tasks_by_status) {
+      m[kv.first] = (Json::Int64)kv.second;
+    }
+    out["tasks_by_status"] = m;
+  }
+  resp->body = json_stringify_compact(out);
+}
+
 }  // namespace agentd

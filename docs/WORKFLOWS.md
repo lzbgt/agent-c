@@ -205,6 +205,16 @@ Notes:
 
 `GET /api/v1/workflow?workflow_id=...&include_tasks=1&include_results=0|1`
 
+### Workflow scheduler stats
+
+`GET /api/v1/workflow/stats`
+
+Returns lightweight queue pressure metrics, useful for backpressure tuning and debugging:
+
+- `workflows_by_status` (counts)
+- `tasks_by_status` (counts)
+- `tasks_queued_ready` vs `tasks_queued_not_ready` (retry/backoff vs runnable)
+
 ### Workflow events (durable)
 
 `GET /api/v1/workflow/events?workflow_id=...&after_event_id=0&limit=256`

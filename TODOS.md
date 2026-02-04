@@ -92,10 +92,15 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - `--workflow-max-inflight-per-workflow` (prevents one fan-out workflow monopolizing all workers)
   - `--workflow-max-inflight-per-session` (optional multi-tenant cap; default disabled)
   - Proof: `ctest` includes `agentd_workflow_inflight_cap_smoke` (asserts non-overlap under cap=1).
+- Per-session fairness cap is now proven (multi-tenant guard):
+  - Proof: `ctest` includes `agentd_workflow_inflight_session_cap_smoke`.
 - Deterministic workflow-only delay task (`kind:"delay"`) for scheduling tests and wait gates (no LLM required).
   - Proof: `ctest` includes `agentd_workflow_inflight_cap_smoke`.
 - Workflow correctness: tool-call constraints in `expect` (enforce “must call / must not call” deterministically).
   - Proof: `ctest` includes `agentd_workflow_expect_tool_calls_smoke` (uses ext_echo tool plugin).
+- Workflow scheduler stats endpoint (queue pressure metrics):
+  - `GET /api/v1/workflow/stats`
+  - Proof: `ctest` includes `agentd_workflow_stats_smoke`.
 
 ## P0 (next: maximize autonomous continuity + correctness)
 

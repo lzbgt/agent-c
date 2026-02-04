@@ -1411,6 +1411,104 @@ bool AgentDb::list_workflow_tasks(const std::string& workflow_id, std::vector<Wo
 #endif
 }
 
+bool AgentDb::get_workflow_scheduler_stats(
+  int64_t now_unix_ms,
+  WorkflowSchedulerStats* out_stats,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_stats) *out_stats = WorkflowSchedulerStats{};
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)now_unix_ms;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (!out_stats) return false;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+
+  const int64_t now = (now_unix_ms > 0) ? now_unix_ms : unix_ms_now();
+  out_stats->now_unix_ms = now;
+
+  auto read_group_counts = [&](const char* sql, std::map<std::string, int64_t>* out) -> bool {
+    if (!out) return false;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+      if (out_error) *out_error = sqlite_err(db_);
+      return false;
+    }
+    bool ok = true;
+    while (ok && step_row(st)) {
+      const unsigned char* s = sqlite3_column_text(st, 0);
+      const std::string key = s ? (const char*)s : "";
+      const int64_t cnt = sqlite3_column_int64(st, 1);
+      if (!key.empty()) (*out)[key] = cnt;
+    }
+    if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+    sqlite3_finalize(st);
+    return ok;
+  };
+
+  if (!read_group_counts("SELECT status, COUNT(1) FROM workflows GROUP BY status;", &out_stats->workflows_by_status)) {
+    return false;
+  }
+  if (!read_group_counts("SELECT status, COUNT(1) FROM workflow_tasks GROUP BY status;", &out_stats->tasks_by_status)) {
+    return false;
+  }
+
+  // queued ready / not-ready split (useful for backpressure/debugging).
+  {
+    sqlite3_stmt* st = nullptr;
+    const char* sql_ready = R"SQL(
+SELECT COUNT(1)
+FROM workflow_tasks
+WHERE status='queued' AND (ready_unix_ms IS NULL OR ready_unix_ms<=?);
+)SQL";
+    if (sqlite3_prepare_v2(db_, sql_ready, -1, &st, nullptr) != SQLITE_OK) {
+      if (out_error) *out_error = sqlite_err(db_);
+      return false;
+    }
+    bool ok = true;
+    ok = ok && bind_i64(st, 1, now);
+    if (ok && sqlite3_step(st) == SQLITE_ROW) {
+      out_stats->tasks_queued_ready = sqlite3_column_int64(st, 0);
+    } else if (!ok) {
+      if (out_error && out_error->empty()) *out_error = sqlite_err(db_);
+      sqlite3_finalize(st);
+      return false;
+    }
+    sqlite3_finalize(st);
+  }
+  {
+    sqlite3_stmt* st = nullptr;
+    const char* sql_not_ready = R"SQL(
+SELECT COUNT(1)
+FROM workflow_tasks
+WHERE status='queued' AND ready_unix_ms IS NOT NULL AND ready_unix_ms>?;
+)SQL";
+    if (sqlite3_prepare_v2(db_, sql_not_ready, -1, &st, nullptr) != SQLITE_OK) {
+      if (out_error) *out_error = sqlite_err(db_);
+      return false;
+    }
+    bool ok = true;
+    ok = ok && bind_i64(st, 1, now);
+    if (ok && sqlite3_step(st) == SQLITE_ROW) {
+      out_stats->tasks_queued_not_ready = sqlite3_column_int64(st, 0);
+    } else if (!ok) {
+      if (out_error && out_error->empty()) *out_error = sqlite_err(db_);
+      sqlite3_finalize(st);
+      return false;
+    }
+    sqlite3_finalize(st);
+  }
+
+  return true;
+#endif
+}
+
 bool AgentDb::upsert_workflow(const WorkflowRow& wf, std::string* out_error) {
   if (out_error) out_error->clear();
 #if !defined(AGENT_HAVE_SQLITE3)

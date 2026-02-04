@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -283,6 +284,21 @@ class AgentDb {
     std::string* out_error
   );
   bool list_workflow_tasks(const std::string& workflow_id, std::vector<WorkflowTaskRow>* out_rows, std::string* out_error);
+
+  struct WorkflowSchedulerStats {
+    int64_t now_unix_ms = 0;
+    std::map<std::string, int64_t> workflows_by_status;
+    std::map<std::string, int64_t> tasks_by_status;
+    int64_t tasks_queued_ready = 0;
+    int64_t tasks_queued_not_ready = 0;
+  };
+
+  // Lightweight queue pressure / scheduling visibility helper.
+  bool get_workflow_scheduler_stats(
+    int64_t now_unix_ms,
+    WorkflowSchedulerStats* out_stats,
+    std::string* out_error
+  );
 
   // Upserts workflow/task metadata (cheap transition updates).
   bool upsert_workflow(const WorkflowRow& wf, std::string* out_error);

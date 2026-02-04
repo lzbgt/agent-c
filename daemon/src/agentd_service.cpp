@@ -621,6 +621,10 @@ struct AgentdService::Impl {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_workflow_get_endpoint(cur, cors_cfg, &db, req, resp);
     });
+    server.handle("GET", "/api/v1/workflow/stats", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_workflow_stats_endpoint(cur, cors_cfg, &db, req, resp);
+    });
     server.handle("GET", "/api/v1/workflows", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_workflow_list_endpoint(cur, cors_cfg, &db, req, resp);

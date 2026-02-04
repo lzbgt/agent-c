@@ -567,6 +567,18 @@ paths:
               schema:
                 $ref: "#/components/schemas/WorkflowGetResponse"
 
+  /api/v1/workflow/stats:
+    get:
+      tags: [workflows]
+      summary: Workflow scheduler stats (queue pressure)
+      responses:
+        "200":
+          description: Scheduler stats snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowStatsResponse"
+
   /api/v1/workflows:
     get:
       tags: [workflows]
@@ -1548,3 +1560,20 @@ components:
         result:
           type: object
           additionalProperties: true
+
+    WorkflowStatsResponse:
+      type: object
+      required: [ok, now_unix_ms, workflows_by_status, tasks_by_status, tasks_queued_ready, tasks_queued_not_ready]
+      properties:
+        ok: { type: boolean }
+        now_unix_ms: { type: integer, format: int64 }
+        tasks_queued_ready: { type: integer, format: int64 }
+        tasks_queued_not_ready: { type: integer, format: int64 }
+        workflows_by_status:
+          type: object
+          description: Map of workflow status -> count.
+          additionalProperties: { type: integer, format: int64 }
+        tasks_by_status:
+          type: object
+          description: Map of task status -> count.
+          additionalProperties: { type: integer, format: int64 }
