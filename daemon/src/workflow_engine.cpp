@@ -63,6 +63,158 @@ static std::string json_stringify_compact_local(const Json::Value& v) {
   return Json::writeString(wb, v);
 }
 
+static bool string_array_from_json(const Json::Value& v, std::vector<std::string>* out) {
+  if (!out) return false;
+  out->clear();
+  if (!v.isArray()) return false;
+  out->reserve(v.size());
+  for (Json::ArrayIndex i = 0; i < v.size(); i++) {
+    if (!v[i].isString()) continue;
+    const std::string s = v[i].asString();
+    if (!s.empty()) out->push_back(s);
+  }
+  return true;
+}
+
+static Json::Value workflow_aggregate_quorum_hashes_to_json(
+  const Json::Value& agg,
+  const std::unordered_map<std::string, Json::Value>& result_json_by_task,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  Json::Value out(Json::objectValue);
+  out["kind"] = "aggregate";
+  out["ok"] = false;
+
+  if (!agg.isObject()) {
+    if (out_error) *out_error = "aggregate config must be an object";
+    out["error"] = out_error ? *out_error : "aggregate config must be an object";
+    return out;
+  }
+
+  std::vector<std::string> task_ids;
+  if (!string_array_from_json(agg["task_ids"], &task_ids) || task_ids.empty()) {
+    if (out_error) *out_error = "aggregate.task_ids must be a non-empty array of strings";
+    out["error"] = out_error ? *out_error : "aggregate.task_ids must be a non-empty array of strings";
+    return out;
+  }
+
+  int quorum = (int)task_ids.size();
+  if (agg.isMember("quorum") && agg["quorum"].isInt()) {
+    quorum = agg["quorum"].asInt();
+  }
+  if (quorum < 1) quorum = 1;
+  if (quorum > (int)task_ids.size()) quorum = (int)task_ids.size();
+
+  std::vector<std::string> ptrs;
+  if (agg.isMember("pointers")) {
+    (void)string_array_from_json(agg["pointers"], &ptrs);
+  }
+  if (ptrs.empty()) {
+    ptrs.push_back("/avm/result_hash");
+    ptrs.push_back("/avm/trace_hash");
+  }
+
+  out["mode"] = "quorum_hashes";
+  out["quorum"] = quorum;
+  Json::Value arr(Json::arrayValue);
+  for (const auto& id : task_ids) arr.append(id);
+  out["task_ids"] = arr;
+  Json::Value parr(Json::arrayValue);
+  for (const auto& p : ptrs) parr.append(p);
+  out["pointers"] = parr;
+
+  Json::Value checks(Json::arrayValue);
+  bool all_ok = true;
+  std::string first_chosen;
+
+  for (const auto& ptr : ptrs) {
+    Json::Value c(Json::objectValue);
+    c["ptr"] = ptr;
+    c["ok"] = false;
+    c["quorum"] = quorum;
+
+    std::unordered_map<std::string, int> counts;
+    counts.reserve(task_ids.size());
+    Json::Value values_by_task(Json::objectValue);
+    Json::Value missing(Json::arrayValue);
+
+    for (const auto& tid : task_ids) {
+      auto it = result_json_by_task.find(tid);
+      if (it == result_json_by_task.end()) {
+        missing.append(tid);
+        continue;
+      }
+      const Json::Value& root = it->second;
+      const Json::Value* got = nullptr;
+      if (!json_pointer_get(root, ptr, &got) || !got || !got->isString()) {
+        missing.append(tid);
+        continue;
+      }
+      const std::string v = got->asString();
+      values_by_task[tid] = v;
+      if (!v.empty()) counts[v] += 1;
+    }
+
+    // Determine chosen value deterministically:
+    // - highest count
+    // - tie-breaker: lexicographically smallest value
+    std::string chosen;
+    int best = 0;
+    for (const auto& kv : counts) {
+      const std::string& v = kv.first;
+      const int n = kv.second;
+      if (n > best || (n == best && !v.empty() && (chosen.empty() || v < chosen))) {
+        best = n;
+        chosen = v;
+      }
+    }
+
+    Json::Value votes(Json::arrayValue);
+    // Emit votes in a deterministic order (count desc, value asc).
+    std::vector<std::pair<std::string, int>> vs;
+    vs.reserve(counts.size());
+    for (const auto& kv : counts) vs.push_back(kv);
+    std::sort(vs.begin(), vs.end(), [](const auto& a, const auto& b) {
+      if (a.second != b.second) return a.second > b.second;
+      return a.first < b.first;
+    });
+    for (const auto& kv : vs) {
+      Json::Value vj(Json::objectValue);
+      vj["value"] = kv.first;
+      vj["count"] = kv.second;
+      votes.append(vj);
+    }
+
+    c["chosen"] = chosen;
+    c["chosen_count"] = best;
+    c["votes"] = votes;
+    c["values_by_task"] = values_by_task;
+    c["missing"] = missing;
+
+    const bool ok = (!chosen.empty() && best >= quorum);
+    c["ok"] = ok;
+    if (!ok) {
+      c["error"] = "quorum not met";
+      all_ok = false;
+    } else if (first_chosen.empty()) {
+      first_chosen = chosen;
+    }
+
+    checks.append(c);
+  }
+
+  out["checks"] = checks;
+  out["ok"] = all_ok;
+  if (all_ok) {
+    out["assistant_text"] = first_chosen;
+  } else {
+    out["assistant_text"] = "";
+    out["error"] = "aggregate check failed";
+  }
+  return out;
+}
+
 static void insert_workflow_event_best_effort(
   AgentDb* db,
   const std::string& workflow_id,
@@ -597,7 +749,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   std::string perr;
   if (json_parse_any_value(task.request_json, &rr, &perr) && rr.isObject()) {
     const std::string kind = json_get_string(rr, "kind");
-    if (kind != "avm_capsule") {
+    if (kind != "avm_capsule" && kind != "aggregate") {
       const std::string prompt = json_get_string(rr, "prompt");
       if (!prompt.empty()) {
         rr["prompt"] = expand_prompt_templates(prompt, assistant_by_task, result_json_by_task);
@@ -635,6 +787,11 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     } else {
       out["assistant_text"] = "";
     }
+  } else if (kind == "aggregate") {
+    const Json::Value agg = rr.isMember("aggregate") && rr["aggregate"].isObject() ? rr["aggregate"] : Json::Value(Json::nullValue);
+    std::string aerr;
+    out = workflow_aggregate_quorum_hashes_to_json(agg, result_json_by_task, &aerr);
+    if (!aerr.empty() && (!out.isMember("error") || !out["error"].isString())) out["error"] = aerr;
   } else {
     out = run_request_to_json_internal(cfg, ocfg, db_, tool_ext_or_null_, sessions_root_dir_, request_body, nullptr);
   }

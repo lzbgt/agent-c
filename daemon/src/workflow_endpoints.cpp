@@ -273,9 +273,11 @@ void handle_workflow_submit_endpoint(
     const std::string kind =
       t.isMember("kind") && t["kind"].isString() ? trim_copy(t["kind"].asString()) : std::string();
     const bool is_avm = (kind == "avm_capsule");
+    const bool is_aggregate = (kind == "aggregate");
+    const bool is_special = is_avm || is_aggregate;
 
     Json::Value run_req = t.isMember("request") && t["request"].isObject() ? t["request"] : t;
-    if (!is_avm && defaults.isObject()) {
+    if (!is_special && defaults.isObject()) {
       for (const auto& k : defaults.getMemberNames()) {
         if (!run_req.isMember(k)) run_req[k] = defaults[k];
       }
@@ -308,9 +310,9 @@ void handle_workflow_submit_endpoint(
     }
     if (task_priority < -1000) task_priority = -1000;
     if (task_priority > 1000) task_priority = 1000;
-    run_req["priority"] = task_priority;
+    if (!is_special) run_req["priority"] = task_priority;
 
-    if (!is_avm) {
+    if (!is_special) {
       if (!allow_sessions) {
         run_req["no_session"] = true;
         if (!run_req.isMember("tools")) run_req["tools"] = "none";
@@ -322,7 +324,7 @@ void handle_workflow_submit_endpoint(
       }
     }
 
-    if (!is_avm) {
+    if (!is_special) {
       if (run_req.isMember("api_key") && run_req["api_key"].isString() && !run_req["api_key"].asString().empty() && !allow_inline_api_keys) {
         resp->status = 400;
         Json::Value o(Json::objectValue);
@@ -357,6 +359,30 @@ void handle_workflow_submit_endpoint(
       }
       task_req["kind"] = "avm_capsule";
       task_req["capsule"] = cap;
+      task_req["priority"] = task_priority;
+      task_req["trace_id"] = trace_id + ":" + task_id;
+    } else if (is_aggregate) {
+      if (!t.isMember("aggregate") || !t["aggregate"].isObject()) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "aggregate task missing aggregate object";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+      const auto& agg = t["aggregate"];
+      if (!agg.isMember("task_ids") || !agg["task_ids"].isArray() || agg["task_ids"].empty()) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "aggregate.task_ids must be a non-empty array";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+      task_req["kind"] = "aggregate";
+      task_req["aggregate"] = agg;
       task_req["priority"] = task_priority;
       task_req["trace_id"] = trace_id + ":" + task_id;
     } else {

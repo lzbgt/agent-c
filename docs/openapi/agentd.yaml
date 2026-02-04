@@ -1191,13 +1191,16 @@ components:
         This is a tagged union:
         - LLM/tool tasks: `request` (a `RunRequest`) with a non-empty `prompt`
         - Deterministic capsule tasks: `kind: avm_capsule` with `capsule` (see `AvmCapsuleRunArgs`)
+        - Deterministic aggregation tasks: `kind: aggregate` with `aggregate` (see `WorkflowAggregateSpec`)
 
         Note: OpenAPI cannot express conditional required fields perfectly; see the server-side behavior:
         - If `kind == avm_capsule`, `capsule.obc_base64` is required and `request.prompt` is not used.
+        - If `kind == aggregate`, `aggregate.task_ids` is required and `request.prompt` is not used.
         - Otherwise, `request.prompt` is required (or prompt at the top-level is accepted by the server for legacy reasons).
       oneOf:
         - $ref: "#/components/schemas/WorkflowTaskRunSpec"
         - $ref: "#/components/schemas/WorkflowTaskAvmCapsuleSpec"
+        - $ref: "#/components/schemas/WorkflowTaskAggregateSpec"
 
     WorkflowTaskRunSpec:
       type: object
@@ -1242,6 +1245,51 @@ components:
           type: object
           description: Deterministic correctness assertions (engine-enforced)
           additionalProperties: true
+
+    WorkflowTaskAggregateSpec:
+      type: object
+      required: [task_id, kind, aggregate]
+      properties:
+        task_id: { type: string }
+        kind:
+          type: string
+          enum: [aggregate]
+          description: Deterministic aggregation/join task (no LLM required).
+        depends_on:
+          type: array
+          items: { type: string }
+        max_attempts: { type: integer, format: int32 }
+        priority:
+          type: integer
+          format: int32
+          description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+        aggregate:
+          $ref: "#/components/schemas/WorkflowAggregateSpec"
+        expect:
+          type: object
+          description: Deterministic correctness assertions (engine-enforced)
+          additionalProperties: true
+
+    WorkflowAggregateSpec:
+      type: object
+      required: [task_ids]
+      properties:
+        mode:
+          type: string
+          enum: [quorum_hashes]
+          description: Aggregation strategy (v0 supports quorum_hashes only).
+        task_ids:
+          type: array
+          description: Task IDs to read results from (votes).
+          items: { type: string }
+        quorum:
+          type: integer
+          format: int32
+          description: Minimum number of matching votes required (default: N=task_ids length).
+        pointers:
+          type: array
+          description: JSON pointers into each task result JSON to compare (default: [/avm/result_hash, /avm/trace_hash]).
+          items: { type: string }
 
     AvmCapsuleRunArgs:
       type: object
