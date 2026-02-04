@@ -118,6 +118,9 @@ Workflows are executed by a background runner in `agentd`:
 3) Platform enqueues `TASK_ASSIGN` (`mode:"invoke"`) to call a device tool
 4) Node replies with `TASK_ACK` + `TASK_EVENT` + `TASK_DONE`
 
+Proof:
+- `ctest` includes `agentd_edge_interop_smoke` and `agentd_edge_workflow_submit_message_smoke`.
+
 ## Storage
 
 DB tables are documented in `docs/DB.md`:

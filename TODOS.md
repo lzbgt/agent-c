@@ -58,6 +58,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Also supports `mode:"agent"` (dispatches `TASK_ASSIGN mode:"agent"` with a prompt/payload for embedded `agent_core`)
   - Use-case: mix deterministic compute + LLM reasoning + real-world actuation in one durable DAG.
   - Proof: `ctest` includes `agentd_workflow_edge_invoke_smoke` and `agentd_workflow_edge_agent_smoke`.
+- UM‑EAIS platform extensions (node → platform workflow handoff) are now proven end-to-end:
+  - `WORKFLOW_SUBMIT` and `WORKFLOW_CANCEL` can be ingested via `POST /api/v1/edge/message` and drive the edge workflow runner.
+  - Proof: `ctest` includes `agentd_edge_workflow_submit_message_smoke`.
 - Workflow engine now supports **soft-fail** tasks via `allow_error: true`:
   - If a task ends `status="error"` and `allow_error=true`, the workflow can still complete `done` (so long as no “hard” errors remain).
   - Dependencies treat `(status=error + allow_error=true)` as satisfied; aggregation tasks can also depend on any terminal dependency to compute joins over errors.

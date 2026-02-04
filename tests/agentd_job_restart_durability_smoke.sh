@@ -36,7 +36,7 @@ trap cleanup EXIT
 python3 -u - <<PY > "${LOG_DIR}/${NAME}.stub.stdout.log" 2> "${LOG_DIR}/${NAME}.stub.stderr.log" &
 import json
 import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 class H(BaseHTTPRequestHandler):
   def log_message(self, fmt, *args):
@@ -48,7 +48,7 @@ class H(BaseHTTPRequestHandler):
       self.end_headers()
       return
     # Delay long enough that the daemon is killed mid-request.
-    time.sleep(8.0)
+    time.sleep(5.0)
     body = {
       "id": "cmpl_stub_nonstream",
       "object": "chat.completion",
@@ -65,7 +65,7 @@ class H(BaseHTTPRequestHandler):
     self.end_headers()
     self.wfile.write(data)
 
-HTTPServer(("127.0.0.1", ${PORT_STUB}), H).serve_forever()
+ThreadingHTTPServer(("127.0.0.1", ${PORT_STUB}), H).serve_forever()
 PY
 STUB_PID=$!
 
@@ -73,6 +73,7 @@ STUB_PID=$!
 OPENAI_API_KEY="dummy" agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "${NAME}" \
   --db-path "${DB_PATH}" \
   --state-dir "${STATE_DIR}" \
+  --job-poll-ms 50 \
   --tools none
 
 agentd_smoke_wait_health "${DAEMON_URL}"
@@ -107,20 +108,34 @@ print(obj["job_id"])
 PY
 )"
 
-# Give the background thread a moment to start, then restart the daemon mid-job.
-sleep 0.5
+# Wait until the job is actually running so we deterministically kill mid-request.
+job_id_q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${job_id}")"
+for _ in $(seq 1 200); do
+  j="$(curl -fsS --noproxy "*" --max-time 10 "${DAEMON_URL}/api/v1/job?job_id=${job_id_q}")" || true
+  if python3 - <<PY >/dev/null 2>&1
+import json, sys
+obj = json.loads(r'''${j}''') if r'''${j}''' else {}
+raise SystemExit(0 if obj.get("status") == "running" else 1)
+PY
+  then
+    break
+  fi
+  sleep 0.05
+done
+
+# Restart the daemon mid-job.
 agentd_smoke_stop
 
 # Restart agentd (second process lifetime) against the same DB.
 OPENAI_API_KEY="dummy" agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "${NAME}_restart" \
   --db-path "${DB_PATH}" \
   --state-dir "${STATE_DIR}" \
+  --job-poll-ms 50 \
   --tools none
 agentd_smoke_wait_health "${DAEMON_URL}"
 
-job_id_q="$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))' "${job_id}")"
 job=""
-for _ in $(seq 1 200); do
+for _ in $(seq 1 800); do
   job="$(curl -fsS --noproxy "*" --max-time 10 "${DAEMON_URL}/api/v1/job?job_id=${job_id_q}")" || true
   if python3 - <<PY >/dev/null 2>&1
 import json, sys
