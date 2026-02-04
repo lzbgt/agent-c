@@ -159,7 +159,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 12;
+  const int kSchemaVersion = 13;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -493,6 +493,84 @@ CREATE INDEX IF NOT EXISTS workflow_tasks_by_status_prio ON workflow_tasks(statu
 )SQL";
     if (!exec_locked(schema_v12, out_error)) return false;
     cur_ver = 12;
+  }
+
+  if (cur_ver < 13) {
+    const char* schema_v13 = R"SQL(
+CREATE TABLE IF NOT EXISTS edge_nodes(
+  node_id TEXT PRIMARY KEY,
+  model TEXT,
+  fw_git_sha TEXT,
+  caps_sha256 TEXT,
+  manifest_json TEXT,
+  tags_json TEXT,
+  tools_json TEXT,
+  hardware_presence_json TEXT,
+  health_json TEXT,
+  last_hello_utc_ms INTEGER,
+  last_heartbeat_utc_ms INTEGER
+);
+CREATE INDEX IF NOT EXISTS edge_nodes_by_heartbeat ON edge_nodes(last_heartbeat_utc_ms DESC, node_id);
+
+CREATE TABLE IF NOT EXISTS edge_inbox_messages(
+  msg_id TEXT PRIMARY KEY,
+  ts_utc_ms INTEGER NOT NULL,
+  type TEXT NOT NULL,
+  from_id TEXT,
+  to_id TEXT,
+  envelope_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS edge_inbox_by_type ON edge_inbox_messages(type, ts_utc_ms DESC);
+
+CREATE TABLE IF NOT EXISTS edge_outbox_messages(
+  outbox_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  node_id TEXT NOT NULL,
+  ts_utc_ms INTEGER NOT NULL,
+  envelope_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS edge_outbox_by_node ON edge_outbox_messages(node_id, outbox_id);
+
+CREATE TABLE IF NOT EXISTS edge_tasks(
+  task_id TEXT NOT NULL,
+  step_id TEXT NOT NULL,
+  node_id TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  mode TEXT NOT NULL,
+  deadline_utc_ms INTEGER NOT NULL,
+  payload_json TEXT NOT NULL,
+  state TEXT NOT NULL,
+  created_utc_ms INTEGER NOT NULL,
+  updated_utc_ms INTEGER NOT NULL,
+  result_json TEXT,
+  error TEXT,
+  PRIMARY KEY(task_id, step_id),
+  UNIQUE(node_id, idempotency_key)
+);
+CREATE INDEX IF NOT EXISTS edge_tasks_by_state ON edge_tasks(state, updated_utc_ms DESC);
+CREATE INDEX IF NOT EXISTS edge_tasks_by_node ON edge_tasks(node_id, updated_utc_ms DESC);
+
+CREATE TABLE IF NOT EXISTS edge_task_events(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  task_id TEXT NOT NULL,
+  step_id TEXT NOT NULL,
+  ts_utc_ms INTEGER NOT NULL,
+  state TEXT NOT NULL,
+  data_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS edge_task_events_by_task ON edge_task_events(task_id, step_id, id);
+
+CREATE TABLE IF NOT EXISTS edge_sensor_events(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  node_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  ts_utc_ms INTEGER NOT NULL,
+  confidence REAL,
+  data_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS edge_sensor_by_type ON edge_sensor_events(event_type, ts_utc_ms DESC, id);
+)SQL";
+    if (!exec_locked(schema_v13, out_error)) return false;
+    cur_ver = 13;
   }
 
   // Record schema version.

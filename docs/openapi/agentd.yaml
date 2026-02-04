@@ -18,6 +18,7 @@ tags:
   - name: workflows
   - name: tools
   - name: memory
+  - name: edge
   - name: sessions
 
 paths:
@@ -410,6 +411,144 @@ paths:
               schema:
                 type: string
 
+  /api/v1/edge/message:
+    post:
+      tags: [edge]
+      summary: Ingest an UM-BMP message envelope (edge interop)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeMessageEnvelope"
+      responses:
+        "200":
+          description: Accepted (idempotent)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok]
+                properties:
+                  ok: { type: boolean }
+                  deduped: { type: boolean }
+
+  /api/v1/edge/outbox:
+    get:
+      tags: [edge]
+      summary: Poll outbound UM-BMP messages for a node (outbox cursor)
+      parameters:
+        - in: query
+          name: node_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: cursor
+          required: false
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, format: int32 }
+      responses:
+        "200":
+          description: Outbox slice
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EdgeOutboxResponse"
+
+  /api/v1/edge/nodes:
+    get:
+      tags: [edge]
+      summary: List registered edge nodes
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, format: int32 }
+      responses:
+        "200":
+          description: Nodes list
+
+  /api/v1/edge/node:
+    get:
+      tags: [edge]
+      summary: Get node registry record (summary)
+      parameters:
+        - in: query
+          name: node_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Node record
+
+  /api/v1/edge/node/caps:
+    get:
+      tags: [edge]
+      summary: Get node capability manifest (UM-ACDS)
+      parameters:
+        - in: query
+          name: node_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Node manifest
+
+  /api/v1/edge/task/assign:
+    post:
+      tags: [edge]
+      summary: Enqueue a TASK_ASSIGN to a node (platform helper)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EdgeTaskAssignRequest"
+      responses:
+        "200":
+          description: Enqueued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, node_id, task_id, step_id, outbox_id]
+                properties:
+                  ok: { type: boolean }
+                  node_id: { type: string }
+                  task_id: { type: string }
+                  step_id: { type: string }
+                  outbox_id: { type: integer, format: int64 }
+
+  /api/v1/edge/task:
+    get:
+      tags: [edge]
+      summary: Get an edge task status
+      parameters:
+        - in: query
+          name: task_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: step_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Task state
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, task]
+                properties:
+                  ok: { type: boolean }
+                  task:
+                    type: object
+                    additionalProperties: true
+
   /api/v1/sessions:
     get:
       tags: [sessions]
@@ -432,6 +571,71 @@ components:
       properties:
         ok: { type: boolean, enum: [false] }
         error: { type: string }
+
+    EdgeMessageEnvelope:
+      type: object
+      required: [msg_id, ts_utc_ms, type, from, to, body]
+      properties:
+        msg_id: { type: string }
+        ts_utc_ms: { type: integer, format: int64 }
+        type: { type: string }
+        from: { type: string }
+        to:
+          description: Destination address or null
+          type: string
+          nullable: true
+        body:
+          type: object
+          additionalProperties: true
+        auth:
+          type: object
+          additionalProperties: true
+        trace:
+          type: object
+          additionalProperties: true
+
+    EdgeOutboxResponse:
+      type: object
+      required: [ok, node_id, cursor_base, cursor_next, messages]
+      properties:
+        ok: { type: boolean }
+        node_id: { type: string }
+        cursor_base: { type: integer, format: int64 }
+        cursor_next: { type: integer, format: int64 }
+        messages:
+          type: array
+          items:
+            type: object
+            required: [outbox_id, ts_utc_ms]
+            properties:
+              outbox_id: { type: integer, format: int64 }
+              ts_utc_ms: { type: integer, format: int64 }
+              msg:
+                $ref: "#/components/schemas/EdgeMessageEnvelope"
+              msg_raw: { type: string }
+              parse_error: { type: string }
+
+    EdgeTaskAssignRequest:
+      type: object
+      required: [task_id, step_id, idempotency_key, mode, deadline_utc_ms, payload]
+      properties:
+        node_id:
+          type: string
+          description: Explicit target node_id (preferred when known)
+        match_any:
+          type: object
+          description: Capability-based node selection
+          additionalProperties: true
+        task_id: { type: string }
+        step_id: { type: string }
+        idempotency_key: { type: string }
+        mode:
+          type: string
+          enum: [invoke, agent]
+        deadline_utc_ms: { type: integer, format: int64 }
+        payload:
+          type: object
+          additionalProperties: true
 
     ToolDef:
       type: object

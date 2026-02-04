@@ -223,8 +223,20 @@ int main() {
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflows') WHERE name='priority';");
   const int64_t workflow_task_prio_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflow_tasks') WHERE name='priority';");
+  const int64_t edge_nodes_id_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('edge_nodes') WHERE name='node_id';");
+  const int64_t edge_outbox_id_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('edge_outbox_messages') WHERE name='outbox_id';");
+  const int64_t edge_inbox_msg_id_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('edge_inbox_messages') WHERE name='msg_id';");
+  const int64_t edge_task_task_id_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('edge_tasks') WHERE name='task_id';");
+  const int64_t edge_task_event_id_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('edge_task_events') WHERE name='id';");
+  const int64_t edge_sensor_id_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('edge_sensor_events') WHERE name='id';");
   sqlite3_close(raw2);
-  assert(ver == 12);
+  assert(ver == 13);
   assert(arts2 == 0);
   assert(stop_reason_cols == 1);
   assert(ua_cols == 1);
@@ -241,6 +253,12 @@ int main() {
   assert(job_prio_cols == 1);
   assert(workflow_prio_cols == 1);
   assert(workflow_task_prio_cols == 1);
+  assert(edge_nodes_id_cols == 1);
+  assert(edge_outbox_id_cols == 1);
+  assert(edge_inbox_msg_id_cols == 1);
+  assert(edge_task_task_id_cols == 1);
+  assert(edge_task_event_id_cols == 1);
+  assert(edge_sensor_id_cols == 1);
 
   db.close();
   std::filesystem::remove(tmp, ec);

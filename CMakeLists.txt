@@ -131,12 +131,14 @@ if(AGENT_BUILD_HOST)
   # `AGENTD_ENABLE_HTTP` (useful for app embedding where a cloud broker / custom transport is used).
   set(AGENTD_LIB_SOURCES
     daemon/src/agent_db.cpp
+    daemon/src/agent_db_edge.cpp
     daemon/src/agentd_api.cpp
     daemon/src/client_profiles.cpp
     daemon/src/config_endpoint.cpp
     daemon/src/cors.cpp
     daemon/src/db_query_endpoints.cpp
     daemon/src/daemon_auth.cpp
+    daemon/src/edge_interop_endpoints.cpp
     daemon/src/file_endpoint.cpp
     daemon/src/http_util.cpp
     daemon/src/job_endpoints.cpp
@@ -296,11 +298,12 @@ if(AGENT_BUILD_HOST)
     set_tests_properties(agentd_job_restart_durability_smoke PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME agentd_orchestrate_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_orchestrate_smoke.sh $<TARGET_FILE:agentd>)
     set_tests_properties(agentd_orchestrate_smoke PROPERTIES SKIP_RETURN_CODE 77)
-    add_test(NAME agentd_workflow_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_smoke.sh $<TARGET_FILE:agentd>)
-    add_test(NAME agentd_workflow_stream_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_stream_smoke.sh $<TARGET_FILE:agentd>)
-    add_test(NAME agentd_memory_consolidate_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_memory_consolidate_smoke.sh $<TARGET_FILE:agentd>)
-    add_test(NAME agentd_provider_retry_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_provider_retry_smoke.sh $<TARGET_FILE:agentd>)
-    set_tests_properties(agentd_provider_retry_smoke PROPERTIES SKIP_RETURN_CODE 77)
+	    add_test(NAME agentd_workflow_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_smoke.sh $<TARGET_FILE:agentd>)
+	    add_test(NAME agentd_workflow_stream_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_stream_smoke.sh $<TARGET_FILE:agentd>)
+	    add_test(NAME agentd_edge_interop_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_interop_smoke.sh $<TARGET_FILE:agentd>)
+	    add_test(NAME agentd_memory_consolidate_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_memory_consolidate_smoke.sh $<TARGET_FILE:agentd>)
+	    add_test(NAME agentd_provider_retry_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_provider_retry_smoke.sh $<TARGET_FILE:agentd>)
+	    set_tests_properties(agentd_provider_retry_smoke PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME agentd_stream_provider_retry_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_stream_provider_retry_smoke.sh $<TARGET_FILE:agentd>)
     set_tests_properties(agentd_stream_provider_retry_smoke PROPERTIES SKIP_RETURN_CODE 77)
 

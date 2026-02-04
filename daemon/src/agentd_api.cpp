@@ -6,6 +6,7 @@
 #include "cors.h"
 #include "daemon_auth.h"
 #include "db_query_endpoints.h"
+#include "edge_interop_endpoints.h"
 #include "file_endpoint.h"
 #include "job_endpoints.h"
 #include "orchestrate_endpoints.h"
@@ -432,6 +433,43 @@ bool AgentdApi::init(std::string* out_error) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();
     handle_workflow_cancel_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+
+  // Edge interop endpoints (UM‑EAIS / UM‑BMP transport mapping).
+  impl_->route("POST", "/api/v1/edge/message", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_edge_message_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route("GET", "/api/v1/edge/outbox", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_edge_outbox_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route("GET", "/api/v1/edge/nodes", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_edge_nodes_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route("GET", "/api/v1/edge/node", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_edge_node_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route("GET", "/api/v1/edge/node/caps", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_edge_node_caps_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route("POST", "/api/v1/edge/task/assign", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_edge_task_assign_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route("GET", "/api/v1/edge/task", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_edge_task_get_endpoint(cur, self->cors_cfg, &self->db, req, resp);
   });
 
   // Job endpoints (non-streaming).

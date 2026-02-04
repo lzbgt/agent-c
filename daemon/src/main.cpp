@@ -22,6 +22,7 @@
 #include "workflow_engine.h"
 #include "workflow_stream_endpoint.h"
 #include "db_query_endpoints.h"
+#include "edge_interop_endpoints.h"
 #include "secrets_file.h"
 #include "config_store.h"
 #include "runtime_config.h"
@@ -1049,6 +1050,36 @@ int main(int argc, char** argv) {
   server.handle_stream("GET", "/api/v1/workflow/stream", [&](const HttpRequest& req, int client_fd) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_workflow_stream_endpoint(cur.auth_token, cors_cfg, db_or_null, req, client_fd);
+  });
+
+  // Edge interop endpoints (UM‑EAIS / UM‑BMP transport mapping).
+  server.handle("POST", "/api/v1/edge/message", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_message_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/edge/outbox", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_outbox_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/edge/nodes", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_nodes_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/edge/node", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_node_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/edge/node/caps", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_node_caps_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("POST", "/api/v1/edge/task/assign", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_task_assign_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/edge/task", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_edge_task_get_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   server.handle("GET", "/api/v1/trace", [&](const HttpRequest& req, HttpResponse* resp) {

@@ -57,7 +57,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v12)
+## Schema (v13)
 
 All timestamps are Unix milliseconds.
 
@@ -322,6 +322,104 @@ Durable workflow event log used for:
 
 Indexes:
 - `CREATE INDEX workflow_events_by_workflow ON workflow_events(workflow_id, event_id)`
+
+### `edge_nodes`
+
+UM‑EAIS (edge embedded-agent interop) node registry. This is the platform/broker view of a heterogeneous MCU fleet.
+
+- `node_id TEXT PRIMARY KEY`
+- `model TEXT` (optional)
+- `fw_git_sha TEXT` (optional)
+- `caps_sha256 TEXT` (optional; manifest hash)
+- `manifest_json TEXT` (optional; UM‑ACDS manifest JSON object string)
+- `tags_json TEXT` (optional; JSON array string)
+- `tools_json TEXT` (optional; JSON array string of tool names)
+- `hardware_presence_json TEXT` (optional; JSON object string)
+- `health_json TEXT` (optional; JSON object string)
+- `last_hello_utc_ms INTEGER` (optional)
+- `last_heartbeat_utc_ms INTEGER` (optional)
+
+Indexes:
+- `CREATE INDEX edge_nodes_by_heartbeat ON edge_nodes(last_heartbeat_utc_ms DESC, node_id)`
+
+### `edge_inbox_messages`
+
+Durable inbound UM‑BMP envelopes. Used for dedupe, audit/debug, and replay.
+
+- `msg_id TEXT PRIMARY KEY`
+- `ts_utc_ms INTEGER NOT NULL`
+- `type TEXT NOT NULL`
+- `from_id TEXT` (optional)
+- `to_id TEXT` (optional)
+- `envelope_json TEXT NOT NULL` (full envelope JSON object string)
+
+Indexes:
+- `CREATE INDEX edge_inbox_by_type ON edge_inbox_messages(type, ts_utc_ms DESC)`
+
+### `edge_outbox_messages`
+
+Durable outbound UM‑BMP envelopes. Nodes poll via an outbox cursor (`outbox_id`).
+
+- `outbox_id INTEGER PRIMARY KEY AUTOINCREMENT`
+- `node_id TEXT NOT NULL`
+- `ts_utc_ms INTEGER NOT NULL`
+- `envelope_json TEXT NOT NULL`
+
+Indexes:
+- `CREATE INDEX edge_outbox_by_node ON edge_outbox_messages(node_id, outbox_id)`
+
+### `edge_tasks`
+
+Durable platform-side task tracking for UM‑BMP tasking (`TASK_ASSIGN`/`TASK_*`).
+
+- `task_id TEXT NOT NULL`
+- `step_id TEXT NOT NULL`
+- `node_id TEXT NOT NULL`
+- `idempotency_key TEXT NOT NULL`
+- `mode TEXT NOT NULL` (`invoke|agent`)
+- `deadline_utc_ms INTEGER NOT NULL`
+- `payload_json TEXT NOT NULL` (JSON object string)
+- `state TEXT NOT NULL` (`QUEUED|RUNNING|SUCCEEDED|FAILED|TIMED_OUT|CANCELED`)
+- `created_utc_ms INTEGER NOT NULL`
+- `updated_utc_ms INTEGER NOT NULL`
+- `result_json TEXT` (optional)
+- `error TEXT` (optional)
+
+Keys/constraints:
+- `PRIMARY KEY(task_id, step_id)`
+- `UNIQUE(node_id, idempotency_key)` (platform dispatch dedupe)
+
+Indexes:
+- `CREATE INDEX edge_tasks_by_state ON edge_tasks(state, updated_utc_ms DESC)`
+- `CREATE INDEX edge_tasks_by_node ON edge_tasks(node_id, updated_utc_ms DESC)`
+
+### `edge_task_events`
+
+Append-only task event log (platform-side). Typically mirrors UM‑BMP `TASK_EVENT` plus terminal markers.
+
+- `id INTEGER PRIMARY KEY AUTOINCREMENT`
+- `task_id TEXT NOT NULL`
+- `step_id TEXT NOT NULL`
+- `ts_utc_ms INTEGER NOT NULL`
+- `state TEXT NOT NULL`
+- `data_json TEXT NOT NULL` (JSON object string)
+
+Indexes:
+- `CREATE INDEX edge_task_events_by_task ON edge_task_events(task_id, step_id, id)`
+
+### `edge_sensor_events`
+
+Durable ingestion of UM‑BMP `SENSOR_EVENT`.
+
+- `id INTEGER PRIMARY KEY AUTOINCREMENT`
+- `node_id TEXT NOT NULL`
+- `event_type TEXT NOT NULL`
+- `ts_utc_ms INTEGER NOT NULL`
+- `confidence REAL` (optional)
+- `data_json TEXT NOT NULL` (JSON object string)
+
+Indexes:
+- `CREATE INDEX edge_sensor_by_type ON edge_sensor_events(event_type, ts_utc_ms DESC, id)`
 
 ## Source of truth
 

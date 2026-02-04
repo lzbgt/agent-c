@@ -309,6 +309,114 @@ class AgentDb {
     std::string* out_error
   );
 
+  // --- Edge interop (UM‑EAIS v0.1) ---
+  //
+  // This is a transport-agnostic broker layer that persists:
+  // - node registry (capability manifests + tags/tools)
+  // - inbound UM‑BMP messages (dedupe by msg_id)
+  // - outbound UM‑BMP messages (per-node outbox cursor)
+  // - task state machine and events (TASK_ASSIGN/ACK/EVENT/DONE/FAILED)
+
+  struct EdgeNodeRow {
+    std::string node_id;
+    std::string model;
+    std::string fw_git_sha;
+    std::string caps_sha256;
+    std::string manifest_json;           // JSON object string (UM‑ACDS manifest), optional
+    std::string tags_json;               // JSON array string of strings, optional
+    std::string tools_json;              // JSON array string of strings, optional
+    std::string hardware_presence_json;  // JSON object string, optional
+    std::string health_json;             // JSON object string, optional
+    int64_t last_hello_utc_ms = 0;
+    int64_t last_heartbeat_utc_ms = 0;
+  };
+
+  bool upsert_edge_node(const EdgeNodeRow& row, std::string* out_error);
+  bool get_edge_node(const std::string& node_id, EdgeNodeRow* out_row, std::string* out_error);
+  bool list_edge_nodes(size_t max_rows, std::vector<EdgeNodeRow>* out_rows_desc, std::string* out_error);
+
+  struct EdgeInboxMessageRow {
+    std::string msg_id;
+    int64_t ts_utc_ms = 0;
+    std::string type;
+    std::string from_id;
+    std::string to_id;
+    std::string envelope_json; // full envelope JSON object string
+  };
+
+  // Inserts an inbound message. Dedupe is by msg_id primary key:
+  // - returns true when inserted
+  // - returns false on failure (including duplicate msg_id)
+  bool insert_edge_inbox_message(const EdgeInboxMessageRow& row, std::string* out_error);
+
+  struct EdgeOutboxMessageRow {
+    int64_t outbox_id = 0;
+    std::string node_id;
+    int64_t ts_utc_ms = 0;
+    std::string envelope_json; // full envelope JSON object string
+  };
+
+  bool insert_edge_outbox_message(const EdgeOutboxMessageRow& row, int64_t* out_outbox_id, std::string* out_error);
+  bool list_edge_outbox_messages(
+    const std::string& node_id,
+    int64_t after_outbox_id,
+    size_t max_rows,
+    std::vector<EdgeOutboxMessageRow>* out_rows_asc,
+    std::string* out_error
+  );
+
+  struct EdgeTaskRow {
+    std::string task_id;
+    std::string step_id;
+    std::string node_id;
+    std::string idempotency_key;
+    std::string mode; // invoke|agent
+    int64_t deadline_utc_ms = 0;
+    std::string payload_json; // JSON object string (mode-specific)
+    std::string state;        // QUEUED|RUNNING|SUCCEEDED|FAILED|TIMED_OUT|CANCELED
+    int64_t created_utc_ms = 0;
+    int64_t updated_utc_ms = 0;
+    std::string result_json; // JSON object string (optional)
+    std::string error;
+  };
+
+  bool upsert_edge_task(const EdgeTaskRow& row, std::string* out_error);
+  bool get_edge_task(const std::string& task_id, const std::string& step_id, EdgeTaskRow* out_row, std::string* out_error);
+  bool get_edge_task_by_node_idempotency(
+    const std::string& node_id,
+    const std::string& idempotency_key,
+    EdgeTaskRow* out_row,
+    std::string* out_error
+  );
+  bool list_edge_tasks_by_state(
+    const std::string& state,
+    size_t max_rows,
+    std::vector<EdgeTaskRow>* out_rows_desc,
+    std::string* out_error
+  );
+
+  struct EdgeTaskEventRow {
+    int64_t id = 0;
+    std::string task_id;
+    std::string step_id;
+    int64_t ts_utc_ms = 0;
+    std::string state;
+    std::string data_json; // JSON object string
+  };
+
+  bool insert_edge_task_event(const EdgeTaskEventRow& row, int64_t* out_id, std::string* out_error);
+
+  struct EdgeSensorEventRow {
+    int64_t id = 0;
+    std::string node_id;
+    std::string event_type;
+    int64_t ts_utc_ms = 0;
+    double confidence = 0.0; // optional; 0 when missing
+    std::string data_json;   // JSON object string
+  };
+
+  bool insert_edge_sensor_event(const EdgeSensorEventRow& row, int64_t* out_id, std::string* out_error);
+
  private:
   bool ensure_schema_locked(std::string* out_error);
   bool exec_locked(const std::string& sql, std::string* out_error);
