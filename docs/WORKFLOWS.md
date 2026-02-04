@@ -246,6 +246,11 @@ Notes:
 
 `GET /api/v1/workflow?workflow_id=...&include_tasks=1&include_results=0|1`
 
+Optional debugging:
+- `include_spec=1` returns the redacted persisted submit request as:
+  - `spec_json` (always; may be truncated)
+  - `spec` (only when `spec_json` parses as JSON)
+
 ### Workflow scheduler stats
 
 `GET /api/v1/workflow/stats`

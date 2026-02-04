@@ -559,6 +559,10 @@ paths:
           name: include_results
           required: false
           schema: { type: boolean }
+        - in: query
+          name: include_spec
+          required: false
+          schema: { type: boolean }
       responses:
         "200":
           description: Workflow snapshot
@@ -1590,6 +1594,13 @@ components:
             additionalProperties: true
         result:
           type: object
+          additionalProperties: true
+        spec_json:
+          type: string
+          description: Redacted persisted submit request (raw JSON string; may be truncated).
+        spec:
+          type: object
+          description: Parsed spec_json when available.
           additionalProperties: true
 
     WorkflowStatsResponse:

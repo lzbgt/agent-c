@@ -108,6 +108,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - Workflow scheduler stats endpoint (queue pressure metrics):
   - `GET /api/v1/workflow/stats`
   - Proof: `ctest` includes `agentd_workflow_stats_smoke`.
+- Workflow spec introspection:
+  - `GET /api/v1/workflow?workflow_id=...&include_spec=1` returns redacted `spec_json` (+ parsed `spec` when valid).
+  - Proof: `ctest` includes `agentd_workflow_get_spec_smoke`.
 
 ## P0 (next: maximize autonomous continuity + correctness)
 

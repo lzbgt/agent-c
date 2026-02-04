@@ -829,6 +829,8 @@ void handle_workflow_get_endpoint(
   const bool include_tasks = !incl_tasks_q || (*incl_tasks_q != "0" && *incl_tasks_q != "false");
   const auto incl_results_q = query_get(req.query, "include_results");
   const bool include_results = incl_results_q && (*incl_results_q == "1" || *incl_results_q == "true");
+  const auto incl_spec_q = query_get(req.query, "include_spec");
+  const bool include_spec = incl_spec_q && (*incl_spec_q == "1" || *incl_spec_q == "true");
 
   AgentDb::WorkflowRow wf;
   std::string err;
@@ -888,6 +890,16 @@ void handle_workflow_get_endpoint(
     Json::Value rr;
     std::string rerr;
     if (json_parse_any(wf.result_json, &rr, &rerr)) o["result"] = rr;
+  }
+
+  if (include_spec && !wf.spec_json.empty()) {
+    // spec_json may have been truncated (size cap), which can render it invalid JSON; return raw string always.
+    o["spec_json"] = wf.spec_json;
+    Json::Value sr;
+    std::string serr;
+    if (json_parse_any(wf.spec_json, &sr, &serr)) {
+      o["spec"] = sr;
+    }
   }
 
   resp->body = json_stringify_compact(o);
