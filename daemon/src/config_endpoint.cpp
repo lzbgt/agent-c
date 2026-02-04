@@ -102,6 +102,8 @@ void handle_config_endpoint(
   engines["workflow_poll_ms"] = cfg.workflow_engine_poll_ms;
   engines["workflow_max_inflight_per_workflow"] = cfg.workflow_engine_max_inflight_per_workflow;
   engines["workflow_max_inflight_per_session"] = cfg.workflow_engine_max_inflight_per_session;
+  engines["workflow_admit_max_inflight_tasks_per_session"] = cfg.workflow_admit_max_inflight_tasks_per_session;
+  engines["workflow_admit_max_inflight_tasks_total"] = cfg.workflow_admit_max_inflight_tasks_total;
   out["engines"] = engines;
 
   Json::Value memory(Json::objectValue);
@@ -171,6 +173,14 @@ void handle_config_update_endpoint(
   if (args.isMember("timeout_ms") && args["timeout_ms"].isInt64()) {
     const auto n = args["timeout_ms"].asInt64();
     if (n > 0) next.timeout_ms = (long)n;
+  }
+  if (args.isMember("workflow_admit_max_inflight_tasks_per_session") && args["workflow_admit_max_inflight_tasks_per_session"].isInt()) {
+    const int n = args["workflow_admit_max_inflight_tasks_per_session"].asInt();
+    next.workflow_admit_max_inflight_tasks_per_session = std::max(0, std::min(100000, n));
+  }
+  if (args.isMember("workflow_admit_max_inflight_tasks_total") && args["workflow_admit_max_inflight_tasks_total"].isInt()) {
+    const int n = args["workflow_admit_max_inflight_tasks_total"].asInt();
+    next.workflow_admit_max_inflight_tasks_total = std::max(0, std::min(1000000, n));
   }
   if (args.isMember("system_profile") && args["system_profile"].isString()) {
     const std::string p = trim_copy(args["system_profile"].asString());

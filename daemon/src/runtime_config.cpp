@@ -60,6 +60,14 @@ bool load_runtime_config_best_effort(AgentDb& db, DaemonConfig* cfg_io, std::str
         const auto n = v["timeout_ms"].asInt64();
         if (n > 0) cfg_io->timeout_ms = (long)n;
       }
+      if (v.isMember("workflow_admit_max_inflight_tasks_per_session") && v["workflow_admit_max_inflight_tasks_per_session"].isInt()) {
+        cfg_io->workflow_admit_max_inflight_tasks_per_session =
+          std::max(0, std::min(100000, v["workflow_admit_max_inflight_tasks_per_session"].asInt()));
+      }
+      if (v.isMember("workflow_admit_max_inflight_tasks_total") && v["workflow_admit_max_inflight_tasks_total"].isInt()) {
+        cfg_io->workflow_admit_max_inflight_tasks_total =
+          std::max(0, std::min(1000000, v["workflow_admit_max_inflight_tasks_total"].asInt()));
+      }
     }
   }
 
@@ -107,6 +115,8 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
   v["summary_max_chars"] = (Json::UInt64)cfg.summary_max_chars;
   v["proxy_url"] = cfg.proxy_url.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.proxy_url);
   v["timeout_ms"] = (Json::Int64)cfg.timeout_ms;
+  v["workflow_admit_max_inflight_tasks_per_session"] = cfg.workflow_admit_max_inflight_tasks_per_session;
+  v["workflow_admit_max_inflight_tasks_total"] = cfg.workflow_admit_max_inflight_tasks_total;
 
   Json::StreamWriterBuilder wb;
   wb["indentation"] = "  ";

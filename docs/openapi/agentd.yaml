@@ -544,6 +544,12 @@ paths:
                   deduped:
                     type: boolean
                     description: If true, the workflow already existed for the provided idempotency_key and was not re-created.
+        "429":
+          description: Admission control / backpressure
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/workflow:
     get:
@@ -1572,7 +1578,9 @@ components:
       properties:
         workflow_id: { type: string }
         trace_id: { $ref: "#/components/schemas/TraceID" }
-        session_id: { type: string }
+        session_id:
+          type: string
+          description: Optional. Only honored when allow_sessions=true. If provided, the server upserts the session row on submit.
         idempotency_key:
           type: string
           description: Submit dedupe key (id-safe, <=128). Uniqueness is scoped by (session_id or empty string).
@@ -1584,7 +1592,9 @@ components:
           type: integer
           format: int32
           description: Higher workflows/tasks run sooner (scheduler hint). Default 0. Clamped to [-1000, 1000].
-        allow_sessions: { type: boolean }
+        allow_sessions:
+          type: boolean
+          description: If true, the workflow is associated with session_id and can participate in per-session caps/budgets.
         allow_inline_api_keys: { type: boolean }
         infer_depends_on:
           type: boolean

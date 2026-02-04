@@ -328,6 +328,71 @@ void handle_workflow_submit_endpoint(
     }
   }
 
+  // Admission control / backpressure: reject submits that would exceed configured inflight task caps.
+  //
+  // This prevents unbounded DB growth under fan-out storms and gives callers a deterministic retry surface.
+  {
+    const int max_total = cfg.workflow_admit_max_inflight_tasks_total;
+    if (max_total > 0) {
+      int64_t cur = 0;
+      std::string derr;
+      if (!db_or_null->count_workflow_inflight_tasks_total(&cur, &derr)) {
+        resp->status = 500;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "failed to query inflight workflow tasks";
+        o["detail"] = derr;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+      const int64_t requested = (int64_t)tasks.size();
+      if (cur + requested > (int64_t)max_total) {
+        resp->status = 429;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "workflow admission control: too many inflight tasks (daemon total)";
+        o["limit_inflight_tasks_total"] = max_total;
+        o["inflight_tasks_total"] = (Json::Int64)cur;
+        o["requested_tasks"] = (Json::Int64)requested;
+        o["retry_after_ms"] = 500;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+    }
+
+    const int max_per_sess = cfg.workflow_admit_max_inflight_tasks_per_session;
+    if (max_per_sess > 0) {
+      const std::string session_scope = allow_sessions ? session_id : "";
+      if (!session_scope.empty()) {
+        int64_t cur = 0;
+        std::string derr;
+        if (!db_or_null->count_workflow_inflight_tasks_for_session(session_scope, &cur, &derr)) {
+          resp->status = 500;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "failed to query inflight workflow tasks";
+          o["detail"] = derr;
+          resp->body = json_stringify_compact(o);
+          return;
+        }
+        const int64_t requested = (int64_t)tasks.size();
+        if (cur + requested > (int64_t)max_per_sess) {
+          resp->status = 429;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "workflow admission control: too many inflight tasks (session)";
+          o["session_id"] = session_scope;
+          o["limit_inflight_tasks_per_session"] = max_per_sess;
+          o["inflight_tasks_per_session"] = (Json::Int64)cur;
+          o["requested_tasks"] = (Json::Int64)requested;
+          o["retry_after_ms"] = 500;
+          resp->body = json_stringify_compact(o);
+          return;
+        }
+      }
+    }
+  }
+
   const Json::Value defaults =
     args.isMember("defaults") && args["defaults"].isObject() ? args["defaults"] : Json::Value(Json::nullValue);
 
@@ -822,6 +887,22 @@ void handle_workflow_submit_endpoint(
     wf.spec_json = redact_json_best_effort(json_stringify_compact(view));
     if (wf.spec_json.size() > 256 * 1024) {
       wf.spec_json.resize(256 * 1024);
+    }
+  }
+
+  // If workflows are associated with sessions, ensure the session row exists before inserting the workflow.
+  // (workflows.session_id has a foreign key constraint to sessions.session_id)
+  if (allow_sessions && !session_id.empty()) {
+    std::string sess_err;
+    if (!db_or_null->upsert_session(session_id, now, &sess_err)) {
+      resp->status = 500;
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "failed to upsert session";
+      o["detail"] = sess_err;
+      o["session_id"] = session_id;
+      resp->body = json_stringify_compact(o);
+      return;
     }
   }
 

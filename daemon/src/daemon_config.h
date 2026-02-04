@@ -83,6 +83,16 @@ struct DaemonConfig {
   // - max_inflight_per_session: optional multi-tenant fairness guard (0 = unlimited/disabled)
   int workflow_engine_max_inflight_per_workflow = 2;
   int workflow_engine_max_inflight_per_session = 0;
+  // Workflow admission control (backpressure at submit time).
+  //
+  // These caps apply in `POST /api/v1/workflow/submit` and are intended to prevent fan-out storms from
+  // consuming unbounded DB rows and memory. Caps are best-effort and intentionally simple.
+  //
+  // - max_inflight_tasks_per_session: caps total workflow_tasks with status queued|running across all workflows
+  //   sharing the same session_id (0 disables).
+  // - max_inflight_tasks_total: caps total workflow_tasks with status queued|running across the whole daemon (0 disables).
+  int workflow_admit_max_inflight_tasks_per_session = 0;
+  int workflow_admit_max_inflight_tasks_total = 0;
 
   // Memory consolidation (rolling, deterministic by default).
   //

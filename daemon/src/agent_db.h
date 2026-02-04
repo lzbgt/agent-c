@@ -293,6 +293,10 @@ class AgentDb {
   );
   bool list_workflow_tasks(const std::string& workflow_id, std::vector<WorkflowTaskRow>* out_rows, std::string* out_error);
 
+  // Admission control helper: counts workflow tasks with status queued|running.
+  bool count_workflow_inflight_tasks_total(int64_t* out_count, std::string* out_error);
+  bool count_workflow_inflight_tasks_for_session(const std::string& session_id_or_empty, int64_t* out_count, std::string* out_error);
+
   struct WorkflowSchedulerStats {
     int64_t now_unix_ms = 0;
     std::map<std::string, int64_t> workflows_by_status;

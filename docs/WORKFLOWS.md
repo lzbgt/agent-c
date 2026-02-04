@@ -58,6 +58,27 @@ Env equivalents:
 - `AGENTD_WORKFLOW_MAX_INFLIGHT_PER_WORKFLOW`
 - `AGENTD_WORKFLOW_MAX_INFLIGHT_PER_SESSION`
 
+### Admission control / backpressure at submit time (v1.5)
+
+Fairness limits how many tasks may be running concurrently, but it does not prevent a client from submitting an
+unbounded backlog (which can grow the DB and delay other work). `agentd` therefore supports **admission control**
+caps applied at `POST /api/v1/workflow/submit`:
+
+- `--workflow-admit-max-inflight-tasks-per-session <n>` (default: `0` = disabled)
+  - Caps total workflow tasks with status `queued|running` across all workflows that share the same `session_id`.
+- `--workflow-admit-max-inflight-tasks-total <n>` (default: `0` = disabled)
+  - Caps total workflow tasks with status `queued|running` across the whole daemon.
+
+If a submit would exceed a configured cap, the endpoint responds with HTTP `429` and a small `retry_after_ms` hint.
+
+Env equivalents:
+- `AGENTD_WORKFLOW_ADMIT_MAX_INFLIGHT_TASKS_PER_SESSION`
+- `AGENTD_WORKFLOW_ADMIT_MAX_INFLIGHT_TASKS_TOTAL`
+
+Notes:
+- The per-session cap only applies when `allow_sessions=true` and a non-empty `session_id` is provided.
+- `agentd` will auto-create/upsert the referenced session row on first submit to satisfy the DB foreign key constraint.
+
 ### Durability and restart recovery
 
 - Workflows and tasks are persisted in the SQLite DB (`agentd.db`).

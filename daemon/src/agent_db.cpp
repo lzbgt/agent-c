@@ -1513,6 +1513,83 @@ bool AgentDb::list_workflow_tasks(const std::string& workflow_id, std::vector<Wo
 #endif
 }
 
+bool AgentDb::count_workflow_inflight_tasks_total(int64_t* out_count, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (out_count) *out_count = 0;
+#if !defined(AGENT_HAVE_SQLITE3)
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (!out_count) return false;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT COUNT(1)
+FROM workflow_tasks
+WHERE status IN ('queued','running');
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  if (ok && sqlite3_step(st) == SQLITE_ROW) {
+    *out_count = sqlite3_column_int64(st, 0);
+  } else {
+    ok = false;
+  }
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  return ok;
+#endif
+}
+
+bool AgentDb::count_workflow_inflight_tasks_for_session(
+  const std::string& session_id_or_empty,
+  int64_t* out_count,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_count) *out_count = 0;
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)session_id_or_empty;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (!out_count) return false;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT COUNT(1)
+FROM workflow_tasks t
+JOIN workflows w ON w.workflow_id=t.workflow_id
+WHERE COALESCE(w.session_id,'')=? AND t.status IN ('queued','running');
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_text(st, 1, session_id_or_empty);
+  if (ok && sqlite3_step(st) == SQLITE_ROW) {
+    *out_count = sqlite3_column_int64(st, 0);
+  } else {
+    ok = false;
+  }
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  return ok;
+#endif
+}
+
 bool AgentDb::get_workflow_scheduler_stats(
   int64_t now_unix_ms,
   WorkflowSchedulerStats* out_stats,

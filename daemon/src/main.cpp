@@ -342,6 +342,32 @@ int main(int argc, char** argv) {
         std::cerr << "Invalid --workflow-max-inflight-per-session\n";
         return 2;
       }
+    } else if (a == "--workflow-admit-max-inflight-tasks-per-session") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --workflow-admit-max-inflight-tasks-per-session\n";
+        return 2;
+      }
+      try {
+        const int n = std::stoi(v);
+        cfg.workflow_admit_max_inflight_tasks_per_session = std::max(0, n);
+      } catch (...) {
+        std::cerr << "Invalid --workflow-admit-max-inflight-tasks-per-session\n";
+        return 2;
+      }
+    } else if (a == "--workflow-admit-max-inflight-tasks-total") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --workflow-admit-max-inflight-tasks-total\n";
+        return 2;
+      }
+      try {
+        const int n = std::stoi(v);
+        cfg.workflow_admit_max_inflight_tasks_total = std::max(0, n);
+      } catch (...) {
+        std::cerr << "Invalid --workflow-admit-max-inflight-tasks-total\n";
+        return 2;
+      }
     } else if (a == "--memory-consolidate-interval-ms") {
       std::string v;
       if (!take(&v)) {
@@ -537,6 +563,8 @@ int main(int argc, char** argv) {
         << "  --workflow-poll-ms <n>      Workflow engine idle poll sleep ms (default: 200)\n"
         << "  --workflow-max-inflight-per-workflow <n>  Workflow fairness cap (default: 2)\n"
         << "  --workflow-max-inflight-per-session <n>   Optional multi-tenant cap; 0 disables (default: 0)\n"
+        << "  --workflow-admit-max-inflight-tasks-per-session <n>  Admission control cap (queued|running tasks per session); 0 disables (default: 0)\n"
+        << "  --workflow-admit-max-inflight-tasks-total <n>        Admission control cap (queued|running tasks total); 0 disables (default: 0)\n"
         << "  --memory-consolidate-interval-ms <n>   Run memory consolidation every n ms (default: 0=disabled)\n"
         << "  --memory-consolidate-daily-days <n>    Scan last n daily memory files for @mem markers (default: 14)\n"
         << "  --memory-consolidate-keep-checkpoints <n>  Retain at most n structured checkpoints (default: 100)\n"
@@ -690,6 +718,12 @@ int main(int argc, char** argv) {
   }
   if (const char* ms = getenv_s("AGENTD_WORKFLOW_MAX_INFLIGHT_PER_SESSION")) {
     try { cfg.workflow_engine_max_inflight_per_session = std::max(0, std::stoi(ms)); } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_WORKFLOW_ADMIT_MAX_INFLIGHT_TASKS_PER_SESSION")) {
+    try { cfg.workflow_admit_max_inflight_tasks_per_session = std::max(0, std::stoi(ms)); } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_WORKFLOW_ADMIT_MAX_INFLIGHT_TASKS_TOTAL")) {
+    try { cfg.workflow_admit_max_inflight_tasks_total = std::max(0, std::stoi(ms)); } catch (...) {}
   }
   if (const char* ms = getenv_s("AGENTD_MEMORY_CONSOLIDATE_INTERVAL_MS")) {
     try {

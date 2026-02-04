@@ -1,6 +1,6 @@
 # Roadmap / TODOs (highest leverage)
 
-Date: 2026-02-04
+Date: 2026-02-05
 
 This roadmap is biased toward “power unleashed” coming from the **agentic framework itself**:
 
@@ -101,6 +101,12 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Proof: `ctest` includes `agentd_workflow_inflight_cap_smoke` (asserts non-overlap under cap=1).
 - Per-session fairness cap is now proven (multi-tenant guard):
   - Proof: `ctest` includes `agentd_workflow_inflight_session_cap_smoke`.
+- Workflow admission control / submit-time backpressure (v1.5):
+  - Caps total inflight workflow tasks (`queued|running`) at submit time (returns HTTP `429` with `retry_after_ms`).
+  - Knobs:
+    - `--workflow-admit-max-inflight-tasks-per-session` (env `AGENTD_WORKFLOW_ADMIT_MAX_INFLIGHT_TASKS_PER_SESSION`)
+    - `--workflow-admit-max-inflight-tasks-total` (env `AGENTD_WORKFLOW_ADMIT_MAX_INFLIGHT_TASKS_TOTAL`)
+  - Proof: `ctest` includes `agentd_workflow_admission_control_smoke`.
 - Deterministic workflow-only delay task (`kind:"delay"`) for scheduling tests and wait gates (no LLM required).
   - Proof: `ctest` includes `agentd_workflow_inflight_cap_smoke`.
 - Workflow correctness: tool-call constraints in `expect` (enforce “must call / must not call” deterministically).
@@ -127,24 +133,23 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ### Reweighted next 5 (highest compound impact)
 
-1) **Admission control + backpressure** (autonomy under load)
-   - Use `GET /api/v1/workflow/stats` queue pressure plus per-session budgeting to avoid memory/CPU collapse on fan-out storms.
-   - Add bounded “max queued tasks per session/workflow” and reject/429 with retry hints.
-
-2) **Agent collaboration primitive (in-framework, not UI)** (power-unleashed)
+1) **Agent collaboration primitive (in-framework, not UI)** (power-unleashed)
    - Add a durable workflow task kind like `kind:"delegate"` / `kind:"broker_orchestrate"` to spawn sub-agents with explicit budgets,
      then join/aggregate their outputs deterministically.
 
-3) **Memory ↔ workflow correlation + rolling consolidation** (time-advancing correctness)
+2) **Memory ↔ workflow correlation + rolling consolidation** (time-advancing correctness)
    - Link memory entries to `trace_id`/workflow/task ids; emit stable evidence excerpts + hashes.
    - Add a deterministic “memory update task” node kind so workflows can write facts only when expectations pass.
 
-4) **Interop spec hardening for MCU/edge handoff** (ecosystem leverage)
+3) **Interop spec hardening for MCU/edge handoff** (ecosystem leverage)
    - Consolidate the UM‑EAIS + durable workflow message conventions into a single versioned spec with explicit idempotency/correlation rules,
      so an MCU agent can safely hand off tasks/workflows and replay proofs across restarts.
 
-5) **Durable budget enforcement at scheduler level** (correctness + cost predictability)
+4) **Durable budget enforcement at scheduler level** (correctness + cost predictability)
    - Add explicit per-task and per-workflow budgets (tool-call budget, token budget, wall-time budget) enforced by the engine, not just by providers.
+
+5) **Scheduling policy v2 (beyond caps)** (predictable progress under load)
+   - Add a session-aware fair queue (e.g. deficit round-robin) so budgets/caps are complemented by predictable work-sharing.
 
 ### 1) AVM capsule execution v0 (next: integrate + attest)
 
