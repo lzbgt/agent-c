@@ -121,6 +121,28 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## P0 (next: maximize autonomous continuity + correctness)
 
+### Reweighted next 5 (highest compound impact)
+
+1) **Cooperative cancellation for running tasks** (correctness + cost control)
+   - Today: cancellation is best-effort; queued tasks cancel cleanly, but running tasks are not consistently interrupted.
+   - Next: propagate cancellation into tool-loop/provider calls and `run_async` resumptions; ensure deterministic terminal state.
+
+2) **Admission control + backpressure** (autonomy under load)
+   - Use `GET /api/v1/workflow/stats` queue pressure plus per-session budgeting to avoid memory/CPU collapse on fan-out storms.
+   - Add bounded “max queued tasks per session/workflow” and reject/429 with retry hints.
+
+3) **Agent collaboration primitive (in-framework, not UI)** (power-unleashed)
+   - Add a durable workflow task kind like `kind:"delegate"` / `kind:"broker_orchestrate"` to spawn sub-agents with explicit budgets,
+     then join/aggregate their outputs deterministically.
+
+4) **Memory ↔ workflow correlation + rolling consolidation** (time-advancing correctness)
+   - Link memory entries to `trace_id`/workflow/task ids; emit stable evidence excerpts + hashes.
+   - Add a deterministic “memory update task” node kind so workflows can write facts only when expectations pass.
+
+5) **Interop spec hardening for MCU/edge handoff** (ecosystem leverage)
+   - Consolidate the UM‑EAIS + durable workflow message conventions into a single versioned spec with explicit idempotency/correlation rules,
+     so an MCU agent can safely hand off tasks/workflows and replay proofs across restarts.
+
 ### 1) AVM capsule execution v0 (next: integrate + attest)
 
 Goal:
