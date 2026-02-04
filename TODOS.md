@@ -27,6 +27,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
     - `POST /api/v1/avm/inspect` (`avm --inspect-json`)
     - `POST /api/v1/avm/verify_strict` (`avm --verify-strict`)
     - `POST /api/v1/avm/trace_hash` (`avm --print-trace-hash`)
+    - `POST /api/v1/avm/capsule_run` (exec gated; `avm --capsule --print-run-json ...`)
   - Bring-up helper: `tools/oren_avm_bringup.sh` builds/locates `../oren-lang/avm` and prints its absolute path for `AGENTD_AVM_BIN`.
   - Proof: `ctest` includes `agentd_avm_job_scan_smoke` (stubbed AVM runner for determinism/CI).
 - Durable workflow engine v1 (DAG + retries + resumable after restart + deterministic expectations).
@@ -60,19 +61,20 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## P0 (next: maximize autonomous continuity + correctness)
 
-### 1) AVM capsule execution v0 (deterministic compute substrate)
+### 1) AVM capsule execution v0 (next: integrate + attest)
 
 Goal:
 - Make correctness and replayability a first-class primitive: “code as data capsule” runnable under explicit budgets,
   with deterministic hashing surfaces so results can be validated across time/nodes.
 
 Deliverables:
-- `POST /api/v1/avm/capsule_run` (gated; safe-by-default):
-  - always run with `--capsule`
-  - enforce budgets (`AVM_GAS`, `AVM_TIMEOUT_MS`, `AVM_MEM_BYTES`, `AVM_IO_BYTES`, `AVM_LOG_BYTES`)
-  - optionally expose deterministic knobs (`AVM_DETERMINISTIC`, `AVM_RNG_SEED`, `AVM_TIME_START_NS`)
-  - return machine-readable run JSON + hash tokens (`RESULT_HASH`, `TRACE_HASH`, optionally `STATE_HASH`)
-- A “governance bundle” response (job/policy/inspect/verify/run) so platform code can do scan → run → attest with one stable object.
+- Persisted “governance bundle” object (job/policy/inspect/verify/run) so platform code can do scan → run → attest
+  with one stable stored object keyed by `job_hash_sha256` / `program_hash_sha256`.
+- Workflow integration:
+  - allow durable workflows to dispatch a capsule run as a task kind (no LLM required)
+  - allow “aggregation/join” nodes to compare `RESULT_HASH` / `TRACE_HASH` across runs/nodes (k-of-n correctness)
+- Edge interop integration:
+  - extend UM‑EAIS payload conventions so a node can execute a capsule and report back hashes as “task done” attestation.
 
 Proof:
 - Deterministic smoke test with a stub AVM binary + (optional) integration smoke when `../oren-lang` is present.
