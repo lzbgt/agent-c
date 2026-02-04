@@ -26,14 +26,53 @@ cat > "${AVM_STUB_BIN}" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
 
-mode="${1:-}"
-f="${2:-}"
-if [[ -z "${f}" || ! -f "${f}" ]]; then
+mode=""
+file=""
+
+args=("$@")
+i=0
+while [[ $i -lt ${#args[@]} ]]; do
+  a="${args[$i]}"
+  case "${a}" in
+    --timeout-ms|--allow-domains)
+      i=$((i + 2))
+      continue
+      ;;
+    --capsule|--print-result-hash|--print-state-hash)
+      i=$((i + 1))
+      continue
+      ;;
+    --print-run-json)
+      mode="--print-run-json"
+      i=$((i + 1))
+      continue
+      ;;
+    --print-job-json|--print-policy-json|--inspect-json|--verify-strict)
+      if [[ -z "${mode}" ]]; then mode="${a}"; fi
+      i=$((i + 1))
+      continue
+      ;;
+    --print-trace-hash)
+      if [[ -z "${mode}" ]]; then mode="--print-trace-hash"; fi
+      i=$((i + 1))
+      continue
+      ;;
+    *)
+      if [[ -z "${file}" && "${a}" != -* ]]; then
+        file="${a}"
+      fi
+      i=$((i + 1))
+      continue
+      ;;
+  esac
+done
+
+if [[ -z "${file}" || ! -f "${file}" ]]; then
   echo "missing file" >&2
   exit 2
 fi
 
-sz="$(python3 -c 'import os,sys; print(os.path.getsize(sys.argv[1]))' "${f}")"
+sz="$(python3 -c 'import os,sys; print(os.path.getsize(sys.argv[1]))' "${file}")"
 
 case "${mode}" in
   --print-job-json)
@@ -48,11 +87,17 @@ case "${mode}" in
   --verify-strict)
     echo "OK"
     ;;
+  --print-run-json)
+    echo '{"schema":"avm.run.v1","exit_code":0,"gas_executed":10,"wall_elapsed_ns":1000,"has_result":true,"result_type":"string","result":"ok"}'
+    echo "RESULT_HASH stubresulthash"
+    echo "TRACE_HASH stubtracehash"
+    echo "STATE_HASH stubstatehash"
+    ;;
   --print-trace-hash)
     echo "TRACE_HASH stubtracehash"
     ;;
   *)
-    echo "unexpected argv: ${mode} (need --print-job-json|--print-policy-json|--inspect-json|--verify-strict|--print-trace-hash <file>)" >&2
+    echo "unexpected argv (mode not found)" >&2
     exit 2
     ;;
 esac
@@ -60,6 +105,7 @@ SH
 chmod +x "${AVM_STUB_BIN}"
 
 export AGENTD_AVM_BIN="${AVM_STUB_BIN}"
+export AGENTD_AVM_EXEC=1
 
 agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT}" "agentd_avm_job_scan_smoke" \
   --auth-token "${AUTH_TOKEN}" \
@@ -171,6 +217,30 @@ if not obj.get("ok"):
   raise SystemExit(1)
 if obj.get("trace_hash") != "stubtracehash":
   print("unexpected trace_hash:", obj.get("trace_hash"), file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+resp_run="$(curl -fsS --noproxy "*" --max-time 5 \
+  -H "Authorization: Bearer ${AUTH_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "{\"obc_base64\":\"${obc_b64}\",\"timeout_ms\":1000,\"gas\":1000,\"mem_bytes\":64000,\"io_bytes\":0,\"log_bytes\":0,\"deterministic\":true}" \
+  "${DAEMON_URL}/api/v1/avm/capsule_run")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${resp_run}''')
+run = obj.get("run") or {}
+if run.get("schema") != "avm.run.v1":
+  print("unexpected run.schema:", run.get("schema"), file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("result_hash") != "stubresulthash":
+  print("unexpected result_hash:", obj.get("result_hash"), file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("trace_hash") != "stubtracehash":
+  print("unexpected trace_hash:", obj.get("trace_hash"), file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("state_hash") != "stubstatehash":
+  print("unexpected state_hash:", obj.get("state_hash"), file=sys.stderr)
   raise SystemExit(1)
 PY
 

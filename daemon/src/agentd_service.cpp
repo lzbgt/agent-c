@@ -462,6 +462,10 @@ struct AgentdService::Impl {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_avm_trace_hash_endpoint(cur, cors_cfg, req, resp);
     });
+    server.handle("POST", "/api/v1/avm/capsule_run", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_avm_capsule_run_endpoint(cur, cors_cfg, req, resp);
+    });
 
     server.handle("GET", "/api/v1/openrouter/models", [this](const HttpRequest& req, HttpResponse* resp) {
       cors_apply(req, resp, cors_cfg);

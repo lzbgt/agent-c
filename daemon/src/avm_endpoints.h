@@ -22,6 +22,7 @@ namespace agentd {
 // - POST /api/v1/avm/inspect     (runs: avm --inspect-json <tmp.obc>)
 // - POST /api/v1/avm/verify_strict (runs: avm --verify-strict <tmp.obc>)
 // - POST /api/v1/avm/trace_hash  (runs: avm --print-trace-hash <tmp.obc>)
+// - POST /api/v1/avm/capsule_run (runs: avm --capsule ... <tmp.obc>) (exec gated)
 
 void handle_avm_job_scan_endpoint(
   const DaemonConfig& cfg,
@@ -52,6 +53,13 @@ void handle_avm_verify_strict_endpoint(
 );
 
 void handle_avm_trace_hash_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
+void handle_avm_capsule_run_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
   const HttpRequest& req,

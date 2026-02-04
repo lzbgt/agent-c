@@ -260,6 +260,92 @@ paths:
                   truncated: { type: boolean }
                   stdout: { type: string }
 
+  /api/v1/avm/capsule_run:
+    post:
+      tags: [avm]
+      summary: Execute an OBC capsule under AVM safe defaults (capsule mode)
+      description: |
+        Executes bytecode using Oren AVM in capsule mode (`--capsule`), with explicit budgets and deterministic knobs.
+
+        This endpoint is intentionally gated:
+        - requires daemon auth when enabled
+        - requires daemon yolo mode (`--yolo`, default)
+        - requires `AGENTD_AVM_BIN` to point to the AVM binary
+        - requires `AGENTD_AVM_EXEC=1` in the daemon environment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [obc_base64]
+              properties:
+                obc_base64:
+                  type: string
+                  description: Base64-encoded `.obc` bytes
+                timeout_ms:
+                  type: integer
+                  format: int32
+                  description: Wall-time deadline (passed to AVM `--timeout-ms`)
+                gas:
+                  type: integer
+                  format: int64
+                  description: Instruction-step budget (env `AVM_GAS`)
+                mem_bytes:
+                  type: integer
+                  format: int64
+                  description: Heap budget (env `AVM_MEM_BYTES`)
+                io_bytes:
+                  type: integer
+                  format: int64
+                  description: FS I/O budget (env `AVM_IO_BYTES`)
+                log_bytes:
+                  type: integer
+                  format: int64
+                  description: Record/replay log budget (env `AVM_LOG_BYTES`)
+                deterministic:
+                  type: boolean
+                  description: Enable deterministic TIME/RNG (env `AVM_DETERMINISTIC`)
+                rng_seed:
+                  type: integer
+                  format: int64
+                  description: Deterministic RNG seed (env `AVM_RNG_SEED`)
+                time_start_ns:
+                  type: integer
+                  format: int64
+                  description: Virtual clock origin (env `AVM_TIME_START_NS`)
+                allow_domains:
+                  type: string
+                  description: CSV allowlist passed to AVM `--allow-domains` (still virtualized by capsule defaults)
+      responses:
+        "200":
+          description: Execution result (ok indicates VM exit_code==0)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, run, exit_code, timed_out, truncated, stdout]
+                properties:
+                  ok: { type: boolean }
+                  run:
+                    type: object
+                    additionalProperties: true
+                  result_hash: { type: string }
+                  trace_hash: { type: string }
+                  state_hash: { type: string }
+                  exit_code: { type: integer, format: int32 }
+                  timed_out: { type: boolean }
+                  truncated: { type: boolean }
+                  stdout: { type: string }
+        "403":
+          description: Execution disabled by policy
+        "400":
+          description: Invalid request
+        "502":
+          description: AVM failed
+        "504":
+          description: AVM timed out
+
   /api/v1/run:
     post:
       tags: [run]

@@ -20,6 +20,15 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Proof: `ctest` includes `docs_sanity_tests` + `openapi_sanity_tests`.
 - `trace_id` correlation end-to-end, plus a merged trace timeline across broker ⇄ agentd.
   - Proof: `ctest` includes `agentd_trace_id_smoke`.
+- Oren AVM governance endpoints (scan-before-execute; out-of-process).
+  - Endpoints:
+    - `POST /api/v1/avm/job_scan` (`avm --print-job-json`)
+    - `POST /api/v1/avm/policy_scan` (`avm --print-policy-json`)
+    - `POST /api/v1/avm/inspect` (`avm --inspect-json`)
+    - `POST /api/v1/avm/verify_strict` (`avm --verify-strict`)
+    - `POST /api/v1/avm/trace_hash` (`avm --print-trace-hash`)
+  - Bring-up helper: `tools/oren_avm_bringup.sh` builds/locates `../oren-lang/avm` and prints its absolute path for `AGENTD_AVM_BIN`.
+  - Proof: `ctest` includes `agentd_avm_job_scan_smoke` (stubbed AVM runner for determinism/CI).
 - Durable workflow engine v1 (DAG + retries + resumable after restart + deterministic expectations).
   - API:
     - `POST /api/v1/workflow/submit`
@@ -51,15 +60,31 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## P0 (next: maximize autonomous continuity + correctness)
 
-### 1) Budgets + scheduling policy (priorities, concurrency, backpressure)
+### 1) AVM capsule execution v0 (deterministic compute substrate)
+
+Goal:
+- Make correctness and replayability a first-class primitive: “code as data capsule” runnable under explicit budgets,
+  with deterministic hashing surfaces so results can be validated across time/nodes.
+
+Deliverables:
+- `POST /api/v1/avm/capsule_run` (gated; safe-by-default):
+  - always run with `--capsule`
+  - enforce budgets (`AVM_GAS`, `AVM_TIMEOUT_MS`, `AVM_MEM_BYTES`, `AVM_IO_BYTES`, `AVM_LOG_BYTES`)
+  - optionally expose deterministic knobs (`AVM_DETERMINISTIC`, `AVM_RNG_SEED`, `AVM_TIME_START_NS`)
+  - return machine-readable run JSON + hash tokens (`RESULT_HASH`, `TRACE_HASH`, optionally `STATE_HASH`)
+- A “governance bundle” response (job/policy/inspect/verify/run) so platform code can do scan → run → attest with one stable object.
+
+Proof:
+- Deterministic smoke test with a stub AVM binary + (optional) integration smoke when `../oren-lang` is present.
+
+### 2) Budgets + scheduling policy (fairness, concurrency, backpressure)
 
 Goal:
 - Make the framework “strong by default” under load: predictable progress and fairness across jobs/workflows.
 
 Deliverables:
-- Priority scheduling:
-  - per-job / per-workflow `priority`
-  - per-session fairness (avoid one client starving others)
+- Fair scheduling:
+  - per-session fairness (avoid one client starving others even with high `priority`)
 - Budget + backpressure:
   - token/step/tool-call budgets enforced at scheduler level (not just per-run)
   - queue pressure metrics + admission control
@@ -69,7 +94,7 @@ Deliverables:
 Proof:
 - Stress test (deterministic stub provider): submit N workflows/jobs and assert bounded completion time + fairness.
 
-### 2) Workflow engine v2: dataflow + aggregation nodes
+### 3) Workflow engine v2: dataflow + aggregation nodes
 
 Problem:
 - DAG ordering is useful, but real workflows need explicit **dataflow** and **aggregation strategies**.
@@ -86,7 +111,7 @@ Deliverables:
 Proof:
 - Deterministic stub-server test executes a DAG with dataflow and asserts outputs are wired correctly.
 
-### 3) Workflow streaming + UI surface (without making UI the power source)
+### 4) Workflow streaming + UI surface (without making UI the power source)
 
 Status:
 - Shipped v1.5: durable workflow event log + SSE stream + smoke test.
@@ -94,7 +119,7 @@ Status:
 Next:
 - UI view for workflow timeline (reuse trace UI patterns), plus filters (by task_id, by event type).
 
-### 4) Memory v2: semantic retrieval + rolling consolidation
+### 5) Memory v2: semantic retrieval + rolling consolidation
 
 Problem:
 - Stateless LLM calls and bounded context require a memory system that evolves over time:
@@ -118,7 +143,7 @@ Proof:
 - `ctest` covers memory tools end-to-end (`test_host_toolset`), ensuring `memory_write`→`memory_search`→`memory_get` works.
 - Next: add a deterministic ranking test (index mode) + deterministic conflict-resolution tests for structured mode.
 
-### 5) Correctness v2: validators + replayability
+### 6) Correctness v2: validators + replayability
 
 Deliverables:
 - Expand `expect`:
