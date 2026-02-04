@@ -10,6 +10,9 @@ Date: 2026-01-30
 - **Multi-runtime portability**
   - Desktop CLI / daemon: full features (env/config, persistence, broker connectivity).
   - Embedded (ESP32-class) and VM targets (Oren AVM): minimal assumptions (no env, limited storage).
+  - Optional deterministic “policy VM” layer (future): a small VM/runtime can execute routing/retry/aggregation logic without LLM calls.
+    - Integration contract (draft): `docs/spec/agent_vm_port_v0.md`
+    - Ecosystem leverage notes: `docs/OREN_LANG_ECOSYSTEM.md`
 
 ## Non-Goals (for the first milestone)
 
