@@ -1,5 +1,7 @@
 #include "toolset_host_internal.h"
 
+#include "memory_index.h"
+
 #if defined(AGENT_HAVE_JSONCPP)
 #include <json/json.h>
 #endif
@@ -497,6 +499,8 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
   }
 
   std::string out_text;
+  Json::Value structured_doc_for_checkpoint(Json::objectValue);
+  bool structured_doc_present = false;
   if (structured) {
     // Structured upsert mode: deterministic key conflict resolution for durable facts/preferences/tasks.
     std::string existing;
@@ -547,6 +551,8 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
       return write_envelope(out_result, false, "no valid entries applied (each entry requires key + value)", Json::Value(Json::objectValue));
     }
 
+    structured_doc_for_checkpoint = doc;
+    structured_doc_present = true;
     out_text = build_structured_memory_file_text(doc, user_notes);
     if (!out_text.empty() && out_text.back() != '\n') out_text.push_back('\n');
   } else {
@@ -565,6 +571,73 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
     }
   }
 
+  // Rolling consolidation checkpoint: when a structured memory file is updated, keep a time-stamped
+  // JSON snapshot for correlation over time (best-effort; does not fail the tool call).
+  bool checkpoint_ok = false;
+  std::string checkpoint_path_rel;
+  if (structured && structured_doc_present) {
+    const bool want_checkpoint =
+      args.isMember("checkpoint") && args["checkpoint"].isBool() ? args["checkpoint"].asBool() : true;
+    const int keep_checkpoints =
+      args.isMember("keep_checkpoints") && args["keep_checkpoints"].isInt() ? std::max(1, args["keep_checkpoints"].asInt()) : 100;
+    if (want_checkpoint) {
+      const std::filesystem::path ckdir = mem_root / "checkpoints";
+      std::error_code ec2;
+      std::filesystem::create_directories(ckdir, ec2);
+      if (!ec2) {
+        const std::string ts = iso_utc_now();
+        std::string safe_ts = ts;
+        for (char& c : safe_ts) {
+          if (c == ':' || c == '/') c = '-';
+        }
+        const std::filesystem::path ckfile = ckdir / (std::string("structured_") + safe_ts + ".json");
+
+        Json::Value ck(Json::objectValue);
+        ck["schema"] = "agent_memory_checkpoint_v1";
+        ck["ts_utc"] = ts;
+        ck["path"] = rel_path;
+        ck["doc"] = structured_doc_for_checkpoint;
+        const std::string ck_text = json_stringify_compact(ck) + "\n";
+
+        {
+          std::ofstream out(ckfile, std::ios::binary | std::ios::trunc);
+          if (out.is_open()) {
+            out.write(ck_text.data(), (std::streamsize)ck_text.size());
+            checkpoint_ok = out.good();
+          }
+        }
+
+        if (checkpoint_ok) {
+          checkpoint_path_rel = to_generic_string(ckfile.lexically_relative(mem_root));
+          // Best-effort pruning: keep only the newest N checkpoint files.
+          std::vector<std::filesystem::directory_entry> entries;
+          for (auto it = std::filesystem::directory_iterator(ckdir, ec2); !ec2 && it != std::filesystem::directory_iterator(); ++it) {
+            const auto& de = *it;
+            if (!de.is_regular_file(ec2)) continue;
+            const std::string fn = de.path().filename().string();
+            if (fn.rfind("structured_", 0) != 0) continue;
+            if (fn.size() < 6 || fn.rfind(".json") != fn.size() - 5) continue;
+            entries.push_back(de);
+            if (entries.size() > (size_t)keep_checkpoints + 50) break; // bound directory walks
+          }
+          if (entries.size() > (size_t)keep_checkpoints) {
+            std::sort(entries.begin(), entries.end(), [&](const auto& a, const auto& b) {
+              std::error_code eca, ecb;
+              const auto ta = a.last_write_time(eca);
+              const auto tb = b.last_write_time(ecb);
+              if (eca || ecb) return a.path().string() < b.path().string();
+              return ta > tb; // newest first
+            });
+            for (size_t i = (size_t)keep_checkpoints; i < entries.size(); i++) {
+              std::filesystem::remove(entries[i].path(), ec2);
+              if (ec2) break;
+            }
+          }
+        }
+      }
+    }
+  }
+
   Json::Value data(Json::objectValue);
   data["tool"] = "memory_put";
   data["memory_root"] = to_generic_string(mem_root);
@@ -572,6 +645,10 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
   data["abs_path"] = to_generic_string(abs);
   data["bytes_written"] = (Json::Int64)out_text.size();
   if (structured) data["structured"] = true;
+  if (structured) {
+    data["checkpoint_ok"] = checkpoint_ok;
+    if (!checkpoint_path_rel.empty()) data["checkpoint_path"] = checkpoint_path_rel;
+  }
   data["ts_unix_ms"] = (Json::Int64)unix_ms_now();
   data["output"] = "memory_put: wrote " + rel_path;
   return write_envelope(out_result, true, "", data);
@@ -661,6 +738,37 @@ agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, 
 
   Json::Value results(Json::arrayValue);
 
+  // Prefer ranked search via an on-disk index (SQLite FTS5) when available.
+  const bool use_index = args.isMember("use_index") && args["use_index"].isBool() ? args["use_index"].asBool() : true;
+  std::string mode = "substr";
+  if (use_index && !case_sensitive) {
+    std::vector<MemorySearchHit> hits;
+    std::string ierr;
+    if (memory_index_search_ranked(mem_root, files, query, max_results, max_snippet_chars, &hits, &ierr)) {
+      mode = "fts5";
+      for (const auto& h : hits) {
+        Json::Value r(Json::objectValue);
+        r["path"] = h.path;
+        r["line"] = h.line;
+        r["snippet"] = h.snippet;
+        r["score"] = h.score;
+        results.append(r);
+      }
+    }
+  }
+
+  if (mode == "fts5") {
+    Json::Value data(Json::objectValue);
+    data["tool"] = "memory_search";
+    data["mode"] = mode;
+    data["memory_root"] = to_generic_string(mem_root);
+    data["query"] = query;
+    data["files_scanned"] = (Json::Int64)files.size();
+    data["results"] = results;
+    data["output"] = "memory_search mode=" + mode + " results=" + std::to_string((unsigned)results.size());
+    return write_envelope(out_result, true, "", data);
+  }
+
   for (const auto& abs_str : files) {
     if ((int)results.size() >= max_results) break;
     std::filesystem::path abs(abs_str);
@@ -715,11 +823,12 @@ agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, 
 
   Json::Value data(Json::objectValue);
   data["tool"] = "memory_search";
+  data["mode"] = mode;
   data["memory_root"] = to_generic_string(mem_root);
   data["query"] = query;
   data["files_scanned"] = (Json::Int64)files.size();
   data["results"] = results;
-  data["output"] = "memory_search results=" + std::to_string((unsigned)results.size());
+  data["output"] = "memory_search mode=" + mode + " results=" + std::to_string((unsigned)results.size());
   return write_envelope(out_result, true, "", data);
 }
 

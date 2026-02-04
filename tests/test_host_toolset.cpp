@@ -1058,9 +1058,18 @@ static void test_memory_tools() {
     assert(exec.execute(exec.ctx, "memory_search", req.c_str(), &out) == AGENT_OK);
     const Json::Value resp = json_parse(std::string(out.data, out.len));
     assert(resp["ok"].asBool());
+    assert(resp["data"].isMember("mode"));
+    assert(resp["data"]["mode"].isString());
     const auto& results = resp["data"]["results"];
     assert(results.isArray());
     assert(results.size() >= 1);
+#if defined(AGENT_HAVE_SQLITE3)
+    if (resp["data"]["mode"].asString() == "fts5") {
+      // Ranked mode should include a numeric score for each hit.
+      assert(results[0].isMember("score"));
+      assert(results[0]["score"].isDouble() || results[0]["score"].isInt() || results[0]["score"].isUInt());
+    }
+#endif
     agent_string_free(&out);
   }
 
@@ -1136,6 +1145,8 @@ static void test_memory_tools() {
     assert(resp["ok"].asBool());
     assert(resp["data"]["tool"].asString() == "memory_put");
     assert(resp["data"]["structured"].asBool());
+    assert(resp["data"].isMember("checkpoint_ok"));
+    assert(resp["data"]["checkpoint_ok"].isBool());
     agent_string_free(&out);
   }
 

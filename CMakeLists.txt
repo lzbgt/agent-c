@@ -67,6 +67,7 @@ if(AGENT_BUILD_HOST)
     cli/src/session_store.cpp
     cli/src/summary_compaction.cpp
     cli/src/summary_llm.cpp
+    cli/src/memory_index.cpp
     cli/src/tool_loop.cpp
     cli/src/tool_loop_compaction.cpp
     cli/src/tool_loop_truncation.cpp
@@ -95,6 +96,13 @@ if(AGENT_BUILD_HOST)
     target_link_libraries(agent_host PUBLIC ${JSONCPP_LIBRARIES})
     target_compile_definitions(agent_host PUBLIC AGENT_HAVE_JSONCPP=1)
     target_compile_definitions(agent_core PRIVATE AGENT_HAVE_JSONCPP=1)
+  endif()
+
+  if(AGENT_ENABLE_SQLITE3)
+    target_include_directories(agent_host PUBLIC ${SQLITE3_INCLUDE_DIRS})
+    target_link_directories(agent_host PUBLIC ${SQLITE3_LIBRARY_DIRS})
+    target_link_libraries(agent_host PUBLIC ${SQLITE3_LIBRARIES})
+    target_compile_definitions(agent_host PUBLIC AGENT_HAVE_SQLITE3=1)
   endif()
 
   add_executable(agent

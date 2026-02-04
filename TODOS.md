@@ -1,6 +1,6 @@
 # Roadmap / TODOs (highest leverage)
 
-Date: 2026-02-03
+Date: 2026-02-04
 
 This roadmap is biased toward “power unleashed” coming from the **agentic framework itself**:
 
@@ -33,6 +33,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
     - **restart continuity**: running tasks are recovered back to queued (at-least-once)
     - simple prompt templating: `${task.<id>.assistant_text}`
   - Proof: `ctest` includes `agentd_workflow_smoke` (validates DAG ordering + templating + restart recovery).
+- Memory v2 (retrieval): `memory_search` now prefers a ranked on-disk index (SQLite FTS5) when available, with automatic fallback to bounded substring scan.
+  - Also: structured memory updates (`memory_put(entries)`) produce rolling JSON checkpoints under `memory/checkpoints/` for time-correlation.
+  - Proof: `ctest` includes `test_host_toolset` (memory tools) plus existing daemon smokes that exercise host tools.
 
 ## P0 (next: maximize autonomous continuity + correctness)
 
@@ -86,16 +89,17 @@ Problem:
   - retrieves relevant memory efficiently
 
 Deliverables:
-- Retrieval:
-  - SQLite FTS5 (if available) for `memory_search` indexing, or embedding index as a pluggable backend.
-  - ranking/scoring and dedupe.
-- Rolling consolidation worker:
-  - periodic consolidation checkpoints (time-based + size-based)
-  - versioned facts (supersedes/obsolete markers)
-  - deterministic conflict rules (already partially present in structured memory mode).
+- Retrieval (shipped v2.0):
+  - `memory_search` prefers SQLite FTS5-ranked retrieval when available (`use_index=true`), scoped to the same file set as legacy scanning (`daily_days`, core/session/structured).
+  - Automatic fallback: bounded substring scan when SQLite/FTS5 is unavailable at runtime.
+- Rolling consolidation + correlation (next):
+  - periodic consolidation checkpoints (time-based + size-based) across **all** memory layers (core/daily/session/structured)
+  - versioned facts (supersedes/obsolete markers) and deterministic conflict rules beyond “last write wins”
+  - optional “consolidation worker” that can run as an internal workflow (LLM optional; deterministic by default)
 
 Proof:
-- Unit tests show retrieval ranking and deterministic conflict resolution.
+- `ctest` covers memory tools end-to-end (`test_host_toolset`), ensuring `memory_write`→`memory_search`→`memory_get` works.
+- Next: add a deterministic ranking test (index mode) + deterministic conflict-resolution tests for structured mode.
 
 ### 5) Correctness v2: validators + replayability
 
@@ -134,4 +138,3 @@ Deliverables:
 
 Proof:
 - Integration test exercises broker fan-out with workflow DAG dependencies.
-

@@ -1905,7 +1905,7 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     st = add_tool(
       r,
       "memory_search",
-      "Search durable memory Markdown files under the daemon state directory (bounded, explainable: returns file + line + snippet).",
+      "Search durable memory Markdown files under the daemon state directory (bounded, explainable: returns file + line + snippet). Prefer default ranked mode when available.",
       "{"
       "\"type\":\"object\","
       "\"properties\":{"
@@ -1913,6 +1913,7 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
       "  \"max_results\":{\"type\":\"integer\",\"description\":\"Max matches to return (default: 20).\"},"
       "  \"daily_days\":{\"type\":\"integer\",\"description\":\"Scan the last N daily memory files (default: 14). 0 disables daily scan.\"},"
       "  \"case_sensitive\":{\"type\":\"boolean\",\"description\":\"Case-sensitive match (default: false).\"},"
+      "  \"use_index\":{\"type\":\"boolean\",\"description\":\"When true (default), use a ranked on-disk index (SQLite FTS5) if available; otherwise fall back to substring scan.\"},"
       "  \"context_lines\":{\"type\":\"integer\",\"description\":\"Context lines around the match (default: 2).\"},"
       "  \"max_snippet_chars\":{\"type\":\"integer\",\"description\":\"Max chars per snippet (default: 600).\"}"
       "},"
@@ -1941,14 +1942,28 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
       st = add_tool(
         r,
         "memory_put",
-        "Overwrite a durable memory Markdown file under the daemon state directory (used for consolidation: deprecate outdated facts, keep core memory accurate).",
+        "Overwrite a durable memory Markdown file under the daemon state directory (used for consolidation: deprecate outdated facts, keep core memory accurate). Supports legacy full-text overwrite or structured upserts.",
         "{"
         "\"type\":\"object\","
         "\"properties\":{"
         "  \"path\":{\"type\":\"string\",\"description\":\"Relative .md path under the daemon memory directory.\"},"
-        "  \"text\":{\"type\":\"string\",\"description\":\"Full file contents to write.\"}"
+        "  \"text\":{\"type\":\"string\",\"description\":\"Legacy mode: full file contents to write.\"},"
+        "  \"entries\":{\"type\":\"array\",\"description\":\"Structured mode: upsert durable facts/preferences/tasks.\",\"items\":{"
+        "    \"type\":\"object\","
+        "    \"properties\":{"
+        "      \"key\":{\"type\":\"string\"},"
+        "      \"kind\":{\"type\":\"string\",\"description\":\"fact|preference|task (default: fact).\"},"
+        "      \"value\":{\"type\":\"string\"},"
+        "      \"status\":{\"type\":\"string\",\"description\":\"active|deprecated (default: active).\"},"
+        "      \"source\":{\"type\":\"string\",\"description\":\"Optional provenance/source string.\"}"
+        "    },"
+        "    \"required\":[\"key\",\"value\"]"
+        "  }},"
+        "  \"checkpoint\":{\"type\":\"boolean\",\"description\":\"When true (default), write a time-stamped JSON snapshot under memory/checkpoints/ for structured updates.\"},"
+        "  \"keep_checkpoints\":{\"type\":\"integer\",\"description\":\"How many structured checkpoints to retain (default: 100).\"}"
         "},"
-        "\"required\":[\"path\",\"text\"]"
+        "\"required\":[\"path\"],"
+        "\"anyOf\":[{\"required\":[\"text\"]},{\"required\":[\"entries\"]}]"
         "}"
       );
       if (st != AGENT_OK) goto fail;

@@ -51,6 +51,11 @@ This builds `agent_core` and `agent_core_tests`, but skips `agent_host`, `agent`
 Core defines an optional persistence interface (`core/include/agent/persist.h`) so hosts can swap persistence implementations
 without changing the core call sites (filesystem `.sess`, SQLite, NVS/flash, etc.).
 
+### Durable memory (daemon state)
+
+`agentd` maintains a durable memory directory under `state_dir/memory/` and exposes host tools (`memory_write/get/search/put`)
+to let models persist and retrieve long-lived facts/preferences/tasks. See `docs/MEMORY.md`.
+
 ### Daemon longevity (job GC)
 
 `agentd` keeps async job state in memory for UI progress streaming. Finished jobs are garbage-collected:
