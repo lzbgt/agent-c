@@ -1288,7 +1288,7 @@ components:
       properties:
         mode:
           type: string
-          enum: [quorum_hashes, collect, first_ok]
+          enum: [quorum_hashes, collect, first_ok, best_of_n]
           description: Aggregation strategy.
         task_ids:
           type: array
@@ -1307,10 +1307,31 @@ components:
           description: For mode=collect, require every pointer for every task_id (default true).
         ok_pointer:
           type: string
-          description: For mode=first_ok, JSON pointer used to test ok (default /ok).
+          description: For mode=first_ok or best_of_n, JSON pointer used to test ok (default /ok).
+        require_ok:
+          type: boolean
+          description: For mode=best_of_n, require ok_pointer to be true (default true).
         value_pointer:
           type: string
-          description: For mode=first_ok, JSON pointer used as assistant_text (default /assistant_text).
+          description: |
+            For mode=first_ok, JSON pointer into the task result JSON used as assistant_text (default /assistant_text).
+            For mode=best_of_n, JSON pointer into the candidate object used as assistant_text (default /answer).
+        candidate_pointer:
+          type: string
+          description: For mode=best_of_n, JSON pointer into the task result JSON for candidate JSON (default /assistant_text).
+        parse_json:
+          type: boolean
+          description: For mode=best_of_n, if candidate_pointer resolves to a string, parse it as JSON (default true).
+        score_pointer:
+          type: string
+          description: For mode=best_of_n, JSON pointer into the candidate object used as score (default /score).
+        maximize:
+          type: boolean
+          description: For mode=best_of_n, choose max score when true, else choose min (default true).
+        default_score:
+          type: number
+          format: double
+          description: For mode=best_of_n, fallback score when score_pointer missing/unparseable (optional).
 
     WorkflowTaskEdgeInvokeSpec:
       type: object

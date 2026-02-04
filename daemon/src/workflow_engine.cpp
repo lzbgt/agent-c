@@ -371,6 +371,220 @@ static Json::Value workflow_aggregate_first_ok_to_json(
   return out;
 }
 
+static bool json_value_to_double_best_effort(const Json::Value& v, double* out) {
+  if (!out) return false;
+  *out = 0.0;
+  if (v.isNumeric()) {
+    *out = v.asDouble();
+    return true;
+  }
+  if (v.isString()) {
+    const std::string s = trim_copy(v.asString());
+    if (s.empty()) return false;
+    char* endp = nullptr;
+    const double d = std::strtod(s.c_str(), &endp);
+    if (!endp || *endp != '\0') return false;
+    *out = d;
+    return true;
+  }
+  return false;
+}
+
+static Json::Value workflow_aggregate_best_of_n_to_json(
+  const Json::Value& agg,
+  const std::unordered_map<std::string, Json::Value>& result_json_by_task,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  Json::Value out(Json::objectValue);
+  out["kind"] = "aggregate";
+  out["mode"] = "best_of_n";
+  out["ok"] = false;
+
+  if (!agg.isObject()) {
+    if (out_error) *out_error = "aggregate config must be an object";
+    out["error"] = out_error ? *out_error : "aggregate config must be an object";
+    return out;
+  }
+
+  std::vector<std::string> task_ids;
+  if (!string_array_from_json(agg["task_ids"], &task_ids) || task_ids.empty()) {
+    if (out_error) *out_error = "aggregate.task_ids must be a non-empty array of strings";
+    out["error"] = out_error ? *out_error : "aggregate.task_ids must be a non-empty array of strings";
+    return out;
+  }
+
+  std::string ok_ptr = "/ok";
+  if (agg.isMember("ok_pointer") && agg["ok_pointer"].isString() && !agg["ok_pointer"].asString().empty()) {
+    ok_ptr = agg["ok_pointer"].asString();
+  }
+  bool require_ok = true;
+  if (agg.isMember("require_ok") && agg["require_ok"].isBool()) require_ok = agg["require_ok"].asBool();
+
+  std::string cand_ptr = "/assistant_text";
+  if (agg.isMember("candidate_pointer") && agg["candidate_pointer"].isString() && !agg["candidate_pointer"].asString().empty()) {
+    cand_ptr = agg["candidate_pointer"].asString();
+  }
+  bool parse_json = true;
+  if (agg.isMember("parse_json") && agg["parse_json"].isBool()) parse_json = agg["parse_json"].asBool();
+
+  std::string score_ptr = "/score";
+  if (agg.isMember("score_pointer") && agg["score_pointer"].isString() && !agg["score_pointer"].asString().empty()) {
+    score_ptr = agg["score_pointer"].asString();
+  }
+  std::string val_ptr = "/answer";
+  if (agg.isMember("value_pointer") && agg["value_pointer"].isString() && !agg["value_pointer"].asString().empty()) {
+    val_ptr = agg["value_pointer"].asString();
+  }
+  bool maximize = true;
+  if (agg.isMember("maximize") && agg["maximize"].isBool()) maximize = agg["maximize"].asBool();
+
+  bool has_default_score = false;
+  double default_score = 0.0;
+  if (agg.isMember("default_score")) {
+    has_default_score = json_value_to_double_best_effort(agg["default_score"], &default_score);
+  }
+
+  Json::Value arr(Json::arrayValue);
+  for (const auto& id : task_ids) arr.append(id);
+  out["task_ids"] = arr;
+  out["ok_pointer"] = ok_ptr;
+  out["require_ok"] = require_ok;
+  out["candidate_pointer"] = cand_ptr;
+  out["parse_json"] = parse_json;
+  out["score_pointer"] = score_ptr;
+  out["value_pointer"] = val_ptr;
+  out["maximize"] = maximize;
+  if (has_default_score) out["default_score"] = default_score;
+
+  Json::Value candidates(Json::arrayValue);
+
+  bool found = false;
+  double best_score = 0.0;
+  std::string best_task_id;
+  Json::Value best_root;
+  Json::Value best_candidate;
+  Json::Value best_value;
+
+  for (const auto& tid : task_ids) {
+    Json::Value row(Json::objectValue);
+    row["task_id"] = tid;
+
+    auto it = result_json_by_task.find(tid);
+    if (it == result_json_by_task.end()) {
+      row["missing"] = true;
+      candidates.append(row);
+      continue;
+    }
+    row["missing"] = false;
+    const Json::Value& root = it->second;
+
+    bool root_ok = false;
+    const Json::Value* got_ok = nullptr;
+    if (json_pointer_get(root, ok_ptr, &got_ok) && got_ok && got_ok->isBool()) root_ok = got_ok->asBool();
+    row["ok"] = root_ok;
+    if (require_ok && !root_ok) {
+      row["eligible"] = false;
+      candidates.append(row);
+      continue;
+    }
+
+    const Json::Value* got_cand = nullptr;
+    if (!json_pointer_get(root, cand_ptr, &got_cand) || !got_cand) {
+      row["eligible"] = false;
+      row["missing_candidate"] = true;
+      candidates.append(row);
+      continue;
+    }
+
+    Json::Value cand = *got_cand;
+    if (parse_json && cand.isString()) {
+      const std::string s = cand.asString();
+      Json::Value parsed;
+      std::string perr;
+      if (!json_parse_any_value(s, &parsed, &perr)) {
+        row["eligible"] = false;
+        row["parse_error"] = perr;
+        candidates.append(row);
+        continue;
+      }
+      cand = parsed;
+    }
+
+    const Json::Value* got_score = nullptr;
+    double score = 0.0;
+    bool has_score = false;
+    if (json_pointer_get(cand, score_ptr, &got_score) && got_score) {
+      has_score = json_value_to_double_best_effort(*got_score, &score);
+    }
+    if (!has_score && has_default_score) {
+      has_score = true;
+      score = default_score;
+    }
+
+    if (!has_score) {
+      row["eligible"] = false;
+      row["missing_score"] = true;
+      candidates.append(row);
+      continue;
+    }
+
+    const Json::Value* got_val = nullptr;
+    Json::Value val = cand;
+    if (json_pointer_get(cand, val_ptr, &got_val) && got_val) val = *got_val;
+
+    row["eligible"] = true;
+    row["score"] = score;
+    if (val.isString()) row["value"] = val.asString();
+    else row["value"] = val;
+    candidates.append(row);
+
+    if (!found) {
+      found = true;
+      best_score = score;
+      best_task_id = tid;
+      best_root = root;
+      best_candidate = cand;
+      best_value = val;
+      continue;
+    }
+    if (maximize) {
+      if (score > best_score) {
+        best_score = score;
+        best_task_id = tid;
+        best_root = root;
+        best_candidate = cand;
+        best_value = val;
+      }
+    } else {
+      if (score < best_score) {
+        best_score = score;
+        best_task_id = tid;
+        best_root = root;
+        best_candidate = cand;
+        best_value = val;
+      }
+    }
+  }
+
+  out["candidates"] = candidates;
+  if (!found) {
+    out["error"] = "no eligible candidates found";
+    out["assistant_text"] = "";
+    return out;
+  }
+
+  out["ok"] = true;
+  out["chosen_task_id"] = best_task_id;
+  out["chosen_score"] = best_score;
+  out["chosen"] = best_root;
+  out["chosen_candidate"] = best_candidate;
+  out["chosen_value"] = best_value;
+  if (best_value.isString()) out["assistant_text"] = best_value.asString();
+  else out["assistant_text"] = json_stringify_compact_local(best_value);
+  return out;
+}
+
 static Json::Value workflow_aggregate_to_json(
   const Json::Value& agg,
   const std::unordered_map<std::string, Json::Value>& result_json_by_task,
@@ -390,6 +604,7 @@ static Json::Value workflow_aggregate_to_json(
     agg.isMember("mode") && agg["mode"].isString() ? trim_copy(agg["mode"].asString()) : "quorum_hashes";
   if (mode == "collect") return workflow_aggregate_collect_to_json(agg, result_json_by_task, out_error);
   if (mode == "first_ok") return workflow_aggregate_first_ok_to_json(agg, result_json_by_task, out_error);
+  if (mode == "best_of_n") return workflow_aggregate_best_of_n_to_json(agg, result_json_by_task, out_error);
   // Default: quorum_hashes (also used when mode omitted).
   return workflow_aggregate_quorum_hashes_to_json(agg, result_json_by_task, out_error);
 }

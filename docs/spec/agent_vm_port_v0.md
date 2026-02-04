@@ -115,8 +115,8 @@ These are the most “multiply gain” use-cases for a VM layer in this repo.
 
 Replace “LLM aggregator” with deterministic aggregation:
 - `first_ok`
-- `all_ok`
-- `quorum`
+- `best_of_n`
+- `quorum_hashes`
 - `collect`
 
 ### 4.2 Retry/backoff policy (edge workflows)

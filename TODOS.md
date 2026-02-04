@@ -50,9 +50,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Result shape: `result.results_by_task[task_id].avm.{run,result_hash,trace_hash,state_hash,...}`
   - Proof: `ctest` includes `agentd_workflow_avm_capsule_smoke` (runs AVM capsule, then templates its result into an LLM stub task).
 - Durable workflows now support deterministic aggregation/join tasks (no LLM required):
-  - Task kind: `kind: "aggregate"` (modes: `quorum_hashes`, `first_ok`, `collect`)
+  - Task kind: `kind: "aggregate"` (modes: `quorum_hashes`, `first_ok`, `best_of_n`, `collect`)
   - Use-case: compare deterministic hash surfaces (e.g. AVM `result_hash` / `trace_hash`) across N runs/nodes and require quorum.
-  - Proof: `ctest` includes `agentd_workflow_aggregate_quorum_smoke` and `agentd_workflow_aggregate_first_ok_smoke`.
+  - Proof: `ctest` includes `agentd_workflow_aggregate_quorum_smoke`, `agentd_workflow_aggregate_first_ok_smoke`, and `agentd_workflow_aggregate_best_of_n_smoke`.
 - Durable workflows now support UM‑EAIS edge collaboration tasks (no LLM required):
   - Task kind: `kind: "edge_invoke"` (dispatches `TASK_ASSIGN mode:"invoke"` and waits for `TASK_DONE`)
   - Also supports `mode:"agent"` (dispatches `TASK_ASSIGN mode:"agent"` with a prompt/payload for embedded `agent_core`)
