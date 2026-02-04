@@ -220,6 +220,20 @@ void handle_workflow_submit_endpoint(
   const Json::Value defaults =
     args.isMember("defaults") && args["defaults"].isObject() ? args["defaults"] : Json::Value(Json::nullValue);
 
+  int workflow_priority = 0;
+  if (args.isMember("priority")) {
+    if (!args["priority"].isInt()) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid priority (expected int)\"}";
+      return;
+    }
+    workflow_priority = args["priority"].asInt();
+    if (workflow_priority < -1000) workflow_priority = -1000;
+    if (workflow_priority > 1000) workflow_priority = 1000;
+    args["priority"] = workflow_priority; // canonicalize
+  }
+  if (!args.isMember("priority")) args["priority"] = workflow_priority;
+
   const int64_t now = unix_ms_now();
   std::unordered_set<std::string> seen_ids;
   std::vector<std::string> task_ids;
@@ -262,6 +276,35 @@ void handle_workflow_submit_endpoint(
         if (!run_req.isMember(k)) run_req[k] = defaults[k];
       }
     }
+
+    int task_priority = workflow_priority;
+    if (run_req.isMember("priority")) {
+      if (!run_req["priority"].isInt()) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "invalid task priority (expected int)";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+      task_priority = run_req["priority"].asInt();
+    }
+    if (t.isMember("priority")) {
+      if (!t["priority"].isInt()) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "invalid task priority (expected int)";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+      task_priority = t["priority"].asInt();
+    }
+    if (task_priority < -1000) task_priority = -1000;
+    if (task_priority > 1000) task_priority = 1000;
+    run_req["priority"] = task_priority;
 
     if (!allow_sessions) {
       run_req["no_session"] = true;
@@ -315,6 +358,7 @@ void handle_workflow_submit_endpoint(
     AgentDb::WorkflowTaskRow row;
     row.workflow_id = workflow_id;
     row.task_id = task_id;
+    row.priority = task_priority;
     row.created_unix_ms = now;
     row.updated_unix_ms = now;
     row.status = "queued";
@@ -350,6 +394,7 @@ void handle_workflow_submit_endpoint(
   wf.workflow_id = workflow_id;
   wf.session_id = allow_sessions ? session_id : "";
   wf.trace_id = trace_id;
+  wf.priority = workflow_priority;
   wf.created_unix_ms = now;
   wf.updated_unix_ms = now;
   wf.status = "queued";
@@ -447,6 +492,7 @@ void handle_workflow_get_endpoint(
   Json::Value w(Json::objectValue);
   w["workflow_id"] = wf.workflow_id;
   w["status"] = wf.status;
+  w["priority"] = wf.priority;
   if (!wf.trace_id.empty()) w["trace_id"] = wf.trace_id;
   if (!wf.session_id.empty()) w["session_id"] = wf.session_id;
   w["cancel_requested"] = wf.cancel_requested;
@@ -463,6 +509,7 @@ void handle_workflow_get_endpoint(
         Json::Value row(Json::objectValue);
         row["task_id"] = t.task_id;
         row["status"] = t.status;
+        row["priority"] = t.priority;
         row["attempt"] = t.attempt;
         row["max_attempts"] = t.max_attempts;
         row["ready_unix_ms"] = (Json::Int64)t.ready_unix_ms;
@@ -541,6 +588,7 @@ void handle_workflow_list_endpoint(
     Json::Value row(Json::objectValue);
     row["workflow_id"] = wf.workflow_id;
     row["status"] = wf.status;
+    row["priority"] = wf.priority;
     if (!wf.trace_id.empty()) row["trace_id"] = wf.trace_id;
     if (!wf.session_id.empty()) row["session_id"] = wf.session_id;
     row["cancel_requested"] = wf.cancel_requested;

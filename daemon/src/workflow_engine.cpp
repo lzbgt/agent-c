@@ -412,7 +412,7 @@ bool WorkflowEngine::pick_and_claim_one(
   all.insert(all.end(), queued.begin(), queued.end());
   all.insert(all.end(), running.begin(), running.end());
 
-  // De-dup by workflow_id while preserving "queued first" ordering.
+  // De-dup by workflow_id, then apply scheduling order.
   std::unordered_set<std::string> seen;
   std::vector<AgentDb::WorkflowRow> wfs;
   wfs.reserve(all.size());
@@ -420,6 +420,25 @@ bool WorkflowEngine::pick_and_claim_one(
     if (wf.workflow_id.empty()) continue;
     if (seen.insert(wf.workflow_id).second) wfs.push_back(std::move(wf));
   }
+
+  auto wf_prio = [](const AgentDb::WorkflowRow& w) -> int {
+    return (w.priority == AgentDb::kIntUnset) ? 0 : w.priority;
+  };
+  auto wf_status_rank = [](const std::string& s) -> int {
+    if (s == "running") return 2;
+    if (s == "queued") return 1;
+    return 0;
+  };
+  std::sort(wfs.begin(), wfs.end(), [&](const AgentDb::WorkflowRow& a, const AgentDb::WorkflowRow& b) {
+    const int ap = wf_prio(a);
+    const int bp = wf_prio(b);
+    if (ap != bp) return ap > bp;
+    const int ar = wf_status_rank(a.status);
+    const int br = wf_status_rank(b.status);
+    if (ar != br) return ar > br;
+    if (a.updated_unix_ms != b.updated_unix_ms) return a.updated_unix_ms > b.updated_unix_ms;
+    return a.workflow_id < b.workflow_id;
+  });
 
   for (auto& wf : wfs) {
     if (stop_.load()) return false;
@@ -467,6 +486,24 @@ bool WorkflowEngine::pick_and_claim_one(
     for (const auto& t : tasks) {
       status_by_id[t.task_id] = t.status;
     }
+
+    auto task_prio = [](const AgentDb::WorkflowTaskRow& t) -> int {
+      return (t.priority == AgentDb::kIntUnset) ? 0 : t.priority;
+    };
+    std::stable_sort(tasks.begin(), tasks.end(), [&](const AgentDb::WorkflowTaskRow& a, const AgentDb::WorkflowTaskRow& b) {
+      const int ap = task_prio(a);
+      const int bp = task_prio(b);
+      if (ap != bp) return ap > bp;
+      const int64_t ar = a.ready_unix_ms;
+      const int64_t br = b.ready_unix_ms;
+      if (ar != br) {
+        const int64_t ar2 = ar > 0 ? ar : 0;
+        const int64_t br2 = br > 0 ? br : 0;
+        if (ar2 != br2) return ar2 < br2;
+      }
+      if (a.created_unix_ms != b.created_unix_ms) return a.created_unix_ms < b.created_unix_ms;
+      return a.task_id < b.task_id;
+    });
 
     for (auto& t : tasks) {
       if (t.status != "queued") continue;

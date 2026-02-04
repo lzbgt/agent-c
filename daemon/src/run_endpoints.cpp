@@ -2575,6 +2575,20 @@ void handle_run_async_endpoint(
     resp->body = R"({"ok":false,"error":"empty job_id"})";
     return;
   }
+
+  int priority = 0;
+  if (args.isMember("priority")) {
+    if (!args["priority"].isInt()) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid priority (expected int)\"}";
+      return;
+    }
+    priority = args["priority"].asInt();
+    if (priority < -1000) priority = -1000;
+    if (priority > 1000) priority = 1000;
+    args["priority"] = priority; // canonicalize
+  }
+  if (!args.isMember("priority")) args["priority"] = priority;
   if (!job_create(job_id)) {
     resp->status = 409;
     Json::Value o(Json::objectValue);
@@ -2607,6 +2621,7 @@ void handle_run_async_endpoint(
     jr.session_id = no_session ? session_id : session_id;
     jr.trace_id = trace_id;
     jr.request_json = body_persist;
+    jr.priority = priority;
     jr.created_unix_ms = created_ms;
     jr.updated_unix_ms = created_ms;
     jr.status = "queued";
@@ -2626,7 +2641,7 @@ void handle_run_async_endpoint(
   // or where the request never reaches the daemon.
   std::cerr << "agentd: /api/v1/run_async accepted job=" << job_id << " trace_id=" << trace_id << " bytes=" << req.body.size() << "\n";
 
-  std::thread([job_id, body_copy, cfg, ocfg, db_or_null, tool_ext_or_null, sessions_root_dir, session_id, created_ms]() mutable {
+  std::thread([job_id, body_copy, cfg, ocfg, db_or_null, tool_ext_or_null, sessions_root_dir, session_id, created_ms, priority]() mutable {
     const auto started = std::chrono::steady_clock::now();
     std::cerr << "agentd: /api/v1/run_async job=" << job_id << " start bytes=" << body_copy.size() << "\n";
     job_set_status(job_id, "running", "");
@@ -2634,6 +2649,7 @@ void handle_run_async_endpoint(
       AgentDb::JobRow jr;
       jr.job_id = job_id;
       jr.session_id = session_id;
+      jr.priority = priority;
       jr.created_unix_ms = created_ms;
       jr.updated_unix_ms = now_unix_ms();
       jr.status = "running";

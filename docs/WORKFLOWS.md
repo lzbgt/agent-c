@@ -14,6 +14,19 @@ The workflow engine is intended to be the framework’s “power source” for:
 
 ## Key semantics
 
+### Scheduling priority (v1)
+
+Workflows and tasks support a simple integer priority hint:
+
+- `workflow.priority` (submit request top-level `priority`)
+- `task.priority` (task entry `priority`, or `request.priority`)
+
+Higher priorities are scheduled sooner when multiple runnable tasks exist.
+
+Notes:
+- The daemon clamps priorities to `[-1000, 1000]` (default `0`).
+- Priority is a scheduling hint, not a correctness guarantee.
+
 ### Durability and restart recovery
 
 - Workflows and tasks are persisted in the SQLite DB (`agentd.db`).

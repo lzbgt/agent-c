@@ -16,6 +16,10 @@ namespace agentd {
 // not the canonical persistence format (which remains `.sess` + `.events.jsonl`).
 class AgentDb {
  public:
+  // Optional integer fields in upsert calls use this sentinel to mean "do not modify existing value".
+  // This value should never be produced by external API requests (we clamp request priorities to a small range).
+  static constexpr int kIntUnset = (-2147483647 - 1);
+
   AgentDb() = default;
   ~AgentDb();
 
@@ -189,6 +193,7 @@ class AgentDb {
     std::string session_id; // best-effort; may be empty for no_session runs
     std::string trace_id;   // best-effort; used for correlation
     std::string request_json; // JSON object string (redacted; used for job resume)
+    int priority = kIntUnset;  // higher runs sooner; unset => do not modify
     int64_t created_unix_ms = 0;
     int64_t updated_unix_ms = 0;
     std::string status; // queued|running|done|error|cancelled|interrupted
@@ -229,6 +234,7 @@ class AgentDb {
     std::string workflow_id;
     std::string session_id; // optional
     std::string trace_id;   // optional
+    int priority = kIntUnset; // higher workflows run sooner; unset => do not modify
     int64_t created_unix_ms = 0;
     int64_t updated_unix_ms = 0;
     std::string status; // queued|running|done|error|cancelled
@@ -241,6 +247,7 @@ class AgentDb {
   struct WorkflowTaskRow {
     std::string workflow_id;
     std::string task_id;
+    int priority = kIntUnset; // higher tasks run sooner; unset => do not modify
     int64_t created_unix_ms = 0;
     int64_t updated_unix_ms = 0;
     std::string status; // queued|running|done|error|cancelled

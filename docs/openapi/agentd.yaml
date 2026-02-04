@@ -451,6 +451,10 @@ components:
         trace_id: { $ref: "#/components/schemas/TraceID" }
         session_id: { type: string }
         no_session: { type: boolean }
+        priority:
+          type: integer
+          format: int32
+          description: Higher runs sooner (scheduler hint). Default 0. Clamped to [-1000, 1000].
         tools:
           type: string
           description: Tool mode
@@ -492,6 +496,10 @@ components:
         job_id: { type: string }
         trace_id: { $ref: "#/components/schemas/TraceID" }
         status: { type: string }
+        priority:
+          type: integer
+          format: int32
+          description: Higher jobs run sooner (scheduler hint).
         error: { type: string }
         cancel_requested: { type: boolean }
         created_unix_ms: { type: integer, format: int64 }
@@ -514,6 +522,10 @@ components:
           type: array
           items: { type: string }
         max_attempts: { type: integer, format: int32 }
+        priority:
+          type: integer
+          format: int32
+          description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
         request:
           $ref: "#/components/schemas/RunRequest"
         expect:
@@ -528,6 +540,10 @@ components:
         workflow_id: { type: string }
         trace_id: { $ref: "#/components/schemas/TraceID" }
         session_id: { type: string }
+        priority:
+          type: integer
+          format: int32
+          description: Higher workflows/tasks run sooner (scheduler hint). Default 0. Clamped to [-1000, 1000].
         allow_sessions: { type: boolean }
         allow_inline_api_keys: { type: boolean }
         defaults:
@@ -549,6 +565,10 @@ components:
           properties:
             workflow_id: { type: string }
             status: { type: string }
+            priority:
+              type: integer
+              format: int32
+              description: Higher workflows/tasks run sooner (scheduler hint).
             trace_id: { $ref: "#/components/schemas/TraceID" }
             session_id: { type: string }
             cancel_requested: { type: boolean }

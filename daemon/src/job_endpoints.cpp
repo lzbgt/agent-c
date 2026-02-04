@@ -94,6 +94,7 @@ void handle_job_get_endpoint(
       o["job_id"] = jr.job_id;
       if (!jr.trace_id.empty()) o["trace_id"] = jr.trace_id;
       o["status"] = jr.status;
+      o["priority"] = jr.priority;
       o["error"] = jr.error;
       o["stop_reason"] = jr.stop_reason;
       o["cancel_requested"] = jr.cancel_requested;

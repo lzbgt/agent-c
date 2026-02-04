@@ -57,7 +57,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v11)
+## Schema (v12)
 
 All timestamps are Unix milliseconds.
 
@@ -241,6 +241,7 @@ Stores durable async job metadata so job state remains inspectable after daemon 
 - `session_id TEXT` (nullable; jobs may be session-less)
 - `trace_id TEXT` (optional; correlation ID)
 - `request_json TEXT` (optional; redacted request JSON used for job resume)
+- `priority INTEGER` (optional; higher runs sooner; default 0)
 - `created_unix_ms INTEGER NOT NULL`
 - `updated_unix_ms INTEGER NOT NULL`
 - `status TEXT NOT NULL` (`queued|running|done|error|cancelled|interrupted`)
@@ -252,6 +253,7 @@ Stores durable async job metadata so job state remains inspectable after daemon 
 
 Indexes:
 - `CREATE INDEX jobs_by_status ON jobs(status, updated_unix_ms DESC)`
+- `CREATE INDEX jobs_by_status_prio ON jobs(status, priority DESC, updated_unix_ms DESC)`
 - `CREATE INDEX jobs_by_session ON jobs(session_id, updated_unix_ms DESC)`
 - `CREATE INDEX jobs_by_trace ON jobs(trace_id)`
 
@@ -262,6 +264,7 @@ Stores durable workflow metadata. A workflow is a DAG of tasks that can be resum
 - `workflow_id TEXT PRIMARY KEY`
 - `session_id TEXT` (nullable; workflows can be session-less)
 - `trace_id TEXT` (optional; correlation ID, typically shared across the workflow)
+- `priority INTEGER` (optional; higher workflows run sooner; default 0)
 - `created_unix_ms INTEGER NOT NULL`
 - `updated_unix_ms INTEGER NOT NULL`
 - `status TEXT NOT NULL` (`queued|running|done|error|cancelled`)
@@ -272,6 +275,7 @@ Stores durable workflow metadata. A workflow is a DAG of tasks that can be resum
 
 Indexes:
 - `CREATE INDEX workflows_by_status ON workflows(status, updated_unix_ms DESC)`
+- `CREATE INDEX workflows_by_status_prio ON workflows(status, priority DESC, updated_unix_ms DESC)`
 - `CREATE INDEX workflows_by_trace ON workflows(trace_id)`
 - `CREATE INDEX workflows_by_session ON workflows(session_id, updated_unix_ms DESC)`
 
@@ -282,6 +286,7 @@ with explicit dependencies and retries.
 
 - `workflow_id TEXT NOT NULL`
 - `task_id TEXT NOT NULL`
+- `priority INTEGER` (optional; higher tasks run sooner; default 0)
 - `created_unix_ms INTEGER NOT NULL`
 - `updated_unix_ms INTEGER NOT NULL`
 - `status TEXT NOT NULL` (`queued|running|done|error|cancelled`)
@@ -299,6 +304,7 @@ with explicit dependencies and retries.
 Indexes:
 - `CREATE INDEX workflow_tasks_by_workflow ON workflow_tasks(workflow_id, updated_unix_ms DESC)`
 - `CREATE INDEX workflow_tasks_by_status ON workflow_tasks(status, ready_unix_ms, updated_unix_ms DESC)`
+- `CREATE INDEX workflow_tasks_by_status_prio ON workflow_tasks(status, priority DESC, ready_unix_ms, updated_unix_ms DESC)`
 
 ### `workflow_events`
 
