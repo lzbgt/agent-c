@@ -43,6 +43,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - correctness assertions (`expect`)
   - **restart continuity**: running tasks are recovered back to queued (at-least-once)
   - prompt templating (simple but powerful): `${task.<id>.assistant_text}` and `${task.<id>.json:/json_pointer}`
+  - v2 template expansion: templates are expanded across the full task request JSON (not only `prompt`), enabling deterministic dataflow into `edge_invoke.args` and other structured fields.
   - Proof: `ctest` includes `agentd_workflow_smoke` (validates DAG ordering + templating + restart recovery).
 - Durable workflows can now run deterministic AVM capsule tasks (no LLM required):
   - Task kind: `kind: "avm_capsule"`
@@ -57,7 +58,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Task kind: `kind: "edge_invoke"` (dispatches `TASK_ASSIGN mode:"invoke"` and waits for `TASK_DONE`)
   - Also supports `mode:"agent"` (dispatches `TASK_ASSIGN mode:"agent"` with a prompt/payload for embedded `agent_core`)
   - Use-case: mix deterministic compute + LLM reasoning + real-world actuation in one durable DAG.
-  - Proof: `ctest` includes `agentd_workflow_edge_invoke_smoke` and `agentd_workflow_edge_agent_smoke`.
+  - Proof: `ctest` includes `agentd_workflow_edge_invoke_smoke`, `agentd_workflow_edge_invoke_template_args_smoke`, and `agentd_workflow_edge_agent_smoke`.
 - UM‑EAIS platform extensions (node → platform workflow handoff) are now proven end-to-end:
   - `WORKFLOW_SUBMIT` and `WORKFLOW_CANCEL` can be ingested via `POST /api/v1/edge/message` and drive the edge workflow runner.
   - Proof: `ctest` includes `agentd_edge_workflow_submit_message_smoke`.
@@ -132,7 +133,7 @@ Problem:
 
 Deliverables:
 - Dataflow model:
-  - (shipped) `${task.<id>.assistant_text}` and `${task.<id>.json:/ptr}` template expansion inside prompts
+  - (shipped) `${task.<id>.assistant_text}` and `${task.<id>.json:/ptr}` template expansion across full task request JSON (prompt + structured fields)
   - (next) explicit `inputs` map per task (safer than string templating; enables schema validation)
 - Aggregation nodes (no LLM required by default):
   - `first_ok`, `best_of_n`, `strict_all_ok`, `collect`

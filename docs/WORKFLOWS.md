@@ -108,6 +108,10 @@ For simple dataflow, the engine expands placeholders in `request.prompt`:
 
 This is resolved from the **completed** dependency’s `assistant_text` (from its persisted `result_json`).
 
+As of v2, template expansion is applied recursively to the task’s full request JSON (not only `prompt`), so you can:
+- feed prior task outputs into `edge_invoke.args` for MCU actuation
+- wire prior outputs into non-prompt request fields (e.g., structured messages payloads)
+
 ## HTTP API
 
 All endpoints require daemon auth when the daemon is started with `--auth-token`.

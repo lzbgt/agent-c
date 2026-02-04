@@ -717,6 +717,33 @@ static std::string expand_prompt_templates(
   return out;
 }
 
+static void expand_templates_in_json_value(
+  Json::Value* v,
+  const std::unordered_map<std::string, std::string>& assistant_text_by_task,
+  const std::unordered_map<std::string, Json::Value>& result_json_by_task
+) {
+  if (!v) return;
+  if (v->isString()) {
+    const std::string s = v->asString();
+    if (s.find("${task.") != std::string::npos) {
+      *v = expand_prompt_templates(s, assistant_text_by_task, result_json_by_task);
+    }
+    return;
+  }
+  if (v->isArray()) {
+    for (Json::ArrayIndex i = 0; i < v->size(); i++) {
+      expand_templates_in_json_value(&((*v)[i]), assistant_text_by_task, result_json_by_task);
+    }
+    return;
+  }
+  if (v->isObject()) {
+    for (const auto& k : v->getMemberNames()) {
+      expand_templates_in_json_value(&((*v)[k]), assistant_text_by_task, result_json_by_task);
+    }
+    return;
+  }
+}
+
 static bool json_pointer_get(const Json::Value& root, const std::string& ptr, const Json::Value** out) {
   if (!out) return false;
   *out = nullptr;
@@ -1258,19 +1285,13 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     }
   }
 
-  // Build final run request body, applying prompt templates.
+  // Build final run request body, applying template expansion.
   std::string request_body = task.request_json;
   Json::Value rr;
   std::string perr;
   if (json_parse_any_value(task.request_json, &rr, &perr) && rr.isObject()) {
-    const std::string kind = json_get_string(rr, "kind");
-    if (kind != "avm_capsule" && kind != "aggregate") {
-      const std::string prompt = json_get_string(rr, "prompt");
-      if (!prompt.empty()) {
-        rr["prompt"] = expand_prompt_templates(prompt, assistant_by_task, result_json_by_task);
-        request_body = json_stringify_compact(rr);
-      }
-    }
+    expand_templates_in_json_value(&rr, assistant_by_task, result_json_by_task);
+    request_body = json_stringify_compact(rr);
   }
 
   const DaemonConfig cfg = cfg_snapshot_();
