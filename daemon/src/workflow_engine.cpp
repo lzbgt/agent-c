@@ -90,6 +90,19 @@ static std::string workflow_task_kind_best_effort(const AgentDb::WorkflowTaskRow
   return json_get_string(v, "kind");
 }
 
+static int64_t workflow_deadline_unix_ms_best_effort(const AgentDb::WorkflowRow& wf) {
+  if (wf.spec_json.empty()) return 0;
+  if (wf.spec_json.find("deadline_unix_ms") == std::string::npos) return 0;
+  Json::Value v;
+  std::string err;
+  if (!json_parse_any_value(wf.spec_json, &v, &err) || !v.isObject()) return 0;
+  if (!v.isMember("deadline_unix_ms")) return 0;
+  const Json::Value& d = v["deadline_unix_ms"];
+  if (!(d.isInt64() || d.isUInt64() || d.isInt() || d.isUInt())) return 0;
+  const int64_t ms = d.asInt64();
+  return ms > 0 ? ms : 0;
+}
+
 static Json::Value workflow_aggregate_quorum_hashes_to_json(
   const Json::Value& agg,
   const std::unordered_map<std::string, Json::Value>& result_json_by_task,
@@ -1090,6 +1103,51 @@ bool WorkflowEngine::pick_and_claim_one(
     if (stop_.load()) return false;
     if (wf.workflow_id.empty()) continue;
     if (wf.status != "queued" && wf.status != "running") continue;
+
+    // Scheduler-level deadline guard (best-effort): if the submit spec carries a deadline and it has passed,
+    // stop admitting new tasks for this workflow and cancel queued tasks. Running tasks are not forcibly interrupted.
+    const int64_t deadline_unix_ms = workflow_deadline_unix_ms_best_effort(wf);
+    if (deadline_unix_ms > 0 && now_unix_ms > deadline_unix_ms) {
+      bool any_change = false;
+      std::vector<AgentDb::WorkflowTaskRow> tasks;
+      if (db_->list_workflow_tasks(wf.workflow_id, &tasks, &err)) {
+        for (auto& t : tasks) {
+          if (t.status == "queued") {
+            t.status = "cancelled";
+            t.updated_unix_ms = now_unix_ms;
+            t.finished_unix_ms = now_unix_ms;
+            t.error = "deadline exceeded";
+            (void)db_->upsert_workflow_task(t, nullptr);
+            {
+              Json::Value d(Json::objectValue);
+              d["workflow_id"] = wf.workflow_id;
+              d["task_id"] = t.task_id;
+              d["status"] = t.status;
+              d["attempt"] = t.attempt;
+              d["max_attempts"] = t.max_attempts;
+              d["reason"] = "deadline_exceeded";
+              d["error"] = t.error;
+              d["ts_unix_ms"] = (Json::Int64)now_unix_ms;
+              insert_workflow_event_best_effort(db_, wf.workflow_id, t.task_id, "task_status", now_unix_ms, d);
+            }
+            any_change = true;
+          }
+        }
+      }
+
+      if (!wf.cancel_requested || wf.error != "deadline exceeded") {
+        AgentDb::WorkflowRow upd = wf;
+        upd.cancel_requested = true;
+        upd.updated_unix_ms = now_unix_ms;
+        upd.error = "deadline exceeded";
+        (void)db_->upsert_workflow(upd, nullptr);
+        any_change = true;
+      }
+      if (any_change) {
+        maybe_finalize_workflow(wf.workflow_id);
+      }
+      continue;
+    }
 
     std::vector<AgentDb::WorkflowTaskRow> tasks;
     if (!db_->list_workflow_tasks(wf.workflow_id, &tasks, &err)) {

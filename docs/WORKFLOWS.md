@@ -14,6 +14,21 @@ The workflow engine is intended to be the framework’s “power source” for:
 
 ## Key semantics
 
+### Workflow deadline (v1.2)
+
+Workflows may optionally carry a scheduler-level deadline:
+
+- `deadline_unix_ms` (submit request top-level; Unix time in milliseconds)
+
+Semantics:
+- Once `now_unix_ms > deadline_unix_ms`, the workflow engine:
+  - cancels any `queued` tasks (marks them `cancelled` with error `"deadline exceeded"`)
+  - requests cancellation for the workflow (best-effort)
+  - does **not** forcibly interrupt `running` tasks (v1)
+- When all tasks become terminal, the workflow becomes terminal (typically `cancelled`) with error `"deadline exceeded"`.
+
+This deadline is enforced by the **scheduler**, so it helps bound long fan-out workflows even if tasks are misconfigured.
+
 ### Scheduling priority (v1)
 
 Workflows and tasks support a simple integer priority hint:

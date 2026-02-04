@@ -111,6 +111,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - Workflow spec introspection:
   - `GET /api/v1/workflow?workflow_id=...&include_spec=1` returns redacted `spec_json` (+ parsed `spec` when valid).
   - Proof: `ctest` includes `agentd_workflow_get_spec_smoke`.
+- Workflow deadline (scheduler-level):
+  - Submit `deadline_unix_ms` to cancel queued tasks after a wall-clock cutoff (best-effort; running tasks are not forcibly interrupted).
+  - Proof: `ctest` includes `agentd_workflow_deadline_smoke`.
 
 ## P0 (next: maximize autonomous continuity + correctness)
 

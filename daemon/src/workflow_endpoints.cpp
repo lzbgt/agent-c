@@ -329,6 +329,21 @@ void handle_workflow_submit_endpoint(
   }
   if (!args.isMember("priority")) args["priority"] = workflow_priority;
 
+  if (args.isMember("deadline_unix_ms")) {
+    if (!(args["deadline_unix_ms"].isInt64() || args["deadline_unix_ms"].isUInt64() || args["deadline_unix_ms"].isInt())) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid deadline_unix_ms (expected int64 unix ms)\"}";
+      return;
+    }
+    const int64_t v = args["deadline_unix_ms"].asInt64();
+    if (v <= 0) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid deadline_unix_ms (expected > 0)\"}";
+      return;
+    }
+    args["deadline_unix_ms"] = (Json::Int64)v; // canonicalize
+  }
+
   const int64_t now = unix_ms_now();
   std::unordered_set<std::string> seen_ids;
   std::vector<std::string> task_ids;

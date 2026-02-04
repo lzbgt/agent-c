@@ -1545,6 +1545,10 @@ components:
         workflow_id: { type: string }
         trace_id: { $ref: "#/components/schemas/TraceID" }
         session_id: { type: string }
+        deadline_unix_ms:
+          type: integer
+          format: int64
+          description: Scheduler-level workflow deadline (Unix ms). After this time, queued tasks are cancelled best-effort.
         priority:
           type: integer
           format: int32
