@@ -255,6 +255,8 @@ static std::optional<AvmReady> avm_require_ready(
   return AvmReady{avm_bin};
 }
 
+static bool parse_obc_from_args(const Json::Value& args, std::string* out_obc_bytes, std::string* out_error);
+
 static bool parse_obc_from_request_body(const std::string& body, std::string* out_obc_bytes, Json::Value* out_args, std::string* out_error) {
   if (out_error) out_error->clear();
   if (out_obc_bytes) out_obc_bytes->clear();
@@ -264,6 +266,27 @@ static bool parse_obc_from_request_body(const std::string& body, std::string* ou
   std::string perr;
   if (!json_parse_object(body, &args, &perr)) {
     if (out_error) *out_error = std::string("invalid JSON: ") + perr;
+    return false;
+  }
+
+  // Delegate to the args-based parser for validation/limits.
+  std::string err2;
+  std::string obc_bytes;
+  if (!parse_obc_from_args(args, &obc_bytes, &err2)) {
+    if (out_error) *out_error = err2;
+    return false;
+  }
+
+  if (out_args) *out_args = args;
+  if (out_obc_bytes) *out_obc_bytes = std::move(obc_bytes);
+  return true;
+}
+
+static bool parse_obc_from_args(const Json::Value& args, std::string* out_obc_bytes, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (out_obc_bytes) out_obc_bytes->clear();
+  if (!args.isObject()) {
+    if (out_error) *out_error = "invalid JSON (expected object)";
     return false;
   }
 
@@ -285,7 +308,6 @@ static bool parse_obc_from_request_body(const std::string& body, std::string* ou
     return false;
   }
 
-  if (out_args) *out_args = args;
   if (out_obc_bytes) *out_obc_bytes = std::move(obc_bytes);
   return true;
 }
@@ -407,6 +429,202 @@ static bool extract_first_json_object(const std::string& s, std::string* out_jso
 }
 
 }  // namespace
+
+bool avm_capsule_run_to_json(
+  const DaemonConfig& cfg,
+  const Json::Value& args,
+  Json::Value* out,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (!out) {
+    if (out_error) *out_error = "missing out";
+    return false;
+  }
+  *out = Json::Value(Json::objectValue);
+
+  Json::Value o(Json::objectValue);
+
+  if (!cfg.yolo_default) {
+    const std::string err = "avm capsule_run requires yolo_default=true";
+    if (out_error) *out_error = err;
+    o["ok"] = false;
+    o["error_kind"] = "forbidden";
+    o["error"] = err;
+    *out = o;
+    return true;
+  }
+  const std::string avm_bin = getenv_string("AGENTD_AVM_BIN");
+  if (avm_bin.empty()) {
+    const std::string err = "AGENTD_AVM_BIN is not set";
+    if (out_error) *out_error = err;
+    o["ok"] = false;
+    o["error_kind"] = "unavailable";
+    o["error"] = err;
+    *out = o;
+    return true;
+  }
+  if (!env_truthy(getenv_string("AGENTD_AVM_EXEC"))) {
+    const std::string err = "avm execution is disabled (set AGENTD_AVM_EXEC=1)";
+    if (out_error) *out_error = err;
+    o["ok"] = false;
+    o["error_kind"] = "forbidden";
+    o["error"] = err;
+    *out = o;
+    return true;
+  }
+
+  std::string obc_bytes;
+  std::string perr;
+  if (!parse_obc_from_args(args, &obc_bytes, &perr)) {
+    const std::string err = perr.empty() ? "invalid args" : perr;
+    if (out_error) *out_error = err;
+    o["ok"] = false;
+    o["error_kind"] = "bad_request";
+    o["error"] = err;
+    *out = o;
+    return true;
+  }
+
+  auto clamp_i64 = [](int64_t v, int64_t lo, int64_t hi) -> int64_t {
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+  };
+
+  int64_t timeout_ms = 2000;
+  if (args.isMember("timeout_ms") && (args["timeout_ms"].isInt64() || args["timeout_ms"].isUInt64() || args["timeout_ms"].isInt())) {
+    timeout_ms = args["timeout_ms"].asInt64();
+  }
+  timeout_ms = clamp_i64(timeout_ms, 1, 60000);
+
+  int64_t gas = 200000;
+  if (args.isMember("gas") && (args["gas"].isInt64() || args["gas"].isUInt64() || args["gas"].isInt())) {
+    gas = args["gas"].asInt64();
+  }
+  gas = clamp_i64(gas, 1, 50ll * 1000 * 1000);
+
+  int64_t mem_bytes = 8 * 1000 * 1000;
+  if (args.isMember("mem_bytes") && (args["mem_bytes"].isInt64() || args["mem_bytes"].isUInt64() || args["mem_bytes"].isInt())) {
+    mem_bytes = args["mem_bytes"].asInt64();
+  }
+  mem_bytes = clamp_i64(mem_bytes, 64 * 1000, 512ll * 1000 * 1000);
+
+  int64_t io_bytes = 0;
+  if (args.isMember("io_bytes") && (args["io_bytes"].isInt64() || args["io_bytes"].isUInt64() || args["io_bytes"].isInt())) {
+    io_bytes = args["io_bytes"].asInt64();
+  }
+  io_bytes = clamp_i64(io_bytes, 0, 512ll * 1000 * 1000);
+
+  int64_t log_bytes = 0;
+  if (args.isMember("log_bytes") && (args["log_bytes"].isInt64() || args["log_bytes"].isUInt64() || args["log_bytes"].isInt())) {
+    log_bytes = args["log_bytes"].asInt64();
+  }
+  log_bytes = clamp_i64(log_bytes, 0, 512ll * 1000 * 1000);
+
+  const bool deterministic =
+    !args.isMember("deterministic") || (args["deterministic"].isBool() && args["deterministic"].asBool());
+
+  const std::string allow_domains =
+    args.isMember("allow_domains") && args["allow_domains"].isString() ? trim_copy(args["allow_domains"].asString()) : "";
+
+  const bool have_rng_seed =
+    args.isMember("rng_seed") && (args["rng_seed"].isInt64() || args["rng_seed"].isUInt64() || args["rng_seed"].isInt());
+  const int64_t rng_seed = have_rng_seed ? args["rng_seed"].asInt64() : 0;
+
+  const bool have_time_start_ns =
+    args.isMember("time_start_ns") && (args["time_start_ns"].isInt64() || args["time_start_ns"].isUInt64() || args["time_start_ns"].isInt());
+  const int64_t time_start_ns = have_time_start_ns ? args["time_start_ns"].asInt64() : 0;
+
+  std::string terr;
+  const auto tmp = write_temp_file_bytes(obc_bytes, &terr);
+  if (!tmp) {
+    const std::string err = terr.empty() ? "failed to write temp obc" : terr;
+    if (out_error) *out_error = err;
+    o["ok"] = false;
+    o["error_kind"] = "internal";
+    o["error"] = err;
+    *out = o;
+    return true;
+  }
+
+  std::vector<std::string> avm_argv;
+  avm_argv.reserve(16);
+  avm_argv.push_back(avm_bin);
+  avm_argv.push_back("--capsule");
+  avm_argv.push_back("--print-run-json");
+  avm_argv.push_back("--print-result-hash");
+  avm_argv.push_back("--print-trace-hash");
+  avm_argv.push_back("--print-state-hash");
+  avm_argv.push_back("--timeout-ms");
+  avm_argv.push_back(std::to_string((long long)timeout_ms));
+  if (!allow_domains.empty()) {
+    avm_argv.push_back("--allow-domains");
+    avm_argv.push_back(allow_domains);
+  }
+  avm_argv.push_back(tmp->string());
+
+  std::vector<std::pair<std::string, std::string>> env_overrides;
+  env_overrides.reserve(8);
+  env_overrides.push_back({"AVM_GAS", std::to_string((long long)gas)});
+  env_overrides.push_back({"AVM_MEM_BYTES", std::to_string((long long)mem_bytes)});
+  env_overrides.push_back({"AVM_IO_BYTES", std::to_string((long long)io_bytes)});
+  env_overrides.push_back({"AVM_LOG_BYTES", std::to_string((long long)log_bytes)});
+  env_overrides.push_back({"AVM_DETERMINISTIC", deterministic ? "1" : "0"});
+  if (have_rng_seed) env_overrides.push_back({"AVM_RNG_SEED", std::to_string((long long)rng_seed)});
+  if (have_time_start_ns) env_overrides.push_back({"AVM_TIME_START_NS", std::to_string((long long)time_start_ns)});
+
+  const int outer_timeout_ms = (int)clamp_i64(timeout_ms + 1000, 1, 65000);
+  const size_t max_out = 1024 * 1024;
+  ExecResult r = run_proc_capture_env(avm_argv, outer_timeout_ms, max_out, env_overrides);
+
+  std::error_code ec;
+  std::filesystem::remove(*tmp, ec);
+
+  o["exit_code"] = r.exit_code;
+  o["timed_out"] = r.timed_out;
+  o["truncated"] = r.truncated;
+  o["stdout"] = r.output;
+
+  if (r.timed_out) {
+    o["ok"] = false;
+    o["error_kind"] = "timeout";
+    o["error"] = "avm timed out";
+    *out = o;
+    return true;
+  }
+
+  std::string run_json_s;
+  if (!extract_first_json_object(r.output, &run_json_s)) {
+    o["ok"] = false;
+    o["error_kind"] = "bad_gateway";
+    o["error"] = "missing run JSON in avm output";
+    *out = o;
+    return true;
+  }
+  Json::Value run;
+  std::string jerr;
+  if (!json_parse_any(run_json_s, &run, &jerr)) {
+    o["ok"] = false;
+    o["error_kind"] = "bad_gateway";
+    o["error"] = "failed to parse run JSON from avm output";
+    o["parse_error"] = jerr;
+    *out = o;
+    return true;
+  }
+
+  o["run"] = run;
+  if (const auto h = parse_result_hash(r.output)) o["result_hash"] = *h;
+  if (const auto h = parse_trace_hash(r.output)) o["trace_hash"] = *h;
+  if (const auto h = parse_state_hash(r.output)) o["state_hash"] = *h;
+  o["ok"] = (r.exit_code == 0);
+  if (!o["ok"].asBool()) {
+    o["error_kind"] = "bad_gateway";
+    o["error"] = "avm exited non-zero";
+  }
+  *out = o;
+  return true;
+}
 
 void handle_avm_job_scan_endpoint(
   const DaemonConfig& cfg,
@@ -693,161 +911,34 @@ void handle_avm_capsule_run_endpoint(
   const HttpRequest& req,
   HttpResponse* resp
 ) {
-  const auto ready = avm_require_ready(cfg, cors_cfg, req, resp);
-  if (!ready) return;
-
-  if (!env_truthy(getenv_string("AGENTD_AVM_EXEC"))) {
-    resp->status = 403;
-    resp->body = "{\"ok\":false,\"error\":\"avm execution is disabled (set AGENTD_AVM_EXEC=1)\"}";
-    return;
-  }
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
 
   Json::Value args;
-  std::string obc_bytes;
-  std::string rerr;
-  if (!parse_obc_from_request_body(req.body, &obc_bytes, &args, &rerr)) {
+  std::string perr;
+  if (!json_parse_object(req.body, &args, &perr)) {
     resp->status = 400;
     Json::Value o(Json::objectValue);
     o["ok"] = false;
-    o["error"] = rerr;
+    o["error"] = std::string("invalid JSON: ") + perr;
     respond_json(resp, o);
     return;
   }
 
-  auto clamp_i64 = [](int64_t v, int64_t lo, int64_t hi) -> int64_t {
-    if (v < lo) return lo;
-    if (v > hi) return hi;
-    return v;
-  };
-
-  int64_t timeout_ms = 2000;
-  if (args.isMember("timeout_ms") && (args["timeout_ms"].isInt64() || args["timeout_ms"].isUInt64() || args["timeout_ms"].isInt())) {
-    timeout_ms = args["timeout_ms"].asInt64();
-  }
-  timeout_ms = clamp_i64(timeout_ms, 1, 60000);
-
-  int64_t gas = 200000;
-  if (args.isMember("gas") && (args["gas"].isInt64() || args["gas"].isUInt64() || args["gas"].isInt())) {
-    gas = args["gas"].asInt64();
-  }
-  gas = clamp_i64(gas, 1, 50ll * 1000 * 1000);
-
-  int64_t mem_bytes = 8 * 1000 * 1000;
-  if (args.isMember("mem_bytes") && (args["mem_bytes"].isInt64() || args["mem_bytes"].isUInt64() || args["mem_bytes"].isInt())) {
-    mem_bytes = args["mem_bytes"].asInt64();
-  }
-  mem_bytes = clamp_i64(mem_bytes, 64 * 1000, 512ll * 1000 * 1000);
-
-  int64_t io_bytes = 0;
-  if (args.isMember("io_bytes") && (args["io_bytes"].isInt64() || args["io_bytes"].isUInt64() || args["io_bytes"].isInt())) {
-    io_bytes = args["io_bytes"].asInt64();
-  }
-  io_bytes = clamp_i64(io_bytes, 0, 512ll * 1000 * 1000);
-
-  int64_t log_bytes = 0;
-  if (args.isMember("log_bytes") && (args["log_bytes"].isInt64() || args["log_bytes"].isUInt64() || args["log_bytes"].isInt())) {
-    log_bytes = args["log_bytes"].asInt64();
-  }
-  log_bytes = clamp_i64(log_bytes, 0, 512ll * 1000 * 1000);
-
-  const bool deterministic =
-    !args.isMember("deterministic") || (args["deterministic"].isBool() && args["deterministic"].asBool());
-
-  const std::string allow_domains =
-    args.isMember("allow_domains") && args["allow_domains"].isString() ? trim_copy(args["allow_domains"].asString()) : "";
-
-  const bool have_rng_seed =
-    args.isMember("rng_seed") && (args["rng_seed"].isInt64() || args["rng_seed"].isUInt64() || args["rng_seed"].isInt());
-  const int64_t rng_seed = have_rng_seed ? args["rng_seed"].asInt64() : 0;
-
-  const bool have_time_start_ns =
-    args.isMember("time_start_ns") && (args["time_start_ns"].isInt64() || args["time_start_ns"].isUInt64() || args["time_start_ns"].isInt());
-  const int64_t time_start_ns = have_time_start_ns ? args["time_start_ns"].asInt64() : 0;
-
-  std::string terr;
-  const auto tmp = write_temp_file_bytes(obc_bytes, &terr);
-  if (!tmp) {
-    resp->status = 500;
-    Json::Value o(Json::objectValue);
-    o["ok"] = false;
-    o["error"] = "failed to write temp obc";
-    o["detail"] = terr;
-    respond_json(resp, o);
-    return;
-  }
-
-  std::vector<std::string> avm_argv;
-  avm_argv.reserve(16);
-  avm_argv.push_back(ready->avm_bin);
-  avm_argv.push_back("--capsule");
-  avm_argv.push_back("--print-run-json");
-  avm_argv.push_back("--print-result-hash");
-  avm_argv.push_back("--print-trace-hash");
-  avm_argv.push_back("--print-state-hash");
-  avm_argv.push_back("--timeout-ms");
-  avm_argv.push_back(std::to_string((long long)timeout_ms));
-  if (!allow_domains.empty()) {
-    avm_argv.push_back("--allow-domains");
-    avm_argv.push_back(allow_domains);
-  }
-  avm_argv.push_back(tmp->string());
-
-  std::vector<std::pair<std::string, std::string>> env_overrides;
-  env_overrides.reserve(8);
-  env_overrides.push_back({"AVM_GAS", std::to_string((long long)gas)});
-  env_overrides.push_back({"AVM_MEM_BYTES", std::to_string((long long)mem_bytes)});
-  env_overrides.push_back({"AVM_IO_BYTES", std::to_string((long long)io_bytes)});
-  env_overrides.push_back({"AVM_LOG_BYTES", std::to_string((long long)log_bytes)});
-  env_overrides.push_back({"AVM_DETERMINISTIC", deterministic ? "1" : "0"});
-  if (have_rng_seed) env_overrides.push_back({"AVM_RNG_SEED", std::to_string((long long)rng_seed)});
-  if (have_time_start_ns) env_overrides.push_back({"AVM_TIME_START_NS", std::to_string((long long)time_start_ns)});
-
-  const int outer_timeout_ms = (int)clamp_i64(timeout_ms + 1000, 1, 65000);
-  const size_t max_out = 1024 * 1024;
-  ExecResult r = run_proc_capture_env(avm_argv, outer_timeout_ms, max_out, env_overrides);
-
-  std::error_code ec;
-  std::filesystem::remove(*tmp, ec);
-
-  Json::Value out(Json::objectValue);
-  out["exit_code"] = r.exit_code;
-  out["timed_out"] = r.timed_out;
-  out["truncated"] = r.truncated;
-  out["stdout"] = r.output;
-
-  if (r.timed_out) {
+  Json::Value out;
+  std::string err;
+  (void)avm_capsule_run_to_json(cfg, args, &out, &err);
+  const std::string ek =
+    out.isObject() && out.isMember("error_kind") && out["error_kind"].isString() ? out["error_kind"].asString() : "";
+  if (ek == "bad_request") resp->status = 400;
+  else if (ek == "forbidden") resp->status = 403;
+  else if (ek == "unavailable") resp->status = 503;
+  else if (ek == "timeout" || (out.isObject() && out.isMember("timed_out") && out["timed_out"].isBool() && out["timed_out"].asBool())) {
     resp->status = 504;
-    out["ok"] = false;
-    out["error"] = "avm timed out";
-    respond_json(resp, out);
-    return;
-  }
-
-  std::string run_json_s;
-  if (!extract_first_json_object(r.output, &run_json_s)) {
+  } else if (out.isObject() && out.isMember("ok") && out["ok"].isBool() && !out["ok"].asBool()) {
     resp->status = 502;
-    out["ok"] = false;
-    out["error"] = "missing run JSON in avm output";
-    respond_json(resp, out);
-    return;
   }
-  Json::Value run;
-  std::string jerr;
-  if (!json_parse_any(run_json_s, &run, &jerr)) {
-    resp->status = 502;
-    out["ok"] = false;
-    out["error"] = "failed to parse run JSON from avm output";
-    out["parse_error"] = jerr;
-    respond_json(resp, out);
-    return;
-  }
-
-  out["run"] = run;
-  if (const auto h = parse_result_hash(r.output)) out["result_hash"] = *h;
-  if (const auto h = parse_trace_hash(r.output)) out["trace_hash"] = *h;
-  if (const auto h = parse_state_hash(r.output)) out["state_hash"] = *h;
-
-  out["ok"] = (r.exit_code == 0);
   respond_json(resp, out);
 }
 

@@ -4,6 +4,10 @@
 #include "http_util.h"
 #include "runtime_config.h"
 
+#include <json/json.h>
+
+#include <string>
+
 namespace agentd {
 
 // AVM integration endpoints (Oren AVM; out-of-process).
@@ -64,6 +68,23 @@ void handle_avm_capsule_run_endpoint(
   const CorsConfig& cors_cfg,
   const HttpRequest& req,
   HttpResponse* resp
+);
+
+// Internal helper for daemon subsystems (e.g. workflow engine) that need to execute an OBC capsule
+// without going through the HTTP layer.
+//
+// Args must include:
+// - obc_base64: base64-encoded .obc bytes
+//
+// This function enforces the same operator gates as the HTTP endpoint:
+// - cfg.yolo_default must be true
+// - env AGENTD_AVM_BIN must be set
+// - env AGENTD_AVM_EXEC must be truthy ("1") to allow execution
+bool avm_capsule_run_to_json(
+  const DaemonConfig& cfg,
+  const Json::Value& args,
+  Json::Value* out,
+  std::string* out_error
 );
 
 }  // namespace agentd

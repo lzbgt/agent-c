@@ -1,6 +1,6 @@
 # Roadmap / TODOs (highest leverage)
 
-Date: 2026-02-04
+Date: 2026-02-05
 
 This roadmap is biased toward “power unleashed” coming from the **agentic framework itself**:
 
@@ -41,8 +41,13 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
     - retries (`max_attempts`) + backoff (`ready_unix_ms`)
     - correctness assertions (`expect`)
     - **restart continuity**: running tasks are recovered back to queued (at-least-once)
-    - simple prompt templating: `${task.<id>.assistant_text}`
+  - simple prompt templating: `${task.<id>.assistant_text}`
   - Proof: `ctest` includes `agentd_workflow_smoke` (validates DAG ordering + templating + restart recovery).
+- Durable workflows can now run deterministic AVM capsule tasks (no LLM required):
+  - Task kind: `kind: "avm_capsule"`
+  - Task payload: `capsule: { obc_base64, timeout_ms, gas, mem_bytes, ... }` (same schema as `POST /api/v1/avm/capsule_run`)
+  - Result shape: `result.results_by_task[task_id].avm.{run,result_hash,trace_hash,state_hash,...}`
+  - Proof: `ctest` includes `agentd_workflow_avm_capsule_smoke` (runs AVM capsule, then templates its result into an LLM stub task).
 - Resumable async jobs: `run_async` requests persist enough state to resume after daemon restart (at-least-once semantics).
   - Proof: `ctest` includes `agentd_job_restart_durability_smoke` (restart mid-job → finishes done).
 - Memory v2 (retrieval): `memory_search` now prefers a ranked on-disk index (SQLite FTS5) when available, with automatic fallback to bounded substring scan.
@@ -70,9 +75,9 @@ Goal:
 Deliverables:
 - Persisted “governance bundle” object (job/policy/inspect/verify/run) so platform code can do scan → run → attest
   with one stable stored object keyed by `job_hash_sha256` / `program_hash_sha256`.
-- Workflow integration:
-  - allow durable workflows to dispatch a capsule run as a task kind (no LLM required)
-  - allow “aggregation/join” nodes to compare `RESULT_HASH` / `TRACE_HASH` across runs/nodes (k-of-n correctness)
+- Workflow + join:
+  - (shipped) durable workflows can dispatch a capsule run as a task kind (no LLM required)
+  - (next) add “aggregation/join” nodes to compare `RESULT_HASH` / `TRACE_HASH` across runs/nodes (k-of-n correctness)
 - Edge interop integration:
   - extend UM‑EAIS payload conventions so a node can execute a capsule and report back hashes as “task done” attestation.
 

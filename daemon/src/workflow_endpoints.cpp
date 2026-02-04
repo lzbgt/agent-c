@@ -270,8 +270,12 @@ void handle_workflow_submit_endpoint(
       return;
     }
 
+    const std::string kind =
+      t.isMember("kind") && t["kind"].isString() ? trim_copy(t["kind"].asString()) : std::string();
+    const bool is_avm = (kind == "avm_capsule");
+
     Json::Value run_req = t.isMember("request") && t["request"].isObject() ? t["request"] : t;
-    if (defaults.isObject()) {
+    if (!is_avm && defaults.isObject()) {
       for (const auto& k : defaults.getMemberNames()) {
         if (!run_req.isMember(k)) run_req[k] = defaults[k];
       }
@@ -306,39 +310,71 @@ void handle_workflow_submit_endpoint(
     if (task_priority > 1000) task_priority = 1000;
     run_req["priority"] = task_priority;
 
-    if (!allow_sessions) {
-      run_req["no_session"] = true;
-      if (!run_req.isMember("tools")) run_req["tools"] = "none";
-    } else if (!session_id.empty()) {
-      // If sessions are allowed, default tasks to the workflow session unless explicitly overridden.
-      if (!run_req.isMember("session_id") && (!run_req.isMember("no_session") || !run_req["no_session"].isBool() || !run_req["no_session"].asBool())) {
-        run_req["session_id"] = session_id;
+    if (!is_avm) {
+      if (!allow_sessions) {
+        run_req["no_session"] = true;
+        if (!run_req.isMember("tools")) run_req["tools"] = "none";
+      } else if (!session_id.empty()) {
+        // If sessions are allowed, default tasks to the workflow session unless explicitly overridden.
+        if (!run_req.isMember("session_id") && (!run_req.isMember("no_session") || !run_req["no_session"].isBool() || !run_req["no_session"].asBool())) {
+          run_req["session_id"] = session_id;
+        }
       }
     }
 
-    if (run_req.isMember("api_key") && run_req["api_key"].isString() && !run_req["api_key"].asString().empty() && !allow_inline_api_keys) {
-      resp->status = 400;
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["error"] = "inline api_key is not allowed for durable workflows (set daemon api_key/provider_keys or pass allow_inline_api_keys=true)";
-      o["task_id"] = task_id;
-      resp->body = json_stringify_compact(o);
-      return;
+    if (!is_avm) {
+      if (run_req.isMember("api_key") && run_req["api_key"].isString() && !run_req["api_key"].asString().empty() && !allow_inline_api_keys) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "inline api_key is not allowed for durable workflows (set daemon api_key/provider_keys or pass allow_inline_api_keys=true)";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
     }
 
-    if (!run_req.isMember("prompt") || !run_req["prompt"].isString() || run_req["prompt"].asString().empty()) {
-      resp->status = 400;
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["error"] = "task missing prompt";
-      o["task_id"] = task_id;
-      resp->body = json_stringify_compact(o);
-      return;
-    }
+    Json::Value task_req(Json::objectValue);
+    if (is_avm) {
+      if (!t.isMember("capsule") || !t["capsule"].isObject()) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "avm_capsule task missing capsule object";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+      const auto& cap = t["capsule"];
+      if (!cap.isMember("obc_base64") || !cap["obc_base64"].isString() || cap["obc_base64"].asString().empty()) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "avm_capsule task capsule missing obc_base64";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+      task_req["kind"] = "avm_capsule";
+      task_req["capsule"] = cap;
+      task_req["priority"] = task_priority;
+      task_req["trace_id"] = trace_id + ":" + task_id;
+    } else {
+      if (!run_req.isMember("prompt") || !run_req["prompt"].isString() || run_req["prompt"].asString().empty()) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "task missing prompt";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
 
-    // Default trace_id per task (inherits workflow trace_id).
-    if (!run_req.isMember("trace_id") || !run_req["trace_id"].isString() || run_req["trace_id"].asString().empty()) {
-      run_req["trace_id"] = trace_id + ":" + task_id;
+      // Default trace_id per task (inherits workflow trace_id).
+      if (!run_req.isMember("trace_id") || !run_req["trace_id"].isString() || run_req["trace_id"].asString().empty()) {
+        run_req["trace_id"] = trace_id + ":" + task_id;
+      }
+      task_req = run_req;
     }
 
     Json::Value deps_arr(Json::arrayValue);
@@ -368,7 +404,7 @@ void handle_workflow_submit_endpoint(
     row.started_unix_ms = 0;
     row.finished_unix_ms = 0;
     row.depends_on_json = deps_arr.isArray() ? json_stringify_compact(deps_arr) : "[]";
-    row.request_json = json_stringify_compact(run_req);
+    row.request_json = json_stringify_compact(task_req);
     if (t.isMember("expect") && t["expect"].isObject()) {
       row.expect_json = json_stringify_compact(t["expect"]);
     }

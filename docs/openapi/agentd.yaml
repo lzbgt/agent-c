@@ -277,46 +277,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              required: [obc_base64]
-              properties:
-                obc_base64:
-                  type: string
-                  description: Base64-encoded `.obc` bytes
-                timeout_ms:
-                  type: integer
-                  format: int32
-                  description: Wall-time deadline (passed to AVM `--timeout-ms`)
-                gas:
-                  type: integer
-                  format: int64
-                  description: Instruction-step budget (env `AVM_GAS`)
-                mem_bytes:
-                  type: integer
-                  format: int64
-                  description: Heap budget (env `AVM_MEM_BYTES`)
-                io_bytes:
-                  type: integer
-                  format: int64
-                  description: FS I/O budget (env `AVM_IO_BYTES`)
-                log_bytes:
-                  type: integer
-                  format: int64
-                  description: Record/replay log budget (env `AVM_LOG_BYTES`)
-                deterministic:
-                  type: boolean
-                  description: Enable deterministic TIME/RNG (env `AVM_DETERMINISTIC`)
-                rng_seed:
-                  type: integer
-                  format: int64
-                  description: Deterministic RNG seed (env `AVM_RNG_SEED`)
-                time_start_ns:
-                  type: integer
-                  format: int64
-                  description: Virtual clock origin (env `AVM_TIME_START_NS`)
-                allow_domains:
-                  type: string
-                  description: CSV allowlist passed to AVM `--allow-domains` (still virtualized by capsule defaults)
+              $ref: "#/components/schemas/AvmCapsuleRunArgs"
       responses:
         "200":
           description: Execution result (ok indicates VM exit_code==0)
@@ -1224,6 +1185,21 @@ components:
             $ref: "#/components/schemas/AgentEvent"
 
     WorkflowTaskSpec:
+      description: |
+        Workflow task specification.
+
+        This is a tagged union:
+        - LLM/tool tasks: `request` (a `RunRequest`) with a non-empty `prompt`
+        - Deterministic capsule tasks: `kind: avm_capsule` with `capsule` (see `AvmCapsuleRunArgs`)
+
+        Note: OpenAPI cannot express conditional required fields perfectly; see the server-side behavior:
+        - If `kind == avm_capsule`, `capsule.obc_base64` is required and `request.prompt` is not used.
+        - Otherwise, `request.prompt` is required (or prompt at the top-level is accepted by the server for legacy reasons).
+      oneOf:
+        - $ref: "#/components/schemas/WorkflowTaskRunSpec"
+        - $ref: "#/components/schemas/WorkflowTaskAvmCapsuleSpec"
+
+    WorkflowTaskRunSpec:
       type: object
       required: [task_id, request]
       properties:
@@ -1242,6 +1218,72 @@ components:
           type: object
           description: Deterministic correctness assertions (engine-enforced)
           additionalProperties: true
+
+    WorkflowTaskAvmCapsuleSpec:
+      type: object
+      required: [task_id, kind, capsule]
+      properties:
+        task_id: { type: string }
+        kind:
+          type: string
+          enum: [avm_capsule]
+          description: Deterministic capsule execution task (no LLM required).
+        depends_on:
+          type: array
+          items: { type: string }
+        max_attempts: { type: integer, format: int32 }
+        priority:
+          type: integer
+          format: int32
+          description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+        capsule:
+          $ref: "#/components/schemas/AvmCapsuleRunArgs"
+        expect:
+          type: object
+          description: Deterministic correctness assertions (engine-enforced)
+          additionalProperties: true
+
+    AvmCapsuleRunArgs:
+      type: object
+      required: [obc_base64]
+      properties:
+        obc_base64:
+          type: string
+          description: Base64-encoded `.obc` bytes
+        timeout_ms:
+          type: integer
+          format: int32
+          description: Wall-time deadline (passed to AVM `--timeout-ms`)
+        gas:
+          type: integer
+          format: int64
+          description: Instruction-step budget (env `AVM_GAS`)
+        mem_bytes:
+          type: integer
+          format: int64
+          description: Heap budget (env `AVM_MEM_BYTES`)
+        io_bytes:
+          type: integer
+          format: int64
+          description: FS I/O budget (env `AVM_IO_BYTES`)
+        log_bytes:
+          type: integer
+          format: int64
+          description: Record/replay log budget (env `AVM_LOG_BYTES`)
+        deterministic:
+          type: boolean
+          description: Enable deterministic TIME/RNG (env `AVM_DETERMINISTIC`)
+        rng_seed:
+          type: integer
+          format: int64
+          description: Deterministic RNG seed (env `AVM_RNG_SEED`)
+        time_start_ns:
+          type: integer
+          format: int64
+          description: Virtual clock origin (env `AVM_TIME_START_NS`)
+        allow_domains:
+          type: string
+          description: CSV allowlist passed to AVM `--allow-domains` (still virtualized by capsule defaults)
 
     WorkflowSubmitRequest:
       type: object

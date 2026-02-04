@@ -1,5 +1,6 @@
 #include "workflow_engine.h"
 
+#include "avm_endpoints.h"
 #include "json_util.h"
 #include "run_endpoints.h"
 
@@ -595,16 +596,48 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   Json::Value rr;
   std::string perr;
   if (json_parse_any_value(task.request_json, &rr, &perr) && rr.isObject()) {
-    const std::string prompt = json_get_string(rr, "prompt");
-    if (!prompt.empty()) {
-      rr["prompt"] = expand_prompt_templates(prompt, assistant_by_task, result_json_by_task);
-      request_body = json_stringify_compact(rr);
+    const std::string kind = json_get_string(rr, "kind");
+    if (kind != "avm_capsule") {
+      const std::string prompt = json_get_string(rr, "prompt");
+      if (!prompt.empty()) {
+        rr["prompt"] = expand_prompt_templates(prompt, assistant_by_task, result_json_by_task);
+        request_body = json_stringify_compact(rr);
+      }
     }
   }
 
   const DaemonConfig cfg = cfg_snapshot_();
   const OpenAIClientConfig ocfg = ocfg_from_cfg_(cfg);
-  Json::Value out = run_request_to_json_internal(cfg, ocfg, db_, tool_ext_or_null_, sessions_root_dir_, request_body, nullptr);
+  Json::Value out;
+  std::string kind;
+  if (rr.isObject()) kind = json_get_string(rr, "kind");
+  if (kind == "avm_capsule") {
+    const Json::Value cap = rr.isMember("capsule") && rr["capsule"].isObject() ? rr["capsule"] : Json::Value(Json::nullValue);
+    Json::Value avm_out;
+    std::string aerr;
+    (void)avm_capsule_run_to_json(cfg, cap, &avm_out, &aerr);
+    out = Json::Value(Json::objectValue);
+    out["kind"] = "avm_capsule";
+    out["avm"] = avm_out;
+    const bool ok = avm_out.isObject() && avm_out.isMember("ok") && avm_out["ok"].isBool() && avm_out["ok"].asBool();
+    out["ok"] = ok;
+    if (!ok) {
+      const std::string err =
+        avm_out.isObject() && avm_out.isMember("error") && avm_out["error"].isString() ? avm_out["error"].asString()
+        : (!aerr.empty() ? aerr : "avm capsule_run failed");
+      out["error"] = err;
+    }
+    // For template expansion convenience, surface a bounded assistant_text (best-effort).
+    if (avm_out.isObject() && avm_out.isMember("result_hash") && avm_out["result_hash"].isString()) {
+      out["assistant_text"] = avm_out["result_hash"].asString();
+    } else if (avm_out.isObject() && avm_out.isMember("run")) {
+      out["assistant_text"] = json_stringify_compact_local(avm_out["run"]);
+    } else {
+      out["assistant_text"] = "";
+    }
+  } else {
+    out = run_request_to_json_internal(cfg, ocfg, db_, tool_ext_or_null_, sessions_root_dir_, request_body, nullptr);
+  }
 
   std::string expect_err;
   const bool expect_ok = apply_expectations(task.expect_json, out, &expect_err);
