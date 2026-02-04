@@ -274,7 +274,8 @@ void handle_workflow_submit_endpoint(
       t.isMember("kind") && t["kind"].isString() ? trim_copy(t["kind"].asString()) : std::string();
     const bool is_avm = (kind == "avm_capsule");
     const bool is_aggregate = (kind == "aggregate");
-    const bool is_special = is_avm || is_aggregate;
+    const bool is_edge = (kind == "edge_invoke");
+    const bool is_special = is_avm || is_aggregate || is_edge;
 
     Json::Value run_req = t.isMember("request") && t["request"].isObject() ? t["request"] : t;
     if (!is_special && defaults.isObject()) {
@@ -385,6 +386,43 @@ void handle_workflow_submit_endpoint(
       task_req["aggregate"] = agg;
       task_req["priority"] = task_priority;
       task_req["trace_id"] = trace_id + ":" + task_id;
+    } else if (is_edge) {
+      if (!t.isMember("edge") || !t["edge"].isObject()) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "edge_invoke task missing edge object";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+      const auto& edge = t["edge"];
+      const std::string tool = edge.isMember("tool") && edge["tool"].isString() ? trim_copy(edge["tool"].asString()) : "";
+      const bool has_args = edge.isMember("args") && edge["args"].isObject();
+      const bool has_node_id = edge.isMember("node_id") && edge["node_id"].isString() && !trim_copy(edge["node_id"].asString()).empty();
+      const bool has_match_any = edge.isMember("match_any") && edge["match_any"].isObject();
+      if (tool.empty() || !has_args) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "edge_invoke task edge missing tool/args";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+      if (!has_node_id && !has_match_any) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "edge_invoke task edge missing node_id or match_any";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+      task_req["kind"] = "edge_invoke";
+      task_req["edge"] = edge;
+      task_req["priority"] = task_priority;
+      task_req["trace_id"] = trace_id + ":" + task_id;
     } else {
       if (!run_req.isMember("prompt") || !run_req["prompt"].isString() || run_req["prompt"].asString().empty()) {
         resp->status = 400;
@@ -414,8 +452,14 @@ void handle_workflow_submit_endpoint(
     }
     deps_by_task[task_id] = dep_ids;
 
-    const int max_attempts =
-      t.isMember("max_attempts") && t["max_attempts"].isInt() ? std::max(1, std::min(32, t["max_attempts"].asInt())) : 1;
+    int max_attempts = 1;
+    if (t.isMember("max_attempts") && t["max_attempts"].isInt()) {
+      max_attempts = std::max(1, std::min(512, t["max_attempts"].asInt()));
+    } else if (is_edge) {
+      // Edge invocations are inherently async; default to a generous poll budget.
+      // (The workflow engine uses `retry_in_ms` for polling delay.)
+      max_attempts = 200;
+    }
 
     AgentDb::WorkflowTaskRow row;
     row.workflow_id = workflow_id;

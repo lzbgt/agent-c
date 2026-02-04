@@ -1192,15 +1192,18 @@ components:
         - LLM/tool tasks: `request` (a `RunRequest`) with a non-empty `prompt`
         - Deterministic capsule tasks: `kind: avm_capsule` with `capsule` (see `AvmCapsuleRunArgs`)
         - Deterministic aggregation tasks: `kind: aggregate` with `aggregate` (see `WorkflowAggregateSpec`)
+        - Edge collaboration tasks: `kind: edge_invoke` with `edge` (see `WorkflowEdgeInvokeSpec`)
 
         Note: OpenAPI cannot express conditional required fields perfectly; see the server-side behavior:
         - If `kind == avm_capsule`, `capsule.obc_base64` is required and `request.prompt` is not used.
         - If `kind == aggregate`, `aggregate.task_ids` is required and `request.prompt` is not used.
+        - If `kind == edge_invoke`, `edge.tool`/`edge.args` are required and `request.prompt` is not used.
         - Otherwise, `request.prompt` is required (or prompt at the top-level is accepted by the server for legacy reasons).
       oneOf:
         - $ref: "#/components/schemas/WorkflowTaskRunSpec"
         - $ref: "#/components/schemas/WorkflowTaskAvmCapsuleSpec"
         - $ref: "#/components/schemas/WorkflowTaskAggregateSpec"
+        - $ref: "#/components/schemas/WorkflowTaskEdgeInvokeSpec"
 
     WorkflowTaskRunSpec:
       type: object
@@ -1290,6 +1293,72 @@ components:
           type: array
           description: JSON pointers into each task result JSON to compare (default: [/avm/result_hash, /avm/trace_hash]).
           items: { type: string }
+
+    WorkflowTaskEdgeInvokeSpec:
+      type: object
+      required: [task_id, kind, edge]
+      properties:
+        task_id: { type: string }
+        kind:
+          type: string
+          enum: [edge_invoke]
+          description: Dispatch a UM‑EAIS TASK_ASSIGN invoke_tool to an edge node and wait for TASK_DONE.
+        depends_on:
+          type: array
+          items: { type: string }
+        max_attempts:
+          type: integer
+          format: int32
+          description: |
+            Poll budget for completion. If omitted, server defaults to a higher value than normal tasks.
+        priority:
+          type: integer
+          format: int32
+          description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+        edge:
+          $ref: "#/components/schemas/WorkflowEdgeInvokeSpec"
+        expect:
+          type: object
+          description: Deterministic correctness assertions (engine-enforced)
+          additionalProperties: true
+
+    WorkflowEdgeInvokeSpec:
+      type: object
+      required: [tool, args]
+      properties:
+        node_id:
+          type: string
+          description: Explicit target node (preferred when known).
+        match_any:
+          type: object
+          description: Capability-based node selection (requires_tools/tags_*).
+          additionalProperties: true
+        tool: { type: string }
+        args:
+          type: object
+          additionalProperties: true
+        timeout_ms:
+          type: integer
+          format: int32
+          description: Relative deadline; converted to `deadline_utc_ms` by the platform.
+        deadline_utc_ms:
+          type: integer
+          format: int64
+          description: Absolute deadline in UTC ms (preferred when caller has a clock).
+        idempotency_key:
+          type: string
+          description: Idempotency key (defaults to `${workflow_id}:${task_id}`).
+        allow_hazards:
+          type: array
+          items: { type: string }
+          description: Explicitly allow hazard tags (unsafe; use sparingly).
+        allow_high_side_effect:
+          type: boolean
+          description: Allow dispatch for tools marked side_effect_level=high.
+        mode:
+          type: string
+          enum: [invoke]
+          description: Reserved for future extension (v0 supports invoke only).
 
     AvmCapsuleRunArgs:
       type: object

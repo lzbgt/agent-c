@@ -1,6 +1,7 @@
 #include "workflow_engine.h"
 
 #include "avm_endpoints.h"
+#include "edge_util.h"
 #include "json_util.h"
 #include "run_endpoints.h"
 
@@ -792,6 +793,168 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     std::string aerr;
     out = workflow_aggregate_quorum_hashes_to_json(agg, result_json_by_task, &aerr);
     if (!aerr.empty() && (!out.isMember("error") || !out["error"].isString())) out["error"] = aerr;
+  } else if (kind == "edge_invoke") {
+    Json::Value e = rr.isMember("edge") && rr["edge"].isObject() ? rr["edge"] : Json::Value(Json::nullValue);
+    out = Json::Value(Json::objectValue);
+    out["kind"] = "edge_invoke";
+    out["ok"] = false;
+
+    // Best-effort: reuse chosen node_id from a previous attempt to avoid cross-node duplication.
+    if ((!e.isObject() || !e.isMember("node_id") || !e["node_id"].isString() || e["node_id"].asString().empty()) && !task.result_json.empty()) {
+      Json::Value prev;
+      std::string perr2;
+      if (json_parse_any_value(task.result_json, &prev, &perr2) && prev.isObject()) {
+        const std::string prev_node =
+          prev.isMember("edge") && prev["edge"].isObject() && prev["edge"].isMember("node_id") && prev["edge"]["node_id"].isString()
+          ? prev["edge"]["node_id"].asString()
+          : "";
+        if (!prev_node.empty()) {
+          if (!e.isObject()) e = Json::Value(Json::objectValue);
+          e["node_id"] = prev_node;
+        }
+      }
+    }
+
+    if (!db_ || !db_->is_open()) {
+      out["error"] = "db not available";
+      out["retryable"] = true;
+      out["retry_in_ms"] = 250;
+    } else if (!e.isObject()) {
+      out["error"] = "edge config must be an object";
+    } else {
+      std::string node_id = e.isMember("node_id") && e["node_id"].isString() ? e["node_id"].asString() : "";
+
+      if (node_id.empty() && e.isMember("match_any") && e["match_any"].isObject()) {
+        const auto& m = e["match_any"];
+        auto read_arr = [&](const char* k, std::vector<std::string>* outv) {
+          if (!outv) return;
+          outv->clear();
+          if (!m.isMember(k) || !m[k].isArray()) return;
+          for (Json::ArrayIndex i = 0; i < m[k].size(); i++) {
+            if (!m[k][i].isString()) continue;
+            const std::string s = m[k][i].asString();
+            if (!s.empty()) outv->push_back(s);
+          }
+        };
+        std::vector<std::string> requires_tools;
+        std::vector<std::string> tags_all;
+        std::vector<std::string> tags_any;
+        std::vector<std::string> tags_none;
+        read_arr("requires_tools", &requires_tools);
+        read_arr("tags_all", &tags_all);
+        read_arr("tags_any", &tags_any);
+        read_arr("tags_none", &tags_none);
+        (void)edge_select_node_match_any(db_, requires_tools, tags_all, tags_any, tags_none, &node_id);
+        if (!node_id.empty()) e["node_id"] = node_id;
+      }
+
+      const std::string tool_name = e.isMember("tool") && e["tool"].isString() ? e["tool"].asString() : "";
+      const Json::Value args = e.isMember("args") && e["args"].isObject() ? e["args"] : Json::Value(Json::nullValue);
+      const std::string mode = e.isMember("mode") && e["mode"].isString() ? e["mode"].asString() : "invoke";
+
+      int64_t deadline_utc_ms = 0;
+      if (e.isMember("deadline_utc_ms") && (e["deadline_utc_ms"].isInt64() || e["deadline_utc_ms"].isUInt64())) {
+        deadline_utc_ms = e["deadline_utc_ms"].isInt64() ? e["deadline_utc_ms"].asInt64() : (int64_t)e["deadline_utc_ms"].asUInt64();
+      } else if (e.isMember("timeout_ms") && (e["timeout_ms"].isInt64() || e["timeout_ms"].isUInt64() || e["timeout_ms"].isInt())) {
+        const int64_t tmo = e["timeout_ms"].asInt64();
+        const int64_t tmo2 = std::max<int64_t>(100, std::min<int64_t>(600000, tmo));
+        deadline_utc_ms = edge_unix_ms_now() + tmo2;
+      } else {
+        deadline_utc_ms = edge_unix_ms_now() + 5000;
+      }
+
+      std::unordered_set<std::string> allow_hazards;
+      if (e.isMember("allow_hazards") && e["allow_hazards"].isArray()) {
+        for (Json::ArrayIndex i = 0; i < e["allow_hazards"].size(); i++) {
+          if (e["allow_hazards"][i].isString()) allow_hazards.insert(e["allow_hazards"][i].asString());
+        }
+      }
+      const bool allow_high_side_effect =
+        e.isMember("allow_high_side_effect") && e["allow_high_side_effect"].isBool() ? e["allow_high_side_effect"].asBool() : false;
+
+      std::string idempotency_key = e.isMember("idempotency_key") && e["idempotency_key"].isString() ? e["idempotency_key"].asString() : "";
+      if (idempotency_key.empty()) idempotency_key = wf.workflow_id + ":" + task.task_id;
+
+      if (node_id.empty()) {
+        out["error"] = "missing node_id (or match_any did not select)";
+      } else if (tool_name.empty() || !args.isObject()) {
+        out["error"] = "missing tool/args";
+      } else if (mode != "invoke") {
+        out["error"] = "unsupported edge mode (only invoke supported)";
+      } else {
+        // Enqueue TASK_ASSIGN (idempotent via UNIQUE(node_id,idempotency_key) and PK(task_id,step_id)).
+        Json::Value payload(Json::objectValue);
+        payload["tool"] = tool_name;
+        payload["args"] = args;
+
+        int64_t outbox_id = 0;
+        bool deduped = false;
+        std::string derr;
+        int http = 500;
+        const bool enq_ok = edge_enqueue_task_assign(
+          db_,
+          node_id,
+          wf.workflow_id,
+          task.task_id,
+          idempotency_key,
+          "invoke",
+          deadline_utc_ms,
+          task.attempt,
+          payload,
+          allow_hazards,
+          allow_high_side_effect,
+          /*enforce_safety=*/true,
+          /*enforce_rate_limit=*/true,
+          &outbox_id,
+          &deduped,
+          &derr,
+          &http);
+
+        Json::Value edge(Json::objectValue);
+        edge["node_id"] = node_id;
+        edge["task_id"] = wf.workflow_id;
+        edge["step_id"] = task.task_id;
+        edge["idempotency_key"] = idempotency_key;
+        edge["deadline_utc_ms"] = (Json::Int64)deadline_utc_ms;
+        edge["outbox_id"] = (Json::Int64)outbox_id;
+        edge["deduped"] = deduped;
+        out["edge"] = edge;
+
+        if (!enq_ok) {
+          out["error"] = derr.empty() ? "failed to enqueue edge task" : derr;
+        } else {
+          AgentDb::EdgeTaskRow tr;
+          std::string terr;
+          if (!db_->get_edge_task(wf.workflow_id, task.task_id, &tr, &terr)) {
+            out["error"] = "edge task not found after enqueue";
+            out["retryable"] = true;
+            out["retry_in_ms"] = 100;
+          } else {
+            out["edge_state"] = tr.state;
+            if (!tr.result_json.empty()) {
+              Json::Value v;
+              std::string perr3;
+              if (json_parse_any(tr.result_json, &v, &perr3)) out["edge_result"] = v;
+            }
+            if (!tr.error.empty()) out["edge_error"] = tr.error;
+
+            if (tr.state == "SUCCEEDED") {
+              out["ok"] = true;
+              out["assistant_text"] = "edge:SUCCEEDED";
+            } else if (tr.state == "FAILED") {
+              out["ok"] = false;
+              out["error"] = tr.error.empty() ? "edge task failed" : tr.error;
+            } else {
+              out["ok"] = false;
+              out["error"] = "edge task pending";
+              out["retryable"] = true;
+              out["retry_in_ms"] = 100;
+              out["assistant_text"] = "edge:" + tr.state;
+            }
+          }
+        }
+      }
+    }
   } else {
     out = run_request_to_json_internal(cfg, ocfg, db_, tool_ext_or_null_, sessions_root_dir_, request_body, nullptr);
   }
@@ -830,7 +993,14 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 
   if (can_retry && !wf.cancel_requested) {
     upd.status = "queued";
-    upd.ready_unix_ms = now + retry_backoff_ms(upd.attempt);
+    int64_t delay_ms = retry_backoff_ms(upd.attempt);
+    if (out.isObject() && out.isMember("retryable") && out["retryable"].isBool() && out["retryable"].asBool() &&
+        out.isMember("retry_in_ms") && (out["retry_in_ms"].isInt64() || out["retry_in_ms"].isUInt64() || out["retry_in_ms"].isInt())) {
+      delay_ms = out["retry_in_ms"].asInt64();
+      if (delay_ms < 0) delay_ms = 0;
+      if (delay_ms > 60 * 1000) delay_ms = 60 * 1000;
+    }
+    upd.ready_unix_ms = now + delay_ms;
     (void)db_->upsert_workflow_task(upd, nullptr);
     {
       Json::Value d(Json::objectValue);
