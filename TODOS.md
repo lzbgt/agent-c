@@ -47,6 +47,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - v2 JSON-native embedding: `{"$ref":"task.<id>.json:/ptr"}` replaces the entire value with embedded JSON (not a string), enabling structured payload/args wiring.
   - v2.1 workflow inputs: tasks may carry `inputs` and reference them via `${input.<name>...}` and `{"$ref":"input.<name>..."}` for cleaner dataflow.
   - Proof: `ctest` includes `agentd_workflow_inputs_smoke`.
+  - Optional workflow submit dependency inference: `infer_depends_on: true` scans for `${task.<id>...}` / `$ref:"task.<id>..."` and merges into `depends_on`.
+  - Proof: `ctest` includes `agentd_workflow_infer_deps_smoke`.
   - Proof: `ctest` includes `agentd_workflow_smoke` (validates DAG ordering + templating + restart recovery).
 - Durable workflows can now run deterministic AVM capsule tasks (no LLM required):
   - Task kind: `kind: "avm_capsule"`

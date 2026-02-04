@@ -142,6 +142,67 @@ static bool validate_dag_or_error(
   return true;
 }
 
+static void collect_referenced_task_ids_from_task_template_token(
+  const std::string& token,
+  std::unordered_set<std::string>* out
+) {
+  if (!out) return;
+  if (token.rfind("task.", 0) != 0) return;
+
+  const std::string rest = token.substr(std::string("task.").size());
+  const std::string suffix_text = ".assistant_text";
+  const std::string dot_json = ".json:";
+
+  std::string task_id;
+  if (rest.size() > suffix_text.size() && rest.rfind(suffix_text) == (rest.size() - suffix_text.size())) {
+    task_id = rest.substr(0, rest.size() - suffix_text.size());
+  } else {
+    const size_t jpos = rest.find(dot_json);
+    if (jpos != std::string::npos) {
+      task_id = rest.substr(0, jpos);
+    }
+  }
+
+  if (!task_id.empty() && id_is_safe(task_id)) out->insert(task_id);
+}
+
+static void collect_referenced_task_ids_from_json_value(
+  const Json::Value& v,
+  std::unordered_set<std::string>* out
+) {
+  if (!out) return;
+  if (v.isString()) {
+    const std::string s = v.asString();
+    size_t i = 0;
+    while (i < s.size()) {
+      const size_t p = s.find("${task.", i);
+      if (p == std::string::npos) break;
+      const size_t end = s.find('}', p + 2);
+      if (end == std::string::npos) break;
+      const std::string token = s.substr(p + 2, end - (p + 2)); // strip ${ ... }
+      collect_referenced_task_ids_from_task_template_token(token, out);
+      i = end + 1;
+    }
+    return;
+  }
+  if (v.isArray()) {
+    for (Json::ArrayIndex i = 0; i < v.size(); i++) {
+      collect_referenced_task_ids_from_json_value(v[i], out);
+    }
+    return;
+  }
+  if (v.isObject()) {
+    if (v.isMember("$ref") && v["$ref"].isString()) {
+      const std::string ref = trim_copy(v["$ref"].asString());
+      collect_referenced_task_ids_from_task_template_token(ref, out);
+    }
+    for (const auto& k : v.getMemberNames()) {
+      collect_referenced_task_ids_from_json_value(v[k], out);
+    }
+    return;
+  }
+}
+
 }  // namespace
 
 void handle_workflow_submit_endpoint(
@@ -188,6 +249,13 @@ void handle_workflow_submit_endpoint(
     args.isMember("allow_sessions") && args["allow_sessions"].isBool() ? args["allow_sessions"].asBool() : false;
   const bool allow_inline_api_keys =
     args.isMember("allow_inline_api_keys") && args["allow_inline_api_keys"].isBool() ? args["allow_inline_api_keys"].asBool() : false;
+  const bool infer_depends_on =
+    args.isMember("infer_depends_on") && args["infer_depends_on"].isBool() ? args["infer_depends_on"].asBool() : false;
+  if (args.isMember("infer_depends_on") && !args["infer_depends_on"].isBool()) {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"invalid infer_depends_on (expected boolean)\"}";
+    return;
+  }
 
   std::string workflow_id =
     args.isMember("workflow_id") && args["workflow_id"].isString() ? trim_copy(args["workflow_id"].asString()) : "";
@@ -601,6 +669,29 @@ void handle_workflow_submit_endpoint(
       }
     }
     deps_by_task[task_id] = dep_ids;
+
+    if (infer_depends_on) {
+      std::unordered_set<std::string> refs;
+      collect_referenced_task_ids_from_json_value(task_req, &refs);
+      if (!refs.empty()) {
+        bool changed = false;
+        std::unordered_set<std::string> have(dep_ids.begin(), dep_ids.end());
+        for (const auto& r : refs) {
+          if (r.empty() || r == task_id) continue;
+          if (have.insert(r).second) {
+            dep_ids.push_back(r);
+            changed = true;
+          }
+        }
+        if (changed) {
+          std::sort(dep_ids.begin(), dep_ids.end());
+          dep_ids.erase(std::unique(dep_ids.begin(), dep_ids.end()), dep_ids.end());
+          deps_arr = Json::Value(Json::arrayValue);
+          for (const auto& d : dep_ids) deps_arr.append(d);
+          deps_by_task[task_id] = dep_ids;
+        }
+      }
+    }
 
     int max_attempts = 1;
     if (t.isMember("max_attempts") && t["max_attempts"].isInt()) {

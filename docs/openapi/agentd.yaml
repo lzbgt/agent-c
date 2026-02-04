@@ -1547,6 +1547,9 @@ components:
           description: Higher workflows/tasks run sooner (scheduler hint). Default 0. Clamped to [-1000, 1000].
         allow_sessions: { type: boolean }
         allow_inline_api_keys: { type: boolean }
+        infer_depends_on:
+          type: boolean
+          description: If true, server scans task request JSON for task.* template/$ref references and merges inferred IDs into depends_on.
         defaults:
           type: object
           additionalProperties: true

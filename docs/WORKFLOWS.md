@@ -66,6 +66,22 @@ A task is runnable when:
   - for aggregation/join tasks (`kind:"aggregate"`), dependencies may be any terminal state (`done|error|cancelled`)
     so the join can compute over failures/timeouts without blocking forever
 
+#### Optional dependency inference (`infer_depends_on`)
+
+Template-based dataflow is safest when it is paired with explicit dependencies. To reduce human error, the workflow submit
+endpoint can optionally infer dependencies by scanning each task request JSON for:
+- `${task.<id>...}` template references
+- `{"$ref":"task.<id>..."}` JSON-native embedding references
+
+When enabled, inferred IDs are merged into `depends_on` for that task before the DAG is validated/persisted.
+
+Enable it per-submit:
+- `POST /api/v1/workflow/submit` with top-level `infer_depends_on: true`
+
+Notes:
+- This is a correctness convenience; it does not change runtime template semantics.
+- If inference introduces a cycle, submission fails with “invalid workflow DAG”.
+
 ### Retries and backoff
 
 Each task has:
