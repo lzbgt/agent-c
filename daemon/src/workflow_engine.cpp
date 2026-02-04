@@ -1545,6 +1545,129 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         }
       }
     }
+  } else if (kind == "delegate") {
+    out = Json::Value(Json::objectValue);
+    out["kind"] = "delegate";
+    out["ok"] = false;
+
+    const Json::Value del = rr.isMember("delegate") && rr["delegate"].isObject() ? rr["delegate"] : Json::Value(Json::nullValue);
+    if (!del.isObject()) {
+      out["error"] = "delegate missing delegate object";
+    } else {
+      const bool stop_on_ok =
+        del.isMember("stop_on_ok") && del["stop_on_ok"].isBool() ? del["stop_on_ok"].asBool() : true;
+
+      const Json::Value attempts = del.isMember("attempts") && del["attempts"].isArray() ? del["attempts"] : Json::Value(Json::nullValue);
+      if (!attempts.isArray() || attempts.empty()) {
+        out["error"] = "delegate.attempts must be a non-empty array";
+      } else {
+        auto clamp_text = [](const std::string& s, size_t max_chars) -> std::string {
+          if (s.size() <= max_chars) return s;
+          return s.substr(0, max_chars);
+        };
+
+        Json::Value del_out(Json::objectValue);
+        del_out["stop_on_ok"] = stop_on_ok;
+        Json::Value arr(Json::arrayValue);
+
+        bool any_ok = false;
+        std::string chosen_id;
+        std::string chosen_text;
+        std::string last_err;
+
+        for (Json::ArrayIndex i = 0; i < attempts.size(); i++) {
+          if (workflow_run_should_cancel(&cancel_ctx)) {
+            out["cancelled"] = true;
+            out["ok"] = false;
+            out["error"] = cancel_ctx.reason == WorkflowCancelReason::DeadlineExceeded ? "deadline exceeded" : "cancelled";
+            break;
+          }
+
+          const Json::Value a = attempts[i];
+          if (!a.isObject()) continue;
+
+          const std::string aid = a.isMember("id") && a["id"].isString() ? a["id"].asString() : ("att_" + std::to_string((int)i));
+          const Json::Value areq = a.isMember("request") && a["request"].isObject() ? a["request"] : Json::Value(Json::nullValue);
+          if (!areq.isObject()) {
+            Json::Value row(Json::objectValue);
+            row["id"] = aid;
+            row["ok"] = false;
+            row["run_ok"] = false;
+            row["expect_ok"] = true;
+            row["error"] = "delegate attempt missing request object";
+            arr.append(row);
+            last_err = "delegate attempt missing request object";
+            continue;
+          }
+
+          const std::string attempt_body = json_stringify_compact(areq);
+          Json::Value r = run_request_to_json_internal_cancellable(
+            cfg,
+            ocfg,
+            db_,
+            tool_ext_or_null_,
+            sessions_root_dir_,
+            attempt_body,
+            nullptr,
+            workflow_run_should_cancel,
+            &cancel_ctx
+          );
+
+          std::string expect_err2;
+          bool expect_ok2 = true;
+          if (a.isMember("expect") && a["expect"].isObject()) {
+            const std::string expect_json2 = json_stringify_compact(a["expect"]);
+            expect_ok2 = apply_expectations(expect_json2, r, &expect_err2);
+          }
+
+          const bool run_ok2 = r.isObject() && r.isMember("ok") && r["ok"].isBool() && r["ok"].asBool();
+          const bool ok2 = run_ok2 && expect_ok2;
+          const std::string atext = clamp_text(json_get_string(r, "assistant_text"), 8192);
+
+          Json::Value row(Json::objectValue);
+          row["id"] = aid;
+          row["ok"] = ok2;
+          row["run_ok"] = run_ok2;
+          row["expect_ok"] = expect_ok2;
+          if (!atext.empty()) row["assistant_text"] = atext;
+          const std::string err = json_get_string(r, "error");
+          if (!err.empty()) row["error"] = err;
+          if (!expect_ok2) row["expect_error"] = expect_err2;
+          if (r.isObject() && r.isMember("http_status") && (r["http_status"].isInt() || r["http_status"].isInt64())) {
+            row["http_status"] = r["http_status"];
+          }
+          arr.append(row);
+
+          if (!err.empty()) last_err = err;
+          if (!expect_ok2 && last_err.empty()) last_err = expect_err2;
+
+          if (ok2 && !any_ok) {
+            any_ok = true;
+            chosen_id = aid;
+            chosen_text = atext;
+          }
+
+          if (ok2 && stop_on_ok) break;
+        }
+
+        del_out["attempts"] = arr;
+        del_out["attempts_total"] = (Json::Int64)attempts.size();
+        del_out["attempts_run"] = (Json::Int64)arr.size();
+        if (!chosen_id.empty()) del_out["chosen_id"] = chosen_id;
+        out["delegate"] = del_out;
+
+        if (out.isMember("cancelled") && out["cancelled"].isBool() && out["cancelled"].asBool()) {
+          // already populated
+        } else if (any_ok) {
+          out["ok"] = true;
+          out["assistant_text"] = chosen_text;
+        } else {
+          out["ok"] = false;
+          out["assistant_text"] = "";
+          out["error"] = last_err.empty() ? "delegate attempts all failed" : last_err;
+        }
+      }
+    }
   } else if (kind == "edge_invoke") {
     Json::Value e = rr.isMember("edge") && rr["edge"].isObject() ? rr["edge"] : Json::Value(Json::nullValue);
     out = Json::Value(Json::objectValue);

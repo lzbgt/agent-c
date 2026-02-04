@@ -266,6 +266,45 @@ Semantics:
 - Produces a deterministic result object with `ok=true`, plus any merged keys from `result`.
 - If `result.assistant_text` is omitted, `assistant_text` defaults to `"delay:<delay_ms>"`.
 
+### Agent collaboration / fallback delegation (`kind:"delegate"`) (v1.6)
+
+Sometimes “power” comes from **redundancy** and **explicit fallback**: run the same intent through multiple candidate
+requests (different base_url/model/tools/budgets) and accept the first attempt that succeeds deterministically.
+
+`kind:"delegate"` executes a sequence of sub-requests (attempts) and returns:
+- a structured `delegate.attempts[]` array with per-attempt `ok/run_ok/expect_ok` outcomes
+- `delegate.chosen_id` (first successful attempt when `stop_on_ok=true`)
+- `assistant_text` copied from the chosen attempt (for easy templating)
+
+Example:
+
+```json
+{
+  "task_id": "D",
+  "kind": "delegate",
+  "delegate": {
+    "stop_on_ok": true,
+    "attempts": [
+      {
+        "id": "primary",
+        "request": { "prompt": "OK", "no_session": true, "tools": "none", "base_url": "http://127.0.0.1:9999/bad", "api_key": "dummy", "model": "stub" }
+      },
+      {
+        "id": "fallback",
+        "request": { "prompt": "OK", "no_session": true, "tools": "none", "base_url": "http://127.0.0.1:9999/v1", "api_key": "dummy", "model": "stub" },
+        "expect": { "assistant_text_contains": "OK" }
+      }
+    ]
+  }
+}
+```
+
+Notes:
+- Attempt requests are normal `/api/v1/run` request objects; workflow-level `defaults` are merged into each attempt.
+- The workflow engine injects a stable per-attempt `trace_id` when missing (`<workflow_trace_id>:<task_id>:<attempt_id>`).
+- This is a **sequential** primitive (v1). For true parallel multi-agent collaboration, model the fan-out as separate workflow tasks
+  and use `kind:"aggregate"` to join deterministically.
+
 ## HTTP API
 
 All endpoints require daemon auth when the daemon is started with `--auth-token`.

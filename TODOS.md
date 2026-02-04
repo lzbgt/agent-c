@@ -128,14 +128,20 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - `POST /api/v1/workflow/cancel` now cancels running tasks at safe boundaries (tool loop + long-running host tools).
   - Deadline cancellation (`deadline_unix_ms`) also cancels running tasks best-effort.
   - Proof: `ctest` includes `agentd_workflow_cancel_running_smoke`.
+- Workflow agent collaboration primitive (v1.6):
+  - Task kind: `kind:"delegate"` runs a sequence of candidate sub-requests (fallback) with optional per-attempt `expect`,
+    returning `delegate.attempts[]` + `delegate.chosen_id` and surfacing chosen `assistant_text`.
+  - Proof: `ctest` includes `agentd_workflow_delegate_smoke`.
 
 ## P0 (next: maximize autonomous continuity + correctness)
 
 ### Reweighted next 5 (highest compound impact)
 
-1) **Agent collaboration primitive (in-framework, not UI)** (power-unleashed)
-   - Add a durable workflow task kind like `kind:"delegate"` / `kind:"broker_orchestrate"` to spawn sub-agents with explicit budgets,
-     then join/aggregate their outputs deterministically.
+1) **Agent collaboration v2 (parallel fan-out + join macros)** (power-unleashed)
+   - Build on `kind:"delegate"` with an explicit parallel fan-out mode (or submit-time macro expansion) so collaboration is:
+     - scheduler-visible (true parallelism)
+     - budgeted (tokens/tools/wall-time caps per attempt)
+     - aggregation-friendly (`kind:"aggregate"` joins)
 
 2) **Memory ↔ workflow correlation + rolling consolidation** (time-advancing correctness)
    - Link memory entries to `trace_id`/workflow/task ids; emit stable evidence excerpts + hashes.

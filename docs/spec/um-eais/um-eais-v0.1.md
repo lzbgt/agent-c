@@ -1,15 +1,3 @@
-# UM‑EAIS v0.1 — Platform ↔ Edge “Embedded Agent” Interop Spec (Canonical in `urine_monitor`)
-
-This file is a **verbatim copy** of the canonical spec from:
-
-- Repo: `../urine_monitor`
-- Path: `docs/spec/platform_edge_agent_interop_v0_1.md`
-- Canonical commit (per handoff note): `278ad9e5`
-
-This repo (`agent`) implements the **platform/broker** side; `urine_monitor` is the **node/firmware** side.
-
----
-
 # Platform ↔ Edge “Embedded Agent” Interop Spec (Draft v0.1)
 
 Status: **Draft** (for review)
@@ -476,4 +464,3 @@ Result:
   }
 }
 ```
-

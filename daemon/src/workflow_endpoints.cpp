@@ -494,7 +494,8 @@ void handle_workflow_submit_endpoint(
     const bool is_aggregate = (kind == "aggregate");
     const bool is_edge = (kind == "edge_invoke");
     const bool is_delay = (kind == "delay");
-    const bool is_special = is_avm || is_aggregate || is_edge || is_delay;
+    const bool is_delegate = (kind == "delegate");
+    const bool is_special = is_avm || is_aggregate || is_edge || is_delay || is_delegate;
 
     Json::Value run_req = t.isMember("request") && t["request"].isObject() ? t["request"] : t;
     if (!is_special && defaults.isObject()) {
@@ -704,6 +705,140 @@ void handle_workflow_submit_endpoint(
         }
         if (t["result"].isObject()) task_req["result"] = t["result"];
       }
+      task_req["priority"] = task_priority;
+      task_req["trace_id"] = trace_id + ":" + task_id;
+    } else if (is_delegate) {
+      if (!t.isMember("delegate") || !t["delegate"].isObject()) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "delegate task missing delegate object";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+
+      const auto& del = t["delegate"];
+      const Json::Value attempts = del.isMember("attempts") ? del["attempts"] : Json::Value(Json::nullValue);
+      if (!attempts.isArray() || attempts.empty()) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "delegate.attempts must be a non-empty array";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+
+      Json::Value del2(Json::objectValue);
+      const bool stop_on_ok =
+        del.isMember("stop_on_ok") && del["stop_on_ok"].isBool() ? del["stop_on_ok"].asBool() : true;
+      del2["stop_on_ok"] = stop_on_ok;
+
+      Json::Value arr(Json::arrayValue);
+      std::unordered_set<std::string> seen_attempt_ids;
+      for (Json::ArrayIndex ai = 0; ai < attempts.size(); ai++) {
+        const auto& a = attempts[ai];
+        if (!a.isObject()) continue;
+        const std::string attempt_id =
+          a.isMember("id") && a["id"].isString() ? trim_copy(a["id"].asString()) : ("att_" + std::to_string((int)ai));
+        if (attempt_id.empty() || !id_is_safe(attempt_id)) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "delegate.attempts[].id must be id-safe";
+          o["task_id"] = task_id;
+          o["attempt_id"] = attempt_id;
+          resp->body = json_stringify_compact(o);
+          return;
+        }
+        if (!seen_attempt_ids.insert(attempt_id).second) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "duplicate delegate attempt id";
+          o["task_id"] = task_id;
+          o["attempt_id"] = attempt_id;
+          resp->body = json_stringify_compact(o);
+          return;
+        }
+        if (!a.isMember("request") || !a["request"].isObject()) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "delegate attempt missing request object";
+          o["task_id"] = task_id;
+          o["attempt_id"] = attempt_id;
+          resp->body = json_stringify_compact(o);
+          return;
+        }
+
+        Json::Value areq = a["request"];
+
+        // Merge workflow defaults into each attempt request (delegate is special, so normal task defaulting does not apply).
+        if (defaults.isObject()) {
+          for (const auto& k : defaults.getMemberNames()) {
+            if (!areq.isMember(k)) areq[k] = defaults[k];
+          }
+        }
+
+        // Session/no_session defaults match normal workflow tasks.
+        if (!allow_sessions) {
+          areq["no_session"] = true;
+          if (!areq.isMember("tools")) areq["tools"] = "none";
+        } else if (!session_id.empty()) {
+          if (!areq.isMember("session_id") && (!areq.isMember("no_session") || !areq["no_session"].isBool() || !areq["no_session"].asBool())) {
+            areq["session_id"] = session_id;
+          }
+        }
+
+        if (areq.isMember("api_key") && areq["api_key"].isString() && !areq["api_key"].asString().empty() && !allow_inline_api_keys) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "inline api_key is not allowed for durable workflows (set daemon api_key/provider_keys or pass allow_inline_api_keys=true)";
+          o["task_id"] = task_id;
+          o["attempt_id"] = attempt_id;
+          resp->body = json_stringify_compact(o);
+          return;
+        }
+
+        if (!areq.isMember("trace_id") || !areq["trace_id"].isString() || areq["trace_id"].asString().empty()) {
+          areq["trace_id"] = trace_id + ":" + task_id + ":" + attempt_id;
+        }
+
+        Json::Value a2(Json::objectValue);
+        a2["id"] = attempt_id;
+        a2["request"] = areq;
+        if (a.isMember("expect")) {
+          if (!a["expect"].isObject() && !a["expect"].isNull()) {
+            resp->status = 400;
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "delegate.attempts[].expect must be an object";
+            o["task_id"] = task_id;
+            o["attempt_id"] = attempt_id;
+            resp->body = json_stringify_compact(o);
+            return;
+          }
+          if (a["expect"].isObject()) a2["expect"] = a["expect"];
+        }
+        arr.append(a2);
+      }
+
+      if (arr.empty()) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "delegate.attempts must include at least one object";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+
+      del2["attempts"] = arr;
+      task_req["kind"] = "delegate";
+      task_req["delegate"] = del2;
       task_req["priority"] = task_priority;
       task_req["trace_id"] = trace_id + ":" + task_id;
     } else {
