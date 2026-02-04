@@ -35,6 +35,13 @@ The host treats a “program” as an opaque artifact:
 - `program_bytes`: bytes (or base64 for JSON transport)
 - `program_sha256`: optional integrity fingerprint
 
+Concrete mapping for `oren-lang` AVM:
+- `program_kind = "oren_obc"`
+- `program_bytes = <.obc bytes>`
+- optional governance surfaces in AVM include:
+  - `RESULT_HASH`, `STATE_HASH`, `TRACE_HASH`
+  - job object scanning without execute: `avm --print-job-json <file.obc>`
+
 The host is responsible for:
 - storing/loading program artifacts
 - selecting the runtime that can execute them
@@ -68,6 +75,13 @@ Response:
 Notes:
 - This maps directly to existing tool schemas in `agentd`.
 - Host must enforce safety/rate limits (VM cannot override).
+
+Concrete mapping for `oren-lang` AVM:
+- tool calls are “effectful domains” and should be surfaced as `CALL_NATIVE2(domain, op, nargs)` in bytecode.
+- the host runtime enforces:
+  - capability allow mask (`allowed_domains`)
+  - budgets (gas/time/mem/io/log)
+  - record/replay (when deterministic/replay modes are used)
 
 ### 3.2 `emit_event`
 
@@ -128,4 +142,21 @@ To keep correctness high:
 - Embedding the VM in `agent_core` immediately
 - A full package manager or “ecosystem registry”
 - Allowing VM code to read arbitrary host files
+
+## 7) Budget and policy knobs (aligning with AVM realities)
+
+Even if the VM runtime is not AVM, these knobs are high-leverage and should exist in the port.
+
+Recommended context keys:
+- `allowed_domains_mask` (bitmask; deny-by-default in secure modes)
+- `gas_limit`, `deadline_utc_ms`
+- `mem_bytes`, `io_bytes`, `log_bytes`
+- `deterministic` (bool)
+- `record_log_bytes` / `replay_log_bytes` (bytes) to support “log as data”
+
+Concrete alignment with `oren-lang` nested universes:
+- `oren_avm_run_obc_bytes(child_obc_bytes, cfg_map)` already uses:
+  - `allowed_domains`, `gas_limit`, `deadline_ns`, `mem_bytes`, `io_bytes`, `log_bytes`
+  - virtual backend toggles and fixtures as bytes (`vfs_fixtures`, `proc_fixtures`, `net_fixtures`)
+  - returns `result_hash`, `state_hash`, and `record_log` bytes
 
