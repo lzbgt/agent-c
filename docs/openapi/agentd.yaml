@@ -1210,6 +1210,9 @@ components:
       required: [task_id, request]
       properties:
         task_id: { type: string }
+        allow_error:
+          type: boolean
+          description: If true, task failure does not fail the workflow (soft-fail).
         depends_on:
           type: array
           items: { type: string }
@@ -1230,6 +1233,9 @@ components:
       required: [task_id, kind, capsule]
       properties:
         task_id: { type: string }
+        allow_error:
+          type: boolean
+          description: If true, task failure does not fail the workflow (soft-fail).
         kind:
           type: string
           enum: [avm_capsule]
@@ -1254,6 +1260,9 @@ components:
       required: [task_id, kind, aggregate]
       properties:
         task_id: { type: string }
+        allow_error:
+          type: boolean
+          description: If true, task failure does not fail the workflow (soft-fail).
         kind:
           type: string
           enum: [aggregate]
@@ -1279,8 +1288,8 @@ components:
       properties:
         mode:
           type: string
-          enum: [quorum_hashes]
-          description: Aggregation strategy (v0 supports quorum_hashes only).
+          enum: [quorum_hashes, collect, first_ok]
+          description: Aggregation strategy.
         task_ids:
           type: array
           description: Task IDs to read results from (votes).
@@ -1293,12 +1302,24 @@ components:
           type: array
           description: JSON pointers into each task result JSON to compare (default: [/avm/result_hash, /avm/trace_hash]).
           items: { type: string }
+        require_all:
+          type: boolean
+          description: For mode=collect, require every pointer for every task_id (default true).
+        ok_pointer:
+          type: string
+          description: For mode=first_ok, JSON pointer used to test ok (default /ok).
+        value_pointer:
+          type: string
+          description: For mode=first_ok, JSON pointer used as assistant_text (default /assistant_text).
 
     WorkflowTaskEdgeInvokeSpec:
       type: object
       required: [task_id, kind, edge]
       properties:
         task_id: { type: string }
+        allow_error:
+          type: boolean
+          description: If true, task failure does not fail the workflow (soft-fail).
         kind:
           type: string
           enum: [edge_invoke]
@@ -1324,7 +1345,7 @@ components:
 
     WorkflowEdgeInvokeSpec:
       type: object
-      required: [tool, args]
+      required: []
       properties:
         node_id:
           type: string
@@ -1333,10 +1354,26 @@ components:
           type: object
           description: Capability-based node selection (requires_tools/tags_*).
           additionalProperties: true
-        tool: { type: string }
+        mode:
+          type: string
+          enum: [invoke, agent]
+          description: |
+            - invoke: payload is an explicit tool call (requires `tool` + `args`)
+            - agent: payload is a goal/prompt for on-device `agent_core` (requires `payload` or `prompt`)
+        tool:
+          type: string
+          description: Required when mode=invoke.
         args:
           type: object
           additionalProperties: true
+          description: Required when mode=invoke.
+        prompt:
+          type: string
+          description: Convenience for mode=agent (server maps to payload.prompt).
+        payload:
+          type: object
+          additionalProperties: true
+          description: Raw payload for mode=agent (preferred).
         timeout_ms:
           type: integer
           format: int32
@@ -1355,10 +1392,12 @@ components:
         allow_high_side_effect:
           type: boolean
           description: Allow dispatch for tools marked side_effect_level=high.
-        mode:
-          type: string
-          enum: [invoke]
-          description: Reserved for future extension (v0 supports invoke only).
+      description: |
+        Conditional requirements:
+        - If `mode` is omitted, defaults to `invoke`.
+        - `node_id` or `match_any` must be provided.
+        - If `mode=invoke`: `tool` and `args` are required.
+        - If `mode=agent`: `payload` OR `prompt` is required.
 
     AvmCapsuleRunArgs:
       type: object

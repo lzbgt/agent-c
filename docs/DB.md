@@ -290,6 +290,7 @@ with explicit dependencies and retries.
 - `created_unix_ms INTEGER NOT NULL`
 - `updated_unix_ms INTEGER NOT NULL`
 - `status TEXT NOT NULL` (`queued|running|done|error|cancelled`)
+- `allow_error INTEGER NOT NULL DEFAULT 0` (if 1, task status=error does not fail the workflow; supports best_of_n / first_ok patterns)
 - `attempt INTEGER NOT NULL` (number of started attempts)
 - `max_attempts INTEGER NOT NULL` (retry cap)
 - `ready_unix_ms INTEGER NOT NULL` (do not start before this time; used for retry backoff)

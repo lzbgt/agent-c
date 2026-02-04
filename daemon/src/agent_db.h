@@ -251,6 +251,7 @@ class AgentDb {
     int64_t created_unix_ms = 0;
     int64_t updated_unix_ms = 0;
     std::string status; // queued|running|done|error|cancelled
+    bool allow_error = false; // if true, task status=error does not fail the workflow
     int attempt = 0;
     int max_attempts = 1;
     int64_t ready_unix_ms = 0;   // do not start before this time (retry/backoff)

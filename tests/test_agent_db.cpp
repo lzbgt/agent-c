@@ -223,6 +223,8 @@ int main() {
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflows') WHERE name='priority';");
   const int64_t workflow_task_prio_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflow_tasks') WHERE name='priority';");
+  const int64_t workflow_task_allow_error_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflow_tasks') WHERE name='allow_error';");
   const int64_t edge_nodes_id_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('edge_nodes') WHERE name='node_id';");
   const int64_t edge_outbox_id_cols =
@@ -256,7 +258,7 @@ int main() {
   const int64_t edge_wf_events_id_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('edge_workflow_events') WHERE name='id';");
   sqlite3_close(raw2);
-  assert(ver == 15);
+  assert(ver == 16);
   assert(arts2 == 0);
   assert(stop_reason_cols == 1);
   assert(ua_cols == 1);
@@ -273,6 +275,7 @@ int main() {
   assert(job_prio_cols == 1);
   assert(workflow_prio_cols == 1);
   assert(workflow_task_prio_cols == 1);
+  assert(workflow_task_allow_error_cols == 1);
   assert(edge_nodes_id_cols == 1);
   assert(edge_outbox_id_cols == 1);
   assert(edge_inbox_msg_id_cols == 1);

@@ -159,7 +159,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 15;
+  const int kSchemaVersion = 16;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -658,6 +658,15 @@ CREATE INDEX IF NOT EXISTS edge_workflow_steps_by_ready ON edge_workflow_steps(w
     cur_ver = 15;
   }
 
+  if (cur_ver < 16) {
+    const char* schema_v16 = R"SQL(
+-- Durable workflow soft-fail tasks (best_of_n / first_ok patterns).
+ALTER TABLE workflow_tasks ADD COLUMN allow_error INTEGER NOT NULL DEFAULT 0;
+)SQL";
+    if (!exec_locked(schema_v16, out_error)) return false;
+    cur_ver = 16;
+  }
+
   // Record schema version.
   {
     std::ostringstream oss;
@@ -1148,9 +1157,9 @@ bool AgentDb::create_workflow(const WorkflowRow& wf, const std::vector<WorkflowT
 	    sqlite3_stmt* st = nullptr;
 	    const char* sql = R"SQL(
 	INSERT INTO workflow_tasks(
-	  workflow_id, task_id, priority, created_unix_ms, updated_unix_ms, status, attempt, max_attempts, ready_unix_ms,
+	  workflow_id, task_id, priority, created_unix_ms, updated_unix_ms, status, allow_error, attempt, max_attempts, ready_unix_ms,
 	  started_unix_ms, finished_unix_ms, depends_on_json, request_json, expect_json, result_json, error
-	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);
+	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);
 	)SQL";
 	    if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
 	      ok = false;
@@ -1176,24 +1185,25 @@ bool AgentDb::create_workflow(const WorkflowRow& wf, const std::vector<WorkflowT
 	        ok = ok && bind_text(st, 1, wf.workflow_id);
 	        ok = ok && bind_text(st, 2, t.task_id);
 	        ok = ok && bind_i32_or_null(st, 3, t.priority);
-	        ok = ok && bind_i64(st, 4, t_created);
-	        ok = ok && bind_i64(st, 5, t_updated);
-	        ok = ok && bind_text(st, 6, t_status);
-	        ok = ok && bind_i32(st, 7, t_attempt);
-	        ok = ok && bind_i32(st, 8, t_max_attempts);
-	        ok = ok && bind_i64(st, 9, t_ready);
-	        ok = ok && bind_i64(st, 10, t_started);
-	        ok = ok && bind_i64(st, 11, t_finished);
-	        ok = ok && bind_text(st, 12, t.depends_on_json);
-	        ok = ok && bind_text(st, 13, t.request_json);
-	        ok = ok && bind_text(st, 14, t.expect_json);
-	        ok = ok && bind_text(st, 15, t.result_json);
-	        ok = ok && bind_text(st, 16, t.error);
-	        ok = ok && step_done(st);
-	        if (!ok) {
-	          if (out_error && out_error->empty()) *out_error = sqlite_err(db_);
-	          break;
-	        }
+		        ok = ok && bind_i64(st, 4, t_created);
+		        ok = ok && bind_i64(st, 5, t_updated);
+		        ok = ok && bind_text(st, 6, t_status);
+		        ok = ok && bind_i32(st, 7, t.allow_error ? 1 : 0);
+		        ok = ok && bind_i32(st, 8, t_attempt);
+		        ok = ok && bind_i32(st, 9, t_max_attempts);
+		        ok = ok && bind_i64(st, 10, t_ready);
+		        ok = ok && bind_i64(st, 11, t_started);
+		        ok = ok && bind_i64(st, 12, t_finished);
+		        ok = ok && bind_text(st, 13, t.depends_on_json);
+		        ok = ok && bind_text(st, 14, t.request_json);
+		        ok = ok && bind_text(st, 15, t.expect_json);
+		        ok = ok && bind_text(st, 16, t.result_json);
+		        ok = ok && bind_text(st, 17, t.error);
+		        ok = ok && step_done(st);
+		        if (!ok) {
+		          if (out_error && out_error->empty()) *out_error = sqlite_err(db_);
+		          break;
+		        }
       }
       sqlite3_finalize(st);
     }
@@ -1356,7 +1366,7 @@ bool AgentDb::list_workflow_tasks(const std::string& workflow_id, std::vector<Wo
 	sqlite3_stmt* st = nullptr;
 	const char* sql = R"SQL(
 	SELECT task_id, COALESCE(priority,0), created_unix_ms, updated_unix_ms, status, attempt, max_attempts, ready_unix_ms, started_unix_ms, finished_unix_ms,
-	       depends_on_json, request_json, expect_json, result_json, error
+	       depends_on_json, request_json, expect_json, result_json, error, COALESCE(allow_error,0)
 	FROM workflow_tasks
 	WHERE workflow_id=?
 	ORDER BY created_unix_ms ASC, task_id ASC;
@@ -1386,6 +1396,7 @@ bool AgentDb::list_workflow_tasks(const std::string& workflow_id, std::vector<Wo
 	    const unsigned char* exp = sqlite3_column_text(st, 12);
 	    const unsigned char* res = sqlite3_column_text(st, 13);
 	    const unsigned char* etxt = sqlite3_column_text(st, 14);
+	    row.allow_error = sqlite3_column_int(st, 15) != 0;
 	    row.depends_on_json = deps ? (const char*)deps : "";
 	    row.request_json = req ? (const char*)req : "";
 	    row.expect_json = exp ? (const char*)exp : "";
@@ -1487,13 +1498,14 @@ bool AgentDb::upsert_workflow_task(const WorkflowTaskRow& task, std::string* out
   sqlite3_stmt* st = nullptr;
 	const char* sql = R"SQL(
 	INSERT INTO workflow_tasks(
-	  workflow_id, task_id, priority, created_unix_ms, updated_unix_ms, status, attempt, max_attempts, ready_unix_ms,
+	  workflow_id, task_id, priority, created_unix_ms, updated_unix_ms, status, allow_error, attempt, max_attempts, ready_unix_ms,
 	  started_unix_ms, finished_unix_ms, depends_on_json, request_json, expect_json, result_json, error
-	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+	) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 	ON CONFLICT(workflow_id, task_id) DO UPDATE SET
 	  priority = CASE WHEN excluded.priority IS NOT NULL THEN excluded.priority ELSE workflow_tasks.priority END,
 	  updated_unix_ms = excluded.updated_unix_ms,
 	  status = excluded.status,
+	  allow_error = excluded.allow_error,
 	  attempt = excluded.attempt,
 	  max_attempts = excluded.max_attempts,
 	  ready_unix_ms = excluded.ready_unix_ms,
@@ -1516,16 +1528,17 @@ bool AgentDb::upsert_workflow_task(const WorkflowTaskRow& task, std::string* out
 	ok = ok && bind_i64(st, 4, created);
 	ok = ok && bind_i64(st, 5, now);
 	ok = ok && bind_text(st, 6, status);
-	ok = ok && bind_i32(st, 7, attempt);
-	ok = ok && bind_i32(st, 8, max_attempts);
-	ok = ok && bind_i64(st, 9, ready);
-	ok = ok && bind_i64(st, 10, started);
-	ok = ok && bind_i64(st, 11, finished);
-	ok = ok && bind_text(st, 12, task.depends_on_json);
-	ok = ok && bind_text(st, 13, task.request_json);
-	ok = ok && bind_text(st, 14, task.expect_json);
-	ok = ok && bind_text(st, 15, task.result_json);
-	ok = ok && bind_text(st, 16, task.error);
+	ok = ok && bind_i32(st, 7, task.allow_error ? 1 : 0);
+	ok = ok && bind_i32(st, 8, attempt);
+	ok = ok && bind_i32(st, 9, max_attempts);
+	ok = ok && bind_i64(st, 10, ready);
+	ok = ok && bind_i64(st, 11, started);
+	ok = ok && bind_i64(st, 12, finished);
+	ok = ok && bind_text(st, 13, task.depends_on_json);
+	ok = ok && bind_text(st, 14, task.request_json);
+	ok = ok && bind_text(st, 15, task.expect_json);
+	ok = ok && bind_text(st, 16, task.result_json);
+	ok = ok && bind_text(st, 17, task.error);
 	ok = ok && step_done(st);
   if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
   sqlite3_finalize(st);

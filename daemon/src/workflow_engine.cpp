@@ -4,6 +4,7 @@
 #include "edge_util.h"
 #include "json_util.h"
 #include "run_endpoints.h"
+#include "string_util.h"
 
 #include <algorithm>
 #include <chrono>
@@ -75,6 +76,18 @@ static bool string_array_from_json(const Json::Value& v, std::vector<std::string
     if (!s.empty()) out->push_back(s);
   }
   return true;
+}
+
+static bool workflow_is_terminal_status(const std::string& s) {
+  return (s == "done" || s == "error" || s == "cancelled");
+}
+
+static std::string workflow_task_kind_best_effort(const AgentDb::WorkflowTaskRow& t) {
+  if (t.request_json.empty()) return "";
+  Json::Value v;
+  std::string err;
+  if (!json_parse_any_value(t.request_json, &v, &err) || !v.isObject()) return "";
+  return json_get_string(v, "kind");
 }
 
 static Json::Value workflow_aggregate_quorum_hashes_to_json(
@@ -214,6 +227,171 @@ static Json::Value workflow_aggregate_quorum_hashes_to_json(
     out["error"] = "aggregate check failed";
   }
   return out;
+}
+
+static Json::Value workflow_aggregate_collect_to_json(
+  const Json::Value& agg,
+  const std::unordered_map<std::string, Json::Value>& result_json_by_task,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  Json::Value out(Json::objectValue);
+  out["kind"] = "aggregate";
+  out["mode"] = "collect";
+  out["ok"] = false;
+
+  if (!agg.isObject()) {
+    if (out_error) *out_error = "aggregate config must be an object";
+    out["error"] = out_error ? *out_error : "aggregate config must be an object";
+    return out;
+  }
+
+  std::vector<std::string> task_ids;
+  if (!string_array_from_json(agg["task_ids"], &task_ids) || task_ids.empty()) {
+    if (out_error) *out_error = "aggregate.task_ids must be a non-empty array of strings";
+    out["error"] = out_error ? *out_error : "aggregate.task_ids must be a non-empty array of strings";
+    return out;
+  }
+
+  std::vector<std::string> ptrs;
+  if (agg.isMember("pointers")) (void)string_array_from_json(agg["pointers"], &ptrs);
+  if (ptrs.empty()) ptrs.push_back("/assistant_text");
+
+  const bool require_all =
+    !agg.isMember("require_all") || (agg["require_all"].isBool() && agg["require_all"].asBool());
+
+  Json::Value arr(Json::arrayValue);
+  for (const auto& id : task_ids) arr.append(id);
+  out["task_ids"] = arr;
+  Json::Value parr(Json::arrayValue);
+  for (const auto& p : ptrs) parr.append(p);
+  out["pointers"] = parr;
+  out["require_all"] = require_all;
+
+  Json::Value collected(Json::objectValue);
+  bool ok = true;
+
+  for (const auto& ptr : ptrs) {
+    Json::Value rows(Json::arrayValue);
+    for (const auto& tid : task_ids) {
+      Json::Value row(Json::objectValue);
+      row["task_id"] = tid;
+      auto it = result_json_by_task.find(tid);
+      if (it == result_json_by_task.end()) {
+        row["missing"] = true;
+        rows.append(row);
+        if (require_all) ok = false;
+        continue;
+      }
+      const Json::Value& root = it->second;
+      const Json::Value* got = nullptr;
+      if (!json_pointer_get(root, ptr, &got) || !got) {
+        row["missing"] = true;
+        rows.append(row);
+        if (require_all) ok = false;
+        continue;
+      }
+      row["missing"] = false;
+      if (got->isString()) row["value"] = got->asString();
+      else row["value"] = *got;
+      rows.append(row);
+    }
+    collected[ptr] = rows;
+  }
+
+  out["collected"] = collected;
+  out["ok"] = ok;
+  if (!ok) out["error"] = "collect missing required values";
+  out["assistant_text"] = json_stringify_compact_local(collected);
+  return out;
+}
+
+static Json::Value workflow_aggregate_first_ok_to_json(
+  const Json::Value& agg,
+  const std::unordered_map<std::string, Json::Value>& result_json_by_task,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  Json::Value out(Json::objectValue);
+  out["kind"] = "aggregate";
+  out["mode"] = "first_ok";
+  out["ok"] = false;
+
+  if (!agg.isObject()) {
+    if (out_error) *out_error = "aggregate config must be an object";
+    out["error"] = out_error ? *out_error : "aggregate config must be an object";
+    return out;
+  }
+
+  std::vector<std::string> task_ids;
+  if (!string_array_from_json(agg["task_ids"], &task_ids) || task_ids.empty()) {
+    if (out_error) *out_error = "aggregate.task_ids must be a non-empty array of strings";
+    out["error"] = out_error ? *out_error : "aggregate.task_ids must be a non-empty array of strings";
+    return out;
+  }
+
+  std::string ok_ptr = "/ok";
+  if (agg.isMember("ok_pointer") && agg["ok_pointer"].isString() && !agg["ok_pointer"].asString().empty()) {
+    ok_ptr = agg["ok_pointer"].asString();
+  }
+  std::string val_ptr = "/assistant_text";
+  if (agg.isMember("value_pointer") && agg["value_pointer"].isString() && !agg["value_pointer"].asString().empty()) {
+    val_ptr = agg["value_pointer"].asString();
+  }
+
+  Json::Value arr(Json::arrayValue);
+  for (const auto& id : task_ids) arr.append(id);
+  out["task_ids"] = arr;
+  out["ok_pointer"] = ok_ptr;
+  out["value_pointer"] = val_ptr;
+
+  for (const auto& tid : task_ids) {
+    auto it = result_json_by_task.find(tid);
+    if (it == result_json_by_task.end()) continue;
+    const Json::Value& root = it->second;
+    const Json::Value* got_ok = nullptr;
+    if (!json_pointer_get(root, ok_ptr, &got_ok) || !got_ok || !got_ok->isBool() || !got_ok->asBool()) continue;
+
+    out["chosen_task_id"] = tid;
+    out["chosen"] = root;
+    out["ok"] = true;
+
+    const Json::Value* got_val = nullptr;
+    if (json_pointer_get(root, val_ptr, &got_val) && got_val) {
+      if (got_val->isString()) out["assistant_text"] = got_val->asString();
+      else out["assistant_text"] = json_stringify_compact_local(*got_val);
+    } else {
+      out["assistant_text"] = json_stringify_compact_local(root);
+    }
+    return out;
+  }
+
+  out["error"] = "no ok task found";
+  out["assistant_text"] = "";
+  return out;
+}
+
+static Json::Value workflow_aggregate_to_json(
+  const Json::Value& agg,
+  const std::unordered_map<std::string, Json::Value>& result_json_by_task,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (!agg.isObject()) {
+    if (out_error) *out_error = "aggregate config must be an object";
+    Json::Value o(Json::objectValue);
+    o["kind"] = "aggregate";
+    o["ok"] = false;
+    o["error"] = out_error ? *out_error : "aggregate config must be an object";
+    o["assistant_text"] = "";
+    return o;
+  }
+  const std::string mode =
+    agg.isMember("mode") && agg["mode"].isString() ? trim_copy(agg["mode"].asString()) : "quorum_hashes";
+  if (mode == "collect") return workflow_aggregate_collect_to_json(agg, result_json_by_task, out_error);
+  if (mode == "first_ok") return workflow_aggregate_first_ok_to_json(agg, result_json_by_task, out_error);
+  // Default: quorum_hashes (also used when mode omitted).
+  return workflow_aggregate_quorum_hashes_to_json(agg, result_json_by_task, out_error);
 }
 
 static void insert_workflow_event_best_effort(
@@ -637,8 +815,11 @@ bool WorkflowEngine::pick_and_claim_one(
 
     std::unordered_map<std::string, std::string> status_by_id;
     status_by_id.reserve(tasks.size());
+    std::unordered_map<std::string, bool> allow_error_by_id;
+    allow_error_by_id.reserve(tasks.size());
     for (const auto& t : tasks) {
       status_by_id[t.task_id] = t.status;
+      allow_error_by_id[t.task_id] = t.allow_error;
     }
 
     auto task_prio = [](const AgentDb::WorkflowTaskRow& t) -> int {
@@ -663,14 +844,26 @@ bool WorkflowEngine::pick_and_claim_one(
       if (t.status != "queued") continue;
       if (t.ready_unix_ms > 0 && now_unix_ms < t.ready_unix_ms) continue;
 
+      const std::string kind = workflow_task_kind_best_effort(t);
+
       const std::vector<std::string> deps = parse_dep_ids(t.depends_on_json);
       bool deps_ok = true;
       for (const auto& dep : deps) {
         auto it = status_by_id.find(dep);
-        if (it == status_by_id.end() || it->second != "done") {
+        if (it == status_by_id.end()) {
           deps_ok = false;
           break;
         }
+        const std::string& st = it->second;
+        if (st == "done") continue;
+        // Allow a dependent to proceed if the dependency is a soft-fail error.
+        const bool dep_allow_error =
+          allow_error_by_id.count(dep) ? allow_error_by_id[dep] : false;
+        if (st == "error" && dep_allow_error) continue;
+        // Aggregation tasks often need to read terminal outcomes (including error) to compute a join result.
+        if (kind == "aggregate" && workflow_is_terminal_status(st)) continue;
+        deps_ok = false;
+        break;
       }
       if (!deps_ok) continue;
 
@@ -732,7 +925,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     if (db_->list_workflow_tasks(wf.workflow_id, &tasks, &err)) {
       for (const auto& t : tasks) {
         if (t.task_id.empty()) continue;
-        if (t.status != "done") continue;
+        if (t.status != "done" && t.status != "error") continue;
         if (t.result_json.empty()) continue;
         Json::Value r;
         std::string perr;
@@ -791,7 +984,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   } else if (kind == "aggregate") {
     const Json::Value agg = rr.isMember("aggregate") && rr["aggregate"].isObject() ? rr["aggregate"] : Json::Value(Json::nullValue);
     std::string aerr;
-    out = workflow_aggregate_quorum_hashes_to_json(agg, result_json_by_task, &aerr);
+    out = workflow_aggregate_to_json(agg, result_json_by_task, &aerr);
     if (!aerr.empty() && (!out.isMember("error") || !out["error"].isString())) out["error"] = aerr;
   } else if (kind == "edge_invoke") {
     Json::Value e = rr.isMember("edge") && rr["edge"].isObject() ? rr["edge"] : Json::Value(Json::nullValue);
@@ -848,9 +1041,9 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         if (!node_id.empty()) e["node_id"] = node_id;
       }
 
+      const std::string mode = e.isMember("mode") && e["mode"].isString() ? e["mode"].asString() : "invoke";
       const std::string tool_name = e.isMember("tool") && e["tool"].isString() ? e["tool"].asString() : "";
       const Json::Value args = e.isMember("args") && e["args"].isObject() ? e["args"] : Json::Value(Json::nullValue);
-      const std::string mode = e.isMember("mode") && e["mode"].isString() ? e["mode"].asString() : "invoke";
 
       int64_t deadline_utc_ms = 0;
       if (e.isMember("deadline_utc_ms") && (e["deadline_utc_ms"].isInt64() || e["deadline_utc_ms"].isUInt64())) {
@@ -877,79 +1070,105 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 
       if (node_id.empty()) {
         out["error"] = "missing node_id (or match_any did not select)";
-      } else if (tool_name.empty() || !args.isObject()) {
-        out["error"] = "missing tool/args";
-      } else if (mode != "invoke") {
-        out["error"] = "unsupported edge mode (only invoke supported)";
       } else {
-        // Enqueue TASK_ASSIGN (idempotent via UNIQUE(node_id,idempotency_key) and PK(task_id,step_id)).
         Json::Value payload(Json::objectValue);
-        payload["tool"] = tool_name;
-        payload["args"] = args;
-
-        int64_t outbox_id = 0;
-        bool deduped = false;
-        std::string derr;
-        int http = 500;
-        const bool enq_ok = edge_enqueue_task_assign(
-          db_,
-          node_id,
-          wf.workflow_id,
-          task.task_id,
-          idempotency_key,
-          "invoke",
-          deadline_utc_ms,
-          task.attempt,
-          payload,
-          allow_hazards,
-          allow_high_side_effect,
-          /*enforce_safety=*/true,
-          /*enforce_rate_limit=*/true,
-          &outbox_id,
-          &deduped,
-          &derr,
-          &http);
-
-        Json::Value edge(Json::objectValue);
-        edge["node_id"] = node_id;
-        edge["task_id"] = wf.workflow_id;
-        edge["step_id"] = task.task_id;
-        edge["idempotency_key"] = idempotency_key;
-        edge["deadline_utc_ms"] = (Json::Int64)deadline_utc_ms;
-        edge["outbox_id"] = (Json::Int64)outbox_id;
-        edge["deduped"] = deduped;
-        out["edge"] = edge;
-
-        if (!enq_ok) {
-          out["error"] = derr.empty() ? "failed to enqueue edge task" : derr;
-        } else {
-          AgentDb::EdgeTaskRow tr;
-          std::string terr;
-          if (!db_->get_edge_task(wf.workflow_id, task.task_id, &tr, &terr)) {
-            out["error"] = "edge task not found after enqueue";
-            out["retryable"] = true;
-            out["retry_in_ms"] = 100;
+        if (mode == "invoke") {
+          if (tool_name.empty() || !args.isObject()) {
+            out["error"] = "missing tool/args";
+            out["edge"] = e;
+            // fall through to persist out
+            payload = Json::Value(Json::nullValue);
           } else {
-            out["edge_state"] = tr.state;
-            if (!tr.result_json.empty()) {
-              Json::Value v;
-              std::string perr3;
-              if (json_parse_any(tr.result_json, &v, &perr3)) out["edge_result"] = v;
-            }
-            if (!tr.error.empty()) out["edge_error"] = tr.error;
+            payload["tool"] = tool_name;
+            payload["args"] = args;
+          }
+        } else if (mode == "agent") {
+          if (e.isMember("payload") && e["payload"].isObject()) {
+            payload = e["payload"];
+          } else if (e.isMember("prompt") && e["prompt"].isString() && !e["prompt"].asString().empty()) {
+            payload["prompt"] = e["prompt"].asString();
+          } else {
+            out["error"] = "missing edge.payload (object) or edge.prompt (string) for mode=agent";
+            out["edge"] = e;
+            payload = Json::Value(Json::nullValue);
+          }
+        } else {
+          out["error"] = "unsupported edge mode (expected invoke|agent)";
+          out["edge"] = e;
+          payload = Json::Value(Json::nullValue);
+        }
 
-            if (tr.state == "SUCCEEDED") {
-              out["ok"] = true;
-              out["assistant_text"] = "edge:SUCCEEDED";
-            } else if (tr.state == "FAILED") {
-              out["ok"] = false;
-              out["error"] = tr.error.empty() ? "edge task failed" : tr.error;
-            } else {
-              out["ok"] = false;
-              out["error"] = "edge task pending";
+        if (!payload.isObject()) {
+          // Invalid payload/mode; no enqueue.
+        } else {
+          // Enqueue TASK_ASSIGN (idempotent via UNIQUE(node_id,idempotency_key) and PK(task_id,step_id)).
+
+          int64_t outbox_id = 0;
+          bool deduped = false;
+          std::string derr;
+          int http = 500;
+          const bool enq_ok = edge_enqueue_task_assign(
+            db_,
+            node_id,
+            wf.workflow_id,
+            task.task_id,
+            idempotency_key,
+            mode,
+            deadline_utc_ms,
+            task.attempt,
+            payload,
+            allow_hazards,
+            allow_high_side_effect,
+            /*enforce_safety=*/true,
+            /*enforce_rate_limit=*/true,
+            &outbox_id,
+            &deduped,
+            &derr,
+            &http);
+
+          Json::Value edge(Json::objectValue);
+          edge["node_id"] = node_id;
+          edge["task_id"] = wf.workflow_id;
+          edge["step_id"] = task.task_id;
+          edge["idempotency_key"] = idempotency_key;
+          edge["deadline_utc_ms"] = (Json::Int64)deadline_utc_ms;
+          edge["outbox_id"] = (Json::Int64)outbox_id;
+          edge["deduped"] = deduped;
+          edge["mode"] = mode;
+          out["edge"] = edge;
+
+          if (!enq_ok) {
+            out["error"] = derr.empty() ? "failed to enqueue edge task" : derr;
+          } else {
+            AgentDb::EdgeTaskRow tr;
+            std::string terr;
+            if (!db_->get_edge_task(wf.workflow_id, task.task_id, &tr, &terr)) {
+              out["error"] = "edge task not found after enqueue";
               out["retryable"] = true;
               out["retry_in_ms"] = 100;
-              out["assistant_text"] = "edge:" + tr.state;
+            } else {
+              out["edge_state"] = tr.state;
+              if (!tr.result_json.empty()) {
+                Json::Value v;
+                std::string perr3;
+                if (json_parse_any(tr.result_json, &v, &perr3)) out["edge_result"] = v;
+              }
+              if (!tr.error.empty()) out["edge_error"] = tr.error;
+
+              if (tr.state == "SUCCEEDED") {
+                out["ok"] = true;
+                if (out.isMember("edge_result")) out["assistant_text"] = json_stringify_compact_local(out["edge_result"]);
+                else out["assistant_text"] = "edge:SUCCEEDED";
+              } else if (tr.state == "FAILED") {
+                out["ok"] = false;
+                out["error"] = tr.error.empty() ? "edge task failed" : tr.error;
+              } else {
+                out["ok"] = false;
+                out["error"] = "edge task pending";
+                out["retryable"] = true;
+                out["retry_in_ms"] = 100;
+                out["assistant_text"] = "edge:" + tr.state;
+              }
             }
           }
         }
@@ -1044,26 +1263,24 @@ void WorkflowEngine::maybe_finalize_workflow(const std::string& workflow_id) {
 
   bool any_running = false;
   bool any_queued = false;
-  bool any_error = false;
+  bool any_hard_error = false;
   std::string first_error;
   bool all_terminal = true;
-  bool all_done = true;
   for (const auto& t : tasks) {
     if (t.status == "running") any_running = true;
     if (t.status == "queued") any_queued = true;
-    if (t.status == "error") {
-      any_error = true;
+    if (t.status == "error" && !t.allow_error) {
+      any_hard_error = true;
       if (first_error.empty()) first_error = t.error;
     }
-    const bool terminal = (t.status == "done" || t.status == "error" || t.status == "cancelled");
+    const bool terminal = workflow_is_terminal_status(t.status);
     if (!terminal) all_terminal = false;
-    if (t.status != "done") all_done = false;
   }
 
   std::string new_status = wf.status;
   std::string wf_error = wf.error;
 
-  if (any_error) {
+  if (any_hard_error) {
     new_status = "error";
     if (wf_error.empty()) wf_error = first_error.empty() ? "workflow task failed" : first_error;
   } else if (wf.cancel_requested) {
@@ -1073,7 +1290,7 @@ void WorkflowEngine::maybe_finalize_workflow(const std::string& workflow_id) {
     } else {
       new_status = "running";
     }
-  } else if (all_done && !tasks.empty()) {
+  } else if (all_terminal && !tasks.empty()) {
     new_status = "done";
     wf_error.clear();
   } else if (any_running) {

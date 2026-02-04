@@ -397,24 +397,49 @@ void handle_workflow_submit_endpoint(
         return;
       }
       const auto& edge = t["edge"];
+      const std::string mode =
+        edge.isMember("mode") && edge["mode"].isString() ? trim_copy(edge["mode"].asString()) : "invoke";
+
       const std::string tool = edge.isMember("tool") && edge["tool"].isString() ? trim_copy(edge["tool"].asString()) : "";
       const bool has_args = edge.isMember("args") && edge["args"].isObject();
+      const bool has_payload = edge.isMember("payload") && edge["payload"].isObject();
+      const bool has_prompt = edge.isMember("prompt") && edge["prompt"].isString() && !trim_copy(edge["prompt"].asString()).empty();
       const bool has_node_id = edge.isMember("node_id") && edge["node_id"].isString() && !trim_copy(edge["node_id"].asString()).empty();
       const bool has_match_any = edge.isMember("match_any") && edge["match_any"].isObject();
-      if (tool.empty() || !has_args) {
-        resp->status = 400;
-        Json::Value o(Json::objectValue);
-        o["ok"] = false;
-        o["error"] = "edge_invoke task edge missing tool/args";
-        o["task_id"] = task_id;
-        resp->body = json_stringify_compact(o);
-        return;
-      }
       if (!has_node_id && !has_match_any) {
         resp->status = 400;
         Json::Value o(Json::objectValue);
         o["ok"] = false;
         o["error"] = "edge_invoke task edge missing node_id or match_any";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+      if (mode == "invoke") {
+        if (tool.empty() || !has_args) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "edge_invoke task edge missing tool/args for mode=invoke";
+          o["task_id"] = task_id;
+          resp->body = json_stringify_compact(o);
+          return;
+        }
+      } else if (mode == "agent") {
+        if (!has_payload && !has_prompt) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "edge_invoke task edge missing payload (object) or prompt (string) for mode=agent";
+          o["task_id"] = task_id;
+          resp->body = json_stringify_compact(o);
+          return;
+        }
+      } else {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "edge_invoke task edge invalid mode (expected invoke|agent)";
         o["task_id"] = task_id;
         resp->body = json_stringify_compact(o);
         return;
@@ -461,6 +486,9 @@ void handle_workflow_submit_endpoint(
       max_attempts = 200;
     }
 
+    const bool allow_error =
+      t.isMember("allow_error") && t["allow_error"].isBool() ? t["allow_error"].asBool() : false;
+
     AgentDb::WorkflowTaskRow row;
     row.workflow_id = workflow_id;
     row.task_id = task_id;
@@ -468,6 +496,7 @@ void handle_workflow_submit_endpoint(
     row.created_unix_ms = now;
     row.updated_unix_ms = now;
     row.status = "queued";
+    row.allow_error = allow_error;
     row.attempt = 0;
     row.max_attempts = max_attempts;
     row.ready_unix_ms = 0;

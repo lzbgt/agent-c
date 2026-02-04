@@ -50,13 +50,21 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Result shape: `result.results_by_task[task_id].avm.{run,result_hash,trace_hash,state_hash,...}`
   - Proof: `ctest` includes `agentd_workflow_avm_capsule_smoke` (runs AVM capsule, then templates its result into an LLM stub task).
 - Durable workflows now support deterministic aggregation/join tasks (no LLM required):
-  - Task kind: `kind: "aggregate"` (v0: `mode:"quorum_hashes"`)
+  - Task kind: `kind: "aggregate"` (modes: `quorum_hashes`, `first_ok`, `collect`)
   - Use-case: compare deterministic hash surfaces (e.g. AVM `result_hash` / `trace_hash`) across N runs/nodes and require quorum.
-  - Proof: `ctest` includes `agentd_workflow_aggregate_quorum_smoke`.
+  - Proof: `ctest` includes `agentd_workflow_aggregate_quorum_smoke` and `agentd_workflow_aggregate_first_ok_smoke`.
 - Durable workflows now support UM‑EAIS edge collaboration tasks (no LLM required):
   - Task kind: `kind: "edge_invoke"` (dispatches `TASK_ASSIGN mode:"invoke"` and waits for `TASK_DONE`)
+  - Also supports `mode:"agent"` (dispatches `TASK_ASSIGN mode:"agent"` with a prompt/payload for embedded `agent_core`)
   - Use-case: mix deterministic compute + LLM reasoning + real-world actuation in one durable DAG.
-  - Proof: `ctest` includes `agentd_workflow_edge_invoke_smoke`.
+  - Proof: `ctest` includes `agentd_workflow_edge_invoke_smoke` and `agentd_workflow_edge_agent_smoke`.
+- Workflow engine now supports **soft-fail** tasks via `allow_error: true`:
+  - If a task ends `status="error"` and `allow_error=true`, the workflow can still complete `done` (so long as no “hard” errors remain).
+  - Dependencies treat `(status=error + allow_error=true)` as satisfied; aggregation tasks can also depend on any terminal dependency to compute joins over errors.
+  - Proof: `ctest` includes `agentd_workflow_aggregate_first_ok_smoke` (uses an `allow_error` failing branch + `mode:"first_ok"` join).
+- Workflow engine supports task-controlled rescheduling for polling/async patterns:
+  - Tasks may return `retryable=true` and `retry_in_ms` to control the requeue delay (instead of fixed polling/backoff).
+  - Proof: `ctest` includes `agentd_workflow_edge_invoke_smoke` (wait/poll loop uses task-controlled retry delay).
 - Resumable async jobs: `run_async` requests persist enough state to resume after daemon restart (at-least-once semantics).
   - Proof: `ctest` includes `agentd_job_restart_durability_smoke` (restart mid-job → finishes done).
 - Memory v2 (retrieval): `memory_search` now prefers a ranked on-disk index (SQLite FTS5) when available, with automatic fallback to bounded substring scan.
