@@ -44,7 +44,11 @@ A task is runnable when:
 
 - its status is `queued`
 - `now >= ready_unix_ms` (retry/backoff gate)
-- all dependencies are in `done`
+- all dependencies are satisfied:
+  - default: dependency status is `done`
+  - if the dependency is `error` and `allow_error=true`, it is also considered satisfied (soft-fail)
+  - for aggregation/join tasks (`kind:"aggregate"`), dependencies may be any terminal state (`done|error|cancelled`)
+    so the join can compute over failures/timeouts without blocking forever
 
 ### Retries and backoff
 
@@ -55,6 +59,20 @@ Each task has:
 - `ready_unix_ms` (used by the engine to defer retries)
 
 On failure, if `attempt < max_attempts`, the engine re-queues the task and sets a bounded quadratic backoff.
+
+Some task kinds can also request a custom retry schedule:
+
+- If a task returns `retryable=true` with `retry_in_ms`, the engine re-queues it using that delay (instead of the default backoff).
+  This is intended for polling patterns like edge task completion waits.
+
+### Soft-fail tasks (`allow_error`)
+
+If a task is submitted with:
+
+- `allow_error: true`
+
+Then if that task ends `status="error"`, the workflow may still complete `done` (so long as there are no remaining “hard”
+errors from tasks where `allow_error=false`).
 
 ### Deterministic correctness checks (`expect`)
 
@@ -67,6 +85,15 @@ Supported checks (v1):
 - `json_pointer_equals`:
   - object `{ pointer: "/some/path", value: <any-json> }`, or
   - array of such objects
+- `json_pointer_exists: "/ptr"` (or an array of pointers)
+- `json_pointer_regex`:
+  - object `{ pointer: "/some/path", regex: "..." }`, or
+  - array of such objects
+  - semantics: `regex_search` over the stringified value (if the value is not a string, it is JSON-stringified first)
+- `json_pointer_number_between`:
+  - object `{ pointer: "/some/path", min?: <number>, max?: <number> }`, or
+  - array of such objects
+  - values may be JSON numbers or numeric strings
 
 Pointers follow JSON Pointer (`""` for root, otherwise `/key/0/subkey`).
 
@@ -77,6 +104,7 @@ If expectations fail, the task is treated as failed (and may retry if configured
 For simple dataflow, the engine expands placeholders in `request.prompt`:
 
 - `${task.<id>.assistant_text}`
+- `${task.<id>.json:<json_pointer>}` (e.g. `${task.A.json:/assistant_text}`)
 
 This is resolved from the **completed** dependency’s `assistant_text` (from its persisted `result_json`).
 

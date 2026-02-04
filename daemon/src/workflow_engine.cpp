@@ -10,6 +10,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstdint>
+#include <regex>
 #include <sstream>
 #include <thread>
 #include <unordered_map>
@@ -829,6 +830,111 @@ static bool apply_expectations(const std::string& expect_json, const Json::Value
         }
         if (*got != row["value"]) {
           if (out_err) *out_err = "expectation failed: json_pointer_equals mismatch at " + ptr;
+          return false;
+        }
+      }
+    }
+  }
+
+  if (exp.isMember("json_pointer_exists")) {
+    Json::Value arr = exp["json_pointer_exists"];
+    if (arr.isString()) {
+      Json::Value one(Json::arrayValue);
+      one.append(arr);
+      arr = one;
+    }
+    if (arr.isArray()) {
+      for (Json::ArrayIndex i = 0; i < arr.size(); i++) {
+        if (!arr[i].isString()) continue;
+        const std::string ptr = arr[i].asString();
+        const Json::Value* got = nullptr;
+        if (!json_pointer_get(run_out, ptr, &got) || !got) {
+          if (out_err) *out_err = "expectation failed: json pointer missing";
+          return false;
+        }
+      }
+    }
+  }
+
+  if (exp.isMember("json_pointer_regex")) {
+    Json::Value arr = exp["json_pointer_regex"];
+    if (arr.isObject()) {
+      Json::Value one(Json::arrayValue);
+      one.append(arr);
+      arr = one;
+    }
+    if (arr.isArray()) {
+      for (Json::ArrayIndex i = 0; i < arr.size(); i++) {
+        const auto& item = arr[i];
+        if (!item.isObject()) continue;
+        const std::string ptr =
+          item.isMember("pointer") && item["pointer"].isString() ? item["pointer"].asString() : "";
+        const std::string pat =
+          item.isMember("regex") && item["regex"].isString() ? item["regex"].asString() : "";
+        if (ptr.empty() || pat.empty()) continue;
+
+        const Json::Value* got = nullptr;
+        if (!json_pointer_get(run_out, ptr, &got) || !got) {
+          if (out_err) *out_err = "expectation failed: json pointer missing for regex";
+          return false;
+        }
+
+        std::string s;
+        if (got->isString()) s = got->asString();
+        else s = json_stringify_compact_local(*got);
+
+        try {
+          const std::regex re(pat);
+          if (!std::regex_search(s, re)) {
+            if (out_err) *out_err = "expectation failed: regex did not match";
+            return false;
+          }
+        } catch (const std::exception& e) {
+          if (out_err) *out_err = std::string("invalid regex: ") + e.what();
+          return false;
+        }
+      }
+    }
+  }
+
+  if (exp.isMember("json_pointer_number_between")) {
+    Json::Value arr = exp["json_pointer_number_between"];
+    if (arr.isObject()) {
+      Json::Value one(Json::arrayValue);
+      one.append(arr);
+      arr = one;
+    }
+    if (arr.isArray()) {
+      for (Json::ArrayIndex i = 0; i < arr.size(); i++) {
+        const auto& item = arr[i];
+        if (!item.isObject()) continue;
+        const std::string ptr =
+          item.isMember("pointer") && item["pointer"].isString() ? item["pointer"].asString() : "";
+        if (ptr.empty()) continue;
+
+        bool has_min = false;
+        bool has_max = false;
+        double min_v = 0.0;
+        double max_v = 0.0;
+        if (item.isMember("min")) has_min = json_value_to_double_best_effort(item["min"], &min_v);
+        if (item.isMember("max")) has_max = json_value_to_double_best_effort(item["max"], &max_v);
+
+        const Json::Value* got = nullptr;
+        if (!json_pointer_get(run_out, ptr, &got) || !got) {
+          if (out_err) *out_err = "expectation failed: json pointer missing for numeric bound";
+          return false;
+        }
+        double x = 0.0;
+        if (!json_value_to_double_best_effort(*got, &x)) {
+          if (out_err) *out_err = "expectation failed: value is not numeric";
+          return false;
+        }
+        if (has_min && x < min_v) {
+          if (out_err) *out_err = "expectation failed: value below min";
+          return false;
+        }
+        if (has_max && x > max_v) {
+          if (out_err) *out_err = "expectation failed: value above max";
           return false;
         }
       }

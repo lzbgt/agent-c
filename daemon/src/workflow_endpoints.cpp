@@ -644,6 +644,7 @@ void handle_workflow_get_endpoint(
         Json::Value row(Json::objectValue);
         row["task_id"] = t.task_id;
         row["status"] = t.status;
+        row["allow_error"] = t.allow_error;
         row["priority"] = t.priority;
         row["attempt"] = t.attempt;
         row["max_attempts"] = t.max_attempts;

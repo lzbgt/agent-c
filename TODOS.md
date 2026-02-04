@@ -62,6 +62,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - If a task ends `status="error"` and `allow_error=true`, the workflow can still complete `done` (so long as no “hard” errors remain).
   - Dependencies treat `(status=error + allow_error=true)` as satisfied; aggregation tasks can also depend on any terminal dependency to compute joins over errors.
   - Proof: `ctest` includes `agentd_workflow_aggregate_first_ok_smoke` (uses an `allow_error` failing branch + `mode:"first_ok"` join).
+- Workflow engine supports expanded deterministic expectations (`expect`) for correctness:
+  - `json_pointer_exists`, `json_pointer_regex`, `json_pointer_number_between` (in addition to `ok`, `assistant_text_contains`, `json_pointer_equals`).
+  - Proof: `ctest` includes `agentd_workflow_expect_extended_smoke` (includes a passing task and an allow_error failing task).
 - Workflow engine supports task-controlled rescheduling for polling/async patterns:
   - Tasks may return `retryable=true` and `retry_in_ms` to control the requeue delay (instead of fixed polling/backoff).
   - Proof: `ctest` includes `agentd_workflow_edge_invoke_smoke` (wait/poll loop uses task-controlled retry delay).
