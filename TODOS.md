@@ -1,6 +1,6 @@
 # Roadmap / TODOs (highest leverage)
 
-Date: 2026-02-04
+Date: 2026-02-05
 
 This roadmap is biased toward “power unleashed” coming from the **agentic framework itself**:
 
@@ -106,6 +106,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Proof: `ctest` includes `agentd_workflow_inflight_cap_smoke` (asserts non-overlap under cap=1).
 - Per-session fairness cap is now proven (multi-tenant guard):
   - Proof: `ctest` includes `agentd_workflow_inflight_session_cap_smoke`.
+- Workflow scheduler scan fairness v2.0 (beyond caps; prevents LIMIT-starvation):
+  - Oversampled workflow scan (bounded by DB clamp) so older workflows can’t be permanently excluded by `LIMIT`.
+  - Session-aware scan order (round-robin across session buckets) to reduce multi-tenant starvation risk under heavy load.
+  - Proof: `ctest` includes `agentd_workflow_scan_fairness_smoke`.
 - Workflow admission control / submit-time backpressure (v1.5):
   - Caps total inflight workflow tasks (`queued|running`) at submit time (returns HTTP `429` with `retry_after_ms`).
   - Knobs:
@@ -151,8 +155,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
    - Make budgets visible in `/api/v1/workflow/stats` and persisted in events for auditing/replay.
 
 2) **Scheduling policy v2 (beyond caps)** (predictable progress under load)
-   - Implement a session-aware fair queue (e.g. deficit round-robin) so caps + priorities become a predictable policy surface.
-   - Add a deterministic stress test using stub providers and bounded runtime assertions.
+   - Shipped (v2.0): oversampled scan + session-aware round-robin scan order (prevents `LIMIT` starvation under typical load).
+   - Proof: `ctest` includes `agentd_workflow_scan_fairness_smoke`.
+   - Next (v2.1): move from scan-order RR to an explicit fair-queue policy surface (e.g. deficit round-robin with per-session weights/tokens)
+     so priorities + budgets compose predictably even with >512 queued workflows.
 
 3) **Interop spec hardening for MCU/edge handoff** (ecosystem leverage)
    - Consolidate the UM‑EAIS + durable workflow message conventions into a single versioned spec with explicit idempotency/correlation rules,

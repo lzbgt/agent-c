@@ -560,14 +560,23 @@ bool WorkflowEngine::pick_and_claim_one(
   *out_wf = AgentDb::WorkflowRow{};
   *out_task = AgentDb::WorkflowTaskRow{};
 
+  // Scheduling fairness note:
+  //
+  // `list_workflows_by_status(..., LIMIT N)` can accidentally starve older workflows when many newer ones exist,
+  // because the older workflow may never appear in the top-N results. To mitigate this, we intentionally
+  // oversample the DB query and then apply an in-memory scheduling policy over the larger candidate set.
+  //
+  // This stays bounded by the DB helper's internal clamp (<=512 rows per query).
+  const size_t fetch_max = std::max<size_t>(16, opt_.max_scan_workflows) * 8;
+
   std::vector<AgentDb::WorkflowRow> queued;
   std::vector<AgentDb::WorkflowRow> running;
   std::string err;
-  if (!db_->list_workflows_by_status("queued", opt_.max_scan_workflows, &queued, &err)) {
+  if (!db_->list_workflows_by_status("queued", fetch_max, &queued, &err)) {
     if (out_error) *out_error = err;
     return false;
   }
-  if (!db_->list_workflows_by_status("running", opt_.max_scan_workflows, &running, &err)) {
+  if (!db_->list_workflows_by_status("running", fetch_max, &running, &err)) {
     if (out_error) *out_error = err;
     return false;
   }
@@ -606,15 +615,36 @@ bool WorkflowEngine::pick_and_claim_one(
     return a.workflow_id < b.workflow_id;
   });
 
-  // Round-robin start point across workers to reduce "thundering herd" on the top workflow.
-  const size_t n = wfs.size();
-  const size_t start = n == 0 ? 0 : (size_t)(rr_cursor_.fetch_add(1) % (uint64_t)n);
+  auto session_bucket_key = [](const AgentDb::WorkflowRow& wf) -> std::string {
+    if (!wf.session_id.empty()) return std::string("sid:") + wf.session_id;
+    // Treat session-less workflows as independent buckets so a "no_session" client can't monopolize
+    // the scan order by submitting many workflows without a session_id.
+    return std::string("wf:") + wf.workflow_id;
+  };
 
-  for (size_t i = 0; i < n; i++) {
-    auto& wf = wfs[(start + i) % n];
+  // Session-aware scan order:
+  // - sessions are ordered by the best workflow in that session under the base ordering (priority/status/age).
+  // - within a session, workflows keep their original order.
+  // - a rr cursor selects the session start point to avoid thundering herd.
+  std::unordered_map<std::string, std::vector<size_t>> wf_idxs_by_session;
+  std::vector<std::string> sessions;
+  sessions.reserve(wfs.size());
+  wf_idxs_by_session.reserve(wfs.size());
+
+  for (size_t i = 0; i < wfs.size(); i++) {
+    const std::string k = session_bucket_key(wfs[i]);
+    auto& vec = wf_idxs_by_session[k];
+    if (vec.empty()) sessions.push_back(k);
+    vec.push_back(i);
+  }
+
+  const size_t ns = sessions.size();
+  const size_t session_start = ns == 0 ? 0 : (size_t)(rr_cursor_.fetch_add(1) % (uint64_t)ns);
+
+  auto try_pick_in_workflow = [&](AgentDb::WorkflowRow& wf) -> bool {
     if (stop_.load()) return false;
-    if (wf.workflow_id.empty()) continue;
-    if (wf.status != "queued" && wf.status != "running") continue;
+    if (wf.workflow_id.empty()) return false;
+    if (wf.status != "queued" && wf.status != "running") return false;
 
     // Scheduler-level deadline guard (best-effort): if the submit spec carries a deadline and it has passed,
     // stop admitting new tasks for this workflow and cancel queued tasks. Running tasks are not forcibly interrupted.
@@ -658,12 +688,12 @@ bool WorkflowEngine::pick_and_claim_one(
       if (any_change) {
         maybe_finalize_workflow(wf.workflow_id);
       }
-      continue;
+      return false;
     }
 
     std::vector<AgentDb::WorkflowTaskRow> tasks;
     if (!db_->list_workflow_tasks(wf.workflow_id, &tasks, &err)) {
-      continue;
+      return false;
     }
 
     // Fairness/budgets: skip workflows that are already saturating their in-flight budget.
@@ -673,7 +703,7 @@ bool WorkflowEngine::pick_and_claim_one(
         if (t.status == "running") running_cnt++;
       }
       if (running_cnt >= opt_.max_inflight_per_workflow) {
-        continue;
+        return false;
       }
     }
 
@@ -705,7 +735,7 @@ bool WorkflowEngine::pick_and_claim_one(
         maybe_finalize_workflow(wf.workflow_id);
         // Keep scanning in case another workflow is runnable.
       }
-      continue;
+      return false;
     }
 
     std::unordered_map<std::string, std::string> status_by_id;
@@ -811,6 +841,19 @@ bool WorkflowEngine::pick_and_claim_one(
 
     // No runnable tasks; check if the workflow is now terminal.
     maybe_finalize_workflow(wf.workflow_id);
+    return false;
+  };
+
+  for (size_t si = 0; si < ns; si++) {
+    const std::string& sk = sessions[(session_start + si) % ns];
+    auto it = wf_idxs_by_session.find(sk);
+    if (it == wf_idxs_by_session.end()) continue;
+    const auto& idxs = it->second;
+    for (size_t wi = 0; wi < idxs.size(); wi++) {
+      const size_t idx = idxs[wi];
+      if (idx >= wfs.size()) continue;
+      if (try_pick_in_workflow(wfs[idx])) return true;
+    }
   }
 
   return false;
