@@ -101,6 +101,8 @@ Then the platform may verify a versioned signing string:
 
 and emit evidence under task events (visible via `GET /api/v1/trace?trace_id=...`).
 
+Embedded helper: `agent_core` exposes `agent_um_eais_result_attest_signing_input_v0_1(...)` to generate the exact signing bytes.
+
 ### 2.2 Platform-computed hash surface
 
 The platform MUST compute and persist:

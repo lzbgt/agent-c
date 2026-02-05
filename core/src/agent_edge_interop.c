@@ -1,5 +1,7 @@
 #include "agent/edge_interop.h"
 
+#include <inttypes.h>
+#include <stdio.h>
 #include <string.h>
 
 static int umbmp_char_ok(char c) {
@@ -93,5 +95,81 @@ agent_status_t agent_umbmp_sanitize_id_token(
   if (start != 0) memmove(out, out + start, trimmed_len);
   out[trimmed_len] = '\0';
   if (out_len) *out_len = trimmed_len;
+  return AGENT_OK;
+}
+
+agent_status_t agent_um_eais_result_attest_signing_input_v0_1(
+  const char* task_id,
+  size_t task_id_len,
+  const char* step_id,
+  size_t step_id_len,
+  const char* idempotency_key,
+  size_t idempotency_key_len,
+  const char* result_sha256_token,
+  size_t result_sha256_token_len,
+  int64_t ts_utc_ms,
+  char* out,
+  size_t out_cap,
+  size_t* out_len
+) {
+  if (out_len) *out_len = 0;
+  if (!out || out_cap == 0) return AGENT_ERR_INVALID_ARGUMENT;
+  out[0] = '\0';
+
+  if (!agent_umbmp_id_is_safe(task_id, task_id_len)) return AGENT_ERR_INVALID_ARGUMENT;
+  if (!agent_umbmp_id_is_safe(step_id, step_id_len)) return AGENT_ERR_INVALID_ARGUMENT;
+  if (!agent_umbmp_id_is_safe(idempotency_key, idempotency_key_len)) return AGENT_ERR_INVALID_ARGUMENT;
+  if (!agent_umbmp_sha256_token_is_safe(result_sha256_token, result_sha256_token_len)) return AGENT_ERR_INVALID_ARGUMENT;
+
+  // Reserve NUL for convenience, but return the byte length excluding it.
+  const size_t cap_len = out_cap - 1;
+  if (cap_len == 0) return AGENT_ERR_BOUNDS;
+
+  // Convert timestamp once so we can compute/validate bounds.
+  char ts_buf[32];
+  const int ts_n = snprintf(ts_buf, sizeof(ts_buf), "%" PRId64 "\n", ts_utc_ms);
+  if (ts_n <= 0) return AGENT_ERR_INTERNAL;
+  const size_t ts_len = (size_t)ts_n;
+  if (ts_len >= sizeof(ts_buf)) return AGENT_ERR_INTERNAL;
+
+  static const char* kPrefix = AGENT_UM_EAIS_RESULT_ATTEST_SIGNING_PREFIX;
+  static const size_t kPrefixLen = sizeof("UM_EAIS_RESULT_ATTEST_v0_1\n") - 1;
+
+  // Compute required size (bytes), including newlines after each field.
+  const size_t need =
+    kPrefixLen +
+    task_id_len + 1 +
+    step_id_len + 1 +
+    idempotency_key_len + 1 +
+    result_sha256_token_len + 1 +
+    ts_len;
+
+  if (need > cap_len) return AGENT_ERR_BOUNDS;
+
+  size_t pos = 0;
+  memcpy(out + pos, kPrefix, kPrefixLen);
+  pos += kPrefixLen;
+
+  memcpy(out + pos, task_id, task_id_len);
+  pos += task_id_len;
+  out[pos++] = '\n';
+
+  memcpy(out + pos, step_id, step_id_len);
+  pos += step_id_len;
+  out[pos++] = '\n';
+
+  memcpy(out + pos, idempotency_key, idempotency_key_len);
+  pos += idempotency_key_len;
+  out[pos++] = '\n';
+
+  memcpy(out + pos, result_sha256_token, result_sha256_token_len);
+  pos += result_sha256_token_len;
+  out[pos++] = '\n';
+
+  memcpy(out + pos, ts_buf, ts_len);
+  pos += ts_len;
+
+  out[pos] = '\0';
+  if (out_len) *out_len = pos;
   return AGENT_OK;
 }

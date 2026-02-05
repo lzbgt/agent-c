@@ -47,9 +47,50 @@ static void test_sanitize_respects_max_len(void) {
   assert(strcmp(out, "abcdefgh") == 0);
 }
 
+static void test_result_attest_signing_input_v0_1(void) {
+  char out[256];
+  size_t out_len = 0;
+
+  const char* task_id = "t1";
+  const char* step_id = "s1";
+  const char* idem = "k1";
+  const char* sha = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  const int64_t ts = 1700000000000LL;
+
+  assert(agent_um_eais_result_attest_signing_input_v0_1(
+           task_id, strlen(task_id),
+           step_id, strlen(step_id),
+           idem, strlen(idem),
+           sha, strlen(sha),
+           ts,
+           out, sizeof(out),
+           &out_len) == AGENT_OK);
+
+  const char* expected =
+    "UM_EAIS_RESULT_ATTEST_v0_1\n"
+    "t1\n"
+    "s1\n"
+    "k1\n"
+    "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n"
+    "1700000000000\n";
+  assert(out_len == strlen(expected));
+  assert(strcmp(out, expected) == 0);
+
+  // Reject unsafe IDs (newline would be ambiguous).
+  assert(agent_um_eais_result_attest_signing_input_v0_1(
+           "bad\nid", strlen("bad\nid"),
+           step_id, strlen(step_id),
+           idem, strlen(idem),
+           sha, strlen(sha),
+           ts,
+           out, sizeof(out),
+           &out_len) == AGENT_ERR_INVALID_ARGUMENT);
+}
+
 void test_edge_interop_module(void) {
   test_id_is_safe_basic();
   test_sha256_token_is_safe_basic();
   test_sanitize_trims_and_defaults();
   test_sanitize_respects_max_len();
+  test_result_attest_signing_input_v0_1();
 }

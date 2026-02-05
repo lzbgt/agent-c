@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdint.h>
 
 #include "agent/agent.h"
 
@@ -77,6 +78,38 @@ agent_status_t agent_umbmp_sanitize_id_token(
 #define AGENT_UM_BMP_WORKFLOW_ID_PREFIX "wf:"
 #define AGENT_UM_BMP_IDEMPOTENCY_PREFIX "edge_msg:"
 #define AGENT_UM_BMP_IDEMPOTENCY_WORKFLOW_PREFIX "edge_wf:"
+
+// Portable signing input for UM‑EAIS result attestation signatures.
+//
+// Format (bytes, UTF-8; trailing newline included):
+//   UM_EAIS_RESULT_ATTEST_v0_1\n
+//   <task_id>\n
+//   <step_id>\n
+//   <idempotency_key>\n
+//   <result_sha256_token>\n
+//   <ts_utc_ms>\n
+//
+// Notes:
+// - The id fields must pass `agent_umbmp_id_is_safe`.
+// - `result_sha256_token` must pass `agent_umbmp_sha256_token_is_safe`.
+// - This helper exists so MCU firmware and the platform can sign the exact same bytes without
+//   duplicating string formatting logic.
+#define AGENT_UM_EAIS_RESULT_ATTEST_SIGNING_PREFIX "UM_EAIS_RESULT_ATTEST_v0_1\n"
+
+agent_status_t agent_um_eais_result_attest_signing_input_v0_1(
+  const char* task_id,
+  size_t task_id_len,
+  const char* step_id,
+  size_t step_id_len,
+  const char* idempotency_key,
+  size_t idempotency_key_len,
+  const char* result_sha256_token,
+  size_t result_sha256_token_len,
+  int64_t ts_utc_ms,
+  char* out,
+  size_t out_cap,
+  size_t* out_len
+);
 
 #ifdef __cplusplus
 }  // extern "C"

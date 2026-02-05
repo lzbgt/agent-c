@@ -374,6 +374,7 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
    - Shipped (v0.4 partial): best-effort verification of `TASK_DONE.result.attest.sig` (Ed25519/HMAC) when key material is provisioned:
      - Verifies a small versioned signing string `UM_EAIS_RESULT_ATTEST_v0_1` over `{task_id,step_id,idempotency_key,result_sha256,ts_utc_ms}`.
      - Evidence is emitted under edge task events (trace-queryable).
+     - Embedded bring-up: `agent_core` helper `agent_um_eais_result_attest_signing_input_v0_1(...)` generates the exact signing bytes.
    - Next: complete trust roots + identity binding:
      - per-node key provisioning workflow (bootstrap + rotation)
      - replay window guidance + nonce/ts enforcement for lossy bridges (configurable; deterministic)
