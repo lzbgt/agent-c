@@ -115,6 +115,9 @@ MCU CBOR implementation guidance (TinyCBOR-style):
 - Encode integers in minimal CBOR form (major 0/1).
 - Avoid floats in signed envelopes. If you must include one, the platform deterministic CBOR encoder uses float64.
 
+Embedded helper (this repo):
+- `agent_core` includes a tiny deterministic CBOR writer under `agent/cbor_det.h` that matches the platform’s encoding rules.
+
 ## Platform enforcement behavior (agentd)
 
 Operator config:

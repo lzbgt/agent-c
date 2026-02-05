@@ -75,5 +75,7 @@ Platform (`agentd`):
 - Proof: `ctest` includes `agentd_edge_message_cbor_smoke` and `agentd_edge_outbox_cbor_smoke`.
 
 Node (`agent_core`):
-- Not yet shipped: CBOR codec helpers for MCU firmware.
-- Recommendation: add a tiny CBOR encoder/decoder module under `core/` later, once the message subset stabilizes.
+- Shipped (partial): deterministic CBOR **writer** helpers under `agent/cbor_det.h` (encoder only).
+- Not yet shipped: CBOR decoder + full JSON<->CBOR mapping helpers for MCU firmware.
+- Recommendation: keep using a full CBOR library (e.g. TinyCBOR-derived) if you already have one, but use the deterministic profile
+  defined in this repo for signed envelopes; `agent/cbor_det.h` can be used as a minimal fallback for signing inputs.

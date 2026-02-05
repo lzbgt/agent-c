@@ -97,6 +97,7 @@ Envelope authenticity (optional, UM‑BMP auth v0.4):
       - text-string map keys ordered by UTF‑8 byte length, then lexicographically by UTF‑8 bytes
       - integers encoded in minimal CBOR form
       - floats encoded as float64 when present (avoid floats in signed envelopes)
+      - embedded helper: `agent_core` provides a minimal deterministic CBOR writer (`agent/cbor_det.h`) for MCU bring-up
 - Operator controls:
   - `edge_auth.required` is surfaced via `GET /api/v1/config`.
   - `POST /api/v1/config/update` supports:

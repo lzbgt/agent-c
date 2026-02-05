@@ -365,6 +365,7 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
    - Shipped (v0.4 partial): CBOR-native auth input option for MCU stacks:
      - `auth.alg="hmac-sha256-cbor"` verifies HMAC over deterministic CBOR bytes of the envelope with `auth` removed
        (definite lengths; text-string map keys ordered by UTF‑8 byte length then bytes; float64 only; matches `daemon/src/cbor_encode.*`).
+     - Embedded bring-up: `agent_core` deterministic CBOR writer (`agent/cbor_det.h`) can generate these bytes without pulling in a full CBOR library.
    - Shipped (v0.4 partial): public-key envelope auth (no shared-secret blast radius):
      - `auth.alg="ed25519"` verifies Ed25519 signatures over canonical JSON bytes (`agent_json_c14n_v1`).
      - `auth.alg="ed25519-cbor"` verifies Ed25519 signatures over deterministic CBOR bytes (same profile as above).

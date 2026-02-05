@@ -249,6 +249,8 @@ int main(void) {
   test_hmac_sha256_module();
   extern void test_ed25519_module(void);
   test_ed25519_module();
+  extern void test_cbor_det_module(void);
+  test_cbor_det_module();
   printf("agent_core_tests OK\n");
   return 0;
 }
