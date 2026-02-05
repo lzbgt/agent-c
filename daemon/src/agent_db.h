@@ -613,6 +613,15 @@ class AgentDb {
   };
 
   bool insert_edge_sensor_event(const EdgeSensorEventRow& row, int64_t* out_id, std::string* out_error);
+  bool find_edge_sensor_event_latest(
+    const std::string& event_type,
+    const std::string& node_id_or_empty,
+    int64_t since_utc_ms,
+    double min_confidence,
+    EdgeSensorEventRow* out_row,
+    bool* out_found,
+    std::string* out_error
+  );
 
   struct EdgeToolRateStateRow {
     std::string node_id;

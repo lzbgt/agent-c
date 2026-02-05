@@ -1518,6 +1518,7 @@ components:
         - Deterministic delay tasks: `kind: delay` with `delay_ms` (no LLM required)
         - Edge collaboration tasks: `kind: edge_invoke` with `edge` (see `WorkflowEdgeInvokeSpec`)
         - Parallel edge fan-out macro: `kind: edge_parallel` with `edge_parallel` (submit-time expansion into `edge_invoke` tasks + an aggregate join; configurable)
+        - Deterministic edge sensor wait: `kind: edge_wait_sensor` with `edge_wait_sensor` (polls edge sensor event log; retryable)
         - Sequential fallback collaboration: `kind: delegate` with `delegate` (see `WorkflowDelegateSpec`)
         - Parallel collaboration macro: `kind: delegate_parallel` with `delegate` (submit-time expansion into tasks + aggregate join; configurable)
 
@@ -1529,6 +1530,7 @@ components:
         - If `kind == delay`, `delay_ms` is optional (default 0) and `request.prompt` is not used.
         - If `kind == edge_invoke`, `edge.tool`/`edge.args` are required and `request.prompt` is not used.
         - If `kind == edge_parallel`, `edge_parallel.edge.match_any` is required and `edge_parallel.edge.node_id` must be omitted; `edge.tool`/`edge.args` are required and `request.prompt` is not used (expanded into multiple tasks).
+        - If `kind == edge_wait_sensor`, `edge_wait_sensor.event_type` is required and `request.prompt` is not used.
         - If `kind == delegate`, `delegate.attempts` is required and `request.prompt` is not used.
         - If `kind == delegate_parallel`, `delegate.attempts` is required and `request.prompt` is not used (expanded into multiple tasks).
         - Otherwise, `request.prompt` is required (or prompt at the top-level is accepted by the server for legacy reasons).
@@ -1541,6 +1543,7 @@ components:
         - $ref: "#/components/schemas/WorkflowTaskDelaySpec"
         - $ref: "#/components/schemas/WorkflowTaskEdgeInvokeSpec"
         - $ref: "#/components/schemas/WorkflowTaskEdgeParallelSpec"
+        - $ref: "#/components/schemas/WorkflowTaskEdgeWaitSensorSpec"
         - $ref: "#/components/schemas/WorkflowTaskDelegateSpec"
 
     WorkflowTaskRunSpec:
@@ -1942,6 +1945,69 @@ components:
           type: object
           description: Deterministic correctness assertions (engine-enforced)
           additionalProperties: true
+
+    WorkflowTaskEdgeWaitSensorSpec:
+      type: object
+      required: [task_id, kind, edge_wait_sensor]
+      properties:
+        task_id: { type: string }
+        allow_error:
+          type: boolean
+          description: If true, task failure does not fail the workflow (soft-fail).
+        inputs:
+          type: object
+          description: Optional per-task inputs (overrides workflow-level inputs).
+          additionalProperties: true
+        kind:
+          type: string
+          enum: [edge_wait_sensor]
+          description: Deterministic wait gate for edge sensor events (polls edge_sensor_events; retryable).
+        depends_on:
+          type: array
+          items: { type: string }
+        max_attempts:
+          type: integer
+          format: int32
+          description: Poll budget for waiting (default higher than normal tasks).
+        priority:
+          type: integer
+          format: int32
+          description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+        edge_wait_sensor:
+          $ref: "#/components/schemas/WorkflowEdgeWaitSensorSpec"
+        expect:
+          type: object
+          description: Deterministic correctness assertions (engine-enforced)
+          additionalProperties: true
+
+    WorkflowEdgeWaitSensorSpec:
+      type: object
+      required: [event_type]
+      description: |
+        Sensor wait configuration for `kind:edge_wait_sensor`.
+
+        Default semantics (server-side):
+        - If `since_utc_ms` is omitted, it defaults to the workflow creation time (prevents old events from satisfying a new workflow).
+        - If no matching event exists, the task returns `retryable:true` with `retry_in_ms=poll_ms` (default 250ms).
+      properties:
+        event_type:
+          type: string
+          description: Required; edge sensor event type to wait for (id-safe).
+        node_id:
+          type: string
+          description: Optional; when set, only matches events from this node_id (id-safe).
+        min_confidence:
+          type: number
+          format: double
+          description: Optional; minimum confidence required to match (default 0.0).
+        since_utc_ms:
+          type: integer
+          format: int64
+          description: Optional; only match events with ts_utc_ms >= since_utc_ms.
+        poll_ms:
+          type: integer
+          format: int32
+          description: Poll delay (retry_in_ms) when no event found (default 250; clamped).
 
     WorkflowEdgeParallelSpec:
       type: object

@@ -250,6 +250,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Automation rules for `SENSOR_EVENT` now support `action.type:"durable_workflow_submit"` (in addition to `task_assign`).
   - The platform injects `inputs.sensor_event` (best-effort) so workflow tasks can template against `${input.sensor_event...}`.
   - Proof: `ctest` includes `agentd_edge_rules_durable_workflow_smoke`.
+- Durable workflow edge wait gate (v1.7.9):
+  - New deterministic workflow task: `kind:"edge_wait_sensor"` with `edge_wait_sensor` (polls `edge_sensor_events` and is `retryable` until a matching event arrives).
+  - Default `since_utc_ms` is workflow creation time (prevents old sensor events satisfying a new workflow by accident).
+  - Proof: `ctest` includes `agentd_workflow_edge_wait_sensor_smoke`.
 
 ## P0 (next: maximize autonomous continuity + correctness)
 

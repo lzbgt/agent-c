@@ -2267,6 +2267,86 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         }
       }
     }
+  } else if (kind == "edge_wait_sensor") {
+    out = Json::Value(Json::objectValue);
+    out["kind"] = "edge_wait_sensor";
+    out["ok"] = false;
+    out["assistant_text"] = "";
+
+    if (!db_ || !db_->is_open()) {
+      out["error"] = "db not available";
+      out["retryable"] = true;
+      out["retry_in_ms"] = 250;
+    } else if (workflow_run_should_cancel(&cancel_ctx)) {
+      out["cancelled"] = true;
+      out["error"] = cancel_ctx.reason == WorkflowCancelReason::DeadlineExceeded ? "deadline exceeded" : "cancelled";
+    } else {
+      const Json::Value spec =
+        rr.isMember("edge_wait_sensor") && rr["edge_wait_sensor"].isObject() ? rr["edge_wait_sensor"] : Json::Value(Json::nullValue);
+      if (!spec.isObject()) {
+        out["error"] = "edge_wait_sensor missing edge_wait_sensor object";
+      } else {
+        const std::string event_type =
+          spec.isMember("event_type") && spec["event_type"].isString() ? trim_copy(spec["event_type"].asString()) : "";
+        const std::string node_id =
+          spec.isMember("node_id") && spec["node_id"].isString() ? trim_copy(spec["node_id"].asString()) : "";
+
+        double min_conf = 0.0;
+        if (spec.isMember("min_confidence") && (spec["min_confidence"].isDouble() || spec["min_confidence"].isInt())) {
+          min_conf = spec["min_confidence"].asDouble();
+        }
+        if (min_conf < 0.0) min_conf = 0.0;
+        if (min_conf > 1.0) min_conf = 1.0;
+
+        int64_t since_utc_ms = 0;
+        if (spec.isMember("since_utc_ms") && (spec["since_utc_ms"].isInt64() || spec["since_utc_ms"].isUInt64() || spec["since_utc_ms"].isInt())) {
+          since_utc_ms = spec["since_utc_ms"].asInt64();
+        } else {
+          // Default since time: workflow creation, so old sensor events don't accidentally satisfy a new workflow.
+          since_utc_ms = wf.created_unix_ms;
+        }
+        if (since_utc_ms < 0) since_utc_ms = 0;
+
+        int poll_ms = 250;
+        if (spec.isMember("poll_ms") && (spec["poll_ms"].isInt() || spec["poll_ms"].isUInt())) {
+          poll_ms = spec["poll_ms"].asInt();
+        }
+        poll_ms = std::max(10, std::min(60000, poll_ms));
+
+        if (event_type.empty()) {
+          out["error"] = "edge_wait_sensor.event_type is required";
+        } else {
+          AgentDb::EdgeSensorEventRow ev;
+          bool found = false;
+          std::string err;
+          if (!db_->find_edge_sensor_event_latest(event_type, node_id, since_utc_ms, min_conf, &ev, &found, &err)) {
+            out["error"] = err.empty() ? "failed to query edge sensor events" : err;
+            out["retryable"] = true;
+            out["retry_in_ms"] = poll_ms;
+          } else if (!found || ev.id <= 0) {
+            out["error"] = "sensor event pending";
+            out["retryable"] = true;
+            out["retry_in_ms"] = poll_ms;
+            out["assistant_text"] = "edge_wait_sensor:pending";
+          } else {
+            out["ok"] = true;
+            out["assistant_text"] = event_type;
+            Json::Value o(Json::objectValue);
+            o["id"] = (Json::Int64)ev.id;
+            o["node_id"] = ev.node_id;
+            o["event_type"] = ev.event_type;
+            o["ts_utc_ms"] = (Json::Int64)ev.ts_utc_ms;
+            o["confidence"] = ev.confidence;
+            if (!ev.data_json.empty()) {
+              Json::Value d;
+              std::string perr2;
+              if (json_parse_any(ev.data_json, &d, &perr2) && d.isObject()) o["data"] = d;
+            }
+            out["edge_sensor_event"] = o;
+          }
+        }
+      }
+    }
   } else {
     if (wf_limits.max_tool_calls_total > 0) {
       if (wf_tool_calls_remaining <= 0) {

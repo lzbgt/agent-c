@@ -1245,17 +1245,18 @@ void handle_workflow_submit_endpoint(
       return;
     }
 
-    const std::string kind =
-      t.isMember("kind") && t["kind"].isString() ? trim_copy(t["kind"].asString()) : std::string();
-    const bool is_avm = (kind == "avm_capsule");
-    const bool is_aggregate = (kind == "aggregate");
-    const bool is_edge = (kind == "edge_invoke");
-    const bool is_delay = (kind == "delay");
-    const bool is_delegate = (kind == "delegate");
-    const bool is_memory_put = (kind == "memory_put");
-    const bool is_memory_consolidate = (kind == "memory_consolidate");
-    const bool is_special =
-      is_avm || is_aggregate || is_edge || is_delay || is_delegate || is_memory_put || is_memory_consolidate;
+	    const std::string kind =
+	      t.isMember("kind") && t["kind"].isString() ? trim_copy(t["kind"].asString()) : std::string();
+	    const bool is_avm = (kind == "avm_capsule");
+	    const bool is_aggregate = (kind == "aggregate");
+	    const bool is_edge = (kind == "edge_invoke");
+	    const bool is_edge_wait_sensor = (kind == "edge_wait_sensor");
+	    const bool is_delay = (kind == "delay");
+	    const bool is_delegate = (kind == "delegate");
+	    const bool is_memory_put = (kind == "memory_put");
+	    const bool is_memory_consolidate = (kind == "memory_consolidate");
+	    const bool is_special =
+	      is_avm || is_aggregate || is_edge || is_edge_wait_sensor || is_delay || is_delegate || is_memory_put || is_memory_consolidate;
 
     Json::Value run_req = t.isMember("request") && t["request"].isObject() ? t["request"] : t;
     if (!is_special && defaults.isObject()) {
@@ -1366,7 +1367,7 @@ void handle_workflow_submit_endpoint(
       task_req["aggregate"] = agg;
       task_req["priority"] = task_priority;
       task_req["trace_id"] = trace_id + ":" + task_id;
-    } else if (is_edge) {
+	    } else if (is_edge) {
       if (!t.isMember("edge") || !t["edge"].isObject()) {
         resp->status = 400;
         Json::Value o(Json::objectValue);
@@ -1427,8 +1428,82 @@ void handle_workflow_submit_endpoint(
       task_req["kind"] = "edge_invoke";
       task_req["edge"] = edge;
       task_req["priority"] = task_priority;
-      task_req["trace_id"] = trace_id + ":" + task_id;
-    } else if (is_delay) {
+	      task_req["trace_id"] = trace_id + ":" + task_id;
+	    } else if (is_edge_wait_sensor) {
+	      if (!t.isMember("edge_wait_sensor") || !t["edge_wait_sensor"].isObject()) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "edge_wait_sensor task missing edge_wait_sensor object";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      const auto& ws = t["edge_wait_sensor"];
+	      const std::string event_type =
+	        ws.isMember("event_type") && ws["event_type"].isString() ? trim_copy(ws["event_type"].asString()) : "";
+	      if (event_type.empty() || !edge_id_is_safe(event_type)) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "edge_wait_sensor.event_type must be a non-empty id-safe string";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      if (ws.isMember("node_id") && ws["node_id"].isString()) {
+	        const std::string nid = trim_copy(ws["node_id"].asString());
+	        if (!nid.empty() && !edge_id_is_safe(nid)) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "edge_wait_sensor.node_id must be id-safe when provided";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	      } else if (ws.isMember("node_id") && !ws["node_id"].isNull()) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "edge_wait_sensor.node_id must be a string";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      if (ws.isMember("min_confidence") && !ws["min_confidence"].isNumeric() && !ws["min_confidence"].isNull()) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "edge_wait_sensor.min_confidence must be numeric";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      if (ws.isMember("since_utc_ms") &&
+	          !(ws["since_utc_ms"].isInt64() || ws["since_utc_ms"].isUInt64() || ws["since_utc_ms"].isInt() || ws["since_utc_ms"].isNull())) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "edge_wait_sensor.since_utc_ms must be an int64 unix ms";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      if (ws.isMember("poll_ms") && !(ws["poll_ms"].isInt() || ws["poll_ms"].isUInt() || ws["poll_ms"].isNull())) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "edge_wait_sensor.poll_ms must be an int";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      task_req["kind"] = "edge_wait_sensor";
+	      task_req["edge_wait_sensor"] = ws;
+	      task_req["priority"] = task_priority;
+	      task_req["trace_id"] = trace_id + ":" + task_id;
+	    } else if (is_delay) {
       int64_t delay_ms = 0;
       if (t.isMember("delay_ms") && (t["delay_ms"].isInt64() || t["delay_ms"].isUInt64() || t["delay_ms"].isInt())) {
         delay_ms = t["delay_ms"].asInt64();
@@ -1891,13 +1966,16 @@ void handle_workflow_submit_endpoint(
     }
 
     int max_attempts = 1;
-    if (t.isMember("max_attempts") && t["max_attempts"].isInt()) {
-      max_attempts = std::max(1, std::min(512, t["max_attempts"].asInt()));
-    } else if (is_edge) {
+	    if (t.isMember("max_attempts") && t["max_attempts"].isInt()) {
+	      max_attempts = std::max(1, std::min(512, t["max_attempts"].asInt()));
+	    } else if (is_edge) {
       // Edge invocations are inherently async; default to a generous poll budget.
       // (The workflow engine uses `retry_in_ms` for polling delay.)
-      max_attempts = 200;
-    }
+	      max_attempts = 200;
+	    } else if (is_edge_wait_sensor) {
+	      // Edge waits are async/polling by design; default to a generous poll budget.
+	      max_attempts = 400;
+	    }
 
     const bool allow_error =
       t.isMember("allow_error") && t["allow_error"].isBool() ? t["allow_error"].asBool() : false;
