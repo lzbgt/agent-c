@@ -1726,9 +1726,28 @@ void handle_workflow_get_endpoint(
   if (!wf.error.empty()) w["error"] = wf.error;
   o["workflow"] = w;
 
+  // Best-effort: surface workflow_limits + aggregate usage/remaining budgets from the persisted spec_json and
+  // task cumulative counters (retry-safe).
+  {
+    Json::Value spec;
+    std::string perr;
+    if (json_parse_any(wf.spec_json, &spec, &perr) && spec.isObject()) {
+      if (spec.isMember("workflow_limits") && spec["workflow_limits"].isObject()) {
+        o["workflow_limits"] = spec["workflow_limits"];
+      }
+    }
+  }
+
   if (include_tasks) {
     std::vector<AgentDb::WorkflowTaskRow> tasks;
     if (db_or_null->list_workflow_tasks(wf.workflow_id, &tasks, &err)) {
+      int64_t tool_calls_total_used = 0;
+      int64_t steps_total_used = 0;
+      int64_t elapsed_ms_total_used = 0;
+      int64_t prompt_tokens_used = 0;
+      int64_t completion_tokens_used = 0;
+      int64_t total_tokens_used = 0;
+
       Json::Value arr(Json::arrayValue);
       for (const auto& t : tasks) {
         Json::Value row(Json::objectValue);
@@ -1744,6 +1763,14 @@ void handle_workflow_get_endpoint(
         row["prompt_tokens_cum"] = (Json::Int64)std::max<int64_t>(0, t.prompt_tokens_cum);
         row["completion_tokens_cum"] = (Json::Int64)std::max<int64_t>(0, t.completion_tokens_cum);
         row["total_tokens_cum"] = (Json::Int64)std::max<int64_t>(0, t.total_tokens_cum);
+
+        tool_calls_total_used += std::max<int64_t>(0, t.tool_calls_total_cum);
+        steps_total_used += std::max<int64_t>(0, t.steps_executed_cum);
+        elapsed_ms_total_used += std::max<int64_t>(0, t.elapsed_ms_cum);
+        prompt_tokens_used += std::max<int64_t>(0, t.prompt_tokens_cum);
+        completion_tokens_used += std::max<int64_t>(0, t.completion_tokens_cum);
+        total_tokens_used += std::max<int64_t>(0, t.total_tokens_cum);
+
         row["ready_unix_ms"] = (Json::Int64)t.ready_unix_ms;
         row["started_unix_ms"] = (Json::Int64)t.started_unix_ms;
         row["finished_unix_ms"] = (Json::Int64)t.finished_unix_ms;
@@ -1761,6 +1788,38 @@ void handle_workflow_get_endpoint(
         arr.append(row);
       }
       o["tasks"] = arr;
+
+      Json::Value usage(Json::objectValue);
+      usage["tool_calls_total_used"] = (Json::Int64)std::max<int64_t>(0, tool_calls_total_used);
+      usage["steps_total_used"] = (Json::Int64)std::max<int64_t>(0, steps_total_used);
+      usage["elapsed_ms_total_used"] = (Json::Int64)std::max<int64_t>(0, elapsed_ms_total_used);
+      usage["prompt_tokens_used"] = (Json::Int64)std::max<int64_t>(0, prompt_tokens_used);
+      usage["completion_tokens_used"] = (Json::Int64)std::max<int64_t>(0, completion_tokens_used);
+      usage["total_tokens_used"] = (Json::Int64)std::max<int64_t>(0, total_tokens_used);
+      o["workflow_usage"] = usage;
+
+      if (o.isMember("workflow_limits") && o["workflow_limits"].isObject()) {
+        const Json::Value lim = o["workflow_limits"];
+        Json::Value rem(Json::objectValue);
+
+        auto rem_i64 = [&](const char* k, int64_t used) {
+          if (!lim.isMember(k)) return;
+          const auto& v = lim[k];
+          if (!(v.isInt64() || v.isUInt64() || v.isInt() || v.isUInt())) return;
+          const int64_t maxv = v.asInt64();
+          if (maxv <= 0) return;
+          rem[k] = (Json::Int64)std::max<int64_t>(0, maxv - std::max<int64_t>(0, used));
+        };
+
+        rem_i64("max_tool_calls_total", tool_calls_total_used);
+        rem_i64("max_steps_total", steps_total_used);
+        rem_i64("max_elapsed_ms_total", elapsed_ms_total_used);
+        rem_i64("max_total_tokens", total_tokens_used);
+
+        if (!rem.getMemberNames().empty()) {
+          o["workflow_remaining"] = rem;
+        }
+      }
     }
   }
 

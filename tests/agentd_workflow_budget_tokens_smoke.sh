@@ -218,6 +218,20 @@ if not str(w.get("error","")).startswith("workflow budget exceeded"):
   print("expected workflow error to mention budget exceeded", w, file=sys.stderr)
   raise SystemExit(1)
 
+lim = obj.get("workflow_limits") or {}
+if int((lim.get("max_total_tokens") or 0)) != 20:
+  print("expected workflow_limits.max_total_tokens to be surfaced as 20", lim, file=sys.stderr)
+  raise SystemExit(1)
+usage = obj.get("workflow_usage") or {}
+if int((usage.get("total_tokens_used") or -1)) != 20:
+  print("expected workflow_usage.total_tokens_used==20", usage, file=sys.stderr)
+  raise SystemExit(1)
+rem = obj.get("workflow_remaining") or {}
+vrem = rem.get("max_total_tokens")
+if vrem is None or int(vrem) != 0:
+  print("expected workflow_remaining.max_total_tokens==0", rem, file=sys.stderr)
+  raise SystemExit(1)
+
 tasks = obj.get("tasks") or []
 by_id = {t.get("task_id"): t for t in tasks if isinstance(t, dict)}
 if by_id.get("A", {}).get("status") != "done":
@@ -238,4 +252,3 @@ if int(total_tokens) != 20:
 PY
 
 echo "ok: token budget enforced and usage surfaced"
-

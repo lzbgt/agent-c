@@ -2131,6 +2131,22 @@ components:
           items:
             type: object
             additionalProperties: true
+        workflow_limits:
+          type: object
+          description: Best-effort workflow_limits parsed from the persisted submit spec_json (when present).
+          additionalProperties: true
+        workflow_usage:
+          type: object
+          description: |
+            Best-effort aggregate usage totals computed from retry-safe per-task cumulative counters.
+            Values are summed across all tasks in the workflow.
+          additionalProperties: true
+        workflow_remaining:
+          type: object
+          description: |
+            Best-effort remaining budgets computed as (limit - used) for any positive limits.
+            Only includes keys where a limit exists and is >0.
+          additionalProperties: true
         result:
           type: object
           additionalProperties: true

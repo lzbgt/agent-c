@@ -451,6 +451,11 @@ Optional debugging:
   - `spec_json` (always; may be truncated)
   - `spec` (only when `spec_json` parses as JSON)
 
+Budget visibility (best-effort):
+- `workflow_limits` is surfaced when present in the persisted submit spec.
+- `workflow_usage` aggregates retry-safe per-task cumulative counters.
+- `workflow_remaining` is computed as `(limit - used)` for any positive limits.
+
 ### Workflow scheduler stats
 
 `GET /api/v1/workflow/stats`
