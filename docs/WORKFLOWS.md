@@ -280,6 +280,8 @@ Security model:
   - `--workflow-http-deny-cidr <cidr>` (repeatable) / env `AGENTD_WORKFLOW_HTTP_DENY_CIDRS=...`
   - `--workflow-http-deny-private` / env `AGENTD_WORKFLOW_HTTP_DENY_PRIVATE=1`
   - `--workflow-http-dns-pin` / env `AGENTD_WORKFLOW_HTTP_DNS_PIN=1`
+    - When enabled, the daemon pins the **same** resolved addresses used by the outbound policy decision into the actual HTTP request
+      (defense-in-depth against DNS rebinding between “check” and “connect”).
 - Do **not** embed secrets into persisted workflow specs via headers. `Authorization` headers are rejected at submit time.
   - If you need a bearer token, use `http_json.bearer_env` to reference an env var name (only the name is persisted).
 
@@ -346,6 +348,7 @@ Security model:
   - `--workflow-http-deny-cidr <cidr>` (repeatable) / env `AGENTD_WORKFLOW_HTTP_DENY_CIDRS=...`
   - `--workflow-http-deny-private` / env `AGENTD_WORKFLOW_HTTP_DENY_PRIVATE=1`
   - `--workflow-http-dns-pin` / env `AGENTD_WORKFLOW_HTTP_DNS_PIN=1`
+    - When enabled, the daemon pins the **same** resolved addresses used by the outbound policy decision into the actual HTTP request.
 - Do **not** embed secrets into persisted workflow specs via headers. `Authorization` headers are rejected at submit time.
   - If you need a bearer token, use `agentd_call.bearer_env` to reference an env var name (only the name is persisted).
 

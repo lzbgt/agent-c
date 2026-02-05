@@ -66,10 +66,14 @@ Json::Value workflow_http_json_to_json(
   if (url.empty()) return err_out("http_json.url is required");
   if (!url_has_http_scheme(url)) return err_out("http_json.url must start with http:// or https://");
   if (url.size() > 4096) return err_out("http_json.url is too long");
+  WorkflowHttpUrlCheck check;
   {
     std::string why;
-    if (!workflow_http_url_is_allowed(cfg, url, &why)) {
+    if (!workflow_http_url_check(cfg, url, &check, &why)) {
       return err_out("http_json url is not allowed by workflow_http outbound policy: " + why);
+    }
+    if (cfg.workflow_http_dns_pin && !check.host_is_ip && check.resolved_addrs.empty()) {
+      return err_out("http_json url DNS pin is enabled but DNS resolution produced no addresses for host");
     }
   }
 
@@ -135,7 +139,19 @@ Json::Value workflow_http_json_to_json(
     }
   }
 
-  const HttpClientResult r = http_request(url, method, headers, body, timeout_ms, max_bytes, cfg.proxy_url, cfg.workflow_http_dns_pin);
+  HttpClientPinnedResolve pin;
+  const HttpClientPinnedResolve* pinp = nullptr;
+  if (cfg.workflow_http_dns_pin && !check.host_is_ip) {
+    pin.host = check.host;
+    pin.port = check.port;
+    // Prefer IPv4 pinning when both families are available (improves compatibility with IPv4-only local stubs).
+    for (const auto& ip : check.resolved_addrs) {
+      if (!ip.empty() && ip.find(':') == std::string::npos) pin.addrs.push_back(ip);
+    }
+    if (pin.addrs.empty()) pin.addrs = check.resolved_addrs;
+    pinp = &pin;
+  }
+  const HttpClientResult r = http_request(url, method, headers, body, timeout_ms, max_bytes, cfg.proxy_url, pinp);
 
   Json::Value out(Json::objectValue);
   out["ok"] = false;

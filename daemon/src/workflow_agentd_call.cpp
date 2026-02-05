@@ -129,10 +129,14 @@ Json::Value workflow_agentd_call_to_json(
   if (base_url.empty()) return err_out("agentd_call.base_url is required");
   if (!url_has_http_scheme(base_url)) return err_out("agentd_call.base_url must start with http:// or https://");
   if (base_url.size() > 4096) return err_out("agentd_call.base_url is too long");
+  WorkflowHttpUrlCheck base_check;
   {
     std::string why;
-    if (!workflow_http_url_is_allowed(cfg, base_url, &why)) {
+    if (!workflow_http_url_check(cfg, base_url, &base_check, &why)) {
       return err_out("agentd_call base_url is not allowed by workflow_http outbound policy: " + why);
+    }
+    if (cfg.workflow_http_dns_pin && !base_check.host_is_ip && base_check.resolved_addrs.empty()) {
+      return err_out("agentd_call DNS pin is enabled but DNS resolution produced no addresses for base_url host");
     }
   }
 
@@ -263,6 +267,18 @@ Json::Value workflow_agentd_call_to_json(
   out["agentd"]["op"] = op;
 
   const std::string submit_url = join_base_path(base_url, "/api/v1/workflow/submit");
+  HttpClientPinnedResolve pin;
+  const HttpClientPinnedResolve* pinp = nullptr;
+  if (cfg.workflow_http_dns_pin && !base_check.host_is_ip) {
+    pin.host = base_check.host;
+    pin.port = base_check.port;
+    // Prefer IPv4 pinning when both families are available.
+    for (const auto& ip : base_check.resolved_addrs) {
+      if (!ip.empty() && ip.find(':') == std::string::npos) pin.addrs.push_back(ip);
+    }
+    if (pin.addrs.empty()) pin.addrs = base_check.resolved_addrs;
+    pinp = &pin;
+  }
 
   if (remote_workflow_id.empty()) {
     const Json::Value wf = agentd_call.isMember("workflow") ? agentd_call["workflow"] : Json::Value(Json::nullValue);
@@ -279,7 +295,7 @@ Json::Value workflow_agentd_call_to_json(
     }
 
     const std::string body = json_stringify_compact(wf2);
-    const HttpClientResult r = http_request(submit_url, "POST", headers, body, timeout_ms, max_bytes, cfg.proxy_url, cfg.workflow_http_dns_pin);
+    const HttpClientResult r = http_request(submit_url, "POST", headers, body, timeout_ms, max_bytes, cfg.proxy_url, pinp);
 
     Json::Value submit_http(Json::objectValue);
     submit_http["status"] = (Json::Int64)r.http_status;
@@ -348,7 +364,7 @@ Json::Value workflow_agentd_call_to_json(
   if (include_results) final_url += "&include_results=1";
 
   while (unix_ms_now() <= deadline_ms) {
-    const HttpClientResult r = http_request(final_url, "GET", headers, /*body=*/"", timeout_ms, max_bytes, cfg.proxy_url, cfg.workflow_http_dns_pin);
+    const HttpClientResult r = http_request(final_url, "GET", headers, /*body=*/"", timeout_ms, max_bytes, cfg.proxy_url, pinp);
 
     Json::Value poll_http(Json::objectValue);
     poll_http["status"] = (Json::Int64)r.http_status;

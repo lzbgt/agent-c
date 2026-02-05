@@ -34,6 +34,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
     - `--workflow-http-deny-cidr <cidr>` (repeatable), or env `AGENTD_WORKFLOW_HTTP_DENY_CIDRS=...`
     - `--workflow-http-dns-pin`, or env `AGENTD_WORKFLOW_HTTP_DNS_PIN=1`
     - Evidence: when DNS pinning is enabled, workflow results include best-effort `http.resolved_addrs` (IP list) for audit/debug.
+    - Shipped hardening: DNS pinning now pins the **same resolution used by allow/deny policy** into the actual request (libcurl resolve list),
+      closing the TOCTOU window where a hostname could rebind between “policy check” and “connect”.
   - Secrets hygiene: submit rejects `http_json.headers.Authorization`; use `http_json.bearer_env` (env var name only is persisted).
   - Proof: `ctest` includes `agentd_workflow_http_json_smoke`.
 - Agent-to-agent collaboration primitive (deterministic; gated):

@@ -6,6 +6,7 @@
 #include <cctype>
 #include <cstdint>
 #include <cstring>
+#include <map>
 #include <netdb.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
@@ -360,6 +361,46 @@ static void resolve_host_best_effort(const std::string& host, std::vector<IpAddr
   ::freeaddrinfo(res);
 }
 
+static std::string ip_to_string(const IpAddr& ip) {
+  char buf[INET6_ADDRSTRLEN + 1];
+  std::memset(buf, 0, sizeof(buf));
+  if (ip.family == AF_INET) {
+    if (!::inet_ntop(AF_INET, ip.bytes, buf, sizeof(buf) - 1)) return "";
+    return std::string(buf);
+  }
+  if (ip.family == AF_INET6) {
+    if (!::inet_ntop(AF_INET6, ip.bytes, buf, sizeof(buf) - 1)) return "";
+    return std::string(buf);
+  }
+  return "";
+}
+
+static void ip_strings_from_addrs_best_effort(const std::vector<IpAddr>& addrs, std::vector<std::string>* out) {
+  if (!out) return;
+  out->clear();
+  // Preserve stable order, but move IPv4 before IPv6 for better compatibility with IPv4-only local stubs.
+  std::vector<std::string> v4;
+  std::vector<std::string> v6;
+  v4.reserve(addrs.size());
+  v6.reserve(addrs.size());
+  for (const auto& ip : addrs) {
+    const std::string s = ip_to_string(ip);
+    if (s.empty()) continue;
+    if (ip.family == AF_INET) v4.push_back(s);
+    else if (ip.family == AF_INET6) v6.push_back(s);
+  }
+  // Dedupe while preserving order.
+  std::map<std::string, bool> seen;
+  auto push_unique = [&](const std::string& s) {
+    if (s.empty()) return;
+    if (seen[s]) return;
+    seen[s] = true;
+    out->push_back(s);
+  };
+  for (const auto& s : v4) push_unique(s);
+  for (const auto& s : v6) push_unique(s);
+}
+
 static bool allow_hosts_match(const std::vector<std::string>& allow_hosts, const HostPort& target) {
   for (const auto& entry_raw : allow_hosts) {
     HostPort allow;
@@ -434,12 +475,15 @@ static bool host_is_literal_ip(const std::string& host) {
 
 }  // namespace
 
-bool workflow_http_url_is_allowed(
+bool workflow_http_url_check(
   const DaemonConfig& cfg,
   const std::string& url,
+  WorkflowHttpUrlCheck* out,
   std::string* out_reason
 ) {
   if (out_reason) out_reason->clear();
+  if (out) *out = WorkflowHttpUrlCheck{};
+
   const bool has_hosts = !cfg.workflow_http_allow_hosts.empty();
   const bool has_cidrs = !cfg.workflow_http_allow_cidrs.empty();
   const bool has_allow = has_hosts || has_cidrs;
@@ -453,12 +497,21 @@ bool workflow_http_url_is_allowed(
     return false;
   }
 
+  if (out) {
+    out->host = target.host;
+    out->port = target.port;
+    out->host_is_ip = host_is_literal_ip(target.host);
+  }
+
   const bool host_match = has_hosts && allow_hosts_match(cfg.workflow_http_allow_hosts, target);
 
   std::vector<IpAddr> addrs;
   resolve_host_best_effort(target.host, &addrs);
-  const bool cidr_match = has_cidrs && allow_cidrs_match(cfg.workflow_http_allow_cidrs, addrs);
+  if (out) {
+    ip_strings_from_addrs_best_effort(addrs, &out->resolved_addrs);
+  }
 
+  const bool cidr_match = has_cidrs && allow_cidrs_match(cfg.workflow_http_allow_cidrs, addrs);
   const bool allow_match = host_match || cidr_match;
 
   // Denylist: if any resolved address matches a denied CIDR, reject even if allowlisted.
@@ -471,10 +524,6 @@ bool workflow_http_url_is_allowed(
   }
 
   if (cfg.workflow_http_deny_private_addrs) {
-    // Extra guard: deny obvious loopback/private unless explicitly allowed.
-    // - If the target is a literal IP and it is explicitly allow-host matched, allow.
-    // - If it matches an allowed CIDR, allow.
-    // - Otherwise, deny if any resolved address is private/loopback/link-local.
     const bool target_is_ip = host_is_literal_ip(target.host);
     if (!target_is_ip && addrs.empty()) {
       if (out_reason) *out_reason = "dns resolution failed for host (deny-private enabled)";
@@ -490,11 +539,9 @@ bool workflow_http_url_is_allowed(
       if (out_reason) *out_reason = "target resolves to private/loopback address";
       return false;
     }
-    // If allowlists are empty, and it isn't private, allow.
     if (!has_allow) return true;
   }
 
-  // If allowlists are empty, allow anything not denied above.
   if (!has_allow) return true;
   if (allow_match) return true;
 
@@ -502,6 +549,15 @@ bool workflow_http_url_is_allowed(
     *out_reason = "url target not in allowlist: " + hostport_to_string(target);
   }
   return false;
+}
+
+bool workflow_http_url_is_allowed(
+  const DaemonConfig& cfg,
+  const std::string& url,
+  std::string* out_reason
+) {
+  WorkflowHttpUrlCheck check;
+  return workflow_http_url_check(cfg, url, &check, out_reason);
 }
 
 }  // namespace agentd
