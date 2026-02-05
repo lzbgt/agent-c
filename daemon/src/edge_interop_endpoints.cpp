@@ -7,6 +7,8 @@
 #include "string_util.h"
 #include "workflow_endpoints.h"
 
+#include "agent_sha256.h"
+
 #include <json/json.h>
 
 #include <algorithm>
@@ -401,6 +403,32 @@ void handle_edge_message_endpoint(
     // We still persist the event for observability.
     const bool apply_update = !terminal && !idempotency_mismatch;
     const std::string effective_state = apply_update ? state : tr.state;
+    bool attest_result_sha_mismatch = false;
+    std::string attest_result_sha;
+    if (apply_update) {
+      if (state == "SUCCEEDED" && !result_json.empty()) {
+        char hex[65] = {0};
+        agent_sha256_hex_of_bytes(result_json.data(), result_json.size(), hex);
+        tr.result_sha256 = std::string("sha256:") + hex;
+      }
+      if (state == "SUCCEEDED" && event_data.isObject() && event_data.isMember("result") && event_data["result"].isObject()) {
+        const Json::Value result = event_data["result"];
+        if (result.isMember("attest") && result["attest"].isObject()) {
+          std::string aj = edge_json_stringify_compact(result["attest"]);
+          if (aj.size() > 8192) aj.resize(8192);
+          tr.attest_json = aj;
+
+          const Json::Value at = result["attest"];
+          if (at.isMember("result_sha256") && at["result_sha256"].isString()) {
+            attest_result_sha = trim_copy(at["result_sha256"].asString());
+            if (!attest_result_sha.empty() && edge_sha256_token_is_safe(attest_result_sha) && !tr.result_sha256.empty() &&
+                attest_result_sha != tr.result_sha256) {
+              attest_result_sha_mismatch = true;
+            }
+          }
+        }
+      }
+    }
     if (apply_update) {
       tr.state = state;
       tr.updated_utc_ms = ts_eff;
@@ -437,6 +465,11 @@ void handle_edge_message_endpoint(
     } else if (terminal && state != tr.state) {
       d["_ignored_by_platform"] = true;
       d["_platform_state"] = tr.state;
+    }
+    if (attest_result_sha_mismatch) {
+      d["_attest_result_sha256_mismatch"] = true;
+      d["_attest_result_sha256"] = attest_result_sha;
+      d["_platform_result_sha256"] = tr.result_sha256;
     }
     ev.data_json = edge_json_stringify_compact(d);
     (void)db_or_null->insert_edge_task_event(ev, nullptr, nullptr);
@@ -1347,6 +1380,7 @@ void handle_edge_task_get_endpoint(
   t["node_id"] = tr.node_id;
   t["idempotency_key"] = tr.idempotency_key;
   if (!tr.trace_id.empty()) t["trace_id"] = tr.trace_id;
+  if (!tr.result_sha256.empty()) t["result_sha256"] = tr.result_sha256;
   t["mode"] = tr.mode;
   if (!tr.tool_name.empty()) t["tool_name"] = tr.tool_name;
   if (!tr.resource_lock.empty()) t["resource_lock"] = tr.resource_lock;
@@ -1364,6 +1398,11 @@ void handle_edge_task_get_endpoint(
     Json::Value v;
     std::string perr2;
     if (json_parse_any(tr.result_json, &v, &perr2)) t["result"] = v;
+  }
+  if (!tr.attest_json.empty()) {
+    Json::Value v;
+    std::string perr2;
+    if (json_parse_any(tr.attest_json, &v, &perr2) && v.isObject()) t["attest"] = v;
   }
   o["task"] = t;
   resp->body = edge_json_stringify_compact(o);

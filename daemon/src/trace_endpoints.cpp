@@ -144,6 +144,7 @@ void handle_trace_lookup_endpoint(
             row["mode"] = t.mode;
             if (!t.tool_name.empty()) row["tool_name"] = t.tool_name;
             if (!t.resource_lock.empty()) row["resource_lock"] = t.resource_lock;
+            if (!t.result_sha256.empty()) row["result_sha256"] = t.result_sha256;
             row["deadline_utc_ms"] = (Json::Int64)t.deadline_utc_ms;
             row["state"] = t.state;
             row["created_utc_ms"] = (Json::Int64)t.created_utc_ms;

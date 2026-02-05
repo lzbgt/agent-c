@@ -530,6 +530,8 @@ class AgentDb {
     int64_t created_utc_ms = 0;
     int64_t updated_utc_ms = 0;
     std::string result_json; // JSON object string (optional)
+    std::string result_sha256; // optional platform-computed sha256 of result_json bytes (best-effort)
+    std::string attest_json; // optional node-provided attestation blob (JSON object string, best-effort)
     std::string error;
   };
 

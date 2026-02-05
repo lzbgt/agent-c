@@ -118,6 +118,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - UM‑EAIS scheduling guardrail (actuator safety): if a tool definition includes `resource_lock`, the platform blocks parallel
   dispatch of another invoke task using the same lock while an existing task is `QUEUED`/`RUNNING` (HTTP 429, retryable).
   - Proof: `ctest` includes `agentd_edge_resource_lock_smoke`.
+- UM‑EAIS correctness surface (attestation precursor): edge tasks now persist a deterministic hash surface on completion:
+  - `edge_tasks.result_sha256` is computed on `TASK_DONE` (sha256 of stored `result_json` bytes) and surfaced via `GET /api/v1/edge/task`.
+  - Optional node attestation blob `result.attest` is persisted (best-effort) and surfaced as `task.attest`.
+  - Proof: `ctest` includes `agentd_edge_task_attest_smoke`.
 - Workflow engine now supports **soft-fail** tasks via `allow_error: true`:
   - If a task ends `status="error"` and `allow_error=true`, the workflow can still complete `done` (so long as no “hard” errors remain).
   - Dependencies treat `(status=error + allow_error=true)` as satisfied; aggregation tasks can also depend on any terminal dependency to compute joins over errors.

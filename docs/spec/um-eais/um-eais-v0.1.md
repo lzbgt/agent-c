@@ -510,3 +510,49 @@ Result:
   }
 }
 ```
+
+---
+
+## Appendix A: Task result attestation (best-effort platform extension)
+
+This appendix documents a **best-effort extension** implemented by the platform (`agentd`) on top of UM‑EAIS v0.1.
+It is intended as an incremental step toward UM‑EAIS v0.2 “attestation + correlation”.
+
+### A.1 Node → platform: optional `result.attest` blob
+
+On `TASK_DONE`, nodes MAY include an additional object under `body.result.attest`:
+
+```json
+{
+  "type": "TASK_DONE",
+  "body": {
+    "task_id": "t1",
+    "step_id": "s1",
+    "idempotency_key": "k1",
+    "result": {
+      "ok": true,
+      "data": { "x": 1 },
+      "attest": {
+        "result_sha256": "sha256:0123...cdef",
+        "trace_sha256": "sha256:0123...cdef",
+        "state_sha256": "sha256:0123...cdef",
+        "note": "optional free-form metadata"
+      }
+    }
+  }
+}
+```
+
+Conventions:
+- Keys are intentionally **not standardized yet** (UM‑EAIS v0.2 will define the normative surface).
+- The platform treats `attest` as an **opaque JSON object** and persists it as `edge_tasks.attest_json` (bounded, best-effort).
+
+### A.2 Platform-side deterministic hash surface: `edge_tasks.result_sha256`
+
+When the platform receives a terminal `TASK_DONE` (and persists `result_json`), it also computes:
+- `edge_tasks.result_sha256 = sha256(result_json_bytes)`
+
+Notes:
+- This is a platform-side replay/correlation surface. It does not prove remote computation integrity by itself.
+- If a node provides `attest.result_sha256` and it differs from the platform’s `result_sha256`, the platform records a best-effort
+  mismatch marker on the persisted task event (`_attest_result_sha256_mismatch`).

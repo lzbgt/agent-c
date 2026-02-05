@@ -1,6 +1,6 @@
 # Agentd SQLite DB (Canonical Daemon Store)
 
-Date: 2026-02-04
+Date: 2026-02-05
 
 When built with SQLite support (`AGENT_HAVE_SQLITE3`), `agentd` stores its canonical daemon state in SQLite:
 - sessions + message history
@@ -57,7 +57,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v21)
+## Schema (v24)
 
 All timestamps are Unix milliseconds.
 
@@ -400,6 +400,8 @@ Durable platform-side task tracking for UM‑BMP tasking (`TASK_ASSIGN`/`TASK_*`
 - `created_utc_ms INTEGER NOT NULL`
 - `updated_utc_ms INTEGER NOT NULL`
 - `result_json TEXT` (optional)
+- `result_sha256 TEXT` (optional; best-effort platform-computed sha256 of stored `result_json` bytes)
+- `attest_json TEXT` (optional; best-effort node-provided attestation blob, stored as a JSON object string)
 - `error TEXT` (optional)
 
 Keys/constraints:
@@ -412,6 +414,7 @@ Indexes:
 - `CREATE INDEX edge_tasks_by_tool ON edge_tasks(node_id, tool_name, updated_utc_ms DESC)`
 - `CREATE INDEX edge_tasks_by_trace ON edge_tasks(trace_id, updated_utc_ms DESC)`
 - `CREATE INDEX edge_tasks_by_node_lock_state ON edge_tasks(node_id, resource_lock, state, updated_utc_ms DESC)`
+- `CREATE INDEX edge_tasks_by_result_sha256 ON edge_tasks(result_sha256, updated_utc_ms DESC)`
 
 ### `edge_task_events`
 

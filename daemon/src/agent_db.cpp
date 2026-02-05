@@ -165,7 +165,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 23;
+  const int kSchemaVersion = 24;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -756,6 +756,19 @@ CREATE INDEX IF NOT EXISTS edge_tasks_by_node_lock_state
 )SQL";
     if (!exec_locked(schema_v23, out_error)) return false;
     cur_ver = 23;
+  }
+
+  if (cur_ver < 24) {
+    const char* schema_v24 = R"SQL(
+-- Edge task attestation surfaces (best-effort, platform-side):
+-- - result_sha256: a deterministic hash surface for replay/quorum (computed over stored result_json bytes)
+-- - attest_json:   optional node-provided attestation blob (opaque JSON object)
+ALTER TABLE edge_tasks ADD COLUMN result_sha256 TEXT;
+ALTER TABLE edge_tasks ADD COLUMN attest_json TEXT;
+CREATE INDEX IF NOT EXISTS edge_tasks_by_result_sha256 ON edge_tasks(result_sha256, updated_utc_ms DESC);
+)SQL";
+    if (!exec_locked(schema_v24, out_error)) return false;
+    cur_ver = 24;
   }
 
   // Record schema version.

@@ -915,6 +915,14 @@ paths:
     get:
       tags: [edge]
       summary: Get an edge task status
+      description: |
+        Returns a platform-side view of the edge task row.
+
+        Notes (best-effort):
+        - When a task reaches `SUCCEEDED` with a persisted `result`, the platform also stores a deterministic
+          hash surface `result_sha256` (sha256 of stored `result_json` bytes).
+        - If the node reports a `result.attest` object in `TASK_DONE`, the platform persists it and surfaces it
+          as `task.attest`.
       parameters:
         - in: query
           name: task_id
