@@ -35,6 +35,7 @@ bool edge_select_node_match_any(
   const std::vector<std::string>& tags_all,
   const std::vector<std::string>& tags_any,
   const std::vector<std::string>& tags_none,
+  const std::unordered_set<std::string>* exclude_node_ids_or_null,
   std::string* out_node_id
 );
 

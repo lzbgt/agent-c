@@ -2105,11 +2105,20 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         std::vector<std::string> tags_all;
         std::vector<std::string> tags_any;
         std::vector<std::string> tags_none;
+        std::unordered_set<std::string> exclude_node_ids;
         read_arr("requires_tools", &requires_tools);
         read_arr("tags_all", &tags_all);
         read_arr("tags_any", &tags_any);
         read_arr("tags_none", &tags_none);
-        (void)edge_select_node_match_any(db_, requires_tools, tags_all, tags_any, tags_none, &node_id);
+        if (m.isMember("exclude_node_ids") && m["exclude_node_ids"].isArray()) {
+          for (Json::ArrayIndex i = 0; i < m["exclude_node_ids"].size(); i++) {
+            if (!m["exclude_node_ids"][i].isString()) continue;
+            const std::string s = trim_copy(m["exclude_node_ids"][i].asString());
+            if (!s.empty()) exclude_node_ids.insert(s);
+          }
+        }
+        const std::unordered_set<std::string>* ex = exclude_node_ids.empty() ? nullptr : &exclude_node_ids;
+        (void)edge_select_node_match_any(db_, requires_tools, tags_all, tags_any, tags_none, ex, &node_id);
         if (!node_id.empty()) e["node_id"] = node_id;
       }
 

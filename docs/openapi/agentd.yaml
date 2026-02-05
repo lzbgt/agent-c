@@ -1270,7 +1270,13 @@ components:
           pattern: "^[A-Za-z0-9_.:-]+$"
         match_any:
           type: object
-          description: Capability-based node selection
+          description: |
+            Capability-based node selection.
+
+            Common keys (best-effort):
+            - `requires_tools` (array of tool names)
+            - `tags_all`, `tags_any`, `tags_none` (arrays of tag strings)
+            - `exclude_node_ids` (array of node_id strings to exclude; useful for distinct-node fan-out)
           additionalProperties: true
         allow_hazards:
           type: array
@@ -2074,7 +2080,13 @@ components:
           description: Explicit target node (preferred when known).
         match_any:
           type: object
-          description: Capability-based node selection (requires_tools/tags_*).
+          description: |
+            Capability-based node selection.
+
+            Common keys (best-effort):
+            - `requires_tools` (array of tool names)
+            - `tags_all`, `tags_any`, `tags_none` (arrays of tag strings)
+            - `exclude_node_ids` (array of node_id strings to exclude; useful for distinct-node fan-out)
           additionalProperties: true
         mode:
           type: string

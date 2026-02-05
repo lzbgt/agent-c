@@ -68,7 +68,7 @@ void edge_rules_apply_for_sensor_event_best_effort(
         read_arr("tags_all", &tags_all);
         read_arr("tags_any", &tags_any);
         read_arr("tags_none", &tags_none);
-        (void)edge_select_node_match_any(db, requires_tools, tags_all, tags_any, tags_none, &target_node_id);
+        (void)edge_select_node_match_any(db, requires_tools, tags_all, tags_any, tags_none, nullptr, &target_node_id);
       }
     }
     if (target_node_id.empty()) target_node_id = sensor_node_id;

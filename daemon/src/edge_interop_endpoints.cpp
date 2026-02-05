@@ -26,9 +26,10 @@ static bool select_node_match_any(
   const std::vector<std::string>& tags_all,
   const std::vector<std::string>& tags_any,
   const std::vector<std::string>& tags_none,
+  const std::unordered_set<std::string>* exclude_node_ids_or_null,
   std::string* out_node_id
 ) {
-  return edge_select_node_match_any(db, requires_tools, tags_all, tags_any, tags_none, out_node_id);
+  return edge_select_node_match_any(db, requires_tools, tags_all, tags_any, tags_none, exclude_node_ids_or_null, out_node_id);
 }
 
 }  // namespace
@@ -1276,15 +1277,16 @@ void handle_edge_task_assign_endpoint(
     return;
   }
 
-  std::string node_id = args.isMember("node_id") && args["node_id"].isString() ? trim_copy(args["node_id"].asString()) : "";
-  std::vector<std::string> requires_tools;
-  std::vector<std::string> tags_all;
-  std::vector<std::string> tags_any;
-  std::vector<std::string> tags_none;
-  if (node_id.empty() && args.isMember("match_any") && args["match_any"].isObject()) {
-    const auto& m = args["match_any"];
-    auto read_arr = [&](const char* k, std::vector<std::string>* out) {
-      if (!out) return;
+	  std::string node_id = args.isMember("node_id") && args["node_id"].isString() ? trim_copy(args["node_id"].asString()) : "";
+	  std::vector<std::string> requires_tools;
+	  std::vector<std::string> tags_all;
+	  std::vector<std::string> tags_any;
+	  std::vector<std::string> tags_none;
+	  std::unordered_set<std::string> exclude_node_ids;
+	  if (node_id.empty() && args.isMember("match_any") && args["match_any"].isObject()) {
+	    const auto& m = args["match_any"];
+	    auto read_arr = [&](const char* k, std::vector<std::string>* out) {
+	      if (!out) return;
       out->clear();
       if (!m.isMember(k) || !m[k].isArray()) return;
       for (Json::ArrayIndex i = 0; i < m[k].size(); i++) {
@@ -1292,17 +1294,25 @@ void handle_edge_task_assign_endpoint(
         out->push_back(m[k][i].asString());
       }
     };
-    read_arr("requires_tools", &requires_tools);
-    read_arr("tags_all", &tags_all);
-    read_arr("tags_any", &tags_any);
-    read_arr("tags_none", &tags_none);
+	    read_arr("requires_tools", &requires_tools);
+	    read_arr("tags_all", &tags_all);
+	    read_arr("tags_any", &tags_any);
+	    read_arr("tags_none", &tags_none);
+	    if (m.isMember("exclude_node_ids") && m["exclude_node_ids"].isArray()) {
+	      for (Json::ArrayIndex i = 0; i < m["exclude_node_ids"].size(); i++) {
+	        if (!m["exclude_node_ids"][i].isString()) continue;
+	        const std::string s = trim_copy(m["exclude_node_ids"][i].asString());
+	        if (!s.empty()) exclude_node_ids.insert(s);
+	      }
+	    }
 
-    if (!select_node_match_any(db_or_null, requires_tools, tags_all, tags_any, tags_none, &node_id)) {
-      resp->status = 409;
-      resp->body = "{\"ok\":false,\"error\":\"no matching node\"}";
-      return;
-    }
-  }
+	    const std::unordered_set<std::string>* ex = exclude_node_ids.empty() ? nullptr : &exclude_node_ids;
+	    if (!select_node_match_any(db_or_null, requires_tools, tags_all, tags_any, tags_none, ex, &node_id)) {
+	      resp->status = 409;
+	      resp->body = "{\"ok\":false,\"error\":\"no matching node\"}";
+	      return;
+	    }
+	  }
   if (node_id.empty() || !edge_id_is_safe(node_id)) {
     resp->status = 400;
     resp->body = "{\"ok\":false,\"error\":\"missing/invalid node_id (or match_any did not select)\"}";

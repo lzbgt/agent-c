@@ -93,6 +93,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Use-case: mix deterministic compute + LLM reasoning + real-world actuation in one durable DAG.
   - Correctness surface: workflow results now include `edge_result_sha256` (platform-computed sha256 of platform-canonicalized edge result JSON bytes; `agent_json_c14n_v1` best-effort) and `edge_attest` (best-effort node attest blob).
   - Proof: `ctest` includes `agentd_workflow_edge_invoke_smoke`, `agentd_workflow_edge_invoke_template_args_smoke`, `agentd_workflow_edge_agent_smoke`, and `agentd_workflow_edge_agent_ref_payload_smoke`.
+- Capability routing hardening (distinct-node fan-out helper):
+  - `edge.match_any.exclude_node_ids` is now supported by both workflow `kind:"edge_invoke"` and `POST /api/v1/edge/task/assign`.
+  - Use-case: parallel fan-out to *distinct* nodes without hardcoding node_id (avoid accidental same-node selection).
+  - Proof: `ctest` includes `agentd_workflow_edge_invoke_match_any_exclude_nodes_smoke`.
 - UM‑EAIS platform extensions (node → platform workflow handoff) are now proven end-to-end:
   - `WORKFLOW_SUBMIT` and `WORKFLOW_CANCEL` can be ingested via `POST /api/v1/edge/message` and drive the edge workflow runner.
   - Best-effort node ACKs: outbox `WORKFLOW_ACK` is enqueued for both submit and cancel (non-HTTP transports).

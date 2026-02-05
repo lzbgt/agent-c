@@ -353,6 +353,7 @@ bool edge_select_node_match_any(
   const std::vector<std::string>& tags_all,
   const std::vector<std::string>& tags_any,
   const std::vector<std::string>& tags_none,
+  const std::unordered_set<std::string>* exclude_node_ids_or_null,
   std::string* out_node_id
 ) {
   if (out_node_id) out_node_id->clear();
@@ -364,6 +365,7 @@ bool edge_select_node_match_any(
 
   for (const auto& n : nodes) {
     if (n.node_id.empty()) continue;
+    if (exclude_node_ids_or_null && exclude_node_ids_or_null->count(n.node_id)) continue;
 
     std::unordered_set<std::string> toolset;
     std::unordered_set<std::string> tagset;
