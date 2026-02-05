@@ -247,6 +247,8 @@ void handle_config_endpoint(
 
   Json::Value edge_auth(Json::objectValue);
   edge_auth["required"] = cfg.edge_auth_required;
+  edge_auth["require_ts"] = cfg.edge_auth_require_ts;
+  edge_auth["max_skew_ms"] = (Json::Int64)cfg.edge_auth_max_skew_ms;
   edge_auth["hmac_keys_set"] = (Json::UInt64)cfg.edge_auth_hmac_keys.size();
   out["edge_auth"] = edge_auth;
 
@@ -320,6 +322,16 @@ void handle_config_update_endpoint(
   }
   if (args.isMember("edge_auth_required") && args["edge_auth_required"].isBool()) {
     next.edge_auth_required = args["edge_auth_required"].asBool();
+  }
+  if (args.isMember("edge_auth_require_ts") && args["edge_auth_require_ts"].isBool()) {
+    next.edge_auth_require_ts = args["edge_auth_require_ts"].asBool();
+  }
+  if (args.isMember("edge_auth_max_skew_ms") && args["edge_auth_max_skew_ms"].isInt64()) {
+    const auto n = args["edge_auth_max_skew_ms"].asInt64();
+    next.edge_auth_max_skew_ms = std::max<int64_t>(0, std::min<int64_t>(30LL * 24 * 60 * 60 * 1000, n));
+  } else if (args.isMember("edge_auth_max_skew_ms") && args["edge_auth_max_skew_ms"].isUInt64()) {
+    const auto n = (int64_t)args["edge_auth_max_skew_ms"].asUInt64();
+    next.edge_auth_max_skew_ms = std::max<int64_t>(0, std::min<int64_t>(30LL * 24 * 60 * 60 * 1000, n));
   }
   if (args.isMember("workflow_admit_max_inflight_tasks_per_session") && args["workflow_admit_max_inflight_tasks_per_session"].isInt()) {
     const int n = args["workflow_admit_max_inflight_tasks_per_session"].asInt();
@@ -522,6 +534,8 @@ void handle_config_update_endpoint(
   o["timeout_ms"] = (Json::Int64)next.timeout_ms;
   o["proxy_url_set"] = !next.proxy_url.empty();
   o["edge_auth_required"] = next.edge_auth_required;
+  o["edge_auth_require_ts"] = next.edge_auth_require_ts;
+  o["edge_auth_max_skew_ms"] = (Json::Int64)next.edge_auth_max_skew_ms;
   {
     Json::Value engines(Json::objectValue);
     Json::Value ah(Json::arrayValue);

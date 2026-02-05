@@ -73,6 +73,16 @@ bool load_runtime_config_best_effort(
       if (v.isMember("edge_auth_required") && v["edge_auth_required"].isBool()) {
         cfg_io->edge_auth_required = v["edge_auth_required"].asBool();
       }
+      if (v.isMember("edge_auth_require_ts") && v["edge_auth_require_ts"].isBool()) {
+        cfg_io->edge_auth_require_ts = v["edge_auth_require_ts"].asBool();
+      }
+      if (v.isMember("edge_auth_max_skew_ms") && v["edge_auth_max_skew_ms"].isInt64()) {
+        const auto n = v["edge_auth_max_skew_ms"].asInt64();
+        cfg_io->edge_auth_max_skew_ms = std::max<int64_t>(0, std::min<int64_t>(30LL * 24 * 60 * 60 * 1000, n));
+      } else if (v.isMember("edge_auth_max_skew_ms") && v["edge_auth_max_skew_ms"].isUInt64()) {
+        const auto n = (int64_t)v["edge_auth_max_skew_ms"].asUInt64();
+        cfg_io->edge_auth_max_skew_ms = std::max<int64_t>(0, std::min<int64_t>(30LL * 24 * 60 * 60 * 1000, n));
+      }
       if (v.isMember("workflow_admit_max_inflight_tasks_per_session") && v["workflow_admit_max_inflight_tasks_per_session"].isInt()) {
         cfg_io->workflow_admit_max_inflight_tasks_per_session =
           std::max(0, std::min(100000, v["workflow_admit_max_inflight_tasks_per_session"].asInt()));
@@ -173,6 +183,8 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
   v["proxy_url"] = cfg.proxy_url.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.proxy_url);
   v["timeout_ms"] = (Json::Int64)cfg.timeout_ms;
   v["edge_auth_required"] = cfg.edge_auth_required;
+  v["edge_auth_require_ts"] = cfg.edge_auth_require_ts;
+  v["edge_auth_max_skew_ms"] = (Json::Int64)cfg.edge_auth_max_skew_ms;
   v["workflow_admit_max_inflight_tasks_per_session"] = cfg.workflow_admit_max_inflight_tasks_per_session;
   v["workflow_admit_max_inflight_tasks_total"] = cfg.workflow_admit_max_inflight_tasks_total;
   {

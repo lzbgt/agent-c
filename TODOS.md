@@ -360,7 +360,8 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
 2) **Interop v0.4** — enforceable edge attestation + trust roots and stronger multi-node identity binding.
    - Why now: collaboration and workflows amplify power, but MCU ecosystems need authenticity to prevent spoofed nodes/messages
      from turning “automation” into “unsafe actuation”.
-   - Shipped (v0.4 partial): envelope-level authenticity via HMAC keyring + enforcement knob (`edge_auth_required`).
+   - Shipped (v0.4 partial): envelope-level authenticity via HMAC keyring + enforcement knob (`edge_auth_required`),
+     plus optional replay-window hardening (`edge_auth_require_ts`, `edge_auth_max_skew_ms`).
    - Next: complete trust roots + identity binding:
      - per-node key provisioning workflow (bootstrap + rotation)
      - public-key signatures (Ed25519) for stronger identity (no shared-secret blast radius)
@@ -474,9 +475,13 @@ Maintainability note (always-on):
      - Envelope may include `auth:{alg:"hmac-sha256",kid,sig}` where `sig` is base64(HMAC-SHA256(key[kid], c14n(envelope-with-auth-removed))).
      - Operator control-plane:
        - `GET /api/v1/config` surfaces `edge_auth.required` + `edge_auth.hmac_keys_set`
-       - `POST /api/v1/config/update` supports `edge_auth_required` and `edge_auth_hmac_keys`
+       - `POST /api/v1/config/update` supports:
+         - `edge_auth_required` and `edge_auth_hmac_keys`
+         - optional replay-window hardening: `edge_auth_require_ts` and `edge_auth_max_skew_ms`
      - Enforcement behavior:
        - if required: missing/invalid auth is rejected with HTTP 401 (fail-closed; no inbox persistence)
+       - optional: if `edge_auth_require_ts=true`, authenticated envelopes require `ts_utc_ms > 0`
+       - optional: if `edge_auth_max_skew_ms > 0`, authenticated envelopes are rejected when `abs(now-ts_utc_ms)` exceeds the window
        - if optional: unsigned accepted, but if `auth` is present it must verify
      - Works for both JSON and CBOR wire encodings (auth is verified over platform canonical JSON after decoding).
      - Spec note: `docs/spec/um-eais/um-bmp-envelope-auth-hmac-v0.4.md`

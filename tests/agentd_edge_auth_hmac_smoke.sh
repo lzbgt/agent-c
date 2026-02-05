@@ -39,6 +39,8 @@ curl -fsS --noproxy "*" --max-time 10 \
 import json
 print(json.dumps({
   "edge_auth_required": True,
+  "edge_auth_require_ts": True,
+  "edge_auth_max_skew_ms": 60000,
   "edge_auth_hmac_keys": {"${KID}": "${SECRET}"},
 }))
 PY
@@ -158,5 +160,42 @@ if [[ "${status_bad_sig}" != "401" ]]; then
   exit 1
 fi
 
-echo "ok"
+# Old timestamp outside skew must be rejected (401) even if HMAC verifies.
+hello_old_ts="$(python3 - <<PY
+import base64, hashlib, hmac, json, uuid, time
+now_ms = int(time.time()*1000)
+old_ms = now_ms - 10*60*1000
+env = {
+  "msg_id": str(uuid.uuid4()),
+  "ts_utc_ms": old_ms,
+  "type": "NODE_HELLO",
+  "from": f"node:{'${NODE_ID}'}",
+  "to": "platform",
+  "body": {
+    "node_id": "${NODE_ID}",
+    "model": "esp32sim_stub",
+    "fw_git_sha": "deadbeef",
+    "caps_sha256": "${CAPS_SHA}",
+  }
+}
+canon = json.dumps(env, sort_keys=True, separators=(",", ":"))
+mac = hmac.new(b"${SECRET}", canon.encode("utf-8"), hashlib.sha256).digest()
+sig = base64.b64encode(mac).decode("ascii")
+env["auth"] = {"alg": "hmac-sha256", "kid": "${KID}", "sig": sig}
+print(json.dumps(env))
+PY
+)"
 
+status_old_ts="$(
+  curl -sS --noproxy "*" --max-time 10 \
+    -o /dev/null -w "%{http_code}" \
+    -H "Content-Type: application/json" \
+    -d "${hello_old_ts}" \
+    "${DAEMON_URL}/api/v1/edge/message"
+)"
+if [[ "${status_old_ts}" != "401" ]]; then
+  echo "expected 401 for old ts outside skew, got ${status_old_ts}" >&2
+  exit 1
+fi
+
+echo "ok"

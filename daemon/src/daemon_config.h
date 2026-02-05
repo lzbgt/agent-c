@@ -34,6 +34,15 @@ struct DaemonConfig {
   // - HMAC-SHA256 over canonical JSON of the envelope (with `auth` removed), with key selected by `auth.kid`.
   // - Keys are secrets; do not expose via /api/v1/config. Use /api/v1/config/update or local secrets files.
   bool edge_auth_required = false;
+  // Optional freshness controls for authenticated envelopes (replay window hardening).
+  //
+  // - edge_auth_require_ts: when true, authenticated envelopes must include a valid `ts_utc_ms` (> 0).
+  // - edge_auth_max_skew_ms: when > 0, authenticated envelopes with ts_utc_ms are rejected if
+  //   abs(now - ts_utc_ms) > edge_auth_max_skew_ms.
+  //
+  // Defaults are permissive for bring-up; operators can tighten once nodes have clocks.
+  bool edge_auth_require_ts = false;
+  int64_t edge_auth_max_skew_ms = 0;
   std::map<std::string, std::string> edge_auth_hmac_keys; // kid -> secret
   std::string model = "gpt-4o-mini";
   std::string summary_model;  // optional: model used to summarize dropped messages during compaction (tools=none)

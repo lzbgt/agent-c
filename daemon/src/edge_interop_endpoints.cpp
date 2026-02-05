@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <unordered_set>
@@ -107,6 +108,8 @@ static bool canonicalize_envelope_without_auth(const Json::Value& env, std::stri
 static bool verify_edge_envelope_auth_best_effort(
   const DaemonConfig& cfg,
   const Json::Value& env,
+  int64_t now_utc_ms,
+  int64_t ts_utc_ms,
   const std::string& from_id,
   const Json::Value& body,
   HttpResponse* resp
@@ -115,6 +118,24 @@ static bool verify_edge_envelope_auth_best_effort(
 
   const bool has_auth = env.isMember("auth") && !env["auth"].isNull();
   if (!cfg.edge_auth_required && !has_auth) return true;
+
+  if (has_auth || cfg.edge_auth_required) {
+    if (cfg.edge_auth_require_ts) {
+      if (ts_utc_ms <= 0) {
+        resp->status = 401;
+        resp->body = "{\"ok\":false,\"error\":\"edge auth requires ts_utc_ms\"}";
+        return false;
+      }
+    }
+    if (cfg.edge_auth_max_skew_ms > 0 && ts_utc_ms > 0) {
+      const int64_t delta = std::llabs(now_utc_ms - ts_utc_ms);
+      if (delta > cfg.edge_auth_max_skew_ms) {
+        resp->status = 401;
+        resp->body = "{\"ok\":false,\"error\":\"envelope ts_utc_ms outside allowed skew\"}";
+        return false;
+      }
+    }
+  }
 
   if (cfg.edge_auth_required) {
     if (!has_auth) {
@@ -304,7 +325,8 @@ void handle_edge_message_endpoint(
     return;
   }
 
-  if (!verify_edge_envelope_auth_best_effort(cfg, env, from_id, body, resp)) return;
+  const int64_t now = edge_unix_ms_now();
+  if (!verify_edge_envelope_auth_best_effort(cfg, env, now, ts_utc_ms, from_id, body, resp)) return;
 
   // Persist inbound (dedupe by msg_id).
   bool deduped = false;
@@ -332,7 +354,6 @@ void handle_edge_message_endpoint(
     resp->body = edge_json_stringify_compact(o);
   }
 
-  const int64_t now = edge_unix_ms_now();
   if (deduped) {
     bool processed = false;
     std::string perr2;

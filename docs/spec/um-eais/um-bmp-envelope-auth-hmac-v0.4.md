@@ -58,14 +58,18 @@ Pseudocode:
 
 Operator config:
 - `edge_auth_required: bool` (default false)
+- `edge_auth_require_ts: bool` (default false)
+- `edge_auth_max_skew_ms: int64` (default 0 = disabled)
 - `edge_auth_hmac_keys: { kid -> secret }` (secrets; not exposed in config snapshots)
 
 When `edge_auth_required=true`:
 - Missing `auth` => reject with HTTP 401
 - Invalid signature / unknown `kid` => reject with HTTP 401
 - Additionally, `from` MUST be `node:<node_id>`, and if `body.node_id` is present it MUST match `from`.
+ - If `edge_auth_require_ts=true`: missing/invalid `ts_utc_ms` => reject with HTTP 401
+ - If `edge_auth_max_skew_ms > 0` and `ts_utc_ms` is present: reject with HTTP 401 when outside the allowed skew window.
 
 When `edge_auth_required=false`:
 - Missing `auth` => accept (legacy bring-up)
 - If `auth` is present, it MUST verify (reject invalid with HTTP 401)
-
+ - Optional timestamp skew checks apply only when `auth` is present (and `ts_utc_ms` is present when required).

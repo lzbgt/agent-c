@@ -1368,6 +1368,8 @@ components:
           additionalProperties: true
           properties:
             required: { type: boolean }
+            require_ts: { type: boolean }
+            max_skew_ms: { type: integer, format: int64 }
             hmac_keys_set: { type: integer, format: int64 }
         memory:
           type: object
@@ -1380,6 +1382,13 @@ components:
         edge_auth_required:
           type: boolean
           description: When true, `/api/v1/edge/message` requires a valid `envelope.auth` (HMAC profile)
+        edge_auth_require_ts:
+          type: boolean
+          description: When true, authenticated envelopes must include `ts_utc_ms` (> 0)
+        edge_auth_max_skew_ms:
+          type: integer
+          format: int64
+          description: Max allowed absolute time skew (ms) for authenticated envelopes; 0 disables
         edge_auth_hmac_keys:
           type: object
           additionalProperties:
@@ -1463,6 +1472,8 @@ components:
         timeout_ms: { type: integer, format: int64 }
         proxy_url_set: { type: boolean }
         edge_auth_required: { type: boolean }
+        edge_auth_require_ts: { type: boolean }
+        edge_auth_max_skew_ms: { type: integer, format: int64 }
         edge_auth_hmac_keys_set:
           type: integer
           format: int64

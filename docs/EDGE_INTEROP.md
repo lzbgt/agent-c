@@ -88,6 +88,8 @@ Envelope authenticity (optional, UM‑BMP auth v0.4):
   - `edge_auth.required` is surfaced via `GET /api/v1/config`.
   - `POST /api/v1/config/update` supports:
     - `edge_auth_required: true|false`
+    - `edge_auth_require_ts: true|false` (when true, requires `ts_utc_ms > 0` on authenticated envelopes)
+    - `edge_auth_max_skew_ms: <int>` (when > 0, rejects authenticated envelopes if `abs(now-ts_utc_ms)` exceeds this window)
     - `edge_auth_hmac_keys: { "<kid>": "<secret>", "<kid2>": null }` (null clears)
 - Behavior:
   - If `edge_auth_required=true`: missing/invalid `auth` is rejected with HTTP 401 (no inbox persistence).
