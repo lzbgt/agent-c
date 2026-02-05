@@ -113,6 +113,18 @@ struct DaemonConfig {
   // This is powerful (enables broker/agent interop) but can be an SSRF footgun if enabled by
   // default. Keep disabled unless an operator explicitly opts in.
   bool workflow_enable_http_tasks = false;
+  // Optional outbound HTTP allowlist for deterministic collaboration tasks (`http_json`, `agentd_call`).
+  //
+  // Semantics:
+  // - empty: allow any host (when workflow_enable_http_tasks is enabled)
+  // - non-empty: allow only URLs whose parsed host[:port] matches at least one entry
+  //
+  // Entry format:
+  // - "example.com" (any port)
+  // - "example.com:443" (specific port)
+  // - "127.0.0.1" or "127.0.0.1:9090"
+  // - "[::1]" or "[::1]:9090"
+  std::vector<std::string> workflow_http_allow_hosts;
 
   // Memory consolidation (rolling, deterministic by default).
   //

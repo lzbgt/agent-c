@@ -273,6 +273,8 @@ For broker/agent interop and other cross-service collaboration, workflows can ru
 Security model:
 - This task is **disabled by default** (SSRF risk).
 - Operators must opt in by starting the daemon with `--workflow-enable-http-tasks` (or env `AGENTD_WORKFLOW_ENABLE_HTTP_TASKS=1`).
+- Optional hardening: restrict outbound targets with `--workflow-http-allow-host <host[:port]>` (repeatable),
+  or env `AGENTD_WORKFLOW_HTTP_ALLOW_HOSTS=host[:port],...`.
 - Do **not** embed secrets into persisted workflow specs via headers. `Authorization` headers are rejected at submit time.
   - If you need a bearer token, use `http_json.bearer_env` to reference an env var name (only the name is persisted).
 
@@ -311,6 +313,8 @@ This is a deterministic collaboration primitive:
 Security model:
 - This task is **disabled by default** (same SSRF surface as `http_json`).
 - Operators must opt in by starting the daemon with `--workflow-enable-http-tasks` (or env `AGENTD_WORKFLOW_ENABLE_HTTP_TASKS=1`).
+- Optional hardening: restrict outbound targets with `--workflow-http-allow-host <host[:port]>` (repeatable),
+  or env `AGENTD_WORKFLOW_HTTP_ALLOW_HOSTS=host[:port],...`.
 - Do **not** embed secrets into persisted workflow specs via headers. `Authorization` headers are rejected at submit time.
   - If you need a bearer token, use `agentd_call.bearer_env` to reference an env var name (only the name is persisted).
 

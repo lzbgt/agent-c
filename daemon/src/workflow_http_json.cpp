@@ -1,6 +1,7 @@
 #include "workflow_http_json.h"
 
 #include "http_client.h"
+#include "http_allowlist.h"
 #include "json_util.h"
 #include "string_util.h"
 
@@ -65,6 +66,12 @@ Json::Value workflow_http_json_to_json(
   if (url.empty()) return err_out("http_json.url is required");
   if (!url_has_http_scheme(url)) return err_out("http_json.url must start with http:// or https://");
   if (url.size() > 4096) return err_out("http_json.url is too long");
+  {
+    std::string why;
+    if (!workflow_http_url_is_allowed(cfg, url, &why)) {
+      return err_out("http_json url is not allowed by workflow_http_allow_hosts: " + why);
+    }
+  }
 
   const std::string method_raw =
     http_json.isMember("method") && http_json["method"].isString() ? trim_copy(http_json["method"].asString()) : "POST";

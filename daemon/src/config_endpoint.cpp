@@ -109,6 +109,13 @@ void handle_config_endpoint(
   engines["workflow_admit_max_inflight_tasks_per_session"] = cfg.workflow_admit_max_inflight_tasks_per_session;
   engines["workflow_admit_max_inflight_tasks_total"] = cfg.workflow_admit_max_inflight_tasks_total;
   engines["workflow_enable_http_tasks"] = cfg.workflow_enable_http_tasks;
+  if (!cfg.workflow_http_allow_hosts.empty()) {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& h : cfg.workflow_http_allow_hosts) {
+      if (!h.empty()) arr.append(h);
+    }
+    engines["workflow_http_allow_hosts"] = arr;
+  }
   out["engines"] = engines;
 
   Json::Value memory(Json::objectValue);

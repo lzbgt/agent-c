@@ -148,6 +148,19 @@ static bool parse_tool_call_limits_csv(
   return true;
 }
 
+static void parse_csv_tokens_best_effort(const std::string& csv, std::vector<std::string>* out) {
+  if (!out) return;
+  out->clear();
+  size_t i = 0;
+  while (i < csv.size()) {
+    size_t j = csv.find(',', i);
+    if (j == std::string::npos) j = csv.size();
+    std::string tok = trim_copy(csv.substr(i, j - i));
+    if (!tok.empty()) out->push_back(tok);
+    i = j + 1;
+  }
+}
+
 int main(int argc, char** argv) {
   // On macOS (and many POSIX systems), writing to a closed socket can raise SIGPIPE,
   // which terminates the process by default. Our HTTP server uses plain ::write(),
@@ -423,6 +436,14 @@ int main(int argc, char** argv) {
     } else if (a == "--workflow-enable-http-tasks") {
       cfg.workflow_enable_http_tasks = true;
       workflow_enable_http_tasks_set = true;
+    } else if (a == "--workflow-http-allow-host") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --workflow-http-allow-host\n";
+        return 2;
+      }
+      v = trim_copy(v);
+      if (!v.empty()) cfg.workflow_http_allow_hosts.push_back(v);
     } else if (a == "--memory-consolidate-interval-ms") {
       std::string v;
       if (!take(&v)) {
@@ -690,6 +711,7 @@ int main(int argc, char** argv) {
         << "  --workflow-admit-max-inflight-tasks-per-session <n>  Admission control cap (queued|running tasks per session); 0 disables (default: 0)\n"
         << "  --workflow-admit-max-inflight-tasks-total <n>        Admission control cap (queued|running tasks total); 0 disables (default: 0)\n"
         << "  --workflow-enable-http-tasks   Enable deterministic workflow kind:\"http_json\" outbound HTTP (INSECURE by default; SSRF risk)\n"
+        << "  --workflow-http-allow-host <host[:port]>   Optional allowlist for workflow outbound HTTP (repeatable; default: allow any host when enabled)\n"
         << "  --memory-consolidate-interval-ms <n>   Run memory consolidation every n ms (default: 0=disabled)\n"
         << "  --memory-consolidate-daily-days <n>    Scan last n daily memory files for @mem markers (default: 14)\n"
         << "  --memory-consolidate-keep-checkpoints <n>  Retain at most n structured checkpoints (default: 100)\n"
@@ -857,6 +879,16 @@ int main(int argc, char** argv) {
   if (!workflow_enable_http_tasks_set) {
     if (const char* s = getenv_s("AGENTD_WORKFLOW_ENABLE_HTTP_TASKS")) {
       cfg.workflow_enable_http_tasks = env_truthy(s);
+    }
+  }
+  if (cfg.workflow_http_allow_hosts.empty()) {
+    if (const char* s = getenv_s("AGENTD_WORKFLOW_HTTP_ALLOW_HOSTS")) {
+      std::vector<std::string> toks;
+      parse_csv_tokens_best_effort(s, &toks);
+      for (auto& t : toks) {
+        t = trim_copy(t);
+        if (!t.empty()) cfg.workflow_http_allow_hosts.push_back(t);
+      }
     }
   }
   if (const char* ms = getenv_s("AGENTD_MEMORY_CONSOLIDATE_INTERVAL_MS")) {

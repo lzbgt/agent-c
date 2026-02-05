@@ -25,11 +25,15 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - Broker/agent interop primitive for durable workflows (deterministic; gated):
   - New deterministic workflow task: `kind:"http_json"` with `http_json` (outbound HTTP JSON; no LLM required).
   - Safety: disabled by default (SSRF risk). Enable explicitly with `--workflow-enable-http-tasks` (or env `AGENTD_WORKFLOW_ENABLE_HTTP_TASKS=1`).
+  - Optional hardening: restrict outbound targets with `--workflow-http-allow-host <host[:port]>` (repeatable),
+    or env `AGENTD_WORKFLOW_HTTP_ALLOW_HOSTS=host[:port],...`.
   - Secrets hygiene: submit rejects `http_json.headers.Authorization`; use `http_json.bearer_env` (env var name only is persisted).
   - Proof: `ctest` includes `agentd_workflow_http_json_smoke`.
 - Agent-to-agent collaboration primitive (deterministic; gated):
   - New deterministic workflow task: `kind:"agentd_call"` with `agentd_call` (submits a remote workflow, polls until terminal, returns remote final JSON).
   - Spec: `docs/spec/agentd-agentd/agentd_agent_interop_v0_1.md`
+  - Optional hardening: restrict outbound targets with `--workflow-http-allow-host <host[:port]>` (repeatable),
+    or env `AGENTD_WORKFLOW_HTTP_ALLOW_HOSTS=host[:port],...`.
   - Proof: `ctest` includes `agentd_workflow_agentd_call_smoke`.
 - Embedded bring-up helper: `agent_core` now includes UM‑BMP/UM‑EAIS interop helpers (`agent/edge_interop.h`)
   for id-safe validation/sanitization + message type constants (reduces node/platform drift).
@@ -291,7 +295,8 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
 1) **Agent collaboration v2.2** — unify fan-out/join patterns across edge + LLM tasks (edge_parallel + delegate_parallel),
    plus event-triggered durable workflows as a first-class collaboration primitive.
    - Foundation shipped: deterministic outbound HTTP `kind:"http_json"` (gated) plus `kind:"agentd_call"` for agent-to-agent workflow handoff.
-   - Next hardening: outbound HTTP allowlists for `http_json`/`agentd_call` (reduce SSRF risk while keeping collaboration flexible).
+   - Shipped hardening: optional outbound HTTP allowlist for `http_json`/`agentd_call` via `--workflow-http-allow-host`.
+   - Next hardening: CIDR allowlists + explicit deny-private-IP mode (defense-in-depth against SSRF/DNS rebinding).
 2) **Memory v2.3** — query-plan primitives (bounded windows + key-prefix filters) and automatic consolidation triggers as time advances,
    so long-running systems keep context tight and correct.
 3) **Scheduling policy v2.4+** — DRR is shipped; next is telemetry-driven cost (tokens/elapsed/polls) and resilient fairness under mixed workloads.

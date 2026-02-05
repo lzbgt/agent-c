@@ -56,6 +56,9 @@ This is intentionally conservative:
 - `kind:"agentd_call"` is gated by the same daemon flag as `kind:"http_json"`:
   - Start the daemon with `--workflow-enable-http-tasks` (or env `AGENTD_WORKFLOW_ENABLE_HTTP_TASKS=1`)
   - Rationale: both features are outbound HTTP and carry SSRF risk.
+- Optional hardening: restrict outbound targets with:
+  - `--workflow-http-allow-host <host[:port]>` (repeatable), or
+  - env `AGENTD_WORKFLOW_HTTP_ALLOW_HOSTS=host[:port],...`
 - Do not persist secrets into workflows:
   - Use `agentd_call.bearer_env` to reference an env var name containing a bearer token.
   - Only the env var name is persisted; the secret value is read at runtime.
@@ -103,4 +106,3 @@ This enables downstream deterministic references like:
 
 - `${task.REMOTE.json:/agentd/final/workflow/status}`
 - `{"$ref":"task.REMOTE.json:/agentd/final/result/results_by_task/W/assistant_text"}`
-

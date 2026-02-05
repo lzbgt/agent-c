@@ -1840,6 +1840,7 @@ components:
 
         Security:
         - Disabled by default. Operator must start agentd with `--workflow-enable-http-tasks` (SSRF risk).
+        - Optional hardening: restrict outbound targets with `--workflow-http-allow-host <host[:port]>` (repeatable), or env `AGENTD_WORKFLOW_HTTP_ALLOW_HOSTS=...`.
         - Do not persist secret headers (like `Authorization`) inside workflow specs. Prefer `bearer_env`.
       properties:
         url:
@@ -1912,6 +1913,7 @@ components:
 
         Security:
         - Disabled by default (SSRF risk). Operator must start agentd with `--workflow-enable-http-tasks`.
+        - Optional hardening: restrict outbound targets with `--workflow-http-allow-host <host[:port]>` (repeatable), or env `AGENTD_WORKFLOW_HTTP_ALLOW_HOSTS=...`.
         - Do not persist secret headers. `Authorization` is rejected; use `bearer_env`.
       properties:
         base_url:

@@ -1,6 +1,7 @@
 #include "workflow_agentd_call.h"
 
 #include "http_client.h"
+#include "http_allowlist.h"
 #include "json_util.h"
 #include "string_util.h"
 
@@ -128,6 +129,12 @@ Json::Value workflow_agentd_call_to_json(
   if (base_url.empty()) return err_out("agentd_call.base_url is required");
   if (!url_has_http_scheme(base_url)) return err_out("agentd_call.base_url must start with http:// or https://");
   if (base_url.size() > 4096) return err_out("agentd_call.base_url is too long");
+  {
+    std::string why;
+    if (!workflow_http_url_is_allowed(cfg, base_url, &why)) {
+      return err_out("agentd_call base_url is not allowed by workflow_http_allow_hosts: " + why);
+    }
+  }
 
   const std::string op =
     agentd_call.isMember("op") && agentd_call["op"].isString() ? trim_copy(agentd_call["op"].asString()) : "workflow_submit_and_wait";
@@ -212,6 +219,37 @@ Json::Value workflow_agentd_call_to_json(
         : "";
       if (!prev_wid.empty() && (prev_base.empty() || prev_base == base_url)) {
         remote_workflow_id = prev_wid;
+      }
+
+      // If the previous attempt already captured a terminal remote workflow response, reuse it without doing any network I/O.
+      // This avoids repeated charges/retries when the local workflow engine reclaims the task after a restart.
+      if (prev.isMember("agentd") && prev["agentd"].isObject() && prev["agentd"].isMember("final") && prev["agentd"]["final"].isObject()) {
+        const Json::Value final = prev["agentd"]["final"];
+        const std::string st =
+          final.isMember("workflow") && final["workflow"].isObject() && final["workflow"].isMember("status") && final["workflow"]["status"].isString()
+          ? trim_copy(final["workflow"]["status"].asString())
+          : "";
+        if (!st.empty() && is_terminal_workflow_status(st)) {
+          Json::Value out = prev;
+          out["kind"] = "agentd_call";
+          // Ensure base_url/op are present/canonical for debugging.
+          if (!out.isMember("agentd") || !out["agentd"].isObject()) out["agentd"] = Json::Value(Json::objectValue);
+          out["agentd"]["base_url"] = base_url;
+          out["agentd"]["op"] = op;
+          // Avoid budget double-charging on replay-only attempts.
+          out["tool_calls_total"] = (Json::Int64)0;
+          out["steps_executed"] = (Json::Int64)0;
+          if (st == "done") {
+            out["ok"] = true;
+            out["assistant_text"] = "agentd_call: remote workflow done (replayed)";
+            if (out.isMember("error")) out.removeMember("error");
+          } else {
+            out["ok"] = false;
+            if (!out.isMember("error")) out["error"] = "remote workflow status " + st;
+            out["assistant_text"] = "";
+          }
+          return out;
+        }
       }
     }
   }
