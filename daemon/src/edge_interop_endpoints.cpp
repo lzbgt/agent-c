@@ -543,11 +543,52 @@ void handle_edge_message_endpoint(
       resp->body = "{\"ok\":false,\"error\":\"invalid TASK_DONE body (missing result)\"}";
       return;
     }
+
+    // Optional correctness guardrail: if the node manifest includes a `result_schema` for this tool,
+    // validate `result.data` before marking the task SUCCEEDED (prevents malformed outputs from flowing into workflows).
+    //
+    // Policy: treat schema mismatch as a terminal FAILED (fail-closed). This is limited to mode=invoke tasks.
+    std::string result_schema_error;
+    AgentDb::EdgeTaskRow tr;
+    std::string terr;
+    if (db_or_null && db_or_null->get_edge_task(task_id, step_id, &tr, &terr) && tr.mode == "invoke" && !tr.node_id.empty() &&
+        !tr.tool_name.empty()) {
+      AgentDb::EdgeNodeRow nr;
+      std::string nerr;
+      if (db_or_null->get_edge_node(tr.node_id, &nr, &nerr) && !nr.manifest_json.empty()) {
+        Json::Value manifest;
+        std::string merr;
+        if (json_parse_any(nr.manifest_json, &manifest, &merr) && manifest.isObject()) {
+          Json::Value schema;
+          std::string serr;
+          if (edge_tool_result_schema_from_manifest_best_effort(manifest, tr.tool_name, &schema, &serr) && schema.isObject()) {
+            const Json::Value result = body["result"];
+            if (!result.isObject()) {
+              result_schema_error = "result must be an object";
+            } else if (!result.isMember("data")) {
+              result_schema_error = "missing result.data";
+            } else {
+              const Json::Value data = result["data"];
+              std::string verr;
+              if (!edge_json_schema_subset_validate_best_effort(schema, data, "result.data", &verr)) {
+                result_schema_error = verr.empty() ? "result_schema mismatch" : verr;
+              }
+            }
+          }
+        }
+      }
+    }
+
     std::string result_json;
     if (body.isMember("result")) result_json = edge_json_stringify_compact(body["result"]);
     Json::Value d = body;
     if (trace.isObject()) d["trace"] = trace;
-    update_task_state(task_id, step_id, "SUCCEEDED", result_json, /*error_text=*/"", d);
+    if (!result_schema_error.empty()) {
+      d["_result_schema_error"] = result_schema_error;
+      update_task_state(task_id, step_id, "FAILED", /*result_json=*/"", std::string("result_schema_mismatch: ") + result_schema_error, d);
+    } else {
+      update_task_state(task_id, step_id, "SUCCEEDED", result_json, /*error_text=*/"", d);
+    }
     resp->body = "{\"ok\":true}";
     return;
   }

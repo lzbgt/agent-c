@@ -118,6 +118,9 @@ Safety/rate gates (best-effort, platform-side):
   - fallback: `manifest.tools[].parameters`
   The platform enforces a small, deterministic subset of JSON Schema keywords (`type`, `enum`, `required`,
   `properties`, `additionalProperties:false`, `items`) to catch shape mismatches early for MCU/actuator tools.
+- For `mode:"invoke"`, if the stored manifest tool definition includes a `result_schema`, the platform validates
+  `TASK_DONE.body.result.data` against it (best-effort subset, fail-closed). This prevents malformed tool outputs from
+  flowing into workflows and memory.
 - Denies tools tagged with hazard `privacy_camera` by default (unless explicitly allowed via request).
 - Denies `side_effect_level:"high"` by default (unless explicitly allowed via request).
 - Enforces per-tool `rate_limit` from the manifest (`max_per_minute`, `cooldown_ms`) using platform-side state.

@@ -29,7 +29,7 @@ static bool json_value_type_matches_string(const Json::Value& v, const std::stri
   return true; // unknown type => best-effort allow
 }
 
-static bool json_schema_subset_validate_best_effort(
+static bool json_schema_subset_validate_best_effort_impl(
   const Json::Value& schema,
   const Json::Value& value,
   const std::string& path,
@@ -108,7 +108,7 @@ static bool json_schema_subset_validate_best_effort(
         if (!props.isMember(k) || !props[k].isObject()) continue;
         std::string err;
         const std::string child_path = path.empty() ? k : (path + "." + k);
-        if (!json_schema_subset_validate_best_effort(props[k], value[k], child_path, &err)) {
+        if (!json_schema_subset_validate_best_effort_impl(props[k], value[k], child_path, &err)) {
           if (out_error) *out_error = err;
           return false;
         }
@@ -128,7 +128,7 @@ static bool json_schema_subset_validate_best_effort(
       for (Json::ArrayIndex i = 0; i < value.size(); i++) {
         std::string err;
         const std::string child_path = path + "[" + std::to_string((int)i) + "]";
-        if (!json_schema_subset_validate_best_effort(items, value[i], child_path, &err)) {
+        if (!json_schema_subset_validate_best_effort_impl(items, value[i], child_path, &err)) {
           if (out_error) *out_error = err;
           return false;
         }
@@ -139,7 +139,7 @@ static bool json_schema_subset_validate_best_effort(
   return true;
 }
 
-static bool edge_tool_parameters_schema_from_manifest_best_effort(
+static bool edge_tool_parameters_schema_from_manifest_best_effort_impl(
   const Json::Value& manifest,
   const std::string& tool_name,
   Json::Value* out_schema,
@@ -172,6 +172,51 @@ static bool edge_tool_parameters_schema_from_manifest_best_effort(
 }
 
 }  // namespace
+
+bool edge_json_schema_subset_validate_best_effort(
+  const Json::Value& schema,
+  const Json::Value& value,
+  const std::string& path,
+  std::string* out_error
+) {
+  return json_schema_subset_validate_best_effort_impl(schema, value, path, out_error);
+}
+
+bool edge_tool_parameters_schema_from_manifest_best_effort(
+  const Json::Value& manifest,
+  const std::string& tool_name,
+  Json::Value* out_schema,
+  std::string* out_error
+) {
+  return edge_tool_parameters_schema_from_manifest_best_effort_impl(manifest, tool_name, out_schema, out_error);
+}
+
+bool edge_tool_result_schema_from_manifest_best_effort(
+  const Json::Value& manifest,
+  const std::string& tool_name,
+  Json::Value* out_schema,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_schema) *out_schema = Json::Value(Json::nullValue);
+  if (!out_schema) return false;
+  if (!manifest.isObject() || tool_name.empty()) return true;
+  if (!manifest.isMember("tools") || !manifest["tools"].isArray()) return true;
+  const Json::Value tools = manifest["tools"];
+  for (Json::ArrayIndex i = 0; i < tools.size(); i++) {
+    if (!tools[i].isObject()) continue;
+    const Json::Value t = tools[i];
+    const std::string name = t.isMember("name") && t["name"].isString() ? trim_copy(t["name"].asString()) : "";
+    if (name != tool_name) continue;
+    if (t.isMember("result_schema") && t["result_schema"].isObject()) {
+      *out_schema = t["result_schema"];
+      return true;
+    }
+    return true; // tool found but schema missing => allow
+  }
+  if (out_error) *out_error = "tool not found in manifest";
+  return false;
+}
 
 int64_t edge_unix_ms_now() {
   return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -602,7 +647,7 @@ bool edge_enqueue_task_assign(
       if (edge_tool_parameters_schema_from_manifest_best_effort(manifest, tool_name, &schema, &serr)) {
         if (schema.isObject()) {
           std::string verr;
-          if (!json_schema_subset_validate_best_effort(schema, args, "args", &verr)) {
+          if (!edge_json_schema_subset_validate_best_effort(schema, args, "args", &verr)) {
             if (out_error) *out_error = verr.empty() ? "invalid tool args" : verr;
             if (out_http_status) *out_http_status = 400;
             return false;

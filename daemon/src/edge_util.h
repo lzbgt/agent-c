@@ -39,6 +39,32 @@ bool edge_select_node_match_any(
 
 bool edge_is_terminal_task_state(const std::string& s);
 
+// Best-effort JSON Schema subset validator used for edge tool contracts.
+// Supported keywords (subset): type, enum, required, properties, additionalProperties:false, items.
+// Unknown/unsupported keywords are ignored.
+bool edge_json_schema_subset_validate_best_effort(
+  const Json::Value& schema,
+  const Json::Value& value,
+  const std::string& path,
+  std::string* out_error
+);
+
+// Extract tool schema fragments from a UM-ACDS manifest (best-effort).
+// Returns false only if the tool is not present in manifest.tools[].
+bool edge_tool_parameters_schema_from_manifest_best_effort(
+  const Json::Value& manifest,
+  const std::string& tool_name,
+  Json::Value* out_schema,
+  std::string* out_error
+);
+
+bool edge_tool_result_schema_from_manifest_best_effort(
+  const Json::Value& manifest,
+  const std::string& tool_name,
+  Json::Value* out_schema,
+  std::string* out_error
+);
+
 struct EdgeToolMeta {
   std::string side_effect_level;
   std::unordered_set<std::string> hazards;
