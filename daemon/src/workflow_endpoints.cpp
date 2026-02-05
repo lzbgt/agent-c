@@ -746,6 +746,37 @@ void handle_workflow_submit_endpoint(
         }
         lim["max_tool_calls_total"] = (Json::Int64)std::min<int64_t>(1000000000LL, n); // canonicalize
       }
+      if (lim.isMember("max_steps_total")) {
+        const auto& v = lim["max_steps_total"];
+        if (!(v.isInt64() || v.isUInt64() || v.isInt() || v.isUInt())) {
+          resp->status = 400;
+          resp->body = "{\"ok\":false,\"error\":\"invalid workflow_limits.max_steps_total (expected int >= 0)\"}";
+          return;
+        }
+        const int64_t n = v.asInt64();
+        if (n < 0) {
+          resp->status = 400;
+          resp->body = "{\"ok\":false,\"error\":\"invalid workflow_limits.max_steps_total (expected >= 0)\"}";
+          return;
+        }
+        lim["max_steps_total"] = (Json::Int64)std::min<int64_t>(1000000000LL, n); // canonicalize
+      }
+      if (lim.isMember("max_elapsed_ms_total")) {
+        const auto& v = lim["max_elapsed_ms_total"];
+        if (!(v.isInt64() || v.isUInt64() || v.isInt() || v.isUInt())) {
+          resp->status = 400;
+          resp->body = "{\"ok\":false,\"error\":\"invalid workflow_limits.max_elapsed_ms_total (expected int >= 0)\"}";
+          return;
+        }
+        const int64_t n = v.asInt64();
+        if (n < 0) {
+          resp->status = 400;
+          resp->body = "{\"ok\":false,\"error\":\"invalid workflow_limits.max_elapsed_ms_total (expected >= 0)\"}";
+          return;
+        }
+        // Clamp to 1 year to keep values sane (actual enforcement also clamps).
+        lim["max_elapsed_ms_total"] = (Json::Int64)std::min<int64_t>(365LL * 24LL * 60LL * 60LL * 1000LL, n); // canonicalize
+      }
       args["workflow_limits"] = lim;
     }
   }

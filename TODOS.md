@@ -162,7 +162,11 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
      - cancels LLM/tool tasks when the remaining workflow budget is 0 (durable + restart-safe)
      - emits `workflow_budget_exceeded` events and surfaces run telemetry (`tool_calls_total`, `steps_executed`, `elapsed_ms`) for auditing
      - Proof: `ctest` includes `agentd_workflow_budget_tool_calls_smoke`.
-   - Next: extend budgets beyond tool calls (token budget, wall-time budget, host-tool budget) and surface aggregated budget pressure in `/api/v1/workflow/stats`.
+   - Shipped (v0.1): workflow-level step/time budgets:
+     - `workflow_limits.max_steps_total` (sum of `steps_executed`)
+     - `workflow_limits.max_elapsed_ms_total` (sum of `elapsed_ms`, best-effort)
+     - Proof: `ctest` includes `agentd_workflow_budget_steps_smoke`.
+   - Next: add token budgets (provider-dependent), host-tool budgets, and surface aggregated budget pressure in `/api/v1/workflow/stats`.
 
 2) **Scheduling policy v2 (beyond caps)** (predictable progress under load)
    - Shipped (v2.0): oversampled scan + session-aware round-robin scan order (prevents `LIMIT` starvation under typical load).

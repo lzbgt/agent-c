@@ -96,6 +96,8 @@ static int64_t workflow_deadline_unix_ms_best_effort(const AgentDb::WorkflowRow&
 
 struct WorkflowLimits {
   int64_t max_tool_calls_total = 0;  // 0 disables (unlimited).
+  int64_t max_steps_total = 0;       // 0 disables (unlimited).
+  int64_t max_elapsed_ms_total = 0;  // 0 disables (unlimited). Best-effort wall time summed across tasks.
 };
 
 static WorkflowLimits workflow_limits_best_effort(const AgentDb::WorkflowRow& wf) {
@@ -107,9 +109,23 @@ static WorkflowLimits workflow_limits_best_effort(const AgentDb::WorkflowRow& wf
   if (!json_parse_any_value(wf.spec_json, &v, &err) || !v.isObject()) return out;
   if (!v.isMember("workflow_limits") || !v["workflow_limits"].isObject()) return out;
   const Json::Value lim = v["workflow_limits"];
+  auto clamp_i64 = [](int64_t n, int64_t maxv) -> int64_t {
+    if (n < 0) return 0;
+    if (maxv > 0) return std::min<int64_t>(maxv, n);
+    return n;
+  };
   if (lim.isMember("max_tool_calls_total") && (lim["max_tool_calls_total"].isInt64() || lim["max_tool_calls_total"].isUInt64() || lim["max_tool_calls_total"].isInt() || lim["max_tool_calls_total"].isUInt())) {
     const int64_t n = lim["max_tool_calls_total"].asInt64();
-    out.max_tool_calls_total = std::max<int64_t>(0, std::min<int64_t>(1000000000LL, n));
+    out.max_tool_calls_total = clamp_i64(n, 1000000000LL);
+  }
+  if (lim.isMember("max_steps_total") && (lim["max_steps_total"].isInt64() || lim["max_steps_total"].isUInt64() || lim["max_steps_total"].isInt() || lim["max_steps_total"].isUInt())) {
+    const int64_t n = lim["max_steps_total"].asInt64();
+    out.max_steps_total = clamp_i64(n, 1000000000LL);
+  }
+  if (lim.isMember("max_elapsed_ms_total") && (lim["max_elapsed_ms_total"].isInt64() || lim["max_elapsed_ms_total"].isUInt64() || lim["max_elapsed_ms_total"].isInt() || lim["max_elapsed_ms_total"].isUInt())) {
+    const int64_t n = lim["max_elapsed_ms_total"].asInt64();
+    // clamp to 1 year worth of ms to avoid silly overflows in stats
+    out.max_elapsed_ms_total = clamp_i64(n, 365LL * 24LL * 60LL * 60LL * 1000LL);
   }
   return out;
 }
@@ -913,6 +929,13 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
       out["cancelled"] = true;
       out["assistant_text"] = "";
       out["error"] = upd.error;
+      out["tool_calls_total"] = (Json::Int64)0;
+      out["steps_executed"] = (Json::Int64)0;
+      {
+        const auto elapsed_ms =
+          (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started_steady).count();
+        out["elapsed_ms"] = (Json::Int64)std::max<int64_t>(0, elapsed_ms);
+      }
       upd.result_json = json_stringify_compact(out);
     }
     (void)db_->upsert_workflow_task(upd, nullptr);
@@ -951,6 +974,8 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   std::unordered_map<std::string, std::string> assistant_by_task;
   std::unordered_map<std::string, Json::Value> result_json_by_task;
   int64_t workflow_tool_calls_used = 0;
+  int64_t workflow_steps_used = 0;
+  int64_t workflow_elapsed_ms_used = 0;
   auto saturating_add_i64 = [](int64_t a, int64_t b) -> int64_t {
     if (b <= 0) return a;
     if (a > (INT64_MAX - b)) return INT64_MAX;
@@ -972,6 +997,14 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
           const int64_t n = std::max<int64_t>(0, r["tool_calls_total"].asInt64());
           workflow_tool_calls_used = saturating_add_i64(workflow_tool_calls_used, n);
         }
+        if (r.isMember("steps_executed") && (r["steps_executed"].isInt64() || r["steps_executed"].isUInt64() || r["steps_executed"].isInt() || r["steps_executed"].isUInt())) {
+          const int64_t n = std::max<int64_t>(0, r["steps_executed"].asInt64());
+          workflow_steps_used = saturating_add_i64(workflow_steps_used, n);
+        }
+        if (r.isMember("elapsed_ms") && (r["elapsed_ms"].isInt64() || r["elapsed_ms"].isUInt64() || r["elapsed_ms"].isInt() || r["elapsed_ms"].isUInt())) {
+          const int64_t n = std::max<int64_t>(0, r["elapsed_ms"].asInt64());
+          workflow_elapsed_ms_used = saturating_add_i64(workflow_elapsed_ms_used, n);
+        }
 
         if (t.task_id.empty()) continue;
         if (t.status != "done" && t.status != "error") continue;
@@ -989,6 +1022,18 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     const int64_t used = std::max<int64_t>(0, std::min<int64_t>(max_total, workflow_tool_calls_used));
     wf_tool_calls_remaining = std::max<int64_t>(0, max_total - used);
   }
+  int64_t wf_steps_remaining = 0;
+  if (wf_limits.max_steps_total > 0) {
+    const int64_t max_total = wf_limits.max_steps_total;
+    const int64_t used = std::max<int64_t>(0, std::min<int64_t>(max_total, workflow_steps_used));
+    wf_steps_remaining = std::max<int64_t>(0, max_total - used);
+  }
+  int64_t wf_elapsed_ms_remaining = 0;
+  if (wf_limits.max_elapsed_ms_total > 0) {
+    const int64_t max_total = wf_limits.max_elapsed_ms_total;
+    const int64_t used = std::max<int64_t>(0, std::min<int64_t>(max_total, workflow_elapsed_ms_used));
+    wf_elapsed_ms_remaining = std::max<int64_t>(0, max_total - used);
+  }
 
   auto workflow_budget_exceeded_cancel = [&](const char* which) {
     const std::string msg = std::string("workflow budget exceeded: ") + (which ? which : "budget");
@@ -1004,6 +1049,12 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
       d["max_tool_calls_total"] = (Json::Int64)wf_limits.max_tool_calls_total;
       d["tool_calls_used"] = (Json::Int64)workflow_tool_calls_used;
       d["tool_calls_remaining"] = (Json::Int64)wf_tool_calls_remaining;
+      d["max_steps_total"] = (Json::Int64)wf_limits.max_steps_total;
+      d["steps_used"] = (Json::Int64)workflow_steps_used;
+      d["steps_remaining"] = (Json::Int64)wf_steps_remaining;
+      d["max_elapsed_ms_total"] = (Json::Int64)wf_limits.max_elapsed_ms_total;
+      d["elapsed_ms_used"] = (Json::Int64)workflow_elapsed_ms_used;
+      d["elapsed_ms_remaining"] = (Json::Int64)wf_elapsed_ms_remaining;
       d["ts_unix_ms"] = (Json::Int64)now;
       insert_workflow_event_best_effort(db_, wf.workflow_id, task.task_id, "workflow_budget_exceeded", now, d);
     }
@@ -1310,6 +1361,14 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
       workflow_budget_exceeded_cancel("max_tool_calls_total");
       return;
     }
+    if (wf_limits.max_steps_total > 0 && wf_steps_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_steps_total");
+      return;
+    }
+    if (wf_limits.max_elapsed_ms_total > 0 && wf_elapsed_ms_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_elapsed_ms_total");
+      return;
+    }
 
     out = Json::Value(Json::objectValue);
     out["kind"] = "delegate";
@@ -1344,6 +1403,8 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 	        int64_t attempts_steps_executed = 0;
 	        int64_t attempts_elapsed_ms = 0;
 	        int64_t remaining_local = wf_tool_calls_remaining;
+	        int64_t remaining_steps_local = wf_steps_remaining;
+	        int64_t remaining_elapsed_ms_local = wf_elapsed_ms_remaining;
 
 	        for (Json::ArrayIndex i = 0; i < attempts.size(); i++) {
 	          if (workflow_run_should_cancel(&cancel_ctx)) {
@@ -1357,6 +1418,18 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 	            out["ok"] = false;
 	            out["assistant_text"] = "";
 	            out["error"] = "workflow budget exceeded: max_tool_calls_total";
+	            break;
+	          }
+	          if (wf_limits.max_steps_total > 0 && remaining_steps_local <= 0) {
+	            out["ok"] = false;
+	            out["assistant_text"] = "";
+	            out["error"] = "workflow budget exceeded: max_steps_total";
+	            break;
+	          }
+	          if (wf_limits.max_elapsed_ms_total > 0 && remaining_elapsed_ms_local <= 0) {
+	            out["ok"] = false;
+	            out["assistant_text"] = "";
+	            out["error"] = "workflow budget exceeded: max_elapsed_ms_total";
 	            break;
 	          }
 
@@ -1386,6 +1459,22 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 	            }
 	            const int64_t eff = (req_limit > 0) ? std::min<int64_t>(req_limit, remaining_local) : remaining_local;
 	            areq2["max_tool_calls_total"] = (Json::Int64)std::max<int64_t>(0, eff);
+	          }
+	          if (wf_limits.max_steps_total > 0) {
+	            int64_t req_limit = 0;
+	            if (areq2.isMember("max_steps") && (areq2["max_steps"].isInt64() || areq2["max_steps"].isUInt64() || areq2["max_steps"].isInt() || areq2["max_steps"].isUInt())) {
+	              req_limit = std::max<int64_t>(0, areq2["max_steps"].asInt64());
+	            }
+	            const int64_t eff = (req_limit > 0) ? std::min<int64_t>(req_limit, remaining_steps_local) : remaining_steps_local;
+	            areq2["max_steps"] = (Json::Int64)std::max<int64_t>(0, eff);
+	          }
+	          if (wf_limits.max_elapsed_ms_total > 0) {
+	            int64_t req_limit = 0;
+	            if (areq2.isMember("timeout_ms") && (areq2["timeout_ms"].isInt64() || areq2["timeout_ms"].isUInt64() || areq2["timeout_ms"].isInt() || areq2["timeout_ms"].isUInt())) {
+	              req_limit = std::max<int64_t>(0, areq2["timeout_ms"].asInt64());
+	            }
+	            const int64_t eff = (req_limit > 0) ? std::min<int64_t>(req_limit, remaining_elapsed_ms_local) : remaining_elapsed_ms_local;
+	            areq2["timeout_ms"] = (Json::Int64)std::max<int64_t>(0, eff);
 	          }
 	          const std::string attempt_body = json_stringify_compact(areq2);
 	          Json::Value r = run_request_to_json_internal_cancellable(
@@ -1428,6 +1517,12 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 	          attempts_elapsed_ms = saturating_add_i64(attempts_elapsed_ms, elapsed_ms_this_attempt);
 	          if (wf_limits.max_tool_calls_total > 0) {
 	            remaining_local = std::max<int64_t>(0, remaining_local - tool_calls_this_attempt);
+	          }
+	          if (wf_limits.max_steps_total > 0) {
+	            remaining_steps_local = std::max<int64_t>(0, remaining_steps_local - steps_this_attempt);
+	          }
+	          if (wf_limits.max_elapsed_ms_total > 0) {
+	            remaining_elapsed_ms_local = std::max<int64_t>(0, remaining_elapsed_ms_local - elapsed_ms_this_attempt);
 	          }
 
 	          Json::Value row(Json::objectValue);
@@ -1681,6 +1776,36 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         }
         const int64_t eff = (req_limit > 0) ? std::min<int64_t>(req_limit, wf_tool_calls_remaining) : wf_tool_calls_remaining;
         rr["max_tool_calls_total"] = (Json::Int64)std::max<int64_t>(0, eff);
+        request_body = json_stringify_compact(rr);
+      }
+    }
+    if (wf_limits.max_steps_total > 0) {
+      if (wf_steps_remaining <= 0) {
+        workflow_budget_exceeded_cancel("max_steps_total");
+        return;
+      }
+      if (rr.isObject()) {
+        int64_t req_limit = 0;
+        if (rr.isMember("max_steps") && (rr["max_steps"].isInt64() || rr["max_steps"].isUInt64() || rr["max_steps"].isInt() || rr["max_steps"].isUInt())) {
+          req_limit = std::max<int64_t>(0, rr["max_steps"].asInt64());
+        }
+        const int64_t eff = (req_limit > 0) ? std::min<int64_t>(req_limit, wf_steps_remaining) : wf_steps_remaining;
+        rr["max_steps"] = (Json::Int64)std::max<int64_t>(0, eff);
+        request_body = json_stringify_compact(rr);
+      }
+    }
+    if (wf_limits.max_elapsed_ms_total > 0) {
+      if (wf_elapsed_ms_remaining <= 0) {
+        workflow_budget_exceeded_cancel("max_elapsed_ms_total");
+        return;
+      }
+      if (rr.isObject()) {
+        int64_t req_limit = 0;
+        if (rr.isMember("timeout_ms") && (rr["timeout_ms"].isInt64() || rr["timeout_ms"].isUInt64() || rr["timeout_ms"].isInt() || rr["timeout_ms"].isUInt())) {
+          req_limit = std::max<int64_t>(0, rr["timeout_ms"].asInt64());
+        }
+        const int64_t eff = (req_limit > 0) ? std::min<int64_t>(req_limit, wf_elapsed_ms_remaining) : wf_elapsed_ms_remaining;
+        rr["timeout_ms"] = (Json::Int64)std::max<int64_t>(0, eff);
         request_body = json_stringify_compact(rr);
       }
     }

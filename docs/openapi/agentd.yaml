@@ -1874,6 +1874,16 @@ components:
           format: int64
           minimum: 0
           description: Max total tool calls across the entire workflow (0 disables/unlimited).
+        max_steps_total:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Max total tool-loop steps executed across the entire workflow (0 disables/unlimited).
+        max_elapsed_ms_total:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Max total elapsed_ms summed across workflow tasks (0 disables/unlimited).
       additionalProperties: true
 
     WorkflowGetResponse:
