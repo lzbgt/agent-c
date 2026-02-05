@@ -461,6 +461,34 @@ Semantics:
 - This task does not call an LLM/provider, so it is suitable for deterministic “write facts only when upstream checks passed”
   workflows (pair it with `depends_on` + `expect` on the upstream tasks).
 
+### Deterministic structured memory query task (`kind:"memory_structured_query"`) (v1.7)
+
+For deterministic retrieval of **structured facts/preferences/tasks** (not fuzzy substring search), workflows can run:
+
+```json
+{
+  "task_id": "Q",
+  "kind": "memory_structured_query",
+  "depends_on": ["M"],
+  "memory_structured_query": {
+    "path": "STRUCTURED.md",
+    "key_prefix": "wf.",
+    "kinds": ["fact"],
+    "status": "active",
+    "include_versions": false,
+    "include_sources": true,
+    "limit": 50
+  }
+}
+```
+
+Semantics:
+- Requires the daemon to run with `--tools host` (this task executes the host tool `memory_structured_query`).
+- This is a **read-only** host tool, so it works with `--host-policy readonly` or `--host-policy full`.
+- To avoid accidental full dumps, the server requires at least one filter: `key`, `key_prefix`, or non-empty `kinds[]`.
+- The full host tool response is surfaced under the task result as `memory_structured_query_response` for deterministic `expect` assertions
+  and JSON templating (`${task.Q.json:/memory_structured_query_response/data/results/0/record/value}` etc.).
+
 ### Agent collaboration / fallback delegation (`kind:"delegate"`) (v1.6)
 
 Sometimes “power” comes from **redundancy** and **explicit fallback**: run the same intent through multiple candidate

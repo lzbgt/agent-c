@@ -1743,6 +1743,7 @@ components:
         - Deterministic aggregation tasks: `kind: aggregate` with `aggregate` (see `WorkflowAggregateSpec`)
         - Deterministic memory update tasks: `kind: memory_put` with `memory_put` (see `WorkflowMemoryPutSpec`)
         - Deterministic memory retrieval tasks: `kind: memory_search` with `memory_search` (host tool; no LLM required)
+        - Deterministic structured memory query tasks: `kind: memory_structured_query` with `memory_structured_query` (host tool; no LLM required)
         - Deterministic memory correlation tasks: `kind: memory_correlate` with `memory_correlate` (scans structured memory checkpoints; no LLM required)
         - Deterministic outbound HTTP JSON tasks: `kind: http_json` with `http_json` (gated by daemon flag; no LLM required)
         - Deterministic agent collaboration tasks: `kind: agentd_call` with `agentd_call` (gated by daemon flag; no LLM required)
@@ -1760,6 +1761,7 @@ components:
         - If `kind == aggregate`, `aggregate.task_ids` is required and `request.prompt` is not used.
         - If `kind == memory_put`, `memory_put.entries` is required and `request.prompt` is not used.
         - If `kind == memory_search`, `memory_search.query` is required and `request.prompt` is not used.
+        - If `kind == memory_structured_query`, `memory_structured_query` is required and `request.prompt` is not used.
         - If `kind == memory_correlate`, `memory_correlate` is required and `request.prompt` is not used.
         - If `kind == http_json`, `http_json` is required and `request.prompt` is not used.
         - If `kind == agentd_call`, `agentd_call` is required and `request.prompt` is not used.
@@ -1778,6 +1780,7 @@ components:
         - $ref: "#/components/schemas/WorkflowTaskAggregateSpec"
         - $ref: "#/components/schemas/WorkflowTaskMemoryPutSpec"
         - $ref: "#/components/schemas/WorkflowTaskMemorySearchSpec"
+        - $ref: "#/components/schemas/WorkflowTaskMemoryStructuredQuerySpec"
         - $ref: "#/components/schemas/WorkflowTaskMemoryCorrelateSpec"
         - $ref: "#/components/schemas/WorkflowTaskHttpJsonSpec"
         - $ref: "#/components/schemas/WorkflowTaskAgentdCallSpec"
@@ -1940,6 +1943,37 @@ components:
           description: Deterministic correctness assertions (engine-enforced)
           additionalProperties: true
 
+    WorkflowTaskMemoryStructuredQuerySpec:
+      type: object
+      required: [task_id, kind, memory_structured_query]
+      properties:
+        task_id: { type: string }
+        allow_error:
+          type: boolean
+          description: If true, task failure does not fail the workflow (soft-fail).
+        inputs:
+          type: object
+          description: Optional per-task inputs (overrides workflow-level inputs).
+          additionalProperties: true
+        kind:
+          type: string
+          enum: [memory_structured_query]
+          description: Deterministic structured memory query via host tool `memory_structured_query` (no LLM required).
+        depends_on:
+          type: array
+          items: { type: string }
+        max_attempts: { type: integer, format: int32 }
+        priority:
+          type: integer
+          format: int32
+          description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+        memory_structured_query:
+          $ref: "#/components/schemas/WorkflowMemoryStructuredQuerySpec"
+        expect:
+          type: object
+          description: Deterministic correctness assertions (engine-enforced)
+          additionalProperties: true
+
     WorkflowTaskMemoryCorrelateSpec:
       type: object
       required: [task_id, kind, memory_correlate]
@@ -2004,6 +2038,45 @@ components:
         use_index:
           type: boolean
           description: Use ranked FTS5 index when available (default true; only when case_sensitive=false).
+
+    WorkflowMemoryStructuredQuerySpec:
+      type: object
+      description: |
+        Structured memory query configuration for `kind:memory_structured_query`.
+
+        This maps to the host tool `memory_structured_query` (see `cli/src/toolset_host_memory.cpp`).
+
+        Note: the server requires at least one filter (`key`, `key_prefix`, or non-empty `kinds[]`) to avoid accidental full dumps.
+      properties:
+        path:
+          type: string
+          description: Relative memory Markdown path under the daemon memory directory (default `STRUCTURED.md`).
+        key:
+          type: string
+          description: Exact record key to fetch (optional).
+        key_prefix:
+          type: string
+          description: Prefix filter for record keys (optional).
+        key_case_insensitive:
+          type: boolean
+          description: If true, key/prefix matching is case-insensitive (default false).
+        kinds:
+          type: array
+          description: Optional kinds filter (e.g. `["fact"]`, `["preference"]`, `["task"]`).
+          items: { type: string }
+        status:
+          type: string
+          description: Status filter (default `active`). Use `any` to include deprecated.
+        include_sources:
+          type: boolean
+          description: Include `sources[]` in returned records (default true).
+        include_versions:
+          type: boolean
+          description: Include `versions[]` history in returned records (default false).
+        limit:
+          type: integer
+          format: int32
+          description: Max records to return (default 50; max 200).
 
     WorkflowMemoryCorrelateSpec:
       type: object

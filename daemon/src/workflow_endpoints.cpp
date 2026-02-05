@@ -629,12 +629,14 @@ void handle_workflow_submit_endpoint(
 	    const bool is_delegate = (kind == "delegate");
 	    const bool is_memory_put = (kind == "memory_put");
 	    const bool is_memory_search = (kind == "memory_search");
+	    const bool is_memory_structured_query = (kind == "memory_structured_query");
 	    const bool is_memory_correlate = (kind == "memory_correlate");
 	    const bool is_memory_consolidate = (kind == "memory_consolidate");
 	    const bool is_http_json = (kind == "http_json");
 	    const bool is_agentd_call = (kind == "agentd_call");
 	    const bool is_special =
-	      is_avm || is_aggregate || is_edge || is_edge_wait_sensor || is_delay || is_delegate || is_memory_put || is_memory_search || is_memory_correlate || is_memory_consolidate || is_http_json || is_agentd_call;
+	      is_avm || is_aggregate || is_edge || is_edge_wait_sensor || is_delay || is_delegate || is_memory_put || is_memory_search ||
+	      is_memory_structured_query || is_memory_correlate || is_memory_consolidate || is_http_json || is_agentd_call;
 
     Json::Value run_req = t.isMember("request") && t["request"].isObject() ? t["request"] : t;
     if (!is_special && defaults.isObject()) {
@@ -1078,6 +1080,156 @@ void handle_workflow_submit_endpoint(
 	      }
 	      task_req["kind"] = "memory_search";
 	      task_req["memory_search"] = ms;
+	      task_req["priority"] = task_priority;
+	      task_req["trace_id"] = trace_id + ":" + task_id;
+	    } else if (is_memory_structured_query) {
+	      if (!t.isMember("memory_structured_query") || !t["memory_structured_query"].isObject()) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "memory_structured_query task missing memory_structured_query object";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      const auto& msq = t["memory_structured_query"];
+	      Json::Value msq2(Json::objectValue);
+
+	      const std::string path =
+	        msq.isMember("path") && msq["path"].isString() ? trim_copy(msq["path"].asString()) : "STRUCTURED.md";
+	      if (!is_safe_relpath_md(path)) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "memory_structured_query.path must be a safe relative .md path (default: STRUCTURED.md)";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      msq2["path"] = path;
+
+	      const std::string key = msq.isMember("key") && msq["key"].isString() ? trim_copy(msq["key"].asString()) : "";
+	      if (!key.empty() && key.size() > 200) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "memory_structured_query.key too long (max 200 chars)";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      if (!key.empty()) msq2["key"] = key;
+
+	      const std::string key_prefix =
+	        msq.isMember("key_prefix") && msq["key_prefix"].isString() ? trim_copy(msq["key_prefix"].asString()) : "";
+	      if (!key_prefix.empty() && key_prefix.size() > 200) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "memory_structured_query.key_prefix too long (max 200 chars)";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      if (!key_prefix.empty()) msq2["key_prefix"] = key_prefix;
+
+	      if (msq.isMember("key_case_insensitive")) {
+	        if (!msq["key_case_insensitive"].isBool() && !msq["key_case_insensitive"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_structured_query.key_case_insensitive must be a bool";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (msq["key_case_insensitive"].isBool()) msq2["key_case_insensitive"] = msq["key_case_insensitive"];
+	      }
+
+	      Json::Value kinds2(Json::arrayValue);
+	      if (msq.isMember("kinds")) {
+	        if (!msq["kinds"].isArray() && !msq["kinds"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_structured_query.kinds must be an array";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (msq["kinds"].isArray()) {
+	          for (Json::ArrayIndex i = 0; i < msq["kinds"].size(); i++) {
+	            if (!msq["kinds"][i].isString()) continue;
+	            const std::string k = lower_copy(trim_copy(msq["kinds"][i].asString()));
+	            if (k.empty()) continue;
+	            kinds2.append(k == "pref" ? "preference" : k);
+	          }
+	        }
+	      }
+	      if (!kinds2.empty()) msq2["kinds"] = kinds2;
+
+	      // Safety: avoid accidentally dumping the entire structured memory file by default.
+	      if (!msq2.isMember("key") && !msq2.isMember("key_prefix") && (!msq2.isMember("kinds") || !msq2["kinds"].isArray() || msq2["kinds"].empty())) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "memory_structured_query requires at least one filter: key, key_prefix, or non-empty kinds[]";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+
+	      if (msq.isMember("status")) {
+	        if (!msq["status"].isString() && !msq["status"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_structured_query.status must be a string";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (msq["status"].isString() && !trim_copy(msq["status"].asString()).empty()) msq2["status"] = trim_copy(msq["status"].asString());
+	      }
+	      if (msq.isMember("include_sources")) {
+	        if (!msq["include_sources"].isBool() && !msq["include_sources"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_structured_query.include_sources must be a bool";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (msq["include_sources"].isBool()) msq2["include_sources"] = msq["include_sources"];
+	      }
+	      if (msq.isMember("include_versions")) {
+	        if (!msq["include_versions"].isBool() && !msq["include_versions"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_structured_query.include_versions must be a bool";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (msq["include_versions"].isBool()) msq2["include_versions"] = msq["include_versions"];
+	      }
+	      if (msq.isMember("limit")) {
+	        if (!msq["limit"].isInt() && !msq["limit"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_structured_query.limit must be an int";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (msq["limit"].isInt()) msq2["limit"] = std::max(1, std::min(200, msq["limit"].asInt()));
+	      }
+
+	      task_req["kind"] = "memory_structured_query";
+	      task_req["memory_structured_query"] = msq2;
 	      task_req["priority"] = task_priority;
 	      task_req["trace_id"] = trace_id + ":" + task_id;
 	    } else if (is_memory_correlate) {

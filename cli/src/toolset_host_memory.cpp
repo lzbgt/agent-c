@@ -29,6 +29,9 @@ agent_status_t tool_memory_get(HostToolCtx*, const char*, agent_string_t* out_re
 agent_status_t tool_memory_search(HostToolCtx*, const char*, agent_string_t* out_result) {
   return set_result(out_result, "{\"ok\":false,\"error\":\"memory_search requires jsoncpp\",\"data\":{}}");
 }
+agent_status_t tool_memory_structured_query(HostToolCtx*, const char*, agent_string_t* out_result) {
+  return set_result(out_result, "{\"ok\":false,\"error\":\"memory_structured_query requires jsoncpp\",\"data\":{}}");
+}
 agent_status_t tool_memory_put(HostToolCtx*, const char*, agent_string_t* out_result) {
   return set_result(out_result, "{\"ok\":false,\"error\":\"memory_put requires jsoncpp\",\"data\":{}}");
 }
@@ -989,6 +992,168 @@ agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, 
   data["files_scanned"] = (Json::Int64)files.size();
   data["results"] = results;
   data["output"] = "memory_search mode=" + mode + " results=" + std::to_string((unsigned)results.size());
+  return write_envelope(out_result, true, "", data);
+}
+
+agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
+  if (!ctx || !out_result) return AGENT_ERR_INVALID_ARGUMENT;
+  if (is_cancelled(ctx)) return set_result(out_result, "{\"ok\":false,\"error\":\"cancelled\"}");
+
+  Json::Value args;
+  std::string perr;
+  if (!parse_json(arguments_json, &args, &perr) || !args.isObject()) {
+    return write_envelope(out_result, false, "invalid args", Json::Value(Json::objectValue));
+  }
+
+  const std::string rel_path_raw = args.isMember("path") && args["path"].isString() ? trim_ascii(args["path"].asString()) : "STRUCTURED.md";
+  const std::string rel_path = rel_path_raw.empty() ? "STRUCTURED.md" : rel_path_raw;
+  if (!is_safe_relpath_md(rel_path)) {
+    return write_envelope(out_result, false, "invalid field 'path' (must be a safe relative .md path)", Json::Value(Json::objectValue));
+  }
+
+  const std::string key = args.isMember("key") && args["key"].isString() ? trim_ascii(args["key"].asString()) : "";
+  const std::string key_prefix = args.isMember("key_prefix") && args["key_prefix"].isString() ? trim_ascii(args["key_prefix"].asString()) : "";
+
+  const bool key_case_insensitive =
+    args.isMember("key_case_insensitive") && args["key_case_insensitive"].isBool() ? args["key_case_insensitive"].asBool() : false;
+
+  std::vector<std::string> kinds;
+  if (args.isMember("kinds") && args["kinds"].isArray()) {
+    for (Json::ArrayIndex i = 0; i < args["kinds"].size(); i++) {
+      if (!args["kinds"][i].isString()) continue;
+      const std::string k = to_lower_ascii(trim_ascii(args["kinds"][i].asString()));
+      if (k.empty()) continue;
+      if (k == "pref") kinds.push_back("preference");
+      else kinds.push_back(k);
+    }
+  }
+
+  const std::string status_filter_raw =
+    args.isMember("status") && args["status"].isString() ? to_lower_ascii(trim_ascii(args["status"].asString())) : "active";
+  const std::string status_filter = status_filter_raw.empty() ? "active" : status_filter_raw;
+
+  const bool include_sources =
+    args.isMember("include_sources") && args["include_sources"].isBool() ? args["include_sources"].asBool() : true;
+  const bool include_versions =
+    args.isMember("include_versions") && args["include_versions"].isBool() ? args["include_versions"].asBool() : false;
+
+  int limit = args.isMember("limit") && args["limit"].isInt() ? args["limit"].asInt() : 50;
+  limit = std::max(1, std::min(200, limit));
+
+  const std::filesystem::path mem_root = memory_root_from_ctx(ctx);
+  if (mem_root.empty()) {
+    return write_envelope(out_result, false, "memory_structured_query requires daemon session context (sessions_root_dir)", Json::Value(Json::objectValue));
+  }
+  const std::filesystem::path abs = (mem_root / rel_path).lexically_normal();
+  if (!path_is_within(mem_root.lexically_normal(), abs)) {
+    return write_envelope(out_result, false, "invalid path", Json::Value(Json::objectValue));
+  }
+
+  std::string content;
+  bool missing = false;
+  {
+    std::ifstream in(abs, std::ios::binary);
+    if (!in.is_open()) {
+      missing = true;
+      content = "";
+    } else {
+      std::stringstream ss;
+      ss << in.rdbuf();
+      content = ss.str();
+      if (content.size() > 2 * 1024 * 1024) {
+        content.resize(2 * 1024 * 1024);
+      }
+    }
+  }
+
+  Json::Value doc;
+  std::string derr;
+  if (!parse_structured_memory_doc(content, &doc, &derr)) {
+    return write_envelope(out_result, false, std::string("failed to parse structured memory doc: ") + derr, Json::Value(Json::objectValue));
+  }
+
+  const Json::Value items = doc.isMember("items") ? doc["items"] : Json::Value(Json::nullValue);
+  if (!items.isObject()) {
+    return write_envelope(out_result, false, "structured memory doc missing items", Json::Value(Json::objectValue));
+  }
+
+  auto key_norm = [&](const std::string& s) -> std::string { return key_case_insensitive ? to_lower_ascii(s) : s; };
+  const std::string key_n = key_norm(key);
+  const std::string pref_n = key_norm(key_prefix);
+
+  auto kind_match = [&](const std::string& kraw) -> bool {
+    if (kinds.empty()) return true;
+    const std::string k = to_lower_ascii(trim_ascii(kraw));
+    for (const auto& want : kinds) {
+      if (want == k) return true;
+    }
+    return false;
+  };
+  auto status_match = [&](const std::string& sraw) -> bool {
+    if (status_filter == "any" || status_filter == "*") return true;
+    const std::string s = to_lower_ascii(trim_ascii(sraw.empty() ? "active" : sraw));
+    return s == status_filter;
+  };
+  auto prefix_match = [&](const std::string& k) -> bool {
+    if (pref_n.empty()) return true;
+    const std::string kn = key_norm(k);
+    if (kn.size() < pref_n.size()) return false;
+    return kn.compare(0, pref_n.size(), pref_n) == 0;
+  };
+
+  Json::Value results(Json::arrayValue);
+  int matched = 0;
+  for (const auto& k : items.getMemberNames()) {
+    if ((int)results.size() >= limit) break;
+    if (!key_n.empty()) {
+      if (key_norm(k) != key_n) continue;
+    } else if (!prefix_match(k)) {
+      continue;
+    }
+    const Json::Value rec = items[k];
+    if (!rec.isObject()) continue;
+    const std::string kind = rec.isMember("kind") && rec["kind"].isString() ? rec["kind"].asString() : "fact";
+    const std::string status = rec.isMember("status") && rec["status"].isString() ? rec["status"].asString() : "active";
+    if (!kind_match(kind)) continue;
+    if (!status_match(status)) continue;
+
+    Json::Value out_rec = rec;
+    if (!include_versions && out_rec.isMember("versions")) out_rec.removeMember("versions");
+    if (!include_sources && out_rec.isMember("sources")) out_rec.removeMember("sources");
+    if (out_rec.isMember("source")) out_rec.removeMember("source"); // v1 legacy field (keep output v2-clean)
+
+    Json::Value row(Json::objectValue);
+    row["key"] = k;
+    row["record"] = out_rec;
+    results.append(row);
+    matched++;
+
+    if (!key_n.empty() && key_norm(k) == key_n) break;
+  }
+
+  Json::Value data(Json::objectValue);
+  data["tool"] = "memory_structured_query";
+  data["memory_root"] = to_generic_string(mem_root);
+  data["path"] = rel_path;
+  data["abs_path"] = to_generic_string(abs);
+  data["missing"] = missing;
+  Json::Value q(Json::objectValue);
+  if (!key.empty()) q["key"] = key;
+  if (!key_prefix.empty()) q["key_prefix"] = key_prefix;
+  q["key_case_insensitive"] = key_case_insensitive;
+  q["status"] = status_filter;
+  q["include_sources"] = include_sources;
+  q["include_versions"] = include_versions;
+  q["limit"] = limit;
+  if (!kinds.empty()) {
+    Json::Value ka(Json::arrayValue);
+    for (const auto& k : kinds) ka.append(k);
+    q["kinds"] = ka;
+  }
+  data["query"] = q;
+  data["matched"] = matched;
+  data["results"] = results;
+  data["output"] = "memory_structured_query: matched=" + std::to_string(matched);
   return write_envelope(out_result, true, "", data);
 }
 

@@ -229,6 +229,7 @@ agent_status_t tool_client_peek(HostToolCtx* ctx, const char* arguments_json, ag
 agent_status_t tool_memory_write(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 agent_status_t tool_memory_get(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
+agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
 
 } // namespace host_tools_internal

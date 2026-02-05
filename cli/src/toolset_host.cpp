@@ -1688,6 +1688,9 @@ static agent_status_t host_tools_execute(void* vctx, const char* tool_name, cons
   if (name == "memory_search") {
     return tool_memory_search(ctx, arguments_json, out_result);
   }
+  if (name == "memory_structured_query") {
+    return tool_memory_structured_query(ctx, arguments_json, out_result);
+  }
   if (name == "memory_put") {
     return tool_memory_put(ctx, arguments_json, out_result);
   }
@@ -1918,6 +1921,27 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
       "  \"max_snippet_chars\":{\"type\":\"integer\",\"description\":\"Max chars per snippet (default: 600).\"}"
       "},"
       "\"required\":[\"query\"]"
+      "}"
+    );
+    if (st != AGENT_OK) goto fail;
+
+    st = add_tool(
+      r,
+      "memory_structured_query",
+      "Query structured memory records (facts/preferences/tasks) from a structured memory Markdown file (default: STRUCTURED.md). Prefer this over substring search when you know stable keys/prefixes.",
+      "{"
+      "\"type\":\"object\","
+      "\"properties\":{"
+      "  \"path\":{\"type\":\"string\",\"description\":\"Relative .md path under the daemon memory directory (default: STRUCTURED.md).\"},"
+      "  \"key\":{\"type\":\"string\",\"description\":\"Exact key to fetch (optional).\"},"
+      "  \"key_prefix\":{\"type\":\"string\",\"description\":\"Key prefix filter (optional).\"},"
+      "  \"key_case_insensitive\":{\"type\":\"boolean\",\"description\":\"When true, key/prefix matching is case-insensitive (default: false).\"},"
+      "  \"kinds\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Optional kinds filter: fact|preference|task.\"},"
+      "  \"status\":{\"type\":\"string\",\"description\":\"Status filter (default: active). Use any to include deprecated.\"},"
+      "  \"include_sources\":{\"type\":\"boolean\",\"description\":\"Include sources[] in results (default: true).\"},"
+      "  \"include_versions\":{\"type\":\"boolean\",\"description\":\"Include versions[] history in results (default: false).\"},"
+      "  \"limit\":{\"type\":\"integer\",\"description\":\"Max matched records (default: 50; max: 200).\"}"
+      "}"
       "}"
     );
     if (st != AGENT_OK) goto fail;

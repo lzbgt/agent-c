@@ -200,6 +200,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - Memory v2 (retrieval): `memory_search` now prefers a ranked on-disk index (SQLite FTS5) when available, with automatic fallback to bounded substring scan.
   - Also: structured memory updates (`memory_put(entries)`) produce rolling JSON checkpoints under `memory/checkpoints/` for time-correlation.
   - Proof: `ctest` includes `test_host_toolset` (memory tools) plus existing daemon smokes that exercise host tools.
+- Memory v2.3 (structured query primitive): deterministic `memory_structured_query` host tool + workflow task kind for fetching structured records by key/prefix/kind
+  (more correct + explainable than substring search when keys are stable).
+  - Proof: `ctest` includes `agentd_workflow_memory_structured_query_smoke`.
 - Memory v2.1 (rolling consolidation, deterministic): `agentd` can promote explicit `@mem ...` markers from daily memory into structured memory via `POST /api/v1/memory/consolidate`, and can run it periodically with `--memory-consolidate-interval-ms`.
   - Proof: `ctest` includes `agentd_memory_consolidate_smoke` (idempotent; no checkpoint churn on second run).
 - Durable workflows can now trigger deterministic rolling consolidation as a task:
