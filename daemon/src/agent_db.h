@@ -110,6 +110,8 @@ class AgentDb {
 
   struct EdgeTaskEventRow;
   struct EdgeInboxMessageRow;
+  struct WorkflowEventRow;
+  struct EdgeWorkflowEventRow;
 
   // Best-effort trace correlation for edge interop: search edge task events whose data_json contains the given trace_id.
   bool read_edge_task_events_by_trace_id(
@@ -126,6 +128,25 @@ class AgentDb {
     size_t max_bytes,
     size_t max_records,
     std::vector<EdgeInboxMessageRow>* out_rows_desc,
+    std::string* out_error
+  );
+
+  // Best-effort trace correlation for durable workflows: returns workflow_events for workflows whose workflows.trace_id matches.
+  bool read_workflow_events_by_trace_id(
+    const std::string& trace_id,
+    size_t max_bytes,
+    size_t max_records,
+    std::vector<WorkflowEventRow>* out_rows_desc,
+    std::string* out_error
+  );
+
+  // Best-effort trace correlation for edge workflows: returns edge_workflow_events for workflows that are correlated via
+  // edge_tasks.trace_id (and also includes workflow_id == trace_id as a convenience).
+  bool read_edge_workflow_events_by_trace_id(
+    const std::string& trace_id,
+    size_t max_bytes,
+    size_t max_records,
+    std::vector<EdgeWorkflowEventRow>* out_rows_desc,
     std::string* out_error
   );
 

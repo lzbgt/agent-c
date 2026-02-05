@@ -39,6 +39,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - `edge_tasks` persists `trace_id` (durable correlation even if a node omits echoing trace on `TASK_*` messages).
   - `GET /api/v1/trace?trace_id=...` also surfaces best-effort edge task metadata, task events, and inbound UM‑BMP envelopes.
   - Proof: `ctest` includes `agentd_trace_edge_interop_smoke`.
+- Trace correlation now joins durable orchestration and edge workflows:
+  - `GET /api/v1/trace?trace_id=...` also surfaces durable workflow events (`source:"workflow_event"`) via indexed `workflows.trace_id`.
+  - `GET /api/v1/trace?trace_id=...` also surfaces edge workflow events (`source:"edge_workflow_event"`) correlated via `edge_tasks.trace_id`.
+  - Proof: `ctest` includes `agentd_trace_workflow_events_smoke`.
 - Oren AVM governance endpoints (scan-before-execute; out-of-process).
   - Endpoints:
     - `POST /api/v1/avm/job_scan` (`avm --print-job-json`)
@@ -285,8 +289,10 @@ Priority order (reweighted after `delegate_parallel` join customization shipped;
      - `GET /api/v1/memory/checkpoints`
      - `GET /api/v1/memory/correlate?trace_id=...`
      - Proof: `ctest` includes `agentd_memory_correlate_smoke`.
-   - Next: extend correlation beyond structured memory:
-     - join across workflow events + edge workflow events by `trace_id`
+   - Shipped: cross-layer event correlation by `trace_id`:
+     - `GET /api/v1/trace?trace_id=...` now joins durable `workflow_events` and `edge_workflow_events` (best-effort) into the same trace surface.
+     - Proof: `ctest` includes `agentd_trace_workflow_events_smoke`.
+   - Next: extend correlation beyond trace lookup:
      - add “memory query plan” primitives (bounded time windows + key-prefix filters) for large fleets.
 
 ### 1) AVM capsule execution v0 (next: integrate + attest)

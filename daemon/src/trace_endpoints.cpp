@@ -207,6 +207,63 @@ void handle_trace_lookup_endpoint(
     }
   }
 
+  // Best-effort: durable workflow events correlated by workflows.trace_id (indexed).
+  {
+    const size_t remaining_records = ((size_t)recs.size() >= max_records) ? 0 : (max_records - (size_t)recs.size());
+    const size_t remaining_bytes = (used_bytes >= max_bytes) ? 0 : (max_bytes - used_bytes);
+    if (remaining_records > 0 && remaining_bytes > 0) {
+      std::vector<AgentDb::WorkflowEventRow> wf_events;
+      std::string werr;
+      if (db_or_null->read_workflow_events_by_trace_id(trace_id, remaining_bytes, remaining_records, &wf_events, &werr)) {
+        for (const auto& ev : wf_events) {
+          if (used_bytes + ev.data_json.size() > max_bytes) break;
+          Json::Value row(Json::objectValue);
+          row["source"] = "workflow_event";
+          row["event_id"] = (Json::Int64)ev.event_id;
+          row["workflow_id"] = ev.workflow_id;
+          if (!ev.task_id.empty()) row["task_id"] = ev.task_id;
+          row["ts_unix_ms"] = (Json::Int64)ev.ts_unix_ms;
+          row["type"] = ev.type;
+          Json::Value v;
+          std::string perr;
+          if (json_parse_object(ev.data_json, &v, &perr)) row["event"] = v;
+          else row["event_raw"] = ev.data_json;
+          recs.append(row);
+          used_bytes += ev.data_json.size();
+          if ((size_t)recs.size() >= max_records) break;
+        }
+      }
+    }
+  }
+
+  // Best-effort: edge workflow events correlated via edge_tasks.trace_id (or workflow_id == trace_id).
+  {
+    const size_t remaining_records = ((size_t)recs.size() >= max_records) ? 0 : (max_records - (size_t)recs.size());
+    const size_t remaining_bytes = (used_bytes >= max_bytes) ? 0 : (max_bytes - used_bytes);
+    if (remaining_records > 0 && remaining_bytes > 0) {
+      std::vector<AgentDb::EdgeWorkflowEventRow> wf_events;
+      std::string werr;
+      if (db_or_null->read_edge_workflow_events_by_trace_id(trace_id, remaining_bytes, remaining_records, &wf_events, &werr)) {
+        for (const auto& ev : wf_events) {
+          if (used_bytes + ev.data_json.size() > max_bytes) break;
+          Json::Value row(Json::objectValue);
+          row["source"] = "edge_workflow_event";
+          row["id"] = (Json::Int64)ev.id;
+          row["workflow_id"] = ev.workflow_id;
+          row["ts_utc_ms"] = (Json::Int64)ev.ts_utc_ms;
+          row["type"] = ev.type;
+          Json::Value v;
+          std::string perr;
+          if (json_parse_object(ev.data_json, &v, &perr)) row["event"] = v;
+          else row["event_raw"] = ev.data_json;
+          recs.append(row);
+          used_bytes += ev.data_json.size();
+          if ((size_t)recs.size() >= max_records) break;
+        }
+      }
+    }
+  }
+
   out["count"] = (Json::UInt64)recs.size();
   out["records"] = recs;
   resp->body = json_stringify(out);

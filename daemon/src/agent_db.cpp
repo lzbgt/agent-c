@@ -2843,6 +2843,162 @@ bool AgentDb::read_edge_inbox_messages_by_trace_id(
 #endif
 }
 
+bool AgentDb::read_workflow_events_by_trace_id(
+  const std::string& trace_id,
+  size_t max_bytes,
+  size_t max_records,
+  std::vector<WorkflowEventRow>* out_rows_desc,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_rows_desc) out_rows_desc->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)trace_id;
+  (void)max_bytes;
+  (void)max_records;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  if (trace_id.empty()) {
+    if (out_error) *out_error = "trace_id is empty";
+    return false;
+  }
+  if (max_bytes == 0) max_bytes = 1024 * 1024;
+  if (max_records == 0) max_records = 200;
+  if (max_records > 2000) max_records = 2000;
+
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT e.event_id, e.workflow_id, e.task_id, e.ts_unix_ms, e.type, e.data_json
+FROM workflow_events e
+JOIN workflows w ON w.workflow_id = e.workflow_id
+WHERE w.trace_id=?
+ORDER BY e.ts_unix_ms DESC, e.event_id DESC
+LIMIT ?;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+
+  bool ok = bind_text(st, 1, trace_id) && sqlite3_bind_int(st, 2, (int)max_records) == SQLITE_OK;
+  std::vector<WorkflowEventRow> rows;
+  size_t used = 0;
+  while (ok && step_row(st)) {
+    WorkflowEventRow r;
+    r.event_id = (int64_t)sqlite3_column_int64(st, 0);
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 1);
+      r.workflow_id = txt ? (const char*)txt : "";
+    }
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 2);
+      r.task_id = txt ? (const char*)txt : "";
+    }
+    r.ts_unix_ms = (int64_t)sqlite3_column_int64(st, 3);
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 4);
+      r.type = txt ? (const char*)txt : "";
+    }
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 5);
+      r.data_json = txt ? (const char*)txt : "";
+    }
+    if (r.data_json.empty()) continue;
+    if (used + r.data_json.size() > max_bytes) break;
+    used += r.data_json.size();
+    rows.push_back(std::move(r));
+  }
+  if (!ok && out_error) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  if (ok && out_rows_desc) *out_rows_desc = std::move(rows);
+  return ok;
+#endif
+}
+
+bool AgentDb::read_edge_workflow_events_by_trace_id(
+  const std::string& trace_id,
+  size_t max_bytes,
+  size_t max_records,
+  std::vector<EdgeWorkflowEventRow>* out_rows_desc,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_rows_desc) out_rows_desc->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)trace_id;
+  (void)max_bytes;
+  (void)max_records;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  if (trace_id.empty()) {
+    if (out_error) *out_error = "trace_id is empty";
+    return false;
+  }
+  if (max_bytes == 0) max_bytes = 1024 * 1024;
+  if (max_records == 0) max_records = 200;
+  if (max_records > 2000) max_records = 2000;
+
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT id, workflow_id, ts_utc_ms, type, data_json
+FROM edge_workflow_events
+WHERE workflow_id=?
+   OR (workflow_id IN (SELECT DISTINCT task_id FROM edge_tasks WHERE trace_id=?) AND workflow_id<>?)
+ORDER BY ts_utc_ms DESC, id DESC
+LIMIT ?;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+
+  bool ok = true;
+  ok = ok && bind_text(st, 1, trace_id);
+  ok = ok && bind_text(st, 2, trace_id);
+  ok = ok && bind_text(st, 3, trace_id);
+  ok = ok && sqlite3_bind_int(st, 4, (int)max_records) == SQLITE_OK;
+  std::vector<EdgeWorkflowEventRow> rows;
+  size_t used = 0;
+  while (ok && step_row(st)) {
+    EdgeWorkflowEventRow r;
+    r.id = (int64_t)sqlite3_column_int64(st, 0);
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 1);
+      r.workflow_id = txt ? (const char*)txt : "";
+    }
+    r.ts_utc_ms = (int64_t)sqlite3_column_int64(st, 2);
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 3);
+      r.type = txt ? (const char*)txt : "";
+    }
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 4);
+      r.data_json = txt ? (const char*)txt : "";
+    }
+    if (r.data_json.empty()) continue;
+    if (used + r.data_json.size() > max_bytes) break;
+    used += r.data_json.size();
+    rows.push_back(std::move(r));
+  }
+  if (!ok && out_error) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  if (ok && out_rows_desc) *out_rows_desc = std::move(rows);
+  return ok;
+#endif
+}
+
 bool AgentDb::list_artifacts_by_session(
   const std::string& session_id,
   size_t max_artifacts,
