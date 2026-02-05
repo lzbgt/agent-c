@@ -125,6 +125,20 @@ struct DaemonConfig {
   // - "127.0.0.1" or "127.0.0.1:9090"
   // - "[::1]" or "[::1]:9090"
   std::vector<std::string> workflow_http_allow_hosts;
+  // Optional CIDR allowlist for outbound deterministic HTTP tasks.
+  //
+  // Entries:
+  // - "192.168.0.0/16"
+  // - "10.0.0.0/8"
+  // - "127.0.0.0/8"
+  // - "fd00::/8"
+  std::vector<std::string> workflow_http_allow_cidrs;
+  // Defense-in-depth SSRF hardening:
+  // - when enabled, outbound deterministic HTTP targets that resolve to private/loopback/link-local
+  //   addresses are rejected unless explicitly allowed by:
+  //   - matching workflow_http_allow_cidrs, or
+  //   - matching workflow_http_allow_hosts for a literal IP host target.
+  bool workflow_http_deny_private_addrs = false;
 
   // Memory consolidation (rolling, deterministic by default).
   //

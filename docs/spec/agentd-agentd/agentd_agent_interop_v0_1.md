@@ -59,6 +59,8 @@ This is intentionally conservative:
 - Optional hardening: restrict outbound targets with:
   - `--workflow-http-allow-host <host[:port]>` (repeatable), or
   - env `AGENTD_WORKFLOW_HTTP_ALLOW_HOSTS=host[:port],...`
+  - `--workflow-http-allow-cidr <cidr>` (repeatable), or env `AGENTD_WORKFLOW_HTTP_ALLOW_CIDRS=...`
+  - `--workflow-http-deny-private`, or env `AGENTD_WORKFLOW_HTTP_DENY_PRIVATE=1`
 - Do not persist secrets into workflows:
   - Use `agentd_call.bearer_env` to reference an env var name containing a bearer token.
   - Only the env var name is persisted; the secret value is read at runtime.

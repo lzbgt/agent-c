@@ -275,6 +275,9 @@ Security model:
 - Operators must opt in by starting the daemon with `--workflow-enable-http-tasks` (or env `AGENTD_WORKFLOW_ENABLE_HTTP_TASKS=1`).
 - Optional hardening: restrict outbound targets with `--workflow-http-allow-host <host[:port]>` (repeatable),
   or env `AGENTD_WORKFLOW_HTTP_ALLOW_HOSTS=host[:port],...`.
+- Further hardening:
+  - `--workflow-http-allow-cidr <cidr>` (repeatable) / env `AGENTD_WORKFLOW_HTTP_ALLOW_CIDRS=...`
+  - `--workflow-http-deny-private` / env `AGENTD_WORKFLOW_HTTP_DENY_PRIVATE=1`
 - Do **not** embed secrets into persisted workflow specs via headers. `Authorization` headers are rejected at submit time.
   - If you need a bearer token, use `http_json.bearer_env` to reference an env var name (only the name is persisted).
 
@@ -315,6 +318,9 @@ Security model:
 - Operators must opt in by starting the daemon with `--workflow-enable-http-tasks` (or env `AGENTD_WORKFLOW_ENABLE_HTTP_TASKS=1`).
 - Optional hardening: restrict outbound targets with `--workflow-http-allow-host <host[:port]>` (repeatable),
   or env `AGENTD_WORKFLOW_HTTP_ALLOW_HOSTS=host[:port],...`.
+- Further hardening:
+  - `--workflow-http-allow-cidr <cidr>` (repeatable) / env `AGENTD_WORKFLOW_HTTP_ALLOW_CIDRS=...`
+  - `--workflow-http-deny-private` / env `AGENTD_WORKFLOW_HTTP_DENY_PRIVATE=1`
 - Do **not** embed secrets into persisted workflow specs via headers. `Authorization` headers are rejected at submit time.
   - If you need a bearer token, use `agentd_call.bearer_env` to reference an env var name (only the name is persisted).
 

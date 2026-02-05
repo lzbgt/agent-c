@@ -132,7 +132,7 @@ Json::Value workflow_agentd_call_to_json(
   {
     std::string why;
     if (!workflow_http_url_is_allowed(cfg, base_url, &why)) {
-      return err_out("agentd_call base_url is not allowed by workflow_http_allow_hosts: " + why);
+      return err_out("agentd_call base_url is not allowed by workflow_http outbound policy: " + why);
     }
   }
 

@@ -69,18 +69,31 @@ url="http://${HOST}:${PORT_STUB}/echo"
 
 run_one() {
   local allow_host="$1"
-  local expect_status="$2" # done|error
+  local allow_cidr="$2"
+  local deny_private="$3"
+  local expect_status="$4" # done|error
 
   agentd_smoke_stop
   rm -f "${DB_PATH}" >/dev/null 2>&1 || true
   rm -rf "${STATE_DIR}" >/dev/null 2>&1 || true
+
+  local extra=()
+  if [[ -n "${allow_host}" ]]; then
+    extra+=(--workflow-http-allow-host "${allow_host}")
+  fi
+  if [[ -n "${allow_cidr}" ]]; then
+    extra+=(--workflow-http-allow-cidr "${allow_cidr}")
+  fi
+  if [[ "${deny_private}" == "1" ]]; then
+    extra+=(--workflow-http-deny-private)
+  fi
 
   agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "${NAME}_${expect_status}" \
     --db-path "${DB_PATH}" \
     --state-dir "${STATE_DIR}" \
     --tools none \
     --workflow-enable-http-tasks \
-    --workflow-http-allow-host "${allow_host}"
+    "${extra[@]}"
 
   agentd_smoke_wait_health "${DAEMON_URL}"
 
@@ -167,15 +180,23 @@ else:
     print("expected not ok result", r, file=sys.stderr)
     raise SystemExit(1)
   err = r.get("error","")
-  if "allow_hosts" not in err and "allowlist" not in err and "not allowed" not in err:
+  if "allowlist" not in err and "not allowed" not in err and "outbound policy" not in err:
     print("expected allowlist error", err, file=sys.stderr)
     raise SystemExit(1)
 PY
 }
 
 # Deny: allowlist does not include 127.0.0.1 so the deterministic http task must fail closed.
-run_one "example.com" "error"
+run_one "example.com" "" "0" "error"
+
+# Deny-private with no allowlist: 127.0.0.1 target should be rejected (defense-in-depth).
+run_one "" "" "1" "error"
 
 # Allow: allowlist includes the stub host; request should succeed.
-run_one "127.0.0.1" "done"
+run_one "127.0.0.1" "" "0" "done"
 
+# Allow via CIDR even with deny-private enabled.
+run_one "" "127.0.0.0/8" "1" "done"
+
+# Allow-host can explicitly permit a literal IP even with deny-private enabled.
+run_one "127.0.0.1" "" "1" "done"

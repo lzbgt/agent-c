@@ -116,6 +116,14 @@ void handle_config_endpoint(
     }
     engines["workflow_http_allow_hosts"] = arr;
   }
+  if (!cfg.workflow_http_allow_cidrs.empty()) {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& c : cfg.workflow_http_allow_cidrs) {
+      if (!c.empty()) arr.append(c);
+    }
+    engines["workflow_http_allow_cidrs"] = arr;
+  }
+  engines["workflow_http_deny_private_addrs"] = cfg.workflow_http_deny_private_addrs;
   out["engines"] = engines;
 
   Json::Value memory(Json::objectValue);

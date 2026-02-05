@@ -444,6 +444,16 @@ int main(int argc, char** argv) {
       }
       v = trim_copy(v);
       if (!v.empty()) cfg.workflow_http_allow_hosts.push_back(v);
+    } else if (a == "--workflow-http-allow-cidr") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --workflow-http-allow-cidr\n";
+        return 2;
+      }
+      v = trim_copy(v);
+      if (!v.empty()) cfg.workflow_http_allow_cidrs.push_back(v);
+    } else if (a == "--workflow-http-deny-private") {
+      cfg.workflow_http_deny_private_addrs = true;
     } else if (a == "--memory-consolidate-interval-ms") {
       std::string v;
       if (!take(&v)) {
@@ -712,6 +722,8 @@ int main(int argc, char** argv) {
         << "  --workflow-admit-max-inflight-tasks-total <n>        Admission control cap (queued|running tasks total); 0 disables (default: 0)\n"
         << "  --workflow-enable-http-tasks   Enable deterministic workflow kind:\"http_json\" outbound HTTP (INSECURE by default; SSRF risk)\n"
         << "  --workflow-http-allow-host <host[:port]>   Optional allowlist for workflow outbound HTTP (repeatable; default: allow any host when enabled)\n"
+        << "  --workflow-http-allow-cidr <cidr>   Optional CIDR allowlist for workflow outbound HTTP (repeatable; e.g. 10.0.0.0/8)\n"
+        << "  --workflow-http-deny-private   Reject private/loopback/link-local outbound HTTP targets unless explicitly allowed (defense-in-depth)\n"
         << "  --memory-consolidate-interval-ms <n>   Run memory consolidation every n ms (default: 0=disabled)\n"
         << "  --memory-consolidate-daily-days <n>    Scan last n daily memory files for @mem markers (default: 14)\n"
         << "  --memory-consolidate-keep-checkpoints <n>  Retain at most n structured checkpoints (default: 100)\n"
@@ -890,6 +902,19 @@ int main(int argc, char** argv) {
         if (!t.empty()) cfg.workflow_http_allow_hosts.push_back(t);
       }
     }
+  }
+  if (cfg.workflow_http_allow_cidrs.empty()) {
+    if (const char* s = getenv_s("AGENTD_WORKFLOW_HTTP_ALLOW_CIDRS")) {
+      std::vector<std::string> toks;
+      parse_csv_tokens_best_effort(s, &toks);
+      for (auto& t : toks) {
+        t = trim_copy(t);
+        if (!t.empty()) cfg.workflow_http_allow_cidrs.push_back(t);
+      }
+    }
+  }
+  if (const char* s = getenv_s("AGENTD_WORKFLOW_HTTP_DENY_PRIVATE")) {
+    cfg.workflow_http_deny_private_addrs = env_truthy(s);
   }
   if (const char* ms = getenv_s("AGENTD_MEMORY_CONSOLIDATE_INTERVAL_MS")) {
     try {

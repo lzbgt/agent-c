@@ -69,7 +69,7 @@ Json::Value workflow_http_json_to_json(
   {
     std::string why;
     if (!workflow_http_url_is_allowed(cfg, url, &why)) {
-      return err_out("http_json url is not allowed by workflow_http_allow_hosts: " + why);
+      return err_out("http_json url is not allowed by workflow_http outbound policy: " + why);
     }
   }
 
