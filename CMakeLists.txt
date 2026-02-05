@@ -139,6 +139,7 @@ if(AGENT_BUILD_HOST)
     daemon/src/client_profiles.cpp
     daemon/src/config_endpoint.cpp
     daemon/src/avm_endpoints.cpp
+    daemon/src/cbor_decode.cpp
     daemon/src/cors.cpp
     daemon/src/db_query_endpoints.cpp
     daemon/src/daemon_auth.cpp
@@ -454,6 +455,7 @@ if(AGENT_BUILD_HOST)
 							    add_test(NAME agentd_workflow_stats_budget_pressure_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_stats_budget_pressure_smoke.sh $<TARGET_FILE:agentd>)
 						    add_test(NAME agentd_workflow_stats_sessions_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_stats_sessions_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_interop_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_interop_smoke.sh $<TARGET_FILE:agentd>)
+				    add_test(NAME agentd_edge_message_cbor_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_message_cbor_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_caps_sha256_validation_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_caps_sha256_validation_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_task_assign_schema_validation_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_task_assign_schema_validation_smoke.sh $<TARGET_FILE:agentd>)
 					    add_test(NAME agentd_edge_task_done_result_schema_validation_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_task_done_result_schema_validation_smoke.sh $<TARGET_FILE:agentd>)
@@ -637,6 +639,13 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
     target_link_libraries(workflow_fairq_cost_tests PRIVATE agentd_lib)
     target_compile_definitions(workflow_fairq_cost_tests PRIVATE AGENT_HAVE_JSONCPP=1)
     add_test(NAME workflow_fairq_cost_tests COMMAND workflow_fairq_cost_tests)
+
+    add_executable(cbor_decode_tests
+      tests/test_cbor_decode.cpp
+    )
+    target_link_libraries(cbor_decode_tests PRIVATE agentd_lib)
+    target_compile_definitions(cbor_decode_tests PRIVATE AGENT_HAVE_JSONCPP=1)
+    add_test(NAME cbor_decode_tests COMMAND cbor_decode_tests)
   endif()
 
   if(AGENT_ENABLE_SQLITE3)

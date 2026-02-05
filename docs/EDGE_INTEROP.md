@@ -64,6 +64,12 @@ All endpoints require daemon auth when `agentd` is started with `--auth-token`.
 
 `POST /api/v1/edge/message`
 
+Wire encoding:
+- Default: `Content-Type: application/json` (envelope is JSON object).
+- Optional MCU/gateway profile: `Content-Type: application/cbor` (envelope is CBOR map with the same keys/shape).
+  - This is intended for constrained transports (LoRa/MQTT bridges) where JSON overhead is material.
+  - The platform requires definite-length CBOR items and text-string map keys (no indefinite-length streaming items).
+
 This stores the envelope durably (`edge_inbox_messages`) and updates platform state:
 - `NODE_HELLO`, `NODE_HEARTBEAT` update `edge_nodes`
 - `NODE_CAPS_RSP` stores manifest + extracts tags/tools/presence

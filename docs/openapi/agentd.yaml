@@ -976,6 +976,10 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/EdgeMessageEnvelope"
+          application/cbor:
+            schema:
+              type: string
+              format: binary
       responses:
         "200":
           description: Accepted (idempotent)

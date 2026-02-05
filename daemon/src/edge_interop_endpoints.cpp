@@ -1,5 +1,6 @@
 #include "edge_interop_endpoints.h"
 
+#include "cbor_decode.h"
 #include "daemon_auth.h"
 #include "edge_rules.h"
 #include "edge_util.h"
@@ -53,13 +54,29 @@ void handle_edge_message_endpoint(
 
   Json::Value env;
   std::string perr;
-  if (!json_parse_object(req.body, &env, &perr)) {
-    resp->status = 400;
-    Json::Value o(Json::objectValue);
-    o["ok"] = false;
-    o["error"] = std::string("invalid JSON: ") + perr;
-    resp->body = edge_json_stringify_compact(o);
-    return;
+  {
+    const std::string ct =
+      req.headers.count("content-type") ? trim_copy(req.headers.at("content-type")) : "";
+    const bool is_cbor = !ct.empty() && url_contains_ci(ct, "application/cbor");
+    if (is_cbor) {
+      if (!cbor_decode_to_json_value(req.body, &env, &perr) || !env.isObject()) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = std::string("invalid CBOR: ") + (perr.empty() ? "parse failed" : perr);
+        resp->body = edge_json_stringify_compact(o);
+        return;
+      }
+    } else {
+      if (!json_parse_object(req.body, &env, &perr)) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = std::string("invalid JSON: ") + perr;
+        resp->body = edge_json_stringify_compact(o);
+        return;
+      }
+    }
   }
 
   const std::string msg_id = env.isMember("msg_id") && env["msg_id"].isString() ? trim_copy(env["msg_id"].asString()) : "";
