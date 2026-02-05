@@ -1,4 +1,4 @@
-# UM‑BMP Envelope Auth (HMAC) — Profile v0.4 (Draft)
+# UM‑BMP Envelope Auth — Profile v0.4 (Draft)
 
 Date: 2026-02-05
 
@@ -18,7 +18,7 @@ This profile is transport-agnostic and applies to both JSON and CBOR wire mappin
 ## Non-goals
 
 - Confidentiality (use TLS/transport security when available).
-- Public-key identity / non-repudiation (future profile; e.g., Ed25519).
+- Certificate chains / PKI (this profile uses a simple `kid -> key material` directory).
 
 ## Envelope fields
 
@@ -36,12 +36,18 @@ When present, the envelope includes:
 ```
 
 Semantics:
-- `auth.alg` MUST be either:
-  - `"hmac-sha256"` (signing input is canonical JSON bytes), or
-  - `"hmac-sha256-cbor"` (signing input is canonical CBOR bytes).
-- `auth.kid` selects a shared secret provisioned on both node/gateway and platform.
+- `auth.alg` MUST be one of:
+  - `"hmac-sha256"` (signing input is canonical JSON bytes),
+  - `"hmac-sha256-cbor"` (signing input is canonical CBOR bytes),
+  - `"ed25519"` (signing input is canonical JSON bytes),
+  - `"ed25519-cbor"` (signing input is canonical CBOR bytes).
+- `auth.kid` selects key material provisioned on both node/gateway and platform:
+  - for HMAC: shared secret
+  - for Ed25519: public key (platform) / private key seed (node)
 - `auth.seq` is an optional monotonic sequence number (recommended when clocks are unreliable).
-- `auth.sig` is base64 (RFC 4648 standard alphabet) of the 32-byte HMAC digest.
+- `auth.sig` is base64 (RFC 4648 standard alphabet) of:
+  - 32 bytes for HMAC-SHA256
+  - 64 bytes for Ed25519 signatures
 
 ## Signing input
 
@@ -74,6 +80,12 @@ Pseudocode:
 2) `canon = cbor_canonical(env_no_sig)` (see above)
 3) `sig = base64(HMAC_SHA256(secret_for(kid), canon))`
 
+For `auth.alg="ed25519"` and `auth.alg="ed25519-cbor"`:
+
+- Signing input is computed exactly as above (canonical JSON or canonical CBOR of `env_no_sig`).
+- `sig = base64(Ed25519_SIGN(sk_for(kid), signing_input))`
+- Verification is `Ed25519_VERIFY(pk_for(kid), signing_input, sig)`
+
 ## Platform enforcement behavior (agentd)
 
 Operator config:
@@ -83,6 +95,7 @@ Operator config:
 - `edge_auth_require_seq: bool` (default false)
 - `edge_auth_kid_policy: "any"|"match_node"|"node_prefix"` (default "any")
 - `edge_auth_hmac_keys: { kid -> secret }` (secrets; not exposed in config snapshots)
+- `edge_auth_ed25519_pubkeys: { kid -> base64(pubkey32) }` (stored in runtime secrets for uniformity; not exposed in config snapshots)
 
 When `edge_auth_required=true`:
 - Missing `auth` => reject with HTTP 401

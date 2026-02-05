@@ -13,6 +13,7 @@ option(AGENT_BUILD_ESP32SIM "Build esp32sim host harness for embedded agent_core
 
 add_library(agent_core STATIC
   core/src/agent_alloc.c
+  core/src/agent_ed25519.c
   core/src/agent_edge_interop.c
   core/src/agent_hmac_sha256.c
   core/src/agent_json_c14n.c
@@ -24,10 +25,15 @@ add_library(agent_core STATIC
   core/src/agent_tool_loop.c
   core/src/agent_tool_provider.c
   core/src/agent_tools.c
+  core/third_party/ed25519_donna/ed25519.c
 )
 
 target_include_directories(agent_core PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/core/include
+)
+
+target_include_directories(agent_core PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/core/third_party/ed25519_donna
 )
 
 include(FindPkgConfig)
@@ -50,6 +56,21 @@ endif()
 target_compile_options(agent_core PRIVATE
   $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wpedantic>
 )
+
+target_compile_definitions(agent_core PRIVATE
+  ED25519_REFHASH=1
+  ED25519_TEST=1
+  ED25519_NO_INLINE_ASM=1
+)
+
+# Small helper used by smoke tests (sign/print pubkey).
+add_executable(agent_ed25519_tool
+  tools/agent_ed25519_tool.cpp
+)
+target_compile_options(agent_ed25519_tool PRIVATE
+  $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+)
+target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
 
 if(AGENT_BUILD_HOST)
   find_package(CURL REQUIRED)
@@ -258,6 +279,7 @@ endif()
 enable_testing()
 add_executable(agent_core_tests
   tests/test_edge_interop.c
+  tests/test_ed25519.c
   tests/test_hmac_sha256.c
   tests/test_json_c14n.c
   tests/test_session.c
@@ -459,6 +481,12 @@ if(AGENT_BUILD_HOST)
 						    add_test(NAME agentd_workflow_stats_sessions_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_stats_sessions_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_interop_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_interop_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_auth_hmac_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_hmac_smoke.sh $<TARGET_FILE:agentd>)
+				    add_test(
+				      NAME agentd_edge_auth_ed25519_smoke
+				      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_ed25519_smoke.sh
+				        $<TARGET_FILE:agentd>
+				        $<TARGET_FILE:agent_ed25519_tool>
+				    )
 				    add_test(NAME agentd_edge_message_cbor_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_message_cbor_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_outbox_cbor_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_outbox_cbor_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_caps_sha256_validation_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_caps_sha256_validation_smoke.sh $<TARGET_FILE:agentd>)

@@ -80,13 +80,19 @@ If the platform sees a new/unknown `caps_sha256`, it queues a `PLATFORM_CAPS_REQ
 
 Envelope authenticity (optional, UM‑BMP auth v0.4):
 - Envelopes MAY include an `auth` object:
-  - `auth.alg`: `"hmac-sha256"` (sign canonical JSON) or `"hmac-sha256-cbor"` (sign canonical CBOR)
-  - `auth.kid`: key id selecting an operator-provisioned shared secret
+  - `auth.alg` (string):
+    - `"hmac-sha256"`: HMAC over canonical JSON bytes (`agent_json_c14n_v1`)
+    - `"hmac-sha256-cbor"`: HMAC over canonical CBOR bytes (deterministic RFC 8949 encoding; `daemon/src/cbor_encode.*`)
+    - `"ed25519"`: Ed25519 signature over canonical JSON bytes (`agent_json_c14n_v1`)
+    - `"ed25519-cbor"`: Ed25519 signature over canonical CBOR bytes (deterministic RFC 8949 encoding; `daemon/src/cbor_encode.*`)
+  - `auth.kid`: key id selecting an operator-provisioned shared secret (HMAC) or public key (Ed25519)
   - `auth.seq`: optional monotonic sequence number (anti-replay; when enabled by the platform)
-  - `auth.sig`: base64 of the 32-byte HMAC over the envelope with the `auth` field removed:
+  - `auth.sig`: base64 of the signature bytes:
+    - 32 bytes for HMAC-SHA256
+    - 64 bytes for Ed25519
+  - Signing input (all algs):
     - signing input is the envelope with `auth.sig` removed (auth metadata like `kid`/`seq` stays in the signed bytes)
-    - for `hmac-sha256`: **canonical JSON** bytes (`agent_json_c14n_v1`)
-    - for `hmac-sha256-cbor`: **canonical CBOR** bytes (RFC 8949, definite lengths, sorted string map keys; matches `daemon/src/cbor_encode.*`)
+    - for `*-cbor` algs: **canonical CBOR** bytes (RFC 8949, definite lengths, sorted string map keys; matches `daemon/src/cbor_encode.*`)
 - Operator controls:
   - `edge_auth.required` is surfaced via `GET /api/v1/config`.
   - `POST /api/v1/config/update` supports:
@@ -96,6 +102,7 @@ Envelope authenticity (optional, UM‑BMP auth v0.4):
     - `edge_auth_require_seq: true|false` (when true, requires monotonic `auth.seq` on authenticated envelopes)
     - `edge_auth_kid_policy: "any"|"match_node"|"node_prefix"` (best-effort binding between `from:"node:<id>"` and `auth.kid`)
     - `edge_auth_hmac_keys: { "<kid>": "<secret>", "<kid2>": null }` (null clears)
+    - `edge_auth_ed25519_pubkeys: { "<kid>": "<base64(pubkey32)>", "<kid2>": null }` (null clears)
 - Behavior:
   - If `edge_auth_required=true`: missing/invalid `auth` is rejected with HTTP 401 (no inbox persistence).
   - If `edge_auth_required=false`: unsigned envelopes are accepted, but if `auth` is present it must verify.
@@ -210,6 +217,7 @@ Workflows are executed by a background runner in `agentd`:
 Proof:
 - `ctest` includes `agentd_edge_interop_smoke` and `agentd_edge_workflow_submit_message_smoke`.
 - `ctest` includes `agentd_edge_auth_hmac_smoke`.
+- `ctest` includes `agentd_edge_auth_ed25519_smoke`.
 
 ## Storage
 

@@ -61,6 +61,13 @@ struct DaemonConfig {
   // - "match_node" / "node_prefix" let operators provision per-node secrets without changing envelope shape.
   std::string edge_auth_kid_policy = "any";
   std::map<std::string, std::string> edge_auth_hmac_keys; // kid -> secret
+  // Optional public-key trust roots for UM-BMP envelope auth.
+  //
+  // Map: kid -> base64(pubkey32) where pubkey32 is an Ed25519 public key (32 raw bytes).
+  //
+  // These are not secrets, but we store them in the runtime secrets blob to keep the control-plane
+  // surface uniform (and to avoid accidentally turning /api/v1/config into a directory of node keys).
+  std::map<std::string, std::string> edge_auth_ed25519_pubkeys; // kid -> base64(pubkey32)
   std::string model = "gpt-4o-mini";
   std::string summary_model;  // optional: model used to summarize dropped messages during compaction (tools=none)
   size_t summary_max_chars = 1200;

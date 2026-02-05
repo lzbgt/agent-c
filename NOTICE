@@ -5,3 +5,7 @@ Contact: rikusouhou@gmail.com
 
 This product is licensed under the Apache License, Version 2.0.
 
+Third-party components:
+
+- Ed25519-donna (public domain) by Andrew M. <liquidsun@gmail.com>
+  - Source: core/third_party/ed25519_donna/ (vendored from github.com/floodyberry/ed25519-donna)

@@ -12,6 +12,7 @@
 #include "base64.h"
 
 #include "agent_sha256.h"
+#include "agent/ed25519.h"
 #include "agent/hmac_sha256.h"
 #include "agent/json_c14n.h"
 
@@ -55,7 +56,7 @@ static bool auth_input_bytes_for_alg(
   }
 
   const std::string a = trim_copy(alg);
-  if (a == "hmac-sha256" || a == "HMAC-SHA256") {
+  if (a == "hmac-sha256" || a == "HMAC-SHA256" || a == "ed25519" || a == "ED25519") {
     Json::StreamWriterBuilder wb;
     wb["indentation"] = "";
     const std::string raw = Json::writeString(wb, env2);
@@ -75,7 +76,7 @@ static bool auth_input_bytes_for_alg(
     return true;
   }
 
-  if (a == "hmac-sha256-cbor" || a == "HMAC-SHA256-CBOR") {
+  if (a == "hmac-sha256-cbor" || a == "HMAC-SHA256-CBOR" || a == "ed25519-cbor" || a == "ED25519-CBOR") {
     std::string cbor;
     std::string cerr;
     if (!cbor_encode_json_value(env2, &cbor, &cerr)) {
@@ -182,9 +183,11 @@ static bool verify_edge_envelope_auth_best_effort(
   const std::string kid = trim_copy(auth["kid"].asString());
   const std::string sig_b64 = trim_copy(auth["sig"].asString());
   const std::string alg_norm = trim_copy(alg);
-  const bool alg_ok =
-    alg_norm == "hmac-sha256" || alg_norm == "HMAC-SHA256" ||
-    alg_norm == "hmac-sha256-cbor" || alg_norm == "HMAC-SHA256-CBOR";
+  const bool alg_is_hmac = (alg_norm == "hmac-sha256" || alg_norm == "HMAC-SHA256");
+  const bool alg_is_hmac_cbor = (alg_norm == "hmac-sha256-cbor" || alg_norm == "HMAC-SHA256-CBOR");
+  const bool alg_is_ed25519 = (alg_norm == "ed25519" || alg_norm == "ED25519");
+  const bool alg_is_ed25519_cbor = (alg_norm == "ed25519-cbor" || alg_norm == "ED25519-CBOR");
+  const bool alg_ok = alg_is_hmac || alg_is_hmac_cbor || alg_is_ed25519 || alg_is_ed25519_cbor;
   if (!alg_ok) {
       resp->status = 401;
       resp->body = "{\"ok\":false,\"error\":\"unsupported envelope.auth.alg\"}";
@@ -220,18 +223,14 @@ static bool verify_edge_envelope_auth_best_effort(
     }
   }
 
-  const auto it = cfg.edge_auth_hmac_keys.find(kid);
-  if (it == cfg.edge_auth_hmac_keys.end() || it->second.empty()) {
-    resp->status = 401;
-    resp->body = "{\"ok\":false,\"error\":\"unknown envelope.auth.kid\"}";
-    return false;
-  }
-
   std::string sig_bytes;
   std::string berr;
-  if (!base64_decode(sig_b64, &sig_bytes, &berr) || sig_bytes.size() != 32) {
+  const size_t want_sig_bytes = (alg_is_ed25519 || alg_is_ed25519_cbor) ? 64 : 32;
+  if (!base64_decode(sig_b64, &sig_bytes, &berr) || sig_bytes.size() != want_sig_bytes) {
     resp->status = 401;
-    resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth.sig (expected base64 of 32 bytes)\"}";
+    resp->body = (want_sig_bytes == 64)
+      ? "{\"ok\":false,\"error\":\"invalid envelope.auth.sig (expected base64 of 64 bytes)\"}"
+      : "{\"ok\":false,\"error\":\"invalid envelope.auth.sig (expected base64 of 32 bytes)\"}";
     return false;
   }
 
@@ -246,18 +245,49 @@ static bool verify_edge_envelope_auth_best_effort(
     return false;
   }
 
-  uint8_t mac[32];
-  agent_hmac_sha256(
-    it->second.data(),
-    it->second.size(),
-    input_bytes.data(),
-    input_bytes.size(),
-    mac
-  );
-  if (!fixed_time_eq32(mac, (const uint8_t*)sig_bytes.data())) {
-    resp->status = 401;
-    resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth.sig\"}";
-    return false;
+  if (alg_is_hmac || alg_is_hmac_cbor) {
+    const auto it = cfg.edge_auth_hmac_keys.find(kid);
+    if (it == cfg.edge_auth_hmac_keys.end() || it->second.empty()) {
+      resp->status = 401;
+      resp->body = "{\"ok\":false,\"error\":\"unknown envelope.auth.kid\"}";
+      return false;
+    }
+    uint8_t mac[32];
+    agent_hmac_sha256(
+      it->second.data(),
+      it->second.size(),
+      input_bytes.data(),
+      input_bytes.size(),
+      mac
+    );
+    if (!fixed_time_eq32(mac, (const uint8_t*)sig_bytes.data())) {
+      resp->status = 401;
+      resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth.sig\"}";
+      return false;
+    }
+  } else {
+    const auto it = cfg.edge_auth_ed25519_pubkeys.find(kid);
+    if (it == cfg.edge_auth_ed25519_pubkeys.end() || it->second.empty()) {
+      resp->status = 401;
+      resp->body = "{\"ok\":false,\"error\":\"unknown envelope.auth.kid\"}";
+      return false;
+    }
+    std::string pk_bytes;
+    std::string perr;
+    if (!base64_decode(it->second, &pk_bytes, &perr) || pk_bytes.size() != 32) {
+      resp->status = 401;
+      resp->body = "{\"ok\":false,\"error\":\"invalid configured ed25519 pubkey (expected base64 of 32 bytes)\"}";
+      return false;
+    }
+    if (!agent_ed25519_verify(
+          input_bytes.data(),
+          input_bytes.size(),
+          (const uint8_t*)pk_bytes.data(),
+          (const uint8_t*)sig_bytes.data())) {
+      resp->status = 401;
+      resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth.sig\"}";
+      return false;
+    }
   }
 
   return true;

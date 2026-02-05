@@ -365,10 +365,11 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
    - Shipped (v0.4 partial): CBOR-native auth input option for MCU stacks:
      - `auth.alg="hmac-sha256-cbor"` verifies HMAC over deterministic CBOR bytes of the envelope with `auth` removed
        (definite lengths + sorted string map keys; matches `daemon/src/cbor_encode.*`).
+   - Shipped (v0.4 partial): public-key envelope auth (no shared-secret blast radius):
+     - `auth.alg="ed25519"` verifies Ed25519 signatures over canonical JSON bytes (`agent_json_c14n_v1`).
+     - `auth.alg="ed25519-cbor"` verifies Ed25519 signatures over canonical CBOR bytes (deterministic RFC 8949 encoding).
    - Next: complete trust roots + identity binding:
      - per-node key provisioning workflow (bootstrap + rotation)
-     - public-key signatures (Ed25519) for stronger identity (no shared-secret blast radius)
-     - Ed25519 + CBOR-native signing profile for MCU transports that never render JSON (no shared-secret blast radius)
      - replay window guidance + nonce/ts enforcement for lossy bridges (configurable; deterministic)
 3) **Scheduling policy v2.4+** — DRR is shipped; telemetry-driven cost is now shipped (`telemetry_v1`), next is budget-pressure-aware charging and resilient fairness under mixed workloads.
 4) **Memory v2.3** — query-plan primitives (bounded windows + key-prefix filters) and automatic consolidation triggers as time advances,
@@ -477,11 +478,17 @@ Maintainability note (always-on):
      - Constraint: definite-length items only; map keys must be text strings (string-key CBOR profile).
      - Proof: `ctest` includes `agentd_edge_message_cbor_smoke` and `agentd_edge_outbox_cbor_smoke`.
    - Shipped (v0.4 partial): optional envelope authenticity (HMAC) for trust roots + spoofing resistance:
-     - Envelope may include `auth:{alg:"hmac-sha256",kid,seq?,sig}` where `sig` is base64(HMAC-SHA256(key[kid], c14n(envelope-with-auth.sig-removed))).
+     - Envelope may include `auth:{alg,kid,seq?,sig}` where:
+       - `alg:"hmac-sha256"` signs canonical JSON bytes (`agent_json_c14n_v1`)
+       - `alg:"hmac-sha256-cbor"` signs canonical CBOR bytes (deterministic RFC 8949 encoding)
+       - `alg:"ed25519"` signs canonical JSON bytes (`agent_json_c14n_v1`)
+       - `alg:"ed25519-cbor"` signs canonical CBOR bytes (deterministic RFC 8949 encoding)
+       - `sig` is base64 of 32 bytes (HMAC) or 64 bytes (Ed25519)
      - Operator control-plane:
        - `GET /api/v1/config` surfaces `edge_auth.required` + `edge_auth.hmac_keys_set`
        - `POST /api/v1/config/update` supports:
          - `edge_auth_required` and `edge_auth_hmac_keys`
+         - `edge_auth_ed25519_pubkeys` (kid -> base64(pubkey32))
          - optional replay-window hardening: `edge_auth_require_ts` and `edge_auth_max_skew_ms`
          - optional per-node trust root policy: `edge_auth_kid_policy` ("any"|"match_node"|"node_prefix")
          - optional anti-replay: `edge_auth_require_seq` (strict monotonic `auth.seq` per node; best-effort)
@@ -492,7 +499,7 @@ Maintainability note (always-on):
        - if optional: unsigned accepted, but if `auth` is present it must verify
      - Works for both JSON and CBOR wire encodings (auth is verified over platform canonical JSON after decoding).
      - Spec note: `docs/spec/um-eais/um-bmp-envelope-auth-hmac-v0.4.md`
-     - Proof: `ctest` includes `agentd_edge_auth_hmac_smoke`.
+     - Proof: `ctest` includes `agentd_edge_auth_hmac_smoke` and `agentd_edge_auth_ed25519_smoke`.
    - Next: consolidate UM‑EAIS + durable workflow handoff into a single **versioned interop contract** with explicit:
      - idempotency rules (`msg_id` vs `idempotency_key`) and replay guidance for lossy transports (MQTT/LoRa bridges)
      - correlation rules (`workflow_id` / `trace_id` / task trace suffixing)

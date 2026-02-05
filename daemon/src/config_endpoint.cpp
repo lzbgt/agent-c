@@ -1,10 +1,13 @@
 #include "config_endpoint.h"
 
 #include "daemon_auth.h"
+#include "edge_util.h"
 #include "json_util.h"
 #include "runtime_config.h"
 #include "provider_util.h"
 #include "string_util.h"
+
+#include "base64.h"
 
 #include <json/json.h>
 
@@ -252,6 +255,7 @@ void handle_config_endpoint(
   edge_auth["require_seq"] = cfg.edge_auth_require_seq;
   edge_auth["kid_policy"] = cfg.edge_auth_kid_policy;
   edge_auth["hmac_keys_set"] = (Json::UInt64)cfg.edge_auth_hmac_keys.size();
+  edge_auth["ed25519_pubkeys_set"] = (Json::UInt64)cfg.edge_auth_ed25519_pubkeys.size();
   out["edge_auth"] = edge_auth;
 
   Json::Value memory(Json::objectValue);
@@ -510,6 +514,53 @@ void handle_config_update_endpoint(
     }
   }
 
+  // Edge auth pubkeys (not secret, but stored in the runtime secrets blob for uniformity):
+  // - edge_auth_ed25519_pubkeys: { "<kid>": "<base64(pubkey32)>", ... } (null clears a kid)
+  if (args.isMember("edge_auth_ed25519_pubkeys")) {
+    if (!args["edge_auth_ed25519_pubkeys"].isObject()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "edge_auth_ed25519_pubkeys must be an object";
+      resp->status = 400;
+      resp->body = json_stringify(o);
+      return;
+    }
+    const auto& ek = args["edge_auth_ed25519_pubkeys"];
+    for (const auto& kid : ek.getMemberNames()) {
+      const Json::Value& v = ek[kid];
+      if (v.isNull()) {
+        next.edge_auth_ed25519_pubkeys.erase(kid);
+      } else if (v.isString()) {
+        const std::string s = trim_copy(v.asString());
+        if (s.empty()) {
+          next.edge_auth_ed25519_pubkeys.erase(kid);
+        } else {
+          if (kid.empty() || kid.size() > 64 || !edge_id_is_safe(kid)) {
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "invalid edge_auth_ed25519_pubkeys kid";
+            o["kid"] = kid;
+            resp->status = 400;
+            resp->body = json_stringify(o);
+            return;
+          }
+          std::string pk_bytes;
+          std::string berr;
+          if (!base64_decode(s, &pk_bytes, &berr) || pk_bytes.size() != 32) {
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "invalid edge_auth_ed25519_pubkeys value (expected base64 of 32 bytes)";
+            o["kid"] = kid;
+            resp->status = 400;
+            resp->body = json_stringify(o);
+            return;
+          }
+          next.edge_auth_ed25519_pubkeys[kid] = s;
+        }
+      }
+    }
+  }
+
   // Persist to daemon DB so defaults survive restarts.
   std::string werr;
   if (!save_runtime_config_best_effort(*db, next, &werr)) {
@@ -575,6 +626,7 @@ void handle_config_update_endpoint(
     o["provider_keys_set"] = keys;
   }
   o["edge_auth_hmac_keys_set"] = (Json::UInt64)next.edge_auth_hmac_keys.size();
+  o["edge_auth_ed25519_pubkeys_set"] = (Json::UInt64)next.edge_auth_ed25519_pubkeys.size();
   resp->body = json_stringify(o);
   return;
 }

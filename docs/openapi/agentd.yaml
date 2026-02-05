@@ -1373,6 +1373,7 @@ components:
             require_seq: { type: boolean }
             kid_policy: { type: string }
             hmac_keys_set: { type: integer, format: int64 }
+            ed25519_pubkeys_set: { type: integer, format: int64 }
         memory:
           type: object
           additionalProperties: true
@@ -1383,7 +1384,7 @@ components:
       properties:
         edge_auth_required:
           type: boolean
-          description: When true, `/api/v1/edge/message` requires a valid `envelope.auth` (HMAC profile)
+          description: When true, `/api/v1/edge/message` requires a valid `envelope.auth` (HMAC/Ed25519 profiles)
         edge_auth_require_ts:
           type: boolean
           description: When true, authenticated envelopes must include `ts_utc_ms` (> 0)
@@ -1403,6 +1404,12 @@ components:
             type: string
             nullable: true
           description: Map of `kid` → shared secret for edge envelope auth (null clears that kid)
+        edge_auth_ed25519_pubkeys:
+          type: object
+          additionalProperties:
+            type: string
+            nullable: true
+          description: Map of `kid` → base64(pubkey32) for Ed25519 edge envelope auth (null clears that kid)
         base_url:
           type: string
           description: Default base_url (used for provider inference and some clients)
@@ -1469,7 +1476,7 @@ components:
 
     AgentdConfigUpdateResponse:
       type: object
-      required: [ok, base_url, model, system_profile, summary_max_chars, timeout_ms, proxy_url_set, provider_keys_set, edge_auth_required, edge_auth_hmac_keys_set]
+      required: [ok, base_url, model, system_profile, summary_max_chars, timeout_ms, proxy_url_set, provider_keys_set, edge_auth_required, edge_auth_hmac_keys_set, edge_auth_ed25519_pubkeys_set]
       properties:
         ok: { type: boolean }
         base_url: { type: string }
@@ -1488,6 +1495,10 @@ components:
           type: integer
           format: int64
           description: Number of HMAC keys currently provisioned (secrets are not returned)
+        edge_auth_ed25519_pubkeys_set:
+          type: integer
+          format: int64
+          description: Number of Ed25519 pubkeys currently provisioned (pubkeys are not returned)
         engines:
           type: object
           additionalProperties: true

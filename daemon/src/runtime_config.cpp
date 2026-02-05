@@ -173,6 +173,19 @@ bool load_runtime_config_best_effort(
           cfg_io->edge_auth_hmac_keys[kid] = s;
         }
       }
+
+      // Edge auth pubkey directory (kid -> base64(pubkey32)).
+      if (v.isMember("edge_auth_ed25519_pubkeys") && v["edge_auth_ed25519_pubkeys"].isObject()) {
+        cfg_io->edge_auth_ed25519_pubkeys.clear();
+        const Json::Value& ek = v["edge_auth_ed25519_pubkeys"];
+        for (const auto& kid : ek.getMemberNames()) {
+          const Json::Value& kv = ek[kid];
+          if (!kv.isString()) continue;
+          const std::string s = trim_copy(kv.asString());
+          if (s.empty()) continue;
+          cfg_io->edge_auth_ed25519_pubkeys[kid] = s;
+        }
+      }
     }
   }
 
@@ -236,6 +249,14 @@ bool save_runtime_secrets_best_effort(AgentDb& db, const DaemonConfig& cfg, std:
       ek[p.first] = p.second;
     }
     if (!ek.empty()) v["edge_auth_hmac_keys"] = ek;
+  }
+  if (!cfg.edge_auth_ed25519_pubkeys.empty()) {
+    Json::Value ek(Json::objectValue);
+    for (const auto& p : cfg.edge_auth_ed25519_pubkeys) {
+      if (p.first.empty() || p.second.empty()) continue;
+      ek[p.first] = p.second;
+    }
+    if (!ek.empty()) v["edge_auth_ed25519_pubkeys"] = ek;
   }
 
   Json::StreamWriterBuilder wb;
