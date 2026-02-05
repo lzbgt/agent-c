@@ -1833,6 +1833,11 @@ components:
         session_id:
           type: string
           description: Optional. Only honored when allow_sessions=true. If provided, the server upserts the session row on submit.
+        session_weight:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Optional. Scheduling weight for this session (requires allow_sessions=true and non-empty session_id). Higher sessions receive proportionally more scheduler service under fair-queue policy.
         idempotency_key:
           type: string
           description: Submit dedupe key (id-safe, <=128). Uniqueness is scoped by (session_id or empty string).

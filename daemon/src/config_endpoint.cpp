@@ -102,6 +102,9 @@ void handle_config_endpoint(
   engines["workflow_poll_ms"] = cfg.workflow_engine_poll_ms;
   engines["workflow_max_inflight_per_workflow"] = cfg.workflow_engine_max_inflight_per_workflow;
   engines["workflow_max_inflight_per_session"] = cfg.workflow_engine_max_inflight_per_session;
+  engines["workflow_fair_queue_policy"] = cfg.workflow_engine_fair_queue_policy;
+  engines["workflow_fair_queue_max_session_weight"] = cfg.workflow_engine_fair_queue_max_session_weight;
+  engines["workflow_fair_queue_max_schedule_len"] = cfg.workflow_engine_fair_queue_max_schedule_len;
   engines["workflow_admit_max_inflight_tasks_per_session"] = cfg.workflow_admit_max_inflight_tasks_per_session;
   engines["workflow_admit_max_inflight_tasks_total"] = cfg.workflow_admit_max_inflight_tasks_total;
   out["engines"] = engines;

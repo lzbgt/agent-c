@@ -34,6 +34,15 @@ class WorkflowEngine {
     size_t max_scan_workflows = 64;  // per-iteration bound
     int max_inflight_per_workflow = 2; // fairness cap; prevents a single workflow from monopolizing all workers
     int max_inflight_per_session = 0;  // optional multi-tenant cap; 0 disables
+    // Explicit fair-queue policy surface.
+    //
+    // - scan_rr: session-aware scan order (legacy)
+    // - wrr: weighted round-robin over session buckets (v2.2)
+    //
+    // When all weights are 1, both behave effectively the same.
+    std::string fair_queue_policy = "wrr";
+    int fair_queue_max_session_weight = 16;
+    int fair_queue_max_schedule_len = 1024;
   };
 
   WorkflowEngine(

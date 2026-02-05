@@ -94,6 +94,24 @@ static int64_t workflow_deadline_unix_ms_best_effort(const AgentDb::WorkflowRow&
   return ms > 0 ? ms : 0;
 }
 
+static int workflow_session_weight_best_effort(const AgentDb::WorkflowRow& wf, int max_weight) {
+  if (max_weight < 1) max_weight = 1;
+  // Session weights only make sense when the workflow is actually session-scoped.
+  if (wf.session_id.empty()) return 1;
+  if (wf.spec_json.empty()) return 1;
+  if (wf.spec_json.find("session_weight") == std::string::npos) return 1;
+  Json::Value v;
+  std::string err;
+  if (!json_parse_any_value(wf.spec_json, &v, &err) || !v.isObject()) return 1;
+  if (!v.isMember("session_weight")) return 1;
+  const Json::Value& w = v["session_weight"];
+  if (!(w.isInt64() || w.isUInt64() || w.isInt() || w.isUInt())) return 1;
+  const int64_t n = w.asInt64();
+  if (n <= 0) return 1;
+  const int clamped = (int)std::min<int64_t>((int64_t)max_weight, n);
+  return std::max(1, clamped);
+}
+
 struct WorkflowLimits {
   int64_t max_tool_calls_total = 0;  // 0 disables (unlimited).
   int64_t max_steps_total = 0;       // 0 disables (unlimited).
@@ -528,6 +546,22 @@ WorkflowEngine::WorkflowEngine(
   if (opt_.max_inflight_per_workflow > 64) opt_.max_inflight_per_workflow = 64;
   if (opt_.max_inflight_per_session < 0) opt_.max_inflight_per_session = 0;
   if (opt_.max_inflight_per_session > 1024) opt_.max_inflight_per_session = 1024;
+
+  // Canonicalize fair-queue policy.
+  {
+    std::string p = opt_.fair_queue_policy;
+    for (char& c : p) {
+      if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+    }
+    if (p != "scan_rr" && p != "wrr") {
+      p = "wrr";
+    }
+    opt_.fair_queue_policy = p;
+  }
+  if (opt_.fair_queue_max_session_weight <= 0) opt_.fair_queue_max_session_weight = 1;
+  if (opt_.fair_queue_max_session_weight > 1024) opt_.fair_queue_max_session_weight = 1024;
+  if (opt_.fair_queue_max_schedule_len < 16) opt_.fair_queue_max_schedule_len = 16;
+  if (opt_.fair_queue_max_schedule_len > 65536) opt_.fair_queue_max_schedule_len = 65536;
 }
 
 WorkflowEngine::~WorkflowEngine() {
@@ -683,7 +717,8 @@ bool WorkflowEngine::pick_and_claim_one(
   }
 
   const size_t ns = sessions.size();
-  const size_t session_start = ns == 0 ? 0 : (size_t)(rr_cursor_.fetch_add(1) % (uint64_t)ns);
+  if (ns == 0) return false;
+  const uint64_t cursor = rr_cursor_.fetch_add(1);
 
   auto try_pick_in_workflow = [&](AgentDb::WorkflowRow& wf) -> bool {
     if (stop_.load()) return false;
@@ -888,15 +923,72 @@ bool WorkflowEngine::pick_and_claim_one(
     return false;
   };
 
-  for (size_t si = 0; si < ns; si++) {
-    const std::string& sk = sessions[(session_start + si) % ns];
-    auto it = wf_idxs_by_session.find(sk);
-    if (it == wf_idxs_by_session.end()) continue;
-    const auto& idxs = it->second;
-    for (size_t wi = 0; wi < idxs.size(); wi++) {
-      const size_t idx = idxs[wi];
-      if (idx >= wfs.size()) continue;
-      if (try_pick_in_workflow(wfs[idx])) return true;
+  if (opt_.fair_queue_policy == "wrr") {
+    // Weighted round-robin over session buckets.
+    // The base `sessions` order is derived from (priority DESC, status, age) of the best workflow in each bucket.
+    //
+    // The weight is extracted from workflow submit spec's `session_weight` (best-effort), but only when the
+    // workflow is session-scoped (wf.session_id is not empty).
+    //
+    // Guardrail: bound the expanded schedule length to keep the scheduler overhead stable.
+    const int max_weight_cfg = std::max(1, opt_.fair_queue_max_session_weight);
+    const size_t max_len_cfg = (size_t)std::max(16, opt_.fair_queue_max_schedule_len);
+    int max_weight_eff = max_weight_cfg;
+    if (ns > 0) {
+      const size_t cap_per = std::max<size_t>(1, max_len_cfg / ns);
+      max_weight_eff = std::min<int>(max_weight_eff, (int)cap_per);
+    }
+
+    std::vector<std::string> schedule;
+    schedule.reserve(std::min<size_t>(max_len_cfg, ns * (size_t)std::max(1, max_weight_eff)));
+    for (size_t si = 0; si < ns; si++) {
+      const std::string& sk = sessions[si];
+      int w = 1;
+      auto it = wf_idxs_by_session.find(sk);
+      if (it != wf_idxs_by_session.end()) {
+        const auto& idxs = it->second;
+        for (size_t wi = 0; wi < idxs.size(); wi++) {
+          const size_t idx = idxs[wi];
+          if (idx >= wfs.size()) continue;
+          w = std::max(w, workflow_session_weight_best_effort(wfs[idx], max_weight_eff));
+          if (w >= max_weight_eff) break;
+        }
+      }
+      for (int j = 0; j < w; j++) {
+        if (schedule.size() >= max_len_cfg) break;
+        schedule.push_back(sk);
+      }
+      if (schedule.size() >= max_len_cfg) break;
+    }
+
+    const size_t nsch = schedule.size();
+    if (nsch > 0) {
+      const size_t start = (size_t)(cursor % (uint64_t)nsch);
+      for (size_t ssi = 0; ssi < nsch; ssi++) {
+        const std::string& sk = schedule[(start + ssi) % nsch];
+        auto it = wf_idxs_by_session.find(sk);
+        if (it == wf_idxs_by_session.end()) continue;
+        const auto& idxs = it->second;
+        for (size_t wi = 0; wi < idxs.size(); wi++) {
+          const size_t idx = idxs[wi];
+          if (idx >= wfs.size()) continue;
+          if (try_pick_in_workflow(wfs[idx])) return true;
+        }
+      }
+    }
+  } else {
+    // Legacy session-aware scan order (round-robin start point over buckets).
+    const size_t session_start = (size_t)(cursor % (uint64_t)ns);
+    for (size_t si = 0; si < ns; si++) {
+      const std::string& sk = sessions[(session_start + si) % ns];
+      auto it = wf_idxs_by_session.find(sk);
+      if (it == wf_idxs_by_session.end()) continue;
+      const auto& idxs = it->second;
+      for (size_t wi = 0; wi < idxs.size(); wi++) {
+        const size_t idx = idxs[wi];
+        if (idx >= wfs.size()) continue;
+        if (try_pick_in_workflow(wfs[idx])) return true;
+      }
     }
   }
 

@@ -176,13 +176,13 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ### Reweighted next 5 (highest compound impact)
 
-Priority order (reweighted after token budgets v0.4 shipped; sections below are kept stable for diff readability):
+Priority order (reweighted after scheduling v2.2 shipped; sections below are kept stable for diff readability):
 
-1) **Scheduling policy v2.2 (explicit fair-queue)** — predictable progress under extreme load (multi-tenant + long backlogs).
-2) **Interop spec hardening (MCU/edge handoff)** — ecosystem leverage; versioned contract + executable transcripts.
-3) **Memory ↔ workflow time correlation** — time-advancing correctness; evidence hashing + bounded queries.
-4) **Agent collaboration v2** — budgeted parallel fan-out + deterministic joins.
-5) **Budgets v0.5** — host-tool budgets + streaming token usage coverage + stats surfacing.
+1) **Interop spec hardening (MCU/edge handoff)** — ecosystem leverage; versioned contract + executable transcripts.
+2) **Memory ↔ workflow time correlation** — time-advancing correctness; evidence hashing + bounded queries.
+3) **Agent collaboration v2** — budgeted parallel fan-out + deterministic joins.
+4) **Budgets v0.5** — host-tool budgets + streaming token usage coverage + stats surfacing.
+5) **Scheduling policy v2.3 (DRR + cost-aware quanta)** — move beyond WRR to cost-aware, budget-composing fairness.
 
 1) **Durable budget enforcement at scheduler level** (correctness + cost predictability)
    - Shipped (v0): workflow-level tool-call budget `workflow_limits.max_tool_calls_total` enforced by the workflow engine:
@@ -217,8 +217,11 @@ Priority order (reweighted after token budgets v0.4 shipped; sections below are 
    - Shipped (v2.1): scheduler DB scan is now oldest-first (priority DESC, created_unix_ms ASC) with an index, so fairness holds even
      when queued workflows exceed the DB scan clamp (512).
    - Proof: `ctest` includes `agentd_workflow_scan_fairness_smoke` (submits >512 workflows; older session still completes early).
-   - Next (v2.2): move from scan-order RR to an explicit fair-queue policy surface (e.g. deficit round-robin with per-session weights/tokens)
-     so priorities + budgets compose predictably under extreme load and long-lived backlogs.
+   - Shipped (v2.2): explicit fair-queue policy surface (weighted round-robin, session-scoped):
+     - Daemon config/flags: `--workflow-fair-queue-policy wrr` (default), weight clamps.
+     - Workflow submit knob (requires `allow_sessions=true`): `session_weight` (>=1).
+     - Proof: `ctest` includes `agentd_workflow_wrr_session_weight_smoke` (ensures session B is not starved behind session A; session A still dominates early prefix when weight=2).
+   - Next (v2.3): graduate from WRR to deficit round-robin (DRR) with cost-aware quanta (e.g. budget pressure, token cost) and durable per-session tokens.
 
 3) **Interop spec hardening for MCU/edge handoff** (ecosystem leverage)
    - Shipped: `DURABLE_WORKFLOW_SUBMIT` / `DURABLE_WORKFLOW_CANCEL` over `POST /api/v1/edge/message` (durable orchestration handoff).

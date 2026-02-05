@@ -83,6 +83,15 @@ struct DaemonConfig {
   // - max_inflight_per_session: optional multi-tenant fairness guard (0 = unlimited/disabled)
   int workflow_engine_max_inflight_per_workflow = 2;
   int workflow_engine_max_inflight_per_session = 0;
+  // Workflow fair-queue policy (explicit scheduling surface; v2.2).
+  //
+  // - scan_rr: legacy session-aware scan order (round-robin start cursor over session buckets)
+  // - wrr: weighted round-robin over session buckets (weights derived from workflow submit spec's `session_weight`)
+  //
+  // Note: when weights are all 1 (default), wrr is effectively equivalent to scan_rr.
+  std::string workflow_engine_fair_queue_policy = "wrr";
+  int workflow_engine_fair_queue_max_session_weight = 16; // clamps per-session weight extracted from spec_json
+  int workflow_engine_fair_queue_max_schedule_len = 1024; // bounds expanded WRR session schedule length
   // Workflow admission control (backpressure at submit time).
   //
   // These caps apply in `POST /api/v1/workflow/submit` and are intended to prevent fan-out storms from

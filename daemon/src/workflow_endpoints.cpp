@@ -537,6 +537,26 @@ void handle_workflow_submit_endpoint(
     resp->body = "{\"ok\":false,\"error\":\"invalid session_id\"}";
     return;
   }
+  if (args.isMember("session_weight")) {
+    if (!(args["session_weight"].isInt64() || args["session_weight"].isUInt64() || args["session_weight"].isInt() || args["session_weight"].isUInt())) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid session_weight (expected int >= 1)\"}";
+      return;
+    }
+    const int64_t sw = args["session_weight"].asInt64();
+    if (sw < 1) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid session_weight (expected >= 1)\"}";
+      return;
+    }
+    if (!allow_sessions || session_id.empty()) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"session_weight requires allow_sessions=true and non-empty session_id\"}";
+      return;
+    }
+    // Canonicalize and clamp: keep scheduling stable under extreme inputs.
+    args["session_weight"] = (Json::Int64)std::min<int64_t>(1024, sw);
+  }
 
   std::string idempotency_key =
     args.isMember("idempotency_key") && args["idempotency_key"].isString() ? trim_copy(args["idempotency_key"].asString()) : "";
