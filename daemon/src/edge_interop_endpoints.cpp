@@ -681,6 +681,16 @@ void handle_edge_message_endpoint(
     ev.data_json = edge_json_stringify_compact(d);
     (void)db_or_null->insert_edge_workflow_event(ev, nullptr, nullptr);
 
+    // Best-effort: send an explicit ACK to the node via outbox so non-HTTP transports can observe cancellation.
+    // (Matches the WORKFLOW_SUBMIT ACK pattern.)
+    {
+      Json::Value ack_body(Json::objectValue);
+      ack_body["workflow_id"] = workflow_id;
+      ack_body["ok"] = true;
+      ack_body["status"] = "CANCELED";
+      try_send_outbox_ack("WORKFLOW_ACK", ack_body);
+    }
+
     Json::Value o(Json::objectValue);
     o["ok"] = true;
     o["workflow_id"] = workflow_id;

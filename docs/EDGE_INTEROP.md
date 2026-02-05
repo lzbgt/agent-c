@@ -41,6 +41,10 @@ enable **node-initiated orchestration** (handoff to the coordinator) over the sa
 
 Details: `docs/spec/um-eais/um-eais-platform-extensions-v0.1.md`
 
+ACK note:
+- For `WORKFLOW_SUBMIT` and `WORKFLOW_CANCEL`, the platform enqueues a best-effort outbox `WORKFLOW_ACK` so non-HTTP transports can observe
+  submit/cancel outcomes.
+
 Security note:
 - For node-submitted durable workflows, the platform forces `allow_inline_api_keys=false` (nodes should not ship provider keys).
   Use daemon defaults (`--base-url`, `--api-key`, or provider keys) or a trusted gateway that authenticates and sets defaults.

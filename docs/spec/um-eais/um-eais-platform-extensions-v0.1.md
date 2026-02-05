@@ -78,6 +78,11 @@ Platform behavior:
 - Emits `edge_workflow_events` `workflow_canceled`.
 - Returns HTTP `{ok:true, workflow_id, status}` on the `/api/v1/edge/message` transport mapping.
 
+Best-effort ACK:
+- Platform also enqueues an outbox message to the requesting node:
+  - `type: "WORKFLOW_ACK"`
+  - `body: { workflow_id, ok:true, status:"CANCELED" }`
+
 Notes:
 - This is a platform-level cancellation (prevents future dispatch). It does not guarantee remote side-effects are avoided
   if a node already received a `TASK_ASSIGN`.

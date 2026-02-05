@@ -370,6 +370,7 @@ if(AGENT_BUILD_HOST)
 				    add_test(NAME agentd_edge_rules_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_rules_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_workflow_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_workflow_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_edge_workflow_submit_message_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_workflow_submit_message_smoke.sh $<TARGET_FILE:agentd>)
+			    add_test(NAME agentd_edge_workflow_cancel_message_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_workflow_cancel_message_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(
 			      NAME agentd_edge_durable_workflow_submit_message_smoke
 			      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_durable_workflow_submit_message_smoke.sh

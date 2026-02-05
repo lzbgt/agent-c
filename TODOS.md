@@ -73,7 +73,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Proof: `ctest` includes `agentd_workflow_edge_invoke_smoke`, `agentd_workflow_edge_invoke_template_args_smoke`, `agentd_workflow_edge_agent_smoke`, and `agentd_workflow_edge_agent_ref_payload_smoke`.
 - UM‑EAIS platform extensions (node → platform workflow handoff) are now proven end-to-end:
   - `WORKFLOW_SUBMIT` and `WORKFLOW_CANCEL` can be ingested via `POST /api/v1/edge/message` and drive the edge workflow runner.
-  - Proof: `ctest` includes `agentd_edge_workflow_submit_message_smoke`.
+  - Best-effort node ACKs: outbox `WORKFLOW_ACK` is enqueued for both submit and cancel (non-HTTP transports).
+  - Proof: `ctest` includes `agentd_edge_workflow_submit_message_smoke` and `agentd_edge_workflow_cancel_message_smoke`.
 - Durable workflows can now be handed off via the same UM‑BMP ingress (MCU-friendly, transport-agnostic):
   - `DURABLE_WORKFLOW_SUBMIT` forwards to `POST /api/v1/workflow/submit` (platform durable orchestration)
   - `DURABLE_WORKFLOW_CANCEL` forwards to `POST /api/v1/workflow/cancel`
@@ -195,11 +196,13 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 3) **Interop spec hardening for MCU/edge handoff** (ecosystem leverage)
    - Shipped: `DURABLE_WORKFLOW_SUBMIT` / `DURABLE_WORKFLOW_CANCEL` over `POST /api/v1/edge/message` (durable orchestration handoff).
      - Proof: `ctest` includes `agentd_edge_durable_workflow_submit_message_smoke`.
+   - Shipped: `agent_core` UM‑BMP interop helpers (id-safe + sanitizer + message type constants).
+     - Proof: `ctest` includes `agent_core_tests`.
    - Next: consolidate UM‑EAIS + durable workflow handoff into a single **versioned interop contract** with explicit:
      - idempotency rules (`msg_id` vs `idempotency_key`) and replay guidance for lossy transports (MQTT/LoRa bridges)
      - correlation rules (`workflow_id` / `trace_id` / task trace suffixing)
      - safety defaults (inline API keys forbidden; gateway-auth required)
-   - Deliverables: a tiny C header (agent_core-friendly) + JSON Schema for envelopes/bodies + a golden “interop transcript” fixture for replay tests.
+   - Deliverables (remaining): JSON Schema for envelopes/bodies + a golden “interop transcript” fixture for replay tests.
 
 4) **Agent collaboration v2 (budgeted parallel fan-out + join macros)** (power-unleashed)
    - Status: submit-time parallel macro shipped as `kind:"delegate_parallel"` (v1.6.1).
