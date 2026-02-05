@@ -216,6 +216,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - New deterministic join strategy: `mode:"quorum_ok"` (succeed only if >= quorum attempts are ok; deterministically chooses the first ok attempt).
   - New merge primitive: `delegate.attempt_defaults` (missing-key-only defaults applied to each attempt.request with higher priority than workflow defaults).
   - Proof: `ctest` includes `agentd_workflow_delegate_parallel_quorum_ok_smoke` and `agentd_workflow_aggregate_quorum_ok_smoke`.
+- Parallel collaboration macro hardening (v1.7.2):
+  - Deterministic strict join: `mode:"strict_all_ok"` (fail if any attempt is missing/not ok; deterministically chooses the first task as the chosen result).
+  - Macro semantics: `kind:"delegate_parallel"` now preserves task-level fields on the join node (`allow_error`, `inputs`, `ready_unix_ms`) so it behaves like a normal task.
+  - Proof: `ctest` includes `agentd_workflow_delegate_parallel_strict_all_ok_allow_error_smoke` and `agentd_workflow_aggregate_strict_all_ok_smoke`.
 
 ## P0 (next: maximize autonomous continuity + correctness)
 

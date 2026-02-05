@@ -423,6 +423,102 @@ static Json::Value workflow_aggregate_quorum_ok_to_json(
   return out;
 }
 
+static Json::Value workflow_aggregate_strict_all_ok_to_json(
+  const Json::Value& agg,
+  const std::unordered_map<std::string, Json::Value>& result_json_by_task,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  Json::Value out(Json::objectValue);
+  out["kind"] = "aggregate";
+  out["mode"] = "strict_all_ok";
+  out["ok"] = false;
+
+  if (!agg.isObject()) {
+    if (out_error) *out_error = "aggregate config must be an object";
+    out["error"] = out_error ? *out_error : "aggregate config must be an object";
+    out["assistant_text"] = "";
+    return out;
+  }
+
+  std::vector<std::string> task_ids;
+  if (!string_array_from_json(agg["task_ids"], &task_ids) || task_ids.empty()) {
+    if (out_error) *out_error = "aggregate.task_ids must be a non-empty array of strings";
+    out["error"] = out_error ? *out_error : "aggregate.task_ids must be a non-empty array of strings";
+    out["assistant_text"] = "";
+    return out;
+  }
+
+  std::string ok_ptr = "/ok";
+  if (agg.isMember("ok_pointer") && agg["ok_pointer"].isString() && !agg["ok_pointer"].asString().empty()) {
+    ok_ptr = agg["ok_pointer"].asString();
+  }
+  std::string val_ptr = "/assistant_text";
+  if (agg.isMember("value_pointer") && agg["value_pointer"].isString() && !agg["value_pointer"].asString().empty()) {
+    val_ptr = agg["value_pointer"].asString();
+  }
+
+  Json::Value arr(Json::arrayValue);
+  for (const auto& id : task_ids) arr.append(id);
+  out["task_ids"] = arr;
+  out["ok_pointer"] = ok_ptr;
+  out["value_pointer"] = val_ptr;
+
+  Json::Value ok_by_task(Json::objectValue);
+  Json::Value missing_task_ids(Json::arrayValue);
+  Json::Value not_ok_task_ids(Json::arrayValue);
+
+  std::string chosen_task_id;
+  Json::Value chosen_root(Json::nullValue);
+
+  bool all_ok = true;
+  for (const auto& tid : task_ids) {
+    auto it = result_json_by_task.find(tid);
+    if (it == result_json_by_task.end()) {
+      missing_task_ids.append(tid);
+      all_ok = false;
+      continue;
+    }
+    const Json::Value& root = it->second;
+    const Json::Value* got_ok = nullptr;
+    bool ok = false;
+    if (json_pointer_get(root, ok_ptr, &got_ok) && got_ok && got_ok->isBool()) ok = got_ok->asBool();
+    ok_by_task[tid] = ok;
+    if (!ok) {
+      not_ok_task_ids.append(tid);
+      all_ok = false;
+      continue;
+    }
+    if (chosen_task_id.empty()) {
+      chosen_task_id = tid;
+      chosen_root = root;
+    }
+  }
+
+  out["missing_task_ids"] = missing_task_ids;
+  out["not_ok_task_ids"] = not_ok_task_ids;
+  out["ok_by_task"] = ok_by_task;
+
+  if (!all_ok) {
+    out["error"] = "not all tasks are ok";
+    out["assistant_text"] = "";
+    return out;
+  }
+
+  out["ok"] = true;
+  out["chosen_task_id"] = chosen_task_id;
+  out["chosen"] = chosen_root;
+
+  const Json::Value* got_val = nullptr;
+  if (json_pointer_get(chosen_root, val_ptr, &got_val) && got_val) {
+    if (got_val->isString()) out["assistant_text"] = got_val->asString();
+    else out["assistant_text"] = json_stringify_compact_local(*got_val);
+  } else {
+    out["assistant_text"] = json_stringify_compact_local(chosen_root);
+  }
+  return out;
+}
+
 static Json::Value workflow_aggregate_best_of_n_to_json(
   const Json::Value& agg,
   const std::unordered_map<std::string, Json::Value>& result_json_by_task,
@@ -640,6 +736,7 @@ Json::Value workflow_aggregate_to_json(
   if (mode == "collect") return workflow_aggregate_collect_to_json(agg, result_json_by_task, out_error);
   if (mode == "first_ok") return workflow_aggregate_first_ok_to_json(agg, result_json_by_task, out_error);
   if (mode == "quorum_ok") return workflow_aggregate_quorum_ok_to_json(agg, result_json_by_task, out_error);
+  if (mode == "strict_all_ok") return workflow_aggregate_strict_all_ok_to_json(agg, result_json_by_task, out_error);
   if (mode == "best_of_n") return workflow_aggregate_best_of_n_to_json(agg, result_json_by_task, out_error);
   // Default: quorum_hashes (also used when mode omitted).
   return workflow_aggregate_quorum_hashes_to_json(agg, result_json_by_task, out_error);

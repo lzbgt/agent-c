@@ -297,6 +297,11 @@ static bool expand_workflow_submit_macros(
     join["task_id"] = task_id;
     join["kind"] = "aggregate";
     if (priority != 0) join["priority"] = priority;
+    if (t.isMember("allow_error") && t["allow_error"].isBool()) join["allow_error"] = t["allow_error"];
+    if (t.isMember("inputs") && t["inputs"].isObject()) join["inputs"] = t["inputs"];
+    if (t.isMember("ready_unix_ms") && (t["ready_unix_ms"].isInt64() || t["ready_unix_ms"].isUInt64() || t["ready_unix_ms"].isInt())) {
+      join["ready_unix_ms"] = t["ready_unix_ms"];
+    }
 
     Json::Value deps(Json::arrayValue);
     for (Json::ArrayIndex k = 0; k < attempt_task_ids.size(); k++) deps.append(attempt_task_ids[k]);
@@ -341,12 +346,12 @@ static bool expand_workflow_submit_macros(
 
     const std::string agg_mode =
       agg.isMember("mode") && agg["mode"].isString() ? trim_copy(agg["mode"].asString()) : std::string();
-    if (agg_mode != "first_ok" && agg_mode != "quorum_ok" && agg_mode != "collect" && agg_mode != "best_of_n" && agg_mode != "quorum_hashes") {
+    if (agg_mode != "first_ok" && agg_mode != "quorum_ok" && agg_mode != "strict_all_ok" && agg_mode != "collect" && agg_mode != "best_of_n" && agg_mode != "quorum_hashes") {
       if (resp) {
         resp->status = 400;
         Json::Value o(Json::objectValue);
         o["ok"] = false;
-        o["error"] = "delegate_parallel aggregate.mode must be one of: first_ok, quorum_ok, collect, best_of_n, quorum_hashes";
+        o["error"] = "delegate_parallel aggregate.mode must be one of: first_ok, quorum_ok, strict_all_ok, collect, best_of_n, quorum_hashes";
         o["task_id"] = task_id;
         o["mode"] = agg_mode;
         resp->body = json_stringify_compact(o);
