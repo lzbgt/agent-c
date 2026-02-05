@@ -26,6 +26,12 @@ Agentd-to-agentd collaboration uses **HTTP** with the existing `agentd` public A
 
 The caller is expected to be a durable workflow task running inside another `agentd` instance.
 
+Broker compatibility:
+- The “remote agent” can be addressed either directly (agentd HTTP base URL), or indirectly via the broker/connector proxy:
+  - `base_url = https://<broker>/v1/agents/<agent_id>/proxy`
+  - The caller still uses the same agentd endpoints under the proxy prefix.
+- Authentication to the broker typically uses an OIDC bearer token; use `agentd_call.bearer_env` so the secret value is not persisted.
+
 ## 2) Execution model: `workflow_submit_and_wait`
 
 The baseline collaboration operation is:

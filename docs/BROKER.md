@@ -121,6 +121,17 @@ All endpoints below are served by the broker (not by agents).
   - streaming proxy intended for SSE endpoints
   - broker flushes chunks as they arrive from the agent connector
 
+#### Using durable workflows through the broker proxy
+
+The broker proxy can be used as a “virtual base URL” for agentd-to-agentd collaboration tasks:
+
+- In durable workflows, set `agentd_call.base_url` to:
+  - `https://<broker>/v1/agents/<agent_id>/proxy`
+- The caller still uses normal agentd endpoints under the proxy prefix:
+  - `POST .../proxy/api/v1/workflow/submit`
+  - `GET  .../proxy/api/v1/workflow?workflow_id=...`
+- Broker auth is typically an OIDC bearer token; in workflows, use `agentd_call.bearer_env` so the token value is not persisted.
+
 ### Orchestration (fan-out)
 
 - `POST /v1/orchestrate`

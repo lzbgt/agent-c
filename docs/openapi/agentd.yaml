@@ -1915,6 +1915,11 @@ components:
         - submits a workflow to `POST <base_url>/api/v1/workflow/submit`
         - polls `GET <base_url>/api/v1/workflow?workflow_id=...` until terminal status
 
+        Broker compatibility:
+        - `base_url` may also be a broker proxy prefix like `https://<broker>/v1/agents/<agent_id>/proxy` (see `docs/BROKER.md`).
+          In that case, agentd endpoints are reached under the proxy prefix (e.g. `.../proxy/api/v1/workflow/submit`).
+        - Broker endpoints typically require `Authorization: Bearer <OIDC_JWT>`; use `bearer_env` so secrets are not persisted.
+
         Security:
         - Disabled by default (SSRF risk). Operator must start agentd with `--workflow-enable-http-tasks`.
         - Optional hardening: restrict outbound targets with `--workflow-http-allow-host <host[:port]>` (repeatable), or env `AGENTD_WORKFLOW_HTTP_ALLOW_HOSTS=...`.

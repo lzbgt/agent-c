@@ -313,6 +313,13 @@ This is a deterministic collaboration primitive:
 - submit a remote workflow (`POST <base_url>/api/v1/workflow/submit`)
 - poll until terminal (`GET <base_url>/api/v1/workflow?workflow_id=...`)
 
+Broker proxy compatibility:
+- `base_url` does not have to be a directly reachable agentd. It can also be a **broker proxy prefix**:
+  - `https://<broker>/v1/agents/<agent_id>/proxy`
+  - The task will then call `POST .../proxy/api/v1/workflow/submit` and poll `GET .../proxy/api/v1/workflow?...`.
+- In broker deployments, auth is usually `Authorization: Bearer <OIDC_JWT>`:
+  - use `agentd_call.bearer_env` to reference an env var name containing the OIDC token (secret value is not persisted).
+
 Security model:
 - This task is **disabled by default** (same SSRF surface as `http_json`).
 - Operators must opt in by starting the daemon with `--workflow-enable-http-tasks` (or env `AGENTD_WORKFLOW_ENABLE_HTTP_TASKS=1`).

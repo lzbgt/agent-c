@@ -35,6 +35,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - Agent-to-agent collaboration primitive (deterministic; gated):
   - New deterministic workflow task: `kind:"agentd_call"` with `agentd_call` (submits a remote workflow, polls until terminal, returns remote final JSON).
   - Spec: `docs/spec/agentd-agentd/agentd_agent_interop_v0_1.md`
+  - Broker/connector compatibility: `agentd_call.base_url` may also be a **broker proxy prefix**
+    (e.g. `https://<broker>/v1/agents/<agent_id>/proxy`) so durable workflows can collaborate with agents behind NAT.
   - Optional hardening: restrict outbound targets with `--workflow-http-allow-host <host[:port]>` (repeatable),
     or env `AGENTD_WORKFLOW_HTTP_ALLOW_HOSTS=host[:port],...`.
   - Further hardening: CIDR allowlist + deny-private mode:
@@ -249,6 +251,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Submit-time task macro: `kind:"delegate_parallel"` expands into N attempt tasks + a deterministic `kind:"aggregate"` join (mode `first_ok`).
   - Attempt tasks default to `allow_error=true` so one failed attempt doesn’t fail the workflow; the join fails only if all attempts fail.
   - Proof: `ctest` includes `agentd_workflow_delegate_parallel_macro_smoke`.
+- Scheduler-visible agent collaboration macro (v1.10):
+  - Submit-time task macro: `kind:"agentd_parallel"` expands into N `kind:"agentd_call"` tasks + a deterministic `kind:"aggregate"` join (default `mode:"first_ok"`).
+  - Targets can be normal agentd base URLs or broker proxy prefixes (`.../v1/agents/<id>/proxy`).
+  - Proof: `ctest` includes `agentd_workflow_agentd_parallel_macro_smoke`.
 - Parallel collaboration macro join customization (v1.7.0):
   - `delegate_parallel` can now pass `delegate.aggregate` to pick a deterministic join strategy (e.g. `mode:"best_of_n"`).
   - Server overwrites `aggregate.task_ids` with the derived attempt task IDs (`<task_id>:<attempt_id>`).
