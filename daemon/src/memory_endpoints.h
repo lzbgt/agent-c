@@ -14,5 +14,23 @@ void handle_memory_consolidate_endpoint(
   HttpResponse* resp
 );
 
-}  // namespace agentd
+// GET /api/v1/memory/checkpoints
+// Lists structured memory checkpoint snapshots under state_dir/memory/checkpoints.
+void handle_memory_checkpoints_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
 
+// GET /api/v1/memory/correlate?trace_id=...
+// Bounded correlation query: selects (by default) the newest structured checkpoint in a time window
+// and returns structured memory keys whose evidence sources mention `trace:<trace_id>`.
+void handle_memory_correlate_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
+}  // namespace agentd

@@ -518,6 +518,70 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/memory/checkpoints:
+    get:
+      tags: [memory]
+      summary: List structured memory checkpoints (rolling snapshots)
+      description: |
+        Lists `memory/checkpoints/structured_*.json` snapshots with deterministic `sha256`.
+        Useful for time correlation and replay surfaces.
+      parameters:
+        - in: query
+          name: since_utc_ms
+          required: false
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: until_utc_ms
+          required: false
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, format: int32 }
+      responses:
+        "200":
+          description: Checkpoints list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryCheckpointsResponse"
+
+  /api/v1/memory/correlate:
+    get:
+      tags: [memory]
+      summary: Correlate structured memory evidence by trace_id (bounded)
+      description: |
+        Selects the newest structured checkpoint in the requested time window and returns
+        structured keys whose `sources[]` mention `trace:<trace_id>`.
+      parameters:
+        - in: query
+          name: trace_id
+          required: true
+          schema: { $ref: "#/components/schemas/TraceID" }
+        - in: query
+          name: since_utc_ms
+          required: false
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: until_utc_ms
+          required: false
+          schema: { type: integer, format: int64 }
+        - in: query
+          name: max_entries
+          required: false
+          schema: { type: integer, format: int32 }
+        - in: query
+          name: timeline
+          required: false
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: Correlation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryCorrelateResponse"
+
   /api/v1/workflow/submit:
     post:
       tags: [workflows]
@@ -1030,6 +1094,75 @@ components:
       properties:
         ok: { type: boolean, enum: [false] }
         error: { type: string }
+
+    MemoryCheckpointMeta:
+      type: object
+      required: [checkpoint_path, ts_utc, ts_utc_ms, sha256, bytes]
+      properties:
+        checkpoint_path: { type: string }
+        structured_path: { type: string }
+        ts_utc: { type: string }
+        ts_utc_ms: { type: integer, format: int64 }
+        sha256:
+          type: string
+          description: SHA-256 of the checkpoint JSON bytes (lowercase hex)
+          pattern: "^[a-f0-9]{64}$"
+        bytes: { type: integer, format: int64 }
+
+    MemoryCheckpointsResponse:
+      type: object
+      required: [ok, memory_root, since_utc_ms, until_utc_ms, checkpoints]
+      properties:
+        ok: { type: boolean }
+        memory_root: { type: string }
+        since_utc_ms: { type: integer, format: int64 }
+        until_utc_ms: { type: integer, format: int64 }
+        checkpoints:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemoryCheckpointMeta"
+
+    MemoryCorrelateResponse:
+      type: object
+      required: [ok, trace_id, needle, since_utc_ms, until_utc_ms]
+      properties:
+        ok: { type: boolean }
+        trace_id: { $ref: "#/components/schemas/TraceID" }
+        needle:
+          type: string
+          description: Evidence needle used against sources[] (default trace:<trace_id>)
+        since_utc_ms: { type: integer, format: int64 }
+        until_utc_ms: { type: integer, format: int64 }
+        checkpoint:
+          $ref: "#/components/schemas/MemoryCheckpointMeta"
+        entries:
+          type: array
+          items:
+            type: object
+            required: [key, record]
+            properties:
+              key: { type: string }
+              record:
+                type: object
+                additionalProperties: true
+        timeline:
+          type: array
+          items:
+            type: object
+            required: [checkpoint, entries]
+            properties:
+              checkpoint:
+                $ref: "#/components/schemas/MemoryCheckpointMeta"
+              entries:
+                type: array
+                items:
+                  type: object
+                  required: [key, record]
+                  properties:
+                    key: { type: string }
+                    record:
+                      type: object
+                      additionalProperties: true
 
     EdgeMessageEnvelope:
       type: object

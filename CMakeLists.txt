@@ -17,6 +17,7 @@ add_library(agent_core STATIC
   core/src/agent_runner.c
   core/src/agent_session.c
   core/src/agent_session_codec.c
+  core/src/agent_sha256.c
   core/src/agent_string.c
   core/src/agent_tool_loop.c
   core/src/agent_tool_provider.c
@@ -402,6 +403,7 @@ if(AGENT_BUILD_HOST)
 			    )
 		    add_test(NAME agentd_edge_deadline_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_deadline_smoke.sh $<TARGET_FILE:agentd>)
 		    add_test(NAME agentd_memory_consolidate_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_memory_consolidate_smoke.sh $<TARGET_FILE:agentd>)
+		    add_test(NAME agentd_memory_correlate_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_memory_correlate_smoke.sh $<TARGET_FILE:agentd>)
 	    add_test(NAME agentd_provider_retry_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_provider_retry_smoke.sh $<TARGET_FILE:agentd>)
 	    set_tests_properties(agentd_provider_retry_smoke PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME agentd_stream_provider_retry_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_stream_provider_retry_smoke.sh $<TARGET_FILE:agentd>)

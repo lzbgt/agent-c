@@ -248,8 +248,18 @@ Priority order (reweighted after scheduling v2.2 shipped; sections below are kep
    - Remaining: per-attempt budgets + richer deterministic join strategies (`strict_all_ok`, `quorum_ok`, etc).
 
 5) **Memory ↔ workflow time correlation (next after memory_put)** (time-advancing correctness)
-   - Status: deterministic workflow `kind:"memory_put"` shipped, plus deterministic workflow `kind:"memory_consolidate"` shipped.
-   - Remaining: evidence hashing for replay (memory snapshot hashes attached to workflow events), plus bounded correlation queries (time windows + trace_id joins).
+   - Shipped: deterministic workflow `kind:"memory_put"` and deterministic workflow `kind:"memory_consolidate"`.
+   - Shipped: evidence hashing for replay/correlation:
+     - `memory_put` structured checkpoints now emit `checkpoint_sha256` (sha256 of checkpoint JSON bytes).
+     - workflow engine emits `workflow_events` `type="memory_checkpoint"` with `{checkpoint:{path,sha256,ts_utc,...}}` when memory changes.
+     - Proof: `ctest` includes `agentd_workflow_memory_put_smoke` and `agentd_workflow_memory_consolidate_smoke`.
+   - Shipped: bounded correlation queries (time windows + trace_id evidence needle):
+     - `GET /api/v1/memory/checkpoints`
+     - `GET /api/v1/memory/correlate?trace_id=...`
+     - Proof: `ctest` includes `agentd_memory_correlate_smoke`.
+   - Next: extend correlation beyond structured memory:
+     - join across workflow events + edge workflow events by `trace_id`
+     - add “memory query plan” primitives (bounded time windows + key-prefix filters) for large fleets.
 
 ### 1) AVM capsule execution v0 (next: integrate + attest)
 

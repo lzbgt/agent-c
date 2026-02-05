@@ -9,6 +9,7 @@
 #include "edge_interop_endpoints.h"
 #include "file_endpoint.h"
 #include "job_endpoints.h"
+#include "memory_endpoints.h"
 #include "orchestrate_endpoints.h"
 #include "openrouter_models_endpoint.h"
 #include "openrouter_util.h"
@@ -282,6 +283,23 @@ bool AgentdApi::init(std::string* out_error) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();
     handle_file_endpoint(cur, self->cors_cfg, req, resp);
+  });
+
+  // Memory endpoints (durable + deterministic checkpoint correlation).
+  impl_->route("POST", "/api/v1/memory/consolidate", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_memory_consolidate_endpoint(cur, self->cors_cfg, req, resp);
+  });
+  impl_->route("GET", "/api/v1/memory/checkpoints", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_memory_checkpoints_endpoint(cur, self->cors_cfg, req, resp);
+  });
+  impl_->route("GET", "/api/v1/memory/correlate", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_memory_correlate_endpoint(cur, self->cors_cfg, req, resp);
   });
 
   impl_->route("GET", "/api/v1/sessions", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {

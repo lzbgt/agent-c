@@ -1378,6 +1378,40 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
                     out["error"] = err;
                     out["assistant_text"] = "";
                   } else {
+                    // Evidence hashing surface: structured checkpoints carry sha256 so workflows can correlate
+                    // results across time without re-reading files.
+                    if (resp.isMember("data") && resp["data"].isObject()) {
+                      const Json::Value d = resp["data"];
+                      const bool ck_ok = d.isMember("checkpoint_ok") && d["checkpoint_ok"].isBool() && d["checkpoint_ok"].asBool();
+                      const std::string ck_path =
+                        d.isMember("checkpoint_path") && d["checkpoint_path"].isString() ? d["checkpoint_path"].asString() : "";
+                      const std::string ck_sha =
+                        d.isMember("checkpoint_sha256") && d["checkpoint_sha256"].isString() ? d["checkpoint_sha256"].asString() : "";
+                      const std::string ck_ts =
+                        d.isMember("checkpoint_ts_utc") && d["checkpoint_ts_utc"].isString() ? d["checkpoint_ts_utc"].asString() : "";
+                      const int64_t ck_bytes =
+                        d.isMember("checkpoint_bytes") && (d["checkpoint_bytes"].isInt64() || d["checkpoint_bytes"].isUInt64() || d["checkpoint_bytes"].isInt())
+                        ? d["checkpoint_bytes"].asInt64()
+                        : 0;
+
+                      if (ck_ok && !ck_path.empty() && !ck_sha.empty()) {
+                        Json::Value ck(Json::objectValue);
+                        ck["path"] = ck_path;
+                        ck["sha256"] = ck_sha;
+                        if (!ck_ts.empty()) ck["ts_utc"] = ck_ts;
+                        if (ck_bytes > 0) ck["bytes"] = (Json::Int64)ck_bytes;
+                        out["checkpoint"] = ck;
+
+                        Json::Value ev(Json::objectValue);
+                        ev["workflow_id"] = wf.workflow_id;
+                        ev["task_id"] = task.task_id;
+                        if (!ttrace.empty()) ev["trace_id"] = ttrace;
+                        ev["checkpoint"] = ck;
+                        ev["ts_unix_ms"] = (Json::Int64)now;
+                        insert_workflow_event_best_effort(db_, wf.workflow_id, task.task_id, "memory_checkpoint", now, ev);
+                      }
+                    }
+
                     const std::string output =
                       resp.isMember("data") && resp["data"].isObject() && resp["data"].isMember("output") && resp["data"]["output"].isString()
                       ? resp["data"]["output"].asString()
@@ -1433,6 +1467,40 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
       } else {
         out["ok"] = true;
         out["report"] = report;
+        // Surface checkpoint evidence for correlation.
+        if (report.isObject() && report.isMember("memory_put_response") && report["memory_put_response"].isObject()) {
+          const Json::Value resp = report["memory_put_response"];
+          if (resp.isMember("data") && resp["data"].isObject()) {
+            const Json::Value d = resp["data"];
+            const bool ck_ok = d.isMember("checkpoint_ok") && d["checkpoint_ok"].isBool() && d["checkpoint_ok"].asBool();
+            const std::string ck_path =
+              d.isMember("checkpoint_path") && d["checkpoint_path"].isString() ? d["checkpoint_path"].asString() : "";
+            const std::string ck_sha =
+              d.isMember("checkpoint_sha256") && d["checkpoint_sha256"].isString() ? d["checkpoint_sha256"].asString() : "";
+            const std::string ck_ts =
+              d.isMember("checkpoint_ts_utc") && d["checkpoint_ts_utc"].isString() ? d["checkpoint_ts_utc"].asString() : "";
+            const int64_t ck_bytes =
+              d.isMember("checkpoint_bytes") && (d["checkpoint_bytes"].isInt64() || d["checkpoint_bytes"].isUInt64() || d["checkpoint_bytes"].isInt())
+              ? d["checkpoint_bytes"].asInt64()
+              : 0;
+            if (ck_ok && !ck_path.empty() && !ck_sha.empty()) {
+              Json::Value ck(Json::objectValue);
+              ck["path"] = ck_path;
+              ck["sha256"] = ck_sha;
+              if (!ck_ts.empty()) ck["ts_utc"] = ck_ts;
+              if (ck_bytes > 0) ck["bytes"] = (Json::Int64)ck_bytes;
+              out["checkpoint"] = ck;
+
+              Json::Value ev(Json::objectValue);
+              ev["workflow_id"] = wf.workflow_id;
+              ev["task_id"] = task.task_id;
+              if (rr.isMember("trace_id") && rr["trace_id"].isString()) ev["trace_id"] = rr["trace_id"].asString();
+              ev["checkpoint"] = ck;
+              ev["ts_unix_ms"] = (Json::Int64)now;
+              insert_workflow_event_best_effort(db_, wf.workflow_id, task.task_id, "memory_checkpoint", now, ev);
+            }
+          }
+        }
         if (report.isObject() && report.isMember("output") && report["output"].isString()) {
           out["assistant_text"] = report["output"].asString();
         } else {

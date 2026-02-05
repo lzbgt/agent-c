@@ -1,6 +1,7 @@
 #include "toolset_host_internal.h"
 
 #include "memory_index.h"
+#include "agent_sha256.h"
 
 #if defined(AGENT_HAVE_JSONCPP)
 #include <json/json.h>
@@ -715,6 +716,9 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
   // JSON snapshot for correlation over time (best-effort; does not fail the tool call).
   bool checkpoint_ok = false;
   std::string checkpoint_path_rel;
+  std::string checkpoint_ts_utc;
+  std::string checkpoint_sha256;
+  int64_t checkpoint_bytes = 0;
   if (wrote_file && structured && structured_doc_present) {
     const bool want_checkpoint =
       args.isMember("checkpoint") && args["checkpoint"].isBool() ? args["checkpoint"].asBool() : true;
@@ -726,6 +730,7 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
       std::filesystem::create_directories(ckdir, ec2);
       if (!ec2) {
         const std::string ts = iso_utc_now();
+        checkpoint_ts_utc = ts;
         std::string safe_ts = ts;
         for (char& c : safe_ts) {
           if (c == ':' || c == '/') c = '-';
@@ -738,6 +743,12 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
         ck["path"] = rel_path;
         ck["doc"] = structured_doc_for_checkpoint;
         const std::string ck_text = json_stringify_compact(ck) + "\n";
+        checkpoint_bytes = (int64_t)ck_text.size();
+        {
+          char hex[65];
+          agent_sha256_hex_of_bytes(ck_text.data(), ck_text.size(), hex);
+          checkpoint_sha256 = std::string(hex);
+        }
 
         {
           std::ofstream out(ckfile, std::ios::binary | std::ios::trunc);
@@ -792,6 +803,11 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
     data["entries_evidence_added"] = structured_entries_evidence_added;
     data["checkpoint_ok"] = checkpoint_ok;
     if (!checkpoint_path_rel.empty()) data["checkpoint_path"] = checkpoint_path_rel;
+    if (checkpoint_ok) {
+      if (!checkpoint_ts_utc.empty()) data["checkpoint_ts_utc"] = checkpoint_ts_utc;
+      if (!checkpoint_sha256.empty()) data["checkpoint_sha256"] = checkpoint_sha256;
+      if (checkpoint_bytes > 0) data["checkpoint_bytes"] = (Json::Int64)checkpoint_bytes;
+    }
   }
   data["ts_unix_ms"] = (Json::Int64)unix_ms_now();
   data["output"] = "memory_put: wrote " + rel_path;

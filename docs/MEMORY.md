@@ -7,6 +7,7 @@
 - `state_dir/memory/sessions/<session_id>.md` — optional session layer
 - `state_dir/memory/STRUCTURED.md` — machine-maintained structured memory (via `memory_put(entries)`)
 - `state_dir/memory/checkpoints/structured_<ts>.json` — time-stamped structured snapshots (best-effort, rolling)
+  - each checkpoint has a deterministic `sha256` surface (exposed by APIs/tools)
 
 ## Tools
 
@@ -102,3 +103,19 @@ Structured updates produce a time-stamped checkpoint JSON snapshot under `memory
 
 - `checkpoint=true|false` (default: true)
 - `keep_checkpoints=<N>` (default: 100)
+
+When a checkpoint is written, `memory_put` also reports:
+- `checkpoint_path` (relative to memory root)
+- `checkpoint_ts_utc`
+- `checkpoint_sha256` (sha256 of checkpoint JSON bytes)
+- `checkpoint_bytes`
+
+These fields exist so workflows can attach a stable “memory evidence hash” to their event logs without needing to
+re-open files during execution.
+
+## API helpers (correlation)
+
+In addition to the tool surface, `agentd` exposes correlation helpers:
+
+- `GET /api/v1/memory/checkpoints` — list checkpoint snapshots + sha256 (bounded by time window)
+- `GET /api/v1/memory/correlate?trace_id=...` — find structured keys whose evidence sources mention `trace:<trace_id>`
