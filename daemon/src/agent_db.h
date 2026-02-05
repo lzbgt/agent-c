@@ -329,6 +329,14 @@ class AgentDb {
   // Upserts workflow/task metadata (cheap transition updates).
   bool upsert_workflow(const WorkflowRow& wf, std::string* out_error);
   bool upsert_workflow_task(const WorkflowTaskRow& task, std::string* out_error);
+  bool cancel_workflow_task_if_queued(
+    const std::string& workflow_id,
+    const std::string& task_id,
+    int64_t now_unix_ms,
+    const std::string& error,
+    const std::string& result_json,
+    std::string* out_error
+  );
 
   // Attempts to transition a queued task to running. Returns true only when the task was claimed.
   bool claim_workflow_task(

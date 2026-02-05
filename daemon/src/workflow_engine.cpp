@@ -1048,6 +1048,43 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
       d["ts_unix_ms"] = (Json::Int64)now;
       insert_workflow_event_best_effort(db_, wf.workflow_id, task.task_id, "workflow_budget_exceeded", now, d);
     }
+
+    // Bulk-cancel any still-queued tasks so the workflow can reach terminal state without scheduler thrash.
+    // Important: do NOT clobber running tasks; only cancel if status is still queued.
+    {
+      std::vector<AgentDb::WorkflowTaskRow> tasks;
+      std::string terr;
+      if (db_ && db_->list_workflow_tasks(wf.workflow_id, &tasks, &terr)) {
+        Json::Value jout(Json::objectValue);
+        jout["ok"] = false;
+        jout["cancelled"] = true;
+        jout["assistant_text"] = "";
+        jout["error"] = msg;
+        jout["tool_calls_total"] = (Json::Int64)0;
+        jout["steps_executed"] = (Json::Int64)0;
+        jout["elapsed_ms"] = (Json::Int64)0;
+        const std::string result_json = json_stringify_compact(jout);
+
+        for (const auto& t : tasks) {
+          if (t.task_id.empty()) continue;
+          if (t.task_id == task.task_id) continue; // current claimed task handled below
+          if (t.status != "queued") continue;
+          std::string cerr;
+          const bool cancelled = db_->cancel_workflow_task_if_queued(wf.workflow_id, t.task_id, now, msg, result_json, &cerr);
+          if (!cancelled) continue;
+          Json::Value d2(Json::objectValue);
+          d2["workflow_id"] = wf.workflow_id;
+          d2["task_id"] = t.task_id;
+          d2["status"] = "cancelled";
+          d2["attempt"] = t.attempt;
+          d2["max_attempts"] = t.max_attempts;
+          d2["reason"] = "budget_exceeded";
+          d2["error"] = msg;
+          d2["ts_unix_ms"] = (Json::Int64)now;
+          insert_workflow_event_best_effort(db_, wf.workflow_id, t.task_id, "task_status", now, d2);
+        }
+      }
+    }
     cancel_task_now(msg, "budget_exceeded");
   };
 

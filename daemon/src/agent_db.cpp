@@ -1947,6 +1947,69 @@ bool AgentDb::upsert_workflow_task(const WorkflowTaskRow& task, std::string* out
 #endif
 }
 
+bool AgentDb::cancel_workflow_task_if_queued(
+  const std::string& workflow_id,
+  const std::string& task_id,
+  int64_t now_unix_ms,
+  const std::string& error,
+  const std::string& result_json,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)workflow_id;
+  (void)task_id;
+  (void)now_unix_ms;
+  (void)error;
+  (void)result_json;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (workflow_id.empty() || task_id.empty()) {
+    if (out_error) *out_error = "cancel_workflow_task_if_queued: workflow_id/task_id empty";
+    return false;
+  }
+  const int64_t now = now_unix_ms > 0 ? now_unix_ms : unix_ms_now();
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+UPDATE workflow_tasks
+SET
+  status='cancelled',
+  updated_unix_ms=?,
+  finished_unix_ms=?,
+  ready_unix_ms=0,
+  error=?,
+  result_json=?
+WHERE workflow_id=? AND task_id=? AND status='queued';
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_i64(st, 1, now);
+  ok = ok && bind_i64(st, 2, now);
+  ok = ok && bind_text_or_null(st, 3, error);
+  ok = ok && bind_text_or_null(st, 4, result_json);
+  ok = ok && bind_text(st, 5, workflow_id);
+  ok = ok && bind_text(st, 6, task_id);
+  ok = ok && step_done(st);
+  if (!ok) {
+    if (out_error && out_error->empty()) *out_error = sqlite_err(db_);
+    sqlite3_finalize(st);
+    return false;
+  }
+  const int changed = sqlite3_changes(db_);
+  sqlite3_finalize(st);
+  return changed > 0;
+#endif
+}
+
 bool AgentDb::claim_workflow_task(
   const std::string& workflow_id,
   const std::string& task_id,

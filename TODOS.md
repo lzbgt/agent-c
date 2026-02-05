@@ -170,6 +170,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
      - `workflow_tasks.tool_calls_total_cum`, `steps_executed_cum`, `elapsed_ms_cum`
      - Fixes undercounting across retries (budget enforcement now charges every attempt)
      - Proof: `ctest` includes `agentd_workflow_budget_retry_charges_smoke` and `agent_db_tests` asserts schema v19.
+   - Shipped (v0.3): bulk cancellation of queued tasks when budget exceeded:
+     - prevents scheduler thrash by cancelling all `status=queued` tasks in one pass (unclaimed tasks keep `attempt==0`)
+     - Proof: `ctest` includes `agentd_workflow_budget_bulk_cancel_smoke`.
    - Next: add token budgets (provider-dependent), host-tool budgets, and surface aggregated budget pressure in `/api/v1/workflow/stats`.
 
 2) **Scheduling policy v2 (beyond caps)** (predictable progress under load)
