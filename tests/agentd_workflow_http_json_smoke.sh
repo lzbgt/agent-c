@@ -165,6 +165,10 @@ http = r.get("http") or {}
 if http.get("status") != 200:
   print("expected status 200", http, file=sys.stderr)
   raise SystemExit(1)
+sha = http.get("response_sha256") or ""
+if not (isinstance(sha, str) and sha.startswith("sha256:") and len(sha) == 71):
+  print("expected http.response_sha256 sha256:<64hex>", sha, file=sys.stderr)
+  raise SystemExit(1)
 resp = http.get("response_json") or {}
 echo = resp.get("echo") or {}
 if echo.get("ping") != "pong":

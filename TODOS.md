@@ -38,6 +38,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
       closing the TOCTOU window where a hostname could rebind between “policy check” and “connect”.
   - Secrets hygiene: submit rejects `http_json.headers.Authorization`; use `http_json.bearer_env` (env var name only is persisted).
   - Proof: `ctest` includes `agentd_workflow_http_json_smoke`.
+  - Correctness surface: when response JSON parsing succeeds, `http_json` emits a best-effort deterministic hash token over the JSON
+    under `http.response_sha256` (algorithm `agent_json_c14n_v1`) for quorum/correlation.
 - Agent-to-agent collaboration primitive (deterministic; gated):
   - New deterministic workflow task: `kind:"agentd_call"` with `agentd_call` (submits a remote workflow, polls until terminal, returns remote final JSON).
   - Spec: `docs/spec/agentd-agentd/agentd_agent_interop_v0_1.md`
@@ -52,6 +54,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
     - `--workflow-http-allow-cidr <cidr>` (repeatable), or env `AGENTD_WORKFLOW_HTTP_ALLOW_CIDRS=...`
     - `--workflow-http-deny-private`, or env `AGENTD_WORKFLOW_HTTP_DENY_PRIVATE=1`
   - Proof: `ctest` includes `agentd_workflow_agentd_call_smoke`.
+  - Correctness surface: `agentd_call` now emits a best-effort deterministic hash token over the terminal remote workflow JSON
+    under `agentd.final_sha256` (algorithm `agent_json_c14n_v1`) so higher-level joins can require quorum/correlation.
 - Embedded bring-up helper: `agent_core` now includes UM‑BMP/UM‑EAIS interop helpers (`agent/edge_interop.h`)
   for id-safe validation/sanitization + message type constants (reduces node/platform drift).
   - Proof: `ctest` includes `agent_core_tests`.

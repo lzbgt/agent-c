@@ -5,10 +5,13 @@
 #include "json_util.h"
 #include "string_util.h"
 
+#include "agent/json_c14n.h"
+
 #include <json/json.h>
 
 #include <algorithm>
 #include <cctype>
+#include <cstring>
 #include <cstdlib>
 #include <map>
 #include <string>
@@ -190,6 +193,23 @@ Json::Value workflow_http_json_to_json(
     std::string perr;
     if (json_parse_any(r.response_body, &parsed, &perr)) {
       out["http"]["response_json"] = parsed;
+      // Deterministic hash surface for quorum/correlation (best-effort).
+      // - Use agent_json_c14n_v1 so heterogeneous nodes/hosts can compare results.
+      // - Hash the parsed JSON value (not the raw response_text), so whitespace/key order differences collapse.
+      const std::string parsed_text = json_stringify(parsed);
+      if (!parsed_text.empty()) {
+        char token[80];
+        char err[256];
+        std::memset(token, 0, sizeof(token));
+        std::memset(err, 0, sizeof(err));
+        const agent_status_t st = agent_json_c14n_sha256_token(parsed_text.data(), parsed_text.size(), token, err, sizeof(err));
+        if (st == AGENT_OK && token[0]) {
+          out["http"]["response_sha256"] = std::string(token);
+          out["http"]["response_sha256_alg"] = "agent_json_c14n_v1";
+        } else if (err[0]) {
+          out["http"]["response_sha256_error"] = std::string(err);
+        }
+      }
     } else if (!r.response_body.empty()) {
       out["http"]["response_parse_error"] = perr;
     }

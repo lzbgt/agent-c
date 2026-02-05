@@ -308,6 +308,8 @@ Result shape (high level):
 - `http.resolved_addrs` is best-effort DNS resolution evidence when `--workflow-http-dns-pin` is enabled (array of IP strings).
 - `http.response_json` is best-effort parsed JSON (when parse succeeds), which enables downstream `${task.H.json:/http/response_json/...}`
   and `{"$ref":"task.H.json:/http/response_json/..."}` wiring.
+- `http.response_sha256` is a best-effort deterministic hash token over `http.response_json` canonical bytes (algorithm `agent_json_c14n_v1`).
+  This is intended for quorum-style joins (`kind:"aggregate" mode:"quorum_hashes"`) and cross-agent correctness correlation.
 
 ### Deterministic agent-to-agent collaboration task (`kind:"agentd_call"`) (v1.9)
 
@@ -317,6 +319,8 @@ result, workflows can use `kind:"agentd_call"`.
 This is a deterministic collaboration primitive:
 - submit a remote workflow (`POST <base_url>/api/v1/workflow/submit`)
 - poll until terminal (`GET <base_url>/api/v1/workflow?workflow_id=...`)
+ - compute a best-effort deterministic hash surface over the terminal remote workflow JSON under `agentd.final_sha256`
+   (algorithm `agent_json_c14n_v1`) so higher-level workflows can require quorum/correlation across remote agents.
 
 Broker proxy compatibility:
 - `base_url` does not have to be a directly reachable agentd. It can also be a **broker proxy prefix**:

@@ -5,11 +5,14 @@
 #include "json_util.h"
 #include "string_util.h"
 
+#include "agent/json_c14n.h"
+
 #include <json/json.h>
 
 #include <algorithm>
 #include <cctype>
 #include <chrono>
+#include <cstring>
 #include <cstdlib>
 #include <map>
 #include <string>
@@ -92,6 +95,26 @@ static std::string join_base_path(std::string base, const std::string& path) {
 
 static bool is_terminal_workflow_status(const std::string& s) {
   return s == "done" || s == "error" || s == "cancelled";
+}
+
+static void add_final_hash_surface_best_effort(Json::Value* out) {
+  if (!out || !out->isObject()) return;
+  if (!out->isMember("agentd") || !(*out)["agentd"].isObject()) return;
+  const Json::Value final = (*out)["agentd"].isMember("final") ? (*out)["agentd"]["final"] : Json::Value(Json::nullValue);
+  if (!final.isObject()) return;
+  const std::string final_text = json_stringify_compact(final);
+  if (final_text.empty()) return;
+  char token[80];
+  char err[256];
+  std::memset(token, 0, sizeof(token));
+  std::memset(err, 0, sizeof(err));
+  const agent_status_t st = agent_json_c14n_sha256_token(final_text.data(), final_text.size(), token, err, sizeof(err));
+  if (st == AGENT_OK && token[0]) {
+    (*out)["agentd"]["final_sha256"] = std::string(token);
+    (*out)["agentd"]["final_sha256_alg"] = "agent_json_c14n_v1";
+  } else if (err[0]) {
+    (*out)["agentd"]["final_sha256_error"] = std::string(err);
+  }
 }
 
 }  // namespace
@@ -252,6 +275,7 @@ Json::Value workflow_agentd_call_to_json(
             if (!out.isMember("error")) out["error"] = "remote workflow status " + st;
             out["assistant_text"] = "";
           }
+          add_final_hash_surface_best_effort(&out);
           return out;
         }
       }
@@ -415,6 +439,7 @@ Json::Value workflow_agentd_call_to_json(
         if (!out.isMember("error")) out["error"] = "remote workflow status " + st;
         out["assistant_text"] = "";
       }
+      add_final_hash_surface_best_effort(&out);
       return out;
     }
 

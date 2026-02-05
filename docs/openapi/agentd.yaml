@@ -2157,6 +2157,10 @@ components:
       description: |
         Outbound HTTP JSON configuration for `kind:http_json` workflow tasks.
 
+        Result note:
+        - When response JSON parsing succeeds, the engine emits a best-effort deterministic hash token under `http.response_sha256`
+          (canonical JSON hash, algorithm `agent_json_c14n_v1`) for quorum/correlation.
+
         Security:
         - Disabled by default. Operator must start agentd with `--workflow-enable-http-tasks` (SSRF risk).
         - Optional hardening: restrict outbound targets with `--workflow-http-allow-host <host[:port]>` (repeatable), or env `AGENTD_WORKFLOW_HTTP_ALLOW_HOSTS=...`.
@@ -2230,6 +2234,8 @@ components:
         Operation:
         - submits a workflow to `POST <base_url>/api/v1/workflow/submit`
         - polls `GET <base_url>/api/v1/workflow?workflow_id=...` until terminal status
+        - computes a best-effort deterministic hash token over the terminal remote workflow JSON under `agentd.final_sha256`
+          (canonical JSON hash, algorithm `agent_json_c14n_v1`) for quorum/correlation.
 
         Broker compatibility:
         - `base_url` may also be a broker proxy prefix like `https://<broker>/v1/agents/<agent_id>/proxy` (see `docs/BROKER.md`).
