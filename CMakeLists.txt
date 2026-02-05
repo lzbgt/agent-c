@@ -331,15 +331,21 @@ if(AGENT_BUILD_HOST)
 			    add_test(NAME agentd_workflow_stream_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_stream_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_workflow_expect_extended_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_expect_extended_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_workflow_inflight_cap_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_inflight_cap_smoke.sh $<TARGET_FILE:agentd>)
-			    add_test(
-			      NAME agentd_workflow_expect_tool_calls_smoke
-			      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_expect_tool_calls_smoke.sh
-			        $<TARGET_FILE:agentd>
-			        $<TARGET_FILE:agentd_tool_plugin_echo>
-			    )
-				    add_test(NAME agentd_workflow_inflight_session_cap_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_inflight_session_cap_smoke.sh $<TARGET_FILE:agentd>)
-				    add_test(NAME agentd_workflow_scan_fairness_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_scan_fairness_smoke.sh $<TARGET_FILE:agentd>)
-				    add_test(NAME agentd_workflow_stats_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_stats_smoke.sh $<TARGET_FILE:agentd>)
+				    add_test(
+				      NAME agentd_workflow_expect_tool_calls_smoke
+				      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_expect_tool_calls_smoke.sh
+				        $<TARGET_FILE:agentd>
+				        $<TARGET_FILE:agentd_tool_plugin_echo>
+				    )
+				    add_test(
+				      NAME agentd_workflow_budget_tool_calls_smoke
+				      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_budget_tool_calls_smoke.sh
+				        $<TARGET_FILE:agentd>
+				        $<TARGET_FILE:agentd_tool_plugin_echo>
+				    )
+					    add_test(NAME agentd_workflow_inflight_session_cap_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_inflight_session_cap_smoke.sh $<TARGET_FILE:agentd>)
+					    add_test(NAME agentd_workflow_scan_fairness_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_scan_fairness_smoke.sh $<TARGET_FILE:agentd>)
+					    add_test(NAME agentd_workflow_stats_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_stats_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_interop_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_interop_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_rules_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_rules_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_workflow_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_workflow_smoke.sh $<TARGET_FILE:agentd>)

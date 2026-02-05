@@ -972,6 +972,7 @@ static Json::Value run_request_to_json_impl(
   RunCancelCallback should_cancel_or_null,
   void* should_cancel_ctx_or_null
 ) {
+  const auto started_steady = std::chrono::steady_clock::now();
   Json::Value args;
   std::string perr;
   if (!json_parse_object(request_body, &args, &perr)) {
@@ -2231,6 +2232,11 @@ static Json::Value run_request_to_json_impl(
   out["ok"] = ok;
   out["trace_id"] = trace_id;
   out["assistant_text"] = assistant_text;
+  {
+    const auto elapsed_ms =
+      (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started_steady).count();
+    out["elapsed_ms"] = (Json::Int64)std::max<int64_t>(0, elapsed_ms);
+  }
   if (!ok) out["error"] = err;
   // Cancellation is a first-class terminal state for async jobs. Surface an explicit flag so
   // job state can be `status=cancelled` (instead of overloading `error`).
@@ -2262,6 +2268,21 @@ static Json::Value run_request_to_json_impl(
   out["effective_stream_assistant"] = effective_stream_assistant;
   out["effective_require_client_acks"] = require_client_acks;
   out["effective_tools"] = tools;
+  out["effective_max_steps"] = (Json::UInt64)max_steps;
+  out["effective_max_tool_calls_total"] = (Json::UInt64)max_tool_calls_total;
+  out["effective_max_tool_calls_per_tool"] = (Json::UInt64)max_tool_calls_per_tool;
+  out["steps_executed"] = use_tool_loop ? (Json::UInt64)tool_loop_result.steps_executed : (Json::UInt64)0;
+  out["tool_calls_total"] = use_tool_loop ? (Json::UInt64)tool_loop_result.tool_records.size() : (Json::UInt64)0;
+  if (use_tool_loop && !tool_loop_result.tool_records.empty()) {
+    Json::Value by_tool(Json::objectValue);
+    for (const auto& tr : tool_loop_result.tool_records) {
+      if (tr.tool_name.empty()) continue;
+      const Json::Value cur = by_tool[tr.tool_name];
+      const uint64_t n = cur.isUInt64() ? cur.asUInt64() : (cur.isInt64() ? (uint64_t)std::max<int64_t>(0, cur.asInt64()) : 0);
+      by_tool[tr.tool_name] = (Json::UInt64)(n + 1);
+    }
+    out["tool_calls_by_tool"] = by_tool;
+  }
   {
     Json::Value mp(Json::objectValue);
     mp["include_structured"] = mem_pol.include_structured;

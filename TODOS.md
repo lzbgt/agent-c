@@ -157,8 +157,12 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 ### Reweighted next 5 (highest compound impact)
 
 1) **Durable budget enforcement at scheduler level** (correctness + cost predictability)
-   - Add explicit per-task and per-workflow budgets (tool-call budget, token budget, wall-time budget) enforced by the engine, not just by providers.
-   - Make budgets visible in `/api/v1/workflow/stats` and persisted in events for auditing/replay.
+   - Shipped (v0): workflow-level tool-call budget `workflow_limits.max_tool_calls_total` enforced by the workflow engine:
+     - clamps LLM/tool tasks’ `max_tool_calls_total` to the remaining workflow budget
+     - cancels LLM/tool tasks when the remaining workflow budget is 0 (durable + restart-safe)
+     - emits `workflow_budget_exceeded` events and surfaces run telemetry (`tool_calls_total`, `steps_executed`, `elapsed_ms`) for auditing
+     - Proof: `ctest` includes `agentd_workflow_budget_tool_calls_smoke`.
+   - Next: extend budgets beyond tool calls (token budget, wall-time budget, host-tool budget) and surface aggregated budget pressure in `/api/v1/workflow/stats`.
 
 2) **Scheduling policy v2 (beyond caps)** (predictable progress under load)
    - Shipped (v2.0): oversampled scan + session-aware round-robin scan order (prevents `LIMIT` starvation under typical load).

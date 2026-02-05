@@ -720,6 +720,36 @@ void handle_workflow_submit_endpoint(
     args["deadline_unix_ms"] = (Json::Int64)v; // canonicalize
   }
 
+  // Optional workflow-level limits (durable budgets enforced by the workflow engine).
+  //
+  // Note: these are intended to be forward-compatible. Validate known fields; ignore unknown ones.
+  if (args.isMember("workflow_limits")) {
+    if (!args["workflow_limits"].isObject() && !args["workflow_limits"].isNull()) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid workflow_limits (expected object)\"}";
+      return;
+    }
+    if (args["workflow_limits"].isObject()) {
+      Json::Value lim = args["workflow_limits"];
+      if (lim.isMember("max_tool_calls_total")) {
+        const auto& v = lim["max_tool_calls_total"];
+        if (!(v.isInt64() || v.isUInt64() || v.isInt() || v.isUInt())) {
+          resp->status = 400;
+          resp->body = "{\"ok\":false,\"error\":\"invalid workflow_limits.max_tool_calls_total (expected int >= 0)\"}";
+          return;
+        }
+        const int64_t n = v.asInt64();
+        if (n < 0) {
+          resp->status = 400;
+          resp->body = "{\"ok\":false,\"error\":\"invalid workflow_limits.max_tool_calls_total (expected >= 0)\"}";
+          return;
+        }
+        lim["max_tool_calls_total"] = (Json::Int64)std::min<int64_t>(1000000000LL, n); // canonicalize
+      }
+      args["workflow_limits"] = lim;
+    }
+  }
+
   const int64_t now = unix_ms_now();
   std::unordered_set<std::string> seen_ids;
   std::vector<std::string> task_ids;

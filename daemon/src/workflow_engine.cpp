@@ -94,6 +94,26 @@ static int64_t workflow_deadline_unix_ms_best_effort(const AgentDb::WorkflowRow&
   return ms > 0 ? ms : 0;
 }
 
+struct WorkflowLimits {
+  int64_t max_tool_calls_total = 0;  // 0 disables (unlimited).
+};
+
+static WorkflowLimits workflow_limits_best_effort(const AgentDb::WorkflowRow& wf) {
+  WorkflowLimits out;
+  if (wf.spec_json.empty()) return out;
+  if (wf.spec_json.find("workflow_limits") == std::string::npos) return out;
+  Json::Value v;
+  std::string err;
+  if (!json_parse_any_value(wf.spec_json, &v, &err) || !v.isObject()) return out;
+  if (!v.isMember("workflow_limits") || !v["workflow_limits"].isObject()) return out;
+  const Json::Value lim = v["workflow_limits"];
+  if (lim.isMember("max_tool_calls_total") && (lim["max_tool_calls_total"].isInt64() || lim["max_tool_calls_total"].isUInt64() || lim["max_tool_calls_total"].isInt() || lim["max_tool_calls_total"].isUInt())) {
+    const int64_t n = lim["max_tool_calls_total"].asInt64();
+    out.max_tool_calls_total = std::max<int64_t>(0, std::min<int64_t>(1000000000LL, n));
+  }
+  return out;
+}
+
 enum class WorkflowCancelReason {
   None = 0,
   CancelRequested = 1,
@@ -863,6 +883,7 @@ bool WorkflowEngine::pick_and_claim_one(
 
 void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const AgentDb::WorkflowTaskRow& task) {
   const int64_t now = unix_ms_now();
+  const auto started_steady = std::chrono::steady_clock::now();
 
   // Refresh workflow view (cancel_requested/deadline can change after claim).
   AgentDb::WorkflowRow wf_latest = wf;
@@ -929,23 +950,65 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   // Resolve template vars from completed tasks (assistant_text only).
   std::unordered_map<std::string, std::string> assistant_by_task;
   std::unordered_map<std::string, Json::Value> result_json_by_task;
+  int64_t workflow_tool_calls_used = 0;
+  auto saturating_add_i64 = [](int64_t a, int64_t b) -> int64_t {
+    if (b <= 0) return a;
+    if (a > (INT64_MAX - b)) return INT64_MAX;
+    return a + b;
+  };
   {
     std::vector<AgentDb::WorkflowTaskRow> tasks;
     std::string err;
     if (db_->list_workflow_tasks(wf.workflow_id, &tasks, &err)) {
       for (const auto& t : tasks) {
-        if (t.task_id.empty()) continue;
-        if (t.status != "done" && t.status != "error") continue;
         if (t.result_json.empty()) continue;
         Json::Value r;
         std::string perr;
         if (!json_parse_any_value(t.result_json, &r, &perr) || !r.isObject()) continue;
+
+        // Best-effort: sum tool call usage across the workflow for budget enforcement.
+        // Important: include previous-attempt results even when the task is queued/running.
+        if (r.isMember("tool_calls_total") && (r["tool_calls_total"].isInt64() || r["tool_calls_total"].isUInt64() || r["tool_calls_total"].isInt() || r["tool_calls_total"].isUInt())) {
+          const int64_t n = std::max<int64_t>(0, r["tool_calls_total"].asInt64());
+          workflow_tool_calls_used = saturating_add_i64(workflow_tool_calls_used, n);
+        }
+
+        if (t.task_id.empty()) continue;
+        if (t.status != "done" && t.status != "error") continue;
         const std::string a = json_get_string(r, "assistant_text");
         if (!a.empty()) assistant_by_task[t.task_id] = a;
         result_json_by_task[t.task_id] = r;
       }
     }
   }
+
+  const WorkflowLimits wf_limits = workflow_limits_best_effort(wf_latest);
+  int64_t wf_tool_calls_remaining = 0;
+  if (wf_limits.max_tool_calls_total > 0) {
+    const int64_t max_total = wf_limits.max_tool_calls_total;
+    const int64_t used = std::max<int64_t>(0, std::min<int64_t>(max_total, workflow_tool_calls_used));
+    wf_tool_calls_remaining = std::max<int64_t>(0, max_total - used);
+  }
+
+  auto workflow_budget_exceeded_cancel = [&](const char* which) {
+    const std::string msg = std::string("workflow budget exceeded: ") + (which ? which : "budget");
+    AgentDb::WorkflowRow upd = wf_latest;
+    upd.cancel_requested = true;
+    upd.updated_unix_ms = now;
+    upd.error = msg;
+    (void)db_->upsert_workflow(upd, nullptr);
+    {
+      Json::Value d(Json::objectValue);
+      d["workflow_id"] = wf.workflow_id;
+      d["reason"] = which ? which : "budget";
+      d["max_tool_calls_total"] = (Json::Int64)wf_limits.max_tool_calls_total;
+      d["tool_calls_used"] = (Json::Int64)workflow_tool_calls_used;
+      d["tool_calls_remaining"] = (Json::Int64)wf_tool_calls_remaining;
+      d["ts_unix_ms"] = (Json::Int64)now;
+      insert_workflow_event_best_effort(db_, wf.workflow_id, task.task_id, "workflow_budget_exceeded", now, d);
+    }
+    cancel_task_now(msg, "budget_exceeded");
+  };
 
   // Build final run request body, applying template expansion.
   std::string request_body = task.request_json;
@@ -1243,6 +1306,11 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
       }
     }
   } else if (kind == "delegate") {
+    if (wf_limits.max_tool_calls_total > 0 && wf_tool_calls_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_tool_calls_total");
+      return;
+    }
+
     out = Json::Value(Json::objectValue);
     out["kind"] = "delegate";
     out["ok"] = false;
@@ -1272,16 +1340,28 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         std::string chosen_text;
         std::string last_err;
 
-        for (Json::ArrayIndex i = 0; i < attempts.size(); i++) {
-          if (workflow_run_should_cancel(&cancel_ctx)) {
-            out["cancelled"] = true;
-            out["ok"] = false;
-            out["error"] = cancel_ctx.reason == WorkflowCancelReason::DeadlineExceeded ? "deadline exceeded" : "cancelled";
-            break;
-          }
+	        int64_t attempts_tool_calls_total = 0;
+	        int64_t attempts_steps_executed = 0;
+	        int64_t attempts_elapsed_ms = 0;
+	        int64_t remaining_local = wf_tool_calls_remaining;
 
-          const Json::Value a = attempts[i];
-          if (!a.isObject()) continue;
+	        for (Json::ArrayIndex i = 0; i < attempts.size(); i++) {
+	          if (workflow_run_should_cancel(&cancel_ctx)) {
+	            out["cancelled"] = true;
+	            out["ok"] = false;
+	            out["error"] = cancel_ctx.reason == WorkflowCancelReason::DeadlineExceeded ? "deadline exceeded" : "cancelled";
+	            break;
+	          }
+
+	          if (wf_limits.max_tool_calls_total > 0 && remaining_local <= 0) {
+	            out["ok"] = false;
+	            out["assistant_text"] = "";
+	            out["error"] = "workflow budget exceeded: max_tool_calls_total";
+	            break;
+	          }
+
+	          const Json::Value a = attempts[i];
+	          if (!a.isObject()) continue;
 
           const std::string aid = a.isMember("id") && a["id"].isString() ? a["id"].asString() : ("att_" + std::to_string((int)i));
           const Json::Value areq = a.isMember("request") && a["request"].isObject() ? a["request"] : Json::Value(Json::nullValue);
@@ -1297,11 +1377,21 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
             continue;
           }
 
-          const std::string attempt_body = json_stringify_compact(areq);
-          Json::Value r = run_request_to_json_internal_cancellable(
-            cfg,
-            ocfg,
-            db_,
+	          Json::Value areq2 = areq;
+	          if (wf_limits.max_tool_calls_total > 0) {
+	            // Clamp per-attempt tool-call budget to remaining workflow budget.
+	            int64_t req_limit = 0;
+	            if (areq2.isMember("max_tool_calls_total") && (areq2["max_tool_calls_total"].isInt64() || areq2["max_tool_calls_total"].isUInt64() || areq2["max_tool_calls_total"].isInt() || areq2["max_tool_calls_total"].isUInt())) {
+	              req_limit = std::max<int64_t>(0, areq2["max_tool_calls_total"].asInt64());
+	            }
+	            const int64_t eff = (req_limit > 0) ? std::min<int64_t>(req_limit, remaining_local) : remaining_local;
+	            areq2["max_tool_calls_total"] = (Json::Int64)std::max<int64_t>(0, eff);
+	          }
+	          const std::string attempt_body = json_stringify_compact(areq2);
+	          Json::Value r = run_request_to_json_internal_cancellable(
+	            cfg,
+	            ocfg,
+	            db_,
             tool_ext_or_null_,
             sessions_root_dir_,
             attempt_body,
@@ -1317,19 +1407,41 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
             expect_ok2 = apply_expectations(expect_json2, r, &expect_err2);
           }
 
-          const bool run_ok2 = r.isObject() && r.isMember("ok") && r["ok"].isBool() && r["ok"].asBool();
-          const bool ok2 = run_ok2 && expect_ok2;
-          const std::string atext = clamp_text(json_get_string(r, "assistant_text"), 8192);
+	          const bool run_ok2 = r.isObject() && r.isMember("ok") && r["ok"].isBool() && r["ok"].asBool();
+	          const bool ok2 = run_ok2 && expect_ok2;
+	          const std::string atext = clamp_text(json_get_string(r, "assistant_text"), 8192);
 
-          Json::Value row(Json::objectValue);
-          row["id"] = aid;
-          row["ok"] = ok2;
-          row["run_ok"] = run_ok2;
-          row["expect_ok"] = expect_ok2;
-          if (!atext.empty()) row["assistant_text"] = atext;
-          const std::string err = json_get_string(r, "error");
-          if (!err.empty()) row["error"] = err;
-          if (!expect_ok2) row["expect_error"] = expect_err2;
+	          int64_t tool_calls_this_attempt = 0;
+	          if (r.isObject() && r.isMember("tool_calls_total") && (r["tool_calls_total"].isInt64() || r["tool_calls_total"].isUInt64() || r["tool_calls_total"].isInt() || r["tool_calls_total"].isUInt())) {
+	            tool_calls_this_attempt = std::max<int64_t>(0, r["tool_calls_total"].asInt64());
+	          }
+	          int64_t steps_this_attempt = 0;
+	          if (r.isObject() && r.isMember("steps_executed") && (r["steps_executed"].isInt64() || r["steps_executed"].isUInt64() || r["steps_executed"].isInt() || r["steps_executed"].isUInt())) {
+	            steps_this_attempt = std::max<int64_t>(0, r["steps_executed"].asInt64());
+	          }
+	          int64_t elapsed_ms_this_attempt = 0;
+	          if (r.isObject() && r.isMember("elapsed_ms") && (r["elapsed_ms"].isInt64() || r["elapsed_ms"].isUInt64() || r["elapsed_ms"].isInt() || r["elapsed_ms"].isUInt())) {
+	            elapsed_ms_this_attempt = std::max<int64_t>(0, r["elapsed_ms"].asInt64());
+	          }
+	          attempts_tool_calls_total = saturating_add_i64(attempts_tool_calls_total, tool_calls_this_attempt);
+	          attempts_steps_executed = saturating_add_i64(attempts_steps_executed, steps_this_attempt);
+	          attempts_elapsed_ms = saturating_add_i64(attempts_elapsed_ms, elapsed_ms_this_attempt);
+	          if (wf_limits.max_tool_calls_total > 0) {
+	            remaining_local = std::max<int64_t>(0, remaining_local - tool_calls_this_attempt);
+	          }
+
+	          Json::Value row(Json::objectValue);
+	          row["id"] = aid;
+	          row["ok"] = ok2;
+	          row["run_ok"] = run_ok2;
+	          row["expect_ok"] = expect_ok2;
+	          row["tool_calls_total"] = (Json::Int64)tool_calls_this_attempt;
+	          row["steps_executed"] = (Json::Int64)steps_this_attempt;
+	          row["elapsed_ms"] = (Json::Int64)elapsed_ms_this_attempt;
+	          if (!atext.empty()) row["assistant_text"] = atext;
+	          const std::string err = json_get_string(r, "error");
+	          if (!err.empty()) row["error"] = err;
+	          if (!expect_ok2) row["expect_error"] = expect_err2;
           if (r.isObject() && r.isMember("http_status") && (r["http_status"].isInt() || r["http_status"].isInt64())) {
             row["http_status"] = r["http_status"];
           }
@@ -1347,16 +1459,19 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
           if (ok2 && stop_on_ok) break;
         }
 
-        del_out["attempts"] = arr;
-        del_out["attempts_total"] = (Json::Int64)attempts.size();
-        del_out["attempts_run"] = (Json::Int64)arr.size();
-        if (!chosen_id.empty()) del_out["chosen_id"] = chosen_id;
-        out["delegate"] = del_out;
+	        del_out["attempts"] = arr;
+	        del_out["attempts_total"] = (Json::Int64)attempts.size();
+	        del_out["attempts_run"] = (Json::Int64)arr.size();
+	        if (!chosen_id.empty()) del_out["chosen_id"] = chosen_id;
+	        out["delegate"] = del_out;
+	        out["tool_calls_total"] = (Json::Int64)attempts_tool_calls_total;
+	        out["steps_executed"] = (Json::Int64)attempts_steps_executed;
+	        out["elapsed_ms"] = (Json::Int64)attempts_elapsed_ms;
 
-        if (out.isMember("cancelled") && out["cancelled"].isBool() && out["cancelled"].asBool()) {
-          // already populated
-        } else if (any_ok) {
-          out["ok"] = true;
+	        if (out.isMember("cancelled") && out["cancelled"].isBool() && out["cancelled"].asBool()) {
+	          // already populated
+	        } else if (any_ok) {
+	          out["ok"] = true;
           out["assistant_text"] = chosen_text;
         } else {
           out["ok"] = false;
@@ -1554,6 +1669,21 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
       }
     }
   } else {
+    if (wf_limits.max_tool_calls_total > 0) {
+      if (wf_tool_calls_remaining <= 0) {
+        workflow_budget_exceeded_cancel("max_tool_calls_total");
+        return;
+      }
+      if (rr.isObject()) {
+        int64_t req_limit = 0;
+        if (rr.isMember("max_tool_calls_total") && (rr["max_tool_calls_total"].isInt64() || rr["max_tool_calls_total"].isUInt64() || rr["max_tool_calls_total"].isInt() || rr["max_tool_calls_total"].isUInt())) {
+          req_limit = std::max<int64_t>(0, rr["max_tool_calls_total"].asInt64());
+        }
+        const int64_t eff = (req_limit > 0) ? std::min<int64_t>(req_limit, wf_tool_calls_remaining) : wf_tool_calls_remaining;
+        rr["max_tool_calls_total"] = (Json::Int64)std::max<int64_t>(0, eff);
+        request_body = json_stringify_compact(rr);
+      }
+    }
     out = run_request_to_json_internal_cancellable(
       cfg,
       ocfg,
@@ -1565,6 +1695,21 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
       workflow_run_should_cancel,
       &cancel_ctx
     );
+  }
+
+  // Ensure deterministic tasks (and budget cancellation results) have basic telemetry fields.
+  if (out.isObject()) {
+    const auto elapsed_ms =
+      (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started_steady).count();
+    if (!out.isMember("elapsed_ms") || !(out["elapsed_ms"].isInt64() || out["elapsed_ms"].isUInt64() || out["elapsed_ms"].isInt() || out["elapsed_ms"].isUInt())) {
+      out["elapsed_ms"] = (Json::Int64)std::max<int64_t>(0, elapsed_ms);
+    }
+    if (!out.isMember("tool_calls_total") || !(out["tool_calls_total"].isInt64() || out["tool_calls_total"].isUInt64() || out["tool_calls_total"].isInt() || out["tool_calls_total"].isUInt())) {
+      out["tool_calls_total"] = (Json::Int64)0;
+    }
+    if (!out.isMember("steps_executed") || !(out["steps_executed"].isInt64() || out["steps_executed"].isUInt64() || out["steps_executed"].isInt() || out["steps_executed"].isUInt())) {
+      out["steps_executed"] = (Json::Int64)0;
+    }
   }
 
   std::string expect_err;
