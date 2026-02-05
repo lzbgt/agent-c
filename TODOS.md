@@ -246,17 +246,23 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
     then replaces the macro task with a deterministic aggregate join.
   - Default join behavior: `mode:"strict_all_ok"`; override via `edge_parallel.aggregate`.
   - Proof: `ctest` includes `agentd_workflow_edge_parallel_macro_smoke`.
+- Event-triggered durable orchestration (v1.7.8):
+  - Automation rules for `SENSOR_EVENT` now support `action.type:"durable_workflow_submit"` (in addition to `task_assign`).
+  - The platform injects `inputs.sensor_event` (best-effort) so workflow tasks can template against `${input.sensor_event...}`.
+  - Proof: `ctest` includes `agentd_edge_rules_durable_workflow_smoke`.
 
 ## P0 (next: maximize autonomous continuity + correctness)
 
 ### Reweighted next 5 (highest compound impact)
 
-Priority order (reweighted after `edge_parallel` shipped; sections below are kept stable for diff readability):
+Priority order (reweighted after event-triggered durable orchestration shipped; sections below are kept stable for diff readability):
 
-1) **Scheduling policy v2.3+** — DRR is shipped; next is telemetry-driven cost model (beyond simple heuristics) + more robust fairness under mixed workloads.
-2) **Budgets v0.6** — complete host-tool + streaming usage charging and make budget pressure cheap/accurate for large queues.
-3) **Agent collaboration v2.1** — deterministic multi-agent fan-out + secure joins (quorum_ok/strict_all_ok/quorum_hashes distinct-node) + retries.
-4) **Memory v2.3** — query-plan primitives (bounded windows + key-prefix filters) and automatic consolidation triggers as time advances.
+1) **Agent collaboration v2.2** — unify fan-out/join patterns across edge + LLM tasks (edge_parallel + delegate_parallel),
+   plus event-triggered durable workflows as a first-class collaboration primitive.
+2) **Memory v2.3** — query-plan primitives (bounded windows + key-prefix filters) and automatic consolidation triggers as time advances,
+   so long-running systems keep context tight and correct.
+3) **Scheduling policy v2.4+** — DRR is shipped; next is telemetry-driven cost (tokens/elapsed/polls) and resilient fairness under mixed workloads.
+4) **Budgets v0.7** — complete streaming usage accounting and host-tool charging; surface budget pressure so schedulers can act cheaply.
 5) **Interop v0.4** — enforceable edge attestation + trust roots and stronger multi-node identity binding.
 
 1) **Durable budget enforcement at scheduler level** (correctness + cost predictability)

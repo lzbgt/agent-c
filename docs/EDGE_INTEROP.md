@@ -136,16 +136,24 @@ Safety/rate gates (best-effort, platform-side):
 
 `GET /api/v1/edge/task?task_id=...&step_id=...`
 
-### Automation rules (SENSOR_EVENT → TASK_ASSIGN)
+### Automation rules (SENSOR_EVENT → actions)
 
 - `POST /api/v1/edge/rule/upsert`
 - `GET /api/v1/edge/rules`
 - `DELETE /api/v1/edge/rule?rule_id=...`
 
-Rules are evaluated during `SENSOR_EVENT` ingestion. The platform enqueues a `TASK_ASSIGN` when:
+Rules are evaluated during `SENSOR_EVENT` ingestion. Supported actions:
+- `type:"task_assign"`: enqueue a `TASK_ASSIGN` (invoke or agent) to a node (same behavior as `POST /api/v1/edge/task/assign`)
+- `type:"durable_workflow_submit"`: submit a durable workflow to the platform workflow engine
+
+For both action types, the platform runs the same cooldown gate: it fires when:
 - `event_type` matches
 - `confidence >= min_confidence`
 - `cooldown_ms` has elapsed since `last_fired_utc_ms`
+
+Durable workflow action notes:
+- If `action.workflow.inputs.sensor_event` is missing, the platform injects it (best-effort) so workflow tasks can template against
+  `${input.sensor_event.json:/...}`.
 
 ### Durable edge workflows (UM‑WF)
 

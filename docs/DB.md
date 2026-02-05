@@ -482,7 +482,7 @@ Event-triggered automation rules: `SENSOR_EVENT` → `TASK_ASSIGN`.
 - `min_confidence REAL NOT NULL`
 - `cooldown_ms INTEGER NOT NULL`
 - `last_fired_utc_ms INTEGER NOT NULL`
-- `action_json TEXT NOT NULL` (JSON object string; currently supports `{type:"task_assign", ...}`)
+- `action_json TEXT NOT NULL` (JSON object string; supports `{type:"task_assign", ...}` and `{type:"durable_workflow_submit", workflow:{...}}`)
 - `created_utc_ms INTEGER NOT NULL`
 - `updated_utc_ms INTEGER NOT NULL`
 

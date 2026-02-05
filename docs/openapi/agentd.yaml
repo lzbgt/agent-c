@@ -964,7 +964,7 @@ paths:
   /api/v1/edge/rule/upsert:
     post:
       tags: [edge]
-      summary: Create or update an automation rule (SENSOR_EVENT -> TASK_ASSIGN)
+      summary: Create or update an automation rule (SENSOR_EVENT -> action)
       requestBody:
         required: true
         content:
@@ -1333,7 +1333,14 @@ components:
         cooldown_ms: { type: integer, format: int32 }
         action:
           type: object
-          description: Rule action (currently supports {type:"task_assign", ...})
+          description: |
+            Rule action.
+
+            Supported `type` values:
+            - `task_assign`: enqueue a UM‑BMP `TASK_ASSIGN` (like `POST /api/v1/edge/task/assign`)
+            - `durable_workflow_submit`: submit a durable workflow to the platform workflow engine
+
+            Note: OpenAPI cannot fully express the conditional shape; see server behavior.
           additionalProperties: true
 
     EdgeWorkflowSubmitRequest:

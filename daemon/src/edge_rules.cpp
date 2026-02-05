@@ -6,6 +6,7 @@
 #include "http_util.h"
 #include "json_util.h"
 #include "string_util.h"
+#include "workflow_endpoints.h"
 
 #include <algorithm>
 #include <unordered_set>
@@ -14,7 +15,10 @@
 namespace agentd {
 
 void edge_rules_apply_for_sensor_event_best_effort(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
   AgentDb* db,
+  const HttpRequest& base_req,
   const std::string& sensor_node_id,
   const std::string& sensor_msg_id,
   const std::string& event_type,
@@ -23,7 +27,6 @@ void edge_rules_apply_for_sensor_event_best_effort(
   const Json::Value& data
 ) {
   (void)event_ts_utc_ms;
-  (void)data;
   if (!db || !db->is_open()) return;
   if (event_type.empty()) return;
 
@@ -45,7 +48,61 @@ void edge_rules_apply_for_sensor_event_best_effort(
     std::string perr;
     if (!json_parse_any(r.action_json, &action, &perr) || !action.isObject()) continue;
     const std::string type = action.isMember("type") && action["type"].isString() ? action["type"].asString() : "";
-    if (type != "task_assign") continue;
+    if (type != "task_assign" && type != "durable_workflow_submit") continue;
+
+    // For durable_workflow_submit, submit a durable workflow to the platform workflow engine.
+    // Use-case: SENSOR_EVENT triggers multi-step orchestration (fan-out + joins + LLM reasoning) with durable continuity.
+    if (type == "durable_workflow_submit") {
+      Json::Value wfargs = action.isMember("workflow") ? action["workflow"] : Json::Value(Json::nullValue);
+      if (!wfargs.isObject()) continue;
+
+      // Deterministic workflow_id/idempotency_key based on rule_id and SENSOR_EVENT msg_id (retry-safe).
+      std::string wid =
+        wfargs.isMember("workflow_id") && wfargs["workflow_id"].isString() ? trim_copy(wfargs["workflow_id"].asString()) : "";
+      if (wid.empty()) wid = std::string("wf:rule:") + r.rule_id + ":msg:" + sensor_msg_id;
+      if (!edge_id_is_safe(wid)) wid = std::string("wf:rule:") + edge_make_uuidish_msg_id();
+      wfargs["workflow_id"] = wid.size() > 128 ? wid.substr(0, 128) : wid;
+
+      if (!wfargs.isMember("trace_id") || !wfargs["trace_id"].isString() || wfargs["trace_id"].asString().empty()) {
+        wfargs["trace_id"] = wfargs["workflow_id"];
+      }
+      if (!wfargs.isMember("idempotency_key") || !wfargs["idempotency_key"].isString() || wfargs["idempotency_key"].asString().empty()) {
+        const std::string ik = std::string("rule:") + r.rule_id + ":msg:" + sensor_msg_id;
+        wfargs["idempotency_key"] = ik.size() > 128 ? ik.substr(0, 128) : ik;
+      }
+      if (!wfargs.isMember("allow_inline_api_keys") || !wfargs["allow_inline_api_keys"].isBool()) {
+        // Safety default: rules should not embed provider keys by default.
+        wfargs["allow_inline_api_keys"] = false;
+      }
+
+      // Inject SENSOR_EVENT evidence into workflow inputs so tasks can template against it.
+      Json::Value inputs =
+        wfargs.isMember("inputs") && wfargs["inputs"].isObject() ? wfargs["inputs"] : Json::Value(Json::objectValue);
+      if (!inputs.isObject()) inputs = Json::Value(Json::objectValue);
+      if (!inputs.isMember("sensor_event")) {
+        Json::Value se(Json::objectValue);
+        se["node_id"] = sensor_node_id;
+        se["msg_id"] = sensor_msg_id;
+        se["rule_id"] = r.rule_id;
+        se["event_type"] = event_type;
+        se["ts_utc_ms"] = (Json::Int64)event_ts_utc_ms;
+        se["confidence"] = confidence;
+        se["data"] = data.isNull() ? Json::Value(Json::objectValue) : data;
+        inputs["sensor_event"] = se;
+      }
+      wfargs["inputs"] = inputs;
+
+      HttpRequest req2 = base_req;
+      req2.body = json_stringify(wfargs);
+      HttpResponse r2;
+      handle_workflow_submit_endpoint(cfg, cors_cfg, db, req2, &r2);
+      if (!(r2.status >= 200 && r2.status < 300)) continue;
+
+      r.last_fired_utc_ms = now;
+      r.updated_utc_ms = now;
+      (void)db->upsert_edge_rule(r, nullptr);
+      continue;
+    }
 
     std::string target_node_id;
     if (action.isMember("target") && action["target"].isObject()) {
@@ -192,13 +249,20 @@ void handle_edge_rule_upsert_endpoint(
     return;
   }
   const std::string atype = action.isMember("type") && action["type"].isString() ? action["type"].asString() : "";
-  if (atype != "task_assign") {
+  if (atype != "task_assign" && atype != "durable_workflow_submit") {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"unsupported action.type (expected task_assign)\"}";
+    resp->body = "{\"ok\":false,\"error\":\"unsupported action.type (expected task_assign or durable_workflow_submit)\"}";
     return;
   }
+  if (atype == "durable_workflow_submit") {
+    if (!action.isMember("workflow") || !action["workflow"].isObject()) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"durable_workflow_submit requires action.workflow (object)\"}";
+      return;
+    }
+  }
   const std::string action_json = edge_json_stringify_compact(action);
-  if (action_json.size() > 20000) {
+  if (action_json.size() > 200000) {
     resp->status = 413;
     resp->body = "{\"ok\":false,\"error\":\"action too large\"}";
     return;

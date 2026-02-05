@@ -983,7 +983,10 @@ void handle_edge_message_endpoint(
     (void)db_or_null->insert_edge_sensor_event(sr, nullptr, nullptr);
 
     edge_rules_apply_for_sensor_event_best_effort(
+      cfg,
+      cors_cfg,
       db_or_null,
+      req,
       node_id,
       msg_id,
       event_type,
