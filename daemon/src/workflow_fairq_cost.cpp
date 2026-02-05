@@ -54,6 +54,14 @@ int64_t workflow_fairq_estimate_task_cost_simple_v1(
 
   // Baseline costs by kind (rough heuristics).
   int64_t cost = 1;
+  const bool looks_like_llm_run =
+    kind.empty() &&
+    rr.isMember("prompt") && rr["prompt"].isString() &&
+    rr.isMember("model") && rr["model"].isString() && !trim_copy(rr["model"].asString()).empty();
+  if (looks_like_llm_run) {
+    // Default LLM runs are usually more expensive than deterministic tasks.
+    cost = 2;
+  }
   if (kind == "edge_invoke") {
     // Edge tasks are often multi-poll loops (QUEUED/RUNNING), so charge higher to reduce latency
     // variance under mixed workloads.
@@ -86,6 +94,14 @@ int64_t workflow_fairq_estimate_task_cost_simple_v1(
   if (rr.isMember("max_steps") && json_i64_best_effort(rr["max_steps"], &max_steps)) {
     if (max_steps > 0) {
       cost += std::min<int64_t>(4, max_steps / 50);
+    }
+  }
+
+  // Prompt size is a strong predictor of latency and cost for LLM calls.
+  if (rr.isMember("prompt") && rr["prompt"].isString()) {
+    const int64_t n = (int64_t)rr["prompt"].asString().size();
+    if (n > 0) {
+      cost += std::min<int64_t>(8, n / 2000);
     }
   }
 

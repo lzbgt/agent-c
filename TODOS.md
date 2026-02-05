@@ -315,6 +315,10 @@ Priority order (reweighted after `delegate_parallel` quorum_ok + attempt_default
      - New daemon knob: `--workflow-drr-cost-model simple_v1` (env `AGENTD_WORKFLOW_DRR_COST_MODEL=simple_v1`)
      - Scheduler charges DRR deficit by best-effort estimated task cost (bounded + deterministic by request JSON).
      - Proof: `ctest` includes `workflow_fairq_cost_tests`.
+   - Shipped (v2.3.3 partial): cost model tightened for LLM-heavy queues (still deterministic):
+     - LLM-like runs (presence of `model` + `prompt`) are charged higher than deterministic tasks.
+     - Prompt length and `stream_assistant:true` add small bounded bumps (better fairness under mixed workloads).
+     - Proof: `ctest` includes `workflow_fairq_cost_tests`.
    - Next (v2.3+): tighten the cost model:
      - incorporate budget pressure, token usage counters, and edge polling characteristics into the estimator.
 

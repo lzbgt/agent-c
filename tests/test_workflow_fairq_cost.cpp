@@ -16,6 +16,19 @@ int main() {
     assert(c == 1);
   }
   {
+    // LLM-like runs (model+prompt) should cost more than deterministic tasks.
+    const std::string req = R"({"prompt":"hi","model":"stub"})";
+    const int64_t c = workflow_fairq_estimate_task_cost_simple_v1(req, 32);
+    assert(c >= 2 && c <= 32);
+  }
+  {
+    // Prompt length bump should be bounded and deterministic.
+    std::string longp(5000, 'x');
+    const std::string req = std::string(R"({"prompt":")") + longp + R"(","model":"stub"})";
+    const int64_t c = workflow_fairq_estimate_task_cost_simple_v1(req, 32);
+    assert(c >= 4 && c <= 32);
+  }
+  {
     const std::string req = R"({"kind":"aggregate","aggregate":{"mode":"quorum_hashes"}})";
     const int64_t c = workflow_fairq_estimate_task_cost_simple_v1(req, 32);
     assert(c == 1);
@@ -51,4 +64,3 @@ int main() {
   return 0;
 #endif
 }
-
