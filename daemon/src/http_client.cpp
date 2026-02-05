@@ -5,11 +5,139 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
+#include <cstring>
+#include <netdb.h>
 #include <mutex>
 #include <optional>
+#include <string>
 #include <string_view>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <vector>
 
 namespace agentd {
+
+namespace {
+
+struct UrlHostPort {
+  std::string host; // lowercased; IPv6 without brackets
+  int port = 0;
+};
+
+static bool parse_http_url_target_hostport(const std::string& url_in, UrlHostPort* out) {
+  if (!out) return false;
+  *out = UrlHostPort{};
+
+  const std::string url = url_in;
+  const size_t scheme = url.find("://");
+  if (scheme == std::string::npos) return false;
+  std::string scheme_s = url.substr(0, scheme);
+  for (char& c : scheme_s) c = (char)std::tolower((unsigned char)c);
+  if (scheme_s != "http" && scheme_s != "https") return false;
+
+  size_t i = scheme + 3;
+  size_t end = url.find_first_of("/?#", i);
+  if (end == std::string::npos) end = url.size();
+  std::string authority = url.substr(i, end - i);
+
+  // Skip optional userinfo.
+  const size_t at = authority.rfind('@');
+  if (at != std::string::npos) authority = authority.substr(at + 1);
+
+  // Trim (best-effort).
+  while (!authority.empty() && (authority.front() == ' ' || authority.front() == '\t')) authority.erase(authority.begin());
+  while (!authority.empty() && (authority.back() == ' ' || authority.back() == '\t')) authority.pop_back();
+  if (authority.empty()) return false;
+
+  std::string host;
+  std::string port_s;
+  if (!authority.empty() && authority[0] == '[') {
+    const size_t rb = authority.find(']');
+    if (rb == std::string::npos) return false;
+    host = authority.substr(1, rb - 1);
+    if (rb + 1 < authority.size() && authority[rb + 1] == ':') port_s = authority.substr(rb + 2);
+  } else {
+    const size_t col = authority.rfind(':');
+    if (col != std::string::npos && authority.find(':') == col) {
+      host = authority.substr(0, col);
+      port_s = authority.substr(col + 1);
+    } else {
+      host = authority;
+    }
+  }
+
+  // Trim host and port (best-effort).
+  while (!host.empty() && (host.front() == ' ' || host.front() == '\t')) host.erase(host.begin());
+  while (!host.empty() && (host.back() == ' ' || host.back() == '\t')) host.pop_back();
+  while (!port_s.empty() && (port_s.front() == ' ' || port_s.front() == '\t')) port_s.erase(port_s.begin());
+  while (!port_s.empty() && (port_s.back() == ' ' || port_s.back() == '\t')) port_s.pop_back();
+  if (host.empty()) return false;
+
+  for (char& c : host) c = (char)std::tolower((unsigned char)c);
+
+  int port = (scheme_s == "https") ? 443 : 80;
+  if (!port_s.empty()) {
+    try {
+      const int p = std::stoi(port_s);
+      if (p < 1 || p > 65535) return false;
+      port = p;
+    } catch (...) {
+      return false;
+    }
+  }
+
+  out->host = host;
+  out->port = port;
+  return true;
+}
+
+static bool host_is_literal_ip(const std::string& host) {
+  if (host.empty()) return false;
+  uint8_t buf[16];
+  if (::inet_pton(AF_INET, host.c_str(), buf) == 1) return true;
+  if (::inet_pton(AF_INET6, host.c_str(), buf) == 1) return true;
+  return false;
+}
+
+static void resolve_host_best_effort(const std::string& host, std::vector<std::string>* out_addrs) {
+  if (!out_addrs) return;
+  out_addrs->clear();
+  if (host.empty()) return;
+  if (host_is_literal_ip(host)) {
+    out_addrs->push_back(host);
+    return;
+  }
+
+  struct addrinfo hints;
+  std::memset(&hints, 0, sizeof(hints));
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_flags = AI_ADDRCONFIG;
+  struct addrinfo* res = nullptr;
+  const int rc = ::getaddrinfo(host.c_str(), nullptr, &hints, &res);
+  if (rc != 0 || !res) return;
+  int kept = 0;
+  for (struct addrinfo* p = res; p; p = p->ai_next) {
+    if (kept >= 16) break;
+    if (!p->ai_addr) continue;
+    char ipbuf[INET6_ADDRSTRLEN + 1];
+    std::memset(ipbuf, 0, sizeof(ipbuf));
+    if (p->ai_family == AF_INET) {
+      const struct sockaddr_in* sin = (const struct sockaddr_in*)p->ai_addr;
+      if (!::inet_ntop(AF_INET, &sin->sin_addr, ipbuf, sizeof(ipbuf) - 1)) continue;
+      out_addrs->push_back(std::string(ipbuf));
+      kept++;
+    } else if (p->ai_family == AF_INET6) {
+      const struct sockaddr_in6* sin6 = (const struct sockaddr_in6*)p->ai_addr;
+      if (!::inet_ntop(AF_INET6, &sin6->sin6_addr, ipbuf, sizeof(ipbuf) - 1)) continue;
+      out_addrs->push_back(std::string(ipbuf));
+      kept++;
+    }
+  }
+  ::freeaddrinfo(res);
+}
+
+}  // namespace
 
 static void ensure_curl_global_init() {
   static std::once_flag once;
@@ -106,7 +234,8 @@ HttpClientResult http_request(
   const std::string& body,
   int64_t timeout_ms,
   size_t max_response_bytes,
-  const std::string& proxy_url
+  const std::string& proxy_url,
+  bool dns_pin
 ) {
   HttpClientResult out;
   out.http_status = 0;
@@ -158,6 +287,27 @@ HttpClientResult http_request(
   // Make timeouts reliable even when used from background threads.
   curl_easy_setopt(curl, CURLOPT_NOSIGNAL, 1L);
 
+  // Defense-in-depth: pin hostname DNS results per request (best-effort).
+  //
+  // This mitigates DNS rebinding between an "allowlist check" and the actual connect performed by libcurl.
+  // - Only applies to hostname targets (not literal IPs).
+  // - Uses CURLOPT_RESOLVE to bypass DNS at connect-time (SNI/cert verification still use the hostname).
+  struct curl_slist* resolve = nullptr;
+  if (dns_pin) {
+    UrlHostPort hp;
+    if (parse_http_url_target_hostport(url, &hp) && !hp.host.empty() && !host_is_literal_ip(hp.host)) {
+      std::vector<std::string> addrs;
+      resolve_host_best_effort(hp.host, &addrs);
+      for (const auto& ip : addrs) {
+        if (ip.empty()) continue;
+        resolve = curl_slist_append(resolve, (hp.host + ":" + std::to_string(hp.port) + ":" + ip).c_str());
+      }
+      if (resolve) {
+        curl_easy_setopt(curl, CURLOPT_RESOLVE, resolve);
+      }
+    }
+  }
+
   if (timeout_ms > 0) {
     curl_easy_setopt(curl, CURLOPT_TIMEOUT_MS, (long)timeout_ms);
   }
@@ -200,6 +350,7 @@ HttpClientResult http_request(
   (void)curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &status);
   out.http_status = status;
 
+  if (resolve) curl_slist_free_all(resolve);
   curl_slist_free_all(hdrs);
   curl_easy_cleanup(curl);
 

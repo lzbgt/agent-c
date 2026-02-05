@@ -318,7 +318,7 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
      - `--workflow-http-allow-host` (repeatable)
      - `--workflow-http-allow-cidr` (repeatable)
      - `--workflow-http-deny-private` (defense-in-depth)
-   - Next hardening: explicit CIDR denylist + DNS pinning/attestation (defense-in-depth against DNS rebinding).
+   - Shipped hardening: explicit CIDR denylist + optional DNS pinning (defense-in-depth against DNS rebinding).
 2) **Memory v2.3** — query-plan primitives (bounded windows + key-prefix filters) and automatic consolidation triggers as time advances,
    so long-running systems keep context tight and correct.
 3) **Scheduling policy v2.4+** — DRR is shipped; next is telemetry-driven cost (tokens/elapsed/polls) and resilient fairness under mixed workloads.

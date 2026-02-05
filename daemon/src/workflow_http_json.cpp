@@ -135,7 +135,7 @@ Json::Value workflow_http_json_to_json(
     }
   }
 
-  const HttpClientResult r = http_request(url, method, headers, body, timeout_ms, max_bytes, cfg.proxy_url);
+  const HttpClientResult r = http_request(url, method, headers, body, timeout_ms, max_bytes, cfg.proxy_url, cfg.workflow_http_dns_pin);
 
   Json::Value out(Json::objectValue);
   out["ok"] = false;

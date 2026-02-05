@@ -277,7 +277,9 @@ Security model:
   or env `AGENTD_WORKFLOW_HTTP_ALLOW_HOSTS=host[:port],...`.
 - Further hardening:
   - `--workflow-http-allow-cidr <cidr>` (repeatable) / env `AGENTD_WORKFLOW_HTTP_ALLOW_CIDRS=...`
+  - `--workflow-http-deny-cidr <cidr>` (repeatable) / env `AGENTD_WORKFLOW_HTTP_DENY_CIDRS=...`
   - `--workflow-http-deny-private` / env `AGENTD_WORKFLOW_HTTP_DENY_PRIVATE=1`
+  - `--workflow-http-dns-pin` / env `AGENTD_WORKFLOW_HTTP_DNS_PIN=1`
 - Do **not** embed secrets into persisted workflow specs via headers. `Authorization` headers are rejected at submit time.
   - If you need a bearer token, use `http_json.bearer_env` to reference an env var name (only the name is persisted).
 
@@ -340,7 +342,9 @@ Security model:
   or env `AGENTD_WORKFLOW_HTTP_ALLOW_HOSTS=host[:port],...`.
 - Further hardening:
   - `--workflow-http-allow-cidr <cidr>` (repeatable) / env `AGENTD_WORKFLOW_HTTP_ALLOW_CIDRS=...`
+  - `--workflow-http-deny-cidr <cidr>` (repeatable) / env `AGENTD_WORKFLOW_HTTP_DENY_CIDRS=...`
   - `--workflow-http-deny-private` / env `AGENTD_WORKFLOW_HTTP_DENY_PRIVATE=1`
+  - `--workflow-http-dns-pin` / env `AGENTD_WORKFLOW_HTTP_DNS_PIN=1`
 - Do **not** embed secrets into persisted workflow specs via headers. `Authorization` headers are rejected at submit time.
   - If you need a bearer token, use `agentd_call.bearer_env` to reference an env var name (only the name is persisted).
 
@@ -384,7 +388,7 @@ This is submit-time syntactic sugar (like `delegate_parallel`):
 
 Security / gating:
 - This macro expands into `agentd_call` tasks, so it is gated by `--workflow-enable-http-tasks` (SSRF surface).
-- The same outbound hardening applies (`--workflow-http-allow-host`, `--workflow-http-allow-cidr`, `--workflow-http-deny-private`).
+- The same outbound hardening applies (`--workflow-http-allow-host`, `--workflow-http-allow-cidr`, `--workflow-http-deny-cidr`, `--workflow-http-deny-private`, `--workflow-http-dns-pin`).
 
 Example (fan out across 2 remotes; pick the first successful branch):
 

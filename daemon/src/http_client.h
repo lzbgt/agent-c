@@ -36,8 +36,8 @@ HttpClientResult http_request(
   const std::string& body,
   int64_t timeout_ms,
   size_t max_response_bytes,
-  const std::string& proxy_url
+  const std::string& proxy_url,
+  bool dns_pin
 );
 
 }  // namespace agentd
-

@@ -390,6 +390,36 @@ static bool allow_cidrs_match(const std::vector<std::string>& allow_cidrs, const
   return false;
 }
 
+static bool deny_cidrs_match_any(
+  const std::vector<std::string>& deny_cidrs,
+  const std::vector<IpAddr>& addrs,
+  std::string* out_match
+) {
+  if (out_match) out_match->clear();
+  if (deny_cidrs.empty()) return false;
+  struct ParsedDeny {
+    Cidr cidr;
+    std::string raw;
+  };
+  std::vector<ParsedDeny> parsed;
+  parsed.reserve(deny_cidrs.size());
+  for (const auto& raw : deny_cidrs) {
+    Cidr c;
+    std::string err;
+    if (cidr_parse(raw, &c, &err)) parsed.push_back(ParsedDeny{c, raw});
+  }
+  if (parsed.empty()) return false;
+  for (const auto& ip : addrs) {
+    for (const auto& p : parsed) {
+      if (ip_in_cidr(ip, p.cidr)) {
+        if (out_match) *out_match = p.raw;
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 static bool any_private(const std::vector<IpAddr>& addrs) {
   for (const auto& ip : addrs) {
     if (ip_is_private_or_loopback(ip)) return true;
@@ -412,7 +442,9 @@ bool workflow_http_url_is_allowed(
   if (out_reason) out_reason->clear();
   const bool has_hosts = !cfg.workflow_http_allow_hosts.empty();
   const bool has_cidrs = !cfg.workflow_http_allow_cidrs.empty();
-  if (!has_hosts && !has_cidrs && !cfg.workflow_http_deny_private_addrs) return true;
+  const bool has_allow = has_hosts || has_cidrs;
+  const bool has_denies = !cfg.workflow_http_deny_cidrs.empty();
+  if (!has_allow && !has_denies && !cfg.workflow_http_deny_private_addrs) return true;
 
   HostPort target;
   std::string terr;
@@ -428,6 +460,15 @@ bool workflow_http_url_is_allowed(
   const bool cidr_match = has_cidrs && allow_cidrs_match(cfg.workflow_http_allow_cidrs, addrs);
 
   const bool allow_match = host_match || cidr_match;
+
+  // Denylist: if any resolved address matches a denied CIDR, reject even if allowlisted.
+  if (has_denies) {
+    std::string deny_hit;
+    if (deny_cidrs_match_any(cfg.workflow_http_deny_cidrs, addrs, &deny_hit)) {
+      if (out_reason) *out_reason = "target matches deny-cidr " + deny_hit;
+      return false;
+    }
+  }
 
   if (cfg.workflow_http_deny_private_addrs) {
     // Extra guard: deny obvious loopback/private unless explicitly allowed.
@@ -450,10 +491,11 @@ bool workflow_http_url_is_allowed(
       return false;
     }
     // If allowlists are empty, and it isn't private, allow.
-    if (!has_hosts && !has_cidrs) return true;
+    if (!has_allow) return true;
   }
 
-  if (!has_hosts && !has_cidrs) return true;
+  // If allowlists are empty, allow anything not denied above.
+  if (!has_allow) return true;
   if (allow_match) return true;
 
   if (out_reason) {

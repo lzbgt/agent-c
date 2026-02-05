@@ -279,7 +279,7 @@ Json::Value workflow_agentd_call_to_json(
     }
 
     const std::string body = json_stringify_compact(wf2);
-    const HttpClientResult r = http_request(submit_url, "POST", headers, body, timeout_ms, max_bytes, cfg.proxy_url);
+    const HttpClientResult r = http_request(submit_url, "POST", headers, body, timeout_ms, max_bytes, cfg.proxy_url, cfg.workflow_http_dns_pin);
 
     Json::Value submit_http(Json::objectValue);
     submit_http["status"] = (Json::Int64)r.http_status;
@@ -341,7 +341,7 @@ Json::Value workflow_agentd_call_to_json(
   if (include_results) final_url += "&include_results=1";
 
   while (unix_ms_now() <= deadline_ms) {
-    const HttpClientResult r = http_request(final_url, "GET", headers, /*body=*/"", timeout_ms, max_bytes, cfg.proxy_url);
+    const HttpClientResult r = http_request(final_url, "GET", headers, /*body=*/"", timeout_ms, max_bytes, cfg.proxy_url, cfg.workflow_http_dns_pin);
 
     Json::Value poll_http(Json::objectValue);
     poll_http["status"] = (Json::Int64)r.http_status;

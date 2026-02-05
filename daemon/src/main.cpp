@@ -452,8 +452,18 @@ int main(int argc, char** argv) {
       }
       v = trim_copy(v);
       if (!v.empty()) cfg.workflow_http_allow_cidrs.push_back(v);
+    } else if (a == "--workflow-http-deny-cidr") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --workflow-http-deny-cidr\n";
+        return 2;
+      }
+      v = trim_copy(v);
+      if (!v.empty()) cfg.workflow_http_deny_cidrs.push_back(v);
     } else if (a == "--workflow-http-deny-private") {
       cfg.workflow_http_deny_private_addrs = true;
+    } else if (a == "--workflow-http-dns-pin") {
+      cfg.workflow_http_dns_pin = true;
     } else if (a == "--memory-consolidate-interval-ms") {
       std::string v;
       if (!take(&v)) {
@@ -723,7 +733,9 @@ int main(int argc, char** argv) {
         << "  --workflow-enable-http-tasks   Enable deterministic workflow kind:\"http_json\" outbound HTTP (INSECURE by default; SSRF risk)\n"
         << "  --workflow-http-allow-host <host[:port]>   Optional allowlist for workflow outbound HTTP (repeatable; default: allow any host when enabled)\n"
         << "  --workflow-http-allow-cidr <cidr>   Optional CIDR allowlist for workflow outbound HTTP (repeatable; e.g. 10.0.0.0/8)\n"
+        << "  --workflow-http-deny-cidr <cidr>    Optional CIDR denylist for workflow outbound HTTP (repeatable; checked in addition to allowlist)\n"
         << "  --workflow-http-deny-private   Reject private/loopback/link-local outbound HTTP targets unless explicitly allowed (defense-in-depth)\n"
+        << "  --workflow-http-dns-pin        Pin hostname DNS results per request (defense-in-depth vs DNS rebinding; may reduce DNS load balancing)\n"
         << "  --memory-consolidate-interval-ms <n>   Run memory consolidation every n ms (default: 0=disabled)\n"
         << "  --memory-consolidate-daily-days <n>    Scan last n daily memory files for @mem markers (default: 14)\n"
         << "  --memory-consolidate-keep-checkpoints <n>  Retain at most n structured checkpoints (default: 100)\n"
@@ -913,8 +925,21 @@ int main(int argc, char** argv) {
       }
     }
   }
+  if (cfg.workflow_http_deny_cidrs.empty()) {
+    if (const char* s = getenv_s("AGENTD_WORKFLOW_HTTP_DENY_CIDRS")) {
+      std::vector<std::string> toks;
+      parse_csv_tokens_best_effort(s, &toks);
+      for (auto& t : toks) {
+        t = trim_copy(t);
+        if (!t.empty()) cfg.workflow_http_deny_cidrs.push_back(t);
+      }
+    }
+  }
   if (const char* s = getenv_s("AGENTD_WORKFLOW_HTTP_DENY_PRIVATE")) {
     cfg.workflow_http_deny_private_addrs = env_truthy(s);
+  }
+  if (const char* s = getenv_s("AGENTD_WORKFLOW_HTTP_DNS_PIN")) {
+    cfg.workflow_http_dns_pin = env_truthy(s);
   }
   if (const char* ms = getenv_s("AGENTD_MEMORY_CONSOLIDATE_INTERVAL_MS")) {
     try {

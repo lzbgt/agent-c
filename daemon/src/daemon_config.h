@@ -139,6 +139,22 @@ struct DaemonConfig {
   //   - matching workflow_http_allow_cidrs, or
   //   - matching workflow_http_allow_hosts for a literal IP host target.
   bool workflow_http_deny_private_addrs = false;
+  // Optional CIDR denylist for outbound deterministic HTTP tasks.
+  //
+  // This is checked in addition to allowlist/deny-private and is intended as
+  // defense-in-depth against DNS rebinding and configuration mistakes.
+  //
+  // If any resolved address matches a denied CIDR, the request is rejected.
+  std::vector<std::string> workflow_http_deny_cidrs;
+  // Optional DNS pinning for outbound deterministic HTTP tasks.
+  //
+  // When enabled, the HTTP client resolves hostnames for each request and pins
+  // the resolved addresses into libcurl via CURLOPT_RESOLVE, preventing DNS
+  // rebinding between "allowlist check" and actual connect.
+  //
+  // Tradeoff: this can reduce the effective "live load balancing" of DNS-based
+  // hostnames (each request uses the resolution result captured at request time).
+  bool workflow_http_dns_pin = false;
 
   // Memory consolidation (rolling, deterministic by default).
   //

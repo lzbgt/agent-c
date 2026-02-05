@@ -124,6 +124,14 @@ void handle_config_endpoint(
     engines["workflow_http_allow_cidrs"] = arr;
   }
   engines["workflow_http_deny_private_addrs"] = cfg.workflow_http_deny_private_addrs;
+  if (!cfg.workflow_http_deny_cidrs.empty()) {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& c : cfg.workflow_http_deny_cidrs) {
+      if (!c.empty()) arr.append(c);
+    }
+    engines["workflow_http_deny_cidrs"] = arr;
+  }
+  engines["workflow_http_dns_pin"] = cfg.workflow_http_dns_pin;
   out["engines"] = engines;
 
   Json::Value memory(Json::objectValue);
