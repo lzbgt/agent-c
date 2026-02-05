@@ -67,11 +67,12 @@ If the platform sees a new/unknown `caps_sha256`, it queues a `PLATFORM_CAPS_REQ
 
 Reliability note (important):
 - The platform *persists* all inbound envelopes and dedupes persistence by `msg_id`.
-- For most message types, if a duplicate `msg_id` is received, the platform will not re-apply side effects (to avoid duplicating events).
-- For node-initiated handoff types (`WORKFLOW_SUBMIT|WORKFLOW_CANCEL|DURABLE_WORKFLOW_SUBMIT|DURABLE_WORKFLOW_CANCEL`), the platform may
-  still reprocess even when `msg_id` is deduped, to preserve at-least-once semantics across a crash window
-  (inbox row persisted but side effects not applied). These handoff operations are designed to be idempotent via `workflow_id` and/or
-  durable `idempotency_key`.
+- If a duplicate `msg_id` is received:
+  - if the prior message was already processed, the platform returns early (dedupe) and does not re-apply side effects.
+  - if the daemon crashed after persisting the inbox row but before applying side effects, the platform may reprocess the message
+    (at-least-once) to avoid permanent drops.
+  - replay safety depends on message type: node-initiated handoffs are designed to be idempotent (`workflow_id` / `idempotency_key`),
+    while event-style messages may produce duplicate logs if a crash occurred after side effects but before the processed marker was written.
 
 ### Poll node outbox
 

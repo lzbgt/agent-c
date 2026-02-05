@@ -27,11 +27,12 @@ Machine-readable contract (this repo):
 
 Message processing and dedupe (platform behavior):
 - Ingress persistence is deduped by `msg_id` (the platform stores all envelopes durably in `edge_inbox_messages`).
-- For most message types, duplicate `msg_id` implies the platform should not re-apply side effects (to avoid duplicating events).
-- For node-initiated handoff types defined in this document (`WORKFLOW_SUBMIT|WORKFLOW_CANCEL|DURABLE_WORKFLOW_SUBMIT|DURABLE_WORKFLOW_CANCEL`),
-  the platform may reprocess even when `msg_id` is deduped, to preserve at-least-once semantics across a crash window:
-  - crash after persisting the inbox row but before creating/canceling workflows would otherwise permanently drop the operation
-  - these operations are designed to be idempotent via `workflow_id` and/or durable `idempotency_key`
+- Duplicate `msg_id` should not normally re-apply side effects. The platform uses an explicit inbox `processed` marker to decide:
+  - if `processed=1`, it returns early (dedupe) and does not re-apply side effects.
+  - if `processed=0`, it may reprocess (at-least-once) to cover a crash window where the inbox row was persisted but side effects were not applied.
+
+This behavior is critical for these node-initiated handoff types, because a crash-window drop would otherwise permanently lose a submit/cancel.
+These operations are designed to be idempotent via `workflow_id` and/or durable `idempotency_key`.
 
 ## 1) WORKFLOW_SUBMIT (node → platform)
 

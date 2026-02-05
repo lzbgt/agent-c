@@ -28,6 +28,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - UM‑BMP crash-window correctness: node-initiated handoff messages are replayable even if `msg_id` is deduped (at-least-once),
   preventing permanent drops when a crash happens after persisting `edge_inbox_messages` but before applying side effects.
   - Proof: `ctest` includes `agentd_edge_message_dedupe_replay_handoff_smoke`.
+- UM‑BMP crash-window correctness (generalized): `edge_inbox_messages` now tracks a `processed` marker so **all** message types can be safely
+  retried with the same `msg_id` after a crash window (covers `TASK_DONE`, `TASK_EVENT`, etc; not only handoffs).
+  - Proof: `ctest` includes `agentd_edge_message_dedupe_replay_task_done_smoke`.
 - `trace_id` correlation end-to-end, plus a merged trace timeline across broker ⇄ agentd.
   - Proof: `ctest` includes `agentd_trace_id_smoke`.
 - Oren AVM governance endpoints (scan-before-execute; out-of-process).

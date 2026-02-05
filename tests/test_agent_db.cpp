@@ -268,7 +268,7 @@ int main() {
   const int64_t edge_wf_events_id_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('edge_workflow_events') WHERE name='id';");
   sqlite3_close(raw2);
-  assert(ver == 19);
+  assert(ver == 20);
   assert(arts2 == 0);
   assert(stop_reason_cols == 1);
   assert(ua_cols == 1);

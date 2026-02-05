@@ -57,7 +57,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v19)
+## Schema (v20)
 
 All timestamps are Unix milliseconds.
 
@@ -361,6 +361,8 @@ Durable inbound UM‑BMP envelopes. Used for dedupe, audit/debug, and replay.
 - `from_id TEXT` (optional)
 - `to_id TEXT` (optional)
 - `envelope_json TEXT NOT NULL` (full envelope JSON object string)
+- `processed INTEGER NOT NULL DEFAULT 0` (platform applied side effects; dedupe should return early when 1)
+- `processed_utc_ms INTEGER` (best-effort processing timestamp)
 
 Indexes:
 - `CREATE INDEX edge_inbox_by_type ON edge_inbox_messages(type, ts_utc_ms DESC)`

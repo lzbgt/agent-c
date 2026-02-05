@@ -298,6 +298,76 @@ VALUES(?,?,?,?,?,?);
 #endif
 }
 
+bool AgentDb::get_edge_inbox_message_processed(const std::string& msg_id, bool* out_processed, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (out_processed) *out_processed = false;
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)msg_id;
+  (void)out_processed;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (!out_processed || msg_id.empty()) return false;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+
+  sqlite3_stmt* st = nullptr;
+  const char* sql = "SELECT COALESCE(processed,0) FROM edge_inbox_messages WHERE msg_id=? LIMIT 1;";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = bind_text(st, 1, msg_id);
+  bool found = false;
+  if (ok && step_row(st)) {
+    found = true;
+    const int64_t v = sqlite3_column_int64(st, 0);
+    *out_processed = (v != 0);
+  }
+  sqlite3_finalize(st);
+  if (!ok) {
+    if (out_error && out_error->empty()) *out_error = sqlite_err(db_);
+    return false;
+  }
+  return found;
+#endif
+}
+
+bool AgentDb::mark_edge_inbox_message_processed(const std::string& msg_id, int64_t processed_utc_ms, std::string* out_error) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)msg_id;
+  (void)processed_utc_ms;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (msg_id.empty()) return false;
+  const int64_t ts = processed_utc_ms > 0 ? processed_utc_ms : unix_ms_now();
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = "UPDATE edge_inbox_messages SET processed=1, processed_utc_ms=? WHERE msg_id=?;";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_i64(st, 1, ts);
+  ok = ok && bind_text(st, 2, msg_id);
+  ok = ok && step_done(st);
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  if (!ok) return false;
+  return sqlite3_changes(db_) > 0;
+#endif
+}
+
 bool AgentDb::insert_edge_outbox_message(const EdgeOutboxMessageRow& row, int64_t* out_outbox_id, std::string* out_error) {
   if (out_error) out_error->clear();
   if (out_outbox_id) *out_outbox_id = 0;

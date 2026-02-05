@@ -165,7 +165,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 19;
+  const int kSchemaVersion = 20;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -708,6 +708,20 @@ ALTER TABLE workflow_tasks ADD COLUMN elapsed_ms_cum INTEGER NOT NULL DEFAULT 0;
 )SQL";
     if (!exec_locked(schema_v19, out_error)) return false;
     cur_ver = 19;
+  }
+
+  if (cur_ver < 20) {
+    const char* schema_v20 = R"SQL(
+ALTER TABLE edge_inbox_messages ADD COLUMN processed INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE edge_inbox_messages ADD COLUMN processed_utc_ms INTEGER;
+
+-- Back-compat: prior binaries treated inbox persistence as "processed" (dedupe == do nothing).
+-- Set processed=1 for existing rows so upgrades preserve old dedupe semantics.
+UPDATE edge_inbox_messages SET processed=1, processed_utc_ms=COALESCE(processed_utc_ms, ts_utc_ms)
+  WHERE processed IS NULL OR processed=0;
+)SQL";
+    if (!exec_locked(schema_v20, out_error)) return false;
+    cur_ver = 20;
   }
 
   // Record schema version.

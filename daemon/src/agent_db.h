@@ -418,6 +418,8 @@ class AgentDb {
   // - returns true and sets out_deduped=true when msg_id already exists
   // - returns false only on unexpected failure
   bool insert_edge_inbox_message(const EdgeInboxMessageRow& row, bool* out_deduped, std::string* out_error);
+  bool get_edge_inbox_message_processed(const std::string& msg_id, bool* out_processed, std::string* out_error);
+  bool mark_edge_inbox_message_processed(const std::string& msg_id, int64_t processed_utc_ms, std::string* out_error);
 
   struct EdgeOutboxMessageRow {
     int64_t outbox_id = 0;

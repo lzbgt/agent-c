@@ -112,24 +112,43 @@ void handle_edge_message_endpoint(
     resp->body = edge_json_stringify_compact(o);
   }
 
-  // Normally, msg_id dedupe implies "don't reprocess" to avoid duplicating events.
-  //
-  // However, for node-initiated handoff types (submit/cancel), we intentionally allow reprocessing even when deduped.
-  // This prevents a rare but real reliability bug:
-  // - if the daemon crashes after persisting the inbox row but before applying side effects (creating/canceling workflows),
-  //   then a transport retry with the same msg_id would otherwise be permanently ignored.
-  //
-  // Handoff types are designed to be idempotent (workflow_id / idempotency_key), so reprocessing is safe and fast.
+  const int64_t now = edge_unix_ms_now();
   if (deduped) {
-    const bool replayable_handoff =
-      type == "WORKFLOW_SUBMIT" ||
-      type == "WORKFLOW_CANCEL" ||
-      type == "DURABLE_WORKFLOW_SUBMIT" ||
-      type == "DURABLE_WORKFLOW_CANCEL";
-    if (!replayable_handoff) return;
+    bool processed = false;
+    std::string perr2;
+    const bool found = db_or_null->get_edge_inbox_message_processed(msg_id, &processed, &perr2);
+    if (found && processed) {
+      // Already processed: keep the deduped response and return without re-applying side effects.
+      Json::Value o(Json::objectValue);
+      o["ok"] = true;
+      o["deduped"] = true;
+      o["processed"] = true;
+      resp->body = edge_json_stringify_compact(o);
+      return;
+    }
   }
 
-  const int64_t now = edge_unix_ms_now();
+  struct InboxProcessedGuard {
+    AgentDb* db = nullptr;
+    std::string msg_id;
+    int64_t now = 0;
+    HttpResponse* resp = nullptr;
+    bool armed = false;
+    ~InboxProcessedGuard() {
+      if (!armed || !db || msg_id.empty() || !resp) return;
+      // Mark as processed for any non-5xx response. 5xx errors are considered retryable.
+      if (resp->status >= 500) return;
+      std::string ign;
+      (void)db->mark_edge_inbox_message_processed(msg_id, now, &ign);
+    }
+  };
+
+  InboxProcessedGuard inbox_guard;
+  inbox_guard.db = db_or_null;
+  inbox_guard.msg_id = msg_id;
+  inbox_guard.now = now;
+  inbox_guard.resp = resp;
+  inbox_guard.armed = true;
 
   auto sanitize_id_token = [](std::string s, size_t max_len) -> std::string {
     if (s.size() > max_len) s.resize(max_len);
