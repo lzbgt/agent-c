@@ -11,6 +11,12 @@ if [[ -z "${AGENTD_BIN}" ]]; then
   exit 2
 fi
 
+ENCODER_BIN="${2:-}"
+if [[ -n "${ENCODER_BIN}" && ! -x "${ENCODER_BIN}" ]]; then
+  echo "encoder binary not executable: ${ENCODER_BIN}" >&2
+  exit 2
+fi
+
 LOG_DIR="$(agentd_smoke_log_dir)"
 mkdir -p "${LOG_DIR}"
 
@@ -31,11 +37,26 @@ PY
 MSG_ID="cbor_msg_1"
 
 # Build a CBOR-encoded UM-BMP NODE_HELLO envelope and POST it with Content-Type: application/cbor.
-resp="$(
-  python3 - <<PY | curl -fsS --noproxy "*" --max-time 10 \
-    -H "Content-Type: application/cbor" \
-    --data-binary @- \
-    "${DAEMON_URL}/api/v1/edge/message"
+if [[ -n "${ENCODER_BIN}" ]]; then
+  resp="$(
+    "${ENCODER_BIN}" \
+      --type NODE_HELLO \
+      --node-id "${NODE_ID}" \
+      --msg-id "${MSG_ID}" \
+      --model "esp32" \
+      --fw-git-sha "deadbeef" \
+      --caps-sha256 "${CAPS}" | \
+    curl -fsS --noproxy "*" --max-time 10 \
+      -H "Content-Type: application/cbor" \
+      --data-binary @- \
+      "${DAEMON_URL}/api/v1/edge/message"
+  )"
+else
+  resp="$(
+    python3 - <<PY | curl -fsS --noproxy "*" --max-time 10 \
+      -H "Content-Type: application/cbor" \
+      --data-binary @- \
+      "${DAEMON_URL}/api/v1/edge/message"
 import struct, sys, time
 
 def enc_uint(u):
@@ -53,9 +74,6 @@ def enc_text(s):
   elif n < 65536: hdr = bytes([0x79]) + struct.pack(">H", n)
   else: raise SystemExit("text too long")
   return hdr + b
-
-def enc_bool(v):
-  return bytes([0xf5 if v else 0xf4])
 
 def enc_null():
   return bytes([0xf6])
@@ -92,7 +110,8 @@ env = enc_map({
 
 sys.stdout.buffer.write(env)
 PY
-)"
+  )"
+fi
 
 python3 - <<PY
 import json, sys
@@ -134,5 +153,47 @@ if "PLATFORM_CAPS_REQ" not in types:
   print("expected PLATFORM_CAPS_REQ in outbox, got", types, file=sys.stderr)
   raise SystemExit(1)
 PY
+
+if [[ -n "${ENCODER_BIN}" ]]; then
+  # Complete the capability handshake by sending NODE_CAPS_RSP over CBOR wire as well.
+  MSG_ID2="cbor_msg_2"
+  resp2="$(
+    "${ENCODER_BIN}" \
+      --type NODE_CAPS_RSP \
+      --node-id "${NODE_ID}" \
+      --msg-id "${MSG_ID2}" \
+      --caps-sha256 "${CAPS}" \
+      --manifest-minimal \
+      --enforce-det | \
+    curl -fsS --noproxy "*" --max-time 10 \
+      -H "Content-Type: application/cbor" \
+      --data-binary @- \
+      "${DAEMON_URL}/api/v1/edge/message"
+  )"
+
+  python3 - <<PY
+import json, sys
+obj = json.loads(r'''${resp2}''')
+if not obj.get("ok"):
+  print("expected ok true (caps rsp)", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+  caps_json="$(curl -fsS --noproxy "*" --max-time 10 "${DAEMON_URL}/api/v1/edge/node/caps?node_id=${NODE_ID}")"
+  python3 - <<PY
+import json, sys
+obj = json.loads(r'''${caps_json}''')
+if not obj.get("ok"):
+  print("caps endpoint failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+manifest = obj.get("manifest") or {}
+if not isinstance(manifest, dict):
+  print("expected manifest object", manifest, file=sys.stderr)
+  raise SystemExit(1)
+if manifest.get("spec_version") != "um-acds/0.1":
+  print("expected spec_version in manifest", manifest, file=sys.stderr)
+  raise SystemExit(1)
+PY
+fi
 
 echo "agentd_edge_message_cbor_smoke OK"

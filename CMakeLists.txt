@@ -83,12 +83,21 @@ target_compile_options(agent_ed25519_tool PRIVATE
 )
 target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
 
-# Host-side helper for validating CBOR outbox bytes with the embedded decoder.
-if(AGENT_BUILD_HOST)
-  find_package(CURL REQUIRED)
-  if(NOT AGENT_ENABLE_JSONCPP)
-    message(FATAL_ERROR "AGENT_BUILD_HOST=ON requires jsoncpp (pkg-config: jsoncpp). Use -DAGENT_BUILD_HOST=OFF for core-only builds.")
-  endif()
+  # Host-side helper for validating CBOR outbox bytes with the embedded decoder.
+  if(AGENT_BUILD_HOST)
+    find_package(CURL REQUIRED)
+    if(NOT AGENT_ENABLE_JSONCPP)
+      message(FATAL_ERROR "AGENT_BUILD_HOST=ON requires jsoncpp (pkg-config: jsoncpp). Use -DAGENT_BUILD_HOST=OFF for core-only builds.")
+    endif()
+
+    # Host-side helper for generating CBOR UM-BMP envelopes using the embedded encoder.
+    add_executable(agent_core_umbmp_cbor_encode
+      tools/agent_core_umbmp_cbor_encode.cpp
+    )
+    target_compile_options(agent_core_umbmp_cbor_encode PRIVATE
+      $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+    )
+    target_link_libraries(agent_core_umbmp_cbor_encode PRIVATE agent_core)
 
   # Host-side helper for validating CBOR outbox bytes with the embedded decoder.
   add_executable(agent_core_outbox_cbor_check
@@ -546,7 +555,12 @@ if(AGENT_BUILD_HOST)
 				        $<TARGET_FILE:agentd>
 				        $<TARGET_FILE:agent_ed25519_tool>
 				    )
-				    add_test(NAME agentd_edge_message_cbor_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_message_cbor_smoke.sh $<TARGET_FILE:agentd>)
+				    add_test(
+				      NAME agentd_edge_message_cbor_smoke
+				      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_message_cbor_smoke.sh
+				        $<TARGET_FILE:agentd>
+				        $<TARGET_FILE:agent_core_umbmp_cbor_encode>
+				    )
 				    add_test(NAME agentd_edge_outbox_cbor_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_outbox_cbor_smoke.sh $<TARGET_FILE:agentd> $<TARGET_FILE:agent_core_outbox_cbor_check>)
 				    add_test(NAME agentd_edge_caps_sha256_validation_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_caps_sha256_validation_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_task_assign_schema_validation_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_task_assign_schema_validation_smoke.sh $<TARGET_FILE:agentd>)
