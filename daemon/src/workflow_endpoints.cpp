@@ -46,6 +46,25 @@ static bool id_is_safe(const std::string& s) {
   return true;
 }
 
+static std::string to_lower_ascii(std::string s) {
+  for (char& c : s) {
+    if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+  }
+  return s;
+}
+
+static bool is_safe_relpath_md(const std::string& p) {
+  if (p.empty()) return false;
+  if (p.size() > 300) return false;
+  if (p.find('\\') != std::string::npos) return false;
+  if (p[0] == '/') return false;
+  if (p.find("..") != std::string::npos) return false;
+  if (p.find('\0') != std::string::npos) return false;
+  const std::string lp = to_lower_ascii(p);
+  if (lp.size() < 3 || lp.rfind(".md") != lp.size() - 3) return false;
+  return true;
+}
+
 static bool expand_workflow_submit_macros(
   Json::Value* io_tasks_arr,
   const Json::Value& workflow_defaults,
@@ -744,7 +763,8 @@ void handle_workflow_submit_endpoint(
     const bool is_edge = (kind == "edge_invoke");
     const bool is_delay = (kind == "delay");
     const bool is_delegate = (kind == "delegate");
-    const bool is_special = is_avm || is_aggregate || is_edge || is_delay || is_delegate;
+    const bool is_memory_put = (kind == "memory_put");
+    const bool is_special = is_avm || is_aggregate || is_edge || is_delay || is_delegate || is_memory_put;
 
     Json::Value run_req = t.isMember("request") && t["request"].isObject() ? t["request"] : t;
     if (!is_special && defaults.isObject()) {
@@ -954,6 +974,104 @@ void handle_workflow_submit_endpoint(
         }
         if (t["result"].isObject()) task_req["result"] = t["result"];
       }
+      task_req["priority"] = task_priority;
+      task_req["trace_id"] = trace_id + ":" + task_id;
+    } else if (is_memory_put) {
+      if (!t.isMember("memory_put") || !t["memory_put"].isObject()) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "memory_put task missing memory_put object";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+      const auto& mp = t["memory_put"];
+      const std::string path =
+        mp.isMember("path") && mp["path"].isString() && !trim_copy(mp["path"].asString()).empty()
+        ? trim_copy(mp["path"].asString())
+        : "STRUCTURED.md";
+      if (!is_safe_relpath_md(path)) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "memory_put.path must be a safe relative .md path";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+
+      const Json::Value entries = mp.isMember("entries") ? mp["entries"] : Json::Value(Json::nullValue);
+      if (!entries.isArray() || entries.empty()) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "memory_put.entries must be a non-empty array";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+
+      Json::Value entries2(Json::arrayValue);
+      int valid = 0;
+      for (Json::ArrayIndex ei = 0; ei < entries.size(); ei++) {
+        const auto& e = entries[ei];
+        if (!e.isObject()) continue;
+        const std::string key =
+          e.isMember("key") && e["key"].isString() ? trim_copy(e["key"].asString()) : "";
+        const std::string value =
+          e.isMember("value") && e["value"].isString() ? e["value"].asString() : "";
+        if (key.empty() || value.empty() || key.size() > 200) continue;
+        Json::Value o(Json::objectValue);
+        o["key"] = key;
+        o["value"] = value;
+        if (e.isMember("kind") && e["kind"].isString() && !trim_copy(e["kind"].asString()).empty()) {
+          o["kind"] = trim_copy(e["kind"].asString());
+        } else {
+          o["kind"] = "fact";
+        }
+        if (e.isMember("status") && e["status"].isString() && !trim_copy(e["status"].asString()).empty()) {
+          o["status"] = trim_copy(e["status"].asString());
+        } else {
+          o["status"] = "active";
+        }
+        if (e.isMember("source") && e["source"].isString() && !trim_copy(e["source"].asString()).empty()) {
+          o["source"] = trim_copy(e["source"].asString());
+        }
+        entries2.append(o);
+        valid++;
+      }
+      if (valid == 0) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "memory_put.entries has no valid entries (each entry requires key + value)";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+
+      Json::Value mp2(Json::objectValue);
+      mp2["path"] = path;
+      mp2["entries"] = entries2;
+      const bool checkpoint =
+        !mp.isMember("checkpoint") || (mp["checkpoint"].isBool() && mp["checkpoint"].asBool());
+      mp2["checkpoint"] = checkpoint;
+      if (mp.isMember("keep_checkpoints")) {
+        if (!mp["keep_checkpoints"].isInt()) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "memory_put.keep_checkpoints must be an int";
+          o["task_id"] = task_id;
+          resp->body = json_stringify_compact(o);
+          return;
+        }
+        mp2["keep_checkpoints"] = std::max(1, mp["keep_checkpoints"].asInt());
+      }
+
+      task_req["kind"] = "memory_put";
+      task_req["memory_put"] = mp2;
       task_req["priority"] = task_priority;
       task_req["trace_id"] = trace_id + ":" + task_id;
     } else if (is_delegate) {

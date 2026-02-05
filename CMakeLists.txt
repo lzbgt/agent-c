@@ -167,6 +167,7 @@ if(AGENT_BUILD_HOST)
     daemon/src/sandbox_policy.cpp
     daemon/src/openrouter_util.cpp
     daemon/src/string_util.cpp
+    daemon/src/workflow_aggregate.cpp
     daemon/src/workflow_engine.cpp
     daemon/src/workflow_templates.cpp
     daemon/src/workflow_endpoints.cpp
@@ -317,6 +318,7 @@ if(AGENT_BUILD_HOST)
 			    add_test(NAME agentd_workflow_admission_control_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_admission_control_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_workflow_delegate_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_delegate_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_workflow_delegate_parallel_macro_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_delegate_parallel_macro_smoke.sh $<TARGET_FILE:agentd>)
+			    add_test(NAME agentd_workflow_memory_put_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_memory_put_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_workflow_avm_capsule_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_avm_capsule_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_workflow_aggregate_quorum_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_aggregate_quorum_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_workflow_aggregate_first_ok_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_aggregate_first_ok_smoke.sh $<TARGET_FILE:agentd>)

@@ -1246,6 +1246,7 @@ components:
         - LLM/tool tasks: `request` (a `RunRequest`) with a non-empty `prompt`
         - Deterministic capsule tasks: `kind: avm_capsule` with `capsule` (see `AvmCapsuleRunArgs`)
         - Deterministic aggregation tasks: `kind: aggregate` with `aggregate` (see `WorkflowAggregateSpec`)
+        - Deterministic memory update tasks: `kind: memory_put` with `memory_put` (see `WorkflowMemoryPutSpec`)
         - Deterministic delay tasks: `kind: delay` with `delay_ms` (no LLM required)
         - Edge collaboration tasks: `kind: edge_invoke` with `edge` (see `WorkflowEdgeInvokeSpec`)
         - Sequential fallback collaboration: `kind: delegate` with `delegate` (see `WorkflowDelegateSpec`)
@@ -1254,6 +1255,7 @@ components:
         Note: OpenAPI cannot express conditional required fields perfectly; see the server-side behavior:
         - If `kind == avm_capsule`, `capsule.obc_base64` is required and `request.prompt` is not used.
         - If `kind == aggregate`, `aggregate.task_ids` is required and `request.prompt` is not used.
+        - If `kind == memory_put`, `memory_put.entries` is required and `request.prompt` is not used.
         - If `kind == delay`, `delay_ms` is optional (default 0) and `request.prompt` is not used.
         - If `kind == edge_invoke`, `edge.tool`/`edge.args` are required and `request.prompt` is not used.
         - If `kind == delegate`, `delegate.attempts` is required and `request.prompt` is not used.
@@ -1263,6 +1265,7 @@ components:
         - $ref: "#/components/schemas/WorkflowTaskRunSpec"
         - $ref: "#/components/schemas/WorkflowTaskAvmCapsuleSpec"
         - $ref: "#/components/schemas/WorkflowTaskAggregateSpec"
+        - $ref: "#/components/schemas/WorkflowTaskMemoryPutSpec"
         - $ref: "#/components/schemas/WorkflowTaskDelaySpec"
         - $ref: "#/components/schemas/WorkflowTaskEdgeInvokeSpec"
         - $ref: "#/components/schemas/WorkflowTaskDelegateSpec"
@@ -1356,6 +1359,37 @@ components:
           description: Deterministic correctness assertions (engine-enforced)
           additionalProperties: true
 
+    WorkflowTaskMemoryPutSpec:
+      type: object
+      required: [task_id, kind, memory_put]
+      properties:
+        task_id: { type: string }
+        allow_error:
+          type: boolean
+          description: If true, task failure does not fail the workflow (soft-fail).
+        inputs:
+          type: object
+          description: Optional per-task inputs (overrides workflow-level inputs).
+          additionalProperties: true
+        kind:
+          type: string
+          enum: [memory_put]
+          description: Deterministic structured memory upsert task (no LLM required; executes host tool memory_put).
+        depends_on:
+          type: array
+          items: { type: string }
+        max_attempts: { type: integer, format: int32 }
+        priority:
+          type: integer
+          format: int32
+          description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+        memory_put:
+          $ref: "#/components/schemas/WorkflowMemoryPutSpec"
+        expect:
+          type: object
+          description: Deterministic correctness assertions (engine-enforced)
+          additionalProperties: true
+
     WorkflowTaskDelaySpec:
       type: object
       required: [task_id, kind]
@@ -1392,6 +1426,44 @@ components:
           type: object
           description: Deterministic correctness assertions (engine-enforced)
           additionalProperties: true
+
+    WorkflowMemoryPutSpec:
+      type: object
+      required: [entries]
+      properties:
+        path:
+          type: string
+          description: Safe relative `.md` path under the memory root (default `STRUCTURED.md`).
+        checkpoint:
+          type: boolean
+          description: When true, emit rolling structured checkpoints under `memory/checkpoints/` (default true).
+        keep_checkpoints:
+          type: integer
+          format: int32
+          description: Best-effort pruning limit for checkpoints (default 100).
+        entries:
+          type: array
+          minItems: 1
+          description: Structured upsert entries (deterministic; key + value required).
+          items:
+            type: object
+            required: [key, value]
+            properties:
+              key:
+                type: string
+                description: Structured memory key (string; last write wins for value changes).
+              kind:
+                type: string
+                description: Record kind (default `fact`).
+              value:
+                type: string
+                description: Record value.
+              status:
+                type: string
+                description: Record status (default `active`).
+              source:
+                type: string
+                description: Evidence string. If omitted, the server injects workflow correlation (workflow/task/trace).
 
     WorkflowAggregateSpec:
       type: object

@@ -266,6 +266,35 @@ Semantics:
 - Produces a deterministic result object with `ok=true`, plus any merged keys from `result`.
 - If `result.assistant_text` is omitted, `assistant_text` defaults to `"delay:<delay_ms>"`.
 
+### Deterministic memory update task (`kind:"memory_put"`) (v1.7)
+
+To make memory updates **correctness-gated** and correlated to durable execution, workflows can run a deterministic
+structured memory upsert task:
+
+```json
+{
+  "task_id": "M",
+  "kind": "memory_put",
+  "depends_on": ["A"],
+  "memory_put": {
+    "path": "STRUCTURED.md",
+    "entries": [
+      { "key": "wf.last_alpha", "kind": "fact", "value": "${task.A.assistant_text}" }
+    ],
+    "checkpoint": true,
+    "keep_checkpoints": 100
+  }
+}
+```
+
+Semantics:
+- Requires the daemon to run with `--tools host --host-policy full` (this task executes the host tool `memory_put`).
+- Only **structured** updates are allowed (it does not accept legacy `text` overwrites).
+- The engine injects correlation evidence into `entries[].source` when missing, so structured memory records keep a bounded
+  `sources[]` trail like: `workflow:<workflow_id> task:<task_id> trace:<trace_id> [session:<session_id>]`.
+- This task does not call an LLM/provider, so it is suitable for deterministic “write facts only when upstream checks passed”
+  workflows (pair it with `depends_on` + `expect` on the upstream tasks).
+
 ### Agent collaboration / fallback delegation (`kind:"delegate"`) (v1.6)
 
 Sometimes “power” comes from **redundancy** and **explicit fallback**: run the same intent through multiple candidate

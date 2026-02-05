@@ -20,4 +20,9 @@ std::string json_try_extract_assistant_content_from_completion(const Json::Value
 // Returns false for invalid pointers; returns true and sets out=nullptr if the path does not exist.
 bool json_pointer_get(const Json::Value& root, const std::string& ptr, const Json::Value** out);
 
+// Best-effort numeric parsing:
+// - accepts JSON numbers
+// - accepts numeric strings (trimmed)
+bool json_value_to_double_best_effort(const Json::Value& v, double* out);
+
 }  // namespace agentd

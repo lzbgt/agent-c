@@ -1,5 +1,7 @@
 #include "json_util.h"
 
+#include <cstdlib>
+#include <cctype>
 #include <sstream>
 
 namespace agentd {
@@ -136,6 +138,32 @@ bool json_pointer_get(const Json::Value& root, const std::string& ptr, const Jso
 
   *out = cur;
   return true;
+}
+
+bool json_value_to_double_best_effort(const Json::Value& v, double* out) {
+  if (!out) return false;
+  *out = 0.0;
+  if (v.isNumeric()) {
+    *out = v.asDouble();
+    return true;
+  }
+  if (v.isString()) {
+    auto trim_ascii = [](std::string s) -> std::string {
+      size_t a = 0;
+      while (a < s.size() && std::isspace((unsigned char)s[a])) a++;
+      size_t b = s.size();
+      while (b > a && std::isspace((unsigned char)s[b - 1])) b--;
+      return s.substr(a, b - a);
+    };
+    const std::string s = trim_ascii(v.asString());
+    if (s.empty()) return false;
+    char* endp = nullptr;
+    const double d = std::strtod(s.c_str(), &endp);
+    if (!endp || *endp != '\0') return false;
+    *out = d;
+    return true;
+  }
+  return false;
 }
 
 }  // namespace agentd

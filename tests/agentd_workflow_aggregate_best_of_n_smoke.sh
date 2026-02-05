@@ -15,93 +15,32 @@ LOG_DIR="$(agentd_smoke_log_dir)"
 mkdir -p "${LOG_DIR}"
 
 PORT_DAEMON="$(agentd_smoke_pick_port)"
-PORT_STUB="$(agentd_smoke_pick_port)"
 HOST="127.0.0.1"
-STUB_BASE="http://${HOST}:${PORT_STUB}/v1"
 
 cleanup() {
   agentd_smoke_stop
-  if [[ -n "${STUB_PID:-}" ]]; then
-    kill -TERM "${STUB_PID}" >/dev/null 2>&1 || true
-    wait "${STUB_PID}" >/dev/null 2>&1 || true
-  fi
 }
 trap cleanup EXIT
-
-# OpenAI-compatible stub:
-# - echoes the last user prompt as assistant content
-python3 -u - <<PY > "${LOG_DIR}/agentd_workflow_aggregate_best_of_n_smoke.stub.stdout.log" 2> "${LOG_DIR}/agentd_workflow_aggregate_best_of_n_smoke.stub.stderr.log" &
-import json
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-
-def last_user_prompt(req):
-  msgs = req.get("messages") or []
-  for m in reversed(msgs):
-    if isinstance(m, dict) and m.get("role") == "user":
-      c = m.get("content")
-      if isinstance(c, str):
-        return c
-  return ""
-
-class H(BaseHTTPRequestHandler):
-  def log_message(self, fmt, *args):
-    return
-
-  def do_POST(self):
-    if self.path != "/v1/chat/completions":
-      self.send_response(404)
-      self.end_headers()
-      return
-    raw = self.rfile.read(int(self.headers.get("Content-Length","0") or "0"))
-    try:
-      req = json.loads(raw.decode("utf-8"))
-    except Exception:
-      self.send_response(400)
-      self.end_headers()
-      return
-    prompt = last_user_prompt(req).strip()
-    body = {
-      "id": "cmpl_stub",
-      "object": "chat.completion",
-      "created": 0,
-      "model": "stub",
-      "choices": [
-        {"index": 0, "message": {"role": "assistant", "content": prompt}, "finish_reason": "stop"}
-      ],
-    }
-    data = json.dumps(body).encode("utf-8")
-    self.send_response(200)
-    self.send_header("Content-Type", "application/json; charset=utf-8")
-    self.send_header("Content-Length", str(len(data)))
-    self.end_headers()
-    self.wfile.write(data)
-
-ThreadingHTTPServer(("127.0.0.1", ${PORT_STUB}), H).serve_forever()
-PY
-STUB_PID=$!
 
 agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_workflow_aggregate_best_of_n_smoke" \
   --tools none
 
 agentd_smoke_wait_health "${DAEMON_URL}"
 
-submit_resp="$(curl -fsS --noproxy "*" --max-time 20 \
+submit_resp="$(curl -g -fsS --noproxy "*" --max-time 20 \
   -H "Content-Type: application/json" \
   -d "$(python3 - <<PY
 import json
-req_a = {"prompt": "{\"score\": 1, \"answer\": \"alpha\"}", "no_session": True, "tools": "none", "base_url": "${STUB_BASE}", "api_key": "dummy", "model": "stub", "trace": False}
-req_b = {"prompt": "{\"score\": 9, \"answer\": \"bravo\"}", "no_session": True, "tools": "none", "base_url": "${STUB_BASE}", "api_key": "dummy", "model": "stub", "trace": False}
-req_c = {"prompt": "{\"score\": 5, \"answer\": \"charlie\"}", "no_session": True, "tools": "none", "base_url": "${STUB_BASE}", "api_key": "dummy", "model": "stub", "trace": False}
 tasks = [
-  {"task_id":"A","request":req_a, "max_attempts": 1},
-  {"task_id":"B","request":req_b, "max_attempts": 1},
-  {"task_id":"C","request":req_c, "max_attempts": 1},
+  {"task_id":"A","kind":"delay","delay_ms":0,"result":{"candidate":{"score":1,"answer":"alpha"}}},
+  {"task_id":"B","kind":"delay","delay_ms":0,"result":{"candidate":{"score":9,"answer":"bravo"}}},
+  {"task_id":"C","kind":"delay","delay_ms":0,"result":{"candidate":{"score":5,"answer":"charlie"}}},
   {"task_id":"J","kind":"aggregate","depends_on":["A","B","C"],
    "aggregate":{"mode":"best_of_n","task_ids":["A","B","C"],
-                "candidate_pointer":"/assistant_text","parse_json":True,
+                "candidate_pointer":"/candidate","parse_json":False,
                 "score_pointer":"/score","value_pointer":"/answer","maximize":True}}
 ]
-print(json.dumps({"tasks": tasks, "allow_inline_api_keys": True}))
+print(json.dumps({"tasks": tasks}))
 PY
 )" \
   "${DAEMON_URL}/api/v1/workflow/submit")"
@@ -119,7 +58,7 @@ fi
 
 final=""
 for _ in $(seq 1 200); do
-  final="$(curl -fsS --noproxy "*" --max-time 5 \
+  final="$(curl -g -fsS --noproxy "*" --max-time 5 \
     "${DAEMON_URL}/api/v1/workflow?workflow_id=${workflow_id}&include_tasks=1&include_results=1")"
   if python3 - <<PY >/dev/null 2>&1
 import json, sys
@@ -164,4 +103,3 @@ if float(j.get("chosen_score", -1)) != 9.0:
 PY
 
 echo "agentd_workflow_aggregate_best_of_n_smoke OK"
-

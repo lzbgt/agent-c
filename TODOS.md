@@ -1,6 +1,6 @@
 # Roadmap / TODOs (highest leverage)
 
-Date: 2026-02-05
+Date: 2026-02-04
 
 This roadmap is biased toward “power unleashed” coming from the **agentic framework itself**:
 
@@ -53,6 +53,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - Workflow engine maintainability refactor:
   - JSON Pointer helper promoted to `daemon/src/json_util.*` (`json_pointer_get`).
   - Workflow template expander extracted into `daemon/src/workflow_templates.*` (keeps `workflow_engine.cpp` under ~2000 lines).
+  - Workflow aggregation/join logic extracted into `daemon/src/workflow_aggregate.*` (keeps `workflow_engine.cpp` lean and SOLID).
 - Durable workflows can now run deterministic AVM capsule tasks (no LLM required):
   - Task kind: `kind: "avm_capsule"`
   - Task payload: `capsule: { obc_base64, timeout_ms, gas, mem_bytes, ... }` (same schema as `POST /api/v1/avm/capsule_run`)
@@ -89,6 +90,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Proof: `ctest` includes `agentd_memory_consolidate_smoke` (idempotent; no checkpoint churn on second run).
 - Memory v2.2 (versioned facts + evidence): structured memory entries now keep bounded `sources[]` (evidence) and `versions[]` (superseded history) under schema `agent_memory_v2`.
   - Proof: `ctest` includes `host_toolset_tests` assertions that validate schema upgrade + history retention.
+- Durable workflows now support deterministic memory updates (correctness-gated + correlated):
+  - Task kind: `kind: "memory_put"` (structured upsert via host tool `memory_put(entries=[...])`)
+  - Engine injects workflow correlation evidence into `entries[].source` when missing (`workflow:<id> task:<id> trace:<id> ...`).
+  - Proof: `ctest` includes `agentd_workflow_memory_put_smoke`.
 - Workflow event log + streaming (durable): `agentd` persists workflow events (`workflow_events`) and exposes:
   - `GET /api/v1/workflow/events` (paged)
   - `GET /api/v1/workflow/stream` (SSE; ends with `workflow_done`)
@@ -141,26 +146,25 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ### Reweighted next 5 (highest compound impact)
 
-1) **Agent collaboration v2 (parallel fan-out + join macros)** (power-unleashed)
-   - Build on `kind:"delegate"` with an explicit parallel fan-out mode (or submit-time macro expansion) so collaboration is:
-     - scheduler-visible (true parallelism)
-     - budgeted (tokens/tools/wall-time caps per attempt)
-     - aggregation-friendly (`kind:"aggregate"` joins)
-   - Status: parallel submit-time macro shipped as `kind:"delegate_parallel"` (v1.6.1). Remaining: budget enforcement + richer join modes.
+1) **Durable budget enforcement at scheduler level** (correctness + cost predictability)
+   - Add explicit per-task and per-workflow budgets (tool-call budget, token budget, wall-time budget) enforced by the engine, not just by providers.
+   - Make budgets visible in `/api/v1/workflow/stats` and persisted in events for auditing/replay.
 
-2) **Memory ↔ workflow correlation + rolling consolidation** (time-advancing correctness)
-   - Link memory entries to `trace_id`/workflow/task ids; emit stable evidence excerpts + hashes.
-   - Add a deterministic “memory update task” node kind so workflows can write facts only when expectations pass.
+2) **Scheduling policy v2 (beyond caps)** (predictable progress under load)
+   - Implement a session-aware fair queue (e.g. deficit round-robin) so caps + priorities become a predictable policy surface.
+   - Add a deterministic stress test using stub providers and bounded runtime assertions.
 
 3) **Interop spec hardening for MCU/edge handoff** (ecosystem leverage)
    - Consolidate the UM‑EAIS + durable workflow message conventions into a single versioned spec with explicit idempotency/correlation rules,
      so an MCU agent can safely hand off tasks/workflows and replay proofs across restarts.
 
-4) **Durable budget enforcement at scheduler level** (correctness + cost predictability)
-   - Add explicit per-task and per-workflow budgets (tool-call budget, token budget, wall-time budget) enforced by the engine, not just by providers.
+4) **Agent collaboration v2 (budgeted parallel fan-out + join macros)** (power-unleashed)
+   - Status: submit-time parallel macro shipped as `kind:"delegate_parallel"` (v1.6.1).
+   - Remaining: per-attempt budgets + richer deterministic join strategies (`strict_all_ok`, `quorum_ok`, etc).
 
-5) **Scheduling policy v2 (beyond caps)** (predictable progress under load)
-   - Add a session-aware fair queue (e.g. deficit round-robin) so budgets/caps are complemented by predictable work-sharing.
+5) **Memory ↔ workflow time correlation (next after memory_put)** (time-advancing correctness)
+   - Status: deterministic workflow `kind:"memory_put"` shipped (writes structured memory only when upstream tasks succeeded).
+   - Remaining: workflow-triggered rolling consolidation primitives (e.g. deterministic promote markers / snapshots), plus evidence hashing for replay.
 
 ### 1) AVM capsule execution v0 (next: integrate + attest)
 
