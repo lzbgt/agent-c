@@ -189,7 +189,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 Priority order (reweighted after `delegate_parallel` join customization shipped; sections below are kept stable for diff readability):
 
 1) **Interop spec v0.2 (MCU/edge handoff)** — attestation + correlation; keep the contract executable.
-2) **Budgets v0.5** — host-tool budgets + streaming token usage coverage + stats surfacing.
+2) **Budgets v0.5** — host-tool budgets + streaming token usage coverage + stats surfacing (including cheap budget telemetry polling).
 3) **Scheduling policy v2.3 (DRR + cost-aware quanta)** — move beyond WRR to cost-aware, budget-composing fairness.
 4) **Memory v2.3 (timeline + correlation)** — query-by-trace/workflow windows; rolling consolidation correlation as time advances.
 5) **Agent collaboration v2.1** — parallel fan-out with deterministic joins (best_of_n/quorum/collect) + per-attempt budgets.

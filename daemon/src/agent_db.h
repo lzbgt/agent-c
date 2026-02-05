@@ -322,10 +322,26 @@ class AgentDb {
     int64_t tasks_queued_not_ready = 0;
   };
 
+  struct WorkflowUsageTotals {
+    int64_t tool_calls_total_used = 0;
+    int64_t steps_total_used = 0;
+    int64_t elapsed_ms_total_used = 0;
+    int64_t prompt_tokens_used = 0;
+    int64_t completion_tokens_used = 0;
+    int64_t total_tokens_used = 0;
+  };
+
   // Lightweight queue pressure / scheduling visibility helper.
   bool get_workflow_scheduler_stats(
     int64_t now_unix_ms,
     WorkflowSchedulerStats* out_stats,
+    std::string* out_error
+  );
+
+  // Best-effort workflow usage totals computed from retry-safe per-task cumulative counters.
+  bool get_workflow_usage_totals(
+    const std::string& workflow_id,
+    WorkflowUsageTotals* out_totals,
     std::string* out_error
   );
 

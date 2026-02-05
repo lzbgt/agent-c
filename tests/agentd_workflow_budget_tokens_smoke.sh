@@ -204,6 +204,10 @@ PY
   sleep 0.05
 done
 
+# Also validate that budget telemetry can be polled cheaply without include_tasks.
+cheap="$(curl -fsS --noproxy "*" --max-time 5 \
+  "${DAEMON_URL}/api/v1/workflow?workflow_id=${workflow_id}&include_tasks=0&include_results=0")"
+
 python3 - <<PY
 import json, sys
 obj = json.loads(r'''${final}''')
@@ -248,6 +252,24 @@ if total_tokens is None:
   raise SystemExit(1)
 if int(total_tokens) != 20:
   print("expected A total_tokens==20", total_tokens, file=sys.stderr)
+  raise SystemExit(1)
+
+cheap = json.loads(r'''${cheap}''')
+if not cheap.get("ok"):
+  print("cheap workflow get failed", cheap, file=sys.stderr)
+  raise SystemExit(1)
+lim2 = cheap.get("workflow_limits") or {}
+if int((lim2.get("max_total_tokens") or 0)) != 20:
+  print("expected cheap workflow_limits.max_total_tokens==20", lim2, file=sys.stderr)
+  raise SystemExit(1)
+usage2 = cheap.get("workflow_usage") or {}
+if int((usage2.get("total_tokens_used") or -1)) != 20:
+  print("expected cheap workflow_usage.total_tokens_used==20", usage2, file=sys.stderr)
+  raise SystemExit(1)
+rem2 = cheap.get("workflow_remaining") or {}
+vrem2 = rem2.get("max_total_tokens")
+if vrem2 is None or int(vrem2) != 0:
+  print("expected cheap workflow_remaining.max_total_tokens==0", rem2, file=sys.stderr)
   raise SystemExit(1)
 PY
 

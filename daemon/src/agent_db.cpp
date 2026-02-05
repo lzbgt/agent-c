@@ -3455,4 +3455,61 @@ LIMIT ?;
 #endif
 }
 
+bool AgentDb::get_workflow_usage_totals(
+  const std::string& workflow_id,
+  WorkflowUsageTotals* out_totals,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_totals) *out_totals = WorkflowUsageTotals{};
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)workflow_id;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (!out_totals) return false;
+  if (workflow_id.empty()) {
+    if (out_error) *out_error = "get_workflow_usage_totals: workflow_id is empty";
+    return false;
+  }
+
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT
+  SUM(COALESCE(tool_calls_total_cum,0)),
+  SUM(COALESCE(steps_executed_cum,0)),
+  SUM(COALESCE(elapsed_ms_cum,0)),
+  SUM(COALESCE(prompt_tokens_cum,0)),
+  SUM(COALESCE(completion_tokens_cum,0)),
+  SUM(COALESCE(total_tokens_cum,0))
+FROM workflow_tasks
+WHERE workflow_id=?;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = bind_text(st, 1, workflow_id);
+  if (ok && sqlite3_step(st) == SQLITE_ROW) {
+    out_totals->tool_calls_total_used = sqlite3_column_int64(st, 0);
+    out_totals->steps_total_used = sqlite3_column_int64(st, 1);
+    out_totals->elapsed_ms_total_used = sqlite3_column_int64(st, 2);
+    out_totals->prompt_tokens_used = sqlite3_column_int64(st, 3);
+    out_totals->completion_tokens_used = sqlite3_column_int64(st, 4);
+    out_totals->total_tokens_used = sqlite3_column_int64(st, 5);
+  } else {
+    ok = false;
+  }
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  return ok;
+#endif
+}
+
 }  // namespace agentd

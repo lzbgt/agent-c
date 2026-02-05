@@ -453,8 +453,8 @@ Optional debugging:
 
 Budget visibility (best-effort):
 - `workflow_limits` is surfaced when present in the persisted submit spec.
-- `workflow_usage` aggregates retry-safe per-task cumulative counters.
-- `workflow_remaining` is computed as `(limit - used)` for any positive limits.
+- `workflow_usage` aggregates retry-safe per-task cumulative counters (available even when `include_tasks=0`).
+- `workflow_remaining` is computed as `(limit - used)` for any positive limits (available even when `include_tasks=0`).
 
 ### Workflow scheduler stats
 
