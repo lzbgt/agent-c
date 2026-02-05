@@ -34,8 +34,16 @@ enable **node-initiated orchestration** (handoff to the coordinator) over the sa
 
 - `WORKFLOW_SUBMIT` (node → platform): persist a new edge workflow (`edge_workflows`, `edge_workflow_steps`)
 - `WORKFLOW_CANCEL` (node → platform): cancel an edge workflow (`CANCELED`)
+- `DURABLE_WORKFLOW_SUBMIT` (node → platform): submit a **durable workflow** to the platform workflow engine
+  (same semantics as `POST /api/v1/workflow/submit`, but transported over UM‑BMP via `POST /api/v1/edge/message`)
+- `DURABLE_WORKFLOW_CANCEL` (node → platform): cancel a durable workflow
+  (same semantics as `POST /api/v1/workflow/cancel`, but transported over UM‑BMP via `POST /api/v1/edge/message`)
 
 Details: `docs/spec/um-eais/um-eais-platform-extensions-v0.1.md`
+
+Security note:
+- For node-submitted durable workflows, the platform forces `allow_inline_api_keys=false` (nodes should not ship provider keys).
+  Use daemon defaults (`--base-url`, `--api-key`, or provider keys) or a trusted gateway that authenticates and sets defaults.
 
 ## Endpoints
 

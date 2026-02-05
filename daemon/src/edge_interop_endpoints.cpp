@@ -5,6 +5,7 @@
 #include "edge_util.h"
 #include "json_util.h"
 #include "string_util.h"
+#include "workflow_endpoints.h"
 
 #include <json/json.h>
 
@@ -113,6 +114,113 @@ void handle_edge_message_endpoint(
   }
 
   const int64_t now = edge_unix_ms_now();
+
+  auto sanitize_id_token = [](std::string s, size_t max_len) -> std::string {
+    if (s.size() > max_len) s.resize(max_len);
+    if (s.empty()) return s;
+    for (char& c : s) {
+      const bool ok =
+        (c >= 'a' && c <= 'z') ||
+        (c >= 'A' && c <= 'Z') ||
+        (c >= '0' && c <= '9') ||
+        c == '-' || c == '_' || c == '.' || c == ':';
+      if (!ok) c = '_';
+    }
+    // Avoid leading/trailing underscores from weird msg_ids; best-effort.
+    while (!s.empty() && s.front() == '_') s.erase(s.begin());
+    while (!s.empty() && s.back() == '_') s.pop_back();
+    if (s.empty()) s = "msg";
+    if (s.size() > max_len) s.resize(max_len);
+    return s;
+  };
+
+  auto try_send_outbox_ack = [&](const std::string& ack_type, const Json::Value& ack_body) {
+    std::string reply_node_id;
+    if (from_id.rfind("node:", 0) == 0) reply_node_id = from_id.substr(5);
+    if (body.isMember("node_id") && body["node_id"].isString()) reply_node_id = trim_copy(body["node_id"].asString());
+    if (reply_node_id.empty() || !edge_id_is_safe(reply_node_id)) return;
+    Json::Value ack(Json::objectValue);
+    ack["msg_id"] = edge_make_uuidish_msg_id();
+    ack["ts_utc_ms"] = (Json::Int64)now;
+    ack["type"] = ack_type;
+    ack["from"] = "platform";
+    ack["to"] = edge_node_to_prefix(reply_node_id);
+    ack["body"] = ack_body.isObject() ? ack_body : Json::Value(Json::objectValue);
+    AgentDb::EdgeOutboxMessageRow orow;
+    orow.node_id = reply_node_id;
+    orow.ts_utc_ms = now;
+    orow.envelope_json = edge_json_stringify_compact(ack);
+    (void)db_or_null->insert_edge_outbox_message(orow, nullptr, nullptr);
+  };
+
+  // Durable workflow handoff over UM‑BMP ingress:
+  // - allows resource-constrained nodes (MCU agent_core) to hand off durable orchestration to the platform
+  // - transport-agnostic; works via MQTT/LoRa gateways mapped to /api/v1/edge/message
+  if (type == "DURABLE_WORKFLOW_SUBMIT") {
+    Json::Value wfargs = body;
+    if (body.isMember("workflow") && body["workflow"].isObject()) wfargs = body["workflow"];
+    if (!wfargs.isObject()) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid DURABLE_WORKFLOW_SUBMIT body (expected object)\"}";
+      return;
+    }
+
+    // Canonicalize workflow_id/idempotency_key using msg_id (retry-safe at transport level).
+    const std::string token = sanitize_id_token(msg_id, 96);
+    std::string wid =
+      wfargs.isMember("workflow_id") && wfargs["workflow_id"].isString() ? trim_copy(wfargs["workflow_id"].asString()) : "";
+    if (wid.empty()) wid = std::string("wf:") + token;
+    wfargs["workflow_id"] = sanitize_id_token(wid, 128);
+
+    if (!wfargs.isMember("trace_id") || !wfargs["trace_id"].isString() || wfargs["trace_id"].asString().empty()) {
+      wfargs["trace_id"] = wfargs["workflow_id"];
+    }
+
+    if (!wfargs.isMember("idempotency_key") || !wfargs["idempotency_key"].isString() || wfargs["idempotency_key"].asString().empty()) {
+      const std::string ik = std::string("edge_msg:") + token;
+      wfargs["idempotency_key"] = sanitize_id_token(ik, 128);
+    }
+
+    // Safety: nodes should not send inline API keys by default.
+    wfargs["allow_inline_api_keys"] = false;
+
+    HttpRequest req2 = req;
+    req2.body = json_stringify(wfargs);
+    HttpResponse r2;
+    handle_workflow_submit_endpoint(cfg, cors_cfg, db_or_null, req2, &r2);
+    *resp = r2;
+
+    // Best-effort: notify the node via outbox.
+    Json::Value ack_body(Json::objectValue);
+    ack_body["ok"] = (resp->status >= 200 && resp->status < 300);
+    ack_body["workflow_id"] = wfargs["workflow_id"];
+    ack_body["op"] = "submit";
+    try_send_outbox_ack("DURABLE_WORKFLOW_ACK", ack_body);
+    return;
+  }
+
+  if (type == "DURABLE_WORKFLOW_CANCEL") {
+    const std::string workflow_id = body.isMember("workflow_id") && body["workflow_id"].isString() ? trim_copy(body["workflow_id"].asString()) : "";
+    if (workflow_id.empty()) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"missing workflow_id\"}";
+      return;
+    }
+    Json::Value args(Json::objectValue);
+    args["workflow_id"] = workflow_id;
+    HttpRequest req2 = req;
+    req2.body = json_stringify(args);
+    HttpResponse r2;
+    handle_workflow_cancel_endpoint(cfg, cors_cfg, db_or_null, req2, &r2);
+    *resp = r2;
+
+    Json::Value ack_body(Json::objectValue);
+    ack_body["ok"] = (resp->status >= 200 && resp->status < 300);
+    ack_body["workflow_id"] = workflow_id;
+    ack_body["op"] = "cancel";
+    try_send_outbox_ack("DURABLE_WORKFLOW_ACK", ack_body);
+    return;
+  }
 
   if (type == "NODE_HELLO" || type == "NODE_HEARTBEAT") {
     const std::string node_id = body.isMember("node_id") && body["node_id"].isString() ? trim_copy(body["node_id"].asString()) : "";

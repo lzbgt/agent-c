@@ -71,6 +71,11 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - UM‑EAIS platform extensions (node → platform workflow handoff) are now proven end-to-end:
   - `WORKFLOW_SUBMIT` and `WORKFLOW_CANCEL` can be ingested via `POST /api/v1/edge/message` and drive the edge workflow runner.
   - Proof: `ctest` includes `agentd_edge_workflow_submit_message_smoke`.
+- Durable workflows can now be handed off via the same UM‑BMP ingress (MCU-friendly, transport-agnostic):
+  - `DURABLE_WORKFLOW_SUBMIT` forwards to `POST /api/v1/workflow/submit` (platform durable orchestration)
+  - `DURABLE_WORKFLOW_CANCEL` forwards to `POST /api/v1/workflow/cancel`
+  - Best-effort node ACK: outbox `DURABLE_WORKFLOW_ACK {op, workflow_id, ok}`
+  - Proof: `ctest` includes `agentd_edge_durable_workflow_submit_message_smoke`.
 - UM‑EAIS node capability cache correctness: when a node reports a new `caps_sha256`, the platform invalidates cached
   `manifest_json/tools_json/tags_json` and re-requests a full manifest (prevents stale routing).
   - Proof: `ctest` includes `agentd_edge_interop_smoke`.
@@ -185,8 +190,13 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
      so priorities + budgets compose predictably under extreme load and long-lived backlogs.
 
 3) **Interop spec hardening for MCU/edge handoff** (ecosystem leverage)
-   - Consolidate the UM‑EAIS + durable workflow message conventions into a single versioned spec with explicit idempotency/correlation rules,
-     so an MCU agent can safely hand off tasks/workflows and replay proofs across restarts.
+   - Shipped: `DURABLE_WORKFLOW_SUBMIT` / `DURABLE_WORKFLOW_CANCEL` over `POST /api/v1/edge/message` (durable orchestration handoff).
+     - Proof: `ctest` includes `agentd_edge_durable_workflow_submit_message_smoke`.
+   - Next: consolidate UM‑EAIS + durable workflow handoff into a single **versioned interop contract** with explicit:
+     - idempotency rules (`msg_id` vs `idempotency_key`) and replay guidance for lossy transports (MQTT/LoRa bridges)
+     - correlation rules (`workflow_id` / `trace_id` / task trace suffixing)
+     - safety defaults (inline API keys forbidden; gateway-auth required)
+   - Deliverables: a tiny C header (agent_core-friendly) + JSON Schema for envelopes/bodies + a golden “interop transcript” fixture for replay tests.
 
 4) **Agent collaboration v2 (budgeted parallel fan-out + join macros)** (power-unleashed)
    - Status: submit-time parallel macro shipped as `kind:"delegate_parallel"` (v1.6.1).

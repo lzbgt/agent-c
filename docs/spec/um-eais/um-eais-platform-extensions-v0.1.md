@@ -81,3 +81,78 @@ Platform behavior:
 Notes:
 - This is a platform-level cancellation (prevents future dispatch). It does not guarantee remote side-effects are avoided
   if a node already received a `TASK_ASSIGN`.
+
+## 3) DURABLE_WORKFLOW_SUBMIT (node → platform)
+
+This extension allows a resource-constrained node (MCU running embedded `agent_core`) to hand off a *durable*
+multi-step plan to the platform coordinator, without requiring the node to maintain long-lived orchestration state.
+
+Transport mapping:
+- Ingress: `POST /api/v1/edge/message` with `type:"DURABLE_WORKFLOW_SUBMIT"`
+- Platform behavior: forwards the body to the durable workflow submit endpoint (`POST /api/v1/workflow/submit`)
+  after applying a few safety/correlation defaults.
+
+Envelope:
+- `type: "DURABLE_WORKFLOW_SUBMIT"`
+- `from: "node:<node_id>"` (recommended)
+- `to: "platform"`
+
+Body:
+- Either the durable workflow submit request object directly, or wrapped under `workflow`:
+
+Option A (direct):
+```json
+{
+  "workflow_id": "wf:...",
+  "trace_id": "wf:...",
+  "idempotency_key": "edge_msg:...",
+  "tasks": [ ... ]
+}
+```
+
+Option B (wrapped):
+```json
+{
+  "workflow": { "tasks": [ ... ] }
+}
+```
+
+Platform defaults (applied when fields are missing/empty):
+- `workflow_id`: defaults to `wf:<sanitized msg_id>` (id-safe tokenization)
+- `trace_id`: defaults to the final `workflow_id`
+- `idempotency_key`: defaults to `edge_msg:<sanitized msg_id>` (makes submit retry-safe if the node changes `msg_id`,
+  e.g. in a non-idempotent transport bridge; durable workflows also have native idempotency via `idempotency_key`)
+- `allow_inline_api_keys`: **forced to `false`** (nodes should not ship provider keys in submitted specs)
+
+Response semantics (HTTP mapping):
+- The HTTP response body for `POST /api/v1/edge/message` is the same as `POST /api/v1/workflow/submit`
+  (`{ok:true, workflow_id, trace_id, ...}`), unless the envelope is deduped by `msg_id`.
+
+Best-effort ACK:
+- Platform also enqueues an outbox message to the submitting node:
+  - `type: "DURABLE_WORKFLOW_ACK"`
+  - `body: { op:"submit", workflow_id, ok:true|false }`
+
+This makes the extension usable over non-HTTP transports (MQTT/LoRa bridges) that do not preserve synchronous
+HTTP responses.
+
+## 4) DURABLE_WORKFLOW_CANCEL (node → platform)
+
+Envelope:
+- `type: "DURABLE_WORKFLOW_CANCEL"`
+- `from: "node:<node_id>"` (recommended)
+- `to: "platform"`
+
+Body:
+```json
+{ "workflow_id": "wf:..." }
+```
+
+Platform behavior:
+- Forwards to `POST /api/v1/workflow/cancel`.
+- Returns the same HTTP response as the cancel endpoint (unless deduped by `msg_id`).
+
+Best-effort ACK:
+- Platform enqueues an outbox message to the requesting node:
+  - `type: "DURABLE_WORKFLOW_ACK"`
+  - `body: { op:"cancel", workflow_id, ok:true|false }`

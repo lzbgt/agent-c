@@ -368,6 +368,12 @@ if(AGENT_BUILD_HOST)
 				    add_test(NAME agentd_edge_rules_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_rules_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_workflow_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_workflow_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_edge_workflow_submit_message_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_workflow_submit_message_smoke.sh $<TARGET_FILE:agentd>)
+			    add_test(
+			      NAME agentd_edge_durable_workflow_submit_message_smoke
+			      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_durable_workflow_submit_message_smoke.sh
+			        $<TARGET_FILE:agentd>
+			        $<TARGET_FILE:agentd_tool_plugin_echo>
+			    )
 		    add_test(NAME agentd_edge_deadline_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_deadline_smoke.sh $<TARGET_FILE:agentd>)
 		    add_test(NAME agentd_memory_consolidate_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_memory_consolidate_smoke.sh $<TARGET_FILE:agentd>)
 	    add_test(NAME agentd_provider_retry_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_provider_retry_smoke.sh $<TARGET_FILE:agentd>)
