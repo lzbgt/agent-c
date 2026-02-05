@@ -368,6 +368,9 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
    - Shipped (v0.4 partial): public-key envelope auth (no shared-secret blast radius):
      - `auth.alg="ed25519"` verifies Ed25519 signatures over canonical JSON bytes (`agent_json_c14n_v1`).
      - `auth.alg="ed25519-cbor"` verifies Ed25519 signatures over canonical CBOR bytes (deterministic RFC 8949 encoding).
+   - Shipped (v0.4 partial): authoritative canonicalization/signature test vectors for MCU bring-up:
+     - Fixture: `docs/spec/um-eais/fixtures/umbmp_envelope_auth_vectors_v0.4.json`
+     - Proof: `ctest` includes `umbmp_auth_vectors_tests`
    - Next: complete trust roots + identity binding:
      - per-node key provisioning workflow (bootstrap + rotation)
      - replay window guidance + nonce/ts enforcement for lossy bridges (configurable; deterministic)

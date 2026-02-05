@@ -86,6 +86,31 @@ For `auth.alg="ed25519"` and `auth.alg="ed25519-cbor"`:
 - `sig = base64(Ed25519_SIGN(sk_for(kid), signing_input))`
 - Verification is `Ed25519_VERIFY(pk_for(kid), signing_input, sig)`
 
+## Test vectors (recommended for MCU bring-up)
+
+This repo includes an executable set of signing/canonicalization vectors:
+
+- Fixture: `docs/spec/um-eais/fixtures/umbmp_envelope_auth_vectors_v0.4.json`
+  - includes `canon_json_hex` and `canon_cbor_hex` for a minimal `NODE_HELLO` envelope
+  - includes expected signatures for:
+    - HMAC (`hmac-sha256`, `hmac-sha256-cbor`)
+    - Ed25519 (`ed25519`, `ed25519-cbor`)
+  - intended use: ensure your MCU CBOR encoder (e.g. TinyCBOR-derived) emits exactly the same canonical bytes
+    before you chase “why does signature verification fail”.
+- Generator tool (host-only): `umbmp_auth_vectors_tool` (writes the JSON fixture to stdout).
+- Proof: `ctest` includes `umbmp_auth_vectors_tests` (verifies fixture against the platform canonicalizers).
+
+MCU CBOR implementation guidance (TinyCBOR-style):
+
+- Encode the envelope as a CBOR map (major type 5) with a *definite* pair count.
+- Use only text-string keys (major type 3).
+- Sort map keys lexicographically by UTF‑8 bytes.
+  - For UM‑BMP envelopes this means keys are emitted in this order:
+    `auth`, `body`, `from`, `msg_id`, `to`, `trace`, `ts_utc_ms`, `type`
+    (omit absent optional keys, but preserve ordering of those present).
+- Encode integers in minimal CBOR form (major 0/1).
+- Avoid floats in signed envelopes. If you must include one, the platform canonical CBOR encoder uses float64.
+
 ## Platform enforcement behavior (agentd)
 
 Operator config:

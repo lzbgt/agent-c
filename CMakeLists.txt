@@ -292,6 +292,14 @@ target_link_libraries(agent_core_tests PRIVATE agent_core)
 add_test(NAME agent_core_tests COMMAND agent_core_tests)
 
 if(AGENT_BUILD_HOST)
+  add_executable(umbmp_auth_vectors_tool
+    tools/umbmp_auth_vectors_tool.cpp
+  )
+  target_compile_options(umbmp_auth_vectors_tool PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_link_libraries(umbmp_auth_vectors_tool PRIVATE agentd_lib)
+
   add_executable(docs_sanity_tests
     tests/test_docs_sanity.cpp
   )
@@ -316,6 +324,18 @@ if(AGENT_BUILD_HOST)
   add_test(
     NAME um_eais_spec_sanity_tests
     COMMAND um_eais_spec_sanity_tests ${CMAKE_CURRENT_SOURCE_DIR}/docs/spec/um-eais
+  )
+
+  add_executable(umbmp_auth_vectors_tests
+    tests/test_umbmp_auth_vectors.cpp
+  )
+  target_compile_options(umbmp_auth_vectors_tests PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_link_libraries(umbmp_auth_vectors_tests PRIVATE agentd_lib)
+  add_test(
+    NAME umbmp_auth_vectors_tests
+    COMMAND umbmp_auth_vectors_tests ${CMAKE_CURRENT_SOURCE_DIR}/docs/spec/um-eais/fixtures/umbmp_envelope_auth_vectors_v0.4.json
   )
 
   add_test(NAME agent_openrouter_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/openrouter_smoke.sh $<TARGET_FILE:agent>)

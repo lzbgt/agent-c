@@ -1,0 +1,47 @@
+{
+  "notes" : "Signing input is the envelope with auth.sig removed (auth metadata stays signed). Canonical JSON uses agent_json_c14n_v1; canonical CBOR matches daemon/src/cbor_encode.*.",
+  "vectors" : 
+  [
+    {
+      "canon_cbor_hex" : "a76461757468a363616c676c656432353531392d63626f72636b69646d766563746f725f6e6f64655f31637365710164626f6479a46b636170735f73686132353678477368613235363a616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616a66775f6769745f736861686465616462656566656d6f64656c6d657370333273696d5f73747562676e6f64655f69646d766563746f725f6e6f64655f316466726f6d726e6f64653a766563746f725f6e6f64655f31666d73675f6964782430303030303030302d303030302d343030302d383030302d30303030303030303030303162746f68706c6174666f726d6974735f7574635f6d731b0000018bcfe5687b64747970656a4e4f44455f48454c4c4f",
+      "canon_json_hex" : "7b2261757468223a7b22616c67223a2265643235353139222c226b6964223a22766563746f725f6e6f64655f31222c22736571223a317d2c22626f6479223a7b22636170735f736861323536223a227368613235363a61616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161616161222c2266775f6769745f736861223a226465616462656566222c226d6f64656c223a22657370333273696d5f73747562222c226e6f64655f6964223a22766563746f725f6e6f64655f31227d2c2266726f6d223a226e6f64653a766563746f725f6e6f64655f31222c226d73675f6964223a2230303030303030302d303030302d343030302d383030302d303030303030303030303031222c22746f223a22706c6174666f726d222c2274735f7574635f6d73223a313730303030303030303132332c2274797065223a224e4f44455f48454c4c4f227d",
+      "ed25519" : 
+      {
+        "kid" : "vector_node_1",
+        "pk_b64" : "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
+        "sig_b64_cbor_alg_ed25519_cbor" : "JO9kl7RT0agHeGGKKbqA9bwC3SARp+ArO0faSIUdFLJFFmqYWESgI9J7U7EEkW3wLRP1g6VyZAQs1hjxOTlBCw==",
+        "sig_b64_json_alg_ed25519" : "x8DnidcKxZxw51X4eNxdQY/ECbQJhxIaubx2480hx+sKmT8OtSQOjWCNKnHKKkYeFoYuNPLOOf3WeXNMjp8xDg==",
+        "sk_seed_hex" : "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
+      },
+      "envelope" : 
+      {
+        "auth" : 
+        {
+          "kid" : "vector_node_1",
+          "seq" : 1
+        },
+        "body" : 
+        {
+          "caps_sha256" : "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "fw_git_sha" : "deadbeef",
+          "model" : "esp32sim_stub",
+          "node_id" : "vector_node_1"
+        },
+        "from" : "node:vector_node_1",
+        "msg_id" : "00000000-0000-4000-8000-000000000001",
+        "to" : "platform",
+        "ts_utc_ms" : 1700000000123,
+        "type" : "NODE_HELLO"
+      },
+      "hmac" : 
+      {
+        "kid" : "vector_node_1",
+        "secret_ascii" : "test_secret_node_123",
+        "sig_b64_cbor_alg_hmac_sha256_cbor" : "qaptCQIvWm1pVvJhJW3X/Ffjq2wlv/jsCI8t204LVis=",
+        "sig_b64_json_alg_hmac_sha256" : "dB9dnTxpnvfsGPtes7lxDM6iU6iZlVNMPweO9/PrBxM="
+      },
+      "name" : "node_hello_minimal"
+    }
+  ],
+  "version" : "umbmp_envelope_auth_vectors_v0.4"
+}
