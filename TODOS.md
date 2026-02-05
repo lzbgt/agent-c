@@ -519,9 +519,12 @@ Maintainability note (always-on):
      - `POST /api/v1/edge/message` accepts `Content-Type: application/cbor` with a CBOR map shaped like the JSON envelope.
      - `GET /api/v1/edge/outbox` accepts `Accept: application/cbor` and returns `Content-Type: application/cbor` (binary response).
      - Constraint: definite-length items only; map keys must be text strings (string-key CBOR profile).
-     - Proof: `ctest` includes `agentd_edge_message_cbor_smoke` and `agentd_edge_outbox_cbor_smoke`.
+     - Proof: `ctest` includes `agentd_edge_message_cbor_smoke`, `agentd_edge_outbox_cbor_smoke`,
+       and `agentd_edge_task_loop_cbor_wire_smoke` (TASK_ACK/EVENT/DONE over `application/cbor`).
      - Shipped (drift guard): `agentd_edge_message_cbor_smoke` now generates the CBOR bytes using a core-linked encoder tool
        (`tools/agent_core_umbmp_cbor_encode.cpp`) instead of a handwritten Python CBOR snippet, reducing profile drift.
+     - Shipped (bring-up ergonomics): the same encoder tool now supports emitting deterministic CBOR envelopes for:
+       `NODE_HELLO`, `NODE_CAPS_RSP`, `TASK_ACK`, `TASK_EVENT`, `TASK_DONE`, `TASK_FAILED`.
    - Shipped (v0.4 partial): optional envelope authenticity (HMAC) for trust roots + spoofing resistance:
      - Envelope may include `auth:{alg,kid,seq?,sig}` where:
        - `alg:"hmac-sha256"` signs canonical JSON bytes (`agent_json_c14n_v1`)

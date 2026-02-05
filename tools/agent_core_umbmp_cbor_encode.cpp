@@ -11,6 +11,7 @@ extern "C" {
 #include "agent/ed25519.h"
 #include "agent/edge_interop.h"
 #include "agent/umbmp_auth.h"
+#include "agent/um_eais_task_lifecycle_write.h"
 #include "agent/um_eais_node_caps_rsp_write.h"
 #include "agent/um_eais_node_write.h"
 }
@@ -20,7 +21,7 @@ static void usage() {
                "agent_core_umbmp_cbor_encode\n\n"
                "Emits a deterministic CBOR UM-BMP envelope to stdout (no HTTP).\n\n"
                "Required:\n"
-               "  --type <NODE_HELLO|NODE_CAPS_RSP>\n"
+               "  --type <NODE_HELLO|NODE_CAPS_RSP|TASK_ACK|TASK_EVENT|TASK_DONE|TASK_FAILED>\n"
                "  --node-id <id>\n"
                "  --msg-id <id>\n\n"
                "Optional:\n"
@@ -28,6 +29,16 @@ static void usage() {
                "  --model <s>              NODE_HELLO only (default: esp32)\n"
                "  --fw-git-sha <s>          NODE_HELLO only (default: deadbeef)\n"
                "  --caps-sha256 <token>     NODE_HELLO and minimal manifest\n"
+               "  --task-id <id>            TASK_* only\n"
+               "  --step-id <id>            TASK_* only\n"
+               "  --idempotency-key <id>    TASK_* only\n"
+               "  --accepted <0|1>          TASK_ACK only\n"
+               "  --reason <text>           TASK_ACK only (optional)\n"
+               "  --state <text>            TASK_EVENT only (required)\n"
+               "  --progress <float>        TASK_EVENT only (optional)\n"
+               "  --error <text>            TASK_EVENT/TASK_FAILED only\n"
+               "  --result-ok <0|1>         TASK_DONE only (default: 1)\n"
+               "  --result-text <text>      TASK_DONE only (optional; result.data.text)\n"
                "  --manifest-minimal        NODE_CAPS_RSP: generate a small deterministic manifest\n"
                "  --manifest-cbor-hex <hex> NODE_CAPS_RSP: use caller-provided manifest CBOR bytes\n"
                "  --enforce-det             NODE_CAPS_RSP: enforce deterministic manifest key ordering\n\n"
@@ -93,6 +104,29 @@ static bool parse_u64(const std::string& s, uint64_t* out) {
   if (!end || *end != '\0') return false;
   *out = (uint64_t)v;
   return true;
+}
+
+static bool parse_double(const std::string& s, double* out) {
+  if (!out) return false;
+  if (s.empty()) return false;
+  char* end = nullptr;
+  const double v = std::strtod(s.c_str(), &end);
+  if (!end || *end != '\0') return false;
+  *out = v;
+  return true;
+}
+
+static bool parse_bool01(const std::string& s, int* out) {
+  if (!out) return false;
+  if (s == "1" || s == "true" || s == "TRUE") {
+    *out = 1;
+    return true;
+  }
+  if (s == "0" || s == "false" || s == "FALSE") {
+    *out = 0;
+    return true;
+  }
+  return false;
 }
 
 static int hex_val(char c) {
@@ -197,6 +231,96 @@ static agent_status_t encode_manifest_minimal(agent_cbor_writer_t* w, void* ctx)
   return agent_cbor_write_map_sorted(w, kv, n);
 }
 
+typedef struct encode_task_done_result_ctx {
+  int ok;  // boolean
+  agent_cbor_text_view_t text;  // optional => result.data.text
+  int has_text;
+} encode_task_done_result_ctx_t;
+
+static agent_status_t encode_task_done_result_data(agent_cbor_writer_t* w, void* ctx) {
+  const encode_task_done_result_ctx_t* r = (const encode_task_done_result_ctx_t*)ctx;
+  if (!r || !r->has_text) return AGENT_ERR_INVALID_ARGUMENT;
+  const agent_cbor_kv_t kv[] = {
+    (agent_cbor_kv_t){
+      .key = "text",
+      .key_len = 4,
+      .encode_value = encode_text,
+      .value_ctx = (void*)&r->text,
+    },
+  };
+  return agent_cbor_write_map_sorted(w, kv, 1);
+}
+
+static agent_status_t encode_task_done_result(agent_cbor_writer_t* w, void* ctx) {
+  const encode_task_done_result_ctx_t* r = (const encode_task_done_result_ctx_t*)ctx;
+  if (!r) return AGENT_ERR_INVALID_ARGUMENT;
+
+  agent_cbor_kv_t kv[2];
+  size_t n = 0;
+  kv[n++] = (agent_cbor_kv_t){
+    .key = "ok",
+    .key_len = 2,
+    .encode_value =
+      [](agent_cbor_writer_t* w2, void* ctx2) -> agent_status_t {
+      const encode_task_done_result_ctx_t* rr = (const encode_task_done_result_ctx_t*)ctx2;
+      if (!rr) return AGENT_ERR_INVALID_ARGUMENT;
+      return agent_cbor_write_bool(w2, rr->ok ? 1 : 0);
+    },
+    .value_ctx = (void*)r,
+  };
+  if (r->has_text) {
+    kv[n++] = (agent_cbor_kv_t){
+      .key = "data",
+      .key_len = 4,
+      .encode_value = encode_task_done_result_data,
+      .value_ctx = (void*)r,
+    };
+  }
+  return agent_cbor_write_map_sorted(w, kv, n);
+}
+
+static agent_status_t compute_auth_sig_b64(
+  const std::string& auth_alg,
+  const std::string& hmac_secret,
+  const std::string& ed25519_sk_hex,
+  const uint8_t* signing_input,
+  size_t signing_input_len,
+  char* out_b64,
+  size_t out_cap,
+  size_t* out_len
+) {
+  if (!out_b64 || !out_len) return AGENT_ERR_INVALID_ARGUMENT;
+  *out_len = 0;
+  if (auth_alg == "hmac-sha256-cbor") {
+    return agent_umbmp_auth_hmac_sha256_cbor_sig_b64(
+      hmac_secret.data(),
+      hmac_secret.size(),
+      signing_input,
+      signing_input_len,
+      out_b64,
+      out_cap,
+      out_len
+    );
+  }
+  if (auth_alg == "ed25519-cbor") {
+    uint8_t sk_seed32[32];
+    if (!hex_decode_32(ed25519_sk_hex, sk_seed32)) return AGENT_ERR_INVALID_ARGUMENT;
+    uint8_t pk32[32];
+    std::memset(pk32, 0, sizeof(pk32));
+    agent_ed25519_publickey(sk_seed32, pk32);
+    return agent_umbmp_auth_ed25519_cbor_sig_b64(
+      sk_seed32,
+      pk32,
+      signing_input,
+      signing_input_len,
+      out_b64,
+      out_cap,
+      out_len
+    );
+  }
+  return AGENT_ERR_INVALID_ARGUMENT;
+}
+
 int main(int argc, char** argv) {
   std::string type;
   std::string node_id;
@@ -204,6 +328,18 @@ int main(int argc, char** argv) {
   std::string model = "esp32";
   std::string fw_git_sha = "deadbeef";
   std::string caps_sha256;
+  std::string task_id;
+  std::string step_id;
+  std::string idempotency_key;
+  std::string reason;
+  std::string state;
+  std::string error;
+  std::string result_text;
+  int accepted = 1;
+  bool has_accepted = false;
+  double progress = 0.0;
+  bool has_progress = false;
+  int result_ok = 1;
   int64_t ts_utc_ms = 0;
   bool has_ts = false;
 
@@ -247,6 +383,43 @@ int main(int argc, char** argv) {
       if (!need_value(&fw_git_sha)) return (usage(), 2);
     } else if (a == "--caps-sha256") {
       if (!need_value(&caps_sha256)) return (usage(), 2);
+    } else if (a == "--task-id") {
+      if (!need_value(&task_id)) return (usage(), 2);
+    } else if (a == "--step-id") {
+      if (!need_value(&step_id)) return (usage(), 2);
+    } else if (a == "--idempotency-key") {
+      if (!need_value(&idempotency_key)) return (usage(), 2);
+    } else if (a == "--accepted") {
+      std::string v;
+      if (!need_value(&v)) return (usage(), 2);
+      if (!parse_bool01(v, &accepted)) {
+        std::fprintf(stderr, "invalid --accepted (expected 0/1)\n");
+        return 2;
+      }
+      has_accepted = true;
+    } else if (a == "--reason") {
+      if (!need_value(&reason)) return (usage(), 2);
+    } else if (a == "--state") {
+      if (!need_value(&state)) return (usage(), 2);
+    } else if (a == "--progress") {
+      std::string v;
+      if (!need_value(&v)) return (usage(), 2);
+      if (!parse_double(v, &progress)) {
+        std::fprintf(stderr, "invalid --progress\n");
+        return 2;
+      }
+      has_progress = true;
+    } else if (a == "--error") {
+      if (!need_value(&error)) return (usage(), 2);
+    } else if (a == "--result-ok") {
+      std::string v;
+      if (!need_value(&v)) return (usage(), 2);
+      if (!parse_bool01(v, &result_ok)) {
+        std::fprintf(stderr, "invalid --result-ok (expected 0/1)\n");
+        return 2;
+      }
+    } else if (a == "--result-text") {
+      if (!need_value(&result_text)) return (usage(), 2);
     } else if (a == "--manifest-minimal") {
       manifest_minimal = true;
     } else if (a == "--manifest-cbor-hex") {
@@ -291,6 +464,18 @@ int main(int argc, char** argv) {
   }
   if (!agent_umbmp_id_is_safe(msg_id.c_str(), msg_id.size())) {
     std::fprintf(stderr, "invalid --msg-id (id-safe required)\n");
+    return 2;
+  }
+  if (!task_id.empty() && !agent_umbmp_id_is_safe(task_id.c_str(), task_id.size())) {
+    std::fprintf(stderr, "invalid --task-id (id-safe required)\n");
+    return 2;
+  }
+  if (!step_id.empty() && !agent_umbmp_id_is_safe(step_id.c_str(), step_id.size())) {
+    std::fprintf(stderr, "invalid --step-id (id-safe required)\n");
+    return 2;
+  }
+  if (!idempotency_key.empty() && !agent_umbmp_id_is_safe(idempotency_key.c_str(), idempotency_key.size())) {
+    std::fprintf(stderr, "invalid --idempotency-key (id-safe required)\n");
     return 2;
   }
   if (!caps_sha256.empty() && !agent_umbmp_sha256_token_is_safe(caps_sha256.c_str(), caps_sha256.size())) {
@@ -362,8 +547,45 @@ int main(int argc, char** argv) {
     p.auth_kid_len = auth_kid.size();
     p.auth_seq = auth_seq;
     p.auth_has_seq = 1;
-    agent_cbor_writer_init(&sw, signing_buf, sizeof(signing_buf));
   }
+
+  auto encode_now = [&]() -> int {
+    if (want_auth) {
+      agent_cbor_writer_init(&sw, signing_buf, sizeof(signing_buf));
+      st = agent_umbmp_envelope_no_sig_cbor_v0_4(&p, &sw);
+      if (st != AGENT_OK) {
+        std::fprintf(stderr, "failed to build signing input\n");
+        return 1;
+      }
+      if (auth_alg == "ed25519-cbor") {
+        uint8_t tmp32[32];
+        if (!hex_decode_32(ed25519_sk_hex, tmp32)) {
+          std::fprintf(stderr, "invalid --ed25519-sk-hex (expected 64 hex chars)\n");
+          return 2;
+        }
+      }
+      st = compute_auth_sig_b64(
+        auth_alg,
+        hmac_secret,
+        ed25519_sk_hex,
+        agent_cbor_writer_bytes(&sw),
+        agent_cbor_writer_len(&sw),
+        sig_b64,
+        sizeof(sig_b64),
+        &sig_b64_len
+      );
+      if (st != AGENT_OK) {
+        std::fprintf(stderr, "failed to compute auth sig\n");
+        return 1;
+      }
+      p.auth_sig_b64 = sig_b64;
+      p.auth_sig_b64_len = sig_b64_len;
+      st = agent_umbmp_envelope_cbor_v0_4(&p, &w);
+    } else {
+      st = agent_umbmp_envelope_no_sig_cbor_v0_4(&p, &w);
+    }
+    return 0;
+  };
 
   if (type == "NODE_HELLO") {
     agent_um_eais_node_hello_body_t b{};
@@ -382,55 +604,8 @@ int main(int argc, char** argv) {
     }
     p.encode_body = agent_um_eais_node_hello_body_encode_cbor_v0_1;
     p.body_ctx = &b;
-    if (want_auth) {
-      st = agent_umbmp_envelope_no_sig_cbor_v0_4(&p, &sw);
-      if (st != AGENT_OK) {
-        std::fprintf(stderr, "failed to build signing input\n");
-        return 1;
-      }
-      if (auth_alg == "hmac-sha256-cbor") {
-        st = agent_umbmp_auth_hmac_sha256_cbor_sig_b64(
-          hmac_secret.data(),
-          hmac_secret.size(),
-          agent_cbor_writer_bytes(&sw),
-          agent_cbor_writer_len(&sw),
-          sig_b64,
-          sizeof(sig_b64),
-          &sig_b64_len
-        );
-        if (st != AGENT_OK) {
-          std::fprintf(stderr, "failed to compute hmac sig\n");
-          return 1;
-        }
-      } else if (auth_alg == "ed25519-cbor") {
-        uint8_t sk_seed32[32];
-        if (!hex_decode_32(ed25519_sk_hex, sk_seed32)) {
-          std::fprintf(stderr, "invalid --ed25519-sk-hex (expected 64 hex chars)\n");
-          return 2;
-        }
-        uint8_t pk32[32];
-        std::memset(pk32, 0, sizeof(pk32));
-        agent_ed25519_publickey(sk_seed32, pk32);
-        st = agent_umbmp_auth_ed25519_cbor_sig_b64(
-          sk_seed32,
-          pk32,
-          agent_cbor_writer_bytes(&sw),
-          agent_cbor_writer_len(&sw),
-          sig_b64,
-          sizeof(sig_b64),
-          &sig_b64_len
-        );
-        if (st != AGENT_OK) {
-          std::fprintf(stderr, "failed to compute ed25519 sig\n");
-          return 1;
-        }
-      }
-      p.auth_sig_b64 = sig_b64;
-      p.auth_sig_b64_len = sig_b64_len;
-      st = agent_umbmp_envelope_cbor_v0_4(&p, &w);
-    } else {
-      st = agent_umbmp_envelope_no_sig_cbor_v0_4(&p, &w);
-    }
+    const int rc = encode_now();
+    if (rc != 0) return rc;
   } else if (type == "NODE_CAPS_RSP") {
     std::vector<uint8_t> manifest_bytes;
     agent_cbor_view_t man{};
@@ -469,55 +644,87 @@ int main(int argc, char** argv) {
 
     p.encode_body = agent_um_eais_node_caps_rsp_body_encode_cbor_v0_1;
     p.body_ctx = &b;
-    if (want_auth) {
-      st = agent_umbmp_envelope_no_sig_cbor_v0_4(&p, &sw);
-      if (st != AGENT_OK) {
-        std::fprintf(stderr, "failed to build signing input\n");
-        return 1;
-      }
-      if (auth_alg == "hmac-sha256-cbor") {
-        st = agent_umbmp_auth_hmac_sha256_cbor_sig_b64(
-          hmac_secret.data(),
-          hmac_secret.size(),
-          agent_cbor_writer_bytes(&sw),
-          agent_cbor_writer_len(&sw),
-          sig_b64,
-          sizeof(sig_b64),
-          &sig_b64_len
-        );
-        if (st != AGENT_OK) {
-          std::fprintf(stderr, "failed to compute hmac sig\n");
-          return 1;
-        }
-      } else if (auth_alg == "ed25519-cbor") {
-        uint8_t sk_seed32[32];
-        if (!hex_decode_32(ed25519_sk_hex, sk_seed32)) {
-          std::fprintf(stderr, "invalid --ed25519-sk-hex (expected 64 hex chars)\n");
-          return 2;
-        }
-        uint8_t pk32[32];
-        std::memset(pk32, 0, sizeof(pk32));
-        agent_ed25519_publickey(sk_seed32, pk32);
-        st = agent_umbmp_auth_ed25519_cbor_sig_b64(
-          sk_seed32,
-          pk32,
-          agent_cbor_writer_bytes(&sw),
-          agent_cbor_writer_len(&sw),
-          sig_b64,
-          sizeof(sig_b64),
-          &sig_b64_len
-        );
-        if (st != AGENT_OK) {
-          std::fprintf(stderr, "failed to compute ed25519 sig\n");
-          return 1;
-        }
-      }
-      p.auth_sig_b64 = sig_b64;
-      p.auth_sig_b64_len = sig_b64_len;
-      st = agent_umbmp_envelope_cbor_v0_4(&p, &w);
-    } else {
-      st = agent_umbmp_envelope_no_sig_cbor_v0_4(&p, &w);
+    const int rc = encode_now();
+    if (rc != 0) return rc;
+  } else if (type == "TASK_ACK") {
+    if (task_id.empty() || step_id.empty() || idempotency_key.empty()) {
+      std::fprintf(stderr, "TASK_ACK requires --task-id --step-id --idempotency-key\n");
+      return 2;
     }
+    if (!has_accepted) {
+      std::fprintf(stderr, "TASK_ACK requires --accepted\n");
+      return 2;
+    }
+    agent_um_eais_task_ack_body_t b{};
+    b.task_id = {task_id.c_str(), task_id.size()};
+    b.step_id = {step_id.c_str(), step_id.size()};
+    b.idempotency_key = {idempotency_key.c_str(), idempotency_key.size()};
+    b.accepted = accepted ? 1 : 0;
+    if (!reason.empty()) {
+      b.reason = {reason.c_str(), reason.size()};
+      b.has_reason = 1;
+    }
+    p.encode_body = agent_um_eais_task_ack_body_encode_cbor_v0_1;
+    p.body_ctx = &b;
+    const int rc = encode_now();
+    if (rc != 0) return rc;
+  } else if (type == "TASK_EVENT") {
+    if (task_id.empty() || step_id.empty() || idempotency_key.empty() || state.empty()) {
+      std::fprintf(stderr, "TASK_EVENT requires --task-id --step-id --idempotency-key --state\n");
+      return 2;
+    }
+    agent_um_eais_task_event_body_t b{};
+    b.task_id = {task_id.c_str(), task_id.size()};
+    b.step_id = {step_id.c_str(), step_id.size()};
+    b.idempotency_key = {idempotency_key.c_str(), idempotency_key.size()};
+    b.state = {state.c_str(), state.size()};
+    if (has_progress) {
+      b.progress = progress;
+      b.has_progress = 1;
+    }
+    if (!error.empty()) {
+      b.error = {error.c_str(), error.size()};
+      b.has_error = 1;
+    }
+    p.encode_body = agent_um_eais_task_event_body_encode_cbor_v0_1;
+    p.body_ctx = &b;
+    const int rc = encode_now();
+    if (rc != 0) return rc;
+  } else if (type == "TASK_FAILED") {
+    if (task_id.empty() || step_id.empty() || idempotency_key.empty() || error.empty()) {
+      std::fprintf(stderr, "TASK_FAILED requires --task-id --step-id --idempotency-key --error\n");
+      return 2;
+    }
+    agent_um_eais_task_failed_body_t b{};
+    b.task_id = {task_id.c_str(), task_id.size()};
+    b.step_id = {step_id.c_str(), step_id.size()};
+    b.idempotency_key = {idempotency_key.c_str(), idempotency_key.size()};
+    b.error = {error.c_str(), error.size()};
+    p.encode_body = agent_um_eais_task_failed_body_encode_cbor_v0_1;
+    p.body_ctx = &b;
+    const int rc = encode_now();
+    if (rc != 0) return rc;
+  } else if (type == "TASK_DONE") {
+    if (task_id.empty() || step_id.empty() || idempotency_key.empty()) {
+      std::fprintf(stderr, "TASK_DONE requires --task-id --step-id --idempotency-key\n");
+      return 2;
+    }
+    encode_task_done_result_ctx_t rctx{};
+    rctx.ok = result_ok ? 1 : 0;
+    if (!result_text.empty()) {
+      rctx.text = {result_text.c_str(), result_text.size()};
+      rctx.has_text = 1;
+    }
+    agent_um_eais_task_done_body_t b{};
+    b.task_id = {task_id.c_str(), task_id.size()};
+    b.step_id = {step_id.c_str(), step_id.size()};
+    b.idempotency_key = {idempotency_key.c_str(), idempotency_key.size()};
+    b.encode_result = encode_task_done_result;
+    b.result_ctx = &rctx;
+    p.encode_body = agent_um_eais_task_done_body_encode_cbor_v0_1;
+    p.body_ctx = &b;
+    const int rc = encode_now();
+    if (rc != 0) return rc;
   } else {
     std::fprintf(stderr, "unsupported --type: %s\n", type.c_str());
     usage();

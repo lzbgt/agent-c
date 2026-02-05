@@ -72,7 +72,10 @@ for platform-side storage and quorum logic, but wire-level attestations should p
 Platform (`agentd`):
 - Shipped: CBOR decoding on `POST /api/v1/edge/message` when `Content-Type: application/cbor`.
 - Shipped: CBOR encoding on `GET /api/v1/edge/outbox` when `Accept: application/cbor`.
-- Proof: `ctest` includes `agentd_edge_message_cbor_smoke` and `agentd_edge_outbox_cbor_smoke`.
+- Proof: `ctest` includes:
+  - `agentd_edge_message_cbor_smoke`
+  - `agentd_edge_outbox_cbor_smoke`
+  - `agentd_edge_task_loop_cbor_wire_smoke` (TASK_ACK / TASK_EVENT / TASK_DONE over `application/cbor`)
 
 Node (`agent_core`):
 - Shipped (partial): deterministic CBOR **writer** helpers under `agent/cbor_det.h` (encoder only).
@@ -93,6 +96,8 @@ Node (`agent_core`):
   - validates `manifest` is a definite-length CBOR map with text keys
   - optional strict mode validates deterministic key ordering (recommended for `auth.alg="*-cbor"`)
 - Shipped (partial): UM‑BMP envelope CBOR encode helper under `agent/umbmp_auth.h` (`agent_umbmp_envelope_cbor_v0_4`) for sending signed (or unsigned) envelopes over CBOR wire.
+- Shipped (bring-up tooling): `tools/agent_core_umbmp_cbor_encode.cpp` can emit deterministic CBOR envelopes for:
+  `NODE_HELLO`, `NODE_CAPS_RSP`, `TASK_ACK`, `TASK_EVENT`, `TASK_DONE`, `TASK_FAILED`.
 - Not shipped (yet): a built-in deterministic CBOR encoder for `NODE_CAPS_RSP.body.manifest` (UM‑ACDS manifest can be large and schema-driven).
 - Not shipped (yet): full JSON<->CBOR mapping helpers for MCU firmware.
 - Recommendation: keep using a full CBOR library (e.g. TinyCBOR-derived) if you already have one, but use the deterministic profile
