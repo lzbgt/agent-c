@@ -46,7 +46,8 @@ tasks = [
       "path": "STRUCTURED.md",
       "entries": [
         {"key": "wf.test.q1", "kind": "fact", "value": "Autonomy comes from durable scheduling + memory."},
-        {"key": "wf.test.q2", "kind": "preference", "value": "Prefer deterministic joins over ad-hoc heuristics."}
+        {"key": "wf.test.q2", "kind": "preference", "value": "Prefer deterministic joins over ad-hoc heuristics."},
+        {"key": "wf.test.q3", "kind": "fact", "value": "Newest fact for ordering test."}
       ],
       "checkpoint": False
     },
@@ -86,6 +87,25 @@ tasks = [
     "expect": {
       "json_pointer_exists": ["/memory_structured_query_response/data/results/0/key"],
       "json_pointer_regex": [{"pointer": "/memory_structured_query_response/data/results/0/key", "regex": "^wf\\.test\\.q1$"}]
+    },
+    "max_attempts": 1
+  },
+  {
+    "task_id": "U",
+    "kind": "memory_structured_query",
+    "depends_on": ["P"],
+    "memory_structured_query": {
+      "path": "STRUCTURED.md",
+      "key_prefix": "wf.test.",
+      "kinds": ["fact"],
+      "status": "active",
+      "include_sources": False,
+      "include_versions": False,
+      "order_by": "updated_desc",
+      "limit": 2
+    },
+    "expect": {
+      "json_pointer_exists": ["/memory_structured_query_response/data/results/0/key"]
     },
     "max_attempts": 1
   }
@@ -164,6 +184,21 @@ if not results:
   raise SystemExit(1)
 if results[0].get("key") != "wf.test.q1":
   print("unexpected T key", results[0], file=sys.stderr)
+  raise SystemExit(1)
+
+u = by.get("U") or {}
+if u.get("kind") != "memory_structured_query" or u.get("ok") is not True:
+  print("expected U ok true memory_structured_query", u, file=sys.stderr)
+  raise SystemExit(1)
+resp = u.get("memory_structured_query_response") or {}
+data = resp.get("data") or {}
+results = data.get("results") or []
+if len(results) < 2:
+  print("expected at least 2 results for U", u, file=sys.stderr)
+  raise SystemExit(1)
+keys = [r.get("key","") for r in results]
+if "wf.test.q1" not in keys or "wf.test.q3" not in keys:
+  print("expected wf.test.q1 and wf.test.q3 keys in U", keys, file=sys.stderr)
   raise SystemExit(1)
 PY
 

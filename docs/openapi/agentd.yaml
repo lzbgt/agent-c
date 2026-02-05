@@ -2066,6 +2066,15 @@ components:
         source_case_insensitive:
           type: boolean
           description: If true, source_contains matching is case-insensitive (default false).
+        updated_since_utc:
+          type: string
+          description: Optional lower bound on record updated_utc (ISO UTC like 2026-02-05T00:00:00Z).
+        updated_until_utc:
+          type: string
+          description: Optional upper bound on record updated_utc (ISO UTC like 2026-02-05T23:59:59Z).
+        order_by:
+          type: string
+          description: Sort order: key_asc (default) or updated_desc.
         kinds:
           type: array
           description: Optional kinds filter (e.g. `["fact"]`, `["preference"]`, `["task"]`).

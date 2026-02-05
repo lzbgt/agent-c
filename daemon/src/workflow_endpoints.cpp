@@ -1194,6 +1194,50 @@ void handle_workflow_submit_endpoint(
 	        if (msq["source_case_insensitive"].isBool()) msq2["source_case_insensitive"] = msq["source_case_insensitive"];
 	      }
 
+	      if (msq.isMember("updated_since_utc")) {
+	        if (!msq["updated_since_utc"].isString() && !msq["updated_since_utc"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_structured_query.updated_since_utc must be a string";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (msq["updated_since_utc"].isString() && !trim_copy(msq["updated_since_utc"].asString()).empty()) {
+	          msq2["updated_since_utc"] = trim_copy(msq["updated_since_utc"].asString());
+	        }
+	      }
+	      if (msq.isMember("updated_until_utc")) {
+	        if (!msq["updated_until_utc"].isString() && !msq["updated_until_utc"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_structured_query.updated_until_utc must be a string";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (msq["updated_until_utc"].isString() && !trim_copy(msq["updated_until_utc"].asString()).empty()) {
+	          msq2["updated_until_utc"] = trim_copy(msq["updated_until_utc"].asString());
+	        }
+	      }
+
+	      if (msq.isMember("order_by")) {
+	        if (!msq["order_by"].isString() && !msq["order_by"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_structured_query.order_by must be a string";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (msq["order_by"].isString() && !trim_copy(msq["order_by"].asString()).empty()) {
+	          msq2["order_by"] = trim_copy(msq["order_by"].asString());
+	        }
+	      }
+
 	      // Safety: avoid accidentally dumping the entire structured memory file by default.
 	      if (!msq2.isMember("key") && !msq2.isMember("key_prefix") &&
 	          (!msq2.isMember("kinds") || !msq2["kinds"].isArray() || msq2["kinds"].empty()) &&

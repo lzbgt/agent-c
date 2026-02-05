@@ -486,6 +486,10 @@ Semantics:
 - Requires the daemon to run with `--tools host` (this task executes the host tool `memory_structured_query`).
 - This is a **read-only** host tool, so it works with `--host-policy readonly` or `--host-policy full`.
 - To avoid accidental full dumps, the server requires at least one filter: `key`, `key_prefix`, non-empty `kinds[]`, or `source_contains`.
+- Optional query-plan knobs:
+  - `source_contains`: filter by evidence trail (e.g. `trace:<trace_id>...` injected by `memory_put` tasks)
+  - `updated_since_utc` / `updated_until_utc`: bound by record `updated_utc` (ISO UTC strings)
+  - `order_by:"updated_desc"`: fetch most recently updated records first
 - The full host tool response is surfaced under the task result as `memory_structured_query_response` for deterministic `expect` assertions
   and JSON templating (`${task.Q.json:/memory_structured_query_response/data/results/0/record/value}` etc.).
 
