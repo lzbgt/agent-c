@@ -31,7 +31,7 @@ static agent_status_t parse_trace(agent_cbor_view_t trace_item, agent_umbmp_trac
       st = agent_cbor_read_text(&r, &v);
       if (st != AGENT_OK) return st;
       // Best-effort: only surface if it passes the shared id-safe character set.
-      if (agent_umbmp_id_is_safe(v.ptr, v.len)) {
+      if (agent_umbmp_trace_id_is_safe(v.ptr, v.len)) {
         out->trace_id = v;
         out->has_trace_id = 1;
       }
@@ -245,4 +245,3 @@ agent_status_t agent_umbmp_envelope_read_cbor_v0_1(
 
   return AGENT_OK;
 }
-

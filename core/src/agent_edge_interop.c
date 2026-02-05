@@ -13,6 +13,12 @@ static int umbmp_char_ok(char c) {
   return ok ? 1 : 0;
 }
 
+static int umbmp_trace_char_ok(char c) {
+  // trace_id extends the id token set with '@' (UM‑EAIS v0.2, platform trace_id validator).
+  if (umbmp_char_ok(c)) return 1;
+  return (c == '@') ? 1 : 0;
+}
+
 static int hex_char_ok(char c) {
   const int ok =
     (c >= '0' && c <= '9') ||
@@ -26,6 +32,15 @@ int agent_umbmp_id_is_safe(const char* s, size_t len) {
   if (len == 0 || len > AGENT_UM_BMP_MAX_ID_LEN) return 0;
   for (size_t i = 0; i < len; i++) {
     if (!umbmp_char_ok(s[i])) return 0;
+  }
+  return 1;
+}
+
+int agent_umbmp_trace_id_is_safe(const char* s, size_t len) {
+  if (!s) return 0;
+  if (len == 0 || len > AGENT_UM_BMP_MAX_ID_LEN) return 0;
+  for (size_t i = 0; i < len; i++) {
+    if (!umbmp_trace_char_ok(s[i])) return 0;
   }
   return 1;
 }

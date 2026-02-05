@@ -20,6 +20,7 @@ add_library(agent_core STATIC
   core/src/agent_edge_interop.c
   core/src/agent_hmac_sha256.c
   core/src/agent_json_c14n.c
+  core/src/agent_um_eais_task_assign_read.c
   core/src/agent_umbmp_envelope_read.c
   core/src/agent_umbmp_auth.c
   core/src/agent_runner.c
@@ -293,6 +294,7 @@ add_executable(agent_core_tests
   tests/test_cbor_det.c
   tests/test_cbor_read.c
   tests/test_edge_interop.c
+  tests/test_um_eais_task_assign_read.c
   tests/test_umbmp_envelope_read.c
   tests/test_umbmp_auth_core.c
   tests/test_ed25519.c

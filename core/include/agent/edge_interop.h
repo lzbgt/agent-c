@@ -24,6 +24,12 @@ extern "C" {
 //   [A-Za-z0-9-_.:]
 int agent_umbmp_id_is_safe(const char* s, size_t len);
 
+// Allowed trace_id token character set (ASCII) for envelope correlation:
+//   [A-Za-z0-9-_.:@]
+//
+// This matches the platform's trace_id validator and UM‑EAIS v0.2+ docs.
+int agent_umbmp_trace_id_is_safe(const char* s, size_t len);
+
 // Best-effort validation for sha256 tokens used in manifests and heartbeats.
 //
 // Accepted forms:

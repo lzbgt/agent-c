@@ -99,7 +99,7 @@ static void test_umbmp_envelope_read_supports_trace_and_sig(void) {
   text_ctx_t v_msg_id = {"0f3a4a50-9999-4000-8000-000000000001", strlen("0f3a4a50-9999-4000-8000-000000000001")};
   uint64_t v_ts = 1700000000456ULL;
 
-  text_ctx_t v_trace_id = {"trace:demo_trace_1", strlen("trace:demo_trace_1")};
+  text_ctx_t v_trace_id = {"trace:demo@trace_1", strlen("trace:demo@trace_1")};
   const agent_cbor_kv_t trace_pairs[] = {
     {"trace_id", strlen("trace_id"), enc_text, &v_trace_id},
   };
@@ -150,7 +150,7 @@ static void test_umbmp_envelope_read_supports_trace_and_sig(void) {
 
   assert(env.has_trace == 1);
   assert(env.trace.has_trace_id == 1);
-  assert(text_eq(env.trace.trace_id, "trace:demo_trace_1"));
+  assert(text_eq(env.trace.trace_id, "trace:demo@trace_1"));
 
   assert(env.has_auth == 1);
   assert(text_eq(env.auth.alg, "hmac-sha256-cbor"));
@@ -166,4 +166,3 @@ void test_umbmp_envelope_read_module(void) {
   test_umbmp_envelope_read_decodes_canonical_node_hello_no_sig();
   test_umbmp_envelope_read_supports_trace_and_sig();
 }
-
