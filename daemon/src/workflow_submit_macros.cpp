@@ -391,6 +391,14 @@ bool expand_workflow_submit_macros(
       // Aggregate's default node_pointer (/edge/node_id) is correct for edge_invoke, but agentd_call results
       // identify the target under /agentd/base_url.
       if (agg_mode == "quorum_hashes") {
+        const bool has_ptrs =
+          agg.isMember("pointers") && agg["pointers"].isArray() && !agg["pointers"].empty();
+        if (!has_ptrs) {
+          Json::Value ptrs(Json::arrayValue);
+          ptrs.append("/agentd/result_sha256");
+          agg["pointers"] = ptrs;
+        }
+
         const bool has_node_pointer =
           agg.isMember("node_pointer") && agg["node_pointer"].isString() && !trim_copy(agg["node_pointer"].asString()).empty();
         if (!has_node_pointer) agg["node_pointer"] = "/agentd/base_url";

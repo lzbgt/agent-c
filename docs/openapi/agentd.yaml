@@ -2384,6 +2384,7 @@ components:
         - `agentd_call.base_url` must be omitted; each target provides a base_url.
         - For `aggregate.mode=quorum_hashes`, when `aggregate.node_pointer` is omitted the server defaults it to `/agentd/base_url`
           so `require_distinct_nodes=true` counts distinct remote agent targets correctly.
+        - For `aggregate.mode=quorum_hashes`, when `aggregate.pointers` is omitted the server defaults it to [`/agentd/result_sha256`].
       properties:
         targets:
           type: array

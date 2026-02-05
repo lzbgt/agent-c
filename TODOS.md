@@ -61,6 +61,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
     (algorithm `agent_json_c14n_v1`).
   - Distinct-target quorum: `kind:"agentd_parallel"` defaults `aggregate.node_pointer="/agentd/base_url"` for `mode:"quorum_hashes"`
     so `require_distinct_nodes:true` counts distinct remote agent targets correctly.
+  - Quorum ergonomics: for `kind:"agentd_parallel"` + `mode:"quorum_hashes"`, the server defaults `aggregate.pointers=["/agentd/result_sha256"]`
+    so users don’t accidentally inherit the generic aggregate defaults (`/avm/result_hash`, `/avm/trace_hash`).
 - Embedded bring-up helper: `agent_core` now includes UM‑BMP/UM‑EAIS interop helpers (`agent/edge_interop.h`)
   for id-safe validation/sanitization + message type constants (reduces node/platform drift).
   - Proof: `ctest` includes `agent_core_tests`.
