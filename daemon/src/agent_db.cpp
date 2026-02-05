@@ -165,7 +165,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 22;
+  const int kSchemaVersion = 23;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -744,6 +744,18 @@ CREATE INDEX IF NOT EXISTS edge_tasks_by_trace ON edge_tasks(trace_id, updated_u
 )SQL";
     if (!exec_locked(schema_v22, out_error)) return false;
     cur_ver = 22;
+  }
+
+  if (cur_ver < 23) {
+    const char* schema_v23 = R"SQL(
+-- Edge tool resource locking (best-effort, platform-side): prevent parallel tool calls that
+-- contend for the same physical resource (e.g. motor, ui.led, hvac).
+ALTER TABLE edge_tasks ADD COLUMN resource_lock TEXT;
+CREATE INDEX IF NOT EXISTS edge_tasks_by_node_lock_state
+  ON edge_tasks(node_id, resource_lock, state, updated_utc_ms DESC);
+)SQL";
+    if (!exec_locked(schema_v23, out_error)) return false;
+    cur_ver = 23;
   }
 
   // Record schema version.

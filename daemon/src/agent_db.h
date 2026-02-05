@@ -500,6 +500,7 @@ class AgentDb {
     std::string node_id;
     std::string idempotency_key;
     std::string trace_id; // optional trace correlation id (best-effort)
+    std::string resource_lock; // optional platform-side resource lock key (best-effort)
     std::string mode; // invoke|agent
     std::string tool_name; // for mode=invoke (optional; best-effort)
     int64_t deadline_utc_ms = 0;
@@ -529,6 +530,14 @@ class AgentDb {
     const std::string& trace_id,
     size_t max_rows,
     std::vector<EdgeTaskRow>* out_rows_desc,
+    std::string* out_error
+  );
+
+  bool get_edge_task_lock_conflict(
+    const std::string& node_id,
+    const std::string& resource_lock,
+    std::string* out_task_id,
+    std::string* out_step_id,
     std::string* out_error
   );
 

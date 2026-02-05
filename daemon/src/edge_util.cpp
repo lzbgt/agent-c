@@ -453,6 +453,9 @@ bool edge_tool_meta_from_manifest(
     if (t.isMember("side_effect_level") && t["side_effect_level"].isString()) {
       m.side_effect_level = t["side_effect_level"].asString();
     }
+    if (t.isMember("resource_lock") && t["resource_lock"].isString()) {
+      m.resource_lock = trim_copy(t["resource_lock"].asString());
+    }
     if (t.isMember("hazards") && t["hazards"].isArray()) {
       for (Json::ArrayIndex j = 0; j < t["hazards"].size(); j++) {
         if (t["hazards"][j].isString()) m.hazards.insert(t["hazards"][j].asString());
@@ -619,6 +622,7 @@ bool edge_enqueue_task_assign(
 
   bool have_rate_state_to_commit = false;
   AgentDb::EdgeToolRateStateRow next_rate_state;
+  std::string resource_lock;
 
   // Dedupe on (node_id, idempotency_key).
   AgentDb::EdgeTaskRow existing;
@@ -666,6 +670,20 @@ bool edge_enqueue_task_assign(
         if (out_error) *out_error = std::string("tool not present in node manifest: ") + terr;
         if (out_http_status) *out_http_status = 409;
         return false;
+      }
+      if (!meta.resource_lock.empty()) resource_lock = meta.resource_lock;
+
+      if (!resource_lock.empty()) {
+        std::string ctid, csid, cerr;
+        const bool conflict = db->get_edge_task_lock_conflict(node_id, resource_lock, &ctid, &csid, &cerr);
+        if (conflict) {
+          if (out_error) {
+            *out_error = "resource_locked: " + resource_lock;
+            if (!ctid.empty() && !csid.empty()) *out_error += " (held by " + ctid + "/" + csid + ")";
+          }
+          if (out_http_status) *out_http_status = 429;
+          return false;
+        }
       }
 
       // Validate tool arguments against the manifest schema (best-effort).
@@ -725,6 +743,7 @@ bool edge_enqueue_task_assign(
     if (!trace_id.empty()) tr.trace_id = trace_id;
     tr.mode = mode;
     tr.tool_name = tool_name;
+    if (!resource_lock.empty()) tr.resource_lock = resource_lock;
     tr.deadline_utc_ms = deadline_utc_ms;
     tr.payload_json = json_stringify_compact_local(payload);
     tr.state = "QUEUED";

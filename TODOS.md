@@ -111,6 +111,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - UM‑EAIS tool correctness guardrail: for `TASK_DONE` of `mode:"invoke"`, if the tool definition includes a `result_schema`,
   the platform validates `result.data` (best-effort subset, fail-closed) before marking the task succeeded.
   - Proof: `ctest` includes `agentd_edge_task_done_result_schema_validation_smoke`.
+- UM‑EAIS scheduling guardrail (actuator safety): if a tool definition includes `resource_lock`, the platform blocks parallel
+  dispatch of another invoke task using the same lock while an existing task is `QUEUED`/`RUNNING` (HTTP 429, retryable).
+  - Proof: `ctest` includes `agentd_edge_resource_lock_smoke`.
 - Workflow engine now supports **soft-fail** tasks via `allow_error: true`:
   - If a task ends `status="error"` and `allow_error=true`, the workflow can still complete `done` (so long as no “hard” errors remain).
   - Dependencies treat `(status=error + allow_error=true)` as satisfied; aggregation tasks can also depend on any terminal dependency to compute joins over errors.

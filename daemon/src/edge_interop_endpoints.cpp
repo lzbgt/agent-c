@@ -1349,6 +1349,7 @@ void handle_edge_task_get_endpoint(
   if (!tr.trace_id.empty()) t["trace_id"] = tr.trace_id;
   t["mode"] = tr.mode;
   if (!tr.tool_name.empty()) t["tool_name"] = tr.tool_name;
+  if (!tr.resource_lock.empty()) t["resource_lock"] = tr.resource_lock;
   t["deadline_utc_ms"] = (Json::Int64)tr.deadline_utc_ms;
   t["state"] = tr.state;
   t["created_utc_ms"] = (Json::Int64)tr.created_utc_ms;

@@ -67,6 +67,7 @@ bool edge_tool_result_schema_from_manifest_best_effort(
 
 struct EdgeToolMeta {
   std::string side_effect_level;
+  std::string resource_lock; // optional; best-effort platform-side tool lock key
   std::unordered_set<std::string> hazards;
   bool has_rate_limit = false;
   int max_per_minute = 0;

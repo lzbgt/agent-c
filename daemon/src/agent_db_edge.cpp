@@ -497,12 +497,13 @@ bool AgentDb::upsert_edge_task(const EdgeTaskRow& row, std::string* out_error) {
   sqlite3_stmt* st = nullptr;
   const char* sql = R"SQL(
 INSERT INTO edge_tasks(
-  task_id, step_id, node_id, idempotency_key, trace_id, mode, tool_name, deadline_utc_ms, payload_json, state, created_utc_ms, updated_utc_ms, result_json, error
-) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  task_id, step_id, node_id, idempotency_key, trace_id, resource_lock, mode, tool_name, deadline_utc_ms, payload_json, state, created_utc_ms, updated_utc_ms, result_json, error
+) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 ON CONFLICT(task_id, step_id) DO UPDATE SET
   node_id = excluded.node_id,
   idempotency_key = excluded.idempotency_key,
   trace_id = CASE WHEN excluded.trace_id IS NOT NULL AND excluded.trace_id <> '' THEN excluded.trace_id ELSE edge_tasks.trace_id END,
+  resource_lock = CASE WHEN excluded.resource_lock IS NOT NULL AND excluded.resource_lock <> '' THEN excluded.resource_lock ELSE edge_tasks.resource_lock END,
   mode = CASE WHEN excluded.mode IS NOT NULL AND excluded.mode <> '' THEN excluded.mode ELSE edge_tasks.mode END,
   tool_name = CASE WHEN excluded.tool_name IS NOT NULL AND excluded.tool_name <> '' THEN excluded.tool_name ELSE edge_tasks.tool_name END,
   deadline_utc_ms = CASE WHEN excluded.deadline_utc_ms > 0 THEN excluded.deadline_utc_ms ELSE edge_tasks.deadline_utc_ms END,
@@ -524,15 +525,16 @@ ON CONFLICT(task_id, step_id) DO UPDATE SET
   ok = ok && bind_text(st, 3, row.node_id);
   ok = ok && bind_text(st, 4, row.idempotency_key);
   ok = ok && bind_text_or_null(st, 5, row.trace_id);
-  ok = ok && bind_text(st, 6, row.mode);
-  ok = ok && bind_text_or_null(st, 7, row.tool_name);
-  ok = ok && bind_i64(st, 8, row.deadline_utc_ms);
-  ok = ok && bind_text(st, 9, row.payload_json);
-  ok = ok && bind_text(st, 10, row.state);
-  ok = ok && bind_i64(st, 11, created);
-  ok = ok && bind_i64(st, 12, updated);
-  ok = ok && bind_text_or_null(st, 13, row.result_json);
-  ok = ok && bind_text_or_null(st, 14, row.error);
+  ok = ok && bind_text_or_null(st, 6, row.resource_lock);
+  ok = ok && bind_text(st, 7, row.mode);
+  ok = ok && bind_text_or_null(st, 8, row.tool_name);
+  ok = ok && bind_i64(st, 9, row.deadline_utc_ms);
+  ok = ok && bind_text(st, 10, row.payload_json);
+  ok = ok && bind_text(st, 11, row.state);
+  ok = ok && bind_i64(st, 12, created);
+  ok = ok && bind_i64(st, 13, updated);
+  ok = ok && bind_text_or_null(st, 14, row.result_json);
+  ok = ok && bind_text_or_null(st, 15, row.error);
 
   ok = ok && step_done(st);
   if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
@@ -559,7 +561,7 @@ bool AgentDb::get_edge_task(const std::string& task_id, const std::string& step_
 
   sqlite3_stmt* st = nullptr;
   const char* sql = R"SQL(
-SELECT task_id, step_id, node_id, idempotency_key, COALESCE(trace_id,''), mode, COALESCE(tool_name,''), deadline_utc_ms, payload_json, state, created_utc_ms, updated_utc_ms, result_json, error
+SELECT task_id, step_id, node_id, idempotency_key, COALESCE(trace_id,''), COALESCE(resource_lock,''), mode, COALESCE(tool_name,''), deadline_utc_ms, payload_json, state, created_utc_ms, updated_utc_ms, result_json, error
 FROM edge_tasks
 WHERE task_id=? AND step_id=?
 LIMIT 1;
@@ -579,24 +581,26 @@ LIMIT 1;
     const unsigned char* n = sqlite3_column_text(st, 2);
     const unsigned char* k = sqlite3_column_text(st, 3);
     const unsigned char* trc = sqlite3_column_text(st, 4);
-    const unsigned char* m = sqlite3_column_text(st, 5);
-    const unsigned char* tool = sqlite3_column_text(st, 6);
-    const unsigned char* p = sqlite3_column_text(st, 8);
-    const unsigned char* stt = sqlite3_column_text(st, 9);
-    const unsigned char* r = sqlite3_column_text(st, 12);
-    const unsigned char* e = sqlite3_column_text(st, 13);
+    const unsigned char* lock = sqlite3_column_text(st, 5);
+    const unsigned char* m = sqlite3_column_text(st, 6);
+    const unsigned char* tool = sqlite3_column_text(st, 7);
+    const unsigned char* p = sqlite3_column_text(st, 9);
+    const unsigned char* stt = sqlite3_column_text(st, 10);
+    const unsigned char* r = sqlite3_column_text(st, 13);
+    const unsigned char* e = sqlite3_column_text(st, 14);
     out_row->task_id = t ? (const char*)t : "";
     out_row->step_id = s ? (const char*)s : "";
     out_row->node_id = n ? (const char*)n : "";
     out_row->idempotency_key = k ? (const char*)k : "";
     out_row->trace_id = trc ? (const char*)trc : "";
+    out_row->resource_lock = lock ? (const char*)lock : "";
     out_row->mode = m ? (const char*)m : "";
     out_row->tool_name = tool ? (const char*)tool : "";
-    out_row->deadline_utc_ms = sqlite3_column_int64(st, 7);
+    out_row->deadline_utc_ms = sqlite3_column_int64(st, 8);
     out_row->payload_json = p ? (const char*)p : "";
     out_row->state = stt ? (const char*)stt : "";
-    out_row->created_utc_ms = sqlite3_column_int64(st, 10);
-    out_row->updated_utc_ms = sqlite3_column_int64(st, 11);
+    out_row->created_utc_ms = sqlite3_column_int64(st, 11);
+    out_row->updated_utc_ms = sqlite3_column_int64(st, 12);
     out_row->result_json = r ? (const char*)r : "";
     out_row->error = e ? (const char*)e : "";
   }
@@ -631,7 +635,7 @@ bool AgentDb::get_edge_task_by_node_idempotency(
   }
   sqlite3_stmt* st = nullptr;
   const char* sql = R"SQL(
-SELECT task_id, step_id, node_id, idempotency_key, COALESCE(trace_id,''), mode, COALESCE(tool_name,''), deadline_utc_ms, payload_json, state, created_utc_ms, updated_utc_ms, result_json, error
+SELECT task_id, step_id, node_id, idempotency_key, COALESCE(trace_id,''), COALESCE(resource_lock,''), mode, COALESCE(tool_name,''), deadline_utc_ms, payload_json, state, created_utc_ms, updated_utc_ms, result_json, error
 FROM edge_tasks
 WHERE node_id=? AND idempotency_key=?
 LIMIT 1;
@@ -651,24 +655,26 @@ LIMIT 1;
     const unsigned char* n = sqlite3_column_text(st, 2);
     const unsigned char* k = sqlite3_column_text(st, 3);
     const unsigned char* trc = sqlite3_column_text(st, 4);
-    const unsigned char* m = sqlite3_column_text(st, 5);
-    const unsigned char* tool = sqlite3_column_text(st, 6);
-    const unsigned char* p = sqlite3_column_text(st, 8);
-    const unsigned char* stt = sqlite3_column_text(st, 9);
-    const unsigned char* r = sqlite3_column_text(st, 12);
-    const unsigned char* e = sqlite3_column_text(st, 13);
+    const unsigned char* lock = sqlite3_column_text(st, 5);
+    const unsigned char* m = sqlite3_column_text(st, 6);
+    const unsigned char* tool = sqlite3_column_text(st, 7);
+    const unsigned char* p = sqlite3_column_text(st, 9);
+    const unsigned char* stt = sqlite3_column_text(st, 10);
+    const unsigned char* r = sqlite3_column_text(st, 13);
+    const unsigned char* e = sqlite3_column_text(st, 14);
     out_row->task_id = t ? (const char*)t : "";
     out_row->step_id = s ? (const char*)s : "";
     out_row->node_id = n ? (const char*)n : "";
     out_row->idempotency_key = k ? (const char*)k : "";
     out_row->trace_id = trc ? (const char*)trc : "";
+    out_row->resource_lock = lock ? (const char*)lock : "";
     out_row->mode = m ? (const char*)m : "";
     out_row->tool_name = tool ? (const char*)tool : "";
-    out_row->deadline_utc_ms = sqlite3_column_int64(st, 7);
+    out_row->deadline_utc_ms = sqlite3_column_int64(st, 8);
     out_row->payload_json = p ? (const char*)p : "";
     out_row->state = stt ? (const char*)stt : "";
-    out_row->created_utc_ms = sqlite3_column_int64(st, 10);
-    out_row->updated_utc_ms = sqlite3_column_int64(st, 11);
+    out_row->created_utc_ms = sqlite3_column_int64(st, 11);
+    out_row->updated_utc_ms = sqlite3_column_int64(st, 12);
     out_row->result_json = r ? (const char*)r : "";
     out_row->error = e ? (const char*)e : "";
   }
@@ -710,7 +716,7 @@ bool AgentDb::list_edge_tasks_by_state(
 
   sqlite3_stmt* st = nullptr;
   const char* sql = R"SQL(
-SELECT task_id, step_id, node_id, idempotency_key, COALESCE(trace_id,''), mode, COALESCE(tool_name,''), deadline_utc_ms, payload_json, state, created_utc_ms, updated_utc_ms, result_json, error
+SELECT task_id, step_id, node_id, idempotency_key, COALESCE(trace_id,''), COALESCE(resource_lock,''), mode, COALESCE(tool_name,''), deadline_utc_ms, payload_json, state, created_utc_ms, updated_utc_ms, result_json, error
 FROM edge_tasks
 WHERE state=?
 ORDER BY updated_utc_ms DESC
@@ -730,24 +736,26 @@ LIMIT ?;
     const unsigned char* n = sqlite3_column_text(st, 2);
     const unsigned char* k = sqlite3_column_text(st, 3);
     const unsigned char* trc = sqlite3_column_text(st, 4);
-    const unsigned char* m = sqlite3_column_text(st, 5);
-    const unsigned char* tool = sqlite3_column_text(st, 6);
-    const unsigned char* p = sqlite3_column_text(st, 8);
-    const unsigned char* stt = sqlite3_column_text(st, 9);
-    const unsigned char* r = sqlite3_column_text(st, 12);
-    const unsigned char* e = sqlite3_column_text(st, 13);
+    const unsigned char* lock = sqlite3_column_text(st, 5);
+    const unsigned char* m = sqlite3_column_text(st, 6);
+    const unsigned char* tool = sqlite3_column_text(st, 7);
+    const unsigned char* p = sqlite3_column_text(st, 9);
+    const unsigned char* stt = sqlite3_column_text(st, 10);
+    const unsigned char* r = sqlite3_column_text(st, 13);
+    const unsigned char* e = sqlite3_column_text(st, 14);
     row.task_id = t ? (const char*)t : "";
     row.step_id = s ? (const char*)s : "";
     row.node_id = n ? (const char*)n : "";
     row.idempotency_key = k ? (const char*)k : "";
     row.trace_id = trc ? (const char*)trc : "";
+    row.resource_lock = lock ? (const char*)lock : "";
     row.mode = m ? (const char*)m : "";
     row.tool_name = tool ? (const char*)tool : "";
-    row.deadline_utc_ms = sqlite3_column_int64(st, 7);
+    row.deadline_utc_ms = sqlite3_column_int64(st, 8);
     row.payload_json = p ? (const char*)p : "";
     row.state = stt ? (const char*)stt : "";
-    row.created_utc_ms = sqlite3_column_int64(st, 10);
-    row.updated_utc_ms = sqlite3_column_int64(st, 11);
+    row.created_utc_ms = sqlite3_column_int64(st, 11);
+    row.updated_utc_ms = sqlite3_column_int64(st, 12);
     row.result_json = r ? (const char*)r : "";
     row.error = e ? (const char*)e : "";
     out_rows_desc->push_back(std::move(row));
@@ -787,7 +795,7 @@ bool AgentDb::list_edge_tasks_by_trace_id(
 
   sqlite3_stmt* st = nullptr;
   const char* sql = R"SQL(
-SELECT task_id, step_id, node_id, idempotency_key, COALESCE(trace_id,''), mode, COALESCE(tool_name,''), deadline_utc_ms, payload_json, state, created_utc_ms, updated_utc_ms, result_json, error
+SELECT task_id, step_id, node_id, idempotency_key, COALESCE(trace_id,''), COALESCE(resource_lock,''), mode, COALESCE(tool_name,''), deadline_utc_ms, payload_json, state, created_utc_ms, updated_utc_ms, result_json, error
 FROM edge_tasks
 WHERE trace_id=?
 ORDER BY updated_utc_ms DESC
@@ -807,24 +815,26 @@ LIMIT ?;
     const unsigned char* n = sqlite3_column_text(st, 2);
     const unsigned char* k = sqlite3_column_text(st, 3);
     const unsigned char* trc = sqlite3_column_text(st, 4);
-    const unsigned char* m = sqlite3_column_text(st, 5);
-    const unsigned char* tool = sqlite3_column_text(st, 6);
-    const unsigned char* p = sqlite3_column_text(st, 8);
-    const unsigned char* stt = sqlite3_column_text(st, 9);
-    const unsigned char* r = sqlite3_column_text(st, 12);
-    const unsigned char* e = sqlite3_column_text(st, 13);
+    const unsigned char* lock = sqlite3_column_text(st, 5);
+    const unsigned char* m = sqlite3_column_text(st, 6);
+    const unsigned char* tool = sqlite3_column_text(st, 7);
+    const unsigned char* p = sqlite3_column_text(st, 9);
+    const unsigned char* stt = sqlite3_column_text(st, 10);
+    const unsigned char* r = sqlite3_column_text(st, 13);
+    const unsigned char* e = sqlite3_column_text(st, 14);
     row.task_id = t ? (const char*)t : "";
     row.step_id = s ? (const char*)s : "";
     row.node_id = n ? (const char*)n : "";
     row.idempotency_key = k ? (const char*)k : "";
     row.trace_id = trc ? (const char*)trc : "";
+    row.resource_lock = lock ? (const char*)lock : "";
     row.mode = m ? (const char*)m : "";
     row.tool_name = tool ? (const char*)tool : "";
-    row.deadline_utc_ms = sqlite3_column_int64(st, 7);
+    row.deadline_utc_ms = sqlite3_column_int64(st, 8);
     row.payload_json = p ? (const char*)p : "";
     row.state = stt ? (const char*)stt : "";
-    row.created_utc_ms = sqlite3_column_int64(st, 10);
-    row.updated_utc_ms = sqlite3_column_int64(st, 11);
+    row.created_utc_ms = sqlite3_column_int64(st, 11);
+    row.updated_utc_ms = sqlite3_column_int64(st, 12);
     row.result_json = r ? (const char*)r : "";
     row.error = e ? (const char*)e : "";
     out_rows_desc->push_back(std::move(row));
@@ -832,6 +842,64 @@ LIMIT ?;
   sqlite3_finalize(st);
   if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
   return ok;
+#endif
+}
+
+bool AgentDb::get_edge_task_lock_conflict(
+  const std::string& node_id,
+  const std::string& resource_lock,
+  std::string* out_task_id,
+  std::string* out_step_id,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_task_id) out_task_id->clear();
+  if (out_step_id) out_step_id->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)node_id;
+  (void)resource_lock;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (!out_task_id || !out_step_id) return false;
+  if (node_id.empty() || resource_lock.empty()) return false;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT task_id, step_id
+FROM edge_tasks
+WHERE node_id=?
+  AND resource_lock=?
+  AND (state='QUEUED' OR state='RUNNING')
+ORDER BY updated_utc_ms DESC
+LIMIT 1;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_text(st, 1, node_id);
+  ok = ok && bind_text(st, 2, resource_lock);
+  bool found = false;
+  if (ok && step_row(st)) {
+    found = true;
+    const unsigned char* t = sqlite3_column_text(st, 0);
+    const unsigned char* s = sqlite3_column_text(st, 1);
+    *out_task_id = t ? (const char*)t : "";
+    *out_step_id = s ? (const char*)s : "";
+  }
+  sqlite3_finalize(st);
+  if (!ok) {
+    if (out_error && out_error->empty()) *out_error = sqlite_err(db_);
+    return false;
+  }
+  return found;
 #endif
 }
 
@@ -862,7 +930,7 @@ bool AgentDb::list_edge_tasks_expired_deadline(
 
   sqlite3_stmt* st = nullptr;
   const char* sql = R"SQL(
-SELECT task_id, step_id, node_id, idempotency_key, COALESCE(trace_id,''), mode, COALESCE(tool_name,''), deadline_utc_ms, payload_json, state, created_utc_ms, updated_utc_ms, result_json, error
+SELECT task_id, step_id, node_id, idempotency_key, COALESCE(trace_id,''), COALESCE(resource_lock,''), mode, COALESCE(tool_name,''), deadline_utc_ms, payload_json, state, created_utc_ms, updated_utc_ms, result_json, error
 FROM edge_tasks
 WHERE (state='QUEUED' OR state='RUNNING')
   AND deadline_utc_ms > 0
@@ -884,24 +952,26 @@ LIMIT ?;
     const unsigned char* n = sqlite3_column_text(st, 2);
     const unsigned char* k = sqlite3_column_text(st, 3);
     const unsigned char* trc = sqlite3_column_text(st, 4);
-    const unsigned char* m = sqlite3_column_text(st, 5);
-    const unsigned char* tool = sqlite3_column_text(st, 6);
-    const unsigned char* p = sqlite3_column_text(st, 8);
-    const unsigned char* stt = sqlite3_column_text(st, 9);
-    const unsigned char* r = sqlite3_column_text(st, 12);
-    const unsigned char* e = sqlite3_column_text(st, 13);
+    const unsigned char* lock = sqlite3_column_text(st, 5);
+    const unsigned char* m = sqlite3_column_text(st, 6);
+    const unsigned char* tool = sqlite3_column_text(st, 7);
+    const unsigned char* p = sqlite3_column_text(st, 9);
+    const unsigned char* stt = sqlite3_column_text(st, 10);
+    const unsigned char* r = sqlite3_column_text(st, 13);
+    const unsigned char* e = sqlite3_column_text(st, 14);
     row.task_id = t ? (const char*)t : "";
     row.step_id = s ? (const char*)s : "";
     row.node_id = n ? (const char*)n : "";
     row.idempotency_key = k ? (const char*)k : "";
     row.trace_id = trc ? (const char*)trc : "";
+    row.resource_lock = lock ? (const char*)lock : "";
     row.mode = m ? (const char*)m : "";
     row.tool_name = tool ? (const char*)tool : "";
-    row.deadline_utc_ms = sqlite3_column_int64(st, 7);
+    row.deadline_utc_ms = sqlite3_column_int64(st, 8);
     row.payload_json = p ? (const char*)p : "";
     row.state = stt ? (const char*)stt : "";
-    row.created_utc_ms = sqlite3_column_int64(st, 10);
-    row.updated_utc_ms = sqlite3_column_int64(st, 11);
+    row.created_utc_ms = sqlite3_column_int64(st, 11);
+    row.updated_utc_ms = sqlite3_column_int64(st, 12);
     row.result_json = r ? (const char*)r : "";
     row.error = e ? (const char*)e : "";
     out_rows_desc->push_back(std::move(row));
