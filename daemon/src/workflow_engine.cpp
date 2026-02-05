@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <cstdint>
+#include <mutex>
 #include <regex>
 #include <sstream>
 #include <thread>
@@ -547,17 +548,17 @@ WorkflowEngine::WorkflowEngine(
   if (opt_.max_inflight_per_session < 0) opt_.max_inflight_per_session = 0;
   if (opt_.max_inflight_per_session > 1024) opt_.max_inflight_per_session = 1024;
 
-  // Canonicalize fair-queue policy.
-  {
-    std::string p = opt_.fair_queue_policy;
-    for (char& c : p) {
-      if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
-    }
-    if (p != "scan_rr" && p != "wrr") {
-      p = "wrr";
-    }
-    opt_.fair_queue_policy = p;
-  }
+	  // Canonicalize fair-queue policy.
+	  {
+	    std::string p = opt_.fair_queue_policy;
+	    for (char& c : p) {
+	      if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+	    }
+	    if (p != "scan_rr" && p != "wrr" && p != "drr") {
+	      p = "wrr";
+	    }
+	    opt_.fair_queue_policy = p;
+	  }
   if (opt_.fair_queue_max_session_weight <= 0) opt_.fair_queue_max_session_weight = 1;
   if (opt_.fair_queue_max_session_weight > 1024) opt_.fair_queue_max_session_weight = 1024;
   if (opt_.fair_queue_max_schedule_len < 16) opt_.fair_queue_max_schedule_len = 16;
@@ -923,12 +924,102 @@ bool WorkflowEngine::pick_and_claim_one(
     return false;
   };
 
-  if (opt_.fair_queue_policy == "wrr") {
-    // Weighted round-robin over session buckets.
-    // The base `sessions` order is derived from (priority DESC, status, age) of the best workflow in each bucket.
-    //
-    // The weight is extracted from workflow submit spec's `session_weight` (best-effort), but only when the
-    // workflow is session-scoped (wf.session_id is not empty).
+	  if (opt_.fair_queue_policy == "drr") {
+	    // Deficit Round Robin over session buckets.
+	    //
+	    // This avoids expanding a potentially large WRR schedule vector, and creates a clean hook for
+	    // future cost-aware quanta (v2.3+).
+	    //
+	    // Current v2.3 semantics (minimal):
+	    // - quantum = session_weight (clamped)
+	    // - each admitted task costs 1
+	    // - deficits are kept in-memory (best-effort across daemon lifetime)
+	    const int max_weight_cfg = std::max(1, opt_.fair_queue_max_session_weight);
+
+	    std::unordered_map<std::string, int> weight_by_session;
+	    weight_by_session.reserve(ns);
+	    for (size_t si = 0; si < ns; si++) {
+	      const std::string& sk = sessions[si];
+	      int w = 1;
+	      auto it = wf_idxs_by_session.find(sk);
+	      if (it != wf_idxs_by_session.end()) {
+	        const auto& idxs = it->second;
+	        for (size_t wi = 0; wi < idxs.size(); wi++) {
+	          const size_t idx = idxs[wi];
+	          if (idx >= wfs.size()) continue;
+	          w = std::max(w, workflow_session_weight_best_effort(wfs[idx], max_weight_cfg));
+	          if (w >= max_weight_cfg) break;
+	        }
+	      }
+	      weight_by_session[sk] = std::max(1, std::min(max_weight_cfg, w));
+	    }
+
+	    std::vector<std::string> attempt_sessions;
+	    attempt_sessions.reserve(ns);
+	    {
+	      std::lock_guard<std::mutex> lk(fairq_mu_);
+
+	      // Keep the deficit map bounded: if it grows unusually large, prune to the active set.
+	      if (drr_deficit_by_session_.size() > 2048) {
+	        std::unordered_set<std::string> active;
+	        active.reserve(ns);
+	        for (const auto& sk : sessions) active.insert(sk);
+	        for (auto it = drr_deficit_by_session_.begin(); it != drr_deficit_by_session_.end();) {
+	          if (active.count(it->first)) ++it;
+	          else it = drr_deficit_by_session_.erase(it);
+	        }
+	      }
+
+	      // Add quantum to all active sessions (saturating).
+	      for (const auto& sk : sessions) {
+	        const int q = weight_by_session.count(sk) ? weight_by_session[sk] : 1;
+	        int64_t& d = drr_deficit_by_session_[sk];
+	        if (q > 0) {
+	          if (d > (INT64_MAX - (int64_t)q)) d = INT64_MAX;
+	          else d += (int64_t)q;
+	        }
+	      }
+
+	      const size_t start = (size_t)(cursor % (uint64_t)ns);
+	      for (size_t si = 0; si < ns; si++) {
+	        attempt_sessions.push_back(sessions[(start + si) % ns]);
+	      }
+	    }
+
+	    auto get_deficit = [&](const std::string& sk) -> int64_t {
+	      std::lock_guard<std::mutex> lk(fairq_mu_);
+	      auto it = drr_deficit_by_session_.find(sk);
+	      return (it == drr_deficit_by_session_.end()) ? 0 : it->second;
+	    };
+	    auto charge_deficit = [&](const std::string& sk, int64_t cost) {
+	      if (cost <= 0) return;
+	      std::lock_guard<std::mutex> lk(fairq_mu_);
+	      auto it = drr_deficit_by_session_.find(sk);
+	      if (it == drr_deficit_by_session_.end()) return;
+	      it->second = std::max<int64_t>(0, it->second - cost);
+	    };
+
+	    for (size_t ssi = 0; ssi < attempt_sessions.size(); ssi++) {
+	      const std::string& sk = attempt_sessions[ssi];
+	      if (get_deficit(sk) <= 0) continue;
+	      auto it = wf_idxs_by_session.find(sk);
+	      if (it == wf_idxs_by_session.end()) continue;
+	      const auto& idxs = it->second;
+	      for (size_t wi = 0; wi < idxs.size(); wi++) {
+	        const size_t idx = idxs[wi];
+	        if (idx >= wfs.size()) continue;
+	        if (try_pick_in_workflow(wfs[idx])) {
+	          charge_deficit(sk, 1);
+	          return true;
+	        }
+	      }
+	    }
+	  } else if (opt_.fair_queue_policy == "wrr") {
+	    // Weighted round-robin over session buckets.
+	    // The base `sessions` order is derived from (priority DESC, status, age) of the best workflow in each bucket.
+	    //
+	    // The weight is extracted from workflow submit spec's `session_weight` (best-effort), but only when the
+	    // workflow is session-scoped (wf.session_id is not empty).
     //
     // Guardrail: bound the expanded schedule length to keep the scheduler overhead stable.
     const int max_weight_cfg = std::max(1, opt_.fair_queue_max_session_weight);

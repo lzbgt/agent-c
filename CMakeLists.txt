@@ -14,6 +14,7 @@ option(AGENT_BUILD_ESP32SIM "Build esp32sim host harness for embedded agent_core
 add_library(agent_core STATIC
   core/src/agent_alloc.c
   core/src/agent_edge_interop.c
+  core/src/agent_json_c14n.c
   core/src/agent_runner.c
   core/src/agent_session.c
   core/src/agent_session_codec.c
@@ -238,6 +239,7 @@ endif()
 enable_testing()
 add_executable(agent_core_tests
   tests/test_edge_interop.c
+  tests/test_json_c14n.c
   tests/test_session.c
   tests/test_session_codec.c
   tests/test_tool_loop.c
@@ -388,6 +390,7 @@ if(AGENT_BUILD_HOST)
 						    add_test(NAME agentd_workflow_inflight_session_cap_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_inflight_session_cap_smoke.sh $<TARGET_FILE:agentd>)
 							    add_test(NAME agentd_workflow_scan_fairness_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_scan_fairness_smoke.sh $<TARGET_FILE:agentd>)
 							    add_test(NAME agentd_workflow_wrr_session_weight_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_wrr_session_weight_smoke.sh $<TARGET_FILE:agentd>)
+							    add_test(NAME agentd_workflow_drr_session_weight_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_drr_session_weight_smoke.sh $<TARGET_FILE:agentd>)
 							    add_test(NAME agentd_workflow_stats_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_stats_smoke.sh $<TARGET_FILE:agentd>)
 							    add_test(NAME agentd_workflow_stats_budget_pressure_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_stats_budget_pressure_smoke.sh $<TARGET_FILE:agentd>)
 						    add_test(NAME agentd_workflow_stats_sessions_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_stats_sessions_smoke.sh $<TARGET_FILE:agentd>)

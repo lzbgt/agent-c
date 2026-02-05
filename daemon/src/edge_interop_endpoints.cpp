@@ -8,6 +8,7 @@
 #include "workflow_endpoints.h"
 
 #include "agent_sha256.h"
+#include "agent/json_c14n.h"
 
 #include <json/json.h>
 
@@ -415,11 +416,38 @@ void handle_edge_message_endpoint(
     const std::string effective_state = apply_update ? state : tr.state;
     bool attest_result_sha_mismatch = false;
     std::string attest_result_sha;
+    std::string platform_hash_alg;
+    std::string platform_c14n_error;
     if (apply_update) {
       if (state == "SUCCEEDED" && !result_json.empty()) {
+        std::string hash_bytes = result_json;
+        std::string stored_result_json = result_json;
+        platform_hash_alg = "raw_result_json_bytes_v0";
+        // Best-effort: canonicalize to a portable form so heterogeneous nodes can match
+        // `result_sha256` (attestation/quorum). If canonicalization fails, fall back to
+        // hashing the platform-stored bytes.
+        if (result_json.size() <= 256 * 1024) {
+          char* c14n = nullptr;
+          size_t c14n_len = 0;
+          char errbuf[256] = {0};
+          const agent_status_t st =
+            agent_json_c14n_canonicalize(result_json.data(), result_json.size(), &c14n, &c14n_len, errbuf, sizeof(errbuf));
+          if (st == AGENT_OK && c14n && c14n_len > 0) {
+            hash_bytes.assign(c14n, c14n_len);
+            stored_result_json.assign(c14n, c14n_len);
+            agent_free(c14n);
+            platform_hash_alg = "agent_json_c14n_v1";
+          } else {
+            if (c14n) agent_free(c14n);
+            platform_c14n_error = errbuf[0] ? std::string(errbuf) : "c14n_failed";
+          }
+        } else {
+          platform_c14n_error = "result_json_too_large_for_c14n";
+        }
         char hex[65] = {0};
-        agent_sha256_hex_of_bytes(result_json.data(), result_json.size(), hex);
+        agent_sha256_hex_of_bytes(hash_bytes.data(), hash_bytes.size(), hex);
         tr.result_sha256 = std::string("sha256:") + hex;
+        tr.result_json = stored_result_json;
       }
       if (state == "SUCCEEDED" && event_data.isObject() && event_data.isMember("result") && event_data["result"].isObject()) {
         const Json::Value result = event_data["result"];
@@ -442,7 +470,7 @@ void handle_edge_message_endpoint(
     if (apply_update) {
       tr.state = state;
       tr.updated_utc_ms = ts_eff;
-      if (!result_json.empty()) tr.result_json = result_json;
+      if (!result_json.empty() && state != "SUCCEEDED") tr.result_json = result_json;
       if (!error_text.empty()) tr.error = error_text;
       if (can_backfill_trace_id) tr.trace_id = msg_trace_id_eff;
       (void)db_or_null->upsert_edge_task(tr, nullptr);
@@ -487,6 +515,8 @@ void handle_edge_message_endpoint(
       d["_attest_result_sha256"] = attest_result_sha;
       d["_platform_result_sha256"] = tr.result_sha256;
     }
+    if (!platform_hash_alg.empty()) d["_platform_result_sha256_alg"] = platform_hash_alg;
+    if (!platform_c14n_error.empty()) d["_platform_result_c14n_error"] = platform_c14n_error;
     ev.data_json = edge_json_stringify_compact(d);
     (void)db_or_null->insert_edge_task_event(ev, nullptr, nullptr);
 

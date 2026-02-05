@@ -91,7 +91,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Task kind: `kind: "edge_invoke"` (dispatches `TASK_ASSIGN mode:"invoke"` and waits for `TASK_DONE`)
   - Also supports `mode:"agent"` (dispatches `TASK_ASSIGN mode:"agent"` with a prompt/payload for embedded `agent_core`)
   - Use-case: mix deterministic compute + LLM reasoning + real-world actuation in one durable DAG.
-  - Correctness surface: workflow results now include `edge_result_sha256` (platform-computed sha256 of persisted edge result bytes) and `edge_attest` (best-effort node attest blob).
+  - Correctness surface: workflow results now include `edge_result_sha256` (platform-computed sha256 of platform-canonicalized edge result JSON bytes; `agent_json_c14n_v1` best-effort) and `edge_attest` (best-effort node attest blob).
   - Proof: `ctest` includes `agentd_workflow_edge_invoke_smoke`, `agentd_workflow_edge_invoke_template_args_smoke`, `agentd_workflow_edge_agent_smoke`, and `agentd_workflow_edge_agent_ref_payload_smoke`.
 - UM‑EAIS platform extensions (node → platform workflow handoff) are now proven end-to-end:
   - `WORKFLOW_SUBMIT` and `WORKFLOW_CANCEL` can be ingested via `POST /api/v1/edge/message` and drive the edge workflow runner.
@@ -117,6 +117,11 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - UM‑EAIS tool correctness guardrail: for `TASK_DONE` of `mode:"invoke"`, if the tool definition includes a `result_schema`,
   the platform validates `result.data` (best-effort subset, fail-closed) before marking the task succeeded.
   - Proof: `ctest` includes `agentd_edge_task_done_result_schema_validation_smoke`.
+- UM‑EAIS portable correctness surface (v0.3 partial):
+  - `agent_core` now exposes `agent_json_c14n_v1` canonical JSON hashing (`agent/json_c14n.h`) so heterogeneous nodes can compute the same `result_sha256`.
+  - The platform canonicalizes SUCCEEDED edge `result_json` and computes `edge_tasks.result_sha256` over canonical bytes (fallback to raw bytes on failure; evidence is recorded in task events).
+  - Spec: `docs/spec/um-eais/um-eais-v0.3.md` + schema v0.3 files under `docs/spec/um-eais/schema/`.
+  - Proof: `ctest` includes `agent_core_tests` (json c14n module) and edge attest replay smokes.
 - UM‑EAIS scheduling guardrail (actuator safety): if a tool definition includes `resource_lock`, the platform blocks parallel
   dispatch of another invoke task using the same lock while an existing task is `QUEUED`/`RUNNING` (HTTP 429, retryable).
   - Proof: `ctest` includes `agentd_edge_resource_lock_smoke`.
@@ -214,11 +219,11 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 Priority order (reweighted after `delegate_parallel` join customization shipped; sections below are kept stable for diff readability):
 
-1) **Budgets v0.5** — host-tool budgets + streaming token usage coverage + stats surfacing (including cheap budget telemetry polling).
-2) **Scheduling policy v2.3 (DRR + cost-aware quanta)** — move beyond WRR to cost-aware, budget-composing fairness.
-3) **Memory v2.3 (timeline + correlation)** — query-by-trace/workflow windows; rolling consolidation correlation as time advances.
-4) **Agent collaboration v2.1** — parallel fan-out with deterministic joins (best_of_n/quorum/collect) + per-attempt budgets.
-5) **Interop spec v0.3** — portable canonical hash surface + enforceable attestation (ecosystem multiplier).
+1) **Scheduling policy v2.3+** — DRR is shipped; next is cost-aware quanta + durable per-session deficits (predictable progress under mixed workloads).
+2) **Budgets v0.6** — complete host-tool + streaming usage charging and make budget pressure cheap/accurate for large queues.
+3) **Agent collaboration v2.1** — parallel fan-out with deterministic joins (best_of_n/quorum/collect) + per-attempt budgets and retries.
+4) **Memory v2.3** — query-plan primitives (bounded windows + key-prefix filters) and automatic consolidation triggers as time advances.
+5) **Interop v0.4** — move beyond portable hashes (v0.3 partial shipped) into enforceable attestation (hash_alg hints + signature conventions + trust roots).
 
 1) **Durable budget enforcement at scheduler level** (correctness + cost predictability)
    - Shipped (v0): workflow-level tool-call budget `workflow_limits.max_tool_calls_total` enforced by the workflow engine:
@@ -270,6 +275,12 @@ Priority order (reweighted after `delegate_parallel` join customization shipped;
      - Workflow submit knob (requires `allow_sessions=true`): `session_weight` (>=1).
      - Proof: `ctest` includes `agentd_workflow_wrr_session_weight_smoke` (ensures session B is not starved behind session A; session A still dominates early prefix when weight=2).
    - Next (v2.3): graduate from WRR to deficit round-robin (DRR) with cost-aware quanta (e.g. budget pressure, token cost) and durable per-session tokens.
+   - Shipped (v2.3 partial): deficit round-robin (DRR) policy option (in-memory deficits; cost=1 per admitted task):
+     - Daemon flag: `--workflow-fair-queue-policy drr` (also `AGENTD_WORKFLOW_FAIR_QUEUE_POLICY=drr`)
+     - Weight source remains `session_weight` from workflow submit spec (clamped).
+     - Proof: `ctest` includes `agentd_workflow_drr_session_weight_smoke`.
+   - Next (v2.3+): cost-aware quanta:
+     - charge DRR cost by estimated task cost (e.g. expected tool calls, expected tokens, edge polling) to smooth latency under mixed workloads.
 
 3) **Interop spec hardening for MCU/edge handoff** (ecosystem leverage)
    - Shipped: `DURABLE_WORKFLOW_SUBMIT` / `DURABLE_WORKFLOW_CANCEL` over `POST /api/v1/edge/message` (durable orchestration handoff).
@@ -291,9 +302,13 @@ Priority order (reweighted after `delegate_parallel` join customization shipped;
      - JSON Schemas: `docs/spec/um-eais/schema/*v0.2*.schema.json`
      - Fixture transcript: `docs/spec/um-eais/fixtures/umbmp_task_loop_v0.2_trace_attest.jsonl`
      - Proof: `ctest` includes `agentd_edge_interop_task_loop_trace_attest_v0_2_replay_smoke`.
-   - Next (v0.3): make node/platform hash surfaces portable:
-     - standardize canonical hashing for `result_sha256` across languages (portable attestation + quorum)
-     - extend payload conventions so nodes can report deterministic compute hashes (e.g. AVM `result_hash/trace_hash`) as attestation fields.
+   - Shipped (v0.3 partial): portable canonical hashing surface for `result_sha256`:
+     - Canonical algorithm: `agent_json_c14n_v1` (core API: `agent/json_c14n.h`).
+     - Platform implementation: edge `TASK_DONE` results are canonicalized before hashing/storing; evidence is emitted via
+       `_platform_result_sha256_alg` and `_platform_result_c14n_error`.
+     - Spec: `docs/spec/um-eais/um-eais-v0.3.md` + v0.3 schemas.
+   - Next (v0.3+): extend payload conventions for deterministic compute attestations:
+     - allow nodes to attach deterministic compute hashes (e.g. AVM `result_hash` / `trace_hash`) under `result.attest.*` for quorum joins.
 
 4) **Agent collaboration v2 (budgeted parallel fan-out + join macros)** (power-unleashed)
    - Status: submit-time parallel macro shipped as `kind:"delegate_parallel"` (v1.6.1).

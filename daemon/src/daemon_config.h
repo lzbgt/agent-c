@@ -87,6 +87,7 @@ struct DaemonConfig {
   //
   // - scan_rr: legacy session-aware scan order (round-robin start cursor over session buckets)
   // - wrr: weighted round-robin over session buckets (weights derived from workflow submit spec's `session_weight`)
+  // - drr: deficit round-robin over session buckets (v2.3)
   //
   // Note: when weights are all 1 (default), wrr is effectively equivalent to scan_rr.
   std::string workflow_engine_fair_queue_policy = "wrr";

@@ -1,0 +1,230 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UM‑EAIS Core Message Types v0.3",
+  "type": "object",
+  "additionalProperties": true,
+  "allOf": [
+    { "$ref": "umbmp-envelope-v0.3.schema.json" },
+    {
+      "oneOf": [
+        {
+          "title": "NODE_HELLO (node → platform)",
+          "properties": {
+            "type": { "const": "NODE_HELLO" },
+            "body": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["node_id"],
+              "properties": {
+                "node_id": { "$ref": "#/$defs/id_token" },
+                "model": { "type": "string" },
+                "fw_git_sha": { "type": "string" },
+                "caps_sha256": { "$ref": "#/$defs/sha256_token" }
+              }
+            }
+          }
+        },
+        {
+          "title": "NODE_HEARTBEAT (node → platform)",
+          "properties": {
+            "type": { "const": "NODE_HEARTBEAT" },
+            "body": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["node_id"],
+              "properties": {
+                "node_id": { "$ref": "#/$defs/id_token" },
+                "health": { "type": "object", "additionalProperties": true },
+                "caps_sha256": { "$ref": "#/$defs/sha256_token" },
+                "battery_pct": { "type": "number" },
+                "rssi": { "type": "number" }
+              }
+            }
+          }
+        },
+        {
+          "title": "PLATFORM_CAPS_REQ (platform → node)",
+          "properties": {
+            "type": { "const": "PLATFORM_CAPS_REQ" },
+            "body": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["node_id", "want"],
+              "properties": {
+                "node_id": { "$ref": "#/$defs/id_token" },
+                "want": { "enum": ["full", "hash"] }
+              }
+            }
+          }
+        },
+        {
+          "title": "NODE_CAPS_RSP (node → platform)",
+          "properties": {
+            "type": { "const": "NODE_CAPS_RSP" },
+            "body": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["node_id", "manifest"],
+              "properties": {
+                "node_id": { "$ref": "#/$defs/id_token" },
+                "manifest": { "type": "object", "additionalProperties": true }
+              }
+            }
+          }
+        },
+        {
+          "title": "TASK_ASSIGN (platform → node)",
+          "properties": {
+            "type": { "const": "TASK_ASSIGN" },
+            "body": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["node_id", "task_id", "step_id", "idempotency_key", "mode", "payload"],
+              "properties": {
+                "node_id": { "$ref": "#/$defs/id_token" },
+                "task_id": { "$ref": "#/$defs/id_token" },
+                "step_id": { "$ref": "#/$defs/id_token" },
+                "idempotency_key": { "$ref": "#/$defs/id_token" },
+                "mode": { "type": "string" },
+                "tool": { "type": "string" },
+                "deadline_utc_ms": { "type": "integer" },
+                "attempt": { "type": "integer" },
+                "payload": { "type": "object", "additionalProperties": true }
+              }
+            }
+          }
+        },
+        {
+          "title": "TASK_ACK (node → platform)",
+          "properties": {
+            "type": { "const": "TASK_ACK" },
+            "body": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["task_id", "step_id", "idempotency_key", "accepted"],
+              "properties": {
+                "task_id": { "$ref": "#/$defs/id_token" },
+                "step_id": { "$ref": "#/$defs/id_token" },
+                "idempotency_key": { "$ref": "#/$defs/id_token" },
+                "accepted": { "type": "boolean" },
+                "reason": { "type": "string" }
+              }
+            }
+          }
+        },
+        {
+          "title": "TASK_EVENT (node → platform)",
+          "properties": {
+            "type": { "const": "TASK_EVENT" },
+            "body": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["task_id", "step_id", "idempotency_key", "state"],
+              "properties": {
+                "task_id": { "$ref": "#/$defs/id_token" },
+                "step_id": { "$ref": "#/$defs/id_token" },
+                "idempotency_key": { "$ref": "#/$defs/id_token" },
+                "state": { "type": "string" },
+                "progress": { "type": "number" },
+                "result": {},
+                "error": { "type": "string" }
+              }
+            }
+          }
+        },
+        {
+          "title": "TASK_DONE (node → platform)",
+          "properties": {
+            "type": { "const": "TASK_DONE" },
+            "body": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["task_id", "step_id", "idempotency_key", "result"],
+              "properties": {
+                "task_id": { "$ref": "#/$defs/id_token" },
+                "step_id": { "$ref": "#/$defs/id_token" },
+                "idempotency_key": { "$ref": "#/$defs/id_token" },
+                "result": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "Tool/agent result payload (shape depends on mode/tool).",
+                  "properties": {
+                    "ok": { "type": "boolean" },
+                    "data": { "type": ["object", "array", "string", "number", "boolean", "null"] },
+                    "assistant_text": { "type": "string" },
+                    "attest": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "description": "Optional node-provided attestation blob (v0.3 best-effort).",
+                      "properties": {
+                        "result_sha256": { "$ref": "#/$defs/sha256_token" },
+                        "hash_alg": {
+                          "type": "string",
+                          "description": "Recommended: agent_json_c14n_v1 (canonical JSON hashing; v0.3)."
+                        },
+                        "kid": { "type": "string" },
+                        "alg": { "type": "string" },
+                        "sig": { "type": "string" },
+                        "ts_utc_ms": { "type": "integer" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "title": "TASK_FAILED (node → platform)",
+          "properties": {
+            "type": { "const": "TASK_FAILED" },
+            "body": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["task_id", "step_id", "idempotency_key", "error"],
+              "properties": {
+                "task_id": { "$ref": "#/$defs/id_token" },
+                "step_id": { "$ref": "#/$defs/id_token" },
+                "idempotency_key": { "$ref": "#/$defs/id_token" },
+                "error": { "type": "string" }
+              }
+            }
+          }
+        },
+        {
+          "title": "SENSOR_EVENT (node → platform)",
+          "properties": {
+            "type": { "const": "SENSOR_EVENT" },
+            "body": {
+              "type": "object",
+              "additionalProperties": true,
+              "required": ["node_id", "event_type", "ts_utc_ms", "data"],
+              "properties": {
+                "node_id": { "$ref": "#/$defs/id_token" },
+                "event_type": { "type": "string" },
+                "ts_utc_ms": { "type": "integer" },
+                "confidence": { "type": "number" },
+                "data": { "type": "object", "additionalProperties": true }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "$defs": {
+    "id_token": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_.:-]+$"
+    },
+    "sha256_token": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^(sha256:)?[A-Fa-f0-9]{64}$"
+    }
+  }
+}
+

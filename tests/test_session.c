@@ -243,6 +243,8 @@ int main(void) {
   test_tool_loop_memory_flush_module();
   extern void test_edge_interop_module(void);
   test_edge_interop_module();
+  extern void test_json_c14n_module(void);
+  test_json_c14n_module();
   printf("agent_core_tests OK\n");
   return 0;
 }

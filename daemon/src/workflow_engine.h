@@ -9,8 +9,10 @@
 
 #include <atomic>
 #include <functional>
+#include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 namespace agentd {
@@ -38,6 +40,7 @@ class WorkflowEngine {
     //
     // - scan_rr: session-aware scan order (legacy)
     // - wrr: weighted round-robin over session buckets (v2.2)
+    // - drr: deficit round-robin over session buckets (v2.3)
     //
     // When all weights are 1, both behave effectively the same.
     std::string fair_queue_policy = "wrr";
@@ -92,6 +95,8 @@ class WorkflowEngine {
   std::atomic<bool> running_{false};
   std::atomic<bool> stop_{false};
   std::atomic<uint64_t> rr_cursor_{0};
+  std::mutex fairq_mu_;
+  std::unordered_map<std::string, int64_t> drr_deficit_by_session_;
   std::vector<std::thread> workers_;
 };
 

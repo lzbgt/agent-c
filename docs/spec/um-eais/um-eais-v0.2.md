@@ -88,3 +88,7 @@ Future (v0.3+):
 - Standardize the canonical hash algorithm for `result_sha256` across nodes and platform (portable across languages).
 - Standardize signature formats and trust roots for enforceable attestations.
 
+Update:
+
+- v0.3 draft now exists as `docs/spec/um-eais/um-eais-v0.3.md` and the platform has an implementation of
+  `agent_json_c14n_v1` (portable canonical JSON hashing) for `result_sha256`.

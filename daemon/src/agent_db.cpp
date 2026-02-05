@@ -761,7 +761,8 @@ CREATE INDEX IF NOT EXISTS edge_tasks_by_node_lock_state
   if (cur_ver < 24) {
     const char* schema_v24 = R"SQL(
 -- Edge task attestation surfaces (best-effort, platform-side):
--- - result_sha256: a deterministic hash surface for replay/quorum (computed over stored result_json bytes)
+-- - result_sha256: a deterministic hash surface for replay/quorum (computed over stored result_json bytes;
+--                  prefer agent_json_c14n_v1 canonicalization when available, otherwise fall back to raw bytes)
 -- - attest_json:   optional node-provided attestation blob (opaque JSON object)
 ALTER TABLE edge_tasks ADD COLUMN result_sha256 TEXT;
 ALTER TABLE edge_tasks ADD COLUMN attest_json TEXT;
