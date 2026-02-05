@@ -1660,6 +1660,9 @@ void handle_workflow_get_endpoint(
         row["priority"] = t.priority;
         row["attempt"] = t.attempt;
         row["max_attempts"] = t.max_attempts;
+        row["tool_calls_total_cum"] = (Json::Int64)std::max<int64_t>(0, t.tool_calls_total_cum);
+        row["steps_executed_cum"] = (Json::Int64)std::max<int64_t>(0, t.steps_executed_cum);
+        row["elapsed_ms_cum"] = (Json::Int64)std::max<int64_t>(0, t.elapsed_ms_cum);
         row["ready_unix_ms"] = (Json::Int64)t.ready_unix_ms;
         row["started_unix_ms"] = (Json::Int64)t.started_unix_ms;
         row["finished_unix_ms"] = (Json::Int64)t.finished_unix_ms;

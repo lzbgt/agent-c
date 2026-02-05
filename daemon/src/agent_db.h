@@ -265,6 +265,10 @@ class AgentDb {
     std::string expect_json;     // JSON object string (optional)
     std::string result_json;     // JSON object string (run response)
     std::string error;
+    // Cumulative resource usage across attempts (retry-safe durable budget accounting).
+    int64_t tool_calls_total_cum = 0;
+    int64_t steps_executed_cum = 0;
+    int64_t elapsed_ms_cum = 0;
   };
 
   struct WorkflowEventRow {

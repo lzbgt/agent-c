@@ -166,6 +166,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
      - `workflow_limits.max_steps_total` (sum of `steps_executed`)
      - `workflow_limits.max_elapsed_ms_total` (sum of `elapsed_ms`, best-effort)
      - Proof: `ctest` includes `agentd_workflow_budget_steps_smoke`.
+   - Shipped (v0.2): retry-safe budget charging via DB cumulative counters:
+     - `workflow_tasks.tool_calls_total_cum`, `steps_executed_cum`, `elapsed_ms_cum`
+     - Fixes undercounting across retries (budget enforcement now charges every attempt)
+     - Proof: `ctest` includes `agentd_workflow_budget_retry_charges_smoke` and `agent_db_tests` asserts schema v19.
    - Next: add token budgets (provider-dependent), host-tool budgets, and surface aggregated budget pressure in `/api/v1/workflow/stats`.
 
 2) **Scheduling policy v2 (beyond caps)** (predictable progress under load)

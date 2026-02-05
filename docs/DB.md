@@ -306,6 +306,9 @@ with explicit dependencies and retries.
 - `expect_json TEXT` (optional; JSON object string; deterministic assertions on the run output)
 - `result_json TEXT` (optional; JSON object string; run response payload)
 - `error TEXT` (optional; best-effort error / expectation failure summary)
+- `tool_calls_total_cum INTEGER NOT NULL DEFAULT 0` (cumulative tool calls across attempts; retry-safe budget accounting)
+- `steps_executed_cum INTEGER NOT NULL DEFAULT 0` (cumulative tool-loop steps across attempts)
+- `elapsed_ms_cum INTEGER NOT NULL DEFAULT 0` (cumulative elapsed_ms across attempts; best-effort)
 
 Indexes:
 - `CREATE INDEX workflow_tasks_by_workflow ON workflow_tasks(workflow_id, updated_unix_ms DESC)`

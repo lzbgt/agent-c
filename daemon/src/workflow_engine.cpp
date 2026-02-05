@@ -986,25 +986,15 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     std::string err;
     if (db_->list_workflow_tasks(wf.workflow_id, &tasks, &err)) {
       for (const auto& t : tasks) {
+        // Retry-safe budget accounting uses durable cumulative counters in workflow_tasks.
+        workflow_tool_calls_used = saturating_add_i64(workflow_tool_calls_used, std::max<int64_t>(0, t.tool_calls_total_cum));
+        workflow_steps_used = saturating_add_i64(workflow_steps_used, std::max<int64_t>(0, t.steps_executed_cum));
+        workflow_elapsed_ms_used = saturating_add_i64(workflow_elapsed_ms_used, std::max<int64_t>(0, t.elapsed_ms_cum));
+
         if (t.result_json.empty()) continue;
         Json::Value r;
         std::string perr;
         if (!json_parse_any_value(t.result_json, &r, &perr) || !r.isObject()) continue;
-
-        // Best-effort: sum tool call usage across the workflow for budget enforcement.
-        // Important: include previous-attempt results even when the task is queued/running.
-        if (r.isMember("tool_calls_total") && (r["tool_calls_total"].isInt64() || r["tool_calls_total"].isUInt64() || r["tool_calls_total"].isInt() || r["tool_calls_total"].isUInt())) {
-          const int64_t n = std::max<int64_t>(0, r["tool_calls_total"].asInt64());
-          workflow_tool_calls_used = saturating_add_i64(workflow_tool_calls_used, n);
-        }
-        if (r.isMember("steps_executed") && (r["steps_executed"].isInt64() || r["steps_executed"].isUInt64() || r["steps_executed"].isInt() || r["steps_executed"].isUInt())) {
-          const int64_t n = std::max<int64_t>(0, r["steps_executed"].asInt64());
-          workflow_steps_used = saturating_add_i64(workflow_steps_used, n);
-        }
-        if (r.isMember("elapsed_ms") && (r["elapsed_ms"].isInt64() || r["elapsed_ms"].isUInt64() || r["elapsed_ms"].isInt() || r["elapsed_ms"].isUInt())) {
-          const int64_t n = std::max<int64_t>(0, r["elapsed_ms"].asInt64());
-          workflow_elapsed_ms_used = saturating_add_i64(workflow_elapsed_ms_used, n);
-        }
 
         if (t.task_id.empty()) continue;
         if (t.status != "done" && t.status != "error") continue;
@@ -1848,6 +1838,25 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   upd.finished_unix_ms = now;
   upd.result_json = json_stringify_compact(out);
 
+  // Retry-safe cumulative cost accounting (monotonic across attempts).
+  {
+    int64_t tool_calls_attempt = 0;
+    if (out.isObject() && out.isMember("tool_calls_total") && (out["tool_calls_total"].isInt64() || out["tool_calls_total"].isUInt64() || out["tool_calls_total"].isInt() || out["tool_calls_total"].isUInt())) {
+      tool_calls_attempt = std::max<int64_t>(0, out["tool_calls_total"].asInt64());
+    }
+    int64_t steps_attempt = 0;
+    if (out.isObject() && out.isMember("steps_executed") && (out["steps_executed"].isInt64() || out["steps_executed"].isUInt64() || out["steps_executed"].isInt() || out["steps_executed"].isUInt())) {
+      steps_attempt = std::max<int64_t>(0, out["steps_executed"].asInt64());
+    }
+    int64_t elapsed_attempt = 0;
+    if (out.isObject() && out.isMember("elapsed_ms") && (out["elapsed_ms"].isInt64() || out["elapsed_ms"].isUInt64() || out["elapsed_ms"].isInt() || out["elapsed_ms"].isUInt())) {
+      elapsed_attempt = std::max<int64_t>(0, out["elapsed_ms"].asInt64());
+    }
+    upd.tool_calls_total_cum = saturating_add_i64(std::max<int64_t>(0, task.tool_calls_total_cum), tool_calls_attempt);
+    upd.steps_executed_cum = saturating_add_i64(std::max<int64_t>(0, task.steps_executed_cum), steps_attempt);
+    upd.elapsed_ms_cum = saturating_add_i64(std::max<int64_t>(0, task.elapsed_ms_cum), elapsed_attempt);
+  }
+
   if (run_cancelled) {
     upd.status = "cancelled";
     upd.ready_unix_ms = 0;
@@ -2026,6 +2035,9 @@ void WorkflowEngine::maybe_finalize_workflow(const std::string& workflow_id) {
       row["status"] = t.status;
       row["attempt"] = t.attempt;
       row["max_attempts"] = t.max_attempts;
+      row["tool_calls_total_cum"] = (Json::Int64)std::max<int64_t>(0, t.tool_calls_total_cum);
+      row["steps_executed_cum"] = (Json::Int64)std::max<int64_t>(0, t.steps_executed_cum);
+      row["elapsed_ms_cum"] = (Json::Int64)std::max<int64_t>(0, t.elapsed_ms_cum);
       row["ready_unix_ms"] = (Json::Int64)t.ready_unix_ms;
       row["started_unix_ms"] = (Json::Int64)t.started_unix_ms;
       row["finished_unix_ms"] = (Json::Int64)t.finished_unix_ms;
