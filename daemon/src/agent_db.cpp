@@ -165,7 +165,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 24;
+  const int kSchemaVersion = 25;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -770,6 +770,23 @@ CREATE INDEX IF NOT EXISTS edge_tasks_by_result_sha256 ON edge_tasks(result_sha2
 )SQL";
     if (!exec_locked(schema_v24, out_error)) return false;
     cur_ver = 24;
+  }
+
+  if (cur_ver < 25) {
+    const char* schema_v25 = R"SQL(
+-- Durable fair-queue session state for workflow scheduler policies (v2.3+).
+-- Used to persist DRR deficits across daemon restarts (best-effort).
+CREATE TABLE IF NOT EXISTS workflow_fairq_sessions(
+  session_id TEXT PRIMARY KEY,
+  deficit INTEGER NOT NULL DEFAULT 0,
+  weight INTEGER NOT NULL DEFAULT 1,
+  updated_unix_ms INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS workflow_fairq_sessions_by_updated
+  ON workflow_fairq_sessions(updated_unix_ms DESC);
+)SQL";
+    if (!exec_locked(schema_v25, out_error)) return false;
+    cur_ver = 25;
   }
 
   // Record schema version.
@@ -3934,6 +3951,133 @@ LIMIT ?;
     row.workflows_running = sqlite3_column_int64(st, 5);
     out_rows_desc->push_back(std::move(row));
   }
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  return ok;
+#endif
+}
+
+bool AgentDb::get_workflow_fairq_session(
+  const std::string& session_id,
+  WorkflowFairqSessionRow* out_row,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_row) *out_row = WorkflowFairqSessionRow{};
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)session_id;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (!out_row || session_id.empty()) return false;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT session_id, deficit, weight, updated_unix_ms
+FROM workflow_fairq_sessions
+WHERE session_id=?
+LIMIT 1;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = bind_text(st, 1, session_id);
+  bool found = false;
+  if (ok && step_row(st)) {
+    found = true;
+    const unsigned char* sid = sqlite3_column_text(st, 0);
+    out_row->session_id = sid ? (const char*)sid : "";
+    out_row->deficit = sqlite3_column_int64(st, 1);
+    out_row->weight = (int)sqlite3_column_int64(st, 2);
+    out_row->updated_unix_ms = sqlite3_column_int64(st, 3);
+  }
+  sqlite3_finalize(st);
+  if (!ok) {
+    if (out_error && out_error->empty()) *out_error = sqlite_err(db_);
+    return false;
+  }
+  return found;
+#endif
+}
+
+bool AgentDb::upsert_workflow_fairq_session(const WorkflowFairqSessionRow& row, std::string* out_error) {
+  if (out_error) out_error->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)row;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (row.session_id.empty()) {
+    if (out_error) *out_error = "upsert_workflow_fairq_session: session_id is empty";
+    return false;
+  }
+
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+INSERT INTO workflow_fairq_sessions(session_id, deficit, weight, updated_unix_ms)
+VALUES(?,?,?,?)
+ON CONFLICT(session_id) DO UPDATE SET
+  deficit = excluded.deficit,
+  weight = excluded.weight,
+  updated_unix_ms = excluded.updated_unix_ms;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_text(st, 1, row.session_id);
+  ok = ok && bind_i64(st, 2, row.deficit);
+  ok = ok && bind_i64(st, 3, (int64_t)row.weight);
+  ok = ok && bind_i64(st, 4, row.updated_unix_ms);
+  if (ok && !step_done(st)) ok = false;
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  return ok;
+#endif
+}
+
+bool AgentDb::delete_workflow_fairq_sessions_older_than(
+  int64_t cutoff_unix_ms,
+  int64_t* out_deleted,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_deleted) *out_deleted = 0;
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)cutoff_unix_ms;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (cutoff_unix_ms <= 0) return true;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+
+  sqlite3_stmt* st = nullptr;
+  const char* sql = "DELETE FROM workflow_fairq_sessions WHERE updated_unix_ms < ?;";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = bind_i64(st, 1, cutoff_unix_ms);
+  if (ok && !step_done(st)) ok = false;
+  const int64_t deleted = ok ? (int64_t)sqlite3_changes(db_) : 0;
+  if (out_deleted) *out_deleted = deleted;
   if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
   sqlite3_finalize(st);
   return ok;

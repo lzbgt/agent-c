@@ -57,7 +57,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v24)
+## Schema (v25)
 
 All timestamps are Unix milliseconds.
 
@@ -334,6 +334,21 @@ Durable workflow event log used for:
 
 Indexes:
 - `CREATE INDEX workflow_events_by_workflow ON workflow_events(workflow_id, event_id)`
+
+### `workflow_fairq_sessions` (scheduler internal)
+
+Durable fair-queue session state for workflow scheduling policies (v2.3+).
+
+Used to persist per-session DRR deficits across daemon restarts (best-effort). This makes scheduler fairness less “reset”
+after restarts when the daemon is under sustained load.
+
+- `session_id TEXT PRIMARY KEY`
+- `deficit INTEGER NOT NULL` (may be negative for “debt” in future cost-aware scheduling; current policy typically keeps it non-negative)
+- `weight INTEGER NOT NULL` (best-effort last observed weight)
+- `updated_unix_ms INTEGER NOT NULL`
+
+Index:
+- `CREATE INDEX workflow_fairq_sessions_by_updated ON workflow_fairq_sessions(updated_unix_ms DESC)`
 
 ### `edge_nodes`
 

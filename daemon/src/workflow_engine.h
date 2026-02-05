@@ -13,6 +13,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace agentd {
@@ -97,6 +98,7 @@ class WorkflowEngine {
   std::atomic<uint64_t> rr_cursor_{0};
   std::mutex fairq_mu_;
   std::unordered_map<std::string, int64_t> drr_deficit_by_session_;
+  std::unordered_set<std::string> drr_loaded_sessions_;
   std::vector<std::thread> workers_;
 };
 

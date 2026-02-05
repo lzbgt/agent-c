@@ -273,12 +273,15 @@ Priority order (reweighted after `delegate_parallel` join customization shipped;
    - Shipped (v2.2): explicit fair-queue policy surface (weighted round-robin, session-scoped):
      - Daemon config/flags: `--workflow-fair-queue-policy wrr` (default), weight clamps.
      - Workflow submit knob (requires `allow_sessions=true`): `session_weight` (>=1).
-     - Proof: `ctest` includes `agentd_workflow_wrr_session_weight_smoke` (ensures session B is not starved behind session A; session A still dominates early prefix when weight=2).
+   - Proof: `ctest` includes `agentd_workflow_wrr_session_weight_smoke` (ensures session B is not starved behind session A; session A still dominates early prefix when weight=2).
    - Next (v2.3): graduate from WRR to deficit round-robin (DRR) with cost-aware quanta (e.g. budget pressure, token cost) and durable per-session tokens.
-   - Shipped (v2.3 partial): deficit round-robin (DRR) policy option (in-memory deficits; cost=1 per admitted task):
+   - Shipped (v2.3 partial): deficit round-robin (DRR) policy option (cost=1 per admitted task):
      - Daemon flag: `--workflow-fair-queue-policy drr` (also `AGENTD_WORKFLOW_FAIR_QUEUE_POLICY=drr`)
      - Weight source remains `session_weight` from workflow submit spec (clamped).
      - Proof: `ctest` includes `agentd_workflow_drr_session_weight_smoke`.
+   - Shipped (v2.3.1): DRR deficits are now persisted (best-effort) so fairness survives daemon restart:
+     - DB table: `workflow_fairq_sessions` (schema v25; see `docs/DB.md`).
+     - Proof: `ctest` includes `agentd_workflow_drr_durable_deficit_smoke`.
    - Next (v2.3+): cost-aware quanta:
      - charge DRR cost by estimated task cost (e.g. expected tool calls, expected tokens, edge polling) to smooth latency under mixed workloads.
 

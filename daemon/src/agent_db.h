@@ -382,6 +382,18 @@ class AgentDb {
     int64_t workflows_running = 0;
   };
 
+  // Durable fair-queue session state (workflow scheduler).
+  //
+  // This is an internal scheduler primitive used to persist per-session DRR deficits across daemon restarts.
+  // Deficits may be negative (debt) for future cost-aware scheduling; current scheduler policies typically
+  // keep them non-negative.
+  struct WorkflowFairqSessionRow {
+    std::string session_id;
+    int64_t deficit = 0;
+    int weight = 1; // last observed effective weight (best-effort)
+    int64_t updated_unix_ms = 0;
+  };
+
   // Lightweight queue pressure / scheduling visibility helper.
   bool get_workflow_scheduler_stats(
     int64_t now_unix_ms,
@@ -403,6 +415,15 @@ class AgentDb {
     std::vector<WorkflowSessionStatsRow>* out_rows_desc,
     std::string* out_error
   );
+
+  // Durable fair-queue session state.
+  bool get_workflow_fairq_session(
+    const std::string& session_id,
+    WorkflowFairqSessionRow* out_row,
+    std::string* out_error
+  );
+  bool upsert_workflow_fairq_session(const WorkflowFairqSessionRow& row, std::string* out_error);
+  bool delete_workflow_fairq_sessions_older_than(int64_t cutoff_unix_ms, int64_t* out_deleted, std::string* out_error);
 
   // Upserts workflow/task metadata (cheap transition updates).
   bool upsert_workflow(const WorkflowRow& wf, std::string* out_error);

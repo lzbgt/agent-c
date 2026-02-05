@@ -281,8 +281,11 @@ int main() {
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('edge_workflow_steps') WHERE name='backoff_ms';");
   const int64_t edge_wf_events_id_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('edge_workflow_events') WHERE name='id';");
+  const int64_t fairq_sessions_tbl =
+    query_i64(raw2, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='workflow_fairq_sessions';");
   sqlite3_close(raw2);
-  assert(ver == 24);
+  assert(ver == 25);
+  assert(fairq_sessions_tbl == 1);
   assert(arts2 == 0);
   assert(stop_reason_cols == 1);
   assert(ua_cols == 1);

@@ -933,7 +933,7 @@ bool WorkflowEngine::pick_and_claim_one(
 	    // Current v2.3 semantics (minimal):
 	    // - quantum = session_weight (clamped)
 	    // - each admitted task costs 1
-	    // - deficits are kept in-memory (best-effort across daemon lifetime)
+	    // - deficits are loaded/persisted in the DB (best-effort) so fairness survives daemon restarts
 	    const int max_weight_cfg = std::max(1, opt_.fair_queue_max_session_weight);
 
 	    std::unordered_map<std::string, int> weight_by_session;
@@ -954,6 +954,43 @@ bool WorkflowEngine::pick_and_claim_one(
 	      weight_by_session[sk] = std::max(1, std::min(max_weight_cfg, w));
 	    }
 
+	    auto persist_session_id_from_bucket = [](const std::string& bucket_key) -> std::string {
+	      const std::string prefix = "sid:";
+	      if (bucket_key.size() > prefix.size() && bucket_key.rfind(prefix, 0) == 0) {
+	        return bucket_key.substr(prefix.size());
+	      }
+	      return "";
+	    };
+
+	    // Best-effort: load persisted deficits for any session we haven't seen in this process.
+	    // This is done outside the fairq mutex to avoid blocking other workers on sqlite I/O.
+	    std::vector<std::pair<std::string, std::string>> to_load; // (bucket_key, session_id)
+	    to_load.reserve(ns);
+	    {
+	      std::lock_guard<std::mutex> lk(fairq_mu_);
+	      for (const auto& sk : sessions) {
+	        const std::string sid = persist_session_id_from_bucket(sk);
+	        if (sid.empty()) continue; // session-less buckets are not persisted
+	        if (drr_loaded_sessions_.count(sid)) continue;
+	        drr_loaded_sessions_.insert(sid);
+	        to_load.push_back({sk, sid});
+	      }
+	    }
+	    for (const auto& it : to_load) {
+	      const std::string& sk = it.first;
+	      const std::string& sid = it.second;
+	      AgentDb::WorkflowFairqSessionRow r;
+	      std::string lerr;
+	      const bool found = db_->get_workflow_fairq_session(sid, &r, &lerr);
+	      if (!found) continue;
+	      // Allow negative deficits (debt) for future cost-aware scheduling, but clamp to avoid pathological values.
+	      const int64_t d0 = std::max<int64_t>(-1000000, std::min<int64_t>(1000000, r.deficit));
+	      {
+	        std::lock_guard<std::mutex> lk(fairq_mu_);
+	        drr_deficit_by_session_[sk] = d0;
+	      }
+	    }
+
 	    std::vector<std::string> attempt_sessions;
 	    attempt_sessions.reserve(ns);
 	    {
@@ -966,7 +1003,11 @@ bool WorkflowEngine::pick_and_claim_one(
 	        for (const auto& sk : sessions) active.insert(sk);
 	        for (auto it = drr_deficit_by_session_.begin(); it != drr_deficit_by_session_.end();) {
 	          if (active.count(it->first)) ++it;
-	          else it = drr_deficit_by_session_.erase(it);
+	          else {
+	            const std::string sid = persist_session_id_from_bucket(it->first);
+	            if (!sid.empty()) drr_loaded_sessions_.erase(sid);
+	            it = drr_deficit_by_session_.erase(it);
+	          }
 	        }
 	      }
 
@@ -993,15 +1034,21 @@ bool WorkflowEngine::pick_and_claim_one(
 	    };
 	    auto charge_deficit = [&](const std::string& sk, int64_t cost) {
 	      if (cost <= 0) return;
+	      int64_t new_def = 0;
 	      std::lock_guard<std::mutex> lk(fairq_mu_);
 	      auto it = drr_deficit_by_session_.find(sk);
 	      if (it == drr_deficit_by_session_.end()) return;
-	      it->second = std::max<int64_t>(0, it->second - cost);
+	      it->second = it->second - cost;
+	      // Keep the in-memory map bounded and stable.
+	      if (it->second > 1000000) it->second = 1000000;
+	      if (it->second < -1000000) it->second = -1000000;
+	      new_def = it->second;
+	      (void)new_def;
 	    };
 
 	    for (size_t ssi = 0; ssi < attempt_sessions.size(); ssi++) {
 	      const std::string& sk = attempt_sessions[ssi];
-	      if (get_deficit(sk) <= 0) continue;
+	      if (get_deficit(sk) < 1) continue;
 	      auto it = wf_idxs_by_session.find(sk);
 	      if (it == wf_idxs_by_session.end()) continue;
 	      const auto& idxs = it->second;
@@ -1010,6 +1057,16 @@ bool WorkflowEngine::pick_and_claim_one(
 	        if (idx >= wfs.size()) continue;
 	        if (try_pick_in_workflow(wfs[idx])) {
 	          charge_deficit(sk, 1);
+	          // Persist the updated deficit (best-effort). Failures should not block scheduling.
+	          const std::string sid = persist_session_id_from_bucket(sk);
+	          if (!sid.empty()) {
+	            AgentDb::WorkflowFairqSessionRow rr;
+	            rr.session_id = sid;
+	            rr.deficit = get_deficit(sk);
+	            rr.weight = weight_by_session.count(sk) ? weight_by_session[sk] : 1;
+	            rr.updated_unix_ms = now_unix_ms;
+	            (void)db_->upsert_workflow_fairq_session(rr, nullptr);
+	          }
 	          return true;
 	        }
 	      }
