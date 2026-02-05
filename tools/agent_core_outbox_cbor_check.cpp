@@ -1,4 +1,5 @@
 #include "agent/um_eais_outbox_read.h"
+#include "agent/um_eais_platform_caps_req_read.h"
 
 #include <fstream>
 #include <iostream>
@@ -89,10 +90,36 @@ int main(int argc, char** argv) {
   }
 
   bool saw = false;
+  bool saw_valid_caps_req = false;
   for (size_t i = 0; i < out.messages_parsed; i++) {
     if (!rows[i].has_msg) continue;
     if (text_eq(rows[i].msg.type, expect_type)) {
       saw = true;
+      if (expect_type == "PLATFORM_CAPS_REQ") {
+        if (!rows[i].msg.has_body || !rows[i].msg.body_item.ptr || rows[i].msg.body_item.len == 0) {
+          std::cerr << "PLATFORM_CAPS_REQ missing body\n";
+          return 1;
+        }
+        agent_um_eais_platform_caps_req_view_t req{};
+        const agent_status_t st2 = agent_um_eais_platform_caps_req_body_read_cbor_v0_1(
+          rows[i].msg.body_item.ptr,
+          rows[i].msg.body_item.len,
+          &req
+        );
+        if (st2 != AGENT_OK) {
+          std::cerr << "PLATFORM_CAPS_REQ body decode failed status=" << (int)st2 << "\n";
+          return 1;
+        }
+        if (!text_eq(req.node_id, node_id)) {
+          std::cerr << "PLATFORM_CAPS_REQ body.node_id mismatch\n";
+          return 1;
+        }
+        if (!text_eq(req.want, "full")) {
+          std::cerr << "PLATFORM_CAPS_REQ body.want expected \"full\"\n";
+          return 1;
+        }
+        saw_valid_caps_req = true;
+      }
       break;
     }
   }
@@ -105,6 +132,11 @@ int main(int argc, char** argv) {
       std::string t(rows[i].msg.type.ptr ? rows[i].msg.type.ptr : "", rows[i].msg.type.len);
       std::cerr << "  type[" << i << "]=" << t << "\n";
     }
+    return 1;
+  }
+
+  if (expect_type == "PLATFORM_CAPS_REQ" && !saw_valid_caps_req) {
+    std::cerr << "PLATFORM_CAPS_REQ found but not validated\n";
     return 1;
   }
 

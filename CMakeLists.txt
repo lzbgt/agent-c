@@ -22,6 +22,7 @@ add_library(agent_core STATIC
   core/src/agent_json_c14n.c
   core/src/agent_um_eais_task_assign_read.c
   core/src/agent_um_eais_outbox_read.c
+  core/src/agent_um_eais_platform_caps_req_read.c
   core/src/agent_umbmp_envelope_read.c
   core/src/agent_umbmp_auth.c
   core/src/agent_runner.c
@@ -80,19 +81,20 @@ target_compile_options(agent_ed25519_tool PRIVATE
 target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
 
 # Host-side helper for validating CBOR outbox bytes with the embedded decoder.
-add_executable(agent_core_outbox_cbor_check
-  tools/agent_core_outbox_cbor_check.cpp
-)
-target_compile_options(agent_core_outbox_cbor_check PRIVATE
-  $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
-)
-target_link_libraries(agent_core_outbox_cbor_check PRIVATE agent_core)
-
 if(AGENT_BUILD_HOST)
   find_package(CURL REQUIRED)
   if(NOT AGENT_ENABLE_JSONCPP)
     message(FATAL_ERROR "AGENT_BUILD_HOST=ON requires jsoncpp (pkg-config: jsoncpp). Use -DAGENT_BUILD_HOST=OFF for core-only builds.")
   endif()
+
+  # Host-side helper for validating CBOR outbox bytes with the embedded decoder.
+  add_executable(agent_core_outbox_cbor_check
+    tools/agent_core_outbox_cbor_check.cpp
+  )
+  target_compile_options(agent_core_outbox_cbor_check PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_link_libraries(agent_core_outbox_cbor_check PRIVATE agent_core)
 
   # Host-side adapter library shared by CLI and daemon.
   add_library(agent_host STATIC
@@ -305,6 +307,7 @@ add_executable(agent_core_tests
   tests/test_cbor_read.c
   tests/test_edge_interop.c
   tests/test_um_eais_task_assign_read.c
+  tests/test_um_eais_platform_caps_req_read.c
   tests/test_um_eais_outbox_read.c
   tests/test_umbmp_envelope_read.c
   tests/test_umbmp_envelope_write.c

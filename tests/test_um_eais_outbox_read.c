@@ -1,4 +1,5 @@
 #include "agent/um_eais_outbox_read.h"
+#include "agent/um_eais_platform_caps_req_read.h"
 
 #include "agent/cbor_det.h"
 #include "agent/umbmp_auth.h"
@@ -168,6 +169,14 @@ static void test_outbox_read_decodes_platform_caps_req_envelope(void) {
   assert(text_eq(rows[0].msg.type, "PLATFORM_CAPS_REQ"));
   assert(text_eq(rows[0].msg.from, "platform"));
   assert(rows[0].msg.has_body == 1);
+
+  agent_um_eais_platform_caps_req_view_t req;
+  assert(agent_um_eais_platform_caps_req_body_read_cbor_v0_1(
+           rows[0].msg.body_item.ptr,
+           rows[0].msg.body_item.len,
+           &req) == AGENT_OK);
+  assert(text_eq(req.node_id, octx.node_id));
+  assert(text_eq(req.want, "full"));
 }
 
 void test_um_eais_outbox_read_module(void) {

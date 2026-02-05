@@ -265,6 +265,8 @@ int main(void) {
   test_umbmp_envelope_write_module();
   extern void test_um_eais_outbox_read_module(void);
   test_um_eais_outbox_read_module();
+  extern void test_um_eais_platform_caps_req_read_module(void);
+  test_um_eais_platform_caps_req_read_module();
   printf("agent_core_tests OK\n");
   return 0;
 }
