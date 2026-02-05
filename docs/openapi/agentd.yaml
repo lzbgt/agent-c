@@ -13,6 +13,7 @@ servers:
 
 tags:
   - name: health
+  - name: config
   - name: run
   - name: jobs
   - name: workflows
@@ -39,6 +40,76 @@ paths:
                   ok: { type: boolean }
                   service: { type: string }
                   version: { type: string }
+
+  /api/v1/config:
+    get:
+      tags: [config]
+      summary: Get daemon configuration (safe snapshot)
+      description: |
+        Returns a safe snapshot of the daemon configuration.
+
+        Notes:
+        - Requires Bearer auth when the daemon is started with `--auth-token`.
+        - Does not include secret values (auth token, provider API keys).
+        - `engines.workflow_http_*` fields describe outbound deterministic HTTP policy for workflow tasks like
+          `kind:"http_json"` and `kind:"agentd_call"`.
+      responses:
+        "200":
+          description: Config snapshot (safe)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentdConfigResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/config/update:
+    post:
+      tags: [config]
+      summary: Update daemon configuration defaults (persists to DB)
+      description: |
+        Updates non-secret default configuration values and persists them to the daemon DB so they survive restart.
+
+        Notes:
+        - Requires Bearer auth when the daemon is started with `--auth-token`.
+        - This endpoint is intended for operator control planes and local bring-up tooling.
+        - Provider API keys may be set/cleared via `provider_keys` or `api_key` and are stored in the daemon DB
+          (response only includes boolean flags, not secret values).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentdConfigUpdateRequest"
+      responses:
+        "200":
+          description: Update acknowledged (safe summary)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentdConfigUpdateResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Persist failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/tools:
     get:
@@ -1142,6 +1213,141 @@ components:
       properties:
         ok: { type: boolean, enum: [false] }
         error: { type: string }
+
+    AgentdConfigResponse:
+      type: object
+      required: [ok, service, version, daemon, engines]
+      properties:
+        ok: { type: boolean }
+        service: { type: string }
+        version: { type: string }
+        have_jsoncpp: { type: boolean }
+        have_sqlite3: { type: boolean }
+        daemon:
+          type: object
+          additionalProperties: true
+          properties:
+            listen_host: { type: string }
+            listen_port: { type: integer, format: int64 }
+            base_url: { type: string }
+            model: { type: string }
+            summary_model: { type: string, nullable: true }
+            summary_max_chars: { type: integer, format: int64 }
+            timeout_ms: { type: integer, format: int64 }
+            proxy_url_set: { type: boolean }
+            api_key_set: { type: boolean }
+            provider_keys_set:
+              type: object
+              additionalProperties: true
+              properties:
+                deepseek: { type: boolean }
+                openrouter: { type: boolean }
+                moonshot: { type: boolean }
+                openai: { type: boolean }
+            auth_enabled: { type: boolean }
+            allow_unauthenticated_non_loopback: { type: boolean }
+            db_path: { type: string, nullable: true }
+            state_dir: { type: string, nullable: true }
+            sessions_root_dir: { type: string, nullable: true }
+        cors:
+          type: object
+          additionalProperties: true
+        sandbox:
+          type: object
+          additionalProperties: true
+        jobs:
+          type: object
+          additionalProperties: true
+        engines:
+          type: object
+          additionalProperties: true
+          properties:
+            workflow_enable_http_tasks: { type: boolean }
+            workflow_http_allow_hosts:
+              type: array
+              items: { type: string }
+            workflow_http_allow_cidrs:
+              type: array
+              items: { type: string }
+            workflow_http_deny_cidrs:
+              type: array
+              items: { type: string }
+            workflow_http_deny_private_addrs: { type: boolean }
+            workflow_http_dns_pin: { type: boolean }
+        memory:
+          type: object
+          additionalProperties: true
+
+    AgentdConfigUpdateRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        base_url:
+          type: string
+          description: Default base_url (used for provider inference and some clients)
+        model:
+          type: string
+          description: Default model
+        system_profile:
+          type: string
+          description: Default host system profile (e.g. default, jules_codex)
+        summary_model:
+          type: string
+          nullable: true
+          description: Optional model for compaction summaries (set null to clear)
+        summary_max_chars:
+          type: integer
+          format: int64
+          description: Max chars for inserted summary
+        timeout_ms:
+          type: integer
+          format: int64
+          description: Provider HTTP timeout in ms
+        proxy_url:
+          type: string
+          nullable: true
+          description: Optional HTTP proxy override (set null to clear)
+        workflow_admit_max_inflight_tasks_per_session:
+          type: integer
+          format: int32
+          description: Admission control cap (queued|running tasks per session); 0 disables
+        workflow_admit_max_inflight_tasks_total:
+          type: integer
+          format: int32
+          description: Admission control cap (queued|running tasks total); 0 disables
+        provider:
+          type: string
+          description: Provider name for `api_key` (if omitted, inferred from base_url)
+        api_key:
+          type: string
+          description: Provider API key (empty string clears)
+        provider_keys:
+          type: object
+          additionalProperties:
+            type: string
+            nullable: true
+          description: Map of provider name → API key (null clears that provider key)
+
+    AgentdConfigUpdateResponse:
+      type: object
+      required: [ok, base_url, model, system_profile, summary_max_chars, timeout_ms, proxy_url_set, provider_keys_set]
+      properties:
+        ok: { type: boolean }
+        base_url: { type: string }
+        model: { type: string }
+        system_profile: { type: string }
+        summary_model: { type: string, nullable: true }
+        summary_max_chars: { type: integer, format: int64 }
+        timeout_ms: { type: integer, format: int64 }
+        proxy_url_set: { type: boolean }
+        provider_keys_set:
+          type: object
+          additionalProperties: true
+          properties:
+            deepseek: { type: boolean }
+            openrouter: { type: boolean }
+            moonshot: { type: boolean }
+            openai: { type: boolean }
 
     MemoryCheckpointMeta:
       type: object

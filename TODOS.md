@@ -51,6 +51,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Proof: `ctest` includes `agent_core_tests`.
 - “Docs as truth” guardrails (DB schema doc + OpenAPI sanity checks).
   - Proof: `ctest` includes `docs_sanity_tests` + `openapi_sanity_tests`.
+  - Shipped: OpenAPI now includes `/api/v1/config` and `/api/v1/config/update` so operator tooling can discover the effective
+    workflow outbound HTTP policy (`workflow_http_allow_*`, `deny_*`, `dns_pin`) and scheduling knobs.
 - UM‑EAIS contract is now executable (best-effort) via machine-readable artifacts:
   - JSON Schemas: `docs/spec/um-eais/schema/`
   - Golden transcript fixtures: `docs/spec/um-eais/fixtures/`

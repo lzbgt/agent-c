@@ -51,6 +51,14 @@ if daemon.get("auth_enabled") is not True:
   print("expected auth_enabled true", file=sys.stderr)
   raise SystemExit(1)
 
+engines = obj.get("engines") or {}
+if "workflow_http_dns_pin" not in engines:
+  print("expected engines.workflow_http_dns_pin field", engines, file=sys.stderr)
+  raise SystemExit(1)
+if engines.get("workflow_http_dns_pin") is not False:
+  print("expected workflow_http_dns_pin default false", engines.get("workflow_http_dns_pin"), file=sys.stderr)
+  raise SystemExit(1)
+
 # Ensure we didn't accidentally leak secrets.
 raw = r'''${resp}'''
 if "auth_token" in raw:
