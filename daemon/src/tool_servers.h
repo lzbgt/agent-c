@@ -21,11 +21,19 @@ namespace agentd {
 // - Response: {"id":<int>,"ok":true,"tool_result":<json>}   (tool_result may be an object or a string)
 //             {"id":<int>,"ok":false,"error":"...","tool_result":<optional json>}
 //
+// Optional health check (if enabled via ToolServerSpec.ping_interval_ms):
+// - Request:  {"id":<int>,"op":"ping"}
+// - Response: {"id":<int>,"ok":true,...}
+//
 // The agentd tool executor returns the `tool_result` JSON (stringified if object) as the tool output.
 struct ToolServerSpec {
   std::string cmd;  // executed via `/bin/sh -lc <cmd>` on Unix
   int timeout_ms = 30000;
   size_t max_line_bytes = 4 * 1024 * 1024;
+  // Optional: if >0, agentd will issue a best-effort `op:"ping"` after idle periods to detect a dead/hung server
+  // early (before a real tool call). If the server responds with ok=false unknown op, ping is treated as unsupported
+  // and is disabled for that server.
+  int ping_interval_ms = 0;
 };
 
 class ToolServerChain {

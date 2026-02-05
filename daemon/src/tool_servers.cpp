@@ -47,6 +47,13 @@ static std::string json_stringify_compact_local(const Json::Value& v) {
   return Json::writeString(wb, v);
 }
 
+static std::string to_lower_ascii(std::string s) {
+  for (char& c : s) {
+    if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+  }
+  return s;
+}
+
 static bool parse_manifest_tools(
   const std::string& server_cmd,
   const Json::Value& root,
@@ -116,6 +123,8 @@ struct ChildProc {
   int fd_out = -1;  // read from child stdout
   std::string read_buf;
   uint64_t next_id = 1;
+  int64_t last_ok_ms = 0; // steady-clock ms (last successful rpc: manifest/execute/ping)
+  bool ping_unsupported = false;
   int restart_failures = 0;
   int64_t restart_after_ms = 0; // steady-clock ms
 };
@@ -177,6 +186,8 @@ static bool spawn_shell_cmd(const std::string& cmd, ChildProc* out, std::string*
   out->fd_out = out_pipe[0];
   out->read_buf.clear();
   out->next_id = 1;
+  out->last_ok_ms = 0;
+  out->ping_unsupported = false;
   return true;
 }
 
@@ -488,9 +499,73 @@ struct ToolServerChain::Impl {
         Json::Value o(Json::objectValue);
         o["ok"] = false;
         o["error"] = "tool server not running";
+        o["server_index"] = (Json::Int64)idx;
+        if (!spec.cmd.empty()) o["server_cmd"] = spec.cmd;
         if (!rerr.empty()) o["detail"] = rerr;
         const std::string msg = json_stringify_compact_local(o);
         return agent_string_set_copy(out_result, msg.c_str(), msg.size());
+      }
+    }
+
+    // Optional: idle ping health check (best-effort; safe fallback if server doesn't implement ping).
+    if (spec.ping_interval_ms > 0 && !p.ping_unsupported) {
+      const int64_t now = steady_ms_now();
+      if (p.last_ok_ms <= 0 || (now - p.last_ok_ms) >= (int64_t)spec.ping_interval_ms) {
+        Json::Value preq(Json::objectValue);
+        const uint64_t pid = p.next_id++;
+        preq["id"] = (Json::UInt64)pid;
+        preq["op"] = "ping";
+
+        Json::Value presp;
+        std::string perr;
+        if (!rpc_call_jsonl(&p, preq, /*timeout_ms=*/spec.timeout_ms, /*max_line_bytes=*/spec.max_line_bytes, &presp, &perr)) {
+          // Fail-closed: ping failed, restart before attempting the real tool call.
+          kill_child_best_effort(&p);
+          mark_dead(&p);
+          std::string rerr;
+          if (!restart_with_backoff(spec, &p, &rerr)) {
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "tool server ping failed";
+            o["server_index"] = (Json::Int64)idx;
+            if (!spec.cmd.empty()) o["server_cmd"] = spec.cmd;
+            if (!perr.empty()) o["ping_error"] = perr;
+            if (!rerr.empty()) o["restart_error"] = rerr;
+            const std::string msg = json_stringify_compact_local(o);
+            return agent_string_set_copy(out_result, msg.c_str(), msg.size());
+          }
+        } else {
+          // Protocol hardening: require matching id.
+          if (!presp.isObject() || !presp.isMember("id") ||
+              !(presp["id"].isUInt64() || presp["id"].isInt64() || presp["id"].isInt() || presp["id"].isUInt())) {
+            kill_child_best_effort(&p);
+            mark_dead(&p);
+            std::string rerr;
+            (void)restart_with_backoff(spec, &p, &rerr);
+          } else if ((uint64_t)presp["id"].asUInt64() != pid) {
+            kill_child_best_effort(&p);
+            mark_dead(&p);
+            std::string rerr;
+            (void)restart_with_backoff(spec, &p, &rerr);
+          } else {
+            // If the server explicitly rejects ping as an unknown op, treat it as unsupported and proceed.
+            if (presp.isMember("ok") && presp["ok"].isBool() && presp["ok"].asBool() == false) {
+              const std::string e = presp.isMember("error") && presp["error"].isString() ? presp["error"].asString() : "";
+              const std::string el = to_lower_ascii(e);
+              if (el.find("unknown op") != std::string::npos) {
+                p.ping_unsupported = true;
+              } else {
+                // Fail-closed: explicit ping failure, restart.
+                kill_child_best_effort(&p);
+                mark_dead(&p);
+                std::string rerr;
+                (void)restart_with_backoff(spec, &p, &rerr);
+              }
+            } else {
+              p.last_ok_ms = now;
+            }
+          }
+        }
       }
     }
 
@@ -519,6 +594,8 @@ struct ToolServerChain::Impl {
       Json::Value o(Json::objectValue);
       o["ok"] = false;
       o["error"] = "tool server rpc failed";
+      o["server_index"] = (Json::Int64)idx;
+      if (!spec.cmd.empty()) o["server_cmd"] = spec.cmd;
       if (!rerr.empty()) o["detail"] = rerr;
       const std::string msg = json_stringify_compact_local(o);
       return agent_string_set_copy(out_result, msg.c_str(), msg.size());
@@ -533,6 +610,9 @@ struct ToolServerChain::Impl {
         Json::Value o(Json::objectValue);
         o["ok"] = false;
         o["error"] = "tool server response id mismatch";
+        o["protocol_violation"] = true;
+        o["server_index"] = (Json::Int64)idx;
+        if (!spec.cmd.empty()) o["server_cmd"] = spec.cmd;
         o["expected_id"] = (Json::UInt64)id;
         o["got_id"] = (Json::UInt64)got;
         const std::string msg = json_stringify_compact_local(o);
@@ -541,10 +621,17 @@ struct ToolServerChain::Impl {
     } else {
       kill_child_best_effort(&p);
       mark_dead(&p);
-      const char* err = "{\"ok\":false,\"error\":\"tool server response missing id\"}";
-      return agent_string_set_copy(out_result, err, std::strlen(err));
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "tool server response missing id";
+      o["protocol_violation"] = true;
+      o["server_index"] = (Json::Int64)idx;
+      if (!spec.cmd.empty()) o["server_cmd"] = spec.cmd;
+      const std::string msg = json_stringify_compact_local(o);
+      return agent_string_set_copy(out_result, msg.c_str(), msg.size());
     }
 
+    p.last_ok_ms = steady_ms_now();
     Json::Value tool_result = resp.isMember("tool_result") ? resp["tool_result"] : resp;
     std::string out_s;
     if (tool_result.isString()) {
@@ -649,6 +736,7 @@ bool ToolServerChain::load(const std::vector<ToolServerSpec>& specs, std::string
       return false;
     }
 
+    impl_->procs[i].last_ok_ms = steady_ms_now();
     for (const auto& td : impl_->tools_by_server[i]) {
       if (td.name.empty()) continue;
       if (!impl_->all_tool_names.insert(td.name).second) {

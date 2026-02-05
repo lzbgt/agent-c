@@ -601,6 +601,25 @@ int main(int argc, char** argv) {
         std::cerr << "Invalid --tool-server-max-line-bytes\n";
         return 2;
       }
+    } else if (a == "--tool-server-ping-interval-ms") {
+      std::string v;
+      if (!take(&v) || v.empty()) {
+        std::cerr << "Missing value for --tool-server-ping-interval-ms\n";
+        return 2;
+      }
+      if (tool_server_specs.empty()) {
+        std::cerr << "--tool-server-ping-interval-ms must follow --tool-server-cmd\n";
+        return 2;
+      }
+      try {
+        int n = std::stoi(v);
+        if (n < 0) n = 0;
+        if (n > 300000) n = 300000;
+        tool_server_specs.back().ping_interval_ms = n;
+      } catch (...) {
+        std::cerr << "Invalid --tool-server-ping-interval-ms\n";
+        return 2;
+      }
     } else if (a == "--cors-origin") {
       std::string v;
       if (!take(&v) || v.empty()) {
@@ -686,7 +705,8 @@ int main(int argc, char** argv) {
         << "  --tool-plugin <path> Load a tool plugin (repeatable)\n"
         << "  --tool-server-cmd <cmd> Start a stdio tool server (repeatable)\n"
         << "    --tool-server-timeout-ms <n>    Per-server RPC timeout (must follow --tool-server-cmd; default 30000; clamp 1..300000)\n"
-        << "    --tool-server-max-line-bytes <n>  Per-server stdout line cap (must follow --tool-server-cmd; default 4MiB; clamp 1024..64MiB)\n";
+        << "    --tool-server-max-line-bytes <n>  Per-server stdout line cap (must follow --tool-server-cmd; default 4MiB; clamp 1024..64MiB)\n"
+        << "    --tool-server-ping-interval-ms <n>  Per-server idle ping interval (must follow --tool-server-cmd; default 0=disabled; clamp 0..300000)\n";
       return 0;
     } else {
       std::cerr << "Unknown arg: " << a << "\n";

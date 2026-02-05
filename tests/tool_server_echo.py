@@ -17,8 +17,11 @@ TOOLS = [
     }
 ]
 
+PING_COUNT = 0
+
 
 def main() -> int:
+    global PING_COUNT
     for line in sys.stdin:
         line = line.strip()
         if not line:
@@ -34,6 +37,13 @@ def main() -> int:
         op = req.get("op")
         if op == "manifest":
             resp = {"id": rid, "ok": True, "tools": TOOLS}
+            sys.stdout.write(json.dumps(resp) + "\n")
+            sys.stdout.flush()
+            continue
+
+        if op == "ping":
+            PING_COUNT += 1
+            resp = {"id": rid, "ok": True, "pong": True}
             sys.stdout.write(json.dumps(resp) + "\n")
             sys.stdout.flush()
             continue
@@ -55,7 +65,7 @@ def main() -> int:
                 sys.stdout.flush()
                 continue
 
-            tool_result = {"ok": True, "data": {"echo": text}}
+            tool_result = {"ok": True, "data": {"echo": text, "ping_count": PING_COUNT}}
             resp = {"id": rid, "ok": True, "tool_result": tool_result}
             sys.stdout.write(json.dumps(resp) + "\n")
             sys.stdout.flush()
@@ -70,4 +80,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

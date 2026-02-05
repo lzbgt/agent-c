@@ -15,7 +15,8 @@ Start `agentd` with one or more tool servers:
 ./build/agentd --tools basic \
   --tool-server-cmd "python3 -u ./tests/tool_server_echo.py" \
   --tool-server-timeout-ms 30000 \
-  --tool-server-max-line-bytes $((4*1024*1024))
+  --tool-server-max-line-bytes $((4*1024*1024)) \
+  --tool-server-ping-interval-ms 0
 ```
 
 Tool servers are an **extension** mechanism: their tools are appended to the selected base toolset (`basic` or `host`).
@@ -24,6 +25,9 @@ Notes:
 - `--tool-server-timeout-ms` and `--tool-server-max-line-bytes` are **per-server** and must appear *after* the corresponding
   `--tool-server-cmd` (they apply to “the most recently declared tool server”).
 - `--tool-server-max-line-bytes` bounds both the server’s JSON response line and any buffered partial line (fail-closed).
+- `--tool-server-ping-interval-ms` is optional (default disabled). If enabled, `agentd` may send an `op:"ping"` after idle periods
+  to detect a dead/hung server before executing a real tool call. If a server responds with `ok:false` and error contains
+  `"unknown op"`, ping is treated as unsupported and automatically disabled for that server.
 
 ## Protocol (newline-delimited JSON objects)
 
@@ -68,7 +72,21 @@ Response:
 Notes:
 - `tool_result` may be an object or a string. `agentd` returns the stringified `tool_result` as the tool output.
 - Keep stderr separate from stdout (stdout is reserved for JSON-lines responses).
- - If the server dies, `agentd` will restart it with bounded backoff for the *next* tool call (it does **not** auto-retry the same call).
+- If the server dies, `agentd` will restart it with bounded backoff for the *next* tool call (it does **not** auto-retry the same call).
+
+### Ping (optional)
+
+Request:
+
+```json
+{"id":3,"op":"ping"}
+```
+
+Response:
+
+```json
+{"id":3,"ok":true,"pong":true}
+```
 
 ## Deterministic testing
 

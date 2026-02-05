@@ -19,8 +19,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - Tool servers (out-of-process) so big integrations stay isolated and “bring-up fast”.
   - Daemon flag: `--tool-server-cmd "<cmd>"` (repeatable; stdio JSON-lines protocol)
   - Reliability knobs: `--tool-server-timeout-ms`, `--tool-server-max-line-bytes`, plus restart-with-backoff on death (fail-closed; no auto-retry)
+  - Optional health checks: `--tool-server-ping-interval-ms <n>` (best-effort idle `op:"ping"`; auto-disables if server replies `unknown op`)
   - Docs: `docs/TOOL_SERVERS.md`
-  - Proof: `ctest` includes `agentd_tool_server_smoke` and `agentd_tool_server_restart_smoke`.
+  - Proof: `ctest` includes `agentd_tool_server_smoke`, `agentd_tool_server_ping_smoke`, and `agentd_tool_server_restart_smoke`.
 - Broker/agent interop primitive for durable workflows (deterministic; gated):
   - New deterministic workflow task: `kind:"http_json"` with `http_json` (outbound HTTP JSON; no LLM required).
   - Safety: disabled by default (SSRF risk). Enable explicitly with `--workflow-enable-http-tasks` (or env `AGENTD_WORKFLOW_ENABLE_HTTP_TASKS=1`).
@@ -532,12 +533,12 @@ Status:
 - Shipped: reliability hardening (fail-closed):
   - per-server timeouts: `--tool-server-timeout-ms` (must follow `--tool-server-cmd`)
   - per-server response byte cap: `--tool-server-max-line-bytes` (must follow `--tool-server-cmd`)
+  - optional idle health checks: `--tool-server-ping-interval-ms` (best-effort `op:"ping"`; auto-disables if unsupported)
   - restart-with-backoff if the server dies (does **not** auto-retry the same tool call)
-  - Proof: `ctest` includes `agentd_tool_server_smoke` and `agentd_tool_server_restart_smoke`.
+  - Proof: `ctest` includes `agentd_tool_server_smoke`, `agentd_tool_server_ping_smoke`, and `agentd_tool_server_restart_smoke`.
 
 Remaining:
 - Reliability hardening:
-  - optional `op:"ping"` health checks
   - structured error surface for protocol violations (stdout non-JSON, id mismatch) in daemon events/UI
 - Remote device bridges:
   - reference tool server for ESP32 serial/MQTT bridges that speaks the same protocol and advertises UM‑ACDS tool schemas
