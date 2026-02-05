@@ -321,3 +321,17 @@ agent_status_t agent_cbor_skip_item(agent_cbor_reader_t* r) {
   return AGENT_ERR_INVALID_ARGUMENT;
 }
 
+agent_status_t agent_cbor_read_item_view(agent_cbor_reader_t* r, agent_cbor_view_t* out_view) {
+  if (!r || !out_view) return AGENT_ERR_INVALID_ARGUMENT;
+  if (!r->buf) return AGENT_ERR_INVALID_ARGUMENT;
+  if (r->off > r->len) return AGENT_ERR_INTERNAL;
+
+  const size_t start = r->off;
+  const agent_status_t st = agent_cbor_skip_item(r);
+  if (st != AGENT_OK) return st;
+  if (r->off < start) return AGENT_ERR_INTERNAL;
+
+  out_view->ptr = r->buf + start;
+  out_view->len = r->off - start;
+  return AGENT_OK;
+}

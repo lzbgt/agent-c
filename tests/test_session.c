@@ -257,6 +257,8 @@ int main(void) {
   test_base64_module();
   extern void test_umbmp_auth_core_module(void);
   test_umbmp_auth_core_module();
+  extern void test_umbmp_envelope_read_module(void);
+  test_umbmp_envelope_read_module();
   printf("agent_core_tests OK\n");
   return 0;
 }

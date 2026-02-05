@@ -76,6 +76,8 @@ Platform (`agentd`):
 
 Node (`agent_core`):
 - Shipped (partial): deterministic CBOR **writer** helpers under `agent/cbor_det.h` (encoder only).
-- Not yet shipped: CBOR decoder + full JSON<->CBOR mapping helpers for MCU firmware.
+- Shipped (partial): tiny CBOR **reader** under `agent/cbor_read.h` (definite-length; no allocations).
+- Shipped (partial): UM‑BMP envelope CBOR decode helper under `agent/umbmp_envelope_read.h` (extracts envelope metadata; returns `body` as an opaque CBOR slice).
+- Not shipped (yet): full JSON<->CBOR mapping helpers for MCU firmware.
 - Recommendation: keep using a full CBOR library (e.g. TinyCBOR-derived) if you already have one, but use the deterministic profile
   defined in this repo for signed envelopes; `agent/cbor_det.h` can be used as a minimal fallback for signing inputs.

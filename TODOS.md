@@ -383,6 +383,9 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
    - Shipped (MCU ergonomics): small-footprint CBOR **decoder** helper in `agent_core` for the same definite-length wire profile:
      - Core API: `agent/cbor_read.h` (no allocations; returns views into input bytes; depth/item limits for safety).
      - Proof: `ctest` includes `agent_core_tests` (decodes the canonical `node_hello_minimal` auth vector).
+   - Shipped (MCU ergonomics): UM‑BMP envelope CBOR decode helper in `agent_core`:
+     - Core API: `agent/umbmp_envelope_read.h` (extracts `{msg_id,ts_utc_ms,type,from,to,trace_id,auth}` and returns `body` as an opaque CBOR slice).
+     - Proof: `ctest` includes `agent_core_tests` (decodes canonical vector + a trace+sig variant).
 3) **Scheduling policy v2.4+** — DRR is shipped; telemetry-driven cost is now shipped (`telemetry_v1`), next is budget-pressure-aware charging and resilient fairness under mixed workloads.
 4) **Memory v2.3** — query-plan primitives (bounded windows + key-prefix filters) and automatic consolidation triggers as time advances,
    so long-running systems keep context tight and correct.

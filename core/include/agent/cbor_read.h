@@ -69,10 +69,21 @@ agent_status_t agent_cbor_read_f64(agent_cbor_reader_t* r, double* out_v);
 agent_status_t agent_cbor_read_array_start(agent_cbor_reader_t* r, size_t* out_n_items);
 agent_status_t agent_cbor_read_map_start(agent_cbor_reader_t* r, size_t* out_n_pairs);
 
+// Reads the next item as a raw CBOR byte slice (including the item's initial header byte),
+// and advances the reader past it.
+//
+// This is useful when higher layers want to:
+// - forward/store an embedded CBOR object without decoding it
+// - decode the embedded object later with a separate reader (by re-initializing over the view)
+//
+// Notes:
+// - The returned view points into the original buffer passed to `agent_cbor_reader_init`.
+// - The view is only valid as long as the input buffer remains valid.
+agent_status_t agent_cbor_read_item_view(agent_cbor_reader_t* r, agent_cbor_view_t* out_view);
+
 // Skips the next CBOR item (including nested arrays/maps/tags).
 agent_status_t agent_cbor_skip_item(agent_cbor_reader_t* r);
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif
-
