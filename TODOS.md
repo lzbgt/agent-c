@@ -16,6 +16,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 - Tool plugins (`--tool-plugin`) so tools are composable without rebuilding.
   - Proof: `ctest` includes `agentd_tool_plugin_smoke`.
+- Embedded bring-up helper: `agent_core` now includes UM‑BMP/UM‑EAIS interop helpers (`agent/edge_interop.h`)
+  for id-safe validation/sanitization + message type constants (reduces node/platform drift).
+  - Proof: `ctest` includes `agent_core_tests`.
 - “Docs as truth” guardrails (DB schema doc + OpenAPI sanity checks).
   - Proof: `ctest` includes `docs_sanity_tests` + `openapi_sanity_tests`.
 - `trace_id` correlation end-to-end, plus a merged trace timeline across broker ⇄ agentd.
