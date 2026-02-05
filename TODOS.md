@@ -397,6 +397,8 @@ Maintainability note (always-on):
   - `daemon/src/run_memory_context.*` (durable memory context injection helpers)
   - `daemon/src/run_client_acks.*` (best-effort client acknowledgement verification helpers)
 - Shipped: unified `trace_id` validation + generation in `daemon/src/trace_id_util.*` (used by run/trace/edge).
+- Shipped: workflow engine refactor to keep `daemon/src/workflow_engine.cpp` <2000 LOC by extracting memory maintenance task handlers
+  into `daemon/src/workflow_memory_ops.*` (keeps memory evidence/checkpoint correlation consistent across tasks).
 - Follow-up: extract remaining submit-time validators/redaction helpers if `daemon/src/workflow_endpoints.cpp` grows again,
   so the durable workflow surface can evolve without accumulating another “mega endpoint” file.
 - DB backend decision: **stay on SQLite** (WAL + bounded writes + migrations) until a concrete requirement demands replication/multi-writer semantics at the DB layer.

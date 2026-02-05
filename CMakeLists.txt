@@ -216,6 +216,7 @@ if(AGENT_BUILD_HOST)
     daemon/src/workflow_agentd_call.cpp
     daemon/src/workflow_memory_correlate.cpp
     daemon/src/workflow_memory_query.cpp
+    daemon/src/workflow_memory_ops.cpp
     daemon/src/workflow_templates.cpp
     daemon/src/workflow_query_endpoints.cpp
     daemon/src/workflow_admin_endpoints.cpp
