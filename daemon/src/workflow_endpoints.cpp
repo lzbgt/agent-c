@@ -284,13 +284,55 @@ static bool expand_workflow_submit_macros(
     join["depends_on"] = deps;
 
     Json::Value agg(Json::objectValue);
-    agg["mode"] = "first_ok";
+    if (del.isMember("aggregate") && !del["aggregate"].isNull()) {
+      if (!del["aggregate"].isObject()) {
+        if (resp) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "delegate_parallel.delegate.aggregate must be an object";
+          o["task_id"] = task_id;
+          resp->body = json_stringify_compact(o);
+        }
+        return false;
+      }
+      agg = del["aggregate"];
+    }
+
+    // delegate_parallel default join behavior: first_ok across attempts.
+    if (!agg.isMember("mode") || !agg["mode"].isString() || trim_copy(agg["mode"].asString()).empty()) {
+      agg["mode"] = "first_ok";
+    }
+
+    // Always override task_ids to match the derived attempt tasks (ignores any caller-provided aggregate.task_ids).
     agg["task_ids"] = attempt_task_ids;
+
+    // Backward-compatible convenience: delegate.ok_pointer/value_pointer become defaults for the aggregate join
+    // when the aggregate object does not explicitly set them.
     if (del.isMember("ok_pointer") && del["ok_pointer"].isString() && !del["ok_pointer"].asString().empty()) {
-      agg["ok_pointer"] = del["ok_pointer"];
+      if (!agg.isMember("ok_pointer") || !agg["ok_pointer"].isString() || trim_copy(agg["ok_pointer"].asString()).empty()) {
+        agg["ok_pointer"] = del["ok_pointer"];
+      }
     }
     if (del.isMember("value_pointer") && del["value_pointer"].isString() && !del["value_pointer"].asString().empty()) {
-      agg["value_pointer"] = del["value_pointer"];
+      if (!agg.isMember("value_pointer") || !agg["value_pointer"].isString() || trim_copy(agg["value_pointer"].asString()).empty()) {
+        agg["value_pointer"] = del["value_pointer"];
+      }
+    }
+
+    const std::string agg_mode =
+      agg.isMember("mode") && agg["mode"].isString() ? trim_copy(agg["mode"].asString()) : std::string();
+    if (agg_mode != "first_ok" && agg_mode != "collect" && agg_mode != "best_of_n" && agg_mode != "quorum_hashes") {
+      if (resp) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "delegate_parallel aggregate.mode must be one of: first_ok, collect, best_of_n, quorum_hashes";
+        o["task_id"] = task_id;
+        o["mode"] = agg_mode;
+        resp->body = json_stringify_compact(o);
+      }
+      return false;
     }
     join["aggregate"] = agg;
 

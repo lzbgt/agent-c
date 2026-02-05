@@ -172,18 +172,22 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Submit-time task macro: `kind:"delegate_parallel"` expands into N attempt tasks + a deterministic `kind:"aggregate"` join (mode `first_ok`).
   - Attempt tasks default to `allow_error=true` so one failed attempt doesn’t fail the workflow; the join fails only if all attempts fail.
   - Proof: `ctest` includes `agentd_workflow_delegate_parallel_macro_smoke`.
+- Parallel collaboration macro join customization (v1.7.0):
+  - `delegate_parallel` can now pass `delegate.aggregate` to pick a deterministic join strategy (e.g. `mode:"best_of_n"`).
+  - Server overwrites `aggregate.task_ids` with the derived attempt task IDs (`<task_id>:<attempt_id>`).
+  - Proof: `ctest` includes `agentd_workflow_delegate_parallel_best_of_n_smoke`.
 
 ## P0 (next: maximize autonomous continuity + correctness)
 
 ### Reweighted next 5 (highest compound impact)
 
-Priority order (reweighted after scheduling v2.2 shipped; sections below are kept stable for diff readability):
+Priority order (reweighted after `delegate_parallel` join customization shipped; sections below are kept stable for diff readability):
 
-1) **Memory ↔ workflow time correlation** — time-advancing correctness; evidence hashing + bounded queries.
-2) **Agent collaboration v2** — budgeted parallel fan-out + deterministic joins.
-3) **Interop spec v0.2 (MCU/edge handoff)** — attestation + correlation; keep the contract executable.
-4) **Budgets v0.5** — host-tool budgets + streaming token usage coverage + stats surfacing.
-5) **Scheduling policy v2.3 (DRR + cost-aware quanta)** — move beyond WRR to cost-aware, budget-composing fairness.
+1) **Interop spec v0.2 (MCU/edge handoff)** — attestation + correlation; keep the contract executable.
+2) **Budgets v0.5** — host-tool budgets + streaming token usage coverage + stats surfacing.
+3) **Scheduling policy v2.3 (DRR + cost-aware quanta)** — move beyond WRR to cost-aware, budget-composing fairness.
+4) **Memory v2.3 (timeline + correlation)** — query-by-trace/workflow windows; rolling consolidation correlation as time advances.
+5) **Agent collaboration v2.1** — parallel fan-out with deterministic joins (best_of_n/quorum/collect) + per-attempt budgets.
 
 1) **Durable budget enforcement at scheduler level** (correctness + cost predictability)
    - Shipped (v0): workflow-level tool-call budget `workflow_limits.max_tool_calls_total` enforced by the workflow engine:

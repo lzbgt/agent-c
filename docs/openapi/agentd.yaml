@@ -1445,7 +1445,7 @@ components:
         - Deterministic delay tasks: `kind: delay` with `delay_ms` (no LLM required)
         - Edge collaboration tasks: `kind: edge_invoke` with `edge` (see `WorkflowEdgeInvokeSpec`)
         - Sequential fallback collaboration: `kind: delegate` with `delegate` (see `WorkflowDelegateSpec`)
-        - Parallel collaboration macro: `kind: delegate_parallel` with `delegate` (submit-time expansion into tasks + aggregate join)
+        - Parallel collaboration macro: `kind: delegate_parallel` with `delegate` (submit-time expansion into tasks + aggregate join; configurable)
 
         Note: OpenAPI cannot express conditional required fields perfectly; see the server-side behavior:
         - If `kind == avm_capsule`, `capsule.obc_base64` is required and `request.prompt` is not used.
@@ -1821,7 +1821,7 @@ components:
           description: |
             Collaboration task:
             - `delegate`: sequential fallback chain of attempts; returns the chosen attempt's assistant_text
-            - `delegate_parallel`: submit-time macro expanded into parallel attempt tasks + an aggregate join (mode=first_ok)
+            - `delegate_parallel`: submit-time macro expanded into parallel attempt tasks + an aggregate join (default mode=first_ok; override via `delegate.aggregate`)
         depends_on:
           type: array
           items: { type: string }
@@ -1850,6 +1850,8 @@ components:
         value_pointer:
           type: string
           description: For `kind:delegate_parallel` expansion, override aggregate value_pointer (default /assistant_text).
+        aggregate:
+          $ref: "#/components/schemas/WorkflowDelegateParallelAggregateSpec"
         attempts:
           type: array
           items:
@@ -1872,6 +1874,59 @@ components:
                 type: object
                 description: Deterministic correctness assertions evaluated against the attempt run result.
                 additionalProperties: true
+
+    WorkflowDelegateParallelAggregateSpec:
+      type: object
+      description: |
+        Optional deterministic aggregate join configuration for `kind:delegate_parallel`.
+
+        Notes:
+        - `task_ids` is **ignored** if provided; the server overwrites it with the derived attempt task ids.
+        - If omitted, the server defaults to `mode:first_ok`.
+        - If `ok_pointer`/`value_pointer` are set at the `delegate` level, they are used as defaults when the aggregate object does not explicitly set them.
+      properties:
+        mode:
+          type: string
+          enum: [quorum_hashes, collect, first_ok, best_of_n]
+          description: Aggregation strategy (default first_ok).
+        quorum:
+          type: integer
+          format: int32
+          description: For mode=quorum_hashes, minimum number of matching votes required (default: N=task_ids length).
+        pointers:
+          type: array
+          description: For mode=quorum_hashes or collect, JSON pointers into each task result JSON to compare/collect.
+          items: { type: string }
+        require_all:
+          type: boolean
+          description: For mode=collect, require every pointer for every attempt (default true).
+        ok_pointer:
+          type: string
+          description: For mode=first_ok or best_of_n, JSON pointer used to test ok (default /ok).
+        require_ok:
+          type: boolean
+          description: For mode=best_of_n, require ok_pointer to be true (default true).
+        value_pointer:
+          type: string
+          description: |
+            For mode=first_ok, JSON pointer into the task result JSON used as assistant_text (default /assistant_text).
+            For mode=best_of_n, JSON pointer into the candidate object used as assistant_text (default /answer).
+        candidate_pointer:
+          type: string
+          description: For mode=best_of_n, JSON pointer into the task result JSON for candidate JSON (default /assistant_text).
+        parse_json:
+          type: boolean
+          description: For mode=best_of_n, if candidate_pointer resolves to a string, parse it as JSON (default true).
+        score_pointer:
+          type: string
+          description: For mode=best_of_n, JSON pointer into the candidate object used as score (default /score).
+        maximize:
+          type: boolean
+          description: For mode=best_of_n, choose max score when true, else choose min (default true).
+        default_score:
+          type: number
+          format: double
+          description: For mode=best_of_n, fallback score when score_pointer missing/unparseable (optional).
 
     WorkflowEdgeInvokeSpec:
       type: object

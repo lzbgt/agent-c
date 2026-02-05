@@ -334,7 +334,7 @@ Notes:
 - This is a **sequential** primitive (v1). For true parallel multi-agent collaboration, model the fan-out as separate workflow tasks
   and use `kind:"aggregate"` to join deterministically.
 
-### Parallel collaboration macro (`kind:"delegate_parallel"`) (v1.6.1)
+### Parallel collaboration macro (`kind:"delegate_parallel"`) (v1.7.0)
 
 For true scheduler-visible collaboration (parallel execution, fairness caps, per-attempt budgets), `agentd` supports a submit-time
 macro task:
@@ -343,7 +343,7 @@ macro task:
 
 This is **syntactic sugar**: on submit, the server expands it into:
 - one normal workflow task per attempt (derived task IDs `<task_id>:<attempt_id>`, soft-failing by default via `allow_error=true`)
-- one deterministic `kind:"aggregate"` join task at the original `task_id` (mode `first_ok`)
+- one deterministic `kind:"aggregate"` join task at the original `task_id` (default mode `first_ok`)
 
 This means:
 - attempts run in parallel under normal workflow concurrency and fairness caps
@@ -370,6 +370,47 @@ Example:
 Join result fields live under the normal aggregate output at task `P`:
 - `chosen_task_id` (e.g. `"P:fallback"`)
 - `assistant_text` from the chosen attempt (defaults to `/assistant_text`)
+
+#### Custom join strategy (`delegate.aggregate`)
+
+For some collaboration patterns, “first successful” is not the best join. For example:
+- **best-of-n** with self-scoring (choose the highest score)
+- **quorum hashes** across multiple candidates (deterministic consensus checks)
+- **collect** (materialize multiple outputs for downstream deterministic processing)
+
+`delegate_parallel` lets you customize the join by passing `delegate.aggregate` (same knobs as `kind:"aggregate"`, except `task_ids`):
+- the server **overwrites** `aggregate.task_ids` with the derived attempt task ids (`<task_id>:<attempt_id>`)
+- if `aggregate.mode` is omitted, the server defaults to `first_ok`
+
+Example: best-of-n join over JSON candidates emitted as assistant text:
+
+```json
+{
+  "task_id": "P",
+  "kind": "delegate_parallel",
+  "delegate": {
+    "aggregate": {
+      "mode": "best_of_n",
+      "candidate_pointer": "/assistant_text",
+      "parse_json": true,
+      "score_pointer": "/score",
+      "value_pointer": "/answer",
+      "maximize": true,
+      "require_ok": true
+    },
+    "attempts": [
+      {
+        "id": "lo",
+        "request": { "prompt": "{\"score\":0.2,\"answer\":\"OK_LOW\"}", "no_session": true, "tools": "none", "base_url": "http://127.0.0.1:9999/v1", "api_key": "dummy", "model": "stub" }
+      },
+      {
+        "id": "hi",
+        "request": { "prompt": "{\"score\":0.9,\"answer\":\"OK_HIGH\"}", "no_session": true, "tools": "none", "base_url": "http://127.0.0.1:9999/v1", "api_key": "dummy", "model": "stub" }
+      }
+    ]
+  }
+}
+```
 
 ## HTTP API
 
