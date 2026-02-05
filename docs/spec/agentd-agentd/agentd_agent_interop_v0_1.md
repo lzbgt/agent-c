@@ -35,7 +35,7 @@ The baseline collaboration operation is:
 3. Surface the remote workflow’s final response JSON as part of the local task result.
 
 This composes with existing durable workflows:
-- You can “fan out” to multiple remote agents with `delegate_parallel` (LLM-level) or `edge_parallel` (node-level).
+- You can “fan out” to multiple remote agents with `agentd_parallel` (agent-to-agent), `delegate_parallel` (LLM-level), or `edge_parallel` (node-level).
 - You can “join” on correctness using `kind:"aggregate"` and deterministic pointers into the returned JSON.
 
 ## 3) Idempotency and retries (critical)

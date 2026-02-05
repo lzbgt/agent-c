@@ -568,6 +568,10 @@ Remaining:
 
 Status:
 - Foundation shipped: deterministic workflow `kind:"http_json"` (gated) plus `kind:"agentd_call"` for remote durable workflow handoff without an LLM.
+- Next (high leverage): submit-time collaboration fan-out macro `kind:"agentd_parallel"` (expands into parallel `agentd_call` tasks + a deterministic `aggregate` join).
+  - Why this compounds: it turns `agentd_call` into a first-class **redundancy/correctness** primitive (first_ok, quorum, collect, best_of_n),
+    and makes multi-agent patterns scheduler-visible (fairness/budgets apply to each branch).
+  - Remaining after macro: broker-routed targets and identity-scoped memory (see below).
 
 Deliverables:
 - Allow workflow tasks to target:

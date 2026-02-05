@@ -1518,6 +1518,7 @@ components:
         - Deterministic memory correlation tasks: `kind: memory_correlate` with `memory_correlate` (scans structured memory checkpoints; no LLM required)
         - Deterministic outbound HTTP JSON tasks: `kind: http_json` with `http_json` (gated by daemon flag; no LLM required)
         - Deterministic agent collaboration tasks: `kind: agentd_call` with `agentd_call` (gated by daemon flag; no LLM required)
+        - Parallel agent collaboration macro: `kind: agentd_parallel` with `agentd_parallel` (submit-time expansion into parallel `agentd_call` tasks + an aggregate join; configurable)
         - Deterministic memory consolidation tasks: `kind: memory_consolidate` with `memory_consolidate` (see `WorkflowMemoryConsolidateSpec`)
         - Deterministic delay tasks: `kind: delay` with `delay_ms` (no LLM required)
         - Edge collaboration tasks: `kind: edge_invoke` with `edge` (see `WorkflowEdgeInvokeSpec`)
@@ -1534,6 +1535,7 @@ components:
         - If `kind == memory_correlate`, `memory_correlate` is required and `request.prompt` is not used.
         - If `kind == http_json`, `http_json` is required and `request.prompt` is not used.
         - If `kind == agentd_call`, `agentd_call` is required and `request.prompt` is not used.
+        - If `kind == agentd_parallel`, `agentd_parallel.targets` and `agentd_parallel.agentd_call` are required and `request.prompt` is not used (expanded into multiple tasks).
         - If `kind == memory_consolidate`, `memory_consolidate` is optional and `request.prompt` is not used.
         - If `kind == delay`, `delay_ms` is optional (default 0) and `request.prompt` is not used.
         - If `kind == edge_invoke`, `edge.tool`/`edge.args` are required and `request.prompt` is not used.
@@ -1551,6 +1553,7 @@ components:
         - $ref: "#/components/schemas/WorkflowTaskMemoryCorrelateSpec"
         - $ref: "#/components/schemas/WorkflowTaskHttpJsonSpec"
         - $ref: "#/components/schemas/WorkflowTaskAgentdCallSpec"
+        - $ref: "#/components/schemas/WorkflowTaskAgentdParallelSpec"
         - $ref: "#/components/schemas/WorkflowTaskMemoryConsolidateSpec"
         - $ref: "#/components/schemas/WorkflowTaskDelaySpec"
         - $ref: "#/components/schemas/WorkflowTaskEdgeInvokeSpec"
@@ -1955,6 +1958,94 @@ components:
         include_results:
           type: boolean
           description: If true, remote poll requests include `include_results=1` (default true).
+
+    WorkflowTaskAgentdParallelSpec:
+      type: object
+      required: [task_id, kind, agentd_parallel]
+      properties:
+        task_id: { type: string }
+        allow_error:
+          type: boolean
+          description: If true, task failure does not fail the workflow (soft-fail).
+        inputs:
+          type: object
+          description: Optional per-task inputs (overrides workflow-level inputs).
+          additionalProperties: true
+        kind:
+          type: string
+          enum: [agentd_parallel]
+          description: |
+            Submit-time collaboration macro expanded into parallel `agentd_call` tasks + an aggregate join.
+
+            This is scheduler-visible fan-out: each derived task participates in budgets/fairness and is joined deterministically.
+        depends_on:
+          type: array
+          items: { type: string }
+        max_attempts: { type: integer, format: int32 }
+        priority:
+          type: integer
+          format: int32
+          description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+        agentd_parallel:
+          $ref: "#/components/schemas/WorkflowAgentdParallelSpec"
+        expect:
+          type: object
+          description: Deterministic correctness assertions (engine-enforced)
+          additionalProperties: true
+
+    WorkflowAgentdParallelSpec:
+      type: object
+      required: [targets, agentd_call]
+      description: |
+        Agent collaboration fan-out configuration for `kind:agentd_parallel`.
+
+        Expansion:
+        - Creates one derived task per target: `kind:agentd_call` with task_id `<task_id>:<target_id>`.
+        - Creates an `aggregate` join task at the original `<task_id>`.
+
+        Notes:
+        - The server overwrites `aggregate.task_ids` to match the derived tasks.
+        - `agentd_call.base_url` must be omitted; each target provides a base_url.
+      properties:
+        targets:
+          type: array
+          description: Collaboration target list (1..32). Each entry is either a base_url string or an object.
+          items:
+            oneOf:
+              - type: string
+                description: Target base_url (id defaults to `t0`, `t1`, ...).
+              - $ref: "#/components/schemas/WorkflowAgentdParallelTargetSpec"
+        agentd_call:
+          type: object
+          description: |
+            Base `agentd_call` configuration applied to every target (except base_url).
+
+            This is the same shape as `WorkflowAgentdCallSpec`, but `base_url` must be omitted.
+          additionalProperties: true
+        aggregate:
+          $ref: "#/components/schemas/WorkflowAggregateSpec"
+
+    WorkflowAgentdParallelTargetSpec:
+      type: object
+      required: [base_url]
+      properties:
+        id:
+          type: string
+          description: Optional id-safe target id (used in derived task ids). Default `t0`, `t1`, ...
+        base_url:
+          type: string
+          description: Required base_url for the target agentd (must start with http:// or https://).
+        allow_error:
+          type: boolean
+          description: If true (default), a failing branch does not fail the overall workflow (join decides).
+        max_attempts:
+          type: integer
+          format: int32
+          description: Optional override of derived task max_attempts for this target.
+        expect:
+          type: object
+          description: Optional deterministic expectations for the derived `agentd_call` task for this target.
+          additionalProperties: true
 
     WorkflowTaskMemoryConsolidateSpec:
       type: object

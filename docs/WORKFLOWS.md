@@ -353,6 +353,56 @@ Result shape (high level):
   - `${task.REMOTE.json:/agentd/final/workflow/status}`
   - `{"$ref":"task.REMOTE.json:/agentd/final/result/results_by_task/W/assistant_text"}`
 
+### Parallel agent collaboration macro (`kind:"agentd_parallel"`) (v1.10)
+
+`kind:"agentd_call"` is the primitive; `kind:"agentd_parallel"` is the high-leverage composition:
+fan out to multiple remote `agentd` instances **in parallel**, then join deterministically with `kind:"aggregate"`.
+
+This is submit-time syntactic sugar (like `delegate_parallel`):
+- the server expands the macro into one derived `kind:"agentd_call"` task per target (task ids `<task_id>:<target_id>`)
+- then replaces the macro task with a deterministic join task at the original `task_id` (`kind:"aggregate"`)
+
+Security / gating:
+- This macro expands into `agentd_call` tasks, so it is gated by `--workflow-enable-http-tasks` (SSRF surface).
+- The same outbound hardening applies (`--workflow-http-allow-host`, `--workflow-http-allow-cidr`, `--workflow-http-deny-private`).
+
+Example (fan out across 2 remotes; pick the first successful branch):
+
+```json
+{
+  "task_id": "P",
+  "kind": "agentd_parallel",
+  "agentd_parallel": {
+    "targets": [
+      { "id": "r0", "base_url": "http://127.0.0.1:9090" },
+      { "id": "r1", "base_url": "http://127.0.0.1:9091" }
+    ],
+    "agentd_call": {
+      "op": "workflow_submit_and_wait",
+      "timeout_ms": 20000,
+      "poll_ms": 50,
+      "include_tasks": true,
+      "include_results": true,
+      "workflow": {
+        "tasks": [
+          { "task_id": "W", "kind": "delay", "delay_ms": 10, "result": { "assistant_text": "remote ok" } }
+        ]
+      }
+    },
+    "aggregate": {
+      "mode": "first_ok",
+      "ok_pointer": "/ok",
+      "value_pointer": "/agentd/final/result/results_by_task/W/assistant_text"
+    }
+  }
+}
+```
+
+Notes:
+- `agentd_parallel.agentd_call.base_url` must be omitted (each target provides a base_url).
+- The server overwrites `aggregate.task_ids` to match the derived tasks.
+- Default join strategy is `mode:"first_ok"` if `aggregate.mode` is omitted.
+
 ### Deterministic memory update task (`kind:"memory_put"`) (v1.7)
 
 To make memory updates **correctness-gated** and correlated to durable execution, workflows can run a deterministic

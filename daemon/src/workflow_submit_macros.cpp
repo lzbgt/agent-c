@@ -62,7 +62,7 @@ bool expand_workflow_submit_macros(
 
     const std::string kind =
       t.isMember("kind") && t["kind"].isString() ? trim_copy(t["kind"].asString()) : std::string();
-    if (kind != "delegate_parallel" && kind != "edge_parallel") {
+    if (kind != "delegate_parallel" && kind != "edge_parallel" && kind != "agentd_parallel") {
       out.append(t);
       continue;
     }
@@ -79,6 +79,265 @@ bool expand_workflow_submit_macros(
         resp->body = json_stringify_compact(o);
       }
       return false;
+    }
+
+    if (kind == "agentd_parallel") {
+      const Json::Value ap = t.isMember("agentd_parallel") ? t["agentd_parallel"] : Json::Value(Json::nullValue);
+      if (!ap.isObject()) {
+        if (resp) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "agentd_parallel task missing agentd_parallel object";
+          o["task_id"] = task_id;
+          resp->body = json_stringify_compact(o);
+        }
+        return false;
+      }
+
+      const Json::Value targets = ap.isMember("targets") ? ap["targets"] : Json::Value(Json::nullValue);
+      if (!targets.isArray() || targets.empty()) {
+        if (resp) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "agentd_parallel.agentd_parallel.targets must be a non-empty array";
+          o["task_id"] = task_id;
+          resp->body = json_stringify_compact(o);
+        }
+        return false;
+      }
+
+      int64_t count = (int64_t)targets.size();
+      if (count > 32) {
+        if (resp) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "agentd_parallel.targets too large (max 32)";
+          o["task_id"] = task_id;
+          o["count"] = (Json::Int64)count;
+          resp->body = json_stringify_compact(o);
+        }
+        return false;
+      }
+
+      const Json::Value call =
+        ap.isMember("agentd_call") ? ap["agentd_call"] : Json::Value(Json::nullValue);
+      if (!call.isObject()) {
+        if (resp) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "agentd_parallel.agentd_parallel.agentd_call must be an object";
+          o["task_id"] = task_id;
+          resp->body = json_stringify_compact(o);
+        }
+        return false;
+      }
+      if (call.isMember("base_url") && call["base_url"].isString() && !trim_copy(call["base_url"].asString()).empty()) {
+        if (resp) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "agentd_parallel.agentd_call.base_url must be omitted (targets provide base_url)";
+          o["task_id"] = task_id;
+          resp->body = json_stringify_compact(o);
+        }
+        return false;
+      }
+
+      // Macro task fields to preserve/propagate.
+      std::vector<std::string> dep_ids;
+      if (t.isMember("depends_on") && t["depends_on"].isArray()) {
+        for (Json::ArrayIndex j = 0; j < t["depends_on"].size(); j++) {
+          if (!t["depends_on"][j].isString()) continue;
+          const std::string dep = trim_copy(t["depends_on"][j].asString());
+          if (!dep.empty()) dep_ids.push_back(dep);
+        }
+      }
+      const int priority =
+        t.isMember("priority") && t["priority"].isInt() ? std::max(-1000, std::min(1000, t["priority"].asInt())) : 0;
+
+      Json::Value attempt_task_ids(Json::arrayValue);
+      std::unordered_set<std::string> seen_target_ids;
+      for (Json::ArrayIndex ti = 0; ti < targets.size(); ti++) {
+        const Json::Value& tgt = targets[ti];
+
+        std::string base_url;
+        std::string target_id;
+        bool allow_error = true;
+        Json::Value target_expect(Json::nullValue);
+        Json::Value target_max_attempts(Json::nullValue);
+
+        if (tgt.isString()) {
+          base_url = trim_copy(tgt.asString());
+          target_id = "t" + std::to_string((int)ti);
+        } else if (tgt.isObject()) {
+          if (tgt.isMember("base_url") && tgt["base_url"].isString()) base_url = trim_copy(tgt["base_url"].asString());
+          if (tgt.isMember("id") && tgt["id"].isString()) target_id = trim_copy(tgt["id"].asString());
+          if (target_id.empty()) target_id = "t" + std::to_string((int)ti);
+          if (tgt.isMember("allow_error") && tgt["allow_error"].isBool()) allow_error = tgt["allow_error"].asBool();
+          if (tgt.isMember("expect") && tgt["expect"].isObject()) target_expect = tgt["expect"];
+          if (tgt.isMember("max_attempts") && tgt["max_attempts"].isInt()) target_max_attempts = tgt["max_attempts"];
+        } else {
+          continue;
+        }
+
+        if (base_url.empty()) {
+          if (resp) {
+            resp->status = 400;
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "agentd_parallel.targets entry missing base_url";
+            o["task_id"] = task_id;
+            o["index"] = (Json::Int64)ti;
+            resp->body = json_stringify_compact(o);
+          }
+          return false;
+        }
+        if (target_id.empty() || !id_is_safe(target_id)) {
+          if (resp) {
+            resp->status = 400;
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "agentd_parallel.targets[].id must be id-safe";
+            o["task_id"] = task_id;
+            o["index"] = (Json::Int64)ti;
+            o["id"] = target_id;
+            resp->body = json_stringify_compact(o);
+          }
+          return false;
+        }
+        if (!seen_target_ids.insert(target_id).second) {
+          if (resp) {
+            resp->status = 400;
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "duplicate agentd_parallel target id";
+            o["task_id"] = task_id;
+            o["id"] = target_id;
+            resp->body = json_stringify_compact(o);
+          }
+          return false;
+        }
+
+        const std::string attempt_task_id = task_id + ":" + target_id;
+        if (!id_is_safe(attempt_task_id)) {
+          if (resp) {
+            resp->status = 400;
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "agentd_parallel produced invalid derived task_id";
+            o["task_id"] = task_id;
+            o["target_id"] = target_id;
+            o["derived_task_id"] = attempt_task_id;
+            resp->body = json_stringify_compact(o);
+          }
+          return false;
+        }
+
+        Json::Value at(Json::objectValue);
+        at["task_id"] = attempt_task_id;
+        at["kind"] = "agentd_call";
+        at["allow_error"] = allow_error;
+        if (priority != 0) at["priority"] = priority;
+        if (t.isMember("inputs") && t["inputs"].isObject()) at["inputs"] = t["inputs"];
+        if (t.isMember("ready_unix_ms") && (t["ready_unix_ms"].isInt64() || t["ready_unix_ms"].isUInt64() || t["ready_unix_ms"].isInt())) {
+          at["ready_unix_ms"] = t["ready_unix_ms"];
+        }
+        if (!dep_ids.empty()) {
+          Json::Value deps(Json::arrayValue);
+          for (const auto& d : dep_ids) deps.append(d);
+          at["depends_on"] = deps;
+        }
+
+        if (target_max_attempts.isInt()) {
+          at["max_attempts"] = target_max_attempts;
+        } else if (t.isMember("max_attempts") && t["max_attempts"].isInt()) {
+          at["max_attempts"] = t["max_attempts"];
+        }
+        if (target_expect.isObject()) at["expect"] = target_expect;
+
+        Json::Value call2 = call;
+        call2["base_url"] = base_url;
+        at["agentd_call"] = call2;
+
+        out.append(at);
+        attempt_task_ids.append(attempt_task_id);
+      }
+
+      if (attempt_task_ids.empty()) {
+        if (resp) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "agentd_parallel.targets must include at least one valid entry";
+          o["task_id"] = task_id;
+          resp->body = json_stringify_compact(o);
+        }
+        return false;
+      }
+
+      // Replace macro task with aggregate join.
+      Json::Value join(Json::objectValue);
+      join["task_id"] = task_id;
+      join["kind"] = "aggregate";
+      if (priority != 0) join["priority"] = priority;
+      if (t.isMember("allow_error") && t["allow_error"].isBool()) join["allow_error"] = t["allow_error"];
+      if (t.isMember("inputs") && t["inputs"].isObject()) join["inputs"] = t["inputs"];
+      if (t.isMember("ready_unix_ms") && (t["ready_unix_ms"].isInt64() || t["ready_unix_ms"].isUInt64() || t["ready_unix_ms"].isInt())) {
+        join["ready_unix_ms"] = t["ready_unix_ms"];
+      }
+      {
+        Json::Value deps(Json::arrayValue);
+        for (Json::ArrayIndex k = 0; k < attempt_task_ids.size(); k++) deps.append(attempt_task_ids[k]);
+        join["depends_on"] = deps;
+      }
+
+      Json::Value agg(Json::objectValue);
+      if (ap.isMember("aggregate") && !ap["aggregate"].isNull()) {
+        if (!ap["aggregate"].isObject()) {
+          if (resp) {
+            resp->status = 400;
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "agentd_parallel.agentd_parallel.aggregate must be an object";
+            o["task_id"] = task_id;
+            resp->body = json_stringify_compact(o);
+          }
+          return false;
+        }
+        agg = ap["aggregate"];
+      }
+
+      // agentd_parallel default join behavior: first_ok across targets.
+      if (!agg.isMember("mode") || !agg["mode"].isString() || trim_copy(agg["mode"].asString()).empty()) {
+        agg["mode"] = "first_ok";
+      }
+      agg["task_ids"] = attempt_task_ids;
+
+      const std::string agg_mode =
+        agg.isMember("mode") && agg["mode"].isString() ? trim_copy(agg["mode"].asString()) : std::string();
+      if (agg_mode != "first_ok" && agg_mode != "quorum_ok" && agg_mode != "strict_all_ok" && agg_mode != "collect" && agg_mode != "best_of_n" && agg_mode != "quorum_hashes") {
+        if (resp) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "agentd_parallel aggregate.mode must be one of: first_ok, quorum_ok, strict_all_ok, collect, best_of_n, quorum_hashes";
+          o["task_id"] = task_id;
+          o["mode"] = agg_mode;
+          resp->body = json_stringify_compact(o);
+        }
+        return false;
+      }
+      join["aggregate"] = agg;
+
+      if (t.isMember("max_attempts") && t["max_attempts"].isInt()) join["max_attempts"] = t["max_attempts"];
+      if (t.isMember("expect") && t["expect"].isObject()) join["expect"] = t["expect"];
+
+      out.append(join);
+      continue;
     }
 
     if (kind == "edge_parallel") {
@@ -665,4 +924,3 @@ bool expand_workflow_submit_macros(
 }
 
 }  // namespace agentd
-
