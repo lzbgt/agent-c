@@ -15,6 +15,7 @@
 #include <mutex>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <memory>
@@ -115,7 +116,12 @@ struct ChildProc {
   int fd_out = -1;  // read from child stdout
   std::string read_buf;
   uint64_t next_id = 1;
+  int restart_failures = 0;
+  int64_t restart_after_ms = 0; // steady-clock ms
 };
+
+static int64_t steady_ms_now();
+static void mark_dead(ChildProc* p);
 
 static void child_close_all(int* fds, size_t n) {
   for (size_t i = 0; i < n; i++) {
@@ -186,8 +192,20 @@ static void kill_child_best_effort(ChildProc* p) {
   }
   if (p->pid > 0) {
     kill(p->pid, SIGTERM);
+    // Avoid blocking indefinitely: short grace, then SIGKILL.
+    const int64_t deadline = steady_ms_now() + 200;
     int st = 0;
-    (void)waitpid(p->pid, &st, 0);
+    for (;;) {
+      const pid_t r = waitpid(p->pid, &st, WNOHANG);
+      if (r == p->pid) break;
+      if (r < 0) break;
+      if (steady_ms_now() >= deadline) {
+        kill(p->pid, SIGKILL);
+        (void)waitpid(p->pid, &st, 0);
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
     p->pid = -1;
   }
 }
@@ -209,7 +227,14 @@ static bool write_all(int fd, const std::string& s, std::string* out_err) {
   return true;
 }
 
-static bool read_line_timeout(int fd, int timeout_ms, std::string* io_buf, std::string* out_line, std::string* out_err) {
+static bool read_line_timeout(
+  int fd,
+  int timeout_ms,
+  size_t max_buf_bytes,
+  std::string* io_buf,
+  std::string* out_line,
+  std::string* out_err
+) {
   if (out_err) out_err->clear();
   if (!io_buf || !out_line) return false;
   out_line->clear();
@@ -268,6 +293,10 @@ static bool read_line_timeout(int fd, int timeout_ms, std::string* io_buf, std::
       return false;
     }
     io_buf->append(buf, (size_t)r);
+    if (max_buf_bytes > 0 && io_buf->size() > max_buf_bytes) {
+      if (out_err) *out_err = "tool server response exceeded max_line_bytes";
+      return false;
+    }
   }
 }
 
@@ -275,6 +304,7 @@ static bool rpc_call_jsonl(
   ChildProc* p,
   const Json::Value& req,
   int timeout_ms,
+  size_t max_line_bytes,
   Json::Value* out_resp,
   std::string* out_err
 ) {
@@ -291,8 +321,14 @@ static bool rpc_call_jsonl(
 
   std::string raw;
   std::string rerr;
-  if (!read_line_timeout(p->fd_out, timeout_ms, &p->read_buf, &raw, &rerr)) {
+  // Guardrail: bound the maximum buffered bytes so a misbehaving server can't OOM agentd.
+  if (max_line_bytes < 1024) max_line_bytes = 1024;
+  if (!read_line_timeout(p->fd_out, timeout_ms, max_line_bytes, &p->read_buf, &raw, &rerr)) {
     if (out_err) *out_err = rerr;
+    return false;
+  }
+  if (raw.size() > max_line_bytes) {
+    if (out_err) *out_err = "tool server response exceeded max_line_bytes";
     return false;
   }
 
@@ -303,6 +339,68 @@ static bool rpc_call_jsonl(
     return false;
   }
   *out_resp = resp;
+  return true;
+}
+
+static int64_t steady_ms_now() {
+  return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+           std::chrono::steady_clock::now().time_since_epoch())
+    .count();
+}
+
+static bool child_reap_if_dead_nonblocking(ChildProc* p) {
+  if (!p) return true;
+  if (p->pid <= 0) return true;
+  int st = 0;
+  const pid_t r = waitpid(p->pid, &st, WNOHANG);
+  if (r == 0) return false; // still running
+  // If it exited (r==pid) or waitpid errored (r<0), treat as dead and invalidate state so we don't signal a stale pid.
+  mark_dead(p);
+  return true;
+}
+
+static void mark_dead(ChildProc* p) {
+  if (!p) return;
+  if (p->fd_in >= 0) {
+    close(p->fd_in);
+    p->fd_in = -1;
+  }
+  if (p->fd_out >= 0) {
+    close(p->fd_out);
+    p->fd_out = -1;
+  }
+  p->pid = -1;
+  p->read_buf.clear();
+}
+
+static bool restart_with_backoff(const ToolServerSpec& spec, ChildProc* p, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!p) return false;
+
+  const int64_t now = steady_ms_now();
+  if (p->restart_after_ms > 0 && now < p->restart_after_ms) {
+    if (out_err) *out_err = "tool server restart backoff active";
+    return false;
+  }
+
+  // Ensure any existing fds are closed.
+  if (p->pid > 0) kill_child_best_effort(p);
+  mark_dead(p);
+
+  std::string err;
+  ChildProc fresh;
+  if (!spawn_shell_cmd(spec.cmd, &fresh, &err)) {
+    p->restart_failures = std::min(30, p->restart_failures + 1);
+    const int64_t backoff = std::min<int64_t>(5000, 100LL * (1LL << std::min(10, p->restart_failures)));
+    p->restart_after_ms = now + backoff;
+    if (out_err) *out_err = "spawn failed: " + err;
+    return false;
+  }
+
+  // Success: replace proc, reset failure counters.
+  *p = std::move(fresh);
+  p->restart_failures = 0;
+  p->restart_after_ms = 0;
   return true;
 }
 
@@ -382,9 +480,18 @@ struct ToolServerChain::Impl {
 
     std::lock_guard<std::mutex> lock(*self->proc_mu[idx]);
     ChildProc& p = self->procs[idx];
-    if (p.pid <= 0 || p.fd_in < 0 || p.fd_out < 0) {
-      const char* err = "{\"ok\":false,\"error\":\"tool server not running\"}";
-      return agent_string_set_copy(out_result, err, std::strlen(err));
+    const ToolServerSpec spec = (idx < self->specs.size()) ? self->specs[idx] : ToolServerSpec{};
+
+    if (child_reap_if_dead_nonblocking(&p) || p.pid <= 0 || p.fd_in < 0 || p.fd_out < 0) {
+      std::string rerr;
+      if (!restart_with_backoff(spec, &p, &rerr)) {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "tool server not running";
+        if (!rerr.empty()) o["detail"] = rerr;
+        const std::string msg = json_stringify_compact_local(o);
+        return agent_string_set_copy(out_result, msg.c_str(), msg.size());
+      }
     }
 
     Json::Value args(Json::nullValue);
@@ -405,7 +512,10 @@ struct ToolServerChain::Impl {
 
     Json::Value resp;
     std::string rerr;
-    if (!rpc_call_jsonl(&p, req, /*timeout_ms=*/30000, &resp, &rerr)) {
+    if (!rpc_call_jsonl(&p, req, /*timeout_ms=*/spec.timeout_ms, /*max_line_bytes=*/spec.max_line_bytes, &resp, &rerr)) {
+      // Fail-closed: mark the server dead so future calls can restart.
+      kill_child_best_effort(&p);
+      mark_dead(&p);
       Json::Value o(Json::objectValue);
       o["ok"] = false;
       o["error"] = "tool server rpc failed";
@@ -414,7 +524,27 @@ struct ToolServerChain::Impl {
       return agent_string_set_copy(out_result, msg.c_str(), msg.size());
     }
 
-    // Expect response includes matching id, but do not fail hard on mismatch (best-effort).
+    // Protocol hardening: require matching id.
+    if (resp.isObject() && resp.isMember("id") && (resp["id"].isUInt64() || resp["id"].isInt64() || resp["id"].isInt() || resp["id"].isUInt())) {
+      const uint64_t got = (uint64_t)resp["id"].asUInt64();
+      if (got != id) {
+        kill_child_best_effort(&p);
+        mark_dead(&p);
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "tool server response id mismatch";
+        o["expected_id"] = (Json::UInt64)id;
+        o["got_id"] = (Json::UInt64)got;
+        const std::string msg = json_stringify_compact_local(o);
+        return agent_string_set_copy(out_result, msg.c_str(), msg.size());
+      }
+    } else {
+      kill_child_best_effort(&p);
+      mark_dead(&p);
+      const char* err = "{\"ok\":false,\"error\":\"tool server response missing id\"}";
+      return agent_string_set_copy(out_result, err, std::strlen(err));
+    }
+
     Json::Value tool_result = resp.isMember("tool_result") ? resp["tool_result"] : resp;
     std::string out_s;
     if (tool_result.isString()) {
@@ -492,8 +622,17 @@ bool ToolServerChain::load(const std::vector<ToolServerSpec>& specs, std::string
     req["op"] = "manifest";
     Json::Value resp;
     std::string rerr;
-    if (!rpc_call_jsonl(&impl_->procs[i], req, /*timeout_ms=*/30000, &resp, &rerr)) {
+    if (!rpc_call_jsonl(&impl_->procs[i], req, /*timeout_ms=*/s.timeout_ms, /*max_line_bytes=*/s.max_line_bytes, &resp, &rerr)) {
       if (out_error) *out_error = "tool server manifest rpc failed: " + rerr + " (cmd=" + s.cmd + ")";
+      return false;
+    }
+
+    if (!resp.isObject() || !resp.isMember("id") || !(resp["id"].isUInt64() || resp["id"].isInt64() || resp["id"].isInt() || resp["id"].isUInt())) {
+      if (out_error) *out_error = "tool server manifest response missing id (cmd=" + s.cmd + ")";
+      return false;
+    }
+    if ((uint64_t)resp["id"].asUInt64() != id) {
+      if (out_error) *out_error = "tool server manifest response id mismatch (cmd=" + s.cmd + ")";
       return false;
     }
 

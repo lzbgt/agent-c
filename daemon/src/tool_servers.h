@@ -24,6 +24,8 @@ namespace agentd {
 // The agentd tool executor returns the `tool_result` JSON (stringified if object) as the tool output.
 struct ToolServerSpec {
   std::string cmd;  // executed via `/bin/sh -lc <cmd>` on Unix
+  int timeout_ms = 30000;
+  size_t max_line_bytes = 4 * 1024 * 1024;
 };
 
 class ToolServerChain {
@@ -47,4 +49,3 @@ class ToolServerChain {
 };
 
 }  // namespace agentd
-

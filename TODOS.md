@@ -18,8 +18,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Proof: `ctest` includes `agentd_tool_plugin_smoke`.
 - Tool servers (out-of-process) so big integrations stay isolated and “bring-up fast”.
   - Daemon flag: `--tool-server-cmd "<cmd>"` (repeatable; stdio JSON-lines protocol)
+  - Reliability knobs: `--tool-server-timeout-ms`, `--tool-server-max-line-bytes`, plus restart-with-backoff on death (fail-closed; no auto-retry)
   - Docs: `docs/TOOL_SERVERS.md`
-  - Proof: `ctest` includes `agentd_tool_server_smoke`.
+  - Proof: `ctest` includes `agentd_tool_server_smoke` and `agentd_tool_server_restart_smoke`.
 - Embedded bring-up helper: `agent_core` now includes UM‑BMP/UM‑EAIS interop helpers (`agent/edge_interop.h`)
   for id-safe validation/sanitization + message type constants (reduces node/platform drift).
   - Proof: `ctest` includes `agent_core_tests`.
@@ -508,13 +509,16 @@ Proof:
 
 Status:
 - Shipped: `--tool-server-cmd` loads out-of-process tools via a strict stdio JSON-lines protocol.
-  - Proof: `ctest` includes `agentd_tool_server_smoke`.
+- Shipped: reliability hardening (fail-closed):
+  - per-server timeouts: `--tool-server-timeout-ms` (must follow `--tool-server-cmd`)
+  - per-server response byte cap: `--tool-server-max-line-bytes` (must follow `--tool-server-cmd`)
+  - restart-with-backoff if the server dies (does **not** auto-retry the same tool call)
+  - Proof: `ctest` includes `agentd_tool_server_smoke` and `agentd_tool_server_restart_smoke`.
 
 Remaining:
 - Reliability hardening:
-  - per-server timeout config (`--tool-server-timeout-ms`)
-  - restart/backoff if the server dies mid-run (best-effort, fail-closed)
   - optional `op:"ping"` health checks
+  - structured error surface for protocol violations (stdout non-JSON, id mismatch) in daemon events/UI
 - Remote device bridges:
   - reference tool server for ESP32 serial/MQTT bridges that speaks the same protocol and advertises UM‑ACDS tool schemas
 

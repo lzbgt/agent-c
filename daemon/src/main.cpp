@@ -149,7 +149,7 @@ int main(int argc, char** argv) {
   DaemonConfig cfg;
   bool system_profile_set = false;
   std::vector<std::string> tool_plugin_paths;
-  std::vector<std::string> tool_server_cmds;
+  std::vector<ToolServerSpec> tool_server_specs;
   // Minimal flag parsing (daemon is host-only; core remains argv/env-free).
   for (int i = 1; i < argc; i++) {
     const std::string a = argv[i] ? argv[i] : "";
@@ -548,7 +548,47 @@ int main(int argc, char** argv) {
         std::cerr << "Missing value for --tool-server-cmd\n";
         return 2;
       }
-      tool_server_cmds.push_back(v);
+      ToolServerSpec s;
+      s.cmd = v;
+      tool_server_specs.push_back(std::move(s));
+    } else if (a == "--tool-server-timeout-ms") {
+      std::string v;
+      if (!take(&v) || v.empty()) {
+        std::cerr << "Missing value for --tool-server-timeout-ms\n";
+        return 2;
+      }
+      if (tool_server_specs.empty()) {
+        std::cerr << "--tool-server-timeout-ms must follow --tool-server-cmd\n";
+        return 2;
+      }
+      try {
+        int n = std::stoi(v);
+        if (n < 1) n = 1;
+        if (n > 300000) n = 300000;
+        tool_server_specs.back().timeout_ms = n;
+      } catch (...) {
+        std::cerr << "Invalid --tool-server-timeout-ms\n";
+        return 2;
+      }
+    } else if (a == "--tool-server-max-line-bytes") {
+      std::string v;
+      if (!take(&v) || v.empty()) {
+        std::cerr << "Missing value for --tool-server-max-line-bytes\n";
+        return 2;
+      }
+      if (tool_server_specs.empty()) {
+        std::cerr << "--tool-server-max-line-bytes must follow --tool-server-cmd\n";
+        return 2;
+      }
+      try {
+        long long n = std::stoll(v);
+        if (n < 1024) n = 1024;
+        if (n > 64LL * 1024LL * 1024LL) n = 64LL * 1024LL * 1024LL;
+        tool_server_specs.back().max_line_bytes = (size_t)n;
+      } catch (...) {
+        std::cerr << "Invalid --tool-server-max-line-bytes\n";
+        return 2;
+      }
     } else if (a == "--cors-origin") {
       std::string v;
       if (!take(&v) || v.empty()) {
@@ -631,7 +671,9 @@ int main(int argc, char** argv) {
         << "  --no-default-system  Disable default host system hint (host tools only)\n"
         << "  --system-profile <name> Host system prompt profile (default: default)\n"
         << "  --tool-plugin <path> Load a tool plugin (repeatable)\n"
-        << "  --tool-server-cmd <cmd> Start a stdio tool server (repeatable)\n";
+        << "  --tool-server-cmd <cmd> Start a stdio tool server (repeatable)\n"
+        << "    --tool-server-timeout-ms <n>    Per-server RPC timeout (must follow --tool-server-cmd; default 30000; clamp 1..300000)\n"
+        << "    --tool-server-max-line-bytes <n>  Per-server stdout line cap (must follow --tool-server-cmd; default 4MiB; clamp 1024..64MiB)\n";
       return 0;
     } else {
       std::cerr << "Unknown arg: " << a << "\n";
@@ -919,14 +961,8 @@ int main(int argc, char** argv) {
     }
   }
 
-  if (!tool_server_cmds.empty()) {
-    std::vector<ToolServerSpec> specs;
-    specs.reserve(tool_server_cmds.size());
-    for (const auto& cmd : tool_server_cmds) {
-      ToolServerSpec s;
-      s.cmd = cmd;
-      specs.push_back(std::move(s));
-    }
+  if (!tool_server_specs.empty()) {
+    std::vector<ToolServerSpec> specs = tool_server_specs;
     std::string terr;
     if (!tool_servers.load(specs, &terr)) {
       std::cerr << "Failed to load tool servers: " << (terr.empty() ? "unknown error" : terr) << "\n";
