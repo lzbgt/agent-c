@@ -277,9 +277,14 @@ Priority order (reweighted after `delegate_parallel` join customization shipped;
    - Shipped: normative reliability rules + strict task-loop correlation:
      - Spec: `docs/spec/um-eais/um-eais-v0.1.md` §5.3 (reliability + idempotency)
      - Platform enforcement: `TASK_ACK/TASK_EVENT/TASK_DONE/TASK_FAILED` require `idempotency_key` (reject missing/invalid)
-   - Next (v0.2): attestation + trace correlation:
-     - standardize `trace.trace_id` propagation for all edge task lifecycle messages
-     - extend payload conventions so nodes can report deterministic compute hashes (e.g. AVM `RESULT_HASH/TRACE_HASH`) as task done attestation.
+   - Shipped (v0.2 draft): attestation + trace correlation are now versioned and executable:
+     - Spec addendum: `docs/spec/um-eais/um-eais-v0.2.md`
+     - JSON Schemas: `docs/spec/um-eais/schema/*v0.2*.schema.json`
+     - Fixture transcript: `docs/spec/um-eais/fixtures/umbmp_task_loop_v0.2_trace_attest.jsonl`
+     - Proof: `ctest` includes `agentd_edge_interop_task_loop_trace_attest_v0_2_replay_smoke`.
+   - Next (v0.3): make node/platform hash surfaces portable:
+     - standardize canonical hashing for `result_sha256` across languages (portable attestation + quorum)
+     - extend payload conventions so nodes can report deterministic compute hashes (e.g. AVM `result_hash/trace_hash`) as attestation fields.
 
 4) **Agent collaboration v2 (budgeted parallel fan-out + join macros)** (power-unleashed)
    - Status: submit-time parallel macro shipped as `kind:"delegate_parallel"` (v1.6.1).
