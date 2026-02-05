@@ -529,6 +529,10 @@ Maintainability note (always-on):
        - optional: if `edge_auth_max_skew_ms > 0`, authenticated envelopes are rejected when `abs(now-ts_utc_ms)` exceeds the window
        - if optional: unsigned accepted, but if `auth` is present it must verify
      - Works for both JSON and CBOR wire encodings (auth is verified over platform canonical JSON after decoding).
+   - Shipped (gateway ergonomics): `agent_core` can decode the CBOR outbox response without JSONCPP:
+     - Core API: `agent/um_eais_outbox_read.h` extracts `messages[].msg` as `agent_umbmp_envelope_view_t` views.
+     - Proof: `ctest` includes `agent_core_tests` (outbox decode unit) and `agentd_edge_outbox_cbor_smoke` now validates
+       the platform response using a core-linked helper (`agent_core_outbox_cbor_check`).
      - Spec note: `docs/spec/um-eais/um-bmp-envelope-auth-hmac-v0.4.md`
      - Proof: `ctest` includes `agentd_edge_auth_hmac_smoke` and `agentd_edge_auth_ed25519_smoke`.
    - Next: consolidate UM‑EAIS + durable workflow handoff into a single **versioned interop contract** with explicit:

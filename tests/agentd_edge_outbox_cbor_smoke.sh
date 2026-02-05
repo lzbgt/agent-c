@@ -11,6 +11,8 @@ if [[ -z "${AGENTD_BIN}" ]]; then
   exit 2
 fi
 
+CBOR_CHECK_BIN="${2:-}"
+
 LOG_DIR="$(agentd_smoke_log_dir)"
 mkdir -p "${LOG_DIR}"
 
@@ -64,7 +66,11 @@ if not re.search(r'(?im)^content-type:\\s*application/cbor\\b', hdr):
   raise SystemExit(1)
 PY
 
-python3 - <<PY
+if [[ -n "${CBOR_CHECK_BIN}" && -x "${CBOR_CHECK_BIN}" ]]; then
+  "${CBOR_CHECK_BIN}" --file "${body}" --node-id "${NODE_ID}" --expect-type "PLATFORM_CAPS_REQ"
+else
+  # Fallback: use a tiny Python CBOR decoder (kept for portability if the helper binary is not present).
+  python3 - <<PY
 import sys
 
 data = open(r'''${body}''','rb').read()
@@ -152,6 +158,6 @@ if "PLATFORM_CAPS_REQ" not in types:
   print("expected PLATFORM_CAPS_REQ in CBOR outbox, got", types, file=sys.stderr)
   raise SystemExit(1)
 PY
+fi
 
 echo "agentd_edge_outbox_cbor_smoke OK"
-

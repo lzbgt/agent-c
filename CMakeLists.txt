@@ -21,6 +21,7 @@ add_library(agent_core STATIC
   core/src/agent_hmac_sha256.c
   core/src/agent_json_c14n.c
   core/src/agent_um_eais_task_assign_read.c
+  core/src/agent_um_eais_outbox_read.c
   core/src/agent_umbmp_envelope_read.c
   core/src/agent_umbmp_auth.c
   core/src/agent_runner.c
@@ -77,6 +78,15 @@ target_compile_options(agent_ed25519_tool PRIVATE
   $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
 )
 target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
+
+# Host-side helper for validating CBOR outbox bytes with the embedded decoder.
+add_executable(agent_core_outbox_cbor_check
+  tools/agent_core_outbox_cbor_check.cpp
+)
+target_compile_options(agent_core_outbox_cbor_check PRIVATE
+  $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+)
+target_link_libraries(agent_core_outbox_cbor_check PRIVATE agent_core)
 
 if(AGENT_BUILD_HOST)
   find_package(CURL REQUIRED)
@@ -295,6 +305,7 @@ add_executable(agent_core_tests
   tests/test_cbor_read.c
   tests/test_edge_interop.c
   tests/test_um_eais_task_assign_read.c
+  tests/test_um_eais_outbox_read.c
   tests/test_umbmp_envelope_read.c
   tests/test_umbmp_envelope_write.c
   tests/test_umbmp_auth_core.c
@@ -527,7 +538,7 @@ if(AGENT_BUILD_HOST)
 				        $<TARGET_FILE:agent_ed25519_tool>
 				    )
 				    add_test(NAME agentd_edge_message_cbor_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_message_cbor_smoke.sh $<TARGET_FILE:agentd>)
-				    add_test(NAME agentd_edge_outbox_cbor_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_outbox_cbor_smoke.sh $<TARGET_FILE:agentd>)
+				    add_test(NAME agentd_edge_outbox_cbor_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_outbox_cbor_smoke.sh $<TARGET_FILE:agentd> $<TARGET_FILE:agent_core_outbox_cbor_check>)
 				    add_test(NAME agentd_edge_caps_sha256_validation_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_caps_sha256_validation_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_edge_task_assign_schema_validation_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_task_assign_schema_validation_smoke.sh $<TARGET_FILE:agentd>)
 					    add_test(NAME agentd_edge_task_done_result_schema_validation_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_task_done_result_schema_validation_smoke.sh $<TARGET_FILE:agentd>)
