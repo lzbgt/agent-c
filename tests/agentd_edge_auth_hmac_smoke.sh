@@ -153,7 +153,7 @@ if [[ "${status_replay_same_seq}" != "401" ]]; then
   exit 1
 fi
 
-# Also accept a CBOR-native signing profile: HMAC over canonical CBOR encoding of the envelope without auth.
+# Also accept a CBOR-native signing profile: HMAC over deterministic CBOR encoding of the envelope without auth.
 hello_signed_cbor_alg="$(python3 - <<PY
 import base64, hashlib, hmac, json, uuid, time
 
@@ -180,7 +180,10 @@ def _cbor_array(a):
   return out
 
 def _cbor_map(m):
-  keys = sorted(m.keys())
+  # Must match daemon/src/cbor_encode.* deterministic key ordering:
+  # - sort by UTF-8 byte length
+  # - then lexicographically by UTF-8 bytes
+  keys = sorted(m.keys(), key=lambda k: (len(k.encode("utf-8")), k.encode("utf-8")))
   out = _cbor_ai_u64(5 << 5, len(keys))
   for k in keys:
     if not isinstance(k, str):

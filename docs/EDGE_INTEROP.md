@@ -82,9 +82,9 @@ Envelope authenticity (optional, UM‑BMP auth v0.4):
 - Envelopes MAY include an `auth` object:
   - `auth.alg` (string):
     - `"hmac-sha256"`: HMAC over canonical JSON bytes (`agent_json_c14n_v1`)
-    - `"hmac-sha256-cbor"`: HMAC over canonical CBOR bytes (deterministic RFC 8949 encoding; `daemon/src/cbor_encode.*`)
+    - `"hmac-sha256-cbor"`: HMAC over deterministic CBOR bytes (`daemon/src/cbor_encode.*`)
     - `"ed25519"`: Ed25519 signature over canonical JSON bytes (`agent_json_c14n_v1`)
-    - `"ed25519-cbor"`: Ed25519 signature over canonical CBOR bytes (deterministic RFC 8949 encoding; `daemon/src/cbor_encode.*`)
+    - `"ed25519-cbor"`: Ed25519 signature over deterministic CBOR bytes (`daemon/src/cbor_encode.*`)
   - `auth.kid`: key id selecting an operator-provisioned shared secret (HMAC) or public key (Ed25519)
   - `auth.seq`: optional monotonic sequence number (anti-replay; when enabled by the platform)
   - `auth.sig`: base64 of the signature bytes:
@@ -92,7 +92,11 @@ Envelope authenticity (optional, UM‑BMP auth v0.4):
     - 64 bytes for Ed25519
   - Signing input (all algs):
     - signing input is the envelope with `auth.sig` removed (auth metadata like `kid`/`seq` stays in the signed bytes)
-    - for `*-cbor` algs: **canonical CBOR** bytes (RFC 8949, definite lengths, sorted string map keys; matches `daemon/src/cbor_encode.*`)
+    - for `*-cbor` algs: deterministic CBOR bytes with:
+      - definite lengths only
+      - text-string map keys ordered by UTF‑8 byte length, then lexicographically by UTF‑8 bytes
+      - integers encoded in minimal CBOR form
+      - floats encoded as float64 when present (avoid floats in signed envelopes)
 - Operator controls:
   - `edge_auth.required` is surfaced via `GET /api/v1/config`.
   - `POST /api/v1/config/update` supports:

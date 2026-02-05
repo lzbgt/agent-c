@@ -79,7 +79,17 @@ static bool encode_object(const Json::Value& v, std::string* out, std::string* o
   if (!v.isObject()) return fail(out_error, "cbor: expected object");
   const auto names = v.getMemberNames();
   std::vector<std::string> keys(names.begin(), names.end());
-  std::sort(keys.begin(), keys.end());
+  // Deterministic map key ordering (text strings):
+  // - sort by UTF-8 byte length
+  // - then lexicographically by UTF-8 bytes
+  //
+  // This is compatible with RFC 8949 deterministic encoding requirements for
+  // text-string keys, without implementing full “sort by encoded bytes” for all
+  // possible CBOR key types (we restrict envelope keys to text strings anyway).
+  std::sort(keys.begin(), keys.end(), [](const std::string& a, const std::string& b) {
+    if (a.size() != b.size()) return a.size() < b.size();
+    return a < b;
+  });
 
   append_ai_u64(out, /*major=*/(5u << 5), (uint64_t)keys.size());
   for (const auto& k : keys) {

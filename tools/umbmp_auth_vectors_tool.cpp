@@ -75,7 +75,8 @@ int main(void) {
   Json::Value root(Json::objectValue);
   root["version"] = "umbmp_envelope_auth_vectors_v0.4";
   root["notes"] = "Signing input is the envelope with auth.sig removed (auth metadata stays signed). "
-                  "Canonical JSON uses agent_json_c14n_v1; canonical CBOR matches daemon/src/cbor_encode.*.";
+                  "Canonical JSON uses agent_json_c14n_v1; deterministic CBOR bytes match daemon/src/cbor_encode.* "
+                  "(definite lengths; text-string map keys ordered by UTF-8 byte length then bytes; float64 only).";
 
   Json::Value vecs(Json::arrayValue);
 

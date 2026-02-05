@@ -110,7 +110,7 @@ static void test_vectors_file(const std::string& path) {
       assert(got == want);
     }
 
-    // CBOR canonical bytes: based on auth.alg="ed25519-cbor" (vector convention).
+    // Deterministic CBOR bytes: based on auth.alg="ed25519-cbor" (vector convention).
     {
       env["auth"]["alg"] = "ed25519-cbor";
       const Json::Value no_sig = env_no_sig_for(env);

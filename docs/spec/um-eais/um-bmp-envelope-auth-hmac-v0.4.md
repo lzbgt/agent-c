@@ -38,9 +38,9 @@ When present, the envelope includes:
 Semantics:
 - `auth.alg` MUST be one of:
   - `"hmac-sha256"` (signing input is canonical JSON bytes),
-  - `"hmac-sha256-cbor"` (signing input is canonical CBOR bytes),
+  - `"hmac-sha256-cbor"` (signing input is deterministic CBOR bytes),
   - `"ed25519"` (signing input is canonical JSON bytes),
-  - `"ed25519-cbor"` (signing input is canonical CBOR bytes).
+  - `"ed25519-cbor"` (signing input is deterministic CBOR bytes).
 - `auth.kid` selects key material provisioned on both node/gateway and platform:
   - for HMAC: shared secret
   - for Ed25519: public key (platform) / private key seed (node)
@@ -66,11 +66,13 @@ Pseudocode:
 2) `canon = json_c14n(env_no_sig)`
 3) `sig = base64(HMAC_SHA256(secret_for(kid), canon))`
 
-For `auth.alg="hmac-sha256-cbor"` (canonical CBOR):
+For `auth.alg="hmac-sha256-cbor"` (deterministic CBOR):
 
 Signing input is the deterministic CBOR encoding of `env_no_sig`:
 - CBOR (RFC 8949) definite lengths only (no indefinite streaming items)
-- JSON objects encoded as CBOR maps with lexicographically sorted UTF‑8 string keys
+- JSON objects encoded as CBOR maps with deterministically ordered UTF‑8 text-string keys:
+  - sort by UTF‑8 byte length
+  - then lexicographically by UTF‑8 bytes
 - integers encoded in the minimal CBOR integer form
 - floats SHOULD NOT be used in signed envelopes; the platform encodes floats as float64 when present
 
@@ -82,7 +84,7 @@ Pseudocode:
 
 For `auth.alg="ed25519"` and `auth.alg="ed25519-cbor"`:
 
-- Signing input is computed exactly as above (canonical JSON or canonical CBOR of `env_no_sig`).
+- Signing input is computed exactly as above (canonical JSON or deterministic CBOR of `env_no_sig`).
 - `sig = base64(Ed25519_SIGN(sk_for(kid), signing_input))`
 - Verification is `Ed25519_VERIFY(pk_for(kid), signing_input, sig)`
 
@@ -104,12 +106,14 @@ MCU CBOR implementation guidance (TinyCBOR-style):
 
 - Encode the envelope as a CBOR map (major type 5) with a *definite* pair count.
 - Use only text-string keys (major type 3).
-- Sort map keys lexicographically by UTF‑8 bytes.
+- Sort map keys deterministically:
+  - by UTF‑8 byte length
+  - then lexicographically by UTF‑8 bytes
   - For UM‑BMP envelopes this means keys are emitted in this order:
-    `auth`, `body`, `from`, `msg_id`, `to`, `trace`, `ts_utc_ms`, `type`
+    `to`, `auth`, `body`, `from`, `type`, `trace`, `msg_id`, `ts_utc_ms`
     (omit absent optional keys, but preserve ordering of those present).
 - Encode integers in minimal CBOR form (major 0/1).
-- Avoid floats in signed envelopes. If you must include one, the platform canonical CBOR encoder uses float64.
+- Avoid floats in signed envelopes. If you must include one, the platform deterministic CBOR encoder uses float64.
 
 ## Platform enforcement behavior (agentd)
 

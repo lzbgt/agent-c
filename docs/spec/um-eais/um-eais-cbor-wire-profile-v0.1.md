@@ -55,12 +55,14 @@ To keep decoding bounded, deterministic, and MCU-friendly, the v0.1 CBOR profile
 
 ## Determinism and hashing
 
-If/when a future interop version defines message-level hashing or signatures on the wire,
-the recommended approach is:
+UM‑BMP auth v0.4 already defines message-level signatures where the signing input may be CBOR bytes
+(`auth.alg="hmac-sha256-cbor"` / `auth.alg="ed25519-cbor"`).
+
+The recommended approach is:
 
 - Use a deterministic encoding:
-  - CBOR canonical encoding (RFC 8949, Section “Deterministically Encoded CBOR”)
-- Hash the canonical CBOR bytes (not the decoded JSON), to avoid ambiguities.
+  - CBOR deterministic encoding (RFC 8949 definite-length items; deterministic map key ordering; minimal integers)
+- Hash/sign the deterministic CBOR bytes (not the decoded JSON), to avoid ambiguities.
 
 This repo’s current “correctness surfaces” (e.g. `agent_json_c14n_v1` for JSON) remain valid
 for platform-side storage and quorum logic, but wire-level attestations should prefer wire bytes.

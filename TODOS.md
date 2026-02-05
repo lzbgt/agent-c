@@ -364,10 +364,10 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
      plus optional replay-window hardening (`edge_auth_require_ts`, `edge_auth_max_skew_ms`).
    - Shipped (v0.4 partial): CBOR-native auth input option for MCU stacks:
      - `auth.alg="hmac-sha256-cbor"` verifies HMAC over deterministic CBOR bytes of the envelope with `auth` removed
-       (definite lengths + sorted string map keys; matches `daemon/src/cbor_encode.*`).
+       (definite lengths; text-string map keys ordered by UTF‑8 byte length then bytes; float64 only; matches `daemon/src/cbor_encode.*`).
    - Shipped (v0.4 partial): public-key envelope auth (no shared-secret blast radius):
      - `auth.alg="ed25519"` verifies Ed25519 signatures over canonical JSON bytes (`agent_json_c14n_v1`).
-     - `auth.alg="ed25519-cbor"` verifies Ed25519 signatures over canonical CBOR bytes (deterministic RFC 8949 encoding).
+     - `auth.alg="ed25519-cbor"` verifies Ed25519 signatures over deterministic CBOR bytes (same profile as above).
    - Shipped (v0.4 partial): authoritative canonicalization/signature test vectors for MCU bring-up:
      - Fixture: `docs/spec/um-eais/fixtures/umbmp_envelope_auth_vectors_v0.4.json`
      - Proof: `ctest` includes `umbmp_auth_vectors_tests`
@@ -487,9 +487,9 @@ Maintainability note (always-on):
    - Shipped (v0.4 partial): optional envelope authenticity (HMAC) for trust roots + spoofing resistance:
      - Envelope may include `auth:{alg,kid,seq?,sig}` where:
        - `alg:"hmac-sha256"` signs canonical JSON bytes (`agent_json_c14n_v1`)
-       - `alg:"hmac-sha256-cbor"` signs canonical CBOR bytes (deterministic RFC 8949 encoding)
+       - `alg:"hmac-sha256-cbor"` signs deterministic CBOR bytes (definite lengths; key order by UTF‑8 length then bytes; float64 only)
        - `alg:"ed25519"` signs canonical JSON bytes (`agent_json_c14n_v1`)
-       - `alg:"ed25519-cbor"` signs canonical CBOR bytes (deterministic RFC 8949 encoding)
+       - `alg:"ed25519-cbor"` signs deterministic CBOR bytes (same profile as above)
        - `sig` is base64 of 32 bytes (HMAC) or 64 bytes (Ed25519)
      - Operator control-plane:
        - `GET /api/v1/config` surfaces `edge_auth.required` + `edge_auth.hmac_keys_set`
