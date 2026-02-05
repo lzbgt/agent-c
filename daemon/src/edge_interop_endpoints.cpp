@@ -87,6 +87,7 @@ void handle_edge_message_endpoint(
   }
 
   // Persist inbound (dedupe by msg_id).
+  bool deduped = false;
   {
     AgentDb::EdgeInboxMessageRow ir;
     ir.msg_id = msg_id;
@@ -95,7 +96,6 @@ void handle_edge_message_endpoint(
     ir.from_id = from_id;
     ir.to_id = to_id;
     ir.envelope_json = edge_json_stringify_compact(env);
-    bool deduped = false;
     std::string err;
     if (!db_or_null->insert_edge_inbox_message(ir, &deduped, &err)) {
       resp->status = 500;
@@ -110,7 +110,23 @@ void handle_edge_message_endpoint(
     o["ok"] = true;
     if (deduped) o["deduped"] = true;
     resp->body = edge_json_stringify_compact(o);
-    if (deduped) return;
+  }
+
+  // Normally, msg_id dedupe implies "don't reprocess" to avoid duplicating events.
+  //
+  // However, for node-initiated handoff types (submit/cancel), we intentionally allow reprocessing even when deduped.
+  // This prevents a rare but real reliability bug:
+  // - if the daemon crashes after persisting the inbox row but before applying side effects (creating/canceling workflows),
+  //   then a transport retry with the same msg_id would otherwise be permanently ignored.
+  //
+  // Handoff types are designed to be idempotent (workflow_id / idempotency_key), so reprocessing is safe and fast.
+  if (deduped) {
+    const bool replayable_handoff =
+      type == "WORKFLOW_SUBMIT" ||
+      type == "WORKFLOW_CANCEL" ||
+      type == "DURABLE_WORKFLOW_SUBMIT" ||
+      type == "DURABLE_WORKFLOW_CANCEL";
+    if (!replayable_handoff) return;
   }
 
   const int64_t now = edge_unix_ms_now();

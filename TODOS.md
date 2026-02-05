@@ -25,6 +25,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - JSON Schemas: `docs/spec/um-eais/schema/`
   - Golden transcript fixtures: `docs/spec/um-eais/fixtures/`
   - Proof: `ctest` includes `um_eais_spec_sanity_tests` and `agentd_edge_interop_transcript_replay_smoke`.
+- UM‑BMP crash-window correctness: node-initiated handoff messages are replayable even if `msg_id` is deduped (at-least-once),
+  preventing permanent drops when a crash happens after persisting `edge_inbox_messages` but before applying side effects.
+  - Proof: `ctest` includes `agentd_edge_message_dedupe_replay_handoff_smoke`.
 - `trace_id` correlation end-to-end, plus a merged trace timeline across broker ⇄ agentd.
   - Proof: `ctest` includes `agentd_trace_id_smoke`.
 - Oren AVM governance endpoints (scan-before-execute; out-of-process).

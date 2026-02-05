@@ -65,6 +65,14 @@ This stores the envelope durably (`edge_inbox_messages`) and updates platform st
 
 If the platform sees a new/unknown `caps_sha256`, it queues a `PLATFORM_CAPS_REQ` to the node outbox.
 
+Reliability note (important):
+- The platform *persists* all inbound envelopes and dedupes persistence by `msg_id`.
+- For most message types, if a duplicate `msg_id` is received, the platform will not re-apply side effects (to avoid duplicating events).
+- For node-initiated handoff types (`WORKFLOW_SUBMIT|WORKFLOW_CANCEL|DURABLE_WORKFLOW_SUBMIT|DURABLE_WORKFLOW_CANCEL`), the platform may
+  still reprocess even when `msg_id` is deduped, to preserve at-least-once semantics across a crash window
+  (inbox row persisted but side effects not applied). These handoff operations are designed to be idempotent via `workflow_id` and/or
+  durable `idempotency_key`.
+
 ### Poll node outbox
 
 `GET /api/v1/edge/outbox?node_id=...&cursor=0&limit=256`
