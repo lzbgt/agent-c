@@ -2046,7 +2046,7 @@ components:
 
         This maps to the host tool `memory_structured_query` (see `cli/src/toolset_host_memory.cpp`).
 
-        Note: the server requires at least one filter (`key`, `key_prefix`, or non-empty `kinds[]`) to avoid accidental full dumps.
+        Note: the server requires at least one filter (`key`, `key_prefix`, non-empty `kinds[]`, or `source_contains`) to avoid accidental full dumps.
       properties:
         path:
           type: string
@@ -2060,6 +2060,12 @@ components:
         key_case_insensitive:
           type: boolean
           description: If true, key/prefix matching is case-insensitive (default false).
+        source_contains:
+          type: string
+          description: Optional substring filter applied to record `sources[]` (e.g. trace/workflow/session correlation).
+        source_case_insensitive:
+          type: boolean
+          description: If true, source_contains matching is case-insensitive (default false).
         kinds:
           type: array
           description: Optional kinds filter (e.g. `["fact"]`, `["preference"]`, `["task"]`).

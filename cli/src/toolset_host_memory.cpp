@@ -1013,9 +1013,13 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
 
   const std::string key = args.isMember("key") && args["key"].isString() ? trim_ascii(args["key"].asString()) : "";
   const std::string key_prefix = args.isMember("key_prefix") && args["key_prefix"].isString() ? trim_ascii(args["key_prefix"].asString()) : "";
+  const std::string source_contains =
+    args.isMember("source_contains") && args["source_contains"].isString() ? trim_ascii(args["source_contains"].asString()) : "";
 
   const bool key_case_insensitive =
     args.isMember("key_case_insensitive") && args["key_case_insensitive"].isBool() ? args["key_case_insensitive"].asBool() : false;
+  const bool source_case_insensitive =
+    args.isMember("source_case_insensitive") && args["source_case_insensitive"].isBool() ? args["source_case_insensitive"].asBool() : false;
 
   std::vector<std::string> kinds;
   if (args.isMember("kinds") && args["kinds"].isArray()) {
@@ -1039,6 +1043,18 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
 
   int limit = args.isMember("limit") && args["limit"].isInt() ? args["limit"].asInt() : 50;
   limit = std::max(1, std::min(200, limit));
+
+  if (key.empty() && key_prefix.empty() && kinds.empty() && source_contains.empty()) {
+    return write_envelope(
+      out_result,
+      false,
+      "memory_structured_query requires at least one filter: key, key_prefix, non-empty kinds[], or source_contains",
+      Json::Value(Json::objectValue)
+    );
+  }
+  if (source_contains.size() > 300) {
+    return write_envelope(out_result, false, "source_contains too long (max 300 chars)", Json::Value(Json::objectValue));
+  }
 
   const std::filesystem::path mem_root = memory_root_from_ctx(ctx);
   if (mem_root.empty()) {
@@ -1080,6 +1096,8 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
   auto key_norm = [&](const std::string& s) -> std::string { return key_case_insensitive ? to_lower_ascii(s) : s; };
   const std::string key_n = key_norm(key);
   const std::string pref_n = key_norm(key_prefix);
+  auto source_norm = [&](const std::string& s) -> std::string { return source_case_insensitive ? to_lower_ascii(s) : s; };
+  const std::string src_n = source_norm(source_contains);
 
   auto kind_match = [&](const std::string& kraw) -> bool {
     if (kinds.empty()) return true;
@@ -1100,6 +1118,17 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
     if (kn.size() < pref_n.size()) return false;
     return kn.compare(0, pref_n.size(), pref_n) == 0;
   };
+  auto sources_match = [&](const Json::Value& rec) -> bool {
+    if (src_n.empty()) return true;
+    const Json::Value sources = rec.isMember("sources") ? rec["sources"] : Json::Value(Json::nullValue);
+    if (!sources.isArray()) return false;
+    for (Json::ArrayIndex i = 0; i < sources.size(); i++) {
+      if (!sources[i].isString()) continue;
+      const std::string s = source_norm(sources[i].asString());
+      if (s.find(src_n) != std::string::npos) return true;
+    }
+    return false;
+  };
 
   Json::Value results(Json::arrayValue);
   int matched = 0;
@@ -1116,6 +1145,7 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
     const std::string status = rec.isMember("status") && rec["status"].isString() ? rec["status"].asString() : "active";
     if (!kind_match(kind)) continue;
     if (!status_match(status)) continue;
+    if (!sources_match(rec)) continue;
 
     Json::Value out_rec = rec;
     if (!include_versions && out_rec.isMember("versions")) out_rec.removeMember("versions");
@@ -1141,6 +1171,8 @@ agent_status_t tool_memory_structured_query(HostToolCtx* ctx, const char* argume
   if (!key.empty()) q["key"] = key;
   if (!key_prefix.empty()) q["key_prefix"] = key_prefix;
   q["key_case_insensitive"] = key_case_insensitive;
+  if (!source_contains.empty()) q["source_contains"] = source_contains;
+  q["source_case_insensitive"] = source_case_insensitive;
   q["status"] = status_filter;
   q["include_sources"] = include_sources;
   q["include_versions"] = include_versions;

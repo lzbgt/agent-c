@@ -1936,6 +1936,8 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
       "  \"key\":{\"type\":\"string\",\"description\":\"Exact key to fetch (optional).\"},"
       "  \"key_prefix\":{\"type\":\"string\",\"description\":\"Key prefix filter (optional).\"},"
       "  \"key_case_insensitive\":{\"type\":\"boolean\",\"description\":\"When true, key/prefix matching is case-insensitive (default: false).\"},"
+      "  \"source_contains\":{\"type\":\"string\",\"description\":\"Optional substring filter applied to record sources[] (e.g. trace/workflow/session correlation).\"},"
+      "  \"source_case_insensitive\":{\"type\":\"boolean\",\"description\":\"When true, source_contains matching is case-insensitive (default: false).\"},"
       "  \"kinds\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Optional kinds filter: fact|preference|task.\"},"
       "  \"status\":{\"type\":\"string\",\"description\":\"Status filter (default: active). Use any to include deprecated.\"},"
       "  \"include_sources\":{\"type\":\"boolean\",\"description\":\"Include sources[] in results (default: true).\"},"

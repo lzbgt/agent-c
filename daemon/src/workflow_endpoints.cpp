@@ -1168,12 +1168,40 @@ void handle_workflow_submit_endpoint(
 	      }
 	      if (!kinds2.empty()) msq2["kinds"] = kinds2;
 
-	      // Safety: avoid accidentally dumping the entire structured memory file by default.
-	      if (!msq2.isMember("key") && !msq2.isMember("key_prefix") && (!msq2.isMember("kinds") || !msq2["kinds"].isArray() || msq2["kinds"].empty())) {
+	      const std::string source_contains =
+	        msq.isMember("source_contains") && msq["source_contains"].isString() ? trim_copy(msq["source_contains"].asString()) : "";
+	      if (!source_contains.empty() && source_contains.size() > 300) {
 	        resp->status = 400;
 	        Json::Value o(Json::objectValue);
 	        o["ok"] = false;
-	        o["error"] = "memory_structured_query requires at least one filter: key, key_prefix, or non-empty kinds[]";
+	        o["error"] = "memory_structured_query.source_contains too long (max 300 chars)";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      if (!source_contains.empty()) msq2["source_contains"] = source_contains;
+
+	      if (msq.isMember("source_case_insensitive")) {
+	        if (!msq["source_case_insensitive"].isBool() && !msq["source_case_insensitive"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_structured_query.source_case_insensitive must be a bool";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (msq["source_case_insensitive"].isBool()) msq2["source_case_insensitive"] = msq["source_case_insensitive"];
+	      }
+
+	      // Safety: avoid accidentally dumping the entire structured memory file by default.
+	      if (!msq2.isMember("key") && !msq2.isMember("key_prefix") &&
+	          (!msq2.isMember("kinds") || !msq2["kinds"].isArray() || msq2["kinds"].empty()) &&
+	          !msq2.isMember("source_contains")) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "memory_structured_query requires at least one filter: key, key_prefix, non-empty kinds[], or source_contains";
 	        o["task_id"] = task_id;
 	        resp->body = json_stringify_compact(o);
 	        return;

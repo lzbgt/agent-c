@@ -69,6 +69,25 @@ tasks = [
       "json_pointer_regex": [{"pointer": "/memory_structured_query_response/data/results/0/record/value", "regex": "durable scheduling"}]
     },
     "max_attempts": 1
+  },
+  {
+    "task_id": "T",
+    "kind": "memory_structured_query",
+    "depends_on": ["P"],
+    "memory_structured_query": {
+      "path": "STRUCTURED.md",
+      "source_contains": "trace:" + trace_id + ":P",
+      "kinds": ["fact"],
+      "status": "active",
+      "include_sources": False,
+      "include_versions": False,
+      "limit": 10
+    },
+    "expect": {
+      "json_pointer_exists": ["/memory_structured_query_response/data/results/0/key"],
+      "json_pointer_regex": [{"pointer": "/memory_structured_query_response/data/results/0/key", "regex": "^wf\\.test\\.q1$"}]
+    },
+    "max_attempts": 1
   }
 ]
 
@@ -132,7 +151,20 @@ if not results:
 if results[0].get("key") != "wf.test.q1":
   print("unexpected key", results[0], file=sys.stderr)
   raise SystemExit(1)
+
+t = by.get("T") or {}
+if t.get("kind") != "memory_structured_query" or t.get("ok") is not True:
+  print("expected T ok true memory_structured_query", t, file=sys.stderr)
+  raise SystemExit(1)
+resp = t.get("memory_structured_query_response") or {}
+data = resp.get("data") or {}
+results = data.get("results") or []
+if not results:
+  print("expected at least 1 result for T", t, file=sys.stderr)
+  raise SystemExit(1)
+if results[0].get("key") != "wf.test.q1":
+  print("unexpected T key", results[0], file=sys.stderr)
+  raise SystemExit(1)
 PY
 
 echo "agentd_workflow_memory_structured_query_smoke OK"
-

@@ -485,7 +485,7 @@ For deterministic retrieval of **structured facts/preferences/tasks** (not fuzzy
 Semantics:
 - Requires the daemon to run with `--tools host` (this task executes the host tool `memory_structured_query`).
 - This is a **read-only** host tool, so it works with `--host-policy readonly` or `--host-policy full`.
-- To avoid accidental full dumps, the server requires at least one filter: `key`, `key_prefix`, or non-empty `kinds[]`.
+- To avoid accidental full dumps, the server requires at least one filter: `key`, `key_prefix`, non-empty `kinds[]`, or `source_contains`.
 - The full host tool response is surfaced under the task result as `memory_structured_query_response` for deterministic `expect` assertions
   and JSON templating (`${task.Q.json:/memory_structured_query_response/data/results/0/record/value}` etc.).
 
