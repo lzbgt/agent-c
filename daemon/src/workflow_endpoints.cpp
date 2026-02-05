@@ -223,6 +223,10 @@ static bool expand_workflow_submit_macros(
       at["task_id"] = attempt_task_id;
       at["allow_error"] =
         a.isMember("allow_error") && a["allow_error"].isBool() ? a["allow_error"].asBool() : true;
+      if (t.isMember("inputs") && t["inputs"].isObject()) at["inputs"] = t["inputs"];
+      if (t.isMember("ready_unix_ms") && (t["ready_unix_ms"].isInt64() || t["ready_unix_ms"].isUInt64() || t["ready_unix_ms"].isInt())) {
+        at["ready_unix_ms"] = t["ready_unix_ms"];
+      }
       if (!dep_ids.empty()) {
         Json::Value deps(Json::arrayValue);
         for (const auto& d : dep_ids) deps.append(d);

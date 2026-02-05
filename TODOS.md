@@ -224,6 +224,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - `mode:"quorum_hashes"` now optionally surfaces stable node identity evidence via `aggregate.node_pointer` (default `/edge/node_id`),
     emitting `nodes_by_task_id` in the aggregate result (does not change quorum semantics).
   - Proof: `ctest` includes `agentd_workflow_edge_invoke_quorum_hashes_node_ids_smoke`.
+- Delegate-parallel macro correctness (v1.7.4):
+  - `kind:"delegate_parallel"` now propagates the macro task’s `inputs` and `ready_unix_ms` to derived attempt tasks,
+    so `${input.*}` templates work inside `attempt.request` without duplicating inputs on every attempt.
+  - Proof: `ctest` includes `agentd_workflow_delegate_parallel_inputs_propagate_smoke`.
 
 ## P0 (next: maximize autonomous continuity + correctness)
 
