@@ -56,6 +56,16 @@ agent_status_t agent_um_eais_task_assign_body_read_cbor_v0_1(
     st = agent_cbor_read_text(&r, &k);
     if (st != AGENT_OK) return st;
 
+    if (text_eq(k, "node_id")) {
+      agent_cbor_text_view_t v;
+      st = agent_cbor_read_text(&r, &v);
+      if (st != AGENT_OK) return st;
+      if (!agent_umbmp_id_is_safe(v.ptr, v.len)) return AGENT_ERR_INVALID_ARGUMENT;
+      out->node_id = v;
+      out->has_node_id = 1;
+      continue;
+    }
+
     if (text_eq(k, "task_id")) {
       agent_cbor_text_view_t v;
       st = agent_cbor_read_text(&r, &v);
@@ -136,4 +146,3 @@ agent_status_t agent_um_eais_task_assign_body_read_cbor_v0_1(
   if (agent_cbor_reader_offset(&r) != body_item_len) return AGENT_ERR_INVALID_ARGUMENT;
   return AGENT_OK;
 }
-

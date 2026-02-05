@@ -66,9 +66,11 @@ static void test_task_assign_body_decode_from_envelope_cbor(void) {
   text_ctx_t v_step_id = {"s1", strlen("s1")};
   text_ctx_t v_idem = {"idem_fixture_1", strlen("idem_fixture_1")};
   text_ctx_t v_mode = {"agent", strlen("agent")};
+  text_ctx_t v_node_id = {"fixture_node_task_1", strlen("fixture_node_task_1")};
   u64_ctx_t v_deadline = {1700000001999ULL};
   u64_ctx_t v_attempt = {1};
   const agent_cbor_kv_t body_pairs[] = {
+    {"node_id", strlen("node_id"), enc_text, &v_node_id},
     {"task_id", strlen("task_id"), enc_text, &v_task_id},
     {"step_id", strlen("step_id"), enc_text, &v_step_id},
     {"idempotency_key", strlen("idempotency_key"), enc_text, &v_idem},
@@ -100,6 +102,8 @@ static void test_task_assign_body_decode_from_envelope_cbor(void) {
 
   agent_um_eais_task_assign_view_t ta;
   assert(agent_um_eais_task_assign_body_read_cbor_v0_1(env.body_item.ptr, env.body_item.len, &ta) == AGENT_OK);
+  assert(ta.has_node_id == 1);
+  assert(text_eq(ta.node_id, "fixture_node_task_1"));
   assert(text_eq(ta.task_id, "task_fixture_1"));
   assert(text_eq(ta.step_id, "s1"));
   assert(text_eq(ta.idempotency_key, "idem_fixture_1"));
@@ -113,4 +117,3 @@ static void test_task_assign_body_decode_from_envelope_cbor(void) {
 void test_um_eais_task_assign_read_module(void) {
   test_task_assign_body_decode_from_envelope_cbor();
 }
-

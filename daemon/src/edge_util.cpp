@@ -778,6 +778,9 @@ bool edge_enqueue_task_assign(
   env["to"] = edge_node_to_prefix(node_id);
   if (trace.isObject()) env["trace"] = trace;
   Json::Value b(Json::objectValue);
+  // v0.3 schema binds TASK_ASSIGN to the intended node_id. Include it even though the platform
+  // already routes the envelope via `to="node:<node_id>"` (defense-in-depth for MCU stacks).
+  b["node_id"] = node_id;
   b["task_id"] = task_id;
   b["step_id"] = step_id;
   b["idempotency_key"] = idempotency_key;

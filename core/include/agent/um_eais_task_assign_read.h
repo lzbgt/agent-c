@@ -21,6 +21,11 @@ extern "C" {
 //      `agent_um_eais_task_assign_body_read_cbor_v0_1(env.body_item.ptr, env.body_item.len, &out)`
 
 typedef struct agent_um_eais_task_assign_view {
+  // Optional: the intended node_id (v0.3 schema). Nodes can compare it to their own identity
+  // as a defense-in-depth check.
+  agent_cbor_text_view_t node_id;
+  int has_node_id;
+
   agent_cbor_text_view_t task_id;
   agent_cbor_text_view_t step_id;
   agent_cbor_text_view_t idempotency_key;
@@ -48,4 +53,3 @@ agent_status_t agent_um_eais_task_assign_body_read_cbor_v0_1(
 #ifdef __cplusplus
 }  // extern "C"
 #endif
-
