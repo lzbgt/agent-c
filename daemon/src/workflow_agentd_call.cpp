@@ -14,6 +14,7 @@
 #include <chrono>
 #include <cstring>
 #include <cstdlib>
+#include <functional>
 #include <map>
 #include <string>
 #include <thread>
@@ -102,6 +103,79 @@ static void add_final_hash_surface_best_effort(Json::Value* out) {
   if (!out->isMember("agentd") || !(*out)["agentd"].isObject()) return;
   const Json::Value final = (*out)["agentd"].isMember("final") ? (*out)["agentd"]["final"] : Json::Value(Json::nullValue);
   if (!final.isObject()) return;
+
+  // Preferred stable surface for quorum/correlation: hash a **stable projection** of the remote `final.result`.
+  // Remote results include telemetry and timestamps (e.g. elapsed_ms) which are expected to vary across agents/runs.
+  // We prune known-ephemeral keys and then hash the remaining JSON (agent_json_c14n_v1).
+  if (final.isMember("result")) {
+    Json::Value stable = final["result"];
+    std::function<void(Json::Value*)> prune = [&](Json::Value* v) {
+      if (!v) return;
+      if (v->isObject()) {
+        // Drop known-ephemeral keys (timestamps, ids, counters).
+        // This list is intentionally conservative: remove telemetry, keep semantic result content.
+        static const char* kDropKeys[] = {
+          "attempt",
+          "created_unix_ms",
+          "updated_unix_ms",
+          "started_unix_ms",
+          "finished_unix_ms",
+          "ready_unix_ms",
+          "elapsed_ms",
+          "elapsed_ms_cum",
+          // Derived hash surfaces should not influence semantic-result hashing.
+          "final_sha256",
+          "final_sha256_alg",
+          "result_sha256",
+          "result_sha256_alg",
+          "result_sha256_schema",
+          "result_sha256_error",
+          "prompt_tokens",
+          "completion_tokens",
+          "total_tokens",
+          "tool_calls_total",
+          "tool_calls_total_cum",
+          "steps_executed",
+          "steps_executed_cum",
+          "retryable",
+          "retry_in_ms",
+          "trace_id",
+          "workflow_id",
+          "tasks"
+        };
+        for (const char* k : kDropKeys) {
+          if (v->isMember(k)) v->removeMember(k);
+        }
+        for (const auto& k : v->getMemberNames()) {
+          Json::Value& child = (*v)[k];
+          prune(&child);
+        }
+      } else if (v->isArray()) {
+        for (Json::ArrayIndex i = 0; i < v->size(); i++) {
+          Json::Value& child = (*v)[i];
+          prune(&child);
+        }
+      }
+    };
+    prune(&stable);
+
+    const std::string stable_text = json_stringify_compact(stable);
+    if (!stable_text.empty()) {
+      char token[80];
+      char err[256];
+      std::memset(token, 0, sizeof(token));
+      std::memset(err, 0, sizeof(err));
+      const agent_status_t st = agent_json_c14n_sha256_token(stable_text.data(), stable_text.size(), token, err, sizeof(err));
+      if (st == AGENT_OK && token[0]) {
+        (*out)["agentd"]["result_sha256"] = std::string(token);
+        (*out)["agentd"]["result_sha256_alg"] = "agent_json_c14n_v1";
+        (*out)["agentd"]["result_sha256_schema"] = "agentd_call_result_stable_v1";
+      } else if (err[0]) {
+        (*out)["agentd"]["result_sha256_error"] = std::string(err);
+      }
+    }
+  }
+
   const std::string final_text = json_stringify_compact(final);
   if (final_text.empty()) return;
   char token[80];

@@ -142,6 +142,18 @@ sha = agentd.get("final_sha256") or ""
 if not (isinstance(sha, str) and sha.startswith("sha256:") and len(sha) == 71):
   print("expected agentd.final_sha256 sha256:<64hex>", sha, file=sys.stderr)
   raise SystemExit(1)
+sha = agentd.get("result_sha256") or ""
+if not (isinstance(sha, str) and sha.startswith("sha256:") and len(sha) == 71):
+  print("expected agentd.result_sha256 sha256:<64hex>", sha, file=sys.stderr)
+  raise SystemExit(1)
+alg = agentd.get("result_sha256_alg") or ""
+if alg != "agent_json_c14n_v1":
+  print("expected agentd.result_sha256_alg agent_json_c14n_v1", alg, file=sys.stderr)
+  raise SystemExit(1)
+schema = agentd.get("result_sha256_schema") or ""
+if schema != "agentd_call_result_stable_v1":
+  print("expected agentd.result_sha256_schema agentd_call_result_stable_v1", schema, file=sys.stderr)
+  raise SystemExit(1)
 final = agentd.get("final") or {}
 wf2 = final.get("workflow") or {}
 if wf2.get("status") != "done":

@@ -2234,8 +2234,11 @@ components:
         Operation:
         - submits a workflow to `POST <base_url>/api/v1/workflow/submit`
         - polls `GET <base_url>/api/v1/workflow?workflow_id=...` until terminal status
-        - computes a best-effort deterministic hash token over the terminal remote workflow JSON under `agentd.final_sha256`
-          (canonical JSON hash, algorithm `agent_json_c14n_v1`) for quorum/correlation.
+        - computes best-effort deterministic hash tokens for quorum/correlation:
+          - `agentd.result_sha256`: canonical hash of a stable projection of terminal `final.result` (preferred stable surface)
+            - `agentd.result_sha256_schema=agentd_call_result_stable_v1` (defines which ephemeral fields are pruned before hashing)
+          - `agentd.final_sha256`: canonical hash of the full terminal workflow JSON (audit/debug; includes workflow_id/timestamps)
+          (algorithm `agent_json_c14n_v1`).
 
         Broker compatibility:
         - `base_url` may also be a broker proxy prefix like `https://<broker>/v1/agents/<agent_id>/proxy` (see `docs/BROKER.md`).

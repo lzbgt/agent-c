@@ -53,9 +53,12 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Further hardening: CIDR allowlist + deny-private mode:
     - `--workflow-http-allow-cidr <cidr>` (repeatable), or env `AGENTD_WORKFLOW_HTTP_ALLOW_CIDRS=...`
     - `--workflow-http-deny-private`, or env `AGENTD_WORKFLOW_HTTP_DENY_PRIVATE=1`
-  - Proof: `ctest` includes `agentd_workflow_agentd_call_smoke`.
-  - Correctness surface: `agentd_call` now emits a best-effort deterministic hash token over the terminal remote workflow JSON
-    under `agentd.final_sha256` (algorithm `agent_json_c14n_v1`) so higher-level joins can require quorum/correlation.
+  - Proof: `ctest` includes `agentd_workflow_agentd_call_smoke` and `agentd_workflow_agentd_parallel_quorum_hashes_smoke`.
+  - Correctness surface: `agentd_call` now emits best-effort deterministic hash tokens for quorum/correlation:
+    - `agentd.result_sha256`: hash of a **stable projection** of terminal remote `final.result` (preferred stable surface)
+      - `agentd.result_sha256_schema=agentd_call_result_stable_v1` (ephemeral fields pruned before hashing)
+    - `agentd.final_sha256`: hash of the full terminal remote workflow JSON (audit/debug; includes workflow_id/timestamps)
+    (algorithm `agent_json_c14n_v1`).
 - Embedded bring-up helper: `agent_core` now includes UM‑BMP/UM‑EAIS interop helpers (`agent/edge_interop.h`)
   for id-safe validation/sanitization + message type constants (reduces node/platform drift).
   - Proof: `ctest` includes `agent_core_tests`.

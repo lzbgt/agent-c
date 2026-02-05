@@ -317,13 +317,16 @@ For multi-agent collaboration where **another `agentd` instance** should run a d
 result, workflows can use `kind:"agentd_call"`.
 
 This is a deterministic collaboration primitive:
-- submit a remote workflow (`POST <base_url>/api/v1/workflow/submit`)
-- poll until terminal (`GET <base_url>/api/v1/workflow?workflow_id=...`)
- - compute a best-effort deterministic hash surface over the terminal remote workflow JSON under `agentd.final_sha256`
-   (algorithm `agent_json_c14n_v1`) so higher-level workflows can require quorum/correlation across remote agents.
+ - submit a remote workflow (`POST <base_url>/api/v1/workflow/submit`)
+ - poll until terminal (`GET <base_url>/api/v1/workflow?workflow_id=...`)
+ - compute best-effort deterministic hash surfaces for quorum/correlation:
+   - `agentd.result_sha256`: hash of a **stable projection** of terminal remote `final.result` (preferred stable surface)
+     - `agentd.result_sha256_schema=agentd_call_result_stable_v1` (defines which ephemeral fields are pruned before hashing)
+   - `agentd.final_sha256`: hash of the full terminal remote workflow JSON (includes workflow_id/timestamps; mainly for audit/debug)
+   (algorithm `agent_json_c14n_v1`)
 
 Broker proxy compatibility:
-- `base_url` does not have to be a directly reachable agentd. It can also be a **broker proxy prefix**:
+ - `base_url` does not have to be a directly reachable agentd. It can also be a **broker proxy prefix**:
   - `https://<broker>/v1/agents/<agent_id>/proxy`
   - The task will then call `POST .../proxy/api/v1/workflow/submit` and poll `GET .../proxy/api/v1/workflow?...`.
 - In broker deployments, auth is usually `Authorization: Bearer <OIDC_JWT>`:
