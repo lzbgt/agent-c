@@ -450,6 +450,14 @@ bool WorkflowEngine::pick_and_claim_one(
 	          int64_t cost = 1;
 	          if (drr_cost_model == "simple_v1") {
 	            cost = workflow_fairq_estimate_task_cost_simple_v1(out_task->request_json, /*max_cost=*/32);
+	          } else if (drr_cost_model == "telemetry_v1") {
+	            // Telemetry-driven cost: prefer the last attempt's stored result telemetry when available.
+	            // This is particularly useful for poll-loop tasks (edge_invoke / agentd_call) where the
+	            // first attempt can be "heavier" than steady-state polls.
+	            const int64_t obs =
+	              workflow_fairq_estimate_task_cost_telemetry_v1(out_task->result_json, /*max_cost=*/32);
+	            if (obs > 0) cost = obs;
+	            else cost = workflow_fairq_estimate_task_cost_simple_v1(out_task->request_json, /*max_cost=*/32);
 	          }
 	          charge_deficit(sk, std::max<int64_t>(1, cost));
 	          // Persist the updated deficit (best-effort). Failures should not block scheduling.
@@ -539,4 +547,3 @@ bool WorkflowEngine::pick_and_claim_one(
 }
 
 }  // namespace agentd
-

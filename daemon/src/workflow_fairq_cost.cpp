@@ -37,6 +37,13 @@ static bool json_i64_best_effort(const Json::Value& v, int64_t* out) {
   return false;
 }
 
+static bool json_bool_best_effort(const Json::Value& v, bool* out) {
+  if (!out) return false;
+  if (!v.isBool()) return false;
+  *out = v.asBool();
+  return true;
+}
+
 int64_t workflow_fairq_estimate_task_cost_simple_v1(
   const std::string& workflow_task_request_json,
   int64_t max_cost
@@ -113,6 +120,87 @@ int64_t workflow_fairq_estimate_task_cost_simple_v1(
   // so charge a small bump to reduce tail latency under mixed workloads.
   if (rr.isMember("stream_assistant") && rr["stream_assistant"].isBool() && rr["stream_assistant"].asBool()) {
     cost += 1;
+  }
+
+  return clamp_i64(cost, 1, max_cost);
+}
+
+int64_t workflow_fairq_estimate_task_cost_telemetry_v1(
+  const std::string& workflow_task_last_result_json,
+  int64_t max_cost
+) {
+  max_cost = clamp_i64(max_cost, 1, 1024);
+  if (workflow_task_last_result_json.empty()) return 0;
+
+  Json::Value rr;
+  std::string perr;
+  if (!json_parse_object(workflow_task_last_result_json, &rr, &perr)) {
+    return 0;
+  }
+
+  int64_t elapsed_ms = 0;
+  if (rr.isMember("elapsed_ms") && json_i64_best_effort(rr["elapsed_ms"], &elapsed_ms)) {
+    elapsed_ms = std::max<int64_t>(0, elapsed_ms);
+  } else {
+    elapsed_ms = 0;
+  }
+
+  int64_t total_tokens = 0;
+  if (rr.isMember("total_tokens") && json_i64_best_effort(rr["total_tokens"], &total_tokens)) {
+    total_tokens = std::max<int64_t>(0, total_tokens);
+  } else {
+    total_tokens = 0;
+  }
+
+  int64_t tool_calls_total = 0;
+  if (rr.isMember("tool_calls_total") && json_i64_best_effort(rr["tool_calls_total"], &tool_calls_total)) {
+    tool_calls_total = std::max<int64_t>(0, tool_calls_total);
+  } else {
+    tool_calls_total = 0;
+  }
+
+  int64_t steps_executed = 0;
+  if (rr.isMember("steps_executed") && json_i64_best_effort(rr["steps_executed"], &steps_executed)) {
+    steps_executed = std::max<int64_t>(0, steps_executed);
+  } else {
+    steps_executed = 0;
+  }
+
+  bool retryable = false;
+  (void)(rr.isMember("retryable") && json_bool_best_effort(rr["retryable"], &retryable));
+
+  int64_t retry_in_ms = 0;
+  if (rr.isMember("retry_in_ms") && json_i64_best_effort(rr["retry_in_ms"], &retry_in_ms)) {
+    retry_in_ms = std::max<int64_t>(0, retry_in_ms);
+  } else {
+    retry_in_ms = 0;
+  }
+
+  // Telemetry-derived cost units (bounded and intentionally coarse):
+  // - tokens and elapsed are strong correlates of CPU/network saturation under load
+  // - retryable is a hint that this task is in a poll loop; charge a small bump so poll loops don't
+  //   dominate admission under mixed workloads
+  //
+  // NOTE: This is a fairness heuristic, not a billing system.
+  int64_t cost = 1;
+  if (total_tokens > 0) {
+    // +1 per ~400 tokens, capped.
+    cost += std::min<int64_t>(32, total_tokens / 400);
+  }
+  if (elapsed_ms > 0) {
+    // +1 per ~500ms of work, capped.
+    cost += std::min<int64_t>(32, elapsed_ms / 500);
+  }
+  if (tool_calls_total > 0) {
+    cost += std::min<int64_t>(8, tool_calls_total / 5);
+  }
+  if (steps_executed > 0) {
+    cost += std::min<int64_t>(8, steps_executed / 50);
+  }
+  if (retryable) {
+    cost += 1;
+    // Fast polls can increase scheduler/db load; add a small bump when retry interval is very short.
+    if (retry_in_ms > 0 && retry_in_ms < 200) cost += 1;
   }
 
   return clamp_i64(cost, 1, max_cost);

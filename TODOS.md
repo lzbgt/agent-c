@@ -359,7 +359,7 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
    - Shipped hardening: explicit CIDR denylist + optional DNS pinning (defense-in-depth against DNS rebinding).
 2) **Memory v2.3** — query-plan primitives (bounded windows + key-prefix filters) and automatic consolidation triggers as time advances,
    so long-running systems keep context tight and correct.
-3) **Scheduling policy v2.4+** — DRR is shipped; next is telemetry-driven cost (tokens/elapsed/polls) and resilient fairness under mixed workloads.
+3) **Scheduling policy v2.4+** — DRR is shipped; telemetry-driven cost is now shipped (`telemetry_v1`), next is budget-pressure-aware charging and resilient fairness under mixed workloads.
 4) **Budgets v0.7** — complete streaming usage accounting and host-tool charging; surface budget pressure so schedulers can act cheaply.
 5) **Interop v0.4** — enforceable edge attestation + trust roots and stronger multi-node identity binding.
 
@@ -442,6 +442,13 @@ Maintainability note (always-on):
      - LLM-like runs (presence of `model` + `prompt`) are charged higher than deterministic tasks.
      - Prompt length and `stream_assistant:true` add small bounded bumps (better fairness under mixed workloads).
      - Proof: `ctest` includes `workflow_fairq_cost_tests`.
+   - Shipped (v2.4.0): telemetry-driven DRR charging option (telemetry_v1; mixed deterministic + polling workloads):
+     - New daemon knob: `--workflow-drr-cost-model telemetry_v1` (env `AGENTD_WORKFLOW_DRR_COST_MODEL=telemetry_v1`)
+     - Scheduler prefers charging cost from the **last attempt’s telemetry** stored in `workflow_tasks.result_json` when available:
+       - uses `elapsed_ms`, `total_tokens`, `tool_calls_total`, `steps_executed`
+       - uses `retryable` + `retry_in_ms` as a poll-loop hint
+     - Rationale: first attempt can be “heavier” (enqueue/submit), but steady-state polls are cheap; telemetry_v1 makes that distinction.
+     - Proof: `ctest` includes `workflow_fairq_cost_tests` (covers telemetry_v1 estimator).
    - Next (v2.3+): tighten the cost model:
      - incorporate budget pressure, token usage counters, and edge polling characteristics into the estimator.
 

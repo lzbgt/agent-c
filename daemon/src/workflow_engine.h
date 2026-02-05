@@ -50,6 +50,7 @@ class WorkflowEngine {
     // DRR cost charging:
     // - unit: each admitted task costs 1 (v2.3 baseline)
     // - simple_v1: best-effort estimated cost by task kind/request
+    // - telemetry_v1: best-effort cost derived from last-attempt telemetry stored in workflow_tasks.result_json
     std::string drr_cost_model = "unit";
   };
 
