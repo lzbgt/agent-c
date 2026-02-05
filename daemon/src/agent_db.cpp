@@ -2649,6 +2649,177 @@ bool AgentDb::read_audit_records_by_trace_id(
 #endif
 }
 
+bool AgentDb::read_edge_task_events_by_trace_id(
+  const std::string& trace_id,
+  size_t max_bytes,
+  size_t max_records,
+  std::vector<EdgeTaskEventRow>* out_rows_desc,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_rows_desc) out_rows_desc->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)trace_id;
+  (void)max_bytes;
+  (void)max_records;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  if (trace_id.empty()) {
+    if (out_error) *out_error = "trace_id is empty";
+    return false;
+  }
+  if (max_bytes == 0) max_bytes = 1024 * 1024;
+  if (max_records == 0) max_records = 200;
+  if (max_records > 2000) max_records = 2000;
+
+  auto escape_like = [](std::string s) -> std::string {
+    std::string out;
+    out.reserve(s.size() + 8);
+    for (char c : s) {
+      if (c == '%' || c == '_' || c == '\\') out.push_back('\\');
+      out.push_back(c);
+    }
+    return out;
+  };
+  const std::string needle = std::string("%\"trace_id\":\"") + escape_like(trace_id) + "\"%";
+
+  sqlite3_stmt* st = nullptr;
+  const char* sql =
+    "SELECT id, task_id, step_id, ts_utc_ms, state, data_json "
+    "FROM edge_task_events WHERE data_json LIKE ? ESCAPE '\\' "
+    "ORDER BY ts_utc_ms DESC, id DESC LIMIT ?;";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = bind_text(st, 1, needle) && sqlite3_bind_int(st, 2, (int)max_records) == SQLITE_OK;
+  std::vector<EdgeTaskEventRow> rows;
+  size_t used = 0;
+  while (ok && step_row(st)) {
+    EdgeTaskEventRow r;
+    r.id = (int64_t)sqlite3_column_int64(st, 0);
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 1);
+      r.task_id = txt ? (const char*)txt : "";
+    }
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 2);
+      r.step_id = txt ? (const char*)txt : "";
+    }
+    r.ts_utc_ms = (int64_t)sqlite3_column_int64(st, 3);
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 4);
+      r.state = txt ? (const char*)txt : "";
+    }
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 5);
+      r.data_json = txt ? (const char*)txt : "";
+    }
+    if (r.data_json.empty()) continue;
+    if (used + r.data_json.size() > max_bytes) break;
+    used += r.data_json.size();
+    rows.push_back(std::move(r));
+  }
+  if (!ok && out_error) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  if (ok && out_rows_desc) *out_rows_desc = std::move(rows);
+  return ok;
+#endif
+}
+
+bool AgentDb::read_edge_inbox_messages_by_trace_id(
+  const std::string& trace_id,
+  size_t max_bytes,
+  size_t max_records,
+  std::vector<EdgeInboxMessageRow>* out_rows_desc,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_rows_desc) out_rows_desc->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)trace_id;
+  (void)max_bytes;
+  (void)max_records;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  if (trace_id.empty()) {
+    if (out_error) *out_error = "trace_id is empty";
+    return false;
+  }
+  if (max_bytes == 0) max_bytes = 1024 * 1024;
+  if (max_records == 0) max_records = 200;
+  if (max_records > 2000) max_records = 2000;
+
+  auto escape_like = [](std::string s) -> std::string {
+    std::string out;
+    out.reserve(s.size() + 8);
+    for (char c : s) {
+      if (c == '%' || c == '_' || c == '\\') out.push_back('\\');
+      out.push_back(c);
+    }
+    return out;
+  };
+  const std::string needle = std::string("%\"trace_id\":\"") + escape_like(trace_id) + "\"%";
+
+  sqlite3_stmt* st = nullptr;
+  const char* sql =
+    "SELECT msg_id, ts_utc_ms, type, from_id, to_id, envelope_json "
+    "FROM edge_inbox_messages WHERE envelope_json LIKE ? ESCAPE '\\' "
+    "ORDER BY ts_utc_ms DESC, msg_id DESC LIMIT ?;";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = bind_text(st, 1, needle) && sqlite3_bind_int(st, 2, (int)max_records) == SQLITE_OK;
+  std::vector<EdgeInboxMessageRow> rows;
+  size_t used = 0;
+  while (ok && step_row(st)) {
+    EdgeInboxMessageRow r;
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 0);
+      r.msg_id = txt ? (const char*)txt : "";
+    }
+    r.ts_utc_ms = (int64_t)sqlite3_column_int64(st, 1);
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 2);
+      r.type = txt ? (const char*)txt : "";
+    }
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 3);
+      r.from_id = txt ? (const char*)txt : "";
+    }
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 4);
+      r.to_id = txt ? (const char*)txt : "";
+    }
+    {
+      const unsigned char* txt = sqlite3_column_text(st, 5);
+      r.envelope_json = txt ? (const char*)txt : "";
+    }
+    if (r.envelope_json.empty()) continue;
+    if (used + r.envelope_json.size() > max_bytes) break;
+    used += r.envelope_json.size();
+    rows.push_back(std::move(r));
+  }
+  if (!ok && out_error) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  if (ok && out_rows_desc) *out_rows_desc = std::move(rows);
+  return ok;
+#endif
+}
+
 bool AgentDb::list_artifacts_by_session(
   const std::string& session_id,
   size_t max_artifacts,

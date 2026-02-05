@@ -110,6 +110,10 @@ Targeting:
 - explicit: `node_id`
 - capability routing: `match_any { requires_tools, tags_all, tags_any, tags_none }`
 
+Trace correlation (best-effort):
+- The platform accepts an optional `trace` object on `POST /api/v1/edge/task/assign` and forwards it to the node as
+  `TASK_ASSIGN.trace` (envelope-level field). Recommended key: `trace.trace_id`.
+
 Safety/rate gates (best-effort, platform-side):
 - For `mode:"invoke"`, the platform requires a stored node manifest (`NODE_CAPS_RSP`) so it can inspect tool metadata.
 - For `mode:"invoke"`, the platform requires `payload.args` to be an object, and validates it (best-effort) against the

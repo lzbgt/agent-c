@@ -197,8 +197,10 @@ Some daemon builds also expose:
 
 Debug/correlation helper:
 - `GET /api/v1/trace?trace_id=...`
-  - best-effort lookup of persisted audit records for a `trace_id`
-  - only includes runs with `no_session=false` (since it reads from `audit_records`)
+  - best-effort lookup of persisted records for a `trace_id`
+  - includes durable run/workflow audit records (`audit_records`)
+  - also includes best-effort edge interop records (edge task events + inbound UM‑BMP envelopes) when present
+  - note: only runs with `no_session=false` appear in `audit_records` (DB-backed)
 
 See `docs/STREAMING.md` for streaming semantics.
 

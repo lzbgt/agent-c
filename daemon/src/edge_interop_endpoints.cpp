@@ -1227,11 +1227,17 @@ void handle_edge_task_assign_endpoint(
     ? (args["attempt"].isInt() ? args["attempt"].asInt() : (int)std::min((Json::UInt)INT32_MAX, args["attempt"].asUInt()))
     : 0;
   const Json::Value payload = args.isMember("payload") ? args["payload"] : Json::Value(Json::nullValue);
+  const Json::Value trace = args.isMember("trace") ? args["trace"] : Json::Value(Json::nullValue);
 
   if (task_id.empty() || step_id.empty() || idempotency_key.empty() || (mode != "invoke" && mode != "agent") || deadline_utc_ms <= 0 ||
       !payload.isObject()) {
     resp->status = 400;
     resp->body = "{\"ok\":false,\"error\":\"missing/invalid task fields\"}";
+    return;
+  }
+  if (!trace.isNull() && !trace.isObject()) {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"invalid trace (expected object)\"}";
     return;
   }
 
@@ -1258,6 +1264,7 @@ void handle_edge_task_assign_endpoint(
         deadline_utc_ms,
         attempt,
         payload,
+        trace,
         allow_hazards,
         allow_high_side_effect,
         /*enforce_safety=*/true,

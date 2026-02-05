@@ -108,6 +108,27 @@ class AgentDb {
     std::string* out_error
   );
 
+  struct EdgeTaskEventRow;
+  struct EdgeInboxMessageRow;
+
+  // Best-effort trace correlation for edge interop: search edge task events whose data_json contains the given trace_id.
+  bool read_edge_task_events_by_trace_id(
+    const std::string& trace_id,
+    size_t max_bytes,
+    size_t max_records,
+    std::vector<EdgeTaskEventRow>* out_rows_desc,
+    std::string* out_error
+  );
+
+  // Best-effort trace correlation for edge interop: search persisted inbound envelopes whose envelope_json contains the given trace_id.
+  bool read_edge_inbox_messages_by_trace_id(
+    const std::string& trace_id,
+    size_t max_bytes,
+    size_t max_records,
+    std::vector<EdgeInboxMessageRow>* out_rows_desc,
+    std::string* out_error
+  );
+
   struct ToolRecordRow {
     int64_t run_id = 0;
     std::string tool_name;

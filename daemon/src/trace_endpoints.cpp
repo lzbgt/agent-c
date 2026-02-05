@@ -102,9 +102,10 @@ void handle_trace_lookup_endpoint(
   Json::Value out(Json::objectValue);
   out["ok"] = true;
   out["trace_id"] = trace_id;
-  out["count"] = (Json::UInt64)rows.size();
   Json::Value recs(Json::arrayValue);
+  size_t used_bytes = 0;
   for (const auto& s : rows) {
+    used_bytes += s.size();
     Json::Value v;
     std::string perr;
     if (!json_parse_object(s, &v, &perr)) {
@@ -118,6 +119,66 @@ void handle_trace_lookup_endpoint(
     }
     recs.append(v);
   }
+
+  // Best-effort: also surface edge interop trace records (task events and inbound envelopes).
+  // This makes trace_id correlation usable across the platform ↔ node boundary without a schema migration.
+  {
+    const size_t remaining_bytes = (used_bytes >= max_bytes) ? 0 : (max_bytes - used_bytes);
+    const size_t remaining_records = (rows.size() >= max_records) ? 0 : (max_records - rows.size());
+
+    if (remaining_bytes > 0 && remaining_records > 0) {
+      std::vector<AgentDb::EdgeTaskEventRow> edge_events;
+      std::string eerr;
+      if (db_or_null->read_edge_task_events_by_trace_id(trace_id, remaining_bytes, remaining_records, &edge_events, &eerr)) {
+        for (const auto& ev : edge_events) {
+          if (used_bytes + ev.data_json.size() > max_bytes) break;
+          Json::Value row(Json::objectValue);
+          row["source"] = "edge_task_event";
+          row["ts_utc_ms"] = (Json::Int64)ev.ts_utc_ms;
+          row["task_id"] = ev.task_id;
+          row["step_id"] = ev.step_id;
+          row["state"] = ev.state;
+          Json::Value v;
+          std::string perr;
+          if (json_parse_object(ev.data_json, &v, &perr)) row["event"] = v;
+          else row["event_raw"] = ev.data_json;
+          recs.append(row);
+          used_bytes += ev.data_json.size();
+          if ((size_t)recs.size() >= max_records) break;
+        }
+      }
+    }
+  }
+
+  {
+    const size_t remaining_records = ((size_t)recs.size() >= max_records) ? 0 : (max_records - (size_t)recs.size());
+    const size_t remaining_bytes = (used_bytes >= max_bytes) ? 0 : (max_bytes - used_bytes);
+    if (remaining_records > 0 && remaining_bytes > 0) {
+      std::vector<AgentDb::EdgeInboxMessageRow> inbox_rows;
+      std::string ierr;
+      if (db_or_null->read_edge_inbox_messages_by_trace_id(trace_id, remaining_bytes, remaining_records, &inbox_rows, &ierr)) {
+        for (const auto& m : inbox_rows) {
+          if (used_bytes + m.envelope_json.size() > max_bytes) break;
+          Json::Value row(Json::objectValue);
+          row["source"] = "edge_inbox_message";
+          row["msg_id"] = m.msg_id;
+          row["ts_utc_ms"] = (Json::Int64)m.ts_utc_ms;
+          row["type"] = m.type;
+          if (!m.from_id.empty()) row["from"] = m.from_id;
+          if (!m.to_id.empty()) row["to"] = m.to_id;
+          Json::Value env;
+          std::string perr;
+          if (json_parse_object(m.envelope_json, &env, &perr)) row["envelope"] = env;
+          else row["envelope_raw"] = m.envelope_json;
+          recs.append(row);
+          used_bytes += m.envelope_json.size();
+          if ((size_t)recs.size() >= max_records) break;
+        }
+      }
+    }
+  }
+
+  out["count"] = (Json::UInt64)recs.size();
   out["records"] = recs;
   resp->body = json_stringify(out);
 }

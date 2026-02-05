@@ -533,6 +533,7 @@ bool edge_enqueue_task_assign(
   int64_t deadline_utc_ms,
   int attempt,
   const Json::Value& payload,
+  const Json::Value& trace,
   const std::unordered_set<std::string>& allow_hazards,
   bool allow_high_side_effect,
   bool enforce_safety,
@@ -574,6 +575,11 @@ bool edge_enqueue_task_assign(
   if (task_id.empty() || step_id.empty() || idempotency_key.empty() || (mode != "invoke" && mode != "agent") || deadline_utc_ms <= 0 ||
       !payload.isObject()) {
     if (out_error) *out_error = "missing/invalid task fields";
+    if (out_http_status) *out_http_status = 400;
+    return false;
+  }
+  if (!trace.isNull() && !trace.isObject()) {
+    if (out_error) *out_error = "invalid trace (expected object)";
     if (out_http_status) *out_http_status = 400;
     return false;
   }
@@ -715,6 +721,7 @@ bool edge_enqueue_task_assign(
     d["deadline_utc_ms"] = (Json::Int64)deadline_utc_ms;
     if (attempt > 0) d["attempt"] = attempt;
     if (!tool_name.empty()) d["tool"] = tool_name;
+    if (trace.isObject()) d["trace"] = trace;
     ev.data_json = json_stringify_compact_local(d);
     (void)db->insert_edge_task_event(ev, nullptr, nullptr);
   }
@@ -727,6 +734,7 @@ bool edge_enqueue_task_assign(
   env["type"] = "TASK_ASSIGN";
   env["from"] = "platform";
   env["to"] = edge_node_to_prefix(node_id);
+  if (trace.isObject()) env["trace"] = trace;
   Json::Value b(Json::objectValue);
   b["task_id"] = task_id;
   b["step_id"] = step_id;

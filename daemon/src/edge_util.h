@@ -105,6 +105,7 @@ bool edge_enqueue_task_assign(
   int64_t deadline_utc_ms,
   int attempt,
   const Json::Value& payload,
+  const Json::Value& trace,
   const std::unordered_set<std::string>& allow_hazards,
   bool allow_high_side_effect,
   bool enforce_safety,

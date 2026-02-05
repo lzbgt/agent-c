@@ -109,6 +109,7 @@ void edge_rules_apply_for_sensor_event_best_effort(
           deadline_utc_ms,
           /*attempt=*/0,
           payload,
+          /*trace=*/Json::Value(Json::nullValue),
           allow_hazards,
           allow_high_side_effect,
           /*enforce_safety=*/true,

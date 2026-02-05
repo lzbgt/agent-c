@@ -439,9 +439,14 @@ paths:
   /api/v1/trace:
     get:
       tags: [run]
-      summary: Lookup persisted audit records by trace_id
+      summary: Lookup persisted records by trace_id
       description: |
-        Returns audit records whose JSON contains the given `trace_id`.
+        Returns best-effort persisted records whose JSON contains the given `trace_id`.
+
+        Sources (best-effort):
+        - durable run/workflow audit records (`audit_records`)
+        - edge interop task events (`edge_task_events`) and inbound envelopes (`edge_inbox_messages`)
+          returned as wrapper objects with `source:"edge_task_event"` / `source:"edge_inbox_message"`.
 
         Notes:
         - Only runs persisted with `no_session=false` will appear (audit_records are DB-backed).
@@ -1227,6 +1232,10 @@ components:
       type: object
       required: [task_id, step_id, idempotency_key, mode, deadline_utc_ms, payload]
       properties:
+        trace:
+          type: object
+          description: Optional trace correlation object (best-effort). Recommended field: trace_id.
+          additionalProperties: true
         node_id:
           type: string
           description: Explicit target node_id (preferred when known)

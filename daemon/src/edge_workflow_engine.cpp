@@ -520,6 +520,8 @@ void EdgeWorkflowEngine::worker_main() {
         int http = 500;
         const std::unordered_set<std::string> allow_hazards;
         const bool allow_high_side_effect = false;
+        Json::Value trace(Json::objectValue);
+        trace["trace_id"] = wf.workflow_id;
         const bool ok = edge_enqueue_task_assign(
           db_,
           node_id,
@@ -530,6 +532,7 @@ void EdgeWorkflowEngine::worker_main() {
           deadline_utc_ms,
           attempt_next,
           payload,
+          trace,
           allow_hazards,
           allow_high_side_effect,
           /*enforce_safety=*/true,

@@ -1946,6 +1946,11 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
           bool deduped = false;
           std::string derr;
           int http = 500;
+          Json::Value trace(Json::nullValue);
+          if (!wf.trace_id.empty()) {
+            trace = Json::Value(Json::objectValue);
+            trace["trace_id"] = wf.trace_id;
+          }
           const bool enq_ok = edge_enqueue_task_assign(
             db_,
             node_id,
@@ -1956,6 +1961,7 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
             deadline_utc_ms,
             task.attempt,
             payload,
+            trace,
             allow_hazards,
             allow_high_side_effect,
             /*enforce_safety=*/true,
