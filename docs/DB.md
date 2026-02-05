@@ -57,7 +57,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v17)
+## Schema (v18)
 
 All timestamps are Unix milliseconds.
 
@@ -278,6 +278,7 @@ Stores durable workflow metadata. A workflow is a DAG of tasks that can be resum
 Indexes:
 - `CREATE INDEX workflows_by_status ON workflows(status, updated_unix_ms DESC)`
 - `CREATE INDEX workflows_by_status_prio ON workflows(status, priority DESC, updated_unix_ms DESC)`
+- `CREATE INDEX workflows_by_status_prio_created ON workflows(status, priority DESC, created_unix_ms ASC, workflow_id)` (scheduler scan; oldest-first)
 - `CREATE INDEX workflows_by_trace ON workflows(trace_id)`
 - `CREATE INDEX workflows_by_session ON workflows(session_id, updated_unix_ms DESC)`
 - `CREATE INDEX workflows_by_deadline ON workflows(deadline_unix_ms)`

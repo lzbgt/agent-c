@@ -573,11 +573,11 @@ bool WorkflowEngine::pick_and_claim_one(
   std::vector<AgentDb::WorkflowRow> queued;
   std::vector<AgentDb::WorkflowRow> running;
   std::string err;
-  if (!db_->list_workflows_by_status("queued", fetch_max, &queued, &err)) {
+  if (!db_->list_workflows_by_status_for_scheduler("queued", fetch_max, &queued, &err)) {
     if (out_error) *out_error = err;
     return false;
   }
-  if (!db_->list_workflows_by_status("running", fetch_max, &running, &err)) {
+  if (!db_->list_workflows_by_status_for_scheduler("running", fetch_max, &running, &err)) {
     if (out_error) *out_error = err;
     return false;
   }
@@ -612,7 +612,8 @@ bool WorkflowEngine::pick_and_claim_one(
     const int br = wf_status_rank(b.status);
     if (ar != br) return ar > br;
     // Fairness: for the same priority/status, prefer older workflows first (avoid starvation).
-    if (a.updated_unix_ms != b.updated_unix_ms) return a.updated_unix_ms < b.updated_unix_ms;
+    // Use created_unix_ms (stable age) rather than updated_unix_ms (changes during execution).
+    if (a.created_unix_ms != b.created_unix_ms) return a.created_unix_ms < b.created_unix_ms;
     return a.workflow_id < b.workflow_id;
   });
 

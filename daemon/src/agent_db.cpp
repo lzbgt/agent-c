@@ -165,7 +165,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 17;
+  const int kSchemaVersion = 18;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -687,6 +687,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS workflows_by_idempotency_scope_key
 )SQL";
     if (!exec_locked(schema_v17, out_error)) return false;
     cur_ver = 17;
+  }
+
+  if (cur_ver < 18) {
+    const char* schema_v18 = R"SQL(
+-- Scheduler scan (oldest-first) index: avoids LIMIT-starvation under large backlogs.
+CREATE INDEX IF NOT EXISTS workflows_by_status_prio_created
+  ON workflows(status, priority DESC, created_unix_ms ASC, workflow_id);
+)SQL";
+    if (!exec_locked(schema_v18, out_error)) return false;
+    cur_ver = 18;
   }
 
   // Record schema version.
@@ -1442,6 +1452,74 @@ bool AgentDb::list_workflows_by_status(
 	    row.result_json = res ? (const char*)res : "";
 	    out_rows_desc->push_back(std::move(row));
 	  }
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  return ok;
+#endif
+}
+
+bool AgentDb::list_workflows_by_status_for_scheduler(
+  const std::string& status,
+  size_t max_rows,
+  std::vector<WorkflowRow>* out_rows,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_rows) out_rows->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)status;
+  (void)max_rows;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (!out_rows) return false;
+  if (max_rows == 0) max_rows = 64;
+  if (max_rows > 512) max_rows = 512;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT workflow_id, session_id, trace_id, COALESCE(priority,0), COALESCE(deadline_unix_ms,0), COALESCE(idempotency_key,''), created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
+FROM workflows
+WHERE status=?
+ORDER BY COALESCE(priority,0) DESC, created_unix_ms ASC, workflow_id ASC
+LIMIT ?;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_text(st, 1, status);
+  ok = ok && bind_i64(st, 2, (int64_t)max_rows);
+  while (ok && step_row(st)) {
+    WorkflowRow row;
+    const unsigned char* wid = sqlite3_column_text(st, 0);
+    const unsigned char* sid = sqlite3_column_text(st, 1);
+    const unsigned char* tid = sqlite3_column_text(st, 2);
+    const unsigned char* idk = sqlite3_column_text(st, 5);
+    const unsigned char* stxt = sqlite3_column_text(st, 8);
+    const unsigned char* etxt = sqlite3_column_text(st, 10);
+    const unsigned char* spec = sqlite3_column_text(st, 11);
+    const unsigned char* res = sqlite3_column_text(st, 12);
+    row.workflow_id = wid ? (const char*)wid : "";
+    row.session_id = sid ? (const char*)sid : "";
+    row.trace_id = tid ? (const char*)tid : "";
+    row.priority = sqlite3_column_int(st, 3);
+    row.deadline_unix_ms = sqlite3_column_int64(st, 4);
+    row.idempotency_key = idk ? (const char*)idk : "";
+    row.created_unix_ms = sqlite3_column_int64(st, 6);
+    row.updated_unix_ms = sqlite3_column_int64(st, 7);
+    row.status = stxt ? (const char*)stxt : "";
+    row.cancel_requested = sqlite3_column_int(st, 9) != 0;
+    row.error = etxt ? (const char*)etxt : "";
+    row.spec_json = spec ? (const char*)spec : "";
+    row.result_json = res ? (const char*)res : "";
+    out_rows->push_back(std::move(row));
+  }
   if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
   sqlite3_finalize(st);
   return ok;

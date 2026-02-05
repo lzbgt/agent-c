@@ -55,7 +55,7 @@ PY
 #
 # This test submits:
 # - 1 workflow in session S2 (older)
-# - 128 workflows in session S1 (newer)
+# - 520 workflows in session S1 (newer; exceeds the DB scan clamp of 512)
 #
 # Expected: S2 must complete early (before 20 total workflows reach done).
 S2_SUBMIT="$(submit_one "sess_s2" "s2" 75)"
@@ -69,7 +69,7 @@ if [[ -z "${S2_ID}" ]]; then
   exit 1
 fi
 
-for i in $(seq 1 128); do
+for i in $(seq 1 520); do
   submit_one "sess_s1" "s1_${i}" 15 >/dev/null
 done
 

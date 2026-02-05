@@ -291,6 +291,16 @@ class AgentDb {
     std::vector<WorkflowRow>* out_rows_desc,
     std::string* out_error
   );
+
+  // Scheduler-specific view:
+  // - ordered by priority DESC, created_unix_ms ASC so older workflows remain visible even under scan LIMIT clamps.
+  // - intended for background engines, not user-facing listing endpoints.
+  bool list_workflows_by_status_for_scheduler(
+    const std::string& status,
+    size_t max_rows,
+    std::vector<WorkflowRow>* out_rows,
+    std::string* out_error
+  );
   bool list_workflow_tasks(const std::string& workflow_id, std::vector<WorkflowTaskRow>* out_rows, std::string* out_error);
 
   // Admission control helper: counts workflow tasks with status queued|running.

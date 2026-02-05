@@ -163,8 +163,11 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 2) **Scheduling policy v2 (beyond caps)** (predictable progress under load)
    - Shipped (v2.0): oversampled scan + session-aware round-robin scan order (prevents `LIMIT` starvation under typical load).
    - Proof: `ctest` includes `agentd_workflow_scan_fairness_smoke`.
-   - Next (v2.1): move from scan-order RR to an explicit fair-queue policy surface (e.g. deficit round-robin with per-session weights/tokens)
-     so priorities + budgets compose predictably even with >512 queued workflows.
+   - Shipped (v2.1): scheduler DB scan is now oldest-first (priority DESC, created_unix_ms ASC) with an index, so fairness holds even
+     when queued workflows exceed the DB scan clamp (512).
+   - Proof: `ctest` includes `agentd_workflow_scan_fairness_smoke` (submits >512 workflows; older session still completes early).
+   - Next (v2.2): move from scan-order RR to an explicit fair-queue policy surface (e.g. deficit round-robin with per-session weights/tokens)
+     so priorities + budgets compose predictably under extreme load and long-lived backlogs.
 
 3) **Interop spec hardening for MCU/edge handoff** (ecosystem leverage)
    - Consolidate the UM‑EAIS + durable workflow message conventions into a single versioned spec with explicit idempotency/correlation rules,
