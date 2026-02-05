@@ -2553,7 +2553,13 @@ components:
             - For mode=quorum_ok, minimum number of ok tasks required (default: N=task_ids length).
         pointers:
           type: array
-          description: JSON pointers into each task result JSON to compare (default: [/avm/result_hash, /avm/trace_hash]).
+          description: |
+            JSON pointers into each task result JSON to compare (default: [/avm/result_hash, /avm/trace_hash]).
+
+            Semantics (mode=quorum_hashes):
+            - If a pointer resolves to a string, the string is used directly as the vote value.
+            - If a pointer resolves to a non-string JSON value (object/array/number/bool), the platform hashes the canonical JSON bytes
+              (`agent_json_c14n_v1`) and votes on the resulting `sha256:<64hex>` token (ergonomics for structured results).
           items: { type: string }
         node_pointer:
           type: string

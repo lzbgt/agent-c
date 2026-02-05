@@ -3,7 +3,10 @@
 #include "json_util.h"
 #include "string_util.h"
 
+#include "agent/json_c14n.h"
+
 #include <algorithm>
+#include <cstring>
 #include <cstdlib>
 #include <unordered_map>
 #include <vector>
@@ -40,6 +43,43 @@ static bool string_array_from_json(const Json::Value& v, std::vector<std::string
     if (!s.empty()) out->push_back(s);
   }
   return true;
+}
+
+static bool quorum_token_from_json_value(
+  const Json::Value& v,
+  std::string* out_token,
+  std::string* out_kind,
+  std::string* out_err
+) {
+  if (out_token) out_token->clear();
+  if (out_kind) out_kind->clear();
+  if (out_err) out_err->clear();
+
+  // quorum_hashes is primarily intended for stable hash tokens, but for ergonomics we also
+  // support hashing non-string JSON values by canonicalizing and hashing them.
+  if (v.isString()) {
+    const std::string s = v.asString();
+    if (out_token) *out_token = s;
+    if (out_kind) *out_kind = "string";
+    return true;
+  }
+  if (v.isNull()) return false;
+
+  const std::string text = json_stringify_compact_local(v);
+  if (text.empty()) return false;
+
+  char token[80];
+  char err[256];
+  std::memset(token, 0, sizeof(token));
+  std::memset(err, 0, sizeof(err));
+  const agent_status_t st = agent_json_c14n_sha256_token(text.data(), text.size(), token, err, sizeof(err));
+  if (st == AGENT_OK && token[0]) {
+    if (out_token) *out_token = std::string(token);
+    if (out_kind) *out_kind = "json_sha256";
+    return true;
+  }
+  if (out_err && err[0]) *out_err = std::string(err);
+  return false;
 }
 
 static Json::Value workflow_aggregate_quorum_hashes_to_json(
@@ -153,6 +193,8 @@ static Json::Value workflow_aggregate_quorum_hashes_to_json(
     std::unordered_map<std::string, int> counts;
     counts.reserve(task_ids.size());
     Json::Value values_by_task(Json::objectValue);
+    Json::Value value_kind_by_task(Json::objectValue);
+    Json::Value value_error_by_task(Json::objectValue);
     Json::Value missing(Json::arrayValue);
 
     for (const auto& tid : task_ids) {
@@ -163,12 +205,21 @@ static Json::Value workflow_aggregate_quorum_hashes_to_json(
       }
       const Json::Value& root = it->second;
       const Json::Value* got = nullptr;
-      if (!json_pointer_get(root, ptr, &got) || !got || !got->isString()) {
+      if (!json_pointer_get(root, ptr, &got) || !got) {
         missing.append(tid);
         continue;
       }
-      const std::string v = got->asString();
+      std::string v;
+      std::string v_kind;
+      std::string v_err;
+      if (!quorum_token_from_json_value(*got, &v, &v_kind, &v_err)) {
+        missing.append(tid);
+        if (!v_err.empty()) value_error_by_task[tid] = v_err;
+        continue;
+      }
       values_by_task[tid] = v;
+      if (!v_kind.empty()) value_kind_by_task[tid] = v_kind;
+      if (!v_err.empty()) value_error_by_task[tid] = v_err;
       if (!v.empty()) counts[v] += 1;
     }
 
@@ -251,6 +302,8 @@ static Json::Value workflow_aggregate_quorum_hashes_to_json(
     c["chosen_count"] = best;
     c["votes"] = votes;
     c["values_by_task"] = values_by_task;
+    if (!value_kind_by_task.empty()) c["value_kind_by_task"] = value_kind_by_task;
+    if (!value_error_by_task.empty()) c["value_error_by_task"] = value_error_by_task;
     c["missing"] = missing;
 
     const bool ok = (!chosen.empty() && best >= quorum);

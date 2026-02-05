@@ -310,6 +310,8 @@ Result shape (high level):
   and `{"$ref":"task.H.json:/http/response_json/..."}` wiring.
 - `http.response_sha256` is a best-effort deterministic hash token over `http.response_json` canonical bytes (algorithm `agent_json_c14n_v1`).
   This is intended for quorum-style joins (`kind:"aggregate" mode:"quorum_hashes"`) and cross-agent correctness correlation.
+  - `mode:"quorum_hashes"` compares stable string tokens; when a pointer resolves to a non-string JSON value, the platform hashes the
+    canonical JSON bytes and votes on the resulting `sha256:<64hex>` token (ergonomics for structured results).
 
 ### Deterministic agent-to-agent collaboration task (`kind:"agentd_call"`) (v1.9)
 
