@@ -57,6 +57,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Proof: `ctest` includes `docs_sanity_tests` + `openapi_sanity_tests`.
   - Shipped: OpenAPI now includes `/api/v1/config` and `/api/v1/config/update` so operator tooling can discover the effective
     workflow outbound HTTP policy (`workflow_http_allow_*`, `deny_*`, `dns_pin`) and scheduling knobs.
+  - Shipped: workflow outbound HTTP policy knobs (`allow_hosts/allow_cidrs/deny_cidrs/deny_private/dns_pin`) are now runtime-mutable
+    and persisted via `/api/v1/config/update` (no restart needed to tighten policy).
 - UM‑EAIS contract is now executable (best-effort) via machine-readable artifacts:
   - JSON Schemas: `docs/spec/um-eais/schema/`
   - Golden transcript fixtures: `docs/spec/um-eais/fixtures/`

@@ -309,7 +309,8 @@ struct AgentdService::Impl {
     // Load runtime-configured daemon defaults from the DB (keeps all daemon state in agentd.db).
     {
       std::string err;
-      if (!load_runtime_config_best_effort(db, &cfg, &err)) {
+      RuntimeConfigLoadOptions opt;
+      if (!load_runtime_config_best_effort(db, &cfg, &err, opt)) {
         std::cerr << "Warning: failed to load runtime config from DB: " << err << "\n";
       }
     }

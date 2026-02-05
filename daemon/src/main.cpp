@@ -170,6 +170,11 @@ int main(int argc, char** argv) {
   DaemonConfig cfg;
   bool system_profile_set = false;
   bool workflow_enable_http_tasks_set = false;
+  bool workflow_http_allow_hosts_set = false;
+  bool workflow_http_allow_cidrs_set = false;
+  bool workflow_http_deny_cidrs_set = false;
+  bool workflow_http_deny_private_set = false;
+  bool workflow_http_dns_pin_set = false;
   std::vector<std::string> tool_plugin_paths;
   std::vector<ToolServerSpec> tool_server_specs;
   // Minimal flag parsing (daemon is host-only; core remains argv/env-free).
@@ -444,6 +449,7 @@ int main(int argc, char** argv) {
       }
       v = trim_copy(v);
       if (!v.empty()) cfg.workflow_http_allow_hosts.push_back(v);
+      workflow_http_allow_hosts_set = true;
     } else if (a == "--workflow-http-allow-cidr") {
       std::string v;
       if (!take(&v)) {
@@ -452,6 +458,7 @@ int main(int argc, char** argv) {
       }
       v = trim_copy(v);
       if (!v.empty()) cfg.workflow_http_allow_cidrs.push_back(v);
+      workflow_http_allow_cidrs_set = true;
     } else if (a == "--workflow-http-deny-cidr") {
       std::string v;
       if (!take(&v)) {
@@ -460,10 +467,13 @@ int main(int argc, char** argv) {
       }
       v = trim_copy(v);
       if (!v.empty()) cfg.workflow_http_deny_cidrs.push_back(v);
+      workflow_http_deny_cidrs_set = true;
     } else if (a == "--workflow-http-deny-private") {
       cfg.workflow_http_deny_private_addrs = true;
+      workflow_http_deny_private_set = true;
     } else if (a == "--workflow-http-dns-pin") {
       cfg.workflow_http_dns_pin = true;
+      workflow_http_dns_pin_set = true;
     } else if (a == "--memory-consolidate-interval-ms") {
       std::string v;
       if (!take(&v)) {
@@ -905,7 +915,7 @@ int main(int argc, char** argv) {
       cfg.workflow_enable_http_tasks = env_truthy(s);
     }
   }
-  if (cfg.workflow_http_allow_hosts.empty()) {
+  if (!workflow_http_allow_hosts_set && cfg.workflow_http_allow_hosts.empty()) {
     if (const char* s = getenv_s("AGENTD_WORKFLOW_HTTP_ALLOW_HOSTS")) {
       std::vector<std::string> toks;
       parse_csv_tokens_best_effort(s, &toks);
@@ -915,7 +925,7 @@ int main(int argc, char** argv) {
       }
     }
   }
-  if (cfg.workflow_http_allow_cidrs.empty()) {
+  if (!workflow_http_allow_cidrs_set && cfg.workflow_http_allow_cidrs.empty()) {
     if (const char* s = getenv_s("AGENTD_WORKFLOW_HTTP_ALLOW_CIDRS")) {
       std::vector<std::string> toks;
       parse_csv_tokens_best_effort(s, &toks);
@@ -925,7 +935,7 @@ int main(int argc, char** argv) {
       }
     }
   }
-  if (cfg.workflow_http_deny_cidrs.empty()) {
+  if (!workflow_http_deny_cidrs_set && cfg.workflow_http_deny_cidrs.empty()) {
     if (const char* s = getenv_s("AGENTD_WORKFLOW_HTTP_DENY_CIDRS")) {
       std::vector<std::string> toks;
       parse_csv_tokens_best_effort(s, &toks);
@@ -935,11 +945,15 @@ int main(int argc, char** argv) {
       }
     }
   }
-  if (const char* s = getenv_s("AGENTD_WORKFLOW_HTTP_DENY_PRIVATE")) {
-    cfg.workflow_http_deny_private_addrs = env_truthy(s);
+  if (!workflow_http_deny_private_set) {
+    if (const char* s = getenv_s("AGENTD_WORKFLOW_HTTP_DENY_PRIVATE")) {
+      cfg.workflow_http_deny_private_addrs = env_truthy(s);
+    }
   }
-  if (const char* s = getenv_s("AGENTD_WORKFLOW_HTTP_DNS_PIN")) {
-    cfg.workflow_http_dns_pin = env_truthy(s);
+  if (!workflow_http_dns_pin_set) {
+    if (const char* s = getenv_s("AGENTD_WORKFLOW_HTTP_DNS_PIN")) {
+      cfg.workflow_http_dns_pin = env_truthy(s);
+    }
   }
   if (const char* ms = getenv_s("AGENTD_MEMORY_CONSOLIDATE_INTERVAL_MS")) {
     try {
@@ -1014,7 +1028,13 @@ int main(int argc, char** argv) {
   // This keeps provider keys out of browser storage and ensures all daemon state is in agentd.db.
   {
     std::string err;
-    if (!load_runtime_config_best_effort(db, &cfg, &err)) {
+    RuntimeConfigLoadOptions opt;
+    opt.override_workflow_http_allow_hosts = !workflow_http_allow_hosts_set;
+    opt.override_workflow_http_allow_cidrs = !workflow_http_allow_cidrs_set;
+    opt.override_workflow_http_deny_cidrs = !workflow_http_deny_cidrs_set;
+    opt.override_workflow_http_deny_private_addrs = !workflow_http_deny_private_set;
+    opt.override_workflow_http_dns_pin = !workflow_http_dns_pin_set;
+    if (!load_runtime_config_best_effort(db, &cfg, &err, opt)) {
       std::cerr << "Warning: failed to load runtime config from DB: " << err << "\n";
     }
   }

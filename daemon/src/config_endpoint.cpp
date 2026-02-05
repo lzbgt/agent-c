@@ -8,7 +8,118 @@
 
 #include <json/json.h>
 
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+
 namespace agentd {
+
+namespace {
+
+static bool validate_cidr_token_best_effort(const std::string& s_in) {
+  const std::string s = trim_copy(s_in);
+  const size_t slash = s.find('/');
+  if (slash == std::string::npos) return false;
+  const std::string host = trim_copy(s.substr(0, slash));
+  const std::string pref_s = trim_copy(s.substr(slash + 1));
+  if (host.empty() || pref_s.empty()) return false;
+  int pref = 0;
+  try {
+    pref = std::stoi(pref_s);
+  } catch (...) {
+    return false;
+  }
+  uint8_t buf[16];
+  if (::inet_pton(AF_INET, host.c_str(), buf) == 1) {
+    return pref >= 0 && pref <= 32;
+  }
+  if (::inet_pton(AF_INET6, host.c_str(), buf) == 1) {
+    return pref >= 0 && pref <= 128;
+  }
+  return false;
+}
+
+static bool validate_hostport_token_best_effort(const std::string& s_in) {
+  const std::string s = trim_copy(s_in);
+  if (s.empty() || s.size() > 512) return false;
+  // No whitespace.
+  for (char c : s) {
+    if (c == ' ' || c == '\t' || c == '\r' || c == '\n') return false;
+  }
+  // Allow:
+  // - host
+  // - host:port (single ':')
+  // - [ipv6] or [ipv6]:port
+  std::string host;
+  std::string port_s;
+  if (!s.empty() && s[0] == '[') {
+    const size_t rb = s.find(']');
+    if (rb == std::string::npos) return false;
+    host = s.substr(1, rb - 1);
+    if (rb + 1 < s.size()) {
+      if (s[rb + 1] != ':') return false;
+      port_s = s.substr(rb + 2);
+    }
+  } else {
+    const size_t col = s.rfind(':');
+    if (col != std::string::npos && s.find(':') == col) {
+      host = s.substr(0, col);
+      port_s = s.substr(col + 1);
+    } else {
+      host = s;
+    }
+  }
+  host = trim_copy(host);
+  port_s = trim_copy(port_s);
+  if (host.empty()) return false;
+  if (!port_s.empty()) {
+    int p = 0;
+    try {
+      p = std::stoi(port_s);
+    } catch (...) {
+      return false;
+    }
+    if (p < 1 || p > 65535) return false;
+  }
+  return true;
+}
+
+static bool read_string_array_best_effort(
+  const Json::Value& obj,
+  const char* k,
+  std::vector<std::string>* out,
+  size_t max_n,
+  size_t max_len,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (!out) return false;
+  out->clear();
+  if (!k || !obj.isMember(k)) return true;
+  const Json::Value& v = obj[k];
+  if (v.isNull()) return true;
+  if (!v.isArray()) {
+    if (out_err) *out_err = std::string(k) + " must be an array";
+    return false;
+  }
+  if (v.size() > (Json::ArrayIndex)max_n) {
+    if (out_err) *out_err = std::string(k) + " too large";
+    return false;
+  }
+  for (Json::ArrayIndex i = 0; i < v.size(); i++) {
+    if (!v[i].isString()) continue;
+    std::string s = trim_copy(v[i].asString());
+    if (s.empty()) continue;
+    if (s.size() > max_len) {
+      if (out_err) *out_err = std::string(k) + " entry too long";
+      return false;
+    }
+    out->push_back(std::move(s));
+  }
+  return true;
+}
+
+}  // namespace
 
 void handle_config_endpoint(
   const DaemonConfig& cfg,
@@ -231,6 +342,88 @@ void handle_config_update_endpoint(
     }
   }
 
+  // Workflow outbound HTTP policy knobs (non-secret, runtime-mutable).
+  {
+    std::vector<std::string> allow_hosts;
+    std::vector<std::string> allow_cidrs;
+    std::vector<std::string> deny_cidrs;
+    std::string verr;
+    if (!read_string_array_best_effort(args, "workflow_http_allow_hosts", &allow_hosts, /*max_n=*/128, /*max_len=*/512, &verr)) {
+      resp->status = 400;
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = verr.empty() ? "invalid workflow_http_allow_hosts" : verr;
+      resp->body = json_stringify(o);
+      return;
+    }
+    if (!read_string_array_best_effort(args, "workflow_http_allow_cidrs", &allow_cidrs, /*max_n=*/128, /*max_len=*/256, &verr)) {
+      resp->status = 400;
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = verr.empty() ? "invalid workflow_http_allow_cidrs" : verr;
+      resp->body = json_stringify(o);
+      return;
+    }
+    if (!read_string_array_best_effort(args, "workflow_http_deny_cidrs", &deny_cidrs, /*max_n=*/128, /*max_len=*/256, &verr)) {
+      resp->status = 400;
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = verr.empty() ? "invalid workflow_http_deny_cidrs" : verr;
+      resp->body = json_stringify(o);
+      return;
+    }
+
+    // If fields are present, validate and apply.
+    if (args.isMember("workflow_http_allow_hosts")) {
+      for (const auto& h : allow_hosts) {
+        if (!validate_hostport_token_best_effort(h)) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "invalid workflow_http_allow_hosts entry";
+          o["value"] = h;
+          resp->body = json_stringify(o);
+          return;
+        }
+      }
+      next.workflow_http_allow_hosts = allow_hosts;
+    }
+    if (args.isMember("workflow_http_allow_cidrs")) {
+      for (const auto& c : allow_cidrs) {
+        if (!validate_cidr_token_best_effort(c)) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "invalid workflow_http_allow_cidrs entry";
+          o["value"] = c;
+          resp->body = json_stringify(o);
+          return;
+        }
+      }
+      next.workflow_http_allow_cidrs = allow_cidrs;
+    }
+    if (args.isMember("workflow_http_deny_cidrs")) {
+      for (const auto& c : deny_cidrs) {
+        if (!validate_cidr_token_best_effort(c)) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "invalid workflow_http_deny_cidrs entry";
+          o["value"] = c;
+          resp->body = json_stringify(o);
+          return;
+        }
+      }
+      next.workflow_http_deny_cidrs = deny_cidrs;
+    }
+    if (args.isMember("workflow_http_deny_private_addrs") && args["workflow_http_deny_private_addrs"].isBool()) {
+      next.workflow_http_deny_private_addrs = args["workflow_http_deny_private_addrs"].asBool();
+    }
+    if (args.isMember("workflow_http_dns_pin") && args["workflow_http_dns_pin"].isBool()) {
+      next.workflow_http_dns_pin = args["workflow_http_dns_pin"].asBool();
+    }
+  }
+
   // Provider keys:
   // - provider_keys: { deepseek:"...", openrouter:"...", openai:"..." }
   // - or (provider + api_key): set a single provider key
@@ -296,6 +489,21 @@ void handle_config_update_endpoint(
   o["summary_max_chars"] = (Json::UInt64)next.summary_max_chars;
   o["timeout_ms"] = (Json::Int64)next.timeout_ms;
   o["proxy_url_set"] = !next.proxy_url.empty();
+  {
+    Json::Value engines(Json::objectValue);
+    Json::Value ah(Json::arrayValue);
+    for (const auto& s : next.workflow_http_allow_hosts) if (!s.empty()) ah.append(s);
+    Json::Value ac(Json::arrayValue);
+    for (const auto& s : next.workflow_http_allow_cidrs) if (!s.empty()) ac.append(s);
+    Json::Value dc(Json::arrayValue);
+    for (const auto& s : next.workflow_http_deny_cidrs) if (!s.empty()) dc.append(s);
+    engines["workflow_http_allow_hosts"] = ah;
+    engines["workflow_http_allow_cidrs"] = ac;
+    engines["workflow_http_deny_cidrs"] = dc;
+    engines["workflow_http_deny_private_addrs"] = next.workflow_http_deny_private_addrs;
+    engines["workflow_http_dns_pin"] = next.workflow_http_dns_pin;
+    o["engines"] = engines;
+  }
   {
     Json::Value keys(Json::objectValue);
     auto has_key = [&](const char* p) -> bool {

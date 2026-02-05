@@ -1315,6 +1315,24 @@ components:
           type: integer
           format: int32
           description: Admission control cap (queued|running tasks total); 0 disables
+        workflow_http_allow_hosts:
+          type: array
+          items: { type: string }
+          description: Optional allowlist for workflow outbound HTTP targets (replaces the whole list)
+        workflow_http_allow_cidrs:
+          type: array
+          items: { type: string }
+          description: Optional CIDR allowlist for workflow outbound HTTP targets (replaces the whole list)
+        workflow_http_deny_cidrs:
+          type: array
+          items: { type: string }
+          description: Optional CIDR denylist for workflow outbound HTTP targets (replaces the whole list)
+        workflow_http_deny_private_addrs:
+          type: boolean
+          description: Deny private/loopback/link-local unless explicitly allowed (defense-in-depth)
+        workflow_http_dns_pin:
+          type: boolean
+          description: Pin hostname DNS results per request (defense-in-depth vs DNS rebinding)
         provider:
           type: string
           description: Provider name for `api_key` (if omitted, inferred from base_url)
@@ -1340,6 +1358,10 @@ components:
         summary_max_chars: { type: integer, format: int64 }
         timeout_ms: { type: integer, format: int64 }
         proxy_url_set: { type: boolean }
+        engines:
+          type: object
+          additionalProperties: true
+          description: Best-effort echo of workflow outbound HTTP policy knobs after update
         provider_keys_set:
           type: object
           additionalProperties: true

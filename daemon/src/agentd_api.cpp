@@ -236,7 +236,8 @@ bool AgentdApi::init(std::string* out_error) {
   // Load runtime-configured daemon defaults (model/base_url/proxy/timeout + provider keys) from the DB.
   {
     std::string err;
-    if (!load_runtime_config_best_effort(impl_->db, &cfg, &err)) {
+    RuntimeConfigLoadOptions opt;
+    if (!load_runtime_config_best_effort(impl_->db, &cfg, &err, opt)) {
       std::cerr << "Warning: failed to load runtime config from DB: " << err << "\n";
     }
   }

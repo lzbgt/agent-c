@@ -21,6 +21,16 @@ static bool is_known_provider(const std::string& provider) {
 }  // namespace
 
 bool load_runtime_config_best_effort(AgentDb& db, DaemonConfig* cfg_io, std::string* out_error) {
+  RuntimeConfigLoadOptions opt;
+  return load_runtime_config_best_effort(db, cfg_io, out_error, opt);
+}
+
+bool load_runtime_config_best_effort(
+  AgentDb& db,
+  DaemonConfig* cfg_io,
+  std::string* out_error,
+  const RuntimeConfigLoadOptions& opt
+) {
   if (out_error) out_error->clear();
   if (!cfg_io) {
     if (out_error) *out_error = "missing cfg_io";
@@ -67,6 +77,37 @@ bool load_runtime_config_best_effort(AgentDb& db, DaemonConfig* cfg_io, std::str
       if (v.isMember("workflow_admit_max_inflight_tasks_total") && v["workflow_admit_max_inflight_tasks_total"].isInt()) {
         cfg_io->workflow_admit_max_inflight_tasks_total =
           std::max(0, std::min(1000000, v["workflow_admit_max_inflight_tasks_total"].asInt()));
+      }
+
+      auto read_string_array = [&](const char* k, std::vector<std::string>* outv) {
+        if (!k || !outv) return;
+        outv->clear();
+        if (!v.isMember(k) || !v[k].isArray()) return;
+        for (Json::ArrayIndex i = 0; i < v[k].size(); i++) {
+          if (!v[k][i].isString()) continue;
+          const std::string s = trim_copy(v[k][i].asString());
+          if (!s.empty()) outv->push_back(s);
+        }
+      };
+
+      if (opt.override_workflow_http_allow_hosts) {
+        read_string_array("workflow_http_allow_hosts", &cfg_io->workflow_http_allow_hosts);
+      }
+      if (opt.override_workflow_http_allow_cidrs) {
+        read_string_array("workflow_http_allow_cidrs", &cfg_io->workflow_http_allow_cidrs);
+      }
+      if (opt.override_workflow_http_deny_cidrs) {
+        read_string_array("workflow_http_deny_cidrs", &cfg_io->workflow_http_deny_cidrs);
+      }
+      if (opt.override_workflow_http_deny_private_addrs) {
+        if (v.isMember("workflow_http_deny_private_addrs") && v["workflow_http_deny_private_addrs"].isBool()) {
+          cfg_io->workflow_http_deny_private_addrs = v["workflow_http_deny_private_addrs"].asBool();
+        }
+      }
+      if (opt.override_workflow_http_dns_pin) {
+        if (v.isMember("workflow_http_dns_pin") && v["workflow_http_dns_pin"].isBool()) {
+          cfg_io->workflow_http_dns_pin = v["workflow_http_dns_pin"].asBool();
+        }
       }
     }
   }
@@ -117,6 +158,23 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
   v["timeout_ms"] = (Json::Int64)cfg.timeout_ms;
   v["workflow_admit_max_inflight_tasks_per_session"] = cfg.workflow_admit_max_inflight_tasks_per_session;
   v["workflow_admit_max_inflight_tasks_total"] = cfg.workflow_admit_max_inflight_tasks_total;
+  {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : cfg.workflow_http_allow_hosts) if (!s.empty()) arr.append(s);
+    v["workflow_http_allow_hosts"] = arr;
+  }
+  {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : cfg.workflow_http_allow_cidrs) if (!s.empty()) arr.append(s);
+    v["workflow_http_allow_cidrs"] = arr;
+  }
+  {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : cfg.workflow_http_deny_cidrs) if (!s.empty()) arr.append(s);
+    v["workflow_http_deny_cidrs"] = arr;
+  }
+  v["workflow_http_deny_private_addrs"] = cfg.workflow_http_deny_private_addrs;
+  v["workflow_http_dns_pin"] = cfg.workflow_http_dns_pin;
 
   Json::StreamWriterBuilder wb;
   wb["indentation"] = "  ";
