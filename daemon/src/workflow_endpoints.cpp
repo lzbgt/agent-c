@@ -1,6 +1,7 @@
 #include "workflow_endpoints.h"
 
 #include "daemon_auth.h"
+#include "edge_util.h"
 #include "http_util.h"
 #include "json_util.h"
 #include "session_id_util.h"
@@ -68,6 +69,7 @@ static bool is_safe_relpath_md(const std::string& p) {
 static bool expand_workflow_submit_macros(
   Json::Value* io_tasks_arr,
   const Json::Value& workflow_defaults,
+  AgentDb* db_or_null,
   bool allow_sessions,
   bool allow_inline_api_keys,
   const std::string& session_id,
@@ -92,7 +94,7 @@ static bool expand_workflow_submit_macros(
 
     const std::string kind =
       t.isMember("kind") && t["kind"].isString() ? trim_copy(t["kind"].asString()) : std::string();
-    if (kind != "delegate_parallel") {
+    if (kind != "delegate_parallel" && kind != "edge_parallel") {
       out.append(t);
       continue;
     }
@@ -109,6 +111,291 @@ static bool expand_workflow_submit_macros(
         resp->body = json_stringify_compact(o);
       }
       return false;
+    }
+
+    if (kind == "edge_parallel") {
+      const Json::Value ep = t.isMember("edge_parallel") ? t["edge_parallel"] : Json::Value(Json::nullValue);
+      if (!ep.isObject()) {
+        if (resp) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "edge_parallel task missing edge_parallel object";
+          o["task_id"] = task_id;
+          resp->body = json_stringify_compact(o);
+        }
+        return false;
+      }
+      if (!db_or_null || !db_or_null->is_open()) {
+        if (resp) {
+          resp->status = 503;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "db not available (edge_parallel requires node registry)";
+          o["task_id"] = task_id;
+          resp->body = json_stringify_compact(o);
+        }
+        return false;
+      }
+
+      int64_t count = 0;
+      if (ep.isMember("count") && (ep["count"].isInt64() || ep["count"].isUInt64() || ep["count"].isInt() || ep["count"].isUInt())) {
+        count = std::max<int64_t>(0, ep["count"].asInt64());
+      }
+      if (count <= 0) count = 2;
+      if (count > 32) count = 32;
+
+      Json::Value edge = ep.isMember("edge") && ep["edge"].isObject() ? ep["edge"] : Json::Value(Json::nullValue);
+      if (!edge.isObject()) {
+        if (resp) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "edge_parallel.edge must be an object";
+          o["task_id"] = task_id;
+          resp->body = json_stringify_compact(o);
+        }
+        return false;
+      }
+
+      if (edge.isMember("node_id") && edge["node_id"].isString() && !trim_copy(edge["node_id"].asString()).empty()) {
+        if (resp) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "edge_parallel.edge.node_id must be omitted (use match_any fan-out)";
+          o["task_id"] = task_id;
+          resp->body = json_stringify_compact(o);
+        }
+        return false;
+      }
+
+      if (!edge.isMember("match_any") || !edge["match_any"].isObject()) {
+        if (resp) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "edge_parallel.edge.match_any must be an object";
+          o["task_id"] = task_id;
+          resp->body = json_stringify_compact(o);
+        }
+        return false;
+      }
+      const Json::Value m = edge["match_any"];
+
+      auto read_arr = [&](const char* k, std::vector<std::string>* outv) {
+        if (!outv) return;
+        outv->clear();
+        if (!m.isMember(k) || !m[k].isArray()) return;
+        for (Json::ArrayIndex j = 0; j < m[k].size(); j++) {
+          if (!m[k][j].isString()) continue;
+          const std::string s = trim_copy(m[k][j].asString());
+          if (!s.empty()) outv->push_back(s);
+        }
+      };
+
+      std::vector<std::string> requires_tools;
+      std::vector<std::string> tags_all;
+      std::vector<std::string> tags_any;
+      std::vector<std::string> tags_none;
+      read_arr("requires_tools", &requires_tools);
+      read_arr("tags_all", &tags_all);
+      read_arr("tags_any", &tags_any);
+      read_arr("tags_none", &tags_none);
+
+      std::unordered_set<std::string> exclude_node_ids;
+      if (m.isMember("exclude_node_ids") && m["exclude_node_ids"].isArray()) {
+        for (Json::ArrayIndex j = 0; j < m["exclude_node_ids"].size(); j++) {
+          if (!m["exclude_node_ids"][j].isString()) continue;
+          const std::string s = trim_copy(m["exclude_node_ids"][j].asString());
+          if (!s.empty()) exclude_node_ids.insert(s);
+        }
+      }
+
+      std::vector<AgentDb::EdgeNodeRow> nodes;
+      std::string nerr;
+      if (!db_or_null->list_edge_nodes(/*max_rows=*/256, &nodes, &nerr)) {
+        if (resp) {
+          resp->status = 500;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "failed to list edge nodes";
+          o["detail"] = nerr;
+          o["task_id"] = task_id;
+          resp->body = json_stringify_compact(o);
+        }
+        return false;
+      }
+
+      std::vector<std::string> selected_node_ids;
+      selected_node_ids.reserve((size_t)count);
+      for (const auto& n : nodes) {
+        if ((int64_t)selected_node_ids.size() >= count) break;
+        if (n.node_id.empty()) continue;
+        if (!edge_id_is_safe(n.node_id)) continue;
+        if (exclude_node_ids.count(n.node_id)) continue;
+
+        std::unordered_set<std::string> toolset;
+        std::unordered_set<std::string> tagset;
+        if (!edge_parse_string_set(n.tools_json, &toolset)) continue;
+        if (!edge_parse_string_set(n.tags_json, &tagset)) continue;
+
+        bool ok = true;
+        for (const auto& tname : requires_tools) {
+          if (tname.empty()) continue;
+          if (!toolset.count(tname)) { ok = false; break; }
+        }
+        if (!ok) continue;
+        for (const auto& tag : tags_all) {
+          if (tag.empty()) continue;
+          if (!tagset.count(tag)) { ok = false; break; }
+        }
+        if (!ok) continue;
+        if (!tags_any.empty()) {
+          bool any = false;
+          for (const auto& tag : tags_any) {
+            if (tag.empty()) continue;
+            if (tagset.count(tag)) { any = true; break; }
+          }
+          if (!any) continue;
+        }
+        for (const auto& tag : tags_none) {
+          if (tag.empty()) continue;
+          if (tagset.count(tag)) { ok = false; break; }
+        }
+        if (!ok) continue;
+
+        selected_node_ids.push_back(n.node_id);
+        exclude_node_ids.insert(n.node_id);
+      }
+
+      if ((int64_t)selected_node_ids.size() < count) {
+        if (resp) {
+          resp->status = 409;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "edge_parallel: not enough matching nodes";
+          o["task_id"] = task_id;
+          o["requested"] = (Json::Int64)count;
+          o["selected"] = (Json::Int64)selected_node_ids.size();
+          resp->body = json_stringify_compact(o);
+        }
+        return false;
+      }
+
+      // Macro task fields to preserve/propagate.
+      std::vector<std::string> dep_ids;
+      if (t.isMember("depends_on") && t["depends_on"].isArray()) {
+        for (Json::ArrayIndex j = 0; j < t["depends_on"].size(); j++) {
+          if (!t["depends_on"][j].isString()) continue;
+          const std::string dep = trim_copy(t["depends_on"][j].asString());
+          if (!dep.empty()) dep_ids.push_back(dep);
+        }
+      }
+      const int priority =
+        t.isMember("priority") && t["priority"].isInt() ? std::max(-1000, std::min(1000, t["priority"].asInt())) : 0;
+
+      Json::Value attempt_task_ids(Json::arrayValue);
+      for (const auto& node_id : selected_node_ids) {
+        const std::string attempt_task_id = task_id + ":" + node_id;
+        if (!id_is_safe(attempt_task_id)) {
+          if (resp) {
+            resp->status = 400;
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "edge_parallel produced invalid derived task_id";
+            o["task_id"] = task_id;
+            o["node_id"] = node_id;
+            o["derived_task_id"] = attempt_task_id;
+            resp->body = json_stringify_compact(o);
+          }
+          return false;
+        }
+
+        Json::Value at(Json::objectValue);
+        at["task_id"] = attempt_task_id;
+        at["kind"] = "edge_invoke";
+        at["allow_error"] = true;  // allow errors so the join can deterministically decide.
+        if (priority != 0) at["priority"] = priority;
+        if (t.isMember("inputs") && t["inputs"].isObject()) at["inputs"] = t["inputs"];
+        if (t.isMember("ready_unix_ms") && (t["ready_unix_ms"].isInt64() || t["ready_unix_ms"].isUInt64() || t["ready_unix_ms"].isInt())) {
+          at["ready_unix_ms"] = t["ready_unix_ms"];
+        }
+        if (!dep_ids.empty()) {
+          Json::Value deps(Json::arrayValue);
+          for (const auto& d : dep_ids) deps.append(d);
+          at["depends_on"] = deps;
+        }
+        if (t.isMember("max_attempts") && t["max_attempts"].isInt()) at["max_attempts"] = t["max_attempts"];
+        if (t.isMember("expect") && t["expect"].isObject()) at["expect"] = t["expect"];
+
+        Json::Value e2 = edge;
+        e2["node_id"] = node_id;
+        e2.removeMember("match_any");  // node is fixed by macro expansion
+        at["edge"] = e2;
+        out.append(at);
+        attempt_task_ids.append(attempt_task_id);
+      }
+
+      // Replace macro task with aggregate join.
+      Json::Value join(Json::objectValue);
+      join["task_id"] = task_id;
+      join["kind"] = "aggregate";
+      if (priority != 0) join["priority"] = priority;
+      if (t.isMember("allow_error") && t["allow_error"].isBool()) join["allow_error"] = t["allow_error"];
+      if (t.isMember("inputs") && t["inputs"].isObject()) join["inputs"] = t["inputs"];
+      if (t.isMember("ready_unix_ms") && (t["ready_unix_ms"].isInt64() || t["ready_unix_ms"].isUInt64() || t["ready_unix_ms"].isInt())) {
+        join["ready_unix_ms"] = t["ready_unix_ms"];
+      }
+      {
+        Json::Value deps(Json::arrayValue);
+        for (Json::ArrayIndex k = 0; k < attempt_task_ids.size(); k++) deps.append(attempt_task_ids[k]);
+        join["depends_on"] = deps;
+      }
+
+      Json::Value agg(Json::objectValue);
+      if (ep.isMember("aggregate") && !ep["aggregate"].isNull()) {
+        if (!ep["aggregate"].isObject()) {
+          if (resp) {
+            resp->status = 400;
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "edge_parallel.edge_parallel.aggregate must be an object";
+            o["task_id"] = task_id;
+            resp->body = json_stringify_compact(o);
+          }
+          return false;
+        }
+        agg = ep["aggregate"];
+      }
+
+      // edge_parallel default join behavior: strict_all_ok across attempts.
+      if (!agg.isMember("mode") || !agg["mode"].isString() || trim_copy(agg["mode"].asString()).empty()) {
+        agg["mode"] = "strict_all_ok";
+      }
+      agg["task_ids"] = attempt_task_ids;
+
+      const std::string agg_mode =
+        agg.isMember("mode") && agg["mode"].isString() ? trim_copy(agg["mode"].asString()) : std::string();
+      if (agg_mode != "first_ok" && agg_mode != "quorum_ok" && agg_mode != "strict_all_ok" && agg_mode != "collect" && agg_mode != "best_of_n" && agg_mode != "quorum_hashes") {
+        if (resp) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "edge_parallel aggregate.mode must be one of: first_ok, quorum_ok, strict_all_ok, collect, best_of_n, quorum_hashes";
+          o["task_id"] = task_id;
+          o["mode"] = agg_mode;
+          resp->body = json_stringify_compact(o);
+        }
+        return false;
+      }
+      join["aggregate"] = agg;
+
+      if (t.isMember("max_attempts") && t["max_attempts"].isInt()) join["max_attempts"] = t["max_attempts"];
+      if (t.isMember("expect") && t["expect"].isObject()) join["expect"] = t["expect"];
+
+      out.append(join);
+      continue;
     }
 
     if (!t.isMember("delegate") || !t["delegate"].isObject()) {
@@ -686,7 +973,7 @@ void handle_workflow_submit_endpoint(
   // This ensures:
   // - admission control applies to the expanded task count
   // - derived tasks participate in fairness caps/budgets and deterministic joins
-  if (!expand_workflow_submit_macros(&tasks, defaults, allow_sessions, allow_inline_api_keys, session_id, trace_id, resp)) {
+  if (!expand_workflow_submit_macros(&tasks, defaults, db_or_null, allow_sessions, allow_inline_api_keys, session_id, trace_id, resp)) {
     return;
   }
   args["tasks"] = tasks;

@@ -240,12 +240,18 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - For `mode:"quorum_hashes"`, new `require_distinct_nodes:true` counts votes across distinct `/edge/node_id` values instead of per-task votes.
   - Each distinct node contributes at most one vote per pointer (deterministically chosen from the first task_id with a non-empty value).
   - Proof: `ctest` includes `agentd_workflow_edge_invoke_quorum_hashes_distinct_nodes_smoke`.
+- Distinct-node edge fan-out macro (v1.7.7):
+  - New workflow task macro: `kind:"edge_parallel"` with `edge_parallel` (submit-time expansion).
+  - Selects **distinct** nodes via `edge.match_any` (node registry), expands into per-node `kind:"edge_invoke"` tasks,
+    then replaces the macro task with a deterministic aggregate join.
+  - Default join behavior: `mode:"strict_all_ok"`; override via `edge_parallel.aggregate`.
+  - Proof: `ctest` includes `agentd_workflow_edge_parallel_macro_smoke`.
 
 ## P0 (next: maximize autonomous continuity + correctness)
 
 ### Reweighted next 5 (highest compound impact)
 
-Priority order (reweighted after `delegate_parallel` quorum_ok + attempt_defaults shipped; sections below are kept stable for diff readability):
+Priority order (reweighted after `edge_parallel` shipped; sections below are kept stable for diff readability):
 
 1) **Scheduling policy v2.3+** — DRR is shipped; next is telemetry-driven cost model (beyond simple heuristics) + more robust fairness under mixed workloads.
 2) **Budgets v0.6** — complete host-tool + streaming usage charging and make budget pressure cheap/accurate for large queues.
