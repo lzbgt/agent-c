@@ -167,6 +167,8 @@ if(AGENT_BUILD_HOST)
     daemon/src/scene_store.cpp
     daemon/src/session_endpoints.cpp
     daemon/src/tool_plugins.cpp
+    daemon/src/tool_servers.cpp
+    daemon/src/tool_extension_mux.cpp
     daemon/src/tools_endpoint.cpp
     daemon/src/sandbox_policy.cpp
     daemon/src/openrouter_util.cpp
@@ -305,6 +307,7 @@ if(AGENT_BUILD_HOST)
     add_test(NAME agentd_cors_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_cors_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_file_symlink_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_file_symlink_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_local_tool_loop_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_local_tool_loop_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_tool_server_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_tool_server_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_trace_id_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_trace_id_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_trace_workflow_events_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_trace_workflow_events_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_sessions_root_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_sessions_root_smoke.sh $<TARGET_FILE:agentd>)

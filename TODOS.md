@@ -16,6 +16,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 - Tool plugins (`--tool-plugin`) so tools are composable without rebuilding.
   - Proof: `ctest` includes `agentd_tool_plugin_smoke`.
+- Tool servers (out-of-process) so big integrations stay isolated and “bring-up fast”.
+  - Daemon flag: `--tool-server-cmd "<cmd>"` (repeatable; stdio JSON-lines protocol)
+  - Docs: `docs/TOOL_SERVERS.md`
+  - Proof: `ctest` includes `agentd_tool_server_smoke`.
 - Embedded bring-up helper: `agent_core` now includes UM‑BMP/UM‑EAIS interop helpers (`agent/edge_interop.h`)
   for id-safe validation/sanitization + message type constants (reduces node/platform drift).
   - Proof: `ctest` includes `agent_core_tests`.
@@ -502,14 +506,17 @@ Proof:
 
 ### 6) Tool servers (subprocess / stdio) + remote device tool bridges
 
-Deliverables:
-- Spawn a “tool server” process (stdio JSON-RPC or similar).
-- Use for:
-  - Playwright/browser automation (kept out-of-process)
-  - device tools (ESP32 via serial/MQTT) without embedding
+Status:
+- Shipped: `--tool-server-cmd` loads out-of-process tools via a strict stdio JSON-lines protocol.
+  - Proof: `ctest` includes `agentd_tool_server_smoke`.
 
-Proof:
-- Smoke test starts a tool server and executes a tool end-to-end.
+Remaining:
+- Reliability hardening:
+  - per-server timeout config (`--tool-server-timeout-ms`)
+  - restart/backoff if the server dies mid-run (best-effort, fail-closed)
+  - optional `op:"ping"` health checks
+- Remote device bridges:
+  - reference tool server for ESP32 serial/MQTT bridges that speaks the same protocol and advertises UM‑ACDS tool schemas
 
 ### 7) Multi-agent workflows (broker-aware)
 

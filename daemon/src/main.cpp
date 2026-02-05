@@ -12,6 +12,8 @@
 #include "job_stream_endpoint.h"
 #include "tools_endpoint.h"
 #include "tool_plugins.h"
+#include "tool_servers.h"
+#include "tool_extension_mux.h"
 #include "session_endpoints.h"
 #include "job_endpoints.h"
 #include "orchestrate_endpoints.h"
@@ -147,6 +149,7 @@ int main(int argc, char** argv) {
   DaemonConfig cfg;
   bool system_profile_set = false;
   std::vector<std::string> tool_plugin_paths;
+  std::vector<std::string> tool_server_cmds;
   // Minimal flag parsing (daemon is host-only; core remains argv/env-free).
   for (int i = 1; i < argc; i++) {
     const std::string a = argv[i] ? argv[i] : "";
@@ -539,6 +542,13 @@ int main(int argc, char** argv) {
         return 2;
       }
       tool_plugin_paths.push_back(v);
+    } else if (a == "--tool-server-cmd") {
+      std::string v;
+      if (!take(&v) || v.empty()) {
+        std::cerr << "Missing value for --tool-server-cmd\n";
+        return 2;
+      }
+      tool_server_cmds.push_back(v);
     } else if (a == "--cors-origin") {
       std::string v;
       if (!take(&v) || v.empty()) {
@@ -620,7 +630,8 @@ int main(int argc, char** argv) {
         << "  --yolo / --no-yolo   Default unrestricted mode (default: yolo)\n"
         << "  --no-default-system  Disable default host system hint (host tools only)\n"
         << "  --system-profile <name> Host system prompt profile (default: default)\n"
-        << "  --tool-plugin <path> Load a tool plugin (repeatable)\n";
+        << "  --tool-plugin <path> Load a tool plugin (repeatable)\n"
+        << "  --tool-server-cmd <cmd> Start a stdio tool server (repeatable)\n";
       return 0;
     } else {
       std::cerr << "Unknown arg: " << a << "\n";
@@ -879,7 +890,15 @@ int main(int argc, char** argv) {
 
   ToolPluginChain tool_plugins;
   ToolExtension tool_plugin_ext{};
+  ToolServerChain tool_servers;
+  ToolExtension tool_server_ext{};
+  ToolExtensionMux tool_mux;
+  ToolExtension tool_mux_ext{};
   const ToolExtension* tool_ext_or_null = nullptr;
+
+  std::vector<ToolExtension> exts;
+  std::vector<std::vector<std::string>> names_by_ext;
+
   if (!tool_plugin_paths.empty()) {
     std::vector<ToolPluginSpec> specs;
     specs.reserve(tool_plugin_paths.size());
@@ -895,8 +914,39 @@ int main(int argc, char** argv) {
     }
     tool_plugin_ext = tool_plugins.as_tool_extension();
     if (tool_plugin_ext.register_tools && tool_plugin_ext.execute_tool) {
-      tool_ext_or_null = &tool_plugin_ext;
+      exts.push_back(tool_plugin_ext);
+      names_by_ext.push_back(tool_plugins.tool_names());
     }
+  }
+
+  if (!tool_server_cmds.empty()) {
+    std::vector<ToolServerSpec> specs;
+    specs.reserve(tool_server_cmds.size());
+    for (const auto& cmd : tool_server_cmds) {
+      ToolServerSpec s;
+      s.cmd = cmd;
+      specs.push_back(std::move(s));
+    }
+    std::string terr;
+    if (!tool_servers.load(specs, &terr)) {
+      std::cerr << "Failed to load tool servers: " << (terr.empty() ? "unknown error" : terr) << "\n";
+      return 2;
+    }
+    tool_server_ext = tool_servers.as_tool_extension();
+    if (tool_server_ext.register_tools && tool_server_ext.execute_tool) {
+      exts.push_back(tool_server_ext);
+      names_by_ext.push_back(tool_servers.tool_names());
+    }
+  }
+
+  if (!exts.empty()) {
+    std::string merr;
+    if (!tool_mux.init(exts, names_by_ext, &merr)) {
+      std::cerr << "Failed to init tool extension mux: " << (merr.empty() ? "unknown error" : merr) << "\n";
+      return 2;
+    }
+    tool_mux_ext = tool_mux.as_tool_extension();
+    tool_ext_or_null = &tool_mux_ext;
   }
 
   HttpServer server;

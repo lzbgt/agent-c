@@ -124,6 +124,15 @@ Notes:
 - `.not_in_repo` is gitignored; do not commit keys.
 - `agentd` prefers `.not_in_repo` over `project.local.md` when auto-loading provider keys.
 
+### Tool extensions: plugins + tool servers (out-of-process)
+
+`agentd` supports adding tools without rebuilding:
+- **Tool plugins** (in-process, dlopen): `--tool-plugin /path/to/plugin.so`
+- **Tool servers** (out-of-process, stdio JSON-lines): `--tool-server-cmd "<cmd>"`
+
+Tool servers are the preferred “fast bring-up” path for big integrations (Playwright, device bridges, AVM policy runners)
+because failures are isolated across a process boundary. See `docs/TOOL_SERVERS.md`.
+
 ## Real end-to-end (agentd + browser) test
 
 This repo includes a “real” E2E harness that drives the Web UI in a real browser (headless) using Playwright and makes real

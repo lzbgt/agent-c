@@ -136,6 +136,16 @@ ToolPluginChain::~ToolPluginChain() {
   impl_ = nullptr;
 }
 
+std::vector<std::string> ToolPluginChain::tool_names() const {
+  std::vector<std::string> out;
+  if (!impl_) return out;
+  std::lock_guard<std::mutex> lock(impl_->mu);
+  out.reserve(impl_->all_tool_names.size());
+  for (const auto& n : impl_->all_tool_names) out.push_back(n);
+  std::sort(out.begin(), out.end());
+  return out;
+}
+
 static bool parse_manifest_tools(const std::string& plugin_path, const char* manifest_json, std::vector<ToolDef>* out_tools, std::string* out_err) {
   if (out_err) out_err->clear();
   if (!out_tools) return false;
@@ -293,4 +303,3 @@ ToolExtension ToolPluginChain::as_tool_extension() const {
 }
 
 }  // namespace agentd
-

@@ -39,6 +39,10 @@ class ToolPluginChain {
   // Valid only while this ToolPluginChain object is alive.
   ToolExtension as_tool_extension() const;
 
+  // Returns the set of tool names provided by this chain (stable after load()).
+  // Useful when composing multiple tool extensions (e.g. plugins + tool servers).
+  std::vector<std::string> tool_names() const;
+
  private:
   struct Impl;
   Impl* impl_ = nullptr;
@@ -46,4 +50,3 @@ class ToolPluginChain {
 };
 
 }  // namespace agentd
-
