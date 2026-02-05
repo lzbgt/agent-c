@@ -37,6 +37,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Spec: `docs/spec/agentd-agentd/agentd_agent_interop_v0_1.md`
   - Broker/connector compatibility: `agentd_call.base_url` may also be a **broker proxy prefix**
     (e.g. `https://<broker>/v1/agents/<agent_id>/proxy`) so durable workflows can collaborate with agents behind NAT.
+  - Shipped (ergonomics + interop): `agentd_call.broker_proxy:{broker_base_url,agent_id}` as an alternative to `base_url`
+    (server computes/persists the proxy prefix) so MCU/edge systems can target agents by identity without hardcoding URL paths.
+    - Also supported by submit-time macro `kind:"agentd_parallel"` for each `targets[]` entry.
   - Optional hardening: restrict outbound targets with `--workflow-http-allow-host <host[:port]>` (repeatable),
     or env `AGENTD_WORKFLOW_HTTP_ALLOW_HOSTS=host[:port],...`.
   - Further hardening: CIDR allowlist + deny-private mode:
@@ -578,10 +581,11 @@ Remaining:
 
 Status:
 - Foundation shipped: deterministic workflow `kind:"http_json"` (gated) plus `kind:"agentd_call"` for remote durable workflow handoff without an LLM.
-- Next (high leverage): submit-time collaboration fan-out macro `kind:"agentd_parallel"` (expands into parallel `agentd_call` tasks + a deterministic `aggregate` join).
+- Shipped (high leverage): submit-time collaboration fan-out macro `kind:"agentd_parallel"` (expands into parallel `agentd_call` tasks + a deterministic `aggregate` join).
   - Why this compounds: it turns `agentd_call` into a first-class **redundancy/correctness** primitive (first_ok, quorum, collect, best_of_n),
     and makes multi-agent patterns scheduler-visible (fairness/budgets apply to each branch).
-  - Remaining after macro: broker-routed targets and identity-scoped memory (see below).
+  - Shipped: identity-based broker proxy addressing (`agentd_call.broker_proxy` and `agentd_parallel.targets[].broker_proxy`).
+  - Remaining after macro: broker-routed target discovery/routing policy + identity-scoped memory (see below).
 
 Deliverables:
 - Allow workflow tasks to target:

@@ -141,7 +141,8 @@ PY
 PROXY_PID=$!
 export REMOTE_URL
 
-PROXY_BASE="http://${HOST}:${PORT_PROXY}/v1/agents/1/proxy"
+BROKER_BASE="http://${HOST}:${PORT_PROXY}"
+PROXY_BASE="${BROKER_BASE}/v1/agents/1/proxy"
 
 # Start local agentd that will call the remote agentd through PROXY_BASE.
 agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_LOCAL}" "${NAME}_local" \
@@ -161,7 +162,7 @@ tasks = [
     "task_id": "REMOTE",
     "kind": "agentd_call",
     "agentd_call": {
-      "base_url": "${PROXY_BASE}",
+      "broker_proxy": {"broker_base_url": "${BROKER_BASE}", "agent_id": "1"},
       "op": "workflow_submit_and_wait",
       "bearer_env": "BROKER_OIDC_TOKEN",
       "timeout_ms": 20000,
@@ -244,4 +245,3 @@ if wres.get("assistant_text") != "remote ok":
 PY
 
 echo "${NAME} OK"
-

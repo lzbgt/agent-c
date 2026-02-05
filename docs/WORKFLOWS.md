@@ -319,6 +319,19 @@ Broker proxy compatibility:
   - The task will then call `POST .../proxy/api/v1/workflow/submit` and poll `GET .../proxy/api/v1/workflow?...`.
 - In broker deployments, auth is usually `Authorization: Bearer <OIDC_JWT>`:
   - use `agentd_call.bearer_env` to reference an env var name containing the OIDC token (secret value is not persisted).
+  - optionally, you can avoid hardcoding the proxy path by using `agentd_call.broker_proxy` (server computes/persists `base_url`):
+
+```json
+{
+  "task_id": "REMOTE",
+  "kind": "agentd_call",
+  "agentd_call": {
+    "broker_proxy": { "broker_base_url": "https://broker.example", "agent_id": "1" },
+    "bearer_env": "OIDC_TOKEN",
+    "workflow": { "tasks": [ { "task_id": "W", "kind": "delay", "delay_ms": 10 } ] }
+  }
+}
+```
 
 Security model:
 - This task is **disabled by default** (same SSRF surface as `http_json`).
@@ -409,6 +422,7 @@ Notes:
 - `agentd_parallel.agentd_call.base_url` must be omitted (each target provides a base_url).
 - The server overwrites `aggregate.task_ids` to match the derived tasks.
 - Default join strategy is `mode:"first_ok"` if `aggregate.mode` is omitted.
+- `agentd_parallel.targets[]` entries may also use `broker_proxy:{broker_base_url,agent_id}` (same as `agentd_call.broker_proxy`); the server computes `base_url` as `.../v1/agents/<agent_id>/proxy`.
 
 ### Deterministic memory update task (`kind:"memory_put"`) (v1.7)
 

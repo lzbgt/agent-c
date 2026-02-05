@@ -30,6 +30,7 @@ Broker compatibility:
 - The “remote agent” can be addressed either directly (agentd HTTP base URL), or indirectly via the broker/connector proxy:
   - `base_url = https://<broker>/v1/agents/<agent_id>/proxy`
   - The caller still uses the same agentd endpoints under the proxy prefix.
+- Convenience: callers may also specify `broker_proxy:{broker_base_url,agent_id}` instead of `base_url` (server computes/persists the proxy prefix).
 - Authentication to the broker typically uses an OIDC bearer token; use `agentd_call.bearer_env` so the secret value is not persisted.
 
 ## 2) Execution model: `workflow_submit_and_wait`

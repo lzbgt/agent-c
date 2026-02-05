@@ -17,6 +17,27 @@ static std::string json_stringify_compact(const Json::Value& v) {
   return Json::writeString(wb, v);
 }
 
+static bool id_is_safe(const std::string& s) {
+  if (s.empty() || s.size() > 128) return false;
+  for (char c : s) {
+    const bool ok =
+      (c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9') ||
+      c == '-' || c == '_' || c == '.' || c == ':';
+    if (!ok) return false;
+  }
+  return true;
+}
+
+static std::string join_base_path(std::string base, const std::string& path) {
+  if (base.empty()) return path;
+  while (!base.empty() && base.back() == '/') base.pop_back();
+  if (path.empty()) return base;
+  if (path[0] == '/') return base + path;
+  return base + "/" + path;
+}
+
 static bool env_name_is_safe(const std::string& s) {
   if (s.empty() || s.size() > 128) return false;
   const auto is_alpha = [](char c) { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); };
@@ -195,10 +216,41 @@ bool workflow_submit_build_agentd_call_task_request(
     return false;
   }
   const auto& ac = task_spec["agentd_call"];
-  const std::string base_url =
+  std::string base_url =
     ac.isMember("base_url") && ac["base_url"].isString() ? trim_copy(ac["base_url"].asString()) : "";
   if (base_url.empty()) {
-    if (out_error) *out_error = "agentd_call.base_url must be a non-empty string";
+    // Optional convenience: compute base_url from broker proxy fields.
+    const Json::Value bp = ac.isMember("broker_proxy") ? ac["broker_proxy"] : Json::Value(Json::nullValue);
+    if (!bp.isNull()) {
+      if (!bp.isObject()) {
+        if (out_error) *out_error = "agentd_call.broker_proxy must be an object";
+        return false;
+      }
+      const std::string broker_base_url =
+        bp.isMember("broker_base_url") && bp["broker_base_url"].isString() ? trim_copy(bp["broker_base_url"].asString()) : "";
+      const std::string agent_id =
+        bp.isMember("agent_id") && bp["agent_id"].isString() ? trim_copy(bp["agent_id"].asString()) : "";
+      if (broker_base_url.empty()) {
+        if (out_error) *out_error = "agentd_call.broker_proxy.broker_base_url must be a non-empty string";
+        return false;
+      }
+      if (!(broker_base_url.rfind("http://", 0) == 0 || broker_base_url.rfind("https://", 0) == 0)) {
+        if (out_error) *out_error = "agentd_call.broker_proxy.broker_base_url must start with http:// or https://";
+        return false;
+      }
+      if (broker_base_url.size() > 4096) {
+        if (out_error) *out_error = "agentd_call.broker_proxy.broker_base_url is too long";
+        return false;
+      }
+      if (agent_id.empty() || !id_is_safe(agent_id)) {
+        if (out_error) *out_error = "agentd_call.broker_proxy.agent_id must be id-safe";
+        return false;
+      }
+      base_url = join_base_path(broker_base_url, "/v1/agents/" + agent_id + "/proxy");
+    }
+  }
+  if (base_url.empty()) {
+    if (out_error) *out_error = "agentd_call.base_url is required (or set agentd_call.broker_proxy)";
     return false;
   }
   if (!(base_url.rfind("http://", 0) == 0 || base_url.rfind("https://", 0) == 0)) {
@@ -325,4 +377,3 @@ bool workflow_submit_build_agentd_call_task_request(
 }
 
 }  // namespace agentd
-

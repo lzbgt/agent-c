@@ -127,6 +127,7 @@ The broker proxy can be used as a “virtual base URL” for agentd-to-agentd co
 
 - In durable workflows, set `agentd_call.base_url` to:
   - `https://<broker>/v1/agents/<agent_id>/proxy`
+- Or set `agentd_call.broker_proxy:{broker_base_url,agent_id}` and omit `base_url` (server computes/persists the proxy prefix).
 - The caller still uses normal agentd endpoints under the proxy prefix:
   - `POST .../proxy/api/v1/workflow/submit`
   - `GET  .../proxy/api/v1/workflow?workflow_id=...`

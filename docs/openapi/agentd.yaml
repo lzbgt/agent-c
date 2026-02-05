@@ -1907,7 +1907,7 @@ components:
 
     WorkflowAgentdCallSpec:
       type: object
-      required: [base_url, workflow]
+      required: [workflow]
       description: |
         Deterministic agent-to-agent collaboration configuration for `kind:agentd_call`.
 
@@ -1918,6 +1918,7 @@ components:
         Broker compatibility:
         - `base_url` may also be a broker proxy prefix like `https://<broker>/v1/agents/<agent_id>/proxy` (see `docs/BROKER.md`).
           In that case, agentd endpoints are reached under the proxy prefix (e.g. `.../proxy/api/v1/workflow/submit`).
+        - Alternatively, omit `base_url` and set `broker_proxy:{broker_base_url,agent_id}` to have the server compute/persist the proxy prefix.
         - Broker endpoints typically require `Authorization: Bearer <OIDC_JWT>`; use `bearer_env` so secrets are not persisted.
 
         Security:
@@ -1928,7 +1929,9 @@ components:
       properties:
         base_url:
           type: string
-          description: Required base URL (must start with http:// or https://).
+          description: Required base URL (must start with http:// or https://) unless `broker_proxy` is provided.
+        broker_proxy:
+          $ref: "#/components/schemas/WorkflowAgentdBrokerProxySpec"
         op:
           type: string
           enum: [workflow_submit_and_wait]
@@ -1963,6 +1966,22 @@ components:
         include_results:
           type: boolean
           description: If true, remote poll requests include `include_results=1` (default true).
+
+    WorkflowAgentdBrokerProxySpec:
+      type: object
+      required: [broker_base_url, agent_id]
+      description: |
+        Broker-proxy addressing mode for agent collaboration tasks.
+
+        If set (and `base_url` is omitted), the server computes and persists:
+        - `base_url = <broker_base_url>/v1/agents/<agent_id>/proxy`
+      properties:
+        broker_base_url:
+          type: string
+          description: Broker base URL (must start with http:// or https://).
+        agent_id:
+          type: string
+          description: Target agent id (id-safe; used in the proxy path).
 
     WorkflowTaskAgentdParallelSpec:
       type: object
@@ -2032,14 +2051,21 @@ components:
 
     WorkflowAgentdParallelTargetSpec:
       type: object
-      required: [base_url]
+      description: |
+        Agentd collaboration target.
+
+        Either:
+        - set `base_url`, or
+        - set `broker_proxy` (server computes `base_url` as `.../v1/agents/<agent_id>/proxy`).
       properties:
         id:
           type: string
           description: Optional id-safe target id (used in derived task ids). Default `t0`, `t1`, ...
         base_url:
           type: string
-          description: Required base_url for the target agentd (must start with http:// or https://).
+          description: Target base_url for the agentd (must start with http:// or https://) unless `broker_proxy` is provided.
+        broker_proxy:
+          $ref: "#/components/schemas/WorkflowAgentdBrokerProxySpec"
         allow_error:
           type: boolean
           description: If true (default), a failing branch does not fail the overall workflow (join decides).

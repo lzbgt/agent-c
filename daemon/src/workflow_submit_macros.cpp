@@ -32,6 +32,14 @@ static bool id_is_safe(const std::string& s) {
   return true;
 }
 
+static std::string join_base_path(std::string base, const std::string& path) {
+  if (base.empty()) return path;
+  while (!base.empty() && base.back() == '/') base.pop_back();
+  if (path.empty()) return base;
+  if (path[0] == '/') return base + path;
+  return base + "/" + path;
+}
+
 }  // namespace
 
 bool expand_workflow_submit_macros(
@@ -176,6 +184,53 @@ bool expand_workflow_submit_macros(
         } else if (tgt.isObject()) {
           if (tgt.isMember("base_url") && tgt["base_url"].isString()) base_url = trim_copy(tgt["base_url"].asString());
           if (tgt.isMember("id") && tgt["id"].isString()) target_id = trim_copy(tgt["id"].asString());
+          // Convenience: broker-proxy addressing mode (compute base_url from {broker_base_url, agent_id}).
+          if (base_url.empty() && tgt.isMember("broker_proxy") && !tgt["broker_proxy"].isNull()) {
+            const Json::Value bp = tgt["broker_proxy"];
+            if (!bp.isObject()) {
+              if (resp) {
+                resp->status = 400;
+                Json::Value o(Json::objectValue);
+                o["ok"] = false;
+                o["error"] = "agentd_parallel.targets[].broker_proxy must be an object";
+                o["task_id"] = task_id;
+                o["index"] = (Json::Int64)ti;
+                resp->body = json_stringify_compact(o);
+              }
+              return false;
+            }
+            const std::string broker_base_url =
+              bp.isMember("broker_base_url") && bp["broker_base_url"].isString() ? trim_copy(bp["broker_base_url"].asString()) : "";
+            const std::string agent_id =
+              bp.isMember("agent_id") && bp["agent_id"].isString() ? trim_copy(bp["agent_id"].asString()) : "";
+            if (broker_base_url.empty() || agent_id.empty()) {
+              if (resp) {
+                resp->status = 400;
+                Json::Value o(Json::objectValue);
+                o["ok"] = false;
+                o["error"] = "agentd_parallel.targets[].broker_proxy must include broker_base_url and agent_id";
+                o["task_id"] = task_id;
+                o["index"] = (Json::Int64)ti;
+                resp->body = json_stringify_compact(o);
+              }
+              return false;
+            }
+            if (!id_is_safe(agent_id)) {
+              if (resp) {
+                resp->status = 400;
+                Json::Value o(Json::objectValue);
+                o["ok"] = false;
+                o["error"] = "agentd_parallel.targets[].broker_proxy.agent_id must be id-safe";
+                o["task_id"] = task_id;
+                o["index"] = (Json::Int64)ti;
+                o["agent_id"] = agent_id;
+                resp->body = json_stringify_compact(o);
+              }
+              return false;
+            }
+            base_url = join_base_path(broker_base_url, "/v1/agents/" + agent_id + "/proxy");
+            if (target_id.empty()) target_id = agent_id;
+          }
           if (target_id.empty()) target_id = "t" + std::to_string((int)ti);
           if (tgt.isMember("allow_error") && tgt["allow_error"].isBool()) allow_error = tgt["allow_error"].asBool();
           if (tgt.isMember("expect") && tgt["expect"].isObject()) target_expect = tgt["expect"];
