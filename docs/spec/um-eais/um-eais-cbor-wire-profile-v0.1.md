@@ -79,6 +79,10 @@ Node (`agent_core`):
 - Shipped (partial): tiny CBOR **reader** under `agent/cbor_read.h` (definite-length; no allocations).
 - Shipped (partial): UM‑BMP envelope CBOR decode helper under `agent/umbmp_envelope_read.h` (extracts envelope metadata; returns `body` as an opaque CBOR slice).
 - Shipped (partial): UM‑EAIS `TASK_ASSIGN` body CBOR decode helper under `agent/um_eais_task_assign_read.h` (extracts ids/mode/deadline; returns `payload` as an opaque CBOR slice).
+- Shipped (partial): UM‑EAIS task lifecycle CBOR **body encoders** under `agent/um_eais_task_lifecycle_write.h` for MCU-friendly replies:
+  - `TASK_ACK` body encoder
+  - `TASK_EVENT` body encoder
+  - `TASK_FAILED` body encoder
 - Shipped (partial): UM‑BMP envelope CBOR encode helper under `agent/umbmp_auth.h` (`agent_umbmp_envelope_cbor_v0_4`) for sending signed (or unsigned) envelopes over CBOR wire.
 - Not shipped (yet): full JSON<->CBOR mapping helpers for MCU firmware.
 - Recommendation: keep using a full CBOR library (e.g. TinyCBOR-derived) if you already have one, but use the deterministic profile

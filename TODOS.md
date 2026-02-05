@@ -390,6 +390,9 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
      - Core API: `agent/um_eais_task_assign_read.h` (extracts `{task_id,step_id,idempotency_key,mode,deadline_utc_ms,attempt}` and returns `payload` as an opaque CBOR slice).
      - Proof: `ctest` includes `agent_core_tests` (builds a CBOR `TASK_ASSIGN` envelope and decodes it without JSONCPP).
      - Note: supports optional `body.node_id` (v0.3 schema); the platform now includes it in TASK_ASSIGN envelopes for defense-in-depth.
+   - Shipped (MCU ergonomics): UM‑EAIS task lifecycle CBOR body encoders in `agent_core`:
+     - Core API: `agent/um_eais_task_lifecycle_write.h` encodes `TASK_ACK`, `TASK_EVENT`, and `TASK_FAILED` bodies using deterministic CBOR map key ordering.
+     - Proof: `ctest` includes `agent_core_tests` (encodes bodies and asserts canonical key ordering via the embedded CBOR reader).
    - Shipped (MCU ergonomics): UM‑BMP envelope CBOR encode helper in `agent_core` (wire send path):
      - Core API: `agent/umbmp_auth.h` `agent_umbmp_envelope_cbor_v0_4(...)` can emit deterministic CBOR wire envelopes with optional `auth.sig` (base64 text).
      - Proof: `ctest` includes `agent_core_tests` (encodes a full envelope with `auth.sig` and decodes it back via the CBOR reader).
