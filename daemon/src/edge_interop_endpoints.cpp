@@ -74,6 +74,7 @@ void handle_edge_message_endpoint(
     }
   }
   const Json::Value body = env.isMember("body") ? env["body"] : Json::Value(Json::nullValue);
+  const Json::Value trace = env.isMember("trace") && env["trace"].isObject() ? env["trace"] : Json::Value(Json::nullValue);
 
   if (msg_id.empty() || type.empty() || !body.isObject()) {
     resp->status = 400;
@@ -453,9 +454,16 @@ void handle_edge_message_endpoint(
   if (type == "TASK_ACK") {
     const std::string task_id = body.isMember("task_id") && body["task_id"].isString() ? body["task_id"].asString() : "";
     const std::string step_id = body.isMember("step_id") && body["step_id"].isString() ? body["step_id"].asString() : "";
+    const std::string idempotency_key =
+      body.isMember("idempotency_key") && body["idempotency_key"].isString() ? trim_copy(body["idempotency_key"].asString()) : "";
     if (task_id.empty() || step_id.empty() || !edge_id_is_safe(task_id) || !edge_id_is_safe(step_id)) {
       resp->status = 400;
       resp->body = "{\"ok\":false,\"error\":\"invalid TASK_ACK body\"}";
+      return;
+    }
+    if (idempotency_key.empty() || !edge_id_is_safe(idempotency_key)) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_ACK body (missing/invalid idempotency_key)\"}";
       return;
     }
     if (!body.isMember("accepted") || !body["accepted"].isBool()) {
@@ -467,6 +475,7 @@ void handle_edge_message_endpoint(
     std::string reason;
     if (body.isMember("reason") && body["reason"].isString()) reason = body["reason"].asString();
     Json::Value d = body;
+    if (trace.isObject()) d["trace"] = trace;
     if (accepted) {
       update_task_state(task_id, step_id, "QUEUED", /*result_json=*/"", /*error_text=*/"", d);
     } else {
@@ -480,16 +489,25 @@ void handle_edge_message_endpoint(
     const std::string task_id = body.isMember("task_id") && body["task_id"].isString() ? body["task_id"].asString() : "";
     const std::string step_id = body.isMember("step_id") && body["step_id"].isString() ? body["step_id"].asString() : "";
     const std::string state = body.isMember("state") && body["state"].isString() ? body["state"].asString() : "";
+    const std::string idempotency_key =
+      body.isMember("idempotency_key") && body["idempotency_key"].isString() ? trim_copy(body["idempotency_key"].asString()) : "";
     if (task_id.empty() || step_id.empty() || state.empty() || !edge_id_is_safe(task_id) || !edge_id_is_safe(step_id)) {
       resp->status = 400;
       resp->body = "{\"ok\":false,\"error\":\"invalid TASK_EVENT body\"}";
+      return;
+    }
+    if (idempotency_key.empty() || !edge_id_is_safe(idempotency_key)) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_EVENT body (missing/invalid idempotency_key)\"}";
       return;
     }
     std::string error;
     if (body.isMember("error") && body["error"].isString()) error = body["error"].asString();
     std::string result_json;
     if (body.isMember("result")) result_json = edge_json_stringify_compact(body["result"]);
-    update_task_state(task_id, step_id, state, result_json, error, body);
+    Json::Value d = body;
+    if (trace.isObject()) d["trace"] = trace;
+    update_task_state(task_id, step_id, state, result_json, error, d);
     resp->body = "{\"ok\":true}";
     return;
   }
@@ -497,9 +515,16 @@ void handle_edge_message_endpoint(
   if (type == "TASK_DONE") {
     const std::string task_id = body.isMember("task_id") && body["task_id"].isString() ? body["task_id"].asString() : "";
     const std::string step_id = body.isMember("step_id") && body["step_id"].isString() ? body["step_id"].asString() : "";
+    const std::string idempotency_key =
+      body.isMember("idempotency_key") && body["idempotency_key"].isString() ? trim_copy(body["idempotency_key"].asString()) : "";
     if (task_id.empty() || step_id.empty() || !edge_id_is_safe(task_id) || !edge_id_is_safe(step_id)) {
       resp->status = 400;
       resp->body = "{\"ok\":false,\"error\":\"invalid TASK_DONE body\"}";
+      return;
+    }
+    if (idempotency_key.empty() || !edge_id_is_safe(idempotency_key)) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_DONE body (missing/invalid idempotency_key)\"}";
       return;
     }
     if (!body.isMember("result")) {
@@ -509,7 +534,9 @@ void handle_edge_message_endpoint(
     }
     std::string result_json;
     if (body.isMember("result")) result_json = edge_json_stringify_compact(body["result"]);
-    update_task_state(task_id, step_id, "SUCCEEDED", result_json, /*error_text=*/"", body);
+    Json::Value d = body;
+    if (trace.isObject()) d["trace"] = trace;
+    update_task_state(task_id, step_id, "SUCCEEDED", result_json, /*error_text=*/"", d);
     resp->body = "{\"ok\":true}";
     return;
   }
@@ -517,9 +544,16 @@ void handle_edge_message_endpoint(
   if (type == "TASK_FAILED") {
     const std::string task_id = body.isMember("task_id") && body["task_id"].isString() ? body["task_id"].asString() : "";
     const std::string step_id = body.isMember("step_id") && body["step_id"].isString() ? body["step_id"].asString() : "";
+    const std::string idempotency_key =
+      body.isMember("idempotency_key") && body["idempotency_key"].isString() ? trim_copy(body["idempotency_key"].asString()) : "";
     if (task_id.empty() || step_id.empty() || !edge_id_is_safe(task_id) || !edge_id_is_safe(step_id)) {
       resp->status = 400;
       resp->body = "{\"ok\":false,\"error\":\"invalid TASK_FAILED body\"}";
+      return;
+    }
+    if (idempotency_key.empty() || !edge_id_is_safe(idempotency_key)) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_FAILED body (missing/invalid idempotency_key)\"}";
       return;
     }
     std::string error;
@@ -529,7 +563,9 @@ void handle_edge_message_endpoint(
       resp->body = "{\"ok\":false,\"error\":\"invalid TASK_FAILED body (missing error: string)\"}";
       return;
     }
-    update_task_state(task_id, step_id, "FAILED", /*result_json=*/"", error, body);
+    Json::Value d = body;
+    if (trace.isObject()) d["trace"] = trace;
+    update_task_state(task_id, step_id, "FAILED", /*result_json=*/"", error, d);
     resp->body = "{\"ok\":true}";
     return;
   }

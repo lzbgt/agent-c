@@ -172,6 +172,7 @@ for m in msgs:
     continue
   print(body.get("task_id") or "")
   print(body.get("step_id") or "")
+  print(body.get("idempotency_key") or "")
   raise SystemExit(0)
 raise SystemExit(1)
 PY
@@ -182,7 +183,8 @@ PY
 
 TASK_ID="$(echo "${task_pair}" | sed -n '1p')"
 STEP_ID="$(echo "${task_pair}" | sed -n '2p')"
-if [[ -z "${TASK_ID}" || -z "${STEP_ID}" ]]; then
+IDEM_KEY="$(echo "${task_pair}" | sed -n '3p')"
+if [[ -z "${TASK_ID}" || -z "${STEP_ID}" || -z "${IDEM_KEY}" ]]; then
   echo "failed to extract task_id/step_id from outbox: ${outbox}" >&2
   exit 1
 fi
@@ -198,7 +200,7 @@ print(json.dumps({
   "type": "TASK_DONE",
   "from": "node:${NODE_ID}",
   "to": "platform",
-  "body": {"task_id":"${TASK_ID}","step_id":"${STEP_ID}","result":{"ok":True,"data":{"rule":"${RULE_ID}"}}},
+  "body": {"task_id":"${TASK_ID}","step_id":"${STEP_ID}","idempotency_key":"${IDEM_KEY}","result":{"ok":True,"data":{"rule":"${RULE_ID}"}}},
 }))
 PY
 )" \
@@ -219,4 +221,3 @@ if t.get("state") != "SUCCEEDED":
   raise SystemExit(1)
 print("ok")
 PY
-

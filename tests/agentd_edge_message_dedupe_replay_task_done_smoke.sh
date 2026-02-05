@@ -53,6 +53,7 @@ env = {
   "body": {
     "task_id": "${TASK_ID}",
     "step_id": "${STEP_ID}",
+    "idempotency_key": "${IDEM}",
     "result": {"ok": True, "data": {"answer": "ok"}}
   }
 }

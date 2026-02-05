@@ -249,6 +249,39 @@ Optional:
 - `SENSOR_EVENT`
   - body: `{ node_id, event_type, ts_utc_ms, data, confidence? }`
 
+### 5.3 Reliability + idempotency (normative, v0.1)
+
+**ID token rule (recommended default):**
+- All identifiers that participate in dedupe/correlation MUST be an `id_token`:
+  - `node_id`, `task_id`, `step_id`, `workflow_id`, `idempotency_key`, `trace_id`
+- `id_token` charset: `[A-Za-z0-9_.:-]`, length `1..128`.
+
+**Transport retry rule (required):**
+- Nodes and gateways MUST assume **at-least-once delivery**.
+- Platforms MUST assume duplicates can arrive out-of-order.
+
+**`msg_id` rule (required):**
+- `msg_id` is the transport-level dedupe key for UM‑BMP ingress.
+- Gateways SHOULD keep `msg_id` stable when retrying the *same* payload (MQTT/LoRa retransmit).
+
+**Crash window rule (platform):**
+- The platform persists inbound envelopes before applying side effects.
+- A crash can occur after persistence but before side-effects; therefore the same `msg_id` may be reprocessed after restart.
+
+**Tasking idempotency rule (required for `TASK_*`):**
+- The platform emits `TASK_ASSIGN.body.idempotency_key` and MUST store it as the task’s correlation key.
+- Nodes MUST echo the same `idempotency_key` on all subsequent task lifecycle messages:
+  - `TASK_ACK`, `TASK_EVENT`, `TASK_DONE`, `TASK_FAILED`.
+
+Rationale:
+- Prevents applying a late event from an older dispatch attempt to a newer attempt.
+- Allows the platform to ignore mismatched messages without breaking forward-compat.
+
+**Correlation rule (recommended):**
+- When a higher-level orchestration exists:
+  - edge workflows: `workflow_id` SHOULD be reused as `task_id` for step messages (`task_id == workflow_id`, `step_id == step_id`)
+  - durable workflows: `trace_id` SHOULD remain stable across the workflow run and be copied into envelopes as `trace.trace_id`.
+
 ---
 
 ## 6) UM‑WF — Workflow Graph Format

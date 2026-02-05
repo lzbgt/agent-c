@@ -1081,6 +1081,8 @@ components:
         node_id:
           type: string
           description: Explicit target node_id (preferred when known)
+          maxLength: 128
+          pattern: "^[A-Za-z0-9_.:-]+$"
         match_any:
           type: object
           description: Capability-based node selection
@@ -1092,9 +1094,21 @@ components:
         allow_high_side_effect:
           type: boolean
           description: Allow dispatch when tool side_effect_level is high
-        task_id: { type: string }
-        step_id: { type: string }
-        idempotency_key: { type: string }
+        task_id:
+          type: string
+          description: Task identifier (id-safe token)
+          maxLength: 128
+          pattern: "^[A-Za-z0-9_.:-]+$"
+        step_id:
+          type: string
+          description: Step identifier within the task/workflow (id-safe token)
+          maxLength: 128
+          pattern: "^[A-Za-z0-9_.:-]+$"
+        idempotency_key:
+          type: string
+          description: Idempotency token used for platform-side dedupe (id-safe token)
+          maxLength: 128
+          pattern: "^[A-Za-z0-9_.:-]+$"
         mode:
           type: string
           enum: [invoke, agent]

@@ -99,7 +99,7 @@
             "body": {
               "type": "object",
               "additionalProperties": true,
-              "required": ["task_id", "step_id", "accepted"],
+              "required": ["task_id", "step_id", "idempotency_key", "accepted"],
               "properties": {
                 "task_id": { "$ref": "#/$defs/id_token" },
                 "step_id": { "$ref": "#/$defs/id_token" },
@@ -117,7 +117,7 @@
             "body": {
               "type": "object",
               "additionalProperties": true,
-              "required": ["task_id", "step_id", "state"],
+              "required": ["task_id", "step_id", "idempotency_key", "state"],
               "properties": {
                 "task_id": { "$ref": "#/$defs/id_token" },
                 "step_id": { "$ref": "#/$defs/id_token" },
@@ -137,7 +137,7 @@
             "body": {
               "type": "object",
               "additionalProperties": true,
-              "required": ["task_id", "step_id", "result"],
+              "required": ["task_id", "step_id", "idempotency_key", "result"],
               "properties": {
                 "task_id": { "$ref": "#/$defs/id_token" },
                 "step_id": { "$ref": "#/$defs/id_token" },
@@ -154,7 +154,7 @@
             "body": {
               "type": "object",
               "additionalProperties": true,
-              "required": ["task_id", "step_id", "error"],
+              "required": ["task_id", "step_id", "idempotency_key", "error"],
               "properties": {
                 "task_id": { "$ref": "#/$defs/id_token" },
                 "step_id": { "$ref": "#/$defs/id_token" },

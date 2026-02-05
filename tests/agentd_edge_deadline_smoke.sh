@@ -161,7 +161,7 @@ print(json.dumps({
   "type": "TASK_DONE",
   "from": "node:${NODE_ID}",
   "to": "platform",
-  "body": {"task_id":"task_deadline_1","step_id":"s1","result":{"ok":True,"data":{"late":True}}},
+  "body": {"task_id":"task_deadline_1","step_id":"s1","idempotency_key":"idem_deadline_1","result":{"ok":True,"data":{"late":True}}},
 }))
 PY
 )" \
@@ -179,4 +179,3 @@ if t.get("state") != "TIMED_OUT":
   raise SystemExit(1)
 print("ok")
 PY
-

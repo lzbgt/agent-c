@@ -158,7 +158,7 @@ print(json.dumps({
   "type": "TASK_ACK",
   "from": "node:${NODE_ID}",
   "to": "platform",
-  "body": {"task_id":"${workflow_id}","step_id":"AG","accepted":True},
+  "body": {"task_id":"${workflow_id}","step_id":"AG","idempotency_key":"${workflow_id}:AG","accepted":True},
 }))
 PY
 )" \
@@ -175,7 +175,7 @@ print(json.dumps({
   "type": "TASK_DONE",
   "from": "node:${NODE_ID}",
   "to": "platform",
-  "body": {"task_id":"${workflow_id}","step_id":"AG","result":{"ok":True,"assistant_text":"hello"}},
+  "body": {"task_id":"${workflow_id}","step_id":"AG","idempotency_key":"${workflow_id}:AG","result":{"ok":True,"assistant_text":"hello"}},
 }))
 PY
 )" \
@@ -231,4 +231,3 @@ if edge_result.get("assistant_text") != "hello":
 PY
 
 echo "agentd_workflow_edge_agent_smoke OK"
-

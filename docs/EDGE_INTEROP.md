@@ -71,6 +71,11 @@ This stores the envelope durably (`edge_inbox_messages`) and updates platform st
 
 If the platform sees a new/unknown `caps_sha256`, it queues a `PLATFORM_CAPS_REQ` to the node outbox.
 
+Task-loop correctness note (recommended, enforced by platform for known `TASK_*` types):
+- Nodes SHOULD echo `idempotency_key` for all task lifecycle messages (`TASK_ACK/TASK_EVENT/TASK_DONE/TASK_FAILED`),
+  matching the `TASK_ASSIGN.body.idempotency_key` they received. The platform rejects missing/invalid `idempotency_key`
+  to prevent cross-attempt/cross-task corruption under retries.
+
 Reliability note (important):
 - The platform *persists* all inbound envelopes and dedupes persistence by `msg_id`.
 - If a duplicate `msg_id` is received:

@@ -246,7 +246,7 @@ print(json.dumps({
   "type": "TASK_DONE",
   "from": "node:${NODE_ID}",
   "to": "platform",
-  "body": {"task_id":"${workflow_id}","step_id":"E","result":{"ok":True,"data":{"note":"done"}}},
+  "body": {"task_id":"${workflow_id}","step_id":"E","idempotency_key":"${workflow_id}:E","result":{"ok":True,"data":{"note":"done"}}},
 }))
 PY
 )" \
@@ -292,4 +292,3 @@ if e.get("kind") != "edge_invoke" or e.get("ok") is not True:
 PY
 
 echo "agentd_workflow_edge_agent_ref_payload_smoke OK"
-

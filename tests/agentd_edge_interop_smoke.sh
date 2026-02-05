@@ -277,7 +277,7 @@ print(json.dumps({
   "type": "TASK_ACK",
   "from": "node:${NODE_ID}",
   "to": "platform",
-  "body": {"task_id":"task_1","step_id":"step_led","accepted":True},
+  "body": {"task_id":"task_1","step_id":"step_led","idempotency_key":"idem_1","accepted":True},
 }))
 PY
 )" \
@@ -293,7 +293,7 @@ print(json.dumps({
   "type": "TASK_EVENT",
   "from": "node:${NODE_ID}",
   "to": "platform",
-  "body": {"task_id":"task_1","step_id":"step_led","state":"RUNNING","progress":0.5},
+  "body": {"task_id":"task_1","step_id":"step_led","idempotency_key":"idem_1","state":"RUNNING","progress":0.5},
 }))
 PY
 )" \
@@ -309,7 +309,7 @@ print(json.dumps({
   "type": "TASK_DONE",
   "from": "node:${NODE_ID}",
   "to": "platform",
-  "body": {"task_id":"task_1","step_id":"step_led","result":{"ok":True,"data":{"applied":{"action":"solid"}}}},
+  "body": {"task_id":"task_1","step_id":"step_led","idempotency_key":"idem_1","result":{"ok":True,"data":{"applied":{"action":"solid"}}}},
 }))
 PY
 )" \

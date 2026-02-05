@@ -209,8 +209,37 @@ PY
   sleep 0.1
 done
 
+# Extract per-step idempotency_key from the TASK_ASSIGN envelopes (required for task lifecycle correlation).
+idem_pair="$(python3 - <<PY
+import json
+obj = json.loads(r'''${outbox}''')
+msgs = obj.get("messages") or []
+idem = {}
+for m in msgs:
+  env = m.get("msg") or {}
+  if env.get("type") != "TASK_ASSIGN":
+    continue
+  body = env.get("body") or {}
+  if body.get("task_id") != "${WF_ID}":
+    continue
+  sid = body.get("step_id")
+  if sid in ("a","b"):
+    idem[sid] = body.get("idempotency_key") or ""
+print(idem.get("a",""))
+print(idem.get("b",""))
+PY
+)"
+IDEM_A="$(echo "${idem_pair}" | sed -n '1p')"
+IDEM_B="$(echo "${idem_pair}" | sed -n '2p')"
+if [[ -z "${IDEM_A}" || -z "${IDEM_B}" ]]; then
+  echo "failed to extract idempotency keys from outbox: ${outbox}" >&2
+  exit 1
+fi
+
 # Complete both tasks.
 for STEP in a b; do
+  IDEM="${IDEM_A}"
+  if [[ "${STEP}" == "b" ]]; then IDEM="${IDEM_B}"; fi
   curl -fsS --noproxy "*" --max-time 10 \
     -H "Content-Type: application/json" \
     -d "$(python3 - <<PY
@@ -221,7 +250,7 @@ print(json.dumps({
   "type": "TASK_DONE",
   "from": "node:${NODE_ID}",
   "to": "platform",
-  "body": {"task_id":"${WF_ID}","step_id":"${STEP}","result":{"ok":True,"data":{"step":"${STEP}"}}},
+  "body": {"task_id":"${WF_ID}","step_id":"${STEP}","idempotency_key":"${IDEM}","result":{"ok":True,"data":{"step":"${STEP}"}}},
 }))
 PY
 )" \
@@ -360,4 +389,3 @@ done
 
 echo "workflow cancel did not reach CANCELED in time" >&2
 exit 1
-

@@ -236,7 +236,7 @@ print(json.dumps({
   "type": "TASK_DONE",
   "from": "node:${NODE_ID}",
   "to": "platform",
-  "body": {"task_id":"${workflow_id}","step_id":"E1","result":{"ok":True,"data":{"applied":{"action":"solid"}}}},
+  "body": {"task_id":"${workflow_id}","step_id":"E1","idempotency_key":"${workflow_id}:E1","result":{"ok":True,"data":{"applied":{"action":"solid"}}}},
 }))
 PY
 )" \

@@ -179,9 +179,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 Priority order (reweighted after scheduling v2.2 shipped; sections below are kept stable for diff readability):
 
-1) **Interop spec hardening (MCU/edge handoff)** — ecosystem leverage; versioned contract + executable transcripts.
-2) **Memory ↔ workflow time correlation** — time-advancing correctness; evidence hashing + bounded queries.
-3) **Agent collaboration v2** — budgeted parallel fan-out + deterministic joins.
+1) **Memory ↔ workflow time correlation** — time-advancing correctness; evidence hashing + bounded queries.
+2) **Agent collaboration v2** — budgeted parallel fan-out + deterministic joins.
+3) **Interop spec v0.2 (MCU/edge handoff)** — attestation + correlation; keep the contract executable.
 4) **Budgets v0.5** — host-tool budgets + streaming token usage coverage + stats surfacing.
 5) **Scheduling policy v2.3 (DRR + cost-aware quanta)** — move beyond WRR to cost-aware, budget-composing fairness.
 
@@ -236,7 +236,12 @@ Priority order (reweighted after scheduling v2.2 shipped; sections below are kep
    - Deliverables (shipped): JSON Schemas (envelope + core + platform extensions) + golden transcript fixtures (replay-ready JSONL).
      - Proof: `ctest` includes `um_eais_spec_sanity_tests`, `agentd_edge_interop_transcript_replay_smoke`,
        and `agentd_edge_interop_task_loop_replay_smoke`.
-   - Remaining: schema-level “lint” (enforce required fields) + a normative contract section on replay/dup semantics for gateways.
+   - Shipped: normative reliability rules + strict task-loop correlation:
+     - Spec: `docs/spec/um-eais/um-eais-v0.1.md` §5.3 (reliability + idempotency)
+     - Platform enforcement: `TASK_ACK/TASK_EVENT/TASK_DONE/TASK_FAILED` require `idempotency_key` (reject missing/invalid)
+   - Next (v0.2): attestation + trace correlation:
+     - standardize `trace.trace_id` propagation for all edge task lifecycle messages
+     - extend payload conventions so nodes can report deterministic compute hashes (e.g. AVM `RESULT_HASH/TRACE_HASH`) as task done attestation.
 
 4) **Agent collaboration v2 (budgeted parallel fan-out + join macros)** (power-unleashed)
    - Status: submit-time parallel macro shipped as `kind:"delegate_parallel"` (v1.6.1).

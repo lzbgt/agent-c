@@ -340,6 +340,21 @@ bool edge_enqueue_task_assign(
     if (out_http_status) *out_http_status = 400;
     return false;
   }
+  if (task_id.empty() || !edge_id_is_safe(task_id)) {
+    if (out_error) *out_error = "missing/invalid task_id";
+    if (out_http_status) *out_http_status = 400;
+    return false;
+  }
+  if (step_id.empty() || !edge_id_is_safe(step_id)) {
+    if (out_error) *out_error = "missing/invalid step_id";
+    if (out_http_status) *out_http_status = 400;
+    return false;
+  }
+  if (idempotency_key.empty() || !edge_id_is_safe(idempotency_key)) {
+    if (out_error) *out_error = "missing/invalid idempotency_key";
+    if (out_http_status) *out_http_status = 400;
+    return false;
+  }
   if (task_id.empty() || step_id.empty() || idempotency_key.empty() || (mode != "invoke" && mode != "agent") || deadline_utc_ms <= 0 ||
       !payload.isObject()) {
     if (out_error) *out_error = "missing/invalid task fields";
