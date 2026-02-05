@@ -36,7 +36,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Proof: `ctest` includes `agentd_trace_id_smoke`.
 - Trace correlation is now useful across edge interop:
   - `POST /api/v1/edge/task/assign` forwards an optional `trace` object into the `TASK_ASSIGN` envelope.
-  - `GET /api/v1/trace?trace_id=...` also surfaces best-effort edge task events and inbound UM‑BMP envelopes.
+  - `edge_tasks` persists `trace_id` (durable correlation even if a node omits echoing trace on `TASK_*` messages).
+  - `GET /api/v1/trace?trace_id=...` also surfaces best-effort edge task metadata, task events, and inbound UM‑BMP envelopes.
   - Proof: `ctest` includes `agentd_trace_edge_interop_smoke`.
 - Oren AVM governance endpoints (scan-before-execute; out-of-process).
   - Endpoints:

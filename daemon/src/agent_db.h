@@ -499,6 +499,7 @@ class AgentDb {
     std::string step_id;
     std::string node_id;
     std::string idempotency_key;
+    std::string trace_id; // optional trace correlation id (best-effort)
     std::string mode; // invoke|agent
     std::string tool_name; // for mode=invoke (optional; best-effort)
     int64_t deadline_utc_ms = 0;
@@ -520,6 +521,12 @@ class AgentDb {
   );
   bool list_edge_tasks_by_state(
     const std::string& state,
+    size_t max_rows,
+    std::vector<EdgeTaskRow>* out_rows_desc,
+    std::string* out_error
+  );
+  bool list_edge_tasks_by_trace_id(
+    const std::string& trace_id,
     size_t max_rows,
     std::vector<EdgeTaskRow>* out_rows_desc,
     std::string* out_error

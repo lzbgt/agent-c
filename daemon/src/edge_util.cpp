@@ -29,6 +29,19 @@ static bool json_value_type_matches_string(const Json::Value& v, const std::stri
   return true; // unknown type => best-effort allow
 }
 
+static bool trace_id_is_safe_local(const std::string& s) {
+  if (s.empty() || s.size() > 128) return false;
+  for (char c : s) {
+    const bool ok =
+      (c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9') ||
+      c == '-' || c == '_' || c == '.' || c == ':' || c == '@';
+    if (!ok) return false;
+  }
+  return true;
+}
+
 static bool json_schema_subset_validate_best_effort_impl(
   const Json::Value& schema,
   const Json::Value& value,
@@ -583,6 +596,15 @@ bool edge_enqueue_task_assign(
     if (out_http_status) *out_http_status = 400;
     return false;
   }
+  std::string trace_id;
+  if (trace.isObject() && trace.isMember("trace_id") && trace["trace_id"].isString()) {
+    trace_id = trim_copy(trace["trace_id"].asString());
+    if (!trace_id.empty() && !trace_id_is_safe_local(trace_id)) {
+      if (out_error) *out_error = "invalid trace.trace_id";
+      if (out_http_status) *out_http_status = 400;
+      return false;
+    }
+  }
   if (attempt < 0) attempt = 0;
 
   std::string tool_name;
@@ -608,6 +630,12 @@ bool edge_enqueue_task_assign(
       if (out_error) *out_error = "idempotency_key collision with different task_id/step_id";
       if (out_http_status) *out_http_status = 409;
       return false;
+    }
+    // Best-effort: backfill trace_id if a newer caller provides it.
+    if (!trace_id.empty() && existing.trace_id.empty()) {
+      existing.trace_id = trace_id;
+      existing.updated_utc_ms = edge_unix_ms_now();
+      (void)db->upsert_edge_task(existing, nullptr);
     }
   } else {
     if (mode == "invoke" && (enforce_safety || enforce_rate_limit)) {
@@ -694,6 +722,7 @@ bool edge_enqueue_task_assign(
     tr.step_id = step_id;
     tr.node_id = node_id;
     tr.idempotency_key = idempotency_key;
+    if (!trace_id.empty()) tr.trace_id = trace_id;
     tr.mode = mode;
     tr.tool_name = tool_name;
     tr.deadline_utc_ms = deadline_utc_ms;

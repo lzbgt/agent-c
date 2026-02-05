@@ -445,8 +445,8 @@ paths:
 
         Sources (best-effort):
         - durable run/workflow audit records (`audit_records`)
-        - edge interop task events (`edge_task_events`) and inbound envelopes (`edge_inbox_messages`)
-          returned as wrapper objects with `source:"edge_task_event"` / `source:"edge_inbox_message"`.
+        - edge interop task metadata (`edge_tasks`), task events (`edge_task_events`), and inbound envelopes (`edge_inbox_messages`)
+          returned as wrapper objects with `source:"edge_task"` / `source:"edge_task_event"` / `source:"edge_inbox_message"`.
 
         Notes:
         - Only runs persisted with `no_session=false` will appear (audit_records are DB-backed).

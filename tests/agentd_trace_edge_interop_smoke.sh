@@ -161,7 +161,6 @@ print(json.dumps({
   "type": "TASK_DONE",
   "from": f"node:{'${NODE_ID}'}",
   "to": "platform",
-  "trace": {"trace_id": "${TRACE_ID}"},
   "body": {
     "task_id": "${TASK_ID}",
     "step_id": "${STEP_ID}",
@@ -200,6 +199,8 @@ for r in recs:
     continue
   if r.get("source") != "edge_task_event":
     continue
+  if r.get("state") != "SUCCEEDED":
+    continue
   ev = r.get("event") or {}
   trace = ev.get("trace") or {}
   if trace.get("trace_id") == "${TRACE_ID}":
@@ -216,4 +217,3 @@ then
 fi
 
 echo "agentd_trace_edge_interop_smoke OK"
-

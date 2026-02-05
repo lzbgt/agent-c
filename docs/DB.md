@@ -390,6 +390,7 @@ Durable platform-side task tracking for UM‑BMP tasking (`TASK_ASSIGN`/`TASK_*`
 - `step_id TEXT NOT NULL`
 - `node_id TEXT NOT NULL`
 - `idempotency_key TEXT NOT NULL`
+- `trace_id TEXT` (optional; best-effort trace correlation id)
 - `mode TEXT NOT NULL` (`invoke|agent`)
 - `tool_name TEXT` (optional; best-effort tool name for `mode=invoke`)
 - `deadline_utc_ms INTEGER NOT NULL`
@@ -408,6 +409,7 @@ Indexes:
 - `CREATE INDEX edge_tasks_by_state ON edge_tasks(state, updated_utc_ms DESC)`
 - `CREATE INDEX edge_tasks_by_node ON edge_tasks(node_id, updated_utc_ms DESC)`
 - `CREATE INDEX edge_tasks_by_tool ON edge_tasks(node_id, tool_name, updated_utc_ms DESC)`
+- `CREATE INDEX edge_tasks_by_trace ON edge_tasks(trace_id, updated_utc_ms DESC)`
 
 ### `edge_task_events`
 

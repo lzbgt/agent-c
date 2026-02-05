@@ -165,7 +165,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 21;
+  const int kSchemaVersion = 22;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -733,6 +733,17 @@ ALTER TABLE workflow_tasks ADD COLUMN total_tokens_cum INTEGER NOT NULL DEFAULT 
 )SQL";
     if (!exec_locked(schema_v21, out_error)) return false;
     cur_ver = 21;
+  }
+
+  if (cur_ver < 22) {
+    const char* schema_v22 = R"SQL(
+-- Edge trace correlation (platform-side): persist trace_id on edge_tasks so correlation survives
+-- even if a node omits echoing trace fields on TASK_* messages.
+ALTER TABLE edge_tasks ADD COLUMN trace_id TEXT;
+CREATE INDEX IF NOT EXISTS edge_tasks_by_trace ON edge_tasks(trace_id, updated_utc_ms DESC);
+)SQL";
+    if (!exec_locked(schema_v22, out_error)) return false;
+    cur_ver = 22;
   }
 
   // Record schema version.

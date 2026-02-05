@@ -414,6 +414,21 @@ void handle_edge_message_endpoint(
     ev.ts_utc_ms = ts_eff;
     ev.state = state;
     Json::Value d = event_data.isNull() ? Json::Value(Json::objectValue) : event_data;
+    // If the incoming message omitted trace, but the platform has a stored trace_id for this task,
+    // inject it so trace correlation remains durable across lossy/legacy transports.
+    std::string got_trace_id;
+    if (d.isObject() && d.isMember("trace") && d["trace"].isObject() && d["trace"].isMember("trace_id") && d["trace"]["trace_id"].isString()) {
+      got_trace_id = trim_copy(d["trace"]["trace_id"].asString());
+    }
+    if (got_trace_id.empty() && !tr.trace_id.empty()) {
+      Json::Value trc(Json::objectValue);
+      trc["trace_id"] = tr.trace_id;
+      d["trace"] = trc;
+    } else if (!tr.trace_id.empty() && !got_trace_id.empty() && got_trace_id != tr.trace_id) {
+      d["_trace_id_mismatch"] = true;
+      d["_platform_trace_id"] = tr.trace_id;
+      d["_msg_trace_id"] = got_trace_id;
+    }
     if (idempotency_mismatch) {
       d["_ignored_by_platform"] = true;
       d["_reason"] = "idempotency_key_mismatch";
@@ -1331,6 +1346,7 @@ void handle_edge_task_get_endpoint(
   t["step_id"] = tr.step_id;
   t["node_id"] = tr.node_id;
   t["idempotency_key"] = tr.idempotency_key;
+  if (!tr.trace_id.empty()) t["trace_id"] = tr.trace_id;
   t["mode"] = tr.mode;
   if (!tr.tool_name.empty()) t["tool_name"] = tr.tool_name;
   t["deadline_utc_ms"] = (Json::Int64)tr.deadline_utc_ms;

@@ -127,6 +127,34 @@ void handle_trace_lookup_endpoint(
     const size_t remaining_records = (rows.size() >= max_records) ? 0 : (max_records - rows.size());
 
     if (remaining_bytes > 0 && remaining_records > 0) {
+      // Edge tasks (metadata) by indexed trace_id.
+      {
+        std::vector<AgentDb::EdgeTaskRow> edge_tasks;
+        std::string terr;
+        if (db_or_null->list_edge_tasks_by_trace_id(trace_id, remaining_records, &edge_tasks, &terr)) {
+          for (const auto& t : edge_tasks) {
+            // Keep these records tiny: avoid echoing payload/result JSON.
+            if (used_bytes + 256 > max_bytes) break;
+            Json::Value row(Json::objectValue);
+            row["source"] = "edge_task";
+            row["task_id"] = t.task_id;
+            row["step_id"] = t.step_id;
+            row["node_id"] = t.node_id;
+            row["idempotency_key"] = t.idempotency_key;
+            row["mode"] = t.mode;
+            if (!t.tool_name.empty()) row["tool_name"] = t.tool_name;
+            row["deadline_utc_ms"] = (Json::Int64)t.deadline_utc_ms;
+            row["state"] = t.state;
+            row["created_utc_ms"] = (Json::Int64)t.created_utc_ms;
+            row["updated_utc_ms"] = (Json::Int64)t.updated_utc_ms;
+            if (!t.error.empty()) row["error"] = t.error;
+            recs.append(row);
+            used_bytes += 256;
+            if ((size_t)recs.size() >= max_records) break;
+          }
+        }
+      }
+
       std::vector<AgentDb::EdgeTaskEventRow> edge_events;
       std::string eerr;
       if (db_or_null->read_edge_task_events_by_trace_id(trace_id, remaining_bytes, remaining_records, &edge_events, &eerr)) {
