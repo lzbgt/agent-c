@@ -290,6 +290,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - `delegate_parallel` can now pass `delegate.aggregate` to pick a deterministic join strategy (e.g. `mode:"best_of_n"`).
   - Server overwrites `aggregate.task_ids` with the derived attempt task IDs (`<task_id>:<attempt_id>`).
   - Proof: `ctest` includes `agentd_workflow_delegate_parallel_best_of_n_smoke`.
+- Quorum ergonomics for delegate_parallel (v1.7.x):
+  - For `delegate.aggregate.mode:"quorum_hashes"`, the server defaults `aggregate.pointers=["/assistant_text"]` when omitted,
+    so the join does not accidentally inherit the generic aggregate defaults (`/avm/result_hash`, `/avm/trace_hash`).
+  - Proof: `ctest` includes `agentd_workflow_delegate_parallel_quorum_hashes_default_pointers_smoke`.
 - Parallel collaboration macro upgrade (v1.7.1):
   - New deterministic join strategy: `mode:"quorum_ok"` (succeed only if >= quorum attempts are ok; deterministically chooses the first ok attempt).
   - New merge primitive: `delegate.attempt_defaults` (missing-key-only defaults applied to each attempt.request with higher priority than workflow defaults).

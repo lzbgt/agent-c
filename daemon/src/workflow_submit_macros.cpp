@@ -1000,6 +1000,19 @@ bool expand_workflow_submit_macros(
       }
       return false;
     }
+
+    // Ergonomic defaults for delegate_parallel quorum:
+    // - pointers defaults to assistant_text (common surface for attempt outputs)
+    // - note: aggregate's global default pointers (/avm/result_hash, /avm/trace_hash) are not meaningful for LLM attempts
+    if (agg_mode == "quorum_hashes") {
+      const bool has_ptrs =
+        agg.isMember("pointers") && agg["pointers"].isArray() && !agg["pointers"].empty();
+      if (!has_ptrs) {
+        Json::Value ptrs(Json::arrayValue);
+        ptrs.append("/assistant_text");
+        agg["pointers"] = ptrs;
+      }
+    }
     join["aggregate"] = agg;
 
     if (t.isMember("max_attempts") && t["max_attempts"].isInt()) join["max_attempts"] = t["max_attempts"];

@@ -2984,6 +2984,7 @@ components:
         - `task_ids` is **ignored** if provided; the server overwrites it with the derived attempt task ids.
         - If omitted, the server defaults to `mode:first_ok`.
         - If `ok_pointer`/`value_pointer` are set at the `delegate` level, they are used as defaults when the aggregate object does not explicitly set them.
+        - For `mode=quorum_hashes`, when `pointers` is omitted the server defaults it to [`/assistant_text`].
       properties:
         mode:
           type: string

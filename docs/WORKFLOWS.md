@@ -591,6 +591,7 @@ For some collaboration patterns, “first successful” is not the best join. Fo
 `delegate_parallel` lets you customize the join by passing `delegate.aggregate` (same knobs as `kind:"aggregate"`, except `task_ids`):
 - the server **overwrites** `aggregate.task_ids` with the derived attempt task ids (`<task_id>:<attempt_id>`)
 - if `aggregate.mode` is omitted, the server defaults to `first_ok`
+- for `aggregate.mode:"quorum_hashes"`, the server defaults `aggregate.pointers=["/assistant_text"]` when omitted
 
 Example: best-of-n join over JSON candidates emitted as assistant text:
 
