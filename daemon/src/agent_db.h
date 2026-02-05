@@ -331,6 +331,15 @@ class AgentDb {
     int64_t total_tokens_used = 0;
   };
 
+  struct WorkflowSessionStatsRow {
+    std::string session_id;
+    int64_t inflight_tasks = 0; // queued|running
+    int64_t queued_tasks = 0;
+    int64_t running_tasks = 0;
+    int64_t workflows_queued = 0;
+    int64_t workflows_running = 0;
+  };
+
   // Lightweight queue pressure / scheduling visibility helper.
   bool get_workflow_scheduler_stats(
     int64_t now_unix_ms,
@@ -342,6 +351,14 @@ class AgentDb {
   bool get_workflow_usage_totals(
     const std::string& workflow_id,
     WorkflowUsageTotals* out_totals,
+    std::string* out_error
+  );
+
+  // Best-effort session-level inflight stats (requires workflows created with allow_sessions=true).
+  bool list_workflow_session_stats(
+    size_t max_rows,
+    bool include_no_session,
+    std::vector<WorkflowSessionStatsRow>* out_rows_desc,
     std::string* out_error
   );
 

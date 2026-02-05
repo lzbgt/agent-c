@@ -2098,6 +2098,47 @@ void handle_workflow_stats_endpoint(
     }
     out["tasks_by_status"] = m;
   }
+
+  // Optional: session-level inflight pressure snapshot (multi-tenant / fairness tuning).
+  const auto include_sessions_q = query_get(req.query, "include_sessions");
+  const bool include_sessions = include_sessions_q && (*include_sessions_q == "1" || *include_sessions_q == "true");
+  if (include_sessions) {
+    size_t limit = 32;
+    if (const auto lq = query_get(req.query, "session_limit")) {
+      try {
+        const int n = std::stoi(*lq);
+        if (n > 0) limit = (size_t)std::min<int>(512, n);
+      } catch (...) {
+      }
+    }
+    const auto include_no_session_q = query_get(req.query, "include_no_session");
+    const bool include_no_session =
+      include_no_session_q && (*include_no_session_q == "1" || *include_no_session_q == "true");
+
+    std::vector<AgentDb::WorkflowSessionStatsRow> rows;
+    std::string serr;
+    if (db_or_null->list_workflow_session_stats(limit, include_no_session, &rows, &serr)) {
+      Json::Value arr(Json::arrayValue);
+      for (const auto& r : rows) {
+        Json::Value o(Json::objectValue);
+        o["session_id"] = r.session_id;
+        o["inflight_tasks"] = (Json::Int64)std::max<int64_t>(0, r.inflight_tasks);
+        o["queued_tasks"] = (Json::Int64)std::max<int64_t>(0, r.queued_tasks);
+        o["running_tasks"] = (Json::Int64)std::max<int64_t>(0, r.running_tasks);
+        o["workflows_queued"] = (Json::Int64)std::max<int64_t>(0, r.workflows_queued);
+        o["workflows_running"] = (Json::Int64)std::max<int64_t>(0, r.workflows_running);
+        arr.append(o);
+      }
+      out["session_limit"] = (Json::Int64)limit;
+      out["include_no_session"] = include_no_session;
+      out["sessions"] = arr;
+    } else {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = serr;
+      out["sessions_error"] = o;
+    }
+  }
   resp->body = json_stringify_compact(out);
 }
 

@@ -648,6 +648,22 @@ paths:
     get:
       tags: [workflows]
       summary: Workflow scheduler stats (queue pressure)
+      parameters:
+        - in: query
+          name: include_sessions
+          required: false
+          schema: { type: boolean }
+          description: If true, include per-session inflight snapshot under `sessions` (best-effort).
+        - in: query
+          name: session_limit
+          required: false
+          schema: { type: integer, format: int32 }
+          description: Max number of session rows to return when include_sessions=true (default 32; max 512).
+        - in: query
+          name: include_no_session
+          required: false
+          schema: { type: boolean }
+          description: When include_sessions=true, include empty session_id bucket (default false).
       responses:
         "200":
           description: Scheduler stats snapshot
@@ -2174,3 +2190,27 @@ components:
           type: object
           description: Map of task status -> count.
           additionalProperties: { type: integer, format: int64 }
+        session_limit:
+          type: integer
+          format: int64
+          description: When include_sessions=true, effective row limit applied.
+        include_no_session:
+          type: boolean
+          description: When include_sessions=true, whether empty session bucket is included.
+        sessions:
+          type: array
+          description: When include_sessions=true, per-session inflight snapshot (best-effort).
+          items:
+            type: object
+            required: [session_id, inflight_tasks, queued_tasks, running_tasks, workflows_queued, workflows_running]
+            properties:
+              session_id: { type: string }
+              inflight_tasks: { type: integer, format: int64 }
+              queued_tasks: { type: integer, format: int64 }
+              running_tasks: { type: integer, format: int64 }
+              workflows_queued: { type: integer, format: int64 }
+              workflows_running: { type: integer, format: int64 }
+        sessions_error:
+          type: object
+          description: Best-effort error object when per-session stats could not be produced.
+          additionalProperties: true

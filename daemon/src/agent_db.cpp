@@ -3512,4 +3512,68 @@ WHERE workflow_id=?;
 #endif
 }
 
+bool AgentDb::list_workflow_session_stats(
+  size_t max_rows,
+  bool include_no_session,
+  std::vector<WorkflowSessionStatsRow>* out_rows_desc,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_rows_desc) out_rows_desc->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)max_rows;
+  (void)include_no_session;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (!out_rows_desc) return false;
+  if (max_rows == 0) return true;
+  if (max_rows > 512) max_rows = 512;
+
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT
+  COALESCE(w.session_id,'') AS sid,
+  SUM(CASE WHEN t.status IN ('queued','running') THEN 1 ELSE 0 END) AS inflight_tasks,
+  SUM(CASE WHEN t.status='queued' THEN 1 ELSE 0 END) AS queued_tasks,
+  SUM(CASE WHEN t.status='running' THEN 1 ELSE 0 END) AS running_tasks,
+  COUNT(DISTINCT CASE WHEN w.status='queued' THEN w.workflow_id ELSE NULL END) AS workflows_queued,
+  COUNT(DISTINCT CASE WHEN w.status='running' THEN w.workflow_id ELSE NULL END) AS workflows_running
+FROM workflow_tasks t
+JOIN workflows w ON w.workflow_id=t.workflow_id
+WHERE (? != 0 OR COALESCE(w.session_id,'') != '')
+GROUP BY sid
+ORDER BY inflight_tasks DESC, sid ASC
+LIMIT ?;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && bind_i64(st, 1, include_no_session ? 1 : 0);
+  ok = ok && bind_i64(st, 2, (int64_t)max_rows);
+  while (ok && step_row(st)) {
+    WorkflowSessionStatsRow row;
+    const unsigned char* sid = sqlite3_column_text(st, 0);
+    row.session_id = sid ? (const char*)sid : "";
+    row.inflight_tasks = sqlite3_column_int64(st, 1);
+    row.queued_tasks = sqlite3_column_int64(st, 2);
+    row.running_tasks = sqlite3_column_int64(st, 3);
+    row.workflows_queued = sqlite3_column_int64(st, 4);
+    row.workflows_running = sqlite3_column_int64(st, 5);
+    out_rows_desc->push_back(std::move(row));
+  }
+  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
+  sqlite3_finalize(st);
+  return ok;
+#endif
+}
+
 }  // namespace agentd

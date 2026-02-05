@@ -466,6 +466,10 @@ Returns lightweight queue pressure metrics, useful for backpressure tuning and d
 - `tasks_by_status` (counts)
 - `tasks_queued_ready` vs `tasks_queued_not_ready` (retry/backoff vs runnable)
 
+Optional (best-effort) session-level snapshot for multi-tenant fairness tuning:
+- `GET /api/v1/workflow/stats?include_sessions=1&session_limit=32`
+- Response fields: `sessions[]` with `inflight_tasks/queued_tasks/running_tasks` per `session_id`
+
 ### Workflow events (durable)
 
 `GET /api/v1/workflow/events?workflow_id=...&after_event_id=0&limit=256`
