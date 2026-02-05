@@ -39,6 +39,46 @@ Note: the CLI (`./build/agent`) still uses the portable file-backed session stor
 - Provide a full “analytics” layer (we just want reliable storage + simple queries).
 - Store binary blobs (images/audio). Those should be stored as files, with DB rows referencing paths.
 
+## DB backend decision (why SQLite)
+
+This repo currently **does not** plan to replace SQLite as the default embedded database.
+
+SQLite is a strong fit for agentd’s workload because it provides, in one small dependency:
+
+- **ACID transactions** (crash-safe durability for workflows/jobs/scheduler state).
+- **Relational queries + indexes** (cheap stats, backpressure admission, fairness scans, trace correlation).
+- **A stable migration story** (schema versioning is already built into `agentd`).
+- **Portability** (single file; works across Linux/macOS/Windows; easy to ship for edge gateways).
+- **Tunable, deterministic performance** (WAL mode + bounded writes; predictable behavior under load).
+
+`agentd` already configures SQLite pragmas for multi-connection safety and performance:
+- `PRAGMA journal_mode=WAL;`
+- `PRAGMA synchronous=NORMAL;`
+- `PRAGMA busy_timeout=5000;`
+- `PRAGMA foreign_keys=ON;`
+
+### When a different embedded DB would be justified
+
+Replacing SQLite is a **major architectural move** that should be driven by a concrete requirement that SQLite cannot satisfy.
+Examples:
+
+- **High write concurrency across many processes** with strict tail latency requirements (SQLite is optimized for 1-writer; WAL helps, but it is still single-writer).
+- **Built-in replication / multi-writer** semantics required *inside* the DB layer (not via agent-level interop protocols).
+- **Pure key/value access patterns** where SQL adds overhead and no ad hoc queries are needed.
+- **Columnar analytics** on large historical datasets where OLAP speed matters more than OLTP durability.
+
+### Alternatives (for future, not current default)
+
+If the project’s requirements change, likely candidates (each with real tradeoffs):
+
+- **libSQL / “SQLite with replication”**: keeps the SQLite model + SQL, adds replication primitives (useful if we need durable multi-agent sync at the DB layer).
+- **RocksDB / LevelDB-style LSM KV stores**: great for high write throughput + range scans, but you give up SQL and will rebuild query/migration/constraints in application code.
+- **LMDB**: extremely fast local KV with mmap, but still not SQL; different concurrency model; careful with file semantics on some filesystems.
+- **DuckDB**: excellent local analytics, but not a drop-in OLTP replacement for a scheduler DB.
+
+For “power unleashed” in this repo, the current highest-leverage path is to keep SQLite and focus engineering time on:
+task scheduling, durable workflows, memory architecture, interop/collaboration protocols, and correctness surfaces.
+
 ## Enabling
 
 `agentd` uses SQLite when compiled with SQLite support. You can choose where the DB lives:

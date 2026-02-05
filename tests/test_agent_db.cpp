@@ -2,6 +2,7 @@
 
 #include <sqlite3.h>
 
+#include <algorithm>
 #include <cassert>
 #include <cstdio>
 #include <filesystem>
@@ -24,6 +25,24 @@ static int64_t query_i64(sqlite3* db, const char* sql) {
   const int64_t v = (int64_t)sqlite3_column_int64(st, 0);
   sqlite3_finalize(st);
   return v;
+}
+
+static std::string query_text(sqlite3* db, const char* sql) {
+  sqlite3_stmt* st = nullptr;
+  if (sqlite3_prepare_v2(db, sql, -1, &st, nullptr) != SQLITE_OK) {
+    std::fprintf(stderr, "prepare failed: %s\n", sqlite3_errmsg(db));
+    std::abort();
+  }
+  int rc = sqlite3_step(st);
+  if (rc != SQLITE_ROW) {
+    std::fprintf(stderr, "step failed: %s\n", sqlite3_errmsg(db));
+    sqlite3_finalize(st);
+    std::abort();
+  }
+  const unsigned char* t = sqlite3_column_text(st, 0);
+  std::string out = t ? (const char*)t : "";
+  sqlite3_finalize(st);
+  return out;
 }
 
 static void exec_sql(sqlite3* db, const char* sql) {
@@ -50,6 +69,22 @@ int main() {
   if (!db.open(tmp.string(), &err)) {
     std::fprintf(stderr, "db.open failed: %s\n", err.c_str());
     return 1;
+  }
+
+  // Pragma contract:
+  // - WAL mode is a database-level setting and should be observable from a separate connection.
+  // - Some pragmas (e.g. foreign_keys, busy_timeout, synchronous) are connection-local, so we intentionally
+  //   do not assert those via a second handle here.
+  {
+    sqlite3* raw = nullptr;
+    if (sqlite3_open_v2(tmp.string().c_str(), &raw, SQLITE_OPEN_READONLY, nullptr) != SQLITE_OK) {
+      std::fprintf(stderr, "sqlite3_open_v2 raw pragma open failed\n");
+      return 1;
+    }
+    std::string jm = query_text(raw, "PRAGMA journal_mode;");
+    std::transform(jm.begin(), jm.end(), jm.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+    assert(jm == "wal");
+    sqlite3_close(raw);
   }
 
   const int64_t now = 1700000000000LL;

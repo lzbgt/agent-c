@@ -295,6 +295,8 @@ Maintainability note (always-on):
 - Keep endpoint implementations SOLID and <2000 LOC per file; split large translation units (e.g. workflow endpoints) so new collaboration primitives remain cheap to add.
 - Follow-up: split `POST /api/v1/workflow/submit` implementation (`daemon/src/workflow_endpoints.cpp`) further (macro expander + validators),
   so the durable workflow surface can evolve without accumulating another “mega endpoint” file.
+- DB backend decision: **stay on SQLite** (WAL + bounded writes + migrations) until a concrete requirement demands replication/multi-writer semantics at the DB layer.
+  - If that day comes, prefer a *SQLite-compatible* path (e.g. libSQL) before rewriting the storage layer around KV engines.
 
 1) **Durable budget enforcement at scheduler level** (correctness + cost predictability)
    - Shipped (v0): workflow-level tool-call budget `workflow_limits.max_tool_calls_total` enforced by the workflow engine:
