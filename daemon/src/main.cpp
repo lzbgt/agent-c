@@ -46,6 +46,7 @@
 #include <string>
 #include <chrono>
 #include <thread>
+#include <cctype>
 #include <signal.h>
 
 using namespace agentd;
@@ -53,6 +54,13 @@ using namespace agentd;
 static const char* getenv_s(const char* k) {
   const char* v = std::getenv(k);
   return (v && v[0]) ? v : nullptr;
+}
+
+static bool env_truthy(const char* s) {
+  if (!s) return false;
+  std::string v = s;
+  for (char& c : v) c = (char)std::tolower((unsigned char)c);
+  return v == "1" || v == "true" || v == "yes" || v == "on";
 }
 
 static std::string home_dir_best_effort() {
@@ -148,6 +156,7 @@ int main(int argc, char** argv) {
 
   DaemonConfig cfg;
   bool system_profile_set = false;
+  bool workflow_enable_http_tasks_set = false;
   std::vector<std::string> tool_plugin_paths;
   std::vector<ToolServerSpec> tool_server_specs;
   // Minimal flag parsing (daemon is host-only; core remains argv/env-free).
@@ -411,6 +420,9 @@ int main(int argc, char** argv) {
         std::cerr << "Invalid --workflow-admit-max-inflight-tasks-total\n";
         return 2;
       }
+    } else if (a == "--workflow-enable-http-tasks") {
+      cfg.workflow_enable_http_tasks = true;
+      workflow_enable_http_tasks_set = true;
     } else if (a == "--memory-consolidate-interval-ms") {
       std::string v;
       if (!take(&v)) {
@@ -658,6 +670,7 @@ int main(int argc, char** argv) {
         << "  --workflow-fair-queue-max-schedule-len <n>    Bound expanded WRR schedule length (default: 1024)\n"
         << "  --workflow-admit-max-inflight-tasks-per-session <n>  Admission control cap (queued|running tasks per session); 0 disables (default: 0)\n"
         << "  --workflow-admit-max-inflight-tasks-total <n>        Admission control cap (queued|running tasks total); 0 disables (default: 0)\n"
+        << "  --workflow-enable-http-tasks   Enable deterministic workflow kind:\"http_json\" outbound HTTP (INSECURE by default; SSRF risk)\n"
         << "  --memory-consolidate-interval-ms <n>   Run memory consolidation every n ms (default: 0=disabled)\n"
         << "  --memory-consolidate-daily-days <n>    Scan last n daily memory files for @mem markers (default: 14)\n"
         << "  --memory-consolidate-keep-checkpoints <n>  Retain at most n structured checkpoints (default: 100)\n"
@@ -820,6 +833,11 @@ int main(int argc, char** argv) {
   }
   if (const char* ms = getenv_s("AGENTD_WORKFLOW_ADMIT_MAX_INFLIGHT_TASKS_TOTAL")) {
     try { cfg.workflow_admit_max_inflight_tasks_total = std::max(0, std::stoi(ms)); } catch (...) {}
+  }
+  if (!workflow_enable_http_tasks_set) {
+    if (const char* s = getenv_s("AGENTD_WORKFLOW_ENABLE_HTTP_TASKS")) {
+      cfg.workflow_enable_http_tasks = env_truthy(s);
+    }
   }
   if (const char* ms = getenv_s("AGENTD_MEMORY_CONSOLIDATE_INTERVAL_MS")) {
     try {

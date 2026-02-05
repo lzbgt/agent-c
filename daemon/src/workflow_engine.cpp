@@ -10,6 +10,7 @@
 #include "workflow_aggregate.h"
 #include "workflow_fairq_cost.h"
 #include "workflow_memory_correlate.h"
+#include "workflow_http_json.h"
 #include "workflow_templates.h"
 
 #include <algorithm>
@@ -2191,6 +2192,48 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         out = workflow_memory_correlate_to_json(cfg.state_dir, wf.trace_id, mc, &merr);
         out["kind"] = "memory_correlate";
         if (!merr.empty() && (!out.isMember("error") || !out["error"].isString())) out["error"] = merr;
+      }
+    }
+  } else if (kind == "http_json") {
+    // Deterministic outbound HTTP JSON call (broker/agent interop; gated by daemon config).
+    if (wf_limits.max_tool_calls_total > 0 && wf_tool_calls_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_tool_calls_total");
+      return;
+    }
+    if (wf_limits.max_steps_total > 0 && wf_steps_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_steps_total");
+      return;
+    }
+    if (wf_limits.max_elapsed_ms_total > 0 && wf_elapsed_ms_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_elapsed_ms_total");
+      return;
+    }
+    if (wf_limits.max_total_tokens > 0 && wf_total_tokens_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_total_tokens");
+      return;
+    }
+
+    out = Json::Value(Json::objectValue);
+    out["kind"] = "http_json";
+    out["ok"] = false;
+    out["assistant_text"] = "";
+
+    if (workflow_run_should_cancel(&cancel_ctx)) {
+      out["cancelled"] = true;
+      out["error"] = cancel_ctx.reason == WorkflowCancelReason::DeadlineExceeded ? "deadline exceeded" : "cancelled";
+    } else {
+      const Json::Value hj =
+        rr.isMember("http_json") && rr["http_json"].isObject() ? rr["http_json"] : Json::Value(Json::nullValue);
+      if (!hj.isObject()) {
+        out["error"] = "http_json missing http_json object";
+      } else {
+        std::string herr;
+        out = workflow_http_json_to_json(cfg, hj, &herr);
+        out["kind"] = "http_json";
+        // Budget charging: deterministic external call. Count as one tool call / step per attempt.
+        if (!out.isMember("tool_calls_total")) out["tool_calls_total"] = (Json::Int64)1;
+        if (!out.isMember("steps_executed")) out["steps_executed"] = (Json::Int64)1;
+        if (!herr.empty() && (!out.isMember("error") || !out["error"].isString())) out["error"] = herr;
       }
     }
   } else if (kind == "edge_invoke") {

@@ -107,6 +107,13 @@ struct DaemonConfig {
   int workflow_admit_max_inflight_tasks_per_session = 0;
   int workflow_admit_max_inflight_tasks_total = 0;
 
+  // Workflow task surface hardening.
+  //
+  // `kind:"http_json"` is a deterministic workflow task that can make outbound HTTP requests.
+  // This is powerful (enables broker/agent interop) but can be an SSRF footgun if enabled by
+  // default. Keep disabled unless an operator explicitly opts in.
+  bool workflow_enable_http_tasks = false;
+
   // Memory consolidation (rolling, deterministic by default).
   //
   // When enabled, the daemon periodically scans recent daily memory files for explicit @mem markers and

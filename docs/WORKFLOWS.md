@@ -266,6 +266,39 @@ Semantics:
 - Produces a deterministic result object with `ok=true`, plus any merged keys from `result`.
 - If `result.assistant_text` is omitted, `assistant_text` defaults to `"delay:<delay_ms>"`.
 
+### Deterministic outbound HTTP JSON task (`kind:"http_json"`) (v1.8)
+
+For broker/agent interop and other cross-service collaboration, workflows can run a deterministic outbound HTTP task.
+
+Security model:
+- This task is **disabled by default** (SSRF risk).
+- Operators must opt in by starting the daemon with `--workflow-enable-http-tasks` (or env `AGENTD_WORKFLOW_ENABLE_HTTP_TASKS=1`).
+- Do **not** embed secrets into persisted workflow specs via headers. `Authorization` headers are rejected at submit time.
+  - If you need a bearer token, use `http_json.bearer_env` to reference an env var name (only the name is persisted).
+
+Example (local echo server):
+
+```json
+{
+  "task_id": "H",
+  "kind": "http_json",
+  "http_json": {
+    "url": "http://127.0.0.1:8080/echo",
+    "method": "POST",
+    "timeout_ms": 5000,
+    "max_bytes": 65536,
+    "body": { "ping": "pong" }
+  }
+}
+```
+
+Result shape (high level):
+- `ok` is true when HTTP status is 2xx.
+- `http.status` is the HTTP status code.
+- `http.response_text` is the captured response body (bounded by `max_bytes`).
+- `http.response_json` is best-effort parsed JSON (when parse succeeds), which enables downstream `${task.H.json:/http/response_json/...}`
+  and `{"$ref":"task.H.json:/http/response_json/..."}` wiring.
+
 ### Deterministic memory update task (`kind:"memory_put"`) (v1.7)
 
 To make memory updates **correctness-gated** and correlated to durable execution, workflows can run a deterministic
