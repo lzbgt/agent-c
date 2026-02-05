@@ -9,6 +9,7 @@
 #include "toolset_host.h"
 #include "workflow_aggregate.h"
 #include "workflow_fairq_cost.h"
+#include "workflow_memory_correlate.h"
 #include "workflow_templates.h"
 
 #include <algorithm>
@@ -2151,6 +2152,45 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
             }
           }
         }
+      }
+    }
+  } else if (kind == "memory_correlate") {
+    // Deterministic correlation query over structured memory checkpoints (no LLM required).
+    if (wf_limits.max_tool_calls_total > 0 && wf_tool_calls_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_tool_calls_total");
+      return;
+    }
+    if (wf_limits.max_steps_total > 0 && wf_steps_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_steps_total");
+      return;
+    }
+    if (wf_limits.max_elapsed_ms_total > 0 && wf_elapsed_ms_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_elapsed_ms_total");
+      return;
+    }
+    if (wf_limits.max_total_tokens > 0 && wf_total_tokens_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_total_tokens");
+      return;
+    }
+
+    out = Json::Value(Json::objectValue);
+    out["kind"] = "memory_correlate";
+    out["ok"] = false;
+    out["assistant_text"] = "";
+
+    if (workflow_run_should_cancel(&cancel_ctx)) {
+      out["cancelled"] = true;
+      out["error"] = cancel_ctx.reason == WorkflowCancelReason::DeadlineExceeded ? "deadline exceeded" : "cancelled";
+    } else {
+      const Json::Value mc =
+        rr.isMember("memory_correlate") && rr["memory_correlate"].isObject() ? rr["memory_correlate"] : Json::Value(Json::nullValue);
+      if (!mc.isObject()) {
+        out["error"] = "memory_correlate missing memory_correlate object";
+      } else {
+        std::string merr;
+        out = workflow_memory_correlate_to_json(cfg.state_dir, wf.trace_id, mc, &merr);
+        out["kind"] = "memory_correlate";
+        if (!merr.empty() && (!out.isMember("error") || !out["error"].isString())) out["error"] = merr;
       }
     }
   } else if (kind == "edge_invoke") {

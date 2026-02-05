@@ -1515,6 +1515,7 @@ components:
         - Deterministic aggregation tasks: `kind: aggregate` with `aggregate` (see `WorkflowAggregateSpec`)
         - Deterministic memory update tasks: `kind: memory_put` with `memory_put` (see `WorkflowMemoryPutSpec`)
         - Deterministic memory retrieval tasks: `kind: memory_search` with `memory_search` (host tool; no LLM required)
+        - Deterministic memory correlation tasks: `kind: memory_correlate` with `memory_correlate` (scans structured memory checkpoints; no LLM required)
         - Deterministic memory consolidation tasks: `kind: memory_consolidate` with `memory_consolidate` (see `WorkflowMemoryConsolidateSpec`)
         - Deterministic delay tasks: `kind: delay` with `delay_ms` (no LLM required)
         - Edge collaboration tasks: `kind: edge_invoke` with `edge` (see `WorkflowEdgeInvokeSpec`)
@@ -1528,6 +1529,7 @@ components:
         - If `kind == aggregate`, `aggregate.task_ids` is required and `request.prompt` is not used.
         - If `kind == memory_put`, `memory_put.entries` is required and `request.prompt` is not used.
         - If `kind == memory_search`, `memory_search.query` is required and `request.prompt` is not used.
+        - If `kind == memory_correlate`, `memory_correlate` is required and `request.prompt` is not used.
         - If `kind == memory_consolidate`, `memory_consolidate` is optional and `request.prompt` is not used.
         - If `kind == delay`, `delay_ms` is optional (default 0) and `request.prompt` is not used.
         - If `kind == edge_invoke`, `edge.tool`/`edge.args` are required and `request.prompt` is not used.
@@ -1542,6 +1544,7 @@ components:
         - $ref: "#/components/schemas/WorkflowTaskAggregateSpec"
         - $ref: "#/components/schemas/WorkflowTaskMemoryPutSpec"
         - $ref: "#/components/schemas/WorkflowTaskMemorySearchSpec"
+        - $ref: "#/components/schemas/WorkflowTaskMemoryCorrelateSpec"
         - $ref: "#/components/schemas/WorkflowTaskMemoryConsolidateSpec"
         - $ref: "#/components/schemas/WorkflowTaskDelaySpec"
         - $ref: "#/components/schemas/WorkflowTaskEdgeInvokeSpec"
@@ -1700,6 +1703,37 @@ components:
           description: Deterministic correctness assertions (engine-enforced)
           additionalProperties: true
 
+    WorkflowTaskMemoryCorrelateSpec:
+      type: object
+      required: [task_id, kind, memory_correlate]
+      properties:
+        task_id: { type: string }
+        allow_error:
+          type: boolean
+          description: If true, task failure does not fail the workflow (soft-fail).
+        inputs:
+          type: object
+          description: Optional per-task inputs (overrides workflow-level inputs).
+          additionalProperties: true
+        kind:
+          type: string
+          enum: [memory_correlate]
+          description: Deterministic memory correlation query over structured checkpoints (no LLM required).
+        depends_on:
+          type: array
+          items: { type: string }
+        max_attempts: { type: integer, format: int32 }
+        priority:
+          type: integer
+          format: int32
+          description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+        memory_correlate:
+          $ref: "#/components/schemas/WorkflowMemoryCorrelateSpec"
+        expect:
+          type: object
+          description: Deterministic correctness assertions (engine-enforced)
+          additionalProperties: true
+
     WorkflowMemorySearchSpec:
       type: object
       required: [query]
@@ -1733,6 +1767,33 @@ components:
         use_index:
           type: boolean
           description: Use ranked FTS5 index when available (default true; only when case_sensitive=false).
+
+    WorkflowMemoryCorrelateSpec:
+      type: object
+      description: |
+        Deterministic memory correlation configuration for `kind:memory_correlate`.
+
+        The engine scans rolling structured checkpoints under `memory/checkpoints/structured_*.json` and returns
+        entries whose `record.sources[]` contains a substring `trace:<trace_id>`.
+      properties:
+        trace_id:
+          type: string
+          description: If omitted, the engine uses the workflow trace_id.
+        since_utc_ms:
+          type: integer
+          format: int64
+          description: Lower bound on checkpoint timestamp in UTC milliseconds (inclusive; default 0).
+        until_utc_ms:
+          type: integer
+          format: int64
+          description: Upper bound on checkpoint timestamp in UTC milliseconds (inclusive; default max int64).
+        max_entries:
+          type: integer
+          format: int32
+          description: Max entries to return per checkpoint (default 50; clamped 1..500).
+        timeline:
+          type: boolean
+          description: If true, returns multiple checkpoints (up to 50) instead of only the newest in-window checkpoint.
 
     WorkflowTaskMemoryConsolidateSpec:
       type: object

@@ -390,6 +390,9 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
      - `GET /api/v1/memory/checkpoints`
      - `GET /api/v1/memory/correlate?trace_id=...`
      - Proof: `ctest` includes `agentd_memory_correlate_smoke`.
+   - Shipped: deterministic workflow memory correlation query (no LLM; scans structured checkpoints on disk):
+     - Task kind: `kind:"memory_correlate"` with `memory_correlate:{trace_id?,since_utc_ms?,until_utc_ms?,max_entries?,timeline?}`
+     - Proof: `ctest` includes `agentd_workflow_memory_correlate_smoke`.
    - Shipped: cross-layer event correlation by `trace_id`:
      - `GET /api/v1/trace?trace_id=...` now joins durable `workflow_events` and `edge_workflow_events` (best-effort) into the same trace surface.
      - Proof: `ctest` includes `agentd_trace_workflow_events_smoke`.

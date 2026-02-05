@@ -1255,9 +1255,10 @@ void handle_workflow_submit_endpoint(
 	    const bool is_delegate = (kind == "delegate");
 	    const bool is_memory_put = (kind == "memory_put");
 	    const bool is_memory_search = (kind == "memory_search");
+	    const bool is_memory_correlate = (kind == "memory_correlate");
 	    const bool is_memory_consolidate = (kind == "memory_consolidate");
 	    const bool is_special =
-	      is_avm || is_aggregate || is_edge || is_edge_wait_sensor || is_delay || is_delegate || is_memory_put || is_memory_search || is_memory_consolidate;
+	      is_avm || is_aggregate || is_edge || is_edge_wait_sensor || is_delay || is_delegate || is_memory_put || is_memory_search || is_memory_correlate || is_memory_consolidate;
 
     Json::Value run_req = t.isMember("request") && t["request"].isObject() ? t["request"] : t;
     if (!is_special && defaults.isObject()) {
@@ -1701,6 +1702,93 @@ void handle_workflow_submit_endpoint(
 	      }
 	      task_req["kind"] = "memory_search";
 	      task_req["memory_search"] = ms;
+	      task_req["priority"] = task_priority;
+	      task_req["trace_id"] = trace_id + ":" + task_id;
+	    } else if (is_memory_correlate) {
+	      if (!t.isMember("memory_correlate") || !t["memory_correlate"].isObject()) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "memory_correlate task missing memory_correlate object";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+
+	      const auto& mc = t["memory_correlate"];
+	      Json::Value mc2(Json::objectValue);
+
+	      if (mc.isMember("trace_id")) {
+	        if (!mc["trace_id"].isString() && !mc["trace_id"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_correlate.trace_id must be a string";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (mc["trace_id"].isString() && !trim_copy(mc["trace_id"].asString()).empty()) {
+	          mc2["trace_id"] = trim_copy(mc["trace_id"].asString());
+	        }
+	      }
+
+	      if (mc.isMember("since_utc_ms")) {
+	        if (!(mc["since_utc_ms"].isInt64() || mc["since_utc_ms"].isUInt64() || mc["since_utc_ms"].isInt() || mc["since_utc_ms"].isUInt()) && !mc["since_utc_ms"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_correlate.since_utc_ms must be an int64";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (!mc["since_utc_ms"].isNull()) mc2["since_utc_ms"] = (Json::Int64)mc["since_utc_ms"].asInt64();
+	      }
+
+	      if (mc.isMember("until_utc_ms")) {
+	        if (!(mc["until_utc_ms"].isInt64() || mc["until_utc_ms"].isUInt64() || mc["until_utc_ms"].isInt() || mc["until_utc_ms"].isUInt()) && !mc["until_utc_ms"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_correlate.until_utc_ms must be an int64";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (!mc["until_utc_ms"].isNull()) mc2["until_utc_ms"] = (Json::Int64)mc["until_utc_ms"].asInt64();
+	      }
+
+	      if (mc.isMember("max_entries")) {
+	        if (!mc["max_entries"].isInt() && !mc["max_entries"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_correlate.max_entries must be an int";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (mc["max_entries"].isInt()) {
+	          mc2["max_entries"] = std::max(1, std::min(500, mc["max_entries"].asInt()));
+	        }
+	      }
+
+	      if (mc.isMember("timeline")) {
+	        if (!mc["timeline"].isBool() && !mc["timeline"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_correlate.timeline must be a bool";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (mc["timeline"].isBool()) mc2["timeline"] = mc["timeline"];
+	      }
+
+	      task_req["kind"] = "memory_correlate";
+	      task_req["memory_correlate"] = mc2;
 	      task_req["priority"] = task_priority;
 	      task_req["trace_id"] = trace_id + ":" + task_id;
 	    } else if (is_memory_consolidate) {
