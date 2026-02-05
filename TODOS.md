@@ -380,6 +380,8 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
    - Next: complete trust roots + identity binding:
      - per-node key provisioning workflow (bootstrap + rotation)
      - replay window guidance + nonce/ts enforcement for lossy bridges (configurable; deterministic)
+   - Next (MCU ergonomics): add an optional small-footprint CBOR **decoder** helper in `agent_core` for the same deterministic wire profile,
+     or vendor an existing MCU CBOR reader (e.g., your `cobr.h`-derived implementation) with proper attribution/licensing.
 3) **Scheduling policy v2.4+** — DRR is shipped; telemetry-driven cost is now shipped (`telemetry_v1`), next is budget-pressure-aware charging and resilient fairness under mixed workloads.
 4) **Memory v2.3** — query-plan primitives (bounded windows + key-prefix filters) and automatic consolidation triggers as time advances,
    so long-running systems keep context tight and correct.
@@ -389,6 +391,12 @@ Maintainability note (always-on):
 - Keep endpoint implementations SOLID and <2000 LOC per file; split large translation units (e.g. workflow endpoints) so new collaboration primitives remain cheap to add.
 - Shipped: submit-time macro expansion is now isolated (`daemon/src/workflow_submit_macros.*`).
 - Shipped: structured checkpoint scan/read logic is centralized (`daemon/src/memory_checkpoints.*`) so memory endpoints and deterministic workflow tasks stay consistent.
+- Shipped: `/api/v1/run` endpoint refactor to keep `daemon/src/run_endpoints.cpp` <2000 LOC by extracting cohesive helpers:
+  - `daemon/src/run_endpoints_internal.*` (job request redaction, host prompt pinning, file safety, tool extension mux helpers)
+  - `daemon/src/run_multimodal.*` (multimodal prefix handling and content-part construction)
+  - `daemon/src/run_memory_context.*` (durable memory context injection helpers)
+  - `daemon/src/run_client_acks.*` (best-effort client acknowledgement verification helpers)
+- Shipped: unified `trace_id` validation + generation in `daemon/src/trace_id_util.*` (used by run/trace/edge).
 - Follow-up: extract remaining submit-time validators/redaction helpers if `daemon/src/workflow_endpoints.cpp` grows again,
   so the durable workflow surface can evolve without accumulating another “mega endpoint” file.
 - DB backend decision: **stay on SQLite** (WAL + bounded writes + migrations) until a concrete requirement demands replication/multi-writer semantics at the DB layer.

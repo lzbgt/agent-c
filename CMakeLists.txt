@@ -192,8 +192,13 @@ if(AGENT_BUILD_HOST)
     daemon/src/memory_endpoints.cpp
     daemon/src/runtime_config.cpp
     daemon/src/secrets_file.cpp
+    daemon/src/run_client_acks.cpp
     daemon/src/run_endpoints.cpp
+    daemon/src/run_endpoints_internal.cpp
+    daemon/src/run_memory_context.cpp
+    daemon/src/run_multimodal.cpp
     daemon/src/trace_endpoints.cpp
+    daemon/src/trace_id_util.cpp
     daemon/src/scene_store.cpp
     daemon/src/session_endpoints.cpp
     daemon/src/tool_plugins.cpp

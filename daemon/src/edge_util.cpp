@@ -2,6 +2,7 @@
 
 #include "json_util.h"
 #include "string_util.h"
+#include "trace_id_util.h"
 
 #include <algorithm>
 #include <chrono>
@@ -174,16 +175,7 @@ static bool edge_tool_parameters_schema_from_manifest_best_effort_impl(
 }  // namespace
 
 bool edge_trace_id_is_safe(const std::string& s) {
-  if (s.empty() || s.size() > 128) return false;
-  for (char c : s) {
-    const bool ok =
-      (c >= 'a' && c <= 'z') ||
-      (c >= 'A' && c <= 'Z') ||
-      (c >= '0' && c <= '9') ||
-      c == '-' || c == '_' || c == '.' || c == ':' || c == '@';
-    if (!ok) return false;
-  }
-  return true;
+  return trace_id_is_safe(s);
 }
 
 bool edge_json_schema_subset_validate_best_effort(

@@ -6,6 +6,7 @@
 #include "http_util.h"
 #include "json_util.h"
 #include "string_util.h"
+#include "trace_id_util.h"
 #include "workflow_memory_correlate.h"
 
 #include <json/json.h>
@@ -19,19 +20,6 @@
 
 namespace agentd {
 namespace {
-
-static bool trace_id_is_safe(const std::string& s) {
-  if (s.empty() || s.size() > 128) return false;
-  for (char c : s) {
-    const bool ok =
-      (c >= 'a' && c <= 'z') ||
-      (c >= 'A' && c <= 'Z') ||
-      (c >= '0' && c <= '9') ||
-      c == '-' || c == '_' || c == '.' || c == ':' || c == '@';
-    if (!ok) return false;
-  }
-  return true;
-}
 
 static size_t clamp_size(size_t v, size_t lo, size_t hi) {
   if (v < lo) return lo;
