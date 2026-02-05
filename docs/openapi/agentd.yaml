@@ -1783,7 +1783,7 @@ components:
       properties:
         mode:
           type: string
-          enum: [quorum_hashes, collect, first_ok, best_of_n]
+          enum: [quorum_hashes, collect, first_ok, quorum_ok, best_of_n]
           description: Aggregation strategy.
         task_ids:
           type: array
@@ -1792,7 +1792,9 @@ components:
         quorum:
           type: integer
           format: int32
-          description: Minimum number of matching votes required (default: N=task_ids length).
+          description: |
+            - For mode=quorum_hashes, minimum number of matching votes required (default: N=task_ids length).
+            - For mode=quorum_ok, minimum number of ok tasks required (default: N=task_ids length).
         pointers:
           type: array
           description: JSON pointers into each task result JSON to compare (default: [/avm/result_hash, /avm/trace_hash]).
@@ -1802,7 +1804,7 @@ components:
           description: For mode=collect, require every pointer for every task_id (default true).
         ok_pointer:
           type: string
-          description: For mode=first_ok or best_of_n, JSON pointer used to test ok (default /ok).
+          description: For mode=first_ok, quorum_ok, or best_of_n, JSON pointer used to test ok (default /ok).
         require_ok:
           type: boolean
           description: For mode=best_of_n, require ok_pointer to be true (default true).
@@ -1810,6 +1812,7 @@ components:
           type: string
           description: |
             For mode=first_ok, JSON pointer into the task result JSON used as assistant_text (default /assistant_text).
+            For mode=quorum_ok, JSON pointer into the chosen ok task result JSON used as assistant_text (default /assistant_text).
             For mode=best_of_n, JSON pointer into the candidate object used as assistant_text (default /answer).
         candidate_pointer:
           type: string
@@ -1912,6 +1915,19 @@ components:
           description: For `kind:delegate_parallel` expansion, override aggregate value_pointer (default /assistant_text).
         aggregate:
           $ref: "#/components/schemas/WorkflowDelegateParallelAggregateSpec"
+        attempt_defaults:
+          type: object
+          description: |
+            Only used by `kind:delegate_parallel` expansion.
+
+            Best-effort defaults applied to each attempt's `request` object (merged by missing-key only).
+            Precedence order:
+            - attempt.request (highest priority)
+            - delegate.attempt_defaults
+            - workflow submit `defaults` (lowest priority)
+
+            This is useful for per-attempt budget knobs or base_url/model/api_key wiring without repeating them for every attempt.
+          additionalProperties: true
         attempts:
           type: array
           items:
@@ -1947,12 +1963,14 @@ components:
       properties:
         mode:
           type: string
-          enum: [quorum_hashes, collect, first_ok, best_of_n]
+          enum: [quorum_hashes, collect, first_ok, quorum_ok, best_of_n]
           description: Aggregation strategy (default first_ok).
         quorum:
           type: integer
           format: int32
-          description: For mode=quorum_hashes, minimum number of matching votes required (default: N=task_ids length).
+          description: |
+            - For mode=quorum_hashes, minimum number of matching votes required (default: N=task_ids length).
+            - For mode=quorum_ok, minimum number of ok tasks required (default: N=task_ids length).
         pointers:
           type: array
           description: For mode=quorum_hashes or collect, JSON pointers into each task result JSON to compare/collect.
@@ -1962,7 +1980,7 @@ components:
           description: For mode=collect, require every pointer for every attempt (default true).
         ok_pointer:
           type: string
-          description: For mode=first_ok or best_of_n, JSON pointer used to test ok (default /ok).
+          description: For mode=first_ok, quorum_ok, or best_of_n, JSON pointer used to test ok (default /ok).
         require_ok:
           type: boolean
           description: For mode=best_of_n, require ok_pointer to be true (default true).
@@ -1970,6 +1988,7 @@ components:
           type: string
           description: |
             For mode=first_ok, JSON pointer into the task result JSON used as assistant_text (default /assistant_text).
+            For mode=quorum_ok, JSON pointer into the chosen ok task result JSON used as assistant_text (default /assistant_text).
             For mode=best_of_n, JSON pointer into the candidate object used as assistant_text (default /answer).
         candidate_pointer:
           type: string

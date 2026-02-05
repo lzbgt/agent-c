@@ -124,6 +124,19 @@ static bool expand_workflow_submit_macros(
     }
 
     const Json::Value del = t["delegate"];
+    const Json::Value attempt_defaults =
+      del.isMember("attempt_defaults") ? del["attempt_defaults"] : Json::Value(Json::nullValue);
+    if (del.isMember("attempt_defaults") && !attempt_defaults.isObject() && !attempt_defaults.isNull()) {
+      if (resp) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "delegate_parallel.delegate.attempt_defaults must be an object";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+      }
+      return false;
+    }
     const Json::Value attempts = del.isMember("attempts") ? del["attempts"] : Json::Value(Json::nullValue);
     if (!attempts.isArray() || attempts.empty()) {
       if (resp) {
@@ -225,6 +238,12 @@ static bool expand_workflow_submit_macros(
       // Delegate-parallel attempt requests behave like normal workflow tasks:
       // - workflow-level defaults are merged
       // - sessions/no_session are defaulted
+      // - attempt_defaults (delegate-level) are merged with higher priority than workflow defaults
+      if (attempt_defaults.isObject()) {
+        for (const auto& k : attempt_defaults.getMemberNames()) {
+          if (!areq.isMember(k)) areq[k] = attempt_defaults[k];
+        }
+      }
       if (workflow_defaults.isObject()) {
         for (const auto& k : workflow_defaults.getMemberNames()) {
           if (!areq.isMember(k)) areq[k] = workflow_defaults[k];
@@ -322,12 +341,12 @@ static bool expand_workflow_submit_macros(
 
     const std::string agg_mode =
       agg.isMember("mode") && agg["mode"].isString() ? trim_copy(agg["mode"].asString()) : std::string();
-    if (agg_mode != "first_ok" && agg_mode != "collect" && agg_mode != "best_of_n" && agg_mode != "quorum_hashes") {
+    if (agg_mode != "first_ok" && agg_mode != "quorum_ok" && agg_mode != "collect" && agg_mode != "best_of_n" && agg_mode != "quorum_hashes") {
       if (resp) {
         resp->status = 400;
         Json::Value o(Json::objectValue);
         o["ok"] = false;
-        o["error"] = "delegate_parallel aggregate.mode must be one of: first_ok, collect, best_of_n, quorum_hashes";
+        o["error"] = "delegate_parallel aggregate.mode must be one of: first_ok, quorum_ok, collect, best_of_n, quorum_hashes";
         o["task_id"] = task_id;
         o["mode"] = agg_mode;
         resp->body = json_stringify_compact(o);

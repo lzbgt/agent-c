@@ -212,16 +212,20 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - `delegate_parallel` can now pass `delegate.aggregate` to pick a deterministic join strategy (e.g. `mode:"best_of_n"`).
   - Server overwrites `aggregate.task_ids` with the derived attempt task IDs (`<task_id>:<attempt_id>`).
   - Proof: `ctest` includes `agentd_workflow_delegate_parallel_best_of_n_smoke`.
+- Parallel collaboration macro upgrade (v1.7.1):
+  - New deterministic join strategy: `mode:"quorum_ok"` (succeed only if >= quorum attempts are ok; deterministically chooses the first ok attempt).
+  - New merge primitive: `delegate.attempt_defaults` (missing-key-only defaults applied to each attempt.request with higher priority than workflow defaults).
+  - Proof: `ctest` includes `agentd_workflow_delegate_parallel_quorum_ok_smoke` and `agentd_workflow_aggregate_quorum_ok_smoke`.
 
 ## P0 (next: maximize autonomous continuity + correctness)
 
 ### Reweighted next 5 (highest compound impact)
 
-Priority order (reweighted after `delegate_parallel` join customization shipped; sections below are kept stable for diff readability):
+Priority order (reweighted after `delegate_parallel` quorum_ok + attempt_defaults shipped; sections below are kept stable for diff readability):
 
 1) **Scheduling policy v2.3+** — DRR is shipped; next is cost-aware quanta + durable per-session deficits (predictable progress under mixed workloads).
 2) **Budgets v0.6** — complete host-tool + streaming usage charging and make budget pressure cheap/accurate for large queues.
-3) **Agent collaboration v2.1** — parallel fan-out with deterministic joins (best_of_n/quorum/collect) + per-attempt budgets and retries.
+3) **Agent collaboration v2.1** — parallel fan-out with deterministic joins (best_of_n/quorum_ok/quorum_hashes/collect) + enforceable per-attempt budgets and retries.
 4) **Memory v2.3** — query-plan primitives (bounded windows + key-prefix filters) and automatic consolidation triggers as time advances.
 5) **Interop v0.4** — move beyond portable hashes (v0.3 partial shipped) into enforceable attestation (hash_alg hints + signature conventions + trust roots).
 
@@ -315,7 +319,9 @@ Priority order (reweighted after `delegate_parallel` join customization shipped;
 
 4) **Agent collaboration v2 (budgeted parallel fan-out + join macros)** (power-unleashed)
    - Status: submit-time parallel macro shipped as `kind:"delegate_parallel"` (v1.6.1).
-   - Remaining: per-attempt budgets + richer deterministic join strategies (`strict_all_ok`, `quorum_ok`, etc).
+   - Shipped: deterministic join strategies for parallel fan-out now include `first_ok`, `best_of_n`, `quorum_ok`.
+   - Shipped: per-attempt wiring defaults via `delegate.attempt_defaults` (enables per-attempt budget knobs without repetition).
+   - Remaining: enforceable per-attempt budgets + richer joins (`strict_all_ok`, node-identity-aware quorum votes).
 
 5) **Memory ↔ workflow time correlation (next after memory_put)** (time-advancing correctness)
    - Shipped: deterministic workflow `kind:"memory_put"` and deterministic workflow `kind:"memory_consolidate"`.
@@ -345,7 +351,7 @@ Deliverables:
 - Workflow + join:
   - (shipped) durable workflows can dispatch a capsule run as a task kind (no LLM required)
   - (shipped) deterministic aggregation/join nodes (`kind:"aggregate"`) can compare `RESULT_HASH` / `TRACE_HASH` across runs/nodes (k-of-n correctness)
-  - (next) extend aggregation strategies (`first_ok`, `strict_all_ok`, `collect`, `best_of_n`) and attach node identity to votes for multi-node correctness.
+  - (next) extend aggregation strategies (`first_ok`, `quorum_ok`, `strict_all_ok`, `collect`, `best_of_n`) and attach node identity to votes for multi-node correctness.
 - Edge interop integration:
   - extend UM‑EAIS payload conventions so a node can execute a capsule and report back hashes as “task done” attestation.
 
@@ -380,7 +386,7 @@ Deliverables:
   - (shipped) `${task.<id>.assistant_text}` and `${task.<id>.json:/ptr}` template expansion across full task request JSON (prompt + structured fields)
   - (shipped) explicit `inputs` map per task (shared variables; supports `${input...}` and `{"$ref":"input..."}`; enables schema validation later)
 - Aggregation nodes (no LLM required by default):
-  - `first_ok`, `best_of_n`, `strict_all_ok`, `collect`
+  - `first_ok`, `quorum_ok`, `best_of_n`, `strict_all_ok`, `collect`
 - Optional LLM aggregator (tools=none by default).
 
 Proof:
