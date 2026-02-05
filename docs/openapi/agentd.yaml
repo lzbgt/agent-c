@@ -1799,6 +1799,14 @@ components:
           type: array
           description: JSON pointers into each task result JSON to compare (default: [/avm/result_hash, /avm/trace_hash]).
           items: { type: string }
+        node_pointer:
+          type: string
+          description: |
+            Optional JSON pointer into each task result JSON used to surface node identity evidence alongside votes.
+
+            Notes:
+            - This does not change quorum semantics; it is an observability/correlation surface.
+            - Default: `/edge/node_id` (populated by `kind:edge_invoke` results).
         require_all:
           type: boolean
           description: For mode=collect, require every pointer for every task_id (default true).
@@ -1976,6 +1984,13 @@ components:
           type: array
           description: For mode=quorum_hashes or collect, JSON pointers into each task result JSON to compare/collect.
           items: { type: string }
+        node_pointer:
+          type: string
+          description: |
+            Optional JSON pointer into each attempt result JSON used to surface node identity evidence alongside votes
+            (for quorum_hashes debugging/correlation only; does not affect quorum semantics).
+
+            Default: `/edge/node_id` (usually empty for LLM attempts; present when aggregating edge tasks).
         require_all:
           type: boolean
           description: For mode=collect, require every pointer for every attempt (default true).

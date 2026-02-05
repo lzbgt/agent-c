@@ -220,6 +220,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Deterministic strict join: `mode:"strict_all_ok"` (fail if any attempt is missing/not ok; deterministically chooses the first task as the chosen result).
   - Macro semantics: `kind:"delegate_parallel"` now preserves task-level fields on the join node (`allow_error`, `inputs`, `ready_unix_ms`) so it behaves like a normal task.
   - Proof: `ctest` includes `agentd_workflow_delegate_parallel_strict_all_ok_allow_error_smoke` and `agentd_workflow_aggregate_strict_all_ok_smoke`.
+- Multi-node quorum evidence surface (v1.7.3):
+  - `mode:"quorum_hashes"` now optionally surfaces stable node identity evidence via `aggregate.node_pointer` (default `/edge/node_id`),
+    emitting `nodes_by_task_id` in the aggregate result (does not change quorum semantics).
+  - Proof: `ctest` includes `agentd_workflow_edge_invoke_quorum_hashes_node_ids_smoke`.
 
 ## P0 (next: maximize autonomous continuity + correctness)
 

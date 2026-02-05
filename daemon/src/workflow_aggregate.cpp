@@ -81,6 +81,11 @@ static Json::Value workflow_aggregate_quorum_hashes_to_json(
     ptrs.push_back("/avm/trace_hash");
   }
 
+  std::string node_ptr = "/edge/node_id";
+  if (agg.isMember("node_pointer") && agg["node_pointer"].isString() && !agg["node_pointer"].asString().empty()) {
+    node_ptr = agg["node_pointer"].asString();
+  }
+
   out["mode"] = "quorum_hashes";
   out["quorum"] = quorum;
   Json::Value arr(Json::arrayValue);
@@ -89,6 +94,23 @@ static Json::Value workflow_aggregate_quorum_hashes_to_json(
   Json::Value parr(Json::arrayValue);
   for (const auto& p : ptrs) parr.append(p);
   out["pointers"] = parr;
+  out["node_pointer"] = node_ptr;
+
+  // Optional evidence surface: attach stable node identity (when present) to votes.
+  // This is useful for multi-node correctness debugging and attestation correlation.
+  {
+    Json::Value nodes_by_task(Json::objectValue);
+    for (const auto& tid : task_ids) {
+      auto it = result_json_by_task.find(tid);
+      if (it == result_json_by_task.end()) continue;
+      const Json::Value& root = it->second;
+      const Json::Value* got = nullptr;
+      if (json_pointer_get(root, node_ptr, &got) && got && got->isString() && !got->asString().empty()) {
+        nodes_by_task[tid] = got->asString();
+      }
+    }
+    if (!nodes_by_task.empty()) out["nodes_by_task_id"] = nodes_by_task;
+  }
 
   Json::Value checks(Json::arrayValue);
   bool all_ok = true;
