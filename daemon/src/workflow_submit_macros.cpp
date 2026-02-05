@@ -689,6 +689,22 @@ bool expand_workflow_submit_macros(
         }
         return false;
       }
+
+      // Ergonomic defaults for edge_parallel quorum:
+      // - pointers defaults to the stable edge result hash surface
+      // - node_pointer defaults to the selected node identity (for distinct-node quorum)
+      if (agg_mode == "quorum_hashes") {
+        const bool has_ptrs =
+          agg.isMember("pointers") && agg["pointers"].isArray() && !agg["pointers"].empty();
+        if (!has_ptrs) {
+          Json::Value ptrs(Json::arrayValue);
+          ptrs.append("/edge_result_sha256");
+          agg["pointers"] = ptrs;
+        }
+        const bool has_node_pointer =
+          agg.isMember("node_pointer") && agg["node_pointer"].isString() && !trim_copy(agg["node_pointer"].asString()).empty();
+        if (!has_node_pointer) agg["node_pointer"] = "/edge/node_id";
+      }
       join["aggregate"] = agg;
 
       if (t.isMember("max_attempts") && t["max_attempts"].isInt()) join["max_attempts"] = t["max_attempts"];

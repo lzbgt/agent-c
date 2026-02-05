@@ -319,7 +319,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Selects **distinct** nodes via `edge.match_any` (node registry), expands into per-node `kind:"edge_invoke"` tasks,
     then replaces the macro task with a deterministic aggregate join.
   - Default join behavior: `mode:"strict_all_ok"`; override via `edge_parallel.aggregate`.
-  - Proof: `ctest` includes `agentd_workflow_edge_parallel_macro_smoke`.
+  - Quorum ergonomics: for `edge_parallel.aggregate.mode:"quorum_hashes"`, the server defaults:
+    - `aggregate.pointers=["/edge_result_sha256"]`
+    - `aggregate.node_pointer="/edge/node_id"`
+  - Proof: `ctest` includes `agentd_workflow_edge_parallel_macro_smoke` and `agentd_workflow_edge_parallel_quorum_hashes_default_pointers_smoke`.
 - Event-triggered durable orchestration (v1.7.8):
   - Automation rules for `SENSOR_EVENT` now support `action.type:"durable_workflow_submit"` (in addition to `task_assign`).
   - The platform injects `inputs.sensor_event` (best-effort) so workflow tasks can template against `${input.sensor_event...}`.

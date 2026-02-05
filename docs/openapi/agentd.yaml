@@ -2809,6 +2809,8 @@ components:
         Notes:
         - `task_ids` is **ignored** if provided; the server overwrites it with the derived per-node attempt task ids.
         - If omitted, the server defaults to `mode:strict_all_ok`.
+        - For `mode=quorum_hashes`, when `pointers` is omitted the server defaults to [`/edge_result_sha256`].
+        - For `mode=quorum_hashes`, when `node_pointer` is omitted the server defaults to `/edge/node_id`.
       properties:
         mode:
           type: string
