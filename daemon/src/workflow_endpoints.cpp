@@ -1254,9 +1254,10 @@ void handle_workflow_submit_endpoint(
 	    const bool is_delay = (kind == "delay");
 	    const bool is_delegate = (kind == "delegate");
 	    const bool is_memory_put = (kind == "memory_put");
+	    const bool is_memory_search = (kind == "memory_search");
 	    const bool is_memory_consolidate = (kind == "memory_consolidate");
 	    const bool is_special =
-	      is_avm || is_aggregate || is_edge || is_edge_wait_sensor || is_delay || is_delegate || is_memory_put || is_memory_consolidate;
+	      is_avm || is_aggregate || is_edge || is_edge_wait_sensor || is_delay || is_delegate || is_memory_put || is_memory_search || is_memory_consolidate;
 
     Json::Value run_req = t.isMember("request") && t["request"].isObject() ? t["request"] : t;
     if (!is_special && defaults.isObject()) {
@@ -1542,7 +1543,7 @@ void handle_workflow_submit_endpoint(
       }
       task_req["priority"] = task_priority;
       task_req["trace_id"] = trace_id + ":" + task_id;
-    } else if (is_memory_put) {
+	    } else if (is_memory_put) {
       if (!t.isMember("memory_put") || !t["memory_put"].isObject()) {
         resp->status = 400;
         Json::Value o(Json::objectValue);
@@ -1639,8 +1640,70 @@ void handle_workflow_submit_endpoint(
       task_req["kind"] = "memory_put";
       task_req["memory_put"] = mp2;
       task_req["priority"] = task_priority;
-      task_req["trace_id"] = trace_id + ":" + task_id;
-    } else if (is_memory_consolidate) {
+	      task_req["trace_id"] = trace_id + ":" + task_id;
+	    } else if (is_memory_search) {
+	      if (!t.isMember("memory_search") || !t["memory_search"].isObject()) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "memory_search task missing memory_search object";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      const auto& ms = t["memory_search"];
+	      const std::string query =
+	        ms.isMember("query") && ms["query"].isString() ? trim_copy(ms["query"].asString()) : "";
+	      if (query.empty() || query.size() > 400) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "memory_search.query must be a non-empty string (max 400 chars)";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      if (ms.isMember("max_results") && !ms["max_results"].isInt() && !ms["max_results"].isNull()) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "memory_search.max_results must be an int";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      if (ms.isMember("daily_days") && !ms["daily_days"].isInt() && !ms["daily_days"].isNull()) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "memory_search.daily_days must be an int";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      if (ms.isMember("case_sensitive") && !ms["case_sensitive"].isBool() && !ms["case_sensitive"].isNull()) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "memory_search.case_sensitive must be a bool";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      if (ms.isMember("use_index") && !ms["use_index"].isBool() && !ms["use_index"].isNull()) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "memory_search.use_index must be a bool";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      task_req["kind"] = "memory_search";
+	      task_req["memory_search"] = ms;
+	      task_req["priority"] = task_priority;
+	      task_req["trace_id"] = trace_id + ":" + task_id;
+	    } else if (is_memory_consolidate) {
       const Json::Value mc =
         t.isMember("memory_consolidate") && t["memory_consolidate"].isObject() ? t["memory_consolidate"] : Json::Value(Json::nullValue);
       if (!mc.isNull() && !mc.isObject()) {

@@ -1514,6 +1514,7 @@ components:
         - Deterministic capsule tasks: `kind: avm_capsule` with `capsule` (see `AvmCapsuleRunArgs`)
         - Deterministic aggregation tasks: `kind: aggregate` with `aggregate` (see `WorkflowAggregateSpec`)
         - Deterministic memory update tasks: `kind: memory_put` with `memory_put` (see `WorkflowMemoryPutSpec`)
+        - Deterministic memory retrieval tasks: `kind: memory_search` with `memory_search` (host tool; no LLM required)
         - Deterministic memory consolidation tasks: `kind: memory_consolidate` with `memory_consolidate` (see `WorkflowMemoryConsolidateSpec`)
         - Deterministic delay tasks: `kind: delay` with `delay_ms` (no LLM required)
         - Edge collaboration tasks: `kind: edge_invoke` with `edge` (see `WorkflowEdgeInvokeSpec`)
@@ -1526,6 +1527,7 @@ components:
         - If `kind == avm_capsule`, `capsule.obc_base64` is required and `request.prompt` is not used.
         - If `kind == aggregate`, `aggregate.task_ids` is required and `request.prompt` is not used.
         - If `kind == memory_put`, `memory_put.entries` is required and `request.prompt` is not used.
+        - If `kind == memory_search`, `memory_search.query` is required and `request.prompt` is not used.
         - If `kind == memory_consolidate`, `memory_consolidate` is optional and `request.prompt` is not used.
         - If `kind == delay`, `delay_ms` is optional (default 0) and `request.prompt` is not used.
         - If `kind == edge_invoke`, `edge.tool`/`edge.args` are required and `request.prompt` is not used.
@@ -1539,6 +1541,7 @@ components:
         - $ref: "#/components/schemas/WorkflowTaskAvmCapsuleSpec"
         - $ref: "#/components/schemas/WorkflowTaskAggregateSpec"
         - $ref: "#/components/schemas/WorkflowTaskMemoryPutSpec"
+        - $ref: "#/components/schemas/WorkflowTaskMemorySearchSpec"
         - $ref: "#/components/schemas/WorkflowTaskMemoryConsolidateSpec"
         - $ref: "#/components/schemas/WorkflowTaskDelaySpec"
         - $ref: "#/components/schemas/WorkflowTaskEdgeInvokeSpec"
@@ -1665,6 +1668,71 @@ components:
           type: object
           description: Deterministic correctness assertions (engine-enforced)
           additionalProperties: true
+
+    WorkflowTaskMemorySearchSpec:
+      type: object
+      required: [task_id, kind, memory_search]
+      properties:
+        task_id: { type: string }
+        allow_error:
+          type: boolean
+          description: If true, task failure does not fail the workflow (soft-fail).
+        inputs:
+          type: object
+          description: Optional per-task inputs (overrides workflow-level inputs).
+          additionalProperties: true
+        kind:
+          type: string
+          enum: [memory_search]
+          description: Deterministic memory retrieval via host tool `memory_search` (no LLM required).
+        depends_on:
+          type: array
+          items: { type: string }
+        max_attempts: { type: integer, format: int32 }
+        priority:
+          type: integer
+          format: int32
+          description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+        memory_search:
+          $ref: "#/components/schemas/WorkflowMemorySearchSpec"
+        expect:
+          type: object
+          description: Deterministic correctness assertions (engine-enforced)
+          additionalProperties: true
+
+    WorkflowMemorySearchSpec:
+      type: object
+      required: [query]
+      description: |
+        Memory search configuration for `kind:memory_search`.
+
+        This maps to the host tool `memory_search` (see `cli/src/toolset_host_memory.cpp`).
+      properties:
+        query:
+          type: string
+          description: Required search string.
+        max_results:
+          type: integer
+          format: int32
+          description: Max hits to return (default 20).
+        daily_days:
+          type: integer
+          format: int32
+          description: Number of daily memory files to scan (default 14; 0 means core-only).
+        case_sensitive:
+          type: boolean
+          description: Case sensitive substring match (default false; disables FTS5 index usage).
+        context_lines:
+          type: integer
+          format: int32
+          description: Snippet context lines around matches in substr mode (default 2).
+        max_snippet_chars:
+          type: integer
+          format: int32
+          description: Snippet size cap in characters (default 600).
+        use_index:
+          type: boolean
+          description: Use ranked FTS5 index when available (default true; only when case_sensitive=false).
 
     WorkflowTaskMemoryConsolidateSpec:
       type: object

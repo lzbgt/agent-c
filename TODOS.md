@@ -254,6 +254,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - New deterministic workflow task: `kind:"edge_wait_sensor"` with `edge_wait_sensor` (polls `edge_sensor_events` and is `retryable` until a matching event arrives).
   - Default `since_utc_ms` is workflow creation time (prevents old sensor events satisfying a new workflow by accident).
   - Proof: `ctest` includes `agentd_workflow_edge_wait_sensor_smoke`.
+- Durable workflow memory retrieval (v1.7.10):
+  - New deterministic workflow task: `kind:"memory_search"` with `memory_search` (host tool; no LLM required).
+  - Enables workflows to retrieve relevant memory snippets deterministically and feed them into later tasks via templates/expectations.
+  - Proof: `ctest` includes `agentd_workflow_memory_search_smoke`.
 
 ## P0 (next: maximize autonomous continuity + correctness)
 
