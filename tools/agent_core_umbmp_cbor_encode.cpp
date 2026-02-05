@@ -29,7 +29,12 @@ static void usage() {
                "  --caps-sha256 <token>     NODE_HELLO and minimal manifest\n"
                "  --manifest-minimal        NODE_CAPS_RSP: generate a small deterministic manifest\n"
                "  --manifest-cbor-hex <hex> NODE_CAPS_RSP: use caller-provided manifest CBOR bytes\n"
-               "  --enforce-det             NODE_CAPS_RSP: enforce deterministic manifest key ordering\n");
+               "  --enforce-det             NODE_CAPS_RSP: enforce deterministic manifest key ordering\n\n"
+               "Envelope auth (optional; CBOR signing):\n"
+               "  --auth-alg hmac-sha256-cbor\n"
+               "  --auth-kid <kid>\n"
+               "  --auth-seq <u64>\n"
+               "  --hmac-secret <ascii>\n");
 }
 
 static bool starts_with(const std::string& s, const char* pfx) {
@@ -75,6 +80,16 @@ static bool parse_i64(const std::string& s, int64_t* out) {
   const long long v = std::strtoll(s.c_str(), &end, 10);
   if (!end || *end != '\0') return false;
   *out = (int64_t)v;
+  return true;
+}
+
+static bool parse_u64(const std::string& s, uint64_t* out) {
+  if (!out) return false;
+  if (s.empty()) return false;
+  char* end = nullptr;
+  const unsigned long long v = std::strtoull(s.c_str(), &end, 10);
+  if (!end || *end != '\0') return false;
+  *out = (uint64_t)v;
   return true;
 }
 
@@ -175,6 +190,12 @@ int main(int argc, char** argv) {
   std::string manifest_hex;
   bool enforce_det = false;
 
+  std::string auth_alg;
+  std::string auth_kid;
+  uint64_t auth_seq = 0;
+  bool has_auth_seq = false;
+  std::string hmac_secret;
+
   for (int i = 1; i < argc; i++) {
     const std::string a = argv[i] ? argv[i] : "";
     auto need_value = [&](std::string* out) -> bool {
@@ -210,6 +231,20 @@ int main(int argc, char** argv) {
       if (!need_value(&manifest_hex)) return (usage(), 2);
     } else if (a == "--enforce-det") {
       enforce_det = true;
+    } else if (a == "--auth-alg") {
+      if (!need_value(&auth_alg)) return (usage(), 2);
+    } else if (a == "--auth-kid") {
+      if (!need_value(&auth_kid)) return (usage(), 2);
+    } else if (a == "--auth-seq") {
+      std::string v;
+      if (!need_value(&v)) return (usage(), 2);
+      if (!parse_u64(v, &auth_seq)) {
+        std::fprintf(stderr, "invalid --auth-seq\n");
+        return 2;
+      }
+      has_auth_seq = true;
+    } else if (a == "--hmac-secret") {
+      if (!need_value(&hmac_secret)) return (usage(), 2);
     } else if (a == "--help" || a == "-h") {
       usage();
       return 0;
@@ -242,6 +277,26 @@ int main(int argc, char** argv) {
   std::string from = "node:" + node_id;
   const std::string to = "platform";
 
+  const bool want_auth = !auth_alg.empty() || !auth_kid.empty() || has_auth_seq || !hmac_secret.empty();
+  if (want_auth) {
+    if (auth_alg != "hmac-sha256-cbor") {
+      std::fprintf(stderr, "unsupported --auth-alg (supported: hmac-sha256-cbor)\n");
+      return 2;
+    }
+    if (auth_kid.empty() || !agent_umbmp_id_is_safe(auth_kid.c_str(), auth_kid.size())) {
+      std::fprintf(stderr, "invalid/missing --auth-kid (id-safe required)\n");
+      return 2;
+    }
+    if (!has_auth_seq) {
+      std::fprintf(stderr, "missing --auth-seq\n");
+      return 2;
+    }
+    if (hmac_secret.empty()) {
+      std::fprintf(stderr, "missing --hmac-secret\n");
+      return 2;
+    }
+  }
+
   // Encode envelope into a bounded buffer and emit raw bytes to stdout.
   uint8_t buf[64 * 1024];
   agent_cbor_writer_t w{};
@@ -262,6 +317,22 @@ int main(int argc, char** argv) {
 
   agent_status_t st = AGENT_ERR_INVALID_ARGUMENT;
 
+  // When auth is requested, compute auth.sig over the deterministic env_no_sig CBOR bytes
+  // and include it in the final envelope bytes.
+  char sig_b64[256];
+  size_t sig_b64_len = 0;
+  uint8_t signing_buf[64 * 1024];
+  agent_cbor_writer_t sw{};
+  if (want_auth) {
+    p.auth_alg = auth_alg.c_str();
+    p.auth_alg_len = auth_alg.size();
+    p.auth_kid = auth_kid.c_str();
+    p.auth_kid_len = auth_kid.size();
+    p.auth_seq = auth_seq;
+    p.auth_has_seq = 1;
+    agent_cbor_writer_init(&sw, signing_buf, sizeof(signing_buf));
+  }
+
   if (type == "NODE_HELLO") {
     agent_um_eais_node_hello_body_t b{};
     b.node_id = {node_id.c_str(), node_id.size()};
@@ -279,7 +350,31 @@ int main(int argc, char** argv) {
     }
     p.encode_body = agent_um_eais_node_hello_body_encode_cbor_v0_1;
     p.body_ctx = &b;
-    st = agent_umbmp_envelope_no_sig_cbor_v0_4(&p, &w);
+    if (want_auth) {
+      st = agent_umbmp_envelope_no_sig_cbor_v0_4(&p, &sw);
+      if (st != AGENT_OK) {
+        std::fprintf(stderr, "failed to build signing input\n");
+        return 1;
+      }
+      st = agent_umbmp_auth_hmac_sha256_cbor_sig_b64(
+        hmac_secret.data(),
+        hmac_secret.size(),
+        agent_cbor_writer_bytes(&sw),
+        agent_cbor_writer_len(&sw),
+        sig_b64,
+        sizeof(sig_b64),
+        &sig_b64_len
+      );
+      if (st != AGENT_OK) {
+        std::fprintf(stderr, "failed to compute hmac sig\n");
+        return 1;
+      }
+      p.auth_sig_b64 = sig_b64;
+      p.auth_sig_b64_len = sig_b64_len;
+      st = agent_umbmp_envelope_cbor_v0_4(&p, &w);
+    } else {
+      st = agent_umbmp_envelope_no_sig_cbor_v0_4(&p, &w);
+    }
   } else if (type == "NODE_CAPS_RSP") {
     std::vector<uint8_t> manifest_bytes;
     agent_cbor_view_t man{};
@@ -318,7 +413,31 @@ int main(int argc, char** argv) {
 
     p.encode_body = agent_um_eais_node_caps_rsp_body_encode_cbor_v0_1;
     p.body_ctx = &b;
-    st = agent_umbmp_envelope_no_sig_cbor_v0_4(&p, &w);
+    if (want_auth) {
+      st = agent_umbmp_envelope_no_sig_cbor_v0_4(&p, &sw);
+      if (st != AGENT_OK) {
+        std::fprintf(stderr, "failed to build signing input\n");
+        return 1;
+      }
+      st = agent_umbmp_auth_hmac_sha256_cbor_sig_b64(
+        hmac_secret.data(),
+        hmac_secret.size(),
+        agent_cbor_writer_bytes(&sw),
+        agent_cbor_writer_len(&sw),
+        sig_b64,
+        sizeof(sig_b64),
+        &sig_b64_len
+      );
+      if (st != AGENT_OK) {
+        std::fprintf(stderr, "failed to compute hmac sig\n");
+        return 1;
+      }
+      p.auth_sig_b64 = sig_b64;
+      p.auth_sig_b64_len = sig_b64_len;
+      st = agent_umbmp_envelope_cbor_v0_4(&p, &w);
+    } else {
+      st = agent_umbmp_envelope_no_sig_cbor_v0_4(&p, &w);
+    }
   } else {
     std::fprintf(stderr, "unsupported --type: %s\n", type.c_str());
     usage();

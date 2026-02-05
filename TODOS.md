@@ -543,6 +543,7 @@ Maintainability note (always-on):
        - optional: if `edge_auth_max_skew_ms > 0`, authenticated envelopes are rejected when `abs(now-ts_utc_ms)` exceeds the window
        - if optional: unsigned accepted, but if `auth` is present it must verify
      - Works for both JSON and CBOR wire encodings (auth is verified over platform canonical JSON after decoding).
+     - Proof (CBOR wire): `ctest` includes `agentd_edge_auth_hmac_cbor_wire_smoke` (posts `Content-Type: application/cbor` envelopes signed with `hmac-sha256-cbor`).
    - Shipped (gateway ergonomics): `agent_core` can decode the CBOR outbox response without JSONCPP:
      - Core API: `agent/um_eais_outbox_read.h` extracts `messages[].msg` as `agent_umbmp_envelope_view_t` views.
      - Proof: `ctest` includes `agent_core_tests` (outbox decode unit) and `agentd_edge_outbox_cbor_smoke` now validates
