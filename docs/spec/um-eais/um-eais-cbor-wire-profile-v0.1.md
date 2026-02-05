@@ -83,6 +83,10 @@ Node (`agent_core`):
   - `TASK_ACK` body encoder
   - `TASK_EVENT` body encoder
   - `TASK_FAILED` body encoder
+- Shipped (partial): UM‑EAIS node lifecycle CBOR **body encoders** under `agent/um_eais_node_write.h` for MCU-friendly node bring-up:
+  - `NODE_HELLO` body encoder
+  - `NODE_HEARTBEAT` body encoder (optionally includes `health`)
+  - `SENSOR_EVENT` body encoder (requires caller-supplied deterministic `data` encoder)
 - Shipped (partial): UM‑BMP envelope CBOR encode helper under `agent/umbmp_auth.h` (`agent_umbmp_envelope_cbor_v0_4`) for sending signed (or unsigned) envelopes over CBOR wire.
 - Not shipped (yet): full JSON<->CBOR mapping helpers for MCU firmware.
 - Recommendation: keep using a full CBOR library (e.g. TinyCBOR-derived) if you already have one, but use the deterministic profile

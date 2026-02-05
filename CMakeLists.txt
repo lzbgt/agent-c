@@ -22,6 +22,7 @@ add_library(agent_core STATIC
   core/src/agent_json_c14n.c
   core/src/agent_um_eais_task_assign_read.c
   core/src/agent_um_eais_task_lifecycle_write.c
+  core/src/agent_um_eais_node_write.c
   core/src/agent_um_eais_outbox_read.c
   core/src/agent_um_eais_platform_caps_req_read.c
   core/src/agent_umbmp_envelope_read.c
@@ -309,6 +310,7 @@ add_executable(agent_core_tests
   tests/test_edge_interop.c
   tests/test_um_eais_task_assign_read.c
   tests/test_um_eais_task_lifecycle_write.c
+  tests/test_um_eais_node_write.c
   tests/test_um_eais_platform_caps_req_read.c
   tests/test_um_eais_outbox_read.c
   tests/test_umbmp_envelope_read.c
