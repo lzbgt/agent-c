@@ -366,6 +366,7 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
 Maintainability note (always-on):
 - Keep endpoint implementations SOLID and <2000 LOC per file; split large translation units (e.g. workflow endpoints) so new collaboration primitives remain cheap to add.
 - Shipped: submit-time macro expansion is now isolated (`daemon/src/workflow_submit_macros.*`).
+- Shipped: structured checkpoint scan/read logic is centralized (`daemon/src/memory_checkpoints.*`) so memory endpoints and deterministic workflow tasks stay consistent.
 - Follow-up: extract remaining submit-time validators/redaction helpers if `daemon/src/workflow_endpoints.cpp` grows again,
   so the durable workflow surface can evolve without accumulating another “mega endpoint” file.
 - DB backend decision: **stay on SQLite** (WAL + bounded writes + migrations) until a concrete requirement demands replication/multi-writer semantics at the DB layer.

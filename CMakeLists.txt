@@ -161,6 +161,7 @@ if(AGENT_BUILD_HOST)
     daemon/src/orchestrate_endpoints.cpp
     daemon/src/provider_util.cpp
     daemon/src/memory_consolidator.cpp
+    daemon/src/memory_checkpoints.cpp
     daemon/src/memory_endpoints.cpp
     daemon/src/runtime_config.cpp
     daemon/src/secrets_file.cpp
