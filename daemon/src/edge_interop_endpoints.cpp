@@ -453,7 +453,17 @@ void handle_edge_message_endpoint(
   if (type == "TASK_ACK") {
     const std::string task_id = body.isMember("task_id") && body["task_id"].isString() ? body["task_id"].asString() : "";
     const std::string step_id = body.isMember("step_id") && body["step_id"].isString() ? body["step_id"].asString() : "";
-    const bool accepted = body.isMember("accepted") && body["accepted"].isBool() ? body["accepted"].asBool() : false;
+    if (task_id.empty() || step_id.empty() || !edge_id_is_safe(task_id) || !edge_id_is_safe(step_id)) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_ACK body\"}";
+      return;
+    }
+    if (!body.isMember("accepted") || !body["accepted"].isBool()) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_ACK body (missing accepted: bool)\"}";
+      return;
+    }
+    const bool accepted = body["accepted"].asBool();
     std::string reason;
     if (body.isMember("reason") && body["reason"].isString()) reason = body["reason"].asString();
     Json::Value d = body;
@@ -470,6 +480,11 @@ void handle_edge_message_endpoint(
     const std::string task_id = body.isMember("task_id") && body["task_id"].isString() ? body["task_id"].asString() : "";
     const std::string step_id = body.isMember("step_id") && body["step_id"].isString() ? body["step_id"].asString() : "";
     const std::string state = body.isMember("state") && body["state"].isString() ? body["state"].asString() : "";
+    if (task_id.empty() || step_id.empty() || state.empty() || !edge_id_is_safe(task_id) || !edge_id_is_safe(step_id)) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_EVENT body\"}";
+      return;
+    }
     std::string error;
     if (body.isMember("error") && body["error"].isString()) error = body["error"].asString();
     std::string result_json;
@@ -482,6 +497,16 @@ void handle_edge_message_endpoint(
   if (type == "TASK_DONE") {
     const std::string task_id = body.isMember("task_id") && body["task_id"].isString() ? body["task_id"].asString() : "";
     const std::string step_id = body.isMember("step_id") && body["step_id"].isString() ? body["step_id"].asString() : "";
+    if (task_id.empty() || step_id.empty() || !edge_id_is_safe(task_id) || !edge_id_is_safe(step_id)) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_DONE body\"}";
+      return;
+    }
+    if (!body.isMember("result")) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_DONE body (missing result)\"}";
+      return;
+    }
     std::string result_json;
     if (body.isMember("result")) result_json = edge_json_stringify_compact(body["result"]);
     update_task_state(task_id, step_id, "SUCCEEDED", result_json, /*error_text=*/"", body);
@@ -492,9 +517,19 @@ void handle_edge_message_endpoint(
   if (type == "TASK_FAILED") {
     const std::string task_id = body.isMember("task_id") && body["task_id"].isString() ? body["task_id"].asString() : "";
     const std::string step_id = body.isMember("step_id") && body["step_id"].isString() ? body["step_id"].asString() : "";
+    if (task_id.empty() || step_id.empty() || !edge_id_is_safe(task_id) || !edge_id_is_safe(step_id)) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_FAILED body\"}";
+      return;
+    }
     std::string error;
     if (body.isMember("error") && body["error"].isString()) error = body["error"].asString();
-    update_task_state(task_id, step_id, "FAILED", /*result_json=*/"", error.empty() ? "failed" : error, body);
+    if (error.empty()) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_FAILED body (missing error: string)\"}";
+      return;
+    }
+    update_task_state(task_id, step_id, "FAILED", /*result_json=*/"", error, body);
     resp->body = "{\"ok\":true}";
     return;
   }

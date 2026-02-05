@@ -9,6 +9,12 @@ Canonical spec (copied from `../urine_monitor`):
 
 This document describes the **HTTP transport mapping** implemented by `agentd` for that payload-level spec.
 
+Executable contract artifacts (this repo):
+- Schemas: `docs/spec/um-eais/schema/` (envelope + core + platform extensions)
+- Golden transcript fixtures: `docs/spec/um-eais/fixtures/` (JSONL)
+- Proof: `ctest` includes `um_eais_spec_sanity_tests`, `agentd_edge_interop_transcript_replay_smoke`, and
+  `agentd_edge_interop_task_loop_replay_smoke`.
+
 ## Design
 
 UM‑BMP defines:

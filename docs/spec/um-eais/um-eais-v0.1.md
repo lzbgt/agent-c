@@ -7,8 +7,13 @@ Source note:
 - Canonical reference revision: `urine_monitor` commit `278ad9e59a39061f550fe8c30768db275e454379`.
 
 Machine-readable contract (this repo):
-- JSON Schema (best-effort, v0.1): `docs/spec/um-eais/schema/`
-- Golden transcript fixtures (replay-ready JSONL): `docs/spec/um-eais/fixtures/`
+- JSON Schema (best-effort, v0.1):
+  - `docs/spec/um-eais/schema/umbmp-envelope-v0.1.schema.json`
+  - `docs/spec/um-eais/schema/um-eais-core-v0.1.schema.json`
+  - `docs/spec/um-eais/schema/um-eais-platform-extensions-v0.1.schema.json`
+- Golden transcript fixtures (replay-ready JSONL):
+  - `docs/spec/um-eais/fixtures/umbmp_workflow_submit_cancel_v0.1.jsonl`
+  - `docs/spec/um-eais/fixtures/umbmp_task_loop_v0.1.jsonl`
 
 Purpose:
 - Standardize the interface between:

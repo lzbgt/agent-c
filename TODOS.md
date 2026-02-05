@@ -24,7 +24,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - UM‑EAIS contract is now executable (best-effort) via machine-readable artifacts:
   - JSON Schemas: `docs/spec/um-eais/schema/`
   - Golden transcript fixtures: `docs/spec/um-eais/fixtures/`
-  - Proof: `ctest` includes `um_eais_spec_sanity_tests` and `agentd_edge_interop_transcript_replay_smoke`.
+  - Proof: `ctest` includes `um_eais_spec_sanity_tests`, `agentd_edge_interop_transcript_replay_smoke`,
+    and `agentd_edge_interop_task_loop_replay_smoke`.
 - UM‑BMP crash-window correctness: node-initiated handoff messages are replayable even if `msg_id` is deduped (at-least-once),
   preventing permanent drops when a crash happens after persisting `edge_inbox_messages` but before applying side effects.
   - Proof: `ctest` includes `agentd_edge_message_dedupe_replay_handoff_smoke`.
@@ -232,7 +233,10 @@ Priority order (reweighted after scheduling v2.2 shipped; sections below are kep
      - idempotency rules (`msg_id` vs `idempotency_key`) and replay guidance for lossy transports (MQTT/LoRa bridges)
      - correlation rules (`workflow_id` / `trace_id` / task trace suffixing)
      - safety defaults (inline API keys forbidden; gateway-auth required)
-   - Deliverables (remaining): JSON Schema for envelopes/bodies + a golden “interop transcript” fixture for replay tests.
+   - Deliverables (shipped): JSON Schemas (envelope + core + platform extensions) + golden transcript fixtures (replay-ready JSONL).
+     - Proof: `ctest` includes `um_eais_spec_sanity_tests`, `agentd_edge_interop_transcript_replay_smoke`,
+       and `agentd_edge_interop_task_loop_replay_smoke`.
+   - Remaining: schema-level “lint” (enforce required fields) + a normative contract section on replay/dup semantics for gateways.
 
 4) **Agent collaboration v2 (budgeted parallel fan-out + join macros)** (power-unleashed)
    - Status: submit-time parallel macro shipped as `kind:"delegate_parallel"` (v1.6.1).

@@ -391,6 +391,7 @@ if(AGENT_BUILD_HOST)
 			    add_test(NAME agentd_edge_workflow_submit_message_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_workflow_submit_message_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_edge_workflow_cancel_message_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_workflow_cancel_message_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_edge_interop_transcript_replay_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_interop_transcript_replay_smoke.sh $<TARGET_FILE:agentd>)
+			    add_test(NAME agentd_edge_interop_task_loop_replay_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_interop_task_loop_replay_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_edge_message_dedupe_replay_handoff_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_message_dedupe_replay_handoff_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_edge_message_dedupe_replay_task_done_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_message_dedupe_replay_task_done_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(
