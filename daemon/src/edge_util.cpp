@@ -18,6 +18,159 @@ static std::string json_stringify_compact_local(const Json::Value& v) {
   return Json::writeString(wb, v);
 }
 
+static bool json_value_type_matches_string(const Json::Value& v, const std::string& type) {
+  if (type == "object") return v.isObject();
+  if (type == "array") return v.isArray();
+  if (type == "string") return v.isString();
+  if (type == "boolean") return v.isBool();
+  if (type == "integer") return v.isInt() || v.isInt64() || v.isUInt() || v.isUInt64();
+  if (type == "number") return v.isNumeric();
+  if (type == "null") return v.isNull();
+  return true; // unknown type => best-effort allow
+}
+
+static bool json_schema_subset_validate_best_effort(
+  const Json::Value& schema,
+  const Json::Value& value,
+  const std::string& path,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (!schema.isObject()) return true;
+
+  const bool has_object_keywords =
+    schema.isMember("properties") || schema.isMember("required") || schema.isMember("additionalProperties");
+  const bool has_array_keywords = schema.isMember("items");
+
+  // enum
+  if (schema.isMember("enum") && schema["enum"].isArray() && !schema["enum"].empty()) {
+    bool ok = false;
+    for (Json::ArrayIndex i = 0; i < schema["enum"].size(); i++) {
+      if (schema["enum"][i] == value) {
+        ok = true;
+        break;
+      }
+    }
+    if (!ok) {
+      if (out_error) *out_error = "schema enum mismatch at " + path;
+      return false;
+    }
+  }
+
+  // type
+  std::string type;
+  if (schema.isMember("type") && schema["type"].isString()) {
+    type = schema["type"].asString();
+    if (!type.empty() && !json_value_type_matches_string(value, type)) {
+      if (out_error) *out_error = "schema type mismatch at " + path + " (expected " + type + ")";
+      return false;
+    }
+  }
+
+  // object specifics
+  const bool is_object_schema = (type == "object") || (!type.empty() ? false : has_object_keywords);
+  if (is_object_schema) {
+    if (!value.isObject()) {
+      if (out_error) *out_error = "schema type mismatch at " + path + " (expected object)";
+      return false;
+    }
+
+    if (schema.isMember("required") && schema["required"].isArray()) {
+      for (Json::ArrayIndex i = 0; i < schema["required"].size(); i++) {
+        if (!schema["required"][i].isString()) continue;
+        const std::string k = schema["required"][i].asString();
+        if (k.empty()) continue;
+        if (!value.isMember(k)) {
+          if (out_error) *out_error = "missing required property at " + path + ": " + k;
+          return false;
+        }
+      }
+    }
+
+    const bool additional_props_allowed =
+      !schema.isMember("additionalProperties") ||
+      (!schema["additionalProperties"].isBool() || schema["additionalProperties"].asBool());
+
+    const Json::Value props =
+      schema.isMember("properties") && schema["properties"].isObject() ? schema["properties"] : Json::Value(Json::nullValue);
+
+    if (!additional_props_allowed) {
+      for (const auto& k : value.getMemberNames()) {
+        if (!props.isObject() || !props.isMember(k)) {
+          if (out_error) *out_error = "unknown property at " + path + ": " + k;
+          return false;
+        }
+      }
+    }
+
+    if (props.isObject()) {
+      for (const auto& k : value.getMemberNames()) {
+        if (!props.isMember(k) || !props[k].isObject()) continue;
+        std::string err;
+        const std::string child_path = path.empty() ? k : (path + "." + k);
+        if (!json_schema_subset_validate_best_effort(props[k], value[k], child_path, &err)) {
+          if (out_error) *out_error = err;
+          return false;
+        }
+      }
+    }
+  }
+
+  // array basics (subset): items schema applied when present.
+  const bool is_array_schema = (type == "array") || (!type.empty() ? false : has_array_keywords);
+  if (is_array_schema) {
+    if (!value.isArray()) {
+      if (out_error) *out_error = "schema type mismatch at " + path + " (expected array)";
+      return false;
+    }
+    if (schema.isMember("items") && schema["items"].isObject()) {
+      const Json::Value items = schema["items"];
+      for (Json::ArrayIndex i = 0; i < value.size(); i++) {
+        std::string err;
+        const std::string child_path = path + "[" + std::to_string((int)i) + "]";
+        if (!json_schema_subset_validate_best_effort(items, value[i], child_path, &err)) {
+          if (out_error) *out_error = err;
+          return false;
+        }
+      }
+    }
+  }
+
+  return true;
+}
+
+static bool edge_tool_parameters_schema_from_manifest_best_effort(
+  const Json::Value& manifest,
+  const std::string& tool_name,
+  Json::Value* out_schema,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_schema) *out_schema = Json::Value(Json::nullValue);
+  if (!out_schema) return false;
+  if (!manifest.isObject() || tool_name.empty()) return true;
+  if (!manifest.isMember("tools") || !manifest["tools"].isArray()) return true;
+  const Json::Value tools = manifest["tools"];
+  for (Json::ArrayIndex i = 0; i < tools.size(); i++) {
+    if (!tools[i].isObject()) continue;
+    const Json::Value t = tools[i];
+    const std::string name = t.isMember("name") && t["name"].isString() ? trim_copy(t["name"].asString()) : "";
+    if (name != tool_name) continue;
+    if (t.isMember("parameters_schema") && t["parameters_schema"].isObject()) {
+      *out_schema = t["parameters_schema"];
+      return true;
+    }
+    // Fallback for OpenAI-style naming.
+    if (t.isMember("parameters") && t["parameters"].isObject()) {
+      *out_schema = t["parameters"];
+      return true;
+    }
+    return true; // tool found but schema missing => allow
+  }
+  if (out_error) *out_error = "tool not found in manifest";
+  return false;
+}
+
 }  // namespace
 
 int64_t edge_unix_ms_now() {
@@ -432,6 +585,31 @@ bool edge_enqueue_task_assign(
       std::string terr;
       if (!edge_tool_meta_from_manifest(manifest, tool_name, &meta, &terr)) {
         if (out_error) *out_error = std::string("tool not present in node manifest: ") + terr;
+        if (out_http_status) *out_http_status = 409;
+        return false;
+      }
+
+      // Validate tool arguments against the manifest schema (best-effort).
+      // This is a high-leverage correctness/safety guardrail for MCU/actuator tools.
+      const Json::Value args = payload.isMember("args") ? payload["args"] : Json::Value(Json::nullValue);
+      if (!args.isObject()) {
+        if (out_error) *out_error = "payload.args must be an object for mode=invoke";
+        if (out_http_status) *out_http_status = 400;
+        return false;
+      }
+      Json::Value schema;
+      std::string serr;
+      if (edge_tool_parameters_schema_from_manifest_best_effort(manifest, tool_name, &schema, &serr)) {
+        if (schema.isObject()) {
+          std::string verr;
+          if (!json_schema_subset_validate_best_effort(schema, args, "args", &verr)) {
+            if (out_error) *out_error = verr.empty() ? "invalid tool args" : verr;
+            if (out_http_status) *out_http_status = 400;
+            return false;
+          }
+        }
+      } else {
+        if (out_error) *out_error = std::string("tool not present in node manifest: ") + serr;
         if (out_http_status) *out_http_status = 409;
         return false;
       }

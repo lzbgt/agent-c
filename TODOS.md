@@ -100,6 +100,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Embedded `agent_core` exposes the same validator (`agent_umbmp_sha256_token_is_safe`) so MCU firmware can self-check.
   - Proof: `ctest` includes `agentd_edge_caps_sha256_validation_smoke`, `agentd_edge_interop_transcript_replay_smoke`,
     and `agent_core_tests` (edge interop module tests).
+- UM‑EAIS tool correctness guardrail: for `TASK_ASSIGN mode:"invoke"`, the platform validates `payload.args` against the
+  target node tool schema from the stored manifest (`parameters_schema` preferred, fallback `parameters`) before enqueueing.
+  - Proof: `ctest` includes `agentd_edge_task_assign_schema_validation_smoke`.
 - Workflow engine now supports **soft-fail** tasks via `allow_error: true`:
   - If a task ends `status="error"` and `allow_error=true`, the workflow can still complete `done` (so long as no “hard” errors remain).
   - Dependencies treat `(status=error + allow_error=true)` as satisfied; aggregation tasks can also depend on any terminal dependency to compute joins over errors.

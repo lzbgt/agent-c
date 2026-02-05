@@ -112,6 +112,12 @@ Targeting:
 
 Safety/rate gates (best-effort, platform-side):
 - For `mode:"invoke"`, the platform requires a stored node manifest (`NODE_CAPS_RSP`) so it can inspect tool metadata.
+- For `mode:"invoke"`, the platform requires `payload.args` to be an object, and validates it (best-effort) against the
+  tool argument schema from the stored manifest when present:
+  - preferred: `manifest.tools[].parameters_schema`
+  - fallback: `manifest.tools[].parameters`
+  The platform enforces a small, deterministic subset of JSON Schema keywords (`type`, `enum`, `required`,
+  `properties`, `additionalProperties:false`, `items`) to catch shape mismatches early for MCU/actuator tools.
 - Denies tools tagged with hazard `privacy_camera` by default (unless explicitly allowed via request).
 - Denies `side_effect_level:"high"` by default (unless explicitly allowed via request).
 - Enforces per-tool `rate_limit` from the manifest (`max_per_minute`, `cooldown_ms`) using platform-side state.

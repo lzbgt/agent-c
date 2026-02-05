@@ -1268,6 +1268,14 @@ components:
           description: Optional attempt number (for workflow orchestration/debug; default 0)
         payload:
           type: object
+          description: |
+            Task payload.
+
+            - mode=invoke: requires payload.tool (string) and payload.args (object). When the target node has a stored
+              manifest, payload.args is validated (best-effort) against the tool schema in the node manifest:
+              manifest.tools[].parameters_schema (preferred) or manifest.tools[].parameters (fallback).
+              If the schema specifies additionalProperties:false, unknown keys are rejected.
+            - mode=agent: payload is forwarded to the node/embedded agent_core; platform does not interpret it.
           additionalProperties: true
 
     EdgeRuleUpsertRequest:
