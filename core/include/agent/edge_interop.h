@@ -59,8 +59,8 @@ agent_status_t agent_umbmp_sanitize_id_token(
 // Conventional prefixes used by the platform when defaulting ids from msg_id.
 #define AGENT_UM_BMP_WORKFLOW_ID_PREFIX "wf:"
 #define AGENT_UM_BMP_IDEMPOTENCY_PREFIX "edge_msg:"
+#define AGENT_UM_BMP_IDEMPOTENCY_WORKFLOW_PREFIX "edge_wf:"
 
 #ifdef __cplusplus
 }  // extern "C"
 #endif
-

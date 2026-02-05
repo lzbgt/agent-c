@@ -254,6 +254,7 @@ env = {
   "to": "platform",
   "body": {
     "workflow": {
+      "workflow_id": "wf:durable_cancel_1",
       "tasks": [
         {"task_id": "D", "kind": "delay", "delay_ms": 600000, "result": {"assistant_text": "D"}}
       ]
@@ -353,3 +354,23 @@ if w.get("status") != "cancelled":
   raise SystemExit(1)
 PY
 
+# Idempotency default: if workflow_id is explicit and idempotency_key is omitted, platform should default to edge_wf:<workflow_id>.
+spec_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/workflow?workflow_id=${workflow_id2}&include_spec=1")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${spec_resp}''')
+if not obj.get("ok"):
+  print("workflow get failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+spec = obj.get("spec") or {}
+if not isinstance(spec, dict):
+  print("expected spec object", type(spec), file=sys.stderr)
+  raise SystemExit(1)
+ik = spec.get("idempotency_key") or ""
+expected = "edge_wf:wf:durable_cancel_1"
+if ik != expected:
+  print("unexpected default idempotency_key", ik, "expected", expected, file=sys.stderr)
+  raise SystemExit(1)
+PY

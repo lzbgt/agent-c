@@ -177,7 +177,14 @@ void handle_edge_message_endpoint(
     }
 
     if (!wfargs.isMember("idempotency_key") || !wfargs["idempotency_key"].isString() || wfargs["idempotency_key"].asString().empty()) {
-      const std::string ik = std::string("edge_msg:") + token;
+      // Prefer workflow-scoped idempotency when workflow_id is caller-provided, so callers can safely retry even if
+      // a transport bridge regenerates msg_id. If workflow_id is derived from msg_id, this still de-dupes within that
+      // message id.
+      const std::string wf_token =
+        wfargs.isMember("workflow_id") && wfargs["workflow_id"].isString() ? trim_copy(wfargs["workflow_id"].asString()) : "";
+      const std::string ik = !wf_token.empty()
+        ? (std::string("edge_wf:") + wf_token)
+        : (std::string("edge_msg:") + token);
       wfargs["idempotency_key"] = sanitize_id_token(ik, 128);
     }
 

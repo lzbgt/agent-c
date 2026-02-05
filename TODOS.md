@@ -84,6 +84,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - `DURABLE_WORKFLOW_CANCEL` forwards to `POST /api/v1/workflow/cancel`
   - Best-effort node ACK: outbox `DURABLE_WORKFLOW_ACK {op, workflow_id, ok}`
   - Proof: `ctest` includes `agentd_edge_durable_workflow_submit_message_smoke`.
+  - Correctness: default `idempotency_key` prefers `edge_wf:<workflow_id>` when `workflow_id` is caller-provided (stable retries).
 - UM‑EAIS node capability cache correctness: when a node reports a new `caps_sha256`, the platform invalidates cached
   `manifest_json/tools_json/tags_json` and re-requests a full manifest (prevents stale routing).
   - Proof: `ctest` includes `agentd_edge_interop_smoke`.

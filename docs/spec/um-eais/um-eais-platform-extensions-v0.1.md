@@ -129,8 +129,10 @@ Option B (wrapped):
 Platform defaults (applied when fields are missing/empty):
 - `workflow_id`: defaults to `wf:<sanitized msg_id>` (id-safe tokenization)
 - `trace_id`: defaults to the final `workflow_id`
-- `idempotency_key`: defaults to `edge_msg:<sanitized msg_id>` (makes submit retry-safe if the node changes `msg_id`,
-  e.g. in a non-idempotent transport bridge; durable workflows also have native idempotency via `idempotency_key`)
+- `idempotency_key`:
+  - if `workflow_id` is present: defaults to `edge_wf:<workflow_id>` (preferred; stable across msg retries)
+  - else: defaults to `edge_msg:<sanitized msg_id>` (stable only if the transport preserves `msg_id`)
+  - If a transport bridge regenerates `msg_id`, callers SHOULD send an explicit stable `idempotency_key`.
 - `allow_inline_api_keys`: **forced to `false`** (nodes should not ship provider keys in submitted specs)
 
 Response semantics (HTTP mapping):
