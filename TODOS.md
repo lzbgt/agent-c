@@ -214,11 +214,11 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 Priority order (reweighted after `delegate_parallel` join customization shipped; sections below are kept stable for diff readability):
 
-1) **Interop spec v0.2 (MCU/edge handoff)** — attestation + correlation; keep the contract executable.
-2) **Budgets v0.5** — host-tool budgets + streaming token usage coverage + stats surfacing (including cheap budget telemetry polling).
-3) **Scheduling policy v2.3 (DRR + cost-aware quanta)** — move beyond WRR to cost-aware, budget-composing fairness.
-4) **Memory v2.3 (timeline + correlation)** — query-by-trace/workflow windows; rolling consolidation correlation as time advances.
-5) **Agent collaboration v2.1** — parallel fan-out with deterministic joins (best_of_n/quorum/collect) + per-attempt budgets.
+1) **Budgets v0.5** — host-tool budgets + streaming token usage coverage + stats surfacing (including cheap budget telemetry polling).
+2) **Scheduling policy v2.3 (DRR + cost-aware quanta)** — move beyond WRR to cost-aware, budget-composing fairness.
+3) **Memory v2.3 (timeline + correlation)** — query-by-trace/workflow windows; rolling consolidation correlation as time advances.
+4) **Agent collaboration v2.1** — parallel fan-out with deterministic joins (best_of_n/quorum/collect) + per-attempt budgets.
+5) **Interop spec v0.3** — portable canonical hash surface + enforceable attestation (ecosystem multiplier).
 
 1) **Durable budget enforcement at scheduler level** (correctness + cost predictability)
    - Shipped (v0): workflow-level tool-call budget `workflow_limits.max_tool_calls_total` enforced by the workflow engine:
@@ -249,6 +249,10 @@ Priority order (reweighted after `delegate_parallel` join customization shipped;
 	       - only enforced when providers return `usage` in responses
 	       - streaming tool-loop calls may not surface usage (depends on provider streaming schema)
 	   - Next: host-tool budgets, enforce token budgets for streaming paths, and surface budget pressure in `/api/v1/workflow/stats`.
+	   - Shipped (v0.5 partial): deterministic host-tool tasks now charge and obey workflow budgets:
+	     - `kind:"memory_put"` and `kind:"memory_consolidate"` count as `tool_calls_total=1` and `steps_executed=1` per attempt.
+	     - Budget enforcement: if remaining workflow budgets are 0, these tasks cancel the workflow with `workflow budget exceeded: ...`.
+	     - Proof: `ctest` includes `agentd_workflow_budget_host_tool_memory_put_smoke`.
 
 2) **Scheduling policy v2 (beyond caps)** (predictable progress under load)
    - Shipped (v2.0): oversampled scan + session-aware round-robin scan order (prevents `LIMIT` starvation under typical load).

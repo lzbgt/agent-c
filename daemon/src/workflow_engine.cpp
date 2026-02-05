@@ -1259,6 +1259,23 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     out = workflow_aggregate_to_json(agg, result_json_by_task, &aerr);
     if (!aerr.empty() && (!out.isMember("error") || !out["error"].isString())) out["error"] = aerr;
   } else if (kind == "memory_put") {
+    if (wf_limits.max_tool_calls_total > 0 && wf_tool_calls_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_tool_calls_total");
+      return;
+    }
+    if (wf_limits.max_steps_total > 0 && wf_steps_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_steps_total");
+      return;
+    }
+    if (wf_limits.max_elapsed_ms_total > 0 && wf_elapsed_ms_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_elapsed_ms_total");
+      return;
+    }
+    if (wf_limits.max_total_tokens > 0 && wf_total_tokens_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_total_tokens");
+      return;
+    }
+
     out = Json::Value(Json::objectValue);
     out["kind"] = "memory_put";
     out["ok"] = false;
@@ -1345,18 +1362,22 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
               if (reg) agent_tool_registry_destroy(reg);
               toolset_host_destroy(&exec);
               out["error"] = "failed to create host toolset";
-            } else {
-              Json::StreamWriterBuilder wb;
-              wb["indentation"] = "";
-              const std::string req = Json::writeString(wb, args);
+	            } else {
+	              Json::StreamWriterBuilder wb;
+	              wb["indentation"] = "";
+	              const std::string req = Json::writeString(wb, args);
 
-              agent_string_t out_s{};
-              const agent_status_t est = exec.execute(exec.ctx, "memory_put", req.c_str(), &out_s);
-              const std::string resp_s = (out_s.data && out_s.len) ? std::string(out_s.data, out_s.len) : std::string();
-              agent_string_free(&out_s);
+	              agent_string_t out_s{};
+	              // Budget charging: this is a deterministic host-tool invocation. Count it as one tool call / step
+	              // so workflow_limits.max_tool_calls_total and max_steps_total cover host-side writes too.
+	              const agent_status_t est = exec.execute(exec.ctx, "memory_put", req.c_str(), &out_s);
+	              out["tool_calls_total"] = (Json::Int64)1;
+	              out["steps_executed"] = (Json::Int64)1;
+	              const std::string resp_s = (out_s.data && out_s.len) ? std::string(out_s.data, out_s.len) : std::string();
+	              agent_string_free(&out_s);
 
-              agent_tool_registry_destroy(reg);
-              toolset_host_destroy(&exec);
+	              agent_tool_registry_destroy(reg);
+	              toolset_host_destroy(&exec);
 
               if (est != AGENT_OK) {
                 out["error"] = "memory_put failed";
@@ -1426,6 +1447,23 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
       }
     }
   } else if (kind == "memory_consolidate") {
+    if (wf_limits.max_tool_calls_total > 0 && wf_tool_calls_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_tool_calls_total");
+      return;
+    }
+    if (wf_limits.max_steps_total > 0 && wf_steps_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_steps_total");
+      return;
+    }
+    if (wf_limits.max_elapsed_ms_total > 0 && wf_elapsed_ms_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_elapsed_ms_total");
+      return;
+    }
+    if (wf_limits.max_total_tokens > 0 && wf_total_tokens_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_total_tokens");
+      return;
+    }
+
     out = Json::Value(Json::objectValue);
     out["kind"] = "memory_consolidate";
     out["ok"] = false;
@@ -1459,13 +1497,17 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         opt.dry_run = mc["dry_run"].asBool();
       }
 
-      Json::Value report;
-      std::string merr;
-      if (!memory_consolidate_once(cfg, opt, &report, &merr)) {
-        out["ok"] = false;
-        out["error"] = merr.empty() ? "memory consolidation failed" : merr;
-      } else {
-        out["ok"] = true;
+	      Json::Value report;
+	      std::string merr;
+	      // Budget charging: memory consolidation is a deterministic host-side job (usually includes memory_put).
+	      // Count it as one tool call / step so workflows can cap host-side work.
+	      out["tool_calls_total"] = (Json::Int64)1;
+	      out["steps_executed"] = (Json::Int64)1;
+	      if (!memory_consolidate_once(cfg, opt, &report, &merr)) {
+	        out["ok"] = false;
+	        out["error"] = merr.empty() ? "memory consolidation failed" : merr;
+	      } else {
+	        out["ok"] = true;
         out["report"] = report;
         // Surface checkpoint evidence for correlation.
         if (report.isObject() && report.isMember("memory_put_response") && report["memory_put_response"].isObject()) {
