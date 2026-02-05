@@ -161,5 +161,21 @@ if "wf.test.corr" not in keys:
 print("ok")
 PY
 
-echo "agentd_memory_correlate_smoke OK"
+corr2="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/memory/correlate?trace_id=${TRACE_ID}&since_utc_ms=${SINCE_MS}&until_utc_ms=${UNTIL_MS}&max_entries=200&structured_path=STRUCTURED.md&key_prefix=wf.test.alpha")"
 
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${corr2}''')
+if not obj.get("ok"):
+  print("correlate (filtered) not ok", obj, file=sys.stderr)
+  raise SystemExit(1)
+entries = obj.get("entries") or []
+keys = sorted({e.get("key") for e in entries if isinstance(e, dict)})
+if keys != ["wf.test.alpha"]:
+  print("expected only wf.test.alpha with key_prefix filter", keys, file=sys.stderr)
+  raise SystemExit(1)
+print("ok")
+PY
+
+echo "agentd_memory_correlate_smoke OK"

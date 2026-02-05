@@ -642,6 +642,11 @@ paths:
           required: false
           schema: { type: integer, format: int64 }
         - in: query
+          name: structured_path
+          required: false
+          schema: { type: string }
+          description: Only return checkpoints whose `path` matches this structured file (e.g. `STRUCTURED.md`).
+        - in: query
           name: limit
           required: false
           schema: { type: integer, format: int32 }
@@ -674,9 +679,19 @@ paths:
           required: false
           schema: { type: integer, format: int64 }
         - in: query
+          name: structured_path
+          required: false
+          schema: { type: string }
+          description: Only consider checkpoints whose `path` matches this structured file (e.g. `STRUCTURED.md`).
+        - in: query
           name: max_entries
           required: false
           schema: { type: integer, format: int32 }
+        - in: query
+          name: key_prefix
+          required: false
+          schema: { type: string }
+          description: Restrict matches to keys that start with this prefix (e.g. `wf.test.`).
         - in: query
           name: timeline
           required: false
@@ -1420,6 +1435,9 @@ components:
         memory_root: { type: string }
         since_utc_ms: { type: integer, format: int64 }
         until_utc_ms: { type: integer, format: int64 }
+        structured_path_filter:
+          type: string
+          description: Echoes the requested `structured_path` filter when provided.
         checkpoints:
           type: array
           items:
@@ -1436,6 +1454,12 @@ components:
           description: Evidence needle used against sources[] (default trace:<trace_id>)
         since_utc_ms: { type: integer, format: int64 }
         until_utc_ms: { type: integer, format: int64 }
+        structured_path_filter:
+          type: string
+          description: Echoes the requested `structured_path` filter when provided.
+        key_prefix:
+          type: string
+          description: Echoes the requested `key_prefix` filter when provided.
         checkpoint:
           $ref: "#/components/schemas/MemoryCheckpointMeta"
         entries:

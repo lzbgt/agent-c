@@ -485,6 +485,9 @@ Maintainability note (always-on):
      - `GET /api/v1/memory/checkpoints`
      - `GET /api/v1/memory/correlate?trace_id=...`
      - Proof: `ctest` includes `agentd_memory_correlate_smoke`.
+   - Shipped: “memory query plan” primitives for large fleets:
+     - `GET /api/v1/memory/checkpoints?structured_path=...` (filter checkpoints by structured file)
+     - `GET /api/v1/memory/correlate?...&structured_path=...&key_prefix=...` (bounded + prefix-filtered correlation)
    - Shipped: deterministic workflow memory correlation query (no LLM; scans structured checkpoints on disk):
      - Task kind: `kind:"memory_correlate"` with `memory_correlate:{trace_id?,since_utc_ms?,until_utc_ms?,max_entries?,timeline?}`
      - Proof: `ctest` includes `agentd_workflow_memory_correlate_smoke`.
@@ -492,7 +495,7 @@ Maintainability note (always-on):
      - `GET /api/v1/trace?trace_id=...` now joins durable `workflow_events` and `edge_workflow_events` (best-effort) into the same trace surface.
      - Proof: `ctest` includes `agentd_trace_workflow_events_smoke`.
    - Next: extend correlation beyond trace lookup:
-     - add “memory query plan” primitives (bounded time windows + key-prefix filters) for large fleets.
+     - add an API to query structured memory “current view” by key-prefix/time window (avoid downloading/parsing whole checkpoints).
 
 ### 1) AVM capsule execution v0 (next: integrate + attest)
 

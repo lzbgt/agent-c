@@ -118,4 +118,6 @@ re-open files during execution.
 In addition to the tool surface, `agentd` exposes correlation helpers:
 
 - `GET /api/v1/memory/checkpoints` — list checkpoint snapshots + sha256 (bounded by time window)
+- `GET /api/v1/memory/checkpoints?structured_path=STRUCTURED.md` — optional filter by structured file path
 - `GET /api/v1/memory/correlate?trace_id=...` — find structured keys whose evidence sources mention `trace:<trace_id>`
+  - optional filters: `structured_path=...` and `key_prefix=...`

@@ -189,6 +189,10 @@ void handle_memory_checkpoints_endpoint(
   }
   if (until_ms < since_ms) std::swap(until_ms, since_ms);
 
+  const auto structured_path_q = query_get(req.query, "structured_path");
+  const std::string structured_path_filter =
+    structured_path_q && !structured_path_q->empty() ? *structured_path_q : "";
+
   int limit = 50;
   if (const auto v = query_get(req.query, "limit"); v && !v->empty()) {
     try { limit = (int)std::stol(*v); } catch (...) { limit = 50; }
@@ -227,6 +231,7 @@ void handle_memory_checkpoints_endpoint(
     int64_t ts_ms = 0;
     if (!ts_utc.empty() && !parse_iso_utc_ms(ts_utc, &ts_ms)) continue;
     if (ts_ms < since_ms || ts_ms > until_ms) continue;
+    if (!structured_path_filter.empty() && structured_path != structured_path_filter) continue;
 
     char hex[65];
     agent_sha256_hex_of_bytes(text.data(), text.size(), hex);
@@ -252,6 +257,7 @@ void handle_memory_checkpoints_endpoint(
   o["memory_root"] = mem_root.generic_string();
   o["since_utc_ms"] = (Json::Int64)since_ms;
   o["until_utc_ms"] = (Json::Int64)until_ms;
+  if (!structured_path_filter.empty()) o["structured_path_filter"] = structured_path_filter;
   Json::Value arr(Json::arrayValue);
   for (const auto& r : rows) {
     Json::Value row(Json::objectValue);
@@ -295,6 +301,14 @@ void handle_memory_correlate_endpoint(
   }
   if (until_ms < since_ms) std::swap(until_ms, since_ms);
 
+  const auto structured_path_q = query_get(req.query, "structured_path");
+  const std::string structured_path_filter =
+    structured_path_q && !structured_path_q->empty() ? *structured_path_q : "";
+
+  const auto key_prefix_q = query_get(req.query, "key_prefix");
+  const std::string key_prefix =
+    key_prefix_q && !key_prefix_q->empty() ? *key_prefix_q : "";
+
   int max_entries = 50;
   if (const auto v = query_get(req.query, "max_entries"); v && !v->empty()) {
     try { max_entries = (int)std::stol(*v); } catch (...) { max_entries = 50; }
@@ -314,6 +328,13 @@ void handle_memory_correlate_endpoint(
 
   // Reuse the checkpoints listing logic but keep only the newest by default.
   HttpRequest req2 = req;
+  if (!timeline) {
+    if (req2.query.empty()) {
+      req2.query = "limit=1";
+    } else {
+      req2.query = "limit=1&" + req2.query;
+    }
+  }
   HttpResponse tmp;
   handle_memory_checkpoints_endpoint(cfg, cors_cfg, req2, &tmp);
   if (tmp.status != 200) {
@@ -352,19 +373,29 @@ void handle_memory_correlate_endpoint(
     Json::Value ck;
     std::string err;
     if (!json_parse_any(text, &ck, &err) || !ck.isObject()) return false;
-    const Json::Value doc = ck.isMember("doc") ? ck["doc"] : Json::Value(Json::nullValue);
-    const Json::Value items = doc.isObject() && doc.isMember("items") ? doc["items"] : Json::Value(Json::nullValue);
-    if (!items.isObject()) return false;
+
+    const std::string structured_path =
+      ck.isMember("path") && ck["path"].isString() ? ck["path"].asString() : "STRUCTURED.md";
 
     // Copy checkpoint info.
     (*out_ckinfo)["checkpoint_path"] = ckrel;
     if (ckmeta.isMember("sha256")) (*out_ckinfo)["sha256"] = ckmeta["sha256"];
     if (ckmeta.isMember("ts_utc")) (*out_ckinfo)["ts_utc"] = ckmeta["ts_utc"];
     if (ckmeta.isMember("ts_utc_ms")) (*out_ckinfo)["ts_utc_ms"] = ckmeta["ts_utc_ms"];
+    (*out_ckinfo)["structured_path"] = structured_path;
 
+    if (!structured_path_filter.empty() && structured_path != structured_path_filter) return true;
+
+    const Json::Value doc = ck.isMember("doc") ? ck["doc"] : Json::Value(Json::nullValue);
+    const Json::Value items = doc.isObject() && doc.isMember("items") ? doc["items"] : Json::Value(Json::nullValue);
+    if (!items.isObject()) return false;
+
+    std::vector<std::string> keys = items.getMemberNames();
+    std::sort(keys.begin(), keys.end());
     int added = 0;
-    for (const auto& key : items.getMemberNames()) {
+    for (const auto& key : keys) {
       if (added >= max_entries) break;
+      if (!key_prefix.empty() && key.rfind(key_prefix, 0) != 0) continue;
       const Json::Value rec = items[key];
       if (!rec.isObject()) continue;
       const Json::Value sources = rec.isMember("sources") ? rec["sources"] : Json::Value(Json::nullValue);
@@ -394,6 +425,8 @@ void handle_memory_correlate_endpoint(
   out["needle"] = needle;
   out["since_utc_ms"] = (Json::Int64)since_ms;
   out["until_utc_ms"] = (Json::Int64)until_ms;
+  if (!structured_path_filter.empty()) out["structured_path_filter"] = structured_path_filter;
+  if (!key_prefix.empty()) out["key_prefix"] = key_prefix;
 
   if (!timeline) {
     const Json::Value newest = cps[0];
