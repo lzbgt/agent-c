@@ -481,6 +481,7 @@ Maintainability note (always-on):
        - `POST /api/v1/config/update` supports:
          - `edge_auth_required` and `edge_auth_hmac_keys`
          - optional replay-window hardening: `edge_auth_require_ts` and `edge_auth_max_skew_ms`
+         - optional per-node trust root policy: `edge_auth_kid_policy` ("any"|"match_node"|"node_prefix")
      - Enforcement behavior:
        - if required: missing/invalid auth is rejected with HTTP 401 (fail-closed; no inbox persistence)
        - optional: if `edge_auth_require_ts=true`, authenticated envelopes require `ts_utc_ms > 0`

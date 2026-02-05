@@ -228,6 +228,30 @@ static bool verify_edge_envelope_auth_best_effort(
     return false;
   }
 
+  // Optional per-node key selection policy.
+  // This is checked only when we can bind the envelope to a node identity (`from:"node:<node_id>"`).
+  if (from_id.rfind("node:", 0) == 0 && from_id.size() > 5) {
+    const std::string node_id_from = trim_copy(from_id.substr(5));
+    if (!node_id_from.empty() && edge_id_is_safe(node_id_from)) {
+      const std::string pol = cfg.edge_auth_kid_policy.empty() ? "any" : cfg.edge_auth_kid_policy;
+      if (pol == "match_node") {
+        if (kid != node_id_from) {
+          resp->status = 401;
+          resp->body = "{\"ok\":false,\"error\":\"edge auth kid policy violation\"}";
+          return false;
+        }
+      } else if (pol == "node_prefix") {
+        const std::string pref = node_id_from + ":";
+        const bool ok = (kid == node_id_from) || (kid.size() > pref.size() && kid.rfind(pref, 0) == 0);
+        if (!ok) {
+          resp->status = 401;
+          resp->body = "{\"ok\":false,\"error\":\"edge auth kid policy violation\"}";
+          return false;
+        }
+      }
+    }
+  }
+
   const auto it = cfg.edge_auth_hmac_keys.find(kid);
   if (it == cfg.edge_auth_hmac_keys.end() || it->second.empty()) {
     resp->status = 401;

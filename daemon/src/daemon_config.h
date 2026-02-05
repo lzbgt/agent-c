@@ -43,6 +43,18 @@ struct DaemonConfig {
   // Defaults are permissive for bring-up; operators can tighten once nodes have clocks.
   bool edge_auth_require_ts = false;
   int64_t edge_auth_max_skew_ms = 0;
+  // Key selection / identity binding policy.
+  //
+  // Values:
+  // - "any" (default): any configured `kid` is allowed (legacy / gateway mode).
+  // - "match_node": for authenticated envelopes with `from:"node:<node_id>"`, require `auth.kid == <node_id>`.
+  // - "node_prefix": for authenticated envelopes with `from:"node:<node_id>"`, require
+  //    `auth.kid == <node_id>` OR `auth.kid` starts with `<node_id>:` (rotation friendly).
+  //
+  // Rationale:
+  // - "any" is easy for bring-up, but a single shared secret is a large blast radius.
+  // - "match_node" / "node_prefix" let operators provision per-node secrets without changing envelope shape.
+  std::string edge_auth_kid_policy = "any";
   std::map<std::string, std::string> edge_auth_hmac_keys; // kid -> secret
   std::string model = "gpt-4o-mini";
   std::string summary_model;  // optional: model used to summarize dropped messages during compaction (tools=none)

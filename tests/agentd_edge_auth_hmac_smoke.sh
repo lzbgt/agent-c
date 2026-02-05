@@ -27,9 +27,11 @@ agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_edge_auth_
 
 agentd_smoke_wait_health "${DAEMON_URL}"
 
-KID="k0"
-SECRET="test_secret_123"
 NODE_ID="node_auth_1"
+KID_NODE="${NODE_ID}"
+KID_PREFIX="${NODE_ID}:v1"
+SECRET_NODE="test_secret_node_123"
+SECRET_PREFIX="test_secret_prefix_456"
 CAPS_SHA="sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 # Configure auth-required and provision a keyring entry.
@@ -41,7 +43,8 @@ print(json.dumps({
   "edge_auth_required": True,
   "edge_auth_require_ts": True,
   "edge_auth_max_skew_ms": 60000,
-  "edge_auth_hmac_keys": {"${KID}": "${SECRET}"},
+  "edge_auth_kid_policy": "match_node",
+  "edge_auth_hmac_keys": {"${KID_NODE}": "${SECRET_NODE}", "${KID_PREFIX}": "${SECRET_PREFIX}"},
 }))
 PY
 )" \
@@ -95,9 +98,9 @@ env = {
   }
 }
 canon = json.dumps(env, sort_keys=True, separators=(",", ":"))
-mac = hmac.new(b"${SECRET}", canon.encode("utf-8"), hashlib.sha256).digest()
+mac = hmac.new(b"${SECRET_NODE}", canon.encode("utf-8"), hashlib.sha256).digest()
 sig = base64.b64encode(mac).decode("ascii")
-env["auth"] = {"alg": "hmac-sha256", "kid": "${KID}", "sig": sig}
+env["auth"] = {"alg": "hmac-sha256", "kid": "${KID_NODE}", "sig": sig}
 print(json.dumps(env))
 PY
 )"
@@ -176,12 +179,36 @@ env = {
   }
 }
 cbor = _cbor_any(env)
-mac = hmac.new(b"${SECRET}", cbor, hashlib.sha256).digest()
+mac = hmac.new(b"${SECRET_PREFIX}", cbor, hashlib.sha256).digest()
 sig = base64.b64encode(mac).decode("ascii")
-env["auth"] = {"alg": "hmac-sha256-cbor", "kid": "${KID}", "sig": sig}
+env["auth"] = {"alg": "hmac-sha256-cbor", "kid": "${KID_PREFIX}", "sig": sig}
 print(json.dumps(env))
 PY
 )"
+
+status_prefix_under_match_node="$(
+  curl -sS --noproxy "*" --max-time 10 \
+    -o /dev/null -w "%{http_code}" \
+    -H "Content-Type: application/json" \
+    -d "${hello_signed_cbor_alg}" \
+    "${DAEMON_URL}/api/v1/edge/message"
+)"
+if [[ "${status_prefix_under_match_node}" != "401" ]]; then
+  echo "expected 401 for kid prefix under match_node policy, got ${status_prefix_under_match_node}" >&2
+  exit 1
+fi
+
+# Switch to node_prefix policy; prefix kid should now be accepted.
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Content-Type: application/json" \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "edge_auth_kid_policy": "node_prefix",
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/config/update" >/dev/null
 
 curl -fsS --noproxy "*" --max-time 10 \
   -H "Content-Type: application/json" \
@@ -224,7 +251,7 @@ env = {
 canon = json.dumps(env, sort_keys=True, separators=(",", ":"))
 mac = hmac.new(b"wrong_key", canon.encode("utf-8"), hashlib.sha256).digest()
 sig = base64.b64encode(mac).decode("ascii")
-env["auth"] = {"alg": "hmac-sha256", "kid": "${KID}", "sig": sig}
+env["auth"] = {"alg": "hmac-sha256", "kid": "${KID_NODE}", "sig": sig}
 print(json.dumps(env))
 PY
 )"
@@ -260,9 +287,9 @@ env = {
   }
 }
 canon = json.dumps(env, sort_keys=True, separators=(",", ":"))
-mac = hmac.new(b"${SECRET}", canon.encode("utf-8"), hashlib.sha256).digest()
+mac = hmac.new(b"${SECRET_NODE}", canon.encode("utf-8"), hashlib.sha256).digest()
 sig = base64.b64encode(mac).decode("ascii")
-env["auth"] = {"alg": "hmac-sha256", "kid": "${KID}", "sig": sig}
+env["auth"] = {"alg": "hmac-sha256", "kid": "${KID_NODE}", "sig": sig}
 print(json.dumps(env))
 PY
 )"
