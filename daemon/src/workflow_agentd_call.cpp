@@ -285,6 +285,13 @@ Json::Value workflow_agentd_call_to_json(
     submit_http["status"] = (Json::Int64)r.http_status;
     submit_http["response_text"] = r.response_body;
     if (r.retry_after_ms >= 0) submit_http["retry_after_ms"] = (Json::Int64)r.retry_after_ms;
+    if (!r.resolved_addrs.empty()) {
+      Json::Value arr(Json::arrayValue);
+      for (const auto& ip : r.resolved_addrs) {
+        if (!ip.empty()) arr.append(ip);
+      }
+      if (!arr.empty()) submit_http["resolved_addrs"] = arr;
+    }
     out["agentd"]["submit_http"] = submit_http;
 
     if (!r.ok) {
@@ -347,6 +354,13 @@ Json::Value workflow_agentd_call_to_json(
     poll_http["status"] = (Json::Int64)r.http_status;
     poll_http["response_text"] = r.response_body;
     if (r.retry_after_ms >= 0) poll_http["retry_after_ms"] = (Json::Int64)r.retry_after_ms;
+    if (!r.resolved_addrs.empty()) {
+      Json::Value arr(Json::arrayValue);
+      for (const auto& ip : r.resolved_addrs) {
+        if (!ip.empty()) arr.append(ip);
+      }
+      if (!arr.empty()) poll_http["resolved_addrs"] = arr;
+    }
     out["agentd"]["poll_http"] = poll_http;
 
     if (!r.ok) {

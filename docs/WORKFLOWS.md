@@ -303,6 +303,7 @@ Result shape (high level):
 - `ok` is true when HTTP status is 2xx.
 - `http.status` is the HTTP status code.
 - `http.response_text` is the captured response body (bounded by `max_bytes`).
+- `http.resolved_addrs` is best-effort DNS resolution evidence when `--workflow-http-dns-pin` is enabled (array of IP strings).
 - `http.response_json` is best-effort parsed JSON (when parse succeeds), which enables downstream `${task.H.json:/http/response_json/...}`
   and `{"$ref":"task.H.json:/http/response_json/..."}` wiring.
 

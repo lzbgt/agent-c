@@ -30,6 +30,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Further hardening: CIDR allowlist + deny-private mode:
     - `--workflow-http-allow-cidr <cidr>` (repeatable), or env `AGENTD_WORKFLOW_HTTP_ALLOW_CIDRS=...`
     - `--workflow-http-deny-private`, or env `AGENTD_WORKFLOW_HTTP_DENY_PRIVATE=1`
+  - Defense-in-depth: optional CIDR denylist + DNS pinning:
+    - `--workflow-http-deny-cidr <cidr>` (repeatable), or env `AGENTD_WORKFLOW_HTTP_DENY_CIDRS=...`
+    - `--workflow-http-dns-pin`, or env `AGENTD_WORKFLOW_HTTP_DNS_PIN=1`
+    - Evidence: when DNS pinning is enabled, workflow results include best-effort `http.resolved_addrs` (IP list) for audit/debug.
   - Secrets hygiene: submit rejects `http_json.headers.Authorization`; use `http_json.bearer_env` (env var name only is persisted).
   - Proof: `ctest` includes `agentd_workflow_http_json_smoke`.
 - Agent-to-agent collaboration primitive (deterministic; gated):

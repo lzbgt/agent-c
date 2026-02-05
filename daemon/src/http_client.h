@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <map>
 #include <string>
+#include <vector>
 
 namespace agentd {
 
@@ -19,6 +20,11 @@ struct HttpClientResult {
   // Parsed from Retry-After header when it is an integer number of seconds (best-effort).
   // -1 means unknown / not provided.
   int64_t retry_after_ms = -1;
+
+  // Best-effort DNS resolution evidence (mainly used when dns_pin is enabled).
+  // - empty for literal IP targets and for requests when dns_pin=false
+  // - capped internally (<=16)
+  std::vector<std::string> resolved_addrs;
 
   bool timed_out = false;
   bool response_too_large = false;

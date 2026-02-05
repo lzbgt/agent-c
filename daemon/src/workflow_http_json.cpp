@@ -145,6 +145,13 @@ Json::Value workflow_http_json_to_json(
   http["status"] = (Json::Int64)r.http_status;
   http["response_text"] = r.response_body;
   if (r.retry_after_ms >= 0) http["retry_after_ms"] = (Json::Int64)r.retry_after_ms;
+  if (!r.resolved_addrs.empty()) {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& ip : r.resolved_addrs) {
+      if (!ip.empty()) arr.append(ip);
+    }
+    if (!arr.empty()) http["resolved_addrs"] = arr;
+  }
   out["http"] = http;
 
   if (!r.ok) {

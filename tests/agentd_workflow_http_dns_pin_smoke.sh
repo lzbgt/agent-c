@@ -152,7 +152,10 @@ http = r.get("http") or {}
 if http.get("status") != 200:
   print("expected 200 status", http, file=sys.stderr)
   raise SystemExit(1)
+addrs = http.get("resolved_addrs")
+if not isinstance(addrs, list) or len(addrs) < 1:
+  print("expected http.resolved_addrs evidence", http, file=sys.stderr)
+  raise SystemExit(1)
 PY
 
 echo "${NAME} OK"
-

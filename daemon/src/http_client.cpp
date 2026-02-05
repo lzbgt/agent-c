@@ -298,6 +298,7 @@ HttpClientResult http_request(
     if (parse_http_url_target_hostport(url, &hp) && !hp.host.empty() && !host_is_literal_ip(hp.host)) {
       std::vector<std::string> addrs;
       resolve_host_best_effort(hp.host, &addrs);
+      out.resolved_addrs = addrs;
       for (const auto& ip : addrs) {
         if (ip.empty()) continue;
         resolve = curl_slist_append(resolve, (hp.host + ":" + std::to_string(hp.port) + ":" + ip).c_str());
