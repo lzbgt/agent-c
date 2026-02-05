@@ -117,6 +117,7 @@ MCU CBOR implementation guidance (TinyCBOR-style):
 
 Embedded helper (this repo):
 - `agent_core` includes a tiny deterministic CBOR writer under `agent/cbor_det.h` that matches the platform’s encoding rules.
+- `agent_core` includes tiny base64 helpers under `agent/base64.h` (RFC 4648, standard alphabet) to format `auth.sig`.
 
 ## Platform enforcement behavior (agentd)
 
