@@ -777,6 +777,22 @@ void handle_workflow_submit_endpoint(
         // Clamp to 1 year to keep values sane (actual enforcement also clamps).
         lim["max_elapsed_ms_total"] = (Json::Int64)std::min<int64_t>(365LL * 24LL * 60LL * 60LL * 1000LL, n); // canonicalize
       }
+      if (lim.isMember("max_total_tokens")) {
+        const auto& v = lim["max_total_tokens"];
+        if (!(v.isInt64() || v.isUInt64() || v.isInt() || v.isUInt())) {
+          resp->status = 400;
+          resp->body = "{\"ok\":false,\"error\":\"invalid workflow_limits.max_total_tokens (expected int >= 0)\"}";
+          return;
+        }
+        const int64_t n = v.asInt64();
+        if (n < 0) {
+          resp->status = 400;
+          resp->body = "{\"ok\":false,\"error\":\"invalid workflow_limits.max_total_tokens (expected >= 0)\"}";
+          return;
+        }
+        // Clamp to keep values sane; enforcement also clamps.
+        lim["max_total_tokens"] = (Json::Int64)std::min<int64_t>(1000000000000LL, n); // canonicalize
+      }
       args["workflow_limits"] = lim;
     }
   }
@@ -1663,6 +1679,9 @@ void handle_workflow_get_endpoint(
         row["tool_calls_total_cum"] = (Json::Int64)std::max<int64_t>(0, t.tool_calls_total_cum);
         row["steps_executed_cum"] = (Json::Int64)std::max<int64_t>(0, t.steps_executed_cum);
         row["elapsed_ms_cum"] = (Json::Int64)std::max<int64_t>(0, t.elapsed_ms_cum);
+        row["prompt_tokens_cum"] = (Json::Int64)std::max<int64_t>(0, t.prompt_tokens_cum);
+        row["completion_tokens_cum"] = (Json::Int64)std::max<int64_t>(0, t.completion_tokens_cum);
+        row["total_tokens_cum"] = (Json::Int64)std::max<int64_t>(0, t.total_tokens_cum);
         row["ready_unix_ms"] = (Json::Int64)t.ready_unix_ms;
         row["started_unix_ms"] = (Json::Int64)t.started_unix_ms;
         row["finished_unix_ms"] = (Json::Int64)t.finished_unix_ms;

@@ -231,6 +231,12 @@ int main() {
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflow_tasks') WHERE name='steps_executed_cum';");
   const int64_t workflow_task_elapsed_cum_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflow_tasks') WHERE name='elapsed_ms_cum';");
+  const int64_t workflow_task_prompt_tokens_cum_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflow_tasks') WHERE name='prompt_tokens_cum';");
+  const int64_t workflow_task_completion_tokens_cum_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflow_tasks') WHERE name='completion_tokens_cum';");
+  const int64_t workflow_task_total_tokens_cum_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflow_tasks') WHERE name='total_tokens_cum';");
   const int64_t workflow_deadline_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflows') WHERE name='deadline_unix_ms';");
   const int64_t workflow_idempotency_cols =
@@ -268,7 +274,7 @@ int main() {
   const int64_t edge_wf_events_id_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('edge_workflow_events') WHERE name='id';");
   sqlite3_close(raw2);
-  assert(ver == 20);
+  assert(ver == 21);
   assert(arts2 == 0);
   assert(stop_reason_cols == 1);
   assert(ua_cols == 1);
@@ -291,6 +297,9 @@ int main() {
   assert(workflow_task_tool_calls_cum_cols == 1);
   assert(workflow_task_steps_cum_cols == 1);
   assert(workflow_task_elapsed_cum_cols == 1);
+  assert(workflow_task_prompt_tokens_cum_cols == 1);
+  assert(workflow_task_completion_tokens_cum_cols == 1);
+  assert(workflow_task_total_tokens_cum_cols == 1);
   assert(edge_nodes_id_cols == 1);
   assert(edge_outbox_id_cols == 1);
   assert(edge_inbox_msg_id_cols == 1);

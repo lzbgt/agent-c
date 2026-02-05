@@ -7,6 +7,7 @@
 #include "http_util.h"
 #include "job_manager.h"
 #include "json_util.h"
+#include "llm_usage.h"
 #include "openai_provider.h"
 #include "provider_util.h"
 #include "sandbox_policy.h"
@@ -2018,6 +2019,15 @@ static Json::Value run_request_to_json_impl(
           d["stream"] = true;
           push_ev("llm_response", d);
         }
+        {
+          Json::Value usage(Json::nullValue);
+          if (llm_try_extract_usage_tokens_from_openai_response_body(sr.response_body, &usage) && usage.isObject()) {
+            Json::Value d(Json::objectValue);
+            d["attempt"] = attempt;
+            d["usage"] = usage;
+            push_ev("llm_usage", d);
+          }
+        }
 
         // Flush any pending deltas.
         if (!sctx.pending_delta.empty()) {
@@ -2153,6 +2163,15 @@ static Json::Value run_request_to_json_impl(
           d["stream"] = false;
           push_ev("llm_response", d);
         }
+        {
+          Json::Value usage(Json::nullValue);
+          if (llm_try_extract_usage_tokens_from_openai_response_body(pctx.last_body, &usage) && usage.isObject()) {
+            Json::Value d(Json::objectValue);
+            d["attempt"] = attempt;
+            d["usage"] = usage;
+            push_ev("llm_usage", d);
+          }
+        }
 
         if (last_st == AGENT_OK) {
           ok = true;
@@ -2282,6 +2301,19 @@ static Json::Value run_request_to_json_impl(
       by_tool[tr.tool_name] = (Json::UInt64)(n + 1);
     }
     out["tool_calls_by_tool"] = by_tool;
+  }
+  {
+    // Token usage is provider-reported and best-effort.
+    // We aggregate from structured `llm_usage` events, which are emitted by:
+    // - tool-loop providers (`openai_tool_provider`), when response JSON has a `usage` object
+    // - tools=none run path, after parsing the raw response body
+    int64_t prompt_tokens = 0;
+    int64_t completion_tokens = 0;
+    int64_t total_tokens = 0;
+    llm_sum_usage_from_events(events_out, &prompt_tokens, &completion_tokens, &total_tokens);
+    out["prompt_tokens"] = (Json::Int64)std::max<int64_t>(0, prompt_tokens);
+    out["completion_tokens"] = (Json::Int64)std::max<int64_t>(0, completion_tokens);
+    out["total_tokens"] = (Json::Int64)std::max<int64_t>(0, total_tokens);
   }
   {
     Json::Value mp(Json::objectValue);

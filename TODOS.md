@@ -176,6 +176,14 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ### Reweighted next 5 (highest compound impact)
 
+Priority order (reweighted after token budgets v0.4 shipped; sections below are kept stable for diff readability):
+
+1) **Scheduling policy v2.2 (explicit fair-queue)** — predictable progress under extreme load (multi-tenant + long backlogs).
+2) **Interop spec hardening (MCU/edge handoff)** — ecosystem leverage; versioned contract + executable transcripts.
+3) **Memory ↔ workflow time correlation** — time-advancing correctness; evidence hashing + bounded queries.
+4) **Agent collaboration v2** — budgeted parallel fan-out + deterministic joins.
+5) **Budgets v0.5** — host-tool budgets + streaming token usage coverage + stats surfacing.
+
 1) **Durable budget enforcement at scheduler level** (correctness + cost predictability)
    - Shipped (v0): workflow-level tool-call budget `workflow_limits.max_tool_calls_total` enforced by the workflow engine:
      - clamps LLM/tool tasks’ `max_tool_calls_total` to the remaining workflow budget
@@ -193,7 +201,15 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
    - Shipped (v0.3): bulk cancellation of queued tasks when budget exceeded:
      - prevents scheduler thrash by cancelling all `status=queued` tasks in one pass (unclaimed tasks keep `attempt==0`)
      - Proof: `ctest` includes `agentd_workflow_budget_bulk_cancel_smoke`.
-   - Next: add token budgets (provider-dependent), host-tool budgets, and surface aggregated budget pressure in `/api/v1/workflow/stats`.
+   - Shipped (v0.4): workflow-level token budgets (best-effort; provider-reported):
+     - Budget knob: `workflow_limits.max_total_tokens` (sum of `total_tokens`, provider response `usage.total_tokens`).
+     - Durable counters: `workflow_tasks.prompt_tokens_cum`, `completion_tokens_cum`, `total_tokens_cum` (retry-safe charging).
+     - Run telemetry surfaced per task: `prompt_tokens`, `completion_tokens`, `total_tokens` (aggregated across all LLM calls in the run).
+     - Proof: `ctest` includes `agentd_workflow_budget_tokens_smoke` and `agent_db_tests` asserts schema v21.
+     - Limitations:
+       - only enforced when providers return `usage` in responses
+       - streaming tool-loop calls may not surface usage (depends on provider streaming schema)
+   - Next: host-tool budgets, enforce token budgets for streaming paths, and surface budget pressure in `/api/v1/workflow/stats`.
 
 2) **Scheduling policy v2 (beyond caps)** (predictable progress under load)
    - Shipped (v2.0): oversampled scan + session-aware round-robin scan order (prevents `LIMIT` starvation under typical load).

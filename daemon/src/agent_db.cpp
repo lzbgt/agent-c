@@ -165,7 +165,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 20;
+  const int kSchemaVersion = 21;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -724,6 +724,17 @@ UPDATE edge_inbox_messages SET processed=1, processed_utc_ms=COALESCE(processed_
     cur_ver = 20;
   }
 
+  if (cur_ver < 21) {
+    const char* schema_v21 = R"SQL(
+-- Provider usage-based budgets: durable workflow token counters (retry-safe across attempts).
+ALTER TABLE workflow_tasks ADD COLUMN prompt_tokens_cum INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE workflow_tasks ADD COLUMN completion_tokens_cum INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE workflow_tasks ADD COLUMN total_tokens_cum INTEGER NOT NULL DEFAULT 0;
+)SQL";
+    if (!exec_locked(schema_v21, out_error)) return false;
+    cur_ver = 21;
+  }
+
   // Record schema version.
   {
     std::ostringstream oss;
@@ -1218,8 +1229,9 @@ bool AgentDb::create_workflow(const WorkflowRow& wf, const std::vector<WorkflowT
 		INSERT INTO workflow_tasks(
 		  workflow_id, task_id, priority, created_unix_ms, updated_unix_ms, status, allow_error, attempt, max_attempts, ready_unix_ms,
 		  started_unix_ms, finished_unix_ms, depends_on_json, request_json, expect_json, result_json, error,
-		  tool_calls_total_cum, steps_executed_cum, elapsed_ms_cum
-		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);
+		  tool_calls_total_cum, steps_executed_cum, elapsed_ms_cum,
+		  prompt_tokens_cum, completion_tokens_cum, total_tokens_cum
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);
 		)SQL";
 	    if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
 	      ok = false;
@@ -1262,6 +1274,9 @@ bool AgentDb::create_workflow(const WorkflowRow& wf, const std::vector<WorkflowT
 			        ok = ok && bind_i64(st, 18, std::max<int64_t>(0, t.tool_calls_total_cum));
 			        ok = ok && bind_i64(st, 19, std::max<int64_t>(0, t.steps_executed_cum));
 			        ok = ok && bind_i64(st, 20, std::max<int64_t>(0, t.elapsed_ms_cum));
+			        ok = ok && bind_i64(st, 21, std::max<int64_t>(0, t.prompt_tokens_cum));
+			        ok = ok && bind_i64(st, 22, std::max<int64_t>(0, t.completion_tokens_cum));
+			        ok = ok && bind_i64(st, 23, std::max<int64_t>(0, t.total_tokens_cum));
 			        ok = ok && step_done(st);
 			        if (!ok) {
 			          if (out_error && out_error->empty()) *out_error = sqlite_err(db_);
@@ -1577,7 +1592,8 @@ bool AgentDb::list_workflow_tasks(const std::string& workflow_id, std::vector<Wo
 		const char* sql = R"SQL(
 		SELECT task_id, COALESCE(priority,0), created_unix_ms, updated_unix_ms, status, attempt, max_attempts, ready_unix_ms, started_unix_ms, finished_unix_ms,
 		       depends_on_json, request_json, expect_json, result_json, error, COALESCE(allow_error,0),
-		       COALESCE(tool_calls_total_cum,0), COALESCE(steps_executed_cum,0), COALESCE(elapsed_ms_cum,0)
+		       COALESCE(tool_calls_total_cum,0), COALESCE(steps_executed_cum,0), COALESCE(elapsed_ms_cum,0),
+		       COALESCE(prompt_tokens_cum,0), COALESCE(completion_tokens_cum,0), COALESCE(total_tokens_cum,0)
 		FROM workflow_tasks
 		WHERE workflow_id=?
 		ORDER BY created_unix_ms ASC, task_id ASC;
@@ -1611,6 +1627,9 @@ bool AgentDb::list_workflow_tasks(const std::string& workflow_id, std::vector<Wo
 		    row.tool_calls_total_cum = sqlite3_column_int64(st, 16);
 		    row.steps_executed_cum = sqlite3_column_int64(st, 17);
 		    row.elapsed_ms_cum = sqlite3_column_int64(st, 18);
+		    row.prompt_tokens_cum = sqlite3_column_int64(st, 19);
+		    row.completion_tokens_cum = sqlite3_column_int64(st, 20);
+		    row.total_tokens_cum = sqlite3_column_int64(st, 21);
 		    row.depends_on_json = deps ? (const char*)deps : "";
 		    row.request_json = req ? (const char*)req : "";
 		    row.expect_json = exp ? (const char*)exp : "";
@@ -1899,8 +1918,9 @@ bool AgentDb::upsert_workflow_task(const WorkflowTaskRow& task, std::string* out
 		INSERT INTO workflow_tasks(
 		  workflow_id, task_id, priority, created_unix_ms, updated_unix_ms, status, allow_error, attempt, max_attempts, ready_unix_ms,
 		  started_unix_ms, finished_unix_ms, depends_on_json, request_json, expect_json, result_json, error,
-		  tool_calls_total_cum, steps_executed_cum, elapsed_ms_cum
-		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		  tool_calls_total_cum, steps_executed_cum, elapsed_ms_cum,
+		  prompt_tokens_cum, completion_tokens_cum, total_tokens_cum
+		) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(workflow_id, task_id) DO UPDATE SET
 		  priority = CASE WHEN excluded.priority IS NOT NULL THEN excluded.priority ELSE workflow_tasks.priority END,
 		  updated_unix_ms = excluded.updated_unix_ms,
@@ -1927,6 +1947,18 @@ bool AgentDb::upsert_workflow_task(const WorkflowTaskRow& task, std::string* out
 		  elapsed_ms_cum = CASE
 		    WHEN excluded.elapsed_ms_cum >= COALESCE(workflow_tasks.elapsed_ms_cum,0) THEN excluded.elapsed_ms_cum
 		    ELSE COALESCE(workflow_tasks.elapsed_ms_cum,0)
+		  END,
+		  prompt_tokens_cum = CASE
+		    WHEN excluded.prompt_tokens_cum >= COALESCE(workflow_tasks.prompt_tokens_cum,0) THEN excluded.prompt_tokens_cum
+		    ELSE COALESCE(workflow_tasks.prompt_tokens_cum,0)
+		  END,
+		  completion_tokens_cum = CASE
+		    WHEN excluded.completion_tokens_cum >= COALESCE(workflow_tasks.completion_tokens_cum,0) THEN excluded.completion_tokens_cum
+		    ELSE COALESCE(workflow_tasks.completion_tokens_cum,0)
+		  END,
+		  total_tokens_cum = CASE
+		    WHEN excluded.total_tokens_cum >= COALESCE(workflow_tasks.total_tokens_cum,0) THEN excluded.total_tokens_cum
+		    ELSE COALESCE(workflow_tasks.total_tokens_cum,0)
 		  END;
 		)SQL";
   if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
@@ -1954,6 +1986,9 @@ bool AgentDb::upsert_workflow_task(const WorkflowTaskRow& task, std::string* out
 		ok = ok && bind_i64(st, 18, std::max<int64_t>(0, task.tool_calls_total_cum));
 		ok = ok && bind_i64(st, 19, std::max<int64_t>(0, task.steps_executed_cum));
 		ok = ok && bind_i64(st, 20, std::max<int64_t>(0, task.elapsed_ms_cum));
+		ok = ok && bind_i64(st, 21, std::max<int64_t>(0, task.prompt_tokens_cum));
+		ok = ok && bind_i64(st, 22, std::max<int64_t>(0, task.completion_tokens_cum));
+		ok = ok && bind_i64(st, 23, std::max<int64_t>(0, task.total_tokens_cum));
 		ok = ok && step_done(st);
 	  if (!ok && out_error && out_error->empty()) *out_error = sqlite_err(db_);
 	  sqlite3_finalize(st);

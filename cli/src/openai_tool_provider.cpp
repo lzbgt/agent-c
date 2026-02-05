@@ -230,6 +230,41 @@ static std::string extract_assistant_content(const Json::Value& message) {
   return "";
 }
 
+static bool try_extract_usage_tokens(const Json::Value& root, Json::Value* out_usage_obj) {
+  if (out_usage_obj) *out_usage_obj = Json::Value(Json::nullValue);
+  if (!out_usage_obj) return false;
+  if (!root.isObject()) return false;
+  if (!root.isMember("usage") || !root["usage"].isObject()) return false;
+  const Json::Value u = root["usage"];
+  auto get_i64_nonneg = [&](const char* k, int64_t* out_v) -> bool {
+    if (!out_v || !k) return false;
+    *out_v = 0;
+    if (!u.isMember(k)) return false;
+    const Json::Value& v = u[k];
+    if (!(v.isInt64() || v.isUInt64() || v.isInt() || v.isUInt())) return false;
+    const int64_t n = v.asInt64();
+    if (n < 0) return false;
+    *out_v = n;
+    return true;
+  };
+
+  int64_t prompt = 0;
+  int64_t completion = 0;
+  int64_t total = 0;
+  const bool have_prompt = get_i64_nonneg("prompt_tokens", &prompt);
+  const bool have_completion = get_i64_nonneg("completion_tokens", &completion);
+  const bool have_total = get_i64_nonneg("total_tokens", &total);
+  if (!have_prompt && !have_completion && !have_total) return false;
+  if (total <= 0 && (prompt > 0 || completion > 0)) total = prompt + completion;
+
+  Json::Value out(Json::objectValue);
+  if (have_prompt) out["prompt_tokens"] = (Json::Int64)prompt;
+  if (have_completion) out["completion_tokens"] = (Json::Int64)completion;
+  out["total_tokens"] = (Json::Int64)total;
+  *out_usage_obj = out;
+  return true;
+}
+
 static bool message_has_tool_calls(const Json::Value& message) {
   const auto& tc = message["tool_calls"];
   if (tc.isArray() && !tc.empty()) return true;
@@ -547,6 +582,17 @@ static agent_status_t openai_tool_provider_generate(
     if (!Json::parseFromStream(rb, iss, &parsed, &errs) || !parsed.isObject()) {
       (void)set_error(out_resp, "failed to parse JSON response");
       return AGENT_ERR_INTERNAL;
+    }
+  }
+
+  if (!parsed_is_stream) {
+    Json::Value usage(Json::nullValue);
+    if (try_extract_usage_tokens(parsed, &usage) && usage.isObject()) {
+      Json::Value d(Json::objectValue);
+      d["step"] = (Json::UInt64)req->step;
+      d["epoch"] = (Json::UInt64)req->epoch;
+      d["usage"] = usage;
+      provider_emit_event(ctx, "llm_usage", d);
     }
   }
 

@@ -98,6 +98,7 @@ struct WorkflowLimits {
   int64_t max_tool_calls_total = 0;  // 0 disables (unlimited).
   int64_t max_steps_total = 0;       // 0 disables (unlimited).
   int64_t max_elapsed_ms_total = 0;  // 0 disables (unlimited). Best-effort wall time summed across tasks.
+  int64_t max_total_tokens = 0;      // 0 disables (unlimited). Best-effort provider-reported tokens (usage.total_tokens).
 };
 
 static WorkflowLimits workflow_limits_best_effort(const AgentDb::WorkflowRow& wf) {
@@ -126,6 +127,11 @@ static WorkflowLimits workflow_limits_best_effort(const AgentDb::WorkflowRow& wf
     const int64_t n = lim["max_elapsed_ms_total"].asInt64();
     // clamp to 1 year worth of ms to avoid silly overflows in stats
     out.max_elapsed_ms_total = clamp_i64(n, 365LL * 24LL * 60LL * 60LL * 1000LL);
+  }
+  if (lim.isMember("max_total_tokens") && (lim["max_total_tokens"].isInt64() || lim["max_total_tokens"].isUInt64() || lim["max_total_tokens"].isInt() || lim["max_total_tokens"].isUInt())) {
+    const int64_t n = lim["max_total_tokens"].asInt64();
+    // clamp to avoid silly overflows; 1e12 tokens is far beyond any realistic budget.
+    out.max_total_tokens = clamp_i64(n, 1000000000000LL);
   }
   return out;
 }
@@ -976,6 +982,9 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
   int64_t workflow_tool_calls_used = 0;
   int64_t workflow_steps_used = 0;
   int64_t workflow_elapsed_ms_used = 0;
+  int64_t workflow_prompt_tokens_used = 0;
+  int64_t workflow_completion_tokens_used = 0;
+  int64_t workflow_total_tokens_used = 0;
   auto saturating_add_i64 = [](int64_t a, int64_t b) -> int64_t {
     if (b <= 0) return a;
     if (a > (INT64_MAX - b)) return INT64_MAX;
@@ -990,6 +999,9 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         workflow_tool_calls_used = saturating_add_i64(workflow_tool_calls_used, std::max<int64_t>(0, t.tool_calls_total_cum));
         workflow_steps_used = saturating_add_i64(workflow_steps_used, std::max<int64_t>(0, t.steps_executed_cum));
         workflow_elapsed_ms_used = saturating_add_i64(workflow_elapsed_ms_used, std::max<int64_t>(0, t.elapsed_ms_cum));
+        workflow_prompt_tokens_used = saturating_add_i64(workflow_prompt_tokens_used, std::max<int64_t>(0, t.prompt_tokens_cum));
+        workflow_completion_tokens_used = saturating_add_i64(workflow_completion_tokens_used, std::max<int64_t>(0, t.completion_tokens_cum));
+        workflow_total_tokens_used = saturating_add_i64(workflow_total_tokens_used, std::max<int64_t>(0, t.total_tokens_cum));
 
         if (t.result_json.empty()) continue;
         Json::Value r;
@@ -1024,6 +1036,12 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     const int64_t used = std::max<int64_t>(0, std::min<int64_t>(max_total, workflow_elapsed_ms_used));
     wf_elapsed_ms_remaining = std::max<int64_t>(0, max_total - used);
   }
+  int64_t wf_total_tokens_remaining = 0;
+  if (wf_limits.max_total_tokens > 0) {
+    const int64_t max_total = wf_limits.max_total_tokens;
+    const int64_t used = std::max<int64_t>(0, std::min<int64_t>(max_total, workflow_total_tokens_used));
+    wf_total_tokens_remaining = std::max<int64_t>(0, max_total - used);
+  }
 
   auto workflow_budget_exceeded_cancel = [&](const char* which) {
     const std::string msg = std::string("workflow budget exceeded: ") + (which ? which : "budget");
@@ -1045,6 +1063,11 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
       d["max_elapsed_ms_total"] = (Json::Int64)wf_limits.max_elapsed_ms_total;
       d["elapsed_ms_used"] = (Json::Int64)workflow_elapsed_ms_used;
       d["elapsed_ms_remaining"] = (Json::Int64)wf_elapsed_ms_remaining;
+      d["max_total_tokens"] = (Json::Int64)wf_limits.max_total_tokens;
+      d["prompt_tokens_used"] = (Json::Int64)workflow_prompt_tokens_used;
+      d["completion_tokens_used"] = (Json::Int64)workflow_completion_tokens_used;
+      d["total_tokens_used"] = (Json::Int64)workflow_total_tokens_used;
+      d["total_tokens_remaining"] = (Json::Int64)wf_total_tokens_remaining;
       d["ts_unix_ms"] = (Json::Int64)now;
       insert_workflow_event_best_effort(db_, wf.workflow_id, task.task_id, "workflow_budget_exceeded", now, d);
     }
@@ -1396,6 +1419,10 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
       workflow_budget_exceeded_cancel("max_elapsed_ms_total");
       return;
     }
+    if (wf_limits.max_total_tokens > 0 && wf_total_tokens_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_total_tokens");
+      return;
+    }
 
     out = Json::Value(Json::objectValue);
     out["kind"] = "delegate";
@@ -1429,9 +1456,13 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 	        int64_t attempts_tool_calls_total = 0;
 	        int64_t attempts_steps_executed = 0;
 	        int64_t attempts_elapsed_ms = 0;
+	        int64_t attempts_prompt_tokens = 0;
+	        int64_t attempts_completion_tokens = 0;
+	        int64_t attempts_total_tokens = 0;
 	        int64_t remaining_local = wf_tool_calls_remaining;
 	        int64_t remaining_steps_local = wf_steps_remaining;
 	        int64_t remaining_elapsed_ms_local = wf_elapsed_ms_remaining;
+	        int64_t remaining_tokens_local = wf_total_tokens_remaining;
 
 	        for (Json::ArrayIndex i = 0; i < attempts.size(); i++) {
 	          if (workflow_run_should_cancel(&cancel_ctx)) {
@@ -1457,6 +1488,12 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 	            out["ok"] = false;
 	            out["assistant_text"] = "";
 	            out["error"] = "workflow budget exceeded: max_elapsed_ms_total";
+	            break;
+	          }
+	          if (wf_limits.max_total_tokens > 0 && remaining_tokens_local <= 0) {
+	            out["ok"] = false;
+	            out["assistant_text"] = "";
+	            out["error"] = "workflow budget exceeded: max_total_tokens";
 	            break;
 	          }
 
@@ -1539,9 +1576,26 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 	          if (r.isObject() && r.isMember("elapsed_ms") && (r["elapsed_ms"].isInt64() || r["elapsed_ms"].isUInt64() || r["elapsed_ms"].isInt() || r["elapsed_ms"].isUInt())) {
 	            elapsed_ms_this_attempt = std::max<int64_t>(0, r["elapsed_ms"].asInt64());
 	          }
+	          int64_t prompt_tokens_this_attempt = 0;
+	          if (r.isObject() && r.isMember("prompt_tokens") && (r["prompt_tokens"].isInt64() || r["prompt_tokens"].isUInt64() || r["prompt_tokens"].isInt() || r["prompt_tokens"].isUInt())) {
+	            prompt_tokens_this_attempt = std::max<int64_t>(0, r["prompt_tokens"].asInt64());
+	          }
+	          int64_t completion_tokens_this_attempt = 0;
+	          if (r.isObject() && r.isMember("completion_tokens") && (r["completion_tokens"].isInt64() || r["completion_tokens"].isUInt64() || r["completion_tokens"].isInt() || r["completion_tokens"].isUInt())) {
+	            completion_tokens_this_attempt = std::max<int64_t>(0, r["completion_tokens"].asInt64());
+	          }
+	          int64_t total_tokens_this_attempt = 0;
+	          if (r.isObject() && r.isMember("total_tokens") && (r["total_tokens"].isInt64() || r["total_tokens"].isUInt64() || r["total_tokens"].isInt() || r["total_tokens"].isUInt())) {
+	            total_tokens_this_attempt = std::max<int64_t>(0, r["total_tokens"].asInt64());
+	          } else if (prompt_tokens_this_attempt > 0 || completion_tokens_this_attempt > 0) {
+	            total_tokens_this_attempt = prompt_tokens_this_attempt + completion_tokens_this_attempt;
+	          }
 	          attempts_tool_calls_total = saturating_add_i64(attempts_tool_calls_total, tool_calls_this_attempt);
 	          attempts_steps_executed = saturating_add_i64(attempts_steps_executed, steps_this_attempt);
 	          attempts_elapsed_ms = saturating_add_i64(attempts_elapsed_ms, elapsed_ms_this_attempt);
+	          attempts_prompt_tokens = saturating_add_i64(attempts_prompt_tokens, prompt_tokens_this_attempt);
+	          attempts_completion_tokens = saturating_add_i64(attempts_completion_tokens, completion_tokens_this_attempt);
+	          attempts_total_tokens = saturating_add_i64(attempts_total_tokens, total_tokens_this_attempt);
 	          if (wf_limits.max_tool_calls_total > 0) {
 	            remaining_local = std::max<int64_t>(0, remaining_local - tool_calls_this_attempt);
 	          }
@@ -1550,6 +1604,9 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 	          }
 	          if (wf_limits.max_elapsed_ms_total > 0) {
 	            remaining_elapsed_ms_local = std::max<int64_t>(0, remaining_elapsed_ms_local - elapsed_ms_this_attempt);
+	          }
+	          if (wf_limits.max_total_tokens > 0) {
+	            remaining_tokens_local = std::max<int64_t>(0, remaining_tokens_local - total_tokens_this_attempt);
 	          }
 
 	          Json::Value row(Json::objectValue);
@@ -1560,6 +1617,9 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 	          row["tool_calls_total"] = (Json::Int64)tool_calls_this_attempt;
 	          row["steps_executed"] = (Json::Int64)steps_this_attempt;
 	          row["elapsed_ms"] = (Json::Int64)elapsed_ms_this_attempt;
+	          row["prompt_tokens"] = (Json::Int64)prompt_tokens_this_attempt;
+	          row["completion_tokens"] = (Json::Int64)completion_tokens_this_attempt;
+	          row["total_tokens"] = (Json::Int64)total_tokens_this_attempt;
 	          if (!atext.empty()) row["assistant_text"] = atext;
 	          const std::string err = json_get_string(r, "error");
 	          if (!err.empty()) row["error"] = err;
@@ -1589,6 +1649,9 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 	        out["tool_calls_total"] = (Json::Int64)attempts_tool_calls_total;
 	        out["steps_executed"] = (Json::Int64)attempts_steps_executed;
 	        out["elapsed_ms"] = (Json::Int64)attempts_elapsed_ms;
+	        out["prompt_tokens"] = (Json::Int64)attempts_prompt_tokens;
+	        out["completion_tokens"] = (Json::Int64)attempts_completion_tokens;
+	        out["total_tokens"] = (Json::Int64)attempts_total_tokens;
 
 	        if (out.isMember("cancelled") && out["cancelled"].isBool() && out["cancelled"].asBool()) {
 	          // already populated
@@ -1836,6 +1899,12 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         request_body = json_stringify_compact(rr);
       }
     }
+    if (wf_limits.max_total_tokens > 0) {
+      if (wf_total_tokens_remaining <= 0) {
+        workflow_budget_exceeded_cancel("max_total_tokens");
+        return;
+      }
+    }
     out = run_request_to_json_internal_cancellable(
       cfg,
       ocfg,
@@ -1861,6 +1930,15 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     }
     if (!out.isMember("steps_executed") || !(out["steps_executed"].isInt64() || out["steps_executed"].isUInt64() || out["steps_executed"].isInt() || out["steps_executed"].isUInt())) {
       out["steps_executed"] = (Json::Int64)0;
+    }
+    if (!out.isMember("prompt_tokens") || !(out["prompt_tokens"].isInt64() || out["prompt_tokens"].isUInt64() || out["prompt_tokens"].isInt() || out["prompt_tokens"].isUInt())) {
+      out["prompt_tokens"] = (Json::Int64)0;
+    }
+    if (!out.isMember("completion_tokens") || !(out["completion_tokens"].isInt64() || out["completion_tokens"].isUInt64() || out["completion_tokens"].isInt() || out["completion_tokens"].isUInt())) {
+      out["completion_tokens"] = (Json::Int64)0;
+    }
+    if (!out.isMember("total_tokens") || !(out["total_tokens"].isInt64() || out["total_tokens"].isUInt64() || out["total_tokens"].isInt() || out["total_tokens"].isUInt())) {
+      out["total_tokens"] = (Json::Int64)0;
     }
   }
 
@@ -1889,9 +1967,26 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     if (out.isObject() && out.isMember("elapsed_ms") && (out["elapsed_ms"].isInt64() || out["elapsed_ms"].isUInt64() || out["elapsed_ms"].isInt() || out["elapsed_ms"].isUInt())) {
       elapsed_attempt = std::max<int64_t>(0, out["elapsed_ms"].asInt64());
     }
+    int64_t prompt_tokens_attempt = 0;
+    if (out.isObject() && out.isMember("prompt_tokens") && (out["prompt_tokens"].isInt64() || out["prompt_tokens"].isUInt64() || out["prompt_tokens"].isInt() || out["prompt_tokens"].isUInt())) {
+      prompt_tokens_attempt = std::max<int64_t>(0, out["prompt_tokens"].asInt64());
+    }
+    int64_t completion_tokens_attempt = 0;
+    if (out.isObject() && out.isMember("completion_tokens") && (out["completion_tokens"].isInt64() || out["completion_tokens"].isUInt64() || out["completion_tokens"].isInt() || out["completion_tokens"].isUInt())) {
+      completion_tokens_attempt = std::max<int64_t>(0, out["completion_tokens"].asInt64());
+    }
+    int64_t total_tokens_attempt = 0;
+    if (out.isObject() && out.isMember("total_tokens") && (out["total_tokens"].isInt64() || out["total_tokens"].isUInt64() || out["total_tokens"].isInt() || out["total_tokens"].isUInt())) {
+      total_tokens_attempt = std::max<int64_t>(0, out["total_tokens"].asInt64());
+    } else if (prompt_tokens_attempt > 0 || completion_tokens_attempt > 0) {
+      total_tokens_attempt = prompt_tokens_attempt + completion_tokens_attempt;
+    }
     upd.tool_calls_total_cum = saturating_add_i64(std::max<int64_t>(0, task.tool_calls_total_cum), tool_calls_attempt);
     upd.steps_executed_cum = saturating_add_i64(std::max<int64_t>(0, task.steps_executed_cum), steps_attempt);
     upd.elapsed_ms_cum = saturating_add_i64(std::max<int64_t>(0, task.elapsed_ms_cum), elapsed_attempt);
+    upd.prompt_tokens_cum = saturating_add_i64(std::max<int64_t>(0, task.prompt_tokens_cum), prompt_tokens_attempt);
+    upd.completion_tokens_cum = saturating_add_i64(std::max<int64_t>(0, task.completion_tokens_cum), completion_tokens_attempt);
+    upd.total_tokens_cum = saturating_add_i64(std::max<int64_t>(0, task.total_tokens_cum), total_tokens_attempt);
   }
 
   if (run_cancelled) {

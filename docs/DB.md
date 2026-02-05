@@ -57,7 +57,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v20)
+## Schema (v21)
 
 All timestamps are Unix milliseconds.
 
@@ -309,6 +309,9 @@ with explicit dependencies and retries.
 - `tool_calls_total_cum INTEGER NOT NULL DEFAULT 0` (cumulative tool calls across attempts; retry-safe budget accounting)
 - `steps_executed_cum INTEGER NOT NULL DEFAULT 0` (cumulative tool-loop steps across attempts)
 - `elapsed_ms_cum INTEGER NOT NULL DEFAULT 0` (cumulative elapsed_ms across attempts; best-effort)
+- `prompt_tokens_cum INTEGER NOT NULL DEFAULT 0` (cumulative provider-reported `usage.prompt_tokens` across attempts; best-effort)
+- `completion_tokens_cum INTEGER NOT NULL DEFAULT 0` (cumulative provider-reported `usage.completion_tokens` across attempts; best-effort)
+- `total_tokens_cum INTEGER NOT NULL DEFAULT 0` (cumulative provider-reported `usage.total_tokens` across attempts; best-effort)
 
 Indexes:
 - `CREATE INDEX workflow_tasks_by_workflow ON workflow_tasks(workflow_id, updated_unix_ms DESC)`

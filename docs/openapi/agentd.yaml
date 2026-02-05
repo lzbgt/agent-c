@@ -1884,6 +1884,11 @@ components:
           format: int64
           minimum: 0
           description: Max total elapsed_ms summed across workflow tasks (0 disables/unlimited).
+        max_total_tokens:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Max total provider-reported tokens (usage.total_tokens) summed across workflow tasks (0 disables/unlimited).
       additionalProperties: true
 
     WorkflowGetResponse:

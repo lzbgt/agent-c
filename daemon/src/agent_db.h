@@ -269,6 +269,9 @@ class AgentDb {
     int64_t tool_calls_total_cum = 0;
     int64_t steps_executed_cum = 0;
     int64_t elapsed_ms_cum = 0;
+    int64_t prompt_tokens_cum = 0;
+    int64_t completion_tokens_cum = 0;
+    int64_t total_tokens_cum = 0;
   };
 
   struct WorkflowEventRow {
