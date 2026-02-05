@@ -27,8 +27,14 @@ Non-goals (v0.3):
 
 In v0.3, `result_sha256` is defined as:
 
-- `sha256( canonical_json_bytes(body.result) )`
+- `sha256( canonical_json_bytes(body.result_without_attest) )`
 - where `canonical_json_bytes` is UTF‑8 JSON produced by `agent_json_c14n_v1`
+
+Where `body.result_without_attest` is `body.result` with the optional `attest` key removed.
+
+Rationale:
+- Nodes may include `result.attest.result_sha256` and (future) `result.attest.sig` metadata.
+- If `attest` were included in the hash surface, `result_sha256` becomes self-referential and unstable.
 
 ### 1.1 Canonical JSON rules (agent_json_c14n_v1)
 
@@ -73,7 +79,7 @@ Example canonicalization:
 
 For `TASK_DONE`, nodes may include:
 
-`body.result.attest.result_sha256 = sha256(canonical_json_bytes(body.result))`
+`body.result.attest.result_sha256 = sha256(canonical_json_bytes(body.result_without_attest))`
 
 Nodes MAY also include an optional hint:
 
@@ -81,11 +87,25 @@ Nodes MAY also include an optional hint:
 
 (The platform treats this as best-effort metadata; it does not gate success in v0.3.)
 
+Optional signature (best-effort; platform does not gate success):
+
+If nodes also include:
+- `body.result.attest.kid` (id token)
+- `body.result.attest.alg` (`ed25519` or `hmac-sha256`)
+- `body.result.attest.sig` (base64 signature bytes)
+- `body.result.attest.ts_utc_ms` (int64 timestamp)
+
+Then the platform may verify a versioned signing string:
+
+`UM_EAIS_RESULT_ATTEST_v0_1\n<task_id>\n<step_id>\n<idempotency_key>\n<result_sha256>\n<ts_utc_ms>\n`
+
+and emit evidence under task events (visible via `GET /api/v1/trace?trace_id=...`).
+
 ### 2.2 Platform-computed hash surface
 
 The platform MUST compute and persist:
 
-- `edge_tasks.result_sha256`: sha256 of canonical JSON bytes for the stored `result_json`
+- `edge_tasks.result_sha256`: sha256 of canonical JSON bytes for the stored `result_json` (with `attest` excluded)
 
 Best-effort robustness:
 
@@ -100,4 +120,3 @@ Best-effort robustness:
 
 - v0.1/v0.2 nodes can still interoperate (they can omit `attest`).
 - v0.3 nodes can compute `result_sha256` portably and match the platform.
-

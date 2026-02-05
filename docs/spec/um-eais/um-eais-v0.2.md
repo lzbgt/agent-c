@@ -68,6 +68,10 @@ Independently of node-provided attestations, the platform computes:
 
 - `edge_tasks.result_sha256`: sha256 of the **platform-persisted** `result_json` bytes (best-effort deterministic within the platform build).
 
+Note (platform behavior as of v0.3+ bring-up):
+- If a node includes `body.result.attest`, the platform stores that blob separately and excludes `attest` from the
+  `result_sha256` hash surface to avoid self-referential hashing once nodes include `result_sha256` and `sig`.
+
 This enables:
 
 - replay checks (did the stored result change?)

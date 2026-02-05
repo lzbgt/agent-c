@@ -513,6 +513,12 @@ if(AGENT_BUILD_HOST)
 				    add_test(NAME agentd_edge_task_assign_schema_validation_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_task_assign_schema_validation_smoke.sh $<TARGET_FILE:agentd>)
 					    add_test(NAME agentd_edge_task_done_result_schema_validation_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_task_done_result_schema_validation_smoke.sh $<TARGET_FILE:agentd>)
 					    add_test(NAME agentd_edge_task_attest_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_task_attest_smoke.sh $<TARGET_FILE:agentd>)
+					    add_test(
+					      NAME agentd_edge_task_attest_sig_smoke
+					      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_task_attest_sig_smoke.sh
+					        $<TARGET_FILE:agentd>
+					        $<TARGET_FILE:agent_ed25519_tool>
+					    )
 					    add_test(NAME agentd_edge_rules_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_rules_smoke.sh $<TARGET_FILE:agentd>)
 					    add_test(NAME agentd_edge_rules_durable_workflow_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_rules_durable_workflow_smoke.sh $<TARGET_FILE:agentd>)
 					    add_test(NAME agentd_edge_workflow_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_workflow_smoke.sh $<TARGET_FILE:agentd>)

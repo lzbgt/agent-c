@@ -118,8 +118,14 @@ Reliability note (important):
   - if the prior message was already processed, the platform returns early (dedupe) and does not re-apply side effects.
   - if the daemon crashed after persisting the inbox row but before applying side effects, the platform may reprocess the message
     (at-least-once) to avoid permanent drops.
-  - replay safety depends on message type: node-initiated handoffs are designed to be idempotent (`workflow_id` / `idempotency_key`),
+- replay safety depends on message type: node-initiated handoffs are designed to be idempotent (`workflow_id` / `idempotency_key`),
     while event-style messages may produce duplicate logs if a crash occurred after side effects but before the processed marker was written.
+
+Attestation note (v0.2/v0.3 best-effort):
+- If a node includes `body.result.attest`, the platform persists that blob under `edge_tasks.attest_json` and **excludes**
+  `attest` from the `edge_tasks.result_sha256` hash surface to avoid self-referential hashing.
+- Best-effort: if `attest` includes `{kid,alg,sig,ts_utc_ms,result_sha256}`, the platform verifies the signature when possible and
+  emits evidence under task events (visible via `GET /api/v1/trace?trace_id=...`).
 
 ### Poll node outbox
 

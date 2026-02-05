@@ -36,6 +36,39 @@ static bool fixed_time_eq32(const uint8_t a[32], const uint8_t b[32]) {
   return diff == 0;
 }
 
+static std::string to_lower_copy(std::string s) {
+  std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+  return s;
+}
+
+static std::string umbmp_result_attest_input_v0_1(
+  const std::string& task_id,
+  const std::string& step_id,
+  const std::string& idempotency_key,
+  const std::string& result_sha256,
+  int64_t ts_utc_ms
+) {
+  // Versioned, token-safe signing string for MCU/node attestation over the portable result hash surface.
+  //
+  // This is intentionally line-based so constrained nodes can implement it with sprintf-like code.
+  //
+  // IMPORTANT: do not change this without bumping the version tag.
+  std::string out;
+  out.reserve(256);
+  out.append("UM_EAIS_RESULT_ATTEST_v0_1\n");
+  out.append(task_id);
+  out.push_back('\n');
+  out.append(step_id);
+  out.push_back('\n');
+  out.append(idempotency_key);
+  out.push_back('\n');
+  out.append(result_sha256);
+  out.push_back('\n');
+  out.append(std::to_string(ts_utc_ms));
+  out.push_back('\n');
+  return out;
+}
+
 static bool auth_input_bytes_for_alg(
   const Json::Value& env,
   const std::string& alg,
@@ -755,18 +788,37 @@ void handle_edge_message_endpoint(
     std::string platform_c14n_error;
     if (apply_update) {
       if (state == "SUCCEEDED" && !result_json.empty()) {
-        std::string hash_bytes = result_json;
         std::string stored_result_json = result_json;
+        // Default signing/hash surface is the stored result JSON bytes.
+        // We may override this below when the node supplies a separate `result.attest` blob.
+        std::string hash_bytes = stored_result_json;
         platform_hash_alg = "raw_result_json_bytes_v0";
+
+        // If the node included `result.attest`, persist it separately and exclude it from the stored result hash surface.
+        //
+        // Rationale:
+        // - `attest.result_sha256` is intended to describe the work product (body.result without attest),
+        //   not the attestation metadata itself.
+        // - Including `attest` makes `result_sha256` self-referential once nodes include `result_sha256` and `sig`.
+        if (event_data.isObject() && event_data.isMember("result") && event_data["result"].isObject()) {
+          const Json::Value result = event_data["result"];
+          if (result.isMember("attest") && result["attest"].isObject()) {
+            Json::Value result2 = result;
+            result2.removeMember("attest");
+            stored_result_json = edge_json_stringify_compact(result2);
+            hash_bytes = stored_result_json;
+          }
+        }
+
         // Best-effort: canonicalize to a portable form so heterogeneous nodes can match
         // `result_sha256` (attestation/quorum). If canonicalization fails, fall back to
         // hashing the platform-stored bytes.
-        if (result_json.size() <= 256 * 1024) {
+        if (hash_bytes.size() <= 256 * 1024) {
           char* c14n = nullptr;
           size_t c14n_len = 0;
           char errbuf[256] = {0};
           const agent_status_t st =
-            agent_json_c14n_canonicalize(result_json.data(), result_json.size(), &c14n, &c14n_len, errbuf, sizeof(errbuf));
+            agent_json_c14n_canonicalize(hash_bytes.data(), hash_bytes.size(), &c14n, &c14n_len, errbuf, sizeof(errbuf));
           if (st == AGENT_OK && c14n && c14n_len > 0) {
             hash_bytes.assign(c14n, c14n_len);
             stored_result_json.assign(c14n, c14n_len);
@@ -852,6 +904,118 @@ void handle_edge_message_endpoint(
     }
     if (!platform_hash_alg.empty()) d["_platform_result_sha256_alg"] = platform_hash_alg;
     if (!platform_c14n_error.empty()) d["_platform_result_c14n_error"] = platform_c14n_error;
+
+    // Best-effort: verify node-provided attestation signature when possible.
+    //
+    // v0.2/v0.3 treat attest as best-effort metadata; we do not gate success on signature verification.
+    // We only emit evidence to task events for debugging/correlation.
+    if (d.isObject() && d.isMember("result") && d["result"].isObject() && d["result"].isMember("attest") && d["result"]["attest"].isObject()) {
+      const Json::Value at = d["result"]["attest"];
+      const std::string kid = at.isMember("kid") && at["kid"].isString() ? trim_copy(at["kid"].asString()) : "";
+      const std::string alg = at.isMember("alg") && at["alg"].isString() ? trim_copy(at["alg"].asString()) : "";
+      const std::string sig_b64 = at.isMember("sig") && at["sig"].isString() ? trim_copy(at["sig"].asString()) : "";
+      const int64_t ats = at.isMember("ts_utc_ms") && at["ts_utc_ms"].isInt64() ? at["ts_utc_ms"].asInt64()
+        : (at.isMember("ts_utc_ms") && at["ts_utc_ms"].isUInt64() ? (int64_t)at["ts_utc_ms"].asUInt64() : 0);
+      const std::string rsha = at.isMember("result_sha256") && at["result_sha256"].isString() ? trim_copy(at["result_sha256"].asString()) : "";
+
+      const bool can_try =
+        !kid.empty() && !alg.empty() && !sig_b64.empty() && ats > 0 &&
+        !task_id.empty() && !step_id.empty() && !got_idem.empty() &&
+        !rsha.empty() && edge_sha256_token_is_safe(rsha) &&
+        kid.size() <= 64 && edge_id_is_safe(kid);
+
+      if (can_try) {
+        d["_attest_sig_checked"] = true;
+        d["_attest_sig_kid"] = kid;
+        d["_attest_sig_alg"] = alg;
+
+        // Optional per-node key selection policy (same semantics as envelope auth).
+        if (from_id.rfind("node:", 0) == 0 && from_id.size() > 5) {
+          const std::string node_id_from = trim_copy(from_id.substr(5));
+          if (!node_id_from.empty() && edge_id_is_safe(node_id_from)) {
+            const std::string pol = cfg.edge_auth_kid_policy.empty() ? "any" : cfg.edge_auth_kid_policy;
+            if (pol == "match_node") {
+              if (kid != node_id_from) {
+                d["_attest_sig_ok"] = false;
+                d["_attest_sig_error"] = "kid_policy_violation";
+              }
+            } else if (pol == "node_prefix") {
+              const std::string pref = node_id_from + ":";
+              const bool ok = (kid == node_id_from) || (kid.size() > pref.size() && kid.rfind(pref, 0) == 0);
+              if (!ok) {
+                d["_attest_sig_ok"] = false;
+                d["_attest_sig_error"] = "kid_policy_violation";
+              }
+            }
+          }
+        }
+
+        if (!d.isMember("_attest_sig_ok")) {
+          const std::string alg_l = to_lower_copy(alg);
+          const std::string input = umbmp_result_attest_input_v0_1(task_id, step_id, got_idem, rsha, ats);
+
+          if (alg_l == "ed25519") {
+            const auto it = cfg.edge_auth_ed25519_pubkeys.find(kid);
+            if (it == cfg.edge_auth_ed25519_pubkeys.end() || it->second.empty()) {
+              d["_attest_sig_ok"] = false;
+              d["_attest_sig_error"] = "unknown_kid";
+            } else {
+              std::string pk_bytes;
+              std::string perr;
+              if (!base64_decode(it->second, &pk_bytes, &perr) || pk_bytes.size() != 32) {
+                d["_attest_sig_ok"] = false;
+                d["_attest_sig_error"] = "invalid_config_pubkey";
+              } else {
+                std::string sig_bytes;
+                std::string serr;
+                if (!base64_decode(sig_b64, &sig_bytes, &serr) || sig_bytes.size() != 64) {
+                  d["_attest_sig_ok"] = false;
+                  d["_attest_sig_error"] = "invalid_sig_b64";
+                } else if (agent_ed25519_verify(input.data(), input.size(),
+                           (const uint8_t*)pk_bytes.data(), (const uint8_t*)sig_bytes.data())) {
+                  d["_attest_sig_ok"] = true;
+                } else {
+                  d["_attest_sig_ok"] = false;
+                  d["_attest_sig_error"] = "verify_failed";
+                }
+              }
+            }
+          } else if (alg_l == "hmac-sha256") {
+            const auto it = cfg.edge_auth_hmac_keys.find(kid);
+            if (it == cfg.edge_auth_hmac_keys.end() || it->second.empty()) {
+              d["_attest_sig_ok"] = false;
+              d["_attest_sig_error"] = "unknown_kid";
+            } else {
+              std::string sig_bytes;
+              std::string serr;
+              if (!base64_decode(sig_b64, &sig_bytes, &serr) || sig_bytes.size() != 32) {
+                d["_attest_sig_ok"] = false;
+                d["_attest_sig_error"] = "invalid_sig_b64";
+              } else {
+                uint8_t mac[32];
+                agent_hmac_sha256(
+                  it->second.data(),
+                  it->second.size(),
+                  input.data(),
+                  input.size(),
+                  mac
+                );
+                if (fixed_time_eq32(mac, (const uint8_t*)sig_bytes.data())) {
+                  d["_attest_sig_ok"] = true;
+                } else {
+                  d["_attest_sig_ok"] = false;
+                  d["_attest_sig_error"] = "verify_failed";
+                }
+              }
+            }
+          } else {
+            d["_attest_sig_ok"] = false;
+            d["_attest_sig_error"] = "unsupported_alg";
+          }
+        }
+      }
+    }
+
     ev.data_json = edge_json_stringify_compact(d);
     (void)db_or_null->insert_edge_task_event(ev, nullptr, nullptr);
 

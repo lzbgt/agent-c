@@ -371,6 +371,9 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
    - Shipped (v0.4 partial): authoritative canonicalization/signature test vectors for MCU bring-up:
      - Fixture: `docs/spec/um-eais/fixtures/umbmp_envelope_auth_vectors_v0.4.json`
      - Proof: `ctest` includes `umbmp_auth_vectors_tests`
+   - Shipped (v0.4 partial): best-effort verification of `TASK_DONE.result.attest.sig` (Ed25519/HMAC) when key material is provisioned:
+     - Verifies a small versioned signing string `UM_EAIS_RESULT_ATTEST_v0_1` over `{task_id,step_id,idempotency_key,result_sha256,ts_utc_ms}`.
+     - Evidence is emitted under edge task events (trace-queryable).
    - Next: complete trust roots + identity binding:
      - per-node key provisioning workflow (bootstrap + rotation)
      - replay window guidance + nonce/ts enforcement for lossy bridges (configurable; deterministic)
