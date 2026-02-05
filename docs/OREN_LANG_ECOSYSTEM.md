@@ -1,6 +1,6 @@
 # Oren-Lang Ecosystem Leverage (Agent Framework Integration Map)
 
-Date: 2026-02-04
+Date: 2026-02-05
 
 This document answers: “Is there **multiply-style** ecosystem gain from bringing up `oren-lang` alongside this repo?”
 and “How to **maximize leverage** if `oren-lang` is not prioritized near-term?”
@@ -15,7 +15,7 @@ and “How to **maximize leverage** if `oren-lang` is not prioritized near-term?
    - record/replay and budgets
    - result/state/trace hashing for k-of-n validation
 
-   Primary docs in that repo (as of 2026-02-04 inspection):
+   Primary docs in that repo (as of 2026-02-05 inspection):
    - `docs/AGENTIC_REQUIREMENTS.md`
    - `docs/AVM_SPEC.md`, `docs/AVM_SPEC_V1.md`
    - `docs/AVM_SWARM_CONSENSUS.md`, `docs/AVM_MULTIVERSE.md`
@@ -159,3 +159,18 @@ If you want to maximize leverage *now* with minimal time:
    - job scanning (`--print-job-json`) for caching and governance
 
 The draft for this boundary is `docs/spec/agent_vm_port_v0.md`.
+
+## 5) Fast bring-up path (today; minimal effort)
+
+If you want immediate leverage without “bringing up the whole language project”:
+
+1) Build/locate AVM (prints absolute path):
+   - `tools/oren_avm_bringup.sh --verify`
+2) Point `agentd` at the AVM binary:
+   - `export AGENTD_AVM_BIN="$(tools/oren_avm_bringup.sh)"`
+3) Use **non-exec** governance endpoints (scan/inspect/verify/trace hash) as cheap correctness gates:
+   - `POST /api/v1/avm/job_scan`, `.../policy_scan`, `.../inspect`, `.../verify_strict`, `.../trace_hash`
+4) When you explicitly want execution, gate it (operator choice):
+   - set `AGENTD_AVM_EXEC=1` and use `POST /api/v1/avm/capsule_run` or workflow `kind:"avm_capsule"`
+5) Compile a `.oren` source → `.obc` and emit a ready workflow task JSON:
+   - `tools/oren_capsule_task.sh --src /abs/path/to/prog.oren --task-id AVM`
