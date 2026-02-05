@@ -103,6 +103,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - JSON Pointer helper promoted to `daemon/src/json_util.*` (`json_pointer_get`).
   - Workflow template expander extracted into `daemon/src/workflow_templates.*` (keeps `workflow_engine.cpp` under ~2000 lines).
   - Workflow aggregation/join logic extracted into `daemon/src/workflow_aggregate.*` (keeps `workflow_engine.cpp` lean and SOLID).
+  - Workflow engine common helpers + fair-queue picker extracted into:
+    - `daemon/src/workflow_engine_common.*`
+    - `daemon/src/workflow_engine_pick.cpp`
+    (keeps `daemon/src/workflow_engine.cpp` under 2000 LOC even as scheduling evolves).
 - Workflow endpoints maintainability refactor:
   - Split endpoint implementations into smaller translation units:
     - `daemon/src/workflow_query_endpoints.cpp` (GET `/api/v1/workflow`, GET `/api/v1/workflows`)

@@ -176,7 +176,9 @@ if(AGENT_BUILD_HOST)
     daemon/src/openrouter_util.cpp
     daemon/src/string_util.cpp
     daemon/src/workflow_aggregate.cpp
+    daemon/src/workflow_engine_common.cpp
     daemon/src/workflow_engine.cpp
+    daemon/src/workflow_engine_pick.cpp
     daemon/src/workflow_http_json.cpp
     daemon/src/workflow_agentd_call.cpp
     daemon/src/workflow_memory_correlate.cpp
