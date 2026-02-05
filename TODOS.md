@@ -21,6 +21,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Proof: `ctest` includes `agent_core_tests`.
 - “Docs as truth” guardrails (DB schema doc + OpenAPI sanity checks).
   - Proof: `ctest` includes `docs_sanity_tests` + `openapi_sanity_tests`.
+- UM‑EAIS contract is now executable (best-effort) via machine-readable artifacts:
+  - JSON Schemas: `docs/spec/um-eais/schema/`
+  - Golden transcript fixtures: `docs/spec/um-eais/fixtures/`
+  - Proof: `ctest` includes `um_eais_spec_sanity_tests` and `agentd_edge_interop_transcript_replay_smoke`.
 - `trace_id` correlation end-to-end, plus a merged trace timeline across broker ⇄ agentd.
   - Proof: `ctest` includes `agentd_trace_id_smoke`.
 - Oren AVM governance endpoints (scan-before-execute; out-of-process).

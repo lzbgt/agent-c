@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UM-BMP Message Envelope (Draft v0.1)",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["msg_id", "ts_utc_ms", "type", "from", "to", "body"],
+  "properties": {
+    "msg_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Message id (uuid-ish). Used for ingress dedupe at gateways/platform."
+    },
+    "ts_utc_ms": {
+      "type": "integer",
+      "description": "Unix milliseconds timestamp (UTC)."
+    },
+    "type": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_.:-]+$",
+      "description": "Message type (id-safe token)."
+    },
+    "from": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "description": "Sender id (recommended: node:<node_id> or platform)."
+    },
+    "to": {
+      "oneOf": [
+        { "type": "string", "minLength": 1, "maxLength": 256 },
+        { "type": "null" }
+      ],
+      "description": "Recipient id (recommended: platform or node:<node_id>)."
+    },
+    "body": {
+      "type": "object",
+      "description": "Message payload (type-specific)."
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Auth placeholder (v0.1 does not define a complete PKI story)."
+    },
+    "trace": {
+      "type": "object",
+      "additionalProperties": true,
+      "description": "Optional correlation ids (v0.1 minimal)."
+    }
+  }
+}
+

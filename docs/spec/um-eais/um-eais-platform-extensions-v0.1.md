@@ -21,6 +21,10 @@ Platform correctness requirement (capability caching):
 These extensions are transport-agnostic at the payload level, and have a concrete HTTP mapping via:
 - `POST /api/v1/edge/message`
 
+Machine-readable contract (this repo):
+- JSON Schema (best-effort, v0.1): `docs/spec/um-eais/schema/um-eais-platform-extensions-v0.1.schema.json`
+- Golden transcript fixture(s): `docs/spec/um-eais/fixtures/`
+
 ## 1) WORKFLOW_SUBMIT (node → platform)
 
 Envelope:

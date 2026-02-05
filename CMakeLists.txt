@@ -261,6 +261,17 @@ if(AGENT_BUILD_HOST)
       ${CMAKE_CURRENT_SOURCE_DIR}/docs/openapi/broker.yaml
   )
 
+  add_executable(um_eais_spec_sanity_tests
+    tests/test_um_eais_spec_sanity.cpp
+  )
+  target_link_libraries(um_eais_spec_sanity_tests PRIVATE ${JSONCPP_LIBRARIES})
+  target_include_directories(um_eais_spec_sanity_tests PRIVATE ${JSONCPP_INCLUDE_DIRS})
+  target_link_directories(um_eais_spec_sanity_tests PRIVATE ${JSONCPP_LIBRARY_DIRS})
+  add_test(
+    NAME um_eais_spec_sanity_tests
+    COMMAND um_eais_spec_sanity_tests ${CMAKE_CURRENT_SOURCE_DIR}/docs/spec/um-eais
+  )
+
   add_test(NAME agent_openrouter_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/openrouter_smoke.sh $<TARGET_FILE:agent>)
   set_tests_properties(agent_openrouter_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
@@ -371,6 +382,7 @@ if(AGENT_BUILD_HOST)
 				    add_test(NAME agentd_edge_workflow_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_workflow_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_edge_workflow_submit_message_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_workflow_submit_message_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_edge_workflow_cancel_message_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_workflow_cancel_message_smoke.sh $<TARGET_FILE:agentd>)
+			    add_test(NAME agentd_edge_interop_transcript_replay_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_interop_transcript_replay_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(
 			      NAME agentd_edge_durable_workflow_submit_message_smoke
 			      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_durable_workflow_submit_message_smoke.sh

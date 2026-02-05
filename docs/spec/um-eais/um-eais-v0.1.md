@@ -6,6 +6,10 @@ Source note:
 - This spec was originally drafted in the node/firmware workspace (`../urine_monitor`) and synced here for the platform/broker implementation.
 - Canonical reference revision: `urine_monitor` commit `278ad9e59a39061f550fe8c30768db275e454379`.
 
+Machine-readable contract (this repo):
+- JSON Schema (best-effort, v0.1): `docs/spec/um-eais/schema/`
+- Golden transcript fixtures (replay-ready JSONL): `docs/spec/um-eais/fixtures/`
+
 Purpose:
 - Standardize the interface between:
   - **MCU firmware** (sensors/actuators + RTOS tasks),
