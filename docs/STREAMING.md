@@ -26,7 +26,18 @@ and the shared implementation used by:
 
 - Full coverage for every streaming variant across providers (there are many).
 - Streaming for the **core** layer (core remains JSON/HTTP-free).
-- Token-accurate streaming budgets (streaming is transport-layer; budgeting remains char-based in host/core).
+- Token-accurate streaming budgets for *all* providers (provider support varies; see Usage accounting below).
+
+## Usage accounting (best-effort)
+
+For OpenAI-compatible Chat Completions streaming, this repo attempts to preserve token accounting so workflow-level
+`max_total_tokens` budgets remain enforceable even when `stream_assistant:true` is used.
+
+- When streaming is enabled, the tool provider requests `stream_options.include_usage=true`.
+- If a provider rejects `stream_options` (commonly as an HTTP 400 "unknown/unrecognized field"), the client retries once
+  without `stream_options` to preserve streaming functionality (but token usage will not be available).
+- When a streamed chunk includes a top-level `usage` object, the tool provider emits a `llm_usage` event, allowing the daemon
+  to aggregate tokens across tool-loop steps and charge durable workflow budgets.
 
 ## Interfaces
 

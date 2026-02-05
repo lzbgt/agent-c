@@ -276,7 +276,12 @@ Priority order (reweighted after `delegate_parallel` quorum_ok + attempt_default
 	       - Proof: `ctest` includes `agentd_workflow_budget_tokens_smoke`.
 	     - Limitations:
 	       - only enforced when providers return `usage` in responses
-	       - streaming tool-loop calls may not surface usage (depends on provider streaming schema)
+	       - streaming tool-loop calls require provider support for `stream_options.include_usage`; otherwise usage may be missing
+	   - Shipped (v0.6 partial): streaming token usage accounting (best-effort; OpenAI-compatible Chat Completions):
+	     - When `stream_assistant:true` is used, the tool provider requests `stream_options.include_usage=true` and emits `llm_usage` events
+	       when the final chunk includes usage.
+	     - Compatibility fallback: if a provider rejects `stream_options`, the client retries once without it (streaming still works, but usage may be missing).
+	     - Proof: `ctest` includes `agentd_workflow_budget_tokens_stream_smoke`.
 	   - Next: host-tool budgets, enforce token budgets for streaming paths, and surface budget pressure in `/api/v1/workflow/stats`.
 	   - Shipped (v0.5 partial): deterministic host-tool tasks now charge and obey workflow budgets:
 	     - `kind:"memory_put"` and `kind:"memory_consolidate"` count as `tool_calls_total=1` and `steps_executed=1` per attempt.

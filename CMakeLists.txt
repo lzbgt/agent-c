@@ -378,17 +378,23 @@ if(AGENT_BUILD_HOST)
 				        $<TARGET_FILE:agentd>
 				        $<TARGET_FILE:agentd_tool_plugin_echo>
 				    )
-				    add_test(
-				      NAME agentd_workflow_budget_tokens_smoke
-				      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_budget_tokens_smoke.sh
-				        $<TARGET_FILE:agentd>
-				        $<TARGET_FILE:agentd_tool_plugin_echo>
-				    )
-				    add_test(
-				      NAME agentd_workflow_budget_retry_charges_smoke
-				      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_budget_retry_charges_smoke.sh
-				        $<TARGET_FILE:agentd>
-				        $<TARGET_FILE:agentd_tool_plugin_echo>
+					    add_test(
+					      NAME agentd_workflow_budget_tokens_smoke
+					      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_budget_tokens_smoke.sh
+					        $<TARGET_FILE:agentd>
+					        $<TARGET_FILE:agentd_tool_plugin_echo>
+					    )
+					    add_test(
+					      NAME agentd_workflow_budget_tokens_stream_smoke
+					      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_budget_tokens_stream_smoke.sh
+					        $<TARGET_FILE:agentd>
+					        $<TARGET_FILE:agentd_tool_plugin_echo>
+					    )
+					    add_test(
+					      NAME agentd_workflow_budget_retry_charges_smoke
+					      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_budget_retry_charges_smoke.sh
+					        $<TARGET_FILE:agentd>
+					        $<TARGET_FILE:agentd_tool_plugin_echo>
 				    )
 					    add_test(
 					      NAME agentd_workflow_budget_bulk_cancel_smoke

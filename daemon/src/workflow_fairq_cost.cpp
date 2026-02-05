@@ -89,8 +89,13 @@ int64_t workflow_fairq_estimate_task_cost_simple_v1(
     }
   }
 
+  // Streaming assistant mode tends to keep workers busy longer (SSE decoding + tool-loop event emission),
+  // so charge a small bump to reduce tail latency under mixed workloads.
+  if (rr.isMember("stream_assistant") && rr["stream_assistant"].isBool() && rr["stream_assistant"].asBool()) {
+    cost += 1;
+  }
+
   return clamp_i64(cost, 1, max_cost);
 }
 
 }  // namespace agentd
-

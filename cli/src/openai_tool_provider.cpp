@@ -405,6 +405,15 @@ static agent_status_t openai_tool_provider_generate(
     // Use non-streaming calls for correctness.
   }
   root["stream"] = use_stream_assistant;
+  const bool want_stream_usage = use_stream_assistant;
+  if (want_stream_usage) {
+    // Best-effort token accounting for streaming calls:
+    // - OpenAI-compatible APIs can include `usage` in the final stream chunk when requested.
+    // - Some providers may reject unknown keys; we handle that by retrying once without stream_options.
+    Json::Value so(Json::objectValue);
+    so["include_usage"] = true;
+    root["stream_options"] = so;
+  }
   const bool allow_image_parts = !provider_rejects_image_parts(ctx->cfg.base_url, root["model"].asString());
   root["messages"] = build_messages_json(ctx, req->messages, req->message_count, include_reasoning, allow_image_parts);
   root["tools"] = tools;
@@ -453,15 +462,32 @@ static agent_status_t openai_tool_provider_generate(
       std::string pending_delta;
       OpenAIToolCallStreamAccumulator tool_calls;
       std::string finish_reason;
+      Json::Value usage;
     } acc;
 
     acc.ctx = ctx;
     acc.step = req->step;
     acc.epoch = req->epoch;
+    acc.usage = Json::Value(Json::nullValue);
 
     auto on_chunk = [](void* vctx, const char* chunk_json, size_t chunk_len) {
       auto* a = static_cast<StreamAccum*>(vctx);
       if (!a || !a->ctx || !chunk_json || chunk_len == 0) return;
+
+      // Usage may be present in the final chunk when `stream_options.include_usage=true`.
+      // Capture it even though the delta decoder ignores it.
+      {
+        Json::CharReaderBuilder rb;
+        std::string errs;
+        std::istringstream iss(std::string(chunk_json, chunk_len));
+        Json::Value root;
+        if (Json::parseFromStream(rb, iss, &root, &errs) && root.isObject()) {
+          Json::Value usage(Json::nullValue);
+          if (try_extract_usage_tokens(root, &usage) && usage.isObject()) {
+            a->usage = usage;
+          }
+        }
+      }
 
       OpenAIStreamChunk chunk;
       if (!openai_stream_parse_chunk_json(chunk_json, chunk_len, &chunk)) {
@@ -486,6 +512,36 @@ static agent_status_t openai_tool_provider_generate(
 
     const auto stream_fn = ctx->chat_stream_fn ? ctx->chat_stream_fn : openai_chat_completions_raw_stream;
     OpenAIStreamResult sr = stream_fn(ctx->cfg, request_json, on_chunk, &acc, ctx->max_capture_bytes);
+    if (want_stream_usage && (sr.http_status < 200 || sr.http_status >= 300) &&
+        acc.assistant.empty()) {
+      // Best-effort compatibility: some OpenAI-compatible providers reject stream_options.
+      // If we didn't decode any deltas/tool_calls, retry once without stream_options.
+      bool decoded_any = false;
+      for (const auto& c : acc.tool_calls.calls()) {
+        if (!c.name.empty()) {
+          decoded_any = true;
+          break;
+        }
+      }
+      if (!decoded_any) {
+        const std::string msg =
+          (!sr.error_message.empty() ? sr.error_message : openai_format_http_error(sr.http_status, sr.response_body));
+        const std::string m = lower_copy(msg);
+        if (m.find("stream_options") != std::string::npos || m.find("include_usage") != std::string::npos ||
+            m.find("unknown field") != std::string::npos || m.find("unrecognized field") != std::string::npos) {
+          Json::Value root2 = root;
+          root2.removeMember("stream_options");
+          const std::string req2 = json_stringify(root2);
+          ctx->last_request_json = req2;
+          acc.usage = Json::Value(Json::nullValue);
+          acc.assistant.clear();
+          acc.pending_delta.clear();
+          acc.tool_calls.reset();
+          acc.finish_reason.clear();
+          sr = stream_fn(ctx->cfg, req2, on_chunk, &acc, ctx->max_capture_bytes);
+        }
+      }
+    }
     ctx->last_http_status = sr.http_status;
     ctx->last_response_body = sr.response_body;
 
@@ -546,6 +602,14 @@ static agent_status_t openai_tool_provider_generate(
         const std::string id = c.id.empty() ? (std::string("call_") + std::to_string(req->step) + "_" + std::to_string(i)) : c.id;
         calls.push_back(ParsedToolCall{id, c.name, c.arguments.empty() ? "{}" : c.arguments});
       }
+    }
+
+    if (parsed_is_stream && acc.usage.isObject()) {
+      Json::Value d(Json::objectValue);
+      d["step"] = (Json::UInt64)req->step;
+      d["epoch"] = (Json::UInt64)req->epoch;
+      d["usage"] = acc.usage;
+      provider_emit_event(ctx, "llm_usage", d);
     }
   } else {
     const auto raw_fn = ctx->chat_raw_fn ? ctx->chat_raw_fn : openai_chat_completions_raw;
