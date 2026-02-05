@@ -3,6 +3,7 @@
 #include "avm_endpoints.h"
 #include "edge_util.h"
 #include "json_util.h"
+#include "memory_consolidator.h"
 #include "run_endpoints.h"
 #include "string_util.h"
 #include "toolset_host.h"
@@ -1130,6 +1131,55 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
               }
             }
           }
+        }
+      }
+    }
+  } else if (kind == "memory_consolidate") {
+    out = Json::Value(Json::objectValue);
+    out["kind"] = "memory_consolidate";
+    out["ok"] = false;
+    out["assistant_text"] = "";
+
+    if (workflow_run_should_cancel(&cancel_ctx)) {
+      out["cancelled"] = true;
+      out["error"] = cancel_ctx.reason == WorkflowCancelReason::DeadlineExceeded ? "deadline exceeded" : "cancelled";
+    } else if (lower_copy(trim_copy(cfg.tools)) != "host") {
+      out["error"] = "memory_consolidate requires --tools host";
+    } else if (cfg.host_policy != HostToolsetPolicyMode::Full) {
+      out["error"] = "memory_consolidate requires host_policy=full";
+    } else {
+      const Json::Value mc =
+        rr.isMember("memory_consolidate") && rr["memory_consolidate"].isObject() ? rr["memory_consolidate"] : Json::Value(Json::objectValue);
+
+      MemoryConsolidateOptions opt;
+      opt.daily_days = cfg.memory_consolidate_daily_days;
+      opt.keep_checkpoints = cfg.memory_consolidate_keep_checkpoints;
+
+      if (mc.isMember("daily_days") && mc["daily_days"].isInt()) {
+        opt.daily_days = std::max(0, mc["daily_days"].asInt());
+      }
+      if (mc.isMember("keep_checkpoints") && mc["keep_checkpoints"].isInt()) {
+        opt.keep_checkpoints = std::max(1, mc["keep_checkpoints"].asInt());
+      }
+      if (mc.isMember("max_entries") && mc["max_entries"].isInt()) {
+        opt.max_entries = std::max(1, mc["max_entries"].asInt());
+      }
+      if (mc.isMember("dry_run") && mc["dry_run"].isBool()) {
+        opt.dry_run = mc["dry_run"].asBool();
+      }
+
+      Json::Value report;
+      std::string merr;
+      if (!memory_consolidate_once(cfg, opt, &report, &merr)) {
+        out["ok"] = false;
+        out["error"] = merr.empty() ? "memory consolidation failed" : merr;
+      } else {
+        out["ok"] = true;
+        out["report"] = report;
+        if (report.isObject() && report.isMember("output") && report["output"].isString()) {
+          out["assistant_text"] = report["output"].asString();
+        } else {
+          out["assistant_text"] = "memory_consolidate: ok";
         }
       }
     }

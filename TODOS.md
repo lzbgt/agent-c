@@ -91,6 +91,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Proof: `ctest` includes `test_host_toolset` (memory tools) plus existing daemon smokes that exercise host tools.
 - Memory v2.1 (rolling consolidation, deterministic): `agentd` can promote explicit `@mem ...` markers from daily memory into structured memory via `POST /api/v1/memory/consolidate`, and can run it periodically with `--memory-consolidate-interval-ms`.
   - Proof: `ctest` includes `agentd_memory_consolidate_smoke` (idempotent; no checkpoint churn on second run).
+- Durable workflows can now trigger deterministic rolling consolidation as a task:
+  - Task kind: `kind: "memory_consolidate"` (scans `memory/YYYY-MM-DD.md` markers into `memory/STRUCTURED.md`)
+  - Proof: `ctest` includes `agentd_workflow_memory_consolidate_smoke`.
 - Memory v2.2 (versioned facts + evidence): structured memory entries now keep bounded `sources[]` (evidence) and `versions[]` (superseded history) under schema `agent_memory_v2`.
   - Proof: `ctest` includes `host_toolset_tests` assertions that validate schema upgrade + history retention.
 - Durable workflows now support deterministic memory updates (correctness-gated + correlated):
@@ -172,8 +175,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
    - Remaining: per-attempt budgets + richer deterministic join strategies (`strict_all_ok`, `quorum_ok`, etc).
 
 5) **Memory ↔ workflow time correlation (next after memory_put)** (time-advancing correctness)
-   - Status: deterministic workflow `kind:"memory_put"` shipped (writes structured memory only when upstream tasks succeeded).
-   - Remaining: workflow-triggered rolling consolidation primitives (e.g. deterministic promote markers / snapshots), plus evidence hashing for replay.
+   - Status: deterministic workflow `kind:"memory_put"` shipped, plus deterministic workflow `kind:"memory_consolidate"` shipped.
+   - Remaining: evidence hashing for replay (memory snapshot hashes attached to workflow events), plus bounded correlation queries (time windows + trace_id joins).
 
 ### 1) AVM capsule execution v0 (next: integrate + attest)
 

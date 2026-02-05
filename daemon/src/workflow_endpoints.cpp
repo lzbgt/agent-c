@@ -764,7 +764,9 @@ void handle_workflow_submit_endpoint(
     const bool is_delay = (kind == "delay");
     const bool is_delegate = (kind == "delegate");
     const bool is_memory_put = (kind == "memory_put");
-    const bool is_special = is_avm || is_aggregate || is_edge || is_delay || is_delegate || is_memory_put;
+    const bool is_memory_consolidate = (kind == "memory_consolidate");
+    const bool is_special =
+      is_avm || is_aggregate || is_edge || is_delay || is_delegate || is_memory_put || is_memory_consolidate;
 
     Json::Value run_req = t.isMember("request") && t["request"].isObject() ? t["request"] : t;
     if (!is_special && defaults.isObject()) {
@@ -1072,6 +1074,75 @@ void handle_workflow_submit_endpoint(
 
       task_req["kind"] = "memory_put";
       task_req["memory_put"] = mp2;
+      task_req["priority"] = task_priority;
+      task_req["trace_id"] = trace_id + ":" + task_id;
+    } else if (is_memory_consolidate) {
+      const Json::Value mc =
+        t.isMember("memory_consolidate") && t["memory_consolidate"].isObject() ? t["memory_consolidate"] : Json::Value(Json::nullValue);
+      if (!mc.isNull() && !mc.isObject()) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "memory_consolidate must be an object";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+        return;
+      }
+
+      Json::Value mc2(Json::objectValue);
+      if (mc.isObject()) {
+        if (mc.isMember("daily_days")) {
+          if (!mc["daily_days"].isInt()) {
+            resp->status = 400;
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "memory_consolidate.daily_days must be an int";
+            o["task_id"] = task_id;
+            resp->body = json_stringify_compact(o);
+            return;
+          }
+          mc2["daily_days"] = std::max(0, mc["daily_days"].asInt());
+        }
+        if (mc.isMember("keep_checkpoints")) {
+          if (!mc["keep_checkpoints"].isInt()) {
+            resp->status = 400;
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "memory_consolidate.keep_checkpoints must be an int";
+            o["task_id"] = task_id;
+            resp->body = json_stringify_compact(o);
+            return;
+          }
+          mc2["keep_checkpoints"] = std::max(1, mc["keep_checkpoints"].asInt());
+        }
+        if (mc.isMember("max_entries")) {
+          if (!mc["max_entries"].isInt()) {
+            resp->status = 400;
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "memory_consolidate.max_entries must be an int";
+            o["task_id"] = task_id;
+            resp->body = json_stringify_compact(o);
+            return;
+          }
+          mc2["max_entries"] = std::max(1, mc["max_entries"].asInt());
+        }
+        if (mc.isMember("dry_run")) {
+          if (!mc["dry_run"].isBool()) {
+            resp->status = 400;
+            Json::Value o(Json::objectValue);
+            o["ok"] = false;
+            o["error"] = "memory_consolidate.dry_run must be a bool";
+            o["task_id"] = task_id;
+            resp->body = json_stringify_compact(o);
+            return;
+          }
+          mc2["dry_run"] = mc["dry_run"];
+        }
+      }
+
+      task_req["kind"] = "memory_consolidate";
+      task_req["memory_consolidate"] = mc2;
       task_req["priority"] = task_priority;
       task_req["trace_id"] = trace_id + ":" + task_id;
     } else if (is_delegate) {

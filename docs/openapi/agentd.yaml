@@ -1247,6 +1247,7 @@ components:
         - Deterministic capsule tasks: `kind: avm_capsule` with `capsule` (see `AvmCapsuleRunArgs`)
         - Deterministic aggregation tasks: `kind: aggregate` with `aggregate` (see `WorkflowAggregateSpec`)
         - Deterministic memory update tasks: `kind: memory_put` with `memory_put` (see `WorkflowMemoryPutSpec`)
+        - Deterministic memory consolidation tasks: `kind: memory_consolidate` with `memory_consolidate` (see `WorkflowMemoryConsolidateSpec`)
         - Deterministic delay tasks: `kind: delay` with `delay_ms` (no LLM required)
         - Edge collaboration tasks: `kind: edge_invoke` with `edge` (see `WorkflowEdgeInvokeSpec`)
         - Sequential fallback collaboration: `kind: delegate` with `delegate` (see `WorkflowDelegateSpec`)
@@ -1256,6 +1257,7 @@ components:
         - If `kind == avm_capsule`, `capsule.obc_base64` is required and `request.prompt` is not used.
         - If `kind == aggregate`, `aggregate.task_ids` is required and `request.prompt` is not used.
         - If `kind == memory_put`, `memory_put.entries` is required and `request.prompt` is not used.
+        - If `kind == memory_consolidate`, `memory_consolidate` is optional and `request.prompt` is not used.
         - If `kind == delay`, `delay_ms` is optional (default 0) and `request.prompt` is not used.
         - If `kind == edge_invoke`, `edge.tool`/`edge.args` are required and `request.prompt` is not used.
         - If `kind == delegate`, `delegate.attempts` is required and `request.prompt` is not used.
@@ -1266,6 +1268,7 @@ components:
         - $ref: "#/components/schemas/WorkflowTaskAvmCapsuleSpec"
         - $ref: "#/components/schemas/WorkflowTaskAggregateSpec"
         - $ref: "#/components/schemas/WorkflowTaskMemoryPutSpec"
+        - $ref: "#/components/schemas/WorkflowTaskMemoryConsolidateSpec"
         - $ref: "#/components/schemas/WorkflowTaskDelaySpec"
         - $ref: "#/components/schemas/WorkflowTaskEdgeInvokeSpec"
         - $ref: "#/components/schemas/WorkflowTaskDelegateSpec"
@@ -1390,6 +1393,37 @@ components:
           description: Deterministic correctness assertions (engine-enforced)
           additionalProperties: true
 
+    WorkflowTaskMemoryConsolidateSpec:
+      type: object
+      required: [task_id, kind]
+      properties:
+        task_id: { type: string }
+        allow_error:
+          type: boolean
+          description: If true, task failure does not fail the workflow (soft-fail).
+        inputs:
+          type: object
+          description: Optional per-task inputs (overrides workflow-level inputs).
+          additionalProperties: true
+        kind:
+          type: string
+          enum: [memory_consolidate]
+          description: Deterministic memory consolidation task (no LLM required; scans @mem markers into structured memory).
+        depends_on:
+          type: array
+          items: { type: string }
+        max_attempts: { type: integer, format: int32 }
+        priority:
+          type: integer
+          format: int32
+          description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+        memory_consolidate:
+          $ref: "#/components/schemas/WorkflowMemoryConsolidateSpec"
+        expect:
+          type: object
+          description: Deterministic correctness assertions (engine-enforced)
+          additionalProperties: true
+
     WorkflowTaskDelaySpec:
       type: object
       required: [task_id, kind]
@@ -1464,6 +1498,30 @@ components:
               source:
                 type: string
                 description: Evidence string. If omitted, the server injects workflow correlation (workflow/task/trace).
+
+    WorkflowMemoryConsolidateSpec:
+      type: object
+      description: |
+        Deterministic memory consolidation options.
+
+        Scans recent daily memory files for explicit `@mem` markers, then promotes them into structured memory
+        (`memory/STRUCTURED.md`) via host tool `memory_put(entries=[...])`.
+      properties:
+        daily_days:
+          type: integer
+          format: int32
+          description: Number of daily memory files (days) to scan (default from daemon config; clamped >=0).
+        keep_checkpoints:
+          type: integer
+          format: int32
+          description: Checkpoint pruning limit when writing structured memory (default from daemon config; clamped >=1).
+        max_entries:
+          type: integer
+          format: int32
+          description: Maximum distinct keys to promote (default 256; clamped >=1).
+        dry_run:
+          type: boolean
+          description: When true, scan and report but do not write structured memory (default false).
 
     WorkflowAggregateSpec:
       type: object
