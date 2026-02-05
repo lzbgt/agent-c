@@ -89,6 +89,7 @@ Node (`agent_core`):
   - `NODE_HEARTBEAT` body encoder (optionally includes `health`)
   - `SENSOR_EVENT` body encoder (requires caller-supplied deterministic `data` encoder)
 - Shipped (partial): UM‑BMP envelope CBOR encode helper under `agent/umbmp_auth.h` (`agent_umbmp_envelope_cbor_v0_4`) for sending signed (or unsigned) envelopes over CBOR wire.
+- Not shipped (yet): a deterministic CBOR encoder for `NODE_CAPS_RSP.body.manifest` (UM‑ACDS manifest can be large and schema-driven).
 - Not shipped (yet): full JSON<->CBOR mapping helpers for MCU firmware.
 - Recommendation: keep using a full CBOR library (e.g. TinyCBOR-derived) if you already have one, but use the deterministic profile
   defined in this repo for signed envelopes; `agent/cbor_det.h` can be used as a minimal fallback for signing inputs.
