@@ -380,8 +380,9 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
    - Next: complete trust roots + identity binding:
      - per-node key provisioning workflow (bootstrap + rotation)
      - replay window guidance + nonce/ts enforcement for lossy bridges (configurable; deterministic)
-   - Next (MCU ergonomics): add an optional small-footprint CBOR **decoder** helper in `agent_core` for the same deterministic wire profile,
-     or vendor an existing MCU CBOR reader (e.g., your `cobr.h`-derived implementation) with proper attribution/licensing.
+   - Shipped (MCU ergonomics): small-footprint CBOR **decoder** helper in `agent_core` for the same definite-length wire profile:
+     - Core API: `agent/cbor_read.h` (no allocations; returns views into input bytes; depth/item limits for safety).
+     - Proof: `ctest` includes `agent_core_tests` (decodes the canonical `node_hello_minimal` auth vector).
 3) **Scheduling policy v2.4+** — DRR is shipped; telemetry-driven cost is now shipped (`telemetry_v1`), next is budget-pressure-aware charging and resilient fairness under mixed workloads.
 4) **Memory v2.3** — query-plan primitives (bounded windows + key-prefix filters) and automatic consolidation triggers as time advances,
    so long-running systems keep context tight and correct.
