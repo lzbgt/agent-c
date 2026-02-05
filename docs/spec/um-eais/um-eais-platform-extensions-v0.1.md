@@ -11,6 +11,13 @@ Rationale:
   - a node can “handoff” an intent to the platform coordinator
   - the platform can orchestrate multi-node workflows without requiring pre-installed automation rules
 
+Platform correctness requirement (capability caching):
+- When a node reports a different `caps_sha256` (via `NODE_HELLO` / `NODE_HEARTBEAT`) than the platform has cached,
+  the platform MUST treat the stored manifest as stale:
+  - invalidate cached `manifest_json` / `tools_json` / `tags_json` / hardware presence
+  - enqueue `PLATFORM_CAPS_REQ` (`want:"full"`) for that node
+  - avoid routing tool invocations to a node until an updated `NODE_CAPS_RSP` is received (prevents stale routing)
+
 These extensions are transport-agnostic at the payload level, and have a concrete HTTP mapping via:
 - `POST /api/v1/edge/message`
 
@@ -74,4 +81,3 @@ Platform behavior:
 Notes:
 - This is a platform-level cancellation (prevents future dispatch). It does not guarantee remote side-effects are avoided
   if a node already received a `TASK_ASSIGN`.
-

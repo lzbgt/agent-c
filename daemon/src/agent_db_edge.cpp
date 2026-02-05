@@ -78,11 +78,31 @@ ON CONFLICT(node_id) DO UPDATE SET
   model = CASE WHEN excluded.model IS NOT NULL AND excluded.model <> '' THEN excluded.model ELSE edge_nodes.model END,
   fw_git_sha = CASE WHEN excluded.fw_git_sha IS NOT NULL AND excluded.fw_git_sha <> '' THEN excluded.fw_git_sha ELSE edge_nodes.fw_git_sha END,
   caps_sha256 = CASE WHEN excluded.caps_sha256 IS NOT NULL AND excluded.caps_sha256 <> '' THEN excluded.caps_sha256 ELSE edge_nodes.caps_sha256 END,
-  manifest_json = CASE WHEN excluded.manifest_json IS NOT NULL AND excluded.manifest_json <> '' THEN excluded.manifest_json ELSE edge_nodes.manifest_json END,
-  tags_json = CASE WHEN excluded.tags_json IS NOT NULL AND excluded.tags_json <> '' THEN excluded.tags_json ELSE edge_nodes.tags_json END,
-  tools_json = CASE WHEN excluded.tools_json IS NOT NULL AND excluded.tools_json <> '' THEN excluded.tools_json ELSE edge_nodes.tools_json END,
-  hardware_presence_json = CASE WHEN excluded.hardware_presence_json IS NOT NULL AND excluded.hardware_presence_json <> '' THEN excluded.hardware_presence_json ELSE edge_nodes.hardware_presence_json END,
-  health_json = CASE WHEN excluded.health_json IS NOT NULL AND excluded.health_json <> '' THEN excluded.health_json ELSE edge_nodes.health_json END,
+  manifest_json = CASE
+    WHEN excluded.manifest_json IS NOT NULL AND excluded.manifest_json <> '' THEN excluded.manifest_json
+    WHEN excluded.caps_sha256 IS NOT NULL AND excluded.caps_sha256 <> '' AND excluded.caps_sha256 <> edge_nodes.caps_sha256 THEN NULL
+    ELSE edge_nodes.manifest_json
+  END,
+  tags_json = CASE
+    WHEN excluded.tags_json IS NOT NULL AND excluded.tags_json <> '' THEN excluded.tags_json
+    WHEN excluded.caps_sha256 IS NOT NULL AND excluded.caps_sha256 <> '' AND excluded.caps_sha256 <> edge_nodes.caps_sha256 THEN NULL
+    ELSE edge_nodes.tags_json
+  END,
+  tools_json = CASE
+    WHEN excluded.tools_json IS NOT NULL AND excluded.tools_json <> '' THEN excluded.tools_json
+    WHEN excluded.caps_sha256 IS NOT NULL AND excluded.caps_sha256 <> '' AND excluded.caps_sha256 <> edge_nodes.caps_sha256 THEN NULL
+    ELSE edge_nodes.tools_json
+  END,
+  hardware_presence_json = CASE
+    WHEN excluded.hardware_presence_json IS NOT NULL AND excluded.hardware_presence_json <> '' THEN excluded.hardware_presence_json
+    WHEN excluded.caps_sha256 IS NOT NULL AND excluded.caps_sha256 <> '' AND excluded.caps_sha256 <> edge_nodes.caps_sha256 THEN NULL
+    ELSE edge_nodes.hardware_presence_json
+  END,
+  health_json = CASE
+    WHEN excluded.health_json IS NOT NULL AND excluded.health_json <> '' THEN excluded.health_json
+    WHEN excluded.caps_sha256 IS NOT NULL AND excluded.caps_sha256 <> '' AND excluded.caps_sha256 <> edge_nodes.caps_sha256 THEN NULL
+    ELSE edge_nodes.health_json
+  END,
   last_hello_utc_ms = CASE WHEN excluded.last_hello_utc_ms IS NOT NULL AND excluded.last_hello_utc_ms > 0 THEN excluded.last_hello_utc_ms ELSE edge_nodes.last_hello_utc_ms END,
   last_heartbeat_utc_ms = CASE WHEN excluded.last_heartbeat_utc_ms IS NOT NULL AND excluded.last_heartbeat_utc_ms > 0 THEN excluded.last_heartbeat_utc_ms ELSE edge_nodes.last_heartbeat_utc_ms END;
 )SQL";

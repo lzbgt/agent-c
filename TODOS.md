@@ -71,6 +71,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - UM‑EAIS platform extensions (node → platform workflow handoff) are now proven end-to-end:
   - `WORKFLOW_SUBMIT` and `WORKFLOW_CANCEL` can be ingested via `POST /api/v1/edge/message` and drive the edge workflow runner.
   - Proof: `ctest` includes `agentd_edge_workflow_submit_message_smoke`.
+- UM‑EAIS node capability cache correctness: when a node reports a new `caps_sha256`, the platform invalidates cached
+  `manifest_json/tools_json/tags_json` and re-requests a full manifest (prevents stale routing).
+  - Proof: `ctest` includes `agentd_edge_interop_smoke`.
 - Workflow engine now supports **soft-fail** tasks via `allow_error: true`:
   - If a task ends `status="error"` and `allow_error=true`, the workflow can still complete `done` (so long as no “hard” errors remain).
   - Dependencies treat `(status=error + allow_error=true)` as satisfied; aggregation tasks can also depend on any terminal dependency to compute joins over errors.

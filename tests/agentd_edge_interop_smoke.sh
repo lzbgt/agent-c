@@ -56,6 +56,13 @@ curl -fsS --noproxy "*" --max-time 10 \
 outbox_0="$(curl -fsS --noproxy "*" --max-time 10 \
   "${DAEMON_URL}/api/v1/edge/outbox?node_id=${NODE_ID}&cursor=0&limit=50")"
 
+cursor_0="$(python3 - <<PY
+import json
+obj = json.loads(r'''${outbox_0}''')
+print(int(obj.get("cursor_next") or 0))
+PY
+)"
+
 if ! python3 - <<PY
 import json, sys
 obj = json.loads(r'''${outbox_0}''')
@@ -133,6 +140,96 @@ if "ui.led.ws2812.control" not in names:
   raise SystemExit(1)
 print("ok")
 PY
+
+# Regression guard: if a node reports a different caps_sha256 later, the platform must invalidate cached tools/tags
+# and request the new manifest (otherwise routing can become stale).
+CAPS_SHA_2="sha256:test_caps_2"
+
+hello2_json="$(python3 - <<PY
+import json, uuid, time
+print(json.dumps({
+  "msg_id": str(uuid.uuid4()),
+  "ts_utc_ms": int(time.time()*1000),
+  "type": "NODE_HELLO",
+  "from": f"node:{'${NODE_ID}'}",
+  "to": "platform",
+  "body": {
+    "node_id": "${NODE_ID}",
+    "model": "esp32sim_stub",
+    "fw_git_sha": "deadbeef",
+    "caps_sha256": "${CAPS_SHA_2}",
+  }
+}))
+PY
+)"
+
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Content-Type: application/json" \
+  -d "${hello2_json}" \
+  "${DAEMON_URL}/api/v1/edge/message" >/dev/null
+
+outbox_1="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/edge/outbox?node_id=${NODE_ID}&cursor=${cursor_0}&limit=50")"
+
+if ! python3 - <<PY
+import json, sys
+obj = json.loads(r'''${outbox_1}''')
+msgs = obj.get("messages") or []
+types = []
+for m in msgs:
+  env = (m.get("msg") or {})
+  t = env.get("type")
+  if isinstance(t, str):
+    types.append(t)
+if "PLATFORM_CAPS_REQ" not in types:
+  print("expected PLATFORM_CAPS_REQ after caps_sha change; got:", types, file=sys.stderr)
+  raise SystemExit(1)
+print("ok")
+PY
+then
+  echo "outbox_1: ${outbox_1}" >&2
+  exit 1
+fi
+
+caps_rsp_json2="$(python3 - <<PY
+import json, uuid, time
+manifest = {
+  "spec_version": "um-acds/0.1",
+  "manifest_version": "0.0.2",
+  "caps_sha256": "${CAPS_SHA_2}",
+  "node": {"node_id": "${NODE_ID}"},
+  "runtime": {"agent_core": {"version": "0.0.0"}},
+  "hardware": {"presence": {"ui.led.ws2812": "present"}},
+  "tools": [
+    {
+      "name": "ui.led.ws2812.control",
+      "kind": "actuator",
+      "description": "Control LED",
+      "parameters_schema": {"type":"object","additionalProperties": False, "properties": {"action":{"type":"string"}}, "required":["action"]},
+      "timeout_ms": 500,
+      "idempotent": False,
+      "side_effect_level": "low",
+      "hazards": []
+    }
+  ],
+  "safety": {},
+  "tags": ["room:lobby"]
+}
+print(json.dumps({
+  "msg_id": str(uuid.uuid4()),
+  "ts_utc_ms": int(time.time()*1000),
+  "type": "NODE_CAPS_RSP",
+  "from": f"node:{'${NODE_ID}'}",
+  "to": "platform",
+  "body": {"node_id": "${NODE_ID}", "manifest": manifest},
+}))
+PY
+)"
+
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Content-Type: application/json" \
+  -d "${caps_rsp_json2}" \
+  "${DAEMON_URL}/api/v1/edge/message" >/dev/null
 
 deadline="$(python3 - <<'PY'
 import time
