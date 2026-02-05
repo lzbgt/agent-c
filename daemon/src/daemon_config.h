@@ -93,6 +93,9 @@ struct DaemonConfig {
   std::string workflow_engine_fair_queue_policy = "wrr";
   int workflow_engine_fair_queue_max_session_weight = 16; // clamps per-session weight extracted from spec_json
   int workflow_engine_fair_queue_max_schedule_len = 1024; // bounds expanded WRR session schedule length
+  // Optional DRR enhancement: charge deficits by estimated task cost instead of unit cost.
+  // Values: "unit" (default), "simple_v1".
+  std::string workflow_engine_drr_cost_model = "unit";
   // Workflow admission control (backpressure at submit time).
   //
   // These caps apply in `POST /api/v1/workflow/submit` and are intended to prevent fan-out storms from

@@ -175,6 +175,7 @@ if(AGENT_BUILD_HOST)
     daemon/src/workflow_engine.cpp
     daemon/src/workflow_templates.cpp
     daemon/src/workflow_endpoints.cpp
+    daemon/src/workflow_fairq_cost.cpp
   )
 
   if(AGENTD_ENABLE_HTTP)
@@ -576,6 +577,15 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
   )
   target_link_libraries(openai_stream_decoder_tests PRIVATE agent_host)
   add_test(NAME openai_stream_decoder_tests COMMAND openai_stream_decoder_tests)
+
+  if(AGENT_ENABLE_JSONCPP)
+    add_executable(workflow_fairq_cost_tests
+      tests/test_workflow_fairq_cost.cpp
+    )
+    target_link_libraries(workflow_fairq_cost_tests PRIVATE agentd_lib)
+    target_compile_definitions(workflow_fairq_cost_tests PRIVATE AGENT_HAVE_JSONCPP=1)
+    add_test(NAME workflow_fairq_cost_tests COMMAND workflow_fairq_cost_tests)
+  endif()
 
   if(AGENT_ENABLE_SQLITE3)
     add_executable(agent_db_tests

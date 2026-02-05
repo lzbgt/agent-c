@@ -375,6 +375,13 @@ int main(int argc, char** argv) {
         std::cerr << "Invalid --workflow-fair-queue-max-schedule-len\n";
         return 2;
       }
+    } else if (a == "--workflow-drr-cost-model") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --workflow-drr-cost-model\n";
+        return 2;
+      }
+      cfg.workflow_engine_drr_cost_model = v;
     } else if (a == "--workflow-admit-max-inflight-tasks-per-session") {
       std::string v;
       if (!take(&v)) {

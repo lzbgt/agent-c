@@ -198,6 +198,9 @@ static void fill_env_defaults(DaemonConfig* cfg) {
   if (const char* ms = getenv_s("AGENTD_WORKFLOW_FAIR_QUEUE_MAX_SCHEDULE_LEN")) {
     try { cfg->workflow_engine_fair_queue_max_schedule_len = std::max(16, std::stoi(ms)); } catch (...) {}
   }
+  if (cfg->workflow_engine_drr_cost_model.empty()) {
+    if (const char* ms = getenv_s("AGENTD_WORKFLOW_DRR_COST_MODEL")) cfg->workflow_engine_drr_cost_model = ms;
+  }
   if (const char* ms = getenv_s("AGENTD_MEMORY_CONSOLIDATE_INTERVAL_MS")) {
     try {
       cfg->memory_consolidate_interval_ms = (int64_t)std::stoll(ms);
@@ -382,6 +385,7 @@ struct AgentdService::Impl {
       opt.fair_queue_policy = cfg0.workflow_engine_fair_queue_policy;
       opt.fair_queue_max_session_weight = std::max(1, cfg0.workflow_engine_fair_queue_max_session_weight);
       opt.fair_queue_max_schedule_len = std::max(16, cfg0.workflow_engine_fair_queue_max_schedule_len);
+      opt.drr_cost_model = cfg0.workflow_engine_drr_cost_model;
       wf_engine = std::make_unique<WorkflowEngine>(
         &db,
         [this]() { return cfg_store->snapshot(); },

@@ -47,6 +47,10 @@ class WorkflowEngine {
     std::string fair_queue_policy = "wrr";
     int fair_queue_max_session_weight = 16;
     int fair_queue_max_schedule_len = 1024;
+    // DRR cost charging:
+    // - unit: each admitted task costs 1 (v2.3 baseline)
+    // - simple_v1: best-effort estimated cost by task kind/request
+    std::string drr_cost_model = "unit";
   };
 
   WorkflowEngine(

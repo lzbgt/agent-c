@@ -8,6 +8,7 @@
 #include "string_util.h"
 #include "toolset_host.h"
 #include "workflow_aggregate.h"
+#include "workflow_fairq_cost.h"
 #include "workflow_templates.h"
 
 #include <algorithm>
@@ -935,6 +936,7 @@ bool WorkflowEngine::pick_and_claim_one(
 	    // - each admitted task costs 1
 	    // - deficits are loaded/persisted in the DB (best-effort) so fairness survives daemon restarts
 	    const int max_weight_cfg = std::max(1, opt_.fair_queue_max_session_weight);
+	    const std::string drr_cost_model = trim_copy(opt_.drr_cost_model.empty() ? "unit" : opt_.drr_cost_model);
 
 	    std::unordered_map<std::string, int> weight_by_session;
 	    weight_by_session.reserve(ns);
@@ -1056,7 +1058,11 @@ bool WorkflowEngine::pick_and_claim_one(
 	        const size_t idx = idxs[wi];
 	        if (idx >= wfs.size()) continue;
 	        if (try_pick_in_workflow(wfs[idx])) {
-	          charge_deficit(sk, 1);
+	          int64_t cost = 1;
+	          if (drr_cost_model == "simple_v1") {
+	            cost = workflow_fairq_estimate_task_cost_simple_v1(out_task->request_json, /*max_cost=*/32);
+	          }
+	          charge_deficit(sk, std::max<int64_t>(1, cost));
 	          // Persist the updated deficit (best-effort). Failures should not block scheduling.
 	          const std::string sid = persist_session_id_from_bucket(sk);
 	          if (!sid.empty()) {

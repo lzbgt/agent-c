@@ -298,8 +298,12 @@ Priority order (reweighted after `delegate_parallel` quorum_ok + attempt_default
    - Shipped (v2.3.1): DRR deficits are now persisted (best-effort) so fairness survives daemon restart:
      - DB table: `workflow_fairq_sessions` (schema v25; see `docs/DB.md`).
      - Proof: `ctest` includes `agentd_workflow_drr_durable_deficit_smoke`.
-   - Next (v2.3+): cost-aware quanta:
-     - charge DRR cost by estimated task cost (e.g. expected tool calls, expected tokens, edge polling) to smooth latency under mixed workloads.
+   - Shipped (v2.3.2): optional cost-aware DRR charging (simple_v1; default remains unit-cost):
+     - New daemon knob: `--workflow-drr-cost-model simple_v1` (env `AGENTD_WORKFLOW_DRR_COST_MODEL=simple_v1`)
+     - Scheduler charges DRR deficit by best-effort estimated task cost (bounded + deterministic by request JSON).
+     - Proof: `ctest` includes `workflow_fairq_cost_tests`.
+   - Next (v2.3+): tighten the cost model:
+     - incorporate budget pressure, token usage counters, and edge polling characteristics into the estimator.
 
 3) **Interop spec hardening for MCU/edge handoff** (ecosystem leverage)
    - Shipped: `DURABLE_WORKFLOW_SUBMIT` / `DURABLE_WORKFLOW_CANCEL` over `POST /api/v1/edge/message` (durable orchestration handoff).
