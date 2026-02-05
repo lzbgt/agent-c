@@ -1805,8 +1805,21 @@ components:
             Optional JSON pointer into each task result JSON used to surface node identity evidence alongside votes.
 
             Notes:
-            - This does not change quorum semantics; it is an observability/correlation surface.
+            - When `require_distinct_nodes=true`, this pointer is used to count votes across distinct nodes.
+            - Otherwise, it is only an observability/correlation surface (does not change quorum semantics).
             - Default: `/edge/node_id` (populated by `kind:edge_invoke` results).
+        require_distinct_nodes:
+          type: boolean
+          description: |
+            For mode=quorum_hashes, when true, count votes across **distinct node identities** instead of per-task votes.
+
+            Semantics:
+            - Node identity is read from `node_pointer` (default `/edge/node_id`).
+            - Each distinct node contributes at most one vote per pointer:
+              the vote is taken from the first task_id (in task_ids order) that has a non-empty string at that pointer.
+            - Tasks missing a node_id at node_pointer do not contribute votes when this is enabled (fail-closed).
+
+            Default: false.
         require_all:
           type: boolean
           description: For mode=collect, require every pointer for every task_id (default true).
@@ -2006,9 +2019,19 @@ components:
           type: string
           description: |
             Optional JSON pointer into each attempt result JSON used to surface node identity evidence alongside votes
-            (for quorum_hashes debugging/correlation only; does not affect quorum semantics).
+            (for quorum_hashes correlation; also used when require_distinct_nodes=true).
 
             Default: `/edge/node_id` (usually empty for LLM attempts; present when aggregating edge tasks).
+        require_distinct_nodes:
+          type: boolean
+          description: |
+            For mode=quorum_hashes, when true, count votes across **distinct node identities** instead of per-attempt votes.
+
+            Notes:
+            - Most `delegate_parallel` attempt results have no `/edge/node_id`, so enabling this typically results in no votes.
+            - This is intended mainly for aggregating edge task results via delegate_parallel or other higher-level macros.
+
+            Default: false.
         require_all:
           type: boolean
           description: For mode=collect, require every pointer for every attempt (default true).

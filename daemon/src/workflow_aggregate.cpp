@@ -86,6 +86,11 @@ static Json::Value workflow_aggregate_quorum_hashes_to_json(
     node_ptr = agg["node_pointer"].asString();
   }
 
+  bool require_distinct_nodes = false;
+  if (agg.isMember("require_distinct_nodes") && agg["require_distinct_nodes"].isBool()) {
+    require_distinct_nodes = agg["require_distinct_nodes"].asBool();
+  }
+
   out["mode"] = "quorum_hashes";
   out["quorum"] = quorum;
   Json::Value arr(Json::arrayValue);
@@ -95,9 +100,17 @@ static Json::Value workflow_aggregate_quorum_hashes_to_json(
   for (const auto& p : ptrs) parr.append(p);
   out["pointers"] = parr;
   out["node_pointer"] = node_ptr;
+  out["require_distinct_nodes"] = require_distinct_nodes;
 
   // Optional evidence surface: attach stable node identity (when present) to votes.
   // This is useful for multi-node correctness debugging and attestation correlation.
+  //
+  // When require_distinct_nodes=true, node_pointer also becomes semantically important:
+  // votes are counted across distinct node_id values, not per task_id.
+  std::unordered_map<std::string, std::string> node_by_task_id;
+  std::vector<std::string> node_ids_in_order;
+  std::unordered_map<std::string, std::vector<std::string>> task_ids_by_node;
+  std::vector<std::string> unknown_node_task_ids;
   {
     Json::Value nodes_by_task(Json::objectValue);
     for (const auto& tid : task_ids) {
@@ -106,10 +119,24 @@ static Json::Value workflow_aggregate_quorum_hashes_to_json(
       const Json::Value& root = it->second;
       const Json::Value* got = nullptr;
       if (json_pointer_get(root, node_ptr, &got) && got && got->isString() && !got->asString().empty()) {
-        nodes_by_task[tid] = got->asString();
+        const std::string nid = got->asString();
+        nodes_by_task[tid] = nid;
+        node_by_task_id[tid] = nid;
+        if (task_ids_by_node.find(nid) == task_ids_by_node.end()) {
+          node_ids_in_order.push_back(nid);
+          task_ids_by_node[nid] = std::vector<std::string>();
+        }
+        task_ids_by_node[nid].push_back(tid);
+      } else if (require_distinct_nodes) {
+        unknown_node_task_ids.push_back(tid);
       }
     }
     if (!nodes_by_task.empty()) out["nodes_by_task_id"] = nodes_by_task;
+  }
+  if (require_distinct_nodes && !unknown_node_task_ids.empty()) {
+    Json::Value unk(Json::arrayValue);
+    for (const auto& tid : unknown_node_task_ids) unk.append(tid);
+    out["unknown_node_task_ids"] = unk;
   }
 
   Json::Value checks(Json::arrayValue);
@@ -121,6 +148,7 @@ static Json::Value workflow_aggregate_quorum_hashes_to_json(
     c["ptr"] = ptr;
     c["ok"] = false;
     c["quorum"] = quorum;
+    c["require_distinct_nodes"] = require_distinct_nodes;
 
     std::unordered_map<std::string, int> counts;
     counts.reserve(task_ids.size());
@@ -142,6 +170,51 @@ static Json::Value workflow_aggregate_quorum_hashes_to_json(
       const std::string v = got->asString();
       values_by_task[tid] = v;
       if (!v.empty()) counts[v] += 1;
+    }
+
+    if (require_distinct_nodes) {
+      // Recount votes by distinct node_id (node_pointer), not by task_id.
+      // Deterministic rule: each node contributes at most one vote, taken from the first task_id
+      // (in aggregate.task_ids order) that has a non-empty string at `ptr`.
+      std::unordered_map<std::string, int> node_counts;
+      node_counts.reserve(node_ids_in_order.size());
+      Json::Value values_by_node(Json::objectValue);
+      Json::Value chosen_task_by_node(Json::objectValue);
+      Json::Value missing_nodes(Json::arrayValue);
+      Json::Value eligible_nodes(Json::arrayValue);
+
+      for (const auto& nid : node_ids_in_order) {
+        eligible_nodes.append(nid);
+        auto it = task_ids_by_node.find(nid);
+        if (it == task_ids_by_node.end()) continue;
+
+        std::string chosen_v;
+        std::string chosen_tid;
+        for (const auto& tid : it->second) {
+          if (!values_by_task.isMember(tid) || !values_by_task[tid].isString()) continue;
+          const std::string v = values_by_task[tid].asString();
+          if (v.empty()) continue;
+          chosen_v = v;
+          chosen_tid = tid;
+          break;
+        }
+        if (chosen_v.empty()) {
+          missing_nodes.append(nid);
+          continue;
+        }
+        values_by_node[nid] = chosen_v;
+        chosen_task_by_node[nid] = chosen_tid;
+        node_counts[chosen_v] += 1;
+      }
+
+      counts.swap(node_counts);
+      c["values_by_node"] = values_by_node;
+      c["chosen_task_by_node_id"] = chosen_task_by_node;
+      c["eligible_nodes"] = eligible_nodes;
+      c["missing_nodes"] = missing_nodes;
+      c["count_kind"] = "nodes";
+    } else {
+      c["count_kind"] = "tasks";
     }
 
     // Determine chosen value deterministically:

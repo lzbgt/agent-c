@@ -232,6 +232,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - New `delegate.attempt_caps` and `delegate_parallel.delegate.attempt_caps` clamp attempt run knobs (hard max; cannot be exceeded by attempt.request).
   - Delegate attempt result rows now surface `effective_*` fields for debugging/attestation (`effective_timeout_ms`, etc).
   - Proof: `ctest` includes `agentd_workflow_delegate_attempt_caps_smoke` and `agentd_workflow_delegate_parallel_attempt_caps_smoke`.
+- Multi-node quorum hardening (v1.7.6):
+  - For `mode:"quorum_hashes"`, new `require_distinct_nodes:true` counts votes across distinct `/edge/node_id` values instead of per-task votes.
+  - Each distinct node contributes at most one vote per pointer (deterministically chosen from the first task_id with a non-empty value).
+  - Proof: `ctest` includes `agentd_workflow_edge_invoke_quorum_hashes_distinct_nodes_smoke`.
 
 ## P0 (next: maximize autonomous continuity + correctness)
 
@@ -239,11 +243,11 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 Priority order (reweighted after `delegate_parallel` quorum_ok + attempt_defaults shipped; sections below are kept stable for diff readability):
 
-1) **Scheduling policy v2.3+** — DRR is shipped; next is cost-aware quanta + durable per-session deficits (predictable progress under mixed workloads).
+1) **Scheduling policy v2.3+** — DRR is shipped; next is telemetry-driven cost model (beyond simple heuristics) + more robust fairness under mixed workloads.
 2) **Budgets v0.6** — complete host-tool + streaming usage charging and make budget pressure cheap/accurate for large queues.
-3) **Agent collaboration v2.1** — parallel fan-out with deterministic joins (best_of_n/quorum_ok/quorum_hashes/collect) + enforceable per-attempt budgets and retries.
+3) **Agent collaboration v2.1** — deterministic multi-agent fan-out + secure joins (quorum_ok/strict_all_ok/quorum_hashes distinct-node) + retries.
 4) **Memory v2.3** — query-plan primitives (bounded windows + key-prefix filters) and automatic consolidation triggers as time advances.
-5) **Interop v0.4** — move beyond portable hashes (v0.3 partial shipped) into enforceable attestation (hash_alg hints + signature conventions + trust roots).
+5) **Interop v0.4** — enforceable edge attestation + trust roots and stronger multi-node identity binding.
 
 1) **Durable budget enforcement at scheduler level** (correctness + cost predictability)
    - Shipped (v0): workflow-level tool-call budget `workflow_limits.max_tool_calls_total` enforced by the workflow engine:
