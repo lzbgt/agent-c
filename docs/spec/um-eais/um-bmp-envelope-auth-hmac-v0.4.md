@@ -35,13 +35,17 @@ When present, the envelope includes:
 ```
 
 Semantics:
-- `auth.alg` MUST be `"hmac-sha256"`.
+- `auth.alg` MUST be either:
+  - `"hmac-sha256"` (signing input is canonical JSON bytes), or
+  - `"hmac-sha256-cbor"` (signing input is canonical CBOR bytes).
 - `auth.kid` selects a shared secret provisioned on both node/gateway and platform.
 - `auth.sig` is base64 (RFC 4648 standard alphabet) of the 32-byte HMAC digest.
 
 ## Signing input
 
-Compute the signature over the canonical JSON bytes of the envelope **with the `auth` field removed**.
+Compute the signature over the envelope **with the `auth` field removed**.
+
+For `auth.alg="hmac-sha256"` (canonical JSON):
 
 Canonicalization algorithm: `agent_json_c14n_v1`:
 - object keys sorted lexicographically (UTF‑8 bytes)
@@ -52,6 +56,20 @@ Pseudocode:
 
 1) `env_no_auth = env` with `auth` removed
 2) `canon = json_c14n(env_no_auth)`
+3) `sig = base64(HMAC_SHA256(secret_for(kid), canon))`
+
+For `auth.alg="hmac-sha256-cbor"` (canonical CBOR):
+
+Signing input is the deterministic CBOR encoding of `env_no_auth`:
+- CBOR (RFC 8949) definite lengths only (no indefinite streaming items)
+- JSON objects encoded as CBOR maps with lexicographically sorted UTF‑8 string keys
+- integers encoded in the minimal CBOR integer form
+- floats SHOULD NOT be used in signed envelopes; the platform encodes floats as float64 when present
+
+Pseudocode:
+
+1) `env_no_auth = env` with `auth` removed
+2) `canon = cbor_canonical(env_no_auth)` (see above)
 3) `sig = base64(HMAC_SHA256(secret_for(kid), canon))`
 
 ## Platform enforcement behavior (agentd)

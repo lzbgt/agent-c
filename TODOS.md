@@ -362,10 +362,13 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
      from turning “automation” into “unsafe actuation”.
    - Shipped (v0.4 partial): envelope-level authenticity via HMAC keyring + enforcement knob (`edge_auth_required`),
      plus optional replay-window hardening (`edge_auth_require_ts`, `edge_auth_max_skew_ms`).
+   - Shipped (v0.4 partial): CBOR-native auth input option for MCU stacks:
+     - `auth.alg="hmac-sha256-cbor"` verifies HMAC over deterministic CBOR bytes of the envelope with `auth` removed
+       (definite lengths + sorted string map keys; matches `daemon/src/cbor_encode.*`).
    - Next: complete trust roots + identity binding:
      - per-node key provisioning workflow (bootstrap + rotation)
      - public-key signatures (Ed25519) for stronger identity (no shared-secret blast radius)
-     - optional CBOR-native signing profile (canonical CBOR encoding + signature) for MCU transports that never render JSON
+     - Ed25519 + CBOR-native signing profile for MCU transports that never render JSON (no shared-secret blast radius)
      - replay window guidance + nonce/ts enforcement for lossy bridges (configurable; deterministic)
 3) **Scheduling policy v2.4+** — DRR is shipped; telemetry-driven cost is now shipped (`telemetry_v1`), next is budget-pressure-aware charging and resilient fairness under mixed workloads.
 4) **Memory v2.3** — query-plan primitives (bounded windows + key-prefix filters) and automatic consolidation triggers as time advances,

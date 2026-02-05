@@ -73,30 +73,53 @@ static bool fixed_time_eq32(const uint8_t a[32], const uint8_t b[32]) {
   return diff == 0;
 }
 
-static bool canonicalize_envelope_without_auth(const Json::Value& env, std::string* out_c14n_json, std::string* out_error) {
+static bool auth_input_bytes_for_alg(
+  const Json::Value& env,
+  const std::string& alg,
+  std::string* out_bytes,
+  std::string* out_error
+) {
   if (out_error) out_error->clear();
-  if (!out_c14n_json) return false;
-  out_c14n_json->clear();
+  if (!out_bytes) return false;
+  out_bytes->clear();
 
   Json::Value env2 = env;
   if (env2.isMember("auth")) env2.removeMember("auth");
-  Json::StreamWriterBuilder wb;
-  wb["indentation"] = "";
-  const std::string raw = Json::writeString(wb, env2);
 
-  char* canon = nullptr;
-  size_t canon_len = 0;
-  std::array<char, 256> errbuf{};
-  const agent_status_t st =
-    agent_json_c14n_canonicalize(raw.data(), raw.size(), &canon, &canon_len, errbuf.data(), errbuf.size());
-  if (st != AGENT_OK || !canon) {
-    if (out_error) *out_error = std::string("canonicalize failed: ") + (errbuf[0] ? errbuf.data() : "unknown");
-    if (canon) agent_free(canon);
-    return false;
+  const std::string a = trim_copy(alg);
+  if (a == "hmac-sha256" || a == "HMAC-SHA256") {
+    Json::StreamWriterBuilder wb;
+    wb["indentation"] = "";
+    const std::string raw = Json::writeString(wb, env2);
+
+    char* canon = nullptr;
+    size_t canon_len = 0;
+    std::array<char, 256> errbuf{};
+    const agent_status_t st =
+      agent_json_c14n_canonicalize(raw.data(), raw.size(), &canon, &canon_len, errbuf.data(), errbuf.size());
+    if (st != AGENT_OK || !canon) {
+      if (out_error) *out_error = std::string("canonicalize failed: ") + (errbuf[0] ? errbuf.data() : "unknown");
+      if (canon) agent_free(canon);
+      return false;
+    }
+    out_bytes->assign(canon, canon_len);
+    agent_free(canon);
+    return true;
   }
-  out_c14n_json->assign(canon, canon_len);
-  agent_free(canon);
-  return true;
+
+  if (a == "hmac-sha256-cbor" || a == "HMAC-SHA256-CBOR") {
+    std::string cbor;
+    std::string cerr;
+    if (!cbor_encode_json_value(env2, &cbor, &cerr)) {
+      if (out_error) *out_error = cerr.empty() ? "cbor canonical encode failed" : cerr;
+      return false;
+    }
+    *out_bytes = std::move(cbor);
+    return true;
+  }
+
+  if (out_error) *out_error = "unsupported alg";
+  return false;
 }
 
 // Verifies UM-BMP envelope `auth` when required or present.
@@ -190,10 +213,14 @@ static bool verify_edge_envelope_auth_best_effort(
   const std::string alg = trim_copy(auth["alg"].asString());
   const std::string kid = trim_copy(auth["kid"].asString());
   const std::string sig_b64 = trim_copy(auth["sig"].asString());
-  if (alg != "hmac-sha256" && alg != "HMAC-SHA256") {
-    resp->status = 401;
-    resp->body = "{\"ok\":false,\"error\":\"unsupported envelope.auth.alg\"}";
-    return false;
+  const std::string alg_norm = trim_copy(alg);
+  const bool alg_ok =
+    alg_norm == "hmac-sha256" || alg_norm == "HMAC-SHA256" ||
+    alg_norm == "hmac-sha256-cbor" || alg_norm == "HMAC-SHA256-CBOR";
+  if (!alg_ok) {
+      resp->status = 401;
+      resp->body = "{\"ok\":false,\"error\":\"unsupported envelope.auth.alg\"}";
+      return false;
   }
   if (kid.empty() || kid.size() > 64 || !edge_id_is_safe(kid)) {
     resp->status = 401;
@@ -216,19 +243,19 @@ static bool verify_edge_envelope_auth_best_effort(
     return false;
   }
 
-  std::string canon;
+  std::string input_bytes;
   std::string cerr;
-  if (!canonicalize_envelope_without_auth(env, &canon, &cerr)) {
+  if (!auth_input_bytes_for_alg(env, alg_norm, &input_bytes, &cerr)) {
     resp->status = 400;
     Json::Value o(Json::objectValue);
     o["ok"] = false;
-    o["error"] = cerr.empty() ? "failed to canonicalize envelope" : cerr;
+    o["error"] = cerr.empty() ? "failed to compute envelope auth input" : cerr;
     resp->body = edge_json_stringify_compact(o);
     return false;
   }
 
   uint8_t mac[32];
-  hmac_sha256(it->second, canon, mac);
+  hmac_sha256(it->second, input_bytes, mac);
   if (!fixed_time_eq32(mac, (const uint8_t*)sig_bytes.data())) {
     resp->status = 401;
     resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth.sig\"}";

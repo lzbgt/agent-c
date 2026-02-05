@@ -107,6 +107,87 @@ curl -fsS --noproxy "*" --max-time 10 \
   -d "${hello_signed}" \
   "${DAEMON_URL}/api/v1/edge/message" >/dev/null
 
+# Also accept a CBOR-native signing profile: HMAC over canonical CBOR encoding of the envelope without auth.
+hello_signed_cbor_alg="$(python3 - <<PY
+import base64, hashlib, hmac, json, uuid, time
+
+def _cbor_ai_u64(major_shift, n):
+  # major_shift is already (major << 5), like the C++ encoder.
+  if n < 24:
+    return bytes([major_shift | n])
+  if n <= 0xff:
+    return bytes([major_shift | 24, n])
+  if n <= 0xffff:
+    return bytes([major_shift | 25, (n >> 8) & 0xff, n & 0xff])
+  if n <= 0xffffffff:
+    return bytes([major_shift | 26, (n >> 24) & 0xff, (n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff])
+  return bytes([major_shift | 27]) + n.to_bytes(8, "big", signed=False)
+
+def _cbor_text(s):
+  b = s.encode("utf-8")
+  return _cbor_ai_u64(3 << 5, len(b)) + b
+
+def _cbor_array(a):
+  out = _cbor_ai_u64(4 << 5, len(a))
+  for v in a:
+    out += _cbor_any(v)
+  return out
+
+def _cbor_map(m):
+  keys = sorted(m.keys())
+  out = _cbor_ai_u64(5 << 5, len(keys))
+  for k in keys:
+    if not isinstance(k, str):
+      raise TypeError("map key must be str")
+    out += _cbor_text(k)
+    out += _cbor_any(m[k])
+  return out
+
+def _cbor_any(v):
+  if v is None:
+    return b"\xf6"
+  if v is True:
+    return b"\xf5"
+  if v is False:
+    return b"\xf4"
+  if isinstance(v, int):
+    if v >= 0:
+      return _cbor_ai_u64(0 << 5, v)
+    return _cbor_ai_u64(1 << 5, -1 - v)
+  if isinstance(v, str):
+    return _cbor_text(v)
+  if isinstance(v, list):
+    return _cbor_array(v)
+  if isinstance(v, dict):
+    return _cbor_map(v)
+  raise TypeError("unsupported type for test cbor encoder: %r" % (type(v),))
+
+env = {
+  "msg_id": str(uuid.uuid4()),
+  "ts_utc_ms": int(time.time()*1000),
+  "type": "NODE_HELLO",
+  "from": f"node:{'${NODE_ID}'}",
+  "to": "platform",
+  "body": {
+    "node_id": "${NODE_ID}",
+    "model": "esp32sim_stub",
+    "fw_git_sha": "deadbeef",
+    "caps_sha256": "${CAPS_SHA}",
+  }
+}
+cbor = _cbor_any(env)
+mac = hmac.new(b"${SECRET}", cbor, hashlib.sha256).digest()
+sig = base64.b64encode(mac).decode("ascii")
+env["auth"] = {"alg": "hmac-sha256-cbor", "kid": "${KID}", "sig": sig}
+print(json.dumps(env))
+PY
+)"
+
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Content-Type: application/json" \
+  -d "${hello_signed_cbor_alg}" \
+  "${DAEMON_URL}/api/v1/edge/message" >/dev/null
+
 nodes_json="$(curl -fsS --noproxy "*" --max-time 10 \
   "${DAEMON_URL}/api/v1/edge/nodes")"
 

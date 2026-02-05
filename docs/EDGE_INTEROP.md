@@ -80,10 +80,11 @@ If the platform sees a new/unknown `caps_sha256`, it queues a `PLATFORM_CAPS_REQ
 
 Envelope authenticity (optional, UM‑BMP auth v0.4):
 - Envelopes MAY include an `auth` object:
-  - `auth.alg`: `"hmac-sha256"`
+  - `auth.alg`: `"hmac-sha256"` (sign canonical JSON) or `"hmac-sha256-cbor"` (sign canonical CBOR)
   - `auth.kid`: key id selecting an operator-provisioned shared secret
-  - `auth.sig`: base64 of the 32-byte HMAC over the **canonical JSON** of the envelope with the `auth` field removed
-    (canonicalization: `agent_json_c14n_v1`).
+  - `auth.sig`: base64 of the 32-byte HMAC over the envelope with the `auth` field removed:
+    - for `hmac-sha256`: **canonical JSON** bytes (`agent_json_c14n_v1`)
+    - for `hmac-sha256-cbor`: **canonical CBOR** bytes (RFC 8949, definite lengths, sorted string map keys; matches `daemon/src/cbor_encode.*`)
 - Operator controls:
   - `edge_auth.required` is surfaced via `GET /api/v1/config`.
   - `POST /api/v1/config/update` supports:
