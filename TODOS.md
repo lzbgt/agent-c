@@ -253,6 +253,11 @@ Priority order (reweighted after `delegate_parallel` join customization shipped;
 	     - `kind:"memory_put"` and `kind:"memory_consolidate"` count as `tool_calls_total=1` and `steps_executed=1` per attempt.
 	     - Budget enforcement: if remaining workflow budgets are 0, these tasks cancel the workflow with `workflow budget exceeded: ...`.
 	     - Proof: `ctest` includes `agentd_workflow_budget_host_tool_memory_put_smoke`.
+	   - Shipped (v0.5 partial): budget pressure surface for cheap polling:
+	     - `GET /api/v1/workflow/stats?include_budget_pressure=1` returns best-effort aggregate pressure under `budget_pressure`
+	       across queued|running workflows that define `workflow_limits`.
+	     - Optional `include_budget_workflows=1` includes a small sampled workflow list with `remaining` budgets.
+	     - Proof: `ctest` includes `agentd_workflow_stats_budget_pressure_smoke`.
 
 2) **Scheduling policy v2 (beyond caps)** (predictable progress under load)
    - Shipped (v2.0): oversampled scan + session-aware round-robin scan order (prevents `LIMIT` starvation under typical load).

@@ -659,6 +659,21 @@ paths:
       summary: Workflow scheduler stats (queue pressure)
       parameters:
         - in: query
+          name: include_budget_pressure
+          required: false
+          schema: { type: boolean }
+          description: If true, include best-effort aggregate budget pressure under `budget_pressure`.
+        - in: query
+          name: budget_workflow_limit
+          required: false
+          schema: { type: integer, format: int32 }
+          description: Max number of queued|running workflows to scan for budget pressure (default 64; max 512).
+        - in: query
+          name: include_budget_workflows
+          required: false
+          schema: { type: boolean }
+          description: If true, include a small sampled workflow list under `budget_pressure.workflows` (best-effort).
+        - in: query
           name: include_sessions
           required: false
           schema: { type: boolean }
@@ -2242,4 +2257,10 @@ components:
         sessions_error:
           type: object
           description: Best-effort error object when per-session stats could not be produced.
+          additionalProperties: true
+        budget_pressure:
+          type: object
+          description: |
+            When include_budget_pressure=true, best-effort aggregate budget pressure over queued|running workflows
+            that define `workflow_limits` in their persisted spec_json.
           additionalProperties: true

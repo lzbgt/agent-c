@@ -2099,6 +2099,162 @@ void handle_workflow_stats_endpoint(
     out["tasks_by_status"] = m;
   }
 
+  // Optional: surface aggregate workflow budget pressure (best-effort) so schedulers/UIs can poll cheaply.
+  //
+  // This is intentionally a bounded scan:
+  // - only considers queued|running workflows (active pressure surface)
+  // - only includes workflows that define workflow_limits in their persisted spec_json
+  // - uses durable per-workflow usage totals derived from retry-safe per-task cumulative counters
+  const auto include_budget_q = query_get(req.query, "include_budget_pressure");
+  const bool include_budget_pressure = include_budget_q && (*include_budget_q == "1" || *include_budget_q == "true");
+  if (include_budget_pressure) {
+    size_t max_workflows = 64;
+    if (const auto lq = query_get(req.query, "budget_workflow_limit")) {
+      try {
+        const int n = std::stoi(*lq);
+        if (n > 0) max_workflows = (size_t)std::min<int>(512, n);
+      } catch (...) {
+      }
+    }
+
+    const auto include_budget_workflows_q = query_get(req.query, "include_budget_workflows");
+    const bool include_budget_workflows =
+      include_budget_workflows_q && (*include_budget_workflows_q == "1" || *include_budget_workflows_q == "true");
+
+    auto parse_limits_best_effort = [](const std::string& spec_json) -> Json::Value {
+      Json::Value spec;
+      std::string perr;
+      if (!json_parse_any(spec_json, &spec, &perr) || !spec.isObject()) return Json::Value(Json::nullValue);
+      if (!spec.isMember("workflow_limits") || !spec["workflow_limits"].isObject()) return Json::Value(Json::nullValue);
+      return spec["workflow_limits"];
+    };
+
+    struct LimitAgg {
+      int64_t workflows_limited = 0;
+      int64_t workflows_remaining_zero = 0;
+      int64_t workflows_ratio_le_0_1 = 0;
+      int64_t workflows_ratio_le_0_2 = 0;
+      int64_t min_remaining = INT64_MAX;
+      double min_remaining_ratio = 1.0;
+    };
+    auto update_limit_agg = [](LimitAgg* agg, int64_t maxv, int64_t used) {
+      if (!agg) return;
+      if (maxv <= 0) return;
+      const int64_t used_clamped = std::max<int64_t>(0, std::min<int64_t>(maxv, std::max<int64_t>(0, used)));
+      const int64_t remaining = std::max<int64_t>(0, maxv - used_clamped);
+      const double ratio = maxv > 0 ? (double)remaining / (double)maxv : 1.0;
+      agg->workflows_limited++;
+      if (remaining <= 0) agg->workflows_remaining_zero++;
+      if (ratio <= 0.10) agg->workflows_ratio_le_0_1++;
+      if (ratio <= 0.20) agg->workflows_ratio_le_0_2++;
+      agg->min_remaining = std::min<int64_t>(agg->min_remaining, remaining);
+      agg->min_remaining_ratio = std::min<double>(agg->min_remaining_ratio, ratio);
+    };
+
+    std::vector<AgentDb::WorkflowRow> wrows;
+    wrows.reserve(max_workflows);
+    {
+      std::vector<AgentDb::WorkflowRow> queued;
+      std::vector<AgentDb::WorkflowRow> running;
+      std::string qerr, rerr;
+      (void)db_or_null->list_workflows_by_status_for_scheduler("queued", max_workflows, &queued, &qerr);
+      (void)db_or_null->list_workflows_by_status_for_scheduler("running", max_workflows, &running, &rerr);
+      std::unordered_set<std::string> seen;
+      for (const auto& r : queued) {
+        if (wrows.size() >= max_workflows) break;
+        if (r.workflow_id.empty()) continue;
+        if (!seen.insert(r.workflow_id).second) continue;
+        wrows.push_back(r);
+      }
+      for (const auto& r : running) {
+        if (wrows.size() >= max_workflows) break;
+        if (r.workflow_id.empty()) continue;
+        if (!seen.insert(r.workflow_id).second) continue;
+        wrows.push_back(r);
+      }
+    }
+
+    int64_t scanned = 0;
+    int64_t with_limits = 0;
+    LimitAgg tool_calls, steps, elapsed, tokens;
+    Json::Value sampled(Json::arrayValue);
+    const size_t max_samples = include_budget_workflows ? 12 : 0;
+
+    for (const auto& wf : wrows) {
+      scanned++;
+      const Json::Value lim = parse_limits_best_effort(wf.spec_json);
+      if (!lim.isObject()) continue;
+      with_limits++;
+
+      AgentDb::WorkflowUsageTotals totals;
+      std::string uerr;
+      if (!db_or_null->get_workflow_usage_totals(wf.workflow_id, &totals, &uerr)) {
+        continue;
+      }
+
+      auto lim_i64 = [&](const char* k, int64_t* outv) {
+        if (outv) *outv = 0;
+        if (!lim.isMember(k)) return;
+        const auto& v = lim[k];
+        if (!(v.isInt64() || v.isUInt64() || v.isInt() || v.isUInt())) return;
+        const int64_t n = v.asInt64();
+        if (n <= 0) return;
+        if (outv) *outv = n;
+      };
+
+      int64_t max_tool_calls = 0, max_steps_total = 0, max_elapsed_ms_total = 0, max_total_tokens = 0;
+      lim_i64("max_tool_calls_total", &max_tool_calls);
+      lim_i64("max_steps_total", &max_steps_total);
+      lim_i64("max_elapsed_ms_total", &max_elapsed_ms_total);
+      lim_i64("max_total_tokens", &max_total_tokens);
+
+      update_limit_agg(&tool_calls, max_tool_calls, totals.tool_calls_total_used);
+      update_limit_agg(&steps, max_steps_total, totals.steps_total_used);
+      update_limit_agg(&elapsed, max_elapsed_ms_total, totals.elapsed_ms_total_used);
+      update_limit_agg(&tokens, max_total_tokens, totals.total_tokens_used);
+
+      if (max_samples > 0 && (size_t)sampled.size() < max_samples) {
+        Json::Value row(Json::objectValue);
+        row["workflow_id"] = wf.workflow_id;
+        row["status"] = wf.status;
+        if (!wf.session_id.empty()) row["session_id"] = wf.session_id;
+        if (!wf.trace_id.empty()) row["trace_id"] = wf.trace_id;
+        Json::Value rem(Json::objectValue);
+        if (max_tool_calls > 0) rem["max_tool_calls_total"] = (Json::Int64)std::max<int64_t>(0, max_tool_calls - std::max<int64_t>(0, totals.tool_calls_total_used));
+        if (max_steps_total > 0) rem["max_steps_total"] = (Json::Int64)std::max<int64_t>(0, max_steps_total - std::max<int64_t>(0, totals.steps_total_used));
+        if (max_elapsed_ms_total > 0) rem["max_elapsed_ms_total"] = (Json::Int64)std::max<int64_t>(0, max_elapsed_ms_total - std::max<int64_t>(0, totals.elapsed_ms_total_used));
+        if (max_total_tokens > 0) rem["max_total_tokens"] = (Json::Int64)std::max<int64_t>(0, max_total_tokens - std::max<int64_t>(0, totals.total_tokens_used));
+        if (!rem.getMemberNames().empty()) row["remaining"] = rem;
+        sampled.append(row);
+      }
+    }
+
+    auto agg_to_json = [](const LimitAgg& a) -> Json::Value {
+      Json::Value o(Json::objectValue);
+      o["workflows_limited"] = (Json::Int64)std::max<int64_t>(0, a.workflows_limited);
+      o["workflows_remaining_zero"] = (Json::Int64)std::max<int64_t>(0, a.workflows_remaining_zero);
+      o["workflows_ratio_le_0_1"] = (Json::Int64)std::max<int64_t>(0, a.workflows_ratio_le_0_1);
+      o["workflows_ratio_le_0_2"] = (Json::Int64)std::max<int64_t>(0, a.workflows_ratio_le_0_2);
+      if (a.workflows_limited > 0) {
+        o["min_remaining"] = (Json::Int64)std::max<int64_t>(0, a.min_remaining == INT64_MAX ? 0 : a.min_remaining);
+        o["min_remaining_ratio"] = a.min_remaining_ratio;
+      }
+      return o;
+    };
+
+    Json::Value bp(Json::objectValue);
+    bp["workflows_scanned"] = (Json::Int64)std::max<int64_t>(0, scanned);
+    bp["workflows_with_limits"] = (Json::Int64)std::max<int64_t>(0, with_limits);
+    bp["workflow_limit"] = (Json::Int64)max_workflows;
+    bp["include_budget_workflows"] = include_budget_workflows;
+    bp["tool_calls"] = agg_to_json(tool_calls);
+    bp["steps"] = agg_to_json(steps);
+    bp["elapsed_ms"] = agg_to_json(elapsed);
+    bp["total_tokens"] = agg_to_json(tokens);
+    if (include_budget_workflows) bp["workflows"] = sampled;
+    out["budget_pressure"] = bp;
+  }
+
   // Optional: session-level inflight pressure snapshot (multi-tenant / fairness tuning).
   const auto include_sessions_q = query_get(req.query, "include_sessions");
   const bool include_sessions = include_sessions_q && (*include_sessions_q == "1" || *include_sessions_q == "true");
