@@ -14,6 +14,7 @@ option(AGENT_BUILD_ESP32SIM "Build esp32sim host harness for embedded agent_core
 add_library(agent_core STATIC
   core/src/agent_alloc.c
   core/src/agent_edge_interop.c
+  core/src/agent_hmac_sha256.c
   core/src/agent_json_c14n.c
   core/src/agent_runner.c
   core/src/agent_session.c
@@ -257,6 +258,7 @@ endif()
 enable_testing()
 add_executable(agent_core_tests
   tests/test_edge_interop.c
+  tests/test_hmac_sha256.c
   tests/test_json_c14n.c
   tests/test_session.c
   tests/test_session_codec.c

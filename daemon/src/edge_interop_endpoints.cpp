@@ -12,6 +12,7 @@
 #include "base64.h"
 
 #include "agent_sha256.h"
+#include "agent/hmac_sha256.h"
 #include "agent/json_c14n.h"
 
 #include <json/json.h>
@@ -26,46 +27,6 @@
 
 namespace agentd {
 namespace {
-
-static void hmac_sha256(const std::string& key, const std::string& msg, uint8_t out32[32]) {
-  // HMAC-SHA256 (RFC 2104): SHA256((K ^ opad) || SHA256((K ^ ipad) || msg))
-  // - Block size: 64 bytes.
-  uint8_t k0[64];
-  std::memset(k0, 0, sizeof(k0));
-  if (key.size() > sizeof(k0)) {
-    agent_sha256_ctx_t ctx;
-    agent_sha256_init(&ctx);
-    agent_sha256_update(&ctx, key.data(), key.size());
-    uint8_t kh[32];
-    agent_sha256_final(&ctx, kh);
-    std::memcpy(k0, kh, sizeof(kh));
-  } else if (!key.empty()) {
-    std::memcpy(k0, key.data(), std::min(key.size(), sizeof(k0)));
-  }
-
-  uint8_t ipad[64];
-  uint8_t opad[64];
-  for (size_t i = 0; i < sizeof(k0); i++) {
-    ipad[i] = (uint8_t)(k0[i] ^ 0x36);
-    opad[i] = (uint8_t)(k0[i] ^ 0x5c);
-  }
-
-  uint8_t inner[32];
-  {
-    agent_sha256_ctx_t ctx;
-    agent_sha256_init(&ctx);
-    agent_sha256_update(&ctx, ipad, sizeof(ipad));
-    if (!msg.empty()) agent_sha256_update(&ctx, msg.data(), msg.size());
-    agent_sha256_final(&ctx, inner);
-  }
-  {
-    agent_sha256_ctx_t ctx;
-    agent_sha256_init(&ctx);
-    agent_sha256_update(&ctx, opad, sizeof(opad));
-    agent_sha256_update(&ctx, inner, sizeof(inner));
-    agent_sha256_final(&ctx, out32);
-  }
-}
 
 static bool fixed_time_eq32(const uint8_t a[32], const uint8_t b[32]) {
   uint8_t diff = 0;
@@ -279,7 +240,13 @@ static bool verify_edge_envelope_auth_best_effort(
   }
 
   uint8_t mac[32];
-  hmac_sha256(it->second, input_bytes, mac);
+  agent_hmac_sha256(
+    it->second.data(),
+    it->second.size(),
+    input_bytes.data(),
+    input_bytes.size(),
+    mac
+  );
   if (!fixed_time_eq32(mac, (const uint8_t*)sig_bytes.data())) {
     resp->status = 401;
     resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth.sig\"}";

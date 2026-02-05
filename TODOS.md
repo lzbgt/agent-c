@@ -469,6 +469,8 @@ Maintainability note (always-on):
      - Proof: `ctest` includes `agentd_edge_durable_workflow_submit_message_smoke`.
    - Shipped: `agent_core` UM‑BMP interop helpers (id-safe + sanitizer + message type constants).
      - Proof: `ctest` includes `agent_core_tests`.
+   - Shipped: portable crypto primitive for embedded nodes + daemon parity:
+     - `agent_core` now includes `agent_hmac_sha256` (`agent/hmac_sha256.h`) built on the same minimal SHA-256 implementation.
    - Shipped: optional CBOR wire encoding for MCU/gateway efficiency:
      - `POST /api/v1/edge/message` accepts `Content-Type: application/cbor` with a CBOR map shaped like the JSON envelope.
      - `GET /api/v1/edge/outbox` accepts `Accept: application/cbor` and returns `Content-Type: application/cbor` (binary response).

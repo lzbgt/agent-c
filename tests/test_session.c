@@ -245,6 +245,8 @@ int main(void) {
   test_edge_interop_module();
   extern void test_json_c14n_module(void);
   test_json_c14n_module();
+  extern void test_hmac_sha256_module(void);
+  test_hmac_sha256_module();
   printf("agent_core_tests OK\n");
   return 0;
 }
