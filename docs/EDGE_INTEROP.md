@@ -96,6 +96,10 @@ Reliability note (important):
 
 `GET /api/v1/edge/outbox?node_id=...&cursor=0&limit=256`
 
+Wire encoding:
+- Default: JSON (`application/json`).
+- Optional: CBOR (`Accept: application/cbor`) returns a CBOR-encoded response body with the same JSON-shaped fields.
+
 Returns messages in ascending `outbox_id` order. The node should:
 - persist its last `cursor_next`
 - re-poll with `cursor=<cursor_next>`

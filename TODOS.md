@@ -459,8 +459,9 @@ Maintainability note (always-on):
      - Proof: `ctest` includes `agent_core_tests`.
    - Shipped: optional CBOR wire encoding for MCU/gateway efficiency:
      - `POST /api/v1/edge/message` accepts `Content-Type: application/cbor` with a CBOR map shaped like the JSON envelope.
+     - `GET /api/v1/edge/outbox` accepts `Accept: application/cbor` and returns `Content-Type: application/cbor` (binary response).
      - Constraint: definite-length items only; map keys must be text strings (string-key CBOR profile).
-     - Proof: `ctest` includes `agentd_edge_message_cbor_smoke`.
+     - Proof: `ctest` includes `agentd_edge_message_cbor_smoke` and `agentd_edge_outbox_cbor_smoke`.
    - Next: consolidate UM‑EAIS + durable workflow handoff into a single **versioned interop contract** with explicit:
      - idempotency rules (`msg_id` vs `idempotency_key`) and replay guidance for lossy transports (MQTT/LoRa bridges)
      - correlation rules (`workflow_id` / `trace_id` / task trace suffixing)

@@ -21,10 +21,12 @@ CBOR is only a transport encoding option.
 
 Endpoint:
 - `POST /api/v1/edge/message`
+- `GET /api/v1/edge/outbox`
 
 Encoding:
 - JSON: `Content-Type: application/json`
 - CBOR: `Content-Type: application/cbor`
+  - For `GET /api/v1/edge/outbox`, request CBOR with `Accept: application/cbor` and the platform responds with `Content-Type: application/cbor`.
 
 For CBOR requests, the body MUST decode to a map with the same key names as the JSON envelope:
 
@@ -67,9 +69,9 @@ for platform-side storage and quorum logic, but wire-level attestations should p
 
 Platform (`agentd`):
 - Shipped: CBOR decoding on `POST /api/v1/edge/message` when `Content-Type: application/cbor`.
-- Proof: `ctest` includes `agentd_edge_message_cbor_smoke`.
+- Shipped: CBOR encoding on `GET /api/v1/edge/outbox` when `Accept: application/cbor`.
+- Proof: `ctest` includes `agentd_edge_message_cbor_smoke` and `agentd_edge_outbox_cbor_smoke`.
 
 Node (`agent_core`):
 - Not yet shipped: CBOR codec helpers for MCU firmware.
 - Recommendation: add a tiny CBOR encoder/decoder module under `core/` later, once the message subset stabilizes.
-

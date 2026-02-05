@@ -1016,6 +1016,10 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EdgeOutboxResponse"
+            application/cbor:
+              schema:
+                type: string
+                format: binary
 
   /api/v1/edge/nodes:
     get:

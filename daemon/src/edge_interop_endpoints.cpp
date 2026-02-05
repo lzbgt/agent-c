@@ -1,6 +1,7 @@
 #include "edge_interop_endpoints.h"
 
 #include "cbor_decode.h"
+#include "cbor_encode.h"
 #include "daemon_auth.h"
 #include "edge_rules.h"
 #include "edge_util.h"
@@ -1027,19 +1028,24 @@ void handle_edge_outbox_endpoint(
   HttpResponse* resp
 ) {
   cors_apply(req, resp, cors_cfg);
-  resp->headers["Content-Type"] = "application/json; charset=utf-8";
   if (!daemon_require_auth(cfg, req, resp)) return;
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 503;
     resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
     return;
   }
+
+  const std::string accept =
+    req.headers.count("accept") ? trim_copy(req.headers.at("accept")) : "";
+  const bool want_cbor = !accept.empty() && url_contains_ci(accept, "application/cbor");
 
   const auto nid = query_get(req.query, "node_id");
   if (!nid || nid->empty() || !edge_id_is_safe(*nid)) {
     resp->status = 400;
     resp->body = "{\"ok\":false,\"error\":\"missing/invalid node_id\"}";
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
     return;
   }
 
@@ -1065,6 +1071,16 @@ void handle_edge_outbox_endpoint(
     o["ok"] = false;
     o["error"] = "failed to list outbox";
     o["detail"] = err;
+    if (want_cbor) {
+      std::string bytes;
+      std::string cerr;
+      if (cbor_encode_json_value(o, &bytes, &cerr)) {
+        resp->headers["Content-Type"] = "application/cbor";
+        resp->body = bytes;
+        return;
+      }
+    }
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
     resp->body = edge_json_stringify_compact(o);
     return;
   }
@@ -1092,6 +1108,17 @@ void handle_edge_outbox_endpoint(
   }
   o["messages"] = arr;
   o["cursor_next"] = (Json::Int64)cursor_next;
+  if (want_cbor) {
+    std::string bytes;
+    std::string cerr;
+    if (cbor_encode_json_value(o, &bytes, &cerr)) {
+      resp->headers["Content-Type"] = "application/cbor";
+      resp->body = bytes;
+      return;
+    }
+    // Fall back to JSON on encoding errors.
+  }
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
   resp->body = edge_json_stringify_compact(o);
 }
 

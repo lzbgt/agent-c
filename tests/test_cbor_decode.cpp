@@ -1,4 +1,5 @@
 #include "cbor_decode.h"
+#include "cbor_encode.h"
 
 #include <cassert>
 #include <string>
@@ -31,6 +32,7 @@ static std::string cbor_map_1(const std::string& k, const std::string& v) {
 
 int main() {
   using agentd::cbor_decode_to_json_value;
+  using agentd::cbor_encode_json_value;
 
   {
     Json::Value out;
@@ -49,6 +51,31 @@ int main() {
     assert(out.isObject());
     assert(out.isMember("type") && out["type"].isString());
     assert(out["type"].asString() == "NODE_HELLO");
+  }
+
+  {
+    // Encoder emits deterministic, definite-length CBOR that the decoder can round-trip.
+    Json::Value v(Json::objectValue);
+    v["ok"] = true;
+    v["type"] = "NODE_HELLO";
+    v["n"] = (Json::Int64)123;
+    Json::Value arr(Json::arrayValue);
+    arr.append("a");
+    arr.append("b");
+    v["arr"] = arr;
+
+    std::string cbor;
+    std::string err;
+    assert(cbor_encode_json_value(v, &cbor, &err));
+
+    Json::Value out;
+    std::string derr;
+    assert(cbor_decode_to_json_value(cbor, &out, &derr));
+    assert(out.isObject());
+    assert(out.isMember("ok") && out["ok"].isBool() && out["ok"].asBool());
+    assert(out.isMember("type") && out["type"].isString() && out["type"].asString() == "NODE_HELLO");
+    assert(out.isMember("n") && (out["n"].isInt64() || out["n"].isInt() || out["n"].isUInt64() || out["n"].isUInt()));
+    assert(out.isMember("arr") && out["arr"].isArray() && out["arr"].size() == 2);
   }
 
   {
@@ -82,4 +109,3 @@ int main() {
 
   return 0;
 }
-
