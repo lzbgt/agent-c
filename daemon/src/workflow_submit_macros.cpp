@@ -1012,6 +1012,11 @@ bool expand_workflow_submit_macros(
         ptrs.append("/assistant_text");
         agg["pointers"] = ptrs;
       }
+      // Distinct-node quorum: use provider base_url as the default node identity for run-attempt tasks.
+      // This enables require_distinct_nodes for multi-provider correctness checks.
+      const bool has_node_pointer =
+        agg.isMember("node_pointer") && agg["node_pointer"].isString() && !trim_copy(agg["node_pointer"].asString()).empty();
+      if (!has_node_pointer) agg["node_pointer"] = "/effective_base_url";
     }
     join["aggregate"] = agg;
 

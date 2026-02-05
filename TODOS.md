@@ -293,7 +293,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - Quorum ergonomics for delegate_parallel (v1.7.x):
   - For `delegate.aggregate.mode:"quorum_hashes"`, the server defaults `aggregate.pointers=["/assistant_text"]` when omitted,
     so the join does not accidentally inherit the generic aggregate defaults (`/avm/result_hash`, `/avm/trace_hash`).
-  - Proof: `ctest` includes `agentd_workflow_delegate_parallel_quorum_hashes_default_pointers_smoke`.
+  - For `delegate.aggregate.mode:"quorum_hashes"`, the server defaults `aggregate.node_pointer="/effective_base_url"` when omitted,
+    enabling `require_distinct_nodes:true` to do distinct-provider quorum votes over the run attempts.
+    (Run attempts now surface `effective_base_url` / `effective_model` in their results for audit/quorum correlation.)
+  - Proof: `ctest` includes `agentd_workflow_delegate_parallel_quorum_hashes_default_pointers_smoke` and `agentd_workflow_delegate_parallel_distinct_nodes_smoke`.
 - Parallel collaboration macro upgrade (v1.7.1):
   - New deterministic join strategy: `mode:"quorum_ok"` (succeed only if >= quorum attempts are ok; deterministically chooses the first ok attempt).
   - New merge primitive: `delegate.attempt_defaults` (missing-key-only defaults applied to each attempt.request with higher priority than workflow defaults).

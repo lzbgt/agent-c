@@ -2287,6 +2287,10 @@ static Json::Value run_request_to_json_impl(
   out["effective_stream_assistant"] = effective_stream_assistant;
   out["effective_require_client_acks"] = require_client_acks;
   out["effective_tools"] = tools;
+  // Node identity surface (non-secret): expose effective provider target metadata so durable workflows
+  // can require cross-node/provider quorum via aggregation (e.g. require_distinct_nodes).
+  out["effective_model"] = run_cfg.model;
+  out["effective_base_url"] = run_cfg.base_url;
   out["effective_max_steps"] = (Json::UInt64)max_steps;
   out["effective_max_tool_calls_total"] = (Json::UInt64)max_tool_calls_total;
   out["effective_max_tool_calls_per_tool"] = (Json::UInt64)max_tool_calls_per_tool;

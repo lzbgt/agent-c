@@ -1796,6 +1796,12 @@ components:
           format: int64
           minimum: 0
           description: Wall-clock duration of the run endpoint (best-effort).
+        effective_model:
+          type: string
+          description: Effective model used by the daemon (non-secret; useful for audit/quorum correlation).
+        effective_base_url:
+          type: string
+          description: Effective provider base_url used by the daemon (non-secret; useful for audit/quorum correlation).
         effective_max_steps:
           type: integer
           format: int64
@@ -3083,6 +3089,7 @@ components:
         - If omitted, the server defaults to `mode:first_ok`.
         - If `ok_pointer`/`value_pointer` are set at the `delegate` level, they are used as defaults when the aggregate object does not explicitly set them.
         - For `mode=quorum_hashes`, when `pointers` is omitted the server defaults it to [`/assistant_text`].
+        - For `mode=quorum_hashes`, when `node_pointer` is omitted the server defaults it to [`/effective_base_url`].
       properties:
         mode:
           type: string
@@ -3104,15 +3111,16 @@ components:
             Optional JSON pointer into each attempt result JSON used to surface node identity evidence alongside votes
             (for quorum_hashes correlation; also used when require_distinct_nodes=true).
 
-            Default: `/edge/node_id` (usually empty for LLM attempts; present when aggregating edge tasks).
+            For `kind:delegate_parallel` with `mode=quorum_hashes`, the server defaults this to `/effective_base_url`.
+            (The aggregate engine's default is `/edge/node_id`.)
         require_distinct_nodes:
           type: boolean
           description: |
             For mode=quorum_hashes, when true, count votes across **distinct node identities** instead of per-attempt votes.
 
             Notes:
-            - Most `delegate_parallel` attempt results have no `/edge/node_id`, so enabling this typically results in no votes.
-            - This is intended mainly for aggregating edge task results via delegate_parallel or other higher-level macros.
+            - For `kind:delegate_parallel`, this is most useful for multi-provider correctness checks (distinct base_url targets).
+            - For edge task aggregation, prefer macros like `edge_parallel` which default `node_pointer` to `/edge/node_id`.
 
             Default: false.
         require_all:
