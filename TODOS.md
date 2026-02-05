@@ -396,7 +396,11 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
    - Shipped (MCU ergonomics): UM‑EAIS node lifecycle CBOR body encoders in `agent_core`:
      - Core API: `agent/um_eais_node_write.h` encodes `NODE_HELLO`, `NODE_HEARTBEAT`, and `SENSOR_EVENT` bodies with deterministic key ordering.
      - Proof: `ctest` includes `agent_core_tests` (encodes bodies and asserts canonical key ordering via the embedded CBOR reader).
-   - Not shipped (yet): a deterministic CBOR encoder for `NODE_CAPS_RSP.body.manifest` (UM‑ACDS manifest can be large and schema-driven).
+   - Shipped (MCU ergonomics): UM‑EAIS `NODE_CAPS_RSP` CBOR body encoder in `agent_core`:
+     - Core API: `agent/um_eais_node_caps_rsp_write.h` wraps caller-provided manifest CBOR bytes and validates the manifest is a definite-length map with text keys.
+     - Optional strict mode enforces deterministic key ordering and no duplicates (recommended for `auth.alg="*-cbor"` signature stability).
+     - Proof: `ctest` includes `agent_core_tests`.
+   - Not shipped (yet): a built-in deterministic CBOR encoder for `NODE_CAPS_RSP.body.manifest` (schema-driven; likely generated or app-specific).
    - Shipped (MCU ergonomics): UM‑BMP envelope CBOR encode helper in `agent_core` (wire send path):
      - Core API: `agent/umbmp_auth.h` `agent_umbmp_envelope_cbor_v0_4(...)` can emit deterministic CBOR wire envelopes with optional `auth.sig` (base64 text).
      - Proof: `ctest` includes `agent_core_tests` (encodes a full envelope with `auth.sig` and decodes it back via the CBOR reader).

@@ -265,6 +265,8 @@ int main(void) {
   test_um_eais_task_lifecycle_write_module();
   extern void test_um_eais_node_write_module(void);
   test_um_eais_node_write_module();
+  extern void test_um_eais_node_caps_rsp_write_module(void);
+  test_um_eais_node_caps_rsp_write_module();
   extern void test_umbmp_envelope_write_module(void);
   test_umbmp_envelope_write_module();
   extern void test_um_eais_outbox_read_module(void);
