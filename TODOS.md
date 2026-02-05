@@ -59,6 +59,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
       - `agentd.result_sha256_schema=agentd_call_result_stable_v1` (ephemeral fields pruned before hashing)
     - `agentd.final_sha256`: hash of the full terminal remote workflow JSON (audit/debug; includes workflow_id/timestamps)
     (algorithm `agent_json_c14n_v1`).
+  - Distinct-target quorum: `kind:"agentd_parallel"` defaults `aggregate.node_pointer="/agentd/base_url"` for `mode:"quorum_hashes"`
+    so `require_distinct_nodes:true` counts distinct remote agent targets correctly.
 - Embedded bring-up helper: `agent_core` now includes UM‑BMP/UM‑EAIS interop helpers (`agent/edge_interop.h`)
   for id-safe validation/sanitization + message type constants (reduces node/platform drift).
   - Proof: `ctest` includes `agent_core_tests`.

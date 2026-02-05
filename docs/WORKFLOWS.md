@@ -439,6 +439,8 @@ Notes:
 - `agentd_parallel.agentd_call.base_url` must be omitted (each target provides a base_url).
 - The server overwrites `aggregate.task_ids` to match the derived tasks.
 - Default join strategy is `mode:"first_ok"` if `aggregate.mode` is omitted.
+- For `aggregate.mode:"quorum_hashes"`, the server defaults `aggregate.node_pointer="/agentd/base_url"` when omitted, so
+  `require_distinct_nodes:true` counts distinct remote agent targets correctly.
 - `agentd_parallel.targets[]` entries may also use `broker_proxy:{broker_base_url,agent_id}` (same as `agentd_call.broker_proxy`); the server computes `base_url` as `.../v1/agents/<agent_id>/proxy`.
 
 ### Deterministic memory update task (`kind:"memory_put"`) (v1.7)

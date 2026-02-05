@@ -386,6 +386,16 @@ bool expand_workflow_submit_macros(
         }
         return false;
       }
+
+      // Ergonomic default for agentd_parallel quorum: node identity is the remote agent base_url.
+      // Aggregate's default node_pointer (/edge/node_id) is correct for edge_invoke, but agentd_call results
+      // identify the target under /agentd/base_url.
+      if (agg_mode == "quorum_hashes") {
+        const bool has_node_pointer =
+          agg.isMember("node_pointer") && agg["node_pointer"].isString() && !trim_copy(agg["node_pointer"].asString()).empty();
+        if (!has_node_pointer) agg["node_pointer"] = "/agentd/base_url";
+      }
+
       join["aggregate"] = agg;
 
       if (t.isMember("max_attempts") && t["max_attempts"].isInt()) join["max_attempts"] = t["max_attempts"];
