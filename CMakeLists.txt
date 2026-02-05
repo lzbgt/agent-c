@@ -179,6 +179,8 @@ if(AGENT_BUILD_HOST)
     daemon/src/workflow_http_json.cpp
     daemon/src/workflow_memory_correlate.cpp
     daemon/src/workflow_templates.cpp
+    daemon/src/workflow_query_endpoints.cpp
+    daemon/src/workflow_admin_endpoints.cpp
     daemon/src/workflow_endpoints.cpp
     daemon/src/workflow_fairq_cost.cpp
   )

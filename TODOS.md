@@ -88,6 +88,13 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - JSON Pointer helper promoted to `daemon/src/json_util.*` (`json_pointer_get`).
   - Workflow template expander extracted into `daemon/src/workflow_templates.*` (keeps `workflow_engine.cpp` under ~2000 lines).
   - Workflow aggregation/join logic extracted into `daemon/src/workflow_aggregate.*` (keeps `workflow_engine.cpp` lean and SOLID).
+- Workflow endpoints maintainability refactor:
+  - Split endpoint implementations into smaller translation units:
+    - `daemon/src/workflow_query_endpoints.cpp` (GET `/api/v1/workflow`, GET `/api/v1/workflows`)
+    - `daemon/src/workflow_admin_endpoints.cpp` (POST `/api/v1/workflow/cancel`, GET `/api/v1/workflow/events`, GET `/api/v1/workflow/stats`)
+  - `daemon/src/workflow_endpoints.cpp` now focuses on submit-only (still a candidate for further splitting to keep <2000 LOC).
+  - Proof: existing workflow + stats + docs/openapi smokes still pass (`agentd_workflow_smoke`, `agentd_workflow_http_json_smoke`,
+    `agentd_workflow_stats_smoke`, `docs_sanity_tests`, `openapi_sanity_tests`).
 - Durable workflows can now run deterministic AVM capsule tasks (no LLM required):
   - Task kind: `kind: "avm_capsule"`
   - Task payload: `capsule: { obc_base64, timeout_ms, gas, mem_bytes, ... }` (same schema as `POST /api/v1/avm/capsule_run`)
@@ -283,6 +290,11 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
 3) **Scheduling policy v2.4+** — DRR is shipped; next is telemetry-driven cost (tokens/elapsed/polls) and resilient fairness under mixed workloads.
 4) **Budgets v0.7** — complete streaming usage accounting and host-tool charging; surface budget pressure so schedulers can act cheaply.
 5) **Interop v0.4** — enforceable edge attestation + trust roots and stronger multi-node identity binding.
+
+Maintainability note (always-on):
+- Keep endpoint implementations SOLID and <2000 LOC per file; split large translation units (e.g. workflow endpoints) so new collaboration primitives remain cheap to add.
+- Follow-up: split `POST /api/v1/workflow/submit` implementation (`daemon/src/workflow_endpoints.cpp`) further (macro expander + validators),
+  so the durable workflow surface can evolve without accumulating another “mega endpoint” file.
 
 1) **Durable budget enforcement at scheduler level** (correctness + cost predictability)
    - Shipped (v0): workflow-level tool-call budget `workflow_limits.max_tool_calls_total` enforced by the workflow engine:
