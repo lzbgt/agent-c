@@ -631,8 +631,9 @@ void handle_workflow_submit_endpoint(
 	    const bool is_memory_correlate = (kind == "memory_correlate");
 	    const bool is_memory_consolidate = (kind == "memory_consolidate");
 	    const bool is_http_json = (kind == "http_json");
+	    const bool is_agentd_call = (kind == "agentd_call");
 	    const bool is_special =
-	      is_avm || is_aggregate || is_edge || is_edge_wait_sensor || is_delay || is_delegate || is_memory_put || is_memory_search || is_memory_correlate || is_memory_consolidate || is_http_json;
+	      is_avm || is_aggregate || is_edge || is_edge_wait_sensor || is_delay || is_delegate || is_memory_put || is_memory_search || is_memory_correlate || is_memory_consolidate || is_http_json || is_agentd_call;
 
     Json::Value run_req = t.isMember("request") && t["request"].isObject() ? t["request"] : t;
     if (!is_special && defaults.isObject()) {
@@ -1444,11 +1445,224 @@ void handle_workflow_submit_endpoint(
       if (max_bytes > 16LL * 1024LL * 1024LL) max_bytes = 16LL * 1024LL * 1024LL;
       hj2["max_bytes"] = (Json::Int64)max_bytes;
 
-      task_req["kind"] = "http_json";
-      task_req["http_json"] = hj2;
-      task_req["priority"] = task_priority;
-      task_req["trace_id"] = trace_id + ":" + task_id;
-    } else if (is_delegate) {
+	      task_req["kind"] = "http_json";
+	      task_req["http_json"] = hj2;
+	      task_req["priority"] = task_priority;
+	      task_req["trace_id"] = trace_id + ":" + task_id;
+	    } else if (is_agentd_call) {
+	      if (!t.isMember("agentd_call") || !t["agentd_call"].isObject()) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "agentd_call task missing agentd_call object";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+
+	      const auto& ac = t["agentd_call"];
+	      const std::string base_url =
+	        ac.isMember("base_url") && ac["base_url"].isString() ? trim_copy(ac["base_url"].asString()) : "";
+	      if (base_url.empty()) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "agentd_call.base_url must be a non-empty string";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      if (!(base_url.rfind("http://", 0) == 0 || base_url.rfind("https://", 0) == 0)) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "agentd_call.base_url must start with http:// or https://";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      if (base_url.size() > 4096) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "agentd_call.base_url is too long";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+
+	      const std::string op =
+	        ac.isMember("op") && ac["op"].isString() ? trim_copy(ac["op"].asString()) : "workflow_submit_and_wait";
+	      if (op != "workflow_submit_and_wait") {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "agentd_call.op must be workflow_submit_and_wait";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+
+	      if (!ac.isMember("workflow") || !ac["workflow"].isObject()) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "agentd_call.workflow must be an object";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+
+	      // Persisted agentd_call is kept minimal; most validation is remote-side.
+	      // Still enforce basic header hygiene: do not persist Authorization.
+	      Json::Value headers2(Json::objectValue);
+	      if (ac.isMember("headers")) {
+	        if (!ac["headers"].isObject() && !ac["headers"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "agentd_call.headers must be an object";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (ac["headers"].isObject()) {
+	          const auto& hdr = ac["headers"];
+	          int kept = 0;
+	          for (const auto& k : hdr.getMemberNames()) {
+	            if (kept >= 32) break;
+	            if (!hdr[k].isString()) continue;
+	            const std::string key = trim_copy(k);
+	            if (key.empty() || key.size() > 64) continue;
+	            bool ok = true;
+	            for (char c : key) {
+	              const bool is_alnum = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+	              if (!(is_alnum || c == '-')) { ok = false; break; }
+	            }
+	            if (!ok) continue;
+	            const std::string kl = lower_copy(key);
+	            if (kl == "authorization" || kl == "proxy-authorization") {
+	              resp->status = 400;
+	              Json::Value o(Json::objectValue);
+	              o["ok"] = false;
+	              o["error"] = "agentd_call.headers must not include Authorization; use bearer_env instead (prevents persisting secrets)";
+	              o["task_id"] = task_id;
+	              resp->body = json_stringify_compact(o);
+	              return;
+	            }
+	            const std::string val = hdr[k].asString();
+	            if (val.size() > 4096) {
+	              resp->status = 400;
+	              Json::Value o(Json::objectValue);
+	              o["ok"] = false;
+	              o["error"] = "agentd_call.headers values are too long (max 4096 chars)";
+	              o["task_id"] = task_id;
+	              resp->body = json_stringify_compact(o);
+	              return;
+	            }
+	            headers2[key] = val;
+	            kept++;
+	          }
+	        }
+	      }
+
+	      Json::Value ac2(Json::objectValue);
+	      ac2["base_url"] = base_url;
+	      ac2["op"] = op;
+	      ac2["workflow"] = ac["workflow"];
+	      if (!headers2.empty()) ac2["headers"] = headers2;
+
+	      if (ac.isMember("bearer_env")) {
+	        if (!ac["bearer_env"].isString() && !ac["bearer_env"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "agentd_call.bearer_env must be a string";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (ac["bearer_env"].isString()) {
+	          const std::string env = trim_copy(ac["bearer_env"].asString());
+	          auto env_is_safe = [&](const std::string& s) -> bool {
+	            if (s.empty() || s.size() > 128) return false;
+	            const auto is_alpha = [](char c) { return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z'); };
+	            const auto is_num = [](char c) { return (c >= '0' && c <= '9'); };
+	            if (!(is_alpha(s[0]) || s[0] == '_')) return false;
+	            for (char c : s) {
+	              if (!(is_alpha(c) || is_num(c) || c == '_')) return false;
+	            }
+	            return true;
+	          };
+	          if (!env.empty()) {
+	            if (!env_is_safe(env)) {
+	              resp->status = 400;
+	              Json::Value o(Json::objectValue);
+	              o["ok"] = false;
+	              o["error"] = "agentd_call.bearer_env must be a safe env var name";
+	              o["task_id"] = task_id;
+	              resp->body = json_stringify_compact(o);
+	              return;
+	            }
+	            ac2["bearer_env"] = env;
+	          }
+	        }
+	      }
+
+	      auto copy_i64_opt = [&](const char* k, int64_t lo, int64_t hi) -> bool {
+	        if (!ac.isMember(k)) return true;
+	        if (!(ac[k].isInt64() || ac[k].isUInt64() || ac[k].isInt() || ac[k].isUInt()) && !ac[k].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = std::string("agentd_call.") + k + " must be an int64";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return false;
+	        }
+	        if (!ac[k].isNull()) {
+	          int64_t v = ac[k].asInt64();
+	          if (v < lo) v = lo;
+	          if (v > hi) v = hi;
+	          ac2[k] = (Json::Int64)v;
+	        }
+	        return true;
+	      };
+
+	      if (!copy_i64_opt("timeout_ms", 1, 300000)) return;
+	      if (!copy_i64_opt("poll_ms", 10, 1000)) return;
+	      if (!copy_i64_opt("max_bytes", 1024, 16LL * 1024LL * 1024LL)) return;
+
+	      if (ac.isMember("include_tasks")) {
+	        if (!ac["include_tasks"].isBool() && !ac["include_tasks"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "agentd_call.include_tasks must be a bool";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (ac["include_tasks"].isBool()) ac2["include_tasks"] = ac["include_tasks"];
+	      }
+	      if (ac.isMember("include_results")) {
+	        if (!ac["include_results"].isBool() && !ac["include_results"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "agentd_call.include_results must be a bool";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (ac["include_results"].isBool()) ac2["include_results"] = ac["include_results"];
+	      }
+
+	      task_req["kind"] = "agentd_call";
+	      task_req["agentd_call"] = ac2;
+	      task_req["priority"] = task_priority;
+	      task_req["trace_id"] = trace_id + ":" + task_id;
+	    } else if (is_delegate) {
       if (!t.isMember("delegate") || !t["delegate"].isObject()) {
         resp->status = 400;
         Json::Value o(Json::objectValue);

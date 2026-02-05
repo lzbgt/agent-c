@@ -66,6 +66,10 @@ int64_t workflow_fairq_estimate_task_cost_simple_v1(
     // Edge tasks are often multi-poll loops (QUEUED/RUNNING), so charge higher to reduce latency
     // variance under mixed workloads.
     cost = 8;
+  } else if (kind == "agentd_call") {
+    // Agent-to-agent collaboration is also commonly a poll loop (submit+poll until terminal).
+    // Charge similar to edge_invoke to reduce tail latency when mixed with short deterministic tasks.
+    cost = 8;
   } else if (kind == "delegate") {
     // Delegate can perform multiple sequential LLM calls inside a single workflow task.
     int64_t attempts = 0;

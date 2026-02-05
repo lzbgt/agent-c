@@ -299,6 +299,50 @@ Result shape (high level):
 - `http.response_json` is best-effort parsed JSON (when parse succeeds), which enables downstream `${task.H.json:/http/response_json/...}`
   and `{"$ref":"task.H.json:/http/response_json/..."}` wiring.
 
+### Deterministic agent-to-agent collaboration task (`kind:"agentd_call"`) (v1.9)
+
+For multi-agent collaboration where **another `agentd` instance** should run a durable workflow and return a correctness-checkable
+result, workflows can use `kind:"agentd_call"`.
+
+This is a deterministic collaboration primitive:
+- submit a remote workflow (`POST <base_url>/api/v1/workflow/submit`)
+- poll until terminal (`GET <base_url>/api/v1/workflow?workflow_id=...`)
+
+Security model:
+- This task is **disabled by default** (same SSRF surface as `http_json`).
+- Operators must opt in by starting the daemon with `--workflow-enable-http-tasks` (or env `AGENTD_WORKFLOW_ENABLE_HTTP_TASKS=1`).
+- Do **not** embed secrets into persisted workflow specs via headers. `Authorization` headers are rejected at submit time.
+  - If you need a bearer token, use `agentd_call.bearer_env` to reference an env var name (only the name is persisted).
+
+Example (remote agent runs a tiny deterministic delay workflow):
+
+```json
+{
+  "task_id": "REMOTE",
+  "kind": "agentd_call",
+  "agentd_call": {
+    "base_url": "http://127.0.0.1:9090",
+    "op": "workflow_submit_and_wait",
+    "timeout_ms": 20000,
+    "poll_ms": 50,
+    "include_tasks": true,
+    "include_results": true,
+    "workflow": {
+      "tasks": [
+        { "task_id": "W", "kind": "delay", "delay_ms": 10, "result": { "assistant_text": "remote ok" } }
+      ]
+    }
+  }
+}
+```
+
+Result shape (high level):
+- `ok` is true when the *remote workflow* reaches status `"done"`.
+- `agentd.workflow_id` is the remote workflow_id (reused on retry to avoid duplicate submit).
+- `agentd.final` is the remote `GET /api/v1/workflow` JSON response (best-effort bounded), enabling references like:
+  - `${task.REMOTE.json:/agentd/final/workflow/status}`
+  - `{"$ref":"task.REMOTE.json:/agentd/final/result/results_by_task/W/assistant_text"}`
+
 ### Deterministic memory update task (`kind:"memory_put"`) (v1.7)
 
 To make memory updates **correctness-gated** and correlated to durable execution, workflows can run a deterministic

@@ -11,6 +11,7 @@
 #include "workflow_fairq_cost.h"
 #include "workflow_memory_correlate.h"
 #include "workflow_http_json.h"
+#include "workflow_agentd_call.h"
 #include "workflow_templates.h"
 
 #include <algorithm>
@@ -2234,6 +2235,50 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         if (!out.isMember("tool_calls_total")) out["tool_calls_total"] = (Json::Int64)1;
         if (!out.isMember("steps_executed")) out["steps_executed"] = (Json::Int64)1;
         if (!herr.empty() && (!out.isMember("error") || !out["error"].isString())) out["error"] = herr;
+      }
+    }
+  } else if (kind == "agentd_call") {
+    // Deterministic agent-to-agent collaboration (submit+poll remote agentd workflow; gated by daemon config).
+    if (wf_limits.max_tool_calls_total > 0 && wf_tool_calls_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_tool_calls_total");
+      return;
+    }
+    if (wf_limits.max_steps_total > 0 && wf_steps_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_steps_total");
+      return;
+    }
+    if (wf_limits.max_elapsed_ms_total > 0 && wf_elapsed_ms_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_elapsed_ms_total");
+      return;
+    }
+    if (wf_limits.max_total_tokens > 0 && wf_total_tokens_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_total_tokens");
+      return;
+    }
+
+    out = Json::Value(Json::objectValue);
+    out["kind"] = "agentd_call";
+    out["ok"] = false;
+    out["assistant_text"] = "";
+
+    if (workflow_run_should_cancel(&cancel_ctx)) {
+      out["cancelled"] = true;
+      out["error"] = cancel_ctx.reason == WorkflowCancelReason::DeadlineExceeded ? "deadline exceeded" : "cancelled";
+    } else {
+      const Json::Value ac =
+        rr.isMember("agentd_call") && rr["agentd_call"].isObject() ? rr["agentd_call"] : Json::Value(Json::nullValue);
+      if (!ac.isObject()) {
+        out["error"] = "agentd_call missing agentd_call object";
+      } else {
+        const std::string ttrace =
+          rr.isMember("trace_id") && rr["trace_id"].isString() ? trim_copy(rr["trace_id"].asString()) : "";
+        std::string aerr;
+        out = workflow_agentd_call_to_json(cfg, ac, ttrace, task.result_json, &aerr);
+        out["kind"] = "agentd_call";
+        // Budget charging: deterministic external calls. Count as one tool call / step per attempt.
+        if (!out.isMember("tool_calls_total")) out["tool_calls_total"] = (Json::Int64)1;
+        if (!out.isMember("steps_executed")) out["steps_executed"] = (Json::Int64)1;
+        if (!aerr.empty() && (!out.isMember("error") || !out["error"].isString())) out["error"] = aerr;
       }
     }
   } else if (kind == "edge_invoke") {

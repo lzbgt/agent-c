@@ -1517,6 +1517,7 @@ components:
         - Deterministic memory retrieval tasks: `kind: memory_search` with `memory_search` (host tool; no LLM required)
         - Deterministic memory correlation tasks: `kind: memory_correlate` with `memory_correlate` (scans structured memory checkpoints; no LLM required)
         - Deterministic outbound HTTP JSON tasks: `kind: http_json` with `http_json` (gated by daemon flag; no LLM required)
+        - Deterministic agent collaboration tasks: `kind: agentd_call` with `agentd_call` (gated by daemon flag; no LLM required)
         - Deterministic memory consolidation tasks: `kind: memory_consolidate` with `memory_consolidate` (see `WorkflowMemoryConsolidateSpec`)
         - Deterministic delay tasks: `kind: delay` with `delay_ms` (no LLM required)
         - Edge collaboration tasks: `kind: edge_invoke` with `edge` (see `WorkflowEdgeInvokeSpec`)
@@ -1532,6 +1533,7 @@ components:
         - If `kind == memory_search`, `memory_search.query` is required and `request.prompt` is not used.
         - If `kind == memory_correlate`, `memory_correlate` is required and `request.prompt` is not used.
         - If `kind == http_json`, `http_json` is required and `request.prompt` is not used.
+        - If `kind == agentd_call`, `agentd_call` is required and `request.prompt` is not used.
         - If `kind == memory_consolidate`, `memory_consolidate` is optional and `request.prompt` is not used.
         - If `kind == delay`, `delay_ms` is optional (default 0) and `request.prompt` is not used.
         - If `kind == edge_invoke`, `edge.tool`/`edge.args` are required and `request.prompt` is not used.
@@ -1548,6 +1550,7 @@ components:
         - $ref: "#/components/schemas/WorkflowTaskMemorySearchSpec"
         - $ref: "#/components/schemas/WorkflowTaskMemoryCorrelateSpec"
         - $ref: "#/components/schemas/WorkflowTaskHttpJsonSpec"
+        - $ref: "#/components/schemas/WorkflowTaskAgentdCallSpec"
         - $ref: "#/components/schemas/WorkflowTaskMemoryConsolidateSpec"
         - $ref: "#/components/schemas/WorkflowTaskDelaySpec"
         - $ref: "#/components/schemas/WorkflowTaskEdgeInvokeSpec"
@@ -1865,6 +1868,89 @@ components:
           type: integer
           format: int64
           description: Max response bytes to capture (default 1048576; clamp 1024..16777216).
+
+    WorkflowTaskAgentdCallSpec:
+      type: object
+      required: [task_id, kind, agentd_call]
+      properties:
+        task_id: { type: string }
+        allow_error:
+          type: boolean
+          description: If true, task failure does not fail the workflow (soft-fail).
+        inputs:
+          type: object
+          description: Optional per-task inputs (overrides workflow-level inputs).
+          additionalProperties: true
+        kind:
+          type: string
+          enum: [agentd_call]
+          description: Deterministic agent-to-agent collaboration call (no LLM required; gated by daemon flag `--workflow-enable-http-tasks`).
+        depends_on:
+          type: array
+          items: { type: string }
+        max_attempts: { type: integer, format: int32 }
+        priority:
+          type: integer
+          format: int32
+          description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+        agentd_call:
+          $ref: "#/components/schemas/WorkflowAgentdCallSpec"
+        expect:
+          type: object
+          description: Deterministic correctness assertions (engine-enforced)
+          additionalProperties: true
+
+    WorkflowAgentdCallSpec:
+      type: object
+      required: [base_url, workflow]
+      description: |
+        Deterministic agent-to-agent collaboration configuration for `kind:agentd_call`.
+
+        Operation:
+        - submits a workflow to `POST <base_url>/api/v1/workflow/submit`
+        - polls `GET <base_url>/api/v1/workflow?workflow_id=...` until terminal status
+
+        Security:
+        - Disabled by default (SSRF risk). Operator must start agentd with `--workflow-enable-http-tasks`.
+        - Do not persist secret headers. `Authorization` is rejected; use `bearer_env`.
+      properties:
+        base_url:
+          type: string
+          description: Required base URL (must start with http:// or https://).
+        op:
+          type: string
+          enum: [workflow_submit_and_wait]
+          description: Operation (default workflow_submit_and_wait).
+        workflow:
+          type: object
+          description: The request body sent to the remote `POST /api/v1/workflow/submit`.
+          additionalProperties: true
+        headers:
+          type: object
+          description: Optional extra request headers (string values only). `Authorization` is not allowed.
+          additionalProperties:
+            type: string
+        bearer_env:
+          type: string
+          description: Optional env var name containing a Bearer token (runtime adds Authorization header; the secret value is not persisted).
+        timeout_ms:
+          type: integer
+          format: int64
+          description: Attempt timeout in milliseconds (default 30000; clamp 1..300000).
+        poll_ms:
+          type: integer
+          format: int64
+          description: Poll sleep interval in milliseconds (default 50; clamp 10..1000).
+        max_bytes:
+          type: integer
+          format: int64
+          description: Max response bytes to capture per HTTP call (default 1048576; clamp 1024..16777216).
+        include_tasks:
+          type: boolean
+          description: If true, remote poll requests include `include_tasks=1` (default false).
+        include_results:
+          type: boolean
+          description: If true, remote poll requests include `include_results=1` (default true).
 
     WorkflowTaskMemoryConsolidateSpec:
       type: object

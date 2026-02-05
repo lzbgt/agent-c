@@ -177,6 +177,7 @@ if(AGENT_BUILD_HOST)
     daemon/src/workflow_aggregate.cpp
     daemon/src/workflow_engine.cpp
     daemon/src/workflow_http_json.cpp
+    daemon/src/workflow_agentd_call.cpp
     daemon/src/workflow_memory_correlate.cpp
     daemon/src/workflow_templates.cpp
     daemon/src/workflow_query_endpoints.cpp
@@ -358,6 +359,7 @@ if(AGENT_BUILD_HOST)
 						    add_test(NAME agentd_workflow_memory_search_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_memory_search_smoke.sh $<TARGET_FILE:agentd>)
 						    add_test(NAME agentd_workflow_memory_correlate_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_memory_correlate_smoke.sh $<TARGET_FILE:agentd>)
 						    add_test(NAME agentd_workflow_http_json_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_http_json_smoke.sh $<TARGET_FILE:agentd>)
+						    add_test(NAME agentd_workflow_agentd_call_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_agentd_call_smoke.sh $<TARGET_FILE:agentd>)
 						    add_test(NAME agentd_workflow_memory_consolidate_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_memory_consolidate_smoke.sh $<TARGET_FILE:agentd>)
 					    add_test(NAME agentd_workflow_avm_capsule_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_avm_capsule_smoke.sh $<TARGET_FILE:agentd>)
 					    add_test(NAME agentd_workflow_aggregate_quorum_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_aggregate_quorum_smoke.sh $<TARGET_FILE:agentd>)
