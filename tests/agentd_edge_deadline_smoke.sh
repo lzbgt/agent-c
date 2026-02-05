@@ -28,7 +28,7 @@ agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_edge_deadl
 agentd_smoke_wait_health "${DAEMON_URL}"
 
 NODE_ID="node_deadline_1"
-CAPS_SHA="sha256:test_caps_deadline_1"
+CAPS_SHA="sha256:2222222222222222222222222222222222222222222222222222222222222222"
 
 # Register node + caps so platform allows mode=invoke (manifest required).
 hello_json="$(python3 - <<PY

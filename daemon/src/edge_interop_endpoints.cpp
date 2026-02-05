@@ -275,6 +275,11 @@ void handle_edge_message_endpoint(
       resp->body = "{\"ok\":false,\"error\":\"invalid node_id\"}";
       return;
     }
+    if (!caps_sha.empty() && !edge_sha256_token_is_safe(caps_sha)) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid caps_sha256\"}";
+      return;
+    }
 
     AgentDb::EdgeNodeRow nr;
     nr.node_id = node_id;
@@ -346,7 +351,13 @@ void handle_edge_message_endpoint(
     AgentDb::EdgeNodeRow nr;
     nr.node_id = node_id;
     if (manifest.isMember("caps_sha256") && manifest["caps_sha256"].isString()) {
-      nr.caps_sha256 = manifest["caps_sha256"].asString();
+      const std::string caps_sha = trim_copy(manifest["caps_sha256"].asString());
+      if (!caps_sha.empty() && !edge_sha256_token_is_safe(caps_sha)) {
+        resp->status = 400;
+        resp->body = "{\"ok\":false,\"error\":\"invalid manifest.caps_sha256\"}";
+        return;
+      }
+      nr.caps_sha256 = caps_sha;
     }
     nr.manifest_json = edge_json_stringify_compact(manifest);
     nr.tags_json = tags_json;

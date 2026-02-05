@@ -124,7 +124,7 @@ The manifest MUST include a hash (`caps_sha256`) so the platform can cache it.
 Required:
 - `spec_version`: `"um-acds/0.1"`
 - `manifest_version`: semver string for the manifest schema used by this node build
-- `caps_sha256`: hex string (sha256 of canonical JSON encoding of the manifest with volatile fields excluded)
+- `caps_sha256`: sha256 digest as 64 hex chars (optionally prefixed `sha256:`) of canonical JSON encoding of the manifest with volatile fields excluded
 - `node`: identity + firmware info
 - `runtime`: agent runtime + resource limits
 - `hardware`: presence + probe time

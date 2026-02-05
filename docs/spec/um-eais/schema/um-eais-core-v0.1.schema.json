@@ -19,7 +19,7 @@
                 "node_id": { "$ref": "#/$defs/id_token" },
                 "model": { "type": "string" },
                 "fw_git_sha": { "type": "string" },
-                "caps_sha256": { "type": "string" }
+                "caps_sha256": { "$ref": "#/$defs/sha256_token" }
               }
             }
           }
@@ -35,7 +35,7 @@
               "properties": {
                 "node_id": { "$ref": "#/$defs/id_token" },
                 "health": { "type": "object", "additionalProperties": true },
-                "caps_sha256": { "type": "string" },
+                "caps_sha256": { "$ref": "#/$defs/sha256_token" },
                 "battery_pct": { "type": "number" },
                 "rssi": { "type": "number" }
               }
@@ -191,6 +191,12 @@
       "minLength": 1,
       "maxLength": 128,
       "pattern": "^[A-Za-z0-9_.:-]+$"
+    },
+    "sha256_token": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 80,
+      "pattern": "^(sha256:)?[A-Fa-f0-9]{64}$"
     }
   }
 }

@@ -15,6 +15,7 @@ int64_t edge_unix_ms_now();
 std::string edge_json_stringify_compact(const Json::Value& v);
 
 bool edge_id_is_safe(const std::string& s);
+bool edge_sha256_token_is_safe(const std::string& s);
 std::string edge_make_uuidish_msg_id();
 std::string edge_node_to_prefix(const std::string& node_id);
 

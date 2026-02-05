@@ -11,11 +11,38 @@ static int umbmp_char_ok(char c) {
   return ok ? 1 : 0;
 }
 
+static int hex_char_ok(char c) {
+  const int ok =
+    (c >= '0' && c <= '9') ||
+    (c >= 'a' && c <= 'f') ||
+    (c >= 'A' && c <= 'F');
+  return ok ? 1 : 0;
+}
+
 int agent_umbmp_id_is_safe(const char* s, size_t len) {
   if (!s) return 0;
   if (len == 0 || len > AGENT_UM_BMP_MAX_ID_LEN) return 0;
   for (size_t i = 0; i < len; i++) {
     if (!umbmp_char_ok(s[i])) return 0;
+  }
+  return 1;
+}
+
+int agent_umbmp_sha256_token_is_safe(const char* s, size_t len) {
+  if (!s) return 0;
+  if (len == 0) return 0;
+
+  const char* p = s;
+  size_t n = len;
+  static const char* kPrefix = "sha256:";
+  static const size_t kPrefixLen = 7;
+  if (n > kPrefixLen && memcmp(p, kPrefix, kPrefixLen) == 0) {
+    p += kPrefixLen;
+    n -= kPrefixLen;
+  }
+  if (n != 64) return 0;
+  for (size_t i = 0; i < n; i++) {
+    if (!hex_char_ok(p[i])) return 0;
   }
   return 1;
 }
@@ -68,4 +95,3 @@ agent_status_t agent_umbmp_sanitize_id_token(
   if (out_len) *out_len = trimmed_len;
   return AGENT_OK;
 }
-

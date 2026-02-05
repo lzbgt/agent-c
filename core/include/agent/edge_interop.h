@@ -23,6 +23,13 @@ extern "C" {
 //   [A-Za-z0-9-_.:]
 int agent_umbmp_id_is_safe(const char* s, size_t len);
 
+// Best-effort validation for sha256 tokens used in manifests and heartbeats.
+//
+// Accepted forms:
+// - 64 hex chars (lower/upper)
+// - "sha256:" + 64 hex chars
+int agent_umbmp_sha256_token_is_safe(const char* s, size_t len);
+
 // Sanitizes an arbitrary token into an id-safe token by:
 // - truncating to `max_len` (clamped to out buffer capacity)
 // - mapping disallowed characters to '_'
@@ -45,6 +52,16 @@ agent_status_t agent_umbmp_sanitize_id_token(
 #define AGENT_UM_BMP_TYPE_NODE_HEARTBEAT "NODE_HEARTBEAT"
 #define AGENT_UM_BMP_TYPE_NODE_CAPS_RSP "NODE_CAPS_RSP"
 #define AGENT_UM_BMP_TYPE_PLATFORM_CAPS_REQ "PLATFORM_CAPS_REQ"
+
+// Task lifecycle messages.
+#define AGENT_UM_BMP_TYPE_TASK_ASSIGN "TASK_ASSIGN"
+#define AGENT_UM_BMP_TYPE_TASK_ACK "TASK_ACK"
+#define AGENT_UM_BMP_TYPE_TASK_EVENT "TASK_EVENT"
+#define AGENT_UM_BMP_TYPE_TASK_DONE "TASK_DONE"
+#define AGENT_UM_BMP_TYPE_TASK_FAILED "TASK_FAILED"
+
+// Sensor/event messages.
+#define AGENT_UM_BMP_TYPE_SENSOR_EVENT "SENSOR_EVENT"
 
 // Platform extensions: node → platform workflow handoff.
 #define AGENT_UM_BMP_TYPE_WORKFLOW_SUBMIT "WORKFLOW_SUBMIT"

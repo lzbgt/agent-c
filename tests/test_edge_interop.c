@@ -12,6 +12,15 @@ static void test_id_is_safe_basic(void) {
   assert(agent_umbmp_id_is_safe("has\"quote", strlen("has\"quote")) == 0);
 }
 
+static void test_sha256_token_is_safe_basic(void) {
+  assert(agent_umbmp_sha256_token_is_safe("sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                                          strlen("sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")) == 1);
+  assert(agent_umbmp_sha256_token_is_safe("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                                          strlen("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")) == 1);
+  assert(agent_umbmp_sha256_token_is_safe("sha256:zzz", strlen("sha256:zzz")) == 0);
+  assert(agent_umbmp_sha256_token_is_safe("", 0) == 0);
+}
+
 static void test_sanitize_trims_and_defaults(void) {
   char out[64];
   size_t n = 0;
@@ -40,7 +49,7 @@ static void test_sanitize_respects_max_len(void) {
 
 void test_edge_interop_module(void) {
   test_id_is_safe_basic();
+  test_sha256_token_is_safe_basic();
   test_sanitize_trims_and_defaults();
   test_sanitize_respects_max_len();
 }
-

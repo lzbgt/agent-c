@@ -87,7 +87,7 @@ agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_workflow_e
 agentd_smoke_wait_health "${DAEMON_URL}"
 
 NODE_ID="node_test_edge_ref_1"
-CAPS_SHA="sha256:test_caps_edge_ref_1"
+CAPS_SHA="sha256:6666666666666666666666666666666666666666666666666666666666666666"
 
 hello_json="$(python3 - <<PY
 import json, uuid, time

@@ -6,6 +6,7 @@ This repo implements the **platform/broker** side of the UM‑EAIS v0.1 draft sp
 
 Canonical spec (copied from `../urine_monitor`):
 - `docs/spec/um-eais/um-eais-v0.1.md` (copied from `../urine_monitor` commit `278ad9e5`)
+- `docs/spec/um-eais/edge_agent_interop_handoff_to_agent_repo.md` (node-side handoff checklist, copied from the same source)
 
 This document describes the **HTTP transport mapping** implemented by `agentd` for that payload-level spec.
 

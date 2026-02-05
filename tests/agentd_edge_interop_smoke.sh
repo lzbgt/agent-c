@@ -28,7 +28,7 @@ agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_edge_inter
 agentd_smoke_wait_health "${DAEMON_URL}"
 
 NODE_ID="node_test_1"
-CAPS_SHA="sha256:test_caps_1"
+CAPS_SHA="sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 
 hello_json="$(python3 - <<PY
 import json, uuid, time
@@ -143,7 +143,7 @@ PY
 
 # Regression guard: if a node reports a different caps_sha256 later, the platform must invalidate cached tools/tags
 # and request the new manifest (otherwise routing can become stale).
-CAPS_SHA_2="sha256:test_caps_2"
+CAPS_SHA_2="sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 
 hello2_json="$(python3 - <<PY
 import json, uuid, time

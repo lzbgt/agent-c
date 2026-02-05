@@ -43,6 +43,24 @@ bool edge_id_is_safe(const std::string& s) {
   return true;
 }
 
+bool edge_sha256_token_is_safe(const std::string& s) {
+  if (s.empty()) return false;
+  const std::string prefix = "sha256:";
+  size_t off = 0;
+  if (s.size() > prefix.size() && s.rfind(prefix, 0) == 0) off = prefix.size();
+  const size_t n = s.size() - off;
+  if (n != 64) return false;
+  for (size_t i = 0; i < n; i++) {
+    const char c = s[off + i];
+    const bool ok =
+      (c >= '0' && c <= '9') ||
+      (c >= 'a' && c <= 'f') ||
+      (c >= 'A' && c <= 'F');
+    if (!ok) return false;
+  }
+  return true;
+}
+
 std::string edge_make_uuidish_msg_id() {
   std::random_device rd;
   std::mt19937_64 gen(((uint64_t)rd() << 32) ^ (uint64_t)rd());
