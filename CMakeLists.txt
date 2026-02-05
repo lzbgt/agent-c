@@ -556,6 +556,13 @@ if(AGENT_BUILD_HOST)
 				        $<TARGET_FILE:agent_core_umbmp_cbor_encode>
 				    )
 				    add_test(
+				      NAME agentd_edge_auth_ed25519_cbor_wire_smoke
+				      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_ed25519_cbor_wire_smoke.sh
+				        $<TARGET_FILE:agentd>
+				        $<TARGET_FILE:agent_core_umbmp_cbor_encode>
+				        $<TARGET_FILE:agent_ed25519_tool>
+				    )
+				    add_test(
 				      NAME agentd_edge_auth_ed25519_smoke
 				      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_auth_ed25519_smoke.sh
 				        $<TARGET_FILE:agentd>

@@ -544,6 +544,8 @@ Maintainability note (always-on):
        - if optional: unsigned accepted, but if `auth` is present it must verify
      - Works for both JSON and CBOR wire encodings (auth is verified over platform canonical JSON after decoding).
      - Proof (CBOR wire): `ctest` includes `agentd_edge_auth_hmac_cbor_wire_smoke` (posts `Content-Type: application/cbor` envelopes signed with `hmac-sha256-cbor`).
+   - Shipped (v0.4 partial): optional envelope authenticity (Ed25519) for per-node identities (no shared-secret blast radius):
+     - Proof (CBOR wire): `ctest` includes `agentd_edge_auth_ed25519_cbor_wire_smoke` (posts `Content-Type: application/cbor` envelopes signed with `ed25519-cbor`).
    - Shipped (gateway ergonomics): `agent_core` can decode the CBOR outbox response without JSONCPP:
      - Core API: `agent/um_eais_outbox_read.h` extracts `messages[].msg` as `agent_umbmp_envelope_view_t` views.
      - Proof: `ctest` includes `agent_core_tests` (outbox decode unit) and `agentd_edge_outbox_cbor_smoke` now validates
