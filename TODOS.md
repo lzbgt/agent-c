@@ -495,6 +495,9 @@ Maintainability note (always-on):
    - Shipped: deterministic workflow memory correlation query (no LLM; scans structured checkpoints on disk):
      - Task kind: `kind:"memory_correlate"` with `memory_correlate:{trace_id?,since_utc_ms?,until_utc_ms?,max_entries?,timeline?}`
      - Proof: `ctest` includes `agentd_workflow_memory_correlate_smoke`.
+   - Shipped: deterministic workflow structured memory query (no LLM; reads newest structured checkpoint on disk):
+     - Task kind: `kind:"memory_query"` with `memory_query:{since_utc_ms?,until_utc_ms?,structured_path?,key_prefix?,limit?}`
+     - Proof: `ctest` includes `agentd_workflow_memory_query_smoke`.
    - Shipped: cross-layer event correlation by `trace_id`:
      - `GET /api/v1/trace?trace_id=...` now joins durable `workflow_events` and `edge_workflow_events` (best-effort) into the same trace surface.
      - Proof: `ctest` includes `agentd_trace_workflow_events_smoke`.

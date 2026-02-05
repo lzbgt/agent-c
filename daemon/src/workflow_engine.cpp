@@ -11,6 +11,7 @@
 #include "workflow_engine_common.h"
 #include "workflow_fairq_cost.h"
 #include "workflow_memory_correlate.h"
+#include "workflow_memory_query.h"
 #include "workflow_http_json.h"
 #include "workflow_agentd_call.h"
 #include "workflow_templates.h"
@@ -1267,6 +1268,45 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
         std::string merr;
         out = workflow_memory_correlate_to_json(cfg.state_dir, wf.trace_id, mc, &merr);
         out["kind"] = "memory_correlate";
+        if (!merr.empty() && (!out.isMember("error") || !out["error"].isString())) out["error"] = merr;
+      }
+    }
+  } else if (kind == "memory_query") {
+    // Deterministic structured memory query over checkpoints (no LLM required).
+    if (wf_limits.max_tool_calls_total > 0 && wf_tool_calls_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_tool_calls_total");
+      return;
+    }
+    if (wf_limits.max_steps_total > 0 && wf_steps_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_steps_total");
+      return;
+    }
+    if (wf_limits.max_elapsed_ms_total > 0 && wf_elapsed_ms_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_elapsed_ms_total");
+      return;
+    }
+    if (wf_limits.max_total_tokens > 0 && wf_total_tokens_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_total_tokens");
+      return;
+    }
+
+    out = Json::Value(Json::objectValue);
+    out["kind"] = "memory_query";
+    out["ok"] = false;
+    out["assistant_text"] = "";
+
+    if (workflow_run_should_cancel(&cancel_ctx)) {
+      out["cancelled"] = true;
+      out["error"] = cancel_ctx.reason == WorkflowCancelReason::DeadlineExceeded ? "deadline exceeded" : "cancelled";
+    } else {
+      const Json::Value mq =
+        rr.isMember("memory_query") && rr["memory_query"].isObject() ? rr["memory_query"] : Json::Value(Json::nullValue);
+      if (!mq.isObject()) {
+        out["error"] = "memory_query missing memory_query object";
+      } else {
+        std::string merr;
+        out = workflow_memory_query_to_json(cfg.state_dir, mq, &merr);
+        out["kind"] = "memory_query";
         if (!merr.empty() && (!out.isMember("error") || !out["error"].isString())) out["error"] = merr;
       }
     }

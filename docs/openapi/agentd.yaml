@@ -1876,6 +1876,7 @@ components:
         - Deterministic memory retrieval tasks: `kind: memory_search` with `memory_search` (host tool; no LLM required)
         - Deterministic structured memory query tasks: `kind: memory_structured_query` with `memory_structured_query` (host tool; no LLM required)
         - Deterministic memory correlation tasks: `kind: memory_correlate` with `memory_correlate` (scans structured memory checkpoints; no LLM required)
+        - Deterministic memory query tasks: `kind: memory_query` with `memory_query` (reads newest structured checkpoint; no LLM required)
         - Deterministic outbound HTTP JSON tasks: `kind: http_json` with `http_json` (gated by daemon flag; no LLM required)
         - Deterministic agent collaboration tasks: `kind: agentd_call` with `agentd_call` (gated by daemon flag; no LLM required)
         - Parallel agent collaboration macro: `kind: agentd_parallel` with `agentd_parallel` (submit-time expansion into parallel `agentd_call` tasks + an aggregate join; configurable)
@@ -1894,6 +1895,7 @@ components:
         - If `kind == memory_search`, `memory_search.query` is required and `request.prompt` is not used.
         - If `kind == memory_structured_query`, `memory_structured_query` is required and `request.prompt` is not used.
         - If `kind == memory_correlate`, `memory_correlate` is required and `request.prompt` is not used.
+        - If `kind == memory_query`, `memory_query` is required and `request.prompt` is not used.
         - If `kind == http_json`, `http_json` is required and `request.prompt` is not used.
         - If `kind == agentd_call`, `agentd_call` is required and `request.prompt` is not used.
         - If `kind == agentd_parallel`, `agentd_parallel.targets` and `agentd_parallel.agentd_call` are required and `request.prompt` is not used (expanded into multiple tasks).
@@ -1913,6 +1915,7 @@ components:
         - $ref: "#/components/schemas/WorkflowTaskMemorySearchSpec"
         - $ref: "#/components/schemas/WorkflowTaskMemoryStructuredQuerySpec"
         - $ref: "#/components/schemas/WorkflowTaskMemoryCorrelateSpec"
+        - $ref: "#/components/schemas/WorkflowTaskMemoryQuerySpec"
         - $ref: "#/components/schemas/WorkflowTaskHttpJsonSpec"
         - $ref: "#/components/schemas/WorkflowTaskAgentdCallSpec"
         - $ref: "#/components/schemas/WorkflowTaskAgentdParallelSpec"
@@ -2136,6 +2139,37 @@ components:
           description: Deterministic correctness assertions (engine-enforced)
           additionalProperties: true
 
+    WorkflowTaskMemoryQuerySpec:
+      type: object
+      required: [task_id, kind, memory_query]
+      properties:
+        task_id: { type: string }
+        allow_error:
+          type: boolean
+          description: If true, task failure does not fail the workflow (soft-fail).
+        inputs:
+          type: object
+          description: Optional per-task inputs (overrides workflow-level inputs).
+          additionalProperties: true
+        kind:
+          type: string
+          enum: [memory_query]
+          description: Deterministic structured memory query over checkpoints (no LLM required).
+        depends_on:
+          type: array
+          items: { type: string }
+        max_attempts: { type: integer, format: int32 }
+        priority:
+          type: integer
+          format: int32
+          description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+        memory_query:
+          $ref: "#/components/schemas/WorkflowMemoryQuerySpec"
+        expect:
+          type: object
+          description: Deterministic correctness assertions (engine-enforced)
+          additionalProperties: true
+
     WorkflowMemorySearchSpec:
       type: object
       required: [query]
@@ -2250,6 +2284,33 @@ components:
         timeline:
           type: boolean
           description: If true, returns multiple checkpoints (up to 50) instead of only the newest in-window checkpoint.
+
+    WorkflowMemoryQuerySpec:
+      type: object
+      description: |
+        Deterministic structured memory query configuration for `kind:memory_query`.
+
+        The engine reads the newest structured checkpoint under `memory/checkpoints/structured_*.json`
+        in a bounded time window and returns keys filtered by optional `key_prefix`.
+      properties:
+        since_utc_ms:
+          type: integer
+          format: int64
+          description: Lower bound on checkpoint timestamp in UTC milliseconds (inclusive; default 0).
+        until_utc_ms:
+          type: integer
+          format: int64
+          description: Upper bound on checkpoint timestamp in UTC milliseconds (inclusive; default max int64).
+        structured_path:
+          type: string
+          description: Optional structured file path filter (e.g. `STRUCTURED.md`).
+        key_prefix:
+          type: string
+          description: Optional prefix filter (e.g. `wf.`).
+        limit:
+          type: integer
+          format: int32
+          description: Max entries to return (default 50; clamped 1..1000).
 
     WorkflowTaskHttpJsonSpec:
       type: object

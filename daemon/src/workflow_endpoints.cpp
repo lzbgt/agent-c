@@ -631,12 +631,13 @@ void handle_workflow_submit_endpoint(
 	    const bool is_memory_search = (kind == "memory_search");
 	    const bool is_memory_structured_query = (kind == "memory_structured_query");
 	    const bool is_memory_correlate = (kind == "memory_correlate");
+	    const bool is_memory_query = (kind == "memory_query");
 	    const bool is_memory_consolidate = (kind == "memory_consolidate");
 	    const bool is_http_json = (kind == "http_json");
 	    const bool is_agentd_call = (kind == "agentd_call");
 	    const bool is_special =
 	      is_avm || is_aggregate || is_edge || is_edge_wait_sensor || is_delay || is_delegate || is_memory_put || is_memory_search ||
-	      is_memory_structured_query || is_memory_correlate || is_memory_consolidate || is_http_json || is_agentd_call;
+	      is_memory_structured_query || is_memory_correlate || is_memory_query || is_memory_consolidate || is_http_json || is_agentd_call;
 
     Json::Value run_req = t.isMember("request") && t["request"].isObject() ? t["request"] : t;
     if (!is_special && defaults.isObject()) {
@@ -1389,6 +1390,93 @@ void handle_workflow_submit_endpoint(
 
 	      task_req["kind"] = "memory_correlate";
 	      task_req["memory_correlate"] = mc2;
+	      task_req["priority"] = task_priority;
+	      task_req["trace_id"] = trace_id + ":" + task_id;
+	    } else if (is_memory_query) {
+	      if (!t.isMember("memory_query") || !t["memory_query"].isObject()) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "memory_query task missing memory_query object";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+
+	      const auto& mq = t["memory_query"];
+	      Json::Value mq2(Json::objectValue);
+
+	      if (mq.isMember("since_utc_ms")) {
+	        if (!(mq["since_utc_ms"].isInt64() || mq["since_utc_ms"].isUInt64() || mq["since_utc_ms"].isInt() || mq["since_utc_ms"].isUInt()) && !mq["since_utc_ms"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_query.since_utc_ms must be an int64";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (!mq["since_utc_ms"].isNull()) mq2["since_utc_ms"] = (Json::Int64)mq["since_utc_ms"].asInt64();
+	      }
+
+	      if (mq.isMember("until_utc_ms")) {
+	        if (!(mq["until_utc_ms"].isInt64() || mq["until_utc_ms"].isUInt64() || mq["until_utc_ms"].isInt() || mq["until_utc_ms"].isUInt()) && !mq["until_utc_ms"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_query.until_utc_ms must be an int64";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (!mq["until_utc_ms"].isNull()) mq2["until_utc_ms"] = (Json::Int64)mq["until_utc_ms"].asInt64();
+	      }
+
+	      if (mq.isMember("structured_path")) {
+	        if (!mq["structured_path"].isString() && !mq["structured_path"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_query.structured_path must be a string";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (mq["structured_path"].isString() && !trim_copy(mq["structured_path"].asString()).empty()) {
+	          mq2["structured_path"] = trim_copy(mq["structured_path"].asString());
+	        }
+	      }
+
+	      if (mq.isMember("key_prefix")) {
+	        if (!mq["key_prefix"].isString() && !mq["key_prefix"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_query.key_prefix must be a string";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (mq["key_prefix"].isString()) mq2["key_prefix"] = mq["key_prefix"];
+	      }
+
+	      if (mq.isMember("limit")) {
+	        if (!mq["limit"].isInt() && !mq["limit"].isNull()) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_query.limit must be an int";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	        if (mq["limit"].isInt()) {
+	          mq2["limit"] = std::max(1, std::min(1000, mq["limit"].asInt()));
+	        }
+	      }
+
+	      task_req["kind"] = "memory_query";
+	      task_req["memory_query"] = mq2;
 	      task_req["priority"] = task_priority;
 	      task_req["trace_id"] = trace_id + ":" + task_id;
 	    } else if (is_memory_consolidate) {

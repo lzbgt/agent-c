@@ -123,3 +123,10 @@ In addition to the tool surface, `agentd` exposes correlation helpers:
   - optional filters: `structured_path=...` and `key_prefix=...`
 - `GET /api/v1/memory/query?...&key_prefix=...` — bounded query over the **current view** of structured memory
   (reads the newest checkpoint in the requested time window)
+
+## Deterministic workflow tasks
+
+Durable workflows can query memory without invoking an LLM:
+
+- `kind:"memory_correlate"` — bounded correlation by `trace_id` evidence against structured checkpoints
+- `kind:"memory_query"` — bounded query of the structured **current view** by `key_prefix` (reads newest checkpoint)

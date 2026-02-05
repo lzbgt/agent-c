@@ -182,6 +182,7 @@ if(AGENT_BUILD_HOST)
     daemon/src/workflow_http_json.cpp
     daemon/src/workflow_agentd_call.cpp
     daemon/src/workflow_memory_correlate.cpp
+    daemon/src/workflow_memory_query.cpp
     daemon/src/workflow_templates.cpp
     daemon/src/workflow_query_endpoints.cpp
     daemon/src/workflow_admin_endpoints.cpp
@@ -367,6 +368,7 @@ if(AGENT_BUILD_HOST)
 						    add_test(NAME agentd_workflow_memory_search_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_memory_search_smoke.sh $<TARGET_FILE:agentd>)
 						    add_test(NAME agentd_workflow_memory_structured_query_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_memory_structured_query_smoke.sh $<TARGET_FILE:agentd>)
 						    add_test(NAME agentd_workflow_memory_correlate_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_memory_correlate_smoke.sh $<TARGET_FILE:agentd>)
+						    add_test(NAME agentd_workflow_memory_query_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_memory_query_smoke.sh $<TARGET_FILE:agentd>)
 							    add_test(NAME agentd_workflow_http_json_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_http_json_smoke.sh $<TARGET_FILE:agentd>)
 							    add_test(NAME agentd_workflow_http_allowlist_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_http_allowlist_smoke.sh $<TARGET_FILE:agentd>)
 							    add_test(NAME agentd_workflow_http_deny_cidr_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_http_deny_cidr_smoke.sh $<TARGET_FILE:agentd>)
