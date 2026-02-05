@@ -182,6 +182,7 @@ if(AGENT_BUILD_HOST)
     daemon/src/workflow_query_endpoints.cpp
     daemon/src/workflow_admin_endpoints.cpp
     daemon/src/workflow_endpoints.cpp
+    daemon/src/workflow_submit_macros.cpp
     daemon/src/workflow_fairq_cost.cpp
   )
 

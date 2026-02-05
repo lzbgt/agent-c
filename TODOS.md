@@ -93,7 +93,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Split endpoint implementations into smaller translation units:
     - `daemon/src/workflow_query_endpoints.cpp` (GET `/api/v1/workflow`, GET `/api/v1/workflows`)
     - `daemon/src/workflow_admin_endpoints.cpp` (POST `/api/v1/workflow/cancel`, GET `/api/v1/workflow/events`, GET `/api/v1/workflow/stats`)
-  - `daemon/src/workflow_endpoints.cpp` now focuses on submit-only (still a candidate for further splitting to keep <2000 LOC).
+  - Workflow submit macro expander extracted into `daemon/src/workflow_submit_macros.*` to keep submit logic SOLID and cheap to evolve.
+  - `daemon/src/workflow_endpoints.cpp` now focuses on submit-only and stays <2000 LOC.
   - Proof: existing workflow + stats + docs/openapi smokes still pass (`agentd_workflow_smoke`, `agentd_workflow_http_json_smoke`,
     `agentd_workflow_stats_smoke`, `docs_sanity_tests`, `openapi_sanity_tests`).
 - Durable workflows can now run deterministic AVM capsule tasks (no LLM required):
@@ -294,7 +295,8 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
 
 Maintainability note (always-on):
 - Keep endpoint implementations SOLID and <2000 LOC per file; split large translation units (e.g. workflow endpoints) so new collaboration primitives remain cheap to add.
-- Follow-up: split `POST /api/v1/workflow/submit` implementation (`daemon/src/workflow_endpoints.cpp`) further (macro expander + validators),
+- Shipped: submit-time macro expansion is now isolated (`daemon/src/workflow_submit_macros.*`).
+- Follow-up: extract remaining submit-time validators/redaction helpers if `daemon/src/workflow_endpoints.cpp` grows again,
   so the durable workflow surface can evolve without accumulating another “mega endpoint” file.
 - DB backend decision: **stay on SQLite** (WAL + bounded writes + migrations) until a concrete requirement demands replication/multi-writer semantics at the DB layer.
   - If that day comes, prefer a *SQLite-compatible* path (e.g. libSQL) before rewriting the storage layer around KV engines.
