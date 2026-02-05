@@ -83,6 +83,7 @@ Node (`agent_core`):
   - `TASK_ACK` body encoder
   - `TASK_EVENT` body encoder
   - `TASK_FAILED` body encoder
+  - `TASK_DONE` body encoder (result is caller-encoded CBOR map/value)
 - Shipped (partial): UM‑EAIS node lifecycle CBOR **body encoders** under `agent/um_eais_node_write.h` for MCU-friendly node bring-up:
   - `NODE_HELLO` body encoder
   - `NODE_HEARTBEAT` body encoder (optionally includes `health`)

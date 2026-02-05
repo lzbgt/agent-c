@@ -31,6 +31,17 @@ static agent_status_t agent_encode_f64(agent_cbor_writer_t* w, void* ctx) {
   return agent_cbor_write_f64(w, *v);
 }
 
+typedef struct agent_encode_cb_ctx {
+  agent_cbor_encode_fn fn;
+  void* ctx;
+} agent_encode_cb_ctx_t;
+
+static agent_status_t agent_encode_cb(agent_cbor_writer_t* w, void* ctx) {
+  const agent_encode_cb_ctx_t* c = (const agent_encode_cb_ctx_t*)ctx;
+  if (!c || !c->fn) return AGENT_ERR_INVALID_ARGUMENT;
+  return c->fn(w, c->ctx);
+}
+
 agent_status_t agent_um_eais_task_ack_body_encode_cbor_v0_1(agent_cbor_writer_t* w, void* ctx) {
   if (!w || !ctx) return AGENT_ERR_INVALID_ARGUMENT;
   const agent_um_eais_task_ack_body_t* b = (const agent_um_eais_task_ack_body_t*)ctx;
@@ -167,6 +178,45 @@ agent_status_t agent_um_eais_task_failed_body_encode_cbor_v0_1(agent_cbor_writer
       .key_len = 5,
       .encode_value = agent_encode_text_view,
       .value_ctx = (void*)&b->error,
+    },
+  };
+
+  return agent_cbor_write_map_sorted(w, pairs, sizeof(pairs) / sizeof(pairs[0]));
+}
+
+agent_status_t agent_um_eais_task_done_body_encode_cbor_v0_1(agent_cbor_writer_t* w, void* ctx) {
+  if (!w || !ctx) return AGENT_ERR_INVALID_ARGUMENT;
+  const agent_um_eais_task_done_body_t* b = (const agent_um_eais_task_done_body_t*)ctx;
+  if (agent_require_id(&b->task_id) != AGENT_OK) return AGENT_ERR_INVALID_ARGUMENT;
+  if (agent_require_id(&b->step_id) != AGENT_OK) return AGENT_ERR_INVALID_ARGUMENT;
+  if (agent_require_id(&b->idempotency_key) != AGENT_OK) return AGENT_ERR_INVALID_ARGUMENT;
+  if (!b->encode_result) return AGENT_ERR_INVALID_ARGUMENT;
+
+  agent_encode_cb_ctx_t rctx = {.fn = b->encode_result, .ctx = b->result_ctx};
+  const agent_cbor_kv_t pairs[] = {
+    (agent_cbor_kv_t){
+      .key = "task_id",
+      .key_len = 7,
+      .encode_value = agent_encode_text_view,
+      .value_ctx = (void*)&b->task_id,
+    },
+    (agent_cbor_kv_t){
+      .key = "step_id",
+      .key_len = 7,
+      .encode_value = agent_encode_text_view,
+      .value_ctx = (void*)&b->step_id,
+    },
+    (agent_cbor_kv_t){
+      .key = "idempotency_key",
+      .key_len = 15,
+      .encode_value = agent_encode_text_view,
+      .value_ctx = (void*)&b->idempotency_key,
+    },
+    (agent_cbor_kv_t){
+      .key = "result",
+      .key_len = 6,
+      .encode_value = agent_encode_cb,
+      .value_ctx = (void*)&rctx,
     },
   };
 

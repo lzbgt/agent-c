@@ -391,7 +391,7 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
      - Proof: `ctest` includes `agent_core_tests` (builds a CBOR `TASK_ASSIGN` envelope and decodes it without JSONCPP).
      - Note: supports optional `body.node_id` (v0.3 schema); the platform now includes it in TASK_ASSIGN envelopes for defense-in-depth.
    - Shipped (MCU ergonomics): UM‑EAIS task lifecycle CBOR body encoders in `agent_core`:
-     - Core API: `agent/um_eais_task_lifecycle_write.h` encodes `TASK_ACK`, `TASK_EVENT`, and `TASK_FAILED` bodies using deterministic CBOR map key ordering.
+     - Core API: `agent/um_eais_task_lifecycle_write.h` encodes `TASK_ACK`, `TASK_EVENT`, `TASK_FAILED`, and `TASK_DONE` bodies using deterministic CBOR map key ordering.
      - Proof: `ctest` includes `agent_core_tests` (encodes bodies and asserts canonical key ordering via the embedded CBOR reader).
    - Shipped (MCU ergonomics): UM‑EAIS node lifecycle CBOR body encoders in `agent_core`:
      - Core API: `agent/um_eais_node_write.h` encodes `NODE_HELLO`, `NODE_HEARTBEAT`, and `SENSOR_EVENT` bodies with deterministic key ordering.

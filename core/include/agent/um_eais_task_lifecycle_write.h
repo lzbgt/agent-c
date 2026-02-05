@@ -60,7 +60,18 @@ typedef struct agent_um_eais_task_failed_body {
 
 agent_status_t agent_um_eais_task_failed_body_encode_cbor_v0_1(agent_cbor_writer_t* w, void* ctx);
 
+typedef struct agent_um_eais_task_done_body {
+  agent_cbor_text_view_t task_id;
+  agent_cbor_text_view_t step_id;
+  agent_cbor_text_view_t idempotency_key;
+
+  // Required: encodes `result` object as a CBOR map/value (deterministic rules are the caller's job).
+  agent_cbor_encode_fn encode_result;
+  void* result_ctx;
+} agent_um_eais_task_done_body_t;
+
+agent_status_t agent_um_eais_task_done_body_encode_cbor_v0_1(agent_cbor_writer_t* w, void* ctx);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif
-
