@@ -488,6 +488,7 @@ Maintainability note (always-on):
    - Shipped: “memory query plan” primitives for large fleets:
      - `GET /api/v1/memory/checkpoints?structured_path=...` (filter checkpoints by structured file)
      - `GET /api/v1/memory/correlate?...&structured_path=...&key_prefix=...` (bounded + prefix-filtered correlation)
+     - `GET /api/v1/memory/query?...&key_prefix=...` (bounded query over the current view of structured memory)
    - Shipped: deterministic workflow memory correlation query (no LLM; scans structured checkpoints on disk):
      - Task kind: `kind:"memory_correlate"` with `memory_correlate:{trace_id?,since_utc_ms?,until_utc_ms?,max_entries?,timeline?}`
      - Proof: `ctest` includes `agentd_workflow_memory_correlate_smoke`.

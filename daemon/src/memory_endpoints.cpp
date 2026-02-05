@@ -455,4 +455,146 @@ void handle_memory_correlate_endpoint(
   resp->body = json_stringify(out);
 }
 
+void handle_memory_query_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  int64_t since_ms = 0;
+  int64_t until_ms = INT64_MAX;
+  if (const auto v = query_get(req.query, "since_utc_ms"); v && !v->empty()) {
+    try { since_ms = (int64_t)std::stoll(*v); } catch (...) { since_ms = 0; }
+  }
+  if (const auto v = query_get(req.query, "until_utc_ms"); v && !v->empty()) {
+    try { until_ms = (int64_t)std::stoll(*v); } catch (...) { until_ms = INT64_MAX; }
+  }
+  if (until_ms < since_ms) std::swap(until_ms, since_ms);
+
+  const auto structured_path_q = query_get(req.query, "structured_path");
+  const std::string structured_path_filter =
+    structured_path_q && !structured_path_q->empty() ? *structured_path_q : "";
+
+  const auto key_prefix_q = query_get(req.query, "key_prefix");
+  const std::string key_prefix =
+    key_prefix_q && !key_prefix_q->empty() ? *key_prefix_q : "";
+
+  int limit = 50;
+  if (const auto v = query_get(req.query, "limit"); v && !v->empty()) {
+    try { limit = (int)std::stol(*v); } catch (...) { limit = 50; }
+  }
+  limit = std::max(1, std::min(1000, limit));
+
+  // Reuse the checkpoints listing logic but keep only the newest checkpoint by default.
+  HttpRequest req2 = req;
+  if (req2.query.empty()) {
+    req2.query = "limit=1";
+  } else {
+    req2.query = "limit=1&" + req2.query;
+  }
+  HttpResponse tmp;
+  handle_memory_checkpoints_endpoint(cfg, cors_cfg, req2, &tmp);
+  if (tmp.status != 200) {
+    *resp = tmp;
+    return;
+  }
+
+  Json::Value list;
+  std::string perr;
+  if (!json_parse_any(tmp.body, &list, &perr) || !list.isObject()) {
+    resp->status = 500;
+    resp->body = "{\"ok\":false,\"error\":\"failed to parse internal checkpoint listing\"}";
+    return;
+  }
+  const Json::Value cps = list.isMember("checkpoints") ? list["checkpoints"] : Json::Value(Json::nullValue);
+  if (!cps.isArray() || cps.empty()) {
+    resp->status = 404;
+    resp->body = "{\"ok\":false,\"error\":\"no checkpoints in window\"}";
+    return;
+  }
+
+  const std::filesystem::path mem_root = memory_root_from_cfg(cfg);
+  if (mem_root.empty()) {
+    resp->status = 500;
+    resp->body = "{\"ok\":false,\"error\":\"missing memory root\"}";
+    return;
+  }
+  const Json::Value newest = cps[0];
+  const std::string ckrel =
+    newest.isObject() && newest.isMember("checkpoint_path") && newest["checkpoint_path"].isString()
+      ? newest["checkpoint_path"].asString()
+      : "";
+  if (ckrel.empty()) {
+    resp->status = 500;
+    resp->body = "{\"ok\":false,\"error\":\"invalid checkpoint metadata\"}";
+    return;
+  }
+  const std::filesystem::path abs = (mem_root / ckrel).lexically_normal();
+
+  std::string text;
+  if (!read_file_bounded(abs, /*max_bytes=*/10 * 1024 * 1024, &text)) {
+    resp->status = 500;
+    resp->body = "{\"ok\":false,\"error\":\"failed to read checkpoint\"}";
+    return;
+  }
+  Json::Value ck;
+  std::string err;
+  if (!json_parse_any(text, &ck, &err) || !ck.isObject()) {
+    resp->status = 500;
+    resp->body = "{\"ok\":false,\"error\":\"failed to parse checkpoint JSON\"}";
+    return;
+  }
+
+  const std::string structured_path =
+    ck.isMember("path") && ck["path"].isString() ? ck["path"].asString() : "STRUCTURED.md";
+  if (!structured_path_filter.empty() && structured_path != structured_path_filter) {
+    resp->status = 404;
+    resp->body = "{\"ok\":false,\"error\":\"no checkpoints matching structured_path in window\"}";
+    return;
+  }
+
+  const Json::Value doc = ck.isMember("doc") ? ck["doc"] : Json::Value(Json::nullValue);
+  const Json::Value items = doc.isObject() && doc.isMember("items") ? doc["items"] : Json::Value(Json::nullValue);
+  if (!items.isObject()) {
+    resp->status = 500;
+    resp->body = "{\"ok\":false,\"error\":\"checkpoint missing doc.items\"}";
+    return;
+  }
+
+  std::vector<std::string> keys = items.getMemberNames();
+  std::sort(keys.begin(), keys.end());
+
+  Json::Value entries(Json::arrayValue);
+  int returned = 0;
+  for (const auto& key : keys) {
+    if (returned >= limit) break;
+    if (!key_prefix.empty() && key.rfind(key_prefix, 0) != 0) continue;
+    const Json::Value rec = items[key];
+    if (!rec.isObject()) continue;
+    Json::Value row(Json::objectValue);
+    row["key"] = key;
+    row["record"] = rec;
+    entries.append(row);
+    returned++;
+  }
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = true;
+  out["memory_root"] = mem_root.generic_string();
+  out["since_utc_ms"] = (Json::Int64)since_ms;
+  out["until_utc_ms"] = (Json::Int64)until_ms;
+  if (!structured_path_filter.empty()) out["structured_path_filter"] = structured_path_filter;
+  if (!key_prefix.empty()) out["key_prefix"] = key_prefix;
+  out["limit"] = limit;
+  out["checkpoint"] = newest;
+  if (out["checkpoint"].isObject()) out["checkpoint"]["structured_path"] = structured_path;
+  out["entries"] = entries;
+  out["returned"] = returned;
+  resp->body = json_stringify(out);
+}
+
 }  // namespace agentd

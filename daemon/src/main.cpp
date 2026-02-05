@@ -1284,6 +1284,10 @@ int main(int argc, char** argv) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_memory_correlate_endpoint(cur, cors_cfg, req, resp);
   });
+  server.handle("GET", "/api/v1/memory/query", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_memory_query_endpoint(cur, cors_cfg, req, resp);
+  });
 
   const std::string sessions_root_dir = cfg_store.snapshot().sessions_root_dir;
 

@@ -178,4 +178,31 @@ if keys != ["wf.test.alpha"]:
 print("ok")
 PY
 
+q="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/memory/query?since_utc_ms=${SINCE_MS}&until_utc_ms=${UNTIL_MS}&limit=50&structured_path=STRUCTURED.md&key_prefix=wf.test.")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${q}''')
+if not obj.get("ok"):
+  print("query not ok", obj, file=sys.stderr)
+  raise SystemExit(1)
+entries = obj.get("entries") or []
+keys = sorted({e.get("key") for e in entries if isinstance(e, dict)})
+if keys != ["wf.test.alpha", "wf.test.corr"]:
+  print("unexpected query keys", keys, file=sys.stderr)
+  raise SystemExit(1)
+ck = obj.get("checkpoint") or {}
+if not isinstance(ck, dict) or not ck.get("checkpoint_path"):
+  print("expected checkpoint metadata", ck, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("structured_path_filter") != "STRUCTURED.md":
+  print("expected structured_path_filter echo", obj.get("structured_path_filter"), file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("key_prefix") != "wf.test.":
+  print("expected key_prefix echo", obj.get("key_prefix"), file=sys.stderr)
+  raise SystemExit(1)
+print("ok")
+PY
+
 echo "agentd_memory_correlate_smoke OK"

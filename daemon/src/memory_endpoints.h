@@ -33,4 +33,14 @@ void handle_memory_correlate_endpoint(
   HttpResponse* resp
 );
 
+// GET /api/v1/memory/query
+// Bounded structured-memory query: selects the newest structured checkpoint in a time window and returns
+// current-view keys filtered by optional `key_prefix`.
+void handle_memory_query_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
 }  // namespace agentd

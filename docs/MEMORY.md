@@ -121,3 +121,5 @@ In addition to the tool surface, `agentd` exposes correlation helpers:
 - `GET /api/v1/memory/checkpoints?structured_path=STRUCTURED.md` — optional filter by structured file path
 - `GET /api/v1/memory/correlate?trace_id=...` — find structured keys whose evidence sources mention `trace:<trace_id>`
   - optional filters: `structured_path=...` and `key_prefix=...`
+- `GET /api/v1/memory/query?...&key_prefix=...` — bounded query over the **current view** of structured memory
+  (reads the newest checkpoint in the requested time window)
