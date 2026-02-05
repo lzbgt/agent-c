@@ -6,10 +6,13 @@
 #include "http_util.h"
 #include "json_util.h"
 #include "string_util.h"
+#include "workflow_memory_correlate.h"
 
 #include <json/json.h>
 
 #include <algorithm>
+#include <cctype>
+#include <cstdint>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -34,6 +37,37 @@ static size_t clamp_size(size_t v, size_t lo, size_t hi) {
   if (v < lo) return lo;
   if (v > hi) return hi;
   return v;
+}
+
+static bool query_bool(const HttpRequest& req, const char* name, bool default_value) {
+  const auto v = query_get(req.query, name);
+  if (!v) return default_value;
+  if (v->empty()) return true;
+  std::string s = *v;
+  std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return (char)std::tolower(c); });
+  if (s == "1" || s == "true" || s == "yes" || s == "on") return true;
+  if (s == "0" || s == "false" || s == "no" || s == "off") return false;
+  return default_value;
+}
+
+static int64_t query_i64(const HttpRequest& req, const char* name, int64_t default_value) {
+  const auto v = query_get(req.query, name);
+  if (!v || v->empty()) return default_value;
+  try {
+    return (int64_t)std::stoll(*v);
+  } catch (...) {
+    return default_value;
+  }
+}
+
+static int query_i32(const HttpRequest& req, const char* name, int default_value) {
+  const auto v = query_get(req.query, name);
+  if (!v || v->empty()) return default_value;
+  try {
+    return (int)std::stol(*v);
+  } catch (...) {
+    return default_value;
+  }
 }
 
 }  // namespace
@@ -67,6 +101,8 @@ void handle_trace_lookup_endpoint(
     resp->body = R"({"ok":false,"error":"db not available"})";
     return;
   }
+
+  const bool include_memory = query_bool(req, "include_memory", /*default_value=*/false);
 
   size_t max_records = 50;
   if (const auto lim_q = query_get(req.query, "limit"); lim_q && !lim_q->empty()) {
@@ -267,6 +303,33 @@ void handle_trace_lookup_endpoint(
 
   out["count"] = (Json::UInt64)recs.size();
   out["records"] = recs;
+
+  // Optional: attach rolling memory correlation for this trace_id.
+  //
+  // This is a leverage multiplier: it turns trace_id into a "cross-layer join key" across
+  // durable execution logs and rolling consolidated memory checkpoints.
+  if (include_memory) {
+    Json::Value mc(Json::objectValue);
+    mc["trace_id"] = trace_id;
+    const int64_t since_utc_ms = query_i64(req, "memory_since_utc_ms", /*default_value=*/0);
+    const int64_t until_utc_ms = query_i64(req, "memory_until_utc_ms", /*default_value=*/INT64_MAX);
+    const int max_entries = query_i32(req, "memory_max_entries", /*default_value=*/200);
+    const bool timeline = query_bool(req, "memory_timeline", /*default_value=*/false);
+    mc["since_utc_ms"] = (Json::Int64)since_utc_ms;
+    mc["until_utc_ms"] = (Json::Int64)until_utc_ms;
+    mc["max_entries"] = max_entries;
+    mc["timeline"] = timeline;
+
+    std::string merr;
+    Json::Value mco = workflow_memory_correlate_to_json(cfg.state_dir, trace_id, mc, &merr);
+    // Keep trace response shape lean: strip workflow-task budget counters/assistant_text.
+    if (mco.isMember("tool_calls_total")) mco.removeMember("tool_calls_total");
+    if (mco.isMember("steps_executed")) mco.removeMember("steps_executed");
+    if (mco.isMember("assistant_text")) mco.removeMember("assistant_text");
+    if (!merr.empty() && (!mco.isObject() || !mco.isMember("error"))) mco["error"] = merr;
+    out["memory_correlate"] = mco;
+  }
+
   resp->body = json_stringify(out);
 }
 

@@ -540,6 +540,31 @@ paths:
           name: max_bytes
           required: false
           schema: { type: integer, format: int32 }
+        - in: query
+          name: include_memory
+          required: false
+          schema: { type: boolean }
+          description: When true, also attach best-effort structured memory correlation under `memory_correlate` (default false).
+        - in: query
+          name: memory_since_utc_ms
+          required: false
+          schema: { type: integer, format: int64 }
+          description: When include_memory=true, lower bound for checkpoint scan (default 0).
+        - in: query
+          name: memory_until_utc_ms
+          required: false
+          schema: { type: integer, format: int64 }
+          description: When include_memory=true, upper bound for checkpoint scan (default INT64_MAX).
+        - in: query
+          name: memory_max_entries
+          required: false
+          schema: { type: integer, format: int32 }
+          description: When include_memory=true, max entries to return per checkpoint (default 200; clamped).
+        - in: query
+          name: memory_timeline
+          required: false
+          schema: { type: boolean }
+          description: When include_memory=true, return a bounded checkpoint timeline instead of only the newest checkpoint (default false).
       responses:
         "200":
           description: Trace lookup response
@@ -557,6 +582,8 @@ paths:
                     items:
                       type: object
                       additionalProperties: true
+                  memory_correlate:
+                    $ref: "#/components/schemas/MemoryCorrelateResponse"
 
   /api/v1/memory/consolidate:
     post:

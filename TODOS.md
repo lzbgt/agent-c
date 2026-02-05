@@ -83,6 +83,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Proof: `ctest` includes `agentd_edge_message_dedupe_replay_task_done_smoke`.
 - `trace_id` correlation end-to-end, plus a merged trace timeline across broker ⇄ agentd.
   - Proof: `ctest` includes `agentd_trace_id_smoke`.
+  - New convenience: `GET /api/v1/trace?trace_id=...&include_memory=1` attaches `memory_correlate` so traces can correlate
+    durable execution with rolling structured memory checkpoints (uses `trace:<trace_id>` evidence).
 - Trace correlation is now useful across edge interop:
   - `POST /api/v1/edge/task/assign` forwards an optional `trace` object into the `TASK_ASSIGN` envelope.
   - `edge_tasks` persists `trace_id` (durable correlation even if a node omits echoing trace on `TASK_*` messages).
