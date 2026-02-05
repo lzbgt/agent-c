@@ -52,6 +52,11 @@ typedef struct agent_umbmp_envelope_cbor_params {
   size_t auth_kid_len;
   uint64_t auth_seq;
   int auth_has_seq;
+
+  // Optional: include `auth.sig` as a CBOR text string (base64, RFC 4648).
+  // When provided, `auth` is encoded as {alg,kid,seq?,sig}.
+  const char* auth_sig_b64;
+  size_t auth_sig_b64_len;
 } agent_umbmp_envelope_cbor_params_t;
 
 // Encodes the deterministic CBOR signing input (env with `auth.sig` omitted).
@@ -60,6 +65,19 @@ typedef struct agent_umbmp_envelope_cbor_params {
 // - agent_hmac_sha256 + base64 => `auth.sig` for `hmac-sha256-cbor`
 // - agent_ed25519_sign + base64 => `auth.sig` for `ed25519-cbor`
 agent_status_t agent_umbmp_envelope_no_sig_cbor_v0_4(
+  const agent_umbmp_envelope_cbor_params_t* p,
+  agent_cbor_writer_t* w
+);
+
+// Encodes a full UM‑BMP envelope as deterministic CBOR, including `auth.sig` when provided.
+//
+// This helper is intended for MCU/edge systems that want to use the CBOR wire profile (v0.1)
+// while also attaching envelope auth metadata/signatures (v0.4 partial).
+//
+// Notes:
+// - The signature verification signing input remains `agent_umbmp_envelope_no_sig_cbor_v0_4(...)`.
+// - This function is about wire encoding for transport; it does not perform any signing itself.
+agent_status_t agent_umbmp_envelope_cbor_v0_4(
   const agent_umbmp_envelope_cbor_params_t* p,
   agent_cbor_writer_t* w
 );
@@ -88,4 +106,3 @@ agent_status_t agent_umbmp_auth_ed25519_cbor_sig_b64(
 #ifdef __cplusplus
 }  // extern "C"
 #endif
-

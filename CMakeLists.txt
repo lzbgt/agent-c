@@ -296,6 +296,7 @@ add_executable(agent_core_tests
   tests/test_edge_interop.c
   tests/test_um_eais_task_assign_read.c
   tests/test_umbmp_envelope_read.c
+  tests/test_umbmp_envelope_write.c
   tests/test_umbmp_auth_core.c
   tests/test_ed25519.c
   tests/test_hmac_sha256.c

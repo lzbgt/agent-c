@@ -48,9 +48,10 @@ static agent_status_t enc_map_sorted(agent_cbor_writer_t* w, void* ctx) {
   return agent_cbor_write_map_sorted(w, m->pairs, m->n_pairs);
 }
 
-agent_status_t agent_umbmp_envelope_no_sig_cbor_v0_4(
+static agent_status_t encode_env_impl(
   const agent_umbmp_envelope_cbor_params_t* p,
-  agent_cbor_writer_t* w
+  agent_cbor_writer_t* w,
+  int include_sig
 ) {
   if (!p || !w) return AGENT_ERR_INVALID_ARGUMENT;
   if (!p->msg_id || p->msg_id_len == 0) return AGENT_ERR_INVALID_ARGUMENT;
@@ -70,6 +71,11 @@ agent_status_t agent_umbmp_envelope_no_sig_cbor_v0_4(
   if (want_auth) {
     if (!agent_umbmp_id_is_safe(p->auth_kid, p->auth_kid_len)) return AGENT_ERR_INVALID_ARGUMENT;
     if (p->auth_alg_len > 64) return AGENT_ERR_INVALID_ARGUMENT;
+  }
+  if (include_sig && p->auth_sig_b64) {
+    // sig without auth is meaningless.
+    if (!want_auth) return AGENT_ERR_INVALID_ARGUMENT;
+    if (p->auth_sig_b64_len == 0) return AGENT_ERR_INVALID_ARGUMENT;
   }
 
   // Build key/value list for the envelope.
@@ -95,11 +101,12 @@ agent_status_t agent_umbmp_envelope_no_sig_cbor_v0_4(
     env_pairs[n++] = (agent_cbor_kv_t){"trace", strlen("trace"), enc_fn, &trace};
   }
 
-  // Optional auth metadata (alg/kid/seq) without sig.
-  agent_cbor_kv_t auth_pairs[3];
+  // Optional auth metadata (alg/kid/seq) with optional sig.
+  agent_cbor_kv_t auth_pairs[4];
   text_ctx_t auth_alg = {p->auth_alg, p->auth_alg_len};
   text_ctx_t auth_kid = {p->auth_kid, p->auth_kid_len};
   u64_ctx_t auth_seq = {p->auth_seq};
+  text_ctx_t auth_sig = {p->auth_sig_b64, p->auth_sig_b64_len};
 
   map_ctx_t auth_map = {NULL, 0};
   if (want_auth) {
@@ -107,11 +114,26 @@ agent_status_t agent_umbmp_envelope_no_sig_cbor_v0_4(
     auth_pairs[an++] = (agent_cbor_kv_t){"alg", strlen("alg"), enc_text, &auth_alg};
     auth_pairs[an++] = (agent_cbor_kv_t){"kid", strlen("kid"), enc_text, &auth_kid};
     if (p->auth_has_seq) auth_pairs[an++] = (agent_cbor_kv_t){"seq", strlen("seq"), enc_u64, &auth_seq};
+    if (include_sig && p->auth_sig_b64) auth_pairs[an++] = (agent_cbor_kv_t){"sig", strlen("sig"), enc_text, &auth_sig};
     auth_map = (map_ctx_t){auth_pairs, an};
     env_pairs[n++] = (agent_cbor_kv_t){"auth", strlen("auth"), enc_map_sorted, &auth_map};
   }
 
   return agent_cbor_write_map_sorted(w, env_pairs, n);
+}
+
+agent_status_t agent_umbmp_envelope_no_sig_cbor_v0_4(
+  const agent_umbmp_envelope_cbor_params_t* p,
+  agent_cbor_writer_t* w
+) {
+  return encode_env_impl(p, w, 0);
+}
+
+agent_status_t agent_umbmp_envelope_cbor_v0_4(
+  const agent_umbmp_envelope_cbor_params_t* p,
+  agent_cbor_writer_t* w
+) {
+  return encode_env_impl(p, w, 1);
 }
 
 agent_status_t agent_umbmp_auth_hmac_sha256_cbor_sig_b64(

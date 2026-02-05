@@ -261,6 +261,8 @@ int main(void) {
   test_umbmp_envelope_read_module();
   extern void test_um_eais_task_assign_read_module(void);
   test_um_eais_task_assign_read_module();
+  extern void test_umbmp_envelope_write_module(void);
+  test_umbmp_envelope_write_module();
   printf("agent_core_tests OK\n");
   return 0;
 }

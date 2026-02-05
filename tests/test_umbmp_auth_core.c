@@ -96,6 +96,8 @@ static void test_umbmp_envelope_auth_vectors_v0_4(void) {
   p.auth_kid_len = strlen(p.auth_kid);
   p.auth_seq = 1;
   p.auth_has_seq = 1;
+  p.auth_sig_b64 = NULL;
+  p.auth_sig_b64_len = 0;
 
   // Canonical CBOR bytes in the vector are computed with auth.alg="ed25519-cbor".
   p.auth_alg = "ed25519-cbor";

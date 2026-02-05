@@ -12,6 +12,13 @@ static void test_id_is_safe_basic(void) {
   assert(agent_umbmp_id_is_safe("has\"quote", strlen("has\"quote")) == 0);
 }
 
+static void test_trace_id_is_safe_allows_at(void) {
+  assert(agent_umbmp_trace_id_is_safe("trace:demo@x", strlen("trace:demo@x")) == 1);
+  assert(agent_umbmp_trace_id_is_safe("trace:bad space", strlen("trace:bad space")) == 0);
+  // '@' is NOT allowed for general ids.
+  assert(agent_umbmp_id_is_safe("trace:demo@x", strlen("trace:demo@x")) == 0);
+}
+
 static void test_sha256_token_is_safe_basic(void) {
   assert(agent_umbmp_sha256_token_is_safe("sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
                                           strlen("sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")) == 1);
@@ -89,6 +96,7 @@ static void test_result_attest_signing_input_v0_1(void) {
 
 void test_edge_interop_module(void) {
   test_id_is_safe_basic();
+  test_trace_id_is_safe_allows_at();
   test_sha256_token_is_safe_basic();
   test_sanitize_trims_and_defaults();
   test_sanitize_respects_max_len();
