@@ -21,6 +21,7 @@
 #include <array>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -44,8 +45,14 @@ static bool auth_input_bytes_for_alg(
   if (!out_bytes) return false;
   out_bytes->clear();
 
+  // Signature covers the full envelope including `auth` metadata, except `auth.sig` itself.
+  // This lets nodes add anti-replay fields (seq) or future metadata without changing the envelope-level fields.
   Json::Value env2 = env;
-  if (env2.isMember("auth")) env2.removeMember("auth");
+  if (env2.isMember("auth") && env2["auth"].isObject()) {
+    Json::Value auth2 = env2["auth"];
+    if (auth2.isMember("sig")) auth2.removeMember("sig");
+    env2["auth"] = auth2;
+  }
 
   const std::string a = trim_copy(alg);
   if (a == "hmac-sha256" || a == "HMAC-SHA256") {
@@ -357,13 +364,56 @@ void handle_edge_message_endpoint(
     ir.to_id = to_id;
     ir.envelope_json = edge_json_stringify_compact(env);
     std::string err;
-    if (!db_or_null->insert_edge_inbox_message(ir, &deduped, &err)) {
+    AgentDb::EdgeInboxAuthSeqGuard guard;
+    AgentDb::EdgeInboxAuthSeqGuard* guard_or_null = nullptr;
+    if (cfg.edge_auth_require_seq && env.isMember("auth") && env["auth"].isObject()) {
+      if (from_id.rfind("node:", 0) != 0 || from_id.size() <= 5) {
+        resp->status = 401;
+        resp->body = "{\"ok\":false,\"error\":\"edge auth seq requires envelope.from node:<node_id>\"}";
+        return;
+      }
+      const std::string node_id = trim_copy(from_id.substr(5));
+      if (node_id.empty() || !edge_id_is_safe(node_id)) {
+        resp->status = 401;
+        resp->body = "{\"ok\":false,\"error\":\"edge auth seq requires valid node_id\"}";
+        return;
+      }
+      const Json::Value& auth = env["auth"];
+      int64_t seq = -1;
+      if (!auth.isMember("seq")) {
+        resp->status = 401;
+        resp->body = "{\"ok\":false,\"error\":\"missing envelope.auth.seq\"}";
+        return;
+      }
+      if (auth["seq"].isInt64()) seq = auth["seq"].asInt64();
+      else if (auth["seq"].isUInt64()) {
+        const auto u = auth["seq"].asUInt64();
+        if (u <= (Json::UInt64)std::numeric_limits<int64_t>::max()) seq = (int64_t)u;
+        else seq = -1;
+      }
+      if (seq < 0) {
+        resp->status = 401;
+        resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth.seq\"}";
+        return;
+      }
+      guard.node_id = node_id;
+      guard.seq = seq;
+      guard_or_null = &guard;
+    }
+
+    bool seq_rejected = false;
+    if (!db_or_null->insert_edge_inbox_message_with_seq_guard(ir, guard_or_null, &deduped, &seq_rejected, &err)) {
       resp->status = 500;
       Json::Value o(Json::objectValue);
       o["ok"] = false;
       o["error"] = "failed to persist edge inbox message";
       o["detail"] = err;
       resp->body = edge_json_stringify_compact(o);
+      return;
+    }
+    if (seq_rejected) {
+      resp->status = 401;
+      resp->body = "{\"ok\":false,\"error\":\"edge auth seq replay\"}";
       return;
     }
     Json::Value o(Json::objectValue);

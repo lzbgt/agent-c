@@ -1370,6 +1370,7 @@ components:
             required: { type: boolean }
             require_ts: { type: boolean }
             max_skew_ms: { type: integer, format: int64 }
+            require_seq: { type: boolean }
             kid_policy: { type: string }
             hmac_keys_set: { type: integer, format: int64 }
         memory:
@@ -1390,6 +1391,9 @@ components:
           type: integer
           format: int64
           description: Max allowed absolute time skew (ms) for authenticated envelopes; 0 disables
+        edge_auth_require_seq:
+          type: boolean
+          description: When true, authenticated envelopes must include a monotonic `auth.seq` and be strictly increasing per node
         edge_auth_kid_policy:
           type: string
           description: Key selection policy for authenticated node envelopes (any|match_node|node_prefix)
@@ -1478,6 +1482,7 @@ components:
         edge_auth_required: { type: boolean }
         edge_auth_require_ts: { type: boolean }
         edge_auth_max_skew_ms: { type: integer, format: int64 }
+        edge_auth_require_seq: { type: boolean }
         edge_auth_kid_policy: { type: string }
         edge_auth_hmac_keys_set:
           type: integer

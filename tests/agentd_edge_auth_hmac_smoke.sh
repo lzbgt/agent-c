@@ -43,6 +43,7 @@ print(json.dumps({
   "edge_auth_required": True,
   "edge_auth_require_ts": True,
   "edge_auth_max_skew_ms": 60000,
+  "edge_auth_require_seq": True,
   "edge_auth_kid_policy": "match_node",
   "edge_auth_hmac_keys": {"${KID_NODE}": "${SECRET_NODE}", "${KID_PREFIX}": "${SECRET_PREFIX}"},
 }))
@@ -97,10 +98,10 @@ env = {
     "caps_sha256": "${CAPS_SHA}",
   }
 }
+env["auth"] = {"alg": "hmac-sha256", "kid": "${KID_NODE}", "seq": 1}
 canon = json.dumps(env, sort_keys=True, separators=(",", ":"))
 mac = hmac.new(b"${SECRET_NODE}", canon.encode("utf-8"), hashlib.sha256).digest()
-sig = base64.b64encode(mac).decode("ascii")
-env["auth"] = {"alg": "hmac-sha256", "kid": "${KID_NODE}", "sig": sig}
+env["auth"]["sig"] = base64.b64encode(mac).decode("ascii")
 print(json.dumps(env))
 PY
 )"
@@ -109,6 +110,48 @@ curl -fsS --noproxy "*" --max-time 10 \
   -H "Content-Type: application/json" \
   -d "${hello_signed}" \
   "${DAEMON_URL}/api/v1/edge/message" >/dev/null
+
+# Retrying the exact same message (same msg_id, same seq) must remain idempotent (should not trip seq guard).
+curl -fsS --noproxy "*" --max-time 10 \
+  -H "Content-Type: application/json" \
+  -d "${hello_signed}" \
+  "${DAEMON_URL}/api/v1/edge/message" >/dev/null
+
+# Replaying with a new msg_id but the same seq must be rejected (401).
+hello_replay_same_seq="$(python3 - <<PY
+import base64, hashlib, hmac, json, uuid, time
+env = {
+  "msg_id": str(uuid.uuid4()),
+  "ts_utc_ms": int(time.time()*1000),
+  "type": "NODE_HELLO",
+  "from": f"node:{'${NODE_ID}'}",
+  "to": "platform",
+  "body": {
+    "node_id": "${NODE_ID}",
+    "model": "esp32sim_stub",
+    "fw_git_sha": "deadbeef",
+    "caps_sha256": "${CAPS_SHA}",
+  }
+}
+env["auth"] = {"alg": "hmac-sha256", "kid": "${KID_NODE}", "seq": 1}
+canon = json.dumps(env, sort_keys=True, separators=(",", ":"))
+mac = hmac.new(b"${SECRET_NODE}", canon.encode("utf-8"), hashlib.sha256).digest()
+env["auth"]["sig"] = base64.b64encode(mac).decode("ascii")
+print(json.dumps(env))
+PY
+)"
+
+status_replay_same_seq="$(
+  curl -sS --noproxy "*" --max-time 10 \
+    -o /dev/null -w "%{http_code}" \
+    -H "Content-Type: application/json" \
+    -d "${hello_replay_same_seq}" \
+    "${DAEMON_URL}/api/v1/edge/message"
+)"
+if [[ "${status_replay_same_seq}" != "401" ]]; then
+  echo "expected 401 for replay with same seq and new msg_id, got ${status_replay_same_seq}" >&2
+  exit 1
+fi
 
 # Also accept a CBOR-native signing profile: HMAC over canonical CBOR encoding of the envelope without auth.
 hello_signed_cbor_alg="$(python3 - <<PY
@@ -178,10 +221,10 @@ env = {
     "caps_sha256": "${CAPS_SHA}",
   }
 }
+env["auth"] = {"alg": "hmac-sha256-cbor", "kid": "${KID_PREFIX}", "seq": 2}
 cbor = _cbor_any(env)
 mac = hmac.new(b"${SECRET_PREFIX}", cbor, hashlib.sha256).digest()
-sig = base64.b64encode(mac).decode("ascii")
-env["auth"] = {"alg": "hmac-sha256-cbor", "kid": "${KID_PREFIX}", "sig": sig}
+env["auth"]["sig"] = base64.b64encode(mac).decode("ascii")
 print(json.dumps(env))
 PY
 )"
@@ -248,10 +291,10 @@ env = {
     "caps_sha256": "${CAPS_SHA}",
   }
 }
+env["auth"] = {"alg": "hmac-sha256", "kid": "${KID_NODE}", "seq": 3}
 canon = json.dumps(env, sort_keys=True, separators=(",", ":"))
 mac = hmac.new(b"wrong_key", canon.encode("utf-8"), hashlib.sha256).digest()
-sig = base64.b64encode(mac).decode("ascii")
-env["auth"] = {"alg": "hmac-sha256", "kid": "${KID_NODE}", "sig": sig}
+env["auth"]["sig"] = base64.b64encode(mac).decode("ascii")
 print(json.dumps(env))
 PY
 )"
@@ -286,10 +329,10 @@ env = {
     "caps_sha256": "${CAPS_SHA}",
   }
 }
+env["auth"] = {"alg": "hmac-sha256", "kid": "${KID_NODE}", "seq": 4}
 canon = json.dumps(env, sort_keys=True, separators=(",", ":"))
 mac = hmac.new(b"${SECRET_NODE}", canon.encode("utf-8"), hashlib.sha256).digest()
-sig = base64.b64encode(mac).decode("ascii")
-env["auth"] = {"alg": "hmac-sha256", "kid": "${KID_NODE}", "sig": sig}
+env["auth"]["sig"] = base64.b64encode(mac).decode("ascii")
 print(json.dumps(env))
 PY
 )"

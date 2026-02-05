@@ -477,13 +477,14 @@ Maintainability note (always-on):
      - Constraint: definite-length items only; map keys must be text strings (string-key CBOR profile).
      - Proof: `ctest` includes `agentd_edge_message_cbor_smoke` and `agentd_edge_outbox_cbor_smoke`.
    - Shipped (v0.4 partial): optional envelope authenticity (HMAC) for trust roots + spoofing resistance:
-     - Envelope may include `auth:{alg:"hmac-sha256",kid,sig}` where `sig` is base64(HMAC-SHA256(key[kid], c14n(envelope-with-auth-removed))).
+     - Envelope may include `auth:{alg:"hmac-sha256",kid,seq?,sig}` where `sig` is base64(HMAC-SHA256(key[kid], c14n(envelope-with-auth.sig-removed))).
      - Operator control-plane:
        - `GET /api/v1/config` surfaces `edge_auth.required` + `edge_auth.hmac_keys_set`
        - `POST /api/v1/config/update` supports:
          - `edge_auth_required` and `edge_auth_hmac_keys`
          - optional replay-window hardening: `edge_auth_require_ts` and `edge_auth_max_skew_ms`
          - optional per-node trust root policy: `edge_auth_kid_policy` ("any"|"match_node"|"node_prefix")
+         - optional anti-replay: `edge_auth_require_seq` (strict monotonic `auth.seq` per node; best-effort)
      - Enforcement behavior:
        - if required: missing/invalid auth is rejected with HTTP 401 (fail-closed; no inbox persistence)
        - optional: if `edge_auth_require_ts=true`, authenticated envelopes require `ts_utc_ms > 0`

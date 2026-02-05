@@ -165,7 +165,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 25;
+  const int kSchemaVersion = 26;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -787,6 +787,15 @@ CREATE INDEX IF NOT EXISTS workflow_fairq_sessions_by_updated
 )SQL";
     if (!exec_locked(schema_v25, out_error)) return false;
     cur_ver = 25;
+  }
+
+  if (cur_ver < 26) {
+    const char* schema_v26 = R"SQL(
+-- Edge envelope auth anti-replay: track a best-effort monotonic auth.seq per node.
+ALTER TABLE edge_nodes ADD COLUMN last_auth_seq INTEGER;
+)SQL";
+    if (!exec_locked(schema_v26, out_error)) return false;
+    cur_ver = 26;
   }
 
   // Record schema version.

@@ -298,6 +298,141 @@ VALUES(?,?,?,?,?,?);
 #endif
 }
 
+bool AgentDb::insert_edge_inbox_message_with_seq_guard(
+  const EdgeInboxMessageRow& row,
+  const EdgeInboxAuthSeqGuard* guard_or_null,
+  bool* out_deduped,
+  bool* out_seq_rejected,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_deduped) *out_deduped = false;
+  if (out_seq_rejected) *out_seq_rejected = false;
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)row;
+  (void)guard_or_null;
+  (void)out_deduped;
+  (void)out_seq_rejected;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (row.msg_id.empty() || row.type.empty() || row.envelope_json.empty()) {
+    if (out_error) *out_error = "insert_edge_inbox_message_with_seq_guard: missing msg_id/type/envelope_json";
+    return false;
+  }
+  const int64_t ts = row.ts_utc_ms > 0 ? row.ts_utc_ms : unix_ms_now();
+
+  if (guard_or_null) {
+    if (guard_or_null->node_id.empty()) {
+      if (out_error) *out_error = "insert_edge_inbox_message_with_seq_guard: missing guard.node_id";
+      return false;
+    }
+    if (guard_or_null->seq < 0) {
+      if (out_error) *out_error = "insert_edge_inbox_message_with_seq_guard: invalid guard.seq";
+      return false;
+    }
+  }
+
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+
+  char* err = nullptr;
+  if (sqlite3_exec((sqlite3*)db_, "BEGIN IMMEDIATE TRANSACTION;", nullptr, nullptr, &err) != SQLITE_OK) {
+    if (out_error) *out_error = err ? err : sqlite_err((sqlite3*)db_);
+    if (err) sqlite3_free(err);
+    return false;
+  }
+
+  bool ok = true;
+  bool deduped = false;
+  bool seq_rejected = false;
+
+  // 1) Insert inbox row (dedupe by msg_id).
+  {
+    sqlite3_stmt* st = nullptr;
+    const char* sql = R"SQL(
+INSERT OR IGNORE INTO edge_inbox_messages(msg_id, ts_utc_ms, type, from_id, to_id, envelope_json)
+VALUES(?,?,?,?,?,?);
+)SQL";
+    if (sqlite3_prepare_v2((sqlite3*)db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+      ok = false;
+      if (out_error) *out_error = sqlite_err((sqlite3*)db_);
+    } else {
+      ok = ok && bind_text(st, 1, row.msg_id);
+      ok = ok && bind_i64(st, 2, ts);
+      ok = ok && bind_text(st, 3, row.type);
+      ok = ok && bind_text_or_null(st, 4, row.from_id);
+      ok = ok && bind_text_or_null(st, 5, row.to_id);
+      ok = ok && bind_text(st, 6, row.envelope_json);
+      ok = ok && step_done(st);
+      if (!ok && out_error && out_error->empty()) *out_error = sqlite_err((sqlite3*)db_);
+      sqlite3_finalize(st);
+      if (ok) {
+        deduped = (sqlite3_changes((sqlite3*)db_) == 0);
+      }
+    }
+  }
+
+  // 2) For new messages only, enforce/bump seq (anti-replay) if configured.
+  if (ok && !deduped && guard_or_null) {
+    sqlite3_stmt* st = nullptr;
+    const char* sql = R"SQL(
+INSERT INTO edge_nodes(node_id, last_auth_seq)
+VALUES(?,?)
+ON CONFLICT(node_id) DO UPDATE SET
+  last_auth_seq = excluded.last_auth_seq
+WHERE edge_nodes.last_auth_seq IS NULL OR edge_nodes.last_auth_seq < excluded.last_auth_seq;
+)SQL";
+    if (sqlite3_prepare_v2((sqlite3*)db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+      ok = false;
+      if (out_error) *out_error = sqlite_err((sqlite3*)db_);
+    } else {
+      ok = ok && bind_text(st, 1, guard_or_null->node_id);
+      ok = ok && bind_i64(st, 2, guard_or_null->seq);
+      ok = ok && step_done(st);
+      if (!ok && out_error && out_error->empty()) *out_error = sqlite_err((sqlite3*)db_);
+      sqlite3_finalize(st);
+      if (ok) {
+        const int n = sqlite3_changes((sqlite3*)db_);
+        if (n == 0) {
+          // Seq is not strictly increasing. Reject and roll back the inbox insert.
+          seq_rejected = true;
+        }
+      }
+    }
+  }
+
+  if (seq_rejected) {
+    char* rerr = nullptr;
+    (void)sqlite3_exec((sqlite3*)db_, "ROLLBACK;", nullptr, nullptr, &rerr);
+    if (rerr) sqlite3_free(rerr);
+    if (out_deduped) *out_deduped = false;
+    if (out_seq_rejected) *out_seq_rejected = true;
+    return true;
+  }
+
+  if (ok) {
+    char* cerr = nullptr;
+    if (sqlite3_exec((sqlite3*)db_, "COMMIT;", nullptr, nullptr, &cerr) != SQLITE_OK) {
+      ok = false;
+      if (out_error) *out_error = cerr ? cerr : sqlite_err((sqlite3*)db_);
+      if (cerr) sqlite3_free(cerr);
+    }
+  } else {
+    char* rerr = nullptr;
+    (void)sqlite3_exec((sqlite3*)db_, "ROLLBACK;", nullptr, nullptr, &rerr);
+    if (rerr) sqlite3_free(rerr);
+  }
+
+  if (ok && out_deduped) *out_deduped = deduped;
+  if (ok && out_seq_rejected) *out_seq_rejected = false;
+  return ok;
+#endif
+}
+
 bool AgentDb::get_edge_inbox_message_processed(const std::string& msg_id, bool* out_processed, std::string* out_error) {
   if (out_error) out_error->clear();
   if (out_processed) *out_processed = false;

@@ -517,6 +517,30 @@ class AgentDb {
   // - returns true and sets out_deduped=true when msg_id already exists
   // - returns false only on unexpected failure
   bool insert_edge_inbox_message(const EdgeInboxMessageRow& row, bool* out_deduped, std::string* out_error);
+
+  struct EdgeInboxAuthSeqGuard {
+    // Node identity to scope the monotonic sequence state.
+    // For node envelopes, this should be the node_id (without "node:" prefix).
+    std::string node_id;
+    int64_t seq = 0;
+  };
+
+  // Inserts an inbound message with an optional monotonic auth.seq anti-replay guard.
+  //
+  // If guard_or_null is provided:
+  // - when msg_id is new (inserted): atomically requires seq to be strictly greater than the last recorded seq
+  //   for that node, and bumps the stored seq.
+  // - when msg_id is a duplicate (deduped): does not enforce/bump seq (idempotent retries).
+  //
+  // Returns true on success (including when seq is rejected and the insert is rolled back),
+  // and sets out_seq_rejected=true when the seq guard rejected the message.
+  bool insert_edge_inbox_message_with_seq_guard(
+    const EdgeInboxMessageRow& row,
+    const EdgeInboxAuthSeqGuard* guard_or_null,
+    bool* out_deduped,
+    bool* out_seq_rejected,
+    std::string* out_error
+  );
   bool get_edge_inbox_message_processed(const std::string& msg_id, bool* out_processed, std::string* out_error);
   bool mark_edge_inbox_message_processed(const std::string& msg_id, int64_t processed_utc_ms, std::string* out_error);
 

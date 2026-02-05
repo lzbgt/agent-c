@@ -31,7 +31,8 @@ struct DaemonConfig {
   // - v0.4 goal: enforceable trust roots and stronger node identity binding.
   //
   // Current minimal mechanism:
-  // - HMAC-SHA256 over canonical JSON of the envelope (with `auth` removed), with key selected by `auth.kid`.
+  // - HMAC-SHA256 over the envelope with `auth.sig` removed (auth metadata remains signed),
+  //   with key selected by `auth.kid`.
   // - Keys are secrets; do not expose via /api/v1/config. Use /api/v1/config/update or local secrets files.
   bool edge_auth_required = false;
   // Optional freshness controls for authenticated envelopes (replay window hardening).
@@ -43,6 +44,10 @@ struct DaemonConfig {
   // Defaults are permissive for bring-up; operators can tighten once nodes have clocks.
   bool edge_auth_require_ts = false;
   int64_t edge_auth_max_skew_ms = 0;
+  // Optional anti-replay monotonic sequence number.
+  // When true, authenticated envelopes must include `auth.seq` (uint64/int64 >= 0), and the platform rejects
+  // messages whose seq is not strictly greater than the last accepted seq for that node (best-effort).
+  bool edge_auth_require_seq = false;
   // Key selection / identity binding policy.
   //
   // Values:

@@ -83,6 +83,9 @@ bool load_runtime_config_best_effort(
         const auto n = (int64_t)v["edge_auth_max_skew_ms"].asUInt64();
         cfg_io->edge_auth_max_skew_ms = std::max<int64_t>(0, std::min<int64_t>(30LL * 24 * 60 * 60 * 1000, n));
       }
+      if (v.isMember("edge_auth_require_seq") && v["edge_auth_require_seq"].isBool()) {
+        cfg_io->edge_auth_require_seq = v["edge_auth_require_seq"].asBool();
+      }
       if (v.isMember("edge_auth_kid_policy") && v["edge_auth_kid_policy"].isString()) {
         const std::string s = trim_copy(v["edge_auth_kid_policy"].asString());
         if (s == "any" || s == "match_node" || s == "node_prefix") cfg_io->edge_auth_kid_policy = s;
@@ -189,6 +192,7 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
   v["edge_auth_required"] = cfg.edge_auth_required;
   v["edge_auth_require_ts"] = cfg.edge_auth_require_ts;
   v["edge_auth_max_skew_ms"] = (Json::Int64)cfg.edge_auth_max_skew_ms;
+  v["edge_auth_require_seq"] = cfg.edge_auth_require_seq;
   v["edge_auth_kid_policy"] = cfg.edge_auth_kid_policy;
   v["workflow_admit_max_inflight_tasks_per_session"] = cfg.workflow_admit_max_inflight_tasks_per_session;
   v["workflow_admit_max_inflight_tasks_total"] = cfg.workflow_admit_max_inflight_tasks_total;

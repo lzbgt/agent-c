@@ -82,7 +82,9 @@ Envelope authenticity (optional, UM‑BMP auth v0.4):
 - Envelopes MAY include an `auth` object:
   - `auth.alg`: `"hmac-sha256"` (sign canonical JSON) or `"hmac-sha256-cbor"` (sign canonical CBOR)
   - `auth.kid`: key id selecting an operator-provisioned shared secret
+  - `auth.seq`: optional monotonic sequence number (anti-replay; when enabled by the platform)
   - `auth.sig`: base64 of the 32-byte HMAC over the envelope with the `auth` field removed:
+    - signing input is the envelope with `auth.sig` removed (auth metadata like `kid`/`seq` stays in the signed bytes)
     - for `hmac-sha256`: **canonical JSON** bytes (`agent_json_c14n_v1`)
     - for `hmac-sha256-cbor`: **canonical CBOR** bytes (RFC 8949, definite lengths, sorted string map keys; matches `daemon/src/cbor_encode.*`)
 - Operator controls:
@@ -91,6 +93,7 @@ Envelope authenticity (optional, UM‑BMP auth v0.4):
     - `edge_auth_required: true|false`
     - `edge_auth_require_ts: true|false` (when true, requires `ts_utc_ms > 0` on authenticated envelopes)
     - `edge_auth_max_skew_ms: <int>` (when > 0, rejects authenticated envelopes if `abs(now-ts_utc_ms)` exceeds this window)
+    - `edge_auth_require_seq: true|false` (when true, requires monotonic `auth.seq` on authenticated envelopes)
     - `edge_auth_kid_policy: "any"|"match_node"|"node_prefix"` (best-effort binding between `from:"node:<id>"` and `auth.kid`)
     - `edge_auth_hmac_keys: { "<kid>": "<secret>", "<kid2>": null }` (null clears)
 - Behavior:

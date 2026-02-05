@@ -97,7 +97,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v25)
+## Schema (v26)
 
 All timestamps are Unix milliseconds.
 
@@ -403,6 +403,7 @@ UM‑EAIS (edge embedded-agent interop) node registry. This is the platform/brok
 - `tools_json TEXT` (optional; JSON array string of tool names)
 - `hardware_presence_json TEXT` (optional; JSON object string)
 - `health_json TEXT` (optional; JSON object string)
+- `last_auth_seq INTEGER` (optional; best-effort monotonic `auth.seq` anti-replay state for authenticated envelopes)
 - `last_hello_utc_ms INTEGER` (optional)
 - `last_heartbeat_utc_ms INTEGER` (optional)
 
