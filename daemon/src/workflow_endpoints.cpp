@@ -137,6 +137,19 @@ static bool expand_workflow_submit_macros(
       }
       return false;
     }
+    const Json::Value attempt_caps =
+      del.isMember("attempt_caps") ? del["attempt_caps"] : Json::Value(Json::nullValue);
+    if (del.isMember("attempt_caps") && !attempt_caps.isObject() && !attempt_caps.isNull()) {
+      if (resp) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "delegate_parallel.delegate.attempt_caps must be an object";
+        o["task_id"] = task_id;
+        resp->body = json_stringify_compact(o);
+      }
+      return false;
+    }
     const Json::Value attempts = del.isMember("attempts") ? del["attempts"] : Json::Value(Json::nullValue);
     if (!attempts.isArray() || attempts.empty()) {
       if (resp) {
@@ -252,6 +265,28 @@ static bool expand_workflow_submit_macros(
         for (const auto& k : workflow_defaults.getMemberNames()) {
           if (!areq.isMember(k)) areq[k] = workflow_defaults[k];
         }
+      }
+
+      // attempt_caps: hard maximums on per-attempt run knobs.
+      // Semantics: if cap <= 0, ignore. Else: missing => set to cap; present => min(present, cap).
+      if (attempt_caps.isObject()) {
+        auto clamp_key = [&](const char* k) {
+          if (!attempt_caps.isMember(k)) return;
+          const Json::Value& capv = attempt_caps[k];
+          if (!(capv.isInt64() || capv.isUInt64() || capv.isInt() || capv.isUInt())) return;
+          const int64_t cap = std::max<int64_t>(0, capv.asInt64());
+          if (cap <= 0) return;
+          if (areq.isMember(k) && (areq[k].isInt64() || areq[k].isUInt64() || areq[k].isInt() || areq[k].isUInt())) {
+            const int64_t cur = std::max<int64_t>(0, areq[k].asInt64());
+            areq[k] = (Json::Int64)std::min<int64_t>(cur, cap);
+          } else if (!areq.isMember(k)) {
+            areq[k] = (Json::Int64)cap;
+          }
+        };
+        clamp_key("timeout_ms");
+        clamp_key("max_steps");
+        clamp_key("max_tool_calls_total");
+        clamp_key("max_tool_calls_per_tool");
       }
 
       if (!allow_sessions) {
@@ -1339,6 +1374,18 @@ void handle_workflow_submit_endpoint(
       const bool stop_on_ok =
         del.isMember("stop_on_ok") && del["stop_on_ok"].isBool() ? del["stop_on_ok"].asBool() : true;
       del2["stop_on_ok"] = stop_on_ok;
+      if (del.isMember("attempt_caps")) {
+        if (!del["attempt_caps"].isObject() && !del["attempt_caps"].isNull()) {
+          resp->status = 400;
+          Json::Value o(Json::objectValue);
+          o["ok"] = false;
+          o["error"] = "delegate.attempt_caps must be an object";
+          o["task_id"] = task_id;
+          resp->body = json_stringify_compact(o);
+          return;
+        }
+        if (del["attempt_caps"].isObject()) del2["attempt_caps"] = del["attempt_caps"];
+      }
 
       Json::Value arr(Json::arrayValue);
       std::unordered_set<std::string> seen_attempt_ids;

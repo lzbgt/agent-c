@@ -1790,6 +1790,8 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
     } else {
       const bool stop_on_ok =
         del.isMember("stop_on_ok") && del["stop_on_ok"].isBool() ? del["stop_on_ok"].asBool() : true;
+      const Json::Value attempt_caps =
+        del.isMember("attempt_caps") && del["attempt_caps"].isObject() ? del["attempt_caps"] : Json::Value(Json::nullValue);
 
       const Json::Value attempts = del.isMember("attempts") && del["attempts"].isArray() ? del["attempts"] : Json::Value(Json::nullValue);
       if (!attempts.isArray() || attempts.empty()) {
@@ -1871,6 +1873,29 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
           }
 
 	          Json::Value areq2 = areq;
+
+	          // attempt_caps: hard maximums on per-attempt run knobs.
+	          // Semantics: if cap <= 0, ignore. Else: missing => set to cap; present => min(present, cap).
+	          if (attempt_caps.isObject()) {
+	            auto clamp_key = [&](const char* k) {
+	              if (!attempt_caps.isMember(k)) return;
+	              const Json::Value& capv = attempt_caps[k];
+	              if (!(capv.isInt64() || capv.isUInt64() || capv.isInt() || capv.isUInt())) return;
+	              const int64_t cap = std::max<int64_t>(0, capv.asInt64());
+	              if (cap <= 0) return;
+	              if (areq2.isMember(k) && (areq2[k].isInt64() || areq2[k].isUInt64() || areq2[k].isInt() || areq2[k].isUInt())) {
+	                const int64_t cur = std::max<int64_t>(0, areq2[k].asInt64());
+	                areq2[k] = (Json::Int64)std::min<int64_t>(cur, cap);
+	              } else if (!areq2.isMember(k)) {
+	                areq2[k] = (Json::Int64)cap;
+	              }
+	            };
+	            clamp_key("timeout_ms");
+	            clamp_key("max_steps");
+	            clamp_key("max_tool_calls_total");
+	            clamp_key("max_tool_calls_per_tool");
+	          }
+
 	          if (wf_limits.max_tool_calls_total > 0) {
 	            // Clamp per-attempt tool-call budget to remaining workflow budget.
 	            int64_t req_limit = 0;
@@ -1970,6 +1995,18 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 	          row["ok"] = ok2;
 	          row["run_ok"] = run_ok2;
 	          row["expect_ok"] = expect_ok2;
+
+	          auto copy_eff_i64 = [&](const char* k) {
+	            if (!r.isObject()) return;
+	            if (r.isMember(k) && (r[k].isInt64() || r[k].isUInt64() || r[k].isInt() || r[k].isUInt())) {
+	              row[k] = (Json::Int64)std::max<int64_t>(0, r[k].asInt64());
+	            }
+	          };
+	          copy_eff_i64("effective_timeout_ms");
+	          copy_eff_i64("effective_max_steps");
+	          copy_eff_i64("effective_max_tool_calls_total");
+	          copy_eff_i64("effective_max_tool_calls_per_tool");
+
 	          row["tool_calls_total"] = (Json::Int64)tool_calls_this_attempt;
 	          row["steps_executed"] = (Json::Int64)steps_this_attempt;
 	          row["elapsed_ms"] = (Json::Int64)elapsed_ms_this_attempt;

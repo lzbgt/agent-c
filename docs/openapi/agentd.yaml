@@ -1937,6 +1937,24 @@ components:
 
             This is useful for per-attempt budget knobs or base_url/model/api_key wiring without repeating them for every attempt.
           additionalProperties: true
+        attempt_caps:
+          type: object
+          description: |
+            Hard caps applied to each attempt's `request` run knobs.
+
+            Semantics (for supported numeric fields):
+            - if cap <= 0: ignore
+            - if attempt.request is missing the field: set it to the cap
+            - if attempt.request includes the field: clamp it to `min(value, cap)`
+
+            This is intended for *enforceable* per-attempt budgets (as opposed to `attempt_defaults`, which can be overridden by the attempt).
+
+            Supported keys (best-effort):
+            - `timeout_ms`
+            - `max_steps`
+            - `max_tool_calls_total`
+            - `max_tool_calls_per_tool`
+          additionalProperties: true
         attempts:
           type: array
           items:

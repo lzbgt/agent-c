@@ -228,6 +228,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - `kind:"delegate_parallel"` now propagates the macro task’s `inputs` and `ready_unix_ms` to derived attempt tasks,
     so `${input.*}` templates work inside `attempt.request` without duplicating inputs on every attempt.
   - Proof: `ctest` includes `agentd_workflow_delegate_parallel_inputs_propagate_smoke`.
+- Enforceable per-attempt budgets (v1.7.5):
+  - New `delegate.attempt_caps` and `delegate_parallel.delegate.attempt_caps` clamp attempt run knobs (hard max; cannot be exceeded by attempt.request).
+  - Delegate attempt result rows now surface `effective_*` fields for debugging/attestation (`effective_timeout_ms`, etc).
+  - Proof: `ctest` includes `agentd_workflow_delegate_attempt_caps_smoke` and `agentd_workflow_delegate_parallel_attempt_caps_smoke`.
 
 ## P0 (next: maximize autonomous continuity + correctness)
 
