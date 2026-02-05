@@ -29,19 +29,6 @@ static bool json_value_type_matches_string(const Json::Value& v, const std::stri
   return true; // unknown type => best-effort allow
 }
 
-static bool trace_id_is_safe_local(const std::string& s) {
-  if (s.empty() || s.size() > 128) return false;
-  for (char c : s) {
-    const bool ok =
-      (c >= 'a' && c <= 'z') ||
-      (c >= 'A' && c <= 'Z') ||
-      (c >= '0' && c <= '9') ||
-      c == '-' || c == '_' || c == '.' || c == ':' || c == '@';
-    if (!ok) return false;
-  }
-  return true;
-}
-
 static bool json_schema_subset_validate_best_effort_impl(
   const Json::Value& schema,
   const Json::Value& value,
@@ -185,6 +172,19 @@ static bool edge_tool_parameters_schema_from_manifest_best_effort_impl(
 }
 
 }  // namespace
+
+bool edge_trace_id_is_safe(const std::string& s) {
+  if (s.empty() || s.size() > 128) return false;
+  for (char c : s) {
+    const bool ok =
+      (c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9') ||
+      c == '-' || c == '_' || c == '.' || c == ':' || c == '@';
+    if (!ok) return false;
+  }
+  return true;
+}
 
 bool edge_json_schema_subset_validate_best_effort(
   const Json::Value& schema,
@@ -602,7 +602,7 @@ bool edge_enqueue_task_assign(
   std::string trace_id;
   if (trace.isObject() && trace.isMember("trace_id") && trace["trace_id"].isString()) {
     trace_id = trim_copy(trace["trace_id"].asString());
-    if (!trace_id.empty() && !trace_id_is_safe_local(trace_id)) {
+    if (!trace_id.empty() && !edge_trace_id_is_safe(trace_id)) {
       if (out_error) *out_error = "invalid trace.trace_id";
       if (out_http_status) *out_http_status = 400;
       return false;

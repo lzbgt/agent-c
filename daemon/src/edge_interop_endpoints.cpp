@@ -399,6 +399,16 @@ void handle_edge_message_endpoint(
     const bool idempotency_mismatch =
       (!got_idem.empty() && !tr.idempotency_key.empty() && got_idem != tr.idempotency_key);
 
+    std::string msg_trace_id;
+    bool msg_trace_id_valid = true;
+    if (event_data.isObject() && event_data.isMember("trace") && event_data["trace"].isObject() && event_data["trace"].isMember("trace_id") &&
+        event_data["trace"]["trace_id"].isString()) {
+      msg_trace_id = trim_copy(event_data["trace"]["trace_id"].asString());
+      if (!msg_trace_id.empty() && !edge_trace_id_is_safe(msg_trace_id)) msg_trace_id_valid = false;
+    }
+    const std::string msg_trace_id_eff = msg_trace_id_valid ? msg_trace_id : "";
+    const bool can_backfill_trace_id = !idempotency_mismatch && !msg_trace_id_eff.empty() && tr.trace_id.empty();
+
     // Do not regress/override terminal states set by the platform (e.g. deadline sweeper) or earlier completion.
     // We still persist the event for observability.
     const bool apply_update = !terminal && !idempotency_mismatch;
@@ -434,6 +444,11 @@ void handle_edge_message_endpoint(
       tr.updated_utc_ms = ts_eff;
       if (!result_json.empty()) tr.result_json = result_json;
       if (!error_text.empty()) tr.error = error_text;
+      if (can_backfill_trace_id) tr.trace_id = msg_trace_id_eff;
+      (void)db_or_null->upsert_edge_task(tr, nullptr);
+    } else if (can_backfill_trace_id) {
+      tr.trace_id = msg_trace_id_eff;
+      tr.updated_utc_ms = std::max<int64_t>(tr.updated_utc_ms, ts_eff);
       (void)db_or_null->upsert_edge_task(tr, nullptr);
     }
     AgentDb::EdgeTaskEventRow ev;
@@ -444,18 +459,19 @@ void handle_edge_message_endpoint(
     Json::Value d = event_data.isNull() ? Json::Value(Json::objectValue) : event_data;
     // If the incoming message omitted trace, but the platform has a stored trace_id for this task,
     // inject it so trace correlation remains durable across lossy/legacy transports.
-    std::string got_trace_id;
-    if (d.isObject() && d.isMember("trace") && d["trace"].isObject() && d["trace"].isMember("trace_id") && d["trace"]["trace_id"].isString()) {
-      got_trace_id = trim_copy(d["trace"]["trace_id"].asString());
+    if (!msg_trace_id_valid && !msg_trace_id.empty()) {
+      d["_trace_id_invalid"] = true;
+      d["_msg_trace_id"] = msg_trace_id;
+      if (d.isMember("trace")) d.removeMember("trace");
     }
-    if (got_trace_id.empty() && !tr.trace_id.empty()) {
+    if (msg_trace_id_eff.empty() && !tr.trace_id.empty()) {
       Json::Value trc(Json::objectValue);
       trc["trace_id"] = tr.trace_id;
       d["trace"] = trc;
-    } else if (!tr.trace_id.empty() && !got_trace_id.empty() && got_trace_id != tr.trace_id) {
+    } else if (!tr.trace_id.empty() && !msg_trace_id_eff.empty() && msg_trace_id_eff != tr.trace_id) {
       d["_trace_id_mismatch"] = true;
       d["_platform_trace_id"] = tr.trace_id;
-      d["_msg_trace_id"] = got_trace_id;
+      d["_msg_trace_id"] = msg_trace_id_eff;
     }
     if (idempotency_mismatch) {
       d["_ignored_by_platform"] = true;

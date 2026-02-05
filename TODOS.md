@@ -37,8 +37,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - Trace correlation is now useful across edge interop:
   - `POST /api/v1/edge/task/assign` forwards an optional `trace` object into the `TASK_ASSIGN` envelope.
   - `edge_tasks` persists `trace_id` (durable correlation even if a node omits echoing trace on `TASK_*` messages).
+  - Best-effort: if the platform did not set a trace_id, it backfills `edge_tasks.trace_id` from inbound edge messages that include `trace.trace_id`.
   - `GET /api/v1/trace?trace_id=...` also surfaces best-effort edge task metadata, task events, and inbound UM‑BMP envelopes.
-  - Proof: `ctest` includes `agentd_trace_edge_interop_smoke`.
+  - Proof: `ctest` includes `agentd_trace_edge_interop_smoke` and `agentd_edge_task_attest_smoke`.
 - Trace correlation now joins durable orchestration and edge workflows:
   - `GET /api/v1/trace?trace_id=...` also surfaces durable workflow events (`source:"workflow_event"`) via indexed `workflows.trace_id`.
   - `GET /api/v1/trace?trace_id=...` also surfaces edge workflow events (`source:"edge_workflow_event"`) correlated via `edge_tasks.trace_id`.
@@ -90,6 +91,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Task kind: `kind: "edge_invoke"` (dispatches `TASK_ASSIGN mode:"invoke"` and waits for `TASK_DONE`)
   - Also supports `mode:"agent"` (dispatches `TASK_ASSIGN mode:"agent"` with a prompt/payload for embedded `agent_core`)
   - Use-case: mix deterministic compute + LLM reasoning + real-world actuation in one durable DAG.
+  - Correctness surface: workflow results now include `edge_result_sha256` (platform-computed sha256 of persisted edge result bytes) and `edge_attest` (best-effort node attest blob).
   - Proof: `ctest` includes `agentd_workflow_edge_invoke_smoke`, `agentd_workflow_edge_invoke_template_args_smoke`, `agentd_workflow_edge_agent_smoke`, and `agentd_workflow_edge_agent_ref_payload_smoke`.
 - UM‑EAIS platform extensions (node → platform workflow handoff) are now proven end-to-end:
   - `WORKFLOW_SUBMIT` and `WORKFLOW_CANCEL` can be ingested via `POST /api/v1/edge/message` and drive the edge workflow runner.

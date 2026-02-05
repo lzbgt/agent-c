@@ -36,6 +36,7 @@ TASK_ID="t_attest_$(date +%s)_$RANDOM"
 STEP_ID="s1"
 NODE_ID="node_attest_1"
 IDEM="k_attest_1"
+TRACE_ID="trace_attest_${TASK_ID}"
 
 assign_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Content-Type: application/json" \
@@ -72,7 +73,7 @@ PY
 node_attest="sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 done_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Content-Type: application/json" \
-  -d "$(TASK_ID="${TASK_ID}" STEP_ID="${STEP_ID}" NODE_ID="${NODE_ID}" IDEM="${IDEM}" NODE_ATTEST="${node_attest}" python3 - <<'PY'
+  -d "$(TASK_ID="${TASK_ID}" STEP_ID="${STEP_ID}" NODE_ID="${NODE_ID}" IDEM="${IDEM}" NODE_ATTEST="${node_attest}" TRACE_ID="${TRACE_ID}" python3 - <<'PY'
 import json, os, time, uuid
 now = int(time.time() * 1000)
 env = {
@@ -81,6 +82,7 @@ env = {
   "type": "TASK_DONE",
   "from": "node:" + (os.environ.get("NODE_ID") or "node"),
   "to": "platform",
+  "trace": {"trace_id": os.environ.get("TRACE_ID") or ""},
   "body": {
     "task_id": os.environ.get("TASK_ID") or "",
     "step_id": os.environ.get("STEP_ID") or "",
@@ -124,6 +126,9 @@ if t.get("task_id") != "${TASK_ID}":
 if t.get("state") != "SUCCEEDED":
   print("expected SUCCEEDED got", t.get("state"), file=sys.stderr)
   raise SystemExit(1)
+if t.get("trace_id") != "${TRACE_ID}":
+  print("trace_id mismatch", t.get("trace_id"), file=sys.stderr)
+  raise SystemExit(1)
 rsha = t.get("result_sha256") or ""
 if not re.fullmatch(r"sha256:[0-9a-f]{64}", rsha):
   print("missing/invalid result_sha256", rsha, file=sys.stderr)
@@ -135,4 +140,3 @@ if att.get("result_sha256") != "sha256:0123456789abcdef0123456789abcdef012345678
 PY
 
 echo "agentd_edge_task_attest_smoke OK"
-

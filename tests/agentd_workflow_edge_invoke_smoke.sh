@@ -182,7 +182,7 @@ PY
 curl -fsS --noproxy "*" --max-time 10 \
   -H "Authorization: Bearer ${AUTH_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d "$(python3 - <<PY
+	-d "$(python3 - <<PY
 import json, uuid, time
 print(json.dumps({
   "msg_id": str(uuid.uuid4()),
@@ -190,11 +190,11 @@ print(json.dumps({
   "type": "TASK_DONE",
   "from": "node:${NODE_ID}",
   "to": "platform",
-  "body": {"task_id":"${workflow_id}","step_id":"E1","idempotency_key":"${workflow_id}:E1","result":{"ok":True,"data":{"applied":{"action":"solid"}}}},
+  "body": {"task_id":"${workflow_id}","step_id":"E1","idempotency_key":"${workflow_id}:E1","result":{"ok":True,"data":{"applied":{"action":"solid"}},"attest":{"result_sha256":"sha256:" + ("0"*64), "kid":"test-kid", "sig":"test-sig"}}},
 }))
 PY
-)" \
-  "${DAEMON_URL}/api/v1/edge/message" >/dev/null
+	)" \
+	  "${DAEMON_URL}/api/v1/edge/message" >/dev/null
 
 final=""
 for _ in $(seq 1 240); do
@@ -238,6 +238,15 @@ if r.get("ok") is not True:
   raise SystemExit(1)
 if r.get("edge_state") != "SUCCEEDED":
   print("expected SUCCEEDED", r, file=sys.stderr)
+  raise SystemExit(1)
+esh = r.get("edge_result_sha256") or ""
+import re
+if not re.match(r"^sha256:[0-9a-f]{64}$", esh):
+  print("expected edge_result_sha256 token", esh, file=sys.stderr)
+  raise SystemExit(1)
+att = r.get("edge_attest") or {}
+if not isinstance(att, dict) or att.get("kid") != "test-kid":
+  print("expected edge_attest.kid", att, file=sys.stderr)
   raise SystemExit(1)
 edge_result = r.get("edge_result") or {}
 if not edge_result.get("ok"):

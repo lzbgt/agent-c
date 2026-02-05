@@ -1984,25 +1984,31 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
 
           if (!enq_ok) {
             out["error"] = derr.empty() ? "failed to enqueue edge task" : derr;
-          } else {
-            AgentDb::EdgeTaskRow tr;
-            std::string terr;
-            if (!db_->get_edge_task(wf.workflow_id, task.task_id, &tr, &terr)) {
-              out["error"] = "edge task not found after enqueue";
-              out["retryable"] = true;
-              out["retry_in_ms"] = 100;
-            } else {
-              out["edge_state"] = tr.state;
-              if (!tr.result_json.empty()) {
-                Json::Value v;
-                std::string perr3;
-                if (json_parse_any(tr.result_json, &v, &perr3)) out["edge_result"] = v;
-              }
-              if (!tr.error.empty()) out["edge_error"] = tr.error;
+              } else {
+                AgentDb::EdgeTaskRow tr;
+                std::string terr;
+                if (!db_->get_edge_task(wf.workflow_id, task.task_id, &tr, &terr)) {
+                  out["error"] = "edge task not found after enqueue";
+                  out["retryable"] = true;
+                  out["retry_in_ms"] = 100;
+                } else {
+                  out["edge_state"] = tr.state;
+                  if (!tr.result_sha256.empty()) out["edge_result_sha256"] = tr.result_sha256;
+                  if (!tr.result_json.empty()) {
+                    Json::Value v;
+                    std::string perr3;
+                    if (json_parse_any(tr.result_json, &v, &perr3)) out["edge_result"] = v;
+                  }
+                  if (!tr.attest_json.empty()) {
+                    Json::Value v;
+                    std::string perr3;
+                    if (json_parse_any(tr.attest_json, &v, &perr3) && v.isObject()) out["edge_attest"] = v;
+                  }
+                  if (!tr.error.empty()) out["edge_error"] = tr.error;
 
-              if (tr.state == "SUCCEEDED") {
-                out["ok"] = true;
-                if (out.isMember("edge_result")) out["assistant_text"] = json_stringify_compact_local(out["edge_result"]);
+                  if (tr.state == "SUCCEEDED") {
+                    out["ok"] = true;
+                    if (out.isMember("edge_result")) out["assistant_text"] = json_stringify_compact_local(out["edge_result"]);
                 else out["assistant_text"] = "edge:SUCCEEDED";
               } else if (tr.state == "FAILED") {
                 out["ok"] = false;
