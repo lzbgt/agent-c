@@ -1305,7 +1305,7 @@ components:
 
     AgentdConfigResponse:
       type: object
-      required: [ok, service, version, daemon, engines]
+      required: [ok, service, version, daemon, engines, edge_auth]
       properties:
         ok: { type: boolean }
         service: { type: string }
@@ -1363,6 +1363,12 @@ components:
               items: { type: string }
             workflow_http_deny_private_addrs: { type: boolean }
             workflow_http_dns_pin: { type: boolean }
+        edge_auth:
+          type: object
+          additionalProperties: true
+          properties:
+            required: { type: boolean }
+            hmac_keys_set: { type: integer, format: int64 }
         memory:
           type: object
           additionalProperties: true
@@ -1371,6 +1377,15 @@ components:
       type: object
       additionalProperties: false
       properties:
+        edge_auth_required:
+          type: boolean
+          description: When true, `/api/v1/edge/message` requires a valid `envelope.auth` (HMAC profile)
+        edge_auth_hmac_keys:
+          type: object
+          additionalProperties:
+            type: string
+            nullable: true
+          description: Map of `kid` → shared secret for edge envelope auth (null clears that kid)
         base_url:
           type: string
           description: Default base_url (used for provider inference and some clients)
@@ -1437,7 +1452,7 @@ components:
 
     AgentdConfigUpdateResponse:
       type: object
-      required: [ok, base_url, model, system_profile, summary_max_chars, timeout_ms, proxy_url_set, provider_keys_set]
+      required: [ok, base_url, model, system_profile, summary_max_chars, timeout_ms, proxy_url_set, provider_keys_set, edge_auth_required, edge_auth_hmac_keys_set]
       properties:
         ok: { type: boolean }
         base_url: { type: string }
@@ -1447,6 +1462,11 @@ components:
         summary_max_chars: { type: integer, format: int64 }
         timeout_ms: { type: integer, format: int64 }
         proxy_url_set: { type: boolean }
+        edge_auth_required: { type: boolean }
+        edge_auth_hmac_keys_set:
+          type: integer
+          format: int64
+          description: Number of HMAC keys currently provisioned (secrets are not returned)
         engines:
           type: object
           additionalProperties: true

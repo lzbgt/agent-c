@@ -357,11 +357,19 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
      - `--workflow-http-allow-cidr` (repeatable)
      - `--workflow-http-deny-private` (defense-in-depth)
    - Shipped hardening: explicit CIDR denylist + optional DNS pinning (defense-in-depth against DNS rebinding).
-2) **Memory v2.3** — query-plan primitives (bounded windows + key-prefix filters) and automatic consolidation triggers as time advances,
-   so long-running systems keep context tight and correct.
+2) **Interop v0.4** — enforceable edge attestation + trust roots and stronger multi-node identity binding.
+   - Why now: collaboration and workflows amplify power, but MCU ecosystems need authenticity to prevent spoofed nodes/messages
+     from turning “automation” into “unsafe actuation”.
+   - Shipped (v0.4 partial): envelope-level authenticity via HMAC keyring + enforcement knob (`edge_auth_required`).
+   - Next: complete trust roots + identity binding:
+     - per-node key provisioning workflow (bootstrap + rotation)
+     - public-key signatures (Ed25519) for stronger identity (no shared-secret blast radius)
+     - optional CBOR-native signing profile (canonical CBOR encoding + signature) for MCU transports that never render JSON
+     - replay window guidance + nonce/ts enforcement for lossy bridges (configurable; deterministic)
 3) **Scheduling policy v2.4+** — DRR is shipped; telemetry-driven cost is now shipped (`telemetry_v1`), next is budget-pressure-aware charging and resilient fairness under mixed workloads.
-4) **Budgets v0.7** — complete streaming usage accounting and host-tool charging; surface budget pressure so schedulers can act cheaply.
-5) **Interop v0.4** — enforceable edge attestation + trust roots and stronger multi-node identity binding.
+4) **Memory v2.3** — query-plan primitives (bounded windows + key-prefix filters) and automatic consolidation triggers as time advances,
+   so long-running systems keep context tight and correct.
+5) **Budgets v0.7** — complete streaming usage accounting and host-tool charging; surface budget pressure so schedulers can act cheaply.
 
 Maintainability note (always-on):
 - Keep endpoint implementations SOLID and <2000 LOC per file; split large translation units (e.g. workflow endpoints) so new collaboration primitives remain cheap to add.
@@ -462,6 +470,17 @@ Maintainability note (always-on):
      - `GET /api/v1/edge/outbox` accepts `Accept: application/cbor` and returns `Content-Type: application/cbor` (binary response).
      - Constraint: definite-length items only; map keys must be text strings (string-key CBOR profile).
      - Proof: `ctest` includes `agentd_edge_message_cbor_smoke` and `agentd_edge_outbox_cbor_smoke`.
+   - Shipped (v0.4 partial): optional envelope authenticity (HMAC) for trust roots + spoofing resistance:
+     - Envelope may include `auth:{alg:"hmac-sha256",kid,sig}` where `sig` is base64(HMAC-SHA256(key[kid], c14n(envelope-with-auth-removed))).
+     - Operator control-plane:
+       - `GET /api/v1/config` surfaces `edge_auth.required` + `edge_auth.hmac_keys_set`
+       - `POST /api/v1/config/update` supports `edge_auth_required` and `edge_auth_hmac_keys`
+     - Enforcement behavior:
+       - if required: missing/invalid auth is rejected with HTTP 401 (fail-closed; no inbox persistence)
+       - if optional: unsigned accepted, but if `auth` is present it must verify
+     - Works for both JSON and CBOR wire encodings (auth is verified over platform canonical JSON after decoding).
+     - Spec note: `docs/spec/um-eais/um-bmp-envelope-auth-hmac-v0.4.md`
+     - Proof: `ctest` includes `agentd_edge_auth_hmac_smoke`.
    - Next: consolidate UM‑EAIS + durable workflow handoff into a single **versioned interop contract** with explicit:
      - idempotency rules (`msg_id` vs `idempotency_key`) and replay guidance for lossy transports (MQTT/LoRa bridges)
      - correlation rules (`workflow_id` / `trace_id` / task trace suffixing)

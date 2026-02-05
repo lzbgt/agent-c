@@ -245,6 +245,11 @@ void handle_config_endpoint(
   engines["workflow_http_dns_pin"] = cfg.workflow_http_dns_pin;
   out["engines"] = engines;
 
+  Json::Value edge_auth(Json::objectValue);
+  edge_auth["required"] = cfg.edge_auth_required;
+  edge_auth["hmac_keys_set"] = (Json::UInt64)cfg.edge_auth_hmac_keys.size();
+  out["edge_auth"] = edge_auth;
+
   Json::Value memory(Json::objectValue);
   memory["consolidate_interval_ms"] = (Json::Int64)cfg.memory_consolidate_interval_ms;
   memory["consolidate_daily_days"] = cfg.memory_consolidate_daily_days;
@@ -312,6 +317,9 @@ void handle_config_update_endpoint(
   if (args.isMember("timeout_ms") && args["timeout_ms"].isInt64()) {
     const auto n = args["timeout_ms"].asInt64();
     if (n > 0) next.timeout_ms = (long)n;
+  }
+  if (args.isMember("edge_auth_required") && args["edge_auth_required"].isBool()) {
+    next.edge_auth_required = args["edge_auth_required"].asBool();
   }
   if (args.isMember("workflow_admit_max_inflight_tasks_per_session") && args["workflow_admit_max_inflight_tasks_per_session"].isInt()) {
     const int n = args["workflow_admit_max_inflight_tasks_per_session"].asInt();
@@ -457,6 +465,30 @@ void handle_config_update_endpoint(
     }
   }
 
+  // Edge auth keyring (secrets):
+  // - edge_auth_hmac_keys: { "<kid>": "<secret>", ... } (null clears a kid)
+  if (args.isMember("edge_auth_hmac_keys")) {
+    if (!args["edge_auth_hmac_keys"].isObject()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "edge_auth_hmac_keys must be an object";
+      resp->status = 400;
+      resp->body = json_stringify(o);
+      return;
+    }
+    const auto& ek = args["edge_auth_hmac_keys"];
+    for (const auto& kid : ek.getMemberNames()) {
+      const Json::Value& v = ek[kid];
+      if (v.isNull()) {
+        next.edge_auth_hmac_keys.erase(kid);
+      } else if (v.isString()) {
+        const std::string s = trim_copy(v.asString());
+        if (s.empty()) next.edge_auth_hmac_keys.erase(kid);
+        else next.edge_auth_hmac_keys[kid] = s;
+      }
+    }
+  }
+
   // Persist to daemon DB so defaults survive restarts.
   std::string werr;
   if (!save_runtime_config_best_effort(*db, next, &werr)) {
@@ -489,6 +521,7 @@ void handle_config_update_endpoint(
   o["summary_max_chars"] = (Json::UInt64)next.summary_max_chars;
   o["timeout_ms"] = (Json::Int64)next.timeout_ms;
   o["proxy_url_set"] = !next.proxy_url.empty();
+  o["edge_auth_required"] = next.edge_auth_required;
   {
     Json::Value engines(Json::objectValue);
     Json::Value ah(Json::arrayValue);
@@ -516,6 +549,7 @@ void handle_config_update_endpoint(
     keys["openai"] = has_key("openai");
     o["provider_keys_set"] = keys;
   }
+  o["edge_auth_hmac_keys_set"] = (Json::UInt64)next.edge_auth_hmac_keys.size();
   resp->body = json_stringify(o);
   return;
 }

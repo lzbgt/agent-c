@@ -70,6 +70,9 @@ bool load_runtime_config_best_effort(
         const auto n = v["timeout_ms"].asInt64();
         if (n > 0) cfg_io->timeout_ms = (long)n;
       }
+      if (v.isMember("edge_auth_required") && v["edge_auth_required"].isBool()) {
+        cfg_io->edge_auth_required = v["edge_auth_required"].asBool();
+      }
       if (v.isMember("workflow_admit_max_inflight_tasks_per_session") && v["workflow_admit_max_inflight_tasks_per_session"].isInt()) {
         cfg_io->workflow_admit_max_inflight_tasks_per_session =
           std::max(0, std::min(100000, v["workflow_admit_max_inflight_tasks_per_session"].asInt()));
@@ -140,6 +143,19 @@ bool load_runtime_config_best_effort(
           else cfg_io->provider_keys[k] = s;
         }
       }
+
+      // Edge auth keyring (kid -> secret).
+      if (v.isMember("edge_auth_hmac_keys") && v["edge_auth_hmac_keys"].isObject()) {
+        cfg_io->edge_auth_hmac_keys.clear();
+        const Json::Value& ek = v["edge_auth_hmac_keys"];
+        for (const auto& kid : ek.getMemberNames()) {
+          const Json::Value& kv = ek[kid];
+          if (!kv.isString()) continue;
+          const std::string s = trim_copy(kv.asString());
+          if (s.empty()) continue;
+          cfg_io->edge_auth_hmac_keys[kid] = s;
+        }
+      }
     }
   }
 
@@ -156,6 +172,7 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
   v["summary_max_chars"] = (Json::UInt64)cfg.summary_max_chars;
   v["proxy_url"] = cfg.proxy_url.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.proxy_url);
   v["timeout_ms"] = (Json::Int64)cfg.timeout_ms;
+  v["edge_auth_required"] = cfg.edge_auth_required;
   v["workflow_admit_max_inflight_tasks_per_session"] = cfg.workflow_admit_max_inflight_tasks_per_session;
   v["workflow_admit_max_inflight_tasks_total"] = cfg.workflow_admit_max_inflight_tasks_total;
   {
@@ -190,6 +207,14 @@ bool save_runtime_secrets_best_effort(AgentDb& db, const DaemonConfig& cfg, std:
     const auto it = cfg.provider_keys.find(provider);
     if (it == cfg.provider_keys.end() || it->second.empty()) continue;
     v[provider] = it->second;
+  }
+  if (!cfg.edge_auth_hmac_keys.empty()) {
+    Json::Value ek(Json::objectValue);
+    for (const auto& p : cfg.edge_auth_hmac_keys) {
+      if (p.first.empty() || p.second.empty()) continue;
+      ek[p.first] = p.second;
+    }
+    if (!ek.empty()) v["edge_auth_hmac_keys"] = ek;
   }
 
   Json::StreamWriterBuilder wb;

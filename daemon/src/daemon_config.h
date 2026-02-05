@@ -24,6 +24,17 @@ struct DaemonConfig {
   // Keys are stored only in memory and (optionally) in a local runtime secrets file under state_dir.
   // Never expose these in /api/v1/config responses.
   std::map<std::string, std::string> provider_keys;
+  // Edge/MCU interop message authentication (UM-BMP envelope-level auth).
+  //
+  // Motivation:
+  // - Gateways and MCU nodes may share a transport (MQTT, LoRa bridges) where payload authenticity matters.
+  // - v0.4 goal: enforceable trust roots and stronger node identity binding.
+  //
+  // Current minimal mechanism:
+  // - HMAC-SHA256 over canonical JSON of the envelope (with `auth` removed), with key selected by `auth.kid`.
+  // - Keys are secrets; do not expose via /api/v1/config. Use /api/v1/config/update or local secrets files.
+  bool edge_auth_required = false;
+  std::map<std::string, std::string> edge_auth_hmac_keys; // kid -> secret
   std::string model = "gpt-4o-mini";
   std::string summary_model;  // optional: model used to summarize dropped messages during compaction (tools=none)
   size_t summary_max_chars = 1200;

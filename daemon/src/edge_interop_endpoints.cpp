@@ -9,18 +9,213 @@
 #include "string_util.h"
 #include "workflow_endpoints.h"
 
+#include "base64.h"
+
 #include "agent_sha256.h"
 #include "agent/json_c14n.h"
 
 #include <json/json.h>
 
 #include <algorithm>
+#include <array>
+#include <cstring>
 #include <string>
 #include <unordered_set>
 #include <vector>
 
 namespace agentd {
 namespace {
+
+static void hmac_sha256(const std::string& key, const std::string& msg, uint8_t out32[32]) {
+  // HMAC-SHA256 (RFC 2104): SHA256((K ^ opad) || SHA256((K ^ ipad) || msg))
+  // - Block size: 64 bytes.
+  uint8_t k0[64];
+  std::memset(k0, 0, sizeof(k0));
+  if (key.size() > sizeof(k0)) {
+    agent_sha256_ctx_t ctx;
+    agent_sha256_init(&ctx);
+    agent_sha256_update(&ctx, key.data(), key.size());
+    uint8_t kh[32];
+    agent_sha256_final(&ctx, kh);
+    std::memcpy(k0, kh, sizeof(kh));
+  } else if (!key.empty()) {
+    std::memcpy(k0, key.data(), std::min(key.size(), sizeof(k0)));
+  }
+
+  uint8_t ipad[64];
+  uint8_t opad[64];
+  for (size_t i = 0; i < sizeof(k0); i++) {
+    ipad[i] = (uint8_t)(k0[i] ^ 0x36);
+    opad[i] = (uint8_t)(k0[i] ^ 0x5c);
+  }
+
+  uint8_t inner[32];
+  {
+    agent_sha256_ctx_t ctx;
+    agent_sha256_init(&ctx);
+    agent_sha256_update(&ctx, ipad, sizeof(ipad));
+    if (!msg.empty()) agent_sha256_update(&ctx, msg.data(), msg.size());
+    agent_sha256_final(&ctx, inner);
+  }
+  {
+    agent_sha256_ctx_t ctx;
+    agent_sha256_init(&ctx);
+    agent_sha256_update(&ctx, opad, sizeof(opad));
+    agent_sha256_update(&ctx, inner, sizeof(inner));
+    agent_sha256_final(&ctx, out32);
+  }
+}
+
+static bool fixed_time_eq32(const uint8_t a[32], const uint8_t b[32]) {
+  uint8_t diff = 0;
+  for (size_t i = 0; i < 32; i++) diff |= (uint8_t)(a[i] ^ b[i]);
+  return diff == 0;
+}
+
+static bool canonicalize_envelope_without_auth(const Json::Value& env, std::string* out_c14n_json, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!out_c14n_json) return false;
+  out_c14n_json->clear();
+
+  Json::Value env2 = env;
+  if (env2.isMember("auth")) env2.removeMember("auth");
+  Json::StreamWriterBuilder wb;
+  wb["indentation"] = "";
+  const std::string raw = Json::writeString(wb, env2);
+
+  char* canon = nullptr;
+  size_t canon_len = 0;
+  std::array<char, 256> errbuf{};
+  const agent_status_t st =
+    agent_json_c14n_canonicalize(raw.data(), raw.size(), &canon, &canon_len, errbuf.data(), errbuf.size());
+  if (st != AGENT_OK || !canon) {
+    if (out_error) *out_error = std::string("canonicalize failed: ") + (errbuf[0] ? errbuf.data() : "unknown");
+    if (canon) agent_free(canon);
+    return false;
+  }
+  out_c14n_json->assign(canon, canon_len);
+  agent_free(canon);
+  return true;
+}
+
+// Verifies UM-BMP envelope `auth` when required or present.
+//
+// Semantics:
+// - If cfg.edge_auth_required: missing auth => 401, invalid auth => 401.
+// - If not required: missing auth => OK (accept), but if auth is present then it must verify.
+// - Malformed `auth` object => 400 (envelope malformed).
+static bool verify_edge_envelope_auth_best_effort(
+  const DaemonConfig& cfg,
+  const Json::Value& env,
+  const std::string& from_id,
+  const Json::Value& body,
+  HttpResponse* resp
+) {
+  if (!resp) return false;
+
+  const bool has_auth = env.isMember("auth") && !env["auth"].isNull();
+  if (!cfg.edge_auth_required && !has_auth) return true;
+
+  if (cfg.edge_auth_required) {
+    if (!has_auth) {
+      resp->status = 401;
+      resp->body = "{\"ok\":false,\"error\":\"missing envelope.auth\"}";
+      return false;
+    }
+    // Stronger identity binding under required mode.
+    if (from_id.rfind("node:", 0) != 0 || from_id.size() <= 5) {
+      resp->status = 401;
+      resp->body = "{\"ok\":false,\"error\":\"edge auth required: envelope.from must be node:<node_id>\"}";
+      return false;
+    }
+    const std::string node_id_from = trim_copy(from_id.substr(5));
+    if (node_id_from.empty() || !edge_id_is_safe(node_id_from)) {
+      resp->status = 401;
+      resp->body = "{\"ok\":false,\"error\":\"edge auth required: invalid node_id in envelope.from\"}";
+      return false;
+    }
+    if (body.isObject() && body.isMember("node_id") && body["node_id"].isString()) {
+      const std::string node_id_body = trim_copy(body["node_id"].asString());
+      if (!node_id_body.empty() && node_id_body != node_id_from) {
+        resp->status = 401;
+        resp->body = "{\"ok\":false,\"error\":\"edge auth required: body.node_id must match envelope.from\"}";
+        return false;
+      }
+    }
+  }
+
+  const Json::Value& auth = env["auth"];
+  if (!auth.isObject()) {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth (expected object)\"}";
+    return false;
+  }
+  if (!auth.isMember("alg") || !auth["alg"].isString()) {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth.alg (expected string)\"}";
+    return false;
+  }
+  if (!auth.isMember("kid") || !auth["kid"].isString()) {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth.kid (expected string)\"}";
+    return false;
+  }
+  if (!auth.isMember("sig") || !auth["sig"].isString()) {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth.sig (expected string)\"}";
+    return false;
+  }
+
+  const std::string alg = trim_copy(auth["alg"].asString());
+  const std::string kid = trim_copy(auth["kid"].asString());
+  const std::string sig_b64 = trim_copy(auth["sig"].asString());
+  if (alg != "hmac-sha256" && alg != "HMAC-SHA256") {
+    resp->status = 401;
+    resp->body = "{\"ok\":false,\"error\":\"unsupported envelope.auth.alg\"}";
+    return false;
+  }
+  if (kid.empty() || kid.size() > 64 || !edge_id_is_safe(kid)) {
+    resp->status = 401;
+    resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth.kid\"}";
+    return false;
+  }
+
+  const auto it = cfg.edge_auth_hmac_keys.find(kid);
+  if (it == cfg.edge_auth_hmac_keys.end() || it->second.empty()) {
+    resp->status = 401;
+    resp->body = "{\"ok\":false,\"error\":\"unknown envelope.auth.kid\"}";
+    return false;
+  }
+
+  std::string sig_bytes;
+  std::string berr;
+  if (!base64_decode(sig_b64, &sig_bytes, &berr) || sig_bytes.size() != 32) {
+    resp->status = 401;
+    resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth.sig (expected base64 of 32 bytes)\"}";
+    return false;
+  }
+
+  std::string canon;
+  std::string cerr;
+  if (!canonicalize_envelope_without_auth(env, &canon, &cerr)) {
+    resp->status = 400;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = cerr.empty() ? "failed to canonicalize envelope" : cerr;
+    resp->body = edge_json_stringify_compact(o);
+    return false;
+  }
+
+  uint8_t mac[32];
+  hmac_sha256(it->second, canon, mac);
+  if (!fixed_time_eq32(mac, (const uint8_t*)sig_bytes.data())) {
+    resp->status = 401;
+    resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth.sig\"}";
+    return false;
+  }
+
+  return true;
+}
 
 static bool select_node_match_any(
   AgentDb* db,
@@ -108,6 +303,8 @@ void handle_edge_message_endpoint(
     resp->body = "{\"ok\":false,\"error\":\"invalid envelope msg_id/type\"}";
     return;
   }
+
+  if (!verify_edge_envelope_auth_best_effort(cfg, env, from_id, body, resp)) return;
 
   // Persist inbound (dedupe by msg_id).
   bool deduped = false;

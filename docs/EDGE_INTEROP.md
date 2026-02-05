@@ -78,6 +78,21 @@ This stores the envelope durably (`edge_inbox_messages`) and updates platform st
 
 If the platform sees a new/unknown `caps_sha256`, it queues a `PLATFORM_CAPS_REQ` to the node outbox.
 
+Envelope authenticity (optional, UM‑BMP auth v0.4):
+- Envelopes MAY include an `auth` object:
+  - `auth.alg`: `"hmac-sha256"`
+  - `auth.kid`: key id selecting an operator-provisioned shared secret
+  - `auth.sig`: base64 of the 32-byte HMAC over the **canonical JSON** of the envelope with the `auth` field removed
+    (canonicalization: `agent_json_c14n_v1`).
+- Operator controls:
+  - `edge_auth.required` is surfaced via `GET /api/v1/config`.
+  - `POST /api/v1/config/update` supports:
+    - `edge_auth_required: true|false`
+    - `edge_auth_hmac_keys: { "<kid>": "<secret>", "<kid2>": null }` (null clears)
+- Behavior:
+  - If `edge_auth_required=true`: missing/invalid `auth` is rejected with HTTP 401 (no inbox persistence).
+  - If `edge_auth_required=false`: unsigned envelopes are accepted, but if `auth` is present it must verify.
+
 Task-loop correctness note (recommended, enforced by platform for known `TASK_*` types):
 - Nodes SHOULD echo `idempotency_key` for all task lifecycle messages (`TASK_ACK/TASK_EVENT/TASK_DONE/TASK_FAILED`),
   matching the `TASK_ASSIGN.body.idempotency_key` they received. The platform rejects missing/invalid `idempotency_key`
@@ -187,6 +202,7 @@ Workflows are executed by a background runner in `agentd`:
 
 Proof:
 - `ctest` includes `agentd_edge_interop_smoke` and `agentd_edge_workflow_submit_message_smoke`.
+- `ctest` includes `agentd_edge_auth_hmac_smoke`.
 
 ## Storage
 
