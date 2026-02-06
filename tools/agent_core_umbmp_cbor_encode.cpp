@@ -21,7 +21,7 @@ static void usage() {
                "agent_core_umbmp_cbor_encode\n\n"
                "Emits a deterministic CBOR UM-BMP envelope to stdout (no HTTP).\n\n"
                "Required:\n"
-               "  --type <NODE_HELLO|NODE_CAPS_RSP|SENSOR_EVENT|TASK_ACK|TASK_EVENT|TASK_DONE|TASK_FAILED>\n"
+               "  --type <NODE_HELLO|NODE_HEARTBEAT|NODE_CAPS_RSP|SENSOR_EVENT|TASK_ACK|TASK_EVENT|TASK_DONE|TASK_FAILED>\n"
                "  --node-id <id>\n"
                "  --msg-id <id>\n\n"
                "Optional:\n"
@@ -29,6 +29,9 @@ static void usage() {
                "  --model <s>              NODE_HELLO only (default: esp32)\n"
                "  --fw-git-sha <s>          NODE_HELLO only (default: deadbeef)\n"
                "  --caps-sha256 <token>     NODE_HELLO and minimal manifest\n"
+               "  --health-ok <0|1>         NODE_HEARTBEAT only (optional; health:{ok:<bool>})\n"
+               "  --battery-pct <float>     NODE_HEARTBEAT only (optional)\n"
+               "  --rssi <float>            NODE_HEARTBEAT only (optional)\n"
                "  --event-type <text>       SENSOR_EVENT only (required)\n"
                "  --confidence <float>      SENSOR_EVENT only (optional)\n"
                "  --sensor-ts-utc-ms <ms>   SENSOR_EVENT only (default: envelope ts_utc_ms)\n"
@@ -178,6 +181,24 @@ static agent_status_t encode_empty_array(agent_cbor_writer_t* w, void* ctx) {
 static agent_status_t encode_empty_map(agent_cbor_writer_t* w, void* ctx) {
   (void)ctx;
   return agent_cbor_write_map_start(w, 0);
+}
+
+static agent_status_t encode_map_ok(agent_cbor_writer_t* w, void* ctx) {
+  const int* ok = (const int*)ctx;
+  const int v = ok ? (*ok ? 1 : 0) : 0;
+  const agent_cbor_kv_t kv[] = {
+    (agent_cbor_kv_t){
+      .key = "ok",
+      .key_len = 2,
+      .encode_value =
+        [](agent_cbor_writer_t* w2, void* ctx2) -> agent_status_t {
+        const int* ok2 = (const int*)ctx2;
+        return agent_cbor_write_bool(w2, ok2 && *ok2 ? 1 : 0);
+      },
+      .value_ctx = (void*)&v,
+    },
+  };
+  return agent_cbor_write_map_sorted(w, kv, 1);
 }
 
 static agent_status_t encode_map_text(agent_cbor_writer_t* w, void* ctx) {
@@ -714,10 +735,16 @@ int main(int argc, char** argv) {
   std::string result_text;
   std::string event_type;
   std::string data_text;
+  int health_ok = 0;
+  bool has_health_ok = false;
   int accepted = 1;
   bool has_accepted = false;
   double confidence = 0.0;
   bool has_confidence = false;
+  double battery_pct = 0.0;
+  bool has_battery_pct = false;
+  double rssi = 0.0;
+  bool has_rssi = false;
   double progress = 0.0;
   bool has_progress = false;
   int result_ok = 1;
@@ -767,6 +794,30 @@ int main(int argc, char** argv) {
       if (!need_value(&fw_git_sha)) return (usage(), 2);
     } else if (a == "--caps-sha256") {
       if (!need_value(&caps_sha256)) return (usage(), 2);
+    } else if (a == "--health-ok") {
+      std::string v;
+      if (!need_value(&v)) return (usage(), 2);
+      if (!parse_bool01(v, &health_ok)) {
+        std::fprintf(stderr, "invalid --health-ok (expected 0/1)\n");
+        return 2;
+      }
+      has_health_ok = true;
+    } else if (a == "--battery-pct") {
+      std::string v;
+      if (!need_value(&v)) return (usage(), 2);
+      if (!parse_double(v, &battery_pct)) {
+        std::fprintf(stderr, "invalid --battery-pct\n");
+        return 2;
+      }
+      has_battery_pct = true;
+    } else if (a == "--rssi") {
+      std::string v;
+      if (!need_value(&v)) return (usage(), 2);
+      if (!parse_double(v, &rssi)) {
+        std::fprintf(stderr, "invalid --rssi\n");
+        return 2;
+      }
+      has_rssi = true;
     } else if (a == "--event-type") {
       if (!need_value(&event_type)) return (usage(), 2);
     } else if (a == "--confidence") {
@@ -1009,6 +1060,29 @@ int main(int argc, char** argv) {
       b.has_caps_sha256 = 1;
     }
     p.encode_body = agent_um_eais_node_hello_body_encode_cbor_v0_1;
+    p.body_ctx = &b;
+    const int rc = encode_now();
+    if (rc != 0) return rc;
+  } else if (type == "NODE_HEARTBEAT") {
+    agent_um_eais_node_heartbeat_body_t b{};
+    b.node_id = {node_id.c_str(), node_id.size()};
+    if (!caps_sha256.empty()) {
+      b.caps_sha256 = {caps_sha256.c_str(), caps_sha256.size()};
+      b.has_caps_sha256 = 1;
+    }
+    if (has_battery_pct) {
+      b.battery_pct = battery_pct;
+      b.has_battery_pct = 1;
+    }
+    if (has_rssi) {
+      b.rssi = rssi;
+      b.has_rssi = 1;
+    }
+    if (has_health_ok) {
+      b.encode_health = encode_map_ok;
+      b.health_ctx = &health_ok;
+    }
+    p.encode_body = agent_um_eais_node_heartbeat_body_encode_cbor_v0_1;
     p.body_ctx = &b;
     const int rc = encode_now();
     if (rc != 0) return rc;

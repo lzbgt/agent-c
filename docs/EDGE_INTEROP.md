@@ -72,6 +72,8 @@ Wire encoding:
 
 This stores the envelope durably (`edge_inbox_messages`) and updates platform state:
 - `NODE_HELLO`, `NODE_HEARTBEAT` update `edge_nodes`
+  - `NODE_HEARTBEAT` best-effort persists `body.health` (and optional `battery_pct` / `rssi`) into `edge_nodes.health_json`,
+    surfaced via `GET /api/v1/edge/node`.
 - `NODE_CAPS_RSP` stores manifest + extracts tags/tools/presence
 - `TASK_*` messages update `edge_tasks` + append `edge_task_events`
 - `SENSOR_EVENT` appends `edge_sensor_events`

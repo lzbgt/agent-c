@@ -659,6 +659,29 @@ void handle_edge_message_endpoint(
     nr.caps_sha256 = caps_sha;
     if (type == "NODE_HELLO") nr.last_hello_utc_ms = ts_utc_ms > 0 ? ts_utc_ms : now;
     nr.last_heartbeat_utc_ms = ts_utc_ms > 0 ? ts_utc_ms : now;
+
+    if (type == "NODE_HEARTBEAT") {
+      const Json::Value health = body.isMember("health") ? body["health"] : Json::Value(Json::nullValue);
+      const bool has_battery_pct = body.isMember("battery_pct") && (body["battery_pct"].isDouble() || body["battery_pct"].isInt());
+      const bool has_rssi = body.isMember("rssi") && (body["rssi"].isDouble() || body["rssi"].isInt());
+
+      Json::Value h(Json::objectValue);
+      bool has_any = false;
+      if (health.isObject()) {
+        h = health;
+        has_any = true;
+      }
+      if (has_battery_pct) {
+        h["battery_pct"] = body["battery_pct"].asDouble();
+        has_any = true;
+      }
+      if (has_rssi) {
+        h["rssi"] = body["rssi"].asDouble();
+        has_any = true;
+      }
+      if (has_any) nr.health_json = edge_json_stringify_compact(h);
+    }
+
     std::string uerr;
     if (!db_or_null->upsert_edge_node(nr, &uerr)) {
       resp->status = 500;

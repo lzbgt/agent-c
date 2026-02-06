@@ -527,7 +527,7 @@ Maintainability note (always-on):
      - Shipped (drift guard): `agentd_edge_message_cbor_smoke` now generates the CBOR bytes using a core-linked encoder tool
        (`tools/agent_core_umbmp_cbor_encode.cpp`) instead of a handwritten Python CBOR snippet, reducing profile drift.
      - Shipped (bring-up ergonomics): the same encoder tool now supports emitting deterministic CBOR envelopes for:
-       `NODE_HELLO`, `NODE_CAPS_RSP`, `SENSOR_EVENT`, `TASK_ACK`, `TASK_EVENT`, `TASK_DONE`, `TASK_FAILED`.
+       `NODE_HELLO`, `NODE_HEARTBEAT`, `NODE_CAPS_RSP`, `SENSOR_EVENT`, `TASK_ACK`, `TASK_EVENT`, `TASK_DONE`, `TASK_FAILED`.
      - Shipped (bring-up ergonomics): the encoder tool can also generate a **minimal but invoke-capable** deterministic CBOR
        UM‑ACDS manifest (`--manifest-minimal-ws2812`) containing tool `ui.led.ws2812.control` with:
        - `parameters_schema` (`additionalProperties:false`, `required:["action"]`)
@@ -536,9 +536,17 @@ Maintainability note (always-on):
      - Proof: `ctest` includes `agentd_edge_invoke_task_loop_auth_ed25519_cbor_wire_smoke` (mode=invoke + Ed25519 auth).
      - Proof: `ctest` includes `agentd_edge_rules_sensor_event_auth_hmac_cbor_wire_smoke`
        (SENSOR_EVENT triggers automation rule which enqueues TASK_ASSIGN; node completes over the same CBOR+auth transport).
-     - Next (wire completeness): add CBOR+auth proofs for high-frequency node telemetry:
-       - `NODE_HEARTBEAT` over `application/cbor` with `auth.alg="*-cbor"` (bounded, deterministic health map)
-       - `SENSOR_EVENT` → rules → TASK_ASSIGN proof with `auth.alg="ed25519-cbor"` (public-key identities; no shared-secret blast radius)
+     - Proof: `ctest` includes `agentd_edge_rules_sensor_event_auth_ed25519_cbor_wire_smoke`
+       (same rule loop, but `auth.alg="ed25519-cbor"` for public-key node identities).
+     - Proof: `ctest` includes `agentd_edge_heartbeat_auth_hmac_cbor_wire_smoke`
+       (NODE_HEARTBEAT over CBOR+auth persists `edge_nodes.health_json` evidence for operator visibility).
+     - Next: publish a tiny MCU integration note for external CBOR libs (TinyCBOR-derived) mapping onto this repo’s deterministic profile:
+       - how to emit “definite-length + text keys + sorted keys” CBOR
+       - how to compute `auth.sig` for `hmac-sha256-cbor` / `ed25519-cbor` reliably
+     - Next (correctness): resolve signed-CBOR numeric telemetry guidance for MCU nodes:
+       - Avoid floats in signed envelopes when possible (use fixed-point or integers).
+       - Add a spec note + a stable encoding for NODE_HEARTBEAT telemetry (e.g. integer `battery_pct` + integer `rssi_dbm`)
+         so signing inputs remain unambiguous across stacks.
    - Shipped (v0.4 partial): optional envelope authenticity (HMAC) for trust roots + spoofing resistance:
      - Envelope may include `auth:{alg,kid,seq?,sig}` where:
        - `alg:"hmac-sha256"` signs canonical JSON bytes (`agent_json_c14n_v1`)
