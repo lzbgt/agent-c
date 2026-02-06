@@ -533,6 +533,7 @@ Maintainability note (always-on):
        - `parameters_schema` (`additionalProperties:false`, `required:["action"]`)
        - `result_schema` (validates `result.data.text`)
      - Proof: `ctest` includes `agentd_edge_invoke_task_loop_auth_hmac_cbor_wire_smoke` (mode=invoke, schema validation + HMAC auth).
+     - Proof: `ctest` includes `agentd_edge_invoke_task_loop_auth_ed25519_cbor_wire_smoke` (mode=invoke + Ed25519 auth).
    - Shipped (v0.4 partial): optional envelope authenticity (HMAC) for trust roots + spoofing resistance:
      - Envelope may include `auth:{alg,kid,seq?,sig}` where:
        - `alg:"hmac-sha256"` signs canonical JSON bytes (`agent_json_c14n_v1`)

@@ -224,3 +224,82 @@ PY
 
 echo "agentd_edge_invoke_task_loop_auth_hmac_cbor_wire_smoke OK"
 
+# Also prove fail-closed `result_schema` enforcement over the same CBOR+auth transport:
+# send TASK_DONE without `result.data` (our encoder omits it when --result-text is not set).
+TASK_ID2="task_invoke_auth_cbor_bad_result_1"
+STEP_ID2="s1"
+IDEM2="idem_invoke_auth_cbor_bad_result_1"
+
+assign_resp2="$(
+  curl -fsS --noproxy "*" --max-time 10 \
+    -H "Content-Type: application/json" \
+    -d "$(python3 - <<PY
+import json, time
+print(json.dumps({
+  "node_id": "${NODE_ID}",
+  "task_id": "${TASK_ID2}",
+  "step_id": "${STEP_ID2}",
+  "idempotency_key": "${IDEM2}",
+  "mode": "invoke",
+  "deadline_utc_ms": int(time.time() * 1000) + 60000,
+  "payload": {
+    "tool": "ui.led.ws2812.control",
+    "args": {"action": "blink"}
+  }
+}))
+PY
+)" \
+    "${DAEMON_URL}/api/v1/edge/task/assign"
+)"
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${assign_resp2}''')
+if not obj.get("ok"):
+  print("expected ok true (assign2)", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+"${ENCODER_BIN}" \
+  --type TASK_ACK \
+  --node-id "${NODE_ID}" \
+  --msg-id "auth_invoke_msg_6" \
+  --task-id "${TASK_ID2}" \
+  --step-id "${STEP_ID2}" \
+  --idempotency-key "${IDEM2}" \
+  --accepted 1 \
+  --auth-alg hmac-sha256-cbor \
+  --auth-kid "${KID_NODE}" \
+  --auth-seq 6 \
+  --hmac-secret "${SECRET_NODE}" | post_cbor_expect_ok
+
+"${ENCODER_BIN}" \
+  --type TASK_DONE \
+  --node-id "${NODE_ID}" \
+  --msg-id "auth_invoke_msg_7" \
+  --task-id "${TASK_ID2}" \
+  --step-id "${STEP_ID2}" \
+  --idempotency-key "${IDEM2}" \
+  --result-ok 1 \
+  --auth-alg hmac-sha256-cbor \
+  --auth-kid "${KID_NODE}" \
+  --auth-seq 7 \
+  --hmac-secret "${SECRET_NODE}" | post_cbor_expect_ok
+
+task2_json="$(curl -fsS --noproxy "*" --max-time 10 "${DAEMON_URL}/api/v1/edge/task?task_id=${TASK_ID2}&step_id=${STEP_ID2}")"
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${task2_json}''')
+if not obj.get("ok"):
+  print("task2 get failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+t = obj.get("task") or {}
+if t.get("state") != "FAILED":
+  print("expected FAILED for schema mismatch", t, file=sys.stderr)
+  raise SystemExit(1)
+err = t.get("error") or ""
+if "result_schema" not in err:
+  print("expected result_schema in error", t, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+echo "agentd_edge_invoke_task_loop_auth_hmac_cbor_wire_smoke (bad result_schema) OK"
