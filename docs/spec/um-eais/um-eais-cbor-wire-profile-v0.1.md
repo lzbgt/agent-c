@@ -76,6 +76,8 @@ Platform (`agentd`):
   - `agentd_edge_message_cbor_smoke`
   - `agentd_edge_outbox_cbor_smoke`
   - `agentd_edge_task_loop_cbor_wire_smoke` (TASK_ACK / TASK_EVENT / TASK_DONE over `application/cbor`)
+  - `agentd_edge_task_loop_auth_hmac_cbor_wire_smoke` (same lifecycle over CBOR wire with `auth.alg="hmac-sha256-cbor"`)
+  - `agentd_edge_task_loop_auth_ed25519_cbor_wire_smoke` (same lifecycle over CBOR wire with `auth.alg="ed25519-cbor"`)
 
 Node (`agent_core`):
 - Shipped (partial): deterministic CBOR **writer** helpers under `agent/cbor_det.h` (encoder only).

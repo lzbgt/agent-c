@@ -521,6 +521,9 @@ Maintainability note (always-on):
      - Constraint: definite-length items only; map keys must be text strings (string-key CBOR profile).
      - Proof: `ctest` includes `agentd_edge_message_cbor_smoke`, `agentd_edge_outbox_cbor_smoke`,
        and `agentd_edge_task_loop_cbor_wire_smoke` (TASK_ACK/EVENT/DONE over `application/cbor`).
+     - Proof (auth + CBOR): `ctest` includes `agentd_edge_task_loop_auth_hmac_cbor_wire_smoke` and
+       `agentd_edge_task_loop_auth_ed25519_cbor_wire_smoke` to prove envelope auth gates apply to `TASK_*` lifecycle too
+       (not only `NODE_HELLO`).
      - Shipped (drift guard): `agentd_edge_message_cbor_smoke` now generates the CBOR bytes using a core-linked encoder tool
        (`tools/agent_core_umbmp_cbor_encode.cpp`) instead of a handwritten Python CBOR snippet, reducing profile drift.
      - Shipped (bring-up ergonomics): the same encoder tool now supports emitting deterministic CBOR envelopes for:
