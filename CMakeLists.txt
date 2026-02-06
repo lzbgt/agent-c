@@ -618,6 +618,12 @@ if(AGENT_BUILD_HOST)
 					        $<TARGET_FILE:agent_ed25519_tool>
 					    )
 					    add_test(NAME agentd_edge_rules_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_rules_smoke.sh $<TARGET_FILE:agentd>)
+					    add_test(
+					      NAME agentd_edge_rules_sensor_event_auth_hmac_cbor_wire_smoke
+					      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_rules_sensor_event_auth_hmac_cbor_wire_smoke.sh
+					        $<TARGET_FILE:agentd>
+					        $<TARGET_FILE:agent_core_umbmp_cbor_encode>
+					    )
 					    add_test(NAME agentd_edge_rules_durable_workflow_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_rules_durable_workflow_smoke.sh $<TARGET_FILE:agentd>)
 					    add_test(NAME agentd_edge_workflow_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_workflow_smoke.sh $<TARGET_FILE:agentd>)
 					    add_test(NAME agentd_trace_edge_interop_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_trace_edge_interop_smoke.sh $<TARGET_FILE:agentd>)

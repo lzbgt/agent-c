@@ -80,6 +80,7 @@ Platform (`agentd`):
   - `agentd_edge_task_loop_auth_ed25519_cbor_wire_smoke` (same lifecycle over CBOR wire with `auth.alg="ed25519-cbor"`)
   - `agentd_edge_invoke_task_loop_auth_hmac_cbor_wire_smoke` (mode=invoke over CBOR wire, manifest tool schema validation + HMAC auth)
   - `agentd_edge_invoke_task_loop_auth_ed25519_cbor_wire_smoke` (mode=invoke over CBOR wire, manifest tool schema validation + Ed25519 auth)
+  - `agentd_edge_rules_sensor_event_auth_hmac_cbor_wire_smoke` (SENSOR_EVENT → rule → TASK_ASSIGN → TASK_DONE over CBOR wire with HMAC auth)
 
 Node (`agent_core`):
 - Shipped (partial): deterministic CBOR **writer** helpers under `agent/cbor_det.h` (encoder only).
@@ -101,7 +102,7 @@ Node (`agent_core`):
   - optional strict mode validates deterministic key ordering (recommended for `auth.alg="*-cbor"`)
 - Shipped (partial): UM‑BMP envelope CBOR encode helper under `agent/umbmp_auth.h` (`agent_umbmp_envelope_cbor_v0_4`) for sending signed (or unsigned) envelopes over CBOR wire.
 - Shipped (bring-up tooling): `tools/agent_core_umbmp_cbor_encode.cpp` can emit deterministic CBOR envelopes for:
-  `NODE_HELLO`, `NODE_CAPS_RSP`, `TASK_ACK`, `TASK_EVENT`, `TASK_DONE`, `TASK_FAILED`.
+  `NODE_HELLO`, `NODE_CAPS_RSP`, `SENSOR_EVENT`, `TASK_ACK`, `TASK_EVENT`, `TASK_DONE`, `TASK_FAILED`.
 - Shipped (bring-up tooling): `tools/agent_core_umbmp_cbor_encode.cpp --manifest-minimal-ws2812` generates a small deterministic
   UM‑ACDS manifest that is sufficient for testing `mode:"invoke"` scheduling and schema validation (tool: `ui.led.ws2812.control`).
 - Not shipped (yet): a built-in deterministic CBOR encoder for `NODE_CAPS_RSP.body.manifest` (UM‑ACDS manifest can be large and schema-driven).

@@ -21,7 +21,7 @@ static void usage() {
                "agent_core_umbmp_cbor_encode\n\n"
                "Emits a deterministic CBOR UM-BMP envelope to stdout (no HTTP).\n\n"
                "Required:\n"
-               "  --type <NODE_HELLO|NODE_CAPS_RSP|TASK_ACK|TASK_EVENT|TASK_DONE|TASK_FAILED>\n"
+               "  --type <NODE_HELLO|NODE_CAPS_RSP|SENSOR_EVENT|TASK_ACK|TASK_EVENT|TASK_DONE|TASK_FAILED>\n"
                "  --node-id <id>\n"
                "  --msg-id <id>\n\n"
                "Optional:\n"
@@ -29,6 +29,10 @@ static void usage() {
                "  --model <s>              NODE_HELLO only (default: esp32)\n"
                "  --fw-git-sha <s>          NODE_HELLO only (default: deadbeef)\n"
                "  --caps-sha256 <token>     NODE_HELLO and minimal manifest\n"
+               "  --event-type <text>       SENSOR_EVENT only (required)\n"
+               "  --confidence <float>      SENSOR_EVENT only (optional)\n"
+               "  --sensor-ts-utc-ms <ms>   SENSOR_EVENT only (default: envelope ts_utc_ms)\n"
+               "  --data-text <text>        SENSOR_EVENT only (optional; data:{text:<...>}; default: {})\n"
                "  --task-id <id>            TASK_* only\n"
                "  --step-id <id>            TASK_* only\n"
                "  --idempotency-key <id>    TASK_* only\n"
@@ -174,6 +178,20 @@ static agent_status_t encode_empty_array(agent_cbor_writer_t* w, void* ctx) {
 static agent_status_t encode_empty_map(agent_cbor_writer_t* w, void* ctx) {
   (void)ctx;
   return agent_cbor_write_map_start(w, 0);
+}
+
+static agent_status_t encode_map_text(agent_cbor_writer_t* w, void* ctx) {
+  const agent_cbor_text_view_t* tv = (const agent_cbor_text_view_t*)ctx;
+  if (!tv || !tv->ptr) return AGENT_ERR_INVALID_ARGUMENT;
+  const agent_cbor_kv_t kv[] = {
+    (agent_cbor_kv_t){
+      .key = "text",
+      .key_len = 4,
+      .encode_value = encode_text,
+      .value_ctx = (void*)tv,
+    },
+  };
+  return agent_cbor_write_map_sorted(w, kv, 1);
 }
 
 typedef struct encode_text_const_ctx {
@@ -694,13 +712,19 @@ int main(int argc, char** argv) {
   std::string state;
   std::string error;
   std::string result_text;
+  std::string event_type;
+  std::string data_text;
   int accepted = 1;
   bool has_accepted = false;
+  double confidence = 0.0;
+  bool has_confidence = false;
   double progress = 0.0;
   bool has_progress = false;
   int result_ok = 1;
   int64_t ts_utc_ms = 0;
   bool has_ts = false;
+  int64_t sensor_ts_utc_ms = 0;
+  bool has_sensor_ts = false;
 
   bool manifest_minimal = false;
   bool manifest_minimal_ws2812 = false;
@@ -743,6 +767,26 @@ int main(int argc, char** argv) {
       if (!need_value(&fw_git_sha)) return (usage(), 2);
     } else if (a == "--caps-sha256") {
       if (!need_value(&caps_sha256)) return (usage(), 2);
+    } else if (a == "--event-type") {
+      if (!need_value(&event_type)) return (usage(), 2);
+    } else if (a == "--confidence") {
+      std::string v;
+      if (!need_value(&v)) return (usage(), 2);
+      if (!parse_double(v, &confidence)) {
+        std::fprintf(stderr, "invalid --confidence\n");
+        return 2;
+      }
+      has_confidence = true;
+    } else if (a == "--sensor-ts-utc-ms") {
+      std::string v;
+      if (!need_value(&v)) return (usage(), 2);
+      if (!parse_i64(v, &sensor_ts_utc_ms)) {
+        std::fprintf(stderr, "invalid --sensor-ts-utc-ms\n");
+        return 2;
+      }
+      has_sensor_ts = true;
+    } else if (a == "--data-text") {
+      if (!need_value(&data_text)) return (usage(), 2);
     } else if (a == "--task-id") {
       if (!need_value(&task_id)) return (usage(), 2);
     } else if (a == "--step-id") {
@@ -1011,6 +1055,35 @@ int main(int argc, char** argv) {
     b.enforce_deterministic_keys = enforce_det ? 1 : 0;
 
     p.encode_body = agent_um_eais_node_caps_rsp_body_encode_cbor_v0_1;
+    p.body_ctx = &b;
+    const int rc = encode_now();
+    if (rc != 0) return rc;
+  } else if (type == "SENSOR_EVENT") {
+    if (event_type.empty()) {
+      std::fprintf(stderr, "SENSOR_EVENT requires --event-type\n");
+      return 2;
+    }
+    if (!has_sensor_ts) sensor_ts_utc_ms = ts_utc_ms;
+
+    agent_cbor_text_view_t data_tv{};
+    if (!data_text.empty()) data_tv = {data_text.c_str(), data_text.size()};
+
+    agent_um_eais_sensor_event_body_t b{};
+    b.node_id = {node_id.c_str(), node_id.size()};
+    b.event_type = {event_type.c_str(), event_type.size()};
+    b.ts_utc_ms = sensor_ts_utc_ms;
+    if (has_confidence) {
+      b.confidence = confidence;
+      b.has_confidence = 1;
+    }
+    if (!data_text.empty()) {
+      b.encode_data = encode_map_text;
+      b.data_ctx = &data_tv;
+    } else {
+      b.encode_data = encode_empty_map;
+      b.data_ctx = NULL;
+    }
+    p.encode_body = agent_um_eais_sensor_event_body_encode_cbor_v0_1;
     p.body_ctx = &b;
     const int rc = encode_now();
     if (rc != 0) return rc;
