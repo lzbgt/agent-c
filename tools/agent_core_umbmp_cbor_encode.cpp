@@ -40,6 +40,7 @@ static void usage() {
                "  --result-ok <0|1>         TASK_DONE only (default: 1)\n"
                "  --result-text <text>      TASK_DONE only (optional; result.data.text)\n"
                "  --manifest-minimal        NODE_CAPS_RSP: generate a small deterministic manifest\n"
+               "  --manifest-minimal-ws2812 NODE_CAPS_RSP: deterministic manifest with tool ui.led.ws2812.control\n"
                "  --manifest-cbor-hex <hex> NODE_CAPS_RSP: use caller-provided manifest CBOR bytes\n"
                "  --enforce-det             NODE_CAPS_RSP: enforce deterministic manifest key ordering\n\n"
                "Envelope auth (optional; CBOR signing):\n"
@@ -170,6 +171,22 @@ static agent_status_t encode_empty_array(agent_cbor_writer_t* w, void* ctx) {
   return agent_cbor_write_array_start(w, 0);
 }
 
+static agent_status_t encode_empty_map(agent_cbor_writer_t* w, void* ctx) {
+  (void)ctx;
+  return agent_cbor_write_map_start(w, 0);
+}
+
+typedef struct encode_text_const_ctx {
+  const char* s;
+  size_t n;
+} encode_text_const_ctx_t;
+
+static agent_status_t encode_text_const(agent_cbor_writer_t* w, void* ctx) {
+  const encode_text_const_ctx_t* c = (const encode_text_const_ctx_t*)ctx;
+  if (!c || !c->s) return AGENT_ERR_INVALID_ARGUMENT;
+  return agent_cbor_write_text(w, c->s, c->n);
+}
+
 static agent_status_t encode_node_obj(agent_cbor_writer_t* w, void* ctx) {
   const manifest_minimal_ctx_t* m = (const manifest_minimal_ctx_t*)ctx;
   if (!m) return AGENT_ERR_INVALID_ARGUMENT;
@@ -183,6 +200,348 @@ static agent_status_t encode_node_obj(agent_cbor_writer_t* w, void* ctx) {
     },
   };
   return agent_cbor_write_map_sorted(w, kv, 1);
+}
+
+static agent_status_t encode_schema_action(agent_cbor_writer_t* w, void* ctx) {
+  (void)ctx;
+  encode_text_const_ctx_t type = {.s = "string", .n = std::strlen("string")};
+  const agent_cbor_kv_t kv[] = {
+    (agent_cbor_kv_t){
+      .key = "type",
+      .key_len = 4,
+      .encode_value = encode_text_const,
+      .value_ctx = &type,
+    },
+  };
+  return agent_cbor_write_map_sorted(w, kv, 1);
+}
+
+static agent_status_t encode_schema_text(agent_cbor_writer_t* w, void* ctx) {
+  return encode_schema_action(w, ctx);
+}
+
+static agent_status_t encode_schema_properties_action(agent_cbor_writer_t* w, void* ctx) {
+  (void)ctx;
+  const agent_cbor_kv_t kv[] = {
+    (agent_cbor_kv_t){
+      .key = "action",
+      .key_len = 6,
+      .encode_value = encode_schema_action,
+      .value_ctx = NULL,
+    },
+  };
+  return agent_cbor_write_map_sorted(w, kv, 1);
+}
+
+static agent_status_t encode_schema_properties_text(agent_cbor_writer_t* w, void* ctx) {
+  (void)ctx;
+  const agent_cbor_kv_t kv[] = {
+    (agent_cbor_kv_t){
+      .key = "text",
+      .key_len = 4,
+      .encode_value = encode_schema_text,
+      .value_ctx = NULL,
+    },
+  };
+  return agent_cbor_write_map_sorted(w, kv, 1);
+}
+
+static agent_status_t encode_schema_required_action(agent_cbor_writer_t* w, void* ctx) {
+  (void)ctx;
+  agent_status_t st = agent_cbor_write_array_start(w, 1);
+  if (st != AGENT_OK) return st;
+  return agent_cbor_write_text(w, "action", std::strlen("action"));
+}
+
+static agent_status_t encode_schema_required_text(agent_cbor_writer_t* w, void* ctx) {
+  (void)ctx;
+  agent_status_t st = agent_cbor_write_array_start(w, 1);
+  if (st != AGENT_OK) return st;
+  return agent_cbor_write_text(w, "text", std::strlen("text"));
+}
+
+static agent_status_t encode_parameters_schema_ws2812(agent_cbor_writer_t* w, void* ctx) {
+  (void)ctx;
+  encode_text_const_ctx_t type = {.s = "object", .n = std::strlen("object")};
+  const agent_cbor_kv_t kv[] = {
+    (agent_cbor_kv_t){
+      .key = "type",
+      .key_len = 4,
+      .encode_value = encode_text_const,
+      .value_ctx = &type,
+    },
+    (agent_cbor_kv_t){
+      .key = "additionalProperties",
+      .key_len = 20,
+      .encode_value =
+        [](agent_cbor_writer_t* w2, void* ctx2) -> agent_status_t {
+        (void)ctx2;
+        return agent_cbor_write_bool(w2, 0);
+      },
+      .value_ctx = NULL,
+    },
+    (agent_cbor_kv_t){
+      .key = "properties",
+      .key_len = 10,
+      .encode_value = encode_schema_properties_action,
+      .value_ctx = NULL,
+    },
+    (agent_cbor_kv_t){
+      .key = "required",
+      .key_len = 8,
+      .encode_value = encode_schema_required_action,
+      .value_ctx = NULL,
+    },
+  };
+  return agent_cbor_write_map_sorted(w, kv, 4);
+}
+
+static agent_status_t encode_result_schema_text(agent_cbor_writer_t* w, void* ctx) {
+  (void)ctx;
+  encode_text_const_ctx_t type = {.s = "object", .n = std::strlen("object")};
+  const agent_cbor_kv_t kv[] = {
+    (agent_cbor_kv_t){
+      .key = "type",
+      .key_len = 4,
+      .encode_value = encode_text_const,
+      .value_ctx = &type,
+    },
+    (agent_cbor_kv_t){
+      .key = "additionalProperties",
+      .key_len = 20,
+      .encode_value =
+        [](agent_cbor_writer_t* w2, void* ctx2) -> agent_status_t {
+        (void)ctx2;
+        return agent_cbor_write_bool(w2, 0);
+      },
+      .value_ctx = NULL,
+    },
+    (agent_cbor_kv_t){
+      .key = "properties",
+      .key_len = 10,
+      .encode_value = encode_schema_properties_text,
+      .value_ctx = NULL,
+    },
+    (agent_cbor_kv_t){
+      .key = "required",
+      .key_len = 8,
+      .encode_value = encode_schema_required_text,
+      .value_ctx = NULL,
+    },
+  };
+  return agent_cbor_write_map_sorted(w, kv, 4);
+}
+
+static agent_status_t encode_one_tool_ws2812(agent_cbor_writer_t* w, void* ctx) {
+  (void)ctx;
+  encode_text_const_ctx_t name = {.s = "ui.led.ws2812.control", .n = std::strlen("ui.led.ws2812.control")};
+  encode_text_const_ctx_t kind = {.s = "actuator", .n = std::strlen("actuator")};
+  encode_text_const_ctx_t desc = {.s = "Control LED", .n = std::strlen("Control LED")};
+  encode_text_const_ctx_t side = {.s = "low", .n = std::strlen("low")};
+
+  const agent_cbor_kv_t kv[] = {
+    (agent_cbor_kv_t){
+      .key = "name",
+      .key_len = 4,
+      .encode_value = encode_text_const,
+      .value_ctx = &name,
+    },
+    (agent_cbor_kv_t){
+      .key = "kind",
+      .key_len = 4,
+      .encode_value = encode_text_const,
+      .value_ctx = &kind,
+    },
+    (agent_cbor_kv_t){
+      .key = "description",
+      .key_len = 11,
+      .encode_value = encode_text_const,
+      .value_ctx = &desc,
+    },
+    (agent_cbor_kv_t){
+      .key = "parameters_schema",
+      .key_len = 17,
+      .encode_value = encode_parameters_schema_ws2812,
+      .value_ctx = NULL,
+    },
+    (agent_cbor_kv_t){
+      .key = "result_schema",
+      .key_len = 13,
+      .encode_value = encode_result_schema_text,
+      .value_ctx = NULL,
+    },
+    (agent_cbor_kv_t){
+      .key = "timeout_ms",
+      .key_len = 10,
+      .encode_value =
+        [](agent_cbor_writer_t* w2, void* ctx2) -> agent_status_t {
+        (void)ctx2;
+        return agent_cbor_write_uint(w2, 500);
+      },
+      .value_ctx = NULL,
+    },
+    (agent_cbor_kv_t){
+      .key = "idempotent",
+      .key_len = 10,
+      .encode_value =
+        [](agent_cbor_writer_t* w2, void* ctx2) -> agent_status_t {
+        (void)ctx2;
+        return agent_cbor_write_bool(w2, 0);
+      },
+      .value_ctx = NULL,
+    },
+    (agent_cbor_kv_t){
+      .key = "side_effect_level",
+      .key_len = 17,
+      .encode_value = encode_text_const,
+      .value_ctx = &side,
+    },
+    (agent_cbor_kv_t){
+      .key = "hazards",
+      .key_len = 7,
+      .encode_value = encode_empty_array,
+      .value_ctx = NULL,
+    },
+  };
+  return agent_cbor_write_map_sorted(w, kv, 9);
+}
+
+static agent_status_t encode_tools_array_ws2812(agent_cbor_writer_t* w, void* ctx) {
+  (void)ctx;
+  agent_status_t st = agent_cbor_write_array_start(w, 1);
+  if (st != AGENT_OK) return st;
+  return encode_one_tool_ws2812(w, NULL);
+}
+
+static agent_status_t encode_hardware_presence(agent_cbor_writer_t* w, void* ctx) {
+  (void)ctx;
+  encode_text_const_ctx_t val = {.s = "present", .n = std::strlen("present")};
+  const agent_cbor_kv_t kv[] = {
+    (agent_cbor_kv_t){
+      .key = "ui.led.ws2812",
+      .key_len = 13,
+      .encode_value = encode_text_const,
+      .value_ctx = &val,
+    },
+  };
+  return agent_cbor_write_map_sorted(w, kv, 1);
+}
+
+static agent_status_t encode_hardware_obj(agent_cbor_writer_t* w, void* ctx) {
+  (void)ctx;
+  const agent_cbor_kv_t kv[] = {
+    (agent_cbor_kv_t){
+      .key = "presence",
+      .key_len = 8,
+      .encode_value = encode_hardware_presence,
+      .value_ctx = NULL,
+    },
+  };
+  return agent_cbor_write_map_sorted(w, kv, 1);
+}
+
+static agent_status_t encode_agent_core_runtime(agent_cbor_writer_t* w, void* ctx) {
+  (void)ctx;
+  encode_text_const_ctx_t ver = {.s = "0.0.0", .n = std::strlen("0.0.0")};
+  const agent_cbor_kv_t kv[] = {
+    (agent_cbor_kv_t){
+      .key = "version",
+      .key_len = 7,
+      .encode_value = encode_text_const,
+      .value_ctx = &ver,
+    },
+  };
+  return agent_cbor_write_map_sorted(w, kv, 1);
+}
+
+static agent_status_t encode_runtime_obj(agent_cbor_writer_t* w, void* ctx) {
+  (void)ctx;
+  const agent_cbor_kv_t kv[] = {
+    (agent_cbor_kv_t){
+      .key = "agent_core",
+      .key_len = 10,
+      .encode_value = encode_agent_core_runtime,
+      .value_ctx = NULL,
+    },
+  };
+  return agent_cbor_write_map_sorted(w, kv, 1);
+}
+
+static agent_status_t encode_tags_room_lobby(agent_cbor_writer_t* w, void* ctx) {
+  (void)ctx;
+  agent_status_t st = agent_cbor_write_array_start(w, 1);
+  if (st != AGENT_OK) return st;
+  return agent_cbor_write_text(w, "room:lobby", std::strlen("room:lobby"));
+}
+
+static agent_status_t encode_manifest_minimal_ws2812(agent_cbor_writer_t* w, void* ctx) {
+  const manifest_minimal_ctx_t* m = (const manifest_minimal_ctx_t*)ctx;
+  if (!m) return AGENT_ERR_INVALID_ARGUMENT;
+
+  encode_text_const_ctx_t spec = {.s = "um-acds/0.1", .n = std::strlen("um-acds/0.1")};
+  encode_text_const_ctx_t ver = {.s = "0.0.1", .n = std::strlen("0.0.1")};
+
+  agent_cbor_kv_t kv[9];
+  size_t n = 0;
+
+  kv[n++] = (agent_cbor_kv_t){
+    .key = "spec_version",
+    .key_len = 12,
+    .encode_value = encode_text_const,
+    .value_ctx = &spec,
+  };
+  kv[n++] = (agent_cbor_kv_t){
+    .key = "manifest_version",
+    .key_len = 16,
+    .encode_value = encode_text_const,
+    .value_ctx = &ver,
+  };
+  kv[n++] = (agent_cbor_kv_t){
+    .key = "node",
+    .key_len = 4,
+    .encode_value = encode_node_obj,
+    .value_ctx = (void*)m,
+  };
+  kv[n++] = (agent_cbor_kv_t){
+    .key = "runtime",
+    .key_len = 7,
+    .encode_value = encode_runtime_obj,
+    .value_ctx = NULL,
+  };
+  kv[n++] = (agent_cbor_kv_t){
+    .key = "hardware",
+    .key_len = 8,
+    .encode_value = encode_hardware_obj,
+    .value_ctx = NULL,
+  };
+  kv[n++] = (agent_cbor_kv_t){
+    .key = "tools",
+    .key_len = 5,
+    .encode_value = encode_tools_array_ws2812,
+    .value_ctx = NULL,
+  };
+  kv[n++] = (agent_cbor_kv_t){
+    .key = "safety",
+    .key_len = 6,
+    .encode_value = encode_empty_map,
+    .value_ctx = NULL,
+  };
+  kv[n++] = (agent_cbor_kv_t){
+    .key = "tags",
+    .key_len = 4,
+    .encode_value = encode_tags_room_lobby,
+    .value_ctx = NULL,
+  };
+  if (m->has_caps_sha256) {
+    kv[n++] = (agent_cbor_kv_t){
+      .key = "caps_sha256",
+      .key_len = 11,
+      .encode_value = encode_text,
+      .value_ctx = (void*)&m->caps_sha256,
+    };
+  }
+
+  return agent_cbor_write_map_sorted(w, kv, n);
 }
 
 static agent_status_t encode_manifest_minimal(agent_cbor_writer_t* w, void* ctx) {
@@ -344,6 +703,7 @@ int main(int argc, char** argv) {
   bool has_ts = false;
 
   bool manifest_minimal = false;
+  bool manifest_minimal_ws2812 = false;
   std::string manifest_hex;
   bool enforce_det = false;
 
@@ -422,6 +782,8 @@ int main(int argc, char** argv) {
       if (!need_value(&result_text)) return (usage(), 2);
     } else if (a == "--manifest-minimal") {
       manifest_minimal = true;
+    } else if (a == "--manifest-minimal-ws2812") {
+      manifest_minimal_ws2812 = true;
     } else if (a == "--manifest-cbor-hex") {
       if (!need_value(&manifest_hex)) return (usage(), 2);
     } else if (a == "--enforce-det") {
@@ -620,20 +982,26 @@ int main(int argc, char** argv) {
         return 2;
       }
       man = {manifest_bytes.data(), manifest_bytes.size()};
-    } else if (manifest_minimal) {
+    } else if (manifest_minimal || manifest_minimal_ws2812) {
       manifest_minimal_ctx_t mctx{};
       mctx.node_id = {node_id.c_str(), node_id.size()};
       if (!caps_sha256.empty()) {
         mctx.caps_sha256 = {caps_sha256.c_str(), caps_sha256.size()};
         mctx.has_caps_sha256 = 1;
       }
-      if (encode_manifest_minimal(&mw, &mctx) != AGENT_OK) {
+      agent_status_t mst = AGENT_ERR_INVALID_ARGUMENT;
+      if (manifest_minimal_ws2812) {
+        mst = encode_manifest_minimal_ws2812(&mw, &mctx);
+      } else {
+        mst = encode_manifest_minimal(&mw, &mctx);
+      }
+      if (mst != AGENT_OK) {
         std::fprintf(stderr, "failed to encode minimal manifest\n");
         return 1;
       }
       man = {agent_cbor_writer_bytes(&mw), agent_cbor_writer_len(&mw)};
     } else {
-      std::fprintf(stderr, "NODE_CAPS_RSP requires --manifest-minimal or --manifest-cbor-hex\n");
+      std::fprintf(stderr, "NODE_CAPS_RSP requires --manifest-minimal, --manifest-minimal-ws2812, or --manifest-cbor-hex\n");
       return 2;
     }
 

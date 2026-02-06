@@ -78,6 +78,7 @@ Platform (`agentd`):
   - `agentd_edge_task_loop_cbor_wire_smoke` (TASK_ACK / TASK_EVENT / TASK_DONE over `application/cbor`)
   - `agentd_edge_task_loop_auth_hmac_cbor_wire_smoke` (same lifecycle over CBOR wire with `auth.alg="hmac-sha256-cbor"`)
   - `agentd_edge_task_loop_auth_ed25519_cbor_wire_smoke` (same lifecycle over CBOR wire with `auth.alg="ed25519-cbor"`)
+  - `agentd_edge_invoke_task_loop_auth_hmac_cbor_wire_smoke` (mode=invoke over CBOR wire, manifest tool schema validation + HMAC auth)
 
 Node (`agent_core`):
 - Shipped (partial): deterministic CBOR **writer** helpers under `agent/cbor_det.h` (encoder only).
@@ -100,6 +101,8 @@ Node (`agent_core`):
 - Shipped (partial): UM‑BMP envelope CBOR encode helper under `agent/umbmp_auth.h` (`agent_umbmp_envelope_cbor_v0_4`) for sending signed (or unsigned) envelopes over CBOR wire.
 - Shipped (bring-up tooling): `tools/agent_core_umbmp_cbor_encode.cpp` can emit deterministic CBOR envelopes for:
   `NODE_HELLO`, `NODE_CAPS_RSP`, `TASK_ACK`, `TASK_EVENT`, `TASK_DONE`, `TASK_FAILED`.
+- Shipped (bring-up tooling): `tools/agent_core_umbmp_cbor_encode.cpp --manifest-minimal-ws2812` generates a small deterministic
+  UM‑ACDS manifest that is sufficient for testing `mode:"invoke"` scheduling and schema validation (tool: `ui.led.ws2812.control`).
 - Not shipped (yet): a built-in deterministic CBOR encoder for `NODE_CAPS_RSP.body.manifest` (UM‑ACDS manifest can be large and schema-driven).
 - Not shipped (yet): full JSON<->CBOR mapping helpers for MCU firmware.
 - Recommendation: keep using a full CBOR library (e.g. TinyCBOR-derived) if you already have one, but use the deterministic profile

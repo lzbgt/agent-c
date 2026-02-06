@@ -528,6 +528,11 @@ Maintainability note (always-on):
        (`tools/agent_core_umbmp_cbor_encode.cpp`) instead of a handwritten Python CBOR snippet, reducing profile drift.
      - Shipped (bring-up ergonomics): the same encoder tool now supports emitting deterministic CBOR envelopes for:
        `NODE_HELLO`, `NODE_CAPS_RSP`, `TASK_ACK`, `TASK_EVENT`, `TASK_DONE`, `TASK_FAILED`.
+     - Shipped (bring-up ergonomics): the encoder tool can also generate a **minimal but invoke-capable** deterministic CBOR
+       UM‑ACDS manifest (`--manifest-minimal-ws2812`) containing tool `ui.led.ws2812.control` with:
+       - `parameters_schema` (`additionalProperties:false`, `required:["action"]`)
+       - `result_schema` (validates `result.data.text`)
+     - Proof: `ctest` includes `agentd_edge_invoke_task_loop_auth_hmac_cbor_wire_smoke` (mode=invoke, schema validation + HMAC auth).
    - Shipped (v0.4 partial): optional envelope authenticity (HMAC) for trust roots + spoofing resistance:
      - Envelope may include `auth:{alg,kid,seq?,sig}` where:
        - `alg:"hmac-sha256"` signs canonical JSON bytes (`agent_json_c14n_v1`)
