@@ -536,6 +536,9 @@ Maintainability note (always-on):
      - Proof: `ctest` includes `agentd_edge_invoke_task_loop_auth_ed25519_cbor_wire_smoke` (mode=invoke + Ed25519 auth).
      - Proof: `ctest` includes `agentd_edge_rules_sensor_event_auth_hmac_cbor_wire_smoke`
        (SENSOR_EVENT triggers automation rule which enqueues TASK_ASSIGN; node completes over the same CBOR+auth transport).
+     - Next (wire completeness): add CBOR+auth proofs for high-frequency node telemetry:
+       - `NODE_HEARTBEAT` over `application/cbor` with `auth.alg="*-cbor"` (bounded, deterministic health map)
+       - `SENSOR_EVENT` → rules → TASK_ASSIGN proof with `auth.alg="ed25519-cbor"` (public-key identities; no shared-secret blast radius)
    - Shipped (v0.4 partial): optional envelope authenticity (HMAC) for trust roots + spoofing resistance:
      - Envelope may include `auth:{alg,kid,seq?,sig}` where:
        - `alg:"hmac-sha256"` signs canonical JSON bytes (`agent_json_c14n_v1`)
