@@ -3,7 +3,7 @@
 This folder contains a Docker Compose setup that spins up a **prod-like** stack for local verification.
 For real production deployment guidance, see `docs/DEPLOYMENT.md`.
 
-macOS: Docker Desktop or Colima is required. Prefer running `agentd` locally and broker/webui via compose.
+macOS: Docker Desktop or Colima is required. Prefer running `agentd` locally and broker/webui via compose, or use `tools/verify_mac_full_stack.sh`.
 
 - Postgres (broker DB + Keycloak DB)
 - Keycloak (OIDC provider)

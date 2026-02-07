@@ -23,6 +23,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
    - [x] Added `docs/DEPLOYMENT.md` checklist + topology guidance.
    - [x] Added service manager templates (systemd + macOS launchd).
    - [x] Added macOS broker+WebUI compose guidance.
+   - [x] Added macOS full-stack verification script (`tools/verify_mac_full_stack.sh`).
    - [ ] Add Windows service template.
    - [ ] Production hardening review for docker stack (secrets, TLS, backups, metrics).
 

@@ -147,6 +147,7 @@ Then run `agentd` locally (launchd or foreground):
 ### Notes
 - Broker TLS in compose uses test certificates under `tools/_compose_mtls` (local only).
 - WebUI expects to talk to broker proxy or direct agentd; align CORS + auth tokens accordingly.
+- For a one-command macOS verification run, use: `tools/verify_mac_full_stack.sh`.
 
 ---
 

@@ -15,6 +15,7 @@
 #include <chrono>
 #include <cctype>
 #include <cstdio>
+#include <functional>
 #include <random>
 #include <sstream>
 #include <string>
