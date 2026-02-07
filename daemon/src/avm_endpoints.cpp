@@ -17,6 +17,116 @@
 #include <string>
 #include <vector>
 
+#if defined(_WIN32)
+
+namespace agentd {
+namespace {
+
+static std::string json_stringify_compact(const Json::Value& v) {
+  Json::StreamWriterBuilder wb;
+  wb["indentation"] = "";
+  return Json::writeString(wb, v);
+}
+
+static void respond_json(HttpResponse* resp, const Json::Value& v) {
+  if (!resp) return;
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  resp->body = json_stringify_compact(v);
+}
+
+static void respond_avm_not_supported(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  if (!daemon_require_auth(cfg, req, resp)) return;
+  if (resp) resp->status = 501;
+  Json::Value o(Json::objectValue);
+  o["ok"] = false;
+  o["error"] = "avm endpoints are not supported on Windows";
+  o["error_kind"] = "unavailable";
+  respond_json(resp, o);
+}
+
+}  // namespace
+
+void handle_avm_job_scan_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  respond_avm_not_supported(cfg, cors_cfg, req, resp);
+}
+
+void handle_avm_policy_scan_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  respond_avm_not_supported(cfg, cors_cfg, req, resp);
+}
+
+void handle_avm_inspect_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  respond_avm_not_supported(cfg, cors_cfg, req, resp);
+}
+
+void handle_avm_verify_strict_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  respond_avm_not_supported(cfg, cors_cfg, req, resp);
+}
+
+void handle_avm_trace_hash_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  respond_avm_not_supported(cfg, cors_cfg, req, resp);
+}
+
+void handle_avm_capsule_run_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  respond_avm_not_supported(cfg, cors_cfg, req, resp);
+}
+
+bool avm_capsule_run_to_json(
+  const DaemonConfig&,
+  const Json::Value&,
+  Json::Value* out,
+  std::string* out_error
+) {
+  if (out_error) *out_error = "avm capsule execution not supported on Windows";
+  if (out) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = "avm endpoints are not supported on Windows";
+    o["error_kind"] = "unavailable";
+    *out = o;
+  }
+  return false;
+}
+
+}  // namespace agentd
+
+#else
+
 #include <errno.h>
 #include <fcntl.h>
 #include <poll.h>
@@ -943,3 +1053,5 @@ void handle_avm_capsule_run_endpoint(
 }
 
 }  // namespace agentd
+
+#endif  // defined(_WIN32)

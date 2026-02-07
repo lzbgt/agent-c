@@ -4,7 +4,6 @@
 
 #include <chrono>
 #include <cctype>
-#include <cerrno>
 #include <map>
 #include <mutex>
 #include <vector>
@@ -12,7 +11,7 @@
 #include <sstream>
 #include <thread>
 
-#include <unistd.h>
+#include "net_compat.h"
 
 namespace agentd {
 
@@ -31,15 +30,15 @@ std::string new_job_id() {
   return "job_" + std::to_string((long long)now_unix_ms()) + "_" + std::to_string((long long)n);
 }
 
-static bool write_all_fd(int fd, const char* data, size_t n) {
+static bool write_all_fd(socket_t fd, const char* data, size_t n) {
   size_t off = 0;
   while (off < n) {
-    ssize_t w = ::write(fd, data + off, n - off);
+    socket_io_t w = socket_write(fd, data + off, n - off);
     if (w > 0) {
       off += (size_t)w;
       continue;
     }
-    if (w == -1 && (errno == EINTR)) {
+    if (w == kSocketError && socket_should_retry(socket_last_error())) {
       continue;
     }
     return false;
@@ -47,11 +46,11 @@ static bool write_all_fd(int fd, const char* data, size_t n) {
   return true;
 }
 
-bool write_all_fd(int fd, const std::string& s) {
+bool write_all_fd(socket_t fd, const std::string& s) {
   return write_all_fd(fd, s.data(), s.size());
 }
 
-bool sse_send(int fd, const std::string& event, const std::string& data_json, const std::string& id) {
+bool sse_send(socket_t fd, const std::string& event, const std::string& data_json, const std::string& id) {
   std::string out;
   out.reserve(event.size() + data_json.size() + 64);
   if (!event.empty()) {
@@ -70,7 +69,7 @@ bool sse_send(int fd, const std::string& event, const std::string& data_json, co
   return write_all_fd(fd, out);
 }
 
-bool sse_ping(int fd) {
+bool sse_ping(socket_t fd) {
   return write_all_fd(fd, ": ping\n\n");
 }
 

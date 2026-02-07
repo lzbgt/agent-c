@@ -1,6 +1,6 @@
 # Roadmap / TODOs (highest leverage)
 
-Date: 2026-02-05
+Date: 2026-02-07
 
 This roadmap is biased toward “power unleashed” coming from the **agentic framework itself**:
 
@@ -11,6 +11,18 @@ This roadmap is biased toward “power unleashed” coming from the **agentic fr
 - result correctness (deterministic checks, replay, validations)
 
 Observability (trace/timeline) matters, but it is **not** the origin of capability; it is the proof/debug surface.
+
+## Active highest goals (current focus)
+
+1) **Cross-platform agentd (Windows/Linux/macOS)** — keep host daemon buildable/runable across desktop OSes.
+   - [x] Added cross-platform socket layer (`net_compat.*`) and Winsock init.
+   - [x] HTTP server + SSE streaming endpoints now use socket abstraction.
+   - [x] AVM endpoints return 501 on Windows (explicitly unsupported).
+   - [ ] Validate Windows build (tool plugins + tool servers remain disabled).
+2) **Production deployment readiness (agentd + broker + WebUI)** — stable, secure, operable deployment.
+   - [x] Added `docs/DEPLOYMENT.md` checklist + topology guidance.
+   - [ ] Add service manager templates (systemd/launchd/Windows service).
+   - [ ] Production hardening review for docker stack (secrets, TLS, backups, metrics).
 
 ## Recently shipped (proof in CI)
 

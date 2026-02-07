@@ -666,7 +666,7 @@ struct AgentdService::Impl {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_workflow_events_endpoint(cur, cors_cfg, &db, req, resp);
     });
-    server.handle_stream("GET", "/api/v1/workflow/stream", [this](const HttpRequest& req, int client_fd) {
+    server.handle_stream("GET", "/api/v1/workflow/stream", [this](const HttpRequest& req, socket_t client_fd) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_workflow_stream_endpoint(cur.auth_token, cors_cfg, &db, req, client_fd);
     });
@@ -728,7 +728,7 @@ struct AgentdService::Impl {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_edge_workflow_events_endpoint(cur, cors_cfg, &db, req, resp);
     });
-    server.handle_stream("GET", "/api/v1/edge/workflow/stream", [this](const HttpRequest& req, int client_fd) {
+    server.handle_stream("GET", "/api/v1/edge/workflow/stream", [this](const HttpRequest& req, socket_t client_fd) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_edge_workflow_stream_endpoint(cur.auth_token, cors_cfg, &db, req, client_fd);
     });
@@ -746,7 +746,7 @@ struct AgentdService::Impl {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_job_cancel_endpoint(cur, cors_cfg, &db, req, resp);
     });
-    server.handle_stream("GET", "/api/v1/job/stream", [this](const HttpRequest& req, int client_fd) {
+    server.handle_stream("GET", "/api/v1/job/stream", [this](const HttpRequest& req, socket_t client_fd) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_job_stream_endpoint(cur.auth_token, cors_cfg, &db, req, client_fd);
     });

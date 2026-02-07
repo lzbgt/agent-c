@@ -12,7 +12,7 @@ The goal is to make this project a **framework**: adding tools should be a packa
 
 - This is a **host-only** feature (desktop/server). MCUs should use `agent_core` and compile tools in.
 - This is not a “sandbox”. A plugin has native code execution; treat it like installing any other native extension.
-- Windows support is not guaranteed in v1 (dlopen-based loader).
+- Windows is not supported in v1 (dlopen-based loader).
 
 ## Plugin ABI (v1)
 
@@ -91,4 +91,3 @@ It exports a single tool `ext_echo` that returns a small JSON response.
 - The daemon builds its baseline toolset (`tools=host|basic|none`).
 - During toolset construction, it calls the plugin chain `register_tools(...)` and appends plugin tool schemas.
 - During execution, only tool names appended by plugins are dispatched to plugins (base tools still run in the built-in host toolset).
-

@@ -162,10 +162,19 @@ static void parse_csv_tokens_best_effort(const std::string& csv, std::vector<std
 }
 
 int main(int argc, char** argv) {
+#if !defined(_WIN32)
   // On macOS (and many POSIX systems), writing to a closed socket can raise SIGPIPE,
-  // which terminates the process by default. Our HTTP server uses plain ::write(),
+  // which terminates the process by default. Our HTTP server uses send/write(),
   // so we must ignore SIGPIPE to avoid daemon exits that look like "hangs" to clients.
   (void)::signal(SIGPIPE, SIG_IGN);
+#endif
+  {
+    std::string net_err;
+    if (!net_init(&net_err)) {
+      std::cerr << "Network init failed: " << net_err << "\n";
+      return 2;
+    }
+  }
 
   DaemonConfig cfg;
   bool system_profile_set = false;
@@ -1463,7 +1472,7 @@ int main(int argc, char** argv) {
   });
 
   // Server-Sent Events stream for durable workflow progress. Streams `workflow_event` records and ends with `workflow_done`.
-  server.handle_stream("GET", "/api/v1/workflow/stream", [&](const HttpRequest& req, int client_fd) {
+  server.handle_stream("GET", "/api/v1/workflow/stream", [&](const HttpRequest& req, socket_t client_fd) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_workflow_stream_endpoint(cur.auth_token, cors_cfg, db_or_null, req, client_fd);
   });
@@ -1525,7 +1534,7 @@ int main(int argc, char** argv) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_edge_workflow_events_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
-  server.handle_stream("GET", "/api/v1/edge/workflow/stream", [&](const HttpRequest& req, int client_fd) {
+  server.handle_stream("GET", "/api/v1/edge/workflow/stream", [&](const HttpRequest& req, socket_t client_fd) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_edge_workflow_stream_endpoint(cur.auth_token, cors_cfg, db_or_null, req, client_fd);
   });
@@ -1551,7 +1560,7 @@ int main(int argc, char** argv) {
 
   // Server-Sent Events stream for job progress (preferred UI path vs polling).
   // This endpoint streams `agent_event` events (same object shape as entries in the `events` array) and ends with `job_done`.
-  server.handle_stream("GET", "/api/v1/job/stream", [&](const HttpRequest& req, int client_fd) {
+  server.handle_stream("GET", "/api/v1/job/stream", [&](const HttpRequest& req, socket_t client_fd) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_job_stream_endpoint(cur.auth_token, cors_cfg, db_or_null, req, client_fd);
   });

@@ -1,0 +1,27 @@
+# Platform Support Matrix
+
+This repo targets **desktop/server** environments. `agentd` is intended for Windows, Linux, and macOS. `agent_core` is intended for embedded/MCU.
+
+## Agentd (daemon)
+
+| Feature | Linux | macOS | Windows |
+|---|---|---|---|
+| Core HTTP API + WebUI (daemon-only) | ✅ | ✅ | ✅ |
+| SQLite state (`--db-path`) | ✅ | ✅ | ✅ |
+| Tool plugins (`--tool-plugin`, `dlopen`) | ✅ | ✅ | ❌ |
+| Tool servers (`--tool-server-cmd`) | ✅ | ✅ | ❌ |
+| AVM endpoints (`/api/v1/avm/*`) | ✅ | ✅ | ❌ (501) |
+
+**Windows notes**
+- The HTTP server is Winsock-based (no POSIX socket calls).
+- Tool plugins/servers are disabled on Windows (no `dlopen`, no POSIX process/poll).
+- AVM endpoints return 501 (unsupported) on Windows.
+
+## Broker + Connector
+
+The broker and connector are Go binaries and are portable across Windows/Linux/macOS. Production deployments typically run them in Linux containers.
+
+## WebUI
+
+The WebUI is a static site (Vite build). It can be hosted by any static web server (nginx, Caddy, S3/CloudFront, etc.).
+

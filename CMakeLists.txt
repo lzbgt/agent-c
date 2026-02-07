@@ -206,6 +206,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/http_client.cpp
     daemon/src/http_allowlist.cpp
     daemon/src/http_util.cpp
+    daemon/src/net_compat.cpp
     daemon/src/job_endpoints.cpp
     daemon/src/job_manager.cpp
     daemon/src/job_engine.cpp
@@ -275,6 +276,9 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
   )
 
   target_link_libraries(agentd_lib PUBLIC agent_host)
+  if(WIN32)
+    target_link_libraries(agentd_lib PUBLIC ws2_32)
+  endif()
   if(UNIX AND NOT APPLE)
     target_link_libraries(agentd_lib PUBLIC dl)
   endif()
@@ -761,10 +765,14 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
     tests/test_job_manager.cpp
     daemon/src/job_manager.cpp
     daemon/src/json_util.cpp
+    daemon/src/net_compat.cpp
   )
   target_include_directories(job_manager_tests PRIVATE daemon/src ${JSONCPP_INCLUDE_DIRS})
   target_link_directories(job_manager_tests PRIVATE ${JSONCPP_LIBRARY_DIRS})
   target_link_libraries(job_manager_tests PRIVATE ${JSONCPP_LIBRARIES})
+  if(WIN32)
+    target_link_libraries(job_manager_tests PRIVATE ws2_32)
+  endif()
   add_test(NAME job_manager_tests COMMAND job_manager_tests)
 
   add_executable(sse_parser_tests

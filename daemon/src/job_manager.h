@@ -2,6 +2,8 @@
 
 #include <json/json.h>
 
+#include "net_compat.h"
+
 #include <atomic>
 #include <cstdint>
 #include <string>
@@ -101,10 +103,10 @@ void daemon_job_emit_heartbeat(
 );
 
 // SSE helpers used by /api/v1/job/stream.
-bool sse_send(int fd, const std::string& event, const std::string& data_json, const std::string& id = "");
-bool sse_ping(int fd);
+bool sse_send(socket_t fd, const std::string& event, const std::string& data_json, const std::string& id = "");
+bool sse_ping(socket_t fd);
 
 // Low-level helper used by SSE endpoints to write HTTP/SSE wire bytes to a socket.
-bool write_all_fd(int fd, const std::string& s);
+bool write_all_fd(socket_t fd, const std::string& s);
 
 }  // namespace agentd

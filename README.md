@@ -25,6 +25,16 @@ tools/verify_prod.sh
 
 Host builds (`agent` / `agentd`) require `libcurl` and `jsoncpp` (via `pkg-config`).
 
+**Windows (native build)**: install dependencies via vcpkg, then configure with its toolchain file:
+
+```powershell
+vcpkg install curl jsoncpp sqlite3
+cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake
+cmake --build build -j
+```
+
+Platform-specific notes (Windows limitations, plugin support, AVM endpoints) live in `docs/PLATFORM_SUPPORT.md`.
+
 Smoke tests:
 - `ctest` includes many bash-based `agentd_*_smoke.sh` tests that start/stop the daemon; shared helpers live in `tests/lib/agentd_smoke_lib.sh`.
 
@@ -224,6 +234,8 @@ Environment variables:
 This repo’s “production” shape is:
 - `agentd` runs as the backend daemon (tools + persistence + HTTP API)
 - the Web UI runs as a separate static site (Vite build) that talks to `agentd` via HTTP
+
+For a full production checklist (TLS, broker/connector, auth hardening, backups), see `docs/DEPLOYMENT.md`.
 
 ### 1) Start agentd (prod defaults: YOLO + host tools)
 

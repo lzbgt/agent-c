@@ -7,9 +7,11 @@
 #include <cstdint>
 #include <cstring>
 #include <map>
-#include <netdb.h>
-#include <sys/socket.h>
-#include <arpa/inet.h>
+#include "net_compat.h"
+
+#ifndef AI_ADDRCONFIG
+#define AI_ADDRCONFIG 0
+#endif
 #include <string>
 #include <vector>
 
@@ -321,6 +323,8 @@ static void resolve_host_best_effort(const std::string& host, std::vector<IpAddr
   if (!out) return;
   out->clear();
   if (host.empty()) return;
+
+  (void)net_init(nullptr);
 
   // If it's a literal IP, skip DNS.
   IpAddr ip;

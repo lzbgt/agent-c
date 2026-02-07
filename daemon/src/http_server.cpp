@@ -8,11 +8,7 @@
 #include <string_view>
 #include <thread>
 
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <unistd.h>
+#include "net_compat.h"
 
 namespace agentd {
 
@@ -29,14 +25,16 @@ static void trim_inplace(std::string& s) {
   s = s.substr(a, b - a);
 }
 
-static bool read_exact(int fd, std::string* out, size_t n) {
+static bool read_exact(socket_t fd, std::string* out, size_t n) {
   out->clear();
   out->reserve(n);
   while (out->size() < n) {
     char buf[4096];
     const size_t want = std::min(sizeof(buf), n - out->size());
-    ssize_t r = ::read(fd, buf, want);
-    if (r <= 0) {
+    socket_io_t r = socket_read(fd, buf, want);
+    if (r == 0) return false;
+    if (r == kSocketError) {
+      if (socket_should_retry(socket_last_error())) continue;
       return false;
     }
     out->append(buf, (size_t)r);
@@ -44,12 +42,14 @@ static bool read_exact(int fd, std::string* out, size_t n) {
   return true;
 }
 
-static bool read_until(int fd, std::string* out, const std::string& needle, size_t max_bytes) {
+static bool read_until(socket_t fd, std::string* out, const std::string& needle, size_t max_bytes) {
   out->clear();
   while (out->size() < max_bytes) {
     char buf[2048];
-    ssize_t r = ::read(fd, buf, sizeof(buf));
-    if (r <= 0) {
+    socket_io_t r = socket_read(fd, buf, sizeof(buf));
+    if (r == 0) return false;
+    if (r == kSocketError) {
+      if (socket_should_retry(socket_last_error())) continue;
       return false;
     }
     out->append(buf, (size_t)r);
@@ -58,6 +58,22 @@ static bool read_until(int fd, std::string* out, const std::string& needle, size
     }
   }
   return false;
+}
+
+static bool write_all(socket_t fd, const std::string& s) {
+  size_t off = 0;
+  while (off < s.size()) {
+    socket_io_t w = socket_write(fd, s.data() + off, s.size() - off);
+    if (w > 0) {
+      off += (size_t)w;
+      continue;
+    }
+    if (w == kSocketError && socket_should_retry(socket_last_error())) {
+      continue;
+    }
+    return false;
+  }
+  return true;
 }
 
 static bool parse_request(const std::string& head, HttpRequest* out_req, size_t* out_header_bytes, size_t* out_content_length) {
@@ -166,9 +182,9 @@ HttpServer::HttpServer() = default;
 
 HttpServer::~HttpServer() {
   stop();
-  if (listen_fd_ >= 0) {
-    ::close(listen_fd_);
-    listen_fd_ = -1;
+  if (socket_valid(listen_fd_)) {
+    socket_close(listen_fd_);
+    listen_fd_ = kInvalidSocket;
   }
 }
 
@@ -192,11 +208,11 @@ void HttpServer::handle_stream(const std::string& method, const std::string& pat
 
 void HttpServer::stop() {
   stop_.store(true);
-  if (listen_fd_ >= 0) {
-    ::shutdown(listen_fd_, SHUT_RDWR);
+  if (socket_valid(listen_fd_)) {
+    (void)socket_shutdown(listen_fd_);
     // Ensure any blocking accept() wakes up promptly.
-    ::close(listen_fd_);
-    listen_fd_ = -1;
+    socket_close(listen_fd_);
+    listen_fd_ = kInvalidSocket;
   }
 }
 
@@ -204,13 +220,17 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
   if (out_error) out_error->clear();
   stop_.store(false);
 
+  if (!net_init(out_error)) {
+    return false;
+  }
+
   listen_fd_ = ::socket(AF_INET, SOCK_STREAM, 0);
-  if (listen_fd_ < 0) {
-    if (out_error) *out_error = std::string("socket failed: ") + std::strerror(errno);
+  if (!socket_valid(listen_fd_)) {
+    if (out_error) *out_error = std::string("socket failed: ") + socket_strerror(socket_last_error());
     return false;
   }
   int yes = 1;
-  (void)setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(yes));
+  (void)setsockopt(listen_fd_, SOL_SOCKET, SO_REUSEADDR, (const char*)&yes, sizeof(yes));
 
   sockaddr_in addr{};
   addr.sin_family = AF_INET;
@@ -229,23 +249,23 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
   addr.sin_port = htons(port);
 
   if (::bind(listen_fd_, (sockaddr*)&addr, sizeof(addr)) != 0) {
-    if (out_error) *out_error = std::string("bind failed: ") + std::strerror(errno);
-    ::close(listen_fd_);
-    listen_fd_ = -1;
+    if (out_error) *out_error = std::string("bind failed: ") + socket_strerror(socket_last_error());
+    socket_close(listen_fd_);
+    listen_fd_ = kInvalidSocket;
     return false;
   }
   if (::listen(listen_fd_, 16) != 0) {
-    if (out_error) *out_error = std::string("listen failed: ") + std::strerror(errno);
-    ::close(listen_fd_);
-    listen_fd_ = -1;
+    if (out_error) *out_error = std::string("listen failed: ") + socket_strerror(socket_last_error());
+    socket_close(listen_fd_);
+    listen_fd_ = kInvalidSocket;
     return false;
   }
 
   // Handle each client in its own thread to keep the daemon responsive even when
   // a request is long-running (e.g., SSE streaming endpoint).
   while (!stop_.load()) {
-    int client = ::accept(listen_fd_, nullptr, nullptr);
-    if (client < 0) {
+    socket_t client = ::accept(listen_fd_, nullptr, nullptr);
+    if (!socket_valid(client)) {
       if (stop_.load()) break;
       continue;
     }
@@ -253,7 +273,7 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
     std::thread([this, client]() {
       std::string head;
       if (!read_until(client, &head, "\r\n\r\n", 1024 * 1024)) {
-        ::close(client);
+        socket_close(client);
         return;
       }
 
@@ -265,8 +285,8 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
         resp.status = 400;
         resp.body = R"({"ok":false,"error":"bad request"})";
         const std::string wire = build_response(resp, default_headers_);
-        (void)::write(client, wire.data(), wire.size());
-        ::close(client);
+        (void)write_all(client, wire);
+        socket_close(client);
         return;
       }
 
@@ -281,7 +301,7 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
         } else {
           std::string rest;
           if (!read_exact(client, &rest, content_len - body_already.size())) {
-            ::close(client);
+            socket_close(client);
             return;
           }
           req.body = body_already + rest;
@@ -297,8 +317,8 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
           resp.body.clear();
         }
         const std::string wire = build_response(resp, default_headers_);
-        (void)::write(client, wire.data(), wire.size());
-        ::close(client);
+        (void)write_all(client, wire);
+        socket_close(client);
         return;
       }
 
@@ -307,7 +327,7 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
       if (sit != stream_routes_.end()) {
         sit->second(req, client);
         // Server closes socket after handler returns.
-        ::close(client);
+        socket_close(client);
         return;
       }
 
@@ -321,8 +341,8 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
       }
 
       const std::string wire = build_response(resp, default_headers_);
-      (void)::write(client, wire.data(), wire.size());
-      ::close(client);
+      (void)write_all(client, wire);
+      socket_close(client);
     }).detach();
   }
 

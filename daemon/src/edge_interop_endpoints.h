@@ -3,6 +3,7 @@
 #include "agent_db.h"
 #include "cors.h"
 #include "http_util.h"
+#include "net_compat.h"
 #include "runtime_config.h"
 
 namespace agentd {
@@ -156,7 +157,7 @@ void handle_edge_workflow_stream_endpoint(
   const CorsConfig& cors_cfg,
   AgentDb* db_or_null,
   const HttpRequest& req,
-  int client_fd
+  socket_t client_fd
 );
 
 }  // namespace agentd

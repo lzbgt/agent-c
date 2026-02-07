@@ -1,6 +1,7 @@
 #pragma once
 
 #include "agentd/http_types.h"
+#include "net_compat.h"
 
 #include <atomic>
 #include <cstdint>
@@ -24,7 +25,7 @@ namespace agentd {
 class HttpServer {
  public:
   using Handler = std::function<void(const HttpRequest&, HttpResponse*)>;
-  using StreamHandler = std::function<void(const HttpRequest&, int client_fd)>;
+  using StreamHandler = std::function<void(const HttpRequest&, socket_t client_fd)>;
   using OptionsHandler = std::function<void(const HttpRequest&, HttpResponse*)>;
 
   HttpServer();
@@ -63,7 +64,7 @@ class HttpServer {
   std::map<RouteKey, StreamHandler> stream_routes_;
   OptionsHandler options_handler_;
   std::map<std::string, std::string> default_headers_;
-  int listen_fd_ = -1;
+  socket_t listen_fd_ = kInvalidSocket;
   std::atomic<bool> stop_{false};
 };
 

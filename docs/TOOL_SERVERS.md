@@ -2,6 +2,8 @@
 
 `agentd` can load tools from out-of-process “tool servers” using a strict stdin/stdout **JSON-lines** protocol.
 
+Platform support: Linux/macOS only (uses POSIX process + poll). Windows builds compile without tool server support.
+
 Why this matters for “power unleashed”:
 - Keeps `agentd` stable: tool crashes don’t crash the daemon (process boundary).
 - Enables ecosystem growth: Playwright/browser automation, AVM policy runners, device bridges (serial/MQTT) can live out-of-process.

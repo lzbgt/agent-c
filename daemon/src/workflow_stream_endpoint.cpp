@@ -39,7 +39,7 @@ void handle_workflow_stream_endpoint(
   const CorsConfig& cors_cfg,
   AgentDb* db_or_null,
   const HttpRequest& req,
-  int client_fd
+  socket_t client_fd
 ) {
   if (!auth_ok(daemon_auth_token, req)) {
     std::ostringstream hdr;
@@ -174,4 +174,3 @@ void handle_workflow_stream_endpoint(
 }
 
 }  // namespace agentd
-
