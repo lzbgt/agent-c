@@ -144,6 +144,23 @@ Then run `agentd` locally (launchd or foreground):
 ./build/agentd --host 127.0.0.1 --port 8123 --auth-token "REPLACE_WITH_RANDOM_TOKEN" --state-dir "$HOME/Library/Application Support/agentd" --db-path "$HOME/Library/Application Support/agentd/agentd.db"
 ```
 
+### Manual verification (macOS)
+1) Broker health:
+```
+curl -k https://127.0.0.1:8443/healthz
+```
+2) Agentd health:
+```
+curl http://127.0.0.1:8123/api/v1/health
+```
+3) WebUI bring-up:
+- Open `http://127.0.0.1:8100`
+- Set **Base URL** to `http://127.0.0.1:8123`
+- Set **Daemon Auth Token** to the `--auth-token` value above
+4) Functional check:
+- Run a short prompt that emits an audio artifact (or scene audio).
+- If autoplay is blocked by the browser, click once in the UI to unlock media playback.
+
 ### Notes
 - Broker TLS in compose uses test certificates under `tools/_compose_mtls` (local only).
 - WebUI expects to talk to broker proxy or direct agentd; align CORS + auth tokens accordingly.

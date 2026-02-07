@@ -322,6 +322,19 @@ Then open the UI and set:
 - Daemon base URL: `http://127.0.0.1:8123`
 - Daemon auth token (if enabled): the same token passed to `agentd --auth-token`
 
+### Manual verification (macOS)
+1) Broker health (if using broker/connector):
+```bash
+curl -k https://127.0.0.1:8443/healthz
+```
+2) Agentd health:
+```bash
+curl http://127.0.0.1:8123/api/v1/health
+```
+3) UI functional check:
+- Run a short prompt that emits audio (artifact or scene).
+- If autoplay is blocked, click once in the UI to unlock media playback.
+
 The Web UI defaults to:
 - YOLO enabled
 - client RPC enabled
