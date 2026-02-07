@@ -76,6 +76,24 @@ WantedBy=multi-user.target
 </plist>
 ```
 
+### Example (Windows service)
+
+#### Option A: `sc.exe` (built-in)
+Run from an **elevated** Command Prompt:
+```
+sc.exe create agentd binPath= "\"C:\\Program Files\\agentd\\agentd.exe\" --host 127.0.0.1 --port 8123 --auth-token REPLACE_WITH_RANDOM_TOKEN --state-dir \"C:\\ProgramData\\agentd\" --db-path \"C:\\ProgramData\\agentd\\agentd.db\"" start= auto
+sc.exe config agentd start= delayed-auto
+sc.exe failure agentd reset= 86400 actions= restart/5000/restart/5000/restart/5000
+```
+
+#### Option B: PowerShell `New-Service`
+Run from an **elevated** PowerShell prompt:
+```
+$exe = "C:\\Program Files\\agentd\\agentd.exe"
+$args = "--host 127.0.0.1 --port 8123 --auth-token REPLACE_WITH_RANDOM_TOKEN --state-dir `\"C:\\ProgramData\\agentd`\" --db-path `\"C:\\ProgramData\\agentd\\agentd.db`\""
+New-Service -Name "agentd" -BinaryPathName "`"$exe`" $args" -StartupType Automatic
+```
+
 ### If exposing `agentd` directly
 - Put it behind a reverse proxy with TLS (nginx/Caddy/Envoy).
 - **Do not** bind directly to `0.0.0.0` without `--auth-token`.
@@ -186,6 +204,18 @@ curl http://127.0.0.1:8123/api/v1/health
 - **Monitoring**: scrape `/healthz` (broker) + `/api/v1/health` (agentd).
 - **Resource limits**: set process limits and container quotas.
 - **Upgrades**: keep `agentd` and WebUI in lockstep (OpenAPI + protocol changes).
+
+---
+
+## Docker stack hardening checklist
+
+- **Secrets**: keep provider keys out of images; inject via env or Docker/Swarm secrets.
+- **TLS**: terminate TLS at broker; use valid certs in production (replace test CA).
+- **mTLS**: ensure connector certs are per-agent and rotated.
+- **Least exposure**: only publish broker/WebUI ports; keep agentd private.
+- **Backups**: snapshot Postgres + agentd SQLite volume.
+- **Observability**: log rotation + metrics scraping.
+- **Image pinning**: pin broker/agentd build images by digest for deterministic rollouts.
 
 ---
 

@@ -1,0 +1,1930 @@
+ <!DOCTYPE html>
+		<html
+			class="layout layout-holy-grail   show-table-of-contents reference show-breadcrumb default-focus"
+			lang="en-us"
+			dir="ltr"
+			data-authenticated="false"
+			data-auth-status-determined="false"
+			data-target="docs"
+			x-ms-format-detection="none"
+		>
+			
+		<head>
+			<title>New-Service (Microsoft.PowerShell.Management) - PowerShell | Microsoft Learn</title>
+			<meta charset="utf-8" />
+			<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+			<meta name="color-scheme" content="light dark" />
+
+			<meta name="description" content=" This cmdlet is only available on the Windows platform.  The New-Service cmdlet creates a new entry for a Windows service in the registry and in the service database. A new service requires an executable file that runs during the service. The parameters of this cmdlet let you set the display name, description, startup type, and dependencies of the service. " />
+			<link rel="canonical" href="https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.management/new-service?view=powershell-7.5" /> 
+
+			<!-- Non-customizable open graph and sharing-related metadata -->
+			<meta name="twitter:card" content="summary" />
+			<meta name="twitter:site" content="@MicrosoftLearn" />
+			<meta property="og:type" content="website" />
+			<meta property="og:image:alt" content="New-Service (Microsoft.PowerShell.Management) - PowerShell | Microsoft Learn" />
+			<meta property="og:image" content="https://learn.microsoft.com/media/logos/logo-powershell-social.png" />
+			<!-- Page specific open graph and sharing-related metadata -->
+			<meta property="og:title" content="New-Service (Microsoft.PowerShell.Management) - PowerShell" />
+			<meta property="og:url" content="https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.management/new-service?view=powershell-7.5" />
+			<meta property="og:description" content=" This cmdlet is only available on the Windows platform.  The New-Service cmdlet creates a new entry for a Windows service in the registry and in the service database. A new service requires an executable file that runs during the service. The parameters of this cmdlet let you set the display name, description, startup type, and dependencies of the service. " />
+			<meta name="platform_id" content="55fde865-3315-2225-e4b1-6df9e372670a" /> <meta name="scope" content="PowerShell" />
+			<meta name="locale" content="en-us" />
+			 <meta name="adobe-target" content="true" /> 
+			<meta name="uhfHeaderId" content="MSDocsHeader-Powershell" />
+
+			<meta name="page_type" content="powershell" />
+
+			<!--page specific meta tags-->
+			
+
+			<!-- custom meta tags -->
+			
+		<meta name="uid" content="Microsoft.PowerShell.Management.New-Service" />
+	
+		<meta name="module" content="Microsoft.PowerShell.Management" />
+	
+		<meta name="schema" content="PowerShellCmdlet1" />
+	
+		<meta name="ROBOTS" content="INDEX, FOLLOW" />
+	
+		<meta name="apiPlatform" content="powershell" />
+	
+		<meta name="archive_url" content="https://learn.microsoft.com/previous-versions/powershell/scripting/overview" />
+	
+		<meta name="breadcrumb_path" content="/powershell/scripting/bread/toc.json" />
+	
+		<meta name="feedback_product_url" content="https://github.com/PowerShell/PowerShell/issues/new/choose" />
+	
+		<meta name="feedback_help_link_url" content="https://learn.microsoft.com/powershell/scripting/community/community-support" />
+	
+		<meta name="feedback_help_link_type" content="ask-the-community" />
+	
+		<meta name="feedback_system" content="OpenSource" />
+	
+		<meta name="hideScope" content="false" />
+	
+		<meta name="author" content="sdwheeler" />
+	
+		<meta name="ms.author" content="sewhee" />
+	
+		<meta name="manager" content="jasongroce" />
+	
+		<meta name="ms.devlang" content="powershell" />
+	
+		<meta name="ms.service" content="powershell" />
+	
+		<meta name="ms.tgt_pltfr" content="windows, macos, linux" />
+	
+		<meta name="ms.update-cycle" content="365-days" />
+	
+		<meta name="toc_preview" content="true" />
+	
+		<meta name="ms.topic" content="reference" />
+	
+		<meta name="products" content="https://authoring-docs-microsoft.poolparty.biz/devrel/2bdae855-045f-4535-b365-7b2e23824328" />
+	
+		<meta name="products" content="https://authoring-docs-microsoft.poolparty.biz/devrel/8bce367e-2e90-4b56-9ed5-5e4e9f3a2dc3" />
+	
+		<meta name="document type" content="cmdlet" />
+	
+		<meta name="external help file" content="Microsoft.PowerShell.Commands.Management.dll-Help.xml" />
+	
+		<meta name="HelpUri" content="https://learn.microsoft.com/powershell/module/microsoft.powershell.management/new-service?view=powershell-7.5&amp;WT.mc_id=ps-gethelp" />
+	
+		<meta name="Locale" content="en-US" />
+	
+		<meta name="Module Name" content="Microsoft.PowerShell.Management" />
+	
+		<meta name="ms.date" content="2026-02-04T00:00:00Z" />
+	
+		<meta name="PlatyPS schema version" content="2024-05-01T00:00:00Z" />
+	
+		<meta name="document_id" content="38aca0cd-3212-bb3a-c1ea-1d38bee33407" />
+	
+		<meta name="document_version_independent_id" content="7e465372-00cb-2ffb-66fc-d59adbb2d3d8" />
+	
+		<meta name="updated_at" content="2026-02-04T23:09:00Z" />
+	
+		<meta name="original_content_git_url" content="https://github.com/MicrosoftDocs/PowerShell-Docs/blob/live/reference/7.5/Microsoft.PowerShell.Management/New-Service.md" />
+	
+		<meta name="gitcommit" content="https://github.com/MicrosoftDocs/PowerShell-Docs/blob/ed225b58d599dfea708fe047fde3effe013d6cbb/reference/7.5/Microsoft.PowerShell.Management/New-Service.md" />
+	
+		<meta name="git_commit_id" content="ed225b58d599dfea708fe047fde3effe013d6cbb" />
+	
+		<meta name="monikers" content="powershell-7.5" />
+	
+		<meta name="default_moniker" content="powershell-7.5" />
+	
+		<meta name="site_name" content="Docs" />
+	
+		<meta name="depot_name" content="PowerShell.PowerShell_PowerShell-docs_reference" />
+	
+		<meta name="in_right_rail" content="h2h3" />
+	
+		<meta name="page_kind" content="command" />
+	
+		<meta name="toc_rel" content="../psdocs/toc.json" />
+	
+		<meta name="config_moniker_range" content="powershell-7.5" />
+	
+		<meta name="asset_id" content="module/microsoft.powershell.management/new-service" />
+	
+		<meta name="moniker_range_name" content="22c82445753cee94972eb6ac56256eb9" />
+	
+		<meta name="item_type" content="Content" />
+	
+		<meta name="source_path" content="reference/7.5/Microsoft.PowerShell.Management/New-Service.md" />
+	
+		<meta name="github_feedback_content_git_url" content="https://github.com/MicrosoftDocs/PowerShell-Docs/blob/main/reference/7.5/Microsoft.PowerShell.Management/New-Service.md" />
+	 
+
+			<!-- assets and js globals -->
+			
+			<link rel="stylesheet" href="/static/assets/0.4.03315.7455-a02a2ade/styles/site-ltr.css" />
+			
+			<link rel="preconnect" href="//mscom.demdex.net" crossorigin />
+						<link rel="dns-prefetch" href="//target.microsoft.com" />
+						<link rel="dns-prefetch" href="//microsoftmscompoc.tt.omtrdc.net" />
+						<link
+							rel="preload"
+							as="script"
+							href="/static/third-party/adobe-target/at-js/2.9.0/at.js"
+							integrity="sha384-l4AKhsU8cUWSht4SaJU5JWcHEWh1m4UTqL08s6b/hqBLAeIDxTNl+AMSxTLx6YMI"
+							crossorigin="anonymous"
+							id="adobe-target-script"
+							type="application/javascript"
+						/>
+			<script src="https://wcpstatic.microsoft.com/mscc/lib/v2/wcp-consent.js"></script>
+			<script src="https://js.monitor.azure.com/scripts/c/ms.jsll-4.min.js"></script>
+			<script src="/_themes/docs.theme/master/en-us/_themes/global/deprecation.js"></script>
+
+			<!-- msdocs global object -->
+			<script id="msdocs-script">
+		var msDocs = {
+  "environment": {
+    "accessLevel": "online",
+    "azurePortalHostname": "portal.azure.com",
+    "reviewFeatures": false,
+    "supportLevel": "production",
+    "systemContent": true,
+    "siteName": "learn",
+    "legacyHosting": false
+  },
+  "data": {
+    "contentLocale": "en-us",
+    "contentDir": "ltr",
+    "userLocale": "en-us",
+    "userDir": "ltr",
+    "pageTemplate": "Reference",
+    "brand": "",
+    "context": {},
+    "standardFeedback": false,
+    "showFeedbackReport": false,
+    "feedbackHelpLinkType": "ask-the-community",
+    "feedbackHelpLinkUrl": "https://learn.microsoft.com/powershell/scripting/community/community-support",
+    "feedbackSystem": "OpenSource",
+    "feedbackGitHubRepo": "",
+    "feedbackProductUrl": "https://github.com/PowerShell/PowerShell/issues/new/choose",
+    "extendBreadcrumb": true,
+    "isEditDisplayable": true,
+    "isPrivateUnauthorized": false,
+    "hideViewSource": false,
+    "isPermissioned": false,
+    "hasRecommendations": false,
+    "contributors": [
+      {
+        "name": "surfingoldelephant",
+        "url": "https://github.com/surfingoldelephant"
+      }
+    ],
+    "openSourceFeedbackIssueUrl": "https://github.com/MicrosoftDocs/PowerShell-Docs/issues/new?template=04-customer-feedback.yml",
+    "openSourceFeedbackIssueTitle": "",
+    "openSourceFeedbackIssueLabels": "needs-triage"
+  },
+  "functions": {}
+};;
+	</script>
+
+			<!-- base scripts, msdocs global should be before this -->
+			<script src="/static/assets/0.4.03315.7455-a02a2ade/scripts/en-us/index-docs.js"></script>
+			
+
+			<!-- json-ld -->
+			
+		</head>
+	
+			<body
+				id="body"
+				data-bi-name="body"
+				class="layout-body "
+				lang="en-us"
+				dir="ltr"
+			>
+				<header class="layout-body-header">
+		<div class="header-holder has-default-focus">
+			
+		<a
+			href="#main"
+			
+			style="z-index: 1070"
+			class="outline-color-text visually-hidden-until-focused position-fixed inner-focus focus-visible top-0 left-0 right-0 padding-xs text-align-center background-color-body"
+			
+		>
+			Skip to main content
+		</a>
+	
+		<a
+			href="#side-doc-outline"
+			
+			style="z-index: 1070"
+			class="outline-color-text visually-hidden-until-focused position-fixed inner-focus focus-visible top-0 left-0 right-0 padding-xs text-align-center background-color-body"
+			
+		>
+			Skip to in-page navigation
+		</a>
+	
+		<a
+			href="#"
+			data-skip-to-ask-learn
+			style="z-index: 1070"
+			class="outline-color-text visually-hidden-until-focused position-fixed inner-focus focus-visible top-0 left-0 right-0 padding-xs text-align-center background-color-body"
+			hidden
+		>
+			Skip to Ask Learn chat experience
+		</a>
+	
+
+			<div hidden id="cookie-consent-holder" data-test-id="cookie-consent-container"></div>
+			<!-- Unsupported browser warning -->
+			<div
+				id="unsupported-browser"
+				style="background-color: white; color: black; padding: 16px; border-bottom: 1px solid grey;"
+				hidden
+			>
+				<div style="max-width: 800px; margin: 0 auto;">
+					<p style="font-size: 24px">This browser is no longer supported.</p>
+					<p style="font-size: 16px; margin-top: 16px;">
+						Upgrade to Microsoft Edge to take advantage of the latest features, security updates, and technical support.
+					</p>
+					<div style="margin-top: 12px;">
+						<a
+							href="https://go.microsoft.com/fwlink/p/?LinkID=2092881 "
+							style="background-color: #0078d4; border: 1px solid #0078d4; color: white; padding: 6px 12px; border-radius: 2px; display: inline-block;"
+						>
+							Download Microsoft Edge
+						</a>
+						<a
+							href="https://learn.microsoft.com/en-us/lifecycle/faq/internet-explorer-microsoft-edge"
+							style="background-color: white; padding: 6px 12px; border: 1px solid #505050; color: #171717; border-radius: 2px; display: inline-block;"
+						>
+							More info about Internet Explorer and Microsoft Edge
+						</a>
+					</div>
+				</div>
+			</div>
+			<!-- site header -->
+			<header
+				id="ms--site-header"
+				data-test-id="site-header-wrapper"
+				role="banner"
+				itemscope="itemscope"
+				itemtype="http://schema.org/Organization"
+			>
+				<div
+					id="ms--mobile-nav"
+					class="site-header display-none-tablet padding-inline-none gap-none"
+					data-bi-name="mobile-header"
+					data-test-id="mobile-header"
+				></div>
+				<div
+					id="ms--primary-nav"
+					class="site-header display-none display-flex-tablet"
+					data-bi-name="L1-header"
+					data-test-id="primary-header"
+				></div>
+				<div
+					id="ms--secondary-nav"
+					class="site-header display-none display-flex-tablet"
+					data-bi-name="L2-header"
+					data-test-id="secondary-header"
+					
+				></div>
+			</header>
+			
+		<!-- banner -->
+		<div data-banner>
+			<div id="disclaimer-holder"></div>
+			
+		</div>
+		<!-- banner end -->
+	
+		</div>
+	</header>
+				 <section
+					id="layout-body-menu"
+					class="layout-body-menu display-flex"
+					data-bi-name="menu"
+			  >
+					
+		<div
+			id="left-container"
+			class="left-container display-none display-block-tablet padding-inline-sm padding-bottom-sm width-full"
+			data-toc-container="true"
+		>
+			<!-- Regular TOC content (default) -->
+			<div id="ms--toc-content" class="height-full">
+				<nav
+					id="affixed-left-container"
+					class="margin-top-sm-tablet position-sticky display-flex flex-direction-column"
+					aria-label="Primary"
+					data-bi-name="left-toc"
+					role="navigation"
+				></nav>
+			</div>
+			<!-- Collapsible TOC content (hidden by default) -->
+			<div id="ms--toc-content-collapsible" class="height-full" hidden>
+				<nav
+					id="affixed-left-container"
+					class="margin-top-sm-tablet position-sticky display-flex flex-direction-column"
+					aria-label="Primary"
+					data-bi-name="left-toc"
+					role="navigation"
+				>
+					<div
+						id="ms--collapsible-toc-header"
+						class="display-flex justify-content-flex-end margin-bottom-xxs"
+					>
+						<button
+							type="button"
+							class="button button-clear inner-focus"
+							data-collapsible-toc-toggle
+							aria-expanded="true"
+							aria-controls="ms--collapsible-toc-content"
+							aria-label="Table of contents"
+						>
+							<span class="icon font-size-h4" aria-hidden="true">
+								<span class="docon docon-panel-left-contract"></span>
+							</span>
+						</button>
+					</div>
+				</nav>
+			</div>
+		</div>
+	
+			  </section>
+
+				<main
+					id="main"
+					role="main"
+					class="layout-body-main "
+					data-bi-name="content"
+					lang="en-us"
+					dir="ltr"
+				>
+					
+			<div
+		id="ms--content-header"
+		class="content-header default-focus border-bottom-none"
+		data-bi-name="content-header"
+	>
+		<div class="content-header-controls margin-xxs margin-inline-sm-tablet">
+			<button
+				type="button"
+				class="contents-button button button-sm margin-right-xxs"
+				data-bi-name="contents-expand"
+				aria-haspopup="true"
+				data-contents-button
+			>
+				<span class="icon" aria-hidden="true"><span class="docon docon-menu"></span></span>
+				<span class="contents-expand-title"> Table of contents </span>
+			</button>
+			<button
+				type="button"
+				class="ap-collapse-behavior ap-expanded button button-sm"
+				data-bi-name="ap-collapse"
+				aria-controls="action-panel"
+			>
+				<span class="icon" aria-hidden="true"><span class="docon docon-exit-mode"></span></span>
+				<span>Exit editor mode</span>
+			</button>
+		</div>
+	</div>
+			<div data-main-column class="padding-sm padding-top-none padding-top-sm-tablet">
+				<div>
+					
+		<div id="article-header" class="background-color-body margin-bottom-xs display-none-print">
+			<div class="display-flex align-items-center justify-content-space-between">
+				
+		<details
+			id="article-header-breadcrumbs-overflow-popover"
+			class="popover"
+			data-for="article-header-breadcrumbs"
+		>
+			<summary
+				class="button button-clear button-primary button-sm inner-focus"
+				aria-label="All breadcrumbs"
+			>
+				<span class="icon">
+					<span class="docon docon-more"></span>
+				</span>
+			</summary>
+			<div id="article-header-breadcrumbs-overflow" class="popover-content padding-none"></div>
+		</details>
+
+		<bread-crumbs
+			id="article-header-breadcrumbs"
+			role="group"
+			aria-label="Breadcrumbs"
+			data-test-id="article-header-breadcrumbs"
+			class="overflow-hidden flex-grow-1 margin-right-sm margin-right-md-tablet margin-right-lg-desktop margin-left-negative-xxs padding-left-xxs"
+		></bread-crumbs>
+	 
+		<div
+			id="article-header-page-actions"
+			class="opacity-none margin-left-auto display-flex flex-wrap-no-wrap align-items-stretch"
+		>
+			
+		<button
+			class="button button-sm border-none inner-focus display-none-tablet flex-shrink-0 "
+			data-bi-name="ask-learn-assistant-entry"
+			data-test-id="ask-learn-assistant-modal-entry-mobile"
+			data-ask-learn-modal-entry
+			
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			aria-label="Ask Learn"
+			hidden
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+		</button>
+		<button
+			class="button button-sm display-none display-inline-flex-tablet display-none-desktop flex-shrink-0 margin-right-xxs border-color-ask-learn "
+			data-bi-name="ask-learn-assistant-entry"
+			
+			data-test-id="ask-learn-assistant-modal-entry-tablet"
+			data-ask-learn-modal-entry
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			hidden
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+			<span>Ask Learn</span>
+		</button>
+		<button
+			class="button button-sm display-none flex-shrink-0 display-inline-flex-desktop margin-right-xxs border-color-ask-learn "
+			data-bi-name="ask-learn-assistant-entry"
+			
+			data-test-id="ask-learn-assistant-flyout-entry"
+			data-ask-learn-flyout-entry
+			data-flyout-button="toggle"
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			aria-controls="ask-learn-flyout"
+			hidden
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+			<span>Ask Learn</span>
+		</button>
+	 
+		<button
+			type="button"
+			id="ms--focus-mode-button"
+			data-focus-mode
+			data-bi-name="focus-mode-entry"
+			class="button button-sm flex-shrink-0 margin-right-xxs display-none display-inline-flex-desktop"
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-glasses"></span>
+			</span>
+			<span>Focus mode</span>
+		</button>
+	 
+
+			<details class="popover popover-right" id="article-header-page-actions-overflow">
+				<summary
+					class="justify-content-flex-start button button-clear button-sm button-primary inner-focus"
+					aria-label="More actions"
+					title="More actions"
+				>
+					<span class="icon" aria-hidden="true">
+						<span class="docon docon-more-vertical"></span>
+					</span>
+				</summary>
+				<div class="popover-content">
+					
+		<button
+			data-page-action-item="overflow-mobile"
+			type="button"
+			class="button-block button-sm inner-focus button button-clear display-none-tablet justify-content-flex-start text-align-left"
+			data-bi-name="contents-expand"
+			data-contents-button
+			data-popover-close
+		>
+			<span class="icon">
+				<span class="docon docon-editor-list-bullet" aria-hidden="true"></span>
+			</span>
+			<span class="contents-expand-title">Table of contents</span>
+		</button>
+	 
+		<a
+			id="lang-link-overflow"
+			class="button-sm inner-focus button button-clear button-block justify-content-flex-start text-align-left"
+			data-bi-name="language-toggle"
+			data-page-action-item="overflow-all"
+			data-check-hidden="true"
+			data-read-in-link
+			href="#"
+			hidden
+		>
+			<span class="icon" aria-hidden="true" data-read-in-link-icon>
+				<span class="docon docon-locale-globe"></span>
+			</span>
+			<span data-read-in-link-text>Read in English</span>
+		</a>
+	 
+		<button
+			type="button"
+			class="collection button button-clear button-sm button-block justify-content-flex-start text-align-left inner-focus"
+			data-list-type="collection"
+			data-bi-name="collection"
+			data-page-action-item="overflow-all"
+			data-check-hidden="true"
+			data-popover-close
+		>
+			<span class="icon" aria-hidden="true">
+				<span class="docon docon-circle-addition"></span>
+			</span>
+			<span class="collection-status">Add</span>
+		</button>
+	
+					
+		<button
+			type="button"
+			class="collection button button-block button-clear button-sm justify-content-flex-start text-align-left inner-focus"
+			data-list-type="plan"
+			data-bi-name="plan"
+			data-page-action-item="overflow-all"
+			data-check-hidden="true"
+			data-popover-close
+			hidden
+		>
+			<span class="icon" aria-hidden="true">
+				<span class="docon docon-circle-addition"></span>
+			</span>
+			<span class="plan-status">Add to plan</span>
+		</button>
+	  
+		<a
+			data-contenteditbtn
+			class="button button-clear button-block button-sm inner-focus justify-content-flex-start text-align-left text-decoration-none"
+			data-bi-name="edit"
+			
+			href="https://github.com/MicrosoftDocs/PowerShell-Docs/blob/main/reference/7.5/Microsoft.PowerShell.Management/New-Service.md"
+			data-original_content_git_url="https://github.com/MicrosoftDocs/PowerShell-Docs/blob/live/reference/7.5/Microsoft.PowerShell.Management/New-Service.md"
+			data-original_content_git_url_template="{repo}/blob/{branch}/reference/7.5/Microsoft.PowerShell.Management/New-Service.md"
+			data-pr_repo=""
+			data-pr_branch=""
+		>
+			<span class="icon" aria-hidden="true">
+				<span class="docon docon-edit-outline"></span>
+			</span>
+			<span>Edit</span>
+		</a>
+	
+					
+		<hr class="margin-block-xxs" />
+		<h4 class="font-size-sm padding-left-xxs">Share via</h4>
+		
+					<a
+						class="button button-clear button-sm inner-focus button-block justify-content-flex-start text-align-left text-decoration-none share-facebook"
+						data-bi-name="facebook"
+						data-page-action-item="overflow-all"
+						href="#"
+					>
+						<span class="icon color-primary" aria-hidden="true">
+							<span class="docon docon-facebook-share"></span>
+						</span>
+						<span>Facebook</span>
+					</a>
+
+					<a
+						href="#"
+						class="button button-clear button-sm inner-focus button-block justify-content-flex-start text-align-left text-decoration-none share-twitter"
+						data-bi-name="twitter"
+						data-page-action-item="overflow-all"
+					>
+						<span class="icon color-text" aria-hidden="true">
+							<span class="docon docon-xlogo-share"></span>
+						</span>
+						<span>x.com</span>
+					</a>
+
+					<a
+						href="#"
+						class="button button-clear button-sm inner-focus button-block justify-content-flex-start text-align-left text-decoration-none share-linkedin"
+						data-bi-name="linkedin"
+						data-page-action-item="overflow-all"
+					>
+						<span class="icon color-primary" aria-hidden="true">
+							<span class="docon docon-linked-in-logo"></span>
+						</span>
+						<span>LinkedIn</span>
+					</a>
+					<a
+						href="#"
+						class="button button-clear button-sm inner-focus button-block justify-content-flex-start text-align-left text-decoration-none share-email"
+						data-bi-name="email"
+						data-page-action-item="overflow-all"
+					>
+						<span class="icon color-primary" aria-hidden="true">
+							<span class="docon docon-mail-message"></span>
+						</span>
+						<span>Email</span>
+					</a>
+			  
+	 
+		<hr class="margin-block-xxs" />
+		<button
+			class="button button-block button-clear button-sm justify-content-flex-start text-align-left inner-focus"
+			type="button"
+			data-bi-name="print"
+			data-page-action-item="overflow-all"
+			data-popover-close
+			data-print-page
+			data-check-hidden="true"
+		>
+			<span class="icon color-primary" aria-hidden="true">
+				<span class="docon docon-print"></span>
+			</span>
+			<span>Print</span>
+		</button>
+	
+				</div>
+			</details>
+		</div>
+	
+			</div>
+		</div>
+	  
+		<!-- privateUnauthorizedTemplate is hidden by default -->
+		<div unauthorized-private-section data-bi-name="permission-content-unauthorized-private" hidden>
+			<hr class="hr margin-top-xs margin-bottom-sm" />
+			<div class="notification notification-info">
+				<div class="notification-content">
+					<p class="margin-top-none notification-title">
+						<span class="icon">
+							<span class="docon docon-exclamation-circle-solid" aria-hidden="true"></span>
+						</span>
+						<span>Note</span>
+					</p>
+					<p class="margin-top-none authentication-determined not-authenticated">
+						Access to this page requires authorization. You can try <a class="docs-sign-in" href="#" data-bi-name="permission-content-sign-in">signing in</a> or <a  class="docs-change-directory" data-bi-name="permisson-content-change-directory">changing directories</a>.
+					</p>
+					<p class="margin-top-none authentication-determined authenticated">
+						Access to this page requires authorization. You can try <a class="docs-change-directory" data-bi-name="permisson-content-change-directory">changing directories</a>.
+					</p>
+				</div>
+			</div>
+		</div>
+	
+					<div class="content"></div>
+					 
+		<div data-id="ai-summary" hidden>
+			<div id="ms--ai-summary-cta" class="margin-top-xs display-flex align-items-center">
+				<span class="icon" aria-hidden="true">
+					<span class="docon docon-sparkle-fill gradient-text-vivid"></span>
+				</span>
+				<button
+					id="ms--ai-summary"
+					type="button"
+					class="tag tag-sm tag-suggestion margin-left-xxs"
+					data-test-id="ai-summary-cta"
+					data-bi-name="ai-summary-cta"
+					data-an="ai-summary"
+				>
+					<span class="ai-summary-cta-text">
+						Summarize this article for me
+					</span>
+				</button>
+			</div>
+			<!-- Slot where the client will render the summary card after the user clicks the CTA -->
+			<div id="ms--ai-summary-header" class="margin-top-xs"></div>
+		</div>
+	 
+					<div class="content"><h1 data-chunk-ids="inputs,outputs,default,example-1-create-a-service,example-2-create-a-service-that-includes-description-startup-type-and-display-name,example-3-view-the-new-service,example-4-set-the-securitydescriptor-of-a-service-when-creating,binarypathname,confirm,credential,dependson,description,displayname,name,securitydescriptorsddl,startuptype,whatif" class="margin-bottom-xs">New-Service</h1>
+
+	<div class="margin-block-xxs">
+		<ul class="metadata page-metadata align-items-center" data-bi-name="page info">
+			
+			
+			
+			
+			
+		</ul>
+	</div>
+
+<div class="metadata" data-chunk-ids="inputs,outputs,default,example-1-create-a-service,example-2-create-a-service-that-includes-description-startup-type-and-display-name,example-3-view-the-new-service,example-4-set-the-securitydescriptor-of-a-service-when-creating,binarypathname,confirm,credential,dependson,description,displayname,name,securitydescriptorsddl,startuptype,whatif">
+		<dl class="attributeList">
+			<dt>Module:</dt>
+			<dd><a href="./?view=powershell-7.5" data-linktype="relative-path">Microsoft.PowerShell.Management Module</a></dd>
+		</dl>
+</div>
+
+<nav id="center-doc-outline" class="doc-outline is-hidden-desktop display-none-print margin-bottom-sm" data-bi-name="intopic toc" aria-label="">
+  <h2 class="title is-6 margin-block-xs"></h2>
+</nav>
+
+
+	<div class="margin-block-sm" data-chunk-ids="inputs,outputs,default,example-1-create-a-service,example-2-create-a-service-that-includes-description-startup-type-and-display-name,example-3-view-the-new-service,example-4-set-the-securitydescriptor-of-a-service-when-creating,binarypathname,confirm,credential,dependson,description,displayname,name,securitydescriptorsddl,startuptype,whatif">
+		<p>Creates a new Windows service.</p>
+
+	</div>
+
+	<h2 id="syntax" data-chunk-ids="default">Syntax</h2>
+	<h3 id="default" data-chunk-ids="default">
+		Default (Default)
+	</h3>
+	<div data-chunk-ids="default">
+		<pre><code class="lang-Syntax">New-Service
+    [-Name] &lt;String&gt;
+    [-BinaryPathName] &lt;String&gt;
+    [-DisplayName &lt;String&gt;]
+    [-Description &lt;String&gt;]
+    [-SecurityDescriptorSddl &lt;String&gt;]
+    [-StartupType &lt;ServiceStartupType&gt;]
+    [-Credential &lt;PSCredential&gt;]
+    [-DependsOn &lt;String[]&gt;]
+    [-WhatIf]
+    [-Confirm]
+    [&lt;CommonParameters&gt;]
+</code></pre>
+
+	</div>
+
+
+	<h2 id="description" data-chunk-ids="inputs,outputs,default,example-1-create-a-service,example-2-create-a-service-that-includes-description-startup-type-and-display-name,example-3-view-the-new-service,example-4-set-the-securitydescriptor-of-a-service-when-creating,binarypathname,confirm,credential,dependson,description,displayname,name,securitydescriptorsddl,startuptype,whatif">Description</h2>
+	<div data-chunk-ids="inputs,outputs,default,example-1-create-a-service,example-2-create-a-service-that-includes-description-startup-type-and-display-name,example-3-view-the-new-service,example-4-set-the-securitydescriptor-of-a-service-when-creating,binarypathname,confirm,credential,dependson,description,displayname,name,securitydescriptorsddl,startuptype,whatif">
+		<blockquote>
+<p><strong>This cmdlet is only available on the Windows platform.</strong></p>
+</blockquote>
+<p>The <code>New-Service</code> cmdlet creates a new entry for a Windows service in the registry and in the
+service database. A new service requires an executable file that runs during the service.</p>
+<p>The parameters of this cmdlet let you set the display name, description, startup type, and
+dependencies of the service.</p>
+
+	</div>
+
+	<h2 id="examples" data-chunk-ids="example-1-create-a-service,example-2-create-a-service-that-includes-description-startup-type-and-display-name,example-3-view-the-new-service,example-4-set-the-securitydescriptor-of-a-service-when-creating">Examples</h2>
+	<h3 id="example-1-create-a-service" data-chunk-ids="example-1-create-a-service">Example 1: Create a service</h3>
+	<div data-chunk-ids="example-1-create-a-service">
+		<pre><code class="lang-powershell">New-Service -Name "TestService" -BinaryPathName 'C:\WINDOWS\System32\svchost.exe -k netsvcs'
+</code></pre>
+<p>This command creates a service named TestService.</p>
+
+	</div>
+	<h3 id="example-2-create-a-service-that-includes-description-startup-type-and-display-name" data-chunk-ids="example-2-create-a-service-that-includes-description-startup-type-and-display-name">Example 2: Create a service that includes description, startup type, and display name</h3>
+	<div data-chunk-ids="example-2-create-a-service-that-includes-description-startup-type-and-display-name">
+		<pre><code class="lang-powershell">$params = @{
+  Name = "TestService"
+  BinaryPathName = 'C:\WINDOWS\System32\svchost.exe -k netsvcs'
+  DependsOn = "NetLogon"
+  DisplayName = "Test Service"
+  StartupType = "Manual"
+  Description = "This is a test service."
+}
+New-Service @params
+</code></pre>
+<p>This command creates a service named TestService. It uses the parameters of <code>New-Service</code> to specify
+a description, startup type, and display name for the new service.</p>
+
+	</div>
+	<h3 id="example-3-view-the-new-service" data-chunk-ids="example-3-view-the-new-service">Example 3: View the new service</h3>
+	<div data-chunk-ids="example-3-view-the-new-service">
+		<pre><code class="lang-powershell">Get-CimInstance -ClassName Win32_Service -Filter "Name='testservice'"
+</code></pre>
+<pre><code class="lang-Output">ExitCode  : 0
+Name      : testservice
+ProcessId : 0
+StartMode : Auto
+State     : Stopped
+Status    : OK
+</code></pre>
+<p>This command uses <code>Get-CimInstance</code> to get the <strong>Win32_Service</strong> object for the new service. This
+object includes the start mode and the service description.</p>
+
+	</div>
+	<h3 id="example-4-set-the-securitydescriptor-of-a-service-when-creating" data-chunk-ids="example-4-set-the-securitydescriptor-of-a-service-when-creating">Example 4: Set the Security<wbr>Descriptor of a service when creating.</h3>
+	<div data-chunk-ids="example-4-set-the-securitydescriptor-of-a-service-when-creating">
+		<p>This example adds the <strong>SecurityDescriptor</strong> of the service being created.</p>
+<pre><code class="lang-powershell">$SDDL = "D:(A;;CCLCSWRPWPDTLOCRRC;;;SY)(A;;CCDCLCSWRPWPDTLOCRSDRCWDWO;;;BA)(A;;CCLCSWLOCRRC;;;SU)"
+$params = @{
+  BinaryPathName = 'C:\WINDOWS\System32\svchost.exe -k netsvcs'
+  DependsOn = "NetLogon"
+  DisplayName = "Test Service"
+  StartupType = "Manual"
+  Description = "This is a test service."
+  SecurityDescriptorSddl = $SDDL
+}
+New-Service @params
+</code></pre>
+<p>The <strong>SecurityDescriptor</strong> is stored in the <code>$SDDLToSet</code> variable. The <strong>SecurityDescriptorSddl</strong>
+parameter uses <code>$SDDL</code> to set the <strong>SecurityDescriptor</strong> of the new service.</p>
+
+	</div>
+
+	<h2 id="parameters" data-chunk-ids="binarypathname,confirm,credential,dependson,description,displayname,name,securitydescriptorsddl,startuptype,whatif">Parameters</h2>
+		<h3 id="-binarypathname" data-chunk-ids="binarypathname" class="font-family-monospace margin-top-lg margin-bottom-md">-Binary<wbr>Path<wbr>Name</h3>
+		<p>Specifies the path of the executable file for the service. This parameter is required.</p>
+<p>The fully qualified path to the service binary file. If the path contains a space, it must be quoted
+so that it is correctly interpreted. For example, <code>D:\my share\myservice.exe</code> should be specified as
+<code>'"D:\my share\myservice.exe"'</code>.</p>
+<p>The path can also include arguments for an auto-start service. For example,
+<code>'"D:\my share\myservice.exe" arg1 arg2'</code>. These arguments are passed to the service entry point.</p>
+<p>For more information, see the <strong>lpBinaryPathName</strong> parameter of
+<a href="/en-us/windows/win32/api/winsvc/nf-winsvc-createservicew" data-linktype="absolute-path">CreateServiceW</a> API.</p>
+
+
+		<h4 id="binarypathname-properties" data-chunk-ids="binarypathname">Parameter properties</h4>
+		<table data-chunk-ids="binarypathname" class="table">
+				<tbody><tr><td>Type:</td><td><a class="no-loc" href="/en-us/dotnet/api/system.string" data-linktype="absolute-path">String</a>
+</td></tr>
+				<tr><td>Default value:</td><td>None</td></tr>
+				<tr><td>Supports wildcards:</td><td>False</td></tr>
+				<tr><td>DontShow:</td><td>False</td></tr>
+				<tr><td>Aliases:</td><td>Path</td></tr>
+		</tbody></table>
+
+		<h4 id="binarypathname-sets" data-chunk-ids="binarypathname">Parameter sets</h4>
+			<details class="margin-top-sm" data-chunk-ids="binarypathname" open="">
+				<summary class="list-style-none link-button">
+					(All) 
+					<span class="icon expanded-indicator" aria-hidden="true">
+						<span class="docon docon-chevron-down-light"></span>
+					</span>
+				</summary>
+				<table class="table">
+						<tbody><tr><td>Position:</td><td>1</td></tr>
+						<tr><td>Mandatory:</td><td>True</td></tr>
+						<tr><td>Value from pipeline:</td><td>False</td></tr>
+						<tr><td>Value from pipeline by property name:</td><td>False</td></tr>
+						<tr><td>Value from remaining arguments:</td><td>False</td></tr>
+				</tbody></table>
+			</details>
+		<h3 id="-confirm" data-chunk-ids="confirm" class="font-family-monospace margin-top-lg margin-bottom-md">-Confirm</h3>
+		<p>Prompts you for confirmation before running the cmdlet.</p>
+
+
+		<h4 id="confirm-properties" data-chunk-ids="confirm">Parameter properties</h4>
+		<table data-chunk-ids="confirm" class="table">
+				<tbody><tr><td>Type:</td><td><a class="no-loc" href="/en-us/dotnet/api/system.management.automation.switchparameter" data-linktype="absolute-path">SwitchParameter</a>
+</td></tr>
+				<tr><td>Default value:</td><td>False</td></tr>
+				<tr><td>Supports wildcards:</td><td>False</td></tr>
+				<tr><td>DontShow:</td><td>False</td></tr>
+				<tr><td>Aliases:</td><td>cf</td></tr>
+		</tbody></table>
+
+		<h4 id="confirm-sets" data-chunk-ids="confirm">Parameter sets</h4>
+			<details class="margin-top-sm" data-chunk-ids="confirm" open="">
+				<summary class="list-style-none link-button">
+					(All) 
+					<span class="icon expanded-indicator" aria-hidden="true">
+						<span class="docon docon-chevron-down-light"></span>
+					</span>
+				</summary>
+				<table class="table">
+						<tbody><tr><td>Position:</td><td>Named</td></tr>
+						<tr><td>Mandatory:</td><td>False</td></tr>
+						<tr><td>Value from pipeline:</td><td>False</td></tr>
+						<tr><td>Value from pipeline by property name:</td><td>False</td></tr>
+						<tr><td>Value from remaining arguments:</td><td>False</td></tr>
+				</tbody></table>
+			</details>
+		<h3 id="-credential" data-chunk-ids="credential" class="font-family-monospace margin-top-lg margin-bottom-md">-Credential</h3>
+		<p>Specifies the account used by the service as the
+<a href="/en-us/windows/desktop/ad/about-service-logon-accounts" data-linktype="absolute-path">Service Logon Account</a>.</p>
+<p>Type a user name, such as <strong>User01</strong> or <strong>Domain01\User01</strong>, or enter a <strong>PSCredential</strong> object,
+such as one generated by the <code>Get-Credential</code> cmdlet. If you type a user name, this cmdlet prompts
+you for a password.</p>
+<p>Credentials are stored in a <a href="/en-us/dotnet/api/system.management.automation.pscredential" data-linktype="absolute-path">PSCredential</a>
+object and the password is stored as a <a href="/en-us/dotnet/api/system.security.securestring" data-linktype="absolute-path">SecureString</a>.</p>
+<div class="NOTE">
+<p>Note</p>
+<p>For more information about <strong>SecureString</strong> data protection, see
+<a href="/en-us/dotnet/api/system.security.securestring#how-secure-is-securestring" data-linktype="absolute-path">How secure is SecureString?</a>.</p>
+</div>
+
+
+		<h4 id="credential-properties" data-chunk-ids="credential">Parameter properties</h4>
+		<table data-chunk-ids="credential" class="table">
+				<tbody><tr><td>Type:</td><td><a class="no-loc" href="/en-us/dotnet/api/system.management.automation.pscredential" data-linktype="absolute-path">PSCredential</a>
+</td></tr>
+				<tr><td>Default value:</td><td>None</td></tr>
+				<tr><td>Supports wildcards:</td><td>False</td></tr>
+				<tr><td>DontShow:</td><td>False</td></tr>
+		</tbody></table>
+
+		<h4 id="credential-sets" data-chunk-ids="credential">Parameter sets</h4>
+			<details class="margin-top-sm" data-chunk-ids="credential" open="">
+				<summary class="list-style-none link-button">
+					(All) 
+					<span class="icon expanded-indicator" aria-hidden="true">
+						<span class="docon docon-chevron-down-light"></span>
+					</span>
+				</summary>
+				<table class="table">
+						<tbody><tr><td>Position:</td><td>Named</td></tr>
+						<tr><td>Mandatory:</td><td>False</td></tr>
+						<tr><td>Value from pipeline:</td><td>False</td></tr>
+						<tr><td>Value from pipeline by property name:</td><td>False</td></tr>
+						<tr><td>Value from remaining arguments:</td><td>False</td></tr>
+				</tbody></table>
+			</details>
+		<h3 id="-dependson" data-chunk-ids="dependson" class="font-family-monospace margin-top-lg margin-bottom-md">-Depends<wbr>On</h3>
+		<p>Specifies the names of other services upon which the new service depends. To enter multiple service
+names, use a comma to separate the names.</p>
+
+
+		<h4 id="dependson-properties" data-chunk-ids="dependson">Parameter properties</h4>
+		<table data-chunk-ids="dependson" class="table">
+				<tbody><tr><td>Type:</td><td><p><a class="no-loc" href="/en-us/dotnet/api/system.string" data-linktype="absolute-path">String</a><span>[</span><span>]</span></p>
+</td></tr>
+				<tr><td>Default value:</td><td>None</td></tr>
+				<tr><td>Supports wildcards:</td><td>False</td></tr>
+				<tr><td>DontShow:</td><td>False</td></tr>
+		</tbody></table>
+
+		<h4 id="dependson-sets" data-chunk-ids="dependson">Parameter sets</h4>
+			<details class="margin-top-sm" data-chunk-ids="dependson" open="">
+				<summary class="list-style-none link-button">
+					(All) 
+					<span class="icon expanded-indicator" aria-hidden="true">
+						<span class="docon docon-chevron-down-light"></span>
+					</span>
+				</summary>
+				<table class="table">
+						<tbody><tr><td>Position:</td><td>Named</td></tr>
+						<tr><td>Mandatory:</td><td>False</td></tr>
+						<tr><td>Value from pipeline:</td><td>False</td></tr>
+						<tr><td>Value from pipeline by property name:</td><td>False</td></tr>
+						<tr><td>Value from remaining arguments:</td><td>False</td></tr>
+				</tbody></table>
+			</details>
+		<h3 id="-description" data-chunk-ids="description" class="font-family-monospace margin-top-lg margin-bottom-md">-Description</h3>
+		<p>Specifies a description of the service.</p>
+
+
+		<h4 id="description-properties" data-chunk-ids="description">Parameter properties</h4>
+		<table data-chunk-ids="description" class="table">
+				<tbody><tr><td>Type:</td><td><a class="no-loc" href="/en-us/dotnet/api/system.string" data-linktype="absolute-path">String</a>
+</td></tr>
+				<tr><td>Default value:</td><td>None</td></tr>
+				<tr><td>Supports wildcards:</td><td>False</td></tr>
+				<tr><td>DontShow:</td><td>False</td></tr>
+		</tbody></table>
+
+		<h4 id="description-sets" data-chunk-ids="description">Parameter sets</h4>
+			<details class="margin-top-sm" data-chunk-ids="description" open="">
+				<summary class="list-style-none link-button">
+					(All) 
+					<span class="icon expanded-indicator" aria-hidden="true">
+						<span class="docon docon-chevron-down-light"></span>
+					</span>
+				</summary>
+				<table class="table">
+						<tbody><tr><td>Position:</td><td>Named</td></tr>
+						<tr><td>Mandatory:</td><td>False</td></tr>
+						<tr><td>Value from pipeline:</td><td>False</td></tr>
+						<tr><td>Value from pipeline by property name:</td><td>False</td></tr>
+						<tr><td>Value from remaining arguments:</td><td>False</td></tr>
+				</tbody></table>
+			</details>
+		<h3 id="-displayname" data-chunk-ids="displayname" class="font-family-monospace margin-top-lg margin-bottom-md">-Display<wbr>Name</h3>
+		<p>Specifies a display name for the service.</p>
+
+
+		<h4 id="displayname-properties" data-chunk-ids="displayname">Parameter properties</h4>
+		<table data-chunk-ids="displayname" class="table">
+				<tbody><tr><td>Type:</td><td><a class="no-loc" href="/en-us/dotnet/api/system.string" data-linktype="absolute-path">String</a>
+</td></tr>
+				<tr><td>Default value:</td><td>None</td></tr>
+				<tr><td>Supports wildcards:</td><td>False</td></tr>
+				<tr><td>DontShow:</td><td>False</td></tr>
+		</tbody></table>
+
+		<h4 id="displayname-sets" data-chunk-ids="displayname">Parameter sets</h4>
+			<details class="margin-top-sm" data-chunk-ids="displayname" open="">
+				<summary class="list-style-none link-button">
+					(All) 
+					<span class="icon expanded-indicator" aria-hidden="true">
+						<span class="docon docon-chevron-down-light"></span>
+					</span>
+				</summary>
+				<table class="table">
+						<tbody><tr><td>Position:</td><td>Named</td></tr>
+						<tr><td>Mandatory:</td><td>False</td></tr>
+						<tr><td>Value from pipeline:</td><td>False</td></tr>
+						<tr><td>Value from pipeline by property name:</td><td>False</td></tr>
+						<tr><td>Value from remaining arguments:</td><td>False</td></tr>
+				</tbody></table>
+			</details>
+		<h3 id="-name" data-chunk-ids="name" class="font-family-monospace margin-top-lg margin-bottom-md">-Name</h3>
+		<p>Specifies the name of the service. This parameter is required.</p>
+
+
+		<h4 id="name-properties" data-chunk-ids="name">Parameter properties</h4>
+		<table data-chunk-ids="name" class="table">
+				<tbody><tr><td>Type:</td><td><a class="no-loc" href="/en-us/dotnet/api/system.string" data-linktype="absolute-path">String</a>
+</td></tr>
+				<tr><td>Default value:</td><td>None</td></tr>
+				<tr><td>Supports wildcards:</td><td>False</td></tr>
+				<tr><td>DontShow:</td><td>False</td></tr>
+				<tr><td>Aliases:</td><td>ServiceName</td></tr>
+		</tbody></table>
+
+		<h4 id="name-sets" data-chunk-ids="name">Parameter sets</h4>
+			<details class="margin-top-sm" data-chunk-ids="name" open="">
+				<summary class="list-style-none link-button">
+					(All) 
+					<span class="icon expanded-indicator" aria-hidden="true">
+						<span class="docon docon-chevron-down-light"></span>
+					</span>
+				</summary>
+				<table class="table">
+						<tbody><tr><td>Position:</td><td>0</td></tr>
+						<tr><td>Mandatory:</td><td>True</td></tr>
+						<tr><td>Value from pipeline:</td><td>False</td></tr>
+						<tr><td>Value from pipeline by property name:</td><td>False</td></tr>
+						<tr><td>Value from remaining arguments:</td><td>False</td></tr>
+				</tbody></table>
+			</details>
+		<h3 id="-securitydescriptorsddl" data-chunk-ids="securitydescriptorsddl" class="font-family-monospace margin-top-lg margin-bottom-md">-Security<wbr>Descriptor<wbr>Sddl</h3>
+		<p>Specifies the <strong>SecurityDescriptor</strong> for the service in <strong>Sddl</strong> format.</p>
+
+
+		<h4 id="securitydescriptorsddl-properties" data-chunk-ids="securitydescriptorsddl">Parameter properties</h4>
+		<table data-chunk-ids="securitydescriptorsddl" class="table">
+				<tbody><tr><td>Type:</td><td><a class="no-loc" href="/en-us/dotnet/api/system.string" data-linktype="absolute-path">String</a>
+</td></tr>
+				<tr><td>Default value:</td><td>None</td></tr>
+				<tr><td>Supports wildcards:</td><td>False</td></tr>
+				<tr><td>DontShow:</td><td>False</td></tr>
+				<tr><td>Aliases:</td><td>sd</td></tr>
+		</tbody></table>
+
+		<h4 id="securitydescriptorsddl-sets" data-chunk-ids="securitydescriptorsddl">Parameter sets</h4>
+			<details class="margin-top-sm" data-chunk-ids="securitydescriptorsddl" open="">
+				<summary class="list-style-none link-button">
+					(All) 
+					<span class="icon expanded-indicator" aria-hidden="true">
+						<span class="docon docon-chevron-down-light"></span>
+					</span>
+				</summary>
+				<table class="table">
+						<tbody><tr><td>Position:</td><td>Named</td></tr>
+						<tr><td>Mandatory:</td><td>False</td></tr>
+						<tr><td>Value from pipeline:</td><td>False</td></tr>
+						<tr><td>Value from pipeline by property name:</td><td>False</td></tr>
+						<tr><td>Value from remaining arguments:</td><td>False</td></tr>
+				</tbody></table>
+			</details>
+		<h3 id="-startuptype" data-chunk-ids="startuptype" class="font-family-monospace margin-top-lg margin-bottom-md">-Startup<wbr>Type</h3>
+		<p>Sets the startup type of the service. The acceptable values for this parameter are:</p>
+<ul>
+<li><strong>Automatic</strong> - The service is started or was started by the operating system, at system start-up.
+If an automatically started service depends on a manually started service, the manually started
+service is also started automatically at system startup.</li>
+<li><strong>AutomaticDelayedStart</strong> - Starts shortly after the system boots.</li>
+<li><strong>Disabled</strong> - The service is disabled and cannot be started by a user or application.</li>
+<li><strong>InvalidValue</strong> - This value is not supported. Using this value results in an error.</li>
+<li><strong>Manual</strong> - The service is started only manually, by a user, using the Service Control Manager,
+or by an application.</li>
+</ul>
+<p>The default value is <strong>Automatic</strong>.</p>
+
+
+		<h4 id="startuptype-properties" data-chunk-ids="startuptype">Parameter properties</h4>
+		<table data-chunk-ids="startuptype" class="table">
+				<tbody><tr><td>Type:</td><td><a class="no-loc" href="/en-us/dotnet/api/microsoft.powershell.commands.servicestartuptype" data-linktype="absolute-path">ServiceStartupType</a>
+</td></tr>
+				<tr><td>Default value:</td><td>Automatic</td></tr>
+				<tr><td>Accepted values:</td><td>Automatic, Manual, Disabled, AutomaticDelayedStart, InvalidValue</td></tr>
+				<tr><td>Supports wildcards:</td><td>False</td></tr>
+				<tr><td>DontShow:</td><td>False</td></tr>
+		</tbody></table>
+
+		<h4 id="startuptype-sets" data-chunk-ids="startuptype">Parameter sets</h4>
+			<details class="margin-top-sm" data-chunk-ids="startuptype" open="">
+				<summary class="list-style-none link-button">
+					(All) 
+					<span class="icon expanded-indicator" aria-hidden="true">
+						<span class="docon docon-chevron-down-light"></span>
+					</span>
+				</summary>
+				<table class="table">
+						<tbody><tr><td>Position:</td><td>Named</td></tr>
+						<tr><td>Mandatory:</td><td>False</td></tr>
+						<tr><td>Value from pipeline:</td><td>False</td></tr>
+						<tr><td>Value from pipeline by property name:</td><td>False</td></tr>
+						<tr><td>Value from remaining arguments:</td><td>False</td></tr>
+				</tbody></table>
+			</details>
+		<h3 id="-whatif" data-chunk-ids="whatif" class="font-family-monospace margin-top-lg margin-bottom-md">-What<wbr>If</h3>
+		<p>Shows what would happen if the cmdlet runs. The cmdlet is not run.</p>
+
+
+		<h4 id="whatif-properties" data-chunk-ids="whatif">Parameter properties</h4>
+		<table data-chunk-ids="whatif" class="table">
+				<tbody><tr><td>Type:</td><td><a class="no-loc" href="/en-us/dotnet/api/system.management.automation.switchparameter" data-linktype="absolute-path">SwitchParameter</a>
+</td></tr>
+				<tr><td>Default value:</td><td>False</td></tr>
+				<tr><td>Supports wildcards:</td><td>False</td></tr>
+				<tr><td>DontShow:</td><td>False</td></tr>
+				<tr><td>Aliases:</td><td>wi</td></tr>
+		</tbody></table>
+
+		<h4 id="whatif-sets" data-chunk-ids="whatif">Parameter sets</h4>
+			<details class="margin-top-sm" data-chunk-ids="whatif" open="">
+				<summary class="list-style-none link-button">
+					(All) 
+					<span class="icon expanded-indicator" aria-hidden="true">
+						<span class="docon docon-chevron-down-light"></span>
+					</span>
+				</summary>
+				<table class="table">
+						<tbody><tr><td>Position:</td><td>Named</td></tr>
+						<tr><td>Mandatory:</td><td>False</td></tr>
+						<tr><td>Value from pipeline:</td><td>False</td></tr>
+						<tr><td>Value from pipeline by property name:</td><td>False</td></tr>
+						<tr><td>Value from remaining arguments:</td><td>False</td></tr>
+				</tbody></table>
+			</details>
+		<h3 id="common-parameters" data-no-chunk="">CommonParameters</h3>
+		<div data-no-chunk="">
+			<p>This cmdlet supports the common parameters: -Debug, -ErrorAction, -ErrorVariable,
+-InformationAction, -InformationVariable, -OutBuffer, -OutVariable, -PipelineVariable,
+-ProgressAction, -Verbose, -WarningAction, and -WarningVariable. For more information, see
+<a href="https://go.microsoft.com/fwlink/?LinkID=113216" data-linktype="external">about_CommonParameters</a>.</p>
+
+		</div>
+
+	<h2 id="inputs" data-chunk-ids="inputs">Inputs</h2>
+			<h3 id="input-1" data-chunk-ids="inputs" class="break-text font-size-xl"><span class="no-loc xref">None</span>
+</h3>
+			<div data-chunk-ids="inputs">
+				<p>You can't pipe objects to this cmdlet.</p>
+
+			</div>
+
+	<h2 id="outputs" data-chunk-ids="outputs">Outputs</h2>
+			<h3 id="output-1" data-chunk-ids="outputs" class="break-text font-size-xl"><a class="no-loc" href="/en-us/dotnet/api/system.serviceprocess.servicecontroller" data-linktype="absolute-path">ServiceController</a>
+</h3>
+			<div data-chunk-ids="outputs">
+				<p>This cmdlet returns an object representing the new service.</p>
+
+			</div>
+
+	<h2 id="notes" data-chunk-ids="inputs,outputs,default,example-1-create-a-service,example-2-create-a-service-that-includes-description-startup-type-and-display-name,example-3-view-the-new-service,example-4-set-the-securitydescriptor-of-a-service-when-creating,binarypathname,confirm,credential,dependson,description,displayname,name,securitydescriptorsddl,startuptype,whatif">Notes</h2>
+	<div data-chunk-ids="inputs,outputs,default,example-1-create-a-service,example-2-create-a-service-that-includes-description-startup-type-and-display-name,example-3-view-the-new-service,example-4-set-the-securitydescriptor-of-a-service-when-creating,binarypathname,confirm,credential,dependson,description,displayname,name,securitydescriptorsddl,startuptype,whatif">
+		<p>This cmdlet is only available on Windows platforms.</p>
+<p>To run this cmdlet, start PowerShell by using the <strong>Run as administrator</strong> option.</p>
+<p>Beginning in PowerShell 6.0, the command no longer includes the <strong>ComputerName</strong> parameter. To use
+this command on a remote computer, use the <code>Invoke-Command</code> to target a remote system.</p>
+
+	</div>
+
+	<h2 id="related-links" data-no-chunk="">Related Links</h2>
+	<ul data-no-chunk="">
+			<li><a href="../microsoft.powershell.core/invoke-command?view=powershell-7.5" data-linktype="relative-path">Invoke-Command</a></li>
+			<li><a href="get-service?view=powershell-7.5" data-linktype="relative-path">Get-Service</a></li>
+			<li><a href="restart-service?view=powershell-7.5" data-linktype="relative-path">Restart-Service</a></li>
+			<li><a href="resume-service?view=powershell-7.5" data-linktype="relative-path">Resume-Service</a></li>
+			<li><a href="set-service?view=powershell-7.5" data-linktype="relative-path">Set-Service</a></li>
+			<li><a href="start-service?view=powershell-7.5" data-linktype="relative-path">Start-Service</a></li>
+			<li><a href="stop-service?view=powershell-7.5" data-linktype="relative-path">Stop-Service</a></li>
+			<li><a href="suspend-service?view=powershell-7.5" data-linktype="relative-path">Suspend-Service</a></li>
+			<li><a href="remove-service?view=powershell-7.5" data-linktype="relative-path">Remove-Service</a></li>
+	</ul>
+</div>
+					
+		<div
+			id="ms--inline-notifications"
+			class="margin-block-xs"
+			data-bi-name="inline-notification"
+		></div>
+	 
+		<div
+			id="assertive-live-region"
+			role="alert"
+			aria-live="assertive"
+			class="visually-hidden"
+			aria-relevant="additions"
+			aria-atomic="true"
+		></div>
+		<div
+			id="polite-live-region"
+			role="status"
+			aria-live="polite"
+			class="visually-hidden"
+			aria-relevant="additions"
+			aria-atomic="true"
+		></div>
+	
+					
+			
+		<!-- feedback section -->
+		<section
+			class="feedback-section position-relative margin-top-lg border border-radius padding-xxs display-none-print"
+			data-bi-name="open-source-feedback-section"
+			data-open-source-feedback-section
+			hidden
+		>
+			<div class="display-flex flex-direction-column flex-direction-row-tablet">
+				<div
+					class="width-450-tablet padding-inline-xs padding-inline-xs-tablet padding-top-xs padding-bottom-sm padding-top-xs-tablet background-color-body-medium"
+				>
+					<div class="display-flex flex-direction-column">
+						<div class="padding-bottom-xxs">
+							<span class="icon margin-right-xxs" aria-hidden="true">
+								<span class="docon docon-brand-github"></span>
+							</span>
+							<span class="font-weight-semibold">
+								Collaborate with us on GitHub
+							</span>
+						</div>
+						<span class="line-height-normal">
+							The source for this content can be found on GitHub, where you can also create and review issues and pull requests. For more information, see <a href="https://learn.microsoft.com/powershell/scripting/community/contributing/powershell-style-guide">our contributor guide</a>.
+						</span>
+					</div>
+				</div>
+				<div
+					class="display-flex gap-xs width-full-tablet flex-direction-column padding-xs justify-content-space-evenly"
+				>
+					<div class="media">
+						
+					<div class="media-left">
+						<div class="image image-36x36" hidden data-open-source-image-container>
+							<img
+								class="theme-display is-light"
+								src="https://learn.microsoft.com/media/logos/logo-powershell-core.svg"
+								aria-hidden="true"
+								data-open-source-image-light
+							/>
+							<img
+								class="theme-display is-dark is-high-contrast"
+								src="https://learn.microsoft.com/media/logos/logo-powershell-core.svg"
+								aria-hidden="true"
+								data-open-source-image-dark
+							/>
+						</div>
+					</div>
+			  
+
+						<div class="media-content">
+							<p
+								class="font-size-xl font-weight-semibold margin-bottom-xxs"
+								data-open-source-product-title
+							>
+								PowerShell
+							</p>
+							<div class="display-flex gap-xs flex-direction-column">
+								<p class="line-height-normal" data-open-source-product-description></p>
+								<div class="display-flex gap-xs flex-direction-column">
+									<a href="#" data-github-link>
+										<span class="icon margin-right-xxs" aria-hidden="true">
+											<span class="docon docon-bug"></span>
+										</span>
+										<span>Open a documentation issue</span>
+									</a>
+									<a
+										href="https://github.com/PowerShell/PowerShell/issues/new/choose"
+										class="display-block margin-top-auto font-size-md"
+										data-feedback-product-url
+									>
+										<span class="icon margin-right-xxs" aria-hidden="true">
+											<span class="docon docon-feedback"></span>
+										</span>
+										<span>Provide product feedback</span>
+									</a>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</section>
+		<!-- end feedback section -->
+	
+			
+		<!-- feedback section -->
+		<section
+			id="site-user-feedback-footer"
+			class="font-size-sm margin-top-md display-none-print display-none-desktop"
+			data-test-id="site-user-feedback-footer"
+			data-bi-name="site-feedback-section"
+		>
+			<hr class="hr" />
+			<h2 id="ms--feedback" class="title is-3">Feedback</h2>
+			<div class="display-flex flex-wrap-wrap align-items-center">
+				<p class="font-weight-semibold margin-xxs margin-left-none">
+					Was this page helpful?
+				</p>
+				<div class="buttons">
+					<button
+						class="thumb-rating-button like button button-primary button-sm"
+						data-test-id="footer-rating-yes"
+						data-binary-rating-response="rating-yes"
+						type="button"
+						title="This article is helpful"
+						data-bi-name="button-rating-yes"
+						aria-pressed="false"
+					>
+						<span class="icon" aria-hidden="true">
+							<span class="docon docon-like"></span>
+						</span>
+						<span>Yes</span>
+					</button>
+					<button
+						class="thumb-rating-button dislike button button-primary button-sm"
+						id="standard-rating-no-button"
+						hidden
+						data-test-id="footer-rating-no"
+						data-binary-rating-response="rating-no"
+						type="button"
+						title="This article is not helpful"
+						data-bi-name="button-rating-no"
+						aria-pressed="false"
+					>
+						<span class="icon" aria-hidden="true">
+							<span class="docon docon-dislike"></span>
+						</span>
+						<span>No</span>
+					</button>
+					<details
+						class="popover popover-top"
+						id="mobile-help-popover"
+						data-test-id="footer-feedback-popover"
+					>
+						<summary
+							class="thumb-rating-button dislike button button-primary button-sm"
+							data-test-id="details-footer-rating-no"
+							data-binary-rating-response="rating-no"
+							title="This article is not helpful"
+							data-bi-name="button-rating-no"
+							aria-pressed="false"
+							data-bi-an="feedback-unhelpful-popover"
+						>
+							<span class="icon" aria-hidden="true">
+								<span class="docon docon-dislike"></span>
+							</span>
+							<span>No</span>
+						</summary>
+						<div
+							class="popover-content width-200 width-300-tablet"
+							role="dialog"
+							aria-labelledby="popover-heading"
+							aria-describedby="popover-description"
+						>
+							<p id="popover-heading" class="font-size-lg margin-bottom-xxs font-weight-semibold">
+								Need help with this topic?
+							</p>
+							<p id="popover-description" class="font-size-sm margin-bottom-xs">
+								Want to try using Ask Learn to clarify or guide you through this topic?
+							</p>
+							
+		<div class="buttons flex-direction-row flex-wrap justify-content-center gap-xxs">
+			<div>
+		<button
+			class="button button-sm border inner-focus display-none margin-right-xxs"
+			data-bi-name="ask-learn-assistant-entry-troubleshoot"
+			data-test-id="ask-learn-assistant-modal-entry-mobile-feedback"
+			data-ask-learn-modal-entry-feedback
+			data-bi-an=feedback-unhelpful-popover
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			aria-label="Ask Learn"
+			hidden
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+		</button>
+		<button
+			class="button button-sm display-inline-flex display-none-desktop flex-shrink-0 margin-right-xxs border-color-ask-learn margin-right-xxs"
+			data-bi-name="ask-learn-assistant-entry-troubleshoot"
+			data-bi-an=feedback-unhelpful-popover
+			data-test-id="ask-learn-assistant-modal-entry-tablet-feedback"
+			data-ask-learn-modal-entry-feedback
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			hidden
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+			<span>Ask Learn</span>
+		</button>
+		<button
+			class="button button-sm display-none flex-shrink-0 display-inline-flex-desktop margin-right-xxs border-color-ask-learn margin-right-xxs"
+			data-bi-name="ask-learn-assistant-entry-troubleshoot"
+			data-bi-an=feedback-unhelpful-popover
+			data-test-id="ask-learn-assistant-flyout-entry-feedback"
+			data-ask-learn-flyout-entry-show-only
+			data-flyout-button="toggle"
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			aria-controls="ask-learn-flyout"
+			hidden
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+			<span>Ask Learn</span>
+		</button>
+	</div>
+			<button
+				type="button"
+				class="button button-sm margin-right-xxs"
+				data-help-option="suggest-fix"
+				data-bi-name="feedback-suggest"
+				data-bi-an="feedback-unhelpful-popover"
+				data-test-id="suggest-fix"
+			>
+				<span class="icon" aria-hidden="true">
+					<span class="docon docon-feedback"></span>
+				</span>
+				<span> Suggest a fix? </span>
+			</button>
+		</div>
+	
+						</div>
+					</details>
+				</div>
+			</div>
+		</section>
+		<!-- end feedback section -->
+	
+		
+				</div>
+				 
+			</div>
+			
+		<div
+			id="action-panel"
+			role="region"
+			aria-label="Action Panel"
+			class="action-panel"
+			tabindex="-1"
+		></div>
+	
+		
+				</main>
+				<aside
+					id="layout-body-aside"
+					class="layout-body-aside "
+					data-bi-name="aside"
+			  >
+					
+		<div
+			id="ms--additional-resources"
+			class="right-container padding-sm display-none display-block-desktop height-full"
+			data-bi-name="pageactions"
+			role="complementary"
+			aria-label="Additional resources"
+		>
+			<div id="affixed-right-container" data-bi-name="right-column">
+				
+		<nav
+			id="side-doc-outline"
+			class="doc-outline border-bottom padding-bottom-xs margin-bottom-xs"
+			data-bi-name="intopic toc"
+			aria-label="In this article"
+		>
+			<h3>In this article</h3>
+		</nav>
+	
+				<!-- Feedback -->
+				
+		<section
+			id="ms--site-user-feedback-right-rail"
+			class="font-size-sm display-none-print"
+			data-test-id="site-user-feedback-right-rail"
+			data-bi-name="site-feedback-right-rail"
+		>
+			<p class="font-weight-semibold margin-bottom-xs">Was this page helpful?</p>
+			<div class="buttons">
+				<button
+					class="thumb-rating-button like button button-primary button-sm"
+					data-test-id="right-rail-rating-yes"
+					data-binary-rating-response="rating-yes"
+					type="button"
+					title="This article is helpful"
+					data-bi-name="button-rating-yes"
+					aria-pressed="false"
+				>
+					<span class="icon" aria-hidden="true">
+						<span class="docon docon-like"></span>
+					</span>
+					<span>Yes</span>
+				</button>
+				<button
+					class="thumb-rating-button dislike button button-primary button-sm"
+					id="right-rail-no-button"
+					hidden
+					data-test-id="right-rail-rating-no"
+					data-binary-rating-response="rating-no"
+					type="button"
+					title="This article is not helpful"
+					data-bi-name="button-rating-no"
+					aria-pressed="false"
+				>
+					<span class="icon" aria-hidden="true">
+						<span class="docon docon-dislike"></span>
+					</span>
+					<span>No</span>
+				</button>
+				<details class="popover popover-right" id="help-popover" data-test-id="feedback-popover">
+					<summary
+						tabindex="0"
+						class="thumb-rating-button dislike button button-primary button-sm"
+						data-test-id="details-right-rail-rating-no"
+						data-binary-rating-response="rating-no"
+						title="This article is not helpful"
+						data-bi-name="button-rating-no"
+						aria-pressed="false"
+						data-bi-an="feedback-unhelpful-popover"
+					>
+						<span class="icon" aria-hidden="true">
+							<span class="docon docon-dislike"></span>
+						</span>
+						<span>No</span>
+					</summary>
+					<div
+						class="popover-content width-200 width-300-tablet"
+						role="dialog"
+						aria-labelledby="popover-heading"
+						aria-describedby="popover-description"
+					>
+						<p
+							id="popover-heading-right-rail"
+							class="font-size-lg margin-bottom-xxs font-weight-semibold"
+						>
+							Need help with this topic?
+						</p>
+						<p id="popover-description-right-rail" class="font-size-sm margin-bottom-xs">
+							Want to try using Ask Learn to clarify or guide you through this topic?
+						</p>
+						
+		<div class="buttons flex-direction-row flex-wrap justify-content-center gap-xxs">
+			<div>
+		<button
+			class="button button-sm border inner-focus display-none margin-right-xxs"
+			data-bi-name="ask-learn-assistant-entry-troubleshoot"
+			data-test-id="ask-learn-assistant-modal-entry-mobile-feedback"
+			data-ask-learn-modal-entry-feedback
+			data-bi-an=feedback-unhelpful-popover
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			aria-label="Ask Learn"
+			hidden
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+		</button>
+		<button
+			class="button button-sm display-inline-flex display-none-desktop flex-shrink-0 margin-right-xxs border-color-ask-learn margin-right-xxs"
+			data-bi-name="ask-learn-assistant-entry-troubleshoot"
+			data-bi-an=feedback-unhelpful-popover
+			data-test-id="ask-learn-assistant-modal-entry-tablet-feedback"
+			data-ask-learn-modal-entry-feedback
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			hidden
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+			<span>Ask Learn</span>
+		</button>
+		<button
+			class="button button-sm display-none flex-shrink-0 display-inline-flex-desktop margin-right-xxs border-color-ask-learn margin-right-xxs"
+			data-bi-name="ask-learn-assistant-entry-troubleshoot"
+			data-bi-an=feedback-unhelpful-popover
+			data-test-id="ask-learn-assistant-flyout-entry-feedback"
+			data-ask-learn-flyout-entry-show-only
+			data-flyout-button="toggle"
+			type="button"
+			style="min-width: max-content;"
+			aria-expanded="false"
+			aria-controls="ask-learn-flyout"
+			hidden
+		>
+			<span class="icon font-size-lg" aria-hidden="true">
+				<span class="docon docon-chat-sparkle-fill gradient-ask-learn-logo"></span>
+			</span>
+			<span>Ask Learn</span>
+		</button>
+	</div>
+			<button
+				type="button"
+				class="button button-sm margin-right-xxs"
+				data-help-option="suggest-fix"
+				data-bi-name="feedback-suggest"
+				data-bi-an="feedback-unhelpful-popover"
+				data-test-id="suggest-fix"
+			>
+				<span class="icon" aria-hidden="true">
+					<span class="docon docon-feedback"></span>
+				</span>
+				<span> Suggest a fix? </span>
+			</button>
+		</div>
+	
+					</div>
+				</details>
+			</div>
+		</section>
+	
+			</div>
+		</div>
+	
+			  </aside> <section
+					id="layout-body-flyout"
+					class="layout-body-flyout "
+					data-bi-name="flyout"
+			  >
+					 <div
+	class="height-full border-left background-color-body-medium"
+	id="ask-learn-flyout"
+></div>
+			  </section> <div class="layout-body-footer " data-bi-name="layout-footer">
+		<footer
+			id="footer"
+			data-test-id="footer"
+			data-bi-name="footer"
+			class="footer-layout has-padding has-default-focus border-top  uhf-container"
+			role="contentinfo"
+		>
+			<div class="display-flex gap-xs flex-wrap-wrap is-full-height padding-right-lg-desktop">
+				
+		<a
+			data-mscc-ic="false"
+			href="#"
+			data-bi-name="select-locale"
+			class="locale-selector-link flex-shrink-0 button button-sm button-clear external-link-indicator"
+			id=""
+			title=""
+			><span class="icon" aria-hidden="true"
+				><span class="docon docon-world"></span></span
+			><span class="local-selector-link-text">en-us</span></a
+		>
+	 <div class="ccpa-privacy-link" data-ccpa-privacy-link hidden>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://aka.ms/yourcaliforniaprivacychoices"
+			data-bi-name="your-privacy-choices"
+			class="button button-sm button-clear flex-shrink-0 external-link-indicator"
+			id=""
+			title=""
+			>
+		<svg
+			xmlns="http://www.w3.org/2000/svg"
+			viewBox="0 0 30 14"
+			xml:space="preserve"
+			height="16"
+			width="43"
+			aria-hidden="true"
+			focusable="false"
+		>
+			<path
+				d="M7.4 12.8h6.8l3.1-11.6H7.4C4.2 1.2 1.6 3.8 1.6 7s2.6 5.8 5.8 5.8z"
+				style="fill-rule:evenodd;clip-rule:evenodd;fill:#fff"
+			></path>
+			<path
+				d="M22.6 0H7.4c-3.9 0-7 3.1-7 7s3.1 7 7 7h15.2c3.9 0 7-3.1 7-7s-3.2-7-7-7zm-21 7c0-3.2 2.6-5.8 5.8-5.8h9.9l-3.1 11.6H7.4c-3.2 0-5.8-2.6-5.8-5.8z"
+				style="fill-rule:evenodd;clip-rule:evenodd;fill:#06f"
+			></path>
+			<path
+				d="M24.6 4c.2.2.2.6 0 .8L22.5 7l2.2 2.2c.2.2.2.6 0 .8-.2.2-.6.2-.8 0l-2.2-2.2-2.2 2.2c-.2.2-.6.2-.8 0-.2-.2-.2-.6 0-.8L20.8 7l-2.2-2.2c-.2-.2-.2-.6 0-.8.2-.2.6-.2.8 0l2.2 2.2L23.8 4c.2-.2.6-.2.8 0z"
+				style="fill:#fff"
+			></path>
+			<path
+				d="M12.7 4.1c.2.2.3.6.1.8L8.6 9.8c-.1.1-.2.2-.3.2-.2.1-.5.1-.7-.1L5.4 7.7c-.2-.2-.2-.6 0-.8.2-.2.6-.2.8 0L8 8.6l3.8-4.5c.2-.2.6-.2.9 0z"
+				style="fill:#06f"
+			></path>
+		</svg>
+	
+			<span>Your Privacy Choices</span></a
+		>
+	
+	</div>
+				<div class="flex-shrink-0">
+		<div class="dropdown has-caret-up">
+			<button
+				data-test-id="theme-selector-button"
+				class="dropdown-trigger button button-clear button-sm inner-focus theme-dropdown-trigger"
+				aria-controls="{{ themeMenuId }}"
+				aria-expanded="false"
+				title="Theme"
+				data-bi-name="theme"
+			>
+				<span class="icon">
+					<span class="docon docon-sun" aria-hidden="true"></span>
+				</span>
+				<span>Theme</span>
+				<span class="icon expanded-indicator" aria-hidden="true">
+					<span class="docon docon-chevron-down-light"></span>
+				</span>
+			</button>
+			<div class="dropdown-menu" id="{{ themeMenuId }}" role="menu">
+				<ul class="theme-selector padding-xxs" data-test-id="theme-dropdown-menu">
+					<li class="theme display-block">
+						<button
+							class="button button-clear button-sm theme-control button-block justify-content-flex-start text-align-left"
+							data-theme-to="light"
+						>
+							<span class="theme-light margin-right-xxs">
+								<span
+									class="theme-selector-icon border display-inline-block has-body-background"
+									aria-hidden="true"
+								>
+									<svg class="svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 14">
+										<rect width="22" height="14" class="has-fill-body-background" />
+										<rect x="5" y="5" width="12" height="4" class="has-fill-secondary" />
+										<rect x="5" y="2" width="2" height="1" class="has-fill-secondary" />
+										<rect x="8" y="2" width="2" height="1" class="has-fill-secondary" />
+										<rect x="11" y="2" width="3" height="1" class="has-fill-secondary" />
+										<rect x="1" y="1" width="2" height="2" class="has-fill-secondary" />
+										<rect x="5" y="10" width="7" height="2" rx="0.3" class="has-fill-primary" />
+										<rect x="19" y="1" width="2" height="2" rx="1" class="has-fill-secondary" />
+									</svg>
+								</span>
+							</span>
+							<span role="menuitem"> Light </span>
+						</button>
+					</li>
+					<li class="theme display-block">
+						<button
+							class="button button-clear button-sm theme-control button-block justify-content-flex-start text-align-left"
+							data-theme-to="dark"
+						>
+							<span class="theme-dark margin-right-xxs">
+								<span
+									class="border theme-selector-icon display-inline-block has-body-background"
+									aria-hidden="true"
+								>
+									<svg class="svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 14">
+										<rect width="22" height="14" class="has-fill-body-background" />
+										<rect x="5" y="5" width="12" height="4" class="has-fill-secondary" />
+										<rect x="5" y="2" width="2" height="1" class="has-fill-secondary" />
+										<rect x="8" y="2" width="2" height="1" class="has-fill-secondary" />
+										<rect x="11" y="2" width="3" height="1" class="has-fill-secondary" />
+										<rect x="1" y="1" width="2" height="2" class="has-fill-secondary" />
+										<rect x="5" y="10" width="7" height="2" rx="0.3" class="has-fill-primary" />
+										<rect x="19" y="1" width="2" height="2" rx="1" class="has-fill-secondary" />
+									</svg>
+								</span>
+							</span>
+							<span role="menuitem"> Dark </span>
+						</button>
+					</li>
+					<li class="theme display-block">
+						<button
+							class="button button-clear button-sm theme-control button-block justify-content-flex-start text-align-left"
+							data-theme-to="high-contrast"
+						>
+							<span class="theme-high-contrast margin-right-xxs">
+								<span
+									class="border theme-selector-icon display-inline-block has-body-background"
+									aria-hidden="true"
+								>
+									<svg class="svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 22 14">
+										<rect width="22" height="14" class="has-fill-body-background" />
+										<rect x="5" y="5" width="12" height="4" class="has-fill-secondary" />
+										<rect x="5" y="2" width="2" height="1" class="has-fill-secondary" />
+										<rect x="8" y="2" width="2" height="1" class="has-fill-secondary" />
+										<rect x="11" y="2" width="3" height="1" class="has-fill-secondary" />
+										<rect x="1" y="1" width="2" height="2" class="has-fill-secondary" />
+										<rect x="5" y="10" width="7" height="2" rx="0.3" class="has-fill-primary" />
+										<rect x="19" y="1" width="2" height="2" rx="1" class="has-fill-secondary" />
+									</svg>
+								</span>
+							</span>
+							<span role="menuitem"> High contrast </span>
+						</button>
+					</li>
+				</ul>
+			</div>
+		</div>
+	</div>
+			</div>
+			<ul class="links" data-bi-name="footerlinks">
+				<li class="manage-cookies-holder" hidden=""></li>
+				<li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://learn.microsoft.com/en-us/principles-for-ai-generated-content"
+			data-bi-name="aiDisclaimer"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>AI Disclaimer</a
+		>
+	
+	</li><li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://learn.microsoft.com/en-us/previous-versions/"
+			data-bi-name="archivelink"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>Previous Versions</a
+		>
+	
+	</li> <li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://techcommunity.microsoft.com/t5/microsoft-learn-blog/bg-p/MicrosoftLearnBlog"
+			data-bi-name="bloglink"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>Blog</a
+		>
+	
+	</li> <li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://learn.microsoft.com/en-us/contribute"
+			data-bi-name="contributorGuide"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>Contribute</a
+		>
+	
+	</li><li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://go.microsoft.com/fwlink/?LinkId=521839"
+			data-bi-name="privacy"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>Privacy</a
+		>
+	
+	</li><li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://learn.microsoft.com/en-us/legal/termsofuse"
+			data-bi-name="termsofuse"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>Terms of Use</a
+		>
+	
+	</li><li>
+		
+		<a
+			data-mscc-ic="false"
+			href="https://www.microsoft.com/legal/intellectualproperty/Trademarks/"
+			data-bi-name="trademarks"
+			class=" external-link-indicator"
+			id=""
+			title=""
+			>Trademarks</a
+		>
+	
+	</li>
+				<li>&copy; Microsoft 2026</li>
+			</ul>
+		</footer>
+	</footer>
+			</body>
+		</html>
