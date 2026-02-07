@@ -24,6 +24,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
    - [x] Added service manager templates (systemd + macOS launchd).
    - [x] Added macOS broker+WebUI compose guidance.
    - [x] Added macOS full-stack verification script (`tools/verify_mac_full_stack.sh`).
+   - [x] WebUI: user-gesture autoplay unlock so scene audio can start after first interaction.
    - [ ] Add Windows service template.
    - [ ] Production hardening review for docker stack (secrets, TLS, backups, metrics).
 

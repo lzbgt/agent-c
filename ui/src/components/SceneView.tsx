@@ -406,6 +406,7 @@ function DomEntityView({
   entity,
   baseUrl,
   yolo,
+  allowAutoplay,
   sessionId,
   daemonAuth,
   onScriptError,
@@ -413,6 +414,7 @@ function DomEntityView({
   entity: SceneEntity;
   baseUrl?: string;
   yolo?: boolean;
+  allowAutoplay?: boolean;
   sessionId?: string;
   daemonAuth?: ApiAuth;
   onScriptError?: (args: {
@@ -563,6 +565,20 @@ return __fn;
           __console: any,
         ) => Promise<any>;
         const res = await fn(api, scriptArgs, makeSceneConsole());
+        if (!cancelled && allowAutoplay) {
+          const g: any = typeof globalThis !== "undefined" ? (globalThis as any) : {};
+          const unlocked = !!g.__agentui_autoplay_unlocked;
+          if (unlocked && root) {
+            const els = Array.from(root.querySelectorAll("audio,video")) as HTMLMediaElement[];
+            for (const el of els) {
+              try {
+                if (el.paused) void el.play();
+              } catch {
+                // ignore
+              }
+            }
+          }
+        }
         if (cancelled) return;
         if (typeof res === "function") cleanupRef.current = res as any;
         else if (res && typeof res === "object" && typeof (res as any).cleanup === "function") cleanupRef.current = (res as any).cleanup;
@@ -589,7 +605,7 @@ return __fn;
       });
       blobUrlsRef.current = [];
     };
-  }, [baseUrl, daemonAuth, entity.id, entity.kind, html, onScriptError, script, scriptArgsJson, yolo]);
+  }, [allowAutoplay, baseUrl, daemonAuth, entity.id, entity.kind, html, onScriptError, script, scriptArgsJson, yolo]);
 
 	return (
 		// Render DOM entities on a light surface: most tool-generated HTML assumes light backgrounds and
@@ -820,6 +836,7 @@ export default function SceneView({
                       entity={e}
                       baseUrl={baseUrl}
                       yolo={yolo}
+                      allowAutoplay={allowAutoplay}
                       sessionId={sessionId}
                       daemonAuth={daemonAuth}
                       onScriptError={postSceneError}

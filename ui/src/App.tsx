@@ -45,6 +45,7 @@ import DbMessagesView from "./components/DbMessagesView";
 import DbClientEventsView from "./components/DbClientEventsView";
 import SceneView, { type SceneEntity } from "./components/SceneView";
 import PromptBar, { type Attachment } from "./components/PromptBar";
+import useAutoplayUnlock from "./hooks/useAutoplayUnlock";
 import useLocalStorageState from "./hooks/useLocalStorageState";
 import { readSseStream } from "./sse";
 
@@ -204,6 +205,7 @@ export default function App() {
   const [traceLookupId, setTraceLookupId] = useLocalStorageState("agentui.traceLookupId", "");
   const [traceLookupOpen, setTraceLookupOpen] = useLocalStorageState("agentui.traceLookupOpen", false);
   const [allowAutoplay, setAllowAutoplay] = useLocalStorageState("agentui.allowAutoplay", true);
+  useAutoplayUnlock(allowAutoplay);
   // This project treats the Web UI as a collaboration surface (a “scene”) where the agent is expected
   // to act with side-effects by default. Users can still disable these via Settings (persisted).
   const [allowClientRpcs, setAllowClientRpcs] = useLocalStorageState("agentui.allowClientRpcs", true);

@@ -18,6 +18,7 @@ ref/ds-cli/
 ui/node_modules/
 ui/dist/
 ui/.vite/
+ui/.npm-cache/
 project.local.md
 .not_in_repo
 tools/_agentd_broker_mtls_test_certs/
