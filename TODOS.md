@@ -22,6 +22,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 2) **Production deployment readiness (agentd + broker + WebUI)** — stable, secure, operable deployment.
    - [x] Added `docs/DEPLOYMENT.md` checklist + topology guidance.
    - [x] Added service manager templates (systemd + macOS launchd).
+   - [x] Added macOS broker+WebUI compose guidance.
    - [ ] Add Windows service template.
    - [ ] Production hardening review for docker stack (secrets, TLS, backups, metrics).
 

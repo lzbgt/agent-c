@@ -121,6 +121,35 @@ agentd-connector \
 
 ---
 
+## macOS (MacBook M2) — broker + WebUI
+
+Recommended on macOS: run **broker + connector + WebUI** via Docker Compose, and keep `agentd` as a local launchd service.
+
+### Prereqs
+- Docker Desktop or Colima
+- `docker compose` available
+
+### Local prod-like stack (broker + connector + WebUI)
+```
+cp project.local.md.example project.local.md
+export WEBUI_PUBLISHED_PORT=8100
+export AGENTD_PUBLISHED_PORT=8123
+export BROKER_PUBLISHED_PORT=8443
+export KEYCLOAK_PUBLISHED_PORT=8081
+docker compose up -d postgres keycloak broker connector webui
+```
+
+Then run `agentd` locally (launchd or foreground):
+```
+./build/agentd --host 127.0.0.1 --port 8123 --auth-token "REPLACE_WITH_RANDOM_TOKEN" --state-dir "$HOME/Library/Application Support/agentd" --db-path "$HOME/Library/Application Support/agentd/agentd.db"
+```
+
+### Notes
+- Broker TLS in compose uses test certificates under `tools/_compose_mtls` (local only).
+- WebUI expects to talk to broker proxy or direct agentd; align CORS + auth tokens accordingly.
+
+---
+
 ## WebUI (static)
 
 - Build once and host on a static server:
