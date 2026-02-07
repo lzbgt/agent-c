@@ -21,7 +21,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
    - [ ] Validate Windows build (tool plugins + tool servers remain disabled).
 2) **Production deployment readiness (agentd + broker + WebUI)** — stable, secure, operable deployment.
    - [x] Added `docs/DEPLOYMENT.md` checklist + topology guidance.
-   - [ ] Add service manager templates (systemd/launchd/Windows service).
+   - [x] Added service manager templates (systemd + macOS launchd).
+   - [ ] Add Windows service template.
    - [ ] Production hardening review for docker stack (secrets, TLS, backups, metrics).
 
 ## Recently shipped (proof in CI)

@@ -51,6 +51,31 @@ LimitNOFILE=65536
 WantedBy=multi-user.target
 ```
 
+### Example (macOS launchd)
+```
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.agentd.daemon</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/agentd</string>
+    <string>--host</string><string>127.0.0.1</string>
+    <string>--port</string><string>8123</string>
+    <string>--auth-token</string><string>REPLACE_WITH_RANDOM_TOKEN</string>
+    <string>--state-dir</string><string>/Users/you/Library/Application Support/agentd</string>
+    <string>--db-path</string><string>/Users/you/Library/Application Support/agentd/agentd.db</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/you/Library/Application Support/agentd</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/Users/you/Library/Logs/agentd.out.log</string>
+  <key>StandardErrorPath</key><string>/Users/you/Library/Logs/agentd.err.log</string>
+</dict>
+</plist>
+```
+
 ### If exposing `agentd` directly
 - Put it behind a reverse proxy with TLS (nginx/Caddy/Envoy).
 - **Do not** bind directly to `0.0.0.0` without `--auth-token`.
@@ -121,4 +146,3 @@ agentd-connector \
 
 Use `docker-compose.yml` + `tools/verify_compose_stack.sh` for a local, production-like integration test of:
 Postgres + Keycloak + broker + connector + agentd + WebUI.
-

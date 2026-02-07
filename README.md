@@ -25,6 +25,12 @@ tools/verify_prod.sh
 
 Host builds (`agent` / `agentd`) require `libcurl` and `jsoncpp` (via `pkg-config`).
 
+**macOS (Homebrew)**:
+
+```bash
+brew install cmake pkg-config curl jsoncpp sqlite
+```
+
 **Windows (native build)**: install dependencies via vcpkg, then configure with its toolchain file:
 
 ```powershell
