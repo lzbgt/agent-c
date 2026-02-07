@@ -540,13 +540,14 @@ Maintainability note (always-on):
        (same rule loop, but `auth.alg="ed25519-cbor"` for public-key node identities).
      - Proof: `ctest` includes `agentd_edge_heartbeat_auth_hmac_cbor_wire_smoke`
        (NODE_HEARTBEAT over CBOR+auth persists `edge_nodes.health_json` evidence for operator visibility).
-     - Next: publish a tiny MCU integration note for external CBOR libs (TinyCBOR-derived) mapping onto this repo’s deterministic profile:
-       - how to emit “definite-length + text keys + sorted keys” CBOR
-       - how to compute `auth.sig` for `hmac-sha256-cbor` / `ed25519-cbor` reliably
-     - Next (correctness): resolve signed-CBOR numeric telemetry guidance for MCU nodes:
-       - Avoid floats in signed envelopes when possible (use fixed-point or integers).
-       - Add a spec note + a stable encoding for NODE_HEARTBEAT telemetry (e.g. integer `battery_pct` + integer `rssi_dbm`)
-         so signing inputs remain unambiguous across stacks.
+     - Shipped (MCU docs): TinyCBOR / `cobr` style implementation note mapping external CBOR libs onto this repo’s deterministic profile:
+       - `docs/spec/um-eais/mcu_cbor_encoder_notes.md`
+     - Shipped (correctness): preserve numeric types for CBOR auth signing inputs:
+       - CBOR `float64` must remain `float64` in deterministic signing bytes even if numerically integral (e.g. `87.0`).
+       - Proof: `ctest` includes `cbor_det_roundtrip_tests` and `agentd_edge_heartbeat_auth_hmac_cbor_wire_smoke` (with telemetry floats).
+     - Next (optional): define fixed-point telemetry fields for MCU nodes (schema-level ergonomics):
+       - e.g. `battery_bp` (0..10000), `rssi_dbm` (int), `temp_c_x100` (int)
+       - keep float fields supported, but recommend fixed-point for validation simplicity.
    - Shipped (v0.4 partial): optional envelope authenticity (HMAC) for trust roots + spoofing resistance:
      - Envelope may include `auth:{alg,kid,seq?,sig}` where:
        - `alg:"hmac-sha256"` signs canonical JSON bytes (`agent_json_c14n_v1`)

@@ -69,6 +69,7 @@ Wire encoding:
 - Optional MCU/gateway profile: `Content-Type: application/cbor` (envelope is CBOR map with the same keys/shape).
   - This is intended for constrained transports (LoRa/MQTT bridges) where JSON overhead is material.
   - The platform requires definite-length CBOR items and text-string map keys (no indefinite-length streaming items).
+  - MCU encoder notes: `docs/spec/um-eais/mcu_cbor_encoder_notes.md`
 
 This stores the envelope durably (`edge_inbox_messages`) and updates platform state:
 - `NODE_HELLO`, `NODE_HEARTBEAT` update `edge_nodes`
@@ -98,7 +99,10 @@ Envelope authenticity (optional, UM‑BMP auth v0.4):
       - definite lengths only
       - text-string map keys ordered by UTF‑8 byte length, then lexicographically by UTF‑8 bytes
       - integers encoded in minimal CBOR form
-      - floats encoded as float64 when present (avoid floats in signed envelopes)
+      - floats encoded as float64 when present
+        - IMPORTANT: preserve numeric types for signing (a CBOR float must stay a CBOR float in the signing input,
+          even if numerically integral like `87.0`)
+        - Recommendation: avoid floats in signed envelopes when possible; prefer integers/fixed-point on MCUs
       - embedded helper: `agent_core` provides a minimal deterministic CBOR writer (`agent/cbor_det.h`) for MCU bring-up
 - Operator controls:
   - `edge_auth.required` is surfaced via `GET /api/v1/config`.

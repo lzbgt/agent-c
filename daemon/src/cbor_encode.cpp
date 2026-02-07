@@ -111,6 +111,23 @@ static bool encode_any(const Json::Value& v, std::string* out, std::string* out_
     append_u8(out, v.asBool() ? 0xf5 : 0xf4);
     return true;
   }
+  // IMPORTANT: preserve JSON number *types* when encoding to CBOR.
+  //
+  // JsonCpp's `isDouble()` / `isInt64()` / `isUInt64()` are *conversion* checks
+  // (i.e. "can this value be represented as ..."), not strict type tests.
+  // For deterministic CBOR we must:
+  // - encode Json::realValue as float64 (0xfb) even if numerically integral
+  // - encode integer types as integers (major 0/1), never as floats
+  if (v.type() == Json::realValue) {
+    // Encode as float64 (major 7, ai=27) for simplicity and determinism.
+    append_u8(out, 0xfb);
+    const double d = v.asDouble();
+    uint64_t bits = 0;
+    static_assert(sizeof(double) == 8, "double must be 64-bit");
+    std::memcpy(&bits, &d, 8);
+    append_be_u64(out, bits);
+    return true;
+  }
   if (v.isInt64()) {
     const int64_t x = v.asInt64();
     if (x >= 0) {
@@ -134,16 +151,6 @@ static bool encode_any(const Json::Value& v, std::string* out, std::string* out_
   }
   if (v.isUInt()) {
     append_ai_u64(out, /*major=*/(0u << 5), (uint64_t)v.asUInt());
-    return true;
-  }
-  if (v.isDouble()) {
-    // Encode as float64 (major 7, ai=27) for simplicity and determinism.
-    append_u8(out, 0xfb);
-    const double d = v.asDouble();
-    uint64_t bits = 0;
-    static_assert(sizeof(double) == 8, "double must be 64-bit");
-    std::memcpy(&bits, &d, 8);
-    append_be_u64(out, bits);
     return true;
   }
   if (v.isString()) {

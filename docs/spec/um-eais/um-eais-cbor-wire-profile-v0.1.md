@@ -71,6 +71,9 @@ Practical guidance for MCUs:
 - Prefer **integers / fixed-point** over floats in authenticated envelopes.
   - Example: for `NODE_HEARTBEAT`, encode `battery_pct` as an integer `0..100` and `rssi` as an integer dBm when possible.
   - Floats can be supported, but are easier to get wrong across stacks (and are harder to validate deterministically).
+  - If you do include floats, **preserve the numeric type** end-to-end:
+    - CBOR `float64` MUST remain `float64` in the deterministic signing input, even when the value is numerically integral
+      (e.g. `87.0` must not be coerced into integer `87` during any CBOR→JSON→CBOR step).
 
 ## Implementation status (this repo)
 
@@ -116,3 +119,6 @@ Node (`agent_core`):
 - Not shipped (yet): full JSON<->CBOR mapping helpers for MCU firmware.
 - Recommendation: keep using a full CBOR library (e.g. TinyCBOR-derived) if you already have one, but use the deterministic profile
   defined in this repo for signed envelopes; `agent/cbor_det.h` can be used as a minimal fallback for signing inputs.
+
+MCU encoder bring-up note:
+- `docs/spec/um-eais/mcu_cbor_encoder_notes.md` (TinyCBOR / `cobr` style guidance; deterministic map ordering + signing procedure)

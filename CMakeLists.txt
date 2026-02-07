@@ -386,6 +386,15 @@ if(AGENT_BUILD_HOST)
     COMMAND umbmp_auth_vectors_tests ${CMAKE_CURRENT_SOURCE_DIR}/docs/spec/um-eais/fixtures/umbmp_envelope_auth_vectors_v0.4.json
   )
 
+  add_executable(cbor_det_roundtrip_tests
+    tests/test_cbor_det_roundtrip.cpp
+  )
+  target_compile_options(cbor_det_roundtrip_tests PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_link_libraries(cbor_det_roundtrip_tests PRIVATE agentd_lib)
+  add_test(NAME cbor_det_roundtrip_tests COMMAND cbor_det_roundtrip_tests)
+
   add_test(NAME agent_openrouter_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/openrouter_smoke.sh $<TARGET_FILE:agent>)
   set_tests_properties(agent_openrouter_smoke PROPERTIES SKIP_RETURN_CODE 77)
 

@@ -89,6 +89,8 @@ PY
   --msg-id "hb_auth_msg_2" \
   --ts-utc-ms "${HB_TS}" \
   --health-ok 1 \
+  --battery-pct 87.0 \
+  --rssi -55.0 \
   --auth-alg hmac-sha256-cbor \
   --auth-kid "${KID_NODE}" \
   --auth-seq 2 \
@@ -112,6 +114,12 @@ if int(n.get("last_heartbeat_utc_ms") or 0) != int("${HB_TS}"):
 h = n.get("health") or {}
 if h.get("ok") is not True:
   print("expected health.ok true", h, file=sys.stderr)
+  raise SystemExit(1)
+if abs(float(h.get("battery_pct") or 0.0) - 87.0) > 1e-9:
+  print("expected health.battery_pct 87.0", h, file=sys.stderr)
+  raise SystemExit(1)
+if abs(float(h.get("rssi") or 0.0) - (-55.0)) > 1e-9:
+  print("expected health.rssi -55.0", h, file=sys.stderr)
   raise SystemExit(1)
 PY
 

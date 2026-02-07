@@ -74,7 +74,11 @@ Signing input is the deterministic CBOR encoding of `env_no_sig`:
   - sort by UTF‑8 byte length
   - then lexicographically by UTF‑8 bytes
 - integers encoded in the minimal CBOR integer form
-- floats SHOULD NOT be used in signed envelopes; the platform encodes floats as float64 when present
+- floats MAY be used, but are discouraged for MCU simplicity:
+  - when present, the platform deterministic CBOR encoder uses **float64**
+  - numeric types MUST be preserved for signing:
+    - a CBOR float decoded to JSON must remain a CBOR float in the signing input,
+      even if it is numerically integral (e.g. `87.0` must not be re-encoded as integer `87`)
 
 Pseudocode:
 
