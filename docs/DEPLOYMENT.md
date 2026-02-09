@@ -76,6 +76,23 @@ WantedBy=multi-user.target
 </plist>
 ```
 
+### Helper scripts (macOS)
+
+For local bring-up on macOS, you can install/remove launchd services with:
+```
+AGENTD_AUTH_TOKEN="REPLACE_WITH_RANDOM_TOKEN" tools/install_agentd_launchd.sh
+tools/uninstall_agentd_launchd.sh
+```
+
+Environment overrides:
+- `AGENTD_BIN` (default `./build/agentd`)
+- `AGENTD_HOST`, `AGENTD_PORT`
+- `AGENTD_STATE_DIR`, `AGENTD_DB_PATH`
+- `AGENTD_TOOLS`, `AGENTD_YOLO`
+- `AGENTD_HOST_SCOPE`, `AGENTD_TOOLS_ROOT`
+- `AGENTD_CORS_ORIGINS` (comma-separated)
+- `AGENTD_EXTRA_ARGS` (space-delimited)
+
 ### Example (Windows service)
 
 #### Option A: `sc.exe` (built-in)

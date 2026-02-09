@@ -285,6 +285,13 @@ set +a
   --db-path "$(pwd)/agentd.db"
 ```
 
+macOS convenience (launchd install/uninstall):
+
+```bash
+AGENTD_AUTH_TOKEN="REPLACE_WITH_RANDOM_TOKEN" tools/install_agentd_launchd.sh
+tools/uninstall_agentd_launchd.sh
+```
+
 Notes:
 - `--yolo` enables unrestricted host tools (fully autonomous, side effects allowed). The Web UI defaults to requesting this.
 - `--tools-root "@host"` makes relative paths stable (anchored to `--host-scope`). This avoids brittle “depends on process CWD”
