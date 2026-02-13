@@ -216,6 +216,8 @@ curl http://127.0.0.1:8123/api/v1/health
 - If Docker is unavailable or resource-constrained, you can verify the local stack without compose:
   - `tools/verify_mac_local_stack.sh` (agentd + WebUI only; no broker)
   - Optional env: `MAC_LOCAL_SKIP_UI=1` to skip WebUI build/serve, `MAC_LOCAL_UI_INSTALL=0` to skip `npm ci` when deps already exist
+- If Docker build is blocked but Docker itself runs, you can verify a host-mode full stack:
+  - `tools/verify_mac_full_stack_host.sh` (runs Postgres + Keycloak via Docker, and runs agentd/broker/connector/WebUI on the host)
 - If `tools/verify_mac_full_stack.sh` skips due to Docker build resource errors (e.g. `unpigz`/`runc`),
   restart Docker Desktop or increase CPU/RAM. The script already retries builds, can fall back to the
   legacy builder, and throttles pigz threads. You can also tweak:

@@ -425,6 +425,11 @@ If Docker is unavailable or resource constrained, use:
 tools/verify_mac_local_stack.sh
 ```
 
+If Docker builds are blocked but Docker can run containers, use the host-mode stack:
+```bash
+tools/verify_mac_full_stack_host.sh
+```
+
 Notes:
 - The script will auto-pick free host ports for services that commonly conflict (Broker/Keycloak/Postgres) and export:
   - `BROKER_PUBLISHED_PORT` (default 8443)
