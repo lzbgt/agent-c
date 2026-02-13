@@ -74,6 +74,7 @@ Notes:
 - Client tokens can proxy/orchestrate requests; agent list/create require OIDC.
 - If OIDC is not configured, `--client-auth-file` is required.
 - Example file: `broker/client_auth.example.json`
+- When OIDC is disabled and client auth is configured, `/readyz` only checks DB health.
 
 ### Connector (`cmd/agentd-connector`)
 

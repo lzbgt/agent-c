@@ -1163,11 +1163,13 @@ func (s *Server) checkReady(ctx context.Context) (bool, string) {
 		cancel()
 	}
 
-	// OIDC readiness (issuer/JWKS reachable).
+	// OIDC readiness (issuer/JWKS reachable) if configured.
 	if ok {
 		if s.cfg.OIDC == nil {
-			ok = false
-			errStr = "oidc verifier not configured"
+			if s.cfg.ClientAuth == nil {
+				ok = false
+				errStr = "oidc verifier not configured"
+			}
 		} else {
 			octx, cancel := context.WithTimeout(ctx, 3*time.Second)
 			if err := s.cfg.OIDC.Init(octx); err != nil {
