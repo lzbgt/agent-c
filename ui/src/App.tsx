@@ -1662,6 +1662,11 @@ export default function App() {
               <span className="inline-block max-w-[28vw] truncate align-bottom font-mono text-[11px] text-white/70" title={profileName}>
                 {profileName}
               </span>{" "}
+              {runSettings.profileOverridesEnabled ? (
+                <span className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
+                  run overrides
+                </span>
+              ) : null}
               · daemon:{" "}
               <span className="inline-block max-w-[60vw] truncate align-bottom font-mono text-[11px] text-white/70" title={effectiveBase}>
                 {effectiveBase}
