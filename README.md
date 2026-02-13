@@ -342,6 +342,11 @@ curl http://127.0.0.1:8123/api/v1/health
 - Run a short prompt that emits audio (artifact or scene).
 - If autoplay is blocked, click once in the UI to unlock media playback.
 
+If you want a one-command local check (agentd + WebUI only, no Docker/broker):
+```bash
+tools/verify_mac_local_stack.sh
+```
+
 The Web UI defaults to:
 - YOLO enabled
 - client RPC enabled
@@ -361,6 +366,11 @@ If you want a **prod-like stack** locally (Postgres + Keycloak OIDC + broker + c
 
 ```bash
 ./tools/verify_compose_stack.sh
+```
+
+If Docker is unavailable or resource constrained, use:
+```bash
+tools/verify_mac_local_stack.sh
 ```
 
 Notes:
