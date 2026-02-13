@@ -234,6 +234,7 @@ Environment variables:
 - `AGENTD_STATE_DIR`
 - `AGENTD_SESSIONS_ROOT`
 - `AGENTD_DB_PATH`
+- `AGENTD_ACCESS_LOG` (`1` for text logs, `json` for JSON logs)
 
 ## Run in production (agentd + WebUI)
 

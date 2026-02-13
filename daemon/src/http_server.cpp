@@ -1,9 +1,13 @@
 #include "http_server.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <cerrno>
 #include <cctype>
+#include <chrono>
 #include <cstring>
+#include <iostream>
+#include <random>
 #include <sstream>
 #include <string_view>
 #include <thread>
@@ -23,6 +27,97 @@ static void trim_inplace(std::string& s) {
   size_t b = s.size();
   while (b > a && std::isspace((unsigned char)s[b - 1])) b--;
   s = s.substr(a, b - a);
+}
+
+static bool token_is_safe(const std::string& s) {
+  if (s.empty() || s.size() > 128) return false;
+  for (char c : s) {
+    const bool ok =
+      (c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9') ||
+      c == '-' || c == '_' || c == '.' || c == ':' || c == '@';
+    if (!ok) return false;
+  }
+  return true;
+}
+
+static std::string make_request_id() {
+  std::random_device rd;
+  std::mt19937_64 gen(((uint64_t)rd() << 32) ^ (uint64_t)rd());
+  std::uniform_int_distribution<uint32_t> dist(0, 0xffffffffu);
+
+  uint32_t a = dist(gen);
+  uint16_t b = (uint16_t)(dist(gen) & 0xffffu);
+  uint16_t c = (uint16_t)(dist(gen) & 0xffffu);
+  uint16_t d = (uint16_t)(dist(gen) & 0xffffu);
+  uint64_t e = ((uint64_t)dist(gen) << 32) ^ (uint64_t)dist(gen);
+
+  c = (uint16_t)((c & 0x0fffu) | 0x4000u);
+  d = (uint16_t)((d & 0x3fffu) | 0x8000u);
+
+  char buf[96];
+  (void)snprintf(
+    buf,
+    sizeof(buf),
+    "req_%08x-%04x-%04x-%04x-%012llx",
+    a,
+    (unsigned)b,
+    (unsigned)c,
+    (unsigned)d,
+    (unsigned long long)(e & 0xffffffffffffull)
+  );
+  return std::string(buf);
+}
+
+static std::string json_escape(const std::string& s) {
+  std::string out;
+  out.reserve(s.size() + 8);
+  for (unsigned char c : s) {
+    switch (c) {
+      case '\\': out += "\\\\"; break;
+      case '"': out += "\\\""; break;
+      case '\n': out += "\\n"; break;
+      case '\r': out += "\\r"; break;
+      case '\t': out += "\\t"; break;
+      default:
+        if (c < 0x20) {
+          char buf[8];
+          (void)snprintf(buf, sizeof(buf), "\\u%04x", (unsigned)c);
+          out += buf;
+        } else {
+          out.push_back((char)c);
+        }
+        break;
+    }
+  }
+  return out;
+}
+
+static int access_log_mode() {
+  const char* v = std::getenv("AGENTD_ACCESS_LOG");
+  if (!v || !v[0]) return 0;
+  std::string s = lower(std::string(v));
+  trim_inplace(s);
+  if (s == "json") return 2;
+  if (s == "1" || s == "true" || s == "yes" || s == "on") return 1;
+  return 0;
+}
+
+static std::string addr_to_string(const sockaddr_storage& addr) {
+  char buf[INET6_ADDRSTRLEN];
+  if (addr.ss_family == AF_INET) {
+    const auto* a = reinterpret_cast<const sockaddr_in*>(&addr);
+    if (::inet_ntop(AF_INET, &a->sin_addr, buf, sizeof(buf)) != nullptr) {
+      return std::string(buf);
+    }
+  } else if (addr.ss_family == AF_INET6) {
+    const auto* a = reinterpret_cast<const sockaddr_in6*>(&addr);
+    if (::inet_ntop(AF_INET6, &a->sin6_addr, buf, sizeof(buf)) != nullptr) {
+      return std::string(buf);
+    }
+  }
+  return std::string();
 }
 
 static bool read_exact(socket_t fd, std::string* out, size_t n) {
@@ -261,16 +356,72 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
     return false;
   }
 
+  const int log_mode = access_log_mode();
+
   // Handle each client in its own thread to keep the daemon responsive even when
   // a request is long-running (e.g., SSE streaming endpoint).
   while (!stop_.load()) {
-    socket_t client = ::accept(listen_fd_, nullptr, nullptr);
+    sockaddr_storage peer{};
+    socklen_t peer_len = sizeof(peer);
+    socket_t client = ::accept(listen_fd_, reinterpret_cast<sockaddr*>(&peer), &peer_len);
     if (!socket_valid(client)) {
       if (stop_.load()) break;
       continue;
     }
 
-    std::thread([this, client]() {
+    const std::string peer_addr = addr_to_string(peer);
+    std::thread([this, client, peer_addr, log_mode]() {
+      const auto start_time = std::chrono::steady_clock::now();
+      std::string request_id = make_request_id();
+
+      auto log_access = [&](const HttpRequest& req, int status, bool stream, size_t bytes_in, size_t bytes_out) {
+        if (log_mode == 0) return;
+        const int64_t now_ms = (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 std::chrono::system_clock::now().time_since_epoch())
+                                 .count();
+        const int64_t latency_ms = (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+                                     std::chrono::steady_clock::now() - start_time)
+                                     .count();
+        if (log_mode == 2) {
+          std::ostringstream oss;
+          oss << "{\"ts_unix_ms\":" << now_ms
+              << ",\"method\":\"" << json_escape(req.method)
+              << "\",\"path\":\"" << json_escape(req.raw_path)
+              << "\",\"status\":" << status
+              << ",\"latency_ms\":" << latency_ms
+              << ",\"bytes_in\":" << (unsigned long long)bytes_in
+              << ",\"bytes_out\":" << (unsigned long long)bytes_out
+              << ",\"stream\":" << (stream ? "true" : "false")
+              << ",\"request_id\":\"" << json_escape(request_id) << "\"";
+          if (!peer_addr.empty()) {
+            oss << ",\"remote\":\"" << json_escape(peer_addr) << "\"";
+          }
+          oss << "}\n";
+          std::cerr << oss.str();
+        } else {
+          std::cerr << "agentd http " << req.method << " " << req.raw_path << " " << status
+                    << " " << latency_ms << "ms"
+                    << " in=" << (unsigned long long)bytes_in
+                    << " out=" << (unsigned long long)bytes_out
+                    << " stream=" << (stream ? "1" : "0")
+                    << " req_id=" << request_id;
+          if (!peer_addr.empty()) {
+            std::cerr << " remote=" << peer_addr;
+          }
+          std::cerr << "\n";
+        }
+      };
+
+      auto send_response = [&](const HttpRequest& req, HttpResponse& resp, size_t bytes_in) {
+        if (!resp.headers.count("X-Request-Id")) {
+          resp.headers["X-Request-Id"] = request_id;
+        }
+        const std::string wire = build_response(resp, default_headers_);
+        (void)write_all(client, wire);
+        log_access(req, resp.status, false, bytes_in, resp.body.size());
+        socket_close(client);
+      };
+
       std::string head;
       if (!read_until(client, &head, "\r\n\r\n", 1024 * 1024)) {
         socket_close(client);
@@ -284,9 +435,7 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
         HttpResponse resp;
         resp.status = 400;
         resp.body = R"({"ok":false,"error":"bad request"})";
-        const std::string wire = build_response(resp, default_headers_);
-        (void)write_all(client, wire);
-        socket_close(client);
+        send_response(req, resp, 0);
         return;
       }
 
@@ -308,6 +457,18 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
         }
       }
 
+      {
+        auto it = req.headers.find("x-request-id");
+        if (it != req.headers.end()) {
+          std::string v = it->second;
+          trim_inplace(v);
+          if (token_is_safe(v)) {
+            request_id = v;
+          }
+        }
+        req.headers["x-request-id"] = request_id;
+      }
+
       if (req.method == "OPTIONS") {
         HttpResponse resp;
         if (options_handler_) {
@@ -316,9 +477,7 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
           resp.status = 204;
           resp.body.clear();
         }
-        const std::string wire = build_response(resp, default_headers_);
-        (void)write_all(client, wire);
-        socket_close(client);
+        send_response(req, resp, req.body.size());
         return;
       }
 
@@ -326,6 +485,7 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
       auto sit = stream_routes_.find(RouteKey{req.method, req.path});
       if (sit != stream_routes_.end()) {
         sit->second(req, client);
+        log_access(req, 200, true, req.body.size(), 0);
         // Server closes socket after handler returns.
         socket_close(client);
         return;
@@ -340,9 +500,7 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
         it->second(req, &resp);
       }
 
-      const std::string wire = build_response(resp, default_headers_);
-      (void)write_all(client, wire);
-      socket_close(client);
+      send_response(req, resp, req.body.size());
     }).detach();
   }
 

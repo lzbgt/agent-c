@@ -40,6 +40,10 @@ The health endpoint is always unauthenticated:
 - `GET /api/v1/ready`
 - `GET /metrics`
 
+Request correlation:
+- Clients may send `X-Request-Id` (safe ASCII token). The server will echo it back in responses.
+- If omitted, agentd generates a request id and returns it in `X-Request-Id`.
+
 ## Session IDs (safety contract)
 
 `session_id` is treated like a filename key. It must pass `session_id_is_safe()`:
