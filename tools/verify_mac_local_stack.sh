@@ -14,6 +14,7 @@ fi
 LOG_DIR="${ROOT}/out"
 mkdir -p "${LOG_DIR}"
 ts="$(date +%Y-%m-%d_%H%M%S)"
+LOG_CMAKE="${LOG_DIR}/mac_local_cmake_configure_${ts}.log"
 LOG_AGENTD="${LOG_DIR}/mac_local_agentd_${ts}.log"
 LOG_WEBUI_INSTALL="${LOG_DIR}/mac_local_webui_install_${ts}.log"
 LOG_WEBUI_BUILD="${LOG_DIR}/mac_local_webui_build_${ts}.log"
@@ -46,6 +47,10 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ ! -x "${AGENTD_BIN}" ]]; then
+  if [[ ! -f "${ROOT}/build/CMakeCache.txt" ]]; then
+    echo "[mac-local] cmake configure (log: ${LOG_CMAKE})"
+    cmake -S "${ROOT}" -B "${ROOT}/build" >"${LOG_CMAKE}" 2>&1
+  fi
   echo "[mac-local] agentd not found; building (log: ${LOG_AGENTD})"
   cmake --build "${ROOT}/build" >"${LOG_AGENTD}" 2>&1
 fi
