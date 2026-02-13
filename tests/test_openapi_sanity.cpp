@@ -74,6 +74,18 @@ int main(int argc, char** argv) {
     std::fprintf(stderr, "broker openapi drift: missing /v1/trace in %s\n", broker_spec.c_str());
     return 1;
   }
+  if (!contains(b, "/v1/agents/{agent_id}/members:") || !contains(b, "/v1/agents/{agent_id}/membership_audit:")) {
+    std::fprintf(stderr, "broker openapi drift: missing membership endpoints in %s\n", broker_spec.c_str());
+    return 1;
+  }
+  if (!contains(b, "/v1/client_auth/status:") || !contains(b, "/v1/client_auth/reload:")) {
+    std::fprintf(stderr, "broker openapi drift: missing client auth endpoints in %s\n", broker_spec.c_str());
+    return 1;
+  }
+  if (!contains(b, "membership:")) {
+    std::fprintf(stderr, "broker openapi drift: missing membership trace field in %s\n", broker_spec.c_str());
+    return 1;
+  }
   if (!contains(b, "orchestrate:")) {
     std::fprintf(stderr, "broker openapi drift: expected orchestrate field documented in %s\n", broker_spec.c_str());
     return 1;
