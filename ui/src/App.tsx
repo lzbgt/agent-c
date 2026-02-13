@@ -1697,9 +1697,18 @@ export default function App() {
             <div className="text-sm font-semibold">agent UI</div>
             <div className="text-[11px] text-white/60">
               profile:{" "}
-              <span className="inline-block max-w-[28vw] truncate align-bottom font-mono text-[11px] text-white/70" title={profileName}>
-                {profileName}
-              </span>{" "}
+              <select
+                className="ml-1 inline-block max-w-[28vw] truncate rounded-md border border-white/10 bg-black/30 px-2 py-0.5 font-mono text-[11px] text-white/70"
+                value={connection.activeProfileId}
+                onChange={(e) => connection.setActiveProfileId(e.target.value)}
+                title={profileName}
+              >
+                {connection.profiles.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>{" "}
               {runSettings.profileOverridesEnabled ? (
                 <span className="rounded-full border border-emerald-400/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-200">
                   run overrides
