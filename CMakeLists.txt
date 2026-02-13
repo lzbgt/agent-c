@@ -186,6 +186,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
   # `AGENTD_ENABLE_HTTP` (useful for app embedding where a cloud broker / custom transport is used).
   set(AGENTD_LIB_SOURCES
     daemon/src/agent_db.cpp
+    daemon/src/agent_db_stats.cpp
     daemon/src/agent_db_edge.cpp
     daemon/src/agentd_api.cpp
     daemon/src/client_profiles.cpp
@@ -196,6 +197,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/cors.cpp
     daemon/src/db_query_endpoints.cpp
     daemon/src/daemon_auth.cpp
+    daemon/src/diagnostics_endpoints.cpp
     daemon/src/edge_interop_endpoints.cpp
     daemon/src/edge_deadline_sweeper.cpp
     daemon/src/edge_rules.cpp
@@ -423,6 +425,7 @@ if(AGENT_BUILD_HOST)
     add_test(NAME agentd_avm_job_scan_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_avm_job_scan_smoke.sh $<TARGET_FILE:agentd>)
 	    add_test(NAME agentd_auth_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_auth_smoke.sh $<TARGET_FILE:agentd>)
 	    add_test(NAME agentd_config_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_config_smoke.sh $<TARGET_FILE:agentd>)
+	    add_test(NAME agentd_diagnostics_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_diagnostics_smoke.sh $<TARGET_FILE:agentd>)
 	    add_test(NAME agentd_config_update_workflow_http_policy_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_config_update_workflow_http_policy_smoke.sh $<TARGET_FILE:agentd>)
 	    add_test(NAME agentd_sandbox_tighten_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_sandbox_tighten_smoke.sh $<TARGET_FILE:agentd>)
 	    add_test(NAME agentd_cors_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_cors_smoke.sh $<TARGET_FILE:agentd>)

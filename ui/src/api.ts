@@ -42,6 +42,71 @@ export const HealthSchema = z.object({
 });
 export type Health = z.infer<typeof HealthSchema>;
 
+export const DiagnosticsSchema = z
+  .object({
+    ok: z.boolean(),
+    service: z.string().optional(),
+    version: z.string().optional(),
+    ready: z.boolean().optional(),
+    now_unix_ms: z.number().int().nonnegative().optional(),
+    uptime_ms: z.number().int().nonnegative().optional(),
+    checks: z.any().optional(),
+    db: z.any().optional(),
+    jobs: z.any().optional(),
+    workflows: z.any().optional(),
+    warnings: z.array(z.string()).optional(),
+  })
+  .passthrough();
+export type Diagnostics = z.infer<typeof DiagnosticsSchema>;
+
+export const DiagnosticsProvidersSchema = z
+  .object({
+    ok: z.boolean(),
+    service: z.string().optional(),
+    version: z.string().optional(),
+    now_unix_ms: z.number().int().nonnegative().optional(),
+    uptime_ms: z.number().int().nonnegative().optional(),
+    providers: z.any().optional(),
+  })
+  .passthrough();
+export type DiagnosticsProviders = z.infer<typeof DiagnosticsProvidersSchema>;
+
+export const DiagnosticsProviderTestReqSchema = z
+  .object({
+    provider: z.string().min(1),
+    base_url: z.string().optional(),
+    model: z.string().optional(),
+    prompt: z.string().optional(),
+    expect: z.string().optional(),
+    tools: z.enum(["none", "basic", "host"]).optional(),
+    require_tool_call: z.boolean().optional(),
+    timeout_ms: z.number().int().positive().optional(),
+    max_steps: z.number().int().nonnegative().optional(),
+    max_tool_calls_total: z.number().int().nonnegative().optional(),
+    max_tool_calls_per_tool: z.number().int().nonnegative().optional(),
+    max_tool_call_args_chars: z.number().int().nonnegative().optional(),
+    max_repeated_tool_calls: z.number().int().nonnegative().optional(),
+    include_run: z.boolean().optional(),
+  })
+  .passthrough();
+export type DiagnosticsProviderTestReq = z.infer<typeof DiagnosticsProviderTestReqSchema>;
+
+export const DiagnosticsProviderTestRespSchema = z
+  .object({
+    ok: z.boolean(),
+    provider: z.string().optional(),
+    base_url: z.string().optional(),
+    model: z.string().optional(),
+    duration_ms: z.number().int().nonnegative().optional(),
+    expect: z.string().optional(),
+    assistant_text: z.string().optional(),
+    error: z.string().optional(),
+    http_status: z.number().optional(),
+    run: z.any().optional(),
+  })
+  .passthrough();
+export type DiagnosticsProviderTestResp = z.infer<typeof DiagnosticsProviderTestRespSchema>;
+
 export const DaemonConfigSchema = z
   .object({
     ok: z.boolean(),
@@ -58,6 +123,7 @@ export const DaemonConfigSchema = z
         max_steps_default: z.number().int().nonnegative().optional(),
         max_tool_calls_total_default: z.number().int().nonnegative().optional(),
         max_tool_calls_per_tool_default: z.number().int().nonnegative().optional(),
+        max_tool_call_args_chars_default: z.number().int().nonnegative().optional(),
         tool_call_limits_default: z
           .array(
             z.object({
@@ -205,6 +271,7 @@ export const RunRequestSchema = z.object({
   max_repeated_tool_calls: z.number().int().nonnegative().optional(),
   max_tool_calls_total: z.number().int().nonnegative().optional(),
   max_tool_calls_per_tool: z.number().int().nonnegative().optional(),
+  max_tool_call_args_chars: z.number().int().nonnegative().optional(),
   tool_call_limits: z
     .array(
       z.object({
@@ -303,6 +370,7 @@ export const RunResponseSchema = z.object({
   effective_yolo: z.boolean().optional(),
   effective_host_policy: z.enum(["full", "readonly"]).optional(),
   effective_timeout_ms: z.number().optional(),
+  effective_max_tool_call_args_chars: z.number().optional(),
   effective_stream_assistant: z.boolean().optional(),
   verbose: z.boolean().optional(),
   events: z.array(EventSchema).optional(),
@@ -435,6 +503,33 @@ export async function apiGetConfig(base: string, auth?: ApiAuth): Promise<Daemon
   const r = await fetch(`${base}/api/v1/config`, { headers: daemonHeaders(auth) });
   const j = await r.json();
   return DaemonConfigSchema.parse(j);
+}
+
+export async function apiGetDiagnostics(base: string, auth?: ApiAuth): Promise<Diagnostics> {
+  const r = await fetch(`${base}/api/v1/diagnostics`, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return DiagnosticsSchema.parse(j);
+}
+
+export async function apiGetDiagnosticsProviders(base: string, auth?: ApiAuth): Promise<DiagnosticsProviders> {
+  const r = await fetch(`${base}/api/v1/diagnostics/providers`, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return DiagnosticsProvidersSchema.parse(j);
+}
+
+export async function apiPostDiagnosticsProviderTest(
+  base: string,
+  req: DiagnosticsProviderTestReq,
+  auth?: ApiAuth,
+): Promise<DiagnosticsProviderTestResp> {
+  const payload = DiagnosticsProviderTestReqSchema.parse(req);
+  const r = await fetch(`${base}/api/v1/diagnostics/provider_test`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json();
+  return DiagnosticsProviderTestRespSchema.parse(j);
 }
 
 export const SessionsSchema = z.object({

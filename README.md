@@ -45,6 +45,12 @@ Or run the helper:
 tools\verify_windows_build.ps1 -Config Release
 ```
 
+To auto-install vcpkg + deps:
+
+```powershell
+tools\verify_windows_build.ps1 -InstallDeps -VcpkgRoot C:\vcpkg -Config Release
+```
+
 CI helpers (optional):
 - `tools/trigger_ci_windows_build.sh [ref]` (dispatches Windows CI; requires token or `gh auth login`)
 - `tools/check_ci_windows_build.sh` (prints latest Windows CI status; requires token for private repos)
@@ -247,7 +253,10 @@ Environment variables:
 - `AGENTD_DB_PATH`
 - `AGENTD_ACCESS_LOG` (`1` for text logs, `json` for JSON logs)
 - `AGENTD_HTTP_MAX_BODY_BYTES` (default `67108864`, `0` to disable limit)
+- `AGENTD_HTTP_MAX_HEADER_BYTES` (default `1048576`, `0` to disable limit)
+- `AGENTD_HTTP_READ_TIMEOUT_MS` (default `15000`, `0` to disable read timeouts)
 - `AGENTD_UPLOAD_MAX_BYTES` (per-file upload cap, default `33554432`, `0` to disable cap)
+- `AGENTD_MAX_TOOL_CALL_ARGS_CHARS_DEFAULT` (default `0`, disables tool-arg length guard)
 
 ## Run in production (agentd + WebUI)
 
@@ -359,6 +368,11 @@ curl -k https://127.0.0.1:8443/healthz
 curl http://127.0.0.1:8123/api/v1/health
 curl http://127.0.0.1:8123/api/v1/ready
 curl http://127.0.0.1:8123/metrics
+```
+Optional diagnostics (requires auth if enabled):
+```bash
+curl http://127.0.0.1:8123/api/v1/diagnostics
+curl http://127.0.0.1:8123/api/v1/diagnostics/providers
 ```
 3) UI functional check:
 - Run a short prompt that emits audio (artifact or scene).
@@ -594,6 +608,8 @@ guard that stops if the model repeats the **exact same tool call** too many time
 - Daemon/UI: request field `max_repeated_tool_calls` (see `docs/PROTOCOL.md`)
 - For daemon runs, `max_steps` can be left blank in the UI to use the daemon’s default step cap (`/api/v1/config: daemon.max_steps_default`).
 - For worst-case safety, daemon also applies a default cap on total tool calls (`/api/v1/config: daemon.max_tool_calls_total_default`).
+- To guard against oversized tool call arguments, daemon can apply a default cap on tool call JSON length
+  (`/api/v1/config: daemon.max_tool_call_args_chars_default`, `0` disables).
 - For targeted safety (without breaking benign high-frequency tools like `fs_read`), daemon can apply explicit per-tool limits:
   - daemon defaults are visible at `/api/v1/config: daemon.tool_call_limits_default`
   - configure via `agentd --tool-call-limit proc_exec=4 --tool-call-limit shell_exec=16 --tool-call-limit artifact_register=16 --tool-call-limit ui_action=16`

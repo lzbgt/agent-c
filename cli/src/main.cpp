@@ -397,6 +397,7 @@ static void usage() {
     << "  --max-repeated-tool-calls <n>  Stop runaway loops when repeating identical tool calls (default: 0; 0 disables)\n"
     << "  --max-tool-calls-total <n>     Max total tool calls (default: unlimited; 0 means unlimited)\n"
     << "  --max-tool-calls-per-tool <n>  Max tool calls per tool name (default: unlimited; 0 means unlimited)\n"
+    << "  --max-tool-call-args-chars <n> Max tool call arguments JSON length (default: unlimited; 0 means unlimited)\n"
     << "  --tool-call-limit <tool>=<n>  Per-tool call cap (repeatable; 0 means unlimited for that tool)\n"
     << "  --attach <path>           Attach a local file (repeatable; images are sent as base64)\n"
     << "  --stream-assistant        Stream assistant deltas (tools=none|basic|host; provider-dependent)\n"
@@ -531,6 +532,7 @@ int main(int argc, char** argv) {
   size_t max_repeated_tool_calls = 0;
   size_t max_tool_calls_total = 0;
   size_t max_tool_calls_per_tool = 0;
+  size_t max_tool_call_args_chars = 0;
   std::vector<std::string> tool_call_limit_specs;
   std::vector<std::string> attach_paths;
   bool stream_assistant = false;
@@ -644,6 +646,10 @@ int main(int argc, char** argv) {
   }
   if (!take_flag_u64(args, "--max-tool-calls-per-tool", &max_tool_calls_per_tool)) {
     std::cerr << "Invalid value for --max-tool-calls-per-tool\n";
+    return 2;
+  }
+  if (!take_flag_u64(args, "--max-tool-call-args-chars", &max_tool_call_args_chars)) {
+    std::cerr << "Invalid value for --max-tool-call-args-chars\n";
     return 2;
   }
   if (!take_multi_flag(args, "--tool-call-limit", &tool_call_limit_specs)) {
@@ -841,9 +847,10 @@ int main(int argc, char** argv) {
     opt.require_tool_call = require_tool_call;
     opt.max_steps = max_steps;
     opt.max_repeated_tool_calls = max_repeated_tool_calls;
-	    opt.max_tool_calls_total = max_tool_calls_total;
-	    opt.max_tool_calls_per_tool = max_tool_calls_per_tool;
-	    opt.tool_call_limits = std::move(tool_call_limits);
+    opt.max_tool_calls_total = max_tool_calls_total;
+    opt.max_tool_calls_per_tool = max_tool_calls_per_tool;
+    opt.max_tool_call_args_chars = max_tool_call_args_chars;
+    opt.tool_call_limits = std::move(tool_call_limits);
 	    opt.max_chars = max_chars;
 	    opt.keep_last_messages = keep_last;
 	    opt.stream_assistant = stream_assistant;

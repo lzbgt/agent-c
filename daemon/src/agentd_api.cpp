@@ -5,6 +5,7 @@
 #include "config_store.h"
 #include "cors.h"
 #include "daemon_auth.h"
+#include "diagnostics_endpoints.h"
 #include "db_query_endpoints.h"
 #include "edge_interop_endpoints.h"
 #include "file_endpoint.h"
@@ -286,6 +287,29 @@ bool AgentdApi::init(std::string* out_error) {
   impl_->route("POST", "/api/v1/config/update", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);
     handle_config_update_endpoint(self->cfg_store.get(), &self->db, self->cors_cfg, req, resp);
+  });
+
+  impl_->route("GET", "/api/v1/diagnostics", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    cors_apply(req, resp, self->cors_cfg);
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_diagnostics_endpoint(cur, &self->db, self->start_time, req, resp);
+  });
+  impl_->route("GET", "/api/v1/diagnostics/providers", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    cors_apply(req, resp, self->cors_cfg);
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_diagnostics_providers_endpoint(cur, self->start_time, req, resp);
+  });
+  impl_->route("POST", "/api/v1/diagnostics/provider_test", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    cors_apply(req, resp, self->cors_cfg);
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
+    handle_diagnostics_provider_test_endpoint(cur, ocfg, &self->db, self->tool_ext_or_null(), cur.sessions_root_dir, req, resp);
   });
 
   impl_->route("GET", "/api/v1/tools", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {

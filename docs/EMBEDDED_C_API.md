@@ -184,6 +184,7 @@ opt.max_steps = 8;
 opt.max_chars = 8000;
 opt.keep_last_messages = 12;
 opt.max_tool_result_chars = 2000;
+opt.max_tool_call_args_chars = 0; // default (0 disables)
 opt.verbose_events = 0;
 opt.max_capture_chars = 0;        // default (only used when events enabled)
 opt.disable_tool_records = 1;     // recommended for embedded
@@ -216,7 +217,7 @@ These settings directly reduce prompt size and tool-loop amplification:
 
 - `opt.max_tool_result_chars`: keep tool outputs compact before re-inserting into the LLM transcript
 - `opt.max_chars` + `opt.keep_last_messages`: bounds the transcript size and compaction work
-- `opt.max_steps` / `opt.max_tool_calls_total` / `opt.max_tool_calls_per_tool`: hard limits to prevent runaway loops
+- `opt.max_steps` / `opt.max_tool_calls_total` / `opt.max_tool_calls_per_tool` / `opt.max_tool_call_args_chars`: hard limits to prevent runaway loops
 - Tool schemas: keep JSON schema small; avoid large descriptions; prefer enums over long free-form fields
 
 If you need richer tool outputs for debugging, return structured *but compact* JSON, e.g.:

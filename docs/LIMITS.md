@@ -75,6 +75,18 @@ It exists because:
     - `limit_source = "max_tool_calls_per_tool"`
   - return `AGENT_ERR_LIMIT`
 
+### `max_tool_call_args_chars`
+
+- Definition: maximum number of characters in a single tool call `arguments_json` (best-effort).
+- `max_tool_call_args_chars = 0` means unlimited.
+- When triggered, the core must:
+  - emit an `error` event with:
+    - `reason = "max_tool_call_args_chars_exceeded"`
+    - `max_tool_call_args_chars`
+    - `tool_name` (best-effort)
+    - `tool_call_args_chars` (best-effort length)
+  - return `AGENT_ERR_LIMIT`
+
 ### `tool_call_limits` (per-tool map)
 
 - Definition: an explicit per-tool call limit map applied across the entire run.

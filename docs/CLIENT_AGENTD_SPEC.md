@@ -249,6 +249,19 @@ When DB support is enabled, the daemon exposes read-only debugging endpoints:
 
 These are intended for troubleshooting and UI indexing, not for core client functionality.
 
+### Diagnostics endpoints (auth required)
+
+The daemon exposes lightweight diagnostics endpoints for operational checks and provider key visibility:
+
+- `GET /api/v1/diagnostics`
+  - returns `{ ok, ready, db, jobs, workflows, warnings? }`
+  - includes DB table counts and workflow scheduler stats when DB is enabled
+- `GET /api/v1/diagnostics/providers`
+  - returns provider key presence + source metadata (config/env/file), base URL, and model defaults
+- `POST /api/v1/diagnostics/provider_test`
+  - runs a small provider test (no session) and returns `{ ok, provider, model, duration_ms, assistant_text?, error? }`
+  - accepts optional overrides: `base_url`, `model`, `prompt`, `expect`, `tools`, `require_tool_call`, plus tool-loop limits
+
 ## Scene Management Spec (Durable Scene)
 
 ### Scene state schema (server-side)

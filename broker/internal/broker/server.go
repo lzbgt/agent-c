@@ -479,6 +479,24 @@ func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentI
 		// Keep first value only (agentd endpoints don't require multi-value headers).
 		headers[k] = vv[0]
 	}
+	hasHeader := func(name string) bool {
+		for k := range headers {
+			if strings.EqualFold(k, name) {
+				return true
+			}
+		}
+		return false
+	}
+	if !hasHeader("X-Request-ID") {
+		if rid := requestIDFromContext(r.Context()); rid != "" {
+			headers["X-Request-ID"] = rid
+		}
+	}
+	if !hasHeader("X-Trace-ID") {
+		if tid := traceIDFromContext(r.Context()); tid != "" {
+			headers["X-Trace-ID"] = tid
+		}
+	}
 	headers["X-Agentd-Broker-User"] = p.Sub
 	// Allow callers to pass through an agentd auth header without colliding with broker OIDC auth.
 	// The broker consumes `Authorization: Bearer <oidc_jwt>`; the forwarded request may need a different
@@ -540,6 +558,24 @@ func (s *Server) handleAgentProxySSE(w http.ResponseWriter, r *http.Request, age
 			continue
 		}
 		headers[k] = vv[0]
+	}
+	hasHeader := func(name string) bool {
+		for k := range headers {
+			if strings.EqualFold(k, name) {
+				return true
+			}
+		}
+		return false
+	}
+	if !hasHeader("X-Request-ID") {
+		if rid := requestIDFromContext(r.Context()); rid != "" {
+			headers["X-Request-ID"] = rid
+		}
+	}
+	if !hasHeader("X-Trace-ID") {
+		if tid := traceIDFromContext(r.Context()); tid != "" {
+			headers["X-Trace-ID"] = tid
+		}
 	}
 	headers["X-Agentd-Broker-User"] = p.Sub
 	if v := strings.TrimSpace(r.Header.Get("X-Agentd-Authorization")); v != "" {

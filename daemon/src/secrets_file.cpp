@@ -83,11 +83,37 @@ static std::vector<std::filesystem::path> candidate_secret_files_best_effort() {
 }  // namespace
 
 std::optional<std::string> load_provider_key_best_effort(const std::string& provider) {
+  auto info = load_provider_key_source_best_effort(provider);
+  if (info) return info->key;
+  return std::nullopt;
+}
+
+std::optional<ProviderKeySource> load_provider_key_source_best_effort(const std::string& provider) {
   for (const auto& p : candidate_secret_files_best_effort()) {
     std::error_code ec;
     if (!std::filesystem::exists(p, ec) || ec) continue;
     auto k = extract_key_from_file(p, provider);
-    if (k) return k;
+    if (!k) continue;
+
+    ProviderKeySource out;
+    out.key = *k;
+    out.source_kind = "file";
+
+    const std::string name = p.filename().string();
+    if (name == ".env") {
+      if (const char* h = std::getenv("HOME")) {
+        if (h[0]) {
+          const std::filesystem::path hp = std::filesystem::path(h) / ".env";
+          if (hp == p) out.source_label = "~/.env";
+        }
+      }
+    }
+    if (out.source_label.empty()) {
+      if (name == ".not_in_repo") out.source_label = ".not_in_repo";
+      else if (name == "project.local.md") out.source_label = "project.local.md";
+      else out.source_label = name;
+    }
+    return out;
   }
   return std::nullopt;
 }

@@ -37,6 +37,8 @@ struct ToolLoopOptions {
   size_t max_tool_calls_total = 0;
   // Cap tool calls per tool name across the entire run. 0 disables.
   size_t max_tool_calls_per_tool = 0;
+  // Cap tool call argument JSON length (best-effort, per tool call). 0 disables.
+  size_t max_tool_call_args_chars = 0;
   // Explicit per-tool call limits (more precise than max_tool_calls_per_tool).
   // When non-empty, entries override max_tool_calls_per_tool for matching tool names.
   std::vector<ToolCallLimit> tool_call_limits;

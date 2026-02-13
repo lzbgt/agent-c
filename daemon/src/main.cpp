@@ -2,6 +2,7 @@
 
 #include "cors.h"
 #include "daemon_auth.h"
+#include "diagnostics_endpoints.h"
 #include "daemon_config.h"
 #include "config_endpoint.h"
 #include "avm_endpoints.h"
@@ -576,6 +577,18 @@ int main(int argc, char** argv) {
         std::cerr << "Invalid --max-tool-calls-per-tool-default\n";
         return 2;
       }
+    } else if (a == "--max-tool-call-args-chars-default") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --max-tool-call-args-chars-default\n";
+        return 2;
+      }
+      try {
+        cfg.max_tool_call_args_chars_default = (size_t)std::stoull(v);
+      } catch (...) {
+        std::cerr << "Invalid --max-tool-call-args-chars-default\n";
+        return 2;
+      }
     } else if (a == "--tool-call-limit") {
       std::string v;
       if (!take(&v)) {
@@ -780,6 +793,7 @@ int main(int argc, char** argv) {
         << "  --max-steps-default <n> Default tool-loop max steps when requests omit it (default: 0; 0 means unlimited)\n"
         << "  --max-tool-calls-total-default <n> Default tool-loop total tool calls cap when requests omit it (default: 0; 0 means unlimited)\n"
         << "  --max-tool-calls-per-tool-default <n> Default tool-loop per-tool call cap when requests omit it (default: 0; 0 means unlimited)\n"
+        << "  --max-tool-call-args-chars-default <n> Default tool-loop tool call args JSON cap (default: 0; 0 means unlimited)\n"
         << "  --tool-call-limit <tool>=<n> Default per-tool call limit (repeatable; 0 means unlimited for that tool)\n"
         << "  --tools host|basic|none   Default toolset (default: host)\n"
         << "  --host-policy full|readonly  Host tool safety policy (default: full)\n"
@@ -882,6 +896,13 @@ int main(int argc, char** argv) {
       cfg.max_tool_calls_per_tool_default = (size_t)std::stoull(ms);
     } catch (...) {
       std::cerr << "Invalid AGENTD_MAX_TOOL_CALLS_PER_TOOL_DEFAULT; ignoring\n";
+    }
+  }
+  if (const char* ms = getenv_s("AGENTD_MAX_TOOL_CALL_ARGS_CHARS_DEFAULT")) {
+    try {
+      cfg.max_tool_call_args_chars_default = (size_t)std::stoull(ms);
+    } catch (...) {
+      std::cerr << "Invalid AGENTD_MAX_TOOL_CALL_ARGS_CHARS_DEFAULT; ignoring\n";
     }
   }
   if (const char* s = getenv_s("AGENTD_TOOL_CALL_LIMITS_DEFAULT")) {
@@ -1303,6 +1324,26 @@ int main(int argc, char** argv) {
 
   server.handle("POST", "/api/v1/config/update", [&](const HttpRequest& req, HttpResponse* resp) {
     handle_config_update_endpoint(&cfg_store, db_or_null, cors_cfg, req, resp);
+  });
+
+  server.handle("GET", "/api/v1/diagnostics", [&](const HttpRequest& req, HttpResponse* resp) {
+    cors_apply(req, resp, cors_cfg);
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_diagnostics_endpoint(cur, db_or_null, start_time, req, resp);
+  });
+  server.handle("GET", "/api/v1/diagnostics/providers", [&](const HttpRequest& req, HttpResponse* resp) {
+    cors_apply(req, resp, cors_cfg);
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_diagnostics_providers_endpoint(cur, start_time, req, resp);
+  });
+  server.handle("POST", "/api/v1/diagnostics/provider_test", [&](const HttpRequest& req, HttpResponse* resp) {
+    cors_apply(req, resp, cors_cfg);
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    const DaemonConfig cur = cfg_store.snapshot();
+    const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
+    handle_diagnostics_provider_test_endpoint(cur, ocfg, db_or_null, tool_ext_or_null, cur.sessions_root_dir, req, resp);
   });
 
   server.handle("GET", "/api/v1/tools", [&](const HttpRequest& req, HttpResponse* resp) {

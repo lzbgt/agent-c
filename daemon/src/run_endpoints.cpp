@@ -419,6 +419,11 @@ static Json::Value run_request_to_json_impl(
     json_get_u64_nonneg(args, "max_tool_calls_per_tool", &max_tool_calls_per_tool_u64)
       ? (size_t)max_tool_calls_per_tool_u64
       : daemon_cfg.max_tool_calls_per_tool_default;
+  uint64_t max_tool_call_args_chars_u64 = 0;
+  const size_t max_tool_call_args_chars =
+    json_get_u64_nonneg(args, "max_tool_call_args_chars", &max_tool_call_args_chars_u64)
+      ? (size_t)max_tool_call_args_chars_u64
+      : daemon_cfg.max_tool_call_args_chars_default;
 
   // Explicit per-tool call limits (more precise than max_tool_calls_per_tool).
   std::vector<ToolCallLimit> tool_call_limits;
@@ -841,6 +846,7 @@ static Json::Value run_request_to_json_impl(
     opt.max_steps = max_steps;
     opt.max_tool_calls_total = max_tool_calls_total;
     opt.max_tool_calls_per_tool = max_tool_calls_per_tool;
+    opt.max_tool_call_args_chars = max_tool_call_args_chars;
     opt.tool_call_limits = std::move(tool_call_limits);
     opt.verbose = verbose;
     opt.stream_assistant = stream_assistant;
@@ -1414,6 +1420,7 @@ static Json::Value run_request_to_json_impl(
   out["effective_max_steps"] = (Json::UInt64)max_steps;
   out["effective_max_tool_calls_total"] = (Json::UInt64)max_tool_calls_total;
   out["effective_max_tool_calls_per_tool"] = (Json::UInt64)max_tool_calls_per_tool;
+  out["effective_max_tool_call_args_chars"] = (Json::UInt64)max_tool_call_args_chars;
   out["steps_executed"] = use_tool_loop ? (Json::UInt64)tool_loop_result.steps_executed : (Json::UInt64)0;
   out["tool_calls_total"] = use_tool_loop ? (Json::UInt64)tool_loop_result.tool_records.size() : (Json::UInt64)0;
   if (use_tool_loop && !tool_loop_result.tool_records.empty()) {

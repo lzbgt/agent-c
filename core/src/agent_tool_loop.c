@@ -340,7 +340,8 @@ static agent_status_t tl_list_push_message_copy(
 
 static agent_status_t tl_list_push_assistant_with_tool_calls(
   tl_msg_list_t* l,
-  const agent_tool_provider_response_t* resp
+  const agent_tool_provider_response_t* resp,
+  size_t max_tool_call_args_chars
 ) {
   if (!l || !resp) return AGENT_ERR_INVALID_ARGUMENT;
   agent_status_t st = tl_list_reserve(l, l->count + 1);
@@ -358,6 +359,10 @@ static agent_status_t tl_list_push_assistant_with_tool_calls(
     for (size_t i = 0; i < resp->tool_call_count; i++) {
       const agent_tool_call_t* src = &resp->tool_calls[i];
       tl_tool_call_t* dst = &m->tool_calls[i];
+      if (max_tool_call_args_chars > 0 && src->arguments_json.len > max_tool_call_args_chars) {
+        tl_message_destroy(m);
+        return AGENT_ERR_LIMIT;
+      }
       st = agent_string_set_copy(&dst->id, src->id.data ? src->id.data : "", src->id.len);
       if (st != AGENT_OK) { tl_message_destroy(m); return st; }
       st = agent_string_set_copy(&dst->name, src->name.data ? src->name.data : "", src->name.len);
@@ -947,7 +952,11 @@ static agent_status_t tl_run_memory_flush_best_effort(
 
     // Append assistant message (including tool call metadata). Best-effort: tool execution is the main goal.
     {
-      const agent_status_t st_append = tl_list_push_assistant_with_tool_calls(&flush, &presp);
+      const agent_status_t st_append = tl_list_push_assistant_with_tool_calls(
+        &flush,
+        &presp,
+        options ? options->max_tool_call_args_chars : 0
+      );
       if (st_append == AGENT_OK) {
         assistant_appended = 1;
       } else {
@@ -1578,8 +1587,52 @@ agent_status_t agent_tool_loop_run(
     if (has_tool_calls) res.saw_tool_call = 1;
 
     // Append assistant message (including tool call metadata).
-    agent_status_t sta = tl_list_push_assistant_with_tool_calls(&messages, &presp);
+    agent_status_t sta = tl_list_push_assistant_with_tool_calls(
+      &messages,
+      &presp,
+      options ? options->max_tool_call_args_chars : 0
+    );
     if (sta != AGENT_OK) {
+      if (sta == AGENT_ERR_LIMIT) {
+        const char* msg = "tool call arguments too large";
+        (void)agent_string_set_copy(&res.error_message, msg, strlen(msg));
+        const char* bad_tool = NULL;
+        size_t bad_tool_len = 0;
+        size_t bad_len = 0;
+        if (options && options->max_tool_call_args_chars > 0) {
+          for (size_t i = 0; i < presp.tool_call_count; i++) {
+            const agent_tool_call_t* call = &presp.tool_calls[i];
+            if (call->arguments_json.len > options->max_tool_call_args_chars) {
+              bad_tool = call->name.data ? call->name.data : NULL;
+              bad_tool_len = call->name.len;
+              bad_len = call->arguments_json.len;
+              break;
+            }
+          }
+        }
+        if (tl_events_enabled(hooks)) {
+          tl_buf_t d = {0};
+          uint8_t first = 1;
+          (void)tl_buf_append_char(&d, '{');
+          (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
+          (void)tl_json_append_string_field(&d, "reason", "max_tool_call_args_chars_exceeded",
+                                            strlen("max_tool_call_args_chars_exceeded"), &first);
+          if (options && options->max_tool_call_args_chars > 0) {
+            (void)tl_json_append_u64_field(&d, "max_tool_call_args_chars",
+                                           (unsigned long long)options->max_tool_call_args_chars, &first);
+          }
+          if (bad_tool && bad_tool_len > 0) {
+            (void)tl_json_append_string_field(&d, "tool_name", bad_tool, bad_tool_len, &first);
+          }
+          if (bad_len > 0) {
+            (void)tl_json_append_u64_field(&d, "tool_call_args_chars", (unsigned long long)bad_len, &first);
+          }
+          (void)tl_json_append_string_field(&d, "error", msg, strlen(msg), &first);
+          (void)tl_buf_append_char(&d, '}');
+          tl_emit_event(hooks, "error", d.data ? d.data : "{}");
+          tl_buf_free(&d);
+        }
+      }
       agent_tool_provider_response_free(&presp);
       status = sta;
       goto cleanup;

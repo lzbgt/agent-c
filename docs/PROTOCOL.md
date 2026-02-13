@@ -152,6 +152,9 @@ For robust runaway protection (especially when a model requests many tool calls 
 - `max_tool_calls_per_tool` (int, optional): max number of tool calls executed per tool name.
   - omitted → daemon default applies (often `0`/disabled)
   - `0` means unlimited
+ - `max_tool_call_args_chars` (int, optional): max length of a single tool call `arguments_json` (best-effort).
+   - omitted → daemon default applies
+   - `0` means unlimited
 
 For targeted safety (and to avoid breaking benign high-frequency tools like `fs_read`), runs may also specify an explicit
 per-tool map:

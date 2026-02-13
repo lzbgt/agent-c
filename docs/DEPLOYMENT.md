@@ -116,6 +116,10 @@ New-Service -Name "agentd" -BinaryPathName "`"$exe`" $args" -StartupType Automat
 - Put it behind a reverse proxy with TLS (nginx/Caddy/Envoy).
 - **Do not** bind directly to `0.0.0.0` without `--auth-token`.
 - Use strict CORS allowlists.
+- Set HTTP safety limits via env:
+  - `AGENTD_HTTP_MAX_BODY_BYTES` (request body cap)
+  - `AGENTD_HTTP_MAX_HEADER_BYTES` (request header cap)
+  - `AGENTD_HTTP_READ_TIMEOUT_MS` (read timeout for slow clients)
 
 ---
 

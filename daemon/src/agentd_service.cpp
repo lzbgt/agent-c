@@ -8,6 +8,7 @@
 #include "config_store.h"
 #include "cors.h"
 #include "daemon_auth.h"
+#include "diagnostics_endpoints.h"
 #include "db_query_endpoints.h"
 #include "edge_interop_endpoints.h"
 #include "edge_deadline_sweeper.h"
@@ -181,6 +182,9 @@ static void fill_env_defaults(DaemonConfig* cfg) {
   }
   if (const char* ms = getenv_s("AGENTD_MAX_TOOL_CALLS_PER_TOOL_DEFAULT")) {
     try { cfg->max_tool_calls_per_tool_default = (size_t)std::stoull(ms); } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MAX_TOOL_CALL_ARGS_CHARS_DEFAULT")) {
+    try { cfg->max_tool_call_args_chars_default = (size_t)std::stoull(ms); } catch (...) {}
   }
   if (const char* ms = getenv_s("AGENTD_JOB_CONCURRENCY")) {
     try { cfg->job_engine_max_concurrency = std::max(1, std::stoi(ms)); } catch (...) {}
@@ -482,6 +486,26 @@ struct AgentdService::Impl {
 
     server.handle("POST", "/api/v1/config/update", [this](const HttpRequest& req, HttpResponse* resp) {
       handle_config_update_endpoint(cfg_store.get(), &db, cors_cfg, req, resp);
+    });
+
+    server.handle("GET", "/api/v1/diagnostics", [this](const HttpRequest& req, HttpResponse* resp) {
+      cors_apply(req, resp, cors_cfg);
+      resp->headers["Content-Type"] = "application/json; charset=utf-8";
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_diagnostics_endpoint(cur, &db, start_time, req, resp);
+    });
+    server.handle("GET", "/api/v1/diagnostics/providers", [this](const HttpRequest& req, HttpResponse* resp) {
+      cors_apply(req, resp, cors_cfg);
+      resp->headers["Content-Type"] = "application/json; charset=utf-8";
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_diagnostics_providers_endpoint(cur, start_time, req, resp);
+    });
+    server.handle("POST", "/api/v1/diagnostics/provider_test", [this](const HttpRequest& req, HttpResponse* resp) {
+      cors_apply(req, resp, cors_cfg);
+      resp->headers["Content-Type"] = "application/json; charset=utf-8";
+      const DaemonConfig cur = cfg_store->snapshot();
+      const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
+      handle_diagnostics_provider_test_endpoint(cur, ocfg, &db, tool_ext_or_null(), cur.sessions_root_dir, req, resp);
     });
 
     server.handle("GET", "/api/v1/tools", [this](const HttpRequest& req, HttpResponse* resp) {

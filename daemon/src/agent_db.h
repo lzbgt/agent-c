@@ -364,6 +364,29 @@ class AgentDb {
     int64_t tasks_queued_not_ready = 0;
   };
 
+  struct JobStatusCounts {
+    std::map<std::string, int64_t> by_status;
+    int64_t total = 0;
+  };
+
+  struct TableCounts {
+    int64_t sessions = 0;
+    int64_t messages = 0;
+    int64_t runs = 0;
+    int64_t events = 0;
+    int64_t artifacts = 0;
+    int64_t ui_actions = 0;
+    int64_t client_events = 0;
+    int64_t audit_records = 0;
+    int64_t jobs = 0;
+    int64_t workflows = 0;
+    int64_t workflow_tasks = 0;
+    int64_t workflow_events = 0;
+    int64_t edge_nodes = 0;
+    int64_t edge_tasks = 0;
+    int64_t edge_workflows = 0;
+  };
+
   struct WorkflowUsageTotals {
     int64_t tool_calls_total_used = 0;
     int64_t steps_total_used = 0;
@@ -400,6 +423,10 @@ class AgentDb {
     WorkflowSchedulerStats* out_stats,
     std::string* out_error
   );
+
+  // Diagnostics helpers (best-effort; counts are approximate).
+  bool get_job_status_counts(JobStatusCounts* out_counts, std::string* out_error);
+  bool get_table_counts(TableCounts* out_counts, std::string* out_error);
 
   // Best-effort workflow usage totals computed from retry-safe per-task cumulative counters.
   bool get_workflow_usage_totals(

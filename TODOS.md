@@ -1,6 +1,6 @@
 # Roadmap / TODOs (highest leverage)
 
-Date: 2026-02-07
+Date: 2026-02-13
 
 This roadmap is biased toward “power unleashed” coming from the **agentic framework itself**:
 
@@ -38,6 +38,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
    - [x] Add macOS local verification script (agentd + WebUI without Docker).
    - [x] WebUI runtime defaults via `agentui-config.js` + `VITE_AGENTUI_*` env overrides (no rebuild required).
    - [x] Broker tunables: max body/header bytes + HTTP timeouts (flags + env).
+   - [x] Agentd HTTP hardening: header size cap + read timeouts (env) with smoke test.
+   - [x] Diagnostics endpoints: `/api/v1/diagnostics`, `/api/v1/diagnostics/providers`, `/api/v1/diagnostics/provider_test`.
+   - [x] Tool-loop guard: `max_tool_call_args_chars` (daemon default + run override + core limit event).
+   - [x] Broker proxy forwarding sets `X-Request-ID` and `X-Trace-ID` when missing (trace correlation).
 
 ## Recently shipped (proof in CI)
 

@@ -83,6 +83,10 @@ typedef struct agent_tool_loop_options {
   // 0 disables the guard.
   size_t max_tool_calls_per_tool;
 
+  // Cap tool call argument JSON length (best-effort, per tool call).
+  // 0 disables the guard.
+  size_t max_tool_call_args_chars;
+
   // Explicit per-tool call limits. This is more precise than `max_tool_calls_per_tool`.
   // - If an entry exists for a tool name:
   //   - max_calls=0 means unlimited for that tool (explicit disable).

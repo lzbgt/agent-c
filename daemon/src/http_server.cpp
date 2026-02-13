@@ -7,6 +7,7 @@
 #include <chrono>
 #include <cstring>
 #include <iostream>
+#include <limits>
 #include <random>
 #include <sstream>
 #include <string_view>
@@ -123,6 +124,64 @@ static size_t max_request_body_bytes() {
   }
 }
 
+static size_t max_request_header_bytes() {
+  const size_t kDefault = 1ull * 1024ull * 1024ull;
+  const size_t kMaxCap = 32ull * 1024ull * 1024ull;
+  const char* v = std::getenv("AGENTD_HTTP_MAX_HEADER_BYTES");
+  if (!v || !v[0]) return kDefault;
+  std::string s(v);
+  trim_inplace(s);
+  if (s.empty()) return kDefault;
+  if (s == "0") return 0;
+  try {
+    unsigned long long parsed = std::stoull(s);
+    if (parsed == 0) return 0;
+    if (parsed > kMaxCap) parsed = kMaxCap;
+    return (size_t)parsed;
+  } catch (...) {
+    return kDefault;
+  }
+}
+
+static int http_read_timeout_ms() {
+  const int kDefault = 15000;
+  const int kMaxCap = 300000;
+  const char* v = std::getenv("AGENTD_HTTP_READ_TIMEOUT_MS");
+  if (!v || !v[0]) return kDefault;
+  std::string s(v);
+  trim_inplace(s);
+  if (s.empty()) return kDefault;
+  try {
+    long long parsed = std::stoll(s);
+    if (parsed <= 0) return 0;
+    if (parsed > kMaxCap) parsed = kMaxCap;
+    return (int)parsed;
+  } catch (...) {
+    return kDefault;
+  }
+}
+
+static bool is_timeout_err(int err) {
+#if defined(_WIN32)
+  return err == WSAETIMEDOUT;
+#else
+  return err == EAGAIN || err == EWOULDBLOCK;
+#endif
+}
+
+static void set_socket_read_timeout(socket_t fd, int timeout_ms) {
+  if (!socket_valid(fd) || timeout_ms <= 0) return;
+#if defined(_WIN32)
+  DWORD tv = (DWORD)timeout_ms;
+  (void)setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+#else
+  struct timeval tv;
+  tv.tv_sec = timeout_ms / 1000;
+  tv.tv_usec = (timeout_ms % 1000) * 1000;
+  (void)setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tv, sizeof(tv));
+#endif
+}
+
 static std::string addr_to_string(const sockaddr_storage& addr) {
   char buf[INET6_ADDRSTRLEN];
   if (addr.ss_family == AF_INET) {
@@ -139,39 +198,65 @@ static std::string addr_to_string(const sockaddr_storage& addr) {
   return std::string();
 }
 
-static bool read_exact(socket_t fd, std::string* out, size_t n) {
+struct ReadResult {
+  bool ok = false;
+  bool timeout = false;
+  bool too_large = false;
+};
+
+static ReadResult read_exact(socket_t fd, std::string* out, size_t n) {
+  ReadResult rr;
   out->clear();
   out->reserve(n);
   while (out->size() < n) {
     char buf[4096];
     const size_t want = std::min(sizeof(buf), n - out->size());
     socket_io_t r = socket_read(fd, buf, want);
-    if (r == 0) return false;
+    if (r == 0) return rr;
     if (r == kSocketError) {
-      if (socket_should_retry(socket_last_error())) continue;
-      return false;
+      const int err = socket_last_error();
+      if (socket_should_retry(err)) continue;
+      if (is_timeout_err(err)) {
+        rr.timeout = true;
+      }
+      return rr;
     }
     out->append(buf, (size_t)r);
   }
-  return true;
+  rr.ok = true;
+  return rr;
 }
 
-static bool read_until(socket_t fd, std::string* out, const std::string& needle, size_t max_bytes) {
+static ReadResult read_until(socket_t fd, std::string* out, const std::string& needle, size_t max_bytes) {
+  ReadResult rr;
   out->clear();
-  while (out->size() < max_bytes) {
+  const size_t limit = max_bytes == 0 ? std::numeric_limits<size_t>::max() : max_bytes;
+  while (out->size() < limit) {
+    const size_t remaining = limit - out->size();
+    if (remaining == 0) {
+      rr.too_large = true;
+      return rr;
+    }
     char buf[2048];
-    socket_io_t r = socket_read(fd, buf, sizeof(buf));
-    if (r == 0) return false;
+    const size_t want = std::min(sizeof(buf), remaining);
+    socket_io_t r = socket_read(fd, buf, want);
+    if (r == 0) return rr;
     if (r == kSocketError) {
-      if (socket_should_retry(socket_last_error())) continue;
-      return false;
+      const int err = socket_last_error();
+      if (socket_should_retry(err)) continue;
+      if (is_timeout_err(err)) {
+        rr.timeout = true;
+      }
+      return rr;
     }
     out->append(buf, (size_t)r);
     if (out->find(needle) != std::string::npos) {
-      return true;
+      rr.ok = true;
+      return rr;
     }
   }
-  return false;
+  rr.too_large = true;
+  return rr;
 }
 
 static bool write_all(socket_t fd, const std::string& s) {
@@ -262,8 +347,10 @@ static std::string reason_phrase(int status) {
     case 401: return "Unauthorized";
     case 403: return "Forbidden";
     case 404: return "Not Found";
+    case 408: return "Request Timeout";
     case 413: return "Payload Too Large";
     case 405: return "Method Not Allowed";
+    case 431: return "Request Header Fields Too Large";
     case 500: return "Internal Server Error";
     default: return "OK";
   }
@@ -378,6 +465,8 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
 
   const int log_mode = access_log_mode();
   const size_t max_body = max_request_body_bytes();
+  const size_t max_header = max_request_header_bytes();
+  const int read_timeout_ms = http_read_timeout_ms();
 
   // Handle each client in its own thread to keep the daemon responsive even when
   // a request is long-running (e.g., SSE streaming endpoint).
@@ -391,7 +480,7 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
     }
 
     const std::string peer_addr = addr_to_string(peer);
-    std::thread([this, client, peer_addr, log_mode, max_body]() {
+    std::thread([this, client, peer_addr, log_mode, max_body, max_header, read_timeout_ms]() {
       const auto start_time = std::chrono::steady_clock::now();
       std::string request_id = make_request_id();
 
@@ -472,8 +561,33 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
         socket_close(client);
       };
 
+      auto send_raw_error = [&](int status, const std::string& body, size_t bytes_in) {
+        HttpResponse resp;
+        resp.status = status;
+        resp.body = body;
+        resp.headers["X-Request-Id"] = request_id;
+        const std::string wire = build_response(resp, default_headers_);
+        (void)write_all(client, wire);
+        HttpRequest req;
+        req.method = "-";
+        req.raw_path = "-";
+        log_access(req, status, false, bytes_in, resp.body.size(), "");
+        socket_close(client);
+      };
+
+      set_socket_read_timeout(client, read_timeout_ms);
+
       std::string head;
-      if (!read_until(client, &head, "\r\n\r\n", 1024 * 1024)) {
+      const ReadResult head_rr = read_until(client, &head, "\r\n\r\n", max_header);
+      if (!head_rr.ok) {
+        if (head_rr.timeout) {
+          send_raw_error(408, R"({"ok":false,"error":"request timeout"})", head.size());
+          return;
+        }
+        if (head_rr.too_large) {
+          send_raw_error(431, R"({"ok":false,"error":"request header too large"})", head.size());
+          return;
+        }
         socket_close(client);
         return;
       }
@@ -486,6 +600,13 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
         resp.status = 400;
         resp.body = R"({"ok":false,"error":"bad request"})";
         send_response(req, resp, 0);
+        return;
+      }
+      if (max_header > 0 && header_bytes > max_header) {
+        HttpResponse resp;
+        resp.status = 431;
+        resp.body = R"({"ok":false,"error":"request header too large"})";
+        send_response(req, resp, header_bytes);
         return;
       }
       if (max_body > 0 && content_len > max_body) {
@@ -506,7 +627,12 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
           req.body = body_already.substr(0, content_len);
         } else {
           std::string rest;
-          if (!read_exact(client, &rest, content_len - body_already.size())) {
+          const ReadResult body_rr = read_exact(client, &rest, content_len - body_already.size());
+          if (!body_rr.ok) {
+            if (body_rr.timeout) {
+              send_raw_error(408, R"({"ok":false,"error":"request timeout"})", head.size() + body_already.size());
+              return;
+            }
             socket_close(client);
             return;
           }

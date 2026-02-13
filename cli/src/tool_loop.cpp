@@ -438,6 +438,7 @@ bool run_tool_loop(
   opt.max_repeated_tool_calls = options.max_repeated_tool_calls;
   opt.max_tool_calls_total = options.max_tool_calls_total;
   opt.max_tool_calls_per_tool = options.max_tool_calls_per_tool;
+  opt.max_tool_call_args_chars = options.max_tool_call_args_chars;
   opt.tool_call_limits = core_tool_call_limits.empty() ? nullptr : core_tool_call_limits.data();
   opt.tool_call_limits_count = core_tool_call_limits.size();
   opt.max_chars = options.max_chars;

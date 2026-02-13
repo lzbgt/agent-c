@@ -13,6 +13,7 @@ servers:
 
 tags:
   - name: health
+  - name: diagnostics
   - name: config
   - name: run
   - name: jobs
@@ -78,6 +79,72 @@ paths:
             text/plain; version=0.0.4:
               schema:
                 type: string
+
+  /api/v1/diagnostics:
+    get:
+      tags: [diagnostics]
+      summary: Diagnostics snapshot (readiness + DB stats)
+      responses:
+        "200":
+          description: Diagnostics snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiagnosticsResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/diagnostics/providers:
+    get:
+      tags: [diagnostics]
+      summary: Provider key presence + defaults
+      responses:
+        "200":
+          description: Provider diagnostics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiagnosticsProvidersResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/diagnostics/provider_test:
+    post:
+      tags: [diagnostics]
+      summary: Run a provider test (no session)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DiagnosticsProviderTestRequest"
+      responses:
+        "200":
+          description: Provider test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiagnosticsProviderTestResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/config:
     get:
@@ -1341,6 +1408,83 @@ components:
         ok: { type: boolean, enum: [false] }
         error: { type: string }
 
+    DiagnosticsResponse:
+      type: object
+      required: [ok, service, version, now_unix_ms, uptime_ms, ready]
+      properties:
+        ok: { type: boolean }
+        service: { type: string }
+        version: { type: string }
+        now_unix_ms: { type: integer, format: int64 }
+        uptime_ms: { type: integer, format: int64 }
+        ready: { type: boolean }
+        checks:
+          type: object
+          additionalProperties: true
+        db:
+          type: object
+          additionalProperties: true
+        jobs:
+          type: object
+          additionalProperties: true
+        workflows:
+          type: object
+          additionalProperties: true
+        warnings:
+          type: array
+          items: { type: string }
+
+    DiagnosticsProvidersResponse:
+      type: object
+      required: [ok, service, version, now_unix_ms, uptime_ms, providers]
+      properties:
+        ok: { type: boolean }
+        service: { type: string }
+        version: { type: string }
+        now_unix_ms: { type: integer, format: int64 }
+        uptime_ms: { type: integer, format: int64 }
+        providers:
+          type: object
+          additionalProperties: true
+
+    DiagnosticsProviderTestRequest:
+      type: object
+      required: [provider]
+      properties:
+        provider: { type: string }
+        base_url: { type: string }
+        model: { type: string }
+        prompt: { type: string }
+        expect: { type: string }
+        tools:
+          type: string
+          enum: [none, basic, host]
+        require_tool_call: { type: boolean }
+        timeout_ms: { type: integer, format: int64 }
+        max_steps: { type: integer, format: int64 }
+        max_tool_calls_total: { type: integer, format: int64 }
+        max_tool_calls_per_tool: { type: integer, format: int64 }
+        max_tool_call_args_chars: { type: integer, format: int64 }
+        max_repeated_tool_calls: { type: integer, format: int64 }
+        include_run: { type: boolean }
+
+    DiagnosticsProviderTestResponse:
+      type: object
+      required: [ok, provider, base_url, model, duration_ms]
+      properties:
+        ok: { type: boolean }
+        provider: { type: string }
+        base_url: { type: string }
+        model: { type: string }
+        duration_ms: { type: integer, format: int64 }
+        expect: { type: string }
+        assistant_text: { type: string }
+        error: { type: string }
+        http_status: { type: integer, format: int64 }
+        run:
+          type: object
+          additionalProperties: true
+
     AgentdConfigResponse:
       type: object
       required: [ok, service, version, daemon, engines, edge_auth]
@@ -1376,6 +1520,7 @@ components:
             db_path: { type: string, nullable: true }
             state_dir: { type: string, nullable: true }
             sessions_root_dir: { type: string, nullable: true }
+            max_tool_call_args_chars_default: { type: integer, format: int64 }
         cors:
           type: object
           additionalProperties: true
@@ -1869,6 +2014,11 @@ components:
           format: int64
           minimum: 0
           description: Per-tool call limit in the tool loop (0 disables/unlimited).
+        max_tool_call_args_chars:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Max length of a single tool call arguments JSON (0 disables/unlimited).
         verbose: { type: boolean }
 
     AgentEvent:
@@ -1915,6 +2065,11 @@ components:
           format: int64
           minimum: 0
           description: Effective max_tool_calls_per_tool enforced by the daemon.
+        effective_max_tool_call_args_chars:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Effective max_tool_call_args_chars enforced by the daemon.
         steps_executed:
           type: integer
           format: int64

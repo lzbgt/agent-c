@@ -174,6 +174,7 @@ void handle_config_endpoint(
   daemon["max_steps_default"] = (Json::UInt64)cfg.max_steps_default;
   daemon["max_tool_calls_total_default"] = (Json::UInt64)cfg.max_tool_calls_total_default;
   daemon["max_tool_calls_per_tool_default"] = (Json::UInt64)cfg.max_tool_calls_per_tool_default;
+  daemon["max_tool_call_args_chars_default"] = (Json::UInt64)cfg.max_tool_call_args_chars_default;
   {
     Json::Value arr(Json::arrayValue);
     for (const auto& p : cfg.tool_call_limits_default) {
