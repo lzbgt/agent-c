@@ -91,6 +91,7 @@ Environment overrides:
 - `AGENTD_TOOLS`, `AGENTD_YOLO`
 - `AGENTD_HOST_SCOPE`, `AGENTD_TOOLS_ROOT`
 - `AGENTD_CORS_ORIGINS` (comma-separated)
+- `AGENTD_UPLOAD_MAX_BYTES` (per-file session upload cap)
 - `AGENTD_EXTRA_ARGS` (space-delimited)
 
 ### Example (Windows service)

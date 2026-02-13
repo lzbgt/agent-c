@@ -762,40 +762,71 @@ void handle_session_upload_endpoint(
   out["ok"] = true;
   out["session_id"] = session_id;
   Json::Value out_files(Json::arrayValue);
+  Json::Value out_errors(Json::arrayValue);
+
+  auto push_error = [&](Json::ArrayIndex index, const std::string& name, const std::string& code, const std::string& msg,
+                        size_t bytes, size_t max_bytes) {
+    Json::Value err(Json::objectValue);
+    err["index"] = (Json::UInt64)index;
+    if (!name.empty()) err["name"] = name;
+    if (!code.empty()) err["code"] = code;
+    if (!msg.empty()) err["error"] = msg;
+    if (bytes > 0) err["bytes"] = (Json::UInt64)bytes;
+    if (max_bytes > 0) err["max_bytes"] = (Json::UInt64)max_bytes;
+    out_errors.append(err);
+  };
 
   const int64_t ts_ms = now_unix_ms();
+  size_t accepted = 0;
+  const size_t max_bytes = cfg.upload_max_bytes;
   for (Json::ArrayIndex i = 0; i < files.size(); i++) {
     const Json::Value& f = files[i];
-    if (!f.isObject()) continue;
+    if (!f.isObject()) {
+      push_error(i, "", "invalid_entry", "invalid file entry", 0, 0);
+      continue;
+    }
     const std::string name = f.isMember("name") && f["name"].isString() ? f["name"].asString() : "";
     const std::string mime = f.isMember("mime") && f["mime"].isString() ? f["mime"].asString() : "";
     const std::string data_b64 = f.isMember("data_base64") && f["data_base64"].isString() ? f["data_base64"].asString() : "";
-    if (!is_safe_filename_ascii(name) || data_b64.empty()) {
+    if (!is_safe_filename_ascii(name)) {
+      push_error(i, name, "invalid_name", "invalid file name", 0, 0);
+      continue;
+    }
+    if (data_b64.empty()) {
+      push_error(i, name, "missing_data", "missing data_base64", 0, 0);
       continue;
     }
 
     std::string bytes;
     std::string berr;
     if (!base64_decode(data_b64, &bytes, &berr)) {
+      push_error(i, name, "invalid_base64", "invalid base64 data", 0, 0);
       continue;
     }
 
     // Keep server memory bounded: reject huge uploads in a single request.
-    const size_t kMaxBytes = 32u * 1024u * 1024u;
-    if (bytes.size() > kMaxBytes) {
+    if (max_bytes > 0 && bytes.size() > max_bytes) {
+      push_error(i, name, "file_too_large", "file too large", bytes.size(), max_bytes);
       continue;
     }
 
     const std::string filename = std::to_string(ts_ms) + "_" + std::to_string((unsigned long long)i) + "_" + name;
     const std::filesystem::path dst = (session_root / "uploads" / filename).lexically_normal();
     if (!path_is_within_root(session_root, dst)) {
+      push_error(i, name, "invalid_path", "invalid upload path", 0, 0);
       continue;
     }
 
     std::ofstream os(dst, std::ios::binary);
-    if (!os.is_open()) continue;
+    if (!os.is_open()) {
+      push_error(i, name, "write_failed", "failed to write file", 0, 0);
+      continue;
+    }
     os.write(bytes.data(), (std::streamsize)bytes.size());
-    if (!os) continue;
+    if (!os) {
+      push_error(i, name, "write_failed", "failed to write file", 0, 0);
+      continue;
+    }
 
     const std::string rel = (std::filesystem::path("uploads") / filename).generic_string();
     const std::string kind = kind_from_mime(mime);
@@ -832,9 +863,18 @@ void handle_session_upload_endpoint(
     of["path"] = rel;
     of["bytes"] = (Json::UInt64)bytes.size();
     out_files.append(of);
+    accepted++;
   }
 
   out["files"] = out_files;
+  if (!out_errors.empty()) {
+    out["errors"] = out_errors;
+  }
+  if (accepted == 0) {
+    out["ok"] = false;
+    out["error"] = "no valid files";
+    resp->status = 400;
+  }
   resp->body = json_stringify(out);
 }
 

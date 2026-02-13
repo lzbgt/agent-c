@@ -18,6 +18,12 @@ static bool is_known_provider(const std::string& provider) {
   return provider == "deepseek" || provider == "openrouter" || provider == "moonshot" || provider == "openai";
 }
 
+static size_t clamp_upload_max_bytes(unsigned long long n) {
+  const unsigned long long kMax = 512ull * 1024ull * 1024ull;
+  if (n > kMax) n = kMax;
+  return (size_t)n;
+}
+
 }  // namespace
 
 bool load_runtime_config_best_effort(AgentDb& db, DaemonConfig* cfg_io, std::string* out_error) {
@@ -69,6 +75,16 @@ bool load_runtime_config_best_effort(
       if (v.isMember("timeout_ms") && v["timeout_ms"].isInt64()) {
         const auto n = v["timeout_ms"].asInt64();
         if (n > 0) cfg_io->timeout_ms = (long)n;
+      }
+      if (opt.override_upload_max_bytes) {
+        if (v.isMember("upload_max_bytes") && v["upload_max_bytes"].isInt64()) {
+          auto n = v["upload_max_bytes"].asInt64();
+          if (n < 0) n = 0;
+          cfg_io->upload_max_bytes = clamp_upload_max_bytes((unsigned long long)n);
+        } else if (v.isMember("upload_max_bytes") && v["upload_max_bytes"].isUInt64()) {
+          const auto n = v["upload_max_bytes"].asUInt64();
+          cfg_io->upload_max_bytes = clamp_upload_max_bytes((unsigned long long)n);
+        }
       }
       if (v.isMember("edge_auth_required") && v["edge_auth_required"].isBool()) {
         cfg_io->edge_auth_required = v["edge_auth_required"].asBool();
@@ -202,6 +218,7 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
   v["summary_max_chars"] = (Json::UInt64)cfg.summary_max_chars;
   v["proxy_url"] = cfg.proxy_url.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.proxy_url);
   v["timeout_ms"] = (Json::Int64)cfg.timeout_ms;
+  v["upload_max_bytes"] = (Json::UInt64)cfg.upload_max_bytes;
   v["edge_auth_required"] = cfg.edge_auth_required;
   v["edge_auth_require_ts"] = cfg.edge_auth_require_ts;
   v["edge_auth_max_skew_ms"] = (Json::Int64)cfg.edge_auth_max_skew_ms;

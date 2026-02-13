@@ -73,11 +73,20 @@ Response (JSON):
   - `kind` (string, optional): `"image" | "audio" | "video" | "text" | "file"`
   - `path` (string): session-relative path (e.g. `uploads/<ts>_<idx>_<name>`)
   - `bytes` (number): decoded size
+- `errors` (array, optional): rejected uploads:
+  - `index` (number)
+  - `name` (string, optional)
+  - `code` (string, optional): `invalid_entry | invalid_name | missing_data | invalid_base64 | file_too_large | invalid_path | write_failed`
+  - `error` (string, optional)
+  - `bytes` (number, optional)
+  - `max_bytes` (number, optional)
 
 Notes:
 - This endpoint requires daemon DB enabled/open (same as most session endpoints).
 - Uploads are stored under `<sessions_root>/session_<session_id>/uploads/`.
 - Upload size is capped (best-effort) to keep the daemon memory-bounded.
+  - Config: `--upload-max-bytes <n>` or `AGENTD_UPLOAD_MAX_BYTES` (decoded bytes; default 32 MiB; `0` disables per-file cap).
+- If no files are accepted, the endpoint returns `ok=false` and HTTP 400 with an `errors[]` array.
 - The daemon also enforces a global HTTP body limit via `AGENTD_HTTP_MAX_BODY_BYTES` (default 64 MiB).
 
 ### Endpoint: list recent artifacts for a session (from audit)

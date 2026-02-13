@@ -237,6 +237,7 @@ Environment variables:
 - `AGENTD_DB_PATH`
 - `AGENTD_ACCESS_LOG` (`1` for text logs, `json` for JSON logs)
 - `AGENTD_HTTP_MAX_BODY_BYTES` (default `67108864`, `0` to disable limit)
+- `AGENTD_UPLOAD_MAX_BYTES` (per-file upload cap, default `33554432`, `0` to disable cap)
 
 ## Run in production (agentd + WebUI)
 

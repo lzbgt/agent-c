@@ -185,6 +185,7 @@ int main(int argc, char** argv) {
   bool workflow_http_deny_cidrs_set = false;
   bool workflow_http_deny_private_set = false;
   bool workflow_http_dns_pin_set = false;
+  bool upload_max_bytes_set = false;
   std::vector<std::string> tool_plugin_paths;
   std::vector<ToolServerSpec> tool_server_specs;
   // Minimal flag parsing (daemon is host-only; core remains argv/env-free).
@@ -233,6 +234,22 @@ int main(int argc, char** argv) {
     } else if (a == "--sessions-root") {
       if (!take(&cfg.sessions_root_dir)) {
         std::cerr << "Missing value for --sessions-root\n";
+        return 2;
+      }
+    } else if (a == "--upload-max-bytes") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --upload-max-bytes\n";
+        return 2;
+      }
+      try {
+        unsigned long long n = std::stoull(v);
+        const unsigned long long kMax = 512ull * 1024ull * 1024ull;
+        if (n > kMax) n = kMax;
+        cfg.upload_max_bytes = (size_t)n;
+        upload_max_bytes_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --upload-max-bytes\n";
         return 2;
       }
     } else if (a == "--summary-model") {
@@ -735,6 +752,7 @@ int main(int argc, char** argv) {
         << "  --proxy <url>        Optional HTTP proxy override (else env HTTPS_PROXY/http_proxy)\n"
         << "  --state-dir <dir>    Base state dir (default: daemon startup working directory; or env AGENT_WD)\n"
         << "  --sessions-root <dir> Session store root (default: <state-dir>)\n"
+        << "  --upload-max-bytes <n>  Per-file session upload limit (decoded bytes; 0 disables; default: 33554432)\n"
         << "  --db-path <path>     SQLite DB path (default: <state-dir>/agentd.db)\n"
         << "  --timeout-ms <n>     Provider HTTP timeout in ms (default: 60000)\n"
         << "  --job-ttl-ms <n>     GC finished jobs older than n ms (default: 1800000)\n"
@@ -896,6 +914,19 @@ int main(int argc, char** argv) {
       cfg.db_path = p;
     }
   }
+  if (!upload_max_bytes_set) {
+    if (const char* v = getenv_s("AGENTD_UPLOAD_MAX_BYTES")) {
+      try {
+        unsigned long long n = std::stoull(v);
+        const unsigned long long kMax = 512ull * 1024ull * 1024ull;
+        if (n > kMax) n = kMax;
+        cfg.upload_max_bytes = (size_t)n;
+        upload_max_bytes_set = true;
+      } catch (...) {
+        std::cerr << "Invalid AGENTD_UPLOAD_MAX_BYTES; ignoring\n";
+      }
+    }
+  }
   if (const char* ms = getenv_s("AGENTD_JOB_CONCURRENCY")) {
     try { cfg.job_engine_max_concurrency = std::max(1, std::stoi(ms)); } catch (...) {}
   }
@@ -1044,6 +1075,7 @@ int main(int argc, char** argv) {
     opt.override_workflow_http_deny_cidrs = !workflow_http_deny_cidrs_set;
     opt.override_workflow_http_deny_private_addrs = !workflow_http_deny_private_set;
     opt.override_workflow_http_dns_pin = !workflow_http_dns_pin_set;
+    opt.override_upload_max_bytes = !upload_max_bytes_set;
     if (!load_runtime_config_best_effort(db, &cfg, &err, opt)) {
       std::cerr << "Warning: failed to load runtime config from DB: " << err << "\n";
     }

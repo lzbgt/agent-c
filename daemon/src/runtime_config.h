@@ -19,6 +19,7 @@ struct RuntimeConfigLoadOptions {
   bool override_workflow_http_deny_cidrs = true;
   bool override_workflow_http_deny_private_addrs = true;
   bool override_workflow_http_dns_pin = true;
+  bool override_upload_max_bytes = true;
 };
 
 // Loads both non-secret defaults and provider keys (best-effort).

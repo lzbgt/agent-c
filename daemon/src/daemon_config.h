@@ -83,6 +83,8 @@ struct DaemonConfig {
   // - sessions_root_dir: "<state_dir>" (so session root is "<state_dir>/session_<session_id>/")
   std::string state_dir;
   std::string sessions_root_dir;
+  // Session upload limit (per-file, decoded bytes). 0 means "no explicit per-file limit".
+  size_t upload_max_bytes = 32 * 1024 * 1024;
 
   // Optional troubleshooting DB mirror (SQLite). When set, agentd mirrors sessions/runs/events into this DB.
   // As of 2026-01-31, the DB is intended to be the canonical daemon state store.

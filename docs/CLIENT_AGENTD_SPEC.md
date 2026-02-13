@@ -128,6 +128,11 @@ Notes:
   - returns `{ ok, session_id, messages:[{role,content}, ...] }`
 - `DELETE /api/v1/session?session_id=...`
   - deletes session data from the DB (and attempts best-effort legacy file cleanup)
+- `POST /api/v1/session/upload`
+  - request JSON: `{ session_id, files:[{name, mime?, data_base64}, ...] }`
+  - response JSON: `{ ok, session_id, files:[...], errors? }`
+  - per-file cap: `--upload-max-bytes` or `AGENTD_UPLOAD_MAX_BYTES` (decoded bytes; default 32 MiB; `0` disables)
+  - when no files are accepted, returns `ok=false` and HTTP 400 with `errors[]`
 - `GET /api/v1/session/audit?session_id=...&max_bytes=...`
   - returns per-run audit entries (parsed JSON objects)
 - `GET /api/v1/session/artifacts?session_id=...&max_bytes=...&max_artifacts=...`

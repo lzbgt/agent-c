@@ -148,6 +148,16 @@ static void fill_env_defaults(DaemonConfig* cfg) {
     if (const char* d = getenv_s("AGENT_WD")) cfg->sessions_root_dir = d;
     if (const char* d = getenv_s("AGENTD_SESSIONS_ROOT")) cfg->sessions_root_dir = d;
   }
+
+  if (const char* v = getenv_s("AGENTD_UPLOAD_MAX_BYTES")) {
+    try {
+      unsigned long long n = std::stoull(v);
+      const unsigned long long kMax = 512ull * 1024ull * 1024ull;
+      if (n > kMax) n = kMax;
+      cfg->upload_max_bytes = (size_t)n;
+    } catch (...) {
+    }
+  }
 }
 
 static void fill_path_defaults(DaemonConfig* cfg) {

@@ -170,6 +170,7 @@ void handle_config_endpoint(
   daemon["db_path"] = cfg.db_path.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.db_path);
   daemon["state_dir"] = cfg.state_dir.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.state_dir);
   daemon["sessions_root_dir"] = cfg.sessions_root_dir.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.sessions_root_dir);
+  daemon["upload_max_bytes"] = (Json::UInt64)cfg.upload_max_bytes;
   daemon["max_steps_default"] = (Json::UInt64)cfg.max_steps_default;
   daemon["max_tool_calls_total_default"] = (Json::UInt64)cfg.max_tool_calls_total_default;
   daemon["max_tool_calls_per_tool_default"] = (Json::UInt64)cfg.max_tool_calls_per_tool_default;
@@ -323,6 +324,19 @@ void handle_config_update_endpoint(
   if (args.isMember("timeout_ms") && args["timeout_ms"].isInt64()) {
     const auto n = args["timeout_ms"].asInt64();
     if (n > 0) next.timeout_ms = (long)n;
+  }
+  if (args.isMember("upload_max_bytes") && (args["upload_max_bytes"].isInt64() || args["upload_max_bytes"].isUInt64())) {
+    const unsigned long long kMax = 512ull * 1024ull * 1024ull;
+    unsigned long long n = 0;
+    if (args["upload_max_bytes"].isInt64()) {
+      long long v = args["upload_max_bytes"].asInt64();
+      if (v < 0) v = 0;
+      n = (unsigned long long)v;
+    } else {
+      n = (unsigned long long)args["upload_max_bytes"].asUInt64();
+    }
+    if (n > kMax) n = kMax;
+    next.upload_max_bytes = (size_t)n;
   }
   if (args.isMember("edge_auth_required") && args["edge_auth_required"].isBool()) {
     next.edge_auth_required = args["edge_auth_required"].asBool();
@@ -590,6 +604,7 @@ void handle_config_update_endpoint(
   o["summary_model"] = next.summary_model.empty() ? Json::Value(Json::nullValue) : Json::Value(next.summary_model);
   o["summary_max_chars"] = (Json::UInt64)next.summary_max_chars;
   o["timeout_ms"] = (Json::Int64)next.timeout_ms;
+  o["upload_max_bytes"] = (Json::UInt64)next.upload_max_bytes;
   o["proxy_url_set"] = !next.proxy_url.empty();
   o["edge_auth_required"] = next.edge_auth_required;
   o["edge_auth_require_ts"] = next.edge_auth_require_ts;
