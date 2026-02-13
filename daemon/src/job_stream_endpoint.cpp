@@ -31,11 +31,13 @@ void handle_job_stream_endpoint(
   const HttpRequest& req,
   socket_t client_fd
 ) {
+  const std::string req_id = header_get_ci(req.headers, "x-request-id");
   if (!auth_ok(daemon_auth_token, req)) {
     std::ostringstream hdr;
     hdr << "HTTP/1.1 401 Unauthorized\r\n";
     hdr << "Content-Type: application/json; charset=utf-8\r\n";
     hdr << "WWW-Authenticate: Bearer\r\n";
+    if (!req_id.empty()) hdr << "X-Request-Id: " << req_id << "\r\n";
     hdr << cors_wire_headers(req, cors_cfg);
     hdr << "Connection: close\r\n";
     hdr << "\r\n";
@@ -49,6 +51,7 @@ void handle_job_stream_endpoint(
     std::ostringstream hdr;
     hdr << "HTTP/1.1 400 Bad Request\r\n";
     hdr << "Content-Type: application/json; charset=utf-8\r\n";
+    if (!req_id.empty()) hdr << "X-Request-Id: " << req_id << "\r\n";
     hdr << cors_wire_headers(req, cors_cfg);
     hdr << "Connection: close\r\n";
     hdr << "\r\n";
@@ -73,6 +76,7 @@ void handle_job_stream_endpoint(
   hdr << "Content-Type: text/event-stream\r\n";
   hdr << "Cache-Control: no-cache\r\n";
   hdr << "Connection: keep-alive\r\n";
+  if (!req_id.empty()) hdr << "X-Request-Id: " << req_id << "\r\n";
   hdr << cors_wire_headers(req, cors_cfg);
   hdr << "\r\n";
   if (!write_all_fd(client_fd, hdr.str())) {

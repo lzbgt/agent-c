@@ -43,6 +43,7 @@ The health endpoint is always unauthenticated:
 Request correlation:
 - Clients may send `X-Request-Id` (safe ASCII token). The server will echo it back in responses.
 - If omitted, agentd generates a request id and returns it in `X-Request-Id`.
+- Streaming endpoints also echo `X-Request-Id` in their initial SSE response headers.
 
 ## Session IDs (safety contract)
 
