@@ -1,0 +1,53 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Run/Workflow Event v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["type"],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "description": "Optional schema identifier for the event payload."
+    },
+    "type": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Event type token (e.g. tool_call, tool_result, assistant_delta, error)."
+    },
+    "ts_unix_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Best-effort event timestamp (Unix ms)."
+    },
+    "step": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Tool-loop step index (0 for tools=none)."
+    },
+    "epoch": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Streaming/rotation epoch index."
+    },
+    "source": {
+      "type": "string",
+      "description": "Origin label (daemon, broker, workflow, edge, client)."
+    },
+    "run_id": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Run identifier when available."
+    },
+    "workflow_id": {
+      "type": "string",
+      "description": "Workflow identifier when available."
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Session identifier when available."
+    },
+    "data": {
+      "description": "Event payload (shape depends on type)."
+    }
+  }
+}
