@@ -168,6 +168,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/readyz", s.handleReadyz)
 	mux.HandleFunc("/metrics", s.handleMetrics)
+	mux.HandleFunc("/v1/client_auth/status", s.handleClientAuthStatus)
 	mux.HandleFunc("/v1/agent/connect", s.handleAgentConnect)
 	mux.HandleFunc("/v1/agents", s.handleAgents)
 	mux.HandleFunc("/v1/orchestrate", s.handleOrchestrate)
@@ -1211,6 +1212,36 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, "# HELP broker_now_unix_ms Current unix time in milliseconds.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE broker_now_unix_ms gauge\n")
 	_, _ = fmt.Fprintf(w, "broker_now_unix_ms %d\n", nowMs)
+}
+
+func (s *Server) handleClientAuthStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if !p.Admin {
+		http.Error(w, "admin required", http.StatusForbidden)
+		return
+	}
+	ok, at, errStr := s.getClientAuthStatus()
+	enabled := s.getClientAuth() != nil
+	writeJSON(w, map[string]any{
+		"ok":      true,
+		"enabled": enabled,
+		"last_ok": ok,
+		"last_unix_ms": func() int64 {
+			if at.IsZero() {
+				return 0
+			}
+			return at.UnixMilli()
+		}(),
+		"last_error": errStr,
+	})
 }
 
 func (s *Server) checkReady(ctx context.Context) (bool, string) {

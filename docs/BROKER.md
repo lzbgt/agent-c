@@ -179,6 +179,11 @@ Response (JSON):
   - server-sent events for the authenticated user
   - emits JSON `data:` payloads with types like `agent_connected`, `agent_disconnected`, `relay_audit`
 
+### Client auth status (admin-only)
+
+- `GET /v1/client_auth/status`
+  - reports the last reload status/time for the client auth file
+
 ### Trace correlation (debugging)
 
 - `GET /v1/trace?trace_id=...`
