@@ -17,6 +17,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${ROOT}/out"
 mkdir -p "${OUT_DIR}"
 
+LOG_BUILD="${OUT_DIR}/compose_build_$(date +%Y-%m-%d_%H%M%S).log"
 LOG_UP="${OUT_DIR}/compose_up_$(date +%Y-%m-%d_%H%M%S).log"
 
 MTLS_DIR="${ROOT}/tools/_compose_mtls"
@@ -83,7 +84,6 @@ KEYCLOAK_BASE="http://keycloak.lvh.me:${KEYCLOAK_PUBLISHED_PORT}"
 AGENTD_BASE="http://127.0.0.1:${AGENTD_PUBLISHED_PORT}"
 WEBUI_BASE="http://127.0.0.1:${WEBUI_PUBLISHED_PORT}"
 
-echo "[compose] bringing stack up (logs: ${LOG_UP})"
 (
   cd "${ROOT}"
   # Host-generated mTLS certs (keeps compose deterministic; avoids "apk add" in init containers).
@@ -94,8 +94,61 @@ echo "[compose] bringing stack up (logs: ${LOG_UP})"
   if [[ "${COMPOSE_CLEAN:-1}" == "1" ]]; then
     docker compose down -v --remove-orphans >/dev/null 2>&1 || true
   fi
-  docker compose up -d --build
-) >"${LOG_UP}" 2>&1
+) >/dev/null 2>&1
+
+if [[ "${COMPOSE_BUILD:-1}" == "1" ]]; then
+  echo "[compose] building images (logs: ${LOG_BUILD})"
+  compose_build_cmd() {
+    if [[ "${COMPOSE_BUILD_SERIAL:-1}" == "1" ]]; then
+      for svc in agentd broker connector webui; do
+        echo "[compose] build ${svc}"
+        env "${build_env[@]}" docker compose build "${svc}"
+      done
+    else
+      env "${build_env[@]}" docker compose build
+    fi
+  }
+
+  : >"${LOG_BUILD}"
+  max_attempts="${COMPOSE_BUILD_RETRIES:-3}"
+  attempt=1
+  build_env=()
+  used_legacy_builder=0
+  saw_resource_error=0
+  while true; do
+    attempt_log="${LOG_BUILD}.attempt_${attempt}"
+    echo "[compose] build attempt ${attempt}/${max_attempts}" >"${attempt_log}"
+    if (cd "${ROOT}" && compose_build_cmd) >>"${attempt_log}" 2>&1; then
+      cat "${attempt_log}" >>"${LOG_BUILD}"
+      rm -f "${attempt_log}"
+      break
+    fi
+    cat "${attempt_log}" >>"${LOG_BUILD}"
+    if grep -Eqi "resource temporarily unavailable|unpigz|runc run failed" "${attempt_log}"; then
+      saw_resource_error=1
+    fi
+    if [[ "${saw_resource_error}" == "1" && "${attempt}" -lt "${max_attempts}" ]]; then
+      if [[ "${used_legacy_builder}" == "0" ]]; then
+        # Retry once with legacy builder settings to reduce process pressure.
+        build_env=("DOCKER_BUILDKIT=0" "COMPOSE_DOCKER_CLI_BUILD=0")
+        used_legacy_builder=1
+      fi
+      rm -f "${attempt_log}"
+      sleep 5
+      attempt="$((attempt + 1))"
+      continue
+    fi
+    rm -f "${attempt_log}"
+    if [[ "${saw_resource_error}" == "1" ]]; then
+      echo "[compose] SKIP: docker build failed due to resource limits (unpigz/runc). Try restarting Docker Desktop or increasing CPU/RAM." >&2
+      exit 77
+    fi
+    exit 1
+  done
+fi
+
+echo "[compose] bringing stack up (logs: ${LOG_UP})"
+(cd "${ROOT}" && docker compose up -d) >"${LOG_UP}" 2>&1
 
 wait_http_ok() {
   local url="$1"

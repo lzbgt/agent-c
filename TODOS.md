@@ -29,6 +29,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
    - [x] Add Windows service template.
    - [x] Production hardening review for docker stack (secrets, TLS, backups, metrics).
    - [x] macOS provider smoke: DeepSeek reasoner tool-call + Moonshot tool-call (new `agentd_moonshot_tool_call_smoke.sh`).
+   - [ ] Compose build reliability: document Docker Desktop resource-limit troubleshooting (unpigz/runc) and evaluate prebuilt images.
 
 ## Recently shipped (proof in CI)
 
