@@ -217,10 +217,11 @@ curl http://127.0.0.1:8123/api/v1/health
   - `tools/verify_mac_local_stack.sh` (agentd + WebUI only; no broker)
   - Optional env: `MAC_LOCAL_SKIP_UI=1` to skip WebUI build/serve, `MAC_LOCAL_UI_INSTALL=0` to skip `npm ci` when deps already exist
 - If `tools/verify_mac_full_stack.sh` skips due to Docker build resource errors (e.g. `unpigz`/`runc`),
-  restart Docker Desktop or increase CPU/RAM. The script already retries builds and can fall back to the
-  legacy builder. You can also tweak:
+  restart Docker Desktop or increase CPU/RAM. The script already retries builds, can fall back to the
+  legacy builder, and throttles pigz threads. You can also tweak:
   - `COMPOSE_BUILD_SERIAL=1` (default) to reduce concurrency
   - `COMPOSE_BUILD_RETRIES=3` (default) to raise retry attempts
+  - `PIGZ=-p1 GZIP=-p1` to reduce decompression thread pressure
   - `COMPOSE_BUILD=0` to skip image rebuilds when you already have fresh images (requires images present; otherwise it skips)
   - `COMPOSE_PULL=1` to auto-pull missing images when `COMPOSE_BUILD=0`
 - Prebuilt images (optional):

@@ -166,6 +166,7 @@ if [[ "${COMPOSE_BUILD:-1}" == "1" ]]; then
   attempt=1
   build_env=()
   used_legacy_builder=0
+  used_pigz_throttle=0
   saw_resource_error=0
   while true; do
     attempt_log="${LOG_BUILD}.attempt_${attempt}"
@@ -185,6 +186,11 @@ if [[ "${COMPOSE_BUILD:-1}" == "1" ]]; then
         build_env=("DOCKER_BUILDKIT=0" "COMPOSE_DOCKER_CLI_BUILD=0")
         used_legacy_builder=1
       fi
+      if [[ "${used_pigz_throttle}" == "0" ]]; then
+        # Limit pigz threads to reduce decompression resource spikes.
+        build_env+=("PIGZ=-p1" "GZIP=-p1")
+        used_pigz_throttle=1
+      fi
       rm -f "${attempt_log}"
       sleep 5
       attempt="$((attempt + 1))"
@@ -192,7 +198,7 @@ if [[ "${COMPOSE_BUILD:-1}" == "1" ]]; then
     fi
     rm -f "${attempt_log}"
     if [[ "${saw_resource_error}" == "1" ]]; then
-      echo "[compose] SKIP: docker build failed due to resource limits (unpigz/runc). Try restarting Docker Desktop or increasing CPU/RAM." >&2
+      echo "[compose] SKIP: docker build failed due to resource limits (unpigz/runc). Try restarting Docker Desktop or increasing CPU/RAM. You can also try PIGZ=-p1 GZIP=-p1." >&2
       exit 77
     fi
     exit 1
