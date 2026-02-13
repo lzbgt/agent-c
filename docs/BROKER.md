@@ -76,6 +76,8 @@ For non-UI service clients (or environments without OIDC), the broker can accept
 
 Client token auth is intended for **proxy/orchestrate** calls only. Agent list/create remains OIDC-only.
 
+Example file: `broker/client_auth.example.json`.
+
 ## Protocol between broker and agent connector
 
 Broker and agent communicate over a single websocket connection (JSON messages).

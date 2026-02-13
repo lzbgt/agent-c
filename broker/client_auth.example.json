@@ -1,0 +1,10 @@
+{
+  "clients": [
+    {
+      "client_id": "service-a",
+      "token": "REDACTED_TOKEN",
+      "admin": false,
+      "allowed_agents": ["agent1", "agent2"]
+    }
+  ]
+}

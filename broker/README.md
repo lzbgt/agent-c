@@ -73,6 +73,7 @@ Client auth file format:
 Notes:
 - Client tokens can proxy/orchestrate requests; agent list/create require OIDC.
 - If OIDC is not configured, `--client-auth-file` is required.
+- Example file: `broker/client_auth.example.json`
 
 ### Connector (`cmd/agentd-connector`)
 
