@@ -148,7 +148,21 @@ if [[ "${COMPOSE_BUILD:-1}" == "1" ]]; then
 fi
 
 echo "[compose] bringing stack up (logs: ${LOG_UP})"
-(cd "${ROOT}" && docker compose up -d) >"${LOG_UP}" 2>&1
+up_args=(-d)
+if [[ "${COMPOSE_BUILD:-1}" == "0" ]]; then
+  up_args+=(--no-build)
+fi
+set +e
+(cd "${ROOT}" && docker compose up "${up_args[@]}") >"${LOG_UP}" 2>&1
+up_rc=$?
+set -e
+if [[ "${up_rc}" -ne 0 ]]; then
+  if grep -Eqi "resource temporarily unavailable|iptables|runc run failed" "${LOG_UP}"; then
+    echo "[compose] SKIP: docker up failed due to resource limits (iptables/runc). Try restarting Docker Desktop or increasing CPU/RAM." >&2
+    exit 77
+  fi
+  exit "${up_rc}"
+fi
 
 wait_http_ok() {
   local url="$1"

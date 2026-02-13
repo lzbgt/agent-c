@@ -205,7 +205,7 @@ curl http://127.0.0.1:8123/api/v1/health
   legacy builder. You can also tweak:
   - `COMPOSE_BUILD_SERIAL=1` (default) to reduce concurrency
   - `COMPOSE_BUILD_RETRIES=3` (default) to raise retry attempts
-  - `COMPOSE_BUILD=0` to skip image rebuilds when you already have fresh images
+  - `COMPOSE_BUILD=0` to skip image rebuilds when you already have fresh images (requires images present)
 
 ---
 
