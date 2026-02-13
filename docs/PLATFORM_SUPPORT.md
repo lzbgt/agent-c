@@ -16,6 +16,7 @@ This repo targets **desktop/server** environments. `agentd` is intended for Wind
 - The HTTP server is Winsock-based (no POSIX socket calls).
 - Tool plugins/servers are disabled on Windows (no `dlopen`, no POSIX process/poll).
 - AVM endpoints return 501 (unsupported) on Windows.
+- Validation: run `tools/verify_windows_build.ps1` on a Windows host (optionally with `VCPKG_ROOT` set).
 
 ## Broker + Connector
 
@@ -24,4 +25,3 @@ The broker and connector are Go binaries and are portable across Windows/Linux/m
 ## WebUI
 
 The WebUI is a static site (Vite build). It can be hosted by any static web server (nginx, Caddy, S3/CloudFront, etc.).
-
