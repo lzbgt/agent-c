@@ -41,6 +41,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
    - [x] Broker tunables: max body/header bytes + HTTP timeouts (flags + env).
    - [x] Agentd HTTP hardening: header size cap + read timeouts (env) with smoke test.
    - [x] Diagnostics endpoints: `/api/v1/diagnostics`, `/api/v1/diagnostics/providers`, `/api/v1/diagnostics/provider_test`.
+   - [x] Diagnostics reference doc: `docs/DIAGNOSTICS.md` with usage examples.
    - [x] Tool-loop guard: `max_tool_call_args_chars` (daemon default + run override + core limit event).
    - [x] Broker proxy forwarding sets `X-Request-ID` and `X-Trace-ID` when missing (trace correlation).
 

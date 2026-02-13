@@ -374,6 +374,7 @@ Optional diagnostics (requires auth if enabled):
 curl http://127.0.0.1:8123/api/v1/diagnostics
 curl http://127.0.0.1:8123/api/v1/diagnostics/providers
 ```
+See `docs/DIAGNOSTICS.md` for provider_test usage.
 3) UI functional check:
 - Run a short prompt that emits audio (artifact or scene).
 - If autoplay is blocked, click once in the UI to unlock media playback.
