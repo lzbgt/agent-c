@@ -41,6 +41,7 @@ services:
       - "${KEYCLOAK_PUBLISHED_PORT:-8081}:8080"
 
   broker:
+    image: ${BROKER_IMAGE:-agentd-broker-local}
     build:
       context: .
       dockerfile: docker/broker/Dockerfile
@@ -87,6 +88,7 @@ services:
       - "${BROKER_PUBLISHED_PORT:-8443}:8443"
 
   agentd:
+    image: ${AGENTD_IMAGE:-agentd-daemon-local}
     build:
       context: .
       dockerfile: docker/agentd/Dockerfile
@@ -128,6 +130,7 @@ services:
       - "${AGENTD_PUBLISHED_PORT:-8123}:8123"
 
   connector:
+    image: ${CONNECTOR_IMAGE:-agentd-connector-local}
     build:
       context: .
       dockerfile: docker/broker/Dockerfile
@@ -163,6 +166,7 @@ services:
     restart: always
 
   webui:
+    image: ${WEBUI_IMAGE:-agentd-webui-local}
     build:
       context: .
       dockerfile: docker/ui/Dockerfile

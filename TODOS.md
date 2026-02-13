@@ -30,7 +30,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
    - [x] Add Windows service template.
    - [x] Production hardening review for docker stack (secrets, TLS, backups, metrics).
    - [x] macOS provider smoke: DeepSeek reasoner tool-call + Moonshot tool-call (new `agentd_moonshot_tool_call_smoke.sh`).
-   - [ ] Compose build reliability: document Docker Desktop resource-limit troubleshooting (unpigz/runc) and evaluate prebuilt images.
+   - [x] Compose build reliability: document Docker Desktop resource-limit troubleshooting (unpigz/runc) and prebuilt-image path.
    - [x] Add macOS local verification script (agentd + WebUI without Docker).
    - [x] WebUI runtime defaults via `agentui-config.js` + `VITE_AGENTUI_*` env overrides (no rebuild required).
    - [x] Broker tunables: max body/header bytes + HTTP timeouts (flags + env).

@@ -218,6 +218,10 @@ curl http://127.0.0.1:8123/api/v1/health
   - `COMPOSE_BUILD_SERIAL=1` (default) to reduce concurrency
   - `COMPOSE_BUILD_RETRIES=3` (default) to raise retry attempts
   - `COMPOSE_BUILD=0` to skip image rebuilds when you already have fresh images (requires images present; otherwise it skips)
+  - `COMPOSE_PULL=1` to auto-pull missing images when `COMPOSE_BUILD=0`
+- Prebuilt images (optional):
+  - set `BROKER_IMAGE`, `AGENTD_IMAGE`, `CONNECTOR_IMAGE`, `WEBUI_IMAGE` to registry tags
+  - run `COMPOSE_BUILD=0 COMPOSE_PULL=1 ./tools/verify_compose_stack.sh`
 
 ---
 

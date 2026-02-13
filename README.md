@@ -384,6 +384,9 @@ If you want a **prod-like stack** locally (Postgres + Keycloak OIDC + broker + c
 ```
 
 Note: the WebUI container mounts `tools/agentui-config.compose.js` to default to broker mode (edit as needed).
+If you want prebuilt images instead of local builds, set:
+- `BROKER_IMAGE`, `AGENTD_IMAGE`, `CONNECTOR_IMAGE`, `WEBUI_IMAGE`
+- run with `COMPOSE_BUILD=0 COMPOSE_PULL=1` to pull missing images automatically.
 
 If Docker is unavailable or resource constrained, use:
 ```bash

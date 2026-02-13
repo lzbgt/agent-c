@@ -19,6 +19,7 @@ mkdir -p "${OUT_DIR}"
 
 LOG_BUILD="${OUT_DIR}/compose_build_$(date +%Y-%m-%d_%H%M%S).log"
 LOG_UP="${OUT_DIR}/compose_up_$(date +%Y-%m-%d_%H%M%S).log"
+LOG_PULL="${OUT_DIR}/compose_pull_$(date +%Y-%m-%d_%H%M%S).log"
 
 MTLS_DIR="${ROOT}/tools/_compose_mtls"
 
@@ -77,6 +78,11 @@ export WEBUI_PUBLISHED_PORT="${WEBUI_PUBLISHED_PORT:-$(pick_port 8100 webui)}"
 # Users can still override explicitly via COMPOSE_PROJECT_NAME.
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-agent_${WEBUI_PUBLISHED_PORT}}"
 
+export BROKER_IMAGE="${BROKER_IMAGE:-agentd-broker-local}"
+export AGENTD_IMAGE="${AGENTD_IMAGE:-agentd-daemon-local}"
+export CONNECTOR_IMAGE="${CONNECTOR_IMAGE:-agentd-connector-local}"
+export WEBUI_IMAGE="${WEBUI_IMAGE:-agentd-webui-local}"
+
 BROKER_BASE="https://127.0.0.1:${BROKER_PUBLISHED_PORT}"
 # Use a stable dev hostname so the token issuer matches what the broker validates.
 # keycloak.lvh.me resolves to 127.0.0.1 on the host; inside containers we map it to host-gateway.
@@ -86,15 +92,47 @@ WEBUI_BASE="http://127.0.0.1:${WEBUI_PUBLISHED_PORT}"
 
 if [[ "${COMPOSE_BUILD:-1}" == "0" ]]; then
   missing=()
+  missing_svcs=()
+  image_for() {
+    case "$1" in
+      agentd) echo "${AGENTD_IMAGE}" ;;
+      broker) echo "${BROKER_IMAGE}" ;;
+      connector) echo "${CONNECTOR_IMAGE}" ;;
+      webui) echo "${WEBUI_IMAGE}" ;;
+      *) echo "" ;;
+    esac
+  }
   for svc in agentd broker connector webui; do
-    img="${COMPOSE_PROJECT_NAME}-${svc}:latest"
+    img="$(image_for "${svc}")"
+    if [[ -z "${img}" ]]; then
+      continue
+    fi
     if ! docker image inspect "${img}" >/dev/null 2>&1; then
       missing+=("${img}")
+      missing_svcs+=("${svc}")
     fi
   done
   if (( ${#missing[@]} > 0 )); then
-    echo "[compose] SKIP: COMPOSE_BUILD=0 but missing images: ${missing[*]}" >&2
-    exit 77
+    if [[ "${COMPOSE_PULL:-0}" == "1" ]]; then
+      echo "[compose] pulling missing images (logs: ${LOG_PULL})"
+      : >"${LOG_PULL}"
+      if (cd "${ROOT}" && docker compose pull "${missing_svcs[@]}") >>"${LOG_PULL}" 2>&1; then
+        missing=()
+        for svc in agentd broker connector webui; do
+          img="$(image_for "${svc}")"
+          if [[ -n "${img}" ]] && ! docker image inspect "${img}" >/dev/null 2>&1; then
+            missing+=("${img}")
+          fi
+        done
+      else
+        echo "[compose] SKIP: docker pull failed; see ${LOG_PULL}" >&2
+        exit 77
+      fi
+    fi
+    if (( ${#missing[@]} > 0 )); then
+      echo "[compose] SKIP: COMPOSE_BUILD=0 but missing images: ${missing[*]}" >&2
+      exit 77
+    fi
   fi
 fi
 
