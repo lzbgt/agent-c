@@ -298,6 +298,8 @@ Stop the stack:
 - Configure UI to talk to:
   - Broker proxy (recommended), or
   - Direct agentd base URL (ensure CORS + auth token).
+- The WebUI supports **multiple connection profiles** stored in browser localStorage; use Settings to add/switch
+  between multiple agentd deployments (direct or broker-backed).
 
 ---
 

@@ -264,6 +264,59 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
 
         <div className="mt-4">
           <FieldLabel>Connection</FieldLabel>
+          <div className="mt-2">
+            <FieldLabel>Connection profile</FieldLabel>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <select
+                className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                value={connection.activeProfileId}
+                onChange={(e) => connection.setActiveProfileId(e.target.value)}
+              >
+                {(connection.profiles || []).map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-2 text-[11px] text-white/80 hover:bg-black/40"
+                type="button"
+                onClick={() => connection.addProfile(connection.mode)}
+              >
+                New
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-2 text-[11px] text-white/80 hover:bg-black/40"
+                type="button"
+                onClick={() => connection.duplicateProfile()}
+                disabled={(connection.profiles || []).length === 0}
+              >
+                Duplicate
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-2 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={(connection.profiles || []).length <= 1}
+                onClick={() => {
+                  if ((connection.profiles || []).length <= 1) return;
+                  const name = connection.profileName || "profile";
+                  if (!window.confirm(`Delete connection profile \"${name}\"?`)) return;
+                  connection.deleteProfile(connection.activeProfileId);
+                }}
+              >
+                Delete
+              </button>
+            </div>
+            <input
+              className="mt-2 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+              value={connection.profileName}
+              onChange={(e) => connection.setProfileName(e.target.value)}
+              placeholder="Profile name"
+            />
+            <div className="mt-2 text-[11px] text-white/60">
+              Profiles are stored in browser localStorage. Switch profiles to target multiple daemon deployments.
+            </div>
+          </div>
           <select
             className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
             value={connection.mode}

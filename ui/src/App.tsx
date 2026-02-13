@@ -45,6 +45,7 @@ export default function App() {
   const ui = useUiSettings();
   const { connection, run: runSettings, client: clientSettings, brokerPanelOpen, setBrokerPanelOpen } = ui;
   const { effectiveBase, effectiveSseBase, daemonAuth, authKey } = connection;
+  const profileName = connection.profileName;
   const { showSettings, setShowSettings } = ui;
   const connectionMode = connection.mode;
   const brokerAuthToken = connection.brokerAuthToken;
@@ -1657,7 +1658,11 @@ export default function App() {
           <div className="min-w-0">
             <div className="text-sm font-semibold">agent UI</div>
             <div className="text-[11px] text-white/60">
-              daemon:{" "}
+              profile:{" "}
+              <span className="inline-block max-w-[28vw] truncate align-bottom font-mono text-[11px] text-white/70" title={profileName}>
+                {profileName}
+              </span>{" "}
+              · daemon:{" "}
               <span className="inline-block max-w-[60vw] truncate align-bottom font-mono text-[11px] text-white/70" title={effectiveBase}>
                 {effectiveBase}
               </span>{" "}
