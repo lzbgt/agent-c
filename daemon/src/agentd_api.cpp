@@ -260,6 +260,12 @@ bool AgentdApi::init(std::string* out_error) {
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
     resp->body = build_ready_body(self->start_time, &self->db);
   });
+  impl_->route("GET", "/metrics", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    cors_apply(req, resp, self->cors_cfg);
+    resp->headers["Content-Type"] = "text/plain; version=0.0.4; charset=utf-8";
+    resp->body = build_metrics_body(self->start_time, &self->db);
+  });
 
   impl_->route("GET", "/api/v1/config", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);

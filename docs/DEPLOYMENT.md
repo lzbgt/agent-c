@@ -227,7 +227,7 @@ curl http://127.0.0.1:8123/api/v1/health
 
 - **Backups**: SQLite (`agentd.db`) + Postgres (broker).
 - **Logs**: rotate daemon + broker logs.
-- **Monitoring**: scrape `/healthz` (broker) + `/api/v1/health` and `/api/v1/ready` (agentd).
+- **Monitoring**: scrape `/healthz`, `/readyz`, `/metrics` (broker) + `/api/v1/health`, `/api/v1/ready`, `/metrics` (agentd).
 - **Resource limits**: set process limits and container quotas.
 - **Upgrades**: keep `agentd` and WebUI in lockstep (OpenAPI + protocol changes).
 

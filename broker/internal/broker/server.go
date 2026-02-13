@@ -54,6 +54,7 @@ type Server struct {
 	cfg Config
 	upg websocket.Upgrader
 
+	startTime time.Time
 	readyMu   sync.Mutex
 	readyAt   time.Time
 	readyOK   bool
@@ -89,7 +90,7 @@ func New(cfg Config) (*Server, error) {
 	if cfg.ReadinessCacheInterval == 0 {
 		cfg.ReadinessCacheInterval = 5 * time.Second
 	}
-	s := &Server{cfg: cfg}
+	s := &Server{cfg: cfg, startTime: time.Now()}
 	s.upg = websocket.Upgrader{
 		ReadBufferSize:  64 * 1024,
 		WriteBufferSize: 64 * 1024,
@@ -108,6 +109,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/readyz", s.handleReadyz)
+	mux.HandleFunc("/metrics", s.handleMetrics)
 	mux.HandleFunc("/v1/agent/connect", s.handleAgentConnect)
 	mux.HandleFunc("/v1/agents", s.handleAgents)
 	mux.HandleFunc("/v1/orchestrate", s.handleOrchestrate)
@@ -989,8 +991,8 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
-	ok, errStr := s.checkReady(r.Context())
-	if !ok {
+  ok, errStr := s.checkReady(r.Context())
+  if !ok {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		writeJSON(w, map[string]any{
 			"ok":         false,
@@ -999,10 +1001,42 @@ func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	writeJSON(w, map[string]any{
-		"ok":         true,
-		"ts_unix_ms": time.Now().UnixMilli(),
-	})
+  writeJSON(w, map[string]any{
+    "ok":         true,
+    "ts_unix_ms": time.Now().UnixMilli(),
+  })
+}
+
+func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
+  _ = r
+  readyOK, _ := s.checkReady(r.Context())
+  ready := 0
+  if readyOK {
+    ready = 1
+  }
+  agents := 0
+  if s != nil && s.cfg.Registry != nil {
+    agents = len(s.cfg.Registry.List())
+  }
+  uptime := time.Since(s.startTime).Seconds()
+  nowMs := time.Now().UnixMilli()
+
+  w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+  _, _ = fmt.Fprintf(w, "# HELP broker_up 1 if the broker process is running.\n")
+  _, _ = fmt.Fprintf(w, "# TYPE broker_up gauge\n")
+  _, _ = fmt.Fprintf(w, "broker_up 1\n")
+  _, _ = fmt.Fprintf(w, "# HELP broker_ready 1 if the broker is ready to serve traffic.\n")
+  _, _ = fmt.Fprintf(w, "# TYPE broker_ready gauge\n")
+  _, _ = fmt.Fprintf(w, "broker_ready %d\n", ready)
+  _, _ = fmt.Fprintf(w, "# HELP broker_agents_connected Number of connected agents.\n")
+  _, _ = fmt.Fprintf(w, "# TYPE broker_agents_connected gauge\n")
+  _, _ = fmt.Fprintf(w, "broker_agents_connected %d\n", agents)
+  _, _ = fmt.Fprintf(w, "# HELP broker_uptime_seconds Process uptime in seconds.\n")
+  _, _ = fmt.Fprintf(w, "# TYPE broker_uptime_seconds gauge\n")
+  _, _ = fmt.Fprintf(w, "broker_uptime_seconds %.0f\n", uptime)
+  _, _ = fmt.Fprintf(w, "# HELP broker_now_unix_ms Current unix time in milliseconds.\n")
+  _, _ = fmt.Fprintf(w, "# TYPE broker_now_unix_ms gauge\n")
+  _, _ = fmt.Fprintf(w, "broker_now_unix_ms %d\n", nowMs)
 }
 
 func (s *Server) checkReady(ctx context.Context) (bool, string) {

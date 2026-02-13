@@ -459,6 +459,11 @@ struct AgentdService::Impl {
       resp->headers["Content-Type"] = "application/json; charset=utf-8";
       resp->body = build_ready_body(start_time, &db);
     });
+    server.handle("GET", "/metrics", [this](const HttpRequest& req, HttpResponse* resp) {
+      cors_apply(req, resp, cors_cfg);
+      resp->headers["Content-Type"] = "text/plain; version=0.0.4; charset=utf-8";
+      resp->body = build_metrics_body(start_time, &db);
+    });
 
     server.handle("GET", "/api/v1/config", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();

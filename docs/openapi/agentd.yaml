@@ -67,6 +67,18 @@ paths:
                     properties:
                       db_open: { type: boolean }
 
+  /metrics:
+    get:
+      tags: [health]
+      summary: Prometheus metrics
+      responses:
+        "200":
+          description: OK
+          content:
+            text/plain; version=0.0.4:
+              schema:
+                type: string
+
   /api/v1/config:
     get:
       tags: [config]
