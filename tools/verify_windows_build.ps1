@@ -4,6 +4,8 @@ param(
   [string]$BuildDir = "",
   [string]$Config = "Release",
   [string]$Generator = "",
+  [string]$VcpkgRoot = "",
+  [switch]$InstallDeps,
   [switch]$SkipTests
 )
 
@@ -17,6 +19,13 @@ if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
   exit 2
 }
 
+if ([string]::IsNullOrWhiteSpace($VcpkgRoot)) {
+  $VcpkgRoot = $env:VCPKG_ROOT
+}
+if (-not [string]::IsNullOrWhiteSpace($VcpkgRoot)) {
+  $env:VCPKG_ROOT = $VcpkgRoot
+}
+
 if ([string]::IsNullOrWhiteSpace($Generator)) {
   if (Get-Command ninja -ErrorAction SilentlyContinue) {
     $Generator = "Ninja"
@@ -27,6 +36,20 @@ if ([string]::IsNullOrWhiteSpace($Generator)) {
 
 $toolchainArgs = @()
 if ($env:VCPKG_ROOT) {
+  $toolchain = Join-Path $env:VCPKG_ROOT "scripts/buildsystems/vcpkg.cmake"
+  if (-not (Test-Path $toolchain)) {
+    if ($InstallDeps) {
+      if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        Write-Error "git not found in PATH (required to install vcpkg)"
+        exit 3
+      }
+      Write-Host "Cloning vcpkg to $env:VCPKG_ROOT"
+      git clone https://github.com/microsoft/vcpkg $env:VCPKG_ROOT
+    } else {
+      Write-Error "vcpkg toolchain not found; set VCPKG_ROOT or use -InstallDeps"
+      exit 3
+    }
+  }
   $toolchain = Join-Path $env:VCPKG_ROOT "scripts/buildsystems/vcpkg.cmake"
   if (Test-Path $toolchain) {
     $toolchainArgs += "-DCMAKE_TOOLCHAIN_FILE=$toolchain"
@@ -42,6 +65,23 @@ if ($toolchainArgs.Count -gt 0) {
   Write-Host "  vcpkg: enabled"
 } else {
   Write-Host "  vcpkg: not configured (set VCPKG_ROOT to enable)"
+}
+
+if ($InstallDeps) {
+  if (-not $env:VCPKG_ROOT) {
+    Write-Error "InstallDeps requires VCPKG_ROOT or -VcpkgRoot"
+    exit 3
+  }
+  $vcpkgExe = Join-Path $env:VCPKG_ROOT "vcpkg.exe"
+  if (-not (Test-Path $vcpkgExe)) {
+    $bootstrap = Join-Path $env:VCPKG_ROOT "bootstrap-vcpkg.bat"
+    if (-not (Test-Path $bootstrap)) {
+      Write-Error "missing vcpkg bootstrap script at $bootstrap"
+      exit 3
+    }
+    & $bootstrap
+  }
+  & $vcpkgExe install curl jsoncpp sqlite3
 }
 
 $cmakeArgs = @(

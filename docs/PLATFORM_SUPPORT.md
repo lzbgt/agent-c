@@ -16,7 +16,7 @@ This repo targets **desktop/server** environments. `agentd` is intended for Wind
 - The HTTP server is Winsock-based (no POSIX socket calls).
 - Tool plugins/servers are disabled on Windows (no `dlopen`, no POSIX process/poll).
 - AVM endpoints return 501 (unsupported) on Windows.
-- Validation: run `tools/verify_windows_build.ps1` on a Windows host (optionally with `VCPKG_ROOT` set).
+- Validation: run `tools/verify_windows_build.ps1` on a Windows host (optionally with `VCPKG_ROOT` set; `-InstallDeps` can bootstrap vcpkg + deps).
 - CI check (host-independent): `tools/check_ci_windows_build.sh` prints the latest workflow status (uses GitHub API; set `GITHUB_TOKEN` or `GH_TOKEN` for private repos).
 - CI trigger: `tools/trigger_ci_windows_build.sh [ref]` dispatches the workflow (requires token or logged-in `gh`).
 
