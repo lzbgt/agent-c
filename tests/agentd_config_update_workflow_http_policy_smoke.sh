@@ -91,7 +91,14 @@ import json
 print(json.dumps({
   "workflow_http_deny_cidrs": ["127.0.0.0/8"],
   "workflow_http_deny_private_addrs": True,
-  "workflow_http_dns_pin": True
+  "workflow_http_dns_pin": True,
+  "max_steps_default": 11,
+  "max_tool_calls_total_default": 22,
+  "max_tool_calls_per_tool_default": 5,
+  "max_tool_call_args_chars_default": 2048,
+  "tool_call_limits_default": [
+    {"tool": "proc_exec", "max_calls": 1}
+  ]
 }))
 PY
 )" \
@@ -118,6 +125,22 @@ dc = eng.get("workflow_http_deny_cidrs") or []
 if "127.0.0.0/8" not in dc:
   print("expected update engines.workflow_http_deny_cidrs to include 127.0.0.0/8", eng, file=sys.stderr)
   raise SystemExit(1)
+if int(u.get("max_steps_default", -1)) != 11:
+  print("expected max_steps_default 11", u, file=sys.stderr)
+  raise SystemExit(1)
+if int(u.get("max_tool_calls_total_default", -1)) != 22:
+  print("expected max_tool_calls_total_default 22", u, file=sys.stderr)
+  raise SystemExit(1)
+if int(u.get("max_tool_calls_per_tool_default", -1)) != 5:
+  print("expected max_tool_calls_per_tool_default 5", u, file=sys.stderr)
+  raise SystemExit(1)
+if int(u.get("max_tool_call_args_chars_default", -1)) != 2048:
+  print("expected max_tool_call_args_chars_default 2048", u, file=sys.stderr)
+  raise SystemExit(1)
+tl = u.get("tool_call_limits_default") or []
+if not any(isinstance(x, dict) and x.get("tool") == "proc_exec" and int(x.get("max_calls", -1)) == 1 for x in tl):
+  print("expected tool_call_limits_default to include proc_exec=1", tl, file=sys.stderr)
+  raise SystemExit(1)
 
 c = json.loads(r'''${cfg_resp}''')
 if not c.get("ok"):
@@ -130,6 +153,23 @@ if eng2.get("workflow_http_dns_pin") is not True:
 dc2 = eng2.get("workflow_http_deny_cidrs") or []
 if "127.0.0.0/8" not in dc2:
   print("expected config engines.workflow_http_deny_cidrs to include 127.0.0.0/8", eng2, file=sys.stderr)
+  raise SystemExit(1)
+daemon = c.get("daemon") or {}
+if int(daemon.get("max_steps_default", -1)) != 11:
+  print("expected config daemon.max_steps_default 11", daemon, file=sys.stderr)
+  raise SystemExit(1)
+if int(daemon.get("max_tool_calls_total_default", -1)) != 22:
+  print("expected config daemon.max_tool_calls_total_default 22", daemon, file=sys.stderr)
+  raise SystemExit(1)
+if int(daemon.get("max_tool_calls_per_tool_default", -1)) != 5:
+  print("expected config daemon.max_tool_calls_per_tool_default 5", daemon, file=sys.stderr)
+  raise SystemExit(1)
+if int(daemon.get("max_tool_call_args_chars_default", -1)) != 2048:
+  print("expected config daemon.max_tool_call_args_chars_default 2048", daemon, file=sys.stderr)
+  raise SystemExit(1)
+tl2 = daemon.get("tool_call_limits_default") or []
+if not any(isinstance(x, dict) and x.get("tool") == "proc_exec" and int(x.get("max_calls", -1)) == 1 for x in tl2):
+  print("expected config tool_call_limits_default to include proc_exec=1", tl2, file=sys.stderr)
   raise SystemExit(1)
 PY
 
@@ -197,4 +237,3 @@ if "deny-cidr" not in err:
 PY
 
 echo "${NAME} OK"
-

@@ -185,6 +185,18 @@ export const DaemonConfigUpdateReqSchema = z
     model: z.string().optional(),
     summary_model: z.string().nullable().optional(),
     summary_max_chars: z.number().int().nonnegative().optional(),
+    max_steps_default: z.number().int().nonnegative().optional(),
+    max_tool_calls_total_default: z.number().int().nonnegative().optional(),
+    max_tool_calls_per_tool_default: z.number().int().nonnegative().optional(),
+    max_tool_call_args_chars_default: z.number().int().nonnegative().optional(),
+    tool_call_limits_default: z
+      .array(
+        z.object({
+          tool: z.string(),
+          max_calls: z.number().int().nonnegative(),
+        })
+      )
+      .optional(),
     proxy_url: z.string().nullable().optional(),
     timeout_ms: z.number().int().positive().optional(),
     // Either set explicit mapping...
@@ -204,6 +216,18 @@ export const DaemonConfigUpdateRespSchema = z
     summary_model: z.string().nullable().optional(),
     summary_max_chars: z.number().optional(),
     timeout_ms: z.number().optional(),
+    max_steps_default: z.number().optional(),
+    max_tool_calls_total_default: z.number().optional(),
+    max_tool_calls_per_tool_default: z.number().optional(),
+    max_tool_call_args_chars_default: z.number().optional(),
+    tool_call_limits_default: z
+      .array(
+        z.object({
+          tool: z.string(),
+          max_calls: z.number().int().nonnegative(),
+        })
+      )
+      .optional(),
     proxy_url_set: z.boolean().optional(),
     provider_keys_set: z.any().optional(),
     error: z.string().optional(),

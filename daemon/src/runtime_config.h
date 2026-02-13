@@ -26,7 +26,7 @@ struct RuntimeConfigLoadOptions {
 bool load_runtime_config_best_effort(AgentDb& db, DaemonConfig* cfg_io, std::string* out_error);
 bool load_runtime_config_best_effort(AgentDb& db, DaemonConfig* cfg_io, std::string* out_error, const RuntimeConfigLoadOptions& opt);
 
-// Saves non-secret defaults (base_url/model/proxy/timeout/summary settings).
+// Saves non-secret defaults (base_url/model/proxy/timeout/summary + tool-loop defaults).
 bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::string* out_error);
 
 // Saves provider keys (secrets).

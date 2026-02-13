@@ -85,6 +85,31 @@ static bool validate_hostport_token_best_effort(const std::string& s_in) {
   return true;
 }
 
+static bool validate_tool_name_best_effort(const std::string& s_in) {
+  const std::string s = trim_copy(s_in);
+  if (s.empty() || s.size() > 128) return false;
+  for (char c : s) {
+    const bool ok =
+      (c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9') ||
+      c == '-' || c == '_' || c == '.';
+    if (!ok) return false;
+  }
+  return true;
+}
+
+static void upsert_tool_call_limit(std::vector<std::pair<std::string, size_t>>* limits, std::string tool, size_t max_calls) {
+  if (!limits || tool.empty()) return;
+  for (auto& kv : *limits) {
+    if (kv.first == tool) {
+      kv.second = max_calls;
+      return;
+    }
+  }
+  limits->push_back(std::make_pair(std::move(tool), max_calls));
+}
+
 static bool read_string_array_best_effort(
   const Json::Value& obj,
   const char* k,
@@ -326,6 +351,19 @@ void handle_config_update_endpoint(
     const auto n = args["timeout_ms"].asInt64();
     if (n > 0) next.timeout_ms = (long)n;
   }
+  uint64_t n_u64 = 0;
+  if (json_get_u64_nonneg(args, "max_steps_default", &n_u64)) {
+    next.max_steps_default = (size_t)n_u64;
+  }
+  if (json_get_u64_nonneg(args, "max_tool_calls_total_default", &n_u64)) {
+    next.max_tool_calls_total_default = (size_t)n_u64;
+  }
+  if (json_get_u64_nonneg(args, "max_tool_calls_per_tool_default", &n_u64)) {
+    next.max_tool_calls_per_tool_default = (size_t)n_u64;
+  }
+  if (json_get_u64_nonneg(args, "max_tool_call_args_chars_default", &n_u64)) {
+    next.max_tool_call_args_chars_default = (size_t)n_u64;
+  }
   if (args.isMember("upload_max_bytes") && (args["upload_max_bytes"].isInt64() || args["upload_max_bytes"].isUInt64())) {
     const unsigned long long kMax = 512ull * 1024ull * 1024ull;
     unsigned long long n = 0;
@@ -385,6 +423,61 @@ void handle_config_update_endpoint(
       if (p == "default" || p == "jules_codex") {
         next.system_profile = p;
       }
+    }
+  }
+
+  if (args.isMember("tool_call_limits_default")) {
+    const Json::Value arr = args["tool_call_limits_default"];
+    if (!arr.isArray()) {
+      resp->status = 400;
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "tool_call_limits_default must be an array";
+      resp->body = json_stringify(o);
+      return;
+    }
+    next.tool_call_limits_default.clear();
+    for (Json::ArrayIndex i = 0; i < arr.size(); i++) {
+      const Json::Value item = arr[i];
+      if (!item.isObject()) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "tool_call_limits_default entry must be an object";
+        o["index"] = (Json::UInt64)i;
+        resp->body = json_stringify(o);
+        return;
+      }
+      if (!item.isMember("tool") || !item["tool"].isString()) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "tool_call_limits_default entry missing tool";
+        o["index"] = (Json::UInt64)i;
+        resp->body = json_stringify(o);
+        return;
+      }
+      const std::string tool = trim_copy(item["tool"].asString());
+      if (!validate_tool_name_best_effort(tool)) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "invalid tool name in tool_call_limits_default";
+        o["tool"] = tool;
+        resp->body = json_stringify(o);
+        return;
+      }
+      uint64_t max_calls_u64 = 0;
+      if (!json_get_u64_nonneg(item, "max_calls", &max_calls_u64)) {
+        resp->status = 400;
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "tool_call_limits_default entry missing max_calls";
+        o["tool"] = tool;
+        resp->body = json_stringify(o);
+        return;
+      }
+      upsert_tool_call_limit(&next.tool_call_limits_default, tool, (size_t)max_calls_u64);
     }
   }
 
@@ -606,6 +699,10 @@ void handle_config_update_endpoint(
   o["summary_max_chars"] = (Json::UInt64)next.summary_max_chars;
   o["timeout_ms"] = (Json::Int64)next.timeout_ms;
   o["upload_max_bytes"] = (Json::UInt64)next.upload_max_bytes;
+  o["max_steps_default"] = (Json::UInt64)next.max_steps_default;
+  o["max_tool_calls_total_default"] = (Json::UInt64)next.max_tool_calls_total_default;
+  o["max_tool_calls_per_tool_default"] = (Json::UInt64)next.max_tool_calls_per_tool_default;
+  o["max_tool_call_args_chars_default"] = (Json::UInt64)next.max_tool_call_args_chars_default;
   o["proxy_url_set"] = !next.proxy_url.empty();
   o["edge_auth_required"] = next.edge_auth_required;
   o["edge_auth_require_ts"] = next.edge_auth_require_ts;
@@ -638,6 +735,16 @@ void handle_config_update_endpoint(
     keys["moonshot"] = has_key("moonshot");
     keys["openai"] = has_key("openai");
     o["provider_keys_set"] = keys;
+  }
+  {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& p : next.tool_call_limits_default) {
+      Json::Value item(Json::objectValue);
+      item["tool"] = p.first;
+      item["max_calls"] = (Json::UInt64)p.second;
+      arr.append(item);
+    }
+    o["tool_call_limits_default"] = arr;
   }
   o["edge_auth_hmac_keys_set"] = (Json::UInt64)next.edge_auth_hmac_keys.size();
   o["edge_auth_ed25519_pubkeys_set"] = (Json::UInt64)next.edge_auth_ed25519_pubkeys.size();

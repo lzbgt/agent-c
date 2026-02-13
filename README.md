@@ -615,6 +615,9 @@ guard that stops if the model repeats the **exact same tool call** too many time
   - configure via `agentd --tool-call-limit proc_exec=4 --tool-call-limit shell_exec=16 --tool-call-limit artifact_register=16 --tool-call-limit ui_action=16`
   - or via env: `AGENTD_TOOL_CALL_LIMITS_DEFAULT="proc_exec=4,shell_exec=16,artifact_register=16,ui_action=16"`
   - per-run overrides: request field `tool_call_limits` (see `docs/PROTOCOL.md`)
+  - defaults can be persisted via `/api/v1/config/update`:
+    `max_steps_default`, `max_tool_calls_total_default`, `max_tool_calls_per_tool_default`,
+    `max_tool_call_args_chars_default`, `tool_call_limits_default`
 
 Seamless compaction for tool loops:
 - In `--tools basic` / `--tools host` mode, the tool loop applies the same char-budget policy as the core runner:

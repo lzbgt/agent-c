@@ -24,6 +24,31 @@ static size_t clamp_upload_max_bytes(unsigned long long n) {
   return (size_t)n;
 }
 
+static bool is_safe_tool_name(const std::string& s_in) {
+  const std::string s = trim_copy(s_in);
+  if (s.empty() || s.size() > 128) return false;
+  for (const char c : s) {
+    const bool ok =
+      (c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9') ||
+      c == '-' || c == '_' || c == '.';
+    if (!ok) return false;
+  }
+  return true;
+}
+
+static void upsert_tool_call_limit(std::vector<std::pair<std::string, size_t>>* limits, std::string tool, size_t max_calls) {
+  if (!limits || tool.empty()) return;
+  for (auto& kv : *limits) {
+    if (kv.first == tool) {
+      kv.second = max_calls;
+      return;
+    }
+  }
+  limits->push_back(std::make_pair(std::move(tool), max_calls));
+}
+
 }  // namespace
 
 bool load_runtime_config_best_effort(AgentDb& db, DaemonConfig* cfg_io, std::string* out_error) {
@@ -72,6 +97,19 @@ bool load_runtime_config_best_effort(
         if (v["proxy_url"].isNull()) cfg_io->proxy_url.clear();
         else if (v["proxy_url"].isString()) cfg_io->proxy_url = v["proxy_url"].asString();
       }
+      uint64_t n_u64 = 0;
+      if (json_get_u64_nonneg(v, "max_steps_default", &n_u64)) {
+        cfg_io->max_steps_default = (size_t)n_u64;
+      }
+      if (json_get_u64_nonneg(v, "max_tool_calls_total_default", &n_u64)) {
+        cfg_io->max_tool_calls_total_default = (size_t)n_u64;
+      }
+      if (json_get_u64_nonneg(v, "max_tool_calls_per_tool_default", &n_u64)) {
+        cfg_io->max_tool_calls_per_tool_default = (size_t)n_u64;
+      }
+      if (json_get_u64_nonneg(v, "max_tool_call_args_chars_default", &n_u64)) {
+        cfg_io->max_tool_call_args_chars_default = (size_t)n_u64;
+      }
       if (v.isMember("timeout_ms") && v["timeout_ms"].isInt64()) {
         const auto n = v["timeout_ms"].asInt64();
         if (n > 0) cfg_io->timeout_ms = (long)n;
@@ -84,6 +122,20 @@ bool load_runtime_config_best_effort(
         } else if (v.isMember("upload_max_bytes") && v["upload_max_bytes"].isUInt64()) {
           const auto n = v["upload_max_bytes"].asUInt64();
           cfg_io->upload_max_bytes = clamp_upload_max_bytes((unsigned long long)n);
+        }
+      }
+      if (v.isMember("tool_call_limits_default") && v["tool_call_limits_default"].isArray()) {
+        cfg_io->tool_call_limits_default.clear();
+        const Json::Value arr = v["tool_call_limits_default"];
+        for (Json::ArrayIndex i = 0; i < arr.size(); i++) {
+          const Json::Value item = arr[i];
+          if (!item.isObject()) continue;
+          if (!item.isMember("tool") || !item["tool"].isString()) continue;
+          const std::string tool = trim_copy(item["tool"].asString());
+          if (!is_safe_tool_name(tool)) continue;
+          uint64_t max_calls_u64 = 0;
+          if (!json_get_u64_nonneg(item, "max_calls", &max_calls_u64)) continue;
+          upsert_tool_call_limit(&cfg_io->tool_call_limits_default, tool, (size_t)max_calls_u64);
         }
       }
       if (v.isMember("edge_auth_required") && v["edge_auth_required"].isBool()) {
@@ -217,6 +269,10 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
   v["summary_model"] = cfg.summary_model.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.summary_model);
   v["summary_max_chars"] = (Json::UInt64)cfg.summary_max_chars;
   v["proxy_url"] = cfg.proxy_url.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.proxy_url);
+  v["max_steps_default"] = (Json::UInt64)cfg.max_steps_default;
+  v["max_tool_calls_total_default"] = (Json::UInt64)cfg.max_tool_calls_total_default;
+  v["max_tool_calls_per_tool_default"] = (Json::UInt64)cfg.max_tool_calls_per_tool_default;
+  v["max_tool_call_args_chars_default"] = (Json::UInt64)cfg.max_tool_call_args_chars_default;
   v["timeout_ms"] = (Json::Int64)cfg.timeout_ms;
   v["upload_max_bytes"] = (Json::UInt64)cfg.upload_max_bytes;
   v["edge_auth_required"] = cfg.edge_auth_required;
@@ -230,6 +286,16 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
     Json::Value arr(Json::arrayValue);
     for (const auto& s : cfg.workflow_http_allow_hosts) if (!s.empty()) arr.append(s);
     v["workflow_http_allow_hosts"] = arr;
+  }
+  {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& p : cfg.tool_call_limits_default) {
+      Json::Value item(Json::objectValue);
+      item["tool"] = p.first;
+      item["max_calls"] = (Json::UInt64)p.second;
+      arr.append(item);
+    }
+    v["tool_call_limits_default"] = arr;
   }
   {
     Json::Value arr(Json::arrayValue);

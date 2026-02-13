@@ -1520,7 +1520,18 @@ components:
             db_path: { type: string, nullable: true }
             state_dir: { type: string, nullable: true }
             sessions_root_dir: { type: string, nullable: true }
+            max_steps_default: { type: integer, format: int64 }
+            max_tool_calls_total_default: { type: integer, format: int64 }
+            max_tool_calls_per_tool_default: { type: integer, format: int64 }
             max_tool_call_args_chars_default: { type: integer, format: int64 }
+            tool_call_limits_default:
+              type: array
+              items:
+                type: object
+                required: [tool, max_calls]
+                properties:
+                  tool: { type: string }
+                  max_calls: { type: integer, format: int64 }
         cors:
           type: object
           additionalProperties: true
@@ -1610,6 +1621,31 @@ components:
           type: integer
           format: int64
           description: Max chars for inserted summary
+        max_steps_default:
+          type: integer
+          format: int64
+          description: Default max_steps for tool loops
+        max_tool_calls_total_default:
+          type: integer
+          format: int64
+          description: Default max tool calls total for tool loops
+        max_tool_calls_per_tool_default:
+          type: integer
+          format: int64
+          description: Default max tool calls per tool for tool loops
+        max_tool_call_args_chars_default:
+          type: integer
+          format: int64
+          description: Default max tool call args JSON length
+        tool_call_limits_default:
+          type: array
+          description: Default per-tool call limits (replaces the whole list)
+          items:
+            type: object
+            required: [tool, max_calls]
+            properties:
+              tool: { type: string }
+              max_calls: { type: integer, format: int64 }
         timeout_ms:
           type: integer
           format: int64
@@ -1668,6 +1704,18 @@ components:
         summary_model: { type: string, nullable: true }
         summary_max_chars: { type: integer, format: int64 }
         timeout_ms: { type: integer, format: int64 }
+        max_steps_default: { type: integer, format: int64 }
+        max_tool_calls_total_default: { type: integer, format: int64 }
+        max_tool_calls_per_tool_default: { type: integer, format: int64 }
+        max_tool_call_args_chars_default: { type: integer, format: int64 }
+        tool_call_limits_default:
+          type: array
+          items:
+            type: object
+            required: [tool, max_calls]
+            properties:
+              tool: { type: string }
+              max_calls: { type: integer, format: int64 }
         proxy_url_set: { type: boolean }
         edge_auth_required: { type: boolean }
         edge_auth_require_ts: { type: boolean }
