@@ -302,6 +302,8 @@ Stop the stack:
   between multiple agentd deployments (direct or broker-backed).
 - Each profile can optionally use **profile-specific run settings** (model/provider, tool flags, run limits, etc.);
   toggle "Profile-specific run settings" in Settings → Model / Provider.
+- Session selection, history UI state, job resume, and scene cache are scoped per profile (and base URL) to avoid
+  collisions when switching between deployments.
 
 ---
 
