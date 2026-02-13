@@ -258,6 +258,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("broker init failed: %v", err)
 	}
+	if clientAuth != nil {
+		s.SetClientAuthStatus(true, "")
+	}
 
 	srv := &http.Server{
 		Addr:              *listen,
@@ -326,10 +329,12 @@ func main() {
 		}
 		ca, err := config.LoadClientAuthFromFile(clientAuthPath)
 		if err != nil {
+			s.SetClientAuthStatus(false, err.Error())
 			log.Printf("client auth reload failed (%s): %v", reason, err)
 			return
 		}
 		s.SetClientAuth(ca)
+		s.SetClientAuthStatus(true, "")
 		log.Printf("client auth reloaded (%s)", reason)
 	}
 	if clientAuthPath != "" {

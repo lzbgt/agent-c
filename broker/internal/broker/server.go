@@ -63,8 +63,12 @@ type Server struct {
 	readyErr  string
 	readyBusy bool
 
-	clientAuthMu sync.RWMutex
-	clientAuth   *auth.ClientAuth
+	clientAuthMu        sync.RWMutex
+	clientAuth          *auth.ClientAuth
+	clientAuthStatusMu  sync.RWMutex
+	clientAuthLastAt    time.Time
+	clientAuthLastOK    bool
+	clientAuthLastError string
 }
 
 func New(cfg Config) (*Server, error) {
@@ -97,6 +101,10 @@ func New(cfg Config) (*Server, error) {
 	}
 	s := &Server{cfg: cfg, startTime: time.Now()}
 	s.clientAuth = cfg.ClientAuth
+	if cfg.ClientAuth != nil {
+		s.clientAuthLastAt = time.Now()
+		s.clientAuthLastOK = true
+	}
 	s.upg = websocket.Upgrader{
 		ReadBufferSize:  64 * 1024,
 		WriteBufferSize: 64 * 1024,
@@ -128,6 +136,29 @@ func (s *Server) SetClientAuth(ca *auth.ClientAuth) {
 	s.clientAuthMu.Lock()
 	s.clientAuth = ca
 	s.clientAuthMu.Unlock()
+}
+
+func (s *Server) SetClientAuthStatus(ok bool, errStr string) {
+	if s == nil {
+		return
+	}
+	s.clientAuthStatusMu.Lock()
+	s.clientAuthLastAt = time.Now()
+	s.clientAuthLastOK = ok
+	s.clientAuthLastError = errStr
+	s.clientAuthStatusMu.Unlock()
+}
+
+func (s *Server) getClientAuthStatus() (bool, time.Time, string) {
+	if s == nil {
+		return false, time.Time{}, "nil server"
+	}
+	s.clientAuthStatusMu.RLock()
+	ok := s.clientAuthLastOK
+	at := s.clientAuthLastAt
+	errStr := s.clientAuthLastError
+	s.clientAuthStatusMu.RUnlock()
+	return ok, at, errStr
 }
 
 func (s *Server) Handler() http.Handler {
@@ -1123,6 +1154,19 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	if s != nil && s.cfg.Registry != nil {
 		agents = len(s.cfg.Registry.List())
 	}
+	clientAuthConfigured := 0
+	if s != nil && s.getClientAuth() != nil {
+		clientAuthConfigured = 1
+	}
+	clientAuthOK, clientAuthAt, _ := s.getClientAuthStatus()
+	clientAuthOKVal := 0
+	if clientAuthOK {
+		clientAuthOKVal = 1
+	}
+	clientAuthAtMs := int64(0)
+	if !clientAuthAt.IsZero() {
+		clientAuthAtMs = clientAuthAt.UnixMilli()
+	}
 	uptime := time.Since(s.startTime).Seconds()
 	nowMs := time.Now().UnixMilli()
 
@@ -1133,6 +1177,15 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, "# HELP broker_ready 1 if the broker is ready to serve traffic.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE broker_ready gauge\n")
 	_, _ = fmt.Fprintf(w, "broker_ready %d\n", ready)
+	_, _ = fmt.Fprintf(w, "# HELP broker_client_auth_configured 1 if client auth is configured.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE broker_client_auth_configured gauge\n")
+	_, _ = fmt.Fprintf(w, "broker_client_auth_configured %d\n", clientAuthConfigured)
+	_, _ = fmt.Fprintf(w, "# HELP broker_client_auth_last_reload_ok 1 if last client auth reload succeeded.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE broker_client_auth_last_reload_ok gauge\n")
+	_, _ = fmt.Fprintf(w, "broker_client_auth_last_reload_ok %d\n", clientAuthOKVal)
+	_, _ = fmt.Fprintf(w, "# HELP broker_client_auth_last_reload_unix_ms Unix ms for last client auth reload (0 if never).\n")
+	_, _ = fmt.Fprintf(w, "# TYPE broker_client_auth_last_reload_unix_ms gauge\n")
+	_, _ = fmt.Fprintf(w, "broker_client_auth_last_reload_unix_ms %d\n", clientAuthAtMs)
 	_, _ = fmt.Fprintf(w, "# HELP broker_agents_connected Number of connected agents.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE broker_agents_connected gauge\n")
 	_, _ = fmt.Fprintf(w, "broker_agents_connected %d\n", agents)
