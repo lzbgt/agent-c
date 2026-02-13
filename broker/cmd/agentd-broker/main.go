@@ -102,6 +102,7 @@ func main() {
 	var clientAuthFile = flag.String("client-auth-file", "", "path to JSON client auth file (optional; env AGENTD_BROKER_CLIENT_AUTH_FILE)")
 	var clientAuthFallback = flag.Bool("client-auth-fallback", false, "allow client auth tokens when OIDC auth fails")
 	var clientAuthReloadMS = flag.Int64("client-auth-reload-ms", 0, "reload client auth file interval in ms (0 disables; env AGENTD_BROKER_CLIENT_AUTH_RELOAD_MS)")
+	var clientAuthStrict = flag.Bool("client-auth-strict", false, "fail readiness if client auth reload fails (env AGENTD_BROKER_CLIENT_AUTH_STRICT)")
 	var adminSubsCSV = flag.String("admin-subs", "", "comma-separated OIDC sub values treated as admin")
 	var corsOriginsCSV = flag.String("cors-origins", "", "comma-separated allowed CORS origins (e.g. https://ui.example.com)")
 	var maxPendingPerAgent = flag.Int("max-pending-per-agent", 256, "max pending proxied requests per agent (0=unlimited)")
@@ -149,6 +150,10 @@ func main() {
 	reloadMS := *clientAuthReloadMS
 	if v, ok := envInt64("AGENTD_BROKER_CLIENT_AUTH_RELOAD_MS"); ok && v > 0 {
 		reloadMS = v
+	}
+	strictEnabled := *clientAuthStrict
+	if v, ok := envBool("AGENTD_BROKER_CLIENT_AUTH_STRICT"); ok && v {
+		strictEnabled = true
 	}
 
 	iss := strings.TrimSpace(*oidcIssuer)
@@ -227,6 +232,7 @@ func main() {
 		OIDC:               ver,
 		ClientAuth:         clientAuth,
 		ClientAuthFallback: fallbackEnabled,
+		ClientAuthStrict:   strictEnabled,
 		DB:                 dbConn,
 		Registry:           reg,
 		Events:             ev,
@@ -307,6 +313,7 @@ func main() {
 	}
 	log.Printf("client auth configured: %v", clientAuth != nil)
 	log.Printf("client auth fallback: %v", fallbackEnabled)
+	log.Printf("client auth strict: %v", strictEnabled)
 	log.Printf("cors origins configured: %v", len(allowedOrigins) > 0)
 	log.Printf(
 		"limits: max_pending_per_agent=%d max_streams_per_agent=%d max_body_bytes=%d max_header_bytes=%d",

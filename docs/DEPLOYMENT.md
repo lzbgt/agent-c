@@ -159,13 +159,15 @@ Optional (non-UI service clients): static client token file:
 agentd-broker \
   --client-auth-file /etc/agentd/client_auth.json \
   --client-auth-fallback \
-  --client-auth-reload-ms 60000
+  --client-auth-reload-ms 60000 \
+  --client-auth-strict
 ```
 
 Env equivalents:
 - `AGENTD_BROKER_CLIENT_AUTH_FILE=/etc/agentd/client_auth.json`
 - `AGENTD_BROKER_CLIENT_AUTH_FALLBACK=1`
 - `AGENTD_BROKER_CLIENT_AUTH_RELOAD_MS=60000`
+- `AGENTD_BROKER_CLIENT_AUTH_STRICT=1`
 
 You can also send `SIGHUP` to reload the client auth file immediately.
 

@@ -30,6 +30,7 @@ type Config struct {
 	OIDC               *oidc.Verifier
 	ClientAuth         *auth.ClientAuth
 	ClientAuthFallback bool
+	ClientAuthStrict   bool
 	DB                 *db.DB
 	Registry           *registry.Registry
 	Events             *events.Hub
@@ -1163,6 +1164,10 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	if clientAuthOK {
 		clientAuthOKVal = 1
 	}
+	clientAuthStrict := 0
+	if s != nil && s.cfg.ClientAuthStrict {
+		clientAuthStrict = 1
+	}
 	clientAuthAtMs := int64(0)
 	if !clientAuthAt.IsZero() {
 		clientAuthAtMs = clientAuthAt.UnixMilli()
@@ -1183,6 +1188,9 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, "# HELP broker_client_auth_last_reload_ok 1 if last client auth reload succeeded.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE broker_client_auth_last_reload_ok gauge\n")
 	_, _ = fmt.Fprintf(w, "broker_client_auth_last_reload_ok %d\n", clientAuthOKVal)
+	_, _ = fmt.Fprintf(w, "# HELP broker_client_auth_strict 1 if client auth strict mode is enabled.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE broker_client_auth_strict gauge\n")
+	_, _ = fmt.Fprintf(w, "broker_client_auth_strict %d\n", clientAuthStrict)
 	_, _ = fmt.Fprintf(w, "# HELP broker_client_auth_last_reload_unix_ms Unix ms for last client auth reload (0 if never).\n")
 	_, _ = fmt.Fprintf(w, "# TYPE broker_client_auth_last_reload_unix_ms gauge\n")
 	_, _ = fmt.Fprintf(w, "broker_client_auth_last_reload_unix_ms %d\n", clientAuthAtMs)
@@ -1243,9 +1251,20 @@ func (s *Server) checkReady(ctx context.Context) (bool, string) {
 	// OIDC readiness (issuer/JWKS reachable) if configured.
 	if ok {
 		if s.cfg.OIDC == nil {
-			if s.getClientAuth() == nil {
+			ca := s.getClientAuth()
+			if ca == nil {
 				ok = false
 				errStr = "oidc verifier not configured"
+			} else if s.cfg.ClientAuthStrict {
+				lastOK, _, lastErr := s.getClientAuthStatus()
+				if !lastOK {
+					ok = false
+					if strings.TrimSpace(lastErr) != "" {
+						errStr = "client auth reload failed: " + lastErr
+					} else {
+						errStr = "client auth reload failed"
+					}
+				}
 			}
 		} else {
 			octx, cancel := context.WithTimeout(ctx, 3*time.Second)
