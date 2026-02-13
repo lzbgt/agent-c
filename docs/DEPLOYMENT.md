@@ -167,6 +167,8 @@ Env equivalents:
 - `AGENTD_BROKER_CLIENT_AUTH_FALLBACK=1`
 - `AGENTD_BROKER_CLIENT_AUTH_RELOAD_MS=60000`
 
+You can also send `SIGHUP` to reload the client auth file immediately.
+
 ### Example (connector flags)
 ```
 agentd-connector \

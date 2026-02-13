@@ -319,6 +319,28 @@ func main() {
 		(*idleTimeout).String(),
 		(*readHeaderTimeout).String(),
 	)
+	reloadClientAuth := func(reason string) {
+		if clientAuthPath == "" {
+			log.Printf("client auth reload requested but no client auth file configured")
+			return
+		}
+		ca, err := config.LoadClientAuthFromFile(clientAuthPath)
+		if err != nil {
+			log.Printf("client auth reload failed (%s): %v", reason, err)
+			return
+		}
+		s.SetClientAuth(ca)
+		log.Printf("client auth reloaded (%s)", reason)
+	}
+	if clientAuthPath != "" {
+		hupCh := make(chan os.Signal, 1)
+		signal.Notify(hupCh, syscall.SIGHUP)
+		go func() {
+			for range hupCh {
+				reloadClientAuth("sighup")
+			}
+		}()
+	}
 	if reloadMS > 0 {
 		if clientAuthPath == "" {
 			log.Printf("client auth reload requested but no client auth file configured; reload disabled")
@@ -332,13 +354,7 @@ func main() {
 			ticker := time.NewTicker(interval)
 			go func() {
 				for range ticker.C {
-					ca, err := config.LoadClientAuthFromFile(clientAuthPath)
-					if err != nil {
-						log.Printf("client auth reload failed: %v", err)
-						continue
-					}
-					s.SetClientAuth(ca)
-					log.Printf("client auth reloaded")
+					reloadClientAuth("interval")
 				}
 			}()
 		}
