@@ -385,6 +385,8 @@ tools/verify_mac_local_stack.sh
 Optional env:
 - `MAC_LOCAL_SKIP_UI=1` (skip WebUI build/serve)
 - `MAC_LOCAL_UI_INSTALL=0` (skip `npm ci` if deps already exist)
+- `MAC_LOCAL_PROVIDER_TEST=1` (run diagnostics provider tests if keys are available)
+- `MAC_LOCAL_PROVIDER_TEST_TIMEOUT_MS=30000` (provider test timeout override)
 
 The Web UI defaults to:
 - YOLO enabled

@@ -36,6 +36,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
    - [x] macOS provider smoke: DeepSeek reasoner tool-call + Moonshot tool-call (new `agentd_moonshot_tool_call_smoke.sh`).
    - [x] Compose build reliability: document Docker Desktop resource-limit troubleshooting (unpigz/runc) and prebuilt-image path.
    - [x] Add macOS local verification script (agentd + WebUI without Docker).
+   - [x] macOS local verify script can run diagnostics provider tests when `MAC_LOCAL_PROVIDER_TEST=1`.
    - [x] WebUI runtime defaults via `agentui-config.js` + `VITE_AGENTUI_*` env overrides (no rebuild required).
    - [x] Broker tunables: max body/header bytes + HTTP timeouts (flags + env).
    - [x] Agentd HTTP hardening: header size cap + read timeouts (env) with smoke test.
