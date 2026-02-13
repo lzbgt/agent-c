@@ -28,6 +28,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
    - [x] Added macOS launchd install/uninstall helper scripts for agentd.
    - [x] Add Windows service template.
    - [x] Production hardening review for docker stack (secrets, TLS, backups, metrics).
+   - [x] macOS provider smoke: DeepSeek reasoner tool-call + Moonshot tool-call (new `agentd_moonshot_tool_call_smoke.sh`).
 
 ## Recently shipped (proof in CI)
 
