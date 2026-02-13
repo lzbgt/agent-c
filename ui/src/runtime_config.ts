@@ -24,6 +24,7 @@ export type AgentUIRuntimeConfig = {
   allowClientRpcs?: boolean | string;
   allowClientEffects?: boolean | string;
   allowUnsafePageEval?: boolean | string;
+  brokerPanelOpen?: boolean | string;
 };
 
 export type AgentUIDefaults = {
@@ -48,6 +49,7 @@ export type AgentUIDefaults = {
   allowClientRpcs: boolean;
   allowClientEffects: boolean;
   allowUnsafePageEval: boolean;
+  brokerPanelOpen: boolean;
 };
 
 declare global {
@@ -78,6 +80,7 @@ const DEFAULTS: AgentUIDefaults = {
   allowClientRpcs: true,
   allowClientEffects: true,
   allowUnsafePageEval: true,
+  brokerPanelOpen: false,
 };
 
 const env = (() => {
@@ -204,6 +207,10 @@ export const getUiDefaults = (): AgentUIDefaults => {
     coerceBool(cfg.allowUnsafePageEval) ??
     coerceBool(envString("VITE_AGENTUI_ALLOW_UNSAFE_PAGE_EVAL")) ??
     out.allowUnsafePageEval;
+  out.brokerPanelOpen =
+    coerceBool(cfg.brokerPanelOpen) ??
+    coerceBool(envString("VITE_AGENTUI_BROKER_PANEL_OPEN")) ??
+    out.brokerPanelOpen;
 
   return out;
 };

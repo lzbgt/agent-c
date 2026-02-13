@@ -43,7 +43,7 @@ function sleep(ms: number) {
 
 export default function App() {
   const ui = useUiSettings();
-  const { connection, run: runSettings, client: clientSettings } = ui;
+  const { connection, run: runSettings, client: clientSettings, brokerPanelOpen, setBrokerPanelOpen } = ui;
   const { effectiveBase, effectiveSseBase, daemonAuth, authKey } = connection;
   const { showSettings, setShowSettings } = ui;
   const connectionMode = connection.mode;
@@ -128,7 +128,6 @@ export default function App() {
   } = clientSettings;
   const [traceLookupId, setTraceLookupId] = useLocalStorageState("agentui.traceLookupId", "");
   const [traceLookupOpen, setTraceLookupOpen] = useLocalStorageState("agentui.traceLookupOpen", false);
-  const [brokerPanelOpen, setBrokerPanelOpen] = useLocalStorageState("agentui.brokerPanelOpen", false);
   // Keep prompts separate so an active async run does not overwrite the "last completed" view.
   const [lastRunPrompt, setLastRunPrompt] = React.useState("");
   const [lastCompletedPrompt, setLastCompletedPrompt] = React.useState("");

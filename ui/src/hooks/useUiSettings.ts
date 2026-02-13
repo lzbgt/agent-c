@@ -106,6 +106,8 @@ export type UiSettings = {
   connection: ConnectionSettings;
   run: RunSettings;
   client: ClientSettings;
+  brokerPanelOpen: boolean;
+  setBrokerPanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
 };
 
 const normalizeHttpBase = (raw: string, fallback: string, defaultScheme: "http" | "https") => {
@@ -175,6 +177,10 @@ export default function useUiSettings(): UiSettings {
   const [showDebugInConversation, setShowDebugInConversation] = useLocalStorageState(
     "agentui.showDebugInConversation",
     true,
+  );
+  const [brokerPanelOpen, setBrokerPanelOpen] = useLocalStorageState(
+    "agentui.brokerPanelOpen",
+    defaults.brokerPanelOpen,
   );
 
   const effectiveBase = React.useMemo(() => {
@@ -316,5 +322,7 @@ export default function useUiSettings(): UiSettings {
       showDebugInConversation,
       setShowDebugInConversation,
     },
+    brokerPanelOpen,
+    setBrokerPanelOpen,
   };
 }
