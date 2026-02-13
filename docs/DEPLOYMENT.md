@@ -250,6 +250,14 @@ Validate a captured bundle:
 
 Run a JSON scenario that captures logs + evidence:
 - `python3 tools/scenario_runner.py --file tools/scenarios/agentd_smoke.json`
+
+### One-command devstack (optional)
+
+Bring up agentd + broker + connector + WebUI on the host (Postgres + Keycloak via Docker), then run smoke checks + capture evidence:
+- `tools/devstack_agent.sh`
+
+Stop the stack:
+- `tools/devstack_agent_down.sh`
   - Edit that file to adjust broker URL, agent id, or pass-through daemon token for local dev.
 - For a one-command macOS verification run, use: `tools/verify_mac_full_stack.sh`.
 - If Docker is unavailable or resource-constrained, you can verify the local stack without compose:

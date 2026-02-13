@@ -31,11 +31,9 @@ Adoption here:
 
 Urine monitor has a “devstack” orchestrator to make the platform usable without hardware.
 
-Adoption here (proposed):
-- Provide a single script that:
-  - starts agentd + broker + webui (optional)
-  - performs smoke checks (health + diagnostics + basic run)
-  - outputs a trace id and evidence bundle for reproducibility
+Adoption here:
+- Added `tools/devstack_agent.sh` (host devstack with smoke checks + evidence bundle).
+- Added `tools/devstack_agent_down.sh` for teardown.
 
 ## 4) API error envelope
 
