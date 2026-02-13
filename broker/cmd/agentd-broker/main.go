@@ -47,6 +47,22 @@ func envDurationMS(key string) (time.Duration, bool) {
 	return time.Duration(n) * time.Millisecond, true
 }
 
+func envBool(key string) (bool, bool) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return false, false
+	}
+	switch strings.ToLower(raw) {
+	case "1", "true", "yes", "y", "on":
+		return true, true
+	case "0", "false", "no", "n", "off":
+		return false, true
+	default:
+		log.Printf("invalid %s: must be boolean", key)
+		return false, false
+	}
+}
+
 func main() {
 	maxBodyDefault := int64(64 * 1024 * 1024)
 	if v, ok := envInt64("AGENTD_BROKER_MAX_BODY_BYTES"); ok && v > 0 {
@@ -83,7 +99,7 @@ func main() {
 	var dbDSN = flag.String("db-dsn", "", "postgres dsn (or env AGENTD_BROKER_DB_DSN / DATABASE_URL)")
 	var oidcIssuer = flag.String("oidc-issuer", "", "OIDC issuer URL (required)")
 	var oidcAudience = flag.String("oidc-audience", "", "OIDC audience / client_id (required)")
-	var clientAuthFile = flag.String("client-auth-file", "", "path to JSON client auth file (optional)")
+	var clientAuthFile = flag.String("client-auth-file", "", "path to JSON client auth file (optional; env AGENTD_BROKER_CLIENT_AUTH_FILE)")
 	var clientAuthFallback = flag.Bool("client-auth-fallback", false, "allow client auth tokens when OIDC auth fails")
 	var adminSubsCSV = flag.String("admin-subs", "", "comma-separated OIDC sub values treated as admin")
 	var corsOriginsCSV = flag.String("cors-origins", "", "comma-separated allowed CORS origins (e.g. https://ui.example.com)")
@@ -113,6 +129,9 @@ func main() {
 	}
 
 	clientAuthPath := strings.TrimSpace(*clientAuthFile)
+	if clientAuthPath == "" {
+		clientAuthPath = strings.TrimSpace(os.Getenv("AGENTD_BROKER_CLIENT_AUTH_FILE"))
+	}
 	var clientAuth *auth.ClientAuth
 	if clientAuthPath != "" {
 		ca, err := config.LoadClientAuthFromFile(clientAuthPath)
@@ -120,6 +139,11 @@ func main() {
 			log.Fatalf("client auth load failed: %v", err)
 		}
 		clientAuth = ca
+	}
+
+	fallbackEnabled := *clientAuthFallback
+	if v, ok := envBool("AGENTD_BROKER_CLIENT_AUTH_FALLBACK"); ok && v {
+		fallbackEnabled = true
 	}
 
 	iss := strings.TrimSpace(*oidcIssuer)
@@ -197,7 +221,7 @@ func main() {
 	s, err := broker.New(broker.Config{
 		OIDC:               ver,
 		ClientAuth:         clientAuth,
-		ClientAuthFallback: *clientAuthFallback,
+		ClientAuthFallback: fallbackEnabled,
 		DB:                 dbConn,
 		Registry:           reg,
 		Events:             ev,
@@ -274,7 +298,7 @@ func main() {
 		log.Printf("oidc disabled")
 	}
 	log.Printf("client auth configured: %v", clientAuth != nil)
-	log.Printf("client auth fallback: %v", *clientAuthFallback)
+	log.Printf("client auth fallback: %v", fallbackEnabled)
 	log.Printf("cors origins configured: %v", len(allowedOrigins) > 0)
 	log.Printf(
 		"limits: max_pending_per_agent=%d max_streams_per_agent=%d max_body_bytes=%d max_header_bytes=%d",

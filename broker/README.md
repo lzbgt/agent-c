@@ -37,8 +37,8 @@ Key flags:
   - `--db-dsn` (or `AGENTD_BROKER_DB_DSN` / `DATABASE_URL`)
   - `--oidc-issuer`, `--oidc-audience`
 - Optional client token auth:
-  - `--client-auth-file` (JSON file with static client tokens)
-  - `--client-auth-fallback` (allow client tokens when OIDC auth fails)
+  - `--client-auth-file` (JSON file with static client tokens; env `AGENTD_BROKER_CLIENT_AUTH_FILE`)
+  - `--client-auth-fallback` (allow client tokens when OIDC auth fails; env `AGENTD_BROKER_CLIENT_AUTH_FALLBACK=1`)
 - Resource limits:
   - `--max-pending-per-agent` (default `256`)
   - `--max-streams-per-agent` (default `64`)

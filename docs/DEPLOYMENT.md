@@ -161,6 +161,10 @@ agentd-broker \
   --client-auth-fallback
 ```
 
+Env equivalents:
+- `AGENTD_BROKER_CLIENT_AUTH_FILE=/etc/agentd/client_auth.json`
+- `AGENTD_BROKER_CLIENT_AUTH_FALLBACK=1`
+
 ### Example (connector flags)
 ```
 agentd-connector \
