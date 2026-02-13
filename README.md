@@ -383,6 +383,8 @@ If you want a **prod-like stack** locally (Postgres + Keycloak OIDC + broker + c
 ./tools/verify_compose_stack.sh
 ```
 
+Note: the WebUI container mounts `tools/agentui-config.compose.js` to default to broker mode (edit as needed).
+
 If Docker is unavailable or resource constrained, use:
 ```bash
 tools/verify_mac_local_stack.sh

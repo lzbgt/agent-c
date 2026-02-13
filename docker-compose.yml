@@ -172,6 +172,8 @@ services:
         NO_PROXY: ${NO_PROXY:-}
     ports:
       - "${WEBUI_PUBLISHED_PORT:-8100}:80"
+    volumes:
+      - ./tools/agentui-config.compose.js:/usr/share/nginx/html/agentui-config.js:ro
 
 volumes:
   pgdata:
