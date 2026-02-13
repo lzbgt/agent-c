@@ -41,3 +41,11 @@ Template variables:
 
 - `agentd_smoke.json`: checks `/api/v1/health` + `/api/v1/diagnostics`, captures evidence.
 - `broker_smoke.json`: checks `/healthz` + `/readyz` (TLS insecure), captures evidence via broker proxy.
+
+## Scenario pack
+
+Run all scenarios in this folder and validate evidence bundles:
+
+```bash
+python3 tools/scenario_pack.py --dir tools/scenarios --validate
+```

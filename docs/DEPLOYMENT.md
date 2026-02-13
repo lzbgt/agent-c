@@ -251,6 +251,9 @@ Validate a captured bundle:
 Run a JSON scenario that captures logs + evidence:
 - `python3 tools/scenario_runner.py --file tools/scenarios/agentd_smoke.json`
 
+Run all scenarios and validate evidence bundles:
+- `python3 tools/scenario_pack.py --dir tools/scenarios --validate`
+
 ### One-command devstack (optional)
 
 Bring up agentd + broker + connector + WebUI on the host (Postgres + Keycloak via Docker), then run smoke checks + capture evidence:
