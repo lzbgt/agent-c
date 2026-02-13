@@ -165,7 +165,11 @@ PY
 
 # Sync run: X-Trace-Id header is used when trace_id is omitted from the body.
 TRACE_HDR="trace_hdr_$(date +%s)_$RANDOM"
+HDR_FILE="${LOG_DIR}/agentd_trace_id_smoke.headers.txt"
+BODY_FILE="${LOG_DIR}/agentd_trace_id_smoke.body.json"
 resp_hdr="$(curl -fsS --noproxy "*" --max-time 15 \
+  -D "${HDR_FILE}" \
+  -o "${BODY_FILE}" \
   -H "Content-Type: application/json" \
   -H "X-Trace-Id: ${TRACE_HDR}" \
   -d "$(python3 - <<PY
@@ -186,7 +190,7 @@ PY
 
 python3 - <<PY
 import json, sys
-obj = json.loads(r'''${resp_hdr}''')
+obj = json.loads(open("${BODY_FILE}", "r", encoding="utf-8").read())
 if not obj.get("ok"):
   print("header trace run failed:", obj, file=sys.stderr)
   raise SystemExit(1)
@@ -204,6 +208,11 @@ for i, e in enumerate(events):
     print(f"event[{i}] missing/incorrect trace_id:", e.get("trace_id"), file=sys.stderr)
     raise SystemExit(1)
 PY
+
+if ! grep -qi "^X-Trace-Id: ${TRACE_HDR}$" "${HDR_FILE}"; then
+  echo "missing X-Trace-Id header in response" >&2
+  exit 1
+fi
 
 # Persisted run: audit record can be re-fetched by trace_id.
 TRACE_PERSIST="trace_persist_$(date +%s)_$RANDOM"

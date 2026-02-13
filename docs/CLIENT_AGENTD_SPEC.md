@@ -46,6 +46,7 @@ Request correlation:
 - Streaming endpoints also echo `X-Request-Id` in their initial SSE response headers.
 - For `/api/v1/run` and `/api/v1/run_async`, clients may send `X-Trace-Id`. If the JSON body omits `trace_id`,
   the daemon will use the header value (must pass `trace_id_is_safe`).
+ - When `X-Trace-Id` is present, agentd echoes it in response headers for easier log correlation.
 
 ## Session IDs (safety contract)
 

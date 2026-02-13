@@ -374,7 +374,12 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
       const auto start_time = std::chrono::steady_clock::now();
       std::string request_id = make_request_id();
 
-      auto log_access = [&](const HttpRequest& req, int status, bool stream, size_t bytes_in, size_t bytes_out) {
+      auto log_access = [&](const HttpRequest& req,
+                            int status,
+                            bool stream,
+                            size_t bytes_in,
+                            size_t bytes_out,
+                            const std::string& trace_id) {
         if (log_mode == 0) return;
         const int64_t now_ms = (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
                                  std::chrono::system_clock::now().time_since_epoch())
@@ -393,6 +398,9 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
               << ",\"bytes_out\":" << (unsigned long long)bytes_out
               << ",\"stream\":" << (stream ? "true" : "false")
               << ",\"request_id\":\"" << json_escape(request_id) << "\"";
+          if (!trace_id.empty()) {
+            oss << ",\"trace_id\":\"" << json_escape(trace_id) << "\"";
+          }
           if (!peer_addr.empty()) {
             oss << ",\"remote\":\"" << json_escape(peer_addr) << "\"";
           }
@@ -405,6 +413,9 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
                     << " out=" << (unsigned long long)bytes_out
                     << " stream=" << (stream ? "1" : "0")
                     << " req_id=" << request_id;
+          if (!trace_id.empty()) {
+            std::cerr << " trace_id=" << trace_id;
+          }
           if (!peer_addr.empty()) {
             std::cerr << " remote=" << peer_addr;
           }
@@ -416,9 +427,27 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
         if (!resp.headers.count("X-Request-Id")) {
           resp.headers["X-Request-Id"] = request_id;
         }
+        std::string trace_id;
+        auto tit = resp.headers.find("X-Trace-Id");
+        if (tit == resp.headers.end()) {
+          tit = resp.headers.find("x-trace-id");
+        }
+        if (tit != resp.headers.end()) {
+          trace_id = tit->second;
+        } else {
+          const auto it = req.headers.find("x-trace-id");
+          if (it != req.headers.end()) {
+            std::string v = it->second;
+            trim_inplace(v);
+            if (token_is_safe(v)) trace_id = v;
+          }
+        }
+        if (!trace_id.empty() && !resp.headers.count("X-Trace-Id")) {
+          resp.headers["X-Trace-Id"] = trace_id;
+        }
         const std::string wire = build_response(resp, default_headers_);
         (void)write_all(client, wire);
-        log_access(req, resp.status, false, bytes_in, resp.body.size());
+        log_access(req, resp.status, false, bytes_in, resp.body.size(), trace_id);
         socket_close(client);
       };
 
@@ -485,7 +514,14 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
       auto sit = stream_routes_.find(RouteKey{req.method, req.path});
       if (sit != stream_routes_.end()) {
         sit->second(req, client);
-        log_access(req, 200, true, req.body.size(), 0);
+        std::string trace_id;
+        const auto it = req.headers.find("x-trace-id");
+        if (it != req.headers.end()) {
+          trace_id = it->second;
+          trim_inplace(trace_id);
+          if (!token_is_safe(trace_id)) trace_id.clear();
+        }
+        log_access(req, 200, true, req.body.size(), 0, trace_id);
         // Server closes socket after handler returns.
         socket_close(client);
         return;
