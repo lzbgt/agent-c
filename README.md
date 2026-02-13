@@ -39,6 +39,12 @@ cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.c
 cmake --build build -j
 ```
 
+Or run the helper:
+
+```powershell
+tools\verify_windows_build.ps1 -Config Release
+```
+
 Platform-specific notes (Windows limitations, plugin support, AVM endpoints) live in `docs/PLATFORM_SUPPORT.md`.
 
 Smoke tests:

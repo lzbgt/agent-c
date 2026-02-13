@@ -3,7 +3,8 @@ $ErrorActionPreference = "Stop"
 param(
   [string]$BuildDir = "",
   [string]$Config = "Release",
-  [string]$Generator = ""
+  [string]$Generator = "",
+  [switch]$SkipTests
 )
 
 $Root = (Resolve-Path "$PSScriptRoot/..").Path
@@ -36,6 +37,7 @@ Write-Host "Windows build verification"
 Write-Host "  root: $Root"
 Write-Host "  build: $BuildDir"
 Write-Host "  generator: $Generator"
+Write-Host "  config: $Config"
 if ($toolchainArgs.Count -gt 0) {
   Write-Host "  vcpkg: enabled"
 } else {
@@ -50,5 +52,16 @@ $cmakeArgs = @(
   "-DAGENT_BUILD_ESP32SIM=OFF"
 ) + $toolchainArgs
 
+if ($Generator -like "Visual Studio*") {
+  $cmakeArgs += "-A"
+  $cmakeArgs += "x64"
+} elseif ($Generator -eq "Ninja") {
+  $cmakeArgs += "-DCMAKE_BUILD_TYPE=$Config"
+}
+
 cmake @cmakeArgs
 cmake --build $BuildDir --config $Config
+
+if (-not $SkipTests) {
+  ctest --test-dir $BuildDir -C $Config -R agent_core_tests --output-on-failure
+}
