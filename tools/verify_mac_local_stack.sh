@@ -35,6 +35,8 @@ AGENTD_AUTH_TOKEN="${AGENTD_AUTH_TOKEN:-dev-agentd-token}"
 STATE_DIR="${AGENTD_STATE_DIR:-${ROOT}/state/mac_local}"
 
 WEBUI_PORT="${WEBUI_PORT:-$(pick_port)}"
+MAC_LOCAL_SKIP_UI="${MAC_LOCAL_SKIP_UI:-0}"
+MAC_LOCAL_UI_INSTALL="${MAC_LOCAL_UI_INSTALL:-1}"
 
 cleanup() {
   if [[ -n "${WEBUI_PID:-}" ]]; then
@@ -77,8 +79,34 @@ done
 curl -fsS -H "Authorization: Bearer ${AGENTD_AUTH_TOKEN}" \
   "http://127.0.0.1:${AGENTD_PORT}/api/v1/health" | python3 -m json.tool >/dev/null
 
-echo "[mac-local] building WebUI (logs: ${LOG_WEBUI_INSTALL}, ${LOG_WEBUI_BUILD})"
-(cd "${ROOT}/ui" && NPM_CONFIG_CACHE=./.npm-cache npm ci) >"${LOG_WEBUI_INSTALL}" 2>&1
+if [[ "${MAC_LOCAL_SKIP_UI}" == "1" ]]; then
+  echo "[mac-local] skip WebUI build (MAC_LOCAL_SKIP_UI=1)"
+  echo "[mac-local] OK"
+  echo "  - agentd: http://127.0.0.1:${AGENTD_PORT}/api/v1/health (auth: ${AGENTD_AUTH_TOKEN})"
+  exit 0
+fi
+
+if ! command -v npm >/dev/null 2>&1; then
+  echo "[mac-local] npm not found; skipping WebUI build" >&2
+  echo "[mac-local] OK"
+  echo "  - agentd: http://127.0.0.1:${AGENTD_PORT}/api/v1/health (auth: ${AGENTD_AUTH_TOKEN})"
+  exit 0
+fi
+
+if [[ "${MAC_LOCAL_UI_INSTALL}" == "1" ]]; then
+  echo "[mac-local] building WebUI (logs: ${LOG_WEBUI_INSTALL}, ${LOG_WEBUI_BUILD})"
+  (cd "${ROOT}/ui" && NPM_CONFIG_CACHE=./.npm-cache npm ci) >"${LOG_WEBUI_INSTALL}" 2>&1
+else
+  echo "[mac-local] WebUI install skipped (MAC_LOCAL_UI_INSTALL=0)"
+fi
+
+if [[ ! -d "${ROOT}/ui/node_modules" ]]; then
+  echo "[mac-local] UI deps missing; skipping WebUI build" >&2
+  echo "[mac-local] OK"
+  echo "  - agentd: http://127.0.0.1:${AGENTD_PORT}/api/v1/health (auth: ${AGENTD_AUTH_TOKEN})"
+  exit 0
+fi
+
 (cd "${ROOT}/ui" && NPM_CONFIG_CACHE=./.npm-cache npm run build) >"${LOG_WEBUI_BUILD}" 2>&1
 
 echo "[mac-local] serving WebUI on 127.0.0.1:${WEBUI_PORT}"

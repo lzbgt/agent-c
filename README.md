@@ -346,6 +346,9 @@ If you want a one-command local check (agentd + WebUI only, no Docker/broker):
 ```bash
 tools/verify_mac_local_stack.sh
 ```
+Optional env:
+- `MAC_LOCAL_SKIP_UI=1` (skip WebUI build/serve)
+- `MAC_LOCAL_UI_INSTALL=0` (skip `npm ci` if deps already exist)
 
 The Web UI defaults to:
 - YOLO enabled
