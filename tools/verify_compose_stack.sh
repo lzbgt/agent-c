@@ -84,6 +84,20 @@ KEYCLOAK_BASE="http://keycloak.lvh.me:${KEYCLOAK_PUBLISHED_PORT}"
 AGENTD_BASE="http://127.0.0.1:${AGENTD_PUBLISHED_PORT}"
 WEBUI_BASE="http://127.0.0.1:${WEBUI_PUBLISHED_PORT}"
 
+if [[ "${COMPOSE_BUILD:-1}" == "0" ]]; then
+  missing=()
+  for svc in agentd broker connector webui; do
+    img="${COMPOSE_PROJECT_NAME}-${svc}:latest"
+    if ! docker image inspect "${img}" >/dev/null 2>&1; then
+      missing+=("${img}")
+    fi
+  done
+  if (( ${#missing[@]} > 0 )); then
+    echo "[compose] SKIP: COMPOSE_BUILD=0 but missing images: ${missing[*]}" >&2
+    exit 77
+  fi
+fi
+
 (
   cd "${ROOT}"
   # Host-generated mTLS certs (keeps compose deterministic; avoids "apk add" in init containers).
