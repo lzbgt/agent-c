@@ -4,6 +4,7 @@
 #include "http_util.h"
 #include "job_manager.h"
 #include "json_util.h"
+#include "run_endpoints_internal.h"
 #include "string_util.h"
 #include "trace_id_util.h"
 

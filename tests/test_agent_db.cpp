@@ -320,8 +320,20 @@ int main() {
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('edge_workflow_events') WHERE name='id';");
   const int64_t fairq_sessions_tbl =
     query_i64(raw2, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='workflow_fairq_sessions';");
+  const int64_t run_request_json_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('runs') WHERE name='request_json';");
+  const int64_t run_response_json_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('runs') WHERE name='response_json';");
+  const int64_t run_replay_sha_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('runs') WHERE name='replay_sha256';");
+  const int64_t run_replay_alg_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('runs') WHERE name='replay_sha256_alg';");
+  const int64_t run_replay_schema_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('runs') WHERE name='replay_sha256_schema';");
+  const int64_t run_replay_error_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('runs') WHERE name='replay_error';");
   sqlite3_close(raw2);
-  assert(ver == 26);
+  assert(ver == 27);
   assert(fairq_sessions_tbl == 1);
   assert(arts2 == 0);
   assert(stop_reason_cols == 1);
@@ -369,6 +381,12 @@ int main() {
   assert(edge_wf_steps_next_ready_cols == 1);
   assert(edge_wf_steps_backoff_cols == 1);
   assert(edge_wf_events_id_cols == 1);
+  assert(run_request_json_cols == 1);
+  assert(run_response_json_cols == 1);
+  assert(run_replay_sha_cols == 1);
+  assert(run_replay_alg_cols == 1);
+  assert(run_replay_schema_cols == 1);
+  assert(run_replay_error_cols == 1);
 
   db.close();
   std::filesystem::remove(tmp, ec);

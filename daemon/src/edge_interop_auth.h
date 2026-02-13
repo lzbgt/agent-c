@@ -7,6 +7,7 @@
 
 #include "http_util.h"
 #include "runtime_config.h"
+#include "agentd/http_types.h"
 
 namespace agentd {
 

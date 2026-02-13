@@ -26,6 +26,7 @@
 #include "openrouter_util.h"
 #include "provider_util.h"
 #include "run_endpoints.h"
+#include "run_replay_endpoint.h"
 #include "trace_endpoints.h"
 #include "workflow_endpoints.h"
 #include "workflow_engine.h"
@@ -670,6 +671,10 @@ struct AgentdService::Impl {
       const DaemonConfig cur = cfg_store->snapshot();
       const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
       handle_run_endpoint(cur, ocfg, cors_cfg, &db, tool_ext_or_null(), cur.sessions_root_dir, req, resp);
+    });
+    server.handle("GET", "/api/v1/run/replay", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_run_replay_endpoint(cur, cors_cfg, &db, req, resp);
     });
     server.handle("POST", "/api/v1/run_async", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();

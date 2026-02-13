@@ -28,8 +28,9 @@ bool AgentDb::insert_run(const RunRow& row, int64_t* out_run_id, std::string* ou
   const char* sql =
     "INSERT INTO runs(session_id, job_id, ts_unix_ms, prompt, tools, model, base_url, stream_assistant, ok, "
     "stop_reason, steps_executed, tool_calls_total, tool_calls_by_tool_json, last_error_reason, "
+    "request_json, response_json, replay_sha256, replay_sha256_alg, replay_sha256_schema, replay_error, "
     "error, http_status, http_body) "
-    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);";
+    "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);";
   if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
     if (out_error) *out_error = agent_db_sqlite_err(db_);
     (void)exec_locked("ROLLBACK;", nullptr);
@@ -51,9 +52,15 @@ bool AgentDb::insert_run(const RunRow& row, int64_t* out_run_id, std::string* ou
     agent_db_bind_i64(st, 12, row.tool_calls_total) &&
     agent_db_bind_text(st, 13, row.tool_calls_by_tool_json) &&
     agent_db_bind_text(st, 14, row.last_error_reason) &&
-    agent_db_bind_text(st, 15, row.error) &&
-    agent_db_bind_i32(st, 16, (int)row.http_status) &&
-    agent_db_bind_text(st, 17, row.http_body) &&
+    agent_db_bind_text_or_null(st, 15, row.request_json) &&
+    agent_db_bind_text_or_null(st, 16, row.response_json) &&
+    agent_db_bind_text_or_null(st, 17, row.replay_sha256) &&
+    agent_db_bind_text_or_null(st, 18, row.replay_sha256_alg) &&
+    agent_db_bind_text_or_null(st, 19, row.replay_sha256_schema) &&
+    agent_db_bind_text_or_null(st, 20, row.replay_error) &&
+    agent_db_bind_text(st, 21, row.error) &&
+    agent_db_bind_i32(st, 22, (int)row.http_status) &&
+    agent_db_bind_text(st, 23, row.http_body) &&
     agent_db_step_done(st);
 
   if (!ok && out_error) *out_error = agent_db_sqlite_err(db_);

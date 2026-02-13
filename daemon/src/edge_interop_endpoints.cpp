@@ -679,7 +679,7 @@ void handle_edge_message_endpoint(
         }
 
         if (!d.isMember("_attest_sig_ok")) {
-          const std::string alg_l = to_lower_copy(alg);
+          const std::string alg_l = lower_copy(alg);
           const std::string input = umbmp_result_attest_input_v0_1(task_id, step_id, got_idem, rsha, ats);
 
           if (alg_l == "ed25519") {

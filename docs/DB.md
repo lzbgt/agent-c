@@ -97,7 +97,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v26)
+## Schema (v27)
 
 All timestamps are Unix milliseconds.
 
@@ -143,6 +143,12 @@ Index:
 - `tool_calls_total INTEGER` (tool calls executed; usually equals tool_records count; 0 for tools=none)
 - `tool_calls_by_tool_json TEXT` (JSON object string mapping `tool_name -> count`)
 - `last_error_reason TEXT` (best-effort; last `error` event's `reason`)
+- `request_json TEXT` (redacted run request JSON; optional)
+- `response_json TEXT` (redacted run response JSON; optional)
+- `replay_sha256 TEXT` (best-effort; deterministic hash token over replay bundle)
+- `replay_sha256_alg TEXT` (e.g. `agent_json_c14n_v1`)
+- `replay_sha256_schema TEXT` (e.g. `run_replay_bundle_v1`)
+- `replay_error TEXT` (best-effort; populated when replay bundle cannot be stored)
 - `error TEXT`
 - `http_status INTEGER`
 - `http_body TEXT` (capped; troubleshooting only)

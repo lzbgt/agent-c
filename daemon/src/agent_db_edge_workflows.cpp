@@ -605,5 +605,74 @@ bool AgentDb::insert_edge_sensor_event(const EdgeSensorEventRow& row, int64_t* o
 }
 
 bool AgentDb::find_edge_sensor_event_latest(
+  const std::string& event_type,
+  const std::string& node_id_or_empty,
+  int64_t since_utc_ms,
+  double min_confidence,
+  EdgeSensorEventRow* out_row,
+  bool* out_found,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_found) *out_found = false;
+  if (out_row) *out_row = EdgeSensorEventRow{};
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)event_type;
+  (void)node_id_or_empty;
+  (void)since_utc_ms;
+  (void)min_confidence;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (event_type.empty() || !out_row || !out_found) {
+    if (out_error) *out_error = "find_edge_sensor_event_latest: missing event_type/output";
+    return false;
+  }
+  const int64_t since = since_utc_ms > 0 ? since_utc_ms : 0;
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+
+  sqlite3_stmt* st = nullptr;
+  const char* sql = R"SQL(
+SELECT id, node_id, event_type, ts_utc_ms, confidence, data_json
+FROM edge_sensor_events
+WHERE event_type=?
+  AND (? = '' OR node_id=?)
+  AND ts_utc_ms >= ?
+  AND confidence >= ?
+ORDER BY ts_utc_ms DESC, id DESC
+LIMIT 1;
+)SQL";
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = agent_db_sqlite_err(db_);
+    return false;
+  }
+  bool ok = true;
+  ok = ok && agent_db_bind_text(st, 1, event_type);
+  ok = ok && agent_db_bind_text(st, 2, node_id_or_empty);
+  ok = ok && agent_db_bind_text(st, 3, node_id_or_empty);
+  ok = ok && agent_db_bind_i64(st, 4, since);
+  if (sqlite3_bind_double(st, 5, min_confidence) != SQLITE_OK) ok = false;
+
+  if (ok && agent_db_step_row(st)) {
+    out_row->id = (int64_t)sqlite3_column_int64(st, 0);
+    const unsigned char* node = sqlite3_column_text(st, 1);
+    const unsigned char* etype = sqlite3_column_text(st, 2);
+    const unsigned char* data = sqlite3_column_text(st, 5);
+    out_row->node_id = node ? (const char*)node : "";
+    out_row->event_type = etype ? (const char*)etype : "";
+    out_row->ts_utc_ms = (int64_t)sqlite3_column_int64(st, 3);
+    out_row->confidence = sqlite3_column_double(st, 4);
+    out_row->data_json = data ? (const char*)data : "";
+    *out_found = true;
+  }
+  sqlite3_finalize(st);
+  if (!ok && out_error && out_error->empty()) *out_error = agent_db_sqlite_err(db_);
+  return ok;
+#endif
+}
 
 }  // namespace agentd

@@ -17,6 +17,7 @@
 #include "openrouter_util.h"
 #include "provider_util.h"
 #include "run_endpoints.h"
+#include "run_replay_endpoint.h"
 #include "trace_endpoints.h"
 #include "workflow_endpoints.h"
 #include "runtime_config.h"
@@ -465,6 +466,11 @@ bool AgentdApi::init(std::string* out_error) {
     const DaemonConfig cur = self->cfg_store->snapshot();
     const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
     handle_run_endpoint(cur, ocfg, self->cors_cfg, &self->db, self->tool_ext_or_null(), cur.sessions_root_dir, req, resp);
+  });
+  impl_->route("GET", "/api/v1/run/replay", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_run_replay_endpoint(cur, self->cors_cfg, &self->db, req, resp);
   });
   impl_->route("POST", "/api/v1/run_async", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);

@@ -78,6 +78,13 @@ class AgentDb {
     std::string tool_calls_by_tool_json;
     // Convenience copy of the last error reason (when known).
     std::string last_error_reason;
+    // Optional replay bundle surfaces (redacted + best-effort).
+    std::string request_json;
+    std::string response_json;
+    std::string replay_sha256;
+    std::string replay_sha256_alg;
+    std::string replay_sha256_schema;
+    std::string replay_error;
     std::string error;
     long http_status = 0;
     std::string http_body;

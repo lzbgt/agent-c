@@ -55,7 +55,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [ ] Add a unified capability descriptor (`/api/v1/caps`) with protocol versions + limits (agentd + WebUI + broker proxy).
   - [ ] Define a single event schema for run/workflow events and validate in CI (schema registry + tests).
   - [ ] Add idempotency keys to broker proxy/orchestrate (safe retries with audit trail).
-  - [ ] Introduce replay bundles for deterministic runs (inputs + hashes + tool outputs) with fixture tests.
+  - [x] Introduce replay bundles for deterministic runs (inputs + hashes + tool outputs) with fixture tests.
   - [ ] Document a transport-agnostic relay interface for broker/connector (prep for multi-transport).
 
 ## Deferred (after macOS stability)

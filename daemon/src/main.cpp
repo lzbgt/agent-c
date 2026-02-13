@@ -21,6 +21,7 @@
 #include "memory_endpoints.h"
 #include "memory_consolidator.h"
 #include "run_endpoints.h"
+#include "run_replay_endpoint.h"
 #include "trace_endpoints.h"
 #include "health_endpoint.h"
 #include "workflow_endpoints.h"
@@ -1486,6 +1487,11 @@ int main(int argc, char** argv) {
     const DaemonConfig cur = cfg_store.snapshot();
     const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
     handle_run_endpoint(cur, ocfg, cors_cfg, db_or_null, tool_ext_or_null, sessions_root_dir, req, resp);
+  });
+
+  server.handle("GET", "/api/v1/run/replay", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_run_replay_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   // Async run: returns a job id immediately and completes in the background.

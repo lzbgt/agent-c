@@ -106,7 +106,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 26;
+  const int kSchemaVersion = 27;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -737,6 +737,21 @@ ALTER TABLE edge_nodes ADD COLUMN last_auth_seq INTEGER;
 )SQL";
     if (!exec_locked(schema_v26, out_error)) return false;
     cur_ver = 26;
+  }
+
+  if (cur_ver < 27) {
+    const char* schema_v27 = R"SQL(
+-- Run replay bundles: persist redacted request/response and deterministic hash token.
+ALTER TABLE runs ADD COLUMN request_json TEXT;
+ALTER TABLE runs ADD COLUMN response_json TEXT;
+ALTER TABLE runs ADD COLUMN replay_sha256 TEXT;
+ALTER TABLE runs ADD COLUMN replay_sha256_alg TEXT;
+ALTER TABLE runs ADD COLUMN replay_sha256_schema TEXT;
+ALTER TABLE runs ADD COLUMN replay_error TEXT;
+CREATE INDEX IF NOT EXISTS runs_by_replay_sha256 ON runs(replay_sha256);
+)SQL";
+    if (!exec_locked(schema_v27, out_error)) return false;
+    cur_ver = 27;
   }
 
   // Record schema version.

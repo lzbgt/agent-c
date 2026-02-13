@@ -532,6 +532,47 @@ paths:
         "409":
           description: job_id collision
 
+  /api/v1/run/replay:
+    get:
+      tags: [run]
+      summary: Fetch a deterministic replay bundle for a run
+      parameters:
+        - in: query
+          name: run_id
+          required: true
+          schema: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: Replay bundle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunReplayResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: Replay not available
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/job:
     get:
       tags: [jobs]
@@ -2139,6 +2180,39 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentEvent"
+
+    RunReplayBundle:
+      type: object
+      required: [schema, request, response, tool_records]
+      properties:
+        schema: { type: string }
+        request:
+          type: object
+          description: Redacted request JSON (best-effort).
+          additionalProperties: true
+        response:
+          type: object
+          description: Redacted response JSON (best-effort).
+          additionalProperties: true
+        tool_records:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    RunReplayResponse:
+      type: object
+      required: [ok, run_id, bundle]
+      properties:
+        ok: { type: boolean }
+        run_id: { type: integer, format: int64 }
+        session_id: { type: string }
+        bundle:
+          $ref: "#/components/schemas/RunReplayBundle"
+        replay_sha256: { type: string }
+        replay_sha256_alg: { type: string }
+        replay_sha256_schema: { type: string }
+        replay_error: { type: string }
 
     JobGetResponse:
       type: object

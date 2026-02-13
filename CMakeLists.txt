@@ -232,6 +232,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/run_client_acks.cpp
     daemon/src/run_request.cpp
     daemon/src/run_endpoints.cpp
+    daemon/src/run_replay_endpoint.cpp
     daemon/src/run_endpoints_internal.cpp
     daemon/src/run_memory_context.cpp
     daemon/src/run_multimodal.cpp
@@ -698,6 +699,7 @@ if(AGENT_BUILD_HOST)
     if(AGENT_ENABLE_SQLITE3)
       add_test(NAME agentd_db_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_smoke.sh $<TARGET_FILE:agentd>)
       add_test(NAME agentd_db_query_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_query_smoke.sh $<TARGET_FILE:agentd>)
+      add_test(NAME agentd_run_replay_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_run_replay_smoke.sh $<TARGET_FILE:agentd>)
     endif()
 
     add_test(

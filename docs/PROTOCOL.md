@@ -169,6 +169,17 @@ per-tool map:
 This exists to prevent pathological “capture camera → send to UI → repeat” loops when the model does not infer a natural stop
 condition from the conversation alone.
 
+### Run replay bundles (deterministic audit)
+
+`agentd` persists a **redacted replay bundle** for session-backed runs (best-effort) and exposes it via:
+
+- `GET /api/v1/run/replay?run_id=...`
+
+The replay bundle includes a redacted request/response snapshot plus tool records, and a deterministic hash token
+(`agent_json_c14n_v1`) for offline verification.
+
+See: `docs/RUN_REPLAY.md`.
+
 ### Multimodal inputs (`input_files`)
 
 Run requests may optionally include `input_files` to reference session-uploaded files (via `POST /api/v1/session/upload`):
