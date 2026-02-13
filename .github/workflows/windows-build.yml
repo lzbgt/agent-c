@@ -12,9 +12,16 @@ jobs:
     env:
       VCPKG_ROOT: ${{ github.workspace }}\vcpkg
       VCPKG_DEFAULT_TRIPLET: x64-windows
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}\vcpkg-cache,readwrite
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Cache vcpkg binary artifacts
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}\vcpkg-cache
+          key: vcpkg-bincache-${{ runner.os }}-curl-jsoncpp-sqlite3
 
       - name: Install vcpkg
         shell: pwsh

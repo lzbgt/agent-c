@@ -24,8 +24,9 @@ fi
 
 api="https://api.github.com/repos/${repo}/actions/workflows/windows-build.yml/runs?per_page=1&branch=master"
 headers=(-H "Accept: application/vnd.github+json")
-if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-  headers+=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
+token="${GITHUB_TOKEN:-${GH_TOKEN:-}}"
+if [[ -n "${token}" ]]; then
+  headers+=(-H "Authorization: Bearer ${token}")
 fi
 
 tmp="$(mktemp)"
@@ -46,9 +47,9 @@ rm -f "${tmp}"
 
 if [[ -z "${json}" ]]; then
   if [[ "${http_code}" == "404" ]]; then
-    echo "failed to fetch workflow runs (repo=${repo}). If the repo is private, set GITHUB_TOKEN." >&2
+    echo "failed to fetch workflow runs (repo=${repo}). If the repo is private, set GITHUB_TOKEN or GH_TOKEN." >&2
   else
-    echo "failed to fetch workflow runs (repo=${repo}, http=${http_code}). Set GITHUB_TOKEN to increase API access." >&2
+    echo "failed to fetch workflow runs (repo=${repo}, http=${http_code}). Set GITHUB_TOKEN or GH_TOKEN to increase API access." >&2
   fi
   exit 3
 fi
