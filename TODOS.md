@@ -46,7 +46,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] Evidence bundle capture for agentd/broker (`tools/capture_agent_evidence_bundle.sh`).
   - [x] WebUI Playwright smoke tests for broker + agentd host (UI-only).
   - [x] Evidence bundle validation tool for agentd/broker (machine-checkable gate).
-  - [ ] Data-driven scenario pack for agentd/broker (scripted runs + evidence capture).
+  - [x] Data-driven scenario pack for agentd/broker (scripted runs + evidence capture).
   - [ ] One-command devstack (agentd + broker + WebUI) with smoke checks + evidence bundle.
   - [ ] macOS full-stack compose verification on this host blocked by Docker `unpigz/runc` resource errors; needs Docker Desktop resources increased or prebuilt images.
    - [x] Host-mode macOS full-stack verification script (Docker only for Postgres/Keycloak) added as fallback.

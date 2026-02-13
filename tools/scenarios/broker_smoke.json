@@ -1,0 +1,25 @@
+{
+  "name": "broker_smoke",
+  "steps": [
+    {
+      "type": "shell",
+      "name": "broker_healthz",
+      "cmd": "curl -fsSk https://127.0.0.1:8443/healthz"
+    },
+    {
+      "type": "shell",
+      "name": "broker_readyz",
+      "cmd": "curl -fsSk https://127.0.0.1:8443/readyz"
+    },
+    {
+      "type": "capture_evidence",
+      "name": "evidence",
+      "args": [
+        "--agentd-base", "http://127.0.0.1:8123",
+        "--broker-base", "https://127.0.0.1:8443",
+        "--broker-agent-id", "agent1",
+        "--agentd-via-broker"
+      ]
+    }
+  ]
+}

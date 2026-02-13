@@ -1,0 +1,20 @@
+{
+  "name": "agentd_smoke",
+  "steps": [
+    {
+      "type": "shell",
+      "name": "agentd_health",
+      "cmd": "curl -fsS http://127.0.0.1:8123/api/v1/health"
+    },
+    {
+      "type": "shell",
+      "name": "agentd_diagnostics",
+      "cmd": "curl -fsS http://127.0.0.1:8123/api/v1/diagnostics"
+    },
+    {
+      "type": "capture_evidence",
+      "name": "evidence",
+      "args": ["--agentd-base", "http://127.0.0.1:8123"]
+    }
+  ]
+}

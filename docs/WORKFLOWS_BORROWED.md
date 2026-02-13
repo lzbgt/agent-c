@@ -23,12 +23,9 @@ Adoption here:
 Urine monitor’s SIL scenarios are JSON-driven and produce evidence bundles.
 They enable fast regression without hardware.
 
-Adoption here (proposed):
-- Add `tools/scenarios/` for agentd/broker workflows (run requests, trace capture, audit checks).
-- Create a scenario runner that can:
-  - spin up a local stack (agentd + broker + WebUI)
-  - execute scripted runs against `/api/v1/run` or `/v1/orchestrate`
-  - capture evidence bundles for CI/bring-up gating
+Adoption here:
+- Added `tools/scenarios/` for agentd/broker workflows (run requests, trace capture, audit checks).
+- Added `tools/scenario_runner.py` to execute JSON scenarios and capture evidence bundles.
 
 ## 3) One-command dev stack
 

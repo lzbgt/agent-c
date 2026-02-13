@@ -245,6 +245,11 @@ Capture a lightweight snapshot for debugging or attachable evidence:
 
 Validate a captured bundle:
 - `python3 tools/check_agent_evidence_bundle.py --dir docs/artifacts/evidence/<bundle_dir>`
+
+### Scenario runner (optional)
+
+Run a JSON scenario that captures logs + evidence:
+- `python3 tools/scenario_runner.py --file tools/scenarios/agentd_smoke.json`
   - Edit that file to adjust broker URL, agent id, or pass-through daemon token for local dev.
 - For a one-command macOS verification run, use: `tools/verify_mac_full_stack.sh`.
 - If Docker is unavailable or resource-constrained, you can verify the local stack without compose:
