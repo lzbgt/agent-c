@@ -22,7 +22,7 @@ test("broker console shows members + audit panels", async ({ page }) => {
   await expect(page.getByText("Broker console")).toBeVisible();
 
   // The sections should render even if network calls fail.
-  await expect(page.getByText("Agents")).toBeVisible();
-  await expect(page.getByText("Members")).toBeVisible();
-  await expect(page.getByText("Membership audit")).toBeVisible();
+  await expect(page.getByText("Agents", { exact: true })).toBeVisible();
+  await expect(page.getByText("Members", { exact: true })).toBeVisible();
+  await expect(page.getByText("Membership audit", { exact: true })).toBeVisible();
 });

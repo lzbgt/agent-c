@@ -238,6 +238,9 @@ From `ui/`:
 - `npm run e2e:agentd` (agentd host UI smoke)
 - `npm run e2e:broker` (broker console UI smoke)
 
+From repo root (headless capture + traces/videos/screenshots):
+- `tools/run_ui_playwright_smoke.sh`
+
 ### Evidence bundles (optional)
 
 Capture a lightweight snapshot for debugging or attachable evidence:
