@@ -2,6 +2,13 @@
 
 This repo is an early scaffold for a **portable agent core** (env-free, persistence-agnostic) plus a **desktop CLI host adapter** (env/config + persistence + HTTP).
 
+Docs quickstart:
+- Current architecture: `DESIGN.md`
+- Next-gen roadmap (bleeding edge): `docs/NEXT_GEN.md`
+- Durable workflows: `docs/WORKFLOWS.md`
+- Broker design: `docs/BROKER.md`
+- WebUI protocol: `docs/PROTOCOL.md`
+
 ## Build
 
 ```bash
