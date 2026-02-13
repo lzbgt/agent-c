@@ -92,6 +92,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
     workflow outbound HTTP policy (`workflow_http_allow_*`, `deny_*`, `dns_pin`) and scheduling knobs.
   - Shipped: workflow outbound HTTP policy knobs (`allow_hosts/allow_cidrs/deny_cidrs/deny_private/dns_pin`) are now runtime-mutable
     and persisted via `/api/v1/config/update` (no restart needed to tighten policy).
+  - TODO: split `docs/openapi/agentd.yaml` into modular `$ref` files and update `openapi_sanity_tests` to accept multi-file specs.
 - UM‑EAIS contract is now executable (best-effort) via machine-readable artifacts:
   - JSON Schemas: `docs/spec/um-eais/schema/`
   - Golden transcript fixtures: `docs/spec/um-eais/fixtures/`

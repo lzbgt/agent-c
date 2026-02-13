@@ -86,7 +86,7 @@ If you bind `agentd` to non-loopback (e.g. `--host 0.0.0.0`), you must set an au
 ./build/agentd --auth-token "your_token"
 ```
 
-Clients must send `Authorization: Bearer your_token` to all endpoints (except `/api/v1/health`).
+Clients must send `Authorization: Bearer your_token` to all endpoints (except `/api/v1/health` and `/api/v1/ready`).
 
 ### Daemon CORS (browser clients)
 
@@ -337,6 +337,7 @@ curl -k https://127.0.0.1:8443/healthz
 2) Agentd health:
 ```bash
 curl http://127.0.0.1:8123/api/v1/health
+curl http://127.0.0.1:8123/api/v1/ready
 ```
 3) UI functional check:
 - Run a short prompt that emits audio (artifact or scene).
@@ -690,6 +691,7 @@ Health check:
 
 ```bash
 curl http://127.0.0.1:8123/api/v1/health
+curl http://127.0.0.1:8123/api/v1/ready
 ```
 
 YOLO vs host-scoped tools:

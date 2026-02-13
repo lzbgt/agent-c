@@ -40,6 +40,32 @@ paths:
                   ok: { type: boolean }
                   service: { type: string }
                   version: { type: string }
+                  now_unix_ms: { type: integer, format: int64 }
+                  uptime_ms: { type: integer, format: int64 }
+
+  /api/v1/ready:
+    get:
+      tags: [health]
+      summary: Readiness check
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, ready, service, version]
+                properties:
+                  ok: { type: boolean }
+                  ready: { type: boolean }
+                  service: { type: string }
+                  version: { type: string }
+                  now_unix_ms: { type: integer, format: int64 }
+                  uptime_ms: { type: integer, format: int64 }
+                  checks:
+                    type: object
+                    properties:
+                      db_open: { type: boolean }
 
   /api/v1/config:
     get:

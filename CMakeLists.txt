@@ -210,6 +210,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/job_endpoints.cpp
     daemon/src/job_manager.cpp
     daemon/src/job_engine.cpp
+    daemon/src/health_endpoint.cpp
     daemon/src/json_util.cpp
     daemon/src/llm_usage.cpp
     daemon/src/openrouter_models_endpoint.cpp

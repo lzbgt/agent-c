@@ -17,6 +17,7 @@
 #include "job_engine.h"
 #include "job_manager.h"
 #include "job_stream_endpoint.h"
+#include "health_endpoint.h"
 #include "memory_endpoints.h"
 #include "memory_consolidator.h"
 #include "orchestrate_endpoints.h"
@@ -262,6 +263,7 @@ struct AgentdService::Impl {
   std::unique_ptr<EdgeDeadlineSweeperEngine> edge_deadline_engine;
   std::unique_ptr<EdgeWorkflowEngine> edge_wf_engine;
   HttpServer server;
+  const std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
 
   std::thread server_thread;
   bool initialized = false;
@@ -450,7 +452,12 @@ struct AgentdService::Impl {
     server.handle("GET", "/api/v1/health", [this](const HttpRequest& req, HttpResponse* resp) {
       cors_apply(req, resp, cors_cfg);
       resp->headers["Content-Type"] = "application/json; charset=utf-8";
-      resp->body = R"({"ok":true,"service":"agentd","version":"0.1"})";
+      resp->body = build_health_body(start_time);
+    });
+    server.handle("GET", "/api/v1/ready", [this](const HttpRequest& req, HttpResponse* resp) {
+      cors_apply(req, resp, cors_cfg);
+      resp->headers["Content-Type"] = "application/json; charset=utf-8";
+      resp->body = build_ready_body(start_time, &db);
     });
 
     server.handle("GET", "/api/v1/config", [this](const HttpRequest& req, HttpResponse* resp) {

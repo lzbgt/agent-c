@@ -21,6 +21,7 @@
 #include "memory_consolidator.h"
 #include "run_endpoints.h"
 #include "trace_endpoints.h"
+#include "health_endpoint.h"
 #include "workflow_endpoints.h"
 #include "workflow_engine.h"
 #include "workflow_stream_endpoint.h"
@@ -1135,6 +1136,7 @@ int main(int argc, char** argv) {
   }
 
   HttpServer server;
+  const auto start_time = std::chrono::steady_clock::now();
   server.set_default_headers({
     {"Server", "agentd/0.1"},
   });
@@ -1249,7 +1251,12 @@ int main(int argc, char** argv) {
   server.handle("GET", "/api/v1/health", [&](const HttpRequest& req, HttpResponse* resp) {
     cors_apply(req, resp, cors_cfg);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    resp->body = R"({"ok":true,"service":"agentd","version":"0.1"})";
+    resp->body = build_health_body(start_time);
+  });
+  server.handle("GET", "/api/v1/ready", [&](const HttpRequest& req, HttpResponse* resp) {
+    cors_apply(req, resp, cors_cfg);
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    resp->body = build_ready_body(start_time, db_or_null);
   });
 
   server.handle("GET", "/api/v1/config", [&](const HttpRequest& req, HttpResponse* resp) {

@@ -31,6 +31,14 @@ export const HealthSchema = z.object({
   ok: z.boolean(),
   service: z.string().optional(),
   version: z.string().optional(),
+  ready: z.boolean().optional(),
+  now_unix_ms: z.number().int().nonnegative().optional(),
+  uptime_ms: z.number().int().nonnegative().optional(),
+  checks: z
+    .object({
+      db_open: z.boolean().optional(),
+    })
+    .optional(),
 });
 export type Health = z.infer<typeof HealthSchema>;
 

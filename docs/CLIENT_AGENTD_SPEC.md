@@ -37,6 +37,7 @@ Most endpoints call `daemon_require_auth(...)`.
 
 The health endpoint is always unauthenticated:
 - `GET /api/v1/health`
+- `GET /api/v1/ready`
 
 ## Session IDs (safety contract)
 
@@ -74,7 +75,9 @@ This list matches daemon route registration in `daemon/src/agentd_api.cpp`.
 ### Service / Config
 
 - `GET /api/v1/health`
-  - returns `{ ok, service:"agentd", version:"0.1" }`
+  - returns `{ ok, service:"agentd", version:"0.1", now_unix_ms, uptime_ms }`
+- `GET /api/v1/ready`
+  - returns `{ ok, ready, service:"agentd", version:"0.1", now_unix_ms, uptime_ms, checks:{db_open} }`
 - `GET /api/v1/config`
   - returns daemon config **without secrets** (booleans like `api_key_set` / `provider_keys_set`)
 - `POST /api/v1/config/update`

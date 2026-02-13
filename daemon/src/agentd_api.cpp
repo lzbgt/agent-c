@@ -8,6 +8,7 @@
 #include "db_query_endpoints.h"
 #include "edge_interop_endpoints.h"
 #include "file_endpoint.h"
+#include "health_endpoint.h"
 #include "job_endpoints.h"
 #include "memory_endpoints.h"
 #include "orchestrate_endpoints.h"
@@ -194,6 +195,7 @@ struct AgentdApi::Impl {
   CorsConfig cors_cfg{};
   AgentDb db;
   std::unique_ptr<DaemonConfigStore> cfg_store;
+  const std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
 
   std::map<RouteKey, Handler> routes;
 
@@ -250,7 +252,13 @@ bool AgentdApi::init(std::string* out_error) {
     auto* self = static_cast<Impl*>(ctx);
     cors_apply(req, resp, self->cors_cfg);
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    resp->body = R"({"ok":true,"service":"agentd","version":"0.1"})";
+    resp->body = build_health_body(self->start_time);
+  });
+  impl_->route("GET", "/api/v1/ready", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    cors_apply(req, resp, self->cors_cfg);
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    resp->body = build_ready_body(self->start_time, &self->db);
   });
 
   impl_->route("GET", "/api/v1/config", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
