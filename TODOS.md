@@ -20,6 +20,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
    - [x] AVM endpoints return 501 on Windows (explicitly unsupported).
    - [ ] Validate Windows build (tool plugins + tool servers remain disabled).
      - Script available: `tools/verify_windows_build.ps1` (supports optional `VCPKG_ROOT`).
+     - CI workflow added: `.github/workflows/windows-build.yml` (checks core build/tests on windows-latest).
    - Note: macOS production hardening is taking priority; Windows validation is deferred but still required.
 2) **Production deployment readiness (agentd + broker + WebUI)** — stable, secure, operable deployment.
    - [x] Added `docs/DEPLOYMENT.md` checklist + topology guidance.
