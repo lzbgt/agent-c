@@ -128,6 +128,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     cli/src/tool_loop_truncation.cpp
     cli/src/toolset_basic.cpp
     cli/src/toolset_host.cpp
+    cli/src/toolset_host_fs.cpp
     cli/src/toolset_host_artifacts.cpp
     cli/src/toolset_host_exec.cpp
     cli/src/toolset_host_ui_wait_event.cpp
@@ -186,8 +187,12 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
   # `AGENTD_ENABLE_HTTP` (useful for app embedding where a cloud broker / custom transport is used).
   set(AGENTD_LIB_SOURCES
     daemon/src/agent_db.cpp
+    daemon/src/agent_db_jobs.cpp
+    daemon/src/agent_db_runs.cpp
     daemon/src/agent_db_stats.cpp
-    daemon/src/agent_db_edge.cpp
+    daemon/src/agent_db_edge_nodes.cpp
+    daemon/src/agent_db_edge_tasks.cpp
+    daemon/src/agent_db_edge_workflows.cpp
     daemon/src/agentd_api.cpp
     daemon/src/client_profiles.cpp
     daemon/src/config_endpoint.cpp
@@ -198,6 +203,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/db_query_endpoints.cpp
     daemon/src/daemon_auth.cpp
     daemon/src/diagnostics_endpoints.cpp
+    daemon/src/edge_interop_auth.cpp
     daemon/src/edge_interop_endpoints.cpp
     daemon/src/edge_deadline_sweeper.cpp
     daemon/src/edge_rules.cpp
@@ -224,6 +230,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/runtime_config.cpp
     daemon/src/secrets_file.cpp
     daemon/src/run_client_acks.cpp
+    daemon/src/run_request.cpp
     daemon/src/run_endpoints.cpp
     daemon/src/run_endpoints_internal.cpp
     daemon/src/run_memory_context.cpp
@@ -853,6 +860,12 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
     add_executable(agent_db_tests
       tests/test_agent_db.cpp
       daemon/src/agent_db.cpp
+      daemon/src/agent_db_jobs.cpp
+      daemon/src/agent_db_runs.cpp
+      daemon/src/agent_db_edge_nodes.cpp
+      daemon/src/agent_db_edge_tasks.cpp
+      daemon/src/agent_db_edge_workflows.cpp
+      daemon/src/agent_db_stats.cpp
     )
     target_include_directories(agent_db_tests PRIVATE daemon/src ${SQLITE3_INCLUDE_DIRS})
     target_link_directories(agent_db_tests PRIVATE ${SQLITE3_LIBRARY_DIRS})

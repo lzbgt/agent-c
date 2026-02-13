@@ -14,36 +14,41 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Active highest goals (current focus)
 
-1) **Cross-platform agentd (Windows/Linux/macOS)** — keep host daemon buildable/runable across desktop OSes.
-   - [x] Added cross-platform socket layer (`net_compat.*`) and Winsock init.
-   - [x] HTTP server + SSE streaming endpoints now use socket abstraction.
-   - [x] AVM endpoints return 501 on Windows (explicitly unsupported).
-   - [ ] Validate Windows build (tool plugins + tool servers remain disabled).
-     - Script available: `tools/verify_windows_build.ps1` (supports optional `VCPKG_ROOT`, runs `agent_core_tests` unless `-SkipTests`).
-     - CI workflow added: `.github/workflows/windows-build.yml` (checks core build/tests on windows-latest).
-     - Status helper: `tools/check_ci_windows_build.sh` (fetches latest run from GitHub API).
-     - Trigger helper: `tools/trigger_ci_windows_build.sh [ref]` (dispatches CI run).
-   - Note: macOS production hardening is taking priority; Windows validation is deferred but still required.
+1) **macOS agentd host (M2)** — keep host daemon runnable/operable on macOS (Windows/Linux deferred).
+   - [x] Added macOS launchd install/uninstall helper scripts for agentd.
+   - [x] Added macOS broker+WebUI compose guidance.
+   - [x] Added macOS full-stack verification script (`tools/verify_mac_full_stack.sh`).
+   - [x] Added macOS local verification script (agentd + WebUI without Docker).
+   - [x] macOS local verify script can run diagnostics provider tests when `MAC_LOCAL_PROVIDER_TEST=1`.
+   - [x] macOS provider smoke: DeepSeek reasoner tool-call + Moonshot tool-call.
+   - [x] macOS local provider tests verified against `~/.env` (DeepSeek + Kimi/Moonshot).
+   - [ ] macOS packaging/codesign checklist for production distribution (launchd + notarization).
 2) **Production deployment readiness (agentd + broker + WebUI)** — stable, secure, operable deployment.
    - [x] Added `docs/DEPLOYMENT.md` checklist + topology guidance.
    - [x] Added service manager templates (systemd + macOS launchd).
-   - [x] Added macOS broker+WebUI compose guidance.
-   - [x] Added macOS full-stack verification script (`tools/verify_mac_full_stack.sh`).
    - [x] WebUI: user-gesture autoplay unlock so scene audio can start after first interaction.
-   - [x] Added macOS launchd install/uninstall helper scripts for agentd.
    - [x] Add Windows service template.
    - [x] Production hardening review for docker stack (secrets, TLS, backups, metrics).
-   - [x] macOS provider smoke: DeepSeek reasoner tool-call + Moonshot tool-call (new `agentd_moonshot_tool_call_smoke.sh`).
    - [x] Compose build reliability: document Docker Desktop resource-limit troubleshooting (unpigz/runc) and prebuilt-image path.
-   - [x] Add macOS local verification script (agentd + WebUI without Docker).
-   - [x] macOS local verify script can run diagnostics provider tests when `MAC_LOCAL_PROVIDER_TEST=1`.
    - [x] WebUI runtime defaults via `agentui-config.js` + `VITE_AGENTUI_*` env overrides (no rebuild required).
    - [x] Broker tunables: max body/header bytes + HTTP timeouts (flags + env).
    - [x] Agentd HTTP hardening: header size cap + read timeouts (env) with smoke test.
    - [x] Diagnostics endpoints: `/api/v1/diagnostics`, `/api/v1/diagnostics/providers`, `/api/v1/diagnostics/provider_test`.
    - [x] Diagnostics reference doc: `docs/DIAGNOSTICS.md` with usage examples.
+   - [x] WebUI diagnostics panel + provider tests (DeepSeek/Moonshot) to confirm keys and run health checks.
+   - [x] WebUI run settings panel (model/base_url/proxy/timeout, run limits, OpenRouter picker).
+   - [x] WebUI App.tsx refactor (<2000 LOC) with modular panels/hooks.
+   - [x] Refactor oversized daemon/edge/db + CLI host toolset files into SOLID submodules (<2000 LOC each).
    - [x] Tool-loop guard: `max_tool_call_args_chars` (daemon default + run override + core limit event).
    - [x] Broker proxy forwarding sets `X-Request-ID` and `X-Trace-ID` when missing (trace correlation).
+
+## Deferred (after macOS stability)
+
+- Validate Windows build (tool plugins + tool servers remain disabled).
+  - Script available: `tools/verify_windows_build.ps1` (supports optional `VCPKG_ROOT`, runs `agent_core_tests` unless `-SkipTests`).
+  - CI workflow added: `.github/workflows/windows-build.yml` (checks core build/tests on windows-latest).
+  - Status helper: `tools/check_ci_windows_build.sh` (fetches latest run from GitHub API).
+  - Trigger helper: `tools/trigger_ci_windows_build.sh [ref]` (dispatches CI run).
 
 ## Recently shipped (proof in CI)
 

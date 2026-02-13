@@ -1,0 +1,1075 @@
+import React from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import type { DaemonConfigResp } from "../api";
+import {
+  apiBrokerListAgents,
+  apiGetDiagnostics,
+  apiGetDiagnosticsProviders,
+  apiGetOpenRouterModels,
+  apiPostDiagnosticsProviderTest,
+} from "../api";
+import type { ClientSettings, ConnectionSettings, RunSettings } from "../hooks/useUiSettings";
+import FieldLabel from "./FieldLabel";
+
+function SectionHeader({ title, action }: { title: string; action?: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="text-xs font-semibold text-white/70">{title}</div>
+      {action ? <div>{action}</div> : null}
+    </div>
+  );
+}
+
+function ToggleRow({
+  label,
+  checked,
+  onChange,
+  disabled,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+  disabled?: boolean;
+}) {
+  return (
+    <label className="flex items-center justify-between gap-2">
+      <span>{label}</span>
+      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} disabled={disabled} />
+    </label>
+  );
+}
+
+function formatBytes(n?: number | null) {
+  if (!n || !Number.isFinite(n) || n <= 0) return "";
+  const units = ["B", "KB", "MB", "GB"];
+  let idx = 0;
+  let v = n;
+  while (v >= 1024 && idx < units.length - 1) {
+    v /= 1024;
+    idx++;
+  }
+  const rounded = idx === 0 ? v.toFixed(0) : v.toFixed(2);
+  return `${rounded} ${units[idx]}`;
+}
+
+function formatDuration(ms?: number | null) {
+  if (!ms || !Number.isFinite(ms) || ms <= 0) return "";
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const rem = s % 60;
+  if (h > 0) return `${h}h ${m}m ${rem}s`;
+  if (m > 0) return `${m}m ${rem}s`;
+  return `${rem}s`;
+}
+
+type SettingsDrawerProps = {
+  open: boolean;
+  onClose: () => void;
+  connection: ConnectionSettings;
+  run: RunSettings;
+  client: ClientSettings;
+  session: {
+    id: string;
+    setId: (next: string) => void;
+    sessions: string[];
+    refresh: () => void;
+    newSession: () => void;
+    newSessionPending: boolean;
+    deleteSession: (sid: string) => void;
+    deletePending: boolean;
+    deleteError: string | null;
+    clearAll: () => void;
+    clearAllPending: boolean;
+    clearAllError: string | null;
+  };
+  daemonConfig: {
+    data?: DaemonConfigResp;
+    isFetching: boolean;
+    refresh: () => void;
+  };
+  updateDaemonDefaults: {
+    pending: boolean;
+    error: string | null;
+    success: boolean;
+    saveDefaults: () => void;
+    saveApiKey: () => void;
+    clearApiKey: () => void;
+  };
+};
+
+export default function SettingsDrawer(props: SettingsDrawerProps) {
+  const { connection, run, client } = props;
+  const [clearAllArmed, setClearAllArmed] = React.useState<boolean>(false);
+  const clearAllArmTimeoutRef = React.useRef<number>(0);
+  const [brokerAgentsBusy, setBrokerAgentsBusy] = React.useState<boolean>(false);
+  const [brokerAgentsError, setBrokerAgentsError] = React.useState<string | null>(null);
+  const [brokerAgents, setBrokerAgents] = React.useState<any[] | null>(null);
+  const [openrouterModels, setOpenrouterModels] = React.useState<any | null>(null);
+
+  React.useEffect(() => {
+    if (!props.open) setClearAllArmed(false);
+  }, [props.open]);
+
+  React.useEffect(() => {
+    return () => {
+      if (clearAllArmTimeoutRef.current) {
+        try {
+          window.clearTimeout(clearAllArmTimeoutRef.current);
+        } catch {
+          // ignore
+        }
+      }
+      clearAllArmTimeoutRef.current = 0;
+    };
+  }, []);
+
+  React.useEffect(() => {
+    setBrokerAgents(null);
+    setBrokerAgentsError(null);
+  }, [connection.brokerBase, connection.brokerAuthToken]);
+
+  const listBrokerAgents = React.useCallback(async () => {
+    setBrokerAgentsError(null);
+    setBrokerAgentsBusy(true);
+    try {
+      const bb = String(connection.brokerBase || "").trim().replace(/\/+$/, "");
+      const withScheme = /^https?:\/\//i.test(bb) ? bb : `https://${bb}`;
+      const r = await apiBrokerListAgents(withScheme, { mode: "broker", token: connection.brokerAuthToken });
+      const agents = Array.isArray((r as any)?.agents) ? ((r as any).agents as any[]) : [];
+      setBrokerAgents(agents);
+      if (!String(connection.brokerAgentId || "").trim()) {
+        const connected = agents.find((a) => a && a.connected === true);
+        if (connected && typeof connected.agent_id === "string") connection.setBrokerAgentId(connected.agent_id);
+      }
+    } catch (e) {
+      setBrokerAgentsError(String(e));
+      setBrokerAgents(null);
+    } finally {
+      setBrokerAgentsBusy(false);
+    }
+  }, [connection]);
+
+  const fetchOpenRouterModels = useMutation({
+    mutationFn: async () => {
+      const minTotal = Number(run.orMinTotal);
+      const maxTotal = Number(run.orMaxTotal);
+      const limit = Number(run.orLimit);
+      return apiGetOpenRouterModels(connection.effectiveBase, {
+        daemonAuth: connection.daemonAuth,
+        apiKey: run.apiKey || undefined,
+        openrouterBaseUrl: "https://openrouter.ai/api/v1",
+        minTotal: Number.isFinite(minTotal) ? minTotal : 0.01,
+        maxTotal: Number.isFinite(maxTotal) ? maxTotal : 0.5,
+        requireMultimodalInput: run.orRequireMultimodal,
+        requireTools: run.orRequireTools,
+        includeFree: false,
+        limit: Number.isFinite(limit) ? limit : 50,
+        refresh: true,
+      });
+    },
+    onSuccess: (v) => {
+      setOpenrouterModels(v);
+      if (v.ok && v.recommended_model && typeof v.recommended_model === "string" && v.recommended_model.length > 0) {
+        run.setModel(v.recommended_model);
+        run.setBaseUrl("https://openrouter.ai/api/v1");
+      }
+    },
+  });
+
+  const [providerTests, setProviderTests] = React.useState<Record<string, any>>({});
+  const runProviderTest = React.useCallback(
+    async (provider: string) => {
+      const key = String(provider || "").trim();
+      if (!key) return;
+      setProviderTests((prev) => ({ ...prev, [key]: { status: "running" } }));
+      try {
+        const res = await apiPostDiagnosticsProviderTest(
+          connection.effectiveBase,
+          {
+            provider: key,
+            prompt: "Use the calculator tool to compute (2+2)*10. Return exactly: 40",
+            expect: "40",
+            tools: "basic",
+            require_tool_call: true,
+            timeout_ms: 30000,
+            max_steps: 6,
+          },
+          connection.daemonAuth,
+        );
+        setProviderTests((prev) => ({
+          ...prev,
+          [key]: {
+            status: res.ok ? "ok" : "error",
+            data: res,
+            error: res.ok ? null : res.error || "provider test failed",
+          },
+        }));
+      } catch (e) {
+        setProviderTests((prev) => ({ ...prev, [key]: { status: "error", error: String(e) } }));
+      }
+    },
+    [connection],
+  );
+
+  const providerStatus = (name: string) => {
+    const entry = providerTests[name];
+    if (!entry) return null;
+    if (entry.status === "running") return <span className="text-amber-200">running…</span>;
+    if (entry.status === "ok") return <span className="text-emerald-200">ok</span>;
+    if (entry.status === "error") return <span className="text-rose-200">error</span>;
+    return null;
+  };
+
+  const diagnostics = useQuery({
+    queryKey: ["diagnostics", connection.effectiveBase, connection.authKey],
+    queryFn: () => apiGetDiagnostics(connection.effectiveBase, connection.daemonAuth),
+    enabled: props.open,
+    retry: 1,
+  });
+  const diagnosticsProviders = useQuery({
+    queryKey: ["diagnosticsProviders", connection.effectiveBase, connection.authKey],
+    queryFn: () => apiGetDiagnosticsProviders(connection.effectiveBase, connection.daemonAuth),
+    enabled: props.open,
+    retry: 1,
+  });
+
+  const cfg = props.daemonConfig.data;
+  const daemonDefaults = cfg?.daemon;
+  const baseUrlLabel = String(run.baseUrl || "").trim();
+  const diag = diagnostics.data;
+  const diagProviders = diagnosticsProviders.data;
+  const providerEntries = diagProviders && diagProviders.providers && typeof diagProviders.providers === "object"
+    ? (diagProviders.providers as Record<string, any>)
+    : {};
+  const deepseekKeyPresent = providerEntries?.deepseek?.key_present === true;
+  const moonshotKeyPresent = providerEntries?.moonshot?.key_present === true;
+
+  if (!props.open) return null;
+
+  return (
+    <div className="fixed inset-0 z-40">
+      <div className="absolute inset-0 bg-black/60" onClick={props.onClose} role="button" tabIndex={0} />
+      <div className="absolute right-0 top-0 h-full w-[520px] max-w-[94vw] overflow-auto border-l border-white/10 bg-slate-950 p-4">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-sm font-semibold">Settings</div>
+          <button
+            className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+            onClick={props.onClose}
+            type="button"
+          >
+            Close
+          </button>
+        </div>
+
+        <div className="mt-4">
+          <FieldLabel>Connection</FieldLabel>
+          <select
+            className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+            value={connection.mode}
+            onChange={(e) => connection.setMode(e.target.value as any)}
+          >
+            <option value="direct">direct (agentd)</option>
+            <option value="broker">broker (OIDC + agent_id)</option>
+          </select>
+          <div className="mt-2 text-[11px] text-white/60">
+            {connection.mode === "direct"
+              ? "Direct: the browser calls agentd over HTTP."
+              : "Broker: the browser calls a broker (OIDC), which proxies to a connected agent by id."}
+          </div>
+        </div>
+
+        {connection.mode === "direct" ? (
+          <>
+            <div className="mt-4">
+              <FieldLabel>Daemon base URL</FieldLabel>
+              <input
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                data-testid="daemon-base"
+                value={connection.base}
+                onChange={(e) => connection.setBase(e.target.value)}
+              />
+            </div>
+
+            <div className="mt-4">
+              <FieldLabel>Daemon auth token (optional)</FieldLabel>
+              <input
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                data-testid="daemon-auth-token"
+                placeholder='Bearer token (e.g. "dev-agentd-token" in docker-compose)'
+                value={connection.daemonAuthToken}
+                onChange={(e) => connection.setDaemonAuthToken(e.target.value)}
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="mt-4">
+              <FieldLabel>Broker base URL</FieldLabel>
+              <input
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                value={connection.brokerBase}
+                onChange={(e) => connection.setBrokerBase(e.target.value)}
+                placeholder='e.g. "https://broker.example.com" (or "https://127.0.0.1:8443" in docker-compose)'
+              />
+            </div>
+
+            <div className="mt-4">
+              <FieldLabel>Broker auth token (OIDC)</FieldLabel>
+              <input
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                placeholder="Authorization bearer token for broker (OIDC JWT)"
+                value={connection.brokerAuthToken}
+                onChange={(e) => connection.setBrokerAuthToken(e.target.value)}
+              />
+              <div className="mt-2 text-[11px] text-white/60">
+                Uses <code className="font-mono">Authorization: Bearer &lt;jwt&gt;</code> to call broker endpoints.
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <FieldLabel>Agent id</FieldLabel>
+              <input
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                value={connection.brokerAgentId}
+                onChange={(e) => connection.setBrokerAgentId(e.target.value)}
+                placeholder='e.g. "agent1"'
+              />
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                  type="button"
+                  disabled={brokerAgentsBusy || String(connection.brokerAuthToken || "").trim().length === 0}
+                  onClick={() => void listBrokerAgents()}
+                  title="Fetches /v1/agents from the broker (OIDC required)."
+                >
+                  {brokerAgentsBusy ? "Listing…" : "List agents"}
+                </button>
+                <div className="text-[11px] text-white/60">
+                  Proxy base: <code className="font-mono text-white/70">{String(connection.effectiveBase || "").trim()}</code>
+                </div>
+              </div>
+              {brokerAgentsError ? (
+                <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+                  List agents failed: {brokerAgentsError}
+                </div>
+              ) : null}
+              {brokerAgents && brokerAgents.length > 0 ? (
+                <div className="mt-2 max-h-40 overflow-auto rounded-md border border-white/10 bg-black/20">
+                  {brokerAgents.map((a: any) => {
+                    const id = typeof a?.agent_id === "string" ? a.agent_id : "";
+                    if (!id) return null;
+                    const connected = a?.connected === true;
+                    const lastSeen = typeof a?.last_seen_unix_ms === "number" ? a.last_seen_unix_ms : 0;
+                    const selected = String(connection.brokerAgentId || "").trim() === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        className={[
+                          "flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[11px] hover:bg-white/5",
+                          selected ? "bg-white/10" : "",
+                        ].join(" ")}
+                        onClick={() => connection.setBrokerAgentId(id)}
+                        title={a?.remote_addr ? `remote=${String(a.remote_addr)}` : ""}
+                      >
+                        <span className="font-mono text-white/80">{id}</span>
+                        <span className="text-white/60">
+                          {connected ? <span className="text-emerald-300">connected</span> : <span className="text-white/40">disconnected</span>}
+                          {lastSeen ? ` · last_seen=${new Date(lastSeen).toLocaleString()}` : ""}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-4">
+              <FieldLabel>Agentd auth token (pass-through)</FieldLabel>
+              <input
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                placeholder='Bearer token forwarded to agentd as "X-Agentd-Authorization" (e.g. "dev-agentd-token")'
+                value={connection.daemonAuthToken}
+                onChange={(e) => connection.setDaemonAuthToken(e.target.value)}
+              />
+              <div className="mt-2 text-[11px] text-white/60">
+                Uses <code className="font-mono">X-Agentd-Authorization: Bearer &lt;token&gt;</code> on proxied requests.
+              </div>
+            </div>
+          </>
+        )}
+
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <div className="col-span-2">
+            <FieldLabel>Session</FieldLabel>
+            <input
+              className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+              value={props.session.id}
+              onChange={(e) => props.session.setId(e.target.value)}
+            />
+          </div>
+          <div>
+            <FieldLabel>Tools</FieldLabel>
+            <select
+              className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+              value={run.tools}
+              onChange={(e) => run.setTools(e.target.value as any)}
+            >
+              <option value="host">host</option>
+              <option value="basic">basic</option>
+              <option value="none">none</option>
+            </select>
+          </div>
+          <div>
+            <FieldLabel>Host policy</FieldLabel>
+            <select
+              className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+              value={run.hostPolicy}
+              onChange={(e) => run.setHostPolicy(e.target.value as any)}
+              disabled={run.tools !== "host"}
+            >
+              <option value="full">full</option>
+              <option value="readonly">readonly</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
+          <SectionHeader
+            title="Client"
+            action={
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                onClick={() => props.daemonConfig.refresh()}
+                type="button"
+                disabled={props.daemonConfig.isFetching}
+              >
+                Refresh config
+              </button>
+            }
+          />
+          <div className="mt-2 grid gap-2 text-[11px] text-white/70">
+            <ToggleRow label="Allow audio autoplay" checked={client.allowAutoplay} onChange={client.setAllowAutoplay} />
+            <ToggleRow label="Allow client RPCs" checked={client.allowClientRpcs} onChange={client.setAllowClientRpcs} />
+            <ToggleRow
+              label="Allow client RPC side effects"
+              checked={client.allowClientEffects}
+              onChange={client.setAllowClientEffects}
+              disabled={!client.allowClientRpcs}
+            />
+            <ToggleRow
+              label="Allow unsafe page eval"
+              checked={client.allowUnsafePageEval}
+              onChange={client.setAllowUnsafePageEval}
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
+          <SectionHeader
+            title="Model / Provider"
+            action={
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                type="button"
+                onClick={() => {
+                  run.setBaseUrl(daemonDefaults?.base_url || run.baseUrl);
+                  run.setModel(daemonDefaults?.model || run.model);
+                  run.setSummaryModel(daemonDefaults?.summary_model || "");
+                  run.setSummaryMaxChars(
+                    typeof daemonDefaults?.summary_max_chars === "number"
+                      ? String(daemonDefaults?.summary_max_chars)
+                      : run.summaryMaxChars,
+                  );
+                  run.setTimeoutMs(
+                    typeof daemonDefaults?.timeout_ms === "number" ? String(daemonDefaults?.timeout_ms) : run.timeoutMs,
+                  );
+                }}
+                title="Copy daemon defaults into local fields"
+              >
+                Use daemon defaults
+              </button>
+            }
+          />
+          <div className="mt-3 grid gap-3 text-[11px] text-white/70">
+            <div>
+              <FieldLabel>Base URL</FieldLabel>
+              <input
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                value={run.baseUrl}
+                onChange={(e) => run.setBaseUrl(e.target.value)}
+              />
+              <div className="mt-1 text-white/50">Active: {baseUrlLabel || "(empty)"}</div>
+            </div>
+            <div>
+              <FieldLabel>Model</FieldLabel>
+              <input
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                value={run.model}
+                onChange={(e) => run.setModel(e.target.value)}
+              />
+            </div>
+            <div>
+              <FieldLabel>Summary model (optional)</FieldLabel>
+              <input
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                value={run.summaryModel}
+                onChange={(e) => run.setSummaryModel(e.target.value)}
+                placeholder="Leave blank to disable summaries"
+              />
+            </div>
+            <div>
+              <FieldLabel>Summary max chars</FieldLabel>
+              <input
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                value={run.summaryMaxChars}
+                onChange={(e) => run.setSummaryMaxChars(e.target.value)}
+                inputMode="numeric"
+              />
+            </div>
+            <div>
+              <FieldLabel>API key (local)</FieldLabel>
+              <input
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                value={run.apiKey}
+                onChange={(e) => run.setApiKey(e.target.value)}
+                placeholder="Stored in browser storage"
+              />
+            </div>
+            <div>
+              <FieldLabel>Proxy URL</FieldLabel>
+              <input
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                value={run.proxyUrl}
+                onChange={(e) => run.setProxyUrl(e.target.value)}
+                placeholder="e.g. http://localhost:8120"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Timeout (ms)</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={run.timeoutMs}
+                  onChange={(e) => run.setTimeoutMs(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+              <div>
+                <FieldLabel>Max capture bytes</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={run.maxCaptureBytes}
+                  onChange={(e) => run.setMaxCaptureBytes(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <ToggleRow label="Stream assistant" checked={run.streamAssistant} onChange={run.setStreamAssistant} />
+              <ToggleRow label="Trace" checked={run.trace} onChange={run.setTrace} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <ToggleRow label="YOLO (no tool restrictions)" checked={run.yolo} onChange={run.setYolo} />
+              <ToggleRow label="Verbose" checked={run.verbose} onChange={run.setVerbose} />
+              <ToggleRow label="Async run" checked={run.useAsync} onChange={run.setUseAsync} />
+              <ToggleRow
+                label="Show debug in conversation"
+                checked={client.showDebugInConversation}
+                onChange={client.setShowDebugInConversation}
+              />
+            </div>
+          </div>
+        </div>
+
+        <details className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
+          <summary className="cursor-pointer text-xs font-semibold text-white/70">Run limits</summary>
+          <div className="mt-3 grid gap-3 text-[11px] text-white/70">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Max steps</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={run.maxSteps}
+                  onChange={(e) => run.setMaxSteps(e.target.value)}
+                  placeholder="blank = daemon default"
+                />
+              </div>
+              <div>
+                <FieldLabel>Max repeated tool calls</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={run.maxRepeatedToolCalls}
+                  onChange={(e) => run.setMaxRepeatedToolCalls(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Max tool calls total</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={run.maxToolCallsTotal}
+                  onChange={(e) => run.setMaxToolCallsTotal(e.target.value)}
+                  placeholder="blank = daemon default"
+                />
+              </div>
+              <div>
+                <FieldLabel>Max tool calls per tool</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={run.maxToolCallsPerTool}
+                  onChange={(e) => run.setMaxToolCallsPerTool(e.target.value)}
+                  placeholder="blank = daemon default"
+                />
+              </div>
+            </div>
+            <div>
+              <FieldLabel>Tool call limits</FieldLabel>
+              <textarea
+                className="mt-1 min-h-[90px] w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                value={run.toolCallLimits}
+                onChange={(e) => run.setToolCallLimits(e.target.value)}
+                placeholder="tool=max_calls (comma or newline separated) or JSON list"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Max chars</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={run.maxChars}
+                  onChange={(e) => run.setMaxChars(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+              <div>
+                <FieldLabel>Keep last</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={run.keepLast}
+                  onChange={(e) => run.setKeepLast(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <details className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
+          <summary className="cursor-pointer text-xs font-semibold text-white/70">OpenRouter model picker</summary>
+          <div className="mt-3 grid gap-3 text-[11px] text-white/70">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Min total ($/1M)</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={run.orMinTotal}
+                  onChange={(e) => run.setOrMinTotal(e.target.value)}
+                />
+              </div>
+              <div>
+                <FieldLabel>Max total ($/1M)</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={run.orMaxTotal}
+                  onChange={(e) => run.setOrMaxTotal(e.target.value)}
+                />
+              </div>
+              <div>
+                <FieldLabel>Limit</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={run.orLimit}
+                  onChange={(e) => run.setOrLimit(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <ToggleRow
+                  label="Require multimodal"
+                  checked={run.orRequireMultimodal}
+                  onChange={run.setOrRequireMultimodal}
+                />
+                <ToggleRow label="Require tools" checked={run.orRequireTools} onChange={run.setOrRequireTools} />
+              </div>
+            </div>
+
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+              type="button"
+              disabled={fetchOpenRouterModels.isPending}
+              onClick={() => fetchOpenRouterModels.mutate()}
+            >
+              {fetchOpenRouterModels.isPending ? "Loading…" : "Fetch models"}
+            </button>
+            {fetchOpenRouterModels.isError ? (
+              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-rose-200">
+                Fetch failed: {String(fetchOpenRouterModels.error)}
+              </div>
+            ) : null}
+
+            {openrouterModels ? (
+              <div className="rounded-md border border-white/10 bg-black/30 p-3">
+                <div className="text-white/60">
+                  {openrouterModels.ok ? (
+                    <>
+                      <span className="text-emerald-200">ok</span> · count={openrouterModels.count ?? 0} ·
+                      cached={String(openrouterModels.cached ?? false)}
+                    </>
+                  ) : (
+                    <span className="text-rose-200">error</span>
+                  )}
+                </div>
+                {openrouterModels.error ? (
+                  <div className="mt-2 text-rose-200">{String(openrouterModels.error)}</div>
+                ) : null}
+                {openrouterModels.recommended_model ? (
+                  <div className="mt-2">
+                    Recommended: <code className="text-white/80">{openrouterModels.recommended_model}</code>
+                  </div>
+                ) : null}
+                {Array.isArray(openrouterModels.models) && openrouterModels.models.length > 0 ? (
+                  <div className="mt-3 max-h-48 overflow-auto rounded-md border border-white/10">
+                    {openrouterModels.models.slice(0, 50).map((m: any) => {
+                      const id = typeof m?.id === "string" ? m.id : "";
+                      if (!id) return null;
+                      const total = typeof m?.total_usd_per_million === "number" ? m.total_usd_per_million : null;
+                      const ctx = typeof m?.context_length === "number" ? m.context_length : null;
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[11px] hover:bg-white/5"
+                          onClick={() => {
+                            run.setModel(id);
+                            run.setBaseUrl("https://openrouter.ai/api/v1");
+                          }}
+                        >
+                          <span className="font-mono text-white/80">{id}</span>
+                          <span className="text-white/50">
+                            {ctx ? `ctx=${ctx}` : ""}
+                            {total !== null ? ` · $${total.toFixed(3)}/1M` : ""}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
+        </details>
+
+        <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
+          <SectionHeader
+            title="Daemon defaults (persisted)"
+            action={
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                onClick={() => props.daemonConfig.refresh()}
+                type="button"
+                disabled={props.daemonConfig.isFetching}
+              >
+                Refresh
+              </button>
+            }
+          />
+          <div className="mt-2 text-[11px] text-white/60">
+            Saves to daemon state (server-side). This avoids keeping provider keys in browser storage.
+          </div>
+          <div className="mt-3 grid gap-2">
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+              type="button"
+              disabled={props.updateDaemonDefaults.pending}
+              onClick={props.updateDaemonDefaults.saveDefaults}
+            >
+              Save model/base_url/proxy/timeout to daemon
+            </button>
+            <div className="flex items-center gap-2">
+              <button
+                className="flex-1 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={props.updateDaemonDefaults.pending}
+                onClick={props.updateDaemonDefaults.saveApiKey}
+                title="Stores the provider key on the daemon host (in state_dir/runtime_secrets.env)."
+              >
+                Save API key to daemon (current provider)
+              </button>
+              <button
+                className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200 hover:bg-rose-500/15 disabled:opacity-50"
+                type="button"
+                disabled={props.updateDaemonDefaults.pending}
+                onClick={props.updateDaemonDefaults.clearApiKey}
+              >
+                Clear key
+              </button>
+            </div>
+            {props.updateDaemonDefaults.error ? (
+              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+                Save failed: {props.updateDaemonDefaults.error}
+              </div>
+            ) : null}
+            {props.updateDaemonDefaults.success ? (
+              <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
+                Saved.
+              </div>
+            ) : null}
+          </div>
+          {daemonDefaults ? (
+            <div className="mt-3 grid gap-1 text-[11px] text-white/60">
+              <div>base_url: <code className="text-white/70">{daemonDefaults.base_url || "(unset)"}</code></div>
+              <div>model: <code className="text-white/70">{daemonDefaults.model || "(unset)"}</code></div>
+              <div>summary_model: <code className="text-white/70">{daemonDefaults.summary_model || "(unset)"}</code></div>
+              <div>summary_max_chars: <code className="text-white/70">{String(daemonDefaults.summary_max_chars ?? "(unset)")}</code></div>
+              <div>timeout_ms: <code className="text-white/70">{String(daemonDefaults.timeout_ms ?? "(unset)")}</code></div>
+              <div>proxy_url_set: <code className="text-white/70">{String(daemonDefaults.proxy_url_set ?? false)}</code></div>
+              <div>api_key_set: <code className="text-white/70">{String(daemonDefaults.api_key_set ?? false)}</code></div>
+              <div>
+                max_steps_default: <code className="text-white/70">{String(daemonDefaults.max_steps_default ?? "(unset)")}</code>
+              </div>
+              <div>
+                max_tool_calls_total_default: <code className="text-white/70">{String(daemonDefaults.max_tool_calls_total_default ?? "(unset)")}</code>
+              </div>
+              <div>
+                max_tool_calls_per_tool_default: <code className="text-white/70">{String(daemonDefaults.max_tool_calls_per_tool_default ?? "(unset)")}</code>
+              </div>
+              <div>
+                max_tool_call_args_chars_default: <code className="text-white/70">{String(daemonDefaults.max_tool_call_args_chars_default ?? "(unset)")}</code>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
+          <SectionHeader
+            title="Diagnostics"
+            action={
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={diagnostics.isFetching || diagnosticsProviders.isFetching}
+                onClick={() => {
+                  void diagnostics.refetch();
+                  void diagnosticsProviders.refetch();
+                }}
+              >
+                Refresh
+              </button>
+            }
+          />
+          <div className="mt-2 grid gap-2 text-[11px] text-white/70">
+            <div>
+              ready:{" "}
+              <span className={diag?.ready ? "text-emerald-200" : "text-rose-200"}>
+                {typeof diag?.ready === "boolean" ? String(diag.ready) : "unknown"}
+              </span>
+              {diag?.uptime_ms ? (
+                <span className="text-white/50"> · uptime {formatDuration(diag.uptime_ms)}</span>
+              ) : null}
+            </div>
+            <div>
+              db:{" "}
+              <code className="text-white/70">
+                {typeof diag?.db?.path === "string" ? diag.db.path : "(unknown)"}
+              </code>
+              {typeof diag?.db?.size_bytes === "number" ? (
+                <span className="text-white/50"> · {formatBytes(diag.db.size_bytes)}</span>
+              ) : null}
+            </div>
+            {diag?.jobs && typeof diag.jobs === "object" ? (
+              <div>
+                jobs total:{" "}
+                <code className="text-white/70">{String((diag.jobs as any).total ?? "(unknown)")}</code>
+              </div>
+            ) : null}
+            {diag?.workflows && typeof diag.workflows === "object" ? (
+              <div>
+                workflows queued:{" "}
+                <code className="text-white/70">
+                  {String((diag.workflows as any).tasks_queued_ready ?? "(unknown)")}
+                </code>
+              </div>
+            ) : null}
+            {Array.isArray(diag?.warnings) && diag?.warnings.length > 0 ? (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-amber-100">
+                {diag.warnings.join("; ")}
+              </div>
+            ) : null}
+            {diagnostics.isError ? (
+              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-rose-200">
+                diagnostics failed: {String(diagnostics.error)}
+              </div>
+            ) : null}
+            {diagnosticsProviders.isError ? (
+              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-rose-200">
+                provider status failed: {String(diagnosticsProviders.error)}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-3">
+            <div className="text-[11px] font-semibold text-white/60">Providers</div>
+            <div className="mt-2 rounded-md border border-white/10 bg-black/20">
+              {["deepseek", "moonshot", "openrouter", "openai"].map((name) => {
+                const p = providerEntries[name] || {};
+                const keyPresent = p.key_present === true;
+                const source = p.source && typeof p.source === "object"
+                  ? `${p.source.kind ?? "source"}:${p.source.label ?? "unknown"}`
+                  : "";
+                const baseUrl = typeof p.base_url === "string" ? p.base_url : "";
+                const model = typeof p.model === "string" ? p.model : "";
+                const modelDefault = typeof p.model_default === "string" ? p.model_default : "";
+                return (
+                  <div key={name} className="border-t border-white/5 px-3 py-2 text-[11px] text-white/70 first:border-t-0">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-white/80">{name}</span>
+                      <span className={keyPresent ? "text-emerald-200" : "text-rose-200"}>
+                        key={keyPresent ? "present" : "missing"}
+                      </span>
+                    </div>
+                    {source ? <div className="text-white/50">source: {source}</div> : null}
+                    {baseUrl ? <div className="text-white/50">base_url: {baseUrl}</div> : null}
+                    {model ? <div className="text-white/50">model: {model}</div> : null}
+                    {modelDefault ? <div className="text-white/40">default: {modelDefault}</div> : null}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-white/70">
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+              type="button"
+              onClick={() => void runProviderTest("deepseek")}
+              disabled={!deepseekKeyPresent}
+              title={deepseekKeyPresent ? "Run DeepSeek provider test" : "DeepSeek key missing"}
+            >
+              Test DeepSeek
+            </button>
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+              type="button"
+              onClick={() => void runProviderTest("moonshot")}
+              disabled={!moonshotKeyPresent}
+              title={moonshotKeyPresent ? "Run Moonshot provider test" : "Moonshot key missing"}
+            >
+              Test Moonshot
+            </button>
+            <span>
+              DeepSeek: {providerStatus("deepseek")} · Moonshot: {providerStatus("moonshot")}
+            </span>
+          </div>
+          {Object.entries(providerTests).map(([name, entry]) => {
+            if (!entry || !entry.error) return null;
+            return (
+              <div
+                key={`provider-error-${name}`}
+                className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200"
+              >
+                {name} test error: {String(entry.error)}
+              </div>
+            );
+          })}
+          <div className="mt-2 text-[11px] text-white/50">
+            Provider tests use the diagnostics endpoint and will not persist keys in the browser.
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <div className="text-xs font-semibold text-white/70">Sessions</div>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+              onClick={() => props.session.refresh()}
+              type="button"
+            >
+              Refresh
+            </button>
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+              onClick={() => props.session.newSession()}
+              type="button"
+              disabled={props.session.newSessionPending}
+            >
+              New session
+            </button>
+            <button
+              className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200 hover:bg-rose-500/15 disabled:opacity-50"
+              onClick={() => {
+                const ids = props.session.sessions ?? [];
+                const n = ids.length;
+                if (n === 0) return;
+                if (!clearAllArmed) {
+                  setClearAllArmed(true);
+                  try {
+                    if (clearAllArmTimeoutRef.current) window.clearTimeout(clearAllArmTimeoutRef.current);
+                  } catch {
+                    // ignore
+                  }
+                  clearAllArmTimeoutRef.current = window.setTimeout(() => setClearAllArmed(false), 8000);
+                  return;
+                }
+                setClearAllArmed(false);
+                props.session.clearAll();
+              }}
+              type="button"
+              disabled={props.session.clearAllPending}
+              title="Danger: deletes all sessions on the daemon."
+            >
+              {clearAllArmed ? `Confirm clear all (${props.session.sessions.length})` : "Clear all"}
+            </button>
+            {clearAllArmed ? (
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
+                type="button"
+                onClick={() => setClearAllArmed(false)}
+              >
+                Cancel
+              </button>
+            ) : null}
+          </div>
+          <div className="mt-2 max-h-64 overflow-auto rounded-md border border-white/10 bg-black/20">
+            {(props.session.sessions ?? []).map((sid) => {
+              const selected = sid === props.session.id;
+              return (
+                <div
+                  key={sid}
+                  className={`flex items-center justify-between gap-2 px-3 py-2 text-xs ${selected ? "bg-white/10" : ""}`}
+                >
+                  <button className="flex-1 text-left hover:underline" onClick={() => props.session.setId(sid)} type="button">
+                    {sid}
+                  </button>
+                  <button
+                    className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200 hover:bg-rose-500/15 disabled:opacity-50"
+                    type="button"
+                    disabled={props.session.deletePending}
+                    onClick={() => {
+                      if (!confirm(`Delete session '${sid}'?`)) return;
+                      props.session.deleteSession(sid);
+                    }}
+                  >
+                    Delete
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          {props.session.deleteError ? (
+            <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+              Delete failed: {props.session.deleteError}
+            </div>
+          ) : null}
+          {props.session.clearAllError ? (
+            <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+              Clear all failed: {props.session.clearAllError}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}

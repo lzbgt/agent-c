@@ -357,6 +357,9 @@ Optional defaults (no rebuild): edit `ui/public/agentui-config.js` (copied to `u
 Then open the UI and set:
 - Daemon base URL: `http://127.0.0.1:8123`
 - Daemon auth token (if enabled): the same token passed to `agentd --auth-token`
+- Model/provider defaults (Settings → Model / Provider), or use the OpenRouter model picker if needed.
+- Run limits (Settings → Run limits) to cap `max_steps` / tool-call budgets.
+- Diagnostics (Settings → Diagnostics) to confirm provider keys and run `provider_test`.
 
 ### Manual verification (macOS)
 1) Broker health (if using broker/connector):

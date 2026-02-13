@@ -3,16 +3,12 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   apiGetAudit,
   apiGetConfig,
-  apiGetDbRun,
-  apiGetDbRuns,
   apiGetDbUiActions,
-  apiGetDbMessages,
   apiGetDbClientEvents,
   apiGetSessionClientEvents,
   apiGetHealth,
   apiGetJob,
   apiGetJobProgress,
-  apiGetOpenRouterModels,
   apiGetSessionArtifacts,
   apiGetSessionScene,
   apiGetTools,
@@ -26,56 +22,33 @@ import {
   apiRunAsync,
   apiAgentdTrace,
   apiBrokerTrace,
-  apiBrokerListAgents,
   daemonHeaders,
   RunRequest,
   RunResponse,
-  type ApiAuth,
   type AgentEvent,
 } from "./api";
-import TraceView from "./components/TraceView";
-import EventTimeline from "./components/EventTimeline";
-import TraceIdTimelineView from "./components/TraceIdTimelineView";
-import Markdown from "./components/Markdown";
-import ConversationView from "./components/ConversationView";
-import ArtifactView from "./components/ArtifactView";
-import DbRunsView from "./components/DbRunsView";
-import DbUiActionsView from "./components/DbUiActionsView";
-import DbMessagesView from "./components/DbMessagesView";
-import DbClientEventsView from "./components/DbClientEventsView";
+import HistoryPanel from "./components/HistoryPanel";
 import SceneView, { type SceneEntity } from "./components/SceneView";
 import PromptBar, { type Attachment } from "./components/PromptBar";
-import useAutoplayUnlock from "./hooks/useAutoplayUnlock";
+import SettingsDrawer from "./components/SettingsDrawer";
+import TraceLookupPanel from "./components/TraceLookupPanel";
 import useLocalStorageState from "./hooks/useLocalStorageState";
+import useUiSettings from "./hooks/useUiSettings";
 import { readSseStream } from "./sse";
-import { getUiDefaults } from "./runtime_config";
-
-function Label({ children }: { children: React.ReactNode }) {
-  return <div className="text-xs font-medium text-white/70">{children}</div>;
-}
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 export default function App() {
-  const defaults = React.useMemo(() => getUiDefaults(), []);
-  const [showSettings, setShowSettings] = useLocalStorageState("agentui.showSettings", false);
-  const [clearAllArmed, setClearAllArmed] = React.useState<boolean>(false);
-  const clearAllArmTimeoutRef = React.useRef<number>(0);
-
-  const [connectionMode, setConnectionMode] = useLocalStorageState<"direct" | "broker">(
-    "agentui.connectionMode",
-    defaults.connectionMode,
-  );
-
-  // Direct mode: browser talks to agentd directly.
-  const [base, setBase] = useLocalStorageState("agentui.base", defaults.daemonBaseUrl);
-
-  // Broker mode: browser talks to broker, which proxies to a specific agent_id.
-  const [brokerBase, setBrokerBase] = useLocalStorageState("agentui.brokerBase", defaults.brokerBaseUrl);
-  const [brokerAgentId, setBrokerAgentId] = useLocalStorageState("agentui.brokerAgentId", defaults.brokerAgentId);
-  const [brokerAuthToken, setBrokerAuthToken] = useLocalStorageState("agentui.brokerAuthToken", defaults.brokerAuthToken);
+  const ui = useUiSettings();
+  const { connection, run: runSettings, client: clientSettings } = ui;
+  const { effectiveBase, effectiveSseBase, daemonAuth, authKey } = connection;
+  const { showSettings, setShowSettings } = ui;
+  const connectionMode = connection.mode;
+  const brokerAuthToken = connection.brokerAuthToken;
+  const daemonAuthToken = connection.daemonAuthToken;
+  const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "");
 
   const webOrigin = React.useMemo(() => {
     try {
@@ -85,55 +58,6 @@ export default function App() {
       return "";
     }
   }, []);
-
-  const [daemonAuthToken, setDaemonAuthToken] = useLocalStorageState("agentui.daemonAuthToken", defaults.daemonAuthToken);
-  const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "");
-
-  const effectiveBase = React.useMemo(() => {
-    const normalizeHttpBase = (raw: string, fallback: string, defaultScheme: "http" | "https") => {
-      const b = String(raw || "").trim();
-      if (b.length === 0) return fallback;
-      const withScheme = /^https?:\/\//i.test(b) ? b : `${defaultScheme}://${b}`;
-      return withScheme.replace(/\/+$/, "");
-    };
-
-    if (connectionMode === "broker") {
-      const bb = normalizeHttpBase(brokerBase, "https://127.0.0.1:8443", "https");
-      const aid = String(brokerAgentId || "").trim();
-      if (!aid) return bb;
-      return `${bb}/v1/agents/${encodeURIComponent(aid)}/proxy`;
-    }
-
-    return normalizeHttpBase(base, "http://127.0.0.1:8123", "http");
-  }, [base, brokerAgentId, brokerBase, connectionMode]);
-
-  const effectiveSseBase = React.useMemo(() => {
-    if (connectionMode !== "broker") return effectiveBase;
-    const bb = String(brokerBase || "").trim().replace(/\/+$/, "");
-    const withScheme = /^https?:\/\//i.test(bb) ? bb : `https://${bb}`;
-    const aid = String(brokerAgentId || "").trim();
-    if (!aid) return withScheme;
-    return `${withScheme}/v1/agents/${encodeURIComponent(aid)}/proxy_sse`;
-  }, [brokerAgentId, brokerBase, connectionMode, effectiveBase]);
-
-  const daemonAuth = React.useMemo<ApiAuth>(() => {
-    if (connectionMode === "broker") {
-      return { mode: "broker", token: brokerAuthToken, agentdToken: daemonAuthToken };
-    }
-    return { mode: "direct", token: daemonAuthToken };
-  }, [brokerAuthToken, connectionMode, daemonAuthToken]);
-
-  const authKey = React.useMemo(() => {
-    const mode = daemonAuth.mode;
-    const t = typeof daemonAuth.token === "string" ? daemonAuth.token.trim() : "";
-    const at = daemonAuth.mode === "broker" && typeof daemonAuth.agentdToken === "string" ? daemonAuth.agentdToken.trim() : "";
-    // Keep stable and non-secret-ish in query keys: include token lengths only (not the raw token).
-    return mode === "broker" ? `broker:tlen=${t.length}:alen=${at.length}` : `direct:tlen=${t.length}`;
-  }, [daemonAuth]);
-
-  const [brokerAgentsBusy, setBrokerAgentsBusy] = React.useState<boolean>(false);
-  const [brokerAgentsError, setBrokerAgentsError] = React.useState<string | null>(null);
-  const [brokerAgents, setBrokerAgents] = React.useState<any[] | null>(null);
 
   const [clientId] = useLocalStorageState(
     "agentui.clientId",
@@ -170,60 +94,39 @@ export default function App() {
     () => ({ id: String(clientId || "webui"), kind: "webui", instance_id: clientInstanceIdRef.current }),
     [clientId],
   );
-  const [tools, setTools] = useLocalStorageState<"host" | "basic" | "none">("agentui.tools", defaults.tools);
-  const [yolo, setYolo] = useLocalStorageState("agentui.yolo", defaults.yolo);
-  const [hostPolicy, setHostPolicy] = useLocalStorageState<"full" | "readonly">("agentui.hostPolicy", defaults.hostPolicy);
-  // Production UX: tool visibility should be on by default so users can audit shell/proc commands and tool outputs.
-  const [verbose, setVerbose] = useLocalStorageState("agentui.verbose", defaults.verbose);
-  const [model, setModel] = useLocalStorageState("agentui.model", defaults.model);
-  const [summaryModel, setSummaryModel] = useLocalStorageState("agentui.summaryModel", "");
-  const [summaryMaxChars, setSummaryMaxChars] = useLocalStorageState("agentui.summaryMaxChars", "1200");
-  const [baseUrl, setBaseUrl] = useLocalStorageState("agentui.baseUrl", defaults.baseUrl);
-  const [apiKey, setApiKey] = useLocalStorageState("agentui.apiKey", defaults.apiKey);
-  // Many dev environments require a local HTTP proxy for outbound HTTPS (and this repo's test scripts assume it).
-  // Users can clear this if their environment does not need a proxy.
-  const [proxyUrl, setProxyUrl] = useLocalStorageState("agentui.proxyUrl", defaults.proxyUrl);
-  const [timeoutMs, setTimeoutMs] = useLocalStorageState("agentui.timeoutMs", defaults.timeoutMs);
-  const [maxCaptureBytes, setMaxCaptureBytes] = useLocalStorageState("agentui.maxCaptureBytes", "65536");
-  const [streamAssistant, setStreamAssistant] = useLocalStorageState("agentui.streamAssistant", defaults.streamAssistant);
-  const [orMinTotal, setOrMinTotal] = useLocalStorageState("agentui.orMinTotal", "0.01");
-  const [orMaxTotal, setOrMaxTotal] = useLocalStorageState("agentui.orMaxTotal", "0.50");
-  const [orRequireMultimodal, setOrRequireMultimodal] = useLocalStorageState("agentui.orRequireMultimodal", true);
-  const [orRequireTools, setOrRequireTools] = useLocalStorageState("agentui.orRequireTools", true);
-  const [orLimit, setOrLimit] = useLocalStorageState("agentui.orLimit", "50");
-  // Blank means "use daemon default" (which may be unlimited). If you want a hard stop, set an explicit limit.
-  // Explicit `0` is still supported and means unlimited.
-  const [maxSteps, setMaxSteps] = useLocalStorageState("agentui.maxSteps", "");
-  const [maxStepsUserSet, setMaxStepsUserSet] = useLocalStorageState("agentui.maxStepsUserSet", false);
-  const [maxRepeatedToolCalls, setMaxRepeatedToolCalls] = useLocalStorageState("agentui.maxRepeatedToolCalls", "0");
-  const [maxToolCallsTotal, setMaxToolCallsTotal] = useLocalStorageState("agentui.maxToolCallsTotal", "");
-  const [maxToolCallsPerTool, setMaxToolCallsPerTool] = useLocalStorageState("agentui.maxToolCallsPerTool", "");
-  const [toolCallLimits, setToolCallLimits] = useLocalStorageState("agentui.toolCallLimits", "");
-  const [maxChars, setMaxChars] = useLocalStorageState("agentui.maxChars", "20000");
-  const [keepLast, setKeepLast] = useLocalStorageState("agentui.keepLast", "16");
-  const [trace, setTrace] = useLocalStorageState("agentui.trace", defaults.trace);
-  const [useAsync, setUseAsync] = useLocalStorageState("agentui.useAsync", defaults.useAsync);
-  const [showDebugInConversation, setShowDebugInConversation] = useLocalStorageState(
-    "agentui.showDebugInConversation",
-    true,
-  );
+  const {
+    tools,
+    yolo,
+    hostPolicy,
+    verbose,
+    model,
+    summaryModel,
+    summaryMaxChars,
+    baseUrl,
+    apiKey,
+    proxyUrl,
+    timeoutMs,
+    maxCaptureBytes,
+    streamAssistant,
+    maxSteps,
+    maxRepeatedToolCalls,
+    maxToolCallsTotal,
+    maxToolCallsPerTool,
+    toolCallLimits,
+    maxChars,
+    keepLast,
+    trace,
+    useAsync,
+  } = runSettings;
+  const {
+    showDebugInConversation,
+    allowAutoplay,
+    allowClientRpcs,
+    allowClientEffects,
+    allowUnsafePageEval,
+  } = clientSettings;
   const [traceLookupId, setTraceLookupId] = useLocalStorageState("agentui.traceLookupId", "");
   const [traceLookupOpen, setTraceLookupOpen] = useLocalStorageState("agentui.traceLookupOpen", false);
-  const [allowAutoplay, setAllowAutoplay] = useLocalStorageState("agentui.allowAutoplay", true);
-  useAutoplayUnlock(allowAutoplay);
-  // This project treats the Web UI as a collaboration surface (a “scene”) where the agent is expected
-  // to act with side-effects by default. Users can still disable these via Settings (persisted).
-  const [allowClientRpcs, setAllowClientRpcs] = useLocalStorageState("agentui.allowClientRpcs", defaults.allowClientRpcs);
-  const [allowClientEffects, setAllowClientEffects] = useLocalStorageState(
-    "agentui.allowClientEffects",
-    defaults.allowClientEffects,
-  );
-  const [allowUnsafePageEval, setAllowUnsafePageEval] = useLocalStorageState(
-    "agentui.allowUnsafePageEval",
-    defaults.allowUnsafePageEval,
-  );
-  const [dbRunsOnlyErrors, setDbRunsOnlyErrors] = useLocalStorageState("agentui.dbRunsOnlyErrors", true);
-  const [dbRunsStopReason, setDbRunsStopReason] = useLocalStorageState("agentui.dbRunsStopReason", "");
   // Keep prompts separate so an active async run does not overwrite the "last completed" view.
   const [lastRunPrompt, setLastRunPrompt] = React.useState("");
   const [lastCompletedPrompt, setLastCompletedPrompt] = React.useState("");
@@ -646,15 +549,6 @@ export default function App() {
     retry: 1,
   });
 
-  // Migration: older UI versions defaulted `maxSteps` to "0" (unlimited).
-  // If the user never explicitly set a value, move to blank so daemon defaults apply.
-  React.useEffect(() => {
-    if (maxStepsUserSet) return;
-    if (String(maxSteps) === "0") {
-      setMaxSteps("");
-    }
-  }, [maxSteps, maxStepsUserSet, setMaxSteps]);
-
   const daemonConfig = useQuery({
     queryKey: ["config", effectiveBase, authKey],
     queryFn: () => apiGetConfig(effectiveBase, daemonAuth),
@@ -682,23 +576,6 @@ export default function App() {
       return false;
     }
   }, [effectiveBase]);
-
-  React.useEffect(() => {
-    if (!showSettings) setClearAllArmed(false);
-  }, [showSettings]);
-
-  React.useEffect(() => {
-    return () => {
-      if (clearAllArmTimeoutRef.current) {
-        try {
-          window.clearTimeout(clearAllArmTimeoutRef.current);
-        } catch {
-          // ignore
-        }
-      }
-      clearAllArmTimeoutRef.current = 0;
-    };
-  }, []);
 
   const audit = useQuery({
     queryKey: ["audit", effectiveBase, authKey, sessionId],
@@ -818,19 +695,6 @@ export default function App() {
     setSceneVersion((v) => v + 1);
   }, [effectiveBase, sessionId, sessionScene.data]);
 
-  const dbRuns = useQuery({
-    queryKey: ["db_runs", effectiveBase, authKey, sessionId, dbRunsOnlyErrors, dbRunsStopReason],
-    queryFn: () =>
-      apiGetDbRuns(effectiveBase, sessionId, daemonAuth, {
-        limit: 50,
-        offset: 0,
-        onlyErrors: dbRunsOnlyErrors,
-        stopReason: dbRunsStopReason,
-      }),
-    enabled: false,
-    retry: 1,
-  });
-
   const dbUiActions = useQuery({
     queryKey: ["db_ui_actions", effectiveBase, authKey, sessionId],
     queryFn: () => apiGetDbUiActions(effectiveBase, sessionId, daemonAuth, { limit: 100, offset: 0 }),
@@ -839,34 +703,11 @@ export default function App() {
     retry: 1,
   });
 
-  const dbMessages = useQuery({
-    queryKey: ["db_messages", effectiveBase, authKey, sessionId],
-    queryFn: () => apiGetDbMessages(effectiveBase, sessionId, daemonAuth, { limit: 80, offset: 0, maxContentBytes: 8192 }),
-    enabled: false,
-    retry: 1,
-  });
-
   const dbClientEvents = useQuery({
     queryKey: ["db_client_events", effectiveBase, authKey, sessionId],
     queryFn: () => apiGetDbClientEvents(effectiveBase, sessionId, daemonAuth, { limit: 100, offset: 0 }),
     enabled: !!sessionId && allowClientRpcs && allowClientEffects,
     refetchInterval: activeJobId ? 1500 : 5000,
-    retry: 1,
-  });
-
-  const [selectedDbRunId, setSelectedDbRunId] = React.useState<number | null>(null);
-  const dbRunDetail = useQuery({
-    queryKey: ["db_run", effectiveBase, authKey, selectedDbRunId],
-    queryFn: () =>
-      selectedDbRunId
-        ? apiGetDbRun(effectiveBase, selectedDbRunId, daemonAuth, {
-            includeEvents: true,
-            includeTools: true,
-            includeArtifacts: true,
-            includeUiActions: true,
-          })
-        : Promise.resolve({ ok: false, error: "no run selected" }),
-    enabled: selectedDbRunId !== null,
     retry: 1,
   });
 
@@ -897,9 +738,7 @@ export default function App() {
         void sessionArtifacts.refetch();
         void sessionScene.refetch();
         void dbUiActions.refetch();
-        void dbMessages.refetch();
         void dbClientEvents.refetch();
-        setSelectedDbRunId(null);
       }
     },
   });
@@ -933,6 +772,48 @@ export default function App() {
       await daemonConfig.refetch();
     },
   });
+
+  const inferredProvider = React.useMemo(() => {
+    const b = String(baseUrl || "").toLowerCase();
+    if (b.includes("deepseek")) return "deepseek";
+    if (b.includes("openrouter")) return "openrouter";
+    if (b.includes("moonshot") || b.includes("kimi")) return "moonshot";
+    return "openai";
+  }, [baseUrl]);
+
+  const saveDaemonDefaults = React.useCallback(() => {
+    const tms = Number(timeoutMs);
+    const smc = Number(summaryMaxChars);
+    void updateDaemonDefaults
+      .mutateAsync({
+        base_url: baseUrl || undefined,
+        model: model || undefined,
+        summary_model: summaryModel && summaryModel.trim().length > 0 ? summaryModel.trim() : null,
+        summary_max_chars: Number.isFinite(smc) && smc >= 0 ? smc : undefined,
+        proxy_url: proxyUrl && proxyUrl.trim().length > 0 ? proxyUrl.trim() : null,
+        timeout_ms: Number.isFinite(tms) && tms > 0 ? tms : undefined,
+      })
+      .catch(() => {});
+  }, [baseUrl, model, proxyUrl, summaryMaxChars, summaryModel, timeoutMs, updateDaemonDefaults]);
+
+  const saveDaemonApiKey = React.useCallback(() => {
+    void updateDaemonDefaults
+      .mutateAsync({
+        provider: inferredProvider,
+        api_key: String(apiKey || "").trim(),
+      })
+      .catch(() => {});
+  }, [apiKey, inferredProvider, updateDaemonDefaults]);
+
+  const clearDaemonApiKey = React.useCallback(() => {
+    if (!confirm(`Clear daemon-stored key for provider '${inferredProvider}'?`)) return;
+    void updateDaemonDefaults
+      .mutateAsync({
+        provider: inferredProvider,
+        api_key: "",
+      })
+      .catch(() => {});
+  }, [inferredProvider, updateDaemonDefaults]);
 
   const clearAllSessions = useMutation({
     mutationFn: async () => {
@@ -971,6 +852,9 @@ export default function App() {
   // cause accidental teardown/reconnect loops (notably for long-lived SSE streams).
   const auditRefetch = audit.refetch;
   const sessionsRefetch = sessions.refetch;
+  const sessionList = sessions.data?.sessions ?? [];
+  const deleteSessionError = deleteSession.isError ? String(deleteSession.error) : null;
+  const clearAllSessionsError = clearAllSessions.isError ? String(clearAllSessions.error) : null;
 
   const toolsDefs = useQuery({
     queryKey: ["tools", effectiveBase, authKey, tools, yolo, hostPolicy, sessionId],
@@ -985,7 +869,6 @@ export default function App() {
   });
 
   const [result, setResult] = React.useState<RunResponse | undefined>(undefined);
-  const [openrouterModels, setOpenrouterModels] = React.useState<any | null>(null);
   // Incremented when a run successfully starts/completes; used to clear "next run only" UI state (e.g. attachments).
   const [composerTaskNonce, setComposerTaskNonce] = React.useState<number>(0);
 
@@ -1153,34 +1036,6 @@ export default function App() {
     },
   });
 
-  const fetchOpenRouterModels = useMutation({
-    mutationFn: async () => {
-      const minTotal = Number(orMinTotal);
-      const maxTotal = Number(orMaxTotal);
-      const limit = Number(orLimit);
-      return apiGetOpenRouterModels(effectiveBase, {
-        daemonAuth: daemonAuth,
-        apiKey: apiKey || undefined,
-        openrouterBaseUrl: "https://openrouter.ai/api/v1",
-        minTotal: Number.isFinite(minTotal) ? minTotal : 0.01,
-        maxTotal: Number.isFinite(maxTotal) ? maxTotal : 0.5,
-        requireMultimodalInput: orRequireMultimodal,
-        requireTools: orRequireTools,
-        includeFree: false,
-        limit: Number.isFinite(limit) ? limit : 50,
-        refresh: true,
-      });
-    },
-    onSuccess: (v) => {
-      setOpenrouterModels(v);
-      if (v.ok && v.recommended_model && typeof v.recommended_model === "string" && v.recommended_model.length > 0) {
-        // Convenience: prime the model field with the recommended choice.
-        setModel(v.recommended_model);
-        setBaseUrl("https://openrouter.ai/api/v1");
-      }
-    },
-  });
-
   const traceLookup = useMutation({
     mutationFn: async (traceIdRaw: string) => {
       const tid = String(traceIdRaw || "").trim();
@@ -1190,7 +1045,7 @@ export default function App() {
       setTraceLookupBroker(null);
 
       if (connectionMode === "broker") {
-        const bb = String(brokerBase || "").trim();
+        const bb = String(connection.brokerBase || "").trim();
         if (!bb) throw new Error("missing broker base");
         return { mode: "broker" as const, data: await apiBrokerTrace(bb, tid, daemonAuth) };
       }
@@ -1879,7 +1734,7 @@ export default function App() {
               <button
                 className="ml-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-50/90 hover:bg-amber-500/15"
                 type="button"
-                onClick={() => setDaemonAuthToken("dev-agentd-token")}
+                onClick={() => connection.setDaemonAuthToken("dev-agentd-token")}
                 title="Convenience for local dev. For production, use a real bearer token."
               >
                 Use dev token
@@ -1913,205 +1768,51 @@ export default function App() {
           </div>
 
           <div className="mt-4">
-            <details
-              className="mb-4 rounded-lg border border-white/10 bg-white/5 px-3 py-2"
+            <TraceLookupPanel
               open={!!traceLookupOpen}
-              onToggle={(ev) => setTraceLookupOpen((ev.currentTarget as HTMLDetailsElement).open)}
-            >
-              <summary className="cursor-pointer select-none text-xs text-white/80">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="font-semibold text-white/80">Trace lookup</div>
-                  <div className="text-[11px] text-white/50">
-                    Debug a distributed run by <code className="text-white/60">trace_id</code>
-                  </div>
-                </div>
-              </summary>
-              <div className="mt-3 grid gap-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <input
-                    className="min-w-[260px] flex-1 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
-                    placeholder="trace_id (e.g. trace_...)"
-                    value={traceLookupId}
-                    onChange={(e) => setTraceLookupId(e.target.value)}
-                  />
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
-                    type="button"
-                    disabled={traceLookup.isPending || String(traceLookupId || "").trim().length === 0}
-                    onClick={() => void traceLookup.mutateAsync(traceLookupId)}
-                    title={
-                      connectionMode === "broker"
-                        ? "Calls broker /v1/trace (includes relay audits + agent fanout)."
-                        : "Calls agentd /api/v1/trace (audit record search)."
-                    }
-                  >
-                    {traceLookup.isPending ? "Loading…" : "Load"}
-                  </button>
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
-                    type="button"
-                    disabled={traceLookup.isPending}
-                    onClick={() => {
-                      setTraceLookupError(null);
-                      setTraceLookupAgentd(null);
-                      setTraceLookupBroker(null);
-                    }}
-                  >
-                    Clear
-                  </button>
-                </div>
-
-                {traceLookupError ? (
-                  <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-                    {traceLookupError}
-                  </div>
-                ) : null}
-
-                {String(traceLookupId || "").trim() && (traceLookupAgentd || traceLookupBroker) ? (
-                  <TraceIdTimelineView
-                    mode={connectionMode}
-                    baseUrl={effectiveBase}
-                    yolo={yolo}
-                    traceId={String(traceLookupId || "").trim()}
-                    agentdTrace={traceLookupAgentd}
-                    brokerTrace={traceLookupBroker}
-                  />
-                ) : null}
-              </div>
-            </details>
-
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <div className="text-sm font-semibold text-white/80">History</div>
-              <div className="flex items-center gap-2">
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                  type="button"
-                  onClick={() => setShowHistoryMessages((v) => !v)}
-                  title={showHistoryMessages ? "Hide per-run event transcript" : "Show per-run event transcript"}
-                >
-                  {showHistoryMessages ? "Hide messages" : "Show messages"}
-                </button>
-                {historyEntriesDesc.length > 1 ? (
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                    type="button"
-                    onClick={() => setShowAllHistoryEntries((v) => !v)}
-                    title={showAllHistoryEntries ? "Hide older history entries" : "Show older history entries"}
-                  >
-                    {showAllHistoryEntries ? `Hide history (${historyEntriesDesc.length - 1})` : `Show history (${historyEntriesDesc.length - 1})`}
-                  </button>
-                ) : null}
-              </div>
-            </div>
-            {historyEntriesDesc.length === 0 ? (
-              <div className="rounded-md border border-white/10 bg-black/20 px-3 py-3 text-xs text-white/60">
-                No history yet. Run a prompt to populate the timeline.
-              </div>
-            ) : (
-              <div className="grid gap-2">
-                {(showAllHistoryEntries ? historyEntriesDesc : historyEntriesDesc.slice(0, 1)).map((e: any, idx: number) => {
-                  const ts = typeof e?.ts_unix_ms === "number" ? e.ts_unix_ms : 0;
-                  const when = ts ? new Date(ts).toLocaleString() : "";
-                  const promptText = typeof e?.prompt === "string" ? e.prompt : "";
-                  const assistantText = typeof e?.assistant_text === "string" ? e.assistant_text : "";
-                  const evs = Array.isArray(e?.events) ? (e.events as any[]) : [];
-                  const ok = typeof e?.ok === "boolean" ? e.ok : undefined;
-                  const isLive = e?.live === true;
-                  const jobId = typeof e?.job_id === "string" ? e.job_id : "";
-                  const jobSt = typeof e?.job_status === "string" ? e.job_status : "";
-                  const traceId = typeof e?.trace_id === "string" ? e.trace_id : "";
-                  const status = ok === true ? "ok" : ok === false ? "error" : "";
-                  const summary = promptText.trim().length > 0 ? promptText.trim().slice(0, 200) : "(no prompt)";
-                  const entryKey = isLive && jobId ? `job:${jobId}` : `ts:${String(ts || 0)}`;
-                  const expanded =
-                    Object.prototype.hasOwnProperty.call(historyExpandedByKey, entryKey) ? !!historyExpandedByKey[entryKey] : idx === 0;
-
-                  return (
-                    <details
-                      key={entryKey}
-                      open={expanded}
-                      onToggle={(ev) => {
-                        const open = (ev.currentTarget as HTMLDetailsElement).open;
-                        setHistoryExpandedByKey((prev) => ({ ...(prev || {}), [entryKey]: open }));
-                      }}
-                      className="rounded-lg border border-white/10 bg-white/5 px-3 py-2"
-                    >
-                      <summary className="cursor-pointer select-none text-xs text-white/80">
-                        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1">
-                          <span className="shrink-0 text-white/60">{when}</span>
-                          {isLive ? (
-                            <span className="shrink-0 text-indigo-300">
-                              running{jobSt ? ` (${jobSt})` : ""}
-                              {jobId ? (
-                                <>
-                                  {" "}
-                                  <code className="inline-block max-w-[50vw] truncate align-bottom text-indigo-200/80" title={jobId}>
-                                    {jobId}
-                                  </code>
-                                </>
-                              ) : null}
-                            </span>
-                          ) : null}
-                          {status ? (
-                            <span className={`${status === "ok" ? "text-emerald-300" : "text-rose-300"}`}>{status}</span>
-                          ) : null}
-                          {traceId ? (
-                            <button
-                              className="shrink-0 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                              type="button"
-                              title="Open trace lookup for this run"
-                              onClick={(ev) => {
-                                ev.preventDefault();
-                                ev.stopPropagation();
-                                setTraceLookupId(traceId);
-                                setTraceLookupOpen(true);
-                                void traceLookup.mutateAsync(traceId).catch(() => {});
-                              }}
-                            >
-                              Trace
-                            </button>
-                          ) : null}
-                          <span className="min-w-0 flex-1">{summary}</span>
-                          <span className="shrink-0 text-white/40">({evs.length} events)</span>
-                        </div>
-                      </summary>
-                      <div className="mt-3 grid gap-3">
-                        {assistantText ? (
-                          <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2">
-                            <div className="flex items-start gap-2">
-                              <div className="shrink-0 text-[11px] font-semibold text-white/60">Assistant</div>
-                              <div className="min-w-0 flex-1">
-                                <Markdown text={assistantText} />
-                              </div>
-                            </div>
-                          </div>
-                        ) : null}
-                        {evs.length > 0 && (isLive || showHistoryMessages) ? (
-                          <ConversationView
-                            baseUrl={effectiveBase}
-                            yolo={yolo}
-                            sessionId={sessionId}
-                            client={client}
-                            daemonAuth={daemonAuth}
-                            prompt={promptText}
-                            events={evs as any}
-                            showDebugEvents={showDebugInConversation}
-                            allowAutoplay={allowAutoplay}
-                            allowClientRpcs={allowClientRpcs}
-                            allowClientEffects={allowClientEffects}
-                            allowUnsafePageEval={allowUnsafePageEval}
-                            reverseOrder={true}
-                            disableAutoClientRpcs={idx !== 0}
-                            sceneEntities={sceneEntities}
-                            onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
-                          />
-                        ) : null}
-                      </div>
-                    </details>
-                  );
-                })}
-              </div>
-            )}
+              onToggle={(open) => setTraceLookupOpen(open)}
+              traceId={traceLookupId}
+              onTraceIdChange={(next) => setTraceLookupId(next)}
+              onLoad={(id) => void traceLookup.mutateAsync(id).catch(() => {})}
+              onClear={() => {
+                setTraceLookupError(null);
+                setTraceLookupAgentd(null);
+                setTraceLookupBroker(null);
+              }}
+              loading={traceLookup.isPending}
+              error={traceLookupError}
+              connectionMode={connectionMode}
+              baseUrl={effectiveBase}
+              yolo={yolo}
+              agentdTrace={traceLookupAgentd}
+              brokerTrace={traceLookupBroker}
+            />
+            <HistoryPanel
+              entries={historyEntriesDesc}
+              showAllEntries={showAllHistoryEntries}
+              setShowAllEntries={setShowAllHistoryEntries}
+              showMessages={showHistoryMessages}
+              setShowMessages={setShowHistoryMessages}
+              historyExpandedByKey={historyExpandedByKey}
+              setHistoryExpandedByKey={setHistoryExpandedByKey}
+              effectiveBase={effectiveBase}
+              yolo={yolo}
+              sessionId={sessionId}
+              client={client}
+              daemonAuth={daemonAuth}
+              showDebugInConversation={showDebugInConversation}
+              allowAutoplay={allowAutoplay}
+              allowClientRpcs={allowClientRpcs}
+              allowClientEffects={allowClientEffects}
+              allowUnsafePageEval={allowUnsafePageEval}
+              sceneEntities={sceneEntities}
+              onSceneApply={(ops) => applySceneOps(String(sessionId || "").trim(), ops)}
+              onTraceIdClick={(traceId) => {
+                setTraceLookupId(traceId);
+                setTraceLookupOpen(true);
+                void traceLookup.mutateAsync(traceId).catch(() => {});
+              }}
+            />
           </div>
         </div>
       </main>
@@ -2138,463 +1839,40 @@ export default function App() {
         clearAttachmentsNonce={composerTaskNonce}
       />
 
-      {showSettings ? (
-        <div className="fixed inset-0 z-40">
-          <div
-            className="absolute inset-0 bg-black/60"
-            onClick={() => setShowSettings(false)}
-            role="button"
-            tabIndex={0}
-          />
-          <div className="absolute right-0 top-0 h-full w-[440px] max-w-[92vw] overflow-auto border-l border-white/10 bg-slate-950 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-sm font-semibold">Settings</div>
-              <button
-                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-                onClick={() => setShowSettings(false)}
-                type="button"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="mt-4">
-              <Label>Connection</Label>
-              <select
-                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                value={connectionMode}
-                onChange={(e) => setConnectionMode(e.target.value as any)}
-              >
-                <option value="direct">direct (agentd)</option>
-                <option value="broker">broker (OIDC + agent_id)</option>
-              </select>
-              <div className="mt-2 text-[11px] text-white/60">
-                {connectionMode === "direct"
-                  ? "Direct: the browser calls agentd over HTTP."
-                  : "Broker: the browser calls a broker (OIDC), which proxies to a connected agent by id."}
-              </div>
-            </div>
-
-            {connectionMode === "direct" ? (
-              <>
-                <div className="mt-4">
-                  <Label>Daemon base URL</Label>
-                  <input
-                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                    data-testid="daemon-base"
-                    value={base}
-                    onChange={(e) => setBase(e.target.value)}
-                  />
-                </div>
-
-                <div className="mt-4">
-                  <Label>Daemon auth token (optional)</Label>
-                  <input
-                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                    data-testid="daemon-auth-token"
-                    placeholder='Bearer token (e.g. "dev-agentd-token" in docker-compose)'
-                    value={daemonAuthToken}
-                    onChange={(e) => setDaemonAuthToken(e.target.value)}
-                  />
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="mt-4">
-                  <Label>Broker base URL</Label>
-                  <input
-                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                    value={brokerBase}
-                    onChange={(e) => setBrokerBase(e.target.value)}
-                    placeholder='e.g. "https://broker.example.com" (or "https://127.0.0.1:8443" in docker-compose)'
-                  />
-                </div>
-
-                <div className="mt-4">
-                  <Label>Broker auth token (OIDC)</Label>
-                  <input
-                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                    placeholder="Authorization bearer token for broker (OIDC JWT)"
-                    value={brokerAuthToken}
-                    onChange={(e) => setBrokerAuthToken(e.target.value)}
-                  />
-                  <div className="mt-2 text-[11px] text-white/60">
-                    Uses <code className="font-mono">Authorization: Bearer &lt;jwt&gt;</code> to call broker endpoints.
-                  </div>
-                </div>
-
-                <div className="mt-4">
-                  <Label>Agent id</Label>
-                  <input
-                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                    value={brokerAgentId}
-                    onChange={(e) => setBrokerAgentId(e.target.value)}
-                    placeholder='e.g. "agent1"'
-                  />
-                  <div className="mt-2 flex items-center gap-2">
-                    <button
-                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-                      type="button"
-                      disabled={brokerAgentsBusy || String(brokerAuthToken || "").trim().length === 0}
-                      onClick={async () => {
-                        setBrokerAgentsError(null);
-                        setBrokerAgentsBusy(true);
-                        try {
-                          const bb = String(brokerBase || "").trim().replace(/\/+$/, "");
-                          const withScheme = /^https?:\/\//i.test(bb) ? bb : `https://${bb}`;
-                          const r = await apiBrokerListAgents(withScheme, { mode: "broker", token: brokerAuthToken });
-                          const agents = Array.isArray((r as any)?.agents) ? ((r as any).agents as any[]) : [];
-                          setBrokerAgents(agents);
-                          // Best-effort: pick first connected agent if none selected.
-                          if (!String(brokerAgentId || "").trim()) {
-                            const connected = agents.find((a) => a && a.connected === true);
-                            if (connected && typeof connected.agent_id === "string") setBrokerAgentId(connected.agent_id);
-                          }
-                        } catch (e) {
-                          setBrokerAgentsError(String(e));
-                          setBrokerAgents(null);
-                        } finally {
-                          setBrokerAgentsBusy(false);
-                        }
-                      }}
-                      title="Fetches /v1/agents from the broker (OIDC required)."
-                    >
-                      {brokerAgentsBusy ? "Listing…" : "List agents"}
-                    </button>
-                    <div className="text-[11px] text-white/60">
-                      Proxy base:{" "}
-                      <code className="font-mono text-white/70">
-                        {String(effectiveBase || "").trim()}
-                      </code>
-                    </div>
-                  </div>
-                  {brokerAgentsError ? (
-                    <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
-                      List agents failed: {brokerAgentsError}
-                    </div>
-                  ) : null}
-                  {brokerAgents && brokerAgents.length > 0 ? (
-                    <div className="mt-2 max-h-40 overflow-auto rounded-md border border-white/10 bg-black/20">
-                      {brokerAgents.map((a: any) => {
-                        const id = typeof a?.agent_id === "string" ? a.agent_id : "";
-                        if (!id) return null;
-                        const connected = a?.connected === true;
-                        const lastSeen = typeof a?.last_seen_unix_ms === "number" ? a.last_seen_unix_ms : 0;
-                        const selected = String(brokerAgentId || "").trim() === id;
-                        return (
-                          <button
-                            key={id}
-                            type="button"
-                            className={[
-                              "flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[11px] hover:bg-white/5",
-                              selected ? "bg-white/10" : "",
-                            ].join(" ")}
-                            onClick={() => setBrokerAgentId(id)}
-                            title={a?.remote_addr ? `remote=${String(a.remote_addr)}` : ""}
-                          >
-                            <span className="font-mono text-white/80">{id}</span>
-                            <span className="text-white/60">
-                              {connected ? (
-                                <span className="text-emerald-300">connected</span>
-                              ) : (
-                                <span className="text-white/40">disconnected</span>
-                              )}
-                              {lastSeen ? ` · last_seen=${new Date(lastSeen).toLocaleString()}` : ""}
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : null}
-                </div>
-
-                <div className="mt-4">
-                  <Label>Agentd auth token (pass-through)</Label>
-                  <input
-                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                    placeholder='Bearer token forwarded to agentd as "X-Agentd-Authorization" (e.g. "dev-agentd-token")'
-                    value={daemonAuthToken}
-                    onChange={(e) => setDaemonAuthToken(e.target.value)}
-                  />
-                  <div className="mt-2 text-[11px] text-white/60">
-                    Uses <code className="font-mono">X-Agentd-Authorization: Bearer &lt;token&gt;</code> on proxied requests.
-                  </div>
-                </div>
-              </>
-            )}
-
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <div className="col-span-2">
-                <Label>Session</Label>
-                <input
-                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                  value={sessionId}
-                  onChange={(e) => setSessionId(e.target.value)}
-                />
-              </div>
-              <div>
-                <Label>Tools</Label>
-                <select
-                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                  value={tools}
-                  onChange={(e) => setTools(e.target.value as any)}
-                >
-                  <option value="host">host</option>
-                  <option value="basic">basic</option>
-                  <option value="none">none</option>
-                </select>
-              </div>
-              <div>
-                <Label>Host policy</Label>
-                <select
-                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
-                  value={hostPolicy}
-                  onChange={(e) => setHostPolicy(e.target.value as any)}
-                  disabled={tools !== "host"}
-                >
-                  <option value="full">full</option>
-                  <option value="readonly">readonly</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-xs font-semibold text-white/70">Client</div>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
-                  onClick={() => daemonConfig.refetch()}
-                  type="button"
-                  disabled={daemonConfig.isFetching}
-                >
-                  Refresh config
-                </button>
-              </div>
-              <div className="mt-2 grid gap-2 text-[11px] text-white/70">
-                <label className="flex items-center justify-between gap-2">
-                  <span>Allow audio autoplay</span>
-                  <input type="checkbox" checked={allowAutoplay} onChange={(e) => setAllowAutoplay(e.target.checked)} />
-                </label>
-                <label className="flex items-center justify-between gap-2">
-                  <span>Allow client RPCs</span>
-                  <input type="checkbox" checked={allowClientRpcs} onChange={(e) => setAllowClientRpcs(e.target.checked)} />
-                </label>
-                <label className="flex items-center justify-between gap-2">
-                  <span>Allow client RPC side effects</span>
-                  <input
-                    type="checkbox"
-                    checked={allowClientEffects}
-                    onChange={(e) => setAllowClientEffects(e.target.checked)}
-                    disabled={!allowClientRpcs}
-                  />
-                </label>
-              </div>
-            </div>
-
-            <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-xs font-semibold text-white/70">Daemon Defaults (persisted)</div>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-                  onClick={() => daemonConfig.refetch()}
-                  type="button"
-                  disabled={daemonConfig.isFetching}
-                >
-                  Refresh
-                </button>
-              </div>
-              <div className="mt-2 text-[11px] text-white/60">
-                Saves to daemon state (server-side). This avoids keeping provider keys in browser storage.
-              </div>
-              <div className="mt-3 grid gap-2">
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
-                  type="button"
-                  disabled={updateDaemonDefaults.isPending}
-                  onClick={() => {
-                    const tms = Number(timeoutMs);
-                    const smc = Number(summaryMaxChars);
-                    void updateDaemonDefaults
-                      .mutateAsync({
-                        base_url: baseUrl || undefined,
-                        model: model || undefined,
-                        summary_model: summaryModel && summaryModel.trim().length > 0 ? summaryModel.trim() : null,
-                        summary_max_chars: Number.isFinite(smc) && smc >= 0 ? smc : undefined,
-                        proxy_url: proxyUrl && proxyUrl.trim().length > 0 ? proxyUrl.trim() : null,
-                        timeout_ms: Number.isFinite(tms) && tms > 0 ? tms : undefined,
-                      })
-                      .catch(() => {});
-                  }}
-                >
-                  Save model/base_url/proxy/timeout to daemon
-                </button>
-                <div className="flex items-center gap-2">
-                  <button
-                    className="flex-1 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
-                    type="button"
-                    disabled={updateDaemonDefaults.isPending}
-                    onClick={() => {
-                      const b = String(baseUrl || "").toLowerCase();
-                      const provider = b.includes("deepseek") ? "deepseek" : b.includes("openrouter") ? "openrouter" : "openai";
-                      void updateDaemonDefaults
-                        .mutateAsync({
-                          provider,
-                          api_key: String(apiKey || "").trim(),
-                        })
-                        .catch(() => {});
-                    }}
-                    title="Stores the provider key on the daemon host (in state_dir/runtime_secrets.env)."
-                  >
-                    Save API key to daemon (current provider)
-                  </button>
-                  <button
-                    className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200 hover:bg-rose-500/15 disabled:opacity-50"
-                    type="button"
-                    disabled={updateDaemonDefaults.isPending}
-                    onClick={() => {
-                      const b = String(baseUrl || "").toLowerCase();
-                      const provider = b.includes("deepseek") ? "deepseek" : b.includes("openrouter") ? "openrouter" : "openai";
-                      if (!confirm(`Clear daemon-stored key for provider '${provider}'?`)) return;
-                      void updateDaemonDefaults
-                        .mutateAsync({
-                          provider,
-                          api_key: "",
-                        })
-                        .catch(() => {});
-                    }}
-                  >
-                    Clear key
-                  </button>
-                </div>
-                {updateDaemonDefaults.isError ? (
-                  <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-                    Save failed: {String(updateDaemonDefaults.error)}
-                  </div>
-                ) : null}
-                {updateDaemonDefaults.isSuccess ? (
-                  <div className="rounded-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-100">
-                    Saved.
-                  </div>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-2 text-[11px] text-white/70">
-              <label className="flex items-center justify-between gap-2">
-                <span>YOLO (no tool restrictions)</span>
-                <input type="checkbox" checked={yolo} onChange={(e) => setYolo(e.target.checked)} />
-              </label>
-              <label className="flex items-center justify-between gap-2">
-                <span>Verbose</span>
-                <input type="checkbox" checked={verbose} onChange={(e) => setVerbose(e.target.checked)} />
-              </label>
-              <label className="flex items-center justify-between gap-2">
-                <span>Async run</span>
-                <input type="checkbox" checked={useAsync} onChange={(e) => setUseAsync(e.target.checked)} />
-              </label>
-              <label className="flex items-center justify-between gap-2">
-                <span>Show debug in conversation</span>
-                <input
-                  type="checkbox"
-                  checked={showDebugInConversation}
-                  onChange={(e) => setShowDebugInConversation(e.target.checked)}
-                />
-              </label>
-            </div>
-
-            <div className="mt-4">
-              <div className="text-xs font-semibold text-white/70">Sessions</div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-                  onClick={() => sessions.refetch()}
-                  type="button"
-                >
-                  Refresh
-                </button>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
-                  onClick={() => newSession.mutate()}
-                  type="button"
-                  disabled={newSession.isPending}
-                >
-                  New session
-                </button>
-                <button
-                  className="rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200 hover:bg-rose-500/15 disabled:opacity-50"
-                  onClick={() => {
-                    const ids = sessions.data?.sessions ?? [];
-                    const n = ids.length;
-                    if (n === 0) return;
-                    if (!clearAllArmed) {
-                      setClearAllArmed(true);
-                      try {
-                        if (clearAllArmTimeoutRef.current) window.clearTimeout(clearAllArmTimeoutRef.current);
-                      } catch {
-                        // ignore
-                      }
-                      clearAllArmTimeoutRef.current = window.setTimeout(() => setClearAllArmed(false), 8000);
-                      return;
-                    }
-                    setClearAllArmed(false);
-                    void clearAllSessions.mutateAsync().catch(() => {});
-                  }}
-                  type="button"
-                  disabled={clearAllSessions.isPending}
-                  title="Danger: deletes all sessions on the daemon."
-                >
-                  {clearAllArmed ? `Confirm clear all (${(sessions.data?.sessions ?? []).length})` : "Clear all"}
-                </button>
-                {clearAllArmed ? (
-                  <button
-                    className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
-                    type="button"
-                    onClick={() => setClearAllArmed(false)}
-                  >
-                    Cancel
-                  </button>
-                ) : null}
-              </div>
-              <div className="mt-2 max-h-64 overflow-auto rounded-md border border-white/10 bg-black/20">
-                {(sessions.data?.sessions ?? []).map((sid) => {
-                  const selected = sid === sessionId;
-                  return (
-                    <div
-                      key={sid}
-                      className={`flex items-center justify-between gap-2 px-3 py-2 text-xs ${selected ? "bg-white/10" : ""}`}
-                    >
-                      <button className="flex-1 text-left hover:underline" onClick={() => setSessionId(sid)} type="button">
-                        {sid}
-                      </button>
-                      <button
-                        className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200 hover:bg-rose-500/15 disabled:opacity-50"
-                        type="button"
-                        disabled={deleteSession.isPending}
-                        onClick={() => {
-                          if (!confirm(`Delete session '${sid}'?`)) return;
-                          void deleteSession.mutateAsync(sid).catch(() => {});
-                        }}
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-              {deleteSession.isError ? (
-                <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-                  Delete failed: {String(deleteSession.error)}
-                </div>
-              ) : null}
-              {clearAllSessions.isError ? (
-                <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-                  Clear all failed: {String(clearAllSessions.error)}
-                </div>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      ) : null}
+      <SettingsDrawer
+        open={showSettings}
+        onClose={() => setShowSettings(false)}
+        connection={connection}
+        run={runSettings}
+        client={clientSettings}
+        session={{
+          id: sessionId,
+          setId: setSessionId,
+          sessions: sessionList,
+          refresh: () => sessionsRefetch(),
+          newSession: () => newSession.mutate(),
+          newSessionPending: newSession.isPending,
+          deleteSession: (sid) => void deleteSession.mutateAsync(sid).catch(() => {}),
+          deletePending: deleteSession.isPending,
+          deleteError: deleteSessionError,
+          clearAll: () => void clearAllSessions.mutateAsync().catch(() => {}),
+          clearAllPending: clearAllSessions.isPending,
+          clearAllError: clearAllSessionsError,
+        }}
+        daemonConfig={{
+          data: daemonConfig.data,
+          isFetching: daemonConfig.isFetching,
+          refresh: () => daemonConfig.refetch(),
+        }}
+        updateDaemonDefaults={{
+          pending: updateDaemonDefaults.isPending,
+          error: updateDaemonDefaults.isError ? String(updateDaemonDefaults.error) : null,
+          success: updateDaemonDefaults.isSuccess,
+          saveDefaults: saveDaemonDefaults,
+          saveApiKey: saveDaemonApiKey,
+          clearApiKey: clearDaemonApiKey,
+        }}
+      />
     </div>
   );
 }

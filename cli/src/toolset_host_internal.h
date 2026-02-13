@@ -164,6 +164,12 @@ struct HostToolCtx {
   GitignoreCache gitignore;
 };
 
+agent_status_t tool_fs_stat(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
+agent_status_t tool_fs_list(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
+agent_status_t tool_fs_find(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
+agent_status_t tool_fs_read(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
+agent_status_t tool_text_search(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result);
+
 inline bool is_cancelled(const HostToolCtx* ctx) {
   return ctx && ctx->should_cancel && ctx->should_cancel(ctx->should_cancel_ctx);
 }
