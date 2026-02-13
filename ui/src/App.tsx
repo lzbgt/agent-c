@@ -2,6 +2,7 @@ import React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   apiGetAudit,
+  apiGetCaps,
   apiGetConfig,
   apiGetDbUiActions,
   apiGetDbClientEvents,
@@ -25,6 +26,7 @@ import {
   daemonHeaders,
   RunRequest,
   RunResponse,
+  type Caps,
   type AgentEvent,
 } from "./api";
 import HistoryPanel from "./components/HistoryPanel";
@@ -52,6 +54,10 @@ export default function App() {
   const brokerAuthToken = connection.brokerAuthToken;
   const daemonAuthToken = connection.daemonAuthToken;
   const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "");
+  const [capsCache, setCapsCache] = useLocalStorageState<Record<string, { caps: Caps; ts: number }>>(
+    "agentui.capsByBase",
+    {},
+  );
 
   const webOrigin = React.useMemo(() => {
     try {
@@ -61,6 +67,26 @@ export default function App() {
       return "";
     }
   }, []);
+
+  const capsKey = React.useMemo(() => `${effectiveBase}::${authKey}`, [effectiveBase, authKey]);
+  const capsQuery = useQuery({
+    queryKey: ["caps", effectiveBase, authKey],
+    queryFn: () => apiGetCaps(effectiveBase, daemonAuth),
+    retry: 1,
+    staleTime: 30_000,
+    enabled: !!effectiveBase,
+  });
+  React.useEffect(() => {
+    if (!capsKey) return;
+    if (!capsQuery.data || !capsQuery.data.ok) return;
+    setCapsCache((prev) => ({ ...prev, [capsKey]: { caps: capsQuery.data as Caps, ts: Date.now() } }));
+  }, [capsKey, capsQuery.data, setCapsCache]);
+
+  const cachedCaps = capsKey ? capsCache?.[capsKey] : undefined;
+  const capsData = capsQuery.data && capsQuery.data.ok ? capsQuery.data : cachedCaps?.caps;
+  const capsSource = capsQuery.data && capsQuery.data.ok ? "live" : cachedCaps ? "cache" : "none";
+  const capsUpdatedMs = (capsQuery.data && capsQuery.data.ok ? capsQuery.data.now_unix_ms : undefined) ?? cachedCaps?.ts;
+  const capsError = capsQuery.isError ? String(capsQuery.error) : null;
 
   const [clientId] = useLocalStorageState(
     "agentui.clientId",
@@ -121,6 +147,16 @@ export default function App() {
     trace,
     useAsync,
   } = runSettings;
+  const jobsEnabled = (capsData as any)?.features?.jobs?.enabled !== false;
+  const uploadMaxBytesRaw = (capsData as any)?.limits?.upload_max_bytes;
+  const uploadMaxBytes = typeof uploadMaxBytesRaw === "number" && Number.isFinite(uploadMaxBytesRaw) ? uploadMaxBytesRaw : undefined;
+  const uploadsEnabled = uploadMaxBytes === undefined ? true : uploadMaxBytes > 0;
+  const effectiveUseAsync = useAsync && jobsEnabled;
+  React.useEffect(() => {
+    if (!jobsEnabled && useAsync) {
+      runSettings.setUseAsync(false);
+    }
+  }, [jobsEnabled, runSettings, useAsync]);
   const {
     showDebugInConversation,
     allowAutoplay,
@@ -1008,7 +1044,7 @@ export default function App() {
         keep_last: Number.isFinite(Number(keepLast)) ? Number(keepLast) : 16,
         trace,
       };
-      if (useAsync) {
+      if (effectiveUseAsync) {
         const job = await apiRunAsync(effectiveBase, req, daemonAuth);
         return { mode: "async" as const, job, req };
       }
@@ -1906,6 +1942,8 @@ export default function App() {
         runError={run.isError ? String(run.error) : null}
         resultError={!result?.ok && result?.error ? result.error : null}
         clearAttachmentsNonce={composerTaskNonce}
+        uploadsEnabled={uploadsEnabled}
+        uploadMaxBytes={uploadMaxBytes}
       />
 
       <SettingsDrawer
@@ -1940,6 +1978,14 @@ export default function App() {
           saveDefaults: saveDaemonDefaults,
           saveApiKey: saveDaemonApiKey,
           clearApiKey: clearDaemonApiKey,
+        }}
+        caps={{
+          data: capsData,
+          source: capsSource,
+          updatedMs: capsUpdatedMs,
+          isFetching: capsQuery.isFetching,
+          error: capsError,
+          refresh: () => void capsQuery.refetch(),
         }}
       />
     </div>

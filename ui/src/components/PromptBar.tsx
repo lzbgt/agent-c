@@ -52,6 +52,8 @@ type PromptBarProps = {
   runError: string | null;
   resultError: string | null;
   clearAttachmentsNonce: number;
+  uploadsEnabled?: boolean;
+  uploadMaxBytes?: number;
 };
 
 const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function PromptBar(props, ref) {
@@ -66,6 +68,11 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
     if (!p) return "";
     return p.length > 140 ? `${p.slice(0, 140)}…` : p;
   }, [props.prompt]);
+  const uploadsEnabled = props.uploadsEnabled !== false;
+  const uploadMaxBytes =
+    typeof props.uploadMaxBytes === "number" && Number.isFinite(props.uploadMaxBytes) && props.uploadMaxBytes > 0
+      ? props.uploadMaxBytes
+      : 32 * 1024 * 1024;
 
   React.useEffect(() => {
     setAttachments([]);
@@ -307,7 +314,12 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
                 multiple
                 className="hidden"
                 id="agentui-file-input"
+                disabled={!uploadsEnabled}
                 onChange={async (e) => {
+                  if (!uploadsEnabled) {
+                    props.setJobNotice("uploads disabled by daemon caps");
+                    return;
+                  }
                   const files = Array.from(e.target.files || []);
                   e.currentTarget.value = "";
                   if (files.length === 0) return;
@@ -318,8 +330,7 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
                   try {
                     const payloadFiles: { name: string; mime?: string; data_base64: string }[] = [];
                     for (const f of files.slice(0, 16)) {
-                      const maxBytes = 32 * 1024 * 1024;
-                      if (typeof (f as any)?.size === "number" && (f as any).size > maxBytes) continue;
+                      if (typeof (f as any)?.size === "number" && (f as any).size > uploadMaxBytes) continue;
                       const name = String(f.name || "upload.bin");
                       const mime = String(f.type || "").trim() || guessMimeFromName(name) || undefined;
                       const data_base64 = await fileToBase64(f);
@@ -373,10 +384,15 @@ const PromptBar = React.forwardRef<HTMLDivElement, PromptBarProps>(function Prom
               />
               <label
                 htmlFor="agentui-file-input"
-                className={`inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 ${uploadBusy ? "opacity-50 pointer-events-none" : ""}`}
+                className={`inline-flex cursor-pointer items-center gap-2 rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 ${
+                  uploadBusy || !uploadsEnabled ? "opacity-50 pointer-events-none" : ""
+                }`}
               >
                 {uploadBusy ? "Uploading…" : "Attach files"}
               </label>
+              {!uploadsEnabled ? (
+                <div className="text-xs text-rose-200">Uploads disabled by daemon caps.</div>
+              ) : null}
 
               {attachments.length > 0 ? (
                 <div className="text-xs text-white/60">

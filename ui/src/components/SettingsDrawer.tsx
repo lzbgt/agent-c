@@ -1,9 +1,8 @@
 import React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import type { DaemonConfigResp } from "../api";
+import type { Caps, DaemonConfigResp } from "../api";
 import {
   apiBrokerListAgents,
-  apiGetCaps,
   apiGetDiagnostics,
   apiGetDiagnosticsProviders,
   apiGetOpenRouterModels,
@@ -96,6 +95,14 @@ type SettingsDrawerProps = {
     saveDefaults: () => void;
     saveApiKey: () => void;
     clearApiKey: () => void;
+  };
+  caps: {
+    data?: Caps;
+    source: "live" | "cache" | "none";
+    updatedMs?: number;
+    isFetching: boolean;
+    error: string | null;
+    refresh: () => void;
   };
 };
 
@@ -228,12 +235,6 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
     enabled: props.open,
     retry: 1,
   });
-  const caps = useQuery({
-    queryKey: ["caps", connection.effectiveBase, connection.authKey],
-    queryFn: () => apiGetCaps(connection.effectiveBase, connection.daemonAuth),
-    enabled: props.open,
-    retry: 1,
-  });
   const diagnosticsProviders = useQuery({
     queryKey: ["diagnosticsProviders", connection.effectiveBase, connection.authKey],
     queryFn: () => apiGetDiagnosticsProviders(connection.effectiveBase, connection.daemonAuth),
@@ -245,8 +246,14 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const daemonDefaults = cfg?.daemon;
   const baseUrlLabel = String(run.baseUrl || "").trim();
   const diag = diagnostics.data;
-  const capsData = caps.data;
+  const capsData = props.caps.data;
   const capsJson = React.useMemo(() => (capsData ? JSON.stringify(capsData, null, 2) : ""), [capsData]);
+  const capsAge = React.useMemo(() => {
+    if (!props.caps.updatedMs) return "";
+    const age = Math.max(0, Date.now() - props.caps.updatedMs);
+    return formatDuration(age);
+  }, [props.caps.updatedMs]);
+  const jobsEnabled = (capsData as any)?.features?.jobs?.enabled !== false;
   const diagProviders = diagnosticsProviders.data;
   const providerEntries = diagProviders && diagProviders.providers && typeof diagProviders.providers === "object"
     ? (diagProviders.providers as Record<string, any>)
@@ -665,13 +672,16 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
             <div className="grid grid-cols-2 gap-3">
               <ToggleRow label="YOLO (no tool restrictions)" checked={run.yolo} onChange={run.setYolo} />
               <ToggleRow label="Verbose" checked={run.verbose} onChange={run.setVerbose} />
-              <ToggleRow label="Async run" checked={run.useAsync} onChange={run.setUseAsync} />
+              <ToggleRow label="Async run" checked={run.useAsync} onChange={run.setUseAsync} disabled={!jobsEnabled} />
               <ToggleRow
                 label="Show debug in conversation"
                 checked={client.showDebugInConversation}
                 onChange={client.setShowDebugInConversation}
               />
             </div>
+            {!jobsEnabled ? (
+              <div className="text-[11px] text-amber-200">Async run disabled by daemon caps.</div>
+            ) : null}
           </div>
         </div>
 
@@ -947,15 +957,19 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
               <button
                 className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
                 type="button"
-                onClick={() => void caps.refetch()}
-                disabled={caps.isFetching}
+                onClick={() => props.caps.refresh()}
+                disabled={props.caps.isFetching}
               >
-                {caps.isFetching ? "Loading…" : "Refresh"}
+                {props.caps.isFetching ? "Loading…" : "Refresh"}
               </button>
             </div>
-            {caps.isError ? (
+            <div>
+              source: <code className="text-white/70">{props.caps.source}</code>
+              {capsAge ? <span className="text-white/50"> · age {capsAge}</span> : null}
+            </div>
+            {props.caps.error ? (
               <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-rose-200">
-                caps fetch failed: {String(caps.error)}
+                caps fetch failed: {String(props.caps.error)}
               </div>
             ) : null}
             {capsJson ? (
