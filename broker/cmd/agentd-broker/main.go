@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -20,7 +21,57 @@ import (
 	"agentd-broker/internal/registry"
 )
 
+func envInt64(key string) (int64, bool) {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return 0, false
+	}
+	n, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		log.Printf("invalid %s: %v", key, err)
+		return 0, false
+	}
+	return n, true
+}
+
+func envDurationMS(key string) (time.Duration, bool) {
+	n, ok := envInt64(key)
+	if !ok {
+		return 0, false
+	}
+	if n < 0 {
+		log.Printf("invalid %s: must be >= 0", key)
+		return 0, false
+	}
+	return time.Duration(n) * time.Millisecond, true
+}
+
 func main() {
+	maxBodyDefault := int64(64 * 1024 * 1024)
+	if v, ok := envInt64("AGENTD_BROKER_MAX_BODY_BYTES"); ok && v > 0 {
+		maxBodyDefault = v
+	}
+	maxHeaderBytesDefault := 1 << 20
+	if v, ok := envInt64("AGENTD_BROKER_MAX_HEADER_BYTES"); ok && v > 0 && v < (1<<30) {
+		maxHeaderBytesDefault = int(v)
+	}
+	readTimeoutDefault := time.Duration(0)
+	if v, ok := envDurationMS("AGENTD_BROKER_READ_TIMEOUT_MS"); ok {
+		readTimeoutDefault = v
+	}
+	writeTimeoutDefault := time.Duration(0)
+	if v, ok := envDurationMS("AGENTD_BROKER_WRITE_TIMEOUT_MS"); ok {
+		writeTimeoutDefault = v
+	}
+	idleTimeoutDefault := 120 * time.Second
+	if v, ok := envDurationMS("AGENTD_BROKER_IDLE_TIMEOUT_MS"); ok {
+		idleTimeoutDefault = v
+	}
+	readHeaderTimeoutDefault := 10 * time.Second
+	if v, ok := envDurationMS("AGENTD_BROKER_READ_HEADER_TIMEOUT_MS"); ok {
+		readHeaderTimeoutDefault = v
+	}
+
 	var listen = flag.String("listen", ":8443", "listen address")
 	var tlsCert = flag.String("tls-cert", "", "TLS server cert PEM path")
 	var tlsKey = flag.String("tls-key", "", "TLS server private key PEM path")
@@ -35,6 +86,12 @@ func main() {
 	var corsOriginsCSV = flag.String("cors-origins", "", "comma-separated allowed CORS origins (e.g. https://ui.example.com)")
 	var maxPendingPerAgent = flag.Int("max-pending-per-agent", 256, "max pending proxied requests per agent (0=unlimited)")
 	var maxStreamsPerAgent = flag.Int("max-streams-per-agent", 64, "max active streams per agent (0=unlimited)")
+	var maxBodyBytes = flag.Int64("max-body-bytes", maxBodyDefault, "max request body bytes (default: 64MiB)")
+	var maxHeaderBytes = flag.Int("max-header-bytes", maxHeaderBytesDefault, "max HTTP request header bytes")
+	var readTimeout = flag.Duration("read-timeout", readTimeoutDefault, "HTTP server read timeout (0 disables)")
+	var writeTimeout = flag.Duration("write-timeout", writeTimeoutDefault, "HTTP server write timeout (0 disables; keep 0 for SSE)")
+	var idleTimeout = flag.Duration("idle-timeout", idleTimeoutDefault, "HTTP server idle timeout")
+	var readHeaderTimeout = flag.Duration("read-header-timeout", readHeaderTimeoutDefault, "HTTP server read header timeout")
 	var sseKeepalive = flag.Duration("sse-keepalive", 15*time.Second, "SSE keepalive comment interval")
 	var readyCache = flag.Duration("ready-cache", 5*time.Second, "readiness check cache interval")
 	var shutdownTimeout = flag.Duration("shutdown-timeout", 15*time.Second, "graceful shutdown timeout")
@@ -116,13 +173,18 @@ func main() {
 		}
 	}
 	s, err := broker.New(broker.Config{
-		OIDC:               ver,
-		DB:                 dbConn,
-		Registry:           reg,
-		Events:             ev,
-		AgentCNPfx:         *agentCNPfx,
-		RequireAgentMTLS:   *requireAgentMTLS,
-		MaxRequestBodySize: 64 * 1024 * 1024,
+		OIDC:             ver,
+		DB:               dbConn,
+		Registry:         reg,
+		Events:           ev,
+		AgentCNPfx:       *agentCNPfx,
+		RequireAgentMTLS: *requireAgentMTLS,
+		MaxRequestBodySize: func() int64 {
+			if *maxBodyBytes <= 0 {
+				return 64 * 1024 * 1024
+			}
+			return *maxBodyBytes
+		}(),
 		MaxPendingPerAgent: *maxPendingPerAgent,
 		MaxStreamsPerAgent: *maxStreamsPerAgent,
 		AllowedOrigins:     allowedOrigins,
@@ -148,9 +210,16 @@ func main() {
 		Addr:              *listen,
 		Handler:           s.Handler(),
 		TLSConfig:         tlsCfg,
-		ReadHeaderTimeout: 10 * time.Second,
-		IdleTimeout:       120 * time.Second,
-		MaxHeaderBytes:    1 << 20,
+		ReadTimeout:       *readTimeout,
+		WriteTimeout:      *writeTimeout,
+		ReadHeaderTimeout: *readHeaderTimeout,
+		IdleTimeout:       *idleTimeout,
+		MaxHeaderBytes: func() int {
+			if *maxHeaderBytes <= 0 {
+				return 1 << 20
+			}
+			return *maxHeaderBytes
+		}(),
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -177,7 +246,20 @@ func main() {
 	log.Printf("oidc issuer: %s", iss)
 	log.Printf("oidc audience: %s", aud)
 	log.Printf("cors origins configured: %v", len(allowedOrigins) > 0)
-	log.Printf("limits: max_pending_per_agent=%d max_streams_per_agent=%d", *maxPendingPerAgent, *maxStreamsPerAgent)
+	log.Printf(
+		"limits: max_pending_per_agent=%d max_streams_per_agent=%d max_body_bytes=%d max_header_bytes=%d",
+		*maxPendingPerAgent,
+		*maxStreamsPerAgent,
+		*maxBodyBytes,
+		*maxHeaderBytes,
+	)
+	log.Printf(
+		"http timeouts: read=%s write=%s idle=%s read_header=%s",
+		(*readTimeout).String(),
+		(*writeTimeout).String(),
+		(*idleTimeout).String(),
+		(*readHeaderTimeout).String(),
+	)
 
 	select {
 	case <-ctx.Done():

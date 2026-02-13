@@ -329,6 +329,12 @@ npm run build
 npm run preview -- --host 127.0.0.1 --port 8100
 ```
 
+Optional defaults (no rebuild): edit `ui/public/agentui-config.js` (copied to `ui/dist/`) to prefill:
+- `connectionMode` (`direct` or `broker`)
+- `daemonBaseUrl`, `brokerBaseUrl`, `brokerAgentId`
+- `daemonAuthToken`, `brokerAuthToken` (if you accept storing tokens in a static file)
+- `model`, `baseUrl`, `proxyUrl`, `timeoutMs`
+
 Then open the UI and set:
 - Daemon base URL: `http://127.0.0.1:8123`
 - Daemon auth token (if enabled): the same token passed to `agentd --auth-token`

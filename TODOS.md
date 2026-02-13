@@ -19,6 +19,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
    - [x] HTTP server + SSE streaming endpoints now use socket abstraction.
    - [x] AVM endpoints return 501 on Windows (explicitly unsupported).
    - [ ] Validate Windows build (tool plugins + tool servers remain disabled).
+   - Note: macOS production hardening is taking priority; Windows validation is deferred but still required.
 2) **Production deployment readiness (agentd + broker + WebUI)** — stable, secure, operable deployment.
    - [x] Added `docs/DEPLOYMENT.md` checklist + topology guidance.
    - [x] Added service manager templates (systemd + macOS launchd).
@@ -31,6 +32,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
    - [x] macOS provider smoke: DeepSeek reasoner tool-call + Moonshot tool-call (new `agentd_moonshot_tool_call_smoke.sh`).
    - [ ] Compose build reliability: document Docker Desktop resource-limit troubleshooting (unpigz/runc) and evaluate prebuilt images.
    - [x] Add macOS local verification script (agentd + WebUI without Docker).
+   - [x] WebUI runtime defaults via `agentui-config.js` + `VITE_AGENTUI_*` env overrides (no rebuild required).
+   - [x] Broker tunables: max body/header bytes + HTTP timeouts (flags + env).
 
 ## Recently shipped (proof in CI)
 

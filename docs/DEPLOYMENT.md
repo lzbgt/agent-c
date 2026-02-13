@@ -126,6 +126,12 @@ New-Service -Name "agentd" -BinaryPathName "`"$exe`" $args" -StartupType Automat
 - mTLS enabled for connectors (`--tls-client-ca`)
 - OIDC enabled for users (`--oidc-issuer`, `--oidc-audience`)
 - Durable DB (Postgres) with backups
+- HTTP tunables:
+  - `--max-body-bytes`, `--max-header-bytes`
+  - `--read-timeout`, `--write-timeout`, `--idle-timeout`, `--read-header-timeout`
+  - Env overrides: `AGENTD_BROKER_MAX_BODY_BYTES`, `AGENTD_BROKER_MAX_HEADER_BYTES`,
+    `AGENTD_BROKER_READ_TIMEOUT_MS`, `AGENTD_BROKER_WRITE_TIMEOUT_MS`,
+    `AGENTD_BROKER_IDLE_TIMEOUT_MS`, `AGENTD_BROKER_READ_HEADER_TIMEOUT_MS`
 
 ### Connector requirements
 - Unique `--agent-id` per agentd instance
@@ -218,6 +224,14 @@ curl http://127.0.0.1:8123/api/v1/health
 - Build once and host on a static server:
   - `cd ui && npm ci && npm run build`
 - Serve `ui/dist/` via nginx/Caddy/S3.
+- Runtime defaults (no rebuild): edit `ui/dist/agentui-config.js` to set:
+  - `connectionMode` (`direct` or `broker`)
+  - `daemonBaseUrl`, `brokerBaseUrl`, `brokerAgentId`
+  - `daemonAuthToken`, `brokerAuthToken` (if you accept putting tokens in a static file)
+  - `model`, `baseUrl`, `proxyUrl`, `timeoutMs`
+  - `tools`, `yolo`, `hostPolicy`, `verbose`
+  - `allowClientRpcs`, `allowClientEffects`, `allowUnsafePageEval`
+- Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`, and `VITE_AGENTUI_*` variants above.
 - Configure UI to talk to:
   - Broker proxy (recommended), or
   - Direct agentd base URL (ensure CORS + auth token).

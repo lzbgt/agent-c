@@ -39,10 +39,16 @@ Key flags:
 - Resource limits:
   - `--max-pending-per-agent` (default `256`)
   - `--max-streams-per-agent` (default `64`)
+  - `--max-body-bytes` (default `64MiB`)
+  - `--max-header-bytes` (default `1MiB`)
 - Browser support:
   - `--cors-origins` (comma-separated allowed origins)
   - `--sse-keepalive` (default `15s`)
 - Ops:
+  - `--read-timeout` (default `0`, disabled; keep `0` for SSE)
+  - `--write-timeout` (default `0`, disabled; keep `0` for SSE)
+  - `--idle-timeout` (default `120s`)
+  - `--read-header-timeout` (default `10s`)
   - `--shutdown-timeout` (default `15s`)
   - `--ready-cache` (default `5s`)
 

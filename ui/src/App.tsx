@@ -48,6 +48,7 @@ import PromptBar, { type Attachment } from "./components/PromptBar";
 import useAutoplayUnlock from "./hooks/useAutoplayUnlock";
 import useLocalStorageState from "./hooks/useLocalStorageState";
 import { readSseStream } from "./sse";
+import { getUiDefaults } from "./runtime_config";
 
 function Label({ children }: { children: React.ReactNode }) {
   return <div className="text-xs font-medium text-white/70">{children}</div>;
@@ -58,19 +59,23 @@ function sleep(ms: number) {
 }
 
 export default function App() {
+  const defaults = React.useMemo(() => getUiDefaults(), []);
   const [showSettings, setShowSettings] = useLocalStorageState("agentui.showSettings", false);
   const [clearAllArmed, setClearAllArmed] = React.useState<boolean>(false);
   const clearAllArmTimeoutRef = React.useRef<number>(0);
 
-  const [connectionMode, setConnectionMode] = useLocalStorageState<"direct" | "broker">("agentui.connectionMode", "direct");
+  const [connectionMode, setConnectionMode] = useLocalStorageState<"direct" | "broker">(
+    "agentui.connectionMode",
+    defaults.connectionMode,
+  );
 
   // Direct mode: browser talks to agentd directly.
-  const [base, setBase] = useLocalStorageState("agentui.base", "http://127.0.0.1:8123");
+  const [base, setBase] = useLocalStorageState("agentui.base", defaults.daemonBaseUrl);
 
   // Broker mode: browser talks to broker, which proxies to a specific agent_id.
-  const [brokerBase, setBrokerBase] = useLocalStorageState("agentui.brokerBase", "https://127.0.0.1:8443");
-  const [brokerAgentId, setBrokerAgentId] = useLocalStorageState("agentui.brokerAgentId", "agent1");
-  const [brokerAuthToken, setBrokerAuthToken] = useLocalStorageState("agentui.brokerAuthToken", "");
+  const [brokerBase, setBrokerBase] = useLocalStorageState("agentui.brokerBase", defaults.brokerBaseUrl);
+  const [brokerAgentId, setBrokerAgentId] = useLocalStorageState("agentui.brokerAgentId", defaults.brokerAgentId);
+  const [brokerAuthToken, setBrokerAuthToken] = useLocalStorageState("agentui.brokerAuthToken", defaults.brokerAuthToken);
 
   const webOrigin = React.useMemo(() => {
     try {
@@ -81,7 +86,7 @@ export default function App() {
     }
   }, []);
 
-  const [daemonAuthToken, setDaemonAuthToken] = useLocalStorageState("agentui.daemonAuthToken", "");
+  const [daemonAuthToken, setDaemonAuthToken] = useLocalStorageState("agentui.daemonAuthToken", defaults.daemonAuthToken);
   const [prompt, setPrompt] = useLocalStorageState("agentui.prompt", "");
 
   const effectiveBase = React.useMemo(() => {
@@ -165,22 +170,22 @@ export default function App() {
     () => ({ id: String(clientId || "webui"), kind: "webui", instance_id: clientInstanceIdRef.current }),
     [clientId],
   );
-  const [tools, setTools] = useLocalStorageState<"host" | "basic" | "none">("agentui.tools", "host");
-  const [yolo, setYolo] = useLocalStorageState("agentui.yolo", true);
-  const [hostPolicy, setHostPolicy] = useLocalStorageState<"full" | "readonly">("agentui.hostPolicy", "full");
+  const [tools, setTools] = useLocalStorageState<"host" | "basic" | "none">("agentui.tools", defaults.tools);
+  const [yolo, setYolo] = useLocalStorageState("agentui.yolo", defaults.yolo);
+  const [hostPolicy, setHostPolicy] = useLocalStorageState<"full" | "readonly">("agentui.hostPolicy", defaults.hostPolicy);
   // Production UX: tool visibility should be on by default so users can audit shell/proc commands and tool outputs.
-  const [verbose, setVerbose] = useLocalStorageState("agentui.verbose", true);
-  const [model, setModel] = useLocalStorageState("agentui.model", "deepseek-chat");
+  const [verbose, setVerbose] = useLocalStorageState("agentui.verbose", defaults.verbose);
+  const [model, setModel] = useLocalStorageState("agentui.model", defaults.model);
   const [summaryModel, setSummaryModel] = useLocalStorageState("agentui.summaryModel", "");
   const [summaryMaxChars, setSummaryMaxChars] = useLocalStorageState("agentui.summaryMaxChars", "1200");
-  const [baseUrl, setBaseUrl] = useLocalStorageState("agentui.baseUrl", "https://api.deepseek.com");
-  const [apiKey, setApiKey] = useLocalStorageState("agentui.apiKey", "");
+  const [baseUrl, setBaseUrl] = useLocalStorageState("agentui.baseUrl", defaults.baseUrl);
+  const [apiKey, setApiKey] = useLocalStorageState("agentui.apiKey", defaults.apiKey);
   // Many dev environments require a local HTTP proxy for outbound HTTPS (and this repo's test scripts assume it).
   // Users can clear this if their environment does not need a proxy.
-  const [proxyUrl, setProxyUrl] = useLocalStorageState("agentui.proxyUrl", "http://localhost:8120");
-  const [timeoutMs, setTimeoutMs] = useLocalStorageState("agentui.timeoutMs", "60000");
+  const [proxyUrl, setProxyUrl] = useLocalStorageState("agentui.proxyUrl", defaults.proxyUrl);
+  const [timeoutMs, setTimeoutMs] = useLocalStorageState("agentui.timeoutMs", defaults.timeoutMs);
   const [maxCaptureBytes, setMaxCaptureBytes] = useLocalStorageState("agentui.maxCaptureBytes", "65536");
-  const [streamAssistant, setStreamAssistant] = useLocalStorageState("agentui.streamAssistant", false);
+  const [streamAssistant, setStreamAssistant] = useLocalStorageState("agentui.streamAssistant", defaults.streamAssistant);
   const [orMinTotal, setOrMinTotal] = useLocalStorageState("agentui.orMinTotal", "0.01");
   const [orMaxTotal, setOrMaxTotal] = useLocalStorageState("agentui.orMaxTotal", "0.50");
   const [orRequireMultimodal, setOrRequireMultimodal] = useLocalStorageState("agentui.orRequireMultimodal", true);
@@ -196,8 +201,8 @@ export default function App() {
   const [toolCallLimits, setToolCallLimits] = useLocalStorageState("agentui.toolCallLimits", "");
   const [maxChars, setMaxChars] = useLocalStorageState("agentui.maxChars", "20000");
   const [keepLast, setKeepLast] = useLocalStorageState("agentui.keepLast", "16");
-  const [trace, setTrace] = useLocalStorageState("agentui.trace", true);
-  const [useAsync, setUseAsync] = useLocalStorageState("agentui.useAsync", true);
+  const [trace, setTrace] = useLocalStorageState("agentui.trace", defaults.trace);
+  const [useAsync, setUseAsync] = useLocalStorageState("agentui.useAsync", defaults.useAsync);
   const [showDebugInConversation, setShowDebugInConversation] = useLocalStorageState(
     "agentui.showDebugInConversation",
     true,
@@ -208,9 +213,15 @@ export default function App() {
   useAutoplayUnlock(allowAutoplay);
   // This project treats the Web UI as a collaboration surface (a “scene”) where the agent is expected
   // to act with side-effects by default. Users can still disable these via Settings (persisted).
-  const [allowClientRpcs, setAllowClientRpcs] = useLocalStorageState("agentui.allowClientRpcs", true);
-  const [allowClientEffects, setAllowClientEffects] = useLocalStorageState("agentui.allowClientEffects", true);
-  const [allowUnsafePageEval, setAllowUnsafePageEval] = useLocalStorageState("agentui.allowUnsafePageEval", true);
+  const [allowClientRpcs, setAllowClientRpcs] = useLocalStorageState("agentui.allowClientRpcs", defaults.allowClientRpcs);
+  const [allowClientEffects, setAllowClientEffects] = useLocalStorageState(
+    "agentui.allowClientEffects",
+    defaults.allowClientEffects,
+  );
+  const [allowUnsafePageEval, setAllowUnsafePageEval] = useLocalStorageState(
+    "agentui.allowUnsafePageEval",
+    defaults.allowUnsafePageEval,
+  );
   const [dbRunsOnlyErrors, setDbRunsOnlyErrors] = useLocalStorageState("agentui.dbRunsOnlyErrors", true);
   const [dbRunsStopReason, setDbRunsStopReason] = useLocalStorageState("agentui.dbRunsStopReason", "");
   // Keep prompts separate so an active async run does not overwrite the "last completed" view.
