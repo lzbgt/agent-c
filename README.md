@@ -265,6 +265,7 @@ Environment variables:
 This repo’s “production” shape is:
 - `agentd` runs as the backend daemon (tools + persistence + HTTP API)
 - the Web UI runs as a separate static site (Vite build) that talks to `agentd` via HTTP
+  - it can also run in **broker mode** (OIDC) and exposes a broker console for agent selection + membership management
 
 For a full production checklist (TLS, broker/connector, auth hardening, backups), see `docs/DEPLOYMENT.md`.
 

@@ -32,6 +32,7 @@ import SceneView, { type SceneEntity } from "./components/SceneView";
 import PromptBar, { type Attachment } from "./components/PromptBar";
 import SettingsDrawer from "./components/SettingsDrawer";
 import TraceLookupPanel from "./components/TraceLookupPanel";
+import BrokerPanel from "./components/BrokerPanel";
 import useLocalStorageState from "./hooks/useLocalStorageState";
 import useUiSettings from "./hooks/useUiSettings";
 import { readSseStream } from "./sse";
@@ -127,6 +128,7 @@ export default function App() {
   } = clientSettings;
   const [traceLookupId, setTraceLookupId] = useLocalStorageState("agentui.traceLookupId", "");
   const [traceLookupOpen, setTraceLookupOpen] = useLocalStorageState("agentui.traceLookupOpen", false);
+  const [brokerPanelOpen, setBrokerPanelOpen] = useLocalStorageState("agentui.brokerPanelOpen", false);
   // Keep prompts separate so an active async run does not overwrite the "last completed" view.
   const [lastRunPrompt, setLastRunPrompt] = React.useState("");
   const [lastCompletedPrompt, setLastCompletedPrompt] = React.useState("");
@@ -1787,6 +1789,17 @@ export default function App() {
               agentdTrace={traceLookupAgentd}
               brokerTrace={traceLookupBroker}
             />
+            {connectionMode === "broker" ? (
+              <BrokerPanel
+                open={!!brokerPanelOpen}
+                onToggle={(open) => setBrokerPanelOpen(open)}
+                brokerBase={connection.brokerBase}
+                brokerAgentId={connection.brokerAgentId}
+                setBrokerAgentId={connection.setBrokerAgentId}
+                auth={daemonAuth}
+                authKey={authKey}
+              />
+            ) : null}
             <HistoryPanel
               entries={historyEntriesDesc}
               showAllEntries={showAllHistoryEntries}

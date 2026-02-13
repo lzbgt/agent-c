@@ -230,6 +230,7 @@ curl http://127.0.0.1:8123/api/v1/health
 - Broker TLS in compose uses test certificates under `tools/_compose_mtls` (local only).
 - WebUI expects to talk to broker proxy or direct agentd; align CORS + auth tokens accordingly.
 - Compose mounts `tools/agentui-config.compose.js` into the WebUI container to default to broker mode.
+  - Broker mode exposes a broker console panel for agent selection + membership management + audit.
   - Edit that file to adjust broker URL, agent id, or pass-through daemon token for local dev.
 - For a one-command macOS verification run, use: `tools/verify_mac_full_stack.sh`.
 - If Docker is unavailable or resource-constrained, you can verify the local stack without compose:

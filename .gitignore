@@ -25,6 +25,7 @@ tools/_agentd_broker_mtls_test_certs/
 tools/_compose_mtls/
 memory/
 session_*/
+docs/artifacts/
 
 # Local one-off camera capture artifacts (dev only).
 capture_image*.py

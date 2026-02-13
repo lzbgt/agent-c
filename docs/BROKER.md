@@ -212,6 +212,17 @@ The broker supports multi-agent usage by design:
 - multiple agents can be connected simultaneously
 - client can choose which `agent_id` to send each request to
 
+## WebUI broker console
+
+The WebUI can operate in **broker mode** (OIDC) and now includes a broker console panel:
+- list agents and select the active `agent_id`
+- manage agent memberships (add/remove roles)
+- view membership audit trail (per agent)
+
+Configure in the WebUI Settings:
+- Connection mode: `broker`
+- Broker base URL + bearer token
+
 This enables “complex tasks” split across specialized agents:
 - one agent with full host tools on a workstation
 - another agent in a GPU server environment

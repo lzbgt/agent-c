@@ -1147,6 +1147,121 @@ export async function apiBrokerListAgents(brokerBase: string, auth?: ApiAuth): P
   return BrokerAgentsRespSchema.parse(j);
 }
 
+export const BrokerMembersRespSchema = z
+  .object({
+    ok: z.boolean(),
+    agent_id: z.string().optional(),
+    owner_sub: z.string().optional(),
+    members: z
+      .array(
+        z
+          .object({
+            user_sub: z.string(),
+            role: z.string().optional(),
+            created_unix_ms: z.number().optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+export type BrokerMembersResp = z.infer<typeof BrokerMembersRespSchema>;
+
+export async function apiBrokerGetMembers(brokerBase: string, agentId: string, auth?: ApiAuth): Promise<BrokerMembersResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const id = String(agentId || "").trim();
+  if (!id) throw new Error("missing agent_id");
+  const r = await fetch(`${base}/v1/agents/${encodeURIComponent(id)}/members`, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return BrokerMembersRespSchema.parse(j);
+}
+
+export async function apiBrokerUpsertMember(
+  brokerBase: string,
+  agentId: string,
+  req: { user_sub: string; role?: string },
+  auth?: ApiAuth,
+): Promise<{ ok: boolean; error?: string }> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const id = String(agentId || "").trim();
+  if (!id) throw new Error("missing agent_id");
+  const r = await fetch(`${base}/v1/agents/${encodeURIComponent(id)}/members`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify({
+      user_sub: String(req?.user_sub || "").trim(),
+      role: String(req?.role || "").trim(),
+    }),
+  });
+  const j = await r.json();
+  if (!j || typeof j !== "object") throw new Error("bad json");
+  if (j.ok === true) return { ok: true };
+  return { ok: false, error: String((j as any).error || (j as any).err || "request failed") };
+}
+
+export async function apiBrokerDeleteMember(
+  brokerBase: string,
+  agentId: string,
+  userSub: string,
+  auth?: ApiAuth,
+): Promise<{ ok: boolean; error?: string }> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const id = String(agentId || "").trim();
+  if (!id) throw new Error("missing agent_id");
+  const sub = String(userSub || "").trim();
+  if (!sub) throw new Error("missing user_sub");
+  const r = await fetch(`${base}/v1/agents/${encodeURIComponent(id)}/members/${encodeURIComponent(sub)}`, {
+    method: "DELETE",
+    headers: daemonHeaders(auth),
+  });
+  const j = await r.json();
+  if (!j || typeof j !== "object") throw new Error("bad json");
+  if (j.ok === true) return { ok: true };
+  return { ok: false, error: String((j as any).error || (j as any).err || "request failed") };
+}
+
+export const BrokerMembershipAuditRespSchema = z
+  .object({
+    ok: z.boolean(),
+    agent_id: z.string().optional(),
+    owner_sub: z.string().optional(),
+    audit: z
+      .array(
+        z
+          .object({
+            ts_unix_ms: z.number().optional(),
+            actor_sub: z.string().optional(),
+            target_sub: z.string().optional(),
+            action: z.string().optional(),
+            role: z.string().optional(),
+            trace_id: z.string().optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+export type BrokerMembershipAuditResp = z.infer<typeof BrokerMembershipAuditRespSchema>;
+
+export async function apiBrokerGetMembershipAudit(
+  brokerBase: string,
+  agentId: string,
+  limit: number,
+  auth?: ApiAuth,
+): Promise<BrokerMembershipAuditResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const id = String(agentId || "").trim();
+  if (!id) throw new Error("missing agent_id");
+  const lim = Number.isFinite(limit) ? Math.max(1, Math.min(limit, 500)) : 200;
+  const r = await fetch(`${base}/v1/agents/${encodeURIComponent(id)}/membership_audit?limit=${encodeURIComponent(String(lim))}`, {
+    headers: daemonHeaders(auth),
+  });
+  const j = await r.json();
+  return BrokerMembershipAuditRespSchema.parse(j);
+}
+
 export const AgentdTraceRespSchema = z
   .object({
     ok: z.boolean(),
