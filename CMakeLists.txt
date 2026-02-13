@@ -710,6 +710,8 @@ if(AGENT_BUILD_HOST)
 	  set_tests_properties(agentd_moonshot_upload_smoke PROPERTIES SKIP_RETURN_CODE 77)
 	  add_test(NAME agentd_moonshot_toolloop_image_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_moonshot_toolloop_image_smoke.sh $<TARGET_FILE:agentd>)
 	  set_tests_properties(agentd_moonshot_toolloop_image_smoke PROPERTIES SKIP_RETURN_CODE 77)
+	  add_test(NAME agentd_moonshot_tool_call_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_moonshot_tool_call_smoke.sh $<TARGET_FILE:agentd>)
+	  set_tests_properties(agentd_moonshot_tool_call_smoke PROPERTIES SKIP_RETURN_CODE 77)
 	
 	    add_test(NAME agentd_async_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_async_smoke.sh $<TARGET_FILE:agentd>)
 	    set_tests_properties(agentd_async_smoke PROPERTIES SKIP_RETURN_CODE 77)
