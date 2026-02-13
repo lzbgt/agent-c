@@ -126,6 +126,9 @@ All endpoints below are served by the broker (not by agents).
   - add/update an agent member (owner/admin only)
 - `DELETE /v1/agents/{agent_id}/members/{user_sub}`
   - remove an agent member (owner/admin only; cannot remove owner)
+- `GET /v1/agents/{agent_id}/membership_audit`
+  - membership audit trail for the agent (owner/admin only)
+  - query: `limit` (optional, default `200`, max `500`)
 
 - `POST /v1/agents/{agent_id}/delete` (or `DELETE` to the same path)
   - deletes an agent record (owner or admin)
@@ -185,7 +188,7 @@ Response (JSON):
 
 - `GET /v1/events`
   - server-sent events for the authenticated user
-  - emits JSON `data:` payloads with types like `agent_connected`, `agent_disconnected`, `relay_audit`, `client_auth_reload`
+  - emits JSON `data:` payloads with types like `agent_connected`, `agent_disconnected`, `relay_audit`, `client_auth_reload`, `agent_member_updated`
 
 ### Client auth status (admin-only)
 
@@ -199,6 +202,8 @@ Response (JSON):
 - `GET /v1/trace?trace_id=...`
   - returns broker relay audit rows for the trace id
   - returns persisted broker orchestrate summaries for the trace id (request/response JSON, redacted)
+  - returns membership audit rows for the trace id (when membership updates include the same trace_id)
+  - membership audit rows are limited to agents the caller can access (admins can see all)
   - best-effort: fans out to referenced agents to query their `GET /api/v1/trace?trace_id=...` endpoint (if supported)
 
 ## Multi-agent workflows

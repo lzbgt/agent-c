@@ -23,11 +23,13 @@ This directory also includes `agentd-connector`, a lightweight “bridge” that
 - `GET /v1/agents/{agent_id}/members` — list agent members (owner/admin)
 - `POST /v1/agents/{agent_id}/members` — add/update agent member (owner/admin)
 - `DELETE /v1/agents/{agent_id}/members/{user_sub}` — remove agent member (owner/admin)
+- `GET /v1/agents/{agent_id}/membership_audit` — membership audit trail (owner/admin)
 - `POST /v1/orchestrate` — fan-out `/api/v1/run` calls across multiple agents (OIDC required)
 - `GET /v1/agents/{agent_id}/proxy/...` — proxy HTTP request to agent (OIDC required)
 - `GET /v1/agents/{agent_id}/proxy_sse/...` — proxy streaming/SSE-like request to agent (OIDC required)
+- `GET /v1/trace` — trace correlation (relay + orchestrate + membership audit + agentd fan-out; membership audit limited to accessible agents unless admin)
 - `GET /v1/events` — Server-Sent Events stream for the authenticated subject (OIDC required)
-  - emits events like `agent_connected`, `agent_disconnected`, `relay_audit`, `client_auth_reload`
+  - emits events like `agent_connected`, `agent_disconnected`, `relay_audit`, `client_auth_reload`, `agent_member_updated`
 
 ## Production settings (recommended)
 

@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"agentd-broker/internal/db"
 )
 
 type traceRelayAuditRow struct {
@@ -34,6 +36,16 @@ type traceOrchestrateAuditRow struct {
 	TraceID      string          `json:"trace_id"`
 	RequestJSON  json.RawMessage `json:"request_json"`
 	ResponseJSON json.RawMessage `json:"response_json"`
+}
+
+type traceMembershipAuditRow struct {
+	TSUnixMS  int64  `json:"ts_unix_ms"`
+	ActorSub  string `json:"actor_sub"`
+	TargetSub string `json:"target_sub"`
+	AgentID   string `json:"agent_id"`
+	Action    string `json:"action"`
+	Role      string `json:"role,omitempty"`
+	TraceID   string `json:"trace_id,omitempty"`
 }
 
 func (s *Server) handleTrace(w http.ResponseWriter, r *http.Request) {
@@ -76,6 +88,17 @@ func (s *Server) handleTrace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	var memberRows []db.MembershipAudit
+	if p.Admin {
+		memberRows, err = s.cfg.DB.ListMembershipAuditByTraceAdmin(r.Context(), traceID, 100)
+	} else {
+		memberRows, err = s.cfg.DB.ListMembershipAuditByTrace(r.Context(), p.Sub, traceID, 100)
+	}
+	if err != nil {
+		http.Error(w, "db error", http.StatusInternalServerError)
+		return
+	}
+
 	relay := make([]traceRelayAuditRow, 0, len(rows))
 	agentSet := map[string]bool{}
 	for _, rr := range rows {
@@ -100,6 +123,19 @@ func (s *Server) handleTrace(w http.ResponseWriter, r *http.Request) {
 			TraceID:      o.TraceID,
 			RequestJSON:  o.RequestJSON,
 			ResponseJSON: o.ResponseJSON,
+		})
+	}
+
+	membership := make([]traceMembershipAuditRow, 0, len(memberRows))
+	for _, m := range memberRows {
+		membership = append(membership, traceMembershipAuditRow{
+			TSUnixMS:  m.TSUnixMS,
+			ActorSub:  m.ActorSub,
+			TargetSub: m.TargetSub,
+			AgentID:   m.AgentID,
+			Action:    m.Action,
+			Role:      m.Role,
+			TraceID:   m.TraceID,
 		})
 	}
 
@@ -174,6 +210,7 @@ func (s *Server) handleTrace(w http.ResponseWriter, r *http.Request) {
 		"trace_id":    traceID,
 		"relay_audit": relay,
 		"orchestrate": orchestrate,
+		"membership":  membership,
 		"agentd":      agentd,
 	})
 }

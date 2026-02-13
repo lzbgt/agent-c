@@ -22,6 +22,22 @@ CREATE TABLE IF NOT EXISTS broker_agent_memberships(
   PRIMARY KEY(agent_id, user_sub)
 );
 
+CREATE TABLE IF NOT EXISTS broker_agent_membership_audit(
+  id BIGSERIAL PRIMARY KEY,
+  ts TIMESTAMPTZ NOT NULL DEFAULT now(),
+  actor_sub TEXT NOT NULL REFERENCES broker_users(sub) ON DELETE CASCADE,
+  agent_id TEXT NOT NULL REFERENCES broker_agents(agent_id) ON DELETE CASCADE,
+  target_sub TEXT NOT NULL REFERENCES broker_users(sub) ON DELETE CASCADE,
+  action TEXT NOT NULL DEFAULT '',
+  role TEXT NOT NULL DEFAULT '',
+  trace_id TEXT NOT NULL DEFAULT ''
+);
+
+CREATE INDEX IF NOT EXISTS broker_agent_membership_audit_by_agent ON broker_agent_membership_audit(agent_id, ts DESC);
+CREATE INDEX IF NOT EXISTS broker_agent_membership_audit_by_actor ON broker_agent_membership_audit(actor_sub, ts DESC);
+CREATE INDEX IF NOT EXISTS broker_agent_membership_audit_by_target ON broker_agent_membership_audit(target_sub, ts DESC);
+CREATE INDEX IF NOT EXISTS broker_agent_membership_audit_by_trace ON broker_agent_membership_audit(trace_id);
+
 CREATE TABLE IF NOT EXISTS broker_agent_connections(
   id BIGSERIAL PRIMARY KEY,
   agent_id TEXT NOT NULL REFERENCES broker_agents(agent_id) ON DELETE CASCADE,
@@ -48,4 +64,3 @@ CREATE TABLE IF NOT EXISTS broker_relay_audit(
 
 CREATE INDEX IF NOT EXISTS broker_relay_audit_by_user ON broker_relay_audit(user_sub, ts DESC);
 CREATE INDEX IF NOT EXISTS broker_relay_audit_by_agent ON broker_relay_audit(agent_id, ts DESC);
-

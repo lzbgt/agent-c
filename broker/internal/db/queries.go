@@ -66,6 +66,16 @@ type OrchestrateAudit struct {
 	ResponseJSON json.RawMessage
 }
 
+type MembershipAudit struct {
+	TSUnixMS  int64
+	ActorSub  string
+	TargetSub string
+	AgentID   string
+	Action    string
+	Role      string
+	TraceID   string
+}
+
 func (d *DB) EnsureUser(ctx context.Context, sub string) error {
 	if d == nil || d.Pool == nil {
 		return errors.New("db not open")
@@ -429,6 +439,222 @@ func (d *DB) RemoveAgentMember(ctx context.Context, agentID, userSub string) (bo
 		return false, err
 	}
 	return tag.RowsAffected() > 0, nil
+}
+
+func (d *DB) InsertMembershipAudit(ctx context.Context, actorSub, targetSub, agentID, action, role, traceID string) error {
+	if d == nil || d.Pool == nil {
+		return errors.New("db not open")
+	}
+	actorSub = strings.TrimSpace(actorSub)
+	targetSub = strings.TrimSpace(targetSub)
+	agentID = strings.TrimSpace(agentID)
+	action = strings.TrimSpace(action)
+	role = strings.TrimSpace(role)
+	traceID = strings.TrimSpace(traceID)
+	if actorSub == "" || targetSub == "" || agentID == "" || action == "" {
+		return errors.New("missing audit fields")
+	}
+	if err := d.EnsureUser(ctx, actorSub); err != nil {
+		return err
+	}
+	if err := d.EnsureUser(ctx, targetSub); err != nil {
+		return err
+	}
+	_, err := d.Pool.Exec(ctx, `
+		INSERT INTO broker_agent_membership_audit(actor_sub, target_sub, agent_id, action, role, trace_id)
+		VALUES($1, $2, $3, $4, $5, $6)
+	`, actorSub, targetSub, agentID, action, role, traceID)
+	return err
+}
+
+func (d *DB) ListMembershipAuditByAgent(ctx context.Context, userSub, agentID string, limit int) ([]MembershipAudit, error) {
+	if d == nil || d.Pool == nil {
+		return nil, errors.New("db not open")
+	}
+	userSub = strings.TrimSpace(userSub)
+	agentID = strings.TrimSpace(agentID)
+	if userSub == "" || agentID == "" {
+		return nil, errors.New("missing user sub or agent_id")
+	}
+	if err := d.EnsureUser(ctx, userSub); err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	rows, err := d.Pool.Query(ctx, `
+		SELECT CAST(EXTRACT(EPOCH FROM ts)*1000 AS BIGINT), actor_sub, target_sub, agent_id, action, role, trace_id
+		FROM broker_agent_membership_audit
+		WHERE agent_id=$1
+		  AND EXISTS (
+		    SELECT 1
+		    FROM broker_agent_memberships m
+		    JOIN broker_agents a ON a.agent_id = m.agent_id
+		    WHERE m.user_sub=$2 AND m.agent_id=$1 AND a.enabled=true
+		  )
+		ORDER BY ts DESC, id DESC
+		LIMIT $3
+	`, agentID, userSub, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []MembershipAudit{}
+	for rows.Next() {
+		var a MembershipAudit
+		if err := rows.Scan(&a.TSUnixMS, &a.ActorSub, &a.TargetSub, &a.AgentID, &a.Action, &a.Role, &a.TraceID); err != nil {
+			return nil, err
+		}
+		a.ActorSub = strings.TrimSpace(a.ActorSub)
+		a.TargetSub = strings.TrimSpace(a.TargetSub)
+		a.AgentID = strings.TrimSpace(a.AgentID)
+		a.Action = strings.TrimSpace(a.Action)
+		a.Role = strings.TrimSpace(a.Role)
+		a.TraceID = strings.TrimSpace(a.TraceID)
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+func (d *DB) ListMembershipAuditByAgentAdmin(ctx context.Context, agentID string, limit int) ([]MembershipAudit, error) {
+	if d == nil || d.Pool == nil {
+		return nil, errors.New("db not open")
+	}
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return nil, errors.New("missing agent_id")
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	rows, err := d.Pool.Query(ctx, `
+		SELECT CAST(EXTRACT(EPOCH FROM ts)*1000 AS BIGINT), actor_sub, target_sub, agent_id, action, role, trace_id
+		FROM broker_agent_membership_audit
+		WHERE agent_id=$1
+		ORDER BY ts DESC, id DESC
+		LIMIT $2
+	`, agentID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []MembershipAudit{}
+	for rows.Next() {
+		var a MembershipAudit
+		if err := rows.Scan(&a.TSUnixMS, &a.ActorSub, &a.TargetSub, &a.AgentID, &a.Action, &a.Role, &a.TraceID); err != nil {
+			return nil, err
+		}
+		a.ActorSub = strings.TrimSpace(a.ActorSub)
+		a.TargetSub = strings.TrimSpace(a.TargetSub)
+		a.AgentID = strings.TrimSpace(a.AgentID)
+		a.Action = strings.TrimSpace(a.Action)
+		a.Role = strings.TrimSpace(a.Role)
+		a.TraceID = strings.TrimSpace(a.TraceID)
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+func (d *DB) ListMembershipAuditByTrace(ctx context.Context, userSub, traceID string, limit int) ([]MembershipAudit, error) {
+	if d == nil || d.Pool == nil {
+		return nil, errors.New("db not open")
+	}
+	userSub = strings.TrimSpace(userSub)
+	traceID = strings.TrimSpace(traceID)
+	if userSub == "" || traceID == "" {
+		return nil, errors.New("missing user sub or trace_id")
+	}
+	if err := d.EnsureUser(ctx, userSub); err != nil {
+		return nil, err
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	rows, err := d.Pool.Query(ctx, `
+		SELECT CAST(EXTRACT(EPOCH FROM ts)*1000 AS BIGINT), actor_sub, target_sub, agent_id, action, role, trace_id
+		FROM broker_agent_membership_audit
+		WHERE trace_id=$1
+		  AND agent_id IN (
+		    SELECT m.agent_id
+		    FROM broker_agent_memberships m
+		    JOIN broker_agents a ON a.agent_id = m.agent_id
+		    WHERE m.user_sub=$2 AND a.enabled=true
+		  )
+		ORDER BY ts DESC, id DESC
+		LIMIT $3
+	`, traceID, userSub, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []MembershipAudit{}
+	for rows.Next() {
+		var a MembershipAudit
+		if err := rows.Scan(&a.TSUnixMS, &a.ActorSub, &a.TargetSub, &a.AgentID, &a.Action, &a.Role, &a.TraceID); err != nil {
+			return nil, err
+		}
+		a.ActorSub = strings.TrimSpace(a.ActorSub)
+		a.TargetSub = strings.TrimSpace(a.TargetSub)
+		a.AgentID = strings.TrimSpace(a.AgentID)
+		a.Action = strings.TrimSpace(a.Action)
+		a.Role = strings.TrimSpace(a.Role)
+		a.TraceID = strings.TrimSpace(a.TraceID)
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+func (d *DB) ListMembershipAuditByTraceAdmin(ctx context.Context, traceID string, limit int) ([]MembershipAudit, error) {
+	if d == nil || d.Pool == nil {
+		return nil, errors.New("db not open")
+	}
+	traceID = strings.TrimSpace(traceID)
+	if traceID == "" {
+		return nil, errors.New("missing trace_id")
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	if limit > 500 {
+		limit = 500
+	}
+	rows, err := d.Pool.Query(ctx, `
+		SELECT CAST(EXTRACT(EPOCH FROM ts)*1000 AS BIGINT), actor_sub, target_sub, agent_id, action, role, trace_id
+		FROM broker_agent_membership_audit
+		WHERE trace_id=$1
+		ORDER BY ts DESC, id DESC
+		LIMIT $2
+	`, traceID, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []MembershipAudit{}
+	for rows.Next() {
+		var a MembershipAudit
+		if err := rows.Scan(&a.TSUnixMS, &a.ActorSub, &a.TargetSub, &a.AgentID, &a.Action, &a.Role, &a.TraceID); err != nil {
+			return nil, err
+		}
+		a.ActorSub = strings.TrimSpace(a.ActorSub)
+		a.TargetSub = strings.TrimSpace(a.TargetSub)
+		a.AgentID = strings.TrimSpace(a.AgentID)
+		a.Action = strings.TrimSpace(a.Action)
+		a.Role = strings.TrimSpace(a.Role)
+		a.TraceID = strings.TrimSpace(a.TraceID)
+		out = append(out, a)
+	}
+	return out, rows.Err()
 }
 
 func (d *DB) InsertConnection(ctx context.Context, agentID, remoteAddr string, meta map[string]any) (int64, error) {

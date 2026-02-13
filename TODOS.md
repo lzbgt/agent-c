@@ -40,8 +40,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
    - [x] WebUI App.tsx refactor (<2000 LOC) with modular panels/hooks.
    - [x] Refactor oversized daemon/edge/db + CLI host toolset files into SOLID submodules (<2000 LOC each).
    - [x] Tool-loop guard: `max_tool_call_args_chars` (daemon default + run override + core limit event).
-   - [x] Broker proxy forwarding sets `X-Request-ID` and `X-Trace-ID` when missing (trace correlation).
-   - [ ] macOS full-stack compose verification on this host blocked by Docker `unpigz/runc` resource errors; needs Docker Desktop resources increased or prebuilt images.
+  - [x] Broker proxy forwarding sets `X-Request-ID` and `X-Trace-ID` when missing (trace correlation).
+  - [x] Broker membership management audit trail + SSE event + `/v1/trace` integration.
+  - [ ] macOS full-stack compose verification on this host blocked by Docker `unpigz/runc` resource errors; needs Docker Desktop resources increased or prebuilt images.
    - [x] Host-mode macOS full-stack verification script (Docker only for Postgres/Keycloak) added as fallback.
 
 ## Deferred (after macOS stability)

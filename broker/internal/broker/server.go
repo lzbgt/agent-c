@@ -479,6 +479,7 @@ func (s *Server) handleAgentsSubroutes(w http.ResponseWriter, r *http.Request) {
 	// - /v1/agents/{agent_id}/disconnect
 	// - /v1/agents/{agent_id}/members
 	// - /v1/agents/{agent_id}/members/{user_sub}
+	// - /v1/agents/{agent_id}/membership_audit
 
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/agents/")
 	parts := strings.SplitN(rest, "/", 3)
@@ -531,6 +532,10 @@ func (s *Server) handleAgentsSubroutes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleAgentMemberDelete(w, r, agentID, userSub)
+		return
+	}
+	if action == "membership_audit" {
+		s.handleAgentMembershipAudit(w, r, agentID)
 		return
 	}
 
@@ -1223,6 +1228,19 @@ func (s *Server) handleAgentMembersUpsert(w http.ResponseWriter, r *http.Request
 		http.Error(w, "upsert failed", http.StatusBadRequest)
 		return
 	}
+	_ = s.cfg.DB.InsertMembershipAudit(r.Context(), p.Sub, userSub, agentID, "upsert", role, traceIDFromContext(r.Context()))
+	if subs, err := s.cfg.DB.ListAgentMemberSubs(r.Context(), agentID); err == nil && len(subs) > 0 {
+		s.cfg.Events.PublishTo(subs, events.Event{
+			Type:    "agent_member_updated",
+			AgentID: agentID,
+			UserSub: userSub,
+			Payload: map[string]any{
+				"actor_sub": p.Sub,
+				"role":      role,
+				"action":    "upsert",
+			},
+		})
+	}
 	writeJSON(w, map[string]any{"ok": true})
 }
 
@@ -1267,7 +1285,82 @@ func (s *Server) handleAgentMemberDelete(w http.ResponseWriter, r *http.Request,
 		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
+	_ = s.cfg.DB.InsertMembershipAudit(r.Context(), p.Sub, userSub, agentID, "remove", "", traceIDFromContext(r.Context()))
+	if subs, err := s.cfg.DB.ListAgentMemberSubs(r.Context(), agentID); err == nil && len(subs) > 0 {
+		s.cfg.Events.PublishTo(subs, events.Event{
+			Type:    "agent_member_updated",
+			AgentID: agentID,
+			UserSub: userSub,
+			Payload: map[string]any{
+				"actor_sub": p.Sub,
+				"action":    "remove",
+			},
+		})
+	}
 	writeJSON(w, map[string]any{"ok": true})
+}
+
+func (s *Server) handleAgentMembershipAudit(w http.ResponseWriter, r *http.Request, agentID string) {
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if p.AuthKind != "oidc" {
+		http.Error(w, "oidc required", http.StatusForbidden)
+		return
+	}
+	ownerSub, err := s.cfg.DB.GetAgentOwnerSub(r.Context(), agentID)
+	if err != nil {
+		http.Error(w, "agent not found", http.StatusNotFound)
+		return
+	}
+	if !p.Admin && p.Sub != ownerSub {
+		http.Error(w, "not owner", http.StatusForbidden)
+		return
+	}
+	limit := 200
+	if v := strings.TrimSpace(r.URL.Query().Get("limit")); v != "" {
+		if n, ok := parseIntBounded(v, 1, 500); ok {
+			limit = n
+		}
+	}
+	var rows []db.MembershipAudit
+	if p.Admin {
+		rows, err = s.cfg.DB.ListMembershipAuditByAgentAdmin(r.Context(), agentID, limit)
+	} else {
+		rows, err = s.cfg.DB.ListMembershipAuditByAgent(r.Context(), p.Sub, agentID, limit)
+	}
+	if err != nil {
+		http.Error(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	out := make([]map[string]any, 0, len(rows))
+	for _, row := range rows {
+		entry := map[string]any{
+			"ts_unix_ms": row.TSUnixMS,
+			"actor_sub":  row.ActorSub,
+			"target_sub": row.TargetSub,
+			"action":     row.Action,
+		}
+		if row.Role != "" {
+			entry["role"] = row.Role
+		}
+		if row.TraceID != "" {
+			entry["trace_id"] = row.TraceID
+		}
+		out = append(out, entry)
+	}
+	writeJSON(w, map[string]any{
+		"ok":        true,
+		"agent_id":  agentID,
+		"owner_sub": ownerSub,
+		"audit":     out,
+	})
 }
 
 func (s *Server) handleEventsSSE(w http.ResponseWriter, r *http.Request) {
