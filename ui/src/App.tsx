@@ -46,6 +46,7 @@ export default function App() {
   const { connection, run: runSettings, client: clientSettings, brokerPanelOpen, setBrokerPanelOpen } = ui;
   const { effectiveBase, effectiveSseBase, daemonAuth, authKey } = connection;
   const profileName = connection.profileName;
+  const profileId = connection.activeProfileId;
   const { showSettings, setShowSettings } = ui;
   const connectionMode = connection.mode;
   const brokerAuthToken = connection.brokerAuthToken;
@@ -189,19 +190,26 @@ export default function App() {
     }
   };
 
-  // Session selection is scoped by daemon base URL.
-  // This avoids "lost session" issues when switching between multiple local agentd instances (different ports).
-  const [sessionByBaseJson, setSessionByBaseJson] = useLocalStorageState("agentui.sessionByBase", "{}");
+  const sessionScopeKey = React.useMemo(() => {
+    const pid = String(profileId || "").trim();
+    const base = String(effectiveBase || "").trim();
+    const baseKey = base ? `base:${base}` : "base:default";
+    return pid ? `profile:${pid}::${baseKey}` : baseKey;
+  }, [effectiveBase, profileId]);
+
+  // Session selection is scoped by profile id (or base URL as fallback) so multi-deployment profiles don't collide.
+  const [sessionByScopeJson, setSessionByScopeJson] = useLocalStorageState("agentui.sessionByScope", "{}");
+  const [sessionByBaseJson] = useLocalStorageState("agentui.sessionByBase", "{}");
   const sessionId = React.useMemo(() => {
-    const m = (loadJson(sessionByBaseJson) as Record<string, any>) || {};
-    const sid = typeof m?.[effectiveBase] === "string" ? String(m[effectiveBase]) : "";
+    const m = (loadJson(sessionByScopeJson) as Record<string, any>) || {};
+    const sid = typeof m?.[sessionScopeKey] === "string" ? String(m[sessionScopeKey]) : "";
     return sid.trim().length > 0 ? sid.trim() : "default";
-  }, [effectiveBase, sessionByBaseJson]);
+  }, [sessionByScopeJson, sessionScopeKey]);
 
   const historyUiKey = React.useMemo(() => {
     const sid = String(sessionId || "").trim();
-    return `agentui.historyUi:${effectiveBase}::${sid}`;
-  }, [effectiveBase, sessionId]);
+    return `agentui.historyUi:${sessionScopeKey}::${sid}`;
+  }, [sessionId, sessionScopeKey]);
   const [showAllHistoryEntries, setShowAllHistoryEntries] = useLocalStorageState<boolean>(`${historyUiKey}:showAll`, false);
   const [showHistoryMessages, setShowHistoryMessages] = useLocalStorageState<boolean>(`${historyUiKey}:showMessages`, false);
   const [historyExpandedByKey, setHistoryExpandedByKey] = useLocalStorageState<Record<string, boolean>>(
@@ -229,9 +237,9 @@ export default function App() {
   const setSessionId = React.useCallback(
     (sid: string) => {
       const nextSid = String(sid || "").trim() || "default";
-      setSessionByBaseJson((prevRaw) => {
+      setSessionByScopeJson((prevRaw) => {
         const prev = (loadJson(String(prevRaw || "")) as Record<string, any>) || {};
-        const next = { ...prev, [effectiveBase]: nextSid };
+        const next = { ...prev, [sessionScopeKey]: nextSid };
         try {
           return JSON.stringify(next);
         } catch {
@@ -239,21 +247,41 @@ export default function App() {
         }
       });
     },
-    [effectiveBase, setSessionByBaseJson],
+    [sessionScopeKey, setSessionByScopeJson],
   );
 
-  const sceneEntities = React.useMemo(() => {
-    const sid = typeof sessionId === "string" ? sessionId.trim() : "";
-    const m = (sid && sceneBySessionRef.current[sid]) || {};
-    return Object.values(m);
-  }, [sceneVersion, sessionId]);
+  const sceneStoreKey = React.useMemo(() => {
+    const sid = String(sessionId || "").trim() || "default";
+    return `${sessionScopeKey}::${sid}`;
+  }, [sessionId, sessionScopeKey]);
 
-  // Migration: older UI versions stored a single global `agentui.sessionId` not scoped by base URL.
-  // If present, use it as the initial session for the current daemon base.
+  const jobStoreKey = React.useMemo(() => {
+    const sid = String(sessionId || "").trim() || "default";
+    return `${sessionScopeKey}::${sid}`;
+  }, [sessionId, sessionScopeKey]);
+
+  const sceneEntities = React.useMemo(() => {
+    const m = sceneBySessionRef.current[sceneStoreKey] || {};
+    return Object.values(m);
+  }, [sceneStoreKey, sceneVersion]);
+
+  // Migration: older UI versions stored sessions by base URL or a single global session id.
+  // If present, use them as initial values for the current scope.
   React.useEffect(() => {
     if (typeof window === "undefined" || !window.localStorage) return;
-    const key = "agentui.sessionId";
-    const raw = window.localStorage.getItem(key);
+    const scopeMap = (loadJson(String(sessionByScopeJson || "")) as Record<string, any>) || {};
+    const have = typeof scopeMap?.[sessionScopeKey] === "string" && String(scopeMap[sessionScopeKey]).trim().length > 0;
+    if (have) return;
+
+    const baseMap = (loadJson(String(sessionByBaseJson || "")) as Record<string, any>) || {};
+    const legacyBase = typeof baseMap?.[effectiveBase] === "string" ? String(baseMap[effectiveBase]) : "";
+    const legacyBaseTrim = legacyBase.trim();
+    if (legacyBaseTrim) {
+      setSessionId(legacyBaseTrim);
+      return;
+    }
+
+    const raw = window.localStorage.getItem("agentui.sessionId");
     if (!raw) return;
     let legacy = "";
     try {
@@ -264,18 +292,8 @@ export default function App() {
     }
     const legacyTrim = String(legacy || "").trim();
     if (!legacyTrim) return;
-    let parsed: Record<string, any> = {};
-    try {
-      const v = JSON.parse(String(sessionByBaseJson || ""));
-      parsed = v && typeof v === "object" ? (v as any) : {};
-    } catch {
-      parsed = {};
-    }
-    const m = parsed;
-    const have = typeof m?.[effectiveBase] === "string" && String(m[effectiveBase]).trim().length > 0;
-    if (have) return;
     setSessionId(legacyTrim);
-  }, [effectiveBase, sessionByBaseJson, setSessionId]);
+  }, [effectiveBase, sessionByBaseJson, sessionByScopeJson, sessionScopeKey, setSessionId]);
 
   const parseJobsBySession = React.useCallback(() => {
     const v = loadJson(jobsBySessionJson);
@@ -302,10 +320,11 @@ export default function App() {
 
   const applySceneOps = React.useCallback(
     (sid: string, ops: any[]) => {
-      const sessionKey = String(sid || "").trim();
-      if (!sessionKey) throw new Error("missing session_id for scene ops");
-      if (!sceneBySessionRef.current[sessionKey]) sceneBySessionRef.current[sessionKey] = {};
-      const store = sceneBySessionRef.current[sessionKey];
+      const sessionId = String(sid || "").trim();
+      if (!sessionId) throw new Error("missing session_id for scene ops");
+      const storeKey = `${sessionScopeKey}::${sessionId}`;
+      if (!sceneBySessionRef.current[storeKey]) sceneBySessionRef.current[storeKey] = {};
+      const store = sceneBySessionRef.current[storeKey];
 
       const now = Date.now();
       const results: any[] = [];
@@ -394,16 +413,15 @@ export default function App() {
       setSceneVersion((v) => v + 1);
       // Best-effort: persist to daemon so the Scene is durable across refresh.
       if (persistOps.length > 0) {
-        void apiPostSessionSceneApply(effectiveBase, { session_id: sessionKey, ops: persistOps }, daemonAuth)
+        void apiPostSessionSceneApply(effectiveBase, { session_id: sessionId, ops: persistOps }, daemonAuth)
           .then((r) => {
             if (!r || r.ok !== true) return;
             const updated = typeof r.updated_unix_ms === "number" ? r.updated_unix_ms : 0;
-            const key = `${effectiveBase}::${sessionKey}`;
-            if (updated > 0) lastSceneUpdatedMsRef.current[key] = Math.max(lastSceneUpdatedMsRef.current[key] || 0, updated);
+            if (updated > 0) lastSceneUpdatedMsRef.current[storeKey] = Math.max(lastSceneUpdatedMsRef.current[storeKey] || 0, updated);
             // If the daemon returns a scene snapshot, prefer it (authoritative).
             const scene = r.scene && typeof r.scene === "object" && !Array.isArray(r.scene) ? (r.scene as any) : null;
             if (scene) {
-              sceneBySessionRef.current[sessionKey] = scene;
+              sceneBySessionRef.current[storeKey] = scene;
               setSceneVersion((v) => v + 1);
             }
           })
@@ -411,7 +429,7 @@ export default function App() {
       }
       return { ok: true, results, count: Object.keys(store).length };
     },
-    [daemonAuth, effectiveBase, setSceneVersion],
+    [daemonAuth, effectiveBase, sessionScopeKey, setSceneVersion],
   );
 
   // Keep layout CSS vars in sync with actual measured bars (so Scene can truly fill the viewport).
@@ -502,10 +520,19 @@ export default function App() {
     const sid = typeof sessionId === "string" ? sessionId.trim() : "";
     if (!sid) return;
     const jobs = parseJobsBySession();
-    const rec = jobs[sid];
+    const rec = jobs[jobStoreKey] || jobs[sid];
     const jobId = typeof rec?.job_id === "string" ? rec.job_id : "";
     if (!jobId) return;
     const cursor = typeof rec?.cursor === "number" && Number.isFinite(rec.cursor) && rec.cursor >= 0 ? Math.floor(rec.cursor) : 0;
+
+    if (!jobs[jobStoreKey] && jobs[sid]) {
+      writeJobsBySession((prev) => {
+        if (prev[jobStoreKey]) return prev;
+        const next = { ...prev, [jobStoreKey]: prev[sid] };
+        delete next[sid];
+        return next;
+      });
+    }
 
     let cancelled = false;
     (async () => {
@@ -515,7 +542,7 @@ export default function App() {
         if (!job.ok) {
           writeJobsBySession((prev) => {
             const next = { ...prev };
-            delete next[sid];
+            delete next[jobStoreKey];
             return next;
           });
           return;
@@ -533,7 +560,7 @@ export default function App() {
         // Job already finished; clear persisted pointer.
         writeJobsBySession((prev) => {
           const next = { ...prev };
-          delete next[sid];
+          delete next[jobStoreKey];
           return next;
         });
       } catch {
@@ -543,7 +570,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [activeJobId, daemonAuth, effectiveBase, parseJobsBySession, sessionId, writeJobsBySession]);
+  }, [activeJobId, daemonAuth, effectiveBase, jobStoreKey, parseJobsBySession, sessionId, writeJobsBySession]);
 
   const health = useQuery({
     queryKey: ["health", effectiveBase, authKey],
@@ -685,17 +712,17 @@ export default function App() {
     if (!sid) return;
     if (!sessionScene.data || sessionScene.data.ok !== true) return;
     const updated = typeof (sessionScene.data as any)?.updated_unix_ms === "number" ? (sessionScene.data as any).updated_unix_ms : 0;
-    const key = `${effectiveBase}::${sid}`;
+    const key = sceneStoreKey;
     const hasPrev = Object.prototype.hasOwnProperty.call(lastSceneUpdatedMsRef.current, key);
     const prev = hasPrev ? lastSceneUpdatedMsRef.current[key] || 0 : -1;
     if (hasPrev && updated <= prev) return;
 
     const scene = (sessionScene.data as any)?.scene;
     if (!scene || typeof scene !== "object" || Array.isArray(scene)) return;
-    sceneBySessionRef.current[sid] = scene as any;
+    sceneBySessionRef.current[key] = scene as any;
     lastSceneUpdatedMsRef.current[key] = updated;
     setSceneVersion((v) => v + 1);
-  }, [effectiveBase, sessionId, sessionScene.data]);
+  }, [sceneStoreKey, sessionId, sessionScene.data]);
 
   const dbUiActions = useQuery({
     queryKey: ["db_ui_actions", effectiveBase, authKey, sessionId],
@@ -1027,7 +1054,7 @@ export default function App() {
       if (sid) {
         writeJobsBySession((prev) => ({
           ...prev,
-          [sid]: { job_id: v.job.job_id, cursor: 0, started_unix_ms: Date.now() },
+          [jobStoreKey]: { job_id: v.job.job_id, cursor: 0, started_unix_ms: Date.now() },
         }));
       }
     },
@@ -1075,10 +1102,10 @@ export default function App() {
     const t = window.setInterval(() => {
       const cursor = cursorRef.current;
       writeJobsBySession((prev) => {
-        const cur = prev[sid];
+        const cur = prev[jobStoreKey];
         if (!cur || cur.job_id !== jobId) return prev;
         if (cur.cursor === cursor) return prev;
-        return { ...prev, [sid]: { ...cur, cursor, updated_unix_ms: Date.now() } };
+        return { ...prev, [jobStoreKey]: { ...cur, cursor, updated_unix_ms: Date.now() } };
       });
     }, 1000);
     return () => {
@@ -1088,7 +1115,7 @@ export default function App() {
         // ignore
       }
     };
-  }, [activeJobId, sessionId, writeJobsBySession]);
+  }, [activeJobId, jobStoreKey, sessionId, writeJobsBySession]);
 
   // Execute any persisted entity_apply RPCs from DB ui_actions that have not yet been acknowledged.
   // This makes client RPC execution reliable across refreshes and SSE dropouts.
@@ -1372,7 +1399,7 @@ export default function App() {
             if (sid) {
               writeJobsBySession((prev) => {
                 const nextm = { ...prev };
-                delete nextm[sid];
+                delete nextm[jobStoreKey];
                 return nextm;
               });
             }
@@ -1437,7 +1464,7 @@ export default function App() {
             if (sid) {
               writeJobsBySession((prev) => {
                 const nextm = { ...prev };
-                delete nextm[sid];
+                delete nextm[jobStoreKey];
                 return nextm;
               });
             }
@@ -1514,7 +1541,7 @@ export default function App() {
             if (sid) {
               writeJobsBySession((prev) => {
                 const nextm = { ...prev };
-                delete nextm[sid];
+                delete nextm[jobStoreKey];
                 return nextm;
               });
             }
@@ -1587,12 +1614,12 @@ export default function App() {
           } catch {
             setJobNotice("failed to parse job_done event (falling back to polling)");
           }
-          setActiveJobId(null);
-          const sid = String(sessionId || "").trim();
+            setActiveJobId(null);
+            const sid = String(sessionId || "").trim();
             if (sid) {
               writeJobsBySession((prev) => {
                 const nextm = { ...prev };
-                delete nextm[sid];
+                delete nextm[jobStoreKey];
                 return nextm;
               });
             }
@@ -1643,7 +1670,18 @@ export default function App() {
         // ignore
       }
     };
-  }, [activeJobId, auditRefetch, connectionMode, daemonAuth, daemonAuthToken, effectiveBase, effectiveSseBase, sessionId, sessionsRefetch]);
+  }, [
+    activeJobId,
+    auditRefetch,
+    connectionMode,
+    daemonAuth,
+    daemonAuthToken,
+    effectiveBase,
+    effectiveSseBase,
+    jobStoreKey,
+    sessionId,
+    sessionsRefetch,
+  ]);
 
   return (
     <div
