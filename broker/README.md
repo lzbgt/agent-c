@@ -24,6 +24,7 @@ This directory also includes `agentd-connector`, a lightweight “bridge” that
 - `GET /v1/agents/{agent_id}/proxy/...` — proxy HTTP request to agent (OIDC required)
 - `GET /v1/agents/{agent_id}/proxy_sse/...` — proxy streaming/SSE-like request to agent (OIDC required)
 - `GET /v1/events` — Server-Sent Events stream for the authenticated subject (OIDC required)
+  - emits events like `agent_connected`, `agent_disconnected`, `relay_audit`, `client_auth_reload`
 
 ## Production settings (recommended)
 

@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"flag"
 	"log"
 	"net/http"
@@ -226,6 +227,16 @@ func main() {
 			adminSubs[sub] = true
 		}
 	}
+	adminSubsList := func() []string {
+		if len(adminSubs) == 0 {
+			return nil
+		}
+		out := make([]string, 0, len(adminSubs))
+		for sub := range adminSubs {
+			out = append(out, sub)
+		}
+		return out
+	}
 	allowedOrigins := []string{}
 	for _, part := range strings.Split(*corsOriginsCSV, ",") {
 		o := strings.TrimSpace(part)
@@ -338,27 +349,49 @@ func main() {
 		(*idleTimeout).String(),
 		(*readHeaderTimeout).String(),
 	)
-	reloadClientAuth := func(reason string) {
+	reloadClientAuth := func(reason string) error {
 		if clientAuthPath == "" {
+			err := errors.New("client auth file not configured")
 			log.Printf("client auth reload requested but no client auth file configured")
-			return
+			return err
 		}
 		ca, err := config.LoadClientAuthFromFile(clientAuthPath)
 		if err != nil {
 			s.SetClientAuthStatus(false, err.Error())
 			log.Printf("client auth reload failed (%s): %v", reason, err)
-			return
+			if subs := adminSubsList(); len(subs) > 0 {
+				ev.PublishTo(subs, events.Event{
+					Type: "client_auth_reload",
+					Payload: map[string]any{
+						"ok":     false,
+						"reason": reason,
+						"error":  err.Error(),
+					},
+				})
+			}
+			return err
 		}
 		s.SetClientAuth(ca)
 		s.SetClientAuthStatus(true, "")
 		log.Printf("client auth reloaded (%s)", reason)
+		if subs := adminSubsList(); len(subs) > 0 {
+			ev.PublishTo(subs, events.Event{
+				Type: "client_auth_reload",
+				Payload: map[string]any{
+					"ok":     true,
+					"reason": reason,
+				},
+			})
+		}
+		return nil
 	}
+	s.SetClientAuthReload(reloadClientAuth)
 	if clientAuthPath != "" {
 		hupCh := make(chan os.Signal, 1)
 		signal.Notify(hupCh, syscall.SIGHUP)
 		go func() {
 			for range hupCh {
-				reloadClientAuth("sighup")
+				_ = reloadClientAuth("sighup")
 			}
 		}()
 	}
@@ -375,7 +408,7 @@ func main() {
 			ticker := time.NewTicker(interval)
 			go func() {
 				for range ticker.C {
-					reloadClientAuth("interval")
+					_ = reloadClientAuth("interval")
 				}
 			}()
 		}
