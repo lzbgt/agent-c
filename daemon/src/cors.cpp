@@ -54,6 +54,7 @@ void cors_apply(const HttpRequest& req, HttpResponse* resp, const CorsConfig& cf
   if (!origin) return;
 
   resp->headers["Access-Control-Allow-Origin"] = *origin;
+  resp->headers["Access-Control-Expose-Headers"] = "X-Request-Id, X-Trace-Id";
   if (!cfg.allow_methods.empty()) {
     resp->headers["Access-Control-Allow-Methods"] = cfg.allow_methods;
   }
@@ -75,6 +76,7 @@ std::string cors_wire_headers(const HttpRequest& req, const CorsConfig& cfg) {
 
   std::ostringstream oss;
   oss << "Access-Control-Allow-Origin: " << *origin << "\r\n";
+  oss << "Access-Control-Expose-Headers: X-Request-Id, X-Trace-Id\r\n";
   if (!cfg.allow_methods.empty()) {
     oss << "Access-Control-Allow-Methods: " << cfg.allow_methods << "\r\n";
   }
@@ -91,4 +93,3 @@ std::string cors_wire_headers(const HttpRequest& req, const CorsConfig& cfg) {
 }
 
 }  // namespace agentd
-

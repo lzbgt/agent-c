@@ -81,7 +81,7 @@ static CorsConfig cors_cfg_from_config(const DaemonConfig& cfg) {
   CorsConfig cors_cfg;
   cors_cfg.max_age_seconds = cfg.cors_max_age_seconds;
   cors_cfg.allow_headers = cfg.cors_allow_headers.empty()
-    ? std::string("Content-Type, Authorization, X-OpenRouter-Key")
+    ? std::string("Content-Type, Authorization, X-OpenRouter-Key, X-Request-Id, X-Trace-Id")
     : cfg.cors_allow_headers;
   cors_cfg.allow_methods = cfg.cors_allow_methods.empty()
     ? std::string("GET, POST, DELETE, OPTIONS")

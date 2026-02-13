@@ -24,6 +24,8 @@ assert_cors_headers() {
   local headers="$1"
   local want_origin="$2" # "*" | exact | "__absent__"
   local need_x_openrouter="$3" # "1"|"0"
+  local need_request_ids="$4" # "1"|"0"
+  local need_expose="$5" # "1"|"0"
 
   python3 - <<PY
 import sys
@@ -58,10 +60,21 @@ else:
     raise SystemExit(1)
 
 need_x = "${need_x_openrouter}" == "1"
+need_req_ids = "${need_request_ids}" == "1"
+need_expose = "${need_expose}" == "1"
 allow_headers = get("Access-Control-Allow-Headers") or ""
 if need_x and "X-OpenRouter-Key" not in allow_headers:
   print("missing X-OpenRouter-Key in allow-headers:", allow_headers, file=sys.stderr)
   raise SystemExit(1)
+if need_req_ids:
+  if "X-Request-Id" not in allow_headers or "X-Trace-Id" not in allow_headers:
+    print("missing X-Request-Id/X-Trace-Id in allow-headers:", allow_headers, file=sys.stderr)
+    raise SystemExit(1)
+expose_headers = get("Access-Control-Expose-Headers") or ""
+if need_expose:
+  if "X-Request-Id" not in expose_headers or "X-Trace-Id" not in expose_headers:
+    print("missing X-Request-Id/X-Trace-Id in expose-headers:", expose_headers, file=sys.stderr)
+    raise SystemExit(1)
 PY
 }
 
@@ -94,7 +107,7 @@ agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT}" "agentd_cors_smoke.loopba
 agentd_smoke_wait_health "${BASE}"
 
 hdr="$(preflight_headers "${BASE}" "${ORIGIN_OK}")"
-assert_cors_headers "${hdr}" "*" "1"
+assert_cors_headers "${hdr}" "*" "1" "1" "1"
 
 # 2) Non-loopback defaults: CORS disabled unless explicitly configured.
 agentd_smoke_stop
@@ -108,7 +121,7 @@ agentd_smoke_start_bind "${AGENTD_BIN}" "${BIND_HOST}" "${CONNECT_HOST}" "${PORT
 agentd_smoke_wait_health "${BASE}"
 
 hdr="$(preflight_headers "${BASE}" "${ORIGIN_OK}")"
-assert_cors_headers "${hdr}" "__absent__" "0"
+assert_cors_headers "${hdr}" "__absent__" "0" "0" "0"
 
 # 3) Non-loopback explicit allowlist: reflect allowed origin, deny others.
 agentd_smoke_stop
@@ -123,10 +136,10 @@ agentd_smoke_start_bind "${AGENTD_BIN}" "${BIND_HOST}" "${CONNECT_HOST}" "${PORT
 agentd_smoke_wait_health "${BASE}"
 
 hdr="$(preflight_headers "${BASE}" "${ORIGIN_OK}")"
-assert_cors_headers "${hdr}" "${ORIGIN_OK}" "1"
+assert_cors_headers "${hdr}" "${ORIGIN_OK}" "1" "1" "1"
 
 hdr2="$(health_headers "${BASE}" "${ORIGIN_OK}")"
-assert_cors_headers "${hdr2}" "${ORIGIN_OK}" "0"
+assert_cors_headers "${hdr2}" "${ORIGIN_OK}" "0" "0" "1"
 
 hdr3="$(preflight_headers "${BASE}" "${ORIGIN_BAD}")"
-assert_cors_headers "${hdr3}" "__absent__" "0"
+assert_cors_headers "${hdr3}" "__absent__" "0" "0" "0"

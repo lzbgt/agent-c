@@ -102,7 +102,8 @@ Example (remote UI origin allowlist):
 ./build/agentd --host 0.0.0.0 --auth-token "your_token" --cors-origin "https://your-ui.example"
 ```
 
-By default, `agentd` allows common headers needed by the UI, including `Authorization` (daemon auth) and `X-OpenRouter-Key`
+By default, `agentd` allows common headers needed by the UI, including `Authorization` (daemon auth), `X-OpenRouter-Key`,
+and request correlation headers `X-Request-Id` / `X-Trace-Id` (also exposed for browser access).
 (provider key for the OpenRouter model catalog endpoint).
 
 `ctest` includes two network smoke tests (OpenRouter + DeepSeek). They will run if keys are present
