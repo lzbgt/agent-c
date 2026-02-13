@@ -105,6 +105,7 @@ func main() {
 	var clientAuthReloadMS = flag.Int64("client-auth-reload-ms", 0, "reload client auth file interval in ms (0 disables; env AGENTD_BROKER_CLIENT_AUTH_RELOAD_MS)")
 	var clientAuthStrict = flag.Bool("client-auth-strict", false, "fail readiness if client auth reload fails (env AGENTD_BROKER_CLIENT_AUTH_STRICT)")
 	var clientAuthMaxAgeMS = flag.Int64("client-auth-max-age-ms", 0, "max age in ms since last client auth reload (0 disables; env AGENTD_BROKER_CLIENT_AUTH_MAX_AGE_MS)")
+	var clientAuthEventIncludeError = flag.Bool("client-auth-event-include-error", false, "include reload error text in events (env AGENTD_BROKER_CLIENT_AUTH_EVENT_INCLUDE_ERROR)")
 	var adminSubsCSV = flag.String("admin-subs", "", "comma-separated OIDC sub values treated as admin")
 	var corsOriginsCSV = flag.String("cors-origins", "", "comma-separated allowed CORS origins (e.g. https://ui.example.com)")
 	var maxPendingPerAgent = flag.Int("max-pending-per-agent", 256, "max pending proxied requests per agent (0=unlimited)")
@@ -160,6 +161,10 @@ func main() {
 	maxAgeMS := *clientAuthMaxAgeMS
 	if v, ok := envInt64("AGENTD_BROKER_CLIENT_AUTH_MAX_AGE_MS"); ok && v > 0 {
 		maxAgeMS = v
+	}
+	includeErr := *clientAuthEventIncludeError
+	if v, ok := envBool("AGENTD_BROKER_CLIENT_AUTH_EVENT_INCLUDE_ERROR"); ok && v {
+		includeErr = true
 	}
 
 	iss := strings.TrimSpace(*oidcIssuer)
@@ -334,6 +339,7 @@ func main() {
 	if maxAgeMS > 0 {
 		log.Printf("client auth max age: %dms", maxAgeMS)
 	}
+	log.Printf("client auth event include error: %v", includeErr)
 	log.Printf("cors origins configured: %v", len(allowedOrigins) > 0)
 	log.Printf(
 		"limits: max_pending_per_agent=%d max_streams_per_agent=%d max_body_bytes=%d max_header_bytes=%d",
@@ -360,13 +366,16 @@ func main() {
 			s.SetClientAuthStatus(false, err.Error())
 			log.Printf("client auth reload failed (%s): %v", reason, err)
 			if subs := adminSubsList(); len(subs) > 0 {
+				payload := map[string]any{
+					"ok":     false,
+					"reason": reason,
+				}
+				if includeErr {
+					payload["error"] = err.Error()
+				}
 				ev.PublishTo(subs, events.Event{
-					Type: "client_auth_reload",
-					Payload: map[string]any{
-						"ok":     false,
-						"reason": reason,
-						"error":  err.Error(),
-					},
+					Type:    "client_auth_reload",
+					Payload: payload,
 				})
 			}
 			return err
