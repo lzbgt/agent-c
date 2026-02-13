@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"sync"
@@ -476,6 +477,8 @@ func (s *Server) handleAgentsSubroutes(w http.ResponseWriter, r *http.Request) {
 	// - /v1/agents/{agent_id}/proxy/<agentd_path>
 	// - /v1/agents/{agent_id}/proxy_sse/<agentd_path>
 	// - /v1/agents/{agent_id}/disconnect
+	// - /v1/agents/{agent_id}/members
+	// - /v1/agents/{agent_id}/members/{user_sub}
 
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/agents/")
 	parts := strings.SplitN(rest, "/", 3)
@@ -508,6 +511,26 @@ func (s *Server) handleAgentsSubroutes(w http.ResponseWriter, r *http.Request) {
 			agentPath = "/" + parts[2]
 		}
 		s.handleAgentProxySSE(w, r, agentID, agentPath)
+		return
+	}
+	if action == "members" {
+		if len(parts) == 2 || parts[2] == "" {
+			switch r.Method {
+			case "GET":
+				s.handleAgentMembersList(w, r, agentID)
+			case "POST":
+				s.handleAgentMembersUpsert(w, r, agentID)
+			default:
+				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			}
+			return
+		}
+		userSub, err := url.PathUnescape(parts[2])
+		if err != nil {
+			http.Error(w, "invalid user_sub", http.StatusBadRequest)
+			return
+		}
+		s.handleAgentMemberDelete(w, r, agentID, userSub)
 		return
 	}
 
@@ -1089,6 +1112,159 @@ func (s *Server) handleAgentDelete(w http.ResponseWriter, r *http.Request, agent
 	}
 	if err := s.cfg.DB.DeleteAgentIfOwner(r.Context(), p.Sub, agentID); err != nil {
 		http.Error(w, "not owner", http.StatusForbidden)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+func (s *Server) handleAgentMembersList(w http.ResponseWriter, r *http.Request, agentID string) {
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if p.AuthKind != "oidc" {
+		http.Error(w, "oidc required", http.StatusForbidden)
+		return
+	}
+	ownerSub, err := s.cfg.DB.GetAgentOwnerSub(r.Context(), agentID)
+	if err != nil {
+		http.Error(w, "agent not found", http.StatusNotFound)
+		return
+	}
+	if !p.Admin && p.Sub != ownerSub {
+		http.Error(w, "not owner", http.StatusForbidden)
+		return
+	}
+	members, err := s.cfg.DB.ListAgentMembers(r.Context(), agentID)
+	if err != nil {
+		http.Error(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	out := make([]map[string]any, 0, len(members))
+	for _, m := range members {
+		out = append(out, map[string]any{
+			"user_sub":        m.UserSub,
+			"role":            m.Role,
+			"created_unix_ms": m.CreatedAt.UnixMilli(),
+		})
+	}
+	writeJSON(w, map[string]any{
+		"ok":        true,
+		"agent_id":  agentID,
+		"owner_sub": ownerSub,
+		"members":   out,
+	})
+}
+
+func (s *Server) handleAgentMembersUpsert(w http.ResponseWriter, r *http.Request, agentID string) {
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if p.AuthKind != "oidc" {
+		http.Error(w, "oidc required", http.StatusForbidden)
+		return
+	}
+	ownerSub, err := s.cfg.DB.GetAgentOwnerSub(r.Context(), agentID)
+	if err != nil {
+		http.Error(w, "agent not found", http.StatusNotFound)
+		return
+	}
+	if !p.Admin && p.Sub != ownerSub {
+		http.Error(w, "not owner", http.StatusForbidden)
+		return
+	}
+	body, err := readBodyBounded(r.Body, 1024*1024)
+	if err != nil {
+		http.Error(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	req := struct {
+		UserSub string `json:"user_sub"`
+		Role    string `json:"role"`
+	}{}
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+	}
+	userSub := strings.TrimSpace(req.UserSub)
+	if userSub == "" {
+		http.Error(w, "missing user_sub", http.StatusBadRequest)
+		return
+	}
+	role := strings.ToLower(strings.TrimSpace(req.Role))
+	if role == "" {
+		role = "user"
+	}
+	if userSub == ownerSub {
+		role = "owner"
+	}
+	if role != "user" && role != "admin" && role != "owner" {
+		http.Error(w, "invalid role", http.StatusBadRequest)
+		return
+	}
+	if role == "owner" && userSub != ownerSub {
+		http.Error(w, "owner role only for agent owner", http.StatusForbidden)
+		return
+	}
+	if err := s.cfg.DB.UpsertAgentMember(r.Context(), agentID, userSub, role); err != nil {
+		http.Error(w, "upsert failed", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true})
+}
+
+func (s *Server) handleAgentMemberDelete(w http.ResponseWriter, r *http.Request, agentID, userSub string) {
+	if r.Method != "DELETE" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if p.AuthKind != "oidc" {
+		http.Error(w, "oidc required", http.StatusForbidden)
+		return
+	}
+	ownerSub, err := s.cfg.DB.GetAgentOwnerSub(r.Context(), agentID)
+	if err != nil {
+		http.Error(w, "agent not found", http.StatusNotFound)
+		return
+	}
+	if !p.Admin && p.Sub != ownerSub {
+		http.Error(w, "not owner", http.StatusForbidden)
+		return
+	}
+	userSub = strings.TrimSpace(userSub)
+	if userSub == "" {
+		http.Error(w, "missing user_sub", http.StatusBadRequest)
+		return
+	}
+	if userSub == ownerSub {
+		http.Error(w, "cannot remove owner", http.StatusForbidden)
+		return
+	}
+	ok, err := s.cfg.DB.RemoveAgentMember(r.Context(), agentID, userSub)
+	if err != nil {
+		http.Error(w, "delete failed", http.StatusInternalServerError)
+		return
+	}
+	if !ok {
+		http.Error(w, "not found", http.StatusNotFound)
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true})

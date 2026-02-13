@@ -20,6 +20,9 @@ This directory also includes `agentd-connector`, a lightweight “bridge” that
 - `POST /v1/client_auth/reload` — admin-only reload of client auth file
 - `GET /v1/agent/connect` — agent WebSocket (mTLS recommended)
 - `GET /v1/agents` / `POST /v1/agents` — list/create agents (OIDC required)
+- `GET /v1/agents/{agent_id}/members` — list agent members (owner/admin)
+- `POST /v1/agents/{agent_id}/members` — add/update agent member (owner/admin)
+- `DELETE /v1/agents/{agent_id}/members/{user_sub}` — remove agent member (owner/admin)
 - `POST /v1/orchestrate` — fan-out `/api/v1/run` calls across multiple agents (OIDC required)
 - `GET /v1/agents/{agent_id}/proxy/...` — proxy HTTP request to agent (OIDC required)
 - `GET /v1/agents/{agent_id}/proxy_sse/...` — proxy streaming/SSE-like request to agent (OIDC required)

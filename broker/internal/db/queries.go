@@ -18,6 +18,12 @@ type Agent struct {
 	MetaJSON   json.RawMessage
 }
 
+type AgentMember struct {
+	UserSub   string
+	Role      string
+	CreatedAt time.Time
+}
+
 func (a Agent) Labels() map[string]any {
 	if len(a.LabelsJSON) == 0 {
 		return map[string]any{}
@@ -309,6 +315,21 @@ func (d *DB) AgentEnabled(ctx context.Context, agentID string) (bool, error) {
 	return enabled, nil
 }
 
+func (d *DB) GetAgentOwnerSub(ctx context.Context, agentID string) (string, error) {
+	if d == nil || d.Pool == nil {
+		return "", errors.New("db not open")
+	}
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return "", errors.New("missing agent_id")
+	}
+	var owner string
+	if err := d.Pool.QueryRow(ctx, `SELECT owner_sub FROM broker_agents WHERE agent_id=$1`, agentID).Scan(&owner); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(owner), nil
+}
+
 func (d *DB) ListAgentMemberSubs(ctx context.Context, agentID string) ([]string, error) {
 	if d == nil || d.Pool == nil {
 		return nil, errors.New("db not open")
@@ -334,6 +355,80 @@ func (d *DB) ListAgentMemberSubs(ctx context.Context, agentID string) ([]string,
 		}
 	}
 	return out, rows.Err()
+}
+
+func (d *DB) ListAgentMembers(ctx context.Context, agentID string) ([]AgentMember, error) {
+	if d == nil || d.Pool == nil {
+		return nil, errors.New("db not open")
+	}
+	agentID = strings.TrimSpace(agentID)
+	if agentID == "" {
+		return nil, errors.New("missing agent_id")
+	}
+	rows, err := d.Pool.Query(ctx, `
+		SELECT user_sub, role, created_at
+		FROM broker_agent_memberships
+		WHERE agent_id=$1
+		ORDER BY created_at DESC
+	`, agentID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []AgentMember{}
+	for rows.Next() {
+		var m AgentMember
+		if err := rows.Scan(&m.UserSub, &m.Role, &m.CreatedAt); err != nil {
+			return nil, err
+		}
+		m.UserSub = strings.TrimSpace(m.UserSub)
+		m.Role = strings.TrimSpace(m.Role)
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
+
+func (d *DB) UpsertAgentMember(ctx context.Context, agentID, userSub, role string) error {
+	if d == nil || d.Pool == nil {
+		return errors.New("db not open")
+	}
+	agentID = strings.TrimSpace(agentID)
+	userSub = strings.TrimSpace(userSub)
+	role = strings.TrimSpace(role)
+	if agentID == "" || userSub == "" {
+		return errors.New("missing agent_id or user_sub")
+	}
+	if role == "" {
+		role = "user"
+	}
+	if err := d.EnsureUser(ctx, userSub); err != nil {
+		return err
+	}
+	_, err := d.Pool.Exec(ctx, `
+		INSERT INTO broker_agent_memberships(agent_id, user_sub, role)
+		VALUES($1, $2, $3)
+		ON CONFLICT(agent_id, user_sub) DO UPDATE SET role=EXCLUDED.role
+	`, agentID, userSub, role)
+	return err
+}
+
+func (d *DB) RemoveAgentMember(ctx context.Context, agentID, userSub string) (bool, error) {
+	if d == nil || d.Pool == nil {
+		return false, errors.New("db not open")
+	}
+	agentID = strings.TrimSpace(agentID)
+	userSub = strings.TrimSpace(userSub)
+	if agentID == "" || userSub == "" {
+		return false, errors.New("missing agent_id or user_sub")
+	}
+	tag, err := d.Pool.Exec(ctx, `
+		DELETE FROM broker_agent_memberships
+		WHERE agent_id=$1 AND user_sub=$2
+	`, agentID, userSub)
+	if err != nil {
+		return false, err
+	}
+	return tag.RowsAffected() > 0, nil
 }
 
 func (d *DB) InsertConnection(ctx context.Context, agentID, remoteAddr string, meta map[string]any) (int64, error) {

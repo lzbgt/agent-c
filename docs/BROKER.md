@@ -120,6 +120,13 @@ All endpoints below are served by the broker (not by agents).
   - creates a new agent record owned by the authenticated user (also inserts membership as `owner`)
   - response includes `connector_hint_cn` (the CN you should use in an mTLS client cert)
 
+- `GET /v1/agents/{agent_id}/members`
+  - lists agent members (owner/admin only)
+- `POST /v1/agents/{agent_id}/members`
+  - add/update an agent member (owner/admin only)
+- `DELETE /v1/agents/{agent_id}/members/{user_sub}`
+  - remove an agent member (owner/admin only; cannot remove owner)
+
 - `POST /v1/agents/{agent_id}/delete` (or `DELETE` to the same path)
   - deletes an agent record (owner or admin)
 
