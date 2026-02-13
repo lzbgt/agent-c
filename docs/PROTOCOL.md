@@ -11,6 +11,9 @@ with a focus on:
 
 This project is rolling; schema may evolve, but **typed events** are preferred over UI heuristics.
 
+Event envelope reference:
+- `docs/spec/run-events/run_events_v1.md`
+
 ## Goals
 
 - Make troubleshooting possible by having a **machine-readable event log** instead of relying on regex parsing of tool output.

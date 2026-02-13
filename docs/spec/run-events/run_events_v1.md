@@ -15,6 +15,7 @@ can validate and reason about events deterministically.
 ## Schema location
 
 - JSON Schema: `docs/spec/run-events/schema/run_event_v1.schema.json`
+- Fixtures: `docs/spec/run-events/fixtures/run_events_v1.jsonl`
 
 ## Envelope (v1)
 

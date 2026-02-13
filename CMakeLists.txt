@@ -401,6 +401,17 @@ if(AGENT_BUILD_HOST)
     COMMAND run_events_spec_sanity_tests ${CMAKE_CURRENT_SOURCE_DIR}/docs/spec/run-events
   )
 
+  add_executable(run_events_fixture_sanity_tests
+    tests/test_run_events_fixture_sanity.cpp
+  )
+  target_link_libraries(run_events_fixture_sanity_tests PRIVATE ${JSONCPP_LIBRARIES})
+  target_include_directories(run_events_fixture_sanity_tests PRIVATE ${JSONCPP_INCLUDE_DIRS})
+  target_link_directories(run_events_fixture_sanity_tests PRIVATE ${JSONCPP_LIBRARY_DIRS})
+  add_test(
+    NAME run_events_fixture_sanity_tests
+    COMMAND run_events_fixture_sanity_tests ${CMAKE_CURRENT_SOURCE_DIR}/docs/spec/run-events/fixtures/run_events_v1.jsonl
+  )
+
   add_executable(umbmp_auth_vectors_tests
     tests/test_umbmp_auth_vectors.cpp
   )
