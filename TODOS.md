@@ -57,13 +57,13 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] Add a unified capability descriptor (`/api/v1/caps`) with protocol versions + limits (agentd + WebUI + broker proxy).
   - [x] WebUI: use `/api/v1/caps` to hide/disable unsupported features and cache last-known caps.
   - [x] Define a single event schema for run/workflow events and validate in CI (schema registry + tests).
-  - [ ] Add idempotency keys to broker proxy/orchestrate (safe retries with audit trail).
+  - [x] Add idempotency keys to broker proxy/orchestrate (safe retries with audit trail).
   - [x] Introduce replay bundles for deterministic runs (inputs + hashes + tool outputs) with fixture tests.
   - [ ] Document a transport-agnostic relay interface for broker/connector (prep for multi-transport).
 
 ## Promoted goals (design review)
 
-- [ ] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules.
+- [ ] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker implemented; agentd pending).
 - [ ] Tool loop: full multimodal transcript support + stable, versioned event schema with migrations.
 - [ ] Streaming: core-layer streaming interface + provider compatibility matrix with full variant coverage.
 - [ ] Tool plugins: sandbox/isolation, Windows loader, and embedded/MCU-compatible plugin path.

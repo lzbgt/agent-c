@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"agentd-broker/internal/db"
 )
 
 type orchestrateTaskPrepared struct {
@@ -288,6 +290,70 @@ func (s *Server) handleOrchestrate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	idemKey, idemErr := idempotencyKeyFromRequest(r)
+	if idemErr != nil {
+		http.Error(w, idemErr.Error(), http.StatusBadRequest)
+		return
+	}
+	var idemStatus db.IdempotencyStatus
+	if idemKey != "" {
+		reqHash := idempotencyRequestHash(r.Method, r.URL.Path, r.URL.RawQuery, "", body)
+		claim, err := s.cfg.DB.ClaimIdempotency(r.Context(), db.IdempotencyRecord{
+			UserSub:       p.Sub,
+			Key:           idemKey,
+			RequestSHA256: reqHash,
+			Method:        r.Method,
+			Path:          r.URL.Path,
+			Query:         r.URL.RawQuery,
+			AgentID:       "",
+			ExpiresAt:     time.Now().Add(s.cfg.IdempotencyTTL),
+		})
+		if err != nil {
+			http.Error(w, "idempotency claim failed", http.StatusInternalServerError)
+			return
+		}
+		idemStatus = claim.Status
+		switch claim.Status {
+		case db.IdempotencyReplay:
+			w.Header().Set("X-Idempotency-Key", idemKey)
+			w.Header().Set("X-Idempotency-Replay", "true")
+			if claim.Record != nil {
+				for k, v := range claim.Record.ResponseHeaders {
+					w.Header().Set(k, v)
+				}
+				if claim.Record.ResponseStatus > 0 {
+					w.WriteHeader(claim.Record.ResponseStatus)
+				}
+				if len(claim.Record.ResponseBody) > 0 {
+					_, _ = w.Write(claim.Record.ResponseBody)
+				}
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true,"replayed":true}`))
+			return
+		case db.IdempotencyInProgress:
+			w.Header().Set("X-Idempotency-Key", idemKey)
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusConflict)
+			writeJSON(w, map[string]any{
+				"ok":    false,
+				"error": "idempotency_key_in_progress",
+			})
+			return
+		case db.IdempotencyConflict:
+			w.Header().Set("X-Idempotency-Key", idemKey)
+			w.WriteHeader(http.StatusConflict)
+			writeJSON(w, map[string]any{
+				"ok":    false,
+				"error": "idempotency_key_conflict",
+			})
+			return
+		case db.IdempotencyCreated:
+			// continue
+		}
+	}
+
 	// Execute tasks concurrently (bounded).
 	type taskOut struct {
 		TaskID     string         `json:"task_id"`
@@ -408,6 +474,7 @@ func (s *Server) handleOrchestrate(w http.ResponseWriter, r *http.Request) {
 		"timeout_ms":      parsed.TimeoutMS,
 		"results":         out,
 	}
+	respBody := mustJSON(respObj)
 
 	// Persist an orchestrate audit row keyed by trace_id so UIs can correlate runs even when
 	// the underlying agentd requests used no_session=true (no agent-side audit persistence).
@@ -418,7 +485,26 @@ func (s *Server) handleOrchestrate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	writeJSON(w, respObj)
+	if idemKey != "" {
+		w.Header().Set("X-Idempotency-Key", idemKey)
+		if idemStatus == db.IdempotencyCreated {
+			w.Header().Set("X-Idempotency-Replay", "false")
+		}
+	}
+	if idemKey != "" {
+		if int64(len(respBody)) <= s.cfg.IdempotencyMaxBodyBytes {
+			respHeaders := map[string]string{
+				"Content-Type": "application/json; charset=utf-8",
+				"X-Request-ID": requestIDFromContext(r.Context()),
+				"X-Trace-ID":   traceIDFromContext(r.Context()),
+			}
+			_ = s.cfg.DB.CompleteIdempotency(r.Context(), p.Sub, idemKey, http.StatusOK, respHeaders, respBody)
+		} else {
+			_ = s.cfg.DB.DeleteIdempotency(r.Context(), p.Sub, idemKey)
+			w.Header().Set("X-Idempotency-Disabled", "response_too_large")
+		}
+	}
+	_, _ = w.Write(respBody)
 }
 
 func mustJSON(v any) []byte {

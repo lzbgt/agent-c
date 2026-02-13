@@ -31,6 +31,10 @@ This directory also includes `agentd-connector`, a lightweight “bridge” that
 - `GET /v1/events` — Server-Sent Events stream for the authenticated subject (OIDC required)
   - emits events like `agent_connected`, `agent_disconnected`, `relay_audit`, `client_auth_reload`, `agent_member_updated`
 
+Idempotency (optional):
+- send `Idempotency-Key` (or `X-Idempotency-Key`) to safely retry proxy/orchestrate requests
+- replays include `X-Idempotency-Replay: true`
+
 ## Production settings (recommended)
 
 ### Broker (`cmd/agentd-broker`)
@@ -45,6 +49,8 @@ Key flags:
 - OIDC / DB:
   - `--db-dsn` (or `AGENTD_BROKER_DB_DSN` / `DATABASE_URL`)
   - `--oidc-issuer`, `--oidc-audience`
+- Optional cookie auth (browser-friendly):
+  - `--auth-cookie <name>` (env `AGENTD_BROKER_AUTH_COOKIE`)
 - Optional client token auth:
   - `--client-auth-file` (JSON file with static client tokens; env `AGENTD_BROKER_CLIENT_AUTH_FILE`)
   - `--client-auth-fallback` (allow client tokens when OIDC auth fails; env `AGENTD_BROKER_CLIENT_AUTH_FALLBACK=1`)
@@ -59,8 +65,15 @@ Key flags:
   - `--max-body-bytes` (default `64MiB`)
   - `--max-header-bytes` (default `1MiB`)
 - Browser support:
-  - `--cors-origins` (comma-separated allowed origins)
+  - `--cors-origin` (repeatable) or `--cors-origins` (CSV; supports `re:<regex>`)
+  - `--cors-allow-headers`, `--cors-allow-methods`
+  - `--cors-allow-credentials` (cookie auth)
+  - `--cors-max-age-seconds`
+  - `--cors-route` (repeatable JSON object; env `AGENTD_BROKER_CORS_ROUTES`)
   - `--sse-keepalive` (default `15s`)
+- Idempotency:
+  - `--idempotency-ttl-ms` (default 24h)
+  - `--idempotency-max-body-bytes` (default 512KiB)
 - Ops:
   - `--read-timeout` (default `0`, disabled; keep `0` for SSE)
   - `--write-timeout` (default `0`, disabled; keep `0` for SSE)

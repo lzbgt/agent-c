@@ -116,7 +116,7 @@ system more advanced, solid, efficient, and long-lived.
 
 **3.1 Durable relay envelopes**
 - Store in-flight relay metadata (request id, trace id, status) for audit/replay.
-- Add idempotency keys for proxy/orchestrate to make retries safe.
+- Idempotency keys for proxy/orchestrate to make retries safe (implemented).
 
 **3.2 Multi-transport relay layer**
 - Keep WebSocket but add a transport-agnostic relay interface so new transports
@@ -161,7 +161,7 @@ system more advanced, solid, efficient, and long-lived.
 **Phase A: Contract foundation (short-term)**
 - Implement `/api/v1/caps` and a common caps schema (agentd + WebUI + broker proxy).
 - Create a single event schema for run + workflow events; add schema tests.
-- Add an idempotency key to broker proxy/orchestrate requests.
+- Add an idempotency key to broker proxy/orchestrate requests (implemented).
 
 **Phase B: Deterministic replay (mid-term)**
 - Store replay bundles for deterministic runs (inputs + hashes + tool outputs).

@@ -37,15 +37,25 @@ type Config struct {
 	Registry           *registry.Registry
 	Events             *events.Hub
 
-	AgentCNPfx         string
-	RequireAgentMTLS   bool
-	MaxRequestBodySize int64
-	MaxPendingPerAgent int
-	MaxStreamsPerAgent int
+	AgentCNPfx              string
+	RequireAgentMTLS        bool
+	MaxRequestBodySize      int64
+	MaxPendingPerAgent      int
+	MaxStreamsPerAgent      int
+	IdempotencyTTL          time.Duration
+	IdempotencyMaxBodyBytes int64
 
-	// If set, enables CORS for browser clients.
-	// Values should be full origins like "https://example.com".
-	AllowedOrigins []string
+	// Cookie-based auth support (optional).
+	AuthCookieName string
+
+	// CORS for browser clients.
+	// Origins may be exact (e.g. https://example.com), "*", or "re:<regex>".
+	CorsOrigins          []string
+	CorsAllowHeaders     string
+	CorsAllowMethods     string
+	CorsAllowCredentials bool
+	CorsMaxAgeSeconds    int
+	CorsRoutes           []CorsRoute
 
 	// SSE keepalive comment interval. 0 uses a safe default.
 	SSEKeepaliveInterval time.Duration
@@ -98,6 +108,24 @@ func New(cfg Config) (*Server, error) {
 	if cfg.MaxStreamsPerAgent == 0 {
 		cfg.MaxStreamsPerAgent = 64
 	}
+	if cfg.IdempotencyTTL < 0 {
+		cfg.IdempotencyTTL = 0
+	}
+	if cfg.IdempotencyTTL == 0 {
+		cfg.IdempotencyTTL = 24 * time.Hour
+	}
+	if cfg.IdempotencyMaxBodyBytes == 0 {
+		cfg.IdempotencyMaxBodyBytes = 512 * 1024
+	}
+	if cfg.CorsMaxAgeSeconds == 0 {
+		cfg.CorsMaxAgeSeconds = 600
+	}
+	if strings.TrimSpace(cfg.CorsAllowHeaders) == "" {
+		cfg.CorsAllowHeaders = "Authorization, X-Agentd-Authorization, Content-Type, X-Request-ID, X-Trace-ID, Idempotency-Key, X-Idempotency-Key"
+	}
+	if strings.TrimSpace(cfg.CorsAllowMethods) == "" {
+		cfg.CorsAllowMethods = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+	}
 	if cfg.SSEKeepaliveInterval == 0 {
 		cfg.SSEKeepaliveInterval = 15 * time.Second
 	}
@@ -110,6 +138,7 @@ func New(cfg Config) (*Server, error) {
 		s.clientAuthLastAt = time.Now()
 		s.clientAuthLastOK = true
 	}
+	wsOriginMatcher := buildOriginMatcher(cfg.CorsOrigins)
 	s.upg = websocket.Upgrader{
 		ReadBufferSize:  64 * 1024,
 		WriteBufferSize: 64 * 1024,
@@ -118,7 +147,11 @@ func New(cfg Config) (*Server, error) {
 			if origin == "" {
 				return true
 			}
-			return originAllowed(origin, cfg.AllowedOrigins)
+			if len(cfg.CorsOrigins) == 0 {
+				return true
+			}
+			ok, _, _ := wsOriginMatcher.match(origin)
+			return ok
 		},
 	}
 	return s, nil
@@ -205,9 +238,14 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/agents/", s.handleAgentsSubroutes)
 	h := http.Handler(mux)
 	h = withAccessLog(h)
-	if s.cfg.AllowedOrigins != nil && len(s.cfg.AllowedOrigins) > 0 {
-		h = withCORS(s.cfg.AllowedOrigins, h)
-	}
+	h = withCORS(CorsConfig{
+		Origins:          s.cfg.CorsOrigins,
+		AllowHeaders:     s.cfg.CorsAllowHeaders,
+		AllowMethods:     s.cfg.CorsAllowMethods,
+		AllowCredentials: s.cfg.CorsAllowCredentials,
+		MaxAgeSeconds:    s.cfg.CorsMaxAgeSeconds,
+		Routes:           s.cfg.CorsRoutes,
+	}, h)
 	h = withRecovery(h)
 	h = withTraceID(h)
 	h = withRequestID(h)
@@ -587,6 +625,69 @@ func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentI
 		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
 		return
 	}
+	idemKey, idemErr := idempotencyKeyFromRequest(r)
+	if idemErr != nil {
+		http.Error(w, idemErr.Error(), http.StatusBadRequest)
+		return
+	}
+	var idemStatus db.IdempotencyStatus
+	if idemKey != "" {
+		reqHash := idempotencyRequestHash(r.Method, agentPath, r.URL.RawQuery, agentID, body)
+		claim, err := s.cfg.DB.ClaimIdempotency(r.Context(), db.IdempotencyRecord{
+			UserSub:       p.Sub,
+			Key:           idemKey,
+			RequestSHA256: reqHash,
+			Method:        r.Method,
+			Path:          agentPath,
+			Query:         r.URL.RawQuery,
+			AgentID:       agentID,
+			ExpiresAt:     time.Now().Add(s.cfg.IdempotencyTTL),
+		})
+		if err != nil {
+			http.Error(w, "idempotency claim failed", http.StatusInternalServerError)
+			return
+		}
+		idemStatus = claim.Status
+		switch claim.Status {
+		case db.IdempotencyReplay:
+			w.Header().Set("X-Idempotency-Key", idemKey)
+			w.Header().Set("X-Idempotency-Replay", "true")
+			if claim.Record != nil {
+				for k, v := range claim.Record.ResponseHeaders {
+					w.Header().Set(k, v)
+				}
+				if claim.Record.ResponseStatus > 0 {
+					w.WriteHeader(claim.Record.ResponseStatus)
+				}
+				if len(claim.Record.ResponseBody) > 0 {
+					_, _ = w.Write(claim.Record.ResponseBody)
+				}
+				return
+			}
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"ok":true,"replayed":true}`))
+			return
+		case db.IdempotencyInProgress:
+			w.Header().Set("X-Idempotency-Key", idemKey)
+			w.Header().Set("Retry-After", "1")
+			w.WriteHeader(http.StatusConflict)
+			writeJSON(w, map[string]any{
+				"ok":    false,
+				"error": "idempotency_key_in_progress",
+			})
+			return
+		case db.IdempotencyConflict:
+			w.Header().Set("X-Idempotency-Key", idemKey)
+			w.WriteHeader(http.StatusConflict)
+			writeJSON(w, map[string]any{
+				"ok":    false,
+				"error": "idempotency_key_conflict",
+			})
+			return
+		case db.IdempotencyCreated:
+			// continue
+		}
+	}
 
 	// Build agent-facing request.
 	headers := map[string]string{}
@@ -596,7 +697,7 @@ func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentI
 		}
 		kl := strings.ToLower(k)
 		// Never forward broker control-plane auth headers to the agent.
-		if kl == "authorization" || kl == "host" || kl == "connection" {
+		if kl == "authorization" || kl == "host" || kl == "connection" || kl == "idempotency-key" || kl == "x-idempotency-key" {
 			continue
 		}
 		// Keep first value only (agentd endpoints don't require multi-value headers).
@@ -631,14 +732,40 @@ func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentI
 
 	ro := s.relayAgentHTTP(r.Context(), p, agentID, r.Method, agentPath, r.URL.RawQuery, headers, body)
 	if ro.BrokerStatus != 0 {
+		if idemKey != "" {
+			_ = s.cfg.DB.DeleteIdempotency(r.Context(), p.Sub, idemKey)
+		}
 		http.Error(w, ro.Err, ro.BrokerStatus)
 		return
 	}
 	for k, v := range ro.Headers {
 		w.Header().Set(k, v)
 	}
+	if idemKey != "" {
+		w.Header().Set("X-Idempotency-Key", idemKey)
+		if idemStatus == db.IdempotencyCreated {
+			w.Header().Set("X-Idempotency-Replay", "false")
+		}
+	}
+	storeIdem := idemKey != "" && int64(len(ro.Body)) <= s.cfg.IdempotencyMaxBodyBytes
+	if idemKey != "" && !storeIdem {
+		w.Header().Set("X-Idempotency-Disabled", "response_too_large")
+	}
 	w.WriteHeader(ro.AgentStatus)
 	_, _ = w.Write(ro.Body)
+	if idemKey != "" {
+		if storeIdem {
+			respHeaders := map[string]string{}
+			for k, v := range ro.Headers {
+				respHeaders[k] = v
+			}
+			respHeaders["X-Request-ID"] = requestIDFromContext(r.Context())
+			respHeaders["X-Trace-ID"] = traceIDFromContext(r.Context())
+			_ = s.cfg.DB.CompleteIdempotency(r.Context(), p.Sub, idemKey, ro.AgentStatus, respHeaders, ro.Body)
+		} else {
+			_ = s.cfg.DB.DeleteIdempotency(r.Context(), p.Sub, idemKey)
+		}
+	}
 }
 
 func (s *Server) handleAgentProxySSE(w http.ResponseWriter, r *http.Request, agentID, agentPath string) {
@@ -677,7 +804,7 @@ func (s *Server) handleAgentProxySSE(w http.ResponseWriter, r *http.Request, age
 			continue
 		}
 		kl := strings.ToLower(k)
-		if kl == "authorization" || kl == "host" || kl == "connection" {
+		if kl == "authorization" || kl == "host" || kl == "connection" || kl == "idempotency-key" || kl == "x-idempotency-key" {
 			continue
 		}
 		headers[k] = vv[0]
@@ -1052,6 +1179,19 @@ func (s *Server) requirePrincipal(r *http.Request) (*Principal, error) {
 				return nil, err
 			}
 			return p, nil
+		}
+		if tok := authTokenFromCookie(r, s.cfg.AuthCookieName); tok != "" {
+			if pr2, err2 := s.cfg.OIDC.AuthenticateRequest(r.Context(), requestWithBearer(r, tok)); err2 == nil {
+				p := &Principal{
+					Sub:      pr2.Sub,
+					Admin:    s.cfg.AdminSubs != nil && s.cfg.AdminSubs[pr2.Sub],
+					AuthKind: "oidc",
+				}
+				if err := s.cfg.DB.EnsureUser(r.Context(), p.Sub); err != nil {
+					return nil, err
+				}
+				return p, nil
+			}
 		}
 		if s.getClientAuth() == nil || !s.cfg.ClientAuthFallback {
 			return nil, err
@@ -1481,10 +1621,11 @@ func (s *Server) handleCaps(w http.ResponseWriter, r *http.Request) {
 		"uptime_ms":   uptime.Milliseconds(),
 		"features": map[string]any{
 			"auth": map[string]any{
-				"oidc_enabled":          s.cfg.OIDC != nil,
-				"client_auth_enabled":   caEnabled,
-				"client_auth_fallback":  s.cfg.ClientAuthFallback,
-				"client_auth_strict":    s.cfg.ClientAuthStrict,
+				"oidc_enabled":         s.cfg.OIDC != nil,
+				"client_auth_enabled":  caEnabled,
+				"client_auth_fallback": s.cfg.ClientAuthFallback,
+				"client_auth_strict":   s.cfg.ClientAuthStrict,
+				"cookie_enabled":       strings.TrimSpace(s.cfg.AuthCookieName) != "",
 				"client_auth_max_age_ms": func() int64 {
 					if s.cfg.ClientAuthMaxAge <= 0 {
 						return 0
@@ -1499,11 +1640,21 @@ func (s *Server) handleCaps(w http.ResponseWriter, r *http.Request) {
 			"events": map[string]any{
 				"sse": true,
 			},
+			"idempotency": map[string]any{
+				"enabled": s.cfg.IdempotencyTTL > 0,
+			},
 		},
 		"limits": map[string]any{
 			"max_request_body_bytes": s.cfg.MaxRequestBodySize,
 			"max_pending_per_agent":  s.cfg.MaxPendingPerAgent,
 			"max_streams_per_agent":  s.cfg.MaxStreamsPerAgent,
+			"idempotency_ttl_ms": func() int64 {
+				if s.cfg.IdempotencyTTL <= 0 {
+					return 0
+				}
+				return s.cfg.IdempotencyTTL.Milliseconds()
+			}(),
+			"idempotency_max_body_bytes": s.cfg.IdempotencyMaxBodyBytes,
 			"sse_keepalive_ms": func() int64 {
 				if s.cfg.SSEKeepaliveInterval <= 0 {
 					return 0

@@ -234,6 +234,8 @@ paths:
     post:
       tags: [orchestrate]
       summary: Fan-out orchestration across connected agents
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKey"
       requestBody:
         required: true
         content:
@@ -261,6 +263,26 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/OrchestrateTaskResult"
+          headers:
+            X-Idempotency-Key:
+              schema: { type: string }
+              description: Echoes the idempotency key when provided.
+            X-Idempotency-Replay:
+              schema: { type: string }
+              description: "true if the response was replayed from idempotency storage."
+            X-Idempotency-Disabled:
+              schema: { type: string }
+              description: "response_too_large when the response was too large to store."
+        "409":
+          description: Idempotency key conflict or in-progress
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, error]
+                properties:
+                  ok: { type: boolean }
+                  error: { type: string }
 
   /v1/events:
     get:
@@ -377,6 +399,15 @@ paths:
                   ts_unix_ms: { type: integer, format: int64 }
 
 components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema: { type: string }
+      description: |
+        Optional idempotency key for safe retries. Allowed characters: [A-Za-z0-9-_.:@], max length 128.
+        Alias header: X-Idempotency-Key.
   schemas:
     BrokerCapsResponse:
       type: object

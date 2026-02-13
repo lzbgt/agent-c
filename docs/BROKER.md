@@ -68,6 +68,13 @@ Broker authorizes each request using Postgres:
 This supports multiple users and prevents “UI says it ran” when it did not:
 all authorizations and audits are checked/recorded server-side.
 
+Optional: cookie-based auth
+
+For browser clients that cannot attach `Authorization` headers directly, the broker can accept a bearer token from a cookie:
+- configure `--auth-cookie <name>` (or env `AGENTD_BROKER_AUTH_COOKIE`)
+- the cookie value should be a raw JWT (or `Bearer <jwt>`)
+- enable CORS credentials (`--cors-allow-credentials`) and **explicit origins** (not `*`)
+
 Optional: static client tokens
 
 For non-UI service clients (or environments without OIDC), the broker can accept static bearer tokens from a JSON file:
@@ -146,6 +153,13 @@ All endpoints below are served by the broker (not by agents).
   - streaming proxy intended for SSE endpoints
   - broker flushes chunks as they arrive from the agent connector
 
+Idempotency (optional):
+- send `Idempotency-Key` (or `X-Idempotency-Key`) to safely retry proxied requests
+- if the same key is reused with a different request payload, the broker returns `409` (`idempotency_key_conflict`)
+- if a request is already in progress for the key, the broker returns `409` (`idempotency_key_in_progress`)
+- successful replays return `X-Idempotency-Replay: true`
+- large responses are not stored; the broker responds with `X-Idempotency-Disabled: response_too_large`
+
 #### Using durable workflows through the broker proxy
 
 The broker proxy can be used as a “virtual base URL” for agentd-to-agentd collaboration tasks:
@@ -184,6 +198,11 @@ Response (JSON):
 - `all_ok` (bool)
 - `results` (array): list of `{ task_id, agent_id, ok, http_status?, ms, result?, error? }`
 
+Idempotency (optional):
+- send `Idempotency-Key` (or `X-Idempotency-Key`) to safely retry an orchestrate request
+- `X-Idempotency-Replay: true` indicates a replayed response
+- `409` responses indicate `idempotency_key_in_progress` or `idempotency_key_conflict`
+
 ### Broker events (SSE)
 
 - `GET /v1/events`
@@ -218,6 +237,23 @@ The WebUI can operate in **broker mode** (OIDC) and now includes a broker consol
 - list agents and select the active `agent_id`
 - manage agent memberships (add/remove roles)
 - view membership audit trail (per agent)
+
+## CORS (browser clients)
+
+The broker supports CORS for browser clients with **explicit opt-in**:
+
+- `--cors-origin <origin>` (repeatable) or `--cors-origins <csv>`
+  - accepts exact origins, `*`, or `re:<regex>`
+- `--cors-allow-headers <csv>` (default includes Authorization + tracing + idempotency headers)
+- `--cors-allow-methods <csv>` (default: GET, POST, PUT, PATCH, DELETE, OPTIONS)
+- `--cors-allow-credentials` (enable cookie auth; requires explicit origins)
+- `--cors-max-age-seconds <n>`
+
+Per-route policies:
+- `--cors-route '{"path_prefix":"/v1/agents","origins":["https://ui.example"],"allow_credentials":true}'`
+- or env `AGENTD_BROKER_CORS_ROUTES='[{"path_prefix":"/v1/agents","origins":["https://ui.example"]}]'`
+- precedence: **longest `path_prefix` match wins**
+- origin match precedence: exact > regex > `*`
 
 Configure in the WebUI Settings:
 - Connection mode: `broker`

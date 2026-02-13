@@ -136,6 +136,9 @@ New-Service -Name "agentd" -BinaryPathName "`"$exe`" $args" -StartupType Automat
   - Env overrides: `AGENTD_BROKER_MAX_BODY_BYTES`, `AGENTD_BROKER_MAX_HEADER_BYTES`,
     `AGENTD_BROKER_READ_TIMEOUT_MS`, `AGENTD_BROKER_WRITE_TIMEOUT_MS`,
     `AGENTD_BROKER_IDLE_TIMEOUT_MS`, `AGENTD_BROKER_READ_HEADER_TIMEOUT_MS`
+- Browser clients:
+  - CORS allowlist with `--cors-origin` / `--cors-origins`
+  - Cookie auth (optional): `--auth-cookie <name>` + `--cors-allow-credentials`
 
 ### Connector requirements
 - Unique `--agent-id` per agentd instance
@@ -151,7 +154,8 @@ agentd-broker \
   --tls-client-ca /etc/agentd/tls/ca.pem \
   --db-dsn postgres://... \
   --oidc-issuer https://id.example.com/realms/agentd \
-  --oidc-audience agentd-broker
+  --oidc-audience agentd-broker \
+  --cors-origin https://ui.example.com
 ```
 
 Optional (non-UI service clients): static client token file:

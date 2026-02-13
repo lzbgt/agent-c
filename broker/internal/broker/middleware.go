@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -176,46 +177,204 @@ func withRecovery(next http.Handler) http.Handler {
 	})
 }
 
-func originAllowed(origin string, allowed []string) bool {
-	origin = strings.TrimSpace(origin)
-	if origin == "" {
-		return false
-	}
-	if len(allowed) == 0 {
-		return true
-	}
-	for _, a := range allowed {
-		a = strings.TrimSpace(a)
-		if a == "" {
-			continue
-		}
-		if a == "*" {
-			return true
-		}
-		if strings.EqualFold(a, origin) {
-			return true
-		}
-	}
-	return false
+type CorsRoute struct {
+	PathPrefix       string
+	Origins          []string
+	AllowHeaders     string
+	AllowMethods     string
+	AllowCredentials *bool
+	MaxAgeSeconds    int
 }
 
-func withCORS(allowedOrigins []string, next http.Handler) http.Handler {
+type CorsConfig struct {
+	Origins          []string
+	AllowHeaders     string
+	AllowMethods     string
+	AllowCredentials bool
+	MaxAgeSeconds    int
+	Routes           []CorsRoute
+}
+
+type corsOriginMatcher struct {
+	any   bool
+	exact map[string]bool
+	regex []*regexp.Regexp
+}
+
+func buildOriginMatcher(patterns []string) corsOriginMatcher {
+	m := corsOriginMatcher{exact: map[string]bool{}}
+	for _, raw := range patterns {
+		p := strings.TrimSpace(raw)
+		if p == "" {
+			continue
+		}
+		if p == "*" {
+			m.any = true
+			continue
+		}
+		if strings.HasPrefix(p, "re:") {
+			reSrc := strings.TrimSpace(strings.TrimPrefix(p, "re:"))
+			if reSrc == "" {
+				continue
+			}
+			re, err := regexp.Compile(reSrc)
+			if err != nil {
+				log.Printf("invalid cors origin regex: %q err=%v", reSrc, err)
+				continue
+			}
+			m.regex = append(m.regex, re)
+			continue
+		}
+		m.exact[strings.ToLower(p)] = true
+	}
+	return m
+}
+
+func (m corsOriginMatcher) match(origin string) (bool, bool, bool) {
+	origin = strings.TrimSpace(origin)
+	if origin == "" {
+		return false, false, false
+	}
+	if m.exact[strings.ToLower(origin)] {
+		return true, true, false
+	}
+	for _, re := range m.regex {
+		if re.MatchString(origin) {
+			return true, false, true
+		}
+	}
+	if m.any {
+		return true, false, false
+	}
+	return false, false, false
+}
+
+type corsRuleCompiled struct {
+	PathPrefix       string
+	Matcher          corsOriginMatcher
+	AllowHeaders     string
+	AllowMethods     string
+	AllowCredentials *bool
+	MaxAgeSeconds    int
+	OriginsProvided  bool
+}
+
+func compileCorsRules(routes []CorsRoute) []corsRuleCompiled {
+	out := make([]corsRuleCompiled, 0, len(routes))
+	for _, r := range routes {
+		originsProvided := r.Origins != nil
+		out = append(out, corsRuleCompiled{
+			PathPrefix:       strings.TrimSpace(r.PathPrefix),
+			Matcher:          buildOriginMatcher(r.Origins),
+			AllowHeaders:     strings.TrimSpace(r.AllowHeaders),
+			AllowMethods:     strings.TrimSpace(r.AllowMethods),
+			AllowCredentials: r.AllowCredentials,
+			MaxAgeSeconds:    r.MaxAgeSeconds,
+			OriginsProvided:  originsProvided,
+		})
+	}
+	return out
+}
+
+func selectCorsRule(path string, rules []corsRuleCompiled) *corsRuleCompiled {
+	if len(rules) == 0 {
+		return nil
+	}
+	best := (*corsRuleCompiled)(nil)
+	bestLen := -1
+	for i := range rules {
+		pfx := rules[i].PathPrefix
+		if pfx == "" || strings.HasPrefix(path, pfx) {
+			if len(pfx) > bestLen {
+				bestLen = len(pfx)
+				best = &rules[i]
+			}
+		}
+	}
+	return best
+}
+
+func withCORS(cfg CorsConfig, next http.Handler) http.Handler {
+	hasDefaults := len(cfg.Origins) > 0 || strings.TrimSpace(cfg.AllowHeaders) != "" || strings.TrimSpace(cfg.AllowMethods) != "" || cfg.AllowCredentials
+	if len(cfg.Routes) == 0 && !hasDefaults {
+		return next
+	}
+	defaultMatcher := buildOriginMatcher(cfg.Origins)
+	rules := compileCorsRules(cfg.Routes)
+	defaultAllowHeaders := strings.TrimSpace(cfg.AllowHeaders)
+	defaultAllowMethods := strings.TrimSpace(cfg.AllowMethods)
+	defaultMaxAge := cfg.MaxAgeSeconds
+	if defaultMaxAge <= 0 {
+		defaultMaxAge = 600
+	}
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := strings.TrimSpace(r.Header.Get("Origin"))
-		if origin != "" && originAllowed(origin, allowedOrigins) {
-			// Reflect the allowed origin. Using "*" breaks Authorization-bearing requests in browsers.
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Vary", "Origin")
-			// Keep allow-headers narrow but sufficient for browser clients.
-			// - Authorization: OIDC bearer token (broker auth)
-			// - X-Agentd-Authorization: optional pass-through bearer token for proxied agentd endpoints
-			// - Content-Type: JSON bodies
-			// - X-Request-ID / X-Trace-ID: tracing
-			w.Header().Set("Access-Control-Allow-Headers", "Authorization, X-Agentd-Authorization, Content-Type, X-Request-ID, X-Trace-ID")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID, X-Trace-ID")
-			w.Header().Set("Access-Control-Max-Age", "600")
+		rule := selectCorsRule(r.URL.Path, rules)
+
+		policyMatcher := defaultMatcher
+		allowHeaders := defaultAllowHeaders
+		allowMethods := defaultAllowMethods
+		allowCredentials := cfg.AllowCredentials
+		maxAge := defaultMaxAge
+
+		if rule != nil {
+			if rule.OriginsProvided {
+				policyMatcher = rule.Matcher
+			}
+			if rule.AllowHeaders != "" {
+				allowHeaders = rule.AllowHeaders
+			}
+			if rule.AllowMethods != "" {
+				allowMethods = rule.AllowMethods
+			}
+			if rule.AllowCredentials != nil {
+				allowCredentials = *rule.AllowCredentials
+			}
+			if rule.MaxAgeSeconds > 0 {
+				maxAge = rule.MaxAgeSeconds
+			}
 		}
+
+		allowedOrigin := ""
+		if origin != "" {
+			if ok, exact, regex := policyMatcher.match(origin); ok {
+				switch {
+				case exact || regex:
+					allowedOrigin = origin
+				default:
+					if allowCredentials {
+						allowedOrigin = origin
+					} else {
+						allowedOrigin = "*"
+					}
+				}
+			}
+		}
+
+		if allowedOrigin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", allowedOrigin)
+			if allowCredentials {
+				w.Header().Set("Access-Control-Allow-Credentials", "true")
+			}
+			if allowHeaders != "" {
+				w.Header().Set("Access-Control-Allow-Headers", allowHeaders)
+			}
+			if allowMethods != "" {
+				w.Header().Set("Access-Control-Allow-Methods", allowMethods)
+			}
+			if maxAge > 0 {
+				w.Header().Set("Access-Control-Max-Age", itoa(maxAge))
+			}
+			w.Header().Set("Access-Control-Expose-Headers", "X-Request-ID, X-Trace-ID, X-Idempotency-Replay, X-Idempotency-Key, X-Idempotency-Disabled")
+			if allowedOrigin != "*" {
+				w.Header().Add("Vary", "Origin")
+			}
+		} else if origin != "" && r.Method == http.MethodOptions {
+			http.Error(w, "origin not allowed", http.StatusForbidden)
+			return
+		}
+
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)
 			return

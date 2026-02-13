@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/tls"
+	"encoding/json"
 	"errors"
 	"flag"
 	"log"
@@ -64,6 +65,20 @@ func envBool(key string) (bool, bool) {
 	}
 }
 
+type stringListFlag []string
+
+func (s *stringListFlag) String() string {
+	if s == nil {
+		return ""
+	}
+	return strings.Join(*s, ",")
+}
+
+func (s *stringListFlag) Set(value string) error {
+	*s = append(*s, value)
+	return nil
+}
+
 func main() {
 	maxBodyDefault := int64(64 * 1024 * 1024)
 	if v, ok := envInt64("AGENTD_BROKER_MAX_BODY_BYTES"); ok && v > 0 {
@@ -107,11 +122,22 @@ func main() {
 	var clientAuthMaxAgeMS = flag.Int64("client-auth-max-age-ms", 0, "max age in ms since last client auth reload (0 disables; env AGENTD_BROKER_CLIENT_AUTH_MAX_AGE_MS)")
 	var clientAuthEventIncludeError = flag.Bool("client-auth-event-include-error", false, "include reload error text in events (env AGENTD_BROKER_CLIENT_AUTH_EVENT_INCLUDE_ERROR)")
 	var adminSubsCSV = flag.String("admin-subs", "", "comma-separated OIDC sub values treated as admin")
+	var authCookieName = flag.String("auth-cookie", "", "cookie name for OIDC bearer token (env AGENTD_BROKER_AUTH_COOKIE)")
 	var corsOriginsCSV = flag.String("cors-origins", "", "comma-separated allowed CORS origins (e.g. https://ui.example.com)")
+	var corsOriginList stringListFlag
+	flag.Var(&corsOriginList, "cors-origin", "allowed CORS origin (repeatable; supports re:<regex>)")
+	var corsAllowHeaders = flag.String("cors-allow-headers", "", "CORS allow headers CSV (env AGENTD_BROKER_CORS_ALLOW_HEADERS)")
+	var corsAllowMethods = flag.String("cors-allow-methods", "", "CORS allow methods CSV (env AGENTD_BROKER_CORS_ALLOW_METHODS)")
+	var corsAllowCredentials = flag.Bool("cors-allow-credentials", false, "enable CORS credentials (cookies) (env AGENTD_BROKER_CORS_ALLOW_CREDENTIALS)")
+	var corsMaxAgeSeconds = flag.Int("cors-max-age-seconds", 0, "CORS preflight max-age seconds (env AGENTD_BROKER_CORS_MAX_AGE_SECONDS)")
+	var corsRouteSpecs stringListFlag
+	flag.Var(&corsRouteSpecs, "cors-route", "CORS route policy JSON object (repeatable; env AGENTD_BROKER_CORS_ROUTES)")
 	var maxPendingPerAgent = flag.Int("max-pending-per-agent", 256, "max pending proxied requests per agent (0=unlimited)")
 	var maxStreamsPerAgent = flag.Int("max-streams-per-agent", 64, "max active streams per agent (0=unlimited)")
 	var maxBodyBytes = flag.Int64("max-body-bytes", maxBodyDefault, "max request body bytes (default: 64MiB)")
 	var maxHeaderBytes = flag.Int("max-header-bytes", maxHeaderBytesDefault, "max HTTP request header bytes")
+	var idempotencyTTLMS = flag.Int64("idempotency-ttl-ms", 0, "idempotency key TTL in ms (0 uses default; env AGENTD_BROKER_IDEMPOTENCY_TTL_MS)")
+	var idempotencyMaxBodyBytes = flag.Int64("idempotency-max-body-bytes", 0, "max response body bytes stored for idempotency (0 uses default; env AGENTD_BROKER_IDEMPOTENCY_MAX_BODY_BYTES)")
 	var readTimeout = flag.Duration("read-timeout", readTimeoutDefault, "HTTP server read timeout (0 disables)")
 	var writeTimeout = flag.Duration("write-timeout", writeTimeoutDefault, "HTTP server write timeout (0 disables; keep 0 for SSE)")
 	var idleTimeout = flag.Duration("idle-timeout", idleTimeoutDefault, "HTTP server idle timeout")
@@ -242,12 +268,79 @@ func main() {
 		}
 		return out
 	}
+	authCookie := strings.TrimSpace(*authCookieName)
+	if authCookie == "" {
+		authCookie = strings.TrimSpace(os.Getenv("AGENTD_BROKER_AUTH_COOKIE"))
+	}
 	allowedOrigins := []string{}
-	for _, part := range strings.Split(*corsOriginsCSV, ",") {
-		o := strings.TrimSpace(part)
+	appendCSV := func(raw string) {
+		for _, part := range strings.Split(raw, ",") {
+			o := strings.TrimSpace(part)
+			if o != "" {
+				allowedOrigins = append(allowedOrigins, o)
+			}
+		}
+	}
+	if env := strings.TrimSpace(os.Getenv("AGENTD_BROKER_CORS_ORIGINS")); env != "" {
+		appendCSV(env)
+	}
+	for _, o := range corsOriginList {
+		o = strings.TrimSpace(o)
 		if o != "" {
 			allowedOrigins = append(allowedOrigins, o)
 		}
+	}
+	if strings.TrimSpace(*corsOriginsCSV) != "" {
+		appendCSV(*corsOriginsCSV)
+	}
+	corsHeaders := strings.TrimSpace(*corsAllowHeaders)
+	if corsHeaders == "" {
+		corsHeaders = strings.TrimSpace(os.Getenv("AGENTD_BROKER_CORS_ALLOW_HEADERS"))
+	}
+	corsMethods := strings.TrimSpace(*corsAllowMethods)
+	if corsMethods == "" {
+		corsMethods = strings.TrimSpace(os.Getenv("AGENTD_BROKER_CORS_ALLOW_METHODS"))
+	}
+	corsCreds := *corsAllowCredentials
+	if !corsCreds {
+		if v, ok := envBool("AGENTD_BROKER_CORS_ALLOW_CREDENTIALS"); ok && v {
+			corsCreds = true
+		}
+	}
+	corsMaxAge := *corsMaxAgeSeconds
+	if corsMaxAge <= 0 {
+		if v, ok := envInt64("AGENTD_BROKER_CORS_MAX_AGE_SECONDS"); ok && v > 0 {
+			corsMaxAge = int(v)
+		}
+	}
+	var corsRoutes []broker.CorsRoute
+	if raw := strings.TrimSpace(os.Getenv("AGENTD_BROKER_CORS_ROUTES")); raw != "" {
+		if err := json.Unmarshal([]byte(raw), &corsRoutes); err != nil {
+			log.Fatalf("invalid AGENTD_BROKER_CORS_ROUTES JSON: %v", err)
+		}
+	}
+	for _, spec := range corsRouteSpecs {
+		spec = strings.TrimSpace(spec)
+		if spec == "" {
+			continue
+		}
+		var route broker.CorsRoute
+		if err := json.Unmarshal([]byte(spec), &route); err != nil {
+			log.Fatalf("invalid --cors-route JSON: %v", err)
+		}
+		corsRoutes = append(corsRoutes, route)
+	}
+	idemTTL := time.Duration(0)
+	if *idempotencyTTLMS > 0 {
+		idemTTL = time.Duration(*idempotencyTTLMS) * time.Millisecond
+	} else if v, ok := envInt64("AGENTD_BROKER_IDEMPOTENCY_TTL_MS"); ok && v > 0 {
+		idemTTL = time.Duration(v) * time.Millisecond
+	}
+	idemMaxBody := int64(0)
+	if *idempotencyMaxBodyBytes > 0 {
+		idemMaxBody = *idempotencyMaxBodyBytes
+	} else if v, ok := envInt64("AGENTD_BROKER_IDEMPOTENCY_MAX_BODY_BYTES"); ok && v > 0 {
+		idemMaxBody = v
 	}
 	s, err := broker.New(broker.Config{
 		OIDC:               ver,
@@ -266,9 +359,17 @@ func main() {
 			}
 			return *maxBodyBytes
 		}(),
-		MaxPendingPerAgent: *maxPendingPerAgent,
-		MaxStreamsPerAgent: *maxStreamsPerAgent,
-		AllowedOrigins:     allowedOrigins,
+		MaxPendingPerAgent:      *maxPendingPerAgent,
+		MaxStreamsPerAgent:      *maxStreamsPerAgent,
+		IdempotencyTTL:          idemTTL,
+		IdempotencyMaxBodyBytes: idemMaxBody,
+		AuthCookieName:          authCookie,
+		CorsOrigins:             allowedOrigins,
+		CorsAllowHeaders:        corsHeaders,
+		CorsAllowMethods:        corsMethods,
+		CorsAllowCredentials:    corsCreds,
+		CorsMaxAgeSeconds:       corsMaxAge,
+		CorsRoutes:              corsRoutes,
 		SSEKeepaliveInterval: func() time.Duration {
 			if *sseKeepalive <= 0 {
 				return 15 * time.Second
@@ -340,7 +441,20 @@ func main() {
 		log.Printf("client auth max age: %dms", maxAgeMS)
 	}
 	log.Printf("client auth event include error: %v", includeErr)
+	if authCookie != "" {
+		log.Printf("auth cookie enabled: %s", authCookie)
+	}
 	log.Printf("cors origins configured: %v", len(allowedOrigins) > 0)
+	log.Printf("cors allow credentials: %v", corsCreds)
+	if len(corsRoutes) > 0 {
+		log.Printf("cors route policies: %d", len(corsRoutes))
+	}
+	if idemTTL > 0 {
+		log.Printf("idempotency ttl: %s", idemTTL)
+	}
+	if idemMaxBody > 0 {
+		log.Printf("idempotency max body bytes: %d", idemMaxBody)
+	}
 	log.Printf(
 		"limits: max_pending_per_agent=%d max_streams_per_agent=%d max_body_bytes=%d max_header_bytes=%d",
 		*maxPendingPerAgent,

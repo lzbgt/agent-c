@@ -20,7 +20,7 @@ For the forward-looking architecture plan that spans `agent_core`, `agentd`, bro
 
 - `docs/NEXT_GEN.md`
 
-## Non-Goals (for the first milestone)
+## Additional goals (for the first milestone)
 
 - Full tool ecosystem (shell, filesystem, browser automation).
 - Full streaming / incremental tool call protocol coverage.
