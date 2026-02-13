@@ -22,11 +22,11 @@ documents and presenting them through the collaboration surface.
   - use `artifact_register` + wait for `artifact_rendered`
   - or use `client_rpc` with correlated progress/result events
 
-## Non-goals (v1)
+## Additional goals (v1)
 
-- Pixel-perfect slide rendering in browser.
-- Full fidelity shapes/images/animations.
-- “Bypass” autoplay/permission policies (not relevant for PPTX).
+- Pixel-perfect slide rendering in the browser where feasible, with progressive enhancement.
+- Full-fidelity shapes/images/animations (and embedded media where supported).
+- Optional embedded media playback with explicit user-gesture gating where required by browsers.
 
 ## Host-side generation (framework-first)
 

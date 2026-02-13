@@ -10,10 +10,10 @@ This document defines the **run replay bundle** feature for `agentd`.
 - Enable **offline verification** by hashing a canonical JSON bundle.
 - Keep storage bounded and **safe for secrets** (redaction rules).
 
-## Non-goals
+## Additional goals
 
-- Perfect reproducibility across providers (external APIs are inherently nondeterministic).
-- Storing large binary blobs (artifacts remain file-backed).
+- Improve reproducibility across providers with provider snapshots, deterministic defaults, and replay annotations.
+- Support large binary blobs with size limits and tiered storage, while keeping file-backed fallbacks.
 
 ## What is a replay bundle?
 

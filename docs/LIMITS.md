@@ -18,10 +18,10 @@ It exists because:
   - emits a structured `error` event with the stop reason and relevant counters
 - Preserve explicit opt-out for advanced users (e.g. `max_steps=0` means unlimited).
 
-## Non-goals
+## Additional goals
 
-- Perfect “task complete” inference. Limits are guardrails, not semantic understanding.
-- Provider-specific policy (those belong in hosts or UIs).
+- Improve task-complete inference with explicit done criteria and optional semantic checks.
+- Support provider-specific policy controls surfaced through hosts and UIs.
 
 ## Core semantics
 
