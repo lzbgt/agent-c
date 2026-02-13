@@ -45,6 +45,10 @@ Or run the helper:
 tools\verify_windows_build.ps1 -Config Release
 ```
 
+CI helpers (optional):
+- `tools/trigger_ci_windows_build.sh [ref]` (dispatches Windows CI; requires token or `gh auth login`)
+- `tools/check_ci_windows_build.sh` (prints latest Windows CI status; requires token for private repos)
+
 Platform-specific notes (Windows limitations, plugin support, AVM endpoints) live in `docs/PLATFORM_SUPPORT.md`.
 
 Smoke tests:

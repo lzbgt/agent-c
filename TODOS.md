@@ -22,6 +22,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
      - Script available: `tools/verify_windows_build.ps1` (supports optional `VCPKG_ROOT`, runs `agent_core_tests` unless `-SkipTests`).
      - CI workflow added: `.github/workflows/windows-build.yml` (checks core build/tests on windows-latest).
      - Status helper: `tools/check_ci_windows_build.sh` (fetches latest run from GitHub API).
+     - Trigger helper: `tools/trigger_ci_windows_build.sh [ref]` (dispatches CI run).
    - Note: macOS production hardening is taking priority; Windows validation is deferred but still required.
 2) **Production deployment readiness (agentd + broker + WebUI)** — stable, secure, operable deployment.
    - [x] Added `docs/DEPLOYMENT.md` checklist + topology guidance.
