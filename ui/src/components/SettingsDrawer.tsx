@@ -257,7 +257,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   if (!props.open) return null;
 
   return (
-    <div className="fixed inset-0 z-40">
+    <div className="fixed inset-0 z-40" data-testid="settings-drawer">
       <div className="absolute inset-0 bg-black/60" onClick={props.onClose} role="button" tabIndex={0} />
       <div className="absolute right-0 top-0 h-full w-[520px] max-w-[94vw] overflow-auto border-l border-white/10 bg-slate-950 p-4">
         <div className="flex items-center justify-between gap-3">
@@ -266,6 +266,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
             className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40"
             onClick={props.onClose}
             type="button"
+            data-testid="settings-close"
           >
             Close
           </button>
@@ -1115,6 +1116,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
               className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
               onClick={() => props.session.newSession()}
               type="button"
+              data-testid="new-session"
               disabled={props.session.newSessionPending}
             >
               New session

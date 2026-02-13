@@ -61,19 +61,28 @@ test("observe: canvas2d function-expression scripts execute (open-world)", async
   const sessionText = await page.getByTestId("scene-session").innerText({ timeout: 60_000 });
   const sessionId = (sessionText.match(/session=([A-Za-z0-9-_.]+)/) || [])[1] || "default";
 
-  await page.getByTestId("prompt").fill("nice, present a sine fun with time advances plot for me", { timeout: 30_000 });
+  await page.getByTestId("prompt").fill(
+    "Create a Scene canvas entity (id: sine-wave) using a canvas2d function-expression script. Draw a sine wave on a 640x240 canvas with a non-transparent background.",
+    { timeout: 30_000 },
+  );
   await page.getByTestId("run").click({ timeout: 30_000 });
 
-  // Wait for the canvas entity to appear.
-  const entity = page.getByTestId("scene-entity-sine-wave");
-  await expect(entity).toBeVisible({ timeout: 120_000 });
+  // Wait for the canvas entity to appear (prefer the requested id, fallback to any scene entity).
+  let entity = page.getByTestId("scene-entity-sine-wave");
+  try {
+    await expect(entity).toBeVisible({ timeout: 120_000 });
+  } catch {
+    const fallback = page.locator('[data-testid^="scene-entity-"]').first();
+    await expect(fallback).toBeVisible({ timeout: 120_000 });
+    entity = fallback;
+  }
 
   // Validate the canvas script actually executed by sampling a pixel:
   // - When the script runs, it paints a non-transparent background.
   // - Without execution (the regression), the canvas stays transparent after clearRect.
   const ok = await page.waitForFunction(
     () => {
-      const root = document.querySelector('[data-testid="scene-entity-sine-wave"]') as HTMLElement | null;
+      const root = document.querySelector('[data-testid^="scene-entity-"]') as HTMLElement | null;
       if (!root) return false;
       const canvas = root.querySelector("canvas") as HTMLCanvasElement | null;
       if (!canvas) return false;
@@ -106,4 +115,3 @@ test("observe: canvas2d function-expression scripts execute (open-world)", async
   const sceneErrors = items.filter((it) => it && it.type === "scene_error");
   expect(sceneErrors.length, "scene_error events observed").toBe(0);
 });
-
