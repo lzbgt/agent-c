@@ -193,6 +193,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/healthz", s.handleHealthz)
 	mux.HandleFunc("/readyz", s.handleReadyz)
 	mux.HandleFunc("/metrics", s.handleMetrics)
+	mux.HandleFunc("/v1/caps", s.handleCaps)
 	mux.HandleFunc("/v1/client_auth/status", s.handleClientAuthStatus)
 	mux.HandleFunc("/v1/client_auth/reload", s.handleClientAuthReload)
 	mux.HandleFunc("/v1/agent/connect", s.handleAgentConnect)
@@ -1464,6 +1465,60 @@ func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 		"ts_unix_ms":  time.Now().UnixMilli(),
 		"client_auth": clientAuth,
 	})
+}
+
+func (s *Server) handleCaps(w http.ResponseWriter, r *http.Request) {
+	_ = r
+	now := time.Now()
+	uptime := now.Sub(s.startTime)
+	caEnabled := s.getClientAuth() != nil
+	caps := map[string]any{
+		"ok":          true,
+		"service":     "broker",
+		"version":     "0.1",
+		"api_version": "v1",
+		"now_unix_ms": now.UnixMilli(),
+		"uptime_ms":   uptime.Milliseconds(),
+		"features": map[string]any{
+			"auth": map[string]any{
+				"oidc_enabled":          s.cfg.OIDC != nil,
+				"client_auth_enabled":   caEnabled,
+				"client_auth_fallback":  s.cfg.ClientAuthFallback,
+				"client_auth_strict":    s.cfg.ClientAuthStrict,
+				"client_auth_max_age_ms": func() int64 {
+					if s.cfg.ClientAuthMaxAge <= 0 {
+						return 0
+					}
+					return s.cfg.ClientAuthMaxAge.Milliseconds()
+				}(),
+			},
+			"mTLS": map[string]any{
+				"require_agent_mtls": s.cfg.RequireAgentMTLS,
+				"agent_cn_prefix":    s.cfg.AgentCNPfx,
+			},
+			"events": map[string]any{
+				"sse": true,
+			},
+		},
+		"limits": map[string]any{
+			"max_request_body_bytes": s.cfg.MaxRequestBodySize,
+			"max_pending_per_agent":  s.cfg.MaxPendingPerAgent,
+			"max_streams_per_agent":  s.cfg.MaxStreamsPerAgent,
+			"sse_keepalive_ms": func() int64 {
+				if s.cfg.SSEKeepaliveInterval <= 0 {
+					return 0
+				}
+				return s.cfg.SSEKeepaliveInterval.Milliseconds()
+			}(),
+			"readiness_cache_ms": func() int64 {
+				if s.cfg.ReadinessCacheInterval <= 0 {
+					return 0
+				}
+				return s.cfg.ReadinessCacheInterval.Milliseconds()
+			}(),
+		},
+	}
+	writeJSON(w, caps)
 }
 
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {

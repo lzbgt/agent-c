@@ -42,6 +42,20 @@ export const HealthSchema = z.object({
 });
 export type Health = z.infer<typeof HealthSchema>;
 
+export const CapsSchema = z
+  .object({
+    ok: z.boolean(),
+    service: z.string().optional(),
+    version: z.string().optional(),
+    api_version: z.string().optional(),
+    now_unix_ms: z.number().int().nonnegative().optional(),
+    uptime_ms: z.number().int().nonnegative().optional(),
+    features: z.any().optional(),
+    limits: z.any().optional(),
+  })
+  .passthrough();
+export type Caps = z.infer<typeof CapsSchema>;
+
 export const DiagnosticsSchema = z
   .object({
     ok: z.boolean(),
@@ -521,6 +535,12 @@ export async function apiGetHealth(base: string, auth?: ApiAuth): Promise<Health
   const r = await fetch(`${base}/api/v1/health`, { headers: daemonHeaders(auth) });
   const j = await r.json();
   return HealthSchema.parse(j);
+}
+
+export async function apiGetCaps(base: string, auth?: ApiAuth): Promise<Caps> {
+  const r = await fetch(`${base}/api/v1/caps`, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return CapsSchema.parse(j);
 }
 
 export async function apiGetConfig(base: string, auth?: ApiAuth): Promise<DaemonConfigResp> {

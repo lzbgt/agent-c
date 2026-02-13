@@ -5,6 +5,7 @@
 #include "diagnostics_endpoints.h"
 #include "daemon_config.h"
 #include "config_endpoint.h"
+#include "caps_endpoint.h"
 #include "avm_endpoints.h"
 #include "file_endpoint.h"
 #include "sandbox_policy.h"
@@ -1321,6 +1322,11 @@ int main(int argc, char** argv) {
   server.handle("GET", "/api/v1/config", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_config_endpoint(cur, cors_cfg, req, resp);
+  });
+
+  server.handle("GET", "/api/v1/caps", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_caps_endpoint(cur, cors_cfg, start_time, req, resp);
   });
 
   server.handle("POST", "/api/v1/config/update", [&](const HttpRequest& req, HttpResponse* resp) {

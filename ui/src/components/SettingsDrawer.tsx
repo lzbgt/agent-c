@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import type { DaemonConfigResp } from "../api";
 import {
   apiBrokerListAgents,
+  apiGetCaps,
   apiGetDiagnostics,
   apiGetDiagnosticsProviders,
   apiGetOpenRouterModels,
@@ -227,6 +228,12 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
     enabled: props.open,
     retry: 1,
   });
+  const caps = useQuery({
+    queryKey: ["caps", connection.effectiveBase, connection.authKey],
+    queryFn: () => apiGetCaps(connection.effectiveBase, connection.daemonAuth),
+    enabled: props.open,
+    retry: 1,
+  });
   const diagnosticsProviders = useQuery({
     queryKey: ["diagnosticsProviders", connection.effectiveBase, connection.authKey],
     queryFn: () => apiGetDiagnosticsProviders(connection.effectiveBase, connection.daemonAuth),
@@ -238,6 +245,8 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const daemonDefaults = cfg?.daemon;
   const baseUrlLabel = String(run.baseUrl || "").trim();
   const diag = diagnostics.data;
+  const capsData = caps.data;
+  const capsJson = React.useMemo(() => (capsData ? JSON.stringify(capsData, null, 2) : ""), [capsData]);
   const diagProviders = diagnosticsProviders.data;
   const providerEntries = diagProviders && diagProviders.providers && typeof diagProviders.providers === "object"
     ? (diagProviders.providers as Record<string, any>)
@@ -924,6 +933,37 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
             </div>
           ) : null}
         </div>
+
+        <details className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
+          <summary className="cursor-pointer text-xs font-semibold text-white/70">Capabilities</summary>
+          <div className="mt-2 grid gap-2 text-[11px] text-white/70">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                service:{" "}
+                <code className="text-white/70">{capsData?.service || "(unknown)"}</code>{" "}
+                · version: <code className="text-white/70">{capsData?.version || "(unknown)"}</code>
+              </div>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                onClick={() => void caps.refetch()}
+                disabled={caps.isFetching}
+              >
+                {caps.isFetching ? "Loading…" : "Refresh"}
+              </button>
+            </div>
+            {caps.isError ? (
+              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-rose-200">
+                caps fetch failed: {String(caps.error)}
+              </div>
+            ) : null}
+            {capsJson ? (
+              <pre className="max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-2 text-[10px] text-white/60">
+                {capsJson}
+              </pre>
+            ) : null}
+          </div>
+        </details>
 
         <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
           <SectionHeader

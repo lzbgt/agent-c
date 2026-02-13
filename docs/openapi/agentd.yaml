@@ -13,6 +13,7 @@ servers:
 
 tags:
   - name: health
+  - name: caps
   - name: diagnostics
   - name: config
   - name: run
@@ -79,6 +80,24 @@ paths:
             text/plain; version=0.0.4:
               schema:
                 type: string
+
+  /api/v1/caps:
+    get:
+      tags: [caps]
+      summary: Capability descriptor (features + limits)
+      responses:
+        "200":
+          description: Capability snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CapsResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/diagnostics:
     get:
@@ -1448,6 +1467,23 @@ components:
       properties:
         ok: { type: boolean, enum: [false] }
         error: { type: string }
+
+    CapsResponse:
+      type: object
+      required: [ok, service, version, api_version]
+      properties:
+        ok: { type: boolean }
+        service: { type: string }
+        version: { type: string }
+        api_version: { type: string }
+        now_unix_ms: { type: integer, format: int64 }
+        uptime_ms: { type: integer, format: int64 }
+        features:
+          type: object
+          additionalProperties: true
+        limits:
+          type: object
+          additionalProperties: true
 
     DiagnosticsResponse:
       type: object

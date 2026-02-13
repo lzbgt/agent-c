@@ -196,6 +196,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/agentd_api.cpp
     daemon/src/client_profiles.cpp
     daemon/src/config_endpoint.cpp
+    daemon/src/caps_endpoint.cpp
     daemon/src/avm_endpoints.cpp
     daemon/src/cbor_decode.cpp
     daemon/src/cbor_encode.cpp

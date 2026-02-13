@@ -54,7 +54,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] WebUI connection profiles for multi-agentd deployments (direct or broker-backed).
   - [x] WebUI profile-specific run settings per connection profile (model/provider + run limits).
 3) **Next-gen contract foundation (agent-core + agentd + broker + WebUI)** — make interop explicit and replayable.
-  - [ ] Add a unified capability descriptor (`/api/v1/caps`) with protocol versions + limits (agentd + WebUI + broker proxy).
+  - [x] Add a unified capability descriptor (`/api/v1/caps`) with protocol versions + limits (agentd + WebUI + broker proxy).
+  - [ ] WebUI: use `/api/v1/caps` to hide/disable unsupported features and cache last-known caps.
   - [ ] Define a single event schema for run/workflow events and validate in CI (schema registry + tests).
   - [ ] Add idempotency keys to broker proxy/orchestrate (safe retries with audit trail).
   - [x] Introduce replay bundles for deterministic runs (inputs + hashes + tool outputs) with fixture tests.

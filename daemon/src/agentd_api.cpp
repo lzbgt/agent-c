@@ -1,6 +1,7 @@
 #include "agentd/api.h"
 
 #include "agent_db.h"
+#include "caps_endpoint.h"
 #include "config_endpoint.h"
 #include "config_store.h"
 #include "cors.h"
@@ -283,6 +284,12 @@ bool AgentdApi::init(std::string* out_error) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();
     handle_config_endpoint(cur, self->cors_cfg, req, resp);
+  });
+
+  impl_->route("GET", "/api/v1/caps", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_caps_endpoint(cur, self->cors_cfg, self->start_time, req, resp);
   });
 
   impl_->route("POST", "/api/v1/config/update", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {

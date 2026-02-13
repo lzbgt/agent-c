@@ -13,6 +13,7 @@ servers:
 
 tags:
   - name: health
+  - name: caps
   - name: client_auth
   - name: agents
   - name: membership
@@ -79,6 +80,18 @@ paths:
             text/plain; version=0.0.4:
               schema:
                 type: string
+
+  /v1/caps:
+    get:
+      tags: [caps]
+      summary: Capability descriptor (features + limits)
+      responses:
+        "200":
+          description: Capability snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrokerCapsResponse"
 
   /v1/agents:
     get:
@@ -365,6 +378,23 @@ paths:
 
 components:
   schemas:
+    BrokerCapsResponse:
+      type: object
+      required: [ok, service, version, api_version]
+      properties:
+        ok: { type: boolean }
+        service: { type: string }
+        version: { type: string }
+        api_version: { type: string }
+        now_unix_ms: { type: integer, format: int64 }
+        uptime_ms: { type: integer, format: int64 }
+        features:
+          type: object
+          additionalProperties: true
+        limits:
+          type: object
+          additionalProperties: true
+
     AgentInfo:
       type: object
       required: [agent_id, owner_sub, enabled, created_unix_ms, connected]

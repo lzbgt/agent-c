@@ -4,6 +4,7 @@
 
 #include "agent_db.h"
 #include "avm_endpoints.h"
+#include "caps_endpoint.h"
 #include "config_endpoint.h"
 #include "config_store.h"
 #include "cors.h"
@@ -483,6 +484,11 @@ struct AgentdService::Impl {
     server.handle("GET", "/api/v1/config", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_config_endpoint(cur, cors_cfg, req, resp);
+    });
+
+    server.handle("GET", "/api/v1/caps", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_caps_endpoint(cur, cors_cfg, start_time, req, resp);
     });
 
     server.handle("POST", "/api/v1/config/update", [this](const HttpRequest& req, HttpResponse* resp) {
