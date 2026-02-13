@@ -101,6 +101,7 @@ func main() {
 	var oidcAudience = flag.String("oidc-audience", "", "OIDC audience / client_id (required)")
 	var clientAuthFile = flag.String("client-auth-file", "", "path to JSON client auth file (optional; env AGENTD_BROKER_CLIENT_AUTH_FILE)")
 	var clientAuthFallback = flag.Bool("client-auth-fallback", false, "allow client auth tokens when OIDC auth fails")
+	var clientAuthReloadMS = flag.Int64("client-auth-reload-ms", 0, "reload client auth file interval in ms (0 disables; env AGENTD_BROKER_CLIENT_AUTH_RELOAD_MS)")
 	var adminSubsCSV = flag.String("admin-subs", "", "comma-separated OIDC sub values treated as admin")
 	var corsOriginsCSV = flag.String("cors-origins", "", "comma-separated allowed CORS origins (e.g. https://ui.example.com)")
 	var maxPendingPerAgent = flag.Int("max-pending-per-agent", 256, "max pending proxied requests per agent (0=unlimited)")
@@ -144,6 +145,10 @@ func main() {
 	fallbackEnabled := *clientAuthFallback
 	if v, ok := envBool("AGENTD_BROKER_CLIENT_AUTH_FALLBACK"); ok && v {
 		fallbackEnabled = true
+	}
+	reloadMS := *clientAuthReloadMS
+	if v, ok := envInt64("AGENTD_BROKER_CLIENT_AUTH_RELOAD_MS"); ok && v > 0 {
+		reloadMS = v
 	}
 
 	iss := strings.TrimSpace(*oidcIssuer)
@@ -314,6 +319,30 @@ func main() {
 		(*idleTimeout).String(),
 		(*readHeaderTimeout).String(),
 	)
+	if reloadMS > 0 {
+		if clientAuthPath == "" {
+			log.Printf("client auth reload requested but no client auth file configured; reload disabled")
+		} else {
+			if reloadMS < 1000 {
+				log.Printf("client auth reload interval too low (%dms); clamping to 1000ms", reloadMS)
+				reloadMS = 1000
+			}
+			interval := time.Duration(reloadMS) * time.Millisecond
+			log.Printf("client auth reload enabled: every %s", interval)
+			ticker := time.NewTicker(interval)
+			go func() {
+				for range ticker.C {
+					ca, err := config.LoadClientAuthFromFile(clientAuthPath)
+					if err != nil {
+						log.Printf("client auth reload failed: %v", err)
+						continue
+					}
+					s.SetClientAuth(ca)
+					log.Printf("client auth reloaded")
+				}
+			}()
+		}
+	}
 
 	select {
 	case <-ctx.Done():

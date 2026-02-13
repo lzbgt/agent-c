@@ -73,6 +73,7 @@ Optional: static client tokens
 For non-UI service clients (or environments without OIDC), the broker can accept static bearer tokens from a JSON file:
 - `--client-auth-file /path/to/client_auth.json`
 - `--client-auth-fallback` to allow tokens when OIDC auth fails
+- `--client-auth-reload-ms` to periodically reload the file
 
 Client token auth is intended for **proxy/orchestrate** calls only. Agent list/create remains OIDC-only.
 

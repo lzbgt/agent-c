@@ -62,6 +62,9 @@ type Server struct {
 	readyOK   bool
 	readyErr  string
 	readyBusy bool
+
+	clientAuthMu sync.RWMutex
+	clientAuth   *auth.ClientAuth
 }
 
 func New(cfg Config) (*Server, error) {
@@ -93,6 +96,7 @@ func New(cfg Config) (*Server, error) {
 		cfg.ReadinessCacheInterval = 5 * time.Second
 	}
 	s := &Server{cfg: cfg, startTime: time.Now()}
+	s.clientAuth = cfg.ClientAuth
 	s.upg = websocket.Upgrader{
 		ReadBufferSize:  64 * 1024,
 		WriteBufferSize: 64 * 1024,
@@ -105,6 +109,25 @@ func New(cfg Config) (*Server, error) {
 		},
 	}
 	return s, nil
+}
+
+func (s *Server) getClientAuth() *auth.ClientAuth {
+	if s == nil {
+		return nil
+	}
+	s.clientAuthMu.RLock()
+	ca := s.clientAuth
+	s.clientAuthMu.RUnlock()
+	return ca
+}
+
+func (s *Server) SetClientAuth(ca *auth.ClientAuth) {
+	if s == nil {
+		return
+	}
+	s.clientAuthMu.Lock()
+	s.clientAuth = ca
+	s.clientAuthMu.Unlock()
 }
 
 func (s *Server) Handler() http.Handler {
@@ -942,15 +965,16 @@ func (s *Server) requirePrincipal(r *http.Request) (*Principal, error) {
 			}
 			return p, nil
 		}
-		if s.cfg.ClientAuth == nil || !s.cfg.ClientAuthFallback {
+		if s.getClientAuth() == nil || !s.cfg.ClientAuthFallback {
 			return nil, err
 		}
 	}
 
-	if s.cfg.ClientAuth == nil {
+	ca := s.getClientAuth()
+	if ca == nil {
 		return nil, errors.New("client auth not configured")
 	}
-	cp, err := s.cfg.ClientAuth.AuthenticateBearer(r)
+	cp, err := ca.AuthenticateBearer(r)
 	if err != nil {
 		return nil, err
 	}
@@ -1072,8 +1096,8 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
-  ok, errStr := s.checkReady(r.Context())
-  if !ok {
+	ok, errStr := s.checkReady(r.Context())
+	if !ok {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		writeJSON(w, map[string]any{
 			"ok":         false,
@@ -1082,42 +1106,42 @@ func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-  writeJSON(w, map[string]any{
-    "ok":         true,
-    "ts_unix_ms": time.Now().UnixMilli(),
-  })
+	writeJSON(w, map[string]any{
+		"ok":         true,
+		"ts_unix_ms": time.Now().UnixMilli(),
+	})
 }
 
 func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
-  _ = r
-  readyOK, _ := s.checkReady(r.Context())
-  ready := 0
-  if readyOK {
-    ready = 1
-  }
-  agents := 0
-  if s != nil && s.cfg.Registry != nil {
-    agents = len(s.cfg.Registry.List())
-  }
-  uptime := time.Since(s.startTime).Seconds()
-  nowMs := time.Now().UnixMilli()
+	_ = r
+	readyOK, _ := s.checkReady(r.Context())
+	ready := 0
+	if readyOK {
+		ready = 1
+	}
+	agents := 0
+	if s != nil && s.cfg.Registry != nil {
+		agents = len(s.cfg.Registry.List())
+	}
+	uptime := time.Since(s.startTime).Seconds()
+	nowMs := time.Now().UnixMilli()
 
-  w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-  _, _ = fmt.Fprintf(w, "# HELP broker_up 1 if the broker process is running.\n")
-  _, _ = fmt.Fprintf(w, "# TYPE broker_up gauge\n")
-  _, _ = fmt.Fprintf(w, "broker_up 1\n")
-  _, _ = fmt.Fprintf(w, "# HELP broker_ready 1 if the broker is ready to serve traffic.\n")
-  _, _ = fmt.Fprintf(w, "# TYPE broker_ready gauge\n")
-  _, _ = fmt.Fprintf(w, "broker_ready %d\n", ready)
-  _, _ = fmt.Fprintf(w, "# HELP broker_agents_connected Number of connected agents.\n")
-  _, _ = fmt.Fprintf(w, "# TYPE broker_agents_connected gauge\n")
-  _, _ = fmt.Fprintf(w, "broker_agents_connected %d\n", agents)
-  _, _ = fmt.Fprintf(w, "# HELP broker_uptime_seconds Process uptime in seconds.\n")
-  _, _ = fmt.Fprintf(w, "# TYPE broker_uptime_seconds gauge\n")
-  _, _ = fmt.Fprintf(w, "broker_uptime_seconds %.0f\n", uptime)
-  _, _ = fmt.Fprintf(w, "# HELP broker_now_unix_ms Current unix time in milliseconds.\n")
-  _, _ = fmt.Fprintf(w, "# TYPE broker_now_unix_ms gauge\n")
-  _, _ = fmt.Fprintf(w, "broker_now_unix_ms %d\n", nowMs)
+	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+	_, _ = fmt.Fprintf(w, "# HELP broker_up 1 if the broker process is running.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE broker_up gauge\n")
+	_, _ = fmt.Fprintf(w, "broker_up 1\n")
+	_, _ = fmt.Fprintf(w, "# HELP broker_ready 1 if the broker is ready to serve traffic.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE broker_ready gauge\n")
+	_, _ = fmt.Fprintf(w, "broker_ready %d\n", ready)
+	_, _ = fmt.Fprintf(w, "# HELP broker_agents_connected Number of connected agents.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE broker_agents_connected gauge\n")
+	_, _ = fmt.Fprintf(w, "broker_agents_connected %d\n", agents)
+	_, _ = fmt.Fprintf(w, "# HELP broker_uptime_seconds Process uptime in seconds.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE broker_uptime_seconds gauge\n")
+	_, _ = fmt.Fprintf(w, "broker_uptime_seconds %.0f\n", uptime)
+	_, _ = fmt.Fprintf(w, "# HELP broker_now_unix_ms Current unix time in milliseconds.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE broker_now_unix_ms gauge\n")
+	_, _ = fmt.Fprintf(w, "broker_now_unix_ms %d\n", nowMs)
 }
 
 func (s *Server) checkReady(ctx context.Context) (bool, string) {
@@ -1166,7 +1190,7 @@ func (s *Server) checkReady(ctx context.Context) (bool, string) {
 	// OIDC readiness (issuer/JWKS reachable) if configured.
 	if ok {
 		if s.cfg.OIDC == nil {
-			if s.cfg.ClientAuth == nil {
+			if s.getClientAuth() == nil {
 				ok = false
 				errStr = "oidc verifier not configured"
 			}

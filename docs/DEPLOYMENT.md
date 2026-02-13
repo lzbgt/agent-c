@@ -158,12 +158,14 @@ Optional (non-UI service clients): static client token file:
 ```
 agentd-broker \
   --client-auth-file /etc/agentd/client_auth.json \
-  --client-auth-fallback
+  --client-auth-fallback \
+  --client-auth-reload-ms 60000
 ```
 
 Env equivalents:
 - `AGENTD_BROKER_CLIENT_AUTH_FILE=/etc/agentd/client_auth.json`
 - `AGENTD_BROKER_CLIENT_AUTH_FALLBACK=1`
+- `AGENTD_BROKER_CLIENT_AUTH_RELOAD_MS=60000`
 
 ### Example (connector flags)
 ```
