@@ -13,7 +13,7 @@ This directory also includes `agentd-connector`, a lightweight “bridge” that
 ## Endpoints
 
 - `GET /healthz` — liveness (always `ok: true` if the process is serving HTTP)
-- `GET /readyz` — readiness (checks Postgres ping and OIDC provider initialization)
+- `GET /readyz` — readiness (checks Postgres ping and OIDC provider initialization; includes client auth status when configured)
 - `GET /metrics` — Prometheus metrics (uptime, readiness, connected agents)
   - Includes client auth reload gauges (`broker_client_auth_*`)
 - `GET /v1/client_auth/status` — admin-only status of client auth reload state

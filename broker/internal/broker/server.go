@@ -1131,18 +1131,44 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 	ok, errStr := s.checkReady(r.Context())
+	clientAuth := map[string]any(nil)
+	if s.getClientAuth() != nil {
+		lastOK, lastAt, lastErr := s.getClientAuthStatus()
+		clientAuth = map[string]any{
+			"enabled":    true,
+			"last_ok":    lastOK,
+			"strict":     s.cfg.ClientAuthStrict,
+			"max_age_ms": s.cfg.ClientAuthMaxAge.Milliseconds(),
+			"last_unix_ms": func() int64 {
+				if lastAt.IsZero() {
+					return 0
+				}
+				return lastAt.UnixMilli()
+			}(),
+		}
+		if !lastOK && lastErr != "" {
+			clientAuth["last_error"] = lastErr
+		}
+	}
 	if !ok {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		writeJSON(w, map[string]any{
 			"ok":         false,
 			"error":      errStr,
 			"ts_unix_ms": time.Now().UnixMilli(),
+			"client_auth": func() any {
+				if clientAuth == nil {
+					return nil
+				}
+				return clientAuth
+			}(),
 		})
 		return
 	}
 	writeJSON(w, map[string]any{
-		"ok":         true,
-		"ts_unix_ms": time.Now().UnixMilli(),
+		"ok":          true,
+		"ts_unix_ms":  time.Now().UnixMilli(),
+		"client_auth": clientAuth,
 	})
 }
 
