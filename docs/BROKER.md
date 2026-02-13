@@ -68,6 +68,14 @@ Broker authorizes each request using Postgres:
 This supports multiple users and prevents “UI says it ran” when it did not:
 all authorizations and audits are checked/recorded server-side.
 
+Optional: static client tokens
+
+For non-UI service clients (or environments without OIDC), the broker can accept static bearer tokens from a JSON file:
+- `--client-auth-file /path/to/client_auth.json`
+- `--client-auth-fallback` to allow tokens when OIDC auth fails
+
+Client token auth is intended for **proxy/orchestrate** calls only. Agent list/create remains OIDC-only.
+
 ## Protocol between broker and agent connector
 
 Broker and agent communicate over a single websocket connection (JSON messages).

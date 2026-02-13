@@ -154,6 +154,13 @@ agentd-broker \
   --oidc-audience agentd-broker
 ```
 
+Optional (non-UI service clients): static client token file:
+```
+agentd-broker \
+  --client-auth-file /etc/agentd/client_auth.json \
+  --client-auth-fallback
+```
+
 ### Example (connector flags)
 ```
 agentd-connector \

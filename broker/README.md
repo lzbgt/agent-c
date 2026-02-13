@@ -36,6 +36,9 @@ Key flags:
 - OIDC / DB:
   - `--db-dsn` (or `AGENTD_BROKER_DB_DSN` / `DATABASE_URL`)
   - `--oidc-issuer`, `--oidc-audience`
+- Optional client token auth:
+  - `--client-auth-file` (JSON file with static client tokens)
+  - `--client-auth-fallback` (allow client tokens when OIDC auth fails)
 - Resource limits:
   - `--max-pending-per-agent` (default `256`)
   - `--max-streams-per-agent` (default `64`)
@@ -51,6 +54,25 @@ Key flags:
   - `--read-header-timeout` (default `10s`)
   - `--shutdown-timeout` (default `15s`)
   - `--ready-cache` (default `5s`)
+
+Client auth file format:
+
+```json
+{
+  "clients": [
+    {
+      "client_id": "service-a",
+      "token": "REDACTED_TOKEN",
+      "admin": false,
+      "allowed_agents": ["agent1", "agent2"]
+    }
+  ]
+}
+```
+
+Notes:
+- Client tokens can proxy/orchestrate requests; agent list/create require OIDC.
+- If OIDC is not configured, `--client-auth-file` is required.
 
 ### Connector (`cmd/agentd-connector`)
 

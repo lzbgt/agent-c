@@ -39,8 +39,15 @@ func BuildClientAuth(specs []ClientSpec) (*auth.ClientAuth, error) {
 		if tok == "" {
 			return nil, errors.New("client token empty")
 		}
+		if _, ok := ca.ByToken[tok]; ok {
+			return nil, errors.New("duplicate client token")
+		}
+		id := strings.TrimSpace(s.ClientID)
+		if id == "" {
+			return nil, errors.New("client id empty")
+		}
 		p := &auth.ClientPolicy{
-			ClientID:      strings.TrimSpace(s.ClientID),
+			ClientID:      id,
 			Token:         tok,
 			Admin:         s.Admin,
 			AllowedAgents: map[string]bool{},

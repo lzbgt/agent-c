@@ -27,10 +27,12 @@ import (
 )
 
 type Config struct {
-	OIDC     *oidc.Verifier
-	DB       *db.DB
-	Registry *registry.Registry
-	Events   *events.Hub
+	OIDC               *oidc.Verifier
+	ClientAuth         *auth.ClientAuth
+	ClientAuthFallback bool
+	DB                 *db.DB
+	Registry           *registry.Registry
+	Events             *events.Hub
 
 	AgentCNPfx         string
 	RequireAgentMTLS   bool
@@ -66,8 +68,8 @@ func New(cfg Config) (*Server, error) {
 	if cfg.DB == nil || cfg.DB.Pool == nil {
 		return nil, errors.New("broker db required")
 	}
-	if cfg.OIDC == nil {
-		return nil, errors.New("broker oidc verifier required")
+	if cfg.OIDC == nil && cfg.ClientAuth == nil {
+		return nil, errors.New("broker auth required (oidc or client auth)")
 	}
 	if cfg.Registry == nil {
 		cfg.Registry = registry.New()
@@ -129,8 +131,10 @@ func (s *Server) Handler() http.Handler {
 }
 
 type Principal struct {
-	Sub   string
-	Admin bool
+	Sub           string
+	Admin         bool
+	AllowedAgents map[string]bool
+	AuthKind      string
 }
 
 type relayOutcome struct {
@@ -284,6 +288,10 @@ func (s *Server) handleAgentsList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
+	if p.AuthKind != "oidc" {
+		http.Error(w, "oidc required for agent listing", http.StatusForbidden)
+		return
+	}
 	type AgentInfo struct {
 		AgentID     string         `json:"agent_id"`
 		OwnerSub    string         `json:"owner_sub"`
@@ -328,6 +336,10 @@ func (s *Server) handleAgentsCreate(w http.ResponseWriter, r *http.Request) {
 	p, err := s.requirePrincipal(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if p.AuthKind != "oidc" {
+		http.Error(w, "oidc required for agent creation", http.StatusForbidden)
 		return
 	}
 	body, err := readBodyBounded(r.Body, 1024*1024)
@@ -917,18 +929,44 @@ func (s *Server) requirePrincipal(r *http.Request) (*Principal, error) {
 	if r == nil {
 		return nil, errors.New("nil request")
 	}
-	pr, err := s.cfg.OIDC.AuthenticateRequest(r.Context(), r)
+	if s.cfg.OIDC != nil {
+		pr, err := s.cfg.OIDC.AuthenticateRequest(r.Context(), r)
+		if err == nil {
+			p := &Principal{
+				Sub:      pr.Sub,
+				Admin:    s.cfg.AdminSubs != nil && s.cfg.AdminSubs[pr.Sub],
+				AuthKind: "oidc",
+			}
+			if err := s.cfg.DB.EnsureUser(r.Context(), p.Sub); err != nil {
+				return nil, err
+			}
+			return p, nil
+		}
+		if s.cfg.ClientAuth == nil || !s.cfg.ClientAuthFallback {
+			return nil, err
+		}
+	}
+
+	if s.cfg.ClientAuth == nil {
+		return nil, errors.New("client auth not configured")
+	}
+	cp, err := s.cfg.ClientAuth.AuthenticateBearer(r)
 	if err != nil {
 		return nil, err
 	}
-	p := &Principal{
-		Sub:   pr.Sub,
-		Admin: s.cfg.AdminSubs != nil && s.cfg.AdminSubs[pr.Sub],
+	sub := strings.TrimSpace(cp.ClientID)
+	if sub == "" {
+		sub = "client"
 	}
-	if err := s.cfg.DB.EnsureUser(r.Context(), p.Sub); err != nil {
-		return nil, err
+	if !strings.HasPrefix(sub, "client:") {
+		sub = "client:" + sub
 	}
-	return p, nil
+	return &Principal{
+		Sub:           sub,
+		Admin:         cp.Admin,
+		AllowedAgents: cp.AllowedAgents,
+		AuthKind:      "client",
+	}, nil
 }
 
 func (s *Server) canAccessAgent(ctx context.Context, p *Principal, agentID string) (bool, error) {
@@ -938,6 +976,9 @@ func (s *Server) canAccessAgent(ctx context.Context, p *Principal, agentID strin
 	if p.Admin {
 		return true, nil
 	}
+	if p.AllowedAgents != nil {
+		return p.AllowedAgents[agentID], nil
+	}
 	return s.cfg.DB.UserCanAccessAgent(ctx, p.Sub, agentID)
 }
 
@@ -945,6 +986,10 @@ func (s *Server) handleAgentDelete(w http.ResponseWriter, r *http.Request, agent
 	p, err := s.requirePrincipal(r)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if p.AuthKind == "client" && !p.Admin {
+		http.Error(w, "client auth cannot delete agents", http.StatusForbidden)
 		return
 	}
 	if r.Method != "POST" && r.Method != "DELETE" {

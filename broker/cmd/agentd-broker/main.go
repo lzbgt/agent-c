@@ -15,6 +15,7 @@ import (
 
 	"agentd-broker/internal/auth"
 	"agentd-broker/internal/broker"
+	"agentd-broker/internal/config"
 	"agentd-broker/internal/db"
 	"agentd-broker/internal/events"
 	"agentd-broker/internal/oidc"
@@ -82,6 +83,8 @@ func main() {
 	var dbDSN = flag.String("db-dsn", "", "postgres dsn (or env AGENTD_BROKER_DB_DSN / DATABASE_URL)")
 	var oidcIssuer = flag.String("oidc-issuer", "", "OIDC issuer URL (required)")
 	var oidcAudience = flag.String("oidc-audience", "", "OIDC audience / client_id (required)")
+	var clientAuthFile = flag.String("client-auth-file", "", "path to JSON client auth file (optional)")
+	var clientAuthFallback = flag.Bool("client-auth-fallback", false, "allow client auth tokens when OIDC auth fails")
 	var adminSubsCSV = flag.String("admin-subs", "", "comma-separated OIDC sub values treated as admin")
 	var corsOriginsCSV = flag.String("cors-origins", "", "comma-separated allowed CORS origins (e.g. https://ui.example.com)")
 	var maxPendingPerAgent = flag.Int("max-pending-per-agent", 256, "max pending proxied requests per agent (0=unlimited)")
@@ -109,12 +112,31 @@ func main() {
 		log.Fatalf("missing db dsn: set --db-dsn or env AGENTD_BROKER_DB_DSN / DATABASE_URL")
 	}
 
+	clientAuthPath := strings.TrimSpace(*clientAuthFile)
+	var clientAuth *auth.ClientAuth
+	if clientAuthPath != "" {
+		ca, err := config.LoadClientAuthFromFile(clientAuthPath)
+		if err != nil {
+			log.Fatalf("client auth load failed: %v", err)
+		}
+		clientAuth = ca
+	}
+
 	iss := strings.TrimSpace(*oidcIssuer)
 	aud := strings.TrimSpace(*oidcAudience)
-	if iss == "" || aud == "" {
-		log.Fatalf("missing oidc config: set --oidc-issuer and --oidc-audience")
+	hasOIDC := iss != "" || aud != ""
+	if hasOIDC {
+		if iss == "" || aud == "" {
+			log.Fatalf("missing oidc config: set --oidc-issuer and --oidc-audience")
+		}
 	}
-	ver := &oidc.Verifier{IssuerURL: iss, Audience: aud}
+	if !hasOIDC && clientAuth == nil {
+		log.Fatalf("missing auth config: set --oidc-issuer/--oidc-audience or --client-auth-file")
+	}
+	var ver *oidc.Verifier
+	if hasOIDC {
+		ver = &oidc.Verifier{IssuerURL: iss, Audience: aud}
+	}
 
 	tlsCfg := (*tls.Config)(nil)
 	if strings.TrimSpace(*tlsCert) != "" || strings.TrimSpace(*tlsKey) != "" {
@@ -173,12 +195,14 @@ func main() {
 		}
 	}
 	s, err := broker.New(broker.Config{
-		OIDC:             ver,
-		DB:               dbConn,
-		Registry:         reg,
-		Events:           ev,
-		AgentCNPfx:       *agentCNPfx,
-		RequireAgentMTLS: *requireAgentMTLS,
+		OIDC:               ver,
+		ClientAuth:         clientAuth,
+		ClientAuthFallback: *clientAuthFallback,
+		DB:                 dbConn,
+		Registry:           reg,
+		Events:             ev,
+		AgentCNPfx:         *agentCNPfx,
+		RequireAgentMTLS:   *requireAgentMTLS,
 		MaxRequestBodySize: func() int64 {
 			if *maxBodyBytes <= 0 {
 				return 64 * 1024 * 1024
@@ -243,8 +267,14 @@ func main() {
 		log.Printf("agentd-broker listening on http://%s (INSECURE)", *listen)
 	}
 	log.Printf("postgres dsn set: %v", dsn != "")
-	log.Printf("oidc issuer: %s", iss)
-	log.Printf("oidc audience: %s", aud)
+	if hasOIDC {
+		log.Printf("oidc issuer: %s", iss)
+		log.Printf("oidc audience: %s", aud)
+	} else {
+		log.Printf("oidc disabled")
+	}
+	log.Printf("client auth configured: %v", clientAuth != nil)
+	log.Printf("client auth fallback: %v", *clientAuthFallback)
 	log.Printf("cors origins configured: %v", len(allowedOrigins) > 0)
 	log.Printf(
 		"limits: max_pending_per_agent=%d max_streams_per_agent=%d max_body_bytes=%d max_header_bytes=%d",
