@@ -235,6 +235,7 @@ Environment variables:
 - `AGENTD_SESSIONS_ROOT`
 - `AGENTD_DB_PATH`
 - `AGENTD_ACCESS_LOG` (`1` for text logs, `json` for JSON logs)
+- `AGENTD_HTTP_MAX_BODY_BYTES` (default `67108864`, `0` to disable limit)
 
 ## Run in production (agentd + WebUI)
 

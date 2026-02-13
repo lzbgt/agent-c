@@ -104,6 +104,25 @@ static int access_log_mode() {
   return 0;
 }
 
+static size_t max_request_body_bytes() {
+  const size_t kDefault = 64ull * 1024ull * 1024ull;
+  const size_t kMaxCap = 512ull * 1024ull * 1024ull;
+  const char* v = std::getenv("AGENTD_HTTP_MAX_BODY_BYTES");
+  if (!v || !v[0]) return kDefault;
+  std::string s(v);
+  trim_inplace(s);
+  if (s.empty()) return kDefault;
+  if (s == "0") return 0;
+  try {
+    unsigned long long parsed = std::stoull(s);
+    if (parsed == 0) return 0;
+    if (parsed > kMaxCap) parsed = kMaxCap;
+    return (size_t)parsed;
+  } catch (...) {
+    return kDefault;
+  }
+}
+
 static std::string addr_to_string(const sockaddr_storage& addr) {
   char buf[INET6_ADDRSTRLEN];
   if (addr.ss_family == AF_INET) {
@@ -243,6 +262,7 @@ static std::string reason_phrase(int status) {
     case 401: return "Unauthorized";
     case 403: return "Forbidden";
     case 404: return "Not Found";
+    case 413: return "Payload Too Large";
     case 405: return "Method Not Allowed";
     case 500: return "Internal Server Error";
     default: return "OK";
@@ -357,6 +377,7 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
   }
 
   const int log_mode = access_log_mode();
+  const size_t max_body = max_request_body_bytes();
 
   // Handle each client in its own thread to keep the daemon responsive even when
   // a request is long-running (e.g., SSE streaming endpoint).
@@ -370,7 +391,7 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
     }
 
     const std::string peer_addr = addr_to_string(peer);
-    std::thread([this, client, peer_addr, log_mode]() {
+    std::thread([this, client, peer_addr, log_mode, max_body]() {
       const auto start_time = std::chrono::steady_clock::now();
       std::string request_id = make_request_id();
 
@@ -464,6 +485,13 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
         HttpResponse resp;
         resp.status = 400;
         resp.body = R"({"ok":false,"error":"bad request"})";
+        send_response(req, resp, 0);
+        return;
+      }
+      if (max_body > 0 && content_len > max_body) {
+        HttpResponse resp;
+        resp.status = 413;
+        resp.body = R"({"ok":false,"error":"request body too large"})";
         send_response(req, resp, 0);
         return;
       }

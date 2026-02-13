@@ -78,6 +78,7 @@ Notes:
 - This endpoint requires daemon DB enabled/open (same as most session endpoints).
 - Uploads are stored under `<sessions_root>/session_<session_id>/uploads/`.
 - Upload size is capped (best-effort) to keep the daemon memory-bounded.
+- The daemon also enforces a global HTTP body limit via `AGENTD_HTTP_MAX_BODY_BYTES` (default 64 MiB).
 
 ### Endpoint: list recent artifacts for a session (from audit)
 

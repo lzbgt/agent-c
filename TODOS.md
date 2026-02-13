@@ -93,6 +93,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - Shipped: workflow outbound HTTP policy knobs (`allow_hosts/allow_cidrs/deny_cidrs/deny_private/dns_pin`) are now runtime-mutable
     and persisted via `/api/v1/config/update` (no restart needed to tighten policy).
   - TODO: split `docs/openapi/agentd.yaml` into modular `$ref` files and update `openapi_sanity_tests` to accept multi-file specs.
+  - Shipped: global HTTP request body limit for agentd (`AGENTD_HTTP_MAX_BODY_BYTES`) with a smoke test.
 - UM‑EAIS contract is now executable (best-effort) via machine-readable artifacts:
   - JSON Schemas: `docs/spec/um-eais/schema/`
   - Golden transcript fixtures: `docs/spec/um-eais/fixtures/`
