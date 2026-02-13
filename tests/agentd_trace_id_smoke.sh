@@ -163,6 +163,48 @@ if txt != "OK":
   raise SystemExit(1)
 PY
 
+# Sync run: X-Trace-Id header is used when trace_id is omitted from the body.
+TRACE_HDR="trace_hdr_$(date +%s)_$RANDOM"
+resp_hdr="$(curl -fsS --noproxy "*" --max-time 15 \
+  -H "Content-Type: application/json" \
+  -H "X-Trace-Id: ${TRACE_HDR}" \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "prompt": "Read README.md then say OK",
+  "no_session": True,
+  "tools": "host",
+  "yolo": False,
+  "base_url": "${STUB_BASE}",
+  "api_key": "dummy",
+  "model": "stub",
+  "max_steps": 4
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/run")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${resp_hdr}''')
+if not obj.get("ok"):
+  print("header trace run failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("trace_id") != "${TRACE_HDR}":
+  print("missing/incorrect trace_id in response:", obj.get("trace_id"), file=sys.stderr)
+  raise SystemExit(1)
+events = obj.get("events")
+if not isinstance(events, list) or not events:
+  print("missing events array", file=sys.stderr)
+  raise SystemExit(1)
+for i, e in enumerate(events):
+  if not isinstance(e, dict):
+    continue
+  if e.get("trace_id") != "${TRACE_HDR}":
+    print(f"event[{i}] missing/incorrect trace_id:", e.get("trace_id"), file=sys.stderr)
+    raise SystemExit(1)
+PY
+
 # Persisted run: audit record can be re-fetched by trace_id.
 TRACE_PERSIST="trace_persist_$(date +%s)_$RANDOM"
 SESSION_PERSIST="agentd_trace_id_smoke_sess_$(date +%s)_$RANDOM"

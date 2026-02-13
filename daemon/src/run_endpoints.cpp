@@ -58,6 +58,29 @@ static const char* getenv_s(const char* k) {
   return (v && v[0]) ? v : nullptr;
 }
 
+static std::string trace_id_hint_from_header(const HttpRequest& req) {
+  std::string tid = trim_copy(header_get_ci(req.headers, "x-trace-id"));
+  if (tid.empty()) return "";
+  if (!trace_id_is_safe(tid)) return "";
+  return tid;
+}
+
+static std::string inject_trace_id_if_missing(const std::string& request_body, const std::string& trace_id_hint) {
+  if (trace_id_hint.empty()) return request_body;
+  Json::Value args;
+  std::string perr;
+  if (!json_parse_object(request_body, &args, &perr)) {
+    return request_body;
+  }
+  std::string trace_id;
+  if (args.isMember("trace_id") && args["trace_id"].isString()) trace_id = trim_copy(args["trace_id"].asString());
+  if (!trace_id.empty()) return request_body;
+  args["trace_id"] = trace_id_hint;
+  Json::StreamWriterBuilder wb;
+  wb["indentation"] = "";
+  return Json::writeString(wb, args);
+}
+
 // Parses the daemon run request body and returns a response JSON object (HTTP-level errors are represented in JSON).
 static Json::Value run_request_to_json_impl(
   const DaemonConfig& daemon_cfg,
@@ -1710,14 +1733,19 @@ void handle_run_endpoint(
   if (!daemon_require_auth(cfg, req, resp)) return;
 
   const auto started = std::chrono::steady_clock::now();
+  const std::string trace_id_hint = trace_id_hint_from_header(req);
+  const std::string body = inject_trace_id_if_missing(req.body, trace_id_hint);
   std::cerr << "agentd: /api/v1/run start bytes=" << req.body.size() << "\n";
   Json::Value out =
-    run_request_to_json_impl(cfg, ocfg, db_or_null, tool_ext_or_null, sessions_root_dir, req.body, nullptr, nullptr, nullptr);
+    run_request_to_json_impl(cfg, ocfg, db_or_null, tool_ext_or_null, sessions_root_dir, body, nullptr, nullptr, nullptr);
   const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started).count();
   const bool ok = out.isObject() && out.isMember("ok") && out["ok"].isBool() && out["ok"].asBool();
   std::cerr << "agentd: /api/v1/run done ok=" << (ok ? "true" : "false") << " ms=" << ms << "\n";
   if (out.isObject() && out.isMember("rpc_status") && out["rpc_status"].isInt()) {
     resp->status = out["rpc_status"].asInt();
+  }
+  if (out.isObject() && out.isMember("trace_id") && out["trace_id"].isString()) {
+    resp->headers["X-Trace-Id"] = out["trace_id"].asString();
   }
   resp->body = json_stringify(out);
 }
@@ -1758,6 +1786,7 @@ void handle_run_async_endpoint(
 
   std::string trace_id;
   if (args.isMember("trace_id") && args["trace_id"].isString()) trace_id = trim_copy(args["trace_id"].asString());
+  if (trace_id.empty()) trace_id = trace_id_hint_from_header(req);
   if (!trace_id.empty() && !trace_id_is_safe(trace_id)) {
     resp->status = 400;
     Json::Value o(Json::objectValue);
@@ -1768,6 +1797,7 @@ void handle_run_async_endpoint(
   }
   if (trace_id.empty()) trace_id = make_uuidish_trace_id();
   args["trace_id"] = trace_id;
+  resp->headers["X-Trace-Id"] = trace_id;
 
   const std::string job_id = args.isMember("job_id") && args["job_id"].isString() ? args["job_id"].asString() : new_job_id();
   if (job_id.empty()) {
