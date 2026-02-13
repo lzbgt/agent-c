@@ -61,6 +61,17 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] Introduce replay bundles for deterministic runs (inputs + hashes + tool outputs) with fixture tests.
   - [ ] Document a transport-agnostic relay interface for broker/connector (prep for multi-transport).
 
+## Promoted goals (design review)
+
+- [ ] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules.
+- [ ] Tool loop: full multimodal transcript support + stable, versioned event schema with migrations.
+- [ ] Streaming: core-layer streaming interface + provider compatibility matrix with full variant coverage.
+- [ ] Tool plugins: sandbox/isolation, Windows loader, and embedded/MCU-compatible plugin path.
+- [ ] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
+- [ ] UI actions: stable public action API, autoplay unlock flow, and consented remote URL opens.
+- [ ] Interop/attestation: PKI + signed attestations + canonical JSON hashing + envelope confidentiality.
+- [ ] AVM: scoped flag passthrough, host-effects policy, record/replay plumbing, and quorum/attestation.
+
 ## Deferred (after macOS stability)
 
 - Validate Windows build (tool plugins + tool servers remain disabled).

@@ -19,10 +19,10 @@ This project is rolling; schema may evolve, but **typed events** are preferred o
   - each daemon instance can use its own state/session root
 - Allow agents to present created host files (image/audio/video) and request UI actions like “play audio once/N times”.
 
-## Non-goals
+## Additional goals
 
-- Stable, long-term, versioned public API guarantees (rolling project).
-- Browser-autoplay bypass. Browsers typically require **user gesture** to play audio/video.
+- Provide stable, long-term, versioned public API guarantees with a clear deprecation policy.
+- Deliver reliable audio/video playback with explicit gesture-based unlock flows that respect browser autoplay rules.
 
 ## Sessions
 

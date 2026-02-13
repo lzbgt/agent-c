@@ -11,9 +11,9 @@ The goal is to make multi-agent systems practical even when the underlying LLM s
 - **cheap correctness surfaces** (deterministic polling + terminal statuses)
 - **low coupling** (HTTP JSON only; no shared DB assumptions)
 
-Non-goals (v0.1):
-- Federated identity/trust roots and signed attestation (see Interop v0.4 in `TODOS.md`)
-- A generic “remote RPC” API surface (we start with durable workflow handoff because it composes)
+Additional goals (v0.1):
+- Federated identity/trust roots and signed attestation (see Interop v0.4 in `TODOS.md`).
+- A generic “remote RPC” API surface in addition to durable workflow handoff.
 
 ## 1) Transport and endpoints
 

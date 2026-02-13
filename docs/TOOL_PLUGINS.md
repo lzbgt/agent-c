@@ -8,11 +8,11 @@ This document defines the **tool plugin ABI** used by the standalone `agentd` ex
 
 The goal is to make this project a **framework**: adding tools should be a packaging/configuration operation, not a fork/rebuild operation.
 
-## Scope / non-goals
+## Scope / goals
 
-- This is a **host-only** feature (desktop/server). MCUs should use `agent_core` and compile tools in.
-- This is not a “sandbox”. A plugin has native code execution; treat it like installing any other native extension.
-- Windows is not supported in v1 (dlopen-based loader).
+- Support host and embedded targets, with a compatible plugin/extension path for MCUs via `agent_core`.
+- Provide a sandboxed execution option for plugins (process isolation, policy, and resource limits).
+- Support Windows in v1 with a LoadLibrary-based loader and packaging guidance.
 
 ## Plugin ABI (v1)
 

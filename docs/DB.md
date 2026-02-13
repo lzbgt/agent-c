@@ -34,10 +34,10 @@ Note: the CLI (`./build/agent`) still uses the portable file-backed session stor
   - WAL mode for concurrency
   - simple schema migrations
 
-## Non-goals
+## Additional goals
 
-- Provide a full “analytics” layer (we just want reliable storage + simple queries).
-- Store binary blobs (images/audio). Those should be stored as files, with DB rows referencing paths.
+- Provide a full analytics layer (materialized views, aggregates, and common query helpers).
+- Support binary blobs (images/audio) with explicit size limits, storage tiers, and path-based fallbacks.
 
 ## DB backend decision (why SQLite)
 

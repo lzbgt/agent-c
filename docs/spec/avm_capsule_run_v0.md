@@ -21,12 +21,12 @@ This spec defines a minimal `agentd` HTTP endpoint that can:
 - enforce explicit budgets + deterministic knobs
 - return machine-readable results + hash tokens
 
-## 2) Non-goals (v0)
+## 2) Goals (v0)
 
-- No “arbitrary AVM flags passthrough”.
-- No host-effects by default (no host FS/PROC/NET).
-- No full record/replay plumbing exposed yet (log/snapshot persistence is a later milestone).
-- No multi-node quorum/attestation protocol in agentd itself (platform/broker owns that).
+- Allow scoped AVM flags passthrough via an explicit allowlist.
+- Enable host-effects under explicit policy and budget controls (FS/PROC/NET).
+- Expose full record/replay plumbing (log + snapshot persistence).
+- Integrate multi-node quorum/attestation protocol in agentd (with broker coordination).
 
 ## 3) Security model
 

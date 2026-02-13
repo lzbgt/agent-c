@@ -15,10 +15,10 @@ This profile is transport-agnostic and applies to both JSON and CBOR wire mappin
 - Keep the signing algorithm implementable on MCUs (small code, no big deps).
 - Bind node identity (`from: "node:<node_id>"`) to the authenticated envelope when enforcement is enabled.
 
-## Non-goals
+## Additional goals
 
-- Confidentiality (use TLS/transport security when available).
-- Certificate chains / PKI (this profile uses a simple `kid -> key material` directory).
+- Confidentiality (payload encryption in addition to transport security when available).
+- Certificate chains / PKI with rotation and revocation support.
 
 ## Envelope fields
 

@@ -22,11 +22,11 @@ and the shared implementation used by:
   - providers that ignore `stream: true` and return a normal JSON completion body
 - **Minimal coupling**: keep streaming decode logic independent from daemon job/event plumbing.
 
-## Non-goals (current)
+## Additional goals (current)
 
-- Full coverage for every streaming variant across providers (there are many).
-- Streaming for the **core** layer (core remains JSON/HTTP-free).
-- Token-accurate streaming budgets for *all* providers (provider support varies; see Usage accounting below).
+- Full coverage for every streaming variant across providers, backed by a compatibility test matrix.
+- Streaming support for the **core** layer via a transport-agnostic interface.
+- Token-accurate streaming budgets for *all* providers with reconciliation fallbacks.
 
 ## Usage accounting (best-effort)
 

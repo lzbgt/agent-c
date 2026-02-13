@@ -142,11 +142,11 @@ To keep correctness high:
 - A VM module must be runnable in a deterministic “stub host” harness.
 - The harness must be able to replay the same invocation and get the same outputs/events.
 
-## 6) Non-goals for v0
+## 6) Goals for v0
 
-- Embedding the VM in `agent_core` immediately
-- A full package manager or “ecosystem registry”
-- Allowing VM code to read arbitrary host files
+- Embed the VM in `agent_core` immediately for a single portable execution surface.
+- Provide a full package manager / ecosystem registry for VM modules.
+- Allow VM code to read arbitrary host files under explicit policy controls.
 
 ## 7) Budget and policy knobs (aligning with AVM realities)
 

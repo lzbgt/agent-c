@@ -9,9 +9,9 @@ Goals:
 - Surface provider key presence **without leaking secrets**.
 - Provide a small provider smoke test endpoint for quick verification.
 
-Non-goals:
-- Full observability (use traces, audit logs, and DB query endpoints for deep dives).
-- Long-running benchmark runs (use dedicated load tests instead).
+Additional goals:
+- Deliver full observability by unifying traces, audit logs, and DB query endpoints.
+- Provide long-running benchmark and soak runs via dedicated load-test harnesses.
 
 ## Auth
 

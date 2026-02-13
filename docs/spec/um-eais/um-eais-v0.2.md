@@ -9,11 +9,11 @@ Goal: make edge/MCU interoperability “power-unleashed” by improving:
 - **Correlation**: stable, end-to-end `trace_id` propagation across task lifecycle messages
 - **Correctness surface**: a durable, replayable **hash surface** + optional node-provided attestation blob
 
-Non-goals (v0.2):
+Additional goals (v0.2):
 
-- Standardizing a full PKI/identity story (hardware roots, cert chains, key rotation).
-- Requiring signed attestations (platform treats attest as best-effort data).
-- Defining a strict canonical JSON hash algorithm that all nodes must implement.
+- Standardize a full PKI/identity story (hardware roots, cert chains, key rotation).
+- Require signed attestations with policy-driven enforcement.
+- Define a strict canonical JSON hash algorithm that all nodes must implement.
 
 ## 1) Envelope `trace` (correlation)
 

@@ -18,10 +18,10 @@ These endpoints are intentionally **not** a stable public API; they are a debugg
   - require daemon auth when configured (same as other endpoints)
   - return bounded, paged results
 
-## Non-goals
+## Additional goals
 
-- Replacing the canonical `.sess` / `.events.jsonl` stores.
-- Advanced analytics (use `sqlite3` directly for that).
+- Make the DB query API a first-class canonical surface alongside `.sess` / `.events.jsonl`, with a clear migration path.
+- Provide advanced analytics endpoints and precomputed aggregates for operators and UIs.
 
 ## Endpoints
 

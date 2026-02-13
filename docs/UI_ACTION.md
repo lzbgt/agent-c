@@ -20,11 +20,11 @@ It complements `docs/PROTOCOL.md` and `docs/LIMITS.md`:
   - emitted as structured `events`
   - mirrored into the SQLite troubleshooting DB (via the existing `events` mirror)
 
-## Non-goals
+## Additional goals
 
-- Bypassing browser autoplay restrictions.
-- A long-term stable public API (rolling project).
-- Remote/3rd-party URL opens without explicit operator consent.
+- Deliver reliable autoplay behavior via explicit user-gesture unlock flows that respect browser restrictions.
+- Define a stable, versioned public UI action API with a deprecation policy.
+- Enable remote/3rd-party URL opens with explicit operator consent, allowlists, and audit logging.
 
 ## Event: `ui_action`
 

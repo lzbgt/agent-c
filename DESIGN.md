@@ -161,9 +161,9 @@ Goals:
 - Consistent behavior across JSON endpoints and SSE endpoints, including `OPTIONS` preflight.
 - Easy to reason about and test (centralized policy, minimal per-handler duplication).
 
-Non-goals (for this milestone):
-- Cookie-based auth / `Access-Control-Allow-Credentials` support.
-- Per-route origin policies or complex regex matching.
+Additional goals (for this milestone):
+- Add cookie-based auth / `Access-Control-Allow-Credentials` support (explicitly opt-in).
+- Support per-route origin policies and regex matching with a clear precedence model.
 
 Policy:
 - Default:
@@ -325,10 +325,10 @@ the **portable core** so daemon/embedded targets can reuse the same control-flow
   - OpenAI-compatible JSON request/response formatting/parsing stays in the host adapter.
   - Embedded providers can implement other formats while still using the same core loop.
 
-### Non-goals (for the first cut)
+### Additional goals (for the first cut)
 
-- Full multimodal tool-loop content parts (text+image/audio/video) in the loop transcript.
-- Stable long-term “event schema” across UI versions (rolling project; schemas may evolve).
+- Full multimodal tool-loop content parts (text+image/audio/video) in the loop transcript, with consistent encoding.
+- A stable long-term event schema across UI versions, with explicit versioning and migration notes.
 
 ### Architecture
 
@@ -489,7 +489,7 @@ Assistant streaming (provider-dependent):
 - For tool-calling loops (`tools="basic"`/`"host"`), the host tool-provider reconstructs tool calls incrementally from streaming
   `delta.tool_calls` (best-effort; also supports legacy `delta.function_call`) and may also emit `assistant_delta` events on the
   final assistant step (provider-dependent).
-  - Non-goal for the first cut: full coverage of every streaming variant across providers (some ignore `stream: true`).
+  - Goal for the first cut: full coverage of every streaming variant across providers (with fallback when some ignore `stream: true`).
   - `assistant_delta` event payloads include:
     - `delta` (string): incremental assistant text
     - `step` (number): tool-loop step (0 for `tools="none"`)

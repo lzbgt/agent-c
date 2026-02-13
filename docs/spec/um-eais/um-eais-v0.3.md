@@ -16,10 +16,10 @@ So that:
 - multi-node quorum joins can compare identical work products
 - replay/correctness checks remain stable as time advances
 
-Non-goals (v0.3):
+Additional goals (v0.3):
 
-- full PKI / identity / signature verification story (still best-effort)
-- signing formats and trust roots (future v0.4+)
+- Full PKI / identity / signature verification story (enforced, not best-effort).
+- Standardized signing formats and trust roots (targeting v0.4+).
 
 ---
 
