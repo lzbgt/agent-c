@@ -132,9 +132,10 @@ fi
 
 ui_log="${log_dir}/verify_${ts}_ui_build.log"
 ui_install_log="${log_dir}/verify_${ts}_ui_install.log"
+ui_cache_env="NPM_CONFIG_CACHE=./.npm-cache"
 
 if [[ "${UI_INSTALL}" == "1" ]]; then
-  run_logged "ui: npm ci" "${ui_install_log}" bash -lc "cd ui && npm ci"
+  run_logged "ui: npm ci" "${ui_install_log}" bash -lc "cd ui && ${ui_cache_env} npm ci"
 fi
 
 if [[ ! -d "${ROOT}/ui/node_modules" ]]; then
@@ -143,4 +144,4 @@ if [[ ! -d "${ROOT}/ui/node_modules" ]]; then
   exit 0
 fi
 
-run_logged "ui: npm run build" "${ui_log}" bash -lc "cd ui && npm run build"
+run_logged "ui: npm run build" "${ui_log}" bash -lc "cd ui && ${ui_cache_env} npm run build"
