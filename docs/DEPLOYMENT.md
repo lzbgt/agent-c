@@ -300,6 +300,8 @@ Stop the stack:
   - Direct agentd base URL (ensure CORS + auth token).
 - The WebUI supports **multiple connection profiles** stored in browser localStorage; use Settings to add/switch
   between multiple agentd deployments (direct or broker-backed).
+- Each profile can optionally use **profile-specific run settings** (model/provider, tool flags, run limits, etc.);
+  toggle "Profile-specific run settings" in Settings → Model / Provider.
 
 ---
 

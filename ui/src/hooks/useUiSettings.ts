@@ -37,6 +37,31 @@ export type ConnectionSettings = {
   authKey: string;
 };
 
+export type RunProfileOverrides = {
+  tools?: ToolMode;
+  yolo?: boolean;
+  hostPolicy?: HostPolicy;
+  verbose?: boolean;
+  model?: string;
+  summaryModel?: string;
+  summaryMaxChars?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  proxyUrl?: string;
+  timeoutMs?: string;
+  maxCaptureBytes?: string;
+  streamAssistant?: boolean;
+  trace?: boolean;
+  useAsync?: boolean;
+  maxSteps?: string;
+  maxRepeatedToolCalls?: string;
+  maxToolCallsTotal?: string;
+  maxToolCallsPerTool?: string;
+  toolCallLimits?: string;
+  maxChars?: string;
+  keepLast?: string;
+};
+
 export type ConnectionProfile = {
   id: string;
   name: string;
@@ -46,9 +71,15 @@ export type ConnectionProfile = {
   brokerAgentId: string;
   brokerAuthToken: string;
   daemonAuthToken: string;
+  runOverridesEnabled?: boolean;
+  runOverrides?: RunProfileOverrides;
 };
 
 export type RunSettings = {
+  profileOverridesEnabled: boolean;
+  setProfileOverridesEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  copyProfileOverridesFromGlobal: () => void;
+  clearProfileOverrides: () => void;
   tools: ToolMode;
   setTools: React.Dispatch<React.SetStateAction<ToolMode>>;
   yolo: boolean;
@@ -194,6 +225,57 @@ const profileNameDefault = (p: ConnectionProfile) => {
   return `daemon:${hostLabel(p.base, "http://127.0.0.1:8123", "http")}`;
 };
 
+const normalizeRunOverrides = (raw: unknown): RunProfileOverrides | undefined => {
+  if (!raw || typeof raw !== "object") return undefined;
+  const v = raw as Record<string, unknown>;
+  const out: RunProfileOverrides = {};
+  const readString = (val: unknown): string | undefined => {
+    if (typeof val === "string") return val;
+    if (typeof val === "number" && Number.isFinite(val)) return String(val);
+    return undefined;
+  };
+
+  if (v.tools === "host" || v.tools === "basic" || v.tools === "none") out.tools = v.tools;
+  if (typeof v.yolo === "boolean") out.yolo = v.yolo;
+  if (v.hostPolicy === "full" || v.hostPolicy === "readonly") out.hostPolicy = v.hostPolicy;
+  if (typeof v.verbose === "boolean") out.verbose = v.verbose;
+  const model = readString(v.model);
+  if (model !== undefined) out.model = model;
+  const summaryModel = readString(v.summaryModel);
+  if (summaryModel !== undefined) out.summaryModel = summaryModel;
+  const summaryMaxChars = readString(v.summaryMaxChars);
+  if (summaryMaxChars !== undefined) out.summaryMaxChars = summaryMaxChars;
+  const baseUrl = readString(v.baseUrl);
+  if (baseUrl !== undefined) out.baseUrl = baseUrl;
+  const apiKey = readString(v.apiKey);
+  if (apiKey !== undefined) out.apiKey = apiKey;
+  const proxyUrl = readString(v.proxyUrl);
+  if (proxyUrl !== undefined) out.proxyUrl = proxyUrl;
+  const timeoutMs = readString(v.timeoutMs);
+  if (timeoutMs !== undefined) out.timeoutMs = timeoutMs;
+  const maxCaptureBytes = readString(v.maxCaptureBytes);
+  if (maxCaptureBytes !== undefined) out.maxCaptureBytes = maxCaptureBytes;
+  if (typeof v.streamAssistant === "boolean") out.streamAssistant = v.streamAssistant;
+  if (typeof v.trace === "boolean") out.trace = v.trace;
+  if (typeof v.useAsync === "boolean") out.useAsync = v.useAsync;
+  const maxSteps = readString(v.maxSteps);
+  if (maxSteps !== undefined) out.maxSteps = maxSteps;
+  const maxRepeatedToolCalls = readString(v.maxRepeatedToolCalls);
+  if (maxRepeatedToolCalls !== undefined) out.maxRepeatedToolCalls = maxRepeatedToolCalls;
+  const maxToolCallsTotal = readString(v.maxToolCallsTotal);
+  if (maxToolCallsTotal !== undefined) out.maxToolCallsTotal = maxToolCallsTotal;
+  const maxToolCallsPerTool = readString(v.maxToolCallsPerTool);
+  if (maxToolCallsPerTool !== undefined) out.maxToolCallsPerTool = maxToolCallsPerTool;
+  const toolCallLimits = readString(v.toolCallLimits);
+  if (toolCallLimits !== undefined) out.toolCallLimits = toolCallLimits;
+  const maxChars = readString(v.maxChars);
+  if (maxChars !== undefined) out.maxChars = maxChars;
+  const keepLast = readString(v.keepLast);
+  if (keepLast !== undefined) out.keepLast = keepLast;
+
+  return Object.keys(out).length > 0 ? out : undefined;
+};
+
 const normalizeProfile = (p: Partial<ConnectionProfile>, defaults: AgentUIDefaults): ConnectionProfile => {
   const mode = p.mode === "broker" ? "broker" : "direct";
   const base = typeof p.base === "string" ? p.base : defaults.daemonBaseUrl;
@@ -203,6 +285,8 @@ const normalizeProfile = (p: Partial<ConnectionProfile>, defaults: AgentUIDefaul
   const daemonAuthToken = typeof p.daemonAuthToken === "string" ? p.daemonAuthToken : defaults.daemonAuthToken;
   const id = typeof p.id === "string" && p.id.trim() ? p.id : generateProfileId();
   const name = typeof p.name === "string" ? p.name.trim() : "";
+  const runOverridesEnabled = typeof p.runOverridesEnabled === "boolean" ? p.runOverridesEnabled : false;
+  const runOverrides = normalizeRunOverrides(p.runOverrides);
   const out: ConnectionProfile = {
     id,
     name: name || "",
@@ -212,6 +296,8 @@ const normalizeProfile = (p: Partial<ConnectionProfile>, defaults: AgentUIDefaul
     brokerAgentId,
     brokerAuthToken,
     daemonAuthToken,
+    runOverridesEnabled,
+    runOverrides,
   };
   if (!out.name) out.name = profileNameDefault(out);
   return out;
@@ -253,6 +339,9 @@ export default function useUiSettings(): UiSettings {
     let changed = false;
     const normalized = connectionProfiles.map((p) => {
       const np = normalizeProfile(p, defaults);
+      const prevOverridesJson = JSON.stringify((p as ConnectionProfile).runOverrides ?? null);
+      const nextOverridesJson = JSON.stringify(np.runOverrides ?? null);
+      const prevOverridesEnabled = typeof p.runOverridesEnabled === "boolean" ? p.runOverridesEnabled : false;
       if (
         np.id !== p.id ||
         np.name !== p.name ||
@@ -261,7 +350,9 @@ export default function useUiSettings(): UiSettings {
         np.brokerBase !== p.brokerBase ||
         np.brokerAgentId !== p.brokerAgentId ||
         np.brokerAuthToken !== p.brokerAuthToken ||
-        np.daemonAuthToken !== p.daemonAuthToken
+        np.daemonAuthToken !== p.daemonAuthToken ||
+        np.runOverridesEnabled !== prevOverridesEnabled ||
+        prevOverridesJson !== nextOverridesJson
       ) {
         changed = true;
       }
@@ -273,30 +364,42 @@ export default function useUiSettings(): UiSettings {
     }
   }, [activeProfileId, buildLegacyProfile, connectionProfiles, defaults, setActiveProfileId, setConnectionProfiles]);
 
-  const [tools, setTools] = useLocalStorageState<ToolMode>("agentui.tools", defaults.tools);
-  const [yolo, setYolo] = useLocalStorageState("agentui.yolo", defaults.yolo);
-  const [hostPolicy, setHostPolicy] = useLocalStorageState<HostPolicy>("agentui.hostPolicy", defaults.hostPolicy);
-  const [verbose, setVerbose] = useLocalStorageState("agentui.verbose", defaults.verbose);
-  const [model, setModel] = useLocalStorageState("agentui.model", defaults.model);
-  const [summaryModel, setSummaryModel] = useLocalStorageState("agentui.summaryModel", "");
-  const [summaryMaxChars, setSummaryMaxChars] = useLocalStorageState("agentui.summaryMaxChars", "1200");
-  const [baseUrl, setBaseUrl] = useLocalStorageState("agentui.baseUrl", defaults.baseUrl);
-  const [apiKey, setApiKey] = useLocalStorageState("agentui.apiKey", defaults.apiKey);
-  const [proxyUrl, setProxyUrl] = useLocalStorageState("agentui.proxyUrl", defaults.proxyUrl);
-  const [timeoutMs, setTimeoutMs] = useLocalStorageState("agentui.timeoutMs", defaults.timeoutMs);
-  const [maxCaptureBytes, setMaxCaptureBytes] = useLocalStorageState("agentui.maxCaptureBytes", "65536");
-  const [streamAssistant, setStreamAssistant] = useLocalStorageState("agentui.streamAssistant", defaults.streamAssistant);
-  const [trace, setTrace] = useLocalStorageState("agentui.trace", defaults.trace);
-  const [useAsync, setUseAsync] = useLocalStorageState("agentui.useAsync", defaults.useAsync);
+  const [toolsGlobal, setToolsGlobal] = useLocalStorageState<ToolMode>("agentui.tools", defaults.tools);
+  const [yoloGlobal, setYoloGlobal] = useLocalStorageState("agentui.yolo", defaults.yolo);
+  const [hostPolicyGlobal, setHostPolicyGlobal] = useLocalStorageState<HostPolicy>(
+    "agentui.hostPolicy",
+    defaults.hostPolicy,
+  );
+  const [verboseGlobal, setVerboseGlobal] = useLocalStorageState("agentui.verbose", defaults.verbose);
+  const [modelGlobal, setModelGlobal] = useLocalStorageState("agentui.model", defaults.model);
+  const [summaryModelGlobal, setSummaryModelGlobal] = useLocalStorageState("agentui.summaryModel", "");
+  const [summaryMaxCharsGlobal, setSummaryMaxCharsGlobal] = useLocalStorageState("agentui.summaryMaxChars", "1200");
+  const [baseUrlGlobal, setBaseUrlGlobal] = useLocalStorageState("agentui.baseUrl", defaults.baseUrl);
+  const [apiKeyGlobal, setApiKeyGlobal] = useLocalStorageState("agentui.apiKey", defaults.apiKey);
+  const [proxyUrlGlobal, setProxyUrlGlobal] = useLocalStorageState("agentui.proxyUrl", defaults.proxyUrl);
+  const [timeoutMsGlobal, setTimeoutMsGlobal] = useLocalStorageState("agentui.timeoutMs", defaults.timeoutMs);
+  const [maxCaptureBytesGlobal, setMaxCaptureBytesGlobal] = useLocalStorageState("agentui.maxCaptureBytes", "65536");
+  const [streamAssistantGlobal, setStreamAssistantGlobal] = useLocalStorageState(
+    "agentui.streamAssistant",
+    defaults.streamAssistant,
+  );
+  const [traceGlobal, setTraceGlobal] = useLocalStorageState("agentui.trace", defaults.trace);
+  const [useAsyncGlobal, setUseAsyncGlobal] = useLocalStorageState("agentui.useAsync", defaults.useAsync);
 
-  const [maxStepsRaw, setMaxStepsRaw] = useLocalStorageState("agentui.maxSteps", "");
+  const [maxStepsRawGlobal, setMaxStepsRawGlobal] = useLocalStorageState("agentui.maxSteps", "");
   const [maxStepsUserSet, setMaxStepsUserSet] = useLocalStorageState("agentui.maxStepsUserSet", false);
-  const [maxRepeatedToolCalls, setMaxRepeatedToolCalls] = useLocalStorageState("agentui.maxRepeatedToolCalls", "0");
-  const [maxToolCallsTotal, setMaxToolCallsTotal] = useLocalStorageState("agentui.maxToolCallsTotal", "");
-  const [maxToolCallsPerTool, setMaxToolCallsPerTool] = useLocalStorageState("agentui.maxToolCallsPerTool", "");
-  const [toolCallLimits, setToolCallLimits] = useLocalStorageState("agentui.toolCallLimits", "");
-  const [maxChars, setMaxChars] = useLocalStorageState("agentui.maxChars", "20000");
-  const [keepLast, setKeepLast] = useLocalStorageState("agentui.keepLast", "16");
+  const [maxRepeatedToolCallsGlobal, setMaxRepeatedToolCallsGlobal] = useLocalStorageState(
+    "agentui.maxRepeatedToolCalls",
+    "0",
+  );
+  const [maxToolCallsTotalGlobal, setMaxToolCallsTotalGlobal] = useLocalStorageState("agentui.maxToolCallsTotal", "");
+  const [maxToolCallsPerToolGlobal, setMaxToolCallsPerToolGlobal] = useLocalStorageState(
+    "agentui.maxToolCallsPerTool",
+    "",
+  );
+  const [toolCallLimitsGlobal, setToolCallLimitsGlobal] = useLocalStorageState("agentui.toolCallLimits", "");
+  const [maxCharsGlobal, setMaxCharsGlobal] = useLocalStorageState("agentui.maxChars", "20000");
+  const [keepLastGlobal, setKeepLastGlobal] = useLocalStorageState("agentui.keepLast", "16");
 
   const [orMinTotal, setOrMinTotal] = useLocalStorageState("agentui.orMinTotal", "0.01");
   const [orMaxTotal, setOrMaxTotal] = useLocalStorageState("agentui.orMaxTotal", "0.50");
@@ -411,6 +514,277 @@ export default function useUiSettings(): UiSettings {
       if (nextActive) setActiveProfileId(nextActive);
     },
     [activeProfileId, setActiveProfileId, setConnectionProfiles],
+  );
+
+  const runOverridesEnabled = !!activeProfile.runOverridesEnabled;
+  const runOverrides = activeProfile.runOverrides || {};
+
+  const snapshotRunOverrides = React.useCallback(
+    (): RunProfileOverrides => ({
+      tools: toolsGlobal,
+      yolo: yoloGlobal,
+      hostPolicy: hostPolicyGlobal,
+      verbose: verboseGlobal,
+      model: modelGlobal,
+      summaryModel: summaryModelGlobal,
+      summaryMaxChars: summaryMaxCharsGlobal,
+      baseUrl: baseUrlGlobal,
+      apiKey: apiKeyGlobal,
+      proxyUrl: proxyUrlGlobal,
+      timeoutMs: timeoutMsGlobal,
+      maxCaptureBytes: maxCaptureBytesGlobal,
+      streamAssistant: streamAssistantGlobal,
+      trace: traceGlobal,
+      useAsync: useAsyncGlobal,
+      maxSteps: maxStepsRawGlobal,
+      maxRepeatedToolCalls: maxRepeatedToolCallsGlobal,
+      maxToolCallsTotal: maxToolCallsTotalGlobal,
+      maxToolCallsPerTool: maxToolCallsPerToolGlobal,
+      toolCallLimits: toolCallLimitsGlobal,
+      maxChars: maxCharsGlobal,
+      keepLast: keepLastGlobal,
+    }),
+    [
+      apiKeyGlobal,
+      baseUrlGlobal,
+      hostPolicyGlobal,
+      keepLastGlobal,
+      maxCaptureBytesGlobal,
+      maxCharsGlobal,
+      maxRepeatedToolCallsGlobal,
+      maxStepsRawGlobal,
+      maxToolCallsPerToolGlobal,
+      maxToolCallsTotalGlobal,
+      modelGlobal,
+      proxyUrlGlobal,
+      streamAssistantGlobal,
+      summaryMaxCharsGlobal,
+      summaryModelGlobal,
+      timeoutMsGlobal,
+      toolCallLimitsGlobal,
+      toolsGlobal,
+      traceGlobal,
+      useAsyncGlobal,
+      verboseGlobal,
+      yoloGlobal,
+    ],
+  );
+
+  const setProfileOverridesEnabled = React.useCallback<React.Dispatch<React.SetStateAction<boolean>>>(
+    (next) => {
+      updateActiveProfile((prev) => {
+        const current = !!prev.runOverridesEnabled;
+        const enabled = typeof next === "function" ? next(current) : next;
+        if (enabled === current) return prev;
+        if (!enabled) {
+          return { ...prev, runOverridesEnabled: false };
+        }
+        const seed =
+          prev.runOverrides && Object.keys(prev.runOverrides).length > 0 ? prev.runOverrides : snapshotRunOverrides();
+        return { ...prev, runOverridesEnabled: true, runOverrides: seed };
+      });
+    },
+    [snapshotRunOverrides, updateActiveProfile],
+  );
+
+  const copyProfileOverridesFromGlobal = React.useCallback(() => {
+    updateActiveProfile((prev) => ({
+      ...prev,
+      runOverridesEnabled: true,
+      runOverrides: snapshotRunOverrides(),
+    }));
+  }, [snapshotRunOverrides, updateActiveProfile]);
+
+  const clearProfileOverrides = React.useCallback(() => {
+    updateActiveProfile((prev) => {
+      if (!prev.runOverridesEnabled && !prev.runOverrides) return prev;
+      return { ...prev, runOverridesEnabled: false, runOverrides: undefined };
+    });
+  }, [updateActiveProfile]);
+
+  const resolveRunValue = React.useCallback(
+    <T,>(key: keyof RunProfileOverrides, globalValue: T): T => {
+      if (!runOverridesEnabled) return globalValue;
+      if (Object.prototype.hasOwnProperty.call(runOverrides, key)) {
+        return (runOverrides as Record<string, T>)[key as string];
+      }
+      return globalValue;
+    },
+    [runOverrides, runOverridesEnabled],
+  );
+
+  const setRunValue = React.useCallback(
+    <T,>(
+      key: keyof RunProfileOverrides,
+      next: React.SetStateAction<T>,
+      globalValue: T,
+      setGlobal: React.Dispatch<React.SetStateAction<T>>,
+    ) => {
+      if (!runOverridesEnabled) {
+        setGlobal(next);
+        return;
+      }
+      updateActiveProfile((prev) => {
+        const prevOverrides = (prev.runOverrides || {}) as RunProfileOverrides;
+        const hasPrev = Object.prototype.hasOwnProperty.call(prevOverrides, key);
+        const prevValue = hasPrev ? (prevOverrides as Record<string, T>)[key as string] : globalValue;
+        const nextValue = typeof next === "function" ? (next as (v: T) => T)(prevValue) : next;
+        if (hasPrev && Object.is(nextValue, prevValue)) return prev;
+        return {
+          ...prev,
+          runOverridesEnabled: true,
+          runOverrides: { ...prevOverrides, [key]: nextValue },
+        };
+      });
+    },
+    [runOverridesEnabled, updateActiveProfile],
+  );
+
+  const tools = resolveRunValue("tools", toolsGlobal);
+  const yolo = resolveRunValue("yolo", yoloGlobal);
+  const hostPolicy = resolveRunValue("hostPolicy", hostPolicyGlobal);
+  const verbose = resolveRunValue("verbose", verboseGlobal);
+  const model = resolveRunValue("model", modelGlobal);
+  const summaryModel = resolveRunValue("summaryModel", summaryModelGlobal);
+  const summaryMaxChars = resolveRunValue("summaryMaxChars", summaryMaxCharsGlobal);
+  const baseUrl = resolveRunValue("baseUrl", baseUrlGlobal);
+  const apiKey = resolveRunValue("apiKey", apiKeyGlobal);
+  const proxyUrl = resolveRunValue("proxyUrl", proxyUrlGlobal);
+  const timeoutMs = resolveRunValue("timeoutMs", timeoutMsGlobal);
+  const maxCaptureBytes = resolveRunValue("maxCaptureBytes", maxCaptureBytesGlobal);
+  const streamAssistant = resolveRunValue("streamAssistant", streamAssistantGlobal);
+  const trace = resolveRunValue("trace", traceGlobal);
+  const useAsync = resolveRunValue("useAsync", useAsyncGlobal);
+  const maxSteps = resolveRunValue("maxSteps", maxStepsRawGlobal);
+  const maxRepeatedToolCalls = resolveRunValue("maxRepeatedToolCalls", maxRepeatedToolCallsGlobal);
+  const maxToolCallsTotal = resolveRunValue("maxToolCallsTotal", maxToolCallsTotalGlobal);
+  const maxToolCallsPerTool = resolveRunValue("maxToolCallsPerTool", maxToolCallsPerToolGlobal);
+  const toolCallLimits = resolveRunValue("toolCallLimits", toolCallLimitsGlobal);
+  const maxChars = resolveRunValue("maxChars", maxCharsGlobal);
+  const keepLast = resolveRunValue("keepLast", keepLastGlobal);
+
+  const setTools = React.useCallback(
+    (next: React.SetStateAction<ToolMode>) => setRunValue("tools", next, toolsGlobal, setToolsGlobal),
+    [setRunValue, setToolsGlobal, toolsGlobal],
+  );
+
+  const setYolo = React.useCallback(
+    (next: React.SetStateAction<boolean>) => setRunValue("yolo", next, yoloGlobal, setYoloGlobal),
+    [setRunValue, setYoloGlobal, yoloGlobal],
+  );
+
+  const setHostPolicy = React.useCallback(
+    (next: React.SetStateAction<HostPolicy>) => setRunValue("hostPolicy", next, hostPolicyGlobal, setHostPolicyGlobal),
+    [hostPolicyGlobal, setHostPolicyGlobal, setRunValue],
+  );
+
+  const setVerbose = React.useCallback(
+    (next: React.SetStateAction<boolean>) => setRunValue("verbose", next, verboseGlobal, setVerboseGlobal),
+    [setRunValue, setVerboseGlobal, verboseGlobal],
+  );
+
+  const setModel = React.useCallback(
+    (next: React.SetStateAction<string>) => setRunValue("model", next, modelGlobal, setModelGlobal),
+    [modelGlobal, setModelGlobal, setRunValue],
+  );
+
+  const setSummaryModel = React.useCallback(
+    (next: React.SetStateAction<string>) => setRunValue("summaryModel", next, summaryModelGlobal, setSummaryModelGlobal),
+    [setRunValue, setSummaryModelGlobal, summaryModelGlobal],
+  );
+
+  const setSummaryMaxChars = React.useCallback(
+    (next: React.SetStateAction<string>) =>
+      setRunValue("summaryMaxChars", next, summaryMaxCharsGlobal, setSummaryMaxCharsGlobal),
+    [setRunValue, setSummaryMaxCharsGlobal, summaryMaxCharsGlobal],
+  );
+
+  const setBaseUrl = React.useCallback(
+    (next: React.SetStateAction<string>) => setRunValue("baseUrl", next, baseUrlGlobal, setBaseUrlGlobal),
+    [baseUrlGlobal, setBaseUrlGlobal, setRunValue],
+  );
+
+  const setApiKey = React.useCallback(
+    (next: React.SetStateAction<string>) => setRunValue("apiKey", next, apiKeyGlobal, setApiKeyGlobal),
+    [apiKeyGlobal, setApiKeyGlobal, setRunValue],
+  );
+
+  const setProxyUrl = React.useCallback(
+    (next: React.SetStateAction<string>) => setRunValue("proxyUrl", next, proxyUrlGlobal, setProxyUrlGlobal),
+    [proxyUrlGlobal, setProxyUrlGlobal, setRunValue],
+  );
+
+  const setTimeoutMs = React.useCallback(
+    (next: React.SetStateAction<string>) => setRunValue("timeoutMs", next, timeoutMsGlobal, setTimeoutMsGlobal),
+    [setRunValue, setTimeoutMsGlobal, timeoutMsGlobal],
+  );
+
+  const setMaxCaptureBytes = React.useCallback(
+    (next: React.SetStateAction<string>) =>
+      setRunValue("maxCaptureBytes", next, maxCaptureBytesGlobal, setMaxCaptureBytesGlobal),
+    [maxCaptureBytesGlobal, setMaxCaptureBytesGlobal, setRunValue],
+  );
+
+  const setStreamAssistant = React.useCallback(
+    (next: React.SetStateAction<boolean>) =>
+      setRunValue("streamAssistant", next, streamAssistantGlobal, setStreamAssistantGlobal),
+    [setRunValue, setStreamAssistantGlobal, streamAssistantGlobal],
+  );
+
+  const setTrace = React.useCallback(
+    (next: React.SetStateAction<boolean>) => setRunValue("trace", next, traceGlobal, setTraceGlobal),
+    [setRunValue, setTraceGlobal, traceGlobal],
+  );
+
+  const setUseAsync = React.useCallback(
+    (next: React.SetStateAction<boolean>) => setRunValue("useAsync", next, useAsyncGlobal, setUseAsyncGlobal),
+    [setRunValue, setUseAsyncGlobal, useAsyncGlobal],
+  );
+
+  const setMaxSteps = React.useCallback<React.Dispatch<React.SetStateAction<string>>>(
+    (next) => {
+      if (runOverridesEnabled) {
+        setRunValue("maxSteps", next, maxStepsRawGlobal, setMaxStepsRawGlobal);
+        return;
+      }
+      setMaxStepsUserSet(true);
+      setMaxStepsRawGlobal((prev) => (typeof next === "function" ? next(prev) : next));
+    },
+    [maxStepsRawGlobal, runOverridesEnabled, setMaxStepsRawGlobal, setMaxStepsUserSet, setRunValue],
+  );
+
+  const setMaxRepeatedToolCalls = React.useCallback(
+    (next: React.SetStateAction<string>) =>
+      setRunValue("maxRepeatedToolCalls", next, maxRepeatedToolCallsGlobal, setMaxRepeatedToolCallsGlobal),
+    [maxRepeatedToolCallsGlobal, setMaxRepeatedToolCallsGlobal, setRunValue],
+  );
+
+  const setMaxToolCallsTotal = React.useCallback(
+    (next: React.SetStateAction<string>) =>
+      setRunValue("maxToolCallsTotal", next, maxToolCallsTotalGlobal, setMaxToolCallsTotalGlobal),
+    [maxToolCallsTotalGlobal, setMaxToolCallsTotalGlobal, setRunValue],
+  );
+
+  const setMaxToolCallsPerTool = React.useCallback(
+    (next: React.SetStateAction<string>) =>
+      setRunValue("maxToolCallsPerTool", next, maxToolCallsPerToolGlobal, setMaxToolCallsPerToolGlobal),
+    [maxToolCallsPerToolGlobal, setMaxToolCallsPerToolGlobal, setRunValue],
+  );
+
+  const setToolCallLimits = React.useCallback(
+    (next: React.SetStateAction<string>) =>
+      setRunValue("toolCallLimits", next, toolCallLimitsGlobal, setToolCallLimitsGlobal),
+    [setRunValue, setToolCallLimitsGlobal, toolCallLimitsGlobal],
+  );
+
+  const setMaxChars = React.useCallback(
+    (next: React.SetStateAction<string>) => setRunValue("maxChars", next, maxCharsGlobal, setMaxCharsGlobal),
+    [maxCharsGlobal, setMaxCharsGlobal, setRunValue],
+  );
+
+  const setKeepLast = React.useCallback(
+    (next: React.SetStateAction<string>) => setRunValue("keepLast", next, keepLastGlobal, setKeepLastGlobal),
+    [keepLastGlobal, setKeepLastGlobal, setRunValue],
   );
 
   const connectionMode = activeProfile.mode;
@@ -536,20 +910,12 @@ export default function useUiSettings(): UiSettings {
       : `direct:pid=${pid}:tlen=${t.length}`;
   }, [activeProfileId, daemonAuth]);
 
-  const setMaxSteps = React.useCallback<React.Dispatch<React.SetStateAction<string>>>(
-    (next) => {
-      setMaxStepsUserSet(true);
-      setMaxStepsRaw((prev) => (typeof next === "function" ? next(prev) : next));
-    },
-    [setMaxStepsRaw, setMaxStepsUserSet],
-  );
-
   React.useEffect(() => {
     if (maxStepsUserSet) return;
-    if (String(maxStepsRaw) === "0") {
-      setMaxStepsRaw("");
+    if (String(maxStepsRawGlobal) === "0") {
+      setMaxStepsRawGlobal("");
     }
-  }, [maxStepsRaw, maxStepsUserSet, setMaxStepsRaw]);
+  }, [maxStepsRawGlobal, maxStepsUserSet, setMaxStepsRawGlobal]);
 
   return {
     defaults,
@@ -582,6 +948,10 @@ export default function useUiSettings(): UiSettings {
       authKey,
     },
     run: {
+      profileOverridesEnabled: runOverridesEnabled,
+      setProfileOverridesEnabled,
+      copyProfileOverridesFromGlobal,
+      clearProfileOverrides,
       tools,
       setTools,
       yolo,
@@ -612,7 +982,7 @@ export default function useUiSettings(): UiSettings {
       setTrace,
       useAsync,
       setUseAsync,
-      maxSteps: maxStepsRaw,
+      maxSteps,
       setMaxSteps,
       maxRepeatedToolCalls,
       setMaxRepeatedToolCalls,

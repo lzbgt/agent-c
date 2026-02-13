@@ -545,6 +545,35 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
               </button>
             }
           />
+          <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={run.profileOverridesEnabled}
+                onChange={(e) => run.setProfileOverridesEnabled(e.target.checked)}
+              />
+              <span>Profile-specific run settings</span>
+            </label>
+            <span className="text-white/40">Applies to {connection.profileName}</span>
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+              type="button"
+              onClick={() => run.copyProfileOverridesFromGlobal()}
+              disabled={!run.profileOverridesEnabled}
+              title="Copy global run settings into this profile"
+            >
+              Sync from global
+            </button>
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+              type="button"
+              onClick={() => run.clearProfileOverrides()}
+              disabled={!run.profileOverridesEnabled}
+              title="Disable and clear profile overrides"
+            >
+              Revert to global
+            </button>
+          </div>
           <div className="mt-3 grid gap-3 text-[11px] text-white/70">
             <div>
               <FieldLabel>Base URL</FieldLabel>
