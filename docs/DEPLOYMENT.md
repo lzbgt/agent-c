@@ -200,6 +200,12 @@ curl http://127.0.0.1:8123/api/v1/health
 - Broker TLS in compose uses test certificates under `tools/_compose_mtls` (local only).
 - WebUI expects to talk to broker proxy or direct agentd; align CORS + auth tokens accordingly.
 - For a one-command macOS verification run, use: `tools/verify_mac_full_stack.sh`.
+- If `tools/verify_mac_full_stack.sh` skips due to Docker build resource errors (e.g. `unpigz`/`runc`),
+  restart Docker Desktop or increase CPU/RAM. The script already retries builds and can fall back to the
+  legacy builder. You can also tweak:
+  - `COMPOSE_BUILD_SERIAL=1` (default) to reduce concurrency
+  - `COMPOSE_BUILD_RETRIES=3` (default) to raise retry attempts
+  - `COMPOSE_BUILD=0` to skip image rebuilds when you already have fresh images
 
 ---
 
