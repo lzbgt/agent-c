@@ -71,6 +71,8 @@ type Server struct {
 	clientAuthLastAt    time.Time
 	clientAuthLastOK    bool
 	clientAuthLastError string
+	clientAuthReloadMu  sync.RWMutex
+	clientAuthReload    func(reason string) error
 }
 
 func New(cfg Config) (*Server, error) {
@@ -140,6 +142,28 @@ func (s *Server) SetClientAuth(ca *auth.ClientAuth) {
 	s.clientAuthMu.Unlock()
 }
 
+func (s *Server) SetClientAuthReload(fn func(reason string) error) {
+	if s == nil {
+		return
+	}
+	s.clientAuthReloadMu.Lock()
+	s.clientAuthReload = fn
+	s.clientAuthReloadMu.Unlock()
+}
+
+func (s *Server) reloadClientAuth(reason string) error {
+	if s == nil {
+		return errors.New("nil server")
+	}
+	s.clientAuthReloadMu.RLock()
+	fn := s.clientAuthReload
+	s.clientAuthReloadMu.RUnlock()
+	if fn == nil {
+		return errors.New("client auth reload not configured")
+	}
+	return fn(reason)
+}
+
 func (s *Server) SetClientAuthStatus(ok bool, errStr string) {
 	if s == nil {
 		return
@@ -169,6 +193,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/readyz", s.handleReadyz)
 	mux.HandleFunc("/metrics", s.handleMetrics)
 	mux.HandleFunc("/v1/client_auth/status", s.handleClientAuthStatus)
+	mux.HandleFunc("/v1/client_auth/reload", s.handleClientAuthReload)
 	mux.HandleFunc("/v1/agent/connect", s.handleAgentConnect)
 	mux.HandleFunc("/v1/agents", s.handleAgents)
 	mux.HandleFunc("/v1/orchestrate", s.handleOrchestrate)
@@ -1268,6 +1293,27 @@ func (s *Server) handleClientAuthStatus(w http.ResponseWriter, r *http.Request) 
 		}(),
 		"last_error": errStr,
 	})
+}
+
+func (s *Server) handleClientAuthReload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if !p.Admin {
+		http.Error(w, "admin required", http.StatusForbidden)
+		return
+	}
+	if err := s.reloadClientAuth("api"); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "ts_unix_ms": time.Now().UnixMilli()})
 }
 
 func (s *Server) checkReady(ctx context.Context) (bool, string) {

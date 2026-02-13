@@ -17,6 +17,7 @@ This directory also includes `agentd-connector`, a lightweight “bridge” that
 - `GET /metrics` — Prometheus metrics (uptime, readiness, connected agents)
   - Includes client auth reload gauges (`broker_client_auth_*`)
 - `GET /v1/client_auth/status` — admin-only status of client auth reload state
+- `POST /v1/client_auth/reload` — admin-only reload of client auth file
 - `GET /v1/agent/connect` — agent WebSocket (mTLS recommended)
 - `GET /v1/agents` / `POST /v1/agents` — list/create agents (OIDC required)
 - `POST /v1/orchestrate` — fan-out `/api/v1/run` calls across multiple agents (OIDC required)

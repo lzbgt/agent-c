@@ -183,6 +183,8 @@ Response (JSON):
 
 - `GET /v1/client_auth/status`
   - reports the last reload status/time for the client auth file
+- `POST /v1/client_auth/reload`
+  - triggers an immediate reload of the client auth file
 
 ### Trace correlation (debugging)
 
