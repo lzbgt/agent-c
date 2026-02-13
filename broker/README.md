@@ -42,6 +42,7 @@ Key flags:
   - `--client-auth-fallback` (allow client tokens when OIDC auth fails; env `AGENTD_BROKER_CLIENT_AUTH_FALLBACK=1`)
   - `--client-auth-reload-ms` (periodically reload client auth file; env `AGENTD_BROKER_CLIENT_AUTH_RELOAD_MS`)
   - `--client-auth-strict` (fail readiness if reload fails; env `AGENTD_BROKER_CLIENT_AUTH_STRICT=1`)
+  - `--client-auth-max-age-ms` (fail readiness if last reload is too old; env `AGENTD_BROKER_CLIENT_AUTH_MAX_AGE_MS`)
   - Send `SIGHUP` to reload immediately
 - Resource limits:
   - `--max-pending-per-agent` (default `256`)

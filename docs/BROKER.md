@@ -75,6 +75,7 @@ For non-UI service clients (or environments without OIDC), the broker can accept
 - `--client-auth-fallback` to allow tokens when OIDC auth fails
 - `--client-auth-reload-ms` to periodically reload the file
 - `--client-auth-strict` to fail readiness if reload fails
+- `--client-auth-max-age-ms` to fail readiness if last reload is too old
 - Send `SIGHUP` to reload immediately
 
 Client token auth is intended for **proxy/orchestrate** calls only. Agent list/create remains OIDC-only.

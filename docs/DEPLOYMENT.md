@@ -160,7 +160,8 @@ agentd-broker \
   --client-auth-file /etc/agentd/client_auth.json \
   --client-auth-fallback \
   --client-auth-reload-ms 60000 \
-  --client-auth-strict
+  --client-auth-strict \
+  --client-auth-max-age-ms 120000
 ```
 
 Env equivalents:
@@ -168,6 +169,7 @@ Env equivalents:
 - `AGENTD_BROKER_CLIENT_AUTH_FALLBACK=1`
 - `AGENTD_BROKER_CLIENT_AUTH_RELOAD_MS=60000`
 - `AGENTD_BROKER_CLIENT_AUTH_STRICT=1`
+- `AGENTD_BROKER_CLIENT_AUTH_MAX_AGE_MS=120000`
 
 You can also send `SIGHUP` to reload the client auth file immediately.
 

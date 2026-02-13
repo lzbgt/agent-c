@@ -103,6 +103,7 @@ func main() {
 	var clientAuthFallback = flag.Bool("client-auth-fallback", false, "allow client auth tokens when OIDC auth fails")
 	var clientAuthReloadMS = flag.Int64("client-auth-reload-ms", 0, "reload client auth file interval in ms (0 disables; env AGENTD_BROKER_CLIENT_AUTH_RELOAD_MS)")
 	var clientAuthStrict = flag.Bool("client-auth-strict", false, "fail readiness if client auth reload fails (env AGENTD_BROKER_CLIENT_AUTH_STRICT)")
+	var clientAuthMaxAgeMS = flag.Int64("client-auth-max-age-ms", 0, "max age in ms since last client auth reload (0 disables; env AGENTD_BROKER_CLIENT_AUTH_MAX_AGE_MS)")
 	var adminSubsCSV = flag.String("admin-subs", "", "comma-separated OIDC sub values treated as admin")
 	var corsOriginsCSV = flag.String("cors-origins", "", "comma-separated allowed CORS origins (e.g. https://ui.example.com)")
 	var maxPendingPerAgent = flag.Int("max-pending-per-agent", 256, "max pending proxied requests per agent (0=unlimited)")
@@ -154,6 +155,10 @@ func main() {
 	strictEnabled := *clientAuthStrict
 	if v, ok := envBool("AGENTD_BROKER_CLIENT_AUTH_STRICT"); ok && v {
 		strictEnabled = true
+	}
+	maxAgeMS := *clientAuthMaxAgeMS
+	if v, ok := envInt64("AGENTD_BROKER_CLIENT_AUTH_MAX_AGE_MS"); ok && v > 0 {
+		maxAgeMS = v
 	}
 
 	iss := strings.TrimSpace(*oidcIssuer)
@@ -233,6 +238,7 @@ func main() {
 		ClientAuth:         clientAuth,
 		ClientAuthFallback: fallbackEnabled,
 		ClientAuthStrict:   strictEnabled,
+		ClientAuthMaxAge:   time.Duration(maxAgeMS) * time.Millisecond,
 		DB:                 dbConn,
 		Registry:           reg,
 		Events:             ev,
@@ -314,6 +320,9 @@ func main() {
 	log.Printf("client auth configured: %v", clientAuth != nil)
 	log.Printf("client auth fallback: %v", fallbackEnabled)
 	log.Printf("client auth strict: %v", strictEnabled)
+	if maxAgeMS > 0 {
+		log.Printf("client auth max age: %dms", maxAgeMS)
+	}
 	log.Printf("cors origins configured: %v", len(allowedOrigins) > 0)
 	log.Printf(
 		"limits: max_pending_per_agent=%d max_streams_per_agent=%d max_body_bytes=%d max_header_bytes=%d",
