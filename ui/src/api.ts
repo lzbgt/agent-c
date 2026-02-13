@@ -2,7 +2,7 @@ import { z } from "zod";
 
 export type ApiAuth =
   | { mode: "direct"; token?: string }
-  | { mode: "broker"; token?: string; agentdToken?: string };
+  | { mode: "broker"; token?: string; agentdToken?: string; deploymentId?: string };
 
 function normalizeBearerHeader(raw?: string): string | null {
   const s = typeof raw === "string" ? raw.trim() : "";
@@ -23,6 +23,8 @@ export function daemonHeaders(auth?: ApiAuth, extra?: Record<string, string>): R
   if (auth && auth.mode === "broker") {
     const agentd = normalizeBearerHeader(auth.agentdToken);
     if (agentd) h["X-Agentd-Authorization"] = agentd;
+    const dep = typeof auth.deploymentId === "string" ? auth.deploymentId.trim() : "";
+    if (dep) h["X-Agentd-Deployment"] = dep;
   }
   return h;
 }
@@ -163,6 +165,7 @@ export const DaemonConfigSchema = z
           .optional(),
         auth_enabled: z.boolean().optional(),
         allow_unauthenticated_non_loopback: z.boolean().optional(),
+        auth_cookie_name: z.string().optional(),
       })
       .optional(),
     cors: z
@@ -171,7 +174,19 @@ export const DaemonConfigSchema = z
         origins: z.array(z.string()).optional(),
         allow_headers: z.string().optional(),
         allow_methods: z.string().optional(),
+        allow_credentials: z.boolean().optional(),
         max_age_seconds: z.number().optional(),
+        routes: z
+          .array(
+            z
+              .object({
+                path_prefix: z.string().optional(),
+                origins: z.array(z.string()).optional(),
+                allow_credentials: z.boolean().optional(),
+              })
+              .passthrough(),
+          )
+          .optional(),
       })
       .optional(),
     sandbox: z
@@ -1151,6 +1166,20 @@ export const BrokerAgentsRespSchema = z
             remote_addr: z.string().optional(),
             labels: z.record(z.any()).optional(),
             meta: z.record(z.any()).optional(),
+            deployments: z
+              .array(
+                z
+                  .object({
+                    deployment_id: z.string().optional(),
+                    connected: z.boolean().optional(),
+                    connected_unix_ms: z.number().optional(),
+                    last_seen_unix_ms: z.number().optional(),
+                    remote_addr: z.string().optional(),
+                    meta: z.record(z.any()).optional(),
+                  })
+                  .passthrough(),
+              )
+              .optional(),
           })
           .passthrough(),
       )
@@ -1165,6 +1194,43 @@ export async function apiBrokerListAgents(brokerBase: string, auth?: ApiAuth): P
   const r = await fetch(`${base}/v1/agents`, { headers: daemonHeaders(auth) });
   const j = await r.json();
   return BrokerAgentsRespSchema.parse(j);
+}
+
+export const BrokerDeploymentsRespSchema = z
+  .object({
+    ok: z.boolean(),
+    agent_id: z.string().optional(),
+    default_deployment_id: z.string().optional(),
+    deployments: z
+      .array(
+        z
+          .object({
+            deployment_id: z.string().optional(),
+            connected: z.boolean().optional(),
+            connected_unix_ms: z.number().optional(),
+            last_seen_unix_ms: z.number().optional(),
+            remote_addr: z.string().optional(),
+            meta: z.record(z.any()).optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+export type BrokerDeploymentsResp = z.infer<typeof BrokerDeploymentsRespSchema>;
+
+export async function apiBrokerListDeployments(
+  brokerBase: string,
+  agentId: string,
+  auth?: ApiAuth,
+): Promise<BrokerDeploymentsResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const id = String(agentId || "").trim();
+  if (!id) throw new Error("missing agent_id");
+  const r = await fetch(`${base}/v1/agents/${encodeURIComponent(id)}/deployments`, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return BrokerDeploymentsRespSchema.parse(j);
 }
 
 export const BrokerMembersRespSchema = z

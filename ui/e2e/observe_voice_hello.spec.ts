@@ -2,6 +2,9 @@ import { test } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 
+const requireVoice = process.env.AGENT_E2E_REQUIRE_VOICE === "1";
+test.skip(!requireVoice, "voice e2e requires AGENT_E2E_REQUIRE_VOICE=1 with a voice-capable provider");
+
 function nowId() {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");

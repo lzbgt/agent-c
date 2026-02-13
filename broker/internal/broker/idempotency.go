@@ -44,7 +44,7 @@ func isSafeIdempotencyKey(s string) bool {
 	return true
 }
 
-func idempotencyRequestHash(method, path, query, agentID string, body []byte) string {
+func idempotencyRequestHash(method, path, query, agentID, deploymentID string, body []byte) string {
 	h := sha256.New()
 	m := strings.ToUpper(strings.TrimSpace(method))
 	h.Write([]byte(m))
@@ -54,6 +54,8 @@ func idempotencyRequestHash(method, path, query, agentID string, body []byte) st
 	h.Write([]byte(strings.TrimSpace(query)))
 	h.Write([]byte{0})
 	h.Write([]byte(strings.TrimSpace(agentID)))
+	h.Write([]byte{0})
+	h.Write([]byte(strings.TrimSpace(deploymentID)))
 	h.Write([]byte{0})
 	if len(body) > 0 {
 		h.Write(body)

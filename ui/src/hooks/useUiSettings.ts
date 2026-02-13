@@ -27,6 +27,8 @@ export type ConnectionSettings = {
   setBrokerBase: React.Dispatch<React.SetStateAction<string>>;
   brokerAgentId: string;
   setBrokerAgentId: React.Dispatch<React.SetStateAction<string>>;
+  brokerDeploymentId: string;
+  setBrokerDeploymentId: React.Dispatch<React.SetStateAction<string>>;
   brokerAuthToken: string;
   setBrokerAuthToken: React.Dispatch<React.SetStateAction<string>>;
   daemonAuthToken: string;
@@ -69,6 +71,7 @@ export type ConnectionProfile = {
   base: string;
   brokerBase: string;
   brokerAgentId: string;
+  brokerDeploymentId: string;
   brokerAuthToken: string;
   daemonAuthToken: string;
   runOverridesEnabled?: boolean;
@@ -219,7 +222,8 @@ const generateProfileId = () => {
 const profileNameDefault = (p: ConnectionProfile) => {
   if (p.mode === "broker") {
     const agent = String(p.brokerAgentId || "").trim();
-    if (agent) return `broker:${agent}`;
+    const dep = String(p.brokerDeploymentId || "").trim();
+    if (agent) return dep ? `broker:${agent}@${dep}` : `broker:${agent}`;
     return `broker:${hostLabel(p.brokerBase, "https://127.0.0.1:8443", "https")}`;
   }
   return `daemon:${hostLabel(p.base, "http://127.0.0.1:8123", "http")}`;
@@ -281,6 +285,7 @@ const normalizeProfile = (p: Partial<ConnectionProfile>, defaults: AgentUIDefaul
   const base = typeof p.base === "string" ? p.base : defaults.daemonBaseUrl;
   const brokerBase = typeof p.brokerBase === "string" ? p.brokerBase : defaults.brokerBaseUrl;
   const brokerAgentId = typeof p.brokerAgentId === "string" ? p.brokerAgentId : defaults.brokerAgentId;
+  const brokerDeploymentId = typeof p.brokerDeploymentId === "string" ? p.brokerDeploymentId : defaults.brokerDeploymentId;
   const brokerAuthToken = typeof p.brokerAuthToken === "string" ? p.brokerAuthToken : defaults.brokerAuthToken;
   const daemonAuthToken = typeof p.daemonAuthToken === "string" ? p.daemonAuthToken : defaults.daemonAuthToken;
   const id = typeof p.id === "string" && p.id.trim() ? p.id : generateProfileId();
@@ -294,6 +299,7 @@ const normalizeProfile = (p: Partial<ConnectionProfile>, defaults: AgentUIDefaul
     base,
     brokerBase,
     brokerAgentId,
+    brokerDeploymentId,
     brokerAuthToken,
     daemonAuthToken,
     runOverridesEnabled,
@@ -322,6 +328,7 @@ export default function useUiSettings(): UiSettings {
         base: readLegacyString("agentui.base", defaults.daemonBaseUrl),
         brokerBase: readLegacyString("agentui.brokerBase", defaults.brokerBaseUrl),
         brokerAgentId: readLegacyString("agentui.brokerAgentId", defaults.brokerAgentId),
+        brokerDeploymentId: readLegacyString("agentui.brokerDeploymentId", defaults.brokerDeploymentId),
         brokerAuthToken: readLegacyString("agentui.brokerAuthToken", defaults.brokerAuthToken),
         daemonAuthToken: readLegacyString("agentui.daemonAuthToken", defaults.daemonAuthToken),
       },
@@ -349,6 +356,7 @@ export default function useUiSettings(): UiSettings {
         np.base !== p.base ||
         np.brokerBase !== p.brokerBase ||
         np.brokerAgentId !== p.brokerAgentId ||
+        np.brokerDeploymentId !== p.brokerDeploymentId ||
         np.brokerAuthToken !== p.brokerAuthToken ||
         np.daemonAuthToken !== p.daemonAuthToken ||
         np.runOverridesEnabled !== prevOverridesEnabled ||
@@ -437,6 +445,7 @@ export default function useUiSettings(): UiSettings {
           base: defaults.daemonBaseUrl,
           brokerBase: defaults.brokerBaseUrl,
           brokerAgentId: defaults.brokerAgentId,
+          brokerDeploymentId: defaults.brokerDeploymentId,
           brokerAuthToken: defaults.brokerAuthToken,
           daemonAuthToken: defaults.daemonAuthToken,
         },
@@ -477,6 +486,7 @@ export default function useUiSettings(): UiSettings {
         base: defaults.daemonBaseUrl,
         brokerBase: defaults.brokerBaseUrl,
         brokerAgentId: defaults.brokerAgentId,
+        brokerDeploymentId: defaults.brokerDeploymentId,
         brokerAuthToken: defaults.brokerAuthToken,
         daemonAuthToken: defaults.daemonAuthToken,
       };
@@ -791,6 +801,7 @@ export default function useUiSettings(): UiSettings {
   const base = activeProfile.base;
   const brokerBase = activeProfile.brokerBase;
   const brokerAgentId = activeProfile.brokerAgentId;
+  const brokerDeploymentId = activeProfile.brokerDeploymentId;
   const brokerAuthToken = activeProfile.brokerAuthToken;
   const daemonAuthToken = activeProfile.daemonAuthToken;
 
@@ -833,6 +844,17 @@ export default function useUiSettings(): UiSettings {
         const v = typeof next === "function" ? next(prev.brokerAgentId) : next;
         if (v === prev.brokerAgentId) return prev;
         return { ...prev, brokerAgentId: v };
+      });
+    },
+    [updateActiveProfile],
+  );
+
+  const setBrokerDeploymentId = React.useCallback<React.Dispatch<React.SetStateAction<string>>>(
+    (next) => {
+      updateActiveProfile((prev) => {
+        const v = typeof next === "function" ? next(prev.brokerDeploymentId) : next;
+        if (v === prev.brokerDeploymentId) return prev;
+        return { ...prev, brokerDeploymentId: v };
       });
     },
     [updateActiveProfile],
@@ -895,18 +917,24 @@ export default function useUiSettings(): UiSettings {
 
   const daemonAuth = React.useMemo<ApiAuth>(() => {
     if (connectionMode === "broker") {
-      return { mode: "broker", token: brokerAuthToken, agentdToken: daemonAuthToken };
+      return {
+        mode: "broker",
+        token: brokerAuthToken,
+        agentdToken: daemonAuthToken,
+        deploymentId: brokerDeploymentId,
+      };
     }
     return { mode: "direct", token: daemonAuthToken };
-  }, [brokerAuthToken, connectionMode, daemonAuthToken]);
+  }, [brokerAuthToken, brokerDeploymentId, connectionMode, daemonAuthToken]);
 
   const authKey = React.useMemo(() => {
     const mode = daemonAuth.mode;
     const t = typeof daemonAuth.token === "string" ? daemonAuth.token.trim() : "";
     const at = daemonAuth.mode === "broker" && typeof daemonAuth.agentdToken === "string" ? daemonAuth.agentdToken.trim() : "";
+    const dep = daemonAuth.mode === "broker" && typeof daemonAuth.deploymentId === "string" ? daemonAuth.deploymentId.trim() : "";
     const pid = String(activeProfileId || "default");
     return mode === "broker"
-      ? `broker:pid=${pid}:tlen=${t.length}:alen=${at.length}`
+      ? `broker:pid=${pid}:dep=${dep}:tlen=${t.length}:alen=${at.length}`
       : `direct:pid=${pid}:tlen=${t.length}`;
   }, [activeProfileId, daemonAuth]);
 
@@ -938,6 +966,8 @@ export default function useUiSettings(): UiSettings {
       setBrokerBase,
       brokerAgentId,
       setBrokerAgentId,
+      brokerDeploymentId,
+      setBrokerDeploymentId,
       brokerAuthToken,
       setBrokerAuthToken,
       daemonAuthToken,

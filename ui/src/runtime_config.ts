@@ -7,6 +7,7 @@ export type AgentUIRuntimeConfig = {
   daemonBaseUrl?: string;
   brokerBaseUrl?: string;
   brokerAgentId?: string;
+  brokerDeploymentId?: string;
   brokerAuthToken?: string;
   daemonAuthToken?: string;
   tools?: ToolMode | string;
@@ -32,6 +33,7 @@ export type AgentUIDefaults = {
   daemonBaseUrl: string;
   brokerBaseUrl: string;
   brokerAgentId: string;
+  brokerDeploymentId: string;
   brokerAuthToken: string;
   daemonAuthToken: string;
   tools: ToolMode;
@@ -63,6 +65,7 @@ const DEFAULTS: AgentUIDefaults = {
   daemonBaseUrl: "http://127.0.0.1:8123",
   brokerBaseUrl: "https://127.0.0.1:8443",
   brokerAgentId: "agent1",
+  brokerDeploymentId: "",
   brokerAuthToken: "",
   daemonAuthToken: "",
   tools: "host",
@@ -158,6 +161,11 @@ export const getUiDefaults = (): AgentUIDefaults => {
     coerceString(cfg.brokerAgentId) ??
     coerceString(envString("VITE_AGENTUI_BROKER_AGENT_ID")) ??
     out.brokerAgentId;
+
+  out.brokerDeploymentId =
+    coerceString(cfg.brokerDeploymentId) ??
+    coerceString(envString("VITE_AGENTUI_BROKER_DEPLOYMENT_ID")) ??
+    out.brokerDeploymentId;
 
   out.brokerAuthToken =
     coerceString(cfg.brokerAuthToken) ??

@@ -7,6 +7,7 @@ set -euo pipefail
 # - runs Playwright against the running UI
 #
 # This is intentionally NOT part of ctest: it depends on external LLM providers and local browser runtime.
+# To enable the voice observation test, set AGENT_E2E_REQUIRE_VOICE=1 and provide a voice-capable provider.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"

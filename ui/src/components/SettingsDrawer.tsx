@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import type { Caps, DaemonConfigResp } from "../api";
 import {
   apiBrokerListAgents,
+  apiBrokerListDeployments,
   apiGetDiagnostics,
   apiGetDiagnosticsProviders,
   apiGetOpenRouterModels,
@@ -113,6 +114,10 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const [brokerAgentsBusy, setBrokerAgentsBusy] = React.useState<boolean>(false);
   const [brokerAgentsError, setBrokerAgentsError] = React.useState<string | null>(null);
   const [brokerAgents, setBrokerAgents] = React.useState<any[] | null>(null);
+  const [brokerDeploymentsBusy, setBrokerDeploymentsBusy] = React.useState<boolean>(false);
+  const [brokerDeploymentsError, setBrokerDeploymentsError] = React.useState<string | null>(null);
+  const [brokerDeployments, setBrokerDeployments] = React.useState<any[] | null>(null);
+  const [brokerDeploymentsDefaultId, setBrokerDeploymentsDefaultId] = React.useState<string | null>(null);
   const [openrouterModels, setOpenrouterModels] = React.useState<any | null>(null);
 
   React.useEffect(() => {
@@ -137,6 +142,12 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
     setBrokerAgentsError(null);
   }, [connection.brokerBase, connection.brokerAuthToken]);
 
+  React.useEffect(() => {
+    setBrokerDeployments(null);
+    setBrokerDeploymentsError(null);
+    setBrokerDeploymentsDefaultId(null);
+  }, [connection.brokerBase, connection.brokerAuthToken, connection.brokerAgentId]);
+
   const listBrokerAgents = React.useCallback(async () => {
     setBrokerAgentsError(null);
     setBrokerAgentsBusy(true);
@@ -155,6 +166,30 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
       setBrokerAgents(null);
     } finally {
       setBrokerAgentsBusy(false);
+    }
+  }, [connection]);
+
+  const listBrokerDeployments = React.useCallback(async () => {
+    setBrokerDeploymentsError(null);
+    setBrokerDeploymentsBusy(true);
+    try {
+      const bb = String(connection.brokerBase || "").trim().replace(/\/+$/, "");
+      const withScheme = /^https?:\/\//i.test(bb) ? bb : `https://${bb}`;
+      const agentId = String(connection.brokerAgentId || "").trim();
+      if (!agentId) {
+        throw new Error("missing agent_id");
+      }
+      const r = await apiBrokerListDeployments(withScheme, agentId, { mode: "broker", token: connection.brokerAuthToken });
+      const deployments = Array.isArray((r as any)?.deployments) ? ((r as any).deployments as any[]) : [];
+      setBrokerDeployments(deployments);
+      const defaultId = typeof (r as any)?.default_deployment_id === "string" ? String((r as any).default_deployment_id) : "";
+      setBrokerDeploymentsDefaultId(defaultId || null);
+    } catch (e) {
+      setBrokerDeploymentsError(String(e));
+      setBrokerDeployments(null);
+      setBrokerDeploymentsDefaultId(null);
+    } finally {
+      setBrokerDeploymentsBusy(false);
     }
   }, [connection]);
 
@@ -440,11 +475,94 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                           "flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[11px] hover:bg-white/5",
                           selected ? "bg-white/10" : "",
                         ].join(" ")}
-                        onClick={() => connection.setBrokerAgentId(id)}
+                        onClick={() => {
+                          connection.setBrokerAgentId(id);
+                          if (id !== String(connection.brokerAgentId || "").trim()) {
+                            connection.setBrokerDeploymentId("");
+                          }
+                        }}
                         title={a?.remote_addr ? `remote=${String(a.remote_addr)}` : ""}
                       >
                         <span className="font-mono text-white/80">{id}</span>
                         <span className="text-white/60">
+                          {connected ? <span className="text-emerald-300">connected</span> : <span className="text-white/40">disconnected</span>}
+                          {lastSeen ? ` · last_seen=${new Date(lastSeen).toLocaleString()}` : ""}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="mt-4">
+              <FieldLabel>Deployment id (optional)</FieldLabel>
+              <input
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                value={connection.brokerDeploymentId}
+                onChange={(e) => connection.setBrokerDeploymentId(e.target.value)}
+                placeholder='e.g. "laptop-1" (leave blank to auto-pick latest)'
+              />
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                  type="button"
+                  disabled={
+                    brokerDeploymentsBusy ||
+                    String(connection.brokerAuthToken || "").trim().length === 0 ||
+                    String(connection.brokerAgentId || "").trim().length === 0
+                  }
+                  onClick={() => void listBrokerDeployments()}
+                  title="Fetches /v1/agents/{agent_id}/deployments from the broker."
+                >
+                  {brokerDeploymentsBusy ? "Listing…" : "List deployments"}
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                  type="button"
+                  onClick={() => connection.setBrokerDeploymentId("")}
+                  title="Clear deployment id to use broker default"
+                >
+                  Use default
+                </button>
+                <div className="text-[11px] text-white/60">
+                  Uses <code className="font-mono">X-Agentd-Deployment</code>; empty means “latest connected”.
+                </div>
+              </div>
+              {brokerDeploymentsDefaultId ? (
+                <div className="mt-2 text-[11px] text-white/60">
+                  Broker default: <span className="font-mono text-white/80">{brokerDeploymentsDefaultId}</span>
+                </div>
+              ) : null}
+              {brokerDeploymentsError ? (
+                <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+                  List deployments failed: {brokerDeploymentsError}
+                </div>
+              ) : null}
+              {brokerDeployments && brokerDeployments.length > 0 ? (
+                <div className="mt-2 max-h-40 overflow-auto rounded-md border border-white/10 bg-black/20">
+                  {brokerDeployments.map((d: any) => {
+                    const id = typeof d?.deployment_id === "string" ? d.deployment_id : "";
+                    if (!id) return null;
+                    const connected = d?.connected === true;
+                    const lastSeen = typeof d?.last_seen_unix_ms === "number" ? d.last_seen_unix_ms : 0;
+                    const selected = String(connection.brokerDeploymentId || "").trim() === id;
+                    const isDefault = brokerDeploymentsDefaultId && brokerDeploymentsDefaultId === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        className={[
+                          "flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[11px] hover:bg-white/5",
+                          selected ? "bg-white/10" : "",
+                        ].join(" ")}
+                        onClick={() => connection.setBrokerDeploymentId(id)}
+                        title={d?.remote_addr ? `remote=${String(d.remote_addr)}` : ""}
+                      >
+                        <span className="font-mono text-white/80">{id}</span>
+                        <span className="text-white/60">
+                          {isDefault ? <span className="text-sky-300">default</span> : null}
+                          {isDefault ? " · " : ""}
                           {connected ? <span className="text-emerald-300">connected</span> : <span className="text-white/40">disconnected</span>}
                           {lastSeen ? ` · last_seen=${new Date(lastSeen).toLocaleString()}` : ""}
                         </span>

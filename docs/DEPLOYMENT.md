@@ -88,9 +88,13 @@ Environment overrides:
 - `AGENTD_BIN` (default `./build/agentd`)
 - `AGENTD_HOST`, `AGENTD_PORT`
 - `AGENTD_STATE_DIR`, `AGENTD_DB_PATH`
+- `AGENTD_AUTH_TOKEN`, `AGENTD_AUTH_COOKIE`
 - `AGENTD_TOOLS`, `AGENTD_YOLO`
 - `AGENTD_HOST_SCOPE`, `AGENTD_TOOLS_ROOT`
 - `AGENTD_CORS_ORIGINS` (comma-separated)
+- `AGENTD_CORS_ALLOW_HEADERS`, `AGENTD_CORS_ALLOW_METHODS`
+- `AGENTD_CORS_ALLOW_CREDENTIALS`, `AGENTD_CORS_MAX_AGE_SECONDS`
+- `AGENTD_CORS_ROUTES` (JSON array of `{path_prefix, origins}`)
 - `AGENTD_UPLOAD_MAX_BYTES` (per-file session upload cap)
 - `AGENTD_EXTRA_ARGS` (space-delimited)
 
@@ -116,6 +120,7 @@ New-Service -Name "agentd" -BinaryPathName "`"$exe`" $args" -StartupType Automat
 - Put it behind a reverse proxy with TLS (nginx/Caddy/Envoy).
 - **Do not** bind directly to `0.0.0.0` without `--auth-token`.
 - Use strict CORS allowlists.
+- If using cookie auth, enable CORS credentials (`--cors-allow-credentials`).
 - Set HTTP safety limits via env:
   - `AGENTD_HTTP_MAX_BODY_BYTES` (request body cap)
   - `AGENTD_HTTP_MAX_HEADER_BYTES` (request header cap)
@@ -297,6 +302,7 @@ Stop the stack:
 - Runtime defaults (no rebuild): edit `ui/dist/agentui-config.js` to set:
   - `connectionMode` (`direct` or `broker`)
   - `daemonBaseUrl`, `brokerBaseUrl`, `brokerAgentId`
+  - `brokerDeploymentId` (optional; target a specific agentd deployment)
   - `daemonAuthToken`, `brokerAuthToken` (if you accept putting tokens in a static file)
   - `model`, `baseUrl`, `proxyUrl`, `timeoutMs`
   - `tools`, `yolo`, `hostPolicy`, `verbose`

@@ -191,6 +191,7 @@ void handle_config_endpoint(
     daemon["provider_keys_set"] = keys;
   }
   daemon["auth_enabled"] = !cfg.auth_token.empty();
+  daemon["auth_cookie_name"] = cfg.auth_cookie_name;
   daemon["allow_unauthenticated_non_loopback"] = cfg.allow_unauthenticated_non_loopback;
   daemon["db_path"] = cfg.db_path.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.db_path);
   daemon["state_dir"] = cfg.state_dir.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.state_dir);
@@ -213,13 +214,26 @@ void handle_config_endpoint(
   out["daemon"] = daemon;
 
   Json::Value cors(Json::objectValue);
-  cors["enabled"] = !cors_cfg.origins.empty();
+  cors["enabled"] = !cors_cfg.origins.empty() || !cors_cfg.routes.empty();
   Json::Value origins(Json::arrayValue);
   for (const auto& o : cors_cfg.origins) origins.append(o);
   cors["origins"] = origins;
   cors["allow_headers"] = cors_cfg.allow_headers;
   cors["allow_methods"] = cors_cfg.allow_methods;
+  cors["allow_credentials"] = cors_cfg.allow_credentials;
   cors["max_age_seconds"] = cors_cfg.max_age_seconds;
+  if (!cors_cfg.routes.empty()) {
+    Json::Value routes(Json::arrayValue);
+    for (const auto& r : cors_cfg.routes) {
+      Json::Value o(Json::objectValue);
+      o["path_prefix"] = r.path_prefix;
+      Json::Value ro(Json::arrayValue);
+      for (const auto& origin : r.origins) ro.append(origin);
+      o["origins"] = ro;
+      routes.append(o);
+    }
+    cors["routes"] = routes;
+  }
   out["cors"] = cors;
 
   Json::Value sandbox(Json::objectValue);

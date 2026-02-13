@@ -45,6 +45,8 @@
 #include "job_engine.h"
 #include "openrouter_util.h"
 
+#include <json/json.h>
+
 #include <filesystem>
 #include <iostream>
 #include <string>
@@ -52,6 +54,8 @@
 #include <thread>
 #include <cctype>
 #include <signal.h>
+#include <memory>
+#include <cstring>
 
 using namespace agentd;
 
@@ -165,6 +169,63 @@ static void parse_csv_tokens_best_effort(const std::string& csv, std::vector<std
   }
 }
 
+static bool parse_cors_route_value(const Json::Value& root, CorsRouteConfig* out, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!out) return false;
+  if (!root.isObject()) {
+    if (out_error) *out_error = "cors route must be a JSON object";
+    return false;
+  }
+  CorsRouteConfig route;
+  if (root.isMember("path_prefix")) {
+    if (!root["path_prefix"].isString()) {
+      if (out_error) *out_error = "cors route path_prefix must be a string";
+      return false;
+    }
+    route.path_prefix = trim_copy(root["path_prefix"].asString());
+  }
+  if (!root.isMember("origins")) {
+    if (out_error) *out_error = "cors route missing origins";
+    return false;
+  }
+  const auto& origins = root["origins"];
+  if (origins.isString()) {
+    const std::string v = trim_copy(origins.asString());
+    if (!v.empty()) route.origins.push_back(v);
+  } else if (origins.isArray()) {
+    for (const auto& o : origins) {
+      if (!o.isString()) {
+        if (out_error) *out_error = "cors route origins must be strings";
+        return false;
+      }
+      const std::string v = trim_copy(o.asString());
+      if (!v.empty()) route.origins.push_back(v);
+    }
+  } else {
+    if (out_error) *out_error = "cors route origins must be string or array";
+    return false;
+  }
+  *out = std::move(route);
+  return true;
+}
+
+static bool parse_cors_route_json(const std::string& raw, CorsRouteConfig* out, std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (!out) return false;
+  Json::CharReaderBuilder b;
+  b["collectComments"] = false;
+  std::string errs;
+  Json::Value root;
+  const auto* begin = raw.c_str();
+  const auto* end = begin + raw.size();
+  std::unique_ptr<Json::CharReader> reader(b.newCharReader());
+  if (!reader->parse(begin, end, &root, &errs)) {
+    if (out_error) *out_error = errs;
+    return false;
+  }
+  return parse_cors_route_value(root, out, out_error);
+}
+
 int main(int argc, char** argv) {
 #if !defined(_WIN32)
   // On macOS (and many POSIX systems), writing to a closed socket can raise SIGPIPE,
@@ -189,6 +250,9 @@ int main(int argc, char** argv) {
   bool workflow_http_deny_private_set = false;
   bool workflow_http_dns_pin_set = false;
   bool upload_max_bytes_set = false;
+  bool cors_allow_credentials_set = false;
+  bool cors_max_age_set = false;
+  bool cors_routes_set = false;
   std::vector<std::string> tool_plugin_paths;
   std::vector<ToolServerSpec> tool_server_specs;
   // Minimal flag parsing (daemon is host-only; core remains argv/env-free).
@@ -207,6 +271,11 @@ int main(int argc, char** argv) {
     } else if (a == "--auth-token") {
       if (!take(&cfg.auth_token)) {
         std::cerr << "Missing value for --auth-token\n";
+        return 2;
+      }
+    } else if (a == "--auth-cookie") {
+      if (!take(&cfg.auth_cookie_name)) {
+        std::cerr << "Missing value for --auth-cookie\n";
         return 2;
       }
     } else if (a == "--allow-unauth") {
@@ -731,6 +800,9 @@ int main(int argc, char** argv) {
         std::cerr << "Missing value for --cors-allow-methods\n";
         return 2;
       }
+    } else if (a == "--cors-allow-credentials") {
+      cfg.cors_allow_credentials = true;
+      cors_allow_credentials_set = true;
     } else if (a == "--cors-max-age") {
       std::string v;
       if (!take(&v)) {
@@ -739,6 +811,7 @@ int main(int argc, char** argv) {
       }
       try {
         cfg.cors_max_age_seconds = std::max(0, std::stoi(v));
+        cors_max_age_set = true;
       } catch (...) {
         std::cerr << "Invalid --cors-max-age\n";
         return 2;
@@ -747,17 +820,34 @@ int main(int argc, char** argv) {
       cfg.cors_disabled = true;
       cfg.cors_origins_set = true;
       cfg.cors_origins.clear();
+    } else if (a == "--cors-route") {
+      std::string raw;
+      if (!take(&raw) || raw.empty()) {
+        std::cerr << "Missing value for --cors-route\n";
+        return 2;
+      }
+      CorsRouteConfig route;
+      std::string perr;
+      if (!parse_cors_route_json(raw, &route, &perr)) {
+        std::cerr << "Invalid --cors-route JSON: " << perr << "\n";
+        return 2;
+      }
+      cfg.cors_routes.push_back(std::move(route));
+      cors_routes_set = true;
     } else if (a == "--help" || a == "-h") {
       std::cerr
         << "Usage: agentd [options]\n"
         << "  --host <ip>          Listen host (default: 127.0.0.1)\n"
         << "  --auth-token <tok>   Require Authorization: Bearer <tok> (default: disabled)\n"
+        << "  --auth-cookie <name> Accept auth token from cookie name (optional)\n"
         << "  --allow-unauth       Allow non-loopback without auth (INSECURE)\n"
         << "  --port <n>           Listen port (default: 8123)\n"
-        << "  --cors-origin <origin|*>   Allowed browser Origin (repeatable; default: '*' on loopback, else disabled)\n"
+        << "  --cors-origin <origin|*>   Allowed browser Origin (repeatable; supports re:<regex>)\n"
         << "  --cors-allow-headers <csv> Allow headers (default includes Authorization, X-OpenRouter-Key)\n"
         << "  --cors-allow-methods <csv> Allow methods (default: GET, POST, DELETE, OPTIONS)\n"
+        << "  --cors-allow-credentials    Allow cookies/credentials (default: false)\n"
         << "  --cors-max-age <n>         Preflight cache max-age seconds (default: 600)\n"
+        << "  --cors-route <json>    Per-route CORS origin policy (repeatable; JSON {path_prefix, origins})\n"
         << "  --no-cors                  Disable CORS headers entirely\n"
         << "  --model <name>       Default model\n"
         << "  --summary-model <name>   Optional model for compaction summaries (tools=none)\n"
@@ -822,6 +912,15 @@ int main(int argc, char** argv) {
   cors_cfg.allow_methods = cfg.cors_allow_methods.empty()
     ? std::string("GET, POST, DELETE, OPTIONS")
     : cfg.cors_allow_methods;
+  cors_cfg.allow_credentials = cfg.cors_allow_credentials;
+  cors_cfg.routes.clear();
+  cors_cfg.routes.reserve(cfg.cors_routes.size());
+  for (const auto& r : cfg.cors_routes) {
+    CorsRoute cr;
+    cr.path_prefix = r.path_prefix;
+    cr.origins = r.origins;
+    cors_cfg.routes.push_back(std::move(cr));
+  }
   if (cfg.cors_disabled) {
     cors_cfg.origins.clear();
   } else if (cfg.cors_origins_set) {
@@ -833,6 +932,7 @@ int main(int argc, char** argv) {
       cors_cfg.origins.clear();
     }
   }
+  cors_compile(&cors_cfg);
 
   // Fill from env only when not provided by flags.
   // Important: pick the API key that matches the configured base URL.
@@ -930,6 +1030,71 @@ int main(int argc, char** argv) {
   if (cfg.auth_token.empty()) {
     if (const char* t = getenv_s("AGENTD_AUTH_TOKEN")) {
       cfg.auth_token = t;
+    }
+  }
+  if (cfg.auth_cookie_name.empty()) {
+    if (const char* t = getenv_s("AGENTD_AUTH_COOKIE")) {
+      cfg.auth_cookie_name = t;
+    }
+  }
+  if (!cfg.cors_origins_set) {
+    if (const char* s = getenv_s("AGENTD_CORS_ORIGINS")) {
+      std::vector<std::string> toks;
+      parse_csv_tokens_best_effort(s, &toks);
+      if (!toks.empty()) {
+        cfg.cors_origins_set = true;
+        cfg.cors_origins = std::move(toks);
+      }
+    }
+  }
+  if (cfg.cors_allow_headers.empty()) {
+    if (const char* s = getenv_s("AGENTD_CORS_ALLOW_HEADERS")) {
+      cfg.cors_allow_headers = s;
+    }
+  }
+  if (cfg.cors_allow_methods.empty()) {
+    if (const char* s = getenv_s("AGENTD_CORS_ALLOW_METHODS")) {
+      cfg.cors_allow_methods = s;
+    }
+  }
+  if (!cors_allow_credentials_set) {
+    if (const char* s = getenv_s("AGENTD_CORS_ALLOW_CREDENTIALS")) {
+      cfg.cors_allow_credentials = env_truthy(s);
+    }
+  }
+  if (!cors_max_age_set) {
+    if (const char* s = getenv_s("AGENTD_CORS_MAX_AGE_SECONDS")) {
+      try {
+        cfg.cors_max_age_seconds = std::max(0, std::stoi(s));
+      } catch (...) {
+        std::cerr << "Invalid AGENTD_CORS_MAX_AGE_SECONDS; ignoring\n";
+      }
+    }
+  }
+  if (!cors_routes_set) {
+    if (const char* s = getenv_s("AGENTD_CORS_ROUTES")) {
+      Json::CharReaderBuilder b;
+      b["collectComments"] = false;
+      std::string errs;
+      Json::Value root;
+      const auto* begin = s;
+      const auto* end = s + std::strlen(s);
+      std::unique_ptr<Json::CharReader> reader(b.newCharReader());
+      if (!reader->parse(begin, end, &root, &errs)) {
+        std::cerr << "Invalid AGENTD_CORS_ROUTES JSON; ignoring: " << errs << "\n";
+      } else if (!root.isArray()) {
+        std::cerr << "Invalid AGENTD_CORS_ROUTES JSON; expected array\n";
+      } else {
+        for (const auto& v : root) {
+          CorsRouteConfig route;
+          std::string perr;
+          if (!parse_cors_route_value(v, &route, &perr)) {
+            std::cerr << "Invalid AGENTD_CORS_ROUTES entry; ignoring: " << perr << "\n";
+            continue;
+          }
+          cfg.cors_routes.push_back(std::move(route));
+        }
+      }
     }
   }
   if (cfg.db_path.empty()) {

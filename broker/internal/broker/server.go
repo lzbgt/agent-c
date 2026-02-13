@@ -10,9 +10,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -121,7 +123,7 @@ func New(cfg Config) (*Server, error) {
 		cfg.CorsMaxAgeSeconds = 600
 	}
 	if strings.TrimSpace(cfg.CorsAllowHeaders) == "" {
-		cfg.CorsAllowHeaders = "Authorization, X-Agentd-Authorization, Content-Type, X-Request-ID, X-Trace-ID, Idempotency-Key, X-Idempotency-Key"
+		cfg.CorsAllowHeaders = "Authorization, X-Agentd-Authorization, X-Agentd-Deployment, Content-Type, X-Request-ID, X-Trace-ID, Idempotency-Key, X-Idempotency-Key"
 	}
 	if strings.TrimSpace(cfg.CorsAllowMethods) == "" {
 		cfg.CorsAllowMethods = "GET, POST, PUT, PATCH, DELETE, OPTIONS"
@@ -268,7 +270,7 @@ type relayOutcome struct {
 	LatencyMS    int
 }
 
-func (s *Server) auditRelay(ctx context.Context, p *Principal, agentID, method, agentPath string, status, latencyMS int, errStr string) {
+func (s *Server) auditRelay(ctx context.Context, p *Principal, agentID, deploymentID, method, agentPath string, status, latencyMS int, errStr string) {
 	if p == nil {
 		return
 	}
@@ -282,6 +284,7 @@ func (s *Server) auditRelay(ctx context.Context, p *Principal, agentID, method, 
 		Payload: map[string]any{
 			"method":     method,
 			"path":       agentPath,
+			"deployment_id": deploymentID,
 			"status":     status,
 			"latency_ms": latencyMS,
 			"error":      errStr,
@@ -289,18 +292,28 @@ func (s *Server) auditRelay(ctx context.Context, p *Principal, agentID, method, 
 	})
 }
 
-func (s *Server) relayAgentHTTP(ctx context.Context, p *Principal, agentID, method, agentPath, rawQuery string, headers map[string]string, body []byte) relayOutcome {
+func (s *Server) relayAgentHTTP(
+	ctx context.Context,
+	p *Principal,
+	agentID string,
+	deploymentID string,
+	method string,
+	agentPath string,
+	rawQuery string,
+	headers map[string]string,
+	body []byte,
+) relayOutcome {
 	start := time.Now()
 	out := relayOutcome{
 		Headers: map[string]string{},
 	}
 
-	a, err := s.cfg.Registry.Require(agentID)
+	a, err := s.cfg.Registry.Require(agentID, deploymentID)
 	if err != nil {
 		out.BrokerStatus = http.StatusBadGateway
 		out.Err = "agent not connected"
 		out.LatencyMS = int(time.Since(start).Milliseconds())
-		s.auditRelay(ctx, p, agentID, method, agentPath, 0, out.LatencyMS, out.Err)
+		s.auditRelay(ctx, p, agentID, deploymentID, method, agentPath, 0, out.LatencyMS, out.Err)
 		return out
 	}
 
@@ -310,7 +323,7 @@ func (s *Server) relayAgentHTTP(ctx context.Context, p *Principal, agentID, meth
 		out.BrokerStatus = http.StatusServiceUnavailable
 		out.Err = "broker overloaded"
 		out.LatencyMS = int(time.Since(start).Milliseconds())
-		s.auditRelay(ctx, p, agentID, method, agentPath, 0, out.LatencyMS, out.Err)
+		s.auditRelay(ctx, p, agentID, deploymentID, method, agentPath, 0, out.LatencyMS, out.Err)
 		return out
 	}
 	defer a.UnregisterPending(reqID)
@@ -328,11 +341,11 @@ func (s *Server) relayAgentHTTP(ctx context.Context, p *Principal, agentID, meth
 	}
 
 	if err := a.Send(msg); err != nil {
-		s.cfg.Registry.Delete(agentID)
+		s.cfg.Registry.Delete(agentID, deploymentID)
 		out.BrokerStatus = http.StatusBadGateway
 		out.Err = "agent send failed"
 		out.LatencyMS = int(time.Since(start).Milliseconds())
-		s.auditRelay(ctx, p, agentID, method, agentPath, 0, out.LatencyMS, out.Err)
+		s.auditRelay(ctx, p, agentID, deploymentID, method, agentPath, 0, out.LatencyMS, out.Err)
 		return out
 	}
 
@@ -352,14 +365,14 @@ func (s *Server) relayAgentHTTP(ctx context.Context, p *Principal, agentID, meth
 			out.BrokerStatus = http.StatusBadGateway
 			out.Err = "agent disconnected"
 			out.LatencyMS = int(time.Since(start).Milliseconds())
-			s.auditRelay(ctx, p, agentID, method, agentPath, 0, out.LatencyMS, out.Err)
+			s.auditRelay(ctx, p, agentID, deploymentID, method, agentPath, 0, out.LatencyMS, out.Err)
 			return out
 		}
 		if resp.Err != "" {
 			out.BrokerStatus = http.StatusBadGateway
 			out.Err = resp.Err
 			out.LatencyMS = int(time.Since(start).Milliseconds())
-			s.auditRelay(ctx, p, agentID, method, agentPath, 0, out.LatencyMS, out.Err)
+			s.auditRelay(ctx, p, agentID, deploymentID, method, agentPath, 0, out.LatencyMS, out.Err)
 			return out
 		}
 
@@ -376,19 +389,19 @@ func (s *Server) relayAgentHTTP(ctx context.Context, p *Principal, agentID, meth
 			out.BrokerStatus = http.StatusBadGateway
 			out.Err = "invalid agent body"
 			out.LatencyMS = int(time.Since(start).Milliseconds())
-			s.auditRelay(ctx, p, agentID, method, agentPath, out.AgentStatus, out.LatencyMS, out.Err)
+			s.auditRelay(ctx, p, agentID, deploymentID, method, agentPath, out.AgentStatus, out.LatencyMS, out.Err)
 			return out
 		}
 		out.Body = b
 		out.LatencyMS = int(time.Since(start).Milliseconds())
-		s.auditRelay(ctx, p, agentID, method, agentPath, out.AgentStatus, out.LatencyMS, "")
+		s.auditRelay(ctx, p, agentID, deploymentID, method, agentPath, out.AgentStatus, out.LatencyMS, "")
 		return out
 
 	case <-timer.C:
 		out.BrokerStatus = http.StatusGatewayTimeout
 		out.Err = "agent timeout"
 		out.LatencyMS = int(time.Since(start).Milliseconds())
-		s.auditRelay(ctx, p, agentID, method, agentPath, 0, out.LatencyMS, out.Err)
+		s.auditRelay(ctx, p, agentID, deploymentID, method, agentPath, 0, out.LatencyMS, out.Err)
 		return out
 	}
 }
@@ -414,6 +427,14 @@ func (s *Server) handleAgentsList(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "oidc required for agent listing", http.StatusForbidden)
 		return
 	}
+	type DeploymentInfo struct {
+		DeploymentID string         `json:"deployment_id"`
+		Connected    bool           `json:"connected"`
+		ConnectedAt  int64          `json:"connected_unix_ms,omitempty"`
+		LastSeen     int64          `json:"last_seen_unix_ms,omitempty"`
+		RemoteAddr   string         `json:"remote_addr,omitempty"`
+		Meta         map[string]any `json:"meta,omitempty"`
+	}
 	type AgentInfo struct {
 		AgentID     string         `json:"agent_id"`
 		OwnerSub    string         `json:"owner_sub"`
@@ -425,6 +446,7 @@ func (s *Server) handleAgentsList(w http.ResponseWriter, r *http.Request) {
 		ConnectedAt int64          `json:"connected_unix_ms,omitempty"`
 		LastSeen    int64          `json:"last_seen_unix_ms,omitempty"`
 		RemoteAddr  string         `json:"remote_addr,omitempty"`
+		Deployments []DeploymentInfo `json:"deployments,omitempty"`
 	}
 	dbAgents, err := s.cfg.DB.ListAgentsForUser(r.Context(), p.Sub)
 	if err != nil {
@@ -441,11 +463,28 @@ func (s *Server) handleAgentsList(w http.ResponseWriter, r *http.Request) {
 			Labels:    a.Labels(),
 			Meta:      a.Meta(),
 		}
-		if ac, ok := s.cfg.Registry.Get(a.AgentID); ok && ac != nil {
+		deployments := s.cfg.Registry.ListByAgent(a.AgentID)
+		if len(deployments) > 0 {
+			sort.Slice(deployments, func(i, j int) bool {
+				return deployments[i].Connected.After(deployments[j].Connected)
+			})
 			info.Connected = true
-			info.ConnectedAt = ac.Connected.UnixMilli()
-			info.LastSeen = ac.LastSeen.UnixMilli()
-			info.RemoteAddr = ac.RemoteAddr
+			info.ConnectedAt = deployments[0].Connected.UnixMilli()
+			info.LastSeen = deployments[0].LastSeen.UnixMilli()
+			info.RemoteAddr = deployments[0].RemoteAddr
+			for _, ac := range deployments {
+				if ac == nil {
+					continue
+				}
+				info.Deployments = append(info.Deployments, DeploymentInfo{
+					DeploymentID: ac.DeploymentID,
+					Connected:    true,
+					ConnectedAt:  ac.Connected.UnixMilli(),
+					LastSeen:     ac.LastSeen.UnixMilli(),
+					RemoteAddr:   ac.RemoteAddr,
+					Meta:         ac.Meta,
+				})
+			}
 		}
 		out = append(out, info)
 	}
@@ -453,6 +492,27 @@ func (s *Server) handleAgentsList(w http.ResponseWriter, r *http.Request) {
 }
 
 var agentIDRe = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
+var deploymentIDRe = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,128}$`)
+
+func deploymentIDFromRequest(r *http.Request) (string, error) {
+	if r == nil {
+		return "", nil
+	}
+	raw := strings.TrimSpace(r.Header.Get("X-Agentd-Deployment"))
+	if raw == "" {
+		raw = strings.TrimSpace(r.URL.Query().Get("deployment_id"))
+	}
+	if raw == "" {
+		raw = strings.TrimSpace(r.URL.Query().Get("deployment"))
+	}
+	if raw == "" {
+		return "", nil
+	}
+	if !deploymentIDRe.MatchString(raw) {
+		return "", errors.New("invalid deployment_id")
+	}
+	return raw, nil
+}
 
 func (s *Server) handleAgentsCreate(w http.ResponseWriter, r *http.Request) {
 	p, err := s.requirePrincipal(r)
@@ -516,6 +576,7 @@ func (s *Server) handleAgentsSubroutes(w http.ResponseWriter, r *http.Request) {
 	// - /v1/agents/{agent_id}/proxy/<agentd_path>
 	// - /v1/agents/{agent_id}/proxy_sse/<agentd_path>
 	// - /v1/agents/{agent_id}/disconnect
+	// - /v1/agents/{agent_id}/deployments
 	// - /v1/agents/{agent_id}/members
 	// - /v1/agents/{agent_id}/members/{user_sub}
 	// - /v1/agents/{agent_id}/membership_audit
@@ -531,6 +592,10 @@ func (s *Server) handleAgentsSubroutes(w http.ResponseWriter, r *http.Request) {
 
 	if action == "disconnect" {
 		s.handleAgentDisconnect(w, r, agentID)
+		return
+	}
+	if action == "deployments" {
+		s.handleAgentDeployments(w, r, agentID)
 		return
 	}
 	if action == "delete" {
@@ -595,14 +660,78 @@ func (s *Server) handleAgentDisconnect(w http.ResponseWriter, r *http.Request, a
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	a, ok := s.cfg.Registry.Get(agentID)
-	if !ok || a == nil {
+	deploymentID, derr := deploymentIDFromRequest(r)
+	if derr != nil {
+		http.Error(w, derr.Error(), http.StatusBadRequest)
+		return
+	}
+	deleted := s.cfg.Registry.Delete(agentID, deploymentID)
+	if len(deleted) == 0 {
 		http.Error(w, "agent not connected", http.StatusNotFound)
 		return
 	}
-	a.Close()
-	s.cfg.Registry.Delete(agentID)
+	for _, a := range deleted {
+		if a != nil {
+			a.Close()
+		}
+	}
 	writeJSON(w, map[string]any{"ok": true})
+}
+
+func (s *Server) handleAgentDeployments(w http.ResponseWriter, r *http.Request, agentID string) {
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if ok, err := s.canAccessAgent(r.Context(), p, agentID); err != nil {
+		http.Error(w, "db error", http.StatusInternalServerError)
+		return
+	} else if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	type DeploymentInfo struct {
+		DeploymentID string         `json:"deployment_id"`
+		Connected    bool           `json:"connected"`
+		ConnectedAt  int64          `json:"connected_unix_ms,omitempty"`
+		LastSeen     int64          `json:"last_seen_unix_ms,omitempty"`
+		RemoteAddr   string         `json:"remote_addr,omitempty"`
+		Meta         map[string]any `json:"meta,omitempty"`
+	}
+
+	deployments := s.cfg.Registry.ListByAgent(agentID)
+	sort.Slice(deployments, func(i, j int) bool {
+		return deployments[i].Connected.After(deployments[j].Connected)
+	})
+	out := make([]DeploymentInfo, 0, len(deployments))
+	for _, ac := range deployments {
+		if ac == nil {
+			continue
+		}
+		out = append(out, DeploymentInfo{
+			DeploymentID: ac.DeploymentID,
+			Connected:    true,
+			ConnectedAt:  ac.Connected.UnixMilli(),
+			LastSeen:     ac.LastSeen.UnixMilli(),
+			RemoteAddr:   ac.RemoteAddr,
+			Meta:         ac.Meta,
+		})
+	}
+	defaultID := ""
+	if ac, ok := s.cfg.Registry.Select(agentID, ""); ok && ac != nil {
+		defaultID = ac.DeploymentID
+	}
+	writeJSON(w, map[string]any{
+		"ok":                    true,
+		"agent_id":              agentID,
+		"default_deployment_id": defaultID,
+		"deployments":           out,
+	})
 }
 
 func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentID, agentPath string) {
@@ -616,6 +745,11 @@ func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentI
 		return
 	} else if !ok {
 		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	deploymentID, derr := deploymentIDFromRequest(r)
+	if derr != nil {
+		http.Error(w, derr.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -632,7 +766,7 @@ func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentI
 	}
 	var idemStatus db.IdempotencyStatus
 	if idemKey != "" {
-		reqHash := idempotencyRequestHash(r.Method, agentPath, r.URL.RawQuery, agentID, body)
+		reqHash := idempotencyRequestHash(r.Method, agentPath, r.URL.RawQuery, agentID, deploymentID, body)
 		claim, err := s.cfg.DB.ClaimIdempotency(r.Context(), db.IdempotencyRecord{
 			UserSub:       p.Sub,
 			Key:           idemKey,
@@ -697,7 +831,7 @@ func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentI
 		}
 		kl := strings.ToLower(k)
 		// Never forward broker control-plane auth headers to the agent.
-		if kl == "authorization" || kl == "host" || kl == "connection" || kl == "idempotency-key" || kl == "x-idempotency-key" {
+		if kl == "authorization" || kl == "host" || kl == "connection" || kl == "idempotency-key" || kl == "x-idempotency-key" || kl == "x-agentd-deployment" {
 			continue
 		}
 		// Keep first value only (agentd endpoints don't require multi-value headers).
@@ -730,7 +864,7 @@ func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentI
 		delete(headers, "X-Agentd-Authorization")
 	}
 
-	ro := s.relayAgentHTTP(r.Context(), p, agentID, r.Method, agentPath, r.URL.RawQuery, headers, body)
+	ro := s.relayAgentHTTP(r.Context(), p, agentID, deploymentID, r.Method, agentPath, r.URL.RawQuery, headers, body)
 	if ro.BrokerStatus != 0 {
 		if idemKey != "" {
 			_ = s.cfg.DB.DeleteIdempotency(r.Context(), p.Sub, idemKey)
@@ -781,7 +915,12 @@ func (s *Server) handleAgentProxySSE(w http.ResponseWriter, r *http.Request, age
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	a, err := s.cfg.Registry.Require(agentID)
+	deploymentID, derr := deploymentIDFromRequest(r)
+	if derr != nil {
+		http.Error(w, derr.Error(), http.StatusBadRequest)
+		return
+	}
+	a, err := s.cfg.Registry.Require(agentID, deploymentID)
 	if err != nil {
 		http.Error(w, "agent not connected", http.StatusBadGateway)
 		return
@@ -804,7 +943,7 @@ func (s *Server) handleAgentProxySSE(w http.ResponseWriter, r *http.Request, age
 			continue
 		}
 		kl := strings.ToLower(k)
-		if kl == "authorization" || kl == "host" || kl == "connection" || kl == "idempotency-key" || kl == "x-idempotency-key" {
+		if kl == "authorization" || kl == "host" || kl == "connection" || kl == "idempotency-key" || kl == "x-idempotency-key" || kl == "x-agentd-deployment" {
 			continue
 		}
 		headers[k] = vv[0]
@@ -860,7 +999,7 @@ func (s *Server) handleAgentProxySSE(w http.ResponseWriter, r *http.Request, age
 		},
 	}
 	if err := a.SendStream(msg); err != nil {
-		s.cfg.Registry.Delete(agentID)
+		s.cfg.Registry.Delete(agentID, deploymentID)
 		http.Error(w, "agent send failed", http.StatusBadGateway)
 		return
 	}
@@ -1037,6 +1176,34 @@ func (s *Server) handleAgentConnect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	deploymentID := ""
+	if hello.Meta != nil {
+		if v, ok := hello.Meta["deployment_id"]; ok {
+			if s, ok := v.(string); ok {
+				deploymentID = s
+			}
+		}
+		if deploymentID == "" {
+			if v, ok := hello.Meta["deployment"]; ok {
+				if s, ok := v.(string); ok {
+					deploymentID = s
+				}
+			}
+		}
+	}
+	deploymentID = strings.TrimSpace(deploymentID)
+	if deploymentID != "" && !deploymentIDRe.MatchString(deploymentID) {
+		log.Printf("invalid deployment_id for agent_id=%s: %q (using default)", agentID, deploymentID)
+		deploymentID = ""
+	}
+	if deploymentID == "" {
+		deploymentID = "default"
+	}
+	if hello.Meta == nil {
+		hello.Meta = map[string]any{}
+	}
+	hello.Meta["deployment_id"] = deploymentID
+
 	connID, err := s.cfg.DB.InsertConnection(r.Context(), agentID, r.RemoteAddr, hello.Meta)
 	if err != nil {
 		_ = conn.WriteJSON(proto.HelloAck{Type: proto.TypeHelloAck, OK: false, Error: "db connection record failed"})
@@ -1046,6 +1213,7 @@ func (s *Server) handleAgentConnect(w http.ResponseWriter, r *http.Request) {
 
 	ac := &registry.AgentConn{
 		AgentID:    agentID,
+		DeploymentID: deploymentID,
 		Conn:       conn,
 		Connected:  time.Now(),
 		LastSeen:   time.Now(),
@@ -1066,7 +1234,9 @@ func (s *Server) handleAgentConnect(w http.ResponseWriter, r *http.Request) {
 		}(),
 	}
 	ac.InitSession()
-	s.cfg.Registry.Upsert(ac)
+	if prev := s.cfg.Registry.Upsert(ac); prev != nil && prev != ac {
+		prev.Close()
+	}
 
 	_ = conn.WriteJSON(proto.HelloAck{Type: proto.TypeHelloAck, OK: true, AgentID: agentID})
 
@@ -1076,6 +1246,7 @@ func (s *Server) handleAgentConnect(w http.ResponseWriter, r *http.Request) {
 			AgentID: agentID,
 			Payload: map[string]any{
 				"remote_addr": r.RemoteAddr,
+				"deployment_id": deploymentID,
 			},
 		})
 	}
@@ -1105,11 +1276,14 @@ func (s *Server) agentReadLoop(a *registry.AgentConn) {
 		if a != nil {
 			_ = s.cfg.DB.MarkConnectionDisconnected(context.Background(), a.DBConnID)
 			a.Close()
-			s.cfg.Registry.Delete(a.AgentID)
+			s.cfg.Registry.Delete(a.AgentID, a.DeploymentID)
 			if subs, err := s.cfg.DB.ListAgentMemberSubs(context.Background(), a.AgentID); err == nil {
 				s.cfg.Events.PublishTo(subs, events.Event{
 					Type:    "agent_disconnected",
 					AgentID: a.AgentID,
+					Payload: map[string]any{
+						"deployment_id": a.DeploymentID,
+					},
 				})
 			}
 		}
@@ -1680,8 +1854,10 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 		ready = 1
 	}
 	agents := 0
+	deployments := 0
 	if s != nil && s.cfg.Registry != nil {
-		agents = len(s.cfg.Registry.List())
+		agents = s.cfg.Registry.AgentCount()
+		deployments = s.cfg.Registry.ConnectionCount()
 	}
 	clientAuthConfigured := 0
 	if s != nil && s.getClientAuth() != nil {
@@ -1732,6 +1908,9 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	_, _ = fmt.Fprintf(w, "# HELP broker_agents_connected Number of connected agents.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE broker_agents_connected gauge\n")
 	_, _ = fmt.Fprintf(w, "broker_agents_connected %d\n", agents)
+	_, _ = fmt.Fprintf(w, "# HELP broker_agent_deployments_connected Number of connected agent deployments.\n")
+	_, _ = fmt.Fprintf(w, "# TYPE broker_agent_deployments_connected gauge\n")
+	_, _ = fmt.Fprintf(w, "broker_agent_deployments_connected %d\n", deployments)
 	_, _ = fmt.Fprintf(w, "# HELP broker_uptime_seconds Process uptime in seconds.\n")
 	_, _ = fmt.Fprintf(w, "# TYPE broker_uptime_seconds gauge\n")
 	_, _ = fmt.Fprintf(w, "broker_uptime_seconds %.0f\n", uptime)

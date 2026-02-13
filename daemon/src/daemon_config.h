@@ -9,12 +9,20 @@
 
 namespace agentd {
 
+struct CorsRouteConfig {
+  std::string path_prefix;
+  std::vector<std::string> origins;
+};
+
 struct DaemonConfig {
   std::string listen_host = "127.0.0.1";
   uint16_t listen_port = 8123;
   // Optional daemon auth (control-plane). When set, all endpoints (except /health) require
   // Authorization: Bearer <token>. This is distinct from provider API keys.
   std::string auth_token;
+  // Optional cookie name for daemon auth. When set, a cookie with this name may also supply the auth token.
+  // Cookie values may be either the raw token or "Bearer <token>".
+  std::string auth_cookie_name;
   // Safety guard: when binding to a non-loopback host (0.0.0.0, LAN IP), refuse to start unless auth is enabled,
   // unless explicitly overridden (insecure).
   bool allow_unauthenticated_non_loopback = false;
@@ -221,8 +229,10 @@ struct DaemonConfig {
   bool cors_origins_set = false;
   bool cors_disabled = false;
   std::vector<std::string> cors_origins; // values are exact match, or "*"
+  std::vector<CorsRouteConfig> cors_routes;
   std::string cors_allow_headers;
   std::string cors_allow_methods;
+  bool cors_allow_credentials = false;
   int cors_max_age_seconds = 600;
 };
 

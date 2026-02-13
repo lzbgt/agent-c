@@ -171,7 +171,7 @@ func (s *Server) handleTrace(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 			path := "/api/v1/trace"
 			query := "trace_id=" + urlQueryEscape(traceID) + "&limit=200&max_bytes=524288"
-			ro := s.relayAgentHTTP(ctx, p, agentID, "GET", path, query, fwdHeaders, nil)
+			ro := s.relayAgentHTTP(ctx, p, agentID, "", "GET", path, query, fwdHeaders, nil)
 			ms := int(time.Since(start).Milliseconds())
 			cancel()
 

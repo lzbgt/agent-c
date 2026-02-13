@@ -67,6 +67,7 @@ func main() {
 	var tlsKey = flag.String("tls-key", "", "agent client key PEM (mTLS)")
 	var agentCNPfx = flag.String("agent-cn-prefix", "agentd-", "CN prefix used to extract agent id from cert CN")
 	var agentID = flag.String("agent-id", "", "agent id (optional; defaults from client cert CN)")
+	var deploymentID = flag.String("deployment-id", "", "deployment id (optional; enables multi-deployment per agent)")
 	flag.Parse()
 
 	if strings.TrimSpace(*brokerURL) == "" {
@@ -76,6 +77,12 @@ func main() {
 	u, err := url.Parse(strings.TrimSpace(*brokerURL))
 	if err != nil {
 		log.Fatalf("invalid broker url: %v", err)
+	}
+
+	if strings.TrimSpace(*deploymentID) == "" {
+		if v := strings.TrimSpace(os.Getenv("AGENTD_DEPLOYMENT_ID")); v != "" {
+			*deploymentID = v
+		}
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -151,7 +158,7 @@ func main() {
 		})
 
 		ws := &safeWS{conn: conn}
-		err = runSession(ctx, ws, conn, httpClient, strings.TrimSpace(*localBase), strings.TrimSpace(*agentID))
+		err = runSession(ctx, ws, conn, httpClient, strings.TrimSpace(*localBase), strings.TrimSpace(*agentID), strings.TrimSpace(*deploymentID))
 		_ = ws.Close()
 		if err != nil {
 			log.Printf("session ended: %v", err)
@@ -163,7 +170,7 @@ func main() {
 	}
 }
 
-func runSession(ctx context.Context, ws *safeWS, conn *websocket.Conn, httpClient *http.Client, localBase, agentID string) error {
+func runSession(ctx context.Context, ws *safeWS, conn *websocket.Conn, httpClient *http.Client, localBase, agentID, deploymentID string) error {
 	if ws == nil || conn == nil {
 		return errors.New("nil websocket connection")
 	}
@@ -177,6 +184,9 @@ func runSession(ctx context.Context, ws *safeWS, conn *websocket.Conn, httpClien
 		Meta: map[string]any{
 			"local_base": localBase,
 		},
+	}
+	if strings.TrimSpace(deploymentID) != "" {
+		hello.Meta["deployment_id"] = strings.TrimSpace(deploymentID)
 	}
 	if err := ws.WriteJSON(hello); err != nil {
 		return fmt.Errorf("send hello: %w", err)

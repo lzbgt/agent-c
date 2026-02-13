@@ -124,6 +124,22 @@ paths:
       responses:
         "200":
           description: Created
+  /v1/agents/{agent_id}/deployments:
+    get:
+      tags: [agents]
+      summary: List connected deployments for an agent
+      parameters:
+        - in: path
+          name: agent_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Deployment list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentDeploymentsResponse"
   /v1/agents/{agent_id}/members:
     get:
       tags: [membership]
@@ -444,6 +460,33 @@ components:
         meta:
           type: object
           additionalProperties: true
+        deployments:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeploymentInfo"
+    DeploymentInfo:
+      type: object
+      required: [deployment_id, connected]
+      properties:
+        deployment_id: { type: string }
+        connected: { type: boolean }
+        connected_unix_ms: { type: integer, format: int64 }
+        last_seen_unix_ms: { type: integer, format: int64 }
+        remote_addr: { type: string }
+        meta:
+          type: object
+          additionalProperties: true
+    AgentDeploymentsResponse:
+      type: object
+      required: [ok, agent_id, deployments]
+      properties:
+        ok: { type: boolean }
+        agent_id: { type: string }
+        default_deployment_id: { type: string }
+        deployments:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeploymentInfo"
     AgentMember:
       type: object
       required: [user_sub, role, created_unix_ms]
@@ -495,6 +538,7 @@ components:
       properties:
         task_id: { type: string }
         agent_id: { type: string }
+        deployment_id: { type: string }
         method: { type: string }
         path: { type: string }
         query: { type: string }
@@ -512,6 +556,7 @@ components:
       properties:
         task_id: { type: string }
         agent_id: { type: string }
+        deployment_id: { type: string }
         ok: { type: boolean }
         ms: { type: integer, format: int32 }
         http_status: { type: integer, format: int32 }

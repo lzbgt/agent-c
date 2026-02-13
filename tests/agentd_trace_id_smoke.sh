@@ -209,7 +209,7 @@ for i, e in enumerate(events):
     raise SystemExit(1)
 PY
 
-if ! grep -qi "^X-Trace-Id: ${TRACE_HDR}$" "${HDR_FILE}"; then
+if ! tr -d '\r' < "${HDR_FILE}" | grep -qi "^X-Trace-Id: ${TRACE_HDR}$"; then
   echo "missing X-Trace-Id header in response" >&2
   exit 1
 fi

@@ -67,6 +67,18 @@ system more advanced, solid, efficient, and long-lived.
    - Deterministic task graph + policy VM + tool servers = layered autonomy.
    - Provide a stable foundation for orchestration, verification, and collaboration.
 
+7) **End-to-end security + identity**
+   - First-class PKI/provisioning for nodes and connectors (not just hooks).
+   - Signed capability manifests and run attestations with verifiable hashes.
+
+8) **Real-time media support**
+   - Audio streaming as a native workflow primitive (Opus/WebRTC transport).
+   - Low-latency bidirectional media for “talk + tool” flows.
+
+9) **Decentralized coordination**
+   - Optional node consensus so clusters can negotiate locally when the platform is absent.
+   - Explicit conflict resolution and safety policies for multi-node decisions.
+
 ---
 
 ## Architecture proposals (grounded, phased)
@@ -126,6 +138,15 @@ system more advanced, solid, efficient, and long-lived.
 - Central policy checks (rate limits, allowlists, cost ceilings) before relay.
 - Provide a policy audit stream (SSE) for operator visibility.
 
+### 3.4 Security & provisioning (broker + connector)
+- Establish a device provisioning flow: issue/rotate device certs, bind to `agent_id`, and record provenance.
+- Store signed capability manifests (and hashes) so clients can verify device identity and capabilities.
+- Add revocation lists and short-lived leaf cert rotation for compromised nodes.
+
+### 3.5 Media relay (broker)
+- Provide a media relay mode for Opus/WebRTC signaling that can live alongside the HTTP relay.
+- Support TURN-like relay fallback for NAT traversal (initially minimal, expand later).
+
 ### 4) WebUI (primary UX)
 
 **4.1 Capability-aware UI**
@@ -137,6 +158,10 @@ system more advanced, solid, efficient, and long-lived.
 
 **4.3 Offline + state continuity**
 - Persist client settings and last-known caps, and survive daemon restarts cleanly.
+
+**4.4 Media-first UX**
+- Add a minimal voice panel with streaming mic capture + playback.
+- Show media session state in the trace timeline for audit/replay.
 
 ---
 
@@ -153,6 +178,14 @@ system more advanced, solid, efficient, and long-lived.
 3) **Formal limits**
    - Standardize a single “limits” document generated from defaults (agentd + broker + core).
    - Keep docs + runtime consistent via tests.
+
+4) **PKI + attestation**
+   - Define a root CA + device cert model (mTLS + signed manifests).
+   - Include signed evidence bundles and public verification tooling.
+
+5) **Consensus protocol**
+   - Specify a minimal consensus/coordination protocol for node clusters (leader election + task locks).
+   - Provide a deterministic simulation harness for testing conflict scenarios.
 
 ---
 

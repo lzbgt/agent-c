@@ -15,6 +15,7 @@ import (
 type orchestrateTaskPrepared struct {
 	TaskID  string
 	AgentID string
+	DeploymentID string
 	Method  string
 	Path    string
 	Query   string
@@ -121,6 +122,19 @@ func parseOrchestrateRequest(body []byte, defaultTraceID string) (orchestratePar
 		if !agentIDRe.MatchString(agentID) {
 			return orchestrateParsed{}, errors.New("invalid agent_id")
 		}
+		var deploymentID string
+		if v, ok := t["deployment_id"]; ok {
+			_ = json.Unmarshal(v, &deploymentID)
+		}
+		if deploymentID == "" {
+			if v, ok := t["deployment"]; ok {
+				_ = json.Unmarshal(v, &deploymentID)
+			}
+		}
+		deploymentID = strings.TrimSpace(deploymentID)
+		if deploymentID != "" && !deploymentIDRe.MatchString(deploymentID) {
+			return orchestrateParsed{}, errors.New("invalid deployment_id")
+		}
 
 		taskID := "task_" + itoa(i)
 		if v, ok := t["task_id"]; ok {
@@ -173,7 +187,7 @@ func parseOrchestrateRequest(body []byte, defaultTraceID string) (orchestratePar
 		} else {
 			for k, v := range t {
 				switch k {
-				case "agent_id", "task_id", "method", "path", "query", "headers", "request":
+				case "agent_id", "deployment_id", "deployment", "task_id", "method", "path", "query", "headers", "request":
 					continue
 				default:
 					runReq[k] = v
@@ -223,6 +237,7 @@ func parseOrchestrateRequest(body []byte, defaultTraceID string) (orchestratePar
 		out.Tasks = append(out.Tasks, orchestrateTaskPrepared{
 			TaskID:  taskID,
 			AgentID: agentID,
+			DeploymentID: deploymentID,
 			Method:  method,
 			Path:    path,
 			Query:   query,
@@ -297,7 +312,7 @@ func (s *Server) handleOrchestrate(w http.ResponseWriter, r *http.Request) {
 	}
 	var idemStatus db.IdempotencyStatus
 	if idemKey != "" {
-		reqHash := idempotencyRequestHash(r.Method, r.URL.Path, r.URL.RawQuery, "", body)
+		reqHash := idempotencyRequestHash(r.Method, r.URL.Path, r.URL.RawQuery, "", "", body)
 		claim, err := s.cfg.DB.ClaimIdempotency(r.Context(), db.IdempotencyRecord{
 			UserSub:       p.Sub,
 			Key:           idemKey,
@@ -358,6 +373,7 @@ func (s *Server) handleOrchestrate(w http.ResponseWriter, r *http.Request) {
 	type taskOut struct {
 		TaskID     string         `json:"task_id"`
 		AgentID    string         `json:"agent_id"`
+		DeploymentID string         `json:"deployment_id,omitempty"`
 		OK         bool           `json:"ok"`
 		MS         int            `json:"ms"`
 		HTTPStatus int            `json:"http_status,omitempty"`
@@ -403,16 +419,17 @@ func (s *Server) handleOrchestrate(w http.ResponseWriter, r *http.Request) {
 			}
 
 			start := time.Now()
-			ro := s.relayAgentHTTP(ctx, p, t.AgentID, t.Method, t.Path, t.Query, fwdHeaders, t.Body)
+			ro := s.relayAgentHTTP(ctx, p, t.AgentID, t.DeploymentID, t.Method, t.Path, t.Query, fwdHeaders, t.Body)
 			ms := int(time.Since(start).Milliseconds())
 			if cancel != nil {
 				cancel()
 			}
 
 			row := taskOut{
-				TaskID:  t.TaskID,
-				AgentID: t.AgentID,
-				MS:      ms,
+				TaskID:       t.TaskID,
+				AgentID:      t.AgentID,
+				DeploymentID: t.DeploymentID,
+				MS:           ms,
 			}
 			if ro.BrokerStatus != 0 {
 				row.OK = false

@@ -98,6 +98,7 @@ Broker and agent communicate over a single websocket connection (JSON messages).
 1) Broker accepts TLS+mTLS websocket connection at `/v1/agent/connect`
 2) Agent sends:
    - `{"type":"hello","agent_id":"123","meta":{...}}`
+   - Optional `meta.deployment_id` to distinguish multiple deployments for the same `agent_id`
 3) Broker replies:
    - `{"type":"hello_ack","ok":true,"agent_id":"123"}`
 
@@ -122,6 +123,7 @@ All endpoints below are served by the broker (not by agents).
 - `GET /v1/agents`
   - lists agents the authenticated user is allowed to access (from Postgres)
   - includes connection status (connected/last_seen) from in-memory registry
+  - includes connected deployment list per agent when present
 
 - `POST /v1/agents`
   - creates a new agent record owned by the authenticated user (also inserts membership as `owner`)
@@ -142,16 +144,22 @@ All endpoints below are served by the broker (not by agents).
 
 - `POST /v1/agents/{agent_id}/disconnect`
   - disconnects an agent’s websocket (admin only)
+- `GET /v1/agents/{agent_id}/deployments`
+  - lists connected deployments for a given `agent_id`
+  - includes `default_deployment_id` (the most recent connected deployment)
 
 ### Relay
 
 - `GET/POST/... /v1/agents/{agent_id}/proxy/<agentd_path>`
   - transparent HTTP proxy to the target agent (path and query preserved)
   - auth: OIDC user must be in `broker_agent_memberships` for that agent
+  - optional header `X-Agentd-Deployment: <deployment_id>` (or query `deployment_id`) to target a specific deployment
+  - if no deployment is specified, broker defaults to the most recent connected deployment
 
 - `GET /v1/agents/{agent_id}/proxy_sse/<agentd_path>`
   - streaming proxy intended for SSE endpoints
   - broker flushes chunks as they arrive from the agent connector
+  - optional header `X-Agentd-Deployment: <deployment_id>` (or query `deployment_id`) to target a specific deployment
 
 Idempotency (optional):
 - send `Idempotency-Key` (or `X-Idempotency-Key`) to safely retry proxied requests
@@ -182,6 +190,7 @@ The broker proxy can be used as a “virtual base URL” for agentd-to-agentd co
 Request (JSON):
 - `tasks` (array, required): each task is:
   - `agent_id` (string, required)
+  - `deployment_id` (string, optional): target a specific deployment for the agent
   - `task_id` (string, optional)
   - `request` (object, optional): agentd run request body (if omitted, remaining task keys are treated as the request body)
   - `headers` (object, optional): forwarded to agentd (broker auth headers are never forwarded)

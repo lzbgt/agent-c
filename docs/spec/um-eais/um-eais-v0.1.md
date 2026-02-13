@@ -38,10 +38,11 @@ This spec is **transport-agnostic**:
 - Workflow representation: parallel/sequential/conditional task graphs across nodes.
 - Safety metadata: hazards, permissions, rate limits.
 
-### 0.2 Out-of-scope (v0.1)
-- Full security design (mTLS, signing, provisioning). We include hooks and fields, but not a complete PKI story.
-- Audio streaming / codec protocols (Opus/WebRTC). (Voice can sit on top of these primitives.)
-- Distributed consensus between nodes (nodes negotiating among themselves without a platform coordinator).
+### 0.2 Expanded goals (v0.1)
+Previously out-of-scope; now explicit goals for this spec and implementation plan:
+- **Full security design** (mTLS, signing, provisioning). We include hooks and fields, and now require a complete PKI story.
+- **Audio streaming / codec protocols** (Opus/WebRTC). Voice should be first-class on top of these primitives.
+- **Distributed consensus between nodes** (nodes negotiating among themselves without a platform coordinator).
 
 ### 0.3 Design stance (important)
 This spec assumes the platform/broker is the **primary coordinator**:

@@ -36,12 +36,16 @@ func TestIdempotencyKeyFromRequest(t *testing.T) {
 
 func TestIdempotencyRequestHashIncludesAgent(t *testing.T) {
 	body := []byte("payload")
-	h1 := idempotencyRequestHash("POST", "/api/v1/run", "", "agent1", body)
-	h2 := idempotencyRequestHash("POST", "/api/v1/run", "", "agent2", body)
+	h1 := idempotencyRequestHash("POST", "/api/v1/run", "", "agent1", "", body)
+	h2 := idempotencyRequestHash("POST", "/api/v1/run", "", "agent2", "", body)
 	if h1 == h2 {
 		t.Fatalf("expected different hashes for different agent ids")
 	}
-	h3 := idempotencyRequestHash("post", " /api/v1/run ", "", "agent1", body)
+	h3 := idempotencyRequestHash("post", " /api/v1/run ", "", "agent1", "", body)
+	h4 := idempotencyRequestHash("POST", "/api/v1/run", "", "agent1", "blue", body)
+	if h1 == h4 {
+		t.Fatalf("expected different hashes for different deployment ids")
+	}
 	if strings.TrimSpace(h1) == "" || strings.TrimSpace(h2) == "" || strings.TrimSpace(h3) == "" {
 		t.Fatalf("hash should not be empty")
 	}

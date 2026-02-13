@@ -103,4 +103,40 @@ std::string bearer_token_from_auth_header(const std::string& auth) {
   return "";
 }
 
+static std::string trim_ws(std::string_view s) {
+  size_t start = 0;
+  size_t end = s.size();
+  while (start < end && std::isspace(static_cast<unsigned char>(s[start]))) start++;
+  while (end > start && std::isspace(static_cast<unsigned char>(s[end - 1]))) end--;
+  return std::string(s.substr(start, end - start));
+}
+
+std::string cookie_get(const std::map<std::string, std::string>& headers, const std::string& name) {
+  if (name.empty()) return "";
+  const std::string raw = header_get_ci(headers, "cookie");
+  if (raw.empty()) return "";
+  size_t start = 0;
+  while (start <= raw.size()) {
+    size_t sep = raw.find(';', start);
+    if (sep == std::string::npos) sep = raw.size();
+    std::string part = trim_ws(std::string_view(raw.data() + start, sep - start));
+    if (!part.empty()) {
+      const size_t eq = part.find('=');
+      if (eq != std::string::npos) {
+        std::string k = trim_ws(std::string_view(part.data(), eq));
+        if (k == name) {
+          std::string v = trim_ws(std::string_view(part.data() + eq + 1, part.size() - eq - 1));
+          if (v.size() >= 2 && v.front() == '"' && v.back() == '"') {
+            v = v.substr(1, v.size() - 2);
+          }
+          return v;
+        }
+      }
+    }
+    if (sep == raw.size()) break;
+    start = sep + 1;
+  }
+  return "";
+}
+
 }  // namespace agentd

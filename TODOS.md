@@ -1,6 +1,6 @@
 # Roadmap / TODOs (highest leverage)
 
-Date: 2026-02-14
+Date: 2026-02-13
 
 This roadmap is biased toward “power unleashed” coming from the **agentic framework itself**:
 
@@ -53,6 +53,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] Host-mode macOS full-stack verification script (Docker only for Postgres/Keycloak) added as fallback.
   - [x] WebUI connection profiles for multi-agentd deployments (direct or broker-backed).
   - [x] WebUI profile-specific run settings per connection profile (model/provider + run limits).
+  - [x] Broker multi-deployment routing (`deployment_id`, `X-Agentd-Deployment`) + WebUI deployment selector + docs.
 3) **Next-gen contract foundation (agent-core + agentd + broker + WebUI)** — make interop explicit and replayable.
   - [x] Add a unified capability descriptor (`/api/v1/caps`) with protocol versions + limits (agentd + WebUI + broker proxy).
   - [x] WebUI: use `/api/v1/caps` to hide/disable unsupported features and cache last-known caps.
@@ -63,14 +64,16 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Promoted goals (design review)
 
-- [ ] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker implemented; agentd pending).
+- [x] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker + agentd implemented; tests added).
 - [ ] Tool loop: full multimodal transcript support + stable, versioned event schema with migrations.
 - [ ] Streaming: core-layer streaming interface + provider compatibility matrix with full variant coverage.
+- [ ] Audio streaming: Opus/WebRTC voice pipeline + broker relay + UI voice session controls.
 - [ ] Tool plugins: sandbox/isolation, Windows loader, and embedded/MCU-compatible plugin path.
 - [ ] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
 - [ ] UI actions: stable public action API, autoplay unlock flow, and consented remote URL opens.
-- [ ] Interop/attestation: PKI + signed attestations + canonical JSON hashing + envelope confidentiality.
+- [ ] Interop/attestation: PKI provisioning + signed manifests/attestations + canonical JSON hashing + envelope confidentiality.
 - [ ] AVM: scoped flag passthrough, host-effects policy, record/replay plumbing, and quorum/attestation.
+- [ ] Node consensus: decentralized coordination protocol with conflict resolution + deterministic simulation tests.
 
 ## Deferred (after macOS stability)
 

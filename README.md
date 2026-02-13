@@ -112,6 +112,11 @@ If you bind `agentd` to non-loopback (e.g. `--host 0.0.0.0`), you must set an au
 ```
 
 Clients must send `Authorization: Bearer your_token` to all endpoints (except `/api/v1/health`, `/api/v1/ready`, and `/metrics`).
+You can also accept the token via a cookie name (useful for browser clients):
+
+```bash
+./build/agentd --auth-token "your_token" --auth-cookie "agentd_auth"
+```
 
 ### Daemon CORS (browser clients)
 
@@ -125,6 +130,19 @@ Example (remote UI origin allowlist):
 
 ```bash
 ./build/agentd --host 0.0.0.0 --auth-token "your_token" --cors-origin "https://your-ui.example"
+```
+
+If you use cookie auth, allow credentials so the browser can send cookies:
+
+```bash
+./build/agentd --host 0.0.0.0 --auth-token "your_token" --auth-cookie "agentd_auth" \
+  --cors-origin "https://your-ui.example" --cors-allow-credentials
+```
+
+Per-route origin policies (longest path prefix wins) are supported:
+
+```bash
+./build/agentd --cors-route '{"path_prefix":"/api/v1/openrouter","origins":["https://ui.example"]}'
 ```
 
 By default, `agentd` allows common headers needed by the UI, including `Authorization` (daemon auth), `X-OpenRouter-Key`,
@@ -360,7 +378,7 @@ npm run preview -- --host 127.0.0.1 --port 8100
 
 Optional defaults (no rebuild): edit `ui/public/agentui-config.js` (copied to `ui/dist/`) to prefill:
 - `connectionMode` (`direct` or `broker`)
-- `daemonBaseUrl`, `brokerBaseUrl`, `brokerAgentId`
+- `daemonBaseUrl`, `brokerBaseUrl`, `brokerAgentId`, `brokerDeploymentId`
 - `daemonAuthToken`, `brokerAuthToken` (if you accept storing tokens in a static file)
 - `model`, `baseUrl`, `proxyUrl`, `timeoutMs`
 

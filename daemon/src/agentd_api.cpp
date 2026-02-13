@@ -77,6 +77,15 @@ static CorsConfig cors_cfg_from_config(const DaemonConfig& cfg) {
   cors_cfg.allow_methods = cfg.cors_allow_methods.empty()
     ? std::string("GET, POST, DELETE, OPTIONS")
     : cfg.cors_allow_methods;
+  cors_cfg.allow_credentials = cfg.cors_allow_credentials;
+  cors_cfg.routes.clear();
+  cors_cfg.routes.reserve(cfg.cors_routes.size());
+  for (const auto& r : cfg.cors_routes) {
+    CorsRoute cr;
+    cr.path_prefix = r.path_prefix;
+    cr.origins = r.origins;
+    cors_cfg.routes.push_back(std::move(cr));
+  }
   if (cfg.cors_disabled) {
     cors_cfg.origins.clear();
   } else if (cfg.cors_origins_set) {
@@ -88,6 +97,7 @@ static CorsConfig cors_cfg_from_config(const DaemonConfig& cfg) {
       cors_cfg.origins.clear();
     }
   }
+  cors_compile(&cors_cfg);
   return cors_cfg;
 }
 

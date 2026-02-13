@@ -12,6 +12,7 @@ import (
 
 type AgentConn struct {
 	AgentID    string
+	DeploymentID string
 	Conn       *websocket.Conn
 	Connected  time.Time
 	LastSeen   time.Time
@@ -35,11 +36,11 @@ type AgentConn struct {
 
 type Registry struct {
 	mu     sync.RWMutex
-	agents map[string]*AgentConn
+	agents map[string]map[string]*AgentConn
 }
 
 func New() *Registry {
-	return &Registry{agents: make(map[string]*AgentConn)}
+	return &Registry{agents: make(map[string]map[string]*AgentConn)}
 }
 
 func (a *AgentConn) InitSession() {
@@ -252,32 +253,124 @@ func (a *AgentConn) UnregisterPending(id string) {
 	}
 }
 
-func (r *Registry) Upsert(agent *AgentConn) {
+func (r *Registry) Upsert(agent *AgentConn) *AgentConn {
 	if r == nil || agent == nil || agent.AgentID == "" {
-		return
+		return nil
+	}
+	if agent.DeploymentID == "" {
+		agent.DeploymentID = "default"
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.agents[agent.AgentID] = agent
+	m := r.agents[agent.AgentID]
+	if m == nil {
+		m = make(map[string]*AgentConn)
+		r.agents[agent.AgentID] = m
+	}
+	prev := m[agent.DeploymentID]
+	m[agent.DeploymentID] = agent
+	return prev
 }
 
-func (r *Registry) Get(agentID string) (*AgentConn, bool) {
+func (r *Registry) Get(agentID, deploymentID string) (*AgentConn, bool) {
+	if r == nil {
+		return nil, false
+	}
+	if deploymentID == "" {
+		return nil, false
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	m := r.agents[agentID]
+	if m == nil {
+		return nil, false
+	}
+	a := m[deploymentID]
+	return a, a != nil
+}
+
+func (r *Registry) ListByAgent(agentID string) []*AgentConn {
+	if r == nil {
+		return nil
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	m := r.agents[agentID]
+	if m == nil {
+		return nil
+	}
+	out := make([]*AgentConn, 0, len(m))
+	for _, a := range m {
+		out = append(out, a)
+	}
+	return out
+}
+
+func (r *Registry) selectLatest(agentID string) (*AgentConn, bool) {
+	m := r.agents[agentID]
+	if m == nil {
+		return nil, false
+	}
+	var best *AgentConn
+	for _, a := range m {
+		if a == nil {
+			continue
+		}
+		if best == nil || a.Connected.After(best.Connected) {
+			best = a
+		}
+	}
+	if best == nil {
+		return nil, false
+	}
+	return best, true
+}
+
+func (r *Registry) Select(agentID, deploymentID string) (*AgentConn, bool) {
 	if r == nil {
 		return nil, false
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	a := r.agents[agentID]
-	return a, a != nil
+	if deploymentID != "" {
+		m := r.agents[agentID]
+		if m == nil {
+			return nil, false
+		}
+		a := m[deploymentID]
+		return a, a != nil
+	}
+	return r.selectLatest(agentID)
 }
 
-func (r *Registry) Delete(agentID string) {
+func (r *Registry) Delete(agentID, deploymentID string) []*AgentConn {
 	if r == nil {
-		return
+		return nil
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	delete(r.agents, agentID)
+	m := r.agents[agentID]
+	if m == nil {
+		return nil
+	}
+	removed := []*AgentConn{}
+	if deploymentID == "" {
+		for _, a := range m {
+			if a != nil {
+				removed = append(removed, a)
+			}
+		}
+		delete(r.agents, agentID)
+		return removed
+	}
+	if a, ok := m[deploymentID]; ok {
+		removed = append(removed, a)
+		delete(m, deploymentID)
+	}
+	if len(m) == 0 {
+		delete(r.agents, agentID)
+	}
+	return removed
 }
 
 func (r *Registry) List() []*AgentConn {
@@ -286,15 +379,43 @@ func (r *Registry) List() []*AgentConn {
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	out := make([]*AgentConn, 0, len(r.agents))
-	for _, a := range r.agents {
-		out = append(out, a)
+	total := 0
+	for _, m := range r.agents {
+		total += len(m)
+	}
+	out := make([]*AgentConn, 0, total)
+	for _, m := range r.agents {
+		for _, a := range m {
+			out = append(out, a)
+		}
 	}
 	return out
 }
 
-func (r *Registry) Require(agentID string) (*AgentConn, error) {
-	a, ok := r.Get(agentID)
+func (r *Registry) AgentCount() int {
+	if r == nil {
+		return 0
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return len(r.agents)
+}
+
+func (r *Registry) ConnectionCount() int {
+	if r == nil {
+		return 0
+	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	total := 0
+	for _, m := range r.agents {
+		total += len(m)
+	}
+	return total
+}
+
+func (r *Registry) Require(agentID, deploymentID string) (*AgentConn, error) {
+	a, ok := r.Select(agentID, deploymentID)
 	if !ok {
 		return nil, errors.New("agent not connected")
 	}

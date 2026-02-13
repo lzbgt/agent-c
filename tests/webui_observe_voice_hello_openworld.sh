@@ -266,6 +266,7 @@ echo "[e2e] running playwright open-world test"
   AGENT_E2E_PROVIDER_BASE_URL="${STUB_BASE}" \
   AGENT_E2E_PROVIDER_MODEL="stub" \
   AGENT_E2E_PROVIDER_API_KEY="dummy" \
+  AGENT_E2E_REQUIRE_VOICE=1 \
   AGENT_E2E_OUT_DIR="${OUT_DIR}/pw" \
   npm run e2e -- observe_voice_hello.spec.ts \
   > "${OUT_DIR}/playwright.stdout.log" 2> "${OUT_DIR}/playwright.stderr.log"

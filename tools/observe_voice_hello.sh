@@ -144,6 +144,7 @@ echo "[observe] running Playwright observation..."
   AGENT_E2E_UI_BASE_URL="${UI_BASE}" \
   AGENT_E2E_AGENTD_BASE_URL="${AGENTD_BASE}" \
   AGENT_E2E_OUT_DIR="${RUN_DIR}" \
+  AGENT_E2E_REQUIRE_VOICE=1 \
   npx playwright test e2e/observe_voice_hello.spec.ts
 ) >"${PW_LOG}" 2>&1 || true
 
@@ -153,4 +154,3 @@ echo "  - ${UI_LOG}"
 echo "  - ${PW_LOG}"
 echo "  - ${DB_PATH}"
 echo "  - ${RUN_DIR}/page.png (if captured)"
-
