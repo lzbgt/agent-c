@@ -31,6 +31,8 @@ Host builds (`agent` / `agentd`) require `libcurl` and `jsoncpp` (via `pkg-confi
 brew install cmake pkg-config curl jsoncpp sqlite
 ```
 
+macOS production packaging (signed/notarized `.pkg`) is documented in `docs/MACOS_PACKAGING.md`.
+
 **Windows (native build)**: install dependencies via vcpkg, then configure with its toolchain file:
 
 ```powershell

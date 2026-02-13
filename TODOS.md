@@ -1,6 +1,6 @@
 # Roadmap / TODOs (highest leverage)
 
-Date: 2026-02-13
+Date: 2026-02-14
 
 This roadmap is biased toward “power unleashed” coming from the **agentic framework itself**:
 
@@ -22,7 +22,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
    - [x] macOS local verify script can run diagnostics provider tests when `MAC_LOCAL_PROVIDER_TEST=1`.
    - [x] macOS provider smoke: DeepSeek reasoner tool-call + Moonshot tool-call.
    - [x] macOS local provider tests verified against `~/.env` (DeepSeek + Kimi/Moonshot).
-   - [ ] macOS packaging/codesign checklist for production distribution (launchd + notarization).
+   - [x] macOS packaging/codesign checklist for production distribution (launchd + notarization).
 2) **Production deployment readiness (agentd + broker + WebUI)** — stable, secure, operable deployment.
    - [x] Added `docs/DEPLOYMENT.md` checklist + topology guidance.
    - [x] Added service manager templates (systemd + macOS launchd).
