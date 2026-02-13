@@ -16,7 +16,7 @@ Adoption here:
   - captures agentd health/config/diagnostics + optional broker state
   - supports calling agentd via broker proxy (`--agentd-via-broker`)
   - optional trace capture (`--trace-id`)
-- Next: add a validator that enforces expected fields (`ok`, `service`, `version`, etc.).
+- Validator: `tools/check_agent_evidence_bundle.py` (checks JSON parse + ok fields, strict mode).
 
 ## 2) Data-driven scenario packs
 

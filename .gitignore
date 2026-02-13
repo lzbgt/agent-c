@@ -26,6 +26,7 @@ tools/_compose_mtls/
 memory/
 session_*/
 docs/artifacts/
+**/__pycache__/
 
 # Local one-off camera capture artifacts (dev only).
 capture_image*.py

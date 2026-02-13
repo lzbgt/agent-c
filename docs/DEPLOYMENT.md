@@ -237,6 +237,14 @@ curl http://127.0.0.1:8123/api/v1/health
 From `ui/`:
 - `npm run e2e:agentd` (agentd host UI smoke)
 - `npm run e2e:broker` (broker console UI smoke)
+
+### Evidence bundles (optional)
+
+Capture a lightweight snapshot for debugging or attachable evidence:
+- `tools/capture_agent_evidence_bundle.sh --agentd-base http://127.0.0.1:8123`
+
+Validate a captured bundle:
+- `python3 tools/check_agent_evidence_bundle.py --dir docs/artifacts/evidence/<bundle_dir>`
   - Edit that file to adjust broker URL, agent id, or pass-through daemon token for local dev.
 - For a one-command macOS verification run, use: `tools/verify_mac_full_stack.sh`.
 - If Docker is unavailable or resource-constrained, you can verify the local stack without compose:
