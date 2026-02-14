@@ -22,6 +22,20 @@ export type AgentUIRuntimeConfig = {
   streamAssistant?: boolean | string;
   trace?: boolean | string;
   useAsync?: boolean | string;
+  memoryContextMode?: string;
+  memoryIncludeStructured?: boolean | string;
+  memoryIncludeCore?: boolean | string;
+  memoryIncludeDaily?: boolean | string;
+  memoryIncludeSession?: boolean | string;
+  memoryDailyDays?: string | number;
+  memoryTotalCap?: string | number;
+  memorySearchQuery?: string;
+  memorySearchUseIndex?: boolean | string;
+  memorySearchCaseSensitive?: boolean | string;
+  memorySearchFallbackToFiles?: boolean | string;
+  memorySearchMaxResults?: string | number;
+  memorySearchMaxSnippetChars?: string | number;
+  memorySearchContextLines?: string | number;
   allowClientRpcs?: boolean | string;
   allowClientEffects?: boolean | string;
   allowUnsafePageEval?: boolean | string;
@@ -48,6 +62,20 @@ export type AgentUIDefaults = {
   streamAssistant: boolean;
   trace: boolean;
   useAsync: boolean;
+  memoryContextMode: string;
+  memoryIncludeStructured: boolean;
+  memoryIncludeCore: boolean;
+  memoryIncludeDaily: boolean;
+  memoryIncludeSession: boolean;
+  memoryDailyDays: string;
+  memoryTotalCap: string;
+  memorySearchQuery: string;
+  memorySearchUseIndex: boolean;
+  memorySearchCaseSensitive: boolean;
+  memorySearchFallbackToFiles: boolean;
+  memorySearchMaxResults: string;
+  memorySearchMaxSnippetChars: string;
+  memorySearchContextLines: string;
   allowClientRpcs: boolean;
   allowClientEffects: boolean;
   allowUnsafePageEval: boolean;
@@ -80,6 +108,20 @@ const DEFAULTS: AgentUIDefaults = {
   streamAssistant: false,
   trace: true,
   useAsync: true,
+  memoryContextMode: "files",
+  memoryIncludeStructured: true,
+  memoryIncludeCore: true,
+  memoryIncludeDaily: true,
+  memoryIncludeSession: true,
+  memoryDailyDays: "2",
+  memoryTotalCap: "12000",
+  memorySearchQuery: "",
+  memorySearchUseIndex: true,
+  memorySearchCaseSensitive: false,
+  memorySearchFallbackToFiles: true,
+  memorySearchMaxResults: "12",
+  memorySearchMaxSnippetChars: "800",
+  memorySearchContextLines: "2",
   allowClientRpcs: true,
   allowClientEffects: true,
   allowUnsafePageEval: true,
@@ -202,6 +244,62 @@ export const getUiDefaults = (): AgentUIDefaults => {
 
   out.trace = coerceBool(cfg.trace) ?? coerceBool(envString("VITE_AGENTUI_TRACE")) ?? out.trace;
   out.useAsync = coerceBool(cfg.useAsync) ?? coerceBool(envString("VITE_AGENTUI_USE_ASYNC")) ?? out.useAsync;
+  out.memoryContextMode =
+    coerceEnum(cfg.memoryContextMode, ["files", "search"]) ??
+    coerceEnum(envString("VITE_AGENTUI_MEMORY_CONTEXT_MODE"), ["files", "search"]) ??
+    out.memoryContextMode;
+  out.memoryIncludeStructured =
+    coerceBool(cfg.memoryIncludeStructured) ??
+    coerceBool(envString("VITE_AGENTUI_MEMORY_INCLUDE_STRUCTURED")) ??
+    out.memoryIncludeStructured;
+  out.memoryIncludeCore =
+    coerceBool(cfg.memoryIncludeCore) ??
+    coerceBool(envString("VITE_AGENTUI_MEMORY_INCLUDE_CORE")) ??
+    out.memoryIncludeCore;
+  out.memoryIncludeDaily =
+    coerceBool(cfg.memoryIncludeDaily) ??
+    coerceBool(envString("VITE_AGENTUI_MEMORY_INCLUDE_DAILY")) ??
+    out.memoryIncludeDaily;
+  out.memoryIncludeSession =
+    coerceBool(cfg.memoryIncludeSession) ??
+    coerceBool(envString("VITE_AGENTUI_MEMORY_INCLUDE_SESSION")) ??
+    out.memoryIncludeSession;
+  out.memoryDailyDays =
+    coerceString(cfg.memoryDailyDays) ??
+    coerceString(envString("VITE_AGENTUI_MEMORY_DAILY_DAYS")) ??
+    out.memoryDailyDays;
+  out.memoryTotalCap =
+    coerceString(cfg.memoryTotalCap) ??
+    coerceString(envString("VITE_AGENTUI_MEMORY_TOTAL_CAP")) ??
+    out.memoryTotalCap;
+  out.memorySearchQuery =
+    coerceString(cfg.memorySearchQuery) ??
+    coerceString(envString("VITE_AGENTUI_MEMORY_SEARCH_QUERY")) ??
+    out.memorySearchQuery;
+  out.memorySearchUseIndex =
+    coerceBool(cfg.memorySearchUseIndex) ??
+    coerceBool(envString("VITE_AGENTUI_MEMORY_SEARCH_USE_INDEX")) ??
+    out.memorySearchUseIndex;
+  out.memorySearchCaseSensitive =
+    coerceBool(cfg.memorySearchCaseSensitive) ??
+    coerceBool(envString("VITE_AGENTUI_MEMORY_SEARCH_CASE_SENSITIVE")) ??
+    out.memorySearchCaseSensitive;
+  out.memorySearchFallbackToFiles =
+    coerceBool(cfg.memorySearchFallbackToFiles) ??
+    coerceBool(envString("VITE_AGENTUI_MEMORY_SEARCH_FALLBACK")) ??
+    out.memorySearchFallbackToFiles;
+  out.memorySearchMaxResults =
+    coerceString(cfg.memorySearchMaxResults) ??
+    coerceString(envString("VITE_AGENTUI_MEMORY_SEARCH_MAX_RESULTS")) ??
+    out.memorySearchMaxResults;
+  out.memorySearchMaxSnippetChars =
+    coerceString(cfg.memorySearchMaxSnippetChars) ??
+    coerceString(envString("VITE_AGENTUI_MEMORY_SEARCH_MAX_SNIPPET_CHARS")) ??
+    out.memorySearchMaxSnippetChars;
+  out.memorySearchContextLines =
+    coerceString(cfg.memorySearchContextLines) ??
+    coerceString(envString("VITE_AGENTUI_MEMORY_SEARCH_CONTEXT_LINES")) ??
+    out.memorySearchContextLines;
 
   out.allowClientRpcs =
     coerceBool(cfg.allowClientRpcs) ??

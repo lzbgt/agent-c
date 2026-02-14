@@ -146,6 +146,20 @@ export default function App() {
     toolCallLimits,
     maxChars,
     keepLast,
+    memoryContextMode,
+    memoryIncludeStructured,
+    memoryIncludeCore,
+    memoryIncludeDaily,
+    memoryIncludeSession,
+    memoryDailyDays,
+    memoryTotalCap,
+    memorySearchQuery,
+    memorySearchUseIndex,
+    memorySearchCaseSensitive,
+    memorySearchFallbackToFiles,
+    memorySearchMaxResults,
+    memorySearchMaxSnippetChars,
+    memorySearchContextLines,
     trace,
     useAsync,
   } = runSettings;
@@ -1012,6 +1026,43 @@ export default function App() {
           parsedToolCallLimits = undefined;
         }
       }
+      const memMode = memoryContextMode === "search" ? "search" : "files";
+      const memDailyDaysTrim = String(memoryDailyDays ?? "").trim();
+      const parsedMemDailyDays =
+        memDailyDaysTrim.length === 0
+          ? undefined
+          : Number.isFinite(Number(memDailyDaysTrim)) && Number(memDailyDaysTrim) >= 0
+            ? Number(memDailyDaysTrim)
+            : undefined;
+      const memTotalCapTrim = String(memoryTotalCap ?? "").trim();
+      const parsedMemTotalCap =
+        memTotalCapTrim.length === 0
+          ? undefined
+          : Number.isFinite(Number(memTotalCapTrim)) && Number(memTotalCapTrim) >= 0
+            ? Number(memTotalCapTrim)
+            : undefined;
+      const memSearchQueryTrim = String(memorySearchQuery ?? "").trim();
+      const memSearchMaxResultsTrim = String(memorySearchMaxResults ?? "").trim();
+      const parsedMemSearchMaxResults =
+        memSearchMaxResultsTrim.length === 0
+          ? undefined
+          : Number.isFinite(Number(memSearchMaxResultsTrim)) && Number(memSearchMaxResultsTrim) >= 0
+            ? Number(memSearchMaxResultsTrim)
+            : undefined;
+      const memSearchMaxSnippetTrim = String(memorySearchMaxSnippetChars ?? "").trim();
+      const parsedMemSearchMaxSnippetChars =
+        memSearchMaxSnippetTrim.length === 0
+          ? undefined
+          : Number.isFinite(Number(memSearchMaxSnippetTrim)) && Number(memSearchMaxSnippetTrim) >= 0
+            ? Number(memSearchMaxSnippetTrim)
+            : undefined;
+      const memSearchContextTrim = String(memorySearchContextLines ?? "").trim();
+      const parsedMemSearchContextLines =
+        memSearchContextTrim.length === 0
+          ? undefined
+          : Number.isFinite(Number(memSearchContextTrim)) && Number(memSearchContextTrim) >= 0
+            ? Number(memSearchContextTrim)
+            : undefined;
       const req: RunRequest = {
         prompt: vars.prompt,
         session_id: sessionId || undefined,
@@ -1051,6 +1102,22 @@ export default function App() {
         keep_last: Number.isFinite(Number(keepLast)) ? Number(keepLast) : 16,
         trace,
       };
+      if (tools === "host") {
+        req.memory_context_mode = memMode;
+        req.memory_include_structured = memoryIncludeStructured;
+        req.memory_include_core = memoryIncludeCore;
+        req.memory_include_daily = memoryIncludeDaily;
+        req.memory_include_session = memoryIncludeSession;
+        req.memory_daily_days = parsedMemDailyDays;
+        req.memory_total_cap = parsedMemTotalCap;
+        if (memSearchQueryTrim.length > 0) req.memory_search_query = memSearchQueryTrim;
+        req.memory_search_use_index = memorySearchUseIndex;
+        req.memory_search_case_sensitive = memorySearchCaseSensitive;
+        req.memory_search_fallback_to_files = memorySearchFallbackToFiles;
+        req.memory_search_max_results = parsedMemSearchMaxResults;
+        req.memory_search_max_snippet_chars = parsedMemSearchMaxSnippetChars;
+        req.memory_search_context_lines = parsedMemSearchContextLines;
+      }
       if (effectiveUseAsync) {
         const job = await apiRunAsync(effectiveBase, req, daemonAuth);
         return { mode: "async" as const, job, req };

@@ -62,6 +62,20 @@ export type RunProfileOverrides = {
   toolCallLimits?: string;
   maxChars?: string;
   keepLast?: string;
+  memoryContextMode?: string;
+  memoryIncludeStructured?: boolean;
+  memoryIncludeCore?: boolean;
+  memoryIncludeDaily?: boolean;
+  memoryIncludeSession?: boolean;
+  memoryDailyDays?: string;
+  memoryTotalCap?: string;
+  memorySearchQuery?: string;
+  memorySearchUseIndex?: boolean;
+  memorySearchCaseSensitive?: boolean;
+  memorySearchFallbackToFiles?: boolean;
+  memorySearchMaxResults?: string;
+  memorySearchMaxSnippetChars?: string;
+  memorySearchContextLines?: string;
 };
 
 export type ConnectionProfile = {
@@ -127,6 +141,34 @@ export type RunSettings = {
   setMaxChars: React.Dispatch<React.SetStateAction<string>>;
   keepLast: string;
   setKeepLast: React.Dispatch<React.SetStateAction<string>>;
+  memoryContextMode: string;
+  setMemoryContextMode: React.Dispatch<React.SetStateAction<string>>;
+  memoryIncludeStructured: boolean;
+  setMemoryIncludeStructured: React.Dispatch<React.SetStateAction<boolean>>;
+  memoryIncludeCore: boolean;
+  setMemoryIncludeCore: React.Dispatch<React.SetStateAction<boolean>>;
+  memoryIncludeDaily: boolean;
+  setMemoryIncludeDaily: React.Dispatch<React.SetStateAction<boolean>>;
+  memoryIncludeSession: boolean;
+  setMemoryIncludeSession: React.Dispatch<React.SetStateAction<boolean>>;
+  memoryDailyDays: string;
+  setMemoryDailyDays: React.Dispatch<React.SetStateAction<string>>;
+  memoryTotalCap: string;
+  setMemoryTotalCap: React.Dispatch<React.SetStateAction<string>>;
+  memorySearchQuery: string;
+  setMemorySearchQuery: React.Dispatch<React.SetStateAction<string>>;
+  memorySearchUseIndex: boolean;
+  setMemorySearchUseIndex: React.Dispatch<React.SetStateAction<boolean>>;
+  memorySearchCaseSensitive: boolean;
+  setMemorySearchCaseSensitive: React.Dispatch<React.SetStateAction<boolean>>;
+  memorySearchFallbackToFiles: boolean;
+  setMemorySearchFallbackToFiles: React.Dispatch<React.SetStateAction<boolean>>;
+  memorySearchMaxResults: string;
+  setMemorySearchMaxResults: React.Dispatch<React.SetStateAction<string>>;
+  memorySearchMaxSnippetChars: string;
+  setMemorySearchMaxSnippetChars: React.Dispatch<React.SetStateAction<string>>;
+  memorySearchContextLines: string;
+  setMemorySearchContextLines: React.Dispatch<React.SetStateAction<string>>;
   orMinTotal: string;
   setOrMinTotal: React.Dispatch<React.SetStateAction<string>>;
   orMaxTotal: string;
@@ -276,6 +318,27 @@ const normalizeRunOverrides = (raw: unknown): RunProfileOverrides | undefined =>
   if (maxChars !== undefined) out.maxChars = maxChars;
   const keepLast = readString(v.keepLast);
   if (keepLast !== undefined) out.keepLast = keepLast;
+  const memoryContextMode = readString(v.memoryContextMode);
+  if (memoryContextMode === "files" || memoryContextMode === "search") out.memoryContextMode = memoryContextMode;
+  if (typeof v.memoryIncludeStructured === "boolean") out.memoryIncludeStructured = v.memoryIncludeStructured;
+  if (typeof v.memoryIncludeCore === "boolean") out.memoryIncludeCore = v.memoryIncludeCore;
+  if (typeof v.memoryIncludeDaily === "boolean") out.memoryIncludeDaily = v.memoryIncludeDaily;
+  if (typeof v.memoryIncludeSession === "boolean") out.memoryIncludeSession = v.memoryIncludeSession;
+  const memoryDailyDays = readString(v.memoryDailyDays);
+  if (memoryDailyDays !== undefined) out.memoryDailyDays = memoryDailyDays;
+  const memoryTotalCap = readString(v.memoryTotalCap);
+  if (memoryTotalCap !== undefined) out.memoryTotalCap = memoryTotalCap;
+  const memorySearchQuery = readString(v.memorySearchQuery);
+  if (memorySearchQuery !== undefined) out.memorySearchQuery = memorySearchQuery;
+  if (typeof v.memorySearchUseIndex === "boolean") out.memorySearchUseIndex = v.memorySearchUseIndex;
+  if (typeof v.memorySearchCaseSensitive === "boolean") out.memorySearchCaseSensitive = v.memorySearchCaseSensitive;
+  if (typeof v.memorySearchFallbackToFiles === "boolean") out.memorySearchFallbackToFiles = v.memorySearchFallbackToFiles;
+  const memorySearchMaxResults = readString(v.memorySearchMaxResults);
+  if (memorySearchMaxResults !== undefined) out.memorySearchMaxResults = memorySearchMaxResults;
+  const memorySearchMaxSnippetChars = readString(v.memorySearchMaxSnippetChars);
+  if (memorySearchMaxSnippetChars !== undefined) out.memorySearchMaxSnippetChars = memorySearchMaxSnippetChars;
+  const memorySearchContextLines = readString(v.memorySearchContextLines);
+  if (memorySearchContextLines !== undefined) out.memorySearchContextLines = memorySearchContextLines;
 
   return Object.keys(out).length > 0 ? out : undefined;
 };
@@ -408,6 +471,62 @@ export default function useUiSettings(): UiSettings {
   const [toolCallLimitsGlobal, setToolCallLimitsGlobal] = useLocalStorageState("agentui.toolCallLimits", "");
   const [maxCharsGlobal, setMaxCharsGlobal] = useLocalStorageState("agentui.maxChars", "20000");
   const [keepLastGlobal, setKeepLastGlobal] = useLocalStorageState("agentui.keepLast", "16");
+  const [memoryContextModeGlobal, setMemoryContextModeGlobal] = useLocalStorageState(
+    "agentui.memoryContextMode",
+    defaults.memoryContextMode,
+  );
+  const [memoryIncludeStructuredGlobal, setMemoryIncludeStructuredGlobal] = useLocalStorageState(
+    "agentui.memoryIncludeStructured",
+    defaults.memoryIncludeStructured,
+  );
+  const [memoryIncludeCoreGlobal, setMemoryIncludeCoreGlobal] = useLocalStorageState(
+    "agentui.memoryIncludeCore",
+    defaults.memoryIncludeCore,
+  );
+  const [memoryIncludeDailyGlobal, setMemoryIncludeDailyGlobal] = useLocalStorageState(
+    "agentui.memoryIncludeDaily",
+    defaults.memoryIncludeDaily,
+  );
+  const [memoryIncludeSessionGlobal, setMemoryIncludeSessionGlobal] = useLocalStorageState(
+    "agentui.memoryIncludeSession",
+    defaults.memoryIncludeSession,
+  );
+  const [memoryDailyDaysGlobal, setMemoryDailyDaysGlobal] = useLocalStorageState(
+    "agentui.memoryDailyDays",
+    defaults.memoryDailyDays,
+  );
+  const [memoryTotalCapGlobal, setMemoryTotalCapGlobal] = useLocalStorageState(
+    "agentui.memoryTotalCap",
+    defaults.memoryTotalCap,
+  );
+  const [memorySearchQueryGlobal, setMemorySearchQueryGlobal] = useLocalStorageState(
+    "agentui.memorySearchQuery",
+    defaults.memorySearchQuery,
+  );
+  const [memorySearchUseIndexGlobal, setMemorySearchUseIndexGlobal] = useLocalStorageState(
+    "agentui.memorySearchUseIndex",
+    defaults.memorySearchUseIndex,
+  );
+  const [memorySearchCaseSensitiveGlobal, setMemorySearchCaseSensitiveGlobal] = useLocalStorageState(
+    "agentui.memorySearchCaseSensitive",
+    defaults.memorySearchCaseSensitive,
+  );
+  const [memorySearchFallbackToFilesGlobal, setMemorySearchFallbackToFilesGlobal] = useLocalStorageState(
+    "agentui.memorySearchFallbackToFiles",
+    defaults.memorySearchFallbackToFiles,
+  );
+  const [memorySearchMaxResultsGlobal, setMemorySearchMaxResultsGlobal] = useLocalStorageState(
+    "agentui.memorySearchMaxResults",
+    defaults.memorySearchMaxResults,
+  );
+  const [memorySearchMaxSnippetCharsGlobal, setMemorySearchMaxSnippetCharsGlobal] = useLocalStorageState(
+    "agentui.memorySearchMaxSnippetChars",
+    defaults.memorySearchMaxSnippetChars,
+  );
+  const [memorySearchContextLinesGlobal, setMemorySearchContextLinesGlobal] = useLocalStorageState(
+    "agentui.memorySearchContextLines",
+    defaults.memorySearchContextLines,
+  );
 
   const [orMinTotal, setOrMinTotal] = useLocalStorageState("agentui.orMinTotal", "0.01");
   const [orMaxTotal, setOrMaxTotal] = useLocalStorageState("agentui.orMaxTotal", "0.50");
@@ -553,6 +672,20 @@ export default function useUiSettings(): UiSettings {
       toolCallLimits: toolCallLimitsGlobal,
       maxChars: maxCharsGlobal,
       keepLast: keepLastGlobal,
+      memoryContextMode: memoryContextModeGlobal,
+      memoryIncludeStructured: memoryIncludeStructuredGlobal,
+      memoryIncludeCore: memoryIncludeCoreGlobal,
+      memoryIncludeDaily: memoryIncludeDailyGlobal,
+      memoryIncludeSession: memoryIncludeSessionGlobal,
+      memoryDailyDays: memoryDailyDaysGlobal,
+      memoryTotalCap: memoryTotalCapGlobal,
+      memorySearchQuery: memorySearchQueryGlobal,
+      memorySearchUseIndex: memorySearchUseIndexGlobal,
+      memorySearchCaseSensitive: memorySearchCaseSensitiveGlobal,
+      memorySearchFallbackToFiles: memorySearchFallbackToFilesGlobal,
+      memorySearchMaxResults: memorySearchMaxResultsGlobal,
+      memorySearchMaxSnippetChars: memorySearchMaxSnippetCharsGlobal,
+      memorySearchContextLines: memorySearchContextLinesGlobal,
     }),
     [
       apiKeyGlobal,
@@ -565,6 +698,20 @@ export default function useUiSettings(): UiSettings {
       maxStepsRawGlobal,
       maxToolCallsPerToolGlobal,
       maxToolCallsTotalGlobal,
+      memoryContextModeGlobal,
+      memoryDailyDaysGlobal,
+      memoryIncludeCoreGlobal,
+      memoryIncludeDailyGlobal,
+      memoryIncludeSessionGlobal,
+      memoryIncludeStructuredGlobal,
+      memorySearchCaseSensitiveGlobal,
+      memorySearchContextLinesGlobal,
+      memorySearchFallbackToFilesGlobal,
+      memorySearchMaxResultsGlobal,
+      memorySearchMaxSnippetCharsGlobal,
+      memorySearchQueryGlobal,
+      memorySearchUseIndexGlobal,
+      memoryTotalCapGlobal,
       modelGlobal,
       proxyUrlGlobal,
       streamAssistantGlobal,
@@ -672,6 +819,20 @@ export default function useUiSettings(): UiSettings {
   const toolCallLimits = resolveRunValue("toolCallLimits", toolCallLimitsGlobal);
   const maxChars = resolveRunValue("maxChars", maxCharsGlobal);
   const keepLast = resolveRunValue("keepLast", keepLastGlobal);
+  const memoryContextMode = resolveRunValue("memoryContextMode", memoryContextModeGlobal);
+  const memoryIncludeStructured = resolveRunValue("memoryIncludeStructured", memoryIncludeStructuredGlobal);
+  const memoryIncludeCore = resolveRunValue("memoryIncludeCore", memoryIncludeCoreGlobal);
+  const memoryIncludeDaily = resolveRunValue("memoryIncludeDaily", memoryIncludeDailyGlobal);
+  const memoryIncludeSession = resolveRunValue("memoryIncludeSession", memoryIncludeSessionGlobal);
+  const memoryDailyDays = resolveRunValue("memoryDailyDays", memoryDailyDaysGlobal);
+  const memoryTotalCap = resolveRunValue("memoryTotalCap", memoryTotalCapGlobal);
+  const memorySearchQuery = resolveRunValue("memorySearchQuery", memorySearchQueryGlobal);
+  const memorySearchUseIndex = resolveRunValue("memorySearchUseIndex", memorySearchUseIndexGlobal);
+  const memorySearchCaseSensitive = resolveRunValue("memorySearchCaseSensitive", memorySearchCaseSensitiveGlobal);
+  const memorySearchFallbackToFiles = resolveRunValue("memorySearchFallbackToFiles", memorySearchFallbackToFilesGlobal);
+  const memorySearchMaxResults = resolveRunValue("memorySearchMaxResults", memorySearchMaxResultsGlobal);
+  const memorySearchMaxSnippetChars = resolveRunValue("memorySearchMaxSnippetChars", memorySearchMaxSnippetCharsGlobal);
+  const memorySearchContextLines = resolveRunValue("memorySearchContextLines", memorySearchContextLinesGlobal);
 
   const setTools = React.useCallback(
     (next: React.SetStateAction<ToolMode>) => setRunValue("tools", next, toolsGlobal, setToolsGlobal),
@@ -795,6 +956,72 @@ export default function useUiSettings(): UiSettings {
   const setKeepLast = React.useCallback(
     (next: React.SetStateAction<string>) => setRunValue("keepLast", next, keepLastGlobal, setKeepLastGlobal),
     [keepLastGlobal, setKeepLastGlobal, setRunValue],
+  );
+  const setMemoryContextMode = React.useCallback(
+    (next: React.SetStateAction<string>) => setRunValue("memoryContextMode", next, memoryContextModeGlobal, setMemoryContextModeGlobal),
+    [memoryContextModeGlobal, setMemoryContextModeGlobal, setRunValue],
+  );
+  const setMemoryIncludeStructured = React.useCallback(
+    (next: React.SetStateAction<boolean>) =>
+      setRunValue("memoryIncludeStructured", next, memoryIncludeStructuredGlobal, setMemoryIncludeStructuredGlobal),
+    [memoryIncludeStructuredGlobal, setMemoryIncludeStructuredGlobal, setRunValue],
+  );
+  const setMemoryIncludeCore = React.useCallback(
+    (next: React.SetStateAction<boolean>) =>
+      setRunValue("memoryIncludeCore", next, memoryIncludeCoreGlobal, setMemoryIncludeCoreGlobal),
+    [memoryIncludeCoreGlobal, setMemoryIncludeCoreGlobal, setRunValue],
+  );
+  const setMemoryIncludeDaily = React.useCallback(
+    (next: React.SetStateAction<boolean>) =>
+      setRunValue("memoryIncludeDaily", next, memoryIncludeDailyGlobal, setMemoryIncludeDailyGlobal),
+    [memoryIncludeDailyGlobal, setMemoryIncludeDailyGlobal, setRunValue],
+  );
+  const setMemoryIncludeSession = React.useCallback(
+    (next: React.SetStateAction<boolean>) =>
+      setRunValue("memoryIncludeSession", next, memoryIncludeSessionGlobal, setMemoryIncludeSessionGlobal),
+    [memoryIncludeSessionGlobal, setMemoryIncludeSessionGlobal, setRunValue],
+  );
+  const setMemoryDailyDays = React.useCallback(
+    (next: React.SetStateAction<string>) => setRunValue("memoryDailyDays", next, memoryDailyDaysGlobal, setMemoryDailyDaysGlobal),
+    [memoryDailyDaysGlobal, setMemoryDailyDaysGlobal, setRunValue],
+  );
+  const setMemoryTotalCap = React.useCallback(
+    (next: React.SetStateAction<string>) => setRunValue("memoryTotalCap", next, memoryTotalCapGlobal, setMemoryTotalCapGlobal),
+    [memoryTotalCapGlobal, setMemoryTotalCapGlobal, setRunValue],
+  );
+  const setMemorySearchQuery = React.useCallback(
+    (next: React.SetStateAction<string>) => setRunValue("memorySearchQuery", next, memorySearchQueryGlobal, setMemorySearchQueryGlobal),
+    [memorySearchQueryGlobal, setMemorySearchQueryGlobal, setRunValue],
+  );
+  const setMemorySearchUseIndex = React.useCallback(
+    (next: React.SetStateAction<boolean>) =>
+      setRunValue("memorySearchUseIndex", next, memorySearchUseIndexGlobal, setMemorySearchUseIndexGlobal),
+    [memorySearchUseIndexGlobal, setMemorySearchUseIndexGlobal, setRunValue],
+  );
+  const setMemorySearchCaseSensitive = React.useCallback(
+    (next: React.SetStateAction<boolean>) =>
+      setRunValue("memorySearchCaseSensitive", next, memorySearchCaseSensitiveGlobal, setMemorySearchCaseSensitiveGlobal),
+    [memorySearchCaseSensitiveGlobal, setMemorySearchCaseSensitiveGlobal, setRunValue],
+  );
+  const setMemorySearchFallbackToFiles = React.useCallback(
+    (next: React.SetStateAction<boolean>) =>
+      setRunValue("memorySearchFallbackToFiles", next, memorySearchFallbackToFilesGlobal, setMemorySearchFallbackToFilesGlobal),
+    [memorySearchFallbackToFilesGlobal, setMemorySearchFallbackToFilesGlobal, setRunValue],
+  );
+  const setMemorySearchMaxResults = React.useCallback(
+    (next: React.SetStateAction<string>) =>
+      setRunValue("memorySearchMaxResults", next, memorySearchMaxResultsGlobal, setMemorySearchMaxResultsGlobal),
+    [memorySearchMaxResultsGlobal, setMemorySearchMaxResultsGlobal, setRunValue],
+  );
+  const setMemorySearchMaxSnippetChars = React.useCallback(
+    (next: React.SetStateAction<string>) =>
+      setRunValue("memorySearchMaxSnippetChars", next, memorySearchMaxSnippetCharsGlobal, setMemorySearchMaxSnippetCharsGlobal),
+    [memorySearchMaxSnippetCharsGlobal, setMemorySearchMaxSnippetCharsGlobal, setRunValue],
+  );
+  const setMemorySearchContextLines = React.useCallback(
+    (next: React.SetStateAction<string>) =>
+      setRunValue("memorySearchContextLines", next, memorySearchContextLinesGlobal, setMemorySearchContextLinesGlobal),
+    [memorySearchContextLinesGlobal, setMemorySearchContextLinesGlobal, setRunValue],
   );
 
   const connectionMode = activeProfile.mode;
@@ -1026,6 +1253,34 @@ export default function useUiSettings(): UiSettings {
       setMaxChars,
       keepLast,
       setKeepLast,
+      memoryContextMode,
+      setMemoryContextMode,
+      memoryIncludeStructured,
+      setMemoryIncludeStructured,
+      memoryIncludeCore,
+      setMemoryIncludeCore,
+      memoryIncludeDaily,
+      setMemoryIncludeDaily,
+      memoryIncludeSession,
+      setMemoryIncludeSession,
+      memoryDailyDays,
+      setMemoryDailyDays,
+      memoryTotalCap,
+      setMemoryTotalCap,
+      memorySearchQuery,
+      setMemorySearchQuery,
+      memorySearchUseIndex,
+      setMemorySearchUseIndex,
+      memorySearchCaseSensitive,
+      setMemorySearchCaseSensitive,
+      memorySearchFallbackToFiles,
+      setMemorySearchFallbackToFiles,
+      memorySearchMaxResults,
+      setMemorySearchMaxResults,
+      memorySearchMaxSnippetChars,
+      setMemorySearchMaxSnippetChars,
+      memorySearchContextLines,
+      setMemorySearchContextLines,
       orMinTotal,
       setOrMinTotal,
       orMaxTotal,
