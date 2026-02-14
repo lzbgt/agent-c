@@ -1700,7 +1700,9 @@ func (s *Server) handleEventsSSE(w http.ResponseWriter, r *http.Request) {
 	ch, cancel := s.cfg.Events.Subscribe(p.Sub)
 	defer cancel()
 
-	_, _ = w.Write([]byte(":ok\n\n"))
+	if _, err := w.Write([]byte(":ok\n\n")); err != nil {
+		return
+	}
 	fl.Flush()
 
 	keepAlive := s.cfg.SSEKeepaliveInterval
@@ -1715,7 +1717,9 @@ func (s *Server) handleEventsSSE(w http.ResponseWriter, r *http.Request) {
 		case <-r.Context().Done():
 			return
 		case <-t.C:
-			_, _ = w.Write([]byte(":keepalive\n\n"))
+			if _, err := w.Write([]byte(":keepalive\n\n")); err != nil {
+				return
+			}
 			fl.Flush()
 		case ev, ok := <-ch:
 			if !ok {
@@ -1723,10 +1727,18 @@ func (s *Server) handleEventsSSE(w http.ResponseWriter, r *http.Request) {
 			}
 			b, _ := json.Marshal(ev)
 			// Minimal SSE framing. Clients can decode JSON from data.
-			_, _ = w.Write([]byte("event: " + ev.Type + "\n"))
-			_, _ = w.Write([]byte("data: "))
-			_, _ = w.Write(b)
-			_, _ = w.Write([]byte("\n\n"))
+			if _, err := w.Write([]byte("event: " + ev.Type + "\n")); err != nil {
+				return
+			}
+			if _, err := w.Write([]byte("data: ")); err != nil {
+				return
+			}
+			if _, err := w.Write(b); err != nil {
+				return
+			}
+			if _, err := w.Write([]byte("\n\n")); err != nil {
+				return
+			}
 			fl.Flush()
 		}
 	}
