@@ -5,6 +5,8 @@ import {
   apiBrokerGetMembers,
   apiBrokerGetMembershipAudit,
   apiBrokerListAgents,
+  apiBrokerListDeployments,
+  apiBrokerProxyJson,
   apiBrokerUpsertMember,
   type ApiAuth,
 } from "../api";
@@ -54,6 +56,27 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     queryFn: () => apiBrokerGetMembers(base, agentId, props.auth),
   });
 
+  const deploymentsQuery = useQuery({
+    queryKey: ["brokerDeployments", base, props.authKey, agentId],
+    enabled: false,
+    queryFn: () => apiBrokerListDeployments(base, agentId, props.auth),
+  });
+
+  const normalizeDeploymentId = (raw: unknown) => {
+    const id = String(raw || "").trim();
+    return id || "default";
+  };
+
+  const [selectedDeployments, setSelectedDeployments] = React.useState<string[]>([]);
+  const [otaUrl, setOtaUrl] = React.useState<string>("");
+  const [otaSha256, setOtaSha256] = React.useState<string>("");
+  const [otaVersion, setOtaVersion] = React.useState<string>("");
+  const [otaDrainMs, setOtaDrainMs] = React.useState<string>("15000");
+  const [otaReason, setOtaReason] = React.useState<string>("");
+  const [otaBusy, setOtaBusy] = React.useState<boolean>(false);
+  const [otaError, setOtaError] = React.useState<string | null>(null);
+  const [otaResults, setOtaResults] = React.useState<any[] | null>(null);
+
   const [auditLimit, setAuditLimit] = React.useState<string>("200");
   const limitValue = React.useMemo(() => {
     const n = Number.parseInt(String(auditLimit || ""), 10);
@@ -82,7 +105,27 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     if (!auditQuery.data && !auditQuery.isFetching) {
       void auditQuery.refetch();
     }
-  }, [props.open, canQuery, agentId, membersQuery, auditQuery]);
+    if (!deploymentsQuery.data && !deploymentsQuery.isFetching) {
+      void deploymentsQuery.refetch();
+    }
+  }, [props.open, canQuery, agentId, membersQuery, auditQuery, deploymentsQuery]);
+
+  React.useEffect(() => {
+    if (!agentId) {
+      setSelectedDeployments([]);
+      return;
+    }
+    const deployments = Array.isArray((deploymentsQuery.data as any)?.deployments)
+      ? (((deploymentsQuery.data as any).deployments as any[]) ?? [])
+      : [];
+    if (deployments.length === 0) {
+      setSelectedDeployments([]);
+      return;
+    }
+    const connected = deployments.filter((d) => d?.connected === true).map((d) => normalizeDeploymentId(d?.deployment_id));
+    const all = deployments.map((d) => normalizeDeploymentId(d?.deployment_id));
+    setSelectedDeployments(connected.length > 0 ? connected : all);
+  }, [agentId, deploymentsQuery.data]);
 
   const upsertMutation = useMutation({
     mutationFn: async (req: { userSub: string; role: string }) => {
@@ -142,10 +185,91 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     }
   };
 
+  const toggleDeployment = (id: string) => {
+    setSelectedDeployments((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return Array.from(next);
+    });
+  };
+
+  const selectAllDeployments = () => {
+    setSelectedDeployments(deployments.map((d) => normalizeDeploymentId(d?.deployment_id)));
+  };
+
+  const selectConnectedDeployments = () => {
+    const connected = deployments.filter((d) => d?.connected === true).map((d) => normalizeDeploymentId(d?.deployment_id));
+    setSelectedDeployments(connected.length > 0 ? connected : deployments.map((d) => normalizeDeploymentId(d?.deployment_id)));
+  };
+
+  const runOtaUpdate = async () => {
+    setOtaError(null);
+    setOtaResults(null);
+    const url = String(otaUrl || "").trim();
+    if (!url) {
+      setOtaError("missing OTA url");
+      return;
+    }
+    if (!agentId) {
+      setOtaError("missing agent_id");
+      return;
+    }
+    if (selectedDeployments.length === 0) {
+      setOtaError("select at least one deployment");
+      return;
+    }
+    const drainMs = Number.parseInt(String(otaDrainMs || ""), 10);
+    const drainTimeout = Number.isFinite(drainMs) && drainMs >= 0 ? drainMs : undefined;
+    const body: Record<string, any> = {
+      url,
+    };
+    const sha = String(otaSha256 || "").trim();
+    if (sha) body.sha256 = sha;
+    const ver = String(otaVersion || "").trim();
+    if (ver) body.version = ver;
+    const reason = String(otaReason || "").trim();
+    if (reason) body.reason = reason;
+    if (drainTimeout !== undefined) body.drain_timeout_ms = drainTimeout;
+
+    setOtaBusy(true);
+    try {
+      const settled = await Promise.allSettled(
+        selectedDeployments.map(async (deploymentId) => {
+          const res = await apiBrokerProxyJson(base, agentId, "/api/v1/ota/update", "POST", body, props.auth, deploymentId);
+          return {
+            deployment_id: deploymentId,
+            status: res.status,
+            data: res.data,
+          };
+        }),
+      );
+      const results = settled.map((r, idx) => {
+        if (r.status === "fulfilled") return r.value;
+        return {
+          deployment_id: selectedDeployments[idx],
+          status: 0,
+          data: { ok: false, error: String(r.reason || "request failed") },
+        };
+      });
+      setOtaResults(results);
+    } catch (e) {
+      setOtaError(String(e));
+    } finally {
+      setOtaBusy(false);
+    }
+  };
+
   const agents = Array.isArray((agentsQuery.data as any)?.agents) ? ((agentsQuery.data as any).agents as any[]) : [];
   const members = Array.isArray((membersQuery.data as any)?.members) ? ((membersQuery.data as any).members as any[]) : [];
   const ownerSub = String((membersQuery.data as any)?.owner_sub || "");
   const auditRows = Array.isArray((auditQuery.data as any)?.audit) ? ((auditQuery.data as any).audit as any[]) : [];
+  const deployments = Array.isArray((deploymentsQuery.data as any)?.deployments)
+    ? (((deploymentsQuery.data as any).deployments as any[]) ?? [])
+    : [];
+  const defaultDeploymentIdRaw = (deploymentsQuery.data as any)?.default_deployment_id;
+  const defaultDeploymentId = defaultDeploymentIdRaw ? normalizeDeploymentId(defaultDeploymentIdRaw) : "";
+  const selectedDeploymentSet = new Set(selectedDeployments);
 
   return (
     <details
@@ -317,6 +441,168 @@ export default function BrokerPanel(props: BrokerPanelProps) {
               </div>
             </>
           )}
+        </section>
+
+        <section className="rounded-md border border-white/10 bg-black/20 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold text-white/80">Deployments + OTA</div>
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+              type="button"
+              disabled={!canQuery || !agentId || deploymentsQuery.isFetching}
+              onClick={() => void deploymentsQuery.refetch()}
+            >
+              {deploymentsQuery.isFetching ? "Loading…" : "Refresh"}
+            </button>
+          </div>
+
+          {!agentId ? (
+            <div className="text-[11px] text-white/50">Select an agent to manage deployments.</div>
+          ) : deploymentsQuery.error ? (
+            <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+              {String(deploymentsQuery.error)}
+            </div>
+          ) : deployments.length === 0 ? (
+            <div className="text-[11px] text-white/50">No deployments connected.</div>
+          ) : (
+            <>
+              {defaultDeploymentId ? (
+                <div className="mb-2 text-[11px] text-white/50">
+                  Broker default: <span className="font-mono text-white/80">{defaultDeploymentId}</span>
+                </div>
+              ) : null}
+              <div className="grid gap-2">
+                {deployments.map((dep) => {
+                  const id = normalizeDeploymentId(dep?.deployment_id);
+                  const selected = selectedDeploymentSet.has(id);
+                  const connected = dep?.connected === true;
+                  return (
+                    <label
+                      key={id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1"
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={() => toggleDeployment(id)}
+                        />
+                        <div className="flex flex-col">
+                          <div className="text-xs text-white/90">{id}</div>
+                          <div className="text-[11px] text-white/50">
+                            {connected ? "connected" : "disconnected"}
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        className={
+                          selected
+                            ? "rounded-md border border-emerald-400/40 bg-emerald-500/10 px-2 py-1 text-[11px] text-emerald-100"
+                            : "rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                        }
+                        type="button"
+                        onClick={() => toggleDeployment(id)}
+                      >
+                        {selected ? "Selected" : "Select"}
+                      </button>
+                    </label>
+                  );
+                })}
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                  type="button"
+                  onClick={selectConnectedDeployments}
+                >
+                  Select connected
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                  type="button"
+                  onClick={selectAllDeployments}
+                >
+                  Select all
+                </button>
+              </div>
+            </>
+          )}
+
+          <div className="mt-3 grid gap-2">
+            <FieldLabel>OTA update</FieldLabel>
+            <input
+              className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+              placeholder="https://.../agentd.tar.gz"
+              value={otaUrl}
+              onChange={(e) => setOtaUrl(e.target.value)}
+            />
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <input
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="sha256 (optional)"
+                value={otaSha256}
+                onChange={(e) => setOtaSha256(e.target.value)}
+              />
+              <input
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="version label (optional)"
+                value={otaVersion}
+                onChange={(e) => setOtaVersion(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <input
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="drain timeout ms (default 15000)"
+                value={otaDrainMs}
+                onChange={(e) => setOtaDrainMs(e.target.value)}
+              />
+              <input
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="reason (optional)"
+                value={otaReason}
+                onChange={(e) => setOtaReason(e.target.value)}
+              />
+            </div>
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+              type="button"
+              disabled={!agentId || otaBusy || selectedDeployments.length === 0}
+              onClick={() => void runOtaUpdate()}
+            >
+              {otaBusy ? "Updating…" : "Run OTA update"}
+            </button>
+            {otaError ? (
+              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+                {otaError}
+              </div>
+            ) : null}
+            {otaResults && otaResults.length > 0 ? (
+              <div className="grid gap-2">
+                {otaResults.map((row) => {
+                  const depId = String(row?.deployment_id || "");
+                  const status = row?.status;
+                  const ok = row?.data?.ok === true;
+                  const err = row?.data?.error || row?.data?.err;
+                  const respStatus = row?.data?.status || "";
+                  return (
+                    <div
+                      key={`ota-${depId}`}
+                      className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70"
+                    >
+                      <div className="text-xs text-white/90">
+                        {depId} · {ok ? "ok" : "error"} · http {status}
+                      </div>
+                      <div className="text-[11px] text-white/50">
+                        {respStatus ? `status ${respStatus}` : "no status"}
+                        {err ? ` · ${String(err)}` : ""}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
         </section>
 
         <section className="rounded-md border border-white/10 bg-black/20 p-3">

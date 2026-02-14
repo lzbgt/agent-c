@@ -57,6 +57,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] WebUI connection profiles for multi-agentd deployments (direct or broker-backed).
   - [x] WebUI profile-specific run settings per connection profile (model/provider + run limits).
   - [x] Broker multi-deployment routing (`deployment_id`, `X-Agentd-Deployment`) + WebUI deployment selector + docs.
+  - [x] OTA update pipeline: agentd OTA endpoint + operator update command, WebUI multi-deployment fanout via broker proxy.
+  - [x] OTA task continuity: drain mode + documented restart recovery for async jobs/workflows after update.
 3) **Next-gen contract foundation (agent-core + agentd + broker + WebUI)** — make interop explicit and replayable.
   - [x] Add a unified capability descriptor (`/api/v1/caps`) with protocol versions + limits (agentd + WebUI + broker proxy).
   - [x] WebUI: use `/api/v1/caps` to hide/disable unsupported features and cache last-known caps.
@@ -74,6 +76,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [ ] Tool plugins: sandbox/isolation, Windows loader, and embedded/MCU-compatible plugin path.
 - [ ] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
 - [ ] UI actions: stable public action API, autoplay unlock flow, and consented remote URL opens.
+- [x] Memory privacy tags (`<private>`) to keep sensitive content out of durable storage (claude-mem inspired).
+- [x] Memory progressive disclosure + citation surfacing for dynamic context assembly (claude-mem inspired).
 - [ ] Interop/attestation: PKI provisioning + signed manifests/attestations + canonical JSON hashing + envelope confidentiality.
   - [x] Agentd enforceable attestation policy (`edge_attest_required` + `edge_attest_require_sig`) with docs + tests.
 - [ ] AVM: scoped flag passthrough, host-effects policy, record/replay plumbing, and quorum/attestation.

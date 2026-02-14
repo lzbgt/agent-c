@@ -86,9 +86,22 @@ static void test_job_gc_max_keeps_running(void) {
   assert(job_delete(run));
 }
 
+static void test_job_gc_removes_interrupted(void) {
+  const std::string id = "jm_interrupt";
+  assert(job_create(id));
+  job_set_status(id, "interrupted", "");
+
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  job_gc(/*ttl_ms=*/1, /*max_jobs=*/0);
+
+  JobState s;
+  assert(!job_get(id, &s));
+}
+
 int main() {
   test_event_ring_trims();
   test_job_gc_ttl_removes_finished();
   test_job_gc_max_keeps_running();
+  test_job_gc_removes_interrupted();
   return 0;
 }

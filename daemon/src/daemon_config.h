@@ -229,6 +229,12 @@ struct DaemonConfig {
   int memory_consolidate_daily_days = 14;
   int memory_consolidate_keep_checkpoints = 100;
 
+  // OTA update (disabled by default; requires explicit operator enable + command).
+  bool ota_enable = false;
+  std::string ota_command; // external command to apply update (see docs/spec/ota/agentd_ota_v0.md)
+  int64_t ota_command_timeout_ms = 5 * 60 * 1000; // best-effort; 0 disables timeout
+  int64_t ota_drain_timeout_ms = 15 * 1000; // grace window before restart (best-effort)
+
   // CORS (for browser-based clients). Defaults depend on listen host:
   // - loopback: allow any origin ("*") for local UI dev
   // - non-loopback: disabled unless explicitly configured via --cors-origin

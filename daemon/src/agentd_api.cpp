@@ -14,6 +14,7 @@
 #include "job_endpoints.h"
 #include "memory_endpoints.h"
 #include "orchestrate_endpoints.h"
+#include "ota_endpoints.h"
 #include "openrouter_models_endpoint.h"
 #include "openrouter_util.h"
 #include "provider_util.h"
@@ -30,6 +31,7 @@
 #include "openai_client.h"
 
 #include <chrono>
+#include <cctype>
 #include <filesystem>
 #include <iostream>
 #include <signal.h>
@@ -42,6 +44,13 @@ namespace {
 static const char* getenv_s(const char* k) {
   const char* v = std::getenv(k);
   return (v && v[0]) ? v : nullptr;
+}
+
+static bool env_truthy(const char* s) {
+  if (!s) return false;
+  std::string v = s;
+  for (char& c : v) c = (char)std::tolower((unsigned char)c);
+  return v == "1" || v == "true" || v == "yes" || v == "on";
 }
 
 static std::string home_dir_best_effort() {
@@ -170,6 +179,24 @@ static void fill_env_defaults(DaemonConfig* cfg) {
       cfg->upload_max_bytes = (size_t)n;
     } catch (...) {
     }
+  }
+  if (const char* s = getenv_s("AGENTD_OTA_ENABLE")) {
+    cfg->ota_enable = env_truthy(s);
+  }
+  if (const char* s = getenv_s("AGENTD_OTA_COMMAND")) {
+    cfg->ota_command = s;
+  }
+  if (const char* ms = getenv_s("AGENTD_OTA_COMMAND_TIMEOUT_MS")) {
+    try {
+      cfg->ota_command_timeout_ms = (int64_t)std::stoll(ms);
+      if (cfg->ota_command_timeout_ms < 0) cfg->ota_command_timeout_ms = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_OTA_DRAIN_TIMEOUT_MS")) {
+    try {
+      cfg->ota_drain_timeout_ms = (int64_t)std::stoll(ms);
+      if (cfg->ota_drain_timeout_ms < 0) cfg->ota_drain_timeout_ms = 0;
+    } catch (...) {}
   }
 }
 
@@ -305,6 +332,17 @@ bool AgentdApi::init(std::string* out_error) {
   impl_->route("POST", "/api/v1/config/update", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);
     handle_config_update_endpoint(self->cfg_store.get(), &self->db, self->cors_cfg, req, resp);
+  });
+
+  impl_->route("POST", "/api/v1/ota/update", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_ota_update_endpoint(cur, self->cors_cfg, req, resp);
+  });
+  impl_->route("GET", "/api/v1/ota/status", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_ota_status_endpoint(cur, self->cors_cfg, req, resp);
   });
 
   impl_->route("GET", "/api/v1/diagnostics", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {

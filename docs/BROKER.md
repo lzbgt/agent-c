@@ -189,6 +189,15 @@ The broker proxy can be used as a “virtual base URL” for agentd-to-agentd co
   - `GET  .../proxy/api/v1/workflow?workflow_id=...`
 - Broker auth is typically an OIDC bearer token; in workflows, use `agentd_call.bearer_env` so the token value is not persisted.
 
+#### Operational control (OTA, maintenance)
+
+Operational endpoints can also be routed through the proxy:
+
+- `POST /v1/agents/{agent_id}/proxy/api/v1/ota/update`
+- `GET  /v1/agents/{agent_id}/proxy/api/v1/ota/status`
+
+Use `X-Agentd-Deployment` to target a specific deployment, or omit it to target the broker’s most recent deployment.
+
 ### Orchestration (fan-out)
 
 - `POST /v1/orchestrate`

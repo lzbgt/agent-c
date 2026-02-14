@@ -15,6 +15,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace host_tools_internal {
@@ -56,6 +57,33 @@ static std::string to_lower_ascii(std::string s) {
     if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
   }
   return s;
+}
+
+static std::string strip_private_blocks(const std::string& input, int* out_stripped_bytes) {
+  if (out_stripped_bytes) *out_stripped_bytes = 0;
+  if (input.empty()) return input;
+  const std::string lower = to_lower_ascii(input);
+  const std::string open_tag = "<private>";
+  const std::string close_tag = "</private>";
+  std::string out;
+  out.reserve(input.size());
+  size_t i = 0;
+  while (i < input.size()) {
+    const size_t open = lower.find(open_tag, i);
+    if (open == std::string::npos) {
+      out.append(input.substr(i));
+      break;
+    }
+    out.append(input.substr(i, open - i));
+    const size_t close = lower.find(close_tag, open + open_tag.size());
+    if (close == std::string::npos) {
+      if (out_stripped_bytes) *out_stripped_bytes += (int)(input.size() - open);
+      break;
+    }
+    if (out_stripped_bytes) *out_stripped_bytes += (int)((close + close_tag.size()) - open);
+    i = close + close_tag.size();
+  }
+  return out;
 }
 
 static bool eq_ci_ascii(const std::string& a, const std::string& b) {
@@ -387,9 +415,20 @@ agent_status_t tool_memory_write(HostToolCtx* ctx, const char* arguments_json, a
   if (!parse_json(arguments_json, &args, &perr) || !args.isObject()) {
     return write_envelope(out_result, false, "invalid args", Json::Value(Json::objectValue));
   }
-  const std::string text = args.isMember("text") && args["text"].isString() ? args["text"].asString() : "";
-  if (trim_ascii(text).empty()) {
+  const std::string raw_text = args.isMember("text") && args["text"].isString() ? args["text"].asString() : "";
+  int private_bytes_stripped = 0;
+  const std::string text = strip_private_blocks(raw_text, &private_bytes_stripped);
+  if (trim_ascii(raw_text).empty()) {
     return write_envelope(out_result, false, "missing string field 'text'", Json::Value(Json::objectValue));
+  }
+  if (trim_ascii(text).empty()) {
+    Json::Value data(Json::objectValue);
+    data["tool"] = "memory_write";
+    data["skipped_private"] = true;
+    data["private_bytes_stripped"] = (Json::Int64)private_bytes_stripped;
+    data["ts_unix_ms"] = (Json::Int64)unix_ms_now();
+    data["output"] = "memory_write: skipped private-only entry";
+    return write_envelope(out_result, true, "", data);
   }
 
   const std::string layer = args.isMember("layer") && args["layer"].isString() ? args["layer"].asString() : "daily";
@@ -442,6 +481,9 @@ agent_status_t tool_memory_write(HostToolCtx* ctx, const char* arguments_json, a
   data["path"] = to_generic_string(out_path.lexically_relative(mem_root));
   data["abs_path"] = to_generic_string(out_path);
   data["bytes_appended"] = (Json::Int64)entry.size();
+  if (private_bytes_stripped > 0) {
+    data["private_bytes_stripped"] = (Json::Int64)private_bytes_stripped;
+  }
   data["ts_unix_ms"] = (Json::Int64)unix_ms_now();
   data["output"] = "memory_write: appended to " + data["path"].asString();
   return write_envelope(out_result, true, "", data);
@@ -538,10 +580,26 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
     return write_envelope(out_result, false, "missing/invalid string field 'path' (must be a safe relative .md path)", Json::Value(Json::objectValue));
   }
   const bool structured = args.isMember("entries") && args["entries"].isArray();
-  const std::string text = (!structured && args.isMember("text") && args["text"].isString()) ? args["text"].asString() : "";
+  int private_bytes_stripped = 0;
+  int private_entries_skipped = 0;
+  const std::string raw_text = (!structured && args.isMember("text") && args["text"].isString()) ? args["text"].asString() : "";
+  const std::string text = structured ? "" : strip_private_blocks(raw_text, &private_bytes_stripped);
   // Legacy mode: allow empty text (truncate file to empty), but require the field.
   if (!structured && (!args.isMember("text") || !args["text"].isString())) {
     return write_envelope(out_result, false, "missing string field 'text'", Json::Value(Json::objectValue));
+  }
+  if (!structured && trim_ascii(raw_text).size() > 0 && trim_ascii(text).empty()) {
+    Json::Value data(Json::objectValue);
+    data["tool"] = "memory_put";
+    data["memory_root"] = to_generic_string(memory_root_from_ctx(ctx));
+    data["path"] = rel_path;
+    data["structured"] = false;
+    data["skipped_private"] = true;
+    data["private_bytes_stripped"] = (Json::Int64)private_bytes_stripped;
+    data["bytes_written"] = (Json::Int64)0;
+    data["ts_unix_ms"] = (Json::Int64)unix_ms_now();
+    data["output"] = "memory_put: skipped private-only content";
+    return write_envelope(out_result, true, "", data);
   }
 
   const std::filesystem::path mem_root = memory_root_from_ctx(ctx);
@@ -596,7 +654,14 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
       if (!e.isObject()) continue;
       const std::string key = e.isMember("key") && e["key"].isString() ? trim_ascii(e["key"].asString()) : "";
       const std::string kind = e.isMember("kind") && e["kind"].isString() ? trim_ascii(e["kind"].asString()) : "fact";
-      const std::string value = e.isMember("value") && e["value"].isString() ? e["value"].asString() : "";
+      const std::string raw_value = e.isMember("value") && e["value"].isString() ? e["value"].asString() : "";
+      int stripped = 0;
+      const std::string value = strip_private_blocks(raw_value, &stripped);
+      if (stripped > 0) private_bytes_stripped += stripped;
+      if (!trim_ascii(raw_value).empty() && trim_ascii(value).empty()) {
+        private_entries_skipped++;
+        continue;
+      }
       const std::string status = e.isMember("status") && e["status"].isString() ? trim_ascii(e["status"].asString()) : "active";
       const std::string source = e.isMember("source") && e["source"].isString() ? trim_ascii(e["source"].asString()) : "";
       if (key.empty() || value.empty()) continue;
@@ -798,6 +863,8 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
   data["path"] = rel_path;
   data["abs_path"] = to_generic_string(abs);
   data["bytes_written"] = (Json::Int64)out_text.size();
+  if (private_bytes_stripped > 0) data["private_bytes_stripped"] = (Json::Int64)private_bytes_stripped;
+  if (private_entries_skipped > 0) data["private_entries_skipped"] = private_entries_skipped;
   if (structured) data["structured"] = true;
   if (structured) {
     data["entries_valid"] = structured_entries_valid;
@@ -817,8 +884,35 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
   return write_envelope(out_result, true, "", data);
 }
 
-static std::vector<std::string> list_candidate_memory_files(const HostToolCtx* ctx, int max_days) {
-  std::vector<std::string> out;
+struct MemoryCandidate {
+  std::string abs_path;
+  std::string rel_path;
+  std::string tier;
+};
+
+static std::string memory_relpath(const std::filesystem::path& abs, const std::filesystem::path& root) {
+  std::error_code ec;
+  std::filesystem::path rel = std::filesystem::relative(abs, root, ec);
+  if (ec) rel = abs.lexically_relative(root);
+  return to_generic_string(rel.lexically_normal());
+}
+
+static void add_memory_candidate(
+  const std::filesystem::path& mem_root,
+  const std::filesystem::path& abs,
+  const std::string& tier,
+  std::vector<MemoryCandidate>* out
+) {
+  if (!out) return;
+  MemoryCandidate c;
+  c.abs_path = to_generic_string(abs);
+  c.rel_path = memory_relpath(abs, mem_root);
+  c.tier = tier;
+  out->push_back(std::move(c));
+}
+
+static std::vector<MemoryCandidate> list_candidate_memory_files(const HostToolCtx* ctx, int max_days) {
+  std::vector<MemoryCandidate> out;
   const std::filesystem::path mem_root = memory_root_from_ctx(ctx);
   if (mem_root.empty()) return out;
 
@@ -826,10 +920,10 @@ static std::vector<std::string> list_candidate_memory_files(const HostToolCtx* c
   const std::filesystem::path structured = mem_root / "STRUCTURED.md";
   std::error_code ec;
   if (std::filesystem::exists(structured, ec) && std::filesystem::is_regular_file(structured, ec)) {
-    out.push_back(to_generic_string(structured));
+    add_memory_candidate(mem_root, structured, "structured", &out);
   }
   if (std::filesystem::exists(core, ec) && std::filesystem::is_regular_file(core, ec)) {
-    out.push_back(to_generic_string(core));
+    add_memory_candidate(mem_root, core, "core", &out);
   }
 
   // Session layer (optional; only when we have a stable session id).
@@ -838,7 +932,7 @@ static std::vector<std::string> list_candidate_memory_files(const HostToolCtx* c
     const std::filesystem::path sessionp = mem_root / "sessions" / (sid + ".md");
     ec.clear();
     if (std::filesystem::exists(sessionp, ec) && std::filesystem::is_regular_file(sessionp, ec)) {
-      out.push_back(to_generic_string(sessionp));
+      add_memory_candidate(mem_root, sessionp, "session", &out);
     }
   }
 
@@ -862,7 +956,7 @@ static std::vector<std::string> list_candidate_memory_files(const HostToolCtx* c
     const std::filesystem::path p = mem_root / buf;
     ec.clear();
     if (std::filesystem::exists(p, ec) && std::filesystem::is_regular_file(p, ec)) {
-      out.push_back(to_generic_string(p));
+      add_memory_candidate(mem_root, p, "daily", &out);
     }
   }
   return out;
@@ -890,16 +984,51 @@ agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, 
   const int max_snippet_chars = args.isMember("max_snippet_chars") && args["max_snippet_chars"].isInt()
     ? std::max(80, args["max_snippet_chars"].asInt())
     : 600;
+  const bool tiered = args.isMember("tiered") && args["tiered"].isBool() ? args["tiered"].asBool() : false;
 
   const std::filesystem::path mem_root = memory_root_from_ctx(ctx);
   if (mem_root.empty()) {
     return write_envelope(out_result, false, "memory_search requires daemon session context (sessions_root_dir)", Json::Value(Json::objectValue));
   }
 
-  const std::vector<std::string> files = list_candidate_memory_files(ctx, max_days);
+  const std::vector<MemoryCandidate> candidates = list_candidate_memory_files(ctx, max_days);
+  std::vector<std::string> files;
+  files.reserve(candidates.size());
+  std::unordered_map<std::string, std::string> tier_by_rel;
+  for (const auto& c : candidates) {
+    files.push_back(c.abs_path);
+    if (!c.rel_path.empty() && tier_by_rel.find(c.rel_path) == tier_by_rel.end()) {
+      tier_by_rel[c.rel_path] = c.tier;
+    }
+  }
   const std::string q = case_sensitive ? query : to_lower_ascii(query);
 
   Json::Value results(Json::arrayValue);
+  std::unordered_map<std::string, Json::Value> tier_results;
+  std::unordered_map<std::string, int64_t> tier_tokens;
+  const std::vector<std::string> tier_order = {"core", "structured", "session", "daily", "other"};
+  for (const auto& tier : tier_order) {
+    tier_results.emplace(tier, Json::Value(Json::arrayValue));
+    tier_tokens[tier] = 0;
+  }
+
+  auto estimate_tokens = [](const std::string& snippet) -> int64_t {
+    if (snippet.empty()) return 0;
+    return (int64_t)((snippet.size() + 3) / 4);
+  };
+  auto tier_for_rel = [&](const std::string& rel_path) -> std::string {
+    auto it = tier_by_rel.find(rel_path);
+    if (it != tier_by_rel.end()) return it->second;
+    return "other";
+  };
+  auto record_tier = [&](const std::string& tier, const Json::Value& r) {
+    if (!tiered) return;
+    auto it = tier_results.find(tier);
+    if (it == tier_results.end()) return;
+    it->second.append(r);
+    const std::string snippet = r.isMember("snippet") && r["snippet"].isString() ? r["snippet"].asString() : "";
+    tier_tokens[tier] += estimate_tokens(snippet);
+  };
 
   // Prefer ranked search via an on-disk index (SQLite FTS5) when available.
   const bool use_index = args.isMember("use_index") && args["use_index"].isBool() ? args["use_index"].asBool() : true;
@@ -910,12 +1039,17 @@ agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, 
     if (memory_index_search_ranked(mem_root, files, query, max_results, max_snippet_chars, &hits, &ierr)) {
       mode = "fts5";
       for (const auto& h : hits) {
+        const std::string tier = tier_for_rel(h.path);
+        const std::string citation = h.path + ":" + std::to_string(h.line);
         Json::Value r(Json::objectValue);
         r["path"] = h.path;
         r["line"] = h.line;
         r["snippet"] = h.snippet;
         r["score"] = h.score;
+        r["tier"] = tier;
+        r["citation"] = citation;
         results.append(r);
+        record_tier(tier, r);
       }
     }
   }
@@ -928,13 +1062,23 @@ agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, 
     data["query"] = query;
     data["files_scanned"] = (Json::Int64)files.size();
     data["results"] = results;
+    if (tiered) {
+      Json::Value tiers(Json::objectValue);
+      for (const auto& tier : tier_order) {
+        Json::Value t(Json::objectValue);
+        t["results"] = tier_results[tier];
+        t["token_estimate"] = (Json::Int64)tier_tokens[tier];
+        tiers[tier] = t;
+      }
+      data["tiers"] = tiers;
+    }
     data["output"] = "memory_search mode=" + mode + " results=" + std::to_string((unsigned)results.size());
     return write_envelope(out_result, true, "", data);
   }
 
-  for (const auto& abs_str : files) {
+  for (const auto& c : candidates) {
     if ((int)results.size() >= max_results) break;
-    std::filesystem::path abs(abs_str);
+    std::filesystem::path abs(c.abs_path);
     std::ifstream in(abs, std::ios::binary);
     if (!in.is_open()) continue;
     std::stringstream ss;
@@ -971,16 +1115,18 @@ agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, 
         snippet.resize((size_t)max_snippet_chars);
       }
 
-      std::error_code ec;
-      std::filesystem::path rel = std::filesystem::relative(abs, mem_root, ec);
-      if (ec) rel = abs.lexically_relative(mem_root);
-      const std::string rel_s = to_generic_string(rel.lexically_normal());
+      const std::string rel_s = c.rel_path.empty() ? memory_relpath(abs, mem_root) : c.rel_path;
+      const std::string tier = tier_for_rel(rel_s);
+      const std::string citation = rel_s + ":" + std::to_string(line_no);
 
       Json::Value r(Json::objectValue);
       r["path"] = rel_s;
       r["line"] = line_no;
       r["snippet"] = snippet;
+      r["tier"] = tier;
+      r["citation"] = citation;
       results.append(r);
+      record_tier(tier, r);
     }
   }
 
@@ -991,6 +1137,16 @@ agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, 
   data["query"] = query;
   data["files_scanned"] = (Json::Int64)files.size();
   data["results"] = results;
+  if (tiered) {
+    Json::Value tiers(Json::objectValue);
+    for (const auto& tier : tier_order) {
+      Json::Value t(Json::objectValue);
+      t["results"] = tier_results[tier];
+      t["token_estimate"] = (Json::Int64)tier_tokens[tier];
+      tiers[tier] = t;
+    }
+    data["tiers"] = tiers;
+  }
   data["output"] = "memory_search mode=" + mode + " results=" + std::to_string((unsigned)results.size());
   return write_envelope(out_result, true, "", data);
 }

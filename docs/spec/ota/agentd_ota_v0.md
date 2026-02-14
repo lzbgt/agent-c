@@ -1,0 +1,129 @@
+# Agentd OTA Update (v0)
+
+Date: 2026-02-14
+Status: Draft (proposed + implemented in this repo)
+
+## Goals
+
+- Remote OTA update for **agentd service instances** via the platform (WebUI + broker).
+- Support **multiple deployments** per agent and update all or a selected subset.
+- Preserve **task continuity** after OTA (durable jobs/workflows resume after restart).
+- Provide a **safe, explicit** operator-controlled update mechanism with auditability.
+
+## Non-goals (none)
+
+All capabilities that could be treated as “non-goals” (staging, rollback hints, observability, multi-deployment fanout)
+are treated as explicit goals and tracked in `TODOS.md`.
+
+## Background / Constraints
+
+- `agentd` is frequently installed as a **system service** (systemd/launchd/Windows service).
+- Replacing the running binary typically requires a privileged external step and/or a service manager restart.
+- Task continuity is already supported for **durable jobs** and **workflows**:
+  - `run_async` jobs are persisted and resumed by the JobEngine after restart.
+  - Workflows are persisted and resumed by the WorkflowEngine after restart.
+- OTA must therefore integrate with **service managers** and provide a controlled handoff.
+
+## Architecture Overview
+
+The OTA flow is split into two concerns:
+
+1) **Control plane (agentd HTTP API)** — accepts OTA requests, validates them, writes a plan file, and invokes an
+   operator-provided command.
+2) **Execution plane (ota command/script)** — downloads/verifies the update, swaps binaries, and restarts the service.
+
+This keeps agentd **portable** and avoids embedding platform-specific update logic in C++.
+
+## API (agentd)
+
+### POST /api/v1/ota/update
+
+Request body (JSON):
+
+- `version` (string, optional): version label for auditing.
+- `url` (string, required): artifact URL (https/file) for the new agentd binary or package.
+- `sha256` (string, optional): expected sha256 of the artifact.
+- `reason` (string, optional): human-readable reason.
+- `drain_timeout_ms` (int, optional): grace period before requesting restart (best-effort).
+- `trace_id` (string, optional): audit correlation.
+
+Response (JSON):
+
+- `ok` (bool)
+- `ota_id` (string)
+- `status` (string): `queued` | `running` | `error`
+- `error` (string, optional)
+
+### GET /api/v1/ota/status
+
+Returns:
+
+- `ok` (bool)
+- `ota_id` (string, optional)
+- `status` (string)
+- `updated_unix_ms` (int)
+- `last_error` (string, optional)
+- `plan_path` (string, optional)
+
+## Agentd Configuration
+
+OTA is **disabled by default**. Operators must enable it explicitly.
+
+New configuration knobs:
+
+- `--ota-enable` (env `AGENTD_OTA_ENABLE=1`)
+- `--ota-command <path>` (env `AGENTD_OTA_COMMAND`)
+- `--ota-command-timeout-ms <n>` (env `AGENTD_OTA_COMMAND_TIMEOUT_MS`)
+- `--ota-drain-timeout-ms <n>` (env `AGENTD_OTA_DRAIN_TIMEOUT_MS`)
+
+If OTA is not enabled or the command is missing, the endpoint returns an error.
+
+## OTA Plan File
+
+Agentd writes a plan file under the state dir so that the update can be audited or re-run if needed:
+
+`<state_dir>/ota/pending.json`
+
+The plan includes:
+
+- `ota_id`, `version`, `url`, `sha256`, `reason`, `requested_unix_ms`, `trace_id`
+- `agentd_pid`, `state_dir`, `db_path`
+- `status` (queued/running/error/done)
+
+## Execution Command Contract
+
+The OTA command is invoked by agentd with **environment variables**:
+
+- `AGENTD_OTA_PLAN_PATH` — absolute path to the plan JSON.
+- `AGENTD_OTA_VERSION`, `AGENTD_OTA_URL`, `AGENTD_OTA_SHA256`
+- `AGENTD_OTA_STATE_DIR`, `AGENTD_OTA_DB_PATH`
+- `AGENTD_OTA_PID` — current agentd PID (for graceful stop if needed).
+
+A reference implementation is provided at `tools/agentd_ota_apply.sh`.
+
+## WebUI / Broker Flow
+
+The WebUI uses broker **deployments + proxy** to fan-out OTA requests:
+
+- `GET /v1/agents/{agent_id}/deployments` to list connected deployments.
+- For each selected deployment: `POST /v1/agents/{agent_id}/proxy/api/v1/ota/update`
+  with `X-Agentd-Deployment: <deployment_id>`.
+- The UI shows per-deployment results and lets operators update all connected deployments.
+
+This avoids new broker protocol changes and leverages existing broker auth + audit trail.
+
+## Task Continuity After OTA
+
+- **Async jobs** (`/api/v1/run_async`) are persisted and resumed by `JobEngine` after restart.
+- **Workflows** are persisted and resumed by `WorkflowEngine` after restart.
+- During OTA, agentd enters **drain mode**:
+  - New run/workflow submissions are rejected with `HTTP 503` + `drain_*` hints.
+  - Job/workflow schedulers pause claiming new tasks.
+- OTA uses a **grace period** (drain timeout) and then requests a controlled restart; any in-flight work that survives
+  restart is replayed by the engines.
+
+## Observability
+
+- OTA requests are logged with `trace_id` when provided.
+- Plan/status files are stored under `state_dir/ota/` for audit/debug.
+- Broker audit trail captures OTA proxy requests.

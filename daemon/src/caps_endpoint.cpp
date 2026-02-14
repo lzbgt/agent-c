@@ -174,6 +174,14 @@ void handle_caps_endpoint(
     features["memory"] = mem;
   }
   {
+    Json::Value ota(Json::objectValue);
+    ota["enabled"] = cfg.ota_enable;
+    ota["command_configured"] = !cfg.ota_command.empty();
+    ota["command_timeout_ms"] = Json::Int64(cfg.ota_command_timeout_ms);
+    ota["drain_timeout_ms"] = Json::Int64(cfg.ota_drain_timeout_ms);
+    features["ota"] = ota;
+  }
+  {
     Json::Value avm(Json::objectValue);
 #if defined(_WIN32)
     const bool avm_supported = false;

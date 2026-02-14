@@ -235,6 +235,60 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/ota/update:
+    post:
+      tags: [ota]
+      summary: Request OTA update via operator-configured command
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OtaUpdateRequest"
+      responses:
+        "200":
+          description: OTA accepted
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OtaUpdateResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: OTA already running
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/ota/status:
+    get:
+      tags: [ota]
+      summary: Query OTA status
+      responses:
+        "200":
+          description: OTA status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OtaStatusResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/tools:
     get:
       tags: [tools]
@@ -1833,6 +1887,52 @@ components:
             openrouter: { type: boolean }
             moonshot: { type: boolean }
             openai: { type: boolean }
+
+    OtaUpdateRequest:
+      type: object
+      required: [url]
+      properties:
+        url:
+          type: string
+          description: OTA artifact URL (https/file)
+        sha256:
+          type: string
+          description: Optional sha256 checksum (hex)
+        version:
+          type: string
+          description: Optional version label for audit
+        reason:
+          type: string
+          description: Optional human-readable reason
+        drain_timeout_ms:
+          type: integer
+          format: int64
+          description: Grace window before restart (ms)
+        trace_id:
+          $ref: "#/components/schemas/TraceID"
+
+    OtaUpdateResponse:
+      type: object
+      required: [ok, ota_id, status]
+      properties:
+        ok: { type: boolean }
+        ota_id: { type: string }
+        status: { type: string }
+        error: { type: string }
+
+    OtaStatusResponse:
+      type: object
+      required: [ok, status]
+      properties:
+        ok: { type: boolean }
+        status: { type: string }
+        ota_id: { type: string }
+        updated_unix_ms: { type: integer, format: int64 }
+        last_error: { type: string }
+        plan_path: { type: string }
+        drain_active: { type: boolean }
+        drain_until_unix_ms: { type: integer, format: int64 }
+        drain_reason: { type: string }
 
     MemoryCheckpointMeta:
       type: object

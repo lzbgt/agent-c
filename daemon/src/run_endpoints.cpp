@@ -1,6 +1,7 @@
 #include "run_endpoints.h"
 
 #include "daemon_auth.h"
+#include "drain_state.h"
 #include "http_util.h"
 #include "job_manager.h"
 #include "json_util.h"
@@ -41,6 +42,21 @@ static std::string inject_trace_id_if_missing(const std::string& request_body, c
   return Json::writeString(wb, args);
 }
 
+static bool reject_if_draining(HttpResponse* resp) {
+  if (!resp) return false;
+  if (!drain_is_active()) return false;
+  resp->status = 503;
+  Json::Value o(Json::objectValue);
+  o["ok"] = false;
+  o["error"] = "draining";
+  const int64_t until_ms = drain_until_unix_ms();
+  if (until_ms > 0) o["drain_until_unix_ms"] = (Json::Int64)until_ms;
+  const std::string reason = drain_reason();
+  if (!reason.empty()) o["drain_reason"] = reason;
+  resp->body = json_stringify(o);
+  return true;
+}
+
 }  // namespace
 
 void handle_run_endpoint(
@@ -56,6 +72,7 @@ void handle_run_endpoint(
   cors_apply(req, resp, cors_cfg);
   resp->headers["Content-Type"] = "application/json; charset=utf-8";
   if (!daemon_require_auth(cfg, req, resp)) return;
+  if (reject_if_draining(resp)) return;
 
   const auto started = std::chrono::steady_clock::now();
   const std::string trace_id_hint = trace_id_hint_from_header(req);
@@ -88,6 +105,7 @@ void handle_run_async_endpoint(
   cors_apply(req, resp, cors_cfg);
   resp->headers["Content-Type"] = "application/json; charset=utf-8";
   if (!daemon_require_auth(cfg, req, resp)) return;
+  if (reject_if_draining(resp)) return;
 
   Json::Value args;
   std::string perr;

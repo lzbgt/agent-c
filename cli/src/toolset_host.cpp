@@ -333,7 +333,7 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     st = add_tool(
       r,
       "memory_search",
-      "Search durable memory Markdown files under the daemon state directory (bounded, explainable: returns file + line + snippet). Prefer default ranked mode when available.",
+      "Search durable memory Markdown files under the daemon state directory (bounded, explainable: returns path + line + snippet + tier + citation). Prefer default ranked mode when available.",
       "{"
       "\"type\":\"object\","
       "\"properties\":{"
@@ -342,6 +342,7 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
       "  \"daily_days\":{\"type\":\"integer\",\"description\":\"Scan the last N daily memory files (default: 14). 0 disables daily scan.\"},"
       "  \"case_sensitive\":{\"type\":\"boolean\",\"description\":\"Case-sensitive match (default: false).\"},"
       "  \"use_index\":{\"type\":\"boolean\",\"description\":\"When true (default), use a ranked on-disk index (SQLite FTS5) if available; otherwise fall back to substring scan.\"},"
+      "  \"tiered\":{\"type\":\"boolean\",\"description\":\"When true, group results by tier (core/structured/session/daily) and include token estimates.\"},"
       "  \"context_lines\":{\"type\":\"integer\",\"description\":\"Context lines around the match (default: 2).\"},"
       "  \"max_snippet_chars\":{\"type\":\"integer\",\"description\":\"Max chars per snippet (default: 600).\"}"
       "},"

@@ -1,5 +1,6 @@
 #include "workflow_engine.h"
 
+#include "drain_state.h"
 #include "avm_endpoints.h"
 #include "edge_util.h"
 #include "json_util.h"
@@ -122,6 +123,10 @@ void WorkflowEngine::stop() {
 
 void WorkflowEngine::worker_main() {
   while (!stop_.load()) {
+    if (drain_is_active()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(opt_.poll_ms));
+      continue;
+    }
     const int64_t now = unix_ms_now();
     AgentDb::WorkflowRow wf;
     AgentDb::WorkflowTaskRow task;

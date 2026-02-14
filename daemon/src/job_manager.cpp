@@ -265,7 +265,7 @@ void job_gc(int64_t ttl_ms, size_t max_jobs) {
   }
 
   auto is_finished = [](const JobState& s) {
-    return s.status == "done" || s.status == "error" || s.status == "cancelled";
+    return s.status == "done" || s.status == "error" || s.status == "cancelled" || s.status == "interrupted";
   };
 
   // TTL-based pruning.

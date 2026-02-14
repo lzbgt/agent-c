@@ -21,6 +21,7 @@
 #include "orchestrate_endpoints.h"
 #include "memory_endpoints.h"
 #include "memory_consolidator.h"
+#include "ota_endpoints.h"
 #include "run_endpoints.h"
 #include "run_replay_endpoint.h"
 #include "trace_endpoints.h"
@@ -612,6 +613,39 @@ int main(int argc, char** argv) {
         std::cerr << "Invalid --memory-consolidate-keep-checkpoints\n";
         return 2;
       }
+    } else if (a == "--ota-enable") {
+      cfg.ota_enable = true;
+    } else if (a == "--ota-command") {
+      if (!take(&cfg.ota_command)) {
+        std::cerr << "Missing value for --ota-command\n";
+        return 2;
+      }
+    } else if (a == "--ota-command-timeout-ms") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --ota-command-timeout-ms\n";
+        return 2;
+      }
+      try {
+        cfg.ota_command_timeout_ms = (int64_t)std::stoll(v);
+        if (cfg.ota_command_timeout_ms < 0) cfg.ota_command_timeout_ms = 0;
+      } catch (...) {
+        std::cerr << "Invalid --ota-command-timeout-ms\n";
+        return 2;
+      }
+    } else if (a == "--ota-drain-timeout-ms") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --ota-drain-timeout-ms\n";
+        return 2;
+      }
+      try {
+        cfg.ota_drain_timeout_ms = (int64_t)std::stoll(v);
+        if (cfg.ota_drain_timeout_ms < 0) cfg.ota_drain_timeout_ms = 0;
+      } catch (...) {
+        std::cerr << "Invalid --ota-drain-timeout-ms\n";
+        return 2;
+      }
     } else if (a == "--max-steps-default") {
       std::string v;
       if (!take(&v)) {
@@ -882,6 +916,10 @@ int main(int argc, char** argv) {
         << "  --memory-consolidate-interval-ms <n>   Run memory consolidation every n ms (default: 0=disabled)\n"
         << "  --memory-consolidate-daily-days <n>    Scan last n daily memory files for @mem markers (default: 14)\n"
         << "  --memory-consolidate-keep-checkpoints <n>  Retain at most n structured checkpoints (default: 100)\n"
+        << "  --ota-enable            Enable OTA update endpoint (default: disabled)\n"
+        << "  --ota-command <cmd>     Command to apply OTA plan (see docs/spec/ota/agentd_ota_v0.md)\n"
+        << "  --ota-command-timeout-ms <n>  OTA command timeout in ms (default: 300000; 0 disables)\n"
+        << "  --ota-drain-timeout-ms <n>    Grace window before restart (default: 15000)\n"
         << "  --max-steps-default <n> Default tool-loop max steps when requests omit it (default: 0; 0 means unlimited)\n"
         << "  --max-tool-calls-total-default <n> Default tool-loop total tool calls cap when requests omit it (default: 0; 0 means unlimited)\n"
         << "  --max-tool-calls-per-tool-default <n> Default tool-loop per-tool call cap when requests omit it (default: 0; 0 means unlimited)\n"
@@ -1202,6 +1240,24 @@ int main(int argc, char** argv) {
       if (cfg.memory_consolidate_keep_checkpoints < 1) cfg.memory_consolidate_keep_checkpoints = 1;
     } catch (...) {}
   }
+  if (const char* s = getenv_s("AGENTD_OTA_ENABLE")) {
+    cfg.ota_enable = env_truthy(s);
+  }
+  if (const char* s = getenv_s("AGENTD_OTA_COMMAND")) {
+    cfg.ota_command = s;
+  }
+  if (const char* ms = getenv_s("AGENTD_OTA_COMMAND_TIMEOUT_MS")) {
+    try {
+      cfg.ota_command_timeout_ms = (int64_t)std::stoll(ms);
+      if (cfg.ota_command_timeout_ms < 0) cfg.ota_command_timeout_ms = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_OTA_DRAIN_TIMEOUT_MS")) {
+    try {
+      cfg.ota_drain_timeout_ms = (int64_t)std::stoll(ms);
+      if (cfg.ota_drain_timeout_ms < 0) cfg.ota_drain_timeout_ms = 0;
+    } catch (...) {}
+  }
 
   if (cfg.state_dir.empty()) {
     if (const char* d = getenv_s("AGENT_WD")) {
@@ -1496,6 +1552,15 @@ int main(int argc, char** argv) {
 
   server.handle("POST", "/api/v1/config/update", [&](const HttpRequest& req, HttpResponse* resp) {
     handle_config_update_endpoint(&cfg_store, db_or_null, cors_cfg, req, resp);
+  });
+
+  server.handle("POST", "/api/v1/ota/update", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_ota_update_endpoint(cur, cors_cfg, req, resp);
+  });
+  server.handle("GET", "/api/v1/ota/status", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_ota_status_endpoint(cur, cors_cfg, req, resp);
   });
 
   server.handle("GET", "/api/v1/diagnostics", [&](const HttpRequest& req, HttpResponse* resp) {

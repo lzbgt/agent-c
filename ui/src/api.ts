@@ -1233,6 +1233,36 @@ export async function apiBrokerListDeployments(
   return BrokerDeploymentsRespSchema.parse(j);
 }
 
+export async function apiBrokerProxyJson(
+  brokerBase: string,
+  agentId: string,
+  path: string,
+  method: string,
+  body: unknown,
+  auth?: ApiAuth,
+  deploymentId?: string,
+): Promise<{ status: number; data: any }> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const id = String(agentId || "").trim();
+  if (!id) throw new Error("missing agent_id");
+  const p = path.startsWith("/") ? path : `/${path}`;
+  const headers = daemonHeaders(auth, { "Content-Type": "application/json" });
+  const dep = typeof deploymentId === "string" ? deploymentId.trim() : "";
+  if (dep) headers["X-Agentd-Deployment"] = dep;
+  const r = await fetch(`${base}/v1/agents/${encodeURIComponent(id)}/proxy${p}`, {
+    method,
+    headers,
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  let data: any = null;
+  try {
+    data = await r.json();
+  } catch {
+    data = null;
+  }
+  return { status: r.status, data };
+}
+
 export const BrokerMembersRespSchema = z
   .object({
     ok: z.boolean(),

@@ -18,6 +18,29 @@ These are host tools exposed to the model when a daemon session context is avail
 - `memory_search` — retrieve relevant snippets (prefer ranked search when available)
 - `memory_put` — consolidate/overwrite memory files (legacy mode), or structured upsert (`entries`)
 
+### `memory_search` tiers + citations
+
+`memory_search` results now include:
+
+- `tier`: `core` | `structured` | `session` | `daily` (or `other`)
+- `citation`: `${path}:${line}` (stable, human-readable pointer)
+
+For progressive disclosure, set `tiered=true` to group results by tier and get rough token
+estimates per tier (`tiers.<tier>.token_estimate`).
+
+### Privacy filtering (`<private>` blocks)
+
+To keep sensitive content out of durable storage, wrap it in `<private>` tags:
+
+```text
+User’s card number is <private>4242 4242 4242 4242</private>
+```
+
+Behavior:
+- `memory_write` strips `<private>...</private>` blocks before writing.
+- `memory_put` strips private blocks from legacy text and from structured `entries[].value`.
+- If all content is private, the write is skipped and the tool reports `skipped_private=true`.
+
 ## Ranked retrieval (Memory v2)
 
 `memory_search` supports a ranked mode backed by an on-disk SQLite index under the memory root:

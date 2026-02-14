@@ -98,6 +98,38 @@ Environment overrides:
 - `AGENTD_UPLOAD_MAX_BYTES` (per-file session upload cap)
 - `AGENTD_EXTRA_ARGS` (space-delimited)
 
+### OTA updates (agentd)
+
+OTA is **disabled by default**. Enable it explicitly and provide an update command:
+
+- `--ota-enable` (or env `AGENTD_OTA_ENABLE=1`)
+- `--ota-command /path/to/tools/agentd_ota_apply.sh` (or env `AGENTD_OTA_COMMAND`)
+
+The reference script reads a plan file from `AGENTD_OTA_PLAN_PATH` and uses optional env hints:
+
+- `AGENTD_OTA_TARGET_BIN` — target binary path to replace (recommended)
+- `AGENTD_OTA_RESTART` — `systemd` | `launchd` | `signal` (default: `signal`)
+- `AGENTD_OTA_SERVICE` — service name/label for restart (systemd/launchd)
+
+Example (systemd):
+```
+Environment=AGENTD_OTA_ENABLE=1
+Environment=AGENTD_OTA_COMMAND=/opt/agentd/tools/agentd_ota_apply.sh
+Environment=AGENTD_OTA_TARGET_BIN=/usr/local/bin/agentd
+Environment=AGENTD_OTA_RESTART=systemd
+Environment=AGENTD_OTA_SERVICE=agentd
+```
+
+Trigger via API:
+
+- `POST /api/v1/ota/update` with `{ url, sha256?, version?, reason?, drain_timeout_ms? }`
+- `GET /api/v1/ota/status` for current state
+
+OTA enters **drain mode** while the update runs:
+- new run/workflow submissions return `HTTP 503` + `drain_*` hints
+- job/workflow schedulers pause claiming new tasks
+- `GET /api/v1/ota/status` surfaces `drain_active`, `drain_until_unix_ms`, `drain_reason`
+
 ### Example (Windows service)
 
 #### Option A: `sc.exe` (built-in)

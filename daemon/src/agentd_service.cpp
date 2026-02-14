@@ -23,6 +23,7 @@
 #include "memory_endpoints.h"
 #include "memory_consolidator.h"
 #include "orchestrate_endpoints.h"
+#include "ota_endpoints.h"
 #include "openrouter_models_endpoint.h"
 #include "openrouter_util.h"
 #include "provider_util.h"
@@ -42,6 +43,7 @@
 #include "openai_client.h"
 
 #include <chrono>
+#include <cctype>
 #include <filesystem>
 #include <iostream>
 #include <signal.h>
@@ -54,6 +56,13 @@ namespace {
 static const char* getenv_s(const char* k) {
   const char* v = std::getenv(k);
   return (v && v[0]) ? v : nullptr;
+}
+
+static bool env_truthy(const char* s) {
+  if (!s) return false;
+  std::string v = s;
+  for (char& c : v) c = (char)std::tolower((unsigned char)c);
+  return v == "1" || v == "true" || v == "yes" || v == "on";
 }
 
 static std::string home_dir_best_effort() {
@@ -247,6 +256,24 @@ static void fill_env_defaults(DaemonConfig* cfg) {
     try {
       cfg->memory_consolidate_keep_checkpoints = (int)std::stol(ms);
       if (cfg->memory_consolidate_keep_checkpoints < 1) cfg->memory_consolidate_keep_checkpoints = 1;
+    } catch (...) {}
+  }
+  if (const char* s = getenv_s("AGENTD_OTA_ENABLE")) {
+    cfg->ota_enable = env_truthy(s);
+  }
+  if (const char* s = getenv_s("AGENTD_OTA_COMMAND")) {
+    cfg->ota_command = s;
+  }
+  if (const char* ms = getenv_s("AGENTD_OTA_COMMAND_TIMEOUT_MS")) {
+    try {
+      cfg->ota_command_timeout_ms = (int64_t)std::stoll(ms);
+      if (cfg->ota_command_timeout_ms < 0) cfg->ota_command_timeout_ms = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_OTA_DRAIN_TIMEOUT_MS")) {
+    try {
+      cfg->ota_drain_timeout_ms = (int64_t)std::stoll(ms);
+      if (cfg->ota_drain_timeout_ms < 0) cfg->ota_drain_timeout_ms = 0;
     } catch (...) {}
   }
 }
@@ -506,6 +533,15 @@ struct AgentdService::Impl {
 
     server.handle("POST", "/api/v1/config/update", [this](const HttpRequest& req, HttpResponse* resp) {
       handle_config_update_endpoint(cfg_store.get(), &db, cors_cfg, req, resp);
+    });
+
+    server.handle("POST", "/api/v1/ota/update", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_ota_update_endpoint(cur, cors_cfg, req, resp);
+    });
+    server.handle("GET", "/api/v1/ota/status", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_ota_status_endpoint(cur, cors_cfg, req, resp);
     });
 
     server.handle("GET", "/api/v1/diagnostics", [this](const HttpRequest& req, HttpResponse* resp) {

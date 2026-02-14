@@ -1,5 +1,6 @@
 #include "job_engine.h"
 
+#include "drain_state.h"
 #include "job_manager.h"
 #include "json_util.h"
 #include "run_endpoints.h"
@@ -126,6 +127,10 @@ void JobEngine::stop() {
 
 void JobEngine::worker_main() {
   while (!stop_.load()) {
+    if (drain_is_active()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(opt_.poll_ms));
+      continue;
+    }
     const int64_t now = unix_ms_now();
     AgentDb::JobRow job;
     if (claim_one(now, &job)) {

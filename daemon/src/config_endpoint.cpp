@@ -202,6 +202,14 @@ void handle_config_endpoint(
   daemon["max_tool_calls_per_tool_default"] = (Json::UInt64)cfg.max_tool_calls_per_tool_default;
   daemon["max_tool_call_args_chars_default"] = (Json::UInt64)cfg.max_tool_call_args_chars_default;
   {
+    Json::Value ota(Json::objectValue);
+    ota["enabled"] = cfg.ota_enable;
+    ota["command_configured"] = !cfg.ota_command.empty();
+    ota["command_timeout_ms"] = (Json::Int64)cfg.ota_command_timeout_ms;
+    ota["drain_timeout_ms"] = (Json::Int64)cfg.ota_drain_timeout_ms;
+    daemon["ota"] = ota;
+  }
+  {
     Json::Value arr(Json::arrayValue);
     for (const auto& p : cfg.tool_call_limits_default) {
       Json::Value o(Json::objectValue);

@@ -224,6 +224,8 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/llm_usage.cpp
     daemon/src/openrouter_models_endpoint.cpp
     daemon/src/orchestrate_endpoints.cpp
+    daemon/src/ota_endpoints.cpp
+    daemon/src/drain_state.cpp
     daemon/src/provider_util.cpp
     daemon/src/memory_consolidator.cpp
     daemon/src/memory_checkpoints.cpp
