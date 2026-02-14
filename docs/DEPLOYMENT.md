@@ -134,6 +134,9 @@ WebUI + broker fanout:
 - In broker mode, the WebUI lists connected deployments and can send OTA requests to **all selected deployments** via the broker proxy.
 - Status checks also fan out per deployment, so operators can verify drain/rollout progress without logging into each host.
 
+Local verification:
+- `tools/verify_ota_continuity.sh` runs a delay workflow, triggers an OTA update, restarts agentd, and confirms the workflow resumes.
+
 ### Example (Windows service)
 
 #### Option A: `sc.exe` (built-in)

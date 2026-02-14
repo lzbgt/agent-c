@@ -81,10 +81,10 @@ system more advanced, solid, efficient, and long-lived.
 
 ---
 
-## Non-goals (none)
+## Promoted goals (explicit)
 
-This project does **not** treat any of the “formerly deferred” items as non-goals. The following areas are **explicit goals**
-and are tracked in `TODOS.md` as promoted workstreams:
+This project does **not** treat any “formerly deferred” items as non-goals. The following areas are **explicit goals**
+tracked in `TODOS.md` as promoted workstreams:
 
 - Tool loop: full multimodal transcript support + stable, versioned event schema with migrations.
 - Streaming: core-layer streaming interface + provider compatibility matrix with full variant coverage.
@@ -92,6 +92,7 @@ and are tracked in `TODOS.md` as promoted workstreams:
 - Tool plugins: sandbox/isolation, Windows loader, and embedded/MCU-compatible plugin path.
 - Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
 - UI actions: stable public action API, autoplay unlock flow, and consented remote URL opens.
+- Memory: observation capture + progressive disclosure retrieval flow (search → timeline → get).
 - Interop/attestation: PKI provisioning + signed manifests/attestations + canonical JSON hashing + envelope confidentiality.
 - AVM: scoped flag passthrough, host-effects policy, record/replay plumbing, and quorum/attestation.
 - Node consensus: decentralized coordination protocol with conflict resolution + deterministic simulation tests.

@@ -48,10 +48,19 @@ static bool read_file_bounded_(const std::filesystem::path& p, size_t max_bytes,
   out->clear();
   std::ifstream in(p, std::ios::binary);
   if (!in.is_open()) return false;
-  std::stringstream ss;
-  ss << in.rdbuf();
-  *out = ss.str();
-  if (out->size() > max_bytes) out->resize(max_bytes);
+  if (max_bytes == 0) return true;
+  out->reserve(std::min<size_t>(max_bytes, 1024 * 1024));
+  std::vector<char> buf;
+  buf.resize(std::min<size_t>(max_bytes, 64 * 1024));
+  size_t remaining = max_bytes;
+  while (remaining > 0 && in.good()) {
+    const size_t want = std::min(buf.size(), remaining);
+    in.read(buf.data(), (std::streamsize)want);
+    const std::streamsize got = in.gcount();
+    if (got <= 0) break;
+    out->append(buf.data(), (size_t)got);
+    remaining -= (size_t)got;
+  }
   return true;
 }
 
@@ -508,4 +517,3 @@ bool memory_index_search_ranked(
 #endif
 
 } // namespace host_tools_internal
-

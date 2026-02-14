@@ -24,11 +24,17 @@ namespace host_tools_internal {
 agent_status_t tool_memory_write(HostToolCtx*, const char*, agent_string_t* out_result) {
   return set_result(out_result, "{\"ok\":false,\"error\":\"memory_write requires jsoncpp\",\"data\":{}}");
 }
+agent_status_t tool_memory_observe(HostToolCtx*, const char*, agent_string_t* out_result) {
+  return set_result(out_result, "{\"ok\":false,\"error\":\"memory_observe requires jsoncpp\",\"data\":{}}");
+}
 agent_status_t tool_memory_get(HostToolCtx*, const char*, agent_string_t* out_result) {
   return set_result(out_result, "{\"ok\":false,\"error\":\"memory_get requires jsoncpp\",\"data\":{}}");
 }
 agent_status_t tool_memory_search(HostToolCtx*, const char*, agent_string_t* out_result) {
   return set_result(out_result, "{\"ok\":false,\"error\":\"memory_search requires jsoncpp\",\"data\":{}}");
+}
+agent_status_t tool_memory_timeline(HostToolCtx*, const char*, agent_string_t* out_result) {
+  return set_result(out_result, "{\"ok\":false,\"error\":\"memory_timeline requires jsoncpp\",\"data\":{}}");
 }
 agent_status_t tool_memory_structured_query(HostToolCtx*, const char*, agent_string_t* out_result) {
   return set_result(out_result, "{\"ok\":false,\"error\":\"memory_structured_query requires jsoncpp\",\"data\":{}}");
@@ -83,6 +89,32 @@ static std::string strip_private_blocks(const std::string& input, int* out_strip
     if (out_stripped_bytes) *out_stripped_bytes += (int)((close + close_tag.size()) - open);
     i = close + close_tag.size();
   }
+  return out;
+}
+
+static std::string sanitize_inline_field(std::string s) {
+  for (char& c : s) {
+    if (c == '\r' || c == '\n' || c == '\t') c = ' ';
+  }
+  return trim_ascii(s);
+}
+
+static std::string format_bullet_multiline(const std::string& text) {
+  std::string out;
+  std::istringstream iss(text);
+  std::string line;
+  bool first = true;
+  while (std::getline(iss, line)) {
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (first) {
+      out += line;
+      first = false;
+    } else {
+      out += "\n  ";
+      out += line;
+    }
+  }
+  if (out.empty()) out = text;
   return out;
 }
 
@@ -486,6 +518,114 @@ agent_status_t tool_memory_write(HostToolCtx* ctx, const char* arguments_json, a
   }
   data["ts_unix_ms"] = (Json::Int64)unix_ms_now();
   data["output"] = "memory_write: appended to " + data["path"].asString();
+  return write_envelope(out_result, true, "", data);
+}
+
+agent_status_t tool_memory_observe(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
+  if (!ctx || !out_result) return AGENT_ERR_INVALID_ARGUMENT;
+  if (is_cancelled(ctx)) return set_result(out_result, "{\"ok\":false,\"error\":\"cancelled\"}");
+  if (ctx->policy != HostToolsetPolicyMode::Full) {
+    Json::Value d(Json::objectValue);
+    d["tool_name"] = "memory_observe";
+    d["policy"] = "readonly";
+    return write_envelope(out_result, false, "tool disabled by policy", d);
+  }
+
+  Json::Value args;
+  std::string perr;
+  if (!parse_json(arguments_json, &args, &perr) || !args.isObject()) {
+    return write_envelope(out_result, false, "invalid args", Json::Value(Json::objectValue));
+  }
+
+  const std::string raw_text = args.isMember("text") && args["text"].isString() ? args["text"].asString() : "";
+  int private_bytes_stripped = 0;
+  const std::string text = strip_private_blocks(raw_text, &private_bytes_stripped);
+  if (trim_ascii(raw_text).empty()) {
+    return write_envelope(out_result, false, "missing string field 'text'", Json::Value(Json::objectValue));
+  }
+  if (trim_ascii(text).empty()) {
+    Json::Value data(Json::objectValue);
+    data["tool"] = "memory_observe";
+    data["skipped_private"] = true;
+    data["private_bytes_stripped"] = (Json::Int64)private_bytes_stripped;
+    data["ts_unix_ms"] = (Json::Int64)unix_ms_now();
+    data["output"] = "memory_observe: skipped private-only entry";
+    return write_envelope(out_result, true, "", data);
+  }
+
+  const std::filesystem::path out_path = memory_file_for_layer(ctx, "daily", "");
+  if (out_path.empty()) {
+    return write_envelope(out_result, false, "memory_observe requires daemon session context (sessions_root_dir)", Json::Value(Json::objectValue));
+  }
+
+  const std::filesystem::path mem_root = memory_root_from_ctx(ctx);
+  std::error_code ec;
+  std::filesystem::create_directories(out_path.parent_path(), ec);
+  if (ec) {
+    return write_envelope(out_result, false, "failed to create memory directory", Json::Value(Json::objectValue));
+  }
+
+  const std::string source =
+    args.isMember("source") && args["source"].isString() ? sanitize_inline_field(args["source"].asString()) : "";
+  const std::string trace_id =
+    args.isMember("trace_id") && args["trace_id"].isString() ? sanitize_inline_field(args["trace_id"].asString()) : "";
+  const std::string citation =
+    args.isMember("citation") && args["citation"].isString() ? sanitize_inline_field(args["citation"].asString()) : "";
+  const int importance_raw = args.isMember("importance") && args["importance"].isInt() ? args["importance"].asInt() : -1;
+  const int importance = std::min(std::max(importance_raw, -1), 5);
+
+  std::vector<std::string> tags;
+  if (args.isMember("tags") && args["tags"].isArray()) {
+    const Json::Value& arr = args["tags"];
+    for (Json::ArrayIndex i = 0; i < arr.size(); i++) {
+      if (!arr[i].isString()) continue;
+      const std::string tag = sanitize_inline_field(arr[i].asString());
+      if (tag.empty()) continue;
+      tags.push_back(tag);
+    }
+  }
+
+  std::ostringstream entry;
+  entry << "\n\n- @obs " << format_bullet_multiline(trim_ascii(text)) << "\n";
+  entry << "  - ts_utc: " << iso_utc_now() << "\n";
+  if (!source.empty()) entry << "  - source: " << source << "\n";
+  if (!trace_id.empty()) entry << "  - trace_id: " << trace_id << "\n";
+  if (!citation.empty()) entry << "  - citation: " << citation << "\n";
+  if (!tags.empty()) {
+    entry << "  - tags: ";
+    for (size_t i = 0; i < tags.size(); i++) {
+      if (i > 0) entry << ", ";
+      entry << tags[i];
+    }
+    entry << "\n";
+  }
+  if (importance >= 0) {
+    entry << "  - importance: " << importance << "\n";
+  }
+
+  const std::string entry_str = entry.str();
+  {
+    std::ofstream out(out_path, std::ios::binary | std::ios::app);
+    if (!out.is_open()) {
+      return write_envelope(out_result, false, "failed to open memory file for append", Json::Value(Json::objectValue));
+    }
+    out.write(entry_str.data(), (std::streamsize)entry_str.size());
+    if (!out.good()) {
+      return write_envelope(out_result, false, "failed to write memory entry", Json::Value(Json::objectValue));
+    }
+  }
+
+  Json::Value data(Json::objectValue);
+  data["tool"] = "memory_observe";
+  data["memory_root"] = to_generic_string(mem_root);
+  data["path"] = to_generic_string(out_path.lexically_relative(mem_root));
+  data["abs_path"] = to_generic_string(out_path);
+  data["bytes_appended"] = (Json::Int64)entry_str.size();
+  if (private_bytes_stripped > 0) {
+    data["private_bytes_stripped"] = (Json::Int64)private_bytes_stripped;
+  }
+  data["ts_unix_ms"] = (Json::Int64)unix_ms_now();
+  data["output"] = "memory_observe: appended to " + data["path"].asString();
   return write_envelope(out_result, true, "", data);
 }
 
@@ -962,6 +1102,28 @@ static std::vector<MemoryCandidate> list_candidate_memory_files(const HostToolCt
   return out;
 }
 
+static bool parse_citation_path_line(const std::string& citation, std::string* out_path, int* out_line) {
+  if (out_path) out_path->clear();
+  if (out_line) *out_line = 0;
+  const std::string c = trim_ascii(citation);
+  if (c.empty()) return false;
+  const size_t pos = c.rfind(':');
+  if (pos == std::string::npos) return false;
+  const std::string path = trim_ascii(c.substr(0, pos));
+  const std::string line_str = trim_ascii(c.substr(pos + 1));
+  if (path.empty() || line_str.empty()) return false;
+  int line = 0;
+  try {
+    line = std::stoi(line_str);
+  } catch (...) {
+    return false;
+  }
+  if (line <= 0) return false;
+  if (out_path) *out_path = path;
+  if (out_line) *out_line = line;
+  return true;
+}
+
 agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
   if (!ctx || !out_result) return AGENT_ERR_INVALID_ARGUMENT;
   if (is_cancelled(ctx)) return set_result(out_result, "{\"ok\":false,\"error\":\"cancelled\"}");
@@ -1151,6 +1313,99 @@ agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, 
     data["tiers"] = tiers;
   }
   data["output"] = "memory_search mode=" + mode + " results=" + std::to_string((unsigned)results.size());
+  return write_envelope(out_result, true, "", data);
+}
+
+agent_status_t tool_memory_timeline(HostToolCtx* ctx, const char* arguments_json, agent_string_t* out_result) {
+  if (!ctx || !out_result) return AGENT_ERR_INVALID_ARGUMENT;
+  if (is_cancelled(ctx)) return set_result(out_result, "{\"ok\":false,\"error\":\"cancelled\"}");
+
+  Json::Value args;
+  std::string perr;
+  if (!parse_json(arguments_json, &args, &perr) || !args.isObject()) {
+    return write_envelope(out_result, false, "invalid args", Json::Value(Json::objectValue));
+  }
+
+  std::string rel_path;
+  int line = 0;
+  const std::string citation = args.isMember("citation") && args["citation"].isString() ? args["citation"].asString() : "";
+  if (!citation.empty()) {
+    if (!parse_citation_path_line(citation, &rel_path, &line)) {
+      return write_envelope(out_result, false, "invalid citation (expected path:line)", Json::Value(Json::objectValue));
+    }
+  } else {
+    rel_path = args.isMember("path") && args["path"].isString() ? args["path"].asString() : "";
+    line = args.isMember("line") && args["line"].isInt() ? args["line"].asInt() : 0;
+  }
+
+  if (!is_safe_relpath_md(rel_path) || line <= 0) {
+    return write_envelope(out_result, false, "missing/invalid path or line", Json::Value(Json::objectValue));
+  }
+
+  const int context_lines_raw =
+    args.isMember("context_lines") && args["context_lines"].isInt() ? args["context_lines"].asInt() : 3;
+  const int context_lines = std::min(std::max(0, context_lines_raw), 50);
+  const int max_chars_raw = args.isMember("max_chars") && args["max_chars"].isInt() ? args["max_chars"].asInt() : 2000;
+  const int max_chars = std::min(std::max(200, max_chars_raw), 10000);
+
+  const std::filesystem::path mem_root = memory_root_from_ctx(ctx);
+  if (mem_root.empty()) {
+    return write_envelope(out_result, false, "memory_timeline requires daemon session context (sessions_root_dir)", Json::Value(Json::objectValue));
+  }
+
+  const std::filesystem::path abs = (mem_root / rel_path).lexically_normal();
+  if (!path_is_within(mem_root.lexically_normal(), abs)) {
+    return write_envelope(out_result, false, "invalid path", Json::Value(Json::objectValue));
+  }
+
+  std::ifstream in(abs, std::ios::binary);
+  if (!in.is_open()) {
+    return write_envelope(out_result, false, "file not found", Json::Value(Json::objectValue));
+  }
+
+  const int start_line = std::max(1, line - context_lines);
+  const int end_line = line + context_lines;
+  int cur_line = 0;
+  int last_included = 0;
+  std::ostringstream snippet;
+  bool saw_line = false;
+  bool first_line = true;
+  std::string raw;
+  while (std::getline(in, raw)) {
+    if (!raw.empty() && raw.back() == '\r') raw.pop_back();
+    cur_line++;
+    if (cur_line < start_line) continue;
+    if (cur_line > end_line) break;
+    if (!first_line) snippet << "\n";
+    first_line = false;
+    snippet << raw;
+    last_included = cur_line;
+    if (cur_line == line) saw_line = true;
+  }
+
+  if (!saw_line) {
+    return write_envelope(out_result, false, "line out of range", Json::Value(Json::objectValue));
+  }
+
+  std::string text = snippet.str();
+  bool truncated = false;
+  if ((int)text.size() > max_chars) {
+    text.resize((size_t)max_chars);
+    truncated = true;
+  }
+
+  Json::Value data(Json::objectValue);
+  data["tool"] = "memory_timeline";
+  data["path"] = rel_path;
+  data["line"] = line;
+  data["start_line"] = start_line;
+  data["end_line"] = last_included > 0 ? last_included : std::min(end_line, cur_line);
+  data["context_lines"] = context_lines;
+  data["citation"] = rel_path + ":" + std::to_string(line);
+  data["memory_root"] = to_generic_string(mem_root);
+  data["text"] = text;
+  data["truncated"] = truncated;
+  data["output"] = "memory_timeline: " + data["citation"].asString();
   return write_envelope(out_result, true, "", data);
 }
 

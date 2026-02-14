@@ -1041,7 +1041,9 @@ static void test_memory_tools() {
   agent_tool_executor_t exec{};
   assert(toolset_host_create(cfg, &reg, &exec) == AGENT_OK);
   assert(registry_contains(reg, "memory_write"));
+  assert(registry_contains(reg, "memory_observe"));
   assert(registry_contains(reg, "memory_search"));
+  assert(registry_contains(reg, "memory_timeline"));
   assert(registry_contains(reg, "memory_get"));
 
   // Write to core memory.
@@ -1084,6 +1086,51 @@ static void test_memory_tools() {
     }
 #endif
     agent_string_free(&out);
+  }
+
+  // Record an observation and retrieve context via memory_timeline.
+  {
+    const std::string obs_text = "obs-token-42: daemon restart continuity survives OTA";
+    Json::Value args(Json::objectValue);
+    args["text"] = obs_text;
+    args["source"] = "test_host_toolset";
+    args["tags"] = Json::Value(Json::arrayValue);
+    args["tags"].append("ota");
+    args["tags"].append("continuity");
+    const std::string req = json_stringify(args);
+    agent_string_t out{};
+    assert(exec.execute(exec.ctx, "memory_observe", req.c_str(), &out) == AGENT_OK);
+    const Json::Value resp = json_parse(std::string(out.data, out.len));
+    assert(resp["ok"].asBool());
+    assert(resp["data"]["tool"].asString() == "memory_observe");
+    agent_string_free(&out);
+
+    Json::Value search_args(Json::objectValue);
+    search_args["query"] = "obs-token-42";
+    search_args["max_results"] = 3;
+    search_args["daily_days"] = 1;
+    const std::string search_req = json_stringify(search_args);
+    agent_string_t out_search{};
+    assert(exec.execute(exec.ctx, "memory_search", search_req.c_str(), &out_search) == AGENT_OK);
+    const Json::Value search_resp = json_parse(std::string(out_search.data, out_search.len));
+    assert(search_resp["ok"].asBool());
+    const auto& results = search_resp["data"]["results"];
+    assert(results.isArray());
+    assert(results.size() >= 1);
+    const std::string citation = results[0]["citation"].asString();
+    agent_string_free(&out_search);
+
+    Json::Value tl_args(Json::objectValue);
+    tl_args["citation"] = citation;
+    tl_args["context_lines"] = 2;
+    const std::string tl_req = json_stringify(tl_args);
+    agent_string_t out_tl{};
+    assert(exec.execute(exec.ctx, "memory_timeline", tl_req.c_str(), &out_tl) == AGENT_OK);
+    const Json::Value tl_resp = json_parse(std::string(out_tl.data, out_tl.len));
+    assert(tl_resp["ok"].asBool());
+    const std::string tl_text = tl_resp["data"]["text"].asString();
+    assert(tl_text.find("obs-token-42") != std::string::npos);
+    agent_string_free(&out_tl);
   }
 
   // Read back.

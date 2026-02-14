@@ -14,8 +14,10 @@
 These are host tools exposed to the model when a daemon session context is available:
 
 - `memory_write` — append a note (default: `layer="daily"`)
+- `memory_observe` — append a structured observation (daily log; citations + tags)
 - `memory_get` — read a memory file by path (paged by lines)
 - `memory_search` — retrieve relevant snippets (prefer ranked search when available)
+- `memory_timeline` — retrieve bounded context around a citation (`path:line`)
 - `memory_put` — consolidate/overwrite memory files (legacy mode), or structured upsert (`entries`)
 
 ## Memory context injection (runs)
@@ -62,6 +64,16 @@ giving the agent enough signals to fetch the right details on demand.
 - `tier`: `core` | `structured` | `session` | `daily` (or `other`)
 - `citation`: `${path}:${line}` (stable, human-readable pointer)
 
+### 3-step retrieval (claude-mem style)
+
+For large memory stores, use the progressive workflow:
+
+1) `memory_search` to find relevant citations (`path:line`)
+2) `memory_timeline` with the citation to get a bounded context window
+3) `memory_get` if you need the full file or a larger slice
+
+This keeps context lean while still allowing precise follow-up reads.
+
 For progressive disclosure, set `tiered=true` to group results by tier and get rough token
 estimates per tier (`tiers.<tier>.token_estimate`).
 
@@ -75,6 +87,7 @@ User’s card number is <private>4242 4242 4242 4242</private>
 
 Behavior:
 - `memory_write` strips `<private>...</private>` blocks before writing.
+- `memory_observe` strips `<private>...</private>` blocks before writing.
 - `memory_put` strips private blocks from legacy text and from structured `entries[].value`.
 - If all content is private, the write is skipped and the tool reports `skipped_private=true`.
 
@@ -92,7 +105,7 @@ When SQLite or FTS5 is unavailable at runtime, `memory_search` automatically fal
 
 For durable “facts” that should survive long-running evolution, prefer:
 
-- write daily/raw observations via `memory_write(layer="daily")`
+- write daily/raw observations via `memory_observe` (preferred) or `memory_write(layer="daily")`
 - periodically upsert stable facts into `STRUCTURED.md` via `memory_put(path="STRUCTURED.md", entries=[...])`
 
 ### Structured memory schema (v2)

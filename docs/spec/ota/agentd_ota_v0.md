@@ -9,11 +9,10 @@ Status: Draft (proposed + implemented in this repo)
 - Support **multiple deployments** per agent and update all or a selected subset.
 - Preserve **task continuity** after OTA (durable jobs/workflows resume after restart).
 - Provide a **safe, explicit** operator-controlled update mechanism with auditability.
+- Enable **staging + rollback-friendly** workflows (explicit plan files, version labels, and operator-driven reapply).
+- Surface **observability** signals (per-deployment status, drain state, errors) in the WebUI.
 
-## Non-goals (none)
-
-All capabilities that could be treated as “non-goals” (staging, rollback hints, observability, multi-deployment fanout)
-are treated as explicit goals and tracked in `TODOS.md`.
+All formerly deferred OTA capabilities are explicit goals and tracked in `TODOS.md`.
 
 ## Background / Constraints
 

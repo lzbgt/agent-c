@@ -60,11 +60,14 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] OTA update pipeline: agentd OTA endpoint + operator update command, WebUI multi-deployment fanout via broker proxy.
   - [x] OTA task continuity: drain mode + documented restart recovery for async jobs/workflows after update.
   - [x] WebUI OTA status polling per deployment (drain + error surfacing).
+  - [x] OTA continuity smoke script (`tools/verify_ota_continuity.sh`) to validate resume after restart.
   - [x] WebUI Memory Explorer panel (structured query + trace correlation + checkpoints).
   - [x] WebUI media_observe observers bounded (TTL + max) to prevent listener leaks.
   - [x] WebUI media_unobserve RPC to detach observers deterministically.
   - [x] Memory context index mode (progressive disclosure) with token estimates (files list + costs; index mode).
   - [x] WebUI memory context selector supports index mode (progressive disclosure).
+  - [x] Memory observations + timeline retrieval tools (claude-mem style) for progressive disclosure workflows.
+  - [x] Memory index bounded file reads (avoid unbounded memory spikes on large files).
   - [x] WebUI history expansion state bounded to prevent long-running UI memory drift.
   - [x] AgentdApi request-path job GC to keep embedded/relay job state bounded without a dedicated GC thread.
 3) **Next-gen contract foundation (agent-core + agentd + broker + WebUI)** — make interop explicit and replayable.
@@ -86,6 +89,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [ ] UI actions: stable public action API, autoplay unlock flow, and consented remote URL opens.
 - [x] Memory privacy tags (`<private>`) to keep sensitive content out of durable storage (claude-mem inspired).
 - [x] Memory progressive disclosure + citation surfacing for dynamic context assembly (claude-mem inspired).
+- [x] Memory observations + timeline retrieval tools to mirror claude-mem search workflows.
 - [ ] Interop/attestation: PKI provisioning + signed manifests/attestations + canonical JSON hashing + envelope confidentiality.
   - [x] Agentd enforceable attestation policy (`edge_attest_required` + `edge_attest_require_sig`) with docs + tests.
 - [ ] AVM: scoped flag passthrough, host-effects policy, record/replay plumbing, and quorum/attestation.

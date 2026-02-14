@@ -1,32 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-root="${1:-ref/claude-mem}"
-base="https://raw.githubusercontent.com/thedotmack/claude-mem/main"
-docs_base="${base}/docs/public"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUT_DIR="${ROOT_DIR}/docs/references/claude-mem"
 
-mkdir -p "${root}/docs/public"
+mkdir -p "${OUT_DIR}"
 
-curl -fsSL "${base}/README.md" -o "${root}/README.md"
-curl -fsSL "${docs_base}/docs.json" -o "${root}/docs/public/docs.json"
+curl -fsSL "https://raw.githubusercontent.com/thedotmack/claude-mem/main/README.md" -o "${OUT_DIR}/README.md"
+curl -fsSL "https://raw.githubusercontent.com/thedotmack/claude-mem/main/LICENSE" -o "${OUT_DIR}/LICENSE"
+curl -fsSL "https://docs.claude-mem.ai/usage/search-tools" -o "${OUT_DIR}/search-tools.html"
+curl -fsSL "https://docs.claude-mem.ai/progressive-disclosure" -o "${OUT_DIR}/progressive-disclosure.html"
+curl -fsSL "https://docs.claude-mem.ai/usage/private-tags" -o "${OUT_DIR}/private-tags.html"
 
-pages=(
-  "introduction"
-  "usage/search-tools"
-  "usage/private-tags"
-  "usage/folder-context"
-  "progressive-disclosure"
-  "context-engineering"
-  "beta-features"
-  "endless-mode"
-  "hooks-architecture"
-  "architecture/overview"
-  "architecture/database"
-  "architecture/search-architecture"
-)
-
-for page in "${pages[@]}"; do
-  out="${root}/docs/public/${page}.mdx"
-  mkdir -p "$(dirname "${out}")"
-  curl -fsSL "${docs_base}/${page}.mdx" -o "${out}"
-done
+echo "Saved claude-mem references to ${OUT_DIR}"

@@ -107,11 +107,17 @@ static agent_status_t host_tools_execute(void* vctx, const char* tool_name, cons
   if (name == "memory_write") {
     return tool_memory_write(ctx, arguments_json, out_result);
   }
+  if (name == "memory_observe") {
+    return tool_memory_observe(ctx, arguments_json, out_result);
+  }
   if (name == "memory_get") {
     return tool_memory_get(ctx, arguments_json, out_result);
   }
   if (name == "memory_search") {
     return tool_memory_search(ctx, arguments_json, out_result);
+  }
+  if (name == "memory_timeline") {
+    return tool_memory_timeline(ctx, arguments_json, out_result);
   }
   if (name == "memory_structured_query") {
     return tool_memory_structured_query(ctx, arguments_json, out_result);
@@ -328,6 +334,25 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
         "}"
       );
       if (st != AGENT_OK) goto fail;
+
+      st = add_tool(
+        r,
+        "memory_observe",
+        "Record a structured observation into durable memory (daily log) with optional tags/citations. Use this for high-signal facts discovered during tool use.",
+        "{"
+        "\"type\":\"object\","
+        "\"properties\":{"
+        "  \"text\":{\"type\":\"string\",\"description\":\"Observation text (Markdown).\"},"
+        "  \"source\":{\"type\":\"string\",\"description\":\"Optional source label (tool, file, url).\"},"
+        "  \"trace_id\":{\"type\":\"string\",\"description\":\"Optional trace_id for correlation.\"},"
+        "  \"citation\":{\"type\":\"string\",\"description\":\"Optional citation hint (path:line).\"},"
+        "  \"tags\":{\"type\":\"array\",\"items\":{\"type\":\"string\"},\"description\":\"Optional tag list.\"},"
+        "  \"importance\":{\"type\":\"integer\",\"description\":\"Optional importance score (0-5).\"}"
+        "},"
+        "\"required\":[\"text\"]"
+        "}"
+      );
+      if (st != AGENT_OK) goto fail;
     }
 
     st = add_tool(
@@ -347,6 +372,24 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
       "  \"max_snippet_chars\":{\"type\":\"integer\",\"description\":\"Max chars per snippet (default: 600).\"}"
       "},"
       "\"required\":[\"query\"]"
+      "}"
+    );
+    if (st != AGENT_OK) goto fail;
+
+    st = add_tool(
+      r,
+      "memory_timeline",
+      "Retrieve bounded context around a memory citation (path:line). Use this after memory_search to inspect the surrounding lines without loading entire files.",
+      "{"
+      "\"type\":\"object\","
+      "\"properties\":{"
+      "  \"citation\":{\"type\":\"string\",\"description\":\"Citation in the form path:line (preferred).\"},"
+      "  \"path\":{\"type\":\"string\",\"description\":\"Relative .md path under memory root (optional if citation provided).\"},"
+      "  \"line\":{\"type\":\"integer\",\"description\":\"1-based line number (optional if citation provided).\"},"
+      "  \"context_lines\":{\"type\":\"integer\",\"description\":\"Lines of context around the target (default: 3).\"},"
+      "  \"max_chars\":{\"type\":\"integer\",\"description\":\"Max chars returned (default: 2000).\"}"
+      "},"
+      "\"required\":[]"
       "}"
     );
     if (st != AGENT_OK) goto fail;

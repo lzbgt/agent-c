@@ -26,10 +26,14 @@ For the forward-looking architecture plan that spans `agent_core`, `agentd`, bro
 - Full streaming / incremental tool call protocol coverage.
 - Guaranteed token-accurate budgeting for every model (tokenizers are model-specific and often heavy).
 
-## Non-goals (none)
+## Promoted goals (formerly non-goals)
 
-There are no “non-goals” in this project. Items previously treated as deferred are now explicit goals tracked in
-`docs/NEXT_GEN.md` and `TODOS.md`.
+There are no “non-goals” in this project. Anything that was previously deferred is now an explicit goal tracked in
+`docs/NEXT_GEN.md` and `TODOS.md`, including:
+
+- Staging/rollback-friendly OTA updates with explicit auditability.
+- Multi-deployment fanout controls surfaced in broker + WebUI.
+- Dynamic memory: observation capture + progressive disclosure (search → timeline → get).
 
 ## Key Decisions (Facts / Constraints)
 
