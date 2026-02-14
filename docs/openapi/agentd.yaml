@@ -2389,9 +2389,25 @@ components:
       properties:
         type: { type: string }
         trace_id: { $ref: "#/components/schemas/TraceID" }
+        data_truncated:
+          type: boolean
+          description: True when the event payload was truncated to keep memory bounded.
+        data_bytes:
+          type: integer
+          format: int64
+          description: Original payload byte size before truncation (when data_truncated=true).
+        data_bytes_kept:
+          type: integer
+          format: int64
+          description: Bytes retained in the stored payload (when data_truncated=true).
         data:
-          type: object
-          additionalProperties: true
+          description: |
+            Event payload. When the payload is too large or cannot be parsed, it is stored as a string.
+            If `data_truncated=true`, the string is a truncated prefix of the original payload.
+          oneOf:
+            - type: object
+              additionalProperties: true
+            - type: string
 
     RunResponse:
       type: object
@@ -2522,6 +2538,7 @@ components:
         - Deterministic aggregation tasks: `kind: aggregate` with `aggregate` (see `WorkflowAggregateSpec`)
         - Deterministic memory update tasks: `kind: memory_put` with `memory_put` (see `WorkflowMemoryPutSpec`)
         - Deterministic memory retrieval tasks: `kind: memory_search` with `memory_search` (host tool; no LLM required)
+        - Deterministic memory timeline tasks: `kind: memory_timeline` with `memory_timeline` (host tool; no LLM required)
         - Deterministic structured memory query tasks: `kind: memory_structured_query` with `memory_structured_query` (host tool; no LLM required)
         - Deterministic memory correlation tasks: `kind: memory_correlate` with `memory_correlate` (scans structured memory checkpoints; no LLM required)
         - Deterministic memory query tasks: `kind: memory_query` with `memory_query` (reads newest structured checkpoint; no LLM required)
@@ -2541,6 +2558,7 @@ components:
         - If `kind == aggregate`, `aggregate.task_ids` is required and `request.prompt` is not used.
         - If `kind == memory_put`, `memory_put.entries` is required and `request.prompt` is not used.
         - If `kind == memory_search`, `memory_search.query` is required and `request.prompt` is not used.
+        - If `kind == memory_timeline`, `memory_timeline` is required and `request.prompt` is not used.
         - If `kind == memory_structured_query`, `memory_structured_query` is required and `request.prompt` is not used.
         - If `kind == memory_correlate`, `memory_correlate` is required and `request.prompt` is not used.
         - If `kind == memory_query`, `memory_query` is required and `request.prompt` is not used.
@@ -2561,6 +2579,7 @@ components:
         - $ref: "#/components/schemas/WorkflowTaskAggregateSpec"
         - $ref: "#/components/schemas/WorkflowTaskMemoryPutSpec"
         - $ref: "#/components/schemas/WorkflowTaskMemorySearchSpec"
+        - $ref: "#/components/schemas/WorkflowTaskMemoryTimelineSpec"
         - $ref: "#/components/schemas/WorkflowTaskMemoryStructuredQuerySpec"
         - $ref: "#/components/schemas/WorkflowTaskMemoryCorrelateSpec"
         - $ref: "#/components/schemas/WorkflowTaskMemoryQuerySpec"
@@ -2725,6 +2744,37 @@ components:
           description: Deterministic correctness assertions (engine-enforced)
           additionalProperties: true
 
+    WorkflowTaskMemoryTimelineSpec:
+      type: object
+      required: [task_id, kind, memory_timeline]
+      properties:
+        task_id: { type: string }
+        allow_error:
+          type: boolean
+          description: If true, task failure does not fail the workflow (soft-fail).
+        inputs:
+          type: object
+          description: Optional per-task inputs (overrides workflow-level inputs).
+          additionalProperties: true
+        kind:
+          type: string
+          enum: [memory_timeline]
+          description: Deterministic memory timeline lookup via host tool `memory_timeline` (no LLM required).
+        depends_on:
+          type: array
+          items: { type: string }
+        max_attempts: { type: integer, format: int32 }
+        priority:
+          type: integer
+          format: int32
+          description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+        memory_timeline:
+          $ref: "#/components/schemas/WorkflowMemoryTimelineSpec"
+        expect:
+          type: object
+          description: Deterministic correctness assertions (engine-enforced)
+          additionalProperties: true
+
     WorkflowTaskMemoryStructuredQuerySpec:
       type: object
       required: [task_id, kind, memory_structured_query]
@@ -2851,6 +2901,34 @@ components:
         use_index:
           type: boolean
           description: Use ranked FTS5 index when available (default true; only when case_sensitive=false).
+
+    WorkflowMemoryTimelineSpec:
+      type: object
+      description: |
+        Memory timeline configuration for `kind:memory_timeline`.
+
+        This maps to the host tool `memory_timeline` (see `cli/src/toolset_host_memory.cpp`).
+
+        Provide either `citation` (`path:line`) or explicit `path` + `line`.
+      properties:
+        citation:
+          type: string
+          description: Citation string in the form `path:line` (preferred when derived from memory_search).
+        path:
+          type: string
+          description: Relative memory Markdown path under the daemon memory directory.
+        line:
+          type: integer
+          format: int32
+          description: 1-based line number within the referenced memory file.
+        context_lines:
+          type: integer
+          format: int32
+          description: Context lines to include around the cited line (default 3; clamped 0-50).
+        max_chars:
+          type: integer
+          format: int32
+          description: Max characters returned in `text` (default 2000; clamped 200-10000).
 
     WorkflowMemoryStructuredQuerySpec:
       type: object

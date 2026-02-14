@@ -17,6 +17,7 @@ namespace agentd {
 
 static std::mutex g_jobs_mu;
 static std::map<std::string, JobState> g_jobs;
+constexpr size_t kMaxJobEventDataBytes = 256 * 1024;
 
 int64_t now_unix_ms() {
   return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
@@ -90,18 +91,30 @@ void job_append_event(const std::string& id, const std::string& type, const std:
   auto it = g_jobs.find(id);
   if (it == g_jobs.end()) return;
 
+  const size_t data_bytes = data_json.size();
+  const bool truncated = data_bytes > kMaxJobEventDataBytes;
+  std::string data_view = data_json;
+  if (truncated) {
+    data_view.resize(kMaxJobEventDataBytes);
+  }
+
   Json::Value data;
   std::string perr;
-  if (!data_json.empty() && json_parse_any(data_json, &data, &perr)) {
+  if (!data_view.empty() && !truncated && json_parse_any(data_view, &data, &perr)) {
     // ok
   } else {
-    data = data_json;
+    data = data_view;
   }
 
   Json::Value e(Json::objectValue);
   e["type"] = type;
   if (!it->second.trace_id.empty()) {
     e["trace_id"] = it->second.trace_id;
+  }
+  if (truncated) {
+    e["data_truncated"] = true;
+    e["data_bytes"] = (Json::Int64)data_bytes;
+    e["data_bytes_kept"] = (Json::Int64)data_view.size();
   }
   e["data"] = data;
   it->second.events.append(e);

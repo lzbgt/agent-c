@@ -39,6 +39,28 @@ static std::string json_stringify_compact(const Json::Value& v) {
   return Json::writeString(wb, v);
 }
 
+static bool parse_citation_path_line(const std::string& citation, std::string* out_path, int* out_line) {
+  if (out_path) out_path->clear();
+  if (out_line) *out_line = 0;
+  const std::string c = trim_copy(citation);
+  if (c.empty()) return false;
+  const size_t pos = c.rfind(':');
+  if (pos == std::string::npos) return false;
+  const std::string path = trim_copy(c.substr(0, pos));
+  const std::string line_str = trim_copy(c.substr(pos + 1));
+  if (path.empty() || line_str.empty()) return false;
+  int line = 0;
+  try {
+    line = std::stoi(line_str);
+  } catch (...) {
+    return false;
+  }
+  if (line <= 0) return false;
+  if (out_path) *out_path = path;
+  if (out_line) *out_line = line;
+  return true;
+}
+
 static bool id_is_safe(const std::string& s) {
   if (s.empty() || s.size() > 128) return false;
   for (char c : s) {
@@ -643,6 +665,7 @@ void handle_workflow_submit_endpoint(
 	    const bool is_delegate = (kind == "delegate");
 	    const bool is_memory_put = (kind == "memory_put");
 	    const bool is_memory_search = (kind == "memory_search");
+	    const bool is_memory_timeline = (kind == "memory_timeline");
 	    const bool is_memory_structured_query = (kind == "memory_structured_query");
 	    const bool is_memory_correlate = (kind == "memory_correlate");
 	    const bool is_memory_query = (kind == "memory_query");
@@ -651,7 +674,7 @@ void handle_workflow_submit_endpoint(
 	    const bool is_agentd_call = (kind == "agentd_call");
 	    const bool is_special =
 	      is_avm || is_aggregate || is_edge || is_edge_wait_sensor || is_delay || is_delegate || is_memory_put || is_memory_search ||
-	      is_memory_structured_query || is_memory_correlate || is_memory_query || is_memory_consolidate || is_http_json || is_agentd_call;
+	      is_memory_timeline || is_memory_structured_query || is_memory_correlate || is_memory_query || is_memory_consolidate || is_http_json || is_agentd_call;
 
     Json::Value run_req = t.isMember("request") && t["request"].isObject() ? t["request"] : t;
     if (!is_special && defaults.isObject()) {
@@ -1095,6 +1118,99 @@ void handle_workflow_submit_endpoint(
 	      }
 	      task_req["kind"] = "memory_search";
 	      task_req["memory_search"] = ms;
+	      task_req["priority"] = task_priority;
+	      task_req["trace_id"] = trace_id + ":" + task_id;
+	    } else if (is_memory_timeline) {
+	      if (!t.isMember("memory_timeline") || !t["memory_timeline"].isObject()) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "memory_timeline task missing memory_timeline object";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      const auto& mt = t["memory_timeline"];
+	      Json::Value mt2(Json::objectValue);
+
+	      std::string rel_path;
+	      int line = 0;
+	      const std::string citation_raw =
+	        mt.isMember("citation") && mt["citation"].isString() ? trim_copy(mt["citation"].asString()) : "";
+	      const bool citation_templated = citation_raw.find("${") != std::string::npos;
+	      if (!citation_raw.empty() && !citation_templated) {
+	        if (!parse_citation_path_line(citation_raw, &rel_path, &line)) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_timeline.citation must be path:line";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	      } else if (citation_raw.empty()) {
+	        rel_path = mt.isMember("path") && mt["path"].isString() ? trim_copy(mt["path"].asString()) : "";
+	        line = mt.isMember("line") && mt["line"].isInt() ? mt["line"].asInt() : 0;
+	      } else {
+	        // templated citation; defer validation to runtime
+	        mt2["citation"] = citation_raw;
+	      }
+	      if (citation_raw.empty()) {
+	        if (!is_safe_relpath_md(rel_path) || line <= 0) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_timeline requires path+line (safe .md path) or citation path:line";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	      } else if (!citation_templated) {
+	        if (!is_safe_relpath_md(rel_path) || line <= 0) {
+	          resp->status = 400;
+	          Json::Value o(Json::objectValue);
+	          o["ok"] = false;
+	          o["error"] = "memory_timeline requires a safe .md citation";
+	          o["task_id"] = task_id;
+	          resp->body = json_stringify_compact(o);
+	          return;
+	        }
+	      }
+
+	      if (mt.isMember("context_lines") && !mt["context_lines"].isInt() && !mt["context_lines"].isNull()) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "memory_timeline.context_lines must be an int";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+	      if (mt.isMember("max_chars") && !mt["max_chars"].isInt() && !mt["max_chars"].isNull()) {
+	        resp->status = 400;
+	        Json::Value o(Json::objectValue);
+	        o["ok"] = false;
+	        o["error"] = "memory_timeline.max_chars must be an int";
+	        o["task_id"] = task_id;
+	        resp->body = json_stringify_compact(o);
+	        return;
+	      }
+
+	      if (!citation_templated) {
+	        mt2["path"] = rel_path;
+	        mt2["line"] = line;
+	        mt2["citation"] = rel_path + ":" + std::to_string(line);
+	      }
+	      if (mt.isMember("context_lines") && mt["context_lines"].isInt()) {
+	        mt2["context_lines"] = std::max(0, std::min(50, mt["context_lines"].asInt()));
+	      }
+	      if (mt.isMember("max_chars") && mt["max_chars"].isInt()) {
+	        const int v = mt["max_chars"].asInt();
+	        mt2["max_chars"] = std::max(200, std::min(10000, v));
+	      }
+
+	      task_req["kind"] = "memory_timeline";
+	      task_req["memory_timeline"] = mt2;
 	      task_req["priority"] = task_priority;
 	      task_req["trace_id"] = trace_id + ":" + task_id;
 	    } else if (is_memory_structured_query) {

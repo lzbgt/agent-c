@@ -67,9 +67,11 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] Memory context index mode (progressive disclosure) with token estimates (files list + costs; index mode).
   - [x] WebUI memory context selector supports index mode (progressive disclosure).
   - [x] Memory observations + timeline retrieval tools (claude-mem style) for progressive disclosure workflows.
+  - [x] Deterministic `memory_timeline` workflow task (host tool) with OpenAPI + docs + smoke test.
   - [x] Memory index bounded file reads (avoid unbounded memory spikes on large files).
   - [x] WebUI history expansion state bounded to prevent long-running UI memory drift.
   - [x] AgentdApi request-path job GC to keep embedded/relay job state bounded without a dedicated GC thread.
+  - [x] Job stream event payloads capped with `data_truncated` metadata to prevent unbounded in-memory growth.
 3) **Next-gen contract foundation (agent-core + agentd + broker + WebUI)** — make interop explicit and replayable.
   - [x] Add a unified capability descriptor (`/api/v1/caps`) with protocol versions + limits (agentd + WebUI + broker proxy).
   - [x] WebUI: use `/api/v1/caps` to hide/disable unsupported features and cache last-known caps.

@@ -473,6 +473,53 @@ Semantics:
 - This task does not call an LLM/provider, so it is suitable for deterministic “write facts only when upstream checks passed”
   workflows (pair it with `depends_on` + `expect` on the upstream tasks).
 
+### Deterministic memory search task (`kind:"memory_search"`) (v1.7)
+
+For deterministic, **read-only** memory retrieval (substring/FTS search), workflows can run:
+
+```json
+{
+  "task_id": "S",
+  "kind": "memory_search",
+  "memory_search": {
+    "query": "refresh-proof",
+    "max_results": 5,
+    "daily_days": 0,
+    "case_sensitive": false,
+    "use_index": true
+  }
+}
+```
+
+Semantics:
+- Requires the daemon to run with `--tools host` (this task executes the host tool `memory_search`).
+- This is a **read-only** host tool, so it works with `--host-policy readonly` or `--host-policy full`.
+- The full host tool response is surfaced under the task result as `memory_search_response` for deterministic `expect` assertions
+  and JSON templating (`${task.S.json:/memory_search_response/data/results/0/citation}` etc.).
+
+### Deterministic memory timeline task (`kind:"memory_timeline"`) (v1.7)
+
+For deterministic retrieval of a **bounded context window** around a citation (`path:line`), workflows can run:
+
+```json
+{
+  "task_id": "T",
+  "kind": "memory_timeline",
+  "depends_on": ["S"],
+  "memory_timeline": {
+    "citation": "${task.S.json:/memory_search_response/data/results/0/citation}",
+    "context_lines": 4,
+    "max_chars": 2000
+  }
+}
+```
+
+Semantics:
+- Requires the daemon to run with `--tools host` (this task executes the host tool `memory_timeline`).
+- This is a **read-only** host tool, so it works with `--host-policy readonly` or `--host-policy full`.
+- The full host tool response is surfaced under the task result as `memory_timeline_response` for deterministic `expect` assertions
+  and JSON templating (`${task.T.json:/memory_timeline_response/data/text}` etc.).
+
 ### Deterministic structured memory query task (`kind:"memory_structured_query"`) (v1.7)
 
 For deterministic retrieval of **structured facts/preferences/tasks** (not fuzzy substring search), workflows can run:

@@ -218,6 +218,8 @@ If the DB is not available, these endpoints return `{ ok:false, error:"db not av
 
 Some daemon builds also expose:
 - `GET /api/v1/job/stream?job_id=...&cursor=...` (SSE for incremental job progress)
+  - `agent_event.data` may be truncated for memory safety; when truncated the event includes
+    `data_truncated`, `data_bytes`, and `data_bytes_kept`.
 
 Debug/correlation helper:
 - `GET /api/v1/trace?trace_id=...`

@@ -882,6 +882,101 @@ void WorkflowEngine::execute_claimed_task(const AgentDb::WorkflowRow& wf, const 
                   out["assistant_text"] = "memory_search: ok";
                 }
               }
+              }
+            }
+          }
+        }
+      }
+  } else if (kind == "memory_timeline") {
+    if (wf_limits.max_tool_calls_total > 0 && wf_tool_calls_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_tool_calls_total");
+      return;
+    }
+    if (wf_limits.max_steps_total > 0 && wf_steps_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_steps_total");
+      return;
+    }
+    if (wf_limits.max_elapsed_ms_total > 0 && wf_elapsed_ms_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_elapsed_ms_total");
+      return;
+    }
+    if (wf_limits.max_total_tokens > 0 && wf_total_tokens_remaining <= 0) {
+      workflow_budget_exceeded_cancel("max_total_tokens");
+      return;
+    }
+
+    out = Json::Value(Json::objectValue);
+    out["kind"] = "memory_timeline";
+    out["ok"] = false;
+    out["assistant_text"] = "";
+
+    if (workflow_run_should_cancel(&cancel_ctx)) {
+      out["cancelled"] = true;
+      out["error"] = cancel_ctx.reason == WorkflowCancelReason::DeadlineExceeded ? "deadline exceeded" : "cancelled";
+    } else if (lower_copy(trim_copy(cfg.tools)) != "host") {
+      out["error"] = "memory_timeline requires --tools host";
+    } else {
+      // Note: memory_timeline is read-only; allow host_policy=readonly or full.
+      const Json::Value mt =
+        rr.isMember("memory_timeline") && rr["memory_timeline"].isObject() ? rr["memory_timeline"] : Json::Value(Json::nullValue);
+      if (!mt.isObject()) {
+        out["error"] = "memory_timeline missing memory_timeline object";
+      } else {
+        HostToolsetConfig hcfg;
+        hcfg.root_dir = cfg.state_dir;
+        hcfg.policy = cfg.host_policy;
+        hcfg.enable_process_exec = false;
+        hcfg.allow_symlinks = true;
+        hcfg.sessions_root_dir = !cfg.sessions_root_dir.empty() ? cfg.sessions_root_dir : sessions_root_dir_;
+        hcfg.session_id = wf.session_id;
+
+        agent_tool_registry_t* reg = nullptr;
+        agent_tool_executor_t exec{};
+        const agent_status_t st = toolset_host_create(hcfg, &reg, &exec);
+        if (st != AGENT_OK || !reg || !exec.execute) {
+          if (reg) agent_tool_registry_destroy(reg);
+          toolset_host_destroy(&exec);
+          out["error"] = "failed to create host toolset";
+        } else {
+          Json::StreamWriterBuilder wb;
+          wb["indentation"] = "";
+          const std::string req = Json::writeString(wb, mt);
+
+          agent_string_t out_s{};
+          // Budget charging: deterministic host-tool invocation. Count it as one tool call / step.
+          const agent_status_t est = exec.execute(exec.ctx, "memory_timeline", req.c_str(), &out_s);
+          out["tool_calls_total"] = (Json::Int64)1;
+          out["steps_executed"] = (Json::Int64)1;
+          const std::string resp_s = (out_s.data && out_s.len) ? std::string(out_s.data, out_s.len) : std::string();
+          agent_string_free(&out_s);
+
+          agent_tool_registry_destroy(reg);
+          toolset_host_destroy(&exec);
+
+          if (est != AGENT_OK) {
+            out["error"] = "memory_timeline failed";
+          } else {
+            Json::Value resp(Json::objectValue);
+            std::string rerr;
+            if (!json_parse_any_value(resp_s, &resp, &rerr) || !resp.isObject()) {
+              out["error"] = "failed to parse memory_timeline response";
+              out["parse_error"] = rerr;
+            } else {
+              out["memory_timeline_response"] = resp;
+              const bool ok = resp.isMember("ok") && resp["ok"].isBool() && resp["ok"].asBool();
+              out["ok"] = ok;
+              if (!ok) {
+                const std::string err =
+                  resp.isMember("error") && resp["error"].isString() ? resp["error"].asString() : "memory_timeline failed";
+                out["error"] = err;
+                out["assistant_text"] = "";
+              } else {
+                if (resp.isMember("data") && resp["data"].isObject() && resp["data"].isMember("output") && resp["data"]["output"].isString()) {
+                  out["assistant_text"] = resp["data"]["output"].asString();
+                } else {
+                  out["assistant_text"] = "memory_timeline: ok";
+                }
+              }
             }
           }
         }
