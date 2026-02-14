@@ -20,6 +20,9 @@ Event envelope reference:
 - Support **multiple agents/daemons** safely:
   - default UI behavior should not collide on a shared `"default"` session id
   - each daemon instance can use its own state/session root
+- Support **broker deployments** cleanly when multiple agentd instances register under the same `agent_id`
+  - UI may target a specific deployment via broker header `X-Agentd-Deployment`
+  - UI scopes local session selection by deployment id to avoid collisions
 - Allow agents to present created host files (image/audio/video) and request UI actions like “play audio once/N times”.
 
 ## Additional goals
@@ -53,6 +56,8 @@ Notes:
 - Multi-agent safety is achieved by:
   - generating **unique** session ids by default (UUID-ish)
   - allowing daemon operators to set separate state/session roots per daemon instance
+  - when using the broker, the UI also includes `brokerDeploymentId` in its session scope key so switching
+    deployments does not reuse the same session id unintentionally
 
 ### Endpoint: upload session files (for multimodal prompts)
 
