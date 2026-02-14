@@ -30,6 +30,11 @@ import {
   type AgentEvent,
 } from "./api";
 import { appendLiveEvents, capLiveEvents } from "./liveEvents";
+import { loadJson } from "./jsonUtils";
+import { pruneJobsBySession } from "./jobStore";
+import { SCENE_STORE_MAX, touchSceneStoreKey } from "./sceneCache";
+import { buildScopedSessionKey, buildSessionScopeKey } from "./sessionScope";
+import { sleep } from "./timeUtils";
 import HistoryPanel from "./components/HistoryPanel";
 import SceneView, { type SceneEntity } from "./components/SceneView";
 import PromptBar, { type Attachment } from "./components/PromptBar";
@@ -39,10 +44,6 @@ import BrokerPanel from "./components/BrokerPanel";
 import useLocalStorageState from "./hooks/useLocalStorageState";
 import useUiSettings from "./hooks/useUiSettings";
 import { readSseStream } from "./sse";
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 export default function App() {
   const ui = useUiSettings();
@@ -204,40 +205,27 @@ export default function App() {
     if (phase === 0) return "idle";
     return "";
   }, [lastHeartbeat]);
-
   // Persist job_id + cursor so a browser refresh can reliably resume a running session.
   // Stored per session_id (since multiple sessions can exist and the UI allows switching).
   const [jobsBySessionJson, setJobsBySessionJson] = useLocalStorageState("agentui.jobsBySession", "{}");
-
   const topbarRef = React.useRef<HTMLElement | null>(null);
   const promptbarRef = React.useRef<HTMLDivElement | null>(null);
   const [topbarHeightPx, setTopbarHeightPx] = React.useState<number>(56);
   const [promptbarHeightPx, setPromptbarHeightPx] = React.useState<number>(220);
-
   // Session-scoped client-side scene entities (collaboration surface objects).
   const sceneBySessionRef = React.useRef<Record<string, Record<string, SceneEntity>>>({});
   const [sceneVersion, setSceneVersion] = React.useState<number>(0);
-
-  const loadJson = (raw: string): any => {
-    try {
-      const v = JSON.parse(String(raw || ""));
-      return v && typeof v === "object" ? v : null;
-    } catch {
-      return null;
-    }
-  };
-
-  const sessionScopeKey = React.useMemo(() => {
-    const pid = String(profileId || "").trim();
-    const base = String(effectiveBase || "").trim();
-    const baseKey = base ? `base:${base}` : "base:default";
-    const deployment =
-      connection.mode === "broker" ? String(connection.brokerDeploymentId || "").trim() : "";
-    const deploymentKey = deployment ? `deployment:${deployment}` : "";
-    if (!deploymentKey) return pid ? `profile:${pid}::${baseKey}` : baseKey;
-    return pid ? `profile:${pid}::${baseKey}::${deploymentKey}` : `${baseKey}::${deploymentKey}`;
-  }, [connection.brokerDeploymentId, connection.mode, effectiveBase, profileId]);
-
+  const sceneStoreOrderRef = React.useRef<string[]>([]);
+  const sessionScopeKey = React.useMemo(
+    () =>
+      buildSessionScopeKey({
+        profileId,
+        base: effectiveBase,
+        mode: connection.mode,
+        deploymentId: connection.brokerDeploymentId,
+      }),
+    [connection.brokerDeploymentId, connection.mode, effectiveBase, profileId],
+  );
   // Session selection is scoped by profile id (or base URL as fallback), with deployment id included when set.
   const [sessionByScopeJson, setSessionByScopeJson] = useLocalStorageState("agentui.sessionByScope", "{}");
   const [sessionByBaseJson] = useLocalStorageState("agentui.sessionByBase", "{}");
@@ -291,16 +279,12 @@ export default function App() {
     [sessionScopeKey, setSessionByScopeJson],
   );
 
-  const sceneStoreKey = React.useMemo(() => {
-    const sid = String(sessionId || "").trim() || "default";
-    return `${sessionScopeKey}::${sid}`;
-  }, [sessionId, sessionScopeKey]);
-
-  const jobStoreKey = React.useMemo(() => {
-    const sid = String(sessionId || "").trim() || "default";
-    return `${sessionScopeKey}::${sid}`;
-  }, [sessionId, sessionScopeKey]);
-
+  const scopedSessionKey = React.useMemo(
+    () => buildScopedSessionKey(sessionScopeKey, sessionId),
+    [sessionId, sessionScopeKey],
+  );
+  const sceneStoreKey = scopedSessionKey;
+  const jobStoreKey = scopedSessionKey;
   const sceneEntities = React.useMemo(() => {
     const m = sceneBySessionRef.current[sceneStoreKey] || {};
     return Object.values(m);
@@ -338,8 +322,17 @@ export default function App() {
 
   const parseJobsBySession = React.useCallback(() => {
     const v = loadJson(jobsBySessionJson);
-    return v && typeof v === "object" ? (v as Record<string, any>) : {};
-  }, [jobsBySessionJson]);
+    const jobs = v && typeof v === "object" ? (v as Record<string, any>) : {};
+    const pruned = pruneJobsBySession(Date.now(), jobs);
+    if (pruned.changed) {
+      try {
+        setJobsBySessionJson(JSON.stringify(pruned.next));
+      } catch {
+        // ignore
+      }
+    }
+    return pruned.next;
+  }, [jobsBySessionJson, setJobsBySessionJson]);
 
   const writeJobsBySession = React.useCallback(
     (mutate: (prev: Record<string, any>) => Record<string, any>) => {
@@ -358,6 +351,12 @@ export default function App() {
 
   // Track the last observed daemon-updated scene timestamp per session so refresh/polling is stable.
   const lastSceneUpdatedMsRef = React.useRef<Record<string, number>>({});
+  const touchSceneStore = React.useCallback(
+    (key: string) => {
+      touchSceneStoreKey(sceneBySessionRef.current, sceneStoreOrderRef.current, lastSceneUpdatedMsRef.current, key, SCENE_STORE_MAX);
+    },
+    [],
+  );
 
   const applySceneOps = React.useCallback(
     (sid: string, ops: any[]) => {
@@ -366,6 +365,7 @@ export default function App() {
       const storeKey = `${sessionScopeKey}::${sessionId}`;
       if (!sceneBySessionRef.current[storeKey]) sceneBySessionRef.current[storeKey] = {};
       const store = sceneBySessionRef.current[storeKey];
+      touchSceneStore(storeKey);
 
       const now = Date.now();
       const results: any[] = [];
@@ -463,6 +463,7 @@ export default function App() {
             const scene = r.scene && typeof r.scene === "object" && !Array.isArray(r.scene) ? (r.scene as any) : null;
             if (scene) {
               sceneBySessionRef.current[storeKey] = scene;
+              touchSceneStore(storeKey);
               setSceneVersion((v) => v + 1);
             }
           })
@@ -470,7 +471,7 @@ export default function App() {
       }
       return { ok: true, results, count: Object.keys(store).length };
     },
-    [daemonAuth, effectiveBase, sessionScopeKey, setSceneVersion],
+    [daemonAuth, effectiveBase, sessionScopeKey, setSceneVersion, touchSceneStore],
   );
 
   // Keep layout CSS vars in sync with actual measured bars (so Scene can truly fill the viewport).
@@ -762,8 +763,9 @@ export default function App() {
     if (!scene || typeof scene !== "object" || Array.isArray(scene)) return;
     sceneBySessionRef.current[key] = scene as any;
     lastSceneUpdatedMsRef.current[key] = updated;
+    touchSceneStore(key);
     setSceneVersion((v) => v + 1);
-  }, [sceneStoreKey, sessionId, sessionScene.data]);
+  }, [sceneStoreKey, sessionId, sessionScene.data, touchSceneStore]);
 
   const dbUiActions = useQuery({
     queryKey: ["db_ui_actions", effectiveBase, authKey, sessionId],

@@ -47,6 +47,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] WebUI Playwright smoke tests for broker + agentd host (UI-only).
   - [x] WebUI E2E real runs now capture Playwright artifacts (trace/video/screenshot) for headless verification.
   - [x] WebUI live event stream bounded (ring buffer) to prevent long-running job memory growth.
+  - [x] WebUI scene cache + job resume metadata bounded (LRU + TTL) to avoid multi-session memory drift.
   - [x] Evidence bundle validation tool for agentd/broker (machine-checkable gate).
   - [x] Data-driven scenario pack for agentd/broker (scripted runs + evidence capture).
   - [x] Scenario pack runner for multi-scenario runs + evidence validation.
