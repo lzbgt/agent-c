@@ -102,6 +102,7 @@ When an agent must decide based on client state (DOM/media/location), use a clie
 For long-running conditions (like “wait until media ended”), prefer observation:
 - `ui_action(type="client_rpc", rpc_id="<id>", rpc={kind:"media_observe", side_effects:true, args:{tool_call_id:"<call>"}}, auto_run=true)`
 - `client_wait_event(type="client_rpc_progress", data_match={rpc_id:"<id>", name:"ended"})`
+- `ui_action(type="client_rpc", rpc_id="<id>", rpc={kind:"media_unobserve", args:{rpc_id:"<id>"}}, auto_run=true)` to detach observers
 
 ### “Do side-effecting client automation and stop”
 

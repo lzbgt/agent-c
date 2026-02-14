@@ -67,6 +67,7 @@ For some decisions, snapshots are too heavy and too stale. Clients should also e
 - Prefer a generic client RPC approach instead of hardcoded media state events:
   - `ui_action(type="client_rpc", rpc.kind="media_snapshot")` for polling-style checks
   - `ui_action(type="client_rpc", rpc.kind="media_observe")` for correlated progress events (`client_rpc_progress`)
+  - `ui_action(type="client_rpc", rpc.kind="media_unobserve")` to detach observers when done (keeps clients bounded)
 
 Clients may emit additional telemetry events when useful, but long-term the intent is to converge on
 `client_rpc_result` / `client_rpc_progress` correlation for universal waiting/joining.
