@@ -6,7 +6,8 @@ import {
   apiBrokerGetMembershipAudit,
   apiBrokerListAgents,
   apiBrokerListDeployments,
-  apiBrokerProxyJson,
+  apiBrokerOtaStatus,
+  apiBrokerOtaUpdate,
   apiBrokerUpsertMember,
   type ApiAuth,
 } from "../api";
@@ -79,6 +80,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   const [otaStatusBusy, setOtaStatusBusy] = React.useState<boolean>(false);
   const [otaStatusError, setOtaStatusError] = React.useState<string | null>(null);
   const [otaStatusResults, setOtaStatusResults] = React.useState<any[] | null>(null);
+  const [otaStatusCachedAt, setOtaStatusCachedAt] = React.useState<string | null>(null);
 
   const [auditLimit, setAuditLimit] = React.useState<string>("200");
   const limitValue = React.useMemo(() => {
@@ -112,6 +114,56 @@ export default function BrokerPanel(props: BrokerPanelProps) {
       void deploymentsQuery.refetch();
     }
   }, [props.open, canQuery, agentId, membersQuery, auditQuery, deploymentsQuery]);
+
+  const otaStatusCacheKey = React.useMemo(() => {
+    if (!base || !agentId) return "";
+    return `agentd:broker:otaStatus:${base}:${agentId}`;
+  }, [base, agentId]);
+
+  React.useEffect(() => {
+    if (!otaStatusCacheKey) {
+      setOtaStatusResults(null);
+      setOtaStatusCachedAt(null);
+      return;
+    }
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(otaStatusCacheKey);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      const rows = Array.isArray(parsed?.results) ? parsed.results : null;
+      if (!rows) return;
+      setOtaStatusResults(rows);
+      if (typeof parsed?.ts === "number") {
+        setOtaStatusCachedAt(fmtTs(parsed.ts));
+      }
+    } catch {
+      // ignore cache errors
+    }
+  }, [otaStatusCacheKey]);
+
+  const persistOtaStatusCache = (rows: any[]) => {
+    if (!otaStatusCacheKey) return;
+    if (typeof window === "undefined") return;
+    try {
+      const ts = Date.now();
+      window.localStorage.setItem(otaStatusCacheKey, JSON.stringify({ ts, results: rows }));
+      setOtaStatusCachedAt(fmtTs(ts));
+    } catch {
+      // ignore cache errors
+    }
+  };
+
+  const clearOtaStatusCache = () => {
+    if (!otaStatusCacheKey) return;
+    if (typeof window === "undefined") return;
+    try {
+      window.localStorage.removeItem(otaStatusCacheKey);
+    } catch {
+      // ignore cache errors
+    }
+    setOtaStatusCachedAt(null);
+  };
 
   React.useEffect(() => {
     if (!agentId) {
@@ -210,6 +262,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     setOtaError(null);
     setOtaResults(null);
     setOtaStatusResults(null);
+    clearOtaStatusCache();
     const url = String(otaUrl || "").trim();
     if (!url) {
       setOtaError("missing OTA url");
@@ -240,7 +293,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     try {
       const settled = await Promise.allSettled(
         selectedDeployments.map(async (deploymentId) => {
-          const res = await apiBrokerProxyJson(base, agentId, "/api/v1/ota/update", "POST", body, props.auth, deploymentId);
+          const res = await apiBrokerOtaUpdate(base, agentId, body, props.auth, deploymentId);
           return {
             deployment_id: deploymentId,
             status: res.status,
@@ -279,7 +332,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     try {
       const settled = await Promise.allSettled(
         selectedDeployments.map(async (deploymentId) => {
-          const res = await apiBrokerProxyJson(base, agentId, "/api/v1/ota/status", "GET", undefined, props.auth, deploymentId);
+          const res = await apiBrokerOtaStatus(base, agentId, props.auth, deploymentId);
           return {
             deployment_id: deploymentId,
             status: res.status,
@@ -296,6 +349,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
         };
       });
       setOtaStatusResults(results);
+      persistOtaStatusCache(results);
     } catch (e) {
       setOtaStatusError(String(e));
     } finally {
@@ -648,6 +702,9 @@ export default function BrokerPanel(props: BrokerPanelProps) {
 
             <div className="mt-3 grid gap-2">
               <FieldLabel>OTA status</FieldLabel>
+              {otaStatusCachedAt ? (
+                <div className="text-[11px] text-white/50">Cached: {otaStatusCachedAt}</div>
+              ) : null}
               <button
                 className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
                 type="button"

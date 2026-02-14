@@ -1263,6 +1263,25 @@ export async function apiBrokerProxyJson(
   return { status: r.status, data };
 }
 
+export async function apiBrokerOtaUpdate(
+  brokerBase: string,
+  agentId: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+  deploymentId?: string,
+): Promise<{ status: number; data: any }> {
+  return apiBrokerProxyJson(brokerBase, agentId, "/api/v1/ota/update", "POST", body, auth, deploymentId);
+}
+
+export async function apiBrokerOtaStatus(
+  brokerBase: string,
+  agentId: string,
+  auth?: ApiAuth,
+  deploymentId?: string,
+): Promise<{ status: number; data: any }> {
+  return apiBrokerProxyJson(brokerBase, agentId, "/api/v1/ota/status", "GET", undefined, auth, deploymentId);
+}
+
 export const BrokerMembersRespSchema = z
   .object({
     ok: z.boolean(),
