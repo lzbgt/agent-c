@@ -25,6 +25,7 @@ import (
 	"agentd-broker/internal/oidc"
 	"agentd-broker/internal/proto"
 	"agentd-broker/internal/registry"
+	"agentd-broker/internal/transport"
 
 	"github.com/gorilla/websocket"
 )
@@ -282,12 +283,12 @@ func (s *Server) auditRelay(ctx context.Context, p *Principal, agentID, deployme
 		UserSub: p.Sub,
 		TraceID: tid,
 		Payload: map[string]any{
-			"method":     method,
-			"path":       agentPath,
+			"method":        method,
+			"path":          agentPath,
 			"deployment_id": deploymentID,
-			"status":     status,
-			"latency_ms": latencyMS,
-			"error":      errStr,
+			"status":        status,
+			"latency_ms":    latencyMS,
+			"error":         errStr,
 		},
 	})
 }
@@ -436,16 +437,16 @@ func (s *Server) handleAgentsList(w http.ResponseWriter, r *http.Request) {
 		Meta         map[string]any `json:"meta,omitempty"`
 	}
 	type AgentInfo struct {
-		AgentID     string         `json:"agent_id"`
-		OwnerSub    string         `json:"owner_sub"`
-		Enabled     bool           `json:"enabled"`
-		CreatedAt   int64          `json:"created_unix_ms"`
-		Labels      map[string]any `json:"labels,omitempty"`
-		Meta        map[string]any `json:"meta,omitempty"`
-		Connected   bool           `json:"connected"`
-		ConnectedAt int64          `json:"connected_unix_ms,omitempty"`
-		LastSeen    int64          `json:"last_seen_unix_ms,omitempty"`
-		RemoteAddr  string         `json:"remote_addr,omitempty"`
+		AgentID     string           `json:"agent_id"`
+		OwnerSub    string           `json:"owner_sub"`
+		Enabled     bool             `json:"enabled"`
+		CreatedAt   int64            `json:"created_unix_ms"`
+		Labels      map[string]any   `json:"labels,omitempty"`
+		Meta        map[string]any   `json:"meta,omitempty"`
+		Connected   bool             `json:"connected"`
+		ConnectedAt int64            `json:"connected_unix_ms,omitempty"`
+		LastSeen    int64            `json:"last_seen_unix_ms,omitempty"`
+		RemoteAddr  string           `json:"remote_addr,omitempty"`
 		Deployments []DeploymentInfo `json:"deployments,omitempty"`
 	}
 	dbAgents, err := s.cfg.DB.ListAgentsForUser(r.Context(), p.Sub)
@@ -1132,22 +1133,23 @@ func (s *Server) handleAgentConnect(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	conn.SetReadLimit(64 * 1024 * 1024)
+	wsConn := transport.NewWebSocket(conn)
+	wsConn.SetReadLimit(64 * 1024 * 1024)
 	// Detect dead peers. The connector should answer pings; the read deadline is extended on pong.
-	_ = conn.SetReadDeadline(time.Now().Add(120 * time.Second))
-	conn.SetPongHandler(func(string) error {
-		_ = conn.SetReadDeadline(time.Now().Add(120 * time.Second))
+	_ = wsConn.SetReadDeadline(time.Now().Add(120 * time.Second))
+	wsConn.SetPongHandler(func(string) error {
+		_ = wsConn.SetReadDeadline(time.Now().Add(120 * time.Second))
 		return nil
 	})
 
 	// Handshake: require hello message.
 	var hello proto.Hello
-	if err := conn.ReadJSON(&hello); err != nil {
-		_ = conn.Close()
+	if err := wsConn.ReadJSON(&hello); err != nil {
+		_ = wsConn.Close()
 		return
 	}
 	if hello.Type != proto.TypeHello {
-		_ = conn.Close()
+		_ = wsConn.Close()
 		return
 	}
 	agentID := strings.TrimSpace(hello.AgentID)
@@ -1155,24 +1157,24 @@ func (s *Server) handleAgentConnect(w http.ResponseWriter, r *http.Request) {
 		agentID = certAgentID
 	}
 	if agentID == "" {
-		_ = conn.Close()
+		_ = wsConn.Close()
 		return
 	}
 	if certAgentID != "" && agentID != certAgentID {
-		_ = conn.WriteJSON(proto.HelloAck{Type: "hello_ack", OK: false, Error: "agent_id mismatch vs client cert"})
-		_ = conn.Close()
+		_ = wsConn.WriteJSON(proto.HelloAck{Type: "hello_ack", OK: false, Error: "agent_id mismatch vs client cert"})
+		_ = wsConn.Close()
 		return
 	}
 
 	enabled, err := s.cfg.DB.AgentEnabled(r.Context(), agentID)
 	if err != nil {
-		_ = conn.WriteJSON(proto.HelloAck{Type: proto.TypeHelloAck, OK: false, Error: "agent not registered"})
-		_ = conn.Close()
+		_ = wsConn.WriteJSON(proto.HelloAck{Type: proto.TypeHelloAck, OK: false, Error: "agent not registered"})
+		_ = wsConn.Close()
 		return
 	}
 	if !enabled {
-		_ = conn.WriteJSON(proto.HelloAck{Type: proto.TypeHelloAck, OK: false, Error: "agent disabled"})
-		_ = conn.Close()
+		_ = wsConn.WriteJSON(proto.HelloAck{Type: proto.TypeHelloAck, OK: false, Error: "agent disabled"})
+		_ = wsConn.Close()
 		return
 	}
 
@@ -1206,20 +1208,20 @@ func (s *Server) handleAgentConnect(w http.ResponseWriter, r *http.Request) {
 
 	connID, err := s.cfg.DB.InsertConnection(r.Context(), agentID, r.RemoteAddr, hello.Meta)
 	if err != nil {
-		_ = conn.WriteJSON(proto.HelloAck{Type: proto.TypeHelloAck, OK: false, Error: "db connection record failed"})
-		_ = conn.Close()
+		_ = wsConn.WriteJSON(proto.HelloAck{Type: proto.TypeHelloAck, OK: false, Error: "db connection record failed"})
+		_ = wsConn.Close()
 		return
 	}
 
 	ac := &registry.AgentConn{
-		AgentID:    agentID,
+		AgentID:      agentID,
 		DeploymentID: deploymentID,
-		Conn:       conn,
-		Connected:  time.Now(),
-		LastSeen:   time.Now(),
-		RemoteAddr: r.RemoteAddr,
-		Meta:       hello.Meta,
-		DBConnID:   connID,
+		Conn:         wsConn,
+		Connected:    time.Now(),
+		LastSeen:     time.Now(),
+		RemoteAddr:   r.RemoteAddr,
+		Meta:         hello.Meta,
+		DBConnID:     connID,
 		PendingLimit: func() int {
 			if s.cfg.MaxPendingPerAgent < 0 {
 				return 0
@@ -1238,14 +1240,14 @@ func (s *Server) handleAgentConnect(w http.ResponseWriter, r *http.Request) {
 		prev.Close()
 	}
 
-	_ = conn.WriteJSON(proto.HelloAck{Type: proto.TypeHelloAck, OK: true, AgentID: agentID})
+	_ = wsConn.WriteJSON(proto.HelloAck{Type: proto.TypeHelloAck, OK: true, AgentID: agentID})
 
 	if subs, err := s.cfg.DB.ListAgentMemberSubs(r.Context(), agentID); err == nil {
 		s.cfg.Events.PublishTo(subs, events.Event{
 			Type:    "agent_connected",
 			AgentID: agentID,
 			Payload: map[string]any{
-				"remote_addr": r.RemoteAddr,
+				"remote_addr":   r.RemoteAddr,
 				"deployment_id": deploymentID,
 			},
 		})
@@ -1289,7 +1291,7 @@ func (s *Server) agentReadLoop(a *registry.AgentConn) {
 		}
 	}()
 	for {
-		_, raw, err := a.Conn.ReadMessage()
+		raw, err := a.Conn.ReadMessage()
 		if err != nil {
 			return
 		}

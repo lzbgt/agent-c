@@ -114,6 +114,15 @@ Notes:
   - `http_stream_request` / `http_stream_start` / `http_stream_chunk` / `http_stream_end`
   - broker may send `http_stream_cancel` to stop a long-running stream if the client disconnects
 
+### Transport interface (prep for multi-transport)
+
+The broker now uses a transport-agnostic connector interface so new transports can be added without changing relay logic:
+
+- Interface: `broker/internal/transport/conn.go`
+- WebSocket adapter: `broker/internal/transport/websocket.go`
+
+This keeps the business logic centered on `transport.Conn` while retaining today’s WebSocket connector path.
+
 ## Broker HTTP API
 
 All endpoints below are served by the broker (not by agents).

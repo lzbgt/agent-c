@@ -7,18 +7,18 @@ import (
 	"time"
 
 	"agentd-broker/internal/proto"
-	"github.com/gorilla/websocket"
+	"agentd-broker/internal/transport"
 )
 
 type AgentConn struct {
-	AgentID    string
+	AgentID      string
 	DeploymentID string
-	Conn       *websocket.Conn
-	Connected  time.Time
-	LastSeen   time.Time
-	RemoteAddr string
-	Meta       map[string]any
-	DBConnID   int64
+	Conn         transport.Conn
+	Connected    time.Time
+	LastSeen     time.Time
+	RemoteAddr   string
+	Meta         map[string]any
+	DBConnID     int64
 	// Soft limits to avoid unbounded memory growth under client abuse or agent bugs.
 	// 0 means "unlimited".
 	PendingLimit int
@@ -211,7 +211,7 @@ func (a *AgentConn) Ping() error {
 	}
 	a.writeMu.Lock()
 	defer a.writeMu.Unlock()
-	return a.Conn.WriteControl(websocket.PingMessage, []byte("ping"), time.Now().Add(5*time.Second))
+	return a.Conn.Ping()
 }
 
 func (a *AgentConn) RegisterPending(id string) (chan proto.RelayResponse, error) {

@@ -63,7 +63,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] Define a single event schema for run/workflow events and validate in CI (schema registry + tests).
   - [x] Add idempotency keys to broker proxy/orchestrate (safe retries with audit trail).
   - [x] Introduce replay bundles for deterministic runs (inputs + hashes + tool outputs) with fixture tests.
-  - [ ] Document a transport-agnostic relay interface for broker/connector (prep for multi-transport).
+  - [x] Transport-agnostic relay interface for broker/connector (transport.Conn + WebSocket adapter).
 
 ## Promoted goals (explicit goals; no non-goals)
 
