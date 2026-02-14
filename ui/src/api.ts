@@ -335,7 +335,7 @@ export const RunRequestSchema = z.object({
     .optional(),
   max_chars: z.number().int().nonnegative().optional(),
   keep_last: z.number().int().nonnegative().optional(),
-  memory_context_mode: z.enum(["files", "search"]).optional(),
+  memory_context_mode: z.enum(["files", "search", "index"]).optional(),
   memory_include_structured: z.boolean().optional(),
   memory_include_core: z.boolean().optional(),
   memory_include_daily: z.boolean().optional(),

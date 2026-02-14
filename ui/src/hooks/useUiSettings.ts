@@ -319,7 +319,9 @@ const normalizeRunOverrides = (raw: unknown): RunProfileOverrides | undefined =>
   const keepLast = readString(v.keepLast);
   if (keepLast !== undefined) out.keepLast = keepLast;
   const memoryContextMode = readString(v.memoryContextMode);
-  if (memoryContextMode === "files" || memoryContextMode === "search") out.memoryContextMode = memoryContextMode;
+  if (memoryContextMode === "files" || memoryContextMode === "search" || memoryContextMode === "index") {
+    out.memoryContextMode = memoryContextMode;
+  }
   if (typeof v.memoryIncludeStructured === "boolean") out.memoryIncludeStructured = v.memoryIncludeStructured;
   if (typeof v.memoryIncludeCore === "boolean") out.memoryIncludeCore = v.memoryIncludeCore;
   if (typeof v.memoryIncludeDaily === "boolean") out.memoryIncludeDaily = v.memoryIncludeDaily;

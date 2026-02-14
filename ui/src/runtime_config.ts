@@ -245,8 +245,8 @@ export const getUiDefaults = (): AgentUIDefaults => {
   out.trace = coerceBool(cfg.trace) ?? coerceBool(envString("VITE_AGENTUI_TRACE")) ?? out.trace;
   out.useAsync = coerceBool(cfg.useAsync) ?? coerceBool(envString("VITE_AGENTUI_USE_ASYNC")) ?? out.useAsync;
   out.memoryContextMode =
-    coerceEnum(cfg.memoryContextMode, ["files", "search"]) ??
-    coerceEnum(envString("VITE_AGENTUI_MEMORY_CONTEXT_MODE"), ["files", "search"]) ??
+    coerceEnum(cfg.memoryContextMode, ["files", "search", "index"]) ??
+    coerceEnum(envString("VITE_AGENTUI_MEMORY_CONTEXT_MODE"), ["files", "search", "index"]) ??
     out.memoryContextMode;
   out.memoryIncludeStructured =
     coerceBool(cfg.memoryIncludeStructured) ??

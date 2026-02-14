@@ -889,10 +889,11 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                 onChange={(e) => run.setMemoryContextMode(e.target.value)}
               >
                 <option value="files">files (read memory/*.md)</option>
+                <option value="index">index (progressive file index)</option>
                 <option value="search">search (ranked snippets)</option>
               </select>
               <div className="mt-1 text-[11px] text-white/40">
-                Applies only when tools=host; search defaults to the prompt if no query is provided.
+                Applies only when tools=host; index shows file size/line/token estimates; search defaults to the prompt if no query is provided.
               </div>
             </div>
             <div className="grid grid-cols-2 gap-3">

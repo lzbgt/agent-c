@@ -64,6 +64,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] WebUI media_observe observers bounded (TTL + max) to prevent listener leaks.
   - [x] WebUI media_unobserve RPC to detach observers deterministically.
   - [x] Memory context index mode (progressive disclosure) with token estimates (files list + costs; index mode).
+  - [x] WebUI memory context selector supports index mode (progressive disclosure).
   - [x] WebUI history expansion state bounded to prevent long-running UI memory drift.
 3) **Next-gen contract foundation (agent-core + agentd + broker + WebUI)** — make interop explicit and replayable.
   - [x] Add a unified capability descriptor (`/api/v1/caps`) with protocol versions + limits (agentd + WebUI + broker proxy).
