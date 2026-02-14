@@ -1232,7 +1232,8 @@ export default function App() {
 
   // Execute any persisted entity_apply RPCs from DB ui_actions that have not yet been acknowledged.
   // This makes client RPC execution reliable across refreshes and SSE dropouts.
-  const appliedUiActionIdsRef = React.useRef<Record<string, boolean>>({});
+  const appliedUiActionIdsRef = React.useRef<Record<string, number>>({});
+  const appliedUiActionLimit = 2000;
   React.useEffect(() => {
     if (!allowClientRpcs || !allowClientEffects) return;
     const sid = String(sessionId || "").trim();
@@ -1290,6 +1291,19 @@ export default function App() {
       );
     };
 
+    const markApplied = (key: string) => {
+      appliedUiActionIdsRef.current[key] = Date.now();
+      const appliedKeys = Object.keys(appliedUiActionIdsRef.current);
+      if (appliedKeys.length <= appliedUiActionLimit) return;
+      const items = appliedKeys
+        .map((k) => ({ k, ts: appliedUiActionIdsRef.current[k] || 0 }))
+        .sort((a, b) => a.ts - b.ts);
+      const overflow = items.length - appliedUiActionLimit;
+      for (let i = 0; i < overflow; i += 1) {
+        delete appliedUiActionIdsRef.current[items[i].k];
+      }
+    };
+
     for (const row of actions) {
       const id = typeof row?.id === "number" ? row.id : Number(row?.id ?? NaN);
       if (!Number.isFinite(id)) continue;
@@ -1303,7 +1317,7 @@ export default function App() {
       const rpcId = String(action?.rpc_id ?? action?.probe_id ?? toolCallId ?? "").trim();
       if (!rpcId) continue;
       if (ackedRpcIds.has(rpcId)) {
-        appliedUiActionIdsRef.current[key] = true;
+        markApplied(key);
         continue;
       }
       const rpc = action?.rpc ?? action?.probe ?? {};
@@ -1318,7 +1332,7 @@ export default function App() {
       if (!Array.isArray(ops) || ops.length === 0) continue;
 
       // Mark before executing to prevent loops if the apply throws (we still want to send a failure).
-      appliedUiActionIdsRef.current[key] = true;
+      markApplied(key);
       const t0 = Date.now();
       try {
         const result = applySceneOps(sid, ops);
