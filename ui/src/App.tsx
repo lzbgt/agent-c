@@ -549,6 +549,7 @@ export default function App() {
             { kind: "dom_set_value", side_effects: true, description: "Set input/textarea value by selector (side effects)." },
             { kind: "media_play", side_effects: true, description: "Attempt to play audio/video by selector (browser policies apply)." },
             { kind: "media_observe", side_effects: true, description: "Attach media listeners and emit correlated progress events." },
+            { kind: "media_unobserve", side_effects: false, description: "Detach media listeners created by media_observe (by rpc_id or all=true)." },
             { kind: "navigate", side_effects: true, description: "Navigate the browser to a new URL (likely reloads the app)." },
             {
               kind: "artifact_url",

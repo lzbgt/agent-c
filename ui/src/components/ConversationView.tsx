@@ -390,6 +390,20 @@ export default function ConversationView({
   >({});
   const artifactBlobUrlsRef = React.useRef<string[]>([]);
 
+  const cleanupRpcEntry = React.useCallback((id: string) => {
+    const entry = rpcCleanupRef.current[id];
+    if (!entry) return false;
+    entry.cleanups.forEach((fn) => {
+      try {
+        fn();
+      } catch {
+        // ignore
+      }
+    });
+    delete rpcCleanupRef.current[id];
+    return true;
+  }, []);
+
   React.useEffect(() => {
     const pending = pendingAutoRunsRef.current || {};
     const keys = Object.keys(pending);
@@ -408,15 +422,7 @@ export default function ConversationView({
     return () => {
       const all = rpcCleanupRef.current || {};
       Object.keys(all).forEach((k) => {
-        const entry = all[k];
-        const cleanups = entry?.cleanups ?? [];
-        cleanups.forEach((fn) => {
-          try {
-            fn();
-          } catch {
-            // ignore
-          }
-        });
+        cleanupRpcEntry(k);
       });
       rpcCleanupRef.current = {};
 
@@ -439,23 +445,13 @@ export default function ConversationView({
       const ids = Object.keys(entries);
       if (ids.length === 0) return;
       const now = Date.now();
-      const cleanupEntry = (id: string, entry: { cleanups: Array<() => void> }) => {
-        entry.cleanups.forEach((fn) => {
-          try {
-            fn();
-          } catch {
-            // ignore
-          }
-        });
-        delete entries[id];
-      };
 
       const activeMedia: Array<{ id: string; lastActiveMs: number }> = [];
       ids.forEach((id) => {
         const entry = entries[id];
         if (!entry) return;
         if (entry.kind === "media_observe" && now - entry.lastActiveMs > MEDIA_OBSERVER_TTL_MS) {
-          cleanupEntry(id, entry);
+          cleanupRpcEntry(id);
           return;
         }
         if (entry.kind === "media_observe") {
@@ -468,8 +464,7 @@ export default function ConversationView({
         const overflow = activeMedia.length - MEDIA_OBSERVER_MAX;
         for (let i = 0; i < overflow; i += 1) {
           const victim = activeMedia[i];
-          const entry = entries[victim.id];
-          if (entry) cleanupEntry(victim.id, entry);
+          cleanupRpcEntry(victim.id);
         }
       }
     }, 30_000);
@@ -480,7 +475,7 @@ export default function ConversationView({
         // ignore
       }
     };
-  }, []);
+  }, [cleanupRpcEntry]);
 
   if (prompt.trim().length > 0) {
     items.push(
@@ -1331,6 +1326,44 @@ export default function ConversationView({
               return { kind: "media_observe", selector: sel, observing: els.length, events };
             };
 
+            const makeMediaUnobserve = (args: any) => {
+              const ids: string[] = [];
+              const addId = (v: any) => {
+                const s = String(v ?? "").trim();
+                if (s) ids.push(s);
+              };
+              const list = Array.isArray(args?.rpc_ids)
+                ? args.rpc_ids
+                : Array.isArray(args?.rpcIds)
+                  ? args.rpcIds
+                  : Array.isArray(args?.ids)
+                    ? args.ids
+                    : [];
+              list.forEach(addId);
+              addId(args?.rpc_id ?? args?.rpcId ?? args?.target_rpc_id ?? args?.targetRpcId ?? args?.tool_call_id ?? args?.toolCallId ?? args?.id);
+
+              const entries = rpcCleanupRef.current;
+              const unique = Array.from(new Set(ids));
+              let targets = unique;
+              if (args?.all === true || (targets.length === 0 && args?.all === "true")) {
+                targets = Object.keys(entries).filter((id) => entries[id]?.kind === "media_observe");
+              }
+
+              let removed = 0;
+              const removedIds: string[] = [];
+              targets.forEach((id) => {
+                const entry = entries[id];
+                if (!entry || entry.kind !== "media_observe") return;
+                if (cleanupRpcEntry(id)) {
+                  removed += 1;
+                  removedIds.push(id);
+                }
+              });
+
+              const remaining = Object.keys(entries).filter((id) => entries[id]?.kind === "media_observe").length;
+              return { kind: "media_unobserve", removed, removed_ids: removedIds, remaining };
+            };
+
             const makeStateSnapshot = () => {
               const loc = makeLocation();
               const media = makeMediaSnapshot();
@@ -1393,6 +1426,7 @@ export default function ConversationView({
                     snapshot: () => call("media.snapshot", {}),
                     play: (q) => call("media.play", q || {}),
                     observe: (q) => call("media.observe", q || {}),
+                    unobserve: (q) => call("media.unobserve", q || {}),
                   },
                   location: {
                     get: () => call("location.get", {}),
@@ -1468,6 +1502,7 @@ export default function ConversationView({
                         else if (method === "media.snapshot") out = makeMediaSnapshot();
                         else if (method === "media.play") out = await makeMediaPlay(cargs);
                         else if (method === "media.observe") out = await makeMediaObserve(cargs);
+                        else if (method === "media.unobserve") out = makeMediaUnobserve(cargs);
                         else if (method === "location.get") out = makeLocation();
                         else if (method === "nav.go") out = makeNavigate(cargs);
                         else if (method === "rpc.progress") {
@@ -1540,6 +1575,7 @@ export default function ConversationView({
                   snapshot: async () => makeMediaSnapshot(),
                   play: async (q: any) => makeMediaPlay(q || {}),
                   observe: async (q: any) => makeMediaObserve(q || {}),
+                  unobserve: async (q: any) => makeMediaUnobserve(q || {}),
                 },
                 location: {
                   get: async () => makeLocation(),
@@ -1583,6 +1619,7 @@ export default function ConversationView({
             else if (rpcKind === "dom_set_value") result = makeDomSetValue(rpcArgs);
             else if (rpcKind === "media_play") result = await makeMediaPlay(rpcArgs);
             else if (rpcKind === "media_observe") result = await makeMediaObserve(rpcArgs);
+            else if (rpcKind === "media_unobserve") result = makeMediaUnobserve(rpcArgs);
             else if (rpcKind === "navigate") result = makeNavigate(rpcArgs);
             else if (rpcKind === "artifact_url") result = await makeArtifactUrl(rpcArgs);
             else if (rpcKind === "script_eval") result = await makeScriptEval(rpcArgs);
