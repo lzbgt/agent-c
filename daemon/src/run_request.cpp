@@ -509,6 +509,7 @@ static Json::Value run_request_to_json_impl(
   if (args.isMember("memory_context_mode") && args["memory_context_mode"].isString()) {
     const std::string mode = lower_copy(trim_copy(args["memory_context_mode"].asString()));
     if (mode == "search") mem_pol.mode = MemoryContextMode::Search;
+    else if (mode == "index" || mode == "progressive") mem_pol.mode = MemoryContextMode::Index;
     else mem_pol.mode = MemoryContextMode::Files;
   }
   if (args.isMember("memory_include_structured") && args["memory_include_structured"].isBool()) {

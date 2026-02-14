@@ -29,6 +29,38 @@ export type HistoryPanelProps = {
 
 export default function HistoryPanel(props: HistoryPanelProps) {
   const entries = Array.isArray(props.entries) ? props.entries : [];
+  const MAX_HISTORY_EXPANDED_KEYS = 200;
+
+  const entryKeyFor = React.useCallback((entry: any) => {
+    const isLive = entry?.live === true;
+    const jobId = typeof entry?.job_id === "string" ? entry.job_id : "";
+    const ts = typeof entry?.ts_unix_ms === "number" ? entry.ts_unix_ms : 0;
+    return isLive && jobId ? `job:${jobId}` : `ts:${String(ts || 0)}`;
+  }, []);
+
+  const expandedKeyCandidates = React.useMemo(() => {
+    const keys: string[] = [];
+    for (const e of entries) {
+      keys.push(entryKeyFor(e));
+      if (keys.length >= MAX_HISTORY_EXPANDED_KEYS) break;
+    }
+    return keys;
+  }, [entries, entryKeyFor]);
+
+  React.useEffect(() => {
+    if (expandedKeyCandidates.length === 0) return;
+    const keep = new Set(expandedKeyCandidates);
+    props.setHistoryExpandedByKey((prev) => {
+      const cur = prev || {};
+      let changed = false;
+      const next: Record<string, boolean> = {};
+      for (const key of Object.keys(cur)) {
+        if (keep.has(key)) next[key] = cur[key];
+        else changed = true;
+      }
+      return changed ? next : cur;
+    });
+  }, [expandedKeyCandidates, props.setHistoryExpandedByKey]);
 
   return (
     <div>
@@ -75,7 +107,7 @@ export default function HistoryPanel(props: HistoryPanelProps) {
             const traceId = typeof e?.trace_id === "string" ? e.trace_id : "";
             const status = ok === true ? "ok" : ok === false ? "error" : "";
             const summary = promptText.trim().length > 0 ? promptText.trim().slice(0, 200) : "(no prompt)";
-            const entryKey = isLive && jobId ? `job:${jobId}` : `ts:${String(ts || 0)}`;
+            const entryKey = entryKeyFor(e);
             const expanded =
               Object.prototype.hasOwnProperty.call(props.historyExpandedByKey, entryKey)
                 ? !!props.historyExpandedByKey[entryKey]

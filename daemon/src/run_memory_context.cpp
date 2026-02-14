@@ -230,6 +230,92 @@ static bool build_memory_files_context_text(
   return true;
 }
 
+static bool build_memory_index_context_text(
+  const std::filesystem::path& mem_root,
+  const std::string& session_id,
+  const MemoryContextPolicy& pol,
+  std::string* out_text
+) {
+  if (out_text) out_text->clear();
+  if (!out_text) return false;
+
+  std::error_code ec;
+  if (!std::filesystem::exists(mem_root, ec) || !std::filesystem::is_directory(mem_root, ec)) {
+    return false;
+  }
+
+  const std::vector<MemorySearchCandidate> candidates = list_candidate_memory_files(mem_root, session_id, pol);
+  if (candidates.empty()) return false;
+
+  auto count_lines = [](const std::filesystem::path& p, int64_t* out_lines) -> bool {
+    if (!out_lines) return false;
+    *out_lines = 0;
+    std::ifstream in(p, std::ios::binary);
+    if (!in.is_open()) return false;
+    std::string line;
+    while (std::getline(in, line)) {
+      (*out_lines)++;
+      if (*out_lines > 1000000) break; // defensive cap
+    }
+    return true;
+  };
+  auto estimate_tokens = [](int64_t bytes) -> int64_t {
+    if (bytes <= 0) return 0;
+    return (bytes + 3) / 4;
+  };
+
+  struct Row {
+    std::string tier;
+    std::string rel_path;
+    int64_t bytes = 0;
+    int64_t lines = 0;
+    int64_t tokens = 0;
+  };
+  std::vector<Row> rows;
+  rows.reserve(candidates.size());
+
+  for (const auto& c : candidates) {
+    std::filesystem::path abs(c.abs_path);
+    ec.clear();
+    if (!std::filesystem::exists(abs, ec) || !std::filesystem::is_regular_file(abs, ec)) continue;
+    int64_t bytes = 0;
+    ec.clear();
+    const auto size = std::filesystem::file_size(abs, ec);
+    if (!ec) bytes = (int64_t)size;
+    int64_t lines = 0;
+    (void)count_lines(abs, &lines);
+    Row r;
+    r.tier = c.tier.empty() ? "other" : c.tier;
+    r.rel_path = c.rel_path.empty() ? memory_relpath(abs, mem_root) : c.rel_path;
+    r.bytes = bytes;
+    r.lines = lines;
+    r.tokens = estimate_tokens(bytes);
+    rows.push_back(std::move(r));
+  }
+
+  if (rows.empty()) return false;
+
+  std::ostringstream oss;
+  oss
+    << "DURABLE_MEMORY_INDEX\n"
+    << "- This is a lightweight index of durable memory files on disk.\n"
+    << "- Token estimates are approximate (bytes/4). Use memory_search and memory_get for details.\n"
+    << "- Use memory_write/memory_put to update durable memory when facts change.\n";
+
+  for (const auto& r : rows) {
+    oss << "\n[" << r.tier << " " << r.rel_path << "]"
+        << " lines=" << r.lines
+        << " bytes=" << r.bytes
+        << " ~tokens=" << r.tokens << "\n";
+  }
+
+  std::string s = oss.str();
+  const size_t kTotalCap = pol.total_cap == 0 ? (size_t)12000 : std::min<size_t>(pol.total_cap, (size_t)40000);
+  if (s.size() > kTotalCap) s.resize(kTotalCap);
+  *out_text = std::move(s);
+  return true;
+}
+
 static bool build_memory_search_context_text(
   const std::filesystem::path& mem_root,
   const std::string& session_id,
@@ -396,6 +482,10 @@ bool build_memory_context_text(
   if (state_dir.empty()) return false;
 
   const std::filesystem::path mem_root = std::filesystem::path(state_dir) / "memory";
+  if (pol.mode == MemoryContextMode::Index) {
+    if (build_memory_index_context_text(mem_root, session_id, pol, out_text)) return true;
+    return false;
+  }
   if (pol.mode == MemoryContextMode::Search) {
     if (build_memory_search_context_text(mem_root, session_id, pol, query, out_text)) return true;
     if (!pol.search_fallback_to_files) return false;
@@ -424,6 +514,7 @@ agent_session_t* clone_session_with_memory_context(const agent_session_t* src, c
     if (role == AGENT_ROLE_SYSTEM && !content.empty()) {
       if (content.rfind("DURABLE_MEMORY_CONTEXT", 0) == 0) return;
       if (content.rfind("DURABLE_MEMORY_SEARCH_CONTEXT", 0) == 0) return;
+      if (content.rfind("DURABLE_MEMORY_INDEX", 0) == 0) return;
     }
     (void)agent_session_add_message(ns, role, content.c_str());
   };

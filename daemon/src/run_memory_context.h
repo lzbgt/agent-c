@@ -9,6 +9,7 @@ namespace agentd {
 enum class MemoryContextMode {
   Files,
   Search,
+  Index,
 };
 
 struct MemoryContextPolicy {

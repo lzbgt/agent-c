@@ -2241,8 +2241,8 @@ components:
           enum: [none, basic, host]
         memory_context_mode:
           type: string
-          enum: [files, search]
-          description: Memory context injection mode (files=load durable Markdown files; search=ranked memory snippets).
+          enum: [files, search, index]
+          description: Memory context injection mode (files=load durable Markdown files; search=ranked memory snippets; index=progressive file index).
         memory_include_structured:
           type: boolean
           description: When true, include memory/STRUCTURED.md in file-based memory context.

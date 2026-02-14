@@ -27,7 +27,7 @@ When `tools="host"`, agentd can inject a **durable memory context** as a system 
 
 Run request knobs (file mode + search mode share the same memory root):
 
-- `memory_context_mode`: `"files"` (default) or `"search"`.
+- `memory_context_mode`: `"files"` (default), `"search"`, or `"index"` (progressive disclosure; `"progressive"` alias supported).
 - `memory_include_structured`, `memory_include_core`, `memory_include_daily`, `memory_include_session`
 - `memory_daily_days` (clamped), `memory_total_cap` (clamped)
 - `memory_search_query` (defaults to prompt when omitted)
@@ -37,6 +37,23 @@ Run request knobs (file mode + search mode share the same memory root):
 
 Search mode injects a system message that starts with `DURABLE_MEMORY_SEARCH_CONTEXT` and includes citations
 in the form `[tier path:line]` so the model can reference and refine memory deterministically.
+
+### Progressive disclosure index mode
+
+`memory_context_mode="index"` injects a lightweight index instead of full content:
+
+```
+DURABLE_MEMORY_INDEX
+- This is a lightweight index of durable memory files on disk.
+- Token estimates are approximate (bytes/4). Use memory_search and memory_get for details.
+
+[structured STRUCTURED.md] lines=42 bytes=9101 ~tokens=2276
+[core MEMORY.md] lines=18 bytes=2100 ~tokens=525
+[daily 2026-02-14.md] lines=120 bytes=14320 ~tokens=3580
+```
+
+This mirrors the claude-mem style of “show what exists + cost first,” keeping context lean while still
+giving the agent enough signals to fetch the right details on demand.
 
 ### `memory_search` tiers + citations
 
