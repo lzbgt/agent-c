@@ -152,8 +152,9 @@ export default function ConversationView({
 }) {
   const [ackError, setAckError] = React.useState<string | null>(null);
   const [ackedKeys, setAckedKeys] = React.useState<Record<string, boolean>>({});
-  const shownUiActionRef = React.useRef<Record<string, boolean>>({});
-  const autoSceneApplyRef = React.useRef<Record<string, boolean>>({});
+  const shownUiActionRef = React.useRef<Record<string, number>>({});
+  const autoSceneApplyRef = React.useRef<Record<string, number>>({});
+  const localUiActionLimit = 2000;
 
   const postClientEvent = React.useCallback(
     async (type: string, data: any) => {
@@ -179,6 +180,20 @@ export default function ConversationView({
     [baseUrl, client, daemonAuth, sessionId],
   );
 
+  const markSeenWithLimit = (store: Record<string, number>, key: string, limit: number) => {
+    if (!key) return;
+    store[key] = Date.now();
+    const keys = Object.keys(store);
+    if (keys.length <= limit) return;
+    const items = keys
+      .map((k) => ({ k, ts: store[k] || 0 }))
+      .sort((a, b) => a.ts - b.ts);
+    const overflow = items.length - limit;
+    for (let i = 0; i < overflow; i += 1) {
+      delete store[items[i].k];
+    }
+  };
+
   // Fundamental DoD handshake: when the UI renders a derived ui_action event, emit a client event so the agent
   // can deterministically stop repeating the same “show/play/notify” requests.
   React.useEffect(() => {
@@ -192,7 +207,7 @@ export default function ConversationView({
       if (shownUiActionRef.current[toolCallId]) return;
       const action = data?.action ?? {};
       const atype = String(action?.type ?? "");
-      shownUiActionRef.current[toolCallId] = true;
+      markSeenWithLimit(shownUiActionRef.current, toolCallId, localUiActionLimit);
       void postClientEvent("ui_action_shown", { tool_call_id: toolCallId, action_type: atype, title: action?.title }).catch(() => {});
     });
   }, [events, postClientEvent, sessionId]);
@@ -300,7 +315,7 @@ export default function ConversationView({
 
       const ackKey = `entity_apply:${toolCallId || rpcId || idx}`;
       if (autoSceneApplyRef.current[ackKey]) return;
-      autoSceneApplyRef.current[ackKey] = true;
+      markSeenWithLimit(autoSceneApplyRef.current, ackKey, localUiActionLimit);
 
       const rpcArgs = typeof rpc?.args === "object" && rpc?.args ? rpc.args : rpc;
       const ops = entityApplyArgsToOps(rpcArgs);
@@ -375,7 +390,7 @@ export default function ConversationView({
   let sawToolOrAssistant = false;
   let lastHeartbeat: any = null;
 
-  const probeRanRef = React.useRef<Record<string, boolean>>({});
+  const probeRanRef = React.useRef<Record<string, number>>({});
   const pendingAutoRunsRef = React.useRef<Record<string, () => void>>({});
   const rpcCleanupRef = React.useRef<
     Record<
@@ -1643,7 +1658,7 @@ export default function ConversationView({
         // Avoid running entity_apply during render; it is handled in an effect so Scene updates reliably.
         // Also allow callers (e.g. history views) to disable auto-running client RPCs entirely.
         if (!disableAutoClientRpcs && autoRun && rpcKind !== "entity_apply" && !alreadyRan && canRun) {
-          probeRanRef.current[ackKey] = true;
+          markSeenWithLimit(probeRanRef.current, ackKey, localUiActionLimit);
           globalOnce[globalKey] = true;
           pendingAutoRunsRef.current[globalKey] = () => {
             void runRpc().catch(() => {});
@@ -1690,7 +1705,7 @@ export default function ConversationView({
                       : ""
                 }
                 onClick={() => {
-                  probeRanRef.current[ackKey] = true;
+                  markSeenWithLimit(probeRanRef.current, ackKey, localUiActionLimit);
                   void runRpc().catch(() => {});
                 }}
               >
