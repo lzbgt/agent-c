@@ -151,7 +151,8 @@ export default function ConversationView({
   onSceneApply?: (ops: any[]) => any;
 }) {
   const [ackError, setAckError] = React.useState<string | null>(null);
-  const [ackedKeys, setAckedKeys] = React.useState<Record<string, boolean>>({});
+  const [ackedKeys, setAckedKeys] = React.useState<Record<string, number>>({});
+  const ackedKeyLimit = 2000;
   const shownUiActionRef = React.useRef<Record<string, number>>({});
   const autoSceneApplyRef = React.useRef<Record<string, number>>({});
   const localUiActionLimit = 2000;
@@ -178,6 +179,24 @@ export default function ConversationView({
       }
     },
     [baseUrl, client, daemonAuth, sessionId],
+  );
+
+  const markAckedKey = React.useCallback(
+    (key: string) => {
+      if (!key) return;
+      setAckedKeys((prev) => {
+        const next: Record<string, number> = { ...prev, [key]: Date.now() };
+        const keys = Object.keys(next);
+        if (keys.length <= ackedKeyLimit) return next;
+        keys.sort((a, b) => (next[a] || 0) - (next[b] || 0));
+        const overflow = keys.length - ackedKeyLimit;
+        for (let i = 0; i < overflow; i += 1) {
+          delete next[keys[i]];
+        }
+        return next;
+      });
+    },
+    [ackedKeyLimit],
   );
 
   const markSeenWithLimit = (store: Record<string, number>, key: string, limit: number) => {
@@ -1779,7 +1798,7 @@ export default function ConversationView({
                         url: safeTrunc(String(window?.location?.href ?? ""), 400),
                         media: gatherMediaSnapshot(),
                       });
-                      setAckedKeys((prev) => ({ ...prev, [ackKey]: true }));
+                      markAckedKey(ackKey);
                     } catch (e) {
                       setAckError(String(e));
                     }
@@ -1820,7 +1839,7 @@ export default function ConversationView({
                         title,
                         message: msg,
                       });
-                      setAckedKeys((prev) => ({ ...prev, [ackKey]: true }));
+                      markAckedKey(ackKey);
                     } catch (e) {
                       setAckError(String(e));
                     }
