@@ -197,6 +197,7 @@ Operational endpoints can also be routed through the proxy:
 - `GET  /v1/agents/{agent_id}/proxy/api/v1/ota/status`
 
 Use `X-Agentd-Deployment` to target a specific deployment, or omit it to target the broker’s most recent deployment.
+`/api/v1/ota/status` surfaces drain hints (`drain_active`, `drain_until_unix_ms`, `drain_reason`) during updates.
 
 ### Orchestration (fan-out)
 

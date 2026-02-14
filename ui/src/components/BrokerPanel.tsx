@@ -76,6 +76,9 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   const [otaBusy, setOtaBusy] = React.useState<boolean>(false);
   const [otaError, setOtaError] = React.useState<string | null>(null);
   const [otaResults, setOtaResults] = React.useState<any[] | null>(null);
+  const [otaStatusBusy, setOtaStatusBusy] = React.useState<boolean>(false);
+  const [otaStatusError, setOtaStatusError] = React.useState<string | null>(null);
+  const [otaStatusResults, setOtaStatusResults] = React.useState<any[] | null>(null);
 
   const [auditLimit, setAuditLimit] = React.useState<string>("200");
   const limitValue = React.useMemo(() => {
@@ -206,6 +209,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   const runOtaUpdate = async () => {
     setOtaError(null);
     setOtaResults(null);
+    setOtaStatusResults(null);
     const url = String(otaUrl || "").trim();
     if (!url) {
       setOtaError("missing OTA url");
@@ -257,6 +261,45 @@ export default function BrokerPanel(props: BrokerPanelProps) {
       setOtaError(String(e));
     } finally {
       setOtaBusy(false);
+    }
+  };
+
+  const runOtaStatus = async () => {
+    setOtaStatusError(null);
+    setOtaStatusResults(null);
+    if (!agentId) {
+      setOtaStatusError("missing agent_id");
+      return;
+    }
+    if (selectedDeployments.length === 0) {
+      setOtaStatusError("select at least one deployment");
+      return;
+    }
+    setOtaStatusBusy(true);
+    try {
+      const settled = await Promise.allSettled(
+        selectedDeployments.map(async (deploymentId) => {
+          const res = await apiBrokerProxyJson(base, agentId, "/api/v1/ota/status", "GET", undefined, props.auth, deploymentId);
+          return {
+            deployment_id: deploymentId,
+            status: res.status,
+            data: res.data,
+          };
+        }),
+      );
+      const results = settled.map((r, idx) => {
+        if (r.status === "fulfilled") return r.value;
+        return {
+          deployment_id: selectedDeployments[idx],
+          status: 0,
+          data: { ok: false, error: String(r.reason || "request failed") },
+        };
+      });
+      setOtaStatusResults(results);
+    } catch (e) {
+      setOtaStatusError(String(e));
+    } finally {
+      setOtaStatusBusy(false);
     }
   };
 
@@ -602,6 +645,58 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                 })}
               </div>
             ) : null}
+
+            <div className="mt-3 grid gap-2">
+              <FieldLabel>OTA status</FieldLabel>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={!agentId || otaStatusBusy || selectedDeployments.length === 0}
+                onClick={() => void runOtaStatus()}
+              >
+                {otaStatusBusy ? "Checking…" : "Fetch OTA status"}
+              </button>
+              {otaStatusError ? (
+                <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+                  {otaStatusError}
+                </div>
+              ) : null}
+              {otaStatusResults && otaStatusResults.length > 0 ? (
+                <div className="grid gap-2">
+                  {otaStatusResults.map((row) => {
+                    const depId = String(row?.deployment_id || "");
+                    const status = row?.status;
+                    const ok = row?.data?.ok === true;
+                    const planStatus = row?.data?.status || "unknown";
+                    const updated = fmtTs(row?.data?.updated_unix_ms);
+                    const drainActive = row?.data?.drain_active === true;
+                    const drainUntil = fmtTs(row?.data?.drain_until_unix_ms);
+                    const drainReason = row?.data?.drain_reason;
+                    const otaId = row?.data?.ota_id;
+                    const err = row?.data?.last_error || row?.data?.error || row?.data?.err;
+                    return (
+                      <div
+                        key={`ota-status-${depId}`}
+                        className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70"
+                      >
+                        <div className="text-xs text-white/90">
+                          {depId} · {ok ? "ok" : "error"} · http {status}
+                        </div>
+                        <div className="text-[11px] text-white/50">
+                          {planStatus ? `status ${planStatus}` : "no status"}
+                          {otaId ? ` · ota ${String(otaId)}` : ""}
+                          {updated ? ` · updated ${updated}` : ""}
+                          {drainActive ? " · draining" : " · idle"}
+                          {drainUntil ? ` (until ${drainUntil})` : ""}
+                          {drainReason ? ` · reason ${String(drainReason)}` : ""}
+                          {err ? ` · ${String(err)}` : ""}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
           </div>
         </section>
 

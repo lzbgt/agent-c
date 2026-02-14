@@ -59,6 +59,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] Broker multi-deployment routing (`deployment_id`, `X-Agentd-Deployment`) + WebUI deployment selector + docs.
   - [x] OTA update pipeline: agentd OTA endpoint + operator update command, WebUI multi-deployment fanout via broker proxy.
   - [x] OTA task continuity: drain mode + documented restart recovery for async jobs/workflows after update.
+  - [x] WebUI OTA status polling per deployment (drain + error surfacing).
 3) **Next-gen contract foundation (agent-core + agentd + broker + WebUI)** — make interop explicit and replayable.
   - [x] Add a unified capability descriptor (`/api/v1/caps`) with protocol versions + limits (agentd + WebUI + broker proxy).
   - [x] WebUI: use `/api/v1/caps` to hide/disable unsupported features and cache last-known caps.
