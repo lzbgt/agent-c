@@ -14,7 +14,8 @@ fi
 LOG_DIR="$(agentd_smoke_log_dir)"
 mkdir -p "${LOG_DIR}"
 
-PORT_DAEMON="$(agentd_smoke_pick_port)"
+PORT_BODY="$(agentd_smoke_pick_port)"
+PORT_HEADER="$(agentd_smoke_pick_port)"
 HOST="127.0.0.1"
 
 cleanup() {
@@ -25,7 +26,7 @@ cleanup() {
 trap cleanup EXIT
 
 export AGENTD_HTTP_MAX_BODY_BYTES=256
-agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_http_body_limit_smoke" \
+agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_BODY}" "agentd_http_body_limit_smoke" \
   --tools none \
   --no-yolo
 
@@ -63,7 +64,7 @@ agentd_smoke_stop
 unset AGENTD_HTTP_MAX_BODY_BYTES
 
 export AGENTD_HTTP_MAX_HEADER_BYTES=256
-agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_http_header_limit_smoke" \
+agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_HEADER}" "agentd_http_header_limit_smoke" \
   --tools none \
   --no-yolo
 

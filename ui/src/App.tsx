@@ -230,10 +230,14 @@ export default function App() {
     const pid = String(profileId || "").trim();
     const base = String(effectiveBase || "").trim();
     const baseKey = base ? `base:${base}` : "base:default";
-    return pid ? `profile:${pid}::${baseKey}` : baseKey;
-  }, [effectiveBase, profileId]);
+    const deployment =
+      connection.mode === "broker" ? String(connection.brokerDeploymentId || "").trim() : "";
+    const deploymentKey = deployment ? `deployment:${deployment}` : "";
+    if (!deploymentKey) return pid ? `profile:${pid}::${baseKey}` : baseKey;
+    return pid ? `profile:${pid}::${baseKey}::${deploymentKey}` : `${baseKey}::${deploymentKey}`;
+  }, [connection.brokerDeploymentId, connection.mode, effectiveBase, profileId]);
 
-  // Session selection is scoped by profile id (or base URL as fallback) so multi-deployment profiles don't collide.
+  // Session selection is scoped by profile id (or base URL as fallback), with deployment id included when set.
   const [sessionByScopeJson, setSessionByScopeJson] = useLocalStorageState("agentui.sessionByScope", "{}");
   const [sessionByBaseJson] = useLocalStorageState("agentui.sessionByBase", "{}");
   const sessionId = React.useMemo(() => {

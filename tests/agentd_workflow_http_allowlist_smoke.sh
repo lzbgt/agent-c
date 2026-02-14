@@ -14,13 +14,9 @@ fi
 LOG_DIR="$(agentd_smoke_log_dir)"
 mkdir -p "${LOG_DIR}"
 
-PORT_DAEMON="$(agentd_smoke_pick_port)"
 PORT_STUB="$(agentd_smoke_pick_port)"
 HOST="127.0.0.1"
 NAME="agentd_workflow_http_allowlist_smoke"
-
-DB_PATH="${LOG_DIR}/${NAME}_${PORT_DAEMON}.sqlite"
-STATE_DIR="${LOG_DIR}/${NAME}_${PORT_DAEMON}.state"
 
 cleanup() {
   agentd_smoke_stop
@@ -74,8 +70,10 @@ run_one() {
   local expect_status="$4" # done|error
 
   agentd_smoke_stop
-  rm -f "${DB_PATH}" >/dev/null 2>&1 || true
-  rm -rf "${STATE_DIR}" >/dev/null 2>&1 || true
+  local port_daemon
+  port_daemon="$(agentd_smoke_pick_port)"
+  local db_path="${LOG_DIR}/${NAME}_${expect_status}_${port_daemon}.sqlite"
+  local state_dir="${LOG_DIR}/${NAME}_${expect_status}_${port_daemon}.state"
 
   local extra=()
   if [[ -n "${allow_host}" ]]; then
@@ -88,9 +86,9 @@ run_one() {
     extra+=(--workflow-http-deny-private)
   fi
 
-  agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "${NAME}_${expect_status}" \
-    --db-path "${DB_PATH}" \
-    --state-dir "${STATE_DIR}" \
+  agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${port_daemon}" "${NAME}_${expect_status}" \
+    --db-path "${db_path}" \
+    --state-dir "${state_dir}" \
     --tools none \
     --workflow-enable-http-tasks \
     "${extra[@]}"
