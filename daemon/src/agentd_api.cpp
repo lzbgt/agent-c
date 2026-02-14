@@ -11,6 +11,7 @@
 #include "edge_interop_endpoints.h"
 #include "file_endpoint.h"
 #include "health_endpoint.h"
+#include "job_manager.h"
 #include "job_endpoints.h"
 #include "memory_endpoints.h"
 #include "orchestrate_endpoints.h"
@@ -30,6 +31,7 @@
 
 #include "openai_client.h"
 
+#include <atomic>
 #include <chrono>
 #include <cctype>
 #include <filesystem>
@@ -246,6 +248,7 @@ struct AgentdApi::Impl {
   AgentDb db;
   std::unique_ptr<DaemonConfigStore> cfg_store;
   const std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
+  std::atomic<int64_t> last_job_gc_ms{0};
 
   std::map<RouteKey, Handler> routes;
 
@@ -256,6 +259,17 @@ struct AgentdApi::Impl {
 
   void route(const std::string& method, const std::string& path, Handler h) {
     routes[RouteKey{method, path}] = h;
+  }
+
+  void maybe_job_gc() {
+    if (!cfg_store) return;
+    const DaemonConfig cfg = cfg_store->snapshot();
+    if (cfg.job_ttl_ms <= 0 && cfg.max_jobs == 0) return;
+    const int64_t now = now_unix_ms();
+    int64_t last = last_job_gc_ms.load(std::memory_order_relaxed);
+    if (now - last < 2000) return;
+    if (!last_job_gc_ms.compare_exchange_strong(last, now, std::memory_order_relaxed)) return;
+    job_gc(cfg.job_ttl_ms, cfg.max_jobs);
   }
 };
 
@@ -410,6 +424,11 @@ bool AgentdApi::init(std::string* out_error) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();
     handle_memory_query_endpoint(cur, self->cors_cfg, req, resp);
+  });
+  impl_->route("GET", "/api/v1/memory/index", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_memory_index_endpoint(cur, self->cors_cfg, req, resp);
   });
 
   impl_->route("GET", "/api/v1/sessions", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
@@ -641,6 +660,8 @@ bool AgentdApi::handle(const HttpRequest& req, HttpResponse* resp) {
     resp->body = "{\"ok\":false,\"error\":\"agentd api not initialized\"}";
     return true;
   }
+
+  impl_->maybe_job_gc();
 
   // Minimal OPTIONS behavior (used by HTTP transport CORS preflight).
   if (req.method == "OPTIONS") {

@@ -2,6 +2,7 @@ import React from "react";
 import {
   apiMemoryCheckpoints,
   apiMemoryCorrelate,
+  apiMemoryIndex,
   apiMemoryQuery,
   type ApiAuth,
 } from "../api";
@@ -47,6 +48,16 @@ export default function MemoryPanel(props: MemoryPanelProps) {
   const [checkpointResult, setCheckpointResult] = React.useState<any | null>(null);
   const [checkpointError, setCheckpointError] = React.useState<string | null>(null);
   const [checkpointBusy, setCheckpointBusy] = React.useState<boolean>(false);
+
+  const [indexSessionId, setIndexSessionId] = React.useState<string>("");
+  const [indexIncludeStructured, setIndexIncludeStructured] = React.useState<boolean>(true);
+  const [indexIncludeCore, setIndexIncludeCore] = React.useState<boolean>(true);
+  const [indexIncludeDaily, setIndexIncludeDaily] = React.useState<boolean>(true);
+  const [indexIncludeSession, setIndexIncludeSession] = React.useState<boolean>(false);
+  const [indexDailyDays, setIndexDailyDays] = React.useState<string>("2");
+  const [indexResult, setIndexResult] = React.useState<any | null>(null);
+  const [indexError, setIndexError] = React.useState<string | null>(null);
+  const [indexBusy, setIndexBusy] = React.useState<boolean>(false);
 
   const parsePositiveInt = (raw: string, fallback: number) => {
     const n = Number.parseInt(String(raw || "").trim(), 10);
@@ -141,6 +152,36 @@ export default function MemoryPanel(props: MemoryPanelProps) {
     }
   };
 
+  const runIndex = async () => {
+    setIndexError(null);
+    setIndexResult(null);
+    if (!canQuery) {
+      setIndexError("missing base URL");
+      return;
+    }
+    setIndexBusy(true);
+    try {
+      const res = await apiMemoryIndex(
+        base,
+        {
+          sessionId: indexSessionId.trim() || undefined,
+          includeStructured: indexIncludeStructured,
+          includeCore: indexIncludeCore,
+          includeDaily: indexIncludeDaily,
+          includeSession: indexIncludeSession,
+          dailyDays: parsePositiveInt(indexDailyDays, 2),
+        },
+        props.auth,
+      );
+      if (!res.ok) throw new Error(res.error || "index failed");
+      setIndexResult(res);
+    } catch (e) {
+      setIndexError(String(e));
+    } finally {
+      setIndexBusy(false);
+    }
+  };
+
   return (
     <details
       className="mb-4 rounded-lg border border-white/10 bg-white/5 px-3 py-2"
@@ -150,7 +191,7 @@ export default function MemoryPanel(props: MemoryPanelProps) {
       <summary className="cursor-pointer select-none text-xs text-white/80">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="font-semibold text-white/80">Memory explorer</div>
-          <div className="text-[11px] text-white/50">Query structured memory + correlate by trace_id</div>
+          <div className="text-[11px] text-white/50">Query structured memory + correlate by trace_id + index files</div>
         </div>
       </summary>
 
@@ -360,6 +401,83 @@ export default function MemoryPanel(props: MemoryPanelProps) {
           {checkpointResult ? (
             <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/70">
               {stringifyJson(checkpointResult)}
+            </pre>
+          ) : null}
+        </section>
+
+        <section className="rounded-md border border-white/10 bg-black/20 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold text-white/80">Memory index</div>
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={indexBusy || !canQuery}
+                onClick={() => void runIndex()}
+              >
+                {indexBusy ? "Loading…" : "Index"}
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={indexBusy}
+                onClick={() => {
+                  setIndexError(null);
+                  setIndexResult(null);
+                }}
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+          <div className="grid gap-2 text-[11px] text-white/70">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Session ID (optional)</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={indexSessionId}
+                  onChange={(e) => setIndexSessionId(e.target.value)}
+                  placeholder="session_..."
+                />
+              </div>
+              <div>
+                <FieldLabel>Daily days</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={indexDailyDays}
+                  onChange={(e) => setIndexDailyDays(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={indexIncludeStructured} onChange={(e) => setIndexIncludeStructured(e.target.checked)} />
+                <span>Include structured</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={indexIncludeCore} onChange={(e) => setIndexIncludeCore(e.target.checked)} />
+                <span>Include core</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={indexIncludeDaily} onChange={(e) => setIndexIncludeDaily(e.target.checked)} />
+                <span>Include daily</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={indexIncludeSession} onChange={(e) => setIndexIncludeSession(e.target.checked)} />
+                <span>Include session</span>
+              </label>
+            </div>
+          </div>
+          {indexError ? (
+            <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+              {indexError}
+            </div>
+          ) : null}
+          {indexResult ? (
+            <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/70">
+              {stringifyJson(indexResult)}
             </pre>
           ) : null}
         </section>

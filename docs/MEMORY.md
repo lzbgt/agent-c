@@ -183,6 +183,7 @@ In addition to the tool surface, `agentd` exposes correlation helpers:
   - optional filters: `structured_path=...` and `key_prefix=...`
 - `GET /api/v1/memory/query?...&key_prefix=...` — bounded query over the **current view** of structured memory
   (reads the newest checkpoint in the requested time window)
+- `GET /api/v1/memory/index` — lightweight index of memory files (paths + size/line/token estimates)
 
 ## WebUI Memory Explorer
 

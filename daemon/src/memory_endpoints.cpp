@@ -5,14 +5,19 @@
 #include "json_util.h"
 #include "memory_checkpoints.h"
 #include "memory_consolidator.h"
+#include "session_id_util.h"
 
 #include <json/json.h>
 
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <climits>
 #include <cstdint>
+#include <cstdio>
+#include <ctime>
 #include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -22,6 +27,48 @@ namespace {
 static std::filesystem::path memory_root_from_cfg(const DaemonConfig& cfg) {
   if (cfg.state_dir.empty()) return {};
   return (std::filesystem::path(cfg.state_dir) / "memory").lexically_normal();
+}
+
+static std::string local_date_ymd_days_ago(int days_ago) {
+  const auto now = std::chrono::system_clock::now() - std::chrono::hours(24 * std::max(0, days_ago));
+  std::time_t t = std::chrono::system_clock::to_time_t(now);
+  std::tm tm{};
+#if defined(_WIN32)
+  localtime_s(&tm, &t);
+#else
+  localtime_r(&t, &tm);
+#endif
+  char buf[32];
+  std::snprintf(buf, sizeof(buf), "%04d-%02d-%02d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+  return std::string(buf);
+}
+
+static bool count_lines_capped(const std::filesystem::path& p, int64_t* out_lines) {
+  if (!out_lines) return false;
+  *out_lines = 0;
+  std::ifstream in(p, std::ios::binary);
+  if (!in.is_open()) return false;
+  std::string line;
+  while (std::getline(in, line)) {
+    (*out_lines)++;
+    if (*out_lines > 1000000) break;
+  }
+  return true;
+}
+
+struct MemoryIndexRow {
+  std::string tier;
+  std::string rel_path;
+  int64_t bytes = 0;
+  int64_t lines = 0;
+  int64_t token_estimate = 0;
+};
+
+static std::string path_rel_to(const std::filesystem::path& root, const std::filesystem::path& abs) {
+  std::error_code ec;
+  std::filesystem::path rel = std::filesystem::relative(abs, root, ec);
+  if (ec) rel = abs.lexically_relative(root);
+  return rel.generic_string();
 }
 
 }  // namespace
@@ -402,6 +449,105 @@ void handle_memory_query_endpoint(
   out["entries"] = entries;
   out["returned"] = returned;
   resp->body = json_stringify(out);
+}
+
+void handle_memory_index_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  const std::filesystem::path mem_root = memory_root_from_cfg(cfg);
+  std::error_code ec;
+  if (mem_root.empty() || !std::filesystem::exists(mem_root, ec) || !std::filesystem::is_directory(mem_root, ec)) {
+    resp->status = 404;
+    resp->body = "{\"ok\":false,\"error\":\"memory root not found\"}";
+    return;
+  }
+
+  const auto session_q = query_get(req.query, "session_id");
+  const std::string session_id = session_q && !session_q->empty() ? *session_q : "";
+  if (!session_id.empty() && !session_id_is_safe(session_id)) {
+    resp->status = 400;
+    resp->body = "{\"ok\":false,\"error\":\"invalid session_id\"}";
+    return;
+  }
+
+  const auto include_structured_q = query_get(req.query, "include_structured");
+  const auto include_core_q = query_get(req.query, "include_core");
+  const auto include_daily_q = query_get(req.query, "include_daily");
+  const auto include_session_q = query_get(req.query, "include_session");
+  bool include_structured = include_structured_q ? string_to_bool(*include_structured_q) : true;
+  bool include_core = include_core_q ? string_to_bool(*include_core_q) : true;
+  bool include_daily = include_daily_q ? string_to_bool(*include_daily_q) : true;
+  bool include_session = include_session_q ? string_to_bool(*include_session_q) : true;
+
+  int daily_days = 2;
+  if (const auto v = query_get(req.query, "daily_days"); v && !v->empty()) {
+    try { daily_days = (int)std::stol(*v); } catch (...) { daily_days = 2; }
+  }
+  daily_days = std::max(0, std::min(31, daily_days));
+
+  std::vector<MemoryIndexRow> rows;
+  rows.reserve(8 + (size_t)daily_days);
+
+  auto push_row = [&](const std::string& tier, const std::filesystem::path& p) {
+    ec.clear();
+    if (!std::filesystem::exists(p, ec) || !std::filesystem::is_regular_file(p, ec)) return;
+    MemoryIndexRow row;
+    row.tier = tier;
+    row.rel_path = path_rel_to(mem_root, p);
+    row.bytes = (int64_t)std::filesystem::file_size(p, ec);
+    if (ec) row.bytes = 0;
+    (void)count_lines_capped(p, &row.lines);
+    row.token_estimate = row.bytes > 0 ? (row.bytes + 3) / 4 : 0;
+    rows.push_back(std::move(row));
+  };
+
+  if (include_structured) push_row("structured", mem_root / "STRUCTURED.md");
+  if (include_core) push_row("core", mem_root / "MEMORY.md");
+  if (include_daily) {
+    for (int i = 0; i < daily_days; i++) {
+      const std::string ymd = local_date_ymd_days_ago(i);
+      push_row("daily", mem_root / (ymd + ".md"));
+    }
+  }
+  if (include_session && !session_id.empty()) {
+    push_row("session", mem_root / "sessions" / (session_id + ".md"));
+  }
+
+  Json::Value o(Json::objectValue);
+  o["ok"] = true;
+  o["memory_root"] = mem_root.generic_string();
+  if (!session_id.empty()) o["session_id"] = session_id;
+  o["daily_days"] = daily_days;
+  o["include_structured"] = include_structured;
+  o["include_core"] = include_core;
+  o["include_daily"] = include_daily;
+  o["include_session"] = include_session;
+
+  Json::Value arr(Json::arrayValue);
+  int64_t total_bytes = 0;
+  int64_t total_tokens = 0;
+  for (const auto& r : rows) {
+    Json::Value row(Json::objectValue);
+    row["tier"] = r.tier;
+    row["path"] = r.rel_path;
+    row["bytes"] = (Json::Int64)r.bytes;
+    row["lines"] = (Json::Int64)r.lines;
+    row["token_estimate"] = (Json::Int64)r.token_estimate;
+    total_bytes += std::max<int64_t>(0, r.bytes);
+    total_tokens += std::max<int64_t>(0, r.token_estimate);
+    arr.append(row);
+  }
+  o["files"] = arr;
+  o["total_bytes"] = (Json::Int64)total_bytes;
+  o["total_token_estimate"] = (Json::Int64)total_tokens;
+  resp->body = json_stringify(o);
 }
 
 }  // namespace agentd

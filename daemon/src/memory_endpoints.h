@@ -43,4 +43,13 @@ void handle_memory_query_endpoint(
   HttpResponse* resp
 );
 
+// GET /api/v1/memory/index
+// Lightweight index of memory files (paths + size/line/token estimates).
+void handle_memory_index_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
 }  // namespace agentd

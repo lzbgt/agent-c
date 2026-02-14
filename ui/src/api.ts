@@ -1477,6 +1477,14 @@ export const MemoryCheckpointsRespSchema = z
   .passthrough();
 export type MemoryCheckpointsResp = z.infer<typeof MemoryCheckpointsRespSchema>;
 
+export const MemoryIndexRespSchema = z
+  .object({
+    ok: z.boolean(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+export type MemoryIndexResp = z.infer<typeof MemoryIndexRespSchema>;
+
 type MemoryQueryParams = {
   sinceUtcMs?: number;
   untilUtcMs?: number;
@@ -1500,6 +1508,15 @@ type MemoryCheckpointsParams = {
   untilUtcMs?: number;
   structuredPath?: string;
   limit?: number;
+};
+
+type MemoryIndexParams = {
+  sessionId?: string;
+  includeStructured?: boolean;
+  includeCore?: boolean;
+  includeDaily?: boolean;
+  includeSession?: boolean;
+  dailyDays?: number;
 };
 
 const addQueryParam = (params: URLSearchParams, key: string, value?: string | number | boolean) => {
@@ -1557,4 +1574,22 @@ export async function apiMemoryCheckpoints(
   const r = await fetch(url, { headers: daemonHeaders(auth) });
   const j = await r.json();
   return MemoryCheckpointsRespSchema.parse(j);
+}
+
+export async function apiMemoryIndex(
+  base: string,
+  params: MemoryIndexParams,
+  auth?: ApiAuth,
+): Promise<MemoryIndexResp> {
+  const qs = new URLSearchParams();
+  addQueryParam(qs, "session_id", params.sessionId);
+  addQueryParam(qs, "include_structured", params.includeStructured);
+  addQueryParam(qs, "include_core", params.includeCore);
+  addQueryParam(qs, "include_daily", params.includeDaily);
+  addQueryParam(qs, "include_session", params.includeSession);
+  addQueryParam(qs, "daily_days", params.dailyDays);
+  const url = qs.toString() ? `${base}/api/v1/memory/index?${qs.toString()}` : `${base}/api/v1/memory/index`;
+  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return MemoryIndexRespSchema.parse(j);
 }
