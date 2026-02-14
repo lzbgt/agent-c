@@ -119,6 +119,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     if (!base || !agentId) return "";
     return `agentd:broker:otaStatus:${base}:${agentId}`;
   }, [base, agentId]);
+  const otaStatusCacheTtlMs = 10 * 60 * 1000;
 
   React.useEffect(() => {
     if (!otaStatusCacheKey) {
@@ -131,16 +132,22 @@ export default function BrokerPanel(props: BrokerPanelProps) {
       const raw = window.localStorage.getItem(otaStatusCacheKey);
       if (!raw) return;
       const parsed = JSON.parse(raw);
+      const ts = typeof parsed?.ts === "number" ? parsed.ts : 0;
+      if (ts <= 0) return;
+      if (Date.now() - ts > otaStatusCacheTtlMs) {
+        window.localStorage.removeItem(otaStatusCacheKey);
+        setOtaStatusResults(null);
+        setOtaStatusCachedAt(null);
+        return;
+      }
       const rows = Array.isArray(parsed?.results) ? parsed.results : null;
       if (!rows) return;
       setOtaStatusResults(rows);
-      if (typeof parsed?.ts === "number") {
-        setOtaStatusCachedAt(fmtTs(parsed.ts));
-      }
+      setOtaStatusCachedAt(fmtTs(ts));
     } catch {
       // ignore cache errors
     }
-  }, [otaStatusCacheKey]);
+  }, [otaStatusCacheKey, otaStatusCacheTtlMs]);
 
   const persistOtaStatusCache = (rows: any[]) => {
     if (!otaStatusCacheKey) return;
@@ -162,6 +169,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     } catch {
       // ignore cache errors
     }
+    setOtaStatusResults(null);
     setOtaStatusCachedAt(null);
   };
 
@@ -703,7 +711,16 @@ export default function BrokerPanel(props: BrokerPanelProps) {
             <div className="mt-3 grid gap-2">
               <FieldLabel>OTA status</FieldLabel>
               {otaStatusCachedAt ? (
-                <div className="text-[11px] text-white/50">Cached: {otaStatusCachedAt}</div>
+                <div className="flex items-center justify-between text-[11px] text-white/50">
+                  <span>Cached: {otaStatusCachedAt} (ttl 10m)</span>
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/60 hover:bg-black/40"
+                    type="button"
+                    onClick={() => clearOtaStatusCache()}
+                  >
+                    Clear
+                  </button>
+                </div>
               ) : null}
               <button
                 className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
