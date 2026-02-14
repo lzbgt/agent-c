@@ -114,9 +114,11 @@ Envelope authenticity (optional, UM‑BMP auth v0.4):
     - `edge_auth_kid_policy: "any"|"match_node"|"node_prefix"` (best-effort binding between `from:"node:<id>"` and `auth.kid`)
     - `edge_auth_hmac_keys: { "<kid>": "<secret>", "<kid2>": null }` (null clears)
     - `edge_auth_ed25519_pubkeys: { "<kid>": "<base64(pubkey32)>", "<kid2>": null }` (null clears)
-- Behavior:
-  - If `edge_auth_required=true`: missing/invalid `auth` is rejected with HTTP 401 (no inbox persistence).
-  - If `edge_auth_required=false`: unsigned envelopes are accepted, but if `auth` is present it must verify.
+    - `edge_attest_required: true|false` (when true, invoke-mode `TASK_DONE` must include `result.attest` with a matching `result_sha256`)
+    - `edge_attest_require_sig: true|false` (when true, invoke-mode `TASK_DONE` attestation signatures must verify)
+  - Behavior:
+    - If `edge_auth_required=true`: missing/invalid `auth` is rejected with HTTP 401 (no inbox persistence).
+    - If `edge_auth_required=false`: unsigned envelopes are accepted, but if `auth` is present it must verify.
 
 Task-loop correctness note (recommended, enforced by platform for known `TASK_*` types):
 - Nodes SHOULD echo `idempotency_key` for all task lifecycle messages (`TASK_ACK/TASK_EVENT/TASK_DONE/TASK_FAILED`),
@@ -132,11 +134,13 @@ Reliability note (important):
 - replay safety depends on message type: node-initiated handoffs are designed to be idempotent (`workflow_id` / `idempotency_key`),
     while event-style messages may produce duplicate logs if a crash occurred after side effects but before the processed marker was written.
 
-Attestation note (v0.2/v0.3 best-effort):
+Attestation note (v0.2/v0.3; enforceable via policy):
 - If a node includes `body.result.attest`, the platform persists that blob under `edge_tasks.attest_json` and **excludes**
   `attest` from the `edge_tasks.result_sha256` hash surface to avoid self-referential hashing.
 - Best-effort: if `attest` includes `{kid,alg,sig,ts_utc_ms,result_sha256}`, the platform verifies the signature when possible and
   emits evidence under task events (visible via `GET /api/v1/trace?trace_id=...`).
+- When `edge_attest_required=true`, invoke-mode `TASK_DONE` must include `result.attest` with a valid `result_sha256` (matching
+  the platform-computed hash). When `edge_attest_require_sig=true`, the attestation signature must also verify using the configured keys.
 
 ### Poll node outbox
 

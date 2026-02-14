@@ -1,6 +1,6 @@
 # Roadmap / TODOs (highest leverage)
 
-Date: 2026-02-13
+Date: 2026-02-14
 
 This roadmap is biased toward “power unleashed” coming from the **agentic framework itself**:
 
@@ -72,6 +72,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [ ] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
 - [ ] UI actions: stable public action API, autoplay unlock flow, and consented remote URL opens.
 - [ ] Interop/attestation: PKI provisioning + signed manifests/attestations + canonical JSON hashing + envelope confidentiality.
+  - [x] Agentd enforceable attestation policy (`edge_attest_required` + `edge_attest_require_sig`) with docs + tests.
 - [ ] AVM: scoped flag passthrough, host-effects policy, record/replay plumbing, and quorum/attestation.
 - [ ] Node consensus: decentralized coordination protocol with conflict resolution + deterministic simulation tests.
 

@@ -162,6 +162,8 @@ void handle_caps_endpoint(
     edge["auth_max_skew_ms"] = Json::Int64(cfg.edge_auth_max_skew_ms);
     edge["auth_require_seq"] = cfg.edge_auth_require_seq;
     edge["auth_kid_policy"] = cfg.edge_auth_kid_policy;
+    edge["attest_required"] = cfg.edge_attest_required;
+    edge["attest_require_sig"] = cfg.edge_attest_require_sig;
     features["edge"] = edge;
   }
   {

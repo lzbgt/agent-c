@@ -297,6 +297,11 @@ void handle_config_endpoint(
   edge_auth["ed25519_pubkeys_set"] = (Json::UInt64)cfg.edge_auth_ed25519_pubkeys.size();
   out["edge_auth"] = edge_auth;
 
+  Json::Value edge_attest(Json::objectValue);
+  edge_attest["required"] = cfg.edge_attest_required;
+  edge_attest["require_sig"] = cfg.edge_attest_require_sig;
+  out["edge_attest"] = edge_attest;
+
   Json::Value memory(Json::objectValue);
   memory["consolidate_interval_ms"] = (Json::Int64)cfg.memory_consolidate_interval_ms;
   memory["consolidate_daily_days"] = cfg.memory_consolidate_daily_days;
@@ -410,6 +415,12 @@ void handle_config_update_endpoint(
   if (args.isMember("edge_auth_kid_policy") && args["edge_auth_kid_policy"].isString()) {
     const std::string s = trim_copy(args["edge_auth_kid_policy"].asString());
     if (s == "any" || s == "match_node" || s == "node_prefix") next.edge_auth_kid_policy = s;
+  }
+  if (args.isMember("edge_attest_required") && args["edge_attest_required"].isBool()) {
+    next.edge_attest_required = args["edge_attest_required"].asBool();
+  }
+  if (args.isMember("edge_attest_require_sig") && args["edge_attest_require_sig"].isBool()) {
+    next.edge_attest_require_sig = args["edge_attest_require_sig"].asBool();
   }
   if (args.isMember("workflow_admit_max_inflight_tasks_per_session") && args["workflow_admit_max_inflight_tasks_per_session"].isInt()) {
     const int n = args["workflow_admit_max_inflight_tasks_per_session"].asInt();
@@ -723,6 +734,8 @@ void handle_config_update_endpoint(
   o["edge_auth_max_skew_ms"] = (Json::Int64)next.edge_auth_max_skew_ms;
   o["edge_auth_require_seq"] = next.edge_auth_require_seq;
   o["edge_auth_kid_policy"] = next.edge_auth_kid_policy;
+  o["edge_attest_required"] = next.edge_attest_required;
+  o["edge_attest_require_sig"] = next.edge_attest_require_sig;
   {
     Json::Value engines(Json::objectValue);
     Json::Value ah(Json::arrayValue);

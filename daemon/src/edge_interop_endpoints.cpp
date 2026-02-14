@@ -509,11 +509,16 @@ void handle_edge_message_endpoint(
     // Do not regress/override terminal states set by the platform (e.g. deadline sweeper) or earlier completion.
     // We still persist the event for observability.
     const bool apply_update = !terminal && !idempotency_mismatch;
-    const std::string effective_state = apply_update ? state : tr.state;
+    std::string state_eff = state;
+    std::string error_text_eff = error_text;
     bool attest_result_sha_mismatch = false;
     std::string attest_result_sha;
     std::string platform_hash_alg;
     std::string platform_c14n_error;
+    bool attest_present = false;
+    bool attest_sig_checked = false;
+    bool attest_sig_ok = false;
+    std::string attest_sig_error;
     if (apply_update) {
       if (state == "SUCCEEDED" && !result_json.empty()) {
         std::string stored_result_json = result_json;
@@ -567,6 +572,7 @@ void handle_edge_message_endpoint(
       if (state == "SUCCEEDED" && event_data.isObject() && event_data.isMember("result") && event_data["result"].isObject()) {
         const Json::Value result = event_data["result"];
         if (result.isMember("attest") && result["attest"].isObject()) {
+          attest_present = true;
           std::string aj = edge_json_stringify_compact(result["attest"]);
           if (aj.size() > 8192) aj.resize(8192);
           tr.attest_json = aj;
@@ -582,61 +588,11 @@ void handle_edge_message_endpoint(
         }
       }
     }
-    if (apply_update) {
-      tr.state = state;
-      tr.updated_utc_ms = ts_eff;
-      if (!result_json.empty() && state != "SUCCEEDED") tr.result_json = result_json;
-      if (!error_text.empty()) tr.error = error_text;
-      if (can_backfill_trace_id) tr.trace_id = msg_trace_id_eff;
-      (void)db_or_null->upsert_edge_task(tr, nullptr);
-    } else if (can_backfill_trace_id) {
-      tr.trace_id = msg_trace_id_eff;
-      tr.updated_utc_ms = std::max<int64_t>(tr.updated_utc_ms, ts_eff);
-      (void)db_or_null->upsert_edge_task(tr, nullptr);
-    }
-    AgentDb::EdgeTaskEventRow ev;
-    ev.task_id = task_id;
-    ev.step_id = step_id;
-    ev.ts_utc_ms = ts_eff;
-    ev.state = state;
     Json::Value d = event_data.isNull() ? Json::Value(Json::objectValue) : event_data;
-    // If the incoming message omitted trace, but the platform has a stored trace_id for this task,
-    // inject it so trace correlation remains durable across lossy/legacy transports.
-    if (!msg_trace_id_valid && !msg_trace_id.empty()) {
-      d["_trace_id_invalid"] = true;
-      d["_msg_trace_id"] = msg_trace_id;
-      if (d.isMember("trace")) d.removeMember("trace");
-    }
-    if (msg_trace_id_eff.empty() && !tr.trace_id.empty()) {
-      Json::Value trc(Json::objectValue);
-      trc["trace_id"] = tr.trace_id;
-      d["trace"] = trc;
-    } else if (!tr.trace_id.empty() && !msg_trace_id_eff.empty() && msg_trace_id_eff != tr.trace_id) {
-      d["_trace_id_mismatch"] = true;
-      d["_platform_trace_id"] = tr.trace_id;
-      d["_msg_trace_id"] = msg_trace_id_eff;
-    }
-    if (idempotency_mismatch) {
-      d["_ignored_by_platform"] = true;
-      d["_reason"] = "idempotency_key_mismatch";
-      d["_platform_idempotency_key"] = tr.idempotency_key;
-      d["_msg_idempotency_key"] = got_idem;
-    } else if (terminal && state != tr.state) {
-      d["_ignored_by_platform"] = true;
-      d["_platform_state"] = tr.state;
-    }
-    if (attest_result_sha_mismatch) {
-      d["_attest_result_sha256_mismatch"] = true;
-      d["_attest_result_sha256"] = attest_result_sha;
-      d["_platform_result_sha256"] = tr.result_sha256;
-    }
-    if (!platform_hash_alg.empty()) d["_platform_result_sha256_alg"] = platform_hash_alg;
-    if (!platform_c14n_error.empty()) d["_platform_result_c14n_error"] = platform_c14n_error;
-
-    // Best-effort: verify node-provided attestation signature when possible.
+    // Verify node-provided attestation signature when possible.
     //
-    // v0.2/v0.3 treat attest as best-effort metadata; we do not gate success on signature verification.
-    // We only emit evidence to task events for debugging/correlation.
+    // When `edge_attest_required` / `edge_attest_require_sig` are enabled, we may fail the task on
+    // missing/invalid attestation. Otherwise, we only emit evidence for debugging/correlation.
     if (d.isObject() && d.isMember("result") && d["result"].isObject() && d["result"].isMember("attest") && d["result"]["attest"].isObject()) {
       const Json::Value at = d["result"]["attest"];
       const std::string kid = at.isMember("kid") && at["kid"].isString() ? trim_copy(at["kid"].asString()) : "";
@@ -653,6 +609,7 @@ void handle_edge_message_endpoint(
         kid.size() <= 64 && edge_id_is_safe(kid);
 
       if (can_try) {
+        attest_sig_checked = true;
         d["_attest_sig_checked"] = true;
         d["_attest_sig_kid"] = kid;
         d["_attest_sig_alg"] = alg;
@@ -741,9 +698,102 @@ void handle_edge_message_endpoint(
             d["_attest_sig_error"] = "unsupported_alg";
           }
         }
+        if (d.isMember("_attest_sig_ok") && d["_attest_sig_ok"].isBool()) {
+          attest_sig_ok = d["_attest_sig_ok"].asBool();
+          if (!attest_sig_ok && d.isMember("_attest_sig_error") && d["_attest_sig_error"].isString()) {
+            attest_sig_error = trim_copy(d["_attest_sig_error"].asString());
+          }
+        }
       }
     }
 
+    if (apply_update && state == "SUCCEEDED") {
+      const bool enforce_attest = cfg.edge_attest_required && tr.mode == "invoke";
+      const bool enforce_sig = cfg.edge_attest_require_sig && tr.mode == "invoke";
+      if (enforce_attest) d["_attest_required"] = true;
+      if (enforce_sig) d["_attest_sig_required"] = true;
+      if (enforce_attest || enforce_sig) {
+        bool attest_fail = false;
+        std::string attest_fail_reason;
+        if (enforce_attest) {
+          if (!attest_present) {
+            attest_fail = true;
+            attest_fail_reason = "attest_required";
+          } else if (attest_result_sha.empty() || !edge_sha256_token_is_safe(attest_result_sha)) {
+            attest_fail = true;
+            attest_fail_reason = "attest_missing_result_sha256";
+          } else if (attest_result_sha_mismatch) {
+            attest_fail = true;
+            attest_fail_reason = "attest_result_sha256_mismatch";
+          }
+        }
+        if (!attest_fail && enforce_sig) {
+          if (!attest_sig_checked) {
+            attest_fail = true;
+            attest_fail_reason = "attest_sig_required";
+          } else if (!attest_sig_ok) {
+            attest_fail = true;
+            attest_fail_reason = attest_sig_error.empty() ? "attest_sig_invalid" : ("attest_sig_invalid:" + attest_sig_error);
+          }
+        }
+        if (attest_fail) {
+          state_eff = "FAILED";
+          error_text_eff = attest_fail_reason;
+          d["_attest_error"] = attest_fail_reason;
+        }
+      }
+    }
+
+    const std::string effective_state = apply_update ? state_eff : tr.state;
+    if (apply_update) {
+      tr.state = state_eff;
+      tr.updated_utc_ms = ts_eff;
+      if (!result_json.empty() && state_eff != "SUCCEEDED") tr.result_json = result_json;
+      if (!error_text_eff.empty()) tr.error = error_text_eff;
+      if (can_backfill_trace_id) tr.trace_id = msg_trace_id_eff;
+      (void)db_or_null->upsert_edge_task(tr, nullptr);
+    } else if (can_backfill_trace_id) {
+      tr.trace_id = msg_trace_id_eff;
+      tr.updated_utc_ms = std::max<int64_t>(tr.updated_utc_ms, ts_eff);
+      (void)db_or_null->upsert_edge_task(tr, nullptr);
+    }
+    // If the incoming message omitted trace, but the platform has a stored trace_id for this task,
+    // inject it so trace correlation remains durable across lossy/legacy transports.
+    if (!msg_trace_id_valid && !msg_trace_id.empty()) {
+      d["_trace_id_invalid"] = true;
+      d["_msg_trace_id"] = msg_trace_id;
+      if (d.isMember("trace")) d.removeMember("trace");
+    }
+    if (msg_trace_id_eff.empty() && !tr.trace_id.empty()) {
+      Json::Value trc(Json::objectValue);
+      trc["trace_id"] = tr.trace_id;
+      d["trace"] = trc;
+    } else if (!tr.trace_id.empty() && !msg_trace_id_eff.empty() && msg_trace_id_eff != tr.trace_id) {
+      d["_trace_id_mismatch"] = true;
+      d["_platform_trace_id"] = tr.trace_id;
+      d["_msg_trace_id"] = msg_trace_id_eff;
+    }
+    if (idempotency_mismatch) {
+      d["_ignored_by_platform"] = true;
+      d["_reason"] = "idempotency_key_mismatch";
+      d["_platform_idempotency_key"] = tr.idempotency_key;
+      d["_msg_idempotency_key"] = got_idem;
+    } else if (terminal && state != tr.state) {
+      d["_ignored_by_platform"] = true;
+      d["_platform_state"] = tr.state;
+    }
+    if (attest_result_sha_mismatch) {
+      d["_attest_result_sha256_mismatch"] = true;
+      d["_attest_result_sha256"] = attest_result_sha;
+      d["_platform_result_sha256"] = tr.result_sha256;
+    }
+    if (!platform_hash_alg.empty()) d["_platform_result_sha256_alg"] = platform_hash_alg;
+    if (!platform_c14n_error.empty()) d["_platform_result_c14n_error"] = platform_c14n_error;
+    AgentDb::EdgeTaskEventRow ev;
+    ev.task_id = task_id;
+    ev.step_id = step_id;
+    ev.ts_utc_ms = ts_eff;
+    ev.state = apply_update ? state_eff : state;
     ev.data_json = edge_json_stringify_compact(d);
     (void)db_or_null->insert_edge_task_event(ev, nullptr, nullptr);
 
@@ -760,7 +810,7 @@ void handle_edge_message_endpoint(
             if (s.state != effective_state) {
               s.state = effective_state;
               s.updated_utc_ms = ts_eff;
-              if (!error_text.empty()) s.error = error_text;
+              if (!error_text_eff.empty()) s.error = error_text_eff;
               (void)db_or_null->upsert_edge_workflow_step(s, nullptr);
             }
             AgentDb::EdgeWorkflowEventRow wev;
@@ -770,9 +820,9 @@ void handle_edge_message_endpoint(
             Json::Value wd(Json::objectValue);
             wd["workflow_id"] = task_id;
             wd["step_id"] = step_id;
-            wd["state"] = state;
+            wd["state"] = effective_state;
             if (!got_idem.empty()) wd["idempotency_key"] = got_idem;
-            if (!error_text.empty()) wd["error"] = error_text;
+            if (!error_text_eff.empty()) wd["error"] = error_text_eff;
             if (idempotency_mismatch) wd["_ignored_by_platform"] = true;
             wev.data_json = edge_json_stringify_compact(wd);
             (void)db_or_null->insert_edge_workflow_event(wev, nullptr, nullptr);
