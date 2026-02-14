@@ -29,6 +29,7 @@ import {
   type Caps,
   type AgentEvent,
 } from "./api";
+import { appendLiveEvents, capLiveEvents } from "./liveEvents";
 import HistoryPanel from "./components/HistoryPanel";
 import SceneView, { type SceneEntity } from "./components/SceneView";
 import PromptBar, { type Attachment } from "./components/PromptBar";
@@ -1419,9 +1420,9 @@ export default function App() {
           const next = typeof job.events_cursor_next === "number" ? job.events_cursor_next : cursorRef.current + ev.length;
           if (ev.length > 0) {
             if (job.events_reset) {
-              setLiveEvents(ev);
+              setLiveEvents(capLiveEvents(ev));
             } else {
-              setLiveEvents((prev) => prev.concat(ev));
+              setLiveEvents((prev) => appendLiveEvents(prev, ev));
             }
             cursorRef.current = next;
           }
@@ -1553,7 +1554,7 @@ export default function App() {
           } else if (evt.event === "agent_event") {
             try {
               const ev = JSON.parse(String(evt.data || "{}"));
-              setLiveEvents((prev) => prev.concat(ev));
+              setLiveEvents((prev) => appendLiveEvents(prev, ev));
             } catch {
               // ignore malformed
             }
@@ -1631,7 +1632,7 @@ export default function App() {
               const n = Number(evt.lastEventId);
               if (Number.isFinite(n)) cursorRef.current = n + 1;
             }
-            setLiveEvents((prev) => prev.concat(ev));
+            setLiveEvents((prev) => appendLiveEvents(prev, ev));
           } catch {
             // ignore malformed
           }

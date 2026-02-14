@@ -11,6 +11,10 @@ if [[ "${AGENT_DISABLE_NETWORK_TESTS:-}" == "1" ]]; then
   echo "SKIP: AGENT_DISABLE_NETWORK_TESTS=1" >&2
   exit 77
 fi
+if [[ "${AGENT_TEST_SKIP_OPENROUTER:-}" == "1" ]]; then
+  echo "SKIP: AGENT_TEST_SKIP_OPENROUTER=1" >&2
+  exit 77
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"

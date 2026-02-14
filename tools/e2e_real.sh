@@ -89,3 +89,4 @@ echo "[e2e] running playwright (log: ${e2e_log})"
 }
 
 echo "[e2e] OK"
+echo "[e2e] artifacts: ${ROOT}/ui/test-results/"

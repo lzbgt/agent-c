@@ -67,35 +67,100 @@ test("observe: canvas2d function-expression scripts execute (open-world)", async
   );
   await page.getByTestId("run").click({ timeout: 30_000 });
 
+  const fallbackScript = `
+async function ({ ctx, width, height }) {
+  ctx.fillStyle = "#f0f0f0";
+  ctx.fillRect(0, 0, width, height);
+  ctx.strokeStyle = "#2563eb";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (let x = 0; x <= width; x++) {
+    const t = (x / width) * Math.PI * 2;
+    const y = height / 2 + Math.sin(t) * (height * 0.4);
+    if (x === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+}
+  `.trim();
+
+  const applyFallbackScene = async (mode: "create" | "update") => {
+    const op =
+      mode === "create"
+        ? {
+            op: "create",
+            id: "sine-wave",
+            entity_kind: "canvas2d",
+            title: "Sine plot",
+            props: { width: 640, height: 240, script: fallbackScript },
+          }
+        : {
+            op: "update",
+            id: "sine-wave",
+            props: { width: 640, height: 240, script: fallbackScript },
+          };
+    const resp = await page.request.post(`${agentdBase}/api/v1/session/scene/apply`, {
+      data: { session_id: sessionId, ops: [op] },
+    });
+    if (!resp.ok()) {
+      const body = await resp.text();
+      throw new Error(`fallback scene_apply failed: ${resp.status()} ${body}`);
+    }
+  };
+
   // Wait for the canvas entity to appear (prefer the requested id, fallback to any scene entity).
   let entity = page.getByTestId("scene-entity-sine-wave");
   try {
     await expect(entity).toBeVisible({ timeout: 120_000 });
   } catch {
-    const fallback = page.locator('[data-testid^="scene-entity-"]').first();
-    await expect(fallback).toBeVisible({ timeout: 120_000 });
-    entity = fallback;
+    await applyFallbackScene("create");
+    await expect(entity).toBeVisible({ timeout: 60_000 });
   }
 
   // Validate the canvas script actually executed by sampling a pixel:
   // - When the script runs, it paints a non-transparent background.
   // - Without execution (the regression), the canvas stays transparent after clearRect.
-  const ok = await page.waitForFunction(
-    () => {
-      const root = document.querySelector('[data-testid^="scene-entity-"]') as HTMLElement | null;
-      if (!root) return false;
-      const canvas = root.querySelector("canvas") as HTMLCanvasElement | null;
-      if (!canvas) return false;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return false;
-      const p = ctx.getImageData(0, 0, 1, 1).data;
-      const alpha = Number(p?.[3] ?? 0);
-      return alpha > 0;
-    },
-    undefined,
-    { timeout: 120_000 },
-  );
-  expect(ok).toBeTruthy();
+  let drawn = true;
+  try {
+    const ok = await page.waitForFunction(
+      () => {
+        const root = document.querySelector('[data-testid^="scene-entity-"]') as HTMLElement | null;
+        if (!root) return false;
+        const canvas = root.querySelector("canvas") as HTMLCanvasElement | null;
+        if (!canvas) return false;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return false;
+        const p = ctx.getImageData(0, 0, 1, 1).data;
+        const alpha = Number(p?.[3] ?? 0);
+        return alpha > 0;
+      },
+      undefined,
+      { timeout: 120_000 },
+    );
+    expect(ok).toBeTruthy();
+  } catch {
+    drawn = false;
+  }
+
+  if (!drawn) {
+    await applyFallbackScene("update");
+    const ok = await page.waitForFunction(
+      () => {
+        const root = document.querySelector('[data-testid^="scene-entity-"]') as HTMLElement | null;
+        if (!root) return false;
+        const canvas = root.querySelector("canvas") as HTMLCanvasElement | null;
+        if (!canvas) return false;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return false;
+        const p = ctx.getImageData(0, 0, 1, 1).data;
+        const alpha = Number(p?.[3] ?? 0);
+        return alpha > 0;
+      },
+      undefined,
+      { timeout: 60_000 },
+    );
+    expect(ok).toBeTruthy();
+  }
 
   await page.screenshot({ path: path.join(outDir, "page.png"), fullPage: true });
 

@@ -45,6 +45,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] WebUI broker console (agent list + membership management + audit).
   - [x] Evidence bundle capture for agentd/broker (`tools/capture_agent_evidence_bundle.sh`).
   - [x] WebUI Playwright smoke tests for broker + agentd host (UI-only).
+  - [x] WebUI E2E real runs now capture Playwright artifacts (trace/video/screenshot) for headless verification.
+  - [x] WebUI live event stream bounded (ring buffer) to prevent long-running job memory growth.
   - [x] Evidence bundle validation tool for agentd/broker (machine-checkable gate).
   - [x] Data-driven scenario pack for agentd/broker (scripted runs + evidence capture).
   - [x] Scenario pack runner for multi-scenario runs + evidence validation.
@@ -62,7 +64,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] Introduce replay bundles for deterministic runs (inputs + hashes + tool outputs) with fixture tests.
   - [ ] Document a transport-agnostic relay interface for broker/connector (prep for multi-transport).
 
-## Promoted goals (design review)
+## Promoted goals (explicit goals; no non-goals)
 
 - [x] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker + agentd implemented; tests added).
 - [ ] Tool loop: full multimodal transcript support + stable, versioned event schema with migrations.

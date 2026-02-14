@@ -26,6 +26,11 @@ For the forward-looking architecture plan that spans `agent_core`, `agentd`, bro
 - Full streaming / incremental tool call protocol coverage.
 - Guaranteed token-accurate budgeting for every model (tokenizers are model-specific and often heavy).
 
+## Non-goals (none)
+
+There are no “non-goals” in this project. Items previously treated as deferred are now explicit goals tracked in
+`docs/NEXT_GEN.md` and `TODOS.md`.
+
 ## Key Decisions (Facts / Constraints)
 
 1) **Core library must not depend on environment variables**
