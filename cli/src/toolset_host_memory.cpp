@@ -976,14 +976,17 @@ agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, 
   if (query.empty()) {
     return write_envelope(out_result, false, "missing string field 'query'", Json::Value(Json::objectValue));
   }
-  const int max_results = args.isMember("max_results") && args["max_results"].isInt() ? std::max(1, args["max_results"].asInt()) : 20;
-  const int max_days = args.isMember("daily_days") && args["daily_days"].isInt() ? std::max(0, args["daily_days"].asInt()) : 14;
+  const int max_results_raw = args.isMember("max_results") && args["max_results"].isInt() ? args["max_results"].asInt() : 20;
+  const int max_results = std::min(std::max(1, max_results_raw), 200);
+  const int max_days_raw = args.isMember("daily_days") && args["daily_days"].isInt() ? args["daily_days"].asInt() : 14;
+  const int max_days = std::min(std::max(0, max_days_raw), 31);
   const bool case_sensitive =
     args.isMember("case_sensitive") && args["case_sensitive"].isBool() ? args["case_sensitive"].asBool() : false;
-  const int context_lines = args.isMember("context_lines") && args["context_lines"].isInt() ? std::max(0, args["context_lines"].asInt()) : 2;
-  const int max_snippet_chars = args.isMember("max_snippet_chars") && args["max_snippet_chars"].isInt()
-    ? std::max(80, args["max_snippet_chars"].asInt())
-    : 600;
+  const int context_lines_raw = args.isMember("context_lines") && args["context_lines"].isInt() ? args["context_lines"].asInt() : 2;
+  const int context_lines = std::min(std::max(0, context_lines_raw), 20);
+  const int max_snippet_chars_raw =
+    args.isMember("max_snippet_chars") && args["max_snippet_chars"].isInt() ? args["max_snippet_chars"].asInt() : 600;
+  const int max_snippet_chars = std::min(std::max(80, max_snippet_chars_raw), 4000);
   const bool tiered = args.isMember("tiered") && args["tiered"].isBool() ? args["tiered"].asBool() : false;
 
   const std::filesystem::path mem_root = memory_root_from_ctx(ctx);

@@ -505,6 +505,12 @@ static Json::Value run_request_to_json_impl(
 
   // Memory retrieval policy (durable on-disk Markdown memory injection into the tool loop).
   MemoryContextPolicy mem_pol;
+  std::string mem_query;
+  if (args.isMember("memory_context_mode") && args["memory_context_mode"].isString()) {
+    const std::string mode = lower_copy(trim_copy(args["memory_context_mode"].asString()));
+    if (mode == "search") mem_pol.mode = MemoryContextMode::Search;
+    else mem_pol.mode = MemoryContextMode::Files;
+  }
   if (args.isMember("memory_include_structured") && args["memory_include_structured"].isBool()) {
     mem_pol.include_structured = args["memory_include_structured"].asBool();
   }
@@ -523,6 +529,27 @@ static Json::Value run_request_to_json_impl(
   if (args.isMember("memory_total_cap") && (args["memory_total_cap"].isInt64() || args["memory_total_cap"].isInt())) {
     const int64_t v = args["memory_total_cap"].asInt64();
     if (v >= 0) mem_pol.total_cap = (size_t)std::min<int64_t>(v, 40000);
+  }
+  if (args.isMember("memory_search_query") && args["memory_search_query"].isString()) {
+    mem_query = trim_copy(args["memory_search_query"].asString());
+  }
+  if (args.isMember("memory_search_use_index") && args["memory_search_use_index"].isBool()) {
+    mem_pol.search_use_index = args["memory_search_use_index"].asBool();
+  }
+  if (args.isMember("memory_search_case_sensitive") && args["memory_search_case_sensitive"].isBool()) {
+    mem_pol.search_case_sensitive = args["memory_search_case_sensitive"].asBool();
+  }
+  if (args.isMember("memory_search_fallback_to_files") && args["memory_search_fallback_to_files"].isBool()) {
+    mem_pol.search_fallback_to_files = args["memory_search_fallback_to_files"].asBool();
+  }
+  if (args.isMember("memory_search_max_results") && args["memory_search_max_results"].isInt()) {
+    mem_pol.search_max_results = std::max(1, args["memory_search_max_results"].asInt());
+  }
+  if (args.isMember("memory_search_max_snippet_chars") && args["memory_search_max_snippet_chars"].isInt()) {
+    mem_pol.search_max_snippet_chars = std::max(80, args["memory_search_max_snippet_chars"].asInt());
+  }
+  if (args.isMember("memory_search_context_lines") && args["memory_search_context_lines"].isInt()) {
+    mem_pol.search_context_lines = std::max(0, args["memory_search_context_lines"].asInt());
   }
 
   std::string job_id_local = (job_id_or_null && job_id_or_null[0]) ? std::string(job_id_or_null) : std::string();
@@ -916,7 +943,11 @@ static Json::Value run_request_to_json_impl(
 		    const agent_session_t* seed_for_run = session;
 		    if (!no_default_system && tools == "host" && !no_session) {
 		      std::string mem_ctx;
-		      if (build_memory_context_text(daemon_cfg.state_dir, session_id, mem_pol, &mem_ctx)) {
+		      std::string effective_query = mem_query;
+		      if (effective_query.empty() && mem_pol.mode == MemoryContextMode::Search) {
+		        effective_query = prompt_for_llm;
+		      }
+		      if (build_memory_context_text(daemon_cfg.state_dir, session_id, mem_pol, effective_query, &mem_ctx)) {
 		        if (agent_session_t* tmp = clone_session_with_memory_context(session, mem_ctx)) {
 		          ephemeral_seed.reset(tmp);
 		          seed_for_run = tmp;

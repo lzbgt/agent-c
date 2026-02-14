@@ -128,6 +128,8 @@ export default function BrokerPanel(props: BrokerPanelProps) {
       return;
     }
     if (typeof window === "undefined") return;
+    setOtaStatusResults(null);
+    setOtaStatusCachedAt(null);
     try {
       const raw = window.localStorage.getItem(otaStatusCacheKey);
       if (!raw) return;
@@ -364,6 +366,14 @@ export default function BrokerPanel(props: BrokerPanelProps) {
       setOtaStatusBusy(false);
     }
   };
+
+  React.useEffect(() => {
+    if (!props.open || !canQuery || !agentId) return;
+    if (otaStatusBusy) return;
+    if (selectedDeployments.length === 0) return;
+    if (otaStatusResults || otaStatusCachedAt) return;
+    void runOtaStatus();
+  }, [props.open, canQuery, agentId, otaStatusBusy, selectedDeployments, otaStatusResults, otaStatusCachedAt]);
 
   const agents = Array.isArray((agentsQuery.data as any)?.agents) ? ((agentsQuery.data as any).agents as any[]) : [];
   const members = Array.isArray((membersQuery.data as any)?.members) ? ((membersQuery.data as any).members as any[]) : [];

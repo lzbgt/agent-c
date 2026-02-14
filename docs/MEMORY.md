@@ -18,6 +18,26 @@ These are host tools exposed to the model when a daemon session context is avail
 - `memory_search` — retrieve relevant snippets (prefer ranked search when available)
 - `memory_put` — consolidate/overwrite memory files (legacy mode), or structured upsert (`entries`)
 
+## Memory context injection (runs)
+
+When `tools="host"`, agentd can inject a **durable memory context** as a system message before the run:
+
+- File mode (default): reads Markdown memory files and injects a concise snapshot.
+- Search mode: injects **ranked snippets** (claude-mem style) for the current prompt.
+
+Run request knobs (file mode + search mode share the same memory root):
+
+- `memory_context_mode`: `"files"` (default) or `"search"`.
+- `memory_include_structured`, `memory_include_core`, `memory_include_daily`, `memory_include_session`
+- `memory_daily_days` (clamped), `memory_total_cap` (clamped)
+- `memory_search_query` (defaults to prompt when omitted)
+- `memory_search_use_index`, `memory_search_case_sensitive`
+- `memory_search_max_results`, `memory_search_max_snippet_chars`, `memory_search_context_lines`
+- `memory_search_fallback_to_files` (if search yields no hits)
+
+Search mode injects a system message that starts with `DURABLE_MEMORY_SEARCH_CONTEXT` and includes citations
+in the form `[tier path:line]` so the model can reference and refine memory deterministically.
+
 ### `memory_search` tiers + citations
 
 `memory_search` results now include:

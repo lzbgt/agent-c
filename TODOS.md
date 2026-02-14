@@ -490,6 +490,9 @@ Priority order (reweighted after event-triggered durable orchestration shipped; 
 3) **Scheduling policy v2.4+** — DRR is shipped; telemetry-driven cost is now shipped (`telemetry_v1`), next is budget-pressure-aware charging and resilient fairness under mixed workloads.
 4) **Memory v2.3** — query-plan primitives (bounded windows + key-prefix filters) and automatic consolidation triggers as time advances,
    so long-running systems keep context tight and correct.
+   - Shipped (v2.3 partial): search-based memory context injection for runs (`memory_context_mode="search"`) with ranked snippets,
+     citations, and bounded caps (claude-mem style progressive disclosure).
+   - Shipped (v2.3 partial): `memory_search` clamps results/snippet/context to avoid unbounded memory growth under hostile inputs.
 5) **Budgets v0.7** — complete streaming usage accounting and host-tool charging; surface budget pressure so schedulers can act cheaply.
 
 Maintainability note (always-on):

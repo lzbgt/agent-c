@@ -2239,6 +2239,54 @@ components:
           type: string
           description: Tool mode
           enum: [none, basic, host]
+        memory_context_mode:
+          type: string
+          enum: [files, search]
+          description: Memory context injection mode (files=load durable Markdown files; search=ranked memory snippets).
+        memory_include_structured:
+          type: boolean
+          description: When true, include memory/STRUCTURED.md in file-based memory context.
+        memory_include_core:
+          type: boolean
+          description: When true, include memory/MEMORY.md in file-based memory context.
+        memory_include_daily:
+          type: boolean
+          description: When true, include memory/YYYY-MM-DD.md in file-based memory context.
+        memory_include_session:
+          type: boolean
+          description: When true, include memory/sessions/<session_id>.md in file-based memory context.
+        memory_daily_days:
+          type: integer
+          format: int32
+          description: Number of daily memory files to include/scan (clamped).
+        memory_total_cap:
+          type: integer
+          format: int64
+          description: Max bytes for injected memory context (clamped).
+        memory_search_query:
+          type: string
+          description: Explicit query for search-based memory context (defaults to prompt when omitted).
+        memory_search_use_index:
+          type: boolean
+          description: When true, prefer SQLite FTS index for memory search (default true).
+        memory_search_case_sensitive:
+          type: boolean
+          description: When true, use case-sensitive substring search (disables FTS).
+        memory_search_fallback_to_files:
+          type: boolean
+          description: When true, fall back to file-based memory context if search yields no results.
+        memory_search_max_results:
+          type: integer
+          format: int32
+          description: Max memory search results injected (clamped).
+        memory_search_max_snippet_chars:
+          type: integer
+          format: int32
+          description: Max characters per memory snippet (clamped).
+        memory_search_context_lines:
+          type: integer
+          format: int32
+          description: Context lines to include around substring matches (clamped).
         model: { type: string }
         base_url: { type: string }
         api_key: { type: string }

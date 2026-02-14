@@ -1,14 +1,18 @@
 #include "run_memory_context.h"
 
+#include "memory_index.h"
 #include "string_util.h"
 
+#include <algorithm>
 #include <chrono>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace agentd {
@@ -71,19 +75,107 @@ static std::string strip_agent_memory_v1_json_block(const std::string& s) {
   return out;
 }
 
+static std::string to_lower_ascii(std::string s) {
+  for (char& c : s) {
+    if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+  }
+  return s;
+}
+
+static std::string trim_ascii(const std::string& s) {
+  size_t a = 0;
+  while (a < s.size() && std::isspace((unsigned char)s[a])) a++;
+  size_t b = s.size();
+  while (b > a && std::isspace((unsigned char)s[b - 1])) b--;
+  return s.substr(a, b - a);
+}
+
+static std::string to_generic_string(const std::filesystem::path& p) {
+  return p.generic_string();
+}
+
+struct MemorySearchCandidate {
+  std::string abs_path;
+  std::string rel_path;
+  std::string tier;
+};
+
+static std::string memory_relpath(const std::filesystem::path& abs, const std::filesystem::path& root) {
+  std::error_code ec;
+  std::filesystem::path rel = std::filesystem::relative(abs, root, ec);
+  if (ec) rel = abs.lexically_relative(root);
+  return to_generic_string(rel.lexically_normal());
+}
+
+static void add_memory_candidate(
+  const std::filesystem::path& mem_root,
+  const std::filesystem::path& abs,
+  const std::string& tier,
+  std::vector<MemorySearchCandidate>* out
+) {
+  if (!out) return;
+  MemorySearchCandidate c;
+  c.abs_path = to_generic_string(abs);
+  c.rel_path = memory_relpath(abs, mem_root);
+  c.tier = tier;
+  out->push_back(std::move(c));
+}
+
+static std::vector<MemorySearchCandidate> list_candidate_memory_files(
+  const std::filesystem::path& mem_root,
+  const std::string& session_id,
+  const MemoryContextPolicy& pol
+) {
+  std::vector<MemorySearchCandidate> out;
+  if (mem_root.empty()) return out;
+  std::error_code ec;
+
+  if (pol.include_structured) {
+    const std::filesystem::path structured = mem_root / "STRUCTURED.md";
+    if (std::filesystem::exists(structured, ec) && std::filesystem::is_regular_file(structured, ec)) {
+      add_memory_candidate(mem_root, structured, "structured", &out);
+    }
+  }
+  if (pol.include_core) {
+    const std::filesystem::path core = mem_root / "MEMORY.md";
+    ec.clear();
+    if (std::filesystem::exists(core, ec) && std::filesystem::is_regular_file(core, ec)) {
+      add_memory_candidate(mem_root, core, "core", &out);
+    }
+  }
+
+  if (pol.include_session && is_safe_filename_component_ascii(session_id)) {
+    const std::filesystem::path sessionp = mem_root / "sessions" / (session_id + ".md");
+    ec.clear();
+    if (std::filesystem::exists(sessionp, ec) && std::filesystem::is_regular_file(sessionp, ec)) {
+      add_memory_candidate(mem_root, sessionp, "session", &out);
+    }
+  }
+
+  if (pol.include_daily) {
+    const int days = std::max(0, std::min(pol.daily_days, 31));
+    for (int i = 0; i < days; i++) {
+      const std::string ymd = local_date_ymd_days_ago(i);
+      const std::filesystem::path p = mem_root / (ymd + ".md");
+      ec.clear();
+      if (std::filesystem::exists(p, ec) && std::filesystem::is_regular_file(p, ec)) {
+        add_memory_candidate(mem_root, p, "daily", &out);
+      }
+    }
+  }
+  return out;
+}
+
 }  // namespace
 
-bool build_memory_context_text(
-  const std::string& state_dir,
+static bool build_memory_files_context_text(
+  const std::filesystem::path& mem_root,
   const std::string& session_id,
   const MemoryContextPolicy& pol,
   std::string* out_text
 ) {
   if (out_text) out_text->clear();
   if (!out_text) return false;
-  if (state_dir.empty()) return false;
-
-  const std::filesystem::path mem_root = std::filesystem::path(state_dir) / "memory";
 
   std::error_code ec;
   if (!std::filesystem::exists(mem_root, ec) || !std::filesystem::is_directory(mem_root, ec)) {
@@ -138,6 +230,179 @@ bool build_memory_context_text(
   return true;
 }
 
+static bool build_memory_search_context_text(
+  const std::filesystem::path& mem_root,
+  const std::string& session_id,
+  const MemoryContextPolicy& pol,
+  const std::string& query_raw,
+  std::string* out_text
+) {
+  if (out_text) out_text->clear();
+  if (!out_text) return false;
+  if (query_raw.empty()) return false;
+
+  std::error_code ec;
+  if (!std::filesystem::exists(mem_root, ec) || !std::filesystem::is_directory(mem_root, ec)) {
+    return false;
+  }
+
+  std::string query = trim_ascii(query_raw);
+  if (query.empty()) return false;
+  if (query.size() > 2000) query.resize(2000);
+  for (char& c : query) {
+    if (c == '\n' || c == '\r' || c == '\t') c = ' ';
+  }
+
+  const std::vector<MemorySearchCandidate> candidates = list_candidate_memory_files(mem_root, session_id, pol);
+  if (candidates.empty()) return false;
+
+  std::vector<std::string> files;
+  files.reserve(candidates.size());
+  std::unordered_map<std::string, std::string> tier_by_rel;
+  for (const auto& c : candidates) {
+    files.push_back(c.abs_path);
+    if (!c.rel_path.empty() && tier_by_rel.find(c.rel_path) == tier_by_rel.end()) {
+      tier_by_rel[c.rel_path] = c.tier;
+    }
+  }
+
+  const int max_results = std::min(std::max(1, pol.search_max_results), 200);
+  const int max_snippet_chars = std::min(std::max(80, pol.search_max_snippet_chars), 4000);
+  const int context_lines = std::min(std::max(0, pol.search_context_lines), 20);
+
+  struct Result {
+    std::string path;
+    int line = 1;
+    std::string snippet;
+    std::string tier;
+    double score = 0.0;
+  };
+  std::vector<Result> results;
+  results.reserve((size_t)max_results);
+
+  auto tier_for_rel = [&](const std::string& rel_path) -> std::string {
+    auto it = tier_by_rel.find(rel_path);
+    if (it != tier_by_rel.end()) return it->second;
+    return "other";
+  };
+
+  std::string mode = "substr";
+  if (pol.search_use_index && !pol.search_case_sensitive) {
+    std::vector<host_tools_internal::MemorySearchHit> hits;
+    std::string err;
+    if (host_tools_internal::memory_index_search_ranked(mem_root, files, query, max_results, max_snippet_chars, &hits, &err)) {
+      mode = "fts5";
+      for (const auto& h : hits) {
+        Result r;
+        r.path = h.path;
+        r.line = h.line;
+        r.snippet = h.snippet;
+        r.tier = tier_for_rel(h.path);
+        r.score = h.score;
+        results.push_back(std::move(r));
+      }
+    }
+  }
+
+  if (results.empty()) {
+    const std::string q = pol.search_case_sensitive ? query : to_lower_ascii(query);
+    for (const auto& c : candidates) {
+      if ((int)results.size() >= max_results) break;
+      std::filesystem::path abs(c.abs_path);
+      std::ifstream in(abs, std::ios::binary);
+      if (!in.is_open()) continue;
+      std::stringstream ss;
+      ss << in.rdbuf();
+      std::string content = ss.str();
+      if (content.size() > 1024 * 1024) {
+        content.resize(1024 * 1024);
+      }
+      std::vector<std::string> lines;
+      lines.reserve(4096);
+      {
+        std::istringstream iss(content);
+        std::string line;
+        while (std::getline(iss, line)) {
+          if (!line.empty() && line.back() == '\r') line.pop_back();
+          lines.push_back(std::move(line));
+          if (lines.size() > 20000) break;
+        }
+      }
+      for (size_t i = 0; i < lines.size(); i++) {
+        if ((int)results.size() >= max_results) break;
+        const std::string hay = pol.search_case_sensitive ? lines[i] : to_lower_ascii(lines[i]);
+        if (hay.find(q) == std::string::npos) continue;
+
+        const int line_no = (int)i + 1;
+        const int lo = std::max(1, line_no - context_lines);
+        const int hi = std::min((int)lines.size(), line_no + context_lines);
+        std::ostringstream snip;
+        for (int ln = lo; ln <= hi; ln++) {
+          if (ln > lo) snip << "\n";
+          snip << lines[(size_t)ln - 1];
+        }
+        std::string snippet = snip.str();
+        if ((int)snippet.size() > max_snippet_chars) {
+          snippet.resize((size_t)max_snippet_chars);
+        }
+
+        Result r;
+        r.path = c.rel_path.empty() ? memory_relpath(abs, mem_root) : c.rel_path;
+        r.line = line_no;
+        r.snippet = snippet;
+        r.tier = c.tier.empty() ? "other" : c.tier;
+        results.push_back(std::move(r));
+      }
+    }
+  }
+
+  if (results.empty()) return false;
+
+  std::ostringstream oss;
+  oss
+    << "DURABLE_MEMORY_SEARCH_CONTEXT\n"
+    << "- Query: " << query << "\n"
+    << "- Mode: " << mode << "\n"
+    << "- Results: " << results.size() << "\n"
+    << "- Each snippet is cited as [tier path:line].\n"
+    << "- Use memory_get/memory_search for deeper inspection, or memory_write/memory_put to update.\n";
+
+  for (const auto& r : results) {
+    oss << "\n[" << (r.tier.empty() ? "other" : r.tier) << " " << r.path << ":" << r.line;
+    if (r.score != 0.0) {
+      oss << " score=" << r.score;
+    }
+    oss << "]\n";
+    oss << r.snippet;
+    if (!r.snippet.empty() && r.snippet.back() != '\n') oss << "\n";
+  }
+
+  std::string s = oss.str();
+  const size_t kTotalCap = pol.total_cap == 0 ? (size_t)12000 : std::min<size_t>(pol.total_cap, (size_t)40000);
+  if (s.size() > kTotalCap) s.resize(kTotalCap);
+  *out_text = std::move(s);
+  return true;
+}
+
+bool build_memory_context_text(
+  const std::string& state_dir,
+  const std::string& session_id,
+  const MemoryContextPolicy& pol,
+  const std::string& query,
+  std::string* out_text
+) {
+  if (out_text) out_text->clear();
+  if (!out_text) return false;
+  if (state_dir.empty()) return false;
+
+  const std::filesystem::path mem_root = std::filesystem::path(state_dir) / "memory";
+  if (pol.mode == MemoryContextMode::Search) {
+    if (build_memory_search_context_text(mem_root, session_id, pol, query, out_text)) return true;
+    if (!pol.search_fallback_to_files) return false;
+  }
+  return build_memory_files_context_text(mem_root, session_id, pol, out_text);
+}
+
 agent_session_t* clone_session_with_memory_context(const agent_session_t* src, const std::string& memory_context) {
   if (!src) return nullptr;
   if (memory_context.empty()) return nullptr;
@@ -156,7 +421,10 @@ agent_session_t* clone_session_with_memory_context(const agent_session_t* src, c
 
   auto add_msg = [&](agent_role_t role, const agent_message_view_t& v) {
     const std::string content(v.content ? v.content : "", v.content_len);
-    if (role == AGENT_ROLE_SYSTEM && !content.empty() && content.rfind("DURABLE_MEMORY_CONTEXT", 0) == 0) return;
+    if (role == AGENT_ROLE_SYSTEM && !content.empty()) {
+      if (content.rfind("DURABLE_MEMORY_CONTEXT", 0) == 0) return;
+      if (content.rfind("DURABLE_MEMORY_SEARCH_CONTEXT", 0) == 0) return;
+    }
     (void)agent_session_add_message(ns, role, content.c_str());
   };
 
@@ -178,4 +446,3 @@ agent_session_t* clone_session_with_memory_context(const agent_session_t* src, c
 }
 
 }  // namespace agentd
-
