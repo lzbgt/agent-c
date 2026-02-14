@@ -167,6 +167,17 @@ In addition to the tool surface, `agentd` exposes correlation helpers:
 - `GET /api/v1/memory/query?...&key_prefix=...` — bounded query over the **current view** of structured memory
   (reads the newest checkpoint in the requested time window)
 
+## WebUI Memory Explorer
+
+The WebUI exposes a **Memory explorer** panel (collapsible) that directly calls the memory endpoints:
+
+- Structured query (`/api/v1/memory/query`)
+- Trace correlation (`/api/v1/memory/correlate`)
+- Checkpoint listing (`/api/v1/memory/checkpoints`)
+
+This panel is intended for operator/debug use and returns raw JSON so you can inspect structured memory state
+and evidence hashes without leaving the UI.
+
 ## Deterministic workflow tasks
 
 Durable workflows can query memory without invoking an LLM:

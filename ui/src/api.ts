@@ -1452,3 +1452,109 @@ export async function apiBrokerTrace(brokerBase: string, traceId: string, auth?:
   const j = await r.json();
   return BrokerTraceRespSchema.parse(j);
 }
+
+export const MemoryQueryRespSchema = z
+  .object({
+    ok: z.boolean(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+export type MemoryQueryResp = z.infer<typeof MemoryQueryRespSchema>;
+
+export const MemoryCorrelateRespSchema = z
+  .object({
+    ok: z.boolean(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+export type MemoryCorrelateResp = z.infer<typeof MemoryCorrelateRespSchema>;
+
+export const MemoryCheckpointsRespSchema = z
+  .object({
+    ok: z.boolean(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+export type MemoryCheckpointsResp = z.infer<typeof MemoryCheckpointsRespSchema>;
+
+type MemoryQueryParams = {
+  sinceUtcMs?: number;
+  untilUtcMs?: number;
+  structuredPath?: string;
+  keyPrefix?: string;
+  limit?: number;
+};
+
+type MemoryCorrelateParams = {
+  traceId: string;
+  sinceUtcMs?: number;
+  untilUtcMs?: number;
+  structuredPath?: string;
+  keyPrefix?: string;
+  maxEntries?: number;
+  timeline?: boolean;
+};
+
+type MemoryCheckpointsParams = {
+  sinceUtcMs?: number;
+  untilUtcMs?: number;
+  structuredPath?: string;
+  limit?: number;
+};
+
+const addQueryParam = (params: URLSearchParams, key: string, value?: string | number | boolean) => {
+  if (value === undefined || value === null) return;
+  const s = typeof value === "string" ? value.trim() : String(value);
+  if (!s) return;
+  params.set(key, s);
+};
+
+export async function apiMemoryQuery(base: string, params: MemoryQueryParams, auth?: ApiAuth): Promise<MemoryQueryResp> {
+  const qs = new URLSearchParams();
+  addQueryParam(qs, "since_utc_ms", params.sinceUtcMs);
+  addQueryParam(qs, "until_utc_ms", params.untilUtcMs);
+  addQueryParam(qs, "structured_path", params.structuredPath);
+  addQueryParam(qs, "key_prefix", params.keyPrefix);
+  addQueryParam(qs, "limit", params.limit);
+  const url = qs.toString() ? `${base}/api/v1/memory/query?${qs.toString()}` : `${base}/api/v1/memory/query`;
+  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return MemoryQueryRespSchema.parse(j);
+}
+
+export async function apiMemoryCorrelate(
+  base: string,
+  params: MemoryCorrelateParams,
+  auth?: ApiAuth,
+): Promise<MemoryCorrelateResp> {
+  const tid = String(params.traceId || "").trim();
+  if (!tid) throw new Error("missing trace_id");
+  const qs = new URLSearchParams();
+  addQueryParam(qs, "trace_id", tid);
+  addQueryParam(qs, "since_utc_ms", params.sinceUtcMs);
+  addQueryParam(qs, "until_utc_ms", params.untilUtcMs);
+  addQueryParam(qs, "structured_path", params.structuredPath);
+  addQueryParam(qs, "key_prefix", params.keyPrefix);
+  addQueryParam(qs, "max_entries", params.maxEntries);
+  if (params.timeline) addQueryParam(qs, "timeline", "1");
+  const url = `${base}/api/v1/memory/correlate?${qs.toString()}`;
+  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return MemoryCorrelateRespSchema.parse(j);
+}
+
+export async function apiMemoryCheckpoints(
+  base: string,
+  params: MemoryCheckpointsParams,
+  auth?: ApiAuth,
+): Promise<MemoryCheckpointsResp> {
+  const qs = new URLSearchParams();
+  addQueryParam(qs, "since_utc_ms", params.sinceUtcMs);
+  addQueryParam(qs, "until_utc_ms", params.untilUtcMs);
+  addQueryParam(qs, "structured_path", params.structuredPath);
+  addQueryParam(qs, "limit", params.limit);
+  const url = qs.toString() ? `${base}/api/v1/memory/checkpoints?${qs.toString()}` : `${base}/api/v1/memory/checkpoints`;
+  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return MemoryCheckpointsRespSchema.parse(j);
+}

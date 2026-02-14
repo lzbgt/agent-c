@@ -245,6 +245,7 @@ Side-effecting (requires explicit client “side effects” enablement):
 - `dom_apply`: apply a DOM patch (create/edit/delete/dispatch). This is the “native surface” primitive for collaboration UI changes.
 - `media_play`: attempt to play media (browser policies apply)
 - `media_observe`: attach media listeners and emit `client_rpc_progress` events correlated by `rpc_id`
+  - WebUI bounds observers to avoid memory leaks; idle observers are auto-evicted after ~15 minutes or when exceeding ~32 active.
 - `navigate`: navigate to a new URL (likely reloads the client)
 
 Scriptable (must-have power primitive):

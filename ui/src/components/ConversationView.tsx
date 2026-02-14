@@ -112,6 +112,9 @@ function createInlineWorker(source: string): Worker {
   return w;
 }
 
+const MEDIA_OBSERVER_TTL_MS = 15 * 60 * 1000;
+const MEDIA_OBSERVER_MAX = 32;
+
 export default function ConversationView({
   baseUrl,
   yolo,
@@ -374,7 +377,17 @@ export default function ConversationView({
 
   const probeRanRef = React.useRef<Record<string, boolean>>({});
   const pendingAutoRunsRef = React.useRef<Record<string, () => void>>({});
-  const rpcCleanupRef = React.useRef<Record<string, Array<() => void>>>({});
+  const rpcCleanupRef = React.useRef<
+    Record<
+      string,
+      {
+        cleanups: Array<() => void>;
+        kind: string;
+        createdMs: number;
+        lastActiveMs: number;
+      }
+    >
+  >({});
   const artifactBlobUrlsRef = React.useRef<string[]>([]);
 
   React.useEffect(() => {
@@ -395,7 +408,8 @@ export default function ConversationView({
     return () => {
       const all = rpcCleanupRef.current || {};
       Object.keys(all).forEach((k) => {
-        const cleanups = all[k] || [];
+        const entry = all[k];
+        const cleanups = entry?.cleanups ?? [];
         cleanups.forEach((fn) => {
           try {
             fn();
@@ -415,6 +429,56 @@ export default function ConversationView({
         }
       }
       artifactBlobUrlsRef.current = [];
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const t = window.setInterval(() => {
+      const entries = rpcCleanupRef.current;
+      const ids = Object.keys(entries);
+      if (ids.length === 0) return;
+      const now = Date.now();
+      const cleanupEntry = (id: string, entry: { cleanups: Array<() => void> }) => {
+        entry.cleanups.forEach((fn) => {
+          try {
+            fn();
+          } catch {
+            // ignore
+          }
+        });
+        delete entries[id];
+      };
+
+      const activeMedia: Array<{ id: string; lastActiveMs: number }> = [];
+      ids.forEach((id) => {
+        const entry = entries[id];
+        if (!entry) return;
+        if (entry.kind === "media_observe" && now - entry.lastActiveMs > MEDIA_OBSERVER_TTL_MS) {
+          cleanupEntry(id, entry);
+          return;
+        }
+        if (entry.kind === "media_observe") {
+          activeMedia.push({ id, lastActiveMs: entry.lastActiveMs });
+        }
+      });
+
+      if (MEDIA_OBSERVER_MAX > 0 && activeMedia.length > MEDIA_OBSERVER_MAX) {
+        activeMedia.sort((a, b) => a.lastActiveMs - b.lastActiveMs);
+        const overflow = activeMedia.length - MEDIA_OBSERVER_MAX;
+        for (let i = 0; i < overflow; i += 1) {
+          const victim = activeMedia[i];
+          const entry = entries[victim.id];
+          if (entry) cleanupEntry(victim.id, entry);
+        }
+      }
+    }, 30_000);
+    return () => {
+      try {
+        window.clearInterval(t);
+      } catch {
+        // ignore
+      }
     };
   }, []);
 
@@ -1238,6 +1302,8 @@ export default function ConversationView({
                 els.forEach((el) => {
                   events.forEach((evName) => {
                     const handler = () => {
+                      const entry = rpcCleanupRef.current[rpcId];
+                      if (entry) entry.lastActiveMs = Date.now();
                       void postRpcProgress(evName, mkPayload(el)).catch(() => {});
                     };
                     el.addEventListener(evName, handler);
@@ -1250,7 +1316,13 @@ export default function ConversationView({
                     });
                   });
                 });
-                rpcCleanupRef.current[rpcId] = cleanups;
+                const now = Date.now();
+                rpcCleanupRef.current[rpcId] = {
+                  cleanups,
+                  kind: "media_observe",
+                  createdMs: now,
+                  lastActiveMs: now,
+                };
               }
 
               // Emit an initial snapshot as progress so agents can reason without waiting for a change.
