@@ -68,7 +68,7 @@ STUB_PID=$!
 url="http://${HOST}:${PORT_STUB}/echo"
 
 agentd_smoke_stop
-rm -f "${DB_PATH}" >/dev/null 2>&1 || true
+rm -f "${DB_PATH}" "${DB_PATH}-wal" "${DB_PATH}-shm" >/dev/null 2>&1 || true
 rm -rf "${STATE_DIR}" >/dev/null 2>&1 || true
 
 # Even if the allow-host includes the target, deny-cidr should fail closed.

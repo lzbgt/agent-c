@@ -28,7 +28,7 @@ cleanup() {
     kill -TERM "${STUB_PID}" >/dev/null 2>&1 || true
     wait "${STUB_PID}" >/dev/null 2>&1 || true
   fi
-  rm -f "${DB_PATH}" >/dev/null 2>&1 || true
+  rm -f "${DB_PATH}" "${DB_PATH}-wal" "${DB_PATH}-shm" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -148,6 +148,8 @@ class H(BaseHTTPRequestHandler):
 HTTPServer(("127.0.0.1", ${PORT_STUB}), H).serve_forever()
 PY
 STUB_PID=$!
+
+rm -f "${DB_PATH}" "${DB_PATH}-wal" "${DB_PATH}-shm" >/dev/null 2>&1 || true
 
 agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_db_query_smoke" \
   --tools host \
@@ -372,12 +374,12 @@ events = obj.get("events") or []
 if not isinstance(events, list) or len(events) < 1:
   print("expected events >= 1", file=sys.stderr)
   raise SystemExit(1)
-# `include_ui_actions=1` should always return a list (possibly empty).
+# include_ui_actions=1 should always return a list (possibly empty).
 uia = obj.get("ui_actions")
 if not isinstance(uia, list):
   print("expected ui_actions to be a list", type(uia), file=sys.stderr)
   raise SystemExit(1)
-# If server parsed data_json successfully, it should expose `data` for at least some rows.
+# If server parsed data_json successfully, it should expose data for at least some rows.
 has_parsed = any(isinstance(e, dict) and isinstance(e.get("data"), dict) for e in events)
 if not has_parsed:
   print("expected at least one parsed event.data dict", file=sys.stderr)
@@ -574,6 +576,112 @@ if not obj.get("ok"):
 rows = obj.get("workflow_events") or []
 if not rows:
   print("expected workflow_events rows", file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+edge_submit="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Content-Type: application/json" \
+  -d "$(python3 - <<PY
+import json
+print(json.dumps({
+  "workflow_id": "edge_${SESSION_ID}",
+  "goal": "edge db query smoke",
+  "priority": 1,
+  "steps": [
+    {"step_id": "s1", "kind": "join", "depends_on": [], "payload": {}}
+  ]
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/edge/workflow/submit")"
+
+EDGE_WORKFLOW_ID="$(python3 - <<PY
+import json
+obj = json.loads(r'''${edge_submit}''')
+print(obj.get("workflow_id",""))
+PY
+)"
+if [[ -z "${EDGE_WORKFLOW_ID}" ]]; then
+  echo "failed to get edge workflow_id: ${edge_submit}" >&2
+  exit 1
+fi
+
+db_edge_workflows="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/edge_workflows?limit=50&offset=0&include_spec=1")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${db_edge_workflows}''')
+if not obj.get("ok"):
+  print("db/edge_workflows failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+rows = obj.get("edge_workflows") or []
+wid = """${EDGE_WORKFLOW_ID}"""
+if not any(isinstance(r, dict) and r.get("workflow_id") == wid for r in rows):
+  print("expected edge workflow_id in db/edge_workflows:", wid, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+db_edge_workflow="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/edge_workflow?workflow_id=${EDGE_WORKFLOW_ID}&include_steps=1&include_events=1")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${db_edge_workflow}''')
+if not obj.get("ok"):
+  print("db/edge_workflow failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+wf = obj.get("edge_workflow") or {}
+if wf.get("workflow_id") != """${EDGE_WORKFLOW_ID}""":
+  print("unexpected edge workflow_id:", wf.get("workflow_id"), file=sys.stderr)
+  raise SystemExit(1)
+steps = obj.get("steps") or []
+if not steps:
+  print("expected edge workflow steps", file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+db_edge_steps="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/edge_workflow_steps?workflow_id=${EDGE_WORKFLOW_ID}&limit=20&offset=0")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${db_edge_steps}''')
+if not obj.get("ok"):
+  print("db/edge_workflow_steps failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+rows = obj.get("edge_workflow_steps") or []
+if not rows:
+  print("expected edge workflow_steps rows", file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+db_edge_events="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/edge_workflow_events?workflow_id=${EDGE_WORKFLOW_ID}&limit=20&offset=0")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${db_edge_events}''')
+if not obj.get("ok"):
+  print("db/edge_workflow_events failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+rows = obj.get("edge_workflow_events") or []
+if rows is None:
+  print("expected edge_workflow_events field", file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+db_analytics="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/analytics/workflows?scope=all")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${db_analytics}''')
+if not obj.get("ok"):
+  print("db/analytics/workflows failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "durable" not in obj or "edge" not in obj:
+  print("expected durable+edge analytics sections", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 

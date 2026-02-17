@@ -680,5 +680,10 @@ API when DB is enabled:
 - `GET /api/v1/db/workflow?workflow_id=...&include_tasks=1&include_events=1`
 - `GET /api/v1/db/workflow_tasks?workflow_id=...`
 - `GET /api/v1/db/workflow_events?workflow_id=...`
+- `GET /api/v1/db/edge_workflows?status=...`
+- `GET /api/v1/db/edge_workflow?workflow_id=...&include_steps=1&include_events=1`
+- `GET /api/v1/db/edge_workflow_steps?workflow_id=...`
+- `GET /api/v1/db/edge_workflow_events?workflow_id=...`
+- `GET /api/v1/db/analytics/workflows?scope=all`
 
 See `docs/DB_QUERY.md`.

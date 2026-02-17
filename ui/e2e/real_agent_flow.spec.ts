@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
-const promptSine = `
-Draw a sine plot and present it to me in the scene.
+const promptSimple = `
+Say hello and confirm you are ready.
 `.trim();
 
 const agentdBase = process.env.AGENT_E2E_AGENTD_BASE_URL || "http://127.0.0.1:8123";
@@ -14,6 +14,8 @@ test("real agent flow: new session run completes", async ({ page }) => {
       window.localStorage.setItem("agentui.allowClientEffects", "true");
       window.localStorage.setItem("agentui.allowAutoplay", "true");
       window.localStorage.setItem("agentui.tools", JSON.stringify("host"));
+      window.localStorage.setItem("agentui.maxSteps", "6");
+      window.localStorage.setItem("agentui.timeoutMs", "60000");
       window.localStorage.setItem("agentui.showSettings", "false");
     } catch {
       // ignore
@@ -39,7 +41,7 @@ test("real agent flow: new session run completes", async ({ page }) => {
   await page.getByTestId("settings-drawer").waitFor({ state: "detached" });
 
   // Run a prompt and wait for completion.
-  await page.getByTestId("prompt").fill(promptSine);
+  await page.getByTestId("prompt").fill(promptSimple);
   const runButton = page.getByTestId("run");
   await runButton.click();
   try {

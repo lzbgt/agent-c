@@ -28,7 +28,7 @@ cleanup() {
     kill -TERM "${STUB_PID}" >/dev/null 2>&1 || true
     wait "${STUB_PID}" >/dev/null 2>&1 || true
   fi
-  rm -f "${DB_PATH}" >/dev/null 2>&1 || true
+  rm -f "${DB_PATH}" "${DB_PATH}-wal" "${DB_PATH}-shm" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -110,6 +110,8 @@ class H(BaseHTTPRequestHandler):
 HTTPServer(("127.0.0.1", ${PORT_STUB}), H).serve_forever()
 PY
 STUB_PID=$!
+
+rm -f "${DB_PATH}" "${DB_PATH}-wal" "${DB_PATH}-shm" >/dev/null 2>&1 || true
 
 agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "agentd_run_replay_smoke" \
   --tools host \

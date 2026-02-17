@@ -69,7 +69,7 @@ STUB_PID=$!
 url="http://localhost:${PORT_STUB}/echo"
 
 agentd_smoke_stop
-rm -f "${DB_PATH}" >/dev/null 2>&1 || true
+rm -f "${DB_PATH}" "${DB_PATH}-wal" "${DB_PATH}-shm" >/dev/null 2>&1 || true
 rm -rf "${STATE_DIR}" >/dev/null 2>&1 || true
 
 agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "${NAME}" \

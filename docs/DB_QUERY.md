@@ -163,6 +163,92 @@ Response fields:
   - `data_json` (string|null)
   - `data` (object, optional): parsed form of `data_json` when parsing succeeds
 
+### List edge workflows
+
+`GET /api/v1/db/edge_workflows?status=...&limit=...&offset=...`
+
+Optional filters:
+- `status=<status>` (e.g. `queued`, `running`, `done`, `error`, `cancelled`)
+- `include_spec=1` to include `spec_json`/`spec`
+
+Response fields:
+- `edge_workflows` (array)
+  - `workflow_id` (string)
+  - `goal` (string|null)
+  - `status` (string)
+  - `priority` (number)
+  - `spec_json` (string|null, optional)
+  - `spec` (object, optional): parsed form of `spec_json` when parsing succeeds
+  - `created_utc_ms` (number)
+  - `updated_utc_ms` (number)
+  - `error` (string|null)
+
+### Fetch edge workflow details
+
+`GET /api/v1/db/edge_workflow?workflow_id=...&include_steps=1&include_events=1`
+
+Response fields:
+- `edge_workflow` (object) basic workflow fields + `spec_json`
+- `steps` (array, optional) ordered by `updated_utc_ms DESC`
+- `events` (array, optional) ordered by `id`
+
+### List edge workflow steps
+
+`GET /api/v1/db/edge_workflow_steps?workflow_id=...&limit=...&offset=...`
+
+Response fields:
+- `edge_workflow_steps` (array)
+  - `workflow_id` (string)
+  - `step_id` (string)
+  - `kind` (string)
+  - `depends_on_json` (string|null)
+  - `depends_on` (array, optional): parsed form of `depends_on_json` when parsing succeeds
+  - `target_json` (string|null)
+  - `target` (object, optional): parsed form of `target_json` when parsing succeeds
+  - `payload_json` (string|null)
+  - `payload` (object, optional): parsed form of `payload_json` when parsing succeeds
+  - `join_mode` (string|null)
+  - `deadline_utc_ms` (number|null)
+  - `state` (string)
+  - `created_utc_ms` (number)
+  - `updated_utc_ms` (number)
+  - `error` (string|null)
+  - `attempt` (number)
+  - `max_attempts` (number)
+  - `next_ready_utc_ms` (number)
+  - `backoff_ms` (number)
+
+### List edge workflow events
+
+`GET /api/v1/db/edge_workflow_events?workflow_id=...&limit=...&offset=...`
+
+Response fields:
+- `edge_workflow_events` (array)
+  - `id` (number)
+  - `workflow_id` (string)
+  - `ts_utc_ms` (number)
+  - `type` (string)
+  - `data_json` (string|null)
+  - `data` (object, optional): parsed form of `data_json` when parsing succeeds
+
+### Workflow analytics aggregates
+
+`GET /api/v1/db/analytics/workflows?scope=all&since_unix_ms=...&until_unix_ms=...`
+
+Parameters:
+- `scope=all|durable|edge` (default `all`)
+- `since_unix_ms` / `until_unix_ms` (optional time window, applied to updated timestamps)
+
+Response fields:
+- `durable` (object, optional when `scope=durable|all`)
+  - `counts` (object) status → count
+  - `total` (number)
+  - `terminal` (object): `{count, avg_ms, min_ms, max_ms}` for `done|error|cancelled`
+  - `error_count` (number)
+  - `error_rate` (number|null)
+- `edge` (object, optional when `scope=edge|all`)
+  - same fields as `durable`, using edge workflow timestamps
+
 ### List artifacts
 
 `GET /api/v1/db/artifacts?session_id=...&limit=...&offset=...`
