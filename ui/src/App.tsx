@@ -551,6 +551,7 @@ export default function App() {
             { kind: "media_observe", side_effects: true, description: "Attach media listeners and emit correlated progress events." },
             { kind: "media_unobserve", side_effects: false, description: "Detach media listeners created by media_observe (by rpc_id or all=true)." },
             { kind: "navigate", side_effects: true, description: "Navigate the browser to a new URL (likely reloads the app)." },
+            { kind: "open_url", side_effects: true, description: "Open an external URL in a new tab after explicit user confirmation." },
             {
               kind: "artifact_url",
               side_effects: false,

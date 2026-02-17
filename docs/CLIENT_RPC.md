@@ -247,7 +247,8 @@ Side-effecting (requires explicit client “side effects” enablement):
 - `media_observe`: attach media listeners and emit `client_rpc_progress` events correlated by `rpc_id`
   - WebUI bounds observers to avoid memory leaks; idle observers are auto-evicted after ~15 minutes or when exceeding ~32 active.
 - `media_unobserve`: detach listeners created by `media_observe` (by `rpc_id` or `all:true`)
-- `navigate`: navigate to a new URL (likely reloads the client)
+- `navigate`: navigate to a same-origin URL (likely reloads the client)
+- `open_url`: open an external URL in a new tab (requires explicit user confirmation)
 
 Scriptable (must-have power primitive):
 - `script_eval`: run agent-provided script code (prefer killable engines like Web Workers) and expose DOM/media/location via an API bridge.

@@ -684,6 +684,7 @@ export default function ConversationView({
           "media_play",
           "media_observe",
           "navigate",
+          "open_url",
           "page_eval",
         ]);
         const sideEffectsRequested = rpc?.side_effects === true || action?.side_effects === true || sideEffectKinds.has(rpcKind);
@@ -1407,9 +1408,30 @@ export default function ConversationView({
             const makeNavigate = (args: any) => {
               const url = safeTrunc(String(args?.url ?? args?.href ?? ""), 2000);
               if (!url) throw new Error("navigate requires url");
+              const parsed = tryParseUrl(url);
+              if (parsed && parsed.origin !== window.location.origin) {
+                throw new Error("navigate only supports same-origin URLs; use open_url for external links");
+              }
               // This is intentionally side-effecting and may reload the page.
               window.location.assign(url);
               return { kind: "navigate", url };
+            };
+
+            const makeOpenUrl = (args: any) => {
+              const urlRaw = safeTrunc(String(args?.url ?? args?.href ?? ""), 2000);
+              if (!urlRaw) throw new Error("open_url requires url");
+              const parsed = tryParseUrl(urlRaw);
+              if (!parsed) throw new Error("open_url requires absolute http(s) URL");
+              if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+                throw new Error("open_url only supports http(s) URLs");
+              }
+              const label = safeTrunc(String(args?.title ?? ""), 120);
+              const prompt = label ? `Open link?\n${label}\n${parsed.toString()}` : `Open link?\n${parsed.toString()}`;
+              if (typeof window !== "undefined") {
+                if (!window.confirm(prompt)) throw new Error("user declined");
+                window.open(parsed.toString(), "_blank", "noopener,noreferrer");
+              }
+              return { kind: "open_url", url: parsed.toString(), opened: true };
             };
 
             const makeScriptEval = async (args: any) => {
@@ -1522,6 +1544,7 @@ export default function ConversationView({
                           "media.play",
                           "media.observe",
                           "nav.go",
+                          "nav.open",
                         ]);
                         if (sideEffectMethods.has(method) && !allowClientEffects) {
                           throw new Error("side effects disabled by settings");
@@ -1539,6 +1562,7 @@ export default function ConversationView({
                         else if (method === "media.unobserve") out = makeMediaUnobserve(cargs);
                         else if (method === "location.get") out = makeLocation();
                         else if (method === "nav.go") out = makeNavigate(cargs);
+                        else if (method === "nav.open") out = makeOpenUrl(cargs);
                         else if (method === "rpc.progress") {
                           const name = String(cargs?.name ?? "progress");
                           await postRpcProgress(name, cargs?.payload ?? {});
@@ -1655,6 +1679,7 @@ export default function ConversationView({
             else if (rpcKind === "media_observe") result = await makeMediaObserve(rpcArgs);
             else if (rpcKind === "media_unobserve") result = makeMediaUnobserve(rpcArgs);
             else if (rpcKind === "navigate") result = makeNavigate(rpcArgs);
+            else if (rpcKind === "open_url") result = makeOpenUrl(rpcArgs);
             else if (rpcKind === "artifact_url") result = await makeArtifactUrl(rpcArgs);
             else if (rpcKind === "script_eval") result = await makeScriptEval(rpcArgs);
             else if (rpcKind === "page_eval") result = await makePageEval(rpcArgs);

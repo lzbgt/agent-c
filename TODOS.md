@@ -88,7 +88,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [ ] Audio streaming: Opus/WebRTC voice pipeline + broker relay + UI voice session controls.
 - [ ] Tool plugins: sandbox/isolation, Windows loader, and embedded/MCU-compatible plugin path.
 - [ ] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
-- [ ] UI actions: stable public action API, autoplay unlock flow, and consented remote URL opens.
+- [x] UI actions: stable public action API, autoplay unlock flow, and consented remote URL opens.
 - [x] Memory privacy tags (`<private>`) to keep sensitive content out of durable storage (claude-mem inspired).
 - [x] Memory progressive disclosure + citation surfacing for dynamic context assembly (claude-mem inspired).
 - [x] Memory observations + timeline retrieval tools to mirror claude-mem search workflows.
