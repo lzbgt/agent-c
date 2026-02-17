@@ -249,6 +249,28 @@ Response fields:
 - `edge` (object, optional when `scope=edge|all`)
   - same fields as `durable`, using edge workflow timestamps
 
+### Edge analytics aggregates
+
+`GET /api/v1/db/analytics/edge?since_unix_ms=...&until_unix_ms=...&active_within_ms=...`
+
+Parameters:
+- `since_unix_ms` / `until_unix_ms` (optional time window, applied to updated timestamps)
+- `active_within_ms` (optional): if set, counts edge nodes with a heartbeat within the last N ms
+
+Response fields:
+- `edge_tasks` (object)
+  - `counts` (object) state → count
+  - `total` (number)
+  - `terminal` (object): `{count, avg_ms, min_ms, max_ms}` for `done|error|cancelled`
+  - `error_count` (number)
+  - `error_rate` (number|null)
+- `edge_nodes` (object)
+  - `total` (number)
+  - `window_count` (number, optional when time window provided)
+  - `active_within_ms` (number, optional when provided)
+  - `active_count` (number, optional when provided)
+  - `last_heartbeat_min` / `last_heartbeat_max` (number|null)
+
 ### List artifacts
 
 `GET /api/v1/db/artifacts?session_id=...&limit=...&offset=...`

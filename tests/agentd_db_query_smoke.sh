@@ -685,4 +685,18 @@ if "durable" not in obj or "edge" not in obj:
   raise SystemExit(1)
 PY
 
+db_edge_analytics="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/analytics/edge?active_within_ms=600000")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${db_edge_analytics}''')
+if not obj.get("ok"):
+  print("db/analytics/edge failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "edge_tasks" not in obj or "edge_nodes" not in obj:
+  print("expected edge_tasks + edge_nodes sections", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 echo "agentd_db_query_smoke OK"

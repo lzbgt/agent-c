@@ -685,5 +685,6 @@ API when DB is enabled:
 - `GET /api/v1/db/edge_workflow_steps?workflow_id=...`
 - `GET /api/v1/db/edge_workflow_events?workflow_id=...`
 - `GET /api/v1/db/analytics/workflows?scope=all`
+- `GET /api/v1/db/analytics/edge?active_within_ms=...`
 
 See `docs/DB_QUERY.md`.

@@ -7,6 +7,7 @@
 #include <json/json.h>
 
 #include <algorithm>
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -302,6 +303,93 @@ static bool query_error_count(
   }
   if (out_count) *out_count = (int64_t)sqlite3_column_int64(st, 0);
   sqlite3_finalize(st);
+  return true;
+}
+
+static bool query_edge_node_stats(
+  sqlite3* db,
+  const TimeWindow& win,
+  int64_t active_within_ms,
+  Json::Value* out_stats,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_stats) *out_stats = Json::Value(Json::objectValue);
+  if (!db) return false;
+
+  sqlite3_stmt* st = nullptr;
+  if (sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM edge_nodes;", -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite3_errmsg(db);
+    return false;
+  }
+  int64_t total = 0;
+  if (sqlite3_step(st) == SQLITE_ROW) total = sqlite3_column_int64(st, 0);
+  sqlite3_finalize(st);
+
+  Json::Value stats(Json::objectValue);
+  stats["total"] = (Json::Int64)total;
+
+  if (win.has_since || win.has_until) {
+    std::string sql = "SELECT COUNT(*) FROM edge_nodes WHERE last_heartbeat_utc_ms > 0";
+    std::vector<int64_t> binds;
+    append_time_filter(win, "last_heartbeat_utc_ms", &sql, &binds);
+    sql += ";";
+    st = nullptr;
+    if (sqlite3_prepare_v2(db, sql.c_str(), -1, &st, nullptr) != SQLITE_OK) {
+      if (out_error) *out_error = sqlite3_errmsg(db);
+      return false;
+    }
+    if (!bind_i64_list(st, binds, 1)) {
+      sqlite3_finalize(st);
+      if (out_error) *out_error = "failed to bind time window";
+      return false;
+    }
+    int64_t window_count = 0;
+    if (sqlite3_step(st) == SQLITE_ROW) window_count = sqlite3_column_int64(st, 0);
+    sqlite3_finalize(st);
+    stats["window_count"] = (Json::Int64)window_count;
+  }
+
+  if (active_within_ms > 0) {
+    const int64_t now_ms = (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+                             std::chrono::system_clock::now().time_since_epoch())
+                             .count();
+    const int64_t threshold = now_ms - active_within_ms;
+    st = nullptr;
+    if (sqlite3_prepare_v2(
+          db,
+          "SELECT COUNT(*) FROM edge_nodes WHERE last_heartbeat_utc_ms >= ?;",
+          -1,
+          &st,
+          nullptr) != SQLITE_OK) {
+      if (out_error) *out_error = sqlite3_errmsg(db);
+      return false;
+    }
+    (void)sqlite3_bind_int64(st, 1, (sqlite3_int64)threshold);
+    int64_t active_count = 0;
+    if (sqlite3_step(st) == SQLITE_ROW) active_count = sqlite3_column_int64(st, 0);
+    sqlite3_finalize(st);
+    stats["active_within_ms"] = (Json::Int64)active_within_ms;
+    stats["active_count"] = (Json::Int64)active_count;
+  }
+
+  st = nullptr;
+  if (sqlite3_prepare_v2(
+        db,
+        "SELECT MIN(last_heartbeat_utc_ms), MAX(last_heartbeat_utc_ms) FROM edge_nodes WHERE last_heartbeat_utc_ms > 0;",
+        -1,
+        &st,
+        nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = sqlite3_errmsg(db);
+    return false;
+  }
+  if (sqlite3_step(st) == SQLITE_ROW) {
+    stats["last_heartbeat_min"] = stmt_to_row(st, 0);
+    stats["last_heartbeat_max"] = stmt_to_row(st, 1);
+  }
+  sqlite3_finalize(st);
+
+  if (out_stats) *out_stats = stats;
   return true;
 }
 #endif
@@ -904,6 +992,88 @@ void handle_db_workflow_analytics_endpoint(
   if (scope == "all" || scope == "edge") {
     out["edge"] = build_stats("edge_workflows", "created_utc_ms", "updated_utc_ms");
   }
+
+  resp->status = 200;
+  resp->body = json_stringify(out);
+  return;
+#endif
+}
+
+void handle_db_edge_analytics_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  int64_t active_within_ms = 0;
+  (void)parse_i64_param(query_get(req.query, "active_within_ms"), &active_within_ms);
+  if (active_within_ms < 0) active_within_ms = 0;
+
+  const TimeWindow win = parse_time_window(req);
+
+  DbHandle h;
+  Json::Value o = open_db_or_error(db_or_null, &h, nullptr);
+  if (!o.isObject() || !o.get("ok", false).asBool()) {
+    const int st = o.isMember("rpc_status") && o["rpc_status"].isInt() ? o["rpc_status"].asInt() : 500;
+    resp->status = st;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+#if !defined(AGENT_HAVE_SQLITE3)
+  resp->status = 500;
+  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  return;
+#else
+  Json::Value out(Json::objectValue);
+  out["ok"] = true;
+  out["since_unix_ms"] = win.has_since ? Json::Value((Json::Int64)win.since) : Json::Value(Json::nullValue);
+  out["until_unix_ms"] = win.has_until ? Json::Value((Json::Int64)win.until) : Json::Value(Json::nullValue);
+  out["active_within_ms"] = active_within_ms > 0 ? Json::Value((Json::Int64)active_within_ms) : Json::Value(Json::nullValue);
+
+  Json::Value task_stats(Json::objectValue);
+  Json::Value counts(Json::objectValue);
+  int64_t total = 0;
+  std::string err;
+  if (!query_status_counts(h.db, "edge_tasks", "updated_utc_ms", win, &counts, &total, &err)) {
+    task_stats["error"] = err.empty() ? "failed to query edge task counts" : err;
+  } else {
+    task_stats["counts"] = counts;
+    task_stats["total"] = (Json::Int64)total;
+    Json::Value terminal(Json::objectValue);
+    err.clear();
+    if (!query_terminal_stats(h.db, "edge_tasks", "created_utc_ms", "updated_utc_ms", win, &terminal, &err)) {
+      task_stats["terminal_error"] = err.empty() ? "failed to query terminal stats" : err;
+    } else {
+      task_stats["terminal"] = terminal;
+    }
+    int64_t error_count = 0;
+    err.clear();
+    if (!query_error_count(h.db, "edge_tasks", "updated_utc_ms", win, &error_count, &err)) {
+      task_stats["error_count_error"] = err.empty() ? "failed to query error count" : err;
+    } else {
+      task_stats["error_count"] = (Json::Int64)error_count;
+      const int64_t terminal_count = terminal.isMember("count") ? terminal["count"].asInt64() : 0;
+      if (terminal_count > 0) {
+        task_stats["error_rate"] = (double)error_count / (double)terminal_count;
+      } else {
+        task_stats["error_rate"] = Json::Value(Json::nullValue);
+      }
+    }
+  }
+  out["edge_tasks"] = task_stats;
+
+  Json::Value node_stats(Json::objectValue);
+  err.clear();
+  if (!query_edge_node_stats(h.db, win, active_within_ms, &node_stats, &err)) {
+    node_stats["error"] = err.empty() ? "failed to query edge node stats" : err;
+  }
+  out["edge_nodes"] = node_stats;
 
   resp->status = 200;
   resp->body = json_stringify(out);
