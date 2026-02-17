@@ -1,6 +1,6 @@
 # Agentd DB Query API (Troubleshooting) — Draft
 
-Date: 2026-01-30
+Date: 2026-02-17
 
 When `agentd` is started with `--db-path` (or `AGENTD_DB_PATH`), it mirrors runs/events/tool records/artifacts into an SQLite DB
 (`docs/DB.md`). This document defines a small, read-only HTTP surface so operators and the Web UI can query that DB directly for
@@ -76,6 +76,92 @@ Response fields:
 - Each ui_action row includes:
   - `action_json` (string|null): raw JSON object string
   - `action` (object, optional): parsed form of `action_json` when parsing succeeds
+
+### List workflows
+
+`GET /api/v1/db/workflows?status=...&session_id=...&trace_id=...&limit=...&offset=...`
+
+Optional filters:
+- `status=<status>` (e.g. `queued`, `running`, `done`, `error`, `cancelled`)
+- `session_id=<session_id>`
+- `trace_id=<trace_id>`
+- `include_spec=1` to include `spec_json`/`spec`
+- `include_result=1` to include `result_json`/`result`
+
+Response fields:
+- `workflows` (array)
+  - `workflow_id` (string)
+  - `session_id` (string|null)
+  - `trace_id` (string|null)
+  - `priority` (number|null)
+  - `deadline_unix_ms` (number|null)
+  - `idempotency_key` (string|null)
+  - `created_unix_ms` (number)
+  - `updated_unix_ms` (number)
+  - `status` (string)
+  - `cancel_requested` (bool)
+  - `error` (string|null)
+  - `spec_json` (string|null, optional)
+  - `spec` (object, optional): parsed form of `spec_json` when parsing succeeds
+  - `result_json` (string|null, optional)
+  - `result` (object, optional): parsed form of `result_json` when parsing succeeds
+
+### Fetch workflow details
+
+`GET /api/v1/db/workflow?workflow_id=...&include_tasks=1&include_events=1`
+
+Response fields:
+- `workflow` (object) basic workflow fields + `spec_json`/`result_json`
+- `tasks` (array, optional) ordered by `updated_unix_ms DESC`
+- `events` (array, optional) ordered by `event_id`
+
+### List workflow tasks
+
+`GET /api/v1/db/workflow_tasks?workflow_id=...&limit=...&offset=...`
+
+Response fields:
+- `tasks` (array)
+  - `workflow_id` (string)
+  - `task_id` (string)
+  - `priority` (number|null)
+  - `created_unix_ms` (number)
+  - `updated_unix_ms` (number)
+  - `status` (string)
+  - `allow_error` (bool)
+  - `attempt` (number)
+  - `max_attempts` (number)
+  - `ready_unix_ms` (number)
+  - `started_unix_ms` (number|null)
+  - `finished_unix_ms` (number|null)
+  - `depends_on_json` (string|null)
+  - `depends_on` (array, optional): parsed form of `depends_on_json` when parsing succeeds
+  - `request_json` (string)
+  - `request` (object, optional): parsed form of `request_json` when parsing succeeds
+  - `expect_json` (string|null)
+  - `expect` (object, optional): parsed form of `expect_json` when parsing succeeds
+  - `result_json` (string|null)
+  - `result` (object, optional): parsed form of `result_json` when parsing succeeds
+  - `error` (string|null)
+  - `tool_calls_total_cum` (number)
+  - `steps_executed_cum` (number)
+  - `elapsed_ms_cum` (number)
+  - `prompt_tokens_cum` (number)
+  - `completion_tokens_cum` (number)
+  - `total_tokens_cum` (number)
+
+### List workflow events
+
+`GET /api/v1/db/workflow_events?workflow_id=...&limit=...&offset=...`
+
+Response fields:
+- `workflow_events` (array)
+  - `event_id` (number)
+  - `workflow_id` (string)
+  - `task_id` (string|null)
+  - `ts_unix_ms` (number)
+  - `type` (string)
+  - `data_json` (string|null)
+  - `data` (object, optional): parsed form of `data_json` when parsing succeeds
 
 ### List artifacts
 

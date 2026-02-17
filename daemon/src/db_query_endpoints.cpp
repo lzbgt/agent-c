@@ -999,4 +999,611 @@ void handle_db_client_events_endpoint(
 #endif
 }
 
+void handle_db_workflows_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  uint64_t limit = 50;
+  uint64_t offset = 0;
+  uint64_t tmp = 0;
+  if (parse_u64_param(query_get(req.query, "limit"), &tmp)) limit = tmp;
+  if (parse_u64_param(query_get(req.query, "offset"), &tmp)) offset = tmp;
+  limit = clamp_u64(limit, 1, 200);
+  offset = clamp_u64(offset, 0, 1000000);
+
+  const bool include_spec = parse_bool_param(query_get(req.query, "include_spec"), false);
+  const bool include_result = parse_bool_param(query_get(req.query, "include_result"), false);
+
+  std::optional<std::string> status = query_get(req.query, "status");
+  if (status && status->empty()) status.reset();
+  std::optional<std::string> session_id = query_get(req.query, "session_id");
+  if (session_id && session_id->empty()) session_id.reset();
+  std::optional<std::string> trace_id = query_get(req.query, "trace_id");
+  if (trace_id && trace_id->empty()) trace_id.reset();
+
+  DbHandle h;
+  Json::Value o = open_db_or_error(db_or_null, &h, nullptr);
+  if (!o.isObject() || !o.get("ok", false).asBool()) {
+    const int st = o.isMember("rpc_status") && o["rpc_status"].isInt() ? o["rpc_status"].asInt() : 500;
+    resp->status = st;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+#if !defined(AGENT_HAVE_SQLITE3)
+  resp->status = 500;
+  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  return;
+#else
+  sqlite3_stmt* st = nullptr;
+  std::string sql =
+    "SELECT workflow_id, session_id, trace_id, priority, deadline_unix_ms, idempotency_key, "
+    "created_unix_ms, updated_unix_ms, status, cancel_requested, error";
+  if (include_spec) sql += ", spec_json";
+  if (include_result) sql += ", result_json";
+  sql += " FROM workflows";
+
+  std::vector<std::string> where;
+  if (status) where.push_back("status=?");
+  if (session_id) where.push_back("session_id=?");
+  if (trace_id) where.push_back("trace_id=?");
+  if (!where.empty()) {
+    sql += " WHERE ";
+    for (size_t i = 0; i < where.size(); ++i) {
+      if (i) sql += " AND ";
+      sql += where[i];
+    }
+  }
+  sql += " ORDER BY updated_unix_ms DESC LIMIT ? OFFSET ?;";
+
+  if (sqlite3_prepare_v2(h.db, sql.c_str(), -1, &st, nullptr) != SQLITE_OK) {
+    Json::Value err(Json::objectValue);
+    err["ok"] = false;
+    err["rpc_status"] = 500;
+    err["error"] = sqlite3_errmsg(h.db);
+    resp->status = 500;
+    resp->body = json_stringify(err);
+    return;
+  }
+  int bi = 1;
+  if (status) {
+    (void)sqlite3_bind_text(st, bi++, status->c_str(), (int)status->size(), SQLITE_TRANSIENT);
+  }
+  if (session_id) {
+    (void)sqlite3_bind_text(st, bi++, session_id->c_str(), (int)session_id->size(), SQLITE_TRANSIENT);
+  }
+  if (trace_id) {
+    (void)sqlite3_bind_text(st, bi++, trace_id->c_str(), (int)trace_id->size(), SQLITE_TRANSIENT);
+  }
+  (void)sqlite3_bind_int64(st, bi++, (sqlite3_int64)limit);
+  (void)sqlite3_bind_int64(st, bi++, (sqlite3_int64)offset);
+
+  Json::Value rows(Json::arrayValue);
+  while (sqlite3_step(st) == SQLITE_ROW) {
+    Json::Value r(Json::objectValue);
+    int col = 0;
+    r["workflow_id"] = stmt_to_row(st, col++);
+    r["session_id"] = stmt_to_row(st, col++);
+    r["trace_id"] = stmt_to_row(st, col++);
+    r["priority"] = stmt_to_row(st, col++);
+    r["deadline_unix_ms"] = stmt_to_row(st, col++);
+    r["idempotency_key"] = stmt_to_row(st, col++);
+    r["created_unix_ms"] = (Json::Int64)sqlite3_column_int64(st, col++);
+    r["updated_unix_ms"] = (Json::Int64)sqlite3_column_int64(st, col++);
+    r["status"] = stmt_to_row(st, col++);
+    r["cancel_requested"] = sqlite3_column_int(st, col++) ? true : false;
+    r["error"] = stmt_to_row(st, col++);
+    if (include_spec) {
+      const Json::Value spec_json_v = stmt_to_row(st, col++);
+      r["spec_json"] = spec_json_v;
+      if (spec_json_v.isString() && !spec_json_v.asString().empty()) {
+        Json::Value parsed;
+        std::string perr;
+        if (json_parse_any(spec_json_v.asString(), &parsed, &perr)) {
+          r["spec"] = parsed;
+        }
+      }
+    }
+    if (include_result) {
+      const Json::Value result_json_v = stmt_to_row(st, col++);
+      r["result_json"] = result_json_v;
+      if (result_json_v.isString() && !result_json_v.asString().empty()) {
+        Json::Value parsed;
+        std::string perr;
+        if (json_parse_any(result_json_v.asString(), &parsed, &perr)) {
+          r["result"] = parsed;
+        }
+      }
+    }
+    rows.append(r);
+  }
+  sqlite3_finalize(st);
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = true;
+  out["status"] = status ? Json::Value(*status) : Json::Value(Json::nullValue);
+  out["session_id"] = session_id ? Json::Value(*session_id) : Json::Value(Json::nullValue);
+  out["trace_id"] = trace_id ? Json::Value(*trace_id) : Json::Value(Json::nullValue);
+  out["limit"] = (Json::UInt64)limit;
+  out["offset"] = (Json::UInt64)offset;
+  out["include_spec"] = include_spec;
+  out["include_result"] = include_result;
+  out["count"] = (Json::UInt64)rows.size();
+  out["workflows"] = rows;
+  resp->status = 200;
+  resp->body = json_stringify(out);
+  return;
+#endif
+}
+
+void handle_db_workflow_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  const auto workflow_id = query_get(req.query, "workflow_id");
+  if (!workflow_id || workflow_id->empty()) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["rpc_status"] = 400;
+    o["error"] = "missing workflow_id";
+    resp->status = 400;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  const bool include_tasks = parse_bool_param(query_get(req.query, "include_tasks"), false);
+  const bool include_events = parse_bool_param(query_get(req.query, "include_events"), false);
+
+  DbHandle h;
+  Json::Value o = open_db_or_error(db_or_null, &h, nullptr);
+  if (!o.isObject() || !o.get("ok", false).asBool()) {
+    const int st = o.isMember("rpc_status") && o["rpc_status"].isInt() ? o["rpc_status"].asInt() : 500;
+    resp->status = st;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+#if !defined(AGENT_HAVE_SQLITE3)
+  resp->status = 500;
+  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  return;
+#else
+  sqlite3_stmt* st = nullptr;
+  const char* sql =
+    "SELECT workflow_id, session_id, trace_id, priority, deadline_unix_ms, idempotency_key, "
+    "created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json "
+    "FROM workflows WHERE workflow_id=? LIMIT 1;";
+  if (sqlite3_prepare_v2(h.db, sql, -1, &st, nullptr) != SQLITE_OK) {
+    Json::Value err(Json::objectValue);
+    err["ok"] = false;
+    err["rpc_status"] = 500;
+    err["error"] = sqlite3_errmsg(h.db);
+    resp->status = 500;
+    resp->body = json_stringify(err);
+    return;
+  }
+  (void)sqlite3_bind_text(st, 1, workflow_id->c_str(), (int)workflow_id->size(), SQLITE_TRANSIENT);
+  const int rc = sqlite3_step(st);
+  if (rc != SQLITE_ROW) {
+    sqlite3_finalize(st);
+    Json::Value nf(Json::objectValue);
+    nf["ok"] = false;
+    nf["rpc_status"] = 404;
+    nf["error"] = "workflow not found";
+    resp->status = 404;
+    resp->body = json_stringify(nf);
+    return;
+  }
+
+  Json::Value row(Json::objectValue);
+  int col = 0;
+  row["workflow_id"] = stmt_to_row(st, col++);
+  row["session_id"] = stmt_to_row(st, col++);
+  row["trace_id"] = stmt_to_row(st, col++);
+  row["priority"] = stmt_to_row(st, col++);
+  row["deadline_unix_ms"] = stmt_to_row(st, col++);
+  row["idempotency_key"] = stmt_to_row(st, col++);
+  row["created_unix_ms"] = (Json::Int64)sqlite3_column_int64(st, col++);
+  row["updated_unix_ms"] = (Json::Int64)sqlite3_column_int64(st, col++);
+  row["status"] = stmt_to_row(st, col++);
+  row["cancel_requested"] = sqlite3_column_int(st, col++) ? true : false;
+  row["error"] = stmt_to_row(st, col++);
+  const Json::Value spec_json_v = stmt_to_row(st, col++);
+  row["spec_json"] = spec_json_v;
+  if (spec_json_v.isString() && !spec_json_v.asString().empty()) {
+    Json::Value parsed;
+    std::string perr;
+    if (json_parse_any(spec_json_v.asString(), &parsed, &perr)) {
+      row["spec"] = parsed;
+    }
+  }
+  const Json::Value result_json_v = stmt_to_row(st, col++);
+  row["result_json"] = result_json_v;
+  if (result_json_v.isString() && !result_json_v.asString().empty()) {
+    Json::Value parsed;
+    std::string perr;
+    if (json_parse_any(result_json_v.asString(), &parsed, &perr)) {
+      row["result"] = parsed;
+    }
+  }
+  sqlite3_finalize(st);
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = true;
+  out["workflow"] = row;
+
+  const int kMaxRows = 2000;
+
+  if (include_tasks) {
+    Json::Value tasks(Json::arrayValue);
+    sqlite3_stmt* st2 = nullptr;
+    if (sqlite3_prepare_v2(
+          h.db,
+          "SELECT workflow_id, task_id, priority, created_unix_ms, updated_unix_ms, status, allow_error, attempt, max_attempts, "
+          "ready_unix_ms, started_unix_ms, finished_unix_ms, depends_on_json, request_json, expect_json, result_json, error, "
+          "tool_calls_total_cum, steps_executed_cum, elapsed_ms_cum, prompt_tokens_cum, completion_tokens_cum, total_tokens_cum "
+          "FROM workflow_tasks WHERE workflow_id=? ORDER BY updated_unix_ms DESC LIMIT ?;",
+          -1,
+          &st2,
+          nullptr) == SQLITE_OK && st2) {
+      (void)sqlite3_bind_text(st2, 1, workflow_id->c_str(), (int)workflow_id->size(), SQLITE_TRANSIENT);
+      (void)sqlite3_bind_int(st2, 2, kMaxRows);
+      while (sqlite3_step(st2) == SQLITE_ROW) {
+        Json::Value t(Json::objectValue);
+        int tcol = 0;
+        t["workflow_id"] = stmt_to_row(st2, tcol++);
+        t["task_id"] = stmt_to_row(st2, tcol++);
+        t["priority"] = stmt_to_row(st2, tcol++);
+        t["created_unix_ms"] = (Json::Int64)sqlite3_column_int64(st2, tcol++);
+        t["updated_unix_ms"] = (Json::Int64)sqlite3_column_int64(st2, tcol++);
+        t["status"] = stmt_to_row(st2, tcol++);
+        t["allow_error"] = sqlite3_column_int(st2, tcol++) ? true : false;
+        t["attempt"] = (Json::Int64)sqlite3_column_int64(st2, tcol++);
+        t["max_attempts"] = (Json::Int64)sqlite3_column_int64(st2, tcol++);
+        t["ready_unix_ms"] = (Json::Int64)sqlite3_column_int64(st2, tcol++);
+        t["started_unix_ms"] = stmt_to_row(st2, tcol++);
+        t["finished_unix_ms"] = stmt_to_row(st2, tcol++);
+        const Json::Value depends_json_v = stmt_to_row(st2, tcol++);
+        t["depends_on_json"] = depends_json_v;
+        if (depends_json_v.isString() && !depends_json_v.asString().empty()) {
+          Json::Value parsed;
+          std::string perr;
+          if (json_parse_any(depends_json_v.asString(), &parsed, &perr)) {
+            t["depends_on"] = parsed;
+          }
+        }
+        const Json::Value request_json_v = stmt_to_row(st2, tcol++);
+        t["request_json"] = request_json_v;
+        if (request_json_v.isString() && !request_json_v.asString().empty()) {
+          Json::Value parsed;
+          std::string perr;
+          if (json_parse_any(request_json_v.asString(), &parsed, &perr)) {
+            t["request"] = parsed;
+          }
+        }
+        const Json::Value expect_json_v = stmt_to_row(st2, tcol++);
+        t["expect_json"] = expect_json_v;
+        if (expect_json_v.isString() && !expect_json_v.asString().empty()) {
+          Json::Value parsed;
+          std::string perr;
+          if (json_parse_any(expect_json_v.asString(), &parsed, &perr)) {
+            t["expect"] = parsed;
+          }
+        }
+        const Json::Value result_json_task_v = stmt_to_row(st2, tcol++);
+        t["result_json"] = result_json_task_v;
+        if (result_json_task_v.isString() && !result_json_task_v.asString().empty()) {
+          Json::Value parsed;
+          std::string perr;
+          if (json_parse_any(result_json_task_v.asString(), &parsed, &perr)) {
+            t["result"] = parsed;
+          }
+        }
+        t["error"] = stmt_to_row(st2, tcol++);
+        t["tool_calls_total_cum"] = (Json::Int64)sqlite3_column_int64(st2, tcol++);
+        t["steps_executed_cum"] = (Json::Int64)sqlite3_column_int64(st2, tcol++);
+        t["elapsed_ms_cum"] = (Json::Int64)sqlite3_column_int64(st2, tcol++);
+        t["prompt_tokens_cum"] = (Json::Int64)sqlite3_column_int64(st2, tcol++);
+        t["completion_tokens_cum"] = (Json::Int64)sqlite3_column_int64(st2, tcol++);
+        t["total_tokens_cum"] = (Json::Int64)sqlite3_column_int64(st2, tcol++);
+        tasks.append(t);
+      }
+      sqlite3_finalize(st2);
+    } else if (st2) {
+      sqlite3_finalize(st2);
+    }
+    out["tasks"] = tasks;
+  }
+
+  if (include_events) {
+    Json::Value events(Json::arrayValue);
+    sqlite3_stmt* st2 = nullptr;
+    if (sqlite3_prepare_v2(
+          h.db,
+          "SELECT event_id, workflow_id, task_id, ts_unix_ms, type, data_json "
+          "FROM workflow_events WHERE workflow_id=? ORDER BY event_id LIMIT ?;",
+          -1,
+          &st2,
+          nullptr) == SQLITE_OK && st2) {
+      (void)sqlite3_bind_text(st2, 1, workflow_id->c_str(), (int)workflow_id->size(), SQLITE_TRANSIENT);
+      (void)sqlite3_bind_int(st2, 2, kMaxRows);
+      while (sqlite3_step(st2) == SQLITE_ROW) {
+        Json::Value e(Json::objectValue);
+        e["event_id"] = (Json::Int64)sqlite3_column_int64(st2, 0);
+        e["workflow_id"] = stmt_to_row(st2, 1);
+        e["task_id"] = stmt_to_row(st2, 2);
+        e["ts_unix_ms"] = (Json::Int64)sqlite3_column_int64(st2, 3);
+        e["type"] = stmt_to_row(st2, 4);
+        const Json::Value data_json_v = stmt_to_row(st2, 5);
+        e["data_json"] = data_json_v;
+        if (data_json_v.isString() && !data_json_v.asString().empty()) {
+          Json::Value parsed;
+          std::string perr;
+          if (json_parse_any(data_json_v.asString(), &parsed, &perr)) {
+            e["data"] = parsed;
+          }
+        }
+        events.append(e);
+      }
+      sqlite3_finalize(st2);
+    } else if (st2) {
+      sqlite3_finalize(st2);
+    }
+    out["events"] = events;
+  }
+
+  resp->status = 200;
+  resp->body = json_stringify(out);
+  return;
+#endif
+}
+
+void handle_db_workflow_tasks_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  const auto workflow_id = query_get(req.query, "workflow_id");
+  if (!workflow_id || workflow_id->empty()) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["rpc_status"] = 400;
+    o["error"] = "missing workflow_id";
+    resp->status = 400;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  uint64_t limit = 50;
+  uint64_t offset = 0;
+  uint64_t tmp = 0;
+  if (parse_u64_param(query_get(req.query, "limit"), &tmp)) limit = tmp;
+  if (parse_u64_param(query_get(req.query, "offset"), &tmp)) offset = tmp;
+  limit = clamp_u64(limit, 1, 200);
+  offset = clamp_u64(offset, 0, 1000000);
+
+  DbHandle h;
+  Json::Value o = open_db_or_error(db_or_null, &h, nullptr);
+  if (!o.isObject() || !o.get("ok", false).asBool()) {
+    const int st = o.isMember("rpc_status") && o["rpc_status"].isInt() ? o["rpc_status"].asInt() : 500;
+    resp->status = st;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+#if !defined(AGENT_HAVE_SQLITE3)
+  resp->status = 500;
+  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  return;
+#else
+  sqlite3_stmt* st = nullptr;
+  const char* sql =
+    "SELECT workflow_id, task_id, priority, created_unix_ms, updated_unix_ms, status, allow_error, attempt, max_attempts, "
+    "ready_unix_ms, started_unix_ms, finished_unix_ms, depends_on_json, request_json, expect_json, result_json, error, "
+    "tool_calls_total_cum, steps_executed_cum, elapsed_ms_cum, prompt_tokens_cum, completion_tokens_cum, total_tokens_cum "
+    "FROM workflow_tasks WHERE workflow_id=? ORDER BY updated_unix_ms DESC LIMIT ? OFFSET ?;";
+  if (sqlite3_prepare_v2(h.db, sql, -1, &st, nullptr) != SQLITE_OK) {
+    Json::Value err(Json::objectValue);
+    err["ok"] = false;
+    err["rpc_status"] = 500;
+    err["error"] = sqlite3_errmsg(h.db);
+    resp->status = 500;
+    resp->body = json_stringify(err);
+    return;
+  }
+  (void)sqlite3_bind_text(st, 1, workflow_id->c_str(), (int)workflow_id->size(), SQLITE_TRANSIENT);
+  (void)sqlite3_bind_int64(st, 2, (sqlite3_int64)limit);
+  (void)sqlite3_bind_int64(st, 3, (sqlite3_int64)offset);
+
+  Json::Value tasks(Json::arrayValue);
+  while (sqlite3_step(st) == SQLITE_ROW) {
+    Json::Value t(Json::objectValue);
+    int col = 0;
+    t["workflow_id"] = stmt_to_row(st, col++);
+    t["task_id"] = stmt_to_row(st, col++);
+    t["priority"] = stmt_to_row(st, col++);
+    t["created_unix_ms"] = (Json::Int64)sqlite3_column_int64(st, col++);
+    t["updated_unix_ms"] = (Json::Int64)sqlite3_column_int64(st, col++);
+    t["status"] = stmt_to_row(st, col++);
+    t["allow_error"] = sqlite3_column_int(st, col++) ? true : false;
+    t["attempt"] = (Json::Int64)sqlite3_column_int64(st, col++);
+    t["max_attempts"] = (Json::Int64)sqlite3_column_int64(st, col++);
+    t["ready_unix_ms"] = (Json::Int64)sqlite3_column_int64(st, col++);
+    t["started_unix_ms"] = stmt_to_row(st, col++);
+    t["finished_unix_ms"] = stmt_to_row(st, col++);
+    const Json::Value depends_json_v = stmt_to_row(st, col++);
+    t["depends_on_json"] = depends_json_v;
+    if (depends_json_v.isString() && !depends_json_v.asString().empty()) {
+      Json::Value parsed;
+      std::string perr;
+      if (json_parse_any(depends_json_v.asString(), &parsed, &perr)) {
+        t["depends_on"] = parsed;
+      }
+    }
+    const Json::Value request_json_v = stmt_to_row(st, col++);
+    t["request_json"] = request_json_v;
+    if (request_json_v.isString() && !request_json_v.asString().empty()) {
+      Json::Value parsed;
+      std::string perr;
+      if (json_parse_any(request_json_v.asString(), &parsed, &perr)) {
+        t["request"] = parsed;
+      }
+    }
+    const Json::Value expect_json_v = stmt_to_row(st, col++);
+    t["expect_json"] = expect_json_v;
+    if (expect_json_v.isString() && !expect_json_v.asString().empty()) {
+      Json::Value parsed;
+      std::string perr;
+      if (json_parse_any(expect_json_v.asString(), &parsed, &perr)) {
+        t["expect"] = parsed;
+      }
+    }
+    const Json::Value result_json_v = stmt_to_row(st, col++);
+    t["result_json"] = result_json_v;
+    if (result_json_v.isString() && !result_json_v.asString().empty()) {
+      Json::Value parsed;
+      std::string perr;
+      if (json_parse_any(result_json_v.asString(), &parsed, &perr)) {
+        t["result"] = parsed;
+      }
+    }
+    t["error"] = stmt_to_row(st, col++);
+    t["tool_calls_total_cum"] = (Json::Int64)sqlite3_column_int64(st, col++);
+    t["steps_executed_cum"] = (Json::Int64)sqlite3_column_int64(st, col++);
+    t["elapsed_ms_cum"] = (Json::Int64)sqlite3_column_int64(st, col++);
+    t["prompt_tokens_cum"] = (Json::Int64)sqlite3_column_int64(st, col++);
+    t["completion_tokens_cum"] = (Json::Int64)sqlite3_column_int64(st, col++);
+    t["total_tokens_cum"] = (Json::Int64)sqlite3_column_int64(st, col++);
+    tasks.append(t);
+  }
+  sqlite3_finalize(st);
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = true;
+  out["workflow_id"] = *workflow_id;
+  out["limit"] = (Json::UInt64)limit;
+  out["offset"] = (Json::UInt64)offset;
+  out["count"] = (Json::UInt64)tasks.size();
+  out["tasks"] = tasks;
+  resp->status = 200;
+  resp->body = json_stringify(out);
+  return;
+#endif
+}
+
+void handle_db_workflow_events_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  const auto workflow_id = query_get(req.query, "workflow_id");
+  if (!workflow_id || workflow_id->empty()) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["rpc_status"] = 400;
+    o["error"] = "missing workflow_id";
+    resp->status = 400;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  uint64_t limit = 50;
+  uint64_t offset = 0;
+  uint64_t tmp = 0;
+  if (parse_u64_param(query_get(req.query, "limit"), &tmp)) limit = tmp;
+  if (parse_u64_param(query_get(req.query, "offset"), &tmp)) offset = tmp;
+  limit = clamp_u64(limit, 1, 200);
+  offset = clamp_u64(offset, 0, 1000000);
+
+  DbHandle h;
+  Json::Value o = open_db_or_error(db_or_null, &h, nullptr);
+  if (!o.isObject() || !o.get("ok", false).asBool()) {
+    const int st = o.isMember("rpc_status") && o["rpc_status"].isInt() ? o["rpc_status"].asInt() : 500;
+    resp->status = st;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+#if !defined(AGENT_HAVE_SQLITE3)
+  resp->status = 500;
+  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  return;
+#else
+  sqlite3_stmt* st = nullptr;
+  const char* sql =
+    "SELECT event_id, workflow_id, task_id, ts_unix_ms, type, data_json "
+    "FROM workflow_events WHERE workflow_id=? ORDER BY event_id LIMIT ? OFFSET ?;";
+  if (sqlite3_prepare_v2(h.db, sql, -1, &st, nullptr) != SQLITE_OK) {
+    Json::Value err(Json::objectValue);
+    err["ok"] = false;
+    err["rpc_status"] = 500;
+    err["error"] = sqlite3_errmsg(h.db);
+    resp->status = 500;
+    resp->body = json_stringify(err);
+    return;
+  }
+  (void)sqlite3_bind_text(st, 1, workflow_id->c_str(), (int)workflow_id->size(), SQLITE_TRANSIENT);
+  (void)sqlite3_bind_int64(st, 2, (sqlite3_int64)limit);
+  (void)sqlite3_bind_int64(st, 3, (sqlite3_int64)offset);
+
+  Json::Value rows(Json::arrayValue);
+  while (sqlite3_step(st) == SQLITE_ROW) {
+    Json::Value e(Json::objectValue);
+    e["event_id"] = (Json::Int64)sqlite3_column_int64(st, 0);
+    e["workflow_id"] = stmt_to_row(st, 1);
+    e["task_id"] = stmt_to_row(st, 2);
+    e["ts_unix_ms"] = (Json::Int64)sqlite3_column_int64(st, 3);
+    e["type"] = stmt_to_row(st, 4);
+    const Json::Value data_json_v = stmt_to_row(st, 5);
+    e["data_json"] = data_json_v;
+    if (data_json_v.isString() && !data_json_v.asString().empty()) {
+      Json::Value parsed;
+      std::string perr;
+      if (json_parse_any(data_json_v.asString(), &parsed, &perr)) {
+        e["data"] = parsed;
+      }
+    }
+    rows.append(e);
+  }
+  sqlite3_finalize(st);
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = true;
+  out["workflow_id"] = *workflow_id;
+  out["limit"] = (Json::UInt64)limit;
+  out["offset"] = (Json::UInt64)offset;
+  out["count"] = (Json::UInt64)rows.size();
+  out["workflow_events"] = rows;
+  resp->status = 200;
+  resp->body = json_stringify(out);
+  return;
+#endif
+}
+
 }  // namespace agentd

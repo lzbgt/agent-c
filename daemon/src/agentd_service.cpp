@@ -720,6 +720,22 @@ struct AgentdService::Impl {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_db_client_events_endpoint(cur, cors_cfg, &db, req, resp);
     });
+    server.handle("GET", "/api/v1/db/workflows", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_db_workflows_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("GET", "/api/v1/db/workflow", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_db_workflow_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("GET", "/api/v1/db/workflow_tasks", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_db_workflow_tasks_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("GET", "/api/v1/db/workflow_events", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_db_workflow_events_endpoint(cur, cors_cfg, &db, req, resp);
+    });
 
     // Run endpoints (sync + async).
     server.handle("POST", "/api/v1/run", [this](const HttpRequest& req, HttpResponse* resp) {

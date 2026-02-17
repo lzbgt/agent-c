@@ -1,6 +1,6 @@
 # Roadmap / TODOs (highest leverage)
 
-Date: 2026-02-14
+Date: 2026-02-17
 
 This roadmap is biased toward “power unleashed” coming from the **agentic framework itself**:
 
@@ -88,6 +88,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [ ] Audio streaming: Opus/WebRTC voice pipeline + broker relay + UI voice session controls.
 - [ ] Tool plugins: sandbox/isolation, Windows loader, and embedded/MCU-compatible plugin path.
 - [ ] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
+  - [x] Add workflow DB query endpoints (`/api/v1/db/workflows`, `/api/v1/db/workflow`, `/api/v1/db/workflow_tasks`, `/api/v1/db/workflow_events`)
+    with docs + smoke tests.
+  - [ ] Next: add edge workflow DB query endpoints + analytics aggregates (counts, latency, error rates).
 - [x] UI actions: stable public action API, autoplay unlock flow, and consented remote URL opens.
 - [x] Memory privacy tags (`<private>`) to keep sensitive content out of durable storage (claude-mem inspired).
 - [x] Memory progressive disclosure + citation surfacing for dynamic context assembly (claude-mem inspired).

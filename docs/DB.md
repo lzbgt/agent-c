@@ -672,5 +672,13 @@ API when DB is enabled:
 - `GET /api/v1/db/runs?session_id=...`
 - `GET /api/v1/db/run?run_id=...&include_events=1&include_tools=1&include_artifacts=1`
 - `GET /api/v1/db/artifacts?session_id=...`
+- `GET /api/v1/db/ui_actions?session_id=...`
+- `GET /api/v1/db/sessions?limit=...&offset=...`
+- `GET /api/v1/db/messages?session_id=...&limit=...&offset=...`
+- `GET /api/v1/db/client_events?session_id=...&limit=...&offset=...`
+- `GET /api/v1/db/workflows?status=...&session_id=...&trace_id=...`
+- `GET /api/v1/db/workflow?workflow_id=...&include_tasks=1&include_events=1`
+- `GET /api/v1/db/workflow_tasks?workflow_id=...`
+- `GET /api/v1/db/workflow_events?workflow_id=...`
 
 See `docs/DB_QUERY.md`.

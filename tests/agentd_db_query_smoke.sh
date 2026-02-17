@@ -250,6 +250,67 @@ if "max tool calls" not in err:
   raise SystemExit(1)
 PY
 
+workflow_submit="$(curl -fsS --noproxy "*" --max-time 20 \
+  -H "Content-Type: application/json" \
+  -d "$(python3 - <<PY
+import json
+tasks = [
+  {"task_id":"wf_a","request":{"prompt":"Workflow A","no_session":True,"tools":"host","base_url":"${STUB_BASE}","api_key":"dummy","model":"stub","trace":False}},
+  {"task_id":"wf_b","depends_on":["wf_a"],"request":{"prompt":"Workflow B got \${task.wf_a.json:/assistant_text}","no_session":True,"tools":"host","base_url":"${STUB_BASE}","api_key":"dummy","model":"stub","trace":False}},
+]
+print(json.dumps({
+  "session_id": "${SESSION_ID}",
+  "allow_sessions": True,
+  "allow_inline_api_keys": True,
+  "trace_id": "trace_${SESSION_ID}",
+  "tasks": tasks
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/workflow/submit")"
+
+WORKFLOW_ID="$(python3 - <<PY
+import json
+obj = json.loads(r'''${workflow_submit}''')
+print(obj.get("workflow_id",""))
+PY
+)"
+if [[ -z "${WORKFLOW_ID}" ]]; then
+  echo "failed to get workflow_id: ${workflow_submit}" >&2
+  exit 1
+fi
+
+final_workflow=""
+for _ in $(seq 1 120); do
+  final_workflow="$(curl -fsS --noproxy "*" --max-time 5 \
+    "${DAEMON_URL}/api/v1/workflow?workflow_id=${WORKFLOW_ID}&include_tasks=1")"
+  if python3 - <<PY >/dev/null 2>&1
+import json
+obj = json.loads(r'''${final_workflow}''')
+w = obj.get("workflow") or {}
+st = w.get("status")
+if st in ("done","error","cancelled"):
+  raise SystemExit(0)
+raise SystemExit(1)
+PY
+  then
+    break
+  fi
+  sleep 0.05
+done
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${final_workflow}''')
+if not obj.get("ok"):
+  print("workflow get failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+w = obj.get("workflow") or {}
+if w.get("status") != "done":
+  print("expected workflow status done:", w, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 db_runs="$(curl -fsS --noproxy "*" --max-time 10 \
   "${DAEMON_URL}/api/v1/db/runs?session_id=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("""'${SESSION_ID}'"""))')&limit=20&offset=0")"
 
@@ -440,6 +501,79 @@ if not isinstance(rows, list):
   raise SystemExit(1)
 if not any(isinstance(r, dict) and r.get("type") == "smoke_client_event" for r in rows):
   print("expected to find smoke_client_event", rows, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+db_workflows="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/workflows?session_id=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("""'${SESSION_ID}'"""))')&limit=20&offset=0&include_result=1")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${db_workflows}''')
+if not obj.get("ok"):
+  print("db/workflows failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+rows = obj.get("workflows") or []
+wid = """${WORKFLOW_ID}"""
+if not any(isinstance(r, dict) and r.get("workflow_id") == wid for r in rows):
+  print("expected workflow_id in db/workflows:", wid, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+db_workflow="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/workflow?workflow_id=${WORKFLOW_ID}&include_tasks=1&include_events=1")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${db_workflow}''')
+if not obj.get("ok"):
+  print("db/workflow failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+w = obj.get("workflow") or {}
+if w.get("workflow_id") != """${WORKFLOW_ID}""":
+  print("unexpected workflow_id:", w.get("workflow_id"), file=sys.stderr)
+  raise SystemExit(1)
+tasks = obj.get("tasks") or []
+if not tasks:
+  print("expected workflow tasks", file=sys.stderr)
+  raise SystemExit(1)
+events = obj.get("events") or []
+if not events:
+  print("expected workflow events", file=sys.stderr)
+  raise SystemExit(1)
+has_parsed = any(isinstance(e, dict) and isinstance(e.get("data"), (dict, list)) for e in events)
+if not has_parsed:
+  print("expected at least one parsed workflow event data", file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+db_workflow_tasks="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/workflow_tasks?workflow_id=${WORKFLOW_ID}&limit=20&offset=0")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${db_workflow_tasks}''')
+if not obj.get("ok"):
+  print("db/workflow_tasks failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+rows = obj.get("tasks") or []
+if not rows:
+  print("expected workflow_tasks rows", file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+db_workflow_events="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/workflow_events?workflow_id=${WORKFLOW_ID}&limit=50&offset=0")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${db_workflow_events}''')
+if not obj.get("ok"):
+  print("db/workflow_events failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+rows = obj.get("workflow_events") or []
+if not rows:
+  print("expected workflow_events rows", file=sys.stderr)
   raise SystemExit(1)
 PY
 
