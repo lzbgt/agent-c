@@ -199,6 +199,17 @@ Operational endpoints can also be routed through the proxy:
 Use `X-Agentd-Deployment` to target a specific deployment, or omit it to target the broker’s most recent deployment.
 `/api/v1/ota/status` surfaces drain hints (`drain_active`, `drain_until_unix_ms`, `drain_reason`) during updates.
 
+Broker bulk OTA fan-out (multi-deployment):
+
+- `POST /v1/agents/{agent_id}/ota/update`
+  - body: `{ url, sha256?, version?, reason?, trace_id?, drain_timeout_ms?, deployment_ids?, deployment_id?, deployments? }`
+  - if deployment IDs are omitted, broker fans out to all connected deployments for the agent
+- `GET /v1/agents/{agent_id}/ota/status`
+  - query: `deployment_ids=dep1,dep2` (optional; defaults to all connected deployments)
+
+Both return `{ ok, agent_id, total, ok_count, error_count, results[] }`, where each result is
+`{ deployment_id, status, data }` with `data` mirroring the agent’s OTA endpoint JSON.
+
 ### Orchestration (fan-out)
 
 - `POST /v1/orchestrate`

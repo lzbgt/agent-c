@@ -1287,6 +1287,35 @@ export async function apiBrokerOtaUpdate(
   return apiBrokerProxyJson(brokerBase, agentId, "/api/v1/ota/update", "POST", body, auth, deploymentId);
 }
 
+export async function apiBrokerOtaUpdateBulk(
+  brokerBase: string,
+  agentId: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+  deploymentIds?: string[],
+): Promise<{ status: number; data: any }> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const id = String(agentId || "").trim();
+  if (!id) throw new Error("missing agent_id");
+  const headers = daemonHeaders(auth, { "Content-Type": "application/json" });
+  const payload: Record<string, any> = { ...body };
+  if (Array.isArray(deploymentIds) && deploymentIds.length > 0) {
+    payload.deployment_ids = deploymentIds;
+  }
+  const r = await fetch(`${base}/v1/agents/${encodeURIComponent(id)}/ota/update`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  let data: any = null;
+  try {
+    data = await r.json();
+  } catch {
+    data = null;
+  }
+  return { status: r.status, data };
+}
+
 export async function apiBrokerOtaStatus(
   brokerBase: string,
   agentId: string,
@@ -1294,6 +1323,31 @@ export async function apiBrokerOtaStatus(
   deploymentId?: string,
 ): Promise<{ status: number; data: any }> {
   return apiBrokerProxyJson(brokerBase, agentId, "/api/v1/ota/status", "GET", undefined, auth, deploymentId);
+}
+
+export async function apiBrokerOtaStatusBulk(
+  brokerBase: string,
+  agentId: string,
+  auth?: ApiAuth,
+  deploymentIds?: string[],
+): Promise<{ status: number; data: any }> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const id = String(agentId || "").trim();
+  if (!id) throw new Error("missing agent_id");
+  const params = new URLSearchParams();
+  if (Array.isArray(deploymentIds) && deploymentIds.length > 0) {
+    params.set("deployment_ids", deploymentIds.join(","));
+  }
+  const qs = params.toString();
+  const url = `${base}/v1/agents/${encodeURIComponent(id)}/ota/status${qs ? `?${qs}` : ""}`;
+  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  let data: any = null;
+  try {
+    data = await r.json();
+  } catch {
+    data = null;
+  }
+  return { status: r.status, data };
 }
 
 export const BrokerMembersRespSchema = z

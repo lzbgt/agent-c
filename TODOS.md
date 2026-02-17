@@ -57,7 +57,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] WebUI connection profiles for multi-agentd deployments (direct or broker-backed).
   - [x] WebUI profile-specific run settings per connection profile (model/provider + run limits).
   - [x] Broker multi-deployment routing (`deployment_id`, `X-Agentd-Deployment`) + WebUI deployment selector + docs.
-  - [x] OTA update pipeline: agentd OTA endpoint + operator update command, WebUI multi-deployment fanout via broker proxy.
+  - [x] OTA update pipeline: agentd OTA endpoint + operator update command, WebUI multi-deployment fanout via broker bulk OTA endpoints.
   - [x] OTA task continuity: drain mode + documented restart recovery for async jobs/workflows after update.
   - [x] WebUI OTA status polling per deployment (drain + error surfacing).
   - [x] OTA continuity smoke script (`tools/verify_ota_continuity.sh`) to validate resume after restart.

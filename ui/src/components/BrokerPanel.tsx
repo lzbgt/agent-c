@@ -7,7 +7,9 @@ import {
   apiBrokerListAgents,
   apiBrokerListDeployments,
   apiBrokerOtaStatus,
+  apiBrokerOtaStatusBulk,
   apiBrokerOtaUpdate,
+  apiBrokerOtaUpdateBulk,
   apiBrokerUpsertMember,
   type ApiAuth,
 } from "../api";
@@ -268,6 +270,19 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     setSelectedDeployments(connected.length > 0 ? connected : deployments.map((d) => normalizeDeploymentId(d?.deployment_id)));
   };
 
+  const normalizeFanoutResults = (rows: any[], fallbackIds?: string[]) => {
+    if (!Array.isArray(rows)) return null;
+    return rows.map((row, idx) => {
+      const rec = row ?? {};
+      const dep =
+        normalizeDeploymentId(rec?.deployment_id ?? rec?.deploymentId ?? rec?.deployment ?? fallbackIds?.[idx] ?? "");
+      const statusRaw = rec?.status;
+      const status = typeof statusRaw === "number" ? statusRaw : Number(statusRaw || 0);
+      const data = rec?.data ?? rec?.response ?? rec?.body ?? rec;
+      return { deployment_id: dep, status, data };
+    });
+  };
+
   const runOtaUpdate = async () => {
     setOtaError(null);
     setOtaResults(null);
@@ -301,24 +316,37 @@ export default function BrokerPanel(props: BrokerPanelProps) {
 
     setOtaBusy(true);
     try {
-      const settled = await Promise.allSettled(
-        selectedDeployments.map(async (deploymentId) => {
-          const res = await apiBrokerOtaUpdate(base, agentId, body, props.auth, deploymentId);
+      const bulk = await apiBrokerOtaUpdateBulk(base, agentId, body, props.auth, selectedDeployments);
+      if (bulk.status === 404 || bulk.status === 405 || bulk.status === 501) {
+        const settled = await Promise.allSettled(
+          selectedDeployments.map(async (deploymentId) => {
+            const res = await apiBrokerOtaUpdate(base, agentId, body, props.auth, deploymentId);
+            return {
+              deployment_id: deploymentId,
+              status: res.status,
+              data: res.data,
+            };
+          }),
+        );
+        const results = settled.map((r, idx) => {
+          if (r.status === "fulfilled") return r.value;
           return {
-            deployment_id: deploymentId,
-            status: res.status,
-            data: res.data,
+            deployment_id: selectedDeployments[idx],
+            status: 0,
+            data: { ok: false, error: String(r.reason || "request failed") },
           };
-        }),
-      );
-      const results = settled.map((r, idx) => {
-        if (r.status === "fulfilled") return r.value;
-        return {
-          deployment_id: selectedDeployments[idx],
-          status: 0,
-          data: { ok: false, error: String(r.reason || "request failed") },
-        };
-      });
+        });
+        setOtaResults(results);
+        return;
+      }
+      if (bulk.status >= 400) {
+        const err = bulk.data?.error ? String(bulk.data.error) : `broker error (${bulk.status})`;
+        throw new Error(err);
+      }
+      const results = normalizeFanoutResults(bulk.data?.results, selectedDeployments);
+      if (!results) {
+        throw new Error("unexpected broker response");
+      }
       setOtaResults(results);
     } catch (e) {
       setOtaError(String(e));
@@ -340,24 +368,38 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     }
     setOtaStatusBusy(true);
     try {
-      const settled = await Promise.allSettled(
-        selectedDeployments.map(async (deploymentId) => {
-          const res = await apiBrokerOtaStatus(base, agentId, props.auth, deploymentId);
+      const bulk = await apiBrokerOtaStatusBulk(base, agentId, props.auth, selectedDeployments);
+      if (bulk.status === 404 || bulk.status === 405 || bulk.status === 501) {
+        const settled = await Promise.allSettled(
+          selectedDeployments.map(async (deploymentId) => {
+            const res = await apiBrokerOtaStatus(base, agentId, props.auth, deploymentId);
+            return {
+              deployment_id: deploymentId,
+              status: res.status,
+              data: res.data,
+            };
+          }),
+        );
+        const results = settled.map((r, idx) => {
+          if (r.status === "fulfilled") return r.value;
           return {
-            deployment_id: deploymentId,
-            status: res.status,
-            data: res.data,
+            deployment_id: selectedDeployments[idx],
+            status: 0,
+            data: { ok: false, error: String(r.reason || "request failed") },
           };
-        }),
-      );
-      const results = settled.map((r, idx) => {
-        if (r.status === "fulfilled") return r.value;
-        return {
-          deployment_id: selectedDeployments[idx],
-          status: 0,
-          data: { ok: false, error: String(r.reason || "request failed") },
-        };
-      });
+        });
+        setOtaStatusResults(results);
+        persistOtaStatusCache(results);
+        return;
+      }
+      if (bulk.status >= 400) {
+        const err = bulk.data?.error ? String(bulk.data.error) : `broker error (${bulk.status})`;
+        throw new Error(err);
+      }
+      const results = normalizeFanoutResults(bulk.data?.results, selectedDeployments);
+      if (!results) {
+        throw new Error("unexpected broker response");
+      }
       setOtaStatusResults(results);
       persistOtaStatusCache(results);
     } catch (e) {

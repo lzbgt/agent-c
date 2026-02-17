@@ -131,7 +131,9 @@ OTA enters **drain mode** while the update runs:
 - `GET /api/v1/ota/status` surfaces `drain_active`, `drain_until_unix_ms`, `drain_reason`
 
 WebUI + broker fanout:
-- In broker mode, the WebUI lists connected deployments and can send OTA requests to **all selected deployments** via the broker proxy.
+- In broker mode, the WebUI lists connected deployments and can send OTA requests to **all selected deployments** using broker bulk OTA endpoints:
+  - `POST /v1/agents/{agent_id}/ota/update` (body may include `deployment_ids`).
+  - `GET  /v1/agents/{agent_id}/ota/status` (query `deployment_ids=...` optional).
 - Status checks also fan out per deployment, so operators can verify drain/rollout progress without logging into each host.
 
 Local verification:

@@ -515,6 +515,137 @@ func deploymentIDFromRequest(r *http.Request) (string, error) {
 	return raw, nil
 }
 
+func buildAgentForwardHeaders(r *http.Request, userSub string) map[string]string {
+	headers := map[string]string{}
+	if r == nil {
+		return headers
+	}
+	for k, vv := range r.Header {
+		if len(vv) == 0 {
+			continue
+		}
+		kl := strings.ToLower(k)
+		if kl == "authorization" || kl == "host" || kl == "connection" || kl == "idempotency-key" || kl == "x-idempotency-key" || kl == "x-agentd-deployment" {
+			continue
+		}
+		headers[k] = vv[0]
+	}
+	hasHeader := func(name string) bool {
+		for k := range headers {
+			if strings.EqualFold(k, name) {
+				return true
+			}
+		}
+		return false
+	}
+	if !hasHeader("X-Request-ID") {
+		if rid := requestIDFromContext(r.Context()); rid != "" {
+			headers["X-Request-ID"] = rid
+		}
+	}
+	if !hasHeader("X-Trace-ID") {
+		if tid := traceIDFromContext(r.Context()); tid != "" {
+			headers["X-Trace-ID"] = tid
+		}
+	}
+	if userSub != "" {
+		headers["X-Agentd-Broker-User"] = userSub
+	}
+	if v := strings.TrimSpace(r.Header.Get("X-Agentd-Authorization")); v != "" {
+		headers["Authorization"] = v
+		delete(headers, "X-Agentd-Authorization")
+	}
+	return headers
+}
+
+func parseDeploymentIDs(raw []string) ([]string, error) {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(raw))
+	for _, id := range raw {
+		s := strings.TrimSpace(id)
+		if s == "" {
+			continue
+		}
+		if !deploymentIDRe.MatchString(s) {
+			return nil, errors.New("invalid deployment_id")
+		}
+		if _, ok := seen[s]; ok {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	return out, nil
+}
+
+func deploymentIDsFromBody(body []byte) ([]string, error) {
+	if len(body) == 0 {
+		return nil, nil
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(body, &obj); err != nil {
+		return nil, errors.New("invalid json")
+	}
+	raw := make([]string, 0, 8)
+	if v, ok := obj["deployment_ids"]; ok {
+		arr, ok := v.([]any)
+		if !ok {
+			return nil, errors.New("deployment_ids must be an array of strings")
+		}
+		for _, item := range arr {
+			s, ok := item.(string)
+			if !ok {
+				return nil, errors.New("deployment_ids must be an array of strings")
+			}
+			raw = append(raw, s)
+		}
+	}
+	if v, ok := obj["deployment_id"]; ok {
+		s, ok := v.(string)
+		if !ok {
+			return nil, errors.New("deployment_id must be a string")
+		}
+		raw = append(raw, s)
+	}
+	if v, ok := obj["deployments"]; ok {
+		arr, ok := v.([]any)
+		if !ok {
+			return nil, errors.New("deployments must be an array of strings")
+		}
+		for _, item := range arr {
+			s, ok := item.(string)
+			if !ok {
+				return nil, errors.New("deployments must be an array of strings")
+			}
+			raw = append(raw, s)
+		}
+	}
+	return parseDeploymentIDs(raw)
+}
+
+func deploymentIDsFromQuery(r *http.Request) ([]string, error) {
+	if r == nil {
+		return nil, nil
+	}
+	raw := make([]string, 0, 8)
+	if dep, _ := deploymentIDFromRequest(r); dep != "" {
+		raw = append(raw, dep)
+	}
+	if v := strings.TrimSpace(r.URL.Query().Get("deployment_ids")); v != "" {
+		parts := strings.Split(v, ",")
+		for _, p := range parts {
+			raw = append(raw, p)
+		}
+	}
+	if v := strings.TrimSpace(r.URL.Query().Get("deployments")); v != "" {
+		parts := strings.Split(v, ",")
+		for _, p := range parts {
+			raw = append(raw, p)
+		}
+	}
+	return parseDeploymentIDs(raw)
+}
+
 func (s *Server) handleAgentsCreate(w http.ResponseWriter, r *http.Request) {
 	p, err := s.requirePrincipal(r)
 	if err != nil {
@@ -578,6 +709,8 @@ func (s *Server) handleAgentsSubroutes(w http.ResponseWriter, r *http.Request) {
 	// - /v1/agents/{agent_id}/proxy_sse/<agentd_path>
 	// - /v1/agents/{agent_id}/disconnect
 	// - /v1/agents/{agent_id}/deployments
+	// - /v1/agents/{agent_id}/ota/update
+	// - /v1/agents/{agent_id}/ota/status
 	// - /v1/agents/{agent_id}/members
 	// - /v1/agents/{agent_id}/members/{user_sub}
 	// - /v1/agents/{agent_id}/membership_audit
@@ -609,6 +742,21 @@ func (s *Server) handleAgentsSubroutes(w http.ResponseWriter, r *http.Request) {
 			agentPath = "/" + parts[2]
 		}
 		s.handleAgentProxy(w, r, agentID, agentPath)
+		return
+	}
+	if action == "ota" {
+		if len(parts) < 3 || parts[2] == "" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		switch parts[2] {
+		case "update":
+			s.handleAgentOtaUpdateBulk(w, r, agentID)
+		case "status":
+			s.handleAgentOtaStatusBulk(w, r, agentID)
+		default:
+			http.Error(w, "not found", http.StatusNotFound)
+		}
 		return
 	}
 	if action == "proxy_sse" {
@@ -825,45 +973,7 @@ func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentI
 	}
 
 	// Build agent-facing request.
-	headers := map[string]string{}
-	for k, vv := range r.Header {
-		if len(vv) == 0 {
-			continue
-		}
-		kl := strings.ToLower(k)
-		// Never forward broker control-plane auth headers to the agent.
-		if kl == "authorization" || kl == "host" || kl == "connection" || kl == "idempotency-key" || kl == "x-idempotency-key" || kl == "x-agentd-deployment" {
-			continue
-		}
-		// Keep first value only (agentd endpoints don't require multi-value headers).
-		headers[k] = vv[0]
-	}
-	hasHeader := func(name string) bool {
-		for k := range headers {
-			if strings.EqualFold(k, name) {
-				return true
-			}
-		}
-		return false
-	}
-	if !hasHeader("X-Request-ID") {
-		if rid := requestIDFromContext(r.Context()); rid != "" {
-			headers["X-Request-ID"] = rid
-		}
-	}
-	if !hasHeader("X-Trace-ID") {
-		if tid := traceIDFromContext(r.Context()); tid != "" {
-			headers["X-Trace-ID"] = tid
-		}
-	}
-	headers["X-Agentd-Broker-User"] = p.Sub
-	// Allow callers to pass through an agentd auth header without colliding with broker OIDC auth.
-	// The broker consumes `Authorization: Bearer <oidc_jwt>`; the forwarded request may need a different
-	// bearer token for the agent endpoint behind the connector.
-	if v := strings.TrimSpace(r.Header.Get("X-Agentd-Authorization")); v != "" {
-		headers["Authorization"] = v
-		delete(headers, "X-Agentd-Authorization")
-	}
+	headers := buildAgentForwardHeaders(r, p.Sub)
 
 	ro := s.relayAgentHTTP(r.Context(), p, agentID, deploymentID, r.Method, agentPath, r.URL.RawQuery, headers, body)
 	if ro.BrokerStatus != 0 {
@@ -938,40 +1048,7 @@ func (s *Server) handleAgentProxySSE(w http.ResponseWriter, r *http.Request, age
 		return
 	}
 
-	headers := map[string]string{}
-	for k, vv := range r.Header {
-		if len(vv) == 0 {
-			continue
-		}
-		kl := strings.ToLower(k)
-		if kl == "authorization" || kl == "host" || kl == "connection" || kl == "idempotency-key" || kl == "x-idempotency-key" || kl == "x-agentd-deployment" {
-			continue
-		}
-		headers[k] = vv[0]
-	}
-	hasHeader := func(name string) bool {
-		for k := range headers {
-			if strings.EqualFold(k, name) {
-				return true
-			}
-		}
-		return false
-	}
-	if !hasHeader("X-Request-ID") {
-		if rid := requestIDFromContext(r.Context()); rid != "" {
-			headers["X-Request-ID"] = rid
-		}
-	}
-	if !hasHeader("X-Trace-ID") {
-		if tid := traceIDFromContext(r.Context()); tid != "" {
-			headers["X-Trace-ID"] = tid
-		}
-	}
-	headers["X-Agentd-Broker-User"] = p.Sub
-	if v := strings.TrimSpace(r.Header.Get("X-Agentd-Authorization")); v != "" {
-		headers["Authorization"] = v
-		delete(headers, "X-Agentd-Authorization")
-	}
+	headers := buildAgentForwardHeaders(r, p.Sub)
 
 	streamID := newID()
 	streamCh, err := a.RegisterStream(streamID)
@@ -1104,6 +1181,221 @@ func (s *Server) handleAgentProxySSE(w http.ResponseWriter, r *http.Request, age
 			}
 		}
 	}
+}
+
+type agentFanoutResult struct {
+	DeploymentID string `json:"deployment_id"`
+	Status       int    `json:"status"`
+	Data         any    `json:"data"`
+}
+
+func (s *Server) relayAgentHTTPBulk(
+	ctx context.Context,
+	p *Principal,
+	agentID string,
+	deploymentIDs []string,
+	method string,
+	agentPath string,
+	headers map[string]string,
+	body []byte,
+) []agentFanoutResult {
+	if len(deploymentIDs) == 0 {
+		return nil
+	}
+	const maxFanout = 4
+	sem := make(chan struct{}, maxFanout)
+	out := make([]agentFanoutResult, len(deploymentIDs))
+	var wg sync.WaitGroup
+	for i, dep := range deploymentIDs {
+		i := i
+		dep := dep
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if maxFanout > 0 {
+				sem <- struct{}{}
+				defer func() { <-sem }()
+			}
+			ro := s.relayAgentHTTP(ctx, p, agentID, dep, method, agentPath, "", headers, body)
+			if ro.BrokerStatus != 0 {
+				out[i] = agentFanoutResult{
+					DeploymentID: dep,
+					Status:       ro.BrokerStatus,
+					Data: map[string]any{
+						"ok":            false,
+						"error":         ro.Err,
+						"broker_status": ro.BrokerStatus,
+					},
+				}
+				return
+			}
+			if len(ro.Body) == 0 {
+				out[i] = agentFanoutResult{
+					DeploymentID: dep,
+					Status:       ro.AgentStatus,
+					Data: map[string]any{
+						"ok":    false,
+						"error": "empty response",
+					},
+				}
+				return
+			}
+			var data any
+			if err := json.Unmarshal(ro.Body, &data); err != nil {
+				out[i] = agentFanoutResult{
+					DeploymentID: dep,
+					Status:       ro.AgentStatus,
+					Data: map[string]any{
+						"ok":    false,
+						"error": "invalid agent response",
+						"raw":   string(ro.Body),
+					},
+				}
+				return
+			}
+			out[i] = agentFanoutResult{
+				DeploymentID: dep,
+				Status:       ro.AgentStatus,
+				Data:         data,
+			}
+		}()
+	}
+	wg.Wait()
+	return out
+}
+
+func (s *Server) handleAgentOtaUpdateBulk(w http.ResponseWriter, r *http.Request, agentID string) {
+	if r.Method != "POST" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if ok, err := s.canAccessAgent(r.Context(), p, agentID); err != nil {
+		http.Error(w, "db error", http.StatusInternalServerError)
+		return
+	} else if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	body, err := readBodyBounded(r.Body, s.cfg.MaxRequestBodySize)
+	if err != nil {
+		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	deploymentIDs, err := deploymentIDsFromBody(body)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if len(deploymentIDs) == 0 {
+		deploymentIDs, err = deploymentIDsFromQuery(r)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+	if len(deploymentIDs) == 0 {
+		for _, ac := range s.cfg.Registry.ListByAgent(agentID) {
+			if ac == nil || ac.DeploymentID == "" {
+				continue
+			}
+			deploymentIDs = append(deploymentIDs, ac.DeploymentID)
+		}
+	}
+	if len(deploymentIDs) == 0 {
+		http.Error(w, "agent not connected", http.StatusNotFound)
+		return
+	}
+
+	headers := buildAgentForwardHeaders(r, p.Sub)
+	hasContentType := false
+	for k := range headers {
+		if strings.EqualFold(k, "Content-Type") {
+			hasContentType = true
+			break
+		}
+	}
+	if !hasContentType {
+		headers["Content-Type"] = "application/json"
+	}
+
+	results := s.relayAgentHTTPBulk(r.Context(), p, agentID, deploymentIDs, "POST", "/api/v1/ota/update", headers, body)
+	okCount := 0
+	for _, res := range results {
+		if m, ok := res.Data.(map[string]any); ok {
+			if v, ok := m["ok"].(bool); ok && v {
+				okCount++
+			}
+		}
+	}
+	writeJSON(w, map[string]any{
+		"ok":          okCount == len(results),
+		"agent_id":    agentID,
+		"results":     results,
+		"total":       len(results),
+		"ok_count":    okCount,
+		"error_count": len(results) - okCount,
+	})
+}
+
+func (s *Server) handleAgentOtaStatusBulk(w http.ResponseWriter, r *http.Request, agentID string) {
+	if r.Method != "GET" {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if ok, err := s.canAccessAgent(r.Context(), p, agentID); err != nil {
+		http.Error(w, "db error", http.StatusInternalServerError)
+		return
+	} else if !ok {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	deploymentIDs, err := deploymentIDsFromQuery(r)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if len(deploymentIDs) == 0 {
+		for _, ac := range s.cfg.Registry.ListByAgent(agentID) {
+			if ac == nil || ac.DeploymentID == "" {
+				continue
+			}
+			deploymentIDs = append(deploymentIDs, ac.DeploymentID)
+		}
+	}
+	if len(deploymentIDs) == 0 {
+		http.Error(w, "agent not connected", http.StatusNotFound)
+		return
+	}
+
+	headers := buildAgentForwardHeaders(r, p.Sub)
+	results := s.relayAgentHTTPBulk(r.Context(), p, agentID, deploymentIDs, "GET", "/api/v1/ota/status", headers, nil)
+	okCount := 0
+	for _, res := range results {
+		if m, ok := res.Data.(map[string]any); ok {
+			if v, ok := m["ok"].(bool); ok && v {
+				okCount++
+			}
+		}
+	}
+	writeJSON(w, map[string]any{
+		"ok":          okCount == len(results),
+		"agent_id":    agentID,
+		"results":     results,
+		"total":       len(results),
+		"ok_count":    okCount,
+		"error_count": len(results) - okCount,
+	})
 }
 
 func (s *Server) handleAgentConnect(w http.ResponseWriter, r *http.Request) {
