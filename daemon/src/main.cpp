@@ -254,6 +254,7 @@ int main(int argc, char** argv) {
   bool workflow_http_dns_pin_set = false;
   bool upload_max_bytes_set = false;
   bool blob_store_set = false;
+  bool blob_tier_set = false;
   bool cors_allow_credentials_set = false;
   bool cors_max_age_set = false;
   bool cors_routes_set = false;
@@ -462,6 +463,66 @@ int main(int argc, char** argv) {
         return 2;
       }
       blob_store_set = true;
+    } else if (a == "--blob-tier-local-max-bytes") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --blob-tier-local-max-bytes\n";
+        return 2;
+      }
+      try {
+        long long n = std::stoll(v);
+        if (n < 0) n = 0;
+        cfg.blob_tier_local_max_bytes = (int64_t)n;
+        blob_tier_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --blob-tier-local-max-bytes\n";
+        return 2;
+      }
+    } else if (a == "--blob-tier-local-max-age-ms") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --blob-tier-local-max-age-ms\n";
+        return 2;
+      }
+      try {
+        long long n = std::stoll(v);
+        if (n < 0) n = 0;
+        cfg.blob_tier_local_max_age_ms = (int64_t)n;
+        blob_tier_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --blob-tier-local-max-age-ms\n";
+        return 2;
+      }
+    } else if (a == "--blob-tier-promote-after-ms") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --blob-tier-promote-after-ms\n";
+        return 2;
+      }
+      try {
+        long long n = std::stoll(v);
+        if (n < 0) n = 0;
+        cfg.blob_tier_promote_after_ms = (int64_t)n;
+        blob_tier_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --blob-tier-promote-after-ms\n";
+        return 2;
+      }
+    } else if (a == "--blob-tier-promote-max-bytes") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --blob-tier-promote-max-bytes\n";
+        return 2;
+      }
+      try {
+        long long n = std::stoll(v);
+        if (n < 0) n = 0;
+        cfg.blob_tier_promote_max_bytes = (int64_t)n;
+        blob_tier_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --blob-tier-promote-max-bytes\n";
+        return 2;
+      }
     } else if (a == "--summary-model") {
       if (!take(&cfg.summary_model)) {
         std::cerr << "Missing value for --summary-model\n";
@@ -1043,6 +1104,10 @@ int main(int argc, char** argv) {
         << "  --blob-store-access-key <key>  Object store access key (secret)\n"
         << "  --blob-store-secret-key <key>  Object store secret key (secret)\n"
         << "  --blob-store-session-token <token>  Optional session token (secret)\n"
+        << "  --blob-tier-local-max-bytes <n>  Max local cache bytes for object tier (0 disables)\n"
+        << "  --blob-tier-local-max-age-ms <n>  Evict object-tier cache older than this age (0 disables)\n"
+        << "  --blob-tier-promote-after-ms <n>  Promote local blobs after this age (0 disables)\n"
+        << "  --blob-tier-promote-max-bytes <n>  Per-blob promotion size cap (0 disables)\n"
         << "  --db-path <path>     SQLite DB path (default: <state-dir>/agentd.db)\n"
         << "  --timeout-ms <n>     Provider HTTP timeout in ms (default: 60000)\n"
         << "  --job-ttl-ms <n>     GC finished jobs older than n ms (default: 1800000)\n"
@@ -1396,6 +1461,46 @@ int main(int argc, char** argv) {
     cfg.blob_store_session_token = s;
     blob_store_set = true;
   }
+  if (const char* s = getenv_s("AGENTD_BLOB_TIER_LOCAL_MAX_BYTES")) {
+    try {
+      long long n = std::stoll(s);
+      if (n < 0) n = 0;
+      cfg.blob_tier_local_max_bytes = (int64_t)n;
+      blob_tier_set = true;
+    } catch (...) {
+      std::cerr << "Invalid AGENTD_BLOB_TIER_LOCAL_MAX_BYTES; ignoring\n";
+    }
+  }
+  if (const char* s = getenv_s("AGENTD_BLOB_TIER_LOCAL_MAX_AGE_MS")) {
+    try {
+      long long n = std::stoll(s);
+      if (n < 0) n = 0;
+      cfg.blob_tier_local_max_age_ms = (int64_t)n;
+      blob_tier_set = true;
+    } catch (...) {
+      std::cerr << "Invalid AGENTD_BLOB_TIER_LOCAL_MAX_AGE_MS; ignoring\n";
+    }
+  }
+  if (const char* s = getenv_s("AGENTD_BLOB_TIER_PROMOTE_AFTER_MS")) {
+    try {
+      long long n = std::stoll(s);
+      if (n < 0) n = 0;
+      cfg.blob_tier_promote_after_ms = (int64_t)n;
+      blob_tier_set = true;
+    } catch (...) {
+      std::cerr << "Invalid AGENTD_BLOB_TIER_PROMOTE_AFTER_MS; ignoring\n";
+    }
+  }
+  if (const char* s = getenv_s("AGENTD_BLOB_TIER_PROMOTE_MAX_BYTES")) {
+    try {
+      long long n = std::stoll(s);
+      if (n < 0) n = 0;
+      cfg.blob_tier_promote_max_bytes = (int64_t)n;
+      blob_tier_set = true;
+    } catch (...) {
+      std::cerr << "Invalid AGENTD_BLOB_TIER_PROMOTE_MAX_BYTES; ignoring\n";
+    }
+  }
   if (const char* ms = getenv_s("AGENTD_JOB_CONCURRENCY")) {
     try { cfg.job_engine_max_concurrency = std::max(1, std::stoi(ms)); } catch (...) {}
   }
@@ -1564,6 +1669,7 @@ int main(int argc, char** argv) {
     opt.override_workflow_http_dns_pin = !workflow_http_dns_pin_set;
     opt.override_upload_max_bytes = !upload_max_bytes_set;
     opt.override_blob_store = !blob_store_set;
+    opt.override_blob_tier = !blob_tier_set;
     if (!load_runtime_config_best_effort(db, &cfg, &err, opt)) {
       std::cerr << "Warning: failed to load runtime config from DB: " << err << "\n";
     }
@@ -1865,6 +1971,10 @@ int main(int argc, char** argv) {
   server.handle("POST", "/api/v1/blob/gc", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_blob_gc_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("POST", "/api/v1/blob/tier/enforce", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_blob_tier_enforce_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   server.handle("POST", "/api/v1/memory/consolidate", [&](const HttpRequest& req, HttpResponse* resp) {

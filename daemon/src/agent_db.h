@@ -222,6 +222,12 @@ class AgentDb {
     std::vector<BlobManifestRow>* out_rows,
     std::string* out_error
   );
+  bool list_blob_tier_candidates(
+    const std::string& tier,
+    size_t max_rows,
+    std::vector<BlobManifestRow>* out_rows,
+    std::string* out_error
+  );
   bool delete_blob_manifest(const std::string& blob_id, std::string* out_error);
   bool attach_blob_to_artifact(int64_t artifact_id, const std::string& blob_id, std::string* out_error);
 

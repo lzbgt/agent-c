@@ -1644,6 +1644,27 @@ paths:
         "200":
           description: GC summary
 
+  /api/v1/blob/tier/enforce:
+    post:
+      tags: [blobs]
+      summary: Enforce blob tiering policy once
+      description: |
+        Applies the tiering policy (promotion + eviction) once. Intended for operator
+        maintenance or cron usage; returns metrics for auditing.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlobTierEnforceRequest"
+      responses:
+        "200":
+          description: Tiering enforcement result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlobTierEnforceResponse"
+
   /api/v1/sessions:
     get:
       tags: [sessions]
@@ -1804,6 +1825,47 @@ components:
         secret_key: { type: string, nullable: true }
         session_token: { type: string, nullable: true }
 
+    BlobTierConfig:
+      type: object
+      additionalProperties: false
+      properties:
+        local_max_bytes: { type: integer, format: int64 }
+        local_max_age_ms: { type: integer, format: int64 }
+        promote_after_ms: { type: integer, format: int64 }
+        promote_max_bytes: { type: integer, format: int64 }
+
+    BlobTierEnforceRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        dry_run: { type: boolean }
+        local_max_bytes: { type: integer, format: int64 }
+        local_max_age_ms: { type: integer, format: int64 }
+        promote_after_ms: { type: integer, format: int64 }
+        promote_max_bytes: { type: integer, format: int64 }
+        max_rows: { type: integer, format: int64 }
+
+    BlobTierEnforceResponse:
+      type: object
+      required: [ok, generated_utc_ms, promoted_count, promoted_bytes, evicted_count, evicted_bytes, total_local_bytes_before, total_local_bytes_after]
+      properties:
+        ok: { type: boolean }
+        generated_utc_ms: { type: integer, format: int64 }
+        dry_run: { type: boolean }
+        local_max_bytes: { type: integer, format: int64 }
+        local_max_age_ms: { type: integer, format: int64 }
+        promote_after_ms: { type: integer, format: int64 }
+        promote_max_bytes: { type: integer, format: int64 }
+        promoted_count: { type: integer, format: int64 }
+        promoted_bytes: { type: integer, format: int64 }
+        evicted_count: { type: integer, format: int64 }
+        evicted_bytes: { type: integer, format: int64 }
+        total_local_bytes_before: { type: integer, format: int64 }
+        total_local_bytes_after: { type: integer, format: int64 }
+        errors:
+          type: array
+          items: { type: string }
+
     BlobMetaResponse:
       type: object
       required: [ok, blob_id, size_bytes, sha256_hex, created_utc_ms, last_access_utc_ms, ref_count, tier, location]
@@ -1888,6 +1950,8 @@ components:
                   max_calls: { type: integer, format: int64 }
             blob_store:
               $ref: "#/components/schemas/BlobStoreConfig"
+            blob_tier:
+              $ref: "#/components/schemas/BlobTierConfig"
         cors:
           type: object
           additionalProperties: true
@@ -2064,6 +2128,8 @@ components:
           $ref: "#/components/schemas/BlobStoreUpdate"
         blob_store_secrets:
           $ref: "#/components/schemas/BlobStoreSecretsUpdate"
+        blob_tier:
+          $ref: "#/components/schemas/BlobTierConfig"
 
     AgentdConfigUpdateResponse:
       type: object
@@ -2118,6 +2184,8 @@ components:
             openai: { type: boolean }
         blob_store:
           $ref: "#/components/schemas/BlobStoreConfig"
+        blob_tier:
+          $ref: "#/components/schemas/BlobTierConfig"
 
     OtaUpdateRequest:
       type: object

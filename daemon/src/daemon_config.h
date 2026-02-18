@@ -125,6 +125,15 @@ struct DaemonConfig {
   std::string blob_store_access_key;
   std::string blob_store_secret_key;
   std::string blob_store_session_token;
+  // Tiering policy (operator-driven).
+  // - local_max_bytes: max total bytes for object-tier local cache (0 disables).
+  // - local_max_age_ms: evict object-tier local cache older than this age (0 disables).
+  // - promote_after_ms: promote local-tier blobs to object store when older than this age (0 disables).
+  // - promote_max_bytes: per-blob size cap for promotion (0 disables).
+  int64_t blob_tier_local_max_bytes = 0;
+  int64_t blob_tier_local_max_age_ms = 0;
+  int64_t blob_tier_promote_after_ms = 0;
+  int64_t blob_tier_promote_max_bytes = 0;
 
   // Optional troubleshooting DB mirror (SQLite). When set, agentd mirrors sessions/runs/events into this DB.
   // As of 2026-01-31, the DB is intended to be the canonical daemon state store.

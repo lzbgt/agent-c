@@ -407,6 +407,73 @@ bool AgentDb::delete_blob_manifest(const std::string& blob_id, std::string* out_
 #endif
 }
 
+bool AgentDb::list_blob_tier_candidates(
+  const std::string& tier,
+  size_t max_rows,
+  std::vector<BlobManifestRow>* out_rows,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_rows) out_rows->clear();
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)tier;
+  (void)max_rows;
+  if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
+  return false;
+#else
+  if (!out_rows) {
+    if (out_error) *out_error = "list_blob_tier_candidates: missing output";
+    return false;
+  }
+  if (tier.empty()) {
+    if (out_error) *out_error = "list_blob_tier_candidates: tier is empty";
+    return false;
+  }
+  std::lock_guard<std::mutex> lock(mu_);
+  if (!db_) {
+    if (out_error) *out_error = "db is not open";
+    return false;
+  }
+  if (max_rows == 0) max_rows = 1000;
+  if (max_rows > 10000) max_rows = 10000;
+
+  const char* sql =
+    "SELECT blob_id, size_bytes, mime, sha256_hex, created_utc_ms, last_access_utc_ms, ref_count, tier, location, etag, storage_class "
+    "FROM blob_manifest WHERE tier=? "
+    "ORDER BY last_access_utc_ms ASC LIMIT ?;";
+  sqlite3_stmt* st = nullptr;
+  if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
+    if (out_error) *out_error = agent_db_sqlite_err(db_);
+    if (st) sqlite3_finalize(st);
+    return false;
+  }
+  bool ok = agent_db_bind_text(st, 1, tier);
+  ok = ok && sqlite3_bind_int64(st, 2, (sqlite3_int64)max_rows) == SQLITE_OK;
+  if (!ok) {
+    if (out_error) *out_error = agent_db_sqlite_err(db_);
+    sqlite3_finalize(st);
+    return false;
+  }
+  while (agent_db_step_row(st)) {
+    BlobManifestRow row;
+    row.blob_id = stmt_text(st, 0);
+    row.size_bytes = sqlite3_column_int64(st, 1);
+    row.mime = stmt_text(st, 2);
+    row.sha256_hex = stmt_text(st, 3);
+    row.created_utc_ms = sqlite3_column_int64(st, 4);
+    row.last_access_utc_ms = sqlite3_column_int64(st, 5);
+    row.ref_count = sqlite3_column_int64(st, 6);
+    row.tier = stmt_text(st, 7);
+    row.location = stmt_text(st, 8);
+    row.etag = stmt_text(st, 9);
+    row.storage_class = stmt_text(st, 10);
+    out_rows->push_back(std::move(row));
+  }
+  sqlite3_finalize(st);
+  return true;
+#endif
+}
+
 bool AgentDb::attach_blob_to_artifact(int64_t artifact_id, const std::string& blob_id, std::string* out_error) {
   if (out_error) out_error->clear();
 #if !defined(AGENT_HAVE_SQLITE3)

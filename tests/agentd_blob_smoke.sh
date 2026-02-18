@@ -151,4 +151,16 @@ if [[ -f "${blob_path}" ]]; then
   exit 1
 fi
 
+tier_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Content-Type: application/json" \
+  -d "{\"dry_run\":true}" \
+  "${DAEMON_URL}/api/v1/blob/tier/enforce")"
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${tier_resp}''')
+if not obj.get("ok"):
+  print("tier enforce failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 echo "agentd_blob_smoke OK"

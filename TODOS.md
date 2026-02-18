@@ -82,14 +82,15 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Promoted goals (explicit goals; no non-goals)
 
-Weights updated 2026-02-18: prioritize **Storage/analytics** and **multimodal/streaming foundation** as the highest
-leverage capability enablers for durable agents; audio and consensus remain important but follow after the core surfaces
-are stable and replayable.
+Weights updated 2026-02-18: prioritize **Storage/analytics**, **multimodal/streaming foundation**, and **dynamic memory
+policy** as the highest leverage capability enablers for durable agents; audio and consensus remain important but follow
+after the core surfaces are stable and replayable.
 
 - [x] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker + agentd implemented; tests added).
 - [ ] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
 - [ ] Tool loop: full multimodal transcript support + stable, versioned event schema with migrations.
 - [ ] Streaming: core-layer streaming interface + provider compatibility matrix with full variant coverage.
+- [ ] Memory architecture: dynamic retention policy (decay/salience/recaps) informed by claude-mem research + docs.
 - [ ] Tool plugins: sandbox/isolation, Windows loader, and embedded/MCU-compatible plugin path.
 - [ ] Audio streaming: Opus/WebRTC voice pipeline + broker relay + UI voice session controls.
   - [x] Add workflow DB query endpoints (`/api/v1/db/workflows`, `/api/v1/db/workflow`, `/api/v1/db/workflow_tasks`, `/api/v1/db/workflow_events`)
@@ -101,7 +102,7 @@ are stable and replayable.
   - [x] Implement blob_manifest schema + local blob store v0 (upload + read + ref-count GC).
   - [x] Add object-store tier (S3/MinIO) with signed URL reads + read-through cache.
   - [x] Add workflow analytics export bundles (CSV/JSON) for durable + edge workflows.
-  - [ ] Next: add tiering policy engine (promote/evict + size/age budgets) with metrics.
+  - [x] Add tiering policy engine (promote/evict + size/age budgets) with metrics.
   - [ ] Next: add archive tier (cold storage restore workflow + operator controls).
 - [x] UI actions: stable public action API, autoplay unlock flow, and consented remote URL opens.
 - [x] Memory privacy tags (`<private>`) to keep sensitive content out of durable storage (claude-mem inspired).

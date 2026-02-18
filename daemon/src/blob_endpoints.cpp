@@ -3,11 +3,13 @@
 #include "agent_sha256.h"
 #include "base64.h"
 #include "blob_object_store.h"
+#include "blob_tier_policy.h"
 #include "daemon_auth.h"
 #include "http_util.h"
 #include "json_util.h"
 #include "string_util.h"
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -903,6 +905,86 @@ void handle_blob_gc_endpoint(
   if (!errors.empty()) out["errors"] = errors;
   out["dry_run"] = dry_run;
   out["candidates"] = (Json::Int64)candidates.size();
+  resp->body = json_stringify(out);
+}
+
+void handle_blob_tier_enforce_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  BlobTierPolicy policy;
+  policy.local_max_bytes = cfg.blob_tier_local_max_bytes;
+  policy.local_max_age_ms = cfg.blob_tier_local_max_age_ms;
+  policy.promote_after_ms = cfg.blob_tier_promote_after_ms;
+  policy.promote_max_bytes = cfg.blob_tier_promote_max_bytes;
+  policy.force_evict_all = (cfg.blob_store_cache_mode == "none");
+  policy.max_rows = 5000;
+
+  if (!req.body.empty()) {
+    Json::Value body(Json::objectValue);
+    std::string jerr;
+    if (!json_parse_object(req.body, &body, &jerr)) {
+      resp->status = 400;
+      resp->body = std::string("{\"ok\":false,\"error\":\"invalid JSON body\"}");
+      return;
+    }
+    if (body.isMember("dry_run") && body["dry_run"].isBool()) {
+      policy.dry_run = body["dry_run"].asBool();
+    }
+    auto parse_i64 = [&](const char* key, int64_t* out) {
+      if (!key || !out) return;
+      if (!body.isMember(key)) return;
+      const Json::Value& v = body[key];
+      if (!v.isInt64() && !v.isUInt64()) return;
+      int64_t n = v.isInt64() ? v.asInt64() : (int64_t)v.asUInt64();
+      if (n < 0) n = 0;
+      *out = n;
+    };
+    parse_i64("local_max_bytes", &policy.local_max_bytes);
+    parse_i64("local_max_age_ms", &policy.local_max_age_ms);
+    parse_i64("promote_after_ms", &policy.promote_after_ms);
+    parse_i64("promote_max_bytes", &policy.promote_max_bytes);
+    if (body.isMember("max_rows") && (body["max_rows"].isInt() || body["max_rows"].isUInt())) {
+      const int64_t n = body["max_rows"].isInt() ? body["max_rows"].asInt() : (int64_t)body["max_rows"].asUInt();
+      if (n > 0) policy.max_rows = (size_t)std::min<int64_t>(10000, n);
+    }
+  }
+
+  BlobTierEnforceStats stats;
+  std::string err;
+  if (!blob_tier_enforce(cfg, db_or_null, policy, &stats, &err)) {
+    resp->status = 500;
+    resp->body = std::string("{\"ok\":false,\"error\":\"") + (err.empty() ? "tier enforce failed" : err) + "\"}";
+    return;
+  }
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = true;
+  out["generated_utc_ms"] = (Json::Int64)stats.generated_utc_ms;
+  out["dry_run"] = policy.dry_run;
+  out["local_max_bytes"] = (Json::Int64)policy.local_max_bytes;
+  out["local_max_age_ms"] = (Json::Int64)policy.local_max_age_ms;
+  out["promote_after_ms"] = (Json::Int64)policy.promote_after_ms;
+  out["promote_max_bytes"] = (Json::Int64)policy.promote_max_bytes;
+  out["promoted_count"] = (Json::Int64)stats.promoted_count;
+  out["promoted_bytes"] = (Json::Int64)stats.promoted_bytes;
+  out["evicted_count"] = (Json::Int64)stats.evicted_count;
+  out["evicted_bytes"] = (Json::Int64)stats.evicted_bytes;
+  out["total_local_bytes_before"] = (Json::Int64)stats.total_local_bytes_before;
+  out["total_local_bytes_after"] = (Json::Int64)stats.total_local_bytes_after;
+  if (!stats.errors.empty()) {
+    Json::Value errs(Json::arrayValue);
+    for (const auto& e : stats.errors) errs.append(e);
+    out["errors"] = errs;
+  }
+  resp->status = 200;
   resp->body = json_stringify(out);
 }
 

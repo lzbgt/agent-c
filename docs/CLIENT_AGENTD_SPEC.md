@@ -277,6 +277,7 @@ When blob storage is enabled (default local tier), the daemon exposes blob APIs:
 - `GET /api/v1/blob/meta?blob_id=...`
 - `POST /api/v1/blob/retain` (adjust ref count)
 - `POST /api/v1/blob/gc` (ref-count GC sweep)
+- `POST /api/v1/blob/tier/enforce` (apply tiering policy once; operator/maintenance use)
 
 ### Diagnostics endpoints (auth required)
 

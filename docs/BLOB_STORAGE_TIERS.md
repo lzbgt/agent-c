@@ -8,6 +8,7 @@ blobs live in tiered stores with explicit retention, budgets, and deterministic 
 Status (2026-02-18):
 - v0 local tier shipped.
 - v1 object-store tier shipped (S3/MinIO; presigned reads + proxy mode; optional read-through cache).
+- v2 tiering policy engine (promote/evict) is operator-driven via `/api/v1/blob/tier/enforce`.
 
 ## Goals
 
@@ -108,6 +109,7 @@ Metadata:
 - `GET /api/v1/blob/meta?blob_id=...`
 - `POST /api/v1/blob/retain` (adjust ref count; `{blob_id, delta}`)
 - `POST /api/v1/blob/gc` (ref-count GC sweep; `{min_age_ms, max_rows, dry_run}`)
+- `POST /api/v1/blob/tier/enforce` (apply tiering policy once; safe maintenance endpoint)
 
 These are additive; legacy `GET /api/v1/file` remains supported.
 
@@ -146,6 +148,43 @@ Env vars (startup defaults):
   `AGENTD_BLOB_STORE_READ_MODE`, `AGENTD_BLOB_STORE_CACHE_MODE`, `AGENTD_BLOB_STORE_CACHE_MAX_BYTES`,
   `AGENTD_BLOB_STORE_PRESIGN_TTL_SEC`, `AGENTD_BLOB_STORE_TIMEOUT_MS`,
   `AGENTD_BLOB_STORE_ACCESS_KEY`, `AGENTD_BLOB_STORE_SECRET_KEY`, `AGENTD_BLOB_STORE_SESSION_TOKEN`.
+
+## Tiering policy engine (v2)
+
+The tiering policy engine is **explicit** and **operator-driven**: it runs only when invoked
+via `/api/v1/blob/tier/enforce` (or an operator cron), making it deterministic and easy to audit.
+
+Policies (config defaults):
+- `blob_tier.local_max_bytes`: cap total local cache bytes for **object-tier** blobs (0 disables).
+- `blob_tier.local_max_age_ms`: evict object-tier local cache older than this age (0 disables).
+- `blob_tier.promote_after_ms`: promote **local-tier** blobs to object store when older than this age (0 disables).
+- `blob_tier.promote_max_bytes`: per-blob size cap for promotion (0 disables).
+
+Notes:
+- Local eviction never deletes **local-tier** blobs (avoids data loss).
+- Promotion requires object-store configuration and `blob_store.mode=object`.
+- `cache_mode=none` forces eviction of any object-tier local cache discovered.
+
+Endpoint:
+`POST /api/v1/blob/tier/enforce` with optional overrides:
+```json
+{
+  "dry_run": false,
+  "local_max_bytes": 1073741824,
+  "local_max_age_ms": 604800000,
+  "promote_after_ms": 86400000,
+  "promote_max_bytes": 33554432,
+  "max_rows": 5000
+}
+```
+
+Response (JSON):
+- `ok` (boolean)
+- `generated_utc_ms` (number)
+- `promoted_count`, `promoted_bytes`
+- `evicted_count`, `evicted_bytes`
+- `total_local_bytes_before`, `total_local_bytes_after`
+- `errors` (array, optional)
 
 ## Phased delivery
 

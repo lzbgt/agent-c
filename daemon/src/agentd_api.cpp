@@ -429,6 +429,11 @@ bool AgentdApi::init(std::string* out_error) {
     const DaemonConfig cur = self->cfg_store->snapshot();
     handle_blob_gc_endpoint(cur, self->cors_cfg, &self->db, req, resp);
   });
+  impl_->route("POST", "/api/v1/blob/tier/enforce", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_blob_tier_enforce_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
 
   // Memory endpoints (durable + deterministic checkpoint correlation).
   impl_->route("POST", "/api/v1/memory/consolidate", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {

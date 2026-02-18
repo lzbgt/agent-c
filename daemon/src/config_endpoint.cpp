@@ -215,6 +215,14 @@ void handle_config_endpoint(
     bs["session_token_set"] = !cfg.blob_store_session_token.empty();
     daemon["blob_store"] = bs;
   }
+  {
+    Json::Value bt(Json::objectValue);
+    bt["local_max_bytes"] = (Json::Int64)cfg.blob_tier_local_max_bytes;
+    bt["local_max_age_ms"] = (Json::Int64)cfg.blob_tier_local_max_age_ms;
+    bt["promote_after_ms"] = (Json::Int64)cfg.blob_tier_promote_after_ms;
+    bt["promote_max_bytes"] = (Json::Int64)cfg.blob_tier_promote_max_bytes;
+    daemon["blob_tier"] = bt;
+  }
   daemon["max_steps_default"] = (Json::UInt64)cfg.max_steps_default;
   daemon["max_tool_calls_total_default"] = (Json::UInt64)cfg.max_tool_calls_total_default;
   daemon["max_tool_calls_per_tool_default"] = (Json::UInt64)cfg.max_tool_calls_per_tool_default;
@@ -477,6 +485,33 @@ void handle_config_update_endpoint(
         ? bs["timeout_ms"].asInt64()
         : (int64_t)bs["timeout_ms"].asUInt64();
       next.blob_store_timeout_ms = std::max<int64_t>(0, std::min<int64_t>(30LL * 60 * 1000, n));
+    }
+  }
+  if (args.isMember("blob_tier") && args["blob_tier"].isObject()) {
+    const Json::Value& bt = args["blob_tier"];
+    if (bt.isMember("local_max_bytes") && (bt["local_max_bytes"].isInt64() || bt["local_max_bytes"].isUInt64())) {
+      const int64_t n = bt["local_max_bytes"].isInt64()
+        ? bt["local_max_bytes"].asInt64()
+        : (int64_t)bt["local_max_bytes"].asUInt64();
+      next.blob_tier_local_max_bytes = std::max<int64_t>(0, n);
+    }
+    if (bt.isMember("local_max_age_ms") && (bt["local_max_age_ms"].isInt64() || bt["local_max_age_ms"].isUInt64())) {
+      const int64_t n = bt["local_max_age_ms"].isInt64()
+        ? bt["local_max_age_ms"].asInt64()
+        : (int64_t)bt["local_max_age_ms"].asUInt64();
+      next.blob_tier_local_max_age_ms = std::max<int64_t>(0, n);
+    }
+    if (bt.isMember("promote_after_ms") && (bt["promote_after_ms"].isInt64() || bt["promote_after_ms"].isUInt64())) {
+      const int64_t n = bt["promote_after_ms"].isInt64()
+        ? bt["promote_after_ms"].asInt64()
+        : (int64_t)bt["promote_after_ms"].asUInt64();
+      next.blob_tier_promote_after_ms = std::max<int64_t>(0, n);
+    }
+    if (bt.isMember("promote_max_bytes") && (bt["promote_max_bytes"].isInt64() || bt["promote_max_bytes"].isUInt64())) {
+      const int64_t n = bt["promote_max_bytes"].isInt64()
+        ? bt["promote_max_bytes"].asInt64()
+        : (int64_t)bt["promote_max_bytes"].asUInt64();
+      next.blob_tier_promote_max_bytes = std::max<int64_t>(0, n);
     }
   }
   if (args.isMember("edge_auth_required") && args["edge_auth_required"].isBool()) {
@@ -858,6 +893,14 @@ void handle_config_update_endpoint(
     bs["secret_key_set"] = !next.blob_store_secret_key.empty();
     bs["session_token_set"] = !next.blob_store_session_token.empty();
     o["blob_store"] = bs;
+  }
+  {
+    Json::Value bt(Json::objectValue);
+    bt["local_max_bytes"] = (Json::Int64)next.blob_tier_local_max_bytes;
+    bt["local_max_age_ms"] = (Json::Int64)next.blob_tier_local_max_age_ms;
+    bt["promote_after_ms"] = (Json::Int64)next.blob_tier_promote_after_ms;
+    bt["promote_max_bytes"] = (Json::Int64)next.blob_tier_promote_max_bytes;
+    o["blob_tier"] = bt;
   }
   o["edge_auth_required"] = next.edge_auth_required;
   o["edge_auth_require_ts"] = next.edge_auth_require_ts;

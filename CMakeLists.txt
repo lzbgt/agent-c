@@ -215,6 +215,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/edge_workflow_engine.cpp
     daemon/src/blob_endpoints.cpp
     daemon/src/blob_object_store.cpp
+    daemon/src/blob_tier_policy.cpp
     daemon/src/file_endpoint.cpp
     daemon/src/http_client.cpp
     daemon/src/http_allowlist.cpp
