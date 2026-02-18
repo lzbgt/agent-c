@@ -57,6 +57,11 @@ for name in ("deepseek", "moonshot", "openrouter", "openai"):
   if name not in prov:
     print("missing provider entry:", name, file=sys.stderr)
     raise SystemExit(1)
+  entry = prov[name]
+  src = entry.get("base_url_source")
+  if src not in ("config", "env", "default"):
+    print("missing/invalid base_url_source for", name, ":", src, file=sys.stderr)
+    raise SystemExit(1)
 PY
 
 echo "agentd_diagnostics_smoke OK"
