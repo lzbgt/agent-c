@@ -124,6 +124,14 @@ static std::string env_base_url_for_provider(const std::string& provider) {
   return "";
 }
 
+static std::string provider_key_hint(const std::string& provider) {
+  if (provider == "deepseek") return "DEEPSEEK_API_KEY or provider_keys";
+  if (provider == "moonshot") return "KIMI_API_KEY_CN or MOONSHOT_API_KEY (or provider_keys)";
+  if (provider == "openrouter") return "OPENROUTER_API_KEY or provider_keys";
+  if (provider == "openai") return "OPENAI_API_KEY or provider_keys";
+  return "";
+}
+
 }  // namespace
 
 void handle_diagnostics_endpoint(
@@ -288,6 +296,15 @@ void handle_diagnostics_providers_endpoint(
       const bool moonshot_present = provider_key_status(cfg, "moonshot").present;
       if (moonshot_present) {
         pd["warning"] = "Moonshot key detected; OpenRouter requires OPENROUTER_API_KEY.";
+      }
+    }
+
+    if (active_provider == p && !ks.present) {
+      const std::string hint = provider_key_hint(p);
+      if (!hint.empty()) {
+        pd["warning"] = "Active provider key missing; set " + hint + ".";
+      } else {
+        pd["warning"] = "Active provider key missing.";
       }
     }
 
