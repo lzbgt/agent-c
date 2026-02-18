@@ -61,6 +61,10 @@ WantedBy=multi-user.target
 <plist version="1.0">
 <dict>
   <key>Label</key><string>com.agentd.daemon</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>AGENTD_DOTENV_PATH</key><string>/Users/you/Library/Application Support/agentd/agentd.env</string>
+  </dict>
   <key>ProgramArguments</key>
   <array>
     <string>/usr/local/bin/agentd</string>
