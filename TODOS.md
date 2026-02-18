@@ -84,9 +84,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Promoted goals (explicit goals; no non-goals)
 
-Weights updated 2026-02-18: prioritize **streaming stability** (model pinning + provider guardrails),
-then **tool-loop event schema/migrations** + multimodal transcript coverage,
-with **tool server protocol error surfacing** and **audio streaming** following once the UX surfaces are stable.
+Weights updated 2026-02-18: prioritize **tool-loop event schema/migrations** (payload schema IDs + fixture enforcement),
+then **streaming stability** (model pinning + provider guardrails),
+with **audio streaming** following once the streaming UX is stable.
 
 - [x] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker + agentd implemented; tests added).
 - [x] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
@@ -96,6 +96,8 @@ with **tool server protocol error surfacing** and **audio streaming** following 
   - [x] Core tool-loop test: validates `assistant_mm_json` event payloads for prefix parsing + byte metadata.
   - [x] Run-event fixture validation enforces payload shapes for common event types.
   - [x] Payload JSON Schemas for common run event types (assistant/tool/artifact/usage/error).
+  - [x] Job + run event envelopes attach payload schema identifiers for common types.
+  - [x] Run-event fixtures now require schema identifiers for common payloads.
 - [ ] Streaming: core-layer streaming interface + provider compatibility matrix with full variant coverage.
   - [x] Core SSE parser (`agent_sse_parser_t`) shared by CLI/daemon streaming paths.
   - [x] Core stream decoder (`agent_stream_decoder_t`) + unit tests (`tests/test_stream_decoder.c`).

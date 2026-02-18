@@ -58,6 +58,19 @@ static bool is_nonneg_int(const Json::Value& v) {
   return v.asInt64() >= 0;
 }
 
+static const char* expected_schema_for_type(const std::string& type) {
+  if (type == "assistant_delta") return "run_event_payload_assistant_delta_v1";
+  if (type == "assistant_message") return "run_event_payload_assistant_message_v1";
+  if (type == "tool_call") return "run_event_payload_tool_call_v1";
+  if (type == "tool_result") return "run_event_payload_tool_result_v1";
+  if (type == "llm_usage") return "run_event_payload_llm_usage_v1";
+  if (type == "artifact") return "run_event_payload_artifact_v1";
+  if (type == "ui_action") return "run_event_payload_ui_action_v1";
+  if (type == "heartbeat") return "run_event_payload_heartbeat_v1";
+  if (type == "error") return "run_event_payload_error_v1";
+  return nullptr;
+}
+
 static bool validate_event_object(const Json::Value& v, std::string* out_err) {
   if (out_err) out_err->clear();
   if (!v.isObject()) {
@@ -67,6 +80,16 @@ static bool validate_event_object(const Json::Value& v, std::string* out_err) {
   if (!v.isMember("type") || !v["type"].isString() || v["type"].asString().empty()) {
     if (out_err) *out_err = "missing/invalid type (expected non-empty string)";
     return false;
+  }
+  const std::string type = v["type"].asString();
+  const char* expected_schema = expected_schema_for_type(type);
+  if (expected_schema) {
+    if (!v.isMember("schema") || !v["schema"].isString() || v["schema"].asString() != expected_schema) {
+      if (out_err) {
+        *out_err = "schema must match expected payload schema for type=" + type;
+      }
+      return false;
+    }
   }
   if (v.isMember("schema") && !v["schema"].isString()) {
     if (out_err) *out_err = "schema must be string";

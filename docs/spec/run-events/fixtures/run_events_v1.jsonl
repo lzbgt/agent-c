@@ -1,9 +1,9 @@
-{"type":"assistant_delta","ts_unix_ms":1700000000000,"step":0,"epoch":0,"data":{"delta":"Hello","step":0,"epoch":0}}
-{"type":"assistant_message","ts_unix_ms":1700000000050,"step":0,"data":{"assistant_content":"Here is the plot.","has_tool_calls":0,"assistant_mm_json":"{\"images\":[{\"mime\":\"image/png\",\"b64\":\"AAA\",\"name\":\"plot.png\"}]}","assistant_mm_truncated":0,"assistant_mm_bytes":62}}
-{"type":"tool_call","ts_unix_ms":1700000000100,"step":1,"data":{"tool_name":"text_search","tool_call_id":"call_1","arguments_json":"{\"q\":\"hello\"}"}}
-{"type":"tool_result","ts_unix_ms":1700000000200,"step":1,"data":{"tool_name":"text_search","tool_call_id":"call_1","content":"{\"ok\":true,\"result\":{\"matches\":[]}}"}}
-{"type":"llm_usage","ts_unix_ms":1700000000300,"step":1,"data":{"prompt_tokens":12,"completion_tokens":34,"total_tokens":46}}
-{"type":"artifact","ts_unix_ms":1700000000400,"step":1,"data":{"path":"out/plot.png","kind":"image","mime":"image/png","title":"plot","repeat":1,"autoplay":false}}
-{"type":"ui_action","ts_unix_ms":1700000000500,"step":1,"data":{"action":{"type":"notify","title":"done","message":"ok"}}}
-{"type":"heartbeat","ts_unix_ms":1700000000600,"data":{"phase":0}}
-{"type":"error","ts_unix_ms":1700000000700,"data":{"reason":"max_steps_exceeded","error":"max steps exceeded","steps_executed":10,"max_steps":10}}
+{"type":"assistant_delta","schema":"run_event_payload_assistant_delta_v1","ts_unix_ms":1700000000000,"step":0,"epoch":0,"data":{"delta":"Hello","step":0,"epoch":0}}
+{"type":"assistant_message","schema":"run_event_payload_assistant_message_v1","ts_unix_ms":1700000000050,"step":0,"data":{"assistant_content":"Here is the plot.","has_tool_calls":0,"assistant_mm_json":"{\"images\":[{\"mime\":\"image/png\",\"b64\":\"AAA\",\"name\":\"plot.png\"}]}","assistant_mm_truncated":0,"assistant_mm_bytes":62}}
+{"type":"tool_call","schema":"run_event_payload_tool_call_v1","ts_unix_ms":1700000000100,"step":1,"data":{"tool_name":"text_search","tool_call_id":"call_1","arguments_json":"{\"q\":\"hello\"}"}}
+{"type":"tool_result","schema":"run_event_payload_tool_result_v1","ts_unix_ms":1700000000200,"step":1,"data":{"tool_name":"text_search","tool_call_id":"call_1","content":"{\"ok\":true,\"result\":{\"matches\":[]}}"}}
+{"type":"llm_usage","schema":"run_event_payload_llm_usage_v1","ts_unix_ms":1700000000300,"step":1,"data":{"prompt_tokens":12,"completion_tokens":34,"total_tokens":46}}
+{"type":"artifact","schema":"run_event_payload_artifact_v1","ts_unix_ms":1700000000400,"step":1,"data":{"path":"out/plot.png","kind":"image","mime":"image/png","title":"plot","repeat":1,"autoplay":false}}
+{"type":"ui_action","schema":"run_event_payload_ui_action_v1","ts_unix_ms":1700000000500,"step":1,"data":{"action":{"type":"notify","title":"done","message":"ok"}}}
+{"type":"heartbeat","schema":"run_event_payload_heartbeat_v1","ts_unix_ms":1700000000600,"data":{"phase":0}}
+{"type":"error","schema":"run_event_payload_error_v1","ts_unix_ms":1700000000700,"data":{"reason":"max_steps_exceeded","error":"max steps exceeded","steps_executed":10,"max_steps":10}}

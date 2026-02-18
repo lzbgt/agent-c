@@ -31,6 +31,19 @@ std::string new_job_id() {
   return "job_" + std::to_string((long long)now_unix_ms()) + "_" + std::to_string((long long)n);
 }
 
+static const char* job_event_schema_for_type(const std::string& type) {
+  if (type == "assistant_delta") return "run_event_payload_assistant_delta_v1";
+  if (type == "assistant_message") return "run_event_payload_assistant_message_v1";
+  if (type == "tool_call") return "run_event_payload_tool_call_v1";
+  if (type == "tool_result") return "run_event_payload_tool_result_v1";
+  if (type == "llm_usage") return "run_event_payload_llm_usage_v1";
+  if (type == "artifact") return "run_event_payload_artifact_v1";
+  if (type == "ui_action") return "run_event_payload_ui_action_v1";
+  if (type == "heartbeat") return "run_event_payload_heartbeat_v1";
+  if (type == "error") return "run_event_payload_error_v1";
+  return nullptr;
+}
+
 static bool write_all_fd(socket_t fd, const char* data, size_t n) {
   size_t off = 0;
   while (off < n) {
@@ -108,6 +121,9 @@ void job_append_event(const std::string& id, const std::string& type, const std:
 
   Json::Value e(Json::objectValue);
   e["type"] = type;
+  if (const char* schema = job_event_schema_for_type(type)) {
+    e["schema"] = schema;
+  }
   if (!it->second.trace_id.empty()) {
     e["trace_id"] = it->second.trace_id;
   }

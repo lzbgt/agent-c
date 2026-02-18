@@ -25,6 +25,19 @@ static bool is_nonnegative_int(const Json::Value& v) {
   return v.asInt64() >= 0;
 }
 
+static const char* expected_schema_for_type(const std::string& type) {
+  if (type == "assistant_delta") return "run_event_payload_assistant_delta_v1";
+  if (type == "assistant_message") return "run_event_payload_assistant_message_v1";
+  if (type == "tool_call") return "run_event_payload_tool_call_v1";
+  if (type == "tool_result") return "run_event_payload_tool_result_v1";
+  if (type == "llm_usage") return "run_event_payload_llm_usage_v1";
+  if (type == "artifact") return "run_event_payload_artifact_v1";
+  if (type == "ui_action") return "run_event_payload_ui_action_v1";
+  if (type == "heartbeat") return "run_event_payload_heartbeat_v1";
+  if (type == "error") return "run_event_payload_error_v1";
+  return nullptr;
+}
+
 int main(int argc, char** argv) {
   const std::string fixtures_path = (argc >= 2 && argv[1]) ? std::string(argv[1]) : std::string();
   if (fixtures_path.empty()) {
@@ -56,6 +69,14 @@ int main(int argc, char** argv) {
     if (!v.isMember("type") || !v["type"].isString() || v["type"].asString().empty()) {
       std::fprintf(stderr, "missing type at line %d\n", line_no);
       return 1;
+    }
+    const std::string type = v["type"].asString();
+    const char* expected_schema = expected_schema_for_type(type);
+    if (expected_schema) {
+      if (!v.isMember("schema") || !v["schema"].isString() || v["schema"].asString() != expected_schema) {
+        std::fprintf(stderr, "schema mismatch for type=%s at line %d\n", type.c_str(), line_no);
+        return 1;
+      }
     }
     if (v.isMember("schema") && (!v["schema"].isString() || v["schema"].asString().empty())) {
       std::fprintf(stderr, "invalid schema at line %d\n", line_no);

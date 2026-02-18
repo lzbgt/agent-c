@@ -39,7 +39,8 @@ Each event is a JSON object with:
 - `epoch` (number, optional): streaming/rotation epoch index.
 - `source` (string, optional): origin label (daemon, broker, workflow, edge, client).
 - `run_id` / `workflow_id` / `session_id` (optional): correlation identifiers when available.
-- `schema` (string, optional): explicit schema identifier when needed for payloads.
+- `schema` (string, optional): explicit schema identifier for the payload (e.g. `run_event_payload_tool_call_v1`).
+  For the standard v1 payloads listed below, this field is **required** and must match the expected schema name.
 
 The envelope is intentionally permissive so new event types can be introduced without breaking
 existing consumers. Event-specific payload schemas will be added incrementally as the registry grows.
@@ -49,14 +50,23 @@ existing consumers. Event-specific payload schemas will be added incrementally a
 The fixture set is validated for these common event payloads:
 
 - `assistant_delta`: `data.delta` string; optional `data.step`, `data.epoch` (integers >= 0).
+-   Schema: `run_event_payload_assistant_delta_v1`
 - `assistant_message`: `data.assistant_content` string, `data.has_tool_calls` integer >= 0; optional multimodal fields.
+-   Schema: `run_event_payload_assistant_message_v1`
 - `tool_call`: `data.tool_name`, `data.tool_call_id`, `data.arguments_json` strings.
+-   Schema: `run_event_payload_tool_call_v1`
 - `tool_result`: `data.tool_name`, `data.tool_call_id`, `data.content` strings.
+-   Schema: `run_event_payload_tool_result_v1`
 - `llm_usage`: `data.prompt_tokens`, `data.completion_tokens`, `data.total_tokens` integers >= 0.
+-   Schema: `run_event_payload_llm_usage_v1`
 - `artifact`: `data.path`, `data.kind` strings; optional `data.mime`, `data.repeat`, `data.autoplay`.
+-   Schema: `run_event_payload_artifact_v1`
 - `ui_action`: `data.action.type` string.
+-   Schema: `run_event_payload_ui_action_v1`
 - `heartbeat`: `data.phase` integer >= 0.
+-   Schema: `run_event_payload_heartbeat_v1`
 - `error`: `data.reason` string; optional `data.error`, `data.steps_executed`, `data.max_steps`.
+-   Schema: `run_event_payload_error_v1`
 
 ## Assistant message payload (current)
 
@@ -74,4 +84,4 @@ Consumers that need structured multimodal content should parse `assistant_mm_jso
 
 - UIs should treat unknown `type` values as opaque debug cards.
 - Producers should avoid breaking changes to existing `type` payloads. If needed, add a new `type`
-  or include a `schema` version in `data`.
+  or version the payload schema and update the `schema` identifier accordingly.

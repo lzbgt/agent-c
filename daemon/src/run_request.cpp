@@ -799,6 +799,27 @@ static Json::Value run_request_to_json_impl(
       if (!ev.isMember("trace_id")) ev["trace_id"] = trace_id;
     }
   };
+  auto inject_schema_into_events = [&](Json::Value* arr) {
+    if (!arr || !arr->isArray()) return;
+    for (Json::ArrayIndex i = 0; i < arr->size(); i++) {
+      Json::Value& ev = (*arr)[i];
+      if (!ev.isObject()) continue;
+      if (ev.isMember("schema")) continue;
+      if (!ev.isMember("type") || !ev["type"].isString()) continue;
+      const std::string type = ev["type"].asString();
+      const char* schema = nullptr;
+      if (type == "assistant_delta") schema = "run_event_payload_assistant_delta_v1";
+      else if (type == "assistant_message") schema = "run_event_payload_assistant_message_v1";
+      else if (type == "tool_call") schema = "run_event_payload_tool_call_v1";
+      else if (type == "tool_result") schema = "run_event_payload_tool_result_v1";
+      else if (type == "llm_usage") schema = "run_event_payload_llm_usage_v1";
+      else if (type == "artifact") schema = "run_event_payload_artifact_v1";
+      else if (type == "ui_action") schema = "run_event_payload_ui_action_v1";
+      else if (type == "heartbeat") schema = "run_event_payload_heartbeat_v1";
+      else if (type == "error") schema = "run_event_payload_error_v1";
+      if (schema) ev["schema"] = schema;
+    }
+  };
 
   std::atomic<bool> heartbeat_stop{false};
   std::atomic<int64_t> heartbeat_last_any_event_ms{now_unix_ms()};
@@ -1030,6 +1051,7 @@ static Json::Value run_request_to_json_impl(
       if (Json::parseFromStream(rb, iss, &ev, &errs) && ev.isArray()) {
         events_out = ev;
         inject_trace_id_into_events(&events_out);
+        inject_schema_into_events(&events_out);
       }
     }
     if (!pre_events.empty()) {
@@ -1038,6 +1060,7 @@ static Json::Value run_request_to_json_impl(
         events_out.append(pe);
       }
       inject_trace_id_into_events(&events_out);
+      inject_schema_into_events(&events_out);
     }
 
     if (ok) {

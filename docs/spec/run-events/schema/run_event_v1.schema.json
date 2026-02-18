@@ -7,7 +7,7 @@
   "properties": {
     "schema": {
       "type": "string",
-      "description": "Optional schema identifier for the event payload."
+      "description": "Optional schema identifier for the event payload (required for standard v1 payloads)."
     },
     "type": {
       "type": "string",
