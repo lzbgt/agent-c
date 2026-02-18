@@ -110,7 +110,7 @@ Example:
     "moonshot": {
       "active": true,
       "key_present": true,
-      "source": { "kind": "file", "label": "~/.env" },
+      "source": { "kind": "file", "label": "AGENTD_DOTENV_PATH" },
       "base_url": "https://api.moonshot.cn/v1",
       "base_url_source": "config",
       "model_default": "kimi-k2.5"
