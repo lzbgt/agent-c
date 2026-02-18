@@ -8,3 +8,6 @@ Copy this file to `project.local.md` and fill in real keys.
 - openrouter: <OPENROUTER_API_KEY>
 - moonshot: <KIMI_API_KEY_CN or MOONSHOT_API_KEY>
 - git_remote: <YOUR_GIT_REMOTE_URL>
+
+# For service installs running under a different user, you can point agentd at a specific dotenv file:
+#   AGENTD_DOTENV_PATH=/path/to/.env
