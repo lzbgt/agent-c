@@ -325,6 +325,12 @@ paths:
                     type: array
                     items:
                       $ref: "#/components/schemas/ToolDef"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /api/v1/avm/job_scan:
     post:
