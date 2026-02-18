@@ -112,6 +112,10 @@ both assistant and tool-call streaming checks. Pin those in:
 - `AGENT_TEST_OPENROUTER_STREAM_MODEL`
 - `AGENT_TEST_OPENROUTER_STREAM_TOOL_MODEL`
 
+To force a specific candidate list (bypass `/openrouter/models` discovery), set:
+
+- `OPENROUTER_STREAM_PROBE_MODELS=modelA,modelB,...`
+
 For a repo-tracked pin file, rerun the probe with `OPENROUTER_STREAM_PROBE_WRITE_PINS=1` to write:
 
 - `ref/openrouter/streaming_pins.json`

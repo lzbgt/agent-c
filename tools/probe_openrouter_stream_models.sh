@@ -41,6 +41,7 @@ MIN_TOTAL="${OPENROUTER_MIN_TOTAL:-0.01}"
 MAX_TOTAL="${OPENROUTER_MAX_TOTAL:-0.50}"
 LIMIT="${OPENROUTER_MODEL_LIMIT:-30}"
 MAX_MODELS="${OPENROUTER_STREAM_PROBE_MAX_MODELS:-12}"
+MODELS_OVERRIDE="${OPENROUTER_STREAM_PROBE_MODELS:-}"
 SAVE_STREAMS="${OPENROUTER_STREAM_PROBE_SAVE:-0}"
 WRITE_PINS="${OPENROUTER_STREAM_PROBE_WRITE_PINS:-0}"
 PINS_PATH="${OPENROUTER_STREAM_PINS_PATH:-${ROOT}/ref/openrouter/streaming_pins.json}"
@@ -66,11 +67,22 @@ OPENROUTER_API_KEY="${OPENROUTER_KEY}" agentd_smoke_start "${AGENTD_BIN}" "${HOS
 
 agentd_smoke_wait_health "${DAEMON_URL}"
 
-resp="$(curl -fsS --noproxy "*" --max-time 60 \
-  "${DAEMON_URL}/api/v1/openrouter/models?min_total=${MIN_TOTAL}&max_total=${MAX_TOTAL}&require_tools=1&limit=${LIMIT}&refresh=1")"
-
 candidates_file="${LOG_DIR}/candidates_$(date +%Y%m%d_%H%M%S).txt"
-python3 - <<PY >"${candidates_file}"
+if [[ -n "${MODELS_OVERRIDE}" ]]; then
+  echo "[probe] using OPENROUTER_STREAM_PROBE_MODELS override" >&2
+  MODELS_OVERRIDE="${MODELS_OVERRIDE}" python3 - <<PY >"${candidates_file}"
+import os
+import re
+raw = os.environ.get("MODELS_OVERRIDE", "")
+parts = [p for p in re.split(r"[\\s,]+", raw) if p]
+for mid in parts:
+    print(mid)
+PY
+else
+  resp="$(curl -fsS --noproxy "*" --max-time 60 \
+    "${DAEMON_URL}/api/v1/openrouter/models?min_total=${MIN_TOTAL}&max_total=${MAX_TOTAL}&require_tools=1&limit=${LIMIT}&refresh=1")"
+
+  python3 - <<PY >"${candidates_file}"
 import json
 obj = json.loads(r'''${resp}''')
 models = obj.get("models") or []
@@ -89,6 +101,7 @@ if not ids:
 for mid in ids[: int(${MAX_MODELS})]:
     print(mid)
 PY
+fi
 
 run_stream_check() {
   local model="$1"
