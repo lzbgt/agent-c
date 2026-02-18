@@ -112,6 +112,12 @@ If you need a quick key sanity check before probing, run:
 tools/check_openrouter_auth.sh
 ```
 
+If that still fails, use the debug helper to inspect model selection and the chat error payload:
+
+```bash
+tools/openrouter_auth_debug.sh
+```
+
 The script produces a JSON summary under `build/openrouter_probe/` and prints a list of models that pass
 both assistant and tool-call streaming checks. Pin those in:
 
