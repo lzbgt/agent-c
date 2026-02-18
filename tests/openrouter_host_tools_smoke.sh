@@ -30,6 +30,14 @@ fi
 BASE_URL="${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}"
 MODEL="${AGENT_TEST_OPENROUTER_TOOL_MODEL:-bytedance-seed/seed-1.6-flash}"
 
+if ! agent_test_openrouter_auth_ok "${OPENROUTER_KEY}" "${BASE_URL}"; then
+  rc=$?
+  if [[ "${rc}" -eq 77 ]]; then
+    exit 77
+  fi
+  exit 1
+fi
+
 try_model() {
   local model="$1"
   "${AGENT_BIN}" run "Use the shell_exec tool to run: echo OK. Then return exactly: OK" \
@@ -44,6 +52,14 @@ try_model() {
     --max-steps 4
 }
 
+check_auth_or_skip() {
+  local output="$1"
+  if agent_test_openrouter_output_is_auth_error "${output}"; then
+    echo "SKIP: OpenRouter auth failed; check OPENROUTER_API_KEY" >&2
+    exit 77
+  fi
+}
+
 out=""
 
 # Keep this smoke test bounded in time:
@@ -51,15 +67,18 @@ out=""
 # - retry once (transient network/provider issues)
 # - fallback to a known-tools model
 set +e
-out="$(try_model "${MODEL}" 2>/dev/null)"
+out="$(try_model "${MODEL}" 2>&1)"
 rc=$?
+check_auth_or_skip "${out}"
 if [[ $rc -ne 0 || -z "${out}" ]]; then
-  out="$(try_model "${MODEL}" 2>/dev/null)"
+  out="$(try_model "${MODEL}" 2>&1)"
   rc=$?
+  check_auth_or_skip "${out}"
 fi
 if [[ $rc -ne 0 || -z "${out}" ]]; then
-  out="$(try_model "mistralai/mistral-small-3.1-24b-instruct" 2>/dev/null)"
+  out="$(try_model "mistralai/mistral-small-3.1-24b-instruct" 2>&1)"
   rc=$?
+  check_auth_or_skip "${out}"
 fi
 set -e
 

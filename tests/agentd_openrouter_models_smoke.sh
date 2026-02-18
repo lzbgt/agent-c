@@ -29,6 +29,15 @@ if [[ -z "${OPENROUTER_KEY}" ]]; then
   exit 77
 fi
 
+BASE_URL="${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}"
+if ! agent_test_openrouter_auth_ok "${OPENROUTER_KEY}" "${BASE_URL}"; then
+  rc=$?
+  if [[ "${rc}" -eq 77 ]]; then
+    exit 77
+  fi
+  exit 1
+fi
+
 HOST="127.0.0.1"
 PORT="$(agentd_smoke_pick_port)"
 
@@ -42,8 +51,22 @@ OPENROUTER_API_KEY="${OPENROUTER_KEY}" agentd_smoke_start "${AGENTD_BIN}" "${HOS
 
 agentd_smoke_wait_health "${DAEMON_URL}"
 
-resp="$(curl -fsS --noproxy "*" --max-time 45 \
-  "${DAEMON_URL}/api/v1/openrouter/models?min_total=0.01&max_total=0.50&require_multimodal_input=1&require_tools=1&limit=20&refresh=1")"
+resp_file="$(mktemp)"
+resp_status="$(curl -sS --noproxy "*" --max-time 45 -o "${resp_file}" -w "%{http_code}" \
+  "${DAEMON_URL}/api/v1/openrouter/models?min_total=0.01&max_total=0.50&require_multimodal_input=1&require_tools=1&limit=20&refresh=1" || true)"
+if [[ "${resp_status}" == "401" || "${resp_status}" == "403" ]]; then
+  echo "SKIP: OpenRouter auth failed (${resp_status}); check OPENROUTER_API_KEY" >&2
+  rm -f "${resp_file}" >/dev/null 2>&1 || true
+  exit 77
+fi
+if [[ "${resp_status}" -lt 200 || "${resp_status}" -ge 300 ]]; then
+  echo "OpenRouter models request failed (status=${resp_status})" >&2
+  cat "${resp_file}" >&2 || true
+  rm -f "${resp_file}" >/dev/null 2>&1 || true
+  exit 1
+fi
+resp="$(cat "${resp_file}")"
+rm -f "${resp_file}" >/dev/null 2>&1 || true
 
 python3 - <<PY
 import json, sys

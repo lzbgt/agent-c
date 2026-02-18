@@ -30,27 +30,43 @@ fi
 BASE_URL="${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}"
 MODEL="${AGENT_TEST_OPENROUTER_MODEL:-bytedance-seed/seed-1.6-flash}"
 
+if ! agent_test_openrouter_auth_ok "${OPENROUTER_KEY}" "${BASE_URL}"; then
+  rc=$?
+  if [[ "${rc}" -eq 77 ]]; then
+    exit 77
+  fi
+  exit 1
+fi
+
 try_model() {
   local model="$1"
   "${AGENT_BIN}" run "Return exactly: OK" --no-session --tools none --timeout-ms 45000 --base-url "${BASE_URL}" --api-key "${OPENROUTER_KEY}" --model "${model}"
+}
+
+check_auth_or_skip() {
+  local output="$1"
+  if agent_test_openrouter_output_is_auth_error "${output}"; then
+    echo "SKIP: OpenRouter auth failed; check OPENROUTER_API_KEY" >&2
+    exit 77
+  fi
 }
 
 out=""
 
 # Keep this smoke test bounded in time: try the selected model once, then one fallback.
 set +e
-out="$(try_model "${MODEL}" 2>/dev/null)"
+out="$(try_model "${MODEL}" 2>&1)"
 rc=$?
-set -e
+check_auth_or_skip "${out}"
 if [[ $rc -ne 0 || -z "${out}" ]]; then
-  set +e
-  out="$(try_model "google/gemma-3-4b-it" 2>/dev/null)"
+  out="$(try_model "google/gemma-3-4b-it" 2>&1)"
   rc=$?
-  set -e
+  check_auth_or_skip "${out}"
   if [[ $rc -ne 0 || -z "${out}" ]]; then
     out=""
   fi
 fi
+set -e
 
 if [[ -z "${out}" ]]; then
   echo "OpenRouter smoke failed: no candidate model succeeded. Set AGENT_TEST_OPENROUTER_MODEL to a known-good model." >&2

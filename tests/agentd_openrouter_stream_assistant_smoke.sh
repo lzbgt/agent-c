@@ -32,6 +32,14 @@ BASE_URL="${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}"
 MODEL_PRIMARY="${AGENT_TEST_OPENROUTER_STREAM_MODEL:-${AGENT_TEST_OPENROUTER_MODEL:-bytedance-seed/seed-1.6-flash}}"
 MODEL_FALLBACK="${AGENT_TEST_OPENROUTER_STREAM_MODEL_FALLBACK:-google/gemma-3-4b-it}"
 
+if ! agent_test_openrouter_auth_ok "${OPENROUTER_KEY}" "${BASE_URL}"; then
+  rc=$?
+  if [[ "${rc}" -eq 77 ]]; then
+    exit 77
+  fi
+  exit 1
+fi
+
 HOST="127.0.0.1"
 PORT="$(agentd_smoke_pick_port)"
 
@@ -92,6 +100,9 @@ s = os.environ["STREAM"]
 lower = s.lower()
 if ('"http_status":429' in s or '"status":429' in s) and ("overloaded" in lower or "rate" in lower):
   print("SKIP: OpenRouter provider overloaded (429)", file=sys.stderr)
+  raise SystemExit(77)
+if ('"http_status":401' in s or '"status":401' in s) or ("user not found" in lower) or ("unauthorized" in lower):
+  print("SKIP: OpenRouter auth failed (401); check OPENROUTER_API_KEY", file=sys.stderr)
   raise SystemExit(77)
 if 'event: job_done' not in s:
   print("missing job_done in SSE stream", file=sys.stderr)

@@ -132,3 +132,46 @@ agent_test_setup_proxy_env() {
   export no_proxy="${no_proxy:-${NO_PROXY:-127.0.0.1,localhost}}"
   export NO_PROXY="${no_proxy}"
 }
+
+agent_test_openrouter_auth_ok() {
+  if [[ $# -lt 1 ]]; then
+    echo "agent_test_openrouter_auth_ok: missing key arg" >&2
+    return 2
+  fi
+  local key="${1}"
+  local base_url="${2:-https://openrouter.ai/api/v1}"
+  local status
+  status="$(curl -sS --noproxy "*" -o /dev/null -w "%{http_code}" \
+    -H "Authorization: Bearer ${key}" \
+    "${base_url}/models" || true)"
+  if [[ "${status}" == "401" || "${status}" == "403" ]]; then
+    echo "SKIP: OpenRouter auth failed (${status}); check OPENROUTER_API_KEY" >&2
+    return 77
+  fi
+  if [[ "${status}" -ge 400 || "${status}" == "000" ]]; then
+    echo "OpenRouter auth check failed (status=${status})" >&2
+    return 1
+  fi
+  return 0
+}
+
+agent_test_openrouter_output_is_auth_error() {
+  if [[ $# -lt 1 ]]; then
+    return 1
+  fi
+  local lower
+  lower="$(printf "%s" "${1}" | tr '[:upper:]' '[:lower:]')"
+  if [[ "${lower}" == *"user not found"* ]]; then
+    return 0
+  fi
+  if [[ "${lower}" == *"invalid api key"* || "${lower}" == *"invalid_api_key"* ]]; then
+    return 0
+  fi
+  if [[ "${lower}" == *"unauthorized"* || "${lower}" == *"forbidden"* ]]; then
+    return 0
+  fi
+  if [[ "${lower}" == *"http_status\":401"* || "${lower}" == *"status\":401"* ]]; then
+    return 0
+  fi
+  return 1
+}
