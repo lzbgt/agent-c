@@ -20,6 +20,10 @@
 #include <sstream>
 #include <string>
 #include <vector>
+#if !defined(_WIN32)
+#include <pwd.h>
+#include <unistd.h>
+#endif
 
 #if defined(AGENT_HAVE_JSONCPP)
 #include <json/json.h>
@@ -33,6 +37,17 @@ static int64_t unix_ms_now() {
 static std::string getenv_str(const char* k) {
   const char* v = std::getenv(k);
   return (v && v[0]) ? std::string(v) : std::string();
+}
+
+static std::string home_dir_best_effort() {
+  const std::string home = getenv_str("HOME");
+  if (!home.empty()) return home;
+#if !defined(_WIN32)
+  if (struct passwd* pw = getpwuid(getuid())) {
+    if (pw->pw_dir && pw->pw_dir[0]) return std::string(pw->pw_dir);
+  }
+#endif
+  return {};
 }
 
 static bool read_file_all(const std::string& path, std::string* out);
@@ -72,7 +87,7 @@ static bool dotenv_parse_line(const std::string& line, std::string* out_key, std
 }
 
 static std::string try_load_key_from_home_dotenv_best_effort(const std::vector<std::string>& keys) {
-  const std::string home = getenv_str("HOME");
+  const std::string home = home_dir_best_effort();
   if (home.empty()) return {};
   const std::string path = home + "/.env";
   std::string raw;

@@ -1,6 +1,6 @@
 # Roadmap / TODOs (highest leverage)
 
-Date: 2026-02-19
+Date: 2026-02-18
 
 This roadmap is biased toward “power unleashed” coming from the **agentic framework itself**:
 
@@ -74,6 +74,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] WebUI history expansion state bounded to prevent long-running UI memory drift.
   - [x] AgentdApi request-path job GC to keep embedded/relay job state bounded without a dedicated GC thread.
   - [x] Job stream event payloads capped with `data_truncated` metadata to prevent unbounded in-memory growth.
+  - [x] Key discovery falls back to passwd-derived home when HOME is missing (service contexts).
 3) **Next-gen contract foundation (agent-core + agentd + broker + WebUI)** — make interop explicit and replayable.
   - [x] Add a unified capability descriptor (`/api/v1/caps`) with protocol versions + limits (agentd + WebUI + broker proxy).
   - [x] WebUI: use `/api/v1/caps` to hide/disable unsupported features and cache last-known caps.
@@ -84,9 +85,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Promoted goals (explicit goals; no non-goals)
 
-Weights updated 2026-02-19: prioritize **tool-loop transcript completion** (full multimodal coverage + schema migrations),
-then **streaming stability** (model pinning + provider guardrails + provider matrix upkeep),
-with **audio streaming** following once the streaming UX is stable.
+Weights updated 2026-02-18: prioritize **streaming stability** (OpenRouter pins + provider matrix upkeep),
+then **tool plugin isolation** (sandbox/host policy hardening),
+with **audio streaming** following once streaming UX is stable.
 
 - [x] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker + agentd implemented; tests added).
 - [x] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.

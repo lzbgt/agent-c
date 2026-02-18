@@ -60,6 +60,10 @@
 #include <signal.h>
 #include <memory>
 #include <cstring>
+#if !defined(_WIN32)
+#include <pwd.h>
+#include <unistd.h>
+#endif
 
 using namespace agentd;
 
@@ -79,6 +83,11 @@ static std::string home_dir_best_effort() {
   if (const char* h = getenv_s("HOME")) {
     return h;
   }
+#if !defined(_WIN32)
+  if (struct passwd* pw = getpwuid(getuid())) {
+    if (pw->pw_dir && pw->pw_dir[0]) return pw->pw_dir;
+  }
+#endif
   return std::filesystem::current_path().string();
 }
 
