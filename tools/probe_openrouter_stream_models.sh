@@ -250,14 +250,19 @@ PY
 
 python3 - <<PY
 import json
+import sys
 with open("${result_file}") as f:
     obj = json.load(f)
 rows = obj.get("results", [])
 oks = [r["id"] for r in rows if r.get("assistant_stream") == "ok" and r.get("tool_stream") == "ok"]
+auth_only = bool(rows) and all(r.get("assistant_stream") == "auth_error" and r.get("tool_stream") == "auth_error" for r in rows)
 print("OK models (assistant + tool-call streaming):")
 for mid in oks:
     print(f"- {mid}")
 if not oks:
+    if auth_only:
+        print("SKIP: OpenRouter auth errors across all candidates", file=sys.stderr)
+        raise SystemExit(77)
     raise SystemExit(1)
 PY
 

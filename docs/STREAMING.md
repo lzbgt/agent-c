@@ -117,3 +117,4 @@ For a repo-tracked pin file, rerun the probe with `OPENROUTER_STREAM_PROBE_WRITE
 - `ref/openrouter/streaming_pins.json`
 
 The OpenRouter smoke tests will prefer this pin file when present, falling back to the env vars and defaults above.
+If every candidate fails with OpenRouter auth errors, the probe exits with code 77 and prints a skip message.
