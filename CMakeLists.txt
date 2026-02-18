@@ -235,6 +235,8 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/memory_consolidator.cpp
     daemon/src/memory_retention.cpp
     daemon/src/memory_checkpoints.cpp
+    daemon/src/memory_salience.cpp
+    daemon/src/memory_recaps.cpp
     daemon/src/memory_endpoints.cpp
     daemon/src/runtime_config.cpp
     daemon/src/secrets_file.cpp
@@ -722,6 +724,8 @@ if(AGENT_BUILD_HOST)
 		    add_test(NAME agentd_edge_deadline_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_edge_deadline_smoke.sh $<TARGET_FILE:agentd>)
 		    add_test(NAME agentd_memory_consolidate_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_memory_consolidate_smoke.sh $<TARGET_FILE:agentd>)
 		    add_test(NAME agentd_memory_retention_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_memory_retention_smoke.sh $<TARGET_FILE:agentd>)
+		    add_test(NAME agentd_memory_salience_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_memory_salience_smoke.sh $<TARGET_FILE:agentd>)
+		    add_test(NAME agentd_memory_recaps_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_memory_recaps_smoke.sh $<TARGET_FILE:agentd>)
 		    add_test(NAME agentd_memory_correlate_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_memory_correlate_smoke.sh $<TARGET_FILE:agentd>)
 	    add_test(NAME agentd_provider_retry_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_provider_retry_smoke.sh $<TARGET_FILE:agentd>)
 	    set_tests_properties(agentd_provider_retry_smoke PROPERTIES SKIP_RETURN_CODE 77)

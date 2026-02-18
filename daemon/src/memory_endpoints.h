@@ -3,6 +3,7 @@
 #include "cors.h"
 #include "daemon_config.h"
 #include "http_server.h"
+#include "openai_client.h"
 
 namespace agentd {
 
@@ -54,6 +55,24 @@ void handle_memory_query_endpoint(
 // Lightweight index of memory files (paths + size/line/token estimates).
 void handle_memory_index_endpoint(
   const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
+void handle_memory_salience_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
+// GET/POST /api/v1/memory/recaps
+// - GET: list stored recaps
+// - POST: generate a new recap (LLM-backed, bounded)
+void handle_memory_recaps_endpoint(
+  const DaemonConfig& cfg,
+  const OpenAIClientConfig& ocfg,
   const CorsConfig& cors_cfg,
   const HttpRequest& req,
   HttpResponse* resp

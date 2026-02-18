@@ -1,6 +1,9 @@
 #include "memory_retention.h"
 
 #include "json_util.h"
+#include "memory_checkpoints.h"
+#include "string_util.h"
+#include "toolset_host.h"
 
 #include <algorithm>
 #include <chrono>
@@ -136,6 +139,117 @@ void maybe_push_deleted(std::vector<std::string>* out, const std::string& path) 
   if (!out) return;
   if (out->size() >= 200) return;
   out->push_back(path);
+}
+
+void maybe_push_key(std::vector<std::string>* out, const std::string& key) {
+  if (!out) return;
+  if (out->size() >= 200) return;
+  out->push_back(key);
+}
+
+std::string to_lower_ascii(std::string s) {
+  for (char& c : s) {
+    if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+  }
+  return s;
+}
+
+bool status_is_inactive(const std::string& status) {
+  const std::string s = to_lower_ascii(trim_copy(status));
+  return s == "deprecated" || s == "inactive" || s == "obsolete" || s == "disabled";
+}
+
+std::string json_value_to_string(const Json::Value& v) {
+  if (v.isString()) return v.asString();
+  if (v.isBool()) return v.asBool() ? "true" : "false";
+  if (v.isInt() || v.isInt64()) return std::to_string((long long)v.asInt64());
+  if (v.isUInt() || v.isUInt64()) return std::to_string((unsigned long long)v.asUInt64());
+  if (v.isDouble()) {
+    std::ostringstream oss;
+    oss << v.asDouble();
+    return oss.str();
+  }
+  return json_stringify(v);
+}
+
+struct DeprecateEntry {
+  std::string key;
+  std::string kind;
+  std::string value;
+};
+
+bool apply_structured_deprecations(
+  const DaemonConfig& cfg,
+  const std::vector<DeprecateEntry>& entries,
+  int keep_checkpoints,
+  std::string* out_err
+) {
+  if (out_err) out_err->clear();
+  if (entries.empty()) return true;
+
+  if (to_lower_ascii(trim_copy(cfg.tools)) != "host") {
+    if (out_err) *out_err = "structured deprecate requires --tools host";
+    return false;
+  }
+  if (cfg.host_policy != HostToolsetPolicyMode::Full) {
+    if (out_err) *out_err = "structured deprecate requires host_policy=full";
+    return false;
+  }
+  if (cfg.state_dir.empty() || cfg.sessions_root_dir.empty()) {
+    if (out_err) *out_err = "missing state_dir/sessions_root_dir";
+    return false;
+  }
+
+  HostToolsetConfig hcfg;
+  hcfg.root_dir = cfg.state_dir;
+  hcfg.policy = HostToolsetPolicyMode::Full;
+  hcfg.enable_process_exec = false;
+  hcfg.allow_symlinks = true;
+  hcfg.sessions_root_dir = cfg.sessions_root_dir;
+  hcfg.session_id = "";
+
+  agent_tool_registry_t* reg = nullptr;
+  agent_tool_executor_t exec{};
+  const agent_status_t st = toolset_host_create(hcfg, &reg, &exec);
+  if (st != AGENT_OK || !reg || !exec.execute) {
+    if (reg) agent_tool_registry_destroy(reg);
+    toolset_host_destroy(&exec);
+    if (out_err) *out_err = "failed to create host toolset";
+    return false;
+  }
+
+  Json::Value args(Json::objectValue);
+  args["path"] = "STRUCTURED.md";
+  Json::Value arr(Json::arrayValue);
+  for (const auto& e : entries) {
+    Json::Value o(Json::objectValue);
+    o["key"] = e.key;
+    if (!e.kind.empty()) o["kind"] = e.kind;
+    o["value"] = e.value;
+    o["status"] = "deprecated";
+    o["source"] = "retention:auto_deprecate";
+    arr.append(o);
+  }
+  args["entries"] = arr;
+  args["checkpoint"] = true;
+  args["keep_checkpoints"] = std::max(1, keep_checkpoints);
+
+  Json::StreamWriterBuilder wb;
+  wb["indentation"] = "";
+  const std::string req = Json::writeString(wb, args);
+
+  agent_string_t out{};
+  const agent_status_t est = exec.execute(exec.ctx, "memory_put", req.c_str(), &out);
+  agent_string_free(&out);
+
+  agent_tool_registry_destroy(reg);
+  toolset_host_destroy(&exec);
+
+  if (est != AGENT_OK) {
+    if (out_err) *out_err = "memory_put failed";
+    return false;
+  }
+  return true;
 }
 
 }  // namespace
@@ -341,6 +455,73 @@ bool memory_retention_enforce(
     }
   }
 
+  if (policy.structured_deprecate_days > 0) {
+    const int max_entries =
+      policy.structured_deprecate_max_entries > 0 ? std::min(200, policy.structured_deprecate_max_entries) : 50;
+    std::vector<DeprecateEntry> dep_entries;
+
+    std::vector<MemoryCheckpointMeta> metas;
+    std::string lerr;
+    if (!memory_list_structured_checkpoints(mem_root, 0, INT64_MAX, "", 1, &metas, &lerr) || metas.empty()) {
+      if (!lerr.empty()) maybe_push_error(out_stats, lerr);
+    } else {
+      std::string structured_path2;
+      Json::Value items(Json::nullValue);
+      std::string rerr;
+      if (!memory_read_structured_checkpoint_items(mem_root, metas[0].checkpoint_path_rel, &structured_path2, &items, &rerr)) {
+        if (!rerr.empty()) maybe_push_error(out_stats, rerr);
+      } else if (items.isObject()) {
+        const int64_t cutoff_ms = out_stats->generated_utc_ms
+          - (int64_t)policy.structured_deprecate_days * 24LL * 60 * 60 * 1000;
+        std::vector<std::string> keys = items.getMemberNames();
+        std::sort(keys.begin(), keys.end());
+        for (const auto& key : keys) {
+          if ((int)dep_entries.size() >= max_entries) break;
+          const Json::Value rec = items[key];
+          if (!rec.isObject()) continue;
+          const std::string status = rec.isMember("status") && rec["status"].isString() ? rec["status"].asString() : "";
+          if (status_is_inactive(status)) continue;
+          const std::string observed = rec.isMember("observed_utc") && rec["observed_utc"].isString()
+            ? rec["observed_utc"].asString()
+            : "";
+          const std::string updated = rec.isMember("updated_utc") && rec["updated_utc"].isString()
+            ? rec["updated_utc"].asString()
+            : "";
+          int64_t ts_ms = 0;
+          if (!observed.empty()) parse_iso_utc_ms(observed, &ts_ms);
+          if (ts_ms <= 0 && !updated.empty()) parse_iso_utc_ms(updated, &ts_ms);
+          if (ts_ms <= 0 || ts_ms >= cutoff_ms) continue;
+
+          const std::string kind = rec.isMember("kind") && rec["kind"].isString() ? rec["kind"].asString() : "fact";
+          const Json::Value val = rec.isMember("value") ? rec["value"] : Json::Value(Json::nullValue);
+          const std::string value = trim_copy(json_value_to_string(val));
+          if (value.empty()) continue;
+
+          DeprecateEntry de;
+          de.key = key;
+          de.kind = kind;
+          de.value = value;
+          dep_entries.push_back(std::move(de));
+        }
+      }
+    }
+
+    if (!dep_entries.empty()) {
+      if (policy.dry_run) {
+        out_stats->structured_deprecated_count += (int64_t)dep_entries.size();
+        for (const auto& e : dep_entries) maybe_push_key(&out_stats->structured_deprecated_keys, e.key);
+      } else {
+        std::string derr;
+        if (!apply_structured_deprecations(cfg, dep_entries, cfg.memory_consolidate_keep_checkpoints, &derr)) {
+          maybe_push_error(out_stats, derr.empty() ? "structured deprecate failed" : derr);
+        } else {
+          out_stats->structured_deprecated_count += (int64_t)dep_entries.size();
+          for (const auto& e : dep_entries) maybe_push_key(&out_stats->structured_deprecated_keys, e.key);
+        }
+      }
+    }
+  }
+
   return true;
 }
 
@@ -385,6 +566,8 @@ void MemoryRetentionEngine::worker_main() {
     policy.daily_max_bytes = cfg.memory_retention_daily_max_bytes;
     policy.checkpoint_max_days = cfg.memory_retention_checkpoint_max_days;
     policy.checkpoint_max_count = cfg.memory_retention_checkpoint_max_count;
+    policy.structured_deprecate_days = cfg.memory_retention_structured_deprecate_days;
+    policy.structured_deprecate_max_entries = cfg.memory_retention_structured_deprecate_max_entries;
     policy.dry_run = false;
 
     MemoryRetentionStats stats;

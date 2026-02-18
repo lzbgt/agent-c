@@ -5,7 +5,9 @@
 #include "json_util.h"
 #include "memory_checkpoints.h"
 #include "memory_consolidator.h"
+#include "memory_recaps.h"
 #include "memory_retention.h"
+#include "memory_salience.h"
 #include "session_id_util.h"
 
 #include <json/json.h>
@@ -19,6 +21,7 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -64,6 +67,15 @@ struct MemoryIndexRow {
   int64_t lines = 0;
   int64_t token_estimate = 0;
 };
+
+static double parse_double_or(const std::optional<std::string>& v, double fallback) {
+  if (!v || v->empty()) return fallback;
+  try {
+    return std::stod(*v);
+  } catch (...) {
+    return fallback;
+  }
+}
 
 static std::string path_rel_to(const std::filesystem::path& root, const std::filesystem::path& abs) {
   std::error_code ec;
@@ -160,6 +172,8 @@ void handle_memory_retention_endpoint(
   policy.daily_max_bytes = cfg.memory_retention_daily_max_bytes;
   policy.checkpoint_max_days = cfg.memory_retention_checkpoint_max_days;
   policy.checkpoint_max_count = cfg.memory_retention_checkpoint_max_count;
+  policy.structured_deprecate_days = cfg.memory_retention_structured_deprecate_days;
+  policy.structured_deprecate_max_entries = cfg.memory_retention_structured_deprecate_max_entries;
 
   if (args.isMember("dry_run") && args["dry_run"].isBool()) {
     policy.dry_run = args["dry_run"].asBool();
@@ -186,6 +200,20 @@ void handle_memory_retention_endpoint(
       : (int)args["checkpoint_max_count"].asUInt();
     policy.checkpoint_max_count = std::max(0, n);
   }
+  if (args.isMember("structured_deprecate_days") &&
+      (args["structured_deprecate_days"].isInt() || args["structured_deprecate_days"].isUInt())) {
+    const int n = args["structured_deprecate_days"].isInt()
+      ? args["structured_deprecate_days"].asInt()
+      : (int)args["structured_deprecate_days"].asUInt();
+    policy.structured_deprecate_days = std::max(0, n);
+  }
+  if (args.isMember("structured_deprecate_max_entries") &&
+      (args["structured_deprecate_max_entries"].isInt() || args["structured_deprecate_max_entries"].isUInt())) {
+    const int n = args["structured_deprecate_max_entries"].isInt()
+      ? args["structured_deprecate_max_entries"].asInt()
+      : (int)args["structured_deprecate_max_entries"].asUInt();
+    policy.structured_deprecate_max_entries = std::max(0, n);
+  }
 
   MemoryRetentionStats stats;
   std::string err;
@@ -206,8 +234,11 @@ void handle_memory_retention_endpoint(
   o["daily_max_bytes"] = (Json::Int64)policy.daily_max_bytes;
   o["checkpoint_max_days"] = policy.checkpoint_max_days;
   o["checkpoint_max_count"] = policy.checkpoint_max_count;
+  o["structured_deprecate_days"] = policy.structured_deprecate_days;
+  o["structured_deprecate_max_entries"] = policy.structured_deprecate_max_entries;
   o["daily_deleted_count"] = (Json::Int64)stats.daily_deleted_count;
   o["checkpoint_deleted_count"] = (Json::Int64)stats.checkpoint_deleted_count;
+  o["structured_deprecated_count"] = (Json::Int64)stats.structured_deprecated_count;
   o["daily_bytes_before"] = (Json::Int64)stats.daily_bytes_before;
   o["daily_bytes_after"] = (Json::Int64)stats.daily_bytes_after;
   if (!stats.daily_deleted.empty()) {
@@ -219,6 +250,11 @@ void handle_memory_retention_endpoint(
     Json::Value arr(Json::arrayValue);
     for (const auto& p : stats.checkpoint_deleted) arr.append(p);
     o["checkpoint_deleted"] = arr;
+  }
+  if (!stats.structured_deprecated_keys.empty()) {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& k : stats.structured_deprecated_keys) arr.append(k);
+    o["structured_deprecated_keys"] = arr;
   }
   if (!stats.errors.empty()) {
     Json::Value arr(Json::arrayValue);
@@ -644,6 +680,263 @@ void handle_memory_index_endpoint(
   o["files"] = arr;
   o["total_bytes"] = (Json::Int64)total_bytes;
   o["total_token_estimate"] = (Json::Int64)total_tokens;
+  resp->body = json_stringify(o);
+}
+
+void handle_memory_salience_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  const std::filesystem::path mem_root = memory_root_from_cfg(cfg);
+  std::error_code ec;
+  if (mem_root.empty() || !std::filesystem::exists(mem_root, ec) || !std::filesystem::is_directory(mem_root, ec)) {
+    resp->status = 404;
+    resp->body = "{\"ok\":false,\"error\":\"memory root not found\"}";
+    return;
+  }
+
+  MemorySaliencePolicy pol;
+  pol.include_structured = true;
+  pol.include_daily = true;
+  pol.daily_days = cfg.memory_salience_daily_days;
+  pol.max_items = cfg.memory_salience_max_items;
+  pol.max_structured_items = cfg.memory_salience_structured_max_items;
+  pol.max_daily_items = cfg.memory_salience_daily_max_items;
+  pol.half_life_days = cfg.memory_salience_half_life_days;
+  pol.importance_weight = cfg.memory_salience_importance_weight;
+
+  if (const auto v = query_get(req.query, "include_structured"); v && !v->empty()) {
+    pol.include_structured = string_to_bool(*v);
+  }
+  if (const auto v = query_get(req.query, "include_daily"); v && !v->empty()) {
+    pol.include_daily = string_to_bool(*v);
+  }
+  if (const auto v = query_get(req.query, "daily_days"); v && !v->empty()) {
+    try { pol.daily_days = (int)std::stol(*v); } catch (...) {}
+  }
+  if (const auto v = query_get(req.query, "max_items"); v && !v->empty()) {
+    try { pol.max_items = (int)std::stol(*v); } catch (...) {}
+  }
+  if (const auto v = query_get(req.query, "max_structured_items"); v && !v->empty()) {
+    try { pol.max_structured_items = (int)std::stol(*v); } catch (...) {}
+  }
+  if (const auto v = query_get(req.query, "max_daily_items"); v && !v->empty()) {
+    try { pol.max_daily_items = (int)std::stol(*v); } catch (...) {}
+  }
+  pol.half_life_days = parse_double_or(query_get(req.query, "half_life_days"), pol.half_life_days);
+  pol.importance_weight = parse_double_or(query_get(req.query, "importance_weight"), pol.importance_weight);
+
+  pol.daily_days = std::max(0, std::min(31, pol.daily_days));
+  pol.max_items = std::max(1, std::min(200, pol.max_items));
+  pol.max_structured_items = std::max(0, std::min(200, pol.max_structured_items));
+  pol.max_daily_items = std::max(0, std::min(200, pol.max_daily_items));
+  if (pol.half_life_days < 0) pol.half_life_days = 0;
+  if (pol.importance_weight < 0) pol.importance_weight = 0;
+
+  MemorySalienceReport rep;
+  std::string err;
+  if (!memory_salience_collect(mem_root, pol, &rep, &err)) {
+    resp->status = 500;
+    resp->body = "{\"ok\":false,\"error\":\"failed to compute memory salience\"}";
+    return;
+  }
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = true;
+  out["memory_root"] = mem_root.generic_string();
+  out["generated_utc_ms"] = (Json::Int64)rep.generated_utc_ms;
+  {
+    Json::Value p(Json::objectValue);
+    p["include_structured"] = pol.include_structured;
+    p["include_daily"] = pol.include_daily;
+    p["daily_days"] = pol.daily_days;
+    p["max_items"] = pol.max_items;
+    p["max_structured_items"] = pol.max_structured_items;
+    p["max_daily_items"] = pol.max_daily_items;
+    p["half_life_days"] = pol.half_life_days;
+    p["importance_weight"] = pol.importance_weight;
+    out["policy"] = p;
+  }
+  if (rep.structured_checkpoint_found) {
+    Json::Value ck(Json::objectValue);
+    ck["checkpoint_path"] = rep.structured_checkpoint.checkpoint_path_rel;
+    ck["structured_path"] = rep.structured_checkpoint.structured_path;
+    ck["ts_utc"] = rep.structured_checkpoint.ts_utc;
+    ck["ts_utc_ms"] = (Json::Int64)rep.structured_checkpoint.ts_utc_ms;
+    ck["sha256"] = rep.structured_checkpoint.sha256;
+    ck["bytes"] = (Json::Int64)rep.structured_checkpoint.bytes;
+    out["structured_checkpoint"] = ck;
+  }
+
+  Json::Value structured(Json::arrayValue);
+  for (const auto& item : rep.structured_items) {
+    Json::Value row(Json::objectValue);
+    row["key"] = item.key;
+    if (!item.kind.empty()) row["kind"] = item.kind;
+    if (!item.status.empty()) row["status"] = item.status;
+    if (!item.ts_utc.empty()) row["updated_utc"] = item.ts_utc;
+    row["value"] = item.text;
+    row["score"] = item.score;
+    structured.append(row);
+  }
+  Json::Value daily(Json::arrayValue);
+  for (const auto& item : rep.daily_items) {
+    Json::Value row(Json::objectValue);
+    row["path"] = item.path;
+    row["line"] = item.line;
+    row["text"] = item.text;
+    row["score"] = item.score;
+    if (!item.ts_utc.empty()) row["ts_utc"] = item.ts_utc;
+    if (item.importance >= 0) row["importance"] = item.importance;
+    daily.append(row);
+  }
+  out["structured_items"] = structured;
+  out["daily_items"] = daily;
+  out["returned"] = (Json::Int64)(rep.structured_items.size() + rep.daily_items.size());
+  if (!rep.errors.empty()) {
+    Json::Value errs(Json::arrayValue);
+    for (const auto& e : rep.errors) errs.append(e);
+    out["errors"] = errs;
+  }
+  resp->body = json_stringify(out);
+}
+
+void handle_memory_recaps_endpoint(
+  const DaemonConfig& cfg,
+  const OpenAIClientConfig& ocfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  if (req.method == "GET") {
+    int limit = 20;
+    if (const auto v = query_get(req.query, "limit"); v && !v->empty()) {
+      try { limit = (int)std::stol(*v); } catch (...) { limit = 20; }
+    }
+    limit = std::max(1, std::min(200, limit));
+    bool include_summary = false;
+    if (const auto v = query_get(req.query, "include_summary"); v && !v->empty()) {
+      include_summary = string_to_bool(*v);
+    }
+
+    Json::Value recaps(Json::arrayValue);
+    std::string err;
+    if (!memory_list_recaps(cfg, limit, include_summary, &recaps, &err)) {
+      resp->status = 500;
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = err.empty() ? "failed to list recaps" : err;
+      resp->body = json_stringify(o);
+      return;
+    }
+    Json::Value o(Json::objectValue);
+    o["ok"] = true;
+    o["memory_root"] = memory_root_from_cfg(cfg).generic_string();
+    o["limit"] = limit;
+    o["include_summary"] = include_summary;
+    o["recaps"] = recaps;
+    o["count"] = (Json::Int64)recaps.size();
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  if (req.method != "POST") {
+    resp->status = 405;
+    resp->body = "{\"ok\":false,\"error\":\"method not allowed\"}";
+    return;
+  }
+
+  Json::Value args(Json::objectValue);
+  if (!req.body.empty()) {
+    std::string perr;
+    if (!json_parse_object(req.body, &args, &perr)) {
+      resp->status = 400;
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = std::string("invalid JSON: ") + perr;
+      resp->body = json_stringify(o);
+      return;
+    }
+  }
+
+  MemoryRecapOptions opt;
+  opt.salience.include_structured = true;
+  opt.salience.include_daily = true;
+  opt.salience.daily_days = cfg.memory_salience_daily_days;
+  opt.salience.max_items = cfg.memory_salience_max_items;
+  opt.salience.max_structured_items = cfg.memory_salience_structured_max_items;
+  opt.salience.max_daily_items = cfg.memory_salience_daily_max_items;
+  opt.salience.half_life_days = cfg.memory_salience_half_life_days;
+  opt.salience.importance_weight = cfg.memory_salience_importance_weight;
+  opt.summary_max_chars = cfg.summary_max_chars;
+  opt.model = cfg.summary_model;
+
+  if (args.isMember("dry_run") && args["dry_run"].isBool()) opt.dry_run = args["dry_run"].asBool();
+  if (args.isMember("write_file") && args["write_file"].isBool()) opt.write_file = args["write_file"].asBool();
+
+  if (args.isMember("model") && args["model"].isString()) opt.model = args["model"].asString();
+  if (args.isMember("summary_model")) {
+    if (args["summary_model"].isString()) opt.model = args["summary_model"].asString();
+    else if (args["summary_model"].isNull()) opt.model.clear();
+  }
+  if (args.isMember("summary_max_chars") && args["summary_max_chars"].isInt64()) {
+    const auto n = args["summary_max_chars"].asInt64();
+    if (n >= 0) opt.summary_max_chars = (size_t)n;
+  }
+
+  if (args.isMember("include_structured") && args["include_structured"].isBool()) {
+    opt.salience.include_structured = args["include_structured"].asBool();
+  }
+  if (args.isMember("include_daily") && args["include_daily"].isBool()) {
+    opt.salience.include_daily = args["include_daily"].asBool();
+  }
+  if (args.isMember("daily_days") && args["daily_days"].isInt()) {
+    opt.salience.daily_days = std::max(0, args["daily_days"].asInt());
+  }
+  if (args.isMember("max_items") && args["max_items"].isInt()) {
+    opt.salience.max_items = std::max(0, args["max_items"].asInt());
+  }
+  if (args.isMember("max_structured_items") && args["max_structured_items"].isInt()) {
+    opt.salience.max_structured_items = std::max(0, args["max_structured_items"].asInt());
+  }
+  if (args.isMember("max_daily_items") && args["max_daily_items"].isInt()) {
+    opt.salience.max_daily_items = std::max(0, args["max_daily_items"].asInt());
+  }
+  if (args.isMember("half_life_days") && args["half_life_days"].isDouble()) {
+    opt.salience.half_life_days = std::max(0.0, args["half_life_days"].asDouble());
+  }
+  if (args.isMember("importance_weight") && args["importance_weight"].isDouble()) {
+    opt.salience.importance_weight = std::max(0.0, args["importance_weight"].asDouble());
+  }
+
+  opt.salience.daily_days = std::max(0, std::min(31, opt.salience.daily_days));
+  opt.salience.max_items = std::max(0, std::min(200, opt.salience.max_items));
+  opt.salience.max_structured_items = std::max(0, std::min(200, opt.salience.max_structured_items));
+  opt.salience.max_daily_items = std::max(0, std::min(200, opt.salience.max_daily_items));
+
+  MemoryRecapReport report;
+  std::string err;
+  if (!memory_generate_recap(cfg, ocfg, opt, &report, &err)) {
+    resp->status = 500;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = err.empty() ? "memory recap failed" : err;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  Json::Value o = memory_recap_report_to_json(report, /*include_prompt=*/report.dry_run);
+  o["ok"] = true;
   resp->body = json_stringify(o);
 }
 

@@ -257,6 +257,7 @@ int main(int argc, char** argv) {
   bool blob_store_set = false;
   bool blob_tier_set = false;
   bool memory_retention_set = false;
+  bool memory_salience_set = false;
   bool cors_allow_credentials_set = false;
   bool cors_max_age_set = false;
   bool cors_routes_set = false;
@@ -883,6 +884,120 @@ int main(int argc, char** argv) {
         std::cerr << "Invalid --memory-retention-checkpoint-max-count\n";
         return 2;
       }
+    } else if (a == "--memory-retention-structured-deprecate-days") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --memory-retention-structured-deprecate-days\n";
+        return 2;
+      }
+      try {
+        cfg.memory_retention_structured_deprecate_days = (int)std::stol(v);
+        if (cfg.memory_retention_structured_deprecate_days < 0) cfg.memory_retention_structured_deprecate_days = 0;
+        memory_retention_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --memory-retention-structured-deprecate-days\n";
+        return 2;
+      }
+    } else if (a == "--memory-retention-structured-deprecate-max-entries") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --memory-retention-structured-deprecate-max-entries\n";
+        return 2;
+      }
+      try {
+        cfg.memory_retention_structured_deprecate_max_entries = (int)std::stol(v);
+        if (cfg.memory_retention_structured_deprecate_max_entries < 0) {
+          cfg.memory_retention_structured_deprecate_max_entries = 0;
+        }
+        memory_retention_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --memory-retention-structured-deprecate-max-entries\n";
+        return 2;
+      }
+    } else if (a == "--memory-salience-daily-days") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --memory-salience-daily-days\n";
+        return 2;
+      }
+      try {
+        cfg.memory_salience_daily_days = (int)std::stol(v);
+        if (cfg.memory_salience_daily_days < 0) cfg.memory_salience_daily_days = 0;
+        memory_salience_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --memory-salience-daily-days\n";
+        return 2;
+      }
+    } else if (a == "--memory-salience-max-items") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --memory-salience-max-items\n";
+        return 2;
+      }
+      try {
+        cfg.memory_salience_max_items = (int)std::stol(v);
+        if (cfg.memory_salience_max_items < 1) cfg.memory_salience_max_items = 1;
+        memory_salience_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --memory-salience-max-items\n";
+        return 2;
+      }
+    } else if (a == "--memory-salience-structured-max-items") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --memory-salience-structured-max-items\n";
+        return 2;
+      }
+      try {
+        cfg.memory_salience_structured_max_items = (int)std::stol(v);
+        if (cfg.memory_salience_structured_max_items < 0) cfg.memory_salience_structured_max_items = 0;
+        memory_salience_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --memory-salience-structured-max-items\n";
+        return 2;
+      }
+    } else if (a == "--memory-salience-daily-max-items") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --memory-salience-daily-max-items\n";
+        return 2;
+      }
+      try {
+        cfg.memory_salience_daily_max_items = (int)std::stol(v);
+        if (cfg.memory_salience_daily_max_items < 0) cfg.memory_salience_daily_max_items = 0;
+        memory_salience_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --memory-salience-daily-max-items\n";
+        return 2;
+      }
+    } else if (a == "--memory-salience-half-life-days") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --memory-salience-half-life-days\n";
+        return 2;
+      }
+      try {
+        cfg.memory_salience_half_life_days = std::stod(v);
+        if (cfg.memory_salience_half_life_days < 0) cfg.memory_salience_half_life_days = 0;
+        memory_salience_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --memory-salience-half-life-days\n";
+        return 2;
+      }
+    } else if (a == "--memory-salience-importance-weight") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --memory-salience-importance-weight\n";
+        return 2;
+      }
+      try {
+        cfg.memory_salience_importance_weight = std::stod(v);
+        if (cfg.memory_salience_importance_weight < 0) cfg.memory_salience_importance_weight = 0;
+        memory_salience_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --memory-salience-importance-weight\n";
+        return 2;
+      }
     } else if (a == "--ota-enable") {
       cfg.ota_enable = true;
     } else if (a == "--ota-command") {
@@ -1209,6 +1324,14 @@ int main(int argc, char** argv) {
         << "  --memory-retention-daily-max-bytes <n>  Cap daily memory bytes (default: 0=disabled)\n"
         << "  --memory-retention-checkpoint-max-days <n>  Delete checkpoints older than n days (default: 0=disabled)\n"
         << "  --memory-retention-checkpoint-max-count <n>  Keep at most n checkpoints (default: 0=disabled)\n"
+        << "  --memory-retention-structured-deprecate-days <n>  Deprecate structured entries older than n days (default: 0=disabled)\n"
+        << "  --memory-retention-structured-deprecate-max-entries <n>  Max entries to deprecate per run (default: 50)\n"
+        << "  --memory-salience-daily-days <n>  Daily files to scan for salience (default: 7)\n"
+        << "  --memory-salience-max-items <n>   Max total salience items (default: 12)\n"
+        << "  --memory-salience-structured-max-items <n>  Max structured salience items (default: 6)\n"
+        << "  --memory-salience-daily-max-items <n>  Max daily salience items (default: 6)\n"
+        << "  --memory-salience-half-life-days <n>  Salience decay half-life in days (default: 14)\n"
+        << "  --memory-salience-importance-weight <n>  Weight for @obs importance (default: 0.35)\n"
         << "  --ota-enable            Enable OTA update endpoint (default: disabled)\n"
         << "  --ota-command <cmd>     Command to apply OTA plan (see docs/spec/ota/agentd_ota_v0.md)\n"
         << "  --ota-command-timeout-ms <n>  OTA command timeout in ms (default: 300000; 0 disables)\n"
@@ -1700,6 +1823,62 @@ int main(int argc, char** argv) {
       memory_retention_set = true;
     } catch (...) {}
   }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_STRUCTURED_DEPRECATE_DAYS")) {
+    try {
+      cfg.memory_retention_structured_deprecate_days = (int)std::stol(ms);
+      if (cfg.memory_retention_structured_deprecate_days < 0) cfg.memory_retention_structured_deprecate_days = 0;
+      memory_retention_set = true;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_STRUCTURED_DEPRECATE_MAX_ENTRIES")) {
+    try {
+      cfg.memory_retention_structured_deprecate_max_entries = (int)std::stol(ms);
+      if (cfg.memory_retention_structured_deprecate_max_entries < 0) cfg.memory_retention_structured_deprecate_max_entries = 0;
+      memory_retention_set = true;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_SALIENCE_DAILY_DAYS")) {
+    try {
+      cfg.memory_salience_daily_days = (int)std::stol(ms);
+      if (cfg.memory_salience_daily_days < 0) cfg.memory_salience_daily_days = 0;
+      memory_salience_set = true;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_SALIENCE_MAX_ITEMS")) {
+    try {
+      cfg.memory_salience_max_items = (int)std::stol(ms);
+      if (cfg.memory_salience_max_items < 1) cfg.memory_salience_max_items = 1;
+      memory_salience_set = true;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_SALIENCE_STRUCTURED_MAX_ITEMS")) {
+    try {
+      cfg.memory_salience_structured_max_items = (int)std::stol(ms);
+      if (cfg.memory_salience_structured_max_items < 0) cfg.memory_salience_structured_max_items = 0;
+      memory_salience_set = true;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_SALIENCE_DAILY_MAX_ITEMS")) {
+    try {
+      cfg.memory_salience_daily_max_items = (int)std::stol(ms);
+      if (cfg.memory_salience_daily_max_items < 0) cfg.memory_salience_daily_max_items = 0;
+      memory_salience_set = true;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_SALIENCE_HALF_LIFE_DAYS")) {
+    try {
+      cfg.memory_salience_half_life_days = std::stod(ms);
+      if (cfg.memory_salience_half_life_days < 0) cfg.memory_salience_half_life_days = 0;
+      memory_salience_set = true;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_SALIENCE_IMPORTANCE_WEIGHT")) {
+    try {
+      cfg.memory_salience_importance_weight = std::stod(ms);
+      if (cfg.memory_salience_importance_weight < 0) cfg.memory_salience_importance_weight = 0;
+      memory_salience_set = true;
+    } catch (...) {}
+  }
   if (const char* s = getenv_s("AGENTD_OTA_ENABLE")) {
     cfg.ota_enable = env_truthy(s);
   }
@@ -1783,6 +1962,7 @@ int main(int argc, char** argv) {
     opt.override_blob_store = !blob_store_set;
     opt.override_blob_tier = !blob_tier_set;
     opt.override_memory_retention = !memory_retention_set;
+    opt.override_memory_salience = !memory_salience_set;
     if (!load_runtime_config_best_effort(db, &cfg, &err, opt)) {
       std::cerr << "Warning: failed to load runtime config from DB: " << err << "\n";
     }
@@ -2125,6 +2305,20 @@ int main(int argc, char** argv) {
   server.handle("GET", "/api/v1/memory/index", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_memory_index_endpoint(cur, cors_cfg, req, resp);
+  });
+  server.handle("GET", "/api/v1/memory/salience", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_memory_salience_endpoint(cur, cors_cfg, req, resp);
+  });
+  server.handle("GET", "/api/v1/memory/recaps", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
+    handle_memory_recaps_endpoint(cur, ocfg, cors_cfg, req, resp);
+  });
+  server.handle("POST", "/api/v1/memory/recaps", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
+    handle_memory_recaps_endpoint(cur, ocfg, cors_cfg, req, resp);
   });
 
   const std::string sessions_root_dir = cfg_store.snapshot().sessions_root_dir;

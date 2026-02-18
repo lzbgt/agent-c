@@ -65,7 +65,7 @@ ck_mid="${cktimes[1]}"
 ck_old="${cktimes[2]}"
 
 cat > "${mem_root}/checkpoints/structured_${ck_now}.json" <<EOF_IN
-{"schema":"agentd_structured_checkpoint_v1","ts_utc":"${ck_now}","path":"STRUCTURED.md","doc":{"items":{}}}
+{"schema":"agentd_structured_checkpoint_v1","ts_utc":"${ck_now}","path":"STRUCTURED.md","doc":{"items":{"retention.test.key":{"kind":"fact","value":"Old value","status":"active","updated_utc":"${ck_old}","observed_utc":"${ck_old}","sources":["trace:retention"]}}}}
 EOF_IN
 cat > "${mem_root}/checkpoints/structured_${ck_mid}.json" <<EOF_IN
 {"schema":"agentd_structured_checkpoint_v1","ts_utc":"${ck_mid}","path":"STRUCTURED.md","doc":{"items":{}}}
@@ -77,7 +77,7 @@ EOF_IN
 resp1="$(curl -fsS --noproxy "*" --max-time 5 \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
-  -d '{"dry_run":true,"daily_max_days":1,"checkpoint_max_count":1}' \
+  -d '{"dry_run":true,"daily_max_days":1,"checkpoint_max_count":1,"structured_deprecate_days":5,"structured_deprecate_max_entries":10}' \
   "${DAEMON_URL}/api/v1/memory/retention/enforce")"
 
 python3 - <<PY
@@ -91,6 +91,9 @@ if int(obj.get("daily_deleted_count", 0)) < 1:
   raise SystemExit(1)
 if int(obj.get("checkpoint_deleted_count", 0)) < 1:
   print("expected checkpoint_deleted_count >= 1", obj, file=sys.stderr)
+  raise SystemExit(1)
+if int(obj.get("structured_deprecated_count", 0)) < 1:
+  print("expected structured_deprecated_count >= 1", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 

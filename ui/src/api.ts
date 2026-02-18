@@ -335,7 +335,7 @@ export const RunRequestSchema = z.object({
     .optional(),
   max_chars: z.number().int().nonnegative().optional(),
   keep_last: z.number().int().nonnegative().optional(),
-  memory_context_mode: z.enum(["files", "search", "index"]).optional(),
+  memory_context_mode: z.enum(["files", "search", "index", "salience"]).optional(),
   memory_include_structured: z.boolean().optional(),
   memory_include_core: z.boolean().optional(),
   memory_include_daily: z.boolean().optional(),
@@ -1350,6 +1350,91 @@ export async function apiBrokerOtaStatusBulk(
   return { status: r.status, data };
 }
 
+export async function apiBrokerMemoryRetentionBulk(
+  brokerBase: string,
+  agentId: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+  deploymentIds?: string[],
+): Promise<{ status: number; data: any }> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const id = String(agentId || "").trim();
+  if (!id) throw new Error("missing agent_id");
+  const headers = daemonHeaders(auth, { "Content-Type": "application/json" });
+  const payload: Record<string, any> = { ...(body ?? {}) };
+  if (Array.isArray(deploymentIds) && deploymentIds.length > 0) {
+    payload.deployment_ids = deploymentIds;
+  }
+  const r = await fetch(`${base}/v1/agents/${encodeURIComponent(id)}/memory/retention/enforce`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  let data: any = null;
+  try {
+    data = await r.json();
+  } catch {
+    data = null;
+  }
+  return { status: r.status, data };
+}
+
+export async function apiBrokerMemoryRecapsListBulk(
+  brokerBase: string,
+  agentId: string,
+  params: MemoryRecapsListParams,
+  auth?: ApiAuth,
+  deploymentIds?: string[],
+): Promise<{ status: number; data: any }> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const id = String(agentId || "").trim();
+  if (!id) throw new Error("missing agent_id");
+  const qs = new URLSearchParams();
+  addQueryParam(qs, "limit", params.limit);
+  addQueryParam(qs, "include_summary", params.includeSummary);
+  if (Array.isArray(deploymentIds) && deploymentIds.length > 0) {
+    qs.set("deployment_ids", deploymentIds.join(","));
+  }
+  const url = `${base}/v1/agents/${encodeURIComponent(id)}/memory/recaps${qs.toString() ? `?${qs.toString()}` : ""}`;
+  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  let data: any = null;
+  try {
+    data = await r.json();
+  } catch {
+    data = null;
+  }
+  return { status: r.status, data };
+}
+
+export async function apiBrokerMemoryRecapsCreateBulk(
+  brokerBase: string,
+  agentId: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+  deploymentIds?: string[],
+): Promise<{ status: number; data: any }> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const id = String(agentId || "").trim();
+  if (!id) throw new Error("missing agent_id");
+  const headers = daemonHeaders(auth, { "Content-Type": "application/json" });
+  const payload: Record<string, any> = { ...(body ?? {}) };
+  if (Array.isArray(deploymentIds) && deploymentIds.length > 0) {
+    payload.deployment_ids = deploymentIds;
+  }
+  const r = await fetch(`${base}/v1/agents/${encodeURIComponent(id)}/memory/recaps`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+  let data: any = null;
+  try {
+    data = await r.json();
+  } catch {
+    data = null;
+  }
+  return { status: r.status, data };
+}
+
 export const BrokerMembersRespSchema = z
   .object({
     ok: z.boolean(),
@@ -1539,6 +1624,22 @@ export const MemoryIndexRespSchema = z
   .passthrough();
 export type MemoryIndexResp = z.infer<typeof MemoryIndexRespSchema>;
 
+export const MemoryRetentionRespSchema = z
+  .object({
+    ok: z.boolean(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+export type MemoryRetentionResp = z.infer<typeof MemoryRetentionRespSchema>;
+
+export const MemoryRecapsRespSchema = z
+  .object({
+    ok: z.boolean(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+export type MemoryRecapsResp = z.infer<typeof MemoryRecapsRespSchema>;
+
 type MemoryQueryParams = {
   sinceUtcMs?: number;
   untilUtcMs?: number;
@@ -1571,6 +1672,11 @@ type MemoryIndexParams = {
   includeDaily?: boolean;
   includeSession?: boolean;
   dailyDays?: number;
+};
+
+type MemoryRecapsListParams = {
+  limit?: number;
+  includeSummary?: boolean;
 };
 
 const addQueryParam = (params: URLSearchParams, key: string, value?: string | number | boolean) => {
@@ -1646,4 +1752,46 @@ export async function apiMemoryIndex(
   const r = await fetch(url, { headers: daemonHeaders(auth) });
   const j = await r.json();
   return MemoryIndexRespSchema.parse(j);
+}
+
+export async function apiMemoryRetentionEnforce(
+  base: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<MemoryRetentionResp> {
+  const r = await fetch(`${base}/api/v1/memory/retention/enforce`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(body ?? {}),
+  });
+  const j = await r.json();
+  return MemoryRetentionRespSchema.parse(j);
+}
+
+export async function apiMemoryRecapsList(
+  base: string,
+  params: MemoryRecapsListParams,
+  auth?: ApiAuth,
+): Promise<MemoryRecapsResp> {
+  const qs = new URLSearchParams();
+  addQueryParam(qs, "limit", params.limit);
+  addQueryParam(qs, "include_summary", params.includeSummary);
+  const url = qs.toString() ? `${base}/api/v1/memory/recaps?${qs.toString()}` : `${base}/api/v1/memory/recaps`;
+  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return MemoryRecapsRespSchema.parse(j);
+}
+
+export async function apiMemoryRecapsCreate(
+  base: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<MemoryRecapsResp> {
+  const r = await fetch(`${base}/api/v1/memory/recaps`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(body ?? {}),
+  });
+  const j = await r.json();
+  return MemoryRecapsRespSchema.parse(j);
 }

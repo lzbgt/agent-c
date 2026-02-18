@@ -225,6 +225,54 @@ bool load_runtime_config_best_effort(
             : (int64_t)v["memory_retention_checkpoint_max_count"].asUInt64();
           cfg_io->memory_retention_checkpoint_max_count = (int)n;
         }
+        if (v.isMember("memory_retention_structured_deprecate_days") &&
+            (v["memory_retention_structured_deprecate_days"].isInt64() || v["memory_retention_structured_deprecate_days"].isUInt64())) {
+          const auto n = v["memory_retention_structured_deprecate_days"].isInt64()
+            ? std::max<int64_t>(0, v["memory_retention_structured_deprecate_days"].asInt64())
+            : (int64_t)v["memory_retention_structured_deprecate_days"].asUInt64();
+          cfg_io->memory_retention_structured_deprecate_days = (int)n;
+        }
+        if (v.isMember("memory_retention_structured_deprecate_max_entries") &&
+            (v["memory_retention_structured_deprecate_max_entries"].isInt64() || v["memory_retention_structured_deprecate_max_entries"].isUInt64())) {
+          const auto n = v["memory_retention_structured_deprecate_max_entries"].isInt64()
+            ? std::max<int64_t>(0, v["memory_retention_structured_deprecate_max_entries"].asInt64())
+            : (int64_t)v["memory_retention_structured_deprecate_max_entries"].asUInt64();
+          cfg_io->memory_retention_structured_deprecate_max_entries = (int)n;
+        }
+      }
+      if (opt.override_memory_salience) {
+        if (v.isMember("memory_salience_daily_days") && (v["memory_salience_daily_days"].isInt64() || v["memory_salience_daily_days"].isUInt64())) {
+          const auto n = v["memory_salience_daily_days"].isInt64()
+            ? std::max<int64_t>(0, v["memory_salience_daily_days"].asInt64())
+            : (int64_t)v["memory_salience_daily_days"].asUInt64();
+          cfg_io->memory_salience_daily_days = (int)n;
+        }
+        if (v.isMember("memory_salience_max_items") && (v["memory_salience_max_items"].isInt64() || v["memory_salience_max_items"].isUInt64())) {
+          const auto n = v["memory_salience_max_items"].isInt64()
+            ? std::max<int64_t>(1, v["memory_salience_max_items"].asInt64())
+            : (int64_t)v["memory_salience_max_items"].asUInt64();
+          cfg_io->memory_salience_max_items = (int)n;
+        }
+        if (v.isMember("memory_salience_structured_max_items") && (v["memory_salience_structured_max_items"].isInt64() || v["memory_salience_structured_max_items"].isUInt64())) {
+          const auto n = v["memory_salience_structured_max_items"].isInt64()
+            ? std::max<int64_t>(0, v["memory_salience_structured_max_items"].asInt64())
+            : (int64_t)v["memory_salience_structured_max_items"].asUInt64();
+          cfg_io->memory_salience_structured_max_items = (int)n;
+        }
+        if (v.isMember("memory_salience_daily_max_items") && (v["memory_salience_daily_max_items"].isInt64() || v["memory_salience_daily_max_items"].isUInt64())) {
+          const auto n = v["memory_salience_daily_max_items"].isInt64()
+            ? std::max<int64_t>(0, v["memory_salience_daily_max_items"].asInt64())
+            : (int64_t)v["memory_salience_daily_max_items"].asUInt64();
+          cfg_io->memory_salience_daily_max_items = (int)n;
+        }
+        if (v.isMember("memory_salience_half_life_days") && (v["memory_salience_half_life_days"].isDouble() || v["memory_salience_half_life_days"].isInt() || v["memory_salience_half_life_days"].isInt64() || v["memory_salience_half_life_days"].isUInt64())) {
+          cfg_io->memory_salience_half_life_days = v["memory_salience_half_life_days"].asDouble();
+        }
+        if (v.isMember("memory_salience_importance_weight") && (v["memory_salience_importance_weight"].isDouble() || v["memory_salience_importance_weight"].isInt() || v["memory_salience_importance_weight"].isInt64() || v["memory_salience_importance_weight"].isUInt64())) {
+          cfg_io->memory_salience_importance_weight = v["memory_salience_importance_weight"].asDouble();
+        }
+        if (cfg_io->memory_salience_half_life_days < 0) cfg_io->memory_salience_half_life_days = 0;
+        if (cfg_io->memory_salience_importance_weight < 0) cfg_io->memory_salience_importance_weight = 0;
       }
       if (v.isMember("tool_call_limits_default") && v["tool_call_limits_default"].isArray()) {
         cfg_io->tool_call_limits_default.clear();
@@ -417,6 +465,14 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
   v["memory_retention_daily_max_bytes"] = (Json::Int64)cfg.memory_retention_daily_max_bytes;
   v["memory_retention_checkpoint_max_days"] = (Json::Int64)cfg.memory_retention_checkpoint_max_days;
   v["memory_retention_checkpoint_max_count"] = (Json::Int64)cfg.memory_retention_checkpoint_max_count;
+  v["memory_retention_structured_deprecate_days"] = (Json::Int64)cfg.memory_retention_structured_deprecate_days;
+  v["memory_retention_structured_deprecate_max_entries"] = (Json::Int64)cfg.memory_retention_structured_deprecate_max_entries;
+  v["memory_salience_daily_days"] = (Json::Int64)cfg.memory_salience_daily_days;
+  v["memory_salience_max_items"] = (Json::Int64)cfg.memory_salience_max_items;
+  v["memory_salience_structured_max_items"] = (Json::Int64)cfg.memory_salience_structured_max_items;
+  v["memory_salience_daily_max_items"] = (Json::Int64)cfg.memory_salience_daily_max_items;
+  v["memory_salience_half_life_days"] = cfg.memory_salience_half_life_days;
+  v["memory_salience_importance_weight"] = cfg.memory_salience_importance_weight;
   v["edge_auth_required"] = cfg.edge_auth_required;
   v["edge_auth_require_ts"] = cfg.edge_auth_require_ts;
   v["edge_auth_max_skew_ms"] = (Json::Int64)cfg.edge_auth_max_skew_ms;

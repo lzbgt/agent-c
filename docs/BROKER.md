@@ -210,6 +210,18 @@ Broker bulk OTA fan-out (multi-deployment):
 Both return `{ ok, agent_id, total, ok_count, error_count, results[] }`, where each result is
 `{ deployment_id, status, data }` with `data` mirroring the agent’s OTA endpoint JSON.
 
+Broker bulk memory maintenance fan-out (multi-deployment):
+
+- `POST /v1/agents/{agent_id}/memory/retention/enforce`
+  - body: memory retention request + optional deployment ids
+- `GET /v1/agents/{agent_id}/memory/recaps`
+  - query: `limit`, `include_summary`, and optional `deployment_ids=dep1,dep2`
+- `POST /v1/agents/{agent_id}/memory/recaps`
+  - body: memory recap request + optional deployment ids
+
+These also return `{ ok, agent_id, total, ok_count, error_count, results[] }` with `{ deployment_id, status, data }`
+per deployment. The `data` field mirrors the underlying agentd memory endpoint response.
+
 ### Orchestration (fan-out)
 
 - `POST /v1/orchestrate`

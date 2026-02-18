@@ -10,6 +10,7 @@ enum class MemoryContextMode {
   Files,
   Search,
   Index,
+  Salience,
 };
 
 struct MemoryContextPolicy {
@@ -26,6 +27,11 @@ struct MemoryContextPolicy {
   int search_max_results = 12;
   int search_max_snippet_chars = 800;
   int search_context_lines = 2;
+  int salience_max_items = 12;
+  int salience_structured_max_items = 6;
+  int salience_daily_max_items = 6;
+  double salience_half_life_days = 14.0;
+  double salience_importance_weight = 0.35;
 };
 
 bool build_memory_context_text(

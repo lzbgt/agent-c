@@ -268,6 +268,14 @@ struct DaemonConfig {
   int64_t memory_retention_daily_max_bytes = 0;
   int memory_retention_checkpoint_max_days = 0;
   int memory_retention_checkpoint_max_count = 0;
+  int memory_retention_structured_deprecate_days = 0; // 0 disables structured deprecate pass
+  int memory_retention_structured_deprecate_max_entries = 50;
+  int memory_salience_daily_days = 7;
+  int memory_salience_max_items = 12;
+  int memory_salience_structured_max_items = 6;
+  int memory_salience_daily_max_items = 6;
+  double memory_salience_half_life_days = 14.0;
+  double memory_salience_importance_weight = 0.35;
 
   // OTA update (disabled by default; requires explicit operator enable + command).
   bool ota_enable = false;

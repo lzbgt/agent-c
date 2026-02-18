@@ -23,6 +23,7 @@ struct RuntimeConfigLoadOptions {
   bool override_blob_store = true;
   bool override_blob_tier = true;
   bool override_memory_retention = true;
+  bool override_memory_salience = true;
 };
 
 // Loads both non-secret defaults and provider keys (best-effort).

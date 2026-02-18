@@ -6,10 +6,14 @@ import {
   apiBrokerGetMembershipAudit,
   apiBrokerListAgents,
   apiBrokerListDeployments,
+  apiBrokerMemoryRecapsCreateBulk,
+  apiBrokerMemoryRecapsListBulk,
+  apiBrokerMemoryRetentionBulk,
   apiBrokerOtaStatus,
   apiBrokerOtaStatusBulk,
   apiBrokerOtaUpdate,
   apiBrokerOtaUpdateBulk,
+  apiBrokerProxyJson,
   apiBrokerUpsertMember,
   type ApiAuth,
 } from "../api";
@@ -83,6 +87,36 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   const [otaStatusError, setOtaStatusError] = React.useState<string | null>(null);
   const [otaStatusResults, setOtaStatusResults] = React.useState<any[] | null>(null);
   const [otaStatusCachedAt, setOtaStatusCachedAt] = React.useState<string | null>(null);
+
+  const [retentionDryRun, setRetentionDryRun] = React.useState<boolean>(true);
+  const [retentionDailyMaxDays, setRetentionDailyMaxDays] = React.useState<string>("30");
+  const [retentionDailyMaxBytes, setRetentionDailyMaxBytes] = React.useState<string>("0");
+  const [retentionCheckpointMaxDays, setRetentionCheckpointMaxDays] = React.useState<string>("30");
+  const [retentionCheckpointMaxCount, setRetentionCheckpointMaxCount] = React.useState<string>("200");
+  const [retentionStructuredDeprecateDays, setRetentionStructuredDeprecateDays] = React.useState<string>("90");
+  const [retentionStructuredDeprecateMaxEntries, setRetentionStructuredDeprecateMaxEntries] = React.useState<string>("50");
+  const [retentionBusy, setRetentionBusy] = React.useState<boolean>(false);
+  const [retentionError, setRetentionError] = React.useState<string | null>(null);
+  const [retentionResults, setRetentionResults] = React.useState<any[] | null>(null);
+
+  const [recapsLimit, setRecapsLimit] = React.useState<string>("20");
+  const [recapsIncludeSummary, setRecapsIncludeSummary] = React.useState<boolean>(false);
+  const [recapsDryRun, setRecapsDryRun] = React.useState<boolean>(true);
+  const [recapsWriteFile, setRecapsWriteFile] = React.useState<boolean>(true);
+  const [recapsModel, setRecapsModel] = React.useState<string>("");
+  const [recapsSummaryMaxChars, setRecapsSummaryMaxChars] = React.useState<string>("1200");
+  const [recapsDailyDays, setRecapsDailyDays] = React.useState<string>("7");
+  const [recapsMaxItems, setRecapsMaxItems] = React.useState<string>("12");
+  const [recapsStructuredMaxItems, setRecapsStructuredMaxItems] = React.useState<string>("6");
+  const [recapsDailyMaxItems, setRecapsDailyMaxItems] = React.useState<string>("6");
+  const [recapsHalfLifeDays, setRecapsHalfLifeDays] = React.useState<string>("14");
+  const [recapsImportanceWeight, setRecapsImportanceWeight] = React.useState<string>("0.35");
+  const [recapsIncludeStructured, setRecapsIncludeStructured] = React.useState<boolean>(true);
+  const [recapsIncludeDaily, setRecapsIncludeDaily] = React.useState<boolean>(true);
+  const [recapsListBusy, setRecapsListBusy] = React.useState<boolean>(false);
+  const [recapsGenerateBusy, setRecapsGenerateBusy] = React.useState<boolean>(false);
+  const [recapsError, setRecapsError] = React.useState<string | null>(null);
+  const [recapsResults, setRecapsResults] = React.useState<any[] | null>(null);
 
   const [auditLimit, setAuditLimit] = React.useState<string>("200");
   const limitValue = React.useMemo(() => {
@@ -283,6 +317,22 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     });
   };
 
+  const parseOptionalInt = (raw: string, min = 0) => {
+    const s = String(raw || "").trim();
+    if (!s) return undefined;
+    const n = Number.parseInt(s, 10);
+    if (!Number.isFinite(n) || n < min) return undefined;
+    return n;
+  };
+
+  const parseOptionalFloat = (raw: string, min = 0) => {
+    const s = String(raw || "").trim();
+    if (!s) return undefined;
+    const n = Number.parseFloat(s);
+    if (!Number.isFinite(n) || n < min) return undefined;
+    return n;
+  };
+
   const runOtaUpdate = async () => {
     setOtaError(null);
     setOtaResults(null);
@@ -406,6 +456,204 @@ export default function BrokerPanel(props: BrokerPanelProps) {
       setOtaStatusError(String(e));
     } finally {
       setOtaStatusBusy(false);
+    }
+  };
+
+  const runRetention = async () => {
+    setRetentionError(null);
+    setRetentionResults(null);
+    if (!agentId) {
+      setRetentionError("missing agent_id");
+      return;
+    }
+    if (selectedDeployments.length === 0) {
+      setRetentionError("select at least one deployment");
+      return;
+    }
+    const payload: Record<string, any> = {
+      dry_run: retentionDryRun,
+    };
+    const dailyDays = parseOptionalInt(retentionDailyMaxDays, 0);
+    if (dailyDays !== undefined) payload.daily_max_days = dailyDays;
+    const dailyBytes = parseOptionalInt(retentionDailyMaxBytes, 0);
+    if (dailyBytes !== undefined) payload.daily_max_bytes = dailyBytes;
+    const checkpointDays = parseOptionalInt(retentionCheckpointMaxDays, 0);
+    if (checkpointDays !== undefined) payload.checkpoint_max_days = checkpointDays;
+    const checkpointCount = parseOptionalInt(retentionCheckpointMaxCount, 0);
+    if (checkpointCount !== undefined) payload.checkpoint_max_count = checkpointCount;
+    const deprecateDays = parseOptionalInt(retentionStructuredDeprecateDays, 0);
+    if (deprecateDays !== undefined) payload.structured_deprecate_days = deprecateDays;
+    const deprecateMax = parseOptionalInt(retentionStructuredDeprecateMaxEntries, 0);
+    if (deprecateMax !== undefined) payload.structured_deprecate_max_entries = deprecateMax;
+
+    setRetentionBusy(true);
+    try {
+      const bulk = await apiBrokerMemoryRetentionBulk(base, agentId, payload, props.auth, selectedDeployments);
+      if (bulk.status === 404 || bulk.status === 405 || bulk.status === 501) {
+        const settled = await Promise.allSettled(
+          selectedDeployments.map(async (deploymentId) => {
+            const res = await apiBrokerProxyJson(base, agentId, "/api/v1/memory/retention/enforce", "POST", payload, props.auth, deploymentId);
+            return {
+              deployment_id: deploymentId,
+              status: res.status,
+              data: res.data,
+            };
+          }),
+        );
+        const results = settled.map((r, idx) => {
+          if (r.status === "fulfilled") return r.value;
+          return {
+            deployment_id: selectedDeployments[idx],
+            status: 0,
+            data: { ok: false, error: String(r.reason || "request failed") },
+          };
+        });
+        setRetentionResults(results);
+        return;
+      }
+      if (bulk.status >= 400) {
+        const err = bulk.data?.error ? String(bulk.data.error) : `broker error (${bulk.status})`;
+        throw new Error(err);
+      }
+      const results = normalizeFanoutResults(bulk.data?.results, selectedDeployments);
+      if (!results) throw new Error("unexpected broker response");
+      setRetentionResults(results);
+    } catch (e) {
+      setRetentionError(String(e));
+    } finally {
+      setRetentionBusy(false);
+    }
+  };
+
+  const runRecapsList = async () => {
+    setRecapsError(null);
+    setRecapsResults(null);
+    if (!agentId) {
+      setRecapsError("missing agent_id");
+      return;
+    }
+    if (selectedDeployments.length === 0) {
+      setRecapsError("select at least one deployment");
+      return;
+    }
+    const listParams = {
+      limit: parseOptionalInt(recapsLimit, 1) ?? 20,
+      includeSummary: recapsIncludeSummary,
+    };
+
+    setRecapsListBusy(true);
+    try {
+      const bulk = await apiBrokerMemoryRecapsListBulk(base, agentId, listParams, props.auth, selectedDeployments);
+      if (bulk.status === 404 || bulk.status === 405 || bulk.status === 501) {
+        const qs = new URLSearchParams();
+        qs.set("limit", String(listParams.limit));
+        if (listParams.includeSummary) qs.set("include_summary", "1");
+        const path = `/api/v1/memory/recaps${qs.toString() ? `?${qs.toString()}` : ""}`;
+        const settled = await Promise.allSettled(
+          selectedDeployments.map(async (deploymentId) => {
+            const res = await apiBrokerProxyJson(base, agentId, path, "GET", undefined, props.auth, deploymentId);
+            return {
+              deployment_id: deploymentId,
+              status: res.status,
+              data: res.data,
+            };
+          }),
+        );
+        const results = settled.map((r, idx) => {
+          if (r.status === "fulfilled") return r.value;
+          return {
+            deployment_id: selectedDeployments[idx],
+            status: 0,
+            data: { ok: false, error: String(r.reason || "request failed") },
+          };
+        });
+        setRecapsResults(results);
+        return;
+      }
+      if (bulk.status >= 400) {
+        const err = bulk.data?.error ? String(bulk.data.error) : `broker error (${bulk.status})`;
+        throw new Error(err);
+      }
+      const results = normalizeFanoutResults(bulk.data?.results, selectedDeployments);
+      if (!results) throw new Error("unexpected broker response");
+      setRecapsResults(results);
+    } catch (e) {
+      setRecapsError(String(e));
+    } finally {
+      setRecapsListBusy(false);
+    }
+  };
+
+  const runRecapsGenerate = async () => {
+    setRecapsError(null);
+    setRecapsResults(null);
+    if (!agentId) {
+      setRecapsError("missing agent_id");
+      return;
+    }
+    if (selectedDeployments.length === 0) {
+      setRecapsError("select at least one deployment");
+      return;
+    }
+    const payload: Record<string, any> = {
+      dry_run: recapsDryRun,
+      write_file: recapsWriteFile,
+      include_structured: recapsIncludeStructured,
+      include_daily: recapsIncludeDaily,
+    };
+    const model = recapsModel.trim();
+    if (model) payload.model = model;
+    const summaryMax = parseOptionalInt(recapsSummaryMaxChars, 0);
+    if (summaryMax !== undefined) payload.summary_max_chars = summaryMax;
+    const dailyDays = parseOptionalInt(recapsDailyDays, 0);
+    if (dailyDays !== undefined) payload.daily_days = dailyDays;
+    const maxItems = parseOptionalInt(recapsMaxItems, 0);
+    if (maxItems !== undefined) payload.max_items = maxItems;
+    const maxStructured = parseOptionalInt(recapsStructuredMaxItems, 0);
+    if (maxStructured !== undefined) payload.max_structured_items = maxStructured;
+    const maxDaily = parseOptionalInt(recapsDailyMaxItems, 0);
+    if (maxDaily !== undefined) payload.max_daily_items = maxDaily;
+    const halfLife = parseOptionalFloat(recapsHalfLifeDays, 0);
+    if (halfLife !== undefined) payload.half_life_days = halfLife;
+    const importance = parseOptionalFloat(recapsImportanceWeight, 0);
+    if (importance !== undefined) payload.importance_weight = importance;
+
+    setRecapsGenerateBusy(true);
+    try {
+      const bulk = await apiBrokerMemoryRecapsCreateBulk(base, agentId, payload, props.auth, selectedDeployments);
+      if (bulk.status === 404 || bulk.status === 405 || bulk.status === 501) {
+        const settled = await Promise.allSettled(
+          selectedDeployments.map(async (deploymentId) => {
+            const res = await apiBrokerProxyJson(base, agentId, "/api/v1/memory/recaps", "POST", payload, props.auth, deploymentId);
+            return {
+              deployment_id: deploymentId,
+              status: res.status,
+              data: res.data,
+            };
+          }),
+        );
+        const results = settled.map((r, idx) => {
+          if (r.status === "fulfilled") return r.value;
+          return {
+            deployment_id: selectedDeployments[idx],
+            status: 0,
+            data: { ok: false, error: String(r.reason || "request failed") },
+          };
+        });
+        setRecapsResults(results);
+        return;
+      }
+      if (bulk.status >= 400) {
+        const err = bulk.data?.error ? String(bulk.data.error) : `broker error (${bulk.status})`;
+        throw new Error(err);
+      }
+      const results = normalizeFanoutResults(bulk.data?.results, selectedDeployments);
+      if (!results) throw new Error("unexpected broker response");
+      setRecapsResults(results);
+    } catch (e) {
+      setRecapsError(String(e));
+    } finally {
+      setRecapsGenerateBusy(false);
     }
   };
 
@@ -823,6 +1071,251 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                 </div>
               ) : null}
             </div>
+          </div>
+        </section>
+
+        <section className="rounded-md border border-white/10 bg-black/20 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold text-white/80">Memory maintenance</div>
+            <div className="text-[11px] text-white/50">Fan-out retention + recap operations</div>
+          </div>
+
+          <div className="grid gap-3">
+            <div className="text-xs font-semibold text-white/80">Retention enforce</div>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <input
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="daily max days"
+                value={retentionDailyMaxDays}
+                onChange={(e) => setRetentionDailyMaxDays(e.target.value)}
+              />
+              <input
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="daily max bytes"
+                value={retentionDailyMaxBytes}
+                onChange={(e) => setRetentionDailyMaxBytes(e.target.value)}
+              />
+              <input
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="checkpoint max days"
+                value={retentionCheckpointMaxDays}
+                onChange={(e) => setRetentionCheckpointMaxDays(e.target.value)}
+              />
+              <input
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="checkpoint max count"
+                value={retentionCheckpointMaxCount}
+                onChange={(e) => setRetentionCheckpointMaxCount(e.target.value)}
+              />
+              <input
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="structured deprecate days"
+                value={retentionStructuredDeprecateDays}
+                onChange={(e) => setRetentionStructuredDeprecateDays(e.target.value)}
+              />
+              <input
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="structured deprecate max entries"
+                value={retentionStructuredDeprecateMaxEntries}
+                onChange={(e) => setRetentionStructuredDeprecateMaxEntries(e.target.value)}
+              />
+            </div>
+            <label className="flex items-center gap-2 text-[11px] text-white/70">
+              <input type="checkbox" checked={retentionDryRun} onChange={(e) => setRetentionDryRun(e.target.checked)} />
+              <span>Dry run (preview only)</span>
+            </label>
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={!agentId || retentionBusy || selectedDeployments.length === 0}
+                onClick={() => void runRetention()}
+              >
+                {retentionBusy ? "Running…" : "Enforce retention"}
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={retentionBusy}
+                onClick={() => {
+                  setRetentionError(null);
+                  setRetentionResults(null);
+                }}
+              >
+                Clear
+              </button>
+            </div>
+            {retentionError ? (
+              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+                {retentionError}
+              </div>
+            ) : null}
+            {retentionResults && retentionResults.length > 0 ? (
+              <div className="grid gap-2">
+                {retentionResults.map((row) => {
+                  const depId = String(row?.deployment_id || "");
+                  const status = row?.status;
+                  const ok = row?.data?.ok === true;
+                  const err = row?.data?.error || row?.data?.err;
+                  const deprecated = row?.data?.structured_deprecated_count;
+                  return (
+                    <div
+                      key={`retention-${depId}`}
+                      className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70"
+                    >
+                      <div className="text-xs text-white/90">
+                        {depId} · {ok ? "ok" : "error"} · http {status}
+                      </div>
+                      <div className="text-[11px] text-white/50">
+                        {typeof deprecated === "number" ? `deprecated ${deprecated}` : "no deprecations"}
+                        {err ? ` · ${String(err)}` : ""}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-4 grid gap-3">
+            <div className="text-xs font-semibold text-white/80">Recaps</div>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <input
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="list limit"
+                value={recapsLimit}
+                onChange={(e) => setRecapsLimit(e.target.value)}
+              />
+              <input
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="summary max chars"
+                value={recapsSummaryMaxChars}
+                onChange={(e) => setRecapsSummaryMaxChars(e.target.value)}
+              />
+              <input
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="model override (optional)"
+                value={recapsModel}
+                onChange={(e) => setRecapsModel(e.target.value)}
+              />
+              <input
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="daily days"
+                value={recapsDailyDays}
+                onChange={(e) => setRecapsDailyDays(e.target.value)}
+              />
+              <input
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="max items"
+                value={recapsMaxItems}
+                onChange={(e) => setRecapsMaxItems(e.target.value)}
+              />
+              <input
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="structured max items"
+                value={recapsStructuredMaxItems}
+                onChange={(e) => setRecapsStructuredMaxItems(e.target.value)}
+              />
+              <input
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="daily max items"
+                value={recapsDailyMaxItems}
+                onChange={(e) => setRecapsDailyMaxItems(e.target.value)}
+              />
+              <input
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="half-life days"
+                value={recapsHalfLifeDays}
+                onChange={(e) => setRecapsHalfLifeDays(e.target.value)}
+              />
+              <input
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="importance weight"
+                value={recapsImportanceWeight}
+                onChange={(e) => setRecapsImportanceWeight(e.target.value)}
+              />
+            </div>
+            <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+              <label className="flex items-center gap-2 text-[11px] text-white/70">
+                <input type="checkbox" checked={recapsIncludeSummary} onChange={(e) => setRecapsIncludeSummary(e.target.checked)} />
+                <span>Include summary in list</span>
+              </label>
+              <label className="flex items-center gap-2 text-[11px] text-white/70">
+                <input type="checkbox" checked={recapsDryRun} onChange={(e) => setRecapsDryRun(e.target.checked)} />
+                <span>Dry run</span>
+              </label>
+              <label className="flex items-center gap-2 text-[11px] text-white/70">
+                <input type="checkbox" checked={recapsWriteFile} onChange={(e) => setRecapsWriteFile(e.target.checked)} />
+                <span>Write recap file</span>
+              </label>
+              <label className="flex items-center gap-2 text-[11px] text-white/70">
+                <input type="checkbox" checked={recapsIncludeStructured} onChange={(e) => setRecapsIncludeStructured(e.target.checked)} />
+                <span>Include structured</span>
+              </label>
+              <label className="flex items-center gap-2 text-[11px] text-white/70">
+                <input type="checkbox" checked={recapsIncludeDaily} onChange={(e) => setRecapsIncludeDaily(e.target.checked)} />
+                <span>Include daily</span>
+              </label>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={!agentId || recapsListBusy || selectedDeployments.length === 0}
+                onClick={() => void runRecapsList()}
+              >
+                {recapsListBusy ? "Loading…" : "List recaps"}
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={!agentId || recapsGenerateBusy || selectedDeployments.length === 0}
+                onClick={() => void runRecapsGenerate()}
+              >
+                {recapsGenerateBusy ? "Generating…" : "Generate recap"}
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={recapsListBusy || recapsGenerateBusy}
+                onClick={() => {
+                  setRecapsError(null);
+                  setRecapsResults(null);
+                }}
+              >
+                Clear
+              </button>
+            </div>
+            {recapsError ? (
+              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+                {recapsError}
+              </div>
+            ) : null}
+            {recapsResults && recapsResults.length > 0 ? (
+              <div className="grid gap-2">
+                {recapsResults.map((row) => {
+                  const depId = String(row?.deployment_id || "");
+                  const status = row?.status;
+                  const ok = row?.data?.ok === true;
+                  const err = row?.data?.error || row?.data?.err;
+                  const count = row?.data?.count;
+                  return (
+                    <div
+                      key={`recaps-${depId}`}
+                      className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70"
+                    >
+                      <div className="text-xs text-white/90">
+                        {depId} · {ok ? "ok" : "error"} · http {status}
+                      </div>
+                      <div className="text-[11px] text-white/50">
+                        {typeof count === "number" ? `count ${count}` : "no count"}
+                        {err ? ` · ${String(err)}` : ""}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
           </div>
         </section>
 

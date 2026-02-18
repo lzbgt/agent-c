@@ -1,6 +1,7 @@
 #include "run_memory_context.h"
 
 #include "memory_index.h"
+#include "memory_salience.h"
 #include "string_util.h"
 
 #include <algorithm>
@@ -10,6 +11,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -316,6 +318,114 @@ static bool build_memory_index_context_text(
   return true;
 }
 
+static std::string format_score(double score) {
+  std::ostringstream oss;
+  oss.setf(std::ios::fixed);
+  oss << std::setprecision(2) << score;
+  return oss.str();
+}
+
+static bool build_memory_salience_context_text(
+  const std::filesystem::path& mem_root,
+  const std::string& session_id,
+  const MemoryContextPolicy& pol,
+  std::string* out_text
+) {
+  if (out_text) out_text->clear();
+  if (!out_text) return false;
+
+  std::error_code ec;
+  if (mem_root.empty() || !std::filesystem::exists(mem_root, ec) || !std::filesystem::is_directory(mem_root, ec)) {
+    return false;
+  }
+
+  MemorySaliencePolicy sp;
+  sp.include_structured = pol.include_structured;
+  sp.include_daily = pol.include_daily;
+  sp.daily_days = std::max(0, std::min(pol.daily_days, 31));
+  sp.max_items = std::max(1, pol.salience_max_items);
+  sp.max_structured_items = std::max(0, pol.salience_structured_max_items);
+  sp.max_daily_items = std::max(0, pol.salience_daily_max_items);
+  sp.half_life_days = pol.salience_half_life_days;
+  sp.importance_weight = pol.salience_importance_weight;
+
+  MemorySalienceReport rep;
+  std::string err;
+  if (!memory_salience_collect(mem_root, sp, &rep, &err)) {
+    return false;
+  }
+
+  bool any = false;
+  std::ostringstream oss;
+  oss
+    << "DURABLE_MEMORY_SALIENCE\n"
+    << "- Ranked by recency + importance (deterministic).\n"
+    << "- Use memory_query for structured keys and memory_timeline for daily citations.\n";
+
+  if (!rep.structured_items.empty()) {
+    any = true;
+    oss << "\n[structured]\n";
+    for (const auto& item : rep.structured_items) {
+      oss << "- (score=" << format_score(item.score) << ") ";
+      if (!item.kind.empty()) oss << item.kind << " ";
+      if (!item.key.empty()) oss << item.key << " = ";
+      oss << item.text;
+      if (!item.status.empty()) oss << " (" << item.status << ")";
+      if (!item.ts_utc.empty()) oss << " [updated " << item.ts_utc << "]";
+      oss << "\n";
+    }
+  }
+
+  if (!rep.daily_items.empty()) {
+    any = true;
+    oss << "\n[daily]\n";
+    for (const auto& item : rep.daily_items) {
+      oss << "- (score=" << format_score(item.score) << ") ";
+      if (!item.path.empty()) oss << "[" << item.path << ":" << item.line << "] ";
+      oss << item.text;
+      if (item.importance >= 0) oss << " (importance=" << item.importance << ")";
+      if (!item.ts_utc.empty()) oss << " [ts " << item.ts_utc << "]";
+      oss << "\n";
+    }
+  }
+
+  if (pol.include_core) {
+    const std::filesystem::path core = mem_root / "MEMORY.md";
+    ec.clear();
+    if (std::filesystem::exists(core, ec) && std::filesystem::is_regular_file(core, ec)) {
+      std::string content = read_file_capped(core, 1200);
+      content = strip_agent_memory_v1_json_block(content);
+      if (!trim_copy(content).empty()) {
+        any = true;
+        oss << "\n[core MEMORY.md]\n";
+        oss << content;
+        if (!content.empty() && content.back() != '\n') oss << "\n";
+      }
+    }
+  }
+
+  if (pol.include_session && is_safe_filename_component_ascii(session_id)) {
+    const std::filesystem::path sessionp = mem_root / "sessions" / (session_id + ".md");
+    ec.clear();
+    if (std::filesystem::exists(sessionp, ec) && std::filesystem::is_regular_file(sessionp, ec)) {
+      std::string content = read_file_capped(sessionp, 1200);
+      if (!trim_copy(content).empty()) {
+        any = true;
+        oss << "\n[session " << session_id << "]\n";
+        oss << content;
+        if (!content.empty() && content.back() != '\n') oss << "\n";
+      }
+    }
+  }
+
+  if (!any) return false;
+  std::string s = oss.str();
+  const size_t kTotalCap = pol.total_cap == 0 ? (size_t)12000 : std::min<size_t>(pol.total_cap, (size_t)40000);
+  if (s.size() > kTotalCap) s.resize(kTotalCap);
+  *out_text = std::move(s);
+  return true;
+}
+
 static bool build_memory_search_context_text(
   const std::filesystem::path& mem_root,
   const std::string& session_id,
@@ -489,6 +599,11 @@ bool build_memory_context_text(
   if (pol.mode == MemoryContextMode::Search) {
     if (build_memory_search_context_text(mem_root, session_id, pol, query, out_text)) return true;
     if (!pol.search_fallback_to_files) return false;
+    return build_memory_files_context_text(mem_root, session_id, pol, out_text);
+  }
+  if (pol.mode == MemoryContextMode::Salience) {
+    if (build_memory_salience_context_text(mem_root, session_id, pol, out_text)) return true;
+    return false;
   }
   return build_memory_files_context_text(mem_root, session_id, pol, out_text);
 }
@@ -515,6 +630,7 @@ agent_session_t* clone_session_with_memory_context(const agent_session_t* src, c
       if (content.rfind("DURABLE_MEMORY_CONTEXT", 0) == 0) return;
       if (content.rfind("DURABLE_MEMORY_SEARCH_CONTEXT", 0) == 0) return;
       if (content.rfind("DURABLE_MEMORY_INDEX", 0) == 0) return;
+      if (content.rfind("DURABLE_MEMORY_SALIENCE", 0) == 0) return;
     }
     (void)agent_session_add_message(ns, role, content.c_str());
   };

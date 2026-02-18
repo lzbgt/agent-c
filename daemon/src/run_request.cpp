@@ -505,11 +505,18 @@ static Json::Value run_request_to_json_impl(
 
   // Memory retrieval policy (durable on-disk Markdown memory injection into the tool loop).
   MemoryContextPolicy mem_pol;
+  mem_pol.salience_max_items = daemon_cfg.memory_salience_max_items;
+  mem_pol.salience_structured_max_items = daemon_cfg.memory_salience_structured_max_items;
+  mem_pol.salience_daily_max_items = daemon_cfg.memory_salience_daily_max_items;
+  mem_pol.salience_half_life_days = daemon_cfg.memory_salience_half_life_days;
+  mem_pol.salience_importance_weight = daemon_cfg.memory_salience_importance_weight;
   std::string mem_query;
+  bool mem_daily_days_set = false;
   if (args.isMember("memory_context_mode") && args["memory_context_mode"].isString()) {
     const std::string mode = lower_copy(trim_copy(args["memory_context_mode"].asString()));
     if (mode == "search") mem_pol.mode = MemoryContextMode::Search;
     else if (mode == "index" || mode == "progressive") mem_pol.mode = MemoryContextMode::Index;
+    else if (mode == "salience" || mode == "dynamic") mem_pol.mode = MemoryContextMode::Salience;
     else mem_pol.mode = MemoryContextMode::Files;
   }
   if (args.isMember("memory_include_structured") && args["memory_include_structured"].isBool()) {
@@ -526,6 +533,10 @@ static Json::Value run_request_to_json_impl(
   }
   if (args.isMember("memory_daily_days") && args["memory_daily_days"].isInt()) {
     mem_pol.daily_days = std::max(0, std::min(args["memory_daily_days"].asInt(), 31));
+    mem_daily_days_set = true;
+  }
+  if (mem_pol.mode == MemoryContextMode::Salience && !mem_daily_days_set) {
+    mem_pol.daily_days = std::max(0, std::min(daemon_cfg.memory_salience_daily_days, 31));
   }
   if (args.isMember("memory_total_cap") && (args["memory_total_cap"].isInt64() || args["memory_total_cap"].isInt())) {
     const int64_t v = args["memory_total_cap"].asInt64();
@@ -552,6 +563,38 @@ static Json::Value run_request_to_json_impl(
   if (args.isMember("memory_search_context_lines") && args["memory_search_context_lines"].isInt()) {
     mem_pol.search_context_lines = std::max(0, args["memory_search_context_lines"].asInt());
   }
+  if (args.isMember("memory_salience_max_items") && args["memory_salience_max_items"].isInt()) {
+    mem_pol.salience_max_items = std::max(1, args["memory_salience_max_items"].asInt());
+  }
+  if (args.isMember("memory_salience_structured_max_items") && args["memory_salience_structured_max_items"].isInt()) {
+    mem_pol.salience_structured_max_items = std::max(0, args["memory_salience_structured_max_items"].asInt());
+  }
+  if (args.isMember("memory_salience_daily_max_items") && args["memory_salience_daily_max_items"].isInt()) {
+    mem_pol.salience_daily_max_items = std::max(0, args["memory_salience_daily_max_items"].asInt());
+  }
+  if (args.isMember("memory_salience_half_life_days")) {
+    if (args["memory_salience_half_life_days"].isString()) {
+      try { mem_pol.salience_half_life_days = std::stod(args["memory_salience_half_life_days"].asString()); } catch (...) {}
+    } else if (args["memory_salience_half_life_days"].isDouble()) {
+      mem_pol.salience_half_life_days = args["memory_salience_half_life_days"].asDouble();
+    } else if (args["memory_salience_half_life_days"].isInt() || args["memory_salience_half_life_days"].isUInt()) {
+      mem_pol.salience_half_life_days = args["memory_salience_half_life_days"].asDouble();
+    }
+    if (mem_pol.salience_half_life_days < 0) mem_pol.salience_half_life_days = 0;
+  }
+  if (args.isMember("memory_salience_importance_weight")) {
+    if (args["memory_salience_importance_weight"].isString()) {
+      try { mem_pol.salience_importance_weight = std::stod(args["memory_salience_importance_weight"].asString()); } catch (...) {}
+    } else if (args["memory_salience_importance_weight"].isDouble()) {
+      mem_pol.salience_importance_weight = args["memory_salience_importance_weight"].asDouble();
+    } else if (args["memory_salience_importance_weight"].isInt() || args["memory_salience_importance_weight"].isUInt()) {
+      mem_pol.salience_importance_weight = args["memory_salience_importance_weight"].asDouble();
+    }
+    if (mem_pol.salience_importance_weight < 0) mem_pol.salience_importance_weight = 0;
+  }
+  mem_pol.salience_max_items = std::max(1, std::min(200, mem_pol.salience_max_items));
+  mem_pol.salience_structured_max_items = std::max(0, std::min(200, mem_pol.salience_structured_max_items));
+  mem_pol.salience_daily_max_items = std::max(0, std::min(200, mem_pol.salience_daily_max_items));
 
   std::string job_id_local = (job_id_or_null && job_id_or_null[0]) ? std::string(job_id_or_null) : std::string();
   const int64_t run_ts_ms = now_unix_ms();

@@ -82,16 +82,18 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Promoted goals (explicit goals; no non-goals)
 
-Weights updated 2026-02-18: prioritize **Storage/analytics**, **multimodal/streaming foundation**, and **dynamic memory
-policy** as the highest leverage capability enablers for durable agents; audio and consensus remain important but follow
-after the core surfaces are stable and replayable.
+Weights updated 2026-02-18: prioritize **Storage/analytics** and **multimodal/streaming foundation** as the next
+highest leverage enablers now that **dynamic memory policy** (salience + recaps + retention deprecate) is in place.
 
 - [x] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker + agentd implemented; tests added).
 - [ ] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
 - [ ] Tool loop: full multimodal transcript support + stable, versioned event schema with migrations.
 - [ ] Streaming: core-layer streaming interface + provider compatibility matrix with full variant coverage.
-- [ ] Memory architecture: dynamic retention policy (decay/salience/recaps) informed by claude-mem research + docs.
+- [x] Memory architecture: dynamic retention policy (decay/salience/recaps) informed by claude-mem research + docs.
   - [x] Memory retention policy enforcement (daily logs + checkpoints) + endpoint + background engine.
+  - [x] Structured memory deprecate pass (policy-driven; bounded) with broker fan-out.
+  - [x] Memory salience context + `/api/v1/memory/salience` (deterministic decay, recency + importance).
+  - [x] Memory recaps: LLM summaries to `memory/recaps/` + list/generate APIs.
 - [ ] Tool plugins: sandbox/isolation, Windows loader, and embedded/MCU-compatible plugin path.
 - [ ] Audio streaming: Opus/WebRTC voice pipeline + broker relay + UI voice session controls.
   - [x] Add workflow DB query endpoints (`/api/v1/db/workflows`, `/api/v1/db/workflow`, `/api/v1/db/workflow_tasks`, `/api/v1/db/workflow_events`)

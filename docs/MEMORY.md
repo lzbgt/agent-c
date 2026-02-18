@@ -8,6 +8,7 @@
 - `state_dir/memory/STRUCTURED.md` — machine-maintained structured memory (via `memory_put(entries)`)
 - `state_dir/memory/checkpoints/structured_<ts>.json` — time-stamped structured snapshots (best-effort, rolling)
   - each checkpoint has a deterministic `sha256` surface (exposed by APIs/tools)
+- `state_dir/memory/recaps/recap_<ts>.json` — optional LLM-generated recap snapshots
 
 ## Tools
 
@@ -56,6 +57,31 @@ DURABLE_MEMORY_INDEX
 
 This mirrors the claude-mem style of “show what exists + cost first,” keeping context lean while still
 giving the agent enough signals to fetch the right details on demand.
+
+### Salience mode (dynamic)
+
+`memory_context_mode="salience"` injects a **ranked, compact** memory summary based on
+recency + importance:
+
+- Structured memory: latest checkpoint (`memory/checkpoints/structured_*.json`)
+- Daily observations: `@obs` blocks (importance-tagged)
+
+The daemon computes a deterministic salience score:
+
+```
+score = base_weight * exp(-age_days / half_life_days)
+```
+
+Use `/api/v1/memory/salience` to inspect the ranked items and tuning parameters.
+
+Tuning knobs (daemon config / `/api/v1/config/update`):
+
+- `memory.salience_daily_days`
+- `memory.salience_max_items`
+- `memory.salience_structured_max_items`
+- `memory.salience_daily_max_items`
+- `memory.salience_half_life_days`
+- `memory.salience_importance_weight`
 
 ### `memory_search` tiers + citations
 
@@ -198,8 +224,20 @@ To keep disk usage bounded, the daemon can enforce deterministic retention over 
   - `memory_retention_daily_max_bytes`
   - `memory_retention_checkpoint_max_days`
   - `memory_retention_checkpoint_max_count`
+  - `memory_retention_structured_deprecate_days`
+  - `memory_retention_structured_deprecate_max_entries`
 
 See `docs/MEMORY_RETENTION.md` for details.
+
+## Memory recaps (LLM summaries)
+
+For operator-triggered summaries, agentd can generate recap snapshots from salience-ranked memory:
+
+- `POST /api/v1/memory/recaps` — generate a recap (LLM) or `dry_run` to preview
+- `GET /api/v1/memory/recaps` — list recap snapshots under `memory/recaps/`
+
+Recaps use `summary_model` by default and can override with `model` or `summary_model` per request.
+Each recap JSON includes the prompt inputs, the recap summary (JSON + text), and the ranked items used.
 
 ## API helpers (correlation)
 
@@ -212,6 +250,7 @@ In addition to the tool surface, `agentd` exposes correlation helpers:
 - `GET /api/v1/memory/query?...&key_prefix=...` — bounded query over the **current view** of structured memory
   (reads the newest checkpoint in the requested time window)
 - `GET /api/v1/memory/index` — lightweight index of memory files (paths + size/line/token estimates)
+- `GET /api/v1/memory/salience` — ranked items by recency + importance (structured + @obs daily)
 
 ## WebUI Memory Explorer
 

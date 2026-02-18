@@ -4,6 +4,9 @@ import {
   apiMemoryCorrelate,
   apiMemoryIndex,
   apiMemoryQuery,
+  apiMemoryRecapsCreate,
+  apiMemoryRecapsList,
+  apiMemoryRetentionEnforce,
   type ApiAuth,
 } from "../api";
 import FieldLabel from "./FieldLabel";
@@ -59,9 +62,55 @@ export default function MemoryPanel(props: MemoryPanelProps) {
   const [indexError, setIndexError] = React.useState<string | null>(null);
   const [indexBusy, setIndexBusy] = React.useState<boolean>(false);
 
+  const [recapsLimit, setRecapsLimit] = React.useState<string>("20");
+  const [recapsIncludeSummary, setRecapsIncludeSummary] = React.useState<boolean>(false);
+  const [recapsDryRun, setRecapsDryRun] = React.useState<boolean>(true);
+  const [recapsWriteFile, setRecapsWriteFile] = React.useState<boolean>(true);
+  const [recapsModel, setRecapsModel] = React.useState<string>("");
+  const [recapsSummaryMaxChars, setRecapsSummaryMaxChars] = React.useState<string>("1200");
+  const [recapsIncludeStructured, setRecapsIncludeStructured] = React.useState<boolean>(true);
+  const [recapsIncludeDaily, setRecapsIncludeDaily] = React.useState<boolean>(true);
+  const [recapsDailyDays, setRecapsDailyDays] = React.useState<string>("7");
+  const [recapsMaxItems, setRecapsMaxItems] = React.useState<string>("12");
+  const [recapsStructuredMaxItems, setRecapsStructuredMaxItems] = React.useState<string>("6");
+  const [recapsDailyMaxItems, setRecapsDailyMaxItems] = React.useState<string>("6");
+  const [recapsHalfLifeDays, setRecapsHalfLifeDays] = React.useState<string>("14");
+  const [recapsImportanceWeight, setRecapsImportanceWeight] = React.useState<string>("0.35");
+  const [recapsResult, setRecapsResult] = React.useState<any | null>(null);
+  const [recapsError, setRecapsError] = React.useState<string | null>(null);
+  const [recapsListBusy, setRecapsListBusy] = React.useState<boolean>(false);
+  const [recapsGenerateBusy, setRecapsGenerateBusy] = React.useState<boolean>(false);
+
+  const [retentionDryRun, setRetentionDryRun] = React.useState<boolean>(true);
+  const [retentionDailyMaxDays, setRetentionDailyMaxDays] = React.useState<string>("30");
+  const [retentionDailyMaxBytes, setRetentionDailyMaxBytes] = React.useState<string>("0");
+  const [retentionCheckpointMaxDays, setRetentionCheckpointMaxDays] = React.useState<string>("30");
+  const [retentionCheckpointMaxCount, setRetentionCheckpointMaxCount] = React.useState<string>("200");
+  const [retentionStructuredDeprecateDays, setRetentionStructuredDeprecateDays] = React.useState<string>("90");
+  const [retentionStructuredDeprecateMaxEntries, setRetentionStructuredDeprecateMaxEntries] = React.useState<string>("50");
+  const [retentionResult, setRetentionResult] = React.useState<any | null>(null);
+  const [retentionError, setRetentionError] = React.useState<string | null>(null);
+  const [retentionBusy, setRetentionBusy] = React.useState<boolean>(false);
+
   const parsePositiveInt = (raw: string, fallback: number) => {
     const n = Number.parseInt(String(raw || "").trim(), 10);
     if (!Number.isFinite(n) || n <= 0) return fallback;
+    return n;
+  };
+
+  const parseOptionalInt = (raw: string, min = 0) => {
+    const s = String(raw || "").trim();
+    if (!s) return undefined;
+    const n = Number.parseInt(s, 10);
+    if (!Number.isFinite(n) || n < min) return undefined;
+    return n;
+  };
+
+  const parseOptionalFloat = (raw: string, min = 0) => {
+    const s = String(raw || "").trim();
+    if (!s) return undefined;
+    const n = Number.parseFloat(s);
+    if (!Number.isFinite(n) || n < min) return undefined;
     return n;
   };
 
@@ -179,6 +228,109 @@ export default function MemoryPanel(props: MemoryPanelProps) {
       setIndexError(String(e));
     } finally {
       setIndexBusy(false);
+    }
+  };
+
+  const runRecapsList = async () => {
+    setRecapsError(null);
+    setRecapsResult(null);
+    if (!canQuery) {
+      setRecapsError("missing base URL");
+      return;
+    }
+    setRecapsListBusy(true);
+    try {
+      const res = await apiMemoryRecapsList(
+        base,
+        {
+          limit: parsePositiveInt(recapsLimit, 20),
+          includeSummary: recapsIncludeSummary,
+        },
+        props.auth,
+      );
+      if (!res.ok) throw new Error(res.error || "recaps list failed");
+      setRecapsResult(res);
+    } catch (e) {
+      setRecapsError(String(e));
+    } finally {
+      setRecapsListBusy(false);
+    }
+  };
+
+  const runRecapsGenerate = async () => {
+    setRecapsError(null);
+    setRecapsResult(null);
+    if (!canQuery) {
+      setRecapsError("missing base URL");
+      return;
+    }
+    const payload: Record<string, any> = {
+      dry_run: recapsDryRun,
+      write_file: recapsWriteFile,
+      include_structured: recapsIncludeStructured,
+      include_daily: recapsIncludeDaily,
+    };
+    const model = recapsModel.trim();
+    if (model) payload.model = model;
+    const summaryMax = parseOptionalInt(recapsSummaryMaxChars, 0);
+    if (summaryMax !== undefined) payload.summary_max_chars = summaryMax;
+    const dailyDays = parseOptionalInt(recapsDailyDays, 0);
+    if (dailyDays !== undefined) payload.daily_days = dailyDays;
+    const maxItems = parseOptionalInt(recapsMaxItems, 0);
+    if (maxItems !== undefined) payload.max_items = maxItems;
+    const maxStructured = parseOptionalInt(recapsStructuredMaxItems, 0);
+    if (maxStructured !== undefined) payload.max_structured_items = maxStructured;
+    const maxDaily = parseOptionalInt(recapsDailyMaxItems, 0);
+    if (maxDaily !== undefined) payload.max_daily_items = maxDaily;
+    const halfLife = parseOptionalFloat(recapsHalfLifeDays, 0);
+    if (halfLife !== undefined) payload.half_life_days = halfLife;
+    const importance = parseOptionalFloat(recapsImportanceWeight, 0);
+    if (importance !== undefined) payload.importance_weight = importance;
+
+    setRecapsGenerateBusy(true);
+    try {
+      const res = await apiMemoryRecapsCreate(base, payload, props.auth);
+      if (!res.ok) throw new Error(res.error || "recap generation failed");
+      setRecapsResult(res);
+    } catch (e) {
+      setRecapsError(String(e));
+    } finally {
+      setRecapsGenerateBusy(false);
+    }
+  };
+
+  const runRetention = async () => {
+    setRetentionError(null);
+    setRetentionResult(null);
+    if (!canQuery) {
+      setRetentionError("missing base URL");
+      return;
+    }
+    const payload: Record<string, any> = {
+      dry_run: retentionDryRun,
+    };
+    const dailyDays = parseOptionalInt(retentionDailyMaxDays, 0);
+    if (dailyDays !== undefined) payload.daily_max_days = dailyDays;
+    const dailyBytes = parseOptionalInt(retentionDailyMaxBytes, 0);
+    if (dailyBytes !== undefined) payload.daily_max_bytes = dailyBytes;
+    const checkpointDays = parseOptionalInt(retentionCheckpointMaxDays, 0);
+    if (checkpointDays !== undefined) payload.checkpoint_max_days = checkpointDays;
+    const checkpointCount = parseOptionalInt(retentionCheckpointMaxCount, 0);
+    if (checkpointCount !== undefined) payload.checkpoint_max_count = checkpointCount;
+    const deprecateDays = parseOptionalInt(retentionStructuredDeprecateDays, 0);
+    if (deprecateDays !== undefined) payload.structured_deprecate_days = deprecateDays;
+    const deprecateMax = parseOptionalInt(retentionStructuredDeprecateMaxEntries, 0);
+    if (deprecateMax !== undefined) payload.structured_deprecate_max_entries = deprecateMax;
+
+    setRetentionBusy(true);
+    try {
+      const res = await apiMemoryRetentionEnforce(base, payload, props.auth);
+      if (!res.ok) throw new Error(res.error || "retention enforce failed");
+      setRetentionResult(res);
+    } catch (e) {
+      setRetentionError(String(e));
+    } finally {
+      setRetentionBusy(false);
     }
   };
 
@@ -478,6 +630,269 @@ export default function MemoryPanel(props: MemoryPanelProps) {
           {indexResult ? (
             <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/70">
               {stringifyJson(indexResult)}
+            </pre>
+          ) : null}
+        </section>
+
+        <section className="rounded-md border border-white/10 bg-black/20 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold text-white/80">Memory recaps</div>
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={recapsListBusy || !canQuery}
+                onClick={() => void runRecapsList()}
+              >
+                {recapsListBusy ? "Loading…" : "List"}
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={recapsGenerateBusy || !canQuery}
+                onClick={() => void runRecapsGenerate()}
+              >
+                {recapsGenerateBusy ? "Generating…" : "Generate"}
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={recapsListBusy || recapsGenerateBusy}
+                onClick={() => {
+                  setRecapsError(null);
+                  setRecapsResult(null);
+                }}
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+          <div className="grid gap-2 text-[11px] text-white/70">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>List limit</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={recapsLimit}
+                  onChange={(e) => setRecapsLimit(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+              <div>
+                <FieldLabel>Summary max chars</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={recapsSummaryMaxChars}
+                  onChange={(e) => setRecapsSummaryMaxChars(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Model override (optional)</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={recapsModel}
+                  onChange={(e) => setRecapsModel(e.target.value)}
+                  placeholder="summary model"
+                />
+              </div>
+              <div>
+                <FieldLabel>Daily days</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={recapsDailyDays}
+                  onChange={(e) => setRecapsDailyDays(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Max items</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={recapsMaxItems}
+                  onChange={(e) => setRecapsMaxItems(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+              <div>
+                <FieldLabel>Structured max items</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={recapsStructuredMaxItems}
+                  onChange={(e) => setRecapsStructuredMaxItems(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Daily max items</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={recapsDailyMaxItems}
+                  onChange={(e) => setRecapsDailyMaxItems(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+              <div>
+                <FieldLabel>Half-life days</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={recapsHalfLifeDays}
+                  onChange={(e) => setRecapsHalfLifeDays(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Importance weight</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={recapsImportanceWeight}
+                  onChange={(e) => setRecapsImportanceWeight(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+              <label className="flex items-center gap-2 text-[11px] text-white/60">
+                <input type="checkbox" checked={recapsIncludeSummary} onChange={(e) => setRecapsIncludeSummary(e.target.checked)} />
+                <span>Include summary in list</span>
+              </label>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={recapsDryRun} onChange={(e) => setRecapsDryRun(e.target.checked)} />
+                <span>Dry run</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={recapsWriteFile} onChange={(e) => setRecapsWriteFile(e.target.checked)} />
+                <span>Write recap file</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={recapsIncludeStructured} onChange={(e) => setRecapsIncludeStructured(e.target.checked)} />
+                <span>Include structured</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={recapsIncludeDaily} onChange={(e) => setRecapsIncludeDaily(e.target.checked)} />
+                <span>Include daily</span>
+              </label>
+            </div>
+          </div>
+          {recapsError ? (
+            <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+              {recapsError}
+            </div>
+          ) : null}
+          {recapsResult ? (
+            <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/70">
+              {stringifyJson(recapsResult)}
+            </pre>
+          ) : null}
+        </section>
+
+        <section className="rounded-md border border-white/10 bg-black/20 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold text-white/80">Memory retention</div>
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={retentionBusy || !canQuery}
+                onClick={() => void runRetention()}
+              >
+                {retentionBusy ? "Running…" : "Enforce"}
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={retentionBusy}
+                onClick={() => {
+                  setRetentionError(null);
+                  setRetentionResult(null);
+                }}
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+          <div className="grid gap-2 text-[11px] text-white/70">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Daily max days</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={retentionDailyMaxDays}
+                  onChange={(e) => setRetentionDailyMaxDays(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+              <div>
+                <FieldLabel>Daily max bytes</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={retentionDailyMaxBytes}
+                  onChange={(e) => setRetentionDailyMaxBytes(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Checkpoint max days</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={retentionCheckpointMaxDays}
+                  onChange={(e) => setRetentionCheckpointMaxDays(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+              <div>
+                <FieldLabel>Checkpoint max count</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={retentionCheckpointMaxCount}
+                  onChange={(e) => setRetentionCheckpointMaxCount(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Structured deprecate days</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={retentionStructuredDeprecateDays}
+                  onChange={(e) => setRetentionStructuredDeprecateDays(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+              <div>
+                <FieldLabel>Structured deprecate max entries</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={retentionStructuredDeprecateMaxEntries}
+                  onChange={(e) => setRetentionStructuredDeprecateMaxEntries(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={retentionDryRun} onChange={(e) => setRetentionDryRun(e.target.checked)} />
+              <span>Dry run (preview only)</span>
+            </label>
+          </div>
+          {retentionError ? (
+            <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+              {retentionError}
+            </div>
+          ) : null}
+          {retentionResult ? (
+            <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/70">
+              {stringifyJson(retentionResult)}
             </pre>
           ) : null}
         </section>

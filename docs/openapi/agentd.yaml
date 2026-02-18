@@ -955,6 +955,110 @@ paths:
               schema:
                 $ref: "#/components/schemas/MemoryIndexResponse"
 
+  /api/v1/memory/salience:
+    get:
+      tags: [memory]
+      summary: List salience-ranked memory items (recency + importance)
+      description: |
+        Computes a deterministic salience ranking over structured memory checkpoints and daily @obs notes.
+        Useful for dynamic memory context injection and operator inspection.
+      parameters:
+        - in: query
+          name: include_structured
+          required: false
+          schema: { type: boolean }
+        - in: query
+          name: include_daily
+          required: false
+          schema: { type: boolean }
+        - in: query
+          name: daily_days
+          required: false
+          schema: { type: integer, format: int32 }
+          description: Number of daily files to scan (clamped to [0,31]).
+        - in: query
+          name: max_items
+          required: false
+          schema: { type: integer, format: int32 }
+        - in: query
+          name: max_structured_items
+          required: false
+          schema: { type: integer, format: int32 }
+        - in: query
+          name: max_daily_items
+          required: false
+          schema: { type: integer, format: int32 }
+        - in: query
+          name: half_life_days
+          required: false
+          schema: { type: number, format: double }
+        - in: query
+          name: importance_weight
+          required: false
+          schema: { type: number, format: double }
+      responses:
+        "200":
+          description: Salience report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemorySalienceResponse"
+
+  /api/v1/memory/recaps:
+    get:
+      tags: [memory]
+      summary: List memory recap snapshots
+      description: |
+        Lists recap JSON snapshots under `memory/recaps/` (newest first).
+        Use `include_summary=true` to include the recap summary text.
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, format: int32 }
+        - in: query
+          name: include_summary
+          required: false
+          schema: { type: boolean }
+      responses:
+        "200":
+          description: Recap list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryRecapsListResponse"
+    post:
+      tags: [memory]
+      summary: Generate a memory recap (LLM summary)
+      description: |
+        Generates a recap JSON document from the current salience-ranked memory items.
+        Supports `dry_run` to preview the prompt and ranked items without invoking the model.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryRecapRequest"
+      responses:
+        "200":
+          description: Recap report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryRecapResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Recap failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/memory/correlate:
     get:
       tags: [memory]
@@ -2039,6 +2143,14 @@ components:
             retention_daily_max_bytes: { type: integer, format: int64 }
             retention_checkpoint_max_days: { type: integer, format: int32 }
             retention_checkpoint_max_count: { type: integer, format: int32 }
+            retention_structured_deprecate_days: { type: integer, format: int32 }
+            retention_structured_deprecate_max_entries: { type: integer, format: int32 }
+            salience_daily_days: { type: integer, format: int32 }
+            salience_max_items: { type: integer, format: int32 }
+            salience_structured_max_items: { type: integer, format: int32 }
+            salience_daily_max_items: { type: integer, format: int32 }
+            salience_half_life_days: { type: number, format: double }
+            salience_importance_weight: { type: number, format: double }
 
     AgentdConfigUpdateRequest:
       type: object
@@ -2184,6 +2296,14 @@ components:
             retention_daily_max_bytes: { type: integer, format: int64 }
             retention_checkpoint_max_days: { type: integer, format: int32 }
             retention_checkpoint_max_count: { type: integer, format: int32 }
+            retention_structured_deprecate_days: { type: integer, format: int32 }
+            retention_structured_deprecate_max_entries: { type: integer, format: int32 }
+            salience_daily_days: { type: integer, format: int32 }
+            salience_max_items: { type: integer, format: int32 }
+            salience_structured_max_items: { type: integer, format: int32 }
+            salience_daily_max_items: { type: integer, format: int32 }
+            salience_half_life_days: { type: number, format: double }
+            salience_importance_weight: { type: number, format: double }
 
     AgentdConfigUpdateResponse:
       type: object
@@ -2228,6 +2348,14 @@ components:
             retention_daily_max_bytes: { type: integer, format: int64 }
             retention_checkpoint_max_days: { type: integer, format: int32 }
             retention_checkpoint_max_count: { type: integer, format: int32 }
+            retention_structured_deprecate_days: { type: integer, format: int32 }
+            retention_structured_deprecate_max_entries: { type: integer, format: int32 }
+            salience_daily_days: { type: integer, format: int32 }
+            salience_max_items: { type: integer, format: int32 }
+            salience_structured_max_items: { type: integer, format: int32 }
+            salience_daily_max_items: { type: integer, format: int32 }
+            salience_half_life_days: { type: number, format: double }
+            salience_importance_weight: { type: number, format: double }
         edge_auth_hmac_keys_set:
           type: integer
           format: int64
@@ -2338,10 +2466,23 @@ components:
         daily_max_bytes: { type: integer, format: int64 }
         checkpoint_max_days: { type: integer, format: int32 }
         checkpoint_max_count: { type: integer, format: int32 }
+        structured_deprecate_days: { type: integer, format: int32 }
+        structured_deprecate_max_entries: { type: integer, format: int32 }
 
     MemoryRetentionEnforceResponse:
       type: object
-      required: [ok, generated_utc_ms, dry_run, daily_max_days, daily_max_bytes, checkpoint_max_days, checkpoint_max_count]
+      required:
+        [
+          ok,
+          generated_utc_ms,
+          dry_run,
+          daily_max_days,
+          daily_max_bytes,
+          checkpoint_max_days,
+          checkpoint_max_count,
+          structured_deprecate_days,
+          structured_deprecate_max_entries
+        ]
       properties:
         ok: { type: boolean }
         generated_utc_ms: { type: integer, format: int64 }
@@ -2350,14 +2491,20 @@ components:
         daily_max_bytes: { type: integer, format: int64 }
         checkpoint_max_days: { type: integer, format: int32 }
         checkpoint_max_count: { type: integer, format: int32 }
+        structured_deprecate_days: { type: integer, format: int32 }
+        structured_deprecate_max_entries: { type: integer, format: int32 }
         daily_deleted_count: { type: integer, format: int64 }
         checkpoint_deleted_count: { type: integer, format: int64 }
+        structured_deprecated_count: { type: integer, format: int64 }
         daily_bytes_before: { type: integer, format: int64 }
         daily_bytes_after: { type: integer, format: int64 }
         daily_deleted:
           type: array
           items: { type: string }
         checkpoint_deleted:
+          type: array
+          items: { type: string }
+        structured_deprecated_keys:
           type: array
           items: { type: string }
         errors:
@@ -2395,6 +2542,160 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MemoryIndexRow"
+
+    MemorySaliencePolicy:
+      type: object
+      required: [include_structured, include_daily, daily_days, max_items, max_structured_items, max_daily_items, half_life_days, importance_weight]
+      properties:
+        include_structured: { type: boolean }
+        include_daily: { type: boolean }
+        daily_days: { type: integer, format: int32 }
+        max_items: { type: integer, format: int32 }
+        max_structured_items: { type: integer, format: int32 }
+        max_daily_items: { type: integer, format: int32 }
+        half_life_days: { type: number, format: double }
+        importance_weight: { type: number, format: double }
+
+    MemorySalienceStructuredItem:
+      type: object
+      required: [key, value, score]
+      properties:
+        key: { type: string }
+        kind: { type: string }
+        status: { type: string }
+        updated_utc: { type: string }
+        value: { type: string }
+        score: { type: number, format: double }
+
+    MemorySalienceDailyItem:
+      type: object
+      required: [path, line, text, score]
+      properties:
+        path: { type: string }
+        line: { type: integer, format: int32 }
+        text: { type: string }
+        score: { type: number, format: double }
+        ts_utc: { type: string }
+        importance: { type: integer, format: int32 }
+
+    MemorySalienceResponse:
+      type: object
+      required: [ok, memory_root, generated_utc_ms, policy, structured_items, daily_items, returned]
+      properties:
+        ok: { type: boolean }
+        memory_root: { type: string }
+        generated_utc_ms: { type: integer, format: int64 }
+        policy:
+          $ref: "#/components/schemas/MemorySaliencePolicy"
+        structured_checkpoint:
+          $ref: "#/components/schemas/MemoryCheckpointMeta"
+        structured_items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemorySalienceStructuredItem"
+        daily_items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemorySalienceDailyItem"
+        returned: { type: integer, format: int64 }
+        errors:
+          type: array
+          items: { type: string }
+
+    MemoryRecapItem:
+      type: object
+      required: [tier, score, text]
+      properties:
+        tier: { type: string }
+        key: { type: string }
+        kind: { type: string }
+        status: { type: string }
+        ts_utc: { type: string }
+        path: { type: string }
+        line: { type: integer, format: int32 }
+        importance: { type: integer, format: int32 }
+        score: { type: number, format: double }
+        text: { type: string }
+        source: { type: string }
+
+    MemoryRecapsListItem:
+      type: object
+      required: [recap_path, bytes]
+      properties:
+        recap_path: { type: string }
+        bytes: { type: integer, format: int64 }
+        ts_utc: { type: string }
+        ts_utc_ms: { type: integer, format: int64 }
+        model: { type: string }
+        summary_text: { type: string }
+
+    MemoryRecapsListResponse:
+      type: object
+      required: [ok, memory_root, limit, include_summary, recaps, count]
+      properties:
+        ok: { type: boolean }
+        memory_root: { type: string }
+        limit: { type: integer, format: int32 }
+        include_summary: { type: boolean }
+        recaps:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemoryRecapsListItem"
+        count: { type: integer, format: int64 }
+
+    MemoryRecapRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        dry_run: { type: boolean }
+        write_file: { type: boolean }
+        model: { type: string }
+        summary_model: { type: string, nullable: true }
+        summary_max_chars: { type: integer, format: int64 }
+        include_structured: { type: boolean }
+        include_daily: { type: boolean }
+        daily_days: { type: integer, format: int32 }
+        max_items: { type: integer, format: int32 }
+        max_structured_items: { type: integer, format: int32 }
+        max_daily_items: { type: integer, format: int32 }
+        half_life_days: { type: number, format: double }
+        importance_weight: { type: number, format: double }
+
+    MemoryRecapResponse:
+      type: object
+      required: [ok, generated_utc_ms, dry_run, write_file, policy, input, structured_items, daily_items]
+      properties:
+        ok: { type: boolean }
+        generated_utc_ms: { type: integer, format: int64 }
+        ts_utc: { type: string }
+        model: { type: string }
+        dry_run: { type: boolean }
+        write_file: { type: boolean }
+        policy:
+          $ref: "#/components/schemas/MemorySaliencePolicy"
+        input:
+          type: object
+          required: [structured_count, daily_count, total_count]
+          properties:
+            structured_count: { type: integer, format: int64 }
+            daily_count: { type: integer, format: int64 }
+            total_count: { type: integer, format: int64 }
+        structured_items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemoryRecapItem"
+        daily_items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MemoryRecapItem"
+        prompt: { type: string }
+        prompt_truncated: { type: boolean }
+        summary_text: { type: string }
+        summary:
+          type: object
+          additionalProperties: true
+        recap_path: { type: string }
+        recap_bytes: { type: integer, format: int64 }
 
     MemoryCorrelateResponse:
       type: object
@@ -2673,8 +2974,8 @@ components:
           enum: [none, basic, host]
         memory_context_mode:
           type: string
-          enum: [files, search, index]
-          description: Memory context injection mode (files=load durable Markdown files; search=ranked memory snippets; index=progressive file index).
+          enum: [files, search, index, salience]
+          description: Memory context injection mode (files=load durable Markdown files; search=ranked memory snippets; index=progressive file index; salience=ranked recency/importance).
         memory_include_structured:
           type: boolean
           description: When true, include memory/STRUCTURED.md in file-based memory context.
@@ -2719,6 +3020,26 @@ components:
           type: integer
           format: int32
           description: Context lines to include around substring matches (clamped).
+        memory_salience_max_items:
+          type: integer
+          format: int32
+          description: Max total salience items (default from daemon config; clamped).
+        memory_salience_structured_max_items:
+          type: integer
+          format: int32
+          description: Max structured salience items (default from daemon config; clamped).
+        memory_salience_daily_max_items:
+          type: integer
+          format: int32
+          description: Max daily salience items (default from daemon config; clamped).
+        memory_salience_half_life_days:
+          type: number
+          format: double
+          description: Salience decay half-life in days (default from daemon config).
+        memory_salience_importance_weight:
+          type: number
+          format: double
+          description: Weight for @obs importance in salience (default from daemon config).
         model: { type: string }
         base_url: { type: string }
         api_key: { type: string }

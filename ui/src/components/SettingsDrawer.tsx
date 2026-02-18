@@ -891,6 +891,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                 <option value="files">files (read memory/*.md)</option>
                 <option value="index">index (progressive file index)</option>
                 <option value="search">search (ranked snippets)</option>
+                <option value="salience">salience (ranked recency/importance)</option>
               </select>
               <div className="mt-1 text-[11px] text-white/40">
                 Applies only when tools=host; index shows file size/line/token estimates; search defaults to the prompt if no query is provided.

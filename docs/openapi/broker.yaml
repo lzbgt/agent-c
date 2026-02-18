@@ -16,6 +16,7 @@ tags:
   - name: caps
   - name: client_auth
   - name: agents
+  - name: memory
   - name: membership
   - name: orchestrate
   - name: events
@@ -188,6 +189,82 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BrokerOtaBulkResponse"
+  /v1/agents/{agent_id}/memory/retention/enforce:
+    post:
+      tags: [memory]
+      summary: Fan-out memory retention enforcement across deployments
+      parameters:
+        - in: path
+          name: agent_id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              description: Memory retention request (agentd API) plus optional deployment_ids fields.
+      responses:
+        "200":
+          description: Fan-out retention results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrokerFanoutResponse"
+  /v1/agents/{agent_id}/memory/recaps:
+    get:
+      tags: [memory]
+      summary: Fan-out memory recap list across deployments
+      parameters:
+        - in: path
+          name: agent_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: limit
+          required: false
+          schema: { type: integer, format: int32 }
+        - in: query
+          name: include_summary
+          required: false
+          schema: { type: boolean }
+        - in: query
+          name: deployment_ids
+          required: false
+          schema: { type: string }
+          description: Comma-delimited deployment ids (omit to target all connected deployments).
+      responses:
+        "200":
+          description: Fan-out recap list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrokerFanoutResponse"
+    post:
+      tags: [memory]
+      summary: Fan-out memory recap generation across deployments
+      parameters:
+        - in: path
+          name: agent_id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+              description: Memory recap request (agentd API) plus optional deployment_ids fields.
+      responses:
+        "200":
+          description: Fan-out recap results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrokerFanoutResponse"
   /v1/agents/{agent_id}/members:
     get:
       tags: [membership]
@@ -575,6 +652,28 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/BrokerOtaBulkResult"
+    BrokerFanoutResult:
+      type: object
+      required: [deployment_id, status, data]
+      properties:
+        deployment_id: { type: string }
+        status: { type: integer, format: int32 }
+        data:
+          type: object
+          additionalProperties: true
+    BrokerFanoutResponse:
+      type: object
+      required: [ok, agent_id, results]
+      properties:
+        ok: { type: boolean }
+        agent_id: { type: string }
+        total: { type: integer, format: int32 }
+        ok_count: { type: integer, format: int32 }
+        error_count: { type: integer, format: int32 }
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/BrokerFanoutResult"
     AgentMember:
       type: object
       required: [user_sub, role, created_unix_ms]

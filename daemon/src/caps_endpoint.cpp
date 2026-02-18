@@ -176,6 +176,14 @@ void handle_caps_endpoint(
     mem["retention_daily_max_bytes"] = Json::Int64(cfg.memory_retention_daily_max_bytes);
     mem["retention_checkpoint_max_days"] = cfg.memory_retention_checkpoint_max_days;
     mem["retention_checkpoint_max_count"] = cfg.memory_retention_checkpoint_max_count;
+    mem["retention_structured_deprecate_days"] = cfg.memory_retention_structured_deprecate_days;
+    mem["retention_structured_deprecate_max_entries"] = cfg.memory_retention_structured_deprecate_max_entries;
+    mem["salience_daily_days"] = cfg.memory_salience_daily_days;
+    mem["salience_max_items"] = cfg.memory_salience_max_items;
+    mem["salience_structured_max_items"] = cfg.memory_salience_structured_max_items;
+    mem["salience_daily_max_items"] = cfg.memory_salience_daily_max_items;
+    mem["salience_half_life_days"] = cfg.memory_salience_half_life_days;
+    mem["salience_importance_weight"] = cfg.memory_salience_importance_weight;
     features["memory"] = mem;
   }
   {

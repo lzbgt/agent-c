@@ -15,6 +15,8 @@ struct MemoryRetentionPolicy {
   int64_t daily_max_bytes = 0;
   int checkpoint_max_days = 0;
   int checkpoint_max_count = 0;
+  int structured_deprecate_days = 0;
+  int structured_deprecate_max_entries = 0;
 };
 
 struct MemoryRetentionStats {
@@ -23,8 +25,10 @@ struct MemoryRetentionStats {
   int64_t daily_bytes_after = 0;
   int64_t daily_deleted_count = 0;
   int64_t checkpoint_deleted_count = 0;
+  int64_t structured_deprecated_count = 0;
   std::vector<std::string> daily_deleted;
   std::vector<std::string> checkpoint_deleted;
+  std::vector<std::string> structured_deprecated_keys;
   std::vector<std::string> errors;
 };
 

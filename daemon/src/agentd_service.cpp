@@ -290,6 +290,56 @@ static void fill_env_defaults(DaemonConfig* cfg) {
       if (cfg->memory_retention_checkpoint_max_count < 0) cfg->memory_retention_checkpoint_max_count = 0;
     } catch (...) {}
   }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_STRUCTURED_DEPRECATE_DAYS")) {
+    try {
+      cfg->memory_retention_structured_deprecate_days = (int)std::stol(ms);
+      if (cfg->memory_retention_structured_deprecate_days < 0) cfg->memory_retention_structured_deprecate_days = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_STRUCTURED_DEPRECATE_MAX_ENTRIES")) {
+    try {
+      cfg->memory_retention_structured_deprecate_max_entries = (int)std::stol(ms);
+      if (cfg->memory_retention_structured_deprecate_max_entries < 0) {
+        cfg->memory_retention_structured_deprecate_max_entries = 0;
+      }
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_SALIENCE_DAILY_DAYS")) {
+    try {
+      cfg->memory_salience_daily_days = (int)std::stol(ms);
+      if (cfg->memory_salience_daily_days < 0) cfg->memory_salience_daily_days = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_SALIENCE_MAX_ITEMS")) {
+    try {
+      cfg->memory_salience_max_items = (int)std::stol(ms);
+      if (cfg->memory_salience_max_items < 1) cfg->memory_salience_max_items = 1;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_SALIENCE_STRUCTURED_MAX_ITEMS")) {
+    try {
+      cfg->memory_salience_structured_max_items = (int)std::stol(ms);
+      if (cfg->memory_salience_structured_max_items < 0) cfg->memory_salience_structured_max_items = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_SALIENCE_DAILY_MAX_ITEMS")) {
+    try {
+      cfg->memory_salience_daily_max_items = (int)std::stol(ms);
+      if (cfg->memory_salience_daily_max_items < 0) cfg->memory_salience_daily_max_items = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_SALIENCE_HALF_LIFE_DAYS")) {
+    try {
+      cfg->memory_salience_half_life_days = std::stod(ms);
+      if (cfg->memory_salience_half_life_days < 0) cfg->memory_salience_half_life_days = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_SALIENCE_IMPORTANCE_WEIGHT")) {
+    try {
+      cfg->memory_salience_importance_weight = std::stod(ms);
+      if (cfg->memory_salience_importance_weight < 0) cfg->memory_salience_importance_weight = 0;
+    } catch (...) {}
+  }
   if (const char* s = getenv_s("AGENTD_OTA_ENABLE")) {
     cfg->ota_enable = env_truthy(s);
   }
@@ -697,6 +747,24 @@ struct AgentdService::Impl {
     server.handle("GET", "/api/v1/memory/query", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_memory_query_endpoint(cur, cors_cfg, req, resp);
+    });
+    server.handle("GET", "/api/v1/memory/index", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_memory_index_endpoint(cur, cors_cfg, req, resp);
+    });
+    server.handle("GET", "/api/v1/memory/salience", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_memory_salience_endpoint(cur, cors_cfg, req, resp);
+    });
+    server.handle("GET", "/api/v1/memory/recaps", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
+      handle_memory_recaps_endpoint(cur, ocfg, cors_cfg, req, resp);
+    });
+    server.handle("POST", "/api/v1/memory/recaps", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);
+      handle_memory_recaps_endpoint(cur, ocfg, cors_cfg, req, resp);
     });
 
     server.handle("GET", "/api/v1/sessions", [this](const HttpRequest& req, HttpResponse* resp) {
