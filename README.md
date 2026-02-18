@@ -355,6 +355,7 @@ tools/uninstall_agentd_launchd.sh
 
 Notes:
 - `--yolo` enables unrestricted host tools (fully autonomous, side effects allowed). The Web UI defaults to requesting this.
+- `--tools` acts as a **maximum** toolset; run requests and tool registry queries cannot exceed it.
 - `--tools-root "@host"` makes relative paths stable (anchored to `--host-scope`). This avoids brittle “depends on process CWD”
   behavior for artifact fetches like `GET /api/v1/file?path=out/foo.wav&yolo=1`.
 - If you omit `--db-path`, `agentd` defaults to creating/using `./agentd.db` in its working directory.

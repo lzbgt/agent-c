@@ -38,9 +38,26 @@ void handle_tools_endpoint(
     return;
   }
 
-  std::string tools = cfg.tools;
+  std::string daemon_tools;
+  if (!normalize_tools_mode(cfg.tools, &daemon_tools)) {
+    resp->status = 500;
+    resp->body = "{\"ok\":false,\"error\":\"invalid daemon tools configuration\"}";
+    return;
+  }
+  std::string tools = daemon_tools;
   if (const auto q = query_get(req.query, "tools"); q && !q->empty()) {
-    tools = *q;
+    std::string requested_norm;
+    if (!normalize_tools_mode(*q, &requested_norm)) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"invalid tools (expected: none|basic|host)\"}";
+      return;
+    }
+    if (!tools_mode_allows(daemon_tools, requested_norm)) {
+      resp->status = 400;
+      resp->body = "{\"ok\":false,\"error\":\"tools request exceeds daemon tools policy\"}";
+      return;
+    }
+    tools = requested_norm;
   }
 
   const auto q_yolo = query_get(req.query, "yolo");

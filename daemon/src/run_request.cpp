@@ -188,7 +188,37 @@ static Json::Value run_request_to_json_impl(
   // Provider key fallback (framework responsibility).
   apply_provider_key_fallback(daemon_cfg, ocfg, base_url_explicit, api_key_explicit, &run_cfg);
 
-  const std::string tools = args.isMember("tools") && args["tools"].isString() ? args["tools"].asString() : daemon_cfg.tools;
+  const bool requested_tools_set = args.isMember("tools") && args["tools"].isString();
+  const std::string requested_tools = requested_tools_set ? args["tools"].asString() : daemon_cfg.tools;
+  std::string daemon_tools;
+  if (!normalize_tools_mode(daemon_cfg.tools, &daemon_tools)) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["rpc_status"] = 500;
+    o["error"] = "invalid daemon tools configuration";
+    return o;
+  }
+  std::string tools = daemon_tools;
+  if (requested_tools_set) {
+    std::string requested_norm;
+    if (!normalize_tools_mode(requested_tools, &requested_norm)) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["rpc_status"] = 400;
+      o["error"] = "invalid tools (expected: none|basic|host)";
+      return o;
+    }
+    if (!tools_mode_allows(daemon_tools, requested_norm)) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["rpc_status"] = 400;
+      o["error"] =
+        std::string("tools request exceeds daemon tools policy (daemon=") + daemon_tools +
+        ", requested=" + requested_norm + ")";
+      return o;
+    }
+    tools = requested_norm;
+  }
   const bool requested_yolo_set = args.isMember("yolo") && args["yolo"].isBool();
   const bool requested_yolo = requested_yolo_set ? args["yolo"].asBool() : daemon_cfg.yolo_default;
   const bool yolo = sandbox_tighten_yolo(daemon_cfg.yolo_default, requested_yolo, requested_yolo_set);
