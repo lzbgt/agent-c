@@ -183,6 +183,54 @@ static void fill_env_defaults(DaemonConfig* cfg) {
     } catch (...) {
     }
   }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_CONSOLIDATE_INTERVAL_MS")) {
+    try {
+      cfg->memory_consolidate_interval_ms = (int64_t)std::stoll(ms);
+      if (cfg->memory_consolidate_interval_ms < 0) cfg->memory_consolidate_interval_ms = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_CONSOLIDATE_DAILY_DAYS")) {
+    try {
+      cfg->memory_consolidate_daily_days = (int)std::stol(ms);
+      if (cfg->memory_consolidate_daily_days < 0) cfg->memory_consolidate_daily_days = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_CONSOLIDATE_KEEP_CHECKPOINTS")) {
+    try {
+      cfg->memory_consolidate_keep_checkpoints = (int)std::stol(ms);
+      if (cfg->memory_consolidate_keep_checkpoints < 1) cfg->memory_consolidate_keep_checkpoints = 1;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_INTERVAL_MS")) {
+    try {
+      cfg->memory_retention_interval_ms = (int64_t)std::stoll(ms);
+      if (cfg->memory_retention_interval_ms < 0) cfg->memory_retention_interval_ms = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_DAILY_MAX_DAYS")) {
+    try {
+      cfg->memory_retention_daily_max_days = (int)std::stol(ms);
+      if (cfg->memory_retention_daily_max_days < 0) cfg->memory_retention_daily_max_days = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_DAILY_MAX_BYTES")) {
+    try {
+      cfg->memory_retention_daily_max_bytes = (int64_t)std::stoll(ms);
+      if (cfg->memory_retention_daily_max_bytes < 0) cfg->memory_retention_daily_max_bytes = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_CHECKPOINT_MAX_DAYS")) {
+    try {
+      cfg->memory_retention_checkpoint_max_days = (int)std::stol(ms);
+      if (cfg->memory_retention_checkpoint_max_days < 0) cfg->memory_retention_checkpoint_max_days = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_CHECKPOINT_MAX_COUNT")) {
+    try {
+      cfg->memory_retention_checkpoint_max_count = (int)std::stol(ms);
+      if (cfg->memory_retention_checkpoint_max_count < 0) cfg->memory_retention_checkpoint_max_count = 0;
+    } catch (...) {}
+  }
   if (const char* s = getenv_s("AGENTD_OTA_ENABLE")) {
     cfg->ota_enable = env_truthy(s);
   }
@@ -440,6 +488,11 @@ bool AgentdApi::init(std::string* out_error) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();
     handle_memory_consolidate_endpoint(cur, self->cors_cfg, req, resp);
+  });
+  impl_->route("POST", "/api/v1/memory/retention/enforce", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_memory_retention_endpoint(cur, self->cors_cfg, req, resp);
   });
   impl_->route("GET", "/api/v1/memory/checkpoints", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);

@@ -194,6 +194,38 @@ bool load_runtime_config_best_effort(
           cfg_io->blob_tier_promote_max_bytes = n;
         }
       }
+      if (opt.override_memory_retention) {
+        if (v.isMember("memory_retention_interval_ms") && (v["memory_retention_interval_ms"].isInt64() || v["memory_retention_interval_ms"].isUInt64())) {
+          const auto n = v["memory_retention_interval_ms"].isInt64()
+            ? std::max<int64_t>(0, v["memory_retention_interval_ms"].asInt64())
+            : (int64_t)v["memory_retention_interval_ms"].asUInt64();
+          cfg_io->memory_retention_interval_ms = n;
+        }
+        if (v.isMember("memory_retention_daily_max_days") && (v["memory_retention_daily_max_days"].isInt64() || v["memory_retention_daily_max_days"].isUInt64())) {
+          const auto n = v["memory_retention_daily_max_days"].isInt64()
+            ? std::max<int64_t>(0, v["memory_retention_daily_max_days"].asInt64())
+            : (int64_t)v["memory_retention_daily_max_days"].asUInt64();
+          cfg_io->memory_retention_daily_max_days = (int)n;
+        }
+        if (v.isMember("memory_retention_daily_max_bytes") && (v["memory_retention_daily_max_bytes"].isInt64() || v["memory_retention_daily_max_bytes"].isUInt64())) {
+          const auto n = v["memory_retention_daily_max_bytes"].isInt64()
+            ? std::max<int64_t>(0, v["memory_retention_daily_max_bytes"].asInt64())
+            : (int64_t)v["memory_retention_daily_max_bytes"].asUInt64();
+          cfg_io->memory_retention_daily_max_bytes = n;
+        }
+        if (v.isMember("memory_retention_checkpoint_max_days") && (v["memory_retention_checkpoint_max_days"].isInt64() || v["memory_retention_checkpoint_max_days"].isUInt64())) {
+          const auto n = v["memory_retention_checkpoint_max_days"].isInt64()
+            ? std::max<int64_t>(0, v["memory_retention_checkpoint_max_days"].asInt64())
+            : (int64_t)v["memory_retention_checkpoint_max_days"].asUInt64();
+          cfg_io->memory_retention_checkpoint_max_days = (int)n;
+        }
+        if (v.isMember("memory_retention_checkpoint_max_count") && (v["memory_retention_checkpoint_max_count"].isInt64() || v["memory_retention_checkpoint_max_count"].isUInt64())) {
+          const auto n = v["memory_retention_checkpoint_max_count"].isInt64()
+            ? std::max<int64_t>(0, v["memory_retention_checkpoint_max_count"].asInt64())
+            : (int64_t)v["memory_retention_checkpoint_max_count"].asUInt64();
+          cfg_io->memory_retention_checkpoint_max_count = (int)n;
+        }
+      }
       if (v.isMember("tool_call_limits_default") && v["tool_call_limits_default"].isArray()) {
         cfg_io->tool_call_limits_default.clear();
         const Json::Value arr = v["tool_call_limits_default"];
@@ -380,6 +412,11 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
   v["blob_tier_local_max_age_ms"] = (Json::Int64)cfg.blob_tier_local_max_age_ms;
   v["blob_tier_promote_after_ms"] = (Json::Int64)cfg.blob_tier_promote_after_ms;
   v["blob_tier_promote_max_bytes"] = (Json::Int64)cfg.blob_tier_promote_max_bytes;
+  v["memory_retention_interval_ms"] = (Json::Int64)cfg.memory_retention_interval_ms;
+  v["memory_retention_daily_max_days"] = (Json::Int64)cfg.memory_retention_daily_max_days;
+  v["memory_retention_daily_max_bytes"] = (Json::Int64)cfg.memory_retention_daily_max_bytes;
+  v["memory_retention_checkpoint_max_days"] = (Json::Int64)cfg.memory_retention_checkpoint_max_days;
+  v["memory_retention_checkpoint_max_count"] = (Json::Int64)cfg.memory_retention_checkpoint_max_count;
   v["edge_auth_required"] = cfg.edge_auth_required;
   v["edge_auth_require_ts"] = cfg.edge_auth_require_ts;
   v["edge_auth_max_skew_ms"] = (Json::Int64)cfg.edge_auth_max_skew_ms;

@@ -263,6 +263,11 @@ struct DaemonConfig {
   int64_t memory_consolidate_interval_ms = 0;
   int memory_consolidate_daily_days = 14;
   int memory_consolidate_keep_checkpoints = 100;
+  int64_t memory_retention_interval_ms = 0;
+  int memory_retention_daily_max_days = 0;
+  int64_t memory_retention_daily_max_bytes = 0;
+  int memory_retention_checkpoint_max_days = 0;
+  int memory_retention_checkpoint_max_count = 0;
 
   // OTA update (disabled by default; requires explicit operator enable + command).
   bool ota_enable = false;

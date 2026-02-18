@@ -23,6 +23,7 @@
 #include "health_endpoint.h"
 #include "memory_endpoints.h"
 #include "memory_consolidator.h"
+#include "memory_retention.h"
 #include "orchestrate_endpoints.h"
 #include "ota_endpoints.h"
 #include "openrouter_models_endpoint.h"
@@ -259,6 +260,36 @@ static void fill_env_defaults(DaemonConfig* cfg) {
       if (cfg->memory_consolidate_keep_checkpoints < 1) cfg->memory_consolidate_keep_checkpoints = 1;
     } catch (...) {}
   }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_INTERVAL_MS")) {
+    try {
+      cfg->memory_retention_interval_ms = (int64_t)std::stoll(ms);
+      if (cfg->memory_retention_interval_ms < 0) cfg->memory_retention_interval_ms = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_DAILY_MAX_DAYS")) {
+    try {
+      cfg->memory_retention_daily_max_days = (int)std::stol(ms);
+      if (cfg->memory_retention_daily_max_days < 0) cfg->memory_retention_daily_max_days = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_DAILY_MAX_BYTES")) {
+    try {
+      cfg->memory_retention_daily_max_bytes = (int64_t)std::stoll(ms);
+      if (cfg->memory_retention_daily_max_bytes < 0) cfg->memory_retention_daily_max_bytes = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_CHECKPOINT_MAX_DAYS")) {
+    try {
+      cfg->memory_retention_checkpoint_max_days = (int)std::stol(ms);
+      if (cfg->memory_retention_checkpoint_max_days < 0) cfg->memory_retention_checkpoint_max_days = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_CHECKPOINT_MAX_COUNT")) {
+    try {
+      cfg->memory_retention_checkpoint_max_count = (int)std::stol(ms);
+      if (cfg->memory_retention_checkpoint_max_count < 0) cfg->memory_retention_checkpoint_max_count = 0;
+    } catch (...) {}
+  }
   if (const char* s = getenv_s("AGENTD_OTA_ENABLE")) {
     cfg->ota_enable = env_truthy(s);
   }
@@ -317,6 +348,7 @@ struct AgentdService::Impl {
   std::unique_ptr<JobEngine> job_engine;
   std::unique_ptr<WorkflowEngine> wf_engine;
   std::unique_ptr<MemoryConsolidatorEngine> mem_engine;
+  std::unique_ptr<MemoryRetentionEngine> mem_retention_engine;
   std::unique_ptr<EdgeDeadlineSweeperEngine> edge_deadline_engine;
   std::unique_ptr<EdgeWorkflowEngine> edge_wf_engine;
   HttpServer server;
@@ -469,6 +501,18 @@ struct AgentdService::Impl {
       std::string merr;
       if (!mem_engine->start(&merr)) {
         std::cerr << "Warning: failed to start memory consolidator engine: " << merr << "\n";
+      }
+    }
+
+    // Memory retention (background; disabled by default).
+    if (!mem_retention_engine) {
+      mem_retention_engine = std::make_unique<MemoryRetentionEngine>(
+        [this]() { return cfg_store->snapshot(); },
+        MemoryRetentionEngine::Options{}
+      );
+      std::string rerr;
+      if (!mem_retention_engine->start(&rerr)) {
+        std::cerr << "Warning: failed to start memory retention engine: " << rerr << "\n";
       }
     }
 
@@ -637,6 +681,10 @@ struct AgentdService::Impl {
     server.handle("POST", "/api/v1/memory/consolidate", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_memory_consolidate_endpoint(cur, cors_cfg, req, resp);
+    });
+    server.handle("POST", "/api/v1/memory/retention/enforce", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_memory_retention_endpoint(cur, cors_cfg, req, resp);
     });
     server.handle("GET", "/api/v1/memory/checkpoints", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();

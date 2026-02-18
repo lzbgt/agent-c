@@ -186,6 +186,21 @@ When a checkpoint is written, `memory_put` also reports:
 These fields exist so workflows can attach a stable “memory evidence hash” to their event logs without needing to
 re-open files during execution.
 
+## Memory retention (v1)
+
+To keep disk usage bounded, the daemon can enforce deterministic retention over daily logs and structured checkpoints:
+
+- `POST /api/v1/memory/retention/enforce` (auth required)
+  - supports `dry_run` + per-call overrides
+- config knobs:
+  - `memory_retention_interval_ms`
+  - `memory_retention_daily_max_days`
+  - `memory_retention_daily_max_bytes`
+  - `memory_retention_checkpoint_max_days`
+  - `memory_retention_checkpoint_max_count`
+
+See `docs/MEMORY_RETENTION.md` for details.
+
 ## API helpers (correlation)
 
 In addition to the tool surface, `agentd` exposes correlation helpers:

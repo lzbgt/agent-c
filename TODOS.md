@@ -91,6 +91,7 @@ after the core surfaces are stable and replayable.
 - [ ] Tool loop: full multimodal transcript support + stable, versioned event schema with migrations.
 - [ ] Streaming: core-layer streaming interface + provider compatibility matrix with full variant coverage.
 - [ ] Memory architecture: dynamic retention policy (decay/salience/recaps) informed by claude-mem research + docs.
+  - [x] Memory retention policy enforcement (daily logs + checkpoints) + endpoint + background engine.
 - [ ] Tool plugins: sandbox/isolation, Windows loader, and embedded/MCU-compatible plugin path.
 - [ ] Audio streaming: Opus/WebRTC voice pipeline + broker relay + UI voice session controls.
   - [x] Add workflow DB query endpoints (`/api/v1/db/workflows`, `/api/v1/db/workflow`, `/api/v1/db/workflow_tasks`, `/api/v1/db/workflow_events`)

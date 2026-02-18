@@ -5,6 +5,7 @@
 #include "json_util.h"
 #include "memory_checkpoints.h"
 #include "memory_consolidator.h"
+#include "memory_retention.h"
 #include "session_id_util.h"
 
 #include <json/json.h>
@@ -129,6 +130,102 @@ void handle_memory_consolidate_endpoint(
   o["data"] = report;
   resp->body = json_stringify(o);
   return;
+}
+
+void handle_memory_retention_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  Json::Value args(Json::objectValue);
+  if (!req.body.empty()) {
+    std::string perr;
+    if (!json_parse_object(req.body, &args, &perr)) {
+      resp->status = 400;
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = std::string("invalid JSON: ") + perr;
+      resp->body = json_stringify(o);
+      return;
+    }
+  }
+
+  MemoryRetentionPolicy policy;
+  policy.daily_max_days = cfg.memory_retention_daily_max_days;
+  policy.daily_max_bytes = cfg.memory_retention_daily_max_bytes;
+  policy.checkpoint_max_days = cfg.memory_retention_checkpoint_max_days;
+  policy.checkpoint_max_count = cfg.memory_retention_checkpoint_max_count;
+
+  if (args.isMember("dry_run") && args["dry_run"].isBool()) {
+    policy.dry_run = args["dry_run"].asBool();
+  }
+  if (args.isMember("daily_max_days") && (args["daily_max_days"].isInt() || args["daily_max_days"].isUInt())) {
+    const int n = args["daily_max_days"].isInt() ? args["daily_max_days"].asInt() : (int)args["daily_max_days"].asUInt();
+    policy.daily_max_days = std::max(0, n);
+  }
+  if (args.isMember("daily_max_bytes") && (args["daily_max_bytes"].isInt64() || args["daily_max_bytes"].isUInt64())) {
+    const int64_t n = args["daily_max_bytes"].isInt64()
+      ? args["daily_max_bytes"].asInt64()
+      : (int64_t)args["daily_max_bytes"].asUInt64();
+    policy.daily_max_bytes = std::max<int64_t>(0, n);
+  }
+  if (args.isMember("checkpoint_max_days") && (args["checkpoint_max_days"].isInt() || args["checkpoint_max_days"].isUInt())) {
+    const int n = args["checkpoint_max_days"].isInt()
+      ? args["checkpoint_max_days"].asInt()
+      : (int)args["checkpoint_max_days"].asUInt();
+    policy.checkpoint_max_days = std::max(0, n);
+  }
+  if (args.isMember("checkpoint_max_count") && (args["checkpoint_max_count"].isInt() || args["checkpoint_max_count"].isUInt())) {
+    const int n = args["checkpoint_max_count"].isInt()
+      ? args["checkpoint_max_count"].asInt()
+      : (int)args["checkpoint_max_count"].asUInt();
+    policy.checkpoint_max_count = std::max(0, n);
+  }
+
+  MemoryRetentionStats stats;
+  std::string err;
+  if (!memory_retention_enforce(cfg, policy, &stats, &err)) {
+    resp->status = 500;
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["error"] = err.empty() ? "memory retention failed" : err;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  Json::Value o(Json::objectValue);
+  o["ok"] = true;
+  o["generated_utc_ms"] = (Json::Int64)stats.generated_utc_ms;
+  o["dry_run"] = policy.dry_run;
+  o["daily_max_days"] = policy.daily_max_days;
+  o["daily_max_bytes"] = (Json::Int64)policy.daily_max_bytes;
+  o["checkpoint_max_days"] = policy.checkpoint_max_days;
+  o["checkpoint_max_count"] = policy.checkpoint_max_count;
+  o["daily_deleted_count"] = (Json::Int64)stats.daily_deleted_count;
+  o["checkpoint_deleted_count"] = (Json::Int64)stats.checkpoint_deleted_count;
+  o["daily_bytes_before"] = (Json::Int64)stats.daily_bytes_before;
+  o["daily_bytes_after"] = (Json::Int64)stats.daily_bytes_after;
+  if (!stats.daily_deleted.empty()) {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& p : stats.daily_deleted) arr.append(p);
+    o["daily_deleted"] = arr;
+  }
+  if (!stats.checkpoint_deleted.empty()) {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& p : stats.checkpoint_deleted) arr.append(p);
+    o["checkpoint_deleted"] = arr;
+  }
+  if (!stats.errors.empty()) {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& e : stats.errors) arr.append(e);
+    o["errors"] = arr;
+  }
+  resp->body = json_stringify(o);
 }
 
 void handle_memory_checkpoints_endpoint(

@@ -340,6 +340,11 @@ void handle_config_endpoint(
   memory["consolidate_interval_ms"] = (Json::Int64)cfg.memory_consolidate_interval_ms;
   memory["consolidate_daily_days"] = cfg.memory_consolidate_daily_days;
   memory["consolidate_keep_checkpoints"] = cfg.memory_consolidate_keep_checkpoints;
+  memory["retention_interval_ms"] = (Json::Int64)cfg.memory_retention_interval_ms;
+  memory["retention_daily_max_days"] = cfg.memory_retention_daily_max_days;
+  memory["retention_daily_max_bytes"] = (Json::Int64)cfg.memory_retention_daily_max_bytes;
+  memory["retention_checkpoint_max_days"] = cfg.memory_retention_checkpoint_max_days;
+  memory["retention_checkpoint_max_count"] = cfg.memory_retention_checkpoint_max_count;
   out["memory"] = memory;
 
   resp->body = json_stringify(out);
@@ -512,6 +517,57 @@ void handle_config_update_endpoint(
         ? bt["promote_max_bytes"].asInt64()
         : (int64_t)bt["promote_max_bytes"].asUInt64();
       next.blob_tier_promote_max_bytes = std::max<int64_t>(0, n);
+    }
+  }
+  if (args.isMember("memory") && args["memory"].isObject()) {
+    const Json::Value& mem = args["memory"];
+    if (mem.isMember("consolidate_interval_ms") && (mem["consolidate_interval_ms"].isInt64() || mem["consolidate_interval_ms"].isUInt64())) {
+      const int64_t n = mem["consolidate_interval_ms"].isInt64()
+        ? mem["consolidate_interval_ms"].asInt64()
+        : (int64_t)mem["consolidate_interval_ms"].asUInt64();
+      next.memory_consolidate_interval_ms = std::max<int64_t>(0, n);
+    }
+    if (mem.isMember("consolidate_daily_days") && (mem["consolidate_daily_days"].isInt() || mem["consolidate_daily_days"].isUInt())) {
+      const int n = mem["consolidate_daily_days"].isInt()
+        ? mem["consolidate_daily_days"].asInt()
+        : (int)mem["consolidate_daily_days"].asUInt();
+      next.memory_consolidate_daily_days = std::max(0, n);
+    }
+    if (mem.isMember("consolidate_keep_checkpoints") && (mem["consolidate_keep_checkpoints"].isInt() || mem["consolidate_keep_checkpoints"].isUInt())) {
+      const int n = mem["consolidate_keep_checkpoints"].isInt()
+        ? mem["consolidate_keep_checkpoints"].asInt()
+        : (int)mem["consolidate_keep_checkpoints"].asUInt();
+      next.memory_consolidate_keep_checkpoints = std::max(1, n);
+    }
+    if (mem.isMember("retention_interval_ms") && (mem["retention_interval_ms"].isInt64() || mem["retention_interval_ms"].isUInt64())) {
+      const int64_t n = mem["retention_interval_ms"].isInt64()
+        ? mem["retention_interval_ms"].asInt64()
+        : (int64_t)mem["retention_interval_ms"].asUInt64();
+      next.memory_retention_interval_ms = std::max<int64_t>(0, n);
+    }
+    if (mem.isMember("retention_daily_max_days") && (mem["retention_daily_max_days"].isInt() || mem["retention_daily_max_days"].isUInt())) {
+      const int n = mem["retention_daily_max_days"].isInt()
+        ? mem["retention_daily_max_days"].asInt()
+        : (int)mem["retention_daily_max_days"].asUInt();
+      next.memory_retention_daily_max_days = std::max(0, n);
+    }
+    if (mem.isMember("retention_daily_max_bytes") && (mem["retention_daily_max_bytes"].isInt64() || mem["retention_daily_max_bytes"].isUInt64())) {
+      const int64_t n = mem["retention_daily_max_bytes"].isInt64()
+        ? mem["retention_daily_max_bytes"].asInt64()
+        : (int64_t)mem["retention_daily_max_bytes"].asUInt64();
+      next.memory_retention_daily_max_bytes = std::max<int64_t>(0, n);
+    }
+    if (mem.isMember("retention_checkpoint_max_days") && (mem["retention_checkpoint_max_days"].isInt() || mem["retention_checkpoint_max_days"].isUInt())) {
+      const int n = mem["retention_checkpoint_max_days"].isInt()
+        ? mem["retention_checkpoint_max_days"].asInt()
+        : (int)mem["retention_checkpoint_max_days"].asUInt();
+      next.memory_retention_checkpoint_max_days = std::max(0, n);
+    }
+    if (mem.isMember("retention_checkpoint_max_count") && (mem["retention_checkpoint_max_count"].isInt() || mem["retention_checkpoint_max_count"].isUInt())) {
+      const int n = mem["retention_checkpoint_max_count"].isInt()
+        ? mem["retention_checkpoint_max_count"].asInt()
+        : (int)mem["retention_checkpoint_max_count"].asUInt();
+      next.memory_retention_checkpoint_max_count = std::max(0, n);
     }
   }
   if (args.isMember("edge_auth_required") && args["edge_auth_required"].isBool()) {
@@ -901,6 +957,18 @@ void handle_config_update_endpoint(
     bt["promote_after_ms"] = (Json::Int64)next.blob_tier_promote_after_ms;
     bt["promote_max_bytes"] = (Json::Int64)next.blob_tier_promote_max_bytes;
     o["blob_tier"] = bt;
+  }
+  {
+    Json::Value mem(Json::objectValue);
+    mem["consolidate_interval_ms"] = (Json::Int64)next.memory_consolidate_interval_ms;
+    mem["consolidate_daily_days"] = next.memory_consolidate_daily_days;
+    mem["consolidate_keep_checkpoints"] = next.memory_consolidate_keep_checkpoints;
+    mem["retention_interval_ms"] = (Json::Int64)next.memory_retention_interval_ms;
+    mem["retention_daily_max_days"] = next.memory_retention_daily_max_days;
+    mem["retention_daily_max_bytes"] = (Json::Int64)next.memory_retention_daily_max_bytes;
+    mem["retention_checkpoint_max_days"] = next.memory_retention_checkpoint_max_days;
+    mem["retention_checkpoint_max_count"] = next.memory_retention_checkpoint_max_count;
+    o["memory"] = mem;
   }
   o["edge_auth_required"] = next.edge_auth_required;
   o["edge_auth_require_ts"] = next.edge_auth_require_ts;

@@ -22,6 +22,7 @@ struct RuntimeConfigLoadOptions {
   bool override_upload_max_bytes = true;
   bool override_blob_store = true;
   bool override_blob_tier = true;
+  bool override_memory_retention = true;
 };
 
 // Loads both non-secret defaults and provider keys (best-effort).

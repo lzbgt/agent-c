@@ -14,6 +14,13 @@ void handle_memory_consolidate_endpoint(
   HttpResponse* resp
 );
 
+void handle_memory_retention_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
 // GET /api/v1/memory/checkpoints
 // Lists structured memory checkpoint snapshots under state_dir/memory/checkpoints.
 void handle_memory_checkpoints_endpoint(

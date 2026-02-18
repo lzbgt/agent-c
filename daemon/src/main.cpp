@@ -23,6 +23,7 @@
 #include "orchestrate_endpoints.h"
 #include "memory_endpoints.h"
 #include "memory_consolidator.h"
+#include "memory_retention.h"
 #include "ota_endpoints.h"
 #include "run_endpoints.h"
 #include "run_replay_endpoint.h"
@@ -255,6 +256,7 @@ int main(int argc, char** argv) {
   bool upload_max_bytes_set = false;
   bool blob_store_set = false;
   bool blob_tier_set = false;
+  bool memory_retention_set = false;
   bool cors_allow_credentials_set = false;
   bool cors_max_age_set = false;
   bool cors_routes_set = false;
@@ -811,6 +813,76 @@ int main(int argc, char** argv) {
         std::cerr << "Invalid --memory-consolidate-keep-checkpoints\n";
         return 2;
       }
+    } else if (a == "--memory-retention-interval-ms") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --memory-retention-interval-ms\n";
+        return 2;
+      }
+      try {
+        cfg.memory_retention_interval_ms = (int64_t)std::stoll(v);
+        if (cfg.memory_retention_interval_ms < 0) cfg.memory_retention_interval_ms = 0;
+        memory_retention_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --memory-retention-interval-ms\n";
+        return 2;
+      }
+    } else if (a == "--memory-retention-daily-max-days") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --memory-retention-daily-max-days\n";
+        return 2;
+      }
+      try {
+        cfg.memory_retention_daily_max_days = (int)std::stol(v);
+        if (cfg.memory_retention_daily_max_days < 0) cfg.memory_retention_daily_max_days = 0;
+        memory_retention_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --memory-retention-daily-max-days\n";
+        return 2;
+      }
+    } else if (a == "--memory-retention-daily-max-bytes") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --memory-retention-daily-max-bytes\n";
+        return 2;
+      }
+      try {
+        cfg.memory_retention_daily_max_bytes = (int64_t)std::stoll(v);
+        if (cfg.memory_retention_daily_max_bytes < 0) cfg.memory_retention_daily_max_bytes = 0;
+        memory_retention_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --memory-retention-daily-max-bytes\n";
+        return 2;
+      }
+    } else if (a == "--memory-retention-checkpoint-max-days") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --memory-retention-checkpoint-max-days\n";
+        return 2;
+      }
+      try {
+        cfg.memory_retention_checkpoint_max_days = (int)std::stol(v);
+        if (cfg.memory_retention_checkpoint_max_days < 0) cfg.memory_retention_checkpoint_max_days = 0;
+        memory_retention_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --memory-retention-checkpoint-max-days\n";
+        return 2;
+      }
+    } else if (a == "--memory-retention-checkpoint-max-count") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --memory-retention-checkpoint-max-count\n";
+        return 2;
+      }
+      try {
+        cfg.memory_retention_checkpoint_max_count = (int)std::stol(v);
+        if (cfg.memory_retention_checkpoint_max_count < 0) cfg.memory_retention_checkpoint_max_count = 0;
+        memory_retention_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --memory-retention-checkpoint-max-count\n";
+        return 2;
+      }
     } else if (a == "--ota-enable") {
       cfg.ota_enable = true;
     } else if (a == "--ota-command") {
@@ -1132,6 +1204,11 @@ int main(int argc, char** argv) {
         << "  --memory-consolidate-interval-ms <n>   Run memory consolidation every n ms (default: 0=disabled)\n"
         << "  --memory-consolidate-daily-days <n>    Scan last n daily memory files for @mem markers (default: 14)\n"
         << "  --memory-consolidate-keep-checkpoints <n>  Retain at most n structured checkpoints (default: 100)\n"
+        << "  --memory-retention-interval-ms <n>    Run memory retention every n ms (default: 0=disabled)\n"
+        << "  --memory-retention-daily-max-days <n> Keep at most n daily memory files (default: 0=disabled)\n"
+        << "  --memory-retention-daily-max-bytes <n>  Cap daily memory bytes (default: 0=disabled)\n"
+        << "  --memory-retention-checkpoint-max-days <n>  Delete checkpoints older than n days (default: 0=disabled)\n"
+        << "  --memory-retention-checkpoint-max-count <n>  Keep at most n checkpoints (default: 0=disabled)\n"
         << "  --ota-enable            Enable OTA update endpoint (default: disabled)\n"
         << "  --ota-command <cmd>     Command to apply OTA plan (see docs/spec/ota/agentd_ota_v0.md)\n"
         << "  --ota-command-timeout-ms <n>  OTA command timeout in ms (default: 300000; 0 disables)\n"
@@ -1588,6 +1665,41 @@ int main(int argc, char** argv) {
       if (cfg.memory_consolidate_keep_checkpoints < 1) cfg.memory_consolidate_keep_checkpoints = 1;
     } catch (...) {}
   }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_INTERVAL_MS")) {
+    try {
+      cfg.memory_retention_interval_ms = (int64_t)std::stoll(ms);
+      if (cfg.memory_retention_interval_ms < 0) cfg.memory_retention_interval_ms = 0;
+      memory_retention_set = true;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_DAILY_MAX_DAYS")) {
+    try {
+      cfg.memory_retention_daily_max_days = (int)std::stol(ms);
+      if (cfg.memory_retention_daily_max_days < 0) cfg.memory_retention_daily_max_days = 0;
+      memory_retention_set = true;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_DAILY_MAX_BYTES")) {
+    try {
+      cfg.memory_retention_daily_max_bytes = (int64_t)std::stoll(ms);
+      if (cfg.memory_retention_daily_max_bytes < 0) cfg.memory_retention_daily_max_bytes = 0;
+      memory_retention_set = true;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_CHECKPOINT_MAX_DAYS")) {
+    try {
+      cfg.memory_retention_checkpoint_max_days = (int)std::stol(ms);
+      if (cfg.memory_retention_checkpoint_max_days < 0) cfg.memory_retention_checkpoint_max_days = 0;
+      memory_retention_set = true;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_CHECKPOINT_MAX_COUNT")) {
+    try {
+      cfg.memory_retention_checkpoint_max_count = (int)std::stol(ms);
+      if (cfg.memory_retention_checkpoint_max_count < 0) cfg.memory_retention_checkpoint_max_count = 0;
+      memory_retention_set = true;
+    } catch (...) {}
+  }
   if (const char* s = getenv_s("AGENTD_OTA_ENABLE")) {
     cfg.ota_enable = env_truthy(s);
   }
@@ -1670,6 +1782,7 @@ int main(int argc, char** argv) {
     opt.override_upload_max_bytes = !upload_max_bytes_set;
     opt.override_blob_store = !blob_store_set;
     opt.override_blob_tier = !blob_tier_set;
+    opt.override_memory_retention = !memory_retention_set;
     if (!load_runtime_config_best_effort(db, &cfg, &err, opt)) {
       std::cerr << "Warning: failed to load runtime config from DB: " << err << "\n";
     }
@@ -1841,6 +1954,18 @@ int main(int argc, char** argv) {
     }
   }
 
+  // Memory retention (background; disabled by default).
+  MemoryRetentionEngine mem_retention_engine(
+    [&cfg_store]() { return cfg_store.snapshot(); },
+    MemoryRetentionEngine::Options{}
+  );
+  {
+    std::string merr;
+    if (!mem_retention_engine.start(&merr)) {
+      std::cerr << "Warning: failed to start memory retention engine: " << merr << "\n";
+    }
+  }
+
   // Edge task deadline sweeper (UM‑EEM deadlines/timeouts; platform-side best-effort).
   EdgeDeadlineSweeperEngine edge_deadline_engine(
     db_or_null,
@@ -1980,6 +2105,10 @@ int main(int argc, char** argv) {
   server.handle("POST", "/api/v1/memory/consolidate", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_memory_consolidate_endpoint(cur, cors_cfg, req, resp);
+  });
+  server.handle("POST", "/api/v1/memory/retention/enforce", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_memory_retention_endpoint(cur, cors_cfg, req, resp);
   });
   server.handle("GET", "/api/v1/memory/checkpoints", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();

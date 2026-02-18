@@ -121,6 +121,21 @@ Notes:
     - write intermediate files under `work/`
     - write user-facing artifacts under `out/` and then call `artifact_register` with `path: "out/<file>"`.
 
+### Memory (durable + deterministic)
+
+- `POST /api/v1/memory/consolidate`
+  - promotes explicit `@mem` markers from daily logs into `STRUCTURED.md`
+- `POST /api/v1/memory/retention/enforce`
+  - deterministic retention (daily logs + checkpoints); supports `dry_run`
+- `GET /api/v1/memory/checkpoints`
+  - lists rolling structured memory snapshots with sha256
+- `GET /api/v1/memory/index`
+  - lightweight index of memory files (size/line/token estimates)
+- `GET /api/v1/memory/correlate`
+  - trace_id correlation over structured checkpoints (bounded)
+- `GET /api/v1/memory/query`
+  - deterministic query over newest structured checkpoint (bounded)
+
 ### Sessions (messages / audit / artifacts / client events)
 
 - `GET /api/v1/sessions`

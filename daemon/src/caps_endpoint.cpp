@@ -171,6 +171,11 @@ void handle_caps_endpoint(
     mem["consolidate_interval_ms"] = Json::Int64(cfg.memory_consolidate_interval_ms);
     mem["consolidate_daily_days"] = cfg.memory_consolidate_daily_days;
     mem["consolidate_keep_checkpoints"] = cfg.memory_consolidate_keep_checkpoints;
+    mem["retention_interval_ms"] = Json::Int64(cfg.memory_retention_interval_ms);
+    mem["retention_daily_max_days"] = cfg.memory_retention_daily_max_days;
+    mem["retention_daily_max_bytes"] = Json::Int64(cfg.memory_retention_daily_max_bytes);
+    mem["retention_checkpoint_max_days"] = cfg.memory_retention_checkpoint_max_days;
+    mem["retention_checkpoint_max_count"] = cfg.memory_retention_checkpoint_max_count;
     features["memory"] = mem;
   }
   {

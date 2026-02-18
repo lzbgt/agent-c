@@ -846,6 +846,39 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/memory/retention/enforce:
+    post:
+      tags: [memory]
+      summary: Enforce deterministic memory retention
+      description: |
+        Applies a deterministic retention policy to daily memory logs and structured checkpoints.
+        Supports `dry_run` and per-call overrides.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MemoryRetentionEnforceRequest"
+      responses:
+        "200":
+          description: Retention report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemoryRetentionEnforceResponse"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Retention failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/memory/checkpoints:
     get:
       tags: [memory]
@@ -1997,6 +2030,15 @@ components:
         memory:
           type: object
           additionalProperties: true
+          properties:
+            consolidate_interval_ms: { type: integer, format: int64 }
+            consolidate_daily_days: { type: integer, format: int32 }
+            consolidate_keep_checkpoints: { type: integer, format: int32 }
+            retention_interval_ms: { type: integer, format: int64 }
+            retention_daily_max_days: { type: integer, format: int32 }
+            retention_daily_max_bytes: { type: integer, format: int64 }
+            retention_checkpoint_max_days: { type: integer, format: int32 }
+            retention_checkpoint_max_count: { type: integer, format: int32 }
 
     AgentdConfigUpdateRequest:
       type: object
@@ -2130,6 +2172,18 @@ components:
           $ref: "#/components/schemas/BlobStoreSecretsUpdate"
         blob_tier:
           $ref: "#/components/schemas/BlobTierConfig"
+        memory:
+          type: object
+          additionalProperties: false
+          properties:
+            consolidate_interval_ms: { type: integer, format: int64 }
+            consolidate_daily_days: { type: integer, format: int32 }
+            consolidate_keep_checkpoints: { type: integer, format: int32 }
+            retention_interval_ms: { type: integer, format: int64 }
+            retention_daily_max_days: { type: integer, format: int32 }
+            retention_daily_max_bytes: { type: integer, format: int64 }
+            retention_checkpoint_max_days: { type: integer, format: int32 }
+            retention_checkpoint_max_count: { type: integer, format: int32 }
 
     AgentdConfigUpdateResponse:
       type: object
@@ -2162,6 +2216,18 @@ components:
         edge_auth_kid_policy: { type: string }
         edge_attest_required: { type: boolean }
         edge_attest_require_sig: { type: boolean }
+        memory:
+          type: object
+          additionalProperties: true
+          properties:
+            consolidate_interval_ms: { type: integer, format: int64 }
+            consolidate_daily_days: { type: integer, format: int32 }
+            consolidate_keep_checkpoints: { type: integer, format: int32 }
+            retention_interval_ms: { type: integer, format: int64 }
+            retention_daily_max_days: { type: integer, format: int32 }
+            retention_daily_max_bytes: { type: integer, format: int64 }
+            retention_checkpoint_max_days: { type: integer, format: int32 }
+            retention_checkpoint_max_count: { type: integer, format: int32 }
         edge_auth_hmac_keys_set:
           type: integer
           format: int64
@@ -2262,6 +2328,41 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/MemoryCheckpointMeta"
+
+    MemoryRetentionEnforceRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        dry_run: { type: boolean }
+        daily_max_days: { type: integer, format: int32 }
+        daily_max_bytes: { type: integer, format: int64 }
+        checkpoint_max_days: { type: integer, format: int32 }
+        checkpoint_max_count: { type: integer, format: int32 }
+
+    MemoryRetentionEnforceResponse:
+      type: object
+      required: [ok, generated_utc_ms, dry_run, daily_max_days, daily_max_bytes, checkpoint_max_days, checkpoint_max_count]
+      properties:
+        ok: { type: boolean }
+        generated_utc_ms: { type: integer, format: int64 }
+        dry_run: { type: boolean }
+        daily_max_days: { type: integer, format: int32 }
+        daily_max_bytes: { type: integer, format: int64 }
+        checkpoint_max_days: { type: integer, format: int32 }
+        checkpoint_max_count: { type: integer, format: int32 }
+        daily_deleted_count: { type: integer, format: int64 }
+        checkpoint_deleted_count: { type: integer, format: int64 }
+        daily_bytes_before: { type: integer, format: int64 }
+        daily_bytes_after: { type: integer, format: int64 }
+        daily_deleted:
+          type: array
+          items: { type: string }
+        checkpoint_deleted:
+          type: array
+          items: { type: string }
+        errors:
+          type: array
+          items: { type: string }
 
     MemoryIndexRow:
       type: object
