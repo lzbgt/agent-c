@@ -7,6 +7,10 @@ type DbMessageRow = {
   content?: string;
   content_truncated?: boolean;
   content_bytes?: number;
+  mm_json?: string;
+  mm_json_truncated?: boolean;
+  mm_bytes?: number;
+  mm_truncated?: number;
   created_unix_ms?: number;
 };
 
@@ -23,6 +27,20 @@ function clip(s: string, max = 200) {
   const t = String(s ?? "");
   if (t.length <= max) return t;
   return `${t.slice(0, max - 1)}…`;
+}
+
+function mmLabel(m: DbMessageRow) {
+  const mmJson = typeof m.mm_json === "string" ? m.mm_json : "";
+  const mmBytes = typeof m.mm_bytes === "number" ? m.mm_bytes : mmJson.length;
+  const hasMm = mmBytes > 0 || mmJson.length > 0;
+  if (!hasMm) return "";
+  const truncated = m.mm_json_truncated ? true : false;
+  const storedTrunc = m.mm_truncated === 1;
+  const parts: string[] = [];
+  if (truncated) parts.push("resp_trunc");
+  if (storedTrunc) parts.push("stored_trunc");
+  parts.push(`${mmBytes}b`);
+  return parts.join(" ");
 }
 
 export default function DbMessagesView({ messages }: { messages: DbMessageRow[] }) {
@@ -42,6 +60,7 @@ export default function DbMessagesView({ messages }: { messages: DbMessageRow[] 
                 <th className="px-3 py-2">idx</th>
                 <th className="px-3 py-2">role</th>
                 <th className="px-3 py-2">ts</th>
+                <th className="px-3 py-2">mm</th>
                 <th className="px-3 py-2">content</th>
               </tr>
             </thead>
@@ -56,11 +75,13 @@ export default function DbMessagesView({ messages }: { messages: DbMessageRow[] 
                 const titleParts: string[] = [];
                 if (truncated) titleParts.push("truncated");
                 if (typeof bytes === "number") titleParts.push(`bytes=${bytes}`);
+                const mm = mmLabel(m);
                 return (
                   <tr key={`${idx}_${i}`} className="hover:bg-white/5" title={titleParts.join(" ")}>
                     <td className="px-3 py-2 font-mono text-white/80">{idx}</td>
                     <td className="px-3 py-2 text-white/60">{role}</td>
                     <td className="px-3 py-2 font-mono text-white/60">{fmtTs(created)}</td>
+                    <td className="px-3 py-2 font-mono text-white/60">{mm}</td>
                     <td className="px-3 py-2 text-white/60">{clip(content, 260)}</td>
                   </tr>
                 );
@@ -72,4 +93,3 @@ export default function DbMessagesView({ messages }: { messages: DbMessageRow[] 
     </div>
   );
 }
-
