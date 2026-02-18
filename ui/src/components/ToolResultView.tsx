@@ -227,6 +227,7 @@ export default function ToolResultView({
           : null;
     const ok = typeof parsed?.ok === "boolean" ? parsed.ok : null;
     const error = typeof parsed?.error === "string" ? parsed.error : null;
+    const protocolViolation = parsed?.protocol_violation === true;
     const timedOut = typeof parsed?.data?.timed_out === "boolean" ? parsed.data.timed_out : null;
     const waitForType = typeof parsed?.data?.wait_for_type === "string" ? String(parsed.data.wait_for_type) : null;
     const waitTimeoutMs = typeof parsed?.data?.timeout_ms === "number" ? parsed.data.timeout_ms : null;
@@ -271,6 +272,9 @@ export default function ToolResultView({
           {exitCode !== null ? <span className="rounded-md bg-white/10 px-2 py-0.5">exit_code={exitCode}</span> : null}
           {toolPath ? <span className="rounded-md bg-white/10 px-2 py-0.5">path={toolPath}</span> : null}
           {timedOut === true ? <span className="rounded-md bg-amber-500/10 px-2 py-0.5 text-amber-200">timed_out</span> : null}
+          {protocolViolation ? (
+            <span className="rounded-md bg-rose-500/10 px-2 py-0.5 text-rose-200">protocol_violation</span>
+          ) : null}
           {error ? <span className="rounded-md bg-rose-500/10 px-2 py-0.5 text-rose-200">{error}</span> : null}
 
           {hasOutput ? (
@@ -325,6 +329,16 @@ export default function ToolResultView({
             <div className="mt-1 text-amber-100/80">
               The client may not have been connected (or may have missed the request). If this was a client RPC flow, prefer
               requesting a deterministic follow-up RPC (dom_query/entity_query/state_snapshot) instead of looping on retries.
+            </div>
+          </div>
+        ) : null}
+
+        {protocolViolation ? (
+          <div className="mb-2 rounded-md border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-100/90">
+            <div className="font-semibold">Tool server protocol violation</div>
+            <div className="mt-1 text-rose-100/80">
+              The tool server returned malformed JSON or exceeded the response size cap. Agentd treats this as a hard
+              protocol error and restarts the server before the next call.
             </div>
           </div>
         ) : null}

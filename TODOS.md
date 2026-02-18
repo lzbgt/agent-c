@@ -895,6 +895,7 @@ Status:
   - restart-with-backoff if the server dies (does **not** auto-retry the same tool call)
   - Proof: `ctest` includes `agentd_tool_server_smoke`, `agentd_tool_server_ping_smoke`, and `agentd_tool_server_restart_smoke`.
 - Shipped: protocol violations mark tool call errors with `protocol_violation=true` (invalid JSON / oversized responses).
+- Shipped: WebUI tool result view surfaces protocol violations with a dedicated warning panel.
 
 Remaining:
 - Remote device bridges:
