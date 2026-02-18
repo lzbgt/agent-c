@@ -85,7 +85,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Promoted goals (explicit goals; no non-goals)
 
-Weights updated 2026-02-18: prioritize **streaming stability** (OpenRouter pins + provider matrix upkeep + provider key verification),
+Weights updated 2026-02-18 (memory leak resolved): prioritize **streaming stability** (OpenRouter pins + provider matrix upkeep + provider key verification),
 then **tool plugin isolation** (sandbox/host policy hardening),
 with **audio streaming** following once streaming UX is stable.
 
@@ -503,7 +503,7 @@ with **audio streaming** following once streaming UX is stable.
 
 ### Reweighted next 5 (highest compound impact)
 
-Priority order (reweighted after event-triggered durable orchestration shipped; sections below are kept stable for diff readability):
+Priority order (reweighted after event-triggered durable orchestration shipped; memory leak resolved; sections below are kept stable for diff readability):
 
 1) **Agent collaboration v2.2** — unify fan-out/join patterns across edge + LLM tasks (edge_parallel + delegate_parallel),
    plus event-triggered durable workflows as a first-class collaboration primitive.

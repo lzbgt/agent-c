@@ -1,9 +1,11 @@
 #pragma once
 
+struct OpenAIClientConfig;
+
 namespace agentd {
 
+using ::OpenAIClientConfig;
 struct DaemonConfig;
-struct OpenAIClientConfig;
 
 void apply_provider_key_fallback(
   const DaemonConfig& daemon_cfg,

@@ -6,6 +6,7 @@
 #include "http_util.h"
 #include "json_util.h"
 #include "session_id_util.h"
+#include "string_util.h"
 #include "workflow_endpoint_util.h"
 #include "workflow_submit_macros.h"
 #include "workflow_submit_task_builders.h"
@@ -26,6 +27,12 @@
 
 namespace agentd {
 namespace {
+
+static std::string json_stringify_compact(const Json::Value& v) {
+  Json::StreamWriterBuilder wb;
+  wb["indentation"] = "";
+  return Json::writeString(wb, v);
+}
 
 static int64_t unix_ms_now() {
   return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(

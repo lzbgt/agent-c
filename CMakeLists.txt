@@ -322,6 +322,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
   if(AGENTD_ENABLE_HTTP)
     add_executable(agentd
       daemon/src/main.cpp
+      daemon/src/daemon_cli.cpp
     )
 
     target_compile_options(agentd PRIVATE
