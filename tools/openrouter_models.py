@@ -44,13 +44,52 @@ def read_project_local_md_key(provider: str) -> Optional[str]:
     return None
 
 
+def read_not_in_repo_key(provider: str) -> Optional[str]:
+    not_in_repo = PROJECT_ROOT / ".not_in_repo"
+    if not_in_repo.exists():
+        pat = re.compile(rf"^\s*-\s*{re.escape(provider)}:\s*(\S+)\s*$")
+        for line in not_in_repo.read_text(encoding="utf-8", errors="replace").splitlines():
+            m = pat.match(line)
+            if m:
+                return m.group(1)
+
+        env_pat = re.compile(
+            r"^\s*(export\s+)?(OPENROUTER_API_KEY|OPENAI_API_KEY)\s*=\s*['\"]?(sk-[A-Za-z0-9_.-]+)['\"]?\s*(#.*)?$"
+        )
+        for line in not_in_repo.read_text(encoding="utf-8", errors="replace").splitlines():
+            m = env_pat.match(line)
+            if m:
+                return m.group(3)
+    return None
+
+
+def read_home_env_key() -> Optional[str]:
+    env_path = pathlib.Path.home() / ".env"
+    if not env_path.exists():
+        return None
+    env_pat = re.compile(
+        r"^\s*(export\s+)?(OPENROUTER_API_KEY|OPENAI_API_KEY)\s*=\s*['\"]?(sk-[A-Za-z0-9_.-]+)['\"]?\s*(#.*)?$"
+    )
+    for line in env_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = env_pat.match(line)
+        if m:
+            return m.group(3)
+    return None
+
+
 def get_openrouter_key(args_key: Optional[str]) -> Optional[str]:
     if args_key:
         return args_key
     env_key = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("OPENAI_API_KEY")
     if env_key:
         return env_key
-    return read_project_local_md_key("openrouter")
+    not_in_repo_key = read_not_in_repo_key("openrouter")
+    if not_in_repo_key:
+        return not_in_repo_key
+    project_key = read_project_local_md_key("openrouter")
+    if project_key:
+        return project_key
+    return read_home_env_key()
 
 
 def fetch_json(url: str, headers: Dict[str, str], timeout_s: int, use_proxy: bool) -> Dict[str, Any]:
