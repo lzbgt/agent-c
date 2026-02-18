@@ -33,6 +33,7 @@ add_library(agent_core STATIC
   core/src/agent_session_codec.c
   core/src/agent_sha256.c
   core/src/agent_sse_parser.c
+  core/src/agent_stream_decoder.c
   core/src/agent_string.c
   core/src/agent_tool_loop.c
   core/src/agent_tool_provider.c
@@ -360,6 +361,7 @@ add_executable(agent_core_tests
   tests/test_session.c
   tests/test_session_codec.c
   tests/test_sse_parser.c
+  tests/test_stream_decoder.c
   tests/test_tool_loop.c
   tests/test_tool_loop_memory_flush.c
   tests/test_runner.c

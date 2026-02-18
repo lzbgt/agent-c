@@ -84,8 +84,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Promoted goals (explicit goals; no non-goals)
 
-Weights updated 2026-02-18: prioritize the **streaming foundation** (tool-call coverage + core interface),
-with **multimodal transcript hardening** (tests + schema alignment) as the next follow-on now that
+Weights updated 2026-02-18: prioritize the **streaming foundation** (core decoder + host integration + model pinning),
+with **multimodal transcript hardening** (tests + schema alignment) next now that
 **dynamic memory policy** and **OTA continuity guardrails** are in place.
 
 - [x] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker + agentd implemented; tests added).
@@ -96,6 +96,7 @@ with **multimodal transcript hardening** (tests + schema alignment) as the next 
   - [x] Core tool-loop test: validates `assistant_mm_json` event payloads for prefix parsing + byte metadata.
 - [ ] Streaming: core-layer streaming interface + provider compatibility matrix with full variant coverage.
   - [x] Core SSE parser (`agent_sse_parser_t`) shared by CLI/daemon streaming paths.
+  - [x] Core stream decoder (`agent_stream_decoder_t`) + unit tests (`tests/test_stream_decoder.c`).
   - [x] Compatibility matrix for streaming variants + provider coverage in `docs/STREAMING.md`.
   - [x] OpenRouter + Moonshot streaming assistant smoke tests (key-gated).
   - [x] OpenRouter + Moonshot streaming tool-call smoke tests (key-gated).
@@ -103,6 +104,7 @@ with **multimodal transcript hardening** (tests + schema alignment) as the next 
   - [ ] Pin known-good OpenRouter streaming models (assistant + tool-call) to avoid silent no-delta failures.
   - [x] OpenRouter streaming probe script to discover stable models.
   - [x] Draft core streaming interface spec (`docs/spec/streaming/core_stream_v1.md`).
+  - [ ] Wire CLI/daemon streaming through core stream decoder (replace duplicated host logic).
 - [x] Memory architecture: dynamic retention policy (decay/salience/recaps) informed by claude-mem research + docs.
   - [x] Memory retention policy enforcement (daily logs + checkpoints) + endpoint + background engine.
   - [x] Structured memory deprecate pass (policy-driven; bounded) with broker fan-out.

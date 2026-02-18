@@ -243,6 +243,8 @@ int main(void) {
   test_tool_loop_memory_flush_module();
   extern void test_sse_parser_module(void);
   test_sse_parser_module();
+  extern void test_stream_decoder_module(void);
+  test_stream_decoder_module();
   extern void test_edge_interop_module(void);
   test_edge_interop_module();
   extern void test_json_c14n_module(void);

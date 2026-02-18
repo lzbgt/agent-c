@@ -57,6 +57,9 @@ Shared decoder (host library, used by both CLI + daemon):
 Core streaming interface (design draft):
 
 - `docs/spec/streaming/core_stream_v1.md`
+- Core reference implementation (agent-core):
+  - `core/include/agent/stream_decoder.h`
+  - `core/src/agent_stream_decoder.c`
 
 ## Event schema notes
 

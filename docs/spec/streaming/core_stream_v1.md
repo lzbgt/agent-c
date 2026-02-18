@@ -1,4 +1,4 @@
-# Core Streaming Interface v1 (Draft)
+# Core Streaming Interface v1
 
 Date: 2026-02-18
 
@@ -6,6 +6,9 @@ This document defines the **core-layer streaming interface** for OpenAI-compatib
 Chat Completions streaming (`stream: true`). It is designed to be **transport-agnostic**
 and **JSON-parser-agnostic**, so the core can remain small and portable while hosts
 implement provider-specific parsing.
+
+Status: **implemented** in `core/include/agent/stream_decoder.h` and
+`core/src/agent_stream_decoder.c`.
 
 ## Goals
 
@@ -45,32 +48,41 @@ implement provider-specific parsing.
 The host decodes each SSE `data` JSON payload into:
 
 ```
+typedef struct agent_stream_tool_call_delta {
+  size_t index;
+  agent_string_t id;
+  agent_string_t name;
+  agent_string_t arguments_delta;
+} agent_stream_tool_call_delta_t;
+
 typedef struct agent_stream_chunk {
-  int has_delta_text;
+  uint8_t has_delta_text;
   agent_string_t delta_text;
 
+  agent_stream_tool_call_delta_t* tool_calls;
   size_t tool_calls_count;
-  agent_tool_call_delta_t* tool_calls;  // index, id, name, arguments_delta
 
-  int has_finish_reason;
+  uint8_t has_finish_reason;
   agent_string_t finish_reason;
 
-  int has_usage;
-  agent_usage_t usage;  // prompt/completion/total when present
+  uint8_t has_usage;
+  uint64_t prompt_tokens;
+  uint64_t completion_tokens;
+  uint64_t total_tokens;
 
-  int has_error;
-  agent_string_t error; // provider-specific error string when present
+  uint8_t has_error;
+  agent_string_t error_message;
 } agent_stream_chunk_t;
 ```
 
 Notes:
-- `agent_string_t` and `agent_usage_t` are core types.
+- `agent_string_t` is a core type.
 - Tool-call deltas mirror OpenAI `delta.tool_calls` (index + partial args).
+- The decoder takes ownership of chunk allocations and calls `agent_stream_chunk_free`.
 
 ### Stream events (core-emitted)
 
-Core emits events via callback, with a stable event envelope already used by
-run/workflow events:
+Core emits events via callback as `type` + `data_json` payload strings:
 
 - `assistant_delta` (text)
 - `tool_call_delta` (optional; when a partial tool-call fragment arrives)
@@ -79,7 +91,9 @@ run/workflow events:
 - `error`
 - `end`
 
-## Proposed C API (sketch)
+`assistant_delta` payloads include `{ delta, step, epoch }` to align with tool-loop event semantics.
+
+## C API (implemented)
 
 ```
 typedef struct agent_stream_decoder agent_stream_decoder_t;
@@ -93,13 +107,16 @@ typedef agent_status_t (*agent_stream_decode_fn)(
 
 typedef void (*agent_stream_event_fn)(
   void* ctx,
-  const agent_event_t* event
+  const char* type,
+  const char* data_json
 );
 
 typedef struct agent_stream_config {
   size_t max_tool_calls_total;
   size_t max_tool_call_args_chars;
   size_t max_events_per_feed;
+  uint64_t step;
+  uint64_t epoch;
 } agent_stream_config_t;
 
 void agent_stream_decoder_init(
@@ -116,6 +133,9 @@ agent_status_t agent_stream_decoder_feed(
   const char* bytes,
   size_t len
 );
+
+void agent_stream_decoder_reset(agent_stream_decoder_t* dec);
+void agent_stream_decoder_free(agent_stream_decoder_t* dec);
 ```
 
 The decoder:
@@ -125,12 +145,13 @@ The decoder:
 
 ## Limits and error behavior
 
-- If tool-call args exceed `max_tool_call_args_chars`, emit `error` and return `AGENT_ERR_LIMIT`.
-- If tool-call count exceeds `max_tool_calls_total`, emit `error` and return `AGENT_ERR_LIMIT`.
-- If `decode_fn` reports an error, emit `error` and return `AGENT_ERR_INVALID`.
+- If tool-call args exceed `max_tool_call_args_chars`, return `AGENT_ERR_LIMIT`.
+- If tool-call count exceeds `max_tool_calls_total`, return `AGENT_ERR_LIMIT`.
+- If `decode_fn` reports an error, decoding stops and returns that error.
 
 ## Testing strategy
 
+- Unit test: `tests/test_stream_decoder.c` (synthetic SSE inputs; validates event payloads).
 - Fixture tests with recorded SSE chunks for:
   - assistant deltas
   - tool-call delta assembly
@@ -142,5 +163,5 @@ The decoder:
 
 1) Extract the existing OpenAI stream decoder into a host adapter that fills
    `agent_stream_chunk_t`.
-2) Add core decoder + tests using fixture SSE inputs.
+2) Done: core decoder + unit tests using synthetic SSE inputs.
 3) Wire CLI/daemon streaming to use the core decoder, preserving current output.
