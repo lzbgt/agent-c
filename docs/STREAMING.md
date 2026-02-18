@@ -86,3 +86,18 @@ Provider-level coverage is tracked by runnable smoke tests. These are **evidence
 | DeepSeek (live) | Yes (assistant text) | Yes (tool calls) | Unknown | `tests/agentd_stream_assistant_smoke.sh`, `tests/agentd_deepseek_stream_tool_call_smoke.sh` (requires `DEEPSEEK_API_KEY`) |
 | OpenRouter (live) | Yes (assistant text) | Yes (tool calls) | Unknown | `tests/agentd_openrouter_stream_assistant_smoke.sh`, `tests/agentd_openrouter_stream_tool_call_smoke.sh` (requires `OPENROUTER_API_KEY`) |
 | Moonshot (live) | Yes (assistant text) | Yes (tool calls) | Unknown | `tests/agentd_moonshot_stream_assistant_smoke.sh`, `tests/agentd_moonshot_stream_tool_call_smoke.sh` (requires `KIMI_API_KEY_CN` / `MOONSHOT_API_KEY`) |
+
+## Provider model pinning (OpenRouter)
+
+OpenRouter models can change behavior or deprecate streaming. To identify **known-good** models for streaming
+assistant deltas and tool-call deltas, use the probe script:
+
+```bash
+tools/probe_openrouter_stream_models.sh build/agentd
+```
+
+The script produces a JSON summary under `build/openrouter_probe/` and prints a list of models that pass
+both assistant and tool-call streaming checks. Pin those in:
+
+- `AGENT_TEST_OPENROUTER_STREAM_MODEL`
+- `AGENT_TEST_OPENROUTER_STREAM_TOOL_MODEL`
