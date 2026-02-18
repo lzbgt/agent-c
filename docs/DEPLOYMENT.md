@@ -22,7 +22,8 @@ Direct `agentd` exposure is supported, but you must harden it (see below).
 - **Auth**: use `--auth-token` (required for non-loopback binds).
 - **CORS**: allowlist UI origins with `--cors-origin <https://ui.example>`.
 - **State**: set `--state-dir` and `--db-path` on a persistent disk.
-- **Secrets**: keep provider keys out of the UI; load via `.not_in_repo` or env.
+- **Secrets**: keep provider keys out of the UI; load via `.not_in_repo` or env. For service contexts,
+  `AGENTD_DOTENV_PATH=/path/to/.env` can point the daemon at a specific dotenv file.
 - **HTTP tasks**: keep `--workflow-enable-http-tasks` **off** unless needed; if enabled, set:
   - `--workflow-http-allow-host ...` and/or `--workflow-http-allow-cidr ...`
   - `--workflow-http-deny-private` (recommended)
@@ -88,6 +89,7 @@ Environment overrides:
 - `AGENTD_BIN` (default `./build/agentd`)
 - `AGENTD_HOST`, `AGENTD_PORT`
 - `AGENTD_STATE_DIR`, `AGENTD_DB_PATH`
+- `AGENTD_DOTENV_PATH` (optional override for provider key discovery)
 - `AGENTD_AUTH_TOKEN`, `AGENTD_AUTH_COOKIE`
 - `AGENTD_TOOLS`, `AGENTD_YOLO`
 - `AGENTD_HOST_SCOPE`, `AGENTD_TOOLS_ROOT`
