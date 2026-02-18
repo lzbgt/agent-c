@@ -16,6 +16,7 @@ can validate and reason about events deterministically.
 
 - JSON Schema: `docs/spec/run-events/schema/run_event_v1.schema.json`
 - Fixtures: `docs/spec/run-events/fixtures/run_events_v1.jsonl`
+- CI: `run_events_spec_sanity_tests` validates schema presence and fixture envelopes.
 
 ## Envelope (v1)
 
