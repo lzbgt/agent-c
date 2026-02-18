@@ -37,6 +37,7 @@ This keeps plugin loading out of the daemon process while retaining the same too
 - If the plugin host crashes, `agentd` treats it as a tool server failure and will restart it for the next tool call
   (bounded by the existing backoff policy).
 - Tool server timeouts and max-line limits apply to plugin-host responses.
+- The plugin host rejects tool results larger than 4 MiB before JSON parsing to keep memory usage bounded.
 
 ### Resource limits (best-effort)
 
