@@ -61,6 +61,7 @@ static bool is_nonneg_int(const Json::Value& v) {
 static const char* expected_schema_for_type(const std::string& type) {
   if (type == "assistant_delta") return "run_event_payload_assistant_delta_v1";
   if (type == "assistant_message") return "run_event_payload_assistant_message_v1";
+  if (type == "user_message") return "run_event_payload_user_message_v1";
   if (type == "tool_call") return "run_event_payload_tool_call_v1";
   if (type == "tool_result") return "run_event_payload_tool_result_v1";
   if (type == "llm_usage") return "run_event_payload_llm_usage_v1";
@@ -197,6 +198,30 @@ static bool validate_payload_assistant_message(const Json::Value& data, std::str
   }
   if (data.isMember("assistant_mm_truncated") && !is_nonneg_int(data["assistant_mm_truncated"])) {
     if (out_err) *out_err = "assistant_message.data.assistant_mm_truncated must be integer >= 0";
+    return false;
+  }
+  return true;
+}
+
+static bool validate_payload_user_message(const Json::Value& data, std::string* out_err) {
+  if (!data.isObject()) {
+    if (out_err) *out_err = "user_message data must be object";
+    return false;
+  }
+  if (!data.isMember("user_content") || !data["user_content"].isString()) {
+    if (out_err) *out_err = "user_message.data.user_content must be string";
+    return false;
+  }
+  if (data.isMember("user_mm_json") && !data["user_mm_json"].isString()) {
+    if (out_err) *out_err = "user_message.data.user_mm_json must be string";
+    return false;
+  }
+  if (data.isMember("user_mm_bytes") && !is_nonneg_int(data["user_mm_bytes"])) {
+    if (out_err) *out_err = "user_message.data.user_mm_bytes must be integer >= 0";
+    return false;
+  }
+  if (data.isMember("user_mm_truncated") && !is_nonneg_int(data["user_mm_truncated"])) {
+    if (out_err) *out_err = "user_message.data.user_mm_truncated must be integer >= 0";
     return false;
   }
   return true;
@@ -787,6 +812,7 @@ static bool validate_event_payload(const Json::Value& v, std::string* out_err) {
 
   if (type == "assistant_delta") return validate_payload_assistant_delta(data, out_err);
   if (type == "assistant_message") return validate_payload_assistant_message(data, out_err);
+  if (type == "user_message") return validate_payload_user_message(data, out_err);
   if (type == "tool_call") return validate_payload_tool_call(data, out_err);
   if (type == "tool_result") return validate_payload_tool_result(data, out_err);
   if (type == "llm_usage") return validate_payload_llm_usage(data, out_err);
@@ -862,6 +888,7 @@ static int schema_sanity(const std::string& schema_dir) {
     "run_event_v1.schema.json",
     "run_event_payload_assistant_delta_v1.schema.json",
     "run_event_payload_assistant_message_v1.schema.json",
+    "run_event_payload_user_message_v1.schema.json",
     "run_event_payload_tool_call_v1.schema.json",
     "run_event_payload_tool_result_v1.schema.json",
     "run_event_payload_llm_usage_v1.schema.json",

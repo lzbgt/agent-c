@@ -18,6 +18,7 @@ can validate and reason about events deterministically.
 - Payload schemas (v1):
   - `docs/spec/run-events/schema/run_event_payload_assistant_delta_v1.schema.json`
   - `docs/spec/run-events/schema/run_event_payload_assistant_message_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_user_message_v1.schema.json`
   - `docs/spec/run-events/schema/run_event_payload_tool_call_v1.schema.json`
   - `docs/spec/run-events/schema/run_event_payload_tool_result_v1.schema.json`
   - `docs/spec/run-events/schema/run_event_payload_llm_usage_v1.schema.json`
@@ -64,6 +65,8 @@ The fixture set is validated for these common event payloads:
 -   Schema: `run_event_payload_assistant_delta_v1`
 - `assistant_message`: `data.assistant_content` string, `data.has_tool_calls` integer >= 0; optional multimodal fields.
 -   Schema: `run_event_payload_assistant_message_v1`
+- `user_message`: `data.user_content` string; optional multimodal fields.
+-   Schema: `run_event_payload_user_message_v1`
 - `tool_call`: `data.tool_name`, `data.tool_call_id`, `data.arguments_json` strings.
 -   Schema: `run_event_payload_tool_call_v1`
 - `tool_result`: `data.tool_name`, `data.tool_call_id`, `data.content` strings.
@@ -116,6 +119,17 @@ When `type="assistant_message"`, the `data` object includes:
 - `assistant_mm_truncated` (number, optional): `1` when `assistant_mm_json` was capped for event safety.
 
 Consumers that need structured multimodal content should parse `assistant_mm_json` when present.
+
+## User message payload (current)
+
+When `type="user_message"`, the `data` object includes:
+
+- `user_content` (string): user text (multimodal prefix removed when present).
+- `user_mm_json` (string, optional): raw JSON string from the multimodal prefix (`__AGENT_MM_V1__...`).
+- `user_mm_bytes` (number, optional): byte length of the raw multimodal JSON.
+- `user_mm_truncated` (number, optional): `1` when `user_mm_json` was capped for event safety.
+
+Consumers that need structured multimodal content should parse `user_mm_json` when present.
 
 ## Notes
 

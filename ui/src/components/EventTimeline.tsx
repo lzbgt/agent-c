@@ -39,6 +39,7 @@ function EventCard({
   const data: any = normalizeEventData(ev.data);
 
   const title = (() => {
+    if (type === "user_message") return "User";
     if (type === "assistant_message") return "Assistant";
     if (type === "assistant_delta") return "Assistant delta";
     if (type === "tool_call") return `Tool call: ${data.tool_name ?? ""}`;
@@ -63,7 +64,16 @@ function EventCard({
       </div>
       {open ? (
         <div className="px-3 pb-3">
-          {type === "assistant_message" ? (
+          {type === "user_message" ? (
+            <>
+              <Markdown text={String(data.user_content ?? "")} />
+              {typeof data.user_mm_json === "string" && data.user_mm_json.length > 0 ? (
+                <pre className="mt-3 overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">
+                  {prettyJsonOrRaw(data.user_mm_json)}
+                </pre>
+              ) : null}
+            </>
+          ) : type === "assistant_message" ? (
             <Markdown text={String(data.assistant_content ?? "")} />
           ) : type === "assistant_delta" ? (
             <pre className="overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/30 p-3 text-xs leading-relaxed text-white/90">

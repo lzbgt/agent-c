@@ -1,86 +1,14 @@
 #include "agent/tool_loop.h"
 
+#include "agent/multimodal_prefix.h"
 #include "agent_alloc.h"
+#include "agent_tool_loop_json.h"
 
 #include <string.h>
 #include <ctype.h>
+#include <stdio.h>
 
 static const char* kCompactionSummaryName = "__agent_compaction_summary__";
-static const char* kMultimodalPrefix = "__AGENT_MM_V1__";
-
-static uint8_t tl_parse_multimodal_prefix(
-  const char* content,
-  size_t content_len,
-  const char** out_text,
-  size_t* out_text_len,
-  const char** out_mm_json,
-  size_t* out_mm_json_len
-) {
-  if (out_text) *out_text = content;
-  if (out_text_len) *out_text_len = content_len;
-  if (out_mm_json) *out_mm_json = NULL;
-  if (out_mm_json_len) *out_mm_json_len = 0;
-  if (!content || content_len == 0) return 0;
-  if (!out_text || !out_text_len || !out_mm_json || !out_mm_json_len) return 0;
-
-  const size_t prefix_len = strlen(kMultimodalPrefix);
-  if (content_len <= prefix_len) return 0;
-  if (memcmp(content, kMultimodalPrefix, prefix_len) != 0) return 0;
-
-  const char* nl = (const char*)memchr(content, '\n', content_len);
-  if (!nl) return 0;
-  const char* json_begin = content + prefix_len;
-  if (nl <= json_begin) return 0;
-  const size_t json_len = (size_t)(nl - json_begin);
-  const char* text = nl + 1;
-  const size_t text_len = content_len - (size_t)(text - content);
-
-  *out_mm_json = json_begin;
-  *out_mm_json_len = json_len;
-  *out_text = text;
-  *out_text_len = text_len;
-  return 1;
-}
-
-static size_t tl_u64_to_dec(char* out, size_t out_cap, unsigned long long x) {
-  if (!out || out_cap == 0) return 0;
-  // Max decimal digits for uint64 is 20.
-  char tmp[32];
-  size_t n = 0;
-  do {
-    const unsigned digit = (unsigned)(x % 10ull);
-    tmp[n++] = (char)('0' + digit);
-    x /= 10ull;
-  } while (x && n + 1 < sizeof(tmp));
-  if (n + 1 > out_cap) return 0;
-  // Reverse into out.
-  for (size_t i = 0; i < n; i++) {
-    out[i] = tmp[n - 1 - i];
-  }
-  out[n] = '\0';
-  return n;
-}
-
-static size_t tl_i64_to_dec(char* out, size_t out_cap, long long x) {
-  if (!out || out_cap == 0) return 0;
-  unsigned long long u = 0;
-  size_t pos = 0;
-  if (x < 0) {
-    if (out_cap < 2) return 0;
-    out[pos++] = '-';
-    // Avoid overflow on LLONG_MIN.
-    u = (unsigned long long)(-(x + 1ll)) + 1ull;
-  } else {
-    u = (unsigned long long)x;
-  }
-  const size_t wrote = tl_u64_to_dec(out + pos, out_cap - pos, u);
-  if (wrote == 0) return 0;
-  return pos + wrote;
-}
-
-static char tl_hex_nibble(unsigned v) {
-  return (v < 10u) ? (char)('0' + v) : (char)('a' + (v - 10u));
-}
 
 static uint64_t tl_fnv1a64(const char* s, size_t n) {
   const unsigned char* p = (const unsigned char*)s;
@@ -125,187 +53,6 @@ typedef struct tl_msg_list {
   size_t count;
   size_t cap;
 } tl_msg_list_t;
-
-typedef struct tl_buf {
-  char* data;
-  size_t len;
-  size_t cap;
-} tl_buf_t;
-
-static void tl_buf_free(tl_buf_t* b) {
-  if (!b) return;
-  if (b->data) agent_free(b->data);
-  b->data = NULL;
-  b->len = 0;
-  b->cap = 0;
-}
-
-static agent_status_t tl_buf_reserve(tl_buf_t* b, size_t need) {
-  if (!b) return AGENT_ERR_INVALID_ARGUMENT;
-  if (need <= b->cap) return AGENT_OK;
-  size_t new_cap = b->cap == 0 ? 256 : b->cap;
-  while (new_cap < need) new_cap *= 2;
-  char* p = (char*)agent_malloc(new_cap);
-  if (!p) return AGENT_ERR_OOM;
-  if (b->data && b->len) memcpy(p, b->data, b->len);
-  if (b->data) agent_free(b->data);
-  b->data = p;
-  b->cap = new_cap;
-  return AGENT_OK;
-}
-
-static agent_status_t tl_buf_append_bytes(tl_buf_t* b, const char* s, size_t n) {
-  if (!b || (!s && n)) return AGENT_ERR_INVALID_ARGUMENT;
-  agent_status_t st = tl_buf_reserve(b, b->len + n + 1);
-  if (st != AGENT_OK) return st;
-  if (n) memcpy(b->data + b->len, s, n);
-  b->len += n;
-  b->data[b->len] = '\0';
-  return AGENT_OK;
-}
-
-static agent_status_t tl_buf_append_escaped_u4(tl_buf_t* b, unsigned int x) {
-  if (!b) return AGENT_ERR_INVALID_ARGUMENT;
-  // "\\u" + 4 hex digits
-  char tmp[6];
-  tmp[0] = '\\';
-  tmp[1] = 'u';
-  tmp[2] = tl_hex_nibble((x >> 12) & 0xFu);
-  tmp[3] = tl_hex_nibble((x >> 8) & 0xFu);
-  tmp[4] = tl_hex_nibble((x >> 4) & 0xFu);
-  tmp[5] = tl_hex_nibble(x & 0xFu);
-  return tl_buf_append_bytes(b, tmp, sizeof(tmp));
-}
-
-static agent_status_t tl_buf_append_cstr(tl_buf_t* b, const char* s) {
-  if (!s) s = "";
-  return tl_buf_append_bytes(b, s, strlen(s));
-}
-
-static agent_status_t tl_buf_append_char(tl_buf_t* b, char c) {
-  return tl_buf_append_bytes(b, &c, 1);
-}
-
-static agent_status_t tl_buf_append_u64(tl_buf_t* b, unsigned long long x) {
-  char tmp[32];
-  const size_t n = tl_u64_to_dec(tmp, sizeof(tmp), x);
-  if (n == 0) return AGENT_ERR_INTERNAL;
-  return tl_buf_append_bytes(b, tmp, n);
-}
-
-static agent_status_t tl_buf_append_i64(tl_buf_t* b, long long x) {
-  char tmp[32];
-  const size_t n = tl_i64_to_dec(tmp, sizeof(tmp), x);
-  if (n == 0) return AGENT_ERR_INTERNAL;
-  return tl_buf_append_bytes(b, tmp, n);
-}
-
-static agent_status_t tl_json_escape_into(tl_buf_t* b, const char* s, size_t n) {
-  if (!b || (!s && n)) return AGENT_ERR_INVALID_ARGUMENT;
-  for (size_t i = 0; i < n; i++) {
-    const unsigned char c = (unsigned char)s[i];
-    switch (c) {
-      case '\\': {
-        agent_status_t st = tl_buf_append_cstr(b, "\\\\");
-        if (st != AGENT_OK) return st;
-        break;
-      }
-      case '"': {
-        agent_status_t st = tl_buf_append_cstr(b, "\\\"");
-        if (st != AGENT_OK) return st;
-        break;
-      }
-      case '\n': {
-        agent_status_t st = tl_buf_append_cstr(b, "\\n");
-        if (st != AGENT_OK) return st;
-        break;
-      }
-      case '\r': {
-        agent_status_t st = tl_buf_append_cstr(b, "\\r");
-        if (st != AGENT_OK) return st;
-        break;
-      }
-      case '\t': {
-        agent_status_t st = tl_buf_append_cstr(b, "\\t");
-        if (st != AGENT_OK) return st;
-        break;
-      }
-      default: {
-        if (c < 0x20) {
-          agent_status_t st = tl_buf_append_escaped_u4(b, (unsigned int)c);
-          if (st != AGENT_OK) return st;
-        } else {
-          agent_status_t st = tl_buf_append_char(b, (char)c);
-          if (st != AGENT_OK) return st;
-        }
-      }
-    }
-  }
-  return AGENT_OK;
-}
-
-static agent_status_t tl_json_append_string_field(
-  tl_buf_t* b,
-  const char* key,
-  const char* value,
-  size_t value_len,
-  uint8_t* io_first
-) {
-  if (!b || !key || !io_first) return AGENT_ERR_INVALID_ARGUMENT;
-  if (!*io_first) {
-    agent_status_t st = tl_buf_append_char(b, ',');
-    if (st != AGENT_OK) return st;
-  }
-  *io_first = 0;
-  agent_status_t st = AGENT_OK;
-  st = tl_buf_append_char(b, '"'); if (st != AGENT_OK) return st;
-  st = tl_json_escape_into(b, key, strlen(key)); if (st != AGENT_OK) return st;
-  st = tl_buf_append_cstr(b, "\":\""); if (st != AGENT_OK) return st;
-  if (!value) { value = ""; value_len = 0; }
-  st = tl_json_escape_into(b, value, value_len); if (st != AGENT_OK) return st;
-  st = tl_buf_append_char(b, '"'); if (st != AGENT_OK) return st;
-  return AGENT_OK;
-}
-
-static agent_status_t tl_json_append_u64_field(
-  tl_buf_t* b,
-  const char* key,
-  unsigned long long value,
-  uint8_t* io_first
-) {
-  if (!b || !key || !io_first) return AGENT_ERR_INVALID_ARGUMENT;
-  if (!*io_first) {
-    agent_status_t st = tl_buf_append_char(b, ',');
-    if (st != AGENT_OK) return st;
-  }
-  *io_first = 0;
-  agent_status_t st = AGENT_OK;
-  st = tl_buf_append_char(b, '"'); if (st != AGENT_OK) return st;
-  st = tl_json_escape_into(b, key, strlen(key)); if (st != AGENT_OK) return st;
-  st = tl_buf_append_cstr(b, "\":"); if (st != AGENT_OK) return st;
-  st = tl_buf_append_u64(b, value); if (st != AGENT_OK) return st;
-  return AGENT_OK;
-}
-
-static agent_status_t tl_json_append_i64_field(
-  tl_buf_t* b,
-  const char* key,
-  long long value,
-  uint8_t* io_first
-) {
-  if (!b || !key || !io_first) return AGENT_ERR_INVALID_ARGUMENT;
-  if (!*io_first) {
-    agent_status_t st = tl_buf_append_char(b, ',');
-    if (st != AGENT_OK) return st;
-  }
-  *io_first = 0;
-  agent_status_t st = AGENT_OK;
-  st = tl_buf_append_char(b, '"'); if (st != AGENT_OK) return st;
-  st = tl_json_escape_into(b, key, strlen(key)); if (st != AGENT_OK) return st;
-  st = tl_buf_append_cstr(b, "\":"); if (st != AGENT_OK) return st;
-  st = tl_buf_append_i64(b, value); if (st != AGENT_OK) return st;
-  return AGENT_OK;
-}
 
 static void tl_tool_call_destroy(tl_tool_call_t* c) {
   if (!c) return;
@@ -484,31 +231,9 @@ static void tl_trim_in_place(char* s) {
 static uint8_t tl_format_tool_call_id(char* out, size_t out_cap, const char* prefix, unsigned long long a, unsigned long long b) {
   if (!out || out_cap == 0) return 0;
   if (!prefix) prefix = "";
-
-  size_t pos = 0;
-  const size_t pre_len = strlen(prefix);
-  if (pre_len + 1 > out_cap) return 0;
-  if (pre_len) memcpy(out + pos, prefix, pre_len);
-  pos += pre_len;
-
-  if (pos + 1 >= out_cap) return 0;
-  out[pos++] = '_';
-
-  char tmp[32];
-  size_t n = tl_u64_to_dec(tmp, sizeof(tmp), a);
-  if (n == 0 || pos + n + 1 > out_cap) return 0;
-  memcpy(out + pos, tmp, n);
-  pos += n;
-
-  if (pos + 1 >= out_cap) return 0;
-  out[pos++] = '_';
-
-  n = tl_u64_to_dec(tmp, sizeof(tmp), b);
-  if (n == 0 || pos + n + 1 > out_cap) return 0;
-  memcpy(out + pos, tmp, n);
-  pos += n;
-
-  out[pos] = '\0';
+  const int n = snprintf(out, out_cap, "%s_%llu_%llu", prefix, a, b);
+  if (n <= 0) return 0;
+  if ((size_t)n >= out_cap) return 0;
   return 1;
 }
 
@@ -1403,6 +1128,45 @@ agent_status_t agent_tool_loop_run(
     status = st;
     goto cleanup;
   }
+  if (tl_events_enabled(hooks)) {
+    const char* user_text = user_prompt;
+    size_t user_text_len = prompt_len;
+    const char* mm_json = NULL;
+    size_t mm_json_len = 0;
+    const uint8_t has_mm = agent_parse_multimodal_prefix(
+      user_prompt,
+      prompt_len,
+      &user_text,
+      &user_text_len,
+      &mm_json,
+      &mm_json_len
+    );
+
+    tl_buf_t d = {0};
+    uint8_t first = 1;
+    (void)tl_buf_append_char(&d, '{');
+    (void)tl_json_append_u64_field(&d, "step", 0, &first);
+    (void)tl_json_append_u64_field(&d, "epoch", (unsigned long long)epoch, &first);
+    (void)tl_json_append_string_field(&d, "user_content", user_text, user_text_len, &first);
+    if (has_mm && mm_json && mm_json_len > 0) {
+      agent_string_t capped = {0};
+      uint8_t trunc = 0;
+      (void)tl_cap_output(hooks ? hooks->cap_tool_output_for_event : NULL,
+                          hooks ? hooks->cap_tool_output_for_event_ctx : NULL,
+                          mm_json, mm_json_len, max_capture, &capped, &trunc);
+      (void)tl_json_append_string_field(&d, "user_mm_json",
+                                        capped.data ? capped.data : "",
+                                        capped.len, &first);
+      (void)tl_json_append_u64_field(&d, "user_mm_truncated",
+                                     (unsigned long long)trunc, &first);
+      (void)tl_json_append_u64_field(&d, "user_mm_bytes",
+                                     (unsigned long long)mm_json_len, &first);
+      agent_string_free(&capped);
+    }
+    (void)tl_buf_append_char(&d, '}');
+    tl_emit_event(hooks, "user_message", d.data ? d.data : "{}");
+    tl_buf_free(&d);
+  }
 
   uint8_t stopped_normally = 0;
 
@@ -1681,7 +1445,7 @@ agent_status_t agent_tool_loop_run(
       size_t assistant_text_len = content_len;
       const char* mm_json = NULL;
       size_t mm_json_len = 0;
-      const uint8_t has_mm = tl_parse_multimodal_prefix(
+      const uint8_t has_mm = agent_parse_multimodal_prefix(
         content,
         content_len,
         &assistant_text,

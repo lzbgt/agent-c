@@ -577,6 +577,10 @@ rows = obj.get("workflow_events") or []
 if not rows:
   print("expected workflow_events rows", file=sys.stderr)
   raise SystemExit(1)
+missing_schema = [r for r in rows if not isinstance(r, dict) or not isinstance(r.get("schema"), str) or not r.get("schema")]
+if missing_schema:
+  print("expected workflow_events schema values", file=sys.stderr)
+  raise SystemExit(1)
 PY
 
 edge_submit="$(curl -fsS --noproxy "*" --max-time 10 \
@@ -668,6 +672,10 @@ if not obj.get("ok"):
 rows = obj.get("edge_workflow_events") or []
 if rows is None:
   print("expected edge_workflow_events field", file=sys.stderr)
+  raise SystemExit(1)
+missing_schema = [r for r in rows if not isinstance(r, dict) or not isinstance(r.get("schema"), str) or not r.get("schema")]
+if missing_schema:
+  print("expected edge_workflow_events schema values", file=sys.stderr)
   raise SystemExit(1)
 PY
 

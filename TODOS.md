@@ -84,7 +84,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Promoted goals (explicit goals; no non-goals)
 
-Weights updated 2026-02-18: prioritize **tool-loop event schema/migrations** (payload schema IDs + fixture enforcement),
+Weights updated 2026-02-18: prioritize **tool-loop event schema/migrations** (payload schema IDs + fixture enforcement + transcript coverage),
 then **streaming stability** (model pinning + provider guardrails),
 with **audio streaming** following once the streaming UX is stable.
 
@@ -92,6 +92,7 @@ with **audio streaming** following once the streaming UX is stable.
 - [x] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
 - [ ] Tool loop: full multimodal transcript support + stable, versioned event schema with migrations.
   - [x] assistant_message events now strip multimodal prefix and emit `assistant_mm_json` + truncation metadata.
+  - [x] user_message events emit multimodal payloads (run events + tools=none path).
   - [x] WebUI renders `assistant_mm_json` attachments (images/files) in assistant messages.
   - [x] Core tool-loop test: validates `assistant_mm_json` event payloads for prefix parsing + byte metadata.
   - [x] Run-event fixture validation enforces payload shapes for common event types.

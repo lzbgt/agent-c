@@ -34,6 +34,7 @@ std::string new_job_id() {
 static const char* job_event_schema_for_type(const std::string& type) {
   if (type == "assistant_delta") return "run_event_payload_assistant_delta_v1";
   if (type == "assistant_message") return "run_event_payload_assistant_message_v1";
+  if (type == "user_message") return "run_event_payload_user_message_v1";
   if (type == "tool_call") return "run_event_payload_tool_call_v1";
   if (type == "tool_result") return "run_event_payload_tool_result_v1";
   if (type == "llm_usage") return "run_event_payload_llm_usage_v1";

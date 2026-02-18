@@ -217,6 +217,8 @@ if not isinstance(recs, list) or not recs:
 
 have_workflow_ev = any(isinstance(r, dict) and r.get("source") == "workflow_event" for r in recs)
 have_edge_workflow_ev = any(isinstance(r, dict) and r.get("source") == "edge_workflow_event" for r in recs)
+wf_schema_missing = [r for r in recs if isinstance(r, dict) and r.get("source") == "workflow_event" and not isinstance(r.get("schema"), str)]
+edge_schema_missing = [r for r in recs if isinstance(r, dict) and r.get("source") == "edge_workflow_event" and not isinstance(r.get("schema"), str)]
 
 if not have_workflow_ev:
   print("missing workflow_event wrappers in trace response", file=sys.stderr)
@@ -224,6 +226,14 @@ if not have_workflow_ev:
   raise SystemExit(1)
 if not have_edge_workflow_ev:
   print("missing edge_workflow_event wrappers in trace response", file=sys.stderr)
+  print(obj, file=sys.stderr)
+  raise SystemExit(1)
+if wf_schema_missing:
+  print("workflow_event records missing schema", file=sys.stderr)
+  print(obj, file=sys.stderr)
+  raise SystemExit(1)
+if edge_schema_missing:
+  print("edge_workflow_event records missing schema", file=sys.stderr)
   print(obj, file=sys.stderr)
   raise SystemExit(1)
 PY

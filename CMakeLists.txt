@@ -20,6 +20,7 @@ add_library(agent_core STATIC
   core/src/agent_edge_interop.c
   core/src/agent_hmac_sha256.c
   core/src/agent_json_c14n.c
+  core/src/agent_multimodal_prefix.c
   core/src/agent_um_eais_task_assign_read.c
   core/src/agent_um_eais_task_lifecycle_write.c
   core/src/agent_um_eais_node_write.c
@@ -36,6 +37,7 @@ add_library(agent_core STATIC
   core/src/agent_stream_decoder.c
   core/src/agent_string.c
   core/src/agent_tool_loop.c
+  core/src/agent_tool_loop_json.c
   core/src/agent_tool_provider.c
   core/src/agent_tools.c
   core/third_party/ed25519_donna/ed25519.c

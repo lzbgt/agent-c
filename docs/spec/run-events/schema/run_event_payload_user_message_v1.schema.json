@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Run Event Payload user_message v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["user_content"],
+  "properties": {
+    "user_content": {
+      "type": "string",
+      "description": "User message text (multimodal prefix removed)."
+    },
+    "user_mm_json": {
+      "type": "string",
+      "description": "Raw multimodal JSON string when present."
+    },
+    "user_mm_bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Byte length of user_mm_json."
+    },
+    "user_mm_truncated": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "1 when user_mm_json was capped for safety."
+    }
+  }
+}

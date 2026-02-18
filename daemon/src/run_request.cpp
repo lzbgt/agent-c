@@ -810,6 +810,7 @@ static Json::Value run_request_to_json_impl(
       const char* schema = nullptr;
       if (type == "assistant_delta") schema = "run_event_payload_assistant_delta_v1";
       else if (type == "assistant_message") schema = "run_event_payload_assistant_message_v1";
+      else if (type == "user_message") schema = "run_event_payload_user_message_v1";
       else if (type == "tool_call") schema = "run_event_payload_tool_call_v1";
       else if (type == "tool_result") schema = "run_event_payload_tool_result_v1";
       else if (type == "llm_usage") schema = "run_event_payload_llm_usage_v1";
@@ -1098,6 +1099,29 @@ static Json::Value run_request_to_json_impl(
         job_append_event(job_id_or_null, type, Json::writeString(wb, data));
       }
     };
+
+    {
+      Json::Value d(Json::objectValue);
+      Json::Value mm(Json::nullValue);
+      std::string user_text = prompt_for_llm;
+      const bool has_mm = try_parse_multimodal_prefix(prompt_for_llm, &mm, &user_text) && mm.isObject();
+      d["user_content"] = user_text;
+      if (has_mm) {
+        Json::StreamWriterBuilder wb;
+        wb["indentation"] = "";
+        std::string mm_json = Json::writeString(wb, mm);
+        const size_t mm_bytes = mm_json.size();
+        if (max_capture_bytes > 0 && mm_bytes > max_capture_bytes) {
+          d["user_mm_json"] = mm_json.substr(0, max_capture_bytes);
+          d["user_mm_truncated"] = (Json::Int64)1;
+        } else {
+          d["user_mm_json"] = mm_json;
+          d["user_mm_truncated"] = (Json::Int64)0;
+        }
+        d["user_mm_bytes"] = (Json::Int64)mm_bytes;
+      }
+      push_ev("user_message", d);
+    }
 
     // Surface provider retries (429/5xx/timeouts) as structured events so async jobs can explain
     // "why it was slow" and DB telemetry has enough context for diagnosis.
