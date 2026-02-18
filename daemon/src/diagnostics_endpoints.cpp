@@ -250,13 +250,22 @@ void handle_diagnostics_providers_endpoint(
     }
 
     std::string base_url;
+    std::string base_url_source;
     if (active_provider == p && !cfg.base_url.empty()) {
       base_url = cfg.base_url;
+      base_url_source = "config";
     } else {
       base_url = env_base_url_for_provider(p);
+      if (!base_url.empty()) base_url_source = "env";
     }
-    if (base_url.empty()) base_url = default_base_url_for_provider(p);
-    if (!base_url.empty()) pd["base_url"] = base_url;
+    if (base_url.empty()) {
+      base_url = default_base_url_for_provider(p);
+      if (!base_url.empty()) base_url_source = "default";
+    }
+    if (!base_url.empty()) {
+      pd["base_url"] = base_url;
+      if (!base_url_source.empty()) pd["base_url_source"] = base_url_source;
+    }
 
     if (active_provider == p && !cfg.model.empty()) {
       pd["model"] = cfg.model;

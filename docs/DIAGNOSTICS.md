@@ -112,6 +112,7 @@ Notes:
 - `warning` is an optional provider-specific hint (e.g., Moonshot key detected but OpenRouter key missing).
 - `~/.env` is only consulted for provider **keys**; base URLs still come from flags/env/config. If no base URL is set, the
   provider defaults to OpenAI-compatible.
+- `base_url_source` indicates where the provider base URL came from: `config`, `env`, or `default`.
 
 ## Endpoint: `/api/v1/diagnostics/provider_test`
 
