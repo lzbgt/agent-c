@@ -268,6 +268,30 @@ except Exception:
 rec = obj.get("recommended_model")
 if isinstance(rec, str) and rec:
     print(rec)
+    raise SystemExit(0)
+models = obj.get("data") or obj.get("models") or []
+def score(m):
+    arch = m.get("architecture") or {}
+    inputs = arch.get("input_modalities") or []
+    sp = m.get("supported_parameters") or []
+    score = 0
+    if "text" in inputs:
+        score += 2
+    if "tools" in sp:
+        score += 1
+    return score
+best = None
+best_score = -1
+for m in models:
+    mid = m.get("id") or m.get("name")
+    if not isinstance(mid, str) or not mid:
+        continue
+    s = score(m)
+    if s > best_score:
+        best = mid
+        best_score = s
+if best:
+    print(best)
 PY
 )"
   if [[ -z "${model}" ]]; then
