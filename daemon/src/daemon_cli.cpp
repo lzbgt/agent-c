@@ -1203,7 +1203,7 @@ int parse_daemon_cli(int argc, char** argv, DaemonConfig* cfg, DaemonCliOverride
         << "  --max-tool-calls-per-tool-default <n> Default tool-loop per-tool call cap when requests omit it (default: 0; 0 means unlimited)\n"
         << "  --max-tool-call-args-chars-default <n> Default tool-loop tool call args JSON cap (default: 0; 0 means unlimited)\n"
         << "  --max-tool-result-chars-default <n> Default tool-loop tool result cap (default: 12000; 0 means unlimited)\n"
-        << "  --tool-call-limit <tool>=<n> Default per-tool call limit (repeatable; 0 means unlimited for that tool)\n"
+        << "  --tool-call-limit <tool>=<n>[,<tool>=<n>...] Default per-tool call limit (repeatable; 0 means unlimited for that tool)\n"
         << "  --tools host|basic|none   Default toolset (default: host)\n"
         << "  --host-policy full|readonly  Host tool safety policy (default: full)\n"
         << "  --yolo / --no-yolo   Default unrestricted mode (default: yolo)\n"
