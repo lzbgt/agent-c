@@ -101,6 +101,9 @@ PY
 )" \
   "${DAEMON_URL}/api/v1/run")"
 
+sess="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/session?session_id=${NAME}")"
+
 MM_JSON="${MM_JSON}" USER_TEXT="${USER_TEXT}" ASSIST_TEXT="${ASSIST_TEXT}" python3 - <<PY
 import json
 import os
@@ -166,6 +169,62 @@ if ad.get("assistant_mm_truncated") not in (0, 0.0):
   raise SystemExit(1)
 if ad.get("assistant_mm_bytes") != len(ad.get("assistant_mm_json") or ""):
   print("unexpected assistant_mm_bytes", ad, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+MM_JSON="${MM_JSON}" USER_TEXT="${USER_TEXT}" ASSIST_TEXT="${ASSIST_TEXT}" python3 - <<PY
+import json
+import os
+import sys
+
+mm_json = os.environ["MM_JSON"]
+user_text = os.environ["USER_TEXT"]
+assist_text = os.environ["ASSIST_TEXT"]
+
+obj = json.loads(r'''${sess}''')
+if not obj.get("ok"):
+  print("session failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+
+msgs = obj.get("messages") or []
+if not isinstance(msgs, list) or len(msgs) < 2:
+  print("unexpected session messages", obj, file=sys.stderr)
+  raise SystemExit(1)
+
+def find_msg(role, content):
+  for m in msgs:
+    if not isinstance(m, dict):
+      continue
+    if m.get("role") == role and (m.get("content") or "").strip() == content:
+      return m
+  return None
+
+um = find_msg("user", user_text)
+if not um:
+  print("missing user message in session", msgs, file=sys.stderr)
+  raise SystemExit(1)
+if um.get("mm_json") != mm_json:
+  print("unexpected user mm_json", um, file=sys.stderr)
+  raise SystemExit(1)
+if um.get("mm_truncated") not in (0, 0.0, None):
+  print("unexpected user mm_truncated", um, file=sys.stderr)
+  raise SystemExit(1)
+if um.get("mm_bytes") != len(mm_json):
+  print("unexpected user mm_bytes", um, file=sys.stderr)
+  raise SystemExit(1)
+
+am = find_msg("assistant", assist_text)
+if not am:
+  print("missing assistant message in session", msgs, file=sys.stderr)
+  raise SystemExit(1)
+if am.get("mm_json") != mm_json:
+  print("unexpected assistant mm_json", am, file=sys.stderr)
+  raise SystemExit(1)
+if am.get("mm_truncated") not in (0, 0.0, None):
+  print("unexpected assistant mm_truncated", am, file=sys.stderr)
+  raise SystemExit(1)
+if am.get("mm_bytes") != len(mm_json):
+  print("unexpected assistant mm_bytes", am, file=sys.stderr)
   raise SystemExit(1)
 PY
 
