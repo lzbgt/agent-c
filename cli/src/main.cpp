@@ -128,6 +128,20 @@ static std::string try_load_key_from_dotenv_best_effort(const std::vector<std::s
   return "";
 }
 
+static bool has_env_key_best_effort(const std::vector<std::string>& env_vars) {
+  for (const auto& k : env_vars) {
+    const char* v = getenv_s(k.c_str());
+    if (v && looks_like_key(v)) return true;
+  }
+  return false;
+}
+
+static bool has_env_or_dotenv_key_best_effort(const std::vector<std::string>& env_vars) {
+  if (env_vars.empty()) return false;
+  if (has_env_key_best_effort(env_vars)) return true;
+  return !try_load_key_from_dotenv_best_effort(env_vars).empty();
+}
+
 static int64_t now_unix_ms() {
   using namespace std::chrono;
   return (int64_t)duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
@@ -758,7 +772,20 @@ int main(int argc, char** argv) {
   }
 
   if (api_key.empty()) {
-    std::cerr << "Missing API key. Provide --api-key or set OPENAI_API_KEY / OPENROUTER_API_KEY / DEEPSEEK_API_KEY / KIMI_API_KEY_CN.\n";
+    std::cerr << "Missing API key for base URL: " << base_url << "\n";
+    if (url_contains_ci(base_url, "openrouter")) {
+      std::cerr << "Provide --api-key or set OPENROUTER_API_KEY";
+      if (has_env_or_dotenv_key_best_effort({"KIMI_API_KEY_CN", "MOONSHOT_API_KEY", "MOONSHOT_API_KEY_CN"})) {
+        std::cerr << " (note: Moonshot key detected; OpenRouter requires OPENROUTER_API_KEY)";
+      }
+      std::cerr << ".\n";
+    } else if (url_contains_ci(base_url, "moonshot")) {
+      std::cerr << "Provide --api-key or set KIMI_API_KEY_CN / MOONSHOT_API_KEY / MOONSHOT_API_KEY_CN.\n";
+    } else if (url_contains_ci(base_url, "deepseek")) {
+      std::cerr << "Provide --api-key or set DEEPSEEK_API_KEY.\n";
+    } else {
+      std::cerr << "Provide --api-key or set OPENAI_API_KEY.\n";
+    }
     return 2;
   }
 
