@@ -110,6 +110,7 @@ with **multimodal transcript hardening** (tests + schema alignment) next now tha
   - [x] Structured memory deprecate pass (policy-driven; bounded) with broker fan-out.
   - [x] Memory salience context + `/api/v1/memory/salience` (deterministic decay, recency + importance).
   - [x] Memory recaps: LLM summaries to `memory/recaps/` + list/generate APIs.
+- [ ] Memory UX alignment (claude-mem): optional context header with token economics + last summary/assistant-message hints + timeline ordering toggle.
 - [ ] Tool plugins: sandbox/isolation, Windows loader, and embedded/MCU-compatible plugin path.
 - [ ] Audio streaming: Opus/WebRTC voice pipeline + broker relay + UI voice session controls.
   - [x] Add workflow DB query endpoints (`/api/v1/db/workflows`, `/api/v1/db/workflow`, `/api/v1/db/workflow_tasks`, `/api/v1/db/workflow_events`)
