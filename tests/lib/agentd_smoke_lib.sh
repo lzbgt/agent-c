@@ -205,11 +205,27 @@ try:
         obj = json.load(f)
 except Exception:
     sys.exit(0)
-key = "assistant_model" if kind == "assistant" else "tool_model"
-val = obj.get(key, "")
+primary_key = "assistant_model" if kind == "assistant" else "tool_model"
+fallback_list_key = "ok_models_assistant" if kind == "assistant" else "ok_models_tool"
+fallback_compat_keys = ["ok_models_both", "ok_models"]
+val = obj.get(primary_key, "")
 if isinstance(val, str):
     val = val.strip()
     if val:
         print(val)
+        sys.exit(0)
+vals = obj.get(fallback_list_key, [])
+if isinstance(vals, list):
+    for item in vals:
+        if isinstance(item, str) and item.strip():
+            print(item.strip())
+            sys.exit(0)
+for key in fallback_compat_keys:
+    vals = obj.get(key, [])
+    if isinstance(vals, list):
+        for item in vals:
+            if isinstance(item, str) and item.strip():
+                print(item.strip())
+                sys.exit(0)
 PY
 }
