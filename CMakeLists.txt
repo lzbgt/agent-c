@@ -336,6 +336,14 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wpedantic>
   )
 
+  add_executable(agentd_tool_plugin_host
+    tools/agentd_tool_plugin_host.cpp
+  )
+  target_compile_options(agentd_tool_plugin_host PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_link_libraries(agentd_tool_plugin_host PRIVATE agentd_lib)
+
   if(AGENTD_ENABLE_HTTP)
     target_compile_definitions(agentd_lib PUBLIC AGENTD_ENABLE_HTTP=1)
   endif()
@@ -741,6 +749,14 @@ if(AGENT_BUILD_HOST)
       NAME agentd_tool_plugin_smoke
       COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_tool_plugin_smoke.sh
         $<TARGET_FILE:agentd>
+        $<TARGET_FILE:agentd_tool_plugin_echo>
+    )
+
+    add_test(
+      NAME agentd_tool_plugin_server_smoke
+      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_tool_plugin_server_smoke.sh
+        $<TARGET_FILE:agentd>
+        $<TARGET_FILE:agentd_tool_plugin_host>
         $<TARGET_FILE:agentd_tool_plugin_echo>
     )
 

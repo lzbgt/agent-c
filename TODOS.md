@@ -118,6 +118,7 @@ with **tool plugins** and **audio streaming** following once the UX surfaces are
 - [ ] Tool plugins: sandbox/isolation, Windows loader, and embedded/MCU-compatible plugin path.
   - [x] Tool plugin config JSON support (optional `*_ex` symbols + `--tool-plugin-config`) with smoke coverage.
   - [x] Windows loader for tool plugins (LoadLibrary/GetProcAddress).
+  - [x] Sandbox via tool server host (`agentd_tool_plugin_host`) + smoke test.
 - [ ] Audio streaming: Opus/WebRTC voice pipeline + broker relay + UI voice session controls.
   - [x] Add workflow DB query endpoints (`/api/v1/db/workflows`, `/api/v1/db/workflow`, `/api/v1/db/workflow_tasks`, `/api/v1/db/workflow_events`)
     with docs + smoke tests.

@@ -156,3 +156,11 @@ tool plugins at runtime:
 ```
 
 See: `docs/TOOL_PLUGINS.md`.
+
+For process isolation, run plugins via the tool server host instead:
+
+```sh
+./build/agentd \
+  --tools basic \
+  --tool-server-cmd "./build/agentd_tool_plugin_host --plugin ./build/libagentd_tool_plugin_echo.(so|dylib|dll)"
+```

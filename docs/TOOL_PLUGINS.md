@@ -116,6 +116,19 @@ It exports a single tool `ext_echo` that returns a small JSON response.
 - During toolset construction, it calls the plugin chain `register_tools(...)` and appends plugin tool schemas.
 - During execution, only tool names appended by plugins are dispatched to plugins (base tools still run in the built-in host toolset).
 
+## Sandboxed execution (tool server host)
+
+To isolate plugins in a separate process, run them behind the tool server protocol using the
+`agentd_tool_plugin_host` helper:
+
+```bash
+./build/agentd --tools basic \
+  --tool-server-cmd "./build/agentd_tool_plugin_host --plugin ./build/libagentd_tool_plugin_echo.(so|dylib|dll) --plugin-config '{\"tag\":\"isolated\"}'"
+```
+
+This keeps plugin crashes contained and lets you apply tool-server timeouts and line-size limits.
+On Windows, tool servers are still disabled, so this isolation mode is Linux/macOS only.
+
 ## Config JSON
 
 Plugin config JSON is passed verbatim to the optional `*_ex` symbols. It is validated as JSON before plugin load.

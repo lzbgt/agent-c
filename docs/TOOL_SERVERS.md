@@ -94,3 +94,12 @@ Response:
 
 `ctest` includes `agentd_tool_server_smoke`, which uses an OpenAI-compatible stub provider that forces a tool call to `server_echo`,
 then checks that `agentd` routes the call to the tool server and returns the expected tool result.
+
+## Plugin host (sandboxed plugins)
+
+The `agentd_tool_plugin_host` helper exposes tool plugins over the tool server protocol, so you can run plugins out-of-process:
+
+```bash
+./build/agentd --tools basic \
+  --tool-server-cmd "./build/agentd_tool_plugin_host --plugin ./build/libagentd_tool_plugin_echo.(so|dylib|dll)"
+```
