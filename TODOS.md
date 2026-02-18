@@ -85,7 +85,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Promoted goals (explicit goals; no non-goals)
 
-Weights updated 2026-02-18: prioritize **streaming stability** (OpenRouter pins + provider matrix upkeep + key discovery reliability),
+Weights updated 2026-02-18: prioritize **streaming stability** (OpenRouter pins + provider matrix upkeep + provider key verification),
 then **tool plugin isolation** (sandbox/host policy hardening),
 with **audio streaming** following once streaming UX is stable.
 
