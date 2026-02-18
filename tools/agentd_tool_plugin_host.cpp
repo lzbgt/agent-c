@@ -31,6 +31,8 @@ using agentd::ToolPluginSpec;
 
 namespace {
 
+static constexpr size_t kPluginResultMaxBytes = 4 * 1024 * 1024; // 4 MiB (align with tool server max_line_bytes)
+
 void usage(const char* argv0) {
   std::cerr
     << "Usage: " << (argv0 ? argv0 : "agentd_tool_plugin_host")
@@ -373,10 +375,16 @@ int main(int argc, char** argv) {
           resp["ok"] = false;
           resp["error"] = "tool execution failed";
         } else {
-          const std::string raw = out.data ? std::string(out.data, out.len) : std::string();
-          agent_string_free(&out);
-          resp["ok"] = true;
-          resp["tool_result"] = tool_result_from_json(raw);
+          if (out.len > kPluginResultMaxBytes) {
+            resp["ok"] = false;
+            resp["error"] = "plugin result exceeded max bytes";
+            agent_string_free(&out);
+          } else {
+            const std::string raw = out.data ? std::string(out.data, out.len) : std::string();
+            agent_string_free(&out);
+            resp["ok"] = true;
+            resp["tool_result"] = tool_result_from_json(raw);
+          }
         }
       }
     } else {

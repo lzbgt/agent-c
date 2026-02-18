@@ -104,3 +104,5 @@ The `agentd_tool_plugin_host` helper exposes tool plugins over the tool server p
 ./build/agentd --tools basic \
   --tool-server-cmd "./build/agentd_tool_plugin_host --plugin ./build/libagentd_tool_plugin_echo.(so|dylib|dll) --plugin-config '{\"policy\":{\"limits\":{\"wall_ms\":60000,\"cpu_ms\":60000}}}'"
 ```
+
+The plugin host rejects tool results larger than 4 MiB before JSON parsing to keep memory usage bounded.
