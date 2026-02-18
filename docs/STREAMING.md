@@ -118,8 +118,8 @@ If that still fails, use the debug helper to inspect model selection and the cha
 tools/openrouter_auth_debug.sh
 ```
 
-The script produces a JSON summary under `build/openrouter_probe/` and prints a list of models that pass
-both assistant and tool-call streaming checks. Pin those in:
+The script produces a JSON summary under `build/openrouter_probe/` and prints lists of models that pass
+assistant streaming, tool-call streaming, and both. Pin those in:
 
 - `AGENT_TEST_OPENROUTER_STREAM_MODEL`
 - `AGENT_TEST_OPENROUTER_STREAM_TOOL_MODEL`
@@ -137,5 +137,6 @@ For a repo-tracked pin file, rerun the probe with `OPENROUTER_STREAM_PROBE_WRITE
 
 - `ref/openrouter/streaming_pins.json`
 
+The pin file can set distinct `assistant_model` and `tool_model` when no single model passes both checks.
 The OpenRouter smoke tests will prefer this pin file when present, falling back to the env vars and defaults above.
 If every candidate fails with OpenRouter auth errors, the probe exits with code 77 and prints a skip message.

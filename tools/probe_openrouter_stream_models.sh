@@ -270,12 +270,20 @@ import sys
 with open("${result_file}") as f:
     obj = json.load(f)
 rows = obj.get("results", [])
-oks = [r["id"] for r in rows if r.get("assistant_stream") == "ok" and r.get("tool_stream") == "ok"]
+assistant_oks = [r["id"] for r in rows if r.get("assistant_stream") == "ok"]
+tool_oks = [r["id"] for r in rows if r.get("tool_stream") == "ok"]
+both_oks = [r["id"] for r in rows if r.get("assistant_stream") == "ok" and r.get("tool_stream") == "ok"]
 auth_only = bool(rows) and all(r.get("assistant_stream") == "auth_error" and r.get("tool_stream") == "auth_error" for r in rows)
 print("OK models (assistant + tool-call streaming):")
-for mid in oks:
+for mid in both_oks:
     print(f"- {mid}")
-if not oks:
+print("OK models (assistant streaming):")
+for mid in assistant_oks:
+    print(f"- {mid}")
+print("OK models (tool-call streaming):")
+for mid in tool_oks:
+    print(f"- {mid}")
+if not assistant_oks or not tool_oks:
     if auth_only:
         print("SKIP: OpenRouter auth errors across all candidates", file=sys.stderr)
         raise SystemExit(77)
@@ -292,9 +300,11 @@ from datetime import datetime, timezone
 with open("${result_file}") as f:
     obj = json.load(f)
 rows = obj.get("results", [])
-oks = [r["id"] for r in rows if r.get("assistant_stream") == "ok" and r.get("tool_stream") == "ok"]
-if not oks:
-    raise SystemExit("no OK models; refusing to write pins")
+assistant_oks = [r["id"] for r in rows if r.get("assistant_stream") == "ok"]
+tool_oks = [r["id"] for r in rows if r.get("tool_stream") == "ok"]
+both_oks = [r["id"] for r in rows if r.get("assistant_stream") == "ok" and r.get("tool_stream") == "ok"]
+if not assistant_oks or not tool_oks:
+    raise SystemExit("missing assistant/tool streaming models; refusing to write pins")
 pins = {
   "generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
   "base_url": obj.get("base_url"),
@@ -302,9 +312,11 @@ pins = {
   "max_total": obj.get("max_total"),
   "limit": obj.get("limit"),
   "max_models": obj.get("max_models"),
-  "assistant_model": oks[0],
-  "tool_model": oks[0],
-  "ok_models": oks,
+  "assistant_model": assistant_oks[0],
+  "tool_model": tool_oks[0],
+  "ok_models_both": both_oks,
+  "ok_models_assistant": assistant_oks,
+  "ok_models_tool": tool_oks,
 }
 with open("${PINS_PATH}", "w", encoding="utf-8") as f:
     json.dump(pins, f, indent=2, sort_keys=False)
