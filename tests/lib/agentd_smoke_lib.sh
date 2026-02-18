@@ -181,7 +181,15 @@ agentd_smoke_wait_health() {
 agentd_smoke_openrouter_pins_path() {
   local root
   root="$(agentd_smoke_project_root)"
-  echo "${AGENT_OPENROUTER_STREAM_PINS:-${root}/ref/openrouter/streaming_pins.json}"
+  if [[ -n "${AGENT_OPENROUTER_STREAM_PINS:-}" ]]; then
+    echo "${AGENT_OPENROUTER_STREAM_PINS}"
+    return 0
+  fi
+  if [[ -n "${OPENROUTER_STREAM_PINS_PATH:-}" ]]; then
+    echo "${OPENROUTER_STREAM_PINS_PATH}"
+    return 0
+  fi
+  echo "${root}/ref/openrouter/streaming_pins.json"
 }
 
 agentd_smoke_openrouter_pinned_model() {
