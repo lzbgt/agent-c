@@ -143,6 +143,24 @@ agent_test_get_key() {
     k="$(agent_test_get_key_from_file "${home_env}" "${provider}")" && { echo "${k}"; return 0; }
   fi
 
+  if [[ "${provider}" == "openrouter" ]]; then
+    local moonshot_hint=""
+    if [[ -n "${KIMI_API_KEY_CN:-}" || -n "${MOONSHOT_API_KEY:-}" || -n "${MOONSHOT_API_KEY_CN:-}" ]]; then
+      moonshot_hint="env"
+    else
+      if agent_test_get_key_from_file "${preferred}" "moonshot" >/dev/null 2>&1; then
+        moonshot_hint=".not_in_repo"
+      elif agent_test_get_key_from_file "${fallback}" "moonshot" >/dev/null 2>&1; then
+        moonshot_hint="project.local.md"
+      elif [[ -n "${home_env}" ]] && agent_test_get_key_from_file "${home_env}" "moonshot" >/dev/null 2>&1; then
+        moonshot_hint="~/.env"
+      fi
+    fi
+    if [[ -n "${moonshot_hint}" ]]; then
+      echo "NOTE: Found Moonshot key (${moonshot_hint}); OpenRouter requires OPENROUTER_API_KEY." >&2
+    fi
+  fi
+
   return 1
 }
 
