@@ -84,9 +84,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Promoted goals (explicit goals; no non-goals)
 
-Weights updated 2026-02-18: prioritize **Storage/analytics** (archive tier + ops controls) and the
-**streaming foundation**, with **multimodal transcript hardening** (tests + schema alignment) tracked as follow-on
-now that **dynamic memory policy** and **OTA continuity guardrails** are in place.
+Weights updated 2026-02-18: prioritize the **streaming foundation** (tool-call coverage + core interface),
+with **multimodal transcript hardening** (tests + schema alignment) as the next follow-on now that
+**dynamic memory policy** and **OTA continuity guardrails** are in place.
 
 - [x] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker + agentd implemented; tests added).
 - [x] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
@@ -98,6 +98,9 @@ now that **dynamic memory policy** and **OTA continuity guardrails** are in plac
   - [x] Core SSE parser (`agent_sse_parser_t`) shared by CLI/daemon streaming paths.
   - [x] Compatibility matrix for streaming variants + provider coverage in `docs/STREAMING.md`.
   - [x] OpenRouter + Moonshot streaming assistant smoke tests (key-gated).
+  - [x] OpenRouter + Moonshot streaming tool-call smoke tests (key-gated).
+  - [x] DeepSeek streaming tool-call smoke test (key-gated).
+  - [ ] Pin known-good OpenRouter streaming models (assistant + tool-call) to avoid silent no-delta failures.
 - [x] Memory architecture: dynamic retention policy (decay/salience/recaps) informed by claude-mem research + docs.
   - [x] Memory retention policy enforcement (daily logs + checkpoints) + endpoint + background engine.
   - [x] Structured memory deprecate pass (policy-driven; bounded) with broker fan-out.

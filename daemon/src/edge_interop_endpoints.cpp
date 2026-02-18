@@ -504,7 +504,11 @@ void handle_edge_message_endpoint(
       if (!msg_trace_id.empty() && !edge_trace_id_is_safe(msg_trace_id)) msg_trace_id_valid = false;
     }
     const std::string msg_trace_id_eff = msg_trace_id_valid ? msg_trace_id : "";
-    const bool can_backfill_trace_id = !idempotency_mismatch && !msg_trace_id_eff.empty() && tr.trace_id.empty();
+    // Allow trace_id backfill even on idempotency mismatch when the stored trace_id is empty
+    // or still set to the workflow/task id (default edge workflow behavior). This preserves
+    // trace correlation for edge workflows without mutating task state.
+    const bool can_backfill_trace_id =
+      !msg_trace_id_eff.empty() && (tr.trace_id.empty() || tr.trace_id == tr.task_id);
 
     // Do not regress/override terminal states set by the platform (e.g. deadline sweeper) or earlier completion.
     // We still persist the event for observability.

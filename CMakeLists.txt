@@ -758,10 +758,16 @@ if(AGENT_BUILD_HOST)
 
     add_test(NAME agentd_stream_assistant_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_stream_assistant_smoke.sh $<TARGET_FILE:agentd>)
     set_tests_properties(agentd_stream_assistant_smoke PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME agentd_deepseek_stream_tool_call_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_deepseek_stream_tool_call_smoke.sh $<TARGET_FILE:agentd>)
+    set_tests_properties(agentd_deepseek_stream_tool_call_smoke PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME agentd_openrouter_stream_assistant_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_openrouter_stream_assistant_smoke.sh $<TARGET_FILE:agentd>)
     set_tests_properties(agentd_openrouter_stream_assistant_smoke PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME agentd_moonshot_stream_assistant_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_moonshot_stream_assistant_smoke.sh $<TARGET_FILE:agentd>)
     set_tests_properties(agentd_moonshot_stream_assistant_smoke PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME agentd_openrouter_stream_tool_call_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_openrouter_stream_tool_call_smoke.sh $<TARGET_FILE:agentd>)
+    set_tests_properties(agentd_openrouter_stream_tool_call_smoke PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME agentd_moonshot_stream_tool_call_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_moonshot_stream_tool_call_smoke.sh $<TARGET_FILE:agentd>)
+    set_tests_properties(agentd_moonshot_stream_tool_call_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
     add_test(NAME agentd_sse_auth_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_sse_auth_smoke.sh $<TARGET_FILE:agentd>)
 
