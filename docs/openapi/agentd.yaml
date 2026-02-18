@@ -295,6 +295,27 @@ paths:
     get:
       tags: [tools]
       summary: List available tools
+      parameters:
+        - in: query
+          name: tools
+          required: false
+          schema: { type: string }
+          description: Requested tool mode (none|basic|host)
+        - in: query
+          name: yolo
+          required: false
+          schema: { type: boolean }
+          description: Request unrestricted tools (cannot exceed daemon policy)
+        - in: query
+          name: host_policy
+          required: false
+          schema: { type: string }
+          description: Requested host policy (full|readonly)
+        - in: query
+          name: session_id
+          required: false
+          schema: { type: string }
+          description: Session id for session-scoped tools
       responses:
         "200":
           description: Tools list
