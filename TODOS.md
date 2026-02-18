@@ -503,7 +503,15 @@ with **audio streaming** following once streaming UX is stable.
 
 ### Reweighted next 5 (highest compound impact)
 
-Priority order (reweighted after event-triggered durable orchestration shipped; memory leak resolved; sections below are kept stable for diff readability):
+Priority order (reweighted after event-triggered durable orchestration shipped; memory leak resolved):
+
+1) **Streaming stability** — OpenRouter pins + provider matrix upkeep + provider key verification (Moonshot/Kimi, OpenRouter).
+2) **Tool plugin isolation** — sandbox/host policy hardening + limits enforcement.
+3) **Audio streaming** — Opus/WebRTC pipeline + broker relay + UI voice controls.
+4) **Agent collaboration v2.2** — unify fan-out/join patterns across edge + LLM tasks (edge_parallel + delegate_parallel).
+5) **Interop v0.4** — enforceable edge attestation + trust roots and stronger multi-node identity binding.
+
+Details (stable order for diff readability; numbering below is not priority):
 
 1) **Agent collaboration v2.2** — unify fan-out/join patterns across edge + LLM tasks (edge_parallel + delegate_parallel),
    plus event-triggered durable workflows as a first-class collaboration primitive.

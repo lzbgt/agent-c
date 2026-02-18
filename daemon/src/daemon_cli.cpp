@@ -952,7 +952,8 @@ int parse_daemon_cli(int argc, char** argv, DaemonConfig* cfg, DaemonCliOverride
       if (v == "none" || v == "basic" || v == "host") {
         cfg->tools = v;
       } else {
-        cfg->tools = "host";
+        std::cerr << "Invalid --tools (expected: host|basic|none)\n";
+        return 2;
       }
     } else if (a == "--host-policy") {
       std::string v;
@@ -961,7 +962,11 @@ int parse_daemon_cli(int argc, char** argv, DaemonConfig* cfg, DaemonCliOverride
         return 2;
       }
       HostToolsetPolicyMode p{};
-      if (host_policy_from_string(v, &p)) cfg->host_policy = p;
+      if (!host_policy_from_string(v, &p)) {
+        std::cerr << "Invalid --host-policy (expected: full|readonly)\n";
+        return 2;
+      }
+      cfg->host_policy = p;
     } else if (a == "--yolo") {
       cfg->yolo_default = true;
     } else if (a == "--no-yolo") {
@@ -975,7 +980,11 @@ int parse_daemon_cli(int argc, char** argv, DaemonConfig* cfg, DaemonCliOverride
         return 2;
       }
       const std::string s = trim_copy(v);
-      if (s == "default" || s == "jules_codex") cfg->system_profile = s;
+      if (!(s == "default" || s == "jules_codex")) {
+        std::cerr << "Invalid --system-profile (expected: default|jules_codex)\n";
+        return 2;
+      }
+      cfg->system_profile = s;
       out->system_profile_set = true;
     } else if (a == "--tool-plugin") {
       std::string v;
