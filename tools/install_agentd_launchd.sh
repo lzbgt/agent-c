@@ -20,6 +20,7 @@ agentd_host_scope="${AGENTD_HOST_SCOPE:-${HOME}}"
 agentd_tools_root="${AGENTD_TOOLS_ROOT:-@host}"
 agentd_cors_origins="${AGENTD_CORS_ORIGINS:-}"
 agentd_extra_args="${AGENTD_EXTRA_ARGS:-}"
+agentd_dotenv_path="${AGENTD_DOTENV_PATH:-}"
 
 if [[ ! -x "${agentd_bin}" ]]; then
   echo "agentd binary not found or not executable: ${agentd_bin}" >&2
@@ -99,6 +100,12 @@ stderr_path="${agentd_log_dir}/agentd.err.log"
   echo '<plist version="1.0">'
   echo '<dict>'
   echo "  <key>Label</key><string>${label}</string>"
+  if [[ -n "${agentd_dotenv_path}" ]]; then
+    echo '  <key>EnvironmentVariables</key>'
+    echo '  <dict>'
+    echo "    <key>AGENTD_DOTENV_PATH</key><string>$(xml_escape "${agentd_dotenv_path}")</string>"
+    echo '  </dict>'
+  fi
   echo '  <key>ProgramArguments</key>'
   echo '  <array>'
   for arg in "${args[@]}"; do

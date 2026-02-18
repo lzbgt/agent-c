@@ -84,6 +84,10 @@ For local bring-up on macOS, you can install/remove launchd services with:
 AGENTD_AUTH_TOKEN="REPLACE_WITH_RANDOM_TOKEN" tools/install_agentd_launchd.sh
 tools/uninstall_agentd_launchd.sh
 ```
+You can also point the daemon at a specific dotenv file when installing the service:
+```
+AGENTD_DOTENV_PATH="/path/to/.env" tools/install_agentd_launchd.sh
+```
 
 Environment overrides:
 - `AGENTD_BIN` (default `./build/agentd`)
