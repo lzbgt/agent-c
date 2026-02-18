@@ -240,6 +240,7 @@ void handle_diagnostics_providers_endpoint(
   const std::string providers_list[] = {"deepseek", "moonshot", "openrouter", "openai"};
   for (const auto& p : providers_list) {
     Json::Value pd(Json::objectValue);
+    pd["active"] = (active_provider == p);
     ProviderKeyStatus ks = provider_key_status(cfg, p);
     pd["key_present"] = ks.present;
     if (ks.present) {

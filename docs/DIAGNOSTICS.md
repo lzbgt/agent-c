@@ -90,6 +90,7 @@ Example:
   "uptime_ms": 123456,
   "providers": {
     "deepseek": {
+      "active": false,
       "key_present": true,
       "source": { "kind": "env", "label": "DEEPSEEK_API_KEY" },
       "base_url": "https://api.deepseek.com",
@@ -97,6 +98,7 @@ Example:
       "model_default": "deepseek-reasoner"
     },
     "moonshot": {
+      "active": true,
       "key_present": true,
       "source": { "kind": "file", "label": "~/.env" },
       "base_url": "https://api.moonshot.cn/v1",
@@ -108,6 +110,7 @@ Example:
 ```
 
 Notes:
+- `active` indicates the daemon’s current provider selection (derived from `daemon.base_url`).
 - `key_present` is **boolean only**. Secret values are never returned.
 - `source.kind` is one of: `config`, `env`, or `file`.
 - `source.label` is a best-effort descriptor (e.g., `provider_keys`, `api_key`, `.not_in_repo`, `project.local.md`, `~/.env`).

@@ -58,6 +58,10 @@ for name in ("deepseek", "moonshot", "openrouter", "openai"):
     print("missing provider entry:", name, file=sys.stderr)
     raise SystemExit(1)
   entry = prov[name]
+  active = entry.get("active")
+  if not isinstance(active, bool):
+    print("missing/invalid active flag for", name, ":", active, file=sys.stderr)
+    raise SystemExit(1)
   src = entry.get("base_url_source")
   if src not in ("config", "env", "default"):
     print("missing/invalid base_url_source for", name, ":", src, file=sys.stderr)
