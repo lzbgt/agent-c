@@ -109,6 +109,7 @@ Notes:
 - `key_present` is **boolean only**. Secret values are never returned.
 - `source.kind` is one of: `config`, `env`, or `file`.
 - `source.label` is a best-effort descriptor (e.g., `provider_keys`, `api_key`, `.not_in_repo`, `project.local.md`, `~/.env`).
+- `warning` is an optional provider-specific hint (e.g., Moonshot key detected but OpenRouter key missing).
 
 ## Endpoint: `/api/v1/diagnostics/provider_test`
 
