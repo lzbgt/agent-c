@@ -15,6 +15,16 @@ can validate and reason about events deterministically.
 ## Schema location
 
 - JSON Schema: `docs/spec/run-events/schema/run_event_v1.schema.json`
+- Payload schemas (v1):
+  - `docs/spec/run-events/schema/run_event_payload_assistant_delta_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_assistant_message_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_tool_call_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_tool_result_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_llm_usage_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_artifact_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_ui_action_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_heartbeat_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_error_v1.schema.json`
 - Fixtures: `docs/spec/run-events/fixtures/run_events_v1.jsonl`
 - CI: `run_events_spec_sanity_tests` validates schema presence and fixture envelopes.
 

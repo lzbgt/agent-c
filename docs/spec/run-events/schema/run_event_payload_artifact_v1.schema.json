@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Run Event Payload artifact v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["path", "kind"],
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "Artifact path." 
+    },
+    "kind": {
+      "type": "string",
+      "description": "Artifact kind (image, audio, file, etc.)."
+    },
+    "mime": {
+      "type": "string",
+      "description": "MIME type (optional)."
+    },
+    "title": {
+      "type": "string",
+      "description": "Human-friendly title (optional)."
+    },
+    "repeat": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Repeat count (optional)."
+    },
+    "autoplay": {
+      "type": "boolean",
+      "description": "Autoplay hint (optional)."
+    },
+    "size_bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Artifact size in bytes (optional)."
+    }
+  }
+}

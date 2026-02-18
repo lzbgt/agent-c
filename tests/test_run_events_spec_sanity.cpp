@@ -6,6 +6,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <unordered_set>
 
 static bool read_all(const std::string& path, std::string* out) {
   if (!out) return false;
@@ -351,11 +352,13 @@ static int schema_sanity(const std::string& schema_dir) {
   }
 
   int files = 0;
+  std::unordered_set<std::string> seen;
   for (const auto& ent : fs::directory_iterator(schema_dir)) {
     if (!ent.is_regular_file()) continue;
     const std::string path = ent.path().string();
     if (!ends_with(path, ".json")) continue;
     files++;
+    seen.insert(ent.path().filename().string());
 
     std::string s;
     if (!read_all(path, &s)) {
@@ -389,6 +392,26 @@ static int schema_sanity(const std::string& schema_dir) {
   if (files == 0) {
     std::fprintf(stderr, "no schema files found under: %s\n", schema_dir.c_str());
     return 1;
+  }
+
+  const char* required[] = {
+    "run_event_v1.schema.json",
+    "run_event_payload_assistant_delta_v1.schema.json",
+    "run_event_payload_assistant_message_v1.schema.json",
+    "run_event_payload_tool_call_v1.schema.json",
+    "run_event_payload_tool_result_v1.schema.json",
+    "run_event_payload_llm_usage_v1.schema.json",
+    "run_event_payload_artifact_v1.schema.json",
+    "run_event_payload_ui_action_v1.schema.json",
+    "run_event_payload_heartbeat_v1.schema.json",
+    "run_event_payload_error_v1.schema.json",
+  };
+  for (const char* name : required) {
+    if (!name) continue;
+    if (seen.find(name) == seen.end()) {
+      std::fprintf(stderr, "missing required schema file: %s/%s\n", schema_dir.c_str(), name);
+      return 1;
+    }
   }
   return 0;
 }

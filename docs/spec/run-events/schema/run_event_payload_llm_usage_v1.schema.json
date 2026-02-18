@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Run Event Payload llm_usage v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["prompt_tokens", "completion_tokens", "total_tokens"],
+  "properties": {
+    "prompt_tokens": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Prompt token count."
+    },
+    "completion_tokens": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Completion token count."
+    },
+    "total_tokens": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total token count."
+    }
+  }
+}

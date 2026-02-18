@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Run Event Payload tool_call v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["tool_name", "tool_call_id", "arguments_json"],
+  "properties": {
+    "tool_name": {
+      "type": "string",
+      "description": "Tool name."
+    },
+    "tool_call_id": {
+      "type": "string",
+      "description": "Tool call identifier."
+    },
+    "arguments_json": {
+      "type": "string",
+      "description": "JSON-encoded tool arguments."
+    }
+  }
+}

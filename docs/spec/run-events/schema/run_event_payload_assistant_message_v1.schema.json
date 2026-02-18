@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Run Event Payload assistant_message v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["assistant_content", "has_tool_calls"],
+  "properties": {
+    "assistant_content": {
+      "type": "string",
+      "description": "Assistant message text (multimodal prefix removed)."
+    },
+    "has_tool_calls": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "1 when tool calls were present, else 0."
+    },
+    "assistant_mm_json": {
+      "type": "string",
+      "description": "Raw multimodal JSON string when present."
+    },
+    "assistant_mm_bytes": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Byte length of assistant_mm_json."
+    },
+    "assistant_mm_truncated": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "1 when assistant_mm_json was capped for safety."
+    }
+  }
+}

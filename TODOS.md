@@ -95,6 +95,7 @@ with **tool server protocol error surfacing** and **audio streaming** following 
   - [x] WebUI renders `assistant_mm_json` attachments (images/files) in assistant messages.
   - [x] Core tool-loop test: validates `assistant_mm_json` event payloads for prefix parsing + byte metadata.
   - [x] Run-event fixture validation enforces payload shapes for common event types.
+  - [x] Payload JSON Schemas for common run event types (assistant/tool/artifact/usage/error).
 - [ ] Streaming: core-layer streaming interface + provider compatibility matrix with full variant coverage.
   - [x] Core SSE parser (`agent_sse_parser_t`) shared by CLI/daemon streaming paths.
   - [x] Core stream decoder (`agent_stream_decoder_t`) + unit tests (`tests/test_stream_decoder.c`).

@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Run Event Payload error v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["reason"],
+  "properties": {
+    "reason": {
+      "type": "string",
+      "description": "Error reason token."
+    },
+    "error": {
+      "type": "string",
+      "description": "Human-readable error message (optional)."
+    },
+    "steps_executed": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Steps executed before error (optional)."
+    },
+    "max_steps": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Max steps limit (optional)."
+    }
+  }
+}
