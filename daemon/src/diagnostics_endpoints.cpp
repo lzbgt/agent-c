@@ -153,7 +153,16 @@ void handle_diagnostics_endpoint(
   if (!daemon_require_auth(cfg, req, resp)) return;
 
   Json::Value root = base_diag(start_time);
-  root["active_provider"] = provider_from_base_url(cfg.base_url);
+  const std::string active_provider = provider_from_base_url(cfg.base_url);
+  root["active_provider"] = active_provider;
+  ProviderKeyStatus active_key = provider_key_status(cfg, active_provider);
+  root["active_provider_key_present"] = active_key.present;
+  if (active_key.present) {
+    Json::Value src(Json::objectValue);
+    src["kind"] = active_key.source_kind;
+    src["label"] = active_key.source_label;
+    root["active_provider_key_source"] = src;
+  }
   const bool db_open = db_or_null && db_or_null->is_open();
   root["ready"] = db_open;
   Json::Value checks(Json::objectValue);

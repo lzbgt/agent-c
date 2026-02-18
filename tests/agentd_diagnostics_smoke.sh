@@ -48,6 +48,21 @@ active_provider = diag.get("active_provider")
 if not isinstance(active_provider, str) or not active_provider:
   print("missing/invalid active_provider", active_provider, file=sys.stderr)
   raise SystemExit(1)
+key_present = diag.get("active_provider_key_present")
+if not isinstance(key_present, bool):
+  print("missing/invalid active_provider_key_present", key_present, file=sys.stderr)
+  raise SystemExit(1)
+if key_present:
+  src = diag.get("active_provider_key_source")
+  if not isinstance(src, dict):
+    print("missing active_provider_key_source", src, file=sys.stderr)
+    raise SystemExit(1)
+  if src.get("kind") not in ("config", "env", "file"):
+    print("invalid active_provider_key_source kind", src, file=sys.stderr)
+    raise SystemExit(1)
+  if not isinstance(src.get("label"), str) or not src.get("label"):
+    print("invalid active_provider_key_source label", src, file=sys.stderr)
+    raise SystemExit(1)
 
 providers = json.loads(os.environ["PROVIDERS_JSON"])
 if not providers.get("ok"):
