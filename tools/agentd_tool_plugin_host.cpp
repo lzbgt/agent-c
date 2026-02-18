@@ -47,6 +47,64 @@ struct HostLimits {
   int64_t as_mb = 0;
 };
 
+static void apply_min_limit(int64_t value, int64_t* target) {
+  if (!target || value <= 0) return;
+  if (*target <= 0) {
+    *target = value;
+  } else {
+    *target = std::min(*target, value);
+  }
+}
+
+static bool extract_limit(const Json::Value& obj, const char* key, int64_t* out, std::string* err) {
+  if (!out || !key) return false;
+  if (!obj.isMember(key)) return true;
+  const Json::Value& v = obj[key];
+  if (!(v.isInt64() || v.isInt() || v.isUInt64() || v.isUInt() || v.isDouble())) {
+    if (err) *err = std::string("limit ") + key + " must be a number";
+    return false;
+  }
+  int64_t n = 0;
+  if (v.isDouble()) {
+    n = (int64_t)v.asDouble();
+  } else {
+    n = v.asInt64();
+  }
+  if (n <= 0) {
+    return true;
+  }
+  apply_min_limit(n, out);
+  return true;
+}
+
+static bool merge_limits_from_config(const std::string& cfg_json, HostLimits* limits, std::string* err) {
+  if (err) err->clear();
+  if (!limits) return false;
+  if (cfg_json.empty()) return true;
+
+  Json::Value root;
+  std::string perr;
+  if (!json_parse_any(cfg_json, &root, &perr)) {
+    if (err) *err = "invalid config json: " + perr;
+    return false;
+  }
+
+  const Json::Value* policy = &root;
+  if (root.isObject() && root.isMember("policy") && root["policy"].isObject()) {
+    policy = &root["policy"];
+  }
+  const Json::Value* lim = policy;
+  if (policy->isObject() && policy->isMember("limits") && (*policy)["limits"].isObject()) {
+    lim = &(*policy)["limits"];
+  }
+  if (!lim->isObject()) return true;
+
+  if (!extract_limit(*lim, "cpu_ms", &limits->cpu_ms, err)) return false;
+  if (!extract_limit(*lim, "wall_ms", &limits->wall_ms, err)) return false;
+  if (!extract_limit(*lim, "as_mb", &limits->as_mb, err)) return false;
+  return true;
+}
+
 bool apply_limits(const HostLimits& lim, std::string* out_err) {
   if (out_err) out_err->clear();
   if (lim.cpu_ms <= 0 && lim.wall_ms <= 0 && lim.as_mb <= 0) return true;
@@ -184,6 +242,7 @@ Json::Value tool_result_from_json(const std::string& raw) {
 int main(int argc, char** argv) {
   std::vector<ToolPluginSpec> specs;
   HostLimits limits;
+  std::string policy_err;
   for (int i = 1; i < argc; i++) {
     const std::string arg = argv[i] ? argv[i] : "";
     if (arg == "--plugin") {
@@ -205,19 +264,34 @@ int main(int argc, char** argv) {
         usage(argv[0]);
         return 2;
       }
-      limits.cpu_ms = std::stoll(argv[++i]);
+      try {
+        limits.cpu_ms = std::stoll(argv[++i]);
+      } catch (...) {
+        std::cerr << "Invalid --limit-cpu-ms\n";
+        return 2;
+      }
     } else if (arg == "--limit-wall-ms") {
       if (i + 1 >= argc) {
         usage(argv[0]);
         return 2;
       }
-      limits.wall_ms = std::stoll(argv[++i]);
+      try {
+        limits.wall_ms = std::stoll(argv[++i]);
+      } catch (...) {
+        std::cerr << "Invalid --limit-wall-ms\n";
+        return 2;
+      }
     } else if (arg == "--limit-as-mb") {
       if (i + 1 >= argc) {
         usage(argv[0]);
         return 2;
       }
-      limits.as_mb = std::stoll(argv[++i]);
+      try {
+        limits.as_mb = std::stoll(argv[++i]);
+      } catch (...) {
+        std::cerr << "Invalid --limit-as-mb\n";
+        return 2;
+      }
     } else if (arg == "-h" || arg == "--help") {
       usage(argv[0]);
       return 0;
@@ -231,6 +305,15 @@ int main(int argc, char** argv) {
   if (specs.empty()) {
     usage(argv[0]);
     return 2;
+  }
+
+  for (const auto& spec : specs) {
+    if (!spec.config_json.empty()) {
+      if (!merge_limits_from_config(spec.config_json, &limits, &policy_err)) {
+        std::cerr << "Invalid plugin policy: " << (policy_err.empty() ? "unknown error" : policy_err) << "\n";
+        return 2;
+      }
+    }
   }
 
   std::string limit_err;

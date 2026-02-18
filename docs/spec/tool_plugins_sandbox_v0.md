@@ -48,6 +48,22 @@ The plugin host can apply basic process-level limits:
 
 If a limit is requested but cannot be applied, the host exits with an error.
 
+Limits can also be supplied via the plugin config JSON:
+
+```json
+{
+  "policy": {
+    "limits": {
+      "cpu_ms": 60000,
+      "wall_ms": 60000,
+      "as_mb": 1024
+    }
+  }
+}
+```
+
+When both CLI limits and config limits are present, the host enforces the **most restrictive** (minimum) values.
+
 ## Follow-up goals (tracked in `TODOS.md`)
 
 - Policy-based isolation: per-plugin limits (CPU/memory), optional seccomp/AppArmor profiles (Linux).

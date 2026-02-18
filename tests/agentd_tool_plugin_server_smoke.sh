@@ -118,7 +118,7 @@ HTTPServer(("127.0.0.1", ${PORT_STUB}), H).serve_forever()
 PY
 STUB_PID=$!
 
-TOOL_SERVER_CMD="${PLUGIN_HOST_BIN} --plugin ${PLUGIN_PATH} --plugin-config {\\\"tag\\\":\\\"server-smoke\\\"} --limit-cpu-ms 60000 --limit-wall-ms 60000"
+TOOL_SERVER_CMD="${PLUGIN_HOST_BIN} --plugin ${PLUGIN_PATH} --plugin-config '{\"tag\":\"server-smoke\",\"policy\":{\"limits\":{\"cpu_ms\":60000,\"wall_ms\":60000}}}'"
 
 agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "${NAME}" \
   --tools basic \
