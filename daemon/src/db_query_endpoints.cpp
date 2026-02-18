@@ -11,6 +11,7 @@
 #include <cstdlib>
 #include <optional>
 #include <string>
+#include <vector>
 
 #if defined(AGENT_HAVE_SQLITE3)
 #include <sqlite3.h>

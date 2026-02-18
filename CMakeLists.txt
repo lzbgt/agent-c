@@ -203,6 +203,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/cbor_encode.cpp
     daemon/src/cors.cpp
     daemon/src/db_query_endpoints.cpp
+    daemon/src/db_query_blob_endpoints.cpp
     daemon/src/db_query_edge_endpoints.cpp
     daemon/src/daemon_auth.cpp
     daemon/src/diagnostics_endpoints.cpp

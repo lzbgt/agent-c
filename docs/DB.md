@@ -708,6 +708,9 @@ API when DB is enabled:
 - `GET /api/v1/db/sessions?limit=...&offset=...`
 - `GET /api/v1/db/messages?session_id=...&limit=...&offset=...`
 - `GET /api/v1/db/client_events?session_id=...&limit=...&offset=...`
+- `GET /api/v1/db/blobs?limit=...&offset=...&tier=...`
+- `GET /api/v1/db/blob?blob_id=...&include_artifacts=1`
+- `GET /api/v1/db/analytics/blobs?top_mime_limit=...`
 - `GET /api/v1/db/workflows?status=...&session_id=...&trace_id=...`
 - `GET /api/v1/db/workflow?workflow_id=...&include_tasks=1&include_events=1`
 - `GET /api/v1/db/workflow_tasks?workflow_id=...`

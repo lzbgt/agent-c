@@ -861,6 +861,18 @@ struct AgentdService::Impl {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_db_client_events_endpoint(cur, cors_cfg, &db, req, resp);
     });
+    server.handle("GET", "/api/v1/db/blobs", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_db_blobs_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("GET", "/api/v1/db/blob", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_db_blob_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("GET", "/api/v1/db/analytics/blobs", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_db_blob_analytics_endpoint(cur, cors_cfg, &db, req, resp);
+    });
     server.handle("GET", "/api/v1/db/workflows", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_db_workflows_endpoint(cur, cors_cfg, &db, req, resp);

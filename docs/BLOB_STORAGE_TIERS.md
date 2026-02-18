@@ -123,6 +123,7 @@ These are additive; legacy `GET /api/v1/file` remains supported.
 
 - Counters: bytes per tier, objects count, cache hit/miss, promotion/eviction counts.
 - Auditable events for GC and tier transitions.
+- DB query endpoints: `/api/v1/db/blobs`, `/api/v1/db/blob`, `/api/v1/db/analytics/blobs`.
 
 ## Object-store configuration (v1)
 

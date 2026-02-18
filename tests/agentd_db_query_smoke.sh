@@ -671,6 +671,93 @@ if rows is None:
   raise SystemExit(1)
 PY
 
+blob_payload="$(python3 - <<'PY'
+import base64, json
+data = base64.b64encode(b"hello blob").decode("utf-8")
+print(json.dumps({"data_base64": data, "mime": "text/plain"}))
+PY
+)"
+
+blob_resp="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Content-Type: application/json" \
+  -d "${blob_payload}" \
+  "${DAEMON_URL}/api/v1/blob/upload")"
+
+BLOB_ID="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${blob_resp}''')
+if not obj.get("ok"):
+  print("blob/upload failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+print(obj.get("blob_id") or "")
+PY
+)"
+
+if [[ -z "${BLOB_ID}" ]]; then
+  echo "blob/upload missing blob_id" >&2
+  exit 1
+fi
+
+BLOB_ID_ENC="$(BLOB_ID="${BLOB_ID}" python3 - <<'PY'
+import os
+from urllib.parse import quote
+print(quote(os.environ["BLOB_ID"]))
+PY
+)"
+
+db_blobs="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/blobs?limit=20&offset=0")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${db_blobs}''')
+if not obj.get("ok"):
+  print("db/blobs failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+rows = obj.get("blobs") or []
+blob_ids = {r.get("blob_id") for r in rows if isinstance(r, dict)}
+if "${BLOB_ID}" not in blob_ids:
+  print("expected blob_id in db/blobs", "${BLOB_ID}", blob_ids, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+db_blob="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/blob?blob_id=${BLOB_ID_ENC}&include_artifacts=1")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${db_blob}''')
+if not obj.get("ok"):
+  print("db/blob failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+blob = obj.get("blob") or {}
+if blob.get("blob_id") != "${BLOB_ID}":
+  print("db/blob missing blob_id", blob, file=sys.stderr)
+  raise SystemExit(1)
+if "artifacts" not in obj:
+  print("db/blob missing artifacts field", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+db_blob_analytics="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/analytics/blobs?top_mime_limit=5")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${db_blob_analytics}''')
+if not obj.get("ok"):
+  print("db/analytics/blobs failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+totals = obj.get("totals") or {}
+if (totals.get("blob_count") or 0) < 1:
+  print("expected blob_count >= 1", obj, file=sys.stderr)
+  raise SystemExit(1)
+tiers = obj.get("by_tier") or []
+if not tiers:
+  print("expected by_tier entries", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 db_analytics="$(curl -fsS --noproxy "*" --max-time 10 \
   "${DAEMON_URL}/api/v1/db/analytics/workflows?scope=all")"
 

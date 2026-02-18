@@ -270,6 +270,9 @@ When DB support is enabled, the daemon exposes read-only debugging endpoints:
 - `GET /api/v1/db/artifacts?session_id=...`
 - `GET /api/v1/db/ui_actions?session_id=...`
 - `GET /api/v1/db/client_events?session_id=...`
+- `GET /api/v1/db/blobs?limit=...&offset=...&tier=...`
+- `GET /api/v1/db/blob?blob_id=...&include_artifacts=1`
+- `GET /api/v1/db/analytics/blobs?top_mime_limit=...`
 - `GET /api/v1/db/workflows?status=...&session_id=...&trace_id=...`
 - `GET /api/v1/db/workflow?workflow_id=...`
 - `GET /api/v1/db/workflow_tasks?workflow_id=...`

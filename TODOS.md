@@ -84,8 +84,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Promoted goals (explicit goals; no non-goals)
 
-Weights updated 2026-02-18: prioritize **Storage/analytics** and **multimodal/streaming foundation** as the next
-highest leverage enablers now that **dynamic memory policy** and **OTA continuity guardrails** are in place.
+Weights updated 2026-02-18: prioritize **Storage/analytics** (archive tier + ops controls) and the
+**multimodal/streaming foundation** now that **dynamic memory policy** and **OTA continuity guardrails** are in place.
 
 - [x] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker + agentd implemented; tests added).
 - [ ] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
@@ -108,6 +108,7 @@ highest leverage enablers now that **dynamic memory policy** and **OTA continuit
   - [x] Add object-store tier (S3/MinIO) with signed URL reads + read-through cache.
   - [x] Add workflow analytics export bundles (CSV/JSON) for durable + edge workflows.
   - [x] Add tiering policy engine (promote/evict + size/age budgets) with metrics.
+  - [x] Add blob DB query endpoints + analytics (`/api/v1/db/blobs`, `/api/v1/db/blob`, `/api/v1/db/analytics/blobs`).
   - [ ] Next: add archive tier (cold storage restore workflow + operator controls).
 - [x] UI actions: stable public action API, autoplay unlock flow, and consented remote URL opens.
 - [x] Memory privacy tags (`<private>`) to keep sensitive content out of durable storage (claude-mem inspired).
