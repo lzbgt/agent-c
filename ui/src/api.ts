@@ -1624,6 +1624,14 @@ export const MemoryIndexRespSchema = z
   .passthrough();
 export type MemoryIndexResp = z.infer<typeof MemoryIndexRespSchema>;
 
+export const MemorySalienceRespSchema = z
+  .object({
+    ok: z.boolean(),
+    error: z.string().optional(),
+  })
+  .passthrough();
+export type MemorySalienceResp = z.infer<typeof MemorySalienceRespSchema>;
+
 export const MemoryRetentionRespSchema = z
   .object({
     ok: z.boolean(),
@@ -1672,6 +1680,17 @@ type MemoryIndexParams = {
   includeDaily?: boolean;
   includeSession?: boolean;
   dailyDays?: number;
+};
+
+type MemorySalienceParams = {
+  includeStructured?: boolean;
+  includeDaily?: boolean;
+  dailyDays?: number;
+  maxItems?: number;
+  maxStructuredItems?: number;
+  maxDailyItems?: number;
+  halfLifeDays?: number;
+  importanceWeight?: number;
 };
 
 type MemoryRecapsListParams = {
@@ -1752,6 +1771,26 @@ export async function apiMemoryIndex(
   const r = await fetch(url, { headers: daemonHeaders(auth) });
   const j = await r.json();
   return MemoryIndexRespSchema.parse(j);
+}
+
+export async function apiMemorySalience(
+  base: string,
+  params: MemorySalienceParams,
+  auth?: ApiAuth,
+): Promise<MemorySalienceResp> {
+  const qs = new URLSearchParams();
+  addQueryParam(qs, "include_structured", params.includeStructured);
+  addQueryParam(qs, "include_daily", params.includeDaily);
+  addQueryParam(qs, "daily_days", params.dailyDays);
+  addQueryParam(qs, "max_items", params.maxItems);
+  addQueryParam(qs, "max_structured_items", params.maxStructuredItems);
+  addQueryParam(qs, "max_daily_items", params.maxDailyItems);
+  addQueryParam(qs, "half_life_days", params.halfLifeDays);
+  addQueryParam(qs, "importance_weight", params.importanceWeight);
+  const url = qs.toString() ? `${base}/api/v1/memory/salience?${qs.toString()}` : `${base}/api/v1/memory/salience`;
+  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return MemorySalienceRespSchema.parse(j);
 }
 
 export async function apiMemoryRetentionEnforce(

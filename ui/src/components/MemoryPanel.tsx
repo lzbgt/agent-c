@@ -4,6 +4,7 @@ import {
   apiMemoryCorrelate,
   apiMemoryIndex,
   apiMemoryQuery,
+  apiMemorySalience,
   apiMemoryRecapsCreate,
   apiMemoryRecapsList,
   apiMemoryRetentionEnforce,
@@ -61,6 +62,18 @@ export default function MemoryPanel(props: MemoryPanelProps) {
   const [indexResult, setIndexResult] = React.useState<any | null>(null);
   const [indexError, setIndexError] = React.useState<string | null>(null);
   const [indexBusy, setIndexBusy] = React.useState<boolean>(false);
+
+  const [salienceIncludeStructured, setSalienceIncludeStructured] = React.useState<boolean>(true);
+  const [salienceIncludeDaily, setSalienceIncludeDaily] = React.useState<boolean>(true);
+  const [salienceDailyDays, setSalienceDailyDays] = React.useState<string>("7");
+  const [salienceMaxItems, setSalienceMaxItems] = React.useState<string>("12");
+  const [salienceStructuredMaxItems, setSalienceStructuredMaxItems] = React.useState<string>("6");
+  const [salienceDailyMaxItems, setSalienceDailyMaxItems] = React.useState<string>("6");
+  const [salienceHalfLifeDays, setSalienceHalfLifeDays] = React.useState<string>("14");
+  const [salienceImportanceWeight, setSalienceImportanceWeight] = React.useState<string>("0.35");
+  const [salienceResult, setSalienceResult] = React.useState<any | null>(null);
+  const [salienceError, setSalienceError] = React.useState<string | null>(null);
+  const [salienceBusy, setSalienceBusy] = React.useState<boolean>(false);
 
   const [recapsLimit, setRecapsLimit] = React.useState<string>("20");
   const [recapsIncludeSummary, setRecapsIncludeSummary] = React.useState<boolean>(false);
@@ -228,6 +241,45 @@ export default function MemoryPanel(props: MemoryPanelProps) {
       setIndexError(String(e));
     } finally {
       setIndexBusy(false);
+    }
+  };
+
+  const runSalience = async () => {
+    setSalienceError(null);
+    setSalienceResult(null);
+    if (!canQuery) {
+      setSalienceError("missing base URL");
+      return;
+    }
+    const dailyDays = parseOptionalInt(salienceDailyDays, 0);
+    const maxItems = parseOptionalInt(salienceMaxItems, 0);
+    const maxStructured = parseOptionalInt(salienceStructuredMaxItems, 0);
+    const maxDaily = parseOptionalInt(salienceDailyMaxItems, 0);
+    const halfLife = parseOptionalFloat(salienceHalfLifeDays, 0);
+    const importance = parseOptionalFloat(salienceImportanceWeight, 0);
+
+    setSalienceBusy(true);
+    try {
+      const res = await apiMemorySalience(
+        base,
+        {
+          includeStructured: salienceIncludeStructured,
+          includeDaily: salienceIncludeDaily,
+          dailyDays,
+          maxItems,
+          maxStructuredItems: maxStructured,
+          maxDailyItems: maxDaily,
+          halfLifeDays: halfLife,
+          importanceWeight: importance,
+        },
+        props.auth,
+      );
+      if (!res.ok) throw new Error(res.error || "salience failed");
+      setSalienceResult(res);
+    } catch (e) {
+      setSalienceError(String(e));
+    } finally {
+      setSalienceBusy(false);
     }
   };
 
@@ -630,6 +682,115 @@ export default function MemoryPanel(props: MemoryPanelProps) {
           {indexResult ? (
             <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/70">
               {stringifyJson(indexResult)}
+            </pre>
+          ) : null}
+        </section>
+
+        <section className="rounded-md border border-white/10 bg-black/20 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold text-white/80">Memory salience</div>
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={salienceBusy || !canQuery}
+                onClick={() => void runSalience()}
+              >
+                {salienceBusy ? "Loading…" : "Fetch"}
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={salienceBusy}
+                onClick={() => {
+                  setSalienceError(null);
+                  setSalienceResult(null);
+                }}
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+          <div className="grid gap-2 text-[11px] text-white/70">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Daily days</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={salienceDailyDays}
+                  onChange={(e) => setSalienceDailyDays(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+              <div>
+                <FieldLabel>Max items</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={salienceMaxItems}
+                  onChange={(e) => setSalienceMaxItems(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Structured max items</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={salienceStructuredMaxItems}
+                  onChange={(e) => setSalienceStructuredMaxItems(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+              <div>
+                <FieldLabel>Daily max items</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={salienceDailyMaxItems}
+                  onChange={(e) => setSalienceDailyMaxItems(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Half-life days</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={salienceHalfLifeDays}
+                  onChange={(e) => setSalienceHalfLifeDays(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+              <div>
+                <FieldLabel>Importance weight</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={salienceImportanceWeight}
+                  onChange={(e) => setSalienceImportanceWeight(e.target.value)}
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={salienceIncludeStructured} onChange={(e) => setSalienceIncludeStructured(e.target.checked)} />
+                <span>Include structured</span>
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={salienceIncludeDaily} onChange={(e) => setSalienceIncludeDaily(e.target.checked)} />
+                <span>Include daily</span>
+              </label>
+            </div>
+          </div>
+          {salienceError ? (
+            <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+              {salienceError}
+            </div>
+          ) : null}
+          {salienceResult ? (
+            <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/70">
+              {stringifyJson(salienceResult)}
             </pre>
           ) : null}
         </section>
