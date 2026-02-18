@@ -106,7 +106,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 27;
+  const int kSchemaVersion = 28;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -752,6 +752,50 @@ CREATE INDEX IF NOT EXISTS runs_by_replay_sha256 ON runs(replay_sha256);
 )SQL";
     if (!exec_locked(schema_v27, out_error)) return false;
     cur_ver = 27;
+  }
+
+  if (cur_ver < 28) {
+    const char* schema_v28 = R"SQL(
+-- Blob storage manifest (tiered blob store; v0 local-only).
+CREATE TABLE IF NOT EXISTS blob_manifest(
+  blob_id TEXT PRIMARY KEY,
+  size_bytes INTEGER NOT NULL,
+  mime TEXT,
+  sha256_hex TEXT NOT NULL,
+  created_utc_ms INTEGER NOT NULL,
+  last_access_utc_ms INTEGER,
+  ref_count INTEGER NOT NULL DEFAULT 0,
+  tier TEXT NOT NULL,
+  location TEXT NOT NULL,
+  etag TEXT,
+  storage_class TEXT
+);
+CREATE INDEX IF NOT EXISTS blob_manifest_by_last_access ON blob_manifest(last_access_utc_ms DESC);
+CREATE INDEX IF NOT EXISTS blob_manifest_by_ref_count ON blob_manifest(ref_count, created_utc_ms DESC);
+
+-- Map artifacts to blobs (ref-counted GC).
+CREATE TABLE IF NOT EXISTS artifact_blobs(
+  artifact_id INTEGER NOT NULL,
+  blob_id TEXT NOT NULL,
+  PRIMARY KEY(artifact_id, blob_id),
+  FOREIGN KEY(artifact_id) REFERENCES artifacts(id) ON DELETE CASCADE,
+  FOREIGN KEY(blob_id) REFERENCES blob_manifest(blob_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS artifact_blobs_by_blob ON artifact_blobs(blob_id);
+
+CREATE TRIGGER IF NOT EXISTS artifact_blobs_insert AFTER INSERT ON artifact_blobs
+BEGIN
+  UPDATE blob_manifest SET ref_count = ref_count + 1 WHERE blob_id = NEW.blob_id;
+END;
+CREATE TRIGGER IF NOT EXISTS artifact_blobs_delete AFTER DELETE ON artifact_blobs
+BEGIN
+  UPDATE blob_manifest
+  SET ref_count = CASE WHEN ref_count > 0 THEN ref_count - 1 ELSE 0 END
+  WHERE blob_id = OLD.blob_id;
+END;
+)SQL";
+    if (!exec_locked(schema_v28, out_error)) return false;
+    cur_ver = 28;
   }
 
   // Record schema version.

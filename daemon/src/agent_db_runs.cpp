@@ -155,10 +155,12 @@ bool AgentDb::insert_tool_record(const ToolRecordRow& row, std::string* out_erro
 #endif
 }
 
-bool AgentDb::insert_artifact(const ArtifactRow& row, std::string* out_error) {
+bool AgentDb::insert_artifact(const ArtifactRow& row, int64_t* out_artifact_id, std::string* out_error) {
   if (out_error) out_error->clear();
+  if (out_artifact_id) *out_artifact_id = 0;
 #if !defined(AGENT_HAVE_SQLITE3)
   (void)row;
+  (void)out_artifact_id;
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
@@ -226,6 +228,9 @@ bool AgentDb::insert_artifact(const ArtifactRow& row, std::string* out_error) {
     return false;
   }
 
+  if (out_artifact_id) {
+    *out_artifact_id = (int64_t)sqlite3_last_insert_rowid(db_);
+  }
   sqlite3_finalize(st);
   return true;
 #endif

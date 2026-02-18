@@ -853,7 +853,7 @@ void handle_session_upload_endpoint(
       row.autoplay = false;
       row.repeat = 1;
       row.artifact_json = Json::writeString(wb, artifact);
-      (void)db->insert_artifact(row, nullptr);
+      (void)db->insert_artifact(row, nullptr, nullptr);
     }
 
     Json::Value of(Json::objectValue);

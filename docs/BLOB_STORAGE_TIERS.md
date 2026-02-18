@@ -58,6 +58,7 @@ Artifacts retain `path` for legacy compatibility, but new records should prefer 
 - Root: `${state_dir}/blobs/sha256/<aa>/<bb>/<sha256>`.
 - Atomic writes: write temp + fsync + rename.
 - Safe delete: GC by ref_count and retention policy.
+- Upload size cap: enforced via the daemon `upload_max_bytes` limit in v0.
 
 ### Tier 2: Object store (S3/MinIO)
 
@@ -89,14 +90,15 @@ Artifacts retain `path` for legacy compatibility, but new records should prefer 
 ## APIs (proposed)
 
 Read:
-- `GET /api/v1/blob/{blob_id}` (supports `Range`)
+- `GET /api/v1/blob?blob_id=...` (supports `Range`)
 
 Upload:
-- `POST /api/v1/blob/upload` (multipart or raw binary; returns `blob_id`)
+- `POST /api/v1/blob/upload` (JSON `data_base64` or raw binary; returns `blob_id`)
 
 Metadata:
-- `GET /api/v1/blob/{blob_id}/meta`
-- `POST /api/v1/blob/retain` (pin or set retention class)
+- `GET /api/v1/blob/meta?blob_id=...`
+- `POST /api/v1/blob/retain` (adjust ref count; `{blob_id, delta}`)
+- `POST /api/v1/blob/gc` (ref-count GC sweep; `{min_age_ms, max_rows, dry_run}`)
 
 These are additive; legacy `GET /api/v1/file` remains supported.
 

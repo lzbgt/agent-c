@@ -1,6 +1,7 @@
 #include "agentd/api.h"
 
 #include "agent_db.h"
+#include "blob_endpoints.h"
 #include "caps_endpoint.h"
 #include "config_endpoint.h"
 #include "config_store.h"
@@ -402,6 +403,31 @@ bool AgentdApi::init(std::string* out_error) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();
     handle_file_endpoint(cur, self->cors_cfg, req, resp);
+  });
+  impl_->route("POST", "/api/v1/blob/upload", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_blob_upload_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route("GET", "/api/v1/blob", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_blob_get_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route("GET", "/api/v1/blob/meta", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_blob_meta_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route("POST", "/api/v1/blob/retain", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_blob_retain_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route("POST", "/api/v1/blob/gc", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_blob_gc_endpoint(cur, self->cors_cfg, &self->db, req, resp);
   });
 
   // Memory endpoints (durable + deterministic checkpoint correlation).

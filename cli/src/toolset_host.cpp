@@ -472,7 +472,7 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     r,
     "artifact_register",
     "Register a host file (image/audio/video/etc) as an artifact for the UI to render. Returns JSON envelope with data.artifact metadata and playback hints.",
-    "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"kind\":{\"type\":\"string\",\"description\":\"image|audio|video|text|file\"},\"mime\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"autoplay\":{\"type\":\"boolean\"},\"repeat\":{\"type\":\"integer\"}},\"required\":[\"path\"]}"
+    "{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\"},\"kind\":{\"type\":\"string\",\"description\":\"image|audio|video|text|file\"},\"mime\":{\"type\":\"string\"},\"title\":{\"type\":\"string\"},\"autoplay\":{\"type\":\"boolean\"},\"repeat\":{\"type\":\"integer\"},\"blob_id\":{\"type\":\"string\",\"description\":\"Optional blob store id (sha256:...)\"}},\"required\":[\"path\"]}"
   );
   if (st != AGENT_OK) goto fail;
 

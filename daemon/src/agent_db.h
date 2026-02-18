@@ -181,13 +181,49 @@ class AgentDb {
     int repeat = 1;
     std::string artifact_json; // JSON object string (required; stable fallback for future schema changes)
   };
-  bool insert_artifact(const ArtifactRow& row, std::string* out_error);
+  bool insert_artifact(const ArtifactRow& row, int64_t* out_artifact_id, std::string* out_error);
   bool list_artifacts_by_session(
     const std::string& session_id,
     size_t max_artifacts,
     std::vector<ArtifactRow>* out_rows_desc,
     std::string* out_error
   );
+
+  struct BlobManifestRow {
+    std::string blob_id;
+    int64_t size_bytes = 0;
+    std::string mime;
+    std::string sha256_hex;
+    int64_t created_utc_ms = 0;
+    int64_t last_access_utc_ms = 0;
+    int64_t ref_count = 0;
+    std::string tier;
+    std::string location;
+    std::string etag;
+    std::string storage_class;
+  };
+  bool get_blob_manifest(const std::string& blob_id, BlobManifestRow* out_row, std::string* out_error);
+  bool insert_blob_manifest(const BlobManifestRow& row, std::string* out_error);
+  bool update_blob_manifest_access(const std::string& blob_id, int64_t last_access_utc_ms, std::string* out_error);
+  bool update_blob_manifest_location(
+    const std::string& blob_id,
+    const std::string& mime,
+    const std::string& tier,
+    const std::string& location,
+    const std::string& etag,
+    const std::string& storage_class,
+    int64_t last_access_utc_ms,
+    std::string* out_error
+  );
+  bool adjust_blob_ref_count(const std::string& blob_id, int64_t delta, int64_t* out_ref_count, std::string* out_error);
+  bool list_blob_gc_candidates(
+    int64_t created_before_utc_ms,
+    size_t max_rows,
+    std::vector<BlobManifestRow>* out_rows,
+    std::string* out_error
+  );
+  bool delete_blob_manifest(const std::string& blob_id, std::string* out_error);
+  bool attach_blob_to_artifact(int64_t artifact_id, const std::string& blob_id, std::string* out_error);
 
   struct UiActionRow {
     int64_t run_id = 0;
@@ -392,6 +428,8 @@ class AgentDb {
     int64_t edge_nodes = 0;
     int64_t edge_tasks = 0;
     int64_t edge_workflows = 0;
+    int64_t blob_manifest = 0;
+    int64_t artifact_blobs = 0;
   };
 
   struct WorkflowUsageTotals {

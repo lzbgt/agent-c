@@ -237,6 +237,9 @@ agent_status_t tool_artifact_register(HostToolCtx* ctx, const char* arguments_js
   ec.clear();
   const auto mtime = std::filesystem::last_write_time(final_resolved, ec);
   if (!ec) artifact["mtime_unix_ms"] = (Json::Int64)file_time_to_unix_ms(mtime);
+  if (args.isMember("blob_id") && args["blob_id"].isString()) {
+    artifact["blob_id"] = args["blob_id"].asString();
+  }
 
   Json::Value data(Json::objectValue);
   data["tool"] = "artifact_register";

@@ -173,6 +173,8 @@ void handle_diagnostics_endpoint(
       t["edge_nodes"] = (Json::Int64)tables.edge_nodes;
       t["edge_tasks"] = (Json::Int64)tables.edge_tasks;
       t["edge_workflows"] = (Json::Int64)tables.edge_workflows;
+      t["blob_manifest"] = (Json::Int64)tables.blob_manifest;
+      t["artifact_blobs"] = (Json::Int64)tables.artifact_blobs;
       db["tables"] = t;
     } else if (!terr.empty()) {
       errors.append("db table counts: " + terr);

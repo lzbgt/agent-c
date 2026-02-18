@@ -94,7 +94,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] Add edge task/edge node analytics aggregates (counts, latency, error rates).
   - [x] Add binary blob storage tiering plan (`docs/BLOB_STORAGE_TIERS.md`).
   - [x] Add edge task/node analytics exports (CSV/JSON bundles).
-  - [ ] Next: implement blob_manifest schema + local blob store v0 (upload + read + ref-count GC).
+  - [x] Implement blob_manifest schema + local blob store v0 (upload + read + ref-count GC).
+  - [ ] Next: add object-store tier (S3/MinIO) with signed URL reads + read-through cache.
   - [ ] Next: add workflow analytics export bundles (CSV/JSON) for durable + edge workflows.
 - [x] UI actions: stable public action API, autoplay unlock flow, and consented remote URL opens.
 - [x] Memory privacy tags (`<private>`) to keep sensitive content out of durable storage (claude-mem inspired).

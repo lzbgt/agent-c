@@ -123,6 +123,8 @@ bool AgentDb::get_table_counts(TableCounts* out_counts, std::string* out_error) 
   ok = ok && count_table_locked(db_, "edge_nodes", &out_counts->edge_nodes, out_error);
   ok = ok && count_table_locked(db_, "edge_tasks", &out_counts->edge_tasks, out_error);
   ok = ok && count_table_locked(db_, "edge_workflows", &out_counts->edge_workflows, out_error);
+  ok = ok && count_table_locked(db_, "blob_manifest", &out_counts->blob_manifest, out_error);
+  ok = ok && count_table_locked(db_, "artifact_blobs", &out_counts->artifact_blobs, out_error);
   return ok;
 }
 

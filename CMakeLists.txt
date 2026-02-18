@@ -189,6 +189,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/agent_db.cpp
     daemon/src/agent_db_jobs.cpp
     daemon/src/agent_db_runs.cpp
+    daemon/src/agent_db_blobs.cpp
     daemon/src/agent_db_stats.cpp
     daemon/src/agent_db_edge_nodes.cpp
     daemon/src/agent_db_edge_tasks.cpp
@@ -212,6 +213,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/edge_util.cpp
     daemon/src/edge_workflow_endpoints.cpp
     daemon/src/edge_workflow_engine.cpp
+    daemon/src/blob_endpoints.cpp
     daemon/src/file_endpoint.cpp
     daemon/src/http_client.cpp
     daemon/src/http_allowlist.cpp
@@ -732,6 +734,7 @@ if(AGENT_BUILD_HOST)
     if(AGENT_ENABLE_SQLITE3)
       add_test(NAME agentd_db_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_smoke.sh $<TARGET_FILE:agentd>)
       add_test(NAME agentd_db_query_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_query_smoke.sh $<TARGET_FILE:agentd>)
+      add_test(NAME agentd_blob_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_blob_smoke.sh $<TARGET_FILE:agentd>)
       add_test(NAME agentd_run_replay_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_run_replay_smoke.sh $<TARGET_FILE:agentd>)
     endif()
 

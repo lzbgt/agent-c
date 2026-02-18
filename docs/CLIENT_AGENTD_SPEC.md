@@ -267,6 +267,16 @@ When DB support is enabled, the daemon exposes read-only debugging endpoints:
 
 These are intended for troubleshooting and UI indexing, not for core client functionality.
 
+### Blob endpoints (optional; local-only v0)
+
+When blob storage is enabled (default v0 local tier), the daemon exposes blob APIs:
+
+- `POST /api/v1/blob/upload` (JSON with `data_base64`, or raw bytes; capped by `upload_max_bytes`)
+- `GET /api/v1/blob?blob_id=...` (supports `Range`)
+- `GET /api/v1/blob/meta?blob_id=...`
+- `POST /api/v1/blob/retain` (adjust ref count)
+- `POST /api/v1/blob/gc` (ref-count GC sweep)
+
 ### Diagnostics endpoints (auth required)
 
 The daemon exposes lightweight diagnostics endpoints for operational checks and provider key visibility:
@@ -353,6 +363,7 @@ To get a new client working end-to-end:
    - `POST /api/v1/run` (simple) or `POST /api/v1/run_async` + `GET /api/v1/job`
 3. Render artifacts and UI actions:
    - parse `events[]` (when `verbose=true`) and/or poll audit/artifacts endpoints
+   - fetch artifact bytes via `/api/v1/file?session_id=...&path=...` (or `/api/v1/blob?blob_id=...` when provided)
 4. Post acknowledgements as client events:
    - `POST /api/v1/session/client_event` with `{type, client, data}`
 5. If you render a Scene:

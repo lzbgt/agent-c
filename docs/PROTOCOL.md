@@ -294,6 +294,7 @@ Arguments (JSON):
 - `title` (string, optional): UI title/label
 - `autoplay` (bool, optional): request UI to attempt autoplay (UI may require user consent)
 - `repeat` (int, optional): for audio/video, request play N times (default 1)
+- `blob_id` (string, optional): content-addressed blob id (`sha256:<hex>`) when stored in the blob tier
 
 Return (tool output string; JSON envelope):
 - `ok` (bool)
@@ -310,6 +311,7 @@ Return (tool output string; JSON envelope):
     - `title` (string, optional)
     - `autoplay` (bool, optional)
     - `repeat` (number, optional)
+    - `blob_id` (string, optional)
 
 ### Event: `artifact`
 
@@ -323,6 +325,7 @@ Event object (same envelope shape as other `events` entries):
 
 UI behavior:
 - Render images/videos/audio using `GET /api/v1/file?session_id=<sid>&path=<artifact.path>`
+- If `artifact.blob_id` is present, UIs may also fetch bytes via `GET /api/v1/blob?blob_id=...` (range-friendly)
 - For audio:
   - show a normal audio player
   - if `autoplay=true`, the UI may attempt playback only after explicit user opt-in

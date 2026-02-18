@@ -24,6 +24,7 @@ tags:
   - name: memory
   - name: edge
   - name: sessions
+  - name: blobs
 
 paths:
   /api/v1/health:
@@ -1541,6 +1542,89 @@ paths:
       responses:
         "200":
           description: Workflows list
+
+  /api/v1/blob:
+    get:
+      tags: [blobs]
+      summary: Download blob bytes
+      parameters:
+        - in: query
+          name: blob_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Blob bytes
+        "206":
+          description: Partial content (Range)
+
+  /api/v1/blob/meta:
+    get:
+      tags: [blobs]
+      summary: Get blob metadata
+      parameters:
+        - in: query
+          name: blob_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Blob metadata
+
+  /api/v1/blob/upload:
+    post:
+      tags: [blobs]
+      summary: Upload a blob (v0 local)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [data_base64]
+              properties:
+                data_base64: { type: string }
+                mime: { type: string }
+                retain: { type: boolean }
+      responses:
+        "200":
+          description: Upload result
+
+  /api/v1/blob/retain:
+    post:
+      tags: [blobs]
+      summary: Adjust blob ref count
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [blob_id, delta]
+              properties:
+                blob_id: { type: string }
+                delta: { type: integer, format: int64 }
+      responses:
+        "200":
+          description: Updated ref count
+
+  /api/v1/blob/gc:
+    post:
+      tags: [blobs]
+      summary: GC unreferenced blobs
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                min_age_ms: { type: integer, format: int64 }
+                max_rows: { type: integer, format: int32 }
+                dry_run: { type: boolean }
+      responses:
+        "200":
+          description: GC summary
 
   /api/v1/sessions:
     get:

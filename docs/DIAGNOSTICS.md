@@ -55,7 +55,9 @@ Example:
       "workflow_events": 41,
       "edge_nodes": 0,
       "edge_tasks": 0,
-      "edge_workflows": 0
+      "edge_workflows": 0,
+      "blob_manifest": 2,
+      "artifact_blobs": 1
     }
   },
   "jobs": {

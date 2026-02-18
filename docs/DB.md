@@ -1,6 +1,6 @@
 # Agentd SQLite DB (Canonical Daemon Store)
 
-Date: 2026-02-05
+Date: 2026-02-18
 
 When built with SQLite support (`AGENT_HAVE_SQLITE3`), `agentd` stores its canonical daemon state in SQLite:
 - sessions + message history
@@ -98,7 +98,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v27)
+## Schema (v28)
 
 All timestamps are Unix milliseconds.
 
@@ -190,7 +190,7 @@ Index:
 Mirrors explicit `artifact` events emitted by the tool loop (see `docs/PROTOCOL.md`).
 
 The DB does not store binary blobs; it stores file references + playback hints and includes the original artifact JSON
-for forward-compatibility.
+for forward-compatibility. Binary blobs are tracked in `blob_manifest` and linked via `artifact_blobs`.
 
 - `id INTEGER PRIMARY KEY AUTOINCREMENT`
 - `run_id INTEGER NOT NULL`
@@ -209,6 +209,37 @@ Indexes:
 - `CREATE INDEX artifacts_by_run ON artifacts(run_id, id)`
 - `CREATE INDEX artifacts_by_session ON artifacts(session_id, ts_unix_ms DESC)`
 - `CREATE INDEX artifacts_by_path ON artifacts(path)`
+
+### `blob_manifest`
+
+Tracks locally stored binary blobs (content-addressed; tiered storage v0 uses local files).
+
+- `blob_id TEXT PRIMARY KEY` (`sha256:<hex>`)
+- `size_bytes INTEGER NOT NULL`
+- `mime TEXT` (optional)
+- `sha256_hex TEXT NOT NULL`
+- `created_utc_ms INTEGER NOT NULL`
+- `last_access_utc_ms INTEGER` (optional)
+- `ref_count INTEGER NOT NULL DEFAULT 0`
+- `tier TEXT NOT NULL` (`local` in v0)
+- `location TEXT NOT NULL` (relative path under `state_dir`)
+- `etag TEXT` (optional; object store)
+- `storage_class TEXT` (optional; object store)
+
+Indexes:
+- `CREATE INDEX blob_manifest_by_last_access ON blob_manifest(last_access_utc_ms DESC)`
+- `CREATE INDEX blob_manifest_by_ref_count ON blob_manifest(ref_count, created_utc_ms DESC)`
+
+### `artifact_blobs`
+
+Links artifacts to blobs (ref-counted GC uses this association).
+
+- `artifact_id INTEGER NOT NULL`
+- `blob_id TEXT NOT NULL`
+- `PRIMARY KEY(artifact_id, blob_id)`
+
+Indexes:
+- `CREATE INDEX artifact_blobs_by_blob ON artifact_blobs(blob_id)`
 
 ### `ui_actions`
 

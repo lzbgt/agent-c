@@ -4,6 +4,7 @@
 
 #include "agent_db.h"
 #include "avm_endpoints.h"
+#include "blob_endpoints.h"
 #include "caps_endpoint.h"
 #include "config_endpoint.h"
 #include "config_store.h"
@@ -607,6 +608,26 @@ struct AgentdService::Impl {
     server.handle("GET", "/api/v1/file", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_file_endpoint(cur, cors_cfg, req, resp);
+    });
+    server.handle("POST", "/api/v1/blob/upload", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_blob_upload_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("GET", "/api/v1/blob", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_blob_get_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("GET", "/api/v1/blob/meta", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_blob_meta_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("POST", "/api/v1/blob/retain", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_blob_retain_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("POST", "/api/v1/blob/gc", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_blob_gc_endpoint(cur, cors_cfg, &db, req, resp);
     });
 
     server.handle("POST", "/api/v1/memory/consolidate", [this](const HttpRequest& req, HttpResponse* resp) {

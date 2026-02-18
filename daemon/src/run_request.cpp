@@ -1725,7 +1725,14 @@ static Json::Value run_request_to_json_impl(
               ar.artifact_json = Json::writeString(wb, art);
               // Best-effort; ignore failures (DB is troubleshooting mirror).
               if (!ar.path.empty()) {
-                (void)db_or_null->insert_artifact(ar, nullptr);
+                int64_t artifact_id = 0;
+                (void)db_or_null->insert_artifact(ar, &artifact_id, nullptr);
+                if (artifact_id > 0 && art.isMember("blob_id") && art["blob_id"].isString()) {
+                  const std::string blob_id = art["blob_id"].asString();
+                  if (!blob_id.empty()) {
+                    (void)db_or_null->attach_blob_to_artifact(artifact_id, blob_id, nullptr);
+                  }
+                }
                 // High-leverage UX: mirror artifacts into the durable server-owned Scene so they're visible
                 // in the collaboration surface even after refresh (and even if no client RPCs run).
                 (void)scene_store_mirror_artifact(db_or_null, session_id, art, ar.tool_call_id, next_scene_ts_ms(), nullptr);

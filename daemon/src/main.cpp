@@ -7,6 +7,7 @@
 #include "config_endpoint.h"
 #include "caps_endpoint.h"
 #include "avm_endpoints.h"
+#include "blob_endpoints.h"
 #include "file_endpoint.h"
 #include "sandbox_policy.h"
 #include "string_util.h"
@@ -1601,6 +1602,26 @@ int main(int argc, char** argv) {
   server.handle("GET", "/api/v1/file", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_file_endpoint(cur, cors_cfg, req, resp);
+  });
+  server.handle("POST", "/api/v1/blob/upload", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_blob_upload_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/blob", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_blob_get_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/blob/meta", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_blob_meta_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("POST", "/api/v1/blob/retain", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_blob_retain_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("POST", "/api/v1/blob/gc", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_blob_gc_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   server.handle("POST", "/api/v1/memory/consolidate", [&](const HttpRequest& req, HttpResponse* resp) {
