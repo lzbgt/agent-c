@@ -123,10 +123,12 @@ Notes:
 - `active` indicates the daemon’s current provider selection (derived from `daemon.base_url`).
 - `key_present` is **boolean only**. Secret values are never returned.
 - `source.kind` is one of: `config`, `env`, or `file`.
-- `source.label` is a best-effort descriptor (e.g., `provider_keys`, `api_key`, `.not_in_repo`, `project.local.md`, `~/.env`).
+- `source.label` is a best-effort descriptor (e.g., `provider_keys`, `api_key`, `.not_in_repo`, `project.local.md`, `~/.env`,
+  or `AGENTD_DOTENV_PATH` when explicitly configured).
 - `warning` is an optional provider-specific hint (e.g., active provider key missing, key detected but base_url not configured, or Moonshot key detected but OpenRouter key missing).
-- `~/.env` is only consulted for provider **keys**; base URLs still come from flags/env/config. If no base URL is set, the
-  provider defaults to OpenAI-compatible.
+- `~/.env` is only consulted for provider **keys**; base URLs still come from flags/env/config. You can override the dotenv
+  path with `AGENTD_DOTENV_PATH=/path/to/.env`, which is useful for services running under a different user. If no base URL
+  is set, the provider defaults to OpenAI-compatible.
 - `base_url_source` indicates where the provider base URL came from: `config`, `env`, or `default`.
 
 ## Endpoint: `/api/v1/diagnostics/provider_test`

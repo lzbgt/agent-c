@@ -93,6 +93,8 @@ This list matches daemon route registration in `daemon/src/agentd_api.cpp`.
   - returns daemon config **without secrets** (booleans like `api_key_set` / `provider_keys_set`)
 - `POST /api/v1/config/update`
   - persists runtime defaults (model/base_url/proxy/timeout + provider keys) into the DB
+  - provider keys can also be discovered server-side from `.not_in_repo`, `project.local.md`, `~/.env`, or an explicit
+    `AGENTD_DOTENV_PATH` (useful when the daemon runs under a different user)
 - `POST /api/v1/ota/update`
   - triggers an OTA update via operator-configured command (see `docs/spec/ota/agentd_ota_v0.md`)
   - request JSON: `{ url, sha256?, version?, reason?, drain_timeout_ms?, trace_id? }`
