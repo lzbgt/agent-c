@@ -18,6 +18,8 @@ struct ProviderKeySource {
 // This is intentionally simple and supports only the repo's gitignored secret file formats:
 // - .not_in_repo (preferred)
 // - project.local.md (fallback)
+// - ~/.env (last-resort fallback)
+// - AGENTD_DOTENV_PATH (explicit override)
 //
 // Formats accepted (either file):
 // - YAML-ish:

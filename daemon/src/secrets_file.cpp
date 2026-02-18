@@ -63,6 +63,16 @@ static std::string home_dir_best_effort() {
   return std::string();
 }
 
+static std::filesystem::path expand_home_best_effort(const std::string& raw) {
+  if (raw.size() >= 2 && raw[0] == '~' && (raw[1] == '/' || raw[1] == '\\')) {
+    const std::string home = home_dir_best_effort();
+    if (!home.empty()) {
+      return std::filesystem::path(home) / raw.substr(2);
+    }
+  }
+  return std::filesystem::path(raw);
+}
+
 static bool looks_like_key(const std::string& s) {
   if (s.size() < 6) return false;
   if (s.rfind("sk-", 0) != 0) return false;
@@ -108,6 +118,9 @@ static std::optional<std::string> extract_key_from_file(const std::filesystem::p
 
 static std::vector<std::filesystem::path> candidate_secret_files_best_effort() {
   std::vector<std::filesystem::path> out;
+  if (const char* p = std::getenv("AGENTD_DOTENV_PATH")) {
+    if (p[0]) out.push_back(expand_home_best_effort(p).lexically_normal());
+  }
   std::error_code ec;
   std::filesystem::path cur = std::filesystem::current_path(ec);
   if (ec) cur = std::filesystem::path(".");
@@ -139,6 +152,13 @@ std::optional<std::string> load_provider_key_best_effort(const std::string& prov
 }
 
 std::optional<ProviderKeySource> load_provider_key_source_best_effort(const std::string& provider) {
+  std::string dotenv_override;
+  if (const char* p = std::getenv("AGENTD_DOTENV_PATH")) {
+    if (p[0]) {
+      dotenv_override = expand_home_best_effort(p).lexically_normal().string();
+    }
+  }
+
   for (const auto& p : candidate_secret_files_best_effort()) {
     std::error_code ec;
     if (!std::filesystem::exists(p, ec) || ec) continue;
@@ -158,9 +178,15 @@ std::optional<ProviderKeySource> load_provider_key_source_best_effort(const std:
       }
     }
     if (out.source_label.empty()) {
-      if (name == ".not_in_repo") out.source_label = ".not_in_repo";
-      else if (name == "project.local.md") out.source_label = "project.local.md";
-      else out.source_label = name;
+      if (!dotenv_override.empty() && p.lexically_normal().string() == dotenv_override) {
+        out.source_label = "AGENTD_DOTENV_PATH";
+      } else if (name == ".not_in_repo") {
+        out.source_label = ".not_in_repo";
+      } else if (name == "project.local.md") {
+        out.source_label = "project.local.md";
+      } else {
+        out.source_label = name;
+      }
     }
     return out;
   }

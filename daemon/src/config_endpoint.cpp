@@ -99,6 +99,10 @@ static bool validate_tool_name_best_effort(const std::string& s_in) {
   return true;
 }
 
+static bool is_known_provider_name(const std::string& s) {
+  return s == "deepseek" || s == "openrouter" || s == "moonshot" || s == "openai";
+}
+
 static void upsert_tool_call_limit(std::vector<std::pair<std::string, size_t>>* limits, std::string tool, size_t max_calls) {
   if (!limits || tool.empty()) return;
   for (auto& kv : *limits) {
@@ -835,6 +839,15 @@ void handle_config_update_endpoint(
   if (args.isMember("provider_keys") && args["provider_keys"].isObject()) {
     const auto& pk = args["provider_keys"];
     for (const auto& name : pk.getMemberNames()) {
+      if (!is_known_provider_name(name)) {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "invalid provider name in provider_keys";
+        o["provider"] = name;
+        resp->status = 400;
+        resp->body = json_stringify(o);
+        return;
+      }
       const auto& v = pk[name];
       if (!v.isString() && !v.isNull()) continue;
       const std::string provider = name;
@@ -845,9 +858,19 @@ void handle_config_update_endpoint(
       }
     }
   } else {
-    const std::string provider =
-      args.isMember("provider") && args["provider"].isString() ? args["provider"].asString()
-      : provider_from_base_url(next.base_url);
+    std::string provider = provider_from_base_url(next.base_url);
+    if (args.isMember("provider") && args["provider"].isString()) {
+      provider = trim_copy(args["provider"].asString());
+      if (!is_known_provider_name(provider)) {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["error"] = "invalid provider name";
+        o["provider"] = provider;
+        resp->status = 400;
+        resp->body = json_stringify(o);
+        return;
+      }
+    }
     if (args.isMember("api_key") && args["api_key"].isString()) {
       set_provider_key(provider, args["api_key"].asString());
     }

@@ -191,6 +191,8 @@ or:
 Notes:
 - `.not_in_repo` is gitignored; do not commit keys.
 - `agentd` prefers `.not_in_repo` over `project.local.md` when auto-loading provider keys.
+- You can point `agentd` at a specific dotenv file with `AGENTD_DOTENV_PATH=/path/to/.env` (useful for services
+  running under a different user).
 - `~/.env` is a last-resort key source only; base URLs still come from flags/env/config. For Moonshot, set
   `MOONSHOT_API_BASE` or pass `--base-url https://api.moonshot.cn/v1`.
 
