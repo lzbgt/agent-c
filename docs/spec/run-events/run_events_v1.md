@@ -34,6 +34,20 @@ Each event is a JSON object with:
 The envelope is intentionally permissive so new event types can be introduced without breaking
 existing consumers. Event-specific payload schemas will be added incrementally as the registry grows.
 
+## Payload expectations (validated in CI)
+
+The fixture set is validated for these common event payloads:
+
+- `assistant_delta`: `data.delta` string; optional `data.step`, `data.epoch` (integers >= 0).
+- `assistant_message`: `data.assistant_content` string, `data.has_tool_calls` integer >= 0; optional multimodal fields.
+- `tool_call`: `data.tool_name`, `data.tool_call_id`, `data.arguments_json` strings.
+- `tool_result`: `data.tool_name`, `data.tool_call_id`, `data.content` strings.
+- `llm_usage`: `data.prompt_tokens`, `data.completion_tokens`, `data.total_tokens` integers >= 0.
+- `artifact`: `data.path`, `data.kind` strings; optional `data.mime`, `data.repeat`, `data.autoplay`.
+- `ui_action`: `data.action.type` string.
+- `heartbeat`: `data.phase` integer >= 0.
+- `error`: `data.reason` string; optional `data.error`, `data.steps_executed`, `data.max_steps`.
+
 ## Assistant message payload (current)
 
 When `type="assistant_message"`, the `data` object includes:
