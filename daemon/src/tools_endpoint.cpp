@@ -45,6 +45,7 @@ void handle_tools_endpoint(
     return;
   }
   std::string tools = daemon_tools;
+  std::string requested_tools;
   if (const auto q = query_get(req.query, "tools"); q && !q->empty()) {
     std::string requested_norm;
     if (!normalize_tools_mode(*q, &requested_norm)) {
@@ -58,6 +59,7 @@ void handle_tools_endpoint(
       return;
     }
     tools = requested_norm;
+    requested_tools = requested_norm;
   }
 
   const auto q_yolo = query_get(req.query, "yolo");
@@ -101,6 +103,10 @@ void handle_tools_endpoint(
   Json::Value out(Json::objectValue);
   out["ok"] = true;
   out["tools"] = tools;
+  out["daemon_tools"] = daemon_tools;
+  if (!requested_tools.empty()) {
+    out["requested_tools"] = requested_tools;
+  }
   out["effective_yolo"] = yolo;
   out["effective_host_policy"] = host_policy_to_string(effective_policy);
   if (!session_id.empty()) {
