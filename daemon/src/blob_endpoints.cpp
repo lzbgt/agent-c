@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <climits>
 #include <filesystem>
 #include <fstream>
 #include <random>
@@ -234,6 +235,45 @@ bool parse_blob_ids_body(
     return false;
   }
   return true;
+}
+
+struct RestoreStatusInfo {
+  std::string status;
+  int64_t expiry_utc_ms = -1;
+  std::string raw_header;
+};
+
+static RestoreStatusInfo parse_restore_status(const HttpClientResult& head) {
+  RestoreStatusInfo out;
+  auto it = head.response_headers.find("x-amz-restore");
+  if (it == head.response_headers.end()) {
+    out.status = "none";
+    return out;
+  }
+  BlobObjectRestoreState state;
+  blob_object_store_parse_restore_header(it->second, &state);
+  out.raw_header = state.raw_header;
+  out.expiry_utc_ms = state.expiry_utc_ms;
+  if (!state.has_header) {
+    out.status = "none";
+  } else if (!state.ongoing_known) {
+    out.status = "unknown";
+  } else if (state.ongoing) {
+    out.status = "pending";
+  } else {
+    out.status = "ready";
+  }
+  return out;
+}
+
+static void add_restore_status_fields(Json::Value& out, const RestoreStatusInfo& info) {
+  out["restore_status"] = info.status;
+  out["restore_expiry_utc_ms"] = (info.expiry_utc_ms > 0)
+    ? Json::Value((Json::Int64)info.expiry_utc_ms)
+    : Json::Value(Json::nullValue);
+  if (!info.raw_header.empty()) {
+    out["restore_header"] = info.raw_header;
+  }
 }
 
 }  // namespace
@@ -507,16 +547,56 @@ void handle_blob_get_endpoint(
     return;
   }
 
+  bool archive_ready = false;
+  RestoreStatusInfo restore_info;
   if (row.tier == "archive") {
-    Json::Value out(Json::objectValue);
-    out["ok"] = false;
-    out["error"] = "blob archived; restore required";
-    out["blob_id"] = row.blob_id;
-    out["tier"] = row.tier;
-    resp->status = 409;
-    resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    resp->body = json_stringify(out);
-    return;
+    if (cfg.blob_store_mode != "object") {
+      Json::Value out(Json::objectValue);
+      out["ok"] = false;
+      out["error"] = "blob archived; restore required";
+      out["blob_id"] = row.blob_id;
+      out["tier"] = row.tier;
+      resp->status = 409;
+      resp->headers["Content-Type"] = "application/json; charset=utf-8";
+      resp->body = json_stringify(out);
+      return;
+    }
+    std::string cfg_err;
+    if (!blob_object_store_is_configured(cfg, &cfg_err)) {
+      Json::Value out(Json::objectValue);
+      out["ok"] = false;
+      out["error"] = cfg_err.empty() ? "object store not configured" : cfg_err;
+      out["blob_id"] = row.blob_id;
+      out["tier"] = row.tier;
+      resp->status = 409;
+      resp->headers["Content-Type"] = "application/json; charset=utf-8";
+      resp->body = json_stringify(out);
+      return;
+    }
+    HttpClientResult head;
+    std::string herr;
+    if (!blob_object_store_head(cfg, row.location, now_utc_ms(), &head, &herr)) {
+      resp->status = 502;
+      resp->headers["Content-Type"] = "application/json; charset=utf-8";
+      resp->body = std::string("{\"ok\":false,\"error\":\"") +
+        (herr.empty() ? "object store HEAD failed" : herr) + "\"}";
+      return;
+    }
+    restore_info = parse_restore_status(head);
+    if (restore_info.status == "ready") {
+      archive_ready = true;
+    } else {
+      Json::Value out(Json::objectValue);
+      out["ok"] = false;
+      out["error"] = "blob archived; restore required";
+      out["blob_id"] = row.blob_id;
+      out["tier"] = row.tier;
+      add_restore_status_fields(out, restore_info);
+      resp->status = 409;
+      resp->headers["Content-Type"] = "application/json; charset=utf-8";
+      resp->body = json_stringify(out);
+      return;
+    }
   }
 
   const std::string range_h = header_get_ci(req.headers, "range");
@@ -630,7 +710,7 @@ void handle_blob_get_endpoint(
       return;
     }
     if (!serve_local(abs, row.mime)) return;
-  } else if (row.tier == "object") {
+  } else if (row.tier == "object" || (row.tier == "archive" && archive_ready)) {
     const bool want_cache = (cfg.blob_store_cache_mode == "read-through");
     const bool want_proxy = (cfg.blob_store_read_mode == "proxy");
     std::filesystem::path cache_abs;
@@ -1148,7 +1228,27 @@ void handle_blob_archive_endpoint(
       results.append(r);
       continue;
     }
+    if (row.tier == "archive") {
+      r["ok"] = true;
+      r["tier"] = "archive";
+      r["storage_class"] = row.storage_class.empty() ? Json::Value(Json::nullValue) : Json::Value(row.storage_class);
+      results.append(r);
+      continue;
+    }
     std::string next_storage = storage_class.empty() ? row.storage_class : storage_class;
+    if (next_storage.empty()) {
+      r["ok"] = false;
+      r["error"] = "storage_class required to archive";
+      results.append(r);
+      continue;
+    }
+    std::string oerr;
+    if (!blob_object_store_copy(cfg, row.location, row.location, next_storage, now_ms, &oerr)) {
+      r["ok"] = false;
+      r["error"] = oerr.empty() ? "object store archive failed" : oerr;
+      results.append(r);
+      continue;
+    }
     std::string uerr;
     (void)db_or_null->update_blob_manifest_location(
       row.blob_id,
@@ -1216,13 +1316,21 @@ void handle_blob_restore_endpoint(
     return;
   }
 
-  bool clear_storage_class = false;
-  if (body.isMember("clear_storage_class") && body["clear_storage_class"].isBool()) {
-    clear_storage_class = body["clear_storage_class"].asBool();
+  int64_t restore_days = 0;
+  if (body.isMember("restore_days") &&
+      (body["restore_days"].isInt64() || body["restore_days"].isUInt64() || body["restore_days"].isInt() || body["restore_days"].isUInt())) {
+    restore_days = body["restore_days"].isInt64() ? body["restore_days"].asInt64()
+      : (body["restore_days"].isUInt64() ? (int64_t)body["restore_days"].asUInt64() : (int64_t)body["restore_days"].asInt());
   }
-  std::string storage_class;
-  if (body.isMember("storage_class") && body["storage_class"].isString()) {
-    storage_class = body["storage_class"].asString();
+  if (restore_days <= 0) {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"restore_days must be a positive integer"})";
+    return;
+  }
+  const int restore_days_i = restore_days > INT_MAX ? INT_MAX : (int)restore_days;
+  std::string restore_tier = "Standard";
+  if (body.isMember("restore_tier") && body["restore_tier"].isString()) {
+    restore_tier = body["restore_tier"].asString();
   }
 
   Json::Value results(Json::arrayValue);
@@ -1244,28 +1352,34 @@ void handle_blob_restore_endpoint(
       results.append(r);
       continue;
     }
-    std::string next_storage = row.storage_class;
-    if (clear_storage_class) next_storage.clear();
-    if (!storage_class.empty()) next_storage = storage_class;
-    std::string uerr;
-    (void)db_or_null->update_blob_manifest_location(
-      row.blob_id,
-      row.mime,
-      "object",
-      row.location,
-      row.etag,
-      next_storage,
-      now_ms,
-      &uerr);
-    if (!uerr.empty()) {
+    if (row.tier != "archive") {
       r["ok"] = false;
-      r["error"] = uerr;
+      r["error"] = "blob is not archived";
       results.append(r);
       continue;
     }
+    HttpClientResult restore_res;
+    std::string oerr;
+    if (!blob_object_store_restore(cfg, row.location, now_ms, restore_days_i, restore_tier, &restore_res, &oerr)) {
+      r["ok"] = false;
+      r["error"] = oerr.empty() ? "object store restore failed" : oerr;
+      results.append(r);
+      continue;
+    }
+    RestoreStatusInfo info;
+    HttpClientResult head;
+    std::string herr;
+    if (blob_object_store_head(cfg, row.location, now_ms, &head, &herr)) {
+      info = parse_restore_status(head);
+    } else {
+      info.status = "unknown";
+    }
     r["ok"] = true;
-    r["tier"] = "object";
-    r["storage_class"] = next_storage.empty() ? Json::Value(Json::nullValue) : Json::Value(next_storage);
+    r["tier"] = "archive";
+    r["storage_class"] = row.storage_class.empty() ? Json::Value(Json::nullValue) : Json::Value(row.storage_class);
+    r["restore_days"] = restore_days_i;
+    r["restore_tier"] = restore_tier;
+    add_restore_status_fields(r, info);
     results.append(r);
   }
 

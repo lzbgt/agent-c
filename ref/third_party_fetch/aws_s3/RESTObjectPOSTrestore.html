@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+    <html xmlns="http://www.w3.org/1999/xhtml" lang="en-US"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8" /><title>RestoreObject - Amazon Simple Storage Service</title><meta name="viewport" content="width=device-width,initial-scale=1" /><meta name="assets_root" content="/assets" /><meta name="target_state" content="API_RestoreObject" /><meta name="default_state" content="API_RestoreObject" /><link rel="icon" type="image/ico" href="/assets/images/favicon.ico" /><link rel="shortcut icon" type="image/ico" href="/assets/images/favicon.ico" /><link rel="canonical" href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_RestoreObject.html" /><meta name="description" content="Restores an archived copy of an object back into Amazon S3" /><meta name="deployment_region" content="IAD" /><meta name="product" content="Amazon Simple Storage Service" /><meta name="guide" content="API Reference" /><meta name="abstract" content="Explains how to use the Amazon S3 API to store data in the cloud." /><meta name="guide-locale" content="en_us" /><meta name="tocs" content="toc-contents.json" /><link rel="canonical" href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_RestoreObject.html" /><link rel="alternative" href="https://docs.aws.amazon.com/id_id/AmazonS3/latest/API/API_RestoreObject.html" hreflang="id-id" /><link rel="alternative" href="https://docs.aws.amazon.com/id_id/AmazonS3/latest/API/API_RestoreObject.html" hreflang="id" /><link rel="alternative" href="https://docs.aws.amazon.com/de_de/AmazonS3/latest/API/API_RestoreObject.html" hreflang="de-de" /><link rel="alternative" href="https://docs.aws.amazon.com/de_de/AmazonS3/latest/API/API_RestoreObject.html" hreflang="de" /><link rel="alternative" href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_RestoreObject.html" hreflang="en-us" /><link rel="alternative" href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_RestoreObject.html" hreflang="en" /><link rel="alternative" href="https://docs.aws.amazon.com/es_es/AmazonS3/latest/API/API_RestoreObject.html" hreflang="es-es" /><link rel="alternative" href="https://docs.aws.amazon.com/es_es/AmazonS3/latest/API/API_RestoreObject.html" hreflang="es" /><link rel="alternative" href="https://docs.aws.amazon.com/fr_fr/AmazonS3/latest/API/API_RestoreObject.html" hreflang="fr-fr" /><link rel="alternative" href="https://docs.aws.amazon.com/fr_fr/AmazonS3/latest/API/API_RestoreObject.html" hreflang="fr" /><link rel="alternative" href="https://docs.aws.amazon.com/it_it/AmazonS3/latest/API/API_RestoreObject.html" hreflang="it-it" /><link rel="alternative" href="https://docs.aws.amazon.com/it_it/AmazonS3/latest/API/API_RestoreObject.html" hreflang="it" /><link rel="alternative" href="https://docs.aws.amazon.com/ja_jp/AmazonS3/latest/API/API_RestoreObject.html" hreflang="ja-jp" /><link rel="alternative" href="https://docs.aws.amazon.com/ja_jp/AmazonS3/latest/API/API_RestoreObject.html" hreflang="ja" /><link rel="alternative" href="https://docs.aws.amazon.com/ko_kr/AmazonS3/latest/API/API_RestoreObject.html" hreflang="ko-kr" /><link rel="alternative" href="https://docs.aws.amazon.com/ko_kr/AmazonS3/latest/API/API_RestoreObject.html" hreflang="ko" /><link rel="alternative" href="https://docs.aws.amazon.com/pt_br/AmazonS3/latest/API/API_RestoreObject.html" hreflang="pt-br" /><link rel="alternative" href="https://docs.aws.amazon.com/pt_br/AmazonS3/latest/API/API_RestoreObject.html" hreflang="pt" /><link rel="alternative" href="https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/API/API_RestoreObject.html" hreflang="zh-cn" /><link rel="alternative" href="https://docs.aws.amazon.com/zh_tw/AmazonS3/latest/API/API_RestoreObject.html" hreflang="zh-tw" /><link rel="alternative" href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_RestoreObject.html" hreflang="x-default" /><meta name="feedback-item" content="S3" /><meta name="this_doc_product" content="Amazon Simple Storage Service" /><meta name="this_doc_guide" content="API Reference" /><head xmlns="http://www.w3.org/1999/xhtml"> <script defer="" src="/assets/r/awsdocs-doc-page.2.0.0.js"></script><link href="/assets/r/awsdocs-doc-page.2.0.0.css" rel="stylesheet"/></head>
+<script defer="" id="awsc-panorama-bundle" type="text/javascript" src="https://prod.pa.cdn.uis.awsstatic.com/panorama-nav-init.js" data-config="{'appEntity':'aws-documentation','region':'us-east-1','service':'s3'}"></script><meta id="panorama-serviceSubSection" value="API Reference" /><meta id="panorama-serviceConsolePage" value="RestoreObject" /></head><body class="awsdocs awsui"><div class="awsdocs-container"><awsdocs-header></awsdocs-header><awsui-app-layout id="app-layout" class="awsui-util-no-gutters" ng-controller="ContentController as $ctrl" header-selector="awsdocs-header" navigation-hide="false" navigation-width="$ctrl.navWidth" navigation-open="$ctrl.navOpen" navigation-change="$ctrl.onNavChange($event)" tools-hide="$ctrl.hideTools" tools-width="$ctrl.toolsWidth" tools-open="$ctrl.toolsOpen" tools-change="$ctrl.onToolsChange($event)"><div id="guide-toc" dom-region="navigation"><awsdocs-toc></awsdocs-toc></div><div id="main-column" dom-region="content" tabindex="-1"><awsdocs-view class="awsdocs-view"><div id="awsdocs-content"><head><title>RestoreObject - Amazon Simple Storage Service</title><meta name="pdf" content="/pdfs/AmazonS3/latest/API/s3-api.pdf#API_RestoreObject" /><meta name="forums" content="https://repost.aws/tags/TADSTjraA0Q4-a1dxk6eUYaw" /><meta name="feedback" content="https://docs.aws.amazon.com/forms/aws-doc-feedback?hidden_service_name=S3&amp;topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/API_RestoreObject.html" /><meta name="feedback-yes" content="feedbackyes.html?topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/API_RestoreObject.html" /><meta name="feedback-no" content="feedbackno.html?topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/API_RestoreObject.html" /><meta name="keywords" content="API,requests,RestoreObject" /><script type="application/ld+json">
+{
+    "@context" : "https://schema.org",
+    "@type" : "BreadcrumbList",
+    "itemListElement" : [
+      {
+        "@type" : "ListItem",
+        "position" : 1,
+        "name" : "AWS",
+        "item" : "https://aws.amazon.com"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 2,
+        "name" : "Amazon Simple Storage Service (S3)",
+        "item" : "https://docs.aws.amazon.com/s3/index.html"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 3,
+        "name" : "API Reference",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 4,
+        "name" : "S3 API Reference",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API/Type_API_Reference.html"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 5,
+        "name" : "Actions",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API/API_Operations.html"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 6,
+        "name" : "Amazon S3",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API/API_Operations_Amazon_Simple_Storage_Service.html"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 7,
+        "name" : "RestoreObject",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API/API_Operations_Amazon_Simple_Storage_Service.html"
+      }
+    ]
+}
+</script></head><body><div id="main"><div style="display: none"><a href="/pdfs/AmazonS3/latest/API/s3-api.pdf#API_RestoreObject" target="_blank" rel="noopener noreferrer" title="Open PDF"></a></div><div id="breadcrumbs" class="breadcrumb"><a href="/index.html">Documentation</a><a href="/s3/index.html">Amazon Simple Storage Service (S3)</a><a href="Welcome.html">API Reference</a></div><div id="page-toc-src"><a href="#API_RestoreObject_RequestSyntax">Request Syntax</a><a href="#API_RestoreObject_RequestParameters">URI Request Parameters</a><a href="#API_RestoreObject_RequestBody">Request Body</a><a href="#API_RestoreObject_ResponseSyntax">Response Syntax</a><a href="#API_RestoreObject_ResponseElements">Response Elements</a><a href="#API_RestoreObject_Errors">Errors</a><a href="#API_RestoreObject_Examples">Examples</a><a href="#API_RestoreObject_SeeAlso">See Also</a></div><div id="main-content" class="awsui-util-container"><div id="main-col-body"><awsdocs-language-banner data-service="$ctrl.pageService"></awsdocs-language-banner><h1 class="topictitle" id="API_RestoreObject">RestoreObject</h1><div class="awsdocs-page-header-container"><awsdocs-page-header></awsdocs-page-header><awsdocs-filter-selector id="awsdocs-filter-selector"></awsdocs-filter-selector></div><div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This operation is not supported for directory buckets.</p></div></div><p>Restores an archived copy of an object back into Amazon S3</p><p>This functionality is not supported for Amazon S3 on Outposts.</p><p>This action performs the following types of requests: </p><div class="itemizedlist">
+       
+   <ul class="itemizedlist"><li class="listitem">
+         <p>
+            <code class="code">restore an archive</code> - Restore an archived object</p>
+      </li></ul></div><p>For more information about the <code class="code">S3</code> structure in the request body, see the
+      following:</p><div class="itemizedlist">
+       
+       
+       
+   <ul class="itemizedlist"><li class="listitem">
+         <p>
+            <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html">PutObject</a>
+         </p>
+      </li><li class="listitem">
+         <p>
+            <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/S3_ACLs_UsingACLs.html">Managing Access
+            with ACLs</a> in the <em>Amazon S3 User Guide</em>
+         </p>
+      </li><li class="listitem">
+         <p>
+            <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/serv-side-encryption.html">Protecting Data
+            Using Server-Side Encryption</a> in the <em>Amazon S3 User Guide</em>
+         </p>
+      </li></ul></div><div class="variablelist">
+       
+       
+       
+   <dl>
+         <dt><span class="term">Permissions</span></dt>
+         <dd>
+            <p>To use this operation, you must have permissions to perform the <code class="code">s3:RestoreObject</code>
+            action. The bucket owner has this permission by default and can grant this permission to others.
+            For more information about permissions, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-with-s3-actions.html#using-with-s3-actions-related-to-bucket-subresources">Permissions Related to Bucket Subresource Operations</a> and <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-access-control.html">Managing Access Permissions to Your Amazon S3
+              Resources</a> in the <em>Amazon S3 User Guide</em>.</p>
+         </dd>
+       
+         <dt><span class="term">Restoring objects</span></dt>
+         <dd>
+            <p>Objects that you archive to the S3 Glacier Flexible Retrieval or S3 Glacier Deep Archive
+            storage class, and S3 Intelligent-Tiering Archive or S3 Intelligent-Tiering Deep Archive tiers, are not accessible in
+            real time. For objects in the S3 Glacier Flexible Retrieval or S3 Glacier Deep Archive
+            storage classes, you must first initiate a restore request, and then wait until a temporary copy
+            of the object is available. If you want a permanent copy of the object, create a copy of it in the
+            Amazon S3 Standard storage class in your S3 bucket. To access an archived object, you must restore the
+            object for the duration (number of days) that you specify. For objects in the Archive Access or
+            Deep Archive Access tiers of S3 Intelligent-Tiering, you must first initiate a restore request, and
+            then wait until the object is moved into the Frequent Access tier.</p>
+            <p>To restore a specific object version, you can provide a version ID. If you don't provide a
+            version ID, Amazon S3 restores the current version.</p>
+            <p>When restoring an archived object, you can specify one of the following data access tier
+            options in the <code class="code">Tier</code> element of the request body: </p>
+            <div class="itemizedlist">
+                
+                
+                
+            <ul class="itemizedlist"><li class="listitem">
+                  <p>
+                     <code class="code">Expedited</code> - Expedited retrievals allow you to quickly access your data stored
+                in the S3 Glacier Flexible Retrieval storage class or S3 Intelligent-Tiering Archive tier when occasional
+                urgent requests for restoring archives are required. For all but the largest archived objects
+                (250 MB+), data accessed using Expedited retrievals is typically made available within 1–5
+                minutes. Provisioned capacity ensures that retrieval capacity for Expedited retrievals is
+                available when you need it. Expedited retrievals and provisioned capacity are not available
+                for objects stored in the S3 Glacier Deep Archive storage class or
+                S3 Intelligent-Tiering Deep Archive tier.</p>
+               </li><li class="listitem">
+                  <p>
+                     <code class="code">Standard</code> - Standard retrievals allow you to access any of your archived
+                objects within several hours. This is the default option for retrieval requests that do not
+                specify the retrieval option. Standard retrievals typically finish within 3–5 hours for
+                objects stored in the S3 Glacier Flexible Retrieval storage class or S3 Intelligent-Tiering Archive tier.
+                They typically finish within 12 hours for objects stored in the
+                S3 Glacier Deep Archive storage class or S3 Intelligent-Tiering Deep Archive tier. Standard
+                retrievals are free for objects stored in S3 Intelligent-Tiering.</p>
+               </li><li class="listitem">
+                  <p>
+                     <code class="code">Bulk</code> - Bulk retrievals free for objects stored in the S3 Glacier Flexible
+                Retrieval and S3 Intelligent-Tiering storage classes, enabling you to retrieve large amounts,
+                even petabytes, of data at no cost. Bulk retrievals typically finish within 5–12 hours for
+                objects stored in the S3 Glacier Flexible Retrieval storage class or S3 Intelligent-Tiering Archive tier.
+                Bulk retrievals are also the lowest-cost retrieval option when restoring objects from
+                S3 Glacier Deep Archive. They typically finish within 48 hours for objects stored in
+                the S3 Glacier Deep Archive storage class or S3 Intelligent-Tiering Deep Archive tier. </p>
+               </li></ul></div>
+            <p>For more information about archive retrieval options and provisioned capacity for
+              <code class="code">Expedited</code> data access, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/restoring-objects.html">Restoring Archived Objects</a> in the
+              <em>Amazon S3 User Guide</em>. </p>
+            <p>You can use Amazon S3 restore speed upgrade to change the restore speed to a faster speed while it
+            is in progress. For more information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/restoring-objects.html#restoring-objects-upgrade-tier.title.html">
+              Upgrading the speed of an in-progress restore</a> in the
+              <em>Amazon S3 User Guide</em>. </p>
+            <p>To get the status of object restoration, you can send a <code class="code">HEAD</code> request. Operations
+            return the <code class="code">x-amz-restore</code> header, which provides information about the restoration
+            status, in the response. You can use Amazon S3 event notifications to notify you when a restore is
+            initiated or completed. For more information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/NotificationHowTo.html">Configuring Amazon S3 Event Notifications</a> in
+            the <em>Amazon S3 User Guide</em>.</p>
+            <p>After restoring an archived object, you can update the restoration period by reissuing the
+            request with a new period. Amazon S3 updates the restoration period relative to the current time and
+            charges only for the request-there are no data transfer charges. You cannot update the
+            restoration period when Amazon S3 is actively processing your current restore request for the
+            object.</p>
+            <p>If your bucket has a lifecycle configuration with a rule that includes an expiration action,
+            the object expiration overrides the life span that you specify in a restore request. For example,
+            if you restore an object copy for 10 days, but the object is scheduled to expire in 3 days, Amazon S3
+            deletes the object in 3 days. For more information about lifecycle configuration, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketLifecycleConfiguration.html">PutBucketLifecycleConfiguration</a> and <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lifecycle-mgmt.html">Object Lifecycle Management</a> in
+              <em>Amazon S3 User Guide</em>.</p>
+         </dd>
+       
+         <dt><span class="term">Responses</span></dt>
+         <dd>
+            <p>A successful action returns either the <code class="code">200 OK</code> or <code class="code">202 Accepted</code> status
+            code. </p>
+            <div class="itemizedlist">
+                
+                
+            <ul class="itemizedlist"><li class="listitem">
+                  <p>If the object is not previously restored, then Amazon S3 returns <code class="code">202 Accepted</code> in
+                the response. </p>
+               </li><li class="listitem">
+                  <p>If the object is previously restored, Amazon S3 returns <code class="code">200 OK</code> in the response.
+              </p>
+               </li></ul></div>
+            <div class="itemizedlist">
+                
+                
+            <ul class="itemizedlist"><li class="listitem">
+                  <p>Special errors:</p>
+                  <div class="itemizedlist">
+                      
+                      
+                      
+                      
+                  <ul class="itemizedlist"><li class="listitem">
+                        <p>
+                           <em>Code: RestoreAlreadyInProgress</em>
+                        </p>
+                     </li><li class="listitem">
+                        <p>
+                           <em>Cause: Object restore is already in progress.</em>
+                        </p>
+                     </li><li class="listitem">
+                        <p>
+                           <em>HTTP Status Code: 409 Conflict</em>
+                        </p>
+                     </li><li class="listitem">
+                        <p>
+                           <em>SOAP Fault Code Prefix: Client</em>
+                        </p>
+                     </li></ul></div>
+               </li><li class="listitem">
+                  <div class="itemizedlist">
+                      
+                      
+                      
+                      
+                  <ul class="itemizedlist"><li class="listitem">
+                        <p>
+                           <em>Code: GlacierExpeditedRetrievalNotAvailable</em>
+                        </p>
+                     </li><li class="listitem">
+                        <p>
+                           <em>Cause: expedited retrievals are currently not available. Try again later.
+                      (Returned if there is insufficient capacity to process the Expedited request. This error
+                      applies only to Expedited retrievals and not to S3 Standard or Bulk
+                      retrievals.)</em>
+                        </p>
+                     </li><li class="listitem">
+                        <p>
+                           <em>HTTP Status Code: 503</em>
+                        </p>
+                     </li><li class="listitem">
+                        <p>
+                           <em>SOAP Fault Code Prefix: N/A</em>
+                        </p>
+                     </li></ul></div>
+               </li></ul></div>
+         </dd>
+      </dl></div><p>The following operations are related to <code class="code">RestoreObject</code>:</p><div class="itemizedlist">
+       
+       
+   <ul class="itemizedlist"><li class="listitem">
+         <p>
+            <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketLifecycleConfiguration.html">PutBucketLifecycleConfiguration</a>
+         </p>
+      </li><li class="listitem">
+         <p>
+            <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetBucketNotificationConfiguration.html">GetBucketNotificationConfiguration</a>
+         </p>
+      </li></ul></div><div class="awsdocs-note awsdocs-important"><div class="awsdocs-note-title"><awsui-icon name="status-warning" variant="error"></awsui-icon><h6>Important</h6></div><div class="awsdocs-note-text"><p>You must URL encode any signed header values that contain spaces. For example, if your header value is <code class="code">my  file.txt</code>, containing two spaces after <code class="code">my</code>, you must URL encode this value to <code class="code">my%20%20file.txt</code>.</p></div></div>
+      <h2 id="API_RestoreObject_RequestSyntax">Request Syntax</h2>
+      <pre class="programlisting"><div class="code-btn-container"></div><!--DEBUG: cli ()--><code class="nohighlight">POST /<span>{</span>Key+}?restore&amp;versionId=<code class="replaceable">VersionId</code> HTTP/1.1
+Host: <code class="replaceable">Bucket</code>.s3.amazonaws.com
+x-amz-request-payer: <code class="replaceable">RequestPayer</code>
+x-amz-sdk-checksum-algorithm: <code class="replaceable">ChecksumAlgorithm</code>
+x-amz-expected-bucket-owner: <code class="replaceable">ExpectedBucketOwner</code>
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;<a href="#AmazonS3-RestoreObject-request-RestoreRequest">RestoreRequest</a> xmlns="http://s3.amazonaws.com/doc/2006-03-01/"&gt;
+   &lt;<a href="#AmazonS3-RestoreObject-request-Days">Days</a>&gt;<code class="replaceable">integer</code>&lt;/<a href="#AmazonS3-RestoreObject-request-Days">Days</a>&gt;
+   &lt;<a href="#AmazonS3-RestoreObject-request-GlacierJobParameters">GlacierJobParameters</a>&gt;
+      &lt;<a href="./API_GlacierJobParameters.html#AmazonS3-Type-GlacierJobParameters-Tier">Tier</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_GlacierJobParameters.html#AmazonS3-Type-GlacierJobParameters-Tier">Tier</a>&gt;
+   &lt;/<a href="#AmazonS3-RestoreObject-request-GlacierJobParameters">GlacierJobParameters</a>&gt;
+   &lt;<a href="#AmazonS3-RestoreObject-request-Type">Type</a>&gt;<code class="replaceable">string</code>&lt;/<a href="#AmazonS3-RestoreObject-request-Type">Type</a>&gt;
+   &lt;<a href="#AmazonS3-RestoreObject-request-Tier">Tier</a>&gt;<code class="replaceable">string</code>&lt;/<a href="#AmazonS3-RestoreObject-request-Tier">Tier</a>&gt;
+   &lt;<a href="#AmazonS3-RestoreObject-request-Description">Description</a>&gt;<code class="replaceable">string</code>&lt;/<a href="#AmazonS3-RestoreObject-request-Description">Description</a>&gt;
+   &lt;<a href="#AmazonS3-RestoreObject-request-SelectParameters">SelectParameters</a>&gt;
+      &lt;<a href="./API_SelectParameters.html#AmazonS3-Type-SelectParameters-Expression">Expression</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_SelectParameters.html#AmazonS3-Type-SelectParameters-Expression">Expression</a>&gt;
+      &lt;<a href="./API_SelectParameters.html#AmazonS3-Type-SelectParameters-ExpressionType">ExpressionType</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_SelectParameters.html#AmazonS3-Type-SelectParameters-ExpressionType">ExpressionType</a>&gt;
+      &lt;<a href="./API_SelectParameters.html#AmazonS3-Type-SelectParameters-InputSerialization">InputSerialization</a>&gt;
+         &lt;<a href="./API_InputSerialization.html#AmazonS3-Type-InputSerialization-CompressionType">CompressionType</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_InputSerialization.html#AmazonS3-Type-InputSerialization-CompressionType">CompressionType</a>&gt;
+         &lt;<a href="./API_InputSerialization.html#AmazonS3-Type-InputSerialization-CSV">CSV</a>&gt;
+            &lt;<a href="./API_CSVInput.html#AmazonS3-Type-CSVInput-AllowQuotedRecordDelimiter">AllowQuotedRecordDelimiter</a>&gt;<code class="replaceable">boolean</code>&lt;/<a href="./API_CSVInput.html#AmazonS3-Type-CSVInput-AllowQuotedRecordDelimiter">AllowQuotedRecordDelimiter</a>&gt;
+            &lt;<a href="./API_CSVInput.html#AmazonS3-Type-CSVInput-Comments">Comments</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_CSVInput.html#AmazonS3-Type-CSVInput-Comments">Comments</a>&gt;
+            &lt;<a href="./API_CSVInput.html#AmazonS3-Type-CSVInput-FieldDelimiter">FieldDelimiter</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_CSVInput.html#AmazonS3-Type-CSVInput-FieldDelimiter">FieldDelimiter</a>&gt;
+            &lt;<a href="./API_CSVInput.html#AmazonS3-Type-CSVInput-FileHeaderInfo">FileHeaderInfo</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_CSVInput.html#AmazonS3-Type-CSVInput-FileHeaderInfo">FileHeaderInfo</a>&gt;
+            &lt;<a href="./API_CSVInput.html#AmazonS3-Type-CSVInput-QuoteCharacter">QuoteCharacter</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_CSVInput.html#AmazonS3-Type-CSVInput-QuoteCharacter">QuoteCharacter</a>&gt;
+            &lt;<a href="./API_CSVInput.html#AmazonS3-Type-CSVInput-QuoteEscapeCharacter">QuoteEscapeCharacter</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_CSVInput.html#AmazonS3-Type-CSVInput-QuoteEscapeCharacter">QuoteEscapeCharacter</a>&gt;
+            &lt;<a href="./API_CSVInput.html#AmazonS3-Type-CSVInput-RecordDelimiter">RecordDelimiter</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_CSVInput.html#AmazonS3-Type-CSVInput-RecordDelimiter">RecordDelimiter</a>&gt;
+         &lt;/<a href="./API_InputSerialization.html#AmazonS3-Type-InputSerialization-CSV">CSV</a>&gt;
+         &lt;<a href="./API_InputSerialization.html#AmazonS3-Type-InputSerialization-JSON">JSON</a>&gt;
+            &lt;<a href="./API_JSONInput.html#AmazonS3-Type-JSONInput-Type">Type</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_JSONInput.html#AmazonS3-Type-JSONInput-Type">Type</a>&gt;
+         &lt;/<a href="./API_InputSerialization.html#AmazonS3-Type-InputSerialization-JSON">JSON</a>&gt;
+         &lt;<a href="./API_InputSerialization.html#AmazonS3-Type-InputSerialization-Parquet">Parquet</a>&gt;
+         &lt;/<a href="./API_InputSerialization.html#AmazonS3-Type-InputSerialization-Parquet">Parquet</a>&gt;
+      &lt;/<a href="./API_SelectParameters.html#AmazonS3-Type-SelectParameters-InputSerialization">InputSerialization</a>&gt;
+      &lt;<a href="./API_SelectParameters.html#AmazonS3-Type-SelectParameters-OutputSerialization">OutputSerialization</a>&gt;
+         &lt;<a href="./API_OutputSerialization.html#AmazonS3-Type-OutputSerialization-CSV">CSV</a>&gt;
+            &lt;<a href="./API_CSVOutput.html#AmazonS3-Type-CSVOutput-FieldDelimiter">FieldDelimiter</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_CSVOutput.html#AmazonS3-Type-CSVOutput-FieldDelimiter">FieldDelimiter</a>&gt;
+            &lt;<a href="./API_CSVOutput.html#AmazonS3-Type-CSVOutput-QuoteCharacter">QuoteCharacter</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_CSVOutput.html#AmazonS3-Type-CSVOutput-QuoteCharacter">QuoteCharacter</a>&gt;
+            &lt;<a href="./API_CSVOutput.html#AmazonS3-Type-CSVOutput-QuoteEscapeCharacter">QuoteEscapeCharacter</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_CSVOutput.html#AmazonS3-Type-CSVOutput-QuoteEscapeCharacter">QuoteEscapeCharacter</a>&gt;
+            &lt;<a href="./API_CSVOutput.html#AmazonS3-Type-CSVOutput-QuoteFields">QuoteFields</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_CSVOutput.html#AmazonS3-Type-CSVOutput-QuoteFields">QuoteFields</a>&gt;
+            &lt;<a href="./API_CSVOutput.html#AmazonS3-Type-CSVOutput-RecordDelimiter">RecordDelimiter</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_CSVOutput.html#AmazonS3-Type-CSVOutput-RecordDelimiter">RecordDelimiter</a>&gt;
+         &lt;/<a href="./API_OutputSerialization.html#AmazonS3-Type-OutputSerialization-CSV">CSV</a>&gt;
+         &lt;<a href="./API_OutputSerialization.html#AmazonS3-Type-OutputSerialization-JSON">JSON</a>&gt;
+            &lt;<a href="./API_JSONOutput.html#AmazonS3-Type-JSONOutput-RecordDelimiter">RecordDelimiter</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_JSONOutput.html#AmazonS3-Type-JSONOutput-RecordDelimiter">RecordDelimiter</a>&gt;
+         &lt;/<a href="./API_OutputSerialization.html#AmazonS3-Type-OutputSerialization-JSON">JSON</a>&gt;
+      &lt;/<a href="./API_SelectParameters.html#AmazonS3-Type-SelectParameters-OutputSerialization">OutputSerialization</a>&gt;
+   &lt;/<a href="#AmazonS3-RestoreObject-request-SelectParameters">SelectParameters</a>&gt;
+   &lt;<a href="#AmazonS3-RestoreObject-request-OutputLocation">OutputLocation</a>&gt;
+      &lt;<a href="./API_OutputLocation.html#AmazonS3-Type-OutputLocation-S3">S3</a>&gt;
+         &lt;<a href="./API_S3Location.html#AmazonS3-Type-S3Location-AccessControlList">AccessControlList</a>&gt;
+            &lt;Grant&gt;
+               &lt;<a href="./API_Grant.html#AmazonS3-Type-Grant-Grantee">Grantee</a>&gt;
+                  &lt;<a href="./API_Grantee.html#AmazonS3-Type-Grantee-DisplayName">DisplayName</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_Grantee.html#AmazonS3-Type-Grantee-DisplayName">DisplayName</a>&gt;
+                  &lt;<a href="./API_Grantee.html#AmazonS3-Type-Grantee-EmailAddress">EmailAddress</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_Grantee.html#AmazonS3-Type-Grantee-EmailAddress">EmailAddress</a>&gt;
+                  &lt;<a href="./API_Grantee.html#AmazonS3-Type-Grantee-ID">ID</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_Grantee.html#AmazonS3-Type-Grantee-ID">ID</a>&gt;
+                  &lt;<a href="./API_Grantee.html#AmazonS3-Type-Grantee-Type">xsi:type</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_Grantee.html#AmazonS3-Type-Grantee-Type">xsi:type</a>&gt;
+                  &lt;<a href="./API_Grantee.html#AmazonS3-Type-Grantee-URI">URI</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_Grantee.html#AmazonS3-Type-Grantee-URI">URI</a>&gt;
+               &lt;/<a href="./API_Grant.html#AmazonS3-Type-Grant-Grantee">Grantee</a>&gt;
+               &lt;<a href="./API_Grant.html#AmazonS3-Type-Grant-Permission">Permission</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_Grant.html#AmazonS3-Type-Grant-Permission">Permission</a>&gt;
+            &lt;/Grant&gt;
+         &lt;/<a href="./API_S3Location.html#AmazonS3-Type-S3Location-AccessControlList">AccessControlList</a>&gt;
+         &lt;<a href="./API_S3Location.html#AmazonS3-Type-S3Location-BucketName">BucketName</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_S3Location.html#AmazonS3-Type-S3Location-BucketName">BucketName</a>&gt;
+         &lt;<a href="./API_S3Location.html#AmazonS3-Type-S3Location-CannedACL">CannedACL</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_S3Location.html#AmazonS3-Type-S3Location-CannedACL">CannedACL</a>&gt;
+         &lt;<a href="./API_S3Location.html#AmazonS3-Type-S3Location-Encryption">Encryption</a>&gt;
+            &lt;<a href="./API_Encryption.html#AmazonS3-Type-Encryption-EncryptionType">EncryptionType</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_Encryption.html#AmazonS3-Type-Encryption-EncryptionType">EncryptionType</a>&gt;
+            &lt;<a href="./API_Encryption.html#AmazonS3-Type-Encryption-KMSContext">KMSContext</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_Encryption.html#AmazonS3-Type-Encryption-KMSContext">KMSContext</a>&gt;
+            &lt;<a href="./API_Encryption.html#AmazonS3-Type-Encryption-KMSKeyId">KMSKeyId</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_Encryption.html#AmazonS3-Type-Encryption-KMSKeyId">KMSKeyId</a>&gt;
+         &lt;/<a href="./API_S3Location.html#AmazonS3-Type-S3Location-Encryption">Encryption</a>&gt;
+         &lt;<a href="./API_S3Location.html#AmazonS3-Type-S3Location-Prefix">Prefix</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_S3Location.html#AmazonS3-Type-S3Location-Prefix">Prefix</a>&gt;
+         &lt;<a href="./API_S3Location.html#AmazonS3-Type-S3Location-StorageClass">StorageClass</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_S3Location.html#AmazonS3-Type-S3Location-StorageClass">StorageClass</a>&gt;
+         &lt;<a href="./API_S3Location.html#AmazonS3-Type-S3Location-Tagging">Tagging</a>&gt;
+            &lt;<a href="./API_Tagging.html#AmazonS3-Type-Tagging-TagSet">TagSet</a>&gt;
+               &lt;Tag&gt;
+                  &lt;<a href="./API_Tag.html#AmazonS3-Type-Tag-Key">Key</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_Tag.html#AmazonS3-Type-Tag-Key">Key</a>&gt;
+                  &lt;<a href="./API_Tag.html#AmazonS3-Type-Tag-Value">Value</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_Tag.html#AmazonS3-Type-Tag-Value">Value</a>&gt;
+               &lt;/Tag&gt;
+            &lt;/<a href="./API_Tagging.html#AmazonS3-Type-Tagging-TagSet">TagSet</a>&gt;
+         &lt;/<a href="./API_S3Location.html#AmazonS3-Type-S3Location-Tagging">Tagging</a>&gt;
+         &lt;<a href="./API_S3Location.html#AmazonS3-Type-S3Location-UserMetadata">UserMetadata</a>&gt;
+            &lt;MetadataEntry&gt;
+               &lt;<a href="./API_MetadataEntry.html#AmazonS3-Type-MetadataEntry-Name">Name</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_MetadataEntry.html#AmazonS3-Type-MetadataEntry-Name">Name</a>&gt;
+               &lt;<a href="./API_MetadataEntry.html#AmazonS3-Type-MetadataEntry-Value">Value</a>&gt;<code class="replaceable">string</code>&lt;/<a href="./API_MetadataEntry.html#AmazonS3-Type-MetadataEntry-Value">Value</a>&gt;
+            &lt;/MetadataEntry&gt;
+         &lt;/<a href="./API_S3Location.html#AmazonS3-Type-S3Location-UserMetadata">UserMetadata</a>&gt;
+      &lt;/<a href="./API_OutputLocation.html#AmazonS3-Type-OutputLocation-S3">S3</a>&gt;
+   &lt;/<a href="#AmazonS3-RestoreObject-request-OutputLocation">OutputLocation</a>&gt;
+&lt;/<a href="#AmazonS3-RestoreObject-request-RestoreRequest">RestoreRequest</a>&gt;</code></pre>
+    
+      <h2 id="API_RestoreObject_RequestParameters">URI Request Parameters</h2>
+      <p>The request uses the following URI parameters.</p>
+      <div class="variablelist">
+          
+          
+          
+          
+          
+          
+      <dl>
+            <dt id="AmazonS3-RestoreObject-request-header-Bucket"><span class="term">
+               <b>
+                  <a href="#API_RestoreObject_RequestSyntax">Bucket</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The bucket name containing the object to restore. </p>
+               <p>
+                  <b>Access points</b> - When you use this action with an access point for general purpose buckets, you must provide the alias of the access point in place of the bucket name or specify the access point ARN. When you use this action with an access point for directory buckets, you must provide the access point name in place of the bucket name. When using the access point ARN, you must direct requests to the access point hostname. The access point hostname takes the form <em>AccessPointName</em>-<em>AccountId</em>.s3-accesspoint.<em>Region</em>.amazonaws.com. When using this action with an access point through the AWS SDKs, you provide the access point ARN in place of the bucket name. For more information about access point ARNs, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html">Using access points</a> in the <em>Amazon S3 User Guide</em>.</p>
+               <p>
+                  <b>S3 on Outposts</b> - When you use this action with S3 on Outposts, you must direct requests to the S3 on Outposts hostname. The S3 on Outposts hostname takes the 
+                     form <code class="code">
+                     <em>AccessPointName</em>-<em>AccountId</em>.<em>outpostID</em>.s3-outposts.<em>Region</em>.amazonaws.com</code>. When you use this action with S3 on Outposts, the destination bucket must be the Outposts access point ARN or the access point alias. For more information about S3 on Outposts, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html">What is S3 on Outposts?</a> in the <em>Amazon S3 User Guide</em>.</p>
+               <p>Required: Yes</p>
+            </dd>
+          
+            <dt id="AmazonS3-RestoreObject-request-uri-uri-Key"><span class="term">
+               <b>
+                  <a href="#API_RestoreObject_RequestSyntax">Key</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Object key for which the action was initiated.</p>
+               <p>Length Constraints: Minimum length of 1.</p>
+               <p>Required: Yes</p>
+            </dd>
+          
+            <dt id="AmazonS3-RestoreObject-request-uri-querystring-VersionId"><span class="term">
+               <b>
+                  <a href="#API_RestoreObject_RequestSyntax">versionId</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>VersionId used to reference a specific version of the object.</p>
+            </dd>
+          
+            <dt id="AmazonS3-RestoreObject-request-header-ExpectedBucketOwner"><span class="term">
+               <b>
+                  <a href="#API_RestoreObject_RequestSyntax">x-amz-expected-bucket-owner</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The account ID of the expected bucket owner. If the account ID that you provide does not match the actual owner of the bucket, the request fails with the HTTP status code <code class="code">403 Forbidden</code> (access denied).</p>
+            </dd>
+          
+            <dt id="AmazonS3-RestoreObject-request-header-RequestPayer"><span class="term">
+               <b>
+                  <a href="#API_RestoreObject_RequestSyntax">x-amz-request-payer</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Confirms that the requester knows that they will be charged for the request. Bucket owners need not
+      specify this parameter in their requests. If either the source or destination S3 bucket has Requester
+      Pays enabled, the requester will pay for the corresponding charges. For information about
+      downloading objects from Requester Pays buckets, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html">Downloading Objects in Requester Pays
+        Buckets</a> in the <em>Amazon S3 User Guide</em>.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+               <p>Valid Values: <code class="code">requester</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-RestoreObject-request-header-ChecksumAlgorithm"><span class="term">
+               <b>
+                  <a href="#API_RestoreObject_RequestSyntax">x-amz-sdk-checksum-algorithm</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Indicates the algorithm used to create the checksum for the object when you use the SDK. This header will not provide any
+    additional functionality if you don't use the SDK. When you send this header, there must be a corresponding <code class="code">x-amz-checksum</code> or
+    <code class="code">x-amz-trailer</code> header sent. Otherwise, Amazon S3 fails the request with the HTTP status code <code class="code">400 Bad Request</code>. For more
+    information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html">Checking object integrity</a> in
+    the <em>Amazon S3 User Guide</em>.</p>
+               <p>If you provide an individual checksum, Amazon S3 ignores any provided <code class="code">ChecksumAlgorithm</code>
+      parameter.</p>
+               <p>Valid Values: <code class="code">CRC32 | CRC32C | SHA1 | SHA256 | CRC64NVME</code>
+               </p>
+            </dd>
+         </dl></div>
+    
+      <h2 id="API_RestoreObject_RequestBody">Request Body</h2>
+      <p>The request accepts the following data in XML format.</p>
+      <div class="variablelist">
+          
+          
+          
+          
+          
+          
+          
+          
+      <dl>
+            <dt id="AmazonS3-RestoreObject-request-RestoreRequest"><span class="term">
+               <b>
+                  <a href="#API_RestoreObject_RequestSyntax">RestoreRequest</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Root level tag for the RestoreRequest parameters.</p>
+               <p>Required: Yes</p>
+            </dd>
+          
+            <dt id="AmazonS3-RestoreObject-request-Days"><span class="term">
+               <b>
+                  <a href="#API_RestoreObject_RequestSyntax">Days</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Lifetime of the active copy in days. Do not use with restores that specify
+        <code class="code">OutputLocation</code>.</p>
+               <p>The Days element is required for regular restores, and must not be provided for select
+      requests.</p>
+               <p>Type: Integer</p>
+               <p>Required: No</p>
+            </dd>
+          
+            <dt id="AmazonS3-RestoreObject-request-Description"><span class="term">
+               <b>
+                  <a href="#API_RestoreObject_RequestSyntax">Description</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The optional description for the job.</p>
+               <p>Type: String</p>
+               <p>Required: No</p>
+            </dd>
+          
+            <dt id="AmazonS3-RestoreObject-request-GlacierJobParameters"><span class="term">
+               <b>
+                  <a href="#API_RestoreObject_RequestSyntax">GlacierJobParameters</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>S3 Glacier related parameters pertaining to this job. Do not use with restores that specify
+        <code class="code">OutputLocation</code>.</p>
+               <p>Type: <a href="./API_GlacierJobParameters.html">GlacierJobParameters</a> data type</p>
+               <p>Required: No</p>
+            </dd>
+          
+            <dt id="AmazonS3-RestoreObject-request-OutputLocation"><span class="term">
+               <b>
+                  <a href="#API_RestoreObject_RequestSyntax">OutputLocation</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Describes the location where the restore job's output is stored.</p>
+               <p>Type: <a href="./API_OutputLocation.html">OutputLocation</a> data type</p>
+               <p>Required: No</p>
+            </dd>
+          
+            <dt id="AmazonS3-RestoreObject-request-SelectParameters"><span class="term">
+               <b>
+                  <a href="#API_RestoreObject_RequestSyntax">SelectParameters</a>
+               </b>
+            </span></dt>
+            <dd>
+               <div class="awsdocs-note awsdocs-important"><div class="awsdocs-note-title"><awsui-icon name="status-warning" variant="error"></awsui-icon><h6>Important</h6></div><div class="awsdocs-note-text"><p>Amazon S3 Select is no longer available to new customers. Existing customers of Amazon S3 Select can
+        continue to use the feature as usual. <a href="http://aws.amazon.com/blogs/storage/how-to-optimize-querying-your-data-in-amazon-s3/" rel="noopener noreferrer" target="_blank"><span>Learn more</span><awsui-icon class="awsdocs-link-icon" name="external"></awsui-icon></a>
+                  </p></div></div>
+               <p>Describes the parameters for Select job types.</p>
+               <p>Type: <a href="./API_SelectParameters.html">SelectParameters</a> data type</p>
+               <p>Required: No</p>
+            </dd>
+          
+            <dt id="AmazonS3-RestoreObject-request-Tier"><span class="term">
+               <b>
+                  <a href="#API_RestoreObject_RequestSyntax">Tier</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Retrieval tier at which the restore will be processed.</p>
+               <p>Type: String</p>
+               <p>Valid Values: <code class="code">Standard | Bulk | Expedited</code>
+               </p>
+               <p>Required: No</p>
+            </dd>
+          
+            <dt id="AmazonS3-RestoreObject-request-Type"><span class="term">
+               <b>
+                  <a href="#API_RestoreObject_RequestSyntax">Type</a>
+               </b>
+            </span></dt>
+            <dd>
+               <div class="awsdocs-note awsdocs-important"><div class="awsdocs-note-title"><awsui-icon name="status-warning" variant="error"></awsui-icon><h6>Important</h6></div><div class="awsdocs-note-text"><p>Amazon S3 Select is no longer available to new customers. Existing customers of Amazon S3 Select can
+        continue to use the feature as usual. <a href="http://aws.amazon.com/blogs/storage/how-to-optimize-querying-your-data-in-amazon-s3/" rel="noopener noreferrer" target="_blank"><span>Learn more</span><awsui-icon class="awsdocs-link-icon" name="external"></awsui-icon></a>
+                  </p></div></div>
+               <p>Type of restore request.</p>
+               <p>Type: String</p>
+               <p>Valid Values: <code class="code">SELECT</code>
+               </p>
+               <p>Required: No</p>
+            </dd>
+         </dl></div>
+    
+      <h2 id="API_RestoreObject_ResponseSyntax">Response Syntax</h2>
+      <pre class="programlisting"><div class="code-btn-container"></div><!--DEBUG: cli ()--><code class="nohighlight">HTTP/1.1 200
+x-amz-request-charged: <code class="replaceable">RequestCharged</code>
+x-amz-restore-output-path: <code class="replaceable">RestoreOutputPath</code>
+</code></pre>
+    
+      <h2 id="API_RestoreObject_ResponseElements">Response Elements</h2>
+      <p>If the action is successful, the service sends back an HTTP 200 response.</p>
+      <p>The response returns the following HTTP headers.</p>
+      <div class="variablelist">
+          
+          
+      <dl>
+            <dt id="AmazonS3-RestoreObject-response-header-RequestCharged"><span class="term">
+               <b>
+                  <a href="#API_RestoreObject_ResponseSyntax">x-amz-request-charged</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>If present, indicates that the requester was successfully charged for the request. For more
+      information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/RequesterPaysBuckets.html">Using Requester Pays buckets for storage transfers and usage</a> in the <em>Amazon Simple
+        Storage Service user guide</em>.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+               <p>Valid Values: <code class="code">requester</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-RestoreObject-response-header-RestoreOutputPath"><span class="term">
+               <b>
+                  <a href="#API_RestoreObject_ResponseSyntax">x-amz-restore-output-path</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Indicates the path in the provided S3 output location where Select results will be restored
+      to.</p>
+            </dd>
+         </dl></div>
+    
+      <h2 id="API_RestoreObject_Errors">Errors</h2>
+      <div class="variablelist">
+          
+      <dl>
+            <dt><span class="term">
+               <b>
+                  ObjectAlreadyInActiveTierError
+               </b>
+            </span></dt>
+            <dd>
+               <p>This action is not allowed against this storage tier.</p>
+               <p>HTTP Status Code: 403</p>
+            </dd>
+         </dl></div>
+    
+      <h2 id="API_RestoreObject_Examples">Examples</h2>
+       
+         <h3 id="API_RestoreObject_Example_1">Example: Restore an object for 2 days using the expedited retrieval option</h3>
+         <p>The following restore request restores a copy of the <code class="code">photo1.jpg</code> object from
+          S3 Glacier for a period of two days using the expedited retrieval option.</p>
+         
+            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">
+POST /photo1.jpg?restore HTTP/1.1
+Host: examplebucket.dummy value
+Date: Mon, 22 Oct 2012 01:49:52 GMT
+Authorization: authorization string
+Content-Length: content length
+&lt;RestoreRequest&gt;
+  &lt;Days&gt;2&lt;/Days&gt;
+  &lt;GlacierJobParameters&gt;
+    &lt;Tier&gt;Standard&lt;/Tier&gt;
+  &lt;/GlacierJobParameters&gt;
+&lt;/RestoreRequest&gt;
+         </code></pre>
+         
+       
+       
+         <h3 id="API_RestoreObject_Example_2">Sample response</h3>
+         <p>If the <code class="code">examplebucket</code> does not have a restored copy of the object, Amazon S3 returns the
+          following <code class="code">202 Accepted</code> response. </p>
+         <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>If a copy of the object is already restored, Amazon S3 returns a <code class="code">200 OK</code> response, and
+            updates only the restored copy's expiry time.</p></div></div>
+         
+            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">
+HTTP/1.1 202 Accepted
+x-amz-id-2: GFihv3y6+kE7KG11GEkQhU7/2/cHR3Yb2fCb2S04nxI423Dqwg2XiQ0B/UZlzYQvPiBlZNRcovw=
+x-amz-request-id: 9F341CD3C4BA79E0
+Date: Sat, 20 Oct 2012 23:54:05 GMT
+Content-Length: 0
+Server: AmazonS3
+         </code></pre>
+         
+       
+    
+      <h2 id="API_RestoreObject_SeeAlso">See Also</h2>
+      <p>For more information about using this API in one of the language-specific AWS SDKs, see the following:</p>
+      <div class="itemizedlist">
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+      <ul class="itemizedlist"><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/cli2/s3-2006-03-01/RestoreObject">AWS Command Line Interface V2</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/DotNetSDKV4/s3-2006-03-01/RestoreObject">AWS SDK for .NET V4</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/SdkForCpp/s3-2006-03-01/RestoreObject">AWS SDK for C++</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/SdkForGoV2/s3-2006-03-01/RestoreObject">AWS SDK for Go v2</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/SdkForJavaV2/s3-2006-03-01/RestoreObject">AWS SDK for Java V2</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/SdkForJavaScriptV3/s3-2006-03-01/RestoreObject">AWS SDK for JavaScript V3</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/SdkForKotlin/s3-2006-03-01/RestoreObject">AWS SDK for Kotlin</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/SdkForPHPV3/s3-2006-03-01/RestoreObject">AWS SDK for PHP V3</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/boto3/s3-2006-03-01/RestoreObject">AWS SDK for Python</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/SdkForRubyV3/s3-2006-03-01/RestoreObject">AWS SDK for Ruby V3</a>
+            </p>
+         </li></ul></div>
+   <awsdocs-copyright class="copyright-print"></awsdocs-copyright><awsdocs-thumb-feedback right-edge="{{$ctrl.thumbFeedbackRightEdge}}"></awsdocs-thumb-feedback></div><noscript><div><div><div><div id="js_error_message"><p><img src="https://d1ge0kk1l5kms0.cloudfront.net/images/G/01/webservices/console/warning.png" alt="Warning" /> <strong>Javascript is disabled or is unavailable in your browser.</strong></p><p>To use the Amazon Web Services Documentation, Javascript must be enabled. Please refer to your browser's Help pages for instructions.</p></div></div></div></div></noscript><div id="main-col-footer" class="awsui-util-font-size-0"><div id="doc-conventions"><a target="_top" href="/general/latest/gr/docconventions.html">Document Conventions</a></div><div class="prev-next"><div id="previous" class="prev-link" accesskey="p" href="./API_RenameObject.html">RenameObject</div><div id="next" class="next-link" accesskey="n" href="./API_SelectObjectContent.html">SelectObjectContent</div></div></div><awsdocs-page-utilities></awsdocs-page-utilities></div><div id="quick-feedback-yes" style="display: none;"><div class="title">Did this page help you? - Yes</div><div class="content"><p>Thanks for letting us know we're doing a good job!</p><p>If you've got a moment, please tell us what we did right so we can do more of it.</p><p><awsui-button id="fblink" rel="noopener noreferrer" target="_blank" text="Feedback" click="linkClick($event)" href="https://docs.aws.amazon.com/forms/aws-doc-feedback?hidden_service_name=S3&amp;topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/API_RestoreObject.html"></awsui-button></p></div></div><div id="quick-feedback-no" style="display: none;"><div class="title">Did this page help you? - No</div><div class="content"><p>Thanks for letting us know this page needs work. We're sorry we let you down.</p><p>If you've got a moment, please tell us how we can make the documentation better.</p><p><awsui-button id="fblink" rel="noopener noreferrer" target="_blank" text="Feedback" click="linkClick($event)" href="https://docs.aws.amazon.com/forms/aws-doc-feedback?hidden_service_name=S3&amp;topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/API_RestoreObject.html"></awsui-button></p></div></div></div></body></div></awsdocs-view><div class="page-loading-indicator" id="page-loading-indicator"><awsui-spinner size="large"></awsui-spinner></div></div><div id="tools-panel" dom-region="tools"><awsdocs-tools-panel id="awsdocs-tools-panel"></awsdocs-tools-panel></div></awsui-app-layout><awsdocs-cookie-banner class="doc-cookie-banner"></awsdocs-cookie-banner></div></body></html>

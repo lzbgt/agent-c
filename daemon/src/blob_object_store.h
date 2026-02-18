@@ -13,6 +13,16 @@ bool blob_object_store_is_enabled(const DaemonConfig& cfg, std::string* out_erro
 std::string blob_object_store_key_for_hex(const DaemonConfig& cfg, const std::string& hex);
 std::string blob_object_store_key_for_blob_id(const DaemonConfig& cfg, const std::string& blob_id);
 
+struct BlobObjectRestoreState {
+  bool has_header = false;
+  bool ongoing_known = false;
+  bool ongoing = false;
+  int64_t expiry_utc_ms = -1;
+  std::string raw_header;
+};
+
+bool blob_object_store_parse_restore_header(const std::string& value, BlobObjectRestoreState* out);
+
 bool blob_object_store_presign_url(
   const DaemonConfig& cfg,
   const std::string& method,
@@ -46,6 +56,33 @@ bool blob_object_store_get(
   const std::string& range_header,
   size_t max_bytes,
   int64_t now_utc_ms,
+  HttpClientResult* out_result,
+  std::string* out_error
+);
+
+bool blob_object_store_head(
+  const DaemonConfig& cfg,
+  const std::string& key,
+  int64_t now_utc_ms,
+  HttpClientResult* out_result,
+  std::string* out_error
+);
+
+bool blob_object_store_copy(
+  const DaemonConfig& cfg,
+  const std::string& key,
+  const std::string& source_key,
+  const std::string& storage_class,
+  int64_t now_utc_ms,
+  std::string* out_error
+);
+
+bool blob_object_store_restore(
+  const DaemonConfig& cfg,
+  const std::string& key,
+  int64_t now_utc_ms,
+  int restore_days,
+  const std::string& restore_tier,
   HttpClientResult* out_result,
   std::string* out_error
 );

@@ -1823,7 +1823,7 @@ paths:
   /api/v1/blob/restore:
     post:
       tags: [blobs]
-      summary: Restore archived blobs to object tier (operator)
+      summary: Request restore for archived blobs (operator)
       requestBody:
         required: true
         content:
@@ -2047,7 +2047,9 @@ components:
         blob_ids:
           type: array
           items: { type: string }
-        storage_class: { type: string }
+        storage_class:
+          type: string
+          description: Object-store storage class to copy into when archiving (required for archive transitions).
 
     BlobArchiveResult:
       type: object
@@ -2073,13 +2075,19 @@ components:
     BlobRestoreRequest:
       type: object
       additionalProperties: false
+      required: [restore_days]
       properties:
         blob_id: { type: string }
         blob_ids:
           type: array
           items: { type: string }
-        storage_class: { type: string }
-        clear_storage_class: { type: boolean }
+        restore_days:
+          type: integer
+          format: int32
+          description: Number of days to keep the restored copy available.
+        restore_tier:
+          type: string
+          description: Restore tier (for Glacier); defaults to Standard when omitted.
 
     BlobRestoreResult:
       type: object
@@ -2090,6 +2098,11 @@ components:
         error: { type: string }
         tier: { type: string }
         storage_class: { type: string, nullable: true }
+        restore_days: { type: integer, format: int32 }
+        restore_tier: { type: string }
+        restore_status: { type: string }
+        restore_expiry_utc_ms: { type: integer, format: int64, nullable: true }
+        restore_header: { type: string }
 
     BlobRestoreResponse:
       type: object

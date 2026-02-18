@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+    <html xmlns="http://www.w3.org/1999/xhtml" lang="en-US"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8" /><title>HeadObject - Amazon Simple Storage Service</title><meta name="viewport" content="width=device-width,initial-scale=1" /><meta name="assets_root" content="/assets" /><meta name="target_state" content="API_HeadObject" /><meta name="default_state" content="API_HeadObject" /><link rel="icon" type="image/ico" href="/assets/images/favicon.ico" /><link rel="shortcut icon" type="image/ico" href="/assets/images/favicon.ico" /><link rel="canonical" href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html" /><meta name="description" content="The HEAD operation retrieves metadata from an object without returning the object itself. This operation is useful if you're interested only in an object's metadata." /><meta name="deployment_region" content="IAD" /><meta name="product" content="Amazon Simple Storage Service" /><meta name="guide" content="API Reference" /><meta name="abstract" content="Explains how to use the Amazon S3 API to store data in the cloud." /><meta name="guide-locale" content="en_us" /><meta name="tocs" content="toc-contents.json" /><link rel="canonical" href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html" /><link rel="alternative" href="https://docs.aws.amazon.com/id_id/AmazonS3/latest/API/API_HeadObject.html" hreflang="id-id" /><link rel="alternative" href="https://docs.aws.amazon.com/id_id/AmazonS3/latest/API/API_HeadObject.html" hreflang="id" /><link rel="alternative" href="https://docs.aws.amazon.com/de_de/AmazonS3/latest/API/API_HeadObject.html" hreflang="de-de" /><link rel="alternative" href="https://docs.aws.amazon.com/de_de/AmazonS3/latest/API/API_HeadObject.html" hreflang="de" /><link rel="alternative" href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html" hreflang="en-us" /><link rel="alternative" href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html" hreflang="en" /><link rel="alternative" href="https://docs.aws.amazon.com/es_es/AmazonS3/latest/API/API_HeadObject.html" hreflang="es-es" /><link rel="alternative" href="https://docs.aws.amazon.com/es_es/AmazonS3/latest/API/API_HeadObject.html" hreflang="es" /><link rel="alternative" href="https://docs.aws.amazon.com/fr_fr/AmazonS3/latest/API/API_HeadObject.html" hreflang="fr-fr" /><link rel="alternative" href="https://docs.aws.amazon.com/fr_fr/AmazonS3/latest/API/API_HeadObject.html" hreflang="fr" /><link rel="alternative" href="https://docs.aws.amazon.com/it_it/AmazonS3/latest/API/API_HeadObject.html" hreflang="it-it" /><link rel="alternative" href="https://docs.aws.amazon.com/it_it/AmazonS3/latest/API/API_HeadObject.html" hreflang="it" /><link rel="alternative" href="https://docs.aws.amazon.com/ja_jp/AmazonS3/latest/API/API_HeadObject.html" hreflang="ja-jp" /><link rel="alternative" href="https://docs.aws.amazon.com/ja_jp/AmazonS3/latest/API/API_HeadObject.html" hreflang="ja" /><link rel="alternative" href="https://docs.aws.amazon.com/ko_kr/AmazonS3/latest/API/API_HeadObject.html" hreflang="ko-kr" /><link rel="alternative" href="https://docs.aws.amazon.com/ko_kr/AmazonS3/latest/API/API_HeadObject.html" hreflang="ko" /><link rel="alternative" href="https://docs.aws.amazon.com/pt_br/AmazonS3/latest/API/API_HeadObject.html" hreflang="pt-br" /><link rel="alternative" href="https://docs.aws.amazon.com/pt_br/AmazonS3/latest/API/API_HeadObject.html" hreflang="pt" /><link rel="alternative" href="https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/API/API_HeadObject.html" hreflang="zh-cn" /><link rel="alternative" href="https://docs.aws.amazon.com/zh_tw/AmazonS3/latest/API/API_HeadObject.html" hreflang="zh-tw" /><link rel="alternative" href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_HeadObject.html" hreflang="x-default" /><meta name="feedback-item" content="S3" /><meta name="this_doc_product" content="Amazon Simple Storage Service" /><meta name="this_doc_guide" content="API Reference" /><head xmlns="http://www.w3.org/1999/xhtml"> <script defer="" src="/assets/r/awsdocs-doc-page.2.0.0.js"></script><link href="/assets/r/awsdocs-doc-page.2.0.0.css" rel="stylesheet"/></head>
+<script defer="" id="awsc-panorama-bundle" type="text/javascript" src="https://prod.pa.cdn.uis.awsstatic.com/panorama-nav-init.js" data-config="{'appEntity':'aws-documentation','region':'us-east-1','service':'s3'}"></script><meta id="panorama-serviceSubSection" value="API Reference" /><meta id="panorama-serviceConsolePage" value="HeadObject" /></head><body class="awsdocs awsui"><div class="awsdocs-container"><awsdocs-header></awsdocs-header><awsui-app-layout id="app-layout" class="awsui-util-no-gutters" ng-controller="ContentController as $ctrl" header-selector="awsdocs-header" navigation-hide="false" navigation-width="$ctrl.navWidth" navigation-open="$ctrl.navOpen" navigation-change="$ctrl.onNavChange($event)" tools-hide="$ctrl.hideTools" tools-width="$ctrl.toolsWidth" tools-open="$ctrl.toolsOpen" tools-change="$ctrl.onToolsChange($event)"><div id="guide-toc" dom-region="navigation"><awsdocs-toc></awsdocs-toc></div><div id="main-column" dom-region="content" tabindex="-1"><awsdocs-view class="awsdocs-view"><div id="awsdocs-content"><head><title>HeadObject - Amazon Simple Storage Service</title><meta name="pdf" content="/pdfs/AmazonS3/latest/API/s3-api.pdf#API_HeadObject" /><meta name="forums" content="https://repost.aws/tags/TADSTjraA0Q4-a1dxk6eUYaw" /><meta name="feedback" content="https://docs.aws.amazon.com/forms/aws-doc-feedback?hidden_service_name=S3&amp;topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/API_HeadObject.html" /><meta name="feedback-yes" content="feedbackyes.html?topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/API_HeadObject.html" /><meta name="feedback-no" content="feedbackno.html?topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/API_HeadObject.html" /><meta name="keywords" content="API,requests,HeadObject" /><script type="application/ld+json">
+{
+    "@context" : "https://schema.org",
+    "@type" : "BreadcrumbList",
+    "itemListElement" : [
+      {
+        "@type" : "ListItem",
+        "position" : 1,
+        "name" : "AWS",
+        "item" : "https://aws.amazon.com"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 2,
+        "name" : "Amazon Simple Storage Service (S3)",
+        "item" : "https://docs.aws.amazon.com/s3/index.html"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 3,
+        "name" : "API Reference",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 4,
+        "name" : "S3 API Reference",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API/Type_API_Reference.html"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 5,
+        "name" : "Actions",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API/API_Operations.html"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 6,
+        "name" : "Amazon S3",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API/API_Operations_Amazon_Simple_Storage_Service.html"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 7,
+        "name" : "HeadObject",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API/API_Operations_Amazon_Simple_Storage_Service.html"
+      }
+    ]
+}
+</script></head><body><div id="main"><div style="display: none"><a href="/pdfs/AmazonS3/latest/API/s3-api.pdf#API_HeadObject" target="_blank" rel="noopener noreferrer" title="Open PDF"></a></div><div id="breadcrumbs" class="breadcrumb"><a href="/index.html">Documentation</a><a href="/s3/index.html">Amazon Simple Storage Service (S3)</a><a href="Welcome.html">API Reference</a></div><div id="page-toc-src"><a href="#API_HeadObject_RequestSyntax">Request Syntax</a><a href="#API_HeadObject_RequestParameters">URI Request Parameters</a><a href="#API_HeadObject_RequestBody">Request Body</a><a href="#API_HeadObject_ResponseSyntax">Response Syntax</a><a href="#API_HeadObject_ResponseElements">Response Elements</a><a href="#API_HeadObject_Errors">Errors</a><a href="#API_HeadObject_Examples">Examples</a><a href="#API_HeadObject_SeeAlso">See Also</a></div><div id="main-content" class="awsui-util-container"><div id="main-col-body"><awsdocs-language-banner data-service="$ctrl.pageService"></awsdocs-language-banner><h1 class="topictitle" id="API_HeadObject">HeadObject</h1><div class="awsdocs-page-header-container"><awsdocs-page-header></awsdocs-page-header><awsdocs-filter-selector id="awsdocs-filter-selector"></awsdocs-filter-selector></div><p>The <code class="code">HEAD</code> operation retrieves metadata from an object without returning the object
+      itself. This operation is useful if you're interested only in an object's metadata.</p><div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>A <code class="code">HEAD</code> request has the same options as a <code class="code">GET</code> operation on an object. The
+        response is identical to the <code class="code">GET</code> response except that there is no response body. Because
+        of this, if the <code class="code">HEAD</code> request generates an error, it returns a generic code, such as
+          <code class="code">400 Bad Request</code>, <code class="code">403 Forbidden</code>, <code class="code">404 Not Found</code>, <code class="code">405
+          Method Not Allowed</code>, <code class="code">412 Precondition Failed</code>, or <code class="code">304 Not Modified</code>.
+        It's not possible to retrieve the exact exception of these error codes.</p></div></div><p>Request headers are limited to 8 KB in size. For more information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/RESTCommonRequestHeaders.html">Common Request Headers</a>.</p><div class="variablelist">
+       
+       
+       
+       
+   <dl>
+         <dt><span class="term">Permissions</span></dt>
+         <dd>
+            <p></p>
+            <div class="itemizedlist">
+                
+                
+            <ul class="itemizedlist"><li class="listitem">
+                  <p>
+                     <b>General purpose bucket permissions</b> - To use
+                  <code class="code">HEAD</code>, you must have the <code class="code">s3:GetObject</code> permission. You need the
+                relevant read object (or version) permission for this operation. For more information, see
+                  <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/list_amazons3.html">Actions, resources,
+                  and condition keys for Amazon S3</a> in the <em>Amazon S3 User Guide</em>. For more
+                information about the permissions to S3 API operations by S3 resource types, see <a href="/AmazonS3/latest/userguide/using-with-s3-policy-actions.html" rel="noopener noreferrer" target="_blank">Required permissions for
+                  Amazon S3 API operations</a> in the <em>Amazon S3 User Guide</em>.</p>
+                  <p>If the object you request doesn't exist, the error that Amazon S3 returns depends on whether
+                you also have the <code class="code">s3:ListBucket</code> permission.</p>
+                  <div class="itemizedlist">
+                      
+                      
+                  <ul class="itemizedlist"><li class="listitem">
+                        <p>If you have the <code class="code">s3:ListBucket</code> permission on the bucket, Amazon S3 returns an
+                    HTTP status code <code class="code">404 Not Found</code> error.</p>
+                     </li><li class="listitem">
+                        <p>If you don’t have the <code class="code">s3:ListBucket</code> permission, Amazon S3 returns an HTTP
+                    status code <code class="code">403 Forbidden</code> error.</p>
+                     </li></ul></div>
+               </li><li class="listitem">
+                  <p>
+                     <b>Directory bucket permissions</b> - To grant access to this API operation on a directory bucket, we recommend that you use the <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateSession.html"><code class="code">CreateSession</code></a> API operation for session-based authorization. Specifically, you grant the <code class="code">s3express:CreateSession</code> permission to the directory bucket in a bucket policy or an IAM identity-based policy. Then, you make the <code class="code">CreateSession</code> API call on the bucket to obtain a session token. With the session token in your request header, you can make API requests to this operation. After the session token expires, you make another <code class="code">CreateSession</code> API call to generate a new session token for use. 
+AWS CLI or SDKs create session and refresh the session token automatically to avoid service interruptions when a session expires. For more information about authorization, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CreateSession.html"><code class="code">CreateSession</code></a>.</p>
+                  <p>If you enable <code class="code">x-amz-checksum-mode</code> in the request and the object is encrypted
+                with AWS Key Management Service (AWS KMS), you must also have the
+                  <code class="code">kms:GenerateDataKey</code> and <code class="code">kms:Decrypt</code> permissions in IAM
+                identity-based policies and AWS KMS key policies for the AWS KMS key to retrieve the checksum of
+                the object.</p>
+               </li></ul></div>
+         </dd>
+       
+         <dt><span class="term">Encryption</span></dt>
+         <dd>
+            <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>Encryption request headers, like <code class="code">x-amz-server-side-encryption</code>, should not be
+              sent for <code class="code">HEAD</code> requests if your object uses server-side encryption with AWS Key Management Service
+              (AWS KMS) keys (SSE-KMS), dual-layer server-side encryption with AWS KMS keys (DSSE-KMS), or
+              server-side encryption with Amazon S3 managed encryption keys (SSE-S3). The
+                <code class="code">x-amz-server-side-encryption</code> header is used when you <code class="code">PUT</code> an object
+              to S3 and want to specify the encryption method. If you include this header in a
+                <code class="code">HEAD</code> request for an object that uses these types of keys, you’ll get an HTTP
+                <code class="code">400 Bad Request</code> error. It's because the encryption method can't be changed when
+              you retrieve the object.</p></div></div>
+            <p>If you encrypt an object by using server-side encryption with customer-provided encryption
+            keys (SSE-C) when you store the object in Amazon S3, then when you retrieve the metadata from the
+            object, you must use the following headers to provide the encryption key for the server to be able
+            to retrieve the object's metadata. The headers are: </p>
+            <div class="itemizedlist">
+                
+                
+                
+            <ul class="itemizedlist"><li class="listitem">
+                  <p>
+                     <code class="code">x-amz-server-side-encryption-customer-algorithm</code>
+                  </p>
+               </li><li class="listitem">
+                  <p>
+                     <code class="code">x-amz-server-side-encryption-customer-key</code>
+                  </p>
+               </li><li class="listitem">
+                  <p>
+                     <code class="code">x-amz-server-side-encryption-customer-key-MD5</code>
+                  </p>
+               </li></ul></div>
+            <p>For more information about SSE-C, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/ServerSideEncryptionCustomerKeys.html">Server-Side Encryption (Using
+              Customer-Provided Encryption Keys)</a> in the <em>Amazon S3 User Guide</em>.</p>
+            <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>
+                  <b>Directory bucket </b> -
+              For directory buckets, there are only two supported options for server-side encryption: SSE-S3 and SSE-KMS. SSE-C isn't supported. For more
+         information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-serv-side-encryption.html">Protecting data with server-side encryption</a> in the <em>Amazon S3 User Guide</em>. </p></div></div>
+         </dd>
+       
+         <dt><span class="term">Versioning</span></dt>
+         <dd>
+            <div class="itemizedlist">
+                
+                
+            <ul class="itemizedlist"><li class="listitem">
+                  <p>If the current version of the object is a delete marker, Amazon S3 behaves as if the object was
+                deleted and includes <code class="code">x-amz-delete-marker: true</code> in the response.</p>
+               </li><li class="listitem">
+                  <p>If the specified version is a delete marker, the response returns a <code class="code">405 Method Not
+                  Allowed</code> error and the <code class="code">Last-Modified: timestamp</code> response header.</p>
+               </li></ul></div>
+            <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><div class="itemizedlist">
+                   
+                   
+               <ul class="itemizedlist"><li class="listitem">
+                     <p>
+                        <b>Directory buckets</b> -
+                  Delete marker is not supported for directory buckets.</p>
+                  </li><li class="listitem">
+                     <p>
+                        <b>Directory buckets</b> -
+                  S3 Versioning isn't enabled and supported for directory buckets. For this API operation, only the <code class="code">null</code> value of the version ID is supported by directory buckets. You can only specify <code class="code">null</code> to the
+                    <code class="code">versionId</code> query parameter in the request.</p>
+                  </li></ul></div></div></div>
+         </dd>
+       
+         <dt><span class="term">HTTP Host header syntax</span></dt>
+         <dd>
+            <p>
+               <b>Directory buckets </b> - The HTTP Host header syntax is <code class="code">
+                  <em>Bucket-name</em>.s3express-<em>zone-id</em>.<em>region-code</em>.amazonaws.com</code>.</p>
+            <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>For directory buckets, you must make requests for this API operation to the Zonal endpoint. These endpoints support virtual-hosted-style requests in the format <code class="code">https://<em>amzn-s3-demo-bucket</em>.s3express-<em>zone-id</em>.<em>region-code</em>.amazonaws.com/<em>key-name</em>
+                  </code>. Path-style requests are not supported. For more information about endpoints in Availability Zones, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/endpoint-directory-buckets-AZ.html">Regional and Zonal endpoints for directory buckets in Availability Zones</a> in the
+    <em>Amazon S3 User Guide</em>. For more information about endpoints in Local Zones, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-lzs-for-directory-buckets.html">Concepts for directory buckets in Local Zones</a> in the
+    <em>Amazon S3 User Guide</em>.</p></div></div>
+         </dd>
+      </dl></div><p>The following actions are related to <code class="code">HeadObject</code>:</p><div class="itemizedlist">
+       
+       
+   <ul class="itemizedlist"><li class="listitem">
+         <p>
+            <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html">GetObject</a>
+         </p>
+      </li><li class="listitem">
+         <p>
+            <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectAttributes.html">GetObjectAttributes</a>
+         </p>
+      </li></ul></div><div class="awsdocs-note awsdocs-important"><div class="awsdocs-note-title"><awsui-icon name="status-warning" variant="error"></awsui-icon><h6>Important</h6></div><div class="awsdocs-note-text"><p>You must URL encode any signed header values that contain spaces. For example, if your header value is <code class="code">my  file.txt</code>, containing two spaces after <code class="code">my</code>, you must URL encode this value to <code class="code">my%20%20file.txt</code>.</p></div></div>
+      <h2 id="API_HeadObject_RequestSyntax">Request Syntax</h2>
+      <pre class="programlisting"><div class="code-btn-container"></div><!--DEBUG: cli ()--><code class="nohighlight">HEAD /<code class="replaceable">Key+</code>?partNumber=<code class="replaceable">PartNumber</code>&amp;response-cache-control=<code class="replaceable">ResponseCacheControl</code>&amp;response-content-disposition=<code class="replaceable">ResponseContentDisposition</code>&amp;response-content-encoding=<code class="replaceable">ResponseContentEncoding</code>&amp;response-content-language=<code class="replaceable">ResponseContentLanguage</code>&amp;response-content-type=<code class="replaceable">ResponseContentType</code>&amp;response-expires=<code class="replaceable">ResponseExpires</code>&amp;versionId=<code class="replaceable">VersionId</code> HTTP/1.1
+Host: <code class="replaceable">Bucket</code>.s3.amazonaws.com
+If-Match: <code class="replaceable">IfMatch</code>
+If-Modified-Since: <code class="replaceable">IfModifiedSince</code>
+If-None-Match: <code class="replaceable">IfNoneMatch</code>
+If-Unmodified-Since: <code class="replaceable">IfUnmodifiedSince</code>
+Range: <code class="replaceable">Range</code>
+x-amz-server-side-encryption-customer-algorithm: <code class="replaceable">SSECustomerAlgorithm</code>
+x-amz-server-side-encryption-customer-key: <code class="replaceable">SSECustomerKey</code>
+x-amz-server-side-encryption-customer-key-MD5: <code class="replaceable">SSECustomerKeyMD5</code>
+x-amz-request-payer: <code class="replaceable">RequestPayer</code>
+x-amz-expected-bucket-owner: <code class="replaceable">ExpectedBucketOwner</code>
+x-amz-checksum-mode: <code class="replaceable">ChecksumMode</code>
+</code></pre>
+    
+      <h2 id="API_HeadObject_RequestParameters">URI Request Parameters</h2>
+      <p>The request uses the following URI parameters.</p>
+      <div class="variablelist">
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+      <dl>
+            <dt id="AmazonS3-HeadObject-request-header-Bucket"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_RequestSyntax">Bucket</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The name of the bucket that contains the object.</p>
+               <p>
+                  <b>Directory buckets</b> - When you use this operation with a directory bucket, you must use virtual-hosted-style requests in the format <code class="code">
+                     <em>Bucket-name</em>.s3express-<em>zone-id</em>.<em>region-code</em>.amazonaws.com</code>. Path-style requests are not supported.  Directory bucket names must be unique in the chosen Zone (Availability Zone or Local Zone). Bucket names must follow the format <code class="code">
+                     <em>bucket-base-name</em>--<em>zone-id</em>--x-s3</code> (for example, <code class="code">
+                     <em>amzn-s3-demo-bucket</em>--<em>usw2-az1</em>--x-s3</code>). For information about bucket naming
+         restrictions, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html">Directory bucket naming
+            rules</a> in the <em>Amazon S3 User Guide</em>.</p>
+               <p>
+                  <b>Access points</b> - When you use this action with an access point for general purpose buckets, you must provide the alias of the access point in place of the bucket name or specify the access point ARN. When you use this action with an access point for directory buckets, you must provide the access point name in place of the bucket name. When using the access point ARN, you must direct requests to the access point hostname. The access point hostname takes the form <em>AccessPointName</em>-<em>AccountId</em>.s3-accesspoint.<em>Region</em>.amazonaws.com. When using this action with an access point through the AWS SDKs, you provide the access point ARN in place of the bucket name. For more information about access point ARNs, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html">Using access points</a> in the <em>Amazon S3 User Guide</em>.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>Object Lambda access points are not supported by directory buckets.</p></div></div>
+               <p>
+                  <b>S3 on Outposts</b> - When you use this action with S3 on Outposts, you must direct requests to the S3 on Outposts hostname. The S3 on Outposts hostname takes the 
+                     form <code class="code">
+                     <em>AccessPointName</em>-<em>AccountId</em>.<em>outpostID</em>.s3-outposts.<em>Region</em>.amazonaws.com</code>. When you use this action with S3 on Outposts, the destination bucket must be the Outposts access point ARN or the access point alias. For more information about S3 on Outposts, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html">What is S3 on Outposts?</a> in the <em>Amazon S3 User Guide</em>.</p>
+               <p>Required: Yes</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-request-header-IfMatch"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_RequestSyntax">If-Match</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Return the object only if its entity tag (ETag) is the same as the one specified; otherwise, return
+      a 412 (precondition failed) error.</p>
+               <p>If both of the <code class="code">If-Match</code> and <code class="code">If-Unmodified-Since</code> headers are present in the
+      request as follows:</p>
+               <div class="itemizedlist">
+                   
+                   
+               <ul class="itemizedlist"><li class="listitem">
+                     <p>
+                        <code class="code">If-Match</code> condition evaluates to <code class="code">true</code>, and;</p>
+                  </li><li class="listitem">
+                     <p>
+                        <code class="code">If-Unmodified-Since</code> condition evaluates to <code class="code">false</code>;</p>
+                  </li></ul></div>
+               <p>Then Amazon S3 returns <code class="code">200 OK</code> and the data requested.</p>
+               <p>For more information about conditional requests, see <a href="https://tools.ietf.org/html/rfc7232" rel="noopener noreferrer" target="_blank"><span>RFC 7232</span><awsui-icon class="awsdocs-link-icon" name="external"></awsui-icon></a>.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-request-header-IfModifiedSince"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_RequestSyntax">If-Modified-Since</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Return the object only if it has been modified since the specified time; otherwise, return a 304
+      (not modified) error.</p>
+               <p>If both of the <code class="code">If-None-Match</code> and <code class="code">If-Modified-Since</code> headers are present in
+      the request as follows:</p>
+               <div class="itemizedlist">
+                   
+                   
+               <ul class="itemizedlist"><li class="listitem">
+                     <p>
+                        <code class="code">If-None-Match</code> condition evaluates to <code class="code">false</code>, and;</p>
+                  </li><li class="listitem">
+                     <p>
+                        <code class="code">If-Modified-Since</code> condition evaluates to <code class="code">true</code>;</p>
+                  </li></ul></div>
+               <p>Then Amazon S3 returns the <code class="code">304 Not Modified</code> response code.</p>
+               <p>For more information about conditional requests, see <a href="https://tools.ietf.org/html/rfc7232" rel="noopener noreferrer" target="_blank"><span>RFC 7232</span><awsui-icon class="awsdocs-link-icon" name="external"></awsui-icon></a>.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-request-header-IfNoneMatch"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_RequestSyntax">If-None-Match</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Return the object only if its entity tag (ETag) is different from the one specified; otherwise,
+      return a 304 (not modified) error.</p>
+               <p>If both of the <code class="code">If-None-Match</code> and <code class="code">If-Modified-Since</code> headers are present in
+      the request as follows:</p>
+               <div class="itemizedlist">
+                   
+                   
+               <ul class="itemizedlist"><li class="listitem">
+                     <p>
+                        <code class="code">If-None-Match</code> condition evaluates to <code class="code">false</code>, and;</p>
+                  </li><li class="listitem">
+                     <p>
+                        <code class="code">If-Modified-Since</code> condition evaluates to <code class="code">true</code>;</p>
+                  </li></ul></div>
+               <p>Then Amazon S3 returns the <code class="code">304 Not Modified</code> response code.</p>
+               <p>For more information about conditional requests, see <a href="https://tools.ietf.org/html/rfc7232" rel="noopener noreferrer" target="_blank"><span>RFC 7232</span><awsui-icon class="awsdocs-link-icon" name="external"></awsui-icon></a>.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-request-header-IfUnmodifiedSince"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_RequestSyntax">If-Unmodified-Since</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Return the object only if it has not been modified since the specified time; otherwise, return a 412
+      (precondition failed) error.</p>
+               <p>If both of the <code class="code">If-Match</code> and <code class="code">If-Unmodified-Since</code> headers are present in the
+      request as follows:</p>
+               <div class="itemizedlist">
+                   
+                   
+               <ul class="itemizedlist"><li class="listitem">
+                     <p>
+                        <code class="code">If-Match</code> condition evaluates to <code class="code">true</code>, and;</p>
+                  </li><li class="listitem">
+                     <p>
+                        <code class="code">If-Unmodified-Since</code> condition evaluates to <code class="code">false</code>;</p>
+                  </li></ul></div>
+               <p>Then Amazon S3 returns <code class="code">200 OK</code> and the data requested.</p>
+               <p>For more information about conditional requests, see <a href="https://tools.ietf.org/html/rfc7232" rel="noopener noreferrer" target="_blank"><span>RFC 7232</span><awsui-icon class="awsdocs-link-icon" name="external"></awsui-icon></a>.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-request-uri-uri-Key"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_RequestSyntax">Key</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The object key.</p>
+               <p>Length Constraints: Minimum length of 1.</p>
+               <p>Required: Yes</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-request-uri-querystring-PartNumber"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_RequestSyntax">partNumber</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Part number of the object being read. This is a positive integer between 1 and 10,000. Effectively
+      performs a 'ranged' HEAD request for the part specified. Useful querying about the size of the part and
+      the number of parts in this object.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-request-header-Range"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_RequestSyntax">Range</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>HeadObject returns only the metadata for an object. If the Range is satisfiable, only the
+        <code class="code">ContentLength</code> is affected in the response. If the Range is not satisfiable, S3 returns a
+        <code class="code">416 - Requested Range Not Satisfiable</code> error.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-request-uri-querystring-ResponseCacheControl"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_RequestSyntax">response-cache-control</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Sets the <code class="code">Cache-Control</code> header of the response.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-request-uri-querystring-ResponseContentDisposition"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_RequestSyntax">response-content-disposition</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Sets the <code class="code">Content-Disposition</code> header of the response.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-request-uri-querystring-ResponseContentEncoding"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_RequestSyntax">response-content-encoding</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Sets the <code class="code">Content-Encoding</code> header of the response.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-request-uri-querystring-ResponseContentLanguage"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_RequestSyntax">response-content-language</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Sets the <code class="code">Content-Language</code> header of the response.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-request-uri-querystring-ResponseContentType"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_RequestSyntax">response-content-type</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Sets the <code class="code">Content-Type</code> header of the response.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-request-uri-querystring-ResponseExpires"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_RequestSyntax">response-expires</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Sets the <code class="code">Expires</code> header of the response.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-request-uri-querystring-VersionId"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_RequestSyntax">versionId</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Version ID used to reference a specific version of the object.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>For directory buckets in this API operation, only the <code class="code">null</code> value of the version ID is supported.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-request-header-ChecksumMode"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_RequestSyntax">x-amz-checksum-mode</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>To retrieve the checksum, this parameter must be enabled.</p>
+               <p>
+                  <b>General purpose buckets</b> -
+      If you enable checksum mode and the object is uploaded with a <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_Checksum.html">checksum</a> and encrypted with
+      an AWS Key Management Service (AWS KMS) key, you must have permission to use the <code class="code">kms:Decrypt</code> action to
+      retrieve the checksum.</p>
+               <p>
+                  <b>Directory buckets</b> - If you enable <code class="code">ChecksumMode</code>
+      and the object is encrypted with AWS Key Management Service (AWS KMS), you must also have the
+        <code class="code">kms:GenerateDataKey</code> and <code class="code">kms:Decrypt</code> permissions in IAM identity-based
+      policies and AWS KMS key policies for the AWS KMS key to retrieve the checksum of the object.</p>
+               <p>Valid Values: <code class="code">ENABLED</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-request-header-ExpectedBucketOwner"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_RequestSyntax">x-amz-expected-bucket-owner</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The account ID of the expected bucket owner. If the account ID that you provide does not match the actual owner of the bucket, the request fails with the HTTP status code <code class="code">403 Forbidden</code> (access denied).</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-request-header-RequestPayer"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_RequestSyntax">x-amz-request-payer</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Confirms that the requester knows that they will be charged for the request. Bucket owners need not
+      specify this parameter in their requests. If either the source or destination S3 bucket has Requester
+      Pays enabled, the requester will pay for the corresponding charges. For information about
+      downloading objects from Requester Pays buckets, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html">Downloading Objects in Requester Pays
+        Buckets</a> in the <em>Amazon S3 User Guide</em>.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+               <p>Valid Values: <code class="code">requester</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-request-header-SSECustomerAlgorithm"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_RequestSyntax">x-amz-server-side-encryption-customer-algorithm</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies the algorithm to use when encrypting the object (for example, AES256).</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-request-header-SSECustomerKey"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_RequestSyntax">x-amz-server-side-encryption-customer-key</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies the customer-provided encryption key for Amazon S3 to use in encrypting data. This value is
+      used to store the object and then it is discarded; Amazon S3 does not store the encryption key. The key must
+      be appropriate for use with the algorithm specified in the
+        <code class="code">x-amz-server-side-encryption-customer-algorithm</code> header.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-request-header-SSECustomerKeyMD5"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_RequestSyntax">x-amz-server-side-encryption-customer-key-MD5</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies the 128-bit MD5 digest of the encryption key according to RFC 1321. Amazon S3 uses this header
+      for a message integrity check to ensure that the encryption key was transmitted without error.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+            </dd>
+         </dl></div>
+    
+      <h2 id="API_HeadObject_RequestBody">Request Body</h2>
+      <p>The request does not have a request body.</p>
+    
+      <h2 id="API_HeadObject_ResponseSyntax">Response Syntax</h2>
+      <pre class="programlisting"><div class="code-btn-container"></div><!--DEBUG: cli ()--><code class="nohighlight">HTTP/1.1 200
+x-amz-delete-marker: <code class="replaceable">DeleteMarker</code>
+accept-ranges: <code class="replaceable">AcceptRanges</code>
+x-amz-expiration: <code class="replaceable">Expiration</code>
+x-amz-restore: <code class="replaceable">Restore</code>
+x-amz-archive-status: <code class="replaceable">ArchiveStatus</code>
+Last-Modified: <code class="replaceable">LastModified</code>
+Content-Length: <code class="replaceable">ContentLength</code>
+x-amz-checksum-crc32: <code class="replaceable">ChecksumCRC32</code>
+x-amz-checksum-crc32c: <code class="replaceable">ChecksumCRC32C</code>
+x-amz-checksum-crc64nvme: <code class="replaceable">ChecksumCRC64NVME</code>
+x-amz-checksum-sha1: <code class="replaceable">ChecksumSHA1</code>
+x-amz-checksum-sha256: <code class="replaceable">ChecksumSHA256</code>
+x-amz-checksum-type: <code class="replaceable">ChecksumType</code>
+ETag: <code class="replaceable">ETag</code>
+x-amz-missing-meta: <code class="replaceable">MissingMeta</code>
+x-amz-version-id: <code class="replaceable">VersionId</code>
+Cache-Control: <code class="replaceable">CacheControl</code>
+Content-Disposition: <code class="replaceable">ContentDisposition</code>
+Content-Encoding: <code class="replaceable">ContentEncoding</code>
+Content-Language: <code class="replaceable">ContentLanguage</code>
+Content-Type: <code class="replaceable">ContentType</code>
+Content-Range: <code class="replaceable">ContentRange</code>
+Expires: <code class="replaceable">Expires</code>
+x-amz-website-redirect-location: <code class="replaceable">WebsiteRedirectLocation</code>
+x-amz-server-side-encryption: <code class="replaceable">ServerSideEncryption</code>
+x-amz-server-side-encryption-customer-algorithm: <code class="replaceable">SSECustomerAlgorithm</code>
+x-amz-server-side-encryption-customer-key-MD5: <code class="replaceable">SSECustomerKeyMD5</code>
+x-amz-server-side-encryption-aws-kms-key-id: <code class="replaceable">SSEKMSKeyId</code>
+x-amz-server-side-encryption-bucket-key-enabled: <code class="replaceable">BucketKeyEnabled</code>
+x-amz-storage-class: <code class="replaceable">StorageClass</code>
+x-amz-request-charged: <code class="replaceable">RequestCharged</code>
+x-amz-replication-status: <code class="replaceable">ReplicationStatus</code>
+x-amz-mp-parts-count: <code class="replaceable">PartsCount</code>
+x-amz-tagging-count: <code class="replaceable">TagCount</code>
+x-amz-object-lock-mode: <code class="replaceable">ObjectLockMode</code>
+x-amz-object-lock-retain-until-date: <code class="replaceable">ObjectLockRetainUntilDate</code>
+x-amz-object-lock-legal-hold: <code class="replaceable">ObjectLockLegalHoldStatus</code>
+</code></pre>
+    
+      <h2 id="API_HeadObject_ResponseElements">Response Elements</h2>
+      <p>If the action is successful, the service sends back an HTTP 200 response.</p>
+      <p>The response returns the following HTTP headers.</p>
+      <div class="variablelist">
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+      <dl>
+            <dt id="AmazonS3-HeadObject-response-header-AcceptRanges"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">accept-ranges</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Indicates that a range of bytes was specified.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-CacheControl"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">Cache-Control</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies caching behavior along the request/reply chain.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-ContentDisposition"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">Content-Disposition</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies presentational information for the object.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-ContentEncoding"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">Content-Encoding</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Indicates what content encodings have been applied to the object and thus what decoding mechanisms
+      must be applied to obtain the media-type referenced by the Content-Type header field.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-ContentLanguage"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">Content-Language</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The language the content is in.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-ContentLength"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">Content-Length</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Size of the body in bytes.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-ContentRange"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">Content-Range</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The portion of the object returned in the response for a <code class="code">GET</code> request.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-ContentType"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">Content-Type</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>A standard MIME type describing the format of the object data.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-ETag"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">ETag</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>An entity tag (ETag) is an opaque identifier assigned by a web server to a specific version of a
+      resource found at a URL.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-Expires"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">Expires</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The date and time at which the object is no longer cacheable.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-LastModified"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">Last-Modified</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Date and time when the object was last modified.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-ArchiveStatus"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-archive-status</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The archive state of the head object.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+               <p>Valid Values: <code class="code">ARCHIVE_ACCESS | DEEP_ARCHIVE_ACCESS</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-ChecksumCRC32"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-checksum-crc32</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The Base64 encoded, 32-bit <code class="code">CRC32 checksum</code> of the object. This checksum is only present if the checksum was uploaded
+    with the object. When you use an API operation on an object that was uploaded using multipart uploads, this value may not be a direct checksum value of the full object. Instead, it's a calculation based on the checksum values of each individual part. For more information about how checksums are calculated
+    with multipart uploads, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums">
+    Checking object integrity</a> in the <em>Amazon S3 User Guide</em>.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-ChecksumCRC32C"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-checksum-crc32c</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The Base64 encoded, 32-bit <code class="code">CRC32C</code> checksum of the object. This checksum is only present if the checksum was uploaded
+    with the object. When you use an API operation on an object that was uploaded using multipart uploads, this value may not be a direct checksum value of the full object. Instead, it's a calculation based on the checksum values of each individual part. For more information about how checksums are calculated
+    with multipart uploads, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums">
+    Checking object integrity</a> in the <em>Amazon S3 User Guide</em>.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-ChecksumCRC64NVME"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-checksum-crc64nvme</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The Base64 encoded, 64-bit <code class="code">CRC64NVME</code> checksum of the object. For more information, see
+        <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html">Checking
+        object integrity in the Amazon S3 User Guide</a>.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-ChecksumSHA1"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-checksum-sha1</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The Base64 encoded, 160-bit <code class="code">SHA1</code> digest of the object. This checksum is only present if the checksum was uploaded
+    with the object. When you use the API operation on an object that was uploaded using multipart uploads, this value may not be a direct checksum value of the full object. Instead, it's a calculation based on the checksum values of each individual part. For more information about how checksums are calculated
+    with multipart uploads, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums">
+    Checking object integrity</a> in the <em>Amazon S3 User Guide</em>.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-ChecksumSHA256"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-checksum-sha256</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The Base64 encoded, 256-bit <code class="code">SHA256</code> digest of the object. This checksum is only present if the checksum was uploaded
+    with the object. When you use an API operation on an object that was uploaded using multipart uploads, this value may not be a direct checksum value of the full object. Instead, it's a calculation based on the checksum values of each individual part. For more information about how checksums are calculated
+    with multipart uploads, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html#large-object-checksums">
+    Checking object integrity</a> in the <em>Amazon S3 User Guide</em>.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-ChecksumType"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-checksum-type</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The checksum type, which determines how part-level checksums are combined to create an object-level
+      checksum for multipart objects. You can use this header response to verify that the checksum type that
+      is received is the same checksum type that was specified in <code class="code">CreateMultipartUpload</code> request.
+      For more information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html">Checking object integrity in the Amazon S3
+        User Guide</a>.</p>
+               <p>Valid Values: <code class="code">COMPOSITE | FULL_OBJECT</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-DeleteMarker"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-delete-marker</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies whether the object retrieved was (true) or was not (false) a Delete Marker. If false, this
+      response header does not appear in the response.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-Expiration"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-expiration</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>If the object expiration is configured (see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutBucketLifecycleConfiguration.html"><code class="code">PutBucketLifecycleConfiguration</code></a>), the response includes this header. It
+      includes the <code class="code">expiry-date</code> and <code class="code">rule-id</code> key-value pairs providing object
+      expiration information. The value of the <code class="code">rule-id</code> is URL-encoded.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>Object expiration information is not returned in directory buckets and this header returns the
+        value "<code class="code">NotImplemented</code>" in all responses for directory buckets.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-MissingMeta"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-missing-meta</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>This is set to the number of metadata entries not returned in <code class="code">x-amz-meta</code> headers. This
+      can happen if you create metadata using an API like SOAP that supports more flexible metadata than the
+      REST API. For example, using SOAP, you can create metadata whose values are not legal HTTP
+      headers.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-PartsCount"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-mp-parts-count</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The count of parts this object has. This value is only returned if you specify
+        <code class="code">partNumber</code> in your request and the object was uploaded as a multipart upload.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-ObjectLockLegalHoldStatus"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-object-lock-legal-hold</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies whether a legal hold is in effect for this object. This header is only returned if the
+      requester has the <code class="code">s3:GetObjectLegalHold</code> permission. This header is not returned if the
+      specified version of this object has never had a legal hold applied. For more information about S3
+      Object Lock, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lock.html">Object
+        Lock</a>.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+               <p>Valid Values: <code class="code">ON | OFF</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-ObjectLockMode"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-object-lock-mode</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The Object Lock mode, if any, that's in effect for this object. This header is only returned if the
+      requester has the <code class="code">s3:GetObjectRetention</code> permission. For more information about S3 Object
+      Lock, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lock.html">Object Lock</a>. </p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+               <p>Valid Values: <code class="code">GOVERNANCE | COMPLIANCE</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-ObjectLockRetainUntilDate"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-object-lock-retain-until-date</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The date and time when the Object Lock retention period expires. This header is only returned if the
+      requester has the <code class="code">s3:GetObjectRetention</code> permission.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-ReplicationStatus"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-replication-status</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Amazon S3 can return this header if your request involves a bucket that is either a source or a
+      destination in a replication rule.</p>
+               <p>In replication, you have a source bucket on which you configure replication and destination bucket
+      or buckets where Amazon S3 stores object replicas. When you request an object (<code class="code">GetObject</code>) or
+      object metadata (<code class="code">HeadObject</code>) from these buckets, Amazon S3 will return the
+        <code class="code">x-amz-replication-status</code> header in the response as follows:</p>
+               <div class="itemizedlist">
+                   
+                   
+                   
+               <ul class="itemizedlist"><li class="listitem">
+                     <p>
+                        <b>If requesting an object from the source bucket</b>, Amazon S3 will
+          return the <code class="code">x-amz-replication-status</code> header if the object in your request is eligible
+          for replication.</p>
+                     <p> For example, suppose that in your replication configuration, you specify object prefix
+            <code class="code">TaxDocs</code> requesting Amazon S3 to replicate objects with key prefix <code class="code">TaxDocs</code>.
+          Any objects you upload with this key name prefix, for example <code class="code">TaxDocs/document1.pdf</code>,
+          are eligible for replication. For any object request with this key name prefix, Amazon S3 will return the
+            <code class="code">x-amz-replication-status</code> header with value PENDING, COMPLETED or FAILED indicating
+          object replication status.</p>
+                  </li><li class="listitem">
+                     <p>
+                        <b>If requesting an object from a destination bucket</b>, Amazon S3 will
+          return the <code class="code">x-amz-replication-status</code> header with value REPLICA if the object in your
+          request is a replica that Amazon S3 created and there is no replica modification replication in
+          progress.</p>
+                  </li><li class="listitem">
+                     <p>
+                        <b>When replicating objects to multiple destination buckets</b>, the
+            <code class="code">x-amz-replication-status</code> header acts differently. The header of the source object
+          will only return a value of COMPLETED when replication is successful to all destinations. The header
+          will remain at value PENDING until replication has completed for all destinations. If one or more
+          destinations fails replication the header will return FAILED. </p>
+                  </li></ul></div>
+               <p>For more information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/NotificationHowTo.html">Replication</a>.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+               <p>Valid Values: <code class="code">COMPLETE | PENDING | FAILED | REPLICA | COMPLETED</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-RequestCharged"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-request-charged</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>If present, indicates that the requester was successfully charged for the request. For more
+      information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/RequesterPaysBuckets.html">Using Requester Pays buckets for storage transfers and usage</a> in the <em>Amazon Simple
+        Storage Service user guide</em>.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+               <p>Valid Values: <code class="code">requester</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-Restore"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-restore</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>If the object is an archived object (an object whose storage class is GLACIER), the response
+      includes this header if either the archive restoration is in progress (see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_RestoreObject.html">RestoreObject</a> or an archive copy is already
+      restored.</p>
+               <p> If an archive copy is already restored, the header value indicates when Amazon S3 is scheduled to delete
+      the object copy. For example:</p>
+               <p>
+                  <code class="code">x-amz-restore: ongoing-request="false", expiry-date="Fri, 21 Dec 2012 00:00:00
+      GMT"</code>
+               </p>
+               <p>If the object restoration is in progress, the header returns the value
+        <code class="code">ongoing-request="true"</code>.</p>
+               <p>For more information about archiving objects, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lifecycle-mgmt.html#lifecycle-transition-general-considerations">Transitioning Objects: General Considerations</a>.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets. Directory buckets only support <code class="code">EXPRESS_ONEZONE</code> (the S3 Express One Zone storage class) in Availability Zones and <code class="code">ONEZONE_IA</code> (the S3 One Zone-Infrequent Access storage class) in Dedicated Local Zones.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-ServerSideEncryption"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-server-side-encryption</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The server-side encryption algorithm used when you store this object in Amazon S3 or Amazon FSx.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>When accessing data stored in Amazon FSx file systems using S3 access points, the only valid server side
+        encryption option is <code class="code">aws:fsx</code>.</p></div></div>
+               <p>Valid Values: <code class="code">AES256 | aws:fsx | aws:kms | aws:kms:dsse</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-SSEKMSKeyId"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-server-side-encryption-aws-kms-key-id</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>If present, indicates the ID of the KMS key that was used for object encryption.</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-BucketKeyEnabled"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-server-side-encryption-bucket-key-enabled</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Indicates whether the object uses an S3 Bucket Key for server-side encryption with AWS Key Management Service (AWS KMS)
+      keys (SSE-KMS).</p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-SSECustomerAlgorithm"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-server-side-encryption-customer-algorithm</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>If server-side encryption with a customer-provided encryption key was requested, the response will
+      include this header to confirm the encryption algorithm that's used.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-SSECustomerKeyMD5"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-server-side-encryption-customer-key-MD5</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>If server-side encryption with a customer-provided encryption key was requested, the response will
+      include this header to provide the round-trip message integrity verification of the customer-provided
+      encryption key.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-StorageClass"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-storage-class</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Provides storage class information of the object. Amazon S3 returns this header for all objects except
+      for S3 Standard storage class objects.</p>
+               <p>For more information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-class-intro.html">Storage Classes</a>.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>
+                     <b>Directory buckets </b> -
+        Directory buckets only support <code class="code">EXPRESS_ONEZONE</code> (the S3 Express One Zone storage class) in Availability Zones and <code class="code">ONEZONE_IA</code> (the S3 One Zone-Infrequent Access storage class) in Dedicated Local Zones.</p></div></div>
+               <p>Valid Values: <code class="code">STANDARD | REDUCED_REDUNDANCY | STANDARD_IA | ONEZONE_IA | INTELLIGENT_TIERING | GLACIER | DEEP_ARCHIVE | OUTPOSTS | GLACIER_IR | SNOW | EXPRESS_ONEZONE | FSX_OPENZFS | FSX_ONTAP</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-TagCount"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-tagging-count</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The number of tags, if any, on the object, when you have the relevant permission to read object
+      tags.</p>
+               <p>You can use <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObjectTagging.html">GetObjectTagging</a> to retrieve the tag set associated with an object.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-VersionId"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-version-id</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Version ID of the object.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-HeadObject-response-header-WebsiteRedirectLocation"><span class="term">
+               <b>
+                  <a href="#API_HeadObject_ResponseSyntax">x-amz-website-redirect-location</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>If the bucket is configured as a website, redirects requests for this object to another object in
+      the same bucket or to an external URL. Amazon S3 stores the value of this header in the object
+      metadata.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+            </dd>
+         </dl></div>
+    
+      <h2 id="API_HeadObject_Errors">Errors</h2>
+      <div class="variablelist">
+          
+      <dl>
+            <dt><span class="term">
+               <b>
+                  NoSuchKey
+               </b>
+            </span></dt>
+            <dd>
+               <p>The specified key does not exist.</p>
+               <p>HTTP Status Code: 404</p>
+            </dd>
+         </dl></div>
+    
+      <h2 id="API_HeadObject_Examples">Examples</h2>
+       
+         <h3 id="API_HeadObject_Example_1">Sample Request for general purpose buckets</h3>
+         <p>The following request returns the metadata of an object.</p>
+         
+            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">
+            HEAD /my-image.jpg HTTP/1.1
+            Host: bucket.s3.&lt;Region&gt;.amazonaws.com
+            Date: Wed, 28 Oct 2009 22:32:00 GMT
+            Authorization: AWS AKIAIOSFODNN7EXAMPLE:02236Q3V0RonhpaBX5sCYVf1bNRuU=
+         </code></pre>
+         
+       
+       
+         <h3 id="API_HeadObject_Example_2">Sample Response for general purpose buckets</h3>
+         <p>This example illustrates one usage of HeadObject.</p>
+         
+            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">
+            HTTP/1.1 200 OK
+            x-amz-id-2: ef8yU9AS1ed4OpIszj7UDNEHGran
+            x-amz-request-id: 318BC8BC143432E5
+            x-amz-version-id: 3HL4kqtJlcpXroDTDmjVBH40Nrjfkd
+            Date: Wed, 28 Oct 2009 22:32:00 GMT
+            Last-Modified: Sun, 1 Jan 2006 12:00:00 GMT
+            ETag: "fba9dede5f27731c9771645a39863328"
+            Content-Length: 434234
+            Content-Type: text/plain
+            Connection: close
+            Server: AmazonS3
+         </code></pre>
+         
+       
+       
+         <h3 id="API_HeadObject_Example_3">Sample Response for general purpose buckets: With an expiration tag</h3>
+         <p>If the object is scheduled to expire according to a lifecycle configuration set on the bucket,
+          the response returns the <code class="code">x-amz-expiration</code> tag with information about when Amazon S3 will
+          delete the object. For more information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/object-lifecycle-mgmt.html#lifecycle-transition-general-considerations">Transitioning Objects: General Considerations</a>. </p>
+         
+            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">
+            HTTP/1.1 200 OK
+            x-amz-id-2: azQRZtQJ2m1P8R+TIsG9h0VuC/DmiSJmjXUMq7snk+LKSJeurtmfzSlGhR46GzSJ
+            x-amz-request-id: 0EFF61CCE3F24A26
+            Date: Mon, 17 Dec 2012 02:26:39 GMT
+            Last-Modified: Mon, 17 Dec 2012 02:14:10 GMT
+            x-amz-expiration: expiry-date="Fri, 21 Dec 2012 00:00:00 GMT", rule-id="Rule for testfile.txt"
+            ETag: "54b0c58c7ce9f2a8b551351102ee0938"
+            Accept-Ranges: bytes
+            Content-Type: text/plain
+            Content-Length: 14
+            Server: AmazonS3
+         </code></pre>
+         
+       
+       
+         <h3 id="API_HeadObject_Example_4">Sample Request for general purpose buckets: Getting metadata from a specified version of an
+          object</h3>
+         <p>The following request returns the metadata of the specified version of an object.</p>
+         
+            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">
+            HEAD /my-image.jpg?versionId=3HL4kqCxf3vjVBH40Nrjfkd HTTP/1.1
+            Host: bucket.s3.&lt;Region&gt;.amazonaws.com
+            Date: Wed, 28 Oct 2009 22:32:00 GMT
+            Authorization: AWS AKIAIOSFODNN7EXAMPLE:02236Q3V0WpaBX5sCYVf1bNRuU=
+         </code></pre>
+         
+       
+       
+         <h3 id="API_HeadObject_Example_5">Sample Response for general purpose buckets: To a versioned HEAD request</h3>
+         <p>This example illustrates one usage of HeadObject.</p>
+         
+            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">
+            HTTP/1.1 200 OK
+            x-amz-id-2: eftixk72aD6Ap51TnqcoF8epIszj7UDNEHGran
+            x-amz-request-id: 318BC8BC143432E5
+            x-amz-version-id: 3HL4kqtJlcpXrof3vjVBH40Nrjfkd
+            Date: Wed, 28 Oct 2009 22:32:00 GMT
+            Last-Modified: Sun, 1 Jan 2006 12:00:00 GMT
+            ETag: "fba9dede5f27731c9771645a39863328"
+            Content-Length: 434234
+            Content-Type: text/plain
+            Connection: close
+            Server: AmazonS3
+         </code></pre>
+         
+       
+       
+         <h3 id="API_HeadObject_Example_6">Sample Request for general purpose buckets: For an S3 Glacier object</h3>
+         <p>For an archived object, the <code class="code">x-amz-restore</code> header provides the date when the
+          restored copy expires, as shown in the following response. Even if the object is stored in
+          S3 Glacier, all object metadata is still available.</p>
+         
+            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">
+            HEAD /my-image.jpg HTTP/1.1
+            Host: bucket.s3.&lt;Region&gt;.amazonaws.com
+            Date: 13 Nov 2012 00:28:38 GMT
+            Authorization: AWS AKIAIOSFODNN7EXAMPLE:02236Q3V0RonhpaBX5sCYVf1bNRuU=
+         </code></pre>
+         
+       
+       
+         <h3 id="API_HeadObject_Example_7">Sample Response for general purpose buckets: S3 Glacier object</h3>
+         <p>If the object is already restored, the <code class="code">x-amz-restore</code> header provides the date when
+          the restored copy will expire, as shown in the following response.</p>
+         
+            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">
+            HTTP/1.1 200 OK
+            x-amz-id-2: FSVaTMjrmBp3Izs1NnwBZeu7M19iI8UbxMbi0A8AirHANJBo+hEftBuiESACOMJp
+            x-amz-request-id: E5CEFCB143EB505A
+            Date: Tue, 13 Nov 2012 00:28:38 GMT
+            Last-Modified: Mon, 15 Oct 2012 21:58:07 GMT
+            x-amz-restore: ongoing-request="false", expiry-date="Wed, 07 Nov 2012 00:00:00 GMT"
+            ETag: "1accb31fcf202eba0c0f41fa2f09b4d7"
+            Accept-Ranges: bytes
+            Content-Type: binary/octet-stream
+            Content-Length: 300
+            Server: AmazonS3
+         </code></pre>
+         
+       
+       
+         <h3 id="API_HeadObject_Example_8">Sample Response for general purpose buckets: In-progress restoration</h3>
+         <p>If the restoration is in progress, the <code class="code">x-amz-restore</code> header returns a message
+          accordingly.</p>
+         
+            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">
+            HTTP/1.1 200 OK
+            x-amz-id-2: b+V2mDiMHTdy1myoUBpctvmJl95H9U/OSUm/jRtHxjh0+pCk5SvByL4xu2TDv4GM
+            x-amz-request-id: E2E7B6AEE4E9BD2B
+            Date: Tue, 13 Nov 2012 00:43:32 GMT
+            Last-Modified: Sat, 20 Oct 2012 21:28:27 GMT
+            x-amz-restore: ongoing-request="true"
+            ETag: "1accb31fcf202eba0c0f41fa2f09b4d7"
+            Accept-Ranges: bytes
+            Content-Type: binary/octet-stream
+            Content-Length: 300
+            Server: AmazonS3
+         </code></pre>
+         
+       
+       
+         <h3 id="API_HeadObject_Example_9">Sample Response for general purpose buckets: Object archived using S3 Intelligent-Tiering</h3>
+         <p>If an object is stored using the S3 Intelligent-Tiering storage class and is currently in one of
+          the archive tiers, then this action shows the current tier using the
+            <code class="code">x-amz-archive-status</code> header. </p>
+         
+            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">
+            HTTP/1.1 200 OK
+            x-amz-id-2: FSVaTMjrmBp3Izs1NnwBZeu7M19iI8UbxMbi0A8AirHANJBo+hEftBuiESACOMJp
+            x-amz-request-id: E5CEFCB143EB505A
+            Date: Fri, 13 Nov 2020 00:28:38 GMT
+            Last-Modified: Mon, 15 Oct 2012 21:58:07 GMT
+            ETag: "1accb31fcf202eba0c0f41fa2f09b4d7"
+	    x-amz-storage-class: 'INTELLIGENT_TIERING'
+            x-amz-archive-status: 'ARCHIVE_ACCESS'
+            Accept-Ranges: bytes
+            Content-Type: binary/octet-stream
+            Content-Length: 300
+            Server: AmazonS3
+         </code></pre>
+         
+       
+       
+         <h3 id="API_HeadObject_Example_10">Sample Response for general purpose buckets: Object archived using S3 Intelligent-Tiering with restore
+          in progress</h3>
+         <p>If an object is stored using the S3 Intelligent-Tiering storage class and is currently in the
+          process of being restored from one of the archive tiers, then this action shows the current tier
+          using the <code class="code">x-amz-archive-status</code> header and the current restore status using the
+            <code class="code">x-amz-restore</code> header. </p>
+         
+            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">
+            HTTP/1.1 200 OK
+            x-amz-id-2: FSVaTMjrmBp3Izs1NnwBZeu7M19iI8UbxMbi0A8AirHANJBo+hEftBuiESACOMJp
+            x-amz-request-id: E5CEFCB143EB505A
+            Date: Fri, 13 Nov 2020 00:28:38 GMT
+            Last-Modified: Mon, 15 Oct 2012 21:58:07 GMT
+            ETag: "1accb31fcf202eba0c0f41fa2f09b4d7"
+	    x-amz-storage-class: 'INTELLIGENT_TIERING'
+	    x-amz-archive-status: 'ARCHIVE_ACCESS'
+	    x-amz-restore: 'ongoing-request="true"'
+            x-amz-restore-request-date: 'Fri, 13 Nov 2020 00:20:00 GMT'
+            Accept-Ranges: bytes
+            Content-Type: binary/octet-stream
+            Content-Length: 300
+            Server: AmazonS3
+         </code></pre>
+         
+       
+    
+      <h2 id="API_HeadObject_SeeAlso">See Also</h2>
+      <p>For more information about using this API in one of the language-specific AWS SDKs, see the following:</p>
+      <div class="itemizedlist">
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+      <ul class="itemizedlist"><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/cli2/s3-2006-03-01/HeadObject">AWS Command Line Interface V2</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/DotNetSDKV4/s3-2006-03-01/HeadObject">AWS SDK for .NET V4</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/SdkForCpp/s3-2006-03-01/HeadObject">AWS SDK for C++</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/SdkForGoV2/s3-2006-03-01/HeadObject">AWS SDK for Go v2</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/SdkForJavaV2/s3-2006-03-01/HeadObject">AWS SDK for Java V2</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/SdkForJavaScriptV3/s3-2006-03-01/HeadObject">AWS SDK for JavaScript V3</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/SdkForKotlin/s3-2006-03-01/HeadObject">AWS SDK for Kotlin</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/SdkForPHPV3/s3-2006-03-01/HeadObject">AWS SDK for PHP V3</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/boto3/s3-2006-03-01/HeadObject">AWS SDK for Python</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/SdkForRubyV3/s3-2006-03-01/HeadObject">AWS SDK for Ruby V3</a>
+            </p>
+         </li></ul></div>
+   <awsdocs-copyright class="copyright-print"></awsdocs-copyright><awsdocs-thumb-feedback right-edge="{{$ctrl.thumbFeedbackRightEdge}}"></awsdocs-thumb-feedback></div><noscript><div><div><div><div id="js_error_message"><p><img src="https://d1ge0kk1l5kms0.cloudfront.net/images/G/01/webservices/console/warning.png" alt="Warning" /> <strong>Javascript is disabled or is unavailable in your browser.</strong></p><p>To use the Amazon Web Services Documentation, Javascript must be enabled. Please refer to your browser's Help pages for instructions.</p></div></div></div></div></noscript><div id="main-col-footer" class="awsui-util-font-size-0"><div id="doc-conventions"><a target="_top" href="/general/latest/gr/docconventions.html">Document Conventions</a></div><div class="prev-next"><div id="previous" class="prev-link" accesskey="p" href="./API_HeadBucket.html">HeadBucket</div><div id="next" class="next-link" accesskey="n" href="./API_ListBucketAnalyticsConfigurations.html">ListBucketAnalyticsConfigurations</div></div></div><awsdocs-page-utilities></awsdocs-page-utilities></div><div id="quick-feedback-yes" style="display: none;"><div class="title">Did this page help you? - Yes</div><div class="content"><p>Thanks for letting us know we're doing a good job!</p><p>If you've got a moment, please tell us what we did right so we can do more of it.</p><p><awsui-button id="fblink" rel="noopener noreferrer" target="_blank" text="Feedback" click="linkClick($event)" href="https://docs.aws.amazon.com/forms/aws-doc-feedback?hidden_service_name=S3&amp;topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/API_HeadObject.html"></awsui-button></p></div></div><div id="quick-feedback-no" style="display: none;"><div class="title">Did this page help you? - No</div><div class="content"><p>Thanks for letting us know this page needs work. We're sorry we let you down.</p><p>If you've got a moment, please tell us how we can make the documentation better.</p><p><awsui-button id="fblink" rel="noopener noreferrer" target="_blank" text="Feedback" click="linkClick($event)" href="https://docs.aws.amazon.com/forms/aws-doc-feedback?hidden_service_name=S3&amp;topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/API_HeadObject.html"></awsui-button></p></div></div></div></body></div></awsdocs-view><div class="page-loading-indicator" id="page-loading-indicator"><awsui-spinner size="large"></awsui-spinner></div></div><div id="tools-panel" dom-region="tools"><awsdocs-tools-panel id="awsdocs-tools-panel"></awsdocs-tools-panel></div></awsui-app-layout><awsdocs-cookie-banner class="doc-cookie-banner"></awsdocs-cookie-banner></div></body></html>

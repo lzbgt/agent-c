@@ -112,13 +112,17 @@ Metadata:
 - `POST /api/v1/blob/tier/enforce` (apply tiering policy once; safe maintenance endpoint)
 
 Archive controls (v3, operator-only):
-- `POST /api/v1/blob/archive` with `{ blob_id | blob_ids, storage_class? }` to mark blobs as `tier="archive"`.
-- `POST /api/v1/blob/restore` with `{ blob_id | blob_ids, storage_class?, clear_storage_class? }` to return to `tier="object"`.
+- `POST /api/v1/blob/archive` with `{ blob_id | blob_ids, storage_class }` to copy objects into a cold storage
+  class (CopyObject) and mark blobs as `tier="archive"`.
+- `POST /api/v1/blob/restore` with `{ blob_id | blob_ids, restore_days, restore_tier? }` to request a restore
+  (RestoreObject). Reads remain blocked until the restore is ready.
 
 Notes:
 - Archive/restore requires `blob_store.mode=object` and configured object-store credentials.
-- This is **metadata-driven**; agentd blocks reads for `tier="archive"` until restored.
-- Cold storage transitions are expected to be managed by object-store lifecycle policies or external tooling.
+- Archive uses object-store CopyObject to change storage class; `storage_class` must be provided.
+- Restore issues an object-store RestoreObject request and does **not** change the tier; reads are allowed only when
+  restore status indicates readiness (from `x-amz-restore` in HEAD responses).
+- Restore responses include `restore_status` and best-effort `restore_expiry_utc_ms` when available.
 
 These are additive; legacy `GET /api/v1/file` remains supported.
 

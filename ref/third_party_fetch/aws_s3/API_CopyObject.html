@@ -1,0 +1,1673 @@
+<!DOCTYPE html>
+    <html xmlns="http://www.w3.org/1999/xhtml" lang="en-US"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8" /><title>CopyObject - Amazon Simple Storage Service</title><meta name="viewport" content="width=device-width,initial-scale=1" /><meta name="assets_root" content="/assets" /><meta name="target_state" content="API_CopyObject" /><meta name="default_state" content="API_CopyObject" /><link rel="icon" type="image/ico" href="/assets/images/favicon.ico" /><link rel="shortcut icon" type="image/ico" href="/assets/images/favicon.ico" /><link rel="canonical" href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html" /><meta name="description" content="Creates a copy of an object that is already stored in Amazon S3." /><meta name="deployment_region" content="IAD" /><meta name="product" content="Amazon Simple Storage Service" /><meta name="guide" content="API Reference" /><meta name="abstract" content="Explains how to use the Amazon S3 API to store data in the cloud." /><meta name="guide-locale" content="en_us" /><meta name="tocs" content="toc-contents.json" /><link rel="canonical" href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html" /><link rel="alternative" href="https://docs.aws.amazon.com/id_id/AmazonS3/latest/API/API_CopyObject.html" hreflang="id-id" /><link rel="alternative" href="https://docs.aws.amazon.com/id_id/AmazonS3/latest/API/API_CopyObject.html" hreflang="id" /><link rel="alternative" href="https://docs.aws.amazon.com/de_de/AmazonS3/latest/API/API_CopyObject.html" hreflang="de-de" /><link rel="alternative" href="https://docs.aws.amazon.com/de_de/AmazonS3/latest/API/API_CopyObject.html" hreflang="de" /><link rel="alternative" href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html" hreflang="en-us" /><link rel="alternative" href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html" hreflang="en" /><link rel="alternative" href="https://docs.aws.amazon.com/es_es/AmazonS3/latest/API/API_CopyObject.html" hreflang="es-es" /><link rel="alternative" href="https://docs.aws.amazon.com/es_es/AmazonS3/latest/API/API_CopyObject.html" hreflang="es" /><link rel="alternative" href="https://docs.aws.amazon.com/fr_fr/AmazonS3/latest/API/API_CopyObject.html" hreflang="fr-fr" /><link rel="alternative" href="https://docs.aws.amazon.com/fr_fr/AmazonS3/latest/API/API_CopyObject.html" hreflang="fr" /><link rel="alternative" href="https://docs.aws.amazon.com/it_it/AmazonS3/latest/API/API_CopyObject.html" hreflang="it-it" /><link rel="alternative" href="https://docs.aws.amazon.com/it_it/AmazonS3/latest/API/API_CopyObject.html" hreflang="it" /><link rel="alternative" href="https://docs.aws.amazon.com/ja_jp/AmazonS3/latest/API/API_CopyObject.html" hreflang="ja-jp" /><link rel="alternative" href="https://docs.aws.amazon.com/ja_jp/AmazonS3/latest/API/API_CopyObject.html" hreflang="ja" /><link rel="alternative" href="https://docs.aws.amazon.com/ko_kr/AmazonS3/latest/API/API_CopyObject.html" hreflang="ko-kr" /><link rel="alternative" href="https://docs.aws.amazon.com/ko_kr/AmazonS3/latest/API/API_CopyObject.html" hreflang="ko" /><link rel="alternative" href="https://docs.aws.amazon.com/pt_br/AmazonS3/latest/API/API_CopyObject.html" hreflang="pt-br" /><link rel="alternative" href="https://docs.aws.amazon.com/pt_br/AmazonS3/latest/API/API_CopyObject.html" hreflang="pt" /><link rel="alternative" href="https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/API/API_CopyObject.html" hreflang="zh-cn" /><link rel="alternative" href="https://docs.aws.amazon.com/zh_tw/AmazonS3/latest/API/API_CopyObject.html" hreflang="zh-tw" /><link rel="alternative" href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html" hreflang="x-default" /><meta name="feedback-item" content="S3" /><meta name="this_doc_product" content="Amazon Simple Storage Service" /><meta name="this_doc_guide" content="API Reference" /><head xmlns="http://www.w3.org/1999/xhtml"> <script defer="" src="/assets/r/awsdocs-doc-page.2.0.0.js"></script><link href="/assets/r/awsdocs-doc-page.2.0.0.css" rel="stylesheet"/></head>
+<script defer="" id="awsc-panorama-bundle" type="text/javascript" src="https://prod.pa.cdn.uis.awsstatic.com/panorama-nav-init.js" data-config="{'appEntity':'aws-documentation','region':'us-east-1','service':'s3'}"></script><meta id="panorama-serviceSubSection" value="API Reference" /><meta id="panorama-serviceConsolePage" value="CopyObject" /></head><body class="awsdocs awsui"><div class="awsdocs-container"><awsdocs-header></awsdocs-header><awsui-app-layout id="app-layout" class="awsui-util-no-gutters" ng-controller="ContentController as $ctrl" header-selector="awsdocs-header" navigation-hide="false" navigation-width="$ctrl.navWidth" navigation-open="$ctrl.navOpen" navigation-change="$ctrl.onNavChange($event)" tools-hide="$ctrl.hideTools" tools-width="$ctrl.toolsWidth" tools-open="$ctrl.toolsOpen" tools-change="$ctrl.onToolsChange($event)"><div id="guide-toc" dom-region="navigation"><awsdocs-toc></awsdocs-toc></div><div id="main-column" dom-region="content" tabindex="-1"><awsdocs-view class="awsdocs-view"><div id="awsdocs-content"><head><title>CopyObject - Amazon Simple Storage Service</title><meta name="pdf" content="/pdfs/AmazonS3/latest/API/s3-api.pdf#API_CopyObject" /><meta name="forums" content="https://repost.aws/tags/TADSTjraA0Q4-a1dxk6eUYaw" /><meta name="feedback" content="https://docs.aws.amazon.com/forms/aws-doc-feedback?hidden_service_name=S3&amp;topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/API_CopyObject.html" /><meta name="feedback-yes" content="feedbackyes.html?topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/API_CopyObject.html" /><meta name="feedback-no" content="feedbackno.html?topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/API_CopyObject.html" /><meta name="keywords" content="API,requests,CopyObject" /><script type="application/ld+json">
+{
+    "@context" : "https://schema.org",
+    "@type" : "BreadcrumbList",
+    "itemListElement" : [
+      {
+        "@type" : "ListItem",
+        "position" : 1,
+        "name" : "AWS",
+        "item" : "https://aws.amazon.com"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 2,
+        "name" : "Amazon Simple Storage Service (S3)",
+        "item" : "https://docs.aws.amazon.com/s3/index.html"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 3,
+        "name" : "API Reference",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 4,
+        "name" : "S3 API Reference",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API/Type_API_Reference.html"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 5,
+        "name" : "Actions",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API/API_Operations.html"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 6,
+        "name" : "Amazon S3",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API/API_Operations_Amazon_Simple_Storage_Service.html"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 7,
+        "name" : "CopyObject",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API/API_Operations_Amazon_Simple_Storage_Service.html"
+      }
+    ]
+}
+</script></head><body><div id="main"><div style="display: none"><a href="/pdfs/AmazonS3/latest/API/s3-api.pdf#API_CopyObject" target="_blank" rel="noopener noreferrer" title="Open PDF"></a></div><div id="breadcrumbs" class="breadcrumb"><a href="/index.html">Documentation</a><a href="/s3/index.html">Amazon Simple Storage Service (S3)</a><a href="Welcome.html">API Reference</a></div><div id="page-toc-src"><a href="#API_CopyObject_RequestSyntax">Request Syntax</a><a href="#API_CopyObject_RequestParameters">URI Request Parameters</a><a href="#API_CopyObject_RequestBody">Request Body</a><a href="#API_CopyObject_ResponseSyntax">Response Syntax</a><a href="#API_CopyObject_ResponseElements">Response Elements</a><a href="#API_CopyObject_Errors">Errors</a><a href="#API_CopyObject_Examples">Examples</a><a href="#API_CopyObject_SeeAlso">See Also</a></div><div id="main-content" class="awsui-util-container"><div id="main-col-body"><awsdocs-language-banner data-service="$ctrl.pageService"></awsdocs-language-banner><h1 class="topictitle" id="API_CopyObject">CopyObject</h1><div class="awsdocs-page-header-container"><awsdocs-page-header></awsdocs-page-header><awsdocs-filter-selector id="awsdocs-filter-selector"></awsdocs-filter-selector></div><p>Creates a copy of an object that is already stored in Amazon S3.</p><div class="awsdocs-note awsdocs-important"><div class="awsdocs-note-title"><awsui-icon name="status-warning" variant="error"></awsui-icon><h6>Important</h6></div><div class="awsdocs-note-text"><p>End of support notice: As of October 1, 2025, Amazon S3 has discontinued support for Email Grantee Access Control Lists (ACLs). If you attempt to use an Email Grantee ACL in a request after October 1, 2025, 
+ the request will receive an <code class="code">HTTP 405</code> (Method Not Allowed) error.</p><p>This change affects the following AWS Regions: US East (N. Virginia), US West (N. California), US West (Oregon), Asia Pacific (Singapore), Asia Pacific (Sydney), Asia Pacific (Tokyo), Europe (Ireland), and South America (São Paulo).</p></div></div><div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>You can store individual objects of up to 50 TB in Amazon S3. You create a copy of your
+        object up to 5 GB in size in a single atomic action using this API. However, to copy an
+        object greater than 5 GB, you must use the multipart upload Upload Part - Copy
+        (UploadPartCopy) API. For more information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/CopyingObjctsUsingRESTMPUapi.html">Copy Object Using the REST
+          Multipart Upload API</a>.</p></div></div><p>You can copy individual objects between general purpose buckets, between directory buckets, and between
+      general purpose buckets and directory buckets.</p><div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><div class="itemizedlist">
+          
+          
+          
+      <ul class="itemizedlist"><li class="listitem">
+            <p>Amazon S3 supports copy operations using Multi-Region Access Points only as a destination when
+            using the Multi-Region Access Point ARN. </p>
+         </li><li class="listitem">
+            <p>
+               <b>Directory buckets </b> - For directory buckets, you must make requests for this API operation to the Zonal endpoint. These endpoints support virtual-hosted-style requests in the format <code class="code">https://<em>amzn-s3-demo-bucket</em>.s3express-<em>zone-id</em>.<em>region-code</em>.amazonaws.com/<em>key-name</em>
+               </code>. Path-style requests are not supported. For more information about endpoints in Availability Zones, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/endpoint-directory-buckets-AZ.html">Regional and Zonal endpoints for directory buckets in Availability Zones</a> in the
+    <em>Amazon S3 User Guide</em>. For more information about endpoints in Local Zones, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-lzs-for-directory-buckets.html">Concepts for directory buckets in Local Zones</a> in the
+    <em>Amazon S3 User Guide</em>.</p>
+         </li><li class="listitem">
+            <p>VPC endpoints don't support cross-Region requests (including copies). If you're using VPC
+            endpoints, your source and destination buckets should be in the same AWS Region as your VPC
+            endpoint.</p>
+         </li></ul></div></div></div><p>Both the Region that you want to copy the object from and the Region that you want to copy the
+      object to must be enabled for your account. For more information about how to enable a Region for your
+      account, see <a href="https://docs.aws.amazon.com/accounts/latest/reference/manage-acct-regions.html#manage-acct-regions-enable-standalone">Enable
+        or disable a Region for standalone accounts</a> in the <em>
+         AWS Account Management
+        Guide</em>.</p><div class="awsdocs-note awsdocs-important"><div class="awsdocs-note-title"><awsui-icon name="status-warning" variant="error"></awsui-icon><h6>Important</h6></div><div class="awsdocs-note-text"><p>Amazon S3 transfer acceleration does not support cross-Region copies. If you request a cross-Region
+        copy using a transfer acceleration endpoint, you get a <code class="code">400 Bad Request</code> error. For more
+        information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/transfer-acceleration.html">Transfer Acceleration</a>.</p></div></div><div class="variablelist">
+       
+       
+       
+       
+       
+   <dl>
+         <dt><span class="term">Authentication and authorization</span></dt>
+         <dd>
+            <p>All <code class="code">CopyObject</code> requests must be authenticated and signed by using IAM
+            credentials (access key ID and secret access key for the IAM identities). All headers with the
+              <code class="code">x-amz-</code> prefix, including <code class="code">x-amz-copy-source</code>, must be signed. For more
+            information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/RESTAuthentication.html">REST Authentication</a>.</p>
+            <p>
+               <b>Directory buckets</b> - You must use the IAM
+            credentials to authenticate and authorize your access to the <code class="code">CopyObject</code> API
+            operation, instead of using the temporary security credentials through the
+              <code class="code">CreateSession</code> API operation.</p>
+            <p>
+               AWS CLI or SDKs handles authentication and authorization on your behalf.</p>
+         </dd>
+       
+         <dt><span class="term">Permissions</span></dt>
+         <dd>
+            <p>You must have <em>read</em> access to the source object and
+              <em>write</em> access to the destination bucket.</p>
+            <div class="itemizedlist">
+                
+                
+            <ul class="itemizedlist"><li class="listitem">
+                  <p>
+                     <b>General purpose bucket permissions</b> - You must have
+                permissions in an IAM policy based on the source and destination bucket types in a
+                  <code class="code">CopyObject</code> operation.</p>
+                  <div class="itemizedlist">
+                      
+                      
+                  <ul class="itemizedlist"><li class="listitem">
+                        <p>If the source object is in a general purpose bucket, you must have <b>
+                              <code class="code">s3:GetObject</code>
+                           </b> permission to read the source object that is
+                    being copied. </p>
+                     </li><li class="listitem">
+                        <p>If the destination bucket is a general purpose bucket, you must have <b>
+                              <code class="code">s3:PutObject</code>
+                           </b> permission to write the object copy to the
+                    destination bucket. </p>
+                     </li></ul></div>
+               </li><li class="listitem">
+                  <p>
+                     <b>Directory bucket permissions</b> - You must have
+                permissions in a bucket policy or an IAM identity-based policy based on the source and destination bucket types
+                in a <code class="code">CopyObject</code> operation.</p>
+                  <div class="itemizedlist">
+                      
+                      
+                  <ul class="itemizedlist"><li class="listitem">
+                        <p>If the source object that you want to copy is in a directory bucket, you must have
+                    the <b>
+                              <code class="code">s3express:CreateSession</code>
+                           </b> permission in
+                    the <code class="code">Action</code> element of a policy to read the object. If no session mode is specified, 
+                    the session will be created with the maximum allowable privilege, attempting <code class="code">ReadWrite</code> 
+                    first, then <code class="code">ReadOnly</code> if <code class="code">ReadWrite</code> is not permitted. If you want to explicitly 
+                    restrict the access to be read-only, you can set the <code class="code">s3express:SessionMode</code> condition key to 
+                    <code class="code">ReadOnly</code> on the copy source bucket.</p>
+                     </li><li class="listitem">
+                        <p>If the copy destination is a directory bucket, you must have the <b>
+                              <code class="code">s3express:CreateSession</code>
+                           </b> permission in the
+                      <code class="code">Action</code> element of a policy to write the object to the destination. The
+                      <code class="code">s3express:SessionMode</code> condition key can't be set to <code class="code">ReadOnly</code>
+                    on the copy destination bucket. </p>
+                     </li></ul></div>
+                  <p>If the object is encrypted with SSE-KMS, you must also have the
+                  <code class="code">kms:GenerateDataKey</code> and <code class="code">kms:Decrypt</code> permissions in IAM
+                identity-based policies and AWS KMS key policies for the AWS KMS key.</p>
+                  <p>For example policies, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-security-iam-example-bucket-policies.html">Example
+                  bucket policies for S3 Express One Zone</a> and <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-security-iam-identity-policies.html">AWS
+                  Identity and Access Management (IAM) identity-based policies for S3 Express One Zone</a> in the
+                  <em>Amazon S3 User Guide</em>.</p>
+               </li></ul></div>
+         </dd>
+       
+         <dt><span class="term">Response and special errors</span></dt>
+         <dd>
+            <p>When the request is an HTTP 1.1 request, the response is chunk encoded. When the request is
+            not an HTTP 1.1 request, the response would not contain the <code class="code">Content-Length</code>. You
+            always need to read the entire response body to check if the copy succeeds. </p>
+            <div class="itemizedlist">
+                
+                
+            <ul class="itemizedlist"><li class="listitem">
+                  <p>If the copy is successful, you receive a response with information about the copied
+                object.</p>
+               </li><li class="listitem">
+                  <p>A copy request might return an error when Amazon S3 receives the copy request or while Amazon S3 is
+                copying the files. A <code class="code">200 OK</code> response can contain either a success or an
+                error.</p>
+                  <div class="itemizedlist">
+                      
+                      
+                  <ul class="itemizedlist"><li class="listitem">
+                        <p>If the error occurs before the copy action starts, you receive a standard Amazon S3
+                    error.</p>
+                     </li><li class="listitem">
+                        <p>If the error occurs during the copy operation, the error response is embedded in the
+                      <code class="code">200 OK</code> response. For example, in a cross-region copy, you may encounter
+                    throttling and receive a <code class="code">200 OK</code> response. For more information, see <a href="https://repost.aws/knowledge-center/s3-resolve-200-internalerror" rel="noopener noreferrer" target="_blank"><span>Resolve the Error
+                      200 response when copying objects to Amazon S3</span><awsui-icon class="awsdocs-link-icon" name="external"></awsui-icon></a>. The <code class="code">200 OK</code> status code
+                    means the copy was accepted, but it doesn't mean the copy is complete. Another example is
+                    when you disconnect from Amazon S3 before the copy is complete, Amazon S3 might cancel the copy and
+                    you may receive a <code class="code">200 OK</code> response. You must stay connected to Amazon S3 until the
+                    entire response is successfully received and processed.</p>
+                        <p>If you call this API operation directly, make sure to design your application to parse
+                    the content of the response and handle it appropriately. If you use AWS SDKs, SDKs
+                    handle this condition. The SDKs detect the embedded error and apply error handling per
+                    your configuration settings (including automatically retrying the request as appropriate).
+                    If the condition persists, the SDKs throw an exception (or, for the SDKs that don't use
+                    exceptions, they return an error).</p>
+                     </li></ul></div>
+               </li></ul></div>
+         </dd>
+       
+         <dt><span class="term">Charge</span></dt>
+         <dd>
+            <p>The copy request charge is based on the storage class and Region that you specify for the
+            destination object. The request can also result in a data retrieval charge for the source if the
+            source storage class bills for data retrieval. If the copy source is in a different region, the
+            data transfer is billed to the copy source account. For pricing information, see <a href="http://aws.amazon.com/s3/pricing/" rel="noopener noreferrer" target="_blank"><span>Amazon S3 pricing</span><awsui-icon class="awsdocs-link-icon" name="external"></awsui-icon></a>.</p>
+         </dd>
+       
+         <dt><span class="term">HTTP Host header syntax</span></dt>
+         <dd>
+            <div class="itemizedlist">
+                
+                
+            <ul class="itemizedlist"><li class="listitem">
+                  <p>
+                     <b>Directory buckets </b> - The HTTP Host header syntax is <code class="code">
+                        <em>Bucket-name</em>.s3express-<em>zone-id</em>.<em>region-code</em>.amazonaws.com</code>.</p>
+               </li><li class="listitem">
+                  <p>
+                     <b>Amazon S3 on Outposts</b> - When you use this action with
+                S3 on Outposts through the REST API, you must direct requests to the S3 on Outposts hostname. The
+                S3 on Outposts hostname takes the form
+                    <code class="code">
+                        <em>AccessPointName</em>-<em>AccountId</em>.<em>outpostID</em>.s3-outposts.<em>Region</em>.amazonaws.com</code>.
+                The hostname isn't required when you use the AWS CLI or SDKs.</p>
+               </li></ul></div>
+         </dd>
+      </dl></div><p>The following operations are related to <code class="code">CopyObject</code>:</p><div class="itemizedlist">
+       
+       
+   <ul class="itemizedlist"><li class="listitem">
+         <p>
+            <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_PutObject.html">PutObject</a>
+         </p>
+      </li><li class="listitem">
+         <p>
+            <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_GetObject.html">GetObject</a>
+         </p>
+      </li></ul></div><div class="awsdocs-note awsdocs-important"><div class="awsdocs-note-title"><awsui-icon name="status-warning" variant="error"></awsui-icon><h6>Important</h6></div><div class="awsdocs-note-text"><p>You must URL encode any signed header values that contain spaces. For example, if your header value is <code class="code">my  file.txt</code>, containing two spaces after <code class="code">my</code>, you must URL encode this value to <code class="code">my%20%20file.txt</code>.</p></div></div>
+      <h2 id="API_CopyObject_RequestSyntax">Request Syntax</h2>
+      <pre class="programlisting"><div class="code-btn-container"></div><!--DEBUG: cli ()--><code class="nohighlight">PUT /<code class="replaceable">Key+</code> HTTP/1.1
+Host: <code class="replaceable">Bucket</code>.s3.amazonaws.com
+x-amz-acl: <code class="replaceable">ACL</code>
+Cache-Control: <code class="replaceable">CacheControl</code>
+x-amz-checksum-algorithm: <code class="replaceable">ChecksumAlgorithm</code>
+Content-Disposition: <code class="replaceable">ContentDisposition</code>
+Content-Encoding: <code class="replaceable">ContentEncoding</code>
+Content-Language: <code class="replaceable">ContentLanguage</code>
+Content-Type: <code class="replaceable">ContentType</code>
+x-amz-copy-source: <code class="replaceable">CopySource</code>
+x-amz-copy-source-if-match: <code class="replaceable">CopySourceIfMatch</code>
+x-amz-copy-source-if-modified-since: <code class="replaceable">CopySourceIfModifiedSince</code>
+x-amz-copy-source-if-none-match: <code class="replaceable">CopySourceIfNoneMatch</code>
+x-amz-copy-source-if-unmodified-since: <code class="replaceable">CopySourceIfUnmodifiedSince</code>
+Expires: <code class="replaceable">Expires</code>
+x-amz-grant-full-control: <code class="replaceable">GrantFullControl</code>
+x-amz-grant-read: <code class="replaceable">GrantRead</code>
+x-amz-grant-read-acp: <code class="replaceable">GrantReadACP</code>
+x-amz-grant-write-acp: <code class="replaceable">GrantWriteACP</code>
+If-Match: <code class="replaceable">IfMatch</code>
+If-None-Match: <code class="replaceable">IfNoneMatch</code>
+x-amz-metadata-directive: <code class="replaceable">MetadataDirective</code>
+x-amz-tagging-directive: <code class="replaceable">TaggingDirective</code>
+x-amz-server-side-encryption: <code class="replaceable">ServerSideEncryption</code>
+x-amz-storage-class: <code class="replaceable">StorageClass</code>
+x-amz-website-redirect-location: <code class="replaceable">WebsiteRedirectLocation</code>
+x-amz-server-side-encryption-customer-algorithm: <code class="replaceable">SSECustomerAlgorithm</code>
+x-amz-server-side-encryption-customer-key: <code class="replaceable">SSECustomerKey</code>
+x-amz-server-side-encryption-customer-key-MD5: <code class="replaceable">SSECustomerKeyMD5</code>
+x-amz-server-side-encryption-aws-kms-key-id: <code class="replaceable">SSEKMSKeyId</code>
+x-amz-server-side-encryption-context: <code class="replaceable">SSEKMSEncryptionContext</code>
+x-amz-server-side-encryption-bucket-key-enabled: <code class="replaceable">BucketKeyEnabled</code>
+x-amz-copy-source-server-side-encryption-customer-algorithm: <code class="replaceable">CopySourceSSECustomerAlgorithm</code>
+x-amz-copy-source-server-side-encryption-customer-key: <code class="replaceable">CopySourceSSECustomerKey</code>
+x-amz-copy-source-server-side-encryption-customer-key-MD5: <code class="replaceable">CopySourceSSECustomerKeyMD5</code>
+x-amz-request-payer: <code class="replaceable">RequestPayer</code>
+x-amz-tagging: <code class="replaceable">Tagging</code>
+x-amz-object-lock-mode: <code class="replaceable">ObjectLockMode</code>
+x-amz-object-lock-retain-until-date: <code class="replaceable">ObjectLockRetainUntilDate</code>
+x-amz-object-lock-legal-hold: <code class="replaceable">ObjectLockLegalHoldStatus</code>
+x-amz-expected-bucket-owner: <code class="replaceable">ExpectedBucketOwner</code>
+x-amz-source-expected-bucket-owner: <code class="replaceable">ExpectedSourceBucketOwner</code>
+</code></pre>
+    
+      <h2 id="API_CopyObject_RequestParameters">URI Request Parameters</h2>
+      <p>The request uses the following URI parameters.</p>
+      <div class="variablelist">
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+      <dl>
+            <dt id="AmazonS3-CopyObject-request-header-Bucket"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">Bucket</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The name of the destination bucket.</p>
+               <p>
+                  <b>Directory buckets</b> - When you use this operation with a directory bucket, you must use virtual-hosted-style requests in the format <code class="code">
+                     <em>Bucket-name</em>.s3express-<em>zone-id</em>.<em>region-code</em>.amazonaws.com</code>. Path-style requests are not supported.  Directory bucket names must be unique in the chosen Zone (Availability Zone or Local Zone). Bucket names must follow the format <code class="code">
+                     <em>bucket-base-name</em>--<em>zone-id</em>--x-s3</code> (for example, <code class="code">
+                     <em>amzn-s3-demo-bucket</em>--<em>usw2-az1</em>--x-s3</code>). For information about bucket naming
+         restrictions, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/directory-bucket-naming-rules.html">Directory bucket naming
+            rules</a> in the <em>Amazon S3 User Guide</em>.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>Copying objects across different AWS Regions isn't supported when the source or destination
+        bucket is in AWS Local Zones. The source and destination buckets must have the same parent AWS Region.
+        Otherwise, you get an HTTP <code class="code">400 Bad Request</code> error with the error code
+          <code class="code">InvalidRequest</code>.</p></div></div>
+               <p>
+                  <b>Access points</b> - When you use this action with an access point for general purpose buckets, you must provide the alias of the access point in place of the bucket name or specify the access point ARN. When you use this action with an access point for directory buckets, you must provide the access point name in place of the bucket name. When using the access point ARN, you must direct requests to the access point hostname. The access point hostname takes the form <em>AccessPointName</em>-<em>AccountId</em>.s3-accesspoint.<em>Region</em>.amazonaws.com. When using this action with an access point through the AWS SDKs, you provide the access point ARN in place of the bucket name. For more information about access point ARNs, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-access-points.html">Using access points</a> in the <em>Amazon S3 User Guide</em>.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>Object Lambda access points are not supported by directory buckets.</p></div></div>
+               <p>
+                  <b>S3 on Outposts</b> - When you use this action with S3 on Outposts,
+      you must use the Outpost bucket access point ARN or the access point alias for the destination bucket.
+      You can only copy objects within the same Outpost bucket. It's not supported to copy objects across
+      different AWS Outposts, between buckets on the same Outposts, or between Outposts buckets and any
+      other bucket types. For more information about S3 on Outposts, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/S3onOutposts.html">What is S3 on Outposts?</a> in the
+        <em>S3 on Outposts guide</em>. When you use this action with S3 on Outposts through the REST
+      API, you must direct requests to the S3 on Outposts hostname, in the format
+          <code class="code">
+                     <em>AccessPointName</em>-<em>AccountId</em>.<em>outpostID</em>.s3-outposts.<em>Region</em>.amazonaws.com</code>.
+      The hostname isn't required when you use the AWS CLI or SDKs. </p>
+               <p>Required: Yes</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-CacheControl"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">Cache-Control</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies the caching behavior along the request/reply chain.</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-ContentDisposition"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">Content-Disposition</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies presentational information for the object. Indicates whether an object should be displayed
+      in a web browser or downloaded as a file. It allows specifying the desired filename for the downloaded
+      file.</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-ContentEncoding"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">Content-Encoding</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies what content encodings have been applied to the object and thus what decoding mechanisms
+      must be applied to obtain the media-type referenced by the Content-Type header field.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>For directory buckets, only the <code class="code">aws-chunked</code> value is supported in this header field.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-ContentLanguage"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">Content-Language</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The language the content is in.</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-ContentType"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">Content-Type</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>A standard MIME type that describes the format of the object data.</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-Expires"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">Expires</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The date and time at which the object is no longer cacheable.</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-IfMatch"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">If-Match</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Copies the object if the entity tag (ETag) of the destination object matches the specified
+      tag. If the ETag values do not match, the operation returns a <code class="code">412 Precondition
+        Failed</code> error. If a concurrent operation occurs during the upload S3 returns a
+        <code class="code">409 ConditionalRequestConflict</code> response. On a 409 failure you should fetch the
+      object's ETag and retry the upload.</p>
+               <p>Expects the ETag value as a string.</p>
+               <p>For more information about conditional requests, see <a href="https://tools.ietf.org/html/rfc7232" rel="noopener noreferrer" target="_blank"><span>RFC 7232</span><awsui-icon class="awsdocs-link-icon" name="external"></awsui-icon></a>.</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-IfNoneMatch"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">If-None-Match</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Copies the object only if the object key name at the destination does not already exist in
+      the bucket specified. Otherwise, Amazon S3 returns a <code class="code">412 Precondition Failed</code> error. If a
+      concurrent operation occurs during the upload S3 returns a <code class="code">409 ConditionalRequestConflict</code>
+      response. On a 409 failure you should retry the upload.</p>
+               <p>Expects the '*' (asterisk) character.</p>
+               <p>For more information about conditional requests, see <a href="https://tools.ietf.org/html/rfc7232" rel="noopener noreferrer" target="_blank"><span>RFC 7232</span><awsui-icon class="awsdocs-link-icon" name="external"></awsui-icon></a>.</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-uri-uri-Key"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">Key</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The key of the destination object.</p>
+               <p>Length Constraints: Minimum length of 1.</p>
+               <p>Required: Yes</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-ACL"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-acl</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The canned access control list (ACL) to apply to the object.</p>
+               <p>When you copy an object, the ACL metadata is not preserved and is set to <code class="code">private</code> by
+      default. Only the owner has full access control. To override the default ACL setting, specify a new ACL
+      when you generate a copy request. For more information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/S3_ACLs_UsingACLs.html">Using ACLs</a>. </p>
+               <p>If the destination bucket that you're copying objects to uses the bucket owner enforced setting for
+      S3 Object Ownership, ACLs are disabled and no longer affect permissions. Buckets that use this setting
+      only accept <code class="code">PUT</code> requests that don't specify an ACL or <code class="code">PUT</code> requests that
+      specify bucket owner full control ACLs, such as the <code class="code">bucket-owner-full-control</code> canned ACL or
+      an equivalent form of this ACL expressed in the XML format. For more information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/about-object-ownership.html">Controlling ownership
+        of objects and disabling ACLs</a> in the <em>Amazon S3 User Guide</em>.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><div class="itemizedlist">
+                      
+                      
+                      
+                  <ul class="itemizedlist"><li class="listitem">
+                        <p>If your destination bucket uses the bucket owner enforced setting for Object Ownership, all
+            objects written to the bucket by any account will be owned by the bucket owner.</p>
+                     </li><li class="listitem">
+                        <p>This functionality is not supported for directory buckets.</p>
+                     </li><li class="listitem">
+                        <p>This functionality is not supported for Amazon S3 on Outposts.</p>
+                     </li></ul></div></div></div>
+               <p>Valid Values: <code class="code">private | public-read | public-read-write | authenticated-read | aws-exec-read | bucket-owner-read | bucket-owner-full-control</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-ChecksumAlgorithm"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-checksum-algorithm</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Indicates the algorithm that you want Amazon S3 to use to create the checksum for the object. For more information, see
+    <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html">Checking object integrity</a> in
+    the <em>Amazon S3 User Guide</em>.</p>
+               <p>When you copy an object, if the source object has a checksum, that checksum value will be copied to
+      the new object by default. If the <code class="code">CopyObject</code> request does not include this
+        <code class="code">x-amz-checksum-algorithm</code> header, the checksum algorithm will be copied from the source
+      object to the destination object (if it's present on the source object). You can optionally specify a
+      different checksum algorithm to use with the <code class="code">x-amz-checksum-algorithm</code> header. Unrecognized
+      or unsupported values will respond with the HTTP status code <code class="code">400 Bad Request</code>.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>For directory buckets, when you use AWS SDKs, <code class="code">CRC32</code> is the default checksum algorithm that's used for performance.</p></div></div>
+               <p>Valid Values: <code class="code">CRC32 | CRC32C | SHA1 | SHA256 | CRC64NVME</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-CopySource"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-copy-source</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies the source object for the copy operation. The source object can be up to 5 GB. If the
+      source object is an object that was uploaded by using a multipart upload, the object copy will be a
+      single part object after the source object is copied to the destination bucket.</p>
+               <p>You specify the value of the copy source in one of two formats, depending on whether you want to
+      access the source object through an <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/access-points.html">access point</a>:</p>
+               <div class="itemizedlist">
+                   
+                   
+               <ul class="itemizedlist"><li class="listitem">
+                     <p>For objects not accessed through an access point, specify the name of the source bucket and the key of
+          the source object, separated by a slash (/). For example, to copy the object
+            <code class="code">reports/january.pdf</code> from the general purpose bucket <code class="code">awsexamplebucket</code>, use
+            <code class="code">awsexamplebucket/reports/january.pdf</code>. The value must be URL-encoded. To copy the
+          object <code class="code">reports/january.pdf</code> from the directory bucket
+            <code class="code">awsexamplebucket--use1-az5--x-s3</code>, use
+            <code class="code">awsexamplebucket--use1-az5--x-s3/reports/january.pdf</code>. The value must be
+          URL-encoded.</p>
+                  </li><li class="listitem">
+                     <p>For objects accessed through access points, specify the Amazon Resource Name (ARN) of the object as accessed through the access point, in the format <code class="code">arn:aws:s3:&lt;Region&gt;:&lt;account-id&gt;:accesspoint/&lt;access-point-name&gt;/object/&lt;key&gt;</code>. For example, to copy the object <code class="code">reports/january.pdf</code> through access point <code class="code">my-access-point</code> owned by account <code class="code">123456789012</code> in Region <code class="code">us-west-2</code>, use the URL encoding of <code class="code">arn:aws:s3:us-west-2:123456789012:accesspoint/my-access-point/object/reports/january.pdf</code>. The value must be URL encoded.</p>
+                     <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><div class="itemizedlist">
+                            
+                            
+                        <ul class="itemizedlist"><li class="listitem">
+                              <p>Amazon S3 supports copy operations using Access points only when the source and destination buckets are in the same AWS Region.</p>
+                           </li><li class="listitem">
+                              <p>Access points are not supported by directory buckets.</p>
+                           </li></ul></div></div></div>
+                     <p>Alternatively, for objects accessed through Amazon S3 on Outposts, specify the ARN of the object as accessed in the format <code class="code">arn:aws:s3-outposts:&lt;Region&gt;:&lt;account-id&gt;:outpost/&lt;outpost-id&gt;/object/&lt;key&gt;</code>. For example, to copy the object <code class="code">reports/january.pdf</code> through outpost <code class="code">my-outpost</code> owned by account <code class="code">123456789012</code> in Region <code class="code">us-west-2</code>, use the URL encoding of <code class="code">arn:aws:s3-outposts:us-west-2:123456789012:outpost/my-outpost/object/reports/january.pdf</code>. The value must be URL-encoded.  </p>
+                  </li></ul></div>
+               <p>If your source bucket versioning is enabled, the <code class="code">x-amz-copy-source</code> header by default
+      identifies the current version of an object to copy. If the current version is a delete marker, Amazon S3
+      behaves as if the object was deleted. To copy a different version, use the <code class="code">versionId</code> query
+      parameter. Specifically, append <code class="code">?versionId=&lt;version-id&gt;</code> to the value (for example,
+        <code class="code">awsexamplebucket/reports/january.pdf?versionId=QUpfdndhfd8438MNFDN93jdnJFkdmqnh893</code>). If
+      you don't specify a version ID, Amazon S3 copies the latest version of the source object.</p>
+               <p>If you enable versioning on the destination bucket, Amazon S3 generates a unique version ID for the
+      copied object. This version ID is different from the version ID of the source object. Amazon S3 returns the
+      version ID of the copied object in the <code class="code">x-amz-version-id</code> response header in the
+      response.</p>
+               <p>If you do not enable versioning or suspend it on the destination bucket, the version ID that Amazon S3
+      generates in the <code class="code">x-amz-version-id</code> response header is always null.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>
+                     <b>Directory buckets</b> - S3 Versioning isn't enabled and supported for directory buckets.</p></div></div>
+               <p>Pattern: <code class="code">\/?.+\/.+</code>
+               </p>
+               <p>Required: Yes</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-CopySourceIfMatch"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-copy-source-if-match</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Copies the object if its entity tag (ETag) matches the specified tag.</p>
+               <p> If both the <code class="code">x-amz-copy-source-if-match</code> and
+        <code class="code">x-amz-copy-source-if-unmodified-since</code> headers are present in the request and evaluate as
+      follows, Amazon S3 returns <code class="code">200 OK</code> and copies the data:</p>
+               <div class="itemizedlist">
+                   
+                   
+               <ul class="itemizedlist"><li class="listitem">
+                     <p>
+                        <code class="code">x-amz-copy-source-if-match</code> condition evaluates to true</p>
+                  </li><li class="listitem">
+                     <p>
+                        <code class="code">x-amz-copy-source-if-unmodified-since</code> condition evaluates to false</p>
+                  </li></ul></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-CopySourceIfModifiedSince"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-copy-source-if-modified-since</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Copies the object if it has been modified since the specified time.</p>
+               <p>If both the <code class="code">x-amz-copy-source-if-none-match</code> and
+        <code class="code">x-amz-copy-source-if-modified-since</code> headers are present in the request and evaluate as
+      follows, Amazon S3 returns the <code class="code">412 Precondition Failed</code> response code:</p>
+               <div class="itemizedlist">
+                   
+                   
+               <ul class="itemizedlist"><li class="listitem">
+                     <p>
+                        <code class="code">x-amz-copy-source-if-none-match</code> condition evaluates to false</p>
+                  </li><li class="listitem">
+                     <p>
+                        <code class="code">x-amz-copy-source-if-modified-since</code> condition evaluates to true</p>
+                  </li></ul></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-CopySourceIfNoneMatch"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-copy-source-if-none-match</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Copies the object if its entity tag (ETag) is different than the specified ETag.</p>
+               <p>If both the <code class="code">x-amz-copy-source-if-none-match</code> and
+        <code class="code">x-amz-copy-source-if-modified-since</code> headers are present in the request and evaluate as
+      follows, Amazon S3 returns the <code class="code">412 Precondition Failed</code> response code:</p>
+               <div class="itemizedlist">
+                   
+                   
+               <ul class="itemizedlist"><li class="listitem">
+                     <p>
+                        <code class="code">x-amz-copy-source-if-none-match</code> condition evaluates to false</p>
+                  </li><li class="listitem">
+                     <p>
+                        <code class="code">x-amz-copy-source-if-modified-since</code> condition evaluates to true</p>
+                  </li></ul></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-CopySourceIfUnmodifiedSince"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-copy-source-if-unmodified-since</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Copies the object if it hasn't been modified since the specified time.</p>
+               <p> If both the <code class="code">x-amz-copy-source-if-match</code> and
+        <code class="code">x-amz-copy-source-if-unmodified-since</code> headers are present in the request and evaluate as
+      follows, Amazon S3 returns <code class="code">200 OK</code> and copies the data:</p>
+               <div class="itemizedlist">
+                   
+                   
+               <ul class="itemizedlist"><li class="listitem">
+                     <p>
+                        <code class="code">x-amz-copy-source-if-match</code> condition evaluates to true</p>
+                  </li><li class="listitem">
+                     <p>
+                        <code class="code">x-amz-copy-source-if-unmodified-since</code> condition evaluates to false</p>
+                  </li></ul></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-CopySourceSSECustomerAlgorithm"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-copy-source-server-side-encryption-customer-algorithm</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies the algorithm to use when decrypting the source object (for example,
+      <code class="code">AES256</code>).</p>
+               <p>If the source object for the copy is stored in Amazon S3 using SSE-C, you must provide the necessary
+      encryption information in your request so that Amazon S3 can decrypt the object for copying.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported when the source object is in a directory bucket.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-CopySourceSSECustomerKey"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-copy-source-server-side-encryption-customer-key</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies the customer-provided encryption key for Amazon S3 to use to decrypt the source object. The
+      encryption key provided in this header must be the same one that was used when the source object was
+      created.</p>
+               <p>If the source object for the copy is stored in Amazon S3 using SSE-C, you must provide the necessary
+      encryption information in your request so that Amazon S3 can decrypt the object for copying.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported when the source object is in a directory bucket.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-CopySourceSSECustomerKeyMD5"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-copy-source-server-side-encryption-customer-key-MD5</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies the 128-bit MD5 digest of the encryption key according to RFC 1321. Amazon S3 uses this header
+      for a message integrity check to ensure that the encryption key was transmitted without error.</p>
+               <p>If the source object for the copy is stored in Amazon S3 using SSE-C, you must provide the necessary
+      encryption information in your request so that Amazon S3 can decrypt the object for copying.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported when the source object is in a directory bucket.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-ExpectedBucketOwner"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-expected-bucket-owner</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The account ID of the expected destination bucket owner. If the account ID that you provide does not match the actual owner of the destination bucket, the request fails with the HTTP status code <code class="code">403 Forbidden</code> (access denied).</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-GrantFullControl"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-grant-full-control</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Gives the grantee READ, READ_ACP, and WRITE_ACP permissions on the object.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><div class="itemizedlist">
+                      
+                      
+                  <ul class="itemizedlist"><li class="listitem">
+                        <p>This functionality is not supported for directory buckets.</p>
+                     </li><li class="listitem">
+                        <p>This functionality is not supported for Amazon S3 on Outposts.</p>
+                     </li></ul></div></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-GrantRead"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-grant-read</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Allows grantee to read the object data and its metadata.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><div class="itemizedlist">
+                      
+                      
+                  <ul class="itemizedlist"><li class="listitem">
+                        <p>This functionality is not supported for directory buckets.</p>
+                     </li><li class="listitem">
+                        <p>This functionality is not supported for Amazon S3 on Outposts.</p>
+                     </li></ul></div></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-GrantReadACP"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-grant-read-acp</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Allows grantee to read the object ACL.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><div class="itemizedlist">
+                      
+                      
+                  <ul class="itemizedlist"><li class="listitem">
+                        <p>This functionality is not supported for directory buckets.</p>
+                     </li><li class="listitem">
+                        <p>This functionality is not supported for Amazon S3 on Outposts.</p>
+                     </li></ul></div></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-GrantWriteACP"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-grant-write-acp</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Allows grantee to write the ACL for the applicable object.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><div class="itemizedlist">
+                      
+                      
+                  <ul class="itemizedlist"><li class="listitem">
+                        <p>This functionality is not supported for directory buckets.</p>
+                     </li><li class="listitem">
+                        <p>This functionality is not supported for Amazon S3 on Outposts.</p>
+                     </li></ul></div></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-MetadataDirective"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-metadata-directive</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies whether the metadata is copied from the source object or replaced with metadata that's
+      provided in the request. When copying an object, you can preserve all metadata (the default) or specify
+      new metadata. If this header isn’t specified, <code class="code">COPY</code> is the default behavior. </p>
+               <p>
+                  <b>General purpose bucket</b> - For general purpose buckets, when you grant
+      permissions, you can use the <code class="code">s3:x-amz-metadata-directive</code> condition key to enforce certain
+      metadata behavior when objects are uploaded. For more information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/amazon-s3-policy-keys.html">Amazon S3 condition key examples</a> in the
+        <em>Amazon S3 User Guide</em>.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>
+                     <code class="code">x-amz-website-redirect-location</code> is unique to each object and is not copied when using
+        the <code class="code">x-amz-metadata-directive</code> header. To copy the value, you must specify
+          <code class="code">x-amz-website-redirect-location</code> in the request header.</p></div></div>
+               <p>Valid Values: <code class="code">COPY | REPLACE</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-ObjectLockLegalHoldStatus"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-object-lock-legal-hold</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies whether you want to apply a legal hold to the object copy.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+               <p>Valid Values: <code class="code">ON | OFF</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-ObjectLockMode"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-object-lock-mode</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The Object Lock mode that you want to apply to the object copy.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+               <p>Valid Values: <code class="code">GOVERNANCE | COMPLIANCE</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-ObjectLockRetainUntilDate"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-object-lock-retain-until-date</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The date and time when you want the Object Lock of the object copy to expire.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-RequestPayer"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-request-payer</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Confirms that the requester knows that they will be charged for the request. Bucket owners need not
+      specify this parameter in their requests. If either the source or destination S3 bucket has Requester
+      Pays enabled, the requester will pay for the corresponding charges. For information about
+      downloading objects from Requester Pays buckets, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/ObjectsinRequesterPaysBuckets.html">Downloading Objects in Requester Pays
+        Buckets</a> in the <em>Amazon S3 User Guide</em>.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+               <p>Valid Values: <code class="code">requester</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-ServerSideEncryption"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-server-side-encryption</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The server-side encryption algorithm used when storing this object in Amazon S3. Unrecognized or
+      unsupported values won’t write a destination object and will receive a <code class="code">400 Bad Request</code>
+      response. </p>
+               <p>Amazon S3 automatically encrypts all new objects that are copied to an S3 bucket. When copying an object,
+      if you don't specify encryption information in your copy request, the encryption setting of the target
+      object is set to the default encryption configuration of the destination bucket. By default, all buckets
+      have a base level of encryption configuration that uses server-side encryption with Amazon S3 managed keys
+      (SSE-S3). If the destination bucket has a different default encryption configuration, Amazon S3 uses the
+      corresponding encryption key to encrypt the target object copy.</p>
+               <p>With server-side encryption, Amazon S3 encrypts your data as it writes your data to disks in its data
+      centers and decrypts the data when you access it. For more information about server-side encryption, see
+        <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/serv-side-encryption.html">Using Server-Side
+        Encryption</a> in the <em>Amazon S3 User Guide</em>.</p>
+               <p>
+                  <b>General purpose buckets </b>
+               </p>
+               <div class="itemizedlist">
+                   
+                   
+               <ul class="itemizedlist"><li class="listitem">
+                     <p>For general purpose buckets, there are the following supported options for server-side encryption:
+          server-side encryption with AWS Key Management Service (AWS KMS) keys (SSE-KMS), dual-layer server-side encryption with
+          AWS KMS keys (DSSE-KMS), and server-side encryption with customer-provided encryption keys
+          (SSE-C). Amazon S3 uses the corresponding KMS key, or a customer-provided key to encrypt the target
+          object copy.</p>
+                  </li><li class="listitem">
+                     <p>When you perform a <code class="code">CopyObject</code> operation, if you want to use a different type of
+          encryption setting for the target object, you can specify appropriate encryption-related headers to
+          encrypt the target object with an Amazon S3 managed key, a KMS key, or a customer-provided key. If the
+          encryption setting in your request is different from the default encryption configuration of the
+          destination bucket, the encryption setting in your request takes precedence. </p>
+                  </li></ul></div>
+               <p>
+                  <b>Directory buckets </b>
+               </p>
+               <div class="itemizedlist">
+                   
+                   
+                   
+               <ul class="itemizedlist"><li class="listitem">
+                     <p>For directory buckets, there are only two supported options for server-side encryption: server-side encryption with Amazon S3 managed keys (SSE-S3) (<code class="code">AES256</code>) and server-side encryption with AWS KMS keys (SSE-KMS) (<code class="code">aws:kms</code>). We recommend that the bucket's default encryption uses the desired encryption configuration and you don't override the bucket default encryption in your 
+            <code class="code">CreateSession</code> requests or <code class="code">PUT</code> object requests. Then, new objects 
+ are automatically encrypted with the desired encryption settings. For more
+         information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-serv-side-encryption.html">Protecting data with server-side encryption</a> in the <em>Amazon S3 User Guide</em>. For more information about the encryption overriding behaviors in directory buckets, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-specifying-kms-encryption.html">Specifying server-side encryption with AWS KMS for new object uploads</a>.</p>
+                  </li><li class="listitem">
+                     <p>To encrypt new object copies to a directory bucket with SSE-KMS, we recommend you specify
+          SSE-KMS as the directory bucket's default encryption configuration with a KMS key
+          (specifically, a <a href="https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#customer-cmk">customer managed key</a>). The <a href="https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#aws-managed-cmk">AWS managed key</a> (<code class="code">aws/s3</code>) isn't supported. Your SSE-KMS configuration can
+          only support 1 <a href="https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#customer-cmk">customer managed key</a> per
+          directory bucket for the lifetime of the bucket. After you specify a customer managed key for SSE-KMS, you
+          can't override the customer managed key for the bucket's SSE-KMS configuration. Then, when you
+          perform a <code class="code">CopyObject</code> operation and want to specify server-side encryption settings for
+          new object copies with SSE-KMS in the encryption-related request headers, you must ensure the
+          encryption key is the same customer managed key that you specified for the directory bucket's default
+          encryption configuration.
+          </p>
+                  </li><li class="listitem">
+                     <p>
+                        <b>S3 access points for Amazon FSx </b> - When accessing data stored in
+          Amazon FSx file systems using S3 access points, the only valid server side encryption option is
+            <code class="code">aws:fsx</code>. All Amazon FSx file systems have encryption configured by default and are
+          encrypted at rest. Data is automatically encrypted before being written to the file system, and
+          automatically decrypted as it is read. These processes are handled transparently by Amazon FSx.</p>
+                  </li></ul></div>
+               <p>Valid Values: <code class="code">AES256 | aws:fsx | aws:kms | aws:kms:dsse</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-SSEKMSKeyId"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-server-side-encryption-aws-kms-key-id</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies the AWS KMS key ID (Key ID, Key ARN, or Key Alias) to use for object encryption. All GET and
+      PUT requests for an object protected by AWS KMS will fail if they're not made via SSL or using SigV4. For
+      information about configuring any of the officially supported AWS SDKs and AWS CLI, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/UsingAWSSDK.html#specify-signature-version">Specifying
+        the Signature Version in Request Authentication</a> in the
+      <em>Amazon S3 User Guide</em>.</p>
+               <p>
+                  <b>Directory buckets</b> -
+      To encrypt data using SSE-KMS, it's recommended to specify the 
+<code class="code">x-amz-server-side-encryption</code> header to <code class="code">aws:kms</code>. Then, the <code class="code">x-amz-server-side-encryption-aws-kms-key-id</code> header implicitly uses 
+the bucket's default KMS customer managed key ID. If you want to explicitly set the <code class="code">
+         x-amz-server-side-encryption-aws-kms-key-id</code> header, it must match the bucket's default customer managed key (using key ID or ARN, not alias). Your SSE-KMS configuration can only support 1 <a href="https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#customer-cmk">customer managed key</a> per directory bucket's lifetime. 
+The <a href="https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#aws-managed-cmk">AWS managed key</a> (<code class="code">aws/s3</code>) isn't supported. 
+                            
+ Incorrect key specification results in an HTTP <code class="code">400 Bad Request</code> error. </p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-BucketKeyEnabled"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-server-side-encryption-bucket-key-enabled</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies whether Amazon S3 should use an S3 Bucket Key for object encryption with server-side encryption
+      using AWS Key Management Service (AWS KMS) keys (SSE-KMS). If a target object uses SSE-KMS, you can enable an S3 Bucket Key
+      for the object.</p>
+               <p>Setting this header to <code class="code">true</code> causes Amazon S3 to use an S3 Bucket Key for object encryption
+      with SSE-KMS. Specifying this header with a COPY action doesn’t affect bucket-level settings for S3
+      Bucket Key.</p>
+               <p>For more information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/bucket-key.html">Amazon S3
+        Bucket Keys</a> in the <em>Amazon S3 User Guide</em>.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>
+                     <b>Directory buckets</b> -
+        S3 Bucket Keys aren't supported, when you copy SSE-KMS encrypted objects from general purpose buckets  
+to directory buckets, from directory buckets to general purpose buckets, or between directory buckets, through <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_CopyObject.html">CopyObject</a>. In this case, Amazon S3 makes a call to AWS KMS every time a copy request is made for a KMS-encrypted object.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-SSEKMSEncryptionContext"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-server-side-encryption-context</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies the AWS KMS Encryption Context as an additional encryption context to use for the
+      destination object encryption. The value of this header is a base64-encoded UTF-8 string holding JSON
+      with the encryption context key-value pairs.</p>
+               <p>
+                  <b>General purpose buckets</b> - This value must be explicitly added to
+      specify encryption context for <code class="code">CopyObject</code> requests if you want an additional encryption
+      context for your destination object. The additional encryption context of the source object won't be
+      copied to the destination object. For more information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingKMSEncryption.html#encryption-context">Encryption context</a>
+      in the <em>Amazon S3 User Guide</em>.</p>
+               <p>
+                  <b>Directory buckets</b> - You can optionally provide an explicit encryption context value. The value must match the default encryption context - the bucket Amazon Resource Name (ARN). An additional encryption context value is not supported. </p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-SSECustomerAlgorithm"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-server-side-encryption-customer-algorithm</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies the algorithm to use when encrypting the object (for example, <code class="code">AES256</code>).</p>
+               <p>When you perform a <code class="code">CopyObject</code> operation, if you want to use a different type of
+      encryption setting for the target object, you can specify appropriate encryption-related headers to
+      encrypt the target object with an Amazon S3 managed key, a KMS key, or a customer-provided key. If the
+      encryption setting in your request is different from the default encryption configuration of the
+      destination bucket, the encryption setting in your request takes precedence. </p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported when the destination bucket is a directory bucket.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-SSECustomerKey"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-server-side-encryption-customer-key</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies the customer-provided encryption key for Amazon S3 to use in encrypting data. This value is
+      used to store the object and then it is discarded. Amazon S3 does not store the encryption key. The key must
+      be appropriate for use with the algorithm specified in the
+        <code class="code">x-amz-server-side-encryption-customer-algorithm</code> header.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported when the destination bucket is a directory bucket.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-SSECustomerKeyMD5"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-server-side-encryption-customer-key-MD5</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies the 128-bit MD5 digest of the encryption key according to RFC 1321. Amazon S3 uses this header
+      for a message integrity check to ensure that the encryption key was transmitted without error.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported when the destination bucket is a directory bucket.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-ExpectedSourceBucketOwner"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-source-expected-bucket-owner</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The account ID of the expected source bucket owner. If the account ID that you provide does not match the actual owner of the source bucket, the request fails with the HTTP status code <code class="code">403 Forbidden</code> (access denied).</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-StorageClass"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-storage-class</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>If the <code class="code">x-amz-storage-class</code> header is not used, the copied object will be stored in the
+        <code class="code">STANDARD</code> Storage Class by default. The <code class="code">STANDARD</code> storage class provides high
+      durability and high availability. Depending on performance needs, you can specify a different Storage
+      Class. </p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><div class="itemizedlist">
+                      
+                      
+                  <ul class="itemizedlist"><li class="listitem">
+                        <p>
+                           <b>Directory buckets </b> -
+            Directory buckets only support <code class="code">EXPRESS_ONEZONE</code> (the S3 Express One Zone storage class) in Availability Zones and <code class="code">ONEZONE_IA</code> (the S3 One Zone-Infrequent Access storage class) in Dedicated Local Zones.  
+Unsupported storage class values won't write a destination object and will respond with the HTTP status code <code class="code">400 Bad Request</code>.</p>
+                     </li><li class="listitem">
+                        <p>
+                           <b>Amazon S3 on Outposts </b> - S3 on Outposts only uses the
+              <code class="code">OUTPOSTS</code> Storage Class.</p>
+                     </li></ul></div></div></div>
+               <p>You can use the <code class="code">CopyObject</code> action to change the storage class of an object that is
+      already stored in Amazon S3 by using the <code class="code">x-amz-storage-class</code> header. For more information, see
+        <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/storage-class-intro.html">Storage Classes</a>
+      in the <em>Amazon S3 User Guide</em>.</p>
+               <p>Before using an object as a source object for the copy operation, you must restore a copy of it if
+      it meets any of the following conditions:</p>
+               <div class="itemizedlist">
+                   
+                   
+               <ul class="itemizedlist"><li class="listitem">
+                     <p>The storage class of the source object is <code class="code">GLACIER</code> or
+          <code class="code">DEEP_ARCHIVE</code>.</p>
+                  </li><li class="listitem">
+                     <p>The storage class of the source object is <code class="code">INTELLIGENT_TIERING</code> and it's <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/intelligent-tiering-overview.html#intel-tiering-tier-definition">S3
+            Intelligent-Tiering access tier</a> is <code class="code">Archive Access</code> or <code class="code">Deep Archive
+            Access</code>.</p>
+                  </li></ul></div>
+               <p>For more information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/API/API_RestoreObject.html">RestoreObject</a> and <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/CopyingObjectsExamples.html">Copying Objects</a> in the
+        <em>Amazon S3 User Guide</em>.</p>
+               <p>Valid Values: <code class="code">STANDARD | REDUCED_REDUNDANCY | STANDARD_IA | ONEZONE_IA | INTELLIGENT_TIERING | GLACIER | DEEP_ARCHIVE | OUTPOSTS | GLACIER_IR | SNOW | EXPRESS_ONEZONE | FSX_OPENZFS | FSX_ONTAP</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-Tagging"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-tagging</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The tag-set for the object copy in the destination bucket. This value must be used in conjunction
+      with the <code class="code">x-amz-tagging-directive</code> if you choose <code class="code">REPLACE</code> for the
+        <code class="code">x-amz-tagging-directive</code>. If you choose <code class="code">COPY</code> for the
+        <code class="code">x-amz-tagging-directive</code>, you don't need to set the <code class="code">x-amz-tagging</code> header,
+      because the tag-set will be copied from the source object directly. The tag-set must be encoded as URL
+      Query parameters.</p>
+               <p>The default value is the empty value.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>
+                     <b>Directory buckets</b> - For directory buckets in a <code class="code">CopyObject</code> operation, only the empty tag-set is supported. Any requests that attempt to write non-empty tags into directory buckets will receive a <code class="code">501 Not Implemented</code> status code. 
+When the destination bucket is a directory bucket, you will receive a <code class="code">501 Not Implemented</code> response in any of the following situations:</p><div class="itemizedlist">
+                      
+                      
+                      
+                  <ul class="itemizedlist"><li class="listitem">
+                        <p>When you attempt to <code class="code">COPY</code> the tag-set from an S3 source object that has non-empty tags.</p>
+                     </li><li class="listitem">
+                        <p>When you attempt to <code class="code">REPLACE</code> the tag-set of a source object and set a non-empty value to <code class="code">x-amz-tagging</code>.</p>
+                     </li><li class="listitem">
+                        <p>When you don't set the <code class="code">x-amz-tagging-directive</code> header and the source object has non-empty tags. This is because the default value of <code class="code">x-amz-tagging-directive</code> is <code class="code">COPY</code>.</p>
+                     </li></ul></div><p>Because only the empty tag-set is supported for directory buckets in a <code class="code">CopyObject</code> operation, the following situations are allowed:</p><div class="itemizedlist">
+                      
+                      
+                      
+                      
+                  <ul class="itemizedlist"><li class="listitem">
+                        <p>When you attempt to <code class="code">COPY</code> the tag-set from a directory bucket source object that has no tags to a general purpose bucket. It copies an empty tag-set to the destination object.</p>
+                     </li><li class="listitem">
+                        <p>When you attempt to <code class="code">REPLACE</code> the tag-set of a directory bucket source object and set the <code class="code">x-amz-tagging</code> value of the directory bucket destination object to empty.</p>
+                     </li><li class="listitem">
+                        <p>When you attempt to <code class="code">REPLACE</code> the tag-set of a general purpose bucket source object that has non-empty tags and set the <code class="code">x-amz-tagging</code> value of the directory bucket destination object to empty.</p>
+                     </li><li class="listitem">
+                        <p>When you attempt to <code class="code">REPLACE</code> the tag-set of a directory bucket source object and don't set the <code class="code">x-amz-tagging</code> value of the directory bucket destination object. This is because the default value of <code class="code">x-amz-tagging</code> is the empty value.</p>
+                     </li></ul></div></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-TaggingDirective"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-tagging-directive</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Specifies whether the object tag-set is copied from the source object or replaced with the tag-set
+      that's provided in the request.</p>
+               <p>The default value is <code class="code">COPY</code>.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>
+                     <b>Directory buckets</b> - For directory buckets in a <code class="code">CopyObject</code> operation, only the empty tag-set is supported. Any requests that attempt to write non-empty tags into directory buckets will receive a <code class="code">501 Not Implemented</code> status code. 
+When the destination bucket is a directory bucket, you will receive a <code class="code">501 Not Implemented</code> response in any of the following situations:</p><div class="itemizedlist">
+                      
+                      
+                      
+                  <ul class="itemizedlist"><li class="listitem">
+                        <p>When you attempt to <code class="code">COPY</code> the tag-set from an S3 source object that has non-empty tags.</p>
+                     </li><li class="listitem">
+                        <p>When you attempt to <code class="code">REPLACE</code> the tag-set of a source object and set a non-empty value to <code class="code">x-amz-tagging</code>.</p>
+                     </li><li class="listitem">
+                        <p>When you don't set the <code class="code">x-amz-tagging-directive</code> header and the source object has non-empty tags. This is because the default value of <code class="code">x-amz-tagging-directive</code> is <code class="code">COPY</code>.</p>
+                     </li></ul></div><p>Because only the empty tag-set is supported for directory buckets in a <code class="code">CopyObject</code> operation, the following situations are allowed:</p><div class="itemizedlist">
+                      
+                      
+                      
+                      
+                  <ul class="itemizedlist"><li class="listitem">
+                        <p>When you attempt to <code class="code">COPY</code> the tag-set from a directory bucket source object that has no tags to a general purpose bucket. It copies an empty tag-set to the destination object.</p>
+                     </li><li class="listitem">
+                        <p>When you attempt to <code class="code">REPLACE</code> the tag-set of a directory bucket source object and set the <code class="code">x-amz-tagging</code> value of the directory bucket destination object to empty.</p>
+                     </li><li class="listitem">
+                        <p>When you attempt to <code class="code">REPLACE</code> the tag-set of a general purpose bucket source object that has non-empty tags and set the <code class="code">x-amz-tagging</code> value of the directory bucket destination object to empty.</p>
+                     </li><li class="listitem">
+                        <p>When you attempt to <code class="code">REPLACE</code> the tag-set of a directory bucket source object and don't set the <code class="code">x-amz-tagging</code> value of the directory bucket destination object. This is because the default value of <code class="code">x-amz-tagging</code> is the empty value.</p>
+                     </li></ul></div></div></div>
+               <p>Valid Values: <code class="code">COPY | REPLACE</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-request-header-WebsiteRedirectLocation"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_RequestSyntax">x-amz-website-redirect-location</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>If the destination bucket is configured as a website, redirects requests for this object copy to
+      another object in the same bucket or to an external URL. Amazon S3 stores the value of this header in the
+      object metadata. This value is unique to each object and is not copied when using the
+        <code class="code">x-amz-metadata-directive</code> header. Instead, you may opt to provide this header in
+      combination with the <code class="code">x-amz-metadata-directive</code> header.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+            </dd>
+         </dl></div>
+    
+      <h2 id="API_CopyObject_RequestBody">Request Body</h2>
+      <p>The request does not have a request body.</p>
+    
+      <h2 id="API_CopyObject_ResponseSyntax">Response Syntax</h2>
+      <pre class="programlisting"><div class="code-btn-container"></div><!--DEBUG: cli ()--><code class="nohighlight">HTTP/1.1 200
+x-amz-expiration: <code class="replaceable">Expiration</code>
+x-amz-copy-source-version-id: <code class="replaceable">CopySourceVersionId</code>
+x-amz-version-id: <code class="replaceable">VersionId</code>
+x-amz-server-side-encryption: <code class="replaceable">ServerSideEncryption</code>
+x-amz-server-side-encryption-customer-algorithm: <code class="replaceable">SSECustomerAlgorithm</code>
+x-amz-server-side-encryption-customer-key-MD5: <code class="replaceable">SSECustomerKeyMD5</code>
+x-amz-server-side-encryption-aws-kms-key-id: <code class="replaceable">SSEKMSKeyId</code>
+x-amz-server-side-encryption-context: <code class="replaceable">SSEKMSEncryptionContext</code>
+x-amz-server-side-encryption-bucket-key-enabled: <code class="replaceable">BucketKeyEnabled</code>
+x-amz-request-charged: <code class="replaceable">RequestCharged</code>
+&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;<a href="#AmazonS3-CopyObject-response-CopyObjectResult">CopyObjectResult</a>&gt;
+   &lt;<a href="#AmazonS3-CopyObject-response-ETag">ETag</a>&gt;<b><em>string</em></b>&lt;/<a href="#AmazonS3-CopyObject-response-ETag">ETag</a>&gt;
+   &lt;<a href="#AmazonS3-CopyObject-response-LastModified">LastModified</a>&gt;<b><em>timestamp</em></b>&lt;/<a href="#AmazonS3-CopyObject-response-LastModified">LastModified</a>&gt;
+   &lt;<a href="#AmazonS3-CopyObject-response-ChecksumType">ChecksumType</a>&gt;<b><em>string</em></b>&lt;/<a href="#AmazonS3-CopyObject-response-ChecksumType">ChecksumType</a>&gt;
+   &lt;<a href="#AmazonS3-CopyObject-response-ChecksumCRC32">ChecksumCRC32</a>&gt;<b><em>string</em></b>&lt;/<a href="#AmazonS3-CopyObject-response-ChecksumCRC32">ChecksumCRC32</a>&gt;
+   &lt;<a href="#AmazonS3-CopyObject-response-ChecksumCRC32C">ChecksumCRC32C</a>&gt;<b><em>string</em></b>&lt;/<a href="#AmazonS3-CopyObject-response-ChecksumCRC32C">ChecksumCRC32C</a>&gt;
+   &lt;<a href="#AmazonS3-CopyObject-response-ChecksumCRC64NVME">ChecksumCRC64NVME</a>&gt;<b><em>string</em></b>&lt;/<a href="#AmazonS3-CopyObject-response-ChecksumCRC64NVME">ChecksumCRC64NVME</a>&gt;
+   &lt;<a href="#AmazonS3-CopyObject-response-ChecksumSHA1">ChecksumSHA1</a>&gt;<b><em>string</em></b>&lt;/<a href="#AmazonS3-CopyObject-response-ChecksumSHA1">ChecksumSHA1</a>&gt;
+   &lt;<a href="#AmazonS3-CopyObject-response-ChecksumSHA256">ChecksumSHA256</a>&gt;<b><em>string</em></b>&lt;/<a href="#AmazonS3-CopyObject-response-ChecksumSHA256">ChecksumSHA256</a>&gt;
+&lt;/<a href="#AmazonS3-CopyObject-response-CopyObjectResult">CopyObjectResult</a>&gt;</code></pre>
+    
+      <h2 id="API_CopyObject_ResponseElements">Response Elements</h2>
+      <p>If the action is successful, the service sends back an HTTP 200 response.</p>
+      <p>The response returns the following HTTP headers.</p>
+      <div class="variablelist">
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+      <dl>
+            <dt id="AmazonS3-CopyObject-response-header-CopySourceVersionId"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_ResponseSyntax">x-amz-copy-source-version-id</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Version ID of the source object that was copied.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported when the source object is in a directory bucket.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-response-header-Expiration"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_ResponseSyntax">x-amz-expiration</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>If the object expiration is configured, the response includes this header.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>Object expiration information is not returned in directory buckets and this header returns the
+        value "<code class="code">NotImplemented</code>" in all responses for directory buckets.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-response-header-RequestCharged"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_ResponseSyntax">x-amz-request-charged</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>If present, indicates that the requester was successfully charged for the request. For more
+      information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/RequesterPaysBuckets.html">Using Requester Pays buckets for storage transfers and usage</a> in the <em>Amazon Simple
+        Storage Service user guide</em>.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+               <p>Valid Values: <code class="code">requester</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-response-header-ServerSideEncryption"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_ResponseSyntax">x-amz-server-side-encryption</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The server-side encryption algorithm used when you store this object in Amazon S3 or Amazon FSx.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>When accessing data stored in Amazon FSx file systems using S3 access points, the only valid server side
+        encryption option is <code class="code">aws:fsx</code>.</p></div></div>
+               <p>Valid Values: <code class="code">AES256 | aws:fsx | aws:kms | aws:kms:dsse</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-response-header-SSEKMSKeyId"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_ResponseSyntax">x-amz-server-side-encryption-aws-kms-key-id</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>If present, indicates the ID of the KMS key that was used for object encryption.</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-response-header-BucketKeyEnabled"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_ResponseSyntax">x-amz-server-side-encryption-bucket-key-enabled</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Indicates whether the copied object uses an S3 Bucket Key for server-side encryption with AWS Key Management Service
+      (AWS KMS) keys (SSE-KMS).</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-response-header-SSEKMSEncryptionContext"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_ResponseSyntax">x-amz-server-side-encryption-context</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>If present, indicates the AWS KMS Encryption Context to use for object encryption. The value of
+      this header is a Base64 encoded UTF-8 string holding JSON with the encryption context key-value
+      pairs.</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-response-header-SSECustomerAlgorithm"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_ResponseSyntax">x-amz-server-side-encryption-customer-algorithm</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>If server-side encryption with a customer-provided encryption key was requested, the response will
+      include this header to confirm the encryption algorithm that's used.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-response-header-SSECustomerKeyMD5"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_ResponseSyntax">x-amz-server-side-encryption-customer-key-MD5</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>If server-side encryption with a customer-provided encryption key was requested, the response will
+      include this header to provide the round-trip message integrity verification of the customer-provided
+      encryption key.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-response-header-VersionId"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_ResponseSyntax">x-amz-version-id</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Version ID of the newly created copy.</p>
+               <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>This functionality is not supported for directory buckets.</p></div></div>
+            </dd>
+         </dl></div>
+      <p>The following data is returned in XML format by the service.</p>
+      <div class="variablelist">
+          
+          
+          
+          
+          
+          
+          
+          
+          
+      <dl>
+            <dt id="AmazonS3-CopyObject-response-CopyObjectResult"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_ResponseSyntax">CopyObjectResult</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Root level tag for the CopyObjectResult parameters.</p>
+               <p>Required: Yes</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-response-ChecksumCRC32"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_ResponseSyntax">ChecksumCRC32</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The Base64 encoded, 32-bit <code class="code">CRC32</code> checksum of the object. This checksum is only present if the object was uploaded
+    with the object. For more information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html">
+    Checking object integrity</a> in the <em>Amazon S3 User Guide</em>.</p>
+               <p>Type: String</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-response-ChecksumCRC32C"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_ResponseSyntax">ChecksumCRC32C</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The Base64 encoded, 32-bit <code class="code">CRC32C</code> checksum of the object. This checksum is only present if the checksum was uploaded
+    with the object. For more information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html">
+    Checking object integrity</a> in the <em>Amazon S3 User Guide</em>.</p>
+               <p>Type: String</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-response-ChecksumCRC64NVME"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_ResponseSyntax">ChecksumCRC64NVME</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The Base64 encoded, 64-bit <code class="code">CRC64NVME</code> checksum of the object. This checksum is present
+      if the object being copied was uploaded with the <code class="code">CRC64NVME</code> checksum algorithm, or if the
+      object was uploaded without a checksum (and Amazon S3 added the default checksum, <code class="code">CRC64NVME</code>, to
+      the uploaded object). For more information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html">Checking object integrity</a> in
+      the <em>Amazon S3 User Guide</em>.</p>
+               <p>Type: String</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-response-ChecksumSHA1"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_ResponseSyntax">ChecksumSHA1</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The Base64 encoded, 160-bit <code class="code">SHA1</code> digest of the object. This checksum is only present if the checksum was uploaded
+    with the object. For more information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html">
+    Checking object integrity</a> in the <em>Amazon S3 User Guide</em>.</p>
+               <p>Type: String</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-response-ChecksumSHA256"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_ResponseSyntax">ChecksumSHA256</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The Base64 encoded, 256-bit <code class="code">SHA256</code> digest of the object. This checksum is only present if the checksum was uploaded
+    with the object. For more information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html">
+    Checking object integrity</a> in the <em>Amazon S3 User Guide</em>.</p>
+               <p>Type: String</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-response-ChecksumType"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_ResponseSyntax">ChecksumType</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>The checksum type that is used to calculate the object’s checksum value. For more information, see
+        <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/checking-object-integrity.html">Checking
+        object integrity</a> in the <em>Amazon S3 User Guide</em>.</p>
+               <p>Type: String</p>
+               <p>Valid Values: <code class="code">COMPOSITE | FULL_OBJECT</code>
+               </p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-response-ETag"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_ResponseSyntax">ETag</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Returns the ETag of the new object. The ETag reflects only changes to the contents of an object, not
+      its metadata.</p>
+               <p>Type: String</p>
+            </dd>
+          
+            <dt id="AmazonS3-CopyObject-response-LastModified"><span class="term">
+               <b>
+                  <a href="#API_CopyObject_ResponseSyntax">LastModified</a>
+               </b>
+            </span></dt>
+            <dd>
+               <p>Creation date of the object.</p>
+               <p>Type: Timestamp</p>
+            </dd>
+         </dl></div>
+    
+      <h2 id="API_CopyObject_Errors">Errors</h2>
+      <div class="variablelist">
+          
+      <dl>
+            <dt><span class="term">
+               <b>
+                  ObjectNotInActiveTierError
+               </b>
+            </span></dt>
+            <dd>
+               <p>The source object of the COPY action is not in the active tier and is only stored in Amazon S3
+      Glacier.</p>
+               <p>HTTP Status Code: 403</p>
+            </dd>
+         </dl></div>
+    
+      <h2 id="API_CopyObject_Examples">Examples</h2>
+       
+         <h3 id="API_CopyObject_Example_1">Sample Request for general purpose buckets</h3>
+         <p>This example copies <code class="code">my-image.jpg</code> into the <code class="code">amzn-s3-demo-bucket</code> bucket,
+          with the key name <code class="code">my-second-image.jpg</code>.</p>
+         
+            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">
+                PUT /my-second-image.jpg HTTP/1.1
+                Host: amzn-s3-demo-bucket.s3.&lt;Region&gt;.amazonaws.com
+                Date: Wed, 28 Oct 2009 22:32:00 GMT
+                x-amz-copy-source: /amzn-s3-demo-bucket/my-image.jpg
+                Authorization: authorization string
+             </code></pre>
+         
+       
+       
+         <h3 id="API_CopyObject_Example_2">Sample Response for general purpose buckets</h3>
+         <p>This example illustrates one usage of CopyObject.</p>
+         
+            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">
+               HTTP/1.1 200 OK
+               x-amz-id-2: eftixk72aD6Ap51TnqcoF8eFidJG9Z/2mkiDFu8yU9AS1ed4OpIszj7UDNEHGran
+               x-amz-request-id: 318BC8BC148832E5
+               x-amz-copy-source-version-id: 3/L4kqtJlcpXroDTDmJ+rmSpXd3dIbrHY+MTRCxf3vjVBH40Nr8X8gdRQBpUMLUo
+               x-amz-version-id: QUpfdndhfd8438MNFDN93jdnJFkdmqnh893
+               Date: Wed, 28 Oct 2009 22:32:00 GMT
+               Connection: close
+               Server: AmazonS3
+
+               &lt;CopyObjectResult&gt;
+                  &lt;LastModified&gt;2009-10-12T17:50:30.000Z&lt;/LastModified&gt;
+                  &lt;ETag&gt;"9b2cf535f27731c974343645a3985328"&lt;/ETag&gt;
+               &lt;/CopyObjectResult&gt;
+             </code></pre>
+         
+       
+       
+         <h3 id="API_CopyObject_Example_3">Sample Request for general purpose buckets: Copying a specified version of an object</h3>
+         <p>The following request copies the <code class="code">my-image.jpg</code> key with the specified version ID,
+          copies it into the <code class="code">amzn-s3-demo-bucket</code> bucket, and gives it the
+            <code class="code">my-second-image.jpg</code> key.</p>
+         
+            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">
+                PUT /my-second-image.jpg HTTP/1.1
+                Host: amzn-s3-demo-bucket.s3.&lt;Region&gt;.amazonaws.com
+                Date: Wed, 28 Oct 2009 22:32:00 GMT
+                x-amz-copy-source: /amzn-s3-demo-bucket/my-image.jpg?versionId=3/L4kqtJlcpXroDTDmJ+rmSpXd3dIbrHY+MTRCxf3vjVBH40Nr8X8gdRQBpUMLUo
+                Authorization: authorization string
+             </code></pre>
+         
+       
+       
+         <h3 id="API_CopyObject_Example_4">Success Response for general purpose buckets: Copying a versioned object into a version-enabled
+          bucket</h3>
+         <p>The following response shows that an object was copied into a target bucket where versioning is
+          enabled.</p>
+         
+            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">
+                HTTP/1.1 200 OK
+                x-amz-id-2: eftixk72aD6Ap51TnqcoF8eFidJG9Z/2mkiDFu8yU9AS1ed4OpIszj7UDNEHGran
+                x-amz-request-id: 318BC8BC148832E5
+                x-amz-version-id: QUpfdndhfd8438MNFDN93jdnJFkdmqnh893
+                x-amz-copy-source-version-id: 09df8234529fjs0dfi0w52935029wefdj
+                Date: Wed, 28 Oct 2009 22:32:00 GMT
+                Connection: close
+                Server: AmazonS3
+ 
+                &lt;?xml version="1.0" encoding="UTF-8"?&gt;
+                &lt;CopyObjectResult&gt;
+                  &lt;LastModified&gt;2009-10-12T17:50:30.000Z&lt;/LastModified&gt;
+                  &lt;ETag&gt;"9b2cf535f27731c974343645a3985328"&lt;/ETag&gt;
+                &lt;/CopyObjectResult&gt;
+             </code></pre>
+         
+       
+       
+         <h3 id="API_CopyObject_Example_5">Success Response for general purpose buckets: Copying a versioned object into a version-suspended
+          bucket</h3>
+         <p>The following response shows that an object was copied into a target bucket where versioning is
+          suspended. The parameter <code class="code">VersionId</code> does not appear.</p>
+         
+            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">
+               HTTP/1.1 200 OK
+               x-amz-id-2: eftixk72aD6Ap51TnqcoF8eFidJG9Z/2mkiDFu8yU9AS1ed4OpIszj7UDNEHGran
+               x-amz-request-id: 318BC8BC148832E5
+               x-amz-copy-source-version-id: 3/L4kqtJlcpXroDTDmJ+rmSpXd3dIbrHY+MTRCxf3vjVBH40Nr8X8gdRQBpUMLUo
+               Date: Wed, 28 Oct 2009 22:32:00 GMT
+               Connection: close
+               Server: AmazonS3
+
+               &lt;?xml version="1.0" encoding="UTF-8"?&gt;
+                &lt;CopyObjectResult&gt;
+                  &lt;LastModified&gt;2009-10-28T22:32:00&lt;/LastModified&gt;
+                  &lt;ETag&gt;"9b2cf535f27731c974343645a3985328"&lt;/ETag&gt;
+                &lt;/CopyObjectResult&gt;
+             </code></pre>
+         
+       
+       
+         <h3 id="API_CopyObject_Example_6">Sample Request for general purpose buckets: Copy from unencrypted object to an object encrypted with
+          server-side encryption with customer-provided encryption keys</h3>
+         <p>The following example specifies the HTTP PUT header to copy an unencrypted object to an object
+          encrypted with server-side encryption with customer-provided encryption keys (SSE-C).</p>
+         
+            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">
+                PUT /exampleDestinationObject HTTP/1.1
+                Host: amzn-s3-demo-destination-bucket.s3.&lt;Region&gt;.amazonaws.com	
+                x-amz-server-side-encryption-customer-algorithm: AES256
+                x-amz-server-side-encryption-customer-key: Base64(YourKey)
+                x-amz-server-side-encryption-customer-key-MD5 : Base64(MD5(YourKey))
+                x-amz-metadata-directive: metadata_directive
+                x-amz-copy-source: /amzn-s3-demo-source-bucket/exampleSourceObject
+                x-amz-copy-source-if-match: etag
+                x-amz-copy-source-if-none-match: etag
+                x-amz-copy-source-if-unmodified-since: time_stamp
+                x-amz-copy-source-if-modified-since: time_stamp
+                
+               &lt;request metadata&gt;
+                Authorization: authorization string (see Authenticating Requests (AWS Signature Version 4))
+                Date: date
+             </code></pre>
+         
+       
+       
+         <h3 id="API_CopyObject_Example_7">Sample Request for general purpose buckets: Copy from an object encrypted with SSE-C to an object
+          encrypted with SSE-C</h3>
+         <p>The following example specifies the HTTP PUT header to copy an object encrypted with server-side
+          encryption with customer-provided encryption keys to an object encrypted with server-side encryption
+          with customer-provided encryption keys for key rotation.</p>
+         <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>If you have server-side encryption with customer-provided keys (SSE-C) blocked for your general purpose bucket, you will get an HTTP 403 Access Denied error when you specify the SSE-C request headers while writing new data to your bucket. For more information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/blocking-unblocking-s3-c-encryption-gpb.html">Blocking or unblocking SSE-C for a general purpose bucket</a>.</p></div></div>
+         
+            <pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">
+                PUT /exampleDestinationObject HTTP/1.1
+                Host: amzn-s3-demo-destination-bucket.s3.&lt;Region&gt;.amazonaws.com	
+                x-amz-server-side-encryption-customer-algorithm: AES256
+                x-amz-server-side-encryption-customer-key: Base64(NewKey)
+                x-amz-server-side-encryption-customer-key-MD5: Base64(MD5(NewKey))
+                x-amz-metadata-directive: metadata_directive
+                x-amz-copy-source: /amzn-s3-demo-source-bucket/sourceObject
+                x-amz-copy-source-if-match: etag
+                x-amz-copy-source-if-none-match: etag
+                x-amz-copy-source-if-unmodified-since: time_stamp
+                x-amz-copy-source-if-modified-since: time_stamp
+                x-amz-copy-source-server-side-encryption-customer-algorithm: AES256
+                x-amz-copy-source-server-side-encryption-customer-key: Base64(OldKey)
+                x-amz-copy-source-server-side-encryption-customer-key-MD5: Base64(MD5(OldKey))
+                
+               &lt;request metadata&gt;
+                Authorization: authorization string (see Authenticating Requests (AWS Signature Version 4))
+                Date: date
+             </code></pre>
+         
+       
+    
+      <h2 id="API_CopyObject_SeeAlso">See Also</h2>
+      <p>For more information about using this API in one of the language-specific AWS SDKs, see the following:</p>
+      <div class="itemizedlist">
+          
+          
+          
+          
+          
+          
+          
+          
+          
+          
+      <ul class="itemizedlist"><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/cli2/s3-2006-03-01/CopyObject">AWS Command Line Interface V2</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/DotNetSDKV4/s3-2006-03-01/CopyObject">AWS SDK for .NET V4</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/SdkForCpp/s3-2006-03-01/CopyObject">AWS SDK for C++</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/SdkForGoV2/s3-2006-03-01/CopyObject">AWS SDK for Go v2</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/SdkForJavaV2/s3-2006-03-01/CopyObject">AWS SDK for Java V2</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/SdkForJavaScriptV3/s3-2006-03-01/CopyObject">AWS SDK for JavaScript V3</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/SdkForKotlin/s3-2006-03-01/CopyObject">AWS SDK for Kotlin</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/SdkForPHPV3/s3-2006-03-01/CopyObject">AWS SDK for PHP V3</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/boto3/s3-2006-03-01/CopyObject">AWS SDK for Python</a>
+            </p>
+         </li><li class="listitem">
+            <p>
+               <a href="https://docs.aws.amazon.com/goto/SdkForRubyV3/s3-2006-03-01/CopyObject">AWS SDK for Ruby V3</a>
+            </p>
+         </li></ul></div>
+   <awsdocs-copyright class="copyright-print"></awsdocs-copyright><awsdocs-thumb-feedback right-edge="{{$ctrl.thumbFeedbackRightEdge}}"></awsdocs-thumb-feedback></div><noscript><div><div><div><div id="js_error_message"><p><img src="https://d1ge0kk1l5kms0.cloudfront.net/images/G/01/webservices/console/warning.png" alt="Warning" /> <strong>Javascript is disabled or is unavailable in your browser.</strong></p><p>To use the Amazon Web Services Documentation, Javascript must be enabled. Please refer to your browser's Help pages for instructions.</p></div></div></div></div></noscript><div id="main-col-footer" class="awsui-util-font-size-0"><div id="doc-conventions"><a target="_top" href="/general/latest/gr/docconventions.html">Document Conventions</a></div><div class="prev-next"><div id="previous" class="prev-link" accesskey="p" href="./API_CompleteMultipartUpload.html">CompleteMultipartUpload</div><div id="next" class="next-link" accesskey="n" href="./API_CreateBucket.html">CreateBucket</div></div></div><awsdocs-page-utilities></awsdocs-page-utilities></div><div id="quick-feedback-yes" style="display: none;"><div class="title">Did this page help you? - Yes</div><div class="content"><p>Thanks for letting us know we're doing a good job!</p><p>If you've got a moment, please tell us what we did right so we can do more of it.</p><p><awsui-button id="fblink" rel="noopener noreferrer" target="_blank" text="Feedback" click="linkClick($event)" href="https://docs.aws.amazon.com/forms/aws-doc-feedback?hidden_service_name=S3&amp;topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/API_CopyObject.html"></awsui-button></p></div></div><div id="quick-feedback-no" style="display: none;"><div class="title">Did this page help you? - No</div><div class="content"><p>Thanks for letting us know this page needs work. We're sorry we let you down.</p><p>If you've got a moment, please tell us how we can make the documentation better.</p><p><awsui-button id="fblink" rel="noopener noreferrer" target="_blank" text="Feedback" click="linkClick($event)" href="https://docs.aws.amazon.com/forms/aws-doc-feedback?hidden_service_name=S3&amp;topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/API_CopyObject.html"></awsui-button></p></div></div></div></body></div></awsdocs-view><div class="page-loading-indicator" id="page-loading-indicator"><awsui-spinner size="large"></awsui-spinner></div></div><div id="tools-panel" dom-region="tools"><awsdocs-tools-panel id="awsdocs-tools-panel"></awsdocs-tools-panel></div></awsui-app-layout><awsdocs-cookie-banner class="doc-cookie-banner"></awsdocs-cookie-banner></div></body></html>
