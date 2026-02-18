@@ -60,6 +60,9 @@ err = obj.get("error", "")
 if "tools request exceeds daemon tools policy" not in err:
   print("unexpected error:", err, file=sys.stderr)
   raise SystemExit(1)
+if obj.get("rpc_status") != 400:
+  print("unexpected rpc_status:", obj.get("rpc_status"), file=sys.stderr)
+  raise SystemExit(1)
 PY
 
 echo "agentd_tools_policy_smoke OK"
