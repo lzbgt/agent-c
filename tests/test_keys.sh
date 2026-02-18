@@ -57,7 +57,7 @@ agent_test_get_key_from_file() {
       moonshot) env_var="KIMI_API_KEY_CN" ;;
       *) return 1 ;;
     esac
-    local env_re="^[[:space:]]*(export[[:space:]]+)?${env_var}[[:space:]]*=[[:space:]]*['\\\"]?(sk-[A-Za-z0-9_.-]+)['\\\"]?.*$"
+    local env_re="^[[:space:]]*(export[[:space:]]+)?${env_var}[[:space:]]*=[[:space:]]*['\\\"]?(sk-[A-Za-z0-9_.-]+)['\\\"]?([[:space:]]+#.*)?$"
     key="$(
       grep -E "${env_re}" "${file}" \
         | head -n 1 \
@@ -65,14 +65,14 @@ agent_test_get_key_from_file() {
     )"
     if [[ -z "${key}" && "${provider}" == "moonshot" ]]; then
       # Accept common Moonshot env-style keys too.
-      local moonshot_re="^[[:space:]]*(export[[:space:]]+)?MOONSHOT_API_KEY[[:space:]]*=[[:space:]]*['\\\"]?(sk-[A-Za-z0-9_.-]+)['\\\"]?.*$"
+      local moonshot_re="^[[:space:]]*(export[[:space:]]+)?MOONSHOT_API_KEY[[:space:]]*=[[:space:]]*['\\\"]?(sk-[A-Za-z0-9_.-]+)['\\\"]?([[:space:]]+#.*)?$"
       key="$(
         grep -E "${moonshot_re}" "${file}" \
           | head -n 1 \
           | sed -E "s/${moonshot_re}/\\2/"
       )"
       if [[ -z "${key}" ]]; then
-        local moonshot_cn_re="^[[:space:]]*(export[[:space:]]+)?MOONSHOT_API_KEY_CN[[:space:]]*=[[:space:]]*['\\\"]?(sk-[A-Za-z0-9_.-]+)['\\\"]?.*$"
+        local moonshot_cn_re="^[[:space:]]*(export[[:space:]]+)?MOONSHOT_API_KEY_CN[[:space:]]*=[[:space:]]*['\\\"]?(sk-[A-Za-z0-9_.-]+)['\\\"]?([[:space:]]+#.*)?$"
         key="$(
           grep -E "${moonshot_cn_re}" "${file}" \
             | head -n 1 \
