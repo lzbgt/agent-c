@@ -90,7 +90,7 @@ with **audio streaming** following once the streaming UX is stable.
 
 - [x] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker + agentd implemented; tests added).
 - [x] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
-- [ ] Tool loop: full multimodal transcript support + stable, versioned event schema with migrations.
+- [x] Tool loop: full multimodal transcript support + stable, versioned event schema with migrations.
   - [x] assistant_message events now strip multimodal prefix and emit `assistant_mm_json` + truncation metadata.
   - [x] user_message events emit multimodal payloads (run events + tools=none path).
   - [x] tools=none assistant_message events emit multimodal payloads + strip prefix (smoke test).
