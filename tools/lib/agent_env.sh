@@ -20,7 +20,17 @@ PY
   return 1
 }
 
-agent_env_source_home() {
+agent_env_dotenv_path() {
+  local override="${AGENTD_DOTENV_PATH:-}"
+  if [[ -n "${override}" ]]; then
+    if [[ "${override}" == "~/"* && -n "${HOME:-}" ]]; then
+      override="${HOME}/${override#~/}"
+    fi
+    if [[ -f "${override}" ]]; then
+      echo "${override}"
+      return 0
+    fi
+  fi
   local home_dir=""
   home_dir="$(agent_env_home_dir || true)"
   if [[ -z "${home_dir}" ]]; then
@@ -28,6 +38,15 @@ agent_env_source_home() {
   fi
   local env_file="${home_dir}/.env"
   if [[ ! -f "${env_file}" ]]; then
+    return 1
+  fi
+  echo "${env_file}"
+}
+
+agent_env_source_home() {
+  local env_file=""
+  env_file="$(agent_env_dotenv_path || true)"
+  if [[ -z "${env_file}" || ! -f "${env_file}" ]]; then
     return 1
   fi
   set -a
@@ -38,13 +57,9 @@ agent_env_source_home() {
 }
 
 agent_env_source_home_if_unset() {
-  local home_dir=""
-  home_dir="$(agent_env_home_dir || true)"
-  if [[ -z "${home_dir}" ]]; then
-    return 1
-  fi
-  local env_file="${home_dir}/.env"
-  if [[ ! -f "${env_file}" ]]; then
+  local env_file=""
+  env_file="$(agent_env_dotenv_path || true)"
+  if [[ -z "${env_file}" || ! -f "${env_file}" ]]; then
     return 1
   fi
 
