@@ -36,3 +36,47 @@ agent_env_source_home() {
   set +a
   return 0
 }
+
+agent_env_source_home_if_unset() {
+  local home_dir=""
+  home_dir="$(agent_env_home_dir || true)"
+  if [[ -z "${home_dir}" ]]; then
+    return 1
+  fi
+  local env_file="${home_dir}/.env"
+  if [[ ! -f "${env_file}" ]]; then
+    return 1
+  fi
+
+  local line key val trimmed
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    # Trim leading/trailing whitespace.
+    trimmed="${line#"${line%%[![:space:]]*}"}"
+    trimmed="${trimmed%"${trimmed##*[![:space:]]}"}"
+    if [[ -z "${trimmed}" || "${trimmed}" == \#* ]]; then
+      continue
+    fi
+    if [[ "${trimmed}" =~ ^(export[[:space:]]+)?([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+      key="${BASH_REMATCH[2]}"
+      val="${BASH_REMATCH[3]}"
+      if [[ -n "${!key:-}" ]]; then
+        continue
+      fi
+      # Strip inline comments for unquoted values.
+      if [[ "${val}" != \"*\" && "${val}" != \'*\' ]]; then
+        val="${val%%#*}"
+      fi
+      val="${val#"${val%%[![:space:]]*}"}"
+      val="${val%"${val##*[![:space:]]}"}"
+      if [[ "${val}" == \"*\" && "${val}" == *\" ]]; then
+        val="${val#\"}"
+        val="${val%\"}"
+      elif [[ "${val}" == \'*\' && "${val}" == *\' ]]; then
+        val="${val#\'}"
+        val="${val%\'}"
+      fi
+      export "${key}=${val}"
+    fi
+  done <"${env_file}"
+  return 0
+}

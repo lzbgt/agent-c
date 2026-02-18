@@ -55,7 +55,7 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ "${MAC_LOCAL_PROVIDER_TEST}" == "1" ]]; then
-  agent_env_source_home >/dev/null 2>&1 || true
+  agent_env_source_home_if_unset >/dev/null 2>&1 || true
 fi
 
 if [[ ! -x "${AGENTD_BIN}" ]]; then

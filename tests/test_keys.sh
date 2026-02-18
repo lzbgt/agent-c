@@ -146,6 +146,64 @@ agent_test_get_key() {
   return 1
 }
 
+agent_test_get_key_source() {
+  if [[ $# -ne 1 ]]; then
+    echo "agent_test_get_key_source: missing provider arg" >&2
+    return 2
+  fi
+  local provider="${1}"
+  local env_var=""
+  case "${provider}" in
+    deepseek) env_var="DEEPSEEK_API_KEY" ;;
+    openrouter) env_var="OPENROUTER_API_KEY" ;;
+    moonshot) env_var="KIMI_API_KEY_CN" ;;
+    *)
+      echo "agent_test_get_key_source: unknown provider: ${provider}" >&2
+      return 2
+      ;;
+  esac
+
+  if [[ -n "${!env_var:-}" ]]; then
+    echo "env:${env_var}"
+    return 0
+  fi
+  if [[ "${provider}" == "moonshot" ]]; then
+    if [[ -n "${MOONSHOT_API_KEY:-}" ]]; then
+      echo "env:MOONSHOT_API_KEY"
+      return 0
+    fi
+    if [[ -n "${MOONSHOT_API_KEY_CN:-}" ]]; then
+      echo "env:MOONSHOT_API_KEY_CN"
+      return 0
+    fi
+  fi
+
+  local root
+  root="$(agent_test_project_root)"
+  local preferred="${root}/.not_in_repo"
+  local fallback="${root}/project.local.md"
+  local home_env=""
+  local home_dir=""
+  home_dir="$(agent_env_home_dir || true)"
+  if [[ -n "${home_dir}" ]]; then
+    home_env="${home_dir}/.env"
+  fi
+
+  if agent_test_get_key_from_file "${preferred}" "${provider}" >/dev/null 2>&1; then
+    echo ".not_in_repo"
+    return 0
+  fi
+  if agent_test_get_key_from_file "${fallback}" "${provider}" >/dev/null 2>&1; then
+    echo "project.local.md"
+    return 0
+  fi
+  if [[ -n "${home_env}" ]] && agent_test_get_key_from_file "${home_env}" "${provider}" >/dev/null 2>&1; then
+    echo "~/.env"
+    return 0
+  fi
+  return 1
+}
+
 agent_test_setup_proxy_env() {
   # Some environments require an HTTP proxy for outbound HTTPS. Many of this repo's network tests assume one
   # is present at localhost:8120 by default.
@@ -213,6 +271,9 @@ if isinstance(rec, str) and rec:
 PY
 )"
   if [[ -z "${model}" ]]; then
+    model="${AGENT_TEST_OPENROUTER_MODEL:-bytedance-seed/seed-1.6-flash}"
+  fi
+  if [[ -z "${model}" ]]; then
     return 0
   fi
 
@@ -244,6 +305,10 @@ PY
   local chat_body="${chat_resp%$'\n'*}"
   if agent_test_openrouter_output_is_auth_error "${chat_body}"; then
     echo "SKIP: OpenRouter chat auth error response" >&2
+    return 77
+  fi
+  if [[ "${chat_status}" -ge 400 || "${chat_status}" == "000" ]]; then
+    echo "SKIP: OpenRouter chat preflight failed (${chat_status}) for model ${model}" >&2
     return 77
   fi
   return 0

@@ -10,6 +10,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=tools/lib/agent_env.sh
 source "${ROOT}/tools/lib/agent_env.sh"
-agent_env_source_home >/dev/null 2>&1 || true
+agent_env_source_home_if_unset >/dev/null 2>&1 || true
 
 exec "${ROOT}/tools/verify.sh" "$@"

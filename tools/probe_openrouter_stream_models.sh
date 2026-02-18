@@ -9,7 +9,7 @@ SCRIPT_DIR="${ROOT}/tests"
 source "${SCRIPT_DIR}/lib/agentd_smoke_lib.sh"
 # shellcheck source=tools/lib/agent_env.sh
 source "${ROOT}/tools/lib/agent_env.sh"
-agent_env_source_home >/dev/null 2>&1 || true
+agent_env_source_home_if_unset >/dev/null 2>&1 || true
 
 AGENTD_BIN="${1:-}"
 if [[ -z "${AGENTD_BIN}" ]]; then

@@ -26,7 +26,7 @@ state_dir="${log_dir}/state_${ts}"
 # Keep it silent and do not echo any variables.
 # shellcheck source=tools/lib/agent_env.sh
 source "${ROOT}/tools/lib/agent_env.sh"
-agent_env_source_home >/dev/null 2>&1 || true
+agent_env_source_home_if_unset >/dev/null 2>&1 || true
 
 cleanup() {
   set +e

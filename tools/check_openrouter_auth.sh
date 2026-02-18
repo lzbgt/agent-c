@@ -15,8 +15,13 @@ if [[ -z "${OPENROUTER_KEY}" ]]; then
 fi
 
 BASE_URL="${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}"
+source_hint="$(agent_test_get_key_source openrouter 2>/dev/null || true)"
 if agent_test_openrouter_auth_ok "${OPENROUTER_KEY}" "${BASE_URL}"; then
-  echo "OK: OpenRouter auth succeeded (${BASE_URL})"
+  if [[ -n "${source_hint}" ]]; then
+    echo "OK: OpenRouter auth succeeded (${BASE_URL}) [${source_hint}]"
+  else
+    echo "OK: OpenRouter auth succeeded (${BASE_URL})"
+  fi
   exit 0
 fi
 exit $?
