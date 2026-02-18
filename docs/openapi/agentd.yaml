@@ -1845,6 +1845,38 @@ paths:
       responses:
         "200":
           description: Sessions list
+  /api/v1/session:
+    get:
+      tags: [sessions]
+      summary: Get session messages
+      parameters:
+        - in: query
+          name: session_id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Session payload
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [ok, session_id, messages]
+                properties:
+                  ok: { type: boolean }
+                  session_id: { type: string }
+                  messages:
+                    type: array
+                    items:
+                      type: object
+                      required: [role, content]
+                      properties:
+                        role: { type: string }
+                        content: { type: string }
+                        mm_json: { type: string }
+                        mm_bytes: { type: integer, format: int64 }
+                        mm_truncated: { type: integer, format: int64 }
+                  error: { type: string }
 
 components:
   schemas:
