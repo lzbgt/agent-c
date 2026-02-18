@@ -87,6 +87,13 @@ It exists because:
     - `tool_call_args_chars` (best-effort length)
   - return `AGENT_ERR_LIMIT`
 
+### `max_tool_result_chars`
+
+- Definition: cap tool outputs before they are re-inserted into the prompt context (best-effort).
+- `max_tool_result_chars = 0` means unlimited.
+- When triggered, the core truncates the tool output for prompt use and sets `result_truncated_for_prompt=true` in tool records
+  (and may emit truncated content in verbose events). No hard error is returned.
+
 ### `tool_call_limits` (per-tool map)
 
 - Definition: an explicit per-tool call limit map applied across the entire run.
@@ -128,6 +135,14 @@ To protect against a single model response that requests many tool calls at once
 tool calls when requests omit it.
 
 - Proposed default: `128` tool calls.
+- The UI should allow blank/unset to use daemon defaults and explicit `0` to disable.
+
+### Daemon default `max_tool_result_chars`
+
+To keep prompts from being flooded by large tool outputs, the daemon should apply a default cap on tool results
+before they are re-inserted into the LLM context.
+
+- Suggested default: `12000` chars.
 - The UI should allow blank/unset to use daemon defaults and explicit `0` to disable.
 
 ### Daemon default `tool_call_limits`

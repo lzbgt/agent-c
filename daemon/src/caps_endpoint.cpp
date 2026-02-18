@@ -218,6 +218,7 @@ void handle_caps_endpoint(
   limits["max_tool_calls_total_default"] = Json::UInt64(cfg.max_tool_calls_total_default);
   limits["max_tool_calls_per_tool_default"] = Json::UInt64(cfg.max_tool_calls_per_tool_default);
   limits["max_tool_call_args_chars_default"] = Json::UInt64(cfg.max_tool_call_args_chars_default);
+  limits["max_tool_result_chars_default"] = Json::UInt64(cfg.max_tool_result_chars_default);
   {
     Json::Value arr(Json::arrayValue);
     for (const auto& p : cfg.tool_call_limits_default) {

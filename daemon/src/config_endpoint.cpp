@@ -227,6 +227,7 @@ void handle_config_endpoint(
   daemon["max_tool_calls_total_default"] = (Json::UInt64)cfg.max_tool_calls_total_default;
   daemon["max_tool_calls_per_tool_default"] = (Json::UInt64)cfg.max_tool_calls_per_tool_default;
   daemon["max_tool_call_args_chars_default"] = (Json::UInt64)cfg.max_tool_call_args_chars_default;
+  daemon["max_tool_result_chars_default"] = (Json::UInt64)cfg.max_tool_result_chars_default;
   {
     Json::Value ota(Json::objectValue);
     ota["enabled"] = cfg.ota_enable;
@@ -429,6 +430,9 @@ void handle_config_update_endpoint(
   }
   if (json_get_u64_nonneg(args, "max_tool_call_args_chars_default", &n_u64)) {
     next.max_tool_call_args_chars_default = (size_t)n_u64;
+  }
+  if (json_get_u64_nonneg(args, "max_tool_result_chars_default", &n_u64)) {
+    next.max_tool_result_chars_default = (size_t)n_u64;
   }
   if (args.isMember("upload_max_bytes") && (args["upload_max_bytes"].isInt64() || args["upload_max_bytes"].isUInt64())) {
     const unsigned long long kMax = 512ull * 1024ull * 1024ull;
@@ -985,6 +989,7 @@ void handle_config_update_endpoint(
   o["max_tool_calls_total_default"] = (Json::UInt64)next.max_tool_calls_total_default;
   o["max_tool_calls_per_tool_default"] = (Json::UInt64)next.max_tool_calls_per_tool_default;
   o["max_tool_call_args_chars_default"] = (Json::UInt64)next.max_tool_call_args_chars_default;
+  o["max_tool_result_chars_default"] = (Json::UInt64)next.max_tool_result_chars_default;
   o["proxy_url_set"] = !next.proxy_url.empty();
   {
     Json::Value bs(Json::objectValue);

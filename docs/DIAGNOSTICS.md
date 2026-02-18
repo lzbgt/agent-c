@@ -123,7 +123,7 @@ Request fields:
 - `require_tool_call` (optional): require at least one tool call
 - `timeout_ms` (optional)
 - Tool-loop limits (optional): `max_steps`, `max_tool_calls_total`, `max_tool_calls_per_tool`,
-  `max_tool_call_args_chars`, `max_repeated_tool_calls`
+  `max_tool_call_args_chars`, `max_tool_result_chars`, `max_repeated_tool_calls`
 - `include_run` (optional): echo the full run response in `run`
 
 Example (DeepSeek reasoner + tool call):

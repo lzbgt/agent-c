@@ -1967,6 +1967,7 @@ components:
         max_tool_calls_total: { type: integer, format: int64 }
         max_tool_calls_per_tool: { type: integer, format: int64 }
         max_tool_call_args_chars: { type: integer, format: int64 }
+        max_tool_result_chars: { type: integer, format: int64 }
         max_repeated_tool_calls: { type: integer, format: int64 }
         include_run: { type: boolean }
 
@@ -2221,6 +2222,7 @@ components:
             max_tool_calls_total_default: { type: integer, format: int64 }
             max_tool_calls_per_tool_default: { type: integer, format: int64 }
             max_tool_call_args_chars_default: { type: integer, format: int64 }
+            max_tool_result_chars_default: { type: integer, format: int64 }
             tool_call_limits_default:
               type: array
               items:
@@ -2367,6 +2369,10 @@ components:
           type: integer
           format: int64
           description: Default max tool call args JSON length
+        max_tool_result_chars_default:
+          type: integer
+          format: int64
+          description: Default max tool result chars before prompt reinsertion
         tool_call_limits_default:
           type: array
           description: Default per-tool call limits (replaces the whole list)
@@ -2464,6 +2470,7 @@ components:
         max_tool_calls_total_default: { type: integer, format: int64 }
         max_tool_calls_per_tool_default: { type: integer, format: int64 }
         max_tool_call_args_chars_default: { type: integer, format: int64 }
+        max_tool_result_chars_default: { type: integer, format: int64 }
         tool_call_limits_default:
           type: array
           items:
@@ -3212,6 +3219,11 @@ components:
           format: int64
           minimum: 0
           description: Max length of a single tool call arguments JSON (0 disables/unlimited).
+        max_tool_result_chars:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Max tool result chars before re-inserting into the prompt (0 disables/unlimited).
         verbose: { type: boolean }
 
     AgentEvent:
@@ -3279,6 +3291,11 @@ components:
           format: int64
           minimum: 0
           description: Effective max_tool_call_args_chars enforced by the daemon.
+        effective_max_tool_result_chars:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Effective max_tool_result_chars enforced by the daemon.
         steps_executed:
           type: integer
           format: int64
@@ -4677,6 +4694,8 @@ components:
             - `max_steps`
             - `max_tool_calls_total`
             - `max_tool_calls_per_tool`
+            - `max_tool_call_args_chars`
+            - `max_tool_result_chars`
           additionalProperties: true
         attempts:
           type: array

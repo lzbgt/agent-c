@@ -1088,6 +1088,18 @@ int main(int argc, char** argv) {
         std::cerr << "Invalid --max-tool-call-args-chars-default\n";
         return 2;
       }
+    } else if (a == "--max-tool-result-chars-default") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --max-tool-result-chars-default\n";
+        return 2;
+      }
+      try {
+        cfg.max_tool_result_chars_default = (size_t)std::stoull(v);
+      } catch (...) {
+        std::cerr << "Invalid --max-tool-result-chars-default\n";
+        return 2;
+      }
     } else if (a == "--tool-call-limit") {
       std::string v;
       if (!take(&v)) {
@@ -1362,6 +1374,7 @@ int main(int argc, char** argv) {
         << "  --max-tool-calls-total-default <n> Default tool-loop total tool calls cap when requests omit it (default: 0; 0 means unlimited)\n"
         << "  --max-tool-calls-per-tool-default <n> Default tool-loop per-tool call cap when requests omit it (default: 0; 0 means unlimited)\n"
         << "  --max-tool-call-args-chars-default <n> Default tool-loop tool call args JSON cap (default: 0; 0 means unlimited)\n"
+        << "  --max-tool-result-chars-default <n> Default tool-loop tool result cap (default: 12000; 0 means unlimited)\n"
         << "  --tool-call-limit <tool>=<n> Default per-tool call limit (repeatable; 0 means unlimited for that tool)\n"
         << "  --tools host|basic|none   Default toolset (default: host)\n"
         << "  --host-policy full|readonly  Host tool safety policy (default: full)\n"
@@ -1482,6 +1495,13 @@ int main(int argc, char** argv) {
       cfg.max_tool_call_args_chars_default = (size_t)std::stoull(ms);
     } catch (...) {
       std::cerr << "Invalid AGENTD_MAX_TOOL_CALL_ARGS_CHARS_DEFAULT; ignoring\n";
+    }
+  }
+  if (const char* ms = getenv_s("AGENTD_MAX_TOOL_RESULT_CHARS_DEFAULT")) {
+    try {
+      cfg.max_tool_result_chars_default = (size_t)std::stoull(ms);
+    } catch (...) {
+      std::cerr << "Invalid AGENTD_MAX_TOOL_RESULT_CHARS_DEFAULT; ignoring\n";
     }
   }
   if (const char* s = getenv_s("AGENTD_TOOL_CALL_LIMITS_DEFAULT")) {

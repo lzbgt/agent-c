@@ -890,6 +890,8 @@ bool expand_workflow_submit_macros(
         clamp_key("max_steps");
         clamp_key("max_tool_calls_total");
         clamp_key("max_tool_calls_per_tool");
+        clamp_key("max_tool_call_args_chars");
+        clamp_key("max_tool_result_chars");
       }
 
       if (!allow_sessions) {

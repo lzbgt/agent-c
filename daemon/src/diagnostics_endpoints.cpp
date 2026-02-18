@@ -381,6 +381,7 @@ void handle_diagnostics_provider_test_endpoint(
   if (json_get_u64_nonneg(args, "max_tool_calls_total", &n_u64)) run_req["max_tool_calls_total"] = (Json::UInt64)n_u64;
   if (json_get_u64_nonneg(args, "max_tool_calls_per_tool", &n_u64)) run_req["max_tool_calls_per_tool"] = (Json::UInt64)n_u64;
   if (json_get_u64_nonneg(args, "max_tool_call_args_chars", &n_u64)) run_req["max_tool_call_args_chars"] = (Json::UInt64)n_u64;
+  if (json_get_u64_nonneg(args, "max_tool_result_chars", &n_u64)) run_req["max_tool_result_chars"] = (Json::UInt64)n_u64;
   if (json_get_u64_nonneg(args, "max_repeated_tool_calls", &n_u64)) run_req["max_repeated_tool_calls"] = (Json::UInt64)n_u64;
 
   Json::StreamWriterBuilder wb;

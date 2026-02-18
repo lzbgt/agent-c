@@ -221,6 +221,9 @@ static void fill_env_defaults(DaemonConfig* cfg) {
   if (const char* ms = getenv_s("AGENTD_MAX_TOOL_CALL_ARGS_CHARS_DEFAULT")) {
     try { cfg->max_tool_call_args_chars_default = (size_t)std::stoull(ms); } catch (...) {}
   }
+  if (const char* ms = getenv_s("AGENTD_MAX_TOOL_RESULT_CHARS_DEFAULT")) {
+    try { cfg->max_tool_result_chars_default = (size_t)std::stoull(ms); } catch (...) {}
+  }
   if (const char* ms = getenv_s("AGENTD_JOB_CONCURRENCY")) {
     try { cfg->job_engine_max_concurrency = std::max(1, std::stoi(ms)); } catch (...) {}
   }

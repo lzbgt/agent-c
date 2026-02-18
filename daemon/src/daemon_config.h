@@ -160,6 +160,9 @@ struct DaemonConfig {
   // Default cap for tool call argument JSON length (per tool call).
   // 0 means unlimited / disabled.
   size_t max_tool_call_args_chars_default = 0;
+  // Default cap for tool outputs before they re-enter the prompt context.
+  // 0 means unlimited / disabled.
+  size_t max_tool_result_chars_default = 12000;
 
   // Default explicit per-tool tool-call limits when requests omit them.
   // These are applied in addition to (and take precedence over) max_tool_calls_per_tool_default.

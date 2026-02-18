@@ -110,6 +110,9 @@ bool load_runtime_config_best_effort(
       if (json_get_u64_nonneg(v, "max_tool_call_args_chars_default", &n_u64)) {
         cfg_io->max_tool_call_args_chars_default = (size_t)n_u64;
       }
+      if (json_get_u64_nonneg(v, "max_tool_result_chars_default", &n_u64)) {
+        cfg_io->max_tool_result_chars_default = (size_t)n_u64;
+      }
       if (v.isMember("timeout_ms") && v["timeout_ms"].isInt64()) {
         const auto n = v["timeout_ms"].asInt64();
         if (n > 0) cfg_io->timeout_ms = (long)n;
@@ -443,6 +446,7 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
   v["max_tool_calls_total_default"] = (Json::UInt64)cfg.max_tool_calls_total_default;
   v["max_tool_calls_per_tool_default"] = (Json::UInt64)cfg.max_tool_calls_per_tool_default;
   v["max_tool_call_args_chars_default"] = (Json::UInt64)cfg.max_tool_call_args_chars_default;
+  v["max_tool_result_chars_default"] = (Json::UInt64)cfg.max_tool_result_chars_default;
   v["timeout_ms"] = (Json::Int64)cfg.timeout_ms;
   v["upload_max_bytes"] = (Json::UInt64)cfg.upload_max_bytes;
   v["blob_store_mode"] = cfg.blob_store_mode;
