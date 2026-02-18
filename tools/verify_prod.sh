@@ -7,13 +7,9 @@ set -euo pipefail
 #
 # This is intentionally best-effort and local-only: do NOT commit secrets into this repo.
 
-if [[ -f "${HOME}/.env" ]]; then
-  # Export vars from ~/.env into the environment of subprocesses (ctest smoke tests, etc.).
-  # shellcheck disable=SC1090
-  set -a
-  source "${HOME}/.env"
-  set +a
-fi
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=tools/lib/agent_env.sh
+source "${ROOT}/tools/lib/agent_env.sh"
+agent_env_source_home >/dev/null 2>&1 || true
 
-exec "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/verify.sh" "$@"
-
+exec "${ROOT}/tools/verify.sh" "$@"

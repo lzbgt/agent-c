@@ -6,6 +6,8 @@ set -euo pipefail
 # - Builds WebUI and serves it via a local static server, checks "/"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=tools/lib/agent_env.sh
+source "${ROOT}/tools/lib/agent_env.sh"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "[mac-local] WARNING: not running on macOS; continuing anyway"
@@ -53,11 +55,7 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ "${MAC_LOCAL_PROVIDER_TEST}" == "1" ]]; then
-  if [[ -f "${HOME}/.env" ]]; then
-    set -a
-    source "${HOME}/.env"
-    set +a
-  fi
+  agent_env_source_home >/dev/null 2>&1 || true
 fi
 
 if [[ ! -x "${AGENTD_BIN}" ]]; then

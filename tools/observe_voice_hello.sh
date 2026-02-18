@@ -14,12 +14,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${ROOT}/out"
 mkdir -p "${OUT_DIR}"
 
-if [[ -f "${HOME}/.env" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "${HOME}/.env"
-  set +a
-fi
+# shellcheck source=tools/lib/agent_env.sh
+source "${ROOT}/tools/lib/agent_env.sh"
+agent_env_source_home >/dev/null 2>&1 || true
 
 pick_port() {
   local preferred="$1"

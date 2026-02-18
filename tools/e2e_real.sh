@@ -24,12 +24,9 @@ state_dir="${log_dir}/state_${ts}"
 
 # Best-effort: load local env keys (user requested `source ~/.env`).
 # Keep it silent and do not echo any variables.
-if [[ -f "${HOME}/.env" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "${HOME}/.env" >/dev/null 2>&1 || true
-  set +a
-fi
+# shellcheck source=tools/lib/agent_env.sh
+source "${ROOT}/tools/lib/agent_env.sh"
+agent_env_source_home >/dev/null 2>&1 || true
 
 cleanup() {
   set +e
