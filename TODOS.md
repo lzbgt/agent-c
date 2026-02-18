@@ -88,8 +88,9 @@ Weights updated 2026-02-18: prioritize **Storage/analytics** (archive tier + ops
 **multimodal/streaming foundation** now that **dynamic memory policy** and **OTA continuity guardrails** are in place.
 
 - [x] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker + agentd implemented; tests added).
-- [ ] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
+- [x] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
 - [ ] Tool loop: full multimodal transcript support + stable, versioned event schema with migrations.
+  - [x] assistant_message events now strip multimodal prefix and emit `assistant_mm_json` + truncation metadata.
 - [ ] Streaming: core-layer streaming interface + provider compatibility matrix with full variant coverage.
 - [x] Memory architecture: dynamic retention policy (decay/salience/recaps) informed by claude-mem research + docs.
   - [x] Memory retention policy enforcement (daily logs + checkpoints) + endpoint + background engine.

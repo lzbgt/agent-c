@@ -33,6 +33,18 @@ Each event is a JSON object with:
 The envelope is intentionally permissive so new event types can be introduced without breaking
 existing consumers. Event-specific payload schemas will be added incrementally as the registry grows.
 
+## Assistant message payload (current)
+
+When `type="assistant_message"`, the `data` object includes:
+
+- `assistant_content` (string): assistant text (multimodal prefix removed when present).
+- `has_tool_calls` (number): `1` if tool calls were present, else `0`.
+- `assistant_mm_json` (string, optional): raw JSON string from the multimodal prefix (`__AGENT_MM_V1__...`).
+- `assistant_mm_bytes` (number, optional): byte length of the raw multimodal JSON.
+- `assistant_mm_truncated` (number, optional): `1` when `assistant_mm_json` was capped for event safety.
+
+Consumers that need structured multimodal content should parse `assistant_mm_json` when present.
+
 ## Notes
 
 - UIs should treat unknown `type` values as opaque debug cards.

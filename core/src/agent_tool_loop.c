@@ -6,6 +6,41 @@
 #include <ctype.h>
 
 static const char* kCompactionSummaryName = "__agent_compaction_summary__";
+static const char* kMultimodalPrefix = "__AGENT_MM_V1__";
+
+static uint8_t tl_parse_multimodal_prefix(
+  const char* content,
+  size_t content_len,
+  const char** out_text,
+  size_t* out_text_len,
+  const char** out_mm_json,
+  size_t* out_mm_json_len
+) {
+  if (out_text) *out_text = content;
+  if (out_text_len) *out_text_len = content_len;
+  if (out_mm_json) *out_mm_json = NULL;
+  if (out_mm_json_len) *out_mm_json_len = 0;
+  if (!content || content_len == 0) return 0;
+  if (!out_text || !out_text_len || !out_mm_json || !out_mm_json_len) return 0;
+
+  const size_t prefix_len = strlen(kMultimodalPrefix);
+  if (content_len <= prefix_len) return 0;
+  if (memcmp(content, kMultimodalPrefix, prefix_len) != 0) return 0;
+
+  const char* nl = (const char*)memchr(content, '\n', content_len);
+  if (!nl) return 0;
+  const char* json_begin = content + prefix_len;
+  if (nl <= json_begin) return 0;
+  const size_t json_len = (size_t)(nl - json_begin);
+  const char* text = nl + 1;
+  const size_t text_len = content_len - (size_t)(text - content);
+
+  *out_mm_json = json_begin;
+  *out_mm_json_len = json_len;
+  *out_text = text;
+  *out_text_len = text_len;
+  return 1;
+}
 
 static size_t tl_u64_to_dec(char* out, size_t out_cap, unsigned long long x) {
   if (!out || out_cap == 0) return 0;
@@ -1640,14 +1675,42 @@ agent_status_t agent_tool_loop_run(
 
     // assistant_message event
     if (tl_events_enabled(hooks)) {
+      const char* content = presp.assistant_content.data ? presp.assistant_content.data : "";
+      size_t content_len = presp.assistant_content.len;
+      const char* assistant_text = content;
+      size_t assistant_text_len = content_len;
+      const char* mm_json = NULL;
+      size_t mm_json_len = 0;
+      const uint8_t has_mm = tl_parse_multimodal_prefix(
+        content,
+        content_len,
+        &assistant_text,
+        &assistant_text_len,
+        &mm_json,
+        &mm_json_len
+      );
+
       tl_buf_t d = {0};
       uint8_t first = 1;
       (void)tl_buf_append_char(&d, '{');
       (void)tl_json_append_u64_field(&d, "step", (unsigned long long)step, &first);
-      (void)tl_json_append_string_field(&d, "assistant_content",
-                                        presp.assistant_content.data ? presp.assistant_content.data : "",
-                                        presp.assistant_content.len, &first);
+      (void)tl_json_append_string_field(&d, "assistant_content", assistant_text, assistant_text_len, &first);
       (void)tl_json_append_u64_field(&d, "has_tool_calls", (unsigned long long)has_tool_calls, &first);
+      if (has_mm && mm_json && mm_json_len > 0) {
+        agent_string_t capped = {0};
+        uint8_t trunc = 0;
+        (void)tl_cap_output(hooks ? hooks->cap_tool_output_for_event : NULL,
+                            hooks ? hooks->cap_tool_output_for_event_ctx : NULL,
+                            mm_json, mm_json_len, max_capture, &capped, &trunc);
+        (void)tl_json_append_string_field(&d, "assistant_mm_json",
+                                          capped.data ? capped.data : "",
+                                          capped.len, &first);
+        (void)tl_json_append_u64_field(&d, "assistant_mm_truncated",
+                                       (unsigned long long)trunc, &first);
+        (void)tl_json_append_u64_field(&d, "assistant_mm_bytes",
+                                       (unsigned long long)mm_json_len, &first);
+        agent_string_free(&capped);
+      }
       (void)tl_buf_append_char(&d, '}');
       tl_emit_event(hooks, "assistant_message", d.data ? d.data : "{}");
       tl_buf_free(&d);
