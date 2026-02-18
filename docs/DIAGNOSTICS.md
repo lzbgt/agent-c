@@ -110,6 +110,8 @@ Notes:
 - `source.kind` is one of: `config`, `env`, or `file`.
 - `source.label` is a best-effort descriptor (e.g., `provider_keys`, `api_key`, `.not_in_repo`, `project.local.md`, `~/.env`).
 - `warning` is an optional provider-specific hint (e.g., Moonshot key detected but OpenRouter key missing).
+- `~/.env` is only consulted for provider **keys**; base URLs still come from flags/env/config. If no base URL is set, the
+  provider defaults to OpenAI-compatible.
 
 ## Endpoint: `/api/v1/diagnostics/provider_test`
 
