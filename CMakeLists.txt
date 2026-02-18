@@ -32,6 +32,7 @@ add_library(agent_core STATIC
   core/src/agent_session.c
   core/src/agent_session_codec.c
   core/src/agent_sha256.c
+  core/src/agent_sse_parser.c
   core/src/agent_string.c
   core/src/agent_tool_loop.c
   core/src/agent_tool_provider.c
@@ -118,7 +119,6 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     cli/src/openai_provider.cpp
     cli/src/openai_stream_decoder.cpp
     cli/src/openai_tool_provider.cpp
-    cli/src/sse_parser.cpp
     cli/src/session_store.cpp
     cli/src/summary_compaction.cpp
     cli/src/summary_llm.cpp
@@ -359,6 +359,7 @@ add_executable(agent_core_tests
   tests/test_json_c14n.c
   tests/test_session.c
   tests/test_session_codec.c
+  tests/test_sse_parser.c
   tests/test_tool_loop.c
   tests/test_tool_loop_memory_flush.c
   tests/test_runner.c
@@ -836,14 +837,6 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
     target_link_libraries(job_manager_tests PRIVATE ws2_32)
   endif()
   add_test(NAME job_manager_tests COMMAND job_manager_tests)
-
-  add_executable(sse_parser_tests
-    tests/test_sse_parser.cpp
-    cli/src/sse_parser.cpp
-  )
-  target_include_directories(sse_parser_tests PRIVATE cli/src)
-  add_test(NAME sse_parser_tests COMMAND sse_parser_tests)
-  set_tests_properties(sse_parser_tests PROPERTIES SKIP_RETURN_CODE 77)
 
   add_executable(tool_loop_compaction_tests
     tests/test_tool_loop_compaction.cpp

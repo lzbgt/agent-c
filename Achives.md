@@ -97,7 +97,7 @@ Completed milestones and notable tasks.
   - Added non-network smoke test for `/api/v1/tools` (`tests/agentd_tools_list_smoke.sh`)
 - Added first-cut assistant streaming (provider-dependent):
   - daemon supports `stream_assistant: true` for `tools="none"` and emits incremental `assistant_delta` events (`daemon/src/main.cpp`)
-  - added a small reusable SSE parser + unit test (`cli/src/sse_parser.cpp`, `tests/test_sse_parser.cpp`)
+  - added a small reusable SSE parser + unit test (`core/include/agent/sse_parser.h`, `tests/test_sse_parser.c`)
   - added an agentd integration smoke for assistant streaming (`tests/agentd_stream_assistant_smoke.sh`)
 - Added OpenRouter model catalog discovery via daemon for picking verification models:
   - `GET /api/v1/openrouter/models` filters by modalities+tool support and sorts by price (`daemon/src/main.cpp`)

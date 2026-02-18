@@ -5,7 +5,7 @@
 
 // Shared helpers for decoding OpenAI-compatible streaming (SSE) JSON chunks from Chat Completions.
 //
-// The SSE framing (`data: ...`) is handled by `SseParser`. These helpers operate on the JSON payload for each `data:` event.
+// The SSE framing (`data: ...`) is handled by `agent_sse_parser_t`. These helpers operate on the JSON payload for each `data:` event.
 
 struct OpenAIStreamToolCallDelta {
   int index = -1;               // tool call index (best-effort; -1 if unknown)
@@ -40,4 +40,3 @@ class OpenAIToolCallStreamAccumulator {
  private:
   std::vector<OpenAIStreamToolCall> calls_;
 };
-

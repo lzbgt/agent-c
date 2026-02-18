@@ -1,8 +1,7 @@
 #include "openai_client.h"
 
 #include "agent/agent.h"
-
-#include "sse_parser.h"
+#include "agent/sse_parser.h"
 
 #include <curl/curl.h>
 
@@ -272,13 +271,16 @@ static void emit_retry_event(
 }
 
 struct StreamingWriteCtx {
-  SseParser parser;
+  agent_sse_parser_t parser;
   OpenAIStreamChunkCallback on_chunk = nullptr;
   void* on_chunk_ctx = nullptr;
   std::string capture;
   size_t capture_limit = 0;
   bool saw_done = false;
   size_t chunks = 0;
+
+  StreamingWriteCtx() { agent_sse_parser_init(&parser); }
+  ~StreamingWriteCtx() { agent_sse_parser_free(&parser); }
 };
 
 static size_t write_stream_cb(char* ptr, size_t size, size_t nmemb, void* userdata) {
@@ -292,19 +294,29 @@ static size_t write_stream_cb(char* ptr, size_t size, size_t nmemb, void* userda
     ctx->capture.append(ptr, ptr + to_add);
   }
 
-  std::vector<SseEvent> events;
-  ctx->parser.feed(ptr, n, &events);
-  for (const auto& ev : events) {
-    const std::string data = ev.data;
+  agent_sse_event_t events[32] = {0};
+  size_t event_count = 0;
+  const agent_status_t st = agent_sse_parser_feed(&ctx->parser, ptr, n, events, 32, &event_count);
+  for (size_t i = 0; i < event_count; i++) {
+    const agent_sse_event_t* ev = &events[i];
+    const std::string data = (ev->data.data && ev->data.len > 0)
+      ? std::string(ev->data.data, ev->data.len)
+      : std::string();
     if (data == "[DONE]") {
       ctx->saw_done = true;
+      agent_sse_event_free(&events[i]);
       continue;
     }
-    if (data.empty()) continue;
-    ctx->chunks++;
-    if (ctx->on_chunk) {
-      ctx->on_chunk(ctx->on_chunk_ctx, data.data(), data.size());
+    if (!data.empty()) {
+      ctx->chunks++;
+      if (ctx->on_chunk) {
+        ctx->on_chunk(ctx->on_chunk_ctx, data.data(), data.size());
+      }
     }
+    agent_sse_event_free(&events[i]);
+  }
+  if (st == AGENT_ERR_LIMIT) {
+    // Drop excess events to avoid unbounded buffering.
   }
   return n;
 }
@@ -670,7 +682,7 @@ static OpenAIStreamResult http_post_json_stream(
     if (rc != CURLE_OK && have_proxy) {
       // Retry once with proxy disabled.
       wctx.capture.clear();
-      wctx.parser.reset();
+      agent_sse_parser_reset(&wctx.parser);
       wctx.saw_done = false;
       wctx.chunks = 0;
       header_cap.retry_after_ms = 0;

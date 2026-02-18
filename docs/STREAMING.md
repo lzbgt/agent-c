@@ -41,6 +41,12 @@ For OpenAI-compatible Chat Completions streaming, this repo attempts to preserve
 
 ## Interfaces
 
+Core SSE framing (portable, C API):
+
+- `core/include/agent/sse_parser.h`
+  - `agent_sse_parser_feed(...)`: incremental SSE framing; emits complete events
+  - `agent_sse_event_t`: `{event,id,data}` fields (data lines joined with `\n`)
+
 Shared decoder (host library, used by both CLI + daemon):
 
 - `cli/src/openai_stream_decoder.h`
@@ -57,3 +63,24 @@ Host streaming emits `assistant_delta` events (daemon SSE and tool-loop events a
 - `epoch` (number): retry/rotation epoch (daemon uses attempt index for `tools="none"`)
 
 The CLI streaming mode prints deltas to stdout (not an event stream), but uses the same decoded content deltas.
+
+## Compatibility matrix (variants)
+
+Decoder variants and how they are covered in tests:
+
+| Variant | Coverage | Evidence |
+| --- | --- | --- |
+| `delta.content` assistant text | Covered | `tests/test_openai_stream_decoder.cpp`, `tests/agent_local_stream_assistant_smoke.sh` |
+| `delta.tool_calls` fragmented args | Covered | `tests/test_openai_stream_decoder.cpp`, `tests/agent_local_stream_tool_loop_smoke.sh` |
+| Legacy `delta.function_call` | Covered | `tests/test_openai_stream_decoder.cpp`, `tests/test_openai_tool_provider_stream.cpp` |
+| `stream_options.include_usage` usage chunks | Covered | `tests/agentd_workflow_budget_tokens_stream_smoke.sh` |
+| Provider retry during stream (429) | Covered | `tests/agentd_stream_provider_retry_smoke.sh` |
+
+## Compatibility matrix (providers)
+
+Provider-level coverage is tracked by runnable smoke tests. These are **evidence of coverage**, not a blanket guarantee:
+
+| Provider | Streaming tested | Tool-call delta | Usage in stream | Evidence |
+| --- | --- | --- | --- | --- |
+| Local OpenAI-compatible stub | Yes | Yes | Yes | `tests/agent_local_stream_assistant_smoke.sh`, `tests/agent_local_stream_tool_loop_smoke.sh`, `tests/agentd_workflow_budget_tokens_stream_smoke.sh` |
+| DeepSeek (live) | Yes (assistant text) | Unknown | Unknown | `tests/agentd_stream_assistant_smoke.sh` (requires `DEEPSEEK_API_KEY`) |
