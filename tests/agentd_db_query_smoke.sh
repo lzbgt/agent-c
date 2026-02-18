@@ -518,6 +518,40 @@ if not any(isinstance(m, dict) and isinstance(m.get("content"), str) and "[clien
   raise SystemExit(1)
 PY
 
+sess="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/session?session_id=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("""'${SESSION_ID}'"""))')")"
+
+MM_JSON="${MM_JSON}" USER_TEXT="${USER_TEXT}" python3 - <<PY
+import json, os, sys
+obj = json.loads(r'''${sess}''')
+if not obj.get("ok"):
+  print("session failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+mm_json = os.environ["MM_JSON"]
+user_text = os.environ["USER_TEXT"]
+msgs = obj.get("messages") or []
+if not isinstance(msgs, list):
+  print("unexpected session messages", obj, file=sys.stderr)
+  raise SystemExit(1)
+found = False
+for m in msgs:
+  if not isinstance(m, dict):
+    continue
+  if (m.get("content") or "").strip() != user_text:
+    continue
+  if m.get("mm_json") != mm_json:
+    print("unexpected session mm_json", m, file=sys.stderr)
+    raise SystemExit(1)
+  if m.get("mm_bytes") != len(mm_json):
+    print("unexpected session mm_bytes", m, file=sys.stderr)
+    raise SystemExit(1)
+  found = True
+  break
+if not found:
+  print("missing session user mm message", msgs, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 db_client_events="$(curl -fsS --noproxy "*" --max-time 10 \
   "${DAEMON_URL}/api/v1/db/client_events?session_id=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("""'${SESSION_ID}'"""))')&limit=20&offset=0")"
 
