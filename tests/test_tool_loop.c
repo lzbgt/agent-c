@@ -92,23 +92,39 @@ static void event_counter_on_event(void* vctx, const char* type, const char* dat
 static const char* kMmPrefix = "__AGENT_MM_V1__";
 static const char* kMmJson = "{\"kind\":\"mm\",\"n\":1}";
 static const char* kMmText = "Hello from mm";
+static const char* kMmUserText = "Hello from user mm";
 
 typedef struct MmEventCtx {
   int saw_assistant;
+  int saw_user;
 } MmEventCtx;
 
 static void mm_event_on_event(void* vctx, const char* type, const char* data_json) {
   MmEventCtx* ctx = (MmEventCtx*)vctx;
-  if (!type || strcmp(type, "assistant_message") != 0) return;
-  ctx->saw_assistant = 1;
-  assert(data_json != NULL);
-  assert(strstr(data_json, "\"assistant_content\":\"Hello from mm\"") != NULL);
-  assert(strstr(data_json, "\"assistant_mm_truncated\":0") != NULL);
-  assert(strstr(data_json, "\"assistant_mm_json\":\"{\\\"kind\\\":\\\"mm\\\",\\\"n\\\":1}\"") != NULL);
+  if (!type) return;
+  if (strcmp(type, "assistant_message") == 0) {
+    ctx->saw_assistant = 1;
+    assert(data_json != NULL);
+    assert(strstr(data_json, "\"assistant_content\":\"Hello from mm\"") != NULL);
+    assert(strstr(data_json, "\"assistant_mm_truncated\":0") != NULL);
+    assert(strstr(data_json, "\"assistant_mm_json\":\"{\\\"kind\\\":\\\"mm\\\",\\\"n\\\":1}\"") != NULL);
 
-  char bytes_field[64];
-  snprintf(bytes_field, sizeof(bytes_field), "\"assistant_mm_bytes\":%zu", strlen(kMmJson));
-  assert(strstr(data_json, bytes_field) != NULL);
+    char bytes_field[64];
+    snprintf(bytes_field, sizeof(bytes_field), "\"assistant_mm_bytes\":%zu", strlen(kMmJson));
+    assert(strstr(data_json, bytes_field) != NULL);
+    return;
+  }
+  if (strcmp(type, "user_message") == 0) {
+    ctx->saw_user = 1;
+    assert(data_json != NULL);
+    assert(strstr(data_json, "\"user_content\":\"Hello from user mm\"") != NULL);
+    assert(strstr(data_json, "\"user_mm_truncated\":0") != NULL);
+    assert(strstr(data_json, "\"user_mm_json\":\"{\\\"kind\\\":\\\"mm\\\",\\\"n\\\":1}\"") != NULL);
+
+    char bytes_field[64];
+    snprintf(bytes_field, sizeof(bytes_field), "\"user_mm_bytes\":%zu", strlen(kMmJson));
+    assert(strstr(data_json, bytes_field) != NULL);
+  }
 }
 
 static uint8_t cancel_immediately(void* ctx) {
@@ -606,9 +622,14 @@ static void test_tool_loop_multimodal_event(void) {
   hooks.on_event = mm_event_on_event;
   hooks.on_event_ctx = &ectx;
 
+  char prompt[256];
+  const int wrote = snprintf(prompt, sizeof(prompt), "%s%s\n%s", kMmPrefix, kMmJson, kMmUserText);
+  assert(wrote > 0 && (size_t)wrote < sizeof(prompt));
+
   agent_tool_loop_result_t out = {0};
-  assert(agent_tool_loop_run(&provider, reg, &exec, seed, "hello", &opt, &hooks, &out) == AGENT_OK);
+  assert(agent_tool_loop_run(&provider, reg, &exec, seed, prompt, &opt, &hooks, &out) == AGENT_OK);
   assert(ectx.saw_assistant == 1);
+  assert(ectx.saw_user == 1);
 
   agent_tool_loop_result_free(&out);
   agent_session_destroy(seed);

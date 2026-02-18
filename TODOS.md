@@ -1,6 +1,6 @@
 # Roadmap / TODOs (highest leverage)
 
-Date: 2026-02-18
+Date: 2026-02-19
 
 This roadmap is biased toward “power unleashed” coming from the **agentic framework itself**:
 
@@ -84,8 +84,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Promoted goals (explicit goals; no non-goals)
 
-Weights updated 2026-02-18: prioritize **tool-loop event schema/migrations** (payload schema IDs + fixture enforcement + transcript coverage),
-then **streaming stability** (model pinning + provider guardrails),
+Weights updated 2026-02-19: prioritize **tool-loop transcript completion** (full multimodal coverage + schema migrations),
+then **streaming stability** (model pinning + provider guardrails + provider matrix upkeep),
 with **audio streaming** following once the streaming UX is stable.
 
 - [x] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker + agentd implemented; tests added).
