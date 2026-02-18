@@ -84,3 +84,5 @@ Provider-level coverage is tracked by runnable smoke tests. These are **evidence
 | --- | --- | --- | --- | --- |
 | Local OpenAI-compatible stub | Yes | Yes | Yes | `tests/agent_local_stream_assistant_smoke.sh`, `tests/agent_local_stream_tool_loop_smoke.sh`, `tests/agentd_workflow_budget_tokens_stream_smoke.sh` |
 | DeepSeek (live) | Yes (assistant text) | Unknown | Unknown | `tests/agentd_stream_assistant_smoke.sh` (requires `DEEPSEEK_API_KEY`) |
+| OpenRouter (live) | Yes (assistant text) | Unknown | Unknown | `tests/agentd_openrouter_stream_assistant_smoke.sh` (requires `OPENROUTER_API_KEY`) |
+| Moonshot (live) | Yes (assistant text) | Unknown | Unknown | `tests/agentd_moonshot_stream_assistant_smoke.sh` (requires `KIMI_API_KEY_CN` / `MOONSHOT_API_KEY`) |

@@ -97,6 +97,7 @@ now that **dynamic memory policy** and **OTA continuity guardrails** are in plac
 - [ ] Streaming: core-layer streaming interface + provider compatibility matrix with full variant coverage.
   - [x] Core SSE parser (`agent_sse_parser_t`) shared by CLI/daemon streaming paths.
   - [x] Compatibility matrix for streaming variants + provider coverage in `docs/STREAMING.md`.
+  - [x] OpenRouter + Moonshot streaming assistant smoke tests (key-gated).
 - [x] Memory architecture: dynamic retention policy (decay/salience/recaps) informed by claude-mem research + docs.
   - [x] Memory retention policy enforcement (daily logs + checkpoints) + endpoint + background engine.
   - [x] Structured memory deprecate pass (policy-driven; bounded) with broker fan-out.
