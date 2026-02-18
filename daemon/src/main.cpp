@@ -1762,6 +1762,10 @@ int main(int argc, char** argv) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_db_edge_analytics_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
+  server.handle("GET", "/api/v1/db/analytics/edge/export", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_db_edge_analytics_export_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
 
   server.handle("POST", "/api/v1/run", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();

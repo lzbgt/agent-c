@@ -263,6 +263,7 @@ When DB support is enabled, the daemon exposes read-only debugging endpoints:
 - `GET /api/v1/db/edge_workflow_events?workflow_id=...`
 - `GET /api/v1/db/analytics/workflows?scope=all`
 - `GET /api/v1/db/analytics/edge?active_within_ms=...`
+- `GET /api/v1/db/analytics/edge/export?format=json|csv&scope=all|edge_tasks|edge_nodes`
 
 These are intended for troubleshooting and UI indexing, not for core client functionality.
 

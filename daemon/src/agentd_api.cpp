@@ -583,6 +583,11 @@ bool AgentdApi::init(std::string* out_error) {
     const DaemonConfig cur = self->cfg_store->snapshot();
     handle_db_edge_analytics_endpoint(cur, self->cors_cfg, &self->db, req, resp);
   });
+  impl_->route("GET", "/api/v1/db/analytics/edge/export", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_db_edge_analytics_export_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
 
   // Run endpoints.
   impl_->route("POST", "/api/v1/run", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {

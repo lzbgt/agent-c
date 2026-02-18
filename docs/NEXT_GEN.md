@@ -90,7 +90,8 @@ tracked in `TODOS.md` as promoted workstreams:
 - Streaming: core-layer streaming interface + provider compatibility matrix with full variant coverage.
 - Audio streaming: Opus/WebRTC voice pipeline + broker relay + UI voice session controls.
 - Tool plugins: sandbox/isolation, Windows loader, and embedded/MCU-compatible plugin path.
-- Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
+- Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers
+  (see `docs/BLOB_STORAGE_TIERS.md`).
 - UI actions: stable public action API, autoplay unlock flow, and consented remote URL opens.
 - Memory: observation capture + progressive disclosure retrieval flow (search → timeline → get).
 - Interop/attestation: PKI provisioning + signed manifests/attestations + canonical JSON hashing + envelope confidentiality.

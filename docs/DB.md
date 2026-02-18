@@ -37,7 +37,8 @@ Note: the CLI (`./build/agent`) still uses the portable file-backed session stor
 ## Additional goals
 
 - Provide a full analytics layer (materialized views, aggregates, and common query helpers).
-- Support binary blobs (images/audio) with explicit size limits, storage tiers, and path-based fallbacks.
+- Support binary blobs (images/audio) with explicit size limits, storage tiers, and path-based fallbacks
+  (see `docs/BLOB_STORAGE_TIERS.md`).
 
 ## DB backend decision (why SQLite)
 
@@ -686,5 +687,6 @@ API when DB is enabled:
 - `GET /api/v1/db/edge_workflow_events?workflow_id=...`
 - `GET /api/v1/db/analytics/workflows?scope=all`
 - `GET /api/v1/db/analytics/edge?active_within_ms=...`
+- `GET /api/v1/db/analytics/edge/export?format=json|csv&scope=all|edge_tasks|edge_nodes`
 
 See `docs/DB_QUERY.md`.

@@ -271,6 +271,30 @@ Response fields:
   - `active_count` (number, optional when provided)
   - `last_heartbeat_min` / `last_heartbeat_max` (number|null)
 
+### Edge analytics exports (CSV/JSON)
+
+`GET /api/v1/db/analytics/edge/export?format=json|csv&scope=all|edge_tasks|edge_nodes&since_unix_ms=...&until_unix_ms=...&active_within_ms=...`
+
+Parameters:
+- `format` (default `json`): `json` or `csv`
+- `scope` (default `all`): `all`, `edge_tasks`, or `edge_nodes`
+- `since_unix_ms` / `until_unix_ms` (optional time window)
+- `active_within_ms` (optional): counts edge nodes with a heartbeat within the last N ms
+
+Response (JSON):
+- `ok` (boolean)
+- `generated_utc_ms` (number)
+- `scope` (string)
+- `since_unix_ms` / `until_unix_ms` (number|null)
+- `active_within_ms` (number|null)
+- `edge_tasks` (object, optional per scope): same fields as edge analytics aggregates
+- `edge_nodes` (object, optional per scope): same fields as edge analytics aggregates
+
+Response (CSV):
+- `Content-Type: text/csv`
+- Header: `section,metric,key,value`
+- Rows include `meta` entries (generated time + window), `edge_tasks` metrics, and `edge_nodes` metrics
+
 ### List artifacts
 
 `GET /api/v1/db/artifacts?session_id=...&limit=...&offset=...`

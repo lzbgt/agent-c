@@ -699,4 +699,35 @@ if "edge_tasks" not in obj or "edge_nodes" not in obj:
   raise SystemExit(1)
 PY
 
+db_edge_export_json="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/analytics/edge/export?format=json&scope=all&active_within_ms=600000")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${db_edge_export_json}''')
+if not obj.get("ok"):
+  print("db/analytics/edge/export json failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "generated_utc_ms" not in obj:
+  print("expected generated_utc_ms", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "edge_tasks" not in obj or "edge_nodes" not in obj:
+  print("expected edge_tasks + edge_nodes in export json", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+db_edge_export_csv="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/analytics/edge/export?format=csv&scope=edge_tasks&active_within_ms=600000")"
+
+python3 - <<PY
+import sys
+data = r'''${db_edge_export_csv}'''
+if "section,metric,key,value" not in data:
+  print("expected csv header in export", file=sys.stderr)
+  raise SystemExit(1)
+if "edge_tasks" not in data:
+  print("expected edge_tasks rows in export csv", file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 echo "agentd_db_query_smoke OK"

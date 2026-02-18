@@ -392,6 +392,199 @@ static bool query_edge_node_stats(
   if (out_stats) *out_stats = stats;
   return true;
 }
+
+static bool build_edge_task_stats(
+  sqlite3* db,
+  const TimeWindow& win,
+  Json::Value* out_stats,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_stats) *out_stats = Json::Value(Json::objectValue);
+  if (!db) {
+    if (out_error) *out_error = "db is null";
+    return false;
+  }
+
+  bool ok = true;
+  Json::Value stats(Json::objectValue);
+  Json::Value counts(Json::objectValue);
+  int64_t total = 0;
+  std::string err;
+
+  if (!query_status_counts(db, "edge_tasks", "updated_utc_ms", win, &counts, &total, &err)) {
+    stats["error"] = err.empty() ? "failed to query edge task counts" : err;
+    if (out_error && out_error->empty()) *out_error = stats["error"].asString();
+    ok = false;
+  } else {
+    stats["counts"] = counts;
+    stats["total"] = (Json::Int64)total;
+  }
+
+  Json::Value terminal(Json::objectValue);
+  err.clear();
+  if (!query_terminal_stats(db, "edge_tasks", "created_utc_ms", "updated_utc_ms", win, &terminal, &err)) {
+    stats["terminal_error"] = err.empty() ? "failed to query terminal stats" : err;
+    if (out_error && out_error->empty()) *out_error = stats["terminal_error"].asString();
+    ok = false;
+  } else {
+    stats["terminal"] = terminal;
+  }
+
+  int64_t error_count = 0;
+  err.clear();
+  if (!query_error_count(db, "edge_tasks", "updated_utc_ms", win, &error_count, &err)) {
+    stats["error_count_error"] = err.empty() ? "failed to query error count" : err;
+    if (out_error && out_error->empty()) *out_error = stats["error_count_error"].asString();
+    ok = false;
+  } else {
+    stats["error_count"] = (Json::Int64)error_count;
+    const int64_t terminal_count = terminal.isMember("count") ? terminal["count"].asInt64() : 0;
+    if (terminal_count > 0) {
+      stats["error_rate"] = (double)error_count / (double)terminal_count;
+    } else {
+      stats["error_rate"] = Json::Value(Json::nullValue);
+    }
+  }
+
+  if (out_stats) *out_stats = stats;
+  return ok;
+}
+
+static bool build_edge_node_stats(
+  sqlite3* db,
+  const TimeWindow& win,
+  int64_t active_within_ms,
+  Json::Value* out_stats,
+  std::string* out_error
+) {
+  if (out_error) out_error->clear();
+  if (out_stats) *out_stats = Json::Value(Json::objectValue);
+  if (!db) {
+    if (out_error) *out_error = "db is null";
+    return false;
+  }
+  Json::Value stats(Json::objectValue);
+  std::string err;
+  if (!query_edge_node_stats(db, win, active_within_ms, &stats, &err)) {
+    if (out_error) *out_error = err.empty() ? "failed to query edge node stats" : err;
+    return false;
+  }
+  if (out_stats) *out_stats = stats;
+  return true;
+}
+
+static int64_t now_utc_ms() {
+  return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+           std::chrono::system_clock::now().time_since_epoch())
+    .count();
+}
+
+static std::string json_scalar_to_string(const Json::Value& v) {
+  if (v.isString()) return v.asString();
+  if (v.isBool()) return v.asBool() ? "true" : "false";
+  if (v.isInt64()) return std::to_string(v.asInt64());
+  if (v.isUInt64()) return std::to_string(v.asUInt64());
+  if (v.isInt()) return std::to_string(v.asInt());
+  if (v.isUInt()) return std::to_string(v.asUInt());
+  if (v.isDouble()) return std::to_string(v.asDouble());
+  if (v.isNull()) return "";
+  return json_stringify(v);
+}
+
+static std::string csv_escape(const std::string& v) {
+  if (v.find_first_of(",\"\n\r") == std::string::npos) return v;
+  std::string out = "\"";
+  out.reserve(v.size() + 2);
+  for (char c : v) {
+    if (c == '"') out += "\"\"";
+    else out.push_back(c);
+  }
+  out.push_back('"');
+  return out;
+}
+
+static void append_csv_row(
+  std::string* out,
+  const std::string& section,
+  const std::string& metric,
+  const std::string& key,
+  const std::string& value
+) {
+  if (!out) return;
+  out->append(csv_escape(section));
+  out->push_back(',');
+  out->append(csv_escape(metric));
+  out->push_back(',');
+  out->append(csv_escape(key));
+  out->push_back(',');
+  out->append(csv_escape(value));
+  out->push_back('\n');
+}
+
+static void append_edge_task_csv(const Json::Value& stats, std::string* out) {
+  if (!out) return;
+  if (stats.isObject() && stats.isMember("error")) {
+    append_csv_row(out, "edge_tasks", "error", "", json_scalar_to_string(stats["error"]));
+  }
+  const Json::Value counts = stats.get("counts", Json::Value(Json::objectValue));
+  if (counts.isObject()) {
+    const auto names = counts.getMemberNames();
+    for (const auto& name : names) {
+      append_csv_row(out, "edge_tasks", "status_count", name, json_scalar_to_string(counts[name]));
+    }
+  }
+  if (stats.isMember("total")) {
+    append_csv_row(out, "edge_tasks", "total", "", json_scalar_to_string(stats["total"]));
+  }
+  const Json::Value terminal = stats.get("terminal", Json::Value(Json::objectValue));
+  if (terminal.isObject()) {
+    if (terminal.isMember("count")) {
+      append_csv_row(out, "edge_tasks", "terminal_count", "", json_scalar_to_string(terminal["count"]));
+    }
+    if (terminal.isMember("avg_ms")) {
+      append_csv_row(out, "edge_tasks", "terminal_avg_ms", "", json_scalar_to_string(terminal["avg_ms"]));
+    }
+    if (terminal.isMember("min_ms")) {
+      append_csv_row(out, "edge_tasks", "terminal_min_ms", "", json_scalar_to_string(terminal["min_ms"]));
+    }
+    if (terminal.isMember("max_ms")) {
+      append_csv_row(out, "edge_tasks", "terminal_max_ms", "", json_scalar_to_string(terminal["max_ms"]));
+    }
+  }
+  if (stats.isMember("error_count")) {
+    append_csv_row(out, "edge_tasks", "error_count", "", json_scalar_to_string(stats["error_count"]));
+  }
+  if (stats.isMember("error_rate")) {
+    append_csv_row(out, "edge_tasks", "error_rate", "", json_scalar_to_string(stats["error_rate"]));
+  }
+  if (stats.isMember("terminal_error")) {
+    append_csv_row(out, "edge_tasks", "terminal_error", "", json_scalar_to_string(stats["terminal_error"]));
+  }
+  if (stats.isMember("error_count_error")) {
+    append_csv_row(out, "edge_tasks", "error_count_error", "", json_scalar_to_string(stats["error_count_error"]));
+  }
+}
+
+static void append_edge_node_csv(const Json::Value& stats, std::string* out) {
+  if (!out) return;
+  if (stats.isObject() && stats.isMember("error")) {
+    append_csv_row(out, "edge_nodes", "error", "", json_scalar_to_string(stats["error"]));
+  }
+  const std::vector<std::string> keys = {
+    "total",
+    "window_count",
+    "active_within_ms",
+    "active_count",
+    "last_heartbeat_min",
+    "last_heartbeat_max",
+  };
+  for (const auto& key : keys) {
+    if (stats.isMember(key)) {
+      append_csv_row(out, "edge_nodes", key, "", json_scalar_to_string(stats[key]));
+    }
+  }
+}
 #endif
 
 }  // namespace
@@ -1037,45 +1230,117 @@ void handle_db_edge_analytics_endpoint(
   out["active_within_ms"] = active_within_ms > 0 ? Json::Value((Json::Int64)active_within_ms) : Json::Value(Json::nullValue);
 
   Json::Value task_stats(Json::objectValue);
-  Json::Value counts(Json::objectValue);
-  int64_t total = 0;
-  std::string err;
-  if (!query_status_counts(h.db, "edge_tasks", "updated_utc_ms", win, &counts, &total, &err)) {
-    task_stats["error"] = err.empty() ? "failed to query edge task counts" : err;
-  } else {
-    task_stats["counts"] = counts;
-    task_stats["total"] = (Json::Int64)total;
-    Json::Value terminal(Json::objectValue);
-    err.clear();
-    if (!query_terminal_stats(h.db, "edge_tasks", "created_utc_ms", "updated_utc_ms", win, &terminal, &err)) {
-      task_stats["terminal_error"] = err.empty() ? "failed to query terminal stats" : err;
-    } else {
-      task_stats["terminal"] = terminal;
-    }
-    int64_t error_count = 0;
-    err.clear();
-    if (!query_error_count(h.db, "edge_tasks", "updated_utc_ms", win, &error_count, &err)) {
-      task_stats["error_count_error"] = err.empty() ? "failed to query error count" : err;
-    } else {
-      task_stats["error_count"] = (Json::Int64)error_count;
-      const int64_t terminal_count = terminal.isMember("count") ? terminal["count"].asInt64() : 0;
-      if (terminal_count > 0) {
-        task_stats["error_rate"] = (double)error_count / (double)terminal_count;
-      } else {
-        task_stats["error_rate"] = Json::Value(Json::nullValue);
-      }
-    }
-  }
-  out["edge_tasks"] = task_stats;
-
   Json::Value node_stats(Json::objectValue);
+  std::string err;
+  (void)build_edge_task_stats(h.db, win, &task_stats, &err);
+  out["edge_tasks"] = task_stats;
   err.clear();
-  if (!query_edge_node_stats(h.db, win, active_within_ms, &node_stats, &err)) {
+  if (!build_edge_node_stats(h.db, win, active_within_ms, &node_stats, &err)) {
     node_stats["error"] = err.empty() ? "failed to query edge node stats" : err;
   }
   out["edge_nodes"] = node_stats;
 
   resp->status = 200;
+  resp->body = json_stringify(out);
+  return;
+#endif
+}
+
+void handle_db_edge_analytics_export_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  const std::string format = query_get(req.query, "format").value_or("json");
+  const std::string scope = query_get(req.query, "scope").value_or("all");
+  if (format != "json" && format != "csv") {
+    resp->status = 400;
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    resp->body = R"({"ok":false,"error":"invalid format (use json or csv)"})";
+    return;
+  }
+  if (scope != "all" && scope != "edge_tasks" && scope != "edge_nodes") {
+    resp->status = 400;
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    resp->body = R"({"ok":false,"error":"invalid scope (use all, edge_tasks, or edge_nodes)"})";
+    return;
+  }
+
+  int64_t active_within_ms = 0;
+  (void)parse_i64_param(query_get(req.query, "active_within_ms"), &active_within_ms);
+  if (active_within_ms < 0) active_within_ms = 0;
+  const TimeWindow win = parse_time_window(req);
+
+  DbHandle h;
+  Json::Value o = open_db_or_error(db_or_null, &h, nullptr);
+  if (!o.isObject() || !o.get("ok", false).asBool()) {
+    const int st = o.isMember("rpc_status") && o["rpc_status"].isInt() ? o["rpc_status"].asInt() : 500;
+    resp->status = st;
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    resp->body = json_stringify(o);
+    return;
+  }
+
+#if !defined(AGENT_HAVE_SQLITE3)
+  resp->status = 500;
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  return;
+#else
+  Json::Value task_stats(Json::objectValue);
+  Json::Value node_stats(Json::objectValue);
+  std::string err;
+  if (scope == "all" || scope == "edge_tasks") {
+    (void)build_edge_task_stats(h.db, win, &task_stats, &err);
+  }
+  err.clear();
+  if (scope == "all" || scope == "edge_nodes") {
+    if (!build_edge_node_stats(h.db, win, active_within_ms, &node_stats, &err)) {
+      node_stats["error"] = err.empty() ? "failed to query edge node stats" : err;
+    }
+  }
+
+  const int64_t generated_ms = now_utc_ms();
+
+  if (format == "csv") {
+    resp->status = 200;
+    resp->headers["Content-Type"] = "text/csv; charset=utf-8";
+    resp->headers["Content-Disposition"] = "attachment; filename=\"edge_analytics_export.csv\"";
+    std::string out;
+    out.reserve(2048);
+    out.append("section,metric,key,value\n");
+    append_csv_row(&out, "meta", "generated_utc_ms", "", std::to_string(generated_ms));
+    if (win.has_since) append_csv_row(&out, "meta", "since_unix_ms", "", std::to_string(win.since));
+    if (win.has_until) append_csv_row(&out, "meta", "until_unix_ms", "", std::to_string(win.until));
+    if (active_within_ms > 0) {
+      append_csv_row(&out, "meta", "active_within_ms", "", std::to_string(active_within_ms));
+    }
+    if (scope == "all" || scope == "edge_tasks") {
+      append_edge_task_csv(task_stats, &out);
+    }
+    if (scope == "all" || scope == "edge_nodes") {
+      append_edge_node_csv(node_stats, &out);
+    }
+    resp->body = std::move(out);
+    return;
+  }
+
+  resp->status = 200;
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  Json::Value out(Json::objectValue);
+  out["ok"] = true;
+  out["generated_utc_ms"] = (Json::Int64)generated_ms;
+  out["since_unix_ms"] = win.has_since ? Json::Value((Json::Int64)win.since) : Json::Value(Json::nullValue);
+  out["until_unix_ms"] = win.has_until ? Json::Value((Json::Int64)win.until) : Json::Value(Json::nullValue);
+  out["active_within_ms"] = active_within_ms > 0 ? Json::Value((Json::Int64)active_within_ms) : Json::Value(Json::nullValue);
+  out["scope"] = scope;
+  if (scope == "all" || scope == "edge_tasks") out["edge_tasks"] = task_stats;
+  if (scope == "all" || scope == "edge_nodes") out["edge_nodes"] = node_stats;
   resp->body = json_stringify(out);
   return;
 #endif

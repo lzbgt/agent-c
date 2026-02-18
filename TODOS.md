@@ -1,6 +1,6 @@
 # Roadmap / TODOs (highest leverage)
 
-Date: 2026-02-17
+Date: 2026-02-18
 
 This roadmap is biased toward “power unleashed” coming from the **agentic framework itself**:
 
@@ -92,7 +92,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
     with docs + smoke tests.
   - [x] Add edge workflow DB query endpoints + workflow analytics aggregates (counts, latency, error rates).
   - [x] Add edge task/edge node analytics aggregates (counts, latency, error rates).
-  - [ ] Next: add binary blob storage tiering plan + edge task/node analytics exports (CSV/JSON bundles).
+  - [x] Add binary blob storage tiering plan (`docs/BLOB_STORAGE_TIERS.md`).
+  - [x] Add edge task/node analytics exports (CSV/JSON bundles).
+  - [ ] Next: implement blob_manifest schema + local blob store v0 (upload + read + ref-count GC).
+  - [ ] Next: add workflow analytics export bundles (CSV/JSON) for durable + edge workflows.
 - [x] UI actions: stable public action API, autoplay unlock flow, and consented remote URL opens.
 - [x] Memory privacy tags (`<private>`) to keep sensitive content out of durable storage (claude-mem inspired).
 - [x] Memory progressive disclosure + citation surfacing for dynamic context assembly (claude-mem inspired).
