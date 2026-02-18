@@ -99,6 +99,32 @@ struct DaemonConfig {
   std::string sessions_root_dir;
   // Session upload limit (per-file, decoded bytes). 0 means "no explicit per-file limit".
   size_t upload_max_bytes = 32 * 1024 * 1024;
+  // Blob object store (S3/MinIO) configuration.
+  //
+  // Modes:
+  // - local (default): store blobs in the local filesystem only.
+  // - object: store blobs in an object store (optionally keep local cache based on cache_mode).
+  std::string blob_store_mode = "local";
+  std::string blob_store_endpoint; // e.g. https://s3.us-east-1.amazonaws.com or http://localhost:9000
+  std::string blob_store_region = "us-east-1";
+  std::string blob_store_bucket;
+  std::string blob_store_prefix = "blobs/sha256";
+  bool blob_store_path_style = true; // path-style bucket addressing (MinIO-friendly)
+  // Read behavior when tier=object and local blob is missing.
+  // - redirect: 302 to presigned URL
+  // - proxy: agentd fetches the object and returns bytes (bounded)
+  std::string blob_store_read_mode = "redirect";
+  // Cache behavior for object tier.
+  // - none: do not keep local cache on upload or read
+  // - read-through: fetch missing objects into local cache (bounded)
+  std::string blob_store_cache_mode = "read-through";
+  size_t blob_store_cache_max_bytes = 32 * 1024 * 1024;
+  int64_t blob_store_presign_ttl_sec = 900;
+  int64_t blob_store_timeout_ms = 60000;
+  // Secrets (runtime-only; do not expose via /api/v1/config).
+  std::string blob_store_access_key;
+  std::string blob_store_secret_key;
+  std::string blob_store_session_token;
 
   // Optional troubleshooting DB mirror (SQLite). When set, agentd mirrors sessions/runs/events into this DB.
   // As of 2026-01-31, the DB is intended to be the canonical daemon state store.

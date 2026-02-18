@@ -777,6 +777,10 @@ struct AgentdService::Impl {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_db_workflow_analytics_endpoint(cur, cors_cfg, &db, req, resp);
     });
+    server.handle("GET", "/api/v1/db/analytics/workflows/export", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_db_workflow_analytics_export_endpoint(cur, cors_cfg, &db, req, resp);
+    });
     server.handle("GET", "/api/v1/db/analytics/edge", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_db_edge_analytics_endpoint(cur, cors_cfg, &db, req, resp);

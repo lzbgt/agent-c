@@ -262,17 +262,18 @@ When DB support is enabled, the daemon exposes read-only debugging endpoints:
 - `GET /api/v1/db/edge_workflow_steps?workflow_id=...`
 - `GET /api/v1/db/edge_workflow_events?workflow_id=...`
 - `GET /api/v1/db/analytics/workflows?scope=all`
+- `GET /api/v1/db/analytics/workflows/export?format=json|csv&scope=all|durable|edge`
 - `GET /api/v1/db/analytics/edge?active_within_ms=...`
 - `GET /api/v1/db/analytics/edge/export?format=json|csv&scope=all|edge_tasks|edge_nodes`
 
 These are intended for troubleshooting and UI indexing, not for core client functionality.
 
-### Blob endpoints (optional; local-only v0)
+### Blob endpoints (optional; local + object-store tiers)
 
-When blob storage is enabled (default v0 local tier), the daemon exposes blob APIs:
+When blob storage is enabled (default local tier), the daemon exposes blob APIs:
 
 - `POST /api/v1/blob/upload` (JSON with `data_base64`, or raw bytes; capped by `upload_max_bytes`)
-- `GET /api/v1/blob?blob_id=...` (supports `Range`)
+- `GET /api/v1/blob?blob_id=...` (supports `Range`; object-store mode may redirect or proxy)
 - `GET /api/v1/blob/meta?blob_id=...`
 - `POST /api/v1/blob/retain` (adjust ref count)
 - `POST /api/v1/blob/gc` (ref-count GC sweep)

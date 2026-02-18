@@ -124,6 +124,50 @@ bool load_runtime_config_best_effort(
           cfg_io->upload_max_bytes = clamp_upload_max_bytes((unsigned long long)n);
         }
       }
+      if (opt.override_blob_store) {
+        if (v.isMember("blob_store_mode") && v["blob_store_mode"].isString()) {
+          cfg_io->blob_store_mode = v["blob_store_mode"].asString();
+        }
+        if (v.isMember("blob_store_endpoint") && v["blob_store_endpoint"].isString()) {
+          cfg_io->blob_store_endpoint = v["blob_store_endpoint"].asString();
+        }
+        if (v.isMember("blob_store_region") && v["blob_store_region"].isString()) {
+          cfg_io->blob_store_region = v["blob_store_region"].asString();
+        }
+        if (v.isMember("blob_store_bucket") && v["blob_store_bucket"].isString()) {
+          cfg_io->blob_store_bucket = v["blob_store_bucket"].asString();
+        }
+        if (v.isMember("blob_store_prefix") && v["blob_store_prefix"].isString()) {
+          cfg_io->blob_store_prefix = v["blob_store_prefix"].asString();
+        }
+        if (v.isMember("blob_store_path_style") && v["blob_store_path_style"].isBool()) {
+          cfg_io->blob_store_path_style = v["blob_store_path_style"].asBool();
+        }
+        if (v.isMember("blob_store_read_mode") && v["blob_store_read_mode"].isString()) {
+          cfg_io->blob_store_read_mode = v["blob_store_read_mode"].asString();
+        }
+        if (v.isMember("blob_store_cache_mode") && v["blob_store_cache_mode"].isString()) {
+          cfg_io->blob_store_cache_mode = v["blob_store_cache_mode"].asString();
+        }
+        if (v.isMember("blob_store_cache_max_bytes") && (v["blob_store_cache_max_bytes"].isInt64() || v["blob_store_cache_max_bytes"].isUInt64())) {
+          const auto n = v["blob_store_cache_max_bytes"].isInt64()
+            ? std::max<int64_t>(0, v["blob_store_cache_max_bytes"].asInt64())
+            : (int64_t)v["blob_store_cache_max_bytes"].asUInt64();
+          cfg_io->blob_store_cache_max_bytes = clamp_upload_max_bytes((unsigned long long)n);
+        }
+        if (v.isMember("blob_store_presign_ttl_sec") && (v["blob_store_presign_ttl_sec"].isInt64() || v["blob_store_presign_ttl_sec"].isUInt64())) {
+          const auto n = v["blob_store_presign_ttl_sec"].isInt64()
+            ? std::max<int64_t>(0, v["blob_store_presign_ttl_sec"].asInt64())
+            : (int64_t)v["blob_store_presign_ttl_sec"].asUInt64();
+          cfg_io->blob_store_presign_ttl_sec = std::min<int64_t>(604800, n);
+        }
+        if (v.isMember("blob_store_timeout_ms") && (v["blob_store_timeout_ms"].isInt64() || v["blob_store_timeout_ms"].isUInt64())) {
+          const auto n = v["blob_store_timeout_ms"].isInt64()
+            ? std::max<int64_t>(0, v["blob_store_timeout_ms"].asInt64())
+            : (int64_t)v["blob_store_timeout_ms"].asUInt64();
+          cfg_io->blob_store_timeout_ms = std::min<int64_t>(30LL * 60 * 1000, n);
+        }
+      }
       if (v.isMember("tool_call_limits_default") && v["tool_call_limits_default"].isArray()) {
         cfg_io->tool_call_limits_default.clear();
         const Json::Value arr = v["tool_call_limits_default"];
@@ -260,6 +304,20 @@ bool load_runtime_config_best_effort(
           cfg_io->edge_auth_ed25519_pubkeys[kid] = s;
         }
       }
+
+      // Blob store secrets (object store credentials).
+      if (v.isMember("blob_store") && v["blob_store"].isObject()) {
+        const Json::Value& bs = v["blob_store"];
+        if (bs.isMember("access_key") && bs["access_key"].isString()) {
+          cfg_io->blob_store_access_key = trim_copy(bs["access_key"].asString());
+        }
+        if (bs.isMember("secret_key") && bs["secret_key"].isString()) {
+          cfg_io->blob_store_secret_key = trim_copy(bs["secret_key"].asString());
+        }
+        if (bs.isMember("session_token") && bs["session_token"].isString()) {
+          cfg_io->blob_store_session_token = trim_copy(bs["session_token"].asString());
+        }
+      }
     }
   }
 
@@ -281,6 +339,17 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
   v["max_tool_call_args_chars_default"] = (Json::UInt64)cfg.max_tool_call_args_chars_default;
   v["timeout_ms"] = (Json::Int64)cfg.timeout_ms;
   v["upload_max_bytes"] = (Json::UInt64)cfg.upload_max_bytes;
+  v["blob_store_mode"] = cfg.blob_store_mode;
+  v["blob_store_endpoint"] = cfg.blob_store_endpoint.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.blob_store_endpoint);
+  v["blob_store_region"] = cfg.blob_store_region;
+  v["blob_store_bucket"] = cfg.blob_store_bucket.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.blob_store_bucket);
+  v["blob_store_prefix"] = cfg.blob_store_prefix;
+  v["blob_store_path_style"] = cfg.blob_store_path_style;
+  v["blob_store_read_mode"] = cfg.blob_store_read_mode;
+  v["blob_store_cache_mode"] = cfg.blob_store_cache_mode;
+  v["blob_store_cache_max_bytes"] = (Json::UInt64)cfg.blob_store_cache_max_bytes;
+  v["blob_store_presign_ttl_sec"] = (Json::Int64)cfg.blob_store_presign_ttl_sec;
+  v["blob_store_timeout_ms"] = (Json::Int64)cfg.blob_store_timeout_ms;
   v["edge_auth_required"] = cfg.edge_auth_required;
   v["edge_auth_require_ts"] = cfg.edge_auth_require_ts;
   v["edge_auth_max_skew_ms"] = (Json::Int64)cfg.edge_auth_max_skew_ms;
@@ -348,6 +417,13 @@ bool save_runtime_secrets_best_effort(AgentDb& db, const DaemonConfig& cfg, std:
       ek[p.first] = p.second;
     }
     if (!ek.empty()) v["edge_auth_ed25519_pubkeys"] = ek;
+  }
+  if (!cfg.blob_store_access_key.empty() || !cfg.blob_store_secret_key.empty() || !cfg.blob_store_session_token.empty()) {
+    Json::Value bs(Json::objectValue);
+    if (!cfg.blob_store_access_key.empty()) bs["access_key"] = cfg.blob_store_access_key;
+    if (!cfg.blob_store_secret_key.empty()) bs["secret_key"] = cfg.blob_store_secret_key;
+    if (!cfg.blob_store_session_token.empty()) bs["session_token"] = cfg.blob_store_session_token;
+    v["blob_store"] = bs;
   }
 
   Json::StreamWriterBuilder wb;

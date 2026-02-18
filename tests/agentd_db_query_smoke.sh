@@ -685,6 +685,37 @@ if "durable" not in obj or "edge" not in obj:
   raise SystemExit(1)
 PY
 
+db_workflow_export_json="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/analytics/workflows/export?format=json&scope=all")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${db_workflow_export_json}''')
+if not obj.get("ok"):
+  print("db/analytics/workflows/export json failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "generated_utc_ms" not in obj:
+  print("expected generated_utc_ms in workflow export", obj, file=sys.stderr)
+  raise SystemExit(1)
+if "durable" not in obj or "edge" not in obj:
+  print("expected durable+edge in workflow export", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+db_workflow_export_csv="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/analytics/workflows/export?format=csv&scope=durable")"
+
+python3 - <<PY
+import sys
+data = r'''${db_workflow_export_csv}'''
+if "section,metric,key,value" not in data:
+  print("expected csv header in workflow export", file=sys.stderr)
+  raise SystemExit(1)
+if "durable" not in data:
+  print("expected durable rows in workflow export csv", file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 db_edge_analytics="$(curl -fsS --noproxy "*" --max-time 10 \
   "${DAEMON_URL}/api/v1/db/analytics/edge?active_within_ms=600000")"
 

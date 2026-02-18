@@ -1,0 +1,690 @@
+<!DOCTYPE html>
+    <html xmlns="http://www.w3.org/1999/xhtml" lang="en-US"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8" /><title>Signature Calculations for the Authorization Header: Transferring Payload in a Single Chunk (AWS Signature Version 4) - Amazon Simple Storage Service</title><meta name="viewport" content="width=device-width,initial-scale=1" /><meta name="assets_root" content="/assets" /><meta name="target_state" content="sig-v4-header-based-auth" /><meta name="default_state" content="sig-v4-header-based-auth" /><link rel="icon" type="image/ico" href="/assets/images/favicon.ico" /><link rel="shortcut icon" type="image/ico" href="/assets/images/favicon.ico" /><link rel="canonical" href="https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html" /><meta name="description" content="Authenticate requests using the HTTP authorization header to compute a checksum for smaller payloads." /><meta name="deployment_region" content="IAD" /><meta name="product" content="Amazon Simple Storage Service" /><meta name="guide" content="API Reference" /><meta name="abstract" content="Explains how to use the Amazon S3 API to store data in the cloud." /><meta name="guide-locale" content="en_us" /><meta name="tocs" content="toc-contents.json" /><link rel="canonical" href="https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html" /><link rel="alternative" href="https://docs.aws.amazon.com/id_id/AmazonS3/latest/API/sig-v4-header-based-auth.html" hreflang="id-id" /><link rel="alternative" href="https://docs.aws.amazon.com/id_id/AmazonS3/latest/API/sig-v4-header-based-auth.html" hreflang="id" /><link rel="alternative" href="https://docs.aws.amazon.com/de_de/AmazonS3/latest/API/sig-v4-header-based-auth.html" hreflang="de-de" /><link rel="alternative" href="https://docs.aws.amazon.com/de_de/AmazonS3/latest/API/sig-v4-header-based-auth.html" hreflang="de" /><link rel="alternative" href="https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html" hreflang="en-us" /><link rel="alternative" href="https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html" hreflang="en" /><link rel="alternative" href="https://docs.aws.amazon.com/es_es/AmazonS3/latest/API/sig-v4-header-based-auth.html" hreflang="es-es" /><link rel="alternative" href="https://docs.aws.amazon.com/es_es/AmazonS3/latest/API/sig-v4-header-based-auth.html" hreflang="es" /><link rel="alternative" href="https://docs.aws.amazon.com/fr_fr/AmazonS3/latest/API/sig-v4-header-based-auth.html" hreflang="fr-fr" /><link rel="alternative" href="https://docs.aws.amazon.com/fr_fr/AmazonS3/latest/API/sig-v4-header-based-auth.html" hreflang="fr" /><link rel="alternative" href="https://docs.aws.amazon.com/it_it/AmazonS3/latest/API/sig-v4-header-based-auth.html" hreflang="it-it" /><link rel="alternative" href="https://docs.aws.amazon.com/it_it/AmazonS3/latest/API/sig-v4-header-based-auth.html" hreflang="it" /><link rel="alternative" href="https://docs.aws.amazon.com/ja_jp/AmazonS3/latest/API/sig-v4-header-based-auth.html" hreflang="ja-jp" /><link rel="alternative" href="https://docs.aws.amazon.com/ja_jp/AmazonS3/latest/API/sig-v4-header-based-auth.html" hreflang="ja" /><link rel="alternative" href="https://docs.aws.amazon.com/ko_kr/AmazonS3/latest/API/sig-v4-header-based-auth.html" hreflang="ko-kr" /><link rel="alternative" href="https://docs.aws.amazon.com/ko_kr/AmazonS3/latest/API/sig-v4-header-based-auth.html" hreflang="ko" /><link rel="alternative" href="https://docs.aws.amazon.com/pt_br/AmazonS3/latest/API/sig-v4-header-based-auth.html" hreflang="pt-br" /><link rel="alternative" href="https://docs.aws.amazon.com/pt_br/AmazonS3/latest/API/sig-v4-header-based-auth.html" hreflang="pt" /><link rel="alternative" href="https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/API/sig-v4-header-based-auth.html" hreflang="zh-cn" /><link rel="alternative" href="https://docs.aws.amazon.com/zh_tw/AmazonS3/latest/API/sig-v4-header-based-auth.html" hreflang="zh-tw" /><link rel="alternative" href="https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-header-based-auth.html" hreflang="x-default" /><meta name="feedback-item" content="S3" /><meta name="this_doc_product" content="Amazon Simple Storage Service" /><meta name="this_doc_guide" content="API Reference" /><head xmlns="http://www.w3.org/1999/xhtml"> <script defer="" src="/assets/r/awsdocs-doc-page.2.0.0.js"></script><link href="/assets/r/awsdocs-doc-page.2.0.0.css" rel="stylesheet"/></head>
+<script defer="" id="awsc-panorama-bundle" type="text/javascript" src="https://prod.pa.cdn.uis.awsstatic.com/panorama-nav-init.js" data-config="{'appEntity':'aws-documentation','region':'us-east-1','service':'s3'}"></script><meta id="panorama-serviceSubSection" value="API Reference" /><meta id="panorama-serviceConsolePage" value="Signature Calculations for the Authorization Header: Transferring Payload in a Single Chunk (AWS Signature Version 4)" /></head><body class="awsdocs awsui"><div class="awsdocs-container"><awsdocs-header></awsdocs-header><awsui-app-layout id="app-layout" class="awsui-util-no-gutters" ng-controller="ContentController as $ctrl" header-selector="awsdocs-header" navigation-hide="false" navigation-width="$ctrl.navWidth" navigation-open="$ctrl.navOpen" navigation-change="$ctrl.onNavChange($event)" tools-hide="$ctrl.hideTools" tools-width="$ctrl.toolsWidth" tools-open="$ctrl.toolsOpen" tools-change="$ctrl.onToolsChange($event)"><div id="guide-toc" dom-region="navigation"><awsdocs-toc></awsdocs-toc></div><div id="main-column" dom-region="content" tabindex="-1"><awsdocs-view class="awsdocs-view"><div id="awsdocs-content"><head><title>Signature Calculations for the Authorization Header: Transferring Payload in a Single Chunk (AWS Signature Version 4) - Amazon Simple Storage Service</title><meta name="pdf" content="/pdfs/AmazonS3/latest/API/s3-api.pdf#sig-v4-header-based-auth" /><meta name="forums" content="https://repost.aws/tags/TADSTjraA0Q4-a1dxk6eUYaw" /><meta name="feedback" content="https://docs.aws.amazon.com/forms/aws-doc-feedback?hidden_service_name=S3&amp;topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/sig-v4-header-based-auth.html" /><meta name="feedback-yes" content="feedbackyes.html?topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/sig-v4-header-based-auth.html" /><meta name="feedback-no" content="feedbackno.html?topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/sig-v4-header-based-auth.html" /><meta name="keywords" content="AWS request authentication process,HTTP Authorization header,Query string parameters for authentication,Signing Requests" /><script type="application/ld+json">
+{
+    "@context" : "https://schema.org",
+    "@type" : "BreadcrumbList",
+    "itemListElement" : [
+      {
+        "@type" : "ListItem",
+        "position" : 1,
+        "name" : "AWS",
+        "item" : "https://aws.amazon.com"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 2,
+        "name" : "Amazon Simple Storage Service (S3)",
+        "item" : "https://docs.aws.amazon.com/s3/index.html"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 3,
+        "name" : "API Reference",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 4,
+        "name" : "Authenticating Requests (AWS Signature Version 4)",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-authenticating-requests.html"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 5,
+        "name" : "Authenticating Requests: Using the Authorization Header (AWS Signature Version 4)",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-auth-using-authorization-header.html"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 6,
+        "name" : "Signature Calculations for the Authorization Header: Transferring Payload in a Single Chunk (AWS Signature Version 4)",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-auth-using-authorization-header.html"
+      }
+    ]
+}
+</script></head><body><div id="main"><div style="display: none"><a href="/pdfs/AmazonS3/latest/API/s3-api.pdf#sig-v4-header-based-auth" target="_blank" rel="noopener noreferrer" title="Open PDF"></a></div><div id="breadcrumbs" class="breadcrumb"><a href="/index.html">Documentation</a><a href="/s3/index.html">Amazon Simple Storage Service (S3)</a><a href="Welcome.html">API Reference</a></div><div id="page-toc-src"><a href="#create-signature-presign-entire-payload">Calculating a Signature </a></div><div id="main-content" class="awsui-util-container"><div id="main-col-body"><awsdocs-language-banner data-service="$ctrl.pageService"></awsdocs-language-banner><h1 class="topictitle" id="sig-v4-header-based-auth">Signature Calculations for the Authorization Header:
+				Transferring Payload in a Single Chunk (AWS Signature Version 4)</h1><div class="awsdocs-page-header-container"><awsdocs-page-header></awsdocs-page-header><awsdocs-filter-selector id="awsdocs-filter-selector"></awsdocs-filter-selector></div><p>When using the <code class="code">Authorization</code> header to authenticate requests, the header value includes,
+				among other things, a signature. The signature calculations vary depending on the
+				choice you make for transferring the payload (<a href="./sigv4-auth-using-authorization-header.html#sigv4-auth-header-overview">Overview</a>). This section explains signature calculations when you choose to transfer the
+				payload in a single chunk. The example section (see <a href="#example-signature-calculations">Examples: Signature
+						Calculations</a>) shows signature calculations
+				and resulting <code class="code">Authorization</code> headers that you can use as a test suite to verify your
+				code.</p><div class="awsdocs-note awsdocs-important"><div class="awsdocs-note-title"><awsui-icon name="status-warning" variant="error"></awsui-icon><h6>Important</h6></div><div class="awsdocs-note-text"><p>When transferring payload in a single chunk, you can optionally choose to include the
+					payload hash in the signature calculations, referred as <em>signed payload</em> (if you
+					don't include it, the payload is considered <em>unsigned</em>). The signing procedure
+					discussed in the following section applies to both, but note the following
+					differences:</p><p>
+					</p><div class="itemizedlist">
+						 
+						 
+					<ul class="itemizedlist"><li class="listitem">
+							<p><span class="topcom">Signed payload option</span> – You include the
+								payload hash when constructing the canonical request (that then
+								becomes part of StringToSign, as explained in the signature
+								calculation section). You also specify the same value as the
+									<code class="code">x-amz-content-sha256</code> header value when sending the
+								request to S3.</p>
+						</li><li class="listitem">
+							<p><span class="topcom">Unsigned payload option</span> – You include the literal
+							string <code class="code">UNSIGNED-PAYLOAD</code> when constructing a canonical
+							request, and set the same value as the <code class="code">x-amz-content-sha256</code>
+							header value when sending the request to Amazon S3.</p>
+						</li></ul></div><p>When you send your request to Amazon S3, the <code class="code">x-amz-content-sha256</code> header value
+					informs Amazon S3 whether the payload is signed or not. Amazon S3 can then create the signature accordingly for verification.</p><p>In both cases, because the <code class="code">x-amz-content-sha256</code> header value is already part of your <code class="code">HashedPayload</code>, you are not required to include the <code class="code">x-amz-content-sha256</code> header as a canonical header.</p></div></div><h2 id="create-signature-presign-entire-payload">Calculating a Signature </h2>
+				
+				<p>To calculate a signature, you first need a string to sign. You then calculate
+					a <code class="code">HMAC-SHA256</code> hash of the string to sign by using a signing key. The following
+					diagram illustrates the process, including the various components of the string
+					that you create for signing </p>
+				<p>When Amazon S3 receives an authenticated request, it computes the signature and
+					then compares it with the signature that you provided in the request. For that
+					reason, you must compute the signature by using the same method that is used by
+					Amazon S3. The process of putting a request in an agreed-upon form for signing is
+					called canonicalization.</p>
+				<p>
+					</p><div class="mediaobject">
+						 
+							<img src="/images/AmazonS3/latest/API/images/sigV4-using-auth-header.png" class="aws-docs-img-whiteBg aws-docs-img-padding" alt="AWS4-HMAC-SHA256 signature process diagram showing canonical request, StringToSign, and signature steps." data-alt-text-source="generated" />
+						 
+					</div> 
+				  <p>The following table describes the functions that are shown in the diagram. 
+		    You need to implement code for these functions.</p>
+		  <div class="table-container"><div class="table-contents"><table id="w1003aac13c23b9b7c11"><thead>
+		        <tr>
+		          <th>Function</th>
+		          <th>Description</th>
+		        </tr>
+		      </thead>
+		        
+		        <tr>
+		          <td tabindex="-1"><code class="code">Lowercase()</code></td>
+		          <td tabindex="-1">Convert the string to lowercase.</td>
+		        </tr>				
+		        <tr>
+		          <td tabindex="-1"><code class="code">Hex()</code></td>
+		          <td tabindex="-1">Lowercase base 16 encoding.</td>
+		        </tr>
+		        <tr>
+		          <td tabindex="-1"><code class="code">SHA256Hash()</code></td>
+		          <td tabindex="-1">Secure Hash Algorithm (SHA) cryptographic hash function.</td>
+		        </tr>
+		        <tr>
+		          <td tabindex="-1"><code class="code">HMAC-SHA256()</code></td>
+		          <td tabindex="-1">Computes HMAC by using the SHA256 algorithm with the signing key provided. This is the final signature.</td>
+		        </tr>
+		        <tr>
+		          <td tabindex="-1"><code class="code">Trim()</code></td>
+		          <td tabindex="-1">Remove any leading or trailing whitespace. </td>
+		        </tr>
+		        <tr>
+		          <td tabindex="-1"><code class="code">UriEncode()</code></td>
+		          <td tabindex="-1">
+		            <p>URI encode every byte. UriEncode() must enforce the following rules:</p>
+		      
+		              <div class="itemizedlist">
+		                 
+		                 
+		                 
+		                 
+		                 
+		              <ul class="itemizedlist"><li class="listitem">
+		                  <p>URI encode every byte except the unreserved
+		                    characters: 'A'-'Z', 'a'-'z', '0'-'9', '-', '.',
+		                    '_', and '~'. </p>
+		                </li><li class="listitem"><p>The space character is a reserved character and must be
+		                  encoded as "%20" (and not as "+"). </p></li><li class="listitem"><p>Each URI encoded byte is formed by a '%' and the
+		                  two-digit hexadecimal value of the byte. </p></li><li class="listitem"><p>Letters in the hexadecimal value must be uppercase, for
+		                  example "%1A". </p></li><li class="listitem"><p>Encode the forward slash character, '/', everywhere 
+		                  except in
+		                  the object key name. For example, if the object key name is
+		                  <code class="code">photos/Jan/sample.jpg</code>, the forward
+		                  slash in the key name is not encoded. </p></li></ul></div>
+		    
+
+		              <div class="awsdocs-note awsdocs-important"><div class="awsdocs-note-title"><awsui-icon name="status-warning" variant="error"></awsui-icon><h6>Important</h6></div><div class="awsdocs-note-text"><p>The standard UriEncode functions provided by your development platform may not work
+		                  because of differences in implementation and
+		                  related ambiguity in the underlying RFCs. We recommend that you write your own custom UriEncode
+		                  function to ensure that your encoding will
+		                  work.</p></div></div>
+		            
+		            <p>To see an example of a UriEncode function in Java, see
+		              <a href="https://github.com/aws/aws-sdk-java/blob/master/aws-java-sdk-core/src/main/java/com/amazonaws/util/SdkHttpUtils.java#L66" rel="noopener noreferrer" target="_blank"><span>Java Utilities</span><awsui-icon class="awsdocs-link-icon" name="external"></awsui-icon></a>
+		              on the GitHub website.</p>		            
+		          </td>
+		        </tr>
+		      </table></div></div> 
+			  
+			  <h3 id="canonical-request">Task 1: Create a Canonical Request</h3>
+					
+					<p>This section provides an overview of creating a canonical request.
+						</p>
+					<p>The following is the canonical request format that Amazon S3 uses to calculate
+						a signature. For signatures to match, you must create a canonical request in
+						this format: </p>
+					<p>
+						</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight"><code class="replaceable">&lt;HTTPMethod&gt;</code>\n
+<code class="replaceable">&lt;CanonicalURI&gt;</code>\n
+<code class="replaceable">&lt;CanonicalQueryString&gt;</code>\n
+<code class="replaceable">&lt;CanonicalHeaders&gt;</code>\n
+<code class="replaceable">&lt;SignedHeaders&gt;</code>\n
+<code class="replaceable">&lt;HashedPayload&gt;</code></code></pre>
+					<p>Where:</p>
+					<p>
+						</p><div class="itemizedlist">
+							 
+							 
+							 
+							 
+							 
+							 
+						<ul class="itemizedlist"><li class="listitem">
+								<p><code class="replaceable">HTTPMethod</code> is one of the HTTP
+									methods, for example GET, PUT, HEAD, and DELETE.</p>
+							</li><li class="listitem">
+								<p><code class="replaceable">CanonicalURI</code> is the URI-encoded
+									version of the absolute path component of the
+									URI—everything starting with the "/" that follows the
+									domain name and up to the end of the string or to the question
+									mark character ('?') if you have query string parameters. The URI in the 
+									following example, <code class="code">/examplebucket/myphoto.jpg</code>, is the absolute path 
+									and you don't encode the "/" in the absolute path:</p>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight">http://s3.amazonaws.com/<em>examplebucket/myphoto.jpg</em></code></pre>
+								<p>
+									</p><div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>You do not normalize URI paths for requests to Amazon
+											S3. For example, you may have a bucket with an object
+											named "my-object//example//photo.user". Normalizing the
+											path changes the object name in the request to
+											"my-object/example/photo.user". This is an incorrect
+											path for that object.</p></div></div>
+							</li><li class="listitem">
+								<p><code class="replaceable">CanonicalQueryString</code> specifies the
+									URI-encoded query string parameters. You URI-encode name and
+									values individually. You must also sort the parameters in the
+									canonical query string alphabetically by key name. The sorting
+									occurs after encoding. The query string in the following URI example is 
+									<code class="code">prefix=somePrefix&amp;marker=someMarker&amp;max-keys=20</code>:</p>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">http://s3.amazonaws.com/examplebucket?prefix=somePrefix&amp;marker=someMarker&amp;max-keys=20</code></pre>
+								<p>The canonical query string is as follows (line breaks are added
+									to this example for readability):</p>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">UriEncode("marker")+"="+UriEncode("someMarker")+"&amp;"+
+UriEncode("max-keys")+"="+UriEncode("20") + "&amp;" +
+UriEncode("prefix")+"="+UriEncode("somePrefix")</code></pre>
+								<p>When a request targets a subresource, the corresponding query
+									parameter value will be an empty string (""). For example, the
+									following URI identifies the <code class="code">ACL</code> subresource on the
+										<code class="code">examplebucket</code> bucket:</p>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">http://s3.amazonaws.com/examplebucket?acl </code></pre>
+								<p>The CanonicalQueryString in this case is as follows:</p>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">UriEncode("acl") + "=" + ""</code></pre>
+								<p>If the URI does not include a '?', there is no query string in
+									the request, and you set the canonical query string to an empty
+									string (""). You will still need to include the "\n".</p>
+							</li><li class="listitem">
+								<p><code class="replaceable">CanonicalHeaders</code> is a list of
+									request headers with their values. Individual header name and
+									value pairs are separated by the newline character ("\n").
+									Header names must be in lowercase. You must sort the header
+									names alphabetically to construct the string, as shown in the
+									following example:</p>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight">Lowercase(<code class="replaceable">&lt;HeaderName1&gt;</code>)+":"+Trim(<code class="replaceable">&lt;value&gt;</code>)+"\n"
+Lowercase(<code class="replaceable">&lt;HeaderName2&gt;</code>)+":"+Trim(<code class="replaceable">&lt;value&gt;</code>)+"\n"
+...
+Lowercase(<code class="replaceable">&lt;HeaderNameN&gt;</code>)+":"+Trim(<code class="replaceable">&lt;value&gt;</code>)+"\n"</code></pre>
+								<p>The <code class="code">Lowercase()</code> and <code class="code">Trim()</code> functions
+									used in this example are described in the preceding section. </p>
+								<p>The <code class="replaceable">CanonicalHeaders</code> list must
+									include the following: </p>
+								<div class="itemizedlist">
+									 
+									 
+									 
+								<ul class="itemizedlist"><li class="listitem">
+										<p>HTTP <code class="code">host</code> header.</p>
+									</li><li class="listitem">
+										<p>If the <code class="code">Content-MD5</code> header is present in
+											the request, you must add it to the
+												<code class="replaceable">CanonicalHeaders</code> list.
+										</p>
+									</li><li class="listitem">
+										<p>Any <code class="code">x-amz-*</code> headers that you plan to
+											include in your request must also be added. For example,
+											if you are using temporary security credentials, you
+											need to include <code class="code">x-amz-security-token</code> in your
+											request. You must add this header in the list of
+												<code class="replaceable">CanonicalHeaders</code>.</p>
+									</li></ul></div>
+							  
+							  <div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><div class="itemizedlist">
+							   
+								 
+								 
+								<ul class="itemizedlist"><li class="listitem"><p>The <code class="code">x-amz-content-sha256</code>
+							    header is required for all AWS Signature Version 4 requests. It provides a hash of the
+							    request payload. However, you are not required to include the <code class="code">x-amz-content-sha256</code> as a canonical header because S3 will automatically use its value when calculating the payload hash sent in the request.</p></li><li class="listitem"><p>If there is no payload, you must provide the
+							    hash of an empty string. </p></li><li class="listitem"><p>If you do not want S3 to check against the hash of the request, you can use the literal string <code class="code">"UNSIGNED-PAYLOAD"</code> instead.</p></li></ul></div></div></div>
+							  
+								<p>The following are example  <code class="code">CanonicalHeaders</code>
+									strings. The header names are in lowercase and sorted.</p>
+								<div class="example"><h6>Example 1</h6><div class="example-contents"><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">host:s3.amazonaws.com
+x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+x-amz-date:20130708T220855Z</code></pre></div></div>
+								<div class="example"><h6>Example 2</h6><div class="example-contents"><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">host:s3.amazonaws.com
+x-amz-content-sha256:UNSIGNED-PAYLOAD
+x-amz-date:20130708T220855Z</code></pre></div></div>
+								<div class="example"><h6>Example 3</h6><div class="example-contents"><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">host:s3.amazonaws.com
+x-amz-date:20130708T220855Z</code></pre></div></div>
+									<div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>For the purpose of calculating an authorization signature, the
+											host header and all <code class="code">x-amz-*</code> headers, excluding <code class="code">x-amz-content-sha256</code>, are required. 
+											However, in order to prevent data tampering, you should
+											consider including all the headers in the signature
+											calculation.</p><p>Signing the  <code class="code">x-amz-content-sha256</code> header is optional because S3 will use its value when calculating the received request payload hash. </p></div></div>
+							</li><li class="listitem">
+								<p><code class="replaceable">SignedHeaders</code> is an alphabetically
+									sorted, semicolon-separated list of lowercase request header
+									names. The request headers in the list are the same headers that
+									you included in the <code class="code">CanonicalHeaders</code> string. In the previous examples, the value of
+										<code class="replaceable">SignedHeaders</code> would be as
+									follows:</p>
+									<p></p>
+								<div class="example"><h6>Examples 1 and 2</h6><div class="example-contents"><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">host;x-amz-content-sha256;x-amz-date</code></pre></div></div>
+								<div class="example"><h6>Example 3</h6><div class="example-contents"><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">host;x-amz-date</code></pre></div></div>
+							</li><li class="listitem">
+								<p><code class="replaceable">HashedPayload</code> is the hexadecimal
+									value of the SHA256 hash of the request payload. </p>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight">Hex(SHA256Hash(<code class="replaceable">&lt;payload&gt;</code>)</code></pre>
+								<p>If there is no payload in the request, you compute a hash of
+									the empty string as follows:</p>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">Hex(SHA256Hash(""))</code></pre>
+								<p>The hash returns the following value:</p>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  </code></pre>
+								<p>For example, when you upload an object by using a PUT request,
+									you provide object data in the body. When you retrieve an object
+									by using a GET request, you compute the empty string hash.
+								</p>
+							</li></ul></div>
+				 
+				<h3 id="request-string">Task 2: Create a String to Sign</h3>
+					
+					<p>This section provides an overview of creating a string to sign. For
+						step-by-step instructions, see <a href="https://docs.aws.amazon.com/general/latest/gr/sigv4-create-string-to-sign.html">Task 2: Create a
+							String to Sign</a> in the <em>AWS General Reference</em>.</p>
+					<p>The string to sign is a concatenation of the following strings:</p>
+					<p>
+						</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight">"AWS4-HMAC-SHA256" + "\n" +
+timeStampISO8601Format + "\n" +
+<code class="replaceable">&lt;Scope&gt;</code> + "\n" +
+Hex(SHA256Hash(<code class="replaceable">&lt;CanonicalRequest&gt;</code>))</code></pre>
+					<p>The constant string <code class="code">AWS4-HMAC-SHA256</code> specifies the hash
+						algorithm that you are using, HMAC-SHA256. The <code class="code">timeStamp</code> is the
+						current UTC time in ISO 8601 format (for example,
+							<code class="code">20130524T000000Z</code>). </p>
+
+					<p><code class="code">Scope</code> binds the resulting signature to a specific date, an AWS Region, and a
+						service. Thus, your resulting signature will work only in the specific
+						Region and for a specific service. The signature is valid for seven days
+						after the specified date.</p>
+					<p>
+						</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight">date.Format(<code class="replaceable">&lt;YYYYMMDD&gt;</code>) + "/" + <code class="replaceable">&lt;region&gt;</code> + "/" + <code class="replaceable">&lt;service&gt;</code> + "/aws4_request"</code></pre>
+					<p> For Amazon S3, the service string is <code class="code">s3</code>. For a list of
+							<code class="replaceable">region</code> strings, see <a href="https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region">Regions and Endpoints</a> in the
+							<em>AWS General Reference</em>. The Region column in this table
+						provides the list of valid Region strings.</p>
+					<p> The following scope restricts the resulting signature to the <code class="code">us-east-1</code>
+						Region and Amazon S3. </p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">20130606/us-east-1/s3/aws4_request</code></pre>
+					
+					<p>
+						</p><div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>
+								<code class="code">Scope</code> must use the same date that you use to compute
+								the signing key, as discussed in the following section. </p></div></div>
+
+				 
+				<h3 id="signing-key">Task 3: Calculate Signature</h3>
+					
+					<p> In AWS Signature Version 4, instead of using your AWS access keys to sign a request, you
+						first create a signing key that is scoped to a specific Region and service.
+						 For more information about signing keys, see <a href="./sig-v4-authenticating-requests.html#signing-request-intro">Introduction to Signing Requests</a>. </p>
+					<p>
+						</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight">DateKey              = HMAC-SHA256("AWS4"+"<code class="replaceable">&lt;SecretAccessKey&gt;</code>", "<code class="replaceable">&lt;YYYYMMDD&gt;</code>")
+DateRegionKey        = HMAC-SHA256(<code class="replaceable">&lt;DateKey&gt;</code>, "<code class="replaceable">&lt;aws-region&gt;</code>")
+DateRegionServiceKey = HMAC-SHA256(<code class="replaceable">&lt;DateRegionKey&gt;</code>, "<code class="replaceable">&lt;aws-service&gt;</code>")
+SigningKey           = HMAC-SHA256(<code class="replaceable">&lt;DateRegionServiceKey&gt;</code>, "aws4_request")</code></pre>
+					<p>
+						</p><div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>Some use cases can process signature keys for up to 7 days. For more information see <a href="https://docs.aws.amazon.com/AmazonS3/latest/dev/ShareObjectPreSignedURL.html">Share an Object with Others</a>.</p></div></div>
+					<p>For a list of Region strings, see <a href="https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region">Regions and
+							Endpoints</a> in the <em>AWS General Reference</em>.</p>
+					<p> Using a signing key enables you to keep your AWS credentials in one safe
+						place. For example, if you have multiple servers that communicate with Amazon S3,
+						you share the signing key with those servers; you don’t have to keep a copy
+						of your secret access key on each server. Signing key is valid for up to
+						seven days. So each time you calculate signing key you will need to share
+						the signing key with your servers. For more information, see <a href="./sig-v4-authenticating-requests.html">Authenticating Requests (AWS Signature Version
+		4)</a>.</p>
+					<p>The final signature is the HMAC-SHA256 hash of the string to sign, using
+						the signing key as the key.</p>
+					<p>
+						</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">HMAC-SHA256(SigningKey, StringToSign)</code></pre>
+					<p>For step-by-step instructions on creating a signature, see <a href="https://docs.aws.amazon.com/general/latest/gr/sigv4-calculate-signature.html">Task 3: Create a
+							Signature</a> in the <em>AWS General Reference</em>.</p>
+				 
+
+
+				<h3 id="example-signature-calculations">Examples: Signature
+						Calculations</h3>
+					
+
+					<p>You can use the examples in this section as a reference to check signature
+						calculations in your code. The calculations shown in the examples use the following data:</p>
+					<p>
+						</p><div class="itemizedlist">
+							 
+							 
+							 
+							 
+							 
+						<ul class="itemizedlist"><li class="listitem">
+								<p> Example access keys.</p>
+								<div class="table-container"><div class="table-contents"><table id="w1003aac13c23b9b7c19b5b1b3"><thead>
+											<tr>
+												<th>Parameter</th>
+												<th>Value</th>
+											</tr>
+										</thead>
+											<tr>
+												<td tabindex="-1"><code class="code">AWSAccessKeyId</code></td>
+												<td tabindex="-1"><code class="code">AKIAIOSFODNN7EXAMPLE</code></td>
+											</tr>
+											<tr>
+												<td tabindex="-1"><code class="code">AWSSecretAccessKey</code></td>
+												<td tabindex="-1"><code class="code">wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY</code></td>
+											</tr>
+										</table></div></div>
+							</li><li class="listitem">
+								<p>Request timestamp of 20130524T000000Z (<code class="code">Fri, 24 May 2013
+										00:00:00 GMT</code>).</p>
+							</li><li class="listitem">
+								<p>Bucket name <code class="code">examplebucket</code>.</p>
+							</li><li class="listitem">
+								<p>The bucket is assumed to be in the US East (N. Virginia) Region. The credential
+									<code class="code">Scope</code> and the <code class="code">Signing Key</code> calculations
+								use <code class="code">us-east-1</code> as the Region specifier. 
+								For information about other Regions, see <a href="https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region">Regions and Endpoints</a>
+								in the <em>AWS General Reference</em>. </p>
+							</li><li class="listitem">
+								<p>You can use either path-style or virtual hosted–style
+									requests. The following examples show how to sign a virtual
+									hosted–style request, for example:</p>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">https://examplebucket.s3.amazonaws.com/photos/photo1.jpg</code></pre>
+								<p>For more information, see <a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/VirtualHosting.html">Virtual Hosting of
+										Buckets</a> in the
+									<em>Amazon Simple Storage Service User Guide</em>.</p>
+							</li></ul></div>
+					<h4 id="example-signature-GET-object">Example: GET Object</h4>
+						
+						<p>The following example gets the first 10 bytes of an object (test.txt) from
+								<code class="code">examplebucket</code>. For more information about the API
+							action, see <a href="./API_GetObject.html">GetObject</a>.</p>
+						<p>
+							</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight">GET /test.txt HTTP/1.1
+Host: examplebucket.s3.amazonaws.com
+Authorization: <code class="replaceable">SignatureToBeCalculated</code>
+Range: bytes=0-9 
+x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+x-amz-date: 20130524T000000Z </code></pre>
+						<p>Because this GET request does not provide any body content, the
+								<code class="code">x-amz-content-sha256</code> value can either be the hash of the empty
+							request body or the literal string <code class="code">"UNSIGNED-PAYLOAD"</code>. The following steps show signature calculations and
+							construction of the <code class="code">Authorization</code> header using the hash of an empty string. </p>
+						<div class="procedure"><ol><li>
+								<h6>StringToSign</h6>
+								<ol><li>
+										<h6>CanonicalRequest</h6>
+										<p>
+											</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">GET
+/test.txt
+
+host:examplebucket.s3.amazonaws.com
+range:bytes=0-9
+x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+x-amz-date:20130524T000000Z
+
+host;range;x-amz-content-sha256;x-amz-date
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  </code></pre>
+										<p>In the canonical request string, the last line is the
+											hash of the empty request body. The third line is empty
+											because there are no query parameters in the request.
+										</p>
+									</li><li>
+										<h6>StringToSign</h6>
+										<p>
+											</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">AWS4-HMAC-SHA256
+20130524T000000Z
+20130524/us-east-1/s3/aws4_request
+7344ae5b7ee6c3e7e6b0fe0640412a37625d1fbfff95c48bbb2dc43964946972</code></pre><p>
+											</p>
+									</li></ol>
+							</li><li>
+								<h6>SigningKey</h6>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight"><em>signing key</em> = HMAC-SHA256(HMAC-SHA256(HMAC-SHA256(HMAC-SHA256("AWS4" + "<code class="replaceable">&lt;YourSecretAccessKey&gt;</code>","20130524"),"us-east-1"),"s3"),"aws4_request")</code></pre><p>
+									</p>
+							</li><li>
+								<h6>Signature</h6>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">f0e8bdb87c964420e857bd35b5d6ed310bd44f0170aba48dd91039c6036bdb41</code></pre><p>
+									</p>
+							</li><li>
+								<h6>Authorization header</h6>
+								<p>The resulting <code class="code">Authorization</code> header is as follows: </p>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request,SignedHeaders=host;range;x-amz-content-sha256;x-amz-date,Signature=f0e8bdb87c964420e857bd35b5d6ed310bd44f0170aba48dd91039c6036bdb41</code></pre><p>
+									</p>
+							</li></ol></div>
+					 
+					<h4 id="example-signature-PUT-object">Example: PUT Object </h4>
+						
+						<p>This example PUT request creates an object (<code class="code">test$file.text</code>) in
+								<code class="code">examplebucket</code> . The example assumes the
+							following:</p>
+						<p>
+							</p><div class="itemizedlist">
+								 
+								 
+							<ul class="itemizedlist"><li class="listitem">
+									<p>You are requesting <code class="code">REDUCED_REDUNDANCY</code> as the
+										storage class by adding the <code class="code">x-amz-storage-class</code>
+										request header. For information about storage classes, see
+											<a href="https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingMetadata.html#storage-class-intro">Storage Classes</a> in the <em>Amazon Simple Storage Service User Guide</em>.</p>
+								</li><li class="listitem">
+									<p>The content of the uploaded file is a string, <code class="code">"Welcome to
+										Amazon S3."</code> The value of <code class="code">x-amz-content-sha256</code> in the
+										request is based on this string.</p>
+								</li></ul></div>
+						<p>For information about the API action, see <a href="./API_PutObject.html">PutObject</a>.
+							</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight">PUT test$file.text HTTP/1.1
+Host: examplebucket.s3.amazonaws.com
+Date: Fri, 24 May 2013 00:00:00 GMT
+Authorization: <code class="replaceable">SignatureToBeCalculated</code>
+x-amz-date: 20130524T000000Z 
+x-amz-storage-class: REDUCED_REDUNDANCY
+x-amz-content-sha256: 44ce7dd67c959e0d3524ffac1771dfbba87d2b6b4b4e99e42034a8b803f8b072
+
+<code class="replaceable">&lt;Payload&gt;</code></code></pre>
+						<p></p>
+						<p>The following steps show signature calculations.</p>
+						<div class="procedure"><ol><li>
+								<h6>StringToSign</h6>
+								<ol><li>
+										<h6>CanonicalRequest</h6>
+										<p>
+											</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">PUT
+/test%24file.text
+
+date:Fri, 24 May 2013 00:00:00 GMT
+host:examplebucket.s3.amazonaws.com
+x-amz-content-sha256:44ce7dd67c959e0d3524ffac1771dfbba87d2b6b4b4e99e42034a8b803f8b072
+x-amz-date:20130524T000000Z
+x-amz-storage-class:REDUCED_REDUNDANCY
+
+date;host;x-amz-content-sha256;x-amz-date;x-amz-storage-class
+44ce7dd67c959e0d3524ffac1771dfbba87d2b6b4b4e99e42034a8b803f8b072</code></pre>
+										<p>In the canonical request, the third line is empty
+											because there are no query parameters in the request. The <code class="code">x-amz-content-sha256</code> canonical header may optionally be signed since its payload hash is already provided at the bottom of the request.  
+											The last line is the hash of the body, which should be the same as the <code class="code">x-amz-content-sha256 header</code>
+											value sent to S3 in the HTTP request.</p>
+									</li><li>
+										<h6>StringToSign</h6>
+										<p>
+											</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">AWS4-HMAC-SHA256
+20130524T000000Z
+20130524/us-east-1/s3/aws4_request
+9e0e90d9c76de8fa5b200d8c849cd5b8dc7a3be3951ddb7f6a76b4158342019d</code></pre><p>
+											</p>
+									</li></ol>
+							</li><li>
+								<h6>SigningKey</h6>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight"><em>signing key</em> = HMAC-SHA256(HMAC-SHA256(HMAC-SHA256(HMAC-SHA256("AWS4" + "<code class="replaceable">&lt;YourSecretAccessKey&gt;</code>","20130524"),"us-east-1"),"s3"),"aws4_request")</code></pre><p>
+									</p>
+							</li><li>
+								<h6>Signature</h6>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">98ad721746da40c64f1a55b78f14c238d841ea1380cd77a1b5971af0ece108bd</code></pre><p>
+									</p>
+							</li><li>
+								<h6>Authorization header</h6>
+								<p>The resulting <code class="code">Authorization</code> header is as
+									follows:</p>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request,SignedHeaders=date;host;x-amz-content-sha256;x-amz-date;x-amz-storage-class,Signature=98ad721746da40c64f1a55b78f14c238d841ea1380cd77a1b5971af0ece108bd</code></pre><p>
+									</p>
+							</li></ol></div>
+					 
+					<h4 id="example-signature-GET-bucket-lifecycle">Example: GET Bucket
+							Lifecycle </h4>
+						
+						<p>The following GET request retrieves the lifecycle configuration of
+								<code class="code">examplebucket</code>. For information about the API action,
+							see <a href="./API_GetBucketLifecycleConfiguration.html">GetBucketLifecycleConfiguration</a>.
+							</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight">GET ?lifecycle HTTP/1.1
+Host: examplebucket.s3.amazonaws.com
+Authorization: <code class="replaceable">SignatureToBeCalculated</code>
+x-amz-date: 20130524T000000Z 
+x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</code></pre>
+						<p>Because the request does not provide any body content, the
+								<code class="code">x-amz-content-sha256</code> header value is the hash of the
+							empty request body. The following steps show signature
+							calculations.</p>
+						<div class="procedure"><ol><li>
+								<h6>StringToSign</h6>
+								<ol><li>
+										<h6>CanonicalRequest</h6>
+										<p>
+											</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">GET
+/
+lifecycle=
+host:examplebucket.s3.amazonaws.com
+x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+x-amz-date:20130524T000000Z
+
+host;x-amz-content-sha256;x-amz-date
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</code></pre>
+										<p>In the canonical request, the last line is the hash of
+											the empty request body. </p>
+									</li><li>
+										<h6>StringToSign</h6>
+										<p>
+											</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">AWS4-HMAC-SHA256
+20130524T000000Z
+20130524/us-east-1/s3/aws4_request
+9766c798316ff2757b517bc739a67f6213b4ab36dd5da2f94eaebf79c77395ca</code></pre><p>
+											</p>
+									</li></ol>
+							</li><li>
+								<h6>SigningKey</h6>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight"><em>signing key</em> = HMAC-SHA256(HMAC-SHA256(HMAC-SHA256(HMAC-SHA256("AWS4" + "<code class="replaceable">&lt;YourSecretAccessKey&gt;</code>","20130524"),"us-east-1"),"s3"),"aws4_request")</code></pre><p>
+									</p>
+							</li><li>
+								<h6>Signature</h6>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">fea454ca298b7da1c68078a5d1bdbfbbe0d65c699e0f91ac7a200a0136783543</code></pre><p>
+									</p>
+							</li><li>
+								<h6>Authorization header</h6>
+								<p>The resulting <code class="code">Authorization</code> header is as follows: </p>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request,SignedHeaders=host;x-amz-content-sha256;x-amz-date,Signature=fea454ca298b7da1c68078a5d1bdbfbbe0d65c699e0f91ac7a200a0136783543</code></pre><p>
+									</p>
+							</li></ol></div>
+					 
+
+					<h4 id="example-signature-list-bucket">Example: Get Bucket (List
+							Objects)</h4>
+						
+						<p>The following example retrieves a list of objects from
+								<code class="code">examplebucket</code> bucket. For information about the API
+							action, see <a href="./API_ListObjects.html">ListObjects</a>.
+							</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight">GET ?max-keys=2&amp;prefix=J HTTP/1.1
+Host: examplebucket.s3.amazonaws.com
+Authorization: <code class="replaceable">SignatureToBeCalculated</code>
+x-amz-date: 20130524T000000Z 
+x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</code></pre>
+						<p>Because the request does not provide a body, the value of
+								<code class="code">x-amz-content-sha256</code> is the hash of the empty request
+							body. The following steps show signature calculations.</p>
+						<div class="procedure"><ol><li>
+								<h6>StringToSign</h6>
+								<ol><li>
+										<h6>CanonicalRequest</h6>
+										<p>
+											</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">GET
+/
+max-keys=2&amp;prefix=J
+host:examplebucket.s3.amazonaws.com
+x-amz-content-sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+x-amz-date:20130524T000000Z
+
+host;x-amz-content-sha256;x-amz-date
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855</code></pre>
+										<p>In the canonical string, the last line is the hash of
+											the empty request body. </p>
+									</li><li>
+										<h6>StringToSign</h6>
+										<p>
+											</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">AWS4-HMAC-SHA256
+20130524T000000Z
+20130524/us-east-1/s3/aws4_request
+df57d21db20da04d7fa30298dd4488ba3a2b47ca3a489c74750e0f1e7df1b9b7</code></pre><p>
+											</p>
+									</li></ol>
+							</li><li>
+								<h6>SigningKey</h6>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight"><em>signing key</em> = HMAC-SHA256(HMAC-SHA256(HMAC-SHA256(HMAC-SHA256("AWS4" + "<code class="replaceable">&lt;YourSecretAccessKey&gt;</code>","20130524"),"us-east-1"),"s3"),"aws4_request")</code></pre><p>
+									</p>
+							</li><li>
+								<h6>Signature</h6>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">34b48302e7b5fa45bde8084f4b7868a86f0a534bc59db6670ed5711ef69dc6f7</code></pre><p>
+									</p>
+							</li><li>
+								<h6>Authorization header</h6>
+								<p>The resulting <code class="code">Authorization</code> header is as follows: </p>
+								<p>
+									</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">AWS4-HMAC-SHA256 Credential=AKIAIOSFODNN7EXAMPLE/20130524/us-east-1/s3/aws4_request,SignedHeaders=host;x-amz-content-sha256;x-amz-date,Signature=34b48302e7b5fa45bde8084f4b7868a86f0a534bc59db6670ed5711ef69dc6f7</code></pre><p>
+									</p>
+							</li></ol></div>
+					 
+				 
+			<awsdocs-copyright class="copyright-print"></awsdocs-copyright><awsdocs-thumb-feedback right-edge="{{$ctrl.thumbFeedbackRightEdge}}"></awsdocs-thumb-feedback></div><noscript><div><div><div><div id="js_error_message"><p><img src="https://d1ge0kk1l5kms0.cloudfront.net/images/G/01/webservices/console/warning.png" alt="Warning" /> <strong>Javascript is disabled or is unavailable in your browser.</strong></p><p>To use the Amazon Web Services Documentation, Javascript must be enabled. Please refer to your browser's Help pages for instructions.</p></div></div></div></div></noscript><div id="main-col-footer" class="awsui-util-font-size-0"><div id="doc-conventions"><a target="_top" href="/general/latest/gr/docconventions.html">Document Conventions</a></div><div class="prev-next"><div id="previous" class="prev-link" accesskey="p" href="./sigv4-auth-using-authorization-header.html">Using an Authorization Header</div><div id="next" class="next-link" accesskey="n" href="./sigv4-streaming.html">Signature Calculation: Transfer Payload in Multiple Chunks </div></div></div><awsdocs-page-utilities></awsdocs-page-utilities></div><div id="quick-feedback-yes" style="display: none;"><div class="title">Did this page help you? - Yes</div><div class="content"><p>Thanks for letting us know we're doing a good job!</p><p>If you've got a moment, please tell us what we did right so we can do more of it.</p><p><awsui-button id="fblink" rel="noopener noreferrer" target="_blank" text="Feedback" click="linkClick($event)" href="https://docs.aws.amazon.com/forms/aws-doc-feedback?hidden_service_name=S3&amp;topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/sig-v4-header-based-auth.html"></awsui-button></p></div></div><div id="quick-feedback-no" style="display: none;"><div class="title">Did this page help you? - No</div><div class="content"><p>Thanks for letting us know this page needs work. We're sorry we let you down.</p><p>If you've got a moment, please tell us how we can make the documentation better.</p><p><awsui-button id="fblink" rel="noopener noreferrer" target="_blank" text="Feedback" click="linkClick($event)" href="https://docs.aws.amazon.com/forms/aws-doc-feedback?hidden_service_name=S3&amp;topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/sig-v4-header-based-auth.html"></awsui-button></p></div></div></div></body></div></awsdocs-view><div class="page-loading-indicator" id="page-loading-indicator"><awsui-spinner size="large"></awsui-spinner></div></div><div id="tools-panel" dom-region="tools"><awsdocs-tools-panel id="awsdocs-tools-panel"></awsdocs-tools-panel></div></awsui-app-layout><awsdocs-cookie-banner class="doc-cookie-banner"></awsdocs-cookie-banner></div></body></html>

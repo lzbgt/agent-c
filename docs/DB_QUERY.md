@@ -249,6 +249,28 @@ Response fields:
 - `edge` (object, optional when `scope=edge|all`)
   - same fields as `durable`, using edge workflow timestamps
 
+### Workflow analytics exports (CSV/JSON)
+
+`GET /api/v1/db/analytics/workflows/export?format=json|csv&scope=all|durable|edge&since_unix_ms=...&until_unix_ms=...`
+
+Parameters:
+- `format` (default `json`): `json` or `csv`
+- `scope` (default `all`): `all`, `durable`, or `edge`
+- `since_unix_ms` / `until_unix_ms` (optional time window)
+
+Response (JSON):
+- `ok` (boolean)
+- `generated_utc_ms` (number)
+- `scope` (string)
+- `since_unix_ms` / `until_unix_ms` (number|null)
+- `durable` (object, optional per scope): same fields as workflow analytics aggregates
+- `edge` (object, optional per scope): same fields as workflow analytics aggregates
+
+Response (CSV):
+- `Content-Type: text/csv`
+- Header: `section,metric,key,value`
+- Rows include `meta` entries (generated time + window), `durable` metrics, and `edge` metrics
+
 ### Edge analytics aggregates
 
 `GET /api/v1/db/analytics/edge?since_unix_ms=...&until_unix_ms=...&active_within_ms=...`

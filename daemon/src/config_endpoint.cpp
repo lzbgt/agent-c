@@ -197,6 +197,24 @@ void handle_config_endpoint(
   daemon["state_dir"] = cfg.state_dir.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.state_dir);
   daemon["sessions_root_dir"] = cfg.sessions_root_dir.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.sessions_root_dir);
   daemon["upload_max_bytes"] = (Json::UInt64)cfg.upload_max_bytes;
+  {
+    Json::Value bs(Json::objectValue);
+    bs["mode"] = cfg.blob_store_mode;
+    bs["endpoint"] = cfg.blob_store_endpoint.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.blob_store_endpoint);
+    bs["region"] = cfg.blob_store_region;
+    bs["bucket"] = cfg.blob_store_bucket.empty() ? Json::Value(Json::nullValue) : Json::Value(cfg.blob_store_bucket);
+    bs["prefix"] = cfg.blob_store_prefix;
+    bs["path_style"] = cfg.blob_store_path_style;
+    bs["read_mode"] = cfg.blob_store_read_mode;
+    bs["cache_mode"] = cfg.blob_store_cache_mode;
+    bs["cache_max_bytes"] = (Json::UInt64)cfg.blob_store_cache_max_bytes;
+    bs["presign_ttl_sec"] = (Json::Int64)cfg.blob_store_presign_ttl_sec;
+    bs["timeout_ms"] = (Json::Int64)cfg.blob_store_timeout_ms;
+    bs["access_key_set"] = !cfg.blob_store_access_key.empty();
+    bs["secret_key_set"] = !cfg.blob_store_secret_key.empty();
+    bs["session_token_set"] = !cfg.blob_store_session_token.empty();
+    daemon["blob_store"] = bs;
+  }
   daemon["max_steps_default"] = (Json::UInt64)cfg.max_steps_default;
   daemon["max_tool_calls_total_default"] = (Json::UInt64)cfg.max_tool_calls_total_default;
   daemon["max_tool_calls_per_tool_default"] = (Json::UInt64)cfg.max_tool_calls_per_tool_default;
@@ -403,6 +421,63 @@ void handle_config_update_endpoint(
     }
     if (n > kMax) n = kMax;
     next.upload_max_bytes = (size_t)n;
+  }
+  if (args.isMember("blob_store") && args["blob_store"].isObject()) {
+    const Json::Value& bs = args["blob_store"];
+    if (bs.isMember("mode") && bs["mode"].isString()) {
+      const std::string s = trim_copy(bs["mode"].asString());
+      if (s == "local" || s == "object") next.blob_store_mode = s;
+    }
+    if (bs.isMember("endpoint")) {
+      if (bs["endpoint"].isNull()) next.blob_store_endpoint.clear();
+      else if (bs["endpoint"].isString()) next.blob_store_endpoint = bs["endpoint"].asString();
+    }
+    if (bs.isMember("region") && bs["region"].isString()) {
+      next.blob_store_region = bs["region"].asString();
+    }
+    if (bs.isMember("bucket")) {
+      if (bs["bucket"].isNull()) next.blob_store_bucket.clear();
+      else if (bs["bucket"].isString()) next.blob_store_bucket = bs["bucket"].asString();
+    }
+    if (bs.isMember("prefix") && bs["prefix"].isString()) {
+      next.blob_store_prefix = bs["prefix"].asString();
+    }
+    if (bs.isMember("path_style") && bs["path_style"].isBool()) {
+      next.blob_store_path_style = bs["path_style"].asBool();
+    }
+    if (bs.isMember("read_mode") && bs["read_mode"].isString()) {
+      const std::string s = trim_copy(bs["read_mode"].asString());
+      if (s == "redirect" || s == "proxy") next.blob_store_read_mode = s;
+    }
+    if (bs.isMember("cache_mode") && bs["cache_mode"].isString()) {
+      const std::string s = trim_copy(bs["cache_mode"].asString());
+      if (s == "none" || s == "read-through") next.blob_store_cache_mode = s;
+    }
+    if (bs.isMember("cache_max_bytes") && (bs["cache_max_bytes"].isInt64() || bs["cache_max_bytes"].isUInt64())) {
+      const unsigned long long kMax = 512ull * 1024ull * 1024ull;
+      unsigned long long n = 0;
+      if (bs["cache_max_bytes"].isInt64()) {
+        long long v = bs["cache_max_bytes"].asInt64();
+        if (v < 0) v = 0;
+        n = (unsigned long long)v;
+      } else {
+        n = (unsigned long long)bs["cache_max_bytes"].asUInt64();
+      }
+      if (n > kMax) n = kMax;
+      next.blob_store_cache_max_bytes = (size_t)n;
+    }
+    if (bs.isMember("presign_ttl_sec") && (bs["presign_ttl_sec"].isInt64() || bs["presign_ttl_sec"].isUInt64())) {
+      const int64_t n = bs["presign_ttl_sec"].isInt64()
+        ? bs["presign_ttl_sec"].asInt64()
+        : (int64_t)bs["presign_ttl_sec"].asUInt64();
+      next.blob_store_presign_ttl_sec = std::max<int64_t>(1, std::min<int64_t>(604800, n));
+    }
+    if (bs.isMember("timeout_ms") && (bs["timeout_ms"].isInt64() || bs["timeout_ms"].isUInt64())) {
+      const int64_t n = bs["timeout_ms"].isInt64()
+        ? bs["timeout_ms"].asInt64()
+        : (int64_t)bs["timeout_ms"].asUInt64();
+      next.blob_store_timeout_ms = std::max<int64_t>(0, std::min<int64_t>(30LL * 60 * 1000, n));
+    }
   }
   if (args.isMember("edge_auth_required") && args["edge_auth_required"].isBool()) {
     next.edge_auth_required = args["edge_auth_required"].asBool();
@@ -700,6 +775,35 @@ void handle_config_update_endpoint(
     }
   }
 
+  // Blob store credentials (secrets):
+  // - blob_store_secrets: { "access_key": "...", "secret_key": "...", "session_token": "..." }
+  if (args.isMember("blob_store_secrets")) {
+    if (!args["blob_store_secrets"].isObject()) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["error"] = "blob_store_secrets must be an object";
+      resp->status = 400;
+      resp->body = json_stringify(o);
+      return;
+    }
+    const auto& bs = args["blob_store_secrets"];
+    auto apply_secret = [&](const char* key, std::string* target) {
+      if (!key || !target) return;
+      if (!bs.isMember(key)) return;
+      const Json::Value& v = bs[key];
+      if (v.isNull()) {
+        target->clear();
+      } else if (v.isString()) {
+        const std::string s = trim_copy(v.asString());
+        if (s.empty()) target->clear();
+        else *target = s;
+      }
+    };
+    apply_secret("access_key", &next.blob_store_access_key);
+    apply_secret("secret_key", &next.blob_store_secret_key);
+    apply_secret("session_token", &next.blob_store_session_token);
+  }
+
   // Persist to daemon DB so defaults survive restarts.
   std::string werr;
   if (!save_runtime_config_best_effort(*db, next, &werr)) {
@@ -737,6 +841,24 @@ void handle_config_update_endpoint(
   o["max_tool_calls_per_tool_default"] = (Json::UInt64)next.max_tool_calls_per_tool_default;
   o["max_tool_call_args_chars_default"] = (Json::UInt64)next.max_tool_call_args_chars_default;
   o["proxy_url_set"] = !next.proxy_url.empty();
+  {
+    Json::Value bs(Json::objectValue);
+    bs["mode"] = next.blob_store_mode;
+    bs["endpoint"] = next.blob_store_endpoint.empty() ? Json::Value(Json::nullValue) : Json::Value(next.blob_store_endpoint);
+    bs["region"] = next.blob_store_region;
+    bs["bucket"] = next.blob_store_bucket.empty() ? Json::Value(Json::nullValue) : Json::Value(next.blob_store_bucket);
+    bs["prefix"] = next.blob_store_prefix;
+    bs["path_style"] = next.blob_store_path_style;
+    bs["read_mode"] = next.blob_store_read_mode;
+    bs["cache_mode"] = next.blob_store_cache_mode;
+    bs["cache_max_bytes"] = (Json::UInt64)next.blob_store_cache_max_bytes;
+    bs["presign_ttl_sec"] = (Json::Int64)next.blob_store_presign_ttl_sec;
+    bs["timeout_ms"] = (Json::Int64)next.blob_store_timeout_ms;
+    bs["access_key_set"] = !next.blob_store_access_key.empty();
+    bs["secret_key_set"] = !next.blob_store_secret_key.empty();
+    bs["session_token_set"] = !next.blob_store_session_token.empty();
+    o["blob_store"] = bs;
+  }
   o["edge_auth_required"] = next.edge_auth_required;
   o["edge_auth_require_ts"] = next.edge_auth_require_ts;
   o["edge_auth_max_skew_ms"] = (Json::Int64)next.edge_auth_max_skew_ms;

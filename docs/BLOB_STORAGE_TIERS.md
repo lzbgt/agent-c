@@ -1,9 +1,13 @@
-# Blob Storage Tiers (Design)
+# Blob Storage Tiers (Design + Status)
 
 Date: 2026-02-18
 
 This document defines a future-proof, multi-tier blob storage plan for agentd. The DB remains a metadata index; binary
 blobs live in tiered stores with explicit retention, budgets, and deterministic references.
+
+Status (2026-02-18):
+- v0 local tier shipped.
+- v1 object-store tier shipped (S3/MinIO; presigned reads + proxy mode; optional read-through cache).
 
 ## Goals
 
@@ -62,9 +66,9 @@ Artifacts retain `path` for legacy compatibility, but new records should prefer 
 
 ### Tier 2: Object store (S3/MinIO)
 
-- Key: `blobs/sha256/<aa>/<bb>/<sha256>`.
+- Key: `blobs/sha256/<aa>/<bb>/<sha256>` (prefix configurable).
 - Presigned URLs for clients; agentd can proxy for auth-only environments.
-- Optional local cache on read-through.
+- Optional local cache on read-through (bounded by size).
 
 ### Tier 3: Archive
 
@@ -73,10 +77,10 @@ Artifacts retain `path` for legacy compatibility, but new records should prefer 
 
 ## Write path
 
-1) Tool emits artifact → blob file stored in local tier.
-2) Compute hash + size, register in `blob_manifest`.
+1) Tool emits artifact → blob bytes stored in local tier (unless object-store mode with cache disabled).
+2) Compute hash + size, register in `blob_manifest` (`tier`, `location`, `etag`).
 3) Create `artifact_blobs` association.
-4) Background mover enforces policies:
+4) Background mover (future) enforces policies:
    - promote to object store
    - evict local based on LRU, size cap, or TTL
 
@@ -84,16 +88,21 @@ Artifacts retain `path` for legacy compatibility, but new records should prefer 
 
 - Resolve `blob_id` → tier + location.
 - If local: stream with `Range` support.
-- If object store: proxy or redirect to signed URL.
-- Cache on read if policy allows.
+- If object store:
+  - `read_mode=redirect` returns `302` to a signed URL.
+  - `read_mode=proxy` streams via agentd.
+- Cache on read when `cache_mode=read-through` and size <= `cache_max_bytes`.
 
-## APIs (proposed)
+## APIs (current)
 
 Read:
 - `GET /api/v1/blob?blob_id=...` (supports `Range`)
+  - local tier: returns bytes
+  - object tier: `302` redirect (default) or proxy stream (see `read_mode`)
 
 Upload:
-- `POST /api/v1/blob/upload` (JSON `data_base64` or raw binary; returns `blob_id`)
+- `POST /api/v1/blob/upload` (JSON `data_base64` or raw binary)
+  - response includes `tier`, `location`, `etag`, and `storage_class` when object-store is enabled
 
 Metadata:
 - `GET /api/v1/blob/meta?blob_id=...`
@@ -113,10 +122,35 @@ These are additive; legacy `GET /api/v1/file` remains supported.
 - Counters: bytes per tier, objects count, cache hit/miss, promotion/eviction counts.
 - Auditable events for GC and tier transitions.
 
+## Object-store configuration (v1)
+
+Runtime config (JSON / `POST /api/v1/config/update`):
+- `blob_store`:
+  - `mode`: `local` or `object`
+  - `endpoint`: `https://s3.us-east-1.amazonaws.com` or `http://localhost:9000`
+  - `region`: AWS region (default `us-east-1`)
+  - `bucket`: bucket name
+  - `prefix`: object key prefix (default `blobs/sha256`)
+  - `path_style`: `true` for path-style bucket addressing (MinIO-friendly)
+  - `read_mode`: `redirect` (presigned URL) or `proxy` (agentd stream)
+  - `cache_mode`: `read-through` or `none`
+  - `cache_max_bytes`: max size to read-through cache (bytes)
+  - `presign_ttl_sec`: TTL for signed URLs (seconds, 1..604800)
+  - `timeout_ms`: object store timeout
+- `blob_store_secrets`:
+  - `access_key`, `secret_key`, `session_token` (optional)
+
+Env vars (startup defaults):
+- `AGENTD_BLOB_STORE_MODE`, `AGENTD_BLOB_STORE_ENDPOINT`, `AGENTD_BLOB_STORE_REGION`,
+  `AGENTD_BLOB_STORE_BUCKET`, `AGENTD_BLOB_STORE_PREFIX`, `AGENTD_BLOB_STORE_PATH_STYLE`,
+  `AGENTD_BLOB_STORE_READ_MODE`, `AGENTD_BLOB_STORE_CACHE_MODE`, `AGENTD_BLOB_STORE_CACHE_MAX_BYTES`,
+  `AGENTD_BLOB_STORE_PRESIGN_TTL_SEC`, `AGENTD_BLOB_STORE_TIMEOUT_MS`,
+  `AGENTD_BLOB_STORE_ACCESS_KEY`, `AGENTD_BLOB_STORE_SECRET_KEY`, `AGENTD_BLOB_STORE_SESSION_TOKEN`.
+
 ## Phased delivery
 
-1) **v0 (local-only)**: `blob_manifest` + local store + read endpoint + ref-count GC.
-2) **v1 (object store)**: S3/MinIO backend + signed URLs + read-through cache.
+1) **v0 (local-only)**: `blob_manifest` + local store + read endpoint + ref-count GC. (shipped)
+2) **v1 (object store)**: S3/MinIO backend + signed URLs + read-through cache. (shipped)
 3) **v2 (tiering)**: policy engine + background mover + size budgets.
 4) **v3 (archive)**: cold storage restore workflow + operator controls.
 

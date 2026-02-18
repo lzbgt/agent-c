@@ -214,6 +214,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/edge_workflow_endpoints.cpp
     daemon/src/edge_workflow_engine.cpp
     daemon/src/blob_endpoints.cpp
+    daemon/src/blob_object_store.cpp
     daemon/src/file_endpoint.cpp
     daemon/src/http_client.cpp
     daemon/src/http_allowlist.cpp
@@ -892,6 +893,13 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
     target_link_libraries(cbor_decode_tests PRIVATE agentd_lib)
     target_compile_definitions(cbor_decode_tests PRIVATE AGENT_HAVE_JSONCPP=1)
     add_test(NAME cbor_decode_tests COMMAND cbor_decode_tests)
+
+    add_executable(s3_presign_tests
+      tests/test_s3_presign.cpp
+    )
+    target_link_libraries(s3_presign_tests PRIVATE agentd_lib)
+    target_compile_definitions(s3_presign_tests PRIVATE AGENT_HAVE_JSONCPP=1)
+    add_test(NAME s3_presign_tests COMMAND s3_presign_tests)
   endif()
 
   if(AGENT_ENABLE_SQLITE3)

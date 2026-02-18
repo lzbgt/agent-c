@@ -143,7 +143,8 @@ int main() {
   ar.autoplay = true;
   ar.repeat = 2;
   ar.artifact_json = "{\"path\":\"build/demo.wav\",\"kind\":\"audio\"}";
-  if (!db.insert_artifact(ar, &err)) {
+  int64_t artifact_id = 0;
+  if (!db.insert_artifact(ar, &artifact_id, &err)) {
     std::fprintf(stderr, "insert_artifact failed: %s\n", err.c_str());
     return 1;
   }
@@ -333,7 +334,7 @@ int main() {
   const int64_t run_replay_error_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('runs') WHERE name='replay_error';");
   sqlite3_close(raw2);
-  assert(ver == 27);
+  assert(ver == 28);
   assert(fairq_sessions_tbl == 1);
   assert(arts2 == 0);
   assert(stop_reason_cols == 1);

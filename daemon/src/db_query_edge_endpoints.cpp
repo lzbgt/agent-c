@@ -480,6 +480,48 @@ static int64_t now_utc_ms() {
     .count();
 }
 
+static Json::Value build_workflow_stats(
+  sqlite3* db,
+  const std::string& table,
+  const char* created_col,
+  const char* updated_col,
+  const TimeWindow& win
+) {
+  Json::Value stats(Json::objectValue);
+  Json::Value counts(Json::objectValue);
+  int64_t total = 0;
+  std::string err;
+  if (!query_status_counts(db, table, updated_col, win, &counts, &total, &err)) {
+    stats["error"] = err.empty() ? "failed to query status counts" : err;
+    return stats;
+  }
+  stats["counts"] = counts;
+  stats["total"] = (Json::Int64)total;
+
+  Json::Value terminal(Json::objectValue);
+  err.clear();
+  if (!query_terminal_stats(db, table, created_col, updated_col, win, &terminal, &err)) {
+    stats["terminal_error"] = err.empty() ? "failed to query terminal stats" : err;
+  } else {
+    stats["terminal"] = terminal;
+  }
+
+  int64_t error_count = 0;
+  err.clear();
+  if (!query_error_count(db, table, updated_col, win, &error_count, &err)) {
+    stats["error_count_error"] = err.empty() ? "failed to query error count" : err;
+  } else {
+    stats["error_count"] = (Json::Int64)error_count;
+    const int64_t terminal_count = terminal.isMember("count") ? terminal["count"].asInt64() : 0;
+    if (terminal_count > 0) {
+      stats["error_rate"] = (double)error_count / (double)terminal_count;
+    } else {
+      stats["error_rate"] = Json::Value(Json::nullValue);
+    }
+  }
+  return stats;
+}
+
 static std::string json_scalar_to_string(const Json::Value& v) {
   if (v.isString()) return v.asString();
   if (v.isBool()) return v.asBool() ? "true" : "false";
@@ -583,6 +625,50 @@ static void append_edge_node_csv(const Json::Value& stats, std::string* out) {
     if (stats.isMember(key)) {
       append_csv_row(out, "edge_nodes", key, "", json_scalar_to_string(stats[key]));
     }
+  }
+}
+
+static void append_workflow_csv_section(const std::string& section, const Json::Value& stats, std::string* out) {
+  if (!out) return;
+  if (stats.isObject() && stats.isMember("error")) {
+    append_csv_row(out, section, "error", "", json_scalar_to_string(stats["error"]));
+  }
+  const Json::Value counts = stats.get("counts", Json::Value(Json::objectValue));
+  if (counts.isObject()) {
+    const auto names = counts.getMemberNames();
+    for (const auto& name : names) {
+      append_csv_row(out, section, "status_count", name, json_scalar_to_string(counts[name]));
+    }
+  }
+  if (stats.isMember("total")) {
+    append_csv_row(out, section, "total", "", json_scalar_to_string(stats["total"]));
+  }
+  const Json::Value terminal = stats.get("terminal", Json::Value(Json::objectValue));
+  if (terminal.isObject()) {
+    if (terminal.isMember("count")) {
+      append_csv_row(out, section, "terminal_count", "", json_scalar_to_string(terminal["count"]));
+    }
+    if (terminal.isMember("avg_ms")) {
+      append_csv_row(out, section, "terminal_avg_ms", "", json_scalar_to_string(terminal["avg_ms"]));
+    }
+    if (terminal.isMember("min_ms")) {
+      append_csv_row(out, section, "terminal_min_ms", "", json_scalar_to_string(terminal["min_ms"]));
+    }
+    if (terminal.isMember("max_ms")) {
+      append_csv_row(out, section, "terminal_max_ms", "", json_scalar_to_string(terminal["max_ms"]));
+    }
+  }
+  if (stats.isMember("error_count")) {
+    append_csv_row(out, section, "error_count", "", json_scalar_to_string(stats["error_count"]));
+  }
+  if (stats.isMember("error_rate")) {
+    append_csv_row(out, section, "error_rate", "", json_scalar_to_string(stats["error_rate"]));
+  }
+  if (stats.isMember("terminal_error")) {
+    append_csv_row(out, section, "terminal_error", "", json_scalar_to_string(stats["terminal_error"]));
+  }
+  if (stats.isMember("error_count_error")) {
+    append_csv_row(out, section, "error_count_error", "", json_scalar_to_string(stats["error_count_error"]));
   }
 }
 #endif
@@ -1143,50 +1229,102 @@ void handle_db_workflow_analytics_endpoint(
   out["since_unix_ms"] = win.has_since ? Json::Value((Json::Int64)win.since) : Json::Value(Json::nullValue);
   out["until_unix_ms"] = win.has_until ? Json::Value((Json::Int64)win.until) : Json::Value(Json::nullValue);
 
-  auto build_stats = [&](const std::string& table, const char* created_col, const char* updated_col) -> Json::Value {
-    Json::Value stats(Json::objectValue);
-    Json::Value counts(Json::objectValue);
-    int64_t total = 0;
-    std::string err;
-    if (!query_status_counts(h.db, table, updated_col, win, &counts, &total, &err)) {
-      stats["error"] = err.empty() ? "failed to query status counts" : err;
-      return stats;
-    }
-    stats["counts"] = counts;
-    stats["total"] = (Json::Int64)total;
-
-    Json::Value terminal(Json::objectValue);
-    err.clear();
-    if (!query_terminal_stats(h.db, table, created_col, updated_col, win, &terminal, &err)) {
-      stats["terminal_error"] = err.empty() ? "failed to query terminal stats" : err;
-    } else {
-      stats["terminal"] = terminal;
-    }
-
-    int64_t error_count = 0;
-    err.clear();
-    if (!query_error_count(h.db, table, updated_col, win, &error_count, &err)) {
-      stats["error_count_error"] = err.empty() ? "failed to query error count" : err;
-    } else {
-      stats["error_count"] = (Json::Int64)error_count;
-      const int64_t terminal_count = terminal.isMember("count") ? terminal["count"].asInt64() : 0;
-      if (terminal_count > 0) {
-        stats["error_rate"] = (double)error_count / (double)terminal_count;
-      } else {
-        stats["error_rate"] = Json::Value(Json::nullValue);
-      }
-    }
-    return stats;
-  };
-
   if (scope == "all" || scope == "durable") {
-    out["durable"] = build_stats("workflows", "created_unix_ms", "updated_unix_ms");
+    out["durable"] = build_workflow_stats(h.db, "workflows", "created_unix_ms", "updated_unix_ms", win);
   }
   if (scope == "all" || scope == "edge") {
-    out["edge"] = build_stats("edge_workflows", "created_utc_ms", "updated_utc_ms");
+    out["edge"] = build_workflow_stats(h.db, "edge_workflows", "created_utc_ms", "updated_utc_ms", win);
   }
 
   resp->status = 200;
+  resp->body = json_stringify(out);
+  return;
+#endif
+}
+
+void handle_db_workflow_analytics_export_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  const std::string format = query_get(req.query, "format").value_or("json");
+  const std::string scope = query_get(req.query, "scope").value_or("all");
+  if (format != "json" && format != "csv") {
+    resp->status = 400;
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    resp->body = "{\"ok\":false,\"error\":\"invalid format (use json or csv)\"}";
+    return;
+  }
+  if (scope != "all" && scope != "durable" && scope != "edge") {
+    resp->status = 400;
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    resp->body = "{\"ok\":false,\"error\":\"invalid scope (use all, durable, or edge)\"}";
+    return;
+  }
+
+  const TimeWindow win = parse_time_window(req);
+
+  DbHandle h;
+  Json::Value o = open_db_or_error(db_or_null, &h, nullptr);
+  if (!o.isObject() || !o.get("ok", false).asBool()) {
+    const int st = o.isMember("rpc_status") && o["rpc_status"].isInt() ? o["rpc_status"].asInt() : 500;
+    resp->status = st;
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    resp->body = json_stringify(o);
+    return;
+  }
+
+#if !defined(AGENT_HAVE_SQLITE3)
+  resp->status = 500;
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  return;
+#else
+  Json::Value durable(Json::objectValue);
+  Json::Value edge(Json::objectValue);
+  if (scope == "all" || scope == "durable") {
+    durable = build_workflow_stats(h.db, "workflows", "created_unix_ms", "updated_unix_ms", win);
+  }
+  if (scope == "all" || scope == "edge") {
+    edge = build_workflow_stats(h.db, "edge_workflows", "created_utc_ms", "updated_utc_ms", win);
+  }
+
+  const int64_t generated_ms = now_utc_ms();
+  if (format == "csv") {
+    resp->status = 200;
+    resp->headers["Content-Type"] = "text/csv; charset=utf-8";
+    resp->headers["Content-Disposition"] = "attachment; filename=\"workflow_analytics_export.csv\"";
+    std::string out;
+    out.reserve(2048);
+    out.append("section,metric,key,value\n");
+    append_csv_row(&out, "meta", "generated_utc_ms", "", std::to_string(generated_ms));
+    if (win.has_since) append_csv_row(&out, "meta", "since_unix_ms", "", std::to_string(win.since));
+    if (win.has_until) append_csv_row(&out, "meta", "until_unix_ms", "", std::to_string(win.until));
+    if (scope == "all" || scope == "durable") {
+      append_workflow_csv_section("durable", durable, &out);
+    }
+    if (scope == "all" || scope == "edge") {
+      append_workflow_csv_section("edge", edge, &out);
+    }
+    resp->body = std::move(out);
+    return;
+  }
+
+  resp->status = 200;
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  Json::Value out(Json::objectValue);
+  out["ok"] = true;
+  out["generated_utc_ms"] = (Json::Int64)generated_ms;
+  out["since_unix_ms"] = win.has_since ? Json::Value((Json::Int64)win.since) : Json::Value(Json::nullValue);
+  out["until_unix_ms"] = win.has_until ? Json::Value((Json::Int64)win.until) : Json::Value(Json::nullValue);
+  out["scope"] = scope;
+  if (scope == "all" || scope == "durable") out["durable"] = durable;
+  if (scope == "all" || scope == "edge") out["edge"] = edge;
   resp->body = json_stringify(out);
   return;
 #endif
@@ -1261,13 +1399,13 @@ void handle_db_edge_analytics_export_endpoint(
   if (format != "json" && format != "csv") {
     resp->status = 400;
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    resp->body = R"({"ok":false,"error":"invalid format (use json or csv)"})";
+    resp->body = "{\"ok\":false,\"error\":\"invalid format (use json or csv)\"}";
     return;
   }
   if (scope != "all" && scope != "edge_tasks" && scope != "edge_nodes") {
     resp->status = 400;
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    resp->body = R"({"ok":false,"error":"invalid scope (use all, edge_tasks, or edge_nodes)"})";
+    resp->body = "{\"ok\":false,\"error\":\"invalid scope (use all, edge_tasks, or edge_nodes)\"}";
     return;
   }
 

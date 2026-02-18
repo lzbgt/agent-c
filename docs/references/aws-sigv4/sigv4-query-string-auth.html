@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+    <html xmlns="http://www.w3.org/1999/xhtml" lang="en-US"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8" /><title>Authenticating Requests: Using Query Parameters (AWS Signature Version 4) - Amazon Simple Storage Service</title><meta name="viewport" content="width=device-width,initial-scale=1" /><meta name="assets_root" content="/assets" /><meta name="target_state" content="sigv4-query-string-auth" /><meta name="default_state" content="sigv4-query-string-auth" /><link rel="icon" type="image/ico" href="/assets/images/favicon.ico" /><link rel="shortcut icon" type="image/ico" href="/assets/images/favicon.ico" /><link rel="canonical" href="https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html" /><meta name="description" content="Authenticate requests using the query parameters to express a request entirely in a URL." /><meta name="deployment_region" content="IAD" /><meta name="product" content="Amazon Simple Storage Service" /><meta name="guide" content="API Reference" /><meta name="abstract" content="Explains how to use the Amazon S3 API to store data in the cloud." /><meta name="guide-locale" content="en_us" /><meta name="tocs" content="toc-contents.json" /><link rel="canonical" href="https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html" /><link rel="alternative" href="https://docs.aws.amazon.com/id_id/AmazonS3/latest/API/sigv4-query-string-auth.html" hreflang="id-id" /><link rel="alternative" href="https://docs.aws.amazon.com/id_id/AmazonS3/latest/API/sigv4-query-string-auth.html" hreflang="id" /><link rel="alternative" href="https://docs.aws.amazon.com/de_de/AmazonS3/latest/API/sigv4-query-string-auth.html" hreflang="de-de" /><link rel="alternative" href="https://docs.aws.amazon.com/de_de/AmazonS3/latest/API/sigv4-query-string-auth.html" hreflang="de" /><link rel="alternative" href="https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html" hreflang="en-us" /><link rel="alternative" href="https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html" hreflang="en" /><link rel="alternative" href="https://docs.aws.amazon.com/es_es/AmazonS3/latest/API/sigv4-query-string-auth.html" hreflang="es-es" /><link rel="alternative" href="https://docs.aws.amazon.com/es_es/AmazonS3/latest/API/sigv4-query-string-auth.html" hreflang="es" /><link rel="alternative" href="https://docs.aws.amazon.com/fr_fr/AmazonS3/latest/API/sigv4-query-string-auth.html" hreflang="fr-fr" /><link rel="alternative" href="https://docs.aws.amazon.com/fr_fr/AmazonS3/latest/API/sigv4-query-string-auth.html" hreflang="fr" /><link rel="alternative" href="https://docs.aws.amazon.com/it_it/AmazonS3/latest/API/sigv4-query-string-auth.html" hreflang="it-it" /><link rel="alternative" href="https://docs.aws.amazon.com/it_it/AmazonS3/latest/API/sigv4-query-string-auth.html" hreflang="it" /><link rel="alternative" href="https://docs.aws.amazon.com/ja_jp/AmazonS3/latest/API/sigv4-query-string-auth.html" hreflang="ja-jp" /><link rel="alternative" href="https://docs.aws.amazon.com/ja_jp/AmazonS3/latest/API/sigv4-query-string-auth.html" hreflang="ja" /><link rel="alternative" href="https://docs.aws.amazon.com/ko_kr/AmazonS3/latest/API/sigv4-query-string-auth.html" hreflang="ko-kr" /><link rel="alternative" href="https://docs.aws.amazon.com/ko_kr/AmazonS3/latest/API/sigv4-query-string-auth.html" hreflang="ko" /><link rel="alternative" href="https://docs.aws.amazon.com/pt_br/AmazonS3/latest/API/sigv4-query-string-auth.html" hreflang="pt-br" /><link rel="alternative" href="https://docs.aws.amazon.com/pt_br/AmazonS3/latest/API/sigv4-query-string-auth.html" hreflang="pt" /><link rel="alternative" href="https://docs.aws.amazon.com/zh_cn/AmazonS3/latest/API/sigv4-query-string-auth.html" hreflang="zh-cn" /><link rel="alternative" href="https://docs.aws.amazon.com/zh_tw/AmazonS3/latest/API/sigv4-query-string-auth.html" hreflang="zh-tw" /><link rel="alternative" href="https://docs.aws.amazon.com/AmazonS3/latest/API/sigv4-query-string-auth.html" hreflang="x-default" /><meta name="feedback-item" content="S3" /><meta name="this_doc_product" content="Amazon Simple Storage Service" /><meta name="this_doc_guide" content="API Reference" /><head xmlns="http://www.w3.org/1999/xhtml"> <script defer="" src="/assets/r/awsdocs-doc-page.2.0.0.js"></script><link href="/assets/r/awsdocs-doc-page.2.0.0.css" rel="stylesheet"/></head>
+<script defer="" id="awsc-panorama-bundle" type="text/javascript" src="https://prod.pa.cdn.uis.awsstatic.com/panorama-nav-init.js" data-config="{'appEntity':'aws-documentation','region':'us-east-1','service':'s3'}"></script><meta id="panorama-serviceSubSection" value="API Reference" /><meta id="panorama-serviceConsolePage" value="Authenticating Requests: Using Query Parameters (AWS Signature Version 4)" /></head><body class="awsdocs awsui"><div class="awsdocs-container"><awsdocs-header></awsdocs-header><awsui-app-layout id="app-layout" class="awsui-util-no-gutters" ng-controller="ContentController as $ctrl" header-selector="awsdocs-header" navigation-hide="false" navigation-width="$ctrl.navWidth" navigation-open="$ctrl.navOpen" navigation-change="$ctrl.onNavChange($event)" tools-hide="$ctrl.hideTools" tools-width="$ctrl.toolsWidth" tools-open="$ctrl.toolsOpen" tools-change="$ctrl.onToolsChange($event)"><div id="guide-toc" dom-region="navigation"><awsdocs-toc></awsdocs-toc></div><div id="main-column" dom-region="content" tabindex="-1"><awsdocs-view class="awsdocs-view"><div id="awsdocs-content"><head><title>Authenticating Requests: Using Query Parameters (AWS Signature Version 4) - Amazon Simple Storage Service</title><meta name="pdf" content="/pdfs/AmazonS3/latest/API/s3-api.pdf#sigv4-query-string-auth" /><meta name="forums" content="https://repost.aws/tags/TADSTjraA0Q4-a1dxk6eUYaw" /><meta name="feedback" content="https://docs.aws.amazon.com/forms/aws-doc-feedback?hidden_service_name=S3&amp;topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/sigv4-query-string-auth.html" /><meta name="feedback-yes" content="feedbackyes.html?topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/sigv4-query-string-auth.html" /><meta name="feedback-no" content="feedbackno.html?topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/sigv4-query-string-auth.html" /><meta name="keywords" content="AWS request authentication process,HTTP Authorization header,Query string parameters for authentication,Signing Requests" /><script type="application/ld+json">
+{
+    "@context" : "https://schema.org",
+    "@type" : "BreadcrumbList",
+    "itemListElement" : [
+      {
+        "@type" : "ListItem",
+        "position" : 1,
+        "name" : "AWS",
+        "item" : "https://aws.amazon.com"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 2,
+        "name" : "Amazon Simple Storage Service (S3)",
+        "item" : "https://docs.aws.amazon.com/s3/index.html"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 3,
+        "name" : "API Reference",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 4,
+        "name" : "Authenticating Requests (AWS Signature Version 4)",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-authenticating-requests.html"
+      },
+      {
+        "@type" : "ListItem",
+        "position" : 5,
+        "name" : "Authenticating Requests: Using Query Parameters (AWS Signature Version 4)",
+        "item" : "https://docs.aws.amazon.com/AmazonS3/latest/API/sig-v4-authenticating-requests.html"
+      }
+    ]
+}
+</script></head><body><div id="main"><div style="display: none"><a href="/pdfs/AmazonS3/latest/API/s3-api.pdf#sigv4-query-string-auth" target="_blank" rel="noopener noreferrer" title="Open PDF"></a></div><div id="breadcrumbs" class="breadcrumb"><a href="/index.html">Documentation</a><a href="/s3/index.html">Amazon Simple Storage Service (S3)</a><a href="Welcome.html">API Reference</a></div><div id="page-toc-src"><a href="#query-string-auth-v4-signing">Calculating a Signature</a><a href="#query-string-auth-v4-signing-example">An Example</a><a href="#query-string-auth-v4-signing-example-2">Example 2</a></div><div id="main-content" class="awsui-util-container"><div id="main-col-body"><awsdocs-language-banner data-service="$ctrl.pageService"></awsdocs-language-banner><h1 class="topictitle" id="sigv4-query-string-auth">Authenticating Requests: Using Query Parameters (AWS
+			Signature Version 4)</h1><div class="awsdocs-page-header-container"><awsdocs-page-header></awsdocs-page-header><awsdocs-filter-selector id="awsdocs-filter-selector"></awsdocs-filter-selector></div><p>As described in the authentication overview (see <a href="./sig-v4-authenticating-requests.html#auth-methods-intro">Authentication Methods</a>), you can provide authentication information
+			using query string parameters. Using query parameters to authenticate requests is useful
+			when you want to express a request entirely in a URL. This method is also referred as
+			presigning a URL. </p><p>A use case scenario for presigned URLs is that you can grant temporary access to your Amazon
+			S3 resources. For example, you can embed a presigned URL on your website or
+			alternatively use it in command line client (such as Curl) to download objects.</p><div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>You can also use the AWS CLI to create presigned URLs. For more information, see 
+			<a href="https://docs.aws.amazon.com/cli/latest/reference/s3/presign.html"><code class="code">presign</code></a> in the 
+			<em>AWS CLI Command Reference</em>.</p></div></div><p>The following is an example presigned URL. </p><p>
+			</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight">https://examplebucket.s3.amazonaws.com/test.txt
+?X-Amz-Algorithm=AWS4-HMAC-SHA256
+&amp;X-Amz-Credential=<code class="replaceable">&lt;your-access-key-id&gt;</code>/20130721/us-east-1/s3/aws4_request
+&amp;X-Amz-Date=20130721T201207Z
+&amp;X-Amz-Expires=86400
+&amp;X-Amz-SignedHeaders=host
+&amp;X-Amz-Signature=<code class="replaceable">&lt;signature-value&gt;</code>  </code></pre><p></p><p>In the example URL, note the following:</p><p>
+			</p><div class="itemizedlist">
+				 
+				 
+			<ul class="itemizedlist"><li class="listitem">
+					<p>The line feeds are added for readability.</p>
+				</li><li class="listitem">
+					<p>The <code class="code">X-Amz-Credential</code> value in the URL shows the "/" character
+						only for readability. In practice, it should be encoded as <code class="code">%2F</code>.  For example:</p>
+					<p>
+						</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight">&amp;X-Amz-Credential=<code class="replaceable">&lt;your-access-key-id&gt;</code>%2F20130721%2Fus-east-1%2Fs3%2Faws4_request</code></pre>
+					<p></p>
+				</li></ul></div><p>The following table describes the query parameters in the URL that provide authentication
+			information. </p><div class="table-container"><div class="table-contents"><table id="w1003aac13c25c23"><thead>
+					<tr>
+						<th>Query String Parameter Name</th>
+						<th>Example Value</th>
+
+					</tr>
+				</thead>
+					<tr>
+						<td tabindex="-1"><code class="code">X-Amz-Algorithm</code></td>
+						<td tabindex="-1">
+							<p>Identifies the version of AWS Signature and the algorithm that you
+								used to calculate the signature. </p>
+							<p>For AWS Signature Version 4, you set this parameter value to
+									<code class="code">AWS4-HMAC-SHA256</code>. This string identifies AWS
+								Signature Version 4 (AWS4) and the HMAC-SHA256 algorithm
+								(HMAC-SHA256). </p>
+						</td>
+
+					</tr>
+					<tr>
+						<td tabindex="-1"><code class="code">X-Amz-Credential</code></td>
+						<td tabindex="-1">
+							<p>In addition to your access key ID, this parameter also provides scope (AWS Region and
+								service) for which the signature is valid. This value must match the
+								scope you use in signature calculations, discussed in the following
+								section. The general form for this parameter value is as
+								follows:</p>
+							<p>
+								</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight"><code class="replaceable">&lt;your-access-key-id&gt;</code>/<code class="replaceable">&lt;date&gt;</code>/<code class="replaceable">&lt;AWS Region&gt;</code>/<code class="replaceable">&lt;AWS-service&gt;</code>/aws4_request</code></pre>
+							<p>For example: </p>
+							<p>
+								</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight"><code class="code" copy="true">AKIAIOSFODNN7EXAMPLE/20130721/us-east-1/s3/aws4_request</code></code></pre>
+							<p>For Amazon S3, the <code class="replaceable">AWS-service</code> string is
+								<code class="code">s3</code>. For a list of S3 <code class="code">AWS-region</code> strings, see
+									<a href="https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region">Regions and
+									Endpoints</a> in the <em>AWS General Reference</em>.</p></td>
+
+					</tr>
+					<tr>
+						<td tabindex="-1"><code class="code">X-Amz-Date</code></td>
+						<td tabindex="-1">
+							
+							<p>The date and time format must follow the ISO 8601 standard, and
+								must be formatted with the
+									"<code class="replaceable">yyyyMMdd</code>T<code class="replaceable">HHmmss</code>Z"
+								format. For example if the date and time was "08/01/2016
+								15:32:41.982-700" then it must first be converted to UTC
+								(Coordinated Universal Time) and then submitted as
+								"20160801T223241Z".  </p>
+						</td>
+					</tr>
+					<tr>
+						<td tabindex="-1"><code class="code">X-Amz-Expires</code></td>
+						<td tabindex="-1">
+							<p>Provides the time period, in seconds, for which the generated
+								presigned URL is valid. For example, <code class="code">86400</code> (24 hours).
+								This value is an integer. The minimum value you can set is 1, and
+								the maximum is 604800 (seven days).</p>
+							<p>A presigned URL can be valid for a maximum of seven days because
+								the signing key you use in signature calculation is valid for up to
+								seven days. </p></td>
+
+					</tr>
+					<tr>
+						<td tabindex="-1"><code class="code">X-Amz-SignedHeaders</code></td>
+						<td tabindex="-1">
+							<p>Lists the headers that you used to calculate the signature. The following headers are
+								required in the signature calculations:</p>
+							<p>
+								</p><div class="itemizedlist">
+									 
+									 
+								<ul class="itemizedlist"><li class="listitem">
+										<p>The HTTP <code class="code">host</code> header.</p>
+									</li><li class="listitem">
+										<p>Any <code class="code">x-amz-*</code> headers that you plan to add
+											to the request.</p>
+									</li></ul></div>
+							<p>
+								</p><div class="awsdocs-note"><div class="awsdocs-note-title"><awsui-icon name="status-info" variant="link"></awsui-icon><h6>Note</h6></div><div class="awsdocs-note-text"><p>  For added security, you should sign all the request
+										headers that you plan to include in your request.</p></div></div>
+						</td>
+					</tr>
+					<tr>
+						<td tabindex="-1"><code class="code">X-Amz-Signature</code></td>
+						<td tabindex="-1">
+							<p>Provides the signature to authenticate your request. This
+								signature must match the signature Amazon S3 calculates; otherwise, Amazon S3
+								denies the request. For example, <code class="code">
+									733255ef022bec3f2a8701cd61d4b371f3f28c9f193a1f02279211d48d5193d7</code></p>
+							<p>Signature calculations are described in the following
+								section.</p>
+						</td>
+
+					</tr>
+					
+					<tr>
+						<td tabindex="-1"><code class="code">X-Amz-Security-Token</code></td>
+						<td tabindex="-1">
+							<p>Optional credential parameter if using credentials sourced from the STS service.</p>
+						
+						</td>
+
+					</tr>
+					
+				</table></div></div><p></p><h2 id="query-string-auth-v4-signing">Calculating a Signature</h2>
+			
+			
+			<p>The following diagram illustrates the signature calculation process. </p>
+
+
+			<p>
+				</p><div class="mediaobject">
+					 
+						<img src="/images/AmazonS3/latest/API/images/sigV4-using-query-params.png" class="aws-docs-img-whiteBg aws-docs-img-padding" alt="Diagram showing AWS request signing process with Canonical Request, StringToSign, and Signature steps." data-alt-text-source="generated" />
+					 
+				</div>
+		  <p></p> 
+		  
+		  
+				  <p>The following table describes the functions that are shown in the diagram. 
+		    You need to implement code for these functions.</p>
+		  <div class="table-container"><div class="table-contents"><table id="w1003aac13c25c27c11"><thead>
+		        <tr>
+		          <th>Function</th>
+		          <th>Description</th>
+		        </tr>
+		      </thead>
+		        
+		        <tr>
+		          <td tabindex="-1"><code class="code">Lowercase()</code></td>
+		          <td tabindex="-1">Convert the string to lowercase.</td>
+		        </tr>				
+		        <tr>
+		          <td tabindex="-1"><code class="code">Hex()</code></td>
+		          <td tabindex="-1">Lowercase base 16 encoding.</td>
+		        </tr>
+		        <tr>
+		          <td tabindex="-1"><code class="code">SHA256Hash()</code></td>
+		          <td tabindex="-1">Secure Hash Algorithm (SHA) cryptographic hash function.</td>
+		        </tr>
+		        <tr>
+		          <td tabindex="-1"><code class="code">HMAC-SHA256()</code></td>
+		          <td tabindex="-1">Computes HMAC by using the SHA256 algorithm with the signing key provided. This is the final signature.</td>
+		        </tr>
+		        <tr>
+		          <td tabindex="-1"><code class="code">Trim()</code></td>
+		          <td tabindex="-1">Remove any leading or trailing whitespace. </td>
+		        </tr>
+		        <tr>
+		          <td tabindex="-1"><code class="code">UriEncode()</code></td>
+		          <td tabindex="-1">
+		            <p>URI encode every byte. UriEncode() must enforce the following rules:</p>
+		      
+		              <div class="itemizedlist">
+		                 
+		                 
+		                 
+		                 
+		                 
+		              <ul class="itemizedlist"><li class="listitem">
+		                  <p>URI encode every byte except the unreserved
+		                    characters: 'A'-'Z', 'a'-'z', '0'-'9', '-', '.',
+		                    '_', and '~'. </p>
+		                </li><li class="listitem"><p>The space character is a reserved character and must be
+		                  encoded as "%20" (and not as "+"). </p></li><li class="listitem"><p>Each URI encoded byte is formed by a '%' and the
+		                  two-digit hexadecimal value of the byte. </p></li><li class="listitem"><p>Letters in the hexadecimal value must be uppercase, for
+		                  example "%1A". </p></li><li class="listitem"><p>Encode the forward slash character, '/', everywhere 
+		                  except in
+		                  the object key name. For example, if the object key name is
+		                  <code class="code">photos/Jan/sample.jpg</code>, the forward
+		                  slash in the key name is not encoded. </p></li></ul></div>
+		    
+
+		              <div class="awsdocs-note awsdocs-important"><div class="awsdocs-note-title"><awsui-icon name="status-warning" variant="error"></awsui-icon><h6>Important</h6></div><div class="awsdocs-note-text"><p>The standard UriEncode functions provided by your development platform may not work
+		                  because of differences in implementation and
+		                  related ambiguity in the underlying RFCs. We recommend that you write your own custom UriEncode
+		                  function to ensure that your encoding will
+		                  work.</p></div></div>
+		            
+		            <p>To see an example of a UriEncode function in Java, see
+		              <a href="https://github.com/aws/aws-sdk-java/blob/master/aws-java-sdk-core/src/main/java/com/amazonaws/util/SdkHttpUtils.java#L66" rel="noopener noreferrer" target="_blank"><span>Java Utilities</span><awsui-icon class="awsdocs-link-icon" name="external"></awsui-icon></a>
+		              on the GitHub website.</p>		            
+		          </td>
+		        </tr>
+		      </table></div></div> 
+		  
+		  
+		  <p>For more information about the signing process (details of creating a canonical request,
+				string to sign, and signature calculations), see <a href="./sig-v4-header-based-auth.html">Signature Calculations for the Authorization Header:
+				Transferring Payload in a Single Chunk (AWS Signature Version 4)</a>.
+				The process is generally the same except that the creation of
+					<b>CanonicalRequest</b> in a presigned URL differs as
+				follows:</p>
+			<p>
+				</p><div class="itemizedlist">
+					  
+					 
+					 
+					 
+				<ul class="itemizedlist"><li class="listitem">
+						<p>You don't include a payload hash in the <b>Canonical Request</b>, because
+							when you create a presigned URL, you don't know the payload content
+							because the URL is used to upload an arbitrary payload. Instead, you use
+							a constant string <code class="code">UNSIGNED-PAYLOAD</code>. </p>
+					</li><li class="listitem">
+						<p>The <b>Canonical Query String</b> must include all the
+							query parameters from the preceding table except for
+								<code class="code">X-Amz-Signature</code>. </p>
+					</li><li class="listitem">
+						<p>For S3, you must include the <code class="code">X-Amz-Security-Token</code> query parameter in the URL if using credentials sourced from the STS service.</p>
+					</li><li class="listitem">
+						<p><b>Canonical Headers</b> must include the HTTP
+								<code class="code">host</code> header. If you plan to include any of the
+								<code class="code">x-amz-* </code> headers, these headers must also be added for
+							signature calculation. You can optionally add all other headers that you
+							plan to include in your request. For added security, you should sign as
+							many headers as possible. If you add a signed header that is also a
+							signed query parameter, and they differ in value, you will receive an
+						    <code class="code">InvalidRequest</code> error as the input is conflicting.</p>
+					</li></ul></div>
+		<h2 id="query-string-auth-v4-signing-example">An Example</h2>
+			
+			<p>Suppose you have an object <code class="code">test.txt</code> in your
+					<code class="code">examplebucket</code> bucket. You want to share this object with others for
+				a period of 24 hours (86400 seconds) by creating a presigned URL. </p>
+			<p>
+				</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight">https://examplebucket.s3.amazonaws.com/test.txt
+?X-Amz-Algorithm=AWS4-HMAC-SHA256
+&amp;X-Amz-Credential=AKIAIOSFODNN7EXAMPLE%2F20130524%2Fus-east-1%2Fs3%2Faws4_request
+&amp;X-Amz-Date=20130524T000000Z&amp;X-Amz-Expires=86400&amp;X-Amz-SignedHeaders=host
+&amp;X-Amz-Signature=<code class="replaceable">&lt;signature-value&gt;</code></code></pre>
+			<p>The following steps illustrate first the signature calculations and then
+				construction of the presigned URL. The example makes the following additional
+				assumptions:</p>
+			<p>
+				</p><div class="itemizedlist">
+					 
+					 
+				<ul class="itemizedlist"><li class="listitem">
+						<p>Request timestamp is <code class="code">Fri, 24 May 2013 00:00:00
+							GMT</code>.</p>
+					</li><li class="listitem">
+						<p><span>The bucket is in the US East (N. Virginia) region,
+								and the credential <code class="code">Scope</code> and the <code class="code">Signing
+									Key</code> calculations use <code class="code">us-east-1</code> as the region
+								specifier. </span>
+							 For more information, see <a href="https://docs.aws.amazon.com/general/latest/gr/rande.html#s3_region">Regions and Endpoints</a> in
+							the <em>AWS General Reference</em>. </p>
+					</li></ul></div>
+			<p>You can use this example as a test case to verify the signature that your code
+				calculates; however, you must use the same bucket name, object key, time stamp, and
+				the following example credentials:</p>
+			
+				<div class="table-container"><div class="table-contents"><table id="w1003aac13c25c29c14"><thead>
+							<tr>
+								<th>Parameter</th>
+								<th>Value</th>
+							</tr>
+						</thead>
+							<tr>
+								<td tabindex="-1"><code class="code">AWSAccessKeyId</code></td>
+								<td tabindex="-1"><code class="code">AKIAIOSFODNN7EXAMPLE</code></td>
+							</tr>
+							<tr>
+								<td tabindex="-1"><code class="code">AWSSecretAccessKey</code></td>
+								<td tabindex="-1"><code class="code">wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY</code></td>
+							</tr>
+						</table></div></div>
+			
+			<div class="procedure"><ol><li>
+					<h6>StringToSign</h6>
+					<ol><li>
+							<h6>CanonicalRequest</h6>
+							<p>
+								</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">GET
+/test.txt
+X-Amz-Algorithm=AWS4-HMAC-SHA256&amp;X-Amz-Credential=AKIAIOSFODNN7EXAMPLE%2F20130524%2Fus-east-1%2Fs3%2Faws4_request&amp;X-Amz-Date=20130524T000000Z&amp;X-Amz-Expires=86400&amp;X-Amz-SignedHeaders=host
+host:examplebucket.s3.amazonaws.com
+
+host
+UNSIGNED-PAYLOAD</code></pre><p>
+								</p>
+						</li><li>
+							<h6>StringToSign</h6>
+							<p>
+								</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">AWS4-HMAC-SHA256
+20130524T000000Z
+20130524/us-east-1/s3/aws4_request
+3bfa292879f6447bbcda7001decf97f4a54dc650c8942174ae0a9121cf58ad04</code></pre><p>
+								</p>
+						</li></ol>
+				</li><li>
+					<h6>SigningKey</h6>
+					<p>
+						</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight"><em>signing key</em> = HMAC-SHA256(HMAC-SHA256(HMAC-SHA256(HMAC-SHA256("AWS4" + "<code class="replaceable">&lt;YourSecretAccessKey&gt;</code>","20130524"),"us-east-1"),"s3"),"aws4_request")</code></pre><p>
+						</p>
+				</li><li>
+					<h6>Signature</h6>
+					<p>
+						</p><pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">aeeed9bbccd4d02ee5c0109b86d86835f995330da4c265957d157751f604d404</code></pre><p>
+						</p>
+					<p>Now you have all information to construct a presigned URL.  The resulting URL for this
+						example is shown as follows (you can use this to compare your presigned URL):</p>
+					<pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="">https://examplebucket.s3.amazonaws.com/test.txt?X-Amz-Algorithm=AWS4-HMAC-SHA256&amp;X-Amz-Credential=AKIAIOSFODNN7EXAMPLE%2F20130524%2Fus-east-1%2Fs3%2Faws4_request&amp;X-Amz-Date=20130524T000000Z&amp;X-Amz-Expires=86400&amp;X-Amz-SignedHeaders=host&amp;X-Amz-Signature=aeeed9bbccd4d02ee5c0109b86d86835f995330da4c265957d157751f604d404</code></pre>
+					
+				</li></ol></div>
+			
+
+
+
+		<h2 id="query-string-auth-v4-signing-example-2">Example 2</h2>
+		<p>The following is an example (unrelated to the previous example) showing a presigned URL with the <code class="code">X-Amz-Security-Token</code> parameter.</p>
+	<pre class="programlisting"><div class="code-btn-container"><div class="btn-copy-code" title="Copy"><awsui-icon name="copy"></awsui-icon></div></div><!--DEBUG: cli ()--><code class="nohighlight">https://examplebucket.s3.us-east-1.amazonaws.com/test.txt
+?X-Amz-Algorithm=AWS4-HMAC-SHA256
+&amp;X-Amz-Credential=AKIAIOSFODNN7EXAMPLE%2F20130524%2Fus-east-1%2Fs3%2Faws4_request
+&amp;X-Amz-Date=20200524T000000Z&amp;X-Amz-Expires=86400&amp;X-Amz-SignedHeaders=host
+&amp;X-Amz-Security-Token=IQoJb3JpZ2luX2VjEMv%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJGMEQCIBSUbVdj9YGs2g0HkHsOHFdkwOozjARSKHL987NhhOC8AiBPepRU1obMvIbGU0T%2BWphFPgK%2Fqpxaf5Snvm5M57XFkCqlAgjz%2F%2F%2F%2F%2F%2F%2F%2F%2F%2F8BEAAaDDQ3MjM4NTU0NDY2MCIM83pULBe5%2F%2BNm1GZBKvkBVslSaJVgwSef7SsoZCJlfJ56weYl3QCwEGr2F4BmCZZyFpmWEYzWnhNK1AnHMj5nkfKlKBx30XAT5PZGVrmq4Vkn9ewlXQy1Iu3QJRi9Tdod8Ef9%2FyajTaUGh76%2BF5u5a4O115jwultOQiKomVwO318CO4l8lv%2F3HhMOkpdanMXn%2B4PY8lvM8RgnzSu90jOUpGXEOAo%2F6G8OqlMim3%2BZmaQmasn4VYRvESEd7O72QGZ3%2BvDnDVnss0lSYjlv8PP7IujnvhZRnj0WoeOyMe1lL0wTG%2Fa9usH5hE52w%2FYUJccOn0OaZuyROuVsRV4Q70sbWQhUvYUt%2B0tUMKzm8vsFOp4BaNZFqobbjtb36Y92v%2Bx5kY6i0s8QE886jJtUWMP5ldMziClGx3p0mN5dzsYlM3GyiJ%2FO1mWkPQDwg3mtSpOA9oeeuAMPTA7qMqy9RNuTKBDSx9EW27wvPzBum3SJhEfxv48euadKgrIX3Z79ruQFSQOc9LUrDjR%2B4SoWAJqK%2BGX8Q3vPSjsLxhqhEMWd6U4TXcM7ku3gxMbzqfT8NDg%3D
+&amp;X-Amz-Signature=<code class="replaceable">&lt;signature-value&gt;</code></code></pre>
+		
+		<awsdocs-copyright class="copyright-print"></awsdocs-copyright><awsdocs-thumb-feedback right-edge="{{$ctrl.thumbFeedbackRightEdge}}"></awsdocs-thumb-feedback></div><noscript><div><div><div><div id="js_error_message"><p><img src="https://d1ge0kk1l5kms0.cloudfront.net/images/G/01/webservices/console/warning.png" alt="Warning" /> <strong>Javascript is disabled or is unavailable in your browser.</strong></p><p>To use the Amazon Web Services Documentation, Javascript must be enabled. Please refer to your browser's Help pages for instructions.</p></div></div></div></div></noscript><div id="main-col-footer" class="awsui-util-font-size-0"><div id="doc-conventions"><a target="_top" href="/general/latest/gr/docconventions.html">Document Conventions</a></div><div class="prev-next"><div id="previous" class="prev-link" accesskey="p" href="./sigv4-streaming-trailers.html">Signature Calculation: Including Trailing Headers</div><div id="next" class="next-link" accesskey="n" href="./sig-v4-examples-using-sdks.html">Examples: Signature Calculations</div></div></div><awsdocs-page-utilities></awsdocs-page-utilities></div><div id="quick-feedback-yes" style="display: none;"><div class="title">Did this page help you? - Yes</div><div class="content"><p>Thanks for letting us know we're doing a good job!</p><p>If you've got a moment, please tell us what we did right so we can do more of it.</p><p><awsui-button id="fblink" rel="noopener noreferrer" target="_blank" text="Feedback" click="linkClick($event)" href="https://docs.aws.amazon.com/forms/aws-doc-feedback?hidden_service_name=S3&amp;topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/sigv4-query-string-auth.html"></awsui-button></p></div></div><div id="quick-feedback-no" style="display: none;"><div class="title">Did this page help you? - No</div><div class="content"><p>Thanks for letting us know this page needs work. We're sorry we let you down.</p><p>If you've got a moment, please tell us how we can make the documentation better.</p><p><awsui-button id="fblink" rel="noopener noreferrer" target="_blank" text="Feedback" click="linkClick($event)" href="https://docs.aws.amazon.com/forms/aws-doc-feedback?hidden_service_name=S3&amp;topic_url=https://docs.aws.amazon.com/en_us/AmazonS3/latest/API/sigv4-query-string-auth.html"></awsui-button></p></div></div></div></body></div></awsdocs-view><div class="page-loading-indicator" id="page-loading-indicator"><awsui-spinner size="large"></awsui-spinner></div></div><div id="tools-panel" dom-region="tools"><awsdocs-tools-panel id="awsdocs-tools-panel"></awsdocs-tools-panel></div></awsui-app-layout><awsdocs-cookie-banner class="doc-cookie-banner"></awsdocs-cookie-banner></div></body></html>

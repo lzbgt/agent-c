@@ -9,6 +9,7 @@
 #include "avm_endpoints.h"
 #include "blob_endpoints.h"
 #include "file_endpoint.h"
+#include "http_util.h"
 #include "sandbox_policy.h"
 #include "string_util.h"
 #include "openrouter_models_endpoint.h"
@@ -252,6 +253,7 @@ int main(int argc, char** argv) {
   bool workflow_http_deny_private_set = false;
   bool workflow_http_dns_pin_set = false;
   bool upload_max_bytes_set = false;
+  bool blob_store_set = false;
   bool cors_allow_credentials_set = false;
   bool cors_max_age_set = false;
   bool cors_routes_set = false;
@@ -326,6 +328,140 @@ int main(int argc, char** argv) {
         std::cerr << "Invalid --upload-max-bytes\n";
         return 2;
       }
+    } else if (a == "--blob-store-mode") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --blob-store-mode\n";
+        return 2;
+      }
+      if (v != "local" && v != "object") {
+        std::cerr << "Invalid --blob-store-mode (expected local|object)\n";
+        return 2;
+      }
+      cfg.blob_store_mode = v;
+      blob_store_set = true;
+    } else if (a == "--blob-store-endpoint") {
+      if (!take(&cfg.blob_store_endpoint)) {
+        std::cerr << "Missing value for --blob-store-endpoint\n";
+        return 2;
+      }
+      blob_store_set = true;
+    } else if (a == "--blob-store-region") {
+      if (!take(&cfg.blob_store_region)) {
+        std::cerr << "Missing value for --blob-store-region\n";
+        return 2;
+      }
+      blob_store_set = true;
+    } else if (a == "--blob-store-bucket") {
+      if (!take(&cfg.blob_store_bucket)) {
+        std::cerr << "Missing value for --blob-store-bucket\n";
+        return 2;
+      }
+      blob_store_set = true;
+    } else if (a == "--blob-store-prefix") {
+      if (!take(&cfg.blob_store_prefix)) {
+        std::cerr << "Missing value for --blob-store-prefix\n";
+        return 2;
+      }
+      blob_store_set = true;
+    } else if (a == "--blob-store-path-style") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --blob-store-path-style\n";
+        return 2;
+      }
+      cfg.blob_store_path_style = string_to_bool(v);
+      blob_store_set = true;
+    } else if (a == "--blob-store-read-mode") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --blob-store-read-mode\n";
+        return 2;
+      }
+      if (v != "redirect" && v != "proxy") {
+        std::cerr << "Invalid --blob-store-read-mode (expected redirect|proxy)\n";
+        return 2;
+      }
+      cfg.blob_store_read_mode = v;
+      blob_store_set = true;
+    } else if (a == "--blob-store-cache-mode") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --blob-store-cache-mode\n";
+        return 2;
+      }
+      if (v != "none" && v != "read-through") {
+        std::cerr << "Invalid --blob-store-cache-mode (expected none|read-through)\n";
+        return 2;
+      }
+      cfg.blob_store_cache_mode = v;
+      blob_store_set = true;
+    } else if (a == "--blob-store-cache-max-bytes") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --blob-store-cache-max-bytes\n";
+        return 2;
+      }
+      try {
+        unsigned long long n = std::stoull(v);
+        const unsigned long long kMax = 512ull * 1024ull * 1024ull;
+        if (n > kMax) n = kMax;
+        cfg.blob_store_cache_max_bytes = (size_t)n;
+        blob_store_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --blob-store-cache-max-bytes\n";
+        return 2;
+      }
+    } else if (a == "--blob-store-presign-ttl-sec") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --blob-store-presign-ttl-sec\n";
+        return 2;
+      }
+      try {
+        long long n = std::stoll(v);
+        if (n < 1) n = 1;
+        if (n > 604800) n = 604800;
+        cfg.blob_store_presign_ttl_sec = (int64_t)n;
+        blob_store_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --blob-store-presign-ttl-sec\n";
+        return 2;
+      }
+    } else if (a == "--blob-store-timeout-ms") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --blob-store-timeout-ms\n";
+        return 2;
+      }
+      try {
+        long long n = std::stoll(v);
+        if (n < 0) n = 0;
+        if (n > 30LL * 60 * 1000) n = 30LL * 60 * 1000;
+        cfg.blob_store_timeout_ms = (int64_t)n;
+        blob_store_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --blob-store-timeout-ms\n";
+        return 2;
+      }
+    } else if (a == "--blob-store-access-key") {
+      if (!take(&cfg.blob_store_access_key)) {
+        std::cerr << "Missing value for --blob-store-access-key\n";
+        return 2;
+      }
+      blob_store_set = true;
+    } else if (a == "--blob-store-secret-key") {
+      if (!take(&cfg.blob_store_secret_key)) {
+        std::cerr << "Missing value for --blob-store-secret-key\n";
+        return 2;
+      }
+      blob_store_set = true;
+    } else if (a == "--blob-store-session-token") {
+      if (!take(&cfg.blob_store_session_token)) {
+        std::cerr << "Missing value for --blob-store-session-token\n";
+        return 2;
+      }
+      blob_store_set = true;
     } else if (a == "--summary-model") {
       if (!take(&cfg.summary_model)) {
         std::cerr << "Missing value for --summary-model\n";
@@ -893,6 +1029,20 @@ int main(int argc, char** argv) {
         << "  --state-dir <dir>    Base state dir (default: daemon startup working directory; or env AGENT_WD)\n"
         << "  --sessions-root <dir> Session store root (default: <state-dir>)\n"
         << "  --upload-max-bytes <n>  Per-file session upload limit (decoded bytes; 0 disables; default: 33554432)\n"
+        << "  --blob-store-mode <local|object>  Blob storage mode (default: local)\n"
+        << "  --blob-store-endpoint <url>  Object store endpoint (S3/MinIO)\n"
+        << "  --blob-store-region <region>  Object store region (default: us-east-1)\n"
+        << "  --blob-store-bucket <name>  Object store bucket name\n"
+        << "  --blob-store-prefix <path>  Object store key prefix (default: blobs/sha256)\n"
+        << "  --blob-store-path-style <bool>  Use path-style bucket URLs (default: true)\n"
+        << "  --blob-store-read-mode <redirect|proxy>  Read mode for object tier (default: redirect)\n"
+        << "  --blob-store-cache-mode <none|read-through>  Cache mode for object tier (default: read-through)\n"
+        << "  --blob-store-cache-max-bytes <n>  Max bytes for proxy/read-through fetches (default: 33554432)\n"
+        << "  --blob-store-presign-ttl-sec <n>  Presigned URL TTL seconds (default: 900)\n"
+        << "  --blob-store-timeout-ms <n>  Object store HTTP timeout (default: 60000)\n"
+        << "  --blob-store-access-key <key>  Object store access key (secret)\n"
+        << "  --blob-store-secret-key <key>  Object store secret key (secret)\n"
+        << "  --blob-store-session-token <token>  Optional session token (secret)\n"
         << "  --db-path <path>     SQLite DB path (default: <state-dir>/agentd.db)\n"
         << "  --timeout-ms <n>     Provider HTTP timeout in ms (default: 60000)\n"
         << "  --job-ttl-ms <n>     GC finished jobs older than n ms (default: 1800000)\n"
@@ -1154,6 +1304,98 @@ int main(int argc, char** argv) {
       }
     }
   }
+  if (const char* s = getenv_s("AGENTD_BLOB_STORE_MODE")) {
+    const std::string v = trim_copy(s);
+    if (v == "local" || v == "object") {
+      cfg.blob_store_mode = v;
+      blob_store_set = true;
+    } else {
+      std::cerr << "Invalid AGENTD_BLOB_STORE_MODE; ignoring\n";
+    }
+  }
+  if (const char* s = getenv_s("AGENTD_BLOB_STORE_ENDPOINT")) {
+    cfg.blob_store_endpoint = s;
+    blob_store_set = true;
+  }
+  if (const char* s = getenv_s("AGENTD_BLOB_STORE_REGION")) {
+    cfg.blob_store_region = s;
+    blob_store_set = true;
+  }
+  if (const char* s = getenv_s("AGENTD_BLOB_STORE_BUCKET")) {
+    cfg.blob_store_bucket = s;
+    blob_store_set = true;
+  }
+  if (const char* s = getenv_s("AGENTD_BLOB_STORE_PREFIX")) {
+    cfg.blob_store_prefix = s;
+    blob_store_set = true;
+  }
+  if (const char* s = getenv_s("AGENTD_BLOB_STORE_PATH_STYLE")) {
+    cfg.blob_store_path_style = env_truthy(s);
+    blob_store_set = true;
+  }
+  if (const char* s = getenv_s("AGENTD_BLOB_STORE_READ_MODE")) {
+    const std::string v = trim_copy(s);
+    if (v == "redirect" || v == "proxy") {
+      cfg.blob_store_read_mode = v;
+      blob_store_set = true;
+    } else {
+      std::cerr << "Invalid AGENTD_BLOB_STORE_READ_MODE; ignoring\n";
+    }
+  }
+  if (const char* s = getenv_s("AGENTD_BLOB_STORE_CACHE_MODE")) {
+    const std::string v = trim_copy(s);
+    if (v == "none" || v == "read-through") {
+      cfg.blob_store_cache_mode = v;
+      blob_store_set = true;
+    } else {
+      std::cerr << "Invalid AGENTD_BLOB_STORE_CACHE_MODE; ignoring\n";
+    }
+  }
+  if (const char* s = getenv_s("AGENTD_BLOB_STORE_CACHE_MAX_BYTES")) {
+    try {
+      unsigned long long n = std::stoull(s);
+      const unsigned long long kMax = 512ull * 1024ull * 1024ull;
+      if (n > kMax) n = kMax;
+      cfg.blob_store_cache_max_bytes = (size_t)n;
+      blob_store_set = true;
+    } catch (...) {
+      std::cerr << "Invalid AGENTD_BLOB_STORE_CACHE_MAX_BYTES; ignoring\n";
+    }
+  }
+  if (const char* s = getenv_s("AGENTD_BLOB_STORE_PRESIGN_TTL_SEC")) {
+    try {
+      long long n = std::stoll(s);
+      if (n < 1) n = 1;
+      if (n > 604800) n = 604800;
+      cfg.blob_store_presign_ttl_sec = (int64_t)n;
+      blob_store_set = true;
+    } catch (...) {
+      std::cerr << "Invalid AGENTD_BLOB_STORE_PRESIGN_TTL_SEC; ignoring\n";
+    }
+  }
+  if (const char* s = getenv_s("AGENTD_BLOB_STORE_TIMEOUT_MS")) {
+    try {
+      long long n = std::stoll(s);
+      if (n < 0) n = 0;
+      if (n > 30LL * 60 * 1000) n = 30LL * 60 * 1000;
+      cfg.blob_store_timeout_ms = (int64_t)n;
+      blob_store_set = true;
+    } catch (...) {
+      std::cerr << "Invalid AGENTD_BLOB_STORE_TIMEOUT_MS; ignoring\n";
+    }
+  }
+  if (const char* s = getenv_s("AGENTD_BLOB_STORE_ACCESS_KEY")) {
+    cfg.blob_store_access_key = s;
+    blob_store_set = true;
+  }
+  if (const char* s = getenv_s("AGENTD_BLOB_STORE_SECRET_KEY")) {
+    cfg.blob_store_secret_key = s;
+    blob_store_set = true;
+  }
+  if (const char* s = getenv_s("AGENTD_BLOB_STORE_SESSION_TOKEN")) {
+    cfg.blob_store_session_token = s;
+    blob_store_set = true;
+  }
   if (const char* ms = getenv_s("AGENTD_JOB_CONCURRENCY")) {
     try { cfg.job_engine_max_concurrency = std::max(1, std::stoi(ms)); } catch (...) {}
   }
@@ -1321,6 +1563,7 @@ int main(int argc, char** argv) {
     opt.override_workflow_http_deny_private_addrs = !workflow_http_deny_private_set;
     opt.override_workflow_http_dns_pin = !workflow_http_dns_pin_set;
     opt.override_upload_max_bytes = !upload_max_bytes_set;
+    opt.override_blob_store = !blob_store_set;
     if (!load_runtime_config_best_effort(db, &cfg, &err, opt)) {
       std::cerr << "Warning: failed to load runtime config from DB: " << err << "\n";
     }
@@ -1778,6 +2021,10 @@ int main(int argc, char** argv) {
   server.handle("GET", "/api/v1/db/analytics/workflows", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_db_workflow_analytics_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("GET", "/api/v1/db/analytics/workflows/export", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_db_workflow_analytics_export_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
   server.handle("GET", "/api/v1/db/analytics/edge", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();

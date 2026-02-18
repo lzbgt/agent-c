@@ -204,6 +204,7 @@ paths:
         - This endpoint is intended for operator control planes and local bring-up tooling.
         - Provider API keys may be set/cleared via `provider_keys` or `api_key` and are stored in the daemon DB
           (response only includes boolean flags, not secret values).
+        - Object-store credentials can be set via `blob_store_secrets` (response only includes boolean flags).
       requestBody:
         required: true
         content:
@@ -1546,7 +1547,11 @@ paths:
   /api/v1/blob:
     get:
       tags: [blobs]
-      summary: Download blob bytes
+      summary: Download blob bytes (local or object-store)
+      description: |
+        Returns blob bytes for local tier. In object-store mode, the daemon either
+        proxies the object stream or returns a `302` redirect to a presigned URL
+        (see `blob_store.read_mode`).
       parameters:
         - in: query
           name: blob_id
@@ -1557,6 +1562,8 @@ paths:
           description: Blob bytes
         "206":
           description: Partial content (Range)
+        "302":
+          description: Redirect to presigned URL (object-store read_mode=redirect)
 
   /api/v1/blob/meta:
     get:
@@ -1570,11 +1577,18 @@ paths:
       responses:
         "200":
           description: Blob metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlobMetaResponse"
 
   /api/v1/blob/upload:
     post:
       tags: [blobs]
-      summary: Upload a blob (v0 local)
+      summary: Upload a blob (local or object-store)
+      description: |
+        Accepts JSON (`data_base64`) or raw bytes. In object-store mode, the daemon
+        writes the object and stores `tier`, `location`, and `etag` metadata.
       requestBody:
         required: true
         content:
@@ -1589,6 +1603,10 @@ paths:
       responses:
         "200":
           description: Upload result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlobUploadResponse"
 
   /api/v1/blob/retain:
     post:
@@ -1743,6 +1761,84 @@ components:
           type: object
           additionalProperties: true
 
+    BlobStoreConfig:
+      type: object
+      additionalProperties: false
+      properties:
+        mode: { type: string, enum: [local, object] }
+        endpoint: { type: string, nullable: true }
+        region: { type: string }
+        bucket: { type: string, nullable: true }
+        prefix: { type: string }
+        path_style: { type: boolean }
+        read_mode: { type: string, enum: [redirect, proxy] }
+        cache_mode: { type: string, enum: [read-through, none] }
+        cache_max_bytes: { type: integer, format: int64 }
+        presign_ttl_sec: { type: integer, format: int64 }
+        timeout_ms: { type: integer, format: int64 }
+        access_key_set: { type: boolean }
+        secret_key_set: { type: boolean }
+        session_token_set: { type: boolean }
+
+    BlobStoreUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        mode: { type: string, enum: [local, object] }
+        endpoint: { type: string, nullable: true }
+        region: { type: string }
+        bucket: { type: string, nullable: true }
+        prefix: { type: string }
+        path_style: { type: boolean }
+        read_mode: { type: string, enum: [redirect, proxy] }
+        cache_mode: { type: string, enum: [read-through, none] }
+        cache_max_bytes: { type: integer, format: int64 }
+        presign_ttl_sec: { type: integer, format: int64 }
+        timeout_ms: { type: integer, format: int64 }
+
+    BlobStoreSecretsUpdate:
+      type: object
+      additionalProperties: false
+      properties:
+        access_key: { type: string, nullable: true }
+        secret_key: { type: string, nullable: true }
+        session_token: { type: string, nullable: true }
+
+    BlobMetaResponse:
+      type: object
+      required: [ok, blob_id, size_bytes, sha256_hex, created_utc_ms, last_access_utc_ms, ref_count, tier, location]
+      properties:
+        ok: { type: boolean }
+        blob_id: { type: string }
+        size_bytes: { type: integer, format: int64 }
+        mime: { type: string, nullable: true }
+        sha256_hex: { type: string }
+        created_utc_ms: { type: integer, format: int64 }
+        last_access_utc_ms: { type: integer, format: int64 }
+        ref_count: { type: integer, format: int64 }
+        tier: { type: string }
+        location: { type: string }
+        etag: { type: string, nullable: true }
+        storage_class: { type: string, nullable: true }
+
+    BlobUploadResponse:
+      type: object
+      required: [ok, blob_id, sha256_hex, size_bytes, tier, location, ref_count, created_utc_ms, last_access_utc_ms, already_present]
+      properties:
+        ok: { type: boolean }
+        blob_id: { type: string }
+        sha256_hex: { type: string }
+        size_bytes: { type: integer, format: int64 }
+        mime: { type: string, nullable: true }
+        tier: { type: string }
+        location: { type: string }
+        etag: { type: string, nullable: true }
+        storage_class: { type: string, nullable: true }
+        ref_count: { type: integer, format: int64 }
+        created_utc_ms: { type: integer, format: int64 }
+        last_access_utc_ms: { type: integer, format: int64 }
+        already_present: { type: boolean }
+
     AgentdConfigResponse:
       type: object
       required: [ok, service, version, daemon, engines, edge_auth, edge_attest]
@@ -1790,6 +1886,8 @@ components:
                 properties:
                   tool: { type: string }
                   max_calls: { type: integer, format: int64 }
+            blob_store:
+              $ref: "#/components/schemas/BlobStoreConfig"
         cors:
           type: object
           additionalProperties: true
@@ -1962,6 +2060,10 @@ components:
             type: string
             nullable: true
           description: Map of provider name → API key (null clears that provider key)
+        blob_store:
+          $ref: "#/components/schemas/BlobStoreUpdate"
+        blob_store_secrets:
+          $ref: "#/components/schemas/BlobStoreSecretsUpdate"
 
     AgentdConfigUpdateResponse:
       type: object
@@ -2014,6 +2116,8 @@ components:
             openrouter: { type: boolean }
             moonshot: { type: boolean }
             openai: { type: boolean }
+        blob_store:
+          $ref: "#/components/schemas/BlobStoreConfig"
 
     OtaUpdateRequest:
       type: object
