@@ -53,6 +53,7 @@ prov = providers.get("providers")
 if not isinstance(prov, dict):
   print("providers missing or not object", file=sys.stderr)
   raise SystemExit(1)
+active_count = 0
 for name in ("deepseek", "moonshot", "openrouter", "openai"):
   if name not in prov:
     print("missing provider entry:", name, file=sys.stderr)
@@ -62,10 +63,15 @@ for name in ("deepseek", "moonshot", "openrouter", "openai"):
   if not isinstance(active, bool):
     print("missing/invalid active flag for", name, ":", active, file=sys.stderr)
     raise SystemExit(1)
+  if active:
+    active_count += 1
   src = entry.get("base_url_source")
   if src not in ("config", "env", "default"):
     print("missing/invalid base_url_source for", name, ":", src, file=sys.stderr)
     raise SystemExit(1)
+if active_count != 1:
+  print("expected exactly one active provider, got", active_count, file=sys.stderr)
+  raise SystemExit(1)
 PY
 
 echo "agentd_diagnostics_smoke OK"
