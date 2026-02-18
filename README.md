@@ -827,6 +827,7 @@ Tool schema introspection (extensible tools):
 - `GET /api/v1/tools?tools=host|basic|none&yolo=0|1&host_policy=full|readonly&session_id=<id>` returns the tool registry the daemon will expose:
   `name`, `description`, `parameters_json` (OpenAI-compatible JSON Schema).
 - Tool exposure is also constrained by the daemon's `--host-policy` (response includes `effective_host_policy`).
+- Requests cannot exceed the daemon's `--tools` setting; exceeding it returns HTTP 400.
 - When `session_id` is provided (and `tools=host`), the registry may include **session-scoped tools** such as `ui_wait_event`.
 - This is intended for “day-1 rich UI” features (rendering tool info, validating tool-call args) and for future clients.
 
