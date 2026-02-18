@@ -8,6 +8,7 @@ set -euo pipefail
 # 2) project-local, gitignored file: .not_in_repo (preferred local secrets)
 # 3) project-local, gitignored file: project.local.md
 # 4) ~/.env (developer convenience; not exported by default)
+#    - when HOME is missing (service contexts), fall back to passwd-derived home.
 #
 # Proxy control:
 # - AGENT_TEST_DISABLE_PROXY=1 disables the default localhost proxy for network tests.
@@ -23,6 +24,25 @@ agent_test_project_root() {
   local script_dir
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   (cd "${script_dir}/.." && pwd)
+}
+
+agent_test_home_dir() {
+  if [[ -n "${HOME:-}" ]]; then
+    echo "${HOME}"
+    return 0
+  fi
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - <<'PY'
+import os
+import pwd
+try:
+    print(pwd.getpwuid(os.getuid()).pw_dir)
+except Exception:
+    pass
+PY
+    return 0
+  fi
+  return 1
 }
 
 agent_test_get_key_from_file() {
@@ -124,12 +144,19 @@ agent_test_get_key() {
   root="$(agent_test_project_root)"
   local preferred="${root}/.not_in_repo"
   local fallback="${root}/project.local.md"
-  local home_env="${HOME:-}/.env"
+  local home_env=""
+  local home_dir=""
+  home_dir="$(agent_test_home_dir || true)"
+  if [[ -n "${home_dir}" ]]; then
+    home_env="${home_dir}/.env"
+  fi
 
   local k
   k="$(agent_test_get_key_from_file "${preferred}" "${provider}")" && { echo "${k}"; return 0; }
   k="$(agent_test_get_key_from_file "${fallback}" "${provider}")" && { echo "${k}"; return 0; }
-  k="$(agent_test_get_key_from_file "${home_env}" "${provider}")" && { echo "${k}"; return 0; }
+  if [[ -n "${home_env}" ]]; then
+    k="$(agent_test_get_key_from_file "${home_env}" "${provider}")" && { echo "${k}"; return 0; }
+  fi
 
   return 1
 }

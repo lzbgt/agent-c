@@ -257,6 +257,39 @@ if "max tool calls" not in err:
   raise SystemExit(1)
 PY
 
+TRUNC_CAP=64
+resp4="$(curl -fsS --noproxy "*" --max-time 10 \
+  -H "Content-Type: application/json" \
+  -d "$(TRUNC_CAP="${TRUNC_CAP}" python3 - <<PY
+import json, os
+print(json.dumps({
+  "prompt": "Read README.md then say OK (truncate tool output)",
+  "session_id": "${SESSION_ID}",
+  "tools": "host",
+  "yolo": False,
+  "base_url": "${STUB_BASE}",
+  "api_key": "dummy",
+  "model": "stub",
+  "max_steps": 4,
+  "max_tool_result_chars": int(os.environ["TRUNC_CAP"]),
+  "verbose": True
+}))
+PY
+)" \
+  "${DAEMON_URL}/api/v1/run")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${resp4}''')
+if not obj.get("ok"):
+  print("run failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+txt = (obj.get("assistant_text") or "").strip()
+if txt != "OK":
+  print("unexpected assistant_text:", txt, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 workflow_submit="$(curl -fsS --noproxy "*" --max-time 20 \
   -H "Content-Type: application/json" \
   -d "$(python3 - <<PY
@@ -361,7 +394,7 @@ PY
 db_run="$(curl -fsS --noproxy "*" --max-time 10 \
   "${DAEMON_URL}/api/v1/db/run?run_id=${RUN_ID}&include_events=1&include_tools=1&include_artifacts=1&include_ui_actions=1")"
 
-python3 - <<PY
+TRUNC_CAP="${TRUNC_CAP}" python3 - <<PY
 import json, sys
 obj = json.loads(r'''${db_run}''')
 if not obj.get("ok"):
@@ -375,6 +408,19 @@ tools = obj.get("tool_records") or []
 if len(tools) < 1:
   print("expected tool_records >= 1", file=sys.stderr)
   raise SystemExit(1)
+cap = int("${TRUNC_CAP}")
+trunc = [t for t in tools if isinstance(t, dict) and t.get("result_truncated_for_prompt")]
+if not trunc:
+  print("expected at least one truncated tool result", file=sys.stderr)
+  raise SystemExit(1)
+for t in trunc:
+  txt = t.get("result_for_prompt_text") or ""
+  if not isinstance(txt, str):
+    print("expected result_for_prompt_text string", type(txt), file=sys.stderr)
+    raise SystemExit(1)
+  if len(txt) > cap:
+    print("expected result_for_prompt_text <= cap", len(txt), cap, file=sys.stderr)
+    raise SystemExit(1)
 events = obj.get("events") or []
 if not isinstance(events, list) or len(events) < 1:
   print("expected events >= 1", file=sys.stderr)
