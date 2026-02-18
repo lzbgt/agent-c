@@ -109,6 +109,52 @@ int main() {
     return 1;
   }
 
+  const std::string legacy_mm = R"({"images":[{"mime":"image/png","b64":"AAA","name":"legacy.png"}]})";
+  const std::string legacy_content = std::string("__AGENT_MM_V1__") + legacy_mm + "\nLegacy";
+  {
+    sqlite3* raw = nullptr;
+    if (sqlite3_open_v2(tmp.string().c_str(), &raw, SQLITE_OPEN_READWRITE, nullptr) != SQLITE_OK) {
+      std::fprintf(stderr, "sqlite3_open_v2 raw insert failed\n");
+      return 1;
+    }
+    sqlite3_stmt* st = nullptr;
+    const char* sql = "INSERT INTO messages(session_id, idx, role, content, created_unix_ms) VALUES(?,?,?,?,?);";
+    if (sqlite3_prepare_v2(raw, sql, -1, &st, nullptr) != SQLITE_OK) {
+      std::fprintf(stderr, "prepare insert failed: %s\n", sqlite3_errmsg(raw));
+      sqlite3_close(raw);
+      return 1;
+    }
+    sqlite3_bind_text(st, 1, "s1", -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(st, 2, 2);
+    sqlite3_bind_text(st, 3, "user", -1, SQLITE_TRANSIENT);
+    sqlite3_bind_text(st, 4, legacy_content.c_str(), (int)legacy_content.size(), SQLITE_TRANSIENT);
+    sqlite3_bind_int64(st, 5, (sqlite3_int64)now);
+    if (sqlite3_step(st) != SQLITE_DONE) {
+      std::fprintf(stderr, "insert legacy message failed: %s\n", sqlite3_errmsg(raw));
+      sqlite3_finalize(st);
+      sqlite3_close(raw);
+      return 1;
+    }
+    sqlite3_finalize(st);
+    sqlite3_close(raw);
+  }
+
+  {
+    std::vector<agentd::AgentDb::MessageRow> loaded;
+    if (!db.load_session_messages("s1", &loaded, &err)) {
+      std::fprintf(stderr, "load_session_messages failed: %s\n", err.c_str());
+      return 1;
+    }
+    bool found = false;
+    for (const auto& row : loaded) {
+      if (row.content == "Legacy" && row.mm_json == legacy_mm) {
+        found = true;
+        break;
+      }
+    }
+    assert(found);
+  }
+
   agentd::AgentDb::RunRow rr;
   rr.session_id = "s1";
   rr.ts_unix_ms = now;
@@ -206,7 +252,7 @@ int main() {
   sqlite3_close(raw);
 
   assert(sessions == 1);
-  assert(messages == 2);
+  assert(messages == 3);
   assert(runs == 1);
   assert(events == 1);
   assert(tools == 1);
