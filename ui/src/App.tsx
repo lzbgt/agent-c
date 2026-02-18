@@ -1031,7 +1031,10 @@ export default function App() {
           parsedToolCallLimits = undefined;
         }
       }
-      const memMode = memoryContextMode === "search" ? "search" : memoryContextMode === "index" ? "index" : "files";
+      const memMode =
+        memoryContextMode === "search" || memoryContextMode === "index" || memoryContextMode === "salience"
+          ? memoryContextMode
+          : "files";
       const memDailyDaysTrim = String(memoryDailyDays ?? "").trim();
       const parsedMemDailyDays =
         memDailyDaysTrim.length === 0

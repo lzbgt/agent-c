@@ -54,6 +54,14 @@ static std::string to_lower_ascii(std::string s) {
   return s;
 }
 
+static bool tool_server_protocol_violation(const std::string& err) {
+  if (err.empty()) return false;
+  const std::string el = to_lower_ascii(err);
+  if (el.find("invalid tool server response json") != std::string::npos) return true;
+  if (el.find("response exceeded max_line_bytes") != std::string::npos) return true;
+  return false;
+}
+
 static bool parse_manifest_tools(
   const std::string& server_cmd,
   const Json::Value& root,
@@ -530,6 +538,7 @@ struct ToolServerChain::Impl {
             o["server_index"] = (Json::Int64)idx;
             if (!spec.cmd.empty()) o["server_cmd"] = spec.cmd;
             if (!perr.empty()) o["ping_error"] = perr;
+            if (tool_server_protocol_violation(perr)) o["protocol_violation"] = true;
             if (!rerr.empty()) o["restart_error"] = rerr;
             const std::string msg = json_stringify_compact_local(o);
             return agent_string_set_copy(out_result, msg.c_str(), msg.size());
@@ -597,6 +606,7 @@ struct ToolServerChain::Impl {
       o["server_index"] = (Json::Int64)idx;
       if (!spec.cmd.empty()) o["server_cmd"] = spec.cmd;
       if (!rerr.empty()) o["detail"] = rerr;
+      if (tool_server_protocol_violation(rerr)) o["protocol_violation"] = true;
       const std::string msg = json_stringify_compact_local(o);
       return agent_string_set_copy(out_result, msg.c_str(), msg.size());
     }

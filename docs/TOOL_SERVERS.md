@@ -56,6 +56,7 @@ Accepted `tools[]` entries:
 
 Protocol hardening:
 - The response **must** include the same `id` as the request. Mismatches are treated as a protocol error and the server is killed.
+- If the response is malformed (invalid JSON or exceeds `max_line_bytes`), the tool call error includes `protocol_violation:true`.
 
 ### Execute
 

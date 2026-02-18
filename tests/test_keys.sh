@@ -9,6 +9,9 @@ set -euo pipefail
 # 3) project-local, gitignored file: project.local.md
 # 4) ~/.env (developer convenience; not exported by default)
 #
+# Proxy control:
+# - AGENT_TEST_DISABLE_PROXY=1 disables the default localhost proxy for network tests.
+#
 # Expected file format (one per line):
 # - deepseek: sk-...
 # - openrouter: sk-or-v1-...
@@ -122,6 +125,13 @@ agent_test_setup_proxy_env() {
   # Some environments require an HTTP proxy for outbound HTTPS. Many of this repo's network tests assume one
   # is present at localhost:8120 by default.
   local default_proxy="${1:-http://localhost:8120}"
+
+  if [[ "${AGENT_TEST_DISABLE_PROXY:-}" == "1" ]]; then
+    unset https_proxy http_proxy HTTPS_PROXY HTTP_PROXY
+    export no_proxy="${no_proxy:-${NO_PROXY:-127.0.0.1,localhost}}"
+    export NO_PROXY="${no_proxy}"
+    return 0
+  fi
 
   export https_proxy="${https_proxy:-${HTTPS_PROXY:-${default_proxy}}}"
   export http_proxy="${http_proxy:-${HTTP_PROXY:-${default_proxy}}}"

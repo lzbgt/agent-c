@@ -30,7 +30,7 @@ When `tools="host"`, agentd can inject a **durable memory context** as a system 
 
 Run request knobs (file mode + search mode share the same memory root):
 
-- `memory_context_mode`: `"files"` (default), `"search"`, or `"index"` (progressive disclosure; `"progressive"` alias supported).
+- `memory_context_mode`: `"files"` (default), `"search"`, `"index"` (progressive disclosure; `"progressive"` alias supported), or `"salience"`.
 - `memory_include_structured`, `memory_include_core`, `memory_include_daily`, `memory_include_session`
 - `memory_daily_days` (clamped), `memory_total_cap` (clamped)
 - `memory_search_query` (defaults to prompt when omitted)

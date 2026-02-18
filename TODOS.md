@@ -85,8 +85,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 ## Promoted goals (explicit goals; no non-goals)
 
 Weights updated 2026-02-18: prioritize **streaming stability** (model pinning + provider guardrails),
-then finish **memory UX alignment** (assistant/message hints + timeline ordering toggle),
-with **tool plugins** and **audio streaming** following once the UX surfaces are stable.
+then **tool-loop event schema/migrations** + multimodal transcript coverage,
+with **tool server protocol error surfacing** and **audio streaming** following once the UX surfaces are stable.
 
 - [x] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker + agentd implemented; tests added).
 - [x] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
@@ -111,10 +111,11 @@ with **tool plugins** and **audio streaming** following once the UX surfaces are
   - [x] Structured memory deprecate pass (policy-driven; bounded) with broker fan-out.
   - [x] Memory salience context + `/api/v1/memory/salience` (deterministic decay, recency + importance).
   - [x] Memory recaps: LLM summaries to `memory/recaps/` + list/generate APIs.
-- [ ] Memory UX alignment (claude-mem): optional context header + last summary/assistant-message hints + timeline ordering toggle.
+- [x] Memory UX alignment (claude-mem): optional context header + last summary/assistant-message hints + timeline ordering toggle.
   - [x] Index/search headers include token economics + recap hint (latest recap summary).
   - [x] Add assistant-message hint (last assistant summary or salient response) in context headers.
   - [x] Add timeline ordering toggle for memory results (newest-first vs oldest-first).
+  - [x] WebUI run settings: pass `memory_context_mode=salience` through to the daemon.
 - [ ] Tool plugins: sandbox/isolation, Windows loader, and embedded/MCU-compatible plugin path.
   - [x] Tool plugin config JSON support (optional `*_ex` symbols + `--tool-plugin-config`) with smoke coverage.
   - [x] Windows loader for tool plugins (LoadLibrary/GetProcAddress).
@@ -893,10 +894,9 @@ Status:
   - optional idle health checks: `--tool-server-ping-interval-ms` (best-effort `op:"ping"`; auto-disables if unsupported)
   - restart-with-backoff if the server dies (does **not** auto-retry the same tool call)
   - Proof: `ctest` includes `agentd_tool_server_smoke`, `agentd_tool_server_ping_smoke`, and `agentd_tool_server_restart_smoke`.
+- Shipped: protocol violations mark tool call errors with `protocol_violation=true` (invalid JSON / oversized responses).
 
 Remaining:
-- Reliability hardening:
-  - structured error surface for protocol violations (stdout non-JSON, id mismatch) in daemon events/UI
 - Remote device bridges:
   - reference tool server for ESP32 serial/MQTT bridges that speaks the same protocol and advertises UM‑ACDS tool schemas
 
