@@ -93,12 +93,14 @@ Example:
       "key_present": true,
       "source": { "kind": "env", "label": "DEEPSEEK_API_KEY" },
       "base_url": "https://api.deepseek.com",
+      "base_url_source": "default",
       "model_default": "deepseek-reasoner"
     },
     "moonshot": {
       "key_present": true,
       "source": { "kind": "file", "label": "~/.env" },
       "base_url": "https://api.moonshot.cn/v1",
+      "base_url_source": "config",
       "model_default": "kimi-k2.5"
     }
   }
