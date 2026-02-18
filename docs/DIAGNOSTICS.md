@@ -38,6 +38,8 @@ Example:
   "uptime_ms": 123456,
   "active_provider": "openai",
   "active_provider_key_present": false,
+  "active_provider_base_url": "https://api.openai.com/v1",
+  "active_provider_base_url_source": "default",
   "ready": true,
   "checks": { "db_open": true },
   "db": {
@@ -80,6 +82,7 @@ Notes:
 - `active_provider` is derived from `daemon.base_url` (defaults to OpenAI-compatible).
 - `active_provider_key_present` is a boolean quick check for whether the active provider has any key configured.
 - `active_provider_key_source` is present when a key is found (`kind` + `label` mirror the providers endpoint).
+- `active_provider_base_url` / `active_provider_base_url_source` report where the active base URL came from (`config`, `env`, `default`).
 - If any counters fail to load, the response includes a `warnings[]` array.
 
 ## Endpoint: `/api/v1/diagnostics/providers`

@@ -163,6 +163,25 @@ void handle_diagnostics_endpoint(
     src["label"] = active_key.source_label;
     root["active_provider_key_source"] = src;
   }
+  {
+    std::string base_url;
+    std::string base_url_source;
+    if (!cfg.base_url.empty()) {
+      base_url = cfg.base_url;
+      base_url_source = "config";
+    } else {
+      base_url = env_base_url_for_provider(active_provider);
+      if (!base_url.empty()) base_url_source = "env";
+    }
+    if (base_url.empty()) {
+      base_url = default_base_url_for_provider(active_provider);
+      if (!base_url.empty()) base_url_source = "default";
+    }
+    if (!base_url.empty()) {
+      root["active_provider_base_url"] = base_url;
+      if (!base_url_source.empty()) root["active_provider_base_url_source"] = base_url_source;
+    }
+  }
   const bool db_open = db_or_null && db_or_null->is_open();
   root["ready"] = db_open;
   Json::Value checks(Json::objectValue);

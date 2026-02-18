@@ -52,6 +52,14 @@ key_present = diag.get("active_provider_key_present")
 if not isinstance(key_present, bool):
   print("missing/invalid active_provider_key_present", key_present, file=sys.stderr)
   raise SystemExit(1)
+base_url = diag.get("active_provider_base_url")
+base_url_source = diag.get("active_provider_base_url_source")
+if not isinstance(base_url, str) or not base_url:
+  print("missing/invalid active_provider_base_url", base_url, file=sys.stderr)
+  raise SystemExit(1)
+if base_url_source not in ("config", "env", "default"):
+  print("missing/invalid active_provider_base_url_source", base_url_source, file=sys.stderr)
+  raise SystemExit(1)
 if key_present:
   src = diag.get("active_provider_key_source")
   if not isinstance(src, dict):
