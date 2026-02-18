@@ -251,8 +251,9 @@ agent_test_openrouter_auth_ok() {
   fi
 
   local body="${resp%$'\n'*}"
-  local model
-  model="$(printf "%s" "${body}" | python3 - <<'PY'
+  local model="${AGENT_TEST_OPENROUTER_MODEL:-}"
+  if [[ -z "${model}" ]]; then
+    model="$(printf "%s" "${body}" | python3 - <<'PY'
 import json, sys
 raw = sys.stdin.buffer.read()
 if not raw:
@@ -294,8 +295,9 @@ if best:
     print(best)
 PY
 )"
+  fi
   if [[ -z "${model}" ]]; then
-    model="${AGENT_TEST_OPENROUTER_MODEL:-bytedance-seed/seed-1.6-flash}"
+    model="bytedance-seed/seed-1.6-flash"
   fi
   if [[ -z "${model}" ]]; then
     return 0

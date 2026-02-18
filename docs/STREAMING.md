@@ -118,9 +118,9 @@ both assistant and tool-call streaming checks. Pin those in:
 - `AGENT_TEST_OPENROUTER_STREAM_MODEL`
 - `AGENT_TEST_OPENROUTER_STREAM_TOOL_MODEL`
 
-If OpenRouter’s `/models` response does not provide a `recommended_model`, the auth preflight picks the
-first text-capable model (preferring ones that advertise tool support). If no candidate is found, it falls
-back to `AGENT_TEST_OPENROUTER_MODEL` (default `bytedance-seed/seed-1.6-flash`). Set that env var to a
+OpenRouter auth preflight prefers `AGENT_TEST_OPENROUTER_MODEL` when set. Otherwise, if `/models` does not
+provide a `recommended_model`, it picks the first text-capable model (preferring ones that advertise tool
+support). If no candidate is found, it falls back to `bytedance-seed/seed-1.6-flash`. Set the env var to a
 model your key can access to avoid false auth failures.
 
 To force a specific candidate list (bypass `/openrouter/models` discovery), set:
