@@ -29,6 +29,15 @@ obj = json.loads(r'''${resp}''')
 if not obj.get("ok"):
   print(obj, file=sys.stderr)
   raise SystemExit(1)
+if obj.get("daemon_tools") != "host":
+  print("unexpected daemon_tools:", obj.get("daemon_tools"), file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("requested_tools") != "host":
+  print("unexpected requested_tools:", obj.get("requested_tools"), file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("tools") != "host":
+  print("unexpected tools:", obj.get("tools"), file=sys.stderr)
+  raise SystemExit(1)
 defs = obj.get("defs") or []
 names = {d.get("name") for d in defs if isinstance(d, dict)}
 need = {"shell_exec", "proc_exec", "file_apply_patch", "fs_read", "fs_list", "fs_stat"}
@@ -46,6 +55,15 @@ import json, sys
 obj = json.loads(r'''${resp_scoped}''')
 if not obj.get("ok"):
   print(obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("daemon_tools") != "host":
+  print("unexpected daemon_tools:", obj.get("daemon_tools"), file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("requested_tools") != "host":
+  print("unexpected requested_tools:", obj.get("requested_tools"), file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("tools") != "host":
+  print("unexpected tools:", obj.get("tools"), file=sys.stderr)
   raise SystemExit(1)
 if obj.get("effective_yolo") not in (False, 0):
   print("unexpected effective_yolo:", obj.get("effective_yolo"), file=sys.stderr)
@@ -72,6 +90,15 @@ import json, sys
 obj = json.loads(r'''${resp_ro}''')
 if not obj.get("ok"):
   print(obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("daemon_tools") != "host":
+  print("unexpected daemon_tools:", obj.get("daemon_tools"), file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("requested_tools") != "host":
+  print("unexpected requested_tools:", obj.get("requested_tools"), file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("tools") != "host":
+  print("unexpected tools:", obj.get("tools"), file=sys.stderr)
   raise SystemExit(1)
 if obj.get("effective_host_policy") not in ("readonly",):
   print("unexpected effective_host_policy:", obj.get("effective_host_policy"), file=sys.stderr)
