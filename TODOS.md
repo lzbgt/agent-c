@@ -133,6 +133,7 @@ with **audio streaming** following once streaming UX is stable.
   - [x] Per-plugin policy limits (config JSON) resolved to the most restrictive values.
   - [x] In-process plugin manifest/result caps (1 MiB/4 MiB) to bound memory spikes.
   - [x] Plugin host tool-result cap (4 MiB) enforced before JSON parsing.
+  - [x] Plugin host oversized payload smoke coverage (ext_big).
 - [ ] Audio streaming: Opus/WebRTC voice pipeline + broker relay + UI voice session controls.
   - [x] Add workflow DB query endpoints (`/api/v1/db/workflows`, `/api/v1/db/workflow`, `/api/v1/db/workflow_tasks`, `/api/v1/db/workflow_events`)
     with docs + smoke tests.

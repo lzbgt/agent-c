@@ -778,6 +778,14 @@ if(AGENT_BUILD_HOST)
         $<TARGET_FILE:agentd_tool_plugin_big>
     )
 
+    add_test(
+      NAME agentd_tool_plugin_server_big_smoke
+      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_tool_plugin_server_big_smoke.sh
+        $<TARGET_FILE:agentd>
+        $<TARGET_FILE:agentd_tool_plugin_host>
+        $<TARGET_FILE:agentd_tool_plugin_big>
+    )
+
     if(AGENT_ENABLE_SQLITE3)
       add_test(NAME agentd_db_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_smoke.sh $<TARGET_FILE:agentd>)
       add_test(NAME agentd_db_query_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_query_smoke.sh $<TARGET_FILE:agentd>)
