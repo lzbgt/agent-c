@@ -72,6 +72,35 @@ print(bid)
 PY
 )"
 
+archive_resp="$(curl -sS --noproxy "*" --max-time 10 \
+  -H "Content-Type: application/json" \
+  -d "{\"blob_id\":\"${BLOB_ID}\"}" \
+  -w "HTTPSTATUS:%{http_code}" \
+  "${DAEMON_URL}/api/v1/blob/archive")"
+
+archive_body="${archive_resp%HTTPSTATUS:*}"
+archive_status="${archive_resp##*HTTPSTATUS:}"
+
+python3 - <<PY
+import json, sys
+status = int("${archive_status}")
+if status != 400:
+  print("expected 400 from archive (local mode); got", status, file=sys.stderr)
+  raise SystemExit(1)
+try:
+  obj = json.loads(r'''${archive_body}''')
+except Exception:
+  print("archive response not json:", r'''${archive_body}''', file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("ok") != False:
+  print("expected ok=false in archive response:", obj, file=sys.stderr)
+  raise SystemExit(1)
+err = (obj.get("error") or "").lower()
+if "blob_store_mode" not in err:
+  print("expected blob_store_mode error; got:", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 meta_resp="$(curl -fsS --noproxy "*" --max-time 10 \
   "${DAEMON_URL}/api/v1/blob/meta?blob_id=${BLOB_ID}")"
 

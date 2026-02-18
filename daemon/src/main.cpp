@@ -2281,6 +2281,14 @@ int main(int argc, char** argv) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_blob_tier_enforce_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
+  server.handle("POST", "/api/v1/blob/archive", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_blob_archive_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("POST", "/api/v1/blob/restore", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_blob_restore_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
 
   server.handle("POST", "/api/v1/memory/consolidate", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();

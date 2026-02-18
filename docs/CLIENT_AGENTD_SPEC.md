@@ -298,6 +298,8 @@ When blob storage is enabled (default local tier), the daemon exposes blob APIs:
 - `POST /api/v1/blob/retain` (adjust ref count)
 - `POST /api/v1/blob/gc` (ref-count GC sweep)
 - `POST /api/v1/blob/tier/enforce` (apply tiering policy once; operator/maintenance use)
+- `POST /api/v1/blob/archive` (mark blobs as archive tier; operator-only)
+- `POST /api/v1/blob/restore` (restore archived blobs to object tier; operator-only)
 
 ### Diagnostics endpoints (auth required)
 

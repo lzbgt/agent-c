@@ -727,6 +727,14 @@ struct AgentdService::Impl {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_blob_tier_enforce_endpoint(cur, cors_cfg, &db, req, resp);
     });
+    server.handle("POST", "/api/v1/blob/archive", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_blob_archive_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("POST", "/api/v1/blob/restore", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_blob_restore_endpoint(cur, cors_cfg, &db, req, resp);
+    });
 
     server.handle("POST", "/api/v1/memory/consolidate", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();

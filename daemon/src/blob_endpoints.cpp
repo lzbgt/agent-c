@@ -15,6 +15,7 @@
 #include <fstream>
 #include <random>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 namespace agentd {
@@ -185,6 +186,52 @@ bool parse_blob_upload_json(const HttpRequest& req, std::string* out_bytes, std:
   }
   if (out_retain && body.isMember("retain") && body["retain"].isBool()) {
     *out_retain = body["retain"].asBool();
+  }
+  return true;
+}
+
+bool parse_blob_ids_body(
+  const HttpRequest& req,
+  std::vector<std::string>* out_ids,
+  Json::Value* out_body,
+  std::string* out_error
+) {
+  if (out_ids) out_ids->clear();
+  if (out_body) *out_body = Json::Value(Json::objectValue);
+  if (out_error) out_error->clear();
+  if (!out_ids) return false;
+
+  Json::Value body(Json::objectValue);
+  std::string jerr;
+  if (!json_parse_object(req.body, &body, &jerr)) {
+    if (out_error) *out_error = "invalid JSON body";
+    return false;
+  }
+  if (out_body) *out_body = body;
+
+  std::unordered_set<std::string> seen;
+  auto maybe_add = [&](const std::string& v) {
+    if (v.empty()) return;
+    if (!blob_id_is_safe(v)) return;
+    if (seen.insert(v).second) out_ids->push_back(v);
+  };
+
+  if (body.isMember("blob_id") && body["blob_id"].isString()) {
+    maybe_add(body["blob_id"].asString());
+  }
+  if (body.isMember("blob_ids") && body["blob_ids"].isArray()) {
+    for (const auto& v : body["blob_ids"]) {
+      if (v.isString()) maybe_add(v.asString());
+    }
+  }
+
+  if (out_ids->empty()) {
+    if (out_error) *out_error = "missing blob_id(s)";
+    return false;
+  }
+  if (out_ids->size() > 200) {
+    if (out_error) *out_error = "too many blob_ids (max 200)";
+    return false;
   }
   return true;
 }
@@ -457,6 +504,18 @@ void handle_blob_get_endpoint(
     resp->status = 404;
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
     resp->body = R"({"ok":false,"error":"blob not found"})";
+    return;
+  }
+
+  if (row.tier == "archive") {
+    Json::Value out(Json::objectValue);
+    out["ok"] = false;
+    out["error"] = "blob archived; restore required";
+    out["blob_id"] = row.blob_id;
+    out["tier"] = row.tier;
+    resp->status = 409;
+    resp->headers["Content-Type"] = "application/json; charset=utf-8";
+    resp->body = json_stringify(out);
     return;
   }
 
@@ -892,6 +951,45 @@ void handle_blob_gc_endpoint(
       deleted.append(item);
       continue;
     }
+    if (row.tier == "archive") {
+      if (row.location.empty()) {
+        Json::Value e(Json::objectValue);
+        e["blob_id"] = row.blob_id;
+        e["error"] = "missing object location";
+        errors.append(e);
+        continue;
+      }
+      std::string perr;
+      if (!blob_object_store_is_configured(cfg, &perr)) {
+        Json::Value e(Json::objectValue);
+        e["blob_id"] = row.blob_id;
+        e["error"] = perr.empty() ? "object store not configured" : perr;
+        errors.append(e);
+        continue;
+      }
+      if (!blob_object_store_delete(cfg, row.location, now_ms, &perr)) {
+        Json::Value e(Json::objectValue);
+        e["blob_id"] = row.blob_id;
+        e["error"] = perr.empty() ? "object store delete failed" : perr;
+        errors.append(e);
+        continue;
+      }
+      if (!cfg.state_dir.empty()) {
+        const std::string cache_rel = blob_rel_path_from_hex(row.sha256_hex);
+        if (!cache_rel.empty()) {
+          const std::filesystem::path abs = (root / cache_rel).lexically_normal();
+          if (path_is_within_root(root, abs)) {
+            std::error_code ec;
+            if (std::filesystem::exists(abs, ec)) {
+              std::filesystem::remove(abs, ec);
+            }
+          }
+        }
+      }
+      (void)db_or_null->delete_blob_manifest(row.blob_id, nullptr);
+      deleted.append(item);
+      continue;
+    }
     Json::Value e(Json::objectValue);
     e["blob_id"] = row.blob_id;
     e["error"] = "unsupported tier";
@@ -985,6 +1083,196 @@ void handle_blob_tier_enforce_endpoint(
     out["errors"] = errs;
   }
   resp->status = 200;
+  resp->body = json_stringify(out);
+}
+
+void handle_blob_archive_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  if (!db_or_null || !db_or_null->is_open()) {
+    resp->status = 500;
+    resp->body = R"({"ok":false,"error":"db not available"})";
+    return;
+  }
+  if (cfg.blob_store_mode != "object") {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"archive requires blob_store_mode=object"})";
+    return;
+  }
+  std::string cfg_err;
+  if (!blob_object_store_is_configured(cfg, &cfg_err)) {
+    resp->status = 400;
+    resp->body = std::string("{\"ok\":false,\"error\":\"") +
+      (cfg_err.empty() ? "object store not configured" : cfg_err) + "\"}";
+    return;
+  }
+
+  std::vector<std::string> blob_ids;
+  Json::Value body(Json::objectValue);
+  std::string parse_err;
+  if (!parse_blob_ids_body(req, &blob_ids, &body, &parse_err)) {
+    resp->status = 400;
+    resp->body = std::string("{\"ok\":false,\"error\":\"") + parse_err + "\"}";
+    return;
+  }
+
+  std::string storage_class;
+  if (body.isMember("storage_class") && body["storage_class"].isString()) {
+    storage_class = body["storage_class"].asString();
+  }
+
+  Json::Value results(Json::arrayValue);
+  const int64_t now_ms = now_utc_ms();
+  for (const auto& blob_id : blob_ids) {
+    Json::Value r(Json::objectValue);
+    r["blob_id"] = blob_id;
+    AgentDb::BlobManifestRow row;
+    std::string err;
+    if (!db_or_null->get_blob_manifest(blob_id, &row, &err)) {
+      r["ok"] = false;
+      r["error"] = err.empty() ? "blob not found" : err;
+      results.append(r);
+      continue;
+    }
+    if (row.tier == "local") {
+      r["ok"] = false;
+      r["error"] = "blob is local; promote to object before archive";
+      results.append(r);
+      continue;
+    }
+    std::string next_storage = storage_class.empty() ? row.storage_class : storage_class;
+    std::string uerr;
+    (void)db_or_null->update_blob_manifest_location(
+      row.blob_id,
+      row.mime,
+      "archive",
+      row.location,
+      row.etag,
+      next_storage,
+      now_ms,
+      &uerr);
+    if (!uerr.empty()) {
+      r["ok"] = false;
+      r["error"] = uerr;
+      results.append(r);
+      continue;
+    }
+    r["ok"] = true;
+    r["tier"] = "archive";
+    r["storage_class"] = next_storage.empty() ? Json::Value(Json::nullValue) : Json::Value(next_storage);
+    results.append(r);
+  }
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = true;
+  out["count"] = (Json::UInt64)results.size();
+  out["results"] = results;
+  resp->body = json_stringify(out);
+}
+
+void handle_blob_restore_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  if (!db_or_null || !db_or_null->is_open()) {
+    resp->status = 500;
+    resp->body = R"({"ok":false,"error":"db not available"})";
+    return;
+  }
+  if (cfg.blob_store_mode != "object") {
+    resp->status = 400;
+    resp->body = R"({"ok":false,"error":"restore requires blob_store_mode=object"})";
+    return;
+  }
+  std::string cfg_err;
+  if (!blob_object_store_is_configured(cfg, &cfg_err)) {
+    resp->status = 400;
+    resp->body = std::string("{\"ok\":false,\"error\":\"") +
+      (cfg_err.empty() ? "object store not configured" : cfg_err) + "\"}";
+    return;
+  }
+
+  std::vector<std::string> blob_ids;
+  Json::Value body(Json::objectValue);
+  std::string parse_err;
+  if (!parse_blob_ids_body(req, &blob_ids, &body, &parse_err)) {
+    resp->status = 400;
+    resp->body = std::string("{\"ok\":false,\"error\":\"") + parse_err + "\"}";
+    return;
+  }
+
+  bool clear_storage_class = false;
+  if (body.isMember("clear_storage_class") && body["clear_storage_class"].isBool()) {
+    clear_storage_class = body["clear_storage_class"].asBool();
+  }
+  std::string storage_class;
+  if (body.isMember("storage_class") && body["storage_class"].isString()) {
+    storage_class = body["storage_class"].asString();
+  }
+
+  Json::Value results(Json::arrayValue);
+  const int64_t now_ms = now_utc_ms();
+  for (const auto& blob_id : blob_ids) {
+    Json::Value r(Json::objectValue);
+    r["blob_id"] = blob_id;
+    AgentDb::BlobManifestRow row;
+    std::string err;
+    if (!db_or_null->get_blob_manifest(blob_id, &row, &err)) {
+      r["ok"] = false;
+      r["error"] = err.empty() ? "blob not found" : err;
+      results.append(r);
+      continue;
+    }
+    if (row.tier == "local") {
+      r["ok"] = false;
+      r["error"] = "blob is local; restore not applicable";
+      results.append(r);
+      continue;
+    }
+    std::string next_storage = row.storage_class;
+    if (clear_storage_class) next_storage.clear();
+    if (!storage_class.empty()) next_storage = storage_class;
+    std::string uerr;
+    (void)db_or_null->update_blob_manifest_location(
+      row.blob_id,
+      row.mime,
+      "object",
+      row.location,
+      row.etag,
+      next_storage,
+      now_ms,
+      &uerr);
+    if (!uerr.empty()) {
+      r["ok"] = false;
+      r["error"] = uerr;
+      results.append(r);
+      continue;
+    }
+    r["ok"] = true;
+    r["tier"] = "object";
+    r["storage_class"] = next_storage.empty() ? Json::Value(Json::nullValue) : Json::Value(next_storage);
+    results.append(r);
+  }
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = true;
+  out["count"] = (Json::UInt64)results.size();
+  out["results"] = results;
   resp->body = json_stringify(out);
 }
 

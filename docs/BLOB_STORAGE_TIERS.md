@@ -111,6 +111,15 @@ Metadata:
 - `POST /api/v1/blob/gc` (ref-count GC sweep; `{min_age_ms, max_rows, dry_run}`)
 - `POST /api/v1/blob/tier/enforce` (apply tiering policy once; safe maintenance endpoint)
 
+Archive controls (v3, operator-only):
+- `POST /api/v1/blob/archive` with `{ blob_id | blob_ids, storage_class? }` to mark blobs as `tier="archive"`.
+- `POST /api/v1/blob/restore` with `{ blob_id | blob_ids, storage_class?, clear_storage_class? }` to return to `tier="object"`.
+
+Notes:
+- Archive/restore requires `blob_store.mode=object` and configured object-store credentials.
+- This is **metadata-driven**; agentd blocks reads for `tier="archive"` until restored.
+- Cold storage transitions are expected to be managed by object-store lifecycle policies or external tooling.
+
 These are additive; legacy `GET /api/v1/file` remains supported.
 
 ## Retention + GC policy

@@ -109,7 +109,8 @@ Weights updated 2026-02-18: prioritize **Storage/analytics** (archive tier + ops
   - [x] Add workflow analytics export bundles (CSV/JSON) for durable + edge workflows.
   - [x] Add tiering policy engine (promote/evict + size/age budgets) with metrics.
   - [x] Add blob DB query endpoints + analytics (`/api/v1/db/blobs`, `/api/v1/db/blob`, `/api/v1/db/analytics/blobs`).
-  - [ ] Next: add archive tier (cold storage restore workflow + operator controls).
+  - [x] Add archive tier controls + restore gate (metadata-only; operator-managed cold storage transitions).
+  - [ ] Next: wire object-store archive/restore APIs (cold storage class transitions + restore status).
 - [x] UI actions: stable public action API, autoplay unlock flow, and consented remote URL opens.
 - [x] Memory privacy tags (`<private>`) to keep sensitive content out of durable storage (claude-mem inspired).
 - [x] Memory progressive disclosure + citation surfacing for dynamic context assembly (claude-mem inspired).

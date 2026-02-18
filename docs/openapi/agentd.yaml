@@ -1802,6 +1802,42 @@ paths:
               schema:
                 $ref: "#/components/schemas/BlobTierEnforceResponse"
 
+  /api/v1/blob/archive:
+    post:
+      tags: [blobs]
+      summary: Mark blobs as archived (operator)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlobArchiveRequest"
+      responses:
+        "200":
+          description: Archive results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlobArchiveResponse"
+
+  /api/v1/blob/restore:
+    post:
+      tags: [blobs]
+      summary: Restore archived blobs to object tier (operator)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BlobRestoreRequest"
+      responses:
+        "200":
+          description: Restore results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlobRestoreResponse"
+
   /api/v1/sessions:
     get:
       tags: [sessions]
@@ -2002,6 +2038,69 @@ components:
         errors:
           type: array
           items: { type: string }
+
+    BlobArchiveRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        blob_id: { type: string }
+        blob_ids:
+          type: array
+          items: { type: string }
+        storage_class: { type: string }
+
+    BlobArchiveResult:
+      type: object
+      required: [blob_id, ok]
+      properties:
+        blob_id: { type: string }
+        ok: { type: boolean }
+        error: { type: string }
+        tier: { type: string }
+        storage_class: { type: string, nullable: true }
+
+    BlobArchiveResponse:
+      type: object
+      required: [ok, count, results]
+      properties:
+        ok: { type: boolean }
+        count: { type: integer, format: int64 }
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/BlobArchiveResult"
+
+    BlobRestoreRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        blob_id: { type: string }
+        blob_ids:
+          type: array
+          items: { type: string }
+        storage_class: { type: string }
+        clear_storage_class: { type: boolean }
+
+    BlobRestoreResult:
+      type: object
+      required: [blob_id, ok]
+      properties:
+        blob_id: { type: string }
+        ok: { type: boolean }
+        error: { type: string }
+        tier: { type: string }
+        storage_class: { type: string, nullable: true }
+
+    BlobRestoreResponse:
+      type: object
+      required: [ok, count, results]
+      properties:
+        ok: { type: boolean }
+        count: { type: integer, format: int64 }
+        results:
+          type: array
+          items:
+            $ref: "#/components/schemas/BlobRestoreResult"
 
     BlobMetaResponse:
       type: object

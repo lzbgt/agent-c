@@ -55,4 +55,20 @@ void handle_blob_tier_enforce_endpoint(
   HttpResponse* resp
 );
 
+void handle_blob_archive_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
+void handle_blob_restore_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
 }  // namespace agentd
