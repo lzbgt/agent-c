@@ -35,6 +35,7 @@
 #include "run_client_acks.h"
 #include "run_memory_context.h"
 #include "run_multimodal.h"
+#include "run_provider_keys.h"
 #include "run_endpoints_internal.h"
 
 #include "agent/multimodal_prefix.h"
@@ -101,11 +102,6 @@ static bool json_stringify_capped(
     return false;
   }
   return true;
-}
-
-static const char* getenv_s(const char* k) {
-  const char* v = std::getenv(k);
-  return (v && v[0]) ? v : nullptr;
 }
 
 static Json::Value run_request_to_json_impl(
@@ -189,57 +185,8 @@ static Json::Value run_request_to_json_impl(
     run_cfg.respect_retry_after = args["respect_retry_after"].asBool();
   }
 
-  // Provider key fallback (framework responsibility):
-  // If the request omitted api_key, load a provider-matching key based on run_cfg.base_url.
-  //
-  // Important: ocfg.api_key may be set at daemon startup; if the UI changes base_url per run, that key may be wrong.
-  if (!api_key_explicit) {
-    const std::string run_provider = provider_from_base_url(run_cfg.base_url);
-    const std::string daemon_provider = provider_from_base_url(ocfg.base_url);
-    const bool provider_mismatch = base_url_explicit && (run_provider != daemon_provider);
-    // If a daemon-side provider-specific key exists, prefer it over a single global api_key.
-    {
-      const auto it = daemon_cfg.provider_keys.find(run_provider);
-      if (it != daemon_cfg.provider_keys.end() && !it->second.empty()) {
-        run_cfg.api_key = it->second;
-      }
-    }
-
-    if (run_cfg.api_key.empty() || provider_mismatch) {
-      std::string key;
-      // Environment variable fallback (common deployment style).
-      if (run_provider == "deepseek") {
-        if (const char* k = getenv_s("DEEPSEEK_API_KEY")) key = k;
-        else if (const char* k2 = getenv_s("OPENAI_API_KEY")) key = k2;
-        else if (const char* k3 = getenv_s("OPENROUTER_API_KEY")) key = k3;
-      } else if (run_provider == "moonshot") {
-        // Moonshot/Kimi: commonly stored as KIMI_API_KEY_CN in ~/.env.
-        if (const char* k = getenv_s("KIMI_API_KEY_CN")) key = k;
-        else if (const char* k2 = getenv_s("MOONSHOT_API_KEY")) key = k2;
-        else if (const char* k3 = getenv_s("MOONSHOT_API_KEY_CN")) key = k3;
-        else if (const char* k4 = getenv_s("OPENAI_API_KEY")) key = k4;
-        else if (const char* k5 = getenv_s("OPENROUTER_API_KEY")) key = k5;
-        else if (const char* k6 = getenv_s("DEEPSEEK_API_KEY")) key = k6;
-      } else if (run_provider == "openrouter") {
-        if (const char* k = getenv_s("OPENROUTER_API_KEY")) key = k;
-        else if (const char* k2 = getenv_s("OPENAI_API_KEY")) key = k2;
-        else if (const char* k3 = getenv_s("DEEPSEEK_API_KEY")) key = k3;
-      } else {
-        if (const char* k = getenv_s("OPENAI_API_KEY")) key = k;
-        else if (const char* k2 = getenv_s("OPENROUTER_API_KEY")) key = k2;
-        else if (const char* k3 = getenv_s("DEEPSEEK_API_KEY")) key = k3;
-      }
-      // Repo-local secrets discovery (gitignored .not_in_repo / project.local.md).
-      if (key.empty()) {
-        if (auto k = load_provider_key_best_effort(run_provider)) {
-          key = *k;
-        }
-      }
-      if (!key.empty()) {
-        run_cfg.api_key = key;
-      }
-    }
-  }
+  // Provider key fallback (framework responsibility).
+  apply_provider_key_fallback(daemon_cfg, ocfg, base_url_explicit, api_key_explicit, &run_cfg);
 
   const std::string tools = args.isMember("tools") && args["tools"].isString() ? args["tools"].asString() : daemon_cfg.tools;
   const bool requested_yolo_set = args.isMember("yolo") && args["yolo"].isBool();
