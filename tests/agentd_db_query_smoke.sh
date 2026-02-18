@@ -483,6 +483,12 @@ if not isinstance(m0, dict):
 if "content_truncated" not in m0 or "content_bytes" not in m0:
   print("expected content_truncated/content_bytes fields", m0, file=sys.stderr)
   raise SystemExit(1)
+if "mm_json" not in m0 or "mm_json_truncated" not in m0 or "mm_bytes" not in m0:
+  print("expected mm_json/mm_json_truncated/mm_bytes fields", m0, file=sys.stderr)
+  raise SystemExit(1)
+if not isinstance(m0.get("mm_json"), str):
+  print("expected mm_json to be string", m0, file=sys.stderr)
+  raise SystemExit(1)
 if not any(isinstance(m, dict) and isinstance(m.get("content"), str) and "[client_event]" in m.get("content") for m in rows):
   print("expected at least one [client_event] message", file=sys.stderr)
   raise SystemExit(1)
