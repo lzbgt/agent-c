@@ -338,6 +338,14 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wpedantic>
   )
 
+  # Test plugin that returns a large payload to exercise daemon caps.
+  add_library(agentd_tool_plugin_big MODULE
+    tools/agentd_tool_plugin_big.c
+  )
+  target_compile_options(agentd_tool_plugin_big PRIVATE
+    $<$<COMPILE_LANGUAGE:C>:-Wall -Wextra -Wpedantic>
+  )
+
   add_executable(agentd_tool_plugin_host
     tools/agentd_tool_plugin_host.cpp
   )
@@ -761,6 +769,13 @@ if(AGENT_BUILD_HOST)
         $<TARGET_FILE:agentd>
         $<TARGET_FILE:agentd_tool_plugin_host>
         $<TARGET_FILE:agentd_tool_plugin_echo>
+    )
+
+    add_test(
+      NAME agentd_tool_plugin_big_smoke
+      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_tool_plugin_big_smoke.sh
+        $<TARGET_FILE:agentd>
+        $<TARGET_FILE:agentd_tool_plugin_big>
     )
 
     if(AGENT_ENABLE_SQLITE3)
