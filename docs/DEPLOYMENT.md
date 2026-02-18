@@ -37,6 +37,8 @@ After=network.target
 
 [Service]
 User=agentd
+Environment=AGENTD_AUTH_TOKEN=REPLACE_WITH_RANDOM_TOKEN
+Environment=AGENTD_DOTENV_PATH=/etc/agentd/agentd.env
 WorkingDirectory=/var/lib/agentd
 ExecStart=/usr/local/bin/agentd \
   --host 127.0.0.1 \
