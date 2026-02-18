@@ -264,6 +264,13 @@ void handle_diagnostics_providers_endpoint(
     const std::string def_model = default_model_for_provider(p);
     if (!def_model.empty()) pd["model_default"] = def_model;
 
+    if (p == "openrouter" && !ks.present) {
+      const bool moonshot_present = provider_key_status(cfg, "moonshot").present;
+      if (moonshot_present) {
+        pd["warning"] = "Moonshot key detected; OpenRouter requires OPENROUTER_API_KEY.";
+      }
+    }
+
     providers[p] = pd;
   }
 
