@@ -264,6 +264,15 @@ void handle_diagnostics_providers_endpoint(
     const std::string def_model = default_model_for_provider(p);
     if (!def_model.empty()) pd["model_default"] = def_model;
 
+    if (p == "moonshot" && ks.present) {
+      const bool active = active_provider == "moonshot";
+      const bool has_env_base = !env_base_url_for_provider("moonshot").empty();
+      if (!active && cfg.base_url.empty() && !has_env_base) {
+        pd["warning"] =
+          "Moonshot key detected but base_url not configured; set --base-url https://api.moonshot.cn/v1 or MOONSHOT_API_BASE.";
+      }
+    }
+
     if (p == "openrouter" && !ks.present) {
       const bool moonshot_present = provider_key_status(cfg, "moonshot").present;
       if (moonshot_present) {
