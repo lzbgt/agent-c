@@ -1488,6 +1488,31 @@ static Json::Value run_request_to_json_impl(
         break;
       }
     }
+
+    if (ok) {
+      Json::Value d(Json::objectValue);
+      Json::Value mm(Json::nullValue);
+      std::string assistant_text_clean = assistant_text;
+      const bool has_mm = try_parse_multimodal_prefix(assistant_text, &mm, &assistant_text_clean) && mm.isObject();
+      d["assistant_content"] = assistant_text_clean;
+      d["has_tool_calls"] = (Json::Int64)0;
+      if (has_mm) {
+        Json::StreamWriterBuilder wb;
+        wb["indentation"] = "";
+        std::string mm_json = Json::writeString(wb, mm);
+        const size_t mm_bytes = mm_json.size();
+        if (max_capture_bytes > 0 && mm_bytes > max_capture_bytes) {
+          d["assistant_mm_json"] = mm_json.substr(0, max_capture_bytes);
+          d["assistant_mm_truncated"] = (Json::Int64)1;
+        } else {
+          d["assistant_mm_json"] = mm_json;
+          d["assistant_mm_truncated"] = (Json::Int64)0;
+        }
+        d["assistant_mm_bytes"] = (Json::Int64)mm_bytes;
+      }
+      push_ev("assistant_message", d);
+      assistant_text = assistant_text_clean;
+    }
   }
 
   // Stop heartbeat thread and join.
