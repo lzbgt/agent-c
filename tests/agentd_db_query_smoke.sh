@@ -464,6 +464,9 @@ PY
 db_msgs="$(curl -fsS --noproxy "*" --max-time 10 \
   "${DAEMON_URL}/api/v1/db/messages?session_id=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("""'${SESSION_ID}'"""))')&limit=50&offset=0&max_content_bytes=128")"
 
+db_msgs_mm="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/db/messages?session_id=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("""'${SESSION_ID}'"""))')&limit=10&offset=0&max_content_bytes=128&max_mm_bytes=10")"
+
 MM_JSON="${MM_JSON}" USER_TEXT="${USER_TEXT}" python3 - <<PY
 import json, os, sys
 obj = json.loads(r'''${db_msgs}''')
@@ -515,6 +518,40 @@ if not found_mm:
   raise SystemExit(1)
 if not any(isinstance(m, dict) and isinstance(m.get("content"), str) and "[client_event]" in m.get("content") for m in rows):
   print("expected at least one [client_event] message", file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+MM_JSON="${MM_JSON}" USER_TEXT="${USER_TEXT}" python3 - <<PY
+import json, os, sys
+obj = json.loads(r'''${db_msgs_mm}''')
+if not obj.get("ok"):
+  print("db/messages max_mm_bytes failed:", obj, file=sys.stderr)
+  raise SystemExit(1)
+mm_json = os.environ["MM_JSON"]
+user_text = os.environ["USER_TEXT"]
+rows = obj.get("messages") or []
+if not isinstance(rows, list):
+  print("expected messages list for max_mm_bytes", obj, file=sys.stderr)
+  raise SystemExit(1)
+found = False
+for m in rows:
+  if not isinstance(m, dict):
+    continue
+  if (m.get("content") or "").strip() != user_text:
+    continue
+  if m.get("mm_json_truncated") is not True:
+    print("expected mm_json_truncated true", m, file=sys.stderr)
+    raise SystemExit(1)
+  if not isinstance(m.get("mm_json"), str) or len(m.get("mm_json")) != 10:
+    print("expected mm_json length 10", m, file=sys.stderr)
+    raise SystemExit(1)
+  if m.get("mm_bytes") != len(mm_json):
+    print("expected mm_bytes to reflect full payload", m, file=sys.stderr)
+    raise SystemExit(1)
+  found = True
+  break
+if not found:
+  print("missing truncated mm_json row", rows, file=sys.stderr)
   raise SystemExit(1)
 PY
 
