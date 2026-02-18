@@ -189,6 +189,8 @@ or:
 Notes:
 - `.not_in_repo` is gitignored; do not commit keys.
 - `agentd` prefers `.not_in_repo` over `project.local.md` when auto-loading provider keys.
+- `~/.env` is a last-resort key source only; base URLs still come from flags/env/config. For Moonshot, set
+  `MOONSHOT_API_BASE` or pass `--base-url https://api.moonshot.cn/v1`.
 
 ### Tool extensions: plugins + tool servers (out-of-process)
 
