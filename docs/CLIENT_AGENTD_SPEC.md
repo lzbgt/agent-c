@@ -264,7 +264,8 @@ Reconnect / continuity guidance:
 When DB support is enabled, the daemon exposes read-only debugging endpoints:
 
 - `GET /api/v1/db/sessions`
-- `GET /api/v1/db/messages?session_id=...`
+- `GET /api/v1/db/messages?session_id=...&max_mm_bytes=...`
+  - includes `mm_json/mm_bytes/mm_truncated` alongside message text
 - `GET /api/v1/db/runs?session_id=...`
 - `GET /api/v1/db/run?...`
 - `GET /api/v1/db/artifacts?session_id=...`
