@@ -105,6 +105,16 @@ if active_provider not in prov:
 if not prov[active_provider].get("active"):
   print("active_provider not marked active in providers", active_provider, file=sys.stderr)
   raise SystemExit(1)
+prov_active = prov[active_provider]
+prov_base = prov_active.get("base_url")
+prov_source = prov_active.get("base_url_source")
+if isinstance(prov_base, str) and prov_base:
+  if prov_base != base_url:
+    print("active provider base_url mismatch", prov_base, base_url, file=sys.stderr)
+    raise SystemExit(1)
+  if prov_source != base_url_source:
+    print("active provider base_url_source mismatch", prov_source, base_url_source, file=sys.stderr)
+    raise SystemExit(1)
 if prov[active_provider].get("key_present") is False:
   warning = prov[active_provider].get("warning")
   if not isinstance(warning, str) or "Active provider key missing" not in warning:
