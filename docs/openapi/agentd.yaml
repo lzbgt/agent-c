@@ -305,6 +305,22 @@ paths:
                 required: [ok]
                 properties:
                   ok: { type: boolean }
+                  tools:
+                    type: string
+                    description: Effective tool mode (none|basic|host)
+                  daemon_tools:
+                    type: string
+                    description: Daemon tool mode ceiling (none|basic|host)
+                  requested_tools:
+                    type: string
+                    description: Requested tool mode (when provided by the client)
+                  effective_yolo:
+                    type: boolean
+                  effective_host_policy:
+                    type: string
+                    description: Effective host policy (full|readonly)
+                  effective_session_id:
+                    type: string
                   defs:
                     type: array
                     items:

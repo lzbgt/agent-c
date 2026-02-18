@@ -215,6 +215,8 @@ The UI can query the daemon’s effective tool registry (schemas) to render tool
 Notes:
 - When `session_id` is provided (and `tools=host`), the returned registry may include **session-scoped tools**
   such as `ui_wait_event` (which depends on a per-session client event log).
+- Requests cannot exceed the daemon’s `--tools` ceiling; exceeding it returns HTTP 400.
+- The response includes `daemon_tools` and (when provided) `requested_tools` for clarity.
 
 ## UI Actions (agent → UI)
 
