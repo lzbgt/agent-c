@@ -156,6 +156,7 @@ Local verification:
 #### Option A: `sc.exe` (built-in)
 Run from an **elevated** Command Prompt:
 ```
+setx AGENTD_DOTENV_PATH "C:\\ProgramData\\agentd\\agentd.env" /M
 sc.exe create agentd binPath= "\"C:\\Program Files\\agentd\\agentd.exe\" --host 127.0.0.1 --port 8123 --auth-token REPLACE_WITH_RANDOM_TOKEN --state-dir \"C:\\ProgramData\\agentd\" --db-path \"C:\\ProgramData\\agentd\\agentd.db\"" start= auto
 sc.exe config agentd start= delayed-auto
 sc.exe failure agentd reset= 86400 actions= restart/5000/restart/5000/restart/5000
