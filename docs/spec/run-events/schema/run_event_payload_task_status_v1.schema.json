@@ -1,0 +1,66 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Workflow Event Payload task_status v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "workflow_id",
+    "task_id",
+    "status",
+    "attempt",
+    "max_attempts",
+    "ts_unix_ms"
+  ],
+  "properties": {
+    "workflow_id": {
+      "type": "string",
+      "description": "Workflow identifier."
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Workflow task identifier."
+    },
+    "status": {
+      "type": "string",
+      "description": "Task status (queued|running|done|error|cancelled)."
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Attempt index."
+    },
+    "max_attempts": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Max attempts for this task."
+    },
+    "ts_unix_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Event timestamp."
+    },
+    "reason": {
+      "type": "string",
+      "description": "Reason token when present."
+    },
+    "error": {
+      "type": "string",
+      "description": "Error message when present."
+    },
+    "ready_unix_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Next ready time (ms)."
+    },
+    "started_unix_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Start time (ms)."
+    },
+    "finished_unix_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Finish time (ms)."
+    }
+  }
+}

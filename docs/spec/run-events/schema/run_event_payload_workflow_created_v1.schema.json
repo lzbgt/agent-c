@@ -1,0 +1,51 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Workflow Event Payload workflow_created v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "workflow_id"
+  ],
+  "properties": {
+    "workflow_id": {
+      "type": "string",
+      "description": "Workflow identifier."
+    },
+    "status": {
+      "type": "string",
+      "description": "Workflow status when present."
+    },
+    "trace_id": {
+      "type": "string",
+      "description": "Trace identifier."
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Session identifier."
+    },
+    "goal": {
+      "type": "string",
+      "description": "Edge workflow goal."
+    },
+    "priority": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Edge workflow priority."
+    },
+    "steps": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Edge workflow step count."
+    },
+    "ts_unix_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Event timestamp (Unix ms)."
+    },
+    "ts_utc_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Event timestamp (UTC ms)."
+    }
+  }
+}

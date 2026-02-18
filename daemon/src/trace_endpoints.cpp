@@ -8,6 +8,7 @@
 #include "string_util.h"
 #include "trace_id_util.h"
 #include "workflow_memory_correlate.h"
+#include "workflow_event_schema.h"
 
 #include <json/json.h>
 
@@ -249,6 +250,9 @@ void handle_trace_lookup_endpoint(
           if (!ev.task_id.empty()) row["task_id"] = ev.task_id;
           row["ts_unix_ms"] = (Json::Int64)ev.ts_unix_ms;
           row["type"] = ev.type;
+          if (const char* schema = workflow_event_schema_for_type(ev.type)) {
+            row["schema"] = schema;
+          }
           Json::Value v;
           std::string perr;
           if (json_parse_object(ev.data_json, &v, &perr)) row["event"] = v;
@@ -277,6 +281,9 @@ void handle_trace_lookup_endpoint(
           row["workflow_id"] = ev.workflow_id;
           row["ts_utc_ms"] = (Json::Int64)ev.ts_utc_ms;
           row["type"] = ev.type;
+          if (const char* schema = edge_workflow_event_schema_for_type(ev.type)) {
+            row["schema"] = schema;
+          }
           Json::Value v;
           std::string perr;
           if (json_parse_object(ev.data_json, &v, &perr)) row["event"] = v;

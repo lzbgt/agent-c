@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Workflow Event Payload workflow_status v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "workflow_id",
+    "status",
+    "ts_unix_ms"
+  ],
+  "properties": {
+    "workflow_id": {
+      "type": "string",
+      "description": "Workflow identifier."
+    },
+    "status": {
+      "type": "string",
+      "description": "Workflow status (queued|running|done|error|cancelled)."
+    },
+    "ts_unix_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Event timestamp."
+    },
+    "prev_status": {
+      "type": "string",
+      "description": "Previous status when present."
+    },
+    "cancel_requested": {
+      "type": "boolean",
+      "description": "Cancellation requested flag."
+    },
+    "trace_id": {
+      "type": "string",
+      "description": "Trace identifier."
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Session identifier."
+    },
+    "error": {
+      "type": "string",
+      "description": "Workflow error message when present."
+    }
+  }
+}

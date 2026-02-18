@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Edge Workflow Event Payload step_dispatched v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "workflow_id",
+    "step_id",
+    "node_id",
+    "attempt",
+    "idempotency_key",
+    "outbox_id"
+  ],
+  "properties": {
+    "workflow_id": {
+      "type": "string",
+      "description": "Workflow identifier."
+    },
+    "step_id": {
+      "type": "string",
+      "description": "Workflow step identifier."
+    },
+    "node_id": {
+      "type": "string",
+      "description": "Target node identifier."
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Attempt index."
+    },
+    "idempotency_key": {
+      "type": "string",
+      "description": "Idempotency key."
+    },
+    "outbox_id": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Outbox row id."
+    },
+    "deduped": {
+      "type": "boolean",
+      "description": "True when dispatch was deduped."
+    }
+  }
+}

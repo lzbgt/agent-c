@@ -98,6 +98,7 @@ with **audio streaming** following once the streaming UX is stable.
   - [x] Payload JSON Schemas for common run event types (assistant/tool/artifact/usage/error).
   - [x] Job + run event envelopes attach payload schema identifiers for common types.
   - [x] Run-event fixtures now require schema identifiers for common payloads.
+  - [x] Workflow + edge workflow event payload schemas + schema tags across event endpoints/streams.
 - [ ] Streaming: core-layer streaming interface + provider compatibility matrix with full variant coverage.
   - [x] Core SSE parser (`agent_sse_parser_t`) shared by CLI/daemon streaming paths.
   - [x] Core stream decoder (`agent_stream_decoder_t`) + unit tests (`tests/test_stream_decoder.c`).

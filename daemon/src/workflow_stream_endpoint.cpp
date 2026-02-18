@@ -5,6 +5,7 @@
 #include "daemon_auth.h"
 #include "job_manager.h" // sse_send/sse_ping/write_all_fd
 #include "json_util.h"
+#include "workflow_event_schema.h"
 
 #include <chrono>
 #include <sstream>
@@ -124,6 +125,9 @@ void handle_workflow_stream_endpoint(
       ev["event_id"] = (Json::Int64)r.event_id;
       ev["ts_unix_ms"] = (Json::Int64)r.ts_unix_ms;
       ev["type"] = r.type;
+      if (const char* schema = workflow_event_schema_for_type(r.type)) {
+        ev["schema"] = schema;
+      }
 
       Json::Value data;
       std::string perr;

@@ -25,6 +25,17 @@ can validate and reason about events deterministically.
   - `docs/spec/run-events/schema/run_event_payload_ui_action_v1.schema.json`
   - `docs/spec/run-events/schema/run_event_payload_heartbeat_v1.schema.json`
   - `docs/spec/run-events/schema/run_event_payload_error_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_workflow_created_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_workflow_cancel_requested_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_task_status_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_workflow_status_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_workflow_done_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_workflow_budget_exceeded_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_memory_checkpoint_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_workflow_canceled_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_step_state_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_step_retry_scheduled_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_step_dispatched_v1.schema.json`
 - Fixtures: `docs/spec/run-events/fixtures/run_events_v1.jsonl`
 - CI: `run_events_spec_sanity_tests` validates schema presence and fixture envelopes.
 
@@ -67,6 +78,32 @@ The fixture set is validated for these common event payloads:
 -   Schema: `run_event_payload_heartbeat_v1`
 - `error`: `data.reason` string; optional `data.error`, `data.steps_executed`, `data.max_steps`.
 -   Schema: `run_event_payload_error_v1`
+- `workflow_created`: `data.workflow_id` string; optional `data.status`, `data.trace_id`, `data.session_id`, `data.goal`, `data.priority`, `data.steps`.
+-   Schema: `run_event_payload_workflow_created_v1`
+- `workflow_cancel_requested`: `data.workflow_id` string; `data.status` string; `data.cancel_requested` bool.
+-   Schema: `run_event_payload_workflow_cancel_requested_v1`
+- `task_status`: `data.workflow_id`, `data.task_id`, `data.status` strings; `data.attempt`, `data.max_attempts` integers.
+-   Schema: `run_event_payload_task_status_v1`
+- `workflow_status`: `data.workflow_id`, `data.status` strings; optional `data.prev_status`, `data.cancel_requested`.
+-   Schema: `run_event_payload_workflow_status_v1`
+- `workflow_done`: `data.workflow_id` string; `data.ok` bool; `data.status` string; `data.result_json_present` bool.
+-   Schema: `run_event_payload_workflow_done_v1`
+- `workflow_budget_exceeded`: `data.workflow_id` string; `data.reason` string; budget counters (integers).
+-   Schema: `run_event_payload_workflow_budget_exceeded_v1`
+- `memory_checkpoint`: `data.workflow_id`, `data.task_id` strings; `data.checkpoint` object (`path`, `sha256`).
+-   Schema: `run_event_payload_memory_checkpoint_v1`
+- `workflow_canceled`: `data.workflow_id` string.
+-   Schema: `run_event_payload_workflow_canceled_v1`
+- `step_state`: `data.workflow_id`, `data.step_id`, `data.state` strings.
+-   Schema: `run_event_payload_step_state_v1`
+- `step_retry_scheduled`: `data.workflow_id`, `data.step_id` strings; `data.attempt_next`, `data.ready_utc_ms` integers.
+-   Schema: `run_event_payload_step_retry_scheduled_v1`
+- `step_dispatched`: `data.workflow_id`, `data.step_id`, `data.node_id`, `data.idempotency_key` strings; `data.attempt`, `data.outbox_id` integers.
+-   Schema: `run_event_payload_step_dispatched_v1`
+
+Notes:
+- `workflow_created` is used by both durable workflows (status/trace/session fields) and edge workflows (goal/priority/steps).
+  Producers should emit whichever fields apply; consumers must treat the payload as a permissive union.
 
 ## Assistant message payload (current)
 

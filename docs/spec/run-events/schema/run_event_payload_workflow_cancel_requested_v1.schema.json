@@ -1,0 +1,39 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Workflow Event Payload workflow_cancel_requested v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "workflow_id",
+    "status",
+    "cancel_requested",
+    "ts_unix_ms"
+  ],
+  "properties": {
+    "workflow_id": {
+      "type": "string",
+      "description": "Workflow identifier."
+    },
+    "status": {
+      "type": "string",
+      "description": "Workflow status."
+    },
+    "cancel_requested": {
+      "type": "boolean",
+      "description": "Cancel requested flag."
+    },
+    "ts_unix_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Event timestamp."
+    },
+    "trace_id": {
+      "type": "string",
+      "description": "Trace identifier."
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Session identifier."
+    }
+  }
+}

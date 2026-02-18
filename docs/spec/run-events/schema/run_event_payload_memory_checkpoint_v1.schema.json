@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Workflow Event Payload memory_checkpoint v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "workflow_id",
+    "task_id",
+    "checkpoint",
+    "ts_unix_ms"
+  ],
+  "properties": {
+    "workflow_id": {
+      "type": "string",
+      "description": "Workflow identifier."
+    },
+    "task_id": {
+      "type": "string",
+      "description": "Workflow task identifier."
+    },
+    "trace_id": {
+      "type": "string",
+      "description": "Trace identifier."
+    },
+    "ts_unix_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Event timestamp."
+    },
+    "checkpoint": {
+      "type": "object",
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "sha256": {
+          "type": "string"
+        },
+        "ts_utc": {
+          "type": "string"
+        },
+        "bytes": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

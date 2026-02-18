@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Workflow Event Payload workflow_done v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "workflow_id",
+    "ok",
+    "status",
+    "result_json_present",
+    "ts_unix_ms"
+  ],
+  "properties": {
+    "workflow_id": {
+      "type": "string",
+      "description": "Workflow identifier."
+    },
+    "ok": {
+      "type": "boolean",
+      "description": "True when workflow status is done."
+    },
+    "status": {
+      "type": "string",
+      "description": "Terminal status."
+    },
+    "result_json_present": {
+      "type": "boolean",
+      "description": "True if result_json is present."
+    },
+    "ts_unix_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Event timestamp."
+    },
+    "trace_id": {
+      "type": "string",
+      "description": "Trace identifier."
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Session identifier."
+    },
+    "error": {
+      "type": "string",
+      "description": "Workflow error message when present."
+    }
+  }
+}

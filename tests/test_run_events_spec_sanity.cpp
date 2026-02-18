@@ -68,6 +68,17 @@ static const char* expected_schema_for_type(const std::string& type) {
   if (type == "ui_action") return "run_event_payload_ui_action_v1";
   if (type == "heartbeat") return "run_event_payload_heartbeat_v1";
   if (type == "error") return "run_event_payload_error_v1";
+  if (type == "task_status") return "run_event_payload_task_status_v1";
+  if (type == "workflow_status") return "run_event_payload_workflow_status_v1";
+  if (type == "workflow_done") return "run_event_payload_workflow_done_v1";
+  if (type == "workflow_budget_exceeded") return "run_event_payload_workflow_budget_exceeded_v1";
+  if (type == "memory_checkpoint") return "run_event_payload_memory_checkpoint_v1";
+  if (type == "workflow_created") return "run_event_payload_workflow_created_v1";
+  if (type == "workflow_cancel_requested") return "run_event_payload_workflow_cancel_requested_v1";
+  if (type == "workflow_canceled") return "run_event_payload_workflow_canceled_v1";
+  if (type == "step_state") return "run_event_payload_step_state_v1";
+  if (type == "step_retry_scheduled") return "run_event_payload_step_retry_scheduled_v1";
+  if (type == "step_dispatched") return "run_event_payload_step_dispatched_v1";
   return nullptr;
 }
 
@@ -345,6 +356,425 @@ static bool validate_payload_error(const Json::Value& data, std::string* out_err
   return true;
 }
 
+static bool validate_payload_task_status(const Json::Value& data, std::string* out_err) {
+  if (!data.isObject()) {
+    if (out_err) *out_err = "task_status data must be object";
+    return false;
+  }
+  std::string workflow_id;
+  if (!get_string_field(data, "workflow_id", &workflow_id)) {
+    if (out_err) *out_err = "task_status.data.workflow_id must be non-empty string";
+    return false;
+  }
+  std::string task_id;
+  if (!get_string_field(data, "task_id", &task_id)) {
+    if (out_err) *out_err = "task_status.data.task_id must be non-empty string";
+    return false;
+  }
+  std::string status;
+  if (!get_string_field(data, "status", &status)) {
+    if (out_err) *out_err = "task_status.data.status must be non-empty string";
+    return false;
+  }
+  if (!is_nonneg_int(data.get("attempt", Json::Value(Json::nullValue)))) {
+    if (out_err) *out_err = "task_status.data.attempt must be integer >= 0";
+    return false;
+  }
+  if (!is_nonneg_int(data.get("max_attempts", Json::Value(Json::nullValue)))) {
+    if (out_err) *out_err = "task_status.data.max_attempts must be integer >= 0";
+    return false;
+  }
+  if (!is_nonneg_int(data.get("ts_unix_ms", Json::Value(Json::nullValue)))) {
+    if (out_err) *out_err = "task_status.data.ts_unix_ms must be integer >= 0";
+    return false;
+  }
+  if (data.isMember("reason") && !data["reason"].isString()) {
+    if (out_err) *out_err = "task_status.data.reason must be string";
+    return false;
+  }
+  if (data.isMember("error") && !data["error"].isString()) {
+    if (out_err) *out_err = "task_status.data.error must be string";
+    return false;
+  }
+  if (data.isMember("ready_unix_ms") && !is_nonneg_int(data["ready_unix_ms"])) {
+    if (out_err) *out_err = "task_status.data.ready_unix_ms must be integer >= 0";
+    return false;
+  }
+  if (data.isMember("started_unix_ms") && !is_nonneg_int(data["started_unix_ms"])) {
+    if (out_err) *out_err = "task_status.data.started_unix_ms must be integer >= 0";
+    return false;
+  }
+  if (data.isMember("finished_unix_ms") && !is_nonneg_int(data["finished_unix_ms"])) {
+    if (out_err) *out_err = "task_status.data.finished_unix_ms must be integer >= 0";
+    return false;
+  }
+  return true;
+}
+
+static bool validate_payload_workflow_status(const Json::Value& data, std::string* out_err) {
+  if (!data.isObject()) {
+    if (out_err) *out_err = "workflow_status data must be object";
+    return false;
+  }
+  std::string workflow_id;
+  if (!get_string_field(data, "workflow_id", &workflow_id)) {
+    if (out_err) *out_err = "workflow_status.data.workflow_id must be non-empty string";
+    return false;
+  }
+  std::string status;
+  if (!get_string_field(data, "status", &status)) {
+    if (out_err) *out_err = "workflow_status.data.status must be non-empty string";
+    return false;
+  }
+  if (!is_nonneg_int(data.get("ts_unix_ms", Json::Value(Json::nullValue)))) {
+    if (out_err) *out_err = "workflow_status.data.ts_unix_ms must be integer >= 0";
+    return false;
+  }
+  if (data.isMember("prev_status") && !data["prev_status"].isString()) {
+    if (out_err) *out_err = "workflow_status.data.prev_status must be string";
+    return false;
+  }
+  if (data.isMember("cancel_requested") && !data["cancel_requested"].isBool()) {
+    if (out_err) *out_err = "workflow_status.data.cancel_requested must be bool";
+    return false;
+  }
+  if (data.isMember("trace_id") && !data["trace_id"].isString()) {
+    if (out_err) *out_err = "workflow_status.data.trace_id must be string";
+    return false;
+  }
+  if (data.isMember("session_id") && !data["session_id"].isString()) {
+    if (out_err) *out_err = "workflow_status.data.session_id must be string";
+    return false;
+  }
+  if (data.isMember("error") && !data["error"].isString()) {
+    if (out_err) *out_err = "workflow_status.data.error must be string";
+    return false;
+  }
+  return true;
+}
+
+static bool validate_payload_workflow_done(const Json::Value& data, std::string* out_err) {
+  if (!data.isObject()) {
+    if (out_err) *out_err = "workflow_done data must be object";
+    return false;
+  }
+  std::string workflow_id;
+  if (!get_string_field(data, "workflow_id", &workflow_id)) {
+    if (out_err) *out_err = "workflow_done.data.workflow_id must be non-empty string";
+    return false;
+  }
+  if (!data.isMember("ok") || !data["ok"].isBool()) {
+    if (out_err) *out_err = "workflow_done.data.ok must be bool";
+    return false;
+  }
+  std::string status;
+  if (!get_string_field(data, "status", &status)) {
+    if (out_err) *out_err = "workflow_done.data.status must be non-empty string";
+    return false;
+  }
+  if (!data.isMember("result_json_present") || !data["result_json_present"].isBool()) {
+    if (out_err) *out_err = "workflow_done.data.result_json_present must be bool";
+    return false;
+  }
+  if (!is_nonneg_int(data.get("ts_unix_ms", Json::Value(Json::nullValue)))) {
+    if (out_err) *out_err = "workflow_done.data.ts_unix_ms must be integer >= 0";
+    return false;
+  }
+  if (data.isMember("trace_id") && !data["trace_id"].isString()) {
+    if (out_err) *out_err = "workflow_done.data.trace_id must be string";
+    return false;
+  }
+  if (data.isMember("session_id") && !data["session_id"].isString()) {
+    if (out_err) *out_err = "workflow_done.data.session_id must be string";
+    return false;
+  }
+  if (data.isMember("error") && !data["error"].isString()) {
+    if (out_err) *out_err = "workflow_done.data.error must be string";
+    return false;
+  }
+  return true;
+}
+
+static bool validate_payload_workflow_budget_exceeded(const Json::Value& data, std::string* out_err) {
+  if (!data.isObject()) {
+    if (out_err) *out_err = "workflow_budget_exceeded data must be object";
+    return false;
+  }
+  std::string workflow_id;
+  if (!get_string_field(data, "workflow_id", &workflow_id)) {
+    if (out_err) *out_err = "workflow_budget_exceeded.data.workflow_id must be non-empty string";
+    return false;
+  }
+  std::string reason;
+  if (!get_string_field(data, "reason", &reason)) {
+    if (out_err) *out_err = "workflow_budget_exceeded.data.reason must be non-empty string";
+    return false;
+  }
+  const char* fields[] = {
+    "max_tool_calls_total",
+    "tool_calls_used",
+    "tool_calls_remaining",
+    "max_steps_total",
+    "steps_used",
+    "steps_remaining",
+    "max_elapsed_ms_total",
+    "elapsed_ms_used",
+    "elapsed_ms_remaining",
+    "max_total_tokens",
+    "prompt_tokens_used",
+    "completion_tokens_used",
+    "total_tokens_used",
+    "total_tokens_remaining",
+    "ts_unix_ms",
+  };
+  for (const char* f : fields) {
+    if (!f) continue;
+    if (!data.isMember(f) || !is_nonneg_int(data[f])) {
+      if (out_err) *out_err = std::string("workflow_budget_exceeded.data.") + f + " must be integer >= 0";
+      return false;
+    }
+  }
+  return true;
+}
+
+static bool validate_payload_memory_checkpoint(const Json::Value& data, std::string* out_err) {
+  if (!data.isObject()) {
+    if (out_err) *out_err = "memory_checkpoint data must be object";
+    return false;
+  }
+  std::string workflow_id;
+  if (!get_string_field(data, "workflow_id", &workflow_id)) {
+    if (out_err) *out_err = "memory_checkpoint.data.workflow_id must be non-empty string";
+    return false;
+  }
+  std::string task_id;
+  if (!get_string_field(data, "task_id", &task_id)) {
+    if (out_err) *out_err = "memory_checkpoint.data.task_id must be non-empty string";
+    return false;
+  }
+  if (!is_nonneg_int(data.get("ts_unix_ms", Json::Value(Json::nullValue)))) {
+    if (out_err) *out_err = "memory_checkpoint.data.ts_unix_ms must be integer >= 0";
+    return false;
+  }
+  if (!data.isMember("checkpoint") || !data["checkpoint"].isObject()) {
+    if (out_err) *out_err = "memory_checkpoint.data.checkpoint must be object";
+    return false;
+  }
+  const Json::Value& ck = data["checkpoint"];
+  std::string path;
+  if (!get_string_field(ck, "path", &path)) {
+    if (out_err) *out_err = "memory_checkpoint.data.checkpoint.path must be non-empty string";
+    return false;
+  }
+  std::string sha;
+  if (!get_string_field(ck, "sha256", &sha)) {
+    if (out_err) *out_err = "memory_checkpoint.data.checkpoint.sha256 must be non-empty string";
+    return false;
+  }
+  if (ck.isMember("ts_utc") && !ck["ts_utc"].isString()) {
+    if (out_err) *out_err = "memory_checkpoint.data.checkpoint.ts_utc must be string";
+    return false;
+  }
+  if (ck.isMember("bytes") && !is_nonneg_int(ck["bytes"])) {
+    if (out_err) *out_err = "memory_checkpoint.data.checkpoint.bytes must be integer >= 0";
+    return false;
+  }
+  return true;
+}
+
+static bool validate_payload_workflow_created(const Json::Value& data, std::string* out_err) {
+  if (!data.isObject()) {
+    if (out_err) *out_err = "workflow_created data must be object";
+    return false;
+  }
+  std::string workflow_id;
+  if (!get_string_field(data, "workflow_id", &workflow_id)) {
+    if (out_err) *out_err = "workflow_created.data.workflow_id must be non-empty string";
+    return false;
+  }
+  if (data.isMember("status") && !data["status"].isString()) {
+    if (out_err) *out_err = "workflow_created.data.status must be string";
+    return false;
+  }
+  if (data.isMember("trace_id") && !data["trace_id"].isString()) {
+    if (out_err) *out_err = "workflow_created.data.trace_id must be string";
+    return false;
+  }
+  if (data.isMember("session_id") && !data["session_id"].isString()) {
+    if (out_err) *out_err = "workflow_created.data.session_id must be string";
+    return false;
+  }
+  if (data.isMember("goal") && !data["goal"].isString()) {
+    if (out_err) *out_err = "workflow_created.data.goal must be string";
+    return false;
+  }
+  if (data.isMember("priority") && !is_nonneg_int(data["priority"])) {
+    if (out_err) *out_err = "workflow_created.data.priority must be integer >= 0";
+    return false;
+  }
+  if (data.isMember("steps") && !is_nonneg_int(data["steps"])) {
+    if (out_err) *out_err = "workflow_created.data.steps must be integer >= 0";
+    return false;
+  }
+  if (data.isMember("ts_unix_ms") && !is_nonneg_int(data["ts_unix_ms"])) {
+    if (out_err) *out_err = "workflow_created.data.ts_unix_ms must be integer >= 0";
+    return false;
+  }
+  if (data.isMember("ts_utc_ms") && !is_nonneg_int(data["ts_utc_ms"])) {
+    if (out_err) *out_err = "workflow_created.data.ts_utc_ms must be integer >= 0";
+    return false;
+  }
+  return true;
+}
+
+static bool validate_payload_workflow_cancel_requested(const Json::Value& data, std::string* out_err) {
+  if (!data.isObject()) {
+    if (out_err) *out_err = "workflow_cancel_requested data must be object";
+    return false;
+  }
+  std::string workflow_id;
+  if (!get_string_field(data, "workflow_id", &workflow_id)) {
+    if (out_err) *out_err = "workflow_cancel_requested.data.workflow_id must be non-empty string";
+    return false;
+  }
+  std::string status;
+  if (!get_string_field(data, "status", &status)) {
+    if (out_err) *out_err = "workflow_cancel_requested.data.status must be non-empty string";
+    return false;
+  }
+  if (!data.isMember("cancel_requested") || !data["cancel_requested"].isBool()) {
+    if (out_err) *out_err = "workflow_cancel_requested.data.cancel_requested must be bool";
+    return false;
+  }
+  if (!is_nonneg_int(data.get("ts_unix_ms", Json::Value(Json::nullValue)))) {
+    if (out_err) *out_err = "workflow_cancel_requested.data.ts_unix_ms must be integer >= 0";
+    return false;
+  }
+  if (data.isMember("trace_id") && !data["trace_id"].isString()) {
+    if (out_err) *out_err = "workflow_cancel_requested.data.trace_id must be string";
+    return false;
+  }
+  if (data.isMember("session_id") && !data["session_id"].isString()) {
+    if (out_err) *out_err = "workflow_cancel_requested.data.session_id must be string";
+    return false;
+  }
+  return true;
+}
+
+static bool validate_payload_workflow_canceled(const Json::Value& data, std::string* out_err) {
+  if (!data.isObject()) {
+    if (out_err) *out_err = "workflow_canceled data must be object";
+    return false;
+  }
+  std::string workflow_id;
+  if (!get_string_field(data, "workflow_id", &workflow_id)) {
+    if (out_err) *out_err = "workflow_canceled.data.workflow_id must be non-empty string";
+    return false;
+  }
+  return true;
+}
+
+static bool validate_payload_step_state(const Json::Value& data, std::string* out_err) {
+  if (!data.isObject()) {
+    if (out_err) *out_err = "step_state data must be object";
+    return false;
+  }
+  std::string workflow_id;
+  if (!get_string_field(data, "workflow_id", &workflow_id)) {
+    if (out_err) *out_err = "step_state.data.workflow_id must be non-empty string";
+    return false;
+  }
+  std::string step_id;
+  if (!get_string_field(data, "step_id", &step_id)) {
+    if (out_err) *out_err = "step_state.data.step_id must be non-empty string";
+    return false;
+  }
+  std::string state;
+  if (!get_string_field(data, "state", &state)) {
+    if (out_err) *out_err = "step_state.data.state must be non-empty string";
+    return false;
+  }
+  if (data.isMember("idempotency_key") && !data["idempotency_key"].isString()) {
+    if (out_err) *out_err = "step_state.data.idempotency_key must be string";
+    return false;
+  }
+  if (data.isMember("error") && !data["error"].isString()) {
+    if (out_err) *out_err = "step_state.data.error must be string";
+    return false;
+  }
+  if (data.isMember("_ignored_by_platform") && !data["_ignored_by_platform"].isBool()) {
+    if (out_err) *out_err = "step_state.data._ignored_by_platform must be bool";
+    return false;
+  }
+  return true;
+}
+
+static bool validate_payload_step_retry_scheduled(const Json::Value& data, std::string* out_err) {
+  if (!data.isObject()) {
+    if (out_err) *out_err = "step_retry_scheduled data must be object";
+    return false;
+  }
+  std::string workflow_id;
+  if (!get_string_field(data, "workflow_id", &workflow_id)) {
+    if (out_err) *out_err = "step_retry_scheduled.data.workflow_id must be non-empty string";
+    return false;
+  }
+  std::string step_id;
+  if (!get_string_field(data, "step_id", &step_id)) {
+    if (out_err) *out_err = "step_retry_scheduled.data.step_id must be non-empty string";
+    return false;
+  }
+  if (!is_nonneg_int(data.get("attempt_next", Json::Value(Json::nullValue)))) {
+    if (out_err) *out_err = "step_retry_scheduled.data.attempt_next must be integer >= 0";
+    return false;
+  }
+  if (!is_nonneg_int(data.get("ready_utc_ms", Json::Value(Json::nullValue)))) {
+    if (out_err) *out_err = "step_retry_scheduled.data.ready_utc_ms must be integer >= 0";
+    return false;
+  }
+  return true;
+}
+
+static bool validate_payload_step_dispatched(const Json::Value& data, std::string* out_err) {
+  if (!data.isObject()) {
+    if (out_err) *out_err = "step_dispatched data must be object";
+    return false;
+  }
+  std::string workflow_id;
+  if (!get_string_field(data, "workflow_id", &workflow_id)) {
+    if (out_err) *out_err = "step_dispatched.data.workflow_id must be non-empty string";
+    return false;
+  }
+  std::string step_id;
+  if (!get_string_field(data, "step_id", &step_id)) {
+    if (out_err) *out_err = "step_dispatched.data.step_id must be non-empty string";
+    return false;
+  }
+  std::string node_id;
+  if (!get_string_field(data, "node_id", &node_id)) {
+    if (out_err) *out_err = "step_dispatched.data.node_id must be non-empty string";
+    return false;
+  }
+  if (!is_nonneg_int(data.get("attempt", Json::Value(Json::nullValue)))) {
+    if (out_err) *out_err = "step_dispatched.data.attempt must be integer >= 0";
+    return false;
+  }
+  std::string idem;
+  if (!get_string_field(data, "idempotency_key", &idem)) {
+    if (out_err) *out_err = "step_dispatched.data.idempotency_key must be non-empty string";
+    return false;
+  }
+  if (!is_nonneg_int(data.get("outbox_id", Json::Value(Json::nullValue)))) {
+    if (out_err) *out_err = "step_dispatched.data.outbox_id must be integer >= 0";
+    return false;
+  }
+  if (data.isMember("deduped") && !data["deduped"].isBool()) {
+    if (out_err) *out_err = "step_dispatched.data.deduped must be bool";
+    return false;
+  }
+  return true;
+}
+
 static bool validate_event_payload(const Json::Value& v, std::string* out_err) {
   if (!v.isObject()) {
     if (out_err) *out_err = "expected JSON object";
@@ -364,6 +794,17 @@ static bool validate_event_payload(const Json::Value& v, std::string* out_err) {
   if (type == "ui_action") return validate_payload_ui_action(data, out_err);
   if (type == "heartbeat") return validate_payload_heartbeat(data, out_err);
   if (type == "error") return validate_payload_error(data, out_err);
+  if (type == "task_status") return validate_payload_task_status(data, out_err);
+  if (type == "workflow_status") return validate_payload_workflow_status(data, out_err);
+  if (type == "workflow_done") return validate_payload_workflow_done(data, out_err);
+  if (type == "workflow_budget_exceeded") return validate_payload_workflow_budget_exceeded(data, out_err);
+  if (type == "memory_checkpoint") return validate_payload_memory_checkpoint(data, out_err);
+  if (type == "workflow_created") return validate_payload_workflow_created(data, out_err);
+  if (type == "workflow_cancel_requested") return validate_payload_workflow_cancel_requested(data, out_err);
+  if (type == "workflow_canceled") return validate_payload_workflow_canceled(data, out_err);
+  if (type == "step_state") return validate_payload_step_state(data, out_err);
+  if (type == "step_retry_scheduled") return validate_payload_step_retry_scheduled(data, out_err);
+  if (type == "step_dispatched") return validate_payload_step_dispatched(data, out_err);
   return true;
 }
 
@@ -428,6 +869,17 @@ static int schema_sanity(const std::string& schema_dir) {
     "run_event_payload_ui_action_v1.schema.json",
     "run_event_payload_heartbeat_v1.schema.json",
     "run_event_payload_error_v1.schema.json",
+    "run_event_payload_task_status_v1.schema.json",
+    "run_event_payload_workflow_status_v1.schema.json",
+    "run_event_payload_workflow_done_v1.schema.json",
+    "run_event_payload_workflow_budget_exceeded_v1.schema.json",
+    "run_event_payload_memory_checkpoint_v1.schema.json",
+    "run_event_payload_workflow_created_v1.schema.json",
+    "run_event_payload_workflow_cancel_requested_v1.schema.json",
+    "run_event_payload_workflow_canceled_v1.schema.json",
+    "run_event_payload_step_state_v1.schema.json",
+    "run_event_payload_step_retry_scheduled_v1.schema.json",
+    "run_event_payload_step_dispatched_v1.schema.json",
   };
   for (const char* name : required) {
     if (!name) continue;

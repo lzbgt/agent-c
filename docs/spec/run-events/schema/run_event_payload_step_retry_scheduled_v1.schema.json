@@ -1,0 +1,32 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Edge Workflow Event Payload step_retry_scheduled v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "workflow_id",
+    "step_id",
+    "attempt_next",
+    "ready_utc_ms"
+  ],
+  "properties": {
+    "workflow_id": {
+      "type": "string",
+      "description": "Workflow identifier."
+    },
+    "step_id": {
+      "type": "string",
+      "description": "Workflow step identifier."
+    },
+    "attempt_next": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Next attempt index."
+    },
+    "ready_utc_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Next ready timestamp."
+    }
+  }
+}

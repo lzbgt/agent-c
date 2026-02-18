@@ -1,0 +1,96 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Workflow Event Payload workflow_budget_exceeded v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "workflow_id",
+    "reason",
+    "max_tool_calls_total",
+    "tool_calls_used",
+    "tool_calls_remaining",
+    "max_steps_total",
+    "steps_used",
+    "steps_remaining",
+    "max_elapsed_ms_total",
+    "elapsed_ms_used",
+    "elapsed_ms_remaining",
+    "max_total_tokens",
+    "prompt_tokens_used",
+    "completion_tokens_used",
+    "total_tokens_used",
+    "total_tokens_remaining",
+    "ts_unix_ms"
+  ],
+  "properties": {
+    "workflow_id": {
+      "type": "string",
+      "description": "Workflow identifier."
+    },
+    "reason": {
+      "type": "string",
+      "description": "Budget token that was exceeded."
+    },
+    "max_tool_calls_total": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "tool_calls_used": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "tool_calls_remaining": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "max_steps_total": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "steps_used": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "steps_remaining": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "max_elapsed_ms_total": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "elapsed_ms_used": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "elapsed_ms_remaining": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "max_total_tokens": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "prompt_tokens_used": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "completion_tokens_used": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "total_tokens_used": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "total_tokens_remaining": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "ts_unix_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Event timestamp."
+    }
+  }
+}

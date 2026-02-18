@@ -3,6 +3,7 @@
 #include "daemon_auth.h"
 #include "http_util.h"
 #include "json_util.h"
+#include "workflow_event_schema.h"
 
 #include <json/json.h>
 
@@ -1161,7 +1162,13 @@ void handle_db_edge_workflow_events_endpoint(
     e["id"] = (Json::Int64)sqlite3_column_int64(st, 0);
     e["workflow_id"] = stmt_to_row(st, 1);
     e["ts_utc_ms"] = (Json::Int64)sqlite3_column_int64(st, 2);
-    e["type"] = stmt_to_row(st, 3);
+    const Json::Value type_v = stmt_to_row(st, 3);
+    e["type"] = type_v;
+    if (type_v.isString()) {
+      if (const char* schema = edge_workflow_event_schema_for_type(type_v.asString())) {
+        e["schema"] = schema;
+      }
+    }
     const Json::Value data_json_v = stmt_to_row(st, 4);
     e["data_json"] = data_json_v;
     if (data_json_v.isString() && !data_json_v.asString().empty()) {

@@ -4,6 +4,7 @@
 #include "http_util.h"
 #include "json_util.h"
 #include "string_util.h"
+#include "workflow_event_schema.h"
 
 #include <json/json.h>
 
@@ -164,6 +165,9 @@ void handle_workflow_events_endpoint(
     o["event_id"] = (Json::Int64)r.event_id;
     o["ts_unix_ms"] = (Json::Int64)r.ts_unix_ms;
     o["type"] = r.type;
+    if (const char* schema = workflow_event_schema_for_type(r.type)) {
+      o["schema"] = schema;
+    }
     if (!r.task_id.empty()) o["task_id"] = r.task_id;
     Json::Value data;
     std::string perr;

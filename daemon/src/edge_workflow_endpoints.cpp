@@ -4,6 +4,7 @@
 #include "edge_util.h"
 #include "json_util.h"
 #include "string_util.h"
+#include "workflow_event_schema.h"
 
 #include <json/json.h>
 
@@ -503,6 +504,9 @@ void handle_edge_workflow_events_endpoint(
     ev["id"] = (Json::Int64)r.id;
     ev["ts_utc_ms"] = (Json::Int64)r.ts_utc_ms;
     ev["type"] = r.type;
+    if (const char* schema = edge_workflow_event_schema_for_type(r.type)) {
+      ev["schema"] = schema;
+    }
     Json::Value data;
     std::string perr;
     if (json_parse_any(r.data_json, &data, &perr)) ev["data"] = data;
