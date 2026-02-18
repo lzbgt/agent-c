@@ -129,6 +129,10 @@ OTA enters **drain mode** while the update runs:
 - new run/workflow submissions return `HTTP 503` + `drain_*` hints
 - job/workflow schedulers pause claiming new tasks
 - `GET /api/v1/ota/status` surfaces `drain_active`, `drain_until_unix_ms`, `drain_reason`
+- Status also reports best-effort queue pressure (`jobs_running`, `jobs_queued`, `workflow_tasks_running`,
+  `workflow_tasks_queued`, `workflows_running`) when the DB is available.
+- agentd waits (best-effort) for **running jobs/workflow tasks** to finish until `drain_timeout_ms` elapses; any remaining
+  work is resumed after restart.
 
 WebUI + broker fanout:
 - In broker mode, the WebUI lists connected deployments and can send OTA requests to **all selected deployments** using broker bulk OTA endpoints:

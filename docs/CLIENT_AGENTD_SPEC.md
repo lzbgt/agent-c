@@ -98,6 +98,8 @@ This list matches daemon route registration in `daemon/src/agentd_api.cpp`.
   - request JSON: `{ url, sha256?, version?, reason?, drain_timeout_ms?, trace_id? }`
 - `GET /api/v1/ota/status`
   - returns `{ ok, status, ota_id?, updated_unix_ms?, last_error?, plan_path?, drain_active?, drain_until_unix_ms?, drain_reason? }`
+    plus best-effort inflight counts (`jobs_running`, `jobs_queued`, `workflow_tasks_running`,
+    `workflow_tasks_queued`, `workflows_running`) when DB is available.
 
 ### Tools + Files
 

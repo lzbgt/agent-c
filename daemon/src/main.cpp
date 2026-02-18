@@ -2211,11 +2211,11 @@ int main(int argc, char** argv) {
 
   server.handle("POST", "/api/v1/ota/update", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
-    handle_ota_update_endpoint(cur, cors_cfg, req, resp);
+    handle_ota_update_endpoint(cur, cors_cfg, req, resp, db_or_null);
   });
   server.handle("GET", "/api/v1/ota/status", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
-    handle_ota_status_endpoint(cur, cors_cfg, req, resp);
+    handle_ota_status_endpoint(cur, cors_cfg, req, resp, db_or_null);
   });
 
   server.handle("GET", "/api/v1/diagnostics", [&](const HttpRequest& req, HttpResponse* resp) {

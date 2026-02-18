@@ -102,14 +102,15 @@ A reference implementation is provided at `tools/agentd_ota_apply.sh`.
 
 ## WebUI / Broker Flow
 
-The WebUI uses broker **deployments + proxy** to fan-out OTA requests:
+The WebUI uses broker **deployments + bulk fan-out** to update multiple deployments in one action:
 
 - `GET /v1/agents/{agent_id}/deployments` to list connected deployments.
-- For each selected deployment: `POST /v1/agents/{agent_id}/proxy/api/v1/ota/update`
-  with `X-Agentd-Deployment: <deployment_id>`.
-- The UI shows per-deployment results and lets operators update all connected deployments.
+- `POST /v1/agents/{agent_id}/ota/update` with `deployment_ids=[...]` to trigger OTA across selected deployments.
+- `GET /v1/agents/{agent_id}/ota/status` with optional `deployment_ids=...` to watch drain/rollout state.
+- Proxy fallback per deployment remains supported:
+  - `POST /v1/agents/{agent_id}/proxy/api/v1/ota/update` with `X-Agentd-Deployment`.
 
-This avoids new broker protocol changes and leverages existing broker auth + audit trail.
+This leverages broker auth + audit trail and keeps multi-deployment updates consistent.
 
 ## Task Continuity After OTA
 
@@ -118,11 +119,13 @@ This avoids new broker protocol changes and leverages existing broker auth + aud
 - During OTA, agentd enters **drain mode**:
   - New run/workflow submissions are rejected with `HTTP 503` + `drain_*` hints.
   - Job/workflow schedulers pause claiming new tasks.
-- OTA uses a **grace period** (drain timeout) and then requests a controlled restart; any in-flight work that survives
-  restart is replayed by the engines.
+- OTA uses a **grace period** (drain timeout) and **waits for running jobs/workflow tasks** to complete before restart
+  (best-effort, bounded by `drain_timeout_ms`). Any remaining in-flight work is replayed by the engines after restart.
 
 ## Observability
 
 - OTA requests are logged with `trace_id` when provided.
 - Plan/status files are stored under `state_dir/ota/` for audit/debug.
 - Broker audit trail captures OTA proxy requests.
+- `GET /api/v1/ota/status` returns best-effort inflight counts when DB is available
+  (`jobs_running`, `jobs_queued`, `workflow_tasks_running`, `workflow_tasks_queued`, `workflows_running`).

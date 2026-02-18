@@ -450,12 +450,12 @@ bool AgentdApi::init(std::string* out_error) {
   impl_->route("POST", "/api/v1/ota/update", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();
-    handle_ota_update_endpoint(cur, self->cors_cfg, req, resp);
+    handle_ota_update_endpoint(cur, self->cors_cfg, req, resp, &self->db);
   });
   impl_->route("GET", "/api/v1/ota/status", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();
-    handle_ota_status_endpoint(cur, self->cors_cfg, req, resp);
+    handle_ota_status_endpoint(cur, self->cors_cfg, req, resp, &self->db);
   });
 
   impl_->route("GET", "/api/v1/diagnostics", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {

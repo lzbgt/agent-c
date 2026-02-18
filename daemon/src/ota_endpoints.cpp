@@ -1,5 +1,6 @@
 #include "ota_endpoints.h"
 
+#include "agent_db.h"
 #include "daemon_auth.h"
 #include "drain_state.h"
 #include "json_util.h"
@@ -11,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <future>
+#include <map>
 #include <mutex>
 #include <sstream>
 #include <thread>
@@ -235,6 +237,62 @@ class ScopedEnv {
   std::vector<EnvBackup> backups_;
 };
 
+struct OtaInflightCounts {
+  int64_t jobs_running = 0;
+  int64_t jobs_queued = 0;
+  int64_t workflows_running = 0;
+  int64_t workflow_tasks_running = 0;
+  int64_t workflow_tasks_queued = 0;
+};
+
+int64_t map_value(const std::map<std::string, int64_t>& m, const char* key) {
+  auto it = m.find(key ? key : "");
+  if (it == m.end()) return 0;
+  return it->second;
+}
+
+bool load_inflight_counts(AgentDb* db_or_null, OtaInflightCounts* out) {
+  if (!out) return false;
+  *out = OtaInflightCounts{};
+  if (!db_or_null || !db_or_null->is_open()) return false;
+  AgentDb::JobStatusCounts jobs;
+  std::string jerr;
+  if (!db_or_null->get_job_status_counts(&jobs, &jerr)) return false;
+  AgentDb::WorkflowSchedulerStats wf;
+  std::string werr;
+  if (!db_or_null->get_workflow_scheduler_stats(unix_ms_now(), &wf, &werr)) return false;
+  out->jobs_running = map_value(jobs.by_status, "running");
+  out->jobs_queued = map_value(jobs.by_status, "queued");
+  out->workflows_running = map_value(wf.workflows_by_status, "running");
+  out->workflow_tasks_running = map_value(wf.tasks_by_status, "running");
+  out->workflow_tasks_queued = map_value(wf.tasks_by_status, "queued");
+  return true;
+}
+
+void wait_for_inflight_or_timeout(AgentDb* db_or_null, int64_t drain_timeout_ms) {
+  const int64_t cap = std::max<int64_t>(0, std::min<int64_t>(60LL * 60 * 1000, drain_timeout_ms));
+  if (cap <= 0) return;
+  if (!db_or_null || !db_or_null->is_open()) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(cap));
+    return;
+  }
+  const int64_t deadline = unix_ms_now() + cap;
+  for (;;) {
+    OtaInflightCounts counts;
+    if (!load_inflight_counts(db_or_null, &counts)) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(cap));
+      return;
+    }
+    const int64_t running_total = counts.jobs_running + counts.workflow_tasks_running;
+    if (running_total <= 0) break;
+    const int64_t now = unix_ms_now();
+    if (now >= deadline) break;
+    const int64_t sleep_ms = std::min<int64_t>(250, deadline - now);
+    if (sleep_ms <= 0) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
+  }
+}
+
 bool run_ota_command(
   const std::string& cmd,
   const std::vector<std::pair<std::string, std::string>>& envs,
@@ -284,7 +342,7 @@ bool run_ota_command(
   return true;
 }
 
-void run_ota_async(OtaPlan plan, DaemonConfig cfg) {
+void run_ota_async(OtaPlan plan, DaemonConfig cfg, AgentDb* db_or_null) {
   const std::string plan_path = plan.plan_path;
   const int64_t now_ms = unix_ms_now();
   const int64_t drain_until = plan.drain_timeout_ms > 0 ? now_ms + plan.drain_timeout_ms : now_ms;
@@ -299,13 +357,7 @@ void run_ota_async(OtaPlan plan, DaemonConfig cfg) {
     (void)write_plan_file(plan_path, g_ota.plan, nullptr);
   }
 
-  if (plan.drain_timeout_ms > 0) {
-    const int64_t ms = plan.drain_timeout_ms;
-    const int64_t cap = std::max<int64_t>(0, std::min<int64_t>(60LL * 60 * 1000, ms));
-    if (cap > 0) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(cap));
-    }
-  }
+  wait_for_inflight_or_timeout(db_or_null, plan.drain_timeout_ms);
 
   std::vector<std::pair<std::string, std::string>> envs;
   envs.push_back({"AGENTD_OTA_PLAN_PATH", plan_path});
@@ -344,7 +396,8 @@ void handle_ota_update_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
   const HttpRequest& req,
-  HttpResponse* resp
+  HttpResponse* resp,
+  AgentDb* db_or_null
 ) {
   cors_apply(req, resp, cors_cfg);
   resp->headers["Content-Type"] = "application/json; charset=utf-8";
@@ -432,8 +485,8 @@ void handle_ota_update_endpoint(
     g_ota.plan = plan;
   }
 
-  std::thread([plan, cfg]() mutable {
-    run_ota_async(plan, cfg);
+  std::thread([plan, cfg, db_or_null]() mutable {
+    run_ota_async(plan, cfg, db_or_null);
   }).detach();
 
   Json::Value out(Json::objectValue);
@@ -447,7 +500,8 @@ void handle_ota_status_endpoint(
   const DaemonConfig& cfg,
   const CorsConfig& cors_cfg,
   const HttpRequest& req,
-  HttpResponse* resp
+  HttpResponse* resp,
+  AgentDb* db_or_null
 ) {
   cors_apply(req, resp, cors_cfg);
   resp->headers["Content-Type"] = "application/json; charset=utf-8";
@@ -474,6 +528,16 @@ void handle_ota_status_endpoint(
   if (drain_until > 0) out["drain_until_unix_ms"] = (Json::Int64)drain_until;
   const std::string drain_reason_str = drain_reason();
   if (!drain_reason_str.empty()) out["drain_reason"] = drain_reason_str;
+  {
+    OtaInflightCounts counts;
+    if (load_inflight_counts(db_or_null, &counts)) {
+      out["jobs_running"] = (Json::Int64)counts.jobs_running;
+      out["jobs_queued"] = (Json::Int64)counts.jobs_queued;
+      out["workflows_running"] = (Json::Int64)counts.workflows_running;
+      out["workflow_tasks_running"] = (Json::Int64)counts.workflow_tasks_running;
+      out["workflow_tasks_queued"] = (Json::Int64)counts.workflow_tasks_queued;
+    }
+  }
   resp->body = json_stringify(out);
 }
 

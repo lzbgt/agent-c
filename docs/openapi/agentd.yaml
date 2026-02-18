@@ -2426,6 +2426,11 @@ components:
         drain_active: { type: boolean }
         drain_until_unix_ms: { type: integer, format: int64 }
         drain_reason: { type: string }
+        jobs_running: { type: integer, format: int64 }
+        jobs_queued: { type: integer, format: int64 }
+        workflows_running: { type: integer, format: int64 }
+        workflow_tasks_running: { type: integer, format: int64 }
+        workflow_tasks_queued: { type: integer, format: int64 }
 
     MemoryCheckpointMeta:
       type: object

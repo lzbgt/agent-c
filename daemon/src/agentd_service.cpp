@@ -632,11 +632,11 @@ struct AgentdService::Impl {
 
     server.handle("POST", "/api/v1/ota/update", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
-      handle_ota_update_endpoint(cur, cors_cfg, req, resp);
+      handle_ota_update_endpoint(cur, cors_cfg, req, resp, &db);
     });
     server.handle("GET", "/api/v1/ota/status", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
-      handle_ota_status_endpoint(cur, cors_cfg, req, resp);
+      handle_ota_status_endpoint(cur, cors_cfg, req, resp, &db);
     });
 
     server.handle("GET", "/api/v1/diagnostics", [this](const HttpRequest& req, HttpResponse* resp) {

@@ -8,6 +8,7 @@ import {
   apiBrokerListDeployments,
   apiBrokerMemoryRecapsCreateBulk,
   apiBrokerMemoryRecapsListBulk,
+  apiBrokerMemorySalienceBulk,
   apiBrokerMemoryRetentionBulk,
   apiBrokerOtaStatus,
   apiBrokerOtaStatusBulk,
@@ -117,6 +118,10 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   const [recapsGenerateBusy, setRecapsGenerateBusy] = React.useState<boolean>(false);
   const [recapsError, setRecapsError] = React.useState<string | null>(null);
   const [recapsResults, setRecapsResults] = React.useState<any[] | null>(null);
+
+  const [salienceBusy, setSalienceBusy] = React.useState<boolean>(false);
+  const [salienceError, setSalienceError] = React.useState<string | null>(null);
+  const [salienceResults, setSalienceResults] = React.useState<any[] | null>(null);
 
   const [auditLimit, setAuditLimit] = React.useState<string>("200");
   const limitValue = React.useMemo(() => {
@@ -657,6 +662,77 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     }
   };
 
+  const runSalience = async () => {
+    setSalienceError(null);
+    setSalienceResults(null);
+    if (!agentId) {
+      setSalienceError("missing agent_id");
+      return;
+    }
+    if (selectedDeployments.length === 0) {
+      setSalienceError("select at least one deployment");
+      return;
+    }
+    const params = {
+      includeStructured: recapsIncludeStructured,
+      includeDaily: recapsIncludeDaily,
+      dailyDays: parseOptionalInt(recapsDailyDays, 0),
+      maxItems: parseOptionalInt(recapsMaxItems, 0),
+      maxStructuredItems: parseOptionalInt(recapsStructuredMaxItems, 0),
+      maxDailyItems: parseOptionalInt(recapsDailyMaxItems, 0),
+      halfLifeDays: parseOptionalFloat(recapsHalfLifeDays, 0),
+      importanceWeight: parseOptionalFloat(recapsImportanceWeight, 0),
+    };
+
+    setSalienceBusy(true);
+    try {
+      const bulk = await apiBrokerMemorySalienceBulk(base, agentId, params, props.auth, selectedDeployments);
+      if (bulk.status === 404 || bulk.status === 405 || bulk.status === 501) {
+        const qs = new URLSearchParams();
+        qs.set("include_structured", params.includeStructured ? "1" : "0");
+        qs.set("include_daily", params.includeDaily ? "1" : "0");
+        if (params.dailyDays !== undefined) qs.set("daily_days", String(params.dailyDays));
+        if (params.maxItems !== undefined) qs.set("max_items", String(params.maxItems));
+        if (params.maxStructuredItems !== undefined) qs.set("max_structured_items", String(params.maxStructuredItems));
+        if (params.maxDailyItems !== undefined) qs.set("max_daily_items", String(params.maxDailyItems));
+        if (params.halfLifeDays !== undefined) qs.set("half_life_days", String(params.halfLifeDays));
+        if (params.importanceWeight !== undefined) qs.set("importance_weight", String(params.importanceWeight));
+        const path = `/api/v1/memory/salience${qs.toString() ? `?${qs.toString()}` : ""}`;
+        const settled = await Promise.allSettled(
+          selectedDeployments.map(async (deploymentId) => {
+            const res = await apiBrokerProxyJson(base, agentId, path, "GET", undefined, props.auth, deploymentId);
+            return {
+              deployment_id: deploymentId,
+              status: res.status,
+              data: res.data,
+            };
+          }),
+        );
+        const results = settled.map((r, idx) => {
+          if (r.status === "fulfilled") return r.value;
+          return {
+            deployment_id: selectedDeployments[idx],
+            status: 0,
+            data: { ok: false, error: String(r.reason || "request failed") },
+          };
+        });
+        setSalienceResults(results);
+        return;
+      }
+      if (bulk.status >= 400) {
+        const err = bulk.data?.error ? String(bulk.data.error) : `broker error (${bulk.status})`;
+        throw new Error(err);
+      }
+      const results = normalizeFanoutResults(bulk.data?.results, selectedDeployments);
+      if (!results) throw new Error("unexpected broker response");
+      setSalienceResults(results);
+    } catch (e) {
+      setSalienceError(String(e));
+    } finally {
+      setSalienceBusy(false);
+    }
+  };
+
   React.useEffect(() => {
     if (!props.open || !canQuery || !agentId) return;
     if (otaStatusBusy) return;
@@ -1047,7 +1123,19 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                     const drainUntil = fmtTs(row?.data?.drain_until_unix_ms);
                     const drainReason = row?.data?.drain_reason;
                     const otaId = row?.data?.ota_id;
+                    const jobsRunning = row?.data?.jobs_running;
+                    const jobsQueued = row?.data?.jobs_queued;
+                    const workflowsRunning = row?.data?.workflows_running;
+                    const wfTasksRunning = row?.data?.workflow_tasks_running;
+                    const wfTasksQueued = row?.data?.workflow_tasks_queued;
                     const err = row?.data?.last_error || row?.data?.error || row?.data?.err;
+                    const inflightParts: string[] = [];
+                    if (typeof jobsRunning === "number") inflightParts.push(`jobs ${jobsRunning}`);
+                    if (typeof workflowsRunning === "number") inflightParts.push(`workflows ${workflowsRunning}`);
+                    if (typeof wfTasksRunning === "number") inflightParts.push(`tasks ${wfTasksRunning}`);
+                    const queuedParts: string[] = [];
+                    if (typeof jobsQueued === "number") queuedParts.push(`jobs ${jobsQueued}`);
+                    if (typeof wfTasksQueued === "number") queuedParts.push(`tasks ${wfTasksQueued}`);
                     return (
                       <div
                         key={`ota-status-${depId}`}
@@ -1063,6 +1151,8 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                           {drainActive ? " · draining" : " · idle"}
                           {drainUntil ? ` (until ${drainUntil})` : ""}
                           {drainReason ? ` · reason ${String(drainReason)}` : ""}
+                          {inflightParts.length > 0 ? ` · running ${inflightParts.join(", ")}` : ""}
+                          {queuedParts.length > 0 ? ` · queued ${queuedParts.join(", ")}` : ""}
                           {err ? ` · ${String(err)}` : ""}
                         </div>
                       </div>
@@ -1309,6 +1399,68 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                       </div>
                       <div className="text-[11px] text-white/50">
                         {typeof count === "number" ? `count ${count}` : "no count"}
+                        {err ? ` · ${String(err)}` : ""}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mt-4 grid gap-3">
+            <div className="text-xs font-semibold text-white/80">Salience (uses recaps tuning)</div>
+            <div className="text-[11px] text-white/50">Pulls salience with the same limits/weights above.</div>
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={!agentId || salienceBusy || selectedDeployments.length === 0}
+                onClick={() => void runSalience()}
+              >
+                {salienceBusy ? "Fetching…" : "Fetch salience"}
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={salienceBusy}
+                onClick={() => {
+                  setSalienceError(null);
+                  setSalienceResults(null);
+                }}
+              >
+                Clear
+              </button>
+            </div>
+            {salienceError ? (
+              <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+                {salienceError}
+              </div>
+            ) : null}
+            {salienceResults && salienceResults.length > 0 ? (
+              <div className="grid gap-2">
+                {salienceResults.map((row) => {
+                  const depId = String(row?.deployment_id || "");
+                  const status = row?.status;
+                  const ok = row?.data?.ok === true;
+                  const err = row?.data?.error || row?.data?.err;
+                  const structuredCount = Array.isArray(row?.data?.structured_items)
+                    ? row.data.structured_items.length
+                    : null;
+                  const dailyCount = Array.isArray(row?.data?.daily_items) ? row.data.daily_items.length : null;
+                  const returned = row?.data?.returned;
+                  return (
+                    <div
+                      key={`salience-${depId}`}
+                      className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70"
+                    >
+                      <div className="text-xs text-white/90">
+                        {depId} · {ok ? "ok" : "error"} · http {status}
+                      </div>
+                      <div className="text-[11px] text-white/50">
+                        {typeof returned === "number" ? `returned ${returned}` : "no count"}
+                        {structuredCount !== null ? ` · structured ${structuredCount}` : ""}
+                        {dailyCount !== null ? ` · daily ${dailyCount}` : ""}
                         {err ? ` · ${String(err)}` : ""}
                       </div>
                     </div>

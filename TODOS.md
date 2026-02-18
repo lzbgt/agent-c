@@ -60,6 +60,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] OTA update pipeline: agentd OTA endpoint + operator update command, WebUI multi-deployment fanout via broker bulk OTA endpoints.
   - [x] OTA task continuity: drain mode + documented restart recovery for async jobs/workflows after update.
   - [x] WebUI OTA status polling per deployment (drain + error surfacing).
+  - [x] OTA drain now waits for running jobs/workflow tasks (best-effort) and status includes inflight counts.
   - [x] OTA continuity smoke script (`tools/verify_ota_continuity.sh`) to validate resume after restart.
   - [x] WebUI Memory Explorer panel (structured query + trace correlation + checkpoints).
   - [x] WebUI media_observe observers bounded (TTL + max) to prevent listener leaks.
@@ -69,6 +70,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] Memory observations + timeline retrieval tools (claude-mem style) for progressive disclosure workflows.
   - [x] Deterministic `memory_timeline` workflow task (host tool) with OpenAPI + docs + smoke test.
   - [x] Memory index bounded file reads (avoid unbounded memory spikes on large files).
+  - [x] Broker memory salience fan-out + WebUI salience panel (uses recaps tuning).
   - [x] WebUI history expansion state bounded to prevent long-running UI memory drift.
   - [x] AgentdApi request-path job GC to keep embedded/relay job state bounded without a dedicated GC thread.
   - [x] Job stream event payloads capped with `data_truncated` metadata to prevent unbounded in-memory growth.
@@ -83,7 +85,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 ## Promoted goals (explicit goals; no non-goals)
 
 Weights updated 2026-02-18: prioritize **Storage/analytics** and **multimodal/streaming foundation** as the next
-highest leverage enablers now that **dynamic memory policy** (salience + recaps + retention deprecate) is in place.
+highest leverage enablers now that **dynamic memory policy** and **OTA continuity guardrails** are in place.
 
 - [x] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker + agentd implemented; tests added).
 - [ ] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.

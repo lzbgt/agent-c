@@ -1406,6 +1406,39 @@ export async function apiBrokerMemoryRecapsListBulk(
   return { status: r.status, data };
 }
 
+export async function apiBrokerMemorySalienceBulk(
+  brokerBase: string,
+  agentId: string,
+  params: MemorySalienceParams,
+  auth?: ApiAuth,
+  deploymentIds?: string[],
+): Promise<{ status: number; data: any }> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const id = String(agentId || "").trim();
+  if (!id) throw new Error("missing agent_id");
+  const qs = new URLSearchParams();
+  addQueryParam(qs, "include_structured", params.includeStructured);
+  addQueryParam(qs, "include_daily", params.includeDaily);
+  addQueryParam(qs, "daily_days", params.dailyDays);
+  addQueryParam(qs, "max_items", params.maxItems);
+  addQueryParam(qs, "max_structured_items", params.maxStructuredItems);
+  addQueryParam(qs, "max_daily_items", params.maxDailyItems);
+  addQueryParam(qs, "half_life_days", params.halfLifeDays);
+  addQueryParam(qs, "importance_weight", params.importanceWeight);
+  if (Array.isArray(deploymentIds) && deploymentIds.length > 0) {
+    qs.set("deployment_ids", deploymentIds.join(","));
+  }
+  const url = `${base}/v1/agents/${encodeURIComponent(id)}/memory/salience${qs.toString() ? `?${qs.toString()}` : ""}`;
+  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  let data: any = null;
+  try {
+    data = await r.json();
+  } catch {
+    data = null;
+  }
+  return { status: r.status, data };
+}
+
 export async function apiBrokerMemoryRecapsCreateBulk(
   brokerBase: string,
   agentId: string,

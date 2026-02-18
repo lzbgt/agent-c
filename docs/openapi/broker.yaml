@@ -265,6 +265,59 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/BrokerFanoutResponse"
+  /v1/agents/{agent_id}/memory/salience:
+    get:
+      tags: [memory]
+      summary: Fan-out memory salience across deployments
+      parameters:
+        - in: path
+          name: agent_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: include_structured
+          required: false
+          schema: { type: boolean }
+        - in: query
+          name: include_daily
+          required: false
+          schema: { type: boolean }
+        - in: query
+          name: daily_days
+          required: false
+          schema: { type: integer, format: int32 }
+        - in: query
+          name: max_items
+          required: false
+          schema: { type: integer, format: int32 }
+        - in: query
+          name: max_structured_items
+          required: false
+          schema: { type: integer, format: int32 }
+        - in: query
+          name: max_daily_items
+          required: false
+          schema: { type: integer, format: int32 }
+        - in: query
+          name: half_life_days
+          required: false
+          schema: { type: number }
+        - in: query
+          name: importance_weight
+          required: false
+          schema: { type: number }
+        - in: query
+          name: deployment_ids
+          required: false
+          schema: { type: string }
+          description: Comma-delimited deployment ids (omit to target all connected deployments).
+      responses:
+        "200":
+          description: Fan-out salience results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BrokerFanoutResponse"
   /v1/agents/{agent_id}/members:
     get:
       tags: [membership]
