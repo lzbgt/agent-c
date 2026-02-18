@@ -182,10 +182,17 @@ agent_test_openrouter_auth_ok() {
 
   local body="${resp%$'\n'*}"
   local model
-  model="$(python3 - <<PY
+  model="$(printf "%s" "${body}" | python3 - <<'PY'
 import json, sys
+raw = sys.stdin.buffer.read()
+if not raw:
+    sys.exit(0)
 try:
-    obj = json.loads(r'''${body}''')
+    text = raw.decode("utf-8", errors="ignore")
+except Exception:
+    sys.exit(0)
+try:
+    obj = json.loads(text)
 except Exception:
     sys.exit(0)
 rec = obj.get("recommended_model")
