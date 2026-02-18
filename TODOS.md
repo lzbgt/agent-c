@@ -102,6 +102,7 @@ with **multimodal transcript hardening** (tests + schema alignment) as the next 
   - [x] DeepSeek streaming tool-call smoke test (key-gated).
   - [ ] Pin known-good OpenRouter streaming models (assistant + tool-call) to avoid silent no-delta failures.
   - [x] OpenRouter streaming probe script to discover stable models.
+  - [x] Draft core streaming interface spec (`docs/spec/streaming/core_stream_v1.md`).
 - [x] Memory architecture: dynamic retention policy (decay/salience/recaps) informed by claude-mem research + docs.
   - [x] Memory retention policy enforcement (daily logs + checkpoints) + endpoint + background engine.
   - [x] Structured memory deprecate pass (policy-driven; bounded) with broker fan-out.

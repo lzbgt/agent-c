@@ -54,6 +54,10 @@ Shared decoder (host library, used by both CLI + daemon):
   - `openai_stream_parse_chunk_json(...)`: parse `data: { ... }` JSON payload
   - `OpenAIToolCallStreamAccumulator`: reconstruct complete tool calls from `delta.tool_calls` fragments
 
+Core streaming interface (design draft):
+
+- `docs/spec/streaming/core_stream_v1.md`
+
 ## Event schema notes
 
 Host streaming emits `assistant_delta` events (daemon SSE and tool-loop events array) using a consistent payload shape:
