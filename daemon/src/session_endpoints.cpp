@@ -199,7 +199,7 @@ void handle_session_new_endpoint(
     std::string err;
     const int64_t now_ms = (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
       std::chrono::system_clock::now().time_since_epoch()).count();
-    std::vector<std::pair<std::string, std::string>> empty;
+    std::vector<AgentDb::MessageRow> empty;
     if (!db->replace_session_messages(sid, empty, now_ms, &err)) {
       resp->status = 500;
       Json::Value out(Json::objectValue);
@@ -264,7 +264,7 @@ void handle_session_get_endpoint(
     return;
   }
 
-  std::vector<std::pair<std::string, std::string>> msgs;
+  std::vector<AgentDb::MessageRow> msgs;
   {
     std::string err;
     if (!db->load_session_messages(*sid, &msgs, &err)) {
@@ -283,8 +283,11 @@ void handle_session_get_endpoint(
   Json::Value arr(Json::arrayValue);
   for (const auto& rc : msgs) {
     Json::Value mv(Json::objectValue);
-    mv["role"] = rc.first;
-    mv["content"] = rc.second;
+    mv["role"] = rc.role;
+    mv["content"] = rc.content;
+    if (!rc.mm_json.empty()) mv["mm_json"] = rc.mm_json;
+    if (rc.mm_bytes > 0) mv["mm_bytes"] = (Json::Int64)rc.mm_bytes;
+    if (rc.mm_truncated != 0) mv["mm_truncated"] = (Json::Int64)rc.mm_truncated;
     arr.append(mv);
   }
   out["messages"] = arr;
@@ -401,7 +404,7 @@ void handle_session_ui_event_endpoint(
 
   bool appended = false;
   if (append_to_session) {
-    std::vector<std::pair<std::string, std::string>> msgs;
+    std::vector<AgentDb::MessageRow> msgs;
     std::string err;
     (void)db->load_session_messages(session_id, &msgs, &err); // missing session => empty
 
@@ -411,7 +414,10 @@ void handle_session_ui_event_endpoint(
       msg.resize(4096);
       msg += "…";
     }
-    msgs.emplace_back("user", msg);
+    AgentDb::MessageRow row;
+    row.role = "user";
+    row.content = msg;
+    msgs.emplace_back(std::move(row));
     appended = true;
 
     err.clear();

@@ -98,7 +98,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v28)
+## Schema (v29)
 
 All timestamps are Unix milliseconds.
 
@@ -115,13 +115,16 @@ All timestamps are Unix milliseconds.
 
 ### `messages`
 
-Stores the conversation transcript (role + content). Tool timelines remain in `events` and `tool_records`.
+Stores the conversation transcript (role + content) plus multimodal JSON payloads. Tool timelines remain in `events` and `tool_records`.
 
 - `id INTEGER PRIMARY KEY AUTOINCREMENT`
 - `session_id TEXT NOT NULL`
 - `idx INTEGER NOT NULL` (0-based order within the session)
 - `role TEXT NOT NULL` (`system|user|assistant|tool|...`)
-- `content TEXT NOT NULL`
+- `content TEXT NOT NULL` (text-only; multimodal payloads live in `mm_json`)
+- `mm_json TEXT` (optional JSON string for multimodal content)
+- `mm_bytes INTEGER` (best-effort byte size of `mm_json`)
+- `mm_truncated INTEGER` (0/1; set when stored multimodal payload is truncated)
 - `created_unix_ms INTEGER` (best-effort; currently “now” at write time)
 
 Index:

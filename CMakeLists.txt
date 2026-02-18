@@ -946,9 +946,9 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
       daemon/src/agent_db_edge_workflows.cpp
       daemon/src/agent_db_stats.cpp
     )
-    target_include_directories(agent_db_tests PRIVATE daemon/src ${SQLITE3_INCLUDE_DIRS})
+    target_include_directories(agent_db_tests PRIVATE daemon/src core/include ${SQLITE3_INCLUDE_DIRS})
     target_link_directories(agent_db_tests PRIVATE ${SQLITE3_LIBRARY_DIRS})
-    target_link_libraries(agent_db_tests PRIVATE ${SQLITE3_LIBRARIES})
+    target_link_libraries(agent_db_tests PRIVATE agent_core ${SQLITE3_LIBRARIES})
     target_compile_definitions(agent_db_tests PRIVATE AGENT_HAVE_SQLITE3=1)
     add_test(NAME agent_db_tests COMMAND agent_db_tests)
 

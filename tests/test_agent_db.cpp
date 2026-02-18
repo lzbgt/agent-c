@@ -88,10 +88,22 @@ int main() {
   }
 
   const int64_t now = 1700000000000LL;
-  std::vector<std::pair<std::string, std::string>> msgs = {
-    {"user", "hi"},
-    {"assistant", "ok"},
-  };
+  std::vector<agentd::AgentDb::MessageRow> msgs;
+  {
+    agentd::AgentDb::MessageRow row;
+    row.role = "user";
+    row.content = "hi";
+    msgs.emplace_back(std::move(row));
+  }
+  {
+    agentd::AgentDb::MessageRow row;
+    row.role = "assistant";
+    row.content = "ok";
+    row.mm_json = R"([{"type":"input_text","text":"ok"}])";
+    row.mm_bytes = (int64_t)row.mm_json.size();
+    row.mm_truncated = 0;
+    msgs.emplace_back(std::move(row));
+  }
   if (!db.replace_session_messages("s1", msgs, now, &err)) {
     std::fprintf(stderr, "replace_session_messages failed: %s\n", err.c_str());
     return 1;
@@ -189,6 +201,8 @@ int main() {
   const int64_t arts = query_i64(raw, "SELECT COUNT(*) FROM artifacts;");
   const int64_t uas = query_i64(raw, "SELECT COUNT(*) FROM ui_actions;");
   const int64_t ces = query_i64(raw, "SELECT COUNT(*) FROM client_events;");
+  const int64_t mm_rows =
+    query_i64(raw, "SELECT COUNT(*) FROM messages WHERE mm_json IS NOT NULL AND mm_json != '';");
   sqlite3_close(raw);
 
   assert(sessions == 1);
@@ -199,6 +213,7 @@ int main() {
   assert(arts == 1);
   assert(uas == 1);
   assert(ces == 1);
+  assert(mm_rows == 1);
 
   // Migration smoke: open an older (v1) DB and ensure it upgrades to the latest schema.
   const std::filesystem::path tmp2 =
@@ -239,6 +254,12 @@ int main() {
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('audit_records') WHERE name='record_json';");
   const int64_t scene_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('scene_states') WHERE name='scene_json';");
+  const int64_t msg_mm_json_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='mm_json';");
+  const int64_t msg_mm_bytes_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='mm_bytes';");
+  const int64_t msg_mm_truncated_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('messages') WHERE name='mm_truncated';");
   const int64_t job_id_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('jobs') WHERE name='job_id';");
   const int64_t job_trace_cols =
@@ -334,9 +355,12 @@ int main() {
   const int64_t run_replay_error_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('runs') WHERE name='replay_error';");
   sqlite3_close(raw2);
-  assert(ver == 28);
+  assert(ver == 29);
   assert(fairq_sessions_tbl == 1);
   assert(arts2 == 0);
+  assert(msg_mm_json_cols == 1);
+  assert(msg_mm_bytes_cols == 1);
+  assert(msg_mm_truncated_cols == 1);
   assert(stop_reason_cols == 1);
   assert(ua_cols == 1);
   assert(ce_cols == 1);

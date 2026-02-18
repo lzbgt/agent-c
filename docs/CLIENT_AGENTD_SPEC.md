@@ -147,7 +147,7 @@ Notes:
     - `create_files` is a legacy name; currently it means “eagerly create the session row in the DB” (by writing empty messages).
   - response: `{ ok, session_id, created }`
 - `GET /api/v1/session?session_id=...`
-  - returns `{ ok, session_id, messages:[{role,content}, ...] }`
+  - returns `{ ok, session_id, messages:[{role,content,mm_json?,mm_bytes?,mm_truncated?}, ...] }`
 - `DELETE /api/v1/session?session_id=...`
   - deletes session data from the DB (and attempts best-effort legacy file cleanup)
 - `POST /api/v1/session/upload`

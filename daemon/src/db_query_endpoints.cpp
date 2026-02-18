@@ -828,13 +828,16 @@ void handle_db_messages_endpoint(
   uint64_t limit = 50;
   uint64_t offset = 0;
   uint64_t max_content_bytes = 8192;
+  uint64_t max_mm_bytes = 1024 * 1024;
   uint64_t tmp = 0;
   if (parse_u64_param(query_get(req.query, "limit"), &tmp)) limit = tmp;
   if (parse_u64_param(query_get(req.query, "offset"), &tmp)) offset = tmp;
   if (parse_u64_param(query_get(req.query, "max_content_bytes"), &tmp)) max_content_bytes = tmp;
+  if (parse_u64_param(query_get(req.query, "max_mm_bytes"), &tmp)) max_mm_bytes = tmp;
   limit = clamp_u64(limit, 1, 200);
   offset = clamp_u64(offset, 0, 1000000);
   max_content_bytes = clamp_u64(max_content_bytes, 0, 1024 * 1024);
+  max_mm_bytes = clamp_u64(max_mm_bytes, 0, 8 * 1024 * 1024);
 
   DbHandle h;
   Json::Value o = open_db_or_error(db_or_null, &h, nullptr);
@@ -852,7 +855,7 @@ void handle_db_messages_endpoint(
 #else
   sqlite3_stmt* st = nullptr;
   const char* sql =
-    "SELECT id, idx, role, content, created_unix_ms "
+    "SELECT id, idx, role, content, created_unix_ms, mm_json, mm_bytes, mm_truncated "
     "FROM messages WHERE session_id=? ORDER BY idx LIMIT ? OFFSET ?;";
   if (sqlite3_prepare_v2(h.db, sql, -1, &st, nullptr) != SQLITE_OK) {
     Json::Value err(Json::objectValue);
@@ -890,6 +893,27 @@ void handle_db_messages_endpoint(
       m["content_truncated"] = true;
       m["content_bytes"] = (Json::Int64)n;
     }
+
+    const unsigned char* mm_txt = sqlite3_column_text(st, 5);
+    const int mm_n = sqlite3_column_bytes(st, 5);
+    const int64_t mm_bytes_val = sqlite3_column_int64(st, 6);
+    const int64_t mm_truncated_val = sqlite3_column_int64(st, 7);
+    if (mm_txt && mm_n > 0) {
+      if (max_mm_bytes == 0 || (uint64_t)mm_n <= max_mm_bytes) {
+        m["mm_json"] = std::string((const char*)mm_txt, (size_t)mm_n);
+        m["mm_json_truncated"] = false;
+      } else {
+        m["mm_json"] = std::string((const char*)mm_txt, (size_t)max_mm_bytes);
+        m["mm_json_truncated"] = true;
+      }
+      const int64_t mm_reported = mm_bytes_val > 0 ? mm_bytes_val : (int64_t)mm_n;
+      m["mm_bytes"] = (Json::Int64)mm_reported;
+    } else {
+      m["mm_json"] = "";
+      m["mm_json_truncated"] = false;
+      m["mm_bytes"] = (Json::Int64)mm_bytes_val;
+    }
+    if (mm_truncated_val != 0) m["mm_truncated"] = (Json::Int64)mm_truncated_val;
     rows.append(m);
   }
   sqlite3_finalize(st);
@@ -900,6 +924,7 @@ void handle_db_messages_endpoint(
   out["limit"] = (Json::UInt64)limit;
   out["offset"] = (Json::UInt64)offset;
   out["max_content_bytes"] = (Json::UInt64)max_content_bytes;
+  out["max_mm_bytes"] = (Json::UInt64)max_mm_bytes;
   out["count"] = (Json::UInt64)rows.size();
   out["messages"] = rows;
   resp->status = 200;

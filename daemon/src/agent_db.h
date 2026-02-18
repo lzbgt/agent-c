@@ -40,17 +40,24 @@ class AgentDb {
   bool meta_set(const std::string& key, const std::string& value, std::string* out_error);
 
   // Session state (canonical).
+  struct MessageRow {
+    std::string role;
+    std::string content;
+    std::string mm_json;
+    int64_t mm_bytes = 0;
+    int64_t mm_truncated = 0;
+  };
   bool upsert_session(const std::string& session_id, int64_t now_unix_ms, std::string* out_error);
   bool session_exists(const std::string& session_id, bool* out_exists, std::string* out_error);
   bool replace_session_messages(
     const std::string& session_id,
-    const std::vector<std::pair<std::string, std::string>>& role_and_content,
+    const std::vector<MessageRow>& messages,
     int64_t now_unix_ms,
     std::string* out_error
   );
   bool load_session_messages(
     const std::string& session_id,
-    std::vector<std::pair<std::string, std::string>>* out_role_and_content,
+    std::vector<MessageRow>* out_messages,
     std::string* out_error
   );
   bool list_sessions(std::vector<std::string>* out_session_ids_desc, std::string* out_error);

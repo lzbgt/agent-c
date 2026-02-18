@@ -364,11 +364,12 @@ Response fields:
 
 ### List session messages (DB mirror)
 
-`GET /api/v1/db/messages?session_id=...&limit=...&offset=...&max_content_bytes=...`
+`GET /api/v1/db/messages?session_id=...&limit=...&offset=...&max_content_bytes=...&max_mm_bytes=...`
 
 Notes:
 - This reads from the DB mirror `messages` table (not from `.sess` directly).
 - To keep UI responsive, `content` can be truncated based on `max_content_bytes` (default `8192`).
+- Multimodal payloads (`mm_json`) can be truncated based on `max_mm_bytes` (default `1048576`).
 
 Response fields:
 - `messages` (array)
@@ -379,6 +380,10 @@ Response fields:
   - `content` (string; possibly truncated)
   - `content_truncated` (bool)
   - `content_bytes` (number): original byte size in DB
+  - `mm_json` (string; possibly truncated)
+  - `mm_json_truncated` (bool)
+  - `mm_bytes` (number): original byte size in DB
+  - `mm_truncated` (number, optional): 1 when stored payload was already truncated
 
 ### List UI client events
 

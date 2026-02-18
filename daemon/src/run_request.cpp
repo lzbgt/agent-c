@@ -37,6 +37,8 @@
 #include "run_multimodal.h"
 #include "run_endpoints_internal.h"
 
+#include "agent/multimodal_prefix.h"
+
 #include <json/json.h>
 
 #include <atomic>
@@ -1664,12 +1666,35 @@ static Json::Value run_request_to_json_impl(
   // Respect `no_session`: "ephemeral" runs should not persist anything to disk.
   if (!no_session && db_or_null && db_or_null->is_open()) {
     // Mirror session messages (as of the end of this run).
-    std::vector<std::pair<std::string, std::string>> msgs;
+    std::vector<AgentDb::MessageRow> msgs;
     msgs.reserve(agent_session_message_count(session));
     for (size_t i = 0; i < agent_session_message_count(session); i++) {
       agent_message_view_t v{};
       if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
-      msgs.emplace_back(agent_role_to_string(v.role), std::string(v.content, v.content_len));
+      AgentDb::MessageRow row;
+      row.role = agent_role_to_string(v.role);
+      const std::string content = std::string(v.content ? v.content : "", v.content_len);
+      const char* text = nullptr;
+      size_t text_len = 0;
+      const char* mm_json = nullptr;
+      size_t mm_json_len = 0;
+      const uint8_t has_mm = agent_parse_multimodal_prefix(
+        content.c_str(),
+        content.size(),
+        &text,
+        &text_len,
+        &mm_json,
+        &mm_json_len
+      );
+      if (has_mm && mm_json && mm_json_len > 0) {
+        row.mm_json.assign(mm_json, mm_json_len);
+        row.mm_bytes = (int64_t)mm_json_len;
+        row.mm_truncated = 0;
+        row.content.assign(text ? text : "", text_len);
+      } else {
+        row.content = content;
+      }
+      msgs.push_back(std::move(row));
     }
     (void)db_or_null->replace_session_messages(session_id, msgs, run_ts_ms, nullptr);
 

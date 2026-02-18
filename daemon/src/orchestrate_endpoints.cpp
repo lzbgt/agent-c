@@ -237,10 +237,13 @@ void handle_orchestrate_endpoint(
       }
       const std::string content = ss.str();
 
-      std::vector<std::pair<std::string, std::string>> msgs;
+      std::vector<AgentDb::MessageRow> msgs;
       std::string err;
       (void)db_or_null->load_session_messages(writeback_session_id, &msgs, &err); // missing session => empty
-      msgs.emplace_back(writeback_role, content);
+      AgentDb::MessageRow row;
+      row.role = writeback_role;
+      row.content = content;
+      msgs.emplace_back(std::move(row));
       err.clear();
       const int64_t now_ms = (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::system_clock::now().time_since_epoch()).count();

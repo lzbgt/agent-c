@@ -4,6 +4,8 @@
 #include "default_system_prompt.h"
 #include "json_util.h"
 
+#include "agent/multimodal_prefix.h"
+
 #include <json/json.h>
 
 #include <cstring>
@@ -190,7 +192,7 @@ bool load_session_from_db(
   if (!out_session) return false;
   *out_session = nullptr;
 
-  std::vector<std::pair<std::string, std::string>> msgs;
+  std::vector<AgentDb::MessageRow> msgs;
   std::string err;
   if (!db.load_session_messages(session_id, &msgs, &err)) {
     if (out_error) *out_error = err.empty() ? "failed to load session messages" : err;
@@ -205,10 +207,18 @@ bool load_session_from_db(
 
   for (const auto& rc : msgs) {
     agent_role_t role = AGENT_ROLE_USER;
-    if (!rc.first.empty()) {
-      (void)agent_role_from_string(rc.first.c_str(), &role);
+    if (!rc.role.empty()) {
+      (void)agent_role_from_string(rc.role.c_str(), &role);
     }
-    (void)agent_session_add_message(session, role, rc.second.c_str());
+    std::string content = rc.content;
+    if (!rc.mm_json.empty()) {
+      content.reserve(rc.mm_json.size() + rc.content.size() + 24);
+      content = "__AGENT_MM_V1__";
+      content += rc.mm_json;
+      content += "\n";
+      content += rc.content;
+    }
+    (void)agent_session_add_message(session, role, content.c_str());
   }
 
   *out_session = session;
@@ -227,12 +237,35 @@ bool persist_session_to_db(
     if (out_error) *out_error = "missing session";
     return false;
   }
-  std::vector<std::pair<std::string, std::string>> msgs;
+  std::vector<AgentDb::MessageRow> msgs;
   msgs.reserve(agent_session_message_count(session));
   for (size_t i = 0; i < agent_session_message_count(session); i++) {
     agent_message_view_t v{};
     if (agent_session_get_message(session, i, &v) != AGENT_OK) continue;
-    msgs.emplace_back(agent_role_to_string(v.role), std::string(v.content ? v.content : "", v.content_len));
+    AgentDb::MessageRow row;
+    row.role = agent_role_to_string(v.role);
+    const std::string content = std::string(v.content ? v.content : "", v.content_len);
+    const char* text = nullptr;
+    size_t text_len = 0;
+    const char* mm_json = nullptr;
+    size_t mm_json_len = 0;
+    const uint8_t has_mm = agent_parse_multimodal_prefix(
+      content.c_str(),
+      content.size(),
+      &text,
+      &text_len,
+      &mm_json,
+      &mm_json_len
+    );
+    if (has_mm && mm_json && mm_json_len > 0) {
+      row.mm_json.assign(mm_json, mm_json_len);
+      row.mm_bytes = (int64_t)mm_json_len;
+      row.mm_truncated = 0;
+      row.content.assign(text ? text : "", text_len);
+    } else {
+      row.content = content;
+    }
+    msgs.push_back(std::move(row));
   }
   return db.replace_session_messages(session_id, msgs, now_unix_ms, out_error);
 }

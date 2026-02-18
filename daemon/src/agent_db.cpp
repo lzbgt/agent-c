@@ -1,6 +1,9 @@
 #include "agent_db.h"
+
+#include "agent/multimodal_prefix.h"
 #include "agent_db_sqlite.h"
 
+#include <cstring>
 #include <filesystem>
 #include <functional>
 #include <sstream>
@@ -106,7 +109,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 28;
+  const int kSchemaVersion = 29;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -156,6 +159,9 @@ CREATE TABLE IF NOT EXISTS messages(
   idx INTEGER NOT NULL,
   role TEXT NOT NULL,
   content TEXT NOT NULL,
+  mm_json TEXT,
+  mm_bytes INTEGER,
+  mm_truncated INTEGER,
   created_unix_ms INTEGER NOT NULL,
   FOREIGN KEY(session_id) REFERENCES sessions(session_id) ON DELETE CASCADE
 );
@@ -204,6 +210,28 @@ CREATE TABLE IF NOT EXISTS tool_records(
 CREATE INDEX IF NOT EXISTS tool_records_by_run ON tool_records(run_id, id);
 )SQL";
   if (!exec_locked(schema_sql, out_error)) return false;
+
+  auto column_exists = [&](const char* table, const char* column) -> bool {
+    if (!table || !column) return false;
+    sqlite3_stmt* st = nullptr;
+    std::string sql = "PRAGMA table_info(";
+    sql += table;
+    sql += ");";
+    if (sqlite3_prepare_v2(db_, sql.c_str(), -1, &st, nullptr) != SQLITE_OK) {
+      if (st) sqlite3_finalize(st);
+      return false;
+    }
+    bool found = false;
+    while (agent_db_step_row(st)) {
+      const unsigned char* name = sqlite3_column_text(st, 1);
+      if (name && std::strcmp((const char*)name, column) == 0) {
+        found = true;
+        break;
+      }
+    }
+    sqlite3_finalize(st);
+    return found;
+  };
 
   if (cur_ver < 2) {
     const char* schema_v2 = R"SQL(
@@ -798,6 +826,19 @@ END;
     cur_ver = 28;
   }
 
+  if (cur_ver < 29) {
+    if (!column_exists("messages", "mm_json")) {
+      if (!exec_locked("ALTER TABLE messages ADD COLUMN mm_json TEXT;", out_error)) return false;
+    }
+    if (!column_exists("messages", "mm_bytes")) {
+      if (!exec_locked("ALTER TABLE messages ADD COLUMN mm_bytes INTEGER;", out_error)) return false;
+    }
+    if (!column_exists("messages", "mm_truncated")) {
+      if (!exec_locked("ALTER TABLE messages ADD COLUMN mm_truncated INTEGER;", out_error)) return false;
+    }
+    cur_ver = 29;
+  }
+
   // Record schema version.
   {
     std::ostringstream oss;
@@ -969,11 +1010,11 @@ bool AgentDb::meta_set(const std::string& key, const std::string& value, std::st
 
 bool AgentDb::load_session_messages(
   const std::string& session_id,
-  std::vector<std::pair<std::string, std::string>>* out_role_and_content,
+  std::vector<MessageRow>* out_messages,
   std::string* out_error
 ) {
   if (out_error) out_error->clear();
-  if (out_role_and_content) out_role_and_content->clear();
+  if (out_messages) out_messages->clear();
 #if !defined(AGENT_HAVE_SQLITE3)
   (void)session_id;
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
@@ -985,17 +1026,54 @@ bool AgentDb::load_session_messages(
     return false;
   }
   sqlite3_stmt* st = nullptr;
-  const char* sql = "SELECT role, content FROM messages WHERE session_id=? ORDER BY idx ASC;";
+  const char* sql =
+    "SELECT role, content, mm_json, mm_bytes, mm_truncated "
+    "FROM messages WHERE session_id=? ORDER BY idx ASC;";
   if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
     if (out_error) *out_error = agent_db_sqlite_err(db_);
     return false;
   }
   bool ok = agent_db_bind_text(st, 1, session_id);
-  std::vector<std::pair<std::string, std::string>> rows;
+  std::vector<MessageRow> rows;
   while (ok && agent_db_step_row(st)) {
+    MessageRow row;
     const unsigned char* role = sqlite3_column_text(st, 0);
     const unsigned char* content = sqlite3_column_text(st, 1);
-    rows.emplace_back(role ? (const char*)role : "", content ? (const char*)content : "");
+    const unsigned char* mm_json = sqlite3_column_text(st, 2);
+    const int64_t mm_bytes = sqlite3_column_int64(st, 3);
+    const int64_t mm_truncated = sqlite3_column_int64(st, 4);
+
+    row.role = role ? (const char*)role : "";
+    row.content = content ? (const char*)content : "";
+    row.mm_json = mm_json ? (const char*)mm_json : "";
+    row.mm_bytes = mm_bytes > 0 ? mm_bytes : (row.mm_json.empty() ? 0 : (int64_t)row.mm_json.size());
+    row.mm_truncated = mm_truncated > 0 ? 1 : 0;
+
+    if (row.mm_json.empty() && !row.content.empty()) {
+      const char* text = nullptr;
+      size_t text_len = 0;
+      const char* raw_mm = nullptr;
+      size_t raw_mm_len = 0;
+      const uint8_t has_mm = agent_parse_multimodal_prefix(
+        row.content.c_str(),
+        row.content.size(),
+        &text,
+        &text_len,
+        &raw_mm,
+        &raw_mm_len
+      );
+      if (has_mm && raw_mm && raw_mm_len > 0) {
+        row.mm_json.assign(raw_mm, raw_mm_len);
+        row.mm_bytes = (int64_t)raw_mm_len;
+        row.mm_truncated = 0;
+        if (text && text_len > 0) {
+          row.content.assign(text, text_len);
+        } else {
+          row.content.clear();
+        }
+      }
+    }
+    rows.push_back(std::move(row));
     if (rows.size() > 200000) {
       ok = false;
       if (out_error) *out_error = "too many messages";
@@ -1004,7 +1082,7 @@ bool AgentDb::load_session_messages(
   }
   if (!ok && out_error && out_error->empty()) *out_error = agent_db_sqlite_err(db_);
   sqlite3_finalize(st);
-  if (ok && out_role_and_content) *out_role_and_content = std::move(rows);
+  if (ok && out_messages) *out_messages = std::move(rows);
   return ok;
 #endif
 }
@@ -1757,7 +1835,7 @@ bool AgentDb::upsert_session_locked(const std::string& session_id, int64_t now_u
 
 bool AgentDb::replace_session_messages(
   const std::string& session_id,
-  const std::vector<std::pair<std::string, std::string>>& role_and_content,
+  const std::vector<MessageRow>& messages,
   int64_t now_unix_ms,
   std::string* out_error
 ) {
@@ -1800,7 +1878,9 @@ bool AgentDb::replace_session_messages(
   }
 
   sqlite3_stmt* ins = nullptr;
-  const char* sql = "INSERT INTO messages(session_id, idx, role, content, created_unix_ms) VALUES(?,?,?,?,?);";
+  const char* sql =
+    "INSERT INTO messages(session_id, idx, role, content, mm_json, mm_bytes, mm_truncated, created_unix_ms) "
+    "VALUES(?,?,?,?,?,?,?,?);";
   if (sqlite3_prepare_v2(db_, sql, -1, &ins, nullptr) != SQLITE_OK) {
     if (out_error) *out_error = agent_db_sqlite_err(db_);
     (void)exec_locked("ROLLBACK;", nullptr);
@@ -1808,15 +1888,18 @@ bool AgentDb::replace_session_messages(
   }
 
   bool ok = true;
-  for (size_t i = 0; i < role_and_content.size(); i++) {
+  for (size_t i = 0; i < messages.size(); i++) {
     sqlite3_reset(ins);
     sqlite3_clear_bindings(ins);
     ok = ok &&
       agent_db_bind_text(ins, 1, session_id) &&
       agent_db_bind_i32(ins, 2, (int)i) &&
-      agent_db_bind_text(ins, 3, role_and_content[i].first) &&
-      agent_db_bind_text(ins, 4, role_and_content[i].second) &&
-      agent_db_bind_i64(ins, 5, now_unix_ms) &&
+      agent_db_bind_text(ins, 3, messages[i].role) &&
+      agent_db_bind_text(ins, 4, messages[i].content) &&
+      agent_db_bind_text(ins, 5, messages[i].mm_json) &&
+      agent_db_bind_i64(ins, 6, messages[i].mm_bytes) &&
+      agent_db_bind_i64(ins, 7, messages[i].mm_truncated) &&
+      agent_db_bind_i64(ins, 8, now_unix_ms) &&
       agent_db_step_done(ins);
     if (!ok) {
       if (out_error) *out_error = agent_db_sqlite_err(db_);

@@ -94,6 +94,7 @@ with **audio streaming** following once the streaming UX is stable.
   - [x] assistant_message events now strip multimodal prefix and emit `assistant_mm_json` + truncation metadata.
   - [x] user_message events emit multimodal payloads (run events + tools=none path).
   - [x] tools=none assistant_message events emit multimodal payloads + strip prefix (smoke test).
+  - [x] DB mirror persists multimodal payloads (`mm_json`) alongside message text; session/db query endpoints surface mm fields.
   - [x] WebUI renders `assistant_mm_json` attachments (images/files) in assistant messages.
   - [x] Core tool-loop test: validates `assistant_mm_json` event payloads for prefix parsing + byte metadata.
   - [x] Run-event fixture validation enforces payload shapes for common event types.
