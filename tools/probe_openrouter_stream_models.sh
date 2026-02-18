@@ -27,6 +27,14 @@ if [[ -z "${OPENROUTER_KEY}" ]]; then
   exit 2
 fi
 
+if ! agent_test_openrouter_auth_ok "${OPENROUTER_KEY}" "${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}"; then
+  rc=$?
+  if [[ "${rc}" -eq 77 ]]; then
+    exit 77
+  fi
+  exit 1
+fi
+
 BASE_URL="${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}"
 MODEL_DEFAULT="${AGENT_TEST_OPENROUTER_MODEL:-bytedance-seed/seed-1.6-flash}"
 MIN_TOTAL="${OPENROUTER_MIN_TOTAL:-0.01}"
@@ -34,6 +42,8 @@ MAX_TOTAL="${OPENROUTER_MAX_TOTAL:-0.50}"
 LIMIT="${OPENROUTER_MODEL_LIMIT:-30}"
 MAX_MODELS="${OPENROUTER_STREAM_PROBE_MAX_MODELS:-12}"
 SAVE_STREAMS="${OPENROUTER_STREAM_PROBE_SAVE:-0}"
+WRITE_PINS="${OPENROUTER_STREAM_PROBE_WRITE_PINS:-0}"
+PINS_PATH="${OPENROUTER_STREAM_PINS_PATH:-${ROOT}/ref/openrouter/streaming_pins.json}"
 
 HOST="127.0.0.1"
 PORT="$(agentd_smoke_pick_port)"
@@ -203,8 +213,7 @@ while IFS= read -r model; do
   assistant_status="$(run_stream_check "${model}" "assistant")"
   tool_status="$(run_stream_check "${model}" "tool")"
   if [[ "${assistant_status}" == "auth_error" || "${tool_status}" == "auth_error" ]]; then
-    echo "[probe] OpenRouter auth failed (401). Check OPENROUTER_API_KEY." >&2
-    exit 2
+    echo "[probe] WARN: auth error for ${model} (skipping)" >&2
   fi
   python3 - <<PY >>"${results_tmp}"
 import json
@@ -253,3 +262,31 @@ if not oks:
 PY
 
 echo "[probe] results: ${result_file}"
+
+if [[ "${WRITE_PINS}" == "1" ]]; then
+  mkdir -p "$(dirname "${PINS_PATH}")"
+  python3 - <<PY
+import json
+from datetime import datetime, timezone
+with open("${result_file}") as f:
+    obj = json.load(f)
+rows = obj.get("results", [])
+oks = [r["id"] for r in rows if r.get("assistant_stream") == "ok" and r.get("tool_stream") == "ok"]
+if not oks:
+    raise SystemExit("no OK models; refusing to write pins")
+pins = {
+  "generated_utc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+  "base_url": obj.get("base_url"),
+  "min_total": obj.get("min_total"),
+  "max_total": obj.get("max_total"),
+  "limit": obj.get("limit"),
+  "max_models": obj.get("max_models"),
+  "assistant_model": oks[0],
+  "tool_model": oks[0],
+  "ok_models": oks,
+}
+with open("${PINS_PATH}", "w", encoding="utf-8") as f:
+    json.dump(pins, f, indent=2, sort_keys=False)
+PY
+  echo "[probe] wrote pins: ${PINS_PATH}"
+fi

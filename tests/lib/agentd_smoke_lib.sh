@@ -177,3 +177,39 @@ agentd_smoke_wait_health() {
   echo "agentd did not become healthy: ${url}" >&2
   return 1
 }
+
+agentd_smoke_openrouter_pins_path() {
+  local root
+  root="$(agentd_smoke_project_root)"
+  echo "${AGENT_OPENROUTER_STREAM_PINS:-${root}/ref/openrouter/streaming_pins.json}"
+}
+
+agentd_smoke_openrouter_pinned_model() {
+  local kind="${1:-}"
+  if [[ -z "${kind}" ]]; then
+    echo "agentd_smoke_openrouter_pinned_model: missing kind (assistant|tool)" >&2
+    return 2
+  fi
+  local pins
+  pins="$(agentd_smoke_openrouter_pins_path)"
+  if [[ ! -f "${pins}" ]]; then
+    return 0
+  fi
+  python3 - <<PY 2>/dev/null || true
+import json
+import sys
+path = "${pins}"
+kind = "${kind}"
+try:
+    with open(path, "r", encoding="utf-8") as f:
+        obj = json.load(f)
+except Exception:
+    sys.exit(0)
+key = "assistant_model" if kind == "assistant" else "tool_model"
+val = obj.get(key, "")
+if isinstance(val, str):
+    val = val.strip()
+    if val:
+        print(val)
+PY
+}

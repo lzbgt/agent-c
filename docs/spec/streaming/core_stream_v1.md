@@ -18,11 +18,13 @@ Status: **implemented** in `core/include/agent/stream_decoder.h` and
 - Avoid mandatory JSON libraries inside `agent_core` (host supplies decode function).
 - Unify CLI and daemon behavior to reduce drift and ensure consistent event semantics.
 
-## Deferred for v1 (not non-goals)
+## Post-v1 goals (explicit, tracked)
 
 - Provider-specific streaming formats that are not OpenAI-compatible.
 - Audio/video streaming (Opus/WebRTC); tracked under the media roadmap.
 - Automatic token-accurate budgets inside the core (host-provided usage is supported).
+
+These are **explicit goals** tracked in `TODOS.md`; they are not non-goals.
 
 ## Design overview
 

@@ -101,8 +101,9 @@ with **tool plugins** and **audio streaming** following once the UX surfaces are
   - [x] OpenRouter + Moonshot streaming assistant smoke tests (key-gated).
   - [x] OpenRouter + Moonshot streaming tool-call smoke tests (key-gated).
   - [x] DeepSeek streaming tool-call smoke test (key-gated).
-  - [ ] Pin known-good OpenRouter streaming models (assistant + tool-call) to avoid silent no-delta failures.
   - [x] OpenRouter streaming probe script to discover stable models.
+  - [x] OpenRouter streaming probe can emit `ref/openrouter/streaming_pins.json`; smoke tests prefer the pin file.
+  - [ ] Populate OpenRouter streaming pins with a verified key (current key returns 401 "User not found" on chat completions).
   - [x] Draft core streaming interface spec (`docs/spec/streaming/core_stream_v1.md`).
   - [x] Wire CLI/daemon streaming through core stream decoder (replace duplicated host logic).
 - [x] Memory architecture: dynamic retention policy (decay/salience/recaps) informed by claude-mem research + docs.

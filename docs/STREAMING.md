@@ -111,3 +111,9 @@ both assistant and tool-call streaming checks. Pin those in:
 
 - `AGENT_TEST_OPENROUTER_STREAM_MODEL`
 - `AGENT_TEST_OPENROUTER_STREAM_TOOL_MODEL`
+
+For a repo-tracked pin file, rerun the probe with `OPENROUTER_STREAM_PROBE_WRITE_PINS=1` to write:
+
+- `ref/openrouter/streaming_pins.json`
+
+The OpenRouter smoke tests will prefer this pin file when present, falling back to the env vars and defaults above.

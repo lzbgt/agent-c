@@ -31,6 +31,10 @@ fi
 BASE_URL="${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}"
 MODEL_PRIMARY="${AGENT_TEST_OPENROUTER_STREAM_MODEL:-${AGENT_TEST_OPENROUTER_MODEL:-bytedance-seed/seed-1.6-flash}}"
 MODEL_FALLBACK="${AGENT_TEST_OPENROUTER_STREAM_MODEL_FALLBACK:-google/gemma-3-4b-it}"
+PINNED_MODEL="$(agentd_smoke_openrouter_pinned_model assistant || true)"
+if [[ -n "${PINNED_MODEL}" ]]; then
+  MODEL_PRIMARY="${PINNED_MODEL}"
+fi
 
 if ! agent_test_openrouter_auth_ok "${OPENROUTER_KEY}" "${BASE_URL}"; then
   rc=$?
