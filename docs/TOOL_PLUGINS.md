@@ -116,6 +116,12 @@ It exports a single tool `ext_echo` that returns a small JSON response.
 - During toolset construction, it calls the plugin chain `register_tools(...)` and appends plugin tool schemas.
 - During execution, only tool names appended by plugins are dispatched to plugins (base tools still run in the built-in host toolset).
 
+### Size limits
+
+- In-process plugin manifests are capped at 1 MiB.
+- In-process plugin tool results are capped at 4 MiB (matches the tool server default line limit).
+- For sandboxed execution via tool servers, `max_line_bytes` still applies to the JSONL response.
+
 ## Sandboxed execution (tool server host)
 
 To isolate plugins in a separate process, run them behind the tool server protocol using the

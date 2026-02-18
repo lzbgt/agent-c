@@ -80,6 +80,16 @@ static void plugin_close(void* handle) {
 
 namespace agentd {
 
+static constexpr size_t kPluginManifestMaxBytes = 1024 * 1024;  // 1 MiB
+static constexpr size_t kPluginResultMaxBytes = 4 * 1024 * 1024; // 4 MiB (align with tool server max_line_bytes)
+
+static size_t bounded_strlen(const char* s, size_t max_len) {
+  if (!s) return 0;
+  size_t n = 0;
+  while (n < max_len && s[n]) ++n;
+  return n;
+}
+
 struct ToolDef {
   std::string name;
   std::string description;
@@ -178,7 +188,12 @@ struct ToolPluginChain::Impl {
       const char* err = "{\"ok\":false,\"error\":\"plugin returned null\"}";
       return agent_string_set_copy(out_result, err, std::strlen(err));
     }
-    const size_t n = std::strlen(out);
+    const size_t n = bounded_strlen(out, kPluginResultMaxBytes + 1);
+    if (n > kPluginResultMaxBytes) {
+      pe.free_fn(out);
+      const char* err = "{\"ok\":false,\"error\":\"plugin result exceeded max bytes\"}";
+      return agent_string_set_copy(out_result, err, std::strlen(err));
+    }
     const agent_status_t st = agent_string_set_copy(out_result, out, n);
     pe.free_fn(out);
     return st;
@@ -218,6 +233,11 @@ static bool parse_manifest_tools(const std::string& plugin_path, const char* man
 
   if (!manifest_json || !manifest_json[0]) {
     if (out_err) *out_err = "plugin manifest is empty";
+    return false;
+  }
+  const size_t manifest_len = bounded_strlen(manifest_json, kPluginManifestMaxBytes + 1);
+  if (manifest_len > kPluginManifestMaxBytes) {
+    if (out_err) *out_err = "plugin manifest exceeds max bytes";
     return false;
   }
 
