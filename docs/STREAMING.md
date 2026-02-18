@@ -106,6 +106,12 @@ assistant deltas and tool-call deltas, use the probe script:
 tools/probe_openrouter_stream_models.sh build/agentd
 ```
 
+If you need a quick key sanity check before probing, run:
+
+```bash
+tools/check_openrouter_auth.sh
+```
+
 The script produces a JSON summary under `build/openrouter_probe/` and prints a list of models that pass
 both assistant and tool-call streaming checks. Pin those in:
 
