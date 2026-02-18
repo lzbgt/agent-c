@@ -5,6 +5,7 @@ Date: 2026-02-03
 This document defines the **tool plugin ABI** used by the standalone `agentd` executable via:
 
 - `agentd --tool-plugin /path/to/plugin.so` (repeatable)
+- Windows: `agentd --tool-plugin C:\path\to\plugin.dll`
 - `agentd --tool-plugin-config '{"key":"value"}'` (applies to the most recent `--tool-plugin`)
 
 The goal is to make this project a **framework**: adding tools should be a packaging/configuration operation, not a fork/rebuild operation.

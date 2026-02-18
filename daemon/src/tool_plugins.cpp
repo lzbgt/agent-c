@@ -14,11 +14,68 @@
 #include <utility>
 #include <vector>
 
-#if defined(__unix__) || defined(__APPLE__)
+#if defined(_WIN32)
+#include <windows.h>
+#define AGENTD_HAVE_PLUGIN_LOADER 1
+#elif defined(__unix__) || defined(__APPLE__)
 #include <dlfcn.h>
-#define AGENTD_HAVE_DLOPEN 1
+#define AGENTD_HAVE_PLUGIN_LOADER 1
 #else
-#define AGENTD_HAVE_DLOPEN 0
+#define AGENTD_HAVE_PLUGIN_LOADER 0
+#endif
+
+#if AGENTD_HAVE_PLUGIN_LOADER
+static std::string plugin_last_error() {
+#if defined(_WIN32)
+  const DWORD err = GetLastError();
+  if (err == 0) return "unknown";
+  LPSTR buf = nullptr;
+  const DWORD len = FormatMessageA(
+    FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+    nullptr,
+    err,
+    MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+    (LPSTR)&buf,
+    0,
+    nullptr
+  );
+  std::string out;
+  if (len > 0 && buf) {
+    out.assign(buf, len);
+  }
+  if (buf) LocalFree(buf);
+  while (!out.empty() && (out.back() == '\n' || out.back() == '\r')) out.pop_back();
+  return out.empty() ? "unknown" : out;
+#else
+  return std::string(dlerror() ? dlerror() : "unknown");
+#endif
+}
+
+static void* plugin_open(const char* path) {
+#if defined(_WIN32)
+  if (!path || !path[0]) return nullptr;
+  return (void*)LoadLibraryA(path);
+#else
+  return dlopen(path, RTLD_NOW);
+#endif
+}
+
+static void* plugin_sym(void* handle, const char* name) {
+#if defined(_WIN32)
+  if (!handle || !name || !name[0]) return nullptr;
+  return (void*)GetProcAddress((HMODULE)handle, name);
+#else
+  return dlsym(handle, name);
+#endif
+}
+
+static void plugin_close(void* handle) {
+#if defined(_WIN32)
+  if (handle) FreeLibrary((HMODULE)handle);
+#else
+  if (handle) dlclose(handle);
+#endif
+}
 #endif
 
 namespace agentd {
@@ -33,7 +90,7 @@ struct PluginEntry {
   std::string path;
   std::string config_json;
 
-#if AGENTD_HAVE_DLOPEN
+#if AGENTD_HAVE_PLUGIN_LOADER
   void* handle = nullptr;
 #endif
 
@@ -132,10 +189,10 @@ ToolPluginChain::ToolPluginChain() : impl_(new Impl()) {}
 
 ToolPluginChain::~ToolPluginChain() {
   if (!impl_) return;
-#if AGENTD_HAVE_DLOPEN
+#if AGENTD_HAVE_PLUGIN_LOADER
   for (auto& p : impl_->plugins) {
     if (p.handle) {
-      dlclose(p.handle);
+      plugin_close(p.handle);
       p.handle = nullptr;
     }
   }
@@ -242,8 +299,8 @@ bool ToolPluginChain::load(const std::vector<ToolPluginSpec>& specs, std::string
     return true;
   }
 
-#if !AGENTD_HAVE_DLOPEN
-  if (out_error) *out_error = "tool plugins not supported on this platform (dlopen unavailable)";
+#if !AGENTD_HAVE_PLUGIN_LOADER
+  if (out_error) *out_error = "tool plugins not supported on this platform";
   return false;
 #else
   impl_->plugins.reserve(specs.size());
@@ -264,22 +321,22 @@ bool ToolPluginChain::load(const std::vector<ToolPluginSpec>& specs, std::string
       }
     }
 
-    pe.handle = dlopen(pe.path.c_str(), RTLD_NOW);
+    pe.handle = plugin_open(pe.path.c_str());
     if (!pe.handle) {
-      if (out_error) *out_error = std::string("dlopen failed: ") + (dlerror() ? dlerror() : "unknown") + " (path=" + pe.path + ")";
+      if (out_error) *out_error = "plugin load failed: " + plugin_last_error() + " (path=" + pe.path + ")";
       return false;
     }
 
-    pe.manifest_json_fn = (const char* (*)())dlsym(pe.handle, "agentd_tool_plugin_manifest_json");
-    pe.manifest_json_fn_ex = (const char* (*)(const char*))dlsym(pe.handle, "agentd_tool_plugin_manifest_json_ex");
-    pe.execute_json_fn = (char* (*)(const char*, const char*))dlsym(pe.handle, "agentd_tool_plugin_execute_json");
+    pe.manifest_json_fn = (const char* (*)())plugin_sym(pe.handle, "agentd_tool_plugin_manifest_json");
+    pe.manifest_json_fn_ex = (const char* (*)(const char*))plugin_sym(pe.handle, "agentd_tool_plugin_manifest_json_ex");
+    pe.execute_json_fn = (char* (*)(const char*, const char*))plugin_sym(pe.handle, "agentd_tool_plugin_execute_json");
     pe.execute_json_fn_ex =
-      (char* (*)(const char*, const char*, const char*))dlsym(pe.handle, "agentd_tool_plugin_execute_json_ex");
-    pe.free_fn = (void (*)(char*))dlsym(pe.handle, "agentd_tool_plugin_free");
+      (char* (*)(const char*, const char*, const char*))plugin_sym(pe.handle, "agentd_tool_plugin_execute_json_ex");
+    pe.free_fn = (void (*)(char*))plugin_sym(pe.handle, "agentd_tool_plugin_free");
 
     if (!pe.manifest_json_fn || !pe.execute_json_fn || !pe.free_fn) {
       if (out_error) *out_error = "plugin missing required symbols (need agentd_tool_plugin_manifest_json / execute_json / free)";
-      dlclose(pe.handle);
+      plugin_close(pe.handle);
       pe.handle = nullptr;
       return false;
     }
@@ -294,7 +351,7 @@ bool ToolPluginChain::load(const std::vector<ToolPluginSpec>& specs, std::string
     std::string perr;
     if (!parse_manifest_tools(pe.path, mj, &pe.tools, &perr)) {
       if (out_error) *out_error = perr;
-      dlclose(pe.handle);
+      plugin_close(pe.handle);
       pe.handle = nullptr;
       return false;
     }
@@ -303,7 +360,7 @@ bool ToolPluginChain::load(const std::vector<ToolPluginSpec>& specs, std::string
     for (const auto& td : pe.tools) {
       if (impl_->all_tool_names.find(td.name) != impl_->all_tool_names.end()) {
         if (out_error) *out_error = "duplicate tool name across plugins: " + td.name;
-        dlclose(pe.handle);
+        plugin_close(pe.handle);
         pe.handle = nullptr;
         return false;
       }

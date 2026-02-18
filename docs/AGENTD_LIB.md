@@ -151,7 +151,7 @@ tool plugins at runtime:
 
 ```sh
 ./build/agentd \
-  --tool-plugin ./build/libagentd_tool_plugin_echo.(so|dylib) \
+  --tool-plugin ./build/libagentd_tool_plugin_echo.(so|dylib|dll) \
   --tool-plugin-config '{"tag":"demo"}'
 ```
 
