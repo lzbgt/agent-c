@@ -1288,6 +1288,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                 const baseUrl = typeof p.base_url === "string" ? p.base_url : "";
                 const model = typeof p.model === "string" ? p.model : "";
                 const modelDefault = typeof p.model_default === "string" ? p.model_default : "";
+                const warning = typeof p.warning === "string" ? p.warning : "";
                 return (
                   <div key={name} className="border-t border-white/5 px-3 py-2 text-[11px] text-white/70 first:border-t-0">
                     <div className="flex items-center justify-between gap-2">
@@ -1300,6 +1301,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                     {baseUrl ? <div className="text-white/50">base_url: {baseUrl}</div> : null}
                     {model ? <div className="text-white/50">model: {model}</div> : null}
                     {modelDefault ? <div className="text-white/40">default: {modelDefault}</div> : null}
+                    {warning ? <div className="text-amber-200/80">warning: {warning}</div> : null}
                   </div>
                 );
               })}
