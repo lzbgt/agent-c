@@ -268,6 +268,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/workflow_engine_common.cpp
     daemon/src/workflow_engine.cpp
     daemon/src/workflow_engine_pick.cpp
+    daemon/src/workflow_endpoint_util.cpp
     daemon/src/workflow_http_json.cpp
     daemon/src/workflow_agentd_call.cpp
     daemon/src/workflow_memory_correlate.cpp
