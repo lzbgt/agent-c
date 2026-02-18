@@ -82,6 +82,11 @@ if active_provider not in prov:
 if not prov[active_provider].get("active"):
   print("active_provider not marked active in providers", active_provider, file=sys.stderr)
   raise SystemExit(1)
+if prov[active_provider].get("key_present") is False:
+  warning = prov[active_provider].get("warning")
+  if not isinstance(warning, str) or "Active provider key missing" not in warning:
+    print("expected active provider missing-key warning", warning, file=sys.stderr)
+    raise SystemExit(1)
 PY
 
 echo "agentd_diagnostics_smoke OK"
