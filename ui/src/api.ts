@@ -622,7 +622,17 @@ export async function apiListSessions(base: string, auth?: ApiAuth): Promise<Ses
 export const SessionSchema = z.object({
   ok: z.boolean(),
   session_id: z.string().optional(),
-  messages: z.array(z.object({ role: z.string(), content: z.string() })).optional(),
+  messages: z
+    .array(
+      z.object({
+        role: z.string(),
+        content: z.string(),
+        mm_json: z.string().optional(),
+        mm_bytes: z.number().optional(),
+        mm_truncated: z.number().optional(),
+      }),
+    )
+    .optional(),
   error: z.string().optional(),
 });
 export type SessionResp = z.infer<typeof SessionSchema>;
@@ -883,6 +893,7 @@ export const DbMessagesSchema = z.object({
   limit: z.number().optional(),
   offset: z.number().optional(),
   max_content_bytes: z.number().optional(),
+  max_mm_bytes: z.number().optional(),
   count: z.number().optional(),
   messages: z.array(z.any()).optional(),
   error: z.string().optional(),
@@ -1012,15 +1023,18 @@ export async function apiGetDbMessages(
   base: string,
   sessionId: string,
   auth?: ApiAuth,
-  opts?: { limit?: number; offset?: number; maxContentBytes?: number },
+  opts?: { limit?: number; offset?: number; maxContentBytes?: number; maxMmBytes?: number },
 ): Promise<DbMessagesResp> {
   const limit = typeof opts?.limit === "number" ? opts.limit : 50;
   const offset = typeof opts?.offset === "number" ? opts.offset : 0;
   const maxContentBytes = typeof opts?.maxContentBytes === "number" ? opts.maxContentBytes : 8192;
+  const maxMmBytes = typeof opts?.maxMmBytes === "number" ? opts.maxMmBytes : 1024 * 1024;
   const r = await fetch(
     `${base}/api/v1/db/messages?session_id=${encodeURIComponent(sessionId)}&limit=${encodeURIComponent(
       String(limit),
-    )}&offset=${encodeURIComponent(String(offset))}&max_content_bytes=${encodeURIComponent(String(maxContentBytes))}`,
+    )}&offset=${encodeURIComponent(String(offset))}&max_content_bytes=${encodeURIComponent(
+      String(maxContentBytes),
+    )}&max_mm_bytes=${encodeURIComponent(String(maxMmBytes))}`,
     { headers: daemonHeaders(auth) },
   );
   const j = await r.json();
