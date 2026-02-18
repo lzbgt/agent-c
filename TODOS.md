@@ -85,13 +85,15 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 ## Promoted goals (explicit goals; no non-goals)
 
 Weights updated 2026-02-18: prioritize **Storage/analytics** (archive tier + ops controls) and the
-**multimodal/streaming foundation** now that **dynamic memory policy** and **OTA continuity guardrails** are in place.
+**streaming foundation**, with **multimodal transcript hardening** (tests + schema alignment) tracked as follow-on
+now that **dynamic memory policy** and **OTA continuity guardrails** are in place.
 
 - [x] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker + agentd implemented; tests added).
 - [x] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
 - [ ] Tool loop: full multimodal transcript support + stable, versioned event schema with migrations.
   - [x] assistant_message events now strip multimodal prefix and emit `assistant_mm_json` + truncation metadata.
   - [x] WebUI renders `assistant_mm_json` attachments (images/files) in assistant messages.
+  - [x] Core tool-loop test: validates `assistant_mm_json` event payloads for prefix parsing + byte metadata.
 - [ ] Streaming: core-layer streaming interface + provider compatibility matrix with full variant coverage.
 - [x] Memory architecture: dynamic retention policy (decay/salience/recaps) informed by claude-mem research + docs.
   - [x] Memory retention policy enforcement (daily logs + checkpoints) + endpoint + background engine.

@@ -89,9 +89,47 @@ static void event_counter_on_event(void* vctx, const char* type, const char* dat
   }
 }
 
+static const char* kMmPrefix = "__AGENT_MM_V1__";
+static const char* kMmJson = "{\"kind\":\"mm\",\"n\":1}";
+static const char* kMmText = "Hello from mm";
+
+typedef struct MmEventCtx {
+  int saw_assistant;
+} MmEventCtx;
+
+static void mm_event_on_event(void* vctx, const char* type, const char* data_json) {
+  MmEventCtx* ctx = (MmEventCtx*)vctx;
+  if (!type || strcmp(type, "assistant_message") != 0) return;
+  ctx->saw_assistant = 1;
+  assert(data_json != NULL);
+  assert(strstr(data_json, "\"assistant_content\":\"Hello from mm\"") != NULL);
+  assert(strstr(data_json, "\"assistant_mm_truncated\":0") != NULL);
+  assert(strstr(data_json, "\"assistant_mm_json\":\"{\\\"kind\\\":\\\"mm\\\",\\\"n\\\":1}\"") != NULL);
+
+  char bytes_field[64];
+  snprintf(bytes_field, sizeof(bytes_field), "\"assistant_mm_bytes\":%zu", strlen(kMmJson));
+  assert(strstr(data_json, bytes_field) != NULL);
+}
+
 static uint8_t cancel_immediately(void* ctx) {
   (void)ctx;
   return 1;
+}
+
+static agent_status_t multimodal_provider_generate(
+  void* vctx,
+  const agent_tool_provider_request_t* req,
+  agent_tool_provider_response_t* out_resp
+) {
+  (void)vctx;
+  (void)req;
+  agent_tool_provider_response_free(out_resp);
+
+  char buf[256];
+  const int wrote = snprintf(buf, sizeof(buf), "%s%s\n%s", kMmPrefix, kMmJson, kMmText);
+  assert(wrote > 0 && (size_t)wrote < sizeof(buf));
+  assert(agent_string_set_copy(&out_resp->assistant_content, buf, (size_t)wrote) == AGENT_OK);
+  return AGENT_OK;
 }
 
 static agent_status_t repeat_tool_call_provider_generate(
@@ -537,6 +575,46 @@ static void test_tool_loop_require_tool_call_errors(void) {
   agent_tool_registry_destroy(reg);
 }
 
+static void test_tool_loop_multimodal_event(void) {
+  agent_tool_registry_t* reg = NULL;
+  assert(agent_tool_registry_create(&reg) == AGENT_OK);
+  assert(agent_tool_registry_add(reg, "echo", "echo tool", "{\"type\":\"object\"}") == AGENT_OK);
+
+  agent_tool_executor_t exec = {0};
+  exec.ctx = NULL;
+  exec.execute = fake_tool_execute;
+
+  agent_session_t* seed = NULL;
+  assert(agent_session_create(&seed) == AGENT_OK);
+  assert(agent_session_add_message(seed, AGENT_ROLE_SYSTEM, "sys") == AGENT_OK);
+
+  agent_tool_provider_t provider = {0};
+  provider.ctx = NULL;
+  provider.generate = multimodal_provider_generate;
+
+  agent_tool_loop_options_t opt = {0};
+  opt.model = "fake";
+  opt.max_chars = 20000;
+  opt.keep_last_messages = 16;
+  opt.insert_compaction_summary = 1;
+  opt.max_tool_result_chars = 200;
+  opt.max_context_too_long_retries = 1;
+  opt.max_capture_chars = 1000;
+
+  MmEventCtx ectx = {0};
+  agent_tool_loop_hooks_t hooks = {0};
+  hooks.on_event = mm_event_on_event;
+  hooks.on_event_ctx = &ectx;
+
+  agent_tool_loop_result_t out = {0};
+  assert(agent_tool_loop_run(&provider, reg, &exec, seed, "hello", &opt, &hooks, &out) == AGENT_OK);
+  assert(ectx.saw_assistant == 1);
+
+  agent_tool_loop_result_free(&out);
+  agent_session_destroy(seed);
+  agent_tool_registry_destroy(reg);
+}
+
 static void test_tool_loop_cancel(void) {
   agent_tool_registry_t* reg = NULL;
   assert(agent_tool_registry_create(&reg) == AGENT_OK);
@@ -583,6 +661,7 @@ void test_tool_loop_module(void) {
   test_tool_loop_tool_call_limits_map();
   test_tool_loop_context_too_long_retries();
   test_tool_loop_require_tool_call_errors();
+  test_tool_loop_multimodal_event();
   test_tool_loop_cancel();
   printf("test_tool_loop_module OK\n");
 }
