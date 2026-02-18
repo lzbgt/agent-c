@@ -70,13 +70,19 @@ const char* agentd_tool_plugin_manifest_json() {
          "}";
 }
 
-// Required symbol: executes a tool call and returns a newly allocated JSON string result.
-char* agentd_tool_plugin_execute_json(const char* tool_name, const char* arguments_json) {
+// Optional symbol: config-aware manifest (falls back to the default manifest).
+const char* agentd_tool_plugin_manifest_json_ex(const char* config_json) {
+  (void)config_json;
+  return agentd_tool_plugin_manifest_json();
+}
+
+static char* build_response(const char* tool_name, const char* arguments_json, const char* config_json) {
   const char* tn = (tool_name && tool_name[0]) ? tool_name : "unknown";
   const char* aj = (arguments_json && arguments_json[0]) ? arguments_json : "{}";
+  const char* cj = (config_json && config_json[0]) ? config_json : "";
 
   // Allocate a bounded response (this is a demo plugin; keep it tiny).
-  const size_t cap = 2048;
+  const size_t cap = 2304;
   char* out = (char*)malloc(cap);
   if (!out) return NULL;
   out[0] = 0;
@@ -104,6 +110,19 @@ char* agentd_tool_plugin_execute_json(const char* tool_name, const char* argumen
   out[n] = 0;
   json_escape_append(aj, out, &n, cap);
 
+  if (cj[0]) {
+    const char* cfg = "\",\"config_json\":\"";
+    const size_t cl = strlen(cfg);
+    if (n + cl + 1 >= cap) {
+      free(out);
+      return NULL;
+    }
+    memcpy(out + n, cfg, cl);
+    n += cl;
+    out[n] = 0;
+    json_escape_append(cj, out, &n, cap);
+  }
+
   const char* suffix = "\"}";
   const size_t sl = strlen(suffix);
   if (n + sl + 1 >= cap) {
@@ -114,6 +133,16 @@ char* agentd_tool_plugin_execute_json(const char* tool_name, const char* argumen
   n += sl;
   out[n] = 0;
   return out;
+}
+
+// Required symbol: executes a tool call and returns a newly allocated JSON string result.
+char* agentd_tool_plugin_execute_json(const char* tool_name, const char* arguments_json) {
+  return build_response(tool_name, arguments_json, NULL);
+}
+
+// Optional symbol: config-aware execution.
+char* agentd_tool_plugin_execute_json_ex(const char* tool_name, const char* arguments_json, const char* config_json) {
+  return build_response(tool_name, arguments_json, config_json);
 }
 
 // Required symbol: frees the string returned by agentd_tool_plugin_execute_json.

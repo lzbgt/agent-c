@@ -261,7 +261,7 @@ int main(int argc, char** argv) {
   bool cors_allow_credentials_set = false;
   bool cors_max_age_set = false;
   bool cors_routes_set = false;
-  std::vector<std::string> tool_plugin_paths;
+  std::vector<ToolPluginSpec> tool_plugin_specs;
   std::vector<ToolServerSpec> tool_server_specs;
   // Minimal flag parsing (daemon is host-only; core remains argv/env-free).
   for (int i = 1; i < argc; i++) {
@@ -1134,7 +1134,20 @@ int main(int argc, char** argv) {
         std::cerr << "Missing value for --tool-plugin\n";
         return 2;
       }
-      tool_plugin_paths.push_back(v);
+      ToolPluginSpec s;
+      s.path = v;
+      tool_plugin_specs.push_back(std::move(s));
+    } else if (a == "--tool-plugin-config") {
+      std::string v;
+      if (!take(&v) || v.empty()) {
+        std::cerr << "Missing value for --tool-plugin-config\n";
+        return 2;
+      }
+      if (tool_plugin_specs.empty()) {
+        std::cerr << "--tool-plugin-config must follow --tool-plugin\n";
+        return 2;
+      }
+      tool_plugin_specs.back().config_json = v;
     } else if (a == "--tool-server-cmd") {
       std::string v;
       if (!take(&v) || v.empty()) {
@@ -1347,6 +1360,7 @@ int main(int argc, char** argv) {
         << "  --no-default-system  Disable default host system hint (host tools only)\n"
         << "  --system-profile <name> Host system prompt profile (default: default)\n"
         << "  --tool-plugin <path> Load a tool plugin (repeatable)\n"
+        << "  --tool-plugin-config <json> Set config JSON for the most recent --tool-plugin\n"
         << "  --tool-server-cmd <cmd> Start a stdio tool server (repeatable)\n"
         << "    --tool-server-timeout-ms <n>    Per-server RPC timeout (must follow --tool-server-cmd; default 30000; clamp 1..300000)\n"
         << "    --tool-server-max-line-bytes <n>  Per-server stdout line cap (must follow --tool-server-cmd; default 4MiB; clamp 1024..64MiB)\n"
@@ -2010,14 +2024,8 @@ int main(int argc, char** argv) {
   std::vector<ToolExtension> exts;
   std::vector<std::vector<std::string>> names_by_ext;
 
-  if (!tool_plugin_paths.empty()) {
-    std::vector<ToolPluginSpec> specs;
-    specs.reserve(tool_plugin_paths.size());
-    for (const auto& p : tool_plugin_paths) {
-      ToolPluginSpec s;
-      s.path = p;
-      specs.push_back(std::move(s));
-    }
+  if (!tool_plugin_specs.empty()) {
+    std::vector<ToolPluginSpec> specs = tool_plugin_specs;
     std::string terr;
     if (!tool_plugins.load(specs, &terr)) {
       std::cerr << "Failed to load tool plugins: " << (terr.empty() ? "unknown error" : terr) << "\n";

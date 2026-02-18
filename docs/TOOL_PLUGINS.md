@@ -5,6 +5,7 @@ Date: 2026-02-03
 This document defines the **tool plugin ABI** used by the standalone `agentd` executable via:
 
 - `agentd --tool-plugin /path/to/plugin.so` (repeatable)
+- `agentd --tool-plugin-config '{"key":"value"}'` (applies to the most recent `--tool-plugin`)
 
 The goal is to make this project a **framework**: adding tools should be a packaging/configuration operation, not a fork/rebuild operation.
 
@@ -25,6 +26,15 @@ const char* agentd_tool_plugin_manifest_json(void);
 ```
 
 Returns a UTF-8 JSON document describing the tools exported by the plugin.
+
+Optional (config-aware) manifest:
+
+```c
+const char* agentd_tool_plugin_manifest_json_ex(const char* config_json);
+```
+
+If present, `agentd` will call this with the plugin config JSON (or `NULL` if none). Otherwise it falls back
+to `agentd_tool_plugin_manifest_json()`.
 
 Accepted shapes:
 - `{"ok":true,"tools":[ ... ]}`
@@ -57,6 +67,19 @@ char* agentd_tool_plugin_execute_json(const char* tool_name, const char* argumen
 ```
 
 Executes `tool_name` with the raw `arguments_json` blob (OpenAI-compatible tool-call arguments) and returns a newly allocated UTF-8 JSON string.
+
+Optional (config-aware) execution:
+
+```c
+char* agentd_tool_plugin_execute_json_ex(
+  const char* tool_name,
+  const char* arguments_json,
+  const char* config_json
+);
+```
+
+If present, `agentd` will pass the plugin config JSON (or `NULL` if none). Otherwise it falls back to
+`agentd_tool_plugin_execute_json()`.
 
 The returned string must be a JSON value; recommended shape:
 
@@ -91,3 +114,8 @@ It exports a single tool `ext_echo` that returns a small JSON response.
 - The daemon builds its baseline toolset (`tools=host|basic|none`).
 - During toolset construction, it calls the plugin chain `register_tools(...)` and appends plugin tool schemas.
 - During execution, only tool names appended by plugins are dispatched to plugins (base tools still run in the built-in host toolset).
+
+## Config JSON
+
+Plugin config JSON is passed verbatim to the optional `*_ex` symbols. It is validated as JSON before plugin load.
+Use this to parameterize tool behavior without rebuilding or forking the daemon.

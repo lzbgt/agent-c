@@ -38,7 +38,9 @@ struct PluginEntry {
 #endif
 
   const char* (*manifest_json_fn)() = nullptr;
+  const char* (*manifest_json_fn_ex)(const char* config_json) = nullptr;
   char* (*execute_json_fn)(const char* tool_name, const char* arguments_json) = nullptr;
+  char* (*execute_json_fn_ex)(const char* tool_name, const char* arguments_json, const char* config_json) = nullptr;
   void (*free_fn)(char* p) = nullptr;
 
   std::vector<ToolDef> tools;
@@ -108,7 +110,13 @@ struct ToolPluginChain::Impl {
     }
 
     const char* args = arguments_json ? arguments_json : "{}";
-    char* out = pe.execute_json_fn(tool_name, args);
+    const char* cfg = pe.config_json.empty() ? nullptr : pe.config_json.c_str();
+    char* out = nullptr;
+    if (pe.execute_json_fn_ex) {
+      out = pe.execute_json_fn_ex(tool_name, args, cfg);
+    } else {
+      out = pe.execute_json_fn(tool_name, args);
+    }
     if (!out) {
       const char* err = "{\"ok\":false,\"error\":\"plugin returned null\"}";
       return agent_string_set_copy(out_result, err, std::strlen(err));
@@ -247,6 +255,15 @@ bool ToolPluginChain::load(const std::vector<ToolPluginSpec>& specs, std::string
     pe.path = s.path;
     pe.config_json = s.config_json;
 
+    if (!pe.config_json.empty()) {
+      Json::Value cfg;
+      std::string perr;
+      if (!json_parse_any(pe.config_json, &cfg, &perr)) {
+        if (out_error) *out_error = "invalid tool plugin config JSON (path=" + pe.path + "): " + perr;
+        return false;
+      }
+    }
+
     pe.handle = dlopen(pe.path.c_str(), RTLD_NOW);
     if (!pe.handle) {
       if (out_error) *out_error = std::string("dlopen failed: ") + (dlerror() ? dlerror() : "unknown") + " (path=" + pe.path + ")";
@@ -254,7 +271,10 @@ bool ToolPluginChain::load(const std::vector<ToolPluginSpec>& specs, std::string
     }
 
     pe.manifest_json_fn = (const char* (*)())dlsym(pe.handle, "agentd_tool_plugin_manifest_json");
+    pe.manifest_json_fn_ex = (const char* (*)(const char*))dlsym(pe.handle, "agentd_tool_plugin_manifest_json_ex");
     pe.execute_json_fn = (char* (*)(const char*, const char*))dlsym(pe.handle, "agentd_tool_plugin_execute_json");
+    pe.execute_json_fn_ex =
+      (char* (*)(const char*, const char*, const char*))dlsym(pe.handle, "agentd_tool_plugin_execute_json_ex");
     pe.free_fn = (void (*)(char*))dlsym(pe.handle, "agentd_tool_plugin_free");
 
     if (!pe.manifest_json_fn || !pe.execute_json_fn || !pe.free_fn) {
@@ -264,7 +284,13 @@ bool ToolPluginChain::load(const std::vector<ToolPluginSpec>& specs, std::string
       return false;
     }
 
-    const char* mj = pe.manifest_json_fn();
+    const char* mj = nullptr;
+    const char* cfg = pe.config_json.empty() ? nullptr : pe.config_json.c_str();
+    if (pe.manifest_json_fn_ex) {
+      mj = pe.manifest_json_fn_ex(cfg);
+    } else {
+      mj = pe.manifest_json_fn();
+    }
     std::string perr;
     if (!parse_manifest_tools(pe.path, mj, &pe.tools, &perr)) {
       if (out_error) *out_error = perr;

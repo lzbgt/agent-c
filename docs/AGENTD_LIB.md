@@ -150,7 +150,9 @@ If you are using the standalone `agentd` executable (not embedding), you can sti
 tool plugins at runtime:
 
 ```sh
-./build/agentd --tool-plugin ./build/libagentd_tool_plugin_echo.(so|dylib)
+./build/agentd \
+  --tool-plugin ./build/libagentd_tool_plugin_echo.(so|dylib) \
+  --tool-plugin-config '{"tag":"demo"}'
 ```
 
 See: `docs/TOOL_PLUGINS.md`.

@@ -113,7 +113,8 @@ STUB_PID=$!
 agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "${NAME}" \
   --tools host \
   --no-yolo \
-  --tool-plugin "${PLUGIN_PATH}"
+  --tool-plugin "${PLUGIN_PATH}" \
+  --tool-plugin-config "{\"tag\":\"smoke\"}"
 
 agentd_smoke_wait_health "${DAEMON_URL}"
 
@@ -166,6 +167,9 @@ if not tool_results:
 content = (tool_results[-1].get("data") or {}).get("content") or ""
 if "hello from stub" not in content:
   print("unexpected tool_result content:", content, file=sys.stderr)
+  raise SystemExit(1)
+if "config_json" not in content or "smoke" not in content:
+  print("missing plugin config in tool_result content:", content, file=sys.stderr)
   raise SystemExit(1)
 txt = (obj.get("assistant_text") or "").strip()
 if txt != "OK":
