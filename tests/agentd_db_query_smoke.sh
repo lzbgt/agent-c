@@ -21,6 +21,8 @@ STUB_BASE="http://${HOST}:${PORT_STUB}/v1"
 
 DB_PATH="${LOG_DIR}/agentd_db_query_smoke.sqlite"
 SESSION_ID="agentd_db_query_smoke_$(date +%s)_$RANDOM"
+MM_JSON='{"images":[{"mime":"image/png","b64":"AAA","name":"plot.png"}]}'
+USER_TEXT="Read README.md then say OK"
 
 cleanup() {
   agentd_smoke_stop
@@ -160,10 +162,13 @@ agentd_smoke_wait_health "${DAEMON_URL}"
 
 resp="$(curl -fsS --noproxy "*" --max-time 10 \
   -H "Content-Type: application/json" \
-  -d "$(python3 - <<PY
-import json
+  -d "$(MM_JSON="${MM_JSON}" USER_TEXT="${USER_TEXT}" python3 - <<PY
+import json, os
+mm_json = os.environ["MM_JSON"]
+user_text = os.environ["USER_TEXT"]
+prompt = "__AGENT_MM_V1__" + mm_json + "\\n" + user_text
 print(json.dumps({
-  "prompt": "Read README.md then say OK",
+  "prompt": prompt,
   "session_id": "${SESSION_ID}",
   "tools": "host",
   "yolo": False,
@@ -459,12 +464,14 @@ PY
 db_msgs="$(curl -fsS --noproxy "*" --max-time 10 \
   "${DAEMON_URL}/api/v1/db/messages?session_id=$(python3 -c 'import urllib.parse; print(urllib.parse.quote("""'${SESSION_ID}'"""))')&limit=50&offset=0&max_content_bytes=128")"
 
-python3 - <<PY
-import json, sys
+MM_JSON="${MM_JSON}" USER_TEXT="${USER_TEXT}" python3 - <<PY
+import json, os, sys
 obj = json.loads(r'''${db_msgs}''')
 if not obj.get("ok"):
   print("db/messages failed:", obj, file=sys.stderr)
   raise SystemExit(1)
+mm_json = os.environ["MM_JSON"]
+user_text = os.environ["USER_TEXT"]
 rows = obj.get("messages")
 if rows is None:
   print("expected messages field", file=sys.stderr)
@@ -488,6 +495,23 @@ if "mm_json" not in m0 or "mm_json_truncated" not in m0 or "mm_bytes" not in m0:
   raise SystemExit(1)
 if not isinstance(m0.get("mm_json"), str):
   print("expected mm_json to be string", m0, file=sys.stderr)
+  raise SystemExit(1)
+found_mm = False
+for m in rows:
+  if not isinstance(m, dict):
+    continue
+  if (m.get("content") or "").strip() != user_text:
+    continue
+  if m.get("mm_json") != mm_json:
+    print("unexpected mm_json for user message", m, file=sys.stderr)
+    raise SystemExit(1)
+  if m.get("mm_bytes") != len(mm_json):
+    print("unexpected mm_bytes for user message", m, file=sys.stderr)
+    raise SystemExit(1)
+  found_mm = True
+  break
+if not found_mm:
+  print("missing user message with mm_json", rows, file=sys.stderr)
   raise SystemExit(1)
 if not any(isinstance(m, dict) and isinstance(m.get("content"), str) and "[client_event]" in m.get("content") for m in rows):
   print("expected at least one [client_event] message", file=sys.stderr)
