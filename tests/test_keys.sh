@@ -163,10 +163,11 @@ agent_test_openrouter_auth_ok() {
   fi
   local key="${1}"
   local base_url="${2:-https://openrouter.ai/api/v1}"
-  local status
-  status="$(curl -sS --noproxy "*" -o /dev/null -w "%{http_code}" \
+  local resp status
+  resp="$(curl -sS --noproxy "*" -w "\n%{http_code}" \
     -H "Authorization: Bearer ${key}" \
     "${base_url}/models" || true)"
+  status="${resp##*$'\n'}"
   if [[ "${status}" == "401" || "${status}" == "403" ]]; then
     echo "SKIP: OpenRouter auth failed (${status}); check OPENROUTER_API_KEY" >&2
     return 77
@@ -174,6 +175,57 @@ agent_test_openrouter_auth_ok() {
   if [[ "${status}" -ge 400 || "${status}" == "000" ]]; then
     echo "OpenRouter auth check failed (status=${status})" >&2
     return 1
+  fi
+  if [[ "${AGENT_TEST_OPENROUTER_SKIP_CHAT_PREFLIGHT:-}" == "1" ]]; then
+    return 0
+  fi
+
+  local body="${resp%$'\n'*}"
+  local model
+  model="$(python3 - <<PY
+import json, sys
+try:
+    obj = json.loads(r'''${body}''')
+except Exception:
+    sys.exit(0)
+rec = obj.get("recommended_model")
+if isinstance(rec, str) and rec:
+    print(rec)
+PY
+)"
+  if [[ -z "${model}" ]]; then
+    return 0
+  fi
+
+  local chat_payload
+  chat_payload="$(python3 - <<PY
+import json
+print(json.dumps({
+  "model": "${model}",
+  "messages": [{"role":"user","content":"ping"}],
+  "max_tokens": 1
+}))
+PY
+)"
+  local chat_resp chat_status
+  chat_resp="$(curl -sS --noproxy "*" -w "\n%{http_code}" \
+    -H "Authorization: Bearer ${key}" \
+    -H "Content-Type: application/json" \
+    -d "${chat_payload}" \
+    "${base_url}/chat/completions" || true)"
+  chat_status="${chat_resp##*$'\n'}"
+  if [[ "${chat_status}" == "401" || "${chat_status}" == "403" ]]; then
+    echo "SKIP: OpenRouter chat auth failed (${chat_status}); check OPENROUTER_API_KEY" >&2
+    return 77
+  fi
+  if [[ "${chat_status}" == "429" || "${chat_status}" == "503" ]]; then
+    echo "SKIP: OpenRouter chat preflight throttled (${chat_status})" >&2
+    return 77
+  fi
+  local chat_body="${chat_resp%$'\n'*}"
+  if agent_test_openrouter_output_is_auth_error "${chat_body}"; then
+    echo "SKIP: OpenRouter chat auth error response" >&2
+    return 77
   fi
   return 0
 }
