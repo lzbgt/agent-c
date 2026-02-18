@@ -180,6 +180,10 @@ per-tool map:
 This exists to prevent pathological “capture camera → send to UI → repeat” loops when the model does not infer a natural stop
 condition from the conversation alone.
 
+Tools ceiling:
+- Run requests cannot exceed the daemon’s `--tools` setting (e.g., a daemon started with `--tools basic` will reject `tools:"host"`).
+  Such requests return HTTP 400.
+
 ### Run replay bundles (deterministic audit)
 
 `agentd` persists a **redacted replay bundle** for session-backed runs (best-effort) and exposes it via:

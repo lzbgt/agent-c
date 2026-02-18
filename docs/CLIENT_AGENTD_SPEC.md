@@ -250,6 +250,10 @@ Debug/correlation helper:
 
 See `docs/STREAMING.md` for streaming semantics.
 
+Tools ceiling:
+- Run requests cannot exceed the daemon’s `--tools` setting (e.g., a daemon started with `--tools basic` will reject `tools:"host"`).
+  Such requests return HTTP 400.
+
 Reconnect / continuity guidance:
 - `agentd` should continue executing an **async** job even if a client disconnects (tab refresh, app restart, network flap).
   - Only an explicit `POST /api/v1/job/cancel?job_id=...` should stop the job.
