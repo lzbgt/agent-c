@@ -934,13 +934,15 @@ int parse_daemon_cli(int argc, char** argv, DaemonConfig* cfg, DaemonCliOverride
         std::cerr << "Missing value for --tool-call-limit\n";
         return 2;
       }
-      std::string tool;
-      size_t n = 0;
-      if (!parse_tool_call_limit_spec(v, &tool, &n)) {
-        std::cerr << "Invalid --tool-call-limit (expected tool=n)\n";
+      std::vector<std::pair<std::string, size_t>> limits;
+      std::string err;
+      if (!parse_tool_call_limits_csv(v, &limits, &err)) {
+        std::cerr << "Invalid --tool-call-limit: " << err << "\n";
         return 2;
       }
-      upsert_tool_call_limit(&cfg->tool_call_limits_default, tool, n);
+      for (auto& p : limits) {
+        upsert_tool_call_limit(&cfg->tool_call_limits_default, p.first, p.second);
+      }
     } else if (a == "--tools") {
       std::string v;
       if (!take(&v)) {
