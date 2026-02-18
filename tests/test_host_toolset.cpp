@@ -1068,6 +1068,7 @@ static void test_memory_tools() {
     args["query"] = "refresh-proof";
     args["max_results"] = 5;
     args["daily_days"] = 0; // core only
+    args["order"] = "newest";
     const std::string req = json_stringify(args);
     agent_string_t out{};
     assert(exec.execute(exec.ctx, "memory_search", req.c_str(), &out) == AGENT_OK);
@@ -1075,6 +1076,7 @@ static void test_memory_tools() {
     assert(resp["ok"].asBool());
     assert(resp["data"].isMember("mode"));
     assert(resp["data"]["mode"].isString());
+    assert(resp["data"]["order"].asString() == "newest");
     const auto& results = resp["data"]["results"];
     assert(results.isArray());
     assert(results.size() >= 1);

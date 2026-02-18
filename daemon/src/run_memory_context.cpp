@@ -110,6 +110,33 @@ static std::string truncate_ascii(std::string s, size_t max_chars) {
   return s;
 }
 
+static int64_t daily_date_key_from_path(const std::string& rel_path) {
+  const std::string base = std::filesystem::path(rel_path).filename().string();
+  if (base.size() != 13) return 0;
+  if (base[4] != '-' || base[7] != '-' || base.rfind(".md") != 10) return 0;
+  auto parse_num = [&](size_t pos, size_t len) -> int {
+    int v = 0;
+    for (size_t i = 0; i < len; i++) {
+      const char c = base[pos + i];
+      if (c < '0' || c > '9') return -1;
+      v = v * 10 + (c - '0');
+    }
+    return v;
+  };
+  const int y = parse_num(0, 4);
+  const int m = parse_num(5, 2);
+  const int d = parse_num(8, 2);
+  if (y < 1970 || m < 1 || m > 12 || d < 1 || d > 31) return 0;
+  return (int64_t)y * 10000 + (int64_t)m * 100 + (int64_t)d;
+}
+
+static int64_t daily_timeline_key(const std::string& rel_path, int line) {
+  const int64_t ymd = daily_date_key_from_path(rel_path);
+  if (ymd <= 0) return 0;
+  const int64_t ln = line > 0 ? line : 0;
+  return ymd * 1000000 + ln;
+}
+
 static std::string format_utc_from_unix_ms(int64_t unix_ms) {
   if (unix_ms <= 0) return "";
   const std::time_t t = (std::time_t)(unix_ms / 1000);
@@ -740,6 +767,35 @@ static bool build_memory_search_context_text(
 
   if (results.empty()) return false;
 
+  if (pol.search_order != MemorySearchOrder::Ranked) {
+    struct DailyItem {
+      int64_t key = 0;
+      Result row;
+    };
+    std::vector<size_t> daily_indices;
+    std::vector<DailyItem> daily_rows;
+    for (size_t i = 0; i < results.size(); i++) {
+      const auto& r = results[i];
+      if (r.tier != "daily") continue;
+      const int64_t key = daily_timeline_key(r.path, r.line);
+      if (key <= 0) continue;
+      daily_indices.push_back(i);
+      DailyItem item;
+      item.key = key;
+      item.row = r;
+      daily_rows.push_back(std::move(item));
+    }
+    if (daily_rows.size() > 1) {
+      const bool newest = (pol.search_order == MemorySearchOrder::Newest);
+      std::sort(daily_rows.begin(), daily_rows.end(), [&](const DailyItem& a, const DailyItem& b) {
+        return newest ? (a.key > b.key) : (a.key < b.key);
+      });
+      for (size_t i = 0; i < daily_indices.size(); i++) {
+        results[daily_indices[i]] = daily_rows[i].row;
+      }
+    }
+  }
+
   int64_t total_bytes = 0;
   int64_t total_tokens = 0;
   for (const auto& c : candidates) {
@@ -790,9 +846,13 @@ static bool build_memory_search_context_text(
   } else {
     oss << "- Assistant hint: none (no assistant message)\n";
   }
+  const char* order_label = "ranked";
+  if (pol.search_order == MemorySearchOrder::Newest) order_label = "newest";
+  if (pol.search_order == MemorySearchOrder::Oldest) order_label = "oldest";
   oss
     << "- Query: " << query << "\n"
     << "- Mode: " << mode << "\n"
+    << "- Order: " << order_label << "\n"
     << "- Results: " << results.size() << "\n"
     << "- Each snippet is cited as [tier path:line].\n"
     << "- Use memory_get/memory_search for deeper inspection, or memory_write/memory_put to update.\n";

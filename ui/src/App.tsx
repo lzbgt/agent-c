@@ -155,6 +155,7 @@ export default function App() {
     memoryDailyDays,
     memoryTotalCap,
     memorySearchQuery,
+    memorySearchOrder,
     memorySearchUseIndex,
     memorySearchCaseSensitive,
     memorySearchFallbackToFiles,
@@ -1118,6 +1119,11 @@ export default function App() {
         req.memory_search_use_index = memorySearchUseIndex;
         req.memory_search_case_sensitive = memorySearchCaseSensitive;
         req.memory_search_fallback_to_files = memorySearchFallbackToFiles;
+        const memOrder =
+          memorySearchOrder === "newest" || memorySearchOrder === "oldest" || memorySearchOrder === "ranked"
+            ? (memorySearchOrder as "ranked" | "newest" | "oldest")
+            : "ranked";
+        if (memOrder !== "ranked") req.memory_search_order = memOrder;
         req.memory_search_max_results = parsedMemSearchMaxResults;
         req.memory_search_max_snippet_chars = parsedMemSearchMaxSnippetChars;
         req.memory_search_context_lines = parsedMemSearchContextLines;

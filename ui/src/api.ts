@@ -345,6 +345,7 @@ export const RunRequestSchema = z.object({
   memory_search_query: z.string().optional(),
   memory_search_use_index: z.boolean().optional(),
   memory_search_case_sensitive: z.boolean().optional(),
+  memory_search_order: z.enum(["ranked", "newest", "oldest"]).optional(),
   memory_search_fallback_to_files: z.boolean().optional(),
   memory_search_max_results: z.number().int().nonnegative().optional(),
   memory_search_max_snippet_chars: z.number().int().nonnegative().optional(),

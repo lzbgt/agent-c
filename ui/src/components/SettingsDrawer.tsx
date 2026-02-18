@@ -945,6 +945,18 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                 onChange={run.setMemorySearchFallbackToFiles}
               />
             </div>
+            <div>
+              <FieldLabel>Order</FieldLabel>
+              <select
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                value={run.memorySearchOrder}
+                onChange={(e) => run.setMemorySearchOrder(e.target.value)}
+              >
+                <option value="ranked">Ranked (relevance)</option>
+                <option value="newest">Newest first</option>
+                <option value="oldest">Oldest first</option>
+              </select>
+            </div>
             <div className="grid grid-cols-3 gap-3">
               <div>
                 <FieldLabel>Max results</FieldLabel>

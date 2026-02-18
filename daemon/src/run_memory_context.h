@@ -13,6 +13,12 @@ enum class MemoryContextMode {
   Salience,
 };
 
+enum class MemorySearchOrder {
+  Ranked,
+  Newest,
+  Oldest,
+};
+
 struct MemoryContextPolicy {
   MemoryContextMode mode = MemoryContextMode::Files;
   bool include_structured = true; // memory/STRUCTURED.md
@@ -24,6 +30,7 @@ struct MemoryContextPolicy {
   bool search_use_index = true;
   bool search_case_sensitive = false;
   bool search_fallback_to_files = true;
+  MemorySearchOrder search_order = MemorySearchOrder::Ranked;
   int search_max_results = 12;
   int search_max_snippet_chars = 800;
   int search_context_lines = 2;

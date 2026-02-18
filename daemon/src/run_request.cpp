@@ -551,6 +551,17 @@ static Json::Value run_request_to_json_impl(
   if (args.isMember("memory_search_case_sensitive") && args["memory_search_case_sensitive"].isBool()) {
     mem_pol.search_case_sensitive = args["memory_search_case_sensitive"].asBool();
   }
+  if (args.isMember("memory_search_order") && args["memory_search_order"].isString()) {
+    const std::string raw = trim_copy(args["memory_search_order"].asString());
+    const std::string v = lower_copy(raw);
+    if (v == "newest" || v == "newest_first" || v == "latest") {
+      mem_pol.search_order = MemorySearchOrder::Newest;
+    } else if (v == "oldest" || v == "oldest_first" || v == "earliest") {
+      mem_pol.search_order = MemorySearchOrder::Oldest;
+    } else {
+      mem_pol.search_order = MemorySearchOrder::Ranked;
+    }
+  }
   if (args.isMember("memory_search_fallback_to_files") && args["memory_search_fallback_to_files"].isBool()) {
     mem_pol.search_fallback_to_files = args["memory_search_fallback_to_files"].asBool();
   }

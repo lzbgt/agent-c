@@ -113,7 +113,7 @@ with **tool plugins** and **audio streaming** following once the UX surfaces are
 - [ ] Memory UX alignment (claude-mem): optional context header + last summary/assistant-message hints + timeline ordering toggle.
   - [x] Index/search headers include token economics + recap hint (latest recap summary).
   - [x] Add assistant-message hint (last assistant summary or salient response) in context headers.
-  - [ ] Add timeline ordering toggle for memory results (newest-first vs oldest-first).
+  - [x] Add timeline ordering toggle for memory results (newest-first vs oldest-first).
 - [ ] Tool plugins: sandbox/isolation, Windows loader, and embedded/MCU-compatible plugin path.
 - [ ] Audio streaming: Opus/WebRTC voice pipeline + broker relay + UI voice session controls.
   - [x] Add workflow DB query endpoints (`/api/v1/db/workflows`, `/api/v1/db/workflow`, `/api/v1/db/workflow_tasks`, `/api/v1/db/workflow_events`)

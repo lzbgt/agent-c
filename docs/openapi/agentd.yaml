@@ -3122,6 +3122,10 @@ components:
         memory_search_case_sensitive:
           type: boolean
           description: When true, use case-sensitive substring search (disables FTS).
+        memory_search_order:
+          type: string
+          description: Result ordering for memory search context (ranked | newest | oldest; default ranked).
+          enum: [ranked, newest, oldest]
         memory_search_fallback_to_files:
           type: boolean
           description: When true, fall back to file-based memory context if search yields no results.
@@ -3696,6 +3700,10 @@ components:
         use_index:
           type: boolean
           description: Use ranked FTS5 index when available (default true; only when case_sensitive=false).
+        order:
+          type: string
+          description: Result ordering (ranked | newest | oldest; default ranked). Timeline ordering only affects daily entries.
+          enum: [ranked, newest, oldest]
 
     WorkflowMemoryTimelineSpec:
       type: object

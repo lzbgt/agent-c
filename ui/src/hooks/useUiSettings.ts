@@ -70,6 +70,7 @@ export type RunProfileOverrides = {
   memoryDailyDays?: string;
   memoryTotalCap?: string;
   memorySearchQuery?: string;
+  memorySearchOrder?: string;
   memorySearchUseIndex?: boolean;
   memorySearchCaseSensitive?: boolean;
   memorySearchFallbackToFiles?: boolean;
@@ -157,6 +158,8 @@ export type RunSettings = {
   setMemoryTotalCap: React.Dispatch<React.SetStateAction<string>>;
   memorySearchQuery: string;
   setMemorySearchQuery: React.Dispatch<React.SetStateAction<string>>;
+  memorySearchOrder: string;
+  setMemorySearchOrder: React.Dispatch<React.SetStateAction<string>>;
   memorySearchUseIndex: boolean;
   setMemorySearchUseIndex: React.Dispatch<React.SetStateAction<boolean>>;
   memorySearchCaseSensitive: boolean;
@@ -332,6 +335,8 @@ const normalizeRunOverrides = (raw: unknown): RunProfileOverrides | undefined =>
   if (memoryTotalCap !== undefined) out.memoryTotalCap = memoryTotalCap;
   const memorySearchQuery = readString(v.memorySearchQuery);
   if (memorySearchQuery !== undefined) out.memorySearchQuery = memorySearchQuery;
+  const memorySearchOrder = readString(v.memorySearchOrder);
+  if (memorySearchOrder !== undefined) out.memorySearchOrder = memorySearchOrder;
   if (typeof v.memorySearchUseIndex === "boolean") out.memorySearchUseIndex = v.memorySearchUseIndex;
   if (typeof v.memorySearchCaseSensitive === "boolean") out.memorySearchCaseSensitive = v.memorySearchCaseSensitive;
   if (typeof v.memorySearchFallbackToFiles === "boolean") out.memorySearchFallbackToFiles = v.memorySearchFallbackToFiles;
@@ -504,6 +509,10 @@ export default function useUiSettings(): UiSettings {
   const [memorySearchQueryGlobal, setMemorySearchQueryGlobal] = useLocalStorageState(
     "agentui.memorySearchQuery",
     defaults.memorySearchQuery,
+  );
+  const [memorySearchOrderGlobal, setMemorySearchOrderGlobal] = useLocalStorageState(
+    "agentui.memorySearchOrder",
+    defaults.memorySearchOrder,
   );
   const [memorySearchUseIndexGlobal, setMemorySearchUseIndexGlobal] = useLocalStorageState(
     "agentui.memorySearchUseIndex",
@@ -682,6 +691,7 @@ export default function useUiSettings(): UiSettings {
       memoryDailyDays: memoryDailyDaysGlobal,
       memoryTotalCap: memoryTotalCapGlobal,
       memorySearchQuery: memorySearchQueryGlobal,
+      memorySearchOrder: memorySearchOrderGlobal,
       memorySearchUseIndex: memorySearchUseIndexGlobal,
       memorySearchCaseSensitive: memorySearchCaseSensitiveGlobal,
       memorySearchFallbackToFiles: memorySearchFallbackToFilesGlobal,
@@ -711,6 +721,7 @@ export default function useUiSettings(): UiSettings {
       memorySearchFallbackToFilesGlobal,
       memorySearchMaxResultsGlobal,
       memorySearchMaxSnippetCharsGlobal,
+      memorySearchOrderGlobal,
       memorySearchQueryGlobal,
       memorySearchUseIndexGlobal,
       memoryTotalCapGlobal,
@@ -829,6 +840,7 @@ export default function useUiSettings(): UiSettings {
   const memoryDailyDays = resolveRunValue("memoryDailyDays", memoryDailyDaysGlobal);
   const memoryTotalCap = resolveRunValue("memoryTotalCap", memoryTotalCapGlobal);
   const memorySearchQuery = resolveRunValue("memorySearchQuery", memorySearchQueryGlobal);
+  const memorySearchOrder = resolveRunValue("memorySearchOrder", memorySearchOrderGlobal);
   const memorySearchUseIndex = resolveRunValue("memorySearchUseIndex", memorySearchUseIndexGlobal);
   const memorySearchCaseSensitive = resolveRunValue("memorySearchCaseSensitive", memorySearchCaseSensitiveGlobal);
   const memorySearchFallbackToFiles = resolveRunValue("memorySearchFallbackToFiles", memorySearchFallbackToFilesGlobal);
@@ -994,6 +1006,11 @@ export default function useUiSettings(): UiSettings {
   const setMemorySearchQuery = React.useCallback(
     (next: React.SetStateAction<string>) => setRunValue("memorySearchQuery", next, memorySearchQueryGlobal, setMemorySearchQueryGlobal),
     [memorySearchQueryGlobal, setMemorySearchQueryGlobal, setRunValue],
+  );
+  const setMemorySearchOrder = React.useCallback(
+    (next: React.SetStateAction<string>) =>
+      setRunValue("memorySearchOrder", next, memorySearchOrderGlobal, setMemorySearchOrderGlobal),
+    [memorySearchOrderGlobal, setMemorySearchOrderGlobal, setRunValue],
   );
   const setMemorySearchUseIndex = React.useCallback(
     (next: React.SetStateAction<boolean>) =>
@@ -1271,6 +1288,8 @@ export default function useUiSettings(): UiSettings {
       setMemoryTotalCap,
       memorySearchQuery,
       setMemorySearchQuery,
+      memorySearchOrder,
+      setMemorySearchOrder,
       memorySearchUseIndex,
       setMemorySearchUseIndex,
       memorySearchCaseSensitive,

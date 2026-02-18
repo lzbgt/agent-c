@@ -65,6 +65,68 @@ static std::string to_lower_ascii(std::string s) {
   return s;
 }
 
+static int64_t daily_date_key_from_path(const std::string& rel_path) {
+  const std::string base = std::filesystem::path(rel_path).filename().string();
+  if (base.size() != 13) return 0;
+  if (base[4] != '-' || base[7] != '-' || base.rfind(".md") != 10) return 0;
+  auto parse_num = [&](size_t pos, size_t len) -> int {
+    int v = 0;
+    for (size_t i = 0; i < len; i++) {
+      const char c = base[pos + i];
+      if (c < '0' || c > '9') return -1;
+      v = v * 10 + (c - '0');
+    }
+    return v;
+  };
+  const int y = parse_num(0, 4);
+  const int m = parse_num(5, 2);
+  const int d = parse_num(8, 2);
+  if (y < 1970 || m < 1 || m > 12 || d < 1 || d > 31) return 0;
+  return (int64_t)y * 10000 + (int64_t)m * 100 + (int64_t)d;
+}
+
+static int64_t daily_timeline_key_from_result(const Json::Value& r) {
+  if (!r.isObject()) return 0;
+  if (!r.isMember("tier") || !r["tier"].isString()) return 0;
+  if (r["tier"].asString() != "daily") return 0;
+  if (!r.isMember("path") || !r["path"].isString()) return 0;
+  const std::string path = r["path"].asString();
+  const int64_t ymd = daily_date_key_from_path(path);
+  if (ymd <= 0) return 0;
+  const int line = r.isMember("line") && r["line"].isInt() ? r["line"].asInt() : 0;
+  const int64_t ln = line > 0 ? line : 0;
+  return ymd * 1000000 + ln;
+}
+
+static void apply_timeline_order(Json::Value* results, const std::string& order) {
+  if (!results || !results->isArray()) return;
+  if (order == "ranked") return;
+  const bool newest = (order == "newest");
+  std::vector<Json::ArrayIndex> daily_indices;
+  struct DailyItem {
+    int64_t key = 0;
+    Json::Value row;
+  };
+  std::vector<DailyItem> daily_rows;
+  for (Json::ArrayIndex i = 0; i < results->size(); i++) {
+    const Json::Value& r = (*results)[i];
+    const int64_t key = daily_timeline_key_from_result(r);
+    if (key <= 0) continue;
+    daily_indices.push_back(i);
+    DailyItem item;
+    item.key = key;
+    item.row = r;
+    daily_rows.push_back(std::move(item));
+  }
+  if (daily_rows.size() <= 1) return;
+  std::sort(daily_rows.begin(), daily_rows.end(), [&](const DailyItem& a, const DailyItem& b) {
+    return newest ? (a.key > b.key) : (a.key < b.key);
+  });
+  for (size_t i = 0; i < daily_indices.size(); i++) {
+    (*results)[daily_indices[i]] = daily_rows[i].row;
+  }
+}
+
 static std::string strip_private_blocks(const std::string& input, int* out_stripped_bytes) {
   if (out_stripped_bytes) *out_stripped_bytes = 0;
   if (input.empty()) return input;
@@ -1150,6 +1212,13 @@ agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, 
     args.isMember("max_snippet_chars") && args["max_snippet_chars"].isInt() ? args["max_snippet_chars"].asInt() : 600;
   const int max_snippet_chars = std::min(std::max(80, max_snippet_chars_raw), 4000);
   const bool tiered = args.isMember("tiered") && args["tiered"].isBool() ? args["tiered"].asBool() : false;
+  std::string order = "ranked";
+  if (args.isMember("order") && args["order"].isString()) {
+    order = to_lower_ascii(trim_ascii(args["order"].asString()));
+    if (order == "newest_first" || order == "latest") order = "newest";
+    if (order == "oldest_first" || order == "earliest") order = "oldest";
+    if (order != "newest" && order != "oldest") order = "ranked";
+  }
 
   const std::filesystem::path mem_root = memory_root_from_ctx(ctx);
   if (mem_root.empty()) {
@@ -1220,9 +1289,17 @@ agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, 
   }
 
   if (mode == "fts5") {
+    if (order != "ranked") {
+      apply_timeline_order(&results, order);
+      if (tiered) {
+        auto it = tier_results.find("daily");
+        if (it != tier_results.end()) apply_timeline_order(&it->second, order);
+      }
+    }
     Json::Value data(Json::objectValue);
     data["tool"] = "memory_search";
     data["mode"] = mode;
+    data["order"] = order;
     data["memory_root"] = to_generic_string(mem_root);
     data["query"] = query;
     data["files_scanned"] = (Json::Int64)files.size();
@@ -1237,7 +1314,7 @@ agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, 
       }
       data["tiers"] = tiers;
     }
-    data["output"] = "memory_search mode=" + mode + " results=" + std::to_string((unsigned)results.size());
+    data["output"] = "memory_search mode=" + mode + " order=" + order + " results=" + std::to_string((unsigned)results.size());
     return write_envelope(out_result, true, "", data);
   }
 
@@ -1295,9 +1372,18 @@ agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, 
     }
   }
 
+  if (order != "ranked") {
+    apply_timeline_order(&results, order);
+    if (tiered) {
+      auto it = tier_results.find("daily");
+      if (it != tier_results.end()) apply_timeline_order(&it->second, order);
+    }
+  }
+
   Json::Value data(Json::objectValue);
   data["tool"] = "memory_search";
   data["mode"] = mode;
+  data["order"] = order;
   data["memory_root"] = to_generic_string(mem_root);
   data["query"] = query;
   data["files_scanned"] = (Json::Int64)files.size();
@@ -1312,7 +1398,7 @@ agent_status_t tool_memory_search(HostToolCtx* ctx, const char* arguments_json, 
     }
     data["tiers"] = tiers;
   }
-  data["output"] = "memory_search mode=" + mode + " results=" + std::to_string((unsigned)results.size());
+  data["output"] = "memory_search mode=" + mode + " order=" + order + " results=" + std::to_string((unsigned)results.size());
   return write_envelope(out_result, true, "", data);
 }
 

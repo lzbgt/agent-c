@@ -30,6 +30,7 @@ export type AgentUIRuntimeConfig = {
   memoryDailyDays?: string | number;
   memoryTotalCap?: string | number;
   memorySearchQuery?: string;
+  memorySearchOrder?: string;
   memorySearchUseIndex?: boolean | string;
   memorySearchCaseSensitive?: boolean | string;
   memorySearchFallbackToFiles?: boolean | string;
@@ -70,6 +71,7 @@ export type AgentUIDefaults = {
   memoryDailyDays: string;
   memoryTotalCap: string;
   memorySearchQuery: string;
+  memorySearchOrder: string;
   memorySearchUseIndex: boolean;
   memorySearchCaseSensitive: boolean;
   memorySearchFallbackToFiles: boolean;
@@ -116,6 +118,7 @@ const DEFAULTS: AgentUIDefaults = {
   memoryDailyDays: "2",
   memoryTotalCap: "12000",
   memorySearchQuery: "",
+  memorySearchOrder: "ranked",
   memorySearchUseIndex: true,
   memorySearchCaseSensitive: false,
   memorySearchFallbackToFiles: true,
@@ -276,6 +279,10 @@ export const getUiDefaults = (): AgentUIDefaults => {
     coerceString(cfg.memorySearchQuery) ??
     coerceString(envString("VITE_AGENTUI_MEMORY_SEARCH_QUERY")) ??
     out.memorySearchQuery;
+  out.memorySearchOrder =
+    coerceEnum(cfg.memorySearchOrder, ["ranked", "newest", "oldest"]) ??
+    coerceEnum(envString("VITE_AGENTUI_MEMORY_SEARCH_ORDER"), ["ranked", "newest", "oldest"]) ??
+    out.memorySearchOrder;
   out.memorySearchUseIndex =
     coerceBool(cfg.memorySearchUseIndex) ??
     coerceBool(envString("VITE_AGENTUI_MEMORY_SEARCH_USE_INDEX")) ??

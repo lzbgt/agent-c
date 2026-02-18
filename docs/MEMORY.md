@@ -35,6 +35,7 @@ Run request knobs (file mode + search mode share the same memory root):
 - `memory_daily_days` (clamped), `memory_total_cap` (clamped)
 - `memory_search_query` (defaults to prompt when omitted)
 - `memory_search_use_index`, `memory_search_case_sensitive`
+- `memory_search_order` (`ranked` | `newest` | `oldest`; default `ranked`)
 - `memory_search_max_results`, `memory_search_max_snippet_chars`, `memory_search_context_lines`
 - `memory_search_fallback_to_files` (if search yields no hits)
 
@@ -100,6 +101,10 @@ Tuning knobs (daemon config / `/api/v1/config/update`):
 
 - `tier`: `core` | `structured` | `session` | `daily` (or `other`)
 - `citation`: `${path}:${line}` (stable, human-readable pointer)
+
+Ordering:
+- `ranked` (default): preserves FTS5 relevance ordering (or scan order for substring mode).
+- `newest` / `oldest`: reorders **daily** results by date/line while leaving other tiers stable.
 
 ### 3-step retrieval (claude-mem style)
 
