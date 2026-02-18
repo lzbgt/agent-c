@@ -25,6 +25,7 @@ Returns a compact snapshot with:
 - DB table counts (`db.tables.*`)
 - job status counts (`jobs.by_status`)
 - workflow scheduler stats (`workflows.*`)
+- current provider selection (`active_provider`)
 
 Example:
 
@@ -35,6 +36,7 @@ Example:
   "version": "0.1",
   "now_unix_ms": 1739490000000,
   "uptime_ms": 123456,
+  "active_provider": "openai",
   "ready": true,
   "checks": { "db_open": true },
   "db": {

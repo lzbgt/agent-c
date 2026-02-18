@@ -137,6 +137,7 @@ void handle_diagnostics_endpoint(
   if (!daemon_require_auth(cfg, req, resp)) return;
 
   Json::Value root = base_diag(start_time);
+  root["active_provider"] = provider_from_base_url(cfg.base_url);
   const bool db_open = db_or_null && db_or_null->is_open();
   root["ready"] = db_open;
   Json::Value checks(Json::objectValue);
