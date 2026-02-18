@@ -165,6 +165,7 @@ sc.exe failure agentd reset= 86400 actions= restart/5000/restart/5000/restart/50
 #### Option B: PowerShell `New-Service`
 Run from an **elevated** PowerShell prompt:
 ```
+[Environment]::SetEnvironmentVariable("AGENTD_DOTENV_PATH", "C:\\ProgramData\\agentd\\agentd.env", "Machine")
 $exe = "C:\\Program Files\\agentd\\agentd.exe"
 $args = "--host 127.0.0.1 --port 8123 --auth-token REPLACE_WITH_RANDOM_TOKEN --state-dir `\"C:\\ProgramData\\agentd`\" --db-path `\"C:\\ProgramData\\agentd\\agentd.db`\""
 New-Service -Name "agentd" -BinaryPathName "`"$exe`" $args" -StartupType Automatic
