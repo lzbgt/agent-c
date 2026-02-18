@@ -119,6 +119,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     cli/src/openai_client.cpp
     cli/src/openai_provider.cpp
     cli/src/openai_stream_decoder.cpp
+    cli/src/openai_stream_adapter.cpp
     cli/src/openai_tool_provider.cpp
     cli/src/session_store.cpp
     cli/src/summary_compaction.cpp

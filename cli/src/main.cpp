@@ -4,7 +4,7 @@
 #include "file_persistor.h"
 #include "openai_client.h"
 #include "openai_provider.h"
-#include "openai_stream_decoder.h"
+#include "openai_stream_adapter.h"
 #include "default_system_prompt.h"
 #include "session_store.h"
 #include "summary_compaction.h"
@@ -1099,29 +1099,32 @@ int main(int argc, char** argv) {
 
           struct StreamCtx {
             std::ostream* out = nullptr;
-            std::string assistant;
-            std::string pending;
-            bool saw_delta = false;
+            OpenAIStreamCoreAdapter core;
           } sctx;
           sctx.out = &std::cout;
 
+          OpenAIStreamCoreConfig scfg{};
+          scfg.max_tool_calls_total = 0;
+          scfg.max_tool_call_args_chars = 0;
+          scfg.max_events_per_feed = 0;
+          scfg.delta_flush_bytes = 64;
+          scfg.step = 0;
+          scfg.epoch = (uint64_t)attempt;
+
+          auto on_delta = [](void* vctx, const char* delta, size_t delta_len, uint64_t step, uint64_t epoch) {
+            auto* s = static_cast<StreamCtx*>(vctx);
+            if (!s || !s->out || !delta || delta_len == 0) return;
+            (void)step;
+            (void)epoch;
+            (*s->out) << std::string(delta, delta_len) << std::flush;
+          };
+
+          openai_stream_core_init(&sctx.core, &scfg, on_delta, &sctx);
+
           auto on_chunk = [](void* vctx, const char* chunk_json, size_t chunk_len) {
             auto* s = static_cast<StreamCtx*>(vctx);
-            if (!s || !s->out || !chunk_json || chunk_len == 0) return;
-
-            OpenAIStreamChunk chunk;
-            if (!openai_stream_parse_chunk_json(chunk_json, chunk_len, &chunk)) return;
-            const std::string d = chunk.content_delta;
-            if (d.empty()) return;
-
-            s->assistant += d;
-            s->pending += d;
-            s->saw_delta = true;
-            // Avoid a flush on every single token-sized chunk.
-            if (s->pending.size() >= 64) {
-              (*s->out) << s->pending << std::flush;
-              s->pending.clear();
-            }
+            if (!s || !chunk_json || chunk_len == 0) return;
+            (void)openai_stream_core_feed_chunk(&s->core, chunk_json, chunk_len);
           };
 
           OpenAIStreamResult sr = openai_chat_completions_raw_stream(run_cfg, request_json, on_chunk, &sctx);
@@ -1143,11 +1146,8 @@ int main(int argc, char** argv) {
           }
 
           // Flush buffered stdout deltas.
-          if (!sctx.pending.empty()) {
-            std::cout << sctx.pending << std::flush;
-            sctx.pending.clear();
-          }
-          saw_stream_delta = saw_stream_delta || sctx.saw_delta;
+          openai_stream_core_flush(&sctx.core);
+          saw_stream_delta = saw_stream_delta || (sctx.core.saw_delta != 0);
 
           if (sr.http_status < 200 || sr.http_status >= 300) {
             // Retry on context-too-long rejections by compacting more aggressively (session rotation).
@@ -1160,15 +1160,19 @@ int main(int argc, char** argv) {
                           << " max_chars_after=" << next << "\n";
               }
               attempt_max_chars = next;
+              openai_stream_core_free(&sctx.core);
               continue;
             }
             ok = false;
             err = (!sr.error_message.empty() ? sr.error_message : openai_format_http_error(sr.http_status, sr.response_body));
+            openai_stream_core_free(&sctx.core);
             break;
           }
 
           // Provider may have ignored streaming; fall back to extracting assistant content from a normal JSON completion.
-          assistant_text = sctx.assistant;
+          assistant_text = (sctx.core.assistant.data && sctx.core.assistant.len)
+            ? std::string(sctx.core.assistant.data, sctx.core.assistant.len)
+            : std::string();
           if (assistant_text.empty() && !sr.response_body.empty() && sr.response_body.size() < (4u * 1024u * 1024u) &&
               sr.response_body[0] == '{') {
             Json::CharReaderBuilder rb;
@@ -1193,10 +1197,12 @@ int main(int argc, char** argv) {
           if (assistant_text.empty()) {
             ok = false;
             err = "streamed completion returned no assistant content";
+            openai_stream_core_free(&sctx.core);
             break;
           }
 
           agent_session_add_message(session, AGENT_ROLE_ASSISTANT, assistant_text.c_str());
+          openai_stream_core_free(&sctx.core);
           ok = true;
           break;
         }

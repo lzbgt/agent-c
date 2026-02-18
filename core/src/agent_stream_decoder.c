@@ -548,3 +548,58 @@ agent_status_t agent_stream_decoder_feed(
   agent_free(events);
   return st;
 }
+
+agent_status_t agent_stream_decoder_copy_tool_calls(
+  const agent_stream_decoder_t* dec,
+  agent_tool_call_t** out_calls,
+  size_t* out_count
+) {
+  if (!dec || !out_calls || !out_count) return AGENT_ERR_INVALID_ARGUMENT;
+  *out_calls = NULL;
+  *out_count = 0;
+
+  size_t count = 0;
+  for (size_t i = 0; i < dec->tool_call_count; i++) {
+    const agent_tool_call_t* call = &dec->tool_calls[i];
+    if (call->name.data && call->name.len) count++;
+  }
+  if (count == 0) return AGENT_OK;
+
+  agent_tool_call_t* out = (agent_tool_call_t*)agent_malloc(count * sizeof(agent_tool_call_t));
+  if (!out) return AGENT_ERR_OOM;
+  memset(out, 0, count * sizeof(agent_tool_call_t));
+
+  size_t idx = 0;
+  agent_status_t st = AGENT_OK;
+  for (size_t i = 0; i < dec->tool_call_count; i++) {
+    const agent_tool_call_t* call = &dec->tool_calls[i];
+    if (!call->name.data || call->name.len == 0) continue;
+    if (call->id.data && call->id.len) {
+      st = agent_string_set_copy(&out[idx].id, call->id.data, call->id.len);
+      if (st != AGENT_OK) break;
+    }
+    st = agent_string_set_copy(&out[idx].name, call->name.data, call->name.len);
+    if (st != AGENT_OK) break;
+    if (call->arguments_json.data && call->arguments_json.len) {
+      st = agent_string_set_copy(&out[idx].arguments_json, call->arguments_json.data, call->arguments_json.len);
+    } else {
+      st = agent_string_set_copy(&out[idx].arguments_json, "", 0);
+    }
+    if (st != AGENT_OK) break;
+    idx++;
+  }
+
+  if (idx != count) {
+    for (size_t i = 0; i < count; i++) {
+      agent_string_free(&out[i].id);
+      agent_string_free(&out[i].name);
+      agent_string_free(&out[i].arguments_json);
+    }
+    agent_free(out);
+    return st == AGENT_OK ? AGENT_ERR_OOM : st;
+  }
+
+  *out_calls = out;
+  *out_count = count;
+  return AGENT_OK;
+}

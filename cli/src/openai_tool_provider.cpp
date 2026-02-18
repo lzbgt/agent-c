@@ -1,7 +1,7 @@
 #include "openai_tool_provider.h"
 
 #include "agent/agent.h"
-#include "openai_stream_decoder.h"
+#include "openai_stream_adapter.h"
 
 #if defined(AGENT_HAVE_JSONCPP)
 #include <json/json.h>
@@ -265,6 +265,16 @@ static bool try_extract_usage_tokens(const Json::Value& root, Json::Value* out_u
   return true;
 }
 
+static void free_tool_call_array(agent_tool_call_t* calls, size_t count) {
+  if (!calls) return;
+  for (size_t i = 0; i < count; i++) {
+    agent_string_free(&calls[i].id);
+    agent_string_free(&calls[i].name);
+    agent_string_free(&calls[i].arguments_json);
+  }
+  agent_free(calls);
+}
+
 static bool message_has_tool_calls(const Json::Value& message) {
   const auto& tc = message["tool_calls"];
   if (tc.isArray() && !tc.empty()) return true;
@@ -455,73 +465,43 @@ static agent_status_t openai_tool_provider_generate(
   if (use_stream_assistant) {
     struct StreamAccum {
       OpenAIToolProviderCtx* ctx = nullptr;
-      uint64_t step = 0;
-      uint64_t epoch = 0;
-
-      std::string assistant;
-      std::string pending_delta;
-      OpenAIToolCallStreamAccumulator tool_calls;
-      std::string finish_reason;
-      Json::Value usage;
+      OpenAIStreamCoreAdapter core;
     } acc;
 
     acc.ctx = ctx;
-    acc.step = req->step;
-    acc.epoch = req->epoch;
-    acc.usage = Json::Value(Json::nullValue);
+    OpenAIStreamCoreConfig scfg{};
+    scfg.max_tool_calls_total = 0;
+    scfg.max_tool_call_args_chars = 0;
+    scfg.max_events_per_feed = 0;
+    scfg.delta_flush_bytes = 128;
+    scfg.step = req->step;
+    scfg.epoch = req->epoch;
+
+    auto on_delta = [](void* vctx, const char* delta, size_t delta_len, uint64_t step, uint64_t epoch) {
+      auto* a = static_cast<StreamAccum*>(vctx);
+      if (!a || !a->ctx || !delta || delta_len == 0) return;
+      provider_emit_delta(a->ctx, step, epoch, std::string(delta, delta_len));
+    };
+
+    openai_stream_core_init(&acc.core, &scfg, on_delta, &acc);
 
     auto on_chunk = [](void* vctx, const char* chunk_json, size_t chunk_len) {
       auto* a = static_cast<StreamAccum*>(vctx);
-      if (!a || !a->ctx || !chunk_json || chunk_len == 0) return;
-
-      // Usage may be present in the final chunk when `stream_options.include_usage=true`.
-      // Capture it even though the delta decoder ignores it.
-      {
-        Json::CharReaderBuilder rb;
-        std::string errs;
-        std::istringstream iss(std::string(chunk_json, chunk_len));
-        Json::Value root;
-        if (Json::parseFromStream(rb, iss, &root, &errs) && root.isObject()) {
-          Json::Value usage(Json::nullValue);
-          if (try_extract_usage_tokens(root, &usage) && usage.isObject()) {
-            a->usage = usage;
-          }
-        }
-      }
-
-      OpenAIStreamChunk chunk;
-      if (!openai_stream_parse_chunk_json(chunk_json, chunk_len, &chunk)) {
-        return;
-      }
-      if (!chunk.finish_reason.empty()) a->finish_reason = chunk.finish_reason;
-
-      if (!chunk.content_delta.empty()) {
-        a->assistant += chunk.content_delta;
-        a->pending_delta += chunk.content_delta;
-        // Coalesce small deltas to avoid flooding event logs/UIs.
-        if (a->pending_delta.size() >= 128) {
-          provider_emit_delta(a->ctx, a->step, a->epoch, a->pending_delta);
-          a->pending_delta.clear();
-        }
-      }
-
-      if (!chunk.tool_call_deltas.empty()) {
-        a->tool_calls.apply(chunk.tool_call_deltas);
-      }
+      if (!a || !chunk_json || chunk_len == 0) return;
+      (void)openai_stream_core_feed_chunk(&a->core, chunk_json, chunk_len);
     };
 
     const auto stream_fn = ctx->chat_stream_fn ? ctx->chat_stream_fn : openai_chat_completions_raw_stream;
     OpenAIStreamResult sr = stream_fn(ctx->cfg, request_json, on_chunk, &acc, ctx->max_capture_bytes);
     if (want_stream_usage && (sr.http_status < 200 || sr.http_status >= 300) &&
-        acc.assistant.empty()) {
+        (!acc.core.saw_delta && acc.core.dec.tool_call_count == 0)) {
       // Best-effort compatibility: some OpenAI-compatible providers reject stream_options.
       // If we didn't decode any deltas/tool_calls, retry once without stream_options.
       bool decoded_any = false;
-      for (const auto& c : acc.tool_calls.calls()) {
-        if (!c.name.empty()) {
-          decoded_any = true;
-          break;
-        }
+      if (acc.core.saw_delta) decoded_any = true;
+      for (size_t i = 0; !decoded_any && i < acc.core.dec.tool_call_count; i++) {
+        const auto& c = acc.core.dec.tool_calls[i];
+        if (c.name.data && c.name.len) decoded_any = true;
       }
       if (!decoded_any) {
         const std::string msg =
@@ -533,15 +513,12 @@ static agent_status_t openai_tool_provider_generate(
           root2.removeMember("stream_options");
           const std::string req2 = json_stringify(root2);
           ctx->last_request_json = req2;
-          acc.usage = Json::Value(Json::nullValue);
-          acc.assistant.clear();
-          acc.pending_delta.clear();
-          acc.tool_calls.reset();
-          acc.finish_reason.clear();
+          openai_stream_core_reset(&acc.core);
           sr = stream_fn(ctx->cfg, req2, on_chunk, &acc, ctx->max_capture_bytes);
         }
       }
     }
+    openai_stream_core_flush(&acc.core);
     ctx->last_http_status = sr.http_status;
     ctx->last_response_body = sr.response_body;
 
@@ -561,56 +538,73 @@ static agent_status_t openai_tool_provider_generate(
     }
 
     // Flush any pending delta.
-    if (!acc.pending_delta.empty()) {
-      provider_emit_delta(ctx, req->step, req->epoch, acc.pending_delta);
-      acc.pending_delta.clear();
-    }
-
     if (sr.http_status < 200 || sr.http_status >= 300) {
       if (openai_is_context_too_long_error(sr.http_status, sr.response_body)) {
         const std::string msg = (!sr.error_message.empty() ? sr.error_message : openai_format_http_error(sr.http_status, sr.response_body));
         (void)set_error(out_resp, msg);
+        openai_stream_core_free(&acc.core);
         return AGENT_ERR_CONTEXT_TOO_LONG;
       }
       const std::string msg = (!sr.error_message.empty() ? sr.error_message : openai_format_http_error(sr.http_status, sr.response_body));
       (void)set_error(out_resp, msg);
+      openai_stream_core_free(&acc.core);
       return AGENT_ERR_INTERNAL;
     }
 
     // Some providers ignore `stream: true` and return a normal JSON response.
     // If we didn't decode any deltas/tool_calls, fall back to parsing the raw body.
-    bool decoded_any = (!acc.assistant.empty());
-    for (const auto& c : acc.tool_calls.calls()) {
-      if (!c.name.empty()) {
-        decoded_any = true;
-        break;
-      }
+    bool decoded_any = acc.core.saw_delta != 0;
+    for (size_t i = 0; !decoded_any && i < acc.core.dec.tool_call_count; i++) {
+      const auto& c = acc.core.dec.tool_calls[i];
+      if (c.name.data && c.name.len) decoded_any = true;
     }
     if (!decoded_any && !sr.saw_done && !sr.response_body.empty() && sr.response_body.size() < (4u * 1024u * 1024u) &&
         sr.response_body[0] == '{') {
       if (!parse_json_object(sr.response_body, &parsed)) {
+        openai_stream_core_free(&acc.core);
         (void)set_error(out_resp, "failed to parse JSON response (stream fallback)");
         return AGENT_ERR_INTERNAL;
       }
     } else {
       parsed_is_stream = true;
-      assistant_content = acc.assistant;
-      const auto& tool_calls = acc.tool_calls.calls();
-      for (size_t i = 0; i < tool_calls.size(); i++) {
-        const auto& c = tool_calls[i];
-        if (c.name.empty()) continue;
-        const std::string id = c.id.empty() ? (std::string("call_") + std::to_string(req->step) + "_" + std::to_string(i)) : c.id;
-        calls.push_back(ParsedToolCall{id, c.name, c.arguments.empty() ? "{}" : c.arguments});
+      if (acc.core.assistant.data && acc.core.assistant.len) {
+        assistant_content.assign(acc.core.assistant.data, acc.core.assistant.len);
       }
+      agent_tool_call_t* stream_calls = NULL;
+      size_t stream_call_count = 0;
+      agent_status_t cst = agent_stream_decoder_copy_tool_calls(&acc.core.dec, &stream_calls, &stream_call_count);
+      if (cst == AGENT_OK && stream_calls) {
+        size_t idx = 0;
+        for (size_t i = 0; i < stream_call_count; i++) {
+          const auto& c = stream_calls[i];
+          if (!c.name.data || c.name.len == 0) continue;
+          const std::string name(c.name.data, c.name.len);
+          const std::string args = (c.arguments_json.data && c.arguments_json.len)
+            ? std::string(c.arguments_json.data, c.arguments_json.len)
+            : std::string("{}");
+          const std::string id = (c.id.data && c.id.len)
+            ? std::string(c.id.data, c.id.len)
+            : (std::string("call_") + std::to_string(req->step) + "_" + std::to_string(idx));
+          calls.push_back(ParsedToolCall{id, name, args});
+          idx++;
+        }
+      }
+      free_tool_call_array(stream_calls, stream_call_count);
     }
 
-    if (parsed_is_stream && acc.usage.isObject()) {
+    if (parsed_is_stream && acc.core.has_usage) {
       Json::Value d(Json::objectValue);
       d["step"] = (Json::UInt64)req->step;
       d["epoch"] = (Json::UInt64)req->epoch;
-      d["usage"] = acc.usage;
+      Json::Value usage(Json::objectValue);
+      usage["prompt_tokens"] = (Json::Int64)acc.core.prompt_tokens;
+      usage["completion_tokens"] = (Json::Int64)acc.core.completion_tokens;
+      usage["total_tokens"] = (Json::Int64)acc.core.total_tokens;
+      d["usage"] = usage;
       provider_emit_event(ctx, "llm_usage", d);
     }
+
+    openai_stream_core_free(&acc.core);
   } else {
     const auto raw_fn = ctx->chat_raw_fn ? ctx->chat_raw_fn : openai_chat_completions_raw;
     OpenAIRawResult raw = raw_fn(ctx->cfg, request_json);

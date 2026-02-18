@@ -136,6 +136,12 @@ agent_status_t agent_stream_decoder_feed(
 
 void agent_stream_decoder_reset(agent_stream_decoder_t* dec);
 void agent_stream_decoder_free(agent_stream_decoder_t* dec);
+
+agent_status_t agent_stream_decoder_copy_tool_calls(
+  const agent_stream_decoder_t* dec,
+  agent_tool_call_t** out_calls,
+  size_t* out_count
+);
 ```
 
 The decoder:
@@ -164,4 +170,4 @@ The decoder:
 1) Extract the existing OpenAI stream decoder into a host adapter that fills
    `agent_stream_chunk_t`.
 2) Done: core decoder + unit tests using synthetic SSE inputs.
-3) Wire CLI/daemon streaming to use the core decoder, preserving current output.
+3) Done: CLI/daemon streaming uses the core decoder (adapter bridge), preserving current output.

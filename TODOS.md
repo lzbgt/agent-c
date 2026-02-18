@@ -104,7 +104,7 @@ with **multimodal transcript hardening** (tests + schema alignment) next now tha
   - [ ] Pin known-good OpenRouter streaming models (assistant + tool-call) to avoid silent no-delta failures.
   - [x] OpenRouter streaming probe script to discover stable models.
   - [x] Draft core streaming interface spec (`docs/spec/streaming/core_stream_v1.md`).
-  - [ ] Wire CLI/daemon streaming through core stream decoder (replace duplicated host logic).
+  - [x] Wire CLI/daemon streaming through core stream decoder (replace duplicated host logic).
 - [x] Memory architecture: dynamic retention policy (decay/salience/recaps) informed by claude-mem research + docs.
   - [x] Memory retention policy enforcement (daily logs + checkpoints) + endpoint + background engine.
   - [x] Structured memory deprecate pass (policy-driven; bounded) with broker fan-out.

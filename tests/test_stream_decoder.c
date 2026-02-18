@@ -184,6 +184,21 @@ static void test_stream_decoder_happy_path(void) {
   assert(strcmp(cap.types[6], "end") == 0);
   assert(strcmp(cap.payloads[6].data, "{\"finish_reason\":\"stop\"}") == 0);
 
+  agent_tool_call_t* calls = NULL;
+  size_t call_count = 0;
+  assert(agent_stream_decoder_copy_tool_calls(&dec, &calls, &call_count) == AGENT_OK);
+  assert(call_count == 1);
+  assert(calls != NULL);
+  assert(calls[0].name.data && strcmp(calls[0].name.data, "weather") == 0);
+  assert(calls[0].id.data && strcmp(calls[0].id.data, "call_1") == 0);
+  assert(calls[0].arguments_json.data && strcmp(calls[0].arguments_json.data, "{\"city\":\"LA\"}") == 0);
+  for (size_t i = 0; i < call_count; i++) {
+    agent_string_free(&calls[i].id);
+    agent_string_free(&calls[i].name);
+    agent_string_free(&calls[i].arguments_json);
+  }
+  agent_free(calls);
+
   for (size_t i = 0; i < cap.count; i++) {
     agent_string_free(&cap.payloads[i]);
   }

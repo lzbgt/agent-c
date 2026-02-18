@@ -26,7 +26,7 @@
 
 #include "base64.h"
 #include "openai_client.h"
-#include "openai_stream_decoder.h"
+#include "openai_stream_adapter.h"
 
 #include "agent/agent.h"
 #include "agent/runner.h"
@@ -1186,40 +1186,43 @@ static Json::Value run_request_to_json_impl(
         }
 
         struct StreamCtx {
-          std::string assistant;
-          std::string pending_delta;
           bool verbose = false;
           int chunks = 0;
           uint64_t step = 0;
           uint64_t epoch = 0;
           decltype(push_ev)* push = nullptr;
+          OpenAIStreamCoreAdapter core;
         } sctx;
         sctx.verbose = verbose;
         sctx.push = &push_ev;
         sctx.step = 0;
         sctx.epoch = (uint64_t)attempt;
 
+        OpenAIStreamCoreConfig scfg{};
+        scfg.max_tool_calls_total = 0;
+        scfg.max_tool_call_args_chars = 0;
+        scfg.max_events_per_feed = 0;
+        scfg.delta_flush_bytes = 128;
+        scfg.step = sctx.step;
+        scfg.epoch = sctx.epoch;
+
+        auto on_delta = [](void* vctx, const char* delta, size_t delta_len, uint64_t step, uint64_t epoch) {
+          auto* s = static_cast<StreamCtx*>(vctx);
+          if (!s || !s->push || !delta || delta_len == 0) return;
+          Json::Value d(Json::objectValue);
+          d["step"] = (Json::UInt64)step;
+          d["epoch"] = (Json::UInt64)epoch;
+          d["delta"] = std::string(delta, delta_len);
+          (*s->push)("assistant_delta", d);
+        };
+
+        openai_stream_core_init(&sctx.core, &scfg, on_delta, &sctx);
+
         auto on_chunk = [](void* vctx, const char* chunk_json, size_t chunk_len) {
           auto* s = static_cast<StreamCtx*>(vctx);
-          if (!s || !chunk_json || chunk_len == 0 || !s->push) return;
-
+          if (!s || !chunk_json || chunk_len == 0) return;
           s->chunks++;
-          OpenAIStreamChunk chunk;
-          if (!openai_stream_parse_chunk_json(chunk_json, chunk_len, &chunk)) return;
-          const std::string dstr = chunk.content_delta;
-          if (dstr.empty()) return;
-          s->assistant += dstr;
-          s->pending_delta += dstr;
-
-          // Coalesce small deltas to avoid flooding the daemon/UI with thousands of events.
-          if (s->pending_delta.size() >= 128) {
-            Json::Value d(Json::objectValue);
-            d["step"] = (Json::UInt64)s->step;
-            d["epoch"] = (Json::UInt64)s->epoch;
-            d["delta"] = s->pending_delta;
-            (*s->push)("assistant_delta", d);
-            s->pending_delta.clear();
-          }
+          (void)openai_stream_core_feed_chunk(&s->core, chunk_json, chunk_len);
         };
 
         OpenAIStreamResult sr = openai_chat_completions_raw_stream(run_cfg, request_json, on_chunk, &sctx, max_capture_bytes);
@@ -1244,39 +1247,33 @@ static Json::Value run_request_to_json_impl(
           d["stream"] = true;
           push_ev("llm_response", d);
         }
-        {
-          Json::Value usage(Json::nullValue);
-          if (llm_try_extract_usage_tokens_from_openai_response_body(sr.response_body, &usage) && usage.isObject()) {
-            Json::Value d(Json::objectValue);
-            d["attempt"] = attempt;
-            d["usage"] = usage;
-            push_ev("llm_usage", d);
-          }
+        if (sctx.core.has_usage) {
+          Json::Value usage(Json::objectValue);
+          usage["prompt_tokens"] = (Json::Int64)sctx.core.prompt_tokens;
+          usage["completion_tokens"] = (Json::Int64)sctx.core.completion_tokens;
+          usage["total_tokens"] = (Json::Int64)sctx.core.total_tokens;
+          Json::Value d(Json::objectValue);
+          d["attempt"] = attempt;
+          d["usage"] = usage;
+          push_ev("llm_usage", d);
         }
 
         // Flush any pending deltas.
-        if (!sctx.pending_delta.empty()) {
-          Json::Value d(Json::objectValue);
-          d["step"] = (Json::UInt64)sctx.step;
-          d["epoch"] = (Json::UInt64)sctx.epoch;
-          d["delta"] = sctx.pending_delta;
-          push_ev("assistant_delta", d);
-          sctx.pending_delta.clear();
-        }
+        openai_stream_core_flush(&sctx.core);
 
         // Provider may have ignored streaming and returned a normal JSON completion.
         if (sr.http_status < 200 || sr.http_status >= 300) {
           ok = false;
           err = !sr.error_message.empty() ? sr.error_message : openai_format_http_error(sr.http_status, sr.response_body);
         } else {
-          const std::string final_text = sctx.assistant.empty()
+          const std::string final_text = (!sctx.core.assistant.data || sctx.core.assistant.len == 0)
             ? json_try_extract_assistant_content_from_completion([&]() -> Json::Value {
                 Json::Value v;
                 std::string pe;
                 if (!json_parse_any(sr.response_body, &v, &pe)) return Json::Value(Json::nullValue);
                 return v;
               }())
-            : sctx.assistant;
+            : std::string(sctx.core.assistant.data, sctx.core.assistant.len);
           if (final_text.empty()) {
             ok = false;
             err = "streamed completion returned no assistant content";
@@ -1288,13 +1285,16 @@ static Json::Value run_request_to_json_impl(
 
         if (ok) {
           agent_session_add_message(session, AGENT_ROLE_ASSISTANT, assistant_text.c_str());
+          openai_stream_core_free(&sctx.core);
           break;
         }
 
         if (openai_is_context_too_long_error(sr.http_status, sr.response_body)) {
           attempt_max_chars = std::max<size_t>(256, attempt_max_chars / 2);
+          openai_stream_core_free(&sctx.core);
           continue;
         }
+        openai_stream_core_free(&sctx.core);
         break;
       }
     } else {

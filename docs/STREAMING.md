@@ -53,6 +53,9 @@ Shared decoder (host library, used by both CLI + daemon):
   - `OpenAIStreamChunk`: decoded fields from a single streamed JSON chunk
   - `openai_stream_parse_chunk_json(...)`: parse `data: { ... }` JSON payload
   - `OpenAIToolCallStreamAccumulator`: reconstruct complete tool calls from `delta.tool_calls` fragments
+- `cli/src/openai_stream_adapter.h`
+  - `OpenAIStreamCoreAdapter`: bridges OpenAI stream JSON chunks into the core stream decoder
+  - CLI/daemon/tools now share the same core delta assembly + usage handling
 
 Core streaming interface (design draft):
 

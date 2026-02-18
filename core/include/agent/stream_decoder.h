@@ -90,6 +90,12 @@ agent_status_t agent_stream_decoder_feed(
   size_t len
 );
 
+agent_status_t agent_stream_decoder_copy_tool_calls(
+  const agent_stream_decoder_t* dec,
+  agent_tool_call_t** out_calls,
+  size_t* out_count
+);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif
