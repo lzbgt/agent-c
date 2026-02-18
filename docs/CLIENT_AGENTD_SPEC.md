@@ -112,6 +112,7 @@ Notes:
 - `yolo` no longer controls filesystem path restrictions. It only affects which *tools* are exposed (notably process execution tools like `shell_exec` / `proc_exec`).
 - Requests cannot exceed the daemon’s `--tools` ceiling; exceeding it returns HTTP 400.
 - The response includes `daemon_tools` and (when provided) `requested_tools` for clarity.
+- Requires auth when `--auth-token` is enabled.
 - Session folder root:
   - The daemon uses a single base directory for state + session folders. You can set it explicitly with env `AGENT_WD` (operator-friendly) or `AGENTD_STATE_DIR` / `AGENTD_SESSIONS_ROOT`.
   - If not set, it defaults to the daemon process **startup working directory**.

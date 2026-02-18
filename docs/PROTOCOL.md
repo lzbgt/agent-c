@@ -217,6 +217,7 @@ Notes:
   such as `ui_wait_event` (which depends on a per-session client event log).
 - Requests cannot exceed the daemon’s `--tools` ceiling; exceeding it returns HTTP 400.
 - The response includes `daemon_tools` and (when provided) `requested_tools` for clarity.
+- Requires auth when `--auth-token` is enabled (same as other control-plane endpoints).
 
 ## UI Actions (agent → UI)
 
