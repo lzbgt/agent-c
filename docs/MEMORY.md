@@ -42,6 +42,7 @@ Search mode injects a system message that starts with `DURABLE_MEMORY_SEARCH_CON
 - total durable memory bytes + approximate tokens,
 - the latest recap timestamp/path (if available),
 - a recap hint line (if recaps exist),
+- the latest assistant timestamp + assistant hint (if available),
 - citations in the form `[tier path:line]`.
 
 This makes search results cost-aware and keeps the model aligned with the latest recap summary.
@@ -57,6 +58,8 @@ DURABLE_MEMORY_INDEX
 - Total memory bytes: 25521 (~tokens=6380)
 - Latest recap: 2026-02-17T12:10:44Z (recaps/recap_2026-02-17T12-10-44Z.json)
 - Recap hint: Ongoing goals + most recent decisions...
+- Latest assistant: 2026-02-18T19:23:11Z
+- Assistant hint: Confirmed deployment changes and pending follow-ups...
 
 [structured STRUCTURED.md] lines=42 bytes=9101 ~tokens=2276
 [core MEMORY.md] lines=18 bytes=2100 ~tokens=525

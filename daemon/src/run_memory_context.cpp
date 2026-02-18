@@ -10,6 +10,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -17,6 +18,10 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+
+#if defined(AGENT_HAVE_SQLITE3)
+#include <sqlite3.h>
+#endif
 
 namespace agentd {
 namespace {
@@ -105,6 +110,22 @@ static std::string truncate_ascii(std::string s, size_t max_chars) {
   return s;
 }
 
+static std::string format_utc_from_unix_ms(int64_t unix_ms) {
+  if (unix_ms <= 0) return "";
+  const std::time_t t = (std::time_t)(unix_ms / 1000);
+  std::tm tm{};
+#if defined(_WIN32)
+  gmtime_s(&tm, &t);
+#else
+  gmtime_r(&t, &tm);
+#endif
+  char buf[32];
+  std::snprintf(buf, sizeof(buf), "%04d-%02d-%02dT%02d:%02d:%02dZ",
+                tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
+                tm.tm_hour, tm.tm_min, tm.tm_sec);
+  return std::string(buf);
+}
+
 static bool read_latest_recap_summary(
   const std::filesystem::path& mem_root,
   std::string* out_summary,
@@ -158,6 +179,59 @@ static bool read_latest_recap_summary(
   *out_ts = best.ts_utc;
   *out_path = best.path_rel;
   return true;
+}
+
+static bool read_latest_assistant_hint(
+  const std::filesystem::path& state_root,
+  const std::string& session_id,
+  std::string* out_hint,
+  std::string* out_ts
+) {
+  if (out_hint) out_hint->clear();
+  if (out_ts) out_ts->clear();
+  if (!out_hint || !out_ts) return false;
+  if (session_id.empty()) return false;
+#if !defined(AGENT_HAVE_SQLITE3)
+  (void)state_root;
+  return false;
+#else
+  const std::filesystem::path db_path = state_root / "agentd.db";
+  std::error_code ec;
+  if (!std::filesystem::exists(db_path, ec) || !std::filesystem::is_regular_file(db_path, ec)) return false;
+
+  sqlite3* db = nullptr;
+  const int flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX;
+  if (sqlite3_open_v2(db_path.string().c_str(), &db, flags, nullptr) != SQLITE_OK) {
+    if (db) sqlite3_close(db);
+    return false;
+  }
+
+  sqlite3_stmt* st = nullptr;
+  const char* sql =
+    "SELECT content, created_unix_ms FROM messages "
+    "WHERE session_id=? AND role='assistant' ORDER BY idx DESC LIMIT 8;";
+  if (sqlite3_prepare_v2(db, sql, -1, &st, nullptr) != SQLITE_OK) {
+    sqlite3_close(db);
+    return false;
+  }
+
+  (void)sqlite3_bind_text(st, 1, session_id.c_str(), (int)session_id.size(), SQLITE_TRANSIENT);
+  bool found = false;
+  while (sqlite3_step(st) == SQLITE_ROW) {
+    const unsigned char* txt = sqlite3_column_text(st, 0);
+    const int64_t created_ms = sqlite3_column_int64(st, 1);
+    std::string content = txt ? (const char*)txt : "";
+    content = trim_ascii(content);
+    if (content.empty()) continue;
+    *out_hint = content;
+    *out_ts = format_utc_from_unix_ms(created_ms);
+    found = true;
+    break;
+  }
+  sqlite3_finalize(st);
+  sqlite3_close(db);
+  return found;
+#endif
 }
 
 struct MemorySearchCandidate {
@@ -367,12 +441,22 @@ static bool build_memory_index_context_text(
   std::string recap_ts;
   std::string recap_path;
   const bool have_recap = read_latest_recap_summary(mem_root, &recap_summary, &recap_ts, &recap_path);
+  std::string assistant_hint;
+  std::string assistant_ts;
+  const bool have_assistant = read_latest_assistant_hint(mem_root.parent_path(), session_id, &assistant_hint, &assistant_ts);
   if (have_recap) {
     for (char& c : recap_summary) {
       if (c == '\n' || c == '\r' || c == '\t') c = ' ';
     }
     recap_summary = trim_ascii(recap_summary);
     recap_summary = truncate_ascii(recap_summary, 240);
+  }
+  if (have_assistant) {
+    for (char& c : assistant_hint) {
+      if (c == '\n' || c == '\r' || c == '\t') c = ' ';
+    }
+    assistant_hint = trim_ascii(assistant_hint);
+    assistant_hint = truncate_ascii(assistant_hint, 240);
   }
 
   for (const auto& r : rows) {
@@ -394,6 +478,16 @@ static bool build_memory_index_context_text(
     }
   } else {
     oss << "- Recap hint: none (use memory_recaps to generate)\n";
+  }
+  if (have_assistant) {
+    if (!assistant_ts.empty()) {
+      oss << "- Latest assistant: " << assistant_ts << "\n";
+    }
+    if (!assistant_hint.empty()) {
+      oss << "- Assistant hint: " << assistant_hint << "\n";
+    }
+  } else {
+    oss << "- Assistant hint: none (no assistant message)\n";
   }
 
   for (const auto& r : rows) {
@@ -662,12 +756,22 @@ static bool build_memory_search_context_text(
   std::string recap_ts;
   std::string recap_path;
   const bool have_recap = read_latest_recap_summary(mem_root, &recap_summary, &recap_ts, &recap_path);
+  std::string assistant_hint;
+  std::string assistant_ts;
+  const bool have_assistant = read_latest_assistant_hint(mem_root.parent_path(), session_id, &assistant_hint, &assistant_ts);
   if (have_recap) {
     for (char& c : recap_summary) {
       if (c == '\n' || c == '\r' || c == '\t') c = ' ';
     }
     recap_summary = trim_ascii(recap_summary);
     recap_summary = truncate_ascii(recap_summary, 240);
+  }
+  if (have_assistant) {
+    for (char& c : assistant_hint) {
+      if (c == '\n' || c == '\r' || c == '\t') c = ' ';
+    }
+    assistant_hint = trim_ascii(assistant_hint);
+    assistant_hint = truncate_ascii(assistant_hint, 240);
   }
 
   std::ostringstream oss;
@@ -679,6 +783,13 @@ static bool build_memory_search_context_text(
   } else {
     oss << "- Recap hint: none (use memory_recaps to generate)\n";
   }
+  if (have_assistant) {
+    if (!assistant_ts.empty()) {
+      oss << "- Latest assistant: " << assistant_ts << "\n";
+    }
+  } else {
+    oss << "- Assistant hint: none (no assistant message)\n";
+  }
   oss
     << "- Query: " << query << "\n"
     << "- Mode: " << mode << "\n"
@@ -687,6 +798,9 @@ static bool build_memory_search_context_text(
     << "- Use memory_get/memory_search for deeper inspection, or memory_write/memory_put to update.\n";
   if (have_recap && !recap_summary.empty()) {
     oss << "- Recap hint: " << recap_summary << "\n";
+  }
+  if (have_assistant && !assistant_hint.empty()) {
+    oss << "- Assistant hint: " << assistant_hint << "\n";
   }
 
   for (const auto& r : results) {

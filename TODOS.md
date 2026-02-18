@@ -112,7 +112,7 @@ with **tool plugins** and **audio streaming** following once the UX surfaces are
   - [x] Memory recaps: LLM summaries to `memory/recaps/` + list/generate APIs.
 - [ ] Memory UX alignment (claude-mem): optional context header + last summary/assistant-message hints + timeline ordering toggle.
   - [x] Index/search headers include token economics + recap hint (latest recap summary).
-  - [ ] Add assistant-message hint (last assistant summary or salient response) in context headers.
+  - [x] Add assistant-message hint (last assistant summary or salient response) in context headers.
   - [ ] Add timeline ordering toggle for memory results (newest-first vs oldest-first).
 - [ ] Tool plugins: sandbox/isolation, Windows loader, and embedded/MCU-compatible plugin path.
 - [ ] Audio streaming: Opus/WebRTC voice pipeline + broker relay + UI voice session controls.
