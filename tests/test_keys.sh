@@ -20,29 +20,14 @@ set -euo pipefail
 #
 # We intentionally do NOT read keys from tracked docs like project.md.
 
+AGENT_TEST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=tools/lib/agent_env.sh
+source "${AGENT_TEST_ROOT}/tools/lib/agent_env.sh"
+
 agent_test_project_root() {
   local script_dir
   script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
   (cd "${script_dir}/.." && pwd)
-}
-
-agent_test_home_dir() {
-  if [[ -n "${HOME:-}" ]]; then
-    echo "${HOME}"
-    return 0
-  fi
-  if command -v python3 >/dev/null 2>&1; then
-    python3 - <<'PY'
-import os
-import pwd
-try:
-    print(pwd.getpwuid(os.getuid()).pw_dir)
-except Exception:
-    pass
-PY
-    return 0
-  fi
-  return 1
 }
 
 agent_test_get_key_from_file() {
@@ -146,7 +131,7 @@ agent_test_get_key() {
   local fallback="${root}/project.local.md"
   local home_env=""
   local home_dir=""
-  home_dir="$(agent_test_home_dir || true)"
+  home_dir="$(agent_env_home_dir || true)"
   if [[ -n "${home_dir}" ]]; then
     home_env="${home_dir}/.env"
   fi
