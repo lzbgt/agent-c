@@ -2,6 +2,7 @@
 
 #include "memory_index.h"
 #include "memory_salience.h"
+#include "json_util.h"
 #include "string_util.h"
 
 #include <algorithm>
@@ -94,6 +95,69 @@ static std::string trim_ascii(const std::string& s) {
 
 static std::string to_generic_string(const std::filesystem::path& p) {
   return p.generic_string();
+}
+
+static std::string truncate_ascii(std::string s, size_t max_chars) {
+  if (s.size() <= max_chars) return s;
+  if (max_chars < 3) return s.substr(0, max_chars);
+  s.resize(max_chars - 3);
+  s += "...";
+  return s;
+}
+
+static bool read_latest_recap_summary(
+  const std::filesystem::path& mem_root,
+  std::string* out_summary,
+  std::string* out_ts,
+  std::string* out_path
+) {
+  if (out_summary) out_summary->clear();
+  if (out_ts) out_ts->clear();
+  if (out_path) out_path->clear();
+  if (!out_summary || !out_ts || !out_path) return false;
+
+  const std::filesystem::path recap_dir = mem_root / "recaps";
+  std::error_code ec;
+  if (!std::filesystem::exists(recap_dir, ec) || !std::filesystem::is_directory(recap_dir, ec)) return false;
+
+  struct Best {
+    std::string ts_utc;
+    std::string path_rel;
+    std::string summary_text;
+  } best;
+
+  for (auto it = std::filesystem::directory_iterator(recap_dir, ec); !ec && it != std::filesystem::directory_iterator(); ++it) {
+    const auto& de = *it;
+    if (!de.is_regular_file(ec)) continue;
+    const std::string fn = de.path().filename().string();
+    if (fn.rfind("recap_", 0) != 0) continue;
+    if (fn.size() < 6 || fn.rfind(".json") != fn.size() - 5) continue;
+
+    const std::string text = read_file_capped(de.path(), 512 * 1024);
+    if (text.empty()) continue;
+
+    Json::Value doc(Json::objectValue);
+    std::string perr;
+    if (!json_parse_any(text, &doc, &perr) || !doc.isObject()) continue;
+
+    const std::string ts_utc = doc.isMember("ts_utc") && doc["ts_utc"].isString() ? doc["ts_utc"].asString() : "";
+    const std::string summary_text =
+      doc.isMember("summary_text") && doc["summary_text"].isString() ? doc["summary_text"].asString() : "";
+    if (ts_utc.empty() || summary_text.empty()) continue;
+
+    if (best.ts_utc.empty() || ts_utc > best.ts_utc) {
+      best.ts_utc = ts_utc;
+      best.path_rel = de.path().lexically_relative(mem_root).generic_string();
+      best.summary_text = summary_text;
+    }
+  }
+
+  if (best.ts_utc.empty()) return false;
+
+  *out_summary = best.summary_text;
+  *out_ts = best.ts_utc;
+  *out_path = best.path_rel;
+  return true;
 }
 
 struct MemorySearchCandidate {
@@ -297,12 +361,40 @@ static bool build_memory_index_context_text(
 
   if (rows.empty()) return false;
 
+  int64_t total_bytes = 0;
+  int64_t total_tokens = 0;
+  std::string recap_summary;
+  std::string recap_ts;
+  std::string recap_path;
+  const bool have_recap = read_latest_recap_summary(mem_root, &recap_summary, &recap_ts, &recap_path);
+  if (have_recap) {
+    for (char& c : recap_summary) {
+      if (c == '\n' || c == '\r' || c == '\t') c = ' ';
+    }
+    recap_summary = trim_ascii(recap_summary);
+    recap_summary = truncate_ascii(recap_summary, 240);
+  }
+
+  for (const auto& r : rows) {
+    total_bytes += std::max<int64_t>(0, r.bytes);
+    total_tokens += std::max<int64_t>(0, r.tokens);
+  }
+
   std::ostringstream oss;
   oss
     << "DURABLE_MEMORY_INDEX\n"
     << "- This is a lightweight index of durable memory files on disk.\n"
     << "- Token estimates are approximate (bytes/4). Use memory_search and memory_get for details.\n"
     << "- Use memory_write/memory_put to update durable memory when facts change.\n";
+  oss << "- Total memory bytes: " << total_bytes << " (~tokens=" << total_tokens << ")\n";
+  if (have_recap) {
+    oss << "- Latest recap: " << recap_ts << " (" << recap_path << ")\n";
+    if (!recap_summary.empty()) {
+      oss << "- Recap hint: " << recap_summary << "\n";
+    }
+  } else {
+    oss << "- Recap hint: none (use memory_recaps to generate)\n";
+  }
 
   for (const auto& r : rows) {
     oss << "\n[" << r.tier << " " << r.rel_path << "]"
@@ -554,14 +646,48 @@ static bool build_memory_search_context_text(
 
   if (results.empty()) return false;
 
+  int64_t total_bytes = 0;
+  int64_t total_tokens = 0;
+  for (const auto& c : candidates) {
+    std::filesystem::path abs(c.abs_path);
+    ec.clear();
+    if (!std::filesystem::exists(abs, ec) || !std::filesystem::is_regular_file(abs, ec)) continue;
+    const auto size = std::filesystem::file_size(abs, ec);
+    if (ec) continue;
+    const int64_t bytes = (int64_t)size;
+    total_bytes += std::max<int64_t>(0, bytes);
+    total_tokens += std::max<int64_t>(0, (bytes + 3) / 4);
+  }
+  std::string recap_summary;
+  std::string recap_ts;
+  std::string recap_path;
+  const bool have_recap = read_latest_recap_summary(mem_root, &recap_summary, &recap_ts, &recap_path);
+  if (have_recap) {
+    for (char& c : recap_summary) {
+      if (c == '\n' || c == '\r' || c == '\t') c = ' ';
+    }
+    recap_summary = trim_ascii(recap_summary);
+    recap_summary = truncate_ascii(recap_summary, 240);
+  }
+
   std::ostringstream oss;
   oss
     << "DURABLE_MEMORY_SEARCH_CONTEXT\n"
+    << "- Total memory bytes: " << total_bytes << " (~tokens=" << total_tokens << ")\n";
+  if (have_recap) {
+    oss << "- Latest recap: " << recap_ts << " (" << recap_path << ")\n";
+  } else {
+    oss << "- Recap hint: none (use memory_recaps to generate)\n";
+  }
+  oss
     << "- Query: " << query << "\n"
     << "- Mode: " << mode << "\n"
     << "- Results: " << results.size() << "\n"
     << "- Each snippet is cited as [tier path:line].\n"
     << "- Use memory_get/memory_search for deeper inspection, or memory_write/memory_put to update.\n";
+  if (have_recap && !recap_summary.empty()) {
+    oss << "- Recap hint: " << recap_summary << "\n";
+  }
 
   for (const auto& r : results) {
     oss << "\n[" << (r.tier.empty() ? "other" : r.tier) << " " << r.path << ":" << r.line;

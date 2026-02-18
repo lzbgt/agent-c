@@ -28,7 +28,10 @@ STATE_DIR="${LOG_DIR}/${NAME}_${PORT}.state"
 mem_root="${STATE_DIR}/memory"
 mkdir -p "${mem_root}/checkpoints"
 
-readarray -t dates < <(python3 - <<'PY'
+dates=()
+while IFS= read -r line; do
+  dates+=("${line}")
+done < <(python3 - <<'PY'
 import datetime as dt
 now = dt.datetime.now()
 print(now.strftime('%Y-%m-%d'))
@@ -51,7 +54,10 @@ cat > "${mem_root}/${old_day}.md" <<'EOF_IN'
 # old
 EOF_IN
 
-readarray -t cktimes < <(python3 - <<'PY'
+cktimes=()
+while IFS= read -r line; do
+  cktimes+=("${line}")
+done < <(python3 - <<'PY'
 import datetime as dt
 now = dt.datetime.utcnow()
 print(now.strftime('%Y-%m-%dT%H:%M:%SZ'))

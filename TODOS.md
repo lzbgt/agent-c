@@ -84,9 +84,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Promoted goals (explicit goals; no non-goals)
 
-Weights updated 2026-02-18: prioritize the **streaming foundation** (core decoder + host integration + model pinning),
-with **multimodal transcript hardening** (tests + schema alignment) next now that
-**dynamic memory policy** and **OTA continuity guardrails** are in place.
+Weights updated 2026-02-18: prioritize **streaming stability** (model pinning + provider guardrails),
+then finish **memory UX alignment** (assistant/message hints + timeline ordering toggle),
+with **tool plugins** and **audio streaming** following once the UX surfaces are stable.
 
 - [x] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker + agentd implemented; tests added).
 - [x] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
@@ -110,7 +110,10 @@ with **multimodal transcript hardening** (tests + schema alignment) next now tha
   - [x] Structured memory deprecate pass (policy-driven; bounded) with broker fan-out.
   - [x] Memory salience context + `/api/v1/memory/salience` (deterministic decay, recency + importance).
   - [x] Memory recaps: LLM summaries to `memory/recaps/` + list/generate APIs.
-- [ ] Memory UX alignment (claude-mem): optional context header with token economics + last summary/assistant-message hints + timeline ordering toggle.
+- [ ] Memory UX alignment (claude-mem): optional context header + last summary/assistant-message hints + timeline ordering toggle.
+  - [x] Index/search headers include token economics + recap hint (latest recap summary).
+  - [ ] Add assistant-message hint (last assistant summary or salient response) in context headers.
+  - [ ] Add timeline ordering toggle for memory results (newest-first vs oldest-first).
 - [ ] Tool plugins: sandbox/isolation, Windows loader, and embedded/MCU-compatible plugin path.
 - [ ] Audio streaming: Opus/WebRTC voice pipeline + broker relay + UI voice session controls.
   - [x] Add workflow DB query endpoints (`/api/v1/db/workflows`, `/api/v1/db/workflow`, `/api/v1/db/workflow_tasks`, `/api/v1/db/workflow_events`)

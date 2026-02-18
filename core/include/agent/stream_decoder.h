@@ -2,6 +2,7 @@
 
 #include "agent/agent.h"
 #include "agent/sse_parser.h"
+#include "agent/tool_provider.h"
 
 #include <stddef.h>
 #include <stdint.h>
