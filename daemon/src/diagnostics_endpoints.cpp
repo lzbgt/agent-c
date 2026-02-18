@@ -132,6 +132,14 @@ static std::string provider_key_hint(const std::string& provider) {
   return "";
 }
 
+static std::string provider_base_url_env_hint(const std::string& provider) {
+  if (provider == "deepseek") return "DEEPSEEK_API_BASE";
+  if (provider == "moonshot") return "MOONSHOT_API_BASE";
+  if (provider == "openrouter") return "OPENROUTER_API_BASE";
+  if (provider == "openai") return "OPENAI_API_BASE";
+  return "";
+}
+
 }  // namespace
 
 void handle_diagnostics_endpoint(
@@ -299,7 +307,23 @@ void handle_diagnostics_providers_endpoint(
       }
     }
 
-    if (active_provider == p && !ks.present) {
+    if (!pd.isMember("warning") && ks.present && active_provider != p && cfg.base_url.empty() &&
+        env_base_url_for_provider(p).empty()) {
+      const std::string def_base = default_base_url_for_provider(p);
+      const std::string env_hint = provider_base_url_env_hint(p);
+      if (!def_base.empty() && !env_hint.empty()) {
+        pd["warning"] = std::string("Key detected but base_url not configured; set --base-url ") + def_base + " or " +
+          env_hint + ".";
+      } else if (!def_base.empty()) {
+        pd["warning"] = std::string("Key detected but base_url not configured; set --base-url ") + def_base + ".";
+      } else if (!env_hint.empty()) {
+        pd["warning"] = std::string("Key detected but base_url not configured; set ") + env_hint + ".";
+      } else {
+        pd["warning"] = "Key detected but base_url not configured.";
+      }
+    }
+
+    if (active_provider == p && !ks.present && !pd.isMember("warning")) {
       const std::string hint = provider_key_hint(p);
       if (!hint.empty()) {
         pd["warning"] = "Active provider key missing; set " + hint + ".";

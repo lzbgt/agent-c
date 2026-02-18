@@ -116,7 +116,7 @@ Notes:
 - `key_present` is **boolean only**. Secret values are never returned.
 - `source.kind` is one of: `config`, `env`, or `file`.
 - `source.label` is a best-effort descriptor (e.g., `provider_keys`, `api_key`, `.not_in_repo`, `project.local.md`, `~/.env`).
-- `warning` is an optional provider-specific hint (e.g., active provider key missing, or Moonshot key detected but OpenRouter key missing).
+- `warning` is an optional provider-specific hint (e.g., active provider key missing, key detected but base_url not configured, or Moonshot key detected but OpenRouter key missing).
 - `~/.env` is only consulted for provider **keys**; base URLs still come from flags/env/config. If no base URL is set, the
   provider defaults to OpenAI-compatible.
 - `base_url_source` indicates where the provider base URL came from: `config`, `env`, or `default`.
