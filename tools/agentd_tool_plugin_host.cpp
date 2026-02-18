@@ -7,9 +7,12 @@
 
 #include <json/json.h>
 
+#include <atomic>
+#include <chrono>
 #include <cstring>
 #include <iostream>
 #include <string>
+#include <thread>
 #include <vector>
 
 using agentd::json_parse_any;
@@ -18,12 +21,73 @@ using agentd::ToolExtension;
 using agentd::ToolPluginChain;
 using agentd::ToolPluginSpec;
 
+#if defined(__unix__) || defined(__APPLE__)
+#include <sys/resource.h>
+#include <unistd.h>
+#define AGENTD_HOST_HAVE_RLIMIT 1
+#else
+#define AGENTD_HOST_HAVE_RLIMIT 0
+#endif
+
 namespace {
 
 void usage(const char* argv0) {
   std::cerr
     << "Usage: " << (argv0 ? argv0 : "agentd_tool_plugin_host")
-    << " --plugin <path> [--plugin-config <json>] [--plugin <path> ...]\n";
+    << " --plugin <path> [--plugin-config <json>] [--plugin <path> ...]\n"
+    << "  Optional limits:\n"
+    << "    --limit-cpu-ms <n>    CPU time limit (milliseconds)\n"
+    << "    --limit-wall-ms <n>   Wall-clock limit for the host process (milliseconds)\n"
+    << "    --limit-as-mb <n>     Address-space limit (MB)\n";
+}
+
+struct HostLimits {
+  int64_t cpu_ms = 0;
+  int64_t wall_ms = 0;
+  int64_t as_mb = 0;
+};
+
+bool apply_limits(const HostLimits& lim, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (lim.cpu_ms <= 0 && lim.wall_ms <= 0 && lim.as_mb <= 0) return true;
+
+#if !AGENTD_HOST_HAVE_RLIMIT
+  if (out_err) *out_err = "resource limits are not supported on this platform";
+  return false;
+#else
+  if (lim.cpu_ms > 0) {
+    const int64_t seconds = (lim.cpu_ms + 999) / 1000;
+    struct rlimit rl;
+    rl.rlim_cur = (rlim_t)seconds;
+    rl.rlim_max = (rlim_t)seconds;
+    if (setrlimit(RLIMIT_CPU, &rl) != 0) {
+      if (out_err) *out_err = "failed to set RLIMIT_CPU";
+      return false;
+    }
+  }
+
+  if (lim.as_mb > 0) {
+    const int64_t bytes = lim.as_mb * 1024LL * 1024LL;
+    struct rlimit rl;
+    rl.rlim_cur = (rlim_t)bytes;
+    rl.rlim_max = (rlim_t)bytes;
+    if (setrlimit(RLIMIT_AS, &rl) != 0) {
+      if (out_err) *out_err = "failed to set RLIMIT_AS";
+      return false;
+    }
+  }
+
+  if (lim.wall_ms > 0) {
+    std::thread([ms = lim.wall_ms]() {
+      std::this_thread::sleep_for(std::chrono::milliseconds(ms));
+      std::cerr << "tool plugin host wall-time limit reached\n";
+      std::cerr.flush();
+      std::_Exit(124);
+    }).detach();
+  }
+
+  return true;
+#endif
 }
 
 bool registry_from_plugins(const ToolPluginChain& chain, agent_tool_registry_t** out_registry, std::string* out_err) {
@@ -119,6 +183,7 @@ Json::Value tool_result_from_json(const std::string& raw) {
 
 int main(int argc, char** argv) {
   std::vector<ToolPluginSpec> specs;
+  HostLimits limits;
   for (int i = 1; i < argc; i++) {
     const std::string arg = argv[i] ? argv[i] : "";
     if (arg == "--plugin") {
@@ -135,6 +200,24 @@ int main(int argc, char** argv) {
         return 2;
       }
       specs.back().config_json = argv[++i];
+    } else if (arg == "--limit-cpu-ms") {
+      if (i + 1 >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      limits.cpu_ms = std::stoll(argv[++i]);
+    } else if (arg == "--limit-wall-ms") {
+      if (i + 1 >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      limits.wall_ms = std::stoll(argv[++i]);
+    } else if (arg == "--limit-as-mb") {
+      if (i + 1 >= argc) {
+        usage(argv[0]);
+        return 2;
+      }
+      limits.as_mb = std::stoll(argv[++i]);
     } else if (arg == "-h" || arg == "--help") {
       usage(argv[0]);
       return 0;
@@ -147,6 +230,12 @@ int main(int argc, char** argv) {
 
   if (specs.empty()) {
     usage(argv[0]);
+    return 2;
+  }
+
+  std::string limit_err;
+  if (!apply_limits(limits, &limit_err)) {
+    std::cerr << "Failed to apply limits: " << (limit_err.empty() ? "unknown error" : limit_err) << "\n";
     return 2;
   }
 

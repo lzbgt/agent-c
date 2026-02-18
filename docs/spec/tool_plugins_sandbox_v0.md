@@ -38,6 +38,16 @@ This keeps plugin loading out of the daemon process while retaining the same too
   (bounded by the existing backoff policy).
 - Tool server timeouts and max-line limits apply to plugin-host responses.
 
+### Resource limits (best-effort)
+
+The plugin host can apply basic process-level limits:
+
+- `--limit-cpu-ms` (CPU time via `RLIMIT_CPU`)
+- `--limit-wall-ms` (wall-clock watchdog; exits with code 124)
+- `--limit-as-mb` (address space via `RLIMIT_AS`)
+
+If a limit is requested but cannot be applied, the host exits with an error.
+
 ## Follow-up goals (tracked in `TODOS.md`)
 
 - Policy-based isolation: per-plugin limits (CPU/memory), optional seccomp/AppArmor profiles (Linux).

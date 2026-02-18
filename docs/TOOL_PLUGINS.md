@@ -123,7 +123,7 @@ To isolate plugins in a separate process, run them behind the tool server protoc
 
 ```bash
 ./build/agentd --tools basic \
-  --tool-server-cmd "./build/agentd_tool_plugin_host --plugin ./build/libagentd_tool_plugin_echo.(so|dylib|dll) --plugin-config '{\"tag\":\"isolated\"}'"
+  --tool-server-cmd "./build/agentd_tool_plugin_host --plugin ./build/libagentd_tool_plugin_echo.(so|dylib|dll) --plugin-config '{\"tag\":\"isolated\"}' --limit-wall-ms 60000 --limit-cpu-ms 60000"
 ```
 
 This keeps plugin crashes contained and lets you apply tool-server timeouts and line-size limits.

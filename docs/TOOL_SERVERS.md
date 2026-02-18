@@ -101,5 +101,5 @@ The `agentd_tool_plugin_host` helper exposes tool plugins over the tool server p
 
 ```bash
 ./build/agentd --tools basic \
-  --tool-server-cmd "./build/agentd_tool_plugin_host --plugin ./build/libagentd_tool_plugin_echo.(so|dylib|dll)"
+  --tool-server-cmd "./build/agentd_tool_plugin_host --plugin ./build/libagentd_tool_plugin_echo.(so|dylib|dll) --limit-wall-ms 60000 --limit-cpu-ms 60000"
 ```
