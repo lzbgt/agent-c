@@ -110,13 +110,16 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [x] Add size override flags/env to `tools/verify_repo_guards.sh`.
 - [x] Add repo guard flags to `tools/verify.sh` for one-command verification.
 - [x] Add untracked file size guard + integrate into repo guards.
+- [x] Allow strict mode via `REPO_GUARD_STRICT` env for repo guards.
 - [x] Ignore nested `ref/**/.git` dirs to prevent accidental re-adding.
+- [ ] Treat `ref/claude-mem/openclaw/test-install.sh` (2.3k LOC) as vendored/read-only or split into smaller scripts; document policy.
 
 ## Promoted goals (explicit goals; no non-goals)
 
 Weights updated 2026-02-19: prioritize **streaming stability** (including verified
-OpenRouter pins) and **tool plugin isolation** hardening; keep **interop/attestation**
-and **AVM** queued behind those until streaming and plugins are stable.
+OpenRouter pins), **tool plugin isolation** hardening, and **repo hygiene/size-guard
+enforcement**; keep **interop/attestation** and **AVM** queued behind those until
+streaming and plugins are stable.
 
 - [x] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker + agentd implemented; tests added).
 - [x] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
