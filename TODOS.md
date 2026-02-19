@@ -124,6 +124,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [x] Add optional verbose mode for vendored pre-commit hook output.
 - [x] Add --verbose to install_git_hooks.sh for permanent verbose hooks.
 - [x] Add quiet mode for vendored guard output (env + flag).
+- [x] Document quiet/verbose precedence for vendored hook output.
 
 ## Promoted goals (explicit goals; no non-goals)
 

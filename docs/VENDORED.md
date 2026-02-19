@@ -42,6 +42,8 @@ Quiet hook output (only lists changed paths on failure):
 VENDORED_GUARD_QUIET=1 git commit
 ```
 
+Precedence: `VENDORED_GUARD_QUIET` overrides `VENDORED_GUARD_VERBOSE`.
+
 ## Current vendored subtrees
 
 - `ref/claude-mem/` (upstream: thedotmack/claude-mem)

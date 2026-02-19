@@ -591,6 +591,8 @@ Quiet pre-commit output (only lists changed paths on failure):
 VENDORED_GUARD_QUIET=1 git commit
 ```
 
+Precedence (if both set): `VENDORED_GUARD_QUIET` overrides `VENDORED_GUARD_VERBOSE`.
+
 Run all repo hygiene guards locally:
 
 ```bash

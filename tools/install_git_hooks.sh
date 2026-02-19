@@ -54,7 +54,11 @@ if [[ "${VERBOSE}" -eq 1 ]]; then
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-python3 "${ROOT}/tools/vendored_guard.py" --path ref --verbose
+ARGS=("--verbose")
+if [[ "${VENDORED_GUARD_QUIET:-0}" == "1" ]]; then
+  ARGS=(--quiet)
+fi
+python3 "${ROOT}/tools/vendored_guard.py" --path ref "${ARGS[@]}"
 EOF
 else
   cat > "${HOOK_FILE}" <<'EOF'
