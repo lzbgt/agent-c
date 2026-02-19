@@ -104,6 +104,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [x] Add `tools/clean.sh --report` to emit repo size summary after cleanup.
 - [x] Add nested .git detection to repo size report + CI guard.
 - [x] Add nested .git listing option to repo size report.
+- [x] Add stub file scan tool + CI guard.
 
 ## Promoted goals (explicit goals; no non-goals)
 

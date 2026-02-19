@@ -495,6 +495,12 @@ List nested .git dirs (useful before running cleanup):
 tools/repo_size_report.py --list-nested-git
 ```
 
+Stub file scan (fails on empty/placeholder files):
+
+```bash
+tools/stub_file_scan.py --fail
+```
+
 ## Docker Compose (prod-like local verification)
 
 If you want a **prod-like stack** locally (Postgres + Keycloak OIDC + broker + connector + agentd + WebUI):
