@@ -6,11 +6,9 @@
 #   if ! docker_preflight "compose"; then exit 77; fi
 
 docker_info_ready() {
-  if ! command -v python3 >/dev/null 2>&1; then
-    docker info >/dev/null 2>&1 || return 1
-    return 0
-  fi
-  python3 - <<'PY'
+  local timeout="${AGENT_DOCKER_INFO_TIMEOUT_SEC:-5}"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - <<'PY'
 import os
 import subprocess
 import sys
@@ -30,6 +28,49 @@ except Exception:
   sys.exit(1)
 sys.exit(0)
 PY
+    return $?
+  fi
+  if command -v python >/dev/null 2>&1; then
+    python - <<'PY'
+import os
+import subprocess
+import sys
+
+timeout = float(os.environ.get("AGENT_DOCKER_INFO_TIMEOUT_SEC", "5"))
+try:
+  subprocess.run(
+      ["docker", "info"],
+      stdout=subprocess.DEVNULL,
+      stderr=subprocess.DEVNULL,
+      timeout=timeout,
+      check=True,
+  )
+except subprocess.TimeoutExpired:
+  sys.exit(2)
+except Exception:
+  sys.exit(1)
+sys.exit(0)
+PY
+    return $?
+  fi
+  if command -v gtimeout >/dev/null 2>&1; then
+    gtimeout "${timeout}" docker info >/dev/null 2>&1
+    case $? in
+      0) return 0 ;;
+      124) return 2 ;;
+      *) return 1 ;;
+    esac
+  fi
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "${timeout}" docker info >/dev/null 2>&1
+    case $? in
+      0) return 0 ;;
+      124) return 2 ;;
+      *) return 1 ;;
+    esac
+  fi
+  docker info >/dev/null 2>&1 || return 1
+  return 0
 }
 
 docker_preflight() {
