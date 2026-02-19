@@ -85,19 +85,20 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## New tasks (2026-02-19)
 
-- [ ] Add regression tests for `/api/v1/file` path traversal and session-root confinement.
-- [ ] Refactor `daemon/src/run_request.cpp` into smaller units (approaching 2000 LOC).
+- [x] Add regression tests for `/api/v1/file` path traversal and session-root confinement.
+- [ ] Refactor `daemon/src/run_request.cpp` into smaller units (request parsing helper done; persistence block + tool-loop wrapper pending).
 - [ ] Refactor `ui/src/components/ConversationView.tsx` into smaller components (approaching 2000 LOC).
 - [ ] Standardize API error envelopes across agentd + broker (`{"err":"...","code":"...","details":{...}}`) and align WebUI handling.
 - [ ] Refactor `ref/ds-cli/sophon/src/sophon_cli/cli.py` (5.8k LOC) into SOLID submodules or mark as vendored/read-only.
 - [ ] Refactor `ref/claude-mem/src/services/sqlite/SessionStore.ts` (2.3k LOC) into smaller units or mark as vendored/read-only.
 - [x] Add build/log cleanup automation (e.g., tools/clean.sh + `out/` log pruning) to prevent disk bloat.
+- [ ] Add symlink containment option for `/api/v1/file` (reject escaped realpaths when session_id is provided).
 
 ## Promoted goals (explicit goals; no non-goals)
 
-Weights updated 2026-02-18 (memory leak resolved): prioritize **streaming stability** (OpenRouter pins + provider matrix upkeep + provider key verification),
-then **tool plugin isolation** (sandbox/host policy hardening),
-with **audio streaming** following once streaming UX is stable.
+Weights updated 2026-02-19: prioritize **run_request refactor completion** (parsing + persistence + tool-loop wrapper),
+then **API error envelope standardization** (agentd + broker + WebUI alignment),
+then **UI component refactors** (ConversationView) before returning to **streaming stability** and **tool plugin isolation**.
 
 - [x] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker + agentd implemented; tests added).
 - [x] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.

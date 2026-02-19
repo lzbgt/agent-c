@@ -248,6 +248,8 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/run_client_acks.cpp
     daemon/src/run_provider_keys.cpp
     daemon/src/run_request.cpp
+    daemon/src/run_request_config.cpp
+    daemon/src/run_request_parse.cpp
     daemon/src/run_request_replay.cpp
     daemon/src/run_endpoints.cpp
     daemon/src/run_replay_endpoint.cpp

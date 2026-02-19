@@ -22,8 +22,10 @@ Date: 2026-02-19
    - Status: implemented in `run_request_replay.{h,cpp}`.
 2) **Request parsing / validation**
    - Extract JSON parsing, trace-id validation, tool config normalization into a helper module.
+   - Status: implemented in `run_request_parse.{h,cpp}`.
 3) **Provider config building**
    - Consolidate OpenAI-compatible config overrides + retry policy into a dedicated builder.
+   - Status: implemented in `run_request_config.{h,cpp}`.
 4) **Tool-loop execution**
    - Wrap toolset selection + tool-loop invocation into a smaller executor function.
 5) **Persistence block**
@@ -31,7 +33,7 @@ Date: 2026-02-19
 
 ## Rollout Plan
 - **Phase 1**: Extract replay bundle logic (done).
-- **Phase 2**: Extract provider config builder + request parsing helpers.
+- **Phase 2**: Extract provider config builder + request parsing helpers (done).
 - **Phase 3**: Extract persistence helpers (runs/events/messages/tool records).
 - **Phase 4**: Extract tool-loop execution wrapper and simplify the main orchestration function.
 
