@@ -31,10 +31,10 @@ Roadmap section below and `TODOS.md`, including:
 
 ## Design Doc Map
 
-- `docs/HANDBOOK.md`: unified, generated bundle of all docs (edit `docs/handbook/OVERVIEW.md` and the source docs below,
-  then run `tools/build_handbook_bundle.py`).
+- `docs/HANDBOOK.md`: curated, generated handbook summary (edit `docs/handbook/OVERVIEW.md`, then run
+  `tools/build_handbook_bundle.py`).
 - `DESIGN.md` (this doc): system goals, boundaries, layering, and cross-cutting policies.
-- Source docs included in the handbook bundle:
+- Source docs referenced by the handbook:
   - `docs/BROKER.md`: broker relay design, trust model, and HTTP/WSS API.
   - `docs/CLIENT.md`: client collaboration model (events, UI actions, DoD, client RPC).
   - `docs/AGENTD_LIB.md`: embedding `agentd` in-process and tool-extension interfaces.

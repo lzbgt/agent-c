@@ -3,8 +3,8 @@
 This repo is an early scaffold for a **portable agent core** (env-free, persistence-agnostic) plus a **desktop CLI host adapter** (env/config + persistence + HTTP).
 
 Docs quickstart:
-- Unified handbook (single-file merged docs; generated): `docs/HANDBOOK.md`
-- Architecture + roadmap: `DESIGN.md` (also included in the handbook)
+- Unified handbook (curated summary; generated): `docs/HANDBOOK.md`
+- Architecture + roadmap: `DESIGN.md` (full system map)
 
 ## Build
 

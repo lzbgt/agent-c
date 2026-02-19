@@ -6,8 +6,7 @@ This handbook consolidates the essential information needed to build, run, exten
 It merges the key content from the architecture, protocol, workflows, tools, memory, diagnostics, DB, streaming,
 limits, broker, and platform notes into a single place so you can onboard without jumping across many files.
 
-If you need deeper, versioned specs, see the bundled OpenAPI + spec sections later in this file
-(sources: `docs/openapi/README.md` and `docs/spec/README.md`).
+If you need deeper, versioned specs, see `docs/openapi/README.md` and `docs/spec/README.md`.
 
 ---
 
@@ -201,7 +200,7 @@ Read-back:
 
 ### DoD (definition of done)
 UI-visible effects (artifacts, ui_action) can use the DoD handshake so the agent stops only after the UI acknowledges delivery.
-See the DoD handshake appendix below (source: `docs/DOD_ACK.md`).
+See `docs/DOD_ACK.md` for the handshake contract.
 
 ---
 
@@ -302,7 +301,7 @@ Behavioral goals:
 - Parse assistant deltas and tool-call deltas reliably across OpenAI-ish providers.
 - Recover usage metrics when `stream_options.include_usage=true` is supported.
 
-Compatibility notes and probe tooling are included in the streaming appendix below (source: `docs/STREAMING.md`).
+Compatibility notes and probe tooling live in `docs/STREAMING.md`.
 
 ---
 
@@ -318,7 +317,7 @@ Key limits (all default to daemon config when omitted):
 - `tool_call_limits`: per-tool explicit caps
 
 When a hard limit is hit, the core emits a structured `error` event and returns `AGENT_ERR_LIMIT`.
-Full semantics are included in the limits appendix below (source: `docs/LIMITS.md`).
+Full semantics: `docs/LIMITS.md`.
 
 ---
 
@@ -333,7 +332,7 @@ SQLite DB (when enabled with `--db-path`):
 - Canonical store for sessions, runs, events, tools, workflows, artifacts, audit.
 - Query endpoints provide read-only troubleshooting and analytics surfaces.
 
-Primary DB docs are included in the DB appendix below (source: `docs/DB.md`).
+Primary DB docs: `docs/DB.md`.
 
 ---
 
@@ -352,7 +351,7 @@ Key endpoints:
 - Proxy: `/v1/agents/{agent_id}/proxy/...`
 - SSE proxy: `/v1/agents/{agent_id}/proxy_sse/...`
 
-Full protocol details and security model are included in the broker appendix below (source: `docs/BROKER.md`).
+Full protocol details and security model: `docs/BROKER.md`.
 
 ---
 
@@ -367,7 +366,7 @@ Hardening highlights:
 - Set HTTP size/time limits via env.
 - For OTA: enable `--ota-enable` and set `--ota-command`.
 
-Production details are included in the deployment appendix below (source: `docs/DEPLOYMENT.md`).
+Production details: `docs/DEPLOYMENT.md`.
 
 ---
 
@@ -381,17 +380,18 @@ Production details are included in the deployment appendix below (source: `docs/
 | Tool servers | yes | yes | no |
 | AVM endpoints | yes | yes | no (501) |
 
-Full matrix is included in the platform support appendix below (source: `docs/PLATFORM_SUPPORT.md`).
+Full matrix: `docs/PLATFORM_SUPPORT.md`.
 
 ---
 
 ## 16) OpenAPI + specs
 
-- OpenAPI and versioned specs are bundled below (sources: `docs/openapi/README.md` and `docs/spec/README.md`).
+- OpenAPI: `docs/openapi/README.md` (YAML in `docs/openapi/`)
+- Versioned specs: `docs/spec/README.md`
 
 ---
 
-## 17) Additional references (bundled below)
+## 17) Additional references
 
 - `docs/TOOLS.md` (tool servers/plugins)
 - `docs/WORKFLOWS.md` (workflow engine deep dive)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build docs/HANDBOOK.md by merging the overview with source docs."""
+"""Build docs/HANDBOOK.md from the curated overview and a source index."""
 from __future__ import annotations
 
 from pathlib import Path
@@ -51,16 +51,10 @@ def _render() -> str:
     overview = _read_text(OVERVIEW).rstrip()
     parts.append(overview)
 
-    parts.append("\n\n---\n\n# Appendix: Source Documents (verbatim)\n\n")
-    parts.append("The sections below are copied verbatim from their source files.\n\n")
-    parts.append("## Sources\n")
+    parts.append("\n\n---\n\n# Source Index\n\n")
+    parts.append("The handbook is a curated summary. For full detail, refer to the source docs below.\n\n")
     for path in SOURCES:
         parts.append(f"- `{path.relative_to(ROOT)}`\n")
-
-    for path in SOURCES:
-        parts.append("\n---\n\n")
-        parts.append(f"# Source: {path.relative_to(ROOT)}\n\n")
-        parts.append(_read_text(path).rstrip())
 
     parts.append("\n")
     return "".join(parts)
