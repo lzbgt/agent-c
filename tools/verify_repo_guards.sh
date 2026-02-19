@@ -36,6 +36,7 @@ Usage: tools/verify_repo_guards.sh [--strict] [--max-total-gb N] [--max-file-mb 
 Runs repo hygiene guards:
   - repo size guard (max 5 GiB, excludes .git)
   - stub file scan
+  - handbook bundle sync check
   - tracked file size guard (10 MiB)
 
 Options:
@@ -69,6 +70,7 @@ fi
 
 python3 tools/repo_size_report.py "${args[@]}"
 python3 tools/stub_file_scan.py --fail
+python3 tools/build_handbook_bundle.py --check
 python3 tools/tracked_file_guard.py --max-mb "${MAX_FILE_MB}"
 python3 tools/untracked_file_guard.py --exclude-defaults --max-mb "${MAX_UNTRACKED_MB}"
 python3 tools/vendored_guard.py --path ref

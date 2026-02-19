@@ -31,19 +31,21 @@ Roadmap section below and `TODOS.md`, including:
 
 ## Design Doc Map
 
-- `docs/HANDBOOK.md`: unified handbook (build, architecture, protocol, workflows, tools, memory, ops).
+- `docs/HANDBOOK.md`: unified, generated bundle of all docs (edit `docs/handbook/OVERVIEW.md` and the source docs below,
+  then run `tools/build_handbook_bundle.py`).
 - `DESIGN.md` (this doc): system goals, boundaries, layering, and cross-cutting policies.
-- `docs/BROKER.md`: broker relay design, trust model, and HTTP/WSS API.
-- `docs/CLIENT.md`: client collaboration model (events, UI actions, DoD, client RPC).
-- `docs/AGENTD_LIB.md`: embedding `agentd` in-process and tool-extension interfaces.
-- `docs/PROTOCOL.md`: run/artifact protocol envelopes and semantics.
-- `docs/WORKFLOWS.md`: workflow engine model and task semantics.
-- `docs/STREAMING.md`: streaming compatibility matrix and behavior notes.
-- `docs/MEMORY.md`: memory retention, salience, and recap architecture.
-- `docs/DIAGNOSTICS.md`: diagnostics endpoints and provider health checks.
-- `docs/DB.md`: daemon SQLite store, blob storage tiers, and DB query API.
-- `docs/DOD_ACK.md`: UI-visible “definition of done” handshake semantics.
-- `docs/spec/README.md`: index of versioned protocol/spec deep dives.
+- Source docs included in the handbook bundle:
+  - `docs/BROKER.md`: broker relay design, trust model, and HTTP/WSS API.
+  - `docs/CLIENT.md`: client collaboration model (events, UI actions, DoD, client RPC).
+  - `docs/AGENTD_LIB.md`: embedding `agentd` in-process and tool-extension interfaces.
+  - `docs/PROTOCOL.md`: run/artifact protocol envelopes and semantics.
+  - `docs/WORKFLOWS.md`: workflow engine model and task semantics.
+  - `docs/STREAMING.md`: streaming compatibility matrix and behavior notes.
+  - `docs/MEMORY.md`: memory retention, salience, and recap architecture.
+  - `docs/DIAGNOSTICS.md`: diagnostics endpoints and provider health checks.
+  - `docs/DB.md`: daemon SQLite store, blob storage tiers, and DB query API.
+  - `docs/DOD_ACK.md`: UI-visible “definition of done” handshake semantics.
+  - `docs/spec/README.md`: index of versioned protocol/spec deep dives.
 
 ## Key Decisions (Facts / Constraints)
 

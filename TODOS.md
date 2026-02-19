@@ -137,6 +137,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
 - [x] Add quiet mode for vendored guard output (env + flag).
 - [x] Document quiet/verbose precedence for vendored hook output.
 - [x] Add --quiet to install_git_hooks.sh for permanent quiet hooks.
+- [x] Merge docs into a generated handbook bundle (`docs/HANDBOOK.md`) with `tools/build_handbook_bundle.py` + repo-guard sync check.
 
 ## Promoted goals (explicit goals; no non-goals)
 
