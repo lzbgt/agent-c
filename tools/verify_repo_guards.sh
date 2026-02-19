@@ -50,6 +50,7 @@ Env overrides:
   REPO_GUARD_MAX_FILE_MB
   REPO_GUARD_MAX_UNTRACKED_MB
   REPO_GUARD_STRICT
+  HANDBOOK_MAX_LINES
   ALLOW_VENDORED_CHANGES (skip vendored guard)
   VENDORED_GUARD_BASE (base ref for vendored guard)
   VENDORED_GUARD_REQUIRE_BASE (fail if no base ref)

@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 OVERVIEW = ROOT / "docs/handbook/OVERVIEW.md"
 OUTPUT = ROOT / "docs/HANDBOOK.md"
+DEFAULT_MAX_LINES = 400
 SOURCES = [
     ROOT / "README.md",
     ROOT / "DESIGN.md",
@@ -70,10 +72,21 @@ def main() -> int:
             raise SystemExit("Usage: tools/build_handbook_bundle.py [--check]")
 
     rendered = _render()
+    max_lines = DEFAULT_MAX_LINES
+    try:
+        max_lines = int(os.environ.get("HANDBOOK_MAX_LINES", str(DEFAULT_MAX_LINES)))
+    except ValueError:
+        max_lines = DEFAULT_MAX_LINES
+    rendered_lines = rendered.count("\n") + 1
     if check:
         existing = OUTPUT.read_text(encoding="utf-8") if OUTPUT.exists() else ""
         if existing != rendered:
             sys.stderr.write("docs/HANDBOOK.md is out of date. Run tools/build_handbook_bundle.py.\\n")
+            return 1
+        if max_lines > 0 and rendered_lines > max_lines:
+            sys.stderr.write(
+                f"docs/HANDBOOK.md exceeds {max_lines} lines ({rendered_lines}).\\n"
+            )
             return 1
         return 0
 
