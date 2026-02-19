@@ -16,6 +16,12 @@ Hook status: `tools/hooks_status.sh` (use `--json` for scriptable output,
 These helpers respect `core.hooksPath` if you override the default hooks
 directory.
 
+Example (CI/local script):
+
+```bash
+tools/hooks_status.sh --json --check
+```
+
 ## Current vendored subtrees
 
 - `ref/claude-mem/` (upstream: thedotmack/claude-mem)
