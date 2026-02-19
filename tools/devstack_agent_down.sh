@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${ROOT}/tools/lib/docker_preflight.sh" 2>/dev/null || true
 
 usage() {
   cat <<'USAGE'
@@ -75,10 +76,14 @@ kill_pid "${BROKER_PID}"
 kill_pid "${AGENTD_PID}"
 
 if [[ -n "${COMPOSE_FILE}" && -n "${COMPOSE_PROJECT}" ]]; then
-  POSTGRES_PUBLISHED_PORT="${POSTGRES_PORT}" \
-  KEYCLOAK_PUBLISHED_PORT="${KEYCLOAK_PORT}" \
-  COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT}" \
-  docker compose -f "${COMPOSE_FILE}" down -v --remove-orphans >/dev/null 2>&1 || true
+  if docker_preflight "devstack-down" >/dev/null 2>&1; then
+    POSTGRES_PUBLISHED_PORT="${POSTGRES_PORT}" \
+    KEYCLOAK_PUBLISHED_PORT="${KEYCLOAK_PORT}" \
+    COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT}" \
+    docker compose -f "${COMPOSE_FILE}" down -v --remove-orphans >/dev/null 2>&1 || true
+  else
+    echo "devstack stopped (docker not available for compose teardown)" >&2
+  fi
 fi
 
 echo "devstack stopped"
