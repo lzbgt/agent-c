@@ -1,0 +1,11 @@
+{
+  "name": "broker_team_runs_quorum_compose_smoke",
+  "steps": [
+    {
+      "type": "shell",
+      "name": "broker_team_runs_quorum_compose_smoke",
+      "cmd": "bash tests/broker_team_runs_quorum_compose_smoke.sh",
+      "timeout_s": 900
+    }
+  ]
+}
