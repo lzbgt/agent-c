@@ -26,6 +26,20 @@ def match_exclude(rel_path: str, patterns: Iterable[str]) -> bool:
     return False
 
 
+def find_nested_git(root: Path) -> list[str]:
+    nested = []
+    root_git = root / ".git"
+    for dirpath, dirnames, _ in os.walk(root):
+        if Path(dirpath) == root_git:
+            dirnames[:] = []
+            continue
+        if ".git" in dirnames:
+            git_path = Path(dirpath) / ".git"
+            if git_path != root_git:
+                nested.append(os.path.relpath(git_path, root))
+    return nested
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Report repo disk usage (top-level and depth-limited sizes)."
@@ -74,6 +88,11 @@ def main() -> int:
         "--fail-on-nested-git",
         action="store_true",
         help="Fail (exit 3) if nested .git dirs are found (excluding repo root).",
+    )
+    parser.add_argument(
+        "--list-nested-git",
+        action="store_true",
+        help="List nested .git dirs (excluding repo root).",
     )
     parser.add_argument(
         "--largest-files",
@@ -170,21 +189,20 @@ def main() -> int:
         for size, rel_file in sorted(largest, key=lambda x: x[0], reverse=True):
             print(f"  {format_bytes(size):>10}  {rel_file}")
 
-    if args.fail_on_nested_git:
-        nested_git = []
-        root_git = root / ".git"
-        for dirpath, dirnames, _ in os.walk(root):
-            if Path(dirpath) == root_git:
-                dirnames[:] = []
-                continue
-            if ".git" in dirnames:
-                git_path = Path(dirpath) / ".git"
-                if git_path != root_git:
-                    nested_git.append(os.path.relpath(git_path, root))
+    nested_git = []
+    if args.list_nested_git or args.fail_on_nested_git:
+        nested_git = find_nested_git(root)
         if nested_git:
-            print("\nERROR: nested .git directories found:")
+            print("\nNested .git directories:")
             for item in sorted(nested_git):
                 print(f"  {item}")
+        elif args.list_nested_git:
+            print("\nNested .git directories: none")
+
+    if args.fail_on_nested_git:
+        if nested_git:
+            print("\nERROR: nested .git directories found:")
+            print("Hint: run tools/clean.sh --purge-ref-git to remove vendored .git dirs.")
             return 3
 
     max_total_bytes = max(0, args.max_total_bytes)

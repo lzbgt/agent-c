@@ -489,6 +489,12 @@ CI guard (fail if the repo exceeds a size cap):
 tools/repo_size_report.py --exclude .git --max-total-gb 5 --fail-on-nested-git
 ```
 
+List nested .git dirs (useful before running cleanup):
+
+```bash
+tools/repo_size_report.py --list-nested-git
+```
+
 ## Docker Compose (prod-like local verification)
 
 If you want a **prod-like stack** locally (Postgres + Keycloak OIDC + broker + connector + agentd + WebUI):

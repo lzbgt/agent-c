@@ -103,6 +103,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [x] Add `tools/clean.sh --purge-ref-git` to optionally delete nested ref/.git dirs.
 - [x] Add `tools/clean.sh --report` to emit repo size summary after cleanup.
 - [x] Add nested .git detection to repo size report + CI guard.
+- [x] Add nested .git listing option to repo size report.
 
 ## Promoted goals (explicit goals; no non-goals)
 
