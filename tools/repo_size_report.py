@@ -71,6 +71,11 @@ def main() -> int:
         help="Fail (exit 2) if total size exceeds this GiB count.",
     )
     parser.add_argument(
+        "--fail-on-nested-git",
+        action="store_true",
+        help="Fail (exit 3) if nested .git dirs are found (excluding repo root).",
+    )
+    parser.add_argument(
         "--largest-files",
         type=int,
         default=0,
@@ -164,6 +169,23 @@ def main() -> int:
         print(f"\nTop {largest_limit} files:")
         for size, rel_file in sorted(largest, key=lambda x: x[0], reverse=True):
             print(f"  {format_bytes(size):>10}  {rel_file}")
+
+    if args.fail_on_nested_git:
+        nested_git = []
+        root_git = root / ".git"
+        for dirpath, dirnames, _ in os.walk(root):
+            if Path(dirpath) == root_git:
+                dirnames[:] = []
+                continue
+            if ".git" in dirnames:
+                git_path = Path(dirpath) / ".git"
+                if git_path != root_git:
+                    nested_git.append(os.path.relpath(git_path, root))
+        if nested_git:
+            print("\nERROR: nested .git directories found:")
+            for item in sorted(nested_git):
+                print(f"  {item}")
+            return 3
 
     max_total_bytes = max(0, args.max_total_bytes)
     if args.max_total_gb and args.max_total_gb > 0:

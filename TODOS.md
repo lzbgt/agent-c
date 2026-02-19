@@ -102,6 +102,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [x] Remove stub CLAUDE.md placeholders from vendored claude-mem subtree.
 - [x] Add `tools/clean.sh --purge-ref-git` to optionally delete nested ref/.git dirs.
 - [x] Add `tools/clean.sh --report` to emit repo size summary after cleanup.
+- [x] Add nested .git detection to repo size report + CI guard.
 
 ## Promoted goals (explicit goals; no non-goals)
 

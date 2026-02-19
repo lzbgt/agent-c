@@ -15,4 +15,4 @@ jobs:
           fetch-depth: 1
       - name: Repo size report
         run: |
-          python3 tools/repo_size_report.py --exclude .git --max-total-gb 5 --depth 2 --top 20
+          python3 tools/repo_size_report.py --exclude .git --max-total-gb 5 --depth 2 --top 20 --fail-on-nested-git
