@@ -28,6 +28,7 @@ if [[ "${rc}" -eq 0 ]]; then
   fi
   exit 0
 fi
+echo "HINT: For detailed diagnostics, run tools/openrouter_auth_debug.sh" >&2
 if [[ "${rc}" -eq 77 && -n "${source_hint}" ]]; then
   echo "SKIP: OpenRouter key source ${source_hint}" >&2
 fi
