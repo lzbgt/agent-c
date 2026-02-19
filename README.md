@@ -77,6 +77,7 @@ Smoke tests:
 - Audio signaling smokes (`broker_audio_signal_docker_smoke`, `agentd_audio_signal_loopback_smoke`) normally spin up a
   temporary Postgres via Docker; if Docker is unavailable but `initdb`/`pg_ctl` are usable, they attempt to launch a local
   ephemeral Postgres instead. You can always override with `AGENTD_TEST_PG_DSN` to point at any reachable Postgres DSN.
+  If local Postgres is misconfigured (e.g., missing `postgres.bki`), the tests will skip and print the reason.
 
 ### Core-only build (portable; no CURL required)
 
