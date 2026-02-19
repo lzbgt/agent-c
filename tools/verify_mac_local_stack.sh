@@ -8,6 +8,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=tools/lib/agent_env.sh
 source "${ROOT}/tools/lib/agent_env.sh"
+source "${ROOT}/tools/lib/docker_preflight.sh" 2>/dev/null || true
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "[mac-local] WARNING: not running on macOS; continuing anyway"
@@ -178,6 +179,13 @@ if ! command -v npm >/dev/null 2>&1; then
   exit 0
 fi
 
+if ! command -v python3 >/dev/null 2>&1 && ! command -v python >/dev/null 2>&1; then
+  echo "[mac-local] python not found; skipping WebUI serve" >&2
+  echo "[mac-local] OK"
+  echo "  - agentd: http://127.0.0.1:${AGENTD_PORT}/api/v1/health (auth: ${AGENTD_AUTH_TOKEN})"
+  exit 0
+fi
+
 if [[ "${MAC_LOCAL_UI_INSTALL}" == "1" ]]; then
   echo "[mac-local] building WebUI (logs: ${LOG_WEBUI_INSTALL}, ${LOG_WEBUI_BUILD})"
   (cd "${ROOT}/ui" && NPM_CONFIG_CACHE=./.npm-cache npm ci) >"${LOG_WEBUI_INSTALL}" 2>&1
@@ -195,7 +203,8 @@ fi
 (cd "${ROOT}/ui" && NPM_CONFIG_CACHE=./.npm-cache npm run build) >"${LOG_WEBUI_BUILD}" 2>&1
 
 echo "[mac-local] serving WebUI on 127.0.0.1:${WEBUI_PORT}"
-(cd "${ROOT}/ui/dist" && python3 -m http.server "${WEBUI_PORT}" >/dev/null 2>&1) &
+http_server_cmd="$(python_http_server_cmd "${WEBUI_PORT}")"
+(cd "${ROOT}/ui/dist" && ${http_server_cmd} >/dev/null 2>&1) &
 WEBUI_PID=$!
 
 sleep 1

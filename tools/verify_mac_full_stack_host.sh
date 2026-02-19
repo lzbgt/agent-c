@@ -241,7 +241,8 @@ window.__AGENT_UI_CONFIG__ = {
   daemonAuthToken: "${AGENTD_AUTH_TOKEN}",
 };
 CFG
-  (cd "${ROOT}/ui/dist" && python3 -m http.server "${WEBUI_PORT}" >"${LOG_WEBUI}" 2>&1) &
+  http_server_cmd="$(python_http_server_cmd "${WEBUI_PORT}")"
+  (cd "${ROOT}/ui/dist" && ${http_server_cmd} >"${LOG_WEBUI}" 2>&1) &
   WEBUI_PID=$!
 fi
 
