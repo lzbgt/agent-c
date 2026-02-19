@@ -24,10 +24,10 @@ Default behavior:
 
 Options:
   --dry-run           Show what would be removed without deleting.
-  --aggressive        Remove build/ and out/ regardless of size; prune UI build caches.
+  --aggressive        Remove build*/ and out/ regardless of size; prune UI build caches.
   --purge-state       Also remove stateful data (state/, db/, memory/, session_*).
   --purge-deps        Also remove dependency caches (ui/node_modules, .agent_deps, ref/*/venv).
-  --keep-build        Skip build/ and build-nohttp/ cleanup.
+  --keep-build        Skip build*/ cleanup.
   --keep-out          Skip out/ cleanup.
   --threshold-gb N    Size threshold in GiB (default: 2).
   --out-max-days N    Age threshold for out/ pruning (default: 14; 0 = delete all files).
