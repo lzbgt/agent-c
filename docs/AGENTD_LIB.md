@@ -71,7 +71,8 @@ int main() {
   agentd::DaemonConfig cfg;
   cfg.listen_host = "127.0.0.1";
   cfg.listen_port = 8123;
-  cfg.db_path = "./agentd.db";
+  cfg.state_dir = "./state";
+  cfg.db_path = cfg.state_dir + "/agentd.db";
   cfg.cors_disabled = true; // typical for non-browser embedding
 
   agentd::AgentdService svc(agentd::AgentdService::Options{cfg});
