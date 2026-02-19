@@ -4,6 +4,10 @@ set -euo pipefail
 # macOS full-stack verification without building Docker images.
 # - Runs Postgres + Keycloak via docker compose (no-build)
 # - Runs agentd + broker + connector + WebUI on the host
+#
+# Optional env:
+# - HOST_STACK_SKIP_UI=1 (skip WebUI build/serve)
+# - HOST_STACK_UI_INSTALL=0 (skip npm ci when deps already exist)
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
