@@ -50,6 +50,8 @@ type Config struct {
 	SSEKeepaliveInterval time.Duration
 	// Readiness check cache interval. 0 uses a safe default.
 	ReadinessCacheInterval time.Duration
+	// Audio signaling session TTL. 0 uses a safe default.
+	AudioSessionTTL time.Duration
 
 	AdminSubs map[string]bool
 }
@@ -73,6 +75,8 @@ type Server struct {
 	clientAuthLastError string
 	clientAuthReloadMu  sync.RWMutex
 	clientAuthReload    func(reason string) error
+
+	audioStore *audioSessionStore
 }
 
 func New(cfg Config) (*Server, error) {
@@ -121,6 +125,9 @@ func New(cfg Config) (*Server, error) {
 	if cfg.ReadinessCacheInterval == 0 {
 		cfg.ReadinessCacheInterval = 5 * time.Second
 	}
+	if cfg.AudioSessionTTL == 0 {
+		cfg.AudioSessionTTL = defaultAudioSessionTTL
+	}
 	s := &Server{cfg: cfg, startTime: time.Now()}
 	s.clientAuth = cfg.ClientAuth
 	if cfg.ClientAuth != nil {
@@ -143,6 +150,7 @@ func New(cfg Config) (*Server, error) {
 			return ok
 		},
 	}
+	s.audioStore = newAudioSessionStore(cfg.AudioSessionTTL)
 	return s, nil
 }
 
@@ -156,6 +164,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/client_auth/reload", s.handleClientAuthReload)
 	mux.HandleFunc("/v1/agent/connect", s.handleAgentConnect)
 	mux.HandleFunc("/v1/agents", s.handleAgents)
+	mux.HandleFunc("/v1/audio/sessions", s.handleAudioSessions)
+	mux.HandleFunc("/v1/audio/sessions/", s.handleAudioSessionsSubroutes)
 	mux.HandleFunc("/v1/orchestrate", s.handleOrchestrate)
 	mux.HandleFunc("/v1/trace", s.handleTrace)
 	mux.HandleFunc("/v1/events", s.handleEventsSSE)

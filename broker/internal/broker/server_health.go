@@ -90,6 +90,10 @@ func (s *Server) handleCaps(w http.ResponseWriter, r *http.Request) {
 			"events": map[string]any{
 				"sse": true,
 			},
+			"audio": map[string]any{
+				"signaling": true,
+				"mode":      "webrtc",
+			},
 			"idempotency": map[string]any{
 				"enabled": s.cfg.IdempotencyTTL > 0,
 			},
@@ -116,6 +120,12 @@ func (s *Server) handleCaps(w http.ResponseWriter, r *http.Request) {
 					return 0
 				}
 				return s.cfg.ReadinessCacheInterval.Milliseconds()
+			}(),
+			"audio_session_ttl_ms": func() int64 {
+				if s.cfg.AudioSessionTTL <= 0 {
+					return 0
+				}
+				return s.cfg.AudioSessionTTL.Milliseconds()
 			}(),
 		},
 	}
