@@ -30,12 +30,6 @@ static bool parse_ref_value(const std::string& line, std::string* out) {
   if (pos == std::string::npos) return false;
   std::string rest = trim(line.substr(pos + 5));
   if (rest.empty()) return false;
-  // Drop inline comments.
-  const auto comment = rest.find('#');
-  if (comment != std::string::npos) {
-    rest = trim(rest.substr(0, comment));
-  }
-  if (rest.empty()) return false;
   if (rest.front() == '\'' || rest.front() == '"') {
     const char quote = rest.front();
     const auto end = rest.find(quote, 1);
@@ -49,6 +43,18 @@ static bool parse_ref_value(const std::string& line, std::string* out) {
   }
   *out = rest;
   return !out->empty();
+}
+
+static bool has_yaml_key(const std::string& path, const std::string& key) {
+  std::string content;
+  if (!read_all(path, &content)) return false;
+  std::istringstream iss(content);
+  std::string line;
+  const std::string needle = key + ":";
+  while (std::getline(iss, line)) {
+    if (trim(line) == needle) return true;
+  }
+  return false;
 }
 
 static bool load_with_refs(const std::string& path, std::string* out) {
@@ -83,9 +89,22 @@ static bool load_with_refs(const std::string& path, std::string* out) {
       if (!ref.empty() && ref.front() == '#') continue;
       const auto hash = ref.find('#');
       std::string ref_path = (hash == std::string::npos) ? ref : ref.substr(0, hash);
+      std::string fragment = (hash == std::string::npos) ? "" : ref.substr(hash + 1);
       if (ref_path.empty()) continue;
       std::filesystem::path resolved = base_dir / ref_path;
       resolved = resolved.lexically_normal();
+      if (!fragment.empty()) {
+        if (!fragment.empty() && fragment.front() == '/') {
+          fragment = fragment.substr(1);
+        }
+        if (!fragment.empty() && fragment.find('/') == std::string::npos) {
+          if (!has_yaml_key(resolved.string(), fragment)) {
+            std::fprintf(stderr, "openapi drift: missing fragment %s in %s\n",
+                         fragment.c_str(), resolved.string().c_str());
+            return false;
+          }
+        }
+      }
       stack.push_back(resolved.string());
     }
   }
