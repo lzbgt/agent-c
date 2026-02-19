@@ -238,9 +238,10 @@ select_agent_id() {
   if [[ "${code}" != "200" || -z "${body}" ]]; then
     return 1
   fi
-  python3 - <<'PY'
+  python3 - "${body}" <<'PY'
 import json, sys
-obj = json.loads(sys.stdin.read() or "{}")
+raw = sys.argv[1] if len(sys.argv) > 1 else ""
+obj = json.loads(raw or "{}")
 agents = obj.get("agents") or []
 for a in agents:
   if a.get("connected") is True and a.get("agent_id"):
@@ -272,8 +273,23 @@ ensure_team_agent() {
   return 1
 }
 
+wait_for_team_agent() {
+  local deadline now
+  deadline="$(( $(date +%s) + ${AGENT_SMOKE_AGENT_WAIT_SECS:-60} ))"
+  while true; do
+    if ensure_team_agent; then
+      return 0
+    fi
+    now="$(date +%s)"
+    if (( now >= deadline )); then
+      return 1
+    fi
+    sleep 2
+  done
+}
+
 TEAM_AGENT_ID=""
-if ! ensure_team_agent; then
+if ! wait_for_team_agent; then
   if [[ "${STACK_FROM_DETECT}" == "1" ]]; then
     echo "SKIP: no accessible agents in detected broker stack" >&2
     exit 77
