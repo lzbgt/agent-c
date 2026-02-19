@@ -12,3 +12,12 @@ The OpenAPI specs are split into a small root file plus referenced subfiles.
 Update the `paths.yaml` and `components.yaml` files for most changes. Keep the
 root specs (`agentd.yaml`, `broker.yaml`) focused on metadata, tags, and the
 top-level `$ref` wiring so tooling can resolve the full contract.
+
+## Bundling helper
+
+For consumers that do not resolve `$ref` values, use:
+
+```bash
+tools/openapi_bundle.py docs/openapi/agentd.yaml -o out/agentd.openapi.yaml
+tools/openapi_bundle.py docs/openapi/broker.yaml -o out/broker.openapi.yaml
+```
