@@ -69,7 +69,16 @@ pick_port() {
       return 0
     fi
   done
-  echo "[compose] ERROR: no free ${label} found near ${preferred}" >&2
+  local attempt=0
+  while [[ "${attempt}" -lt 40 ]]; do
+    p="$((20000 + RANDOM % 45000))"
+    if [[ "$(is_port_free "${p}")" == "yes" ]]; then
+      echo "${p}"
+      return 0
+    fi
+    attempt="$((attempt + 1))"
+  done
+  echo "[compose] ERROR: no free ${label} found near ${preferred} or in random fallback range" >&2
   return 1
 }
 

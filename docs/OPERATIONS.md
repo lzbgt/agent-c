@@ -110,6 +110,11 @@ traffic stays direct. Dockerfiles also remove apt proxy config after installs to
 accidentally forcing proxies at runtime. Override by exporting `HTTP_PROXY`/`HTTPS_PROXY`
 before `docker compose`.
 
+Port selection note: the compose verification script prefers the default ports, but will
+fall back to random high ports if the common ones are already in use. You can always pin
+ports explicitly via `BROKER_PUBLISHED_PORT`, `KEYCLOAK_PUBLISHED_PORT`,
+`POSTGRES_PUBLISHED_PORT`, `AGENTD_PUBLISHED_PORT`, `WEBUI_PUBLISHED_PORT`.
+
 ## Network smoke tests
 
 `ctest` includes network smokes (OpenRouter + DeepSeek). They run when keys are available via:
