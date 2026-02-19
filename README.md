@@ -573,6 +573,12 @@ git config core.hooksPath .githooks
 tools/install_git_hooks.sh
 ```
 
+Verbose pre-commit output (when debugging vendored guard issues):
+
+```bash
+VENDORED_GUARD_VERBOSE=1 git commit
+```
+
 Run all repo hygiene guards locally:
 
 ```bash

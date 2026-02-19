@@ -24,6 +24,12 @@ Example (CI/local script):
 tools/hooks_status.sh --json --check
 ```
 
+Debugging hook output:
+
+```bash
+VENDORED_GUARD_VERBOSE=1 git commit
+```
+
 ## Current vendored subtrees
 
 - `ref/claude-mem/` (upstream: thedotmack/claude-mem)

@@ -47,7 +47,11 @@ cat > "${HOOK_FILE}" <<'EOF'
 set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-python3 "${ROOT}/tools/vendored_guard.py" --path ref
+ARGS=()
+if [[ "${VENDORED_GUARD_VERBOSE:-0}" == "1" ]]; then
+  ARGS+=(--verbose)
+fi
+python3 "${ROOT}/tools/vendored_guard.py" --path ref "${ARGS[@]}"
 EOF
 
 chmod +x "${HOOK_FILE}"
