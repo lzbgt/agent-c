@@ -9,7 +9,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 OVERVIEW = ROOT / "docs/handbook/OVERVIEW.md"
 OUTPUT = ROOT / "docs/HANDBOOK.md"
-DEFAULT_MAX_LINES = 400
+DEFAULT_MAX_LINES = 250
 SOURCES = [
     ROOT / "README.md",
     ROOT / "DESIGN.md",
