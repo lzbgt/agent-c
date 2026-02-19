@@ -9,6 +9,7 @@ fi
 
 FORCE=0
 VERBOSE=0
+QUIET=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --force)
@@ -19,15 +20,20 @@ while [[ $# -gt 0 ]]; do
       VERBOSE=1
       shift 1
       ;;
+    --quiet)
+      QUIET=1
+      shift 1
+      ;;
     -h|--help)
       cat <<'EOF'
-Usage: tools/install_git_hooks.sh [--force] [--verbose]
+Usage: tools/install_git_hooks.sh [--force] [--verbose] [--quiet]
 
 Installs a pre-commit hook that runs vendored subtree guard.
 If a pre-commit hook already exists, this script will not overwrite it unless
 --force is provided.
 Respects core.hooksPath when set.
 Use --verbose to hardcode verbose vendored guard output in the hook.
+Use --quiet to hardcode quiet vendored guard output in the hook.
 EOF
       exit 0
       ;;
@@ -48,7 +54,15 @@ if [[ -f "${HOOK_FILE}" ]] && [[ "${FORCE}" -ne 1 ]]; then
   exit 1
 fi
 
-if [[ "${VERBOSE}" -eq 1 ]]; then
+if [[ "${QUIET}" -eq 1 ]]; then
+  cat > "${HOOK_FILE}" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+python3 "${ROOT}/tools/vendored_guard.py" --path ref --quiet
+EOF
+elif [[ "${VERBOSE}" -eq 1 ]]; then
   cat > "${HOOK_FILE}" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail

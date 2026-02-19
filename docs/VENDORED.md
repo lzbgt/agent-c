@@ -44,6 +44,12 @@ VENDORED_GUARD_QUIET=1 git commit
 
 Precedence: `VENDORED_GUARD_QUIET` overrides `VENDORED_GUARD_VERBOSE`.
 
+Install a permanently quiet hook:
+
+```bash
+tools/install_git_hooks.sh --quiet
+```
+
 ## Current vendored subtrees
 
 - `ref/claude-mem/` (upstream: thedotmack/claude-mem)
