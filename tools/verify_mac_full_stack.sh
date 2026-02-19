@@ -15,7 +15,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
 fi
 
 source "${ROOT}/tools/lib/docker_preflight.sh"
-if ! docker_preflight "mac"; then
+if ! docker_compose_preflight "mac"; then
   exit 77
 fi
 
