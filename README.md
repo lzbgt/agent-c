@@ -452,6 +452,10 @@ Reliability notes (important for production UX):
 - The UI posts client acknowledgement events (`ui_action_shown`, `client_rpc_result`, `artifact_rendered`/`artifact_render_failed`)
   so agents can implement deterministic “Definition of Done” handshakes (see `docs/DOD_ACK.md`).
 
+Vendored subtrees live under `ref/` and are treated read-only in this repo.
+If changes are needed, update upstream or copy into first-party code. See
+`docs/VENDORED.md`.
+
 ## Cleanup (disk usage)
 
 Build artifacts and run logs can grow quickly (especially `build/`, `build-core*/`, and `out/`). To keep the repo lean:

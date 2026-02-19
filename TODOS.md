@@ -112,7 +112,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [x] Add untracked file size guard + integrate into repo guards.
 - [x] Allow strict mode via `REPO_GUARD_STRICT` env for repo guards.
 - [x] Ignore nested `ref/**/.git` dirs to prevent accidental re-adding.
-- [ ] Treat `ref/claude-mem/openclaw/test-install.sh` (2.3k LOC) as vendored/read-only or split into smaller scripts; document policy.
+- [x] Treat `ref/claude-mem/openclaw/test-install.sh` (2.3k LOC) as vendored/read-only; documented in `docs/VENDORED.md`.
 
 ## Promoted goals (explicit goals; no non-goals)
 
