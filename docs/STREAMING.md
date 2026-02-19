@@ -112,6 +112,13 @@ If you need a quick key sanity check before probing, run:
 tools/check_openrouter_auth.sh
 ```
 
+If your OpenRouter account enforces header requirements, set:
+
+- `OPENROUTER_HTTP_REFERER`
+- `OPENROUTER_X_TITLE`
+
+The auth check, debug helper, and probe scripts will pass these headers through when set.
+
 If that still fails, use the debug helper to inspect model selection and the chat error payload:
 
 ```bash

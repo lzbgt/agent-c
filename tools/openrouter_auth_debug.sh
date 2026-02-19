@@ -28,6 +28,8 @@ fi
 
 resp="$(curl -sS --noproxy "*" -w "\n%{http_code}" \
   -H "Authorization: Bearer ${OPENROUTER_KEY}" \
+  ${OPENROUTER_HTTP_REFERER:+-H "HTTP-Referer: ${OPENROUTER_HTTP_REFERER}"} \
+  ${OPENROUTER_X_TITLE:+-H "X-Title: ${OPENROUTER_X_TITLE}"} \
   "${BASE_URL}/models" || true)"
 status="${resp##*$'\n'}"
 body="${resp%$'\n'*}"
@@ -143,6 +145,8 @@ PY
 
 chat_resp="$(curl -sS --noproxy "*" -w "\n%{http_code}" \
   -H "Authorization: Bearer ${OPENROUTER_KEY}" \
+  ${OPENROUTER_HTTP_REFERER:+-H "HTTP-Referer: ${OPENROUTER_HTTP_REFERER}"} \
+  ${OPENROUTER_X_TITLE:+-H "X-Title: ${OPENROUTER_X_TITLE}"} \
   -H "Content-Type: application/json" \
   -d "${chat_payload}" \
   "${BASE_URL}/chat/completions" || true)"

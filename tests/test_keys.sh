@@ -251,9 +251,17 @@ agent_test_openrouter_auth_ok() {
   fi
   local key="${1}"
   local base_url="${2:-https://openrouter.ai/api/v1}"
+  local -a headers
+  headers=(-H "Authorization: Bearer ${key}")
+  if [[ -n "${OPENROUTER_HTTP_REFERER:-}" ]]; then
+    headers+=(-H "HTTP-Referer: ${OPENROUTER_HTTP_REFERER}")
+  fi
+  if [[ -n "${OPENROUTER_X_TITLE:-}" ]]; then
+    headers+=(-H "X-Title: ${OPENROUTER_X_TITLE}")
+  fi
   local resp status
   resp="$(curl -sS --noproxy "*" -w "\n%{http_code}" \
-    -H "Authorization: Bearer ${key}" \
+    "${headers[@]}" \
     "${base_url}/models" || true)"
   status="${resp##*$'\n'}"
   if [[ "${status}" == "401" || "${status}" == "403" ]]; then
@@ -336,9 +344,10 @@ print(json.dumps({
 PY
 )"
   local chat_resp chat_status
+  local -a chat_headers
+  chat_headers=("${headers[@]}" -H "Content-Type: application/json")
   chat_resp="$(curl -sS --noproxy "*" -w "\n%{http_code}" \
-    -H "Authorization: Bearer ${key}" \
-    -H "Content-Type: application/json" \
+    "${chat_headers[@]}" \
     -d "${chat_payload}" \
     "${base_url}/chat/completions" || true)"
   chat_status="${chat_resp##*$'\n'}"
