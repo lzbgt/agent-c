@@ -95,8 +95,10 @@ docker_preflight() {
 
 docker_compose_preflight() {
   local label="${1:-docker}"
-  if ! docker_preflight "${label}"; then
-    return $?
+  docker_preflight "${label}"
+  local rc=$?
+  if [[ "${rc}" -ne 0 ]]; then
+    return "${rc}"
   fi
   if ! docker compose version >/dev/null 2>&1; then
     echo "[${label}] SKIP: docker compose not available" >&2
