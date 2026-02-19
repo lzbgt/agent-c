@@ -70,6 +70,10 @@ static const char* expected_schema_for_type(const std::string& type) {
   if (type == "heartbeat") return "run_event_payload_heartbeat_v1";
   if (type == "error") return "run_event_payload_error_v1";
   if (type == "policy_decision") return "run_event_payload_policy_decision_v1";
+  if (type == "team_handoff") return "run_event_payload_team_handoff_v1";
+  if (type == "team_quorum_request") return "run_event_payload_team_quorum_request_v1";
+  if (type == "team_quorum_result") return "run_event_payload_team_quorum_result_v1";
+  if (type == "team_member_result") return "run_event_payload_team_member_result_v1";
   if (type == "task_status") return "run_event_payload_task_status_v1";
   if (type == "workflow_status") return "run_event_payload_workflow_status_v1";
   if (type == "workflow_done") return "run_event_payload_workflow_done_v1";
@@ -377,6 +381,193 @@ static bool validate_payload_error(const Json::Value& data, std::string* out_err
   }
   if (data.isMember("max_steps") && !is_nonneg_int(data["max_steps"])) {
     if (out_err) *out_err = "error.data.max_steps must be integer >= 0";
+    return false;
+  }
+  return true;
+}
+
+static bool validate_payload_team_handoff(const Json::Value& data, std::string* out_err) {
+  if (!data.isObject()) {
+    if (out_err) *out_err = "team_handoff data must be object";
+    return false;
+  }
+  std::string team_id;
+  if (!get_string_field(data, "team_id", &team_id)) {
+    if (out_err) *out_err = "team_handoff.data.team_id must be non-empty string";
+    return false;
+  }
+  std::string team_run_id;
+  if (!get_string_field(data, "team_run_id", &team_run_id)) {
+    if (out_err) *out_err = "team_handoff.data.team_run_id must be non-empty string";
+    return false;
+  }
+  std::string from_role;
+  if (!get_string_field(data, "from_role", &from_role)) {
+    if (out_err) *out_err = "team_handoff.data.from_role must be non-empty string";
+    return false;
+  }
+  std::string to_role;
+  if (!get_string_field(data, "to_role", &to_role)) {
+    if (out_err) *out_err = "team_handoff.data.to_role must be non-empty string";
+    return false;
+  }
+  return true;
+}
+
+static bool validate_payload_team_quorum_request(const Json::Value& data, std::string* out_err) {
+  if (!data.isObject()) {
+    if (out_err) *out_err = "team_quorum_request data must be object";
+    return false;
+  }
+  std::string team_id;
+  if (!get_string_field(data, "team_id", &team_id)) {
+    if (out_err) *out_err = "team_quorum_request.data.team_id must be non-empty string";
+    return false;
+  }
+  std::string team_run_id;
+  if (!get_string_field(data, "team_run_id", &team_run_id)) {
+    if (out_err) *out_err = "team_quorum_request.data.team_run_id must be non-empty string";
+    return false;
+  }
+  std::string rule_id;
+  if (!get_string_field(data, "rule_id", &rule_id)) {
+    if (out_err) *out_err = "team_quorum_request.data.rule_id must be non-empty string";
+    return false;
+  }
+  std::string action;
+  if (!get_string_field(data, "action", &action)) {
+    if (out_err) *out_err = "team_quorum_request.data.action must be non-empty string";
+    return false;
+  }
+  if (!is_nonneg_int(data.get("min_approvals", Json::Value(Json::nullValue))) ||
+      data["min_approvals"].asInt64() < 1) {
+    if (out_err) *out_err = "team_quorum_request.data.min_approvals must be integer >= 1";
+    return false;
+  }
+  std::string quorum_mode;
+  if (!get_string_field(data, "quorum_mode", &quorum_mode)) {
+    if (out_err) *out_err = "team_quorum_request.data.quorum_mode must be non-empty string";
+    return false;
+  }
+  if (data.isMember("timeout_ms") && !is_nonneg_int(data["timeout_ms"])) {
+    if (out_err) *out_err = "team_quorum_request.data.timeout_ms must be integer >= 0";
+    return false;
+  }
+  if (data.isMember("role_allowlist")) {
+    if (!data["role_allowlist"].isArray()) {
+      if (out_err) *out_err = "team_quorum_request.data.role_allowlist must be array";
+      return false;
+    }
+    for (const auto& v : data["role_allowlist"]) {
+      if (!v.isString() || v.asString().empty()) {
+        if (out_err) *out_err = "team_quorum_request.data.role_allowlist items must be non-empty strings";
+        return false;
+      }
+    }
+  }
+  if (data.isMember("tool_name") && !data["tool_name"].isString()) {
+    if (out_err) *out_err = "team_quorum_request.data.tool_name must be string";
+    return false;
+  }
+  return true;
+}
+
+static bool validate_payload_team_quorum_result(const Json::Value& data, std::string* out_err) {
+  if (!data.isObject()) {
+    if (out_err) *out_err = "team_quorum_result data must be object";
+    return false;
+  }
+  std::string team_id;
+  if (!get_string_field(data, "team_id", &team_id)) {
+    if (out_err) *out_err = "team_quorum_result.data.team_id must be non-empty string";
+    return false;
+  }
+  std::string team_run_id;
+  if (!get_string_field(data, "team_run_id", &team_run_id)) {
+    if (out_err) *out_err = "team_quorum_result.data.team_run_id must be non-empty string";
+    return false;
+  }
+  std::string rule_id;
+  if (!get_string_field(data, "rule_id", &rule_id)) {
+    if (out_err) *out_err = "team_quorum_result.data.rule_id must be non-empty string";
+    return false;
+  }
+  std::string decision;
+  if (!get_string_field(data, "decision", &decision)) {
+    if (out_err) *out_err = "team_quorum_result.data.decision must be non-empty string";
+    return false;
+  }
+  if (!is_nonneg_int(data.get("approvals", Json::Value(Json::nullValue)))) {
+    if (out_err) *out_err = "team_quorum_result.data.approvals must be integer >= 0";
+    return false;
+  }
+  if (!is_nonneg_int(data.get("required_approvals", Json::Value(Json::nullValue))) ||
+      data["required_approvals"].asInt64() < 1) {
+    if (out_err) *out_err = "team_quorum_result.data.required_approvals must be integer >= 1";
+    return false;
+  }
+  if (!data.isMember("ok") || !data["ok"].isBool()) {
+    if (out_err) *out_err = "team_quorum_result.data.ok must be bool";
+    return false;
+  }
+  if (data.isMember("timeout_ms") && !is_nonneg_int(data["timeout_ms"])) {
+    if (out_err) *out_err = "team_quorum_result.data.timeout_ms must be integer >= 0";
+    return false;
+  }
+  if (data.isMember("tool_name") && !data["tool_name"].isString()) {
+    if (out_err) *out_err = "team_quorum_result.data.tool_name must be string";
+    return false;
+  }
+  if (data.isMember("quorum_mode") && !data["quorum_mode"].isString()) {
+    if (out_err) *out_err = "team_quorum_result.data.quorum_mode must be string";
+    return false;
+  }
+  return true;
+}
+
+static bool validate_payload_team_member_result(const Json::Value& data, std::string* out_err) {
+  if (!data.isObject()) {
+    if (out_err) *out_err = "team_member_result data must be object";
+    return false;
+  }
+  std::string team_id;
+  if (!get_string_field(data, "team_id", &team_id)) {
+    if (out_err) *out_err = "team_member_result.data.team_id must be non-empty string";
+    return false;
+  }
+  std::string team_run_id;
+  if (!get_string_field(data, "team_run_id", &team_run_id)) {
+    if (out_err) *out_err = "team_member_result.data.team_run_id must be non-empty string";
+    return false;
+  }
+  std::string member_id;
+  if (!get_string_field(data, "member_id", &member_id)) {
+    if (out_err) *out_err = "team_member_result.data.member_id must be non-empty string";
+    return false;
+  }
+  std::string role;
+  if (!get_string_field(data, "role", &role)) {
+    if (out_err) *out_err = "team_member_result.data.role must be non-empty string";
+    return false;
+  }
+  if (!data.isMember("ok") || !data["ok"].isBool()) {
+    if (out_err) *out_err = "team_member_result.data.ok must be bool";
+    return false;
+  }
+  if (data.isMember("run_id") && !is_nonneg_int(data["run_id"])) {
+    if (out_err) *out_err = "team_member_result.data.run_id must be integer >= 0";
+    return false;
+  }
+  if (data.isMember("duration_ms") && !is_nonneg_int(data["duration_ms"])) {
+    if (out_err) *out_err = "team_member_result.data.duration_ms must be integer >= 0";
+    return false;
+  }
+  if (data.isMember("summary") && !data["summary"].isString()) {
+    if (out_err) *out_err = "team_member_result.data.summary must be string";
+    return false;
+  }
+  if (data.isMember("error") && !data["error"].isString()) {
+    if (out_err) *out_err = "team_member_result.data.error must be string";
     return false;
   }
   return true;
@@ -821,6 +1012,10 @@ static bool validate_event_payload(const Json::Value& v, std::string* out_err) {
   if (type == "ui_action") return validate_payload_ui_action(data, out_err);
   if (type == "heartbeat") return validate_payload_heartbeat(data, out_err);
   if (type == "error") return validate_payload_error(data, out_err);
+  if (type == "team_handoff") return validate_payload_team_handoff(data, out_err);
+  if (type == "team_quorum_request") return validate_payload_team_quorum_request(data, out_err);
+  if (type == "team_quorum_result") return validate_payload_team_quorum_result(data, out_err);
+  if (type == "team_member_result") return validate_payload_team_member_result(data, out_err);
   if (type == "task_status") return validate_payload_task_status(data, out_err);
   if (type == "workflow_status") return validate_payload_workflow_status(data, out_err);
   if (type == "workflow_done") return validate_payload_workflow_done(data, out_err);

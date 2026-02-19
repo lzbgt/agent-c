@@ -88,6 +88,10 @@ static void inject_schema_into_events(Json::Value* arr) {
     else if (type == "heartbeat") schema = "run_event_payload_heartbeat_v1";
     else if (type == "error") schema = "run_event_payload_error_v1";
     else if (type == "policy_decision") schema = "run_event_payload_policy_decision_v1";
+    else if (type == "team_handoff") schema = "run_event_payload_team_handoff_v1";
+    else if (type == "team_quorum_request") schema = "run_event_payload_team_quorum_request_v1";
+    else if (type == "team_quorum_result") schema = "run_event_payload_team_quorum_result_v1";
+    else if (type == "team_member_result") schema = "run_event_payload_team_member_result_v1";
     if (schema) ev["schema"] = schema;
   }
 }

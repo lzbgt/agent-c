@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Run Event Payload team_member_result v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["team_id", "team_run_id", "member_id", "role", "ok"],
+  "properties": {
+    "team_id": {
+      "type": "string",
+      "description": "Team identifier."
+    },
+    "team_run_id": {
+      "type": "string",
+      "description": "Team run identifier."
+    },
+    "member_id": {
+      "type": "string",
+      "description": "Team member identifier."
+    },
+    "role": {
+      "type": "string",
+      "description": "Member role."
+    },
+    "ok": {
+      "type": "boolean",
+      "description": "Member run success flag."
+    },
+    "run_id": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Member run identifier when available."
+    },
+    "summary": {
+      "type": "string",
+      "description": "Optional member summary."
+    },
+    "error": {
+      "type": "string",
+      "description": "Error summary when failed."
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Member run duration."
+    }
+  }
+}

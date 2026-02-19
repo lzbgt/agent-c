@@ -1,0 +1,52 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Run Event Payload team_quorum_result v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["team_id", "team_run_id", "rule_id", "decision", "approvals", "required_approvals", "ok"],
+  "properties": {
+    "team_id": {
+      "type": "string",
+      "description": "Team identifier."
+    },
+    "team_run_id": {
+      "type": "string",
+      "description": "Team run identifier."
+    },
+    "rule_id": {
+      "type": "string",
+      "description": "Quorum rule identifier."
+    },
+    "decision": {
+      "type": "string",
+      "description": "Decision token (approve|deny|timeout)."
+    },
+    "approvals": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of approvals received."
+    },
+    "required_approvals": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Required approvals."
+    },
+    "ok": {
+      "type": "boolean",
+      "description": "Decision outcome (true when quorum satisfied)."
+    },
+    "tool_name": {
+      "type": "string",
+      "description": "Tool name when applicable."
+    },
+    "quorum_mode": {
+      "type": "string",
+      "description": "Quorum mode (strict|best_effort)."
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Timeout in milliseconds."
+    }
+  }
+}

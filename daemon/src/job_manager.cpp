@@ -43,6 +43,10 @@ static const char* job_event_schema_for_type(const std::string& type) {
   if (type == "heartbeat") return "run_event_payload_heartbeat_v1";
   if (type == "error") return "run_event_payload_error_v1";
   if (type == "policy_decision") return "run_event_payload_policy_decision_v1";
+  if (type == "team_handoff") return "run_event_payload_team_handoff_v1";
+  if (type == "team_quorum_request") return "run_event_payload_team_quorum_request_v1";
+  if (type == "team_quorum_result") return "run_event_payload_team_quorum_result_v1";
+  if (type == "team_member_result") return "run_event_payload_team_member_result_v1";
   return nullptr;
 }
 

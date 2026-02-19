@@ -28,6 +28,10 @@ can validate and reason about events deterministically.
   - `docs/spec/run-events/schema/run_event_payload_heartbeat_v1.schema.json`
   - `docs/spec/run-events/schema/run_event_payload_error_v1.schema.json`
   - `docs/spec/run-events/schema/run_event_payload_policy_decision_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_team_handoff_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_team_quorum_request_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_team_quorum_result_v1.schema.json`
+  - `docs/spec/run-events/schema/run_event_payload_team_member_result_v1.schema.json`
   - `docs/spec/run-events/schema/run_event_payload_workflow_created_v1.schema.json`
   - `docs/spec/run-events/schema/run_event_payload_workflow_cancel_requested_v1.schema.json`
   - `docs/spec/run-events/schema/run_event_payload_task_status_v1.schema.json`
@@ -85,6 +89,14 @@ The fixture set is validated for these common event payloads:
 -   Schema: `run_event_payload_error_v1`
 - `policy_decision`: `data.phase`, `data.mode`, `data.action` strings; optional enforcement/cap/tool metadata.
 -   Schema: `run_event_payload_policy_decision_v1`
+- `team_handoff`: `data.team_id`, `data.team_run_id`, `data.from_role`, `data.to_role` strings.
+-   Schema: `run_event_payload_team_handoff_v1`
+- `team_quorum_request`: `data.team_id`, `data.team_run_id`, `data.rule_id`, `data.action` strings; `data.min_approvals` integer.
+-   Schema: `run_event_payload_team_quorum_request_v1`
+- `team_quorum_result`: `data.team_id`, `data.team_run_id`, `data.rule_id`, `data.decision` strings; `data.approvals`, `data.required_approvals` integers; `data.ok` bool.
+-   Schema: `run_event_payload_team_quorum_result_v1`
+- `team_member_result`: `data.team_id`, `data.team_run_id`, `data.member_id`, `data.role` strings; `data.ok` bool.
+-   Schema: `run_event_payload_team_member_result_v1`
 - `workflow_created`: `data.workflow_id` string; optional `data.status`, `data.trace_id`, `data.session_id`, `data.goal`, `data.priority`, `data.steps`.
 -   Schema: `run_event_payload_workflow_created_v1`
 - `workflow_cancel_requested`: `data.workflow_id` string; `data.status` string; `data.cancel_requested` bool.

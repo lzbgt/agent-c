@@ -1,0 +1,48 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Run Event Payload team_quorum_request v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["team_id", "team_run_id", "rule_id", "action", "min_approvals", "quorum_mode"],
+  "properties": {
+    "team_id": {
+      "type": "string",
+      "description": "Team identifier."
+    },
+    "team_run_id": {
+      "type": "string",
+      "description": "Team run identifier."
+    },
+    "rule_id": {
+      "type": "string",
+      "description": "Quorum rule identifier."
+    },
+    "action": {
+      "type": "string",
+      "description": "Action token (e.g. tool:shell_exec)."
+    },
+    "tool_name": {
+      "type": "string",
+      "description": "Tool name when applicable."
+    },
+    "min_approvals": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Minimum approvals required."
+    },
+    "quorum_mode": {
+      "type": "string",
+      "description": "Quorum mode (strict|best_effort)."
+    },
+    "timeout_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Timeout in milliseconds."
+    },
+    "role_allowlist": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Role allowlist for approvals."
+    }
+  }
+}

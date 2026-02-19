@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Run Event Payload team_handoff v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["team_id", "team_run_id", "from_role", "to_role"],
+  "properties": {
+    "team_id": {
+      "type": "string",
+      "description": "Team identifier."
+    },
+    "team_run_id": {
+      "type": "string",
+      "description": "Team run identifier."
+    },
+    "from_role": {
+      "type": "string",
+      "description": "Origin role."
+    },
+    "to_role": {
+      "type": "string",
+      "description": "Destination role."
+    },
+    "from_member_id": {
+      "type": "string",
+      "description": "Origin member identifier."
+    },
+    "to_member_id": {
+      "type": "string",
+      "description": "Destination member identifier."
+    },
+    "reason": {
+      "type": "string",
+      "description": "Optional handoff reason."
+    }
+  }
+}
