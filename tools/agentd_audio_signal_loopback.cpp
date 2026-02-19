@@ -189,6 +189,11 @@ int main(int argc, char** argv) {
   Options opt;
   if (!parse_args(argc, argv, &opt)) return 2;
 
+  if (curl_global_init(CURL_GLOBAL_DEFAULT) != 0) {
+    std::cerr << "curl_global_init failed\n";
+    return 1;
+  }
+
   SseState st;
   long http_status = 0;
   if (!read_offer_from_stream(opt, &st, &http_status)) {
@@ -196,6 +201,7 @@ int main(int argc, char** argv) {
     if (http_status > 0) std::cerr << " (http status " << http_status << ")";
     if (!st.error.empty()) std::cerr << ": " << st.error;
     std::cerr << "\n";
+    curl_global_cleanup();
     return 1;
   }
 
@@ -204,9 +210,11 @@ int main(int argc, char** argv) {
   std::string err;
   if (!send_signal(opt, "answer", answer_payload, &err)) {
     std::cerr << "Failed to send answer: " << err << "\n";
+    curl_global_cleanup();
     return 1;
   }
 
   std::cout << "agentd_audio_signal_loopback OK\n";
+  curl_global_cleanup();
   return 0;
 }
