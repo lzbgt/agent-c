@@ -39,6 +39,8 @@ Roadmap section below and `TODOS.md`, including:
   - `docs/BROKER.md`: broker relay design, trust model, and HTTP/WSS API.
   - `docs/CLIENT.md`: client collaboration model (events, UI actions, DoD, client RPC).
   - `docs/AGENTD_LIB.md`: embedding `agentd` in-process and tool-extension interfaces.
+  - `docs/AGENTD.md`: daemon operations and runtime configuration.
+  - `docs/CLI.md`: CLI usage and tool-loop guidance.
   - `docs/PROTOCOL.md`: run/artifact protocol envelopes and semantics.
   - `docs/WORKFLOWS.md`: workflow engine model and task semantics.
   - `docs/STREAMING.md`: streaming compatibility matrix and behavior notes.

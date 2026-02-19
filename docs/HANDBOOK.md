@@ -146,6 +146,8 @@ When `--auth-token` is set, all endpoints require `Authorization: Bearer ...`.
 - `docs/` for feature docs: protocol, client, workflows, tools, memory, diagnostics, DB, streaming, broker, deployment, WebUI, platform.
 - `docs/TESTING.md` for verification workflows and E2E harness notes.
 - `docs/CLEANUP.md` for cleanup commands and repo hygiene guards.
+- `docs/AGENTD.md` for daemon operations and runtime configuration.
+- `docs/CLI.md` for CLI usage and tool-loop guidance.
 - `docs/spec/` for versioned specs.
 - `docs/openapi/` for OpenAPI definitions.
 

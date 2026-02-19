@@ -22,6 +22,35 @@ Platform support:
 - Tool plugins: Linux, macOS, Windows
 - Tool servers: Linux and macOS only (POSIX process + poll)
 
+## Built-in host toolset
+
+These tools are available when `--tools host` is enabled (subject to `yolo` and `host_policy`):
+
+- `shell_exec` (runs `/bin/sh -lc <cmd>`, returns JSON envelope with `exit_code`, `timed_out`, `truncated`, `output`)
+- `proc_exec` (runs an argv array via `posix_spawnp`, no shell; returns JSON envelope with `argv`, `exit_code`, `timed_out`, `truncated`, `output`)
+- `file_apply_patch` (applies a unified diff via `git apply`; returns the patch as a diff-style audit trail)
+- `fs_stat` (file/dir metadata; returns structured fields + a human-readable `output`)
+- `fs_list` (bounded directory listing; returns structured `entries` + `output`)
+- `fs_find` (bounded file discovery; returns structured `entries` + `output`)
+- `fs_read` (bounded file read with pagination by line; returns `content`/`output` + `has_more` + `next_start_line`)
+- `text_search` (token-safe substring search; returns structured `matches` + `output`)
+- `ui_action` (typed UI-side action requests; see `docs/CLIENT.md`)
+
+Host policy notes:
+- In `--host-policy readonly`, the registry omits `shell_exec`, `proc_exec`, and `file_apply_patch`.
+- In daemon restricted mode (`yolo=false`), the registry omits `shell_exec` and `proc_exec` even when `host_policy=full`.
+
+## Token-safety guidance (filesystem tools)
+
+- Prefer `fs_list` / `fs_read` / `fs_stat` for bounded output and pagination.
+- Prefer `fs_find` over `find`/`tree` when you need predictable output size and default excludes.
+- Prefer `text_search` over `grep -R` when you need predictable output size (bounded matches + per-file size limits).
+  - Use `extensions` (e.g. `[".cpp",".h"]`) to restrict scanning.
+- `fs_list`, `fs_find`, and `text_search` support `exclude_globs` (fnmatch) to filter noisy paths.
+- `fs_list`, `fs_find`, and `text_search` support `respect_gitignore: true` (best-effort; reads repo-root `.gitignore`).
+- `fs_stat` supports an optional bounded line count (`count_lines: true`) for small text files.
+- `fs_read` supports paging (`start_line`, `max_lines`, `end_line`) and a character cap (`max_chars`).
+
 ## Tool servers (out-of-process)
 
 Enable one or more tool servers:

@@ -10,6 +10,8 @@ Start here if you want the shortest path to the right document.
 - `docs/WEBUI.md`: WebUI dev/build/runtime config and reliability notes.
 - `docs/TESTING.md`: verification workflows, network smokes, and E2E harness.
 - `docs/CLEANUP.md`: cleanup commands, repo size reports, and guard scripts.
+- `docs/AGENTD.md`: daemon operations and runtime configuration.
+- `docs/CLI.md`: CLI usage and tool-loop guidance.
 
 ## Core runtime
 

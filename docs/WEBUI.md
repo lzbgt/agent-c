@@ -56,6 +56,14 @@ Settings → Diagnostics triggers:
 
 See `docs/DIAGNOSTICS.md` for provider_test usage.
 
+## Rendering notes
+
+- The UI renders a **Conversation** (message cards) derived from daemon `events`:
+  user prompt → assistant messages → tool calls/results.
+- Markdown is rendered with GFM + syntax highlighting for code blocks.
+- The settings panel is collapsible and settings persist via `localStorage`.
+- If outbound networking requires a proxy, set **HTTPS proxy** in Settings (sent as `proxy` in `POST /api/v1/run`).
+
 ## Reliability notes
 
 - The UI persists the active async `job_id` + SSE cursor so refresh can resume a running job stream.

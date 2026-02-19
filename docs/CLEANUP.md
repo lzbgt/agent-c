@@ -79,7 +79,23 @@ working tree locally):
 tools/vendored_guard.py --path ref
 ```
 
+Run all repo hygiene guards locally:
+
+```bash
+tools/verify_repo_guards.sh
+tools/verify_repo_guards.sh --strict
+tools/verify_repo_guards.sh --max-total-gb 2 --max-file-mb 5
+tools/verify_repo_guards.sh --max-untracked-mb 200
+```
+
 ## Vendored guard hooks
+
+If you use a custom hooks directory:
+
+```bash
+git config core.hooksPath .githooks
+tools/install_git_hooks.sh
+```
 
 Install the local pre-commit hook:
 
@@ -115,4 +131,32 @@ Scriptable check with JSON:
 
 ```bash
 tools/hooks_status.sh --json --check
+```
+
+Hook modes (vendored guard):
+
+- Verbose pre-commit output (when debugging vendored guard issues):
+
+```bash
+VENDORED_GUARD_VERBOSE=1 git commit
+```
+
+- Install a permanently verbose hook:
+
+```bash
+tools/install_git_hooks.sh --verbose
+```
+
+- Quiet pre-commit output (only lists changed paths on failure):
+
+```bash
+VENDORED_GUARD_QUIET=1 git commit
+```
+
+- Precedence (if both set): `VENDORED_GUARD_QUIET` overrides `VENDORED_GUARD_VERBOSE`.
+
+- Install a permanently quiet hook:
+
+```bash
+tools/install_git_hooks.sh --quiet
 ```
