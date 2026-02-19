@@ -204,10 +204,11 @@ Run requests may accept:
 1) When a gated action is requested, the orchestrator emits a **quorum request**.
 2) Approvals are gathered from members that match `role_allowlist`.
 3) If `min_approvals` is satisfied:
-   - `strict`: action executes.
-   - `best_effort`: action executes, but logs missing approvals.
+   - `strict`: action executes (`decision=approve`).
+   - `best_effort`: action executes (`decision=approve`).
 4) If quorum is not satisfied before `timeout_ms`, the action fails (strict) or
-   continues with a policy decision event (best_effort).
+   continues with a policy decision event (best_effort). The quorum result is
+   emitted with `decision=deny` (strict) or `decision=best_effort` (best_effort).
 
 Quorum checks should be surfaced as `policy_decision` or `team_quorum_*` events
 so runs remain replayable and auditable.

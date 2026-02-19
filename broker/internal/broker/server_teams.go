@@ -1198,12 +1198,12 @@ func publishTeamQuorumResult(hub *events.Hub, userSub, teamID, teamRunID string,
 	}
 	for _, rule := range eval.Rules {
 		ok := rule.Missing == 0
-		decision := "approved"
+		decision := "approve"
 		if !ok {
 			if strings.ToLower(strings.TrimSpace(rule.QuorumMode)) == "best_effort" {
 				decision = "best_effort"
 			} else {
-				decision = "denied"
+				decision = "deny"
 			}
 		}
 		payload := map[string]any{

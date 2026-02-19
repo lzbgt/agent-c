@@ -19,7 +19,7 @@
     },
     "decision": {
       "type": "string",
-      "description": "Decision token (approve|deny|timeout)."
+      "description": "Decision token (approve|deny|best_effort|timeout)."
     },
     "approvals": {
       "type": "integer",

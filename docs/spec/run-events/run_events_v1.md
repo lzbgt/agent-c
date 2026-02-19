@@ -93,7 +93,7 @@ The fixture set is validated for these common event payloads:
 -   Schema: `run_event_payload_team_handoff_v1`
 - `team_quorum_request`: `data.team_id`, `data.team_run_id`, `data.rule_id`, `data.action` strings; `data.min_approvals` integer.
 -   Schema: `run_event_payload_team_quorum_request_v1`
-- `team_quorum_result`: `data.team_id`, `data.team_run_id`, `data.rule_id`, `data.decision` strings; `data.approvals`, `data.required_approvals` integers; `data.ok` bool.
+- `team_quorum_result`: `data.team_id`, `data.team_run_id`, `data.rule_id`, `data.decision` strings (approve|deny|best_effort); `data.approvals`, `data.required_approvals` integers; `data.ok` bool.
 -   Schema: `run_event_payload_team_quorum_result_v1`
 - `team_member_result`: `data.team_id`, `data.team_run_id`, `data.member_id`, `data.role` strings; `data.ok` bool.
 -   Schema: `run_event_payload_team_member_result_v1`
