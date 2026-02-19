@@ -87,7 +87,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
 
-- [ ] W=10 — Populate OpenRouter streaming pins with a verified key, commit `ref/openrouter/streaming_pins.json`, and tighten smoke tests to prefer pins (unblocks streaming stability work).
+- [ ] W=10 — Populate OpenRouter streaming pins with a verified key, commit `ref/openrouter/streaming_pins.json`, and tighten smoke tests to prefer pins (unblocks streaming stability work). Current key returns 401 “User not found” on chat preflight; verify key and OpenRouter headers.
 - [x] W=9 — Unblock macOS full-stack compose verification (document Docker Desktop resource settings + prebuilt image path) and improve `tools/verify_mac_full_stack.sh` diagnostics for `unpigz/runc` failures.
 - [x] W=8 — Finish embedded/MCU-compatible tool plugin path (ABI constraints + host/sandbox policy; Windows parity tests added).
 - [x] W=7 — Split near-2000 LOC modules into SOLID units with focused tests: `broker/internal/broker/server.go` (UI `api.ts` + `daemon/src/agent_db.cpp` + `daemon/src/workflow_endpoints.cpp` completed).
@@ -169,7 +169,7 @@ streaming and plugins are stable.
   - [x] DeepSeek streaming tool-call smoke test (key-gated).
   - [x] OpenRouter streaming probe script to discover stable models.
   - [x] OpenRouter streaming probe can emit `ref/openrouter/streaming_pins.json`; smoke tests prefer the pin file.
-  - [ ] Populate OpenRouter streaming pins with a verified key (current key returns auth errors on chat completions across candidates).
+  - [ ] Populate OpenRouter streaming pins with a verified key (current key returns 401 “User not found” on chat preflight across candidates).
   - [x] Draft core streaming interface spec (`docs/spec/streaming/core_stream_v1.md`).
   - [x] Wire CLI/daemon streaming through core stream decoder (replace duplicated host logic).
 - [x] Memory architecture: dynamic retention policy (decay/salience/recaps) informed by claude-mem research + docs.
