@@ -1,7 +1,10 @@
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <unordered_set>
+#include <vector>
 
 static bool read_all(const std::string& path, std::string* out) {
   if (!out) return false;
@@ -11,6 +14,78 @@ static bool read_all(const std::string& path, std::string* out) {
   std::ostringstream ss;
   ss << f.rdbuf();
   *out = ss.str();
+  return true;
+}
+
+static std::string trim(const std::string& input) {
+  const auto first = input.find_first_not_of(" \t\r\n");
+  if (first == std::string::npos) return "";
+  const auto last = input.find_last_not_of(" \t\r\n");
+  return input.substr(first, last - first + 1);
+}
+
+static bool parse_ref_value(const std::string& line, std::string* out) {
+  if (!out) return false;
+  const auto pos = line.find("$ref:");
+  if (pos == std::string::npos) return false;
+  std::string rest = trim(line.substr(pos + 5));
+  if (rest.empty()) return false;
+  // Drop inline comments.
+  const auto comment = rest.find('#');
+  if (comment != std::string::npos) {
+    rest = trim(rest.substr(0, comment));
+  }
+  if (rest.empty()) return false;
+  if (rest.front() == '\'' || rest.front() == '"') {
+    const char quote = rest.front();
+    const auto end = rest.find(quote, 1);
+    if (end == std::string::npos) return false;
+    *out = rest.substr(1, end - 1);
+    return true;
+  }
+  const auto space = rest.find_first_of(" \t\r\n");
+  if (space != std::string::npos) {
+    rest = rest.substr(0, space);
+  }
+  *out = rest;
+  return !out->empty();
+}
+
+static bool load_with_refs(const std::string& path, std::string* out) {
+  if (!out) return false;
+  std::unordered_set<std::string> visited;
+  std::vector<std::string> stack;
+  stack.push_back(path);
+  out->clear();
+
+  while (!stack.empty()) {
+    std::string current = stack.back();
+    stack.pop_back();
+    if (current.empty()) continue;
+    if (visited.count(current)) continue;
+    visited.insert(current);
+
+    std::string content;
+    if (!read_all(current, &content)) {
+      return false;
+    }
+    out->append(content);
+    out->append("\n");
+
+    const std::filesystem::path base_dir = std::filesystem::path(current).parent_path();
+    std::istringstream iss(content);
+    std::string line;
+    while (std::getline(iss, line)) {
+      std::string ref;
+      if (!parse_ref_value(line, &ref)) continue;
+      if (ref.empty()) continue;
+      if (ref.find("://") != std::string::npos) continue;
+      if (!ref.empty() && ref.front() == '#') continue;
+      std::filesystem::path resolved = base_dir / ref;
+      resolved = resolved.lexically_normal();
+      stack.push_back(resolved.string());
+    }
+  }
   return true;
 }
 
@@ -28,7 +103,7 @@ int main(int argc, char** argv) {
   }
 
   std::string a;
-  if (!read_all(agentd_spec, &a)) {
+  if (!load_with_refs(agentd_spec, &a)) {
     std::fprintf(stderr, "failed to read spec: %s\n", agentd_spec.c_str());
     return 1;
   }
@@ -58,7 +133,7 @@ int main(int argc, char** argv) {
   }
 
   std::string b;
-  if (!read_all(broker_spec, &b)) {
+  if (!load_with_refs(broker_spec, &b)) {
     std::fprintf(stderr, "failed to read spec: %s\n", broker_spec.c_str());
     return 1;
   }
