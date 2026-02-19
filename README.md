@@ -186,61 +186,18 @@ Cleanup commands, repo size reports, and guard scripts live in `docs/CLEANUP.md`
 
 ## Docker Compose (prod-like local verification)
 
-If you want a **prod-like stack** locally (Postgres + Keycloak OIDC + broker + connector + agentd + WebUI):
+For a prod-like local stack (Postgres + Keycloak + broker + connector + agentd + WebUI):
 
 ```bash
 ./tools/verify_compose_stack.sh
 ```
 
-Note: the WebUI container mounts `tools/agentui-config.compose.js` to default to broker mode (edit as needed).
-If you want prebuilt images instead of local builds, set:
-- `BROKER_IMAGE`, `AGENTD_IMAGE`, `CONNECTOR_IMAGE`, `WEBUI_IMAGE`
-- run with `COMPOSE_BUILD=0 COMPOSE_PULL=1` to pull missing images automatically.
+Alternatives:
+- No Docker: `tools/verify_mac_local_stack.sh` (agentd + WebUI only).
+- Docker runs but builds blocked: `tools/verify_mac_full_stack_host.sh`.
+- One-command devstack: `tools/devstack_agent.sh` (stop with `tools/devstack_agent_down.sh`).
 
-If Docker is unavailable or resource constrained, use:
-```bash
-tools/verify_mac_local_stack.sh
-```
-
-If Docker builds are blocked but Docker can run containers, use the host-mode stack:
-```bash
-tools/verify_mac_full_stack_host.sh
-```
-
-If you want a one-command devstack (host agentd/broker/connector/WebUI + Docker Postgres/Keycloak):
-```bash
-tools/devstack_agent.sh
-```
-Stop it with:
-```bash
-tools/devstack_agent_down.sh
-```
-Notes:
-- WebUI serving in `tools/devstack_agent.sh` and `tools/verify_mac_full_stack_host.sh` uses `python -m http.server`.
-  If no Python is available, the scripts skip WebUI serve and continue.
-- The script will auto-pick free host ports for services that commonly conflict (Broker/Keycloak/Postgres) and export:
-  - `BROKER_PUBLISHED_PORT` (default 8443)
-  - `KEYCLOAK_PUBLISHED_PORT` (default 8081)
-  - `POSTGRES_PUBLISHED_PORT` (default 5433)
-- It will also auto-pick free host ports for the user-facing services:
-  - `WEBUI_PUBLISHED_PORT` (default 8100)
-  - `AGENTD_PUBLISHED_PORT` (default 8123)
-- It sets `COMPOSE_PROJECT_NAME` automatically (defaults to `agent_${WEBUI_PUBLISHED_PORT}`) so you can run multiple stacks concurrently.
-- Optional env for host-mode stack: `HOST_STACK_SKIP_UI=1` (skip WebUI build/serve), `HOST_STACK_UI_INSTALL=0` (skip `npm ci`).
-- Keycloak is intentionally accessed via `keycloak.lvh.me` (resolves to `127.0.0.1`) so the `iss` claim in minted JWTs
-  matches what the broker validates. If you request tokens via `http://127.0.0.1:<port>`, you’ll get issuer-mismatch errors.
-- If Docker build hits `unpigz`/`runc` resource errors, restart Docker Desktop or increase CPU/RAM (Settings → Resources),
-  and consider raising the disk image size. You can also set `PIGZ=-p1 GZIP=-p1` to reduce decompression pressure,
-  or skip builds by using prebuilt images (`COMPOSE_BUILD=0 COMPOSE_PULL=1` with `BROKER_IMAGE`, `AGENTD_IMAGE`,
-  `CONNECTOR_IMAGE`, `WEBUI_IMAGE` set).
-- If `docker info` hangs (daemon not responding), set `AGENT_DOCKER_INFO_TIMEOUT_SEC` (default `5`) to shorten the
-  readiness check or confirm Docker Desktop/Colima is running.
-
-This starts:
-- WebUI: `http://127.0.0.1:${WEBUI_PUBLISHED_PORT}`
-- agentd: `http://127.0.0.1:${AGENTD_PUBLISHED_PORT}` (auth token: `dev-agentd-token`)
-- Keycloak: `http://keycloak.lvh.me:${KEYCLOAK_PUBLISHED_PORT}` (realm: `agentd`, user/pass: `test`/`test`)
-- Broker: `https://127.0.0.1:${BROKER_PUBLISHED_PORT}` (self-signed CA for local dev; mTLS for connectors)
+Full details, env flags, port notes, and Keycloak guidance live in `docs/DEPLOYMENT.md`.
 
 ## Git remote (publishing)
 
