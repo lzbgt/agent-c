@@ -164,6 +164,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/client_auth/reload", s.handleClientAuthReload)
 	mux.HandleFunc("/v1/agent/connect", s.handleAgentConnect)
 	mux.HandleFunc("/v1/agents", s.handleAgents)
+	mux.HandleFunc("/v1/teams", s.handleTeams)
 	mux.HandleFunc("/v1/audio/sessions", s.handleAudioSessions)
 	mux.HandleFunc("/v1/audio/sessions/", s.handleAudioSessionsSubroutes)
 	mux.HandleFunc("/v1/orchestrate", s.handleOrchestrate)
@@ -171,6 +172,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/events", s.handleEventsSSE)
 	// Catch-all for /v1/agents/{id}/... paths.
 	mux.HandleFunc("/v1/agents/", s.handleAgentsSubroutes)
+	mux.HandleFunc("/v1/teams/", s.handleTeamsSubroutes)
 	h := http.Handler(mux)
 	h = withAccessLog(h)
 	h = withCORS(CorsConfig{

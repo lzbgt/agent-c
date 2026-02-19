@@ -150,6 +150,37 @@ All endpoints below are served by the broker (not by agents).
   - membership audit trail for the agent (owner/admin only)
   - query: `limit` (optional, default `200`, max `500`)
 
+- `GET /v1/teams`
+  - lists teams owned by the authenticated user (admin can list all)
+- `POST /v1/teams`
+  - creates a new team owned by the authenticated user
+- `GET /v1/teams/{team_id}`
+  - fetches a team record (owner/admin only)
+- `PATCH /v1/teams/{team_id}`
+  - updates team metadata (owner/admin only)
+- `DELETE /v1/teams/{team_id}`
+  - deletes a team (owner/admin only)
+- `GET /v1/teams/{team_id}/members`
+  - lists team members (owner/admin only)
+- `POST /v1/teams/{team_id}/members`
+  - adds a team member (owner/admin only)
+- `PATCH /v1/teams/{team_id}/members/{member_id}`
+  - updates a team member (owner/admin only)
+- `DELETE /v1/teams/{team_id}/members/{member_id}`
+  - removes a team member (owner/admin only)
+- `GET /v1/teams/{team_id}/quorum`
+  - lists quorum rules (owner/admin only)
+- `POST /v1/teams/{team_id}/quorum`
+  - creates a quorum rule (owner/admin only)
+- `PATCH /v1/teams/{team_id}/quorum/{rule_id}`
+  - updates a quorum rule (owner/admin only)
+- `DELETE /v1/teams/{team_id}/quorum/{rule_id}`
+  - deletes a quorum rule (owner/admin only)
+- `POST /v1/teams/{team_id}/runs`
+  - team runs are stubbed in the current broker (returns 501)
+- `GET /v1/teams/{team_id}/runs/{team_run_id}`
+  - team runs are stubbed in the current broker (returns 501)
+
 - `POST /v1/agents/{agent_id}/delete` (or `DELETE` to the same path)
   - deletes an agent record (owner or admin)
 

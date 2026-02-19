@@ -106,6 +106,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-19: Draft spec added (`docs/spec/team_orchestration_v0.md`) describing data model + quorum semantics.
   - 2026-02-19: Added run-event payload schemas + fixtures for team handoff/quorum/member results.
   - 2026-02-19: Added broker OpenAPI shapes for team/membership/quorum endpoints (planned).
+  - 2026-02-19: Added broker DB tables + CRUD handlers for teams/members/quorum (team runs still stubbed).
 - [x] W=10 — Policy hook MVP: deterministic pre/post run + tool call hooks with allow/deny + budget caps, config surface, and audit logs.
 - [ ] W=9 — Attestation bundles: canonical hash format + signed run certificates + verification CLI.
 
