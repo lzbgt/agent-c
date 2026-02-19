@@ -22,6 +22,16 @@ echo "base_url=${BASE_URL}"
 if [[ -n "${SOURCE_HINT}" ]]; then
   echo "key_source=${SOURCE_HINT}"
 fi
+if [[ -n "${OPENROUTER_HTTP_REFERER:-}" ]]; then
+  echo "http_referer_set=1"
+else
+  echo "http_referer_set=0"
+fi
+if [[ -n "${OPENROUTER_X_TITLE:-}" ]]; then
+  echo "x_title_set=1"
+else
+  echo "x_title_set=0"
+fi
 if [[ -n "${MODEL_OVERRIDE}" ]]; then
   echo "model_override=${MODEL_OVERRIDE}"
 fi

@@ -266,6 +266,9 @@ agent_test_openrouter_auth_ok() {
   status="${resp##*$'\n'}"
   if [[ "${status}" == "401" || "${status}" == "403" ]]; then
     echo "SKIP: OpenRouter auth failed (${status}); check OPENROUTER_API_KEY" >&2
+    if [[ -z "${OPENROUTER_HTTP_REFERER:-}" && -z "${OPENROUTER_X_TITLE:-}" ]]; then
+      echo "SKIP: OpenRouter may require OPENROUTER_HTTP_REFERER and OPENROUTER_X_TITLE headers" >&2
+    fi
     return 77
   fi
   if [[ "${status}" -ge 400 || "${status}" == "000" ]]; then
@@ -353,6 +356,9 @@ PY
   chat_status="${chat_resp##*$'\n'}"
   if [[ "${chat_status}" == "401" || "${chat_status}" == "403" ]]; then
     echo "SKIP: OpenRouter chat auth failed (${chat_status}); check OPENROUTER_API_KEY" >&2
+    if [[ -z "${OPENROUTER_HTTP_REFERER:-}" && -z "${OPENROUTER_X_TITLE:-}" ]]; then
+      echo "SKIP: OpenRouter may require OPENROUTER_HTTP_REFERER and OPENROUTER_X_TITLE headers" >&2
+    fi
     return 77
   fi
   if [[ "${chat_status}" == "429" || "${chat_status}" == "503" ]]; then
