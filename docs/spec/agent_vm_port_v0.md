@@ -1,8 +1,8 @@
-# Agent VM Port v0 (Draft Integration Contract)
+# Agent VM Port v0 (Integration Contract)
 
 Date: 2026-02-05
 
-Status: Draft (integration contract proposal)
+Status: v0 (integration contract; partially implemented via AVM capsules)
 
 Purpose:
 - Define a minimal, explicit “port” boundary so a future deterministic VM/language runtime (e.g. `oren-lang`)

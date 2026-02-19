@@ -1,6 +1,6 @@
 # Agentd ⇄ Agentd Collaboration Interop (v0.1)
 
-Status: draft / executable via workflow `kind:"agentd_call"` (see below).
+Status: v0.1 (implemented via workflow `kind:"agentd_call"`; rolling).
 
 Date: 2026-02-05
 
