@@ -8,6 +8,7 @@ Start here if you want the shortest path to the right document.
 - `DESIGN.md`: architecture map + goals.
 - `docs/DEPLOYMENT.md`: production checklist (agentd + broker + WebUI).
 - `docs/WEBUI.md`: WebUI dev/build/runtime config and reliability notes.
+- `docs/TESTING.md`: verification workflows, network smokes, and E2E harness.
 
 ## Core runtime
 

@@ -162,23 +162,8 @@ By default, `agentd` allows common headers needed by the UI, including `Authoriz
 and request correlation headers `X-Request-Id` / `X-Trace-Id` (also exposed for browser access).
 (provider key for the OpenRouter model catalog endpoint).
 
-`ctest` includes two network smoke tests (OpenRouter + DeepSeek). They will run if keys are present
-either via environment variables or `project.local.md` (gitignored). Disable them with:
-
-```bash
-export AGENT_DISABLE_NETWORK_TESTS=1
-```
-
-If you want to keep DeepSeek/Moonshot network tests but skip OpenRouter-only tests:
-
-```bash
-export AGENT_TEST_SKIP_OPENROUTER=1
-```
-
+Network smoke tests, disable flags, and proxy assumptions are documented in `docs/TESTING.md`.
 To set keys via a local file, copy `project.local.md.example` to `project.local.md` and fill in real values.
-
-Network tests also assume an HTTP proxy may be required; the scripts default to `http://localhost:8120`
-via `https_proxy` / `http_proxy`.
 
 ### Local secrets file: `.not_in_repo` (preferred)
 
@@ -218,26 +203,9 @@ Notes:
 Tool servers are the preferred “fast bring-up” path for big integrations (Playwright, device bridges, AVM policy runners)
 because failures are isolated across a process boundary. See `docs/TOOLS.md`.
 
-## Real end-to-end (agentd + browser) test
+## Testing
 
-This repo includes a “real” E2E harness that drives the Web UI in a real browser (headless) using Playwright and makes real
-provider calls via `agentd`.
-
-Prereqs:
-- `.not_in_repo` populated with your provider key(s) (or env vars set)
-- `./build/agentd` built (`tools/verify.sh`)
-- UI deps installed (`cd ui && npm install`)
-
-Run:
-
-```bash
-tools/e2e_real.sh
-```
-
-Logs are written under `build/e2e/`.
-
-Notes:
-- The harness expects provider keys to be available via env or `.not_in_repo` (preferred).
+For network smokes, the real browser E2E harness, and verification workflows, see `docs/TESTING.md`.
 - `agentd` now also supports **daemon-side** key loading per-run based on the request `base_url`, so the Web UI can omit `api_key`.
 - The Web UI sends a `client` identity with each run (e.g. `client.kind="webui"`). `agentd` can use this to inject a
   client-specific system prompt “profile” for default presentation/DoD semantics. See `docs/CLIENT.md`.
