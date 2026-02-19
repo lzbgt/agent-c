@@ -8,6 +8,7 @@ DRY_RUN=0
 AGGRESSIVE=0
 PURGE_STATE=0
 PURGE_DEPS=0
+PURGE_REF_GIT=0
 KEEP_BUILD=0
 KEEP_OUT=0
 THRESHOLD_GB=2
@@ -28,6 +29,7 @@ Options:
   --aggressive        Remove build*/ and out/ regardless of size; prune UI build caches.
   --purge-state       Also remove stateful data (state/, db/, memory/, session_*).
   --purge-deps        Also remove dependency caches (ui/node_modules, .agent_deps, ref/*/venv).
+  --purge-ref-git     Remove nested .git dirs under ref/ (vendored repos) to reduce bloat.
   --keep-build        Skip build*/ cleanup.
   --keep-out          Skip out/ cleanup.
   --threshold-gb N    Size threshold in GiB (default: 2).
@@ -59,6 +61,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --purge-deps)
       PURGE_DEPS=1
+      shift 1
+      ;;
+    --purge-ref-git)
+      PURGE_REF_GIT=1
       shift 1
       ;;
     --keep-build)
@@ -100,6 +106,7 @@ DRY_RUN="${DRY_RUN}" \
 AGGRESSIVE="${AGGRESSIVE}" \
 PURGE_STATE="${PURGE_STATE}" \
 PURGE_DEPS="${PURGE_DEPS}" \
+PURGE_REF_GIT="${PURGE_REF_GIT}" \
 KEEP_BUILD="${KEEP_BUILD}" \
 KEEP_OUT="${KEEP_OUT}" \
 THRESHOLD_GB="${THRESHOLD_GB}" \
@@ -118,6 +125,7 @@ dry_run = os.environ.get("DRY_RUN", "0") == "1"
 aggressive = os.environ.get("AGGRESSIVE", "0") == "1"
 purge_state = os.environ.get("PURGE_STATE", "0") == "1"
 purge_deps = os.environ.get("PURGE_DEPS", "0") == "1"
+purge_ref_git = os.environ.get("PURGE_REF_GIT", "0") == "1"
 keep_build = os.environ.get("KEEP_BUILD", "0") == "1"
 keep_out = os.environ.get("KEEP_OUT", "0") == "1"
 
@@ -222,6 +230,11 @@ if purge_deps:
     remove_path(root / "ui" / "node_modules", "purge deps")
     for venv in (root / "ref").rglob("venv"):
         remove_path(venv, "purge deps")
+
+# Vendored repos (explicit only)
+if purge_ref_git:
+    for git_dir in (root / "ref").rglob(".git"):
+        remove_path(git_dir, "purge ref git")
 
 if max_repo_gb > 0:
     repo_size = dir_size_bytes(root)

@@ -100,6 +100,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [x] Add `--exclude-defaults` to repo size report for cleaner audits.
 - [x] Add CI repo size guard workflow using `tools/repo_size_report.py`.
 - [x] Remove stub CLAUDE.md placeholders from vendored claude-mem subtree.
+- [x] Add `tools/clean.sh --purge-ref-git` to optionally delete nested ref/.git dirs.
 
 ## Promoted goals (explicit goals; no non-goals)
 
