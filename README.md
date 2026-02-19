@@ -566,6 +566,13 @@ Scriptable check with JSON:
 tools/hooks_status.sh --json --check
 ```
 
+If you use a custom hooks directory:
+
+```bash
+git config core.hooksPath .githooks
+tools/install_git_hooks.sh
+```
+
 Run all repo hygiene guards locally:
 
 ```bash
