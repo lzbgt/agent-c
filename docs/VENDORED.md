@@ -24,27 +24,29 @@ Example (CI/local script):
 tools/hooks_status.sh --json --check
 ```
 
-Debugging hook output:
+Hook modes:
+
+- Debugging hook output:
 
 ```bash
 VENDORED_GUARD_VERBOSE=1 git commit
 ```
 
-Install a permanently verbose hook:
+- Install a permanently verbose hook:
 
 ```bash
 tools/install_git_hooks.sh --verbose
 ```
 
-Quiet hook output (only lists changed paths on failure):
+- Quiet hook output (only lists changed paths on failure):
 
 ```bash
 VENDORED_GUARD_QUIET=1 git commit
 ```
 
-Precedence: `VENDORED_GUARD_QUIET` overrides `VENDORED_GUARD_VERBOSE`.
+- Precedence: `VENDORED_GUARD_QUIET` overrides `VENDORED_GUARD_VERBOSE`.
 
-Install a permanently quiet hook:
+- Install a permanently quiet hook:
 
 ```bash
 tools/install_git_hooks.sh --quiet
