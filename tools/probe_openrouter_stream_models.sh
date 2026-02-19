@@ -32,6 +32,7 @@ fi
 
 if ! agent_test_openrouter_auth_ok "${OPENROUTER_KEY}" "${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}"; then
   rc=$?
+  echo "HINT: run tools/openrouter_auth_debug.sh for detailed diagnostics" >&2
   if [[ "${rc}" -eq 77 ]]; then
     exit 77
   fi
