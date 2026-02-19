@@ -16,6 +16,7 @@ Start here if you want the shortest path to the right document.
 - `docs/WORKFLOWS.md`: workflow engine model and task semantics.
 - `docs/STREAMING.md`: streaming compatibility matrix and behavior notes.
 - `docs/LIMITS.md`: size/time caps and recommended operator limits.
+- `docs/TOOLS.md`: tool schema, host tools, and tool-loop behavior.
 
 ## Storage, diagnostics, and memory
 
@@ -29,8 +30,18 @@ Start here if you want the shortest path to the right document.
 - `docs/BROKER.md`: broker relay design, trust model, and API.
 - `docs/DOD_ACK.md`: definition-of-done acknowledgement semantics.
 
+## Platform and embedded
+
+- `docs/PLATFORM_SUPPORT.md`: platform-specific caveats and support matrix.
+- `docs/MACOS_PACKAGING.md`: macOS packaging, signing, and notarization.
+- `docs/EMBEDDED_C_API.md`: embedded portability guidance.
+- `docs/ESP32S3_AGENT_CORE_MATURITY.md`: embedded maturity notes.
+- `docs/EDGE_INTEROP.md`: edge interoperability notes.
+- `docs/OREN_LANG_ECOSYSTEM.md`: AVM/OREN ecosystem notes.
+
 ## Specs and references
 
 - `docs/spec/README.md`: versioned protocol/spec deep dives.
 - `docs/openapi/README.md`: OpenAPI index.
+- `docs/VENDORED.md`: vendored subtree policy and guardrails.
 - `docs/ARCHIVE.md`: historical log (optional context).
