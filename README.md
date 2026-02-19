@@ -459,6 +459,7 @@ Options:
 - `--purge-deps`: remove dependency caches (`ui/node_modules`, `.agent_deps`, `ref/*/venv`).
 - `--purge-state`: remove stateful data (`state/`, `db/`, `memory/`, `session_*`) — **data loss**.
 - `--purge-ref-git`: remove nested `.git` dirs under `ref/` for vendored repo bloat.
+- `--report`: print a repo size report after cleanup.
 - `--dry-run`: preview what would be deleted.
 - `--out-max-days N`: prune log files older than N days (0 = delete all).
 - `--threshold-gb N`: size threshold (GiB) for build/out removal.

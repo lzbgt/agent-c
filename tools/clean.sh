@@ -14,6 +14,7 @@ KEEP_OUT=0
 THRESHOLD_GB=2
 OUT_MAX_DAYS=14
 MAX_REPO_GB=0
+REPORT=0
 
 usage() {
   cat <<'USAGE'
@@ -30,6 +31,7 @@ Options:
   --purge-state       Also remove stateful data (state/, db/, memory/, session_*).
   --purge-deps        Also remove dependency caches (ui/node_modules, .agent_deps, ref/*/venv).
   --purge-ref-git     Remove nested .git dirs under ref/ (vendored repos) to reduce bloat.
+  --report            Print repo size report after cleanup.
   --keep-build        Skip build*/ cleanup.
   --keep-out          Skip out/ cleanup.
   --threshold-gb N    Size threshold in GiB (default: 2).
@@ -65,6 +67,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --purge-ref-git)
       PURGE_REF_GIT=1
+      shift 1
+      ;;
+    --report)
+      REPORT=1
       shift 1
       ;;
     --keep-build)
@@ -112,6 +118,7 @@ KEEP_OUT="${KEEP_OUT}" \
 THRESHOLD_GB="${THRESHOLD_GB}" \
 OUT_MAX_DAYS="${OUT_MAX_DAYS}" \
 MAX_REPO_GB="${MAX_REPO_GB}" \
+REPORT="${REPORT}" \
 python3 - <<'PY'
 import os
 import shutil
@@ -144,6 +151,7 @@ except ValueError:
 
 threshold_bytes = int(threshold_gb * (1024 ** 3))
 max_repo_bytes = int(max_repo_gb * (1024 ** 3))
+report = os.environ.get("REPORT", "0") == "1"
 
 
 def dir_size_bytes(path: Path) -> int:
@@ -242,4 +250,8 @@ if max_repo_gb > 0:
         print(f"[clean] repo size {repo_size} bytes exceeds {max_repo_gb} GiB limit")
         raise SystemExit(2)
 print("[clean] done")
+if report:
+    report_path = root / "tools" / "repo_size_report.py"
+    if report_path.exists():
+        os.system(f"python3 {report_path} --exclude .git --depth 2 --top 20")
 PY
