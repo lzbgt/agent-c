@@ -130,6 +130,8 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-19: Added `tools/verify.sh --eval-pack` to run eval pack smoke locally.
   - 2026-02-19: Added richer eval checks (json_number/json_len/file_sha256) + eval_pack_checks_smoke.
   - 2026-02-19: Added broker_smoke eval pack (health/ready + evidence) and templated scenario ports.
+- [ ] W=9 — Scheduling + isolation MVP: admission control, per-run budgets, and tool execution caps with evidence logs.
+- [ ] W=8 — Data governance controls: retention policy config, export/erase endpoints, and redaction-aware evidence bundles.
 
 ## New tasks (2026-02-19)
 
@@ -178,6 +180,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
 - [x] Add `docs/OPERATIONS.md` to the handbook summary/source index and keep the handbook under 250 lines (196 lines as of 2026-02-19).
 - [x] Add role-based quick paths to the handbook to reduce doc-sifting.
 - [x] Add policy hook deny/audit smoke test with a local stub LLM and CTest wiring.
+- [x] Add Docker Desktop auto-start + wait in docker preflight with env knobs for timeouts/disablement.
 
 ## Promoted goals (explicit goals; no non-goals)
 

@@ -363,6 +363,11 @@ Stop the stack:
   - `COMPOSE_PULL=1` to auto-pull missing images when `COMPOSE_BUILD=0`
 - If `docker info` hangs (daemon not responding), set `AGENT_DOCKER_INFO_TIMEOUT_SEC` (default `5`) to shorten the
   readiness check or confirm Docker Desktop/Colima is running.
+- On macOS, the verify scripts will attempt to launch Docker Desktop automatically when the daemon is down.
+  Control this behavior with:
+  - `AGENT_DOCKER_AUTOSTART=1` (default) to `open -a Docker` and wait for the daemon
+  - `AGENT_DOCKER_AUTOSTART=0` to disable auto-start
+  - `AGENT_DOCKER_STARTUP_TIMEOUT_SEC=120` to adjust the wait time
 - Prebuilt images (optional):
   - set `BROKER_IMAGE`, `AGENTD_IMAGE`, `CONNECTOR_IMAGE`, `WEBUI_IMAGE` to registry tags
   - run `COMPOSE_BUILD=0 COMPOSE_PULL=1 ./tools/verify_compose_stack.sh`

@@ -117,6 +117,9 @@ ports explicitly via `BROKER_PUBLISHED_PORT`, `KEYCLOAK_PUBLISHED_PORT`,
 Broker compose smoke tests ignore inherited port envs unless you set
 `AGENT_SMOKE_USE_PUBLISHED_PORTS=1`, to avoid cross-test contamination from
 previous runs that export these variables.
+On macOS, Docker preflight will try to auto-start Docker Desktop when the daemon
+is down. Set `AGENT_DOCKER_AUTOSTART=0` to disable, or tune the wait with
+`AGENT_DOCKER_STARTUP_TIMEOUT_SEC` (default: 120 seconds).
 
 ## Network smoke tests
 

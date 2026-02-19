@@ -71,6 +71,14 @@ CLI, or a custom client.
    - Side-by-side run diffs with captured evidence.
    - Optional CI gating for critical workflows (eval packs).
 
+12) **Interactive debugging + rewind**
+   - Step-level tool call traces with rerun and “tweak + replay” workflows.
+   - Safe prompt edits that preserve audit lineage and comparison history.
+
+13) **Data governance**
+   - Explicit retention windows and erase/export controls.
+   - Redaction-aware artifacts with provenance preserved.
+
 ---
 
 ## 2) Architect / Designer Expectations (platform-level)
@@ -121,6 +129,10 @@ These are structural guarantees for maintainability, extensibility, and safety o
    - Deterministic eval packs with fixed inputs and expected outputs.
    - Regression baselines tied to model/provider versions.
 
+12) **Data lineage + retention controls**
+    - Retention policy enforcement with export/erase APIs.
+    - Provenance tags and redaction-aware evidence bundles.
+
 ---
 
 ## 3) What this repo already provides (facts)
@@ -169,6 +181,10 @@ The following areas drive the biggest step-change beyond a typical gateway/plugi
    - WebUI approval queues with quorum + role context.
    - Async team runs with approval state changes reflected in SSE.
 
+8) **Deterministic scheduling + isolation**
+   - Admission control, quotas, and fairness guarantees.
+   - Tool execution caps (CPU/memory/disk/network) with per-run budgets.
+
 ---
 
 ## 5) Near-term focus (actionable)
@@ -191,6 +207,14 @@ These are the most leveraged next steps grounded in current architecture:
 4) **Voice workflow spec**
    - Audio streaming protocol, broker relay plan, and UI controls.
    - Minimal loopback verification harness.
+
+5) **Scheduling + isolation MVP**
+   - Admission control + per-run budgets + tool execution caps.
+   - Evidence logs for quota decisions and resource usage.
+
+6) **Data governance controls**
+   - Retention policy config + erase/export endpoints.
+   - Redaction-aware evidence bundle validation.
 
 These are tracked in `TODOS.md` with weighted priorities.
 

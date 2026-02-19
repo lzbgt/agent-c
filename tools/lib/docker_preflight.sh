@@ -78,6 +78,33 @@ PY
   return 0
 }
 
+docker_desktop_autostart() {
+  local label="${1:-docker}"
+  local autostart="${AGENT_DOCKER_AUTOSTART:-1}"
+  local timeout="${AGENT_DOCKER_STARTUP_TIMEOUT_SEC:-120}"
+  if [[ "${autostart}" != "1" ]]; then
+    return 1
+  fi
+  if [[ "$(uname -s)" != "Darwin" ]]; then
+    return 1
+  fi
+  if ! command -v open >/dev/null 2>&1; then
+    return 1
+  fi
+  echo "[${label}] Attempting to start Docker Desktop..." >&2
+  if ! open -a Docker >/dev/null 2>&1; then
+    return 1
+  fi
+  local deadline=$((SECONDS + timeout))
+  while (( SECONDS < deadline )); do
+    if docker_info_ready; then
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
+
 docker_preflight() {
   local label="${1:-docker}"
   if ! command -v docker >/dev/null 2>&1; then
@@ -86,6 +113,9 @@ docker_preflight() {
   fi
   if ! docker_info_ready; then
     local rc=$?
+    if docker_desktop_autostart "${label}"; then
+      return 0
+    fi
     if [[ "${rc}" == "2" ]]; then
       echo "[${label}] SKIP: docker daemon not responding (docker info timed out)" >&2
     else
