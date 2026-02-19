@@ -120,6 +120,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [x] Add JSON output mode for hooks status helper.
 - [x] Add --check mode to hooks status helper.
 - [x] Document hooks_status --json --check snippet for CI/local checks.
+- [x] Make vendored guard check staged/unstaged changes for local hooks.
 
 ## Promoted goals (explicit goals; no non-goals)
 

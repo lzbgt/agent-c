@@ -524,7 +524,7 @@ tools/untracked_file_guard.py --exclude-defaults --max-mb 100
 ```
 
 Vendored subtree guard (fails if `ref/` changes relative to base; requires
-base refs in CI):
+base refs in CI; also checks staged/unstaged working tree locally):
 
 ```bash
 tools/vendored_guard.py --path ref

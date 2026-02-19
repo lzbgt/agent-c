@@ -9,6 +9,8 @@ project-owned location.
 Guard: `tools/vendored_guard.py` fails CI if files under `ref/` change. Override
 with `ALLOW_VENDORED_CHANGES=1` only when intentionally updating a vendored
 snapshot.
+The guard also checks staged and unstaged working-tree changes, so local hooks
+catch edits before commit.
 Optional local hook install/uninstall:
 `tools/install_git_hooks.sh`, `tools/uninstall_git_hooks.sh`.
 Hook status: `tools/hooks_status.sh` (use `--json` for scriptable output,

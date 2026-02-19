@@ -12,6 +12,15 @@ def run_git(args: list[str], root: Path) -> str:
     ).decode("utf-8", errors="ignore")
 
 
+def diff_paths(root: Path, args: list[str]) -> list[str]:
+    try:
+        output = run_git(args, root)
+    except subprocess.CalledProcessError as exc:
+        message = exc.output.decode("utf-8", errors="ignore") if exc.output else ""
+        raise RuntimeError(message.strip()) from exc
+    return [line.strip() for line in output.splitlines() if line.strip()]
+
+
 def ref_exists(root: Path, ref: str) -> bool:
     try:
         subprocess.check_call(
@@ -98,43 +107,51 @@ def main() -> int:
 
     base_ref = pick_base_ref(root, candidates)
     require_base = args.require_base or bool_env("VENDORED_GUARD_REQUIRE_BASE")
-    if not base_ref:
-        msg = "[vendored_guard] No base ref found; skipping vendored change check."
-        if require_base:
-            print(msg.replace("skipping", "failing"))
-            return 2
-        print(msg)
-        return 0
-
-    if args.verbose:
-        print(f"[vendored_guard] Using base ref: {base_ref}")
-
-    try:
-        diff = run_git(
-            [
-                "diff",
-                "--name-only",
-                f"{base_ref}...{args.head}",
-                "--",
-                args.path,
-            ],
-            root,
+    if not base_ref and require_base:
+        print(
+            "[vendored_guard] No base ref found; failing because require-base is set."
         )
-    except subprocess.CalledProcessError as exc:
-        output = exc.output.decode("utf-8", errors="ignore") if exc.output else ""
-        print("[vendored_guard] git diff failed.")
-        if output:
-            print(output.strip())
         return 2
 
-    changed = [line.strip() for line in diff.splitlines() if line.strip()]
+    if args.verbose and not base_ref:
+        print(
+            "[vendored_guard] No base ref found; checking working tree changes only."
+        )
+    if args.verbose and base_ref:
+        print(f"[vendored_guard] Using base ref: {base_ref}")
+
+    changed: set[str] = set()
+    try:
+        if base_ref:
+            changed.update(
+                diff_paths(
+                    root,
+                    [
+                        "diff",
+                        "--name-only",
+                        f"{base_ref}...{args.head}",
+                        "--",
+                        args.path,
+                    ],
+                )
+            )
+        changed.update(
+            diff_paths(root, ["diff", "--name-only", "--cached", "--", args.path])
+        )
+        changed.update(diff_paths(root, ["diff", "--name-only", "--", args.path]))
+    except RuntimeError as exc:
+        print("[vendored_guard] git diff failed.")
+        if str(exc):
+            print(str(exc))
+        return 2
+
     if not changed:
         if args.verbose:
             print("[vendored_guard] No vendored changes detected.")
         return 0
 
     print("[vendored_guard] Vendored subtree changes detected:")
-    for path in changed:
+    for path in sorted(changed):
         print(f"  {path}")
     print(
         f"Set {args.allow_env}=1 to bypass if you intentionally updated vendored code."
