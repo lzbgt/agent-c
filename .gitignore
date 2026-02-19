@@ -15,6 +15,8 @@ create_hello_pptx.py
 create_hello_center*.py
 generate_sine_plot.py
 ref/ds-cli/
+ref/**/.git/
+ref/**/.git/**
 ui/node_modules/
 ui/dist/
 ui/.vite/
