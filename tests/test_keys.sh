@@ -297,8 +297,24 @@ agent_test_get_key_source() {
 
 agent_test_setup_proxy_env() {
   # Some environments require an HTTP proxy for outbound HTTPS. Many of this repo's network tests assume one
-  # is present at localhost:8120 by default.
-  local default_proxy="${1:-http://localhost:8120}"
+  # is present at localhost:8120 by default (host), or host.docker.internal:8120 when running in a container.
+  local default_proxy="${1:-}"
+  if [[ -z "${default_proxy}" ]]; then
+    default_proxy="http://localhost:8120"
+    if [[ -f "/.dockerenv" ]] || [[ -n "${container:-}" ]] || (grep -qa "docker" /proc/1/cgroup 2>/dev/null); then
+      if python3 - <<'PY' >/dev/null 2>&1
+import socket
+try:
+    socket.getaddrinfo("host.docker.internal", 8120)
+except Exception:
+    raise SystemExit(1)
+raise SystemExit(0)
+PY
+      then
+        default_proxy="http://host.docker.internal:8120"
+      fi
+    fi
+  fi
 
   if [[ "${AGENT_TEST_DISABLE_PROXY:-}" == "1" ]]; then
     unset https_proxy http_proxy HTTPS_PROXY HTTP_PROXY
