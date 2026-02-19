@@ -115,6 +115,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [x] Treat `ref/claude-mem/openclaw/test-install.sh` (2.3k LOC) as vendored/read-only; documented in `docs/VENDORED.md`.
 - [x] Add vendored guard to fail when `ref/` changes without an explicit override.
 - [x] Add optional local git hook installer for vendored guard.
+- [x] Add optional local git hook uninstaller for vendored guard.
 
 ## Promoted goals (explicit goals; no non-goals)
 

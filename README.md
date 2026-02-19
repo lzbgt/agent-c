@@ -536,6 +536,12 @@ Optional git hook (local pre-commit) to run the vendored guard:
 tools/install_git_hooks.sh
 ```
 
+Remove the hook later:
+
+```bash
+tools/uninstall_git_hooks.sh
+```
+
 Run all repo hygiene guards locally:
 
 ```bash
