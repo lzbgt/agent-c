@@ -30,12 +30,13 @@ Date: 2026-02-19
    - Wrap toolset selection + tool-loop invocation into a smaller executor function.
 5) **Persistence block**
    - Move DB writes (runs/events/messages/tool records) into a persistence helper to reduce side-effects in the main flow.
+   - Status: implemented in `run_request_persist.{h,cpp}`.
 
 ## Rollout Plan
 - **Phase 1**: Extract replay bundle logic (done).
 - **Phase 2**: Extract provider config builder + request parsing helpers (done).
-- **Phase 3**: Extract persistence helpers (runs/events/messages/tool records).
-- **Phase 4**: Extract tool-loop execution wrapper and simplify the main orchestration function.
+- **Phase 3**: Extract persistence helpers (done).
+- **Phase 4**: Extract tool-loop execution wrapper and simplify the main orchestration function (pending).
 
 ## Test Strategy
 - Keep existing smoke tests and CTest suite; add targeted unit tests if new helpers have logic.
