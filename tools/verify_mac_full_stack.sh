@@ -21,6 +21,7 @@ fi
 
 if ! docker info >/dev/null 2>&1; then
   echo "[mac] SKIP: docker daemon not running"
+  echo "[mac] Hint: start Docker Desktop or Colima, then re-run." >&2
   exit 77
 fi
 
