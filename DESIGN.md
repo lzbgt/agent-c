@@ -31,6 +31,7 @@ Roadmap section below and `TODOS.md`, including:
 
 ## Design Doc Map
 
+- `docs/HANDBOOK.md`: unified handbook (build, architecture, protocol, workflows, tools, memory, ops).
 - `DESIGN.md` (this doc): system goals, boundaries, layering, and cross-cutting policies.
 - `docs/BROKER.md`: broker relay design, trust model, and HTTP/WSS API.
 - `docs/CLIENT.md`: client collaboration model (events, UI actions, DoD, client RPC).
@@ -310,6 +311,9 @@ The tool-call loop uses the same char-budget idea, but performs compaction at th
 - Optionally insert a deterministic `system` “compaction summary” message describing what was dropped (no extra LLM call).
 
 This mirrors the approach in `ref/ds-cli` (Sophon) where compaction summaries are lightweight and do not require a second model call.
+
+Note: `ref/` contains vendored upstream snapshots used for reference. Treat them as read-only here and follow
+`docs/VENDORED.md` for the policy and guardrails.
 
 ### Per-request context hygiene (host-side)
 

@@ -3,6 +3,7 @@
 This repo is an early scaffold for a **portable agent core** (env-free, persistence-agnostic) plus a **desktop CLI host adapter** (env/config + persistence + HTTP).
 
 Docs quickstart:
+- Unified handbook (build, architecture, protocol, workflows, tools, memory, ops): `docs/HANDBOOK.md`
 - Architecture + roadmap: `DESIGN.md`
 - Durable workflows: `docs/WORKFLOWS.md`
 - Broker design: `docs/BROKER.md`

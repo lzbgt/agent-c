@@ -79,9 +79,19 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] Add a unified capability descriptor (`/api/v1/caps`) with protocol versions + limits (agentd + WebUI + broker proxy).
   - [x] WebUI: use `/api/v1/caps` to hide/disable unsupported features and cache last-known caps.
   - [x] Define a single event schema for run/workflow events and validate in CI (schema registry + tests).
-  - [x] Add idempotency keys to broker proxy/orchestrate (safe retries with audit trail).
-  - [x] Introduce replay bundles for deterministic runs (inputs + hashes + tool outputs) with fixture tests.
-  - [x] Transport-agnostic relay interface for broker/connector (transport.Conn + WebSocket adapter).
+ - [x] Add idempotency keys to broker proxy/orchestrate (safe retries with audit trail).
+ - [x] Introduce replay bundles for deterministic runs (inputs + hashes + tool outputs) with fixture tests.
+ - [x] Transport-agnostic relay interface for broker/connector (transport.Conn + WebSocket adapter).
+
+## Weighted tasks (next up)
+
+Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
+
+- [ ] W=10 — Populate OpenRouter streaming pins with a verified key, commit `ref/openrouter/streaming_pins.json`, and tighten smoke tests to prefer pins (unblocks streaming stability work).
+- [ ] W=9 — Unblock macOS full-stack compose verification (document Docker Desktop resource settings + prebuilt image path) and improve `tools/verify_mac_full_stack.sh` diagnostics for `unpigz/runc` failures.
+- [ ] W=8 — Finish embedded/MCU-compatible tool plugin path (ABI constraints + host/sandbox policy) and add Windows parity tests for plugin host limits.
+- [ ] W=7 — Split near-2000 LOC modules into SOLID units with focused tests: `daemon/src/agent_db.cpp`, `daemon/src/workflow_endpoints.cpp`, `broker/internal/broker/server.go`, `ui/src/api.ts`.
+- [ ] W=5 — Audio streaming foundation: define WebRTC/Opus signaling + broker relay endpoints and add a minimal CLI/agentd loopback smoke test.
 
 ## New tasks (2026-02-19)
 
