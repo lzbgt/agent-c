@@ -83,21 +83,12 @@ Useful env overrides:
 
 ---
 
-## 5) API surfaces (by doc)
+## 5) Where to look (feature design docs)
 
-- Sessions, runs, artifacts, uploads: `docs/PROTOCOL.md`
-- Client collaboration and UI actions: `docs/CLIENT.md`
-- Workflows and task semantics: `docs/WORKFLOWS.md`
-- Tools + plugins: `docs/TOOLS.md`
-- Memory architecture: `docs/MEMORY.md`
-- Diagnostics: `docs/DIAGNOSTICS.md`
-- DB schema + query API: `docs/DB.md`
-- Streaming compatibility: `docs/STREAMING.md`
-- Broker relay + auth model: `docs/BROKER.md`
-- Deployment hardening: `docs/DEPLOYMENT.md`
-- Platform support matrix: `docs/PLATFORM_SUPPORT.md`
-
-OpenAPI index: `docs/openapi/README.md`.
+- `DESIGN.md` for system map and boundaries.
+- `docs/` for feature docs: protocol, client, workflows, tools, memory, diagnostics, DB, streaming, broker, deployment, platform.
+- `docs/spec/` for versioned specs.
+- `docs/openapi/` for OpenAPI definitions.
 
 ---
 
@@ -106,30 +97,6 @@ OpenAPI index: `docs/openapi/README.md`.
 - Broker should be public; agentd should remain private.
 - Prefer server-side provider keys (`.not_in_repo` / `AGENTD_DOTENV_PATH`).
 - Enforce size/time limits via daemon env flags (see `docs/LIMITS.md`).
-
----
-
-## 7) Specs
-
-- OpenAPI: `docs/openapi/README.md` (YAML in `docs/openapi/`)
-- Versioned specs: `docs/spec/README.md`
-
----
-
-## 8) Reference index
-
-- `DESIGN.md`
-- `docs/PROTOCOL.md`
-- `docs/CLIENT.md`
-- `docs/WORKFLOWS.md`
-- `docs/TOOLS.md`
-- `docs/MEMORY.md`
-- `docs/DIAGNOSTICS.md`
-- `docs/DB.md`
-- `docs/STREAMING.md`
-- `docs/BROKER.md`
-- `docs/DEPLOYMENT.md`
-- `docs/PLATFORM_SUPPORT.md`
 
 ---
 
