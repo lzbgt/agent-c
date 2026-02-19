@@ -54,6 +54,11 @@ def main() -> int:
         help="Exclude glob patterns (repeatable, matched against repo-relative paths).",
     )
     parser.add_argument(
+        "--exclude-defaults",
+        action="store_true",
+        help="Exclude common bulky paths (git objects, builds, node_modules, venvs).",
+    )
+    parser.add_argument(
         "--largest-files",
         type=int,
         default=0,
@@ -69,6 +74,20 @@ def main() -> int:
 
     root = Path(args.root) if args.root else Path(__file__).resolve().parent.parent
     depth = max(1, args.depth)
+    if args.exclude_defaults:
+        args.exclude.extend(
+            [
+                ".git",
+                "ref/**/.git",
+                "build",
+                "build-*",
+                "ui/node_modules",
+                ".agent_deps",
+                "out",
+                "ref/**/venv",
+                "ref/**/.venv",
+            ]
+        )
 
     total = 0
     sizes = {}

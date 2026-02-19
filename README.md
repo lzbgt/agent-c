@@ -475,6 +475,12 @@ Largest files (helps find sudden bloat):
 tools/repo_size_report.py --largest-files 20 --largest-min-bytes 1048576
 ```
 
+Exclude common bulky paths (git objects, builds, deps):
+
+```bash
+tools/repo_size_report.py --exclude-defaults --depth 2 --top 20
+```
+
 ## Docker Compose (prod-like local verification)
 
 If you want a **prod-like stack** locally (Postgres + Keycloak OIDC + broker + connector + agentd + WebUI):
