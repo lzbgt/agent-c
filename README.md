@@ -447,6 +447,19 @@ Reliability notes (important for production UX):
 - The UI posts client acknowledgement events (`ui_action_shown`, `client_rpc_result`, `artifact_rendered`/`artifact_render_failed`)
   so agents can implement deterministic “Definition of Done” handshakes (see `docs/DOD_ACK.md`).
 
+## Cleanup (disk usage)
+
+Build artifacts and run logs can grow quickly (especially `build/` and `out/`). To keep the repo lean:
+
+```bash
+tools/clean.sh
+```
+
+Options:
+- `--aggressive`: drop build/out regardless of size + UI build caches.
+- `--purge-state`: remove stateful data (`state/`, `db/`, `memory/`, `session_*`) — **data loss**.
+- `--dry-run`: preview what would be deleted.
+
 ## Docker Compose (prod-like local verification)
 
 If you want a **prod-like stack** locally (Postgres + Keycloak OIDC + broker + connector + agentd + WebUI):

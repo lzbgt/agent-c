@@ -91,7 +91,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [ ] Standardize API error envelopes across agentd + broker (`{"err":"...","code":"...","details":{...}}`) and align WebUI handling.
 - [ ] Refactor `ref/ds-cli/sophon/src/sophon_cli/cli.py` (5.8k LOC) into SOLID submodules or mark as vendored/read-only.
 - [ ] Refactor `ref/claude-mem/src/services/sqlite/SessionStore.ts` (2.3k LOC) into smaller units or mark as vendored/read-only.
-- [ ] Add build/log cleanup automation (e.g., tools/clean.sh + `out/` log pruning) to prevent disk bloat.
+- [x] Add build/log cleanup automation (e.g., tools/clean.sh + `out/` log pruning) to prevent disk bloat.
 
 ## Promoted goals (explicit goals; no non-goals)
 
