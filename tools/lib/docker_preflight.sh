@@ -3,7 +3,8 @@
 # Shared docker readiness helpers.
 # Usage:
 #   source tools/lib/docker_preflight.sh
-#   if ! docker_preflight "compose"; then exit 77; fi
+#   if ! docker_preflight "docker"; then exit 77; fi
+#   if ! docker_compose_preflight "compose"; then exit 77; fi
 
 docker_info_ready() {
   local timeout="${AGENT_DOCKER_INFO_TIMEOUT_SEC:-5}"
