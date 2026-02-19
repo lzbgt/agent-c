@@ -125,6 +125,14 @@ Recommended:
 - manifest capped at 1 MiB
 - tool result capped at 4 MiB
 
+## Embedded/MCU tool plugins (compile-time)
+
+Embedded targets typically cannot load shared libraries. For `agent_core` builds, use a
+compile-time plugin list that registers tool schemas into `agent_tool_registry_t` and
+dispatches via `agent_tool_executor_t`. See:
+
+- `docs/spec/tool_plugins_embedded_v0.md` (draft ABI + constraints)
+
 ## Sandboxed execution (plugin host)
 
 Use the tool server protocol to run plugins out-of-process:
