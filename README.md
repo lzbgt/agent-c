@@ -640,6 +640,15 @@ If Docker builds are blocked but Docker can run containers, use the host-mode st
 tools/verify_mac_full_stack_host.sh
 ```
 
+If you want a one-command devstack (host agentd/broker/connector/WebUI + Docker Postgres/Keycloak):
+```bash
+tools/devstack_agent.sh
+```
+Stop it with:
+```bash
+tools/devstack_agent_down.sh
+```
+
 Notes:
 - The script will auto-pick free host ports for services that commonly conflict (Broker/Keycloak/Postgres) and export:
   - `BROKER_PUBLISHED_PORT` (default 8443)
