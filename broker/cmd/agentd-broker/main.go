@@ -104,6 +104,10 @@ func main() {
 	if v, ok := envDurationMS("AGENTD_BROKER_READ_HEADER_TIMEOUT_MS"); ok {
 		readHeaderTimeoutDefault = v
 	}
+	audioSessionTTLDefault := time.Duration(0)
+	if v, ok := envDurationMS("AGENTD_BROKER_AUDIO_SESSION_TTL_MS"); ok {
+		audioSessionTTLDefault = v
+	}
 
 	var listen = flag.String("listen", ":8443", "listen address")
 	var tlsCert = flag.String("tls-cert", "", "TLS server cert PEM path")
@@ -144,6 +148,7 @@ func main() {
 	var readHeaderTimeout = flag.Duration("read-header-timeout", readHeaderTimeoutDefault, "HTTP server read header timeout")
 	var sseKeepalive = flag.Duration("sse-keepalive", 15*time.Second, "SSE keepalive comment interval")
 	var readyCache = flag.Duration("ready-cache", 5*time.Second, "readiness check cache interval")
+	var audioSessionTTL = flag.Duration("audio-session-ttl", audioSessionTTLDefault, "audio signaling session TTL (0 uses default)")
 	var shutdownTimeout = flag.Duration("shutdown-timeout", 15*time.Second, "graceful shutdown timeout")
 
 	flag.Parse()
@@ -381,6 +386,12 @@ func main() {
 				return 5 * time.Second
 			}
 			return *readyCache
+		}(),
+		AudioSessionTTL: func() time.Duration {
+			if *audioSessionTTL <= 0 {
+				return 0
+			}
+			return *audioSessionTTL
 		}(),
 		AdminSubs: adminSubs,
 	})

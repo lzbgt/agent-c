@@ -16,6 +16,7 @@ tags:
   - name: caps
   - name: client_auth
   - name: agents
+  - name: audio
   - name: memory
   - name: membership
   - name: orchestrate

@@ -101,6 +101,64 @@
     responses:
       "200":
         description: Created
+
+/v1/audio/sessions:
+  post:
+    tags: [audio]
+    summary: Create an audio signaling session
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AudioSessionCreateRequest"
+    responses:
+      "200":
+        description: Session created
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AudioSessionCreateResponse"
+
+/v1/audio/sessions/{session_id}/signal:
+  post:
+    tags: [audio]
+    summary: Send a signaling message to a session
+    parameters:
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/AudioSignalRequest"
+    responses:
+      "200":
+        description: Signal accepted
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AudioSignalResponse"
+
+/v1/audio/sessions/{session_id}/signal/stream:
+  get:
+    tags: [audio]
+    summary: Stream signaling messages via SSE
+    parameters:
+      - in: path
+        name: session_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: SSE stream of signaling events
+        content:
+          text/event-stream:
+            schema:
+              type: string
 /v1/agents/{agent_id}/deployments:
   get:
     tags: [agents]
@@ -567,4 +625,3 @@
               properties:
                 ok: { type: boolean }
                 ts_unix_ms: { type: integer, format: int64 }
-

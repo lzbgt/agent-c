@@ -1,7 +1,7 @@
 # Audio Streaming (v0)
 
 Date: 2026-02-19
-Status: draft (spec-first; not implemented)
+Status: v0 (broker signaling relay implemented; agentd/client pending)
 
 ## Goals
 

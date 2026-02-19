@@ -25,6 +25,58 @@ schemas:
         type: object
         additionalProperties: true
 
+  AudioSessionCreateRequest:
+    type: object
+    required: [agent_id]
+    properties:
+      agent_id: { type: string }
+      deployment_id: { type: string }
+      mode: { type: string, description: "Signaling mode (default: webrtc)" }
+      metadata:
+        type: object
+        additionalProperties: true
+
+  AudioSessionCreateResponse:
+    type: object
+    required: [ok, session_id]
+    properties:
+      ok: { type: boolean }
+      session_id: { type: string }
+      expires_unix_ms: { type: integer, format: int64 }
+      signal:
+        type: object
+        properties:
+          send_url: { type: string }
+          recv_url: { type: string }
+
+  AudioSignalRequest:
+    type: object
+    required: [type]
+    properties:
+      type:
+        type: string
+        description: "offer|answer|candidate|bye|control"
+      payload:
+        type: object
+        additionalProperties: true
+
+  AudioSignalResponse:
+    type: object
+    required: [ok]
+    properties:
+      ok: { type: boolean }
+
+  AudioSignalEvent:
+    type: object
+    required: [type, ts_unix_ms]
+    properties:
+      type: { type: string }
+      payload:
+        type: object
+        additionalProperties: true
+      from: { type: string }
+      ts_unix_ms: { type: integer, format: int64 }
+
   AgentInfo:
     type: object
     required: [agent_id, owner_sub, enabled, created_unix_ms, connected]

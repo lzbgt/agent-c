@@ -179,6 +179,18 @@ Idempotency (optional):
 - successful replays return `X-Idempotency-Replay: true`
 - large responses are not stored; the broker responds with `X-Idempotency-Disabled: response_too_large`
 
+### Audio signaling (WebRTC relay)
+
+The broker provides a **signaling relay** for audio sessions (media flows directly between WebUI and agentd):
+
+- `POST /v1/audio/sessions` (create a session; returns `session_id`)
+- `POST /v1/audio/sessions/{session_id}/signal` (send offer/answer/candidate/bye)
+- `GET  /v1/audio/sessions/{session_id}/signal/stream` (SSE stream of signaling events)
+
+Sessions are in-memory and expire after a TTL (default 15 minutes). Configure via:
+- `--audio-session-ttl` (duration)
+- `AGENTD_BROKER_AUDIO_SESSION_TTL_MS` (milliseconds)
+
 #### Using durable workflows through the broker proxy
 
 The broker proxy can be used as a “virtual base URL” for agentd-to-agentd collaboration tasks:
