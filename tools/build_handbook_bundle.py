@@ -90,6 +90,12 @@ def main() -> int:
             return 1
         return 0
 
+    if max_lines > 0 and rendered_lines > max_lines:
+        sys.stderr.write(
+            f"docs/HANDBOOK.md exceeds {max_lines} lines ({rendered_lines}).\\n"
+        )
+        return 1
+
     OUTPUT.write_text(rendered, encoding="utf-8")
     return 0
 
