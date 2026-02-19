@@ -70,6 +70,7 @@ Auth + CORS (daemon):
 Provider keys (preferred):
 - `.not_in_repo` at repo root (gitignored), or `project.local.md`.
 - `AGENTD_DOTENV_PATH=/path/to/.env` overrides dotenv lookup.
+- OpenRouter may require `OPENROUTER_HTTP_REFERER` and `OPENROUTER_X_TITLE` headers.
 
 Useful env overrides:
 - `AGENTD_DB_PATH`, `AGENTD_STATE_DIR`
