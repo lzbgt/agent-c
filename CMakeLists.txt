@@ -191,6 +191,9 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
   # `AGENTD_ENABLE_HTTP` (useful for app embedding where a cloud broker / custom transport is used).
   set(AGENTD_LIB_SOURCES
     daemon/src/agent_db.cpp
+    daemon/src/agent_db_state.cpp
+    daemon/src/agent_db_sessions.cpp
+    daemon/src/agent_db_audit.cpp
     daemon/src/agent_db_jobs.cpp
     daemon/src/agent_db_runs.cpp
     daemon/src/agent_db_blobs.cpp
@@ -283,6 +286,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/workflow_query_endpoints.cpp
     daemon/src/workflow_admin_endpoints.cpp
     daemon/src/workflow_endpoints.cpp
+    daemon/src/workflow_submit.cpp
     daemon/src/workflow_submit_macros.cpp
     daemon/src/workflow_submit_task_builders.cpp
     daemon/src/workflow_fairq_cost.cpp
@@ -973,6 +977,9 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
     add_executable(agent_db_tests
       tests/test_agent_db.cpp
       daemon/src/agent_db.cpp
+      daemon/src/agent_db_state.cpp
+      daemon/src/agent_db_sessions.cpp
+      daemon/src/agent_db_audit.cpp
       daemon/src/agent_db_jobs.cpp
       daemon/src/agent_db_runs.cpp
       daemon/src/agent_db_edge_nodes.cpp
