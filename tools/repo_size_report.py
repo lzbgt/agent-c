@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import fnmatch
+import heapq
 import os
 from pathlib import Path
 from typing import Iterable
@@ -52,6 +53,18 @@ def main() -> int:
         default=[],
         help="Exclude glob patterns (repeatable, matched against repo-relative paths).",
     )
+    parser.add_argument(
+        "--largest-files",
+        type=int,
+        default=0,
+        help="Show top N largest files (default: 0 = disabled).",
+    )
+    parser.add_argument(
+        "--largest-min-bytes",
+        type=int,
+        default=0,
+        help="Only include files >= this size in largest-files output.",
+    )
     args = parser.parse_args()
 
     root = Path(args.root) if args.root else Path(__file__).resolve().parent.parent
@@ -60,6 +73,9 @@ def main() -> int:
     total = 0
     sizes = {}
     top_level_sizes = {}
+    largest = []
+    largest_limit = max(0, args.largest_files)
+    largest_min_bytes = max(0, args.largest_min_bytes)
 
     for dirpath, dirnames, filenames in os.walk(root):
         rel_dir = os.path.relpath(dirpath, root)
@@ -92,6 +108,13 @@ def main() -> int:
             for d in range(1, min(depth, len(parts)) + 1):
                 key = os.path.join(*parts[:d])
                 sizes[key] = sizes.get(key, 0) + size
+            if largest_limit > 0 and size >= largest_min_bytes:
+                entry = (size, rel_file)
+                if len(largest) < largest_limit:
+                    heapq.heappush(largest, entry)
+                else:
+                    if entry > largest[0]:
+                        heapq.heapreplace(largest, entry)
 
     print(f"Repo size report: {root}")
     print(f"Total: {format_bytes(total)}")
@@ -105,6 +128,11 @@ def main() -> int:
     print(f"\nTop {args.top} paths (depth <= {depth}):")
     for key, size in sorted(sizes.items(), key=lambda x: x[1], reverse=True)[: args.top]:
         print(f"  {format_bytes(size):>10}  {key}")
+
+    if largest_limit > 0:
+        print(f"\nTop {largest_limit} files:")
+        for size, rel_file in sorted(largest, key=lambda x: x[0], reverse=True):
+            print(f"  {format_bytes(size):>10}  {rel_file}")
 
     return 0
 

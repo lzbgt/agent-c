@@ -469,6 +469,12 @@ To inspect disk usage and spot bloat quickly:
 tools/repo_size_report.py --depth 2 --top 20
 ```
 
+Largest files (helps find sudden bloat):
+
+```bash
+tools/repo_size_report.py --largest-files 20 --largest-min-bytes 1048576
+```
+
 ## Docker Compose (prod-like local verification)
 
 If you want a **prod-like stack** locally (Postgres + Keycloak OIDC + broker + connector + agentd + WebUI):
