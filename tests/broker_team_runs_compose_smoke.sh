@@ -19,7 +19,7 @@ PORT_STUB="$(agentd_smoke_pick_port)"
 STUB_HOST="127.0.0.1"
 STUB_BASE_HOST="http://${STUB_HOST}:${PORT_STUB}/v1"
 STUB_BASE_CONTAINER="http://host.docker.internal:${PORT_STUB}/v1"
-CURL_BASE_OPTS=(--max-time 30 --connect-timeout 5)
+CURL_BASE_OPTS=(-q --max-time 30 --connect-timeout 5)
 
 if [[ -z "${BROKER_PUBLISHED_PORT:-}" ]]; then
   BROKER_PUBLISHED_PORT=""
@@ -36,11 +36,23 @@ fi
 if [[ -z "${WEBUI_PUBLISHED_PORT:-}" ]]; then
   WEBUI_PUBLISHED_PORT=""
 fi
+if [[ "${AGENT_SMOKE_USE_PUBLISHED_PORTS:-}" != "1" ]]; then
+  BROKER_PUBLISHED_PORT=""
+  KEYCLOAK_PUBLISHED_PORT=""
+  POSTGRES_PUBLISHED_PORT=""
+  AGENTD_PUBLISHED_PORT=""
+  WEBUI_PUBLISHED_PORT=""
+fi
+STACK_FROM_DETECT="0"
+STACK_STARTED="0"
 
 cleanup() {
   if [[ -n "${STUB_PID:-}" ]]; then
     kill -TERM "${STUB_PID}" >/dev/null 2>&1 || true
     wait "${STUB_PID}" >/dev/null 2>&1 || true
+  fi
+  if [[ "${STACK_STARTED}" == "1" && -n "${COMPOSE_PROJECT_NAME:-}" ]]; then
+    (cd "${ROOT}" && docker compose -p "${COMPOSE_PROJECT_NAME}" down -v --remove-orphans >/dev/null 2>&1) || true
   fi
 }
 trap cleanup EXIT
@@ -162,11 +174,7 @@ else
   STACK_ENV="$(detect_running_stack || true)"
 fi
 
-if [[ -n "${STACK_ENV}" ]]; then
-  eval "${STACK_ENV}"
-elif [[ -n "${BROKER_PUBLISHED_PORT}" && -n "${KEYCLOAK_PUBLISHED_PORT}" && -n "${AGENTD_PUBLISHED_PORT}" && -n "${WEBUI_PUBLISHED_PORT}" ]]; then
-  :
-else
+start_compose_stack() {
   BROKER_PUBLISHED_PORT="$(agentd_smoke_pick_port)"
   KEYCLOAK_PUBLISHED_PORT="$(agentd_smoke_pick_port)"
   POSTGRES_PUBLISHED_PORT="$(agentd_smoke_pick_port)"
@@ -182,6 +190,16 @@ else
     fi
     exit 1
   fi
+  STACK_STARTED="1"
+}
+
+if [[ -n "${STACK_ENV}" ]]; then
+  eval "${STACK_ENV}"
+  STACK_FROM_DETECT="1"
+elif [[ -n "${BROKER_PUBLISHED_PORT}" && -n "${KEYCLOAK_PUBLISHED_PORT}" && -n "${AGENTD_PUBLISHED_PORT}" && -n "${WEBUI_PUBLISHED_PORT}" ]]; then
+  :
+else
+  start_compose_stack
 fi
 
 BROKER_BASE="https://127.0.0.1:${BROKER_PUBLISHED_PORT}"
@@ -206,6 +224,64 @@ if [[ -z "${OIDC_JWT}" ]]; then
   exit 2
 fi
 
+select_agent_id() {
+  local resp code body
+  resp="$(
+    curl -sS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+      -H "Authorization: Bearer ${OIDC_JWT}" \
+      -w "\n%{http_code}" \
+      "${BROKER_BASE}/v1/agents" || true
+  )"
+  code="${resp##*$'\n'}"
+  body="${resp%$'\n'*}"
+  if [[ "${code}" != "200" || -z "${body}" ]]; then
+    return 1
+  fi
+  python3 - <<'PY'
+import json, sys
+obj = json.loads(sys.stdin.read() or "{}")
+agents = obj.get("agents") or []
+for a in agents:
+  if a.get("connected") is True and a.get("agent_id"):
+    print(a["agent_id"])
+    raise SystemExit(0)
+for a in agents:
+  if a.get("agent_id"):
+    print(a["agent_id"])
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+ensure_team_agent() {
+  TEAM_AGENT_ID="$(select_agent_id || true)"
+  if [[ -n "${TEAM_AGENT_ID}" ]]; then
+    return 0
+  fi
+  curl -sS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    -H "Content-Type: application/json" \
+    -d '{"agent_id":"agent1"}' \
+    -o /dev/null \
+    "${BROKER_BASE}/v1/agents" || true
+  TEAM_AGENT_ID="$(select_agent_id || true)"
+  if [[ -n "${TEAM_AGENT_ID}" ]]; then
+    return 0
+  fi
+  return 1
+}
+
+TEAM_AGENT_ID=""
+if ! ensure_team_agent; then
+  if [[ "${STACK_FROM_DETECT}" == "1" ]]; then
+    echo "SKIP: no accessible agents in detected broker stack" >&2
+    exit 77
+  else
+    echo "no accessible agents for current OIDC user" >&2
+    exit 1
+  fi
+fi
+
 TEAM_JSON="$(
   curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
     -H "Authorization: Bearer ${OIDC_JWT}" \
@@ -228,13 +304,13 @@ fi
 curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
   -H "Authorization: Bearer ${OIDC_JWT}" \
   -H "Content-Type: application/json" \
-  -d "{\"member_id\":\"m_planner_${TEAM_ID}\",\"agent_id\":\"agent1\",\"role\":\"planner\",\"status\":\"active\"}" \
+  -d "{\"member_id\":\"m_planner_${TEAM_ID}\",\"agent_id\":\"${TEAM_AGENT_ID}\",\"role\":\"planner\",\"status\":\"active\"}" \
   "${BROKER_BASE}/v1/teams/${TEAM_ID}/members" >/dev/null
 
 curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
   -H "Authorization: Bearer ${OIDC_JWT}" \
   -H "Content-Type: application/json" \
-  -d "{\"member_id\":\"m_executor_${TEAM_ID}\",\"agent_id\":\"agent1\",\"role\":\"executor\",\"status\":\"paused\"}" \
+  -d "{\"member_id\":\"m_executor_${TEAM_ID}\",\"agent_id\":\"${TEAM_AGENT_ID}\",\"role\":\"executor\",\"status\":\"paused\"}" \
   "${BROKER_BASE}/v1/teams/${TEAM_ID}/members" >/dev/null
 
 RUN_BODY="$(python3 - <<PY
