@@ -96,6 +96,8 @@ Compose image builds pass proxy args for package installs. Defaults:
 - `HTTP_PROXY`/`HTTPS_PROXY`: `http://host.docker.internal:8120`
 - `NO_PROXY`: `localhost,127.0.0.1,::1,host.docker.internal`
 Use `host.docker.internal` (not an ad-hoc hostname like `m2`) so containers can resolve the proxy consistently.
+If the proxy is unreachable during build, the Dockerfiles now retry apt installs once without proxy to avoid
+hard failures (still prefers proxy when available).
 
 Runtime containers do not receive proxy environment variables by default so intra-stack
 traffic stays direct. Override by exporting `HTTP_PROXY`/`HTTPS_PROXY` before `docker compose`.

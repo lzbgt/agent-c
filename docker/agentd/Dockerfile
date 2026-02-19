@@ -8,18 +8,43 @@ ENV HTTPS_PROXY=${HTTPS_PROXY}
 ENV NO_PROXY=${NO_PROXY}
 
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends \
-  build-essential \
-  cmake \
-  ninja-build \
-  pkg-config \
-  ca-certificates \
-  git \
-  curl \
-  libcurl4-openssl-dev \
-  libjsoncpp-dev \
-  libsqlite3-dev \
-  && rm -rf /var/lib/apt/lists/*
+RUN set -e; \
+  APT_OPTS="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"; \
+  if [ -n "${HTTP_PROXY}" ] || [ -n "${HTTPS_PROXY}" ]; then \
+    { \
+      echo "Acquire::http::Proxy \"${HTTP_PROXY}\";"; \
+      echo "Acquire::https::Proxy \"${HTTPS_PROXY}\";"; \
+    } > /etc/apt/apt.conf.d/99proxy; \
+  fi; \
+  apt-get update ${APT_OPTS} && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    ninja-build \
+    pkg-config \
+    ca-certificates \
+    git \
+    curl \
+    libcurl4-openssl-dev \
+    libjsoncpp-dev \
+    libsqlite3-dev \
+    && rm -rf /var/lib/apt/lists/* \
+  || ( \
+    echo "apt via proxy failed; retrying without proxy" >&2; \
+    rm -f /etc/apt/apt.conf.d/99proxy; \
+    HTTP_PROXY= HTTPS_PROXY= NO_PROXY= \
+      apt-get update ${APT_OPTS} && apt-get install -y --no-install-recommends \
+        build-essential \
+        cmake \
+        ninja-build \
+        pkg-config \
+        ca-certificates \
+        git \
+        curl \
+        libcurl4-openssl-dev \
+        libjsoncpp-dev \
+        libsqlite3-dev \
+        && rm -rf /var/lib/apt/lists/* \
+  )
 
 WORKDIR /src
 COPY . /src
@@ -35,12 +60,31 @@ ENV HTTP_PROXY=${HTTP_PROXY}
 ENV HTTPS_PROXY=${HTTPS_PROXY}
 ENV NO_PROXY=${NO_PROXY}
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends \
-  ca-certificates \
-  libcurl4 \
-  libjsoncpp25 \
-  libsqlite3-0 \
-  && rm -rf /var/lib/apt/lists/*
+RUN set -e; \
+  APT_OPTS="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"; \
+  if [ -n "${HTTP_PROXY}" ] || [ -n "${HTTPS_PROXY}" ]; then \
+    { \
+      echo "Acquire::http::Proxy \"${HTTP_PROXY}\";"; \
+      echo "Acquire::https::Proxy \"${HTTPS_PROXY}\";"; \
+    } > /etc/apt/apt.conf.d/99proxy; \
+  fi; \
+  apt-get update ${APT_OPTS} && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libcurl4 \
+    libjsoncpp25 \
+    libsqlite3-0 \
+    && rm -rf /var/lib/apt/lists/* \
+  || ( \
+    echo "apt via proxy failed; retrying without proxy" >&2; \
+    rm -f /etc/apt/apt.conf.d/99proxy; \
+    HTTP_PROXY= HTTPS_PROXY= NO_PROXY= \
+      apt-get update ${APT_OPTS} && apt-get install -y --no-install-recommends \
+        ca-certificates \
+        libcurl4 \
+        libjsoncpp25 \
+        libsqlite3-0 \
+        && rm -rf /var/lib/apt/lists/* \
+  )
 
 WORKDIR /app
 COPY --from=build /src/docker_build/agentd /usr/local/bin/agentd
