@@ -33,6 +33,7 @@
 #include "run_request_config.h"
 #include "run_request_parse.h"
 #include "run_request_persist.h"
+#include "run_request_tool_loop.h"
 
 #include "run_client_acks.h"
 #include "run_memory_context.h"
@@ -56,6 +57,15 @@
 
 namespace agentd {
 namespace {
+
+static void ensure_trace_id_in_events(Json::Value* arr, const std::string& trace_id) {
+  if (!arr || !arr->isArray() || trace_id.empty()) return;
+  for (Json::ArrayIndex i = 0; i < arr->size(); i++) {
+    Json::Value& ev = (*arr)[i];
+    if (!ev.isObject()) continue;
+    if (!ev.isMember("trace_id")) ev["trace_id"] = trace_id;
+  }
+}
 
 static Json::Value run_request_to_json_impl(
   const DaemonConfig& daemon_cfg,
@@ -636,36 +646,7 @@ static Json::Value run_request_to_json_impl(
   std::ostream* trace_stream = trace ? &trace_buf : nullptr;
   Json::Value events_out;
   ToolLoopResult tool_loop_result;
-  auto inject_trace_id_into_events = [&](Json::Value* arr) {
-    if (!arr || !arr->isArray() || trace_id.empty()) return;
-    for (Json::ArrayIndex i = 0; i < arr->size(); i++) {
-      Json::Value& ev = (*arr)[i];
-      if (!ev.isObject()) continue;
-      if (!ev.isMember("trace_id")) ev["trace_id"] = trace_id;
-    }
-  };
-  auto inject_schema_into_events = [&](Json::Value* arr) {
-    if (!arr || !arr->isArray()) return;
-    for (Json::ArrayIndex i = 0; i < arr->size(); i++) {
-      Json::Value& ev = (*arr)[i];
-      if (!ev.isObject()) continue;
-      if (ev.isMember("schema")) continue;
-      if (!ev.isMember("type") || !ev["type"].isString()) continue;
-      const std::string type = ev["type"].asString();
-      const char* schema = nullptr;
-      if (type == "assistant_delta") schema = "run_event_payload_assistant_delta_v1";
-      else if (type == "assistant_message") schema = "run_event_payload_assistant_message_v1";
-      else if (type == "user_message") schema = "run_event_payload_user_message_v1";
-      else if (type == "tool_call") schema = "run_event_payload_tool_call_v1";
-      else if (type == "tool_result") schema = "run_event_payload_tool_result_v1";
-      else if (type == "llm_usage") schema = "run_event_payload_llm_usage_v1";
-      else if (type == "artifact") schema = "run_event_payload_artifact_v1";
-      else if (type == "ui_action") schema = "run_event_payload_ui_action_v1";
-      else if (type == "heartbeat") schema = "run_event_payload_heartbeat_v1";
-      else if (type == "error") schema = "run_event_payload_error_v1";
-      if (schema) ev["schema"] = schema;
-    }
-  };
+  // tool-loop helpers moved into run_request_tool_loop.{h,cpp}
 
   std::atomic<bool> heartbeat_stop{false};
   std::atomic<int64_t> heartbeat_last_any_event_ms{now_unix_ms()};
@@ -711,214 +692,51 @@ static Json::Value run_request_to_json_impl(
   }
 
   if (use_tool_loop) {
-    // Optional vision prefetch:
-    // For Moonshot/Kimi, multimodal vision works in tools=none schema, but tool-loop requests can't include image parts.
-    // To keep host tools available while still letting the model "see" the image, do a one-shot tools=none call to
-    // produce a textual description, then inject it into the tool-loop prompt.
-    Json::Value pre_events(Json::arrayValue);
-    std::string prompt_for_tool_loop = prompt_for_llm;
-    {
-      const bool want_prefetch =
-        !(args.isMember("vision_prefetch") && args["vision_prefetch"].isBool() && args["vision_prefetch"].asBool() == false);
+    RunRequestToolLoopInput tl_in;
+    tl_in.daemon_cfg = &daemon_cfg;
+    tl_in.args = &args;
+    tl_in.run_cfg = &run_cfg;
+    tl_in.prompt = &prompt;
+    tl_in.prompt_for_llm = &prompt_for_llm;
+    tl_in.trace_id = &trace_id;
+    tl_in.session_id = &session_id;
+    tl_in.tools = &tools;
+    tl_in.no_session = no_session;
+    tl_in.no_default_system = no_default_system;
+    tl_in.mem_pol = &mem_pol;
+    tl_in.mem_query = &mem_query;
+    tl_in.max_steps = max_steps;
+    tl_in.max_tool_calls_total = max_tool_calls_total;
+    tl_in.max_tool_calls_per_tool = max_tool_calls_per_tool;
+    tl_in.max_tool_call_args_chars = max_tool_call_args_chars;
+    tl_in.max_tool_result_chars = max_tool_result_chars;
+    tl_in.tool_call_limits = &tool_call_limits;
+    tl_in.max_capture_bytes = max_capture_bytes;
+    tl_in.max_chars = max_chars;
+    tl_in.keep_last = keep_last;
+    tl_in.verbose = verbose;
+    tl_in.stream_assistant = stream_assistant;
+    tl_in.session = session;
+    tl_in.registry = registry;
+    tl_in.executor = &executor;
+    tl_in.trace_stream = trace_stream;
+    tl_in.should_cancel_or_null = should_cancel_or_null;
+    tl_in.should_cancel_ctx_or_null = should_cancel_ctx_or_null;
+    tl_in.job_id = &job_id_local;
+    tl_in.heartbeat_last_any_event_ms = &heartbeat_last_any_event_ms;
+    tl_in.heartbeat_last_non_ms = &heartbeat_last_non_ms;
+    tl_in.heartbeat_phase = &heartbeat_phase;
 
-      Json::Value mm(Json::nullValue);
-      std::string user_text = prompt_for_llm;
-      const bool has_mm = try_parse_multimodal_prefix(prompt_for_llm, &mm, &user_text) && mm.isObject();
-      const bool has_images = has_mm && mm.isMember("images") && mm["images"].isArray() && !mm["images"].empty();
-      const bool should_prefetch = want_prefetch && has_images && provider_requires_tools_none_for_vision(run_cfg.base_url, run_cfg.model);
-
-      if (should_prefetch) {
-        vision_prefetch_attempted = true;
-        // Build a single-message vision request (tools=none) using OpenAI-compatible multimodal parts.
-        // We do not persist this "internal" call into the session transcript.
-        std::string vision_desc;
-        std::string v_err;
-        long v_http = 0;
-        try {
-          const std::string pre_text =
-            std::string("Describe the attached image(s) in detail so I can answer the user's request.\n")
-            + "User request:\n"
-            + prompt;
-
-          Json::Value root(Json::objectValue);
-          root["model"] = run_cfg.model;
-          root["stream"] = false;
-          Json::Value messages(Json::arrayValue);
-
-          {
-            Json::Value sm(Json::objectValue);
-            sm["role"] = "system";
-            sm["content"] = "You are a vision captioning assistant. Output plain text.";
-            messages.append(sm);
-          }
-          {
-            Json::Value um(Json::objectValue);
-            um["role"] = "user";
-            um["content"] = multimodal_content_from_parts(pre_text, mm, /*allow_image_parts=*/true);
-            messages.append(um);
-          }
-
-          root["messages"] = messages;
-          Json::StreamWriterBuilder wb;
-          wb["indentation"] = "";
-          const std::string req_json = Json::writeString(wb, root);
-
-          OpenAIRawResult raw = openai_chat_completions_raw(run_cfg, req_json);
-          v_http = raw.http_status;
-          if (raw.http_status < 200 || raw.http_status >= 300) {
-            v_err = openai_format_http_error(raw.http_status, raw.response_body);
-          } else {
-            vision_desc = try_extract_assistant_text_from_response_json(raw.response_body);
-            if (vision_desc.empty()) {
-              v_err = "vision prefetch returned empty assistant text";
-            }
-          }
-        } catch (const std::exception& e) {
-          v_err = std::string("vision prefetch threw exception: ") + e.what();
-        } catch (...) {
-          v_err = "vision prefetch threw unknown exception";
-        }
-
-        Json::Value ev(Json::objectValue);
-        ev["type"] = "vision_prefetch";
-        if (!trace_id.empty()) ev["trace_id"] = trace_id;
-        Json::Value d(Json::objectValue);
-        d["ok"] = (bool)v_err.empty();
-        d["provider"] = provider_from_base_url(run_cfg.base_url);
-        d["model"] = run_cfg.model;
-        if (v_http) d["http_status"] = (Json::Int64)v_http;
-        if (!v_err.empty()) d["error"] = v_err;
-        if (!vision_desc.empty()) {
-          d["chars"] = (Json::UInt64)vision_desc.size();
-          // Include a short preview for debugging/UI display (avoid large blobs).
-          const size_t kPreview = 512;
-          d["preview"] = vision_desc.size() <= kPreview ? vision_desc : (vision_desc.substr(0, kPreview) + "…");
-        }
-        ev["data"] = d;
-        pre_events.append(ev);
-
-        if (v_err.empty() && !vision_desc.empty()) {
-          vision_prefetch_ok = true;
-          // Strip images from the multimodal envelope before entering the tool loop
-          // (otherwise the tool-loop provider may add an "image omitted" hint).
-          Json::Value mm2 = mm;
-          if (mm2.isObject() && mm2.isMember("images")) {
-            mm2.removeMember("images");
-          }
-          // Re-wrap without images and append the vision description into the text prompt.
-          Json::StreamWriterBuilder wb;
-          wb["indentation"] = "";
-          prompt_for_tool_loop = std::string(kMultimodalPrefix) + Json::writeString(wb, mm2) + "\n" + user_text;
-          prompt_for_tool_loop += "\n\n[Image description]\n";
-          prompt_for_tool_loop += vision_desc;
-        }
-      }
-    }
-
-    ToolLoopOptions opt;
-    opt.max_steps = max_steps;
-    opt.max_tool_calls_total = max_tool_calls_total;
-    opt.max_tool_calls_per_tool = max_tool_calls_per_tool;
-    opt.max_tool_call_args_chars = max_tool_call_args_chars;
-    opt.max_tool_result_chars = max_tool_result_chars;
-    opt.tool_call_limits = std::move(tool_call_limits);
-    opt.verbose = verbose;
-    opt.stream_assistant = stream_assistant;
-    if (args.isMember("max_repeated_tool_calls") && args["max_repeated_tool_calls"].isInt()) {
-      const int v = args["max_repeated_tool_calls"].asInt();
-      if (v >= 0) opt.max_repeated_tool_calls = (size_t)v;
-    }
-    // Avoid UI freezes when verbose tracing captures huge request/response/tool blobs.
-    // Full fidelity remains available in `trace_text`.
-    opt.max_capture_bytes = max_capture_bytes == 0 ? (size_t)64 * 1024 : std::min<size_t>(max_capture_bytes, (size_t)1024 * 1024);
-    opt.max_chars = max_chars;
-    opt.keep_last_messages = keep_last;
-    if (args.isMember("force_tool") && args["force_tool"].isString()) opt.force_tool = args["force_tool"].asString();
-    opt.require_tool_call = args.isMember("require_tool_call") && args["require_tool_call"].isBool() ? args["require_tool_call"].asBool() : false;
-
-    DaemonJobEventHookCtx hook;
-	    if (!job_id_local.empty()) {
-	      hook.job_id = job_id_local;
-      hook.last_any_event_ms = &heartbeat_last_any_event_ms;
-      hook.last_non_heartbeat_ms = &heartbeat_last_non_ms;
-      hook.phase = &heartbeat_phase;
-      opt.on_event = daemon_job_on_tool_loop_event;
-      opt.on_event_ctx = &hook;
-	    }
-    if (should_cancel_or_null) {
-      opt.should_cancel = should_cancel_or_null;
-      opt.should_cancel_ctx = should_cancel_ctx_or_null;
-    } else if (!job_id_local.empty()) {
-      opt.should_cancel = [](void* vctx) -> bool {
-        if (!vctx) return false;
-        const auto* jid = static_cast<const std::string*>(vctx);
-        return jid && job_is_cancel_requested(*jid);
-      };
-      opt.should_cancel_ctx = (void*)&job_id_local;
-    }
-
-	    struct SessionDel {
-	      void operator()(agent_session_t* s) const {
-	        if (s) agent_session_destroy(s);
-	      }
-	    };
-	    std::unique_ptr<agent_session_t, SessionDel> ephemeral_seed;
-		    const agent_session_t* seed_for_run = session;
-		    if (!no_default_system && tools == "host" && !no_session) {
-		      std::string mem_ctx;
-		      std::string effective_query = mem_query;
-		      if (effective_query.empty() && mem_pol.mode == MemoryContextMode::Search) {
-		        effective_query = prompt_for_llm;
-		      }
-		      if (build_memory_context_text(daemon_cfg.state_dir, session_id, mem_pol, effective_query, &mem_ctx)) {
-		        if (agent_session_t* tmp = clone_session_with_memory_context(session, mem_ctx)) {
-		          ephemeral_seed.reset(tmp);
-		          seed_for_run = tmp;
-		        }
-		      }
-		    }
-
-	    try {
-	      ok = run_tool_loop(
-	        run_cfg, seed_for_run, prompt_for_tool_loop, registry, &executor, opt, trace_stream, &tool_loop_result, &err, &http_status, &http_body
-	      );
-	    } catch (const std::exception& e) {
-	      ok = false;
-	      err = std::string("tool loop threw exception: ") + e.what();
-    } catch (...) {
-      ok = false;
-      err = "tool loop threw unknown exception";
-	    }
-    assistant_text = tool_loop_result.final_assistant_text;
-    if (!tool_loop_result.events_json.empty()) {
-      Json::CharReaderBuilder rb;
-      std::string errs;
-      std::istringstream iss(tool_loop_result.events_json);
-      Json::Value ev;
-      if (Json::parseFromStream(rb, iss, &ev, &errs) && ev.isArray()) {
-        events_out = ev;
-        inject_trace_id_into_events(&events_out);
-        inject_schema_into_events(&events_out);
-      }
-    }
-    if (!pre_events.empty()) {
-      if (!events_out.isArray()) events_out = Json::Value(Json::arrayValue);
-      for (const auto& pe : pre_events) {
-        events_out.append(pe);
-      }
-      inject_trace_id_into_events(&events_out);
-      inject_schema_into_events(&events_out);
-    }
-
-    if (ok) {
-      // Persist the conversational session:
-      // - user prompt
-      // - final assistant message
-      //
-      // Tool calls/results are stored in the session audit JSONL (host-only) and returned via `events`.
-      agent_session_add_message(session, AGENT_ROLE_USER, prompt.c_str());
-      agent_session_add_message(session, AGENT_ROLE_ASSISTANT, assistant_text.c_str());
-    }
+    RunRequestToolLoopResult tl_out = run_request_tool_loop(tl_in);
+    ok = tl_out.ok;
+    assistant_text = std::move(tl_out.assistant_text);
+    err = std::move(tl_out.err);
+    http_status = tl_out.http_status;
+    http_body = std::move(tl_out.http_body);
+    events_out = std::move(tl_out.events_out);
+    tool_loop_result = std::move(tl_out.tool_loop_result);
+    vision_prefetch_attempted = tl_out.vision_prefetch_attempted;
+    vision_prefetch_ok = tl_out.vision_prefetch_ok;
   } else {
     agent_session_add_message(session, AGENT_ROLE_USER, prompt.c_str());
 
@@ -1392,7 +1210,7 @@ static Json::Value run_request_to_json_impl(
         if (!trace_id.empty()) e["trace_id"] = trace_id;
         e["data"] = d;
         events_out.append(e);
-        inject_trace_id_into_events(&events_out);
+        ensure_trace_id_in_events(&events_out, trace_id);
       }
       if (report.isObject() && report.isMember("ok") && report["ok"].isBool() && report["ok"].asBool() == false) {
         ok = false;

@@ -86,7 +86,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 ## New tasks (2026-02-19)
 
 - [x] Add regression tests for `/api/v1/file` path traversal and session-root confinement.
-- [ ] Refactor `daemon/src/run_request.cpp` into smaller units (request parsing helper + persistence block done; tool-loop wrapper pending).
+- [x] Refactor `daemon/src/run_request.cpp` into smaller units (parsing + config + persistence + tool-loop wrapper extracted).
 - [ ] Refactor `ui/src/components/ConversationView.tsx` into smaller components (approaching 2000 LOC).
 - [ ] Standardize API error envelopes across agentd + broker (`{"err":"...","code":"...","details":{...}}`) and align WebUI handling.
 - [ ] Refactor `ref/ds-cli/sophon/src/sophon_cli/cli.py` (5.8k LOC) into SOLID submodules or mark as vendored/read-only.
