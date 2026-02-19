@@ -463,6 +463,12 @@ Options:
 - `--threshold-gb N`: size threshold (GiB) for build/out removal.
 - `--max-repo-gb N`: fail if total repo size exceeds N GiB after cleanup.
 
+To inspect disk usage and spot bloat quickly:
+
+```bash
+tools/repo_size_report.py --depth 2 --top 20
+```
+
 ## Docker Compose (prod-like local verification)
 
 If you want a **prod-like stack** locally (Postgres + Keycloak OIDC + broker + connector + agentd + WebUI):

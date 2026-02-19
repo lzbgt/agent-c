@@ -95,6 +95,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [x] Add build/log cleanup automation (e.g., tools/clean.sh + `out/` log pruning) to prevent disk bloat.
 - [x] Consolidate design docs into a coherent architecture map and component summary structure.
 - [x] Add repo size guard to cleanup tooling (`tools/clean.sh --max-repo-gb`) to prevent >37GB bloat.
+- [x] Add repo size report tool (`tools/repo_size_report.py`) to pinpoint growth quickly.
 
 ## Promoted goals (explicit goals; no non-goals)
 
