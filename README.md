@@ -6,6 +6,9 @@ Docs quickstart:
 - Unified handbook (curated summary; generated): `docs/HANDBOOK.md`
 - Architecture + roadmap: `DESIGN.md` (full system map)
 
+Handbook guard:
+- `tools/verify_repo_guards.sh` enforces a handbook line limit via `HANDBOOK_MAX_LINES` (default: 400).
+
 ## Build
 
 ```bash
