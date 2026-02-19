@@ -6,6 +6,8 @@ Copy this file to `project.local.md` and fill in real keys.
 
 - deepseek: <DEEPSEEK_API_KEY>
 - openrouter: <OPENROUTER_API_KEY>
+- OPENROUTER_HTTP_REFERER=<https://your.app>   # optional: required by some OpenRouter accounts
+- OPENROUTER_X_TITLE=<YourAppName>             # optional: required by some OpenRouter accounts
 - moonshot: <KIMI_API_KEY_CN or MOONSHOT_API_KEY>
 - git_remote: <YOUR_GIT_REMOTE_URL>
 
