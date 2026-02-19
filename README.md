@@ -513,12 +513,19 @@ Tracked file size guard (fails if any tracked file exceeds 10 MiB):
 tools/tracked_file_guard.py --max-mb 10
 ```
 
+Untracked file size guard (ignores common build/cache dirs):
+
+```bash
+tools/untracked_file_guard.py --exclude-defaults --max-mb 100
+```
+
 Run all repo hygiene guards locally:
 
 ```bash
 tools/verify_repo_guards.sh
 tools/verify_repo_guards.sh --strict
 tools/verify_repo_guards.sh --max-total-gb 2 --max-file-mb 5
+tools/verify_repo_guards.sh --max-untracked-mb 200
 ```
 
 ## Docker Compose (prod-like local verification)

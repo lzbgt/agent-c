@@ -7,6 +7,7 @@ cd "${ROOT}"
 STRICT=0
 MAX_TOTAL_GB="${REPO_GUARD_MAX_GB:-5}"
 MAX_FILE_MB="${REPO_GUARD_MAX_FILE_MB:-10}"
+MAX_UNTRACKED_MB="${REPO_GUARD_MAX_UNTRACKED_MB:-100}"
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --strict)
@@ -23,9 +24,14 @@ while [[ $# -gt 0 ]]; do
       MAX_FILE_MB="${1:-}"
       shift 1
       ;;
+    --max-untracked-mb)
+      shift 1
+      MAX_UNTRACKED_MB="${1:-}"
+      shift 1
+      ;;
     -h|--help)
       cat <<'EOF'
-Usage: tools/verify_repo_guards.sh [--strict] [--max-total-gb N] [--max-file-mb N]
+Usage: tools/verify_repo_guards.sh [--strict] [--max-total-gb N] [--max-file-mb N] [--max-untracked-mb N]
 
 Runs repo hygiene guards:
   - repo size guard (max 5 GiB, excludes .git)
@@ -36,10 +42,12 @@ Options:
   --strict   Also fail on nested .git dirs (matches CI guard).
   --max-total-gb N  Override repo size limit in GiB (default: 5).
   --max-file-mb N   Override tracked file size limit in MiB (default: 10).
+  --max-untracked-mb N Override untracked file size limit in MiB (default: 100).
 
 Env overrides:
   REPO_GUARD_MAX_GB
   REPO_GUARD_MAX_FILE_MB
+  REPO_GUARD_MAX_UNTRACKED_MB
 EOF
       exit 0
       ;;
@@ -58,3 +66,4 @@ fi
 python3 tools/repo_size_report.py "${args[@]}"
 python3 tools/stub_file_scan.py --fail
 python3 tools/tracked_file_guard.py --max-mb "${MAX_FILE_MB}"
+python3 tools/untracked_file_guard.py --exclude-defaults --max-mb "${MAX_UNTRACKED_MB}"

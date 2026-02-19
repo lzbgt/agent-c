@@ -109,6 +109,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [x] Add `tools/verify_repo_guards.sh` to run all repo hygiene guards locally.
 - [x] Add size override flags/env to `tools/verify_repo_guards.sh`.
 - [x] Add repo guard flags to `tools/verify.sh` for one-command verification.
+- [x] Add untracked file size guard + integrate into repo guards.
 - [x] Ignore nested `ref/**/.git` dirs to prevent accidental re-adding.
 
 ## Promoted goals (explicit goals; no non-goals)
