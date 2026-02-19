@@ -367,6 +367,14 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
   )
   target_link_libraries(agentd_tool_plugin_host PRIVATE agentd_lib)
 
+  add_executable(agentd_audio_signal_loopback
+    tools/agentd_audio_signal_loopback.cpp
+  )
+  target_compile_options(agentd_audio_signal_loopback PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_link_libraries(agentd_audio_signal_loopback PRIVATE agentd_lib)
+
   if(AGENTD_ENABLE_HTTP)
     target_compile_definitions(agentd_lib PUBLIC AGENTD_ENABLE_HTTP=1)
   endif()
@@ -819,6 +827,12 @@ if(AGENT_BUILD_HOST)
     set_tests_properties(broker_audio_signal_loopback_smoke PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME broker_audio_signal_docker_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/broker_audio_signal_docker_smoke.sh)
     set_tests_properties(broker_audio_signal_docker_smoke PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(
+      NAME agentd_audio_signal_loopback_smoke
+      COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_audio_signal_loopback_smoke.sh
+        $<TARGET_FILE:agentd_audio_signal_loopback>
+    )
+    set_tests_properties(agentd_audio_signal_loopback_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
     if(AGENT_ENABLE_SQLITE3)
       add_test(NAME agentd_db_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_smoke.sh $<TARGET_FILE:agentd>)

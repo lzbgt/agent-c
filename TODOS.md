@@ -92,7 +92,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
 - [x] W=8 — Finish embedded/MCU-compatible tool plugin path (ABI constraints + host/sandbox policy; Windows parity tests added).
 - [x] W=7 — Split near-2000 LOC modules into SOLID units with focused tests: `broker/internal/broker/server.go` (UI `api.ts` + `daemon/src/agent_db.cpp` + `daemon/src/workflow_endpoints.cpp` completed).
 - [x] W=3 — Reduce WebUI bundle size warning (>500 kB) via `manualChunks` or dynamic imports where appropriate.
-- [ ] W=5 — Audio streaming foundation: define WebRTC/Opus signaling + broker relay endpoints (spec + broker relay endpoints + loopback + docker-postgres smoke tests added) and add a minimal CLI/agentd loopback smoke test for agentd participation.
+- [x] W=5 — Audio streaming foundation: define WebRTC/Opus signaling + broker relay endpoints (spec + broker relay endpoints + loopback + docker-postgres smoke tests + agentd loopback tool/test added).
 
 ## New tasks (2026-02-19)
 

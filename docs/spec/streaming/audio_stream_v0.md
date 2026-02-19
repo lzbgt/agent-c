@@ -1,7 +1,7 @@
 # Audio Streaming (v0)
 
 Date: 2026-02-19
-Status: v0 (broker signaling relay implemented; agentd/client pending)
+Status: v0 (broker signaling relay implemented; agentd loopback smoke tool added; real WebRTC pending)
 
 ## Goals
 
@@ -95,12 +95,12 @@ Event payload:
 - Sessions expire automatically (default TTL) and are cleaned up on disconnect.
 - `bye` signals a graceful teardown; broker closes the signaling stream and marks session closed.
 
-## Minimal loopback smoke test (planned)
+## Minimal loopback smoke test (implemented)
 
 A v0 smoke test should:
-1) Launch agentd with a loopback audio provider (or stub that accepts WebRTC)
+1) Launch an agentd loopback client that subscribes to broker audio signals
 2) Create an audio session via broker
-3) Exchange offer/answer/candidates over the signaling endpoints
+3) Exchange offer/answer over the signaling endpoints
 4) Verify signaling completes and session closes cleanly
 
 ## Open questions
