@@ -9,6 +9,7 @@ project-owned location.
 Guard: `tools/vendored_guard.py` fails CI if files under `ref/` change. Override
 with `ALLOW_VENDORED_CHANGES=1` only when intentionally updating a vendored
 snapshot.
+Optional local hook installer: `tools/install_git_hooks.sh`.
 
 ## Current vendored subtrees
 

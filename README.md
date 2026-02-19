@@ -530,6 +530,12 @@ base refs in CI):
 tools/vendored_guard.py --path ref
 ```
 
+Optional git hook (local pre-commit) to run the vendored guard:
+
+```bash
+tools/install_git_hooks.sh
+```
+
 Run all repo hygiene guards locally:
 
 ```bash
