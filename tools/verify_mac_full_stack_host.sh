@@ -102,6 +102,7 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 docker_info_ready() {
+  # AGENT_DOCKER_INFO_TIMEOUT_SEC controls the docker info timeout (seconds).
   python3 - <<'PY'
 import os
 import subprocess

@@ -44,6 +44,7 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 
 docker_info_ready() {
+  # AGENT_DOCKER_INFO_TIMEOUT_SEC controls the docker info timeout (seconds).
   python3 - <<'PY'
 import os
 import subprocess
@@ -206,15 +207,6 @@ cleanup() {
 }
 trap 'cleanup $?' EXIT
 
-if ! command -v docker >/dev/null 2>&1; then
-  echo "[devstack] docker not found" >&2
-  exit 77
-fi
-if ! docker info >/dev/null 2>&1; then
-  echo "[devstack] docker daemon not running" >&2
-  echo "[devstack] Hint: start Docker Desktop or Colima, then re-run." >&2
-  exit 77
-fi
 if ! command -v cmake >/dev/null 2>&1; then
   echo "[devstack] cmake not found" >&2
   exit 1
