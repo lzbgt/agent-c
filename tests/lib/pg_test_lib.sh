@@ -2,7 +2,20 @@
 set -euo pipefail
 
 pg_test_has_local_pg() {
-  command -v initdb >/dev/null 2>&1 && command -v pg_ctl >/dev/null 2>&1
+  if ! command -v initdb >/dev/null 2>&1; then
+    return 1
+  fi
+  if ! command -v pg_ctl >/dev/null 2>&1; then
+    return 1
+  fi
+  if command -v pg_config >/dev/null 2>&1; then
+    local sharedir
+    sharedir="$(pg_config --sharedir 2>/dev/null || true)"
+    if [[ -n "${sharedir}" && ! -f "${sharedir}/postgres.bki" ]]; then
+      return 1
+    fi
+  fi
+  return 0
 }
 
 pg_test_pick_port() {
