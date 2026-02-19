@@ -88,6 +88,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
 
 - [ ] W=10 — Populate OpenRouter streaming pins with a verified key, commit `ref/openrouter/streaming_pins.json`, and tighten smoke tests to prefer pins (unblocks streaming stability work). Current key returns 401 “User not found” on chat preflight; verify key and OpenRouter headers.
+  - 2026-02-19 check: key from `~/.env` returns 401 “User not found”; `OPENROUTER_HTTP_REFERER`/`OPENROUTER_X_TITLE` not set.
 - [x] W=9 — Unblock macOS full-stack compose verification (document Docker Desktop resource settings + prebuilt image path) and improve `tools/verify_mac_full_stack.sh` diagnostics for `unpigz/runc` failures.
 - [x] W=8 — Finish embedded/MCU-compatible tool plugin path (ABI constraints + host/sandbox policy; Windows parity tests added).
 - [x] W=7 — Split near-2000 LOC modules into SOLID units with focused tests: `broker/internal/broker/server.go` (UI `api.ts` + `daemon/src/agent_db.cpp` + `daemon/src/workflow_endpoints.cpp` completed).
