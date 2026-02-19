@@ -18,7 +18,7 @@ OUT_DIR="${ROOT}/out"
 mkdir -p "${OUT_DIR}"
 
 curlq() {
-  command curl -q "$@"
+  command curl -q --noproxy "*" "$@"
 }
 
 source "${ROOT}/tools/lib/docker_preflight.sh"
