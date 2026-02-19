@@ -9,6 +9,7 @@ fi
 
 HOOK_FILE="${HOOKS_PATH}/pre-commit"
 JSON=0
+CHECK=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -16,11 +17,16 @@ while [[ $# -gt 0 ]]; do
       JSON=1
       shift 1
       ;;
+    --check)
+      CHECK=1
+      shift 1
+      ;;
     -h|--help)
       cat <<'EOF'
-Usage: tools/hooks_status.sh [--json]
+Usage: tools/hooks_status.sh [--json] [--check]
 
 Prints pre-commit hook status and whether vendored guard is installed.
+With --check, exits non-zero if the vendored guard is not installed.
 EOF
       exit 0
       ;;
@@ -49,6 +55,9 @@ if [[ "${JSON}" -eq 1 ]]; then
   printf '"pre_commit_present":%s,' "${has_hook}"
   printf '"vendored_guard_installed":%s' "${vendored_installed}"
   printf '}\n'
+  if [[ "${CHECK}" -eq 1 ]] && [[ "${vendored_installed}" -ne 1 ]]; then
+    exit 2
+  fi
   exit 0
 fi
 
@@ -68,3 +77,6 @@ if [[ "${vendored_installed}" -eq 1 ]]; then
 fi
 
 echo "[hooks] vendored guard: not detected"
+if [[ "${CHECK}" -eq 1 ]]; then
+  exit 2
+fi

@@ -554,6 +554,12 @@ JSON output:
 tools/hooks_status.sh --json
 ```
 
+Fail if the vendored guard is not installed:
+
+```bash
+tools/hooks_status.sh --check
+```
+
 Run all repo hygiene guards locally:
 
 ```bash
