@@ -39,13 +39,7 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
 fi
 
 source "${ROOT}/tools/lib/docker_preflight.sh"
-if ! docker_preflight "devstack"; then
-  exit 77
-fi
-
-if ! docker compose version >/dev/null 2>&1; then
-  echo "[devstack] SKIP: docker compose not available" >&2
-  echo "[devstack] Hint: install the docker compose plugin or upgrade Docker Desktop." >&2
+if ! docker_compose_preflight "devstack"; then
   exit 77
 fi
 

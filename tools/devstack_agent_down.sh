@@ -76,7 +76,7 @@ kill_pid "${BROKER_PID}"
 kill_pid "${AGENTD_PID}"
 
 if [[ -n "${COMPOSE_FILE}" && -n "${COMPOSE_PROJECT}" ]]; then
-  if docker_preflight "devstack-down" >/dev/null 2>&1; then
+  if docker_compose_preflight "devstack-down" >/dev/null 2>&1; then
     POSTGRES_PUBLISHED_PORT="${POSTGRES_PORT}" \
     KEYCLOAK_PUBLISHED_PORT="${KEYCLOAK_PORT}" \
     COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT}" \

@@ -50,3 +50,16 @@ docker_preflight() {
   fi
   return 0
 }
+
+docker_compose_preflight() {
+  local label="${1:-docker}"
+  if ! docker_preflight "${label}"; then
+    return $?
+  fi
+  if ! docker compose version >/dev/null 2>&1; then
+    echo "[${label}] SKIP: docker compose not available" >&2
+    echo "[${label}] Hint: install the docker compose plugin or upgrade Docker Desktop." >&2
+    return 77
+  fi
+  return 0
+}

@@ -18,12 +18,7 @@ OUT_DIR="${ROOT}/out"
 mkdir -p "${OUT_DIR}"
 
 source "${ROOT}/tools/lib/docker_preflight.sh"
-if ! docker_preflight "compose"; then
-  exit 77
-fi
-if ! docker compose version >/dev/null 2>&1; then
-  echo "[compose] SKIP: docker compose not available" >&2
-  echo "[compose] Hint: install the docker compose plugin or upgrade Docker Desktop." >&2
+if ! docker_compose_preflight "compose"; then
   exit 77
 fi
 

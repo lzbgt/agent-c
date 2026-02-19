@@ -97,13 +97,7 @@ cleanup() {
 trap cleanup EXIT
 
 source "${ROOT}/tools/lib/docker_preflight.sh"
-if ! docker_preflight "host-stack"; then
-  exit 77
-fi
-
-if ! docker compose version >/dev/null 2>&1; then
-  echo "[host-stack] SKIP: docker compose not available" >&2
-  echo "[host-stack] Hint: install the docker compose plugin or upgrade Docker Desktop." >&2
+if ! docker_compose_preflight "host-stack"; then
   exit 77
 fi
 
