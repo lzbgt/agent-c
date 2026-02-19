@@ -815,6 +815,9 @@ if(AGENT_BUILD_HOST)
         $<TARGET_FILE:agentd_tool_plugin_big>
     )
 
+    add_test(NAME broker_audio_signal_loopback_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/broker_audio_signal_loopback_smoke.sh)
+    set_tests_properties(broker_audio_signal_loopback_smoke PROPERTIES SKIP_RETURN_CODE 77)
+
     if(AGENT_ENABLE_SQLITE3)
       add_test(NAME agentd_db_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_smoke.sh $<TARGET_FILE:agentd>)
       add_test(NAME agentd_db_query_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_db_query_smoke.sh $<TARGET_FILE:agentd>)
