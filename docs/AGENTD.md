@@ -40,6 +40,22 @@ curl http://127.0.0.1:8123/api/v1/health
 curl http://127.0.0.1:8123/api/v1/ready
 ```
 
+## Auth (optional)
+
+If you bind `agentd` to non-loopback (e.g. `--host 0.0.0.0`), you must set an auth token
+(agentd refuses to start otherwise):
+
+```bash
+./build/agentd --auth-token "your_token"
+```
+
+Clients must send `Authorization: Bearer your_token` to all endpoints (except `/api/v1/health`, `/api/v1/ready`, and `/metrics`).
+You can also accept the token via a cookie name (useful for browser clients):
+
+```bash
+./build/agentd --auth-token "your_token" --auth-cookie "agentd_auth"
+```
+
 ## Daemon CORS (browser clients)
 
 The WebUI typically runs on a different origin (e.g. `http://localhost:5173`) than the daemon (`http://127.0.0.1:8123`),
@@ -98,6 +114,18 @@ Notes:
 - You can point `agentd` at a specific dotenv file with `AGENTD_DOTENV_PATH=/path/to/.env`.
 - `~/.env` is a last-resort key source only; base URLs still come from flags/env/config.
   For Moonshot, set `MOONSHOT_API_BASE` or pass `--base-url https://api.moonshot.cn/v1`.
+
+## Durable memory
+
+`agentd` maintains a durable memory directory under `state_dir/memory/` and exposes host tools
+(`memory_write/get/search/put`) to persist and retrieve long-lived facts/preferences/tasks.
+See `docs/MEMORY.md`.
+
+## Job GC (longevity)
+
+`agentd` keeps async job state in memory for UI progress streaming. Finished jobs are garbage-collected:
+- `--job-ttl-ms <n>`: remove done/error jobs older than `n` ms (default: 1800000)
+- `--max-jobs <n>`: keep at most `n` jobs in memory (default: 256)
 
 ## Tool exposure: YOLO vs host policy
 

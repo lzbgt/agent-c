@@ -6,6 +6,7 @@ Start here if you want the shortest path to the right document.
 
 - `docs/HANDBOOK.md`: compact, generated summary (no history).
 - `DESIGN.md`: architecture map + goals.
+- `docs/BUILD.md`: build steps, platform deps, and smoke-test notes.
 - `docs/DEPLOYMENT.md`: production checklist (agentd + broker + WebUI).
 - `docs/WEBUI.md`: WebUI dev/build/runtime config and reliability notes.
 - `docs/TESTING.md`: verification workflows, network smokes, and E2E harness.

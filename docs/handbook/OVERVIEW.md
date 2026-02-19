@@ -141,6 +141,7 @@ When `--auth-token` is set, all endpoints require `Authorization: Bearer ...`.
 - `docs/README.md` for a fast doc index.
 - `TODOS.md` for roadmap and weighted tasks.
 - `docs/` for feature docs: protocol, client, workflows, tools, memory, diagnostics, DB, streaming, broker, deployment, WebUI, platform.
+- `docs/BUILD.md` for build steps and platform dependencies.
 - `docs/TESTING.md` for verification workflows and E2E harness notes.
 - `docs/CLEANUP.md` for cleanup commands and repo hygiene guards.
 - `docs/AGENTD.md` for daemon operations and runtime configuration.

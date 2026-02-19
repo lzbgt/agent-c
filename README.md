@@ -20,121 +20,25 @@ cmake --build build -j
 ctest --test-dir build --output-on-failure
 ```
 
-For a single command that runs configure/build/tests (and writes timestamped logs under `build/`), use:
+One-command verify (configure + build + tests; logs under `build/`):
 
 ```bash
 tools/verify.sh
 ```
 
-To include repo hygiene guards in the same run:
+Include repo hygiene guards:
 
 ```bash
 tools/verify.sh --repo-guards
 ```
 
-To run the same verification pass but first source `${HOME}/.env` (so provider keys like `DEEPSEEK_API_KEY` are available
-to smoke tests), use:
+Source `${HOME}/.env` before verification (provider keys for smokes):
 
 ```bash
 tools/verify_prod.sh
 ```
 
-Host builds (`agent` / `agentd`) require `libcurl` and `jsoncpp` (via `pkg-config`).
-
-**macOS (Homebrew)**:
-
-```bash
-brew install cmake pkg-config curl jsoncpp sqlite
-```
-
-macOS production packaging (signed/notarized `.pkg`) is documented in `docs/MACOS_PACKAGING.md`.
-
-**Windows (native build)**: install dependencies via vcpkg, then configure with its toolchain file:
-
-```powershell
-vcpkg install curl jsoncpp sqlite3
-cmake -S . -B build -DCMAKE_TOOLCHAIN_FILE=C:\vcpkg\scripts\buildsystems\vcpkg.cmake
-cmake --build build -j
-```
-
-Or run the helper:
-
-```powershell
-tools\verify_windows_build.ps1 -Config Release
-```
-
-To auto-install vcpkg + deps:
-
-```powershell
-tools\verify_windows_build.ps1 -InstallDeps -VcpkgRoot C:\vcpkg -Config Release
-```
-
-CI helpers (optional):
-- `tools/trigger_ci_windows_build.sh [ref]` (dispatches Windows CI; requires token or `gh auth login`)
-- `tools/check_ci_windows_build.sh` (prints latest Windows CI status; requires token for private repos)
-
-Platform-specific notes (Windows limitations, plugin support, AVM endpoints) live in `docs/PLATFORM_SUPPORT.md`.
-
-Smoke tests:
-- `ctest` includes many bash-based `agentd_*_smoke.sh` tests that start/stop the daemon; shared helpers live in `tests/lib/agentd_smoke_lib.sh`.
-- Audio signaling smokes (`broker_audio_signal_docker_smoke`, `agentd_audio_signal_loopback_smoke`) normally spin up a
-  temporary Postgres via Docker; if Docker is unavailable but `initdb`/`pg_ctl` are usable, they attempt to launch a local
-  ephemeral Postgres instead. You can always override with `AGENTD_TEST_PG_DSN` to point at any reachable Postgres DSN.
-  If local Postgres is misconfigured (e.g., missing `postgres.bki`), the tests will skip and print the reason.
-
-### Core-only build (portable; no CURL required)
-
-If you only want the portable core library + core unit tests (e.g. embedded/toolchain bring-up), disable host builds:
-
-```bash
-cmake -S . -B build-core -DAGENT_BUILD_HOST=OFF
-cmake --build build-core -j
-ctest --test-dir build-core --output-on-failure
-```
-
-Or:
-
-```bash
-tools/verify.sh --core-only
-```
-
-This builds `agent_core` and `agent_core_tests`, but skips `agent_host`, `agent`, `agentd`, and host/network smokes.
-
-### Persistence port (hosts/embedded)
-
-Core defines an optional persistence interface (`core/include/agent/persist.h`) so hosts can swap persistence implementations
-without changing the core call sites (filesystem `.sess`, SQLite, NVS/flash, etc.).
-
-### Durable memory (daemon state)
-
-`agentd` maintains a durable memory directory under `state_dir/memory/` and exposes host tools (`memory_write/get/search/put`)
-to let models persist and retrieve long-lived facts/preferences/tasks. See `docs/MEMORY.md`.
-
-### Daemon longevity (job GC)
-
-`agentd` keeps async job state in memory for UI progress streaming. Finished jobs are garbage-collected:
-- `--job-ttl-ms <n>`: remove done/error jobs older than `n` ms (default: 1800000)
-- `--max-jobs <n>`: keep at most `n` jobs in memory (default: 256)
-
-### Daemon auth (optional)
-
-If you bind `agentd` to non-loopback (e.g. `--host 0.0.0.0`), you must set an auth token (agentd refuses to start otherwise):
-
-```bash
-./build/agentd --auth-token "your_token"
-```
-
-Clients must send `Authorization: Bearer your_token` to all endpoints (except `/api/v1/health`, `/api/v1/ready`, and `/metrics`).
-You can also accept the token via a cookie name (useful for browser clients):
-
-```bash
-./build/agentd --auth-token "your_token" --auth-cookie "agentd_auth"
-```
-
-### Daemon CORS + secrets
-
-Daemon CORS guidance and local secrets/key-loading (including `.not_in_repo` and `project.local.md`)
-are documented in `docs/AGENTD.md`.
+Platform dependencies, Windows helpers, core-only build, and smoke-test notes live in `docs/BUILD.md`.
 
 ### Tool extensions
 
