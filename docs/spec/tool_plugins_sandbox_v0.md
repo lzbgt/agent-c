@@ -1,6 +1,7 @@
 # Tool Plugin Sandbox (v0)
 
 Date: 2026-02-18
+Status: v0 (implemented; rolling)
 
 ## Goals
 
