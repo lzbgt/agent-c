@@ -6,14 +6,11 @@ Start here if you want the shortest path to the right document.
 
 - `docs/HANDBOOK.md`: compact, generated summary (no history).
 - `DESIGN.md`: architecture map + goals.
-- `docs/BUILD.md`: build steps, platform deps, and smoke-test notes.
+- `docs/OPERATIONS.md`: build, verification, testing, cleanup, and publishing workflows.
 - `docs/DEPLOYMENT.md`: production checklist (agentd + broker + WebUI).
 - `docs/WEBUI.md`: WebUI dev/build/runtime config and reliability notes.
-- `docs/TESTING.md`: verification workflows, network smokes, and E2E harness.
-- `docs/CLEANUP.md`: cleanup commands, repo size reports, and guard scripts.
 - `docs/AGENTD.md`: daemon operations and runtime configuration.
 - `docs/CLI.md`: CLI usage and tool-loop guidance.
-- `docs/GIT.md`: git remote setup and publish helpers.
 
 ## Core runtime
 
@@ -50,4 +47,3 @@ Start here if you want the shortest path to the right document.
 - `docs/spec/README.md`: versioned protocol/spec deep dives.
 - `docs/openapi/README.md`: OpenAPI index.
 - `docs/VENDORED.md`: vendored subtree policy and guardrails.
-- `docs/ARCHIVE.md`: historical log (optional context).

@@ -36,7 +36,7 @@ Roadmap section below and `TODOS.md`, including:
 - `docs/README.md`: docs index for fast navigation.
 - `DESIGN.md` (this doc): system goals, boundaries, layering, and cross-cutting policies.
 - Source docs referenced by the handbook:
-  - `docs/BUILD.md`: build steps, platform deps, and smoke-test notes.
+  - `docs/OPERATIONS.md`: build, verification, testing, cleanup, and publishing workflows.
   - `docs/BROKER.md`: broker relay design, trust model, and HTTP/WSS API.
   - `docs/CLIENT.md`: client collaboration model (events, UI actions, DoD, client RPC).
   - `docs/AGENTD_LIB.md`: embedding `agentd` in-process and tool-extension interfaces.

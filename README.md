@@ -5,7 +5,7 @@ This repo is an early scaffold for a **portable agent core** (env-free, persiste
 Docs quickstart:
 - Unified handbook (curated summary; generated): `docs/HANDBOOK.md`
 - Architecture + roadmap: `DESIGN.md` (full system map)
-- Build steps + platform deps: `docs/BUILD.md`
+- Build/verify/test/cleanup/publish workflows: `docs/OPERATIONS.md`
 - Deployment checklist (agentd + broker + WebUI): `docs/DEPLOYMENT.md`
 - Daemon ops + runtime config: `docs/AGENTD.md`
 - CLI usage + tool-loop guidance: `docs/CLI.md`
@@ -41,7 +41,7 @@ Source `${HOME}/.env` before verification (provider keys for smokes):
 tools/verify_prod.sh
 ```
 
-Platform dependencies, Windows helpers, core-only build, and smoke-test notes live in `docs/BUILD.md`.
+Platform dependencies, Windows helpers, core-only build, and smoke-test notes live in `docs/OPERATIONS.md`.
 
 ### Tool extensions
 
@@ -49,7 +49,7 @@ Tool plugins and tool servers are documented in `docs/TOOLS.md`.
 
 ## Testing
 
-For network smokes, the real browser E2E harness, and verification workflows, see `docs/TESTING.md`.
+For network smokes, the real browser E2E harness, and verification workflows, see `docs/OPERATIONS.md`.
 Daemon runtime details (config snapshot, defaults update, state safety, and HTTP APIs) live in `docs/AGENTD.md`.
 
 ## Run in production (agentd + WebUI)
@@ -84,7 +84,7 @@ If changes are needed, update upstream or copy into first-party code. See
 
 ## Cleanup (disk usage)
 
-Cleanup commands, repo size reports, and guard scripts live in `docs/CLEANUP.md`.
+Cleanup commands, repo size reports, and guard scripts live in `docs/OPERATIONS.md`.
 
 ## Docker Compose (prod-like local verification)
 
@@ -104,7 +104,7 @@ Full details, env flags, port notes, and Keycloak guidance live in `docs/DEPLOYM
 
 ## Git remote (publishing)
 
-Remote setup and publish helpers live in `docs/GIT.md`.
+Remote setup and publish helpers live in `docs/OPERATIONS.md`.
 
 ## CLI usage
 

@@ -94,6 +94,18 @@ BROKER_BASE="https://127.0.0.1:${BROKER_PUBLISHED_PORT}"
 KEYCLOAK_BASE="http://keycloak.lvh.me:${KEYCLOAK_PUBLISHED_PORT}"
 AGENTD_BASE="http://127.0.0.1:${AGENTD_PUBLISHED_PORT}"
 WEBUI_BASE="http://127.0.0.1:${WEBUI_PUBLISHED_PORT}"
+LOCAL_NO_PROXY="127.0.0.1,localhost,::1,keycloak.lvh.me"
+if [[ -n "${NO_PROXY:-}" ]]; then
+  NO_PROXY="${NO_PROXY},${LOCAL_NO_PROXY}"
+else
+  NO_PROXY="${LOCAL_NO_PROXY}"
+fi
+if [[ -n "${no_proxy:-}" ]]; then
+  no_proxy="${no_proxy},${LOCAL_NO_PROXY}"
+else
+  no_proxy="${LOCAL_NO_PROXY}"
+fi
+export NO_PROXY no_proxy
 
 if [[ "${COMPOSE_BUILD:-1}" == "0" ]]; then
   missing=()
@@ -157,21 +169,21 @@ fi
 
 if [[ "${COMPOSE_BUILD:-1}" == "1" ]]; then
   echo "[compose] building images (logs: ${LOG_BUILD})"
+  build_env=()
   compose_build_cmd() {
     if [[ "${COMPOSE_BUILD_SERIAL:-1}" == "1" ]]; then
       for svc in agentd broker connector webui; do
         echo "[compose] build ${svc}"
-        env "${build_env[@]}" docker compose build "${svc}"
+        env ${build_env[@]+"${build_env[@]}"} docker compose build "${svc}"
       done
     else
-      env "${build_env[@]}" docker compose build
+      env ${build_env[@]+"${build_env[@]}"} docker compose build
     fi
   }
 
   : >"${LOG_BUILD}"
   max_attempts="${COMPOSE_BUILD_RETRIES:-3}"
   attempt=1
-  build_env=()
   used_legacy_builder=0
   used_pigz_throttle=0
   saw_resource_error=0
@@ -218,7 +230,24 @@ if [[ "${COMPOSE_BUILD:-1}" == "0" ]]; then
   up_args+=(--no-build)
 fi
 set +e
-(cd "${ROOT}" && docker compose up "${up_args[@]}") >"${LOG_UP}" 2>&1
+(cd "${ROOT}" && docker compose up "${up_args[@]}") >"${LOG_UP}" 2>&1 &
+up_pid=$!
+set -e
+up_timeout="${COMPOSE_UP_TIMEOUT:-60}"
+started="$(date +%s)"
+while kill -0 "${up_pid}" >/dev/null 2>&1; do
+  now="$(date +%s)"
+  if (( now - started > up_timeout )); then
+    echo "[compose] WARN: docker compose up still running after ${up_timeout}s; continuing with running containers." >&2
+    kill "${up_pid}" >/dev/null 2>&1 || true
+    sleep 2
+    kill -9 "${up_pid}" >/dev/null 2>&1 || true
+    break
+  fi
+  sleep 1
+done
+set +e
+wait "${up_pid}"
 up_rc=$?
 set -e
 if [[ "${up_rc}" -ne 0 ]]; then
@@ -226,7 +255,18 @@ if [[ "${up_rc}" -ne 0 ]]; then
     echo "[compose] SKIP: docker up failed due to resource limits (iptables/runc). Try restarting Docker Desktop or increasing CPU/RAM." >&2
     exit 77
   fi
-  exit "${up_rc}"
+  running_services="$(cd "${ROOT}" && docker compose ps --services --filter status=running 2>/dev/null || true)"
+  missing=()
+  for svc in postgres keycloak broker connector agentd webui; do
+    if ! echo "${running_services}" | grep -qx "${svc}"; then
+      missing+=("${svc}")
+    fi
+  done
+  if (( ${#missing[@]} == 0 )); then
+    echo "[compose] WARN: docker compose up exited non-zero but services appear running; continuing." >&2
+  else
+    exit "${up_rc}"
+  fi
 fi
 
 wait_http_ok() {
@@ -275,6 +315,22 @@ if [[ -z "${OIDC_JWT}" ]]; then
 fi
 
 echo "[compose] creating broker agent record agent_id=agent1 (wait/retry)..."
+agent_present() {
+  local j
+  j="$(curl -fsS -k -H "Authorization: Bearer ${OIDC_JWT}" "${BROKER_BASE}/v1/agents" || true)"
+  python3 - "${j}" <<'PY'
+import json,sys
+raw = sys.argv[1] if len(sys.argv) > 1 else ""
+try:
+  obj = json.loads(raw or "{}")
+  for a in (obj.get("agents") or []):
+    if a.get("agent_id") == "agent1":
+      raise SystemExit(0)
+except Exception:
+  pass
+raise SystemExit(1)
+PY
+}
 started="$(date +%s)"
 while true; do
   if curl -fsS -k \
@@ -282,6 +338,9 @@ while true; do
     -H "Content-Type: application/json" \
     -d '{"agent_id":"agent1"}' \
     "${BROKER_BASE}/v1/agents" >/dev/null 2>&1; then
+    break
+  fi
+  if agent_present; then
     break
   fi
   now="$(date +%s)"

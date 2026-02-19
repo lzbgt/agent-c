@@ -1,3 +1,11 @@
+x-proxy-args: &proxy_args
+  HTTP_PROXY: ${HTTP_PROXY:-http://host.docker.internal:8120}
+  HTTPS_PROXY: ${HTTPS_PROXY:-http://host.docker.internal:8120}
+  NO_PROXY: ${NO_PROXY:-localhost,127.0.0.1,::1,host.docker.internal}
+
+x-build-extra-hosts: &build_extra_hosts
+  - "host.docker.internal:host-gateway"
+
 services:
   postgres:
     image: postgres:16
@@ -45,10 +53,9 @@ services:
     build:
       context: .
       dockerfile: docker/broker/Dockerfile
+      extra_hosts: *build_extra_hosts
       args:
-        HTTP_PROXY: ${HTTP_PROXY:-}
-        HTTPS_PROXY: ${HTTPS_PROXY:-}
-        NO_PROXY: ${NO_PROXY:-}
+        <<: *proxy_args
         GOPROXY: ${GOPROXY:-direct}
         GOSUMDB: ${GOSUMDB:-sum.golang.org}
     depends_on:
@@ -92,10 +99,9 @@ services:
     build:
       context: .
       dockerfile: docker/agentd/Dockerfile
+      extra_hosts: *build_extra_hosts
       args:
-        HTTP_PROXY: ${HTTP_PROXY:-}
-        HTTPS_PROXY: ${HTTPS_PROXY:-}
-        NO_PROXY: ${NO_PROXY:-}
+        <<: *proxy_args
     environment:
       # Optional: load real provider keys by placing them in a local ".env" file before running compose.
       # agentd also supports storing provider keys server-side via /api/v1/config/update.
@@ -134,10 +140,9 @@ services:
     build:
       context: .
       dockerfile: docker/broker/Dockerfile
+      extra_hosts: *build_extra_hosts
       args:
-        HTTP_PROXY: ${HTTP_PROXY:-}
-        HTTPS_PROXY: ${HTTPS_PROXY:-}
-        NO_PROXY: ${NO_PROXY:-}
+        <<: *proxy_args
         GOPROXY: ${GOPROXY:-direct}
         GOSUMDB: ${GOSUMDB:-sum.golang.org}
     depends_on:
@@ -170,10 +175,9 @@ services:
     build:
       context: .
       dockerfile: docker/ui/Dockerfile
+      extra_hosts: *build_extra_hosts
       args:
-        HTTP_PROXY: ${HTTP_PROXY:-}
-        HTTPS_PROXY: ${HTTPS_PROXY:-}
-        NO_PROXY: ${NO_PROXY:-}
+        <<: *proxy_args
     ports:
       - "${WEBUI_PUBLISHED_PORT:-8100}:80"
     volumes:
