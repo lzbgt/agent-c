@@ -153,3 +153,23 @@ These are the most leveraged next steps grounded in current architecture:
    - Minimal loopback verification harness.
 
 These are tracked in `TODOS.md` with weighted priorities.
+
+---
+
+## 6) Acceptance tests (evidence-driven checks)
+
+The expectations above should be **provable** by deterministic checks, not just by docs.
+Below are concrete “evidence” tests that either exist now or are planned in `TODOS.md`.
+
+Implemented evidence (facts):
+- Policy hook enforcement + audit smoke: `tests/agentd_policy_hooks_smoke.sh`.
+- Replay bundle sanity: `tests/agentd_run_replay_smoke.sh`.
+- Durable workflow + budget guards: `tests/agentd_workflow_*_smoke.sh`.
+- Memory timeline + search surfaces: `tests/agentd_workflow_memory_timeline_smoke.sh`,
+  `tests/agentd_workflow_memory_search_smoke.sh`.
+- OTA continuity: `tools/verify_ota_continuity.sh`.
+
+Planned evidence (tracked in `TODOS.md`):
+- Multi-agent team orchestration smoke (roles, shared memory, quorum gates).
+- Attestation bundle signing + verification smoke.
+- Voice workflow loopback (end-to-end low-latency media path).

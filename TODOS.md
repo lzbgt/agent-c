@@ -151,6 +151,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
 - [x] Add --quiet to install_git_hooks.sh for permanent quiet hooks.
 - [x] Add curated handbook generator (`docs/HANDBOOK.md`) with `tools/build_handbook_bundle.py` + repo-guard sync check.
 - [x] Add `docs/OPERATIONS.md` to the handbook summary/source index and keep the handbook under 250 lines (196 lines as of 2026-02-19).
+- [x] Add policy hook deny/audit smoke test with a local stub LLM and CTest wiring.
 
 ## Promoted goals (explicit goals; no non-goals)
 

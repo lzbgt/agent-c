@@ -13,6 +13,7 @@ DEFAULT_MAX_LINES = 250
 SOURCES = [
     ROOT / "README.md",
     ROOT / "DESIGN.md",
+    ROOT / "docs/AGENTIC_VISION.md",
     ROOT / "docs/AGENTD_LIB.md",
     ROOT / "docs/BROKER.md",
     ROOT / "docs/CLIENT.md",
