@@ -119,6 +119,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-19: Added eval pack spec (`docs/spec/eval_pack_v0.md`) and runner (`tools/eval_pack.py`) with a minimal example pack.
   - 2026-02-19: Added `eval_pack_smoke` test (self-contained, no agentd required).
   - 2026-02-19: Added CI workflow to run `tools/eval_pack.py` against a self-contained eval pack.
+  - 2026-02-19: Added `tools/verify.sh --eval-pack` to run eval pack smoke locally.
 
 ## New tasks (2026-02-19)
 

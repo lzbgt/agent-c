@@ -16,6 +16,12 @@ One-command verify (configure + build + tests; logs under `build/`):
 tools/verify.sh
 ```
 
+Optional: run eval pack smoke after build/tests:
+
+```bash
+tools/verify.sh --eval-pack
+```
+
 Include repo hygiene guards:
 
 ```bash

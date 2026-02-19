@@ -9,6 +9,7 @@ SKIP_UI=0
 UI_INSTALL=0
 REPO_GUARDS=0
 REPO_GUARDS_STRICT=0
+EVAL_PACK=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -33,9 +34,13 @@ while [[ $# -gt 0 ]]; do
       REPO_GUARDS_STRICT=1
       shift 1
       ;;
+    --eval-pack)
+      EVAL_PACK=1
+      shift 1
+      ;;
     -h|--help)
       cat <<'EOF'
-Usage: tools/verify.sh [--core-only] [--skip-ui] [--ui-install] [--repo-guards] [--repo-guards-strict]
+Usage: tools/verify.sh [--core-only] [--skip-ui] [--ui-install] [--repo-guards] [--repo-guards-strict] [--eval-pack]
 
 Runs a local verification pass with timestamped logs under ./build/.
 
@@ -50,6 +55,9 @@ UI:
 Guards:
   --repo-guards        Run repo hygiene guards after build/tests.
   --repo-guards-strict Run repo hygiene guards in strict mode (nested .git detection).
+
+Eval:
+  --eval-pack  Run eval pack smoke after build/tests.
 EOF
       exit 0
       ;;
@@ -137,6 +145,11 @@ if [[ "${REPO_GUARDS}" == "1" ]]; then
     repo_args="--strict"
   fi
   run_logged "repo guards" "${repo_log}" bash -lc "tools/verify_repo_guards.sh ${repo_args}"
+fi
+
+if [[ "${EVAL_PACK}" == "1" ]]; then
+  eval_log="${log_dir}/verify_${ts}_eval_pack.log"
+  run_logged "eval pack smoke" "${eval_log}" python3 "${ROOT}/tools/eval_pack.py" --file "${ROOT}/tools/eval_packs/eval_pack_smoke.json"
 fi
 
 if [[ "${SKIP_UI}" == "1" ]]; then
