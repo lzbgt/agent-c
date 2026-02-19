@@ -99,6 +99,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [x] Extend repo size report with largest-file output for rapid bloat diagnosis.
 - [x] Add `--exclude-defaults` to repo size report for cleaner audits.
 - [x] Add CI repo size guard workflow using `tools/repo_size_report.py`.
+- [x] Remove stub CLAUDE.md placeholders from vendored claude-mem subtree.
 
 ## Promoted goals (explicit goals; no non-goals)
 
