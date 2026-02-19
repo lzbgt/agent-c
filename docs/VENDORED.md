@@ -30,6 +30,12 @@ Debugging hook output:
 VENDORED_GUARD_VERBOSE=1 git commit
 ```
 
+Install a permanently verbose hook:
+
+```bash
+tools/install_git_hooks.sh --verbose
+```
+
 ## Current vendored subtrees
 
 - `ref/claude-mem/` (upstream: thedotmack/claude-mem)

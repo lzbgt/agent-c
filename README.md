@@ -579,6 +579,12 @@ Verbose pre-commit output (when debugging vendored guard issues):
 VENDORED_GUARD_VERBOSE=1 git commit
 ```
 
+Install a permanently verbose hook:
+
+```bash
+tools/install_git_hooks.sh --verbose
+```
+
 Run all repo hygiene guards locally:
 
 ```bash

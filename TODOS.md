@@ -122,6 +122,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [x] Document hooks_status --json --check snippet for CI/local checks.
 - [x] Make vendored guard check staged/unstaged changes for local hooks.
 - [x] Add optional verbose mode for vendored pre-commit hook output.
+- [x] Add --verbose to install_git_hooks.sh for permanent verbose hooks.
 
 ## Promoted goals (explicit goals; no non-goals)
 
