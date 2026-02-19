@@ -81,7 +81,61 @@ Useful env overrides:
 
 ---
 
-## 5) Where to look (feature design docs)
+## 5) Safety defaults (agentd)
+
+Tool-loop defaults used when requests omit values (0 = unlimited):
+- `max_steps_default = 0`
+- `max_tool_calls_total_default = 0`
+- `max_tool_calls_per_tool_default = 0`
+- `max_tool_call_args_chars_default = 0`
+- `max_tool_result_chars_default = 12000`
+- `tool_call_limits_default = {}` (no per-tool caps)
+
+Recommended operator caps (see `docs/LIMITS.md`):
+- `proc_exec=4`, `shell_exec=16`, `artifact_register=16`, `ui_action=16`.
+
+State/DB defaults:
+- `state_dir` defaults to the daemon working directory (override: `AGENTD_STATE_DIR`).
+- `db_path` defaults to `<state_dir>/agentd.db` (override: `--db-path` or `AGENTD_DB_PATH`).
+
+---
+
+## 6) Diagnostics & health
+
+When `--auth-token` is set, all endpoints require `Authorization: Bearer ...`.
+
+- `/api/v1/health`: basic liveness.
+- `/api/v1/diagnostics`: readiness, DB size + table counts, job/workflow counts, active provider (no secrets).
+- `/api/v1/diagnostics/providers`: provider key presence + base URL (no secrets).
+- `/api/v1/diagnostics/provider_test`: small provider smoke test
+  (`provider`, `prompt`, `tools`, `require_tool_call`, `timeout_ms`, `max_steps`, etc.).
+
+---
+
+## 7) Workflows (durable scheduling)
+
+- Workflows are persisted DAGs; restart requeues running tasks (at-least-once).
+- Priority hint is clamped to `[-1000, 1000]` (default 0).
+- Optional `deadline_unix_ms` cancels queued tasks once exceeded.
+- Fairness defaults: `--workflow-max-inflight-per-workflow=2`, per-session cap default `0` (disabled).
+- Admission control defaults to disabled (`--workflow-admit-max-inflight-tasks-per-session=0`,
+  `--workflow-admit-max-inflight-tasks-total=0`).
+- Optional idempotency via `idempotency_key` (per-session scope; first submit wins).
+
+---
+
+## 8) Streaming (SSE)
+
+- Shared SSE parser + stream decoder across CLI/daemon/tool loop.
+- Requests set `stream_options.include_usage=true` and retry without it on 400s.
+- OpenRouter pin workflow: run `tools/probe_openrouter_stream_models.sh`,
+  set `OPENROUTER_STREAM_PROBE_WRITE_PINS=1`, commit `ref/openrouter/streaming_pins.json`.
+- OpenRouter auth hints: `OPENROUTER_HTTP_REFERER`, `OPENROUTER_X_TITLE`,
+  optional `AGENT_TEST_OPENROUTER_SKIP_CHAT_PREFLIGHT=1`.
+
+---
+
+## 9) Where to look (feature design docs)
 
 - `DESIGN.md` for system map and boundaries.
 - `TODOS.md` for roadmap and weighted tasks.
@@ -91,7 +145,7 @@ Useful env overrides:
 
 ---
 
-## 6) Operational highlights
+## 10) Operational highlights
 
 - Broker should be public; agentd should remain private.
 - Prefer server-side provider keys (`.not_in_repo` / `AGENTD_DOTENV_PATH`).

@@ -49,7 +49,7 @@ The service owns:
 
 - `init(out_error)`:
   - fills best-effort env defaults (base_url/api_key/model/db_path/state dirs)
-  - ensures `db_path` defaults to `./agentd.db` if empty
+  - ensures `db_path` defaults to `<state_dir>/agentd.db` if empty
   - opens DB and loads runtime config from DB
   - registers HTTP routes
 

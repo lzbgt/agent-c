@@ -120,37 +120,35 @@ It exists because:
 
 ### Daemon default `max_steps`
 
-To protect long-running `agentd` instances, the daemon should apply a default `max_steps` for requests that omit it.
+When a request omits `max_steps`, `agentd` applies `max_steps_default`.
 
-- Proposed default: `32` steps.
-- The UI should allow:
+- Current default: `0` (unlimited).
+- Recommended production default: `32` steps (set via `--max-steps-default` or config).
+- UI behavior should allow:
   - blank / unset `max_steps` → daemon default applies
   - explicit `0` → unlimited (operator accepts risk)
 
-This keeps new users safe while still allowing intentional long runs.
-
 ### Daemon default `max_tool_calls_total`
 
-To protect against a single model response that requests many tool calls at once, `agentd` should apply a default cap on total
-tool calls when requests omit it.
+When a request omits `max_tool_calls_total`, `agentd` applies `max_tool_calls_total_default`.
 
-- Proposed default: `128` tool calls.
-- The UI should allow blank/unset to use daemon defaults and explicit `0` to disable.
+- Current default: `0` (unlimited).
+- Recommended production default: `128` tool calls (set via `--max-tool-calls-total-default` or config).
+- UI behavior should allow blank/unset to use daemon defaults and explicit `0` to disable.
 
 ### Daemon default `max_tool_result_chars`
 
-To keep prompts from being flooded by large tool outputs, the daemon should apply a default cap on tool results
-before they are re-inserted into the LLM context.
+When a request omits `max_tool_result_chars`, `agentd` applies `max_tool_result_chars_default`.
 
-- Suggested default: `12000` chars.
-- The UI should allow blank/unset to use daemon defaults and explicit `0` to disable.
+- Current default: `12000` chars.
+- UI behavior should allow blank/unset to use daemon defaults and explicit `0` to disable.
 
 ### Daemon default `tool_call_limits`
 
 For long-running daemons, it is often better to bound the most dangerous/high-noise tools directly, rather than applying
 a global per-tool cap that can break benign workflows.
 
-Recommended defaults (can be tuned per operator):
+Recommended defaults (can be tuned per operator; current default is empty/no per-tool caps):
 - `proc_exec=4` (prevents runaway capture attempts or repeated subprocess loops)
 - `shell_exec=16` (still allows normal build/test flows; encourages batching multiple commands in one call)
 - `artifact_register=16` (prevents runaway artifact spamming)

@@ -282,7 +282,7 @@ Notes:
 
 ### Daemon state dir / multi-agent safety
 
-`agentd` stores its canonical state in SQLite (`--db-path`, default: `./agentd.db` relative to the daemon working directory).
+`agentd` stores its canonical state in SQLite (`--db-path`, default: `<state_dir>/agentd.db`; `state_dir` defaults to the daemon working directory or `AGENTD_STATE_DIR`).
 If you run multiple `agentd` instances and want to avoid accidental session collisions, use a distinct DB path per daemon:
 
 ```bash
@@ -370,7 +370,7 @@ Notes:
 - `--tools` acts as a **maximum** toolset; run requests and tool registry queries cannot exceed it.
 - `--tools-root "@host"` makes relative paths stable (anchored to `--host-scope`). This avoids brittle “depends on process CWD”
   behavior for artifact fetches like `GET /api/v1/file?path=out/foo.wav&yolo=1`.
-- If you omit `--db-path`, `agentd` defaults to creating/using `./agentd.db` in its working directory.
+- If you omit `--db-path`, `agentd` defaults to `<state_dir>/agentd.db` (with `state_dir` defaulting to the working directory or `AGENTD_STATE_DIR`).
 - If you bind to non-loopback (`--host 0.0.0.0`), `agentd` refuses to start without `--auth-token` unless you pass `--allow-unauth`.
 
 ### 2) Start the Web UI
@@ -861,7 +861,7 @@ Session vs audit:
   stores **user/assistant conversation** only.
 - Detailed tool timelines (tool calls/results + LLM request/response events) are stored in the per-session audit log
   (`~/.agent/sessions/<id>.events.jsonl`) and surfaced via CLI `--trace` output.
-- Daemon (`agentd`) state is separate: sessions + audit live in SQLite (`db_path`, default: `./agentd.db`) and are exposed via
+- Daemon (`agentd`) state is separate: sessions + audit live in SQLite (`db_path`, default: `<state_dir>/agentd.db`) and are exposed via
   endpoints like `GET /api/v1/session` and `GET /api/v1/session/audit`.
 
 Host tool names:

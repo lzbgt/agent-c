@@ -87,7 +87,7 @@ task scheduling, durable workflows, memory architecture, interop/collaboration p
 `agentd` uses SQLite when compiled with SQLite support. You can choose where the DB lives:
 - `--db-path <path>` (optional): set an explicit SQLite file path.
 - `AGENTD_DB_PATH` env var (optional): alternative to the flag.
-- Default: `./agentd.db` in the daemon working directory.
+- Default: `<state_dir>/agentd.db` (state_dir defaults to the daemon working directory or `AGENTD_STATE_DIR`).
 
 Note: DB persistence respects `no_session: true` requests. If a run is marked ephemeral, the daemon will not persist it to disk.
 

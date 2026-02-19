@@ -27,6 +27,11 @@ if ! docker info >/dev/null 2>&1; then
   echo "[compose] Hint: start Docker Desktop or Colima, then re-run." >&2
   exit 77
 fi
+if ! docker compose version >/dev/null 2>&1; then
+  echo "[compose] SKIP: docker compose not available" >&2
+  echo "[compose] Hint: install the docker compose plugin or upgrade Docker Desktop." >&2
+  exit 77
+fi
 
 LOG_BUILD="${OUT_DIR}/compose_build_$(date +%Y-%m-%d_%H%M%S).log"
 LOG_UP="${OUT_DIR}/compose_up_$(date +%Y-%m-%d_%H%M%S).log"

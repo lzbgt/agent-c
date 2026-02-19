@@ -38,6 +38,23 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "[devstack] WARNING: not running on macOS; continuing anyway"
 fi
 
+if ! command -v docker >/dev/null 2>&1; then
+  echo "[devstack] SKIP: docker not found (install Docker Desktop or Colima)" >&2
+  exit 77
+fi
+
+if ! docker info >/dev/null 2>&1; then
+  echo "[devstack] SKIP: docker daemon not running" >&2
+  echo "[devstack] Hint: start Docker Desktop or Colima, then re-run." >&2
+  exit 77
+fi
+
+if ! docker compose version >/dev/null 2>&1; then
+  echo "[devstack] SKIP: docker compose not available" >&2
+  echo "[devstack] Hint: install the docker compose plugin or upgrade Docker Desktop." >&2
+  exit 77
+fi
+
 pick_port() {
   python3 - <<'PY'
 import socket

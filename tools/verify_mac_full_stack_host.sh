@@ -107,6 +107,12 @@ if ! docker info >/dev/null 2>&1; then
   exit 77
 fi
 
+if ! docker compose version >/dev/null 2>&1; then
+  echo "[host-stack] SKIP: docker compose not available" >&2
+  echo "[host-stack] Hint: install the docker compose plugin or upgrade Docker Desktop." >&2
+  exit 77
+fi
+
 if ! command -v cmake >/dev/null 2>&1; then
   echo "[host-stack] cmake not found" >&2
   exit 1

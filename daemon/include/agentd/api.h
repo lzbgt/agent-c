@@ -31,7 +31,7 @@ class AgentdApi {
   AgentdApi(const AgentdApi&) = delete;
   AgentdApi& operator=(const AgentdApi&) = delete;
 
-  // Opens DB (defaults to ./agentd.db if empty), loads runtime config, and becomes ready to serve requests.
+  // Opens DB (defaults to <state_dir>/agentd.db if empty), loads runtime config, and becomes ready to serve requests.
   bool init(std::string* out_error);
 
   // Dispatches a request to the appropriate endpoint handler.
@@ -58,4 +58,3 @@ class AgentdApi {
 };
 
 }  // namespace agentd
-
