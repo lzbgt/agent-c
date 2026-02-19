@@ -271,8 +271,11 @@ agent_test_openrouter_auth_ok() {
   local body="${resp%$'\n'*}"
   local model="${AGENT_TEST_OPENROUTER_MODEL:-}"
   if [[ -z "${model}" ]]; then
-    model="$(printf "%s" "${body}" | python3 - <<'PY'
-import json, sys
+    local py_script
+    py_script="$(cat <<'PY'
+import json
+import sys
+
 raw = sys.stdin.buffer.read()
 if not raw:
     sys.exit(0)
@@ -313,6 +316,7 @@ if best:
     print(best)
 PY
 )"
+    model="$(printf "%s" "${body}" | python3 -c "${py_script}" 2>/dev/null || true)"
   fi
   if [[ -z "${model}" ]]; then
     model="bytedance-seed/seed-1.6-flash"
