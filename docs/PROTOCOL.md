@@ -1,6 +1,6 @@
-# Agentd ↔ Web UI Protocol (Draft)
+# Agentd ↔ Web UI Protocol
 
-Date: 2026-01-30
+Date: 2026-02-19
 
 This document defines the **bidirectional** (UI → agentd → agent/tools → UI) protocol surface for rich interactions,
 with a focus on:
@@ -9,7 +9,7 @@ with a focus on:
 - explicit “artifact” signaling (agent can register host files like images/audio/video and provide playback hints)
 - optional DB-backed troubleshooting queries (agentd can expose read-only DB endpoints when `--db-path` is enabled)
 
-This project is rolling; schema may evolve, but **typed events** are preferred over UI heuristics.
+This project is rolling; schema evolves with versioned event types, but **typed events** are preferred over UI heuristics.
 
 Event envelope reference:
 - `docs/spec/run-events/run_events_v1.md`
