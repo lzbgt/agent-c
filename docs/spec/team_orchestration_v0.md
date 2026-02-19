@@ -236,6 +236,7 @@ Existing `policy_decision` events remain valid for tool/limit enforcement.
 1) **Team run smoke**: two members, shared memory read-only, ensure writes are rejected.
 2) **Quorum gate smoke**: 2-of-3 approval required for `shell_exec`.
 3) **Role routing smoke**: planner-only tool list enforced by policy hooks.
+4) **Team run quorum smoke**: strict `team_run` approvals return `409` until approvals supplied.
 
 ---
 
