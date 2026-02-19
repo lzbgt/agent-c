@@ -299,9 +299,13 @@ window.__AGENT_UI_CONFIG__ = {
   brokerPanelOpen: true,
 };
 CFG
-  http_server_cmd="$(python_http_server_cmd "${WEBUI_PORT}")"
-  (cd "${ROOT}/ui/dist" && ${http_server_cmd} >"${LOG_WEBUI}" 2>&1) &
-  WEBUI_PID=$!
+  if http_server_cmd="$(python_http_server_cmd "${WEBUI_PORT}")"; then
+    (cd "${ROOT}/ui/dist" && ${http_server_cmd} >"${LOG_WEBUI}" 2>&1) &
+    WEBUI_PID=$!
+  else
+    echo "[devstack] python not found; skipping WebUI serve" >&2
+    SKIP_UI=1
+  fi
 fi
 
 get_token() {
