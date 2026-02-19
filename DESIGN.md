@@ -42,7 +42,7 @@ Roadmap section below and `TODOS.md`, including:
 - `docs/DIAGNOSTICS.md`: diagnostics endpoints and provider health checks.
 - `docs/DB_QUERY.md`: read-only DB query endpoints for troubleshooting.
 - `docs/DOD_ACK.md`: UI-visible “definition of done” handshake semantics.
-- `docs/spec/`: versioned protocol/spec deep dives (run events, OTA, streaming core, agent VM port, etc.).
+- `docs/spec/README.md`: index of versioned protocol/spec deep dives.
 
 ## Key Decisions (Facts / Constraints)
 
