@@ -24,6 +24,8 @@ SESSION_ID="agentd_run_replay_$(date +%s)_$RANDOM"
 PROJECT_ROOT="$(agentd_smoke_project_root)"
 README_PATH="${PROJECT_ROOT}/README.md"
 export README_PATH
+export AGENTD_RUN_ATTEST_HMAC_KID="attest_kid_smoke"
+export AGENTD_RUN_ATTEST_HMAC_KEY="attest_secret_smoke"
 
 cleanup() {
   agentd_smoke_stop
@@ -238,6 +240,22 @@ if bundle.get("replay_sha256_alg") != "agent_json_c14n_v1":
   raise SystemExit(1)
 if bundle.get("replay_sha256_schema") != "run_replay_bundle_v1":
   print("unexpected replay_sha256_schema", bundle.get("replay_sha256_schema"), file=sys.stderr)
+  raise SystemExit(1)
+attest = bundle.get("attest") or {}
+if not attest:
+  print("missing attest block", attest, file=sys.stderr)
+  raise SystemExit(1)
+if attest.get("alg") != "hmac-sha256":
+  print("unexpected attest alg", attest, file=sys.stderr)
+  raise SystemExit(1)
+if attest.get("kid") != "attest_kid_smoke":
+  print("unexpected attest kid", attest.get("kid"), file=sys.stderr)
+  raise SystemExit(1)
+if not isinstance(attest.get("sig"), str) or not attest.get("sig"):
+  print("missing attest sig", attest, file=sys.stderr)
+  raise SystemExit(1)
+if attest.get("signing_schema") != "run_attestation_bundle_v1":
+  print("unexpected signing_schema", attest.get("signing_schema"), file=sys.stderr)
   raise SystemExit(1)
 PY
 

@@ -321,6 +321,8 @@ Environment overrides:
 - `AGENTD_HTTP_READ_TIMEOUT_MS` (default `15000`, `0` to disable read timeouts)
 - `AGENTD_UPLOAD_MAX_BYTES` (per-file upload cap, default `33554432`, `0` to disable cap)
 - `AGENTD_MAX_TOOL_CALL_ARGS_CHARS_DEFAULT` (default `0`, disables tool-arg length guard)
+- `AGENTD_RUN_ATTEST_HMAC_KID` (optional; signs `/api/v1/run/attestation` when paired with key)
+- `AGENTD_RUN_ATTEST_HMAC_KEY` (optional; HMAC key used to sign attestation bundles)
 
 ## WebUI
 

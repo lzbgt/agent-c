@@ -4,7 +4,10 @@
 #include "http_util.h"
 #include "json_util.h"
 
+#include "agent/hmac_sha256.h"
 #include "agent/json_c14n.h"
+
+#include "base64.h"
 
 #include <json/json.h>
 
@@ -94,6 +97,29 @@ static int64_t now_utc_ms() {
   return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
            std::chrono::system_clock::now().time_since_epoch())
     .count();
+}
+
+static bool canonical_json_bytes(const Json::Value& v, std::string* out, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!out) return false;
+  out->clear();
+  Json::StreamWriterBuilder wb;
+  wb["indentation"] = "";
+  const std::string raw = Json::writeString(wb, v);
+
+  char* canon = nullptr;
+  size_t canon_len = 0;
+  char errbuf[128] = {0};
+  const agent_status_t st =
+    agent_json_c14n_canonicalize(raw.data(), raw.size(), &canon, &canon_len, errbuf, sizeof(errbuf));
+  if (st != AGENT_OK || !canon) {
+    if (out_err) *out_err = errbuf[0] ? std::string(errbuf) : "c14n_failed";
+    if (canon) agent_free(canon);
+    return false;
+  }
+  out->assign(canon, canon_len);
+  agent_free(canon);
+  return true;
 }
 
 #if defined(AGENT_HAVE_SQLITE3)
@@ -345,6 +371,43 @@ void handle_run_attestation_endpoint(
   att["replay_sha256_schema"] = load.replay_sha256_schema;
   att["run_id"] = (Json::Int64)run_id;
   if (!load.session_id.empty()) att["session_id"] = load.session_id;
+
+  const bool has_kid = !cfg.run_attest_hmac_kid.empty();
+  const bool has_key = !cfg.run_attest_hmac_key.empty();
+  if (has_kid || has_key) {
+    if (!has_kid || !has_key) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["rpc_status"] = 500;
+      o["error"] = "attest_sign_config_invalid";
+      resp->status = 500;
+      resp->body = json_stringify(o);
+      return;
+    }
+    std::string canon;
+    std::string cerr;
+    if (!canonical_json_bytes(att, &canon, &cerr)) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["rpc_status"] = 500;
+      o["error"] = "attest_sign_failed";
+      o["details"] = cerr.empty() ? "c14n_failed" : cerr;
+      resp->status = 500;
+      resp->body = json_stringify(o);
+      return;
+    }
+    uint8_t mac[32];
+    agent_hmac_sha256(cfg.run_attest_hmac_key.data(), cfg.run_attest_hmac_key.size(), canon.data(), canon.size(), mac);
+    const std::string sig_b64 = base64_encode(mac, sizeof(mac));
+    Json::Value sig(Json::objectValue);
+    sig["alg"] = "hmac-sha256";
+    sig["kid"] = cfg.run_attest_hmac_kid;
+    sig["sig"] = sig_b64;
+    sig["ts_utc_ms"] = att["created_utc_ms"];
+    sig["hash_alg"] = "agent_json_c14n_v1";
+    sig["signing_schema"] = "run_attestation_bundle_v1";
+    att["attest"] = sig;
+  }
 
   Json::Value out(Json::objectValue);
   out["ok"] = true;

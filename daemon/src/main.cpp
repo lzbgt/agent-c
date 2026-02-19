@@ -258,6 +258,16 @@ int main(int argc, char** argv) {
       cfg.auth_token = t;
     }
   }
+  if (cfg.run_attest_hmac_kid.empty()) {
+    if (const char* t = getenv_s("AGENTD_RUN_ATTEST_HMAC_KID")) {
+      cfg.run_attest_hmac_kid = t;
+    }
+  }
+  if (cfg.run_attest_hmac_key.empty()) {
+    if (const char* t = getenv_s("AGENTD_RUN_ATTEST_HMAC_KEY")) {
+      cfg.run_attest_hmac_key = t;
+    }
+  }
   if (cfg.auth_cookie_name.empty()) {
     if (const char* t = getenv_s("AGENTD_AUTH_COOKIE")) {
       cfg.auth_cookie_name = t;

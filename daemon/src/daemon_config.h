@@ -82,6 +82,10 @@ struct DaemonConfig {
   // with a matching `result_sha256`, and (optionally) a valid signature.
   bool edge_attest_required = false;
   bool edge_attest_require_sig = false;
+  // Optional run attestation signing (server-side).
+  // When set, /api/v1/run/attestation will include a signed `attest` block.
+  std::string run_attest_hmac_kid;
+  std::string run_attest_hmac_key;
   std::string model = "gpt-4o-mini";
   std::string summary_model;  // optional: model used to summarize dropped messages during compaction (tools=none)
   size_t summary_max_chars = 1200;

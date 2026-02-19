@@ -57,6 +57,11 @@ The `replay_sha256` token should match the run replay bundle returned by:
 - `GET /api/v1/run/replay?run_id=<id>`
 - `GET /api/v1/run/attestation?run_id=<id>` returns an unsigned attestation bundle referencing the replay hash.
 
+Server-side signing (optional):
+
+- If `AGENTD_RUN_ATTEST_HMAC_KID` and `AGENTD_RUN_ATTEST_HMAC_KEY` are set, the daemon includes an `attest` block
+  on `/api/v1/run/attestation` responses using HMAC-SHA256 over the canonical JSON payload (without `attest`).
+
 See: `docs/WORKFLOWS.md` (Run replay bundles).
 
 ## Signing input

@@ -216,6 +216,12 @@ static void fill_env_defaults(DaemonConfig* cfg) {
   if (cfg->auth_cookie_name.empty()) {
     if (const char* t = getenv_s("AGENTD_AUTH_COOKIE")) cfg->auth_cookie_name = t;
   }
+  if (cfg->run_attest_hmac_kid.empty()) {
+    if (const char* t = getenv_s("AGENTD_RUN_ATTEST_HMAC_KID")) cfg->run_attest_hmac_kid = t;
+  }
+  if (cfg->run_attest_hmac_key.empty()) {
+    if (const char* t = getenv_s("AGENTD_RUN_ATTEST_HMAC_KEY")) cfg->run_attest_hmac_key = t;
+  }
   if (cfg->db_path.empty()) {
     if (const char* p = getenv_s("AGENTD_DB_PATH")) cfg->db_path = p;
   }
