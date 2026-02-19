@@ -52,7 +52,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] Data-driven scenario pack for agentd/broker (scripted runs + evidence capture).
   - [x] Scenario pack runner for multi-scenario runs + evidence validation.
   - [x] One-command devstack (agentd + broker + WebUI) with smoke checks + evidence bundle.
-  - [ ] macOS full-stack compose verification on this host blocked by Docker `unpigz/runc` resource errors; needs Docker Desktop resources increased or prebuilt images.
+- [ ] macOS full-stack compose verification on this host blocked by Docker `unpigz/runc` resource errors; needs Docker Desktop resources increased or prebuilt images.
+  - 2026-02-19: `docker info` not responding / daemon not running; host-stack verification skipped until Docker Desktop/Colima is running.
   - [x] Host-mode macOS full-stack verification script (Docker only for Postgres/Keycloak) added as fallback.
   - [x] WebUI connection profiles for multi-agentd deployments (direct or broker-backed).
   - [x] WebUI profile-specific run settings per connection profile (model/provider + run limits).
