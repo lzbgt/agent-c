@@ -146,11 +146,7 @@ agent_test_load_openrouter_headers_if_unset() {
   local preferred="${root}/.not_in_repo"
   local fallback="${root}/project.local.md"
   local home_env=""
-  local home_dir=""
-  home_dir="$(agent_env_home_dir || true)"
-  if [[ -n "${home_dir}" ]]; then
-    home_env="${home_dir}/.env"
-  fi
+  home_env="$(agent_env_dotenv_path || true)"
 
   if [[ -z "${OPENROUTER_HTTP_REFERER:-}" ]]; then
     local v=""
@@ -215,11 +211,7 @@ agent_test_get_key() {
   local preferred="${root}/.not_in_repo"
   local fallback="${root}/project.local.md"
   local home_env=""
-  local home_dir=""
-  home_dir="$(agent_env_home_dir || true)"
-  if [[ -n "${home_dir}" ]]; then
-    home_env="${home_dir}/.env"
-  fi
+  home_env="$(agent_env_dotenv_path || true)"
 
   local k
   k="$(agent_test_get_key_from_file "${preferred}" "${provider}")" && { echo "${k}"; return 0; }
@@ -286,11 +278,7 @@ agent_test_get_key_source() {
   local preferred="${root}/.not_in_repo"
   local fallback="${root}/project.local.md"
   local home_env=""
-  local home_dir=""
-  home_dir="$(agent_env_home_dir || true)"
-  if [[ -n "${home_dir}" ]]; then
-    home_env="${home_dir}/.env"
-  fi
+  home_env="$(agent_env_dotenv_path || true)"
 
   if agent_test_get_key_from_file "${preferred}" "${provider}" >/dev/null 2>&1; then
     echo ".not_in_repo"
