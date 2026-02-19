@@ -573,27 +573,29 @@ git config core.hooksPath .githooks
 tools/install_git_hooks.sh
 ```
 
-Verbose pre-commit output (when debugging vendored guard issues):
+Hook modes (vendored guard):
+
+- Verbose pre-commit output (when debugging vendored guard issues):
 
 ```bash
 VENDORED_GUARD_VERBOSE=1 git commit
 ```
 
-Install a permanently verbose hook:
+- Install a permanently verbose hook:
 
 ```bash
 tools/install_git_hooks.sh --verbose
 ```
 
-Quiet pre-commit output (only lists changed paths on failure):
+- Quiet pre-commit output (only lists changed paths on failure):
 
 ```bash
 VENDORED_GUARD_QUIET=1 git commit
 ```
 
-Precedence (if both set): `VENDORED_GUARD_QUIET` overrides `VENDORED_GUARD_VERBOSE`.
+- Precedence (if both set): `VENDORED_GUARD_QUIET` overrides `VENDORED_GUARD_VERBOSE`.
 
-Install a permanently quiet hook:
+- Install a permanently quiet hook:
 
 ```bash
 tools/install_git_hooks.sh --quiet
