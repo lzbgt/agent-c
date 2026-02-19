@@ -127,6 +127,10 @@ If that still fails, use the debug helper to inspect model selection and the cha
 tools/openrouter_auth_debug.sh
 ```
 
+If you need to skip the chat-completions preflight (e.g., keys that can list models but cannot chat), set:
+
+- `AGENT_TEST_OPENROUTER_SKIP_CHAT_PREFLIGHT=1`
+
 The script produces a JSON summary under `build/openrouter_probe/` and prints lists of models that pass
 assistant streaming, tool-call streaming, and both. Pin those in:
 
