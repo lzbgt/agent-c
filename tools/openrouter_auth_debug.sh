@@ -17,6 +17,13 @@ fi
 BASE_URL="${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}"
 SOURCE_HINT="$(agent_test_get_key_source openrouter 2>/dev/null || true)"
 MODEL_OVERRIDE="${AGENT_TEST_OPENROUTER_MODEL:-}"
+HEADERS=(-H "Authorization: Bearer ${OPENROUTER_KEY}")
+if [[ -n "${OPENROUTER_HTTP_REFERER:-}" ]]; then
+  HEADERS+=(-H "HTTP-Referer: ${OPENROUTER_HTTP_REFERER}")
+fi
+if [[ -n "${OPENROUTER_X_TITLE:-}" ]]; then
+  HEADERS+=(-H "X-Title: ${OPENROUTER_X_TITLE}")
+fi
 
 echo "base_url=${BASE_URL}"
 if [[ -n "${SOURCE_HINT}" ]]; then
@@ -37,9 +44,7 @@ if [[ -n "${MODEL_OVERRIDE}" ]]; then
 fi
 
 resp="$(curl -sS --noproxy "*" -w "\n%{http_code}" \
-  -H "Authorization: Bearer ${OPENROUTER_KEY}" \
-  ${OPENROUTER_HTTP_REFERER:+-H "HTTP-Referer: ${OPENROUTER_HTTP_REFERER}"} \
-  ${OPENROUTER_X_TITLE:+-H "X-Title: ${OPENROUTER_X_TITLE}"} \
+  "${HEADERS[@]}" \
   "${BASE_URL}/models" || true)"
 status="${resp##*$'\n'}"
 body="${resp%$'\n'*}"
@@ -153,11 +158,9 @@ print(json.dumps({
 PY
 )"
 
+CHAT_HEADERS=("${HEADERS[@]}" -H "Content-Type: application/json")
 chat_resp="$(curl -sS --noproxy "*" -w "\n%{http_code}" \
-  -H "Authorization: Bearer ${OPENROUTER_KEY}" \
-  ${OPENROUTER_HTTP_REFERER:+-H "HTTP-Referer: ${OPENROUTER_HTTP_REFERER}"} \
-  ${OPENROUTER_X_TITLE:+-H "X-Title: ${OPENROUTER_X_TITLE}"} \
-  -H "Content-Type: application/json" \
+  "${CHAT_HEADERS[@]}" \
   -d "${chat_payload}" \
   "${BASE_URL}/chat/completions" || true)"
 chat_status="${chat_resp##*$'\n'}"
