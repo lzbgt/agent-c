@@ -5,6 +5,8 @@ This repo is an early scaffold for a **portable agent core** (env-free, persiste
 Docs quickstart:
 - Unified handbook (curated summary; generated): `docs/HANDBOOK.md`
 - Architecture + roadmap: `DESIGN.md` (full system map)
+- Deployment checklist (agentd + broker + WebUI): `docs/DEPLOYMENT.md`
+- WebUI dev/build/runtime config: `docs/WEBUI.md`
 
 Handbook guard:
 - `tools/verify_repo_guards.sh` enforces a handbook line limit via `HANDBOOK_MAX_LINES` (default: 250).
@@ -309,19 +311,14 @@ Environment variables:
 
 ## Run in production (agentd + WebUI)
 
-This repo’s “production” shape is:
-- `agentd` runs as the backend daemon (tools + persistence + HTTP API)
-- the Web UI runs as a separate static site (Vite build) that talks to `agentd` via HTTP
-  - it can also run in **broker mode** (OIDC) and exposes a broker console for agent selection + membership management
+Production shape:
+- `agentd` runs as the backend daemon (tools + persistence + HTTP API).
+- The WebUI runs as a separate static site (Vite build) that talks to `agentd` or the broker.
 
 For a full production checklist (TLS, broker/connector, auth hardening, backups), see `docs/DEPLOYMENT.md`.
+For WebUI dev/build/runtime config, see `docs/WEBUI.md`.
 
-### 1) Start agentd (prod defaults: YOLO + host tools)
-
-Recommended: pick a stable working directory (so relative artifact paths like `out/foo.wav` are always resolvable) and keep
-all generated files under it.
-
-Example (local machine, loopback only; no auth required):
+Quick start (loopback only; no auth required):
 
 ```bash
 cd /path/to/agent
@@ -335,127 +332,8 @@ cd /path/to/agent
   --db-path "$(pwd)/agentd.db"
 ```
 
-Example (LAN / production; requires auth + explicit CORS allowlist):
-
-```bash
-cd /path/to/agent
-
-# Optional: load real provider keys for the daemon process (do NOT commit secrets)
-set -a
-source "${HOME}/.env"
-set +a
-
-./build/agentd \
-  --host 0.0.0.0 \
-  --port 8123 \
-  --auth-token "REPLACE_WITH_RANDOM_TOKEN" \
-  --cors-origin "http://127.0.0.1:5173" \
-  --cors-origin "http://127.0.0.1:8100" \
-  --tools host \
-  --yolo \
-  --host-scope "$(pwd)" \
-  --tools-root "@host" \
-  --db-path "$(pwd)/agentd.db"
-```
-
-macOS convenience (launchd install/uninstall):
-
-```bash
-AGENTD_AUTH_TOKEN="REPLACE_WITH_RANDOM_TOKEN" tools/install_agentd_launchd.sh
-tools/uninstall_agentd_launchd.sh
-```
-
-Notes:
-- `--yolo` enables unrestricted host tools (fully autonomous, side effects allowed). The Web UI defaults to requesting this.
-- `--tools` acts as a **maximum** toolset; run requests and tool registry queries cannot exceed it.
-- `--tools-root "@host"` makes relative paths stable (anchored to `--host-scope`). This avoids brittle “depends on process CWD”
-  behavior for artifact fetches like `GET /api/v1/file?path=out/foo.wav&yolo=1`.
-- If you omit `--db-path`, `agentd` defaults to `<state_dir>/agentd.db` (with `state_dir` defaulting to the working directory or `AGENTD_STATE_DIR`).
-- If you bind to non-loopback (`--host 0.0.0.0`), `agentd` refuses to start without `--auth-token` unless you pass `--allow-unauth`.
-
-### 2) Start the Web UI
-
-Dev (hot reload):
-
-```bash
-cd ui
-npm install
-npm run dev -- --port 5173
-```
-
-If you prefer port `8100`:
-
-```bash
-cd ui
-npm run dev -- --port 8100
-```
-
-Production build + local preview:
-
-```bash
-cd ui
-npm ci
-npm run build
-npm run preview -- --host 127.0.0.1 --port 8100
-```
-
-Optional defaults (no rebuild): edit `ui/public/agentui-config.js` (copied to `ui/dist/`) to prefill:
-- `connectionMode` (`direct` or `broker`)
-- `daemonBaseUrl`, `brokerBaseUrl`, `brokerAgentId`, `brokerDeploymentId`
-- `daemonAuthToken`, `brokerAuthToken` (if you accept storing tokens in a static file)
-- `model`, `baseUrl`, `proxyUrl`, `timeoutMs`
-
-Then open the UI and set:
-- Daemon base URL: `http://127.0.0.1:8123`
-- Daemon auth token (if enabled): the same token passed to `agentd --auth-token`
-- Model/provider defaults (Settings → Model / Provider), or use the OpenRouter model picker if needed.
-- Run limits (Settings → Run limits) to cap `max_steps` / tool-call budgets.
-- Diagnostics (Settings → Diagnostics) to confirm provider keys and run `provider_test`.
-
-### Manual verification (macOS)
-1) Broker health (if using broker/connector):
-```bash
-curl -k https://127.0.0.1:8443/healthz
-```
-2) Agentd health:
-```bash
-curl http://127.0.0.1:8123/api/v1/health
-curl http://127.0.0.1:8123/api/v1/ready
-curl http://127.0.0.1:8123/metrics
-```
-Optional diagnostics (requires auth if enabled):
-```bash
-curl http://127.0.0.1:8123/api/v1/diagnostics
-curl http://127.0.0.1:8123/api/v1/diagnostics/providers
-```
-See `docs/DIAGNOSTICS.md` for provider_test usage.
-`/api/v1/diagnostics/providers` includes `base_url_source` (`config`/`env`/`default`) to explain how a provider base URL was chosen.
-3) UI functional check:
-- Run a short prompt that emits audio (artifact or scene).
-- If autoplay is blocked, click once in the UI to unlock media playback.
-
-If you want a one-command local check (agentd + WebUI only, no Docker/broker):
-```bash
-tools/verify_mac_local_stack.sh
-```
-Optional env:
-- `MAC_LOCAL_SKIP_UI=1` (skip WebUI build/serve)
-- `MAC_LOCAL_UI_INSTALL=0` (skip `npm ci` if deps already exist)
-- `MAC_LOCAL_PROVIDER_TEST=1` (run diagnostics provider tests if keys are available)
-- `MAC_LOCAL_PROVIDER_TEST_TIMEOUT_MS=30000` (provider test timeout override)
-
-The Web UI defaults to:
-- YOLO enabled
-- client RPC enabled
-- client RPC side effects enabled
-- full tool-call/event visibility in History (so users can inspect tool arguments/results)
-
-Reliability notes (important for production UX):
-- The UI persists the active async `job_id` + SSE cursor in `localStorage`, so a browser refresh can resume a running job stream.
-- The UI persists the selected `session_id` per daemon base URL in `localStorage` (helps when running multiple local daemons).
-- The UI persists the Scene (client-side entities) per `session_id` in `localStorage`.
-- The UI posts client acknowledgement events (`ui_action_shown`, `client_rpc_result`, `artifact_rendered`/`artifact_render_failed`)
-  so agents can implement deterministic “Definition of Done” handshakes (see `docs/DOD_ACK.md`).
+If you bind to non-loopback (`--host 0.0.0.0`), `agentd` requires `--auth-token` and explicit CORS allowlists.
+See `docs/DEPLOYMENT.md` for hardened examples and service configs.
 
 Vendored subtrees live under `ref/` and are treated read-only in this repo.
 If changes are needed, update upstream or copy into first-party code. See

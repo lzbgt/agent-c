@@ -338,7 +338,11 @@ Stop the stack:
 - For a one-command macOS verification run, use: `tools/verify_mac_full_stack.sh`.
 - If Docker is unavailable or resource-constrained, you can verify the local stack without compose:
   - `tools/verify_mac_local_stack.sh` (agentd + WebUI only; no broker)
-  - Optional env: `MAC_LOCAL_SKIP_UI=1` to skip WebUI build/serve, `MAC_LOCAL_UI_INSTALL=0` to skip `npm ci` when deps already exist
+  - Optional env:
+    - `MAC_LOCAL_SKIP_UI=1` to skip WebUI build/serve
+    - `MAC_LOCAL_UI_INSTALL=0` to skip `npm ci` when deps already exist
+    - `MAC_LOCAL_PROVIDER_TEST=1` to run diagnostics provider tests if keys are available
+    - `MAC_LOCAL_PROVIDER_TEST_TIMEOUT_MS=30000` to override provider test timeout
 - If Docker build is blocked but Docker itself runs, you can verify a host-mode full stack:
   - `tools/verify_mac_full_stack_host.sh` (runs Postgres + Keycloak via Docker, and runs agentd/broker/connector/WebUI on the host)
   - Optional env: `HOST_STACK_SKIP_UI=1` to skip WebUI build/serve, `HOST_STACK_UI_INSTALL=0` to skip `npm ci` when deps already exist
@@ -359,27 +363,42 @@ Stop the stack:
 
 ---
 
-## WebUI (static)
+## Manual verification (macOS)
+
+1) Broker health (if using broker/connector):
+```
+curl -k https://127.0.0.1:8443/healthz
+```
+
+2) Agentd health:
+```
+curl http://127.0.0.1:8123/api/v1/health
+curl http://127.0.0.1:8123/api/v1/ready
+curl http://127.0.0.1:8123/metrics
+```
+
+Optional diagnostics (requires auth if enabled):
+```
+curl http://127.0.0.1:8123/api/v1/diagnostics
+curl http://127.0.0.1:8123/api/v1/diagnostics/providers
+```
+
+See `docs/DIAGNOSTICS.md` for provider_test usage. The providers endpoint includes `base_url_source`
+(`config` / `env` / `default`) to explain how a provider base URL was selected.
+
+3) UI functional check:
+- Run a short prompt that emits audio (artifact or scene).
+- If autoplay is blocked, click once in the UI to unlock media playback.
+
+## WebUI
 
 - Build once and host on a static server:
   - `cd ui && npm ci && npm run build`
 - Serve `ui/dist/` via nginx/Caddy/S3.
-- Runtime defaults (no rebuild): edit `ui/dist/agentui-config.js` to set:
-  - `connectionMode` (`direct` or `broker`)
-  - `daemonBaseUrl`, `brokerBaseUrl`, `brokerAgentId`
-  - `brokerDeploymentId` (optional; target a specific agentd deployment)
-  - `daemonAuthToken`, `brokerAuthToken` (if you accept putting tokens in a static file)
-  - `model`, `baseUrl`, `proxyUrl`, `timeoutMs`
-  - `tools`, `yolo`, `hostPolicy`, `verbose`
-  - `allowClientRpcs`, `allowClientEffects`, `allowUnsafePageEval`
-- Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`, and `VITE_AGENTUI_*` variants above.
-- Configure UI to talk to:
-  - Broker proxy (recommended), or
-  - Direct agentd base URL (ensure CORS + auth token).
-- The WebUI supports **multiple connection profiles** stored in browser localStorage; use Settings to add/switch
-  between multiple agentd deployments (direct or broker-backed).
-- Each profile can optionally use **profile-specific run settings** (model/provider, tool flags, run limits, etc.);
-  toggle "Profile-specific run settings" in Settings → Model / Provider.
+- Runtime defaults (no rebuild): edit `ui/dist/agentui-config.js`.
+- Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`, and `VITE_AGENTUI_*`.
+- Broker proxy is recommended for production; direct agentd exposure requires CORS + auth hardening.
+- Full WebUI setup (dev, runtime config, diagnostics, reliability notes) lives in `docs/WEBUI.md`.
 - Session selection, history UI state, job resume, and scene cache are scoped per profile (and base URL) to avoid
   collisions when switching between deployments.
 
