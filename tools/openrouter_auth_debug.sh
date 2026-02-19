@@ -50,7 +50,29 @@ resp="$(curl -sS --noproxy "*" -w "\n%{http_code}" \
 status="${resp##*$'\n'}"
 body="${resp%$'\n'*}"
 if [[ "${status}" == "401" || "${status}" == "403" ]]; then
+  err_detail="$(printf "%s" "${body}" | python3 - <<'PY' 2>/dev/null || true
+import json, sys
+raw = sys.stdin.read()
+try:
+    obj = json.loads(raw)
+except Exception:
+    raise SystemExit
+err = obj.get("error") or {}
+msg = err.get("message") or ""
+code = err.get("code") or ""
+out = ""
+if code:
+    out = f"{code}"
+if msg:
+    out = f"{out}: {msg}" if out else msg
+if out:
+    print(out)
+PY
+)"
   echo "models_status=${status}" >&2
+  if [[ -n "${err_detail}" ]]; then
+    echo "models_error=${err_detail}" >&2
+  fi
   echo "SKIP: OpenRouter auth failed on /models" >&2
   exit 77
 fi
