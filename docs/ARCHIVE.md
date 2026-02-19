@@ -1,6 +1,7 @@
-# Achives (Done)
+# Archive (historical log)
 
-Completed milestones and notable tasks.
+Chronological record of completed milestones. This is optional context, not required for usage; the canonical
+docs are `docs/HANDBOOK.md` (summary) and `DESIGN.md` (system map).
 
 ## 2026-01-29
 
