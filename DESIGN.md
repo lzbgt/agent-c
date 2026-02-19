@@ -40,7 +40,7 @@ Roadmap section below and `TODOS.md`, including:
 - `docs/STREAMING.md`: streaming compatibility matrix and behavior notes.
 - `docs/MEMORY.md`: memory retention, salience, and recap architecture.
 - `docs/DIAGNOSTICS.md`: diagnostics endpoints and provider health checks.
-- `docs/DB_QUERY.md`: read-only DB query endpoints for troubleshooting.
+- `docs/DB.md`: daemon SQLite store, blob storage tiers, and DB query API.
 - `docs/DOD_ACK.md`: UI-visible “definition of done” handshake semantics.
 - `docs/spec/README.md`: index of versioned protocol/spec deep dives.
 
@@ -179,7 +179,7 @@ can be understood without hopping across multiple design docs.
 
 - The daemon persists sessions and run/audit records to the state root.
 - When `--db-path` is enabled, it mirrors runs/events/tools/artifacts into
-  SQLite and exposes read-only query endpoints (see `docs/DB_QUERY.md`).
+  SQLite and exposes read-only query endpoints (see `docs/DB.md#db-query-api-troubleshooting`).
 - Diagnostics endpoints (`/api/v1/diagnostics*`) provide fast health snapshots
   and provider key presence checks (see `docs/DIAGNOSTICS.md`).
 
@@ -671,7 +671,7 @@ tracked in `TODOS.md` as promoted workstreams:
 - Audio streaming: Opus/WebRTC voice pipeline + broker relay + UI voice session controls.
 - Tool plugins: sandbox/isolation, Windows loader, and embedded/MCU-compatible plugin path.
 - Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers
-  (see `docs/BLOB_STORAGE_TIERS.md`).
+  (see `docs/DB.md#blob-storage-tiers-design--status`).
 - UI actions: stable public action API, autoplay unlock flow, and consented remote URL opens.
 - Memory: observation capture + progressive disclosure retrieval flow (search → timeline → get).
 - Interop/attestation: PKI provisioning + signed manifests/attestations + canonical JSON hashing + envelope confidentiality.

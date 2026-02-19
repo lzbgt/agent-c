@@ -461,6 +461,7 @@ Options:
 - `--dry-run`: preview what would be deleted.
 - `--out-max-days N`: prune log files older than N days (0 = delete all).
 - `--threshold-gb N`: size threshold (GiB) for build/out removal.
+- `--max-repo-gb N`: fail if total repo size exceeds N GiB after cleanup.
 
 ## Docker Compose (prod-like local verification)
 

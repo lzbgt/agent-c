@@ -94,6 +94,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [x] Refactor `ref/claude-mem/src/services/sqlite/SessionStore.ts` (2.3k LOC) into smaller units or mark as vendored/read-only.
 - [x] Add build/log cleanup automation (e.g., tools/clean.sh + `out/` log pruning) to prevent disk bloat.
 - [x] Consolidate design docs into a coherent architecture map and component summary structure.
+- [x] Add repo size guard to cleanup tooling (`tools/clean.sh --max-repo-gb`) to prevent >37GB bloat.
 
 ## Promoted goals (explicit goals; no non-goals)
 
@@ -151,7 +152,7 @@ and **AVM** queued behind those until streaming and plugins are stable.
     with docs + smoke tests.
   - [x] Add edge workflow DB query endpoints + workflow analytics aggregates (counts, latency, error rates).
   - [x] Add edge task/edge node analytics aggregates (counts, latency, error rates).
-  - [x] Add binary blob storage tiering plan (`docs/BLOB_STORAGE_TIERS.md`).
+- [x] Add binary blob storage tiering plan (`docs/DB.md#blob-storage-tiers-design--status`).
   - [x] Add edge task/node analytics exports (CSV/JSON bundles).
   - [x] Implement blob_manifest schema + local blob store v0 (upload + read + ref-count GC).
   - [x] Add object-store tier (S3/MinIO) with signed URL reads + read-through cache.

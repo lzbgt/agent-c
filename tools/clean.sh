@@ -12,6 +12,7 @@ KEEP_BUILD=0
 KEEP_OUT=0
 THRESHOLD_GB=2
 OUT_MAX_DAYS=14
+MAX_REPO_GB=0
 
 usage() {
   cat <<'USAGE'
@@ -31,6 +32,7 @@ Options:
   --keep-out          Skip out/ cleanup.
   --threshold-gb N    Size threshold in GiB (default: 2).
   --out-max-days N    Age threshold for out/ pruning (default: 14; 0 = delete all files).
+  --max-repo-gb N     Fail if repo size exceeds N GiB after cleanup (0 = disabled).
   -h, --help          Show this help.
 
 Examples:
@@ -77,6 +79,11 @@ while [[ $# -gt 0 ]]; do
       OUT_MAX_DAYS="${1:-}"
       shift 1
       ;;
+    --max-repo-gb)
+      shift 1
+      MAX_REPO_GB="${1:-}"
+      shift 1
+      ;;
     -h|--help)
       usage
       exit 0
@@ -97,6 +104,7 @@ KEEP_BUILD="${KEEP_BUILD}" \
 KEEP_OUT="${KEEP_OUT}" \
 THRESHOLD_GB="${THRESHOLD_GB}" \
 OUT_MAX_DAYS="${OUT_MAX_DAYS}" \
+MAX_REPO_GB="${MAX_REPO_GB}" \
 python3 - <<'PY'
 import os
 import shutil
@@ -121,8 +129,13 @@ try:
     out_max_days = int(os.environ.get("OUT_MAX_DAYS", "14"))
 except ValueError:
     out_max_days = 14
+try:
+    max_repo_gb = float(os.environ.get("MAX_REPO_GB", "0"))
+except ValueError:
+    max_repo_gb = 0.0
 
 threshold_bytes = int(threshold_gb * (1024 ** 3))
+max_repo_bytes = int(max_repo_gb * (1024 ** 3))
 
 
 def dir_size_bytes(path: Path) -> int:
@@ -210,5 +223,10 @@ if purge_deps:
     for venv in (root / "ref").rglob("venv"):
         remove_path(venv, "purge deps")
 
+if max_repo_gb > 0:
+    repo_size = dir_size_bytes(root)
+    if repo_size > max_repo_bytes:
+        print(f"[clean] repo size {repo_size} bytes exceeds {max_repo_gb} GiB limit")
+        raise SystemExit(2)
 print("[clean] done")
 PY
