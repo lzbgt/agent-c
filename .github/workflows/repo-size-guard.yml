@@ -13,12 +13,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
-      - name: Repo size report
+      - name: Repo hygiene guards
         run: |
-          python3 tools/repo_size_report.py --exclude .git --max-total-gb 5 --depth 2 --top 20 --fail-on-nested-git
-      - name: Stub file scan
-        run: |
-          python3 tools/stub_file_scan.py --fail
-      - name: Tracked file size guard
-        run: |
-          python3 tools/tracked_file_guard.py --max-mb 10
+          tools/verify_repo_guards.sh --strict
