@@ -96,43 +96,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if ! command -v docker >/dev/null 2>&1; then
-  echo "[host-stack] docker not found (install Docker Desktop or Colima)" >&2
-  exit 77
-fi
-
-docker_info_ready() {
-  # AGENT_DOCKER_INFO_TIMEOUT_SEC controls the docker info timeout (seconds).
-  python3 - <<'PY'
-import os
-import subprocess
-import sys
-
-timeout = float(os.environ.get("AGENT_DOCKER_INFO_TIMEOUT_SEC", "5"))
-try:
-  subprocess.run(
-      ["docker", "info"],
-      stdout=subprocess.DEVNULL,
-      stderr=subprocess.DEVNULL,
-      timeout=timeout,
-      check=True,
-  )
-except subprocess.TimeoutExpired:
-  sys.exit(2)
-except Exception:
-  sys.exit(1)
-sys.exit(0)
-PY
-}
-
-if ! docker_info_ready; then
-  rc="$?"
-  if [[ "${rc}" == "2" ]]; then
-    echo "[host-stack] SKIP: docker daemon not responding (docker info timed out)" >&2
-  else
-    echo "[host-stack] docker daemon not running" >&2
-  fi
-  echo "[host-stack] Hint: start Docker Desktop or Colima, then re-run." >&2
+source "${ROOT}/tools/lib/docker_preflight.sh"
+if ! docker_preflight "host-stack"; then
   exit 77
 fi
 
