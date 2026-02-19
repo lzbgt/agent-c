@@ -2,6 +2,7 @@
 import argparse
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Iterable, Optional
 
@@ -75,9 +76,25 @@ def main() -> int:
         help="Env var that allows vendored changes when set truthy.",
     )
     parser.add_argument(
+        "--quiet",
+        action="store_true",
+        help="Suppress non-error output (still exits non-zero on changes).",
+    )
+    parser.add_argument(
         "--verbose", action="store_true", help="Print extra diagnostics."
     )
     args = parser.parse_args()
+
+    quiet = args.quiet or bool_env("VENDORED_GUARD_QUIET")
+    if args.verbose:
+        quiet = False
+
+    def log(message: str) -> None:
+        if not quiet:
+            print(message)
+
+    def error(message: str) -> None:
+        print(message, file=sys.stderr)
 
     root = Path(args.root) if args.root else Path(__file__).resolve().parent.parent
     vendored_path = root / args.path
@@ -85,7 +102,7 @@ def main() -> int:
         return 0
 
     if bool_env(args.allow_env):
-        print(
+        log(
             f"[vendored_guard] {args.allow_env} set; skipping vendored change check."
         )
         return 0
@@ -108,17 +125,17 @@ def main() -> int:
     base_ref = pick_base_ref(root, candidates)
     require_base = args.require_base or bool_env("VENDORED_GUARD_REQUIRE_BASE")
     if not base_ref and require_base:
-        print(
+        error(
             "[vendored_guard] No base ref found; failing because require-base is set."
         )
         return 2
 
     if args.verbose and not base_ref:
-        print(
+        log(
             "[vendored_guard] No base ref found; checking working tree changes only."
         )
     if args.verbose and base_ref:
-        print(f"[vendored_guard] Using base ref: {base_ref}")
+        log(f"[vendored_guard] Using base ref: {base_ref}")
 
     changed: set[str] = set()
     try:
@@ -137,25 +154,27 @@ def main() -> int:
             )
         changed.update(
             diff_paths(root, ["diff", "--name-only", "--cached", "--", args.path])
-        )
+            )
         changed.update(diff_paths(root, ["diff", "--name-only", "--", args.path]))
     except RuntimeError as exc:
-        print("[vendored_guard] git diff failed.")
+        error("[vendored_guard] git diff failed.")
         if str(exc):
-            print(str(exc))
+            error(str(exc))
         return 2
 
     if not changed:
         if args.verbose:
-            print("[vendored_guard] No vendored changes detected.")
+            log("[vendored_guard] No vendored changes detected.")
         return 0
 
-    print("[vendored_guard] Vendored subtree changes detected:")
+    if not quiet:
+        print("[vendored_guard] Vendored subtree changes detected:")
     for path in sorted(changed):
         print(f"  {path}")
-    print(
-        f"Set {args.allow_env}=1 to bypass if you intentionally updated vendored code."
-    )
+    if not quiet:
+        print(
+            f"Set {args.allow_env}=1 to bypass if you intentionally updated vendored code."
+        )
     return 2
 
 

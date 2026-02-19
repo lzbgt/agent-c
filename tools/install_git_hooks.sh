@@ -65,6 +65,8 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 ARGS=()
 if [[ "${VENDORED_GUARD_VERBOSE:-0}" == "1" ]]; then
   ARGS+=(--verbose)
+elif [[ "${VENDORED_GUARD_QUIET:-0}" == "1" ]]; then
+  ARGS+=(--quiet)
 fi
 python3 "${ROOT}/tools/vendored_guard.py" --path ref "${ARGS[@]}"
 EOF

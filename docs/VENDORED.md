@@ -36,6 +36,12 @@ Install a permanently verbose hook:
 tools/install_git_hooks.sh --verbose
 ```
 
+Quiet hook output (only lists changed paths on failure):
+
+```bash
+VENDORED_GUARD_QUIET=1 git commit
+```
+
 ## Current vendored subtrees
 
 - `ref/claude-mem/` (upstream: thedotmack/claude-mem)

@@ -585,6 +585,12 @@ Install a permanently verbose hook:
 tools/install_git_hooks.sh --verbose
 ```
 
+Quiet pre-commit output (only lists changed paths on failure):
+
+```bash
+VENDORED_GUARD_QUIET=1 git commit
+```
+
 Run all repo hygiene guards locally:
 
 ```bash
