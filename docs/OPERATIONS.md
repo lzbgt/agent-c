@@ -140,6 +140,8 @@ export AGENT_TEST_SKIP_OPENROUTER=1
 Network tests assume an HTTP proxy may be required; the scripts default to `http://localhost:8120`
 (or `http://host.docker.internal:8120` when running inside a container) via `https_proxy` / `http_proxy`.
 Use `AGENT_TEST_DISABLE_PROXY=1` to bypass the proxy.
+Compose-based broker smokes wait for an agent to connect; use `AGENT_SMOKE_AGENT_WAIT_SECS` to extend
+the wait (default: 60s) if your Docker host is slow to start the connector.
 
 Key file formats and precedence live in `docs/AGENTD.md` (search for “Secrets and local key files”).
 
