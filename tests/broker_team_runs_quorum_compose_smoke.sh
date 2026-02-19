@@ -347,4 +347,18 @@ if [[ -z "${TEAM_RUN_ID}" || "${RUN_STATUS}" != "succeeded" ]]; then
   exit 1
 fi
 
+APPROVALS_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    "${BROKER_BASE}/v1/teams/${TEAM_ID}/runs/${TEAM_RUN_ID}/approvals"
+)"
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${APPROVALS_JSON}''')
+approvals = obj.get("approvals") or []
+if len(approvals) < 2:
+  print("expected approvals to be persisted", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 echo "broker_team_runs_quorum_compose_smoke OK"

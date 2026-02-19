@@ -751,6 +751,52 @@
             schema:
               $ref: "#/components/schemas/TeamRunStatusResponse"
 
+/v1/teams/{team_id}/runs/{team_run_id}/approvals:
+  get:
+    tags: [teams]
+    summary: List team run approvals
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: team_run_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Team run approvals
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamRunApprovalListResponse"
+  post:
+    tags: [teams]
+    summary: Create team run approvals
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: team_run_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TeamRunApprovalCreateRequest"
+    responses:
+      "200":
+        description: Team run approvals
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamRunApprovalListResponse"
+
 /v1/orchestrate:
   post:
     tags: [orchestrate]

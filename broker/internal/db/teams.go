@@ -83,6 +83,19 @@ type TeamRun struct {
 	CreatedAt time.Time
 }
 
+type TeamRunApproval struct {
+	ApprovalID string
+	TeamRunID  string
+	TeamID     string
+	RuleID     string
+	MemberID   string
+	Role       string
+	Decision   string
+	Reason     string
+	CreatedBy  string
+	CreatedAt  time.Time
+}
+
 func (d *DB) CreateTeamRun(ctx context.Context, teamRunID, teamID, status, createdBy string, runJSON []byte) (*TeamRun, error) {
 	if d == nil || d.Pool == nil {
 		return nil, errors.New("db not open")
@@ -149,6 +162,101 @@ func (d *DB) UpdateTeamRunStatus(ctx context.Context, teamID, teamRunID, status 
 		WHERE team_id=$1 AND team_run_id=$2
 	`, teamID, teamRunID, status)
 	return err
+}
+
+func (d *DB) GetTeamRunApproval(ctx context.Context, teamID, teamRunID, ruleID, memberID string) (*TeamRunApproval, error) {
+	if d == nil || d.Pool == nil {
+		return nil, errors.New("db not open")
+	}
+	teamID = strings.TrimSpace(teamID)
+	teamRunID = strings.TrimSpace(teamRunID)
+	ruleID = strings.TrimSpace(ruleID)
+	memberID = strings.TrimSpace(memberID)
+	if teamID == "" || teamRunID == "" || ruleID == "" || memberID == "" {
+		return nil, errors.New("missing team_id, team_run_id, rule_id, or member_id")
+	}
+	var out TeamRunApproval
+	err := d.Pool.QueryRow(ctx, `
+		SELECT approval_id, team_run_id, team_id, rule_id, member_id, role, decision,
+		       COALESCE(reason, ''), COALESCE(created_by, ''), created_at
+		FROM broker_team_run_approvals
+		WHERE team_id=$1 AND team_run_id=$2 AND rule_id=$3 AND member_id=$4
+	`, teamID, teamRunID, ruleID, memberID).Scan(
+		&out.ApprovalID, &out.TeamRunID, &out.TeamID, &out.RuleID, &out.MemberID, &out.Role,
+		&out.Decision, &out.Reason, &out.CreatedBy, &out.CreatedAt,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+func (d *DB) UpsertTeamRunApproval(ctx context.Context, approvalID, teamRunID, teamID, ruleID, memberID, role, decision, reason, createdBy string) (*TeamRunApproval, error) {
+	if d == nil || d.Pool == nil {
+		return nil, errors.New("db not open")
+	}
+	approvalID = strings.TrimSpace(approvalID)
+	teamRunID = strings.TrimSpace(teamRunID)
+	teamID = strings.TrimSpace(teamID)
+	ruleID = strings.TrimSpace(ruleID)
+	memberID = strings.TrimSpace(memberID)
+	role = strings.TrimSpace(role)
+	decision = strings.TrimSpace(decision)
+	reason = strings.TrimSpace(reason)
+	createdBy = strings.TrimSpace(createdBy)
+	if approvalID == "" || teamRunID == "" || teamID == "" || ruleID == "" || memberID == "" {
+		return nil, errors.New("missing approval_id, team_run_id, team_id, rule_id, or member_id")
+	}
+	if role == "" {
+		return nil, errors.New("missing role")
+	}
+	if decision == "" {
+		return nil, errors.New("missing decision")
+	}
+	_, err := d.Pool.Exec(ctx, `
+		INSERT INTO broker_team_run_approvals(approval_id, team_run_id, team_id, rule_id, member_id, role, decision, reason, created_by)
+		VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		ON CONFLICT(team_run_id, rule_id, member_id)
+		DO UPDATE SET decision=EXCLUDED.decision, reason=EXCLUDED.reason, role=EXCLUDED.role, created_by=EXCLUDED.created_by
+	`, approvalID, teamRunID, teamID, ruleID, memberID, role, decision, nullIfEmpty(reason), nullIfEmpty(createdBy))
+	if err != nil {
+		return nil, err
+	}
+	return d.GetTeamRunApproval(ctx, teamID, teamRunID, ruleID, memberID)
+}
+
+func (d *DB) ListTeamRunApprovals(ctx context.Context, teamID, teamRunID string) ([]TeamRunApproval, error) {
+	if d == nil || d.Pool == nil {
+		return nil, errors.New("db not open")
+	}
+	teamID = strings.TrimSpace(teamID)
+	teamRunID = strings.TrimSpace(teamRunID)
+	if teamID == "" || teamRunID == "" {
+		return nil, errors.New("missing team_id or team_run_id")
+	}
+	rows, err := d.Pool.Query(ctx, `
+		SELECT approval_id, team_run_id, team_id, rule_id, member_id, role, decision,
+		       COALESCE(reason, ''), COALESCE(created_by, ''), created_at
+		FROM broker_team_run_approvals
+		WHERE team_id=$1 AND team_run_id=$2
+		ORDER BY created_at ASC, approval_id ASC
+	`, teamID, teamRunID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TeamRunApproval
+	for rows.Next() {
+		var item TeamRunApproval
+		if err := rows.Scan(
+			&item.ApprovalID, &item.TeamRunID, &item.TeamID, &item.RuleID, &item.MemberID, &item.Role,
+			&item.Decision, &item.Reason, &item.CreatedBy, &item.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
 }
 
 func (d *DB) CreateTeam(ctx context.Context, ownerSub, teamID, displayName string, tags []string, policyRef, sharedMemoryScopeID string, meta map[string]any) (*Team, error) {

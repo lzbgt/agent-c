@@ -186,6 +186,11 @@ All endpoints below are served by the broker (not by agents).
     - when a strict quorum rule is not satisfied, the broker returns `409` with a `quorum` object describing missing approvals
 - `GET /v1/teams/{team_id}/runs/{team_run_id}`
   - returns the stored team run status + current member list
+- `GET /v1/teams/{team_id}/runs/{team_run_id}/approvals`
+  - lists persisted approvals for a team run (owner/admin only)
+- `POST /v1/teams/{team_id}/runs/{team_run_id}/approvals`
+  - creates approvals for a team run (owner/admin only)
+  - body supports either a single approval object or `{ "approvals": [...] }`
 
 - `POST /v1/agents/{agent_id}/delete` (or `DELETE` to the same path)
   - deletes an agent record (owner or admin)

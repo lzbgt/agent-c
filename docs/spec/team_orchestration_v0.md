@@ -121,12 +121,14 @@ created_unix_ms: integer
 ### Quorum approval
 
 ```
+approval_id: string
 team_run_id: string
 rule_id: string
 member_id: string
 role: string
 decision: string              # approve|deny
 reason: string | null
+created_by: string | null
 created_unix_ms: integer
 ```
 
@@ -141,9 +143,11 @@ Current broker implementation:
 - `GET/POST/PATCH/DELETE /v1/teams` + `/members` + `/quorum` are implemented.
 - `POST /v1/teams/{team_id}/runs` executes synchronous fan-out across active members.
 - `GET /v1/teams/{team_id}/runs/{team_run_id}` returns stored status + current members.
- - `POST /v1/teams/{team_id}/runs` enforces **team_run quorum rules** when
-   `team.quorum_policy.mode` is `auto` (default). Approvals are passed inline
-   via `team.approvals` and are **not persisted** yet; strict failures return `409`.
+- `POST /v1/teams/{team_id}/runs` enforces **team_run quorum rules** when
+  `team.quorum_policy.mode` is `auto` (default). Approvals are passed inline
+  via `team.approvals`; strict failures return `409`. Inline approvals are persisted
+  when the run is created.
+- `GET/POST /v1/teams/{team_id}/runs/{team_run_id}/approvals` list and create persisted approvals.
 
 ### Team management
 
@@ -177,6 +181,8 @@ DELETE /v1/teams/{team_id}/quorum/{rule_id}
 ```
 POST /v1/teams/{team_id}/runs
 GET  /v1/teams/{team_id}/runs/{team_run_id}
+GET  /v1/teams/{team_id}/runs/{team_run_id}/approvals
+POST /v1/teams/{team_id}/runs/{team_run_id}/approvals
 ```
 
 Run requests may accept:
@@ -186,7 +192,8 @@ Run requests may accept:
   "team_id": "...",
   "role": "planner",
   "shared_memory": { "scope_id": "...", "mode": "read_only" },
-  "quorum_policy": { "mode": "auto" | "off" }
+  "quorum_policy": { "mode": "auto" | "off" },
+  "approvals": [ { "member_id": "...", "rule_id": "...", "decision": "approve" } ]
 }
 ```
 

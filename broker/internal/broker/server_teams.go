@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -106,9 +107,10 @@ func (s *Server) handleTeamsSubroutes(w http.ResponseWriter, r *http.Request) {
 	// - /v1/teams/{team_id}/quorum/{rule_id}
 	// - /v1/teams/{team_id}/runs
 	// - /v1/teams/{team_id}/runs/{team_run_id}
+	// - /v1/teams/{team_id}/runs/{team_run_id}/approvals
 
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/teams/")
-	parts := strings.SplitN(rest, "/", 3)
+	parts := strings.SplitN(rest, "/", 4)
 	if len(parts) < 1 || parts[0] == "" {
 		writeErrorJSON(w, "not found", http.StatusNotFound)
 		return
@@ -159,6 +161,24 @@ func (s *Server) handleTeamsSubroutes(w http.ResponseWriter, r *http.Request) {
 		if len(parts) == 2 || parts[2] == "" {
 			s.handleTeamRunCreate(w, r, teamID)
 			return
+		}
+		if len(parts) >= 4 && parts[3] != "" {
+			switch parts[3] {
+			case "approvals":
+				if r.Method == "GET" {
+					s.handleTeamRunApprovalsList(w, r, teamID, parts[2])
+					return
+				}
+				if r.Method == "POST" {
+					s.handleTeamRunApprovalsCreate(w, r, teamID, parts[2])
+					return
+				}
+				writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
+			default:
+				writeErrorJSON(w, "not found", http.StatusNotFound)
+				return
+			}
 		}
 		s.handleTeamRunGet(w, r, teamID, parts[2])
 	default:
@@ -740,6 +760,19 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	teamRunRules := []db.TeamQuorumRule{}
+	if quorumPolicyMode != "off" || len(approvals) > 0 {
+		rules, err := s.cfg.DB.ListTeamQuorumRules(r.Context(), teamID)
+		if err != nil {
+			writeErrorJSON(w, "db error", http.StatusInternalServerError)
+			return
+		}
+		teamRunRules = filterTeamRunRules(rules)
+		if len(approvals) > 0 && len(teamRunRules) == 0 {
+			writeErrorJSON(w, "no quorum rules configured", http.StatusBadRequest)
+			return
+		}
+	}
 	members, err := s.cfg.DB.ListTeamMembers(r.Context(), teamID)
 	if err != nil {
 		writeErrorJSON(w, "db error", http.StatusInternalServerError)
@@ -750,12 +783,7 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 		membersByID[m.MemberID] = m
 	}
 	if quorumPolicyMode != "off" {
-		rules, err := s.cfg.DB.ListTeamQuorumRules(r.Context(), teamID)
-		if err != nil {
-			writeErrorJSON(w, "db error", http.StatusInternalServerError)
-			return
-		}
-		quorumEval, err := evaluateTeamRunQuorum(rules, approvals, membersByID)
+		quorumEval, err := evaluateTeamRunQuorum(teamRunRules, approvals, membersByID)
 		if err != nil {
 			writeErrorJSON(w, err.Error(), http.StatusBadRequest)
 			return
@@ -807,6 +835,13 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 	})); err != nil {
 		writeErrorJSON(w, "create team run failed", http.StatusBadRequest)
 		return
+	}
+	if len(approvals) > 0 {
+		if err := s.persistTeamRunApprovals(r.Context(), teamID, teamRunID, teamRunRules, approvals, membersByID, p.Sub); err != nil {
+			_ = s.cfg.DB.UpdateTeamRunStatus(r.Context(), teamID, teamRunID, "failed")
+			writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 	}
 
 	tasks := make([]agentTaskPrepared, 0, len(members))
@@ -894,6 +929,113 @@ func (s *Server) handleTeamRunGet(w http.ResponseWriter, r *http.Request, teamID
 	})
 }
 
+func (s *Server) handleTeamRunApprovalsList(w http.ResponseWriter, r *http.Request, teamID, teamRunID string) {
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if p.AuthKind != "oidc" {
+		writeErrorJSON(w, "oidc required", http.StatusForbidden)
+		return
+	}
+	_, ok := s.requireTeamOwner(w, r, p, teamID)
+	if !ok {
+		return
+	}
+	if _, err := s.cfg.DB.GetTeamRun(r.Context(), teamID, teamRunID); err != nil {
+		writeErrorJSON(w, "team run not found", http.StatusNotFound)
+		return
+	}
+	approvals, err := s.cfg.DB.ListTeamRunApprovals(r.Context(), teamID, teamRunID)
+	if err != nil {
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	out := make([]map[string]any, 0, len(approvals))
+	for _, approval := range approvals {
+		out = append(out, teamRunApprovalToJSON(approval))
+	}
+	writeJSON(w, map[string]any{
+		"ok":          true,
+		"team_id":     teamID,
+		"team_run_id": teamRunID,
+		"approvals":   out,
+	})
+}
+
+func (s *Server) handleTeamRunApprovalsCreate(w http.ResponseWriter, r *http.Request, teamID, teamRunID string) {
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if p.AuthKind != "oidc" {
+		writeErrorJSON(w, "oidc required", http.StatusForbidden)
+		return
+	}
+	_, ok := s.requireTeamOwner(w, r, p, teamID)
+	if !ok {
+		return
+	}
+	if _, err := s.cfg.DB.GetTeamRun(r.Context(), teamID, teamRunID); err != nil {
+		writeErrorJSON(w, "team run not found", http.StatusNotFound)
+		return
+	}
+	body, err := readBodyBounded(r.Body, 1024*1024)
+	if err != nil {
+		writeErrorJSON(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	approvals, err := parseTeamRunApprovalsRequest(body)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if len(approvals) == 0 {
+		writeErrorJSON(w, "missing approvals", http.StatusBadRequest)
+		return
+	}
+	members, err := s.cfg.DB.ListTeamMembers(r.Context(), teamID)
+	if err != nil {
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	membersByID := map[string]db.TeamMember{}
+	for _, m := range members {
+		membersByID[m.MemberID] = m
+	}
+	rules, err := s.cfg.DB.ListTeamQuorumRules(r.Context(), teamID)
+	if err != nil {
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	teamRunRules := filterTeamRunRules(rules)
+	if len(teamRunRules) == 0 {
+		writeErrorJSON(w, "no quorum rules configured", http.StatusBadRequest)
+		return
+	}
+	if err := s.persistTeamRunApprovals(r.Context(), teamID, teamRunID, teamRunRules, approvals, membersByID, p.Sub); err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	stored, err := s.cfg.DB.ListTeamRunApprovals(r.Context(), teamID, teamRunID)
+	if err != nil {
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	out := make([]map[string]any, 0, len(stored))
+	for _, approval := range stored {
+		out = append(out, teamRunApprovalToJSON(approval))
+	}
+	writeJSON(w, map[string]any{
+		"ok":          true,
+		"team_id":     teamID,
+		"team_run_id": teamRunID,
+		"approvals":   out,
+	})
+}
+
 func (s *Server) requireTeamOwner(w http.ResponseWriter, r *http.Request, p *Principal, teamID string) (*db.Team, bool) {
 	teamID = strings.TrimSpace(teamID)
 	if teamID == "" {
@@ -968,9 +1110,38 @@ func teamQuorumRuleToJSON(r db.TeamQuorumRule) map[string]any {
 }
 
 type teamRunApproval struct {
+	RuleID   string
 	MemberID string
 	Decision string
 	Reason   string
+}
+
+type teamRunApprovalRecord struct {
+	RuleID   string
+	MemberID string
+	Role     string
+	Decision string
+	Reason   string
+}
+
+func teamRunApprovalToJSON(a db.TeamRunApproval) map[string]any {
+	out := map[string]any{
+		"approval_id":     a.ApprovalID,
+		"team_run_id":     a.TeamRunID,
+		"team_id":         a.TeamID,
+		"rule_id":         a.RuleID,
+		"member_id":       a.MemberID,
+		"role":            a.Role,
+		"decision":        a.Decision,
+		"created_unix_ms": a.CreatedAt.UnixMilli(),
+	}
+	if a.Reason != "" {
+		out["reason"] = a.Reason
+	}
+	if a.CreatedBy != "" {
+		out["created_by"] = a.CreatedBy
+	}
+	return out
 }
 
 type teamRunQuorumRuleEval struct {
@@ -1127,10 +1298,13 @@ func parseTeamRunApprovals(meta map[string]any) ([]teamRunApproval, error) {
 				return nil, fmt.Errorf("approval member_id is required")
 			}
 			out = append(out, teamRunApproval{
+				RuleID:   "",
 				MemberID: memberID,
 				Decision: "approve",
 			})
 		case map[string]any:
+			ruleRaw, _ := v["rule_id"].(string)
+			ruleID := strings.TrimSpace(ruleRaw)
 			memberRaw, _ := v["member_id"].(string)
 			memberID := strings.TrimSpace(memberRaw)
 			if memberID == "" {
@@ -1146,6 +1320,7 @@ func parseTeamRunApprovals(meta map[string]any) ([]teamRunApproval, error) {
 			}
 			reason, _ := v["reason"].(string)
 			out = append(out, teamRunApproval{
+				RuleID:   ruleID,
 				MemberID: memberID,
 				Decision: decision,
 				Reason:   strings.TrimSpace(reason),
@@ -1155,6 +1330,27 @@ func parseTeamRunApprovals(meta map[string]any) ([]teamRunApproval, error) {
 		}
 	}
 	return out, nil
+}
+
+func parseTeamRunApprovalsRequest(body []byte) ([]teamRunApproval, error) {
+	if len(body) == 0 {
+		return nil, fmt.Errorf("missing body")
+	}
+	var raw any
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return nil, fmt.Errorf("invalid json")
+	}
+	switch t := raw.(type) {
+	case []any:
+		return parseTeamRunApprovals(map[string]any{"approvals": t})
+	case map[string]any:
+		if approvals, ok := t["approvals"]; ok {
+			return parseTeamRunApprovals(map[string]any{"approvals": approvals})
+		}
+		return parseTeamRunApprovals(map[string]any{"approvals": []any{t}})
+	default:
+		return nil, fmt.Errorf("invalid approvals payload")
+	}
 }
 
 func normalizeApprovalDecision(raw string) (string, bool) {
@@ -1181,6 +1377,17 @@ func evaluateTeamRunQuorum(rules []db.TeamQuorumRule, approvals []teamRunApprova
 	out := teamRunQuorumEval{
 		StrictOK: true,
 	}
+	ruleIDs := map[string]bool{}
+	for _, rule := range rules {
+		if isTeamRunQuorumAction(rule.Action) {
+			ruleIDs[rule.RuleID] = true
+		}
+	}
+	for _, approval := range approvals {
+		if approval.RuleID != "" && !ruleIDs[approval.RuleID] {
+			return out, fmt.Errorf("unknown approval rule_id: %s", approval.RuleID)
+		}
+	}
 	for _, rule := range rules {
 		if !isTeamRunQuorumAction(rule.Action) {
 			continue
@@ -1190,6 +1397,9 @@ func evaluateTeamRunQuorum(rules []db.TeamQuorumRule, approvals []teamRunApprova
 		approvedRoles := map[string]bool{}
 		for _, approval := range approvals {
 			if approval.Decision != "approve" {
+				continue
+			}
+			if approval.RuleID != "" && approval.RuleID != rule.RuleID {
 				continue
 			}
 			member, ok := membersByID[approval.MemberID]
@@ -1247,6 +1457,92 @@ func evaluateTeamRunQuorum(rules []db.TeamQuorumRule, approvals []teamRunApprova
 		out.Rules = append(out.Rules, ruleEval)
 	}
 	return out, nil
+}
+
+func filterTeamRunRules(rules []db.TeamQuorumRule) []db.TeamQuorumRule {
+	out := make([]db.TeamQuorumRule, 0, len(rules))
+	for _, rule := range rules {
+		if isTeamRunQuorumAction(rule.Action) {
+			out = append(out, rule)
+		}
+	}
+	return out
+}
+
+func expandTeamRunApprovals(rules []db.TeamQuorumRule, approvals []teamRunApproval, membersByID map[string]db.TeamMember) ([]teamRunApprovalRecord, error) {
+	ruleMap := map[string]db.TeamQuorumRule{}
+	roleAllow := map[string]map[string]bool{}
+	ruleIDs := make([]string, 0, len(rules))
+	for _, rule := range rules {
+		if !isTeamRunQuorumAction(rule.Action) {
+			continue
+		}
+		ruleMap[rule.RuleID] = rule
+		roleAllow[rule.RuleID] = toLowerSet(rule.RoleAllowlist())
+		ruleIDs = append(ruleIDs, rule.RuleID)
+	}
+	if len(ruleMap) == 0 {
+		return nil, nil
+	}
+	seen := map[string]bool{}
+	out := make([]teamRunApprovalRecord, 0, len(approvals))
+	for _, approval := range approvals {
+		member, ok := membersByID[approval.MemberID]
+		if !ok {
+			return nil, fmt.Errorf("unknown approval member_id: %s", approval.MemberID)
+		}
+		status := strings.ToLower(strings.TrimSpace(member.Status))
+		if status != "" && status != "active" {
+			return nil, fmt.Errorf("approval member not active: %s", approval.MemberID)
+		}
+		role := strings.ToLower(strings.TrimSpace(member.Role))
+		if role == "" {
+			return nil, fmt.Errorf("approval member missing role: %s", approval.MemberID)
+		}
+		targetRules := ruleIDs
+		if approval.RuleID != "" {
+			if _, ok := ruleMap[approval.RuleID]; !ok {
+				return nil, fmt.Errorf("unknown approval rule_id: %s", approval.RuleID)
+			}
+			targetRules = []string{approval.RuleID}
+		}
+		for _, ruleID := range targetRules {
+			allow := roleAllow[ruleID]
+			if len(allow) > 0 && !allow[role] {
+				continue
+			}
+			key := ruleID + "\x00" + approval.MemberID
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+			out = append(out, teamRunApprovalRecord{
+				RuleID:   ruleID,
+				MemberID: approval.MemberID,
+				Role:     role,
+				Decision: approval.Decision,
+				Reason:   approval.Reason,
+			})
+		}
+	}
+	return out, nil
+}
+
+func (s *Server) persistTeamRunApprovals(ctx context.Context, teamID, teamRunID string, rules []db.TeamQuorumRule, approvals []teamRunApproval, membersByID map[string]db.TeamMember, createdBy string) error {
+	if len(approvals) == 0 {
+		return nil
+	}
+	records, err := expandTeamRunApprovals(rules, approvals, membersByID)
+	if err != nil {
+		return err
+	}
+	for _, rec := range records {
+		approvalID := "tra_" + newID()[:12]
+		if _, err := s.cfg.DB.UpsertTeamRunApproval(ctx, approvalID, teamRunID, teamID, rec.RuleID, rec.MemberID, rec.Role, rec.Decision, rec.Reason, createdBy); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func filterTeamRunMembers(members []db.TeamMember, role string, roles map[string]bool) []db.TeamMember {
