@@ -655,6 +655,8 @@ Notes:
   and consider raising the disk image size. You can also set `PIGZ=-p1 GZIP=-p1` to reduce decompression pressure,
   or skip builds by using prebuilt images (`COMPOSE_BUILD=0 COMPOSE_PULL=1` with `BROKER_IMAGE`, `AGENTD_IMAGE`,
   `CONNECTOR_IMAGE`, `WEBUI_IMAGE` set).
+- If `docker info` hangs (daemon not responding), set `AGENT_DOCKER_INFO_TIMEOUT_SEC` (default `5`) to shorten the
+  readiness check or confirm Docker Desktop/Colima is running.
 
 This starts:
 - WebUI: `http://127.0.0.1:${WEBUI_PUBLISHED_PORT}`
