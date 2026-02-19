@@ -11,14 +11,6 @@ if [[ ! -x "$LOOPBACK_BIN" ]]; then
   echo "SKIP: loopback binary not executable" >&2
   exit 77
 fi
-if ! command -v docker >/dev/null 2>&1; then
-  echo "SKIP: docker not found" >&2
-  exit 77
-fi
-if ! timeout 2 docker info >/dev/null 2>&1; then
-  echo "SKIP: docker daemon not ready" >&2
-  exit 77
-fi
 if ! command -v go >/dev/null 2>&1; then
   echo "SKIP: go not found" >&2
   exit 77
@@ -36,6 +28,23 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 LOG_DIR="${ROOT}/build"
 mkdir -p "${LOG_DIR}"
 LOG_FILE="${LOG_DIR}/agentd_audio_signal_loopback_smoke.log"
+
+PG_DSN_OVERRIDE="${AGENTD_TEST_PG_DSN:-}"
+USE_DOCKER="1"
+if [[ -n "${PG_DSN_OVERRIDE}" ]]; then
+  USE_DOCKER="0"
+fi
+
+if [[ "${USE_DOCKER}" == "1" ]]; then
+  if ! command -v docker >/dev/null 2>&1; then
+    echo "SKIP: docker not found" >&2
+    exit 77
+  fi
+  if ! timeout 2 docker info >/dev/null 2>&1; then
+    echo "SKIP: docker daemon not ready" >&2
+    exit 77
+  fi
+fi
 
 POSTGRES_NAME="agentd_audio_loopback_smoke"
 BROKER_PORT=""
@@ -62,28 +71,34 @@ cleanup() {
     kill -TERM "${BROKER_PID}" >/dev/null 2>&1 || true
     wait "${BROKER_PID}" >/dev/null 2>&1 || true
   fi
-  docker rm -f "${POSTGRES_NAME}" >/dev/null 2>&1 || true
+  if [[ "${USE_DOCKER}" == "1" ]]; then
+    docker rm -f "${POSTGRES_NAME}" >/dev/null 2>&1 || true
+  fi
 }
 trap cleanup EXIT
 
-PG_PORT="$(pick_port)"
+if [[ "${USE_DOCKER}" == "1" ]]; then
+  PG_PORT="$(pick_port)"
+fi
 BROKER_PORT="$(pick_port)"
 
-if docker ps -a --format '{{.Names}}' | grep -q "^${POSTGRES_NAME}$"; then
-  docker rm -f "${POSTGRES_NAME}" >/dev/null 2>&1 || true
-fi
-
-docker run -d --rm --name "${POSTGRES_NAME}" -e POSTGRES_PASSWORD=postgres -p "${PG_PORT}:5432" postgres:16 >/dev/null
-
-for _ in $(seq 1 30); do
-  if docker exec "${POSTGRES_NAME}" pg_isready -U postgres >/dev/null 2>&1; then
-    break
+if [[ "${USE_DOCKER}" == "1" ]]; then
+  if docker ps -a --format '{{.Names}}' | grep -q "^${POSTGRES_NAME}$"; then
+    docker rm -f "${POSTGRES_NAME}" >/dev/null 2>&1 || true
   fi
-  sleep 1
-done
-if ! docker exec "${POSTGRES_NAME}" pg_isready -U postgres >/dev/null 2>&1; then
-  echo "Postgres did not become ready" >&2
-  exit 1
+
+  docker run -d --rm --name "${POSTGRES_NAME}" -e POSTGRES_PASSWORD=postgres -p "${PG_PORT}:5432" postgres:16 >/dev/null
+
+  for _ in $(seq 1 30); do
+    if docker exec "${POSTGRES_NAME}" pg_isready -U postgres >/dev/null 2>&1; then
+      break
+    fi
+    sleep 1
+  done
+  if ! docker exec "${POSTGRES_NAME}" pg_isready -U postgres >/dev/null 2>&1; then
+    echo "Postgres did not become ready" >&2
+    exit 1
+  fi
 fi
 
 CLIENT_AUTH_JSON="${LOG_DIR}/broker_audio_client_auth.json"
@@ -110,7 +125,10 @@ BROKER_BIN="${LOG_DIR}/agentd-broker-audio-loopback"
   go build -trimpath -o "${BROKER_BIN}" ./cmd/agentd-broker
 ) >>"${LOG_FILE}" 2>&1
 
-DSN="postgres://postgres:postgres@127.0.0.1:${PG_PORT}/postgres?sslmode=disable"
+DSN="${PG_DSN_OVERRIDE}"
+if [[ -z "${DSN}" ]]; then
+  DSN="postgres://postgres:postgres@127.0.0.1:${PG_PORT}/postgres?sslmode=disable"
+fi
 "${BROKER_BIN}" \
   --listen "127.0.0.1:${BROKER_PORT}" \
   --db-dsn "${DSN}" \
