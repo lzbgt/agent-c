@@ -649,6 +649,7 @@ Notes:
   - `WEBUI_PUBLISHED_PORT` (default 8100)
   - `AGENTD_PUBLISHED_PORT` (default 8123)
 - It sets `COMPOSE_PROJECT_NAME` automatically (defaults to `agent_${WEBUI_PUBLISHED_PORT}`) so you can run multiple stacks concurrently.
+- Optional env for host-mode stack: `HOST_STACK_SKIP_UI=1` (skip WebUI build/serve), `HOST_STACK_UI_INSTALL=0` (skip `npm ci`).
 - Keycloak is intentionally accessed via `keycloak.lvh.me` (resolves to `127.0.0.1`) so the `iss` claim in minted JWTs
   matches what the broker validates. If you request tokens via `http://127.0.0.1:<port>`, you’ll get issuer-mismatch errors.
 - If Docker build hits `unpigz`/`runc` resource errors, restart Docker Desktop or increase CPU/RAM (Settings → Resources),
