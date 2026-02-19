@@ -8,6 +8,7 @@ SCRIPT_DIR="${ROOT}/tests"
 source "${SCRIPT_DIR}/test_keys.sh"
 
 agent_test_setup_proxy_env
+agent_test_load_openrouter_headers_if_unset || true
 OPENROUTER_KEY="$(agent_test_get_key openrouter 2>/dev/null || true)"
 if [[ -z "${OPENROUTER_KEY}" ]]; then
   echo "SKIP: OPENROUTER_API_KEY not set and not found in .not_in_repo, project.local.md, or ~/.env" >&2

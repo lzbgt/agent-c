@@ -118,6 +118,8 @@ If your OpenRouter account enforces header requirements, set:
 - `OPENROUTER_X_TITLE`
 
 The auth check, debug helper, and probe scripts will pass these headers through when set.
+You can store them as env-style entries in `.not_in_repo` or `project.local.md` (same format as keys),
+or export them in your shell.
 
 If that still fails, use the debug helper to inspect model selection and the chat error payload:
 

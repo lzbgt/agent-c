@@ -96,6 +96,91 @@ agent_test_get_key_from_file() {
   return 0
 }
 
+agent_test_get_env_value_from_file() {
+  if [[ $# -ne 2 ]]; then
+    echo "agent_test_get_env_value_from_file: usage: <file> <key>" >&2
+    return 2
+  fi
+  local file="${1}"
+  local key="${2}"
+  if [[ ! -f "${file}" ]]; then
+    return 1
+  fi
+  python3 - "${file}" "${key}" <<'PY'
+import re
+import sys
+
+path = sys.argv[1]
+key = sys.argv[2]
+try:
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        lines = f.readlines()
+except Exception:
+    raise SystemExit(1)
+
+pat = re.compile(r"^\\s*(?:export\\s+)?%s\\s*=\\s*(.*)$" % re.escape(key))
+for line in lines:
+    raw = line.strip()
+    if not raw or raw.startswith("#"):
+        continue
+    m = pat.match(line)
+    if not m:
+        continue
+    val = m.group(1).strip()
+    if not val:
+        continue
+    if val[0] not in ("'", '"'):
+        val = val.split("#", 1)[0].strip()
+    if len(val) >= 2 and ((val[0] == '"' and val[-1] == '"') or (val[0] == "'" and val[-1] == "'")):
+        val = val[1:-1]
+    if val:
+        print(val)
+        raise SystemExit(0)
+raise SystemExit(1)
+PY
+}
+
+agent_test_load_openrouter_headers_if_unset() {
+  local root
+  root="$(agent_test_project_root)"
+  local preferred="${root}/.not_in_repo"
+  local fallback="${root}/project.local.md"
+  local home_env=""
+  local home_dir=""
+  home_dir="$(agent_env_home_dir || true)"
+  if [[ -n "${home_dir}" ]]; then
+    home_env="${home_dir}/.env"
+  fi
+
+  if [[ -z "${OPENROUTER_HTTP_REFERER:-}" ]]; then
+    local v=""
+    v="$(agent_test_get_env_value_from_file "${preferred}" "OPENROUTER_HTTP_REFERER" 2>/dev/null || true)"
+    if [[ -z "${v}" ]]; then
+      v="$(agent_test_get_env_value_from_file "${fallback}" "OPENROUTER_HTTP_REFERER" 2>/dev/null || true)"
+    fi
+    if [[ -z "${v}" && -n "${home_env}" ]]; then
+      v="$(agent_test_get_env_value_from_file "${home_env}" "OPENROUTER_HTTP_REFERER" 2>/dev/null || true)"
+    fi
+    if [[ -n "${v}" ]]; then
+      export OPENROUTER_HTTP_REFERER="${v}"
+    fi
+  fi
+
+  if [[ -z "${OPENROUTER_X_TITLE:-}" ]]; then
+    local v=""
+    v="$(agent_test_get_env_value_from_file "${preferred}" "OPENROUTER_X_TITLE" 2>/dev/null || true)"
+    if [[ -z "${v}" ]]; then
+      v="$(agent_test_get_env_value_from_file "${fallback}" "OPENROUTER_X_TITLE" 2>/dev/null || true)"
+    fi
+    if [[ -z "${v}" && -n "${home_env}" ]]; then
+      v="$(agent_test_get_env_value_from_file "${home_env}" "OPENROUTER_X_TITLE" 2>/dev/null || true)"
+    fi
+    if [[ -n "${v}" ]]; then
+      export OPENROUTER_X_TITLE="${v}"
+    fi
+  fi
+}
+
 agent_test_get_key() {
   if [[ $# -ne 1 ]]; then
     echo "agent_test_get_key: missing provider arg" >&2
@@ -249,6 +334,7 @@ agent_test_openrouter_auth_ok() {
     echo "agent_test_openrouter_auth_ok: missing key arg" >&2
     return 2
   fi
+  agent_test_load_openrouter_headers_if_unset || true
   local key="${1}"
   local base_url="${2:-https://openrouter.ai/api/v1}"
   local -a headers
