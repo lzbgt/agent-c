@@ -39,7 +39,7 @@ if [[ "${USE_DOCKER}" == "0" && -z "${PG_DSN_OVERRIDE}" ]]; then
   if pg_test_has_local_pg; then
     USE_LOCAL_PG="1"
   else
-    echo "SKIP: docker not ready and local Postgres not available" >&2
+    echo "SKIP: docker not ready and local Postgres not available (set AGENTD_TEST_PG_DSN to run)" >&2
     exit 77
   fi
 fi
