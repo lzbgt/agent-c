@@ -2,7 +2,7 @@
 
 Date: 2026-02-05
 
-Status: Draft (rolling)
+Status: v0 (implemented; rolling)
 
 ## 1) Goal (why this exists)
 
