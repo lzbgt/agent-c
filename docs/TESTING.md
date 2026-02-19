@@ -28,6 +28,14 @@ Source `${HOME}/.env` before verification (provider keys for smokes):
 tools/verify_prod.sh
 ```
 
+## Full-stack verification (macOS)
+
+Use the macOS scripts when you want broker + connector in the loop:
+- Docker compose build: `tools/verify_mac_full_stack.sh`
+- Docker runs but builds blocked: `tools/verify_mac_full_stack_host.sh`
+- No Docker/Keycloak, local Postgres: `tools/verify_mac_full_stack_local_postgres.sh`
+- No broker: `tools/verify_mac_local_stack.sh`
+
 ## Network smoke tests
 
 `ctest` includes network smokes (OpenRouter + DeepSeek). They run when keys are available via:

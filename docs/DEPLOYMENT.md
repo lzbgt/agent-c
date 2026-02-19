@@ -346,6 +346,9 @@ Stop the stack:
 - If Docker build is blocked but Docker itself runs, you can verify a host-mode full stack:
   - `tools/verify_mac_full_stack_host.sh` (runs Postgres + Keycloak via Docker, and runs agentd/broker/connector/WebUI on the host)
   - Optional env: `HOST_STACK_SKIP_UI=1` to skip WebUI build/serve, `HOST_STACK_UI_INSTALL=0` to skip `npm ci` when deps already exist
+- If Docker/Keycloak are unavailable but local Postgres is running, you can verify a full stack with client auth:
+  - `tools/verify_mac_full_stack_local_postgres.sh` (local Postgres + broker client auth; seeds broker DB directly)
+  - Optional env: `HOST_STACK_SKIP_UI=1`, `HOST_STACK_UI_INSTALL=0`, `HOST_STACK_PG_DSN=postgres://user@127.0.0.1:5432/agentd_broker?sslmode=disable`
 - If `tools/verify_mac_full_stack.sh` skips due to Docker build resource errors (e.g. `unpigz`/`runc`),
   restart Docker Desktop or increase CPU/RAM (Docker Desktop → Settings → Resources; also ensure disk image size).
   The script already retries builds, can fall back to the

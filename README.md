@@ -97,6 +97,7 @@ For a prod-like local stack (Postgres + Keycloak + broker + connector + agentd +
 Alternatives:
 - No Docker: `tools/verify_mac_local_stack.sh` (agentd + WebUI only).
 - Docker runs but builds blocked: `tools/verify_mac_full_stack_host.sh`.
+- No Docker/Keycloak, local Postgres: `tools/verify_mac_full_stack_local_postgres.sh`.
 - One-command devstack: `tools/devstack_agent.sh` (stop with `tools/devstack_agent_down.sh`).
 
 Full details, env flags, port notes, and Keycloak guidance live in `docs/DEPLOYMENT.md`.
