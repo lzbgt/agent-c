@@ -10,6 +10,20 @@
 #include <fstream>
 
 namespace agentd {
+namespace {
+
+static bool path_within_root(const std::filesystem::path& root, const std::filesystem::path& candidate) {
+  const std::filesystem::path root_norm = root.lexically_normal();
+  const std::filesystem::path cand_norm = candidate.lexically_normal();
+  const std::filesystem::path rel = cand_norm.lexically_relative(root_norm);
+  if (rel.empty() || rel.is_absolute()) return false;
+  for (const auto& part : rel) {
+    if (part == "..") return false;
+  }
+  return true;
+}
+
+}  // namespace
 
 void handle_file_endpoint(
   const DaemonConfig& cfg,
@@ -30,11 +44,13 @@ void handle_file_endpoint(
 
   const std::filesystem::path user_path(*path_q);
   std::filesystem::path effective_root;
+  bool session_scoped = false;
   {
     const auto session_q = query_get(req.query, "session_id");
     const std::string session_id = session_q && !session_q->empty() ? *session_q : "";
 
     if (!session_id.empty()) {
+      session_scoped = true;
       if (!session_id_is_safe(session_id)) {
         resp->status = 400;
         resp->headers["Content-Type"] = "application/json; charset=utf-8";
@@ -76,6 +92,14 @@ void handle_file_endpoint(
 
   std::filesystem::path resolved = user_path.is_absolute() ? user_path : (effective_root / user_path);
   resolved = resolved.lexically_normal();
+  if (session_scoped && !user_path.is_absolute()) {
+    if (!path_within_root(effective_root, resolved)) {
+      resp->status = 400;
+      resp->headers["Content-Type"] = "application/json; charset=utf-8";
+      resp->body = R"({"ok":false,"error":"path escapes session root"})";
+      return;
+    }
+  }
 
   std::error_code ec;
   if (!std::filesystem::exists(resolved, ec) || !std::filesystem::is_regular_file(resolved, ec)) {
