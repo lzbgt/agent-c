@@ -7,6 +7,8 @@ cd "${ROOT}"
 MODE="host"   # host|core
 SKIP_UI=0
 UI_INSTALL=0
+REPO_GUARDS=0
+REPO_GUARDS_STRICT=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -22,9 +24,18 @@ while [[ $# -gt 0 ]]; do
       UI_INSTALL=1
       shift 1
       ;;
+    --repo-guards)
+      REPO_GUARDS=1
+      shift 1
+      ;;
+    --repo-guards-strict)
+      REPO_GUARDS=1
+      REPO_GUARDS_STRICT=1
+      shift 1
+      ;;
     -h|--help)
       cat <<'EOF'
-Usage: tools/verify.sh [--core-only] [--skip-ui] [--ui-install]
+Usage: tools/verify.sh [--core-only] [--skip-ui] [--ui-install] [--repo-guards] [--repo-guards-strict]
 
 Runs a local verification pass with timestamped logs under ./build/.
 
@@ -35,6 +46,10 @@ UI:
   By default, runs `npm run build` in ./ui/ only if ./ui/node_modules exists.
   --ui-install  Run `npm ci` before `npm run build`
   --skip-ui     Skip UI build entirely
+
+Guards:
+  --repo-guards        Run repo hygiene guards after build/tests.
+  --repo-guards-strict Run repo hygiene guards in strict mode (nested .git detection).
 EOF
       exit 0
       ;;
@@ -113,6 +128,15 @@ else
   run_logged "cmake configure" "${cfg_log}" cmake -S . -B "${build_dir}"
   run_logged "cmake build" "${build_log}" cmake --build "${build_dir}" -j
   run_ctest_logged_with_retry "ctest" "${test_log}" "${test_retry_log}" "${build_dir}"
+fi
+
+if [[ "${REPO_GUARDS}" == "1" ]]; then
+  repo_log="${log_dir}/verify_${ts}_repo_guards.log"
+  repo_args=""
+  if [[ "${REPO_GUARDS_STRICT}" == "1" ]]; then
+    repo_args="--strict"
+  fi
+  run_logged "repo guards" "${repo_log}" bash -lc "tools/verify_repo_guards.sh ${repo_args}"
 fi
 
 if [[ "${SKIP_UI}" == "1" ]]; then

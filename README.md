@@ -22,6 +22,12 @@ For a single command that runs configure/build/tests (and writes timestamped log
 tools/verify.sh
 ```
 
+To include repo hygiene guards in the same run:
+
+```bash
+tools/verify.sh --repo-guards
+```
+
 To run the same verification pass but first source `${HOME}/.env` (so provider keys like `DEEPSEEK_API_KEY` are available
 to smoke tests), use:
 
