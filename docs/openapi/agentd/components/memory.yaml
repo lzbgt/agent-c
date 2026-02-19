@@ -1,0 +1,368 @@
+MemoryCheckpointMeta:
+  type: object
+  required: [checkpoint_path, ts_utc, ts_utc_ms, sha256, bytes]
+  properties:
+    checkpoint_path: { type: string }
+    structured_path: { type: string }
+    ts_utc: { type: string }
+    ts_utc_ms: { type: integer, format: int64 }
+    sha256:
+      type: string
+      description: SHA-256 of the checkpoint JSON bytes (lowercase hex)
+      pattern: "^[a-f0-9]{64}$"
+    bytes: { type: integer, format: int64 }
+
+
+MemoryCheckpointsResponse:
+  type: object
+  required: [ok, memory_root, since_utc_ms, until_utc_ms, checkpoints]
+  properties:
+    ok: { type: boolean }
+    memory_root: { type: string }
+    since_utc_ms: { type: integer, format: int64 }
+    until_utc_ms: { type: integer, format: int64 }
+    structured_path_filter:
+      type: string
+      description: Echoes the requested `structured_path` filter when provided.
+    checkpoints:
+      type: array
+      items:
+        $ref: "#/components/schemas/MemoryCheckpointMeta"
+
+
+MemoryRetentionEnforceRequest:
+  type: object
+  additionalProperties: false
+  properties:
+    dry_run: { type: boolean }
+    daily_max_days: { type: integer, format: int32 }
+    daily_max_bytes: { type: integer, format: int64 }
+    checkpoint_max_days: { type: integer, format: int32 }
+    checkpoint_max_count: { type: integer, format: int32 }
+    structured_deprecate_days: { type: integer, format: int32 }
+    structured_deprecate_max_entries: { type: integer, format: int32 }
+
+
+MemoryRetentionEnforceResponse:
+  type: object
+  required:
+    [
+      ok,
+      generated_utc_ms,
+      dry_run,
+      daily_max_days,
+      daily_max_bytes,
+      checkpoint_max_days,
+      checkpoint_max_count,
+      structured_deprecate_days,
+      structured_deprecate_max_entries
+    ]
+  properties:
+    ok: { type: boolean }
+    generated_utc_ms: { type: integer, format: int64 }
+    dry_run: { type: boolean }
+    daily_max_days: { type: integer, format: int32 }
+    daily_max_bytes: { type: integer, format: int64 }
+    checkpoint_max_days: { type: integer, format: int32 }
+    checkpoint_max_count: { type: integer, format: int32 }
+    structured_deprecate_days: { type: integer, format: int32 }
+    structured_deprecate_max_entries: { type: integer, format: int32 }
+    daily_deleted_count: { type: integer, format: int64 }
+    checkpoint_deleted_count: { type: integer, format: int64 }
+    structured_deprecated_count: { type: integer, format: int64 }
+    daily_bytes_before: { type: integer, format: int64 }
+    daily_bytes_after: { type: integer, format: int64 }
+    daily_deleted:
+      type: array
+      items: { type: string }
+    checkpoint_deleted:
+      type: array
+      items: { type: string }
+    structured_deprecated_keys:
+      type: array
+      items: { type: string }
+    errors:
+      type: array
+      items: { type: string }
+
+
+MemoryIndexRow:
+  type: object
+  required: [tier, path, bytes, lines, token_estimate]
+  properties:
+    tier: { type: string }
+    path: { type: string }
+    bytes: { type: integer, format: int64 }
+    lines: { type: integer, format: int64 }
+    token_estimate:
+      type: integer
+      format: int64
+      description: Approximate token count based on bytes/4.
+
+
+MemoryIndexResponse:
+  type: object
+  required: [ok, memory_root, daily_days, include_structured, include_core, include_daily, include_session, files]
+  properties:
+    ok: { type: boolean }
+    memory_root: { type: string }
+    session_id: { type: string }
+    daily_days: { type: integer, format: int32 }
+    include_structured: { type: boolean }
+    include_core: { type: boolean }
+    include_daily: { type: boolean }
+    include_session: { type: boolean }
+    total_bytes: { type: integer, format: int64 }
+    total_token_estimate: { type: integer, format: int64 }
+    files:
+      type: array
+      items:
+        $ref: "#/components/schemas/MemoryIndexRow"
+
+
+MemorySaliencePolicy:
+  type: object
+  required: [include_structured, include_daily, daily_days, max_items, max_structured_items, max_daily_items, half_life_days, importance_weight]
+  properties:
+    include_structured: { type: boolean }
+    include_daily: { type: boolean }
+    daily_days: { type: integer, format: int32 }
+    max_items: { type: integer, format: int32 }
+    max_structured_items: { type: integer, format: int32 }
+    max_daily_items: { type: integer, format: int32 }
+    half_life_days: { type: number, format: double }
+    importance_weight: { type: number, format: double }
+
+
+MemorySalienceStructuredItem:
+  type: object
+  required: [key, value, score]
+  properties:
+    key: { type: string }
+    kind: { type: string }
+    status: { type: string }
+    updated_utc: { type: string }
+    value: { type: string }
+    score: { type: number, format: double }
+
+
+MemorySalienceDailyItem:
+  type: object
+  required: [path, line, text, score]
+  properties:
+    path: { type: string }
+    line: { type: integer, format: int32 }
+    text: { type: string }
+    score: { type: number, format: double }
+    ts_utc: { type: string }
+    importance: { type: integer, format: int32 }
+
+
+MemorySalienceResponse:
+  type: object
+  required: [ok, memory_root, generated_utc_ms, policy, structured_items, daily_items, returned]
+  properties:
+    ok: { type: boolean }
+    memory_root: { type: string }
+    generated_utc_ms: { type: integer, format: int64 }
+    policy:
+      $ref: "#/components/schemas/MemorySaliencePolicy"
+    structured_checkpoint:
+      $ref: "#/components/schemas/MemoryCheckpointMeta"
+    structured_items:
+      type: array
+      items:
+        $ref: "#/components/schemas/MemorySalienceStructuredItem"
+    daily_items:
+      type: array
+      items:
+        $ref: "#/components/schemas/MemorySalienceDailyItem"
+    returned: { type: integer, format: int64 }
+    errors:
+      type: array
+      items: { type: string }
+
+
+MemoryRecapItem:
+  type: object
+  required: [tier, score, text]
+  properties:
+    tier: { type: string }
+    key: { type: string }
+    kind: { type: string }
+    status: { type: string }
+    ts_utc: { type: string }
+    path: { type: string }
+    line: { type: integer, format: int32 }
+    importance: { type: integer, format: int32 }
+    score: { type: number, format: double }
+    text: { type: string }
+    source: { type: string }
+
+
+MemoryRecapsListItem:
+  type: object
+  required: [recap_path, bytes]
+  properties:
+    recap_path: { type: string }
+    bytes: { type: integer, format: int64 }
+    ts_utc: { type: string }
+    ts_utc_ms: { type: integer, format: int64 }
+    model: { type: string }
+    summary_text: { type: string }
+
+
+MemoryRecapsListResponse:
+  type: object
+  required: [ok, memory_root, limit, include_summary, recaps, count]
+  properties:
+    ok: { type: boolean }
+    memory_root: { type: string }
+    limit: { type: integer, format: int32 }
+    include_summary: { type: boolean }
+    recaps:
+      type: array
+      items:
+        $ref: "#/components/schemas/MemoryRecapsListItem"
+    count: { type: integer, format: int64 }
+
+
+MemoryRecapRequest:
+  type: object
+  additionalProperties: false
+  properties:
+    dry_run: { type: boolean }
+    write_file: { type: boolean }
+    model: { type: string }
+    summary_model: { type: string, nullable: true }
+    summary_max_chars: { type: integer, format: int64 }
+    include_structured: { type: boolean }
+    include_daily: { type: boolean }
+    daily_days: { type: integer, format: int32 }
+    max_items: { type: integer, format: int32 }
+    max_structured_items: { type: integer, format: int32 }
+    max_daily_items: { type: integer, format: int32 }
+    half_life_days: { type: number, format: double }
+    importance_weight: { type: number, format: double }
+
+
+MemoryRecapResponse:
+  type: object
+  required: [ok, generated_utc_ms, dry_run, write_file, policy, input, structured_items, daily_items]
+  properties:
+    ok: { type: boolean }
+    generated_utc_ms: { type: integer, format: int64 }
+    ts_utc: { type: string }
+    model: { type: string }
+    dry_run: { type: boolean }
+    write_file: { type: boolean }
+    policy:
+      $ref: "#/components/schemas/MemorySaliencePolicy"
+    input:
+      type: object
+      required: [structured_count, daily_count, total_count]
+      properties:
+        structured_count: { type: integer, format: int64 }
+        daily_count: { type: integer, format: int64 }
+        total_count: { type: integer, format: int64 }
+    structured_items:
+      type: array
+      items:
+        $ref: "#/components/schemas/MemoryRecapItem"
+    daily_items:
+      type: array
+      items:
+        $ref: "#/components/schemas/MemoryRecapItem"
+    prompt: { type: string }
+    prompt_truncated: { type: boolean }
+    summary_text: { type: string }
+    summary:
+      type: object
+      additionalProperties: true
+    recap_path: { type: string }
+    recap_bytes: { type: integer, format: int64 }
+
+
+MemoryCorrelateResponse:
+  type: object
+  required: [ok, trace_id, needle, since_utc_ms, until_utc_ms]
+  properties:
+    ok: { type: boolean }
+    trace_id: { $ref: "#/components/schemas/TraceID" }
+    needle:
+      type: string
+      description: Evidence needle used against sources[] (default trace:<trace_id>)
+    since_utc_ms: { type: integer, format: int64 }
+    until_utc_ms: { type: integer, format: int64 }
+    structured_path_filter:
+      type: string
+      description: Echoes the requested `structured_path` filter when provided.
+    key_prefix:
+      type: string
+      description: Echoes the requested `key_prefix` filter when provided.
+    checkpoint:
+      $ref: "#/components/schemas/MemoryCheckpointMeta"
+    entries:
+      type: array
+      items:
+        type: object
+        required: [key, record]
+        properties:
+          key: { type: string }
+          record:
+            type: object
+            additionalProperties: true
+    timeline:
+      type: array
+      items:
+        type: object
+        required: [checkpoint, entries]
+        properties:
+          checkpoint:
+            $ref: "#/components/schemas/MemoryCheckpointMeta"
+          entries:
+            type: array
+            items:
+              type: object
+              required: [key, record]
+              properties:
+                key: { type: string }
+                record:
+                  type: object
+                  additionalProperties: true
+
+
+MemoryQueryResponse:
+  type: object
+  required: [ok, memory_root, since_utc_ms, until_utc_ms, limit, returned, checkpoint, entries]
+  properties:
+    ok: { type: boolean }
+    memory_root: { type: string }
+    since_utc_ms: { type: integer, format: int64 }
+    until_utc_ms: { type: integer, format: int64 }
+    structured_path_filter:
+      type: string
+      description: Echoes the requested `structured_path` filter when provided.
+    key_prefix:
+      type: string
+      description: Echoes the requested `key_prefix` filter when provided.
+    limit:
+      type: integer
+      format: int32
+      description: Max entries requested (after clamping).
+    returned:
+      type: integer
+      format: int32
+      description: Number of entries returned.
+    checkpoint:
+      $ref: "#/components/schemas/MemoryCheckpointMeta"
+    entries:
+      type: array
+      items:
+        type: object
+        required: [key, record]
+        properties:
+          key: { type: string }
+          record:
+            type: object
+            additionalProperties: true

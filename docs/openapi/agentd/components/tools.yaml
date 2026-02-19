@@ -1,0 +1,9 @@
+ToolDef:
+  type: object
+  required: [name, description, parameters]
+  properties:
+    name: { type: string }
+    description: { type: string }
+    parameters:
+      type: object
+      description: JSON Schema-like parameters

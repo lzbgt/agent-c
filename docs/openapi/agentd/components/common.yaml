@@ -1,0 +1,31 @@
+TraceID:
+  type: string
+  description: Correlation identifier (client-provided or server-generated)
+  maxLength: 128
+  pattern: "^[A-Za-z0-9_.:@-]{1,128}$"
+
+
+ErrorResponse:
+  type: object
+  required: [ok, error]
+  properties:
+    ok: { type: boolean, enum: [false] }
+    error: { type: string }
+
+
+CapsResponse:
+  type: object
+  required: [ok, service, version, api_version]
+  properties:
+    ok: { type: boolean }
+    service: { type: string }
+    version: { type: string }
+    api_version: { type: string }
+    now_unix_ms: { type: integer, format: int64 }
+    uptime_ms: { type: integer, format: int64 }
+    features:
+      type: object
+      additionalProperties: true
+    limits:
+      type: object
+      additionalProperties: true

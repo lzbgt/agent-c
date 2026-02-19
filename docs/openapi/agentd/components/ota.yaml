@@ -1,0 +1,52 @@
+OtaUpdateRequest:
+  type: object
+  required: [url]
+  properties:
+    url:
+      type: string
+      description: OTA artifact URL (https/file)
+    sha256:
+      type: string
+      description: Optional sha256 checksum (hex)
+    version:
+      type: string
+      description: Optional version label for audit
+    reason:
+      type: string
+      description: Optional human-readable reason
+    drain_timeout_ms:
+      type: integer
+      format: int64
+      description: Grace window before restart (ms)
+    trace_id:
+      $ref: "#/components/schemas/TraceID"
+
+
+OtaUpdateResponse:
+  type: object
+  required: [ok, ota_id, status]
+  properties:
+    ok: { type: boolean }
+    ota_id: { type: string }
+    status: { type: string }
+    error: { type: string }
+
+
+OtaStatusResponse:
+  type: object
+  required: [ok, status]
+  properties:
+    ok: { type: boolean }
+    status: { type: string }
+    ota_id: { type: string }
+    updated_unix_ms: { type: integer, format: int64 }
+    last_error: { type: string }
+    plan_path: { type: string }
+    drain_active: { type: boolean }
+    drain_until_unix_ms: { type: integer, format: int64 }
+    drain_reason: { type: string }
+    jobs_running: { type: integer, format: int64 }
+    jobs_queued: { type: integer, format: int64 }
+    workflows_running: { type: integer, format: int64 }
+    workflow_tasks_running: { type: integer, format: int64 }
+    workflow_tasks_queued: { type: integer, format: int64 }

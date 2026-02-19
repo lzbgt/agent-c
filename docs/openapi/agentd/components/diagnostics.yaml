@@ -1,0 +1,80 @@
+DiagnosticsResponse:
+  type: object
+  required: [ok, service, version, now_unix_ms, uptime_ms, ready]
+  properties:
+    ok: { type: boolean }
+    service: { type: string }
+    version: { type: string }
+    now_unix_ms: { type: integer, format: int64 }
+    uptime_ms: { type: integer, format: int64 }
+    ready: { type: boolean }
+    checks:
+      type: object
+      additionalProperties: true
+    db:
+      type: object
+      additionalProperties: true
+    jobs:
+      type: object
+      additionalProperties: true
+    workflows:
+      type: object
+      additionalProperties: true
+    warnings:
+      type: array
+      items: { type: string }
+
+
+DiagnosticsProvidersResponse:
+  type: object
+  required: [ok, service, version, now_unix_ms, uptime_ms, providers]
+  properties:
+    ok: { type: boolean }
+    service: { type: string }
+    version: { type: string }
+    now_unix_ms: { type: integer, format: int64 }
+    uptime_ms: { type: integer, format: int64 }
+    providers:
+      type: object
+      additionalProperties: true
+
+
+DiagnosticsProviderTestRequest:
+  type: object
+  required: [provider]
+  properties:
+    provider: { type: string }
+    base_url: { type: string }
+    model: { type: string }
+    prompt: { type: string }
+    expect: { type: string }
+    tools:
+      type: string
+      enum: [none, basic, host]
+    require_tool_call: { type: boolean }
+    timeout_ms: { type: integer, format: int64 }
+    max_steps: { type: integer, format: int64 }
+    max_tool_calls_total: { type: integer, format: int64 }
+    max_tool_calls_per_tool: { type: integer, format: int64 }
+    max_tool_call_args_chars: { type: integer, format: int64 }
+    max_tool_result_chars: { type: integer, format: int64 }
+    max_repeated_tool_calls: { type: integer, format: int64 }
+    include_run: { type: boolean }
+
+
+DiagnosticsProviderTestResponse:
+  type: object
+  required: [ok, provider, base_url, model, duration_ms]
+  properties:
+    ok: { type: boolean }
+    provider: { type: string }
+    base_url: { type: string }
+    model: { type: string }
+    duration_ms: { type: integer, format: int64 }
+    expect: { type: string }
+    assistant_text: { type: string }
+    error: { type: string }
+    http_status: { type: integer, format: int64 }
+    run:
+      type: object
+      additionalProperties: true

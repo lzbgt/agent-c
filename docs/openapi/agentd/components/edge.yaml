@@ -1,0 +1,165 @@
+EdgeMessageEnvelope:
+  type: object
+  required: [msg_id, ts_utc_ms, type, from, to, body]
+  properties:
+    msg_id: { type: string }
+    ts_utc_ms: { type: integer, format: int64 }
+    type: { type: string }
+    from: { type: string }
+    to:
+      description: Destination address or null
+      type: string
+      nullable: true
+    body:
+      type: object
+      additionalProperties: true
+    auth:
+      type: object
+      additionalProperties: true
+    trace:
+      type: object
+      additionalProperties: true
+
+
+EdgeOutboxResponse:
+  type: object
+  required: [ok, node_id, cursor_base, cursor_next, messages]
+  properties:
+    ok: { type: boolean }
+    node_id: { type: string }
+    cursor_base: { type: integer, format: int64 }
+    cursor_next: { type: integer, format: int64 }
+    messages:
+      type: array
+      items:
+        type: object
+        required: [outbox_id, ts_utc_ms]
+        properties:
+          outbox_id: { type: integer, format: int64 }
+          ts_utc_ms: { type: integer, format: int64 }
+          msg:
+            $ref: "#/components/schemas/EdgeMessageEnvelope"
+          msg_raw: { type: string }
+          parse_error: { type: string }
+
+
+EdgeTaskAssignRequest:
+  type: object
+  required: [task_id, step_id, idempotency_key, mode, deadline_utc_ms, payload]
+  properties:
+    trace:
+      type: object
+      description: Optional trace correlation object (best-effort). Recommended field: trace_id.
+      additionalProperties: true
+    node_id:
+      type: string
+      description: Explicit target node_id (preferred when known)
+      maxLength: 128
+      pattern: "^[A-Za-z0-9_.:-]+$"
+    match_any:
+      type: object
+      description: |
+        Capability-based node selection.
+
+        Common keys (best-effort):
+        - `requires_tools` (array of tool names)
+        - `tags_all`, `tags_any`, `tags_none` (arrays of tag strings)
+        - `exclude_node_ids` (array of node_id strings to exclude; useful for distinct-node fan-out)
+      additionalProperties: true
+    allow_hazards:
+      type: array
+      description: Explicitly allowed hazard tags (unsafe; use sparingly)
+      items: { type: string }
+    allow_high_side_effect:
+      type: boolean
+      description: Allow dispatch when tool side_effect_level is high
+    task_id:
+      type: string
+      description: Task identifier (id-safe token)
+      maxLength: 128
+      pattern: "^[A-Za-z0-9_.:-]+$"
+    step_id:
+      type: string
+      description: Step identifier within the task/workflow (id-safe token)
+      maxLength: 128
+      pattern: "^[A-Za-z0-9_.:-]+$"
+    idempotency_key:
+      type: string
+      description: Idempotency token used for platform-side dedupe (id-safe token)
+      maxLength: 128
+      pattern: "^[A-Za-z0-9_.:-]+$"
+    mode:
+      type: string
+      enum: [invoke, agent]
+    deadline_utc_ms: { type: integer, format: int64 }
+    attempt:
+      type: integer
+      format: int32
+      description: Optional attempt number (for workflow orchestration/debug; default 0)
+    payload:
+      type: object
+      description: |
+        Task payload.
+
+        - mode=invoke: requires payload.tool (string) and payload.args (object). When the target node has a stored
+          manifest, payload.args is validated (best-effort) against the tool schema in the node manifest:
+          manifest.tools[].parameters_schema (preferred) or manifest.tools[].parameters (fallback).
+          If the schema specifies additionalProperties:false, unknown keys are rejected.
+        - mode=agent: payload is forwarded to the node/embedded agent_core; platform does not interpret it.
+      additionalProperties: true
+
+
+EdgeRuleUpsertRequest:
+  type: object
+  required: [event_type, action]
+  properties:
+    rule_id:
+      type: string
+      description: Optional; if omitted, server generates one
+    enabled: { type: boolean }
+    event_type: { type: string }
+    min_confidence: { type: number, format: double }
+    cooldown_ms: { type: integer, format: int32 }
+    action:
+      type: object
+      description: |
+        Rule action.
+
+        Supported `type` values:
+        - `task_assign`: enqueue a UM‑BMP `TASK_ASSIGN` (like `POST /api/v1/edge/task/assign`)
+        - `durable_workflow_submit`: submit a durable workflow to the platform workflow engine
+
+        Note: OpenAPI cannot fully express the conditional shape; see server behavior.
+      additionalProperties: true
+
+
+EdgeWorkflowSubmitRequest:
+  type: object
+  required: [steps]
+  properties:
+    workflow_id:
+      type: string
+      description: Optional; if omitted, server generates one
+    goal: { type: string }
+    priority: { type: integer, format: int32 }
+    steps:
+      type: array
+      items:
+        type: object
+        required: [step_id, kind]
+        properties:
+          step_id: { type: string }
+          kind: { type: string, enum: [invoke_tool, run_agent, join] }
+          depends_on:
+            type: array
+            items: { type: string }
+          target:
+            type: object
+            additionalProperties: true
+          payload:
+            type: object
+            additionalProperties: true
+          join_mode: { type: string, enum: [all, any] }
+          deadline_utc_ms: { type: integer, format: int64 }
+          max_attempts: { type: integer, format: int32 }
+          backoff_ms: { type: integer, format: int32 }

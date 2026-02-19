@@ -1,0 +1,351 @@
+AgentdConfigResponse:
+  type: object
+  required: [ok, service, version, daemon, engines, edge_auth, edge_attest]
+  properties:
+    ok: { type: boolean }
+    service: { type: string }
+    version: { type: string }
+    have_jsoncpp: { type: boolean }
+    have_sqlite3: { type: boolean }
+    daemon:
+      type: object
+      additionalProperties: true
+      properties:
+        listen_host: { type: string }
+        listen_port: { type: integer, format: int64 }
+        base_url: { type: string }
+        model: { type: string }
+        summary_model: { type: string, nullable: true }
+        summary_max_chars: { type: integer, format: int64 }
+        timeout_ms: { type: integer, format: int64 }
+        proxy_url_set: { type: boolean }
+        api_key_set: { type: boolean }
+        provider_keys_set:
+          type: object
+          additionalProperties: true
+          properties:
+            deepseek: { type: boolean }
+            openrouter: { type: boolean }
+            moonshot: { type: boolean }
+            openai: { type: boolean }
+        auth_enabled: { type: boolean }
+        allow_unauthenticated_non_loopback: { type: boolean }
+        db_path: { type: string, nullable: true }
+        state_dir: { type: string, nullable: true }
+        sessions_root_dir: { type: string, nullable: true }
+        max_steps_default: { type: integer, format: int64 }
+        max_tool_calls_total_default: { type: integer, format: int64 }
+        max_tool_calls_per_tool_default: { type: integer, format: int64 }
+        max_tool_call_args_chars_default: { type: integer, format: int64 }
+        max_tool_result_chars_default: { type: integer, format: int64 }
+        tool_call_limits_default:
+          type: array
+          items:
+            type: object
+            required: [tool, max_calls]
+            properties:
+              tool: { type: string }
+              max_calls: { type: integer, format: int64 }
+        blob_store:
+          $ref: "#/components/schemas/BlobStoreConfig"
+        blob_tier:
+          $ref: "#/components/schemas/BlobTierConfig"
+    cors:
+      type: object
+      additionalProperties: true
+    sandbox:
+      type: object
+      additionalProperties: true
+    jobs:
+      type: object
+      additionalProperties: true
+    engines:
+      type: object
+      additionalProperties: true
+      properties:
+        workflow_enable_http_tasks: { type: boolean }
+        workflow_http_allow_hosts:
+          type: array
+          items: { type: string }
+        workflow_http_allow_cidrs:
+          type: array
+          items: { type: string }
+        workflow_http_deny_cidrs:
+          type: array
+          items: { type: string }
+        workflow_http_deny_private_addrs: { type: boolean }
+        workflow_http_dns_pin: { type: boolean }
+    edge_auth:
+      type: object
+      additionalProperties: true
+      properties:
+        required: { type: boolean }
+        require_ts: { type: boolean }
+        max_skew_ms: { type: integer, format: int64 }
+        require_seq: { type: boolean }
+        kid_policy: { type: string }
+        hmac_keys_set: { type: integer, format: int64 }
+        ed25519_pubkeys_set: { type: integer, format: int64 }
+    edge_attest:
+      type: object
+      additionalProperties: true
+      properties:
+        required: { type: boolean }
+        require_sig: { type: boolean }
+    memory:
+      type: object
+      additionalProperties: true
+      properties:
+        consolidate_interval_ms: { type: integer, format: int64 }
+        consolidate_daily_days: { type: integer, format: int32 }
+        consolidate_keep_checkpoints: { type: integer, format: int32 }
+        retention_interval_ms: { type: integer, format: int64 }
+        retention_daily_max_days: { type: integer, format: int32 }
+        retention_daily_max_bytes: { type: integer, format: int64 }
+        retention_checkpoint_max_days: { type: integer, format: int32 }
+        retention_checkpoint_max_count: { type: integer, format: int32 }
+        retention_structured_deprecate_days: { type: integer, format: int32 }
+        retention_structured_deprecate_max_entries: { type: integer, format: int32 }
+        salience_daily_days: { type: integer, format: int32 }
+        salience_max_items: { type: integer, format: int32 }
+        salience_structured_max_items: { type: integer, format: int32 }
+        salience_daily_max_items: { type: integer, format: int32 }
+        salience_half_life_days: { type: number, format: double }
+        salience_importance_weight: { type: number, format: double }
+
+
+AgentdConfigUpdateRequest:
+  type: object
+  additionalProperties: false
+  properties:
+    edge_attest_required:
+      type: boolean
+      description: When true, invoke-mode edge TASK_DONE requires `result.attest` with a matching `result_sha256`
+    edge_attest_require_sig:
+      type: boolean
+      description: When true, invoke-mode edge TASK_DONE requires a valid attestation signature
+    edge_auth_required:
+      type: boolean
+      description: When true, `/api/v1/edge/message` requires a valid `envelope.auth` (HMAC/Ed25519 profiles)
+    edge_auth_require_ts:
+      type: boolean
+      description: When true, authenticated envelopes must include `ts_utc_ms` (> 0)
+    edge_auth_max_skew_ms:
+      type: integer
+      format: int64
+      description: Max allowed absolute time skew (ms) for authenticated envelopes; 0 disables
+    edge_auth_require_seq:
+      type: boolean
+      description: When true, authenticated envelopes must include a monotonic `auth.seq` and be strictly increasing per node
+    edge_auth_kid_policy:
+      type: string
+      description: Key selection policy for authenticated node envelopes (any|match_node|node_prefix)
+    edge_auth_hmac_keys:
+      type: object
+      additionalProperties:
+        type: string
+        nullable: true
+      description: Map of `kid` → shared secret for edge envelope auth (null clears that kid)
+    edge_auth_ed25519_pubkeys:
+      type: object
+      additionalProperties:
+        type: string
+        nullable: true
+      description: Map of `kid` → base64(pubkey32) for Ed25519 edge envelope auth (null clears that kid)
+    base_url:
+      type: string
+      description: Default base_url (used for provider inference and some clients)
+    model:
+      type: string
+      description: Default model
+    system_profile:
+      type: string
+      description: Default host system profile (e.g. default, jules_codex)
+    summary_model:
+      type: string
+      nullable: true
+      description: Optional model for compaction summaries (set null to clear)
+    summary_max_chars:
+      type: integer
+      format: int64
+      description: Max chars for inserted summary
+    max_steps_default:
+      type: integer
+      format: int64
+      description: Default max_steps for tool loops
+    max_tool_calls_total_default:
+      type: integer
+      format: int64
+      description: Default max tool calls total for tool loops
+    max_tool_calls_per_tool_default:
+      type: integer
+      format: int64
+      description: Default max tool calls per tool for tool loops
+    max_tool_call_args_chars_default:
+      type: integer
+      format: int64
+      description: Default max tool call args JSON length
+    max_tool_result_chars_default:
+      type: integer
+      format: int64
+      description: Default max tool result chars before prompt reinsertion
+    tool_call_limits_default:
+      type: array
+      description: Default per-tool call limits (replaces the whole list)
+      items:
+        type: object
+        required: [tool, max_calls]
+        properties:
+          tool: { type: string }
+          max_calls: { type: integer, format: int64 }
+    timeout_ms:
+      type: integer
+      format: int64
+      description: Provider HTTP timeout in ms
+    proxy_url:
+      type: string
+      nullable: true
+      description: Optional HTTP proxy override (set null to clear)
+    workflow_admit_max_inflight_tasks_per_session:
+      type: integer
+      format: int32
+      description: Admission control cap (queued|running tasks per session); 0 disables
+    workflow_admit_max_inflight_tasks_total:
+      type: integer
+      format: int32
+      description: Admission control cap (queued|running tasks total); 0 disables
+    workflow_http_allow_hosts:
+      type: array
+      items: { type: string }
+      description: Optional allowlist for workflow outbound HTTP targets (replaces the whole list)
+    workflow_http_allow_cidrs:
+      type: array
+      items: { type: string }
+      description: Optional CIDR allowlist for workflow outbound HTTP targets (replaces the whole list)
+    workflow_http_deny_cidrs:
+      type: array
+      items: { type: string }
+      description: Optional CIDR denylist for workflow outbound HTTP targets (replaces the whole list)
+    workflow_http_deny_private_addrs:
+      type: boolean
+      description: Deny private/loopback/link-local unless explicitly allowed (defense-in-depth)
+    workflow_http_dns_pin:
+      type: boolean
+      description: Pin hostname DNS results per request (defense-in-depth vs DNS rebinding)
+    provider:
+      type: string
+      enum: [deepseek, openrouter, moonshot, openai]
+      description: Provider name for `api_key` (if omitted, inferred from base_url)
+    api_key:
+      type: string
+      description: Provider API key (empty string clears)
+    provider_keys:
+      type: object
+      additionalProperties:
+        type: string
+        nullable: true
+      description: Map of provider name → API key (null clears that provider key). Keys must be one of deepseek|openrouter|moonshot|openai.
+    blob_store:
+      $ref: "#/components/schemas/BlobStoreUpdate"
+    blob_store_secrets:
+      $ref: "#/components/schemas/BlobStoreSecretsUpdate"
+    blob_tier:
+      $ref: "#/components/schemas/BlobTierConfig"
+    memory:
+      type: object
+      additionalProperties: false
+      properties:
+        consolidate_interval_ms: { type: integer, format: int64 }
+        consolidate_daily_days: { type: integer, format: int32 }
+        consolidate_keep_checkpoints: { type: integer, format: int32 }
+        retention_interval_ms: { type: integer, format: int64 }
+        retention_daily_max_days: { type: integer, format: int32 }
+        retention_daily_max_bytes: { type: integer, format: int64 }
+        retention_checkpoint_max_days: { type: integer, format: int32 }
+        retention_checkpoint_max_count: { type: integer, format: int32 }
+        retention_structured_deprecate_days: { type: integer, format: int32 }
+        retention_structured_deprecate_max_entries: { type: integer, format: int32 }
+        salience_daily_days: { type: integer, format: int32 }
+        salience_max_items: { type: integer, format: int32 }
+        salience_structured_max_items: { type: integer, format: int32 }
+        salience_daily_max_items: { type: integer, format: int32 }
+        salience_half_life_days: { type: number, format: double }
+        salience_importance_weight: { type: number, format: double }
+
+
+AgentdConfigUpdateResponse:
+  type: object
+  required: [ok, base_url, model, system_profile, summary_max_chars, timeout_ms, proxy_url_set, provider_keys_set, edge_auth_required, edge_auth_hmac_keys_set, edge_auth_ed25519_pubkeys_set, edge_attest_required, edge_attest_require_sig]
+  properties:
+    ok: { type: boolean }
+    base_url: { type: string }
+    model: { type: string }
+    system_profile: { type: string }
+    summary_model: { type: string, nullable: true }
+    summary_max_chars: { type: integer, format: int64 }
+    timeout_ms: { type: integer, format: int64 }
+    max_steps_default: { type: integer, format: int64 }
+    max_tool_calls_total_default: { type: integer, format: int64 }
+    max_tool_calls_per_tool_default: { type: integer, format: int64 }
+    max_tool_call_args_chars_default: { type: integer, format: int64 }
+    max_tool_result_chars_default: { type: integer, format: int64 }
+    tool_call_limits_default:
+      type: array
+      items:
+        type: object
+        required: [tool, max_calls]
+        properties:
+          tool: { type: string }
+          max_calls: { type: integer, format: int64 }
+    proxy_url_set: { type: boolean }
+    edge_auth_required: { type: boolean }
+    edge_auth_require_ts: { type: boolean }
+    edge_auth_max_skew_ms: { type: integer, format: int64 }
+    edge_auth_require_seq: { type: boolean }
+    edge_auth_kid_policy: { type: string }
+    edge_attest_required: { type: boolean }
+    edge_attest_require_sig: { type: boolean }
+    memory:
+      type: object
+      additionalProperties: true
+      properties:
+        consolidate_interval_ms: { type: integer, format: int64 }
+        consolidate_daily_days: { type: integer, format: int32 }
+        consolidate_keep_checkpoints: { type: integer, format: int32 }
+        retention_interval_ms: { type: integer, format: int64 }
+        retention_daily_max_days: { type: integer, format: int32 }
+        retention_daily_max_bytes: { type: integer, format: int64 }
+        retention_checkpoint_max_days: { type: integer, format: int32 }
+        retention_checkpoint_max_count: { type: integer, format: int32 }
+        retention_structured_deprecate_days: { type: integer, format: int32 }
+        retention_structured_deprecate_max_entries: { type: integer, format: int32 }
+        salience_daily_days: { type: integer, format: int32 }
+        salience_max_items: { type: integer, format: int32 }
+        salience_structured_max_items: { type: integer, format: int32 }
+        salience_daily_max_items: { type: integer, format: int32 }
+        salience_half_life_days: { type: number, format: double }
+        salience_importance_weight: { type: number, format: double }
+    edge_auth_hmac_keys_set:
+      type: integer
+      format: int64
+      description: Number of HMAC keys currently provisioned (secrets are not returned)
+    edge_auth_ed25519_pubkeys_set:
+      type: integer
+      format: int64
+      description: Number of Ed25519 pubkeys currently provisioned (pubkeys are not returned)
+    engines:
+      type: object
+      additionalProperties: true
+      description: Best-effort echo of workflow outbound HTTP policy knobs after update
+    provider_keys_set:
+      type: object
+      additionalProperties: true
+      properties:
+        deepseek: { type: boolean }
+        openrouter: { type: boolean }
+        moonshot: { type: boolean }
+        openai: { type: boolean }
+    blob_store:
+      $ref: "#/components/schemas/BlobStoreConfig"
+    blob_tier:
+      $ref: "#/components/schemas/BlobTierConfig"

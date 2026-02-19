@@ -1,0 +1,1745 @@
+WorkflowTaskSpec:
+  description: |
+    Workflow task specification.
+
+    This is a tagged union:
+    - LLM/tool tasks: `request` (a `RunRequest`) with a non-empty `prompt`
+    - Deterministic capsule tasks: `kind: avm_capsule` with `capsule` (see `AvmCapsuleRunArgs`)
+    - Deterministic aggregation tasks: `kind: aggregate` with `aggregate` (see `WorkflowAggregateSpec`)
+    - Deterministic memory update tasks: `kind: memory_put` with `memory_put` (see `WorkflowMemoryPutSpec`)
+    - Deterministic memory retrieval tasks: `kind: memory_search` with `memory_search` (host tool; no LLM required)
+    - Deterministic memory timeline tasks: `kind: memory_timeline` with `memory_timeline` (host tool; no LLM required)
+    - Deterministic structured memory query tasks: `kind: memory_structured_query` with `memory_structured_query` (host tool; no LLM required)
+    - Deterministic memory correlation tasks: `kind: memory_correlate` with `memory_correlate` (scans structured memory checkpoints; no LLM required)
+    - Deterministic memory query tasks: `kind: memory_query` with `memory_query` (reads newest structured checkpoint; no LLM required)
+    - Deterministic outbound HTTP JSON tasks: `kind: http_json` with `http_json` (gated by daemon flag; no LLM required)
+    - Deterministic agent collaboration tasks: `kind: agentd_call` with `agentd_call` (gated by daemon flag; no LLM required)
+    - Parallel agent collaboration macro: `kind: agentd_parallel` with `agentd_parallel` (submit-time expansion into parallel `agentd_call` tasks + an aggregate join; configurable)
+    - Deterministic memory consolidation tasks: `kind: memory_consolidate` with `memory_consolidate` (see `WorkflowMemoryConsolidateSpec`)
+    - Deterministic delay tasks: `kind: delay` with `delay_ms` (no LLM required)
+    - Edge collaboration tasks: `kind: edge_invoke` with `edge` (see `WorkflowEdgeInvokeSpec`)
+    - Parallel edge fan-out macro: `kind: edge_parallel` with `edge_parallel` (submit-time expansion into `edge_invoke` tasks + an aggregate join; configurable)
+    - Deterministic edge sensor wait: `kind: edge_wait_sensor` with `edge_wait_sensor` (polls edge sensor event log; retryable)
+    - Sequential fallback collaboration: `kind: delegate` with `delegate` (see `WorkflowDelegateSpec`)
+    - Parallel collaboration macro: `kind: delegate_parallel` with `delegate` (submit-time expansion into tasks + aggregate join; configurable)
+
+    Note: OpenAPI cannot express conditional required fields perfectly; see the server-side behavior:
+    - If `kind == avm_capsule`, `capsule.obc_base64` is required and `request.prompt` is not used.
+    - If `kind == aggregate`, `aggregate.task_ids` is required and `request.prompt` is not used.
+    - If `kind == memory_put`, `memory_put.entries` is required and `request.prompt` is not used.
+    - If `kind == memory_search`, `memory_search.query` is required and `request.prompt` is not used.
+    - If `kind == memory_timeline`, `memory_timeline` is required and `request.prompt` is not used.
+    - If `kind == memory_structured_query`, `memory_structured_query` is required and `request.prompt` is not used.
+    - If `kind == memory_correlate`, `memory_correlate` is required and `request.prompt` is not used.
+    - If `kind == memory_query`, `memory_query` is required and `request.prompt` is not used.
+    - If `kind == http_json`, `http_json` is required and `request.prompt` is not used.
+    - If `kind == agentd_call`, `agentd_call` is required and `request.prompt` is not used.
+    - If `kind == agentd_parallel`, `agentd_parallel.targets` and `agentd_parallel.agentd_call` are required and `request.prompt` is not used (expanded into multiple tasks).
+    - If `kind == memory_consolidate`, `memory_consolidate` is optional and `request.prompt` is not used.
+    - If `kind == delay`, `delay_ms` is optional (default 0) and `request.prompt` is not used.
+    - If `kind == edge_invoke`, `edge.tool`/`edge.args` are required and `request.prompt` is not used.
+    - If `kind == edge_parallel`, `edge_parallel.edge.match_any` is required and `edge_parallel.edge.node_id` must be omitted; `edge.tool`/`edge.args` are required and `request.prompt` is not used (expanded into multiple tasks).
+    - If `kind == edge_wait_sensor`, `edge_wait_sensor.event_type` is required and `request.prompt` is not used.
+    - If `kind == delegate`, `delegate.attempts` is required and `request.prompt` is not used.
+    - If `kind == delegate_parallel`, `delegate.attempts` is required and `request.prompt` is not used (expanded into multiple tasks).
+    - Otherwise, `request.prompt` is required (or prompt at the top-level is accepted by the server for legacy reasons).
+  oneOf:
+    - $ref: "#/components/schemas/WorkflowTaskRunSpec"
+    - $ref: "#/components/schemas/WorkflowTaskAvmCapsuleSpec"
+    - $ref: "#/components/schemas/WorkflowTaskAggregateSpec"
+    - $ref: "#/components/schemas/WorkflowTaskMemoryPutSpec"
+    - $ref: "#/components/schemas/WorkflowTaskMemorySearchSpec"
+    - $ref: "#/components/schemas/WorkflowTaskMemoryTimelineSpec"
+    - $ref: "#/components/schemas/WorkflowTaskMemoryStructuredQuerySpec"
+    - $ref: "#/components/schemas/WorkflowTaskMemoryCorrelateSpec"
+    - $ref: "#/components/schemas/WorkflowTaskMemoryQuerySpec"
+    - $ref: "#/components/schemas/WorkflowTaskHttpJsonSpec"
+    - $ref: "#/components/schemas/WorkflowTaskAgentdCallSpec"
+    - $ref: "#/components/schemas/WorkflowTaskAgentdParallelSpec"
+    - $ref: "#/components/schemas/WorkflowTaskMemoryConsolidateSpec"
+    - $ref: "#/components/schemas/WorkflowTaskDelaySpec"
+    - $ref: "#/components/schemas/WorkflowTaskEdgeInvokeSpec"
+    - $ref: "#/components/schemas/WorkflowTaskEdgeParallelSpec"
+    - $ref: "#/components/schemas/WorkflowTaskEdgeWaitSensorSpec"
+    - $ref: "#/components/schemas/WorkflowTaskDelegateSpec"
+
+
+WorkflowTaskRunSpec:
+  type: object
+  required: [task_id, request]
+  properties:
+    task_id: { type: string }
+    allow_error:
+      type: boolean
+      description: If true, task failure does not fail the workflow (soft-fail).
+    inputs:
+      type: object
+      description: Optional per-task inputs (overrides workflow-level inputs).
+      additionalProperties: true
+    depends_on:
+      type: array
+      items: { type: string }
+    max_attempts: { type: integer, format: int32 }
+    priority:
+      type: integer
+      format: int32
+      description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+    request:
+      $ref: "#/components/schemas/RunRequest"
+    expect:
+      type: object
+      description: Deterministic correctness assertions (engine-enforced)
+      additionalProperties: true
+
+
+WorkflowTaskAvmCapsuleSpec:
+  type: object
+  required: [task_id, kind, capsule]
+  properties:
+    task_id: { type: string }
+    allow_error:
+      type: boolean
+      description: If true, task failure does not fail the workflow (soft-fail).
+    inputs:
+      type: object
+      description: Optional per-task inputs (overrides workflow-level inputs).
+      additionalProperties: true
+    kind:
+      type: string
+      enum: [avm_capsule]
+      description: Deterministic capsule execution task (no LLM required).
+    depends_on:
+      type: array
+      items: { type: string }
+    max_attempts: { type: integer, format: int32 }
+    priority:
+      type: integer
+      format: int32
+      description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+    capsule:
+      $ref: "#/components/schemas/AvmCapsuleRunArgs"
+    expect:
+      type: object
+      description: Deterministic correctness assertions (engine-enforced)
+      additionalProperties: true
+
+
+WorkflowTaskAggregateSpec:
+  type: object
+  required: [task_id, kind, aggregate]
+  properties:
+    task_id: { type: string }
+    allow_error:
+      type: boolean
+      description: If true, task failure does not fail the workflow (soft-fail).
+    inputs:
+      type: object
+      description: Optional per-task inputs (overrides workflow-level inputs).
+      additionalProperties: true
+    kind:
+      type: string
+      enum: [aggregate]
+      description: Deterministic aggregation/join task (no LLM required).
+    depends_on:
+      type: array
+      items: { type: string }
+    max_attempts: { type: integer, format: int32 }
+    priority:
+      type: integer
+      format: int32
+      description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+    aggregate:
+      $ref: "#/components/schemas/WorkflowAggregateSpec"
+    expect:
+      type: object
+      description: Deterministic correctness assertions (engine-enforced)
+      additionalProperties: true
+
+
+WorkflowTaskMemoryPutSpec:
+  type: object
+  required: [task_id, kind, memory_put]
+  properties:
+    task_id: { type: string }
+    allow_error:
+      type: boolean
+      description: If true, task failure does not fail the workflow (soft-fail).
+    inputs:
+      type: object
+      description: Optional per-task inputs (overrides workflow-level inputs).
+      additionalProperties: true
+    kind:
+      type: string
+      enum: [memory_put]
+      description: Deterministic structured memory upsert task (no LLM required; executes host tool memory_put).
+    depends_on:
+      type: array
+      items: { type: string }
+    max_attempts: { type: integer, format: int32 }
+    priority:
+      type: integer
+      format: int32
+      description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+    memory_put:
+      $ref: "#/components/schemas/WorkflowMemoryPutSpec"
+    expect:
+      type: object
+      description: Deterministic correctness assertions (engine-enforced)
+      additionalProperties: true
+
+
+WorkflowTaskMemorySearchSpec:
+  type: object
+  required: [task_id, kind, memory_search]
+  properties:
+    task_id: { type: string }
+    allow_error:
+      type: boolean
+      description: If true, task failure does not fail the workflow (soft-fail).
+    inputs:
+      type: object
+      description: Optional per-task inputs (overrides workflow-level inputs).
+      additionalProperties: true
+    kind:
+      type: string
+      enum: [memory_search]
+      description: Deterministic memory retrieval via host tool `memory_search` (no LLM required).
+    depends_on:
+      type: array
+      items: { type: string }
+    max_attempts: { type: integer, format: int32 }
+    priority:
+      type: integer
+      format: int32
+      description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+    memory_search:
+      $ref: "#/components/schemas/WorkflowMemorySearchSpec"
+    expect:
+      type: object
+      description: Deterministic correctness assertions (engine-enforced)
+      additionalProperties: true
+
+
+WorkflowTaskMemoryTimelineSpec:
+  type: object
+  required: [task_id, kind, memory_timeline]
+  properties:
+    task_id: { type: string }
+    allow_error:
+      type: boolean
+      description: If true, task failure does not fail the workflow (soft-fail).
+    inputs:
+      type: object
+      description: Optional per-task inputs (overrides workflow-level inputs).
+      additionalProperties: true
+    kind:
+      type: string
+      enum: [memory_timeline]
+      description: Deterministic memory timeline lookup via host tool `memory_timeline` (no LLM required).
+    depends_on:
+      type: array
+      items: { type: string }
+    max_attempts: { type: integer, format: int32 }
+    priority:
+      type: integer
+      format: int32
+      description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+    memory_timeline:
+      $ref: "#/components/schemas/WorkflowMemoryTimelineSpec"
+    expect:
+      type: object
+      description: Deterministic correctness assertions (engine-enforced)
+      additionalProperties: true
+
+
+WorkflowTaskMemoryStructuredQuerySpec:
+  type: object
+  required: [task_id, kind, memory_structured_query]
+  properties:
+    task_id: { type: string }
+    allow_error:
+      type: boolean
+      description: If true, task failure does not fail the workflow (soft-fail).
+    inputs:
+      type: object
+      description: Optional per-task inputs (overrides workflow-level inputs).
+      additionalProperties: true
+    kind:
+      type: string
+      enum: [memory_structured_query]
+      description: Deterministic structured memory query via host tool `memory_structured_query` (no LLM required).
+    depends_on:
+      type: array
+      items: { type: string }
+    max_attempts: { type: integer, format: int32 }
+    priority:
+      type: integer
+      format: int32
+      description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+    memory_structured_query:
+      $ref: "#/components/schemas/WorkflowMemoryStructuredQuerySpec"
+    expect:
+      type: object
+      description: Deterministic correctness assertions (engine-enforced)
+      additionalProperties: true
+
+
+WorkflowTaskMemoryCorrelateSpec:
+  type: object
+  required: [task_id, kind, memory_correlate]
+  properties:
+    task_id: { type: string }
+    allow_error:
+      type: boolean
+      description: If true, task failure does not fail the workflow (soft-fail).
+    inputs:
+      type: object
+      description: Optional per-task inputs (overrides workflow-level inputs).
+      additionalProperties: true
+    kind:
+      type: string
+      enum: [memory_correlate]
+      description: Deterministic memory correlation query over structured checkpoints (no LLM required).
+    depends_on:
+      type: array
+      items: { type: string }
+    max_attempts: { type: integer, format: int32 }
+    priority:
+      type: integer
+      format: int32
+      description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+    memory_correlate:
+      $ref: "#/components/schemas/WorkflowMemoryCorrelateSpec"
+    expect:
+      type: object
+      description: Deterministic correctness assertions (engine-enforced)
+      additionalProperties: true
+
+
+WorkflowTaskMemoryQuerySpec:
+  type: object
+  required: [task_id, kind, memory_query]
+  properties:
+    task_id: { type: string }
+    allow_error:
+      type: boolean
+      description: If true, task failure does not fail the workflow (soft-fail).
+    inputs:
+      type: object
+      description: Optional per-task inputs (overrides workflow-level inputs).
+      additionalProperties: true
+    kind:
+      type: string
+      enum: [memory_query]
+      description: Deterministic structured memory query over checkpoints (no LLM required).
+    depends_on:
+      type: array
+      items: { type: string }
+    max_attempts: { type: integer, format: int32 }
+    priority:
+      type: integer
+      format: int32
+      description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+    memory_query:
+      $ref: "#/components/schemas/WorkflowMemoryQuerySpec"
+    expect:
+      type: object
+      description: Deterministic correctness assertions (engine-enforced)
+      additionalProperties: true
+
+
+WorkflowMemorySearchSpec:
+  type: object
+  required: [query]
+  description: |
+    Memory search configuration for `kind:memory_search`.
+
+    This maps to the host tool `memory_search` (see `cli/src/toolset_host_memory.cpp`).
+  properties:
+    query:
+      type: string
+      description: Required search string.
+    max_results:
+      type: integer
+      format: int32
+      description: Max hits to return (default 20).
+    daily_days:
+      type: integer
+      format: int32
+      description: Number of daily memory files to scan (default 14; 0 means core-only).
+    case_sensitive:
+      type: boolean
+      description: Case sensitive substring match (default false; disables FTS5 index usage).
+    context_lines:
+      type: integer
+      format: int32
+      description: Snippet context lines around matches in substr mode (default 2).
+    max_snippet_chars:
+      type: integer
+      format: int32
+      description: Snippet size cap in characters (default 600).
+    use_index:
+      type: boolean
+      description: Use ranked FTS5 index when available (default true; only when case_sensitive=false).
+    order:
+      type: string
+      description: Result ordering (ranked | newest | oldest; default ranked). Timeline ordering only affects daily entries.
+      enum: [ranked, newest, oldest]
+
+
+WorkflowMemoryTimelineSpec:
+  type: object
+  description: |
+    Memory timeline configuration for `kind:memory_timeline`.
+
+    This maps to the host tool `memory_timeline` (see `cli/src/toolset_host_memory.cpp`).
+
+    Provide either `citation` (`path:line`) or explicit `path` + `line`.
+  properties:
+    citation:
+      type: string
+      description: Citation string in the form `path:line` (preferred when derived from memory_search).
+    path:
+      type: string
+      description: Relative memory Markdown path under the daemon memory directory.
+    line:
+      type: integer
+      format: int32
+      description: 1-based line number within the referenced memory file.
+    context_lines:
+      type: integer
+      format: int32
+      description: Context lines to include around the cited line (default 3; clamped 0-50).
+    max_chars:
+      type: integer
+      format: int32
+      description: Max characters returned in `text` (default 2000; clamped 200-10000).
+
+
+WorkflowMemoryStructuredQuerySpec:
+  type: object
+  description: |
+    Structured memory query configuration for `kind:memory_structured_query`.
+
+    This maps to the host tool `memory_structured_query` (see `cli/src/toolset_host_memory.cpp`).
+
+    Note: the server requires at least one filter (`key`, `key_prefix`, non-empty `kinds[]`, or `source_contains`) to avoid accidental full dumps.
+  properties:
+    path:
+      type: string
+      description: Relative memory Markdown path under the daemon memory directory (default `STRUCTURED.md`).
+    key:
+      type: string
+      description: Exact record key to fetch (optional).
+    key_prefix:
+      type: string
+      description: Prefix filter for record keys (optional).
+    key_case_insensitive:
+      type: boolean
+      description: If true, key/prefix matching is case-insensitive (default false).
+    source_contains:
+      type: string
+      description: Optional substring filter applied to record `sources[]` (e.g. trace/workflow/session correlation).
+    source_case_insensitive:
+      type: boolean
+      description: If true, source_contains matching is case-insensitive (default false).
+    updated_since_utc:
+      type: string
+      description: Optional lower bound on record updated_utc (ISO UTC like 2026-02-05T00:00:00Z).
+    updated_until_utc:
+      type: string
+      description: Optional upper bound on record updated_utc (ISO UTC like 2026-02-05T23:59:59Z).
+    order_by:
+      type: string
+      description: Sort order: key_asc (default) or updated_desc.
+    kinds:
+      type: array
+      description: Optional kinds filter (e.g. `["fact"]`, `["preference"]`, `["task"]`).
+      items: { type: string }
+    status:
+      type: string
+      description: Status filter (default `active`). Use `any` to include deprecated.
+    include_sources:
+      type: boolean
+      description: Include `sources[]` in returned records (default true).
+    include_versions:
+      type: boolean
+      description: Include `versions[]` history in returned records (default false).
+    limit:
+      type: integer
+      format: int32
+      description: Max records to return (default 50; max 200).
+
+
+WorkflowMemoryCorrelateSpec:
+  type: object
+  description: |
+    Deterministic memory correlation configuration for `kind:memory_correlate`.
+
+    The engine scans rolling structured checkpoints under `memory/checkpoints/structured_*.json` and returns
+    entries whose `record.sources[]` contains a substring `trace:<trace_id>`.
+  properties:
+    trace_id:
+      type: string
+      description: If omitted, the engine uses the workflow trace_id.
+    since_utc_ms:
+      type: integer
+      format: int64
+      description: Lower bound on checkpoint timestamp in UTC milliseconds (inclusive; default 0).
+    until_utc_ms:
+      type: integer
+      format: int64
+      description: Upper bound on checkpoint timestamp in UTC milliseconds (inclusive; default max int64).
+    max_entries:
+      type: integer
+      format: int32
+      description: Max entries to return per checkpoint (default 50; clamped 1..500).
+    timeline:
+      type: boolean
+      description: If true, returns multiple checkpoints (up to 50) instead of only the newest in-window checkpoint.
+
+
+WorkflowMemoryQuerySpec:
+  type: object
+  description: |
+    Deterministic structured memory query configuration for `kind:memory_query`.
+
+    The engine reads the newest structured checkpoint under `memory/checkpoints/structured_*.json`
+    in a bounded time window and returns keys filtered by optional `key_prefix`.
+  properties:
+    since_utc_ms:
+      type: integer
+      format: int64
+      description: Lower bound on checkpoint timestamp in UTC milliseconds (inclusive; default 0).
+    until_utc_ms:
+      type: integer
+      format: int64
+      description: Upper bound on checkpoint timestamp in UTC milliseconds (inclusive; default max int64).
+    structured_path:
+      type: string
+      description: Optional structured file path filter (e.g. `STRUCTURED.md`).
+    key_prefix:
+      type: string
+      description: Optional prefix filter (e.g. `wf.`).
+    limit:
+      type: integer
+      format: int32
+      description: Max entries to return (default 50; clamped 1..1000).
+
+
+WorkflowTaskHttpJsonSpec:
+  type: object
+  required: [task_id, kind, http_json]
+  properties:
+    task_id: { type: string }
+    allow_error:
+      type: boolean
+      description: If true, task failure does not fail the workflow (soft-fail).
+    inputs:
+      type: object
+      description: Optional per-task inputs (overrides workflow-level inputs).
+      additionalProperties: true
+    kind:
+      type: string
+      enum: [http_json]
+      description: Deterministic outbound HTTP JSON call (no LLM required; gated by daemon flag `--workflow-enable-http-tasks`).
+    depends_on:
+      type: array
+      items: { type: string }
+    max_attempts: { type: integer, format: int32 }
+    priority:
+      type: integer
+      format: int32
+      description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+    http_json:
+      $ref: "#/components/schemas/WorkflowHttpJsonSpec"
+    expect:
+      type: object
+      description: Deterministic correctness assertions (engine-enforced)
+      additionalProperties: true
+
+
+WorkflowHttpJsonSpec:
+  type: object
+  required: [url]
+  description: |
+    Outbound HTTP JSON configuration for `kind:http_json` workflow tasks.
+
+    Result note:
+    - When response JSON parsing succeeds, the engine emits a best-effort deterministic hash token under `http.response_sha256`
+      (canonical JSON hash, algorithm `agent_json_c14n_v1`) for quorum/correlation.
+
+    Security:
+    - Disabled by default. Operator must start agentd with `--workflow-enable-http-tasks` (SSRF risk).
+    - Optional hardening: restrict outbound targets with `--workflow-http-allow-host <host[:port]>` (repeatable), or env `AGENTD_WORKFLOW_HTTP_ALLOW_HOSTS=...`.
+    - Further hardening: `--workflow-http-allow-cidr <cidr>` / `AGENTD_WORKFLOW_HTTP_ALLOW_CIDRS=...`, and `--workflow-http-deny-private` / `AGENTD_WORKFLOW_HTTP_DENY_PRIVATE=1`.
+    - Do not persist secret headers (like `Authorization`) inside workflow specs. Prefer `bearer_env`.
+  properties:
+    url:
+      type: string
+      description: Required URL (must start with http:// or https://).
+    method:
+      type: string
+      enum: [GET, POST]
+      description: HTTP method (default POST).
+    headers:
+      type: object
+      description: Optional extra request headers (string values only). `Authorization` is not allowed.
+      additionalProperties:
+        type: string
+    bearer_env:
+      type: string
+      description: Optional env var name containing a Bearer token (runtime adds Authorization header; the secret value is not persisted).
+    body:
+      description: Optional JSON request body (any JSON value). Must be omitted for method=GET.
+      nullable: true
+    timeout_ms:
+      type: integer
+      format: int64
+      description: Request timeout in milliseconds (default 30000; clamp 1..300000).
+    max_bytes:
+      type: integer
+      format: int64
+      description: Max response bytes to capture (default 1048576; clamp 1024..16777216).
+
+
+WorkflowTaskAgentdCallSpec:
+  type: object
+  required: [task_id, kind, agentd_call]
+  properties:
+    task_id: { type: string }
+    allow_error:
+      type: boolean
+      description: If true, task failure does not fail the workflow (soft-fail).
+    inputs:
+      type: object
+      description: Optional per-task inputs (overrides workflow-level inputs).
+      additionalProperties: true
+    kind:
+      type: string
+      enum: [agentd_call]
+      description: Deterministic agent-to-agent collaboration call (no LLM required; gated by daemon flag `--workflow-enable-http-tasks`).
+    depends_on:
+      type: array
+      items: { type: string }
+    max_attempts: { type: integer, format: int32 }
+    priority:
+      type: integer
+      format: int32
+      description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+    agentd_call:
+      $ref: "#/components/schemas/WorkflowAgentdCallSpec"
+    expect:
+      type: object
+      description: Deterministic correctness assertions (engine-enforced)
+      additionalProperties: true
+
+
+WorkflowAgentdCallSpec:
+  type: object
+  required: [workflow]
+  description: |
+    Deterministic agent-to-agent collaboration configuration for `kind:agentd_call`.
+
+    Operation:
+    - submits a workflow to `POST <base_url>/api/v1/workflow/submit`
+    - polls `GET <base_url>/api/v1/workflow?workflow_id=...` until terminal status
+    - computes best-effort deterministic hash tokens for quorum/correlation:
+      - `agentd.result_sha256`: canonical hash of a stable projection of terminal `final.result` (preferred stable surface)
+        - `agentd.result_sha256_schema=agentd_call_result_stable_v1` (defines which ephemeral fields are pruned before hashing)
+      - `agentd.final_sha256`: canonical hash of the full terminal workflow JSON (audit/debug; includes workflow_id/timestamps)
+      (algorithm `agent_json_c14n_v1`).
+
+    Broker compatibility:
+    - `base_url` may also be a broker proxy prefix like `https://<broker>/v1/agents/<agent_id>/proxy` (see `docs/BROKER.md`).
+      In that case, agentd endpoints are reached under the proxy prefix (e.g. `.../proxy/api/v1/workflow/submit`).
+    - Alternatively, omit `base_url` and set `broker_proxy:{broker_base_url,agent_id}` to have the server compute/persist the proxy prefix.
+    - Broker endpoints typically require `Authorization: Bearer <OIDC_JWT>`; use `bearer_env` so secrets are not persisted.
+
+    Security:
+    - Disabled by default (SSRF risk). Operator must start agentd with `--workflow-enable-http-tasks`.
+    - Optional hardening: restrict outbound targets with `--workflow-http-allow-host <host[:port]>` (repeatable), or env `AGENTD_WORKFLOW_HTTP_ALLOW_HOSTS=...`.
+    - Further hardening: `--workflow-http-allow-cidr <cidr>` / `AGENTD_WORKFLOW_HTTP_ALLOW_CIDRS=...`, and `--workflow-http-deny-private` / `AGENTD_WORKFLOW_HTTP_DENY_PRIVATE=1`.
+    - Do not persist secret headers. `Authorization` is rejected; use `bearer_env`.
+  properties:
+    base_url:
+      type: string
+      description: Required base URL (must start with http:// or https://) unless `broker_proxy` is provided.
+    broker_proxy:
+      $ref: "#/components/schemas/WorkflowAgentdBrokerProxySpec"
+    op:
+      type: string
+      enum: [workflow_submit_and_wait]
+      description: Operation (default workflow_submit_and_wait).
+    workflow:
+      type: object
+      description: The request body sent to the remote `POST /api/v1/workflow/submit`.
+      additionalProperties: true
+    headers:
+      type: object
+      description: Optional extra request headers (string values only). `Authorization` is not allowed.
+      additionalProperties:
+        type: string
+    bearer_env:
+      type: string
+      description: Optional env var name containing a Bearer token (runtime adds Authorization header; the secret value is not persisted).
+    timeout_ms:
+      type: integer
+      format: int64
+      description: Attempt timeout in milliseconds (default 30000; clamp 1..300000).
+    poll_ms:
+      type: integer
+      format: int64
+      description: Poll sleep interval in milliseconds (default 50; clamp 10..1000).
+    max_bytes:
+      type: integer
+      format: int64
+      description: Max response bytes to capture per HTTP call (default 1048576; clamp 1024..16777216).
+    include_tasks:
+      type: boolean
+      description: If true, remote poll requests include `include_tasks=1` (default false).
+    include_results:
+      type: boolean
+      description: If true, remote poll requests include `include_results=1` (default true).
+
+
+WorkflowAgentdBrokerProxySpec:
+  type: object
+  required: [broker_base_url, agent_id]
+  description: |
+    Broker-proxy addressing mode for agent collaboration tasks.
+
+    If set (and `base_url` is omitted), the server computes and persists:
+    - `base_url = <broker_base_url>/v1/agents/<agent_id>/proxy`
+  properties:
+    broker_base_url:
+      type: string
+      description: Broker base URL (must start with http:// or https://).
+    agent_id:
+      type: string
+      description: Target agent id (id-safe; used in the proxy path).
+
+
+WorkflowTaskAgentdParallelSpec:
+  type: object
+  required: [task_id, kind, agentd_parallel]
+  properties:
+    task_id: { type: string }
+    allow_error:
+      type: boolean
+      description: If true, task failure does not fail the workflow (soft-fail).
+    inputs:
+      type: object
+      description: Optional per-task inputs (overrides workflow-level inputs).
+      additionalProperties: true
+    kind:
+      type: string
+      enum: [agentd_parallel]
+      description: |
+        Submit-time collaboration macro expanded into parallel `agentd_call` tasks + an aggregate join.
+
+        This is scheduler-visible fan-out: each derived task participates in budgets/fairness and is joined deterministically.
+    depends_on:
+      type: array
+      items: { type: string }
+    max_attempts: { type: integer, format: int32 }
+    priority:
+      type: integer
+      format: int32
+      description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+    agentd_parallel:
+      $ref: "#/components/schemas/WorkflowAgentdParallelSpec"
+    expect:
+      type: object
+      description: Deterministic correctness assertions (engine-enforced)
+      additionalProperties: true
+
+
+WorkflowAgentdParallelSpec:
+  type: object
+  required: [targets, agentd_call]
+  description: |
+    Agent collaboration fan-out configuration for `kind:agentd_parallel`.
+
+    Expansion:
+    - Creates one derived task per target: `kind:agentd_call` with task_id `<task_id>:<target_id>`.
+    - Creates an `aggregate` join task at the original `<task_id>`.
+
+    Notes:
+    - The server overwrites `aggregate.task_ids` to match the derived tasks.
+    - `agentd_call.base_url` must be omitted; each target provides a base_url.
+    - For `aggregate.mode=quorum_hashes`, when `aggregate.node_pointer` is omitted the server defaults it to `/agentd/base_url`
+      so `require_distinct_nodes=true` counts distinct remote agent targets correctly.
+    - For `aggregate.mode=quorum_hashes`, when `aggregate.pointers` is omitted the server defaults it to [`/agentd/result_sha256`].
+  properties:
+    targets:
+      type: array
+      description: Collaboration target list (1..32). Each entry is either a base_url string or an object.
+      items:
+        oneOf:
+          - type: string
+            description: Target base_url (id defaults to `t0`, `t1`, ...).
+          - $ref: "#/components/schemas/WorkflowAgentdParallelTargetSpec"
+    agentd_call:
+      type: object
+      description: |
+        Base `agentd_call` configuration applied to every target (except base_url).
+
+        This is the same shape as `WorkflowAgentdCallSpec`, but `base_url` must be omitted.
+      additionalProperties: true
+    aggregate:
+      $ref: "#/components/schemas/WorkflowAggregateSpec"
+
+
+WorkflowAgentdParallelTargetSpec:
+  type: object
+  description: |
+    Agentd collaboration target.
+
+    Either:
+    - set `base_url`, or
+    - set `broker_proxy` (server computes `base_url` as `.../v1/agents/<agent_id>/proxy`).
+  properties:
+    id:
+      type: string
+      description: Optional id-safe target id (used in derived task ids). Default `t0`, `t1`, ...
+    base_url:
+      type: string
+      description: Target base_url for the agentd (must start with http:// or https://) unless `broker_proxy` is provided.
+    broker_proxy:
+      $ref: "#/components/schemas/WorkflowAgentdBrokerProxySpec"
+    allow_error:
+      type: boolean
+      description: If true (default), a failing branch does not fail the overall workflow (join decides).
+    max_attempts:
+      type: integer
+      format: int32
+      description: Optional override of derived task max_attempts for this target.
+    expect:
+      type: object
+      description: Optional deterministic expectations for the derived `agentd_call` task for this target.
+      additionalProperties: true
+
+
+WorkflowTaskMemoryConsolidateSpec:
+  type: object
+  required: [task_id, kind]
+  properties:
+    task_id: { type: string }
+    allow_error:
+      type: boolean
+      description: If true, task failure does not fail the workflow (soft-fail).
+    inputs:
+      type: object
+      description: Optional per-task inputs (overrides workflow-level inputs).
+      additionalProperties: true
+    kind:
+      type: string
+      enum: [memory_consolidate]
+      description: Deterministic memory consolidation task (no LLM required; scans @mem markers into structured memory).
+    depends_on:
+      type: array
+      items: { type: string }
+    max_attempts: { type: integer, format: int32 }
+    priority:
+      type: integer
+      format: int32
+      description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+    memory_consolidate:
+      $ref: "#/components/schemas/WorkflowMemoryConsolidateSpec"
+    expect:
+      type: object
+      description: Deterministic correctness assertions (engine-enforced)
+      additionalProperties: true
+
+
+WorkflowTaskDelaySpec:
+  type: object
+  required: [task_id, kind]
+  properties:
+    task_id: { type: string }
+    allow_error:
+      type: boolean
+      description: If true, task failure does not fail the workflow (soft-fail).
+    inputs:
+      type: object
+      description: Optional per-task inputs (overrides workflow-level inputs).
+      additionalProperties: true
+    kind:
+      type: string
+      enum: [delay]
+      description: Deterministic delay task (no LLM required).
+    depends_on:
+      type: array
+      items: { type: string }
+    max_attempts: { type: integer, format: int32 }
+    priority:
+      type: integer
+      format: int32
+      description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+    delay_ms:
+      type: integer
+      format: int64
+      description: Delay duration in milliseconds (clamped to 0..600000; default 0).
+    result:
+      type: object
+      description: Optional object merged into the deterministic output (must be an object if provided).
+      additionalProperties: true
+    expect:
+      type: object
+      description: Deterministic correctness assertions (engine-enforced)
+      additionalProperties: true
+
+
+WorkflowMemoryPutSpec:
+  type: object
+  required: [entries]
+  properties:
+    path:
+      type: string
+      description: Safe relative `.md` path under the memory root (default `STRUCTURED.md`).
+    checkpoint:
+      type: boolean
+      description: When true, emit rolling structured checkpoints under `memory/checkpoints/` (default true).
+    keep_checkpoints:
+      type: integer
+      format: int32
+      description: Best-effort pruning limit for checkpoints (default 100).
+    entries:
+      type: array
+      minItems: 1
+      description: Structured upsert entries (deterministic; key + value required).
+      items:
+        type: object
+        required: [key, value]
+        properties:
+          key:
+            type: string
+            description: Structured memory key (string; last write wins for value changes).
+          kind:
+            type: string
+            description: Record kind (default `fact`).
+          value:
+            type: string
+            description: Record value.
+          status:
+            type: string
+            description: Record status (default `active`).
+          source:
+            type: string
+            description: Evidence string. If omitted, the server injects workflow correlation (workflow/task/trace).
+
+
+WorkflowMemoryConsolidateSpec:
+  type: object
+  description: |
+    Deterministic memory consolidation options.
+
+    Scans recent daily memory files for explicit `@mem` markers, then promotes them into structured memory
+    (`memory/STRUCTURED.md`) via host tool `memory_put(entries=[...])`.
+  properties:
+    daily_days:
+      type: integer
+      format: int32
+      description: Number of daily memory files (days) to scan (default from daemon config; clamped >=0).
+    keep_checkpoints:
+      type: integer
+      format: int32
+      description: Checkpoint pruning limit when writing structured memory (default from daemon config; clamped >=1).
+    max_entries:
+      type: integer
+      format: int32
+      description: Maximum distinct keys to promote (default 256; clamped >=1).
+    dry_run:
+      type: boolean
+      description: When true, scan and report but do not write structured memory (default false).
+
+
+WorkflowAggregateSpec:
+  type: object
+  required: [task_ids]
+  properties:
+    mode:
+      type: string
+      enum: [quorum_hashes, collect, first_ok, quorum_ok, strict_all_ok, best_of_n]
+      description: Aggregation strategy.
+    task_ids:
+      type: array
+      description: Task IDs to read results from (votes).
+      items: { type: string }
+    quorum:
+      type: integer
+      format: int32
+      description: |
+        - For mode=quorum_hashes, minimum number of matching votes required (default: N=task_ids length).
+        - For mode=quorum_ok, minimum number of ok tasks required (default: N=task_ids length).
+    pointers:
+      type: array
+      description: |
+        JSON pointers into each task result JSON to compare (default: [/avm/result_hash, /avm/trace_hash]).
+
+        Semantics (mode=quorum_hashes):
+        - If a pointer resolves to a string, the string is used directly as the vote value.
+        - If a pointer resolves to a non-string JSON value (object/array/number/bool), the platform hashes the canonical JSON bytes
+          (`agent_json_c14n_v1`) and votes on the resulting `sha256:<64hex>` token (ergonomics for structured results).
+      items: { type: string }
+    node_pointer:
+      type: string
+      description: |
+        Optional JSON pointer into each task result JSON used to surface node identity evidence alongside votes.
+
+        Notes:
+        - When `require_distinct_nodes=true`, this pointer is used to count votes across distinct nodes.
+        - Otherwise, it is only an observability/correlation surface (does not change quorum semantics).
+        - Default: `/edge/node_id` (populated by `kind:edge_invoke` results).
+    require_distinct_nodes:
+      type: boolean
+      description: |
+        For mode=quorum_hashes, when true, count votes across **distinct node identities** instead of per-task votes.
+
+        Semantics:
+        - Node identity is read from `node_pointer` (default `/edge/node_id`).
+        - Each distinct node contributes at most one vote per pointer:
+          the vote is taken from the first task_id (in task_ids order) that has a non-empty string at that pointer.
+        - Tasks missing a node_id at node_pointer do not contribute votes when this is enabled (fail-closed).
+
+        Default: false.
+    require_all:
+      type: boolean
+      description: For mode=collect, require every pointer for every task_id (default true).
+    ok_pointer:
+      type: string
+      description: For mode=first_ok, quorum_ok, strict_all_ok, or best_of_n, JSON pointer used to test ok (default /ok).
+    require_ok:
+      type: boolean
+      description: For mode=best_of_n, require ok_pointer to be true (default true).
+    value_pointer:
+      type: string
+      description: |
+        For mode=first_ok, JSON pointer into the task result JSON used as assistant_text (default /assistant_text).
+        For mode=quorum_ok, JSON pointer into the chosen ok task result JSON used as assistant_text (default /assistant_text).
+        For mode=strict_all_ok, JSON pointer into the chosen task result JSON used as assistant_text (default /assistant_text).
+        For mode=best_of_n, JSON pointer into the candidate object used as assistant_text (default /answer).
+    candidate_pointer:
+      type: string
+      description: For mode=best_of_n, JSON pointer into the task result JSON for candidate JSON (default /assistant_text).
+    parse_json:
+      type: boolean
+      description: For mode=best_of_n, if candidate_pointer resolves to a string, parse it as JSON (default true).
+    score_pointer:
+      type: string
+      description: For mode=best_of_n, JSON pointer into the candidate object used as score (default /score).
+    maximize:
+      type: boolean
+      description: For mode=best_of_n, choose max score when true, else choose min (default true).
+    default_score:
+      type: number
+      format: double
+      description: For mode=best_of_n, fallback score when score_pointer missing/unparseable (optional).
+
+
+WorkflowTaskEdgeInvokeSpec:
+  type: object
+  required: [task_id, kind, edge]
+  properties:
+    task_id: { type: string }
+    allow_error:
+      type: boolean
+      description: If true, task failure does not fail the workflow (soft-fail).
+    inputs:
+      type: object
+      description: Optional per-task inputs (overrides workflow-level inputs).
+      additionalProperties: true
+    kind:
+      type: string
+      enum: [edge_invoke]
+      description: Dispatch a UM‑EAIS TASK_ASSIGN invoke_tool to an edge node and wait for TASK_DONE.
+    depends_on:
+      type: array
+      items: { type: string }
+    max_attempts:
+      type: integer
+      format: int32
+      description: |
+        Poll budget for completion. If omitted, server defaults to a higher value than normal tasks.
+    priority:
+      type: integer
+      format: int32
+      description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+    edge:
+      $ref: "#/components/schemas/WorkflowEdgeInvokeSpec"
+    expect:
+      type: object
+      description: Deterministic correctness assertions (engine-enforced)
+      additionalProperties: true
+
+
+WorkflowTaskEdgeParallelSpec:
+  type: object
+  required: [task_id, kind, edge_parallel]
+  properties:
+    task_id: { type: string }
+    allow_error:
+      type: boolean
+      description: |
+        If true, join task failure does not fail the workflow (soft-fail).
+
+        Notes:
+        - The derived per-node `edge_invoke` attempt tasks default to `allow_error:true` so the join can deterministically decide.
+    inputs:
+      type: object
+      description: Optional per-task inputs (overrides workflow-level inputs).
+      additionalProperties: true
+    kind:
+      type: string
+      enum: [edge_parallel]
+      description: |
+        Submit-time macro expanded into parallel per-node `kind:edge_invoke` tasks plus a deterministic `kind:aggregate` join.
+
+        Default join behavior: `mode:strict_all_ok`.
+        Override via `edge_parallel.aggregate`.
+    depends_on:
+      type: array
+      items: { type: string }
+    max_attempts: { type: integer, format: int32 }
+    priority:
+      type: integer
+      format: int32
+      description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+    edge_parallel:
+      $ref: "#/components/schemas/WorkflowEdgeParallelSpec"
+    expect:
+      type: object
+      description: Deterministic correctness assertions (engine-enforced)
+      additionalProperties: true
+
+
+WorkflowTaskEdgeWaitSensorSpec:
+  type: object
+  required: [task_id, kind, edge_wait_sensor]
+  properties:
+    task_id: { type: string }
+    allow_error:
+      type: boolean
+      description: If true, task failure does not fail the workflow (soft-fail).
+    inputs:
+      type: object
+      description: Optional per-task inputs (overrides workflow-level inputs).
+      additionalProperties: true
+    kind:
+      type: string
+      enum: [edge_wait_sensor]
+      description: Deterministic wait gate for edge sensor events (polls edge_sensor_events; retryable).
+    depends_on:
+      type: array
+      items: { type: string }
+    max_attempts:
+      type: integer
+      format: int32
+      description: Poll budget for waiting (default higher than normal tasks).
+    priority:
+      type: integer
+      format: int32
+      description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+    edge_wait_sensor:
+      $ref: "#/components/schemas/WorkflowEdgeWaitSensorSpec"
+    expect:
+      type: object
+      description: Deterministic correctness assertions (engine-enforced)
+      additionalProperties: true
+
+
+WorkflowEdgeWaitSensorSpec:
+  type: object
+  required: [event_type]
+  description: |
+    Sensor wait configuration for `kind:edge_wait_sensor`.
+
+    Default semantics (server-side):
+    - If `since_utc_ms` is omitted, it defaults to the workflow creation time (prevents old events from satisfying a new workflow).
+    - If no matching event exists, the task returns `retryable:true` with `retry_in_ms=poll_ms` (default 250ms).
+  properties:
+    event_type:
+      type: string
+      description: Required; edge sensor event type to wait for (id-safe).
+    node_id:
+      type: string
+      description: Optional; when set, only matches events from this node_id (id-safe).
+    min_confidence:
+      type: number
+      format: double
+      description: Optional; minimum confidence required to match (default 0.0).
+    since_utc_ms:
+      type: integer
+      format: int64
+      description: Optional; only match events with ts_utc_ms >= since_utc_ms.
+    poll_ms:
+      type: integer
+      format: int32
+      description: Poll delay (retry_in_ms) when no event found (default 250; clamped).
+
+
+WorkflowEdgeParallelSpec:
+  type: object
+  required: [edge]
+  description: |
+    Edge node fan-out macro configuration.
+
+    This macro selects **distinct** edge nodes matching `edge.match_any`, then expands into:
+    - derived per-node `kind:edge_invoke` tasks (with `edge.node_id` fixed, `match_any` removed)
+    - a deterministic `kind:aggregate` join at the original task_id
+  properties:
+    count:
+      type: integer
+      format: int32
+      description: Number of distinct nodes to select (default 2; clamped to [1..32]).
+    edge:
+      $ref: "#/components/schemas/WorkflowEdgeInvokeSpec"
+    aggregate:
+      $ref: "#/components/schemas/WorkflowEdgeParallelAggregateSpec"
+
+
+WorkflowEdgeParallelAggregateSpec:
+  type: object
+  description: |
+    Optional deterministic aggregate join configuration for `kind:edge_parallel`.
+
+    Notes:
+    - `task_ids` is **ignored** if provided; the server overwrites it with the derived per-node attempt task ids.
+    - If omitted, the server defaults to `mode:strict_all_ok`.
+    - For `mode=quorum_hashes`, when `pointers` is omitted the server defaults to [`/edge_result_sha256`].
+    - For `mode=quorum_hashes`, when `node_pointer` is omitted the server defaults to `/edge/node_id`.
+  properties:
+    mode:
+      type: string
+      enum: [quorum_hashes, collect, first_ok, quorum_ok, strict_all_ok, best_of_n]
+      description: Aggregation strategy (default strict_all_ok).
+    quorum:
+      type: integer
+      format: int32
+      description: |
+        - For mode=quorum_hashes, minimum number of matching votes required (default: N=task_ids length).
+        - For mode=quorum_ok, minimum number of ok tasks required (default: N=task_ids length).
+    pointers:
+      type: array
+      description: For mode=quorum_hashes or collect, JSON pointers into each task result JSON to compare/collect.
+      items: { type: string }
+    node_pointer:
+      type: string
+      description: |
+        Optional JSON pointer into each attempt result JSON used to surface node identity evidence alongside votes
+        (for quorum_hashes correlation; also used when require_distinct_nodes=true).
+
+        Default: `/edge/node_id`.
+    require_distinct_nodes:
+      type: boolean
+      description: |
+        For mode=quorum_hashes, when true, count votes across **distinct node identities** instead of per-task votes.
+
+        Default: false.
+    require_all:
+      type: boolean
+      description: For mode=collect, require every pointer for every attempt (default true).
+    ok_pointer:
+      type: string
+      description: For mode=first_ok, quorum_ok, strict_all_ok, or best_of_n, JSON pointer used to test ok (default /ok).
+    require_ok:
+      type: boolean
+      description: For mode=best_of_n, require ok_pointer to be true (default true).
+    value_pointer:
+      type: string
+      description: |
+        For mode=first_ok, JSON pointer into the task result JSON used as assistant_text (default /assistant_text).
+        For mode=quorum_ok, JSON pointer into the chosen ok task result JSON used as assistant_text (default /assistant_text).
+        For mode=strict_all_ok, JSON pointer into the chosen task result JSON used as assistant_text (default /assistant_text).
+        For mode=best_of_n, JSON pointer into the candidate object used as assistant_text (default /answer).
+    candidate_pointer:
+      type: string
+      description: For mode=best_of_n, JSON pointer into the task result JSON for candidate JSON (default /assistant_text).
+    parse_json:
+      type: boolean
+      description: For mode=best_of_n, if candidate_pointer resolves to a string, parse it as JSON (default true).
+    score_pointer:
+      type: string
+      description: For mode=best_of_n, JSON pointer into the candidate object used as score (default /score).
+    maximize:
+      type: boolean
+      description: For mode=best_of_n, choose max score when true, else choose min (default true).
+    default_score:
+      type: number
+      format: double
+      description: For mode=best_of_n, fallback score when score_pointer missing/unparseable (optional).
+
+
+WorkflowTaskDelegateSpec:
+  type: object
+  required: [task_id, kind, delegate]
+  properties:
+    task_id: { type: string }
+    allow_error:
+      type: boolean
+      description: If true, task failure does not fail the workflow (soft-fail).
+    inputs:
+      type: object
+      description: Optional per-task inputs (overrides workflow-level inputs).
+      additionalProperties: true
+    kind:
+      type: string
+      enum: [delegate, delegate_parallel]
+      description: |
+        Collaboration task:
+        - `delegate`: sequential fallback chain of attempts; returns the chosen attempt's assistant_text
+        - `delegate_parallel`: submit-time macro expanded into parallel attempt tasks + an aggregate join (default mode=first_ok; override via `delegate.aggregate`)
+    depends_on:
+      type: array
+      items: { type: string }
+    max_attempts: { type: integer, format: int32 }
+    priority:
+      type: integer
+      format: int32
+      description: Higher tasks run sooner (scheduler hint). Overrides workflow priority.
+    delegate:
+      $ref: "#/components/schemas/WorkflowDelegateSpec"
+    expect:
+      type: object
+      description: Deterministic correctness assertions (engine-enforced)
+      additionalProperties: true
+
+
+WorkflowDelegateSpec:
+  type: object
+  required: [attempts]
+  properties:
+    stop_on_ok:
+      type: boolean
+      description: For `kind:delegate`, stop after the first ok attempt. Default true.
+    ok_pointer:
+      type: string
+      description: For `kind:delegate_parallel` expansion, override aggregate ok_pointer (default /ok).
+    value_pointer:
+      type: string
+      description: For `kind:delegate_parallel` expansion, override aggregate value_pointer (default /assistant_text).
+    aggregate:
+      $ref: "#/components/schemas/WorkflowDelegateParallelAggregateSpec"
+    attempt_defaults:
+      type: object
+      description: |
+        Only used by `kind:delegate_parallel` expansion.
+
+        Best-effort defaults applied to each attempt's `request` object (merged by missing-key only).
+        Precedence order:
+        - attempt.request (highest priority)
+        - delegate.attempt_defaults
+        - workflow submit `defaults` (lowest priority)
+
+        This is useful for per-attempt budget knobs or base_url/model/api_key wiring without repeating them for every attempt.
+      additionalProperties: true
+    attempt_caps:
+      type: object
+      description: |
+        Hard caps applied to each attempt's `request` run knobs.
+
+        Semantics (for supported numeric fields):
+        - if cap <= 0: ignore
+        - if attempt.request is missing the field: set it to the cap
+        - if attempt.request includes the field: clamp it to `min(value, cap)`
+
+        This is intended for *enforceable* per-attempt budgets (as opposed to `attempt_defaults`, which can be overridden by the attempt).
+
+        Supported keys (best-effort):
+        - `timeout_ms`
+        - `max_steps`
+        - `max_tool_calls_total`
+        - `max_tool_calls_per_tool`
+        - `max_tool_call_args_chars`
+        - `max_tool_result_chars`
+      additionalProperties: true
+    attempts:
+      type: array
+      items:
+        type: object
+        required: [id, request]
+        properties:
+          id:
+            type: string
+            description: Attempt id (id-safe; used in trace_id and derived task ids for delegate_parallel).
+          allow_error:
+            type: boolean
+            description: Only used by `delegate_parallel` expansion (attempt tasks default allow_error=true).
+          max_attempts:
+            type: integer
+            format: int32
+            description: Only used by `delegate_parallel` expansion (attempt task max_attempts).
+          request:
+            $ref: "#/components/schemas/RunRequest"
+          expect:
+            type: object
+            description: Deterministic correctness assertions evaluated against the attempt run result.
+            additionalProperties: true
+
+
+WorkflowDelegateParallelAggregateSpec:
+  type: object
+  description: |
+    Optional deterministic aggregate join configuration for `kind:delegate_parallel`.
+
+    Notes:
+    - `task_ids` is **ignored** if provided; the server overwrites it with the derived attempt task ids.
+    - If omitted, the server defaults to `mode:first_ok`.
+    - If `ok_pointer`/`value_pointer` are set at the `delegate` level, they are used as defaults when the aggregate object does not explicitly set them.
+    - For `mode=quorum_hashes`, when `pointers` is omitted the server defaults it to [`/assistant_text`].
+    - For `mode=quorum_hashes`, when `node_pointer` is omitted the server defaults it to [`/effective_base_url`].
+  properties:
+    mode:
+      type: string
+      enum: [quorum_hashes, collect, first_ok, quorum_ok, strict_all_ok, best_of_n]
+      description: Aggregation strategy (default first_ok).
+    quorum:
+      type: integer
+      format: int32
+      description: |
+        - For mode=quorum_hashes, minimum number of matching votes required (default: N=task_ids length).
+        - For mode=quorum_ok, minimum number of ok tasks required (default: N=task_ids length).
+    pointers:
+      type: array
+      description: For mode=quorum_hashes or collect, JSON pointers into each task result JSON to compare/collect.
+      items: { type: string }
+    node_pointer:
+      type: string
+      description: |
+        Optional JSON pointer into each attempt result JSON used to surface node identity evidence alongside votes
+        (for quorum_hashes correlation; also used when require_distinct_nodes=true).
+
+        For `kind:delegate_parallel` with `mode=quorum_hashes`, the server defaults this to `/effective_base_url`.
+        (The aggregate engine's default is `/edge/node_id`.)
+    require_distinct_nodes:
+      type: boolean
+      description: |
+        For mode=quorum_hashes, when true, count votes across **distinct node identities** instead of per-attempt votes.
+
+        Notes:
+        - For `kind:delegate_parallel`, this is most useful for multi-provider correctness checks (distinct base_url targets).
+        - For edge task aggregation, prefer macros like `edge_parallel` which default `node_pointer` to `/edge/node_id`.
+
+        Default: false.
+    require_all:
+      type: boolean
+      description: For mode=collect, require every pointer for every attempt (default true).
+    ok_pointer:
+      type: string
+      description: For mode=first_ok, quorum_ok, strict_all_ok, or best_of_n, JSON pointer used to test ok (default /ok).
+    require_ok:
+      type: boolean
+      description: For mode=best_of_n, require ok_pointer to be true (default true).
+    value_pointer:
+      type: string
+      description: |
+        For mode=first_ok, JSON pointer into the task result JSON used as assistant_text (default /assistant_text).
+        For mode=quorum_ok, JSON pointer into the chosen ok task result JSON used as assistant_text (default /assistant_text).
+        For mode=strict_all_ok, JSON pointer into the chosen task result JSON used as assistant_text (default /assistant_text).
+        For mode=best_of_n, JSON pointer into the candidate object used as assistant_text (default /answer).
+    candidate_pointer:
+      type: string
+      description: For mode=best_of_n, JSON pointer into the task result JSON for candidate JSON (default /assistant_text).
+    parse_json:
+      type: boolean
+      description: For mode=best_of_n, if candidate_pointer resolves to a string, parse it as JSON (default true).
+    score_pointer:
+      type: string
+      description: For mode=best_of_n, JSON pointer into the candidate object used as score (default /score).
+    maximize:
+      type: boolean
+      description: For mode=best_of_n, choose max score when true, else choose min (default true).
+    default_score:
+      type: number
+      format: double
+      description: For mode=best_of_n, fallback score when score_pointer missing/unparseable (optional).
+
+
+WorkflowEdgeInvokeSpec:
+  type: object
+  required: []
+  properties:
+    node_id:
+      type: string
+      description: Explicit target node (preferred when known).
+    match_any:
+      type: object
+      description: |
+        Capability-based node selection.
+
+        Common keys (best-effort):
+        - `requires_tools` (array of tool names)
+        - `tags_all`, `tags_any`, `tags_none` (arrays of tag strings)
+        - `exclude_node_ids` (array of node_id strings to exclude; useful for distinct-node fan-out)
+      additionalProperties: true
+    mode:
+      type: string
+      enum: [invoke, agent]
+      description: |
+        - invoke: payload is an explicit tool call (requires `tool` + `args`)
+        - agent: payload is a goal/prompt for on-device `agent_core` (requires `payload` or `prompt`)
+    tool:
+      type: string
+      description: Required when mode=invoke.
+    args:
+      type: object
+      additionalProperties: true
+      description: Required when mode=invoke.
+    prompt:
+      type: string
+      description: Convenience for mode=agent (server maps to payload.prompt).
+    payload:
+      type: object
+      additionalProperties: true
+      description: Raw payload for mode=agent (preferred).
+    timeout_ms:
+      type: integer
+      format: int32
+      description: Relative deadline; converted to `deadline_utc_ms` by the platform.
+    deadline_utc_ms:
+      type: integer
+      format: int64
+      description: Absolute deadline in UTC ms (preferred when caller has a clock).
+    idempotency_key:
+      type: string
+      description: Idempotency key (defaults to `${workflow_id}:${task_id}`).
+    allow_hazards:
+      type: array
+      items: { type: string }
+      description: Explicitly allow hazard tags (unsafe; use sparingly).
+    allow_high_side_effect:
+      type: boolean
+      description: Allow dispatch for tools marked side_effect_level=high.
+  description: |
+    Conditional requirements:
+    - If `mode` is omitted, defaults to `invoke`.
+    - `node_id` or `match_any` must be provided.
+    - If `mode=invoke`: `tool` and `args` are required.
+    - If `mode=agent`: `payload` OR `prompt` is required.
+
+
+AvmCapsuleRunArgs:
+  type: object
+  required: [obc_base64]
+  properties:
+    obc_base64:
+      type: string
+      description: Base64-encoded `.obc` bytes
+    timeout_ms:
+      type: integer
+      format: int32
+      description: Wall-time deadline (passed to AVM `--timeout-ms`)
+    gas:
+      type: integer
+      format: int64
+      description: Instruction-step budget (env `AVM_GAS`)
+    mem_bytes:
+      type: integer
+      format: int64
+      description: Heap budget (env `AVM_MEM_BYTES`)
+    io_bytes:
+      type: integer
+      format: int64
+      description: FS I/O budget (env `AVM_IO_BYTES`)
+    log_bytes:
+      type: integer
+      format: int64
+      description: Record/replay log budget (env `AVM_LOG_BYTES`)
+    deterministic:
+      type: boolean
+      description: Enable deterministic TIME/RNG (env `AVM_DETERMINISTIC`)
+    rng_seed:
+      type: integer
+      format: int64
+      description: Deterministic RNG seed (env `AVM_RNG_SEED`)
+    time_start_ns:
+      type: integer
+      format: int64
+      description: Virtual clock origin (env `AVM_TIME_START_NS`)
+    allow_domains:
+      type: string
+      description: CSV allowlist passed to AVM `--allow-domains` (still virtualized by capsule defaults)
+
+
+WorkflowSubmitRequest:
+  type: object
+  required: [tasks]
+  properties:
+    workflow_id: { type: string }
+    trace_id: { $ref: "#/components/schemas/TraceID" }
+    session_id:
+      type: string
+      description: Optional. Only honored when allow_sessions=true. If provided, the server upserts the session row on submit.
+    session_weight:
+      type: integer
+      format: int32
+      minimum: 1
+      description: Optional. Scheduling weight for this session (requires allow_sessions=true and non-empty session_id). Higher sessions receive proportionally more scheduler service under fair-queue policy.
+    idempotency_key:
+      type: string
+      description: Submit dedupe key (id-safe, <=128). Uniqueness is scoped by (session_id or empty string).
+    deadline_unix_ms:
+      type: integer
+      format: int64
+      description: Scheduler-level workflow deadline (Unix ms). After this time, queued tasks are cancelled best-effort.
+    priority:
+      type: integer
+      format: int32
+      description: Higher workflows/tasks run sooner (scheduler hint). Default 0. Clamped to [-1000, 1000].
+    allow_sessions:
+      type: boolean
+      description: If true, the workflow is associated with session_id and can participate in per-session caps/budgets.
+    allow_inline_api_keys: { type: boolean }
+    infer_depends_on:
+      type: boolean
+      description: If true, server scans task request JSON for task.* template/$ref references and merges inferred IDs into depends_on.
+    defaults:
+      type: object
+      additionalProperties: true
+    inputs:
+      type: object
+      description: Workflow-level inputs copied into each task request (per-task inputs override keys).
+      additionalProperties: true
+    workflow_limits:
+      $ref: "#/components/schemas/WorkflowLimits"
+    tasks:
+      type: array
+      items:
+        $ref: "#/components/schemas/WorkflowTaskSpec"
+
+
+WorkflowLimits:
+  type: object
+  description: Durable workflow-level budgets enforced by the workflow engine (best-effort).
+  properties:
+    max_tool_calls_total:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Max total tool calls across the entire workflow (0 disables/unlimited).
+    max_steps_total:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Max total tool-loop steps executed across the entire workflow (0 disables/unlimited).
+    max_elapsed_ms_total:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Max total elapsed_ms summed across workflow tasks (0 disables/unlimited).
+    max_total_tokens:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Max total provider-reported tokens (usage.total_tokens) summed across workflow tasks (0 disables/unlimited).
+  additionalProperties: true
+
+
+WorkflowGetResponse:
+  type: object
+  required: [ok, workflow]
+  properties:
+    ok: { type: boolean }
+    workflow:
+      type: object
+      required: [workflow_id, status, cancel_requested, created_unix_ms, updated_unix_ms]
+      properties:
+        workflow_id: { type: string }
+        status: { type: string }
+        priority:
+          type: integer
+          format: int32
+          description: Higher workflows/tasks run sooner (scheduler hint).
+        deadline_unix_ms:
+          type: integer
+          format: int64
+          description: Scheduler-level workflow deadline (Unix ms). After this time, queued tasks are cancelled best-effort.
+        idempotency_key:
+          type: string
+          description: Optional submit dedupe key (scoped by session_id).
+        trace_id: { $ref: "#/components/schemas/TraceID" }
+        session_id: { type: string }
+        cancel_requested: { type: boolean }
+        error: { type: string }
+        created_unix_ms: { type: integer, format: int64 }
+        updated_unix_ms: { type: integer, format: int64 }
+    tasks:
+      type: array
+      items:
+        type: object
+        additionalProperties: true
+    workflow_limits:
+      type: object
+      description: Best-effort workflow_limits parsed from the persisted submit spec_json (when present).
+      additionalProperties: true
+    workflow_usage:
+      type: object
+      description: |
+        Best-effort aggregate usage totals computed from retry-safe per-task cumulative counters.
+        Values are summed across all tasks in the workflow.
+      additionalProperties: true
+    workflow_remaining:
+      type: object
+      description: |
+        Best-effort remaining budgets computed as (limit - used) for any positive limits.
+        Only includes keys where a limit exists and is >0.
+      additionalProperties: true
+    result:
+      type: object
+      additionalProperties: true
+    spec_json:
+      type: string
+      description: Redacted persisted submit request (raw JSON string; may be truncated).
+    spec:
+      type: object
+      description: Parsed spec_json when available.
+      additionalProperties: true
+
+
+WorkflowStatsResponse:
+  type: object
+  required: [ok, now_unix_ms, workflows_by_status, tasks_by_status, tasks_queued_ready, tasks_queued_not_ready]
+  properties:
+    ok: { type: boolean }
+    now_unix_ms: { type: integer, format: int64 }
+    tasks_queued_ready: { type: integer, format: int64 }
+    tasks_queued_not_ready: { type: integer, format: int64 }
+    workflows_by_status:
+      type: object
+      description: Map of workflow status -> count.
+      additionalProperties: { type: integer, format: int64 }
+    tasks_by_status:
+      type: object
+      description: Map of task status -> count.
+      additionalProperties: { type: integer, format: int64 }
+    session_limit:
+      type: integer
+      format: int64
+      description: When include_sessions=true, effective row limit applied.
+    include_no_session:
+      type: boolean
+      description: When include_sessions=true, whether empty session bucket is included.
+    sessions:
+      type: array
+      description: When include_sessions=true, per-session inflight snapshot (best-effort).
+      items:
+        type: object
+        required: [session_id, inflight_tasks, queued_tasks, running_tasks, workflows_queued, workflows_running]
+        properties:
+          session_id: { type: string }
+          inflight_tasks: { type: integer, format: int64 }
+          queued_tasks: { type: integer, format: int64 }
+          running_tasks: { type: integer, format: int64 }
+          workflows_queued: { type: integer, format: int64 }
+          workflows_running: { type: integer, format: int64 }
+    sessions_error:
+      type: object
+      description: Best-effort error object when per-session stats could not be produced.
+      additionalProperties: true
+    budget_pressure:
+      type: object
+      description: |
+        When include_budget_pressure=true, best-effort aggregate budget pressure over queued|running workflows
+        that define `workflow_limits` in their persisted spec_json.
+      additionalProperties: true

@@ -1,0 +1,272 @@
+RunRequest:
+  type: object
+  required: [prompt]
+  properties:
+    prompt: { type: string }
+    trace_id: { $ref: "#/components/schemas/TraceID" }
+    session_id: { type: string }
+    no_session: { type: boolean }
+    inputs:
+      type: object
+      description: Optional workflow/task-local input variables (expanded in durable workflow tasks).
+      additionalProperties: true
+    priority:
+      type: integer
+      format: int32
+      description: Higher runs sooner (scheduler hint). Default 0. Clamped to [-1000, 1000].
+    tools:
+      type: string
+      description: Tool mode
+      enum: [none, basic, host]
+    memory_context_mode:
+      type: string
+      enum: [files, search, index, salience]
+      description: Memory context injection mode (files=load durable Markdown files; search=ranked memory snippets; index=progressive file index; salience=ranked recency/importance).
+    memory_include_structured:
+      type: boolean
+      description: When true, include memory/STRUCTURED.md in file-based memory context.
+    memory_include_core:
+      type: boolean
+      description: When true, include memory/MEMORY.md in file-based memory context.
+    memory_include_daily:
+      type: boolean
+      description: When true, include memory/YYYY-MM-DD.md in file-based memory context.
+    memory_include_session:
+      type: boolean
+      description: When true, include memory/sessions/<session_id>.md in file-based memory context.
+    memory_daily_days:
+      type: integer
+      format: int32
+      description: Number of daily memory files to include/scan (clamped).
+    memory_total_cap:
+      type: integer
+      format: int64
+      description: Max bytes for injected memory context (clamped).
+    memory_search_query:
+      type: string
+      description: Explicit query for search-based memory context (defaults to prompt when omitted).
+    memory_search_use_index:
+      type: boolean
+      description: When true, prefer SQLite FTS index for memory search (default true).
+    memory_search_case_sensitive:
+      type: boolean
+      description: When true, use case-sensitive substring search (disables FTS).
+    memory_search_order:
+      type: string
+      description: Result ordering for memory search context (ranked | newest | oldest; default ranked).
+      enum: [ranked, newest, oldest]
+    memory_search_fallback_to_files:
+      type: boolean
+      description: When true, fall back to file-based memory context if search yields no results.
+    memory_search_max_results:
+      type: integer
+      format: int32
+      description: Max memory search results injected (clamped).
+    memory_search_max_snippet_chars:
+      type: integer
+      format: int32
+      description: Max characters per memory snippet (clamped).
+    memory_search_context_lines:
+      type: integer
+      format: int32
+      description: Context lines to include around substring matches (clamped).
+    memory_salience_max_items:
+      type: integer
+      format: int32
+      description: Max total salience items (default from daemon config; clamped).
+    memory_salience_structured_max_items:
+      type: integer
+      format: int32
+      description: Max structured salience items (default from daemon config; clamped).
+    memory_salience_daily_max_items:
+      type: integer
+      format: int32
+      description: Max daily salience items (default from daemon config; clamped).
+    memory_salience_half_life_days:
+      type: number
+      format: double
+      description: Salience decay half-life in days (default from daemon config).
+    memory_salience_importance_weight:
+      type: number
+      format: double
+      description: Weight for @obs importance in salience (default from daemon config).
+    model: { type: string }
+    base_url: { type: string }
+    api_key: { type: string }
+    max_steps: { type: integer, format: int64 }
+    max_tool_calls_total:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Total tool calls allowed in the tool loop (0 disables/unlimited).
+    max_tool_calls_per_tool:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Per-tool call limit in the tool loop (0 disables/unlimited).
+    max_tool_call_args_chars:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Max length of a single tool call arguments JSON (0 disables/unlimited).
+    max_tool_result_chars:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Max tool result chars before re-inserting into the prompt (0 disables/unlimited).
+    verbose: { type: boolean }
+
+
+AgentEvent:
+  type: object
+  required: [type, data]
+  properties:
+    type: { type: string }
+    trace_id: { $ref: "#/components/schemas/TraceID" }
+    data_truncated:
+      type: boolean
+      description: True when the event payload was truncated to keep memory bounded.
+    data_bytes:
+      type: integer
+      format: int64
+      description: Original payload byte size before truncation (when data_truncated=true).
+    data_bytes_kept:
+      type: integer
+      format: int64
+      description: Bytes retained in the stored payload (when data_truncated=true).
+    data:
+      description: |
+        Event payload. When the payload is too large or cannot be parsed, it is stored as a string.
+        If `data_truncated=true`, the string is a truncated prefix of the original payload.
+      oneOf:
+        - type: object
+          additionalProperties: true
+        - type: string
+
+
+RunResponse:
+  type: object
+  required: [ok, trace_id, assistant_text, events]
+  properties:
+    ok: { type: boolean }
+    trace_id: { $ref: "#/components/schemas/TraceID" }
+    assistant_text: { type: string }
+    error: { type: string }
+    elapsed_ms:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Wall-clock duration of the run endpoint (best-effort).
+    effective_model:
+      type: string
+      description: Effective model used by the daemon (non-secret; useful for audit/quorum correlation).
+    effective_base_url:
+      type: string
+      description: Effective provider base_url used by the daemon (non-secret; useful for audit/quorum correlation).
+    effective_max_steps:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Effective max_steps enforced by the daemon.
+    effective_max_tool_calls_total:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Effective max_tool_calls_total enforced by the daemon.
+    effective_max_tool_calls_per_tool:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Effective max_tool_calls_per_tool enforced by the daemon.
+    effective_max_tool_call_args_chars:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Effective max_tool_call_args_chars enforced by the daemon.
+    effective_max_tool_result_chars:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Effective max_tool_result_chars enforced by the daemon.
+    steps_executed:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Tool-loop steps executed (0 for non-tool-loop runs).
+    tool_calls_total:
+      type: integer
+      format: int64
+      minimum: 0
+      description: Total tool calls executed by the tool loop (0 for non-tool-loop runs).
+    tool_calls_by_tool:
+      type: object
+      description: Best-effort map of tool_name => tool call count.
+      additionalProperties:
+        type: integer
+        format: int64
+        minimum: 0
+    events:
+      type: array
+      items:
+        $ref: "#/components/schemas/AgentEvent"
+
+
+RunReplayBundle:
+  type: object
+  required: [schema, request, response, tool_records]
+  properties:
+    schema: { type: string }
+    request:
+      type: object
+      description: Redacted request JSON (best-effort).
+      additionalProperties: true
+    response:
+      type: object
+      description: Redacted response JSON (best-effort).
+      additionalProperties: true
+    tool_records:
+      type: array
+      items:
+        type: object
+        additionalProperties: true
+
+
+RunReplayResponse:
+  type: object
+  required: [ok, run_id, bundle]
+  properties:
+    ok: { type: boolean }
+    run_id: { type: integer, format: int64 }
+    session_id: { type: string }
+    bundle:
+      $ref: "#/components/schemas/RunReplayBundle"
+    replay_sha256: { type: string }
+    replay_sha256_alg: { type: string }
+    replay_sha256_schema: { type: string }
+    replay_error: { type: string }
+
+
+JobGetResponse:
+  type: object
+  required: [ok, job_id, status, cancel_requested, created_unix_ms, updated_unix_ms, events_cursor_base, events_cursor_end]
+  properties:
+    ok: { type: boolean }
+    job_id: { type: string }
+    trace_id: { $ref: "#/components/schemas/TraceID" }
+    status: { type: string }
+    priority:
+      type: integer
+      format: int32
+      description: Higher jobs run sooner (scheduler hint).
+    error: { type: string }
+    cancel_requested: { type: boolean }
+    created_unix_ms: { type: integer, format: int64 }
+    updated_unix_ms: { type: integer, format: int64 }
+    events_cursor_base: { type: integer, format: uint64 }
+    events_cursor_end: { type: integer, format: uint64 }
+    events_reset: { type: boolean }
+    events_cursor_next: { type: integer, format: uint64 }
+    events:
+      type: array
+      items:
+        $ref: "#/components/schemas/AgentEvent"
