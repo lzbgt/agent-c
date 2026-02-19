@@ -112,6 +112,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-20: Added unit coverage for team run fan-out executor + role filtering; still need end-to-end smoke.
   - 2026-02-20: Added compose smoke for team run fan-out + role filter (`tests/broker_team_runs_compose_smoke.sh`).
   - 2026-02-19: Connector now supports `--local-agentd-token` (or `AGENTD_AUTH_TOKEN`) so team run fan-out can authenticate to local agentd; compose updated and compose smoke verified.
+  - 2026-02-19: Broker now enforces `team_run` quorum rules on run creation via inline approvals (`team.approvals`) with strict failures returning `409`.
   - 2026-02-20: Add quorum enforcement smoke.
 - [x] W=10 — Policy hook MVP: deterministic pre/post run + tool call hooks with allow/deny + budget caps, config surface, and audit logs.
 - [ ] W=9 — Attestation bundles: canonical hash format + signed run certificates + verification CLI.

@@ -2,6 +2,7 @@ package broker
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -729,10 +730,48 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 	}
 
 	options := parseTeamRunOptions(teamMeta)
+	quorumPolicyMode, err := parseTeamRunQuorumPolicy(teamMeta)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	approvals, err := parseTeamRunApprovals(teamMeta)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	members, err := s.cfg.DB.ListTeamMembers(r.Context(), teamID)
 	if err != nil {
 		writeErrorJSON(w, "db error", http.StatusInternalServerError)
 		return
+	}
+	membersByID := map[string]db.TeamMember{}
+	for _, m := range members {
+		membersByID[m.MemberID] = m
+	}
+	if quorumPolicyMode != "off" {
+		rules, err := s.cfg.DB.ListTeamQuorumRules(r.Context(), teamID)
+		if err != nil {
+			writeErrorJSON(w, "db error", http.StatusInternalServerError)
+			return
+		}
+		quorumEval, err := evaluateTeamRunQuorum(rules, approvals, membersByID)
+		if err != nil {
+			writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if len(quorumEval.Rules) > 0 {
+			if !quorumEval.StrictOK {
+				w.WriteHeader(http.StatusConflict)
+				writeJSON(w, map[string]any{
+					"ok":     false,
+					"error":  "quorum approvals required",
+					"quorum": quorumEval.toJSON(),
+				})
+				return
+			}
+			teamMeta["quorum_eval"] = quorumEval.toJSON()
+		}
 	}
 	members = filterTeamRunMembers(members, options.Role, options.Roles)
 	if len(members) == 0 {
@@ -928,6 +967,58 @@ func teamQuorumRuleToJSON(r db.TeamQuorumRule) map[string]any {
 	return out
 }
 
+type teamRunApproval struct {
+	MemberID string
+	Decision string
+	Reason   string
+}
+
+type teamRunQuorumRuleEval struct {
+	RuleID                string
+	Action                string
+	QuorumMode            string
+	MinApprovals          int
+	Approved              int
+	Missing               int
+	RoleAllowlist         []string
+	RequireDistinctRoles  bool
+	ApprovedMemberIDs     []string
+	ApprovedDistinctRoles []string
+}
+
+type teamRunQuorumEval struct {
+	Rules    []teamRunQuorumRuleEval
+	StrictOK bool
+}
+
+func (e teamRunQuorumEval) toJSON() map[string]any {
+	rules := make([]map[string]any, 0, len(e.Rules))
+	for _, r := range e.Rules {
+		out := map[string]any{
+			"rule_id":                r.RuleID,
+			"action":                 r.Action,
+			"quorum_mode":            r.QuorumMode,
+			"min_approvals":          r.MinApprovals,
+			"approved":               r.Approved,
+			"missing":                r.Missing,
+			"role_allowlist":         r.RoleAllowlist,
+			"require_distinct_roles": r.RequireDistinctRoles,
+			"ok":                     r.Missing == 0,
+		}
+		if len(r.ApprovedMemberIDs) > 0 {
+			out["approved_member_ids"] = r.ApprovedMemberIDs
+		}
+		if len(r.ApprovedDistinctRoles) > 0 {
+			out["approved_roles"] = r.ApprovedDistinctRoles
+		}
+		rules = append(rules, out)
+	}
+	return map[string]any{
+		"strict_ok": e.StrictOK,
+		"rules":     rules,
+	}
+}
+
 type teamRunOptions struct {
 	Role           string
 	Roles          map[string]bool
@@ -981,6 +1072,183 @@ func parseTeamRunOptions(meta map[string]any) teamRunOptions {
 	return out
 }
 
+func parseTeamRunQuorumPolicy(meta map[string]any) (string, error) {
+	mode := "auto"
+	raw, ok := meta["quorum_policy"]
+	if !ok || raw == nil {
+		return mode, nil
+	}
+	switch t := raw.(type) {
+	case map[string]any:
+		if v, ok := t["mode"]; ok {
+			if s, ok := v.(string); ok {
+				mode = strings.ToLower(strings.TrimSpace(s))
+			} else {
+				return "", fmt.Errorf("invalid quorum_policy.mode")
+			}
+		}
+	case string:
+		mode = strings.ToLower(strings.TrimSpace(t))
+	default:
+		return "", fmt.Errorf("invalid quorum_policy")
+	}
+	if mode == "" {
+		mode = "auto"
+	}
+	if mode != "auto" && mode != "off" {
+		return "", fmt.Errorf("invalid quorum_policy.mode")
+	}
+	return mode, nil
+}
+
+func parseTeamRunApprovals(meta map[string]any) ([]teamRunApproval, error) {
+	raw, ok := meta["approvals"]
+	if !ok || raw == nil {
+		return nil, nil
+	}
+	var items []any
+	switch t := raw.(type) {
+	case []any:
+		items = t
+	case []string:
+		items = make([]any, 0, len(t))
+		for _, s := range t {
+			items = append(items, s)
+		}
+	default:
+		return nil, fmt.Errorf("approvals must be an array")
+	}
+	out := make([]teamRunApproval, 0, len(items))
+	for _, item := range items {
+		switch v := item.(type) {
+		case string:
+			memberID := strings.TrimSpace(v)
+			if memberID == "" {
+				return nil, fmt.Errorf("approval member_id is required")
+			}
+			out = append(out, teamRunApproval{
+				MemberID: memberID,
+				Decision: "approve",
+			})
+		case map[string]any:
+			memberRaw, _ := v["member_id"].(string)
+			memberID := strings.TrimSpace(memberRaw)
+			if memberID == "" {
+				return nil, fmt.Errorf("approval member_id is required")
+			}
+			decisionRaw, _ := v["decision"].(string)
+			if decisionRaw == "" {
+				decisionRaw = "approve"
+			}
+			decision, ok := normalizeApprovalDecision(decisionRaw)
+			if !ok {
+				return nil, fmt.Errorf("invalid approval decision: %s", decisionRaw)
+			}
+			reason, _ := v["reason"].(string)
+			out = append(out, teamRunApproval{
+				MemberID: memberID,
+				Decision: decision,
+				Reason:   strings.TrimSpace(reason),
+			})
+		default:
+			return nil, fmt.Errorf("invalid approval entry")
+		}
+	}
+	return out, nil
+}
+
+func normalizeApprovalDecision(raw string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "approve", "approved":
+		return "approve", true
+	case "deny", "denied":
+		return "deny", true
+	default:
+		return "", false
+	}
+}
+
+func isTeamRunQuorumAction(action string) bool {
+	switch strings.ToLower(strings.TrimSpace(action)) {
+	case "team_run", "run":
+		return true
+	default:
+		return false
+	}
+}
+
+func evaluateTeamRunQuorum(rules []db.TeamQuorumRule, approvals []teamRunApproval, membersByID map[string]db.TeamMember) (teamRunQuorumEval, error) {
+	out := teamRunQuorumEval{
+		StrictOK: true,
+	}
+	for _, rule := range rules {
+		if !isTeamRunQuorumAction(rule.Action) {
+			continue
+		}
+		roleAllowlist := toLowerSet(rule.RoleAllowlist())
+		approvedMembers := map[string]bool{}
+		approvedRoles := map[string]bool{}
+		for _, approval := range approvals {
+			if approval.Decision != "approve" {
+				continue
+			}
+			member, ok := membersByID[approval.MemberID]
+			if !ok {
+				return out, fmt.Errorf("unknown approval member_id: %s", approval.MemberID)
+			}
+			status := strings.ToLower(strings.TrimSpace(member.Status))
+			if status != "" && status != "active" {
+				return out, fmt.Errorf("approval member not active: %s", approval.MemberID)
+			}
+			role := strings.ToLower(strings.TrimSpace(member.Role))
+			if len(roleAllowlist) > 0 && !roleAllowlist[role] {
+				continue
+			}
+			if approvedMembers[approval.MemberID] {
+				continue
+			}
+			approvedMembers[approval.MemberID] = true
+			if role != "" {
+				approvedRoles[role] = true
+			}
+		}
+		approvedCount := len(approvedMembers)
+		if rule.RequireDistinctRoles {
+			approvedCount = len(approvedRoles)
+		}
+		missing := rule.MinApprovals - approvedCount
+		if missing < 0 {
+			missing = 0
+		}
+		ok := missing == 0
+		if strings.ToLower(strings.TrimSpace(rule.QuorumMode)) == "strict" && !ok {
+			out.StrictOK = false
+		}
+		ruleEval := teamRunQuorumRuleEval{
+			RuleID:               rule.RuleID,
+			Action:               rule.Action,
+			QuorumMode:           rule.QuorumMode,
+			MinApprovals:         rule.MinApprovals,
+			Approved:             approvedCount,
+			Missing:              missing,
+			RoleAllowlist:        rule.RoleAllowlist(),
+			RequireDistinctRoles: rule.RequireDistinctRoles,
+		}
+		if len(approvedMembers) > 0 {
+			for memberID := range approvedMembers {
+				ruleEval.ApprovedMemberIDs = append(ruleEval.ApprovedMemberIDs, memberID)
+			}
+		}
+		if len(approvedRoles) > 0 {
+			for role := range approvedRoles {
+				ruleEval.ApprovedDistinctRoles = append(ruleEval.ApprovedDistinctRoles, role)
+			}
+		}
+		out.Rules = append(out.Rules, ruleEval)
+	}
+	return out, nil
+}
+
 func filterTeamRunMembers(members []db.TeamMember, role string, roles map[string]bool) []db.TeamMember {
 	out := make([]db.TeamMember, 0, len(members))
 	for _, m := range members {
@@ -997,6 +1265,20 @@ func filterTeamRunMembers(members []db.TeamMember, role string, roles map[string
 			continue
 		}
 		out = append(out, m)
+	}
+	return out
+}
+
+func toLowerSet(vals []string) map[string]bool {
+	if len(vals) == 0 {
+		return nil
+	}
+	out := map[string]bool{}
+	for _, v := range vals {
+		v = strings.ToLower(strings.TrimSpace(v))
+		if v != "" {
+			out[v] = true
+		}
 	}
 	return out
 }

@@ -178,6 +178,12 @@ All endpoints below are served by the broker (not by agents).
   - deletes a quorum rule (owner/admin only)
 - `POST /v1/teams/{team_id}/runs`
   - executes a synchronous fan-out run across active team members (role filter optional)
+  - supports **quorum gating** for team-run approvals when quorum rules use `action:"team_run"`
+    - request payload may include:
+      - `team.quorum_policy.mode`: `auto` (default) or `off`
+      - `team.approvals`: array of member IDs or objects `{member_id, decision, reason}`
+    - `decision` defaults to `approve` and only `approve` counts toward quorum
+    - when a strict quorum rule is not satisfied, the broker returns `409` with a `quorum` object describing missing approvals
 - `GET /v1/teams/{team_id}/runs/{team_run_id}`
   - returns the stored team run status + current member list
 

@@ -141,6 +141,9 @@ Current broker implementation:
 - `GET/POST/PATCH/DELETE /v1/teams` + `/members` + `/quorum` are implemented.
 - `POST /v1/teams/{team_id}/runs` executes synchronous fan-out across active members.
 - `GET /v1/teams/{team_id}/runs/{team_run_id}` returns stored status + current members.
+ - `POST /v1/teams/{team_id}/runs` enforces **team_run quorum rules** when
+   `team.quorum_policy.mode` is `auto` (default). Approvals are passed inline
+   via `team.approvals` and are **not persisted** yet; strict failures return `409`.
 
 ### Team management
 

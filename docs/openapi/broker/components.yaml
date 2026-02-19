@@ -417,7 +417,41 @@ schemas:
         additionalProperties: true
       team:
         type: object
-        description: Team execution metadata (role, shared memory, quorum policy).
+        description: Team execution metadata (role filters, concurrency, quorum policy).
+        properties:
+          role:
+            type: string
+            description: Single role filter for eligible team members.
+          roles:
+            type: array
+            items: { type: string }
+            description: Role allowlist for eligible team members.
+          max_concurrency:
+            type: integer
+            format: int32
+            description: Max concurrent member runs (1-16).
+          timeout_ms:
+            type: integer
+            format: int64
+            description: Per-member run timeout (100-300000).
+          quorum_policy:
+            type: object
+            properties:
+              mode:
+                type: string
+                enum: [auto, off]
+            description: Quorum enforcement mode for team_run rules (default auto).
+          approvals:
+            type: array
+            description: Approvals for quorum-gated team runs (member IDs or objects).
+            items:
+              oneOf:
+                - type: string
+                - type: object
+                  properties:
+                    member_id: { type: string }
+                    decision: { type: string }
+                    reason: { type: string }
         additionalProperties: true
 
   TeamRunResponse:

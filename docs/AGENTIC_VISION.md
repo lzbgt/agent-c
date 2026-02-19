@@ -115,7 +115,7 @@ From `DESIGN.md` and current docs:
 - WebUI and CLI clients; tool servers and plugin support.
 - Memory retention + salience + recap architecture, with progressive disclosure.
 - Replay bundles + event schema validation for deterministic runs (in progress).
-- Broker team registry CRUD (teams, members, quorum rules) plus synchronous team run fan-out; quorum enforcement still pending.
+- Broker team registry CRUD (teams, members, quorum rules) plus synchronous team run fan-out; run-level quorum gating (action `team_run`) enforced via inline approvals. Tool-level quorum enforcement still pending.
 
 ---
 
@@ -155,7 +155,7 @@ These are the most leveraged next steps grounded in current architecture:
 
 1) **Team + role orchestration spec**
    - Define agent group model, shared memory, and quorum semantics.
-   - Add quorum enforcement + async team runs + WebUI approvals.
+   - Extend quorum enforcement with persisted approvals + async team runs + WebUI approvals.
 
 2) **Policy hook MVP (implemented 2026-02-19)**
    - Deterministic policy hook interface (pre/post run + tool call).
