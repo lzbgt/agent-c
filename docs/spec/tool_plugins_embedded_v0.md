@@ -1,7 +1,7 @@
 # Embedded Tool Plugins (v0)
 
 Date: 2026-02-19
-Status: draft (not implemented)
+Status: v0 (implemented; rolling)
 
 ## Goals
 
@@ -25,9 +25,9 @@ Status: draft (not implemented)
 
 ## Design (v0)
 
-### ABI surface (header proposal)
+### ABI surface (header)
 
-A small C header (e.g. `core/include/agent/tool_plugin_embedded.h`) defines:
+A small C header (`core/include/agent/tool_plugin_embedded.h`) defines:
 
 ```c
 typedef struct agent_tool_plugin_v0_def {
@@ -43,7 +43,7 @@ typedef struct agent_tool_plugin_v0 {
   size_t def_count;
 } agent_tool_plugin_v0_t;
 
-// Required symbol for embedded/MCU builds (static linkage):
+// Optional symbol for embedded/MCU builds (static linkage):
 const agent_tool_plugin_v0_t* agent_tool_plugin_v0(void);
 ```
 
@@ -54,9 +54,12 @@ Notes:
 
 ### Registration flow
 
-1) Host (embedded firmware or gateway) calls `agent_tool_plugin_v0()` to get the tool list.
-2) For each tool, the host registers the schema into `agent_tool_registry_t`.
-3) The host sets a single `agent_tool_executor_t` that dispatches to the tool’s `execute` function.
+1) Host (embedded firmware or gateway) calls `agent_tool_plugin_v0()` or provides a static `agent_tool_plugin_v0_t`.
+2) Register tool schemas into `agent_tool_registry_t` with:
+   - `agent_tool_registry_add_plugin(...)`
+   - `agent_tool_registry_add_plugins(...)`
+3) Initialize a dispatcher executor with:
+   - `agent_tool_plugin_executor_init(...)`
 
 This keeps `agent_core` unchanged while providing a deterministic, compile-time tool list.
 

@@ -87,6 +87,47 @@ static agent_tool_executor_t make_executor(void) {
 }
 ```
 
+### 2b) Embedded plugin list helper (compile-time tools)
+
+If you prefer a static, compile-time tool list, use the embedded plugin helper:
+
+```c
+#include "agent/tool_plugin_embedded.h"
+
+static agent_status_t exec_gpio(
+  void* ctx,
+  const char* tool_name,
+  const char* arguments_json,
+  agent_string_t* out_result
+) {
+  (void)ctx;
+  (void)tool_name;
+  // Parse arguments_json and run GPIO...
+  return agent_string_set_copy(out_result, "{\"ok\":true}", strlen("{\"ok\":true}"));
+}
+
+static const agent_tool_plugin_v0_def_t defs[] = {
+  {
+    .name = "gpio_write",
+    .description = "Set a GPIO pin high/low",
+    .parameters_json = "{\"type\":\"object\",\"properties\":{\"pin\":{\"type\":\"integer\"},\"value\":{\"type\":\"integer\"}},\"required\":[\"pin\",\"value\"]}",
+    .execute = exec_gpio,
+    .ctx = NULL,
+  },
+};
+
+static const agent_tool_plugin_v0_t plugin = {
+  .defs = defs,
+  .def_count = sizeof(defs) / sizeof(defs[0]),
+};
+
+// Register tool schemas and initialize the executor:
+agent_tool_registry_add_plugin(tools, &plugin);
+agent_tool_plugin_executor_ctx_t exec_ctx = {0};
+agent_tool_executor_t exec = {0};
+agent_tool_plugin_executor_init(&exec_ctx, &plugin, 1, &exec);
+```
+
 ### 3) Tool-capable LLM provider (your network / model adapter)
 
 The provider is responsible for calling your LLM and returning:

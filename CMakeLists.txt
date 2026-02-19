@@ -38,6 +38,7 @@ add_library(agent_core STATIC
   core/src/agent_string.c
   core/src/agent_tool_loop.c
   core/src/agent_tool_loop_json.c
+  core/src/agent_tool_plugin_embedded.c
   core/src/agent_tool_provider.c
   core/src/agent_tools.c
   core/third_party/ed25519_donna/ed25519.c
@@ -395,6 +396,7 @@ add_executable(agent_core_tests
   tests/test_stream_decoder.c
   tests/test_tool_loop.c
   tests/test_tool_loop_memory_flush.c
+  tests/test_tool_plugin_embedded.c
   tests/test_runner.c
 )
 target_link_libraries(agent_core_tests PRIVATE agent_core)
