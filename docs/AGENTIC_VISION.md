@@ -54,6 +54,14 @@ CLI, or a custom client.
    - Explicit budget caps, retry policies, and model routing.
    - Diagnostics that identify provider failures quickly.
 
+9) **Evidence-grade outcomes**
+   - Exportable run bundles that capture inputs, tool IO, and outputs.
+   - Built-in evaluation hooks so users can compare runs across models/settings.
+
+10) **Interoperability**
+   - OpenAI-compatible APIs plus standardized tool/agent protocols.
+   - Portable artifacts so results can move between clients and deployments.
+
 ---
 
 ## 2) Architect / Designer Expectations (platform-level)
@@ -76,19 +84,23 @@ These are structural guarantees for maintainability, extensibility, and safety o
    - Deterministic pre/post hooks for tool allow/deny and budgets.
    - Tool servers or plugin sandboxes with explicit resource limits.
 
-5) **Security and identity**
+5) **Isolation + resource accounting**
+   - Hard caps on CPU/memory/disk/network for tool execution.
+   - Deterministic accounting for cost, tokens, and resource usage.
+
+6) **Security and identity**
    - Broker + connector provisioning with mTLS, JWT, and audit.
    - Signed capability manifests and attestations for runs.
 
-6) **Scalable scheduling**
+7) **Scalable scheduling**
    - Fairness, backpressure, and admission control are first-class.
    - Separate interactive vs batch workloads with clear limits.
 
-7) **Portability**
+8) **Portability**
    - Portable core with no env or filesystem dependency.
    - Embedded/VM targets can supply custom persistence and transport.
 
-8) **Operational clarity**
+9) **Operational clarity**
    - Diagnostics endpoints reveal provider health and DB status.
    - Evidence bundles support incident response and audits.
 
@@ -130,6 +142,10 @@ The following areas drive the biggest step-change beyond a typical gateway/plugi
 5) **Transport independence + capability negotiation**
    - Broker can introduce new transports without changing agentd.
    - Clients negotiate protocol + feature caps at connect time.
+
+6) **Evaluation + regression gating**
+   - Canonical eval packs for deterministic run checks in CI.
+   - Model/version drift detection with reproducible baselines.
 
 ---
 

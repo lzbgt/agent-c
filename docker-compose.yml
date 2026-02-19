@@ -156,6 +156,8 @@ services:
       - wss://broker:8443/v1/agent/connect
       - --local-agentd
       - http://agentd:8123
+      - --local-agentd-token
+      - "dev-agentd-token"
       - --tls-ca
       - /mtls/ca.pem
       - --tls-cert

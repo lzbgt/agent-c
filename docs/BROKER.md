@@ -418,7 +418,9 @@ curl -sS -H "Authorization: Bearer $OIDC_JWT" \
   https://localhost:8443/v1/agents
 ```
 
-5) Start `agentd` locally (bind loopback only), then start the connector:
+5) Start `agentd` locally (bind loopback only), then start the connector.
+   If agentd uses `--auth-token`, pass the same token via `--local-agentd-token`
+   or set `AGENTD_AUTH_TOKEN` for the connector process.
 
 ```sh
 ./build/agentd --host 127.0.0.1 --port 8123
@@ -426,6 +428,7 @@ cd broker
 go run ./cmd/agentd-connector \
   --broker wss://localhost:8443/v1/agent/connect \
   --local-agentd http://127.0.0.1:8123 \
+  --local-agentd-token "$AGENTD_AUTH_TOKEN" \
   --tls-ca   ../tools/_agentd_broker_mtls_test_certs/ca.pem \
   --tls-cert ../tools/_agentd_broker_mtls_test_certs/client_1.pem \
   --tls-key  ../tools/_agentd_broker_mtls_test_certs/client_1.key.pem

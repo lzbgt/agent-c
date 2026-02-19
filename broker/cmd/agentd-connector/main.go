@@ -68,6 +68,7 @@ func main() {
 	var agentCNPfx = flag.String("agent-cn-prefix", "agentd-", "CN prefix used to extract agent id from cert CN")
 	var agentID = flag.String("agent-id", "", "agent id (optional; defaults from client cert CN)")
 	var deploymentID = flag.String("deployment-id", "", "deployment id (optional; enables multi-deployment per agent)")
+	var localAgentdToken = flag.String("local-agentd-token", "", "auth token for local agentd (Bearer or raw)")
 	flag.Parse()
 
 	if strings.TrimSpace(*brokerURL) == "" {
@@ -82,6 +83,11 @@ func main() {
 	if strings.TrimSpace(*deploymentID) == "" {
 		if v := strings.TrimSpace(os.Getenv("AGENTD_DEPLOYMENT_ID")); v != "" {
 			*deploymentID = v
+		}
+	}
+	if strings.TrimSpace(*localAgentdToken) == "" {
+		if v := strings.TrimSpace(os.Getenv("AGENTD_AUTH_TOKEN")); v != "" {
+			*localAgentdToken = v
 		}
 	}
 
@@ -158,7 +164,16 @@ func main() {
 		})
 
 		ws := &safeWS{conn: conn}
-		err = runSession(ctx, ws, conn, httpClient, strings.TrimSpace(*localBase), strings.TrimSpace(*agentID), strings.TrimSpace(*deploymentID))
+		err = runSession(
+			ctx,
+			ws,
+			conn,
+			httpClient,
+			strings.TrimSpace(*localBase),
+			strings.TrimSpace(*localAgentdToken),
+			strings.TrimSpace(*agentID),
+			strings.TrimSpace(*deploymentID),
+		)
 		_ = ws.Close()
 		if err != nil {
 			log.Printf("session ended: %v", err)
@@ -170,7 +185,7 @@ func main() {
 	}
 }
 
-func runSession(ctx context.Context, ws *safeWS, conn *websocket.Conn, httpClient *http.Client, localBase, agentID, deploymentID string) error {
+func runSession(ctx context.Context, ws *safeWS, conn *websocket.Conn, httpClient *http.Client, localBase, localAgentdToken, agentID, deploymentID string) error {
 	if ws == nil || conn == nil {
 		return errors.New("nil websocket connection")
 	}
@@ -256,7 +271,7 @@ func runSession(ctx context.Context, ws *safeWS, conn *websocket.Conn, httpClien
 			if err := json.Unmarshal(raw, &rr); err != nil {
 				continue
 			}
-			respMsg := handleLocalAgentd(httpClient, localBase, rr)
+			respMsg := handleLocalAgentd(httpClient, localBase, localAgentdToken, rr)
 			if err := ws.WriteJSON(respMsg); err != nil {
 				return fmt.Errorf("write response: %w", err)
 			}
@@ -275,7 +290,7 @@ func runSession(ctx context.Context, ws *safeWS, conn *websocket.Conn, httpClien
 					delete(streamCancels, req.ID)
 					streamsMu.Unlock()
 				}()
-				handleLocalAgentdStream(sctx, ws, httpClient, localBase, req)
+				handleLocalAgentdStream(sctx, ws, httpClient, localBase, localAgentdToken, req)
 			}(sr)
 		case proto.TypeHTTPStreamCancel:
 			var cc proto.StreamCancel
@@ -294,7 +309,7 @@ func runSession(ctx context.Context, ws *safeWS, conn *websocket.Conn, httpClien
 	}
 }
 
-func handleLocalAgentd(httpClient *http.Client, base string, msg proto.RelayRequest) proto.RelayResponse {
+func handleLocalAgentd(httpClient *http.Client, base string, localAgentdToken string, msg proto.RelayRequest) proto.RelayResponse {
 	out := proto.RelayResponse{
 		Type: proto.TypeHTTPResp,
 		ID:   msg.ID,
@@ -322,6 +337,9 @@ func handleLocalAgentd(httpClient *http.Client, base string, msg proto.RelayRequ
 		}
 		req.Header.Set(k, v)
 	}
+	if authHeader := authHeaderFromToken(localAgentdToken); authHeader != "" && req.Header.Get("Authorization") == "" {
+		req.Header.Set("Authorization", authHeader)
+	}
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		out.Err = fmt.Sprintf("local agentd request failed: %v", err)
@@ -345,7 +363,7 @@ func handleLocalAgentd(httpClient *http.Client, base string, msg proto.RelayRequ
 	return out
 }
 
-func handleLocalAgentdStream(ctx context.Context, ws *safeWS, httpClient *http.Client, base string, msg proto.StreamRequest) {
+func handleLocalAgentdStream(ctx context.Context, ws *safeWS, httpClient *http.Client, base string, localAgentdToken string, msg proto.StreamRequest) {
 	writeJSON := func(v any) {
 		_ = ws.WriteJSON(v)
 	}
@@ -371,6 +389,9 @@ func handleLocalAgentdStream(ctx context.Context, ws *safeWS, httpClient *http.C
 			continue
 		}
 		req.Header.Set(k, v)
+	}
+	if authHeader := authHeaderFromToken(localAgentdToken); authHeader != "" && req.Header.Get("Authorization") == "" {
+		req.Header.Set("Authorization", authHeader)
 	}
 
 	resp, err := httpClient.Do(req)
@@ -416,4 +437,15 @@ func handleLocalAgentdStream(ctx context.Context, ws *safeWS, httpClient *http.C
 		writeJSON(proto.StreamEnd{Type: proto.TypeHTTPStreamEnd, ID: msg.ID, Err: rerr.Error()})
 		return
 	}
+}
+
+func authHeaderFromToken(token string) string {
+	authHeader := strings.TrimSpace(token)
+	if authHeader == "" {
+		return ""
+	}
+	if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+		return authHeader
+	}
+	return "Bearer " + authHeader
 }

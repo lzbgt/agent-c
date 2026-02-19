@@ -246,6 +246,7 @@ You can also send `SIGHUP` to reload the client auth file immediately.
 agentd-connector \
   --broker wss://broker.example.com/v1/agent/connect \
   --local-agentd http://127.0.0.1:8123 \
+  --local-agentd-token "$AGENTD_AUTH_TOKEN" \
   --tls-ca /etc/agentd/tls/ca.pem \
   --tls-cert /etc/agentd/tls/client.pem \
   --tls-key /etc/agentd/tls/client.key.pem \

@@ -119,7 +119,7 @@ func (d *DB) GetTeamRun(ctx context.Context, teamID, teamRunID string) (*TeamRun
 	var tr TeamRun
 	var runJSON string
 	err := d.Pool.QueryRow(ctx, `
-		SELECT team_run_id, team_id, status, created_by, run_json::text, created_at
+		SELECT team_run_id, team_id, status, COALESCE(created_by, ''), run_json::text, created_at
 		FROM broker_team_runs
 		WHERE team_id=$1 AND team_run_id=$2
 	`, teamID, teamRunID).Scan(&tr.TeamRunID, &tr.TeamID, &tr.Status, &tr.CreatedBy, &runJSON, &tr.CreatedAt)
@@ -194,7 +194,9 @@ func (d *DB) ListTeamsForUser(ctx context.Context, ownerSub string) ([]Team, err
 		return nil, err
 	}
 	rows, err := d.Pool.Query(ctx, `
-		SELECT team_id, owner_sub, display_name, tags::text, policy_ref, shared_memory_scope_id, meta::text, created_at
+		SELECT team_id, owner_sub, display_name, tags::text,
+			COALESCE(policy_ref, ''), COALESCE(shared_memory_scope_id, ''),
+			meta::text, created_at
 		FROM broker_teams
 		WHERE owner_sub=$1
 		ORDER BY created_at DESC, team_id ASC
@@ -222,7 +224,9 @@ func (d *DB) ListTeamsAll(ctx context.Context) ([]Team, error) {
 		return nil, errors.New("db not open")
 	}
 	rows, err := d.Pool.Query(ctx, `
-		SELECT team_id, owner_sub, display_name, tags::text, policy_ref, shared_memory_scope_id, meta::text, created_at
+		SELECT team_id, owner_sub, display_name, tags::text,
+			COALESCE(policy_ref, ''), COALESCE(shared_memory_scope_id, ''),
+			meta::text, created_at
 		FROM broker_teams
 		ORDER BY created_at DESC, team_id ASC
 	`)
@@ -255,7 +259,9 @@ func (d *DB) GetTeam(ctx context.Context, teamID string) (*Team, error) {
 	var t Team
 	var tags, meta string
 	err := d.Pool.QueryRow(ctx, `
-		SELECT team_id, owner_sub, display_name, tags::text, policy_ref, shared_memory_scope_id, meta::text, created_at
+		SELECT team_id, owner_sub, display_name, tags::text,
+			COALESCE(policy_ref, ''), COALESCE(shared_memory_scope_id, ''),
+			meta::text, created_at
 		FROM broker_teams
 		WHERE team_id=$1
 	`, teamID).Scan(&t.TeamID, &t.OwnerSub, &t.DisplayName, &tags, &t.PolicyRef, &t.SharedMemoryScopeID, &meta, &t.CreatedAt)
@@ -313,7 +319,9 @@ func (d *DB) ListTeamMembers(ctx context.Context, teamID string) ([]TeamMember, 
 		return nil, errors.New("missing team_id")
 	}
 	rows, err := d.Pool.Query(ctx, `
-		SELECT member_id, team_id, deployment_id, agent_id, role, capabilities::text, status, weight, meta::text, created_at
+		SELECT member_id, team_id,
+			COALESCE(deployment_id, ''), COALESCE(agent_id, ''),
+			role, capabilities::text, status, weight, meta::text, created_at
 		FROM broker_team_members
 		WHERE team_id=$1
 		ORDER BY created_at ASC, member_id ASC
@@ -348,7 +356,9 @@ func (d *DB) GetTeamMember(ctx context.Context, teamID, memberID string) (*TeamM
 	var m TeamMember
 	var caps, meta string
 	err := d.Pool.QueryRow(ctx, `
-		SELECT member_id, team_id, deployment_id, agent_id, role, capabilities::text, status, weight, meta::text, created_at
+		SELECT member_id, team_id,
+			COALESCE(deployment_id, ''), COALESCE(agent_id, ''),
+			role, capabilities::text, status, weight, meta::text, created_at
 		FROM broker_team_members
 		WHERE team_id=$1 AND member_id=$2
 	`, teamID, memberID).Scan(&m.MemberID, &m.TeamID, &m.DeploymentID, &m.AgentID, &m.Role, &caps, &m.Status, &m.Weight, &meta, &m.CreatedAt)
