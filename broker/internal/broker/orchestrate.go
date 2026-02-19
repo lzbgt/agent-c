@@ -1,35 +1,21 @@
 package broker
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"agentd-broker/internal/db"
 )
-
-type orchestrateTaskPrepared struct {
-	TaskID  string
-	AgentID string
-	DeploymentID string
-	Method  string
-	Path    string
-	Query   string
-
-	Headers map[string]string
-	Body    []byte
-}
 
 type orchestrateParsed struct {
 	MaxConcurrency int
 	TimeoutMS      int
 	AllowSessions  bool
 	TraceID        string
-	Tasks          []orchestrateTaskPrepared
+	Tasks          []agentTaskPrepared
 }
 
 func parseOrchestrateRequest(body []byte, defaultTraceID string) (orchestrateParsed, error) {
@@ -109,7 +95,7 @@ func parseOrchestrateRequest(body []byte, defaultTraceID string) (orchestratePar
 		return orchestrateParsed{}, errors.New("too many tasks")
 	}
 
-	out.Tasks = make([]orchestrateTaskPrepared, 0, len(tasksIn))
+	out.Tasks = make([]agentTaskPrepared, 0, len(tasksIn))
 	for i, t := range tasksIn {
 		var agentID string
 		if v, ok := t["agent_id"]; ok {
@@ -234,15 +220,15 @@ func parseOrchestrateRequest(body []byte, defaultTraceID string) (orchestratePar
 			return orchestrateParsed{}, errors.New("failed to build task body")
 		}
 
-		out.Tasks = append(out.Tasks, orchestrateTaskPrepared{
-			TaskID:  taskID,
-			AgentID: agentID,
+		out.Tasks = append(out.Tasks, agentTaskPrepared{
+			TaskID:       taskID,
+			AgentID:      agentID,
 			DeploymentID: deploymentID,
-			Method:  method,
-			Path:    path,
-			Query:   query,
-			Headers: hdrs,
-			Body:    bodyBytes,
+			Method:       method,
+			Path:         path,
+			Query:        query,
+			Headers:      hdrs,
+			Body:         bodyBytes,
 		})
 	}
 
@@ -363,110 +349,17 @@ func (s *Server) handleOrchestrate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Execute tasks concurrently (bounded).
-	type taskOut struct {
-		TaskID     string         `json:"task_id"`
-		AgentID    string         `json:"agent_id"`
-		DeploymentID string         `json:"deployment_id,omitempty"`
-		OK         bool           `json:"ok"`
-		MS         int            `json:"ms"`
-		HTTPStatus int            `json:"http_status,omitempty"`
-		Error      string         `json:"error,omitempty"`
-		Result     map[string]any `json:"result,omitempty"`
-	}
-
-	out := make([]taskOut, len(parsed.Tasks))
-	var next atomic.Uint32
-
-	worker := func() {
-		for {
-			idx := int(next.Add(1) - 1)
-			if idx >= len(parsed.Tasks) {
-				return
-			}
-			t := parsed.Tasks[idx]
-
-			// Build forwarded headers.
-			fwdHeaders := map[string]string{}
-			for k, v := range t.Headers {
-				if strings.TrimSpace(k) == "" {
-					continue
-				}
-				kl := strings.ToLower(strings.TrimSpace(k))
-				if kl == "authorization" || kl == "host" || kl == "connection" {
-					continue
-				}
-				fwdHeaders[k] = v
-			}
-			fwdHeaders["X-Agentd-Broker-User"] = p.Sub
-			if parsed.TraceID != "" {
-				if _, ok := fwdHeaders["X-Trace-ID"]; !ok {
-					fwdHeaders["X-Trace-ID"] = parsed.TraceID
-				}
-			}
-
-			ctx := r.Context()
-			timeout := time.Duration(parsed.TimeoutMS) * time.Millisecond
-			var cancel context.CancelFunc
-			if timeout > 0 {
-				ctx, cancel = context.WithTimeout(ctx, timeout)
-			}
-
-			start := time.Now()
-			ro := s.relayAgentHTTP(ctx, p, t.AgentID, t.DeploymentID, t.Method, t.Path, t.Query, fwdHeaders, t.Body)
-			ms := int(time.Since(start).Milliseconds())
-			if cancel != nil {
-				cancel()
-			}
-
-			row := taskOut{
-				TaskID:       t.TaskID,
-				AgentID:      t.AgentID,
-				DeploymentID: t.DeploymentID,
-				MS:           ms,
-			}
-			if ro.BrokerStatus != 0 {
-				row.OK = false
-				row.Error = ro.Err
-				out[idx] = row
-				continue
-			}
-			row.HTTPStatus = ro.AgentStatus
-
-			var resultObj map[string]any
-			if err := json.Unmarshal(ro.Body, &resultObj); err == nil {
-				row.Result = resultObj
-				if v, ok := resultObj["ok"].(bool); ok {
-					row.OK = v
-				} else {
-					row.OK = ro.AgentStatus >= 200 && ro.AgentStatus < 300
-				}
-			} else {
-				row.OK = ro.AgentStatus >= 200 && ro.AgentStatus < 300
-				row.Error = "invalid json response"
-			}
-			out[idx] = row
-		}
-	}
-
 	threads := parsed.MaxConcurrency
+	if threads < 1 {
+		threads = 1
+	}
 	if threads > len(parsed.Tasks) {
 		threads = len(parsed.Tasks)
 	}
 	if threads < 1 {
 		threads = 1
 	}
-
-	done := make(chan struct{}, threads)
-	for i := 0; i < threads; i++ {
-		go func() {
-			worker()
-			done <- struct{}{}
-		}()
-	}
-	for i := 0; i < threads; i++ {
-		<-done
-	}
+	out := s.executeAgentTasks(r.Context(), p, parsed.Tasks, threads, parsed.TimeoutMS, parsed.TraceID)
 
 	allOK := true
 	for _, r := range out {

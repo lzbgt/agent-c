@@ -177,9 +177,9 @@ All endpoints below are served by the broker (not by agents).
 - `DELETE /v1/teams/{team_id}/quorum/{rule_id}`
   - deletes a quorum rule (owner/admin only)
 - `POST /v1/teams/{team_id}/runs`
-  - team runs are stubbed in the current broker (returns 501)
+  - executes a synchronous fan-out run across active team members (role filter optional)
 - `GET /v1/teams/{team_id}/runs/{team_run_id}`
-  - team runs are stubbed in the current broker (returns 501)
+  - returns the stored team run status + current member list
 
 - `POST /v1/agents/{agent_id}/delete` (or `DELETE` to the same path)
   - deletes an agent record (owner or admin)

@@ -688,7 +688,129 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	writeErrorJSON(w, "team runs not implemented", http.StatusNotImplemented)
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if p.AuthKind != "oidc" {
+		writeErrorJSON(w, "oidc required", http.StatusForbidden)
+		return
+	}
+	_, ok := s.requireTeamOwner(w, r, p, teamID)
+	if !ok {
+		return
+	}
+	body, err := readBodyBounded(r.Body, 1024*1024)
+	if err != nil {
+		writeErrorJSON(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	raw := map[string]json.RawMessage{}
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &raw); err != nil {
+			writeErrorJSON(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+	}
+	runRaw, ok := raw["run"]
+	if !ok || len(runRaw) == 0 || string(runRaw) == "null" {
+		writeErrorJSON(w, "missing run", http.StatusBadRequest)
+		return
+	}
+	runMap := map[string]any{}
+	if err := json.Unmarshal(runRaw, &runMap); err != nil || len(runMap) == 0 {
+		writeErrorJSON(w, "invalid run", http.StatusBadRequest)
+		return
+	}
+	teamMeta := map[string]any{}
+	if v, ok := raw["team"]; ok && len(v) > 0 && string(v) != "null" {
+		_ = json.Unmarshal(v, &teamMeta)
+	}
+
+	options := parseTeamRunOptions(teamMeta)
+	members, err := s.cfg.DB.ListTeamMembers(r.Context(), teamID)
+	if err != nil {
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	members = filterTeamRunMembers(members, options.Role, options.Roles)
+	if len(members) == 0 {
+		writeErrorJSON(w, "no eligible team members", http.StatusBadRequest)
+		return
+	}
+	for _, m := range members {
+		if strings.TrimSpace(m.AgentID) == "" {
+			writeErrorJSON(w, "team member missing agent_id", http.StatusBadRequest)
+			return
+		}
+		if ok, err := s.canAccessAgent(r.Context(), p, m.AgentID); err != nil {
+			writeErrorJSON(w, "db error", http.StatusInternalServerError)
+			return
+		} else if !ok {
+			writeErrorJSON(w, "forbidden", http.StatusForbidden)
+			return
+		}
+	}
+
+	traceID := traceIDFromContext(r.Context())
+	if traceID != "" {
+		if _, ok := runMap["trace_id"]; !ok {
+			runMap["trace_id"] = traceID
+		}
+	}
+	runBody := mustJSON(runMap)
+
+	teamRunID := "tr_" + newID()[:12]
+	if _, err := s.cfg.DB.CreateTeamRun(r.Context(), teamRunID, teamID, "running", p.Sub, mustJSON(map[string]any{
+		"run":  runMap,
+		"team": teamMeta,
+	})); err != nil {
+		writeErrorJSON(w, "create team run failed", http.StatusBadRequest)
+		return
+	}
+
+	tasks := make([]agentTaskPrepared, 0, len(members))
+	for i, member := range members {
+		tasks = append(tasks, agentTaskPrepared{
+			TaskID:       "member_" + itoa(i),
+			AgentID:      member.AgentID,
+			DeploymentID: member.DeploymentID,
+			Method:       "POST",
+			Path:         "/api/v1/run",
+			Query:        "",
+			Headers:      map[string]string{},
+			Body:         runBody,
+		})
+	}
+	results := s.executeAgentTasks(r.Context(), p, tasks, options.MaxConcurrency, options.TimeoutMS, traceID)
+	allOK := true
+	for _, r := range results {
+		if !r.OK {
+			allOK = false
+			break
+		}
+	}
+	status := "succeeded"
+	if !allOK {
+		status = "failed"
+	}
+	if err := s.cfg.DB.UpdateTeamRunStatus(r.Context(), teamID, teamRunID, status); err != nil {
+		writeErrorJSON(w, "update team run failed", http.StatusInternalServerError)
+		return
+	}
+	run, err := s.cfg.DB.GetTeamRun(r.Context(), teamID, teamRunID)
+	if err != nil {
+		writeErrorJSON(w, "team run not found", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, map[string]any{
+		"ok":              true,
+		"team_id":         run.TeamID,
+		"team_run_id":     run.TeamRunID,
+		"status":          run.Status,
+		"created_unix_ms": run.CreatedAt.UnixMilli(),
+	})
 }
 
 func (s *Server) handleTeamRunGet(w http.ResponseWriter, r *http.Request, teamID, teamRunID string) {
@@ -696,7 +818,41 @@ func (s *Server) handleTeamRunGet(w http.ResponseWriter, r *http.Request, teamID
 		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	writeErrorJSON(w, "team runs not implemented", http.StatusNotImplemented)
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if p.AuthKind != "oidc" {
+		writeErrorJSON(w, "oidc required", http.StatusForbidden)
+		return
+	}
+	_, ok := s.requireTeamOwner(w, r, p, teamID)
+	if !ok {
+		return
+	}
+	run, err := s.cfg.DB.GetTeamRun(r.Context(), teamID, teamRunID)
+	if err != nil {
+		writeErrorJSON(w, "team run not found", http.StatusNotFound)
+		return
+	}
+	members, err := s.cfg.DB.ListTeamMembers(r.Context(), teamID)
+	if err != nil {
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	outMembers := make([]map[string]any, 0, len(members))
+	for _, m := range members {
+		outMembers = append(outMembers, teamMemberToJSON(m))
+	}
+	writeJSON(w, map[string]any{
+		"ok":              true,
+		"team_id":         run.TeamID,
+		"team_run_id":     run.TeamRunID,
+		"status":          run.Status,
+		"created_unix_ms": run.CreatedAt.UnixMilli(),
+		"members":         outMembers,
+	})
 }
 
 func (s *Server) requireTeamOwner(w http.ResponseWriter, r *http.Request, p *Principal, teamID string) (*db.Team, bool) {
@@ -770,4 +926,109 @@ func teamQuorumRuleToJSON(r db.TeamQuorumRule) map[string]any {
 		"meta":                   r.Meta(),
 	}
 	return out
+}
+
+type teamRunOptions struct {
+	Role           string
+	Roles          map[string]bool
+	MaxConcurrency int
+	TimeoutMS      int
+}
+
+func parseTeamRunOptions(meta map[string]any) teamRunOptions {
+	out := teamRunOptions{
+		MaxConcurrency: 4,
+		TimeoutMS:      60_000,
+	}
+	if v, ok := meta["max_concurrency"]; ok {
+		if iv, ok := asInt(v); ok {
+			if iv < 1 {
+				iv = 1
+			}
+			if iv > 16 {
+				iv = 16
+			}
+			out.MaxConcurrency = iv
+		}
+	}
+	if v, ok := meta["timeout_ms"]; ok {
+		if iv, ok := asInt(v); ok {
+			if iv < 100 {
+				iv = 100
+			}
+			if iv > 300_000 {
+				iv = 300_000
+			}
+			out.TimeoutMS = iv
+		}
+	}
+	if v, ok := meta["role"]; ok {
+		if s, ok := v.(string); ok {
+			out.Role = strings.ToLower(strings.TrimSpace(s))
+		}
+	}
+	if v, ok := meta["roles"]; ok {
+		if roles := asStringSlice(v); len(roles) > 0 {
+			out.Roles = map[string]bool{}
+			for _, r := range roles {
+				r = strings.ToLower(strings.TrimSpace(r))
+				if r != "" {
+					out.Roles[r] = true
+				}
+			}
+		}
+	}
+	return out
+}
+
+func filterTeamRunMembers(members []db.TeamMember, role string, roles map[string]bool) []db.TeamMember {
+	out := make([]db.TeamMember, 0, len(members))
+	for _, m := range members {
+		status := strings.ToLower(strings.TrimSpace(m.Status))
+		if status != "" && status != "active" {
+			continue
+		}
+		mRole := strings.ToLower(strings.TrimSpace(m.Role))
+		if len(roles) > 0 {
+			if !roles[mRole] {
+				continue
+			}
+		} else if role != "" && mRole != role {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+func asInt(v any) (int, bool) {
+	switch t := v.(type) {
+	case int:
+		return t, true
+	case int64:
+		return int(t), true
+	case float64:
+		return int(t), true
+	case float32:
+		return int(t), true
+	default:
+		return 0, false
+	}
+}
+
+func asStringSlice(v any) []string {
+	switch t := v.(type) {
+	case []string:
+		return t
+	case []any:
+		out := make([]string, 0, len(t))
+		for _, item := range t {
+			if s, ok := item.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
 }

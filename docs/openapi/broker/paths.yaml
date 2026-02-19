@@ -710,7 +710,7 @@
 /v1/teams/{team_id}/runs:
   post:
     tags: [teams]
-    summary: Create team run (planned)
+    summary: Create team run
     parameters:
       - in: path
         name: team_id
@@ -733,7 +733,7 @@
 /v1/teams/{team_id}/runs/{team_run_id}:
   get:
     tags: [teams]
-    summary: Get team run status (planned)
+    summary: Get team run status
     parameters:
       - in: path
         name: team_id

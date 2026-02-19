@@ -1,12 +1,12 @@
 # Team Orchestration v0 (agentd + broker)
 
 Date: 2026-02-19
-Status: v0 (design draft; broker team registry CRUD implemented, team runs + quorum enforcement pending)
+Status: v0 (design draft; broker team registry CRUD + synchronous team runs implemented; quorum enforcement pending)
 
 This spec defines a **team orchestration model** for multi-agent runs that goes beyond
 single-run tool loops. It formalizes agent groups, roles, shared memory scopes, and
 quorum gating for sensitive actions. This is a **design target**; endpoints and schemas
-listed below are proposed and only partially implemented today (team registry CRUD only).
+listed below are proposed and only partially implemented today (team registry CRUD + synchronous team runs).
 
 ---
 
@@ -139,7 +139,8 @@ hosted in either component; the broker is recommended for multi-deployment routi
 
 Current broker implementation:
 - `GET/POST/PATCH/DELETE /v1/teams` + `/members` + `/quorum` are implemented.
-- `/v1/teams/{team_id}/runs` endpoints currently return `501`.
+- `POST /v1/teams/{team_id}/runs` executes synchronous fan-out across active members.
+- `GET /v1/teams/{team_id}/runs/{team_run_id}` returns stored status + current members.
 
 ### Team management
 

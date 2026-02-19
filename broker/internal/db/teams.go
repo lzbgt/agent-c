@@ -83,6 +83,74 @@ type TeamRun struct {
 	CreatedAt time.Time
 }
 
+func (d *DB) CreateTeamRun(ctx context.Context, teamRunID, teamID, status, createdBy string, runJSON []byte) (*TeamRun, error) {
+	if d == nil || d.Pool == nil {
+		return nil, errors.New("db not open")
+	}
+	teamRunID = strings.TrimSpace(teamRunID)
+	teamID = strings.TrimSpace(teamID)
+	status = strings.TrimSpace(status)
+	createdBy = strings.TrimSpace(createdBy)
+	if teamRunID == "" || teamID == "" {
+		return nil, errors.New("missing team_run_id or team_id")
+	}
+	if status == "" {
+		return nil, errors.New("missing status")
+	}
+	_, err := d.Pool.Exec(ctx, `
+		INSERT INTO broker_team_runs(team_run_id, team_id, status, created_by, run_json)
+		VALUES($1, $2, $3, $4, $5::jsonb)
+	`, teamRunID, teamID, status, nullIfEmpty(createdBy), string(runJSON))
+	if err != nil {
+		return nil, err
+	}
+	return d.GetTeamRun(ctx, teamID, teamRunID)
+}
+
+func (d *DB) GetTeamRun(ctx context.Context, teamID, teamRunID string) (*TeamRun, error) {
+	if d == nil || d.Pool == nil {
+		return nil, errors.New("db not open")
+	}
+	teamID = strings.TrimSpace(teamID)
+	teamRunID = strings.TrimSpace(teamRunID)
+	if teamID == "" || teamRunID == "" {
+		return nil, errors.New("missing team_id or team_run_id")
+	}
+	var tr TeamRun
+	var runJSON string
+	err := d.Pool.QueryRow(ctx, `
+		SELECT team_run_id, team_id, status, created_by, run_json::text, created_at
+		FROM broker_team_runs
+		WHERE team_id=$1 AND team_run_id=$2
+	`, teamID, teamRunID).Scan(&tr.TeamRunID, &tr.TeamID, &tr.Status, &tr.CreatedBy, &runJSON, &tr.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	tr.RunJSON = json.RawMessage(runJSON)
+	return &tr, nil
+}
+
+func (d *DB) UpdateTeamRunStatus(ctx context.Context, teamID, teamRunID, status string) error {
+	if d == nil || d.Pool == nil {
+		return errors.New("db not open")
+	}
+	teamID = strings.TrimSpace(teamID)
+	teamRunID = strings.TrimSpace(teamRunID)
+	status = strings.TrimSpace(status)
+	if teamID == "" || teamRunID == "" {
+		return errors.New("missing team_id or team_run_id")
+	}
+	if status == "" {
+		return errors.New("missing status")
+	}
+	_, err := d.Pool.Exec(ctx, `
+		UPDATE broker_team_runs
+		SET status=$3
+		WHERE team_id=$1 AND team_run_id=$2
+	`, teamID, teamRunID, status)
+	return err
+}
+
 func (d *DB) CreateTeam(ctx context.Context, ownerSub, teamID, displayName string, tags []string, policyRef, sharedMemoryScopeID string, meta map[string]any) (*Team, error) {
 	if d == nil || d.Pool == nil {
 		return nil, errors.New("db not open")
