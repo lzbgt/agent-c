@@ -448,7 +448,7 @@ Reliability notes (important for production UX):
 
 ## Cleanup (disk usage)
 
-Build artifacts and run logs can grow quickly (especially `build/` and `out/`). To keep the repo lean:
+Build artifacts and run logs can grow quickly (especially `build/`, `build-core*/`, and `out/`). To keep the repo lean:
 
 ```bash
 tools/clean.sh

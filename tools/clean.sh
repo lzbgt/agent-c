@@ -18,7 +18,7 @@ usage() {
 Usage: tools/clean.sh [options]
 
 Default behavior:
-  - Remove oversized build artifacts (build/, build-nohttp/) when > threshold.
+  - Remove oversized build artifacts (build/, build-nohttp/, build-core/, build-core-espcheck/) when > threshold.
   - Prune old files from out/ (logs) older than OUT_MAX_DAYS.
   - If out/ remains oversized, remove it entirely.
 
@@ -177,7 +177,7 @@ def prune_out(out_dir: Path) -> None:
 
 # Build artifacts
 if not keep_build:
-    for name in ("build", "build-nohttp"):
+    for name in ("build", "build-nohttp", "build-core", "build-core-espcheck"):
         p = root / name
         if not p.exists():
             continue
