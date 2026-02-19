@@ -339,6 +339,7 @@ Stop the stack:
   If no Python is available, the scripts skip WebUI serve and continue.
 - For a one-command macOS verification run, use: `tools/verify_mac_full_stack.sh`.
 - If Docker is unavailable or resource-constrained, you can verify the local stack without compose:
+- `tools/verify_compose_stack.sh` warns when Docker memory is under 4 GiB (Keycloak may OOM).
   - `tools/verify_mac_local_stack.sh` (agentd + WebUI only; no broker)
   - Optional env:
     - `MAC_LOCAL_SKIP_UI=1` to skip WebUI build/serve

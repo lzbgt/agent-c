@@ -26,6 +26,34 @@ if ! docker_compose_preflight "compose"; then
   exit 77
 fi
 
+warn_docker_mem() {
+  local mem total_gib
+  mem="${MEM_BYTES:-}"
+  if [[ -z "${mem}" ]]; then
+    mem="$(docker info --format '{{.MemTotal}}' 2>/dev/null || true)"
+  fi
+  if [[ -z "${mem}" || ! "${mem}" =~ ^[0-9]+$ ]]; then
+    return 0
+  fi
+  total_gib="$(python3 - <<'PY'
+import os
+mem = int(os.environ.get("MEM_BYTES", "0"))
+print(f"{mem / (1024**3):.2f}")
+PY
+)"
+  if (( mem < 4 * 1024 * 1024 * 1024 )); then
+    echo "[compose] WARN: Docker memory ${total_gib} GiB (<4 GiB). If Keycloak crashes, raise Docker Desktop resources or keep heap capped." >&2
+  fi
+}
+
+MEM_BYTES=""
+MEM_BYTES="$(docker info --format '{{.MemTotal}}' 2>/dev/null || true)"
+if [[ -n "${MEM_BYTES}" ]]; then
+  export MEM_BYTES
+  warn_docker_mem || true
+  unset MEM_BYTES
+fi
+
 LOG_BUILD="${OUT_DIR}/compose_build_$(date +%Y-%m-%d_%H%M%S).log"
 LOG_UP="${OUT_DIR}/compose_up_$(date +%Y-%m-%d_%H%M%S).log"
 LOG_PULL="${OUT_DIR}/compose_pull_$(date +%Y-%m-%d_%H%M%S).log"
