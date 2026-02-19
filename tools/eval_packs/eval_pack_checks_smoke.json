@@ -1,0 +1,22 @@
+{
+  "name": "eval_pack_checks_smoke",
+  "version": "eval_pack_v0",
+  "threshold": {
+    "min_score": 1.0,
+    "min_pass_rate": 1.0
+  },
+  "scenarios": [
+    {
+      "id": "checks_smoke",
+      "file": "tools/scenarios/eval_pack_checks_smoke.json",
+      "score_weight": 1.0,
+      "checks": [
+        { "type": "file_exists", "path": "hello.txt" },
+        { "type": "file_sha256", "path": "hello.txt", "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824" },
+        { "type": "json_number", "path": "data.json", "key": "value", "equals": 5 },
+        { "type": "json_number", "path": "data.json", "key": "value", "min": 1, "max": 10 },
+        { "type": "json_len", "path": "data.json", "key": "items", "equals": 3 }
+      ]
+    }
+  ]
+}

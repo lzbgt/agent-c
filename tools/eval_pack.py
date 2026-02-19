@@ -113,6 +113,88 @@ def check_json_path(run_dir: str, check: Dict[str, Any]) -> Tuple[bool, str]:
     return True, f"json path exists: {key}"
 
 
+def check_json_len(run_dir: str, check: Dict[str, Any]) -> Tuple[bool, str]:
+    rel = str(check.get("path") or "")
+    key = str(check.get("key") or "")
+    if not rel or not key:
+        return False, "json_len requires path + key"
+    path = safe_join(run_dir, rel)
+    if not os.path.exists(path):
+        return False, f"json missing: {rel}"
+    with open(path, "r", encoding="utf-8") as f:
+        payload = json.load(f)
+    try:
+        value = get_json_path(payload, key)
+    except KeyError:
+        return False, f"json path missing: {key}"
+    if isinstance(value, (list, dict, str)):
+        length = len(value)
+    else:
+        return False, f"json_len unsupported type: {type(value).__name__}"
+    expected = check.get("equals")
+    if expected is not None:
+        if length == int(expected):
+            return True, f"json_len equals ok: {key}"
+        return False, f"json_len equals mismatch: {key}"
+    min_v = check.get("min")
+    max_v = check.get("max")
+    if min_v is not None and length < int(min_v):
+        return False, f"json_len below min: {key}"
+    if max_v is not None and length > int(max_v):
+        return False, f"json_len above max: {key}"
+    return True, f"json_len ok: {key}"
+
+
+def check_json_number(run_dir: str, check: Dict[str, Any]) -> Tuple[bool, str]:
+    rel = str(check.get("path") or "")
+    key = str(check.get("key") or "")
+    if not rel or not key:
+        return False, "json_number requires path + key"
+    path = safe_join(run_dir, rel)
+    if not os.path.exists(path):
+        return False, f"json missing: {rel}"
+    with open(path, "r", encoding="utf-8") as f:
+        payload = json.load(f)
+    try:
+        value = get_json_path(payload, key)
+    except KeyError:
+        return False, f"json path missing: {key}"
+    if not isinstance(value, (int, float)):
+        return False, f"json_number unsupported type: {type(value).__name__}"
+    expected = check.get("equals")
+    if expected is not None:
+        if value == expected:
+            return True, f"json_number equals ok: {key}"
+        return False, f"json_number equals mismatch: {key}"
+    min_v = check.get("min")
+    max_v = check.get("max")
+    if min_v is not None and value < float(min_v):
+        return False, f"json_number below min: {key}"
+    if max_v is not None and value > float(max_v):
+        return False, f"json_number above max: {key}"
+    return True, f"json_number ok: {key}"
+
+
+def check_file_sha256(run_dir: str, check: Dict[str, Any]) -> Tuple[bool, str]:
+    import hashlib
+
+    rel = str(check.get("path") or "")
+    expected = str(check.get("sha256") or "")
+    if not rel or not expected:
+        return False, "file_sha256 requires path + sha256"
+    path = safe_join(run_dir, rel)
+    if not os.path.exists(path):
+        return False, f"missing: {rel}"
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(8192), b""):
+            h.update(chunk)
+    digest = h.hexdigest()
+    if digest == expected:
+        return True, f"sha256 ok: {rel}"
+    return False, f"sha256 mismatch: {rel}"
+
+
 def run_checks(run_dir: str, checks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     results: List[Dict[str, Any]] = []
     for raw in checks:
@@ -123,6 +205,12 @@ def run_checks(run_dir: str, checks: List[Dict[str, Any]]) -> List[Dict[str, Any
             ok, msg = check_log_contains(run_dir, raw)
         elif ctype == "json_path":
             ok, msg = check_json_path(run_dir, raw)
+        elif ctype == "json_len":
+            ok, msg = check_json_len(run_dir, raw)
+        elif ctype == "json_number":
+            ok, msg = check_json_number(run_dir, raw)
+        elif ctype == "file_sha256":
+            ok, msg = check_file_sha256(run_dir, raw)
         else:
             ok, msg = False, f"unknown check type: {ctype}"
         results.append({"type": ctype, "ok": ok, "message": msg})
@@ -152,7 +240,10 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    pack = load_json(args.file)
+    pack_path = os.path.abspath(args.file)
+    pack_dir = os.path.dirname(pack_path)
+    repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+    pack = load_json(pack_path)
     if pack.get("version") not in (None, VERSION):
         raise SystemExit(f"unsupported eval pack version: {pack.get('version')}")
 
@@ -185,6 +276,16 @@ def main() -> int:
             if not args.keep_going:
                 break
             continue
+        if not os.path.isabs(file_path):
+            candidate = os.path.abspath(os.path.join(pack_dir, file_path))
+            if os.path.exists(candidate):
+                file_path = candidate
+            else:
+                fallback = os.path.abspath(os.path.join(repo_root, file_path))
+                if os.path.exists(fallback):
+                    file_path = fallback
+                else:
+                    file_path = candidate
         file_path = os.path.abspath(file_path)
         run_dir = os.path.join(out_root, str(entry.get("out_dir") or sid))
         weight = float(entry.get("score_weight") or 1.0)

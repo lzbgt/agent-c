@@ -1,0 +1,10 @@
+{
+  "name": "eval_pack_checks_smoke",
+  "steps": [
+    {
+      "type": "shell",
+      "name": "write_files",
+      "cmd": "printf 'hello' > {{run_dir}}/hello.txt && printf '{\"value\": 5, \"items\": [1,2,3]}' > {{run_dir}}/data.json"
+    }
+  ]
+}

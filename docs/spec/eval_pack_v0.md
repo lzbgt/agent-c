@@ -64,6 +64,7 @@ Fields:
 
 - `id` (string): scenario identifier (used in summaries).
 - `file` (string, required): scenario JSON file consumed by `tools/scenario_runner.py`.
+- `file` resolution: relative paths are resolved against the pack file directory; if missing, the repo root is used as a fallback.
 - `out_dir` (string, optional): output directory name under the pack output root.
 - `score_weight` (number, default `1.0`): score contribution when checks pass.
 - `env` (object, optional): scenario-specific environment variables.
@@ -81,7 +82,15 @@ Fields:
 
 Asserts that a file exists in the scenario `run_dir`.
 
-### 3.2 `log_contains`
+### 3.2 `file_sha256`
+
+```json
+{ "type": "file_sha256", "path": "hello.txt", "sha256": "..." }
+```
+
+Asserts that a file’s SHA256 matches the provided hex digest.
+
+### 3.3 `log_contains`
 
 ```json
 { "type": "log_contains", "path": "logs/01_agentd_health.log", "contains": "ok" }
@@ -93,7 +102,7 @@ Checks that a log file contains a substring. Use `pattern` for regex:
 { "type": "log_contains", "path": "logs/01_agentd_health.log", "pattern": "status: 200" }
 ```
 
-### 3.3 `json_path`
+### 3.4 `json_path`
 
 ```json
 { "type": "json_path", "path": "meta.json", "key": "scenario", "equals": "agentd_smoke" }
@@ -101,6 +110,22 @@ Checks that a log file contains a substring. Use `pattern` for regex:
 
 `key` is a dot-separated path with optional integer indices (e.g., `results[0].ok`).
 If `equals` is omitted, the check only asserts the path exists.
+
+### 3.5 `json_number`
+
+```json
+{ "type": "json_number", "path": "meta.json", "key": "metrics.score", "min": 0, "max": 1 }
+```
+
+Validates a numeric JSON value. Supports `equals`, `min`, and `max`.
+
+### 3.6 `json_len`
+
+```json
+{ "type": "json_len", "path": "meta.json", "key": "results", "equals": 3 }
+```
+
+Validates the length of a JSON array/object/string. Supports `equals`, `min`, and `max`.
 
 ---
 
@@ -143,4 +168,3 @@ If `equals` is omitted, the check only asserts the path exists.
 - Runner: `tools/eval_pack.py`
 - Example pack: `tools/eval_packs/basic_agentd_smoke.json`
 - Scenarios: `tools/scenarios/`
-

@@ -120,6 +120,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-19: Added `eval_pack_smoke` test (self-contained, no agentd required).
   - 2026-02-19: Added CI workflow to run `tools/eval_pack.py` against a self-contained eval pack.
   - 2026-02-19: Added `tools/verify.sh --eval-pack` to run eval pack smoke locally.
+  - 2026-02-19: Added richer eval checks (json_number/json_len/file_sha256) + eval_pack_checks_smoke.
 
 ## New tasks (2026-02-19)
 
