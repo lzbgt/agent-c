@@ -560,6 +560,12 @@ Fail if the vendored guard is not installed:
 tools/hooks_status.sh --check
 ```
 
+Scriptable check with JSON:
+
+```bash
+tools/hooks_status.sh --json --check
+```
+
 Run all repo hygiene guards locally:
 
 ```bash

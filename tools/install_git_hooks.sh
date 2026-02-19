@@ -21,6 +21,7 @@ Usage: tools/install_git_hooks.sh [--force]
 Installs a pre-commit hook that runs vendored subtree guard.
 If a pre-commit hook already exists, this script will not overwrite it unless
 --force is provided.
+Respects core.hooksPath when set.
 EOF
       exit 0
       ;;
