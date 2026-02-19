@@ -149,7 +149,9 @@ fi
   bash tools/gen_agentd_broker_mtls_test_certs.sh "${MTLS_DIR}" agent1 >/dev/null
 
   if [[ "${COMPOSE_CLEAN:-1}" == "1" ]]; then
-    docker compose down -v --remove-orphans >/dev/null 2>&1 || true
+    if docker_compose_preflight "compose-clean" >/dev/null 2>&1; then
+      docker compose down -v --remove-orphans >/dev/null 2>&1 || true
+    fi
   fi
 ) >/dev/null 2>&1
 

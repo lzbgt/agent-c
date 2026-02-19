@@ -88,10 +88,12 @@ cleanup() {
     kill "${AGENTD_PID}" >/dev/null 2>&1 || true
   fi
   if [[ "${HOST_STACK_CLEAN}" == "1" ]]; then
-    POSTGRES_PUBLISHED_PORT="${POSTGRES_PORT}" \
-    KEYCLOAK_PUBLISHED_PORT="${KEYCLOAK_PORT}" \
-    COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME}" \
-    docker compose -f "${COMPOSE_FILE}" down -v --remove-orphans >/dev/null 2>&1 || true
+    if docker_compose_preflight "host-stack-clean" >/dev/null 2>&1; then
+      POSTGRES_PUBLISHED_PORT="${POSTGRES_PORT}" \
+      KEYCLOAK_PUBLISHED_PORT="${KEYCLOAK_PORT}" \
+      COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME}" \
+      docker compose -f "${COMPOSE_FILE}" down -v --remove-orphans >/dev/null 2>&1 || true
+    fi
   fi
 }
 trap cleanup EXIT
