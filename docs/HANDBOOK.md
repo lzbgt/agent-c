@@ -514,6 +514,8 @@ Platform-specific notes (Windows limitations, plugin support, AVM endpoints) liv
 
 Smoke tests:
 - `ctest` includes many bash-based `agentd_*_smoke.sh` tests that start/stop the daemon; shared helpers live in `tests/lib/agentd_smoke_lib.sh`.
+- Audio signaling smokes (`broker_audio_signal_docker_smoke`, `agentd_audio_signal_loopback_smoke`) normally spin up a
+  temporary Postgres via Docker; set `AGENTD_TEST_PG_DSN` to a reachable Postgres DSN to run them without Docker.
 
 ### Core-only build (portable; no CURL required)
 
