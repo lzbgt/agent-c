@@ -17,6 +17,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${ROOT}/out"
 mkdir -p "${OUT_DIR}"
 
+curlq() {
+  command curl -q "$@"
+}
+
 source "${ROOT}/tools/lib/docker_preflight.sh"
 if ! docker_compose_preflight "compose"; then
   exit 77
@@ -285,7 +289,7 @@ wait_http_ok() {
   local started
   started="$(date +%s)"
   while true; do
-    if curl -fsS "${url}" >/dev/null 2>&1; then
+    if curlq -fsS "${url}" >/dev/null 2>&1; then
       return 0
     fi
     local now
@@ -307,7 +311,7 @@ wait_http_ok "${AGENTD_BASE}/api/v1/health" 240 || true
 get_token() {
   local token_json
   token_json="$(
-    curl -fsS \
+    curlq -fsS \
       -d "grant_type=password" \
       -d "client_id=agentd-broker-dev" \
       -d "username=test" \
@@ -327,7 +331,7 @@ fi
 echo "[compose] creating broker agent record agent_id=agent1 (wait/retry)..."
 agent_present() {
   local j
-  j="$(curl -fsS -k -H "Authorization: Bearer ${OIDC_JWT}" "${BROKER_BASE}/v1/agents" || true)"
+  j="$(curlq -fsS -k -H "Authorization: Bearer ${OIDC_JWT}" "${BROKER_BASE}/v1/agents" || true)"
   python3 - "${j}" <<'PY'
 import json,sys
 raw = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -343,7 +347,7 @@ PY
 }
 started="$(date +%s)"
 while true; do
-  if curl -fsS -k \
+  if curlq -fsS -k \
     -H "Authorization: Bearer ${OIDC_JWT}" \
     -H "Content-Type: application/json" \
     -d '{"agent_id":"agent1"}' \
@@ -364,7 +368,7 @@ done
 echo "[compose] waiting for connector to connect (agent1 connected=true)..."
 started="$(date +%s)"
 while true; do
-  j="$(curl -fsS -k -H "Authorization: Bearer ${OIDC_JWT}" "${BROKER_BASE}/v1/agents" || true)"
+  j="$(curlq -fsS -k -H "Authorization: Bearer ${OIDC_JWT}" "${BROKER_BASE}/v1/agents" || true)"
   ok="$(python3 - "${j}" <<'PY'
 import json,sys
 raw = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -393,15 +397,15 @@ PY
 done
 
 echo "[compose] verifying broker proxy to agentd /api/v1/health..."
-curl -fsS -k -H "Authorization: Bearer ${OIDC_JWT}" \
+curlq -fsS -k -H "Authorization: Bearer ${OIDC_JWT}" \
   "${BROKER_BASE}/v1/agents/agent1/proxy/api/v1/health" | python3 -m json.tool >/dev/null
 
 echo "[compose] verifying direct agentd health (auth enabled)..."
-curl -fsS -H "Authorization: Bearer dev-agentd-token" \
+curlq -fsS -H "Authorization: Bearer dev-agentd-token" \
   "${AGENTD_BASE}/api/v1/health" | python3 -m json.tool >/dev/null
 
 echo "[compose] verifying webui is served..."
-curl -fsS "${WEBUI_BASE}/" >/dev/null
+curlq -fsS "${WEBUI_BASE}/" >/dev/null
 
 echo "[compose] OK"
 echo "  - WebUI:    ${WEBUI_BASE} (set Daemon auth token: dev-agentd-token)"

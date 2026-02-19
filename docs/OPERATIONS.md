@@ -114,6 +114,9 @@ Port selection note: the compose verification script prefers the default ports, 
 fall back to random high ports if the common ones are already in use. You can always pin
 ports explicitly via `BROKER_PUBLISHED_PORT`, `KEYCLOAK_PUBLISHED_PORT`,
 `POSTGRES_PUBLISHED_PORT`, `AGENTD_PUBLISHED_PORT`, `WEBUI_PUBLISHED_PORT`.
+Broker compose smoke tests ignore inherited port envs unless you set
+`AGENT_SMOKE_USE_PUBLISHED_PORTS=1`, to avoid cross-test contamination from
+previous runs that export these variables.
 
 ## Network smoke tests
 
