@@ -17,3 +17,19 @@ jobs:
           python-version: "3.11"
       - name: Run eval pack smoke
         run: python3 tools/eval_pack.py --file tools/eval_packs/eval_pack_smoke.json
+
+  eval-pack-docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    if: github.event_name != 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Docker info
+        run: docker info
+      - name: Run broker quorum eval pack
+        run: python3 tools/eval_pack.py --file tools/eval_packs/broker_team_runs_quorum_compose_smoke.json
