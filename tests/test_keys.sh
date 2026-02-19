@@ -354,7 +354,31 @@ PY
     -d "${chat_payload}" \
     "${base_url}/chat/completions" || true)"
   chat_status="${chat_resp##*$'\n'}"
+  local chat_body="${chat_resp%$'\n'*}"
   if [[ "${chat_status}" == "401" || "${chat_status}" == "403" ]]; then
+    local chat_err
+    chat_err="$(printf "%s" "${chat_body}" | python3 - <<'PY' 2>/dev/null || true
+import json, sys
+raw = sys.stdin.read()
+try:
+    obj = json.loads(raw)
+except Exception:
+    raise SystemExit
+err = obj.get("error") or {}
+msg = err.get("message") or ""
+code = err.get("code") or ""
+out = ""
+if code:
+    out = f"{code}"
+if msg:
+    out = f"{out}: {msg}" if out else msg
+if out:
+    print(out)
+PY
+)"
+    if [[ -n "${chat_err}" ]]; then
+      echo "SKIP: OpenRouter auth error detail: ${chat_err}" >&2
+    fi
     echo "SKIP: OpenRouter chat auth failed (${chat_status}); check OPENROUTER_API_KEY" >&2
     if [[ -z "${OPENROUTER_HTTP_REFERER:-}" && -z "${OPENROUTER_X_TITLE:-}" ]]; then
       echo "SKIP: OpenRouter may require OPENROUTER_HTTP_REFERER and OPENROUTER_X_TITLE headers" >&2
@@ -365,8 +389,30 @@ PY
     echo "SKIP: OpenRouter chat preflight throttled (${chat_status})" >&2
     return 77
   fi
-  local chat_body="${chat_resp%$'\n'*}"
   if agent_test_openrouter_output_is_auth_error "${chat_body}"; then
+    local chat_err
+    chat_err="$(printf "%s" "${chat_body}" | python3 - <<'PY' 2>/dev/null || true
+import json, sys
+raw = sys.stdin.read()
+try:
+    obj = json.loads(raw)
+except Exception:
+    raise SystemExit
+err = obj.get("error") or {}
+msg = err.get("message") or ""
+code = err.get("code") or ""
+out = ""
+if code:
+    out = f"{code}"
+if msg:
+    out = f"{out}: {msg}" if out else msg
+if out:
+    print(out)
+PY
+)"
+    if [[ -n "${chat_err}" ]]; then
+      echo "SKIP: OpenRouter auth error detail: ${chat_err}" >&2
+    fi
     echo "SKIP: OpenRouter chat auth error response" >&2
     return 77
   fi
