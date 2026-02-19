@@ -91,6 +91,7 @@ export WEBUI_PUBLISHED_PORT="${WEBUI_PUBLISHED_PORT:-$(pick_port 8100 webui)}"
 # Allow multiple stacks concurrently by default by making the compose project name stable-per-port.
 # Users can still override explicitly via COMPOSE_PROJECT_NAME.
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-agent_${WEBUI_PUBLISHED_PORT}}"
+echo "[compose] ports: broker=${BROKER_PUBLISHED_PORT} keycloak=${KEYCLOAK_PUBLISHED_PORT} postgres=${POSTGRES_PUBLISHED_PORT} agentd=${AGENTD_PUBLISHED_PORT} webui=${WEBUI_PUBLISHED_PORT}"
 
 export BROKER_IMAGE="${BROKER_IMAGE:-agentd-broker-local}"
 export AGENTD_IMAGE="${AGENTD_IMAGE:-agentd-daemon-local}"

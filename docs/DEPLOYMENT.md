@@ -364,6 +364,11 @@ Stop the stack:
 - Prebuilt images (optional):
   - set `BROKER_IMAGE`, `AGENTD_IMAGE`, `CONNECTOR_IMAGE`, `WEBUI_IMAGE` to registry tags
   - run `COMPOSE_BUILD=0 COMPOSE_PULL=1 ./tools/verify_compose_stack.sh`
+- Port selection note: `tools/verify_compose_stack.sh` prefers the defaults
+  (8443/5433/8123/8100/8081) but falls back to random high ports if those are
+  already in use. Pin ports explicitly with `BROKER_PUBLISHED_PORT`,
+  `KEYCLOAK_PUBLISHED_PORT`, `POSTGRES_PUBLISHED_PORT`, `AGENTD_PUBLISHED_PORT`,
+  `WEBUI_PUBLISHED_PORT`.
 
 ---
 
