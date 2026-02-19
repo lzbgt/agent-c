@@ -33,6 +33,7 @@ Roadmap section below and `TODOS.md`, including:
 
 - `docs/HANDBOOK.md`: curated, generated handbook summary (edit `docs/handbook/OVERVIEW.md`, then run
   `tools/build_handbook_bundle.py`).
+- `docs/README.md`: docs index for fast navigation.
 - `DESIGN.md` (this doc): system goals, boundaries, layering, and cross-cutting policies.
 - Source docs referenced by the handbook:
   - `docs/BROKER.md`: broker relay design, trust model, and HTTP/WSS API.

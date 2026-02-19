@@ -7,6 +7,7 @@ Docs quickstart:
 - Architecture + roadmap: `DESIGN.md` (full system map)
 - Deployment checklist (agentd + broker + WebUI): `docs/DEPLOYMENT.md`
 - WebUI dev/build/runtime config: `docs/WEBUI.md`
+- Full docs index: `docs/README.md`
 
 Handbook guard:
 - `tools/verify_repo_guards.sh` enforces a handbook line limit via `HANDBOOK_MAX_LINES` (default: 250).
