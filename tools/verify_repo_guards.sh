@@ -49,6 +49,9 @@ Env overrides:
   REPO_GUARD_MAX_FILE_MB
   REPO_GUARD_MAX_UNTRACKED_MB
   REPO_GUARD_STRICT
+  ALLOW_VENDORED_CHANGES (skip vendored guard)
+  VENDORED_GUARD_BASE (base ref for vendored guard)
+  VENDORED_GUARD_REQUIRE_BASE (fail if no base ref)
 EOF
       exit 0
       ;;
@@ -68,3 +71,4 @@ python3 tools/repo_size_report.py "${args[@]}"
 python3 tools/stub_file_scan.py --fail
 python3 tools/tracked_file_guard.py --max-mb "${MAX_FILE_MB}"
 python3 tools/untracked_file_guard.py --exclude-defaults --max-mb "${MAX_UNTRACKED_MB}"
+python3 tools/vendored_guard.py --path ref

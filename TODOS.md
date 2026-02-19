@@ -113,6 +113,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [x] Allow strict mode via `REPO_GUARD_STRICT` env for repo guards.
 - [x] Ignore nested `ref/**/.git` dirs to prevent accidental re-adding.
 - [x] Treat `ref/claude-mem/openclaw/test-install.sh` (2.3k LOC) as vendored/read-only; documented in `docs/VENDORED.md`.
+- [x] Add vendored guard to fail when `ref/` changes without an explicit override.
 
 ## Promoted goals (explicit goals; no non-goals)
 

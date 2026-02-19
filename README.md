@@ -523,6 +523,13 @@ Untracked file size guard (ignores common build/cache dirs):
 tools/untracked_file_guard.py --exclude-defaults --max-mb 100
 ```
 
+Vendored subtree guard (fails if `ref/` changes relative to base; requires
+base refs in CI):
+
+```bash
+tools/vendored_guard.py --path ref
+```
+
 Run all repo hygiene guards locally:
 
 ```bash

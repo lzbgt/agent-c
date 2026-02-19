@@ -6,6 +6,10 @@ upstream sources. If changes are required, prefer updating upstream or copying
 the needed logic into first-party code under `tools/`, `scripts/`, or another
 project-owned location.
 
+Guard: `tools/vendored_guard.py` fails CI if files under `ref/` change. Override
+with `ALLOW_VENDORED_CHANGES=1` only when intentionally updating a vendored
+snapshot.
+
 ## Current vendored subtrees
 
 - `ref/claude-mem/` (upstream: thedotmack/claude-mem)
@@ -14,4 +18,3 @@ project-owned location.
     smaller first-party test harness instead of modifying the vendored file.
 - `ref/ds-cli/` (upstream: ds-cli)
 - `ref/openrouter/` (upstream: OpenRouter references)
-
