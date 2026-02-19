@@ -17,6 +17,17 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${ROOT}/out"
 mkdir -p "${OUT_DIR}"
 
+if ! command -v docker >/dev/null 2>&1; then
+  echo "[compose] SKIP: docker not found (install Docker Desktop or Colima)" >&2
+  exit 77
+fi
+
+if ! docker info >/dev/null 2>&1; then
+  echo "[compose] SKIP: docker daemon not running" >&2
+  echo "[compose] Hint: start Docker Desktop or Colima, then re-run." >&2
+  exit 77
+fi
+
 LOG_BUILD="${OUT_DIR}/compose_build_$(date +%Y-%m-%d_%H%M%S).log"
 LOG_UP="${OUT_DIR}/compose_up_$(date +%Y-%m-%d_%H%M%S).log"
 LOG_PULL="${OUT_DIR}/compose_pull_$(date +%Y-%m-%d_%H%M%S).log"
