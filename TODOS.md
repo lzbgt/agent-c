@@ -88,7 +88,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
 
 - [ ] W=10 — Populate OpenRouter streaming pins with a verified key, commit `ref/openrouter/streaming_pins.json`, and tighten smoke tests to prefer pins (unblocks streaming stability work).
-- [ ] W=9 — Unblock macOS full-stack compose verification (document Docker Desktop resource settings + prebuilt image path) and improve `tools/verify_mac_full_stack.sh` diagnostics for `unpigz/runc` failures.
+- [x] W=9 — Unblock macOS full-stack compose verification (document Docker Desktop resource settings + prebuilt image path) and improve `tools/verify_mac_full_stack.sh` diagnostics for `unpigz/runc` failures.
 - [ ] W=8 — Finish embedded/MCU-compatible tool plugin path (ABI constraints + host/sandbox policy) and add Windows parity tests for plugin host limits.
 - [x] W=7 — Split near-2000 LOC modules into SOLID units with focused tests: `broker/internal/broker/server.go` (UI `api.ts` + `daemon/src/agent_db.cpp` + `daemon/src/workflow_endpoints.cpp` completed).
 - [ ] W=3 — Reduce WebUI bundle size warning (>500 kB) via `manualChunks` or dynamic imports where appropriate.

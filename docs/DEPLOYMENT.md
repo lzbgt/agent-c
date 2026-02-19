@@ -340,7 +340,8 @@ Stop the stack:
 - If Docker build is blocked but Docker itself runs, you can verify a host-mode full stack:
   - `tools/verify_mac_full_stack_host.sh` (runs Postgres + Keycloak via Docker, and runs agentd/broker/connector/WebUI on the host)
 - If `tools/verify_mac_full_stack.sh` skips due to Docker build resource errors (e.g. `unpigz`/`runc`),
-  restart Docker Desktop or increase CPU/RAM. The script already retries builds, can fall back to the
+  restart Docker Desktop or increase CPU/RAM (Docker Desktop → Settings → Resources; also ensure disk image size).
+  The script already retries builds, can fall back to the
   legacy builder, and throttles pigz threads. You can also tweak:
   - `COMPOSE_BUILD_SERIAL=1` (default) to reduce concurrency
   - `COMPOSE_BUILD_RETRIES=3` (default) to raise retry attempts

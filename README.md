@@ -647,8 +647,10 @@ Notes:
 - It sets `COMPOSE_PROJECT_NAME` automatically (defaults to `agent_${WEBUI_PUBLISHED_PORT}`) so you can run multiple stacks concurrently.
 - Keycloak is intentionally accessed via `keycloak.lvh.me` (resolves to `127.0.0.1`) so the `iss` claim in minted JWTs
   matches what the broker validates. If you request tokens via `http://127.0.0.1:<port>`, you’ll get issuer-mismatch errors.
-- If Docker build hits `unpigz`/`runc` resource errors, restart Docker Desktop or set `PIGZ=-p1 GZIP=-p1` to reduce
-  decompression thread pressure.
+- If Docker build hits `unpigz`/`runc` resource errors, restart Docker Desktop or increase CPU/RAM (Settings → Resources),
+  and consider raising the disk image size. You can also set `PIGZ=-p1 GZIP=-p1` to reduce decompression pressure,
+  or skip builds by using prebuilt images (`COMPOSE_BUILD=0 COMPOSE_PULL=1` with `BROKER_IMAGE`, `AGENTD_IMAGE`,
+  `CONNECTOR_IMAGE`, `WEBUI_IMAGE` set).
 
 This starts:
 - WebUI: `http://127.0.0.1:${WEBUI_PUBLISHED_PORT}`
