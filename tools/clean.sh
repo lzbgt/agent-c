@@ -24,6 +24,7 @@ Default behavior:
   - Remove oversized build artifacts (build/, build-nohttp/, build-core/, build-core-espcheck/) when > threshold.
   - Prune old files from out/ (logs) older than OUT_MAX_DAYS.
   - If out/ remains oversized, remove it entirely.
+  - Remove root-level Testing/ (ctest artifacts when run without --test-dir).
 
 Options:
   --dry-run           Show what would be removed without deleting.
@@ -219,6 +220,9 @@ if not keep_build:
 
 # Logs
 prune_out(root / "out")
+
+# Root-level ctest artifacts (when ctest is run without --test-dir)
+remove_path(root / "Testing", "ctest artifacts")
 
 # UI build caches (aggressive only)
 if aggressive:
