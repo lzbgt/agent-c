@@ -167,6 +167,7 @@ if ! command -v docker >/dev/null 2>&1; then
 fi
 if ! docker info >/dev/null 2>&1; then
   echo "[devstack] docker daemon not running" >&2
+  echo "[devstack] Hint: start Docker Desktop or Colima, then re-run." >&2
   exit 77
 fi
 if ! command -v cmake >/dev/null 2>&1; then

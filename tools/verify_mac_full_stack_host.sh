@@ -103,6 +103,7 @@ fi
 
 if ! docker info >/dev/null 2>&1; then
   echo "[host-stack] docker daemon not running" >&2
+  echo "[host-stack] Hint: start Docker Desktop or Colima, then re-run." >&2
   exit 77
 fi
 
