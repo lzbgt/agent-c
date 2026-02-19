@@ -478,6 +478,18 @@ if(AGENT_BUILD_HOST)
   target_link_libraries(cbor_det_roundtrip_tests PRIVATE agentd_lib)
   add_test(NAME cbor_det_roundtrip_tests COMMAND cbor_det_roundtrip_tests)
 
+  if(WIN32)
+    add_executable(tool_plugin_host_limits_tests
+      tests/test_tool_plugin_host_limits.cpp
+    )
+    add_test(
+      NAME agentd_tool_plugin_host_limits_windows
+      COMMAND tool_plugin_host_limits_tests
+        $<TARGET_FILE:agentd_tool_plugin_host>
+        $<TARGET_FILE:agentd_tool_plugin_echo>
+    )
+  endif()
+
   add_test(NAME agent_openrouter_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/openrouter_smoke.sh $<TARGET_FILE:agent>)
   set_tests_properties(agent_openrouter_smoke PROPERTIES SKIP_RETURN_CODE 77)
 
