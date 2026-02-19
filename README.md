@@ -136,14 +136,9 @@ You can also accept the token via a cookie name (useful for browser clients):
 Daemon CORS guidance and local secrets/key-loading (including `.not_in_repo` and `project.local.md`)
 are documented in `docs/AGENTD.md`.
 
-### Tool extensions: plugins + tool servers (out-of-process)
+### Tool extensions
 
-`agentd` supports adding tools without rebuilding:
-- **Tool plugins** (in-process, dlopen): `--tool-plugin /path/to/plugin.so`
-- **Tool servers** (out-of-process, stdio JSON-lines): `--tool-server-cmd "<cmd>"`
-
-Tool servers are the preferred “fast bring-up” path for big integrations (Playwright, device bridges, AVM policy runners)
-because failures are isolated across a process boundary. See `docs/TOOLS.md`.
+Tool plugins and tool servers are documented in `docs/TOOLS.md`.
 
 ## Testing
 
@@ -235,9 +230,6 @@ If `origin` exists but points to the wrong place, pass `--force` to update it:
 ```bash
 tools/setup_git_remote.sh --url "<your_repo_url>" --force --push
 ```
-
-Note: there are additional host-tool network smokes (DeepSeek/OpenRouter) that validate bounded tools like
-`fs_read` and `fs_find` end-to-end (model → tool call → tool output).
 
 ## CLI usage
 
