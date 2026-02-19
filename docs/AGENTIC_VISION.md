@@ -183,8 +183,9 @@ These are the most leveraged next steps grounded in current architecture:
    - Configurable allow/deny + budget caps with audit logging.
 
 3) **Attestation bundle format**
-   - Canonical JSON/CBOR hashing for run + tool envelopes.
-   - Signed bundle export for replay verification.
+   - Canonical JSON hashing (`agent_json_c14n_v1`) for replay bundles.
+   - Draft spec + tool for signed replay references (`docs/spec/run_attestation_bundle_v1.md`,
+     `run_attestation_bundle_tool`).
 
 4) **Voice workflow spec**
    - Audio streaming protocol, broker relay plan, and UI controls.

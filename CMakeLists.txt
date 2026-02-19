@@ -420,6 +420,14 @@ if(AGENT_BUILD_HOST)
   )
   target_link_libraries(umbmp_auth_vectors_tool PRIVATE agentd_lib)
 
+  add_executable(run_attestation_bundle_tool
+    tools/run_attestation_bundle_tool.cpp
+  )
+  target_compile_options(run_attestation_bundle_tool PRIVATE
+    $<$<COMPILE_LANGUAGE:CXX>:-Wall -Wextra -Wpedantic>
+  )
+  target_link_libraries(run_attestation_bundle_tool PRIVATE agentd_lib)
+
   add_executable(docs_sanity_tests
     tests/test_docs_sanity.cpp
   )
@@ -457,6 +465,12 @@ if(AGENT_BUILD_HOST)
   add_test(
     NAME run_events_spec_sanity_tests
     COMMAND run_events_spec_sanity_tests ${CMAKE_CURRENT_SOURCE_DIR}/docs/spec/run-events
+  )
+
+  add_test(
+    NAME run_attestation_bundle_tool_smoke
+    COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_attestation_bundle_tool_smoke.sh
+      $<TARGET_FILE:run_attestation_bundle_tool>
   )
 
   add_executable(run_events_fixture_sanity_tests

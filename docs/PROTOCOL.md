@@ -197,6 +197,14 @@ The replay bundle includes a redacted request/response snapshot plus tool record
 
 See: `docs/WORKFLOWS.md` (Run replay bundles section).
 
+### Run attestation bundles (signed replay references)
+
+Attestation bundles are **small, signed references** to replay bundles. They are intended for CI,
+audits, and external registries that want a stable proof of what was executed without embedding
+the full replay payload.
+
+See: `docs/spec/run_attestation_bundle_v1.md` (format + signing input).
+
 ### Multimodal inputs (`input_files`)
 
 Run requests may optionally include `input_files` to reference session-uploaded files (via `POST /api/v1/session/upload`):
