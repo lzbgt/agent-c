@@ -6,6 +6,10 @@
 #   if ! docker_preflight "docker"; then exit 77; fi
 #   if ! docker_compose_preflight "compose"; then exit 77; fi
 
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=tools/lib/python_helpers.sh
+source "${ROOT_DIR}/python_helpers.sh"
+
 docker_info_ready() {
   local timeout="${AGENT_DOCKER_INFO_TIMEOUT_SEC:-5}"
   if command -v python3 >/dev/null 2>&1; then
@@ -105,27 +109,5 @@ docker_compose_preflight() {
     echo "[${label}] Hint: install the docker compose plugin or upgrade Docker Desktop." >&2
     return 77
   fi
-  return 0
-}
-
-pick_python_cmd() {
-  if command -v python3 >/dev/null 2>&1; then
-    echo "python3"
-    return 0
-  fi
-  if command -v python >/dev/null 2>&1; then
-    echo "python"
-    return 0
-  fi
-  return 1
-}
-
-python_http_server_cmd() {
-  local port="${1:?port required}"
-  local python_bin
-  if ! python_bin="$(pick_python_cmd)"; then
-    return 1
-  fi
-  echo "${python_bin} -m http.server ${port}"
   return 0
 }

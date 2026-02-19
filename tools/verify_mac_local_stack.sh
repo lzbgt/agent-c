@@ -8,7 +8,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=tools/lib/agent_env.sh
 source "${ROOT}/tools/lib/agent_env.sh"
-source "${ROOT}/tools/lib/docker_preflight.sh" 2>/dev/null || true
+# shellcheck source=tools/lib/python_helpers.sh
+source "${ROOT}/tools/lib/python_helpers.sh"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "[mac-local] WARNING: not running on macOS; continuing anyway"
