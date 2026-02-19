@@ -190,6 +190,13 @@ run_logged "build broker" "${LOG_BROKER_BUILD}" bash -lc "cd ${ROOT}/broker && g
 run_logged "build connector" "${LOG_CONNECTOR_BUILD}" bash -lc "cd ${ROOT}/broker && go build -trimpath -o ${CONNECTOR_BIN} ./cmd/agentd-connector"
 
 if [[ "${SKIP_UI}" -eq 0 ]]; then
+  if ! command -v python3 >/dev/null 2>&1 && ! command -v python >/dev/null 2>&1; then
+    echo "[devstack] python not found; skipping WebUI build/serve" >&2
+    SKIP_UI=1
+  fi
+fi
+
+if [[ "${SKIP_UI}" -eq 0 ]]; then
   if ! command -v npm >/dev/null 2>&1; then
     echo "[devstack] npm not found; skipping WebUI" >&2
     SKIP_UI=1
