@@ -4,6 +4,7 @@
 #include "http_util.h"
 #include "session_id_util.h"
 #include "session_paths.h"
+#include "run_endpoints_internal.h"
 #include "string_util.h"
 
 #include <filesystem>
@@ -97,6 +98,14 @@ void handle_file_endpoint(
       resp->status = 400;
       resp->headers["Content-Type"] = "application/json; charset=utf-8";
       resp->body = R"({"ok":false,"error":"path escapes session root"})";
+      return;
+    }
+  }
+  if (session_scoped && cfg.file_session_realpath_strict) {
+    if (!path_is_within_root(effective_root, resolved)) {
+      resp->status = 400;
+      resp->headers["Content-Type"] = "application/json; charset=utf-8";
+      resp->body = "{\"ok\":false,\"error\":\"path escapes session root (realpath)\"}";
       return;
     }
   }

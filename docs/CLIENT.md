@@ -337,8 +337,9 @@ Tools and files:
 - GET /api/v1/tools?tools=host|basic|none&yolo=0|1&host_policy=full|readonly&session_id=...
 - GET /api/v1/file?path=...&session_id=...
   - If path is relative and session_id is provided, it is resolved under the
-    session root; path traversal segments are rejected, but symlinks can still
-    point outside (not a full sandbox).
+    session root; path traversal segments are rejected.
+  - When --file-session-realpath-strict is enabled, symlinks that resolve
+    outside the session root are rejected (realpath confinement).
   - If path is relative and session_id is omitted, it is resolved under the
     daemon working directory (no host-scope sandboxing).
   - If path is absolute, it is served directly (auth required).

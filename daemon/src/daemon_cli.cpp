@@ -247,6 +247,10 @@ int parse_daemon_cli(int argc, char** argv, DaemonConfig* cfg, DaemonCliOverride
         std::cerr << "Missing value for --sessions-root\n";
         return 2;
       }
+    } else if (a == "--file-session-realpath-strict") {
+      cfg->file_session_realpath_strict = true;
+    } else if (a == "--no-file-session-realpath-strict") {
+      cfg->file_session_realpath_strict = false;
     } else if (a == "--upload-max-bytes") {
       std::string v;
       if (!take(&v)) {
@@ -1185,6 +1189,8 @@ int parse_daemon_cli(int argc, char** argv, DaemonConfig* cfg, DaemonCliOverride
         << "  --proxy <url>        Optional HTTP proxy override (else env HTTPS_PROXY/http_proxy)\n"
         << "  --state-dir <dir>    Base state dir (default: daemon startup working directory; or env AGENT_WD)\n"
         << "  --sessions-root <dir> Session store root (default: <state-dir>)\n"
+        << "  --file-session-realpath-strict  Enforce session realpath confinement for /api/v1/file\n"
+        << "  --no-file-session-realpath-strict  Allow symlink escapes for /api/v1/file\n"
         << "  --upload-max-bytes <n>  Per-file session upload limit (decoded bytes; 0 disables; default: 33554432)\n"
         << "  --blob-store-mode <local|object>  Blob storage mode (default: local)\n"
         << "  --blob-store-endpoint <url>  Object store endpoint (S3/MinIO)\n"

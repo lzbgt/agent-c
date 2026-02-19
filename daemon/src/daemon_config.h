@@ -99,6 +99,9 @@ struct DaemonConfig {
   std::string sessions_root_dir;
   // Session upload limit (per-file, decoded bytes). 0 means "no explicit per-file limit".
   size_t upload_max_bytes = 32 * 1024 * 1024;
+  // When true, session-scoped file reads require resolved realpaths to stay within the session root.
+  // This rejects symlink escapes for /api/v1/file?session_id=...&path=...
+  bool file_session_realpath_strict = false;
   // Blob object store (S3/MinIO) configuration.
   //
   // Modes:
