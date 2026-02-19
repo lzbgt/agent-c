@@ -39,6 +39,9 @@ Roadmap section below and `TODOS.md`, including:
 - `docs/WORKFLOWS.md`: workflow engine model and task semantics.
 - `docs/STREAMING.md`: streaming compatibility matrix and behavior notes.
 - `docs/MEMORY.md`: memory retention, salience, and recap architecture.
+- `docs/DIAGNOSTICS.md`: diagnostics endpoints and provider health checks.
+- `docs/DB_QUERY.md`: read-only DB query endpoints for troubleshooting.
+- `docs/DOD_ACK.md`: UI-visible “definition of done” handshake semantics.
 - `docs/spec/`: versioned protocol/spec deep dives (run events, OTA, streaming core, agent VM port, etc.).
 
 ## Key Decisions (Facts / Constraints)
@@ -145,6 +148,40 @@ See: `docs/CLIENT.md`.
 
 - `agent_embed` targets ESP32 / Oren AVM with minimal storage and transport.
 - Optional policy VM to run deterministic routing/retry without LLM calls.
+
+## System Flows (Summary)
+
+This section consolidates the most important cross-cutting flows so the system
+can be understood without hopping across multiple design docs.
+
+### Run flow (client → agentd → UI)
+
+- Clients submit runs to `agentd` (`/api/v1/run` or `/api/v1/run_async`).
+- `agentd` executes the tool loop, persists events/audit records, and emits
+  structured events (SSE) defined in `docs/spec/run-events/run_events_v1.md`.
+- UI-visible effects (artifacts, UI actions) use the DoD handshake so the agent
+  can deterministically stop once the UI acknowledges delivery (see `docs/DOD_ACK.md`).
+
+### Broker relay flow (client → broker → agentd)
+
+- Agents connect **outbound** to the broker via mTLS (`/v1/agent/connect`).
+  The broker verifies the client cert against `--tls-client-ca` and matches
+  the cert CN to `agent_id` (see `docs/BROKER.md`).
+- Clients authenticate with OIDC/JWT bearer tokens (optional cookie auth is
+  supported for browser environments).
+- The broker proxies requests via:
+  - `/v1/agents/{agent_id}/proxy/...` for HTTP
+  - `/v1/agents/{agent_id}/proxy_sse/...` for SSE streams
+- Optional idempotency keys (`Idempotency-Key` / `X-Idempotency-Key`) provide
+  safe retries for proxied requests.
+
+### Persistence & observability (agentd)
+
+- The daemon persists sessions and run/audit records to the state root.
+- When `--db-path` is enabled, it mirrors runs/events/tools/artifacts into
+  SQLite and exposes read-only query endpoints (see `docs/DB_QUERY.md`).
+- Diagnostics endpoints (`/api/v1/diagnostics*`) provide fast health snapshots
+  and provider key presence checks (see `docs/DIAGNOSTICS.md`).
 
 ## Day-1 Product Direction (Decision)
 
