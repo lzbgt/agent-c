@@ -95,6 +95,12 @@ The same tool can verify signatures and replay hashes:
 run_attestation_bundle_tool --verify --attestation-json <path> --replay-json <replay.json> --hmac-key-hex <hex>
 ```
 
+Convenience wrapper:
+
+```
+tools/verify_attestation_bundle.sh <attestation_json> <replay_json> --hmac-key-hex <hex>
+```
+
 See: `tools/run_attestation_bundle_tool.cpp`.
 
 ## Notes
