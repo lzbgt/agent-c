@@ -507,6 +507,12 @@ Tracked file size guard (fails if any tracked file exceeds 10 MiB):
 tools/tracked_file_guard.py --max-mb 10
 ```
 
+Run all repo hygiene guards locally:
+
+```bash
+tools/verify_repo_guards.sh
+```
+
 ## Docker Compose (prod-like local verification)
 
 If you want a **prod-like stack** locally (Postgres + Keycloak OIDC + broker + connector + agentd + WebUI):
