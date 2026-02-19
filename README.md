@@ -512,6 +512,7 @@ Run all repo hygiene guards locally:
 ```bash
 tools/verify_repo_guards.sh
 tools/verify_repo_guards.sh --strict
+tools/verify_repo_guards.sh --max-total-gb 2 --max-file-mb 5
 ```
 
 ## Docker Compose (prod-like local verification)
