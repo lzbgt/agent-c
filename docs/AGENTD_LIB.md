@@ -155,7 +155,7 @@ tool plugins at runtime:
   --tool-plugin-config '{"tag":"demo"}'
 ```
 
-See: `docs/TOOL_PLUGINS.md`.
+See: `docs/TOOLS.md`.
 
 For process isolation, run plugins via the tool server host instead:
 

@@ -230,20 +230,56 @@ re-open files during execution.
 
 ## Memory retention (v1)
 
-To keep disk usage bounded, the daemon can enforce deterministic retention over daily logs and structured checkpoints:
+This is a deterministic, operator-controlled policy to keep durable memory growth bounded.
 
-- `POST /api/v1/memory/retention/enforce` (auth required)
-  - supports `dry_run` + per-call overrides
-- config knobs:
-  - `memory_retention_interval_ms`
-  - `memory_retention_daily_max_days`
-  - `memory_retention_daily_max_bytes`
-  - `memory_retention_checkpoint_max_days`
-  - `memory_retention_checkpoint_max_count`
-  - `memory_retention_structured_deprecate_days`
-  - `memory_retention_structured_deprecate_max_entries`
+Goals:
+- Bound disk usage for daily logs and structured checkpoints.
+- Provide dry-run previews.
+- Support both on-demand and background enforcement.
+- Allow structured memory facts to be deprecated when they age out of policy.
 
-See `docs/MEMORY_RETENTION.md` for details.
+Policy surfaces:
+1) Daily logs (state_dir/memory/YYYY-MM-DD.md)
+   - Age bound: keep at most daily_max_days files (oldest deleted first)
+   - Size bound: keep total daily bytes under daily_max_bytes
+2) Structured checkpoints (state_dir/memory/checkpoints/structured_*.json)
+   - Age bound: delete checkpoints older than checkpoint_max_days
+   - Count bound: keep at most checkpoint_max_count (oldest deleted first)
+3) Structured deprecation (STRUCTURED.md)
+   - Entries older than structured_deprecate_days are upserted as status="deprecated"
+   - Bound by structured_deprecate_max_entries per enforcement pass
+
+API:
+- POST /api/v1/memory/retention/enforce
+  - supports dry_run plus per-call overrides
+  - returns deleted files and counts
+
+Example request:
+
+{
+  "dry_run": true,
+  "daily_max_days": 30,
+  "daily_max_bytes": 104857600,
+  "checkpoint_max_days": 30,
+  "checkpoint_max_count": 200,
+  "structured_deprecate_days": 90,
+  "structured_deprecate_max_entries": 50
+}
+
+Config knobs (all optional; 0 disables each bound):
+- memory_retention_interval_ms
+- memory_retention_daily_max_days
+- memory_retention_daily_max_bytes
+- memory_retention_checkpoint_max_days
+- memory_retention_checkpoint_max_count
+- memory_retention_structured_deprecate_days
+- memory_retention_structured_deprecate_max_entries
+
+Broker fan-out (multi-deployment):
+- POST /v1/agents/{agent_id}/memory/retention/enforce
+
+Background enforcement:
+- when memory_retention_interval_ms > 0, the daemon applies policy periodically
 
 ## Memory recaps (LLM summaries)
 

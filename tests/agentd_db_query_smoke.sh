@@ -22,6 +22,9 @@ STUB_BASE="http://${HOST}:${PORT_STUB}/v1"
 DB_PATH="${LOG_DIR}/agentd_db_query_smoke.sqlite"
 SESSION_ID="agentd_db_query_smoke_$(date +%s)_$RANDOM"
 MM_JSON='{"images":[{"mime":"image/png","b64":"AAA","name":"plot.png"}]}'
+PROJECT_ROOT="$(agentd_smoke_project_root)"
+README_PATH="${PROJECT_ROOT}/README.md"
+export README_PATH
 USER_TEXT="Read README.md then say OK"
 
 cleanup() {
@@ -39,7 +42,10 @@ trap cleanup EXIT
 # - second response (after tool result): assistant "OK"
 python3 -u - <<PY > "${LOG_DIR}/agentd_db_query_smoke.stub.stdout.log" 2> "${LOG_DIR}/agentd_db_query_smoke.stub.stderr.log" &
 import json
+import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
+README_PATH = os.environ.get("README_PATH", "README.md")
 
 def has_tool_result(messages):
   for m in messages:
@@ -93,7 +99,7 @@ class H(BaseHTTPRequestHandler):
                   "type": "function",
                   "function": {
                     "name": "fs_read",
-                    "arguments": json.dumps({"path": "README.md", "max_lines": 10, "max_chars": 20000}),
+                    "arguments": json.dumps({"path": README_PATH, "max_lines": 10, "max_chars": 20000}),
                   },
                 }
               ],
@@ -130,7 +136,7 @@ class H(BaseHTTPRequestHandler):
                   "type": "function",
                   "function": {
                     "name": "fs_read",
-                    "arguments": json.dumps({"path": "README.md", "max_lines": 10, "max_chars": 20000}),
+                    "arguments": json.dumps({"path": README_PATH, "max_lines": 10, "max_chars": 20000}),
                   },
                 }
               ],

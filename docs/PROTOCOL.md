@@ -135,7 +135,7 @@ Notes:
 - The `clear` op exists server-side, but clients should treat it as destructive.
   - WebUI disables one-click “Clear Scene” and does not send `clear` ops from the browser.
 
-Quick reference (client implementers): `docs/CLIENT_AGENTD_SPEC.md`.
+Quick reference (client implementers): `docs/CLIENT.md`.
 
 ## Runs (UI → agentd)
 
@@ -193,7 +193,7 @@ Tools ceiling:
 The replay bundle includes a redacted request/response snapshot plus tool records, and a deterministic hash token
 (`agent_json_c14n_v1`) for offline verification.
 
-See: `docs/RUN_REPLAY.md`.
+See: `docs/WORKFLOWS.md` (Run replay bundles section).
 
 ### Multimodal inputs (`input_files`)
 
@@ -231,15 +231,14 @@ Protocol:
 - Host tool `ui_action` returns a JSON envelope with `data.tool="ui_action"` and `data.action={...}`.
 - The host tool loop emits a derived `ui_action` event to the UI (similar to derived `artifact` events).
 
-See: `docs/UI_ACTION.md`.
+See: `docs/CLIENT.md` (UI actions and client RPC).
 
 ## Client events (UI → agentd)
 
 In addition to prompts/runs, the UI can send structured client events back to the daemon (e.g. “audio finished playing”).
 These are optionally appended into the session message history and (when `--db-path` is enabled) mirrored into the troubleshooting DB.
 
-See: `docs/UI_CLIENT_EVENTS.md`.
-See also: `docs/CLIENT_COLLAB.md`, `docs/CLIENT_STATE.md`, `docs/CLIENT_RPC.md`, `docs/CLIENT_ENTITIES.md`, `docs/CLIENT_PROBE.md`.
+See: `docs/CLIENT.md` (client events, state snapshots, and RPC).
 
 ### Endpoint: list client events (file-backed)
 
@@ -267,7 +266,7 @@ For this, the host toolset exposes a cooperative polling tool:
 - `ui_wait_any` (OR join)
 - `ui_wait_all` (AND join)
 
-See: `docs/UI_WAIT_EVENT.md`.
+See: `docs/CLIENT.md` (client_wait_* tools).
 Preferred (client-agnostic) names for the same tools:
 - `client_wait_event`
 - `client_wait_any`

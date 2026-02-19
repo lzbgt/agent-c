@@ -203,7 +203,7 @@ Notes:
 - **Tool servers** (out-of-process, stdio JSON-lines): `--tool-server-cmd "<cmd>"`
 
 Tool servers are the preferred “fast bring-up” path for big integrations (Playwright, device bridges, AVM policy runners)
-because failures are isolated across a process boundary. See `docs/TOOL_SERVERS.md`.
+because failures are isolated across a process boundary. See `docs/TOOLS.md`.
 
 ## Real end-to-end (agentd + browser) test
 
@@ -227,7 +227,7 @@ Notes:
 - The harness expects provider keys to be available via env or `.not_in_repo` (preferred).
 - `agentd` now also supports **daemon-side** key loading per-run based on the request `base_url`, so the Web UI can omit `api_key`.
 - The Web UI sends a `client` identity with each run (e.g. `client.kind="webui"`). `agentd` can use this to inject a
-  client-specific system prompt “profile” for default presentation/DoD semantics. See `docs/CLIENT_PROFILES.md`.
+  client-specific system prompt “profile” for default presentation/DoD semantics. See `docs/CLIENT.md`.
 
 ### Daemon config snapshot (debug)
 
@@ -710,7 +710,7 @@ Host tool names:
 In addition to `artifact_register` (explicit media artifacts), host tools include `ui_action` so the model can request
 UI-side actions in a **typed** and **allowlisted** way (e.g. notifications, audio playback UI).
 
-See `docs/UI_ACTION.md`.
+See `docs/CLIENT.md`.
 
 Notes:
 - For **inspection** (read/list/stat), prefer `fs_list` / `fs_read` / `fs_stat` because they provide bounded output and pagination

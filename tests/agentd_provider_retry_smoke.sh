@@ -18,6 +18,9 @@ PORT_DAEMON="$(agentd_smoke_pick_port)"
 PORT_STUB="$(agentd_smoke_pick_port)"
 HOST="127.0.0.1"
 STUB_BASE="http://${HOST}:${PORT_STUB}/v1"
+PROJECT_ROOT="$(agentd_smoke_project_root)"
+README_PATH="${PROJECT_ROOT}/README.md"
+export README_PATH
 
 cleanup() {
   agentd_smoke_stop
@@ -31,7 +34,10 @@ trap cleanup EXIT
 # Start an OpenAI-compatible stub that fails once with 500 then succeeds.
 python3 -u - <<PY > "${LOG_DIR}/agentd_provider_retry_smoke.stub.stdout.log" 2> "${LOG_DIR}/agentd_provider_retry_smoke.stub.stderr.log" &
 import json
+import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
+README_PATH = os.environ.get("README_PATH", "README.md")
 
 STATE = {"calls": 0}
 
@@ -97,7 +103,7 @@ class H(BaseHTTPRequestHandler):
                   "type": "function",
                   "function": {
                     "name": "fs_read",
-                    "arguments": json.dumps({"path": "README.md", "max_lines": 10, "max_chars": 20000}),
+                    "arguments": json.dumps({"path": README_PATH, "max_lines": 10, "max_chars": 20000}),
                   },
                 }
               ],
@@ -170,4 +176,3 @@ if txt != "OK":
   print("unexpected assistant_text:", txt, file=sys.stderr)
   raise SystemExit(1)
 PY
-

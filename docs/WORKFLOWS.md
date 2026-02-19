@@ -86,6 +86,31 @@ Notes:
   - This implies **at-least-once** execution semantics for inflight tasks.
   - If your tools or external side-effects are not idempotent, design tasks with explicit idempotency keys.
 
+### Run replay bundles (deterministic audit)
+
+Each run can persist a redacted, deterministic replay bundle for offline verification.
+
+Contents:
+- request (redacted)
+- response (redacted)
+- tool_records (per-tool inputs/outputs)
+- replay_sha256 (canonical JSON hash via agent_json_c14n_v1)
+
+Redaction:
+- request: remove api_key, Authorization, auth_token, trace_text, http_body, input_files[].data_base64
+- response: remove http_body, trace_text
+
+Bounds:
+- request JSON max: 512 KiB (redacted)
+- response JSON max: 1 MiB (redacted)
+
+Endpoint:
+- GET /api/v1/run/replay?run_id=<id>
+
+Notes:
+- Runs with no_session=true do not persist replay bundles.
+- Oversized payloads are omitted and replay_error is recorded.
+
 ### Workflow submit idempotency (v1.3)
 
 Workflow submission supports an optional **idempotency key** to make client retries safe:
@@ -763,6 +788,19 @@ Cancellation semantics:
 - running tasks are cooperatively cancelled at the next safe boundary (v1.4)
   - host tools: long-running subprocesses are terminated best-effort
   - provider calls: cancellation takes effect between requests/tool calls (cannot always interrupt an in-flight HTTP request)
+
+## Borrowed workflow ideas (adopted and tracked)
+
+These were imported from the urine_monitor project because they compound reliability and operability.
+
+Implemented:
+- Evidence bundles: tools/capture_agent_evidence_bundle.sh + tools/check_agent_evidence_bundle.py
+- Scenario packs: tools/scenarios/ + tools/scenario_runner.py
+- One-command dev stack: tools/devstack_agent.sh + tools/devstack_agent_down.sh
+- Operator UX defaults: runtime config via ui/public/agentui-config.js (no rebuild required)
+
+Proposed (still open):
+- Standardized API error envelope: {"err":"...","code":"...","details":{...}}
 
 ## Storage (SQLite)
 

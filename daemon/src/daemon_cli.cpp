@@ -204,6 +204,39 @@ int parse_daemon_cli(int argc, char** argv, DaemonConfig* cfg, DaemonCliOverride
         std::cerr << "Missing value for --model\n";
         return 2;
       }
+    } else if (a == "--summary-model") {
+      if (!take(&cfg->summary_model)) {
+        std::cerr << "Missing value for --summary-model\n";
+        return 2;
+      }
+    } else if (a == "--summary-max-chars") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --summary-max-chars\n";
+        return 2;
+      }
+      try {
+        const long n = std::stol(v);
+        cfg->summary_max_chars = n < 0 ? 0 : (size_t)n;
+      } catch (...) {
+        std::cerr << "Invalid --summary-max-chars\n";
+        return 2;
+      }
+    } else if (a == "--base-url") {
+      if (!take(&cfg->base_url)) {
+        std::cerr << "Missing value for --base-url\n";
+        return 2;
+      }
+    } else if (a == "--api-key") {
+      if (!take(&cfg->api_key)) {
+        std::cerr << "Missing value for --api-key\n";
+        return 2;
+      }
+    } else if (a == "--proxy") {
+      if (!take(&cfg->proxy_url)) {
+        std::cerr << "Missing value for --proxy\n";
+        return 2;
+      }
     } else if (a == "--state-dir") {
       if (!take(&cfg->state_dir)) {
         std::cerr << "Missing value for --state-dir\n";
@@ -540,6 +573,11 @@ int parse_daemon_cli(int argc, char** argv, DaemonConfig* cfg, DaemonCliOverride
     } else if (a == "--workflow-fair-queue-policy") {
       if (!take(&cfg->workflow_engine_fair_queue_policy)) {
         std::cerr << "Missing value for --workflow-fair-queue-policy\n";
+        return 2;
+      }
+    } else if (a == "--workflow-drr-cost-model") {
+      if (!take(&cfg->workflow_engine_drr_cost_model)) {
+        std::cerr << "Missing value for --workflow-drr-cost-model\n";
         return 2;
       }
     } else if (a == "--workflow-fair-queue-max-session-weight") {
@@ -1177,6 +1215,7 @@ int parse_daemon_cli(int argc, char** argv, DaemonConfig* cfg, DaemonCliOverride
         << "  --workflow-max-inflight-per-workflow <n>  Workflow fairness cap (default: 2)\n"
         << "  --workflow-max-inflight-per-session <n>   Optional multi-tenant cap; 0 disables (default: 0)\n"
         << "  --workflow-fair-queue-policy <scan_rr|wrr|drr>  Scheduler policy (default: wrr)\n"
+        << "  --workflow-drr-cost-model <unit|simple_v1|telemetry_v1>  DRR cost model (default: unit)\n"
         << "  --workflow-fair-queue-max-session-weight <n>  Clamp per-session weight (default: 16)\n"
         << "  --workflow-fair-queue-max-schedule-len <n>    Bound expanded WRR schedule length (default: 1024)\n"
         << "  --workflow-admit-max-inflight-tasks-per-session <n>  Admission control cap (queued|running tasks per session); 0 disables (default: 0)\n"

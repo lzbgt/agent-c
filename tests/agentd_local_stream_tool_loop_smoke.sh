@@ -18,6 +18,9 @@ PORT_DAEMON="$(agentd_smoke_pick_port)"
 PORT_STUB="$(agentd_smoke_pick_port)"
 HOST="127.0.0.1"
 STUB_BASE="http://${HOST}:${PORT_STUB}/v1"
+PROJECT_ROOT="$(agentd_smoke_project_root)"
+README_PATH="${PROJECT_ROOT}/README.md"
+export README_PATH
 
 cleanup() {
   agentd_smoke_stop
@@ -33,8 +36,11 @@ trap cleanup EXIT
 # - step 1: streams assistant content "OK"
 python3 -u - <<PY > "${LOG_DIR}/agentd_local_stream_tool_loop_smoke.stub.stdout.log" 2> "${LOG_DIR}/agentd_local_stream_tool_loop_smoke.stub.stderr.log" &
 import json
+import os
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
+README_PATH = os.environ.get("README_PATH", "README.md")
 
 def has_tool_result(messages):
   for m in messages:
@@ -102,12 +108,19 @@ class H(BaseHTTPRequestHandler):
       return
 
     # Stream a tool call with fragmented arguments.
+    args = json.dumps({"path": README_PATH, "max_lines": 5, "max_chars": 20000})
+    marker = ',\"max_lines\"'
+    split_at = args.find(marker)
+    if split_at == -1:
+      split_at = len(args) // 2
+    else:
+      split_at += 1
     chunks = [
       {"choices": [{"delta": {"tool_calls": [
-        {"index": 0, "id": "call_1", "type": "function", "function": {"name": "fs_read", "arguments": "{\"path\":\"README.md\","}}
+        {"index": 0, "id": "call_1", "type": "function", "function": {"name": "fs_read", "arguments": args[:split_at]}}
       ]}}]},
       {"choices": [{"delta": {"tool_calls": [
-        {"index": 0, "function": {"arguments": "\"max_lines\":5,\"max_chars\":20000}"}}
+        {"index": 0, "function": {"arguments": args[split_at:]}}
       ]}}]},
     ]
     write_sse(self, chunks)

@@ -1,6 +1,6 @@
 # Roadmap / TODOs (highest leverage)
 
-Date: 2026-02-18
+Date: 2026-02-19
 
 This roadmap is biased toward “power unleashed” coming from the **agentic framework itself**:
 
@@ -82,6 +82,15 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] Add idempotency keys to broker proxy/orchestrate (safe retries with audit trail).
   - [x] Introduce replay bundles for deterministic runs (inputs + hashes + tool outputs) with fixture tests.
   - [x] Transport-agnostic relay interface for broker/connector (transport.Conn + WebSocket adapter).
+
+## New tasks (2026-02-19)
+
+- [ ] Add regression tests for `/api/v1/file` path traversal and session-root confinement.
+- [ ] Refactor `daemon/src/run_request.cpp` into smaller units (approaching 2000 LOC).
+- [ ] Refactor `ui/src/components/ConversationView.tsx` into smaller components (approaching 2000 LOC).
+- [ ] Standardize API error envelopes across agentd + broker (`{"err":"...","code":"...","details":{...}}`) and align WebUI handling.
+- [ ] Refactor `ref/ds-cli/sophon/src/sophon_cli/cli.py` (5.8k LOC) into SOLID submodules or mark as vendored/read-only.
+- [ ] Refactor `ref/claude-mem/src/services/sqlite/SessionStore.ts` (2.3k LOC) into smaller units or mark as vendored/read-only.
 
 ## Promoted goals (explicit goals; no non-goals)
 
@@ -173,7 +182,7 @@ with **audio streaming** following once streaming UX is stable.
   - Daemon flag: `--tool-server-cmd "<cmd>"` (repeatable; stdio JSON-lines protocol)
   - Reliability knobs: `--tool-server-timeout-ms`, `--tool-server-max-line-bytes`, plus restart-with-backoff on death (fail-closed; no auto-retry)
   - Optional health checks: `--tool-server-ping-interval-ms <n>` (best-effort idle `op:"ping"`; auto-disables if server replies `unknown op`)
-  - Docs: `docs/TOOL_SERVERS.md`
+  - Docs: `docs/TOOLS.md`
   - Proof: `ctest` includes `agentd_tool_server_smoke`, `agentd_tool_server_ping_smoke`, and `agentd_tool_server_restart_smoke`.
 - Broker/agent interop primitive for durable workflows (deterministic; gated):
   - New deterministic workflow task: `kind:"http_json"` with `http_json` (outbound HTTP JSON; no LLM required).

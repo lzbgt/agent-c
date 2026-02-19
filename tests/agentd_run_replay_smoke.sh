@@ -21,6 +21,9 @@ STUB_BASE="http://${HOST}:${PORT_STUB}/v1"
 
 DB_PATH="${LOG_DIR}/agentd_run_replay_smoke.sqlite"
 SESSION_ID="agentd_run_replay_$(date +%s)_$RANDOM"
+PROJECT_ROOT="$(agentd_smoke_project_root)"
+README_PATH="${PROJECT_ROOT}/README.md"
+export README_PATH
 
 cleanup() {
   agentd_smoke_stop
@@ -37,7 +40,10 @@ trap cleanup EXIT
 # - second response (after tool result): assistant "OK"
 python3 -u - <<PY > "${LOG_DIR}/agentd_run_replay_smoke.stub.stdout.log" 2> "${LOG_DIR}/agentd_run_replay_smoke.stub.stderr.log" &
 import json
+import os
 from http.server import BaseHTTPRequestHandler, HTTPServer
+
+README_PATH = os.environ.get("README_PATH", "README.md")
 
 def has_tool_result(messages):
   for m in messages:
@@ -90,7 +96,7 @@ class H(BaseHTTPRequestHandler):
                   "type": "function",
                   "function": {
                     "name": "fs_read",
-                    "arguments": json.dumps({"path": "README.md", "max_lines": 5, "max_chars": 20000}),
+                    "arguments": json.dumps({"path": README_PATH, "max_lines": 5, "max_chars": 20000}),
                   },
                 }
               ],

@@ -202,7 +202,7 @@ Exit criteria:
 
 ## Notes on “Scene” for MCUs
 
-The durable Scene described in `docs/CLIENT_AGENTD_SPEC.md` is a **daemon-side** persistence feature (DB-backed).
+The durable Scene described in `docs/CLIENT.md` is a **daemon-side** persistence feature (DB-backed).
 On MCU, it is usually better to:
 - represent UI state in the client (mobile/web)
 - keep the device focused on **actuation + sensing tools**

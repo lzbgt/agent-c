@@ -246,7 +246,7 @@ Indexes:
 
 ### `ui_actions`
 
-Mirrors explicit `ui_action` events emitted by the tool loop (see `docs/UI_ACTION.md`).
+Mirrors explicit `ui_action` events emitted by the tool loop (see `docs/CLIENT.md`).
 
 The DB does not execute actions; it stores them for troubleshooting and UI indexing.
 
@@ -272,7 +272,7 @@ Indexes:
 ### `client_events`
 
 Mirrors explicit client → daemon events posted via `POST /api/v1/session/client_event` (legacy alias: `/session/ui_event`)
-(see `docs/UI_CLIENT_EVENTS.md`).
+(see `docs/CLIENT.md`).
 
 These are useful for troubleshooting “did the user/UI actually do X?” and for allowing future runs to incorporate
 UI-side acknowledgements.
