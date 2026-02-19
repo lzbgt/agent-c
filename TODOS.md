@@ -113,6 +113,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-20: Added compose smoke for team run fan-out + role filter (`tests/broker_team_runs_compose_smoke.sh`).
   - 2026-02-20: Added quorum gating compose smoke (`tests/broker_team_runs_quorum_compose_smoke.sh`).
   - 2026-02-20: Persisted team run approvals in broker + approvals endpoints.
+  - 2026-02-20: Emit `team_quorum_request` + `team_quorum_result` broker SSE events on run creation and approval updates.
   - 2026-02-19: Connector now supports `--local-agentd-token` (or `AGENTD_AUTH_TOKEN`) so team run fan-out can authenticate to local agentd; compose updated and compose smoke verified.
   - 2026-02-19: Broker now enforces `team_run` quorum rules on run creation via inline approvals (`team.approvals`) with strict failures returning `409`.
   - 2026-02-20: Add quorum enforcement smoke.

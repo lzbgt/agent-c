@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"agentd-broker/internal/db"
+	"agentd-broker/internal/events"
 )
 
 func (s *Server) handleTeams(w http.ResponseWriter, r *http.Request) {
@@ -748,6 +749,7 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 	if v, ok := raw["team"]; ok && len(v) > 0 && string(v) != "null" {
 		_ = json.Unmarshal(v, &teamMeta)
 	}
+	traceID := traceIDFromContext(r.Context())
 
 	options := parseTeamRunOptions(teamMeta)
 	quorumPolicyMode, err := parseTeamRunQuorumPolicy(teamMeta)
@@ -782,23 +784,25 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 	for _, m := range members {
 		membersByID[m.MemberID] = m
 	}
+	var quorumEval *teamRunQuorumEval
 	if quorumPolicyMode != "off" {
-		quorumEval, err := evaluateTeamRunQuorum(teamRunRules, approvals, membersByID)
+		eval, err := evaluateTeamRunQuorum(teamRunRules, approvals, membersByID)
 		if err != nil {
 			writeErrorJSON(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		if len(quorumEval.Rules) > 0 {
-			if !quorumEval.StrictOK {
+		if len(eval.Rules) > 0 {
+			if !eval.StrictOK {
 				w.WriteHeader(http.StatusConflict)
 				writeJSON(w, map[string]any{
 					"ok":     false,
 					"error":  "quorum approvals required",
-					"quorum": quorumEval.toJSON(),
+					"quorum": eval.toJSON(),
 				})
 				return
 			}
-			teamMeta["quorum_eval"] = quorumEval.toJSON()
+			teamMeta["quorum_eval"] = eval.toJSON()
+			quorumEval = &eval
 		}
 	}
 	members = filterTeamRunMembers(members, options.Role, options.Roles)
@@ -820,7 +824,6 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 		}
 	}
 
-	traceID := traceIDFromContext(r.Context())
 	if traceID != "" {
 		if _, ok := runMap["trace_id"]; !ok {
 			runMap["trace_id"] = traceID
@@ -841,6 +844,12 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 			_ = s.cfg.DB.UpdateTeamRunStatus(r.Context(), teamID, teamRunID, "failed")
 			writeErrorJSON(w, err.Error(), http.StatusBadRequest)
 			return
+		}
+	}
+	if len(teamRunRules) > 0 {
+		publishTeamQuorumRequest(s.cfg.Events, p.Sub, teamID, teamRunID, teamRunRules, traceID)
+		if quorumEval != nil {
+			publishTeamQuorumResult(s.cfg.Events, p.Sub, teamID, teamRunID, *quorumEval, traceID)
 		}
 	}
 
@@ -1024,6 +1033,9 @@ func (s *Server) handleTeamRunApprovalsCreate(w http.ResponseWriter, r *http.Req
 		writeErrorJSON(w, "db error", http.StatusInternalServerError)
 		return
 	}
+	if eval, err := evaluateTeamRunQuorum(teamRunRules, approvalsToTeamRunApprovals(stored), membersByID); err == nil {
+		publishTeamQuorumResult(s.cfg.Events, p.Sub, teamID, teamRunID, eval, traceIDFromContext(r.Context()))
+	}
 	out := make([]map[string]any, 0, len(stored))
 	for _, approval := range stored {
 		out = append(out, teamRunApprovalToJSON(approval))
@@ -1142,6 +1154,78 @@ func teamRunApprovalToJSON(a db.TeamRunApproval) map[string]any {
 		out["created_by"] = a.CreatedBy
 	}
 	return out
+}
+
+func approvalsToTeamRunApprovals(rows []db.TeamRunApproval) []teamRunApproval {
+	out := make([]teamRunApproval, 0, len(rows))
+	for _, row := range rows {
+		decision := strings.ToLower(strings.TrimSpace(row.Decision))
+		out = append(out, teamRunApproval{
+			RuleID:   row.RuleID,
+			MemberID: row.MemberID,
+			Decision: decision,
+			Reason:   row.Reason,
+		})
+	}
+	return out
+}
+
+func publishTeamQuorumRequest(hub *events.Hub, userSub, teamID, teamRunID string, rules []db.TeamQuorumRule, traceID string) {
+	if hub == nil || userSub == "" {
+		return
+	}
+	for _, rule := range rules {
+		ev := events.Event{
+			Type:    "team_quorum_request",
+			UserSub: userSub,
+			TraceID: traceID,
+			Payload: map[string]any{
+				"team_id":       teamID,
+				"team_run_id":   teamRunID,
+				"rule_id":       rule.RuleID,
+				"action":        rule.Action,
+				"min_approvals": rule.MinApprovals,
+				"quorum_mode":   rule.QuorumMode,
+			},
+		}
+		hub.PublishTo([]string{userSub}, ev)
+	}
+}
+
+func publishTeamQuorumResult(hub *events.Hub, userSub, teamID, teamRunID string, eval teamRunQuorumEval, traceID string) {
+	if hub == nil || userSub == "" {
+		return
+	}
+	for _, rule := range eval.Rules {
+		ok := rule.Missing == 0
+		decision := "approved"
+		if !ok {
+			if strings.ToLower(strings.TrimSpace(rule.QuorumMode)) == "best_effort" {
+				decision = "best_effort"
+			} else {
+				decision = "denied"
+			}
+		}
+		payload := map[string]any{
+			"team_id":            teamID,
+			"team_run_id":        teamRunID,
+			"rule_id":            rule.RuleID,
+			"decision":           decision,
+			"approvals":          rule.Approved,
+			"required_approvals": rule.MinApprovals,
+			"ok":                 ok,
+		}
+		if len(rule.ApprovedMemberIDs) > 0 {
+			payload["approved_member_ids"] = rule.ApprovedMemberIDs
+		}
+		ev := events.Event{
+			Type:    "team_quorum_result",
+			UserSub: userSub,
+			TraceID: traceID,
+			Payload: payload,
+		}
+		hub.PublishTo([]string{userSub}, ev)
+	}
 }
 
 type teamRunQuorumRuleEval struct {

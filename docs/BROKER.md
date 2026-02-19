@@ -317,7 +317,7 @@ Idempotency (optional):
 
 - `GET /v1/events`
   - server-sent events for the authenticated user
-  - emits JSON `data:` payloads with types like `agent_connected`, `agent_disconnected`, `relay_audit`, `client_auth_reload`, `agent_member_updated`
+  - emits JSON `data:` payloads with types like `agent_connected`, `agent_disconnected`, `relay_audit`, `client_auth_reload`, `agent_member_updated`, `team_quorum_request`, `team_quorum_result`
 
 ### Client auth status (admin-only)
 
