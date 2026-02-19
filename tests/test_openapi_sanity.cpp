@@ -81,7 +81,10 @@ static bool load_with_refs(const std::string& path, std::string* out) {
       if (ref.empty()) continue;
       if (ref.find("://") != std::string::npos) continue;
       if (!ref.empty() && ref.front() == '#') continue;
-      std::filesystem::path resolved = base_dir / ref;
+      const auto hash = ref.find('#');
+      std::string ref_path = (hash == std::string::npos) ? ref : ref.substr(0, hash);
+      if (ref_path.empty()) continue;
+      std::filesystem::path resolved = base_dir / ref_path;
       resolved = resolved.lexically_normal();
       stack.push_back(resolved.string());
     }
