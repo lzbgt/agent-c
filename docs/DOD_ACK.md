@@ -1,6 +1,6 @@
-# Definition of Done (DoD) for UI-visible Effects (Draft)
+# Definition of Done (DoD) for UI-visible Effects
 
-Date: 2026-01-30
+Date: 2026-02-19
 
 This document defines a **fundamental stop condition** for “agent did something for the user” workflows in the Web UI.
 

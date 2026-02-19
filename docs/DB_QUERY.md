@@ -1,6 +1,6 @@
-# Agentd DB Query API (Troubleshooting) — Draft
+# Agentd DB Query API (Troubleshooting)
 
-Date: 2026-02-17
+Date: 2026-02-19
 
 When `agentd` is started with `--db-path` (or `AGENTD_DB_PATH`), it mirrors runs/events/tool records/artifacts into an SQLite DB
 (`docs/DB.md`). This document defines a small, read-only HTTP surface so operators and the Web UI can query that DB directly for

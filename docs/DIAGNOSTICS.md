@@ -1,6 +1,6 @@
-# Diagnostics Endpoints (Draft)
+# Diagnostics Endpoints
 
-Date: 2026-02-13
+Date: 2026-02-19
 
 This document describes the lightweight diagnostics endpoints exposed by `agentd`.
 

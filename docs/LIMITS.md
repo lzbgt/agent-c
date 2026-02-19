@@ -1,6 +1,6 @@
-# Run Limits & Runaway-Loop Guards (Draft)
+# Run Limits & Runaway-Loop Guards
 
-Date: 2026-01-30
+Date: 2026-02-19
 
 This document specifies how the agent tool loop should behave when configured safety limits are reached.
 
