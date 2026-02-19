@@ -1,0 +1,570 @@
+/healthz:
+  get:
+    tags: [health]
+    summary: Health check
+    responses:
+      "200":
+        description: OK
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ok]
+              properties:
+                ok: { type: boolean }
+
+/readyz:
+  get:
+    tags: [health]
+    summary: Readiness check
+    responses:
+      "200":
+        description: Ready
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ok]
+              properties:
+                ok: { type: boolean }
+                ts_unix_ms: { type: integer, format: int64 }
+                client_auth:
+                  type: object
+                  additionalProperties: true
+      "503":
+        description: Not ready
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ok, error]
+              properties:
+                ok: { type: boolean }
+                error: { type: string }
+                ts_unix_ms: { type: integer, format: int64 }
+                client_auth:
+                  type: object
+                  additionalProperties: true
+
+/metrics:
+  get:
+    tags: [health]
+    summary: Prometheus metrics
+    responses:
+      "200":
+        description: OK
+        content:
+          text/plain; version=0.0.4:
+            schema:
+              type: string
+
+/v1/caps:
+  get:
+    tags: [caps]
+    summary: Capability descriptor (features + limits)
+    responses:
+      "200":
+        description: Capability snapshot
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerCapsResponse"
+
+/v1/agents:
+  get:
+    tags: [agents]
+    summary: List agents for current user
+    responses:
+      "200":
+        description: Agent list
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ok, agents]
+              properties:
+                ok: { type: boolean }
+                agents:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/AgentInfo"
+  post:
+    tags: [agents]
+    summary: Create/register an agent (DB record)
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+    responses:
+      "200":
+        description: Created
+/v1/agents/{agent_id}/deployments:
+  get:
+    tags: [agents]
+    summary: List connected deployments for an agent
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Deployment list
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AgentDeploymentsResponse"
+/v1/agents/{agent_id}/ota/update:
+  post:
+    tags: [agents]
+    summary: Fan-out OTA update across deployments
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/BrokerOtaUpdateRequest"
+    responses:
+      "200":
+        description: Fan-out update results
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerOtaBulkResponse"
+/v1/agents/{agent_id}/ota/status:
+  get:
+    tags: [agents]
+    summary: Fan-out OTA status across deployments
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: query
+        name: deployment_ids
+        required: false
+        schema: { type: string }
+        description: Comma-delimited deployment ids. Omit to query all connected deployments.
+      - in: query
+        name: deployment_id
+        required: false
+        schema: { type: string }
+        description: Single deployment id (alias for deployment_ids).
+    responses:
+      "200":
+        description: Fan-out status results
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerOtaBulkResponse"
+/v1/agents/{agent_id}/memory/retention/enforce:
+  post:
+    tags: [memory]
+    summary: Fan-out memory retention enforcement across deployments
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+            description: Memory retention request (agentd API) plus optional deployment_ids fields.
+    responses:
+      "200":
+        description: Fan-out retention results
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerFanoutResponse"
+/v1/agents/{agent_id}/memory/recaps:
+  get:
+    tags: [memory]
+    summary: Fan-out memory recap list across deployments
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: query
+        name: limit
+        required: false
+        schema: { type: integer, format: int32 }
+      - in: query
+        name: include_summary
+        required: false
+        schema: { type: boolean }
+      - in: query
+        name: deployment_ids
+        required: false
+        schema: { type: string }
+        description: Comma-delimited deployment ids (omit to target all connected deployments).
+    responses:
+      "200":
+        description: Fan-out recap list
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerFanoutResponse"
+  post:
+    tags: [memory]
+    summary: Fan-out memory recap generation across deployments
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            type: object
+            additionalProperties: true
+            description: Memory recap request (agentd API) plus optional deployment_ids fields.
+    responses:
+      "200":
+        description: Fan-out recap results
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerFanoutResponse"
+/v1/agents/{agent_id}/memory/salience:
+  get:
+    tags: [memory]
+    summary: Fan-out memory salience across deployments
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: query
+        name: include_structured
+        required: false
+        schema: { type: boolean }
+      - in: query
+        name: include_daily
+        required: false
+        schema: { type: boolean }
+      - in: query
+        name: daily_days
+        required: false
+        schema: { type: integer, format: int32 }
+      - in: query
+        name: max_items
+        required: false
+        schema: { type: integer, format: int32 }
+      - in: query
+        name: max_structured_items
+        required: false
+        schema: { type: integer, format: int32 }
+      - in: query
+        name: max_daily_items
+        required: false
+        schema: { type: integer, format: int32 }
+      - in: query
+        name: half_life_days
+        required: false
+        schema: { type: number }
+      - in: query
+        name: importance_weight
+        required: false
+        schema: { type: number }
+      - in: query
+        name: deployment_ids
+        required: false
+        schema: { type: string }
+        description: Comma-delimited deployment ids (omit to target all connected deployments).
+    responses:
+      "200":
+        description: Fan-out salience results
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerFanoutResponse"
+/v1/agents/{agent_id}/members:
+  get:
+    tags: [membership]
+    summary: List agent members (owner/admin)
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Member list
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ok, agent_id, owner_sub, members]
+              properties:
+                ok: { type: boolean }
+                agent_id: { type: string }
+                owner_sub: { type: string }
+                members:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/AgentMember"
+  post:
+    tags: [membership]
+    summary: Add or update agent member (owner/admin)
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              user_sub: { type: string }
+              role: { type: string, enum: [user, admin, owner] }
+            required: [user_sub]
+    responses:
+      "200":
+        description: Updated
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ok]
+              properties:
+                ok: { type: boolean }
+/v1/agents/{agent_id}/members/{user_sub}:
+  delete:
+    tags: [membership]
+    summary: Remove agent member (owner/admin)
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: user_sub
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Removed
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ok]
+              properties:
+                ok: { type: boolean }
+/v1/agents/{agent_id}/membership_audit:
+  get:
+    tags: [membership]
+    summary: Membership audit trail (owner/admin)
+    parameters:
+      - in: path
+        name: agent_id
+        required: true
+        schema: { type: string }
+      - in: query
+        name: limit
+        required: false
+        schema: { type: integer, format: int32 }
+    responses:
+      "200":
+        description: Membership audit rows
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ok, agent_id, owner_sub, audit]
+              properties:
+                ok: { type: boolean }
+                agent_id: { type: string }
+                owner_sub: { type: string }
+                audit:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/MembershipAuditRow"
+
+/v1/orchestrate:
+  post:
+    tags: [orchestrate]
+    summary: Fan-out orchestration across connected agents
+    parameters:
+      - $ref: "#/components/parameters/IdempotencyKey"
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/OrchestrateRequest"
+    responses:
+      "200":
+        description: Orchestration result
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ok, results]
+              properties:
+                ok: { type: boolean }
+                trace_id:
+                  type: string
+                  description: Correlation id propagated to task run bodies (if present)
+                all_ok: { type: boolean }
+                tasks_total: { type: integer, format: int32 }
+                max_concurrency: { type: integer, format: int32 }
+                timeout_ms: { type: integer, format: int32 }
+                results:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/OrchestrateTaskResult"
+        headers:
+          X-Idempotency-Key:
+            schema: { type: string }
+            description: Echoes the idempotency key when provided.
+          X-Idempotency-Replay:
+            schema: { type: string }
+            description: "true if the response was replayed from idempotency storage."
+          X-Idempotency-Disabled:
+            schema: { type: string }
+            description: "response_too_large when the response was too large to store."
+      "409":
+        description: Idempotency key conflict or in-progress
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ok, error]
+              properties:
+                ok: { type: boolean }
+                error: { type: string }
+
+/v1/events:
+  get:
+    tags: [events]
+    summary: Server-Sent Events stream for broker events
+    responses:
+      "200":
+        description: SSE stream
+        content:
+          text/event-stream:
+            schema:
+              type: string
+
+/v1/agent/connect:
+  get:
+    tags: [agents]
+    summary: Agent connects to broker (WebSocket upgrade)
+    responses:
+      "101":
+        description: Switching Protocols (WebSocket)
+
+/v1/trace:
+  get:
+    tags: [events]
+    summary: Correlated trace lookup (broker + agent fanout)
+    description: |
+      Returns broker relay audit rows for a `trace_id` and (best-effort) fans out to referenced agents
+      to query their `/api/v1/trace` endpoint for persisted audit records.
+    parameters:
+      - in: query
+        name: trace_id
+        required: true
+        schema: { type: string }
+      - in: query
+        name: limit
+        required: false
+        schema: { type: integer, format: int32 }
+      - in: query
+        name: fanout
+        required: false
+        schema: { type: boolean }
+    responses:
+      "200":
+        description: Trace response
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ok, trace_id]
+              properties:
+                ok: { type: boolean }
+                trace_id: { type: string }
+                orchestrate:
+                  type: array
+                  description: Persisted orchestrate audit rows (request/response JSON), keyed by trace_id
+                  items:
+                    type: object
+                    required: [ts_unix_ms, trace_id, request_json, response_json]
+                    properties:
+                      ts_unix_ms: { type: integer, format: int64 }
+                      trace_id: { type: string }
+                      request_json:
+                        type: object
+                        additionalProperties: true
+                      response_json:
+                        type: object
+                        additionalProperties: true
+                relay_audit:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: true
+                membership:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/MembershipAuditRow"
+                agentd:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: true
+/v1/client_auth/status:
+  get:
+    tags: [client_auth]
+    summary: Client auth reload status (admin)
+    responses:
+      "200":
+        description: Status
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ok]
+              properties:
+                ok: { type: boolean }
+                enabled: { type: boolean }
+                last_ok: { type: boolean }
+                last_unix_ms: { type: integer, format: int64 }
+                last_error: { type: string }
+/v1/client_auth/reload:
+  post:
+    tags: [client_auth]
+    summary: Reload client auth file (admin)
+    responses:
+      "200":
+        description: Reloaded
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ok]
+              properties:
+                ok: { type: boolean }
+                ts_unix_ms: { type: integer, format: int64 }
+
