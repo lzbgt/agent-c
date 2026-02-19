@@ -131,68 +131,10 @@ You can also accept the token via a cookie name (useful for browser clients):
 ./build/agentd --auth-token "your_token" --auth-cookie "agentd_auth"
 ```
 
-### Daemon CORS (browser clients)
+### Daemon CORS + secrets
 
-The Web UI typically runs on a different origin (e.g. `http://localhost:5173`) than the daemon (`http://127.0.0.1:8123`),
-so `agentd` emits CORS headers for browser fetches:
-
-- When binding to loopback (`127.0.0.1` / `localhost`): CORS defaults to `Access-Control-Allow-Origin: *` for local dev ergonomics.
-- When binding to a non-loopback host: CORS is **disabled by default**. Enable it explicitly with one or more `--cors-origin` values.
-
-Example (remote UI origin allowlist):
-
-```bash
-./build/agentd --host 0.0.0.0 --auth-token "your_token" --cors-origin "https://your-ui.example"
-```
-
-If you use cookie auth, allow credentials so the browser can send cookies:
-
-```bash
-./build/agentd --host 0.0.0.0 --auth-token "your_token" --auth-cookie "agentd_auth" \
-  --cors-origin "https://your-ui.example" --cors-allow-credentials
-```
-
-Per-route origin policies (longest path prefix wins) are supported:
-
-```bash
-./build/agentd --cors-route '{"path_prefix":"/api/v1/openrouter","origins":["https://ui.example"]}'
-```
-
-By default, `agentd` allows common headers needed by the UI, including `Authorization` (daemon auth), `X-OpenRouter-Key`,
-and request correlation headers `X-Request-Id` / `X-Trace-Id` (also exposed for browser access).
-(provider key for the OpenRouter model catalog endpoint).
-
-Network smoke tests, disable flags, and proxy assumptions are documented in `docs/TESTING.md`.
-To set keys via a local file, copy `project.local.md.example` to `project.local.md` and fill in real values.
-
-### Local secrets file: `.not_in_repo` (preferred)
-
-For local development, you can store provider keys in a gitignored file named `.not_in_repo` at the repo root.
-This keeps keys out of the UI/browser, and lets `agentd` load them automatically.
-
-Accepted formats (either style; one per line):
-
-```text
-DEEPSEEK_API_KEY=sk-...
-OPENROUTER_API_KEY=sk-...
-KIMI_API_KEY_CN=sk-...
-MOONSHOT_API_KEY=sk-...
-```
-
-or:
-
-```text
-- deepseek: sk-...
-- openrouter: sk-...
-```
-
-Notes:
-- `.not_in_repo` is gitignored; do not commit keys.
-- `agentd` prefers `.not_in_repo` over `project.local.md` when auto-loading provider keys.
-- You can point `agentd` at a specific dotenv file with `AGENTD_DOTENV_PATH=/path/to/.env` (useful for services
-  running under a different user).
-- `~/.env` is a last-resort key source only; base URLs still come from flags/env/config. For Moonshot, set
-  `MOONSHOT_API_BASE` or pass `--base-url https://api.moonshot.cn/v1`.
+Daemon CORS guidance and local secrets/key-loading (including `.not_in_repo` and `project.local.md`)
+are documented in `docs/AGENTD.md`.
 
 ### Tool extensions: plugins + tool servers (out-of-process)
 
