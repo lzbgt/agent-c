@@ -39,6 +39,8 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
 fi
 
 source "${ROOT}/tools/lib/docker_preflight.sh"
+# shellcheck source=tools/lib/python_helpers.sh
+source "${ROOT}/tools/lib/python_helpers.sh"
 if ! docker_compose_preflight "devstack"; then
   exit 77
 fi

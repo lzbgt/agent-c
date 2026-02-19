@@ -103,6 +103,8 @@ cleanup() {
 trap cleanup EXIT
 
 source "${ROOT}/tools/lib/docker_preflight.sh"
+# shellcheck source=tools/lib/python_helpers.sh
+source "${ROOT}/tools/lib/python_helpers.sh"
 if ! docker_compose_preflight "host-stack"; then
   exit 77
 fi

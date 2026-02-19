@@ -3,6 +3,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${ROOT}/tools/lib/docker_preflight.sh" 2>/dev/null || true
+# shellcheck source=tools/lib/python_helpers.sh
+source "${ROOT}/tools/lib/python_helpers.sh" 2>/dev/null || true
 
 usage() {
   cat <<'USAGE'
