@@ -831,6 +831,8 @@ if(AGENT_BUILD_HOST)
     set_tests_properties(broker_audio_signal_loopback_smoke PROPERTIES SKIP_RETURN_CODE 77)
     add_test(NAME broker_audio_signal_docker_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/broker_audio_signal_docker_smoke.sh)
     set_tests_properties(broker_audio_signal_docker_smoke PROPERTIES SKIP_RETURN_CODE 77)
+    add_test(NAME broker_team_runs_quorum_compose_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/broker_team_runs_quorum_compose_smoke.sh)
+    set_tests_properties(broker_team_runs_quorum_compose_smoke PROPERTIES SKIP_RETURN_CODE 77)
     add_test(
       NAME agentd_audio_signal_loopback_smoke
       COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_audio_signal_loopback_smoke.sh
