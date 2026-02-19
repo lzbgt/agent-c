@@ -213,6 +213,34 @@ if obj.get("replay_sha256_schema") != "run_replay_bundle_v1":
   raise SystemExit(1)
 PY
 
+att_json="$(curl -fsS --noproxy "*" --max-time 10 \
+  "${DAEMON_URL}/api/v1/run/attestation?run_id=${run_id}")"
+
+python3 - <<PY
+import json, sys
+replay = json.loads(r'''${replay_json}''')
+att = json.loads(r'''${att_json}''')
+if not att.get("ok"):
+  print("attestation failed", att, file=sys.stderr)
+  raise SystemExit(1)
+bundle = att.get("attestation") or {}
+if bundle.get("schema") != "run_attestation_bundle_v1":
+  print("unexpected attestation schema", bundle.get("schema"), file=sys.stderr)
+  raise SystemExit(1)
+if not isinstance(bundle.get("created_utc_ms"), int) or bundle.get("created_utc_ms", 0) <= 0:
+  print("missing created_utc_ms", bundle.get("created_utc_ms"), file=sys.stderr)
+  raise SystemExit(1)
+if bundle.get("replay_sha256") != replay.get("replay_sha256"):
+  print("replay_sha256 mismatch", bundle.get("replay_sha256"), replay.get("replay_sha256"), file=sys.stderr)
+  raise SystemExit(1)
+if bundle.get("replay_sha256_alg") != "agent_json_c14n_v1":
+  print("unexpected replay_sha256_alg", bundle.get("replay_sha256_alg"), file=sys.stderr)
+  raise SystemExit(1)
+if bundle.get("replay_sha256_schema") != "run_replay_bundle_v1":
+  print("unexpected replay_sha256_schema", bundle.get("replay_sha256_schema"), file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 # Cleanup session artifacts.
 curl -fsS --noproxy "*" -X DELETE "${DAEMON_URL}/api/v1/session?session_id=$(python3 - <<PY
 import urllib.parse

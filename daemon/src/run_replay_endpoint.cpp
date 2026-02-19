@@ -8,6 +8,7 @@
 
 #include <json/json.h>
 
+#include <chrono>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -89,68 +90,57 @@ static bool parse_i64_param(const std::optional<std::string>& v, int64_t* out) {
   }
 }
 
-}  // namespace
+static int64_t now_utc_ms() {
+  return (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+           std::chrono::system_clock::now().time_since_epoch())
+    .count();
+}
 
-void handle_run_replay_endpoint(
-  const DaemonConfig& cfg,
-  const CorsConfig& cors_cfg,
-  AgentDb* db_or_null,
-  const HttpRequest& req,
-  HttpResponse* resp
+#if defined(AGENT_HAVE_SQLITE3)
+struct ReplayBundleLoad {
+  bool ok = false;
+  int status = 500;
+  Json::Value error_body = Json::Value(Json::objectValue);
+  std::string session_id;
+  Json::Value bundle = Json::Value(Json::objectValue);
+  std::string replay_sha256;
+  std::string replay_sha256_alg;
+  std::string replay_sha256_schema;
+  std::string replay_error;
+};
+
+static ReplayBundleLoad replay_error(
+  int status,
+  const std::string& error,
+  const std::string& details = std::string()
 ) {
-  cors_apply(req, resp, cors_cfg);
-  resp->headers["Content-Type"] = "application/json; charset=utf-8";
-  if (!daemon_require_auth(cfg, req, resp)) return;
+  ReplayBundleLoad out;
+  out.ok = false;
+  out.status = status;
+  Json::Value o(Json::objectValue);
+  o["ok"] = false;
+  o["rpc_status"] = status;
+  o["error"] = error;
+  if (!details.empty()) o["details"] = details;
+  out.error_body = o;
+  return out;
+}
 
-  int64_t run_id = 0;
-  if (!parse_i64_param(query_get(req.query, "run_id"), &run_id) || run_id <= 0) {
-    Json::Value o(Json::objectValue);
-    o["ok"] = false;
-    o["rpc_status"] = 400;
-    o["error"] = "invalid run_id";
-    resp->status = 400;
-    resp->body = json_stringify(o);
-    return;
-  }
+static ReplayBundleLoad load_replay_bundle(sqlite3* db, int64_t run_id) {
+  if (!db) return replay_error(500, "internal error");
 
-  DbHandle h;
-  Json::Value db_open = open_db_or_error(db_or_null, &h);
-  if (!db_open.isObject() || !db_open.get("ok", false).asBool()) {
-    const int st = db_open.isMember("rpc_status") && db_open["rpc_status"].isInt() ? db_open["rpc_status"].asInt() : 500;
-    resp->status = st;
-    resp->body = json_stringify(db_open);
-    return;
-  }
-
-#if !defined(AGENT_HAVE_SQLITE3)
-  resp->status = 500;
-  resp->body = json_error_body("sqlite disabled");
-  return;
-#else
   sqlite3_stmt* st = nullptr;
   const char* sql =
     "SELECT session_id, request_json, response_json, replay_sha256, replay_sha256_alg, replay_sha256_schema, replay_error "
     "FROM runs WHERE run_id=? LIMIT 1;";
-  if (sqlite3_prepare_v2(h.db, sql, -1, &st, nullptr) != SQLITE_OK) {
-    Json::Value err(Json::objectValue);
-    err["ok"] = false;
-    err["rpc_status"] = 500;
-    err["error"] = sqlite3_errmsg(h.db);
-    resp->status = 500;
-    resp->body = json_stringify(err);
-    return;
+  if (sqlite3_prepare_v2(db, sql, -1, &st, nullptr) != SQLITE_OK) {
+    return replay_error(500, sqlite3_errmsg(db));
   }
   (void)sqlite3_bind_int64(st, 1, (sqlite3_int64)run_id);
   const int rc = sqlite3_step(st);
   if (rc != SQLITE_ROW) {
     sqlite3_finalize(st);
-    Json::Value nf(Json::objectValue);
-    nf["ok"] = false;
-    nf["rpc_status"] = 404;
-    nf["error"] = "run not found";
-    resp->status = 404;
-    resp->body = json_stringify(nf);
-    return;
+    return replay_error(404, "run not found");
   }
 
   const std::string session_id = stmt_text(st, 0);
@@ -159,50 +149,31 @@ void handle_run_replay_endpoint(
   std::string replay_sha256 = stmt_text(st, 3);
   std::string replay_sha256_alg = stmt_text(st, 4);
   std::string replay_sha256_schema = stmt_text(st, 5);
-  std::string replay_error = stmt_text(st, 6);
+  std::string replay_error_text = stmt_text(st, 6);
   sqlite3_finalize(st);
 
   if (request_json.empty() || response_json.empty()) {
-    Json::Value o(Json::objectValue);
-    o["ok"] = false;
-    o["rpc_status"] = 409;
-    o["error"] = "replay_not_available";
-    o["run_id"] = (Json::Int64)run_id;
-    if (!session_id.empty()) o["session_id"] = session_id;
-    if (!replay_error.empty()) o["replay_error"] = replay_error;
-    resp->status = 409;
-    resp->body = json_stringify(o);
-    return;
+    ReplayBundleLoad out = replay_error(409, "replay_not_available");
+    out.error_body["run_id"] = (Json::Int64)run_id;
+    if (!session_id.empty()) out.error_body["session_id"] = session_id;
+    if (!replay_error_text.empty()) out.error_body["replay_error"] = replay_error_text;
+    return out;
   }
 
   Json::Value request_v;
   Json::Value response_v;
   std::string perr;
   if (!json_parse_any(request_json, &request_v, &perr)) {
-    Json::Value o(Json::objectValue);
-    o["ok"] = false;
-    o["rpc_status"] = 500;
-    o["error"] = "replay_request_parse_failed";
-    o["details"] = perr;
-    resp->status = 500;
-    resp->body = json_stringify(o);
-    return;
+    return replay_error(500, "replay_request_parse_failed", perr);
   }
   perr.clear();
   if (!json_parse_any(response_json, &response_v, &perr)) {
-    Json::Value o(Json::objectValue);
-    o["ok"] = false;
-    o["rpc_status"] = 500;
-    o["error"] = "replay_response_parse_failed";
-    o["details"] = perr;
-    resp->status = 500;
-    resp->body = json_stringify(o);
-    return;
+    return replay_error(500, "replay_response_parse_failed", perr);
   }
 
   Json::Value tool_records(Json::arrayValue);
   sqlite3_stmt* st2 = nullptr;
-  if (sqlite3_prepare_v2(h.db,
+  if (sqlite3_prepare_v2(db,
                          "SELECT tool_name, tool_call_id, arguments_json, result_text, result_for_prompt_text, result_truncated_for_prompt "
                          "FROM tool_records WHERE run_id=? ORDER BY id;",
                          -1, &st2, nullptr) == SQLITE_OK && st2) {
@@ -246,20 +217,141 @@ void handle_run_replay_endpoint(
       replay_sha256_schema = "run_replay_bundle_v1";
     } else {
       const std::string err = err_buf[0] ? std::string(err_buf) : "replay_hash_failed";
-      if (replay_error.empty()) replay_error = err;
-      else replay_error.append(";").append(err);
+      if (replay_error_text.empty()) replay_error_text = err;
+      else replay_error_text.append(";").append(err);
     }
+  }
+
+  ReplayBundleLoad out;
+  out.ok = true;
+  out.status = 200;
+  out.session_id = session_id;
+  out.bundle = bundle;
+  out.replay_sha256 = replay_sha256;
+  out.replay_sha256_alg = replay_sha256_alg;
+  out.replay_sha256_schema = replay_sha256_schema;
+  out.replay_error = replay_error_text;
+  return out;
+}
+#endif
+
+}  // namespace
+
+void handle_run_replay_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  int64_t run_id = 0;
+  if (!parse_i64_param(query_get(req.query, "run_id"), &run_id) || run_id <= 0) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["rpc_status"] = 400;
+    o["error"] = "invalid run_id";
+    resp->status = 400;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  DbHandle h;
+  Json::Value db_open = open_db_or_error(db_or_null, &h);
+  if (!db_open.isObject() || !db_open.get("ok", false).asBool()) {
+    const int st = db_open.isMember("rpc_status") && db_open["rpc_status"].isInt() ? db_open["rpc_status"].asInt() : 500;
+    resp->status = st;
+    resp->body = json_stringify(db_open);
+    return;
+  }
+
+#if !defined(AGENT_HAVE_SQLITE3)
+  resp->status = 500;
+  resp->body = json_error_body("sqlite disabled");
+  return;
+#else
+  ReplayBundleLoad load = load_replay_bundle(h.db, run_id);
+  if (!load.ok) {
+    resp->status = load.status;
+    resp->body = json_stringify(load.error_body);
+    return;
   }
 
   Json::Value out(Json::objectValue);
   out["ok"] = true;
   out["run_id"] = (Json::Int64)run_id;
-  if (!session_id.empty()) out["session_id"] = session_id;
-  out["bundle"] = bundle;
-  if (!replay_sha256.empty()) out["replay_sha256"] = replay_sha256;
-  if (!replay_sha256_alg.empty()) out["replay_sha256_alg"] = replay_sha256_alg;
-  if (!replay_sha256_schema.empty()) out["replay_sha256_schema"] = replay_sha256_schema;
-  if (!replay_error.empty()) out["replay_error"] = replay_error;
+  if (!load.session_id.empty()) out["session_id"] = load.session_id;
+  out["bundle"] = load.bundle;
+  if (!load.replay_sha256.empty()) out["replay_sha256"] = load.replay_sha256;
+  if (!load.replay_sha256_alg.empty()) out["replay_sha256_alg"] = load.replay_sha256_alg;
+  if (!load.replay_sha256_schema.empty()) out["replay_sha256_schema"] = load.replay_sha256_schema;
+  if (!load.replay_error.empty()) out["replay_error"] = load.replay_error;
+  resp->status = 200;
+  resp->body = json_stringify(out);
+#endif
+}
+
+void handle_run_attestation_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+) {
+  cors_apply(req, resp, cors_cfg);
+  resp->headers["Content-Type"] = "application/json; charset=utf-8";
+  if (!daemon_require_auth(cfg, req, resp)) return;
+
+  int64_t run_id = 0;
+  if (!parse_i64_param(query_get(req.query, "run_id"), &run_id) || run_id <= 0) {
+    Json::Value o(Json::objectValue);
+    o["ok"] = false;
+    o["rpc_status"] = 400;
+    o["error"] = "invalid run_id";
+    resp->status = 400;
+    resp->body = json_stringify(o);
+    return;
+  }
+
+  DbHandle h;
+  Json::Value db_open = open_db_or_error(db_or_null, &h);
+  if (!db_open.isObject() || !db_open.get("ok", false).asBool()) {
+    const int st = db_open.isMember("rpc_status") && db_open["rpc_status"].isInt() ? db_open["rpc_status"].asInt() : 500;
+    resp->status = st;
+    resp->body = json_stringify(db_open);
+    return;
+  }
+
+#if !defined(AGENT_HAVE_SQLITE3)
+  resp->status = 500;
+  resp->body = json_error_body("sqlite disabled");
+  return;
+#else
+  ReplayBundleLoad load = load_replay_bundle(h.db, run_id);
+  if (!load.ok) {
+    resp->status = load.status;
+    resp->body = json_stringify(load.error_body);
+    return;
+  }
+
+  Json::Value att(Json::objectValue);
+  att["schema"] = "run_attestation_bundle_v1";
+  att["created_utc_ms"] = (Json::Int64)now_utc_ms();
+  att["replay_sha256"] = load.replay_sha256;
+  att["replay_sha256_alg"] = load.replay_sha256_alg;
+  att["replay_sha256_schema"] = load.replay_sha256_schema;
+  att["run_id"] = (Json::Int64)run_id;
+  if (!load.session_id.empty()) att["session_id"] = load.session_id;
+
+  Json::Value out(Json::objectValue);
+  out["ok"] = true;
+  out["run_id"] = (Json::Int64)run_id;
+  if (!load.session_id.empty()) out["session_id"] = load.session_id;
+  out["attestation"] = att;
+  if (!load.replay_error.empty()) out["replay_error"] = load.replay_error;
   resp->status = 200;
   resp->body = json_stringify(out);
 #endif

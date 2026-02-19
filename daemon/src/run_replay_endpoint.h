@@ -15,4 +15,12 @@ void handle_run_replay_endpoint(
   HttpResponse* resp
 );
 
+void handle_run_attestation_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  AgentDb* db_or_null,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
 }  // namespace agentd

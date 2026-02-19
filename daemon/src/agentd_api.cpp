@@ -792,6 +792,11 @@ bool AgentdApi::init(std::string* out_error) {
     const DaemonConfig cur = self->cfg_store->snapshot();
     handle_run_replay_endpoint(cur, self->cors_cfg, &self->db, req, resp);
   });
+  impl_->route("GET", "/api/v1/run/attestation", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_run_attestation_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
   impl_->route("POST", "/api/v1/run_async", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();

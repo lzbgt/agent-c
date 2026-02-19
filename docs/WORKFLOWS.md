@@ -106,6 +106,7 @@ Bounds:
 
 Endpoint:
 - GET /api/v1/run/replay?run_id=<id>
+- GET /api/v1/run/attestation?run_id=<id> (attestation bundle referencing replay hash)
 
 Notes:
 - Runs with no_session=true do not persist replay bundles.

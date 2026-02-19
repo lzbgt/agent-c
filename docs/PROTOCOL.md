@@ -191,6 +191,7 @@ Tools ceiling:
 `agentd` persists a **redacted replay bundle** for session-backed runs (best-effort) and exposes it via:
 
 - `GET /api/v1/run/replay?run_id=...`
+- `GET /api/v1/run/attestation?run_id=...` (small attestation bundle referencing the replay hash)
 
 The replay bundle includes a redacted request/response snapshot plus tool records, and a deterministic hash token
 (`agent_json_c14n_v1`) for offline verification.

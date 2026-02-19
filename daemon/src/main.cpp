@@ -1264,6 +1264,10 @@ int main(int argc, char** argv) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_run_replay_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
+  server.handle("GET", "/api/v1/run/attestation", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_run_attestation_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
 
   // Async run: returns a job id immediately and completes in the background.
   server.handle("POST", "/api/v1/run_async", [&](const HttpRequest& req, HttpResponse* resp) {

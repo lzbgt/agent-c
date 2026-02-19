@@ -245,6 +245,46 @@ RunReplayResponse:
     replay_sha256_schema: { type: string }
     replay_error: { type: string }
 
+RunAttestationBundle:
+  type: object
+  required: [schema, created_utc_ms, replay_sha256, replay_sha256_alg, replay_sha256_schema]
+  properties:
+    schema: { type: string }
+    created_utc_ms: { type: integer, format: int64 }
+    replay_sha256: { type: string }
+    replay_sha256_alg: { type: string }
+    replay_sha256_schema: { type: string }
+    run_id: { type: integer, format: int64 }
+    session_id: { type: string }
+    agent_id: { type: string }
+    deployment_id: { type: string }
+    issuer:
+      type: object
+      properties:
+        id: { type: string }
+      additionalProperties: false
+    attest:
+      type: object
+      properties:
+        alg: { type: string }
+        kid: { type: string }
+        sig: { type: string }
+        ts_utc_ms: { type: integer, format: int64 }
+        hash_alg: { type: string }
+        signing_schema: { type: string }
+      additionalProperties: true
+
+RunAttestationResponse:
+  type: object
+  required: [ok, run_id, attestation]
+  properties:
+    ok: { type: boolean }
+    run_id: { type: integer, format: int64 }
+    session_id: { type: string }
+    attestation:
+      $ref: "#/components/schemas/RunAttestationBundle"
+    replay_error: { type: string }
+
 
 JobGetResponse:
   type: object

@@ -1017,6 +1017,10 @@ struct AgentdService::Impl {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_run_replay_endpoint(cur, cors_cfg, &db, req, resp);
     });
+    server.handle("GET", "/api/v1/run/attestation", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_run_attestation_endpoint(cur, cors_cfg, &db, req, resp);
+    });
     server.handle("POST", "/api/v1/run_async", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       const OpenAIClientConfig ocfg = ocfg_from_cfg(cur);

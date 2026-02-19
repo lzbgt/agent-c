@@ -109,6 +109,10 @@ schemas:
     $ref: ./components/run.yaml#/RunReplayBundle
   RunReplayResponse:
     $ref: ./components/run.yaml#/RunReplayResponse
+  RunAttestationBundle:
+    $ref: ./components/run.yaml#/RunAttestationBundle
+  RunAttestationResponse:
+    $ref: ./components/run.yaml#/RunAttestationResponse
   JobGetResponse:
     $ref: ./components/run.yaml#/JobGetResponse
   WorkflowTaskSpec:

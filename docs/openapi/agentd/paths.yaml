@@ -668,6 +668,47 @@
             schema:
               $ref: "#/components/schemas/ErrorResponse"
 
+/api/v1/run/attestation:
+  get:
+    tags: [run]
+    summary: Fetch a run attestation bundle for a run
+    parameters:
+      - in: query
+        name: run_id
+        required: true
+        schema: { type: integer, format: int64 }
+    responses:
+      "200":
+        description: Attestation bundle
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunAttestationResponse"
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "404":
+        description: Run not found
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "409":
+        description: Replay not available
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
 /api/v1/job:
   get:
     tags: [jobs]
@@ -1897,4 +1938,3 @@
                       mm_bytes: { type: integer, format: int64 }
                       mm_truncated: { type: integer, format: int64 }
                 error: { type: string }
-
