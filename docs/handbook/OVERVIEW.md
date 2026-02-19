@@ -139,7 +139,7 @@ When `--auth-token` is set, all endpoints require `Authorization: Bearer ...`.
 
 - `DESIGN.md` for system map and boundaries.
 - `TODOS.md` for roadmap and weighted tasks.
-- `docs/` for feature docs: protocol, client, workflows, tools, memory, diagnostics, DB, streaming, broker, deployment, platform.
+- `docs/` for feature docs: protocol, client, workflows, tools, memory, diagnostics, DB, streaming, broker, deployment, WebUI, platform.
 - `docs/spec/` for versioned specs.
 - `docs/openapi/` for OpenAPI definitions.
 

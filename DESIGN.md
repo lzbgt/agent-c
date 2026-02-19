@@ -45,6 +45,8 @@ Roadmap section below and `TODOS.md`, including:
   - `docs/DIAGNOSTICS.md`: diagnostics endpoints and provider health checks.
   - `docs/DB.md`: daemon SQLite store, blob storage tiers, and DB query API.
   - `docs/DOD_ACK.md`: UI-visible “definition of done” handshake semantics.
+  - `docs/WEBUI.md`: WebUI dev/build/runtime config and reliability notes.
+  - `docs/DEPLOYMENT.md`: production deployment checklist and hardening.
   - `docs/spec/README.md`: index of versioned protocol/spec deep dives.
 
 ## Key Decisions (Facts / Constraints)
