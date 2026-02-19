@@ -103,40 +103,7 @@ Full details, env flags, port notes, and Keycloak guidance live in `docs/DEPLOYM
 
 ## Git remote (publishing)
 
-This workspace may not have a git remote configured. If `git push` fails with “No configured push destination”,
-configure `origin` explicitly:
-
-```bash
-git remote add origin <your_repo_url>
-git push -u origin "$(git rev-parse --abbrev-ref HEAD)"
-```
-
-Or use the helper script (does not guess a URL):
-
-```bash
-AGENT_GIT_REMOTE_URL="<your_repo_url>" tools/setup_git_remote.sh --push
-```
-
-To run a full local verify + push in one command:
-
-```bash
-tools/publish.sh --skip-ui
-```
-
-The helper can also read `git_remote` from your gitignored `project.local.md`:
-
-```bash
-cp project.local.md.example project.local.md
-# edit project.local.md and set:
-# - git_remote: <your_repo_url>
-tools/setup_git_remote.sh --push
-```
-
-If `origin` exists but points to the wrong place, pass `--force` to update it:
-
-```bash
-tools/setup_git_remote.sh --url "<your_repo_url>" --force --push
-```
+Remote setup and publish helpers live in `docs/GIT.md`.
 
 ## CLI usage
 

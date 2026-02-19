@@ -146,6 +146,7 @@ When `--auth-token` is set, all endpoints require `Authorization: Bearer ...`.
 - `docs/CLEANUP.md` for cleanup commands and repo hygiene guards.
 - `docs/AGENTD.md` for daemon operations and runtime configuration.
 - `docs/CLI.md` for CLI usage and tool-loop guidance.
+- `docs/GIT.md` for git remote setup and publish helpers.
 - `docs/spec/` for versioned specs.
 - `docs/openapi/` for OpenAPI definitions.
 

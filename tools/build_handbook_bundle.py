@@ -23,6 +23,7 @@ SOURCES = [
     ROOT / "docs/EDGE_INTEROP.md",
     ROOT / "docs/EMBEDDED_C_API.md",
     ROOT / "docs/ESP32S3_AGENT_CORE_MATURITY.md",
+    ROOT / "docs/GIT.md",
     ROOT / "docs/LIMITS.md",
     ROOT / "docs/MACOS_PACKAGING.md",
     ROOT / "docs/MEMORY.md",

@@ -149,6 +149,7 @@ When `--auth-token` is set, all endpoints require `Authorization: Bearer ...`.
 - `docs/CLEANUP.md` for cleanup commands and repo hygiene guards.
 - `docs/AGENTD.md` for daemon operations and runtime configuration.
 - `docs/CLI.md` for CLI usage and tool-loop guidance.
+- `docs/GIT.md` for git remote setup and publish helpers.
 - `docs/spec/` for versioned specs.
 - `docs/openapi/` for OpenAPI definitions.
 
@@ -179,6 +180,7 @@ The handbook is a curated summary. For full detail, refer to the source docs bel
 - `docs/EDGE_INTEROP.md`
 - `docs/EMBEDDED_C_API.md`
 - `docs/ESP32S3_AGENT_CORE_MATURITY.md`
+- `docs/GIT.md`
 - `docs/LIMITS.md`
 - `docs/MACOS_PACKAGING.md`
 - `docs/MEMORY.md`

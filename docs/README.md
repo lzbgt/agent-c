@@ -13,6 +13,7 @@ Start here if you want the shortest path to the right document.
 - `docs/CLEANUP.md`: cleanup commands, repo size reports, and guard scripts.
 - `docs/AGENTD.md`: daemon operations and runtime configuration.
 - `docs/CLI.md`: CLI usage and tool-loop guidance.
+- `docs/GIT.md`: git remote setup and publish helpers.
 
 ## Core runtime
 
