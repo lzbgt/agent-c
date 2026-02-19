@@ -90,15 +90,15 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [x] Add symlink containment option for `/api/v1/file` (realpath confinement with session_id).
 - [x] Refactor `ui/src/components/ConversationView.tsx` into smaller components (approaching 2000 LOC).
 - [x] Standardize API error envelopes across agentd + broker (`{"err":"...","code":"...","details":{...}}`) and align WebUI handling.
-- [ ] Refactor `ref/ds-cli/sophon/src/sophon_cli/cli.py` (5.8k LOC) into SOLID submodules or mark as vendored/read-only.
+- [x] Refactor `ref/ds-cli/sophon/src/sophon_cli/cli.py` (5.8k LOC) into SOLID submodules or mark as vendored/read-only.
 - [x] Refactor `ref/claude-mem/src/services/sqlite/SessionStore.ts` (2.3k LOC) into smaller units or mark as vendored/read-only.
 - [x] Add build/log cleanup automation (e.g., tools/clean.sh + `out/` log pruning) to prevent disk bloat.
 - [x] Consolidate design docs into a coherent architecture map and component summary structure.
 
 ## Promoted goals (explicit goals; no non-goals)
 
-Weights updated 2026-02-19: prioritize **large-source refactors** in `ref/` (ds-cli),
-then return to **streaming stability** and **tool plugin isolation**.
+Weights updated 2026-02-19: **large-source refactors** in `ref/` (ds-cli) complete,
+next focus on **streaming stability** and **tool plugin isolation**.
 
 - [x] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker + agentd implemented; tests added).
 - [x] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
