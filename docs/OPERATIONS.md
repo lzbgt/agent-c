@@ -176,6 +176,13 @@ If local Postgres is misconfigured (e.g., missing `postgres.bki`), the tests wil
 Build artifacts and run logs can grow quickly (especially `build/`, `build-core*/`, and `out/`). Use the cleanup
 tools to keep the repo lean and enforce size guardrails.
 
+Docker cleanup (optional):
+
+```bash
+tools/clean_docker_agent_stacks.sh         # dry run (lists agent_* compose projects)
+tools/clean_docker_agent_stacks.sh --apply # stop/remove all agent_* compose stacks
+```
+
 Basic cleanup:
 
 ```bash
