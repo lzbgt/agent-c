@@ -542,6 +542,12 @@ Remove the hook later:
 tools/uninstall_git_hooks.sh
 ```
 
+Check local hook status:
+
+```bash
+tools/hooks_status.sh
+```
+
 Run all repo hygiene guards locally:
 
 ```bash

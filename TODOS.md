@@ -116,6 +116,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [x] Add vendored guard to fail when `ref/` changes without an explicit override.
 - [x] Add optional local git hook installer for vendored guard.
 - [x] Add optional local git hook uninstaller for vendored guard.
+- [x] Add local hook status helper for vendored guard.
 
 ## Promoted goals (explicit goals; no non-goals)
 
