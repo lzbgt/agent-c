@@ -45,7 +45,7 @@ Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`,
 
 - The WebUI can store multiple **connection profiles** (direct or broker-backed) in localStorage.
 - Each profile can enable **profile-specific run settings** (model/provider, tool flags, run limits).
-- The broker console exposes agent membership management and audit events.
+- The broker console exposes agent membership management, audit events, and team quorum approvals.
 
 ## Diagnostics
 

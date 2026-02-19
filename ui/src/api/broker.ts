@@ -322,3 +322,59 @@ export async function apiBrokerGetMembershipAudit(
   const j = await r.json();
   return BrokerMembershipAuditRespSchema.parse(j);
 }
+
+export async function apiBrokerTeamRunApprovalsList(
+  brokerBase: string,
+  teamId: string,
+  teamRunId: string,
+  auth?: ApiAuth,
+): Promise<{ status: number; data: any }> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const team = String(teamId || "").trim();
+  const run = String(teamRunId || "").trim();
+  if (!team) throw new Error("missing team_id");
+  if (!run) throw new Error("missing team_run_id");
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(team)}/runs/${encodeURIComponent(run)}/approvals`,
+    {
+      headers: daemonHeaders(auth),
+    },
+  );
+  let data: any = null;
+  try {
+    data = await r.json();
+  } catch {
+    data = null;
+  }
+  return { status: r.status, data };
+}
+
+export async function apiBrokerTeamRunApprovalsCreate(
+  brokerBase: string,
+  teamId: string,
+  teamRunId: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<{ status: number; data: any }> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const team = String(teamId || "").trim();
+  const run = String(teamRunId || "").trim();
+  if (!team) throw new Error("missing team_id");
+  if (!run) throw new Error("missing team_run_id");
+  const payload = body ?? {};
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(team)}/runs/${encodeURIComponent(run)}/approvals`,
+    {
+      method: "POST",
+      headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+      body: JSON.stringify(payload),
+    },
+  );
+  let data: any = null;
+  try {
+    data = await r.json();
+  } catch {
+    data = null;
+  }
+  return { status: r.status, data };
+}
