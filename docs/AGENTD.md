@@ -136,6 +136,54 @@ See `docs/MEMORY.md`.
   - `readonly`: disables process exec and patch application (keeps only `fs_*` + `text_search`)
   - Requests can also pass `host_policy: "readonly"` to tighten permissions for that run (cannot expand beyond daemon default).
 
+## Policy hooks (allow/deny + budget caps)
+
+`agentd` can apply deterministic policy hooks to tool runs for auditing and enforcement:
+
+Modes:
+- `off`: disabled.
+- `audit`: record `policy_decision` events but do **not** enforce allow/deny or caps.
+- `enforce`: deny tools and cap budgets.
+
+Flags:
+- `--policy-mode off|audit|enforce`
+- `--policy-tool-allow <csv>` (tool names; comma-separated, repeatable)
+- `--policy-tool-deny <csv>` (tool names; comma-separated, repeatable)
+- `--policy-max-steps <n>`
+- `--policy-max-tool-calls-total <n>`
+- `--policy-max-tool-calls-per-tool <n>`
+- `--policy-max-tool-call-args-chars <n>`
+- `--policy-max-tool-result-chars <n>`
+
+Env overrides:
+- `AGENTD_POLICY_MODE`
+- `AGENTD_POLICY_TOOL_ALLOWLIST`
+- `AGENTD_POLICY_TOOL_DENYLIST`
+- `AGENTD_POLICY_MAX_STEPS`
+- `AGENTD_POLICY_MAX_TOOL_CALLS_TOTAL`
+- `AGENTD_POLICY_MAX_TOOL_CALLS_PER_TOOL`
+- `AGENTD_POLICY_MAX_TOOL_CALL_ARGS_CHARS`
+- `AGENTD_POLICY_MAX_TOOL_RESULT_CHARS`
+
+Runtime config (`/api/v1/config`):
+
+```json
+{
+  "policy": {
+    "mode": "audit",
+    "tool_allowlist": ["memory_write", "text_search"],
+    "tool_denylist": ["shell_exec"],
+    "max_steps": 32,
+    "max_tool_calls_total": 64,
+    "max_tool_calls_per_tool": 8,
+    "max_tool_call_args_chars": 4000,
+    "max_tool_result_chars": 8000
+  }
+}
+```
+
+Policy decisions emit `policy_decision` events in the run/job event streams for auditability.
+
 ## Daemon-side key loading and client identity
 
 - `agentd` supports **daemon-side** key loading per-run based on the request `base_url`, so WebUI can omit `api_key`.

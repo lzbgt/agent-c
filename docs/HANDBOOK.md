@@ -94,6 +94,11 @@ Tool-loop defaults used when requests omit values (0 = unlimited):
 - `max_tool_result_chars_default = 12000`
 - `tool_call_limits_default = {}` (no per-tool caps)
 
+Policy hooks (optional guardrails):
+- `policy_mode = off|audit|enforce` (audit logs decisions without enforcement).
+- Allow/deny tool lists + budget caps (`policy_max_*`).
+- Emits `policy_decision` events for audits.
+
 Recommended operator caps (see `docs/LIMITS.md`):
 - `proc_exec=4`, `shell_exec=16`, `artifact_register=16`, `ui_action=16`.
 

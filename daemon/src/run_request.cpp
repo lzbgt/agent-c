@@ -9,6 +9,7 @@
 #include "json_util.h"
 #include "llm_usage.h"
 #include "openai_provider.h"
+#include "policy_hooks.h"
 #include "provider_util.h"
 #include "sandbox_policy.h"
 #include "session_id_util.h"
@@ -64,6 +65,30 @@ static void ensure_trace_id_in_events(Json::Value* arr, const std::string& trace
     Json::Value& ev = (*arr)[i];
     if (!ev.isObject()) continue;
     if (!ev.isMember("trace_id")) ev["trace_id"] = trace_id;
+  }
+}
+
+static void inject_schema_into_events(Json::Value* arr) {
+  if (!arr || !arr->isArray()) return;
+  for (Json::ArrayIndex i = 0; i < arr->size(); i++) {
+    Json::Value& ev = (*arr)[i];
+    if (!ev.isObject()) continue;
+    if (ev.isMember("schema")) continue;
+    if (!ev.isMember("type") || !ev["type"].isString()) continue;
+    const std::string type = ev["type"].asString();
+    const char* schema = nullptr;
+    if (type == "assistant_delta") schema = "run_event_payload_assistant_delta_v1";
+    else if (type == "assistant_message") schema = "run_event_payload_assistant_message_v1";
+    else if (type == "user_message") schema = "run_event_payload_user_message_v1";
+    else if (type == "tool_call") schema = "run_event_payload_tool_call_v1";
+    else if (type == "tool_result") schema = "run_event_payload_tool_result_v1";
+    else if (type == "llm_usage") schema = "run_event_payload_llm_usage_v1";
+    else if (type == "artifact") schema = "run_event_payload_artifact_v1";
+    else if (type == "ui_action") schema = "run_event_payload_ui_action_v1";
+    else if (type == "heartbeat") schema = "run_event_payload_heartbeat_v1";
+    else if (type == "error") schema = "run_event_payload_error_v1";
+    else if (type == "policy_decision") schema = "run_event_payload_policy_decision_v1";
+    if (schema) ev["schema"] = schema;
   }
 }
 
@@ -263,25 +288,25 @@ static Json::Value run_request_to_json_impl(
   // hardcoding tools=none as a startup gate.
 
   uint64_t max_steps_u64 = 0;
-  const size_t max_steps =
+  size_t max_steps =
     json_get_u64_nonneg(args, "max_steps", &max_steps_u64) ? (size_t)max_steps_u64 : daemon_cfg.max_steps_default;
   uint64_t max_tool_calls_total_u64 = 0;
-  const size_t max_tool_calls_total =
+  size_t max_tool_calls_total =
     json_get_u64_nonneg(args, "max_tool_calls_total", &max_tool_calls_total_u64)
       ? (size_t)max_tool_calls_total_u64
       : daemon_cfg.max_tool_calls_total_default;
   uint64_t max_tool_calls_per_tool_u64 = 0;
-  const size_t max_tool_calls_per_tool =
+  size_t max_tool_calls_per_tool =
     json_get_u64_nonneg(args, "max_tool_calls_per_tool", &max_tool_calls_per_tool_u64)
       ? (size_t)max_tool_calls_per_tool_u64
       : daemon_cfg.max_tool_calls_per_tool_default;
   uint64_t max_tool_call_args_chars_u64 = 0;
-  const size_t max_tool_call_args_chars =
+  size_t max_tool_call_args_chars =
     json_get_u64_nonneg(args, "max_tool_call_args_chars", &max_tool_call_args_chars_u64)
       ? (size_t)max_tool_call_args_chars_u64
       : daemon_cfg.max_tool_call_args_chars_default;
   uint64_t max_tool_result_chars_u64 = 0;
-  const size_t max_tool_result_chars =
+  size_t max_tool_result_chars =
     json_get_u64_nonneg(args, "max_tool_result_chars", &max_tool_result_chars_u64)
       ? (size_t)max_tool_result_chars_u64
       : daemon_cfg.max_tool_result_chars_default;
@@ -450,6 +475,22 @@ static Json::Value run_request_to_json_impl(
     job_set_trace_id(job_id_local, trace_id);
   }
 
+  PolicyConfig policy_cfg = policy_config_from_daemon(daemon_cfg);
+  PolicyHookCtx policy_ctx;
+  const bool policy_active = (policy_cfg.mode != PolicyMode::Off);
+  if (policy_active) {
+    policy_prepare(&policy_ctx, policy_cfg, trace_id, job_id_local);
+    policy_emit_start(&policy_ctx);
+    policy_apply_budget_caps(
+      &policy_ctx,
+      &max_steps,
+      &max_tool_calls_total,
+      &max_tool_calls_per_tool,
+      &max_tool_call_args_chars,
+      &max_tool_result_chars
+    );
+  }
+
   agent_session_t* session = nullptr;
   if (!no_session) {
     if (!db_or_null || !db_or_null->is_open()) {
@@ -596,6 +637,14 @@ static Json::Value run_request_to_json_impl(
     }
   }
 
+  PolicyToolExecutorCtx policy_exec_ctx{};
+  if (policy_active && use_tool_loop && executor.execute) {
+    policy_exec_ctx.base = executor;
+    policy_exec_ctx.hook = &policy_ctx;
+    executor.ctx = &policy_exec_ctx;
+    executor.execute = policy_tool_execute;
+  }
+
   bool ok = false;
   std::string assistant_text;
   std::string err;
@@ -682,6 +731,7 @@ static Json::Value run_request_to_json_impl(
     tl_in.should_cancel_or_null = should_cancel_or_null;
     tl_in.should_cancel_ctx_or_null = should_cancel_ctx_or_null;
     tl_in.job_id = &job_id_local;
+    tl_in.policy_hook = policy_active ? &policy_ctx : nullptr;
     tl_in.heartbeat_last_any_event_ms = &heartbeat_last_any_event_ms;
     tl_in.heartbeat_last_non_ms = &heartbeat_last_non_ms;
     tl_in.heartbeat_phase = &heartbeat_phase;
@@ -1135,6 +1185,21 @@ static Json::Value run_request_to_json_impl(
       }
       push_ev("assistant_message", d);
       assistant_text = assistant_text_clean;
+    }
+  }
+
+  if (policy_active) {
+    if (!policy_ctx.last_error.empty() && !ok) {
+      err = policy_ctx.last_error;
+    }
+    policy_emit_complete(&policy_ctx, ok);
+    if (!policy_ctx.events.empty()) {
+      if (!events_out.isArray()) events_out = Json::Value(Json::arrayValue);
+      for (const auto& ev : policy_ctx.events) {
+        events_out.append(ev);
+      }
+      ensure_trace_id_in_events(&events_out, trace_id);
+      inject_schema_into_events(&events_out);
     }
   }
 

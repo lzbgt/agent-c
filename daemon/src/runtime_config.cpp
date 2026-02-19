@@ -2,6 +2,7 @@
 
 #include "json_util.h"
 #include "string_util.h"
+#include "policy_hooks.h"
 
 #include <json/json.h>
 
@@ -112,6 +113,43 @@ bool load_runtime_config_best_effort(
       }
       if (json_get_u64_nonneg(v, "max_tool_result_chars_default", &n_u64)) {
         cfg_io->max_tool_result_chars_default = (size_t)n_u64;
+      }
+      if (v.isMember("policy_mode") && v["policy_mode"].isString()) {
+        PolicyMode pm = PolicyMode::Off;
+        if (policy_mode_from_string(v["policy_mode"].asString(), &pm)) {
+          cfg_io->policy_mode = policy_mode_to_string(pm);
+        }
+      }
+      if (v.isMember("policy_tool_allowlist") && v["policy_tool_allowlist"].isArray()) {
+        cfg_io->policy_tool_allowlist.clear();
+        for (const auto& item : v["policy_tool_allowlist"]) {
+          if (!item.isString()) continue;
+          std::string s = trim_copy(item.asString());
+          if (is_safe_tool_name(s)) cfg_io->policy_tool_allowlist.push_back(std::move(s));
+        }
+      }
+      if (v.isMember("policy_tool_denylist") && v["policy_tool_denylist"].isArray()) {
+        cfg_io->policy_tool_denylist.clear();
+        for (const auto& item : v["policy_tool_denylist"]) {
+          if (!item.isString()) continue;
+          std::string s = trim_copy(item.asString());
+          if (is_safe_tool_name(s)) cfg_io->policy_tool_denylist.push_back(std::move(s));
+        }
+      }
+      if (json_get_u64_nonneg(v, "policy_max_steps", &n_u64)) {
+        cfg_io->policy_max_steps = (size_t)n_u64;
+      }
+      if (json_get_u64_nonneg(v, "policy_max_tool_calls_total", &n_u64)) {
+        cfg_io->policy_max_tool_calls_total = (size_t)n_u64;
+      }
+      if (json_get_u64_nonneg(v, "policy_max_tool_calls_per_tool", &n_u64)) {
+        cfg_io->policy_max_tool_calls_per_tool = (size_t)n_u64;
+      }
+      if (json_get_u64_nonneg(v, "policy_max_tool_call_args_chars", &n_u64)) {
+        cfg_io->policy_max_tool_call_args_chars = (size_t)n_u64;
+      }
+      if (json_get_u64_nonneg(v, "policy_max_tool_result_chars", &n_u64)) {
+        cfg_io->policy_max_tool_result_chars = (size_t)n_u64;
       }
       if (v.isMember("timeout_ms") && v["timeout_ms"].isInt64()) {
         const auto n = v["timeout_ms"].asInt64();
@@ -447,6 +485,22 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
   v["max_tool_calls_per_tool_default"] = (Json::UInt64)cfg.max_tool_calls_per_tool_default;
   v["max_tool_call_args_chars_default"] = (Json::UInt64)cfg.max_tool_call_args_chars_default;
   v["max_tool_result_chars_default"] = (Json::UInt64)cfg.max_tool_result_chars_default;
+  v["policy_mode"] = cfg.policy_mode;
+  {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : cfg.policy_tool_allowlist) if (!s.empty()) arr.append(s);
+    v["policy_tool_allowlist"] = arr;
+  }
+  {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : cfg.policy_tool_denylist) if (!s.empty()) arr.append(s);
+    v["policy_tool_denylist"] = arr;
+  }
+  v["policy_max_steps"] = (Json::UInt64)cfg.policy_max_steps;
+  v["policy_max_tool_calls_total"] = (Json::UInt64)cfg.policy_max_tool_calls_total;
+  v["policy_max_tool_calls_per_tool"] = (Json::UInt64)cfg.policy_max_tool_calls_per_tool;
+  v["policy_max_tool_call_args_chars"] = (Json::UInt64)cfg.policy_max_tool_call_args_chars;
+  v["policy_max_tool_result_chars"] = (Json::UInt64)cfg.policy_max_tool_result_chars;
   v["timeout_ms"] = (Json::Int64)cfg.timeout_ms;
   v["upload_max_bytes"] = (Json::UInt64)cfg.upload_max_bytes;
   v["blob_store_mode"] = cfg.blob_store_mode;

@@ -3,6 +3,7 @@
 #include "cors.h"
 #include "daemon_config.h"
 #include "http_util.h"
+#include "policy_hooks.h"
 #include "sandbox_policy.h"
 #include "string_util.h"
 #include "tool_plugins.h"
@@ -34,6 +35,20 @@ bool parse_tool_call_limit_spec(const std::string& spec, std::string* out_tool, 
   } catch (...) {
     return false;
   }
+}
+
+bool is_safe_tool_name(const std::string& s_in) {
+  const std::string s = trim_copy(s_in);
+  if (s.empty() || s.size() > 128) return false;
+  for (const char c : s) {
+    const bool ok =
+      (c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9') ||
+      c == '-' || c == '_' || c == '.';
+    if (!ok) return false;
+  }
+  return true;
 }
 
 void upsert_tool_call_limit(std::vector<std::pair<std::string, size_t>>* limits, std::string tool, size_t max_calls) {
@@ -970,6 +985,108 @@ int parse_daemon_cli(int argc, char** argv, DaemonConfig* cfg, DaemonCliOverride
         std::cerr << "Invalid --max-tool-result-chars-default\n";
         return 2;
       }
+    } else if (a == "--policy-mode") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --policy-mode\n";
+        return 2;
+      }
+      PolicyMode pm = PolicyMode::Off;
+      if (!policy_mode_from_string(v, &pm)) {
+        std::cerr << "Invalid --policy-mode (expected: off|audit|enforce)\n";
+        return 2;
+      }
+      cfg->policy_mode = policy_mode_to_string(pm);
+    } else if (a == "--policy-tool-allow") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --policy-tool-allow\n";
+        return 2;
+      }
+      std::vector<std::string> items;
+      parse_csv_tokens_best_effort(v, &items);
+      for (const auto& item : items) {
+        if (!is_safe_tool_name(item)) {
+          std::cerr << "Invalid --policy-tool-allow (bad tool name: " << item << ")\n";
+          return 2;
+        }
+        cfg->policy_tool_allowlist.push_back(item);
+      }
+    } else if (a == "--policy-tool-deny") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --policy-tool-deny\n";
+        return 2;
+      }
+      std::vector<std::string> items;
+      parse_csv_tokens_best_effort(v, &items);
+      for (const auto& item : items) {
+        if (!is_safe_tool_name(item)) {
+          std::cerr << "Invalid --policy-tool-deny (bad tool name: " << item << ")\n";
+          return 2;
+        }
+        cfg->policy_tool_denylist.push_back(item);
+      }
+    } else if (a == "--policy-max-steps") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --policy-max-steps\n";
+        return 2;
+      }
+      try {
+        cfg->policy_max_steps = (size_t)std::stoull(v);
+      } catch (...) {
+        std::cerr << "Invalid --policy-max-steps\n";
+        return 2;
+      }
+    } else if (a == "--policy-max-tool-calls-total") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --policy-max-tool-calls-total\n";
+        return 2;
+      }
+      try {
+        cfg->policy_max_tool_calls_total = (size_t)std::stoull(v);
+      } catch (...) {
+        std::cerr << "Invalid --policy-max-tool-calls-total\n";
+        return 2;
+      }
+    } else if (a == "--policy-max-tool-calls-per-tool") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --policy-max-tool-calls-per-tool\n";
+        return 2;
+      }
+      try {
+        cfg->policy_max_tool_calls_per_tool = (size_t)std::stoull(v);
+      } catch (...) {
+        std::cerr << "Invalid --policy-max-tool-calls-per-tool\n";
+        return 2;
+      }
+    } else if (a == "--policy-max-tool-call-args-chars") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --policy-max-tool-call-args-chars\n";
+        return 2;
+      }
+      try {
+        cfg->policy_max_tool_call_args_chars = (size_t)std::stoull(v);
+      } catch (...) {
+        std::cerr << "Invalid --policy-max-tool-call-args-chars\n";
+        return 2;
+      }
+    } else if (a == "--policy-max-tool-result-chars") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --policy-max-tool-result-chars\n";
+        return 2;
+      }
+      try {
+        cfg->policy_max_tool_result_chars = (size_t)std::stoull(v);
+      } catch (...) {
+        std::cerr << "Invalid --policy-max-tool-result-chars\n";
+        return 2;
+      }
     } else if (a == "--tool-call-limit") {
       std::string v;
       if (!take(&v)) {
@@ -1257,6 +1374,14 @@ int parse_daemon_cli(int argc, char** argv, DaemonConfig* cfg, DaemonCliOverride
         << "  --max-tool-calls-per-tool-default <n> Default tool-loop per-tool call cap when requests omit it (default: 0; 0 means unlimited)\n"
         << "  --max-tool-call-args-chars-default <n> Default tool-loop tool call args JSON cap (default: 0; 0 means unlimited)\n"
         << "  --max-tool-result-chars-default <n> Default tool-loop tool result cap (default: 12000; 0 means unlimited)\n"
+        << "  --policy-mode <off|audit|enforce> Policy hook mode (default: off)\n"
+        << "  --policy-tool-allow <csv> Policy allowlist tool names (comma-separated, repeatable)\n"
+        << "  --policy-tool-deny <csv> Policy denylist tool names (comma-separated, repeatable)\n"
+        << "  --policy-max-steps <n> Policy max steps cap (default: 0; 0 means unlimited)\n"
+        << "  --policy-max-tool-calls-total <n> Policy max total tool calls (default: 0; 0 means unlimited)\n"
+        << "  --policy-max-tool-calls-per-tool <n> Policy max tool calls per tool (default: 0; 0 means unlimited)\n"
+        << "  --policy-max-tool-call-args-chars <n> Policy max tool call args chars (default: 0; 0 means unlimited)\n"
+        << "  --policy-max-tool-result-chars <n> Policy max tool result chars (default: 0; 0 means unlimited)\n"
         << "  --tool-call-limit <tool>=<n>[,<tool>=<n>...] Default per-tool call limit (repeatable; 0 means unlimited for that tool)\n"
         << "  --tools host|basic|none   Default toolset (default: host)\n"
         << "  --host-policy full|readonly  Host tool safety policy (default: full)\n"

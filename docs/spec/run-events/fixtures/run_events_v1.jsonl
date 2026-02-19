@@ -8,6 +8,7 @@
 {"type":"ui_action","schema":"run_event_payload_ui_action_v1","ts_unix_ms":1700000000500,"step":1,"data":{"action":{"type":"notify","title":"done","message":"ok"}}}
 {"type":"heartbeat","schema":"run_event_payload_heartbeat_v1","ts_unix_ms":1700000000600,"data":{"phase":0}}
 {"type":"error","schema":"run_event_payload_error_v1","ts_unix_ms":1700000000700,"data":{"reason":"max_steps_exceeded","error":"max steps exceeded","steps_executed":10,"max_steps":10}}
+{"type":"policy_decision","schema":"run_event_payload_policy_decision_v1","ts_unix_ms":1700000000750,"step":1,"data":{"phase":"tool_call","mode":"enforce","action":"deny","reason":"tool_denylist","tool_name":"shell_exec","tool_call_id":"call_2","enforced":true}}
 {"type":"workflow_created","schema":"run_event_payload_workflow_created_v1","ts_unix_ms":1700000000800,"data":{"workflow_id":"wf_1","status":"queued","trace_id":"trace_1","session_id":"sess_1","ts_unix_ms":1700000000800}}
 {"type":"workflow_status","schema":"run_event_payload_workflow_status_v1","ts_unix_ms":1700000000810,"data":{"workflow_id":"wf_1","prev_status":"queued","status":"running","cancel_requested":false,"ts_unix_ms":1700000000810}}
 {"type":"task_status","schema":"run_event_payload_task_status_v1","ts_unix_ms":1700000000820,"data":{"workflow_id":"wf_1","task_id":"task_1","status":"running","attempt":1,"max_attempts":3,"started_unix_ms":1700000000820,"ts_unix_ms":1700000000820}}

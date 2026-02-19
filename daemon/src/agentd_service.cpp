@@ -28,6 +28,7 @@
 #include "ota_endpoints.h"
 #include "openrouter_models_endpoint.h"
 #include "openrouter_util.h"
+#include "policy_hooks.h"
 #include "provider_util.h"
 #include "run_endpoints.h"
 #include "run_replay_endpoint.h"
@@ -69,6 +70,33 @@ static bool env_truthy(const char* s) {
   std::string v = s;
   for (char& c : v) c = (char)std::tolower((unsigned char)c);
   return v == "1" || v == "true" || v == "yes" || v == "on";
+}
+
+static bool is_safe_tool_name(const std::string& s_in) {
+  const std::string s = trim_copy(s_in);
+  if (s.empty() || s.size() > 128) return false;
+  for (const char c : s) {
+    const bool ok =
+      (c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9') ||
+      c == '-' || c == '_' || c == '.';
+    if (!ok) return false;
+  }
+  return true;
+}
+
+static void parse_csv_tokens_best_effort(const std::string& csv, std::vector<std::string>* out) {
+  if (!out) return;
+  out->clear();
+  size_t i = 0;
+  while (i < csv.size()) {
+    size_t j = csv.find(',', i);
+    if (j == std::string::npos) j = csv.size();
+    std::string tok = trim_copy(csv.substr(i, j - i));
+    if (!tok.empty()) out->push_back(tok);
+    i = j + 1;
+  }
 }
 
 static std::string home_dir_best_effort() {
@@ -223,6 +251,43 @@ static void fill_env_defaults(DaemonConfig* cfg) {
   }
   if (const char* ms = getenv_s("AGENTD_MAX_TOOL_RESULT_CHARS_DEFAULT")) {
     try { cfg->max_tool_result_chars_default = (size_t)std::stoull(ms); } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_POLICY_MODE")) {
+    PolicyMode pm = PolicyMode::Off;
+    if (policy_mode_from_string(ms, &pm)) {
+      cfg->policy_mode = policy_mode_to_string(pm);
+    }
+  }
+  if (const char* ms = getenv_s("AGENTD_POLICY_TOOL_ALLOWLIST")) {
+    std::vector<std::string> items;
+    parse_csv_tokens_best_effort(ms, &items);
+    cfg->policy_tool_allowlist.clear();
+    for (const auto& item : items) {
+      if (is_safe_tool_name(item)) cfg->policy_tool_allowlist.push_back(item);
+    }
+  }
+  if (const char* ms = getenv_s("AGENTD_POLICY_TOOL_DENYLIST")) {
+    std::vector<std::string> items;
+    parse_csv_tokens_best_effort(ms, &items);
+    cfg->policy_tool_denylist.clear();
+    for (const auto& item : items) {
+      if (is_safe_tool_name(item)) cfg->policy_tool_denylist.push_back(item);
+    }
+  }
+  if (const char* ms = getenv_s("AGENTD_POLICY_MAX_STEPS")) {
+    try { cfg->policy_max_steps = (size_t)std::stoull(ms); } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_POLICY_MAX_TOOL_CALLS_TOTAL")) {
+    try { cfg->policy_max_tool_calls_total = (size_t)std::stoull(ms); } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_POLICY_MAX_TOOL_CALLS_PER_TOOL")) {
+    try { cfg->policy_max_tool_calls_per_tool = (size_t)std::stoull(ms); } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_POLICY_MAX_TOOL_CALL_ARGS_CHARS")) {
+    try { cfg->policy_max_tool_call_args_chars = (size_t)std::stoull(ms); } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_POLICY_MAX_TOOL_RESULT_CHARS")) {
+    try { cfg->policy_max_tool_result_chars = (size_t)std::stoull(ms); } catch (...) {}
   }
   if (const char* ms = getenv_s("AGENTD_JOB_CONCURRENCY")) {
     try { cfg->job_engine_max_concurrency = std::max(1, std::stoi(ms)); } catch (...) {}

@@ -69,6 +69,7 @@ static const char* expected_schema_for_type(const std::string& type) {
   if (type == "ui_action") return "run_event_payload_ui_action_v1";
   if (type == "heartbeat") return "run_event_payload_heartbeat_v1";
   if (type == "error") return "run_event_payload_error_v1";
+  if (type == "policy_decision") return "run_event_payload_policy_decision_v1";
   if (type == "task_status") return "run_event_payload_task_status_v1";
   if (type == "workflow_status") return "run_event_payload_workflow_status_v1";
   if (type == "workflow_done") return "run_event_payload_workflow_done_v1";
@@ -896,6 +897,7 @@ static int schema_sanity(const std::string& schema_dir) {
     "run_event_payload_ui_action_v1.schema.json",
     "run_event_payload_heartbeat_v1.schema.json",
     "run_event_payload_error_v1.schema.json",
+    "run_event_payload_policy_decision_v1.schema.json",
     "run_event_payload_task_status_v1.schema.json",
     "run_event_payload_workflow_status_v1.schema.json",
     "run_event_payload_workflow_done_v1.schema.json",

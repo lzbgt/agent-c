@@ -4,6 +4,7 @@
 #include "edge_util.h"
 #include "http_util.h"
 #include "json_util.h"
+#include "policy_hooks.h"
 #include "runtime_config.h"
 #include "provider_util.h"
 #include "string_util.h"
@@ -17,6 +18,20 @@
 namespace agentd {
 
 namespace {
+
+static bool is_safe_tool_name(const std::string& s_in) {
+  const std::string s = trim_copy(s_in);
+  if (s.empty() || s.size() > 128) return false;
+  for (const char c : s) {
+    const bool ok =
+      (c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9') ||
+      c == '-' || c == '_' || c == '.';
+    if (!ok) return false;
+  }
+  return true;
+}
 
 static bool validate_cidr_token_best_effort(const std::string& s_in) {
   const std::string s = trim_copy(s_in);
@@ -283,6 +298,25 @@ void handle_config_endpoint(
   sandbox["system_profile"] = cfg.system_profile;
   out["sandbox"] = sandbox;
 
+  Json::Value policy(Json::objectValue);
+  policy["mode"] = cfg.policy_mode;
+  {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : cfg.policy_tool_allowlist) if (!s.empty()) arr.append(s);
+    policy["tool_allowlist"] = arr;
+  }
+  {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : cfg.policy_tool_denylist) if (!s.empty()) arr.append(s);
+    policy["tool_denylist"] = arr;
+  }
+  policy["max_steps"] = (Json::UInt64)cfg.policy_max_steps;
+  policy["max_tool_calls_total"] = (Json::UInt64)cfg.policy_max_tool_calls_total;
+  policy["max_tool_calls_per_tool"] = (Json::UInt64)cfg.policy_max_tool_calls_per_tool;
+  policy["max_tool_call_args_chars"] = (Json::UInt64)cfg.policy_max_tool_call_args_chars;
+  policy["max_tool_result_chars"] = (Json::UInt64)cfg.policy_max_tool_result_chars;
+  out["policy"] = policy;
+
   Json::Value jobs(Json::objectValue);
   jobs["job_ttl_ms"] = (Json::Int64)cfg.job_ttl_ms;
   jobs["max_jobs"] = (Json::UInt64)cfg.max_jobs;
@@ -438,6 +472,46 @@ void handle_config_update_endpoint(
   }
   if (json_get_u64_nonneg(args, "max_tool_result_chars_default", &n_u64)) {
     next.max_tool_result_chars_default = (size_t)n_u64;
+  }
+  if (args.isMember("policy") && args["policy"].isObject()) {
+    const Json::Value& pol = args["policy"];
+    if (pol.isMember("mode") && pol["mode"].isString()) {
+      PolicyMode pm = PolicyMode::Off;
+      if (policy_mode_from_string(pol["mode"].asString(), &pm)) {
+        next.policy_mode = policy_mode_to_string(pm);
+      }
+    }
+    if (pol.isMember("tool_allowlist") && pol["tool_allowlist"].isArray()) {
+      next.policy_tool_allowlist.clear();
+      for (const auto& item : pol["tool_allowlist"]) {
+        if (!item.isString()) continue;
+        std::string s = trim_copy(item.asString());
+        if (is_safe_tool_name(s)) next.policy_tool_allowlist.push_back(std::move(s));
+      }
+    }
+    if (pol.isMember("tool_denylist") && pol["tool_denylist"].isArray()) {
+      next.policy_tool_denylist.clear();
+      for (const auto& item : pol["tool_denylist"]) {
+        if (!item.isString()) continue;
+        std::string s = trim_copy(item.asString());
+        if (is_safe_tool_name(s)) next.policy_tool_denylist.push_back(std::move(s));
+      }
+    }
+    if (json_get_u64_nonneg(pol, "max_steps", &n_u64)) {
+      next.policy_max_steps = (size_t)n_u64;
+    }
+    if (json_get_u64_nonneg(pol, "max_tool_calls_total", &n_u64)) {
+      next.policy_max_tool_calls_total = (size_t)n_u64;
+    }
+    if (json_get_u64_nonneg(pol, "max_tool_calls_per_tool", &n_u64)) {
+      next.policy_max_tool_calls_per_tool = (size_t)n_u64;
+    }
+    if (json_get_u64_nonneg(pol, "max_tool_call_args_chars", &n_u64)) {
+      next.policy_max_tool_call_args_chars = (size_t)n_u64;
+    }
+    if (json_get_u64_nonneg(pol, "max_tool_result_chars", &n_u64)) {
+      next.policy_max_tool_result_chars = (size_t)n_u64;
+    }
   }
   if (args.isMember("upload_max_bytes") && (args["upload_max_bytes"].isInt64() || args["upload_max_bytes"].isUInt64())) {
     const unsigned long long kMax = 512ull * 1024ull * 1024ull;
@@ -1014,6 +1088,26 @@ void handle_config_update_endpoint(
   o["max_tool_calls_per_tool_default"] = (Json::UInt64)next.max_tool_calls_per_tool_default;
   o["max_tool_call_args_chars_default"] = (Json::UInt64)next.max_tool_call_args_chars_default;
   o["max_tool_result_chars_default"] = (Json::UInt64)next.max_tool_result_chars_default;
+  {
+    Json::Value pol(Json::objectValue);
+    pol["mode"] = next.policy_mode;
+    {
+      Json::Value arr(Json::arrayValue);
+      for (const auto& s : next.policy_tool_allowlist) if (!s.empty()) arr.append(s);
+      pol["tool_allowlist"] = arr;
+    }
+    {
+      Json::Value arr(Json::arrayValue);
+      for (const auto& s : next.policy_tool_denylist) if (!s.empty()) arr.append(s);
+      pol["tool_denylist"] = arr;
+    }
+    pol["max_steps"] = (Json::UInt64)next.policy_max_steps;
+    pol["max_tool_calls_total"] = (Json::UInt64)next.policy_max_tool_calls_total;
+    pol["max_tool_calls_per_tool"] = (Json::UInt64)next.policy_max_tool_calls_per_tool;
+    pol["max_tool_call_args_chars"] = (Json::UInt64)next.policy_max_tool_call_args_chars;
+    pol["max_tool_result_chars"] = (Json::UInt64)next.policy_max_tool_result_chars;
+    o["policy"] = pol;
+  }
   o["proxy_url_set"] = !next.proxy_url.empty();
   {
     Json::Value bs(Json::objectValue);

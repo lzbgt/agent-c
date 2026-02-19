@@ -1,6 +1,6 @@
 # Agentic Framework Vision (Beyond OpenClaw)
 
-Date: 2026-02-20
+Date: 2026-02-19
 
 This document answers two questions:
 1) As a **user/client**, what should a cutting-edge agentic framework deliver?
@@ -140,7 +140,7 @@ These are the most leveraged next steps grounded in current architecture:
    - Define agent group model, shared memory, and quorum semantics.
    - Add WebUI affordances for team runs and approvals.
 
-2) **Policy hook MVP**
+2) **Policy hook MVP (implemented 2026-02-19)**
    - Deterministic policy hook interface (pre/post run + tool call).
    - Configurable allow/deny + budget caps with audit logging.
 

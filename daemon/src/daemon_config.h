@@ -172,6 +172,18 @@ struct DaemonConfig {
   // Empty means "no explicit per-tool caps by default".
   std::vector<std::pair<std::string, size_t>> tool_call_limits_default = {};
 
+  // Policy hooks (deterministic enforcement guardrails).
+  // mode: off|audit|enforce
+  std::string policy_mode = "off";
+  std::vector<std::string> policy_tool_allowlist;
+  std::vector<std::string> policy_tool_denylist;
+  // Policy caps: 0 means "no cap / disabled" (unless overridden per-run).
+  size_t policy_max_steps = 0;
+  size_t policy_max_tool_calls_total = 0;
+  size_t policy_max_tool_calls_per_tool = 0;
+  size_t policy_max_tool_call_args_chars = 0;
+  size_t policy_max_tool_result_chars = 0;
+
   // Async job GC (daemon longevity): finished jobs are kept only for a bounded time/count.
   int64_t job_ttl_ms = 30 * 60 * 1000; // 30 minutes
   size_t max_jobs = 256;

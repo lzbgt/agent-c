@@ -103,6 +103,26 @@ void handle_caps_endpoint(
     features["tools"] = tools;
   }
   {
+    Json::Value policy(Json::objectValue);
+    policy["mode"] = cfg.policy_mode;
+    {
+      Json::Value arr(Json::arrayValue);
+      for (const auto& s : cfg.policy_tool_allowlist) if (!s.empty()) arr.append(s);
+      policy["tool_allowlist"] = arr;
+    }
+    {
+      Json::Value arr(Json::arrayValue);
+      for (const auto& s : cfg.policy_tool_denylist) if (!s.empty()) arr.append(s);
+      policy["tool_denylist"] = arr;
+    }
+    policy["max_steps"] = Json::UInt64(cfg.policy_max_steps);
+    policy["max_tool_calls_total"] = Json::UInt64(cfg.policy_max_tool_calls_total);
+    policy["max_tool_calls_per_tool"] = Json::UInt64(cfg.policy_max_tool_calls_per_tool);
+    policy["max_tool_call_args_chars"] = Json::UInt64(cfg.policy_max_tool_call_args_chars);
+    policy["max_tool_result_chars"] = Json::UInt64(cfg.policy_max_tool_result_chars);
+    features["policy"] = policy;
+  }
+  {
     Json::Value jobs(Json::objectValue);
     jobs["enabled"] = true;
     jobs["engine_max_concurrency"] = cfg.job_engine_max_concurrency;

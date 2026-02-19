@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Run Event Payload policy_decision v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["phase", "mode", "action"],
+  "properties": {
+    "phase": {
+      "type": "string",
+      "description": "Decision phase (pre_run|tool_call|post_run)."
+    },
+    "mode": {
+      "type": "string",
+      "description": "Policy mode (off|audit|enforce)."
+    },
+    "action": {
+      "type": "string",
+      "description": "Decision action (start|cap|allow|deny|complete)."
+    },
+    "reason": {
+      "type": "string",
+      "description": "Reason token (optional)."
+    },
+    "enforced": {
+      "type": "boolean",
+      "description": "Whether the decision was enforced (optional)."
+    },
+    "tool_name": {
+      "type": "string",
+      "description": "Tool name (tool_call phase)."
+    },
+    "tool_call_id": {
+      "type": "string",
+      "description": "Tool call identifier (tool_call phase)."
+    },
+    "step": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Tool-loop step index (optional)."
+    },
+    "field": {
+      "type": "string",
+      "description": "Capped field name (cap action)."
+    },
+    "requested": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Requested value before policy (cap action)."
+    },
+    "effective": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Effective value after policy (cap action)."
+    },
+    "ok": {
+      "type": "boolean",
+      "description": "Run success flag (post_run action)."
+    }
+  }
+}

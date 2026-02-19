@@ -4,6 +4,7 @@
 #include "job_manager.h"
 #include "openai_client.h"
 #include "openai_provider.h"
+#include "policy_hooks.h"
 #include "provider_util.h"
 #include "run_endpoints_internal.h"
 #include "run_multimodal.h"
@@ -48,7 +49,24 @@ void inject_schema_into_events(Json::Value* arr) {
     else if (type == "ui_action") schema = "run_event_payload_ui_action_v1";
     else if (type == "heartbeat") schema = "run_event_payload_heartbeat_v1";
     else if (type == "error") schema = "run_event_payload_error_v1";
+    else if (type == "policy_decision") schema = "run_event_payload_policy_decision_v1";
     if (schema) ev["schema"] = schema;
+  }
+}
+
+struct CombinedEventHookCtx {
+  DaemonJobEventHookCtx* job_ctx = nullptr;
+  PolicyHookCtx* policy_ctx = nullptr;
+};
+
+void combined_on_event(void* vctx, const char* type, const char* data_json) {
+  if (!vctx || !type) return;
+  auto* ctx = static_cast<CombinedEventHookCtx*>(vctx);
+  if (ctx->policy_ctx) {
+    policy_on_tool_loop_event(ctx->policy_ctx, type, data_json);
+  }
+  if (ctx->job_ctx) {
+    daemon_job_on_tool_loop_event(ctx->job_ctx, type, data_json);
   }
 }
 
@@ -184,13 +202,20 @@ RunRequestToolLoopResult run_request_tool_loop(const RunRequestToolLoopInput& in
     in.args->isMember("require_tool_call") && (*in.args)["require_tool_call"].isBool() ? (*in.args)["require_tool_call"].asBool() : false;
 
   DaemonJobEventHookCtx hook;
+  CombinedEventHookCtx combined;
   if (!in.job_id->empty()) {
     hook.job_id = *in.job_id;
     hook.last_any_event_ms = in.heartbeat_last_any_event_ms;
     hook.last_non_heartbeat_ms = in.heartbeat_last_non_ms;
     hook.phase = in.heartbeat_phase;
-    opt.on_event = daemon_job_on_tool_loop_event;
-    opt.on_event_ctx = &hook;
+    combined.job_ctx = &hook;
+  }
+  if (in.policy_hook) {
+    combined.policy_ctx = in.policy_hook;
+  }
+  if (combined.job_ctx || combined.policy_ctx) {
+    opt.on_event = combined_on_event;
+    opt.on_event_ctx = &combined;
   }
   if (in.should_cancel_or_null) {
     opt.should_cancel = in.should_cancel_or_null;

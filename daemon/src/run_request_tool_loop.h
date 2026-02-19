@@ -16,6 +16,7 @@ struct OpenAIClientConfig;
 namespace agentd {
 
 struct DaemonConfig;
+struct PolicyHookCtx;
 
 struct RunRequestToolLoopInput {
   const DaemonConfig* daemon_cfg = nullptr;
@@ -48,6 +49,7 @@ struct RunRequestToolLoopInput {
   RunCancelCallback should_cancel_or_null = nullptr;
   void* should_cancel_ctx_or_null = nullptr;
   const std::string* job_id = nullptr;
+  PolicyHookCtx* policy_hook = nullptr;
   std::atomic<int64_t>* heartbeat_last_any_event_ms = nullptr;
   std::atomic<int64_t>* heartbeat_last_non_ms = nullptr;
   std::atomic<int>* heartbeat_phase = nullptr;

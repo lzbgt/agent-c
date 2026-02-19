@@ -42,6 +42,7 @@ static const char* job_event_schema_for_type(const std::string& type) {
   if (type == "ui_action") return "run_event_payload_ui_action_v1";
   if (type == "heartbeat") return "run_event_payload_heartbeat_v1";
   if (type == "error") return "run_event_payload_error_v1";
+  if (type == "policy_decision") return "run_event_payload_policy_decision_v1";
   return nullptr;
 }
 
