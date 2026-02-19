@@ -601,6 +601,8 @@ VENDORED_GUARD_QUIET=1 git commit
 tools/install_git_hooks.sh --quiet
 ```
 
+See `docs/VENDORED.md` for the full vendored policy and hook details.
+
 Run all repo hygiene guards locally:
 
 ```bash
