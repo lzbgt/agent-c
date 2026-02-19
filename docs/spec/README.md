@@ -1,6 +1,7 @@
 # Spec Index
 
 Date: 2026-02-19
+Status: reference index (rolling)
 
 This folder contains versioned protocol and subsystem specifications. Each spec
 declares its own status (draft/rolling/implemented) in the document header.

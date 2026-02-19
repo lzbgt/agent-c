@@ -1,6 +1,7 @@
 # UM‑EAIS Platform Extensions v0.1 (Agent Repo Additions)
 
 Date: 2026-02-04
+Status: draft (spec)
 
 This document defines **platform-side extensions** implemented in this repo (`agentd`) on top of the canonical
 UM‑EAIS v0.1 draft (`docs/spec/um-eais/um-eais-v0.1.md`).

@@ -1,6 +1,7 @@
 # MCU CBOR Encoder Notes (TinyCBOR / `cobr` style) — UM‑BMP/UM‑EAIS Deterministic Profile
 
 Date: 2026-02-07
+Status: draft (notes)
 
 This note is for **resource-constrained MCU firmware** that wants to speak UM‑BMP/UM‑EAIS to `agentd` using CBOR
 (`Content-Type: application/cbor`) and/or envelope auth (`auth.alg="hmac-sha256-cbor"` / `auth.alg="ed25519-cbor"`).

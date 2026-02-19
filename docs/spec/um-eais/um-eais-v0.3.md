@@ -1,6 +1,7 @@
 # UM‑EAIS v0.3 — Portable Result Hashing (Draft)
 
 Date: 2026-02-05
+Status: draft (spec)
 
 This document is a **delta** on top of UM‑EAIS v0.2 (`docs/spec/um-eais/um-eais-v0.2.md`).
 

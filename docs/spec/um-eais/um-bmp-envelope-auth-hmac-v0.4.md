@@ -1,6 +1,7 @@
 # UM‑BMP Envelope Auth — Profile v0.4 (Draft)
 
 Date: 2026-02-05
+Status: draft (spec)
 
 This document defines an optional envelope authenticity mechanism for UM‑BMP messages
 in constrained IoT/edge systems, intended for:
