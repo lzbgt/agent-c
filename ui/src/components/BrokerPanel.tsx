@@ -16,9 +16,11 @@ import {
   apiBrokerOtaUpdateBulk,
   apiBrokerProxyJson,
   apiBrokerUpsertMember,
+  daemonHeaders,
   type ApiAuth,
 } from "../api";
 import FieldLabel from "./FieldLabel";
+import { readSseStream } from "../sse";
 
 const normalizeBrokerBase = (raw: string) => {
   const base = String(raw || "").trim();
@@ -35,6 +37,16 @@ const fmtTs = (ms?: number | null) => {
     return String(ms);
   }
 };
+
+type BrokerEventRow = {
+  type: string;
+  ts_unix_ms?: number;
+  event_id?: string;
+  trace_id?: string;
+  payload?: Record<string, any>;
+};
+
+const BROKER_EVENTS_MAX = 200;
 
 export type BrokerPanelProps = {
   open: boolean;
@@ -124,6 +136,11 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   const [salienceResults, setSalienceResults] = React.useState<any[] | null>(null);
 
   const [auditLimit, setAuditLimit] = React.useState<string>("200");
+  const [brokerEvents, setBrokerEvents] = React.useState<BrokerEventRow[]>([]);
+  const [brokerEventsError, setBrokerEventsError] = React.useState<string | null>(null);
+  const [brokerEventsActive, setBrokerEventsActive] = React.useState<boolean>(true);
+  const [brokerEventsConnected, setBrokerEventsConnected] = React.useState<boolean>(false);
+  const [brokerEventsQuorumOnly, setBrokerEventsQuorumOnly] = React.useState<boolean>(true);
   const limitValue = React.useMemo(() => {
     const n = Number.parseInt(String(auditLimit || ""), 10);
     if (!Number.isFinite(n) || n <= 0) return 200;
@@ -155,6 +172,56 @@ export default function BrokerPanel(props: BrokerPanelProps) {
       void deploymentsQuery.refetch();
     }
   }, [props.open, canQuery, agentId, membersQuery, auditQuery, deploymentsQuery]);
+
+  React.useEffect(() => {
+    if (!props.open || !canQuery || !brokerEventsActive) {
+      setBrokerEventsConnected(false);
+      return;
+    }
+    const controller = new AbortController();
+    const run = async () => {
+      setBrokerEventsError(null);
+      setBrokerEventsConnected(false);
+      try {
+        const resp = await fetch(`${base}/v1/events`, {
+          headers: daemonHeaders(props.auth),
+          signal: controller.signal,
+        });
+        if (!resp.ok) {
+          throw new Error(`broker events failed (${resp.status})`);
+        }
+        setBrokerEventsConnected(true);
+        await readSseStream(resp, (ev) => {
+          if (controller.signal.aborted) return;
+          let parsed: any = null;
+          try {
+            parsed = ev.data ? JSON.parse(ev.data) : null;
+          } catch {
+            parsed = null;
+          }
+          const eventType = String(parsed?.type || ev.event || "message");
+          const row: BrokerEventRow = {
+            type: eventType,
+            ts_unix_ms: Number(parsed?.ts_unix_ms || 0) || undefined,
+            event_id: parsed?.event_id ? String(parsed.event_id) : undefined,
+            trace_id: parsed?.trace_id ? String(parsed.trace_id) : undefined,
+            payload: parsed?.payload && typeof parsed.payload === "object" ? parsed.payload : undefined,
+          };
+          setBrokerEvents((prev) => {
+            const next = prev.concat(row);
+            if (next.length <= BROKER_EVENTS_MAX) return next;
+            return next.slice(next.length - BROKER_EVENTS_MAX);
+          });
+        });
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        setBrokerEventsConnected(false);
+        setBrokerEventsError(String(err));
+      }
+    };
+    void run();
+    return () => controller.abort();
+  }, [props.open, canQuery, base, props.authKey, brokerEventsActive]);
 
   const otaStatusCacheKey = React.useMemo(() => {
     if (!base || !agentId) return "";
@@ -745,6 +812,12 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   const members = Array.isArray((membersQuery.data as any)?.members) ? ((membersQuery.data as any).members as any[]) : [];
   const ownerSub = String((membersQuery.data as any)?.owner_sub || "");
   const auditRows = Array.isArray((auditQuery.data as any)?.audit) ? ((auditQuery.data as any).audit as any[]) : [];
+  const brokerEventRows = React.useMemo(() => {
+    const rows = brokerEventsQuorumOnly
+      ? brokerEvents.filter((ev) => String(ev?.type || "").startsWith("team_quorum"))
+      : brokerEvents;
+    return rows.slice().reverse();
+  }, [brokerEvents, brokerEventsQuorumOnly]);
   const deployments = Array.isArray((deploymentsQuery.data as any)?.deployments)
     ? (((deploymentsQuery.data as any).deployments as any[]) ?? [])
     : [];
@@ -1519,6 +1592,90 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                     <div className="text-[11px] text-white/50">
                       actor {actor} → target {target}
                       {role ? ` · role ${role}` : ""}
+                      {traceId ? ` · trace ${traceId}` : ""}
+                      {ts ? ` · ${ts}` : ""}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        <section className="rounded-md border border-white/10 bg-black/20 p-3">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="text-xs font-semibold text-white/80">Live broker events</div>
+            <div className="flex items-center gap-2">
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                type="button"
+                onClick={() => setBrokerEventsActive((prev) => !prev)}
+              >
+                {brokerEventsActive ? "Pause" : "Resume"}
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                type="button"
+                onClick={() => setBrokerEvents([])}
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+          <div className="mb-2 flex flex-wrap items-center gap-3 text-[11px] text-white/50">
+            <span>
+              {brokerEventsActive ? (brokerEventsConnected ? "Connected" : "Connecting…") : "Paused"}
+            </span>
+            <label className="flex items-center gap-1">
+              <input
+                type="checkbox"
+                checked={brokerEventsQuorumOnly}
+                onChange={(e) => setBrokerEventsQuorumOnly(e.target.checked)}
+              />
+              Quorum only
+            </label>
+            <span>{brokerEvents.length} events</span>
+          </div>
+          {brokerEventsError ? (
+            <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+              {brokerEventsError}
+            </div>
+          ) : brokerEventRows.length === 0 ? (
+            <div className="text-[11px] text-white/50">No events yet.</div>
+          ) : (
+            <div className="grid gap-2">
+              {brokerEventRows.map((row, idx) => {
+                const type = String(row?.type || "");
+                const payload = row?.payload ?? {};
+                const ts = fmtTs(row?.ts_unix_ms);
+                const traceId = row?.trace_id ? String(row.trace_id) : "";
+                let summary = "";
+                if (type === "team_quorum_request") {
+                  const action = payload?.action ? String(payload.action) : "";
+                  const min = payload?.min_approvals;
+                  const ruleId = payload?.rule_id ? String(payload.rule_id) : "";
+                  summary = `${action || "quorum"} · min ${min ?? "?"}${ruleId ? ` · rule ${ruleId}` : ""}`;
+                } else if (type === "team_quorum_result") {
+                  const decision = payload?.decision ? String(payload.decision) : "result";
+                  const approvals = payload?.approvals;
+                  const required = payload?.required_approvals;
+                  summary = `${decision} · ${approvals ?? "?"}/${required ?? "?"}`;
+                } else if (payload && Object.keys(payload).length > 0) {
+                  try {
+                    summary = JSON.stringify(payload);
+                  } catch {
+                    summary = String(payload);
+                  }
+                  if (summary.length > 120) summary = `${summary.slice(0, 117)}…`;
+                }
+                return (
+                  <div
+                    key={`broker-event-${type}-${idx}`}
+                    className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70"
+                  >
+                    <div className="text-xs text-white/90">{type || "event"}</div>
+                    <div className="text-[11px] text-white/50">
+                      {summary || "payload captured"}
                       {traceId ? ` · trace ${traceId}` : ""}
                       {ts ? ` · ${ts}` : ""}
                     </div>
