@@ -458,6 +458,299 @@
                   items:
                     $ref: "#/components/schemas/MembershipAuditRow"
 
+/v1/teams:
+  get:
+    tags: [teams]
+    summary: List teams (planned)
+    responses:
+      "200":
+        description: Team list
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamListResponse"
+  post:
+    tags: [teams]
+    summary: Create team (planned)
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TeamCreateRequest"
+    responses:
+      "200":
+        description: Created
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamCreateResponse"
+
+/v1/teams/{team_id}:
+  get:
+    tags: [teams]
+    summary: Get team (planned)
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Team
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamGetResponse"
+  patch:
+    tags: [teams]
+    summary: Update team (planned)
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TeamUpdateRequest"
+    responses:
+      "200":
+        description: Updated
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamGetResponse"
+  delete:
+    tags: [teams]
+    summary: Delete team (planned)
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Deleted
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamDeleteResponse"
+
+/v1/teams/{team_id}/members:
+  get:
+    tags: [teams]
+    summary: List team members (planned)
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Team member list
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamMemberListResponse"
+  post:
+    tags: [teams]
+    summary: Add team member (planned)
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TeamMemberUpsertRequest"
+    responses:
+      "200":
+        description: Upserted
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamMemberUpsertResponse"
+
+/v1/teams/{team_id}/members/{member_id}:
+  patch:
+    tags: [teams]
+    summary: Update team member (planned)
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: member_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TeamMemberUpdateRequest"
+    responses:
+      "200":
+        description: Updated
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamMemberUpsertResponse"
+  delete:
+    tags: [teams]
+    summary: Remove team member (planned)
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: member_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Removed
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamDeleteResponse"
+
+/v1/teams/{team_id}/quorum:
+  get:
+    tags: [teams]
+    summary: List quorum rules (planned)
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Quorum rule list
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamQuorumRuleListResponse"
+  post:
+    tags: [teams]
+    summary: Create quorum rule (planned)
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TeamQuorumRuleUpsertRequest"
+    responses:
+      "200":
+        description: Created
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamQuorumRuleUpsertResponse"
+
+/v1/teams/{team_id}/quorum/{rule_id}:
+  patch:
+    tags: [teams]
+    summary: Update quorum rule (planned)
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: rule_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TeamQuorumRuleUpsertRequest"
+    responses:
+      "200":
+        description: Updated
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamQuorumRuleUpsertResponse"
+  delete:
+    tags: [teams]
+    summary: Delete quorum rule (planned)
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: rule_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Deleted
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamDeleteResponse"
+
+/v1/teams/{team_id}/runs:
+  post:
+    tags: [teams]
+    summary: Create team run (planned)
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TeamRunRequest"
+    responses:
+      "200":
+        description: Team run created
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamRunResponse"
+
+/v1/teams/{team_id}/runs/{team_run_id}:
+  get:
+    tags: [teams]
+    summary: Get team run status (planned)
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: team_run_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Team run status
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamRunStatusResponse"
+
 /v1/orchestrate:
   post:
     tags: [orchestrate]

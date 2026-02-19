@@ -203,6 +203,247 @@ schemas:
       role: { type: string }
       trace_id: { type: string }
 
+  Team:
+    type: object
+    required: [team_id, display_name, created_unix_ms]
+    properties:
+      team_id: { type: string }
+      display_name: { type: string }
+      created_by: { type: string }
+      created_unix_ms: { type: integer, format: int64 }
+      tags:
+        type: array
+        items: { type: string }
+      policy_ref: { type: string }
+      shared_memory_scope_id: { type: string }
+      meta:
+        type: object
+        additionalProperties: true
+
+  TeamListResponse:
+    type: object
+    required: [ok, teams]
+    properties:
+      ok: { type: boolean }
+      teams:
+        type: array
+        items:
+          $ref: "#/components/schemas/Team"
+
+  TeamCreateRequest:
+    type: object
+    required: [display_name]
+    properties:
+      display_name: { type: string }
+      tags:
+        type: array
+        items: { type: string }
+      policy_ref: { type: string }
+      shared_memory_scope_id: { type: string }
+      meta:
+        type: object
+        additionalProperties: true
+
+  TeamCreateResponse:
+    type: object
+    required: [ok, team]
+    properties:
+      ok: { type: boolean }
+      team:
+        $ref: "#/components/schemas/Team"
+
+  TeamGetResponse:
+    type: object
+    required: [ok, team]
+    properties:
+      ok: { type: boolean }
+      team:
+        $ref: "#/components/schemas/Team"
+
+  TeamUpdateRequest:
+    type: object
+    properties:
+      display_name: { type: string }
+      tags:
+        type: array
+        items: { type: string }
+      policy_ref: { type: string }
+      shared_memory_scope_id: { type: string }
+      meta:
+        type: object
+        additionalProperties: true
+
+  TeamDeleteResponse:
+    type: object
+    required: [ok]
+    properties:
+      ok: { type: boolean }
+
+  TeamMember:
+    type: object
+    required: [member_id, team_id, role, status, created_unix_ms]
+    properties:
+      member_id: { type: string }
+      team_id: { type: string }
+      deployment_id: { type: string }
+      agent_id: { type: string }
+      role: { type: string }
+      capabilities:
+        type: array
+        items: { type: string }
+      status: { type: string }
+      weight: { type: integer, format: int32 }
+      created_unix_ms: { type: integer, format: int64 }
+      meta:
+        type: object
+        additionalProperties: true
+
+  TeamMemberListResponse:
+    type: object
+    required: [ok, team_id, members]
+    properties:
+      ok: { type: boolean }
+      team_id: { type: string }
+      members:
+        type: array
+        items:
+          $ref: "#/components/schemas/TeamMember"
+
+  TeamMemberUpsertRequest:
+    type: object
+    required: [role]
+    properties:
+      member_id: { type: string }
+      deployment_id: { type: string }
+      agent_id: { type: string }
+      role: { type: string }
+      capabilities:
+        type: array
+        items: { type: string }
+      status: { type: string }
+      weight: { type: integer, format: int32 }
+      meta:
+        type: object
+        additionalProperties: true
+
+  TeamMemberUpdateRequest:
+    type: object
+    properties:
+      role: { type: string }
+      capabilities:
+        type: array
+        items: { type: string }
+      status: { type: string }
+      weight: { type: integer, format: int32 }
+      meta:
+        type: object
+        additionalProperties: true
+
+  TeamMemberUpsertResponse:
+    type: object
+    required: [ok, member]
+    properties:
+      ok: { type: boolean }
+      member:
+        $ref: "#/components/schemas/TeamMember"
+
+  TeamQuorumRule:
+    type: object
+    required: [rule_id, team_id, action, min_approvals, quorum_mode]
+    properties:
+      rule_id: { type: string }
+      team_id: { type: string }
+      action: { type: string }
+      tool_names:
+        type: array
+        items: { type: string }
+      min_approvals: { type: integer, format: int32 }
+      role_allowlist:
+        type: array
+        items: { type: string }
+      require_distinct_roles: { type: boolean }
+      timeout_ms: { type: integer, format: int64 }
+      quorum_mode: { type: string }
+      created_unix_ms: { type: integer, format: int64 }
+      meta:
+        type: object
+        additionalProperties: true
+
+  TeamQuorumRuleListResponse:
+    type: object
+    required: [ok, team_id, rules]
+    properties:
+      ok: { type: boolean }
+      team_id: { type: string }
+      rules:
+        type: array
+        items:
+          $ref: "#/components/schemas/TeamQuorumRule"
+
+  TeamQuorumRuleUpsertRequest:
+    type: object
+    required: [action, min_approvals, quorum_mode]
+    properties:
+      action: { type: string }
+      tool_names:
+        type: array
+        items: { type: string }
+      min_approvals: { type: integer, format: int32 }
+      role_allowlist:
+        type: array
+        items: { type: string }
+      require_distinct_roles: { type: boolean }
+      timeout_ms: { type: integer, format: int64 }
+      quorum_mode: { type: string }
+      meta:
+        type: object
+        additionalProperties: true
+
+  TeamQuorumRuleUpsertResponse:
+    type: object
+    required: [ok, rule]
+    properties:
+      ok: { type: boolean }
+      rule:
+        $ref: "#/components/schemas/TeamQuorumRule"
+
+  TeamRunRequest:
+    type: object
+    required: [run]
+    properties:
+      run:
+        type: object
+        description: Run request payload forwarded to agentd (schema-compatible with /api/v1/run).
+        additionalProperties: true
+      team:
+        type: object
+        description: Team execution metadata (role, shared memory, quorum policy).
+        additionalProperties: true
+
+  TeamRunResponse:
+    type: object
+    required: [ok, team_id, team_run_id, status]
+    properties:
+      ok: { type: boolean }
+      team_id: { type: string }
+      team_run_id: { type: string }
+      status: { type: string }
+      created_unix_ms: { type: integer, format: int64 }
+
+  TeamRunStatusResponse:
+    type: object
+    required: [ok, team_id, team_run_id, status]
+    properties:
+      ok: { type: boolean }
+      team_id: { type: string }
+      team_run_id: { type: string }
+      status: { type: string }
+      created_unix_ms: { type: integer, format: int64 }
+      members:
+        type: array
+        items:
+          $ref: "#/components/schemas/TeamMember"
+
   OrchestrateRequest:
     type: object
     required: [tasks]

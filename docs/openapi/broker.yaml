@@ -19,6 +19,7 @@ tags:
   - name: audio
   - name: memory
   - name: membership
+  - name: teams
   - name: orchestrate
   - name: events
 
