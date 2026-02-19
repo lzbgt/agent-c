@@ -34,7 +34,9 @@ def render_template(value: str, ctx: Dict[str, str]) -> str:
         key = match.group(1).strip()
         if key.startswith("env."):
             return os.environ.get(key[4:], "")
-        return ctx.get(key, "")
+        if key in ctx:
+            return ctx.get(key, "")
+        return os.environ.get(key, "")
 
     return TEMPLATE_RE.sub(repl, value)
 
@@ -62,6 +64,9 @@ def run_shell(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: i
     env = os.environ.copy()
     for k, v in (step.get("env") or {}).items():
         env[str(k)] = render_template(str(v), ctx)
+    for key, value in ctx.items():
+        if key.startswith("env.") and key[4:]:
+            env.setdefault(key[4:], value)
 
     name = step.get("name") or f"shell_{index}"
     log_path = os.path.join(logs_dir, f"{index:02d}_{name}.log")
@@ -193,6 +198,8 @@ def run_scenario(path: str, out_dir: str) -> None:
         "scenario": str(data.get("name") or "scenario"),
         "evidence_dir": "",
     }
+    ctx["env.BROKER_PUBLISHED_PORT"] = os.environ.get("BROKER_PUBLISHED_PORT", "")
+    ctx["env.AGENTD_PUBLISHED_PORT"] = os.environ.get("AGENTD_PUBLISHED_PORT", "")
 
     for idx, raw in enumerate(steps, start=1):
         if not isinstance(raw, dict):

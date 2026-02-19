@@ -1,0 +1,20 @@
+{
+  "name": "broker_smoke",
+  "version": "eval_pack_v0",
+  "threshold": {
+    "min_score": 1.0,
+    "min_pass_rate": 1.0
+  },
+  "scenarios": [
+    {
+      "id": "broker_smoke",
+      "file": "tools/scenarios/broker_smoke.json",
+      "score_weight": 1.0,
+      "checks": [
+        { "type": "file_exists", "path": "meta.json" },
+        { "type": "json_path", "path": "meta.json", "key": "scenario", "equals": "broker_smoke" },
+        { "type": "log_contains", "path": "logs/01_broker_healthz.log", "contains": "\"ok\":true" }
+      ]
+    }
+  ]
+}

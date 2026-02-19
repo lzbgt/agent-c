@@ -41,6 +41,8 @@ Template variables:
 
 - `agentd_smoke.json`: checks `/api/v1/health` + `/api/v1/diagnostics`, captures evidence.
 - `broker_smoke.json`: checks `/healthz` + `/readyz` (TLS insecure), captures evidence via broker proxy.
+- `eval_pack_smoke.json`: self-contained eval-pack smoke scenario.
+- `eval_pack_checks_smoke.json`: self-contained scenario to exercise eval checks.
 
 ## Scenario pack
 
