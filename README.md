@@ -648,8 +648,9 @@ Stop it with:
 ```bash
 tools/devstack_agent_down.sh
 ```
-
 Notes:
+- WebUI serving in `tools/devstack_agent.sh` and `tools/verify_mac_full_stack_host.sh` uses `python -m http.server`.
+  If no Python is available, the scripts skip WebUI serve and continue.
 - The script will auto-pick free host ports for services that commonly conflict (Broker/Keycloak/Postgres) and export:
   - `BROKER_PUBLISHED_PORT` (default 8443)
   - `KEYCLOAK_PUBLISHED_PORT` (default 8081)

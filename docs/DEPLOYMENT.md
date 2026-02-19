@@ -333,6 +333,8 @@ Bring up agentd + broker + connector + WebUI on the host (Postgres + Keycloak vi
 Stop the stack:
 - `tools/devstack_agent_down.sh`
   - Edit that file to adjust broker URL, agent id, or pass-through daemon token for local dev.
+- WebUI serving in `tools/devstack_agent.sh` and `tools/verify_mac_full_stack_host.sh` uses `python -m http.server`.
+  If no Python is available, the scripts skip WebUI serve and continue.
 - For a one-command macOS verification run, use: `tools/verify_mac_full_stack.sh`.
 - If Docker is unavailable or resource-constrained, you can verify the local stack without compose:
   - `tools/verify_mac_local_stack.sh` (agentd + WebUI only; no broker)
