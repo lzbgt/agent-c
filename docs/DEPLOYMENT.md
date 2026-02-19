@@ -300,6 +300,7 @@ curl http://127.0.0.1:8123/api/v1/health
 - WebUI expects to talk to broker proxy or direct agentd; align CORS + auth tokens accordingly.
 - Compose mounts `tools/agentui-config.compose.js` into the WebUI container to default to broker mode.
   - Broker mode exposes a broker console panel for agent selection + membership management + audit.
+- `docker-compose.yml` caps Keycloak heap (`JAVA_OPTS_KC_HEAP`) for low-memory hosts; override if you need more RAM.
 
 ### WebUI Playwright smoke (optional)
 
