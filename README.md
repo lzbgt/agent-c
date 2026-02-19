@@ -548,6 +548,12 @@ Check local hook status:
 tools/hooks_status.sh
 ```
 
+JSON output:
+
+```bash
+tools/hooks_status.sh --json
+```
+
 Run all repo hygiene guards locally:
 
 ```bash

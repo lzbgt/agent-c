@@ -117,6 +117,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [x] Add optional local git hook installer for vendored guard.
 - [x] Add optional local git hook uninstaller for vendored guard.
 - [x] Add local hook status helper for vendored guard.
+- [x] Add JSON output mode for hooks status helper.
 
 ## Promoted goals (explicit goals; no non-goals)
 
