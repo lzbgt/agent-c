@@ -97,8 +97,9 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Promoted goals (explicit goals; no non-goals)
 
-Weights updated 2026-02-19: **large-source refactors** in `ref/` (ds-cli) complete,
-next focus on **streaming stability** and **tool plugin isolation**.
+Weights updated 2026-02-19: prioritize **streaming stability** (including verified
+OpenRouter pins) and **tool plugin isolation** hardening; keep **interop/attestation**
+and **AVM** queued behind those until streaming and plugins are stable.
 
 - [x] CORS: add cookie-based auth support and per-route origin policies with regex/precedence rules (broker + agentd implemented; tests added).
 - [x] Storage/analytics: DB query API as canonical surface, analytics layer, and binary blob storage tiers.
