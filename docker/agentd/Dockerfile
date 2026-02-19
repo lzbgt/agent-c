@@ -27,7 +27,7 @@ RUN set -e; \
     libcurl4-openssl-dev \
     libjsoncpp-dev \
     libsqlite3-dev \
-    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/lib/apt/lists/* /etc/apt/apt.conf.d/99proxy \
   || ( \
     echo "apt via proxy failed; retrying without proxy" >&2; \
     rm -f /etc/apt/apt.conf.d/99proxy; \
@@ -56,9 +56,6 @@ FROM ubuntu:24.04
 ARG HTTP_PROXY
 ARG HTTPS_PROXY
 ARG NO_PROXY
-ENV HTTP_PROXY=${HTTP_PROXY}
-ENV HTTPS_PROXY=${HTTPS_PROXY}
-ENV NO_PROXY=${NO_PROXY}
 ENV DEBIAN_FRONTEND=noninteractive
 RUN set -e; \
   APT_OPTS="-o Acquire::Retries=3 -o Acquire::http::Timeout=20 -o Acquire::https::Timeout=20"; \
@@ -73,7 +70,7 @@ RUN set -e; \
     libcurl4 \
     libjsoncpp25 \
     libsqlite3-0 \
-    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/lib/apt/lists/* /etc/apt/apt.conf.d/99proxy \
   || ( \
     echo "apt via proxy failed; retrying without proxy" >&2; \
     rm -f /etc/apt/apt.conf.d/99proxy; \

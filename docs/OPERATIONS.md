@@ -106,7 +106,9 @@ If the proxy is unreachable during build, the Dockerfiles now retry apt installs
 hard failures (still prefers proxy when available).
 
 Runtime containers do not receive proxy environment variables by default so intra-stack
-traffic stays direct. Override by exporting `HTTP_PROXY`/`HTTPS_PROXY` before `docker compose`.
+traffic stays direct. Dockerfiles also remove apt proxy config after installs to avoid
+accidentally forcing proxies at runtime. Override by exporting `HTTP_PROXY`/`HTTPS_PROXY`
+before `docker compose`.
 
 ## Network smoke tests
 

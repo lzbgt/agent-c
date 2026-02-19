@@ -15,6 +15,10 @@ References:
 - Current capabilities: `docs/HANDBOOK.md`, `docs/AGENTD.md`, `docs/WORKFLOWS.md`, `docs/MEMORY.md`
 - Broker + control plane: `docs/BROKER.md`
 
+Clarification: “Beyond OpenClaw” means **going past a gateway/plugin model** into a full-stack,
+durable, policy-driven agent platform with evidence-grade runs, multi-agent orchestration,
+and replayable outcomes.
+
 ---
 
 ## 1) User / Client Expectations (product-level)
@@ -44,6 +48,7 @@ CLI, or a custom client.
 
 6) **Safety and consent**
    - User-approved UI actions (opens, downloads, automations).
+   - Approval queues for sensitive actions (quorum/roles when needed).
    - Clear indications of “yolo” / elevated tool permissions.
 
 7) **Deployment flexibility**
@@ -61,6 +66,10 @@ CLI, or a custom client.
 10) **Interoperability**
    - OpenAI-compatible APIs plus standardized tool/agent protocols.
    - Portable artifacts so results can move between clients and deployments.
+
+11) **Run comparison + regression guardrails**
+   - Side-by-side run diffs with captured evidence.
+   - Optional CI gating for critical workflows (eval packs).
 
 ---
 
@@ -92,17 +101,25 @@ These are structural guarantees for maintainability, extensibility, and safety o
    - Broker + connector provisioning with mTLS, JWT, and audit.
    - Signed capability manifests and attestations for runs.
 
-7) **Scalable scheduling**
+7) **Tenant and secret isolation**
+   - Clear boundaries between deployments, keys, and artifacts.
+   - “Bring your own keys” is first-class with auditable key sources.
+
+8) **Scalable scheduling**
    - Fairness, backpressure, and admission control are first-class.
    - Separate interactive vs batch workloads with clear limits.
 
-8) **Portability**
+9) **Portability**
    - Portable core with no env or filesystem dependency.
    - Embedded/VM targets can supply custom persistence and transport.
 
-9) **Operational clarity**
+10) **Operational clarity**
    - Diagnostics endpoints reveal provider health and DB status.
    - Evidence bundles support incident response and audits.
+
+11) **Evaluation as a contract**
+   - Deterministic eval packs with fixed inputs and expected outputs.
+   - Regression baselines tied to model/provider versions.
 
 ---
 
@@ -146,6 +163,10 @@ The following areas drive the biggest step-change beyond a typical gateway/plugi
 6) **Evaluation + regression gating**
    - Canonical eval packs for deterministic run checks in CI.
    - Model/version drift detection with reproducible baselines.
+
+7) **Approval-ready collaboration**
+   - WebUI approval queues with quorum + role context.
+   - Async team runs with approval state changes reflected in SSE.
 
 ---
 

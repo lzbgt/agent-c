@@ -33,3 +33,5 @@ jobs:
         run: docker info
       - name: Run broker quorum eval pack
         run: python3 tools/eval_pack.py --file tools/eval_packs/broker_team_runs_quorum_compose_smoke.json
+      - name: Run broker quorum SSE eval pack
+        run: python3 tools/eval_pack.py --file tools/eval_packs/broker_team_quorum_events_sse_compose_smoke.json

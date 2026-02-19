@@ -55,6 +55,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [x] macOS full-stack compose verification on this host (Docker Desktop running).
   - 2026-02-19: `docker info` not responding / daemon not running; host-stack verification skipped until Docker Desktop/Colima is running.
   - 2026-02-19: attempted `open -a Docker` and polled `docker info` (12x/120s); all attempts timed out.
+  - 2026-02-19: `docker info` now responds; Docker Desktop is running on this host (aarch64).
   - 2026-02-19: `tools/verify_mac_local_stack.sh` succeeded with `MAC_LOCAL_SKIP_UI=1`.
   - 2026-02-19: local `postgresql@17` brew service fails; `/opt/homebrew/var/log/postgresql@17.log` shows missing `/opt/homebrew/lib/postgresql@17` (shared_preload_libraries=timescaledb). Likely needs a reinstall or config change before using local Postgres as Docker fallback.
   - 2026-02-19: fixed local brew Postgres by symlinking `/opt/homebrew/lib/postgresql@17` and `/opt/homebrew/share/postgresql@17/{timezone,timezonesets}` to the shared dirs and commenting `shared_preload_libraries=timescaledb`; `pg_isready` now reports accepting connections.
