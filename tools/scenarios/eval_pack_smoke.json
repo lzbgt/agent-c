@@ -1,0 +1,10 @@
+{
+  "name": "eval_pack_smoke",
+  "steps": [
+    {
+      "type": "shell",
+      "name": "write_marker",
+      "cmd": "echo ok > {{run_dir}}/eval_pack_smoke.txt"
+    }
+  ]
+}

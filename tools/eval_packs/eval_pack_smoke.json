@@ -1,0 +1,27 @@
+{
+  "name": "eval_pack_smoke",
+  "version": "eval_pack_v0",
+  "threshold": {
+    "min_score": 1.0,
+    "min_pass_rate": 1.0
+  },
+  "scenarios": [
+    {
+      "id": "eval_pack_smoke",
+      "file": "tools/scenarios/eval_pack_smoke.json",
+      "score_weight": 1.0,
+      "checks": [
+        {
+          "type": "file_exists",
+          "path": "eval_pack_smoke.txt"
+        },
+        {
+          "type": "json_path",
+          "path": "meta.json",
+          "key": "scenario",
+          "equals": "eval_pack_smoke"
+        }
+      ]
+    }
+  ]
+}

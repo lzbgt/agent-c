@@ -118,6 +118,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
 - [ ] W=8 — Evaluation + regression gating: canonical eval packs, deterministic scoring, and CI baselines to catch model/version drift.
   - 2026-02-19: Added eval pack spec (`docs/spec/eval_pack_v0.md`) and runner (`tools/eval_pack.py`) with a minimal example pack.
   - 2026-02-19: Added `eval_pack_smoke` test (self-contained, no agentd required).
+  - 2026-02-19: Added CI workflow to run `tools/eval_pack.py` against a self-contained eval pack.
 
 ## New tasks (2026-02-19)
 

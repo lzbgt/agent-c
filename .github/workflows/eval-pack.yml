@@ -1,0 +1,19 @@
+name: Eval Pack Smoke
+
+on:
+  push:
+    branches: ["master"]
+  pull_request:
+
+jobs:
+  eval-pack:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run eval pack smoke
+        run: python3 tools/eval_pack.py --file tools/eval_packs/eval_pack_smoke.json

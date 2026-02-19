@@ -4,7 +4,7 @@ import json
 import os
 import re
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 
@@ -12,7 +12,7 @@ VERSION = "eval_pack_v0"
 
 
 def now_ts() -> str:
-    return datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    return datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
 
 
 def load_json(path: str) -> Dict[str, Any]:
@@ -170,7 +170,7 @@ def main() -> int:
     failures: List[str] = []
     total_score = 0.0
     max_score = 0.0
-    started_at = datetime.utcnow().isoformat() + "Z"
+    started_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
     for entry in scenarios:
         if not isinstance(entry, dict):
@@ -239,7 +239,7 @@ def main() -> int:
             "name": pack.get("name"),
             "version": pack.get("version") or VERSION,
             "started_at": started_at,
-            "finished_at": datetime.utcnow().isoformat() + "Z",
+            "finished_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
             "results": results,
             "total_score": total_score,
             "max_score": max_score,
