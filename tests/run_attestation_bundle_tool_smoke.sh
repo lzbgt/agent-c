@@ -44,6 +44,12 @@ KEY_HEX="00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
   --hmac-key-hex "${KEY_HEX}" \
   --out "${OUT2}"
 
+"${TOOL}" \
+  --verify \
+  --attestation-json "${OUT1}" \
+  --replay-json "${BUNDLE_JSON}" \
+  --hmac-key-hex "${KEY_HEX}" >/dev/null
+
 export OUT1 OUT2
 python3 - <<'PY'
 import json, sys

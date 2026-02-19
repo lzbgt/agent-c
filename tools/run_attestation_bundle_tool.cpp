@@ -1,3 +1,4 @@
+#include "agent/ed25519.h"
 #include "agent/hmac_sha256.h"
 #include "agent/json_c14n.h"
 
@@ -18,8 +19,10 @@
 static void usage(const char* argv0) {
   std::fprintf(stderr,
     "usage: %s --replay-json <path>|--stdin [options]\n"
+    "       %s --verify --attestation-json <path>|--stdin [verify options]\n"
     "\n"
     "options:\n"
+    "  --verify                  verify an attestation bundle\n"
     "  --out <path>               write output to file (default: stdout)\n"
     "  --run-id <id>              optional run_id for metadata\n"
     "  --session-id <id>          optional session_id for metadata\n"
@@ -31,8 +34,13 @@ static void usage(const char* argv0) {
     "  --hmac-key-hex <hex>       HMAC key (hex string)\n"
     "  --hmac-key <ascii>         HMAC key (raw ASCII)\n"
     "  --hmac-key-file <path>     HMAC key (raw bytes)\n"
+    "  --ed25519-pubkey-hex <hex> Ed25519 public key (hex)\n"
+    "  --ed25519-pubkey-b64 <b64> Ed25519 public key (base64)\n"
+    "  --ed25519-pubkey-file <p>  Ed25519 public key (raw bytes or hex/base64 text)\n"
     "  --no-sign                  emit unsigned attestation bundle\n"
+    "  --allow-unsigned           allow bundles without attest block (verify mode)\n"
     "  --help                     show this help\n",
+    argv0,
     argv0
   );
 }
@@ -127,6 +135,64 @@ static bool parse_hex_bytes(const std::string& hex, std::vector<uint8_t>* out, s
   return true;
 }
 
+static std::string trim_copy(const std::string& s) {
+  size_t b = 0;
+  while (b < s.size() && (s[b] == ' ' || s[b] == '\t' || s[b] == '\n' || s[b] == '\r')) b++;
+  size_t e = s.size();
+  while (e > b && (s[e - 1] == ' ' || s[e - 1] == '\t' || s[e - 1] == '\n' || s[e - 1] == '\r')) e--;
+  return s.substr(b, e - b);
+}
+
+static bool base64_decode_bytes(const std::string& b64, std::vector<uint8_t>* out, std::string* err) {
+  if (err) err->clear();
+  if (!out) return false;
+  std::string raw;
+  if (!base64_decode(b64, &raw, err)) return false;
+  out->assign(raw.begin(), raw.end());
+  return true;
+}
+
+static bool parse_bytes_from_text(const std::string& text, std::vector<uint8_t>* out, std::string* err) {
+  if (err) err->clear();
+  if (!out) return false;
+  out->clear();
+  const std::string t = trim_copy(text);
+  if (t.empty()) {
+    if (err) *err = "empty input";
+    return false;
+  }
+  bool hex_candidate = (t.size() % 2 == 0);
+  if (hex_candidate) {
+    for (char c : t) {
+      const bool ok = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+      if (!ok) {
+        hex_candidate = false;
+        break;
+      }
+    }
+  }
+  if (hex_candidate) {
+    std::string herr;
+    if (parse_hex_bytes(t, out, &herr)) return true;
+  }
+  return base64_decode_bytes(t, out, err);
+}
+
+static bool read_key_file_bytes(const std::string& path, std::vector<uint8_t>* out, std::string* err) {
+  if (err) err->clear();
+  if (!out) return false;
+  std::string data;
+  if (!read_file(path, &data)) {
+    if (err) *err = "failed to read file";
+    return false;
+  }
+  if (data.size() == 32) {
+    out->assign(data.begin(), data.end());
+    return true;
+  }
+  return parse_bytes_from_text(data, out, err);
+}
+
 static int64_t now_utc_ms() {
   using namespace std::chrono;
   const auto now = time_point_cast<milliseconds>(system_clock::now());
@@ -143,8 +209,12 @@ int main(int argc, char** argv) {
   std::string deployment_id;
   std::string issuer_id;
   std::string kid;
+  std::string att_path;
   std::vector<uint8_t> hmac_key;
+  std::vector<uint8_t> ed25519_pubkey;
   bool sign = true;
+  bool verify = false;
+  bool allow_unsigned = false;
   int64_t created_utc_ms = 0;
 
   for (int i = 1; i < argc; i++) {
@@ -152,6 +222,8 @@ int main(int argc, char** argv) {
     if (arg == "--help" || arg == "-h") {
       usage(argv[0]);
       return 0;
+    } else if (arg == "--verify") {
+      verify = true;
     } else if (arg == "--replay-json" && i + 1 < argc) {
       replay_path = argv[++i];
     } else if (arg == "--stdin") {
@@ -172,6 +244,8 @@ int main(int argc, char** argv) {
       created_utc_ms = std::stoll(argv[++i]);
     } else if (arg == "--kid" && i + 1 < argc) {
       kid = argv[++i];
+    } else if (arg == "--attestation-json" && i + 1 < argc) {
+      att_path = argv[++i];
     } else if (arg == "--hmac-key-hex" && i + 1 < argc) {
       std::string hex = argv[++i];
       std::string err;
@@ -190,13 +264,208 @@ int main(int argc, char** argv) {
         return 2;
       }
       hmac_key.assign(data.begin(), data.end());
+    } else if (arg == "--ed25519-pubkey-hex" && i + 1 < argc) {
+      std::string hex = argv[++i];
+      std::string err;
+      if (!parse_hex_bytes(hex, &ed25519_pubkey, &err)) {
+        std::fprintf(stderr, "invalid --ed25519-pubkey-hex: %s\n", err.c_str());
+        return 2;
+      }
+    } else if (arg == "--ed25519-pubkey-b64" && i + 1 < argc) {
+      std::string b64 = argv[++i];
+      std::string err;
+      if (!base64_decode_bytes(b64, &ed25519_pubkey, &err)) {
+        std::fprintf(stderr, "invalid --ed25519-pubkey-b64: %s\n", err.c_str());
+        return 2;
+      }
+    } else if (arg == "--ed25519-pubkey-file" && i + 1 < argc) {
+      std::string path = argv[++i];
+      std::string err;
+      if (!read_key_file_bytes(path, &ed25519_pubkey, &err)) {
+        std::fprintf(stderr, "invalid --ed25519-pubkey-file: %s\n", err.c_str());
+        return 2;
+      }
     } else if (arg == "--no-sign") {
       sign = false;
+    } else if (arg == "--allow-unsigned") {
+      allow_unsigned = true;
     } else {
       std::fprintf(stderr, "unknown option: %s\n", arg.c_str());
       usage(argv[0]);
       return 2;
     }
+  }
+
+  if (verify) {
+    if (use_stdin && !att_path.empty()) {
+      std::fprintf(stderr, "use either --attestation-json or --stdin, not both\n");
+      return 2;
+    }
+    if (!use_stdin && att_path.empty()) {
+      std::fprintf(stderr, "missing --attestation-json or --stdin\n");
+      usage(argv[0]);
+      return 2;
+    }
+
+    std::string att_text;
+    if (use_stdin) {
+      att_text.assign((std::istreambuf_iterator<char>(std::cin)), std::istreambuf_iterator<char>());
+    } else if (!read_file(att_path, &att_text)) {
+      std::fprintf(stderr, "failed to read attestation json: %s\n", att_path.c_str());
+      return 2;
+    }
+
+    Json::Value att_root;
+    std::string jerr;
+    if (!parse_json(att_text, &att_root, &jerr)) {
+      std::fprintf(stderr, "invalid attestation json: %s\n", jerr.c_str());
+      return 2;
+    }
+    if (!att_root.isObject()) {
+      std::fprintf(stderr, "attestation bundle must be a JSON object\n");
+      return 2;
+    }
+
+    const std::string bundle_schema = att_root.isMember("schema") && att_root["schema"].isString()
+      ? att_root["schema"].asString() : "";
+    if (bundle_schema.empty()) {
+      std::fprintf(stderr, "missing schema in attestation bundle\n");
+      return 2;
+    }
+
+    if (!att_root.isMember("replay_sha256") || !att_root["replay_sha256"].isString()) {
+      std::fprintf(stderr, "missing replay_sha256 in attestation bundle\n");
+      return 2;
+    }
+    if (!att_root.isMember("replay_sha256_alg") || !att_root["replay_sha256_alg"].isString()) {
+      std::fprintf(stderr, "missing replay_sha256_alg in attestation bundle\n");
+      return 2;
+    }
+    if (!att_root.isMember("replay_sha256_schema") || !att_root["replay_sha256_schema"].isString()) {
+      std::fprintf(stderr, "missing replay_sha256_schema in attestation bundle\n");
+      return 2;
+    }
+    if (att_root["replay_sha256_alg"].asString() != "agent_json_c14n_v1") {
+      std::fprintf(stderr, "unsupported replay_sha256_alg: %s\n", att_root["replay_sha256_alg"].asCString());
+      return 2;
+    }
+
+    bool has_attest = att_root.isMember("attest") && att_root["attest"].isObject();
+    if (!has_attest && !allow_unsigned) {
+      std::fprintf(stderr, "attestation bundle missing attest block\n");
+      return 2;
+    }
+    if (has_attest) {
+      const Json::Value attest = att_root["attest"];
+      const std::string alg = attest.isMember("alg") && attest["alg"].isString() ? attest["alg"].asString() : "";
+      const std::string sig = attest.isMember("sig") && attest["sig"].isString() ? attest["sig"].asString() : "";
+      if (alg.empty() || sig.empty()) {
+        std::fprintf(stderr, "attest block missing alg or sig\n");
+        return 2;
+      }
+      if (attest.isMember("hash_alg") && attest["hash_alg"].isString()) {
+        if (attest["hash_alg"].asString() != "agent_json_c14n_v1") {
+          std::fprintf(stderr, "unsupported attest.hash_alg: %s\n", attest["hash_alg"].asCString());
+          return 2;
+        }
+      }
+      if (attest.isMember("signing_schema") && attest["signing_schema"].isString()) {
+        if (attest["signing_schema"].asString() != bundle_schema) {
+          std::fprintf(stderr, "attest.signing_schema mismatch\n");
+          return 2;
+        }
+      }
+
+      Json::Value att_payload = att_root;
+      if (att_payload.isMember("attest")) att_payload.removeMember("attest");
+      std::string canon;
+      std::string cerr;
+      if (!canonical_json_bytes(att_payload, &canon, &cerr)) {
+        std::fprintf(stderr, "failed to canonicalize bundle: %s\n", cerr.c_str());
+        return 2;
+      }
+
+      if (alg == "hmac-sha256") {
+        if (hmac_key.empty()) {
+          std::fprintf(stderr, "missing HMAC key for hmac-sha256 verification\n");
+          return 2;
+        }
+        uint8_t mac[32];
+        agent_hmac_sha256(hmac_key.data(), hmac_key.size(), canon.data(), canon.size(), mac);
+        const std::string sig_b64 = base64_encode(mac, sizeof(mac));
+        if (sig_b64 != sig) {
+          std::fprintf(stderr, "attestation HMAC signature mismatch\n");
+          return 2;
+        }
+      } else if (alg == "ed25519") {
+        if (ed25519_pubkey.size() != 32) {
+          std::fprintf(stderr, "missing or invalid ed25519 public key (expect 32 bytes)\n");
+          return 2;
+        }
+        std::string berr;
+        std::vector<uint8_t> sig_bytes;
+        if (!base64_decode_bytes(sig, &sig_bytes, &berr)) {
+          std::fprintf(stderr, "invalid ed25519 signature base64: %s\n", berr.c_str());
+          return 2;
+        }
+        if (sig_bytes.size() != 64) {
+          std::fprintf(stderr, "invalid ed25519 signature length: %zu\n", sig_bytes.size());
+          return 2;
+        }
+        const int ok = agent_ed25519_verify(
+          canon.data(), canon.size(),
+          ed25519_pubkey.data(),
+          sig_bytes.data()
+        );
+        if (!ok) {
+          std::fprintf(stderr, "ed25519 signature verification failed\n");
+          return 2;
+        }
+      } else {
+        std::fprintf(stderr, "unsupported attest alg: %s\n", alg.c_str());
+        return 2;
+      }
+    }
+
+    if (!replay_path.empty()) {
+      std::string replay_text;
+      if (!read_file(replay_path, &replay_text)) {
+        std::fprintf(stderr, "failed to read replay json: %s\n", replay_path.c_str());
+        return 2;
+      }
+      Json::Value replay_root;
+      std::string rerr;
+      if (!parse_json(replay_text, &replay_root, &rerr)) {
+        std::fprintf(stderr, "invalid replay json: %s\n", rerr.c_str());
+        return 2;
+      }
+      Json::Value bundle = replay_root;
+      if (replay_root.isObject() && replay_root.isMember("bundle") && replay_root["bundle"].isObject()) {
+        bundle = replay_root["bundle"];
+      }
+      std::string replay_sha256;
+      std::string err;
+      if (!sha256_token_of_json(bundle, &replay_sha256, &err)) {
+        std::fprintf(stderr, "failed to compute replay_sha256: %s\n", err.c_str());
+        return 2;
+      }
+      const std::string want = att_root["replay_sha256"].asString();
+      if (replay_sha256 != want) {
+        std::fprintf(stderr, "replay_sha256 mismatch\n");
+        return 2;
+      }
+      if (bundle.isObject() && bundle.isMember("schema") && bundle["schema"].isString()) {
+        const std::string schema = bundle["schema"].asString();
+        const std::string want_schema = att_root["replay_sha256_schema"].asString();
+        if (!schema.empty() && schema != want_schema) {
+          std::fprintf(stderr, "replay_sha256_schema mismatch\n");
+          return 2;
+        }
+      }
+    }
+
+    std::printf("OK\n");
+    return 0;
   }
 
   if (!use_stdin && replay_path.empty()) {
