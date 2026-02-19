@@ -222,6 +222,12 @@ static void fill_env_defaults(DaemonConfig* cfg) {
   if (cfg->run_attest_hmac_key.empty()) {
     if (const char* t = getenv_s("AGENTD_RUN_ATTEST_HMAC_KEY")) cfg->run_attest_hmac_key = t;
   }
+  if (cfg->run_attest_ed25519_kid.empty()) {
+    if (const char* t = getenv_s("AGENTD_RUN_ATTEST_ED25519_KID")) cfg->run_attest_ed25519_kid = t;
+  }
+  if (cfg->run_attest_ed25519_seed.empty()) {
+    if (const char* t = getenv_s("AGENTD_RUN_ATTEST_ED25519_SEED")) cfg->run_attest_ed25519_seed = t;
+  }
   if (cfg->db_path.empty()) {
     if (const char* p = getenv_s("AGENTD_DB_PATH")) cfg->db_path = p;
   }

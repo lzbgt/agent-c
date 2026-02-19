@@ -61,6 +61,7 @@ Server-side signing (optional):
 
 - If `AGENTD_RUN_ATTEST_HMAC_KID` and `AGENTD_RUN_ATTEST_HMAC_KEY` are set, the daemon includes an `attest` block
   on `/api/v1/run/attestation` responses using HMAC-SHA256 over the canonical JSON payload (without `attest`).
+- If `AGENTD_RUN_ATTEST_ED25519_KID` and `AGENTD_RUN_ATTEST_ED25519_SEED` are set, the daemon signs using Ed25519.
 
 See: `docs/WORKFLOWS.md` (Run replay bundles).
 

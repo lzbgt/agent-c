@@ -3,8 +3,10 @@
 #include "daemon_auth.h"
 #include "http_util.h"
 #include "json_util.h"
+#include "string_util.h"
 
 #include "agent/hmac_sha256.h"
+#include "agent/ed25519.h"
 #include "agent/json_c14n.h"
 
 #include "base64.h"
@@ -15,6 +17,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 #if defined(AGENT_HAVE_SQLITE3)
 #include <sqlite3.h>
@@ -119,6 +122,74 @@ static bool canonical_json_bytes(const Json::Value& v, std::string* out, std::st
   }
   out->assign(canon, canon_len);
   agent_free(canon);
+  return true;
+}
+
+static bool parse_hex_bytes(const std::string& hex, std::vector<uint8_t>* out, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!out) return false;
+  out->clear();
+  if (hex.size() % 2 != 0) {
+    if (out_err) *out_err = "hex string must have even length";
+    return false;
+  }
+  auto nibble = [](char c) -> int {
+    if (c >= '0' && c <= '9') return c - '0';
+    if (c >= 'a' && c <= 'f') return 10 + (c - 'a');
+    if (c >= 'A' && c <= 'F') return 10 + (c - 'A');
+    return -1;
+  };
+  out->reserve(hex.size() / 2);
+  for (size_t i = 0; i < hex.size(); i += 2) {
+    const int hi = nibble(hex[i]);
+    const int lo = nibble(hex[i + 1]);
+    if (hi < 0 || lo < 0) {
+      if (out_err) *out_err = "hex string contains non-hex characters";
+      return false;
+    }
+    out->push_back(static_cast<uint8_t>((hi << 4) | lo));
+  }
+  return true;
+}
+
+static bool parse_seed_bytes(const std::string& text, std::vector<uint8_t>* out, std::string* out_err) {
+  if (out_err) out_err->clear();
+  if (!out) return false;
+  out->clear();
+  const std::string s = trim_copy(text);
+  if (s.empty()) {
+    if (out_err) *out_err = "empty seed";
+    return false;
+  }
+  bool hex_candidate = (s.size() == 64);
+  if (hex_candidate) {
+    for (char c : s) {
+      const bool ok = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+      if (!ok) {
+        hex_candidate = false;
+        break;
+      }
+    }
+  }
+  if (hex_candidate) {
+    std::string herr;
+    if (!parse_hex_bytes(s, out, &herr)) {
+      if (out_err) *out_err = herr;
+      return false;
+    }
+  } else {
+    std::string raw;
+    std::string berr;
+    if (!base64_decode(s, &raw, &berr)) {
+      if (out_err) *out_err = berr.empty() ? "invalid base64 seed" : berr;
+      return false;
+    }
+    out->assign(raw.begin(), raw.end());
+  }
+  if (out->size() != 32) {
+    if (out_err) *out_err = "seed must be 32 bytes";
+    return false;
+  }
   return true;
 }
 
@@ -372,14 +443,40 @@ void handle_run_attestation_endpoint(
   att["run_id"] = (Json::Int64)run_id;
   if (!load.session_id.empty()) att["session_id"] = load.session_id;
 
-  const bool has_kid = !cfg.run_attest_hmac_kid.empty();
-  const bool has_key = !cfg.run_attest_hmac_key.empty();
-  if (has_kid || has_key) {
-    if (!has_kid || !has_key) {
+  const bool hmac_kid_set = !cfg.run_attest_hmac_kid.empty();
+  const bool hmac_key_set = !cfg.run_attest_hmac_key.empty();
+  const bool ed_kid_set = !cfg.run_attest_ed25519_kid.empty();
+  const bool ed_seed_set = !cfg.run_attest_ed25519_seed.empty();
+  const bool any_hmac = hmac_kid_set || hmac_key_set;
+  const bool any_ed = ed_kid_set || ed_seed_set;
+
+  if (any_hmac || any_ed) {
+    if (any_hmac && any_ed) {
       Json::Value o(Json::objectValue);
       o["ok"] = false;
       o["rpc_status"] = 500;
       o["error"] = "attest_sign_config_invalid";
+      o["details"] = "multiple signing modes configured";
+      resp->status = 500;
+      resp->body = json_stringify(o);
+      return;
+    }
+    if (any_hmac && (!hmac_kid_set || !hmac_key_set)) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["rpc_status"] = 500;
+      o["error"] = "attest_sign_config_invalid";
+      o["details"] = "missing AGENTD_RUN_ATTEST_HMAC_KID or AGENTD_RUN_ATTEST_HMAC_KEY";
+      resp->status = 500;
+      resp->body = json_stringify(o);
+      return;
+    }
+    if (any_ed && (!ed_kid_set || !ed_seed_set)) {
+      Json::Value o(Json::objectValue);
+      o["ok"] = false;
+      o["rpc_status"] = 500;
+      o["error"] = "attest_sign_config_invalid";
+      o["details"] = "missing AGENTD_RUN_ATTEST_ED25519_KID or AGENTD_RUN_ATTEST_ED25519_SEED";
       resp->status = 500;
       resp->body = json_stringify(o);
       return;
@@ -396,13 +493,34 @@ void handle_run_attestation_endpoint(
       resp->body = json_stringify(o);
       return;
     }
-    uint8_t mac[32];
-    agent_hmac_sha256(cfg.run_attest_hmac_key.data(), cfg.run_attest_hmac_key.size(), canon.data(), canon.size(), mac);
-    const std::string sig_b64 = base64_encode(mac, sizeof(mac));
     Json::Value sig(Json::objectValue);
-    sig["alg"] = "hmac-sha256";
-    sig["kid"] = cfg.run_attest_hmac_kid;
-    sig["sig"] = sig_b64;
+    if (any_hmac) {
+      uint8_t mac[32];
+      agent_hmac_sha256(cfg.run_attest_hmac_key.data(), cfg.run_attest_hmac_key.size(), canon.data(), canon.size(), mac);
+      sig["alg"] = "hmac-sha256";
+      sig["kid"] = cfg.run_attest_hmac_kid;
+      sig["sig"] = base64_encode(mac, sizeof(mac));
+    } else {
+      std::vector<uint8_t> seed;
+      std::string serr;
+      if (!parse_seed_bytes(cfg.run_attest_ed25519_seed, &seed, &serr)) {
+        Json::Value o(Json::objectValue);
+        o["ok"] = false;
+        o["rpc_status"] = 500;
+        o["error"] = "attest_sign_failed";
+        o["details"] = serr.empty() ? "invalid_ed25519_seed" : serr;
+        resp->status = 500;
+        resp->body = json_stringify(o);
+        return;
+      }
+      uint8_t pk[32];
+      agent_ed25519_publickey(seed.data(), pk);
+      uint8_t sig_bytes[64];
+      agent_ed25519_sign(canon.data(), canon.size(), seed.data(), pk, sig_bytes);
+      sig["alg"] = "ed25519";
+      sig["kid"] = cfg.run_attest_ed25519_kid;
+      sig["sig"] = base64_encode(sig_bytes, sizeof(sig_bytes));
+    }
     sig["ts_utc_ms"] = att["created_utc_ms"];
     sig["hash_alg"] = "agent_json_c14n_v1";
     sig["signing_schema"] = "run_attestation_bundle_v1";

@@ -122,6 +122,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
 - [x] W=10 — Policy hook MVP: deterministic pre/post run + tool call hooks with allow/deny + budget caps, config surface, and audit logs.
 - [ ] W=9 — Attestation bundles: canonical hash format + signed run certificates + verification CLI.
   - 2026-02-19: Added draft spec (`docs/spec/run_attestation_bundle_v1.md`) + host tool (`run_attestation_bundle_tool`) + smoke test.
+  - 2026-02-19: Added server-side HMAC/Ed25519 signing for `/api/v1/run/attestation` + Ed25519 verification smoke.
 - [ ] W=8 — Evaluation + regression gating: canonical eval packs, deterministic scoring, and CI baselines to catch model/version drift.
   - 2026-02-19: Added eval pack spec (`docs/spec/eval_pack_v0.md`) and runner (`tools/eval_pack.py`) with a minimal example pack.
   - 2026-02-19: Added `eval_pack_smoke` test (self-contained, no agentd required).

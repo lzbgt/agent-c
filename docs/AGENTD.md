@@ -323,6 +323,8 @@ Environment overrides:
 - `AGENTD_MAX_TOOL_CALL_ARGS_CHARS_DEFAULT` (default `0`, disables tool-arg length guard)
 - `AGENTD_RUN_ATTEST_HMAC_KID` (optional; signs `/api/v1/run/attestation` when paired with key)
 - `AGENTD_RUN_ATTEST_HMAC_KEY` (optional; HMAC key used to sign attestation bundles)
+- `AGENTD_RUN_ATTEST_ED25519_KID` (optional; Ed25519 signing key id for `/api/v1/run/attestation`)
+- `AGENTD_RUN_ATTEST_ED25519_SEED` (optional; Ed25519 seed, hex or base64, 32 bytes)
 
 ## WebUI
 

@@ -268,6 +268,16 @@ int main(int argc, char** argv) {
       cfg.run_attest_hmac_key = t;
     }
   }
+  if (cfg.run_attest_ed25519_kid.empty()) {
+    if (const char* t = getenv_s("AGENTD_RUN_ATTEST_ED25519_KID")) {
+      cfg.run_attest_ed25519_kid = t;
+    }
+  }
+  if (cfg.run_attest_ed25519_seed.empty()) {
+    if (const char* t = getenv_s("AGENTD_RUN_ATTEST_ED25519_SEED")) {
+      cfg.run_attest_ed25519_seed = t;
+    }
+  }
   if (cfg.auth_cookie_name.empty()) {
     if (const char* t = getenv_s("AGENTD_AUTH_COOKIE")) {
       cfg.auth_cookie_name = t;

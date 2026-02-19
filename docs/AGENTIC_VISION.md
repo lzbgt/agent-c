@@ -133,6 +133,7 @@ From `DESIGN.md` and current docs:
 - Memory retention + salience + recap architecture, with progressive disclosure.
 - Replay bundles + event schema validation for deterministic runs (in progress).
 - Broker team registry CRUD (teams, members, quorum rules) plus synchronous team run fan-out; run-level quorum gating (action `team_run`) enforced via inline approvals. Tool-level quorum enforcement still pending.
+- Server-side run attestation signing for `/api/v1/run/attestation` (HMAC-SHA256 or Ed25519) with verification tooling and an Ed25519 smoke test.
 
 ---
 

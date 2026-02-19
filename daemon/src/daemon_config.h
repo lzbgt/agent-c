@@ -86,6 +86,8 @@ struct DaemonConfig {
   // When set, /api/v1/run/attestation will include a signed `attest` block.
   std::string run_attest_hmac_kid;
   std::string run_attest_hmac_key;
+  std::string run_attest_ed25519_kid;
+  std::string run_attest_ed25519_seed;
   std::string model = "gpt-4o-mini";
   std::string summary_model;  // optional: model used to summarize dropped messages during compaction (tools=none)
   size_t summary_max_chars = 1200;
