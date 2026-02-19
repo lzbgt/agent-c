@@ -7,6 +7,7 @@ cd "${ROOT}"
 DRY_RUN=0
 AGGRESSIVE=0
 PURGE_STATE=0
+PURGE_DEPS=0
 KEEP_BUILD=0
 KEEP_OUT=0
 THRESHOLD_GB=2
@@ -25,6 +26,7 @@ Options:
   --dry-run           Show what would be removed without deleting.
   --aggressive        Remove build/ and out/ regardless of size; prune UI build caches.
   --purge-state       Also remove stateful data (state/, db/, memory/, session_*).
+  --purge-deps        Also remove dependency caches (ui/node_modules, .agent_deps, ref/*/venv).
   --keep-build        Skip build/ and build-nohttp/ cleanup.
   --keep-out          Skip out/ cleanup.
   --threshold-gb N    Size threshold in GiB (default: 2).
@@ -35,6 +37,7 @@ Examples:
   tools/clean.sh
   tools/clean.sh --aggressive
   tools/clean.sh --purge-state --threshold-gb 1
+  tools/clean.sh --purge-deps
 USAGE
 }
 
@@ -50,6 +53,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --purge-state)
       PURGE_STATE=1
+      shift 1
+      ;;
+    --purge-deps)
+      PURGE_DEPS=1
       shift 1
       ;;
     --keep-build)
@@ -85,6 +92,7 @@ done
 DRY_RUN="${DRY_RUN}" \
 AGGRESSIVE="${AGGRESSIVE}" \
 PURGE_STATE="${PURGE_STATE}" \
+PURGE_DEPS="${PURGE_DEPS}" \
 KEEP_BUILD="${KEEP_BUILD}" \
 KEEP_OUT="${KEEP_OUT}" \
 THRESHOLD_GB="${THRESHOLD_GB}" \
@@ -101,6 +109,7 @@ drive = root
 dry_run = os.environ.get("DRY_RUN", "0") == "1"
 aggressive = os.environ.get("AGGRESSIVE", "0") == "1"
 purge_state = os.environ.get("PURGE_STATE", "0") == "1"
+purge_deps = os.environ.get("PURGE_DEPS", "0") == "1"
 keep_build = os.environ.get("KEEP_BUILD", "0") == "1"
 keep_out = os.environ.get("KEEP_OUT", "0") == "1"
 
@@ -193,6 +202,13 @@ if purge_state:
         remove_path(root / name, "purge state")
     for item in root.glob("session_*"):
         remove_path(item, "purge state")
+
+# Dependency caches (explicit only)
+if purge_deps:
+    remove_path(root / ".agent_deps", "purge deps")
+    remove_path(root / "ui" / "node_modules", "purge deps")
+    for venv in (root / "ref").rglob("venv"):
+        remove_path(venv, "purge deps")
 
 print("[clean] done")
 PY

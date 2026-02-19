@@ -456,6 +456,7 @@ tools/clean.sh
 
 Options:
 - `--aggressive`: drop build/out regardless of size + UI build caches.
+- `--purge-deps`: remove dependency caches (`ui/node_modules`, `.agent_deps`, `ref/*/venv`).
 - `--purge-state`: remove stateful data (`state/`, `db/`, `memory/`, `session_*`) — **data loss**.
 - `--dry-run`: preview what would be deleted.
 
