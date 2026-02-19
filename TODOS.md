@@ -52,13 +52,14 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] Data-driven scenario pack for agentd/broker (scripted runs + evidence capture).
   - [x] Scenario pack runner for multi-scenario runs + evidence validation.
   - [x] One-command devstack (agentd + broker + WebUI) with smoke checks + evidence bundle.
-- [ ] macOS full-stack compose verification on this host blocked by Docker `unpigz/runc` resource errors; needs Docker Desktop resources increased or prebuilt images.
+- [x] macOS full-stack compose verification on this host (Docker Desktop running).
   - 2026-02-19: `docker info` not responding / daemon not running; host-stack verification skipped until Docker Desktop/Colima is running.
   - 2026-02-19: attempted `open -a Docker` and polled `docker info` (12x/120s); all attempts timed out.
   - 2026-02-19: `tools/verify_mac_local_stack.sh` succeeded with `MAC_LOCAL_SKIP_UI=1`.
   - 2026-02-19: local `postgresql@17` brew service fails; `/opt/homebrew/var/log/postgresql@17.log` shows missing `/opt/homebrew/lib/postgresql@17` (shared_preload_libraries=timescaledb). Likely needs a reinstall or config change before using local Postgres as Docker fallback.
   - 2026-02-19: fixed local brew Postgres by symlinking `/opt/homebrew/lib/postgresql@17` and `/opt/homebrew/share/postgresql@17/{timezone,timezonesets}` to the shared dirs and commenting `shared_preload_libraries=timescaledb`; `pg_isready` now reports accepting connections.
   - [x] Host-mode macOS full-stack verification script (Docker only for Postgres/Keycloak) added as fallback.
+  - 2026-02-20: `tools/verify_mac_full_stack.sh` succeeded (log: `build/verify_mac_full_stack.log`).
   - [x] WebUI connection profiles for multi-agentd deployments (direct or broker-backed).
   - [x] WebUI profile-specific run settings per connection profile (model/provider + run limits).
   - [x] Broker multi-deployment routing (`deployment_id`, `X-Agentd-Deployment`) + WebUI deployment selector + docs.
@@ -107,6 +108,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-19: Added run-event payload schemas + fixtures for team handoff/quorum/member results.
   - 2026-02-19: Added broker OpenAPI shapes for team/membership/quorum endpoints (planned).
   - 2026-02-19: Added broker DB tables + CRUD handlers for teams/members/quorum (team runs still stubbed).
+  - 2026-02-19: Team run execution still pending (orchestrate fanout + DB run records + approvals + tests + WebUI).
 - [x] W=10 — Policy hook MVP: deterministic pre/post run + tool call hooks with allow/deny + budget caps, config surface, and audit logs.
 - [ ] W=9 — Attestation bundles: canonical hash format + signed run certificates + verification CLI.
 
@@ -155,6 +157,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
 - [x] Add --quiet to install_git_hooks.sh for permanent quiet hooks.
 - [x] Add curated handbook generator (`docs/HANDBOOK.md`) with `tools/build_handbook_bundle.py` + repo-guard sync check.
 - [x] Add `docs/OPERATIONS.md` to the handbook summary/source index and keep the handbook under 250 lines (196 lines as of 2026-02-19).
+- [x] Add role-based quick paths to the handbook to reduce doc-sifting.
 - [x] Add policy hook deny/audit smoke test with a local stub LLM and CTest wiring.
 
 ## Promoted goals (explicit goals; no non-goals)

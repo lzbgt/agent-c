@@ -55,7 +55,24 @@ System map: `DESIGN.md`.
 
 ---
 
-## 3) Runtime modes
+## 3) Role-based quick paths (merged guidance)
+
+Operator (run it in prod/local):
+- Start with `docs/DEPLOYMENT.md` + `docs/OPERATIONS.md` + `docs/AGENTD.md`.
+- Verify: `tools/verify.sh` (or `tools/verify_compose_stack.sh` for full stack).
+- Keep auth + CORS + size limits aligned with `docs/LIMITS.md`.
+
+Developer (core/daemon/CLI):
+- Build + tests (Quickstart above), then `docs/CLI.md`, `docs/TOOLS.md`, `docs/WORKFLOWS.md`.
+- Protocol/event payloads: `docs/PROTOCOL.md` + `docs/spec/README.md`.
+
+Architect/PM (capability roadmap):
+- Read `DESIGN.md` + `docs/AGENTIC_VISION.md` + `TODOS.md`.
+- Control plane + relay: `docs/BROKER.md`; memory: `docs/MEMORY.md`.
+
+---
+
+## 4) Runtime modes
 
 - **Daemon (`agentd`)**: HTTP/SSE APIs, persistence, tools, workflows, broker connectivity.
 - **CLI (`agent`)**: local sessions; can target daemon endpoints.
@@ -63,7 +80,7 @@ System map: `DESIGN.md`.
 
 ---
 
-## 4) Configuration + secrets
+## 5) Configuration + secrets
 
 Auth + CORS (daemon):
 - `--auth-token` required when binding to non-loopback.
@@ -84,7 +101,7 @@ Useful env overrides:
 
 ---
 
-## 5) Safety defaults (agentd)
+## 6) Safety defaults (agentd)
 
 Tool-loop defaults used when requests omit values (0 = unlimited):
 - `max_steps_default = 0`
@@ -108,7 +125,7 @@ State/DB defaults:
 
 ---
 
-## 6) Diagnostics & health
+## 7) Diagnostics & health
 
 When `--auth-token` is set, all endpoints require `Authorization: Bearer ...`.
 
@@ -120,7 +137,7 @@ When `--auth-token` is set, all endpoints require `Authorization: Bearer ...`.
 
 ---
 
-## 7) Workflows (durable scheduling)
+## 8) Workflows (durable scheduling)
 
 - Workflows are persisted DAGs; restart requeues running tasks (at-least-once).
 - Priority hint is clamped to `[-1000, 1000]` (default 0).
@@ -132,7 +149,7 @@ When `--auth-token` is set, all endpoints require `Authorization: Bearer ...`.
 
 ---
 
-## 8) Streaming (SSE)
+## 9) Streaming (SSE)
 
 - Shared SSE parser + stream decoder across CLI/daemon/tool loop.
 - Requests set `stream_options.include_usage=true` and retry without it on 400s.
@@ -143,7 +160,7 @@ When `--auth-token` is set, all endpoints require `Authorization: Bearer ...`.
 
 ---
 
-## 9) Where to look (feature design docs)
+## 10) Where to look (feature design docs)
 
 - `DESIGN.md` for system map and boundaries.
 - `docs/AGENTIC_VISION.md` for user/client + architect expectations and evidence-driven acceptance checks.
@@ -158,7 +175,7 @@ When `--auth-token` is set, all endpoints require `Authorization: Bearer ...`.
 
 ---
 
-## 10) Operational highlights
+## 11) Operational highlights
 
 - Broker should be public; agentd should remain private.
 - Prefer server-side provider keys (`.not_in_repo` / `AGENTD_DOTENV_PATH`).

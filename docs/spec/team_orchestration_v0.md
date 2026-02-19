@@ -1,12 +1,12 @@
 # Team Orchestration v0 (agentd + broker)
 
 Date: 2026-02-19
-Status: v0 (design draft; not implemented)
+Status: v0 (design draft; broker team registry CRUD implemented, team runs + quorum enforcement pending)
 
 This spec defines a **team orchestration model** for multi-agent runs that goes beyond
 single-run tool loops. It formalizes agent groups, roles, shared memory scopes, and
 quorum gating for sensitive actions. This is a **design target**; endpoints and schemas
-listed below are proposed and not yet implemented.
+listed below are proposed and only partially implemented today (team registry CRUD only).
 
 ---
 
@@ -137,38 +137,42 @@ created_unix_ms: integer
 This spec does **not** commit to agentd vs broker ownership. The same shapes can be
 hosted in either component; the broker is recommended for multi-deployment routing.
 
+Current broker implementation:
+- `GET/POST/PATCH/DELETE /v1/teams` + `/members` + `/quorum` are implemented.
+- `/v1/teams/{team_id}/runs` endpoints currently return `501`.
+
 ### Team management
 
 ```
-POST   /api/v1/team
-GET    /api/v1/team/{team_id}
-PATCH  /api/v1/team/{team_id}
-DELETE /api/v1/team/{team_id}
+POST   /v1/teams
+GET    /v1/teams/{team_id}
+PATCH  /v1/teams/{team_id}
+DELETE /v1/teams/{team_id}
 ```
 
 ### Membership
 
 ```
-POST   /api/v1/team/{team_id}/members
-GET    /api/v1/team/{team_id}/members
-PATCH  /api/v1/team/{team_id}/members/{member_id}
-DELETE /api/v1/team/{team_id}/members/{member_id}
+POST   /v1/teams/{team_id}/members
+GET    /v1/teams/{team_id}/members
+PATCH  /v1/teams/{team_id}/members/{member_id}
+DELETE /v1/teams/{team_id}/members/{member_id}
 ```
 
 ### Quorum rules
 
 ```
-POST   /api/v1/team/{team_id}/quorum
-GET    /api/v1/team/{team_id}/quorum
-PATCH  /api/v1/team/{team_id}/quorum/{rule_id}
-DELETE /api/v1/team/{team_id}/quorum/{rule_id}
+POST   /v1/teams/{team_id}/quorum
+GET    /v1/teams/{team_id}/quorum
+PATCH  /v1/teams/{team_id}/quorum/{rule_id}
+DELETE /v1/teams/{team_id}/quorum/{rule_id}
 ```
 
 ### Team runs
 
 ```
-POST /api/v1/team/{team_id}/run
-GET  /api/v1/team/{team_id}/run/{team_run_id}
+POST /v1/teams/{team_id}/runs
+GET  /v1/teams/{team_id}/runs/{team_run_id}
 ```
 
 Run requests may accept:

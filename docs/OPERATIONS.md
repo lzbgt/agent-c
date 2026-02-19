@@ -95,6 +95,7 @@ Use the macOS scripts when you want broker + connector in the loop:
 Compose image builds pass proxy args for package installs. Defaults:
 - `HTTP_PROXY`/`HTTPS_PROXY`: `http://host.docker.internal:8120`
 - `NO_PROXY`: `localhost,127.0.0.1,::1,host.docker.internal`
+Use `host.docker.internal` (not an ad-hoc hostname like `m2`) so containers can resolve the proxy consistently.
 
 Runtime containers do not receive proxy environment variables by default so intra-stack
 traffic stays direct. Override by exporting `HTTP_PROXY`/`HTTPS_PROXY` before `docker compose`.
