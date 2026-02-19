@@ -1,7 +1,7 @@
 # Agentd OTA Update (v0)
 
-Date: 2026-02-14
-Status: Draft (proposed + implemented in this repo)
+Date: 2026-02-19
+Status: v0 (implemented in this repo; rolling)
 
 ## Goals
 

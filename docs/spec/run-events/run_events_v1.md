@@ -1,6 +1,6 @@
-# Run/Workflow Event Schema v1 (Draft)
+# Run/Workflow Event Schema v1
 
-Date: 2026-02-14
+Date: 2026-02-19
 
 This document defines the **canonical event envelope** used by `agentd` runs, durable workflows,
 and broker relay surfaces. The goal is a **single, versioned schema** so UIs, tools, and tests
