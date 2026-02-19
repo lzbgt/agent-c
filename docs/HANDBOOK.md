@@ -87,6 +87,7 @@ Useful env overrides:
 ## 5) Where to look (feature design docs)
 
 - `DESIGN.md` for system map and boundaries.
+- `TODOS.md` for roadmap and weighted tasks.
 - `docs/` for feature docs: protocol, client, workflows, tools, memory, diagnostics, DB, streaming, broker, deployment, platform.
 - `docs/spec/` for versioned specs.
 - `docs/openapi/` for OpenAPI definitions.
