@@ -316,10 +316,13 @@ seen_req = False
 seen_res = False
 start = time.time()
 
-opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+opener = urllib.request.build_opener(
+  urllib.request.ProxyHandler({}),
+  urllib.request.HTTPSHandler(context=ctx),
+)
 
 try:
-  with opener.open(req, context=ctx, timeout=5) as resp:
+  with opener.open(req, timeout=5) as resp:
     while time.time() - start < 20:
       try:
         line = resp.readline()
