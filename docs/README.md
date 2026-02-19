@@ -9,6 +9,7 @@ Start here if you want the shortest path to the right document.
 - `docs/DEPLOYMENT.md`: production checklist (agentd + broker + WebUI).
 - `docs/WEBUI.md`: WebUI dev/build/runtime config and reliability notes.
 - `docs/TESTING.md`: verification workflows, network smokes, and E2E harness.
+- `docs/CLEANUP.md`: cleanup commands, repo size reports, and guard scripts.
 
 ## Core runtime
 
