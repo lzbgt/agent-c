@@ -333,12 +333,36 @@ agent_test_openrouter_auth_ok() {
   if [[ -n "${OPENROUTER_X_TITLE:-}" ]]; then
     headers+=(-H "X-Title: ${OPENROUTER_X_TITLE}")
   fi
-  local resp status
+  local resp status body
   resp="$(curl -sS --noproxy "*" -w "\n%{http_code}" \
     "${headers[@]}" \
     "${base_url}/models" || true)"
   status="${resp##*$'\n'}"
+  body="${resp%$'\n'*}"
   if [[ "${status}" == "401" || "${status}" == "403" ]]; then
+    local err
+    err="$(printf "%s" "${body}" | python3 - <<'PY' 2>/dev/null || true
+import json, sys
+raw = sys.stdin.read()
+try:
+    obj = json.loads(raw)
+except Exception:
+    raise SystemExit
+err = obj.get("error") or {}
+msg = err.get("message") or ""
+code = err.get("code") or ""
+out = ""
+if code:
+    out = f"{code}"
+if msg:
+    out = f"{out}: {msg}" if out else msg
+if out:
+    print(out)
+PY
+)"
+    if [[ -n "${err}" ]]; then
+      echo "SKIP: OpenRouter auth error detail: ${err}" >&2
+    fi
     echo "SKIP: OpenRouter auth failed (${status}); check OPENROUTER_API_KEY" >&2
     if [[ -z "${OPENROUTER_HTTP_REFERER:-}" && -z "${OPENROUTER_X_TITLE:-}" ]]; then
       echo "SKIP: OpenRouter may require OPENROUTER_HTTP_REFERER and OPENROUTER_X_TITLE headers" >&2
