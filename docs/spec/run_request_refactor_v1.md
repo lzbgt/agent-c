@@ -1,4 +1,4 @@
-# run_request.cpp Refactor Plan (v1)
+# run_request.cpp Refactor (v1)
 
 Date: 2026-02-19
 

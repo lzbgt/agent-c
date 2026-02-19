@@ -8,7 +8,7 @@ declares its own status (draft/rolling/implemented) in the document header.
 ## Core protocol
 
 - `run-events/run_events_v1.md`: canonical run/workflow event envelope + payload schemas.
-- `run_request_refactor_v1.md`: run request restructuring notes and migration guidance.
+- `run_request_refactor_v1.md`: run request refactor record (implemented).
 
 ## Streaming
 
