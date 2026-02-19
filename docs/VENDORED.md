@@ -13,6 +13,8 @@ Optional local hook install/uninstall:
 `tools/install_git_hooks.sh`, `tools/uninstall_git_hooks.sh`.
 Hook status: `tools/hooks_status.sh` (use `--json` for scriptable output,
 `--check` to exit non-zero when the guard isn't installed, or combine both).
+These helpers respect `core.hooksPath` if you override the default hooks
+directory.
 
 ## Current vendored subtrees
 
