@@ -37,6 +37,9 @@ static void usage(const char* argv0) {
     "  --ed25519-pubkey-hex <hex> Ed25519 public key (hex)\n"
     "  --ed25519-pubkey-b64 <b64> Ed25519 public key (base64)\n"
     "  --ed25519-pubkey-file <p>  Ed25519 public key (raw bytes or hex/base64 text)\n"
+    "  --ed25519-seed-hex <hex>   Ed25519 seed (hex, 32 bytes)\n"
+    "  --ed25519-seed-b64 <b64>   Ed25519 seed (base64, 32 bytes)\n"
+    "  --ed25519-seed-file <p>    Ed25519 seed (raw bytes or hex/base64 text)\n"
     "  --no-sign                  emit unsigned attestation bundle\n"
     "  --allow-unsigned           allow bundles without attest block (verify mode)\n"
     "  --help                     show this help\n",
@@ -212,6 +215,7 @@ int main(int argc, char** argv) {
   std::string att_path;
   std::vector<uint8_t> hmac_key;
   std::vector<uint8_t> ed25519_pubkey;
+  std::vector<uint8_t> ed25519_seed;
   bool sign = true;
   bool verify = false;
   bool allow_unsigned = false;
@@ -283,6 +287,27 @@ int main(int argc, char** argv) {
       std::string err;
       if (!read_key_file_bytes(path, &ed25519_pubkey, &err)) {
         std::fprintf(stderr, "invalid --ed25519-pubkey-file: %s\n", err.c_str());
+        return 2;
+      }
+    } else if (arg == "--ed25519-seed-hex" && i + 1 < argc) {
+      std::string hex = argv[++i];
+      std::string err;
+      if (!parse_hex_bytes(hex, &ed25519_seed, &err)) {
+        std::fprintf(stderr, "invalid --ed25519-seed-hex: %s\n", err.c_str());
+        return 2;
+      }
+    } else if (arg == "--ed25519-seed-b64" && i + 1 < argc) {
+      std::string b64 = argv[++i];
+      std::string err;
+      if (!base64_decode_bytes(b64, &ed25519_seed, &err)) {
+        std::fprintf(stderr, "invalid --ed25519-seed-b64: %s\n", err.c_str());
+        return 2;
+      }
+    } else if (arg == "--ed25519-seed-file" && i + 1 < argc) {
+      std::string path = argv[++i];
+      std::string err;
+      if (!read_key_file_bytes(path, &ed25519_seed, &err)) {
+        std::fprintf(stderr, "invalid --ed25519-seed-file: %s\n", err.c_str());
         return 2;
       }
     } else if (arg == "--no-sign") {
@@ -547,8 +572,12 @@ int main(int argc, char** argv) {
   }
 
   if (sign) {
-    if (hmac_key.empty()) {
-      std::fprintf(stderr, "signing requested but no HMAC key provided\n");
+    if (!hmac_key.empty() && !ed25519_seed.empty()) {
+      std::fprintf(stderr, "provide either HMAC key or Ed25519 seed, not both\n");
+      return 2;
+    }
+    if (hmac_key.empty() && ed25519_seed.empty()) {
+      std::fprintf(stderr, "signing requested but no HMAC key or Ed25519 seed provided\n");
       return 2;
     }
     if (kid.empty()) {
@@ -561,17 +590,30 @@ int main(int argc, char** argv) {
       std::fprintf(stderr, "failed to canonicalize bundle: %s\n", cerr.c_str());
       return 2;
     }
-    uint8_t mac[32];
-    agent_hmac_sha256(hmac_key.data(), hmac_key.size(), canon.data(), canon.size(), mac);
-    const std::string sig_b64 = base64_encode(mac, sizeof(mac));
-
     Json::Value attest(Json::objectValue);
-    attest["alg"] = "hmac-sha256";
     attest["kid"] = kid;
-    attest["sig"] = sig_b64;
     attest["ts_utc_ms"] = Json::Int64(created_utc_ms);
     attest["hash_alg"] = "agent_json_c14n_v1";
     attest["signing_schema"] = "run_attestation_bundle_v1";
+    if (!hmac_key.empty()) {
+      uint8_t mac[32];
+      agent_hmac_sha256(hmac_key.data(), hmac_key.size(), canon.data(), canon.size(), mac);
+      const std::string sig_b64 = base64_encode(mac, sizeof(mac));
+      attest["alg"] = "hmac-sha256";
+      attest["sig"] = sig_b64;
+    } else {
+      if (ed25519_seed.size() != 32) {
+        std::fprintf(stderr, "invalid ed25519 seed size: %zu\n", ed25519_seed.size());
+        return 2;
+      }
+      uint8_t pk[32];
+      agent_ed25519_publickey(ed25519_seed.data(), pk);
+      uint8_t sig[64];
+      agent_ed25519_sign(canon.data(), canon.size(), ed25519_seed.data(), pk, sig);
+      const std::string sig_b64 = base64_encode(sig, sizeof(sig));
+      attest["alg"] = "ed25519";
+      attest["sig"] = sig_b64;
+    }
     att_bundle["attest"] = attest;
   }
 

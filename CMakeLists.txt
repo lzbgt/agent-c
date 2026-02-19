@@ -471,6 +471,7 @@ if(AGENT_BUILD_HOST)
     NAME run_attestation_bundle_tool_smoke
     COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/run_attestation_bundle_tool_smoke.sh
       $<TARGET_FILE:run_attestation_bundle_tool>
+      $<TARGET_FILE:agent_ed25519_tool>
   )
 
   add_executable(run_events_fixture_sanity_tests

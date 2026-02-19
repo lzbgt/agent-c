@@ -83,6 +83,12 @@ A host tool is provided to generate the bundle and optional HMAC signature:
 run_attestation_bundle_tool --replay-json <path> --kid <id> --hmac-key-hex <hex>
 ```
 
+Ed25519 signing is also supported:
+
+```
+run_attestation_bundle_tool --replay-json <path> --kid <id> --ed25519-seed-hex <64hex>
+```
+
 The same tool can verify signatures and replay hashes:
 
 ```
