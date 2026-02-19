@@ -45,7 +45,7 @@ void handle_workflow_cancel_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 503;
-    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    resp->body = json_error_body("db not available");
     return;
   }
 
@@ -64,7 +64,7 @@ void handle_workflow_cancel_endpoint(
     args.isMember("workflow_id") && args["workflow_id"].isString() ? trim_copy(args["workflow_id"].asString()) : "";
   if (workflow_id.empty()) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"missing workflow_id\"}";
+    resp->body = json_error_body("missing workflow_id");
     return;
   }
 
@@ -72,7 +72,7 @@ void handle_workflow_cancel_endpoint(
   std::string err;
   if (!db_or_null->get_workflow(workflow_id, &wf, &err)) {
     resp->status = 404;
-    resp->body = "{\"ok\":false,\"error\":\"workflow not found\"}";
+    resp->body = json_error_body("workflow not found");
     return;
   }
 
@@ -118,14 +118,14 @@ void handle_workflow_events_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 503;
-    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    resp->body = json_error_body("db not available");
     return;
   }
 
   const auto wid = query_get(req.query, "workflow_id");
   if (!wid || wid->empty()) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"missing workflow_id\"}";
+    resp->body = json_error_body("missing workflow_id");
     return;
   }
 
@@ -201,7 +201,7 @@ void handle_workflow_stats_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 503;
-    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    resp->body = json_error_body("db not available");
     return;
   }
 

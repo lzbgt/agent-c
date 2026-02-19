@@ -3,6 +3,8 @@
 #include <cctype>
 #include <cstring>
 
+#include <json/json.h>
+
 namespace agentd {
 
 std::string url_decode(std::string_view s) {
@@ -137,6 +139,44 @@ std::string cookie_get(const std::map<std::string, std::string>& headers, const 
     start = sep + 1;
   }
   return "";
+}
+
+std::string error_code_from_message(const std::string& message) {
+  std::string out;
+  out.reserve(message.size());
+  bool prev_us = false;
+  for (unsigned char c : message) {
+    if ((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) {
+      out.push_back((char)c);
+      prev_us = false;
+      continue;
+    }
+    if (c >= 'A' && c <= 'Z') {
+      out.push_back((char)(c - 'A' + 'a'));
+      prev_us = false;
+      continue;
+    }
+    if (!prev_us && !out.empty()) {
+      out.push_back('_');
+      prev_us = true;
+    }
+  }
+  while (!out.empty() && out.back() == '_') out.pop_back();
+  if (out.empty()) out = "error";
+  return out;
+}
+
+std::string json_error_body(const std::string& message, const std::string& code, const Json::Value* details) {
+  Json::Value root(Json::objectValue);
+  root["ok"] = false;
+  root["error"] = message;
+  root["err"] = message;
+  const std::string final_code = code.empty() ? error_code_from_message(message) : code;
+  if (!final_code.empty()) root["code"] = final_code;
+  if (details) root["details"] = *details;
+  Json::StreamWriterBuilder wb;
+  wb["indentation"] = "";
+  return Json::writeString(wb, root);
 }
 
 }  // namespace agentd

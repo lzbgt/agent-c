@@ -148,7 +148,7 @@ void handle_session_new_endpoint(
     std::string err;
     if (!json_parse_object(req.body, &body, &err)) {
       resp->status = 400;
-      resp->body = R"({"ok":false,"error":"invalid JSON body"})";
+      resp->body = json_error_body("invalid JSON body");
       return;
     }
     if (body.isMember("session_id") && body["session_id"].isString()) {
@@ -163,13 +163,13 @@ void handle_session_new_endpoint(
   std::string sid = requested_id.empty() ? make_uuidish_session_id() : requested_id;
   if (!session_id_is_safe(sid)) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    resp->body = json_error_body("invalid session_id");
     return;
   }
 
   if (!db || !db->is_open()) {
     resp->status = 500;
-    resp->body = R"({"ok":false,"error":"db not available"})";
+    resp->body = json_error_body("db not available");
     return;
   }
 
@@ -231,18 +231,18 @@ void handle_session_get_endpoint(
   const auto sid = query_get(req.query, "session_id");
   if (!sid || sid->empty()) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"missing session_id"})";
+    resp->body = json_error_body("missing session_id");
     return;
   }
   if (!session_id_is_safe(*sid)) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    resp->body = json_error_body("invalid session_id");
     return;
   }
 
   if (!db || !db->is_open()) {
     resp->status = 500;
-    resp->body = R"({"ok":false,"error":"db not available"})";
+    resp->body = json_error_body("db not available");
     return;
   }
 
@@ -260,7 +260,7 @@ void handle_session_get_endpoint(
   }
   if (!exists) {
     resp->status = 404;
-    resp->body = R"({"ok":false,"error":"session not found"})";
+    resp->body = json_error_body("session not found");
     return;
   }
 
@@ -306,13 +306,13 @@ void handle_session_ui_event_endpoint(
   if (!daemon_require_auth(cfg, req, resp)) return;
   if (!db || !db->is_open()) {
     resp->status = 500;
-    resp->body = R"({"ok":false,"error":"db not available"})";
+    resp->body = json_error_body("db not available");
     return;
   }
 
   if (req.body.empty()) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"missing JSON body"})";
+    resp->body = json_error_body("missing JSON body");
     return;
   }
 
@@ -320,7 +320,7 @@ void handle_session_ui_event_endpoint(
   std::string perr;
   if (!json_parse_object(req.body, &body, &perr)) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"invalid JSON body"})";
+    resp->body = json_error_body("invalid JSON body");
     return;
   }
 
@@ -359,12 +359,12 @@ void handle_session_ui_event_endpoint(
 
   if (!session_id_is_safe(session_id)) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    resp->body = json_error_body("invalid session_id");
     return;
   }
   if (type.empty()) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"missing type"})";
+    resp->body = json_error_body("missing type");
     return;
   }
 
@@ -378,7 +378,7 @@ void handle_session_ui_event_endpoint(
   };
   if (!is_safe_client_field(client_id) || !is_safe_client_field(client_kind) || !is_safe_client_field(client_instance_id)) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"invalid client identity"})";
+    resp->body = json_error_body("invalid client identity");
     return;
   }
 
@@ -463,19 +463,19 @@ void handle_session_audit_endpoint(
   if (!daemon_require_auth(cfg, req, resp)) return;
   if (!db || !db->is_open()) {
     resp->status = 500;
-    resp->body = R"({"ok":false,"error":"db not available"})";
+    resp->body = json_error_body("db not available");
     return;
   }
 
   const auto sid = query_get(req.query, "session_id");
   if (!sid || sid->empty()) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"missing session_id"})";
+    resp->body = json_error_body("missing session_id");
     return;
   }
   if (!session_id_is_safe(*sid)) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    resp->body = json_error_body("invalid session_id");
     return;
   }
   size_t max_bytes = 1024 * 1024;
@@ -522,19 +522,19 @@ void handle_session_client_events_endpoint(
   if (!daemon_require_auth(cfg, req, resp)) return;
   if (!db || !db->is_open()) {
     resp->status = 500;
-    resp->body = R"({"ok":false,"error":"db not available"})";
+    resp->body = json_error_body("db not available");
     return;
   }
 
   const auto sid = query_get(req.query, "session_id");
   if (!sid || sid->empty()) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"missing session_id"})";
+    resp->body = json_error_body("missing session_id");
     return;
   }
   if (!session_id_is_safe(*sid)) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    resp->body = json_error_body("invalid session_id");
     return;
   }
 
@@ -592,19 +592,19 @@ void handle_session_clients_endpoint(
   if (!daemon_require_auth(cfg, req, resp)) return;
   if (!db || !db->is_open()) {
     resp->status = 500;
-    resp->body = R"({"ok":false,"error":"db not available"})";
+    resp->body = json_error_body("db not available");
     return;
   }
 
   const auto sid = query_get(req.query, "session_id");
   if (!sid || sid->empty()) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"missing session_id"})";
+    resp->body = json_error_body("missing session_id");
     return;
   }
   if (!session_id_is_safe(*sid)) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    resp->body = json_error_body("invalid session_id");
     return;
   }
 
@@ -724,12 +724,12 @@ void handle_session_upload_endpoint(
 
   if (!db || !db->is_open()) {
     resp->status = 500;
-    resp->body = R"({"ok":false,"error":"db not available"})";
+    resp->body = json_error_body("db not available");
     return;
   }
   if (cfg.sessions_root_dir.empty()) {
     resp->status = 500;
-    resp->body = R"({"ok":false,"error":"sessions_root_dir not configured"})";
+    resp->body = json_error_body("sessions_root_dir not configured");
     return;
   }
 
@@ -737,28 +737,28 @@ void handle_session_upload_endpoint(
   std::string jerr;
   if (!json_parse_object(req.body, &body, &jerr)) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"invalid JSON body"})";
+    resp->body = json_error_body("invalid JSON body");
     return;
   }
 
   const std::string session_id = body.isMember("session_id") && body["session_id"].isString() ? body["session_id"].asString() : "";
   if (!session_id_is_safe(session_id)) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    resp->body = json_error_body("invalid session_id");
     return;
   }
 
   const Json::Value& files = body["files"];
   if (!files.isArray() || files.empty()) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"missing files array"})";
+    resp->body = json_error_body("missing files array");
     return;
   }
 
   const std::filesystem::path session_root = session_root_path(cfg.sessions_root_dir, session_id);
   if (session_root.empty()) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    resp->body = json_error_body("invalid session_id");
     return;
   }
   std::error_code ec;
@@ -896,19 +896,19 @@ void handle_session_artifacts_endpoint(
   if (!daemon_require_auth(cfg, req, resp)) return;
   if (!db || !db->is_open()) {
     resp->status = 500;
-    resp->body = R"({"ok":false,"error":"db not available"})";
+    resp->body = json_error_body("db not available");
     return;
   }
 
   const auto sid = query_get(req.query, "session_id");
   if (!sid || sid->empty()) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"missing session_id"})";
+    resp->body = json_error_body("missing session_id");
     return;
   }
   if (!session_id_is_safe(*sid)) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    resp->body = json_error_body("invalid session_id");
     return;
   }
   size_t max_bytes = 2 * 1024 * 1024;
@@ -1010,7 +1010,7 @@ void handle_session_scene_get_endpoint(
   const auto sid = query_get(req.query, "session_id");
   if (!sid || sid->empty() || !session_id_is_safe(*sid)) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    resp->body = json_error_body("invalid session_id");
     return;
   }
 
@@ -1053,7 +1053,7 @@ void handle_session_scene_apply_endpoint(
 
   if (req.body.empty()) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"missing JSON body"})";
+    resp->body = json_error_body("missing JSON body");
     return;
   }
 
@@ -1061,19 +1061,19 @@ void handle_session_scene_apply_endpoint(
   std::string perr;
   if (!json_parse_object(req.body, &body, &perr)) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"invalid JSON body"})";
+    resp->body = json_error_body("invalid JSON body");
     return;
   }
   const std::string sid = body.isMember("session_id") && body["session_id"].isString() ? body["session_id"].asString() : "";
   if (sid.empty() || !session_id_is_safe(sid)) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    resp->body = json_error_body("invalid session_id");
     return;
   }
   const Json::Value ops = body.isMember("ops") ? body["ops"] : Json::Value(Json::arrayValue);
   if (!ops.isArray()) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"ops must be an array"})";
+    resp->body = json_error_body("ops must be an array");
     return;
   }
 
@@ -1127,12 +1127,12 @@ void handle_session_delete_endpoint(
   const auto sid = query_get(req.query, "session_id");
   if (!sid || sid->empty()) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"missing session_id"})";
+    resp->body = json_error_body("missing session_id");
     return;
   }
   if (!session_id_is_safe(*sid)) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"invalid session_id"})";
+    resp->body = json_error_body("invalid session_id");
     return;
   }
 

@@ -124,7 +124,7 @@ void handle_run_replay_endpoint(
 
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   sqlite3_stmt* st = nullptr;

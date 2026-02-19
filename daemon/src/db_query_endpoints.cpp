@@ -168,7 +168,7 @@ void handle_db_runs_endpoint(
 #if !defined(AGENT_HAVE_SQLITE3)
   // unreachable (handled by open_db_or_error)
   resp->status = 500;
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   sqlite3_stmt* st = nullptr;
@@ -306,7 +306,7 @@ void handle_db_run_endpoint(
 
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   // Run row
@@ -573,7 +573,7 @@ void handle_db_artifacts_endpoint(
 
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   sqlite3_stmt* st = nullptr;
@@ -672,7 +672,7 @@ void handle_db_ui_actions_endpoint(
 
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   sqlite3_stmt* st = nullptr;
@@ -762,7 +762,7 @@ void handle_db_sessions_endpoint(
 
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   sqlite3_stmt* st = nullptr;
@@ -850,7 +850,7 @@ void handle_db_messages_endpoint(
 
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   sqlite3_stmt* st = nullptr;
@@ -974,7 +974,7 @@ void handle_db_client_events_endpoint(
 
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   sqlite3_stmt* st = nullptr;
@@ -1066,7 +1066,7 @@ void handle_db_workflows_endpoint(
 
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   sqlite3_stmt* st = nullptr;
@@ -1206,7 +1206,7 @@ void handle_db_workflow_endpoint(
 
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   sqlite3_stmt* st = nullptr;
@@ -1440,7 +1440,7 @@ void handle_db_workflow_tasks_endpoint(
 
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   sqlite3_stmt* st = nullptr;
@@ -1579,7 +1579,7 @@ void handle_db_workflow_events_endpoint(
 
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   sqlite3_stmt* st = nullptr;

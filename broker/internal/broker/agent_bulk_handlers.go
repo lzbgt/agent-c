@@ -92,36 +92,36 @@ func (s *Server) relayAgentHTTPBulk(
 
 func (s *Server) handleAgentOtaUpdateBulk(w http.ResponseWriter, r *http.Request, agentID string) {
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	p, err := s.requirePrincipal(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 	if ok, err := s.canAccessAgent(r.Context(), p, agentID); err != nil {
-		http.Error(w, "db error", http.StatusInternalServerError)
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
 		return
 	} else if !ok {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		writeErrorJSON(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
 	body, err := readBodyBounded(r.Body, s.cfg.MaxRequestBodySize)
 	if err != nil {
-		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+		writeErrorJSON(w, "request body too large", http.StatusRequestEntityTooLarge)
 		return
 	}
 	deploymentIDs, err := deploymentIDsFromBody(body)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if len(deploymentIDs) == 0 {
 		deploymentIDs, err = deploymentIDsFromQuery(r)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeErrorJSON(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 	}
@@ -134,7 +134,7 @@ func (s *Server) handleAgentOtaUpdateBulk(w http.ResponseWriter, r *http.Request
 		}
 	}
 	if len(deploymentIDs) == 0 {
-		http.Error(w, "agent not connected", http.StatusNotFound)
+		writeErrorJSON(w, "agent not connected", http.StatusNotFound)
 		return
 	}
 
@@ -171,24 +171,24 @@ func (s *Server) handleAgentOtaUpdateBulk(w http.ResponseWriter, r *http.Request
 
 func (s *Server) handleAgentOtaStatusBulk(w http.ResponseWriter, r *http.Request, agentID string) {
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	p, err := s.requirePrincipal(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 	if ok, err := s.canAccessAgent(r.Context(), p, agentID); err != nil {
-		http.Error(w, "db error", http.StatusInternalServerError)
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
 		return
 	} else if !ok {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		writeErrorJSON(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	deploymentIDs, err := deploymentIDsFromQuery(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if len(deploymentIDs) == 0 {
@@ -200,7 +200,7 @@ func (s *Server) handleAgentOtaStatusBulk(w http.ResponseWriter, r *http.Request
 		}
 	}
 	if len(deploymentIDs) == 0 {
-		http.Error(w, "agent not connected", http.StatusNotFound)
+		writeErrorJSON(w, "agent not connected", http.StatusNotFound)
 		return
 	}
 
@@ -226,36 +226,36 @@ func (s *Server) handleAgentOtaStatusBulk(w http.ResponseWriter, r *http.Request
 
 func (s *Server) handleAgentMemoryRetentionBulk(w http.ResponseWriter, r *http.Request, agentID string) {
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	p, err := s.requirePrincipal(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 	if ok, err := s.canAccessAgent(r.Context(), p, agentID); err != nil {
-		http.Error(w, "db error", http.StatusInternalServerError)
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
 		return
 	} else if !ok {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		writeErrorJSON(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
 	body, err := readBodyBounded(r.Body, s.cfg.MaxRequestBodySize)
 	if err != nil {
-		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+		writeErrorJSON(w, "request body too large", http.StatusRequestEntityTooLarge)
 		return
 	}
 	deploymentIDs, err := deploymentIDsFromBody(body)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	if len(deploymentIDs) == 0 {
 		deploymentIDs, err = deploymentIDsFromQuery(r)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeErrorJSON(w, err.Error(), http.StatusBadRequest)
 			return
 		}
 	}
@@ -268,7 +268,7 @@ func (s *Server) handleAgentMemoryRetentionBulk(w http.ResponseWriter, r *http.R
 		}
 	}
 	if len(deploymentIDs) == 0 {
-		http.Error(w, "agent not connected", http.StatusNotFound)
+		writeErrorJSON(w, "agent not connected", http.StatusNotFound)
 		return
 	}
 
@@ -305,19 +305,19 @@ func (s *Server) handleAgentMemoryRetentionBulk(w http.ResponseWriter, r *http.R
 
 func (s *Server) handleAgentMemoryRecapsBulk(w http.ResponseWriter, r *http.Request, agentID string) {
 	if r.Method != "GET" && r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	p, err := s.requirePrincipal(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 	if ok, err := s.canAccessAgent(r.Context(), p, agentID); err != nil {
-		http.Error(w, "db error", http.StatusInternalServerError)
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
 		return
 	} else if !ok {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		writeErrorJSON(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -325,19 +325,19 @@ func (s *Server) handleAgentMemoryRecapsBulk(w http.ResponseWriter, r *http.Requ
 	if r.Method == "POST" {
 		body, err = readBodyBounded(r.Body, s.cfg.MaxRequestBodySize)
 		if err != nil {
-			http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+			writeErrorJSON(w, "request body too large", http.StatusRequestEntityTooLarge)
 			return
 		}
 	}
 	deploymentIDs, derr := deploymentIDsFromBody(body)
 	if derr != nil {
-		http.Error(w, derr.Error(), http.StatusBadRequest)
+		writeErrorJSON(w, derr.Error(), http.StatusBadRequest)
 		return
 	}
 	if len(deploymentIDs) == 0 {
 		deploymentIDs, derr = deploymentIDsFromQuery(r)
 		if derr != nil {
-			http.Error(w, derr.Error(), http.StatusBadRequest)
+			writeErrorJSON(w, derr.Error(), http.StatusBadRequest)
 			return
 		}
 	}
@@ -350,7 +350,7 @@ func (s *Server) handleAgentMemoryRecapsBulk(w http.ResponseWriter, r *http.Requ
 		}
 	}
 	if len(deploymentIDs) == 0 {
-		http.Error(w, "agent not connected", http.StatusNotFound)
+		writeErrorJSON(w, "agent not connected", http.StatusNotFound)
 		return
 	}
 
@@ -393,25 +393,25 @@ func (s *Server) handleAgentMemoryRecapsBulk(w http.ResponseWriter, r *http.Requ
 
 func (s *Server) handleAgentMemorySalienceBulk(w http.ResponseWriter, r *http.Request, agentID string) {
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	p, err := s.requirePrincipal(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 	if ok, err := s.canAccessAgent(r.Context(), p, agentID); err != nil {
-		http.Error(w, "db error", http.StatusInternalServerError)
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
 		return
 	} else if !ok {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		writeErrorJSON(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
 	deploymentIDs, derr := deploymentIDsFromQuery(r)
 	if derr != nil {
-		http.Error(w, derr.Error(), http.StatusBadRequest)
+		writeErrorJSON(w, derr.Error(), http.StatusBadRequest)
 		return
 	}
 	if len(deploymentIDs) == 0 {
@@ -423,7 +423,7 @@ func (s *Server) handleAgentMemorySalienceBulk(w http.ResponseWriter, r *http.Re
 		}
 	}
 	if len(deploymentIDs) == 0 {
-		http.Error(w, "agent not connected", http.StatusNotFound)
+		writeErrorJSON(w, "agent not connected", http.StatusNotFound)
 		return
 	}
 

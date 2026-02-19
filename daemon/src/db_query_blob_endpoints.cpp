@@ -215,7 +215,7 @@ void handle_db_blobs_endpoint(
 
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   std::string sql =
@@ -339,7 +339,7 @@ void handle_db_blob_endpoint(
 
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   sqlite3_stmt* st = nullptr;
@@ -461,7 +461,7 @@ void handle_db_blob_analytics_endpoint(
 
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   Json::Value out(Json::objectValue);

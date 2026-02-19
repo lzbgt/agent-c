@@ -279,7 +279,7 @@ void handle_memory_checkpoints_endpoint(
   std::error_code ec;
   if (mem_root.empty() || !std::filesystem::exists(ckdir, ec) || !std::filesystem::is_directory(ckdir, ec)) {
     resp->status = 404;
-    resp->body = "{\"ok\":false,\"error\":\"no checkpoints directory\"}";
+    resp->body = json_error_body("no checkpoints directory");
     return;
   }
 
@@ -348,7 +348,7 @@ void handle_memory_correlate_endpoint(
   const std::string tid = trace_id && !trace_id->empty() ? *trace_id : "";
   if (tid.empty()) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"missing trace_id\"}";
+    resp->body = json_error_body("missing trace_id");
     return;
   }
 
@@ -395,7 +395,7 @@ void handle_memory_correlate_endpoint(
   std::string lerr;
   if (!memory_list_structured_checkpoints(mem_root, since_ms, until_ms, structured_path_filter, ck_limit, &metas, &lerr) || metas.empty()) {
     resp->status = 404;
-    resp->body = "{\"ok\":false,\"error\":\"no checkpoints in window\"}";
+    resp->body = json_error_body("no checkpoints in window");
     return;
   }
 
@@ -459,7 +459,7 @@ void handle_memory_correlate_endpoint(
     Json::Value entries, ckinfo;
     if (!extract_entries(newest, &entries, &ckinfo)) {
       resp->status = 500;
-      resp->body = "{\"ok\":false,\"error\":\"failed to extract entries from newest checkpoint\"}";
+      resp->body = json_error_body("failed to extract entries from newest checkpoint");
       return;
     }
     out["checkpoint"] = ckinfo;
@@ -518,14 +518,14 @@ void handle_memory_query_endpoint(
   const std::filesystem::path mem_root = memory_root_from_cfg(cfg);
   if (mem_root.empty()) {
     resp->status = 500;
-    resp->body = "{\"ok\":false,\"error\":\"missing memory root\"}";
+    resp->body = json_error_body("missing memory root");
     return;
   }
   std::vector<MemoryCheckpointMeta> metas;
   std::string lerr;
   if (!memory_list_structured_checkpoints(mem_root, since_ms, until_ms, structured_path_filter, /*limit=*/1, &metas, &lerr) || metas.empty()) {
     resp->status = 404;
-    resp->body = "{\"ok\":false,\"error\":\"no checkpoints in window\"}";
+    resp->body = json_error_body("no checkpoints in window");
     return;
   }
   const MemoryCheckpointMeta& newest = metas[0];
@@ -535,12 +535,12 @@ void handle_memory_query_endpoint(
   std::string rerr;
   if (!memory_read_structured_checkpoint_items(mem_root, newest.checkpoint_path_rel, &structured_path2, &items, &rerr)) {
     resp->status = 500;
-    resp->body = "{\"ok\":false,\"error\":\"failed to read checkpoint\"}";
+    resp->body = json_error_body("failed to read checkpoint");
     return;
   }
   if (!items.isObject()) {
     resp->status = 500;
-    resp->body = "{\"ok\":false,\"error\":\"checkpoint missing doc.items\"}";
+    resp->body = json_error_body("checkpoint missing doc.items");
     return;
   }
 
@@ -598,7 +598,7 @@ void handle_memory_index_endpoint(
   std::error_code ec;
   if (mem_root.empty() || !std::filesystem::exists(mem_root, ec) || !std::filesystem::is_directory(mem_root, ec)) {
     resp->status = 404;
-    resp->body = "{\"ok\":false,\"error\":\"memory root not found\"}";
+    resp->body = json_error_body("memory root not found");
     return;
   }
 
@@ -606,7 +606,7 @@ void handle_memory_index_endpoint(
   const std::string session_id = session_q && !session_q->empty() ? *session_q : "";
   if (!session_id.empty() && !session_id_is_safe(session_id)) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"invalid session_id\"}";
+    resp->body = json_error_body("invalid session_id");
     return;
   }
 
@@ -697,7 +697,7 @@ void handle_memory_salience_endpoint(
   std::error_code ec;
   if (mem_root.empty() || !std::filesystem::exists(mem_root, ec) || !std::filesystem::is_directory(mem_root, ec)) {
     resp->status = 404;
-    resp->body = "{\"ok\":false,\"error\":\"memory root not found\"}";
+    resp->body = json_error_body("memory root not found");
     return;
   }
 
@@ -743,7 +743,7 @@ void handle_memory_salience_endpoint(
   std::string err;
   if (!memory_salience_collect(mem_root, pol, &rep, &err)) {
     resp->status = 500;
-    resp->body = "{\"ok\":false,\"error\":\"failed to compute memory salience\"}";
+    resp->body = json_error_body("failed to compute memory salience");
     return;
   }
 
@@ -852,7 +852,7 @@ void handle_memory_recaps_endpoint(
 
   if (req.method != "POST") {
     resp->status = 405;
-    resp->body = "{\"ok\":false,\"error\":\"method not allowed\"}";
+    resp->body = json_error_body("method not allowed");
     return;
   }
 

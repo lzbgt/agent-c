@@ -2,6 +2,8 @@
 
 Date: 2026-02-19
 
+Design context: see `DESIGN.md` for system architecture; this document focuses on client-facing collaboration and APIs.
+
 This document consolidates the client-facing design and API surfaces for `agentd`.
 It replaces the previous split across:
 - CLIENT_AGENTD_SPEC

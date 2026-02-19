@@ -11,30 +11,30 @@ import (
 
 func (s *Server) handleAgentMembersList(w http.ResponseWriter, r *http.Request, agentID string) {
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	p, err := s.requirePrincipal(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 	if p.AuthKind != "oidc" {
-		http.Error(w, "oidc required", http.StatusForbidden)
+		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
 	ownerSub, err := s.cfg.DB.GetAgentOwnerSub(r.Context(), agentID)
 	if err != nil {
-		http.Error(w, "agent not found", http.StatusNotFound)
+		writeErrorJSON(w, "agent not found", http.StatusNotFound)
 		return
 	}
 	if !p.Admin && p.Sub != ownerSub {
-		http.Error(w, "not owner", http.StatusForbidden)
+		writeErrorJSON(w, "not owner", http.StatusForbidden)
 		return
 	}
 	members, err := s.cfg.DB.ListAgentMembers(r.Context(), agentID)
 	if err != nil {
-		http.Error(w, "db error", http.StatusInternalServerError)
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
 		return
 	}
 	out := make([]map[string]any, 0, len(members))
@@ -55,30 +55,30 @@ func (s *Server) handleAgentMembersList(w http.ResponseWriter, r *http.Request, 
 
 func (s *Server) handleAgentMembersUpsert(w http.ResponseWriter, r *http.Request, agentID string) {
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	p, err := s.requirePrincipal(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 	if p.AuthKind != "oidc" {
-		http.Error(w, "oidc required", http.StatusForbidden)
+		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
 	ownerSub, err := s.cfg.DB.GetAgentOwnerSub(r.Context(), agentID)
 	if err != nil {
-		http.Error(w, "agent not found", http.StatusNotFound)
+		writeErrorJSON(w, "agent not found", http.StatusNotFound)
 		return
 	}
 	if !p.Admin && p.Sub != ownerSub {
-		http.Error(w, "not owner", http.StatusForbidden)
+		writeErrorJSON(w, "not owner", http.StatusForbidden)
 		return
 	}
 	body, err := readBodyBounded(r.Body, 1024*1024)
 	if err != nil {
-		http.Error(w, "invalid body", http.StatusBadRequest)
+		writeErrorJSON(w, "invalid body", http.StatusBadRequest)
 		return
 	}
 	req := struct {
@@ -87,13 +87,13 @@ func (s *Server) handleAgentMembersUpsert(w http.ResponseWriter, r *http.Request
 	}{}
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &req); err != nil {
-			http.Error(w, "invalid json", http.StatusBadRequest)
+			writeErrorJSON(w, "invalid json", http.StatusBadRequest)
 			return
 		}
 	}
 	userSub := strings.TrimSpace(req.UserSub)
 	if userSub == "" {
-		http.Error(w, "missing user_sub", http.StatusBadRequest)
+		writeErrorJSON(w, "missing user_sub", http.StatusBadRequest)
 		return
 	}
 	role := strings.ToLower(strings.TrimSpace(req.Role))
@@ -104,15 +104,15 @@ func (s *Server) handleAgentMembersUpsert(w http.ResponseWriter, r *http.Request
 		role = "owner"
 	}
 	if role != "user" && role != "admin" && role != "owner" {
-		http.Error(w, "invalid role", http.StatusBadRequest)
+		writeErrorJSON(w, "invalid role", http.StatusBadRequest)
 		return
 	}
 	if role == "owner" && userSub != ownerSub {
-		http.Error(w, "owner role only for agent owner", http.StatusForbidden)
+		writeErrorJSON(w, "owner role only for agent owner", http.StatusForbidden)
 		return
 	}
 	if err := s.cfg.DB.UpsertAgentMember(r.Context(), agentID, userSub, role); err != nil {
-		http.Error(w, "upsert failed", http.StatusBadRequest)
+		writeErrorJSON(w, "upsert failed", http.StatusBadRequest)
 		return
 	}
 	_ = s.cfg.DB.InsertMembershipAudit(r.Context(), p.Sub, userSub, agentID, "upsert", role, traceIDFromContext(r.Context()))
@@ -133,43 +133,43 @@ func (s *Server) handleAgentMembersUpsert(w http.ResponseWriter, r *http.Request
 
 func (s *Server) handleAgentMemberDelete(w http.ResponseWriter, r *http.Request, agentID, userSub string) {
 	if r.Method != "DELETE" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	p, err := s.requirePrincipal(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 	if p.AuthKind != "oidc" {
-		http.Error(w, "oidc required", http.StatusForbidden)
+		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
 	ownerSub, err := s.cfg.DB.GetAgentOwnerSub(r.Context(), agentID)
 	if err != nil {
-		http.Error(w, "agent not found", http.StatusNotFound)
+		writeErrorJSON(w, "agent not found", http.StatusNotFound)
 		return
 	}
 	if !p.Admin && p.Sub != ownerSub {
-		http.Error(w, "not owner", http.StatusForbidden)
+		writeErrorJSON(w, "not owner", http.StatusForbidden)
 		return
 	}
 	userSub = strings.TrimSpace(userSub)
 	if userSub == "" {
-		http.Error(w, "missing user_sub", http.StatusBadRequest)
+		writeErrorJSON(w, "missing user_sub", http.StatusBadRequest)
 		return
 	}
 	if userSub == ownerSub {
-		http.Error(w, "cannot remove owner", http.StatusForbidden)
+		writeErrorJSON(w, "cannot remove owner", http.StatusForbidden)
 		return
 	}
 	ok, err := s.cfg.DB.RemoveAgentMember(r.Context(), agentID, userSub)
 	if err != nil {
-		http.Error(w, "delete failed", http.StatusInternalServerError)
+		writeErrorJSON(w, "delete failed", http.StatusInternalServerError)
 		return
 	}
 	if !ok {
-		http.Error(w, "not found", http.StatusNotFound)
+		writeErrorJSON(w, "not found", http.StatusNotFound)
 		return
 	}
 	_ = s.cfg.DB.InsertMembershipAudit(r.Context(), p.Sub, userSub, agentID, "remove", "", traceIDFromContext(r.Context()))
@@ -189,25 +189,25 @@ func (s *Server) handleAgentMemberDelete(w http.ResponseWriter, r *http.Request,
 
 func (s *Server) handleAgentMembershipAudit(w http.ResponseWriter, r *http.Request, agentID string) {
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	p, err := s.requirePrincipal(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 	if p.AuthKind != "oidc" {
-		http.Error(w, "oidc required", http.StatusForbidden)
+		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
 	ownerSub, err := s.cfg.DB.GetAgentOwnerSub(r.Context(), agentID)
 	if err != nil {
-		http.Error(w, "agent not found", http.StatusNotFound)
+		writeErrorJSON(w, "agent not found", http.StatusNotFound)
 		return
 	}
 	if !p.Admin && p.Sub != ownerSub {
-		http.Error(w, "not owner", http.StatusForbidden)
+		writeErrorJSON(w, "not owner", http.StatusForbidden)
 		return
 	}
 	limit := 200
@@ -223,7 +223,7 @@ func (s *Server) handleAgentMembershipAudit(w http.ResponseWriter, r *http.Reque
 		rows, err = s.cfg.DB.ListMembershipAuditByAgent(r.Context(), p.Sub, agentID, limit)
 	}
 	if err != nil {
-		http.Error(w, "db error", http.StatusInternalServerError)
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
 		return
 	}
 	out := make([]map[string]any, 0, len(rows))

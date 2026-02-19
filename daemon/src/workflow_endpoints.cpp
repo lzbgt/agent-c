@@ -67,7 +67,7 @@ void handle_workflow_submit_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 503;
-    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    resp->body = json_error_body("db not available");
     return;
   }
 
@@ -85,7 +85,7 @@ void handle_workflow_submit_endpoint(
   Json::Value tasks = args["tasks"];
   if (!tasks.isArray() || tasks.empty()) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"missing tasks (expected non-empty array)\"}";
+    resp->body = json_error_body("missing tasks (expected non-empty array)");
     return;
   }
 
@@ -97,7 +97,7 @@ void handle_workflow_submit_endpoint(
     args.isMember("infer_depends_on") && args["infer_depends_on"].isBool() ? args["infer_depends_on"].asBool() : false;
   if (args.isMember("infer_depends_on") && !args["infer_depends_on"].isBool()) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"invalid infer_depends_on (expected boolean)\"}";
+    resp->body = json_error_body("invalid infer_depends_on (expected boolean)");
     return;
   }
 
@@ -106,7 +106,7 @@ void handle_workflow_submit_endpoint(
   if (workflow_id.empty()) workflow_id = new_workflow_id();
   if (!id_is_safe(workflow_id)) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"invalid workflow_id\"}";
+    resp->body = json_error_body("invalid workflow_id");
     return;
   }
 
@@ -114,7 +114,7 @@ void handle_workflow_submit_endpoint(
     args.isMember("trace_id") && args["trace_id"].isString() ? trim_copy(args["trace_id"].asString()) : "";
   if (!trace_id.empty() && !id_is_safe(trace_id)) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"invalid trace_id\"}";
+    resp->body = json_error_body("invalid trace_id");
     return;
   }
   if (trace_id.empty()) {
@@ -125,24 +125,24 @@ void handle_workflow_submit_endpoint(
     args.isMember("session_id") && args["session_id"].isString() ? trim_copy(args["session_id"].asString()) : "";
   if (!session_id.empty() && !session_id_is_safe(session_id)) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"invalid session_id\"}";
+    resp->body = json_error_body("invalid session_id");
     return;
   }
   if (args.isMember("session_weight")) {
     if (!(args["session_weight"].isInt64() || args["session_weight"].isUInt64() || args["session_weight"].isInt() || args["session_weight"].isUInt())) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid session_weight (expected int >= 1)\"}";
+      resp->body = json_error_body("invalid session_weight (expected int >= 1)");
       return;
     }
     const int64_t sw = args["session_weight"].asInt64();
     if (sw < 1) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid session_weight (expected >= 1)\"}";
+      resp->body = json_error_body("invalid session_weight (expected >= 1)");
       return;
     }
     if (!allow_sessions || session_id.empty()) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"session_weight requires allow_sessions=true and non-empty session_id\"}";
+      resp->body = json_error_body("session_weight requires allow_sessions=true and non-empty session_id");
       return;
     }
     // Canonicalize and clamp: keep scheduling stable under extreme inputs.
@@ -153,12 +153,12 @@ void handle_workflow_submit_endpoint(
     args.isMember("idempotency_key") && args["idempotency_key"].isString() ? trim_copy(args["idempotency_key"].asString()) : "";
   if (args.isMember("idempotency_key") && !args["idempotency_key"].isString() && !args["idempotency_key"].isNull()) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"invalid idempotency_key (expected string)\"}";
+    resp->body = json_error_body("invalid idempotency_key (expected string)");
     return;
   }
   if (!idempotency_key.empty() && !id_is_safe(idempotency_key)) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"invalid idempotency_key\"}";
+    resp->body = json_error_body("invalid idempotency_key");
     return;
   }
   if (!idempotency_key.empty()) {
@@ -179,7 +179,7 @@ void handle_workflow_submit_endpoint(
 
   if (tasks.size() > 128) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"too many tasks (max 128)\"}";
+    resp->body = json_error_body("too many tasks (max 128)");
     return;
   }
 
@@ -279,14 +279,14 @@ void handle_workflow_submit_endpoint(
     args.isMember("inputs") && args["inputs"].isObject() ? args["inputs"] : Json::Value(Json::nullValue);
   if (args.isMember("inputs") && !args["inputs"].isObject() && !args["inputs"].isNull()) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"invalid inputs (expected object)\"}";
+    resp->body = json_error_body("invalid inputs (expected object)");
     return;
   }
   if (workflow_inputs.isObject()) {
     const auto keys = workflow_inputs.getMemberNames();
     if (keys.size() > 256) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"too many inputs (max 256)\"}";
+      resp->body = json_error_body("too many inputs (max 256)");
       return;
     }
     for (const auto& k : keys) {
@@ -306,7 +306,7 @@ void handle_workflow_submit_endpoint(
   if (args.isMember("priority")) {
     if (!args["priority"].isInt()) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid priority (expected int)\"}";
+      resp->body = json_error_body("invalid priority (expected int)");
       return;
     }
     workflow_priority = args["priority"].asInt();
@@ -319,13 +319,13 @@ void handle_workflow_submit_endpoint(
   if (args.isMember("deadline_unix_ms")) {
     if (!(args["deadline_unix_ms"].isInt64() || args["deadline_unix_ms"].isUInt64() || args["deadline_unix_ms"].isInt())) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid deadline_unix_ms (expected int64 unix ms)\"}";
+      resp->body = json_error_body("invalid deadline_unix_ms (expected int64 unix ms)");
       return;
     }
     const int64_t v = args["deadline_unix_ms"].asInt64();
     if (v <= 0) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid deadline_unix_ms (expected > 0)\"}";
+      resp->body = json_error_body("invalid deadline_unix_ms (expected > 0)");
       return;
     }
     args["deadline_unix_ms"] = (Json::Int64)v; // canonicalize
@@ -337,7 +337,7 @@ void handle_workflow_submit_endpoint(
   if (args.isMember("workflow_limits")) {
     if (!args["workflow_limits"].isObject() && !args["workflow_limits"].isNull()) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid workflow_limits (expected object)\"}";
+      resp->body = json_error_body("invalid workflow_limits (expected object)");
       return;
     }
     if (args["workflow_limits"].isObject()) {
@@ -346,13 +346,13 @@ void handle_workflow_submit_endpoint(
         const auto& v = lim["max_tool_calls_total"];
         if (!(v.isInt64() || v.isUInt64() || v.isInt() || v.isUInt())) {
           resp->status = 400;
-          resp->body = "{\"ok\":false,\"error\":\"invalid workflow_limits.max_tool_calls_total (expected int >= 0)\"}";
+          resp->body = json_error_body("invalid workflow_limits.max_tool_calls_total (expected int >= 0)");
           return;
         }
         const int64_t n = v.asInt64();
         if (n < 0) {
           resp->status = 400;
-          resp->body = "{\"ok\":false,\"error\":\"invalid workflow_limits.max_tool_calls_total (expected >= 0)\"}";
+          resp->body = json_error_body("invalid workflow_limits.max_tool_calls_total (expected >= 0)");
           return;
         }
         lim["max_tool_calls_total"] = (Json::Int64)std::min<int64_t>(1000000000LL, n); // canonicalize
@@ -361,13 +361,13 @@ void handle_workflow_submit_endpoint(
         const auto& v = lim["max_steps_total"];
         if (!(v.isInt64() || v.isUInt64() || v.isInt() || v.isUInt())) {
           resp->status = 400;
-          resp->body = "{\"ok\":false,\"error\":\"invalid workflow_limits.max_steps_total (expected int >= 0)\"}";
+          resp->body = json_error_body("invalid workflow_limits.max_steps_total (expected int >= 0)");
           return;
         }
         const int64_t n = v.asInt64();
         if (n < 0) {
           resp->status = 400;
-          resp->body = "{\"ok\":false,\"error\":\"invalid workflow_limits.max_steps_total (expected >= 0)\"}";
+          resp->body = json_error_body("invalid workflow_limits.max_steps_total (expected >= 0)");
           return;
         }
         lim["max_steps_total"] = (Json::Int64)std::min<int64_t>(1000000000LL, n); // canonicalize
@@ -376,13 +376,13 @@ void handle_workflow_submit_endpoint(
         const auto& v = lim["max_elapsed_ms_total"];
         if (!(v.isInt64() || v.isUInt64() || v.isInt() || v.isUInt())) {
           resp->status = 400;
-          resp->body = "{\"ok\":false,\"error\":\"invalid workflow_limits.max_elapsed_ms_total (expected int >= 0)\"}";
+          resp->body = json_error_body("invalid workflow_limits.max_elapsed_ms_total (expected int >= 0)");
           return;
         }
         const int64_t n = v.asInt64();
         if (n < 0) {
           resp->status = 400;
-          resp->body = "{\"ok\":false,\"error\":\"invalid workflow_limits.max_elapsed_ms_total (expected >= 0)\"}";
+          resp->body = json_error_body("invalid workflow_limits.max_elapsed_ms_total (expected >= 0)");
           return;
         }
         // Clamp to 1 year to keep values sane (actual enforcement also clamps).
@@ -392,13 +392,13 @@ void handle_workflow_submit_endpoint(
         const auto& v = lim["max_total_tokens"];
         if (!(v.isInt64() || v.isUInt64() || v.isInt() || v.isUInt())) {
           resp->status = 400;
-          resp->body = "{\"ok\":false,\"error\":\"invalid workflow_limits.max_total_tokens (expected int >= 0)\"}";
+          resp->body = json_error_body("invalid workflow_limits.max_total_tokens (expected int >= 0)");
           return;
         }
         const int64_t n = v.asInt64();
         if (n < 0) {
           resp->status = 400;
-          resp->body = "{\"ok\":false,\"error\":\"invalid workflow_limits.max_total_tokens (expected >= 0)\"}";
+          resp->body = json_error_body("invalid workflow_limits.max_total_tokens (expected >= 0)");
           return;
         }
         // Clamp to keep values sane; enforcement also clamps.
@@ -420,7 +420,7 @@ void handle_workflow_submit_endpoint(
     const auto& t = tasks[i];
     if (!t.isObject()) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"task entry is not an object\"}";
+      resp->body = json_error_body("task entry is not an object");
       return;
     }
     const std::string task_id =

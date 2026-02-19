@@ -76,18 +76,18 @@ void handle_trace_lookup_endpoint(
   const std::string trace_id = tid_q ? trim_copy(*tid_q) : std::string();
   if (trace_id.empty()) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"missing trace_id"})";
+    resp->body = json_error_body("missing trace_id");
     return;
   }
   if (!trace_id_is_safe(trace_id)) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"invalid trace_id"})";
+    resp->body = json_error_body("invalid trace_id");
     return;
   }
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 500;
-    resp->body = R"({"ok":false,"error":"db not available"})";
+    resp->body = json_error_body("db not available");
     return;
   }
 

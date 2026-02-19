@@ -2,6 +2,7 @@
 
 #include "daemon_auth.h"
 #include "edge_util.h"
+#include "http_util.h"
 #include "json_util.h"
 #include "string_util.h"
 #include "workflow_event_schema.h"
@@ -27,7 +28,7 @@ void handle_edge_workflow_submit_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 503;
-    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    resp->body = json_error_body("db not available");
     return;
   }
 
@@ -46,7 +47,7 @@ void handle_edge_workflow_submit_endpoint(
   if (workflow_id.empty()) workflow_id = std::string("wf:") + edge_make_uuidish_msg_id();
   if (!edge_id_is_safe(workflow_id)) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"invalid workflow_id\"}";
+    resp->body = json_error_body("invalid workflow_id");
     return;
   }
 
@@ -58,7 +59,7 @@ void handle_edge_workflow_submit_endpoint(
 
   if (!args.isMember("steps") || !args["steps"].isArray() || args["steps"].empty()) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"missing/invalid steps (expected non-empty array)\"}";
+    resp->body = json_error_body("missing/invalid steps (expected non-empty array)");
     return;
   }
 
@@ -73,12 +74,12 @@ void handle_edge_workflow_submit_endpoint(
     const std::string kind = s.isMember("kind") && s["kind"].isString() ? trim_copy(s["kind"].asString()) : "";
     if (step_id.empty() || !edge_id_is_safe(step_id) || kind.empty()) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid step (missing step_id/kind)\"}";
+      resp->body = json_error_body("invalid step (missing step_id/kind)");
       return;
     }
     if (kind != "invoke_tool" && kind != "run_agent" && kind != "join") {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"unsupported step.kind\"}";
+      resp->body = json_error_body("unsupported step.kind");
       return;
     }
 
@@ -88,19 +89,19 @@ void handle_edge_workflow_submit_endpoint(
     Json::Value payload = s.isMember("payload") ? s["payload"] : Json::Value(Json::objectValue);
     if (kind != "join" && !target.isObject()) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid step.target (expected object)\"}";
+      resp->body = json_error_body("invalid step.target (expected object)");
       return;
     }
     if (!payload.isObject()) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid step.payload (expected object)\"}";
+      resp->body = json_error_body("invalid step.payload (expected object)");
       return;
     }
 
     std::string join_mode = s.isMember("join_mode") && s["join_mode"].isString() ? trim_copy(s["join_mode"].asString()) : "";
     if (!join_mode.empty() && join_mode != "all" && join_mode != "any") {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid join_mode (expected all|any)\"}";
+      resp->body = json_error_body("invalid join_mode (expected all|any)");
       return;
     }
 
@@ -145,7 +146,7 @@ void handle_edge_workflow_submit_endpoint(
 
   if (steps.empty()) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"no valid steps\"}";
+    resp->body = json_error_body("no valid steps");
     return;
   }
 
@@ -205,14 +206,14 @@ void handle_edge_workflow_get_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 503;
-    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    resp->body = json_error_body("db not available");
     return;
   }
 
   const auto wid = query_get(req.query, "workflow_id");
   if (!wid || wid->empty() || !edge_id_is_safe(*wid)) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"missing/invalid workflow_id\"}";
+    resp->body = json_error_body("missing/invalid workflow_id");
     return;
   }
   bool include_steps = false;
@@ -226,7 +227,7 @@ void handle_edge_workflow_get_endpoint(
   std::string err;
   if (!db_or_null->get_edge_workflow(*wid, &wf, &err)) {
     resp->status = 404;
-    resp->body = "{\"ok\":false,\"error\":\"workflow not found\"}";
+    resp->body = json_error_body("workflow not found");
     return;
   }
 
@@ -292,7 +293,7 @@ void handle_edge_workflow_list_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 503;
-    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    resp->body = json_error_body("db not available");
     return;
   }
 
@@ -300,7 +301,7 @@ void handle_edge_workflow_list_endpoint(
   std::string status = st && !st->empty() ? trim_copy(*st) : "QUEUED";
   if (status != "QUEUED" && status != "RUNNING" && status != "SUCCEEDED" && status != "FAILED" && status != "CANCELED") {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"invalid status\"}";
+    resp->body = json_error_body("invalid status");
     return;
   }
 
@@ -355,7 +356,7 @@ void handle_edge_workflow_cancel_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 503;
-    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    resp->body = json_error_body("db not available");
     return;
   }
 
@@ -374,7 +375,7 @@ void handle_edge_workflow_cancel_endpoint(
     args.isMember("workflow_id") && args["workflow_id"].isString() ? trim_copy(args["workflow_id"].asString()) : "";
   if (workflow_id.empty() || !edge_id_is_safe(workflow_id)) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"missing/invalid workflow_id\"}";
+    resp->body = json_error_body("missing/invalid workflow_id");
     return;
   }
 
@@ -382,7 +383,7 @@ void handle_edge_workflow_cancel_endpoint(
   std::string err;
   if (!db_or_null->get_edge_workflow(workflow_id, &wf, &err)) {
     resp->status = 404;
-    resp->body = "{\"ok\":false,\"error\":\"workflow not found\"}";
+    resp->body = json_error_body("workflow not found");
     return;
   }
 
@@ -447,14 +448,14 @@ void handle_edge_workflow_events_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 503;
-    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    resp->body = json_error_body("db not available");
     return;
   }
 
   const auto wid = query_get(req.query, "workflow_id");
   if (!wid || wid->empty() || !edge_id_is_safe(*wid)) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"missing/invalid workflow_id\"}";
+    resp->body = json_error_body("missing/invalid workflow_id");
     return;
   }
 

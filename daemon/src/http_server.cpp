@@ -14,6 +14,7 @@
 #include <thread>
 
 #include "net_compat.h"
+#include "http_util.h"
 
 namespace agentd {
 
@@ -581,11 +582,11 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
       const ReadResult head_rr = read_until(client, &head, "\r\n\r\n", max_header);
       if (!head_rr.ok) {
         if (head_rr.timeout) {
-          send_raw_error(408, R"({"ok":false,"error":"request timeout"})", head.size());
+          send_raw_error(408, json_error_body("request timeout"), head.size());
           return;
         }
         if (head_rr.too_large) {
-          send_raw_error(431, R"({"ok":false,"error":"request header too large"})", head.size());
+          send_raw_error(431, json_error_body("request header too large"), head.size());
           return;
         }
         socket_close(client);
@@ -598,21 +599,21 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
       if (!parse_request(head, &req, &header_bytes, &content_len)) {
         HttpResponse resp;
         resp.status = 400;
-        resp.body = R"({"ok":false,"error":"bad request"})";
+        resp.body = json_error_body("bad request");
         send_response(req, resp, 0);
         return;
       }
       if (max_header > 0 && header_bytes > max_header) {
         HttpResponse resp;
         resp.status = 431;
-        resp.body = R"({"ok":false,"error":"request header too large"})";
+        resp.body = json_error_body("request header too large");
         send_response(req, resp, header_bytes);
         return;
       }
       if (max_body > 0 && content_len > max_body) {
         HttpResponse resp;
         resp.status = 413;
-        resp.body = R"({"ok":false,"error":"request body too large"})";
+        resp.body = json_error_body("request body too large");
         send_response(req, resp, 0);
         return;
       }
@@ -630,7 +631,7 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
           const ReadResult body_rr = read_exact(client, &rest, content_len - body_already.size());
           if (!body_rr.ok) {
             if (body_rr.timeout) {
-              send_raw_error(408, R"({"ok":false,"error":"request timeout"})", head.size() + body_already.size());
+              send_raw_error(408, json_error_body("request timeout"), head.size() + body_already.size());
               return;
             }
             socket_close(client);
@@ -685,7 +686,7 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
       auto it = routes_.find(RouteKey{req.method, req.path});
       if (it == routes_.end()) {
         resp.status = 404;
-        resp.body = R"({"ok":false,"error":"not found"})";
+        resp.body = json_error_body("not found");
       } else {
         it->second(req, &resp);
       }

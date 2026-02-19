@@ -291,12 +291,12 @@ void handle_blob_upload_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 500;
-    resp->body = R"({"ok":false,"error":"db not available"})";
+    resp->body = json_error_body("db not available");
     return;
   }
   if (cfg.state_dir.empty()) {
     resp->status = 500;
-    resp->body = R"({"ok":false,"error":"state_dir not configured"})";
+    resp->body = json_error_body("state_dir not configured");
     return;
   }
 
@@ -308,7 +308,7 @@ void handle_blob_upload_endpoint(
   if (content_type.rfind("application/json", 0) == 0) {
     if (!parse_blob_upload_json(req, &bytes, &mime, &retain)) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid JSON body (expected data_base64)\"}";
+      resp->body = json_error_body("invalid JSON body (expected data_base64)");
       return;
     }
   } else {
@@ -321,13 +321,13 @@ void handle_blob_upload_endpoint(
 
   if (bytes.empty()) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"missing blob bytes"})";
+    resp->body = json_error_body("missing blob bytes");
     return;
   }
 
   if (cfg.upload_max_bytes > 0 && bytes.size() > cfg.upload_max_bytes) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"blob too large"})";
+    resp->body = json_error_body("blob too large");
     return;
   }
 
@@ -338,7 +338,7 @@ void handle_blob_upload_endpoint(
   const std::string rel_path = blob_rel_path_from_hex(hex_s);
   if (rel_path.empty()) {
     resp->status = 500;
-    resp->body = R"({"ok":false,"error":"failed to compute blob path"})";
+    resp->body = json_error_body("failed to compute blob path");
     return;
   }
   const std::filesystem::path abs_path = (std::filesystem::path(cfg.state_dir) / rel_path).lexically_normal();
@@ -350,13 +350,13 @@ void handle_blob_upload_endpoint(
     std::string oerr;
     if (!blob_object_store_is_configured(cfg, &oerr)) {
       resp->status = 500;
-      resp->body = std::string("{\"ok\":false,\"error\":\"") + (oerr.empty() ? "object store not configured" : oerr) + "\"}";
+      resp->body = json_error_body((oerr.empty() ? "object store not configured" : oerr));
       return;
     }
     object_key = blob_object_store_key_for_hex(cfg, hex_s);
     if (object_key.empty()) {
       resp->status = 500;
-      resp->body = R"({"ok":false,"error":"failed to compute object store key"})";
+      resp->body = json_error_body("failed to compute object store key");
       return;
     }
   }
@@ -366,7 +366,7 @@ void handle_blob_upload_endpoint(
   const bool found = db_or_null->get_blob_manifest(blob_id, &existing, &db_err);
   if (!db_err.empty()) {
     resp->status = 500;
-    resp->body = std::string("{\"ok\":false,\"error\":\"") + db_err + "\"}";
+    resp->body = json_error_body(db_err);
     return;
   }
 
@@ -390,13 +390,13 @@ void handle_blob_upload_endpoint(
   if (found) {
     if (existing.size_bytes != (int64_t)bytes.size()) {
       resp->status = 409;
-      resp->body = R"({"ok":false,"error":"blob already exists with different size"})";
+      resp->body = json_error_body("blob already exists with different size");
       return;
     }
     std::string werr;
     if (!ensure_local(&werr)) {
       resp->status = 500;
-      resp->body = std::string("{\"ok\":false,\"error\":\"") + werr + "\"}";
+      resp->body = json_error_body(werr);
       return;
     }
     const std::string next_mime = !existing.mime.empty() ? existing.mime : mime;
@@ -406,7 +406,7 @@ void handle_blob_upload_endpoint(
         if (!blob_object_store_put(cfg, object_key, bytes, next_mime, now_ms, &etag, &perr)) {
           cleanup_local();
           resp->status = 502;
-          resp->body = std::string("{\"ok\":false,\"error\":\"") + perr + "\"}";
+          resp->body = json_error_body(perr);
           return;
         }
       }
@@ -440,7 +440,7 @@ void handle_blob_upload_endpoint(
     std::string werr;
     if (!ensure_local(&werr)) {
       resp->status = 500;
-      resp->body = std::string("{\"ok\":false,\"error\":\"") + werr + "\"}";
+      resp->body = json_error_body(werr);
       return;
     }
     if (want_object) {
@@ -448,7 +448,7 @@ void handle_blob_upload_endpoint(
       if (!blob_object_store_put(cfg, object_key, bytes, mime, now_ms, &etag, &perr)) {
         cleanup_local();
         resp->status = 502;
-        resp->body = std::string("{\"ok\":false,\"error\":\"") + perr + "\"}";
+        resp->body = json_error_body(perr);
         return;
       }
       tier = "object";
@@ -469,7 +469,7 @@ void handle_blob_upload_endpoint(
     if (!db_or_null->insert_blob_manifest(row, &db_err)) {
       cleanup_local();
       resp->status = 500;
-      resp->body = std::string("{\"ok\":false,\"error\":\"") + db_err + "\"}";
+      resp->body = json_error_body(db_err);
       return;
     }
   }
@@ -516,20 +516,20 @@ void handle_blob_get_endpoint(
   if (!blob_q || blob_q->empty()) {
     resp->status = 400;
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    resp->body = R"({"ok":false,"error":"missing blob_id"})";
+    resp->body = json_error_body("missing blob_id");
     return;
   }
   const std::string blob_id = *blob_q;
   if (!blob_id_is_safe(blob_id)) {
     resp->status = 400;
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    resp->body = R"({"ok":false,"error":"invalid blob_id"})";
+    resp->body = json_error_body("invalid blob_id");
     return;
   }
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 500;
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    resp->body = R"({"ok":false,"error":"db not available"})";
+    resp->body = json_error_body("db not available");
     return;
   }
   AgentDb::BlobManifestRow row;
@@ -538,12 +538,12 @@ void handle_blob_get_endpoint(
     if (!err.empty()) {
       resp->status = 500;
       resp->headers["Content-Type"] = "application/json; charset=utf-8";
-      resp->body = std::string("{\"ok\":false,\"error\":\"") + err + "\"}";
+      resp->body = json_error_body(err);
       return;
     }
     resp->status = 404;
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    resp->body = R"({"ok":false,"error":"blob not found"})";
+    resp->body = json_error_body("blob not found");
     return;
   }
 
@@ -578,8 +578,7 @@ void handle_blob_get_endpoint(
     if (!blob_object_store_head(cfg, row.location, now_utc_ms(), &head, &herr)) {
       resp->status = 502;
       resp->headers["Content-Type"] = "application/json; charset=utf-8";
-      resp->body = std::string("{\"ok\":false,\"error\":\"") +
-        (herr.empty() ? "object store HEAD failed" : herr) + "\"}";
+      resp->body = json_error_body((herr.empty() ? "object store HEAD failed" : herr));
       return;
     }
     restore_info = parse_restore_status(head);
@@ -606,14 +605,14 @@ void handle_blob_get_endpoint(
     if (!std::filesystem::exists(abs, ec) || !std::filesystem::is_regular_file(abs, ec)) {
       resp->status = 404;
       resp->headers["Content-Type"] = "application/json; charset=utf-8";
-      resp->body = R"({"ok":false,"error":"blob missing"})";
+      resp->body = json_error_body("blob missing");
       return false;
     }
     const int64_t size = (int64_t)std::filesystem::file_size(abs, ec);
     if (ec || size < 0) {
       resp->status = 500;
       resp->headers["Content-Type"] = "application/json; charset=utf-8";
-      resp->body = R"({"ok":false,"error":"failed to stat blob"})";
+      resp->body = json_error_body("failed to stat blob");
       return false;
     }
     ByteRange range = parse_range_header(range_h, size);
@@ -621,7 +620,7 @@ void handle_blob_get_endpoint(
       resp->status = 416;
       resp->headers["Content-Range"] = "bytes */" + std::to_string(size);
       resp->headers["Content-Type"] = "application/json; charset=utf-8";
-      resp->body = R"({"ok":false,"error":"invalid range"})";
+      resp->body = json_error_body("invalid range");
       return false;
     }
     int64_t start = 0;
@@ -635,14 +634,14 @@ void handle_blob_get_endpoint(
       resp->status = 416;
       resp->headers["Content-Range"] = "bytes */" + std::to_string(size);
       resp->headers["Content-Type"] = "application/json; charset=utf-8";
-      resp->body = R"({"ok":false,"error":"invalid range"})";
+      resp->body = json_error_body("invalid range");
       return false;
     }
     std::ifstream in(abs, std::ios::binary);
     if (!in.is_open()) {
       resp->status = 500;
       resp->headers["Content-Type"] = "application/json; charset=utf-8";
-      resp->body = R"({"ok":false,"error":"failed to open blob"})";
+      resp->body = json_error_body("failed to open blob");
       return false;
     }
     if (start > 0) {
@@ -650,7 +649,7 @@ void handle_blob_get_endpoint(
       if (!in) {
         resp->status = 500;
         resp->headers["Content-Type"] = "application/json; charset=utf-8";
-        resp->body = R"({"ok":false,"error":"failed to seek blob"})";
+        resp->body = json_error_body("failed to seek blob");
         return false;
       }
     }
@@ -660,7 +659,7 @@ void handle_blob_get_endpoint(
     if (!in) {
       resp->status = 500;
       resp->headers["Content-Type"] = "application/json; charset=utf-8";
-      resp->body = R"({"ok":false,"error":"failed to read blob"})";
+      resp->body = json_error_body("failed to read blob");
       return false;
     }
 
@@ -698,7 +697,7 @@ void handle_blob_get_endpoint(
     if (cfg.state_dir.empty()) {
       resp->status = 500;
       resp->headers["Content-Type"] = "application/json; charset=utf-8";
-      resp->body = R"({"ok":false,"error":"state_dir not configured"})";
+      resp->body = json_error_body("state_dir not configured");
       return;
     }
     const std::filesystem::path root(cfg.state_dir);
@@ -706,7 +705,7 @@ void handle_blob_get_endpoint(
     if (!path_is_within_root(root, abs)) {
       resp->status = 500;
       resp->headers["Content-Type"] = "application/json; charset=utf-8";
-      resp->body = R"({"ok":false,"error":"blob path invalid"})";
+      resp->body = json_error_body("blob path invalid");
       return;
     }
     if (!serve_local(abs, row.mime)) return;
@@ -756,7 +755,7 @@ void handle_blob_get_endpoint(
       if (!blob_object_store_get(cfg, row.location, range_h, max_bytes, now_utc_ms(), &res, &perr)) {
         resp->status = 502;
         resp->headers["Content-Type"] = "application/json; charset=utf-8";
-        resp->body = std::string("{\"ok\":false,\"error\":\"") + perr + "\"}";
+        resp->body = json_error_body(perr);
         return;
       }
       respond_from_object(res, row.mime);
@@ -769,7 +768,7 @@ void handle_blob_get_endpoint(
     if (!blob_object_store_presign_url(cfg, "GET", row.location, now_utc_ms(), cfg.blob_store_presign_ttl_sec, &url, &perr)) {
       resp->status = 502;
       resp->headers["Content-Type"] = "application/json; charset=utf-8";
-      resp->body = std::string("{\"ok\":false,\"error\":\"") + perr + "\"}";
+      resp->body = json_error_body(perr);
       return;
     }
     resp->status = 302;
@@ -779,7 +778,7 @@ void handle_blob_get_endpoint(
   } else {
     resp->status = 500;
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    resp->body = R"({"ok":false,"error":"unsupported blob tier"})";
+    resp->body = json_error_body("unsupported blob tier");
     return;
   }
 
@@ -800,18 +799,18 @@ void handle_blob_meta_endpoint(
   const auto blob_q = query_get(req.query, "blob_id");
   if (!blob_q || blob_q->empty()) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"missing blob_id"})";
+    resp->body = json_error_body("missing blob_id");
     return;
   }
   const std::string blob_id = *blob_q;
   if (!blob_id_is_safe(blob_id)) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"invalid blob_id"})";
+    resp->body = json_error_body("invalid blob_id");
     return;
   }
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 500;
-    resp->body = R"({"ok":false,"error":"db not available"})";
+    resp->body = json_error_body("db not available");
     return;
   }
 
@@ -820,11 +819,11 @@ void handle_blob_meta_endpoint(
   if (!db_or_null->get_blob_manifest(blob_id, &row, &err)) {
     if (!err.empty()) {
       resp->status = 500;
-      resp->body = std::string("{\"ok\":false,\"error\":\"") + err + "\"}";
+      resp->body = json_error_body(err);
       return;
     }
     resp->status = 404;
-    resp->body = R"({"ok":false,"error":"blob not found"})";
+    resp->body = json_error_body("blob not found");
     return;
   }
 
@@ -859,7 +858,7 @@ void handle_blob_retain_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 500;
-    resp->body = R"({"ok":false,"error":"db not available"})";
+    resp->body = json_error_body("db not available");
     return;
   }
 
@@ -867,13 +866,13 @@ void handle_blob_retain_endpoint(
   std::string jerr;
   if (!json_parse_object(req.body, &body, &jerr)) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"invalid JSON body"})";
+    resp->body = json_error_body("invalid JSON body");
     return;
   }
   const std::string blob_id = body.isMember("blob_id") && body["blob_id"].isString() ? body["blob_id"].asString() : "";
   if (!blob_id_is_safe(blob_id)) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"invalid blob_id"})";
+    resp->body = json_error_body("invalid blob_id");
     return;
   }
   int64_t delta = 0;
@@ -882,14 +881,14 @@ void handle_blob_retain_endpoint(
   }
   if (delta == 0) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"missing delta"})";
+    resp->body = json_error_body("missing delta");
     return;
   }
   int64_t ref_count = 0;
   std::string err;
   if (!db_or_null->adjust_blob_ref_count(blob_id, delta, &ref_count, &err)) {
     resp->status = err == "blob not found" ? 404 : 500;
-    resp->body = std::string("{\"ok\":false,\"error\":\"") + err + "\"}";
+    resp->body = json_error_body(err);
     return;
   }
 
@@ -914,12 +913,12 @@ void handle_blob_gc_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 500;
-    resp->body = R"({"ok":false,"error":"db not available"})";
+    resp->body = json_error_body("db not available");
     return;
   }
   if (cfg.state_dir.empty()) {
     resp->status = 500;
-    resp->body = R"({"ok":false,"error":"state_dir not configured"})";
+    resp->body = json_error_body("state_dir not configured");
     return;
   }
 
@@ -927,7 +926,7 @@ void handle_blob_gc_endpoint(
   std::string jerr;
   if (!req.body.empty() && !json_parse_object(req.body, &body, &jerr)) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"invalid JSON body"})";
+    resp->body = json_error_body("invalid JSON body");
     return;
   }
   int64_t min_age_ms = 0;
@@ -951,7 +950,7 @@ void handle_blob_gc_endpoint(
   std::string err;
   if (!db_or_null->list_blob_gc_candidates(threshold, max_rows, &candidates, &err)) {
     resp->status = 500;
-    resp->body = std::string("{\"ok\":false,\"error\":\"") + err + "\"}";
+    resp->body = json_error_body(err);
     return;
   }
 
@@ -1110,7 +1109,7 @@ void handle_blob_tier_enforce_endpoint(
     std::string jerr;
     if (!json_parse_object(req.body, &body, &jerr)) {
       resp->status = 400;
-      resp->body = std::string("{\"ok\":false,\"error\":\"invalid JSON body\"}");
+      resp->body = json_error_body("invalid JSON body");
       return;
     }
     if (body.isMember("dry_run") && body["dry_run"].isBool()) {
@@ -1139,7 +1138,7 @@ void handle_blob_tier_enforce_endpoint(
   std::string err;
   if (!blob_tier_enforce(cfg, db_or_null, policy, &stats, &err)) {
     resp->status = 500;
-    resp->body = std::string("{\"ok\":false,\"error\":\"") + (err.empty() ? "tier enforce failed" : err) + "\"}";
+    resp->body = json_error_body((err.empty() ? "tier enforce failed" : err));
     return;
   }
 
@@ -1179,19 +1178,18 @@ void handle_blob_archive_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 500;
-    resp->body = R"({"ok":false,"error":"db not available"})";
+    resp->body = json_error_body("db not available");
     return;
   }
   if (cfg.blob_store_mode != "object") {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"archive requires blob_store_mode=object"})";
+    resp->body = json_error_body("archive requires blob_store_mode=object");
     return;
   }
   std::string cfg_err;
   if (!blob_object_store_is_configured(cfg, &cfg_err)) {
     resp->status = 400;
-    resp->body = std::string("{\"ok\":false,\"error\":\"") +
-      (cfg_err.empty() ? "object store not configured" : cfg_err) + "\"}";
+    resp->body = json_error_body((cfg_err.empty() ? "object store not configured" : cfg_err));
     return;
   }
 
@@ -1200,7 +1198,7 @@ void handle_blob_archive_endpoint(
   std::string parse_err;
   if (!parse_blob_ids_body(req, &blob_ids, &body, &parse_err)) {
     resp->status = 400;
-    resp->body = std::string("{\"ok\":false,\"error\":\"") + parse_err + "\"}";
+    resp->body = json_error_body(parse_err);
     return;
   }
 
@@ -1291,19 +1289,18 @@ void handle_blob_restore_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 500;
-    resp->body = R"({"ok":false,"error":"db not available"})";
+    resp->body = json_error_body("db not available");
     return;
   }
   if (cfg.blob_store_mode != "object") {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"restore requires blob_store_mode=object"})";
+    resp->body = json_error_body("restore requires blob_store_mode=object");
     return;
   }
   std::string cfg_err;
   if (!blob_object_store_is_configured(cfg, &cfg_err)) {
     resp->status = 400;
-    resp->body = std::string("{\"ok\":false,\"error\":\"") +
-      (cfg_err.empty() ? "object store not configured" : cfg_err) + "\"}";
+    resp->body = json_error_body((cfg_err.empty() ? "object store not configured" : cfg_err));
     return;
   }
 
@@ -1312,7 +1309,7 @@ void handle_blob_restore_endpoint(
   std::string parse_err;
   if (!parse_blob_ids_body(req, &blob_ids, &body, &parse_err)) {
     resp->status = 400;
-    resp->body = std::string("{\"ok\":false,\"error\":\"") + parse_err + "\"}";
+    resp->body = json_error_body(parse_err);
     return;
   }
 
@@ -1324,7 +1321,7 @@ void handle_blob_restore_endpoint(
   }
   if (restore_days <= 0) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"restore_days must be a positive integer"})";
+    resp->body = json_error_body("restore_days must be a positive integer");
     return;
   }
   const int restore_days_i = restore_days > INT_MAX ? INT_MAX : (int)restore_days;

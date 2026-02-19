@@ -41,7 +41,7 @@ void handle_job_stream_endpoint(
     hdr << cors_wire_headers(req, cors_cfg);
     hdr << "Connection: close\r\n";
     hdr << "\r\n";
-    hdr << "{\"ok\":false,\"error\":\"unauthorized\"}";
+    hdr << json_error_body("unauthorized");
     (void)write_all_fd(client_fd, hdr.str());
     return;
   }
@@ -55,7 +55,7 @@ void handle_job_stream_endpoint(
     hdr << cors_wire_headers(req, cors_cfg);
     hdr << "Connection: close\r\n";
     hdr << "\r\n";
-    hdr << "{\"ok\":false,\"error\":\"missing job_id\"}";
+    hdr << json_error_body("missing job_id");
     (void)write_all_fd(client_fd, hdr.str());
     return;
   }
@@ -122,12 +122,12 @@ void handle_job_stream_endpoint(
             (void)sse_send(client_fd, "job_done", json_stringify(out));
             return;
           }
-          (void)sse_send(client_fd, "error", "{\"ok\":false,\"error\":\"job not in memory (daemon restarted?)\"}");
+          (void)sse_send(client_fd, "error", json_error_body("job not in memory (daemon restarted?)"));
           return;
         }
       }
 
-      (void)sse_send(client_fd, "error", R"({"ok":false,"error":"job not found"})");
+      (void)sse_send(client_fd, "error", json_error_body("job not found"));
       return;
     }
 

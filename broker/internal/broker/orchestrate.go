@@ -274,40 +274,40 @@ func itoa(i int) string {
 
 func (s *Server) handleOrchestrate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	p, err := s.requirePrincipal(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
 	body, err := readBodyBounded(r.Body, s.cfg.MaxRequestBodySize)
 	if err != nil {
-		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+		writeErrorJSON(w, "request body too large", http.StatusRequestEntityTooLarge)
 		return
 	}
 	parsed, err := parseOrchestrateRequest(body, traceIDFromContext(r.Context()))
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	// Safety: ensure the user can access every referenced agent before fanning out.
 	for _, t := range parsed.Tasks {
 		if ok, err := s.canAccessAgent(r.Context(), p, t.AgentID); err != nil {
-			http.Error(w, "db error", http.StatusInternalServerError)
+			writeErrorJSON(w, "db error", http.StatusInternalServerError)
 			return
 		} else if !ok {
-			http.Error(w, "forbidden", http.StatusForbidden)
+			writeErrorJSON(w, "forbidden", http.StatusForbidden)
 			return
 		}
 	}
 
 	idemKey, idemErr := idempotencyKeyFromRequest(r)
 	if idemErr != nil {
-		http.Error(w, idemErr.Error(), http.StatusBadRequest)
+		writeErrorJSON(w, idemErr.Error(), http.StatusBadRequest)
 		return
 	}
 	var idemStatus db.IdempotencyStatus
@@ -324,7 +324,7 @@ func (s *Server) handleOrchestrate(w http.ResponseWriter, r *http.Request) {
 			ExpiresAt:     time.Now().Add(s.cfg.IdempotencyTTL),
 		})
 		if err != nil {
-			http.Error(w, "idempotency claim failed", http.StatusInternalServerError)
+			writeErrorJSON(w, "idempotency claim failed", http.StatusInternalServerError)
 			return
 		}
 		idemStatus = claim.Status
@@ -351,18 +351,12 @@ func (s *Server) handleOrchestrate(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("X-Idempotency-Key", idemKey)
 			w.Header().Set("Retry-After", "1")
 			w.WriteHeader(http.StatusConflict)
-			writeJSON(w, map[string]any{
-				"ok":    false,
-				"error": "idempotency_key_in_progress",
-			})
+			writeJSON(w, errorEnvelope("idempotency_key_in_progress"))
 			return
 		case db.IdempotencyConflict:
 			w.Header().Set("X-Idempotency-Key", idemKey)
 			w.WriteHeader(http.StatusConflict)
-			writeJSON(w, map[string]any{
-				"ok":    false,
-				"error": "idempotency_key_conflict",
-			})
+			writeJSON(w, errorEnvelope("idempotency_key_conflict"))
 			return
 		case db.IdempotencyCreated:
 			// continue

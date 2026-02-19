@@ -12,6 +12,7 @@
 #include "edge_interop_endpoints.h"
 #include "file_endpoint.h"
 #include "health_endpoint.h"
+#include "http_util.h"
 #include "job_manager.h"
 #include "job_endpoints.h"
 #include "memory_endpoints.h"
@@ -902,7 +903,7 @@ bool AgentdApi::handle(const HttpRequest& req, HttpResponse* resp) {
   resp->body.clear();
   if (!impl_ || !impl_->initialized) {
     resp->status = 500;
-    resp->body = "{\"ok\":false,\"error\":\"agentd api not initialized\"}";
+    resp->body = json_error_body("agentd api not initialized");
     return true;
   }
 
@@ -919,7 +920,7 @@ bool AgentdApi::handle(const HttpRequest& req, HttpResponse* resp) {
   const auto it = impl_->routes.find(RouteKey{req.method, req.path});
   if (it == impl_->routes.end()) {
     resp->status = 404;
-    resp->body = "{\"ok\":false,\"error\":\"not found\"}";
+    resp->body = json_error_body("not found");
     cors_apply(req, resp, impl_->cors_cfg);
     return false;
   }

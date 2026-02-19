@@ -115,7 +115,7 @@ void handle_openrouter_models_endpoint(
   }
   if (key.empty()) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"missing OpenRouter key (set OPENROUTER_API_KEY or send X-OpenRouter-Key)\"}";
+    resp->body = json_error_body("missing OpenRouter key (set OPENROUTER_API_KEY or send X-OpenRouter-Key)");
     return;
   }
 
@@ -186,7 +186,7 @@ void handle_openrouter_models_endpoint(
   const auto& data = payload["data"];
   if (!data.isArray()) {
     resp->status = 502;
-    resp->body = "{\"ok\":false,\"error\":\"unexpected OpenRouter models response (missing data array)\"}";
+    resp->body = json_error_body("unexpected OpenRouter models response (missing data array)");
     return;
   }
 

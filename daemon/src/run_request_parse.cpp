@@ -2,6 +2,7 @@
 
 #include "daemon_config.h"
 #include "json_util.h"
+#include "http_util.h"
 #include "sandbox_policy.h"
 #include "string_util.h"
 #include "trace_id_util.h"
@@ -14,6 +15,8 @@ Json::Value make_error(int rpc_status, const std::string& msg) {
   o["ok"] = false;
   o["rpc_status"] = rpc_status;
   o["error"] = msg;
+  o["err"] = msg;
+  o["code"] = error_code_from_message(msg);
   return o;
 }
 

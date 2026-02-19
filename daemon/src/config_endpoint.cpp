@@ -2,6 +2,7 @@
 
 #include "daemon_auth.h"
 #include "edge_util.h"
+#include "http_util.h"
 #include "json_util.h"
 #include "runtime_config.h"
 #include "provider_util.h"
@@ -375,12 +376,12 @@ void handle_config_update_endpoint(
   resp->headers["Content-Type"] = "application/json; charset=utf-8";
   if (!cfg_store) {
     resp->status = 500;
-    resp->body = R"({"ok":false,"error":"missing cfg_store"})";
+    resp->body = json_error_body("missing cfg_store");
     return;
   }
   if (!db || !db->is_open()) {
     resp->status = 500;
-    resp->body = R"({"ok":false,"error":"db not available"})";
+    resp->body = json_error_body("db not available");
     return;
   }
   const DaemonConfig old_cfg = cfg_store->snapshot();

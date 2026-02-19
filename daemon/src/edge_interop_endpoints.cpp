@@ -6,6 +6,7 @@
 #include "daemon_auth.h"
 #include "edge_rules.h"
 #include "edge_util.h"
+#include "http_util.h"
 #include "json_util.h"
 #include "string_util.h"
 #include "workflow_endpoints.h"
@@ -58,7 +59,7 @@ void handle_edge_message_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 503;
-    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    resp->body = json_error_body("db not available");
     return;
   }
 
@@ -100,7 +101,7 @@ void handle_edge_message_endpoint(
     else if (env["to"].isNull()) to_id.clear();
     else {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid envelope.to (expected string|null)\"}";
+      resp->body = json_error_body("invalid envelope.to (expected string|null)");
       return;
     }
   }
@@ -109,12 +110,12 @@ void handle_edge_message_endpoint(
 
   if (msg_id.empty() || type.empty() || !body.isObject()) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"invalid envelope (missing msg_id/type/body)\"}";
+    resp->body = json_error_body("invalid envelope (missing msg_id/type/body)");
     return;
   }
   if (!edge_id_is_safe(type) || msg_id.size() > 128) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"invalid envelope msg_id/type\"}";
+    resp->body = json_error_body("invalid envelope msg_id/type");
     return;
   }
 
@@ -137,20 +138,20 @@ void handle_edge_message_endpoint(
     if (cfg.edge_auth_require_seq && env.isMember("auth") && env["auth"].isObject()) {
       if (from_id.rfind("node:", 0) != 0 || from_id.size() <= 5) {
         resp->status = 401;
-        resp->body = "{\"ok\":false,\"error\":\"edge auth seq requires envelope.from node:<node_id>\"}";
+        resp->body = json_error_body("edge auth seq requires envelope.from node:<node_id>");
         return;
       }
       const std::string node_id = trim_copy(from_id.substr(5));
       if (node_id.empty() || !edge_id_is_safe(node_id)) {
         resp->status = 401;
-        resp->body = "{\"ok\":false,\"error\":\"edge auth seq requires valid node_id\"}";
+        resp->body = json_error_body("edge auth seq requires valid node_id");
         return;
       }
       const Json::Value& auth = env["auth"];
       int64_t seq = -1;
       if (!auth.isMember("seq")) {
         resp->status = 401;
-        resp->body = "{\"ok\":false,\"error\":\"missing envelope.auth.seq\"}";
+        resp->body = json_error_body("missing envelope.auth.seq");
         return;
       }
       if (auth["seq"].isInt64()) seq = auth["seq"].asInt64();
@@ -161,7 +162,7 @@ void handle_edge_message_endpoint(
       }
       if (seq < 0) {
         resp->status = 401;
-        resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth.seq\"}";
+        resp->body = json_error_body("invalid envelope.auth.seq");
         return;
       }
       guard.node_id = node_id;
@@ -181,7 +182,7 @@ void handle_edge_message_endpoint(
     }
     if (seq_rejected) {
       resp->status = 401;
-      resp->body = "{\"ok\":false,\"error\":\"edge auth seq replay\"}";
+      resp->body = json_error_body("edge auth seq replay");
       return;
     }
     Json::Value o(Json::objectValue);
@@ -273,7 +274,7 @@ void handle_edge_message_endpoint(
     if (body.isMember("workflow") && body["workflow"].isObject()) wfargs = body["workflow"];
     if (!wfargs.isObject()) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid DURABLE_WORKFLOW_SUBMIT body (expected object)\"}";
+      resp->body = json_error_body("invalid DURABLE_WORKFLOW_SUBMIT body (expected object)");
       return;
     }
 
@@ -322,7 +323,7 @@ void handle_edge_message_endpoint(
     const std::string workflow_id = body.isMember("workflow_id") && body["workflow_id"].isString() ? trim_copy(body["workflow_id"].asString()) : "";
     if (workflow_id.empty()) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"missing workflow_id\"}";
+      resp->body = json_error_body("missing workflow_id");
       return;
     }
     Json::Value args(Json::objectValue);
@@ -348,12 +349,12 @@ void handle_edge_message_endpoint(
     const std::string caps_sha = body.isMember("caps_sha256") && body["caps_sha256"].isString() ? body["caps_sha256"].asString() : "";
     if (node_id.empty() || !edge_id_is_safe(node_id)) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid node_id\"}";
+      resp->body = json_error_body("invalid node_id");
       return;
     }
     if (!caps_sha.empty() && !edge_sha256_token_is_safe(caps_sha)) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid caps_sha256\"}";
+      resp->body = json_error_body("invalid caps_sha256");
       return;
     }
 
@@ -440,7 +441,7 @@ void handle_edge_message_endpoint(
     const Json::Value manifest = body.isMember("manifest") ? body["manifest"] : Json::Value(Json::nullValue);
     if (node_id.empty() || !edge_id_is_safe(node_id) || !manifest.isObject()) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid NODE_CAPS_RSP body\"}";
+      resp->body = json_error_body("invalid NODE_CAPS_RSP body");
       return;
     }
 
@@ -453,7 +454,7 @@ void handle_edge_message_endpoint(
       const std::string caps_sha = trim_copy(manifest["caps_sha256"].asString());
       if (!caps_sha.empty() && !edge_sha256_token_is_safe(caps_sha)) {
         resp->status = 400;
-        resp->body = "{\"ok\":false,\"error\":\"invalid manifest.caps_sha256\"}";
+        resp->body = json_error_body("invalid manifest.caps_sha256");
         return;
       }
       nr.caps_sha256 = caps_sha;
@@ -844,17 +845,17 @@ void handle_edge_message_endpoint(
       body.isMember("idempotency_key") && body["idempotency_key"].isString() ? trim_copy(body["idempotency_key"].asString()) : "";
     if (task_id.empty() || step_id.empty() || !edge_id_is_safe(task_id) || !edge_id_is_safe(step_id)) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_ACK body\"}";
+      resp->body = json_error_body("invalid TASK_ACK body");
       return;
     }
     if (idempotency_key.empty() || !edge_id_is_safe(idempotency_key)) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_ACK body (missing/invalid idempotency_key)\"}";
+      resp->body = json_error_body("invalid TASK_ACK body (missing/invalid idempotency_key)");
       return;
     }
     if (!body.isMember("accepted") || !body["accepted"].isBool()) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_ACK body (missing accepted: bool)\"}";
+      resp->body = json_error_body("invalid TASK_ACK body (missing accepted: bool)");
       return;
     }
     const bool accepted = body["accepted"].asBool();
@@ -879,12 +880,12 @@ void handle_edge_message_endpoint(
       body.isMember("idempotency_key") && body["idempotency_key"].isString() ? trim_copy(body["idempotency_key"].asString()) : "";
     if (task_id.empty() || step_id.empty() || state.empty() || !edge_id_is_safe(task_id) || !edge_id_is_safe(step_id)) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_EVENT body\"}";
+      resp->body = json_error_body("invalid TASK_EVENT body");
       return;
     }
     if (idempotency_key.empty() || !edge_id_is_safe(idempotency_key)) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_EVENT body (missing/invalid idempotency_key)\"}";
+      resp->body = json_error_body("invalid TASK_EVENT body (missing/invalid idempotency_key)");
       return;
     }
     std::string error;
@@ -905,17 +906,17 @@ void handle_edge_message_endpoint(
       body.isMember("idempotency_key") && body["idempotency_key"].isString() ? trim_copy(body["idempotency_key"].asString()) : "";
     if (task_id.empty() || step_id.empty() || !edge_id_is_safe(task_id) || !edge_id_is_safe(step_id)) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_DONE body\"}";
+      resp->body = json_error_body("invalid TASK_DONE body");
       return;
     }
     if (idempotency_key.empty() || !edge_id_is_safe(idempotency_key)) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_DONE body (missing/invalid idempotency_key)\"}";
+      resp->body = json_error_body("invalid TASK_DONE body (missing/invalid idempotency_key)");
       return;
     }
     if (!body.isMember("result")) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_DONE body (missing result)\"}";
+      resp->body = json_error_body("invalid TASK_DONE body (missing result)");
       return;
     }
 
@@ -975,19 +976,19 @@ void handle_edge_message_endpoint(
       body.isMember("idempotency_key") && body["idempotency_key"].isString() ? trim_copy(body["idempotency_key"].asString()) : "";
     if (task_id.empty() || step_id.empty() || !edge_id_is_safe(task_id) || !edge_id_is_safe(step_id)) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_FAILED body\"}";
+      resp->body = json_error_body("invalid TASK_FAILED body");
       return;
     }
     if (idempotency_key.empty() || !edge_id_is_safe(idempotency_key)) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_FAILED body (missing/invalid idempotency_key)\"}";
+      resp->body = json_error_body("invalid TASK_FAILED body (missing/invalid idempotency_key)");
       return;
     }
     std::string error;
     if (body.isMember("error") && body["error"].isString()) error = body["error"].asString();
     if (error.empty()) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid TASK_FAILED body (missing error: string)\"}";
+      resp->body = json_error_body("invalid TASK_FAILED body (missing error: string)");
       return;
     }
     Json::Value d = body;
@@ -1007,7 +1008,7 @@ void handle_edge_message_endpoint(
     if (body.isMember("workflow") && body["workflow"].isObject()) wfargs = body["workflow"];
     if (!wfargs.isObject()) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid WORKFLOW_SUBMIT body (expected object)\"}";
+      resp->body = json_error_body("invalid WORKFLOW_SUBMIT body (expected object)");
       return;
     }
 
@@ -1015,7 +1016,7 @@ void handle_edge_message_endpoint(
     if (workflow_id.empty()) workflow_id = std::string("wf:") + edge_make_uuidish_msg_id();
     if (!edge_id_is_safe(workflow_id)) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid workflow_id\"}";
+      resp->body = json_error_body("invalid workflow_id");
       return;
     }
 
@@ -1027,7 +1028,7 @@ void handle_edge_message_endpoint(
 
     if (!wfargs.isMember("steps") || !wfargs["steps"].isArray() || wfargs["steps"].empty()) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"missing/invalid steps (expected non-empty array)\"}";
+      resp->body = json_error_body("missing/invalid steps (expected non-empty array)");
       return;
     }
 
@@ -1041,12 +1042,12 @@ void handle_edge_message_endpoint(
       const std::string kind = s.isMember("kind") && s["kind"].isString() ? trim_copy(s["kind"].asString()) : "";
       if (step_id.empty() || !edge_id_is_safe(step_id) || kind.empty()) {
         resp->status = 400;
-        resp->body = "{\"ok\":false,\"error\":\"invalid step (missing step_id/kind)\"}";
+        resp->body = json_error_body("invalid step (missing step_id/kind)");
         return;
       }
       if (kind != "invoke_tool" && kind != "run_agent" && kind != "join") {
         resp->status = 400;
-        resp->body = "{\"ok\":false,\"error\":\"unsupported step.kind\"}";
+        resp->body = json_error_body("unsupported step.kind");
         return;
       }
 
@@ -1056,19 +1057,19 @@ void handle_edge_message_endpoint(
       Json::Value payload = s.isMember("payload") ? s["payload"] : Json::Value(Json::objectValue);
       if (kind != "join" && !target.isObject()) {
         resp->status = 400;
-        resp->body = "{\"ok\":false,\"error\":\"invalid step.target (expected object)\"}";
+        resp->body = json_error_body("invalid step.target (expected object)");
         return;
       }
       if (!payload.isObject()) {
         resp->status = 400;
-        resp->body = "{\"ok\":false,\"error\":\"invalid step.payload (expected object)\"}";
+        resp->body = json_error_body("invalid step.payload (expected object)");
         return;
       }
 
       std::string join_mode = s.isMember("join_mode") && s["join_mode"].isString() ? trim_copy(s["join_mode"].asString()) : "";
       if (!join_mode.empty() && join_mode != "all" && join_mode != "any") {
         resp->status = 400;
-        resp->body = "{\"ok\":false,\"error\":\"invalid join_mode (expected all|any)\"}";
+        resp->body = json_error_body("invalid join_mode (expected all|any)");
         return;
       }
 
@@ -1185,14 +1186,14 @@ void handle_edge_message_endpoint(
       : "";
     if (workflow_id.empty() || !edge_id_is_safe(workflow_id)) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"missing/invalid workflow_id\"}";
+      resp->body = json_error_body("missing/invalid workflow_id");
       return;
     }
     AgentDb::EdgeWorkflowRow wf;
     std::string werr;
     if (!db_or_null->get_edge_workflow(workflow_id, &wf, &werr)) {
       resp->status = 404;
-      resp->body = "{\"ok\":false,\"error\":\"workflow not found\"}";
+      resp->body = json_error_body("workflow not found");
       return;
     }
     if (wf.status != "CANCELED" && wf.status != "SUCCEEDED" && wf.status != "FAILED") {
@@ -1251,7 +1252,7 @@ void handle_edge_message_endpoint(
     Json::Value data = body.isMember("data") ? body["data"] : Json::Value(Json::objectValue);
     if (node_id.empty() || !edge_id_is_safe(node_id) || event_type.empty()) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid SENSOR_EVENT body\"}";
+      resp->body = json_error_body("invalid SENSOR_EVENT body");
       return;
     }
     AgentDb::EdgeSensorEventRow sr;
@@ -1294,7 +1295,7 @@ void handle_edge_outbox_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 503;
-    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    resp->body = json_error_body("db not available");
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
     return;
   }
@@ -1306,7 +1307,7 @@ void handle_edge_outbox_endpoint(
   const auto nid = query_get(req.query, "node_id");
   if (!nid || nid->empty() || !edge_id_is_safe(*nid)) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"missing/invalid node_id\"}";
+    resp->body = json_error_body("missing/invalid node_id");
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
     return;
   }
@@ -1397,7 +1398,7 @@ void handle_edge_nodes_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 503;
-    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    resp->body = json_error_body("db not available");
     return;
   }
 
@@ -1450,14 +1451,14 @@ void handle_edge_node_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 503;
-    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    resp->body = json_error_body("db not available");
     return;
   }
 
   const auto nid = query_get(req.query, "node_id");
   if (!nid || nid->empty() || !edge_id_is_safe(*nid)) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"missing/invalid node_id\"}";
+    resp->body = json_error_body("missing/invalid node_id");
     return;
   }
 
@@ -1465,7 +1466,7 @@ void handle_edge_node_endpoint(
   std::string err;
   if (!db_or_null->get_edge_node(*nid, &n, &err)) {
     resp->status = 404;
-    resp->body = "{\"ok\":false,\"error\":\"node not found\"}";
+    resp->body = json_error_body("node not found");
     return;
   }
 
@@ -1516,14 +1517,14 @@ void handle_edge_node_caps_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 503;
-    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    resp->body = json_error_body("db not available");
     return;
   }
 
   const auto nid = query_get(req.query, "node_id");
   if (!nid || nid->empty() || !edge_id_is_safe(*nid)) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"missing/invalid node_id\"}";
+    resp->body = json_error_body("missing/invalid node_id");
     return;
   }
 
@@ -1531,12 +1532,12 @@ void handle_edge_node_caps_endpoint(
   std::string err;
   if (!db_or_null->get_edge_node(*nid, &n, &err)) {
     resp->status = 404;
-    resp->body = "{\"ok\":false,\"error\":\"node not found\"}";
+    resp->body = json_error_body("node not found");
     return;
   }
   if (n.manifest_json.empty()) {
     resp->status = 404;
-    resp->body = "{\"ok\":false,\"error\":\"node has no manifest\"}";
+    resp->body = json_error_body("node has no manifest");
     return;
   }
 
@@ -1571,7 +1572,7 @@ void handle_edge_task_assign_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 503;
-    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    resp->body = json_error_body("db not available");
     return;
   }
 
@@ -1618,13 +1619,13 @@ void handle_edge_task_assign_endpoint(
 	    const std::unordered_set<std::string>* ex = exclude_node_ids.empty() ? nullptr : &exclude_node_ids;
 	    if (!select_node_match_any(db_or_null, requires_tools, tags_all, tags_any, tags_none, ex, &node_id)) {
 	      resp->status = 409;
-	      resp->body = "{\"ok\":false,\"error\":\"no matching node\"}";
+	      resp->body = json_error_body("no matching node");
 	      return;
 	    }
 	  }
   if (node_id.empty() || !edge_id_is_safe(node_id)) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"missing/invalid node_id (or match_any did not select)\"}";
+    resp->body = json_error_body("missing/invalid node_id (or match_any did not select)");
     return;
   }
 
@@ -1645,12 +1646,12 @@ void handle_edge_task_assign_endpoint(
   if (task_id.empty() || step_id.empty() || idempotency_key.empty() || (mode != "invoke" && mode != "agent") || deadline_utc_ms <= 0 ||
       !payload.isObject()) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"missing/invalid task fields\"}";
+    resp->body = json_error_body("missing/invalid task fields");
     return;
   }
   if (!trace.isNull() && !trace.isObject()) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"invalid trace (expected object)\"}";
+    resp->body = json_error_body("invalid trace (expected object)");
     return;
   }
 
@@ -1717,7 +1718,7 @@ void handle_edge_task_get_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 503;
-    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    resp->body = json_error_body("db not available");
     return;
   }
 
@@ -1725,7 +1726,7 @@ void handle_edge_task_get_endpoint(
   const auto sid = query_get(req.query, "step_id");
   if (!tid || tid->empty() || !sid || sid->empty()) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"missing task_id/step_id\"}";
+    resp->body = json_error_body("missing task_id/step_id");
     return;
   }
 
@@ -1733,7 +1734,7 @@ void handle_edge_task_get_endpoint(
   std::string err;
   if (!db_or_null->get_edge_task(*tid, *sid, &tr, &err)) {
     resp->status = 404;
-    resp->body = "{\"ok\":false,\"error\":\"task not found\"}";
+    resp->body = json_error_body("task not found");
     return;
   }
 

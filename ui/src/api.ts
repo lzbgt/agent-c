@@ -117,6 +117,8 @@ export const DiagnosticsProviderTestRespSchema = z
     expect: z.string().optional(),
     assistant_text: z.string().optional(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
     http_status: z.number().optional(),
     run: z.any().optional(),
   })
@@ -204,6 +206,8 @@ export const DaemonConfigSchema = z
       })
       .optional(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
   })
   .passthrough();
 export type DaemonConfigResp = z.infer<typeof DaemonConfigSchema>;
@@ -260,6 +264,8 @@ export const DaemonConfigUpdateRespSchema = z
     proxy_url_set: z.boolean().optional(),
     provider_keys_set: z.any().optional(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
   })
   .passthrough();
 export type DaemonConfigUpdateResp = z.infer<typeof DaemonConfigUpdateRespSchema>;
@@ -405,6 +411,8 @@ export const SessionUploadRespSchema = z
       )
       .optional(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
   })
   .passthrough();
 export type SessionUploadResp = z.infer<typeof SessionUploadRespSchema>;
@@ -432,6 +440,8 @@ export const RunResponseSchema = z.object({
   trace_id: z.string().optional(),
   assistant_text: z.string().optional(),
   error: z.string().optional(),
+  err: z.string().optional(),
+  code: z.string().optional(),
   http_status: z.number().optional(),
   http_body: z.string().optional(),
   trace_text: z.string().optional(),
@@ -461,6 +471,8 @@ export const ToolDefsRespSchema = z.object({
     )
     .optional(),
   error: z.string().optional(),
+  err: z.string().optional(),
+  code: z.string().optional(),
 });
 export type ToolDefsResp = z.infer<typeof ToolDefsRespSchema>;
 
@@ -521,6 +533,8 @@ export const OpenRouterModelsRespSchema = z.object({
     )
     .optional(),
   error: z.string().optional(),
+  err: z.string().optional(),
+  code: z.string().optional(),
   http_status: z.number().optional(),
   http_body: z.string().optional(),
 });
@@ -610,6 +624,8 @@ export const SessionsSchema = z.object({
   ok: z.boolean(),
   sessions: z.array(z.string()).optional(),
   error: z.string().optional(),
+  err: z.string().optional(),
+  code: z.string().optional(),
 });
 export type SessionsResp = z.infer<typeof SessionsSchema>;
 
@@ -634,6 +650,8 @@ export const SessionSchema = z.object({
     )
     .optional(),
   error: z.string().optional(),
+  err: z.string().optional(),
+  code: z.string().optional(),
 });
 export type SessionResp = z.infer<typeof SessionSchema>;
 
@@ -650,6 +668,8 @@ export const SessionSceneSchema = z
     updated_unix_ms: z.number().optional(),
     scene: z.record(z.any()).optional(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
   })
   .passthrough();
 export type SessionSceneResp = z.infer<typeof SessionSceneSchema>;
@@ -675,6 +695,8 @@ export const SessionSceneApplyRespSchema = z
     scene: z.record(z.any()).optional(),
     warning: z.string().optional(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
   })
   .passthrough();
 export type SessionSceneApplyResp = z.infer<typeof SessionSceneApplyRespSchema>;
@@ -718,6 +740,8 @@ export const SessionUiEventRespSchema = z
     type: z.string().optional(),
     appended_to_session: z.boolean().optional(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
   })
   .passthrough();
 export type SessionUiEventResp = z.infer<typeof SessionUiEventRespSchema>;
@@ -744,6 +768,8 @@ export const NewSessionRespSchema = z
     session_id: z.string().optional(),
     created: z.boolean().optional(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
   })
   .passthrough();
 export type NewSessionResp = z.infer<typeof NewSessionRespSchema>;
@@ -770,6 +796,8 @@ export const DeleteSessionRespSchema = z
     ok: z.boolean(),
     session_id: z.string().optional(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
   })
   .passthrough();
 export type DeleteSessionResp = z.infer<typeof DeleteSessionRespSchema>;
@@ -788,6 +816,8 @@ export const AuditSchema = z.object({
   session_id: z.string().optional(),
   entries: z.array(z.any()).optional(),
   error: z.string().optional(),
+  err: z.string().optional(),
+  code: z.string().optional(),
 });
 export type AuditResp = z.infer<typeof AuditSchema>;
 
@@ -806,6 +836,8 @@ export const SessionClientEventsSchema = z.object({
   count: z.number().optional(),
   events: z.array(z.any()).optional(),
   error: z.string().optional(),
+  err: z.string().optional(),
+  code: z.string().optional(),
 });
 export type SessionClientEventsResp = z.infer<typeof SessionClientEventsSchema>;
 
@@ -830,6 +862,8 @@ export const SessionArtifactsSchema = z.object({
   count: z.number().optional(),
   artifacts: z.array(z.any()).optional(),
   error: z.string().optional(),
+  err: z.string().optional(),
+  code: z.string().optional(),
 });
 export type SessionArtifactsResp = z.infer<typeof SessionArtifactsSchema>;
 
@@ -841,6 +875,8 @@ export const DbRunsSchema = z.object({
   count: z.number().optional(),
   runs: z.array(z.any()).optional(),
   error: z.string().optional(),
+  err: z.string().optional(),
+  code: z.string().optional(),
 });
 export type DbRunsResp = z.infer<typeof DbRunsSchema>;
 
@@ -852,6 +888,8 @@ export const DbRunSchema = z.object({
   artifacts: z.array(z.any()).optional(),
   ui_actions: z.array(z.any()).optional(),
   error: z.string().optional(),
+  err: z.string().optional(),
+  code: z.string().optional(),
 });
 export type DbRunResp = z.infer<typeof DbRunSchema>;
 
@@ -863,6 +901,8 @@ export const DbArtifactsSchema = z.object({
   count: z.number().optional(),
   artifacts: z.array(z.any()).optional(),
   error: z.string().optional(),
+  err: z.string().optional(),
+  code: z.string().optional(),
 });
 export type DbArtifactsResp = z.infer<typeof DbArtifactsSchema>;
 
@@ -874,6 +914,8 @@ export const DbUiActionsSchema = z.object({
   count: z.number().optional(),
   ui_actions: z.array(z.any()).optional(),
   error: z.string().optional(),
+  err: z.string().optional(),
+  code: z.string().optional(),
 });
 export type DbUiActionsResp = z.infer<typeof DbUiActionsSchema>;
 
@@ -884,6 +926,8 @@ export const DbSessionsSchema = z.object({
   count: z.number().optional(),
   sessions: z.array(z.any()).optional(),
   error: z.string().optional(),
+  err: z.string().optional(),
+  code: z.string().optional(),
 });
 export type DbSessionsResp = z.infer<typeof DbSessionsSchema>;
 
@@ -897,6 +941,8 @@ export const DbMessagesSchema = z.object({
   count: z.number().optional(),
   messages: z.array(z.any()).optional(),
   error: z.string().optional(),
+  err: z.string().optional(),
+  code: z.string().optional(),
 });
 export type DbMessagesResp = z.infer<typeof DbMessagesSchema>;
 
@@ -908,6 +954,8 @@ export const DbClientEventsSchema = z.object({
   count: z.number().optional(),
   client_events: z.array(z.any()).optional(),
   error: z.string().optional(),
+  err: z.string().optional(),
+  code: z.string().optional(),
 });
 export type DbClientEventsResp = z.infer<typeof DbClientEventsSchema>;
 
@@ -1075,6 +1123,8 @@ export const RunAsyncRespSchema = z.object({
   job_id: z.string().optional(),
   trace_id: z.string().optional(),
   error: z.string().optional(),
+  err: z.string().optional(),
+  code: z.string().optional(),
 });
 export type RunAsyncResp = z.infer<typeof RunAsyncRespSchema>;
 
@@ -1084,6 +1134,8 @@ export const JobRespSchema = z.object({
   trace_id: z.string().optional(),
   status: z.string().optional(), // queued|running|done|error|cancelled
   error: z.string().optional(),
+  err: z.string().optional(),
+  code: z.string().optional(),
   created_unix_ms: z.number().optional(),
   updated_unix_ms: z.number().optional(),
   events: z.array(EventSchema).optional(),
@@ -1214,6 +1266,8 @@ export const BrokerAgentsRespSchema = z
       )
       .optional(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
   })
   .passthrough();
 export type BrokerAgentsResp = z.infer<typeof BrokerAgentsRespSchema>;
@@ -1245,6 +1299,8 @@ export const BrokerDeploymentsRespSchema = z
       )
       .optional(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
   })
   .passthrough();
 export type BrokerDeploymentsResp = z.infer<typeof BrokerDeploymentsRespSchema>;
@@ -1500,6 +1556,8 @@ export const BrokerMembersRespSchema = z
       )
       .optional(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
   })
   .passthrough();
 export type BrokerMembersResp = z.infer<typeof BrokerMembersRespSchema>;
@@ -1577,6 +1635,8 @@ export const BrokerMembershipAuditRespSchema = z
       )
       .optional(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
   })
   .passthrough();
 export type BrokerMembershipAuditResp = z.infer<typeof BrokerMembershipAuditRespSchema>;
@@ -1605,6 +1665,8 @@ export const AgentdTraceRespSchema = z
     count: z.number().optional(),
     records: z.array(z.any()).optional(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
   })
   .passthrough();
 export type AgentdTraceResp = z.infer<typeof AgentdTraceRespSchema>;
@@ -1627,6 +1689,8 @@ export const BrokerTraceRespSchema = z
     relay_audit: z.array(z.any()).optional(),
     agentd: z.array(z.any()).optional(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
   })
   .passthrough();
 export type BrokerTraceResp = z.infer<typeof BrokerTraceRespSchema>;
@@ -1644,6 +1708,8 @@ export const MemoryQueryRespSchema = z
   .object({
     ok: z.boolean(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
   })
   .passthrough();
 export type MemoryQueryResp = z.infer<typeof MemoryQueryRespSchema>;
@@ -1652,6 +1718,8 @@ export const MemoryCorrelateRespSchema = z
   .object({
     ok: z.boolean(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
   })
   .passthrough();
 export type MemoryCorrelateResp = z.infer<typeof MemoryCorrelateRespSchema>;
@@ -1660,6 +1728,8 @@ export const MemoryCheckpointsRespSchema = z
   .object({
     ok: z.boolean(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
   })
   .passthrough();
 export type MemoryCheckpointsResp = z.infer<typeof MemoryCheckpointsRespSchema>;
@@ -1668,6 +1738,8 @@ export const MemoryIndexRespSchema = z
   .object({
     ok: z.boolean(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
   })
   .passthrough();
 export type MemoryIndexResp = z.infer<typeof MemoryIndexRespSchema>;
@@ -1676,6 +1748,8 @@ export const MemorySalienceRespSchema = z
   .object({
     ok: z.boolean(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
   })
   .passthrough();
 export type MemorySalienceResp = z.infer<typeof MemorySalienceRespSchema>;
@@ -1684,6 +1758,8 @@ export const MemoryRetentionRespSchema = z
   .object({
     ok: z.boolean(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
   })
   .passthrough();
 export type MemoryRetentionResp = z.infer<typeof MemoryRetentionRespSchema>;
@@ -1692,6 +1768,8 @@ export const MemoryRecapsRespSchema = z
   .object({
     ok: z.boolean(),
     error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
   })
   .passthrough();
 export type MemoryRecapsResp = z.infer<typeof MemoryRecapsRespSchema>;

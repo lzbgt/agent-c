@@ -6,6 +6,10 @@
 #include <string>
 #include <string_view>
 
+namespace Json {
+class Value;
+}
+
 namespace agentd {
 
 std::string url_decode(std::string_view s);
@@ -17,5 +21,7 @@ std::string trim_slashes(std::string s);
 std::string header_get_ci(const std::map<std::string, std::string>& headers, const std::string& key_lc);
 std::string bearer_token_from_auth_header(const std::string& auth);
 std::string cookie_get(const std::map<std::string, std::string>& headers, const std::string& name);
+std::string error_code_from_message(const std::string& message);
+std::string json_error_body(const std::string& message, const std::string& code = std::string(), const Json::Value* details = nullptr);
 
 }  // namespace agentd

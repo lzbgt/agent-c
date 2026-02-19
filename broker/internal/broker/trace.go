@@ -50,21 +50,21 @@ type traceMembershipAuditRow struct {
 
 func (s *Server) handleTrace(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	p, err := s.requirePrincipal(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 	traceID := strings.TrimSpace(r.URL.Query().Get("trace_id"))
 	if traceID == "" {
-		http.Error(w, "missing trace_id", http.StatusBadRequest)
+		writeErrorJSON(w, "missing trace_id", http.StatusBadRequest)
 		return
 	}
 	if !isSafeTraceID(traceID) {
-		http.Error(w, "invalid trace_id", http.StatusBadRequest)
+		writeErrorJSON(w, "invalid trace_id", http.StatusBadRequest)
 		return
 	}
 
@@ -78,13 +78,13 @@ func (s *Server) handleTrace(w http.ResponseWriter, r *http.Request) {
 
 	rows, err := s.cfg.DB.ListRelayAuditByTrace(r.Context(), p.Sub, traceID, limit)
 	if err != nil {
-		http.Error(w, "db error", http.StatusInternalServerError)
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
 		return
 	}
 
 	orchRows, err := s.cfg.DB.ListOrchestrateAuditByTrace(r.Context(), p.Sub, traceID, 50)
 	if err != nil {
-		http.Error(w, "db error", http.StatusInternalServerError)
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
 		return
 	}
 
@@ -95,7 +95,7 @@ func (s *Server) handleTrace(w http.ResponseWriter, r *http.Request) {
 		memberRows, err = s.cfg.DB.ListMembershipAuditByTrace(r.Context(), p.Sub, traceID, 100)
 	}
 	if err != nil {
-		http.Error(w, "db error", http.StatusInternalServerError)
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
 		return
 	}
 

@@ -1,6 +1,7 @@
 #include "workflow_submit_macros.h"
 
 #include "edge_util.h"
+#include "http_util.h"
 #include "string_util.h"
 
 #include <json/json.h>
@@ -55,7 +56,7 @@ bool expand_workflow_submit_macros(
   if (!io_tasks_arr || !io_tasks_arr->isArray()) {
     if (resp) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid tasks (expected array)\"}";
+      resp->body = json_error_body("invalid tasks (expected array)");
     }
     return false;
   }

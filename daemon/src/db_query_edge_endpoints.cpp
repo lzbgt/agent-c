@@ -710,7 +710,7 @@ void handle_db_edge_workflows_endpoint(
 
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   sqlite3_stmt* st = nullptr;
@@ -811,7 +811,7 @@ void handle_db_edge_workflow_endpoint(
 
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   sqlite3_stmt* st = nullptr;
@@ -1013,7 +1013,7 @@ void handle_db_edge_workflow_steps_endpoint(
 
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   sqlite3_stmt* st = nullptr;
@@ -1136,7 +1136,7 @@ void handle_db_edge_workflow_events_endpoint(
 
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   sqlite3_stmt* st = nullptr;
@@ -1210,7 +1210,7 @@ void handle_db_workflow_analytics_endpoint(
   std::string scope = (scope_param && !scope_param->empty()) ? *scope_param : "all";
   if (scope != "all" && scope != "durable" && scope != "edge") {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"invalid scope (expected all|durable|edge)\"}";
+    resp->body = json_error_body("invalid scope (expected all|durable|edge)");
     return;
   }
 
@@ -1227,7 +1227,7 @@ void handle_db_workflow_analytics_endpoint(
 
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   Json::Value out(Json::objectValue);
@@ -1264,13 +1264,13 @@ void handle_db_workflow_analytics_export_endpoint(
   if (format != "json" && format != "csv") {
     resp->status = 400;
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    resp->body = "{\"ok\":false,\"error\":\"invalid format (use json or csv)\"}";
+    resp->body = json_error_body("invalid format (use json or csv)");
     return;
   }
   if (scope != "all" && scope != "durable" && scope != "edge") {
     resp->status = 400;
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    resp->body = "{\"ok\":false,\"error\":\"invalid scope (use all, durable, or edge)\"}";
+    resp->body = json_error_body("invalid scope (use all, durable, or edge)");
     return;
   }
 
@@ -1289,7 +1289,7 @@ void handle_db_workflow_analytics_export_endpoint(
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
   resp->headers["Content-Type"] = "application/json; charset=utf-8";
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   Json::Value durable(Json::objectValue);
@@ -1365,7 +1365,7 @@ void handle_db_edge_analytics_endpoint(
 
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   Json::Value out(Json::objectValue);
@@ -1406,13 +1406,13 @@ void handle_db_edge_analytics_export_endpoint(
   if (format != "json" && format != "csv") {
     resp->status = 400;
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    resp->body = "{\"ok\":false,\"error\":\"invalid format (use json or csv)\"}";
+    resp->body = json_error_body("invalid format (use json or csv)");
     return;
   }
   if (scope != "all" && scope != "edge_tasks" && scope != "edge_nodes") {
     resp->status = 400;
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    resp->body = "{\"ok\":false,\"error\":\"invalid scope (use all, edge_tasks, or edge_nodes)\"}";
+    resp->body = json_error_body("invalid scope (use all, edge_tasks, or edge_nodes)");
     return;
   }
 
@@ -1434,7 +1434,7 @@ void handle_db_edge_analytics_export_endpoint(
 #if !defined(AGENT_HAVE_SQLITE3)
   resp->status = 500;
   resp->headers["Content-Type"] = "application/json; charset=utf-8";
-  resp->body = R"({"ok":false,"error":"sqlite disabled"})";
+  resp->body = json_error_body("sqlite disabled");
   return;
 #else
   Json::Value task_stats(Json::objectValue);

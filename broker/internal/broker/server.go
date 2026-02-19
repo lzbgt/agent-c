@@ -414,18 +414,18 @@ func (s *Server) handleAgents(w http.ResponseWriter, r *http.Request) {
 	case "POST":
 		s.handleAgentsCreate(w, r)
 	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 	}
 }
 
 func (s *Server) handleAgentsList(w http.ResponseWriter, r *http.Request) {
 	p, err := s.requirePrincipal(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 	if p.AuthKind != "oidc" {
-		http.Error(w, "oidc required for agent listing", http.StatusForbidden)
+		writeErrorJSON(w, "oidc required for agent listing", http.StatusForbidden)
 		return
 	}
 	type DeploymentInfo struct {
@@ -451,7 +451,7 @@ func (s *Server) handleAgentsList(w http.ResponseWriter, r *http.Request) {
 	}
 	dbAgents, err := s.cfg.DB.ListAgentsForUser(r.Context(), p.Sub)
 	if err != nil {
-		http.Error(w, "db error", http.StatusInternalServerError)
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
 		return
 	}
 	out := make([]AgentInfo, 0, len(dbAgents))
@@ -649,16 +649,16 @@ func deploymentIDsFromQuery(r *http.Request) ([]string, error) {
 func (s *Server) handleAgentsCreate(w http.ResponseWriter, r *http.Request) {
 	p, err := s.requirePrincipal(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 	if p.AuthKind != "oidc" {
-		http.Error(w, "oidc required for agent creation", http.StatusForbidden)
+		writeErrorJSON(w, "oidc required for agent creation", http.StatusForbidden)
 		return
 	}
 	body, err := readBodyBounded(r.Body, 1024*1024)
 	if err != nil {
-		http.Error(w, "invalid body", http.StatusBadRequest)
+		writeErrorJSON(w, "invalid body", http.StatusBadRequest)
 		return
 	}
 	req := struct {
@@ -668,7 +668,7 @@ func (s *Server) handleAgentsCreate(w http.ResponseWriter, r *http.Request) {
 	}{}
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &req); err != nil {
-			http.Error(w, "invalid json", http.StatusBadRequest)
+			writeErrorJSON(w, "invalid json", http.StatusBadRequest)
 			return
 		}
 	}
@@ -677,7 +677,7 @@ func (s *Server) handleAgentsCreate(w http.ResponseWriter, r *http.Request) {
 		agentID = "a-" + newID()[:12]
 	}
 	if !agentIDRe.MatchString(agentID) {
-		http.Error(w, "invalid agent_id", http.StatusBadRequest)
+		writeErrorJSON(w, "invalid agent_id", http.StatusBadRequest)
 		return
 	}
 	if p.Admin && strings.TrimSpace(req.AgentID) != "" && strings.HasPrefix(agentID, "a-") {
@@ -686,7 +686,7 @@ func (s *Server) handleAgentsCreate(w http.ResponseWriter, r *http.Request) {
 
 	a, err := s.cfg.DB.CreateAgent(r.Context(), p.Sub, agentID, req.Labels, req.Meta)
 	if err != nil {
-		http.Error(w, "create agent failed", http.StatusBadRequest)
+		writeErrorJSON(w, "create agent failed", http.StatusBadRequest)
 		return
 	}
 	writeJSON(w, map[string]any{
@@ -721,7 +721,7 @@ func (s *Server) handleAgentsSubroutes(w http.ResponseWriter, r *http.Request) {
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/agents/")
 	parts := strings.SplitN(rest, "/", 3)
 	if len(parts) < 2 {
-		http.Error(w, "not found", http.StatusNotFound)
+		writeErrorJSON(w, "not found", http.StatusNotFound)
 		return
 	}
 	agentID := parts[0]
@@ -749,7 +749,7 @@ func (s *Server) handleAgentsSubroutes(w http.ResponseWriter, r *http.Request) {
 	}
 	if action == "ota" {
 		if len(parts) < 3 || parts[2] == "" {
-			http.Error(w, "not found", http.StatusNotFound)
+			writeErrorJSON(w, "not found", http.StatusNotFound)
 			return
 		}
 		switch parts[2] {
@@ -758,13 +758,13 @@ func (s *Server) handleAgentsSubroutes(w http.ResponseWriter, r *http.Request) {
 		case "status":
 			s.handleAgentOtaStatusBulk(w, r, agentID)
 		default:
-			http.Error(w, "not found", http.StatusNotFound)
+			writeErrorJSON(w, "not found", http.StatusNotFound)
 		}
 		return
 	}
 	if action == "memory" {
 		if len(parts) < 3 || parts[2] == "" {
-			http.Error(w, "not found", http.StatusNotFound)
+			writeErrorJSON(w, "not found", http.StatusNotFound)
 			return
 		}
 		switch parts[2] {
@@ -775,7 +775,7 @@ func (s *Server) handleAgentsSubroutes(w http.ResponseWriter, r *http.Request) {
 		case "salience":
 			s.handleAgentMemorySalienceBulk(w, r, agentID)
 		default:
-			http.Error(w, "not found", http.StatusNotFound)
+			writeErrorJSON(w, "not found", http.StatusNotFound)
 		}
 		return
 	}
@@ -795,13 +795,13 @@ func (s *Server) handleAgentsSubroutes(w http.ResponseWriter, r *http.Request) {
 			case "POST":
 				s.handleAgentMembersUpsert(w, r, agentID)
 			default:
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+				writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 			}
 			return
 		}
 		userSub, err := url.PathUnescape(parts[2])
 		if err != nil {
-			http.Error(w, "invalid user_sub", http.StatusBadRequest)
+			writeErrorJSON(w, "invalid user_sub", http.StatusBadRequest)
 			return
 		}
 		s.handleAgentMemberDelete(w, r, agentID, userSub)
@@ -812,31 +812,31 @@ func (s *Server) handleAgentsSubroutes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Error(w, "not found", http.StatusNotFound)
+	writeErrorJSON(w, "not found", http.StatusNotFound)
 }
 
 func (s *Server) handleAgentDisconnect(w http.ResponseWriter, r *http.Request, agentID string) {
 	p, err := s.requirePrincipal(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 	if !p.Admin {
-		http.Error(w, "admin required", http.StatusForbidden)
+		writeErrorJSON(w, "admin required", http.StatusForbidden)
 		return
 	}
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	deploymentID, derr := deploymentIDFromRequest(r)
 	if derr != nil {
-		http.Error(w, derr.Error(), http.StatusBadRequest)
+		writeErrorJSON(w, derr.Error(), http.StatusBadRequest)
 		return
 	}
 	deleted := s.cfg.Registry.Delete(agentID, deploymentID)
 	if len(deleted) == 0 {
-		http.Error(w, "agent not connected", http.StatusNotFound)
+		writeErrorJSON(w, "agent not connected", http.StatusNotFound)
 		return
 	}
 	for _, a := range deleted {
@@ -850,18 +850,18 @@ func (s *Server) handleAgentDisconnect(w http.ResponseWriter, r *http.Request, a
 func (s *Server) handleAgentDeployments(w http.ResponseWriter, r *http.Request, agentID string) {
 	p, err := s.requirePrincipal(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	if ok, err := s.canAccessAgent(r.Context(), p, agentID); err != nil {
-		http.Error(w, "db error", http.StatusInternalServerError)
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
 		return
 	} else if !ok {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		writeErrorJSON(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	type DeploymentInfo struct {
@@ -906,31 +906,31 @@ func (s *Server) handleAgentDeployments(w http.ResponseWriter, r *http.Request, 
 func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentID, agentPath string) {
 	p, err := s.requirePrincipal(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 	if ok, err := s.canAccessAgent(r.Context(), p, agentID); err != nil {
-		http.Error(w, "db error", http.StatusInternalServerError)
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
 		return
 	} else if !ok {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		writeErrorJSON(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	deploymentID, derr := deploymentIDFromRequest(r)
 	if derr != nil {
-		http.Error(w, derr.Error(), http.StatusBadRequest)
+		writeErrorJSON(w, derr.Error(), http.StatusBadRequest)
 		return
 	}
 
 	// Read request body (bounded).
 	body, err := readBodyBounded(r.Body, s.cfg.MaxRequestBodySize)
 	if err != nil {
-		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+		writeErrorJSON(w, "request body too large", http.StatusRequestEntityTooLarge)
 		return
 	}
 	idemKey, idemErr := idempotencyKeyFromRequest(r)
 	if idemErr != nil {
-		http.Error(w, idemErr.Error(), http.StatusBadRequest)
+		writeErrorJSON(w, idemErr.Error(), http.StatusBadRequest)
 		return
 	}
 	var idemStatus db.IdempotencyStatus
@@ -947,7 +947,7 @@ func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentI
 			ExpiresAt:     time.Now().Add(s.cfg.IdempotencyTTL),
 		})
 		if err != nil {
-			http.Error(w, "idempotency claim failed", http.StatusInternalServerError)
+			writeErrorJSON(w, "idempotency claim failed", http.StatusInternalServerError)
 			return
 		}
 		idemStatus = claim.Status
@@ -974,18 +974,12 @@ func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentI
 			w.Header().Set("X-Idempotency-Key", idemKey)
 			w.Header().Set("Retry-After", "1")
 			w.WriteHeader(http.StatusConflict)
-			writeJSON(w, map[string]any{
-				"ok":    false,
-				"error": "idempotency_key_in_progress",
-			})
+			writeJSON(w, errorEnvelope("idempotency_key_in_progress"))
 			return
 		case db.IdempotencyConflict:
 			w.Header().Set("X-Idempotency-Key", idemKey)
 			w.WriteHeader(http.StatusConflict)
-			writeJSON(w, map[string]any{
-				"ok":    false,
-				"error": "idempotency_key_conflict",
-			})
+			writeJSON(w, errorEnvelope("idempotency_key_conflict"))
 			return
 		case db.IdempotencyCreated:
 			// continue
@@ -1000,7 +994,7 @@ func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentI
 		if idemKey != "" {
 			_ = s.cfg.DB.DeleteIdempotency(r.Context(), p.Sub, idemKey)
 		}
-		http.Error(w, ro.Err, ro.BrokerStatus)
+		writeErrorJSON(w, ro.Err, ro.BrokerStatus)
 		return
 	}
 	for k, v := range ro.Headers {
@@ -1036,35 +1030,35 @@ func (s *Server) handleAgentProxy(w http.ResponseWriter, r *http.Request, agentI
 func (s *Server) handleAgentProxySSE(w http.ResponseWriter, r *http.Request, agentID, agentPath string) {
 	p, err := s.requirePrincipal(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 	if ok, err := s.canAccessAgent(r.Context(), p, agentID); err != nil {
-		http.Error(w, "db error", http.StatusInternalServerError)
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
 		return
 	} else if !ok {
-		http.Error(w, "forbidden", http.StatusForbidden)
+		writeErrorJSON(w, "forbidden", http.StatusForbidden)
 		return
 	}
 	deploymentID, derr := deploymentIDFromRequest(r)
 	if derr != nil {
-		http.Error(w, derr.Error(), http.StatusBadRequest)
+		writeErrorJSON(w, derr.Error(), http.StatusBadRequest)
 		return
 	}
 	a, err := s.cfg.Registry.Require(agentID, deploymentID)
 	if err != nil {
-		http.Error(w, "agent not connected", http.StatusBadGateway)
+		writeErrorJSON(w, "agent not connected", http.StatusBadGateway)
 		return
 	}
 	fl, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		writeErrorJSON(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
 
 	body, err := readBodyBounded(r.Body, s.cfg.MaxRequestBodySize)
 	if err != nil {
-		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+		writeErrorJSON(w, "request body too large", http.StatusRequestEntityTooLarge)
 		return
 	}
 
@@ -1073,7 +1067,7 @@ func (s *Server) handleAgentProxySSE(w http.ResponseWriter, r *http.Request, age
 	streamID := newID()
 	streamCh, err := a.RegisterStream(streamID)
 	if err != nil {
-		http.Error(w, "broker overloaded", http.StatusServiceUnavailable)
+		writeErrorJSON(w, "broker overloaded", http.StatusServiceUnavailable)
 		return
 	}
 	defer a.CloseStream(streamID)
@@ -1098,7 +1092,7 @@ func (s *Server) handleAgentProxySSE(w http.ResponseWriter, r *http.Request, age
 	}
 	if err := a.SendStream(msg); err != nil {
 		s.cfg.Registry.Delete(agentID, deploymentID)
-		http.Error(w, "agent send failed", http.StatusBadGateway)
+		writeErrorJSON(w, "agent send failed", http.StatusBadGateway)
 		return
 	}
 
@@ -1118,11 +1112,11 @@ func (s *Server) handleAgentProxySSE(w http.ResponseWriter, r *http.Request, age
 			return
 		case <-startTimer.C:
 			sendCancel()
-			http.Error(w, "agent stream start timeout", http.StatusGatewayTimeout)
+			writeErrorJSON(w, "agent stream start timeout", http.StatusGatewayTimeout)
 			return
 		case m, ok := <-streamCh:
 			if !ok {
-				http.Error(w, "agent disconnected", http.StatusBadGateway)
+				writeErrorJSON(w, "agent disconnected", http.StatusBadGateway)
 				return
 			}
 			ss, ok := m.(proto.StreamStart)
@@ -1205,14 +1199,14 @@ func (s *Server) handleAgentProxySSE(w http.ResponseWriter, r *http.Request, age
 
 func (s *Server) handleAgentConnect(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
 	cert, certErr := auth.VerifiedClientLeaf(r)
 	if certErr != nil {
 		if s.cfg.RequireAgentMTLS {
-			http.Error(w, "agent mTLS required", http.StatusUnauthorized)
+			writeErrorJSON(w, "agent mTLS required", http.StatusUnauthorized)
 			return
 		}
 	}
@@ -1220,7 +1214,7 @@ func (s *Server) handleAgentConnect(w http.ResponseWriter, r *http.Request) {
 	if cert != nil {
 		id, err := auth.AgentIDFromCertCN(cert, s.cfg.AgentCNPfx)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
+			writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 			return
 		}
 		certAgentID = id
@@ -1510,27 +1504,27 @@ func (s *Server) canAccessAgent(ctx context.Context, p *Principal, agentID strin
 func (s *Server) handleAgentDelete(w http.ResponseWriter, r *http.Request, agentID string) {
 	p, err := s.requirePrincipal(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 	if p.AuthKind == "client" && !p.Admin {
-		http.Error(w, "client auth cannot delete agents", http.StatusForbidden)
+		writeErrorJSON(w, "client auth cannot delete agents", http.StatusForbidden)
 		return
 	}
 	if r.Method != "POST" && r.Method != "DELETE" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	if p.Admin {
 		if err := s.cfg.DB.DeleteAgent(r.Context(), agentID); err != nil {
-			http.Error(w, "delete failed", http.StatusBadRequest)
+			writeErrorJSON(w, "delete failed", http.StatusBadRequest)
 			return
 		}
 		writeJSON(w, map[string]any{"ok": true})
 		return
 	}
 	if err := s.cfg.DB.DeleteAgentIfOwner(r.Context(), p.Sub, agentID); err != nil {
-		http.Error(w, "not owner", http.StatusForbidden)
+		writeErrorJSON(w, "not owner", http.StatusForbidden)
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true})
@@ -1538,12 +1532,12 @@ func (s *Server) handleAgentDelete(w http.ResponseWriter, r *http.Request, agent
 func (s *Server) handleEventsSSE(w http.ResponseWriter, r *http.Request) {
 	p, err := s.requirePrincipal(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 	fl, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		writeErrorJSON(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -1630,17 +1624,15 @@ func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 	}
 	if !ok {
 		w.WriteHeader(http.StatusServiceUnavailable)
-		writeJSON(w, map[string]any{
-			"ok":         false,
-			"error":      errStr,
-			"ts_unix_ms": time.Now().UnixMilli(),
-			"client_auth": func() any {
-				if clientAuth == nil {
-					return nil
-				}
-				return clientAuth
-			}(),
-		})
+		resp := errorEnvelope(errStr)
+		resp["ts_unix_ms"] = time.Now().UnixMilli()
+		resp["client_auth"] = func() any {
+			if clientAuth == nil {
+				return nil
+			}
+			return clientAuth
+		}()
+		writeJSON(w, resp)
 		return
 	}
 	writeJSON(w, map[string]any{
@@ -1790,16 +1782,16 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleClientAuthStatus(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "GET" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	p, err := s.requirePrincipal(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 	if !p.Admin {
-		http.Error(w, "admin required", http.StatusForbidden)
+		writeErrorJSON(w, "admin required", http.StatusForbidden)
 		return
 	}
 	ok, at, errStr := s.getClientAuthStatus()
@@ -1820,20 +1812,20 @@ func (s *Server) handleClientAuthStatus(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) handleClientAuthReload(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	p, err := s.requirePrincipal(r)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 	if !p.Admin {
-		http.Error(w, "admin required", http.StatusForbidden)
+		writeErrorJSON(w, "admin required", http.StatusForbidden)
 		return
 	}
 	if err := s.reloadClientAuth("api"); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true, "ts_unix_ms": time.Now().UnixMilli()})
@@ -1924,12 +1916,6 @@ func (s *Server) checkReady(ctx context.Context) (bool, string) {
 	s.readyMu.Unlock()
 
 	return ok, errStr
-}
-
-func writeJSON(w http.ResponseWriter, v any) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	b, _ := json.Marshal(v)
-	_, _ = w.Write(b)
 }
 
 func readBodyBounded(r io.Reader, limit int64) ([]byte, error) {

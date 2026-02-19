@@ -1,5 +1,7 @@
 # Cloud Broker (Secure Relay) — Design
 
+Design context: see `DESIGN.md` for the system-wide architecture; this document focuses on broker-specific design and APIs.
+
 This document defines a **cloud broker** for securely relaying requests between:
 
 - multiple **agentd deployments** (desktop/server “workers” behind NAT, or in private networks)

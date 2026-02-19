@@ -29,7 +29,7 @@ void handle_job_get_endpoint(
   const auto jid = query_get(req.query, "job_id");
   if (!jid || jid->empty()) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"missing job_id"})";
+    resp->body = json_error_body("missing job_id");
     return;
   }
 
@@ -141,7 +141,7 @@ void handle_job_get_endpoint(
   }
 
   resp->status = 404;
-  resp->body = R"({"ok":false,"error":"job not found"})";
+  resp->body = json_error_body("job not found");
 }
 
 void handle_job_cancel_endpoint(
@@ -158,7 +158,7 @@ void handle_job_cancel_endpoint(
   const auto jid = query_get(req.query, "job_id");
   if (!jid || jid->empty()) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"missing job_id"})";
+    resp->body = json_error_body("missing job_id");
     return;
   }
   if (!job_request_cancel(*jid)) {
@@ -213,7 +213,7 @@ void handle_job_delete_endpoint(
   const auto jid = query_get(req.query, "job_id");
   if (!jid || jid->empty()) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"missing job_id"})";
+    resp->body = json_error_body("missing job_id");
     return;
   }
   if (!job_delete(*jid)) {

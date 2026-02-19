@@ -145,7 +145,7 @@ void handle_run_async_endpoint(
   const std::string job_id = args.isMember("job_id") && args["job_id"].isString() ? args["job_id"].asString() : new_job_id();
   if (job_id.empty()) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"empty job_id"})";
+    resp->body = json_error_body("empty job_id");
     return;
   }
 
@@ -153,7 +153,7 @@ void handle_run_async_endpoint(
   if (args.isMember("priority")) {
     if (!args["priority"].isInt()) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid priority (expected int)\"}";
+      resp->body = json_error_body("invalid priority (expected int)");
       return;
     }
     priority = args["priority"].asInt();

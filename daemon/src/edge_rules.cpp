@@ -197,7 +197,7 @@ void handle_edge_rule_upsert_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 503;
-    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    resp->body = json_error_body("db not available");
     return;
   }
 
@@ -216,7 +216,7 @@ void handle_edge_rule_upsert_endpoint(
   if (rule_id.empty()) rule_id = std::string("rule:") + edge_make_uuidish_msg_id();
   if (!edge_id_is_safe(rule_id)) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"invalid rule_id\"}";
+    resp->body = json_error_body("invalid rule_id");
     return;
   }
 
@@ -224,7 +224,7 @@ void handle_edge_rule_upsert_endpoint(
     args.isMember("event_type") && args["event_type"].isString() ? trim_copy(args["event_type"].asString()) : "";
   if (event_type.empty() || !edge_id_is_safe(event_type)) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"missing/invalid event_type\"}";
+    resp->body = json_error_body("missing/invalid event_type");
     return;
   }
 
@@ -245,26 +245,26 @@ void handle_edge_rule_upsert_endpoint(
   Json::Value action = args.isMember("action") ? args["action"] : Json::Value(Json::nullValue);
   if (!action.isObject()) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"missing/invalid action (expected object)\"}";
+    resp->body = json_error_body("missing/invalid action (expected object)");
     return;
   }
   const std::string atype = action.isMember("type") && action["type"].isString() ? action["type"].asString() : "";
   if (atype != "task_assign" && atype != "durable_workflow_submit") {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"unsupported action.type (expected task_assign or durable_workflow_submit)\"}";
+    resp->body = json_error_body("unsupported action.type (expected task_assign or durable_workflow_submit)");
     return;
   }
   if (atype == "durable_workflow_submit") {
     if (!action.isMember("workflow") || !action["workflow"].isObject()) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"durable_workflow_submit requires action.workflow (object)\"}";
+      resp->body = json_error_body("durable_workflow_submit requires action.workflow (object)");
       return;
     }
   }
   const std::string action_json = edge_json_stringify_compact(action);
   if (action_json.size() > 200000) {
     resp->status = 413;
-    resp->body = "{\"ok\":false,\"error\":\"action too large\"}";
+    resp->body = json_error_body("action too large");
     return;
   }
 
@@ -319,7 +319,7 @@ void handle_edge_rules_list_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 503;
-    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    resp->body = json_error_body("db not available");
     return;
   }
 
@@ -380,14 +380,14 @@ void handle_edge_rule_delete_endpoint(
 
   if (!db_or_null || !db_or_null->is_open()) {
     resp->status = 503;
-    resp->body = "{\"ok\":false,\"error\":\"db not available\"}";
+    resp->body = json_error_body("db not available");
     return;
   }
 
   const auto rid = query_get(req.query, "rule_id");
   if (!rid || rid->empty() || !edge_id_is_safe(*rid)) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"missing/invalid rule_id\"}";
+    resp->body = json_error_body("missing/invalid rule_id");
     return;
   }
 

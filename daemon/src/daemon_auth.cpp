@@ -36,7 +36,7 @@ bool daemon_require_auth(const DaemonConfig& cfg, const HttpRequest& req, HttpRe
     resp->status = 401;
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
     resp->headers["WWW-Authenticate"] = "Bearer";
-    resp->body = R"({"ok":false,"error":"unauthorized"})";
+    resp->body = json_error_body("unauthorized");
   }
   return false;
 }

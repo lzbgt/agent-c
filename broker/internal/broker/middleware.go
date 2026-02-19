@@ -170,7 +170,7 @@ func withRecovery(next http.Handler) http.Handler {
 			if rec := recover(); rec != nil {
 				rid := requestIDFromContext(r.Context())
 				log.Printf("broker panic rid=%s err=%v", rid, rec)
-				http.Error(w, "internal server error", http.StatusInternalServerError)
+				writeErrorJSON(w, "internal server error", http.StatusInternalServerError)
 			}
 		}()
 		next.ServeHTTP(w, r)
@@ -371,7 +371,7 @@ func withCORS(cfg CorsConfig, next http.Handler) http.Handler {
 				w.Header().Add("Vary", "Origin")
 			}
 		} else if origin != "" && r.Method == http.MethodOptions {
-			http.Error(w, "origin not allowed", http.StatusForbidden)
+			writeErrorJSON(w, "origin not allowed", http.StatusForbidden)
 			return
 		}
 

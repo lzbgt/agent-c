@@ -50,6 +50,8 @@ Response (JSON):
 - `session_id` (string)
 - `created` (bool) whether a new session was created (false means it already existed)
 - `error` (string, optional)
+- `err` (string, optional; alias of `error`)
+- `code` (string, optional; stable-ish error code derived from the message)
 
 Notes:
 - The daemon still supports `GET /api/v1/sessions` and `GET /api/v1/session?session_id=...` for listing/resuming.

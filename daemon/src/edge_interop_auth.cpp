@@ -5,6 +5,7 @@
 #include "daemon_auth.h"
 #include "edge_rules.h"
 #include "edge_util.h"
+#include "http_util.h"
 #include "json_util.h"
 #include "string_util.h"
 #include "workflow_endpoints.h"
@@ -147,7 +148,7 @@ bool verify_edge_envelope_auth_best_effort(
     if (cfg.edge_auth_require_ts) {
       if (ts_utc_ms <= 0) {
         resp->status = 401;
-        resp->body = "{\"ok\":false,\"error\":\"edge auth requires ts_utc_ms\"}";
+        resp->body = json_error_body("edge auth requires ts_utc_ms");
         return false;
       }
     }
@@ -155,7 +156,7 @@ bool verify_edge_envelope_auth_best_effort(
       const int64_t delta = std::llabs(now_utc_ms - ts_utc_ms);
       if (delta > cfg.edge_auth_max_skew_ms) {
         resp->status = 401;
-        resp->body = "{\"ok\":false,\"error\":\"envelope ts_utc_ms outside allowed skew\"}";
+        resp->body = json_error_body("envelope ts_utc_ms outside allowed skew");
         return false;
       }
     }
@@ -164,26 +165,26 @@ bool verify_edge_envelope_auth_best_effort(
   if (cfg.edge_auth_required) {
     if (!has_auth) {
       resp->status = 401;
-      resp->body = "{\"ok\":false,\"error\":\"missing envelope.auth\"}";
+      resp->body = json_error_body("missing envelope.auth");
       return false;
     }
     // Stronger identity binding under required mode.
     if (from_id.rfind("node:", 0) != 0 || from_id.size() <= 5) {
       resp->status = 401;
-      resp->body = "{\"ok\":false,\"error\":\"edge auth required: envelope.from must be node:<node_id>\"}";
+      resp->body = json_error_body("edge auth required: envelope.from must be node:<node_id>");
       return false;
     }
     const std::string node_id_from = trim_copy(from_id.substr(5));
     if (node_id_from.empty() || !edge_id_is_safe(node_id_from)) {
       resp->status = 401;
-      resp->body = "{\"ok\":false,\"error\":\"edge auth required: invalid node_id in envelope.from\"}";
+      resp->body = json_error_body("edge auth required: invalid node_id in envelope.from");
       return false;
     }
     if (body.isObject() && body.isMember("node_id") && body["node_id"].isString()) {
       const std::string node_id_body = trim_copy(body["node_id"].asString());
       if (!node_id_body.empty() && node_id_body != node_id_from) {
         resp->status = 401;
-        resp->body = "{\"ok\":false,\"error\":\"edge auth required: body.node_id must match envelope.from\"}";
+        resp->body = json_error_body("edge auth required: body.node_id must match envelope.from");
         return false;
       }
     }
@@ -192,22 +193,22 @@ bool verify_edge_envelope_auth_best_effort(
   const Json::Value& auth = env["auth"];
   if (!auth.isObject()) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth (expected object)\"}";
+    resp->body = json_error_body("invalid envelope.auth (expected object)");
     return false;
   }
   if (!auth.isMember("alg") || !auth["alg"].isString()) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth.alg (expected string)\"}";
+    resp->body = json_error_body("invalid envelope.auth.alg (expected string)");
     return false;
   }
   if (!auth.isMember("kid") || !auth["kid"].isString()) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth.kid (expected string)\"}";
+    resp->body = json_error_body("invalid envelope.auth.kid (expected string)");
     return false;
   }
   if (!auth.isMember("sig") || !auth["sig"].isString()) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth.sig (expected string)\"}";
+    resp->body = json_error_body("invalid envelope.auth.sig (expected string)");
     return false;
   }
 
@@ -222,12 +223,12 @@ bool verify_edge_envelope_auth_best_effort(
   const bool alg_ok = alg_is_hmac || alg_is_hmac_cbor || alg_is_ed25519 || alg_is_ed25519_cbor;
   if (!alg_ok) {
       resp->status = 401;
-      resp->body = "{\"ok\":false,\"error\":\"unsupported envelope.auth.alg\"}";
+      resp->body = json_error_body("unsupported envelope.auth.alg");
       return false;
   }
   if (kid.empty() || kid.size() > 64 || !edge_id_is_safe(kid)) {
     resp->status = 401;
-    resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth.kid\"}";
+    resp->body = json_error_body("invalid envelope.auth.kid");
     return false;
   }
 
@@ -240,7 +241,7 @@ bool verify_edge_envelope_auth_best_effort(
       if (pol == "match_node") {
         if (kid != node_id_from) {
           resp->status = 401;
-          resp->body = "{\"ok\":false,\"error\":\"edge auth kid policy violation\"}";
+          resp->body = json_error_body("edge auth kid policy violation");
           return false;
         }
       } else if (pol == "node_prefix") {
@@ -248,7 +249,7 @@ bool verify_edge_envelope_auth_best_effort(
         const bool ok = (kid == node_id_from) || (kid.size() > pref.size() && kid.rfind(pref, 0) == 0);
         if (!ok) {
           resp->status = 401;
-          resp->body = "{\"ok\":false,\"error\":\"edge auth kid policy violation\"}";
+          resp->body = json_error_body("edge auth kid policy violation");
           return false;
         }
       }
@@ -260,9 +261,9 @@ bool verify_edge_envelope_auth_best_effort(
   const size_t want_sig_bytes = (alg_is_ed25519 || alg_is_ed25519_cbor) ? 64 : 32;
   if (!base64_decode(sig_b64, &sig_bytes, &berr) || sig_bytes.size() != want_sig_bytes) {
     resp->status = 401;
-    resp->body = (want_sig_bytes == 64)
-      ? "{\"ok\":false,\"error\":\"invalid envelope.auth.sig (expected base64 of 64 bytes)\"}"
-      : "{\"ok\":false,\"error\":\"invalid envelope.auth.sig (expected base64 of 32 bytes)\"}";
+    resp->body = json_error_body((want_sig_bytes == 64)
+      ? "invalid envelope.auth.sig (expected base64 of 64 bytes)"
+      : "invalid envelope.auth.sig (expected base64 of 32 bytes)");
     return false;
   }
 
@@ -281,7 +282,7 @@ bool verify_edge_envelope_auth_best_effort(
     const auto it = cfg.edge_auth_hmac_keys.find(kid);
     if (it == cfg.edge_auth_hmac_keys.end() || it->second.empty()) {
       resp->status = 401;
-      resp->body = "{\"ok\":false,\"error\":\"unknown envelope.auth.kid\"}";
+      resp->body = json_error_body("unknown envelope.auth.kid");
       return false;
     }
     uint8_t mac[32];
@@ -294,21 +295,21 @@ bool verify_edge_envelope_auth_best_effort(
     );
     if (!fixed_time_eq32(mac, (const uint8_t*)sig_bytes.data())) {
       resp->status = 401;
-      resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth.sig\"}";
+      resp->body = json_error_body("invalid envelope.auth.sig");
       return false;
     }
   } else {
     const auto it = cfg.edge_auth_ed25519_pubkeys.find(kid);
     if (it == cfg.edge_auth_ed25519_pubkeys.end() || it->second.empty()) {
       resp->status = 401;
-      resp->body = "{\"ok\":false,\"error\":\"unknown envelope.auth.kid\"}";
+      resp->body = json_error_body("unknown envelope.auth.kid");
       return false;
     }
     std::string pk_bytes;
     std::string perr;
     if (!base64_decode(it->second, &pk_bytes, &perr) || pk_bytes.size() != 32) {
       resp->status = 401;
-      resp->body = "{\"ok\":false,\"error\":\"invalid configured ed25519 pubkey (expected base64 of 32 bytes)\"}";
+      resp->body = json_error_body("invalid configured ed25519 pubkey (expected base64 of 32 bytes)");
       return false;
     }
     if (!agent_ed25519_verify(
@@ -317,7 +318,7 @@ bool verify_edge_envelope_auth_best_effort(
           (const uint8_t*)pk_bytes.data(),
           (const uint8_t*)sig_bytes.data())) {
       resp->status = 401;
-      resp->body = "{\"ok\":false,\"error\":\"invalid envelope.auth.sig\"}";
+      resp->body = json_error_body("invalid envelope.auth.sig");
       return false;
     }
   }

@@ -1,6 +1,7 @@
 #include "orchestrate_endpoints.h"
 
 #include "daemon_auth.h"
+#include "http_util.h"
 #include "json_util.h"
 #include "run_endpoints.h"
 #include "session_id_util.h"
@@ -145,7 +146,7 @@ void handle_orchestrate_endpoint(
 
   if (in.empty()) {
     resp->status = 400;
-    resp->body = R"({"ok":false,"error":"no valid task objects"})";
+    resp->body = json_error_body("no valid task objects");
     return;
   }
 

@@ -34,14 +34,14 @@ void handle_tools_endpoint(
 
   if (query_get(req.query, "tools_root").has_value()) {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"tools_root was removed; omit it and use explicit paths or session_id\"}";
+    resp->body = json_error_body("tools_root was removed; omit it and use explicit paths or session_id");
     return;
   }
 
   std::string daemon_tools;
   if (!normalize_tools_mode(cfg.tools, &daemon_tools)) {
     resp->status = 500;
-    resp->body = "{\"ok\":false,\"error\":\"invalid daemon tools configuration\"}";
+    resp->body = json_error_body("invalid daemon tools configuration");
     return;
   }
   std::string tools = daemon_tools;
@@ -50,12 +50,12 @@ void handle_tools_endpoint(
     std::string requested_norm;
     if (!normalize_tools_mode(*q, &requested_norm)) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid tools (expected: none|basic|host)\"}";
+      resp->body = json_error_body("invalid tools (expected: none|basic|host)");
       return;
     }
     if (!tools_mode_allows(daemon_tools, requested_norm)) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"tools request exceeds daemon tools policy\"}";
+      resp->body = json_error_body("tools request exceeds daemon tools policy");
       return;
     }
     tools = requested_norm;
@@ -72,7 +72,7 @@ void handle_tools_endpoint(
     HostToolsetPolicyMode p{};
     if (!host_policy_from_string(*q, &p)) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid host_policy (expected: full|readonly)\"}";
+      resp->body = json_error_body("invalid host_policy (expected: full|readonly)");
       return;
     }
     requested_policy = p;
@@ -83,7 +83,7 @@ void handle_tools_endpoint(
     session_id = *q;
     if (!session_id_is_safe(session_id)) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid session_id\"}";
+      resp->body = json_error_body("invalid session_id");
       return;
     }
   }
@@ -91,7 +91,7 @@ void handle_tools_endpoint(
     const std::filesystem::path sr = session_root_path(sessions_root_dir, session_id);
     if (sr.empty()) {
       resp->status = 400;
-      resp->body = "{\"ok\":false,\"error\":\"invalid session_id\"}";
+      resp->body = json_error_body("invalid session_id");
       return;
     }
     std::error_code ec;
@@ -126,7 +126,7 @@ void handle_tools_endpoint(
   if (tools == "basic") {
     if (toolset_basic_create(&registry, &executor) != AGENT_OK) {
       resp->status = 500;
-      resp->body = R"({"ok":false,"error":"failed to init toolset_basic"})";
+      resp->body = json_error_body("failed to init toolset_basic");
       return;
     }
   } else if (tools == "host") {
@@ -140,13 +140,13 @@ void handle_tools_endpoint(
     }
     if (toolset_host_create(hcfg, &registry, &executor) != AGENT_OK) {
       resp->status = 500;
-      resp->body = R"({"ok":false,"error":"failed to init toolset_host"})";
+      resp->body = json_error_body("failed to init toolset_host");
       return;
     }
     need_destroy_executor = true;
   } else {
     resp->status = 400;
-    resp->body = "{\"ok\":false,\"error\":\"invalid tools (expected: none|basic|host)\"}";
+    resp->body = json_error_body("invalid tools (expected: none|basic|host)");
     return;
   }
 
@@ -154,7 +154,7 @@ void handle_tools_endpoint(
     const agent_status_t st = tool_ext_or_null->register_tools(tool_ext_or_null->ctx, registry);
     if (st != AGENT_OK) {
       resp->status = 500;
-      resp->body = "{\"ok\":false,\"error\":\"tool extension register_tools failed\"}";
+      resp->body = json_error_body("tool extension register_tools failed");
       agent_tool_registry_destroy(registry);
       if (need_destroy_executor) {
         toolset_host_destroy(&executor);

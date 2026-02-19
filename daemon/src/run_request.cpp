@@ -67,6 +67,16 @@ static void ensure_trace_id_in_events(Json::Value* arr, const std::string& trace
   }
 }
 
+static Json::Value run_request_error(int rpc_status, const std::string& msg) {
+  Json::Value o(Json::objectValue);
+  o["ok"] = false;
+  o["rpc_status"] = rpc_status;
+  o["error"] = msg;
+  o["err"] = msg;
+  o["code"] = error_code_from_message(msg);
+  return o;
+}
+
 static Json::Value run_request_to_json_impl(
   const DaemonConfig& daemon_cfg,
   const OpenAIClientConfig& ocfg,
@@ -112,29 +122,17 @@ static Json::Value run_request_to_json_impl(
   const std::string session_id = args.isMember("session_id") && args["session_id"].isString() ? args["session_id"].asString() : "default";
   const bool no_session = args.isMember("no_session") && args["no_session"].isBool() ? args["no_session"].asBool() : false;
   if (!session_id_is_safe(session_id)) {
-    Json::Value o(Json::objectValue);
-    o["ok"] = false;
-    o["rpc_status"] = 400;
-    o["error"] = "invalid session_id";
-    return o;
+    return run_request_error(400, "invalid session_id");
   }
   if (args.isMember("tools_root")) {
-    Json::Value o(Json::objectValue);
-    o["ok"] = false;
-    o["rpc_status"] = 400;
-    o["error"] = "tools_root was removed; omit it and use explicit paths or session_id";
-    return o;
+    return run_request_error(400, "tools_root was removed; omit it and use explicit paths or session_id");
   }
   HostToolsetPolicyMode requested_policy = daemon_cfg.host_policy;
   if (args.isMember("host_policy") && args["host_policy"].isString()) {
     HostToolsetPolicyMode p{};
     const std::string s = args["host_policy"].asString();
     if (!host_policy_from_string(s, &p)) {
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["rpc_status"] = 400;
-      o["error"] = "invalid host_policy (expected: full|readonly)";
-      return o;
+      return run_request_error(400, "invalid host_policy (expected: full|readonly)");
     }
     requested_policy = p;
   }
@@ -142,11 +140,7 @@ static Json::Value run_request_to_json_impl(
   if (!no_session && !sessions_root_dir.empty()) {
     const std::filesystem::path sr = session_root_path(sessions_root_dir, session_id);
     if (sr.empty()) {
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["rpc_status"] = 400;
-      o["error"] = "invalid session_id";
-      return o;
+      return run_request_error(400, "invalid session_id");
     }
     std::error_code ec;
     (void)std::filesystem::create_directories(sr / "work", ec);
@@ -169,27 +163,15 @@ static Json::Value run_request_to_json_impl(
   if (args.isMember("input_files") && args["input_files"].isArray() && !args["input_files"].empty()) {
     input_had_any_files = true;
     if (no_session) {
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["rpc_status"] = 400;
-      o["error"] = "input_files requires session persistence (no_session=false)";
-      return o;
+      return run_request_error(400, "input_files requires session persistence (no_session=false)");
     }
     if (sessions_root_dir.empty()) {
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["rpc_status"] = 500;
-      o["error"] = "sessions_root_dir not configured";
-      return o;
+      return run_request_error(500, "sessions_root_dir not configured");
     }
 
     const std::filesystem::path sr = session_root_path(sessions_root_dir, session_id);
     if (sr.empty()) {
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["rpc_status"] = 400;
-      o["error"] = "invalid session_id";
-      return o;
+      return run_request_error(400, "invalid session_id");
     }
 
     Json::Value mm(Json::objectValue);
@@ -471,27 +453,16 @@ static Json::Value run_request_to_json_impl(
   agent_session_t* session = nullptr;
   if (!no_session) {
     if (!db_or_null || !db_or_null->is_open()) {
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["rpc_status"] = 500;
-      o["error"] = "db not available (session persistence required)";
-      return o;
+      return run_request_error(500, "db not available (session persistence required)");
     }
     std::string load_err;
     if (!load_session_from_db(*db_or_null, session_id, &session, &load_err)) {
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["rpc_status"] = 500;
-      o["error"] = load_err.empty() ? "failed to load session from db" : load_err;
-      return o;
+      return run_request_error(500, load_err.empty() ? "failed to load session from db" : load_err);
     }
   } else {
     const agent_status_t st = agent_session_create(&session);
     if (st != AGENT_OK) {
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["rpc_status"] = 500;
-      o["error"] = "failed to create session";
+      Json::Value o = run_request_error(500, "failed to create session");
       o["status"] = (Json::Int64)st;
       return o;
     }
@@ -547,10 +518,7 @@ static Json::Value run_request_to_json_impl(
 
   if (tools == "basic") {
     if (toolset_basic_create(&registry, &base_executor) != AGENT_OK) {
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["rpc_status"] = 500;
-      o["error"] = "failed to init toolset_basic";
+      Json::Value o = run_request_error(500, "failed to init toolset_basic");
       agent_session_destroy(session);
       return o;
     }
@@ -584,20 +552,14 @@ static Json::Value run_request_to_json_impl(
       }
     }
     if (toolset_host_create(hcfg, &registry, &base_executor) != AGENT_OK) {
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["rpc_status"] = 500;
-      o["error"] = "failed to init toolset_host";
+      Json::Value o = run_request_error(500, "failed to init toolset_host");
       agent_session_destroy(session);
       return o;
     }
     need_destroy_host_executor = true;
     executor = base_executor;
   } else if (tools != "none") {
-    Json::Value o(Json::objectValue);
-    o["ok"] = false;
-    o["rpc_status"] = 400;
-    o["error"] = "invalid tools (expected: none|basic|host)";
+    Json::Value o = run_request_error(400, "invalid tools (expected: none|basic|host)");
     agent_session_destroy(session);
     return o;
   }
@@ -608,10 +570,7 @@ static Json::Value run_request_to_json_impl(
     const size_t before = agent_tool_registry_count(registry);
     const agent_status_t st = tool_ext_or_null->register_tools(tool_ext_or_null->ctx, registry);
     if (st != AGENT_OK) {
-      Json::Value o(Json::objectValue);
-      o["ok"] = false;
-      o["rpc_status"] = 500;
-      o["error"] = "tool extension register_tools failed";
+      Json::Value o = run_request_error(500, "tool extension register_tools failed");
       agent_tool_registry_destroy(registry);
       if (need_destroy_host_executor) {
         toolset_host_destroy(&base_executor);
@@ -1228,7 +1187,11 @@ static Json::Value run_request_to_json_impl(
       (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now() - started_steady).count();
     out["elapsed_ms"] = (Json::Int64)std::max<int64_t>(0, elapsed_ms);
   }
-  if (!ok) out["error"] = err;
+  if (!ok) {
+    out["error"] = err;
+    out["err"] = err;
+    if (!err.empty()) out["code"] = error_code_from_message(err);
+  }
   // Cancellation is a first-class terminal state for async jobs. Surface an explicit flag so
   // job state can be `status=cancelled` (instead of overloading `error`).
   if (!ok && events_out.isArray()) {

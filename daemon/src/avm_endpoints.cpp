@@ -1,6 +1,7 @@
 #include "avm_endpoints.h"
 
 #include "daemon_auth.h"
+#include "http_util.h"
 #include "json_util.h"
 #include "string_util.h"
 
@@ -349,7 +350,7 @@ static std::optional<AvmReady> avm_require_ready(
   if (!cfg.yolo_default) {
     if (resp) {
       resp->status = 403;
-      resp->body = "{\"ok\":false,\"error\":\"avm endpoints require yolo_default=true\"}";
+      resp->body = json_error_body("avm endpoints require yolo_default=true");
     }
     return std::nullopt;
   }
@@ -358,7 +359,7 @@ static std::optional<AvmReady> avm_require_ready(
   if (avm_bin.empty()) {
     if (resp) {
       resp->status = 503;
-      resp->body = "{\"ok\":false,\"error\":\"AGENTD_AVM_BIN is not set\"}";
+      resp->body = json_error_body("AGENTD_AVM_BIN is not set");
     }
     return std::nullopt;
   }

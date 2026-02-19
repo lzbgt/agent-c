@@ -29,6 +29,18 @@ Roadmap section below and `TODOS.md`, including:
 - Multi-deployment fanout controls surfaced in broker + WebUI.
 - Dynamic memory: observation capture + progressive disclosure (search → timeline → get).
 
+## Design Doc Map
+
+- `DESIGN.md` (this doc): system goals, boundaries, layering, and cross-cutting policies.
+- `docs/BROKER.md`: broker relay design, trust model, and HTTP/WSS API.
+- `docs/CLIENT.md`: client collaboration model (events, UI actions, DoD, client RPC).
+- `docs/AGENTD_LIB.md`: embedding `agentd` in-process and tool-extension interfaces.
+- `docs/PROTOCOL.md`: run/artifact protocol envelopes and semantics.
+- `docs/WORKFLOWS.md`: workflow engine model and task semantics.
+- `docs/STREAMING.md`: streaming compatibility matrix and behavior notes.
+- `docs/MEMORY.md`: memory retention, salience, and recap architecture.
+- `docs/spec/`: versioned protocol/spec deep dives (run events, OTA, streaming core, agent VM port, etc.).
+
 ## Key Decisions (Facts / Constraints)
 
 1) **Core library must not depend on environment variables**
@@ -74,6 +86,8 @@ Roadmap section below and `TODOS.md`, including:
 
 ## Layering Overview
 
+The stack is layered so the portable core stays env-agnostic while host services and clients evolve independently.
+
 ### 1) `agent_core` (portable core, C API)
 
 Responsibilities:
@@ -92,19 +106,45 @@ Interfaces exported:
 - `agent_session_*`: create/destroy session, append messages, compact, iterate messages.
 - Optional hooks for custom allocators (useful for embedded).
 
-### 2) `agent_cli` (desktop host adapter)
+### 2) `agentd` (daemon host service)
+
+Responsibilities:
+- HTTP/SSE API and run orchestration (`/api/v1/run`, `/api/v1/job`, client events).
+- Session persistence, audit logs, and artifact handling.
+- Tool loop execution + tool plugins / tool servers.
+- Runtime config store, safety limits, and optional broker connector.
+
+See: `docs/CLIENT.md`, `docs/PROTOCOL.md`, `docs/TOOLS.md`.
+
+### 3) `agent_cli` (standalone desktop client)
 
 Responsibilities:
 - Parse flags + environment variables + config files (policy owned by CLI).
 - Provide transport implementation (libcurl).
-- Provide persistence implementation (file-based session store initially; can evolve to SQLite).
+- Provide persistence implementation (file-based session store; optional SQLite).
 - Call core APIs to manage session and compaction.
 - Provide host toolsets (filesystem operations, process execution) for tool-calling models.
 
-### 3) Future host adapters
+### 4) Broker (optional relay / control plane)
 
-- `agent_daemon`: long-running broker-connected service (MQTT or similar), remote auth, remote clients.
-- `agent_embed`: bindings for ESP32 / Oren AVM with minimal storage and transport.
+Responsibilities:
+- Agent registry, membership authZ, and audit.
+- mTLS agent connectivity + OIDC/JWT client auth.
+- Relay HTTP/SSE between clients and agentd deployments behind NAT.
+
+See: `docs/BROKER.md`.
+
+### 5) Clients (WebUI + integrations)
+
+- WebUI: primary UX for runs, artifacts, diagnostics, and ops.
+- Other clients: mobile, Slack, backend services, or thin CLIs.
+
+See: `docs/CLIENT.md`.
+
+### 6) Embedded / AVM adapters (future)
+
+- `agent_embed` targets ESP32 / Oren AVM with minimal storage and transport.
+- Optional policy VM to run deterministic routing/retry without LLM calls.
 
 ## Day-1 Product Direction (Decision)
 
@@ -114,10 +154,10 @@ We prioritize a **daemon-first** architecture with multiple clients:
   - session persistence and compaction policy
   - tool loop execution and tool plugins
   - transcript/audit logging (LLM requests, responses, tool calls, tool outputs)
-  - optional broker connectivity (future)
+  - optional broker connectivity (relay)
 - Clients are replaceable front-ends:
-  - `agent` CLI is a **thin client** (plus a useful debug surface).
-  - Local Web UI is the **primary “beautiful UX”** surface (rich interactions, diff views, filtering, etc.).
+  - Local Web UI is the **primary “beautiful UX”** surface for daemon-backed workflows (rich interactions, diff views, filtering, etc.).
+  - `agent` CLI remains a **standalone host adapter** for local runs and a useful debug surface.
 
 Rationale:
 - Terminal TUIs are expensive to make “feature-rich” (diff viewers, tool panes, multimodal previews, search/filter).

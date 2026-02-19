@@ -39,7 +39,7 @@ void handle_file_endpoint(
   if (!path_q || path_q->empty()) {
     resp->status = 400;
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    resp->body = R"({"ok":false,"error":"missing path"})";
+    resp->body = json_error_body("missing path");
     return;
   }
 
@@ -55,7 +55,7 @@ void handle_file_endpoint(
       if (!session_id_is_safe(session_id)) {
         resp->status = 400;
         resp->headers["Content-Type"] = "application/json; charset=utf-8";
-        resp->body = R"({"ok":false,"error":"invalid session_id"})";
+        resp->body = json_error_body("invalid session_id");
         return;
       }
       // Session-scoped file serving:
@@ -69,14 +69,14 @@ void handle_file_endpoint(
       if (cfg.sessions_root_dir.empty()) {
         resp->status = 500;
         resp->headers["Content-Type"] = "application/json; charset=utf-8";
-        resp->body = R"({"ok":false,"error":"sessions_root_dir not configured"})";
+        resp->body = json_error_body("sessions_root_dir not configured");
         return;
       }
       effective_root = session_root_path(cfg.sessions_root_dir, session_id);
       if (effective_root.empty()) {
         resp->status = 400;
         resp->headers["Content-Type"] = "application/json; charset=utf-8";
-        resp->body = R"({"ok":false,"error":"invalid session_id"})";
+        resp->body = json_error_body("invalid session_id");
         return;
       }
     } else {
@@ -85,7 +85,7 @@ void handle_file_endpoint(
       if (ec) {
         resp->status = 500;
         resp->headers["Content-Type"] = "application/json; charset=utf-8";
-        resp->body = R"({"ok":false,"error":"failed to resolve daemon working directory"})";
+        resp->body = json_error_body("failed to resolve daemon working directory");
         return;
       }
     }
@@ -97,7 +97,7 @@ void handle_file_endpoint(
     if (!path_within_root(effective_root, resolved)) {
       resp->status = 400;
       resp->headers["Content-Type"] = "application/json; charset=utf-8";
-      resp->body = R"({"ok":false,"error":"path escapes session root"})";
+      resp->body = json_error_body("path escapes session root");
       return;
     }
   }
@@ -105,7 +105,7 @@ void handle_file_endpoint(
     if (!path_is_within_root(effective_root, resolved)) {
       resp->status = 400;
       resp->headers["Content-Type"] = "application/json; charset=utf-8";
-      resp->body = "{\"ok\":false,\"error\":\"path escapes session root (realpath)\"}";
+      resp->body = json_error_body("path escapes session root (realpath)");
       return;
     }
   }
@@ -114,7 +114,7 @@ void handle_file_endpoint(
   if (!std::filesystem::exists(resolved, ec) || !std::filesystem::is_regular_file(resolved, ec)) {
     resp->status = 404;
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    resp->body = R"({"ok":false,"error":"file not found"})";
+    resp->body = json_error_body("file not found");
     return;
   }
 
@@ -123,7 +123,7 @@ void handle_file_endpoint(
   if (ec || sz > max_bytes) {
     resp->status = 400;
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    resp->body = R"({"ok":false,"error":"file too large"})";
+    resp->body = json_error_body("file too large");
     return;
   }
 
@@ -131,7 +131,7 @@ void handle_file_endpoint(
   if (!in.is_open()) {
     resp->status = 500;
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    resp->body = R"({"ok":false,"error":"failed to open file"})";
+    resp->body = json_error_body("failed to open file");
     return;
   }
   std::string bytes;
@@ -140,7 +140,7 @@ void handle_file_endpoint(
   if (!in) {
     resp->status = 500;
     resp->headers["Content-Type"] = "application/json; charset=utf-8";
-    resp->body = R"({"ok":false,"error":"failed to read file"})";
+    resp->body = json_error_body("failed to read file");
     return;
   }
 

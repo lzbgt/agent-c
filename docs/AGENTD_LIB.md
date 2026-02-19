@@ -1,5 +1,7 @@
 # Embedding `agentd` as a Library (Sidecar Mode)
 
+Design context: see `DESIGN.md` for the system-wide architecture; this document focuses on embedding and extension details.
+
 This repo now builds the daemon as:
 
 - `agentd_lib` (static library): the full agentd implementation

@@ -52,7 +52,7 @@ void handle_workflow_stream_endpoint(
     hdr << cors_wire_headers(req, cors_cfg);
     hdr << "Connection: close\r\n";
     hdr << "\r\n";
-    hdr << "{\"ok\":false,\"error\":\"unauthorized\"}";
+    hdr << json_error_body("unauthorized");
     (void)write_all_fd(client_fd, hdr.str());
     return;
   }
@@ -65,7 +65,7 @@ void handle_workflow_stream_endpoint(
     hdr << cors_wire_headers(req, cors_cfg);
     hdr << "Connection: close\r\n";
     hdr << "\r\n";
-    hdr << "{\"ok\":false,\"error\":\"db not available\"}";
+    hdr << json_error_body("db not available");
     (void)write_all_fd(client_fd, hdr.str());
     return;
   }
@@ -79,7 +79,7 @@ void handle_workflow_stream_endpoint(
     hdr << cors_wire_headers(req, cors_cfg);
     hdr << "Connection: close\r\n";
     hdr << "\r\n";
-    hdr << "{\"ok\":false,\"error\":\"missing workflow_id\"}";
+    hdr << json_error_body("missing workflow_id");
     (void)write_all_fd(client_fd, hdr.str());
     return;
   }
@@ -113,7 +113,7 @@ void handle_workflow_stream_endpoint(
     std::vector<AgentDb::WorkflowEventRow> rows;
     std::string err;
     if (!db_or_null->list_workflow_events(*wid, cursor, /*max_rows=*/256, &rows, &err)) {
-      (void)sse_send(client_fd, "error", "{\"ok\":false,\"error\":\"failed to list workflow events\"}");
+      (void)sse_send(client_fd, "error", json_error_body("failed to list workflow events"));
       return;
     }
 
@@ -166,7 +166,7 @@ void handle_workflow_stream_endpoint(
         return;
       }
     } else {
-      (void)sse_send(client_fd, "error", "{\"ok\":false,\"error\":\"workflow not found\"}");
+      (void)sse_send(client_fd, "error", json_error_body("workflow not found"));
       return;
     }
 
