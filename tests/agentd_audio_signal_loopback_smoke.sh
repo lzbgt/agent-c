@@ -25,23 +25,31 @@ if ! command -v python3 >/dev/null 2>&1; then
 fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+PG_LIB="${ROOT}/tests/lib/pg_test_lib.sh"
+if [[ -f "${PG_LIB}" ]]; then
+  # shellcheck disable=SC1090
+  source "${PG_LIB}"
+fi
 LOG_DIR="${ROOT}/build"
 mkdir -p "${LOG_DIR}"
 LOG_FILE="${LOG_DIR}/agentd_audio_signal_loopback_smoke.log"
 
 PG_DSN_OVERRIDE="${AGENTD_TEST_PG_DSN:-}"
 USE_DOCKER="1"
+USE_LOCAL_PG="0"
 if [[ -n "${PG_DSN_OVERRIDE}" ]]; then
+  USE_DOCKER="0"
+elif ! command -v docker >/dev/null 2>&1; then
+  USE_DOCKER="0"
+elif ! timeout 2 docker info >/dev/null 2>&1; then
   USE_DOCKER="0"
 fi
 
-if [[ "${USE_DOCKER}" == "1" ]]; then
-  if ! command -v docker >/dev/null 2>&1; then
-    echo "SKIP: docker not found" >&2
-    exit 77
-  fi
-  if ! timeout 2 docker info >/dev/null 2>&1; then
-    echo "SKIP: docker daemon not ready" >&2
+if [[ "${USE_DOCKER}" == "0" && -z "${PG_DSN_OVERRIDE}" ]]; then
+  if pg_test_has_local_pg; then
+    USE_LOCAL_PG="1"
+  else
+    echo "SKIP: docker not ready and local Postgres not available" >&2
     exit 77
   fi
 fi
@@ -74,6 +82,9 @@ cleanup() {
   if [[ "${USE_DOCKER}" == "1" ]]; then
     docker rm -f "${POSTGRES_NAME}" >/dev/null 2>&1 || true
   fi
+  if [[ "${USE_LOCAL_PG}" == "1" ]]; then
+    pg_test_stop_local || true
+  fi
 }
 trap cleanup EXIT
 
@@ -98,6 +109,13 @@ if [[ "${USE_DOCKER}" == "1" ]]; then
   if ! docker exec "${POSTGRES_NAME}" pg_isready -U postgres >/dev/null 2>&1; then
     echo "Postgres did not become ready" >&2
     exit 1
+  fi
+fi
+
+if [[ "${USE_LOCAL_PG}" == "1" ]]; then
+  if ! pg_test_start_local; then
+    echo "SKIP: local Postgres init failed" >&2
+    exit 77
   fi
 fi
 
@@ -127,7 +145,11 @@ BROKER_BIN="${LOG_DIR}/agentd-broker-audio-loopback"
 
 DSN="${PG_DSN_OVERRIDE}"
 if [[ -z "${DSN}" ]]; then
-  DSN="postgres://postgres:postgres@127.0.0.1:${PG_PORT}/postgres?sslmode=disable"
+  if [[ "${USE_LOCAL_PG}" == "1" ]]; then
+    DSN="${PG_TEST_DSN}"
+  else
+    DSN="postgres://postgres:postgres@127.0.0.1:${PG_PORT}/postgres?sslmode=disable"
+  fi
 fi
 "${BROKER_BIN}" \
   --listen "127.0.0.1:${BROKER_PORT}" \
