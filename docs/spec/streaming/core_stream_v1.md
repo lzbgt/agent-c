@@ -7,7 +7,7 @@ Chat Completions streaming (`stream: true`). It is designed to be **transport-ag
 and **JSON-parser-agnostic**, so the core can remain small and portable while hosts
 implement provider-specific parsing.
 
-Status: **implemented** in `core/include/agent/stream_decoder.h` and
+Status: v1 (implemented; rolling) in `core/include/agent/stream_decoder.h` and
 `core/src/agent_stream_decoder.c`.
 
 ## Goals
