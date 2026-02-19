@@ -796,6 +796,7 @@ These were imported from the urine_monitor project because they compound reliabi
 Implemented:
 - Evidence bundles: tools/capture_agent_evidence_bundle.sh + tools/check_agent_evidence_bundle.py
 - Scenario packs: tools/scenarios/ + tools/scenario_runner.py
+- Eval packs: tools/eval_pack.py + tools/eval_packs/ (deterministic checks + scoring)
 - One-command dev stack: tools/devstack_agent.sh + tools/devstack_agent_down.sh
 - Operator UX defaults: runtime config via ui/public/agentui-config.js (no rebuild required)
 
