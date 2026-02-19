@@ -153,6 +153,7 @@ When `--auth-token` is set, all endpoints require `Authorization: Bearer ...`.
 - Broker should be public; agentd should remain private.
 - Prefer server-side provider keys (`.not_in_repo` / `AGENTD_DOTENV_PATH`).
 - Enforce size/time limits via daemon env flags (see `docs/LIMITS.md`).
+- Compose verification scripts use a docker readiness check; set `AGENT_DOCKER_INFO_TIMEOUT_SEC` to shorten it.
 
 ---
 
