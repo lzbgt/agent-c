@@ -105,6 +105,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 - [x] Add nested .git detection to repo size report + CI guard.
 - [x] Add nested .git listing option to repo size report.
 - [x] Add stub file scan tool + CI guard.
+- [x] Add tracked file size guard + CI step.
 
 ## Promoted goals (explicit goals; no non-goals)
 

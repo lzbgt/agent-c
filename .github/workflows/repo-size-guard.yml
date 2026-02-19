@@ -19,3 +19,6 @@ jobs:
       - name: Stub file scan
         run: |
           python3 tools/stub_file_scan.py --fail
+      - name: Tracked file size guard
+        run: |
+          python3 tools/tracked_file_guard.py --max-mb 10

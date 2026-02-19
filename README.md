@@ -501,6 +501,12 @@ Stub file scan (fails on empty/placeholder files):
 tools/stub_file_scan.py --fail
 ```
 
+Tracked file size guard (fails if any tracked file exceeds 10 MiB):
+
+```bash
+tools/tracked_file_guard.py --max-mb 10
+```
+
 ## Docker Compose (prod-like local verification)
 
 If you want a **prod-like stack** locally (Postgres + Keycloak OIDC + broker + connector + agentd + WebUI):
