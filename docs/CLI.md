@@ -155,6 +155,12 @@ Seamless compaction for tool loops:
 - If the provider rejects a request as too large (context length / too many tokens), the tool loop retries after
   compacting more aggressively. This is effectively “spawning a new session” for stateless backends.
 
+## Assistant streaming (stdout)
+
+For `agent run` / `agent chat`, pass `--stream-assistant` to stream assistant deltas to stdout (provider-dependent):
+- `--tools none`: streams the assistant message for a single request (`stream: true`).
+- `--tools basic|host`: streams assistant deltas during tool-loop steps (best-effort; depends on provider streaming and `delta.tool_calls`).
+
 ## Session vs audit
 
 Session message history:
