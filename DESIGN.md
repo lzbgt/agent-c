@@ -35,6 +35,7 @@ Roadmap section below and `TODOS.md`, including:
   `tools/build_handbook_bundle.py`).
 - `docs/README.md`: docs index for fast navigation.
 - `DESIGN.md` (this doc): system goals, boundaries, layering, and cross-cutting policies.
+- `docs/AGENTIC_VISION.md`: user/client + architect expectations for a cutting-edge agentic framework.
 - Source docs referenced by the handbook:
   - `docs/OPERATIONS.md`: build, verification, testing, cleanup, and publishing workflows.
   - `docs/BROKER.md`: broker relay design, trust model, and HTTP/WSS API.

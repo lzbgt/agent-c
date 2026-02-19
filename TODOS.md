@@ -102,6 +102,9 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
 - [x] W=7 — Split near-2000 LOC modules into SOLID units with focused tests: `broker/internal/broker/server.go` (UI `api.ts` + `daemon/src/agent_db.cpp` + `daemon/src/workflow_endpoints.cpp` completed).
 - [x] W=3 — Reduce WebUI bundle size warning (>500 kB) via `manualChunks` or dynamic imports where appropriate.
 - [x] W=5 — Audio streaming foundation: define WebRTC/Opus signaling + broker relay endpoints (spec + broker relay endpoints + loopback + docker-postgres smoke tests + agentd loopback tool/test added).
+- [ ] W=12 — Multi-agent team orchestration: define agent group model (roles, shared memory, quorum gating), add APIs + WebUI flows + smoke tests.
+- [ ] W=10 — Policy hook MVP: deterministic pre/post run + tool call hooks with allow/deny + budget caps, config surface, and audit logs.
+- [ ] W=9 — Attestation bundles: canonical hash format + signed run certificates + verification CLI.
 
 ## New tasks (2026-02-19)
 

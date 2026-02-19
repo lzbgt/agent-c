@@ -6,6 +6,7 @@ Start here if you want the shortest path to the right document.
 
 - `docs/HANDBOOK.md`: compact, generated summary (no history).
 - `DESIGN.md`: architecture map + goals.
+- `docs/AGENTIC_VISION.md`: user/architect expectations for a cutting-edge agentic framework.
 - `docs/OPERATIONS.md`: build, verification, testing, cleanup, and publishing workflows.
 - `docs/DEPLOYMENT.md`: production checklist (agentd + broker + WebUI).
 - `docs/WEBUI.md`: WebUI dev/build/runtime config and reliability notes.

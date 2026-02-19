@@ -138,6 +138,7 @@ When `--auth-token` is set, all endpoints require `Authorization: Bearer ...`.
 ## 9) Where to look (feature design docs)
 
 - `DESIGN.md` for system map and boundaries.
+- `docs/AGENTIC_VISION.md` for user/client + architect expectations (beyond gateway plugins).
 - `docs/README.md` for a fast doc index.
 - `TODOS.md` for roadmap and weighted tasks.
 - `docs/` for feature docs: protocol, client, workflows, tools, memory, diagnostics, DB, streaming, broker, deployment, WebUI, platform.
