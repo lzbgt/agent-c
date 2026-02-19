@@ -1,0 +1,18 @@
+name: Repo Size Guard
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  size-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - name: Repo size report
+        run: |
+          python3 tools/repo_size_report.py --exclude .git --max-total-gb 5 --depth 2 --top 20

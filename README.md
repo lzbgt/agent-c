@@ -481,6 +481,12 @@ Exclude common bulky paths (git objects, builds, deps):
 tools/repo_size_report.py --exclude-defaults --depth 2 --top 20
 ```
 
+CI guard (fail if the repo exceeds a size cap):
+
+```bash
+tools/repo_size_report.py --exclude .git --max-total-gb 5
+```
+
 ## Docker Compose (prod-like local verification)
 
 If you want a **prod-like stack** locally (Postgres + Keycloak OIDC + broker + connector + agentd + WebUI):

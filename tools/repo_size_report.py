@@ -59,6 +59,18 @@ def main() -> int:
         help="Exclude common bulky paths (git objects, builds, node_modules, venvs).",
     )
     parser.add_argument(
+        "--max-total-bytes",
+        type=int,
+        default=0,
+        help="Fail (exit 2) if total size exceeds this byte count.",
+    )
+    parser.add_argument(
+        "--max-total-gb",
+        type=float,
+        default=0.0,
+        help="Fail (exit 2) if total size exceeds this GiB count.",
+    )
+    parser.add_argument(
         "--largest-files",
         type=int,
         default=0,
@@ -152,6 +164,15 @@ def main() -> int:
         print(f"\nTop {largest_limit} files:")
         for size, rel_file in sorted(largest, key=lambda x: x[0], reverse=True):
             print(f"  {format_bytes(size):>10}  {rel_file}")
+
+    max_total_bytes = max(0, args.max_total_bytes)
+    if args.max_total_gb and args.max_total_gb > 0:
+        max_total_bytes = max(max_total_bytes, int(args.max_total_gb * (1024 ** 3)))
+    if max_total_bytes and total > max_total_bytes:
+        print(
+            f"\nERROR: total size {format_bytes(total)} exceeds limit {format_bytes(max_total_bytes)}"
+        )
+        return 2
 
     return 0
 
