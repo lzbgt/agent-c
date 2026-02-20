@@ -51,6 +51,18 @@ def render_obj(obj: Any, ctx: Dict[str, str]) -> Any:
     return obj
 
 
+def parse_timeout(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        timeout = float(value)
+    except Exception:
+        return None
+    if timeout <= 0:
+        return None
+    return timeout
+
+
 def run_shell(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: int) -> None:
     cmd_raw = step.get("cmd")
     if not isinstance(cmd_raw, str) or not cmd_raw.strip():
@@ -73,7 +85,15 @@ def run_shell(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: i
     with open(log_path, "w", encoding="utf-8") as log:
         log.write(f"$ {cmd}\n")
         log.flush()
-        proc = subprocess.run(cmd, shell=True, cwd=cwd, env=env, stdout=log, stderr=log, timeout=step.get("timeout_s"))
+        proc = subprocess.run(
+            cmd,
+            shell=True,
+            cwd=cwd,
+            env=env,
+            stdout=log,
+            stderr=log,
+            timeout=parse_timeout(step.get("timeout_s")),
+        )
     if proc.returncode != 0 and step.get("allow_failure") is not True:
         raise RuntimeError(f"shell step failed: {name} (rc={proc.returncode}) log={log_path}")
 
@@ -204,7 +224,7 @@ def run_http(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: in
             else:
                 open_fn = urllib.request.urlopen
 
-            with open_fn(req, timeout=step.get("timeout_s")) as resp:
+            with open_fn(req, timeout=parse_timeout(step.get("timeout_s"))) as resp:
                 status = resp.status
                 body_bytes = resp.read()
                 log.write(f"status: {status}\n")
