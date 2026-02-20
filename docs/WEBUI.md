@@ -70,6 +70,7 @@ This panel includes a **Workflow composer** with JSON and Graph modes:
 - Graph mode supports drag-and-drop layout, click-to-connect dependencies, and JSON import/export.
 - `agentd_parallel` tasks require `--workflow-enable-http-tasks` on the primary agentd.
 - Exporting from Graph mode switches the composer to JSON for review.
+- Graph mode only supports LLM and `agentd_parallel` tasks (use JSON for advanced kinds).
 
 ## Rendering notes
 
