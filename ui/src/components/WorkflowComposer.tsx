@@ -23,13 +23,14 @@ export type WorkflowComposerProps = {
   onSubmitted?: (workflowId: string) => void;
 };
 
-type TemplateKind = "llm_dag" | "agent_parallel";
+type TemplateKind = "llm_dag" | "agent_parallel" | "agent_parallel_demo";
 type ComposerMode = "json" | "graph";
 type GraphSetter = React.Dispatch<React.SetStateAction<GraphState>>;
 
 const TEMPLATE_LABELS: Record<TemplateKind, string> = {
   llm_dag: "LLM DAG (A→B/C)",
   agent_parallel: "Agent collaboration (agentd_parallel)",
+  agent_parallel_demo: "Agent collaboration demo (agentd_parallel)",
 };
 
 const buildLlmDagTemplate = (defaults: Record<string, any>, allowInlineKeys: boolean) => {
@@ -74,12 +75,15 @@ const buildAgentParallelTemplate = (
   targets: string[],
   bearerEnv: string | undefined,
   allowInlineKeys: boolean,
+  opts?: { timeoutMs?: number; pollMs?: number; inputGoal?: string },
 ) => {
   const normTargets = normalizeTargets(targets);
   const targetEntries = normTargets.length
     ? normTargets.map((base, idx) => ({ id: `a${idx + 1}`, base_url: base }))
     : [{ id: "a1", base_url: "http://127.0.0.1:8123" }];
+  const inputGoal = opts?.inputGoal;
   const workflow: Record<string, any> = {
+    ...(inputGoal ? { inputs: { goal: inputGoal } } : {}),
     tasks: [
       {
         task_id: "COLLAB",
@@ -88,8 +92,8 @@ const buildAgentParallelTemplate = (
           targets: targetEntries,
           agentd_call: {
             op: "workflow_submit_and_wait",
-            timeout_ms: 20000,
-            poll_ms: 50,
+            timeout_ms: opts?.timeoutMs ?? 20000,
+            poll_ms: opts?.pollMs ?? 50,
             include_results: true,
             include_tasks: false,
             ...(bearerEnv ? { bearer_env: bearerEnv } : {}),
@@ -99,7 +103,9 @@ const buildAgentParallelTemplate = (
                 {
                   task_id: "RUN",
                   request: {
-                    prompt: "Remote agent: propose an approach for the goal.",
+                    prompt: inputGoal
+                      ? "Remote agent: propose an approach for the goal: ${input.goal}"
+                      : "Remote agent: propose an approach for the goal.",
                     no_session: true,
                   },
                 },
@@ -181,10 +187,18 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
 
   const applyTemplate = (kind: TemplateKind) => {
     setTemplateKind(kind);
-    const template =
-      kind === "agent_parallel"
-        ? buildAgentParallelTemplate(defaults, targets, bearerEnv, allowInlineKeys)
-        : buildLlmDagTemplate(defaults, allowInlineKeys);
+    let template: Record<string, any>;
+    if (kind === "agent_parallel_demo") {
+      template = buildAgentParallelTemplate(defaults, targets, bearerEnv, allowInlineKeys, {
+        timeoutMs: 120000,
+        pollMs: 200,
+        inputGoal: "Draft a collaborative plan for a multi-agent workflow graph demo.",
+      });
+    } else if (kind === "agent_parallel") {
+      template = buildAgentParallelTemplate(defaults, targets, bearerEnv, allowInlineKeys);
+    } else {
+      template = buildLlmDagTemplate(defaults, allowInlineKeys);
+    }
     const cleaned = JSON.stringify(template, null, 2);
     setComposerJson(cleaned);
     setSubmitError(null);
