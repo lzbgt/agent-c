@@ -3,6 +3,11 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
+# shellcheck source=tests/lib/agentd_smoke_lib.sh
+source "${ROOT}/tests/lib/agentd_smoke_lib.sh"
+curl() {
+  agentd_smoke_curl "$@"
+}
 
 ts="$(date +%Y%m%d_%H%M%S)"
 log_dir="${ROOT}/build/e2e"
