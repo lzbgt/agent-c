@@ -1,6 +1,6 @@
 import React from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { apiGetWorkflow, apiListWorkflows, type WorkflowDetailResp, type WorkflowListResp } from "../api";
+import { apiCancelWorkflow, apiGetWorkflow, apiListWorkflows, type WorkflowDetailResp, type WorkflowListResp } from "../api";
 import type { ApiAuth } from "../api/auth";
 import useLocalStorageState from "../hooks/useLocalStorageState";
 import WorkflowComposer from "./WorkflowComposer";
@@ -161,6 +161,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
   const [includeSpec, setIncludeSpec] = useLocalStorageState("agentui.workflowIncludeSpec", false);
   const [detail, setDetail] = React.useState<WorkflowDetailResp | null>(null);
   const [detailError, setDetailError] = React.useState<string | null>(null);
+  const [cancelBusy, setCancelBusy] = React.useState(false);
 
   const normalizedListStatus = STATUS_OPTIONS.includes(String(listStatus)) ? String(listStatus) : "running";
   const limitValue = (() => {
@@ -213,6 +214,28 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
     }
     setDetailError(null);
     workflowLookup.mutate(trimmed);
+  };
+
+  const cancelWorkflow = async (id: string) => {
+    const trimmed = String(id || "").trim();
+    if (!trimmed) return;
+    if (!props.baseUrl) {
+      setDetailError("Base URL is not set.");
+      return;
+    }
+    setCancelBusy(true);
+    setDetailError(null);
+    try {
+      const resp = await apiCancelWorkflow(props.baseUrl, trimmed, props.auth);
+      if (resp && resp.ok === false) {
+        setDetailError(resp.error || "Workflow cancel failed");
+      }
+    } catch (err) {
+      setDetailError(String(err));
+    } finally {
+      setCancelBusy(false);
+    }
+    loadWorkflow(trimmed);
   };
 
   return (
@@ -358,14 +381,26 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
             <div className="rounded-md border border-white/10 bg-black/30 p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="text-xs font-semibold text-white/70">Workflow summary</div>
-                <button
-                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                  type="button"
-                  onClick={() => loadWorkflow(summary.workflow_id)}
-                  disabled={workflowLookup.isPending}
-                >
-                  {workflowLookup.isPending ? "Reloading…" : "Reload"}
-                </button>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                    type="button"
+                    onClick={() => loadWorkflow(summary.workflow_id)}
+                    disabled={workflowLookup.isPending}
+                  >
+                    {workflowLookup.isPending ? "Reloading…" : "Reload"}
+                  </button>
+                  {["running", "queued"].includes(String(summary.status || "").toLowerCase()) ? (
+                    <button
+                      className="rounded-md border border-rose-400/30 bg-rose-400/10 px-2 py-1 text-[11px] text-rose-100 hover:bg-rose-400/20 disabled:opacity-50"
+                      type="button"
+                      onClick={() => void cancelWorkflow(summary.workflow_id)}
+                      disabled={cancelBusy}
+                    >
+                      {cancelBusy ? "Canceling…" : "Cancel"}
+                    </button>
+                  ) : null}
+                </div>
               </div>
               <div className="mt-2 grid gap-2 text-[11px] text-white/70">
                 <div className="flex flex-wrap items-center gap-2">
