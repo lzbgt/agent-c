@@ -150,7 +150,7 @@ export default function WorkflowGraphComposer(props: WorkflowGraphComposerProps)
   };
 
   const handleConnectStart = (id: string) => {
-    setConnectingFrom(id);
+    setConnectingFrom((prev) => (prev === id ? null : id));
   };
 
   const handleConnectEnd = (id: string) => {
@@ -248,6 +248,10 @@ export default function WorkflowGraphComposer(props: WorkflowGraphComposerProps)
           No bearer env configured. Remote agent targets that require auth may fail.
         </div>
       ) : null}
+
+      <div className="text-[11px] text-white/50">
+        Connect tasks: click the right handle on a node, then click the left handle on the dependent node.
+      </div>
 
       <div className="grid gap-2 lg:grid-cols-[1fr_240px]">
         <div
