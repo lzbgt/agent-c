@@ -76,6 +76,8 @@ This panel includes a **Workflow composer** with JSON and Graph modes:
   - Generate a live-target demo JSON (uses `out/devstack_state.json` when present):
     - `python3 tools/gen_agentd_parallel_demo.py`
     - `tools/gen_agentd_parallel_demo.sh`
+  - Submit the demo workflow to the local agentd (respects `out/devstack_state.json`):
+    - `tools/submit_agentd_parallel_demo.sh`
 
 ## Rendering notes
 
