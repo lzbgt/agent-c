@@ -407,7 +407,7 @@ fi
   --agentd-via-broker >"${LOG_EVIDENCE}" 2>&1 || true
 
 STATE_PATH="${OUT_DIR}/devstack_state.json"
-python3 - <<PY
+python3 - <<PY >"${STATE_PATH}"
 import json
 print(json.dumps({
   "out_dir": "${OUT_DIR}",
@@ -430,7 +430,6 @@ print(json.dumps({
   "logs_dir": "${LOG_DIR}",
 }, indent=2))
 PY
->"${STATE_PATH}"
 ln -sf "${STATE_PATH}" "${ROOT}/out/devstack_state.json"
 
 if [[ "${KEEP}" -eq 1 ]]; then
