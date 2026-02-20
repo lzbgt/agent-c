@@ -23,6 +23,13 @@ set -euo pipefail
 AGENT_TEST_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source=tools/lib/agent_env.sh
 source "${AGENT_TEST_ROOT}/tools/lib/agent_env.sh"
+AGENT_SMOKE_WRAP_CURL=0
+# shellcheck source=tests/lib/agentd_smoke_lib.sh
+source "${AGENT_TEST_ROOT}/tests/lib/agentd_smoke_lib.sh"
+
+agent_test_curl() {
+  agentd_smoke_curl "$@"
+}
 
 agent_test_project_root() {
   local script_dir
@@ -358,7 +365,7 @@ agent_test_openrouter_auth_ok() {
     headers+=(-H "X-Title: ${OPENROUTER_X_TITLE}")
   fi
   local resp status body
-  resp="$(curl -sS --noproxy "*" -w "\n%{http_code}" \
+  resp="$(agent_test_curl -sS --noproxy "*" -w "\n%{http_code}" \
     "${headers[@]}" \
     "${base_url}/models" || true)"
   status="${resp##*$'\n'}"
@@ -471,7 +478,7 @@ PY
   local chat_resp chat_status
   local -a chat_headers
   chat_headers=("${headers[@]}" -H "Content-Type: application/json")
-  chat_resp="$(curl -sS --noproxy "*" -w "\n%{http_code}" \
+  chat_resp="$(agent_test_curl -sS --noproxy "*" -w "\n%{http_code}" \
     "${chat_headers[@]}" \
     -d "${chat_payload}" \
     "${base_url}/chat/completions" || true)"
