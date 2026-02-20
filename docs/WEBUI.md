@@ -77,6 +77,7 @@ This panel includes a **Workflow composer** with JSON and Graph modes:
 - Recent workflow rows surface a `cancel requested` badge when a stop has been requested.
 - Enable the list’s “auto” toggle to refresh recent workflows every few seconds.
 - The status filter includes `active` (running + queued) and `all` to list every workflow state; it defaults to `active`.
+- Use the list filter box to match workflow id, trace id, or session id.
 - Graph mode supports drag-and-drop layout, click-to-connect dependencies, and JSON import/export.
 - `agentd_parallel` tasks require `--workflow-enable-http-tasks` on the primary agentd.
 - Exporting from Graph mode switches the composer to JSON for review.

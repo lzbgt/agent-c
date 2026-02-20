@@ -162,6 +162,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
   const [workflowId, setWorkflowId] = useLocalStorageState("agentui.workflowLookupId", "");
   const [listStatus, setListStatus] = useLocalStorageState("agentui.workflowListStatus", "active");
   const [listLimit, setListLimit] = useLocalStorageState("agentui.workflowListLimit", "50");
+  const [listFilter, setListFilter] = useLocalStorageState("agentui.workflowListFilter", "");
   const [listAutoRefresh, setListAutoRefresh] = useLocalStorageState("agentui.workflowListAutoRefresh", false);
   const [includeResults, setIncludeResults] = useLocalStorageState("agentui.workflowIncludeResults", false);
   const [includeSpec, setIncludeSpec] = useLocalStorageState("agentui.workflowIncludeSpec", false);
@@ -183,6 +184,17 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
     staleTime: 5_000,
     refetchInterval: listAutoRefresh ? 5_000 : false,
   });
+  const filteredWorkflows = React.useMemo(() => {
+    const workflows = extractWorkflows(listQuery.data);
+    const query = String(listFilter || "").trim().toLowerCase();
+    if (!query) return workflows;
+    return workflows.filter((wf: any) => {
+      const workflowId = String(wf.workflow_id || "").toLowerCase();
+      const traceId = String(wf.trace_id || "").toLowerCase();
+      const sessionId = String(wf.session_id || "").toLowerCase();
+      return workflowId.includes(query) || traceId.includes(query) || sessionId.includes(query);
+    });
+  }, [listFilter, listQuery.data]);
 
   const workflowLookup = useMutation({
     mutationFn: async (id: string) =>
@@ -330,6 +342,15 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                 />
               </label>
               <label className="flex items-center gap-1">
+                filter
+                <input
+                  className="w-[140px] rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
+                  value={String(listFilter || "")}
+                  onChange={(e) => setListFilter(e.target.value)}
+                  placeholder="id/trace/session"
+                />
+              </label>
+              <label className="flex items-center gap-1">
                 <input
                   type="checkbox"
                   className="h-3 w-3"
@@ -359,7 +380,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
             </div>
           ) : null}
           <div className="grid gap-2">
-            {extractWorkflows(listQuery.data).map((wf: any) => {
+            {filteredWorkflows.map((wf: any) => {
               const id = String(wf.workflow_id || "").trim();
               const canCancel = canCancelStatus(wf.status);
               return (
@@ -387,6 +408,9 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                       ) : null}
                       <span className="font-mono text-[11px] text-white/80">{wf.workflow_id}</span>
                       {wf.trace_id ? <span className="text-[10px] text-white/50">trace {String(wf.trace_id)}</span> : null}
+                      {wf.session_id ? (
+                        <span className="text-[10px] text-white/50">session {String(wf.session_id)}</span>
+                      ) : null}
                     </div>
                     <div className="text-[10px] text-white/40">updated {formatUnixMs(wf.updated_unix_ms)}</div>
                   </button>
@@ -403,8 +427,11 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                 </div>
               );
             })}
-            {listQuery.isSuccess && extractWorkflows(listQuery.data).length === 0 ? (
-              <div className="text-xs text-white/50">No workflows found for status "{normalizedListStatus}".</div>
+            {listQuery.isSuccess && filteredWorkflows.length === 0 ? (
+              <div className="text-xs text-white/50">
+                No workflows found for status "{normalizedListStatus}".
+                {String(listFilter || "").trim() ? " Clear the filter to see more." : ""}
+              </div>
             ) : null}
           </div>
         </div>
