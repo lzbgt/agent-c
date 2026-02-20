@@ -7,6 +7,7 @@ export * from "./api/run";
 export * from "./api/broker";
 export * from "./api/trace";
 export * from "./api/memory";
+export * from "./api/workflow";
 
 export * from "./api/schemas/daemon";
 export * from "./api/schemas/run";
@@ -16,3 +17,4 @@ export * from "./api/schemas/db";
 export * from "./api/schemas/broker";
 export * from "./api/schemas/trace";
 export * from "./api/schemas/memory";
+export * from "./api/schemas/workflow";

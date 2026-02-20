@@ -56,6 +56,15 @@ Settings → Diagnostics triggers:
 
 See `docs/DIAGNOSTICS.md` for provider_test usage.
 
+## Workflows (read-only)
+
+The WebUI includes a **Workflows** panel for durable workflow inspection:
+- Lists recent workflows by status (`/api/v1/workflows`).
+- Loads a workflow with tasks + DAG layout (`/api/v1/workflow`).
+- Surfaces budgets/usage and optional spec/results when enabled.
+
+This panel is **read-only** today (no drag‑and‑drop composer yet).
+
 ## Rendering notes
 
 - The UI renders a **Conversation** (message cards) derived from daemon `events`:
