@@ -104,8 +104,10 @@ Compose image builds pass proxy args for package installs. Defaults:
 Use `host.docker.internal` (not an ad-hoc hostname like `m2`) so containers can resolve the proxy consistently.
 If the proxy is unreachable during build, the Dockerfiles now retry apt installs once without proxy to avoid
 hard failures (still prefers proxy when available).
-Local compose health checks bypass host proxies (`curl --noproxy "*"`) to avoid TLS errors when a
-machine-wide proxy is configured.
+Local compose health checks bypass host proxies (proxy env vars are unset and `curl --noproxy "*"`)
+to avoid TLS errors when a machine-wide proxy is configured.
+On macOS we prefer Homebrew curl if available (OpenSSL backend) to avoid LibreSSL TLS issues.
+Override with `CURL_BIN=/path/to/curl` (or `AGENT_SMOKE_CURL_BIN` for smoke tests) if needed.
 
 Runtime containers do not receive proxy environment variables by default so intra-stack
 traffic stays direct. Dockerfiles also remove apt proxy config after installs to avoid

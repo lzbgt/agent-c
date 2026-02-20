@@ -119,6 +119,8 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-19: Connector now supports `--local-agentd-token` (or `AGENTD_AUTH_TOKEN`) so team run fan-out can authenticate to local agentd; compose updated and compose smoke verified.
   - 2026-02-19: Broker now enforces `team_run` quorum rules on run creation via inline approvals (`team.approvals`) with strict failures returning `409`.
   - 2026-02-20: Add quorum enforcement smoke.
+- [ ] W=9 — Approval queues + tool-level quorum gating: WebUI approval queue, tool-level quorum enforcement, and SSE updates for approval state.
+- [ ] W=8 — Run comparison + evidence diff UX: side-by-side run diffs (events/artifacts/costs), evidence bundle viewer, and regression baselines.
 - [x] W=10 — Policy hook MVP: deterministic pre/post run + tool call hooks with allow/deny + budget caps, config surface, and audit logs.
 - [ ] W=9 — Attestation bundles: canonical hash format + signed run certificates + verification CLI.
   - 2026-02-19: Added draft spec (`docs/spec/run_attestation_bundle_v1.md`) + host tool (`run_attestation_bundle_tool`) + smoke test.

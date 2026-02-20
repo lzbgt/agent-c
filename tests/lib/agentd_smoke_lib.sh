@@ -15,6 +15,33 @@ agentd_smoke_log_dir() {
   echo "${root}/build"
 }
 
+agentd_smoke_curl_bin() {
+  if [[ -n "${AGENT_SMOKE_CURL_BIN:-}" ]]; then
+    echo "${AGENT_SMOKE_CURL_BIN}"
+    return 0
+  fi
+  if [[ -n "${CURL_BIN:-}" ]]; then
+    echo "${CURL_BIN}"
+    return 0
+  fi
+  if command -v /opt/homebrew/bin/curl >/dev/null 2>&1; then
+    echo "/opt/homebrew/bin/curl"
+    return 0
+  fi
+  echo "curl"
+}
+
+agentd_smoke_curl() {
+  local curl_bin
+  curl_bin="$(agentd_smoke_curl_bin)"
+  if [[ "${AGENT_SMOKE_ALLOW_PROXY:-}" == "1" ]]; then
+    command "${curl_bin}" "$@"
+  else
+    env -u HTTPS_PROXY -u https_proxy -u HTTP_PROXY -u http_proxy -u ALL_PROXY -u all_proxy \
+      command "${curl_bin}" "$@"
+  fi
+}
+
 agentd_smoke_pick_port() {
   # Bind to port 0 to get a free port, then close immediately.
   python3 - <<'PY'

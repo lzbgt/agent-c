@@ -216,6 +216,14 @@ These are the most leveraged next steps grounded in current architecture:
    - Retention policy config + erase/export endpoints.
    - Redaction-aware evidence bundle validation.
 
+7) **Run comparison + evidence diff UX**
+   - Side-by-side run diffs (events, artifacts, costs) with evidence bundle links.
+   - Regression baselines tied to model/provider versions.
+
+8) **Approval queues + tool-level quorum gating**
+   - WebUI approval queues with role/quorum context.
+   - Tool-level quorum enforcement (not just run-level).
+
 These are tracked in `TODOS.md` with weighted priorities.
 
 ---

@@ -18,7 +18,16 @@ OUT_DIR="${ROOT}/out"
 mkdir -p "${OUT_DIR}"
 
 curlq() {
-  command curl -q --noproxy "*" "$@"
+  local curl_bin="${CURL_BIN:-}"
+  if [[ -z "${curl_bin}" ]]; then
+    if command -v /opt/homebrew/bin/curl >/dev/null 2>&1; then
+      curl_bin="/opt/homebrew/bin/curl"
+    else
+      curl_bin="curl"
+    fi
+  fi
+  env -u HTTPS_PROXY -u https_proxy -u HTTP_PROXY -u http_proxy -u ALL_PROXY -u all_proxy \
+    command "${curl_bin}" -q --noproxy "*" --proxy "" "$@"
 }
 
 source "${ROOT}/tools/lib/docker_preflight.sh"
