@@ -117,10 +117,17 @@ def main() -> int:
 
     summary_path = os.path.join(out_root, "summary.json")
     pack_finished_at = datetime.utcnow().isoformat() + "Z"
+    total = len(results)
+    failed_count = len(failures)
+    ok_count = total - failed_count
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump({
             "results": results,
             "failed": failures,
+            "total": total,
+            "ok_count": ok_count,
+            "failed_count": failed_count,
+            "ok": failed_count == 0,
             "started_at": pack_started_at,
             "finished_at": pack_finished_at,
             "duration_s": round(time.time() - pack_t0, 3),
