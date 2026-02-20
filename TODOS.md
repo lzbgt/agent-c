@@ -970,7 +970,7 @@ Status:
 
 Next:
 - UI view for workflow timeline (reuse trace UI patterns), plus filters (by task_id, by event type).
-- Drag-and-drop workflow composer (graph editor) with JSON import/export + submit.
+- [x] Drag-and-drop workflow composer (graph editor) with JSON import/export + submit.
 
 ### 5) Memory v2: semantic retrieval + rolling consolidation
 

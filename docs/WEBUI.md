@@ -65,9 +65,10 @@ The WebUI includes a **Workflows** panel for durable workflow inspection:
 - Loads a workflow with tasks + DAG layout (`/api/v1/workflow`).
 - Surfaces budgets/usage and optional spec/results when enabled.
 
-This panel includes a **Workflow composer** with JSON templates for:
-- LLM DAG workflows (A→B/C).
-- `agentd_parallel` collaboration templates (requires `--workflow-enable-http-tasks` on the primary agentd).
+This panel includes a **Workflow composer** with JSON and Graph modes:
+- JSON templates for LLM DAG workflows (A→B/C) and `agentd_parallel` collaboration templates.
+- Graph mode supports drag-and-drop layout, click-to-connect dependencies, and JSON import/export.
+- `agentd_parallel` tasks require `--workflow-enable-http-tasks` on the primary agentd.
 
 ## Rendering notes
 

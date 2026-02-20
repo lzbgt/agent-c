@@ -44,3 +44,7 @@ declares its own status (draft/rolling/implemented) in the document header.
 
 - `avm_capsule_run_v0.md`: AVM capsule execution contract.
 - `agent_vm_port_v0.md`: agent VM port integration contract.
+
+## WebUI
+
+- `webui_workflow_graph_editor_v1.md`: drag-and-drop workflow graph editor (implemented).
