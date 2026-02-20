@@ -163,6 +163,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
   const [listStatus, setListStatus] = useLocalStorageState("agentui.workflowListStatus", "active");
   const [listLimit, setListLimit] = useLocalStorageState("agentui.workflowListLimit", "50");
   const [listFilter, setListFilter] = useLocalStorageState("agentui.workflowListFilter", "");
+  const [listFilterDebounced, setListFilterDebounced] = React.useState(listFilter);
   const [listAutoRefresh, setListAutoRefresh] = useLocalStorageState("agentui.workflowListAutoRefresh", false);
   const [includeResults, setIncludeResults] = useLocalStorageState("agentui.workflowIncludeResults", false);
   const [includeSpec, setIncludeSpec] = useLocalStorageState("agentui.workflowIncludeSpec", false);
@@ -178,9 +179,9 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
   })();
 
   const listQuery = useQuery({
-    queryKey: ["workflows", props.baseUrl, props.authKey, normalizedListStatus, limitValue, listFilter],
+    queryKey: ["workflows", props.baseUrl, props.authKey, normalizedListStatus, limitValue, listFilterDebounced],
     queryFn: () =>
-      apiListWorkflows(props.baseUrl, { status: normalizedListStatus, limit: limitValue, query: listFilter }, props.auth),
+      apiListWorkflows(props.baseUrl, { status: normalizedListStatus, limit: limitValue, query: listFilterDebounced }, props.auth),
     enabled: props.open && !!props.baseUrl,
     staleTime: 5_000,
     refetchInterval: listAutoRefresh ? 5_000 : false,
@@ -196,6 +197,14 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
       return workflowId.includes(query) || traceId.includes(query) || sessionId.includes(query);
     });
   }, [listFilter, listQuery.data]);
+
+  React.useEffect(() => {
+    const next = String(listFilter || "").trim();
+    const handle = window.setTimeout(() => {
+      setListFilterDebounced(next);
+    }, 300);
+    return () => window.clearTimeout(handle);
+  }, [listFilter]);
 
   const workflowLookup = useMutation({
     mutationFn: async (id: string) =>
@@ -344,12 +353,23 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
               </label>
               <label className="flex items-center gap-1">
                 filter
-                <input
-                  className="w-[140px] rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
-                  value={String(listFilter || "")}
-                  onChange={(e) => setListFilter(e.target.value)}
-                  placeholder="id/trace/session"
-                />
+                <span className="flex items-center gap-1">
+                  <input
+                    className="w-[140px] rounded border border-white/10 bg-black/40 px-1 py-0.5 text-[11px] text-white/80"
+                    value={String(listFilter || "")}
+                    onChange={(e) => setListFilter(e.target.value)}
+                    placeholder="id/trace/session"
+                  />
+                  {String(listFilter || "").trim() ? (
+                    <button
+                      className="rounded border border-white/10 px-1 py-0.5 text-[10px] text-white/60 hover:bg-white/5"
+                      type="button"
+                      onClick={() => setListFilter("")}
+                    >
+                      clear
+                    </button>
+                  ) : null}
+                </span>
               </label>
               <label className="flex items-center gap-1">
                 <input
