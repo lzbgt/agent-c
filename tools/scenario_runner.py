@@ -103,7 +103,7 @@ def run_shell(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: i
             log.write(f"error: timeout after {exc.timeout}s\n")
             if step.get("allow_failure") is True:
                 return
-            raise
+            raise RuntimeError(f"shell step timed out: {name} log={log_path}") from exc
     if proc.returncode != 0 and step.get("allow_failure") is not True:
         raise RuntimeError(f"shell step failed: {name} (rc={proc.returncode}) log={log_path}")
 
