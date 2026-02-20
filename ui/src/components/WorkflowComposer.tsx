@@ -377,6 +377,7 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
       ) : (
         <textarea
           className="mt-3 h-64 w-full rounded-md border border-white/10 bg-black/40 p-2 font-mono text-[11px] text-white/80"
+          data-testid="workflow-composer-json"
           value={composerJson}
           onChange={(e) => setComposerJson(e.target.value)}
           placeholder='Paste workflow JSON here. Use "Apply" to load a template.'

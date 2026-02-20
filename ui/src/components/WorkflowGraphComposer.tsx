@@ -192,6 +192,7 @@ export default function WorkflowGraphComposer(props: WorkflowGraphComposerProps)
         <button
           type="button"
           className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+          data-testid="workflow-graph-autolayout"
           onClick={autoLayout}
         >
           Auto-layout
@@ -199,6 +200,7 @@ export default function WorkflowGraphComposer(props: WorkflowGraphComposerProps)
         <button
           type="button"
           className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+          data-testid="workflow-graph-import-json"
           onClick={onImportJson}
         >
           Import JSON
@@ -206,6 +208,7 @@ export default function WorkflowGraphComposer(props: WorkflowGraphComposerProps)
         <button
           type="button"
           className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+          data-testid="workflow-graph-export-json"
           onClick={onExportJson}
         >
           Export JSON
@@ -213,6 +216,7 @@ export default function WorkflowGraphComposer(props: WorkflowGraphComposerProps)
         <button
           type="button"
           className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+          data-testid="workflow-graph-reset"
           onClick={resetGraph}
         >
           Reset
@@ -303,6 +307,7 @@ export default function WorkflowGraphComposer(props: WorkflowGraphComposerProps)
               className={`absolute rounded-md border bg-black/60 text-[11px] text-white/80 shadow-sm ${
                 selectedId === node.id ? "border-sky-400/70" : "border-white/10"
               }`}
+              data-testid={`workflow-graph-node-${node.id}`}
               style={{
                 width: NODE_WIDTH,
                 height: NODE_HEIGHT,
@@ -337,6 +342,7 @@ export default function WorkflowGraphComposer(props: WorkflowGraphComposerProps)
                 className={`absolute -right-2 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border ${
                   connectingFrom === node.id ? "border-sky-300 bg-sky-300/40" : "border-white/40 bg-black/60"
                 }`}
+                data-testid={`workflow-graph-handle-from-${node.id}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleConnectStart(node.id);
@@ -346,6 +352,7 @@ export default function WorkflowGraphComposer(props: WorkflowGraphComposerProps)
               <button
                 type="button"
                 className="absolute -left-2 top-1/2 h-3 w-3 -translate-y-1/2 rounded-full border border-white/40 bg-black/60"
+                data-testid={`workflow-graph-handle-to-${node.id}`}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleConnectEnd(node.id);
@@ -364,6 +371,7 @@ export default function WorkflowGraphComposer(props: WorkflowGraphComposerProps)
                 <span className="text-[10px] text-white/50">task_id</span>
                 <input
                   className="rounded border border-white/10 bg-black/40 px-2 py-1 text-[11px] text-white/80"
+                  data-testid="workflow-graph-node-id"
                   value={selectedNode.id}
                   onChange={(e) => renameNode(selectedNode.id, e.target.value)}
                 />

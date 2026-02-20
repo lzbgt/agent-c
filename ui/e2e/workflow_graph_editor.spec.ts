@@ -21,4 +21,9 @@ test("workflow graph editor renders and can add nodes", async ({ page }) => {
 
   await addLlm.click();
   await expect(page.getByTestId("workflow-graph-inspector")).toBeVisible();
+  const firstId = (await page.getByTestId("workflow-graph-node-id").inputValue()).trim();
+
+  await page.getByTestId("workflow-graph-export-json").click();
+  const json = await page.getByTestId("workflow-composer-json").inputValue();
+  expect(json).toContain(`\"task_id\": \"${firstId}\"`);
 });
