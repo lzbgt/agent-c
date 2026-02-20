@@ -123,6 +123,7 @@ REPORT="${REPORT}" \
 python3 - <<'PY'
 import os
 import shutil
+import subprocess
 import time
 from pathlib import Path
 
@@ -257,5 +258,8 @@ print("[clean] done")
 if report:
     report_path = root / "tools" / "repo_size_report.py"
     if report_path.exists():
-        os.system(f"python3 {report_path} --exclude .git --depth 2 --top 20")
+        subprocess.run(
+            ["python3", str(report_path), "--exclude", ".git", "--depth", "2", "--top", "20"],
+            check=False,
+        )
 PY
