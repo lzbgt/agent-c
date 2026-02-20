@@ -721,8 +721,14 @@ bool AgentDb::list_workflows_by_status(
     if (out_error) *out_error = "db is not open";
     return false;
   }
+  const bool list_all = status == "all" || status == "*";
 	sqlite3_stmt* st = nullptr;
-	const char* sql = R"SQL(
+	const char* sql = list_all ? R"SQL(
+	SELECT workflow_id, session_id, trace_id, COALESCE(priority,0), COALESCE(deadline_unix_ms,0), COALESCE(idempotency_key,''), created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
+	FROM workflows
+	ORDER BY COALESCE(priority,0) DESC, updated_unix_ms DESC
+	LIMIT ?;
+	)SQL" : R"SQL(
 	SELECT workflow_id, session_id, trace_id, COALESCE(priority,0), COALESCE(deadline_unix_ms,0), COALESCE(idempotency_key,''), created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
 	FROM workflows
 	WHERE status=?
@@ -734,8 +740,12 @@ bool AgentDb::list_workflows_by_status(
     return false;
   }
   bool ok = true;
-  ok = ok && agent_db_bind_text(st, 1, status);
-  ok = ok && agent_db_bind_i64(st, 2, (int64_t)max_rows);
+  if (list_all) {
+    ok = ok && agent_db_bind_i64(st, 1, (int64_t)max_rows);
+  } else {
+    ok = ok && agent_db_bind_text(st, 1, status);
+    ok = ok && agent_db_bind_i64(st, 2, (int64_t)max_rows);
+  }
 	  while (ok && agent_db_step_row(st)) {
 	    WorkflowRow row;
 	    const unsigned char* wid = sqlite3_column_text(st, 0);

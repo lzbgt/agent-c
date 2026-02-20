@@ -780,6 +780,9 @@ Streams:
 
 `GET /api/v1/workflows?status=running&limit=50`
 
+Status values:
+- `running`, `queued`, `done`, `error`, `cancelled`, or `all` (unfiltered)
+
 ### Cancel a workflow (best-effort)
 
 `POST /api/v1/workflow/cancel`
