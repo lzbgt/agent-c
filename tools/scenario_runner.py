@@ -197,6 +197,8 @@ def run_http(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: in
             log.write(f"  {hk}: {hv}\n")
         if step.get("expect_status") is not None:
             log.write(f"expect_status: {step.get('expect_status')}\n")
+        if step.get("timeout_s") is not None:
+            log.write(f"timeout_s: {step.get('timeout_s')}\n")
         log.flush()
         try:
             proxy_mode = step.get("proxy", None)
