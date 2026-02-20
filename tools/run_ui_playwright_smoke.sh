@@ -69,6 +69,7 @@ AGENT_E2E_UI_BASE_URL="${AGENT_E2E_UI_BASE_URL}" \
     e2e/broker_console.spec.ts \
     e2e/broker_membership_flow.spec.ts \
     e2e/broker_trace_lookup.spec.ts \
+    e2e/workflow_graph_editor.spec.ts \
     --config playwright.smoke.config.ts" >"${pw_log}" 2>&1
 
 echo "[playwright] OK"
