@@ -194,7 +194,13 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
       const workflowId = String(wf.workflow_id || "").toLowerCase();
       const traceId = String(wf.trace_id || "").toLowerCase();
       const sessionId = String(wf.session_id || "").toLowerCase();
-      return workflowId.includes(query) || traceId.includes(query) || sessionId.includes(query);
+      const idempotencyKey = String(wf.idempotency_key || "").toLowerCase();
+      return (
+        workflowId.includes(query) ||
+        traceId.includes(query) ||
+        sessionId.includes(query) ||
+        idempotencyKey.includes(query)
+      );
     });
   }, [listFilter, listQuery.data]);
 
@@ -431,6 +437,9 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                       {wf.trace_id ? <span className="text-[10px] text-white/50">trace {String(wf.trace_id)}</span> : null}
                       {wf.session_id ? (
                         <span className="text-[10px] text-white/50">session {String(wf.session_id)}</span>
+                      ) : null}
+                      {wf.idempotency_key ? (
+                        <span className="text-[10px] text-white/50">idk {String(wf.idempotency_key)}</span>
                       ) : null}
                     </div>
                     <div className="text-[10px] text-white/40">updated {formatUnixMs(wf.updated_unix_ms)}</div>
