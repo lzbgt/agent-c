@@ -216,7 +216,6 @@ STUB_PID=$!
 # Start daemon with stub provider as default base_url/model so the WebUI run is deterministic.
 agentd_smoke_start "${AGENTD_BIN}" "${HOST}" "${PORT_DAEMON}" "webui_observe_canvas2d_plot_openworld" \
   --tools host \
-  --tools-root "${ROOT}" \
   --yolo \
   --base-url "${STUB_BASE}" \
   --api-key "dummy" \
