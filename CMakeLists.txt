@@ -204,6 +204,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/agent_db_edge_workflows.cpp
     daemon/src/agentd_api.cpp
     daemon/src/client_profiles.cpp
+    daemon/src/client_prefs_endpoints.cpp
     daemon/src/config_endpoint.cpp
     daemon/src/caps_endpoint.cpp
     daemon/src/avm_endpoints.cpp
@@ -563,6 +564,7 @@ if(AGENT_BUILD_HOST)
     add_test(NAME agentd_artifact_protocol_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_artifact_protocol_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_ui_action_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_ui_action_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_client_profile_injection_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_client_profile_injection_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_client_prefs_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_client_prefs_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_missing_tool_calls_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_missing_tool_calls_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_client_rpc_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_client_rpc_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_client_rpc_progress_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_client_rpc_progress_smoke.sh $<TARGET_FILE:agentd>)
@@ -587,6 +589,7 @@ if(AGENT_BUILD_HOST)
 			    add_test(NAME agentd_workflow_get_spec_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_get_spec_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_workflow_deadline_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_deadline_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_workflow_idempotency_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_idempotency_smoke.sh $<TARGET_FILE:agentd>)
+			    add_test(NAME agentd_workflow_list_query_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_list_query_smoke.sh $<TARGET_FILE:agentd>)
 			    add_test(NAME agentd_workflow_cancel_running_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_cancel_running_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_workflow_admission_control_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_admission_control_smoke.sh $<TARGET_FILE:agentd>)
 				    add_test(NAME agentd_workflow_delegate_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_workflow_delegate_smoke.sh $<TARGET_FILE:agentd>)

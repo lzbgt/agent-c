@@ -3,6 +3,7 @@
 #include "agent_db.h"
 #include "blob_endpoints.h"
 #include "caps_endpoint.h"
+#include "client_prefs_endpoints.h"
 #include "config_endpoint.h"
 #include "config_store.h"
 #include "cors.h"
@@ -467,6 +468,17 @@ bool AgentdApi::init(std::string* out_error) {
   impl_->route("POST", "/api/v1/config/update", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);
     handle_config_update_endpoint(self->cfg_store.get(), &self->db, self->cors_cfg, req, resp);
+  });
+
+  impl_->route("GET", "/api/v1/client/prefs", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_client_prefs_get_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route("POST", "/api/v1/client/prefs", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_client_prefs_post_endpoint(cur, self->cors_cfg, &self->db, req, resp);
   });
 
   impl_->route("POST", "/api/v1/ota/update", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {

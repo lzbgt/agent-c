@@ -96,6 +96,31 @@ export const DiagnosticsProviderTestRespSchema = z
   .passthrough();
 export type DiagnosticsProviderTestResp = z.infer<typeof DiagnosticsProviderTestRespSchema>;
 
+export const ClientPrefsSchema = z
+  .object({
+    ok: z.boolean(),
+    found: z.boolean().optional(),
+    client_id: z.string().optional(),
+    client_kind: z.string().optional(),
+    version: z.number().int().optional(),
+    updated_utc_ms: z.number().int().nonnegative().optional(),
+    prefs: z.any().optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+export type ClientPrefs = z.infer<typeof ClientPrefsSchema>;
+
+export const ClientPrefsUpdateReqSchema = z
+  .object({
+    client_id: z.string().min(1),
+    client_kind: z.string().optional(),
+    prefs: z.any(),
+  })
+  .passthrough();
+export type ClientPrefsUpdateReq = z.infer<typeof ClientPrefsUpdateReqSchema>;
+
 export const DaemonConfigSchema = z
   .object({
     ok: z.boolean(),

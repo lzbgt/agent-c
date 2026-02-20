@@ -6,6 +6,7 @@
 #include "avm_endpoints.h"
 #include "blob_endpoints.h"
 #include "caps_endpoint.h"
+#include "client_prefs_endpoints.h"
 #include "config_endpoint.h"
 #include "config_store.h"
 #include "cors.h"
@@ -717,6 +718,15 @@ struct AgentdService::Impl {
 
     server.handle("POST", "/api/v1/config/update", [this](const HttpRequest& req, HttpResponse* resp) {
       handle_config_update_endpoint(cfg_store.get(), &db, cors_cfg, req, resp);
+    });
+
+    server.handle("GET", "/api/v1/client/prefs", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_client_prefs_get_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle("POST", "/api/v1/client/prefs", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_client_prefs_post_endpoint(cur, cors_cfg, &db, req, resp);
     });
 
     server.handle("POST", "/api/v1/ota/update", [this](const HttpRequest& req, HttpResponse* resp) {

@@ -8,7 +8,7 @@ import {
   type HostPolicy,
   type ToolMode,
 } from "../runtime_config";
-import type { ApiAuth } from "../api";
+import { apiGetClientPrefs, apiPostClientPrefs, type ApiAuth, type ClientPrefs } from "../api";
 
 export type ConnectionSettings = {
   profiles: ConnectionProfile[];
@@ -33,6 +33,13 @@ export type ConnectionSettings = {
   setBrokerAuthToken: React.Dispatch<React.SetStateAction<string>>;
   daemonAuthToken: string;
   setDaemonAuthToken: React.Dispatch<React.SetStateAction<string>>;
+  serverPrefsEnabled: boolean;
+  setServerPrefsEnabled: React.Dispatch<React.SetStateAction<boolean>>;
+  serverPrefsStatus: "idle" | "loading" | "error" | "synced";
+  serverPrefsError: string | null;
+  serverPrefsLastSyncMs: number | null;
+  pullServerPrefs: () => void;
+  pushServerPrefs: () => void;
   effectiveBase: string;
   effectiveSseBase: string;
   daemonAuth: ApiAuth;
@@ -91,6 +98,23 @@ export type ConnectionProfile = {
   daemonAuthToken: string;
   runOverridesEnabled?: boolean;
   runOverrides?: RunProfileOverrides;
+};
+
+type ServerConnectionProfile = {
+  id: string;
+  name: string;
+  mode: ConnectionMode;
+  base: string;
+  brokerBase: string;
+  brokerAgentId: string;
+  brokerDeploymentId: string;
+};
+
+type ServerPrefs = {
+  connection: {
+    active_profile_id: string;
+    profiles: ServerConnectionProfile[];
+  };
 };
 
 export type RunSettings = {
@@ -185,6 +209,7 @@ export type RunSettings = {
 };
 
 export type ClientSettings = {
+  clientId: string;
   allowAutoplay: boolean;
   setAllowAutoplay: React.Dispatch<React.SetStateAction<boolean>>;
   allowClientRpcs: boolean;
@@ -379,8 +404,66 @@ const normalizeProfile = (p: Partial<ConnectionProfile>, defaults: AgentUIDefaul
   return out;
 };
 
+const toServerProfile = (p: ConnectionProfile): ServerConnectionProfile => ({
+  id: p.id,
+  name: p.name,
+  mode: p.mode,
+  base: p.base,
+  brokerBase: p.brokerBase,
+  brokerAgentId: p.brokerAgentId,
+  brokerDeploymentId: p.brokerDeploymentId,
+});
+
+const buildServerPrefs = (profiles: ConnectionProfile[], activeId: string): ServerPrefs => ({
+  connection: {
+    active_profile_id: activeId,
+    profiles: profiles.map(toServerProfile),
+  },
+});
+
+const mergeServerPrefs = (
+  prefs: ServerPrefs,
+  localProfiles: ConnectionProfile[],
+  defaults: AgentUIDefaults,
+): { profiles: ConnectionProfile[]; activeProfileId: string } => {
+  const incoming = Array.isArray(prefs?.connection?.profiles) ? prefs.connection.profiles : [];
+  if (incoming.length === 0) {
+    return { profiles: localProfiles, activeProfileId: localProfiles[0]?.id || "" };
+  }
+  const localById = new Map(localProfiles.map((p) => [p.id, p]));
+  const merged = incoming.map((p) => {
+    const local = localById.get(p.id);
+    return normalizeProfile(
+      {
+        ...p,
+        brokerAuthToken: local?.brokerAuthToken,
+        daemonAuthToken: local?.daemonAuthToken,
+        runOverridesEnabled: local?.runOverridesEnabled,
+        runOverrides: local?.runOverrides,
+      },
+      defaults,
+    );
+  });
+  const desiredActive = typeof prefs?.connection?.active_profile_id === "string" ? prefs.connection.active_profile_id : "";
+  const activeProfileId = merged.some((p) => p.id === desiredActive) ? desiredActive : merged[0]?.id || "";
+  return { profiles: merged, activeProfileId };
+};
+
 export default function useUiSettings(): UiSettings {
   const defaults = React.useMemo(() => getUiDefaults(), []);
+  const initialClientId = React.useMemo(() => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const g: any = typeof globalThis !== "undefined" ? globalThis : {};
+      if (g.crypto && typeof g.crypto.randomUUID === "function") {
+        return `webui-${g.crypto.randomUUID()}`;
+      }
+    } catch {
+      // ignore
+    }
+    return `webui-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }, []);
+  const [clientId] = useLocalStorageState("agentui.clientId", initialClientId);
 
   const [showSettings, setShowSettings] = useLocalStorageState("agentui.showSettings", false);
 
@@ -389,6 +472,12 @@ export default function useUiSettings(): UiSettings {
     [],
   );
   const [activeProfileId, setActiveProfileId] = useLocalStorageState("agentui.connectionProfileActive", "");
+  const [serverPrefsEnabled, setServerPrefsEnabled] = useLocalStorageState("agentui.serverPrefsEnabled", false);
+  const [serverPrefsStatus, setServerPrefsStatus] = React.useState<"idle" | "loading" | "error" | "synced">("idle");
+  const [serverPrefsError, setServerPrefsError] = React.useState<string | null>(null);
+  const [serverPrefsLastSyncMs, setServerPrefsLastSyncMs] = React.useState<number | null>(null);
+  const serverPrefsLastPayloadRef = React.useRef<string>("");
+  const serverPrefsPullInFlightRef = React.useRef(false);
 
   const buildLegacyProfile = React.useCallback((): ConnectionProfile => {
     const mode = readLegacyMode("agentui.connectionMode", defaults.connectionMode);
@@ -1184,6 +1273,102 @@ export default function useUiSettings(): UiSettings {
       : `direct:pid=${pid}:tlen=${t.length}`;
   }, [activeProfileId, daemonAuth]);
 
+  const serverPrefsPayload = React.useMemo(
+    () => buildServerPrefs(connectionProfiles, activeProfileId),
+    [connectionProfiles, activeProfileId],
+  );
+  const serverPrefsPayloadJson = React.useMemo(() => JSON.stringify(serverPrefsPayload), [serverPrefsPayload]);
+  const serverPrefsClientKind = "webui";
+  const serverPrefsCanUse =
+    serverPrefsEnabled && connectionMode === "direct" && String(effectiveBase || "").trim().length > 0;
+  const connectionProfilesRef = React.useRef(connectionProfiles);
+  React.useEffect(() => {
+    connectionProfilesRef.current = connectionProfiles;
+  }, [connectionProfiles]);
+
+  const pullServerPrefs = React.useCallback(async () => {
+    if (!serverPrefsCanUse) return;
+    if (serverPrefsPullInFlightRef.current) return;
+    serverPrefsPullInFlightRef.current = true;
+    setServerPrefsStatus("loading");
+    setServerPrefsError(null);
+    try {
+      const resp = await apiGetClientPrefs(effectiveBase, String(clientId || "webui"), serverPrefsClientKind, daemonAuth);
+      if (!resp.ok) {
+        throw new Error(resp.error || resp.err || resp.code || "client prefs fetch failed");
+      }
+      if (resp.found && resp.prefs && typeof resp.prefs === "object") {
+        const merged = mergeServerPrefs(resp.prefs as ServerPrefs, connectionProfilesRef.current, defaults);
+        setConnectionProfiles(merged.profiles);
+        if (merged.activeProfileId) setActiveProfileId(merged.activeProfileId);
+        serverPrefsLastPayloadRef.current = JSON.stringify(buildServerPrefs(merged.profiles, merged.activeProfileId));
+      }
+      setServerPrefsLastSyncMs(typeof resp.updated_utc_ms === "number" ? resp.updated_utc_ms : Date.now());
+      setServerPrefsStatus("synced");
+    } catch (err) {
+      setServerPrefsStatus("error");
+      setServerPrefsError(String(err instanceof Error ? err.message : err));
+    } finally {
+      serverPrefsPullInFlightRef.current = false;
+    }
+  }, [
+    clientId,
+    daemonAuth,
+    defaults,
+    effectiveBase,
+    serverPrefsCanUse,
+    serverPrefsClientKind,
+    setActiveProfileId,
+    setConnectionProfiles,
+  ]);
+
+  const pushServerPrefs = React.useCallback(async () => {
+    if (!serverPrefsCanUse) return;
+    const payload = serverPrefsPayload;
+    const payloadJson = serverPrefsPayloadJson;
+    if (payloadJson === serverPrefsLastPayloadRef.current) return;
+    setServerPrefsStatus("loading");
+    setServerPrefsError(null);
+    try {
+      const resp = await apiPostClientPrefs(
+        effectiveBase,
+        { client_id: String(clientId || "webui"), client_kind: serverPrefsClientKind, prefs: payload },
+        daemonAuth,
+      );
+      if (!resp.ok) {
+        throw new Error(resp.error || resp.err || resp.code || "client prefs update failed");
+      }
+      serverPrefsLastPayloadRef.current = payloadJson;
+      setServerPrefsLastSyncMs(typeof resp.updated_utc_ms === "number" ? resp.updated_utc_ms : Date.now());
+      setServerPrefsStatus("synced");
+    } catch (err) {
+      setServerPrefsStatus("error");
+      setServerPrefsError(String(err instanceof Error ? err.message : err));
+    }
+  }, [
+    clientId,
+    daemonAuth,
+    effectiveBase,
+    serverPrefsCanUse,
+    serverPrefsClientKind,
+    serverPrefsPayload,
+    serverPrefsPayloadJson,
+  ]);
+
+  React.useEffect(() => {
+    if (!serverPrefsCanUse) return;
+    void pullServerPrefs();
+  }, [serverPrefsCanUse, pullServerPrefs]);
+
+  React.useEffect(() => {
+    if (!serverPrefsCanUse) return;
+    if (serverPrefsPayloadJson === serverPrefsLastPayloadRef.current) return;
+    const t = window.setTimeout(() => {
+      void pushServerPrefs();
+    }, 600);
+    return () => window.clearTimeout(t);
+  }, [pushServerPrefs, serverPrefsCanUse, serverPrefsPayloadJson]);
+
   React.useEffect(() => {
     if (maxStepsUserSet) return;
     if (String(maxStepsRawGlobal) === "0") {
@@ -1218,6 +1403,13 @@ export default function useUiSettings(): UiSettings {
       setBrokerAuthToken,
       daemonAuthToken,
       setDaemonAuthToken,
+      serverPrefsEnabled,
+      setServerPrefsEnabled,
+      serverPrefsStatus,
+      serverPrefsError,
+      serverPrefsLastSyncMs,
+      pullServerPrefs,
+      pushServerPrefs,
       effectiveBase,
       effectiveSseBase,
       daemonAuth,
@@ -1314,6 +1506,7 @@ export default function useUiSettings(): UiSettings {
       setOrLimit,
     },
     client: {
+      clientId: String(clientId || "webui"),
       allowAutoplay,
       setAllowAutoplay,
       allowClientRpcs,

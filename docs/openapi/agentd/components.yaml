@@ -13,6 +13,12 @@ schemas:
     $ref: ./components/diagnostics.yaml#/DiagnosticsProviderTestRequest
   DiagnosticsProviderTestResponse:
     $ref: ./components/diagnostics.yaml#/DiagnosticsProviderTestResponse
+  ClientPrefs:
+    $ref: ./components/client_prefs.yaml#/ClientPrefs
+  ClientPrefsUpdateRequest:
+    $ref: ./components/client_prefs.yaml#/ClientPrefsUpdateRequest
+  ClientPrefsResponse:
+    $ref: ./components/client_prefs.yaml#/ClientPrefsResponse
   BlobStoreConfig:
     $ref: ./components/blob.yaml#/BlobStoreConfig
   BlobStoreUpdate:

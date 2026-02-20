@@ -92,23 +92,7 @@ export default function App() {
   const capsUpdatedMs = (capsQuery.data && capsQuery.data.ok ? capsQuery.data.now_unix_ms : undefined) ?? cachedCaps?.ts;
   const capsError = capsQuery.isError ? String(capsQuery.error) : null;
 
-  const [clientId] = useLocalStorageState(
-    "agentui.clientId",
-    (() => {
-      try {
-        // Stable per-browser-profile id (shared across tabs); used as client.id.
-        // A per-tab instance id is generated separately.
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const g: any = typeof globalThis !== "undefined" ? globalThis : {};
-        if (g.crypto && typeof g.crypto.randomUUID === "function") {
-          return `webui-${g.crypto.randomUUID()}`;
-        }
-      } catch {
-        // ignore
-      }
-      return `webui-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    })(),
-  );
+  const clientId = clientSettings.clientId;
   const clientInstanceIdRef = React.useRef<string>(
     (() => {
       try {

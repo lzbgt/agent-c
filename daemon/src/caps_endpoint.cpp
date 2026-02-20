@@ -94,6 +94,13 @@ void handle_caps_endpoint(
     features["auth"] = auth;
   }
   {
+    Json::Value prefs(Json::objectValue);
+    prefs["enabled"] = true;
+    prefs["secrets"] = false;
+    prefs["max_bytes"] = Json::UInt64(65536);
+    features["client_prefs"] = prefs;
+  }
+  {
     Json::Value tools(Json::objectValue);
     tools["default_mode"] = cfg.tools;
     tools["yolo_default"] = cfg.yolo_default;

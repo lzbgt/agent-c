@@ -207,6 +207,67 @@
           application/json:
             schema:
               $ref: "#/components/schemas/ErrorResponse"
+
+/api/v1/client/prefs:
+  get:
+    tags: [client]
+    summary: Get client preferences (connection profiles)
+    parameters:
+      - in: query
+        name: client_id
+        required: true
+        schema: { type: string }
+      - in: query
+        name: client_kind
+        required: false
+        schema: { type: string, default: webui }
+    responses:
+      "200":
+        description: Client prefs response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientPrefsResponse"
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+  post:
+    tags: [client]
+    summary: Update client preferences (connection profiles)
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ClientPrefsUpdateRequest"
+    responses:
+      "200":
+        description: Client prefs response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientPrefsResponse"
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
       "500":
         description: Persist failed
         content:

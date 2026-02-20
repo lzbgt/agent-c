@@ -295,6 +295,17 @@ Notes:
 - The response never includes secrets. Use `GET /api/v1/config` to see booleans like `provider_keys_set`.
 - The WebUI exposes Settings buttons to “Save defaults to daemon” and “Save API key to daemon”.
 
+## Client prefs (WebUI connection profiles)
+
+The daemon can persist WebUI connection profiles so they survive browser resets:
+
+- `GET /api/v1/client/prefs?client_id=<id>&client_kind=webui`
+- `POST /api/v1/client/prefs` with `{ client_id, client_kind, prefs }`
+
+Notes:
+- Requires auth when `--auth-token` is set.
+- v1 stores **non-secret** connection fields only (URLs/agent ids). Tokens stay client-side.
+
 ## State dir / multi-agent safety
 
 `agentd` stores canonical state in SQLite (`--db-path`, default: `<state_dir>/agentd.db`; `state_dir` defaults to the

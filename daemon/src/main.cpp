@@ -7,6 +7,7 @@
 #include "daemon_config.h"
 #include "config_endpoint.h"
 #include "caps_endpoint.h"
+#include "client_prefs_endpoints.h"
 #include "avm_endpoints.h"
 #include "blob_endpoints.h"
 #include "file_endpoint.h"
@@ -993,6 +994,15 @@ int main(int argc, char** argv) {
 
   server.handle("POST", "/api/v1/config/update", [&](const HttpRequest& req, HttpResponse* resp) {
     handle_config_update_endpoint(&cfg_store, db_or_null, cors_cfg, req, resp);
+  });
+
+  server.handle("GET", "/api/v1/client/prefs", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_client_prefs_get_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle("POST", "/api/v1/client/prefs", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_client_prefs_post_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   server.handle("POST", "/api/v1/ota/update", [&](const HttpRequest& req, HttpResponse* resp) {

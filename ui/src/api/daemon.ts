@@ -16,9 +16,23 @@ import {
   type DiagnosticsProviders,
   DiagnosticsSchema,
   type Diagnostics,
+  ClientPrefsSchema,
+  type ClientPrefs,
+  ClientPrefsUpdateReqSchema,
+  type ClientPrefsUpdateReq,
   HealthSchema,
   type Health,
 } from "./schemas/daemon";
+
+async function parseJsonOrThrow(r: Response): Promise<any> {
+  const text = await r.text();
+  try {
+    return JSON.parse(text);
+  } catch (err) {
+    const msg = text ? `HTTP ${r.status}: ${text}` : `HTTP ${r.status}`;
+    throw new Error(msg);
+  }
+}
 
 export async function apiUpdateDaemonConfig(
   base: string,
@@ -78,4 +92,33 @@ export async function apiPostDiagnosticsProviderTest(
   });
   const j = await r.json();
   return DiagnosticsProviderTestRespSchema.parse(j);
+}
+
+export async function apiGetClientPrefs(
+  base: string,
+  clientId: string,
+  clientKind: string,
+  auth?: ApiAuth,
+): Promise<ClientPrefs> {
+  const qs = new URLSearchParams({ client_id: clientId, client_kind: clientKind });
+  const r = await fetch(`${base}/api/v1/client/prefs?${qs.toString()}`, {
+    headers: daemonHeaders(auth),
+  });
+  const j = await parseJsonOrThrow(r);
+  return ClientPrefsSchema.parse(j);
+}
+
+export async function apiPostClientPrefs(
+  base: string,
+  req: ClientPrefsUpdateReq,
+  auth?: ApiAuth,
+): Promise<ClientPrefs> {
+  const payload = ClientPrefsUpdateReqSchema.parse(req);
+  const r = await fetch(`${base}/api/v1/client/prefs`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const j = await parseJsonOrThrow(r);
+  return ClientPrefsSchema.parse(j);
 }

@@ -16,6 +16,7 @@ tags:
   - name: caps
   - name: diagnostics
   - name: config
+  - name: client
   - name: run
   - name: jobs
   - name: workflows
