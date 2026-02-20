@@ -7,6 +7,11 @@ set -euo pipefail
 # - Performs smoke checks + captures evidence bundle
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=tests/lib/agentd_smoke_lib.sh
+source "${ROOT}/tests/lib/agentd_smoke_lib.sh"
+curl() {
+  agentd_smoke_curl "$@"
+}
 
 usage() {
   cat <<'USAGE'
