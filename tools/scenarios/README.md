@@ -30,6 +30,7 @@ Supported step types:
 - `http`: simple HTTP request (GET/POST). Fields: `url`, `method`, `headers`, `body`, `expect_status`, `save_as`, `insecure`, `timeout_s`, `proxy`.
   - `timeout_s` accepts seconds as float; `<= 0` or empty disables the timeout.
   - Request logs redact common auth headers (Authorization, API keys).
+  - Step logs include `allow_failure` and `proxy` when set.
   - `expect_status` may be a single code or list; non-2xx is allowed when it matches (response body is still logged/saved).
 - `sleep`: pause. Fields: `seconds` or `duration_s`.
 - `capture_evidence`: run `tools/capture_agent_evidence_bundle.sh` with `args` list.
