@@ -85,15 +85,21 @@ def run_shell(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: i
     with open(log_path, "w", encoding="utf-8") as log:
         log.write(f"$ {cmd}\n")
         log.flush()
-        proc = subprocess.run(
-            cmd,
-            shell=True,
-            cwd=cwd,
-            env=env,
-            stdout=log,
-            stderr=log,
-            timeout=parse_timeout(step.get("timeout_s")),
-        )
+        try:
+            proc = subprocess.run(
+                cmd,
+                shell=True,
+                cwd=cwd,
+                env=env,
+                stdout=log,
+                stderr=log,
+                timeout=parse_timeout(step.get("timeout_s")),
+            )
+        except subprocess.TimeoutExpired as exc:
+            log.write(f"error: timeout after {exc.timeout}s\n")
+            if step.get("allow_failure") is True:
+                return
+            raise
     if proc.returncode != 0 and step.get("allow_failure") is not True:
         raise RuntimeError(f"shell step failed: {name} (rc={proc.returncode}) log={log_path}")
 
