@@ -219,6 +219,7 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
     }
     setComposerJson(JSON.stringify(graphBuild.result.workflow, null, 2));
     setSubmitError(null);
+    setComposerMode("json");
   };
 
   const clearGraphWarnings = () => {
