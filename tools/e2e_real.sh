@@ -83,7 +83,7 @@ echo "[e2e] ensuring Playwright browsers are installed (log: ${pw_install_log})"
 echo "[e2e] running playwright (log: ${e2e_log})"
 AGENT_E2E_REQUIRE_REAL=1 \
 AGENT_E2E_AGENTD_BASE_URL="http://127.0.0.1:8123" \
-(cd ui && npm run e2e) >"${e2e_log}" 2>&1 || {
+  bash -lc "cd ui && npm run e2e" >"${e2e_log}" 2>&1 || {
   echo "[e2e] FAILED. See logs:" >&2
   echo "  - ${agentd_log}" >&2
   echo "  - ${ui_log}" >&2
