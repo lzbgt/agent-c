@@ -70,6 +70,8 @@ def main() -> int:
         print("no scenarios found", file=sys.stderr)
         return 2
 
+    pack_started_at = datetime.utcnow().isoformat() + "Z"
+    pack_t0 = time.time()
     out_root = args.out_dir
     if not out_root:
         out_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "out", f"scenario_pack_{now_ts()}"))
@@ -114,8 +116,15 @@ def main() -> int:
                 break
 
     summary_path = os.path.join(out_root, "summary.json")
+    pack_finished_at = datetime.utcnow().isoformat() + "Z"
     with open(summary_path, "w", encoding="utf-8") as f:
-        json.dump({"results": results, "failed": failures}, f, indent=2)
+        json.dump({
+            "results": results,
+            "failed": failures,
+            "started_at": pack_started_at,
+            "finished_at": pack_finished_at,
+            "duration_s": round(time.time() - pack_t0, 3),
+        }, f, indent=2)
 
     if failures:
         print("scenario pack failed:")
