@@ -16,6 +16,8 @@ One-command verify (configure + build + tests; logs under `build/`):
 tools/verify.sh
 ```
 
+Host verify also runs a lightweight workflow list query smoke (API `q` filter) after CTest.
+
 Optional: run eval pack smoke after build/tests:
 
 ```bash

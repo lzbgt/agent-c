@@ -157,6 +157,12 @@ if [[ "${SKIP_UI}" == "1" ]]; then
   exit 0
 fi
 
+# Optional smoke tests (host-only)
+if [[ "${MODE}" == "host" ]]; then
+  smoke_log="${log_dir}/verify_${ts}_workflow_list_query_smoke.log"
+  run_logged "workflow list query smoke" "${smoke_log}" bash -lc "${ROOT}/tests/agentd_workflow_list_query_smoke.sh ${build_dir}/agentd"
+fi
+
 if [[ ! -f "${ROOT}/ui/package.json" ]]; then
   echo "[verify] UI not present (ui/package.json missing)"
   exit 0
