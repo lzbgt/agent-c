@@ -98,6 +98,8 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-19 check: key from `~/.env` returns 401 “User not found”; `OPENROUTER_HTTP_REFERER`/`OPENROUTER_X_TITLE` not set.
   - 2026-02-19 check: setting `OPENROUTER_HTTP_REFERER=http://localhost` and `OPENROUTER_X_TITLE=agentd` still returns 401 “User not found”.
   - 2026-02-19 check: `tools/probe_openrouter_stream_models.sh` fails with 401 chat auth even with headers set.
+  - 2026-02-20 check: `tools/openrouter_auth_debug.sh` with key from `~/.env` still returns 401 “User not found” on `/chat/completions`.
+  - 2026-02-20 check: even with `OPENROUTER_HTTP_REFERER=http://localhost` and `OPENROUTER_X_TITLE=agentd`, `/chat/completions` returns 401 “User not found”.
   - 2026-02-19 check: `tools/openrouter_auth_debug.sh` shows `/models` ok (models_count=337) but `/chat/completions` returns 401 “User not found”.
 - [x] W=9 — Unblock macOS full-stack compose verification (document Docker Desktop resource settings + prebuilt image path) and improve `tools/verify_mac_full_stack.sh` diagnostics for `unpigz/runc` failures.
 - [x] W=8 — Finish embedded/MCU-compatible tool plugin path (ABI constraints + host/sandbox policy; Windows parity tests added).
