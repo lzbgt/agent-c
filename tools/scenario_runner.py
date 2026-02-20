@@ -155,16 +155,19 @@ def run_http(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: in
         try:
             proxy_mode = step.get("proxy", None)
             disable_proxy = False
+            proxy_override = False
             if isinstance(proxy_mode, bool):
+                proxy_override = True
                 disable_proxy = not proxy_mode
             elif proxy_mode is not None:
+                proxy_override = True
                 mode = str(proxy_mode).strip().lower()
                 if mode in ("0", "false", "off", "none", "disabled", "no"):
                     disable_proxy = True
                 elif mode in ("1", "true", "on", "env", "default"):
                     disable_proxy = False
 
-            if not disable_proxy:
+            if not disable_proxy and not proxy_override:
                 host = urlparse(url).hostname or ""
                 if host in ("localhost", "127.0.0.1", "::1"):
                     disable_proxy = True

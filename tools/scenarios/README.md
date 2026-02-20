@@ -39,7 +39,7 @@ Template variables:
 
 HTTP proxy behavior:
 - By default, `http` steps honor standard proxy env vars, but bypass proxies for localhost/127.0.0.1.
-- Set `proxy` to `false`/`disabled` to force no proxy, or `true`/`env` to force proxy usage.
+- Set `proxy` to `false`/`disabled` to force no proxy, or `true`/`env` to force proxy usage (overrides localhost bypass).
 
 ## Included scenarios
 
