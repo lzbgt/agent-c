@@ -54,6 +54,23 @@ else:
 PY
 }
 
+read_agents_pids() {
+  local key="$1"
+  python3 - <<PY
+import json
+with open("${STATE}", "r", encoding="utf-8") as f:
+    obj = json.load(f)
+agents = obj.get("agents") or []
+vals = []
+for a in agents:
+    if isinstance(a, dict):
+        v = a.get("${key}")
+        if v is not None:
+            vals.append(str(v))
+print(" ".join(vals))
+PY
+}
+
 kill_pid() {
   local pid="$1"
   if [[ -n "${pid}" && "${pid}" != "0" ]]; then
@@ -67,15 +84,29 @@ AGENTD_PID="$(read_field agentd_pid)"
 BROKER_PID="$(read_field broker_pid)"
 CONNECTOR_PID="$(read_field connector_pid)"
 WEBUI_PID="$(read_field webui_pid)"
+AGENTD_PIDS="$(read_agents_pids agentd_pid)"
+CONNECTOR_PIDS="$(read_agents_pids connector_pid)"
 COMPOSE_PROJECT="$(read_field compose_project)"
 COMPOSE_FILE="$(read_field compose_file)"
 POSTGRES_PORT="$(read_field postgres_port)"
 KEYCLOAK_PORT="$(read_field keycloak_port)"
 
 kill_pid "${WEBUI_PID}"
-kill_pid "${CONNECTOR_PID}"
+if [[ -n "${CONNECTOR_PIDS}" ]]; then
+  for pid in ${CONNECTOR_PIDS}; do
+    kill_pid "${pid}"
+  done
+else
+  kill_pid "${CONNECTOR_PID}"
+fi
 kill_pid "${BROKER_PID}"
-kill_pid "${AGENTD_PID}"
+if [[ -n "${AGENTD_PIDS}" ]]; then
+  for pid in ${AGENTD_PIDS}; do
+    kill_pid "${pid}"
+  done
+else
+  kill_pid "${AGENTD_PID}"
+fi
 
 if [[ -n "${COMPOSE_FILE}" && -n "${COMPOSE_PROJECT}" ]]; then
   if command -v docker_compose_preflight >/dev/null 2>&1 && docker_compose_preflight "devstack-down" >/dev/null 2>&1; then

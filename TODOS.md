@@ -966,6 +966,7 @@ Proof:
 Status:
 - Shipped v1.5: durable workflow event log + SSE stream + smoke test.
 - Shipped: WebUI workflow DAG viewer (read-only) for listing + inspecting tasks.
+- Shipped: WebUI workflow composer (JSON templates + submit).
 
 Next:
 - UI view for workflow timeline (reuse trace UI patterns), plus filters (by task_id, by event type).

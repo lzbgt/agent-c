@@ -38,6 +38,8 @@ Edit `ui/public/agentui-config.js` (copied to `ui/dist/agentui-config.js`) to pr
 - `model`, `baseUrl`, `proxyUrl`, `timeoutMs`
 - `tools`, `yolo`, `hostPolicy`, `verbose`
 - `allowClientRpcs`, `allowClientEffects`, `allowUnsafePageEval`
+- `workflowAgentTargets` (array or CSV of agentd base URLs for collaboration templates)
+- `workflowBearerEnv` (env var name used by `agentd_call` bearer_env in templates)
 
 Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`, and `VITE_AGENTUI_*`.
 
@@ -63,7 +65,9 @@ The WebUI includes a **Workflows** panel for durable workflow inspection:
 - Loads a workflow with tasks + DAG layout (`/api/v1/workflow`).
 - Surfaces budgets/usage and optional spec/results when enabled.
 
-This panel is **read-only** today (no drag‑and‑drop composer yet).
+This panel includes a **Workflow composer** with JSON templates for:
+- LLM DAG workflows (A→B/C).
+- `agentd_parallel` collaboration templates (requires `--workflow-enable-http-tasks` on the primary agentd).
 
 ## Rendering notes
 

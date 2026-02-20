@@ -5,6 +5,8 @@ import {
   type WorkflowDetailResp,
   WorkflowListRespSchema,
   type WorkflowListResp,
+  WorkflowSubmitRespSchema,
+  type WorkflowSubmitResp,
 } from "./schemas/workflow";
 
 export type WorkflowListParams = {
@@ -47,4 +49,18 @@ export async function apiGetWorkflow(
   const r = await fetch(`${base}/api/v1/workflow${q ? `?${q}` : ""}`, { headers: daemonHeaders(auth) });
   const j = await r.json();
   return WorkflowDetailRespSchema.parse(j);
+}
+
+export async function apiSubmitWorkflow(
+  base: string,
+  payload: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<WorkflowSubmitResp> {
+  const r = await fetch(`${base}/api/v1/workflow/submit`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json();
+  return WorkflowSubmitRespSchema.parse(j);
 }

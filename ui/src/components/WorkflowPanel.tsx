@@ -3,6 +3,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiGetWorkflow, apiListWorkflows, type WorkflowDetailResp, type WorkflowListResp } from "../api";
 import type { ApiAuth } from "../api/auth";
 import useLocalStorageState from "../hooks/useLocalStorageState";
+import WorkflowComposer from "./WorkflowComposer";
 
 type WorkflowPanelProps = {
   open: boolean;
@@ -11,6 +12,9 @@ type WorkflowPanelProps = {
   auth?: ApiAuth;
   authKey?: string;
   onTraceIdClick?: (traceId: string) => void;
+  workflowDefaults?: Record<string, any>;
+  workflowTargets?: string[];
+  workflowBearerEnv?: string;
 };
 
 type WorkflowTask = {
@@ -502,6 +506,18 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
             ) : null}
           </div>
         ) : null}
+
+        <WorkflowComposer
+          baseUrl={props.baseUrl}
+          auth={props.auth}
+          workflowDefaults={props.workflowDefaults}
+          workflowTargets={props.workflowTargets}
+          workflowBearerEnv={props.workflowBearerEnv}
+          onSubmitted={(workflowId) => {
+            setWorkflowId(workflowId);
+            loadWorkflow(workflowId);
+          }}
+        />
       </div>
     </details>
   );

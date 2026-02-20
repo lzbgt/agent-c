@@ -41,6 +41,8 @@ export type AgentUIRuntimeConfig = {
   allowClientEffects?: boolean | string;
   allowUnsafePageEval?: boolean | string;
   brokerPanelOpen?: boolean | string;
+  workflowAgentTargets?: string[] | string;
+  workflowBearerEnv?: string;
 };
 
 export type AgentUIDefaults = {
@@ -82,6 +84,8 @@ export type AgentUIDefaults = {
   allowClientEffects: boolean;
   allowUnsafePageEval: boolean;
   brokerPanelOpen: boolean;
+  workflowAgentTargets: string[];
+  workflowBearerEnv: string;
 };
 
 declare global {
@@ -129,6 +133,8 @@ const DEFAULTS: AgentUIDefaults = {
   allowClientEffects: true,
   allowUnsafePageEval: true,
   brokerPanelOpen: false,
+  workflowAgentTargets: [],
+  workflowBearerEnv: "",
 };
 
 const env = (() => {
@@ -166,6 +172,21 @@ const coerceString = (val: unknown): string | undefined => {
   }
   if (typeof val === "number" && Number.isFinite(val)) {
     return String(val);
+  }
+  return undefined;
+};
+
+const coerceStringList = (val: unknown): string[] | undefined => {
+  if (Array.isArray(val)) {
+    const arr = val.map((v) => String(v || "").trim()).filter((v) => v.length > 0);
+    return arr.length ? arr : undefined;
+  }
+  if (typeof val === "string") {
+    const parts = val
+      .split(/[,\n]+/g)
+      .map((v) => v.trim())
+      .filter((v) => v.length > 0);
+    return parts.length ? parts : undefined;
   }
   return undefined;
 };
@@ -324,6 +345,9 @@ export const getUiDefaults = (): AgentUIDefaults => {
     coerceBool(cfg.brokerPanelOpen) ??
     coerceBool(envString("VITE_AGENTUI_BROKER_PANEL_OPEN")) ??
     out.brokerPanelOpen;
+
+  out.workflowAgentTargets = coerceStringList(cfg.workflowAgentTargets) ?? out.workflowAgentTargets;
+  out.workflowBearerEnv = coerceString(cfg.workflowBearerEnv) ?? out.workflowBearerEnv;
 
   return out;
 };

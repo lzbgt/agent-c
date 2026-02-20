@@ -43,6 +43,7 @@ import WorkflowPanel from "./components/WorkflowPanel";
 import useLocalStorageState from "./hooks/useLocalStorageState";
 import useJobStreaming from "./hooks/useJobStreaming";
 import useUiSettings from "./hooks/useUiSettings";
+import { buildWorkflowDefaults } from "./workflowDefaults";
 
 export default function App() {
   const ui = useUiSettings();
@@ -50,6 +51,8 @@ export default function App() {
   const { effectiveBase, effectiveSseBase, daemonAuth, authKey } = connection;
   const profileName = connection.profileName;
   const profileId = connection.activeProfileId;
+  const workflowTargets = ui.defaults.workflowAgentTargets;
+  const workflowBearerEnv = ui.defaults.workflowBearerEnv;
   const { showSettings, setShowSettings } = ui;
   const connectionMode = connection.mode;
   const brokerAuthToken = connection.brokerAuthToken;
@@ -163,6 +166,7 @@ export default function App() {
     trace,
     useAsync,
   } = runSettings;
+  const workflowDefaults = buildWorkflowDefaults(runSettings);
   const jobsEnabled = (capsData as any)?.features?.jobs?.enabled !== false;
   const uploadMaxBytesRaw = (capsData as any)?.limits?.upload_max_bytes;
   const uploadMaxBytes = typeof uploadMaxBytesRaw === "number" && Number.isFinite(uploadMaxBytesRaw) ? uploadMaxBytesRaw : undefined;
@@ -1681,6 +1685,9 @@ export default function App() {
               baseUrl={effectiveBase}
               auth={daemonAuth}
               authKey={authKey}
+              workflowDefaults={workflowDefaults}
+              workflowTargets={workflowTargets}
+              workflowBearerEnv={workflowBearerEnv}
               onTraceIdClick={(traceId) => {
                 setTraceLookupId(traceId);
                 setTraceLookupOpen(true);

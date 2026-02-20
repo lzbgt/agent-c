@@ -22,6 +22,8 @@ Options:
   --no-keep        Stop services after checks.
   --skip-ui        Skip WebUI build/serve.
   --ui-install     Run npm ci before building UI (default: 1).
+  --agent-count    Number of agentd instances to start (default: 1).
+  --workflow-http  Enable workflow http/agentd_call tasks on the primary agentd.
   --agentd-tools   agentd tools mode (default: none)
   --agentd-port    agentd port (default: random)
   --broker-port    broker port (default: random)
@@ -77,6 +79,8 @@ KEEP=1
 SKIP_UI=0
 UI_INSTALL=1
 AGENTD_TOOLS="none"
+AGENT_COUNT=1
+WORKFLOW_HTTP=0
 AGENTD_PORT=""
 BROKER_PORT=""
 WEBUI_PORT=""
@@ -91,6 +95,8 @@ while [[ $# -gt 0 ]]; do
     --no-keep) KEEP=0; shift ;;
     --skip-ui) SKIP_UI=1; shift ;;
     --ui-install) UI_INSTALL=1; shift ;;
+    --agent-count) AGENT_COUNT="$2"; shift 2 ;;
+    --workflow-http) WORKFLOW_HTTP=1; shift ;;
     --agentd-tools) AGENTD_TOOLS="$2"; shift 2 ;;
     --agentd-port) AGENTD_PORT="$2"; shift 2 ;;
     --broker-port) BROKER_PORT="$2"; shift 2 ;;
@@ -108,7 +114,26 @@ AGENTD_BIN="${AGENTD_BIN:-${ROOT}/build/agentd}"
 BROKER_BIN="${BROKER_BIN:-${ROOT}/out/devstack/bin/agentd-broker}"
 CONNECTOR_BIN="${CONNECTOR_BIN:-${ROOT}/out/devstack/bin/agentd-connector}"
 AGENTD_AUTH_TOKEN="${AGENTD_AUTH_TOKEN:-dev-agentd-token}"
-BROKER_AGENT_ID="${BROKER_AGENT_ID:-agent1}"
+
+if ! [[ "${AGENT_COUNT}" =~ ^[0-9]+$ ]]; then
+  echo "[devstack] invalid --agent-count: ${AGENT_COUNT}" >&2
+  exit 2
+fi
+if [[ "${AGENT_COUNT}" -lt 1 ]]; then
+  echo "[devstack] agent-count must be >= 1" >&2
+  exit 2
+fi
+
+AGENT_IDS=()
+for i in $(seq 1 "${AGENT_COUNT}"); do
+  AGENT_IDS+=("agent${i}")
+done
+
+if [[ "${AGENT_COUNT}" -gt 1 && "${WORKFLOW_HTTP}" -eq 0 ]]; then
+  WORKFLOW_HTTP=1
+fi
+
+BROKER_AGENT_ID="${BROKER_AGENT_ID:-${AGENT_IDS[0]}}"
 
 AGENTD_PORT="${AGENTD_PORT:-$(pick_port)}"
 BROKER_PORT="${BROKER_PORT:-$(pick_port)}"
@@ -137,6 +162,13 @@ LOG_MTLS="${LOG_DIR}/mtls.log"
 LOG_COMPOSE="${LOG_DIR}/compose.log"
 LOG_EVIDENCE="${LOG_DIR}/evidence.log"
 
+AGENTD_LOGS=()
+CONNECTOR_LOGS=()
+AGENTD_PIDS=()
+CONNECTOR_PIDS=()
+AGENTD_BASES=()
+AGENTD_PORTS=()
+
 COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-agent_devstack_${WEBUI_PORT}}"
 COMPOSE_FILE="${COMPOSE_FILE:-${ROOT}/docker-compose.yml}"
 
@@ -157,13 +189,25 @@ cleanup() {
   if [[ -n "${WEBUI_PID:-}" ]]; then
     kill "${WEBUI_PID}" >/dev/null 2>&1 || true
   fi
-  if [[ -n "${CONNECTOR_PID:-}" ]]; then
+  if [[ "${#CONNECTOR_PIDS[@]:-0}" -gt 0 ]]; then
+    for pid in "${CONNECTOR_PIDS[@]}"; do
+      if [[ -n "${pid}" ]]; then
+        kill "${pid}" >/dev/null 2>&1 || true
+      fi
+    done
+  elif [[ -n "${CONNECTOR_PID:-}" ]]; then
     kill "${CONNECTOR_PID}" >/dev/null 2>&1 || true
   fi
   if [[ -n "${BROKER_PID:-}" ]]; then
     kill "${BROKER_PID}" >/dev/null 2>&1 || true
   fi
-  if [[ -n "${AGENTD_PID:-}" ]]; then
+  if [[ "${#AGENTD_PIDS[@]:-0}" -gt 0 ]]; then
+    for pid in "${AGENTD_PIDS[@]}"; do
+      if [[ -n "${pid}" ]]; then
+        kill "${pid}" >/dev/null 2>&1 || true
+      fi
+    done
+  elif [[ -n "${AGENTD_PID:-}" ]]; then
     kill "${AGENTD_PID}" >/dev/null 2>&1 || true
   fi
   if docker_compose_preflight "devstack-clean" >/dev/null 2>&1; then
@@ -220,7 +264,7 @@ if [[ "${SKIP_UI}" -eq 0 ]]; then
   fi
 fi
 
-run_logged "generate mTLS certs" "${LOG_MTLS}" bash -lc "bash ${ROOT}/tools/gen_agentd_broker_mtls_test_certs.sh ${MTLS_DIR} ${BROKER_AGENT_ID}"
+run_logged "generate mTLS certs" "${LOG_MTLS}" bash -lc "bash ${ROOT}/tools/gen_agentd_broker_mtls_test_certs.sh ${MTLS_DIR} ${AGENT_IDS[*]}"
 
 compose_env=(
   "POSTGRES_PUBLISHED_PORT=${POSTGRES_PORT}"
@@ -241,7 +285,6 @@ if [[ "${compose_rc}" -ne 0 ]]; then
 fi
 
 KEYCLOAK_BASE="http://keycloak.lvh.me:${KEYCLOAK_PORT}"
-AGENTD_BASE="http://127.0.0.1:${AGENTD_PORT}"
 BROKER_BASE="https://127.0.0.1:${BROKER_PORT}"
 WEBUI_BASE="http://127.0.0.1:${WEBUI_PORT}"
 
@@ -266,16 +309,43 @@ wait_http_ok() {
 
 wait_http_ok "${KEYCLOAK_BASE}/realms/agentd/.well-known/openid-configuration" 240
 
-nohup "${AGENTD_BIN}" \
-  --host 127.0.0.1 \
-  --port "${AGENTD_PORT}" \
-  --auth-token "${AGENTD_AUTH_TOKEN}" \
-  --tools "${AGENTD_TOOLS}" \
-  --state-dir "${AGENTD_STATE_DIR}" \
-  --db-path "${AGENTD_STATE_DIR}/agentd.db" \
-  --cors-origin "http://127.0.0.1:${WEBUI_PORT}" \
-  --cors-origin "http://localhost:${WEBUI_PORT}" >"${LOG_AGENTD}" 2>&1 &
-AGENTD_PID=$!
+mkdir -p "${AGENTD_STATE_DIR}"
+
+for idx in "${!AGENT_IDS[@]}"; do
+  agent_id="${AGENT_IDS[$idx]}"
+  if [[ "${idx}" -eq 0 ]]; then
+    port="${AGENTD_PORT}"
+  else
+    port="$(pick_port)"
+  fi
+  AGENTD_PORTS+=("${port}")
+  AGENTD_BASES+=("http://127.0.0.1:${port}")
+  agent_state="${AGENTD_STATE_DIR}/${agent_id}"
+  mkdir -p "${agent_state}"
+  log="${LOG_DIR}/agentd_${agent_id}.log"
+  AGENTD_LOGS+=("${log}")
+  extra_args=()
+  if [[ "${idx}" -eq 0 && "${WORKFLOW_HTTP}" -eq 1 ]]; then
+    extra_args+=("--workflow-enable-http-tasks")
+    extra_args+=("--workflow-http-allow-host" "127.0.0.1")
+  fi
+  AGENTD_CALL_BEARER="${AGENTD_AUTH_TOKEN}" nohup "${AGENTD_BIN}" \
+    --host 127.0.0.1 \
+    --port "${port}" \
+    --auth-token "${AGENTD_AUTH_TOKEN}" \
+    --tools "${AGENTD_TOOLS}" \
+    --state-dir "${agent_state}" \
+    --db-path "${agent_state}/agentd.db" \
+    --cors-origin "http://127.0.0.1:${WEBUI_PORT}" \
+    --cors-origin "http://localhost:${WEBUI_PORT}" \
+    "${extra_args[@]}" >"${log}" 2>&1 &
+  AGENTD_PIDS+=("$!")
+done
+
+AGENTD_PORT="${AGENTD_PORTS[0]}"
+AGENTD_BASE="${AGENTD_BASES[0]}"
+LOG_AGENTD="${AGENTD_LOGS[0]}"
+AGENTD_PID="${AGENTD_PIDS[0]}"
 
 wait_http_ok "${AGENTD_BASE}/api/v1/health" 240 || true
 
@@ -292,15 +362,31 @@ nohup "${BROKER_BIN}" \
   --cors-origins "http://127.0.0.1:${WEBUI_PORT},http://localhost:${WEBUI_PORT}" >"${LOG_BROKER}" 2>&1 &
 BROKER_PID=$!
 
-nohup "${CONNECTOR_BIN}" \
-  --broker "wss://127.0.0.1:${BROKER_PORT}/v1/agent/connect" \
-  --local-agentd "${AGENTD_BASE}" \
-  --tls-ca "${MTLS_DIR}/ca.pem" \
-  --tls-cert "${MTLS_DIR}/client_${BROKER_AGENT_ID}.pem" \
-  --tls-key "${MTLS_DIR}/client_${BROKER_AGENT_ID}.key.pem" \
-  --agent-cn-prefix "agentd-" \
-  --agent-id "${BROKER_AGENT_ID}" >"${LOG_CONNECTOR}" 2>&1 &
-CONNECTOR_PID=$!
+for idx in "${!AGENT_IDS[@]}"; do
+  agent_id="${AGENT_IDS[$idx]}"
+  base="${AGENTD_BASES[$idx]}"
+  log="${LOG_DIR}/connector_${agent_id}.log"
+  CONNECTOR_LOGS+=("${log}")
+  nohup "${CONNECTOR_BIN}" \
+    --broker "wss://127.0.0.1:${BROKER_PORT}/v1/agent/connect" \
+    --local-agentd "${base}" \
+    --tls-ca "${MTLS_DIR}/ca.pem" \
+    --tls-cert "${MTLS_DIR}/client_${agent_id}.pem" \
+    --tls-key "${MTLS_DIR}/client_${agent_id}.key.pem" \
+    --agent-cn-prefix "agentd-" \
+    --agent-id "${agent_id}" >"${log}" 2>&1 &
+  CONNECTOR_PIDS+=("$!")
+done
+LOG_CONNECTOR="${CONNECTOR_LOGS[0]}"
+CONNECTOR_PID="${CONNECTOR_PIDS[0]}"
+
+workflow_targets_json="$(
+  printf '%s\n' "${AGENTD_BASES[@]}" | python3 - <<'PY'
+import json,sys
+items = [line.strip() for line in sys.stdin.read().splitlines() if line.strip()]
+print(json.dumps(items))
+PY
+)"
 
 if [[ "${SKIP_UI}" -eq 0 ]]; then
   cat <<CFG >"${ROOT}/ui/dist/agentui-config.js"
@@ -311,6 +397,8 @@ window.__AGENT_UI_CONFIG__ = {
   brokerAuthToken: "",
   daemonAuthToken: "${AGENTD_AUTH_TOKEN}",
   brokerPanelOpen: true,
+  workflowAgentTargets: ${workflow_targets_json},
+  workflowBearerEnv: "AGENTD_CALL_BEARER",
 };
 CFG
   if http_server_cmd="$(python_http_server_cmd "${WEBUI_PORT}")"; then
@@ -343,11 +431,18 @@ fi
 
 started="$(date +%s)"
 while true; do
-  if curl -fsS -k \
-    -H "Authorization: Bearer ${OIDC_JWT}" \
-    -H "Content-Type: application/json" \
-    -d "{\"agent_id\":\"${BROKER_AGENT_ID}\"}" \
-    "${BROKER_BASE}/v1/agents" >/dev/null 2>&1; then
+  ok=1
+  for agent_id in "${AGENT_IDS[@]}"; do
+    if ! curl -fsS -k \
+      -H "Authorization: Bearer ${OIDC_JWT}" \
+      -H "Content-Type: application/json" \
+      -d "{\"agent_id\":\"${agent_id}\"}" \
+      "${BROKER_BASE}/v1/agents" >/dev/null 2>&1; then
+      ok=0
+      break
+    fi
+  done
+  if [[ "${ok}" -eq 1 ]]; then
     break
   fi
   now="$(date +%s)"
@@ -361,18 +456,19 @@ while true; do
 started="$(date +%s)"
 while true; do
   j="$(curl -fsS -k -H "Authorization: Bearer ${OIDC_JWT}" "${BROKER_BASE}/v1/agents" || true)"
-  ok="$(python3 - "${j}" "${BROKER_AGENT_ID}" <<'PY'
+  ok="$(python3 - "${j}" "${AGENT_IDS[@]}" <<'PY'
 import json,sys
 raw = sys.argv[1] if len(sys.argv) > 1 else ""
+expected = set(sys.argv[2:])
+connected = set()
 try:
   obj = json.loads(raw or "{}")
   for a in (obj.get("agents") or []):
-    if a.get("agent_id") == sys.argv[2] and a.get("connected") is True:
-      print("yes")
-      raise SystemExit(0)
+    if a.get("connected") is True and a.get("agent_id"):
+      connected.add(a.get("agent_id"))
 except Exception:
   pass
-print("no")
+print("yes" if expected.issubset(connected) else "no")
 PY
 )"
   if [[ "${ok}" == "yes" ]]; then
@@ -407,8 +503,38 @@ fi
   --agentd-via-broker >"${LOG_EVIDENCE}" 2>&1 || true
 
 STATE_PATH="${OUT_DIR}/devstack_state.json"
+AGENT_IDS_CSV="$(IFS=,; echo "${AGENT_IDS[*]}")"
+AGENTD_BASES_CSV="$(IFS=,; echo "${AGENTD_BASES[*]}")"
+AGENTD_PORTS_CSV="$(IFS=,; echo "${AGENTD_PORTS[*]}")"
+AGENTD_PIDS_CSV="$(IFS=,; echo "${AGENTD_PIDS[*]}")"
+CONNECTOR_PIDS_CSV="$(IFS=,; echo "${CONNECTOR_PIDS[*]}")"
+
 python3 - <<PY >"${STATE_PATH}"
 import json
+
+def split_list(raw):
+  return [x for x in (raw or "").split(",") if x]
+
+agent_ids = split_list("${AGENT_IDS_CSV}")
+agentd_bases = split_list("${AGENTD_BASES_CSV}")
+agentd_ports = split_list("${AGENTD_PORTS_CSV}")
+agentd_pids = split_list("${AGENTD_PIDS_CSV}")
+connector_pids = split_list("${CONNECTOR_PIDS_CSV}")
+
+agents = []
+for idx, agent_id in enumerate(agent_ids):
+  base = agentd_bases[idx] if idx < len(agentd_bases) else ""
+  port = int(agentd_ports[idx]) if idx < len(agentd_ports) and agentd_ports[idx].isdigit() else 0
+  pid = int(agentd_pids[idx]) if idx < len(agentd_pids) and agentd_pids[idx].isdigit() else 0
+  cpid = int(connector_pids[idx]) if idx < len(connector_pids) and connector_pids[idx].isdigit() else 0
+  agents.append({
+    "agent_id": agent_id,
+    "agentd_base": base,
+    "agentd_port": port,
+    "agentd_pid": pid,
+    "connector_pid": cpid,
+  })
+
 print(json.dumps({
   "out_dir": "${OUT_DIR}",
   "agentd_base": "${AGENTD_BASE}",
@@ -427,6 +553,7 @@ print(json.dumps({
   "compose_project": "${COMPOSE_PROJECT_NAME}",
   "compose_file": "${COMPOSE_FILE}",
   "agent_id": "${BROKER_AGENT_ID}",
+  "agents": agents,
   "logs_dir": "${LOG_DIR}",
 }, indent=2))
 PY
@@ -439,6 +566,12 @@ if [[ "${KEEP}" -eq 1 ]]; then
   echo "  - WebUI:   ${WEBUI_BASE}"
   echo "  - agentd:  ${AGENTD_BASE}"
   echo "  - broker:  ${BROKER_BASE}"
+  if [[ "${#AGENTD_BASES[@]}" -gt 1 ]]; then
+    echo "  - agents:"
+    for idx in "${!AGENT_IDS[@]}"; do
+      echo "      - ${AGENT_IDS[$idx]} -> ${AGENTD_BASES[$idx]}"
+    done
+  fi
   echo "  - down:    tools/devstack_agent_down.sh --state ${STATE_PATH}"
   exit 0
 fi

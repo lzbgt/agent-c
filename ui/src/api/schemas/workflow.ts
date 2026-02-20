@@ -27,3 +27,15 @@ export const WorkflowDetailRespSchema = z
   })
   .passthrough();
 export type WorkflowDetailResp = z.infer<typeof WorkflowDetailRespSchema>;
+
+export const WorkflowSubmitRespSchema = z
+  .object({
+    ok: z.boolean().optional(),
+    workflow_id: z.string().optional(),
+    trace_id: z.string().optional(),
+    deduped: z.boolean().optional(),
+    error: z.string().optional(),
+    detail: z.string().optional(),
+  })
+  .passthrough();
+export type WorkflowSubmitResp = z.infer<typeof WorkflowSubmitRespSchema>;
