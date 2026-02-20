@@ -6,6 +6,9 @@ SCRIPT_DIR="${ROOT}/tests"
 
 # shellcheck source=tests/test_keys.sh
 source "${SCRIPT_DIR}/test_keys.sh"
+curl() {
+  agent_test_curl "$@"
+}
 
 agent_test_setup_proxy_env
 agent_test_load_openrouter_headers_if_unset || true

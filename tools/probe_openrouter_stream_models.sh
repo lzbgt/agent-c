@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
 
 SCRIPT_DIR="${ROOT}/tests"
+AGENT_SMOKE_WRAP_CURL=0
 # shellcheck source=tests/lib/agentd_smoke_lib.sh
 source "${SCRIPT_DIR}/lib/agentd_smoke_lib.sh"
 # shellcheck source=tools/lib/agent_env.sh
@@ -23,6 +24,9 @@ if [[ "${AGENT_DISABLE_NETWORK_TESTS:-}" == "1" ]]; then
 fi
 
 source "${SCRIPT_DIR}/test_keys.sh"
+curl() {
+  agent_test_curl "$@"
+}
 agent_test_setup_proxy_env
 OPENROUTER_KEY="$(agent_test_get_key openrouter 2>/dev/null || true)"
 if [[ -z "${OPENROUTER_KEY}" ]]; then
