@@ -68,6 +68,7 @@ The WebUI includes a **Workflows** panel for durable workflow inspection:
 This panel includes a **Workflow composer** with JSON and Graph modes:
 - JSON templates for LLM DAG workflows (A→B/C) and `agentd_parallel` collaboration templates.
 - JSON template includes an `agentd_parallel` demo preset with longer timeout and example goal input.
+- JSON mode includes a “Demo → Graph” button to load the demo template directly into the graph editor.
 - Graph mode supports drag-and-drop layout, click-to-connect dependencies, and JSON import/export.
 - `agentd_parallel` tasks require `--workflow-enable-http-tasks` on the primary agentd.
 - Exporting from Graph mode switches the composer to JSON for review.
