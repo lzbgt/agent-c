@@ -2,21 +2,25 @@
   "name": "broker_smoke",
   "steps": [
     {
-      "type": "shell",
+      "type": "http",
       "name": "broker_healthz",
-      "cmd": "curl -fsSk https://127.0.0.1:${BROKER_PUBLISHED_PORT:-8443}/healthz"
+      "url": "https://127.0.0.1:{{env.BROKER_PUBLISHED_PORT}}/healthz",
+      "insecure": true,
+      "expect_status": 200
     },
     {
-      "type": "shell",
+      "type": "http",
       "name": "broker_readyz",
-      "cmd": "curl -fsSk https://127.0.0.1:${BROKER_PUBLISHED_PORT:-8443}/readyz"
+      "url": "https://127.0.0.1:{{env.BROKER_PUBLISHED_PORT}}/readyz",
+      "insecure": true,
+      "expect_status": 200
     },
     {
       "type": "capture_evidence",
       "name": "evidence",
       "args": [
-        "--agentd-base", "http://127.0.0.1:${AGENTD_PUBLISHED_PORT:-8123}",
-        "--broker-base", "https://127.0.0.1:${BROKER_PUBLISHED_PORT:-8443}",
+        "--agentd-base", "http://127.0.0.1:{{env.AGENTD_PUBLISHED_PORT}}",
+        "--broker-base", "https://127.0.0.1:{{env.BROKER_PUBLISHED_PORT}}",
         "--broker-agent-id", "agent1",
         "--agentd-via-broker"
       ]

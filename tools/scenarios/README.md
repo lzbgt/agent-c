@@ -18,7 +18,7 @@ Logs are written under `out/scenario_<ts>/logs/`.
 {
   "name": "agentd_smoke",
   "steps": [
-    { "type": "shell", "cmd": "curl -fsS http://127.0.0.1:8123/api/v1/health" },
+    { "type": "http", "url": "http://127.0.0.1:8123/api/v1/health", "expect_status": 200 },
     { "type": "capture_evidence", "args": ["--agentd-base", "http://127.0.0.1:8123"] }
   ]
 }

@@ -198,8 +198,8 @@ def run_scenario(path: str, out_dir: str) -> None:
         "scenario": str(data.get("name") or "scenario"),
         "evidence_dir": "",
     }
-    ctx["env.BROKER_PUBLISHED_PORT"] = os.environ.get("BROKER_PUBLISHED_PORT", "")
-    ctx["env.AGENTD_PUBLISHED_PORT"] = os.environ.get("AGENTD_PUBLISHED_PORT", "")
+    ctx["env.BROKER_PUBLISHED_PORT"] = os.environ.get("BROKER_PUBLISHED_PORT") or "8443"
+    ctx["env.AGENTD_PUBLISHED_PORT"] = os.environ.get("AGENTD_PUBLISHED_PORT") or "8123"
 
     for idx, raw in enumerate(steps, start=1):
         if not isinstance(raw, dict):
