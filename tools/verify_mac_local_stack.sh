@@ -154,10 +154,16 @@ PY
       -H "Content-Type: application/json" \
       -d @- \
       "http://127.0.0.1:${AGENTD_PORT}/api/v1/diagnostics/provider_test")"
-    PROVIDER_RESP="${resp}" python3 - <<'PY' >>"${LOG_PROVIDER_TESTS}" 2>&1
+    PROVIDER_NAME="${provider}" PROVIDER_RESP="${resp}" python3 - <<'PY' >>"${LOG_PROVIDER_TESTS}" 2>&1
 import json, os, sys
+provider = os.environ.get("PROVIDER_NAME", "")
 obj = json.loads(os.environ["PROVIDER_RESP"])
-if not obj.get("ok"):
+ok = bool(obj.get("ok"))
+model = obj.get("model") or ""
+base_url = obj.get("base_url") or ""
+duration = obj.get("duration_ms")
+print(f"[provider_test] provider={provider} ok={ok} duration_ms={duration} model={model} base_url={base_url}")
+if not ok:
   print("provider test failed:", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
