@@ -1,0 +1,41 @@
+{
+  "inputs": {
+    "goal": "Draft a collaborative plan for a multi-agent workflow graph demo."
+  },
+  "tasks": [
+    {
+      "task_id": "COLLAB",
+      "kind": "agentd_parallel",
+      "agentd_parallel": {
+        "targets": [
+          { "id": "a1", "base_url": "http://127.0.0.1:8123" },
+          { "id": "a2", "base_url": "http://127.0.0.1:8124" }
+        ],
+        "agentd_call": {
+          "op": "workflow_submit_and_wait",
+          "timeout_ms": 120000,
+          "poll_ms": 200,
+          "include_results": true,
+          "include_tasks": false,
+          "bearer_env": "AGENTD_CALL_BEARER",
+          "workflow": {
+            "tasks": [
+              {
+                "task_id": "RUN",
+                "request": {
+                  "prompt": "Remote agent: propose an approach for the goal: ${input.goal}",
+                  "no_session": true
+                }
+              }
+            ]
+          }
+        },
+        "aggregate": {
+          "mode": "first_ok",
+          "ok_pointer": "/ok",
+          "value_pointer": "/agentd/final/result/results_by_task/RUN/assistant_text"
+        }
+      }
+    }
+  ]
+}

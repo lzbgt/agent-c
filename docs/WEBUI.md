@@ -71,6 +71,8 @@ This panel includes a **Workflow composer** with JSON and Graph modes:
 - `agentd_parallel` tasks require `--workflow-enable-http-tasks` on the primary agentd.
 - Exporting from Graph mode switches the composer to JSON for review.
 - Graph mode only supports LLM and `agentd_parallel` tasks (use JSON for advanced kinds).
+- Example `agentd_parallel` template: `docs/examples/workflows/agentd_parallel_demo.json` (paste into JSON tab or import in Graph mode).
+- If remote providers are slow, increase `agentd_call.timeout_ms` and adjust `poll_ms`.
 
 ## Rendering notes
 
