@@ -201,9 +201,8 @@ def run_http(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: in
                     elif status != int(want):
                         raise RuntimeError(f"unexpected status {status}")
         except Exception as exc:
-            if step.get("allow_failure") is True:
-                log.write(f"error: {exc}\n")
-            else:
+            log.write(f"error: {exc}\n")
+            if step.get("allow_failure") is not True:
                 raise
 
 
