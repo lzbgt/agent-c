@@ -5,6 +5,8 @@ import {
   type WorkflowDetailResp,
   WorkflowListRespSchema,
   type WorkflowListResp,
+  WorkflowCancelRespSchema,
+  type WorkflowCancelResp,
   WorkflowSubmitRespSchema,
   type WorkflowSubmitResp,
 } from "./schemas/workflow";
@@ -63,4 +65,18 @@ export async function apiSubmitWorkflow(
   });
   const j = await r.json();
   return WorkflowSubmitRespSchema.parse(j);
+}
+
+export async function apiCancelWorkflow(
+  base: string,
+  workflowId: string,
+  auth?: ApiAuth,
+): Promise<WorkflowCancelResp> {
+  const r = await fetch(`${base}/api/v1/workflow/cancel`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify({ workflow_id: workflowId }),
+  });
+  const j = await r.json();
+  return WorkflowCancelRespSchema.parse(j);
 }

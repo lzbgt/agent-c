@@ -1,5 +1,5 @@
 import React from "react";
-import { apiGetWorkflow, apiSubmitWorkflow } from "../api";
+import { apiCancelWorkflow, apiGetWorkflow, apiSubmitWorkflow } from "../api";
 import type { ApiAuth } from "../api/auth";
 import useLocalStorageState from "../hooks/useLocalStorageState";
 import WorkflowGraphComposer from "./WorkflowGraphComposer";
@@ -170,6 +170,7 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
   const [submitError, setSubmitError] = React.useState<string | null>(null);
   const [submitResult, setSubmitResult] = React.useState<any | null>(null);
   const [submitBusy, setSubmitBusy] = React.useState(false);
+  const [cancelBusy, setCancelBusy] = React.useState(false);
   const [waitState, setWaitState] = React.useState<WaitState | null>(null);
 
   const defaults = React.useMemo(() => props.workflowDefaults ?? {}, [props.workflowDefaults]);
@@ -251,6 +252,7 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
       setSubmitBusy(true);
       setSubmitError(null);
       setWaitState(null);
+      setCancelBusy(false);
       try {
         const resp = await apiSubmitWorkflow(baseUrl, payload, props.auth);
         setSubmitResult(resp);
@@ -277,6 +279,38 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
     },
     [props.baseUrl, props.auth, props.onSubmitted, waitForWorkflow],
   );
+
+  const cancelWorkflow = React.useCallback(async () => {
+    const baseUrl = String(props.baseUrl || "").trim();
+    if (!baseUrl) {
+      setSubmitError("Base URL is not set.");
+      return;
+    }
+    if (!waitState?.workflowId) {
+      return;
+    }
+    setCancelBusy(true);
+    try {
+      const resp = await apiCancelWorkflow(baseUrl, waitState.workflowId, props.auth);
+      if (resp && resp.ok === false) {
+        setSubmitError(resp.error || "Workflow cancel failed");
+      } else {
+        setWaitState((prev) =>
+          prev
+            ? {
+                ...prev,
+                status: "cancel_requested",
+                active: false,
+              }
+            : prev,
+        );
+      }
+    } catch (err) {
+      setSubmitError(String(err));
+    } finally {
+      setCancelBusy(false);
+    }
+  }, [props.baseUrl, props.auth, waitState]);
 
   React.useEffect(() => {
     if (defaults.api_key && !allowInlineKeys) {
@@ -519,9 +553,21 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
         </button>
         {submitError ? <span className="text-xs text-rose-200">{submitError}</span> : null}
         {waitState ? (
-          <span className="text-[11px] text-white/60">
-            Wait: {waitState.status} • {waitState.elapsedSec}s • {waitState.workflowId}
-          </span>
+          <>
+            <span className="text-[11px] text-white/60">
+              Wait: {waitState.status} • {waitState.elapsedSec}s • {waitState.workflowId}
+            </span>
+            {waitState.active ? (
+              <button
+                className="rounded-md border border-rose-400/30 bg-rose-400/10 px-2 py-1 text-[11px] text-rose-100 hover:bg-rose-400/20 disabled:opacity-50"
+                type="button"
+                onClick={() => void cancelWorkflow()}
+                disabled={cancelBusy}
+              >
+                {cancelBusy ? "Canceling…" : "Cancel"}
+              </button>
+            ) : null}
+          </>
         ) : null}
       </div>
 

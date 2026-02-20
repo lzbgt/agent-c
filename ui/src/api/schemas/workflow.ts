@@ -39,3 +39,13 @@ export const WorkflowSubmitRespSchema = z
   })
   .passthrough();
 export type WorkflowSubmitResp = z.infer<typeof WorkflowSubmitRespSchema>;
+
+export const WorkflowCancelRespSchema = z
+  .object({
+    ok: z.boolean().optional(),
+    workflow_id: z.string().optional(),
+    error: z.string().optional(),
+    detail: z.string().optional(),
+  })
+  .passthrough();
+export type WorkflowCancelResp = z.infer<typeof WorkflowCancelRespSchema>;
