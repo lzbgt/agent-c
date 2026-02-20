@@ -28,7 +28,15 @@ AGENT_SMOKE_WRAP_CURL=0
 source "${AGENT_TEST_ROOT}/tests/lib/agentd_smoke_lib.sh"
 
 agent_test_curl() {
-  agentd_smoke_curl "$@"
+  local allow_proxy="${AGENT_SMOKE_ALLOW_PROXY:-}"
+  if [[ -z "${allow_proxy}" ]]; then
+    if [[ "${AGENT_TEST_DISABLE_PROXY:-}" == "1" ]]; then
+      allow_proxy=0
+    else
+      allow_proxy=1
+    fi
+  fi
+  AGENT_SMOKE_ALLOW_PROXY="${allow_proxy}" agentd_smoke_curl "$@"
 }
 
 agent_test_project_root() {
