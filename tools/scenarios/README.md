@@ -27,6 +27,7 @@ Logs are written under `out/scenario_<ts>/logs/`.
 Supported step types:
 - `shell`: run a shell command. Fields: `cmd`, optional `cwd`, `env`, `timeout_s`, `allow_failure`.
 - `http`: simple HTTP request (GET/POST). Fields: `url`, `method`, `headers`, `body`, `expect_status`, `save_as`, `insecure`, `timeout_s`, `proxy`.
+  - `timeout_s` accepts seconds as float; `<= 0` or empty disables the timeout.
   - `expect_status` may be a single code or list; non-2xx is allowed when it matches (response body is still logged/saved).
 - `sleep`: pause. Fields: `seconds` or `duration_s`.
 - `capture_evidence`: run `tools/capture_agent_evidence_bundle.sh` with `args` list.
