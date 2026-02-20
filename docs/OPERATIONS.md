@@ -175,6 +175,13 @@ tools/e2e_real.sh
 
 Logs and Playwright artifacts are written under `build/e2e/`.
 
+The Playwright suite includes heavier flows that are opt-in via env flags:
+- `AGENT_E2E_REQUIRE_REAL=1` enables the real agent flow spec (live provider calls).
+- `AGENT_E2E_REQUIRE_CANVAS=1` enables the canvas2d observe spec (open-world harness).
+- `AGENT_E2E_REQUIRE_VOICE=1` enables the voice observe spec (open-world harness).
+
+The open-world harness scripts under `tests/` set these flags for you when they run.
+
 ## Smoke tests (local daemon)
 
 `ctest` includes bash-based `agentd_*_smoke.sh` tests that start/stop the daemon; shared helpers live in
