@@ -108,6 +108,8 @@ Local compose health checks bypass host proxies (proxy env vars are unset and `c
 to avoid TLS errors when a machine-wide proxy is configured.
 On macOS we prefer Homebrew curl if available (OpenSSL backend) to avoid LibreSSL TLS issues.
 Override with `CURL_BIN=/path/to/curl` (or `AGENT_SMOKE_CURL_BIN` for smoke tests) if needed.
+Smoke tests will wrap curl calls by default; set `AGENT_SMOKE_WRAP_CURL=0` to opt out,
+or `AGENT_SMOKE_ALLOW_PROXY=1` if you need proxy env vars for outbound tests.
 
 Runtime containers do not receive proxy environment variables by default so intra-stack
 traffic stays direct. Dockerfiles also remove apt proxy config after installs to avoid

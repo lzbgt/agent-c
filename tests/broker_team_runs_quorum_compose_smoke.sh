@@ -19,9 +19,6 @@ PORT_STUB="$(agentd_smoke_pick_port)"
 STUB_HOST="127.0.0.1"
 STUB_BASE_CONTAINER="http://host.docker.internal:${PORT_STUB}/v1"
 CURL_BASE_OPTS=(-q --max-time 30 --connect-timeout 5)
-curl() {
-  agentd_smoke_curl "$@"
-}
 
 if [[ -z "${BROKER_PUBLISHED_PORT:-}" ]]; then
   BROKER_PUBLISHED_PORT=""

@@ -42,6 +42,18 @@ agentd_smoke_curl() {
   fi
 }
 
+agentd_smoke_wrap_curl() {
+  if [[ "${AGENT_SMOKE_WRAP_CURL:-1}" == "0" ]]; then
+    return 0
+  fi
+  if declare -F curl >/dev/null 2>&1; then
+    return 0
+  fi
+  curl() {
+    agentd_smoke_curl "$@"
+  }
+}
+
 agentd_smoke_pick_port() {
   # Bind to port 0 to get a free port, then close immediately.
   python3 - <<'PY'
@@ -52,6 +64,8 @@ print(s.getsockname()[1])
 s.close()
 PY
 }
+
+agentd_smoke_wrap_curl
 
 agentd_smoke_start() {
   # Usage:
