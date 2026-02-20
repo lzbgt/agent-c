@@ -17,6 +17,10 @@ Options:
   --timeout-ms <n>     agentd_call timeout (default: 120000)
   --poll-ms <n>        agentd_call poll interval (default: 200)
   --bearer-env <name>  bearer env var (default: AGENTD_CALL_BEARER)
+  --wait               wait for workflow completion (uses python helper)
+  --wait-interval <n>  wait poll interval in seconds (default: 5)
+  --wait-timeout <n>   max wait time in seconds (default: 180)
+  --no-include-results omit results when printing final workflow JSON
   --dry-run            generate JSON but do not submit
   -h, --help           show this help
 USAGE
@@ -37,6 +41,10 @@ TIMEOUT_MS=120000
 POLL_MS=200
 BEARER_ENV="AGENTD_CALL_BEARER"
 DRY_RUN=0
+WAIT=0
+WAIT_INTERVAL=5
+WAIT_TIMEOUT=180
+INCLUDE_RESULTS=1
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -49,6 +57,10 @@ while [[ $# -gt 0 ]]; do
     --timeout-ms) TIMEOUT_MS="$2"; shift 2 ;;
     --poll-ms) POLL_MS="$2"; shift 2 ;;
     --bearer-env) BEARER_ENV="$2"; shift 2 ;;
+    --wait) WAIT=1; shift ;;
+    --wait-interval) WAIT_INTERVAL="$2"; shift 2 ;;
+    --wait-timeout) WAIT_TIMEOUT="$2"; shift 2 ;;
+    --no-include-results) INCLUDE_RESULTS=0; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "unknown arg: $1" >&2; usage; exit 1 ;;
@@ -88,6 +100,32 @@ GEN_ARGS=(
 )
 if [[ -n "${TARGETS}" ]]; then
   GEN_ARGS+=(--targets "${TARGETS}")
+fi
+
+if [[ "${WAIT}" -eq 1 ]]; then
+  PY_ARGS=(
+    --base "${AGENTD_BASE}"
+    --token "${AGENTD_TOKEN}"
+    --state "${STATE_PATH}"
+    --output "${OUT_PATH}"
+    --goal "${GOAL}"
+    --timeout-ms "${TIMEOUT_MS}"
+    --poll-ms "${POLL_MS}"
+    --bearer-env "${BEARER_ENV}"
+    --wait
+    --wait-interval "${WAIT_INTERVAL}"
+    --wait-timeout "${WAIT_TIMEOUT}"
+  )
+  if [[ -n "${TARGETS}" ]]; then
+    PY_ARGS+=(--targets "${TARGETS}")
+  fi
+  if [[ "${INCLUDE_RESULTS}" -eq 0 ]]; then
+    PY_ARGS+=(--no-include-results)
+  fi
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    PY_ARGS+=(--dry-run)
+  fi
+  exec python3 "${ROOT}/tools/submit_agentd_parallel_demo.py" "${PY_ARGS[@]}"
 fi
 
 "${ROOT}/tools/gen_agentd_parallel_demo.sh" "${GEN_ARGS[@]}" >/dev/null

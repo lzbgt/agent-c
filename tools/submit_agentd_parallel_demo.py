@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import time
 import subprocess
 import sys
 from pathlib import Path
@@ -70,6 +71,27 @@ def submit_workflow(base: str, token: str, payload: bytes) -> bytes:
     with urlopen(req, timeout=30) as resp:
         return resp.read()
 
+def fetch_workflow(
+    base: str,
+    token: str,
+    workflow_id: str,
+    include_results: bool,
+    include_tasks: bool,
+) -> dict:
+    url = (
+        f"{base.rstrip('/')}/api/v1/workflow?workflow_id={workflow_id}"
+        f"&include_tasks={1 if include_tasks else 0}"
+        f"&include_results={1 if include_results else 0}"
+    )
+    req = Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {token}",
+        },
+    )
+    with urlopen(req, timeout=30) as resp:
+        return json.loads(resp.read().decode())
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Generate + submit agentd_parallel demo workflow JSON.")
@@ -111,6 +133,11 @@ def main() -> int:
         help="bearer env var name",
     )
     parser.add_argument("--dry-run", action="store_true", help="generate JSON but do not submit")
+    parser.add_argument("--wait", action="store_true", help="wait for workflow completion")
+    parser.add_argument("--wait-interval", type=int, default=5, help="poll interval in seconds")
+    parser.add_argument("--wait-timeout", type=int, default=180, help="max wait time in seconds")
+    parser.add_argument("--no-include-results", dest="include_results", action="store_false")
+    parser.set_defaults(include_results=True)
     args = parser.parse_args()
 
     token = args.token or (os.environ.get("AGENTD_AUTH_TOKEN") or "dev-agentd-token")
@@ -133,7 +160,54 @@ def main() -> int:
 
     payload = output_path.read_bytes()
     resp = submit_workflow(base, token, payload)
-    sys.stdout.buffer.write(resp)
+    if not args.wait:
+        sys.stdout.buffer.write(resp)
+        return 0
+
+    try:
+        submit_json = json.loads(resp.decode())
+    except Exception:
+        sys.stdout.buffer.write(resp)
+        return 0
+
+    workflow_id = submit_json.get("workflow_id")
+    if not workflow_id:
+        sys.stdout.buffer.write(resp)
+        return 0
+
+    print(f"[submit-demo] submitted: {workflow_id}", file=sys.stderr)
+    deadline = args.wait_timeout
+    elapsed = 0
+    last = None
+    while elapsed <= deadline:
+        last = fetch_workflow(
+            base=base,
+            token=token,
+            workflow_id=workflow_id,
+            include_results=False,
+            include_tasks=True,
+        )
+        status = (last.get("workflow") or {}).get("status")
+        if status and status not in ("running", "queued"):
+            break
+        elapsed += args.wait_interval
+        if elapsed > deadline:
+            break
+        time.sleep(args.wait_interval)
+
+    if last is None:
+        sys.stdout.buffer.write(resp)
+        return 0
+
+    final = fetch_workflow(
+        base=base,
+        token=token,
+        workflow_id=workflow_id,
+        include_results=args.include_results,
+        include_tasks=True,
+    )
+    sys.stdout.write(json.dumps(final))
+    sys.stdout.write("\n")
     return 0
 
 

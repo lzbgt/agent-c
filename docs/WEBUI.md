@@ -79,6 +79,7 @@ This panel includes a **Workflow composer** with JSON and Graph modes:
   - Submit the demo workflow to the local agentd (respects `out/devstack_state.json`):
     - `tools/submit_agentd_parallel_demo.sh`
     - `python3 tools/submit_agentd_parallel_demo.py`
+  - Add `--wait` to either submit helper to block until the workflow finishes.
 
 ## Rendering notes
 

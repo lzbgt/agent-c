@@ -474,6 +474,7 @@ Notes:
 - Shell wrapper: `tools/gen_agentd_parallel_demo.sh`.
 - Submit helper: `tools/submit_agentd_parallel_demo.sh`.
 - Python submit helper: `tools/submit_agentd_parallel_demo.py`.
+  - Both support `--wait` to poll until completion.
 
 ### Deterministic memory update task (`kind:"memory_put"`) (v1.7)
 
