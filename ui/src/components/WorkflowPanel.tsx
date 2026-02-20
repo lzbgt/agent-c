@@ -480,17 +480,44 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                     </div>
                     <div className="text-[10px] text-white/40">updated {formatUnixMs(wf.updated_unix_ms)}</div>
                   </button>
-                  {canCancel ? (
-                    <div className="flex items-center gap-2">
-                      {id ? (
-                        <button
-                          className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
-                          type="button"
-                          onClick={() => void copyText("workflow id", id)}
-                        >
-                          copy
-                        </button>
-                      ) : null}
+                  <div className="flex items-center gap-2">
+                    {id ? (
+                      <button
+                        className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
+                        type="button"
+                        onClick={() => void copyText("workflow id", id)}
+                      >
+                        copy id
+                      </button>
+                    ) : null}
+                    {wf.trace_id ? (
+                      <button
+                        className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
+                        type="button"
+                        onClick={() => void copyText("trace id", wf.trace_id)}
+                      >
+                        copy trace
+                      </button>
+                    ) : null}
+                    {wf.session_id ? (
+                      <button
+                        className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
+                        type="button"
+                        onClick={() => void copyText("session id", wf.session_id)}
+                      >
+                        copy session
+                      </button>
+                    ) : null}
+                    {wf.idempotency_key ? (
+                      <button
+                        className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
+                        type="button"
+                        onClick={() => void copyText("idempotency key", wf.idempotency_key)}
+                      >
+                        copy idk
+                      </button>
+                    ) : null}
+                    {canCancel ? (
                       <button
                         className="rounded-md border border-rose-400/30 bg-rose-400/10 px-2 py-1 text-[10px] text-rose-100 hover:bg-rose-400/20 disabled:opacity-50"
                         type="button"
@@ -499,8 +526,8 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                       >
                         {cancelBusyId === id ? "Canceling…" : "Cancel"}
                       </button>
-                    </div>
-                  ) : null}
+                    ) : null}
+                  </div>
                 </div>
               );
             })}

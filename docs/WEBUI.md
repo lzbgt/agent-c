@@ -75,7 +75,7 @@ This panel includes a **Workflow composer** with JSON and Graph modes:
 - The workflow summary panel also exposes a Cancel button for `running`/`queued` workflows.
 - The workflow summary panel shows the idempotency key when present.
 - The workflow summary panel includes copy buttons for workflow id and trace id.
-- Recent workflow rows include a quick copy button for the workflow id.
+- Recent workflow rows include quick copy buttons for workflow id (plus trace/session/idempotency when present).
 - Recent workflow rows show a Cancel button for `running`/`queued` items.
 - Recent workflow rows surface a `cancel requested` badge when a stop has been requested.
 - Enable the list’s “auto” toggle to refresh recent workflows every few seconds.
