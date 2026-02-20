@@ -47,7 +47,7 @@ def render_obj(obj: Any, ctx: Dict[str, str]) -> Any:
     if isinstance(obj, list):
         return [render_obj(v, ctx) for v in obj]
     if isinstance(obj, dict):
-        return {k: render_obj(v, ctx) for k, v in obj.items()}
+        return {str(k): render_obj(v, ctx) for k, v in obj.items()}
     return obj
 
 
