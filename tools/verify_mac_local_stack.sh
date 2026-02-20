@@ -183,7 +183,9 @@ PY
 
   if [[ -s "${LOG_PROVIDER_TESTS}" ]]; then
     echo "[mac-local] provider test summary:"
-    grep -E "^\[provider_test\]" "${LOG_PROVIDER_TESTS}" || true
+    if ! grep -E "^\[provider_test\]" "${LOG_PROVIDER_TESTS}"; then
+      echo "[mac-local] provider tests skipped (no provider_test entries; see ${LOG_PROVIDER_TESTS})"
+    fi
   fi
 fi
 
