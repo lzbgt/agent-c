@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+AGENT_SMOKE_WRAP_CURL=0
+# shellcheck source=tests/lib/agentd_smoke_lib.sh
+source "${ROOT}/tests/lib/agentd_smoke_lib.sh"
+curl() {
+  AGENT_SMOKE_ALLOW_PROXY=1 agentd_smoke_curl "$@"
+}
+
 plan_path="${1:-${AGENTD_OTA_PLAN_PATH:-}}"
 if [[ -z "${plan_path}" ]]; then
   echo "missing plan path (arg or AGENTD_OTA_PLAN_PATH)" >&2

@@ -2,6 +2,9 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+AGENT_SMOKE_WRAP_CURL=0
+source "${ROOT_DIR}/tests/lib/agentd_smoke_lib.sh"
+curl() { AGENT_SMOKE_ALLOW_PROXY=1 agentd_smoke_curl "$@"; }
 OUT_DIR="${ROOT_DIR}/docs/references/claude-mem"
 
 mkdir -p "${OUT_DIR}"

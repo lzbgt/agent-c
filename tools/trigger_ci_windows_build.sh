@@ -5,6 +5,9 @@ set -euo pipefail
 # Requires GITHUB_TOKEN or GH_TOKEN, or a logged-in gh CLI session.
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+AGENT_SMOKE_WRAP_CURL=0
+source "${ROOT}/tests/lib/agentd_smoke_lib.sh"
+curl() { AGENT_SMOKE_ALLOW_PROXY=1 agentd_smoke_curl "$@"; }
 REMOTE_URL="$(git -C "${ROOT}" config --get remote.origin.url || true)"
 
 if [[ -z "${REMOTE_URL}" ]]; then
