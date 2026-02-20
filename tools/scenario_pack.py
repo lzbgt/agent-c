@@ -94,24 +94,28 @@ def main() -> int:
                 validate_rc = validate_evidence(str(evidence_dir), args.strict, args.require_agentd, args.require_broker)
                 if validate_rc != 0:
                     raise RuntimeError(f"evidence validation failed: {evidence_dir}")
+            duration_s = round(time.time() - t0, 3)
             results.append({
                 "scenario": name,
                 "run_dir": run_dir,
                 "evidence_dir": evidence_dir,
                 "ok": True,
                 "started_at": started_at,
-                "duration_s": round(time.time() - t0, 3),
+                "duration_s": duration_s,
             })
+            print(f"[scenario_pack] ok {name} ({duration_s}s)")
         except Exception as exc:
             failures.append(f"{name}: {exc}")
+            duration_s = round(time.time() - t0, 3)
             results.append({
                 "scenario": name,
                 "run_dir": run_dir,
                 "ok": False,
                 "error": str(exc),
                 "started_at": started_at,
-                "duration_s": round(time.time() - t0, 3),
+                "duration_s": duration_s,
             })
+            print(f"[scenario_pack] fail {name} ({duration_s}s): {exc}", file=sys.stderr)
             if not args.keep_going:
                 break
 
