@@ -153,6 +153,25 @@ def run_http(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: in
     import urllib.request
     from urllib.parse import urlparse
 
+    def redact_header_value(key: str, value: str) -> str:
+        key_lower = key.lower()
+        sensitive = (
+            "authorization",
+            "proxy-authorization",
+            "x-api-key",
+            "api-key",
+            "openai-api-key",
+            "x-openai-api-key",
+            "anthropic-api-key",
+            "x-anthropic-api-key",
+            "x-goog-api-key",
+        )
+        if key_lower in sensitive or key_lower.endswith("authorization"):
+            return "REDACTED"
+        if "api-key" in key_lower or key_lower.endswith("key"):
+            return "REDACTED"
+        return value
+
     def save_response(save_as: str, payload: bytes) -> None:
         save_path = os.path.join(logs_dir, render_template(str(save_as), ctx))
         save_dir = os.path.dirname(save_path)
@@ -198,7 +217,7 @@ def run_http(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: in
     with open(log_path, "w", encoding="utf-8") as log:
         log.write(f"{method} {url}\n")
         for hk, hv in headers.items():
-            log.write(f"  {hk}: {hv}\n")
+            log.write(f"  {hk}: {redact_header_value(hk, hv)}\n")
         if step.get("expect_status") is not None:
             log.write(f"expect_status: {step.get('expect_status')}\n")
         if step.get("timeout_s") is not None:
