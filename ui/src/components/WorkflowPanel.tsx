@@ -162,6 +162,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
   const [workflowId, setWorkflowId] = useLocalStorageState("agentui.workflowLookupId", "");
   const [listStatus, setListStatus] = useLocalStorageState("agentui.workflowListStatus", "running");
   const [listLimit, setListLimit] = useLocalStorageState("agentui.workflowListLimit", "50");
+  const [listAutoRefresh, setListAutoRefresh] = useLocalStorageState("agentui.workflowListAutoRefresh", false);
   const [includeResults, setIncludeResults] = useLocalStorageState("agentui.workflowIncludeResults", false);
   const [includeSpec, setIncludeSpec] = useLocalStorageState("agentui.workflowIncludeSpec", false);
   const [detail, setDetail] = React.useState<WorkflowDetailResp | null>(null);
@@ -180,6 +181,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
     queryFn: () => apiListWorkflows(props.baseUrl, { status: normalizedListStatus, limit: limitValue }, props.auth),
     enabled: props.open && !!props.baseUrl,
     staleTime: 5_000,
+    refetchInterval: listAutoRefresh ? 5_000 : false,
   });
 
   const workflowLookup = useMutation({
@@ -327,6 +329,15 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                   onChange={(e) => setListLimit(e.target.value)}
                 />
               </label>
+              <label className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  className="h-3 w-3"
+                  checked={!!listAutoRefresh}
+                  onChange={(e) => setListAutoRefresh(e.target.checked)}
+                />
+                auto
+              </label>
               <button
                 className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
                 type="button"
@@ -369,6 +380,11 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                       <span className={`rounded border px-2 py-0.5 text-[10px] ${statusBadge(wf.status)}`}>
                         {wf.status ?? "unknown"}
                       </span>
+                      {wf.cancel_requested ? (
+                        <span className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-0.5 text-[9px] text-amber-100">
+                          cancel requested
+                        </span>
+                      ) : null}
                       <span className="font-mono text-[11px] text-white/80">{wf.workflow_id}</span>
                       {wf.trace_id ? <span className="text-[10px] text-white/50">trace {String(wf.trace_id)}</span> : null}
                     </div>
