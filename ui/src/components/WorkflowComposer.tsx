@@ -1,5 +1,5 @@
 import React from "react";
-import { apiSubmitWorkflow } from "../api";
+import { apiGetWorkflow, apiSubmitWorkflow } from "../api";
 import type { ApiAuth } from "../api/auth";
 import useLocalStorageState from "../hooks/useLocalStorageState";
 import WorkflowGraphComposer from "./WorkflowGraphComposer";
@@ -130,6 +130,18 @@ const buildAgentParallelTemplate = (
   return workflow;
 };
 
+const buildAgentParallelDemoTemplate = (
+  defaults: Record<string, any>,
+  targets: string[],
+  bearerEnv: string | undefined,
+  allowInlineKeys: boolean,
+) =>
+  buildAgentParallelTemplate(defaults, targets, bearerEnv, allowInlineKeys, {
+    timeoutMs: 120000,
+    pollMs: 200,
+    inputGoal: "Draft a collaborative plan for a multi-agent workflow graph demo.",
+  });
+
 export default function WorkflowComposer(props: WorkflowComposerProps) {
   const [templateKind, setTemplateKind] = useLocalStorageState<TemplateKind>(
     "agentui.workflowComposerTemplate",
@@ -179,6 +191,67 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
     }
   }, [graphState, defaults, allowInlineKeys, targets, bearerEnv]);
 
+  const waitForWorkflow = React.useCallback(
+    async (workflowId: string) => {
+      const started = Date.now();
+      let last: any = null;
+      while (Date.now() - started < 180_000) {
+        const resp = await apiGetWorkflow(
+          props.baseUrl,
+          {
+            workflowId,
+            includeTasks: true,
+            includeResults: true,
+          },
+          props.auth,
+        );
+        last = resp;
+        const status = String(resp?.workflow?.status || "").toLowerCase();
+        if (status && status !== "running" && status !== "queued") {
+          return resp;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 5000));
+      }
+      return last;
+    },
+    [props.baseUrl, props.auth],
+  );
+
+  const submitWorkflow = React.useCallback(
+    async (payload: Record<string, any>, opts?: { wait?: boolean }) => {
+      const baseUrl = String(props.baseUrl || "").trim();
+      if (!baseUrl) {
+        setSubmitError("Base URL is not set.");
+        return;
+      }
+      setSubmitBusy(true);
+      setSubmitError(null);
+      try {
+        const resp = await apiSubmitWorkflow(baseUrl, payload, props.auth);
+        setSubmitResult(resp);
+        if (resp && resp.workflow_id) {
+          props.onSubmitted?.(resp.workflow_id);
+          if (opts?.wait) {
+            const finalResp = await waitForWorkflow(resp.workflow_id);
+            if (finalResp) {
+              setSubmitResult(finalResp);
+              if (finalResp.ok === false) {
+                setSubmitError(finalResp.error || "Workflow lookup failed");
+              }
+            }
+          }
+        } else if (resp && resp.ok === false) {
+          setSubmitError(resp.error || "Workflow submit failed");
+        }
+      } catch (err) {
+        setSubmitError(String(err));
+      } finally {
+        setSubmitBusy(false);
+      }
+    },
+    [props.baseUrl, props.auth, props.onSubmitted, waitForWorkflow],
+  );
+
   React.useEffect(() => {
     if (defaults.api_key && !allowInlineKeys) {
       setAllowInlineKeys(true);
@@ -189,11 +262,7 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
     setTemplateKind(kind);
     let template: Record<string, any>;
     if (kind === "agent_parallel_demo") {
-      template = buildAgentParallelTemplate(defaults, targets, bearerEnv, allowInlineKeys, {
-        timeoutMs: 120000,
-        pollMs: 200,
-        inputGoal: "Draft a collaborative plan for a multi-agent workflow graph demo.",
-      });
+      template = buildAgentParallelDemoTemplate(defaults, targets, bearerEnv, allowInlineKeys);
     } else if (kind === "agent_parallel") {
       template = buildAgentParallelTemplate(defaults, targets, bearerEnv, allowInlineKeys);
     } else {
@@ -213,6 +282,16 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
         setSubmitError(String(err));
       }
     }
+  };
+
+  const submitDemoAndWait = async () => {
+    const template = buildAgentParallelDemoTemplate(defaults, targets, bearerEnv, allowInlineKeys);
+    setTemplateKind("agent_parallel_demo");
+    const cleaned = JSON.stringify(template, null, 2);
+    setComposerJson(cleaned);
+    setSubmitError(null);
+    setSubmitResult(null);
+    await submitWorkflow(template, { wait: true });
   };
 
   const formatJson = () => {
@@ -251,11 +330,6 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
   };
 
   const submit = async () => {
-    const baseUrl = String(props.baseUrl || "").trim();
-    if (!baseUrl) {
-      setSubmitError("Base URL is not set.");
-      return;
-    }
     let payload: Record<string, any>;
     if (composerMode === "graph") {
       if (!graphBuild.result) {
@@ -272,22 +346,7 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
         return;
       }
     }
-    setSubmitBusy(true);
-    setSubmitError(null);
-    try {
-      const resp = await apiSubmitWorkflow(baseUrl, payload, props.auth);
-      setSubmitResult(resp);
-      if (resp && resp.workflow_id) {
-        props.onSubmitted?.(resp.workflow_id);
-      }
-      if (resp && resp.ok === false) {
-        setSubmitError(resp.error || "Workflow submit failed");
-      }
-    } catch (err) {
-      setSubmitError(String(err));
-    } finally {
-      setSubmitBusy(false);
-    }
+    await submitWorkflow(payload);
   };
 
   return (
@@ -350,6 +409,14 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
                 onClick={() => applyTemplate("agent_parallel_demo", { toGraph: true })}
               >
                 Demo → Graph
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                onClick={() => void submitDemoAndWait()}
+                disabled={submitBusy}
+              >
+                Demo → Submit (wait)
               </button>
               <button
                 className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
