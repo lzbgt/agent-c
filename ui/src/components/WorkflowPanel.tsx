@@ -481,14 +481,25 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                     <div className="text-[10px] text-white/40">updated {formatUnixMs(wf.updated_unix_ms)}</div>
                   </button>
                   {canCancel ? (
-                    <button
-                      className="rounded-md border border-rose-400/30 bg-rose-400/10 px-2 py-1 text-[10px] text-rose-100 hover:bg-rose-400/20 disabled:opacity-50"
-                      type="button"
-                      onClick={() => void cancelWorkflow(id)}
-                      disabled={!id || cancelBusyId === id}
-                    >
-                      {cancelBusyId === id ? "Canceling…" : "Cancel"}
-                    </button>
+                    <div className="flex items-center gap-2">
+                      {id ? (
+                        <button
+                          className="rounded border border-white/10 px-2 py-1 text-[10px] text-white/60 hover:bg-white/5"
+                          type="button"
+                          onClick={() => void copyText("workflow id", id)}
+                        >
+                          copy
+                        </button>
+                      ) : null}
+                      <button
+                        className="rounded-md border border-rose-400/30 bg-rose-400/10 px-2 py-1 text-[10px] text-rose-100 hover:bg-rose-400/20 disabled:opacity-50"
+                        type="button"
+                        onClick={() => void cancelWorkflow(id)}
+                        disabled={!id || cancelBusyId === id}
+                      >
+                        {cancelBusyId === id ? "Canceling…" : "Cancel"}
+                      </button>
+                    </div>
                   ) : null}
                 </div>
               );
