@@ -252,6 +252,18 @@ export default function WorkflowGraphComposer(props: WorkflowGraphComposerProps)
       <div className="text-[11px] text-white/50">
         Connect tasks: click the right handle on a node, then click the left handle on the dependent node.
       </div>
+      {connectingFrom ? (
+        <div className="flex items-center gap-2 text-[11px] text-sky-100">
+          Connecting from <span className="font-mono">{connectingFrom}</span>
+          <button
+            type="button"
+            className="rounded-md border border-sky-400/40 bg-sky-400/10 px-2 py-0.5 text-[10px] text-sky-100"
+            onClick={() => setConnectingFrom(null)}
+          >
+            Cancel
+          </button>
+        </div>
+      ) : null}
 
       <div className="grid gap-2 lg:grid-cols-[1fr_240px]">
         <div
