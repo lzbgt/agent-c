@@ -123,6 +123,16 @@ def run_http(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: in
     import urllib.request
     from urllib.parse import urlparse
 
+    def status_ok(status: int, expect: Any) -> bool:
+        if expect is None:
+            return True
+        if isinstance(expect, list):
+            return status in expect
+        try:
+            return status == int(expect)
+        except Exception:
+            return False
+
     url_raw = step.get("url")
     if not isinstance(url_raw, str) or not url_raw.strip():
         raise ValueError("http step missing url")
@@ -193,13 +203,8 @@ def run_http(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: in
                     save_path = os.path.join(logs_dir, render_template(str(step["save_as"]), ctx))
                     with open(save_path, "wb") as out:
                         out.write(body_bytes)
-                if step.get("expect_status"):
-                    want = step.get("expect_status")
-                    if isinstance(want, list):
-                        if status not in want:
-                            raise RuntimeError(f"unexpected status {status}")
-                    elif status != int(want):
-                        raise RuntimeError(f"unexpected status {status}")
+                if not status_ok(status, step.get("expect_status")):
+                    raise RuntimeError(f"unexpected status {status}")
         except Exception as exc:
             try:
                 import urllib.error as urlerror
@@ -211,8 +216,14 @@ def run_http(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: in
                 try:
                     body_bytes = exc.read()
                     log.write(body_bytes.decode("utf-8", errors="replace"))
+                    if step.get("save_as"):
+                        save_path = os.path.join(logs_dir, render_template(str(step["save_as"]), ctx))
+                        with open(save_path, "wb") as out:
+                            out.write(body_bytes)
                 except Exception:
                     pass
+                if status_ok(exc.code, step.get("expect_status")):
+                    return
             log.write(f"error: {exc}\n")
             if step.get("allow_failure") is not True:
                 raise
