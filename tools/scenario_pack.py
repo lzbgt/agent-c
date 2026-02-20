@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from datetime import datetime
 from typing import List, Optional
 
@@ -80,6 +81,8 @@ def main() -> int:
     for path in scenarios:
         name = os.path.splitext(os.path.basename(path))[0]
         run_dir = os.path.join(out_root, name)
+        started_at = datetime.utcnow().isoformat() + "Z"
+        t0 = time.time()
         try:
             run_scenario(path, run_dir)
             meta = read_meta(os.path.join(run_dir, "meta.json")) or {}
@@ -89,10 +92,24 @@ def main() -> int:
                 validate_rc = validate_evidence(str(evidence_dir), args.strict, args.require_agentd, args.require_broker)
                 if validate_rc != 0:
                     raise RuntimeError(f"evidence validation failed: {evidence_dir}")
-            results.append({"scenario": name, "run_dir": run_dir, "evidence_dir": evidence_dir, "ok": True})
+            results.append({
+                "scenario": name,
+                "run_dir": run_dir,
+                "evidence_dir": evidence_dir,
+                "ok": True,
+                "started_at": started_at,
+                "duration_s": round(time.time() - t0, 3),
+            })
         except Exception as exc:
             failures.append(f"{name}: {exc}")
-            results.append({"scenario": name, "run_dir": run_dir, "ok": False, "error": str(exc)})
+            results.append({
+                "scenario": name,
+                "run_dir": run_dir,
+                "ok": False,
+                "error": str(exc),
+                "started_at": started_at,
+                "duration_s": round(time.time() - t0, 3),
+            })
             if not args.keep_going:
                 break
 
