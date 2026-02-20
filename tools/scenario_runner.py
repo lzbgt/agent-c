@@ -283,7 +283,7 @@ def run_http(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: in
                     return
             log.write(f"error: {exc}\n")
             if step.get("allow_failure") is not True:
-                raise
+                raise RuntimeError(f"http step failed: {name} log={log_path}") from exc
 
 
 def run_set(step: Dict[str, Any], ctx: Dict[str, str]) -> None:
