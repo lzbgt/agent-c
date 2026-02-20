@@ -80,7 +80,7 @@ if [[ ! -x "${AGENTD_BIN}" ]]; then
 fi
 
 mkdir -p "${STATE_DIR}"
-echo "[mac-local] starting agentd on 127.0.0.1:${AGENTD_PORT} (log: ${LOG_AGENTD})"
+echo "[mac-local] starting agentd on 127.0.0.1:${AGENTD_PORT} (tools=${AGENTD_TOOLS}, log: ${LOG_AGENTD})"
 "${AGENTD_BIN}" \
   --host 127.0.0.1 \
   --port "${AGENTD_PORT}" \
@@ -179,6 +179,11 @@ PY
     run_provider_test "moonshot" "Use the calculator tool to compute (2+2)*10. Return exactly: 40" "40"
   else
     echo "[mac-local] skip moonshot provider_test (KIMI_API_KEY_CN/MOONSHOT_API_KEY not set)" >>"${LOG_PROVIDER_TESTS}"
+  fi
+
+  if [[ -s "${LOG_PROVIDER_TESTS}" ]]; then
+    echo "[mac-local] provider test summary:"
+    grep -E "^\[provider_test\]" "${LOG_PROVIDER_TESTS}" || true
   fi
 fi
 
