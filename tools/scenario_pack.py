@@ -2,6 +2,7 @@
 import argparse
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime
 from typing import List, Optional
@@ -44,7 +45,7 @@ def validate_evidence(evidence_dir: str, strict: bool, require_agentd: bool, req
         cmd.append("--require-agentd")
     if require_broker:
         cmd.append("--require-broker")
-    return os.system(" ".join(cmd))
+    return subprocess.run(cmd, check=False).returncode
 
 
 def parse_args() -> argparse.Namespace:
