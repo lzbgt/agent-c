@@ -346,6 +346,7 @@ Stop the stack:
     - `MAC_LOCAL_UI_INSTALL=0` to skip `npm ci` when deps already exist
     - `MAC_LOCAL_PROVIDER_TEST=1` to run diagnostics provider tests if keys are available
     - `MAC_LOCAL_PROVIDER_TEST_TIMEOUT_MS=30000` to override provider test timeout
+    - `AGENTD_TOOLS=basic|host|none` to override the agentd tools mode (provider tests switch to `basic` by default)
 - If Docker build is blocked but Docker itself runs, you can verify a host-mode full stack:
   - `tools/verify_mac_full_stack_host.sh` (runs Postgres + Keycloak via Docker, and runs agentd/broker/connector/WebUI on the host)
   - Optional env: `HOST_STACK_SKIP_UI=1` to skip WebUI build/serve, `HOST_STACK_UI_INSTALL=0` to skip `npm ci` when deps already exist

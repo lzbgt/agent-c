@@ -97,6 +97,7 @@ Use the macOS scripts when you want broker + connector in the loop:
 - Docker runs but builds blocked: `tools/verify_mac_full_stack_host.sh`
 - No Docker/Keycloak, local Postgres: `tools/verify_mac_full_stack_local_postgres.sh`
 - No broker: `tools/verify_mac_local_stack.sh`
+  - Optional env: `AGENTD_TOOLS=basic|host|none` to override the agentd tools mode (provider tests switch to `basic` by default)
 
 Compose image builds pass proxy args for package installs. Defaults:
 - `HTTP_PROXY`/`HTTPS_PROXY`: `http://host.docker.internal:8120`
