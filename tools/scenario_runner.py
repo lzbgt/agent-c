@@ -201,6 +201,18 @@ def run_http(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: in
                     elif status != int(want):
                         raise RuntimeError(f"unexpected status {status}")
         except Exception as exc:
+            try:
+                import urllib.error as urlerror
+            except Exception:
+                urlerror = None
+
+            if urlerror and isinstance(exc, urlerror.HTTPError):
+                log.write(f"status: {exc.code}\n")
+                try:
+                    body_bytes = exc.read()
+                    log.write(body_bytes.decode("utf-8", errors="replace"))
+                except Exception:
+                    pass
             log.write(f"error: {exc}\n")
             if step.get("allow_failure") is not True:
                 raise
