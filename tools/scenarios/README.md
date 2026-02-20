@@ -61,3 +61,6 @@ Run all scenarios in this folder and validate evidence bundles:
 ```bash
 python3 tools/scenario_pack.py --dir tools/scenarios --validate
 ```
+
+`scenario_pack.py` writes a `summary.json` with per-scenario results plus pack-level timing (`started_at`, `finished_at`,
+`duration_s`).
