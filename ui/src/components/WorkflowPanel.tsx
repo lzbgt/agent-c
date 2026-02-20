@@ -170,6 +170,8 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
   const [detail, setDetail] = React.useState<WorkflowDetailResp | null>(null);
   const [detailError, setDetailError] = React.useState<string | null>(null);
   const [cancelBusyId, setCancelBusyId] = React.useState<string | null>(null);
+  const [copyNotice, setCopyNotice] = React.useState<string | null>(null);
+  const copyTimerRef = React.useRef<number | null>(null);
 
   const normalizedListStatus = STATUS_OPTIONS.includes(String(listStatus)) ? String(listStatus) : "running";
   const limitValue = (() => {
@@ -273,6 +275,40 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
     loadWorkflow(trimmed);
     void listQuery.refetch();
   };
+
+  const copyText = async (label: string, value?: string | null) => {
+    const text = String(value || "").trim();
+    if (!text) return;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(text);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = text;
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        document.execCommand("copy");
+        document.body.removeChild(textarea);
+      }
+      setCopyNotice(`${label} copied`);
+    } catch {
+      setCopyNotice(`Failed to copy ${label}`);
+    }
+    if (copyTimerRef.current) {
+      window.clearTimeout(copyTimerRef.current);
+    }
+    copyTimerRef.current = window.setTimeout(() => setCopyNotice(null), 2000);
+  };
+
+  React.useEffect(
+    () => () => {
+      if (copyTimerRef.current) window.clearTimeout(copyTimerRef.current);
+    },
+    [],
+  );
 
   return (
     <details
@@ -498,20 +534,39 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                   ) : null}
                 </div>
               </div>
+              {copyNotice ? <div className="mt-1 text-[10px] text-white/50">{copyNotice}</div> : null}
               <div className="mt-2 grid gap-2 text-[11px] text-white/70">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={`rounded border px-2 py-0.5 text-[10px] ${statusBadge(summary.status)}`}>
                     {summary.status ?? "unknown"}
                   </span>
                   <span className="font-mono text-[11px] text-white/80">{summary.workflow_id}</span>
-                  {summary.trace_id ? (
+                  {summary.workflow_id ? (
                     <button
                       type="button"
-                      className="rounded border border-white/10 px-2 py-0.5 text-[10px] text-white/70 hover:bg-white/5"
-                      onClick={() => props.onTraceIdClick?.(String(summary.trace_id))}
+                      className="rounded border border-white/10 px-2 py-0.5 text-[10px] text-white/60 hover:bg-white/5"
+                      onClick={() => void copyText("workflow id", summary.workflow_id)}
                     >
-                      trace {String(summary.trace_id)}
+                      copy id
                     </button>
+                  ) : null}
+                  {summary.trace_id ? (
+                    <span className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        className="rounded border border-white/10 px-2 py-0.5 text-[10px] text-white/70 hover:bg-white/5"
+                        onClick={() => props.onTraceIdClick?.(String(summary.trace_id))}
+                      >
+                        trace {String(summary.trace_id)}
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded border border-white/10 px-2 py-0.5 text-[10px] text-white/60 hover:bg-white/5"
+                        onClick={() => void copyText("trace id", summary.trace_id)}
+                      >
+                        copy trace
+                      </button>
+                    </span>
                   ) : null}
                 </div>
                 <div className="grid gap-1 sm:grid-cols-2">
