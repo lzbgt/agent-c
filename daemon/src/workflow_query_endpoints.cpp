@@ -211,6 +211,8 @@ void handle_workflow_list_endpoint(
 
   const auto st = query_get(req.query, "status");
   const std::string status = st && !st->empty() ? *st : "running";
+  const auto q = query_get(req.query, "q");
+  const std::string query = q ? *q : "";
 
   size_t limit = 50;
   const auto lim = query_get(req.query, "limit");
@@ -221,7 +223,7 @@ void handle_workflow_list_endpoint(
 
   std::vector<AgentDb::WorkflowRow> wfs;
   std::string err;
-  if (!db_or_null->list_workflows_by_status(status, limit, &wfs, &err)) {
+  if (!db_or_null->list_workflows_by_status(status, limit, query, &wfs, &err)) {
     resp->status = 500;
     Json::Value o(Json::objectValue);
     o["ok"] = false;
@@ -234,6 +236,7 @@ void handle_workflow_list_endpoint(
   Json::Value o(Json::objectValue);
   o["ok"] = true;
   o["status"] = status;
+  if (!query.empty()) o["query"] = query;
   Json::Value arr(Json::arrayValue);
   for (const auto& wf : wfs) {
     Json::Value row(Json::objectValue);

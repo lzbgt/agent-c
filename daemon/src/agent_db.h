@@ -393,6 +393,7 @@ class AgentDb {
   bool list_workflows_by_status(
     const std::string& status,
     size_t max_rows,
+    const std::string& query,
     std::vector<WorkflowRow>* out_rows_desc,
     std::string* out_error
   );

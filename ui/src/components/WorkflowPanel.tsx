@@ -178,8 +178,9 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
   })();
 
   const listQuery = useQuery({
-    queryKey: ["workflows", props.baseUrl, props.authKey, normalizedListStatus, limitValue],
-    queryFn: () => apiListWorkflows(props.baseUrl, { status: normalizedListStatus, limit: limitValue }, props.auth),
+    queryKey: ["workflows", props.baseUrl, props.authKey, normalizedListStatus, limitValue, listFilter],
+    queryFn: () =>
+      apiListWorkflows(props.baseUrl, { status: normalizedListStatus, limit: limitValue, query: listFilter }, props.auth),
     enabled: props.open && !!props.baseUrl,
     staleTime: 5_000,
     refetchInterval: listAutoRefresh ? 5_000 : false,

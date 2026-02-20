@@ -702,6 +702,7 @@ LIMIT 1;
 bool AgentDb::list_workflows_by_status(
   const std::string& status,
   size_t max_rows,
+  const std::string& query,
   std::vector<WorkflowRow>* out_rows_desc,
   std::string* out_error
 ) {
@@ -723,16 +724,38 @@ bool AgentDb::list_workflows_by_status(
   }
   const bool list_all = status == "all" || status == "*";
   const bool list_active = status == "active";
+  std::string q = query;
+  if (q.size() > 128) q.resize(128);
+  const bool has_query = !q.empty();
+  const std::string q_like = has_query ? ("%" + q + "%") : "";
 	sqlite3_stmt* st = nullptr;
-	const char* sql = list_all ? R"SQL(
+	const char* sql = list_all ? (has_query ? R"SQL(
+	SELECT workflow_id, session_id, trace_id, COALESCE(priority,0), COALESCE(deadline_unix_ms,0), COALESCE(idempotency_key,''), created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
+	FROM workflows
+	WHERE workflow_id LIKE ? OR trace_id LIKE ? OR session_id LIKE ? OR idempotency_key LIKE ?
+	ORDER BY COALESCE(priority,0) DESC, updated_unix_ms DESC
+	LIMIT ?;
+	)SQL" : R"SQL(
 	SELECT workflow_id, session_id, trace_id, COALESCE(priority,0), COALESCE(deadline_unix_ms,0), COALESCE(idempotency_key,''), created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
 	FROM workflows
 	ORDER BY COALESCE(priority,0) DESC, updated_unix_ms DESC
 	LIMIT ?;
-	)SQL" : list_active ? R"SQL(
+	)SQL") : list_active ? (has_query ? R"SQL(
+	SELECT workflow_id, session_id, trace_id, COALESCE(priority,0), COALESCE(deadline_unix_ms,0), COALESCE(idempotency_key,''), created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
+	FROM workflows
+	WHERE status IN ('running','queued') AND (workflow_id LIKE ? OR trace_id LIKE ? OR session_id LIKE ? OR idempotency_key LIKE ?)
+	ORDER BY COALESCE(priority,0) DESC, updated_unix_ms DESC
+	LIMIT ?;
+	)SQL" : R"SQL(
 	SELECT workflow_id, session_id, trace_id, COALESCE(priority,0), COALESCE(deadline_unix_ms,0), COALESCE(idempotency_key,''), created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
 	FROM workflows
 	WHERE status IN ('running','queued')
+	ORDER BY COALESCE(priority,0) DESC, updated_unix_ms DESC
+	LIMIT ?;
+	)SQL") : (has_query ? R"SQL(
+	SELECT workflow_id, session_id, trace_id, COALESCE(priority,0), COALESCE(deadline_unix_ms,0), COALESCE(idempotency_key,''), created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
+	FROM workflows
+	WHERE status=? AND (workflow_id LIKE ? OR trace_id LIKE ? OR session_id LIKE ? OR idempotency_key LIKE ?)
 	ORDER BY COALESCE(priority,0) DESC, updated_unix_ms DESC
 	LIMIT ?;
 	)SQL" : R"SQL(
@@ -741,17 +764,33 @@ bool AgentDb::list_workflows_by_status(
 	WHERE status=?
 	ORDER BY COALESCE(priority,0) DESC, updated_unix_ms DESC
 	LIMIT ?;
-	)SQL";
+	)SQL");
   if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
     if (out_error) *out_error = agent_db_sqlite_err(db_);
     return false;
   }
   bool ok = true;
   if (list_all || list_active) {
-    ok = ok && agent_db_bind_i64(st, 1, (int64_t)max_rows);
+    if (has_query) {
+      ok = ok && agent_db_bind_text(st, 1, q_like);
+      ok = ok && agent_db_bind_text(st, 2, q_like);
+      ok = ok && agent_db_bind_text(st, 3, q_like);
+      ok = ok && agent_db_bind_text(st, 4, q_like);
+      ok = ok && agent_db_bind_i64(st, 5, (int64_t)max_rows);
+    } else {
+      ok = ok && agent_db_bind_i64(st, 1, (int64_t)max_rows);
+    }
   } else {
     ok = ok && agent_db_bind_text(st, 1, status);
-    ok = ok && agent_db_bind_i64(st, 2, (int64_t)max_rows);
+    if (has_query) {
+      ok = ok && agent_db_bind_text(st, 2, q_like);
+      ok = ok && agent_db_bind_text(st, 3, q_like);
+      ok = ok && agent_db_bind_text(st, 4, q_like);
+      ok = ok && agent_db_bind_text(st, 5, q_like);
+      ok = ok && agent_db_bind_i64(st, 6, (int64_t)max_rows);
+    } else {
+      ok = ok && agent_db_bind_i64(st, 2, (int64_t)max_rows);
+    }
   }
 	  while (ok && agent_db_step_row(st)) {
 	    WorkflowRow row;

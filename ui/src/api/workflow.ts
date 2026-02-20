@@ -14,6 +14,7 @@ import {
 export type WorkflowListParams = {
   status?: string;
   limit?: number;
+  query?: string;
 };
 
 export async function apiListWorkflows(
@@ -24,6 +25,7 @@ export async function apiListWorkflows(
   const qs = new URLSearchParams();
   addQueryParam(qs, "status", params.status);
   addQueryParam(qs, "limit", params.limit);
+  addQueryParam(qs, "q", params.query);
   const q = qs.toString();
   const r = await fetch(`${base}/api/v1/workflows${q ? `?${q}` : ""}`, { headers: daemonHeaders(auth) });
   const j = await r.json();

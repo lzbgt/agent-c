@@ -783,6 +783,9 @@ Streams:
 Status values:
 - `running`, `queued`, `active` (running + queued), `done`, `error`, `cancelled`, or `all` (unfiltered)
 
+Optional filters:
+- `q` (substring match against workflow_id, trace_id, session_id, or idempotency_key)
+
 ### Cancel a workflow (best-effort)
 
 `POST /api/v1/workflow/cancel`
