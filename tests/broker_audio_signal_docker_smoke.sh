@@ -1,15 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=tests/lib/agentd_smoke_lib.sh
+source "${SCRIPT_DIR}/lib/agentd_smoke_lib.sh"
+
+ROOT="$(agentd_smoke_project_root)"
 PG_LIB="${ROOT}/tests/lib/pg_test_lib.sh"
 if [[ -f "${PG_LIB}" ]]; then
   # shellcheck disable=SC1090
   source "${PG_LIB}"
 fi
 
-if ! command -v curl >/dev/null 2>&1; then
-  echo "SKIP: curl not found" >&2
+curl_bin="$(agentd_smoke_curl_bin)"
+if [[ "${curl_bin}" == */* ]]; then
+  if [[ ! -x "${curl_bin}" ]]; then
+    echo "SKIP: curl not found (${curl_bin})" >&2
+    exit 77
+  fi
+elif ! type -P "${curl_bin}" >/dev/null 2>&1; then
+  echo "SKIP: curl not found (${curl_bin})" >&2
   exit 77
 fi
 if ! command -v go >/dev/null 2>&1; then
