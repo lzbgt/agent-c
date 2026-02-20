@@ -123,6 +123,14 @@ def run_http(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: in
     import urllib.request
     from urllib.parse import urlparse
 
+    def save_response(save_as: str, payload: bytes) -> None:
+        save_path = os.path.join(logs_dir, render_template(str(save_as), ctx))
+        save_dir = os.path.dirname(save_path)
+        if save_dir:
+            os.makedirs(save_dir, exist_ok=True)
+        with open(save_path, "wb") as out:
+            out.write(payload)
+
     def status_ok(status: int, expect: Any) -> bool:
         if expect is None:
             return True
@@ -202,9 +210,7 @@ def run_http(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: in
                 log.write(f"status: {status}\n")
                 log.write(body_bytes.decode("utf-8", errors="replace"))
                 if step.get("save_as"):
-                    save_path = os.path.join(logs_dir, render_template(str(step["save_as"]), ctx))
-                    with open(save_path, "wb") as out:
-                        out.write(body_bytes)
+                    save_response(str(step["save_as"]), body_bytes)
                 if not status_ok(status, step.get("expect_status")):
                     raise RuntimeError(f"unexpected status {status}")
         except Exception as exc:
@@ -219,9 +225,7 @@ def run_http(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: in
                     body_bytes = exc.read()
                     log.write(body_bytes.decode("utf-8", errors="replace"))
                     if step.get("save_as"):
-                        save_path = os.path.join(logs_dir, render_template(str(step["save_as"]), ctx))
-                        with open(save_path, "wb") as out:
-                            out.write(body_bytes)
+                        save_response(str(step["save_as"]), body_bytes)
                 except Exception:
                     pass
                 if status_ok(exc.code, step.get("expect_status")):
