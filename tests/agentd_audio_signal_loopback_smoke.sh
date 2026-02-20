@@ -34,7 +34,7 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 77
 fi
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(agentd_smoke_project_root)"
 PG_LIB="${ROOT}/tests/lib/pg_test_lib.sh"
 if [[ -f "${PG_LIB}" ]]; then
   # shellcheck disable=SC1090
