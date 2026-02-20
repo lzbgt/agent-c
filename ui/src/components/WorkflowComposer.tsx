@@ -26,6 +26,12 @@ export type WorkflowComposerProps = {
 type TemplateKind = "llm_dag" | "agent_parallel" | "agent_parallel_demo";
 type ComposerMode = "json" | "graph";
 type GraphSetter = React.Dispatch<React.SetStateAction<GraphState>>;
+type WaitState = {
+  workflowId: string;
+  status: string;
+  elapsedSec: number;
+  active: boolean;
+};
 
 const TEMPLATE_LABELS: Record<TemplateKind, string> = {
   llm_dag: "LLM DAG (A→B/C)",
@@ -164,6 +170,7 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
   const [submitError, setSubmitError] = React.useState<string | null>(null);
   const [submitResult, setSubmitResult] = React.useState<any | null>(null);
   const [submitBusy, setSubmitBusy] = React.useState(false);
+  const [waitState, setWaitState] = React.useState<WaitState | null>(null);
 
   const defaults = React.useMemo(() => props.workflowDefaults ?? {}, [props.workflowDefaults]);
   const targets = React.useMemo(() => normalizeTargets(props.workflowTargets), [props.workflowTargets]);
@@ -195,6 +202,7 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
     async (workflowId: string) => {
       const started = Date.now();
       let last: any = null;
+      setWaitState({ workflowId, status: "running", elapsedSec: 0, active: true });
       while (Date.now() - started < 180_000) {
         const resp = await apiGetWorkflow(
           props.baseUrl,
@@ -207,11 +215,27 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
         );
         last = resp;
         const status = String(resp?.workflow?.status || "").toLowerCase();
+        setWaitState({
+          workflowId,
+          status: status || "unknown",
+          elapsedSec: Math.max(0, Math.round((Date.now() - started) / 1000)),
+          active: status === "running" || status === "queued",
+        });
         if (status && status !== "running" && status !== "queued") {
           return resp;
         }
         await new Promise((resolve) => setTimeout(resolve, 5000));
       }
+      setWaitState((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: "timeout",
+              elapsedSec: Math.max(0, Math.round((Date.now() - started) / 1000)),
+              active: false,
+            }
+          : null,
+      );
       return last;
     },
     [props.baseUrl, props.auth],
@@ -226,6 +250,7 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
       }
       setSubmitBusy(true);
       setSubmitError(null);
+      setWaitState(null);
       try {
         const resp = await apiSubmitWorkflow(baseUrl, payload, props.auth);
         setSubmitResult(resp);
@@ -247,6 +272,7 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
         setSubmitError(String(err));
       } finally {
         setSubmitBusy(false);
+        setWaitState((prev) => (prev ? { ...prev, active: false } : prev));
       }
     },
     [props.baseUrl, props.auth, props.onSubmitted, waitForWorkflow],
@@ -492,6 +518,11 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
           {submitBusy ? "Submitting…" : "Submit workflow"}
         </button>
         {submitError ? <span className="text-xs text-rose-200">{submitError}</span> : null}
+        {waitState ? (
+          <span className="text-[11px] text-white/60">
+            Wait: {waitState.status} • {waitState.elapsedSec}s • {waitState.workflowId}
+          </span>
+        ) : null}
       </div>
 
       {submitResult ? (

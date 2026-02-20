@@ -70,6 +70,7 @@ This panel includes a **Workflow composer** with JSON and Graph modes:
 - JSON template includes an `agentd_parallel` demo preset with longer timeout and example goal input.
 - JSON mode includes a “Demo → Graph” button to load the demo template directly into the graph editor.
 - JSON mode includes a “Demo → Submit (wait)” shortcut to submit the demo and poll for completion.
+- When waiting, the composer shows a lightweight status line with elapsed time.
 - Graph mode supports drag-and-drop layout, click-to-connect dependencies, and JSON import/export.
 - `agentd_parallel` tasks require `--workflow-enable-http-tasks` on the primary agentd.
 - Exporting from Graph mode switches the composer to JSON for review.
