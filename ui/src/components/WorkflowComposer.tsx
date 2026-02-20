@@ -278,6 +278,7 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
                   ? "border-sky-400/60 bg-sky-400/10 text-sky-100"
                   : "border-white/10 bg-black/30 text-white/60 hover:bg-black/40"
               }`}
+              data-testid="workflow-composer-tab-json"
               onClick={() => setComposerMode("json")}
             >
               JSON
@@ -289,6 +290,7 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
                   ? "border-sky-400/60 bg-sky-400/10 text-sky-100"
                   : "border-white/10 bg-black/30 text-white/60 hover:bg-black/40"
               }`}
+              data-testid="workflow-composer-tab-graph"
               onClick={() => setComposerMode("graph")}
             >
               Graph

@@ -176,6 +176,7 @@ export default function WorkflowGraphComposer(props: WorkflowGraphComposerProps)
         <button
           type="button"
           className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+          data-testid="workflow-graph-add-llm"
           onClick={() => addNode("llm")}
         >
           Add LLM node
@@ -183,6 +184,7 @@ export default function WorkflowGraphComposer(props: WorkflowGraphComposerProps)
         <button
           type="button"
           className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+          data-testid="workflow-graph-add-remote"
           onClick={() => addNode("agent_parallel")}
         >
           Add remote node
@@ -251,6 +253,7 @@ export default function WorkflowGraphComposer(props: WorkflowGraphComposerProps)
         <div
           ref={containerRef}
           className="relative h-80 overflow-hidden rounded-md border border-white/10 bg-black/40"
+          data-testid="workflow-graph-canvas"
           style={{
             backgroundImage:
               "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.08) 1px, transparent 0)",
@@ -337,7 +340,7 @@ export default function WorkflowGraphComposer(props: WorkflowGraphComposerProps)
           ))}
         </div>
 
-        <div className="rounded-md border border-white/10 bg-black/30 p-2">
+        <div className="rounded-md border border-white/10 bg-black/30 p-2" data-testid="workflow-graph-inspector">
           <div className="text-[11px] font-semibold text-white/70">Node inspector</div>
           {selectedNode ? (
             <div className="mt-2 grid gap-2 text-[11px] text-white/70">
