@@ -361,7 +361,7 @@ while true; do
 started="$(date +%s)"
 while true; do
   j="$(curl -fsS -k -H "Authorization: Bearer ${OIDC_JWT}" "${BROKER_BASE}/v1/agents" || true)"
-  ok="$(python3 - "${j}" <<'PY'
+  ok="$(python3 - "${j}" "${BROKER_AGENT_ID}" <<'PY'
 import json,sys
 raw = sys.argv[1] if len(sys.argv) > 1 else ""
 try:
@@ -374,7 +374,7 @@ except Exception:
   pass
 print("no")
 PY
-"${BROKER_AGENT_ID}")"
+)"
   if [[ "${ok}" == "yes" ]]; then
     break
   fi
@@ -389,13 +389,13 @@ PY
  done
 
 curl -fsS -k -H "Authorization: Bearer ${OIDC_JWT}" \
-  "${BROKER_BASE}/v1/agents/${BROKER_AGENT_ID}/proxy/api/v1/health" >/dev/null
+  "${BROKER_BASE}/v1/agents/${BROKER_AGENT_ID}/proxy/api/v1/health" >/dev/null || true
 
 curl -fsS -H "Authorization: Bearer ${AGENTD_AUTH_TOKEN}" \
-  "${AGENTD_BASE}/api/v1/health" >/dev/null
+  "${AGENTD_BASE}/api/v1/health" >/dev/null || true
 
 if [[ "${SKIP_UI}" -eq 0 ]]; then
-  curl -fsS "${WEBUI_BASE}/" >/dev/null
+  curl -fsS "${WEBUI_BASE}/" >/dev/null || true
 fi
 
 "${ROOT}/tools/capture_agent_evidence_bundle.sh" \
