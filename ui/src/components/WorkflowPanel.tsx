@@ -160,7 +160,7 @@ function countByStatus(tasks: WorkflowTask[]) {
 
 export default function WorkflowPanel(props: WorkflowPanelProps) {
   const [workflowId, setWorkflowId] = useLocalStorageState("agentui.workflowLookupId", "");
-  const [listStatus, setListStatus] = useLocalStorageState("agentui.workflowListStatus", "running");
+  const [listStatus, setListStatus] = useLocalStorageState("agentui.workflowListStatus", "active");
   const [listLimit, setListLimit] = useLocalStorageState("agentui.workflowListLimit", "50");
   const [listAutoRefresh, setListAutoRefresh] = useLocalStorageState("agentui.workflowListAutoRefresh", false);
   const [includeResults, setIncludeResults] = useLocalStorageState("agentui.workflowIncludeResults", false);
