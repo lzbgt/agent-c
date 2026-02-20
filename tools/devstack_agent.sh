@@ -266,7 +266,7 @@ wait_http_ok() {
 
 wait_http_ok "${KEYCLOAK_BASE}/realms/agentd/.well-known/openid-configuration" 240
 
-"${AGENTD_BIN}" \
+nohup "${AGENTD_BIN}" \
   --host 127.0.0.1 \
   --port "${AGENTD_PORT}" \
   --auth-token "${AGENTD_AUTH_TOKEN}" \
@@ -281,7 +281,7 @@ wait_http_ok "${AGENTD_BASE}/api/v1/health" 240 || true
 
 BROKER_DB_DSN="postgres://postgres:postgres@127.0.0.1:${POSTGRES_PORT}/agentd_broker?sslmode=disable"
 
-"${BROKER_BIN}" \
+nohup "${BROKER_BIN}" \
   --listen "127.0.0.1:${BROKER_PORT}" \
   --tls-cert "${MTLS_DIR}/server.pem" \
   --tls-key "${MTLS_DIR}/server.key.pem" \
@@ -292,7 +292,7 @@ BROKER_DB_DSN="postgres://postgres:postgres@127.0.0.1:${POSTGRES_PORT}/agentd_br
   --cors-origins "http://127.0.0.1:${WEBUI_PORT},http://localhost:${WEBUI_PORT}" >"${LOG_BROKER}" 2>&1 &
 BROKER_PID=$!
 
-"${CONNECTOR_BIN}" \
+nohup "${CONNECTOR_BIN}" \
   --broker "wss://127.0.0.1:${BROKER_PORT}/v1/agent/connect" \
   --local-agentd "${AGENTD_BASE}" \
   --tls-ca "${MTLS_DIR}/ca.pem" \
@@ -314,7 +314,7 @@ window.__AGENT_UI_CONFIG__ = {
 };
 CFG
   if http_server_cmd="$(python_http_server_cmd "${WEBUI_PORT}")"; then
-    (cd "${ROOT}/ui/dist" && ${http_server_cmd} >"${LOG_WEBUI}" 2>&1) &
+    (cd "${ROOT}/ui/dist" && nohup ${http_server_cmd} >"${LOG_WEBUI}" 2>&1) &
     WEBUI_PID=$!
   else
     echo "[devstack] python not found; skipping WebUI serve" >&2
