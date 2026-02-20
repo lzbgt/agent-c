@@ -469,6 +469,8 @@ Notes:
   `require_distinct_nodes:true` counts distinct remote agent targets correctly.
 - For `aggregate.mode:"quorum_hashes"`, the server also defaults `aggregate.pointers=["/agentd/result_sha256"]` when omitted.
 - `agentd_parallel.targets[]` entries may also use `broker_proxy:{broker_base_url,agent_id}` (same as `agentd_call.broker_proxy`); the server computes `base_url` as `.../v1/agents/<agent_id>/proxy`.
+- Example file: `docs/examples/workflows/agentd_parallel_demo.json`.
+- Generator helper: `tools/gen_agentd_parallel_demo.py` (reads `out/devstack_state.json` when present).
 
 ### Deterministic memory update task (`kind:"memory_put"`) (v1.7)
 
