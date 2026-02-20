@@ -10,6 +10,8 @@ set -euo pipefail
 # - HOST_STACK_UI_INSTALL=0 (skip npm ci when deps already exist)
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+# shellcheck source=tests/lib/agentd_smoke_lib.sh
+source "${ROOT}/tests/lib/agentd_smoke_lib.sh"
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "[host-stack] WARNING: not running on macOS; continuing anyway"
