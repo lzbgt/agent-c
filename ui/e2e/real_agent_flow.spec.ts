@@ -1,5 +1,9 @@
 import { test, expect } from "@playwright/test";
 
+const requireReal = process.env.AGENT_E2E_REQUIRE_REAL === "1";
+
+test.skip(!requireReal, "real agent flow requires AGENT_E2E_REQUIRE_REAL=1");
+
 const promptSimple = `
 Say hello and confirm you are ready.
 `.trim();

@@ -2,6 +2,10 @@ import { test, expect } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 
+const requireCanvas = process.env.AGENT_E2E_REQUIRE_CANVAS === "1";
+
+test.skip(!requireCanvas, "canvas2d observe e2e requires AGENT_E2E_REQUIRE_CANVAS=1");
+
 function nowId() {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
