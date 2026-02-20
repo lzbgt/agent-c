@@ -34,7 +34,9 @@ if [[ -z "${OPENROUTER_KEY}" ]]; then
   exit 2
 fi
 
-if ! agent_test_openrouter_auth_ok "${OPENROUTER_KEY}" "${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}"; then
+if agent_test_openrouter_auth_ok "${OPENROUTER_KEY}" "${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}"; then
+  :
+else
   rc=$?
   echo "HINT: run tools/openrouter_auth_debug.sh for detailed diagnostics" >&2
   if [[ "${rc}" -eq 77 ]]; then

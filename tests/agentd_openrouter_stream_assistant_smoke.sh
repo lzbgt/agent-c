@@ -36,7 +36,9 @@ if [[ -n "${PINNED_MODEL}" ]]; then
   MODEL_PRIMARY="${PINNED_MODEL}"
 fi
 
-if ! agent_test_openrouter_auth_ok "${OPENROUTER_KEY}" "${BASE_URL}"; then
+if agent_test_openrouter_auth_ok "${OPENROUTER_KEY}" "${BASE_URL}"; then
+  :
+else
   rc=$?
   if [[ "${rc}" -eq 77 ]]; then
     exit 77

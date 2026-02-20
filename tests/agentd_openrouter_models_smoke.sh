@@ -30,7 +30,9 @@ if [[ -z "${OPENROUTER_KEY}" ]]; then
 fi
 
 BASE_URL="${OPENROUTER_API_BASE:-https://openrouter.ai/api/v1}"
-if ! agent_test_openrouter_auth_ok "${OPENROUTER_KEY}" "${BASE_URL}"; then
+if agent_test_openrouter_auth_ok "${OPENROUTER_KEY}" "${BASE_URL}"; then
+  :
+else
   rc=$?
   if [[ "${rc}" -eq 77 ]]; then
     exit 77
