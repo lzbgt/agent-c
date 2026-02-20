@@ -84,6 +84,10 @@ def run_shell(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: i
     log_path = os.path.join(logs_dir, f"{index:02d}_{name}.log")
     with open(log_path, "w", encoding="utf-8") as log:
         log.write(f"$ {cmd}\n")
+        if cwd:
+            log.write(f"cwd: {cwd}\n")
+        if step.get("timeout_s") is not None:
+            log.write(f"timeout_s: {step.get('timeout_s')}\n")
         log.flush()
         try:
             proc = subprocess.run(
