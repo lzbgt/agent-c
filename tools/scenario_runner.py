@@ -121,6 +121,7 @@ def run_capture(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index:
 def run_http(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: int) -> None:
     import ssl
     import urllib.request
+    from urllib.parse import urlparse
 
     url_raw = step.get("url")
     if not isinstance(url_raw, str) or not url_raw.strip():
@@ -152,7 +153,27 @@ def run_http(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: in
             log.write(f"  {hk}: {hv}\n")
         log.flush()
         try:
-            with urllib.request.urlopen(req, context=ctx_ssl, timeout=step.get("timeout_s")) as resp:
+            proxy_mode = step.get("proxy", None)
+            disable_proxy = False
+            if isinstance(proxy_mode, bool):
+                disable_proxy = not proxy_mode
+            elif proxy_mode is not None:
+                mode = str(proxy_mode).strip().lower()
+                if mode in ("0", "false", "off", "none", "disabled", "no"):
+                    disable_proxy = True
+                elif mode in ("1", "true", "on", "env", "default"):
+                    disable_proxy = False
+
+            if not disable_proxy:
+                host = urlparse(url).hostname or ""
+                if host in ("localhost", "127.0.0.1", "::1"):
+                    disable_proxy = True
+
+            opener = urllib.request
+            if disable_proxy:
+                opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+
+            with opener.open(req, context=ctx_ssl, timeout=step.get("timeout_s")) as resp:
                 status = resp.status
                 body_bytes = resp.read()
                 log.write(f"status: {status}\n")

@@ -26,7 +26,7 @@ Logs are written under `out/scenario_<ts>/logs/`.
 
 Supported step types:
 - `shell`: run a shell command. Fields: `cmd`, optional `cwd`, `env`, `timeout_s`, `allow_failure`.
-- `http`: simple HTTP request (GET/POST). Fields: `url`, `method`, `headers`, `body`, `expect_status`, `save_as`, `insecure`, `timeout_s`.
+- `http`: simple HTTP request (GET/POST). Fields: `url`, `method`, `headers`, `body`, `expect_status`, `save_as`, `insecure`, `timeout_s`, `proxy`.
 - `sleep`: pause. Fields: `seconds` or `duration_s`.
 - `capture_evidence`: run `tools/capture_agent_evidence_bundle.sh` with `args` list.
 - `set`: set a template variable for later steps. Fields: `key`, `value`.
@@ -36,6 +36,10 @@ Template variables:
 - `{{scenario}}` (scenario name)
 - `{{evidence_dir}}` (last evidence bundle dir)
 - `{{env.VAR}}` (environment variable)
+
+HTTP proxy behavior:
+- By default, `http` steps honor standard proxy env vars, but bypass proxies for localhost/127.0.0.1.
+- Set `proxy` to `false`/`disabled` to force no proxy, or `true`/`env` to force proxy usage.
 
 ## Included scenarios
 
