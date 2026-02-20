@@ -573,6 +573,11 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                 </div>
               </div>
               {copyNotice ? <div className="mt-1 text-[10px] text-white/50">{copyNotice}</div> : null}
+              {copyNotice ? (
+                <div className="mt-1 text-[10px] text-white/50">
+                  Tip: use the copy buttons in the workflow list rows for quick sharing.
+                </div>
+              ) : null}
               <div className="mt-2 grid gap-2 text-[11px] text-white/70">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className={`rounded border px-2 py-0.5 text-[10px] ${statusBadge(summary.status)}`}>
