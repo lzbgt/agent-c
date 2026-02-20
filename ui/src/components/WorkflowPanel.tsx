@@ -70,6 +70,11 @@ function statusBadge(status?: string) {
   return "bg-white/10 text-white/70 border-white/10";
 }
 
+function canCancelStatus(status?: string) {
+  const s = String(status || "").toLowerCase();
+  return s === "running" || s === "queued";
+}
+
 function buildLevels(tasks: WorkflowTask[]) {
   const ids = new Set(tasks.map((t) => t.task_id));
   const depsMap = new Map<string, string[]>();
@@ -161,7 +166,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
   const [includeSpec, setIncludeSpec] = useLocalStorageState("agentui.workflowIncludeSpec", false);
   const [detail, setDetail] = React.useState<WorkflowDetailResp | null>(null);
   const [detailError, setDetailError] = React.useState<string | null>(null);
-  const [cancelBusy, setCancelBusy] = React.useState(false);
+  const [cancelBusyId, setCancelBusyId] = React.useState<string | null>(null);
 
   const normalizedListStatus = STATUS_OPTIONS.includes(String(listStatus)) ? String(listStatus) : "running";
   const limitValue = (() => {
@@ -223,7 +228,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
       setDetailError("Base URL is not set.");
       return;
     }
-    setCancelBusy(true);
+    setCancelBusyId(trimmed);
     setDetailError(null);
     try {
       const resp = await apiCancelWorkflow(props.baseUrl, trimmed, props.auth);
@@ -233,9 +238,10 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
     } catch (err) {
       setDetailError(String(err));
     } finally {
-      setCancelBusy(false);
+      setCancelBusyId(null);
     }
     loadWorkflow(trimmed);
+    void listQuery.refetch();
   };
 
   return (
@@ -342,28 +348,45 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
             </div>
           ) : null}
           <div className="grid gap-2">
-            {extractWorkflows(listQuery.data).map((wf: any) => (
-              <button
-                key={String(wf.workflow_id || Math.random())}
-                type="button"
-                onClick={() => {
-                  const id = String(wf.workflow_id || "").trim();
-                  if (!id) return;
-                  setWorkflowId(id);
-                  loadWorkflow(id);
-                }}
-                className="flex w-full flex-wrap items-center justify-between gap-2 rounded-md border border-white/10 bg-black/40 px-2 py-2 text-left text-xs text-white/80 hover:bg-black/50"
-              >
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className={`rounded border px-2 py-0.5 text-[10px] ${statusBadge(wf.status)}`}>{wf.status ?? "unknown"}</span>
-                  <span className="font-mono text-[11px] text-white/80">{wf.workflow_id}</span>
-                  {wf.trace_id ? (
-                    <span className="text-[10px] text-white/50">trace {String(wf.trace_id)}</span>
+            {extractWorkflows(listQuery.data).map((wf: any) => {
+              const id = String(wf.workflow_id || "").trim();
+              const canCancel = canCancelStatus(wf.status);
+              return (
+                <div
+                  key={String(wf.workflow_id || Math.random())}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/10 bg-black/40 px-2 py-2 text-left text-xs text-white/80"
+                >
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!id) return;
+                      setWorkflowId(id);
+                      loadWorkflow(id);
+                    }}
+                    className="flex flex-1 flex-wrap items-center justify-between gap-2 text-left hover:text-white"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded border px-2 py-0.5 text-[10px] ${statusBadge(wf.status)}`}>
+                        {wf.status ?? "unknown"}
+                      </span>
+                      <span className="font-mono text-[11px] text-white/80">{wf.workflow_id}</span>
+                      {wf.trace_id ? <span className="text-[10px] text-white/50">trace {String(wf.trace_id)}</span> : null}
+                    </div>
+                    <div className="text-[10px] text-white/40">updated {formatUnixMs(wf.updated_unix_ms)}</div>
+                  </button>
+                  {canCancel ? (
+                    <button
+                      className="rounded-md border border-rose-400/30 bg-rose-400/10 px-2 py-1 text-[10px] text-rose-100 hover:bg-rose-400/20 disabled:opacity-50"
+                      type="button"
+                      onClick={() => void cancelWorkflow(id)}
+                      disabled={!id || cancelBusyId === id}
+                    >
+                      {cancelBusyId === id ? "Canceling…" : "Cancel"}
+                    </button>
                   ) : null}
                 </div>
-                <div className="text-[10px] text-white/40">updated {formatUnixMs(wf.updated_unix_ms)}</div>
-              </button>
-            ))}
+              );
+            })}
             {listQuery.isSuccess && extractWorkflows(listQuery.data).length === 0 ? (
               <div className="text-xs text-white/50">No workflows found for status "{normalizedListStatus}".</div>
             ) : null}
@@ -390,14 +413,14 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                   >
                     {workflowLookup.isPending ? "Reloading…" : "Reload"}
                   </button>
-                  {["running", "queued"].includes(String(summary.status || "").toLowerCase()) ? (
+                  {canCancelStatus(summary.status) ? (
                     <button
                       className="rounded-md border border-rose-400/30 bg-rose-400/10 px-2 py-1 text-[11px] text-rose-100 hover:bg-rose-400/20 disabled:opacity-50"
                       type="button"
                       onClick={() => void cancelWorkflow(summary.workflow_id)}
-                      disabled={cancelBusy}
+                      disabled={cancelBusyId === summary.workflow_id}
                     >
-                      {cancelBusy ? "Canceling…" : "Cancel"}
+                      {cancelBusyId === summary.workflow_id ? "Canceling…" : "Cancel"}
                     </button>
                   ) : null}
                 </div>

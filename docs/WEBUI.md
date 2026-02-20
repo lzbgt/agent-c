@@ -73,6 +73,7 @@ This panel includes a **Workflow composer** with JSON and Graph modes:
 - When waiting, the composer shows a lightweight status line with elapsed time.
 - The status line includes a Cancel button while a workflow is running (best-effort cancellation).
 - The workflow summary panel also exposes a Cancel button for `running`/`queued` workflows.
+- Recent workflow rows show a Cancel button for `running`/`queued` items.
 - Graph mode supports drag-and-drop layout, click-to-connect dependencies, and JSON import/export.
 - `agentd_parallel` tasks require `--workflow-enable-http-tasks` on the primary agentd.
 - Exporting from Graph mode switches the composer to JSON for review.
