@@ -192,3 +192,5 @@ Notes:
 - Provider tests use the same API key resolution as normal runs (config, env, repo-local secrets).
 - No session is created (`no_session=true`).
 - Tests respect daemon limits and defaults.
+- If you request tools (`tools=basic|host`) but the daemon is started with `--tools none`, the test returns an error
+  (`tools request exceeds daemon tools policy`). Start agentd with `--tools basic` (or override in your verify script).
