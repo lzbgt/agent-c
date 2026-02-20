@@ -69,6 +69,7 @@ This panel includes a **Workflow composer** with JSON and Graph modes:
 - JSON templates for LLM DAG workflows (A→B/C) and `agentd_parallel` collaboration templates.
 - Graph mode supports drag-and-drop layout, click-to-connect dependencies, and JSON import/export.
 - `agentd_parallel` tasks require `--workflow-enable-http-tasks` on the primary agentd.
+- Exporting from Graph mode switches the composer to JSON for review.
 
 ## Rendering notes
 
