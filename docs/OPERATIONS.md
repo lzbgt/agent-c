@@ -182,6 +182,13 @@ The Playwright suite includes heavier flows that are opt-in via env flags:
 
 The open-world harness scripts under `tests/` set these flags for you when they run.
 
+Open-world harness entry points (stub provider, deterministic):
+
+```bash
+./tests/webui_observe_canvas2d_plot_openworld.sh
+./tests/webui_observe_voice_hello_openworld.sh
+```
+
 ## Smoke tests (local daemon)
 
 `ctest` includes bash-based `agentd_*_smoke.sh` tests that start/stop the daemon; shared helpers live in
