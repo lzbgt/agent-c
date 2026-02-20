@@ -43,6 +43,7 @@ PY
 AGENTD_BIN="${AGENTD_BIN:-${ROOT}/build/agentd}"
 AGENTD_PORT="${AGENTD_PORT:-$(pick_port)}"
 AGENTD_AUTH_TOKEN="${AGENTD_AUTH_TOKEN:-dev-agentd-token}"
+AGENTD_TOOLS="${AGENTD_TOOLS:-none}"
 STATE_DIR="${AGENTD_STATE_DIR:-${ROOT}/state/mac_local}"
 
 WEBUI_PORT="${WEBUI_PORT:-$(pick_port)}"
@@ -63,6 +64,10 @@ trap cleanup EXIT
 
 if [[ "${MAC_LOCAL_PROVIDER_TEST}" == "1" ]]; then
   agent_env_source_home_if_unset >/dev/null 2>&1 || true
+  if [[ "${AGENTD_TOOLS}" == "none" ]]; then
+    AGENTD_TOOLS="basic"
+    echo "[mac-local] provider tests enabled: switching agentd tools to ${AGENTD_TOOLS}"
+  fi
 fi
 
 if [[ ! -x "${AGENTD_BIN}" ]]; then
@@ -80,7 +85,7 @@ echo "[mac-local] starting agentd on 127.0.0.1:${AGENTD_PORT} (log: ${LOG_AGENTD
   --host 127.0.0.1 \
   --port "${AGENTD_PORT}" \
   --auth-token "${AGENTD_AUTH_TOKEN}" \
-  --tools none \
+  --tools "${AGENTD_TOOLS}" \
   --state-dir "${STATE_DIR}" \
   --db-path "${STATE_DIR}/agentd.db" >"${LOG_AGENTD}" 2>&1 &
 AGENTD_PID=$!
