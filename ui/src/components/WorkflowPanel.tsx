@@ -517,6 +517,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
                 <div className="grid gap-1 sm:grid-cols-2">
                   <div>priority: {summary.priority ?? "—"}</div>
                   <div>session: {summary.session_id || "—"}</div>
+                  <div>idempotency: {summary.idempotency_key || "—"}</div>
                   <div>created: {formatUnixMs(summary.created_unix_ms)}</div>
                   <div>updated: {formatUnixMs(summary.updated_unix_ms)}</div>
                   <div>deadline: {formatUnixMs(summary.deadline_unix_ms)}</div>

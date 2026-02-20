@@ -73,6 +73,7 @@ This panel includes a **Workflow composer** with JSON and Graph modes:
 - When waiting, the composer shows a lightweight status line with elapsed time.
 - The status line includes a Cancel button while a workflow is running (best-effort cancellation).
 - The workflow summary panel also exposes a Cancel button for `running`/`queued` workflows.
+- The workflow summary panel shows the idempotency key when present.
 - Recent workflow rows show a Cancel button for `running`/`queued` items.
 - Recent workflow rows surface a `cancel requested` badge when a stop has been requested.
 - Enable the list’s “auto” toggle to refresh recent workflows every few seconds.
