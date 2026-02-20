@@ -246,4 +246,6 @@ Planned evidence (tracked in `TODOS.md`):
 - Team run fan-out smoke (sync fan-out with role filter + status).
 - Multi-agent team orchestration smoke (roles, shared memory, quorum gates).
 - Attestation bundle signing + verification smoke.
+- Run diff + evidence comparison smoke.
+- Approval queue + tool-level quorum gating smoke.
 - Voice workflow loopback (end-to-end low-latency media path).
