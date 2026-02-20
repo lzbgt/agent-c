@@ -30,7 +30,7 @@ type WorkflowTask = {
   finished_unix_ms?: number;
 };
 
-const STATUS_OPTIONS = ["running", "queued", "done", "error", "cancelled", "all"];
+const STATUS_OPTIONS = ["running", "queued", "active", "done", "error", "cancelled", "all"];
 
 function normalizeTask(raw: any): WorkflowTask | null {
   if (!raw || typeof raw !== "object") return null;

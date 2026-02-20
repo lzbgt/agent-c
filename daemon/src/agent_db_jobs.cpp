@@ -722,10 +722,17 @@ bool AgentDb::list_workflows_by_status(
     return false;
   }
   const bool list_all = status == "all" || status == "*";
+  const bool list_active = status == "active";
 	sqlite3_stmt* st = nullptr;
 	const char* sql = list_all ? R"SQL(
 	SELECT workflow_id, session_id, trace_id, COALESCE(priority,0), COALESCE(deadline_unix_ms,0), COALESCE(idempotency_key,''), created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
 	FROM workflows
+	ORDER BY COALESCE(priority,0) DESC, updated_unix_ms DESC
+	LIMIT ?;
+	)SQL" : list_active ? R"SQL(
+	SELECT workflow_id, session_id, trace_id, COALESCE(priority,0), COALESCE(deadline_unix_ms,0), COALESCE(idempotency_key,''), created_unix_ms, updated_unix_ms, status, cancel_requested, error, spec_json, result_json
+	FROM workflows
+	WHERE status IN ('running','queued')
 	ORDER BY COALESCE(priority,0) DESC, updated_unix_ms DESC
 	LIMIT ?;
 	)SQL" : R"SQL(
@@ -740,7 +747,7 @@ bool AgentDb::list_workflows_by_status(
     return false;
   }
   bool ok = true;
-  if (list_all) {
+  if (list_all || list_active) {
     ok = ok && agent_db_bind_i64(st, 1, (int64_t)max_rows);
   } else {
     ok = ok && agent_db_bind_text(st, 1, status);
