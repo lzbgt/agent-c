@@ -75,6 +75,7 @@ This panel includes a **Workflow composer** with JSON and Graph modes:
 - If remote providers are slow, increase `agentd_call.timeout_ms` and adjust `poll_ms`.
   - Generate a live-target demo JSON (uses `out/devstack_state.json` when present):
     - `python3 tools/gen_agentd_parallel_demo.py`
+    - `tools/gen_agentd_parallel_demo.sh`
 
 ## Rendering notes
 

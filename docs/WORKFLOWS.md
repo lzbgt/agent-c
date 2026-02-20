@@ -471,6 +471,7 @@ Notes:
 - `agentd_parallel.targets[]` entries may also use `broker_proxy:{broker_base_url,agent_id}` (same as `agentd_call.broker_proxy`); the server computes `base_url` as `.../v1/agents/<agent_id>/proxy`.
 - Example file: `docs/examples/workflows/agentd_parallel_demo.json`.
 - Generator helper: `tools/gen_agentd_parallel_demo.py` (reads `out/devstack_state.json` when present).
+- Shell wrapper: `tools/gen_agentd_parallel_demo.sh`.
 
 ### Deterministic memory update task (`kind:"memory_put"`) (v1.7)
 
