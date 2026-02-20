@@ -20,6 +20,9 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${ROOT}/tools/lib/python_helpers.sh"
 # shellcheck source=tests/lib/agentd_smoke_lib.sh
 source "${ROOT}/tests/lib/agentd_smoke_lib.sh"
+curl() {
+  agentd_smoke_curl "$@"
+}
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "[host-stack-local] WARNING: not running on macOS; continuing anyway"
