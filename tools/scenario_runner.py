@@ -169,11 +169,19 @@ def run_http(step: Dict[str, Any], ctx: Dict[str, str], logs_dir: str, index: in
                 if host in ("localhost", "127.0.0.1", "::1"):
                     disable_proxy = True
 
-            opener = urllib.request
+            handlers = []
             if disable_proxy:
-                opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+                handlers.append(urllib.request.ProxyHandler({}))
+            if ctx_ssl is not None:
+                handlers.append(urllib.request.HTTPSHandler(context=ctx_ssl))
 
-            with opener.open(req, context=ctx_ssl, timeout=step.get("timeout_s")) as resp:
+            if handlers:
+                opener = urllib.request.build_opener(*handlers)
+                open_fn = opener.open
+            else:
+                open_fn = urllib.request.urlopen
+
+            with open_fn(req, timeout=step.get("timeout_s")) as resp:
                 status = resp.status
                 body_bytes = resp.read()
                 log.write(f"status: {status}\n")
