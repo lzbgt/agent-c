@@ -44,6 +44,7 @@ export type ConnectionSettings = {
   setDaemonAuthToken: React.Dispatch<React.SetStateAction<string>>;
   serverPrefsEnabled: boolean;
   serverPrefsAuto: boolean;
+  serverPrefsUserSet: boolean;
   serverPrefsAutoStatus: ServerPrefsAutoStatus;
   serverPrefsAutoError: string | null;
   setServerPrefsEnabled: React.Dispatch<React.SetStateAction<boolean>>;
@@ -1550,6 +1551,7 @@ export default function useUiSettings(): UiSettings {
       setDaemonAuthToken,
       serverPrefsEnabled: serverPrefsEffectiveEnabled,
       serverPrefsAuto,
+      serverPrefsUserSet,
       serverPrefsAutoStatus,
       serverPrefsAutoError,
       setServerPrefsEnabled,

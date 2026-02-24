@@ -401,7 +401,10 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                     onChange={(e) => connection.setServerPrefsEnabled(e.target.checked)}
                     disabled={!serverPrefsCanSync}
                   />
-                  <span>Sync connection profiles to {serverPrefsTarget} (no tokens)</span>
+                  <span>
+                    Sync connection profiles to {serverPrefsTarget} (no tokens)
+                    {connection.serverPrefsAuto && !connection.serverPrefsUserSet ? " · auto" : ""}
+                  </span>
                 </label>
               </div>
               <div className="mt-1 text-white/50">
