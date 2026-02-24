@@ -140,6 +140,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [runtimeAgents, setRuntimeAgents] = React.useState<any[] | null>(null);
   const [runtimeSaveBusy, setRuntimeSaveBusy] = React.useState<boolean>(false);
   const [runtimeSaveError, setRuntimeSaveError] = React.useState<string | null>(null);
+  const runtimeImportRef = React.useRef<HTMLInputElement | null>(null);
 
   const runtimeMembersPreview = React.useMemo(() => {
     const raw = String(runRuntimeMembersJson || "").trim();
@@ -692,6 +693,20 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       setRunError(null);
     } catch (err) {
       setRunError(`copy failed: ${String(err)}`);
+    }
+  };
+
+  const handleImportRuntimeMembers = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      setRunRuntimeMembersJson(text.trim());
+      setRunError(null);
+    } catch (err) {
+      setRunError(`import failed: ${String(err)}`);
+    } finally {
+      event.target.value = "";
     }
   };
 
@@ -1607,6 +1622,20 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                 >
                   Copy JSON
                 </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                  type="button"
+                  onClick={() => runtimeImportRef.current?.click()}
+                >
+                  Import JSON
+                </button>
+                <input
+                  ref={runtimeImportRef}
+                  className="hidden"
+                  type="file"
+                  accept="application/json,.json"
+                  onChange={handleImportRuntimeMembers}
+                />
               </div>
               {runtimeMembersPreview.items.map((item, idx) => {
                 const memberId = item?.member_id ? String(item.member_id) : "";
