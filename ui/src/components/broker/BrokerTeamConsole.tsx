@@ -625,6 +625,16 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     setRunRuntimeMembersJson(JSON.stringify(next, null, 2));
   };
 
+  const handleRemovePausedRuntimeMembers = () => {
+    const rawItems = runtimeMembersPreview.items;
+    if (!Array.isArray(rawItems) || rawItems.length === 0) return;
+    const filtered = rawItems.filter((item) => {
+      const statusRaw = item?.status ? String(item.status).toLowerCase() : "active";
+      return statusRaw !== "paused";
+    });
+    setRunRuntimeMembersJson(filtered.length > 0 ? JSON.stringify(filtered, null, 2) : "");
+  };
+
   const handleSeedExplicitOverrides = () => {
     if (membersList.length === 0) {
       setRunError("no team members loaded");
@@ -1515,6 +1525,13 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                   onClick={() => handleSetAllRuntimeStatus("active")}
                 >
                   Resume all
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                  type="button"
+                  onClick={() => handleRemovePausedRuntimeMembers()}
+                >
+                  Remove paused
                 </button>
               </div>
               {runtimeMembersPreview.items.map((item, idx) => {
