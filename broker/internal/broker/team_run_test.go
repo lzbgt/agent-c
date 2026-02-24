@@ -1,6 +1,7 @@
 package broker
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
@@ -97,5 +98,73 @@ func TestPublishTeamQuorumResultDecisionTokens(t *testing.T) {
 	ev = readEvent("best_effort")
 	if ev.Payload["decision"] != "best_effort" {
 		t.Fatalf("expected decision best_effort, got %v", ev.Payload["decision"])
+	}
+}
+
+func TestSanitizeRunOverrides(t *testing.T) {
+	raw := map[string]any{
+		"model":            " gpt-4.1-mini ",
+		"base_url":         " https://api.openai.com/v1 ",
+		"summary_model":    "",
+		"tools":            "HOST",
+		"timeout_ms":       50,
+		"max_steps":        999,
+		"stream_assistant": true,
+		"api_key":          "nope",
+		"extra":            "ignore",
+	}
+	got := sanitizeRunOverrides(raw)
+	want := map[string]any{
+		"model":            "gpt-4.1-mini",
+		"base_url":         "https://api.openai.com/v1",
+		"tools":            "host",
+		"timeout_ms":       100,
+		"max_steps":        256,
+		"stream_assistant": true,
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("sanitizeRunOverrides mismatch: got=%v want=%v", got, want)
+	}
+}
+
+func TestParseTeamRunOverridesExplicit(t *testing.T) {
+	meta := map[string]any{
+		"run_overrides_mode": "explicit",
+		"member_overrides": map[string]any{
+			"m1": map[string]any{
+				"model":      "gpt-4.1-mini",
+				"timeout_ms": 250,
+				"api_key":    "nope",
+			},
+		},
+	}
+	got, err := parseTeamRunOverrides(meta)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Mode != "explicit" {
+		t.Fatalf("expected mode explicit, got %q", got.Mode)
+	}
+	want := map[string]map[string]any{
+		"m1": {
+			"model":      "gpt-4.1-mini",
+			"timeout_ms": 250,
+		},
+	}
+	if !reflect.DeepEqual(got.MemberOverrides, want) {
+		t.Fatalf("member_overrides mismatch: got=%v want=%v", got.MemberOverrides, want)
+	}
+}
+
+func TestParseTeamRunOverridesRejectsBadMember(t *testing.T) {
+	meta := map[string]any{
+		"run_overrides_mode": "explicit",
+		"member_overrides": map[string]any{
+			"m1": "nope",
+		},
+	}
+	_, err := parseTeamRunOverrides(meta)
+	if err == nil {
+		t.Fatalf("expected error for non-object member override")
 	}
 }

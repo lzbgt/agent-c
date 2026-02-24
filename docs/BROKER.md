@@ -184,6 +184,12 @@ All endpoints below are served by the broker (not by agents).
       - `team.approvals`: array of member IDs or objects `{member_id, decision, reason}`
     - `decision` defaults to `approve` and only `approve` counts toward quorum
     - when a strict quorum rule is not satisfied, the broker returns `409` with a `quorum` object describing missing approvals
+  - supports per-member run overrides for backend profiles:
+    - `team.run_overrides_mode`: `off` (default), `member_meta`, or `explicit`
+    - `member_meta` applies allowlisted fields from `member.meta.run_overrides`
+    - `explicit` applies allowlisted fields from `team.member_overrides` keyed by `member_id`
+    - allowlist: `model`, `base_url`, `summary_model`, `tools`, `timeout_ms`, `max_steps`, `stream_assistant`
+    - `api_key` is never accepted via team/member metadata
 - `GET /v1/teams/{team_id}/runs/{team_run_id}`
   - returns the stored team run status + current member list
 - `GET /v1/teams/{team_id}/runs/{team_run_id}/approvals`

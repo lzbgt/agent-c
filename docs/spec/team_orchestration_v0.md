@@ -17,6 +17,7 @@ listed below are proposed and only partially implemented today (team registry CR
 - Support **quorum gates** for safety-sensitive actions (tool classes, policy categories).
 - Make orchestration **deterministic and auditable** (events + approval records).
 - Keep the surface **transport-agnostic** (works with direct agentd or broker relay).
+- Enable **per-member backend profiles** so each role can target its own LLM backend or runtime defaults.
 
 ## Non-goals (v0)
 
@@ -54,6 +55,33 @@ Example: at least 2 reviewers must approve `shell_exec`.
 
 A **team run** is a coordinated execution that may spawn multiple sub-runs
 per team member, with explicit aggregation and quorum checks.
+
+### 6) Member backend profile (v0.2)
+
+Each team member may carry an optional backend profile stored under `member.meta`.
+The broker can optionally merge these **run overrides** into the base run when executing
+team runs. This enables role-specific LLM backends without per-deployment orchestration.
+
+Recommended shape (stored in `member.meta.run_overrides`):
+
+```json
+{
+  "run_overrides": {
+    "model": "gpt-4.1-mini",
+    "base_url": "https://api.openai.com/v1",
+    "summary_model": "gpt-4.1-mini",
+    "tools": "basic",
+    "timeout_ms": 60000
+  },
+  "backend_label": "openai-mini"
+}
+```
+
+Constraints:
+- Only a **safe allowlist** of fields is applied (e.g., `model`, `base_url`, `summary_model`,
+  `tools`, `timeout_ms`, `max_steps`, `stream_assistant`).
+- `api_key` is never accepted via member meta (avoid secret storage in broker DB).
+- The broker merges overrides as: `run = base_run ⊕ member.run_overrides` (member wins).
 
 ---
 
@@ -193,9 +221,18 @@ Run requests may accept:
   "role": "planner",
   "shared_memory": { "scope_id": "...", "mode": "read_only" },
   "quorum_policy": { "mode": "auto" | "off" },
-  "approvals": [ { "member_id": "...", "rule_id": "...", "decision": "approve" } ]
+  "approvals": [ { "member_id": "...", "rule_id": "...", "decision": "approve" } ],
+  "run_overrides_mode": "off" | "member_meta" | "explicit",
+  "member_overrides": {
+    "member_1": { "model": "...", "base_url": "...", "tools": "basic" }
+  }
 }
 ```
+
+`run_overrides_mode`:
+- `off` (default): no per-member overrides.
+- `member_meta`: apply allowlisted overrides from `member.meta.run_overrides`.
+- `explicit`: apply allowlisted overrides from `team.member_overrides`.
 
 ---
 
@@ -253,6 +290,17 @@ Existing `policy_decision` events remain valid for tool/limit enforcement.
 - This spec **builds on** existing workflow fan-out patterns but formalizes the data model.
 - Broker is the recommended control plane for multi-deployment teams.
 - Policy hooks can enforce role-based tool allowlists in v1.
+
+---
+
+## WebUI requirements (v0.2)
+
+- Team creation panel (team id + display name).
+- Member editor with role + agent assignment + deployment selection.
+- **Member backend profile editor** (model/base URL/tools) with safety hints (no keys).
+- Quorum rule editor (action + approvals + role allowlists).
+- Team run panel with role filters, quorum previews, and inline approvals.
+- **Run overrides selector** (off/member_meta/explicit) with per-member overrides grid.
 
 ---
 

@@ -752,6 +752,17 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 	traceID := traceIDFromContext(r.Context())
 
 	options := parseTeamRunOptions(teamMeta)
+	overrides, err := parseTeamRunOverrides(teamMeta)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	teamMeta["run_overrides_mode"] = overrides.Mode
+	if overrides.Mode != "explicit" {
+		delete(teamMeta, "member_overrides")
+	} else if len(overrides.MemberOverrides) > 0 {
+		teamMeta["member_overrides"] = overrides.MemberOverrides
+	}
 	quorumPolicyMode, err := parseTeamRunQuorumPolicy(teamMeta)
 	if err != nil {
 		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
@@ -829,7 +840,34 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 			runMap["trace_id"] = traceID
 		}
 	}
-	runBody := mustJSON(runMap)
+
+	memberOverridesApplied := map[string]map[string]any{}
+	memberRunBodies := make([][]byte, 0, len(members))
+	for _, member := range members {
+		runForMember := map[string]any{}
+		for k, v := range runMap {
+			runForMember[k] = v
+		}
+		var overridesForMember map[string]any
+		switch overrides.Mode {
+		case "member_meta":
+			overridesForMember = memberMetaRunOverrides(member.Meta())
+		case "explicit":
+			if overrides.MemberOverrides != nil {
+				overridesForMember = overrides.MemberOverrides[member.MemberID]
+			}
+		}
+		if len(overridesForMember) > 0 {
+			for k, v := range overridesForMember {
+				runForMember[k] = v
+			}
+			memberOverridesApplied[member.MemberID] = overridesForMember
+		}
+		memberRunBodies = append(memberRunBodies, mustJSON(runForMember))
+	}
+	if len(memberOverridesApplied) > 0 {
+		teamMeta["member_overrides_applied"] = memberOverridesApplied
+	}
 
 	teamRunID := "tr_" + newID()[:12]
 	if _, err := s.cfg.DB.CreateTeamRun(r.Context(), teamRunID, teamID, "running", p.Sub, mustJSON(map[string]any{
@@ -855,6 +893,10 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 
 	tasks := make([]agentTaskPrepared, 0, len(members))
 	for i, member := range members {
+		body := mustJSON(runMap)
+		if i < len(memberRunBodies) {
+			body = memberRunBodies[i]
+		}
 		tasks = append(tasks, agentTaskPrepared{
 			TaskID:       "member_" + itoa(i),
 			AgentID:      member.AgentID,
@@ -863,7 +905,7 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 			Path:         "/api/v1/run",
 			Query:        "",
 			Headers:      map[string]string{},
-			Body:         runBody,
+			Body:         body,
 		})
 	}
 	results := s.executeAgentTasks(r.Context(), p, tasks, options.MaxConcurrency, options.TimeoutMS, traceID)
@@ -1281,6 +1323,11 @@ type teamRunOptions struct {
 	TimeoutMS      int
 }
 
+type teamRunOverrides struct {
+	Mode            string
+	MemberOverrides map[string]map[string]any
+}
+
 func parseTeamRunOptions(meta map[string]any) teamRunOptions {
 	out := teamRunOptions{
 		MaxConcurrency: 4,
@@ -1325,6 +1372,36 @@ func parseTeamRunOptions(meta map[string]any) teamRunOptions {
 		}
 	}
 	return out
+}
+
+func parseTeamRunOverrides(meta map[string]any) (teamRunOverrides, error) {
+	out := teamRunOverrides{Mode: "off"}
+	if v, ok := meta["run_overrides_mode"]; ok {
+		s, ok := v.(string)
+		if !ok {
+			return out, fmt.Errorf("run_overrides_mode must be string")
+		}
+		mode := strings.ToLower(strings.TrimSpace(s))
+		if mode == "" {
+			mode = "off"
+		}
+		switch mode {
+		case "off", "member_meta", "explicit":
+			out.Mode = mode
+		default:
+			return out, fmt.Errorf("invalid run_overrides_mode")
+		}
+	}
+	if out.Mode == "explicit" {
+		if v, ok := meta["member_overrides"]; ok {
+			overrides, err := parseMemberOverrides(v)
+			if err != nil {
+				return out, err
+			}
+			out.MemberOverrides = overrides
+		}
+	}
+	return out, nil
 }
 
 func parseTeamRunQuorumPolicy(meta map[string]any) (string, error) {
@@ -1693,4 +1770,99 @@ func asStringSlice(v any) []string {
 	default:
 		return nil
 	}
+}
+
+func parseMemberOverrides(v any) (map[string]map[string]any, error) {
+	if v == nil {
+		return nil, nil
+	}
+	raw, ok := v.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("member_overrides must be object")
+	}
+	out := map[string]map[string]any{}
+	for k, rv := range raw {
+		memberID := strings.TrimSpace(k)
+		if memberID == "" {
+			continue
+		}
+		m, ok := rv.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("member_overrides.%s must be object", memberID)
+		}
+		sanitized := sanitizeRunOverrides(m)
+		if len(sanitized) > 0 {
+			out[memberID] = sanitized
+		}
+	}
+	return out, nil
+}
+
+func sanitizeRunOverrides(raw map[string]any) map[string]any {
+	if len(raw) == 0 {
+		return nil
+	}
+	out := map[string]any{}
+	for k, v := range raw {
+		key := strings.ToLower(strings.TrimSpace(k))
+		switch key {
+		case "model", "base_url", "summary_model":
+			if s, ok := v.(string); ok {
+				s = strings.TrimSpace(s)
+				if s != "" {
+					out[key] = s
+				}
+			}
+		case "tools":
+			if s, ok := v.(string); ok {
+				s = strings.TrimSpace(strings.ToLower(s))
+				if s == "none" || s == "basic" || s == "host" {
+					out[key] = s
+				}
+			}
+		case "timeout_ms":
+			if iv, ok := asInt(v); ok {
+				if iv < 100 {
+					iv = 100
+				}
+				if iv > 300_000 {
+					iv = 300_000
+				}
+				out[key] = iv
+			}
+		case "max_steps":
+			if iv, ok := asInt(v); ok {
+				if iv < 1 {
+					iv = 1
+				}
+				if iv > 256 {
+					iv = 256
+				}
+				out[key] = iv
+			}
+		case "stream_assistant":
+			if b, ok := v.(bool); ok {
+				out[key] = b
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func memberMetaRunOverrides(meta map[string]any) map[string]any {
+	if len(meta) == 0 {
+		return nil
+	}
+	raw, ok := meta["run_overrides"]
+	if !ok {
+		return nil
+	}
+	m, ok := raw.(map[string]any)
+	if !ok {
+		return nil
+	}
+	return sanitizeRunOverrides(m)
 }

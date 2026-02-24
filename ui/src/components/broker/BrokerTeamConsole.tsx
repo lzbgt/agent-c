@@ -66,6 +66,9 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     agent_id?: string;
     deployment_id?: string;
     created_unix_ms?: number;
+    weight?: number;
+    capabilities?: string[];
+    meta?: Record<string, any>;
   };
   type TeamQuorumRuleRow = {
     rule_id?: string;
@@ -92,8 +95,15 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [memberRole, setMemberRole] = React.useState<string>("executor");
   const [memberStatus, setMemberStatus] = React.useState<string>("active");
   const [memberWeight, setMemberWeight] = React.useState<string>("1");
+  const [memberCapabilities, setMemberCapabilities] = React.useState<string>("");
   const [memberAgentId, setMemberAgentId] = React.useState<string>("");
   const [memberDeploymentId, setMemberDeploymentId] = React.useState<string>("");
+  const [memberBackendLabel, setMemberBackendLabel] = React.useState<string>("");
+  const [memberModel, setMemberModel] = React.useState<string>("");
+  const [memberBaseUrl, setMemberBaseUrl] = React.useState<string>("");
+  const [memberSummaryModel, setMemberSummaryModel] = React.useState<string>("");
+  const [memberTools, setMemberTools] = React.useState<string>("");
+  const [memberTimeoutMs, setMemberTimeoutMs] = React.useState<string>("");
 
   const [rulesBusy, setRulesBusy] = React.useState<boolean>(false);
   const [rulesError, setRulesError] = React.useState<string | null>(null);
@@ -110,6 +120,8 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [runConcurrency, setRunConcurrency] = React.useState<string>("1");
   const [runTimeoutMs, setRunTimeoutMs] = React.useState<string>("60000");
   const [runQuorumMode, setRunQuorumMode] = React.useState<string>("auto");
+  const [runOverridesMode, setRunOverridesMode] = React.useState<string>("member_meta");
+  const [runMemberOverridesJson, setRunMemberOverridesJson] = React.useState<string>("");
   type InlineApproval = {
     member_id: string;
     decision: "approve" | "deny";
@@ -308,6 +320,27 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       if (status) payload.status = status;
       const w = Number.parseInt(String(memberWeight || ""), 10);
       if (Number.isFinite(w)) payload.weight = w;
+      const caps = String(memberCapabilities || "")
+        .split(",")
+        .map((c) => c.trim())
+        .filter(Boolean);
+      if (caps.length > 0) payload.capabilities = caps;
+      const meta: Record<string, any> = {};
+      const backendLabel = String(memberBackendLabel || "").trim();
+      if (backendLabel) meta.backend_label = backendLabel;
+      const runOverrides: Record<string, any> = {};
+      const model = String(memberModel || "").trim();
+      if (model) runOverrides.model = model;
+      const baseUrl = String(memberBaseUrl || "").trim();
+      if (baseUrl) runOverrides.base_url = baseUrl;
+      const summaryModel = String(memberSummaryModel || "").trim();
+      if (summaryModel) runOverrides.summary_model = summaryModel;
+      const tools = String(memberTools || "").trim();
+      if (tools) runOverrides.tools = tools;
+      const timeoutMs = Number.parseInt(String(memberTimeoutMs || "").trim(), 10);
+      if (Number.isFinite(timeoutMs)) runOverrides.timeout_ms = timeoutMs;
+      if (Object.keys(runOverrides).length > 0) meta.run_overrides = runOverrides;
+      if (Object.keys(meta).length > 0) payload.meta = meta;
       await apiBrokerTeamMembersUpsert(props.base, tid, payload, props.auth);
       setMemberId("");
       await refreshMembers(tid);
@@ -436,6 +469,25 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       if (Number.isFinite(timeout)) teamPayload.timeout_ms = timeout;
       const qmode = String(runQuorumMode || "").trim();
       if (qmode) teamPayload.quorum_policy = { mode: qmode };
+      const overridesMode = String(runOverridesMode || "").trim();
+      if (overridesMode) teamPayload.run_overrides_mode = overridesMode;
+      if (overridesMode === "explicit") {
+        const rawOverrides = String(runMemberOverridesJson || "").trim();
+        if (rawOverrides) {
+          let parsed: any = null;
+          try {
+            parsed = JSON.parse(rawOverrides);
+          } catch (err) {
+            setRunError(`invalid member_overrides json: ${String(err)}`);
+            return;
+          }
+          if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+            setRunError("member_overrides must be an object keyed by member_id");
+            return;
+          }
+          teamPayload.member_overrides = parsed;
+        }
+      }
       if (runApprovals.length > 0) {
         teamPayload.approvals = runApprovals;
       }
@@ -724,6 +776,63 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             value={memberWeight}
             onChange={(e) => setMemberWeight(e.target.value)}
           />
+          <FieldLabel>Capabilities</FieldLabel>
+          <input
+            className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={memberCapabilities}
+            onChange={(e) => setMemberCapabilities(e.target.value)}
+            placeholder="vision,audio"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <FieldLabel>Backend label</FieldLabel>
+          <input
+            className="min-w-[140px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={memberBackendLabel}
+            onChange={(e) => setMemberBackendLabel(e.target.value)}
+            placeholder="openrouter-main"
+          />
+          <FieldLabel>Model</FieldLabel>
+          <input
+            className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={memberModel}
+            onChange={(e) => setMemberModel(e.target.value)}
+            placeholder="optional"
+          />
+          <FieldLabel>Base URL</FieldLabel>
+          <input
+            className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={memberBaseUrl}
+            onChange={(e) => setMemberBaseUrl(e.target.value)}
+            placeholder="https://api.openai.com/v1"
+          />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <FieldLabel>Summary model</FieldLabel>
+          <input
+            className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={memberSummaryModel}
+            onChange={(e) => setMemberSummaryModel(e.target.value)}
+            placeholder="optional"
+          />
+          <FieldLabel>Tools</FieldLabel>
+          <select
+            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={memberTools}
+            onChange={(e) => setMemberTools(e.target.value)}
+          >
+            <option value="">inherit</option>
+            <option value="none">none</option>
+            <option value="basic">basic</option>
+            <option value="host">host</option>
+          </select>
+          <FieldLabel>Timeout ms</FieldLabel>
+          <input
+            className="w-24 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={memberTimeoutMs}
+            onChange={(e) => setMemberTimeoutMs(e.target.value)}
+            placeholder="60000"
+          />
           <button
             className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
             type="button"
@@ -742,18 +851,54 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
           <div className="grid gap-2">
             {members.map((m, idx) => {
               const mid = String(m?.member_id || "");
+              const meta = m?.meta && typeof m.meta === "object" ? (m.meta as Record<string, any>) : null;
+              const backendLabel = meta?.backend_label ? String(meta.backend_label) : "";
+              const overridesRaw =
+                meta?.run_overrides && typeof meta.run_overrides === "object" ? meta.run_overrides : null;
+              const overrideBits: string[] = [];
+              if (overridesRaw && typeof overridesRaw === "object") {
+                const model = (overridesRaw as any).model ? String((overridesRaw as any).model) : "";
+                const baseUrl = (overridesRaw as any).base_url ? String((overridesRaw as any).base_url) : "";
+                const summaryModel = (overridesRaw as any).summary_model ? String((overridesRaw as any).summary_model) : "";
+                const tools = (overridesRaw as any).tools ? String((overridesRaw as any).tools) : "";
+                const timeoutMs = (overridesRaw as any).timeout_ms;
+                const maxSteps = (overridesRaw as any).max_steps;
+                const streamAssistant = (overridesRaw as any).stream_assistant;
+                if (model) overrideBits.push(`model ${model}`);
+                if (summaryModel) overrideBits.push(`summary ${summaryModel}`);
+                if (baseUrl) overrideBits.push(`base ${baseUrl}`);
+                if (tools) overrideBits.push(`tools ${tools}`);
+                if (Number.isFinite(timeoutMs)) overrideBits.push(`timeout ${timeoutMs}ms`);
+                if (Number.isFinite(maxSteps)) overrideBits.push(`max_steps ${maxSteps}`);
+                if (typeof streamAssistant === "boolean") {
+                  overrideBits.push(`stream ${streamAssistant ? "on" : "off"}`);
+                }
+              }
+              const infoBits: string[] = [];
+              if (typeof m?.weight === "number") infoBits.push(`weight ${m.weight}`);
+              const caps = Array.isArray(m?.capabilities)
+                ? m.capabilities.map((c) => String(c).trim()).filter(Boolean)
+                : [];
+              if (caps.length > 0) infoBits.push(`caps ${caps.join(",")}`);
+              if (backendLabel) infoBits.push(`backend ${backendLabel}`);
+              if (overrideBits.length > 0) infoBits.push(`overrides ${overrideBits.join(", ")}`);
               return (
                 <div
                   key={`member-${mid}-${idx}`}
                   className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70"
                 >
                   <div className="text-[11px] text-white/70">
-                    <span className="text-white/90">{mid || "member"}</span>
-                    {m?.role ? ` · role ${m.role}` : ""}
-                    {m?.status ? ` · ${m.status}` : ""}
-                    {m?.agent_id ? ` · agent ${m.agent_id}` : ""}
-                    {m?.deployment_id ? ` · dep ${m.deployment_id}` : ""}
-                    {m?.created_unix_ms ? ` · ${fmtTs(m.created_unix_ms)}` : ""}
+                    <div>
+                      <span className="text-white/90">{mid || "member"}</span>
+                      {m?.role ? ` · role ${m.role}` : ""}
+                      {m?.status ? ` · ${m.status}` : ""}
+                      {m?.agent_id ? ` · agent ${m.agent_id}` : ""}
+                      {m?.deployment_id ? ` · dep ${m.deployment_id}` : ""}
+                      {m?.created_unix_ms ? ` · ${fmtTs(m.created_unix_ms)}` : ""}
+                    </div>
+                    {infoBits.length > 0 ? (
+                      <div className="text-[10px] text-white/50">{infoBits.join(" · ")}</div>
+                    ) : null}
                   </div>
                   <button
                     className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
@@ -919,6 +1064,35 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             {runBusy ? "Submitting…" : "Create run"}
           </button>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <FieldLabel>Run overrides</FieldLabel>
+          <select
+            className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={runOverridesMode}
+            onChange={(e) => setRunOverridesMode(e.target.value)}
+          >
+            <option value="off">off</option>
+            <option value="member_meta">member meta</option>
+            <option value="explicit">explicit</option>
+          </select>
+          <span className="text-[11px] text-white/50">
+            Apply per-member backend overrides when enabled.
+          </span>
+        </div>
+        {runOverridesMode === "explicit" ? (
+          <div className="grid gap-1">
+            <FieldLabel>Member overrides JSON</FieldLabel>
+            <textarea
+              className="min-h-[84px] w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
+              value={runMemberOverridesJson}
+              onChange={(e) => setRunMemberOverridesJson(e.target.value)}
+              placeholder='{"member_1":{"model":"gpt-4.1-mini","base_url":"https://api.openai.com/v1","tools":"basic"}}'
+            />
+            <div className="text-[11px] text-white/50">
+              Allowed fields: model, base_url, summary_model, tools, timeout_ms, max_steps, stream_assistant.
+            </div>
+          </div>
+        ) : null}
         <div
           className="mt-2 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2"
           data-testid="team-inline-approvals"

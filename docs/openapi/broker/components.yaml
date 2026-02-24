@@ -452,6 +452,14 @@ schemas:
                 type: string
                 enum: [auto, off]
             description: Quorum enforcement mode for team_run rules (default auto).
+          run_overrides_mode:
+            type: string
+            enum: [off, member_meta, explicit]
+            description: Per-member run override mode (default off).
+          member_overrides:
+            type: object
+            additionalProperties: true
+            description: Map of member_id to run override objects (allowlist enforced server-side).
           approvals:
             type: array
             description: Approvals for quorum-gated team runs (member IDs or objects).
