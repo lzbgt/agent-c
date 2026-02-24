@@ -677,6 +677,24 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     setRunRuntimeMembersJson(compacted.length > 0 ? JSON.stringify(compacted, null, 2) : "");
   };
 
+  const handleCopyRuntimeMembers = async () => {
+    const payload = String(runRuntimeMembersJson || "").trim();
+    if (!payload) {
+      setRunError("runtime members json is empty");
+      return;
+    }
+    if (runtimeMembersPreview.error) {
+      setRunError(runtimeMembersPreview.error);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(payload);
+      setRunError(null);
+    } catch (err) {
+      setRunError(`copy failed: ${String(err)}`);
+    }
+  };
+
   const handleSeedExplicitOverrides = () => {
     if (membersList.length === 0) {
       setRunError("no team members loaded");
@@ -1581,6 +1599,13 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                   onClick={() => handleCompactRuntimeMembers()}
                 >
                   Compact JSON
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                  type="button"
+                  onClick={() => void handleCopyRuntimeMembers()}
+                >
+                  Copy JSON
                 </button>
               </div>
               {runtimeMembersPreview.items.map((item, idx) => {
