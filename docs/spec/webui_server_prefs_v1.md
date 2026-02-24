@@ -7,7 +7,7 @@ Last updated: 2026-02-24
 - Persist **WebUI connection profiles** (daemon/broker URLs, agent ids, profile names) on the **daemon or broker** so they survive browser resets and are shared across devices.
 - Keep secrets **off** the server by default (auth tokens remain local unless explicitly opted in later).
 - Make the flow robust when the daemon is restarted (prefs stored in agentd DB meta table).
-- Maintain backward compatibility with existing localStorage-only behavior.
+- Keep a local cache for fast startup/offline use, but prefer server-side persistence when supported.
 
 ## Non-goals (v1)
 
@@ -73,8 +73,9 @@ Notes:
 
 ## WebUI Behavior
 
-- Toggle: “Sync connection profiles to daemon”.
-- On enable:
+- Default mode: **auto** (enable sync when server advertises client prefs and auth token is present).
+- Manual override: toggle “Sync connection profiles to daemon/broker”.
+- On enable (auto or manual):
   - Pull prefs from daemon (direct mode) or broker (broker mode) and merge with local tokens.
   - Push sanitized profiles (no secrets) on change.
 - On failure: keep local settings, surface a warning, and retry on demand.

@@ -40,16 +40,18 @@ Edit `ui/public/agentui-config.js` (copied to `ui/dist/agentui-config.js`) to pr
 - `allowClientRpcs`, `allowClientEffects`, `allowUnsafePageEval`
 - `workflowAgentTargets` (array or CSV of agentd base URLs for collaboration templates)
 - `workflowBearerEnv` (env var name used by `agentd_call` bearer_env in templates)
+- `serverPrefsMode` (`off`, `auto`, `on`)
 
-Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`, and `VITE_AGENTUI_*`.
+Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`, and `VITE_AGENTUI_*` (including `VITE_AGENTUI_SERVER_PREFS_MODE`).
 
 ## Broker mode and profiles
 
-- The WebUI can store multiple **connection profiles** (direct or broker-backed) in localStorage.
+- The WebUI caches multiple **connection profiles** (direct or broker-backed) locally and can persist them server-side.
 - Each profile can enable **profile-specific run settings** (model/provider, tool flags, run limits).
 - The broker console exposes agent membership management, audit events, team setup (members + quorum rules), team runs, and quorum approvals.
-- Optional: sync connection profiles to the **daemon** (direct mode) or **broker** (broker mode) for server-side persistence.
-  - Toggle “Sync connection profiles to daemon/broker” in Settings → Connection.
+- Server-side sync prefers the **daemon** (direct mode) or **broker** (broker mode) when supported.
+  - Default: **auto** (syncs when the server advertises client prefs and an auth token is set).
+  - Toggle “Sync connection profiles to daemon/broker” in Settings → Connection to force on/off.
   - Only non-secret fields are stored (URLs/ids/profile names). Auth tokens remain local.
 - Devstack OIDC helper: `tools/devstack_oidc_token.sh --state out/devstack_state.json` (prints a bearer token).
 

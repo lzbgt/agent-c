@@ -123,6 +123,24 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const serverPrefsTarget = connection.mode === "broker" ? "broker" : "daemon";
   const serverPrefsStatusLabel =
     connection.serverPrefsStatus === "loading" ? "syncing…" : connection.serverPrefsStatus;
+  const serverPrefsAutoNote = connection.serverPrefsAuto
+    ? (() => {
+        switch (connection.serverPrefsAutoStatus) {
+          case "checking":
+            return "Auto: checking server support…";
+          case "ready":
+            return "Auto: server-side sync enabled.";
+          case "auth_required":
+            return "Auto: add an auth token to enable server-side sync.";
+          case "unsupported":
+            return "Auto: server does not advertise client prefs support.";
+          case "error":
+            return `Auto: check failed (${connection.serverPrefsAutoError || "unknown error"}).`;
+          default:
+            return "Auto: waiting for server info…";
+        }
+      })()
+    : null;
   const [openrouterModels, setOpenrouterModels] = React.useState<any | null>(null);
 
   React.useEffect(() => {
@@ -371,10 +389,10 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
               placeholder="Profile name"
             />
             <div className="mt-2 text-[11px] text-white/60">
-              Profiles are stored in browser localStorage. Switch profiles to target multiple daemon deployments.
+              Profiles are cached locally and can sync to the server for cross-device persistence.
             </div>
             <div className="mt-3 rounded-md border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-white/70">
-              <div className="text-xs font-semibold text-white/70">Daemon profile sync</div>
+              <div className="text-xs font-semibold text-white/70">Server profile sync</div>
               <div className="mt-1 flex items-center justify-between gap-2">
                 <label className="flex items-center gap-2">
                   <input
@@ -391,6 +409,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                   ? `Status: ${serverPrefsStatusLabel}${connection.serverPrefsLastSyncMs ? ` · ${new Date(connection.serverPrefsLastSyncMs).toLocaleString()}` : ""}`
                   : "Set a base URL first."}
               </div>
+              {serverPrefsAutoNote ? <div className="mt-1 text-white/50">{serverPrefsAutoNote}</div> : null}
               {connection.serverPrefsError ? (
                 <div className="mt-1 text-rose-200">Sync error: {connection.serverPrefsError}</div>
               ) : null}

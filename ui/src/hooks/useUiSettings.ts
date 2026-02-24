@@ -6,11 +6,13 @@ import {
   type AgentUIDefaults,
   type ConnectionMode,
   type HostPolicy,
+  type ServerPrefsMode,
   type ToolMode,
 } from "../runtime_config";
 import {
   apiBrokerGetClientPrefs,
   apiBrokerPostClientPrefs,
+  apiGetCaps,
   apiGetClientPrefs,
   apiPostClientPrefs,
   type ApiAuth,
@@ -41,6 +43,9 @@ export type ConnectionSettings = {
   daemonAuthToken: string;
   setDaemonAuthToken: React.Dispatch<React.SetStateAction<string>>;
   serverPrefsEnabled: boolean;
+  serverPrefsAuto: boolean;
+  serverPrefsAutoStatus: ServerPrefsAutoStatus;
+  serverPrefsAutoError: string | null;
   setServerPrefsEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   serverPrefsStatus: "idle" | "loading" | "error" | "synced";
   serverPrefsError: string | null;
@@ -53,6 +58,8 @@ export type ConnectionSettings = {
   daemonAuth: ApiAuth;
   authKey: string;
 };
+
+type ServerPrefsAutoStatus = "idle" | "checking" | "ready" | "unsupported" | "auth_required" | "error";
 
 export type RunProfileOverrides = {
   tools?: ToolMode;
@@ -480,7 +487,32 @@ export default function useUiSettings(): UiSettings {
     [],
   );
   const [activeProfileId, setActiveProfileId] = useLocalStorageState("agentui.connectionProfileActive", "");
-  const [serverPrefsEnabled, setServerPrefsEnabled] = useLocalStorageState("agentui.serverPrefsEnabled", false);
+  const serverPrefsDefaultMode: ServerPrefsMode = defaults.serverPrefsMode;
+  const initialServerPrefsUserSet = React.useMemo(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      const raw = window.localStorage.getItem("agentui.serverPrefsEnabledSet");
+      if (raw !== null) {
+        const parsed = JSON.parse(raw);
+        return typeof parsed === "boolean" ? parsed : false;
+      }
+      const legacy = window.localStorage.getItem("agentui.serverPrefsEnabled");
+      return legacy !== null;
+    } catch {
+      return false;
+    }
+  }, []);
+  const [serverPrefsEnabled, setServerPrefsEnabledState] = useLocalStorageState(
+    "agentui.serverPrefsEnabled",
+    serverPrefsDefaultMode === "on",
+  );
+  const [serverPrefsUserSet, setServerPrefsUserSet] = useLocalStorageState(
+    "agentui.serverPrefsEnabledSet",
+    initialServerPrefsUserSet,
+  );
+  const [serverPrefsAutoEnabled, setServerPrefsAutoEnabled] = React.useState<boolean>(false);
+  const [serverPrefsAutoStatus, setServerPrefsAutoStatus] = React.useState<ServerPrefsAutoStatus>("idle");
+  const [serverPrefsAutoError, setServerPrefsAutoError] = React.useState<string | null>(null);
   const [serverPrefsStatus, setServerPrefsStatus] = React.useState<"idle" | "loading" | "error" | "synced">("idle");
   const [serverPrefsError, setServerPrefsError] = React.useState<string | null>(null);
   const [serverPrefsLastSyncMs, setServerPrefsLastSyncMs] = React.useState<number | null>(null);
@@ -1288,13 +1320,80 @@ export default function useUiSettings(): UiSettings {
     return normalizeHttpBase(base, "http://127.0.0.1:8123", "http");
   }, [base, brokerBase, connectionMode]);
 
+  const serverPrefsAuthToken = connectionMode === "broker" ? brokerAuthToken : daemonAuthToken;
+  const serverPrefsAuthReady = String(serverPrefsAuthToken || "").trim().length > 0;
+  const serverPrefsAuto = serverPrefsDefaultMode === "auto" && !serverPrefsUserSet;
+  const serverPrefsEffectiveEnabled = serverPrefsUserSet
+    ? serverPrefsEnabled
+    : serverPrefsDefaultMode === "auto"
+      ? serverPrefsAutoEnabled
+      : serverPrefsDefaultMode === "on";
+
+  React.useEffect(() => {
+    if (!serverPrefsAuto) {
+      setServerPrefsAutoEnabled(false);
+      setServerPrefsAutoStatus("idle");
+      setServerPrefsAutoError(null);
+      return;
+    }
+    const baseTrimmed = String(serverPrefsBase || "").trim();
+    if (!baseTrimmed) {
+      setServerPrefsAutoEnabled(false);
+      setServerPrefsAutoStatus("idle");
+      setServerPrefsAutoError(null);
+      return;
+    }
+    if (!serverPrefsAuthReady) {
+      setServerPrefsAutoEnabled(false);
+      setServerPrefsAutoStatus("auth_required");
+      setServerPrefsAutoError(null);
+      return;
+    }
+    let cancelled = false;
+    setServerPrefsAutoStatus("checking");
+    setServerPrefsAutoError(null);
+    (async () => {
+      try {
+        if (connectionMode === "broker") {
+          const baseNoSlash = baseTrimmed.replace(/\/+$/, "");
+          const r = await fetch(`${baseNoSlash}/v1/caps`);
+          const j = await r.json();
+          const enabled = !!j?.features?.client_prefs?.enabled;
+          if (cancelled) return;
+          setServerPrefsAutoEnabled(enabled);
+          setServerPrefsAutoStatus(enabled ? "ready" : "unsupported");
+          return;
+        }
+        const caps = await apiGetCaps(baseTrimmed, daemonAuth);
+        const enabled = !!(caps as any)?.features?.client_prefs?.enabled;
+        if (cancelled) return;
+        setServerPrefsAutoEnabled(enabled);
+        setServerPrefsAutoStatus(enabled ? "ready" : "unsupported");
+      } catch (err) {
+        if (cancelled) return;
+        setServerPrefsAutoEnabled(false);
+        setServerPrefsAutoStatus("error");
+        setServerPrefsAutoError(String(err instanceof Error ? err.message : err));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    serverPrefsAuto,
+    serverPrefsAuthReady,
+    serverPrefsBase,
+    connectionMode,
+    daemonAuth,
+  ]);
+
   const serverPrefsPayload = React.useMemo(
     () => buildServerPrefs(connectionProfiles, activeProfileId),
     [connectionProfiles, activeProfileId],
   );
   const serverPrefsPayloadJson = React.useMemo(() => JSON.stringify(serverPrefsPayload), [serverPrefsPayload]);
   const serverPrefsClientKind = "webui";
-  const serverPrefsCanUse = serverPrefsEnabled && String(serverPrefsBase || "").trim().length > 0;
+  const serverPrefsCanUse = serverPrefsEffectiveEnabled && String(serverPrefsBase || "").trim().length > 0;
   const connectionProfilesRef = React.useRef(connectionProfiles);
   React.useEffect(() => {
     connectionProfilesRef.current = connectionProfiles;
@@ -1379,6 +1478,14 @@ export default function useUiSettings(): UiSettings {
     serverPrefsPayloadJson,
   ]);
 
+  const setServerPrefsEnabled = React.useCallback<React.Dispatch<React.SetStateAction<boolean>>>(
+    (next) => {
+      setServerPrefsUserSet(true);
+      setServerPrefsEnabledState((prev) => (typeof next === "function" ? next(prev) : next));
+    },
+    [setServerPrefsEnabledState, setServerPrefsUserSet],
+  );
+
   React.useEffect(() => {
     if (!serverPrefsCanUse) return;
     void pullServerPrefs();
@@ -1427,7 +1534,10 @@ export default function useUiSettings(): UiSettings {
       setBrokerAuthToken,
       daemonAuthToken,
       setDaemonAuthToken,
-      serverPrefsEnabled,
+      serverPrefsEnabled: serverPrefsEffectiveEnabled,
+      serverPrefsAuto,
+      serverPrefsAutoStatus,
+      serverPrefsAutoError,
       setServerPrefsEnabled,
       serverPrefsStatus,
       serverPrefsError,

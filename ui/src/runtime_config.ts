@@ -1,6 +1,7 @@
 export type ConnectionMode = "direct" | "broker";
 export type ToolMode = "host" | "basic" | "none";
 export type HostPolicy = "full" | "readonly";
+export type ServerPrefsMode = "off" | "auto" | "on";
 
 export type AgentUIRuntimeConfig = {
   connectionMode?: ConnectionMode | string;
@@ -43,6 +44,7 @@ export type AgentUIRuntimeConfig = {
   brokerPanelOpen?: boolean | string;
   workflowAgentTargets?: string[] | string;
   workflowBearerEnv?: string;
+  serverPrefsMode?: ServerPrefsMode | string;
 };
 
 export type AgentUIDefaults = {
@@ -86,6 +88,7 @@ export type AgentUIDefaults = {
   brokerPanelOpen: boolean;
   workflowAgentTargets: string[];
   workflowBearerEnv: string;
+  serverPrefsMode: ServerPrefsMode;
 };
 
 declare global {
@@ -135,6 +138,7 @@ const DEFAULTS: AgentUIDefaults = {
   brokerPanelOpen: false,
   workflowAgentTargets: [],
   workflowBearerEnv: "",
+  serverPrefsMode: "auto",
 };
 
 const env = (() => {
@@ -348,6 +352,10 @@ export const getUiDefaults = (): AgentUIDefaults => {
 
   out.workflowAgentTargets = coerceStringList(cfg.workflowAgentTargets) ?? out.workflowAgentTargets;
   out.workflowBearerEnv = coerceString(cfg.workflowBearerEnv) ?? out.workflowBearerEnv;
+  out.serverPrefsMode =
+    coerceEnum(cfg.serverPrefsMode, ["off", "auto", "on"]) ??
+    coerceEnum(envString("VITE_AGENTUI_SERVER_PREFS_MODE"), ["off", "auto", "on"]) ??
+    out.serverPrefsMode;
 
   return out;
 };
