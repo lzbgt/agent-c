@@ -123,6 +123,17 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [runOverridesMode, setRunOverridesMode] = React.useState<string>("member_meta");
   const [runMemberOverridesJson, setRunMemberOverridesJson] = React.useState<string>("");
   const [runRuntimeMembersJson, setRunRuntimeMembersJson] = React.useState<string>("");
+  const [runtimeMemberId, setRuntimeMemberId] = React.useState<string>("");
+  const [runtimeMemberAgentId, setRuntimeMemberAgentId] = React.useState<string>("");
+  const [runtimeMemberDeploymentId, setRuntimeMemberDeploymentId] = React.useState<string>("");
+  const [runtimeMemberRole, setRuntimeMemberRole] = React.useState<string>("executor");
+  const [runtimeMemberCapabilities, setRuntimeMemberCapabilities] = React.useState<string>("");
+  const [runtimeMemberBackendLabel, setRuntimeMemberBackendLabel] = React.useState<string>("");
+  const [runtimeMemberModel, setRuntimeMemberModel] = React.useState<string>("");
+  const [runtimeMemberBaseUrl, setRuntimeMemberBaseUrl] = React.useState<string>("");
+  const [runtimeMemberSummaryModel, setRuntimeMemberSummaryModel] = React.useState<string>("");
+  const [runtimeMemberTools, setRuntimeMemberTools] = React.useState<string>("");
+  const [runtimeMemberTimeoutMs, setRuntimeMemberTimeoutMs] = React.useState<string>("");
   type InlineApproval = {
     member_id: string;
     decision: "approve" | "deny";
@@ -440,6 +451,75 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     setRunApprovalMemberId("");
     setRunApprovalRuleId("");
     setRunApprovalReason("");
+  };
+
+  const handleAddRuntimeMember = () => {
+    const agentId = String(runtimeMemberAgentId || "").trim();
+    if (!agentId) {
+      setRunError("runtime member agent_id required");
+      return;
+    }
+    const role = String(runtimeMemberRole || "").trim();
+    if (!role) {
+      setRunError("runtime member role required");
+      return;
+    }
+    const entry: Record<string, any> = { agent_id: agentId, role };
+    const memberId = String(runtimeMemberId || "").trim();
+    if (memberId) entry.member_id = memberId;
+    const deploymentId = String(runtimeMemberDeploymentId || "").trim();
+    if (deploymentId) entry.deployment_id = deploymentId;
+    const caps = String(runtimeMemberCapabilities || "")
+      .split(",")
+      .map((c) => c.trim())
+      .filter(Boolean);
+    if (caps.length > 0) entry.capabilities = caps;
+    const meta: Record<string, any> = {};
+    const backendLabel = String(runtimeMemberBackendLabel || "").trim();
+    if (backendLabel) meta.backend_label = backendLabel;
+    const runOverrides: Record<string, any> = {};
+    const model = String(runtimeMemberModel || "").trim();
+    if (model) runOverrides.model = model;
+    const baseUrl = String(runtimeMemberBaseUrl || "").trim();
+    if (baseUrl) runOverrides.base_url = baseUrl;
+    const summaryModel = String(runtimeMemberSummaryModel || "").trim();
+    if (summaryModel) runOverrides.summary_model = summaryModel;
+    const tools = String(runtimeMemberTools || "").trim();
+    if (tools) runOverrides.tools = tools;
+    const timeoutMs = Number.parseInt(String(runtimeMemberTimeoutMs || "").trim(), 10);
+    if (Number.isFinite(timeoutMs)) runOverrides.timeout_ms = timeoutMs;
+    if (Object.keys(runOverrides).length > 0) meta.run_overrides = runOverrides;
+    if (Object.keys(meta).length > 0) entry.meta = meta;
+
+    let items: any[] = [];
+    const raw = String(runRuntimeMembersJson || "").trim();
+    if (raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          items = parsed;
+        } else {
+          setRunError("runtime_members json must be an array");
+          return;
+        }
+      } catch (err) {
+        setRunError(`invalid runtime_members json: ${String(err)}`);
+        return;
+      }
+    }
+    items.push(entry);
+    setRunRuntimeMembersJson(JSON.stringify(items, null, 2));
+    setRunError(null);
+    setRuntimeMemberId("");
+    setRuntimeMemberAgentId("");
+    setRuntimeMemberDeploymentId("");
+    setRuntimeMemberCapabilities("");
+    setRuntimeMemberBackendLabel("");
+    setRuntimeMemberModel("");
+    setRuntimeMemberBaseUrl("");
+    setRuntimeMemberSummaryModel("");
+    setRuntimeMemberTools("");
+    setRuntimeMemberTimeoutMs("");
   };
 
   const handleCreateRun = async () => {
@@ -1119,6 +1199,114 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
           />
           <div className="text-[11px] text-white/50">
             Each entry needs agent_id + role; member_id is optional (required for explicit overrides).
+          </div>
+          <div className="mt-2 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
+            <div className="text-[11px] text-white/70">Quick add runtime member</div>
+            <div className="flex flex-wrap items-center gap-2">
+              <FieldLabel>Member ID</FieldLabel>
+              <input
+                className="min-w-[140px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                value={runtimeMemberId}
+                onChange={(e) => setRuntimeMemberId(e.target.value)}
+                placeholder="optional"
+              />
+              <FieldLabel>Agent ID</FieldLabel>
+              <input
+                className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                value={runtimeMemberAgentId}
+                onChange={(e) => setRuntimeMemberAgentId(e.target.value)}
+                placeholder="agent1"
+              />
+              <FieldLabel>Role</FieldLabel>
+              <input
+                className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                value={runtimeMemberRole}
+                onChange={(e) => setRuntimeMemberRole(e.target.value)}
+                placeholder="executor"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <FieldLabel>Deployment</FieldLabel>
+              <input
+                className="min-w-[140px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                value={runtimeMemberDeploymentId}
+                onChange={(e) => setRuntimeMemberDeploymentId(e.target.value)}
+                placeholder="default"
+              />
+              <FieldLabel>Capabilities</FieldLabel>
+              <input
+                className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                value={runtimeMemberCapabilities}
+                onChange={(e) => setRuntimeMemberCapabilities(e.target.value)}
+                placeholder="vision,audio"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <FieldLabel>Backend label</FieldLabel>
+              <input
+                className="min-w-[140px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                value={runtimeMemberBackendLabel}
+                onChange={(e) => setRuntimeMemberBackendLabel(e.target.value)}
+                placeholder="openrouter-main"
+              />
+              <FieldLabel>Model</FieldLabel>
+              <input
+                className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                value={runtimeMemberModel}
+                onChange={(e) => setRuntimeMemberModel(e.target.value)}
+                placeholder="optional"
+              />
+              <FieldLabel>Base URL</FieldLabel>
+              <input
+                className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                value={runtimeMemberBaseUrl}
+                onChange={(e) => setRuntimeMemberBaseUrl(e.target.value)}
+                placeholder="https://api.openai.com/v1"
+              />
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <FieldLabel>Summary model</FieldLabel>
+              <input
+                className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                value={runtimeMemberSummaryModel}
+                onChange={(e) => setRuntimeMemberSummaryModel(e.target.value)}
+                placeholder="optional"
+              />
+              <FieldLabel>Tools</FieldLabel>
+              <select
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                value={runtimeMemberTools}
+                onChange={(e) => setRuntimeMemberTools(e.target.value)}
+              >
+                <option value="">inherit</option>
+                <option value="none">none</option>
+                <option value="basic">basic</option>
+                <option value="host">host</option>
+              </select>
+              <FieldLabel>Timeout ms</FieldLabel>
+              <input
+                className="w-24 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                value={runtimeMemberTimeoutMs}
+                onChange={(e) => setRuntimeMemberTimeoutMs(e.target.value)}
+                placeholder="60000"
+              />
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                type="button"
+                onClick={() => handleAddRuntimeMember()}
+              >
+                Add runtime member
+              </button>
+              {runRuntimeMembersJson.trim() ? (
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                  type="button"
+                  onClick={() => setRunRuntimeMembersJson("")}
+                >
+                  Clear runtime members
+                </button>
+              ) : null}
+            </div>
           </div>
         </div>
         <div
