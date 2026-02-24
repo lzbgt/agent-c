@@ -1504,7 +1504,8 @@ export default function useUiSettings(): UiSettings {
 
   const clearServerPrefsOverride = React.useCallback(() => {
     setServerPrefsUserSet(false);
-  }, [setServerPrefsUserSet]);
+    setServerPrefsEnabledState(serverPrefsDefaultMode === "on");
+  }, [serverPrefsDefaultMode, setServerPrefsEnabledState, setServerPrefsUserSet]);
 
   React.useEffect(() => {
     if (!serverPrefsCanUse) return;
