@@ -112,6 +112,25 @@ export default function HistoryPanel(props: HistoryPanelProps) {
               Object.prototype.hasOwnProperty.call(props.historyExpandedByKey, entryKey)
                 ? !!props.historyExpandedByKey[entryKey]
                 : idx === 0;
+            const tools = typeof e?.tools === "string" ? e.tools : "";
+            const yolo = typeof e?.yolo === "boolean" ? e.yolo : undefined;
+            const hostPolicy = typeof e?.host_policy === "string" ? e.host_policy : "";
+            const automationProfile =
+              typeof e?.effective_automation_profile === "string"
+                ? e.effective_automation_profile
+                : typeof e?.automation_profile === "string"
+                  ? e.automation_profile
+                  : "";
+            const model = typeof e?.model === "string" ? e.model : "";
+            const baseUrl = typeof e?.base_url === "string" ? e.base_url : "";
+            const meta = [
+              tools ? { label: "tools", value: tools } : null,
+              typeof yolo === "boolean" ? { label: "yolo", value: yolo ? "true" : "false" } : null,
+              hostPolicy ? { label: "host_policy", value: hostPolicy } : null,
+              automationProfile ? { label: "automation_profile", value: automationProfile } : null,
+              model ? { label: "model", value: model } : null,
+              baseUrl ? { label: "base_url", value: baseUrl } : null,
+            ].filter(Boolean) as { label: string; value: string }[];
 
             return (
               <details
@@ -161,6 +180,22 @@ export default function HistoryPanel(props: HistoryPanelProps) {
                   </div>
                 </summary>
                 <div className="mt-3 grid gap-3">
+                  {meta.length > 0 ? (
+                    <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2 text-[11px] text-white/70">
+                      <div className="mb-1 text-[11px] font-semibold text-white/60">Run settings</div>
+                      <div className="flex flex-wrap gap-2">
+                        {meta.map((item) => (
+                          <div
+                            key={`${item.label}:${item.value}`}
+                            className="flex items-center gap-1 rounded-md border border-white/10 bg-black/30 px-2 py-1"
+                          >
+                            <span className="text-white/50">{item.label}</span>
+                            <span className="font-mono text-white/80">{item.value}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   {assistantText ? (
                     <div className="rounded-md border border-white/10 bg-black/20 px-3 py-2">
                       <div className="flex items-start gap-2">

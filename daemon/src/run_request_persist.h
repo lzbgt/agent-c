@@ -34,6 +34,7 @@ struct RunRequestPersistInput {
   const std::string* job_id = nullptr;
   bool yolo = false;
   const std::string* host_policy = nullptr;
+  const std::string* effective_automation_profile = nullptr;
   const std::string* assistant_text = nullptr;
   const Json::Value* events_out = nullptr;
 };

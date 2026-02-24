@@ -20,7 +20,7 @@ namespace agentd {
 void persist_run_request(const RunRequestPersistInput& in) {
   if (!in.db || !in.db->is_open() || !in.session || !in.session_id || !in.args || !in.response_json ||
       !in.trace_id || !in.prompt || !in.tools || !in.run_cfg || !in.err || !in.http_body || !in.job_id ||
-      !in.host_policy || !in.assistant_text || !in.events_out) {
+      !in.host_policy || !in.effective_automation_profile || !in.assistant_text || !in.events_out) {
     return;
   }
 
@@ -251,6 +251,9 @@ void persist_run_request(const RunRequestPersistInput& in) {
     record["tools"] = *in.tools;
     record["yolo"] = in.yolo;
     record["host_policy"] = *in.host_policy;
+    if (!in.effective_automation_profile->empty()) {
+      record["effective_automation_profile"] = *in.effective_automation_profile;
+    }
     record["prompt"] = *in.prompt;
     record["assistant_text"] = *in.assistant_text;
     if (in.http_status) record["http_status"] = (Json::Int64)in.http_status;

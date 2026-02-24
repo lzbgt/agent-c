@@ -1428,6 +1428,7 @@ static Json::Value run_request_to_json_impl(
     persist.job_id = &job_id_local;
     persist.yolo = yolo;
     persist.host_policy = &effective_host_policy;
+    persist.effective_automation_profile = &effective_automation_profile;
     persist.assistant_text = &assistant_text;
     persist.events_out = &events_out;
     persist_run_request(persist);
