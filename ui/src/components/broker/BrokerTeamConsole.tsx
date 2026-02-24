@@ -868,7 +868,11 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                       className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
                       type="button"
                       onClick={() => {
-                        if (runId) setApprovalRunId(runId);
+                        if (teamId) setTeamId(teamId);
+                        if (runId) {
+                          setApprovalRunId(runId);
+                          setRunLookupId(runId);
+                        }
                         if (ruleId) setApprovalRuleId(ruleId);
                       }}
                     >
