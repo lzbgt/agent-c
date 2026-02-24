@@ -570,6 +570,44 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     setRunRuntimeMembersJson(next.length > 0 ? JSON.stringify(next, null, 2) : "");
   };
 
+  const handleSeedExplicitOverrides = () => {
+    if (membersList.length === 0) {
+      setRunError("no team members loaded");
+      return;
+    }
+    const seed: Record<string, any> = {};
+    for (const member of membersList) {
+      const mid = String(member?.member_id || "").trim();
+      if (!mid) continue;
+      const meta = member?.meta && typeof member.meta === "object" ? (member.meta as Record<string, any>) : null;
+      const overridesRaw =
+        meta?.run_overrides && typeof meta.run_overrides === "object" ? (meta.run_overrides as Record<string, any>) : null;
+      const entry: Record<string, any> = {};
+      if (overridesRaw) {
+        const model = overridesRaw.model ? String(overridesRaw.model) : "";
+        const baseUrl = overridesRaw.base_url ? String(overridesRaw.base_url) : "";
+        const summaryModel = overridesRaw.summary_model ? String(overridesRaw.summary_model) : "";
+        const tools = overridesRaw.tools ? String(overridesRaw.tools) : "";
+        const timeoutMs = overridesRaw.timeout_ms;
+        const maxSteps = overridesRaw.max_steps;
+        const streamAssistant = overridesRaw.stream_assistant;
+        if (model) entry.model = model;
+        if (baseUrl) entry.base_url = baseUrl;
+        if (summaryModel) entry.summary_model = summaryModel;
+        if (tools) entry.tools = tools;
+        if (Number.isFinite(timeoutMs)) entry.timeout_ms = timeoutMs;
+        if (Number.isFinite(maxSteps)) entry.max_steps = maxSteps;
+        if (typeof streamAssistant === "boolean") entry.stream_assistant = streamAssistant;
+      }
+      if (Object.keys(entry).length > 0) {
+        seed[mid] = entry;
+      }
+    }
+    setRunOverridesMode("explicit");
+    setRunMemberOverridesJson(JSON.stringify(seed, null, 2));
+    setRunError(null);
+  };
+
   const handleAddConnectedAgents = () => {
     if (runtimeMembersPreview.error) {
       setRunError(runtimeMembersPreview.error);
@@ -1292,6 +1330,15 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
               onChange={(e) => setRunMemberOverridesJson(e.target.value)}
               placeholder='{"member_1":{"model":"gpt-4.1-mini","base_url":"https://api.openai.com/v1","tools":"basic"}}'
             />
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                type="button"
+                onClick={() => handleSeedExplicitOverrides()}
+              >
+                Seed from team members
+              </button>
+            </div>
             <div className="text-[11px] text-white/50">
               Allowed fields: model, base_url, summary_model, tools, timeout_ms, max_steps, stream_assistant.
             </div>
