@@ -141,6 +141,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [runtimeSaveBusy, setRuntimeSaveBusy] = React.useState<boolean>(false);
   const [runtimeSaveError, setRuntimeSaveError] = React.useState<string | null>(null);
   const runtimeImportRef = React.useRef<HTMLInputElement | null>(null);
+  const [runtimeImportMerge, setRuntimeImportMerge] = React.useState<boolean>(true);
 
   const runtimeMembersPreview = React.useMemo(() => {
     const raw = String(runRuntimeMembersJson || "").trim();
@@ -701,7 +702,41 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     if (!file) return;
     try {
       const text = await file.text();
-      setRunRuntimeMembersJson(text.trim());
+      const trimmed = text.trim();
+      if (!runtimeImportMerge) {
+        setRunRuntimeMembersJson(trimmed);
+      } else {
+        let incoming: any = null;
+        try {
+          incoming = JSON.parse(trimmed);
+        } catch {
+          setRunRuntimeMembersJson(trimmed);
+          setRunError(null);
+          return;
+        }
+        const existing = runtimeMembersPreview.items;
+        if (!Array.isArray(incoming)) {
+          setRunRuntimeMembersJson(trimmed);
+          setRunError(null);
+          return;
+        }
+        const merged = Array.isArray(existing) ? [...existing] : [];
+        for (const item of incoming) {
+          const agentId = item?.agent_id ? String(item.agent_id).trim() : "";
+          const memberId = item?.member_id ? String(item.member_id).trim() : "";
+          const exists = merged.some((m: any) => {
+            const mid = m?.member_id ? String(m.member_id).trim() : "";
+            const aid = m?.agent_id ? String(m.agent_id).trim() : "";
+            if (memberId && mid) return memberId === mid;
+            if (agentId && aid) return agentId === aid;
+            return false;
+          });
+          if (!exists) {
+            merged.push(item);
+          }
+        }
+        setRunRuntimeMembersJson(merged.length > 0 ? JSON.stringify(merged, null, 2) : "");
+      }
       setRunError(null);
     } catch (err) {
       setRunError(`import failed: ${String(err)}`);
@@ -1647,6 +1682,14 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                 >
                   Import JSON
                 </button>
+                <label className="flex items-center gap-2 text-[11px] text-white/60">
+                  <input
+                    type="checkbox"
+                    checked={runtimeImportMerge}
+                    onChange={(e) => setRuntimeImportMerge(e.target.checked)}
+                  />
+                  merge
+                </label>
                 <button
                   className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
                   type="button"
