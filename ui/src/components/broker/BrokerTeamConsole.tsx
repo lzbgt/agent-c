@@ -40,7 +40,18 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
 
   const [teamsBusy, setTeamsBusy] = React.useState<boolean>(false);
   const [teamsError, setTeamsError] = React.useState<string | null>(null);
-  const [teams, setTeams] = React.useState<any[] | null>(null);
+  type TeamRow = {
+    team_id?: string;
+    display_name?: string;
+    owner_sub?: string;
+    created_unix_ms?: number;
+    tags?: string[];
+    policy_ref?: string;
+    shared_memory_scope_id?: string;
+    meta?: Record<string, any>;
+  };
+
+  const [teams, setTeams] = React.useState<TeamRow[] | null>(null);
   const [teamId, setTeamId] = React.useState<string>("");
   const [newTeamId, setNewTeamId] = React.useState<string>("");
   const [newTeamName, setNewTeamName] = React.useState<string>("");
