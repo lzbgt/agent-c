@@ -743,6 +743,30 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     }
   };
 
+  const handleFixInvalidRuntimeMembers = () => {
+    if (runtimeMembersPreview.error) {
+      setRunError(runtimeMembersPreview.error);
+      return;
+    }
+    const items = runtimeMembersPreview.items;
+    if (!Array.isArray(items) || items.length === 0) return;
+    const roleDefault = String(runtimeMemberRole || "").trim() || "executor";
+    const fixed: any[] = [];
+    for (const item of items) {
+      const agentId = item?.agent_id ? String(item.agent_id).trim() : "";
+      const role = item?.role ? String(item.role).trim() : "";
+      if (!agentId) {
+        continue;
+      }
+      if (!role) {
+        fixed.push({ ...item, role: roleDefault });
+      } else {
+        fixed.push(item);
+      }
+    }
+    setRunRuntimeMembersJson(fixed.length > 0 ? JSON.stringify(fixed, null, 2) : "");
+  };
+
   const handleCreateRun = async () => {
     const tid = teamIdTrimmed;
     if (!tid) return;
@@ -1566,6 +1590,13 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                 {runtimeSavePreview.invalid.length > 0 ? (
                   <div>
                     invalid:
+                    <button
+                      className="ml-2 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/80 hover:bg-black/40"
+                      type="button"
+                      onClick={() => handleFixInvalidRuntimeMembers()}
+                    >
+                      Fix invalid
+                    </button>
                     {runtimeSavePreview.invalid.map((row, idx) => {
                       const item = row?.item ?? {};
                       const label = item?.member_id
