@@ -302,6 +302,10 @@
         required: false
         schema: { type: boolean }
       - in: query
+        name: kind
+        required: false
+        schema: { type: string }
+      - in: query
         name: deployment_ids
         required: false
         schema: { type: string }

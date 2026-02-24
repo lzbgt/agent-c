@@ -271,7 +271,7 @@ Broker bulk memory maintenance fan-out (multi-deployment):
 - `POST /v1/agents/{agent_id}/memory/retention/enforce`
   - body: memory retention request + optional deployment ids
 - `GET /v1/agents/{agent_id}/memory/recaps`
-  - query: `limit`, `include_summary`, and optional `deployment_ids=dep1,dep2`
+  - query: `limit`, `include_summary`, optional `kind`, and optional `deployment_ids=dep1,dep2`
 - `POST /v1/agents/{agent_id}/memory/recaps`
   - body: memory recap request + optional deployment ids
 - `GET /v1/agents/{agent_id}/memory/salience`
