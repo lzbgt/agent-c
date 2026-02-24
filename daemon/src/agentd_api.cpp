@@ -623,6 +623,11 @@ bool AgentdApi::init(std::string* out_error) {
     const DaemonConfig cur = self->cfg_store->snapshot();
     handle_memory_correlate_endpoint(cur, self->cors_cfg, req, resp);
   });
+  impl_->route("POST", "/api/v1/memory/correlation/index", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_memory_correlation_index_build_endpoint(cur, self->cors_cfg, req, resp);
+  });
   impl_->route("GET", "/api/v1/memory/query", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();

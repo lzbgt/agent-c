@@ -1,6 +1,7 @@
 #include "memory_consolidator.h"
 
 #include "daemon_auth.h"
+#include "memory_correlation_index.h"
 #include "string_util.h"
 
 #include "toolset_host.h"
@@ -9,6 +10,7 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <unordered_map>
 #include <vector>
@@ -366,10 +368,21 @@ void MemoryConsolidatorEngine::worker_main() {
 
     Json::Value rep;
     std::string err;
-    (void)memory_consolidate_once(cfg, opt, &rep, &err);
+    const bool ok = memory_consolidate_once(cfg, opt, &rep, &err);
+    if (ok) {
+      MemoryCorrelationIndexOptions idx_opt = memory_correlation_index_default_options();
+      MemoryCorrelationIndexReport idx_rep;
+      std::string idx_err;
+      const std::filesystem::path mem_root = (std::filesystem::path(cfg.state_dir) / "memory").lexically_normal();
+      if (!memory_correlation_index_build(mem_root, idx_opt, &idx_rep, &idx_err)) {
+        // Best-effort; consolidation stays successful even if index rebuild fails.
+        if (!idx_err.empty()) {
+          std::cerr << "Warning: memory correlation index rebuild failed: " << idx_err << "\n";
+        }
+      }
+    }
     last_run_ms = now;
   }
 }
 
 }  // namespace agentd
-

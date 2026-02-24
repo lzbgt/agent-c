@@ -941,6 +941,10 @@ struct AgentdService::Impl {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_memory_correlate_endpoint(cur, cors_cfg, req, resp);
     });
+    server.handle("POST", "/api/v1/memory/correlation/index", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_memory_correlation_index_build_endpoint(cur, cors_cfg, req, resp);
+    });
     server.handle("GET", "/api/v1/memory/query", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_memory_query_endpoint(cur, cors_cfg, req, resp);

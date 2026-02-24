@@ -1,6 +1,7 @@
 #include "memory_recaps.h"
 
 #include "json_util.h"
+#include "memory_correlation_index.h"
 #include "string_util.h"
 
 #include <algorithm>
@@ -627,6 +628,16 @@ void MemoryRecapEngine::worker_main() {
         std::cerr << "Warning: scheduled memory recap (" << kind << ") failed: "
                   << (err.empty() ? "recap failed" : err) << "\n";
         return false;
+      }
+      if (!rep.recap_path_rel.empty()) {
+        MemoryCorrelationIndexOptions idx_opt = memory_correlation_index_default_options();
+        MemoryCorrelationIndexReport idx_rep;
+        std::string idx_err;
+        const std::filesystem::path mem_root = (std::filesystem::path(cfg.state_dir) / "memory").lexically_normal();
+        if (!memory_correlation_index_build(mem_root, idx_opt, &idx_rep, &idx_err)) {
+          std::cerr << "Warning: scheduled correlation index build failed: "
+                    << (idx_err.empty() ? "index build failed" : idx_err) << "\n";
+        }
       }
       return true;
     };

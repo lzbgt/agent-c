@@ -101,6 +101,16 @@ schemas:
     $ref: ./components/memory.yaml#/MemoryRecapRequest
   MemoryRecapResponse:
     $ref: ./components/memory.yaml#/MemoryRecapResponse
+  MemoryCorrelationIndexBuildRequest:
+    $ref: ./components/memory.yaml#/MemoryCorrelationIndexBuildRequest
+  MemoryCorrelationIndexBuildResponse:
+    $ref: ./components/memory.yaml#/MemoryCorrelationIndexBuildResponse
+  MemoryCorrelationIndexMeta:
+    $ref: ./components/memory.yaml#/MemoryCorrelationIndexMeta
+  MemoryCorrelateDailyEntry:
+    $ref: ./components/memory.yaml#/MemoryCorrelateDailyEntry
+  MemoryCorrelateRecapEntry:
+    $ref: ./components/memory.yaml#/MemoryCorrelateRecapEntry
   MemoryCorrelateResponse:
     $ref: ./components/memory.yaml#/MemoryCorrelateResponse
   MemoryQueryResponse:

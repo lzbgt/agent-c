@@ -249,6 +249,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/memory_consolidator.cpp
     daemon/src/memory_retention.cpp
     daemon/src/memory_checkpoints.cpp
+    daemon/src/memory_correlation_index.cpp
     daemon/src/memory_salience.cpp
     daemon/src/memory_recaps.cpp
     daemon/src/memory_endpoints.cpp

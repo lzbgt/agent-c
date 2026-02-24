@@ -3,6 +3,7 @@ import {
   apiGetConfig,
   apiMemoryCheckpoints,
   apiMemoryCorrelate,
+  apiMemoryCorrelationIndexBuild,
   apiMemoryIndex,
   apiMemoryQuery,
   apiMemorySalience,
@@ -48,6 +49,9 @@ export default function MemoryPanel(props: MemoryPanelProps) {
   const [correlateResult, setCorrelateResult] = React.useState<any | null>(null);
   const [correlateError, setCorrelateError] = React.useState<string | null>(null);
   const [correlateBusy, setCorrelateBusy] = React.useState<boolean>(false);
+  const [correlationIndexResult, setCorrelationIndexResult] = React.useState<any | null>(null);
+  const [correlationIndexError, setCorrelationIndexError] = React.useState<string | null>(null);
+  const [correlationIndexBusy, setCorrelationIndexBusy] = React.useState<boolean>(false);
 
   const [checkpointLimit, setCheckpointLimit] = React.useState<string>("20");
   const [checkpointStructuredPath, setCheckpointStructuredPath] = React.useState<string>("");
@@ -197,6 +201,25 @@ export default function MemoryPanel(props: MemoryPanelProps) {
       setCorrelateError(String(e));
     } finally {
       setCorrelateBusy(false);
+    }
+  };
+
+  const runCorrelationIndexBuild = async () => {
+    setCorrelationIndexError(null);
+    setCorrelationIndexResult(null);
+    if (!canQuery) {
+      setCorrelationIndexError("missing base URL");
+      return;
+    }
+    setCorrelationIndexBusy(true);
+    try {
+      const res = await apiMemoryCorrelationIndexBuild(base, {}, props.auth);
+      if (!res.ok) throw new Error(res.error || "correlation index build failed");
+      setCorrelationIndexResult(res);
+    } catch (e) {
+      setCorrelationIndexError(String(e));
+    } finally {
+      setCorrelationIndexBusy(false);
     }
   };
 
@@ -475,7 +498,7 @@ export default function MemoryPanel(props: MemoryPanelProps) {
       <summary className="cursor-pointer select-none text-xs text-white/80">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="font-semibold text-white/80">Memory explorer</div>
-          <div className="text-[11px] text-white/50">Query structured memory + correlate by trace_id + index files</div>
+          <div className="text-[11px] text-white/50">Query structured memory + correlate by trace_id + build the correlation index</div>
         </div>
       </summary>
 
@@ -555,6 +578,14 @@ export default function MemoryPanel(props: MemoryPanelProps) {
               <button
                 className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
                 type="button"
+                disabled={correlationIndexBusy || !canQuery}
+                onClick={() => void runCorrelationIndexBuild()}
+              >
+                {correlationIndexBusy ? "Indexing…" : "Build index"}
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
                 disabled={correlateBusy || !canQuery}
                 onClick={() => void runCorrelate()}
               >
@@ -567,6 +598,8 @@ export default function MemoryPanel(props: MemoryPanelProps) {
                 onClick={() => {
                   setCorrelateError(null);
                   setCorrelateResult(null);
+                  setCorrelationIndexError(null);
+                  setCorrelationIndexResult(null);
                 }}
               >
                 Clear
@@ -626,6 +659,16 @@ export default function MemoryPanel(props: MemoryPanelProps) {
           {correlateResult ? (
             <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/70">
               {stringifyJson(correlateResult)}
+            </pre>
+          ) : null}
+          {correlationIndexError ? (
+            <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+              {correlationIndexError}
+            </div>
+          ) : null}
+          {correlationIndexResult ? (
+            <pre className="mt-2 max-h-60 overflow-auto rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/70">
+              {stringifyJson(correlationIndexResult)}
             </pre>
           ) : null}
         </section>

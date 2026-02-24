@@ -81,6 +81,7 @@ The WebUI includes an **Approval queue** panel for tool-level approvals:
 
 The **Memory explorer** panel (toggle from the main UI) provides operator tooling for durable memory:
 - Structured memory query + trace correlation.
+- Correlation index build (cross-run evidence linking).
 - Memory index + salience snapshots.
 - Recap generation + recap list filtering by `kind`.
 - Broker console memory maintenance supports recap kind tagging + list filtering across deployments.

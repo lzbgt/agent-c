@@ -119,6 +119,23 @@ print(int(time.time()*1000) + 5000)
 PY
 )"
 
+idx="$(curl -fsS --noproxy "*" --max-time 20 \
+  -H "Content-Type: application/json" \
+  -d '{}' \
+  "${DAEMON_URL}/api/v1/memory/correlation/index")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${idx}''')
+if not obj.get("ok"):
+  print("correlation index build not ok", obj, file=sys.stderr)
+  raise SystemExit(1)
+if obj.get("entry_count", 0) < 1:
+  print("expected correlation index entries", obj, file=sys.stderr)
+  raise SystemExit(1)
+print("ok")
+PY
+
 ck_list="$(curl -fsS --noproxy "*" --max-time 10 \
   "${DAEMON_URL}/api/v1/memory/checkpoints?since_utc_ms=${SINCE_MS}&until_utc_ms=${UNTIL_MS}&limit=50")"
 
@@ -152,6 +169,10 @@ import json, sys
 obj = json.loads(r'''${corr}''')
 if not obj.get("ok"):
   print("correlate not ok", obj, file=sys.stderr)
+  raise SystemExit(1)
+idx = obj.get("index") or {}
+if not idx.get("ok"):
+  print("expected correlate to use index", idx, file=sys.stderr)
   raise SystemExit(1)
 entries = obj.get("entries") or []
 keys = {e.get("key") for e in entries if isinstance(e, dict)}

@@ -314,6 +314,13 @@ In addition to the tool surface, `agentd` exposes correlation helpers:
 - `GET /api/v1/memory/checkpoints?structured_path=STRUCTURED.md` — optional filter by structured file path
 - `GET /api/v1/memory/correlate?trace_id=...` — find structured keys whose evidence sources mention `trace:<trace_id>`
   - optional filters: `structured_path=...` and `key_prefix=...`
+  - when the correlation index exists, the response also includes:
+    - `daily_entries`: @obs daily lines linked to the trace_id
+    - `recap_entries`: recap files that cite the correlated structured/daily evidence
+    - `index`: index metadata (generated timestamps + counts)
+- `POST /api/v1/memory/correlation/index` — build a cross-run correlation index (structured + daily + recap evidence)
+  - the daemon also refreshes this index after recap generation or memory consolidation (best-effort)
+  - index path: `memory/.memory_correlation.sqlite3` (SQLite builds) or `memory/.memory_correlation.json` (fallback)
 - `GET /api/v1/memory/query?...&key_prefix=...` — bounded query over the **current view** of structured memory
   (reads the newest checkpoint in the requested time window)
 - `GET /api/v1/memory/index` — lightweight index of memory files (paths + size/line/token estimates)
@@ -325,6 +332,7 @@ The WebUI exposes a **Memory explorer** panel (collapsible) that directly calls 
 
 - Structured query (`/api/v1/memory/query`)
 - Trace correlation (`/api/v1/memory/correlate`)
+- Correlation index build (`POST /api/v1/memory/correlation/index`)
 - Checkpoint listing (`/api/v1/memory/checkpoints`)
 
 This panel is intended for operator/debug use and returns raw JSON so you can inspect structured memory state

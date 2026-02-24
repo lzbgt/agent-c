@@ -133,6 +133,12 @@ Env overrides:
 - `AGENTD_MEMORY_RECAP_DAILY_DAYS`
 - `AGENTD_MEMORY_RECAP_WEEKLY_DAYS`
 
+Memory correlation index (best-effort, on-demand or via recap/consolidation):
+- `POST /api/v1/memory/correlation/index` builds the cross-run correlation index.
+- `GET /api/v1/memory/correlate` returns `daily_entries` + `recap_entries` when the index exists.
+- The daemon refreshes the index after recap generation or memory consolidation (best-effort).
+- Index path: `state_dir/memory/.memory_correlation.sqlite3` (SQLite builds) or `state_dir/memory/.memory_correlation.json`.
+
 ## Job GC (longevity)
 
 `agentd` keeps async job state in memory for UI progress streaming. Finished jobs are garbage-collected:

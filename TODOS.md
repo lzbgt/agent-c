@@ -105,12 +105,14 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-25: WebUI run settings + workflow defaults now include `automation_profile` with caps-driven options.
   - 2026-02-25: session audit records include `effective_automation_profile`; WebUI history shows applied run settings.
   - 2026-02-25: added moderator directive/task endpoints + caps feature; WebUI moderator panel publishes nonblocking events.
-- [ ] W=9 — Rolling memory consolidation v1: scheduled rollups (daily/weekly), cross-run correlation index, and evidence-linked recall.
+- [x] W=9 — Rolling memory consolidation v1: scheduled rollups (daily/weekly), cross-run correlation index, and evidence-linked recall.
   - 2026-02-24: added scheduled recap engine (daily/weekly) with config/env/caps plumbing; recap files now carry `kind` and `evidence_sources`.
+  - 2026-02-25: added correlation index build endpoint + index-backed trace correlation (daily + recap evidence), rebuilt after recaps/consolidation.
 - [x] W=6 — WebUI memory recap controls: schedule knobs + recap list view/filter by `kind`.
   - 2026-02-25: MemoryPanel includes schedule load/apply and recap list filtering with kind tagging.
 - [ ] W=8 — Real-provider automation smokes: DeepSeek + Kimi agent runs using ~/.env keys to validate full automation defaults.
   - 2026-02-25: mac-local provider tests passed (DeepSeek reasoner + Moonshot/Kimi) via `tools/verify_mac_local_stack.sh` with `MAC_LOCAL_PROVIDER_TEST=1` (log: `out/mac_local_provider_tests_2026-02-25_004102.log`).
+  - 2026-02-25: mac-local provider tests re-verified (log: `out/mac_local_provider_tests_2026-02-25_021632.log`).
 
 Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
 

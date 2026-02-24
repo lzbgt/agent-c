@@ -5,6 +5,8 @@ import {
   type MemoryCheckpointsResp,
   MemoryCorrelateRespSchema,
   type MemoryCorrelateResp,
+  MemoryCorrelationIndexRespSchema,
+  type MemoryCorrelationIndexResp,
   MemoryIndexRespSchema,
   type MemoryIndexResp,
   MemoryQueryRespSchema,
@@ -104,6 +106,20 @@ export async function apiMemoryCorrelate(
   const r = await fetch(url, { headers: daemonHeaders(auth) });
   const j = await r.json();
   return MemoryCorrelateRespSchema.parse(j);
+}
+
+export async function apiMemoryCorrelationIndexBuild(
+  base: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<MemoryCorrelationIndexResp> {
+  const r = await fetch(`${base}/api/v1/memory/correlation/index`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(body ?? {}),
+  });
+  const j = await r.json();
+  return MemoryCorrelationIndexRespSchema.parse(j);
 }
 
 export async function apiMemoryCheckpoints(

@@ -41,6 +41,15 @@ void handle_memory_correlate_endpoint(
   HttpResponse* resp
 );
 
+// POST /api/v1/memory/correlation/index
+// Build a cross-run correlation index for structured/daily memory evidence.
+void handle_memory_correlation_index_build_endpoint(
+  const DaemonConfig& cfg,
+  const CorsConfig& cors_cfg,
+  const HttpRequest& req,
+  HttpResponse* resp
+);
+
 // GET /api/v1/memory/query
 // Bounded structured-memory query: selects the newest structured checkpoint in a time window and returns
 // current-view keys filtered by optional `key_prefix`.

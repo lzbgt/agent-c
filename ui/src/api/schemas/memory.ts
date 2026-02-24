@@ -20,6 +20,16 @@ export const MemoryCorrelateRespSchema = z
   .passthrough();
 export type MemoryCorrelateResp = z.infer<typeof MemoryCorrelateRespSchema>;
 
+export const MemoryCorrelationIndexRespSchema = z
+  .object({
+    ok: z.boolean(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+export type MemoryCorrelationIndexResp = z.infer<typeof MemoryCorrelationIndexRespSchema>;
+
 export const MemoryCheckpointsRespSchema = z
   .object({
     ok: z.boolean(),

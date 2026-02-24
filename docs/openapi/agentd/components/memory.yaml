@@ -288,6 +288,83 @@ MemoryRecapResponse:
       additionalProperties: true
     recap_path: { type: string }
     recap_bytes: { type: integer, format: int64 }
+    correlation_index:
+      $ref: "#/components/schemas/MemoryCorrelationIndexMeta"
+
+
+MemoryCorrelationIndexBuildRequest:
+  type: object
+  additionalProperties: false
+  properties:
+    daily_days: { type: integer, format: int32 }
+    max_daily_entries: { type: integer, format: int32 }
+    max_structured_checkpoints: { type: integer, format: int32 }
+    max_structured_entries: { type: integer, format: int32 }
+    max_entries_per_token: { type: integer, format: int32 }
+    max_recaps: { type: integer, format: int32 }
+    value_excerpt_chars: { type: integer, format: int32 }
+    include_structured: { type: boolean }
+    include_daily: { type: boolean }
+    include_recaps: { type: boolean }
+
+
+MemoryCorrelationIndexBuildResponse:
+  type: object
+  required: [ok, memory_root, generated_utc_ms, index_path, token_count, entry_count, structured_entries, daily_entries, recap_entries]
+  properties:
+    ok: { type: boolean }
+    memory_root: { type: string }
+    generated_utc_ms: { type: integer, format: int64 }
+    generated_utc: { type: string }
+    index_path: { type: string }
+    token_count: { type: integer, format: int64 }
+    entry_count: { type: integer, format: int64 }
+    structured_entries: { type: integer, format: int64 }
+    daily_entries: { type: integer, format: int64 }
+    recap_entries: { type: integer, format: int64 }
+    error: { type: string }
+
+
+MemoryCorrelationIndexMeta:
+  type: object
+  properties:
+    ok: { type: boolean }
+    token: { type: string }
+    index_path: { type: string }
+    generated_utc_ms: { type: integer, format: int64 }
+    generated_utc: { type: string }
+    token_count: { type: integer, format: int64 }
+    entry_count: { type: integer, format: int64 }
+    structured_entries: { type: integer, format: int64 }
+    daily_entries: { type: integer, format: int64 }
+    recap_entries: { type: integer, format: int64 }
+    error: { type: string }
+
+
+MemoryCorrelateDailyEntry:
+  type: object
+  properties:
+    path: { type: string }
+    line: { type: integer, format: int32 }
+    text: { type: string }
+    trace_id: { $ref: "#/components/schemas/TraceID" }
+    source: { type: string }
+    ts_utc: { type: string }
+    importance: { type: integer, format: int32 }
+
+
+MemoryCorrelateRecapEntry:
+  type: object
+  properties:
+    recap_path: { type: string }
+    kind: { type: string }
+    ts_utc: { type: string }
+    ts_utc_ms: { type: integer, format: int64 }
+    summary_excerpt: { type: string }
+    evidence_sources:
+      type: array
+      items:
+        type: string
 
 
 MemoryCorrelateResponse:
@@ -319,6 +396,16 @@ MemoryCorrelateResponse:
           record:
             type: object
             additionalProperties: true
+    index:
+      $ref: "#/components/schemas/MemoryCorrelationIndexMeta"
+    daily_entries:
+      type: array
+      items:
+        $ref: "#/components/schemas/MemoryCorrelateDailyEntry"
+    recap_entries:
+      type: array
+      items:
+        $ref: "#/components/schemas/MemoryCorrelateRecapEntry"
     timeline:
       type: array
       items:
