@@ -570,6 +570,50 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     setRunRuntimeMembersJson(next.length > 0 ? JSON.stringify(next, null, 2) : "");
   };
 
+  const handleAddConnectedAgents = () => {
+    if (runtimeMembersPreview.error) {
+      setRunError(runtimeMembersPreview.error);
+      return;
+    }
+    if (runtimeAgentOptions.length === 0) {
+      setRunError("load agents before adding connected agents");
+      return;
+    }
+    const role = String(runtimeMemberRole || "").trim() || "executor";
+    const existingRuntime = runtimeMembersPreview.items;
+    const seenAgentIds = new Set<string>();
+    for (const m of membersList) {
+      const aid = String(m?.agent_id || "").trim();
+      if (aid) seenAgentIds.add(aid);
+    }
+    for (const item of existingRuntime) {
+      const aid = item?.agent_id ? String(item.agent_id).trim() : "";
+      if (aid) seenAgentIds.add(aid);
+    }
+    const additions: any[] = [];
+    for (const agent of runtimeAgentOptions) {
+      const aid = String(agent?.agent_id || "").trim();
+      if (!aid || seenAgentIds.has(aid)) continue;
+      const deployments = Array.isArray(agent?.deployments) ? agent.deployments : [];
+      const connected = agent?.connected === true || deployments.length > 0;
+      if (!connected) continue;
+      const entry: Record<string, any> = { agent_id: aid, role };
+      if (deployments.length > 0) {
+        const depId = deployments[0]?.deployment_id ? String(deployments[0].deployment_id) : "";
+        if (depId) entry.deployment_id = depId;
+      }
+      additions.push(entry);
+      seenAgentIds.add(aid);
+    }
+    if (additions.length === 0) {
+      setRunError("no connected agents to add (already in team/runtime)");
+      return;
+    }
+    const merged = [...existingRuntime, ...additions];
+    setRunRuntimeMembersJson(JSON.stringify(merged, null, 2));
+    setRunError(null);
+  };
+
   const handleCreateRun = async () => {
     const tid = teamIdTrimmed;
     if (!tid) return;
@@ -1350,6 +1394,14 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                 onClick={() => void refreshRuntimeAgents()}
               >
                 {runtimeAgentsBusy ? "Loading…" : "Refresh agents"}
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={!canQuery || runtimeAgentsBusy}
+                onClick={() => handleAddConnectedAgents()}
+              >
+                Add connected agents
               </button>
               {runtimeAgentsError ? (
                 <span className="text-[11px] text-rose-200">{runtimeAgentsError}</span>
