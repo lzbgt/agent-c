@@ -162,6 +162,37 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const runtimeAgentDeployments = Array.isArray(runtimeSelectedAgent?.deployments)
     ? (runtimeSelectedAgent?.deployments as any[])
     : [];
+
+  const runtimeSavePreview = React.useMemo(() => {
+    const existingIDs = new Set<string>();
+    const currentMembers = Array.isArray(members) ? members : [];
+    for (const m of currentMembers) {
+      const id = String(m?.member_id || "").trim();
+      if (id) existingIDs.add(id);
+    }
+    const items = runtimeMembersPreview.items;
+    if (!Array.isArray(items) || items.length === 0) {
+      return { newMembers: [] as any[], skipped: [] as any[], invalid: [] as any[] };
+    }
+    const newMembers: any[] = [];
+    const skipped: any[] = [];
+    const invalid: any[] = [];
+    for (const item of items) {
+      const memberId = item?.member_id ? String(item.member_id).trim() : "";
+      const agentId = item?.agent_id ? String(item.agent_id).trim() : "";
+      const role = item?.role ? String(item.role).trim() : "";
+      if (!agentId || !role) {
+        invalid.push(item);
+        continue;
+      }
+      if (memberId && existingIDs.has(memberId)) {
+        skipped.push(item);
+        continue;
+      }
+      newMembers.push(item);
+    }
+    return { newMembers, skipped, invalid };
+  }, [members, runtimeMembersPreview.items]);
   type InlineApproval = {
     member_id: string;
     decision: "approve" | "deny";
@@ -1528,6 +1559,13 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             </div>
             {runtimeSaveError ? (
               <div className="text-[11px] text-rose-200">{runtimeSaveError}</div>
+            ) : null}
+            {runtimeMembersPreview.items.length > 0 ? (
+              <div className="text-[11px] text-white/50">
+                save preview: {runtimeSavePreview.newMembers.length} new ·{" "}
+                {runtimeSavePreview.skipped.length} skipped ·{" "}
+                {runtimeSavePreview.invalid.length} invalid
+              </div>
             ) : null}
             <div className="flex flex-wrap items-center gap-2">
               <FieldLabel>Deployment</FieldLabel>

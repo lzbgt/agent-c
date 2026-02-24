@@ -153,6 +153,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-24: Runtime member builder can bulk-add connected agents (excluding existing team/runtime).
   - 2026-02-24: Added seed button to populate explicit member overrides from team member meta.
   - 2026-02-24: Added "Save to team" action to persist runtime members into the team registry.
+  - 2026-02-24: Runtime member save preview now shows new/skipped/invalid counts.
 - [x] W=9 — Approval queues + tool-level quorum gating: WebUI approval queue, tool-level quorum enforcement, and SSE updates for approval state.
   - 2026-02-24: Added agentd approval DB tables, approval gate, approval APIs, and approval run events.
   - 2026-02-24: Added approval event schemas + fixtures + spec tests.
