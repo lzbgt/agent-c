@@ -606,6 +606,18 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     setRunRuntimeMembersJson(next.length > 0 ? JSON.stringify(next, null, 2) : "");
   };
 
+  const handleToggleRuntimeMemberStatus = (idx: number) => {
+    const rawItems = runtimeMembersPreview.items;
+    if (!Array.isArray(rawItems) || idx < 0 || idx >= rawItems.length) return;
+    const next = rawItems.map((item, i) => {
+      if (i !== idx) return item;
+      const statusRaw = item?.status ? String(item.status).toLowerCase() : "";
+      const nextStatus = statusRaw === "paused" ? "active" : "paused";
+      return { ...item, status: nextStatus };
+    });
+    setRunRuntimeMembersJson(JSON.stringify(next, null, 2));
+  };
+
   const handleSeedExplicitOverrides = () => {
     if (membersList.length === 0) {
       setRunError("no team members loaded");
@@ -1486,6 +1498,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                 const agentId = item?.agent_id ? String(item.agent_id) : "";
                 const role = item?.role ? String(item.role) : "";
                 const label = memberId ? `${memberId}` : agentId ? `agent ${agentId}` : "runtime member";
+                const status = item?.status ? String(item.status).toLowerCase() : "active";
                 return (
                   <div
                     key={`runtime-preview-${label}-${idx}`}
@@ -1495,14 +1508,24 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                       <span className="text-white/90">{label}</span>
                       {agentId && memberId ? ` · agent ${agentId}` : ""}
                       {role ? ` · role ${role}` : ""}
+                      {status && status !== "active" ? ` · ${status}` : ""}
                     </div>
-                    <button
-                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                      type="button"
-                      onClick={() => handleRemoveRuntimeMember(idx)}
-                    >
-                      Remove
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                        type="button"
+                        onClick={() => handleToggleRuntimeMemberStatus(idx)}
+                      >
+                        {status === "paused" ? "Resume" : "Pause"}
+                      </button>
+                      <button
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                        type="button"
+                        onClick={() => handleRemoveRuntimeMember(idx)}
+                      >
+                        Remove
+                      </button>
+                    </div>
                   </div>
                 );
               })}
