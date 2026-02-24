@@ -20,7 +20,6 @@ import {
   type ApiAuth,
 } from "../api";
 import FieldLabel from "./FieldLabel";
-import BrokerTeamApprovals from "./broker/BrokerTeamApprovals";
 import BrokerTeamConsole from "./broker/BrokerTeamConsole";
 import type { BrokerEventRow } from "./broker/types";
 import { readSseStream } from "../sse";
@@ -1597,8 +1596,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
           )}
         </section>
 
-        <BrokerTeamConsole base={base} auth={props.auth} authKey={props.authKey} />
-        <BrokerTeamApprovals base={base} auth={props.auth} quorumEvents={brokerEvents} />
+        <BrokerTeamConsole base={base} auth={props.auth} authKey={props.authKey} quorumEvents={brokerEvents} />
 
         <section className="rounded-md border border-white/10 bg-black/20 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">

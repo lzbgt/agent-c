@@ -17,6 +17,7 @@ import {
   type ApiAuth,
 } from "../../api";
 import FieldLabel from "../FieldLabel";
+import type { BrokerEventRow } from "./types";
 
 const fmtTs = (ms?: number | null) => {
   if (!ms || !Number.isFinite(ms)) return "";
@@ -31,6 +32,7 @@ export type BrokerTeamConsoleProps = {
   base: string;
   auth: ApiAuth;
   authKey: string;
+  quorumEvents?: BrokerEventRow[];
 };
 
 export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
@@ -92,6 +94,12 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const approvalRunIdTrimmed = String(approvalRunId || runLookupId || "").trim();
   const membersList = Array.isArray(members) ? members : [];
   const rulesList = Array.isArray(rules) ? rules : [];
+  const quorumRequestRows = React.useMemo(() => {
+    const rows = Array.isArray(props.quorumEvents) ? props.quorumEvents : [];
+    const filtered = rows.filter((ev) => ev?.type === "team_quorum_request");
+    if (!teamIdTrimmed) return filtered.slice(0, 6);
+    return filtered.filter((ev) => String(ev?.payload?.team_id || "") === teamIdTrimmed).slice(0, 6);
+  }, [props.quorumEvents, teamIdTrimmed]);
 
   React.useEffect(() => {
     if (!approvalRunId && runResult?.team_run_id) {
@@ -834,6 +842,45 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
           <div className="text-[11px] text-white/50">
             Submit or review approvals for a team run (quorum rules apply).
           </div>
+          {quorumRequestRows.length > 0 ? (
+            <div className="grid gap-2">
+              <div className="text-[11px] text-white/60">Recent quorum requests</div>
+              {quorumRequestRows.map((row, idx) => {
+                const payload = row?.payload ?? {};
+                const teamId = payload?.team_id ? String(payload.team_id) : "";
+                const runId = payload?.team_run_id ? String(payload.team_run_id) : "";
+                const ruleId = payload?.rule_id ? String(payload.rule_id) : "";
+                const action = payload?.action ? String(payload.action) : "";
+                const min = payload?.min_approvals;
+                const ts = fmtTs(row?.ts_unix_ms);
+                return (
+                  <div
+                    key={`quorum-request-${teamId}-${runId}-${ruleId}-${idx}`}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70"
+                  >
+                    <div className="text-[11px] text-white/70">
+                      <span className="text-white/90">{action || "team_run"}</span>
+                      {min !== undefined ? ` · min ${min}` : ""}
+                      {ruleId ? ` · rule ${ruleId}` : ""}
+                      {ts ? ` · ${ts}` : ""}
+                    </div>
+                    <button
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                      type="button"
+                      onClick={() => {
+                        if (runId) setApprovalRunId(runId);
+                        if (ruleId) setApprovalRuleId(ruleId);
+                      }}
+                    >
+                      Use
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="text-[11px] text-white/50">No quorum requests captured yet.</div>
+          )}
           <div className="flex flex-wrap items-center gap-2">
             <FieldLabel>Run ID</FieldLabel>
             <input
