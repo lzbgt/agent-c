@@ -621,6 +621,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
           <FieldLabel>Team</FieldLabel>
           <select
             className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            data-testid="team-select"
             value={teamIdTrimmed}
             onChange={(e) => setTeamId(e.target.value)}
             disabled={teamList.length === 0}
@@ -918,7 +919,10 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             {runBusy ? "Submitting…" : "Create run"}
           </button>
         </div>
-        <div className="mt-2 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
+        <div
+          className="mt-2 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2"
+          data-testid="team-inline-approvals"
+        >
           <div className="text-[11px] text-white/70">Inline approvals (optional)</div>
           <div className="flex flex-wrap items-center gap-2">
             <FieldLabel>Member ID</FieldLabel>
