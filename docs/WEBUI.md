@@ -50,6 +50,7 @@ Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`,
 - The WebUI caches multiple **connection profiles** (direct or broker-backed) locally and can persist them server-side.
 - Each profile can enable **profile-specific run settings** (model/provider, tool flags, run limits).
 - The broker console exposes agent membership management, audit events, team setup (members + quorum rules), team runs, and quorum approvals (Team console includes recent quorum requests and approvals).
+- Team runs support **inline approvals** (optional) to satisfy strict quorum rules at submit time; failed quorum responses surface rule evals.
 - Server-side sync prefers the **daemon** (direct mode) or **broker** (broker mode) when supported.
   - Default: **auto** (syncs when the server advertises client prefs and auth allows; broker requires OIDC token).
   - The client prefs id defaults to `webui` and can be changed in Settings → Connection.

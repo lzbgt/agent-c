@@ -110,9 +110,39 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [runConcurrency, setRunConcurrency] = React.useState<string>("1");
   const [runTimeoutMs, setRunTimeoutMs] = React.useState<string>("60000");
   const [runQuorumMode, setRunQuorumMode] = React.useState<string>("auto");
+  type InlineApproval = {
+    member_id: string;
+    decision: "approve" | "deny";
+    rule_id?: string;
+    reason?: string;
+  };
+  type QuorumRuleEval = {
+    rule_id?: string;
+    action?: string;
+    quorum_mode?: string;
+    min_approvals?: number;
+    approved?: number;
+    missing?: number;
+    ok?: boolean;
+    role_allowlist?: string[];
+    require_distinct_roles?: boolean;
+    approved_member_ids?: string[];
+    approved_roles?: string[];
+  };
+  type QuorumEval = {
+    strict_ok?: boolean;
+    rules?: QuorumRuleEval[];
+  };
+
+  const [runApprovals, setRunApprovals] = React.useState<InlineApproval[]>([]);
+  const [runApprovalMemberId, setRunApprovalMemberId] = React.useState<string>("");
+  const [runApprovalRuleId, setRunApprovalRuleId] = React.useState<string>("");
+  const [runApprovalDecision, setRunApprovalDecision] = React.useState<"approve" | "deny">("approve");
+  const [runApprovalReason, setRunApprovalReason] = React.useState<string>("");
   const [runBusy, setRunBusy] = React.useState<boolean>(false);
   const [runError, setRunError] = React.useState<string | null>(null);
   const [runResult, setRunResult] = React.useState<any | null>(null);
+  const [runQuorum, setRunQuorum] = React.useState<QuorumEval | null>(null);
   const [runLookupId, setRunLookupId] = React.useState<string>("");
   const [runLookupBusy, setRunLookupBusy] = React.useState<boolean>(false);
   const [runLookupError, setRunLookupError] = React.useState<string | null>(null);
@@ -352,6 +382,32 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     }
   };
 
+  const handleAddRunApproval = () => {
+    const memberId = String(runApprovalMemberId || "").trim();
+    const decision = String(runApprovalDecision || "").trim().toLowerCase();
+    const ruleId = String(runApprovalRuleId || "").trim();
+    const reason = String(runApprovalReason || "").trim();
+    if (!memberId) {
+      setRunError("approval member_id required");
+      return;
+    }
+    if (decision !== "approve" && decision !== "deny") {
+      setRunError("approval decision must be approve or deny");
+      return;
+    }
+    setRunError(null);
+    const entry: InlineApproval = {
+      member_id: memberId,
+      decision: decision === "deny" ? "deny" : "approve",
+    };
+    if (ruleId) entry.rule_id = ruleId;
+    if (reason) entry.reason = reason;
+    setRunApprovals((prev) => [...prev, entry]);
+    setRunApprovalMemberId("");
+    setRunApprovalRuleId("");
+    setRunApprovalReason("");
+  };
+
   const handleCreateRun = async () => {
     const tid = teamIdTrimmed;
     if (!tid) return;
@@ -361,6 +417,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       return;
     }
     setRunError(null);
+    setRunQuorum(null);
     setRunBusy(true);
     try {
       const runPayload: Record<string, any> = { prompt };
@@ -379,9 +436,26 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       if (Number.isFinite(timeout)) teamPayload.timeout_ms = timeout;
       const qmode = String(runQuorumMode || "").trim();
       if (qmode) teamPayload.quorum_policy = { mode: qmode };
+      if (runApprovals.length > 0) {
+        teamPayload.approvals = runApprovals;
+      }
       const resp = await apiBrokerTeamRunCreate(props.base, tid, { run: runPayload, team: teamPayload }, props.auth);
+      if (!resp.ok) {
+        setRunResult(null);
+        setRunError(resp.error || resp.err || resp.code || "team run failed");
+        const quorum = (resp as any)?.quorum;
+        if (quorum && typeof quorum === "object") {
+          setRunQuorum(quorum as QuorumEval);
+        }
+        return;
+      }
       setRunResult(resp);
+      setRunQuorum(null);
       if (resp?.team_run_id) setRunLookupId(String(resp.team_run_id));
+      setRunApprovals([]);
+      setRunApprovalMemberId("");
+      setRunApprovalRuleId("");
+      setRunApprovalReason("");
     } catch (err) {
       setRunError(String(err));
     } finally {
@@ -491,9 +565,14 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     if (!teamIdTrimmed) return;
     setRunResult(null);
     setRunError(null);
+    setRunQuorum(null);
     setRunLookupResult(null);
     setRunLookupError(null);
     setRunLookupId("");
+    setRunApprovals([]);
+    setRunApprovalMemberId("");
+    setRunApprovalRuleId("");
+    setRunApprovalReason("");
     setApprovalRunId("");
     setApprovals(null);
     setApprovalsError(null);
@@ -839,9 +918,103 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             {runBusy ? "Submitting…" : "Create run"}
           </button>
         </div>
+        <div className="mt-2 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
+          <div className="text-[11px] text-white/70">Inline approvals (optional)</div>
+          <div className="flex flex-wrap items-center gap-2">
+            <FieldLabel>Member ID</FieldLabel>
+            <input
+              className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={runApprovalMemberId}
+              onChange={(e) => setRunApprovalMemberId(e.target.value)}
+              placeholder="member id"
+              list="team-approvals-members"
+            />
+            <FieldLabel>Decision</FieldLabel>
+            <select
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={runApprovalDecision}
+              onChange={(e) => setRunApprovalDecision(e.target.value as "approve" | "deny")}
+            >
+              <option value="approve">approve</option>
+              <option value="deny">deny</option>
+            </select>
+            <FieldLabel>Rule ID</FieldLabel>
+            <input
+              className="min-w-[140px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={runApprovalRuleId}
+              onChange={(e) => setRunApprovalRuleId(e.target.value)}
+              placeholder="optional"
+              list="team-approvals-rules"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <FieldLabel>Reason</FieldLabel>
+            <input
+              className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={runApprovalReason}
+              onChange={(e) => setRunApprovalReason(e.target.value)}
+              placeholder="optional"
+            />
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+              type="button"
+              disabled={!canQuery || !teamIdTrimmed || runBusy}
+              onClick={() => handleAddRunApproval()}
+            >
+              Add approval
+            </button>
+            {runApprovals.length > 0 ? (
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                type="button"
+                onClick={() => setRunApprovals([])}
+              >
+                Clear approvals
+              </button>
+            ) : null}
+          </div>
+          {runApprovals.length > 0 ? (
+            <div className="grid gap-2">
+              {runApprovals.map((a, idx) => (
+                <div
+                  key={`run-approval-${a.member_id}-${a.rule_id || "any"}-${idx}`}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70"
+                >
+                  <div className="text-[11px] text-white/70">
+                    <span className="text-white/90">{a.member_id}</span>
+                    {a.decision ? ` · ${a.decision}` : ""}
+                    {a.rule_id ? ` · rule ${a.rule_id}` : ""}
+                    {a.reason ? ` · ${a.reason}` : ""}
+                  </div>
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                    type="button"
+                    onClick={() =>
+                      setRunApprovals((prev) => prev.filter((_, i) => i !== idx))
+                    }
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-[11px] text-white/50">No inline approvals.</div>
+          )}
+        </div>
         {runError ? (
           <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
             {runError}
+          </div>
+        ) : null}
+        {runQuorum?.rules && runQuorum.rules.length > 0 ? (
+          <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
+            {runQuorum.rules.map((r, idx) => (
+              <div key={`quorum-eval-${r.rule_id || idx}`}>
+                {r.rule_id ? `rule ${r.rule_id}` : "rule"} · min {r.min_approvals ?? "?"} · approved{" "}
+                {r.approved ?? 0} · missing {r.missing ?? 0}
+              </div>
+            ))}
           </div>
         ) : null}
         {runResult ? (
