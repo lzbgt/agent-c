@@ -122,6 +122,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [runQuorumMode, setRunQuorumMode] = React.useState<string>("auto");
   const [runOverridesMode, setRunOverridesMode] = React.useState<string>("member_meta");
   const [runMemberOverridesJson, setRunMemberOverridesJson] = React.useState<string>("");
+  const [runRuntimeMembersJson, setRunRuntimeMembersJson] = React.useState<string>("");
   type InlineApproval = {
     member_id: string;
     decision: "approve" | "deny";
@@ -487,6 +488,21 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
           }
           teamPayload.member_overrides = parsed;
         }
+      }
+      const runtimeMembersRaw = String(runRuntimeMembersJson || "").trim();
+      if (runtimeMembersRaw) {
+        let parsed: any = null;
+        try {
+          parsed = JSON.parse(runtimeMembersRaw);
+        } catch (err) {
+          setRunError(`invalid runtime_members json: ${String(err)}`);
+          return;
+        }
+        if (!Array.isArray(parsed)) {
+          setRunError("runtime_members must be a JSON array of member objects");
+          return;
+        }
+        teamPayload.runtime_members = parsed;
       }
       if (runApprovals.length > 0) {
         teamPayload.approvals = runApprovals;
@@ -1093,6 +1109,18 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             </div>
           </div>
         ) : null}
+        <div className="grid gap-1">
+          <FieldLabel>Runtime members JSON (optional)</FieldLabel>
+          <textarea
+            className="min-h-[84px] w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
+            value={runRuntimeMembersJson}
+            onChange={(e) => setRunRuntimeMembersJson(e.target.value)}
+            placeholder='[{"member_id":"rt-1","agent_id":"agent_a","role":"executor","capabilities":["vision"],"meta":{"backend_label":"openai-mini"}}]'
+          />
+          <div className="text-[11px] text-white/50">
+            Each entry needs agent_id + role; member_id is optional (required for explicit overrides).
+          </div>
+        </div>
         <div
           className="mt-2 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2"
           data-testid="team-inline-approvals"

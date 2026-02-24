@@ -190,6 +190,10 @@ All endpoints below are served by the broker (not by agents).
     - `explicit` applies allowlisted fields from `team.member_overrides` keyed by `member_id`
     - allowlist: `model`, `base_url`, `summary_model`, `tools`, `timeout_ms`, `max_steps`, `stream_assistant`
     - `api_key` is never accepted via team/member metadata
+  - accepts ephemeral runtime members (not persisted in team registry):
+    - `team.runtime_members`: array of `{member_id?, agent_id, deployment_id?, role, capabilities?, status?, weight?, meta?}`
+    - runtime members participate in the current fan-out only
+    - quorum approvals are still stored against persistent team members
 - `GET /v1/teams/{team_id}/runs/{team_run_id}`
   - returns the stored team run status + current member list
 - `GET /v1/teams/{team_id}/runs/{team_run_id}/approvals`

@@ -56,7 +56,21 @@ Example: at least 2 reviewers must approve `shell_exec`.
 A **team run** is a coordinated execution that may spawn multiple sub-runs
 per team member, with explicit aggregation and quorum checks.
 
-### 6) Member backend profile (v0.2)
+### 6) Runtime members (v0.3)
+
+Team runs may include **runtime members** supplied in the run request. These are
+ephemeral members used **only for the current run** and are **not persisted** in
+the team registry. This enables an orchestrator agent (or moderator) to allocate
+new members dynamically while still using a pre-created team as the anchor.
+
+Constraints:
+- Runtime members must include `agent_id` and `role` (role is used for filters + quorum).
+- Runtime members participate in run fan-out but do **not** count as persistent
+  team members for approval storage (approvals are stored against the team registry).
+- Runtime members may include `meta.run_overrides` and `meta.backend_label`,
+  and the same **allowlist** rules apply to `run_overrides`.
+
+### 7) Member backend profile (v0.2)
 
 Each team member may carry an optional backend profile stored under `member.meta`.
 The broker can optionally merge these **run overrides** into the base run when executing
@@ -222,6 +236,9 @@ Run requests may accept:
   "shared_memory": { "scope_id": "...", "mode": "read_only" },
   "quorum_policy": { "mode": "auto" | "off" },
   "approvals": [ { "member_id": "...", "rule_id": "...", "decision": "approve" } ],
+  "runtime_members": [
+    { "member_id": "rt-1", "agent_id": "agent_a", "role": "executor" }
+  ],
   "run_overrides_mode": "off" | "member_meta" | "explicit",
   "member_overrides": {
     "member_1": { "model": "...", "base_url": "...", "tools": "basic" }

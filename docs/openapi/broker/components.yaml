@@ -358,6 +358,23 @@ schemas:
       member:
         $ref: "#/components/schemas/TeamMember"
 
+  TeamRunRuntimeMember:
+    type: object
+    required: [agent_id, role]
+    properties:
+      member_id: { type: string }
+      agent_id: { type: string }
+      deployment_id: { type: string }
+      role: { type: string }
+      capabilities:
+        type: array
+        items: { type: string }
+      status: { type: string }
+      weight: { type: integer, format: int32 }
+      meta:
+        type: object
+        additionalProperties: true
+
   TeamQuorumRule:
     type: object
     required: [rule_id, team_id, action, min_approvals, quorum_mode]
@@ -445,6 +462,11 @@ schemas:
             type: integer
             format: int64
             description: Per-member run timeout (100-300000).
+          runtime_members:
+            type: array
+            description: Ephemeral per-run members (not persisted in team registry).
+            items:
+              $ref: "#/components/schemas/TeamRunRuntimeMember"
           quorum_policy:
             type: object
             properties:

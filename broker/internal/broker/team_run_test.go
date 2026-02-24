@@ -2,6 +2,7 @@ package broker
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -166,5 +167,68 @@ func TestParseTeamRunOverridesRejectsBadMember(t *testing.T) {
 	_, err := parseTeamRunOverrides(meta)
 	if err == nil {
 		t.Fatalf("expected error for non-object member override")
+	}
+}
+
+func TestBuildRuntimeMembers(t *testing.T) {
+	meta := map[string]any{
+		"runtime_members": []any{
+			map[string]any{
+				"member_id":    "rt-1",
+				"agent_id":     "agent-a",
+				"role":         "executor",
+				"capabilities": []any{"vision"},
+				"meta": map[string]any{
+					"backend_label": "openai-mini",
+					"run_overrides": map[string]any{
+						"tools":   "HOST",
+						"api_key": "nope",
+					},
+				},
+			},
+			map[string]any{
+				"agent_id": "agent-b",
+				"role":     "planner",
+			},
+		},
+	}
+	inputs, err := parseTeamRunRuntimeMembers(meta)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	members, _, err := buildRuntimeMembers(inputs, "team-1", map[string]bool{"m1": true})
+	if err != nil {
+		t.Fatalf("unexpected build error: %v", err)
+	}
+	if len(members) != 2 {
+		t.Fatalf("expected 2 runtime members, got %d", len(members))
+	}
+	if members[0].MemberID != "rt-1" {
+		t.Fatalf("expected member_id rt-1, got %s", members[0].MemberID)
+	}
+	if members[1].MemberID == "" || !strings.HasPrefix(members[1].MemberID, "rtm_") {
+		t.Fatalf("expected generated runtime member_id, got %s", members[1].MemberID)
+	}
+	metaOut := members[0].Meta()
+	ro, ok := metaOut["run_overrides"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected run_overrides meta")
+	}
+	if _, ok := ro["api_key"]; ok {
+		t.Fatalf("unexpected api_key in run_overrides")
+	}
+	if ro["tools"] != "host" {
+		t.Fatalf("expected tools host, got %v", ro["tools"])
+	}
+}
+
+func TestBuildRuntimeMembersDuplicateID(t *testing.T) {
+	inputs := []teamRuntimeMemberInput{
+		{MemberID: "rt-1", AgentID: "agent-a", Role: "executor"},
+		{MemberID: "rt-1", AgentID: "agent-b", Role: "planner"},
+	}
+	_, _, err := buildRuntimeMembers(inputs, "team-1", map[string]bool{})
+	if err == nil {
+		t.Fatalf("expected duplicate member_id error")
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"agentd-broker/internal/db"
 	"agentd-broker/internal/events"
@@ -792,8 +793,25 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 		return
 	}
 	membersByID := map[string]db.TeamMember{}
+	usedMemberIDs := map[string]bool{}
 	for _, m := range members {
 		membersByID[m.MemberID] = m
+		usedMemberIDs[m.MemberID] = true
+	}
+	runtimeInputs, err := parseTeamRunRuntimeMembers(teamMeta)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	runtimeMembers, runtimeMembersJSON, err := buildRuntimeMembers(runtimeInputs, teamID, usedMemberIDs)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if len(runtimeMembersJSON) > 0 {
+		teamMeta["runtime_members"] = runtimeMembersJSON
+	} else {
+		delete(teamMeta, "runtime_members")
 	}
 	var quorumEval *teamRunQuorumEval
 	if quorumPolicyMode != "off" {
@@ -816,12 +834,14 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 			quorumEval = &eval
 		}
 	}
-	members = filterTeamRunMembers(members, options.Role, options.Roles)
-	if len(members) == 0 {
+	persistentMembers := filterTeamRunMembers(members, options.Role, options.Roles)
+	runtimeMembers = filterTeamRunMembers(runtimeMembers, options.Role, options.Roles)
+	runMembers := append(persistentMembers, runtimeMembers...)
+	if len(runMembers) == 0 {
 		writeErrorJSON(w, "no eligible team members", http.StatusBadRequest)
 		return
 	}
-	for _, m := range members {
+	for _, m := range runMembers {
 		if strings.TrimSpace(m.AgentID) == "" {
 			writeErrorJSON(w, "team member missing agent_id", http.StatusBadRequest)
 			return
@@ -842,8 +862,8 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 	}
 
 	memberOverridesApplied := map[string]map[string]any{}
-	memberRunBodies := make([][]byte, 0, len(members))
-	for _, member := range members {
+	memberRunBodies := make([][]byte, 0, len(runMembers))
+	for _, member := range runMembers {
 		runForMember := map[string]any{}
 		for k, v := range runMap {
 			runForMember[k] = v
@@ -891,8 +911,8 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 		}
 	}
 
-	tasks := make([]agentTaskPrepared, 0, len(members))
-	for i, member := range members {
+	tasks := make([]agentTaskPrepared, 0, len(runMembers))
+	for i, member := range runMembers {
 		body := mustJSON(runMap)
 		if i < len(memberRunBodies) {
 			body = memberRunBodies[i]
@@ -961,6 +981,17 @@ func (s *Server) handleTeamRunGet(w http.ResponseWriter, r *http.Request, teamID
 		writeErrorJSON(w, "team run not found", http.StatusNotFound)
 		return
 	}
+	var runtimeMembers any
+	if len(run.RunJSON) > 0 {
+		var runPayload map[string]any
+		if err := json.Unmarshal(run.RunJSON, &runPayload); err == nil {
+			if teamRaw, ok := runPayload["team"].(map[string]any); ok {
+				if raw, ok := teamRaw["runtime_members"]; ok {
+					runtimeMembers = raw
+				}
+			}
+		}
+	}
 	members, err := s.cfg.DB.ListTeamMembers(r.Context(), teamID)
 	if err != nil {
 		writeErrorJSON(w, "db error", http.StatusInternalServerError)
@@ -970,14 +1001,18 @@ func (s *Server) handleTeamRunGet(w http.ResponseWriter, r *http.Request, teamID
 	for _, m := range members {
 		outMembers = append(outMembers, teamMemberToJSON(m))
 	}
-	writeJSON(w, map[string]any{
+	resp := map[string]any{
 		"ok":              true,
 		"team_id":         run.TeamID,
 		"team_run_id":     run.TeamRunID,
 		"status":          run.Status,
 		"created_unix_ms": run.CreatedAt.UnixMilli(),
 		"members":         outMembers,
-	})
+	}
+	if runtimeMembers != nil {
+		resp["runtime_members"] = runtimeMembers
+	}
+	writeJSON(w, resp)
 }
 
 func (s *Server) handleTeamRunApprovalsList(w http.ResponseWriter, r *http.Request, teamID, teamRunID string) {
@@ -1328,6 +1363,17 @@ type teamRunOverrides struct {
 	MemberOverrides map[string]map[string]any
 }
 
+type teamRuntimeMemberInput struct {
+	MemberID     string
+	AgentID      string
+	DeploymentID string
+	Role         string
+	Status       string
+	Weight       int
+	Capabilities []string
+	Meta         map[string]any
+}
+
 func parseTeamRunOptions(meta map[string]any) teamRunOptions {
 	out := teamRunOptions{
 		MaxConcurrency: 4,
@@ -1400,6 +1446,53 @@ func parseTeamRunOverrides(meta map[string]any) (teamRunOverrides, error) {
 			}
 			out.MemberOverrides = overrides
 		}
+	}
+	return out, nil
+}
+
+func parseTeamRunRuntimeMembers(meta map[string]any) ([]teamRuntimeMemberInput, error) {
+	raw, ok := meta["runtime_members"]
+	if !ok || raw == nil {
+		return nil, nil
+	}
+	items, ok := raw.([]any)
+	if !ok {
+		return nil, fmt.Errorf("runtime_members must be array")
+	}
+	out := make([]teamRuntimeMemberInput, 0, len(items))
+	for idx, item := range items {
+		m, ok := item.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("runtime_members[%d] must be object", idx)
+		}
+		memberID, _ := m["member_id"].(string)
+		agentID, _ := m["agent_id"].(string)
+		deploymentID, _ := m["deployment_id"].(string)
+		role, _ := m["role"].(string)
+		status, _ := m["status"].(string)
+		weight, _ := asInt(m["weight"])
+		caps, err := parseCapabilitiesValue(m["capabilities"])
+		if err != nil {
+			return nil, fmt.Errorf("runtime_members[%d].capabilities %w", idx, err)
+		}
+		var metaObj map[string]any
+		if rawMeta, ok := m["meta"]; ok && rawMeta != nil {
+			obj, ok := rawMeta.(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf("runtime_members[%d].meta must be object", idx)
+			}
+			metaObj = obj
+		}
+		out = append(out, teamRuntimeMemberInput{
+			MemberID:     strings.TrimSpace(memberID),
+			AgentID:      strings.TrimSpace(agentID),
+			DeploymentID: strings.TrimSpace(deploymentID),
+			Role:         strings.TrimSpace(role),
+			Status:       strings.TrimSpace(status),
+			Weight:       weight,
+			Capabilities: caps,
+			Meta:         metaObj,
+		})
 	}
 	return out, nil
 }
@@ -1772,6 +1865,39 @@ func asStringSlice(v any) []string {
 	}
 }
 
+func parseCapabilitiesValue(v any) ([]string, error) {
+	if v == nil {
+		return nil, nil
+	}
+	switch t := v.(type) {
+	case string:
+		parts := strings.Split(t, ",")
+		out := make([]string, 0, len(parts))
+		for _, part := range parts {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				out = append(out, part)
+			}
+		}
+		return out, nil
+	case []string, []any:
+		raw := asStringSlice(t)
+		if len(raw) == 0 {
+			return nil, nil
+		}
+		out := make([]string, 0, len(raw))
+		for _, item := range raw {
+			item = strings.TrimSpace(item)
+			if item != "" {
+				out = append(out, item)
+			}
+		}
+		return out, nil
+	default:
+		return nil, fmt.Errorf("must be array or string")
+	}
+}
+
 func parseMemberOverrides(v any) (map[string]map[string]any, error) {
 	if v == nil {
 		return nil, nil
@@ -1796,6 +1922,91 @@ func parseMemberOverrides(v any) (map[string]map[string]any, error) {
 		}
 	}
 	return out, nil
+}
+
+func buildRuntimeMembers(inputs []teamRuntimeMemberInput, teamID string, usedIDs map[string]bool) ([]db.TeamMember, []map[string]any, error) {
+	if len(inputs) == 0 {
+		return nil, nil, nil
+	}
+	if usedIDs == nil {
+		usedIDs = map[string]bool{}
+	}
+	out := make([]db.TeamMember, 0, len(inputs))
+	outJSON := make([]map[string]any, 0, len(inputs))
+	for idx, input := range inputs {
+		memberID := strings.TrimSpace(input.MemberID)
+		if memberID == "" {
+			memberID = nextRuntimeMemberID(usedIDs)
+		} else if usedIDs[memberID] {
+			return nil, nil, fmt.Errorf("runtime_members[%d] member_id duplicate: %s", idx, memberID)
+		}
+		usedIDs[memberID] = true
+		agentID := strings.TrimSpace(input.AgentID)
+		if agentID == "" {
+			return nil, nil, fmt.Errorf("runtime_members[%d] agent_id required", idx)
+		}
+		role := strings.TrimSpace(input.Role)
+		if role == "" {
+			return nil, nil, fmt.Errorf("runtime_members[%d] role required", idx)
+		}
+		status := strings.TrimSpace(input.Status)
+		if status == "" {
+			status = "active"
+		}
+		meta := normalizeRuntimeMemberMeta(input.Meta)
+		metaJSON, _ := json.Marshal(meta)
+		caps := input.Capabilities
+		if caps == nil {
+			caps = []string{}
+		}
+		capsJSON, _ := json.Marshal(caps)
+		member := db.TeamMember{
+			MemberID:         memberID,
+			TeamID:           teamID,
+			DeploymentID:     strings.TrimSpace(input.DeploymentID),
+			AgentID:          agentID,
+			Role:             role,
+			CapabilitiesJSON: capsJSON,
+			Status:           status,
+			Weight:           input.Weight,
+			MetaJSON:         metaJSON,
+			CreatedAt:        time.Now().UTC(),
+		}
+		out = append(out, member)
+		outJSON = append(outJSON, teamMemberToJSON(member))
+	}
+	return out, outJSON, nil
+}
+
+func nextRuntimeMemberID(usedIDs map[string]bool) string {
+	for {
+		id := "rtm_" + newID()[:12]
+		if !usedIDs[id] {
+			return id
+		}
+	}
+}
+
+func normalizeRuntimeMemberMeta(meta map[string]any) map[string]any {
+	if len(meta) == 0 {
+		return meta
+	}
+	out := map[string]any{}
+	for k, v := range meta {
+		out[k] = v
+	}
+	if raw, ok := out["run_overrides"]; ok {
+		if m, ok := raw.(map[string]any); ok {
+			if sanitized := sanitizeRunOverrides(m); len(sanitized) > 0 {
+				out["run_overrides"] = sanitized
+			} else {
+				delete(out, "run_overrides")
+			}
+		} else {
+			delete(out, "run_overrides")
+		}
+	}
+	return out
 }
 
 func sanitizeRunOverrides(raw map[string]any) map[string]any {
