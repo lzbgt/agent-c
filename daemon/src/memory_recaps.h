@@ -54,6 +54,7 @@ bool memory_list_recaps(
   const DaemonConfig& cfg,
   int limit,
   bool include_summary,
+  const std::string& kind,
   Json::Value* out_list,
   std::string* out_err
 );

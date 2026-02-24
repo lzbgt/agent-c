@@ -286,6 +286,7 @@ bool memory_generate_recap(
   rep.ts_utc = iso_utc_now();
   rep.model = trim_copy(opt.model);
   rep.kind = normalize_kind(opt.kind);
+  if (rep.kind.empty()) rep.kind = "manual";
   rep.dry_run = opt.dry_run;
   rep.write_file = opt.write_file;
   rep.policy = opt.salience;
@@ -421,6 +422,7 @@ bool memory_list_recaps(
   const DaemonConfig& cfg,
   int limit,
   bool include_summary,
+  const std::string& kind,
   Json::Value* out_list,
   std::string* out_err
 ) {
@@ -454,6 +456,7 @@ bool memory_list_recaps(
   };
   std::vector<RecapRow> rows;
 
+  const std::string want_kind = normalize_kind(kind);
   for (auto it = std::filesystem::directory_iterator(recap_dir, ec); !ec && it != std::filesystem::directory_iterator(); ++it) {
     const auto& de = *it;
     if (!de.is_regular_file(ec)) continue;
@@ -482,6 +485,9 @@ bool memory_list_recaps(
       }
     }
     if (doc.isMember("model") && doc["model"].isString()) row.model = doc["model"].asString();
+    if (doc.isMember("kind") && doc["kind"].isString()) row.kind = doc["kind"].asString();
+    if (row.kind.empty()) row.kind = "manual";
+    if (!want_kind.empty() && normalize_kind(row.kind) != want_kind) continue;
     if (include_summary && doc.isMember("summary_text") && doc["summary_text"].isString()) {
       row.summary_text = doc["summary_text"].asString();
     }

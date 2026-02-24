@@ -295,6 +295,8 @@ Recap snapshots now include `evidence_sources` (deduped list of cited sources) a
 
 Optional request fields:
 - `kind`: label the recap (e.g. `daily`, `weekly`, `manual`), used in the recap filename.
+List filtering:
+- `GET /api/v1/memory/recaps?kind=daily` filters the recap list by kind. Recaps without an explicit kind are treated as `manual`.
 
 Scheduled recaps (disabled by default):
 - `--memory-recap-daily-interval-ms <n>` / `AGENTD_MEMORY_RECAP_DAILY_INTERVAL_MS`

@@ -820,8 +820,12 @@ void handle_memory_recaps_endpoint(
 
   if (req.method == "GET") {
     int limit = 20;
+    std::string kind;
     if (const auto v = query_get(req.query, "limit"); v && !v->empty()) {
       try { limit = (int)std::stol(*v); } catch (...) { limit = 20; }
+    }
+    if (const auto v = query_get(req.query, "kind"); v && !v->empty()) {
+      kind = *v;
     }
     limit = std::max(1, std::min(200, limit));
     bool include_summary = false;
@@ -831,7 +835,7 @@ void handle_memory_recaps_endpoint(
 
     Json::Value recaps(Json::arrayValue);
     std::string err;
-    if (!memory_list_recaps(cfg, limit, include_summary, &recaps, &err)) {
+    if (!memory_list_recaps(cfg, limit, include_summary, kind, &recaps, &err)) {
       resp->status = 500;
       Json::Value o(Json::objectValue);
       o["ok"] = false;

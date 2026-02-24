@@ -65,6 +65,7 @@ export type MemorySalienceParams = {
 export type MemoryRecapsListParams = {
   limit?: number;
   includeSummary?: boolean;
+  kind?: string;
 };
 
 export async function apiMemoryQuery(
@@ -181,6 +182,7 @@ export async function apiMemoryRecapsList(
   const qs = new URLSearchParams();
   addQueryParam(qs, "limit", params.limit);
   addQueryParam(qs, "include_summary", params.includeSummary);
+  addQueryParam(qs, "kind", params.kind);
   const url = qs.toString() ? `${base}/api/v1/memory/recaps?${qs.toString()}` : `${base}/api/v1/memory/recaps`;
   const r = await fetch(url, { headers: daemonHeaders(auth) });
   const j = await r.json();

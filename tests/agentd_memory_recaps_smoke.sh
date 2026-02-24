@@ -27,6 +27,7 @@ LOG_DIR="$(agentd_smoke_log_dir)"
 STATE_DIR="${LOG_DIR}/${NAME}_${PORT}.state"
 mem_root="${STATE_DIR}/memory"
 mkdir -p "${mem_root}/checkpoints"
+mkdir -p "${mem_root}/recaps"
 
 dates=()
 while IFS= read -r line; do
@@ -50,6 +51,10 @@ EOF_IN
 
 cat > "${mem_root}/checkpoints/structured_${now_utc}.json" <<EOF_IN
 {"schema":"agentd_structured_checkpoint_v1","ts_utc":"${now_utc}","path":"STRUCTURED.md","doc":{"items":{"recap.test.key":{"kind":"fact","value":"Recap summarization should be deterministic","status":"active","updated_utc":"${now_utc}","observed_utc":"${now_utc}","sources":["trace:recap"]}}}}
+EOF_IN
+
+cat > "${mem_root}/recaps/recap_daily_${now_utc}.json" <<EOF_IN
+{"schema":"agentd_memory_recap_v1","ts_utc":"${now_utc}","ts_utc_ms":0,"model":"stub","kind":"daily","summary_text":"Daily recap stub","structured_items":[],"daily_items":[]}
 EOF_IN
 
 resp="$(curl -fsS --noproxy "*" --max-time 5 \
@@ -86,6 +91,25 @@ if not sources:
 prompt = obj.get("prompt") or ""
 if not prompt:
   print("expected prompt", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+list_resp="$(curl -fsS --noproxy "*" --max-time 5 \
+  -H "Authorization: Bearer ${TOKEN}" \
+  "${DAEMON_URL}/api/v1/memory/recaps?limit=5&kind=daily")"
+
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${list_resp}''')
+if not obj.get("ok"):
+  print(obj, file=sys.stderr)
+  raise SystemExit(1)
+recaps = obj.get("recaps") or []
+if not recaps:
+  print("expected recap list", obj, file=sys.stderr)
+  raise SystemExit(1)
+if any(r.get("kind") != "daily" for r in recaps):
+  print("unexpected recap kind filter", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 

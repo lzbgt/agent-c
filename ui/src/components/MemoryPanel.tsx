@@ -309,6 +309,7 @@ export default function MemoryPanel(props: MemoryPanelProps) {
         {
           limit: parsePositiveInt(recapsLimit, 20),
           includeSummary: recapsIncludeSummary,
+          kind: recapsKindFilter.trim() || undefined,
         },
         props.auth,
       );
@@ -459,9 +460,11 @@ export default function MemoryPanel(props: MemoryPanelProps) {
 
   const recapsList = Array.isArray((recapsResult as any)?.recaps) ? (recapsResult as any).recaps : [];
   const recapsKindFilterValue = recapsKindFilter.trim().toLowerCase();
-  const recapsFiltered = recapsKindFilterValue
-    ? recapsList.filter((item: any) => String(item?.kind || "").toLowerCase() === recapsKindFilterValue)
-    : recapsList;
+  const recapsHaveKind = recapsList.some((item: any) => String(item?.kind || "").trim().length > 0);
+  const recapsFiltered =
+    recapsKindFilterValue && recapsHaveKind
+      ? recapsList.filter((item: any) => String(item?.kind || "").toLowerCase() === recapsKindFilterValue)
+      : recapsList;
 
   return (
     <details
