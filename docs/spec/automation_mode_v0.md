@@ -37,20 +37,26 @@ Status: draft (rolling)
 
 ### 1) Automation profiles
 
-Introduce a named automation profile, with **default = full**.
+Introduce a named automation profile, with **default derived from daemon config**.
 
 - **full**
   - `yolo_default=true`
   - `host_policy=full`
   - `policy_mode=off`
-  - `approval_queue=disabled` unless explicitly enabled
-- **guided** (future)
-  - Enables approvals for selected tool classes
-- **strict** (future)
-  - Requires explicit approvals for most tool execution
+- **guided**
+  - `yolo_default=false`
+  - `host_policy=readonly`
+  - `policy_mode=audit`
+- **strict**
+  - `yolo_default=false`
+  - `host_policy=readonly`
+  - `policy_mode=enforce`
+- **custom**
+  - No override (use daemon config as-is)
 
-Profiles are **declared** by agentd and exposed via `/api/v1/caps`.
-A per-run override is allowed when clients specify `automation_profile`.
+Profiles are **declared** by agentd and exposed via `/api/v1/caps` as `features.automation`.
+`default_profile` is derived from the daemon config; clients may override per-run via `automation_profile`.
+The run response includes `effective_automation_profile`.
 
 ### 2) Moderator agent identity
 
@@ -83,8 +89,8 @@ All consolidation steps are explicit jobs with stored outputs.
 
 ## API / data model additions (planned)
 
-- `automation_profile_default` in `/api/v1/caps`
-- `automation_profile` in run/workflow submit payloads
+- `automation.default_profile` in `/api/v1/caps`
+- `automation_profile` in run submit payloads
 - `moderator` role identity in approvals + event streams
 - `moderator_tasks` endpoint for publishing/observing directives
 

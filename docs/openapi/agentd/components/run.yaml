@@ -14,6 +14,10 @@ RunRequest:
       type: integer
       format: int32
       description: Higher runs sooner (scheduler hint). Default 0. Clamped to [-1000, 1000].
+    automation_profile:
+      type: string
+      description: Optional automation profile override (full|guided|strict|custom).
+      enum: [full, guided, strict, custom]
     tools:
       type: string
       description: Tool mode
@@ -188,6 +192,12 @@ RunResponse:
       format: int64
       minimum: 0
       description: Effective max_tool_result_chars enforced by the daemon.
+    effective_host_policy:
+      type: string
+      description: Effective host tool policy applied by the daemon.
+    effective_automation_profile:
+      type: string
+      description: Effective automation profile applied by the daemon.
     steps_executed:
       type: integer
       format: int64

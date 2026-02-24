@@ -1,6 +1,7 @@
 #include "run_endpoints.h"
 
 #include "approval_queue.h"
+#include "automation_profile.h"
 #include "daemon_auth.h"
 #include "client_profiles.h"
 #include "default_system_prompt.h"
@@ -133,9 +134,21 @@ static Json::Value run_request_to_json_impl(
   std::string tools = parsed.tools;
 
   OpenAIClientConfig run_cfg = build_run_config_from_args(daemon_cfg, ocfg, args);
+  std::string automation_profile;
+  if (args.isMember("automation_profile") && args["automation_profile"].isString()) {
+    automation_profile = args["automation_profile"].asString();
+  }
+  DaemonConfig effective_cfg = daemon_cfg;
+  if (!automation_profile.empty()) {
+    std::string aerr;
+    if (!automation_profile_apply(automation_profile, &effective_cfg, &aerr)) {
+      return run_request_error(400, aerr.empty() ? "invalid automation_profile" : aerr);
+    }
+  }
+  const std::string effective_automation_profile = automation_profile_from_config(effective_cfg);
   const bool requested_yolo_set = args.isMember("yolo") && args["yolo"].isBool();
-  const bool requested_yolo = requested_yolo_set ? args["yolo"].asBool() : daemon_cfg.yolo_default;
-  const bool yolo = sandbox_tighten_yolo(daemon_cfg.yolo_default, requested_yolo, requested_yolo_set);
+  const bool requested_yolo = requested_yolo_set ? args["yolo"].asBool() : effective_cfg.yolo_default;
+  const bool yolo = sandbox_tighten_yolo(effective_cfg.yolo_default, requested_yolo, requested_yolo_set);
   const bool no_default_system =
     args.isMember("no_default_system") && args["no_default_system"].isBool() ? args["no_default_system"].asBool() : daemon_cfg.no_default_system;
   const std::string system_profile_raw =
@@ -160,7 +173,7 @@ static Json::Value run_request_to_json_impl(
   if (args.isMember("tools_root")) {
     return run_request_error(400, "tools_root was removed; omit it and use explicit paths or session_id");
   }
-  HostToolsetPolicyMode requested_policy = daemon_cfg.host_policy;
+  HostToolsetPolicyMode requested_policy = effective_cfg.host_policy;
   if (args.isMember("host_policy") && args["host_policy"].isString()) {
     HostToolsetPolicyMode p{};
     const std::string s = args["host_policy"].asString();
@@ -169,7 +182,7 @@ static Json::Value run_request_to_json_impl(
     }
     requested_policy = p;
   }
-  const HostToolsetPolicyMode effective_policy = tighten_host_policy(daemon_cfg.host_policy, requested_policy);
+  const HostToolsetPolicyMode effective_policy = tighten_host_policy(effective_cfg.host_policy, requested_policy);
   if (!no_session && !sessions_root_dir.empty()) {
     const std::filesystem::path sr = session_root_path(sessions_root_dir, session_id);
     if (sr.empty()) {
@@ -483,7 +496,7 @@ static Json::Value run_request_to_json_impl(
     job_set_trace_id(job_id_local, trace_id);
   }
 
-  PolicyConfig policy_cfg = policy_config_from_daemon(daemon_cfg);
+  PolicyConfig policy_cfg = policy_config_from_daemon(effective_cfg);
   PolicyHookCtx policy_ctx;
   const bool policy_active = (policy_cfg.mode != PolicyMode::Off);
   if (policy_active) {
@@ -1313,6 +1326,7 @@ static Json::Value run_request_to_json_impl(
   out["effective_yolo"] = yolo;
   const std::string effective_host_policy = host_policy_to_string(effective_policy);
   out["effective_host_policy"] = effective_host_policy;
+  out["effective_automation_profile"] = effective_automation_profile;
   out["effective_timeout_ms"] = (Json::Int64)run_cfg.timeout_ms;
   out["effective_connect_timeout_ms"] = (Json::Int64)run_cfg.connect_timeout_ms;
   out["effective_stream_idle_timeout_ms"] = (Json::Int64)run_cfg.stream_idle_timeout_ms;

@@ -186,6 +186,14 @@ Tools ceiling:
 - Run requests cannot exceed the daemon’s `--tools` setting (e.g., a daemon started with `--tools basic` will reject `tools:"host"`).
   Such requests return HTTP 400.
 
+Automation profile override:
+- `automation_profile` (string, optional): named profile that maps to daemon defaults.
+  - `full`: `yolo_default=true`, `host_policy=full`, `policy_mode=off`
+  - `guided`: `yolo_default=false`, `host_policy=readonly`, `policy_mode=audit`
+  - `strict`: `yolo_default=false`, `host_policy=readonly`, `policy_mode=enforce`
+  - `custom`: no override (use daemon config as-is)
+- The daemon reports the applied profile as `effective_automation_profile` in the run response.
+
 ### Run replay bundles (deterministic audit)
 
 `agentd` persists a **redacted replay bundle** for session-backed runs (best-effort) and exposes it via:

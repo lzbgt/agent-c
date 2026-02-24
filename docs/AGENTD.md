@@ -206,6 +206,16 @@ Policy decisions emit `policy_decision` events in the run/job event streams for 
 - In `audit` mode, approvals emit `approval_request` + `approval_resolved` events but do not block.
 - Approval lifecycle events: `approval_request`, `approval_update`, `approval_resolved`.
 
+### Automation profiles (nonblocking defaults)
+
+- `/api/v1/caps` includes `features.automation` with `default_profile` and supported `profiles`.
+- `POST /api/v1/run` accepts `automation_profile` to override daemon defaults:
+  - `full`: `yolo_default=true`, `host_policy=full`, `policy_mode=off`.
+  - `guided`: `yolo_default=false`, `host_policy=readonly`, `policy_mode=audit`.
+  - `strict`: `yolo_default=false`, `host_policy=readonly`, `policy_mode=enforce`.
+  - `custom`: no override (use daemon config as-is).
+- Run responses include `effective_automation_profile`.
+
 ## Daemon-side key loading and client identity
 
 - `agentd` supports **daemon-side** key loading per-run based on the request `base_url`, so WebUI can omit `api_key`.

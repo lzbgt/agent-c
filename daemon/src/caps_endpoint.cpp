@@ -1,5 +1,6 @@
 #include "caps_endpoint.h"
 
+#include "automation_profile.h"
 #include "daemon_auth.h"
 #include "json_util.h"
 #include "sandbox_policy.h"
@@ -108,6 +109,15 @@ void handle_caps_endpoint(
     tools["no_default_system"] = cfg.no_default_system;
     tools["system_profile"] = cfg.system_profile;
     features["tools"] = tools;
+  }
+  {
+    Json::Value automation(Json::objectValue);
+    automation["default_profile"] = automation_profile_from_config(cfg);
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : automation_profile_list()) arr.append(s);
+    automation["profiles"] = arr;
+    automation["per_run_override"] = true;
+    features["automation"] = automation;
   }
   {
     Json::Value policy(Json::objectValue);
