@@ -4,6 +4,7 @@ export type HostPolicy = "full" | "readonly";
 export type ServerPrefsMode = "off" | "auto" | "on";
 
 export type AgentUIRuntimeConfig = {
+  clientId?: string;
   connectionMode?: ConnectionMode | string;
   daemonBaseUrl?: string;
   brokerBaseUrl?: string;
@@ -48,6 +49,7 @@ export type AgentUIRuntimeConfig = {
 };
 
 export type AgentUIDefaults = {
+  clientId: string;
   connectionMode: ConnectionMode;
   daemonBaseUrl: string;
   brokerBaseUrl: string;
@@ -98,6 +100,7 @@ declare global {
 }
 
 const DEFAULTS: AgentUIDefaults = {
+  clientId: "webui",
   connectionMode: "direct",
   daemonBaseUrl: "http://127.0.0.1:8123",
   brokerBaseUrl: "https://127.0.0.1:8443",
@@ -211,6 +214,8 @@ const readRuntimeConfig = (): AgentUIRuntimeConfig => {
 export const getUiDefaults = (): AgentUIDefaults => {
   const cfg = readRuntimeConfig();
   const out: AgentUIDefaults = { ...DEFAULTS };
+
+  out.clientId = coerceString(cfg.clientId) ?? coerceString(envString("VITE_AGENTUI_CLIENT_ID")) ?? out.clientId;
 
   out.connectionMode =
     coerceEnum(cfg.connectionMode, ["direct", "broker"]) ??

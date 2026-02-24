@@ -227,6 +227,7 @@ export type RunSettings = {
 
 export type ClientSettings = {
   clientId: string;
+  setClientId: React.Dispatch<React.SetStateAction<string>>;
   allowAutoplay: boolean;
   setAllowAutoplay: React.Dispatch<React.SetStateAction<boolean>>;
   allowClientRpcs: boolean;
@@ -469,6 +470,8 @@ const mergeServerPrefs = (
 export default function useUiSettings(): UiSettings {
   const defaults = React.useMemo(() => getUiDefaults(), []);
   const initialClientId = React.useMemo(() => {
+    const preset = String(defaults.clientId || "").trim();
+    if (preset) return preset;
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const g: any = typeof globalThis !== "undefined" ? globalThis : {};
@@ -479,8 +482,8 @@ export default function useUiSettings(): UiSettings {
       // ignore
     }
     return `webui-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  }, []);
-  const [clientId] = useLocalStorageState("agentui.clientId", initialClientId);
+  }, [defaults.clientId]);
+  const [clientId, setClientId] = useLocalStorageState("agentui.clientId", initialClientId);
 
   const [showSettings, setShowSettings] = useLocalStorageState("agentui.showSettings", false);
 
@@ -1408,6 +1411,10 @@ export default function useUiSettings(): UiSettings {
     [connectionProfiles, activeProfileId],
   );
   const serverPrefsPayloadJson = React.useMemo(() => JSON.stringify(serverPrefsPayload), [serverPrefsPayload]);
+  const serverPrefsPayloadKey = React.useMemo(
+    () => JSON.stringify({ client_id: String(clientId || "webui"), prefs: serverPrefsPayload }),
+    [clientId, serverPrefsPayload],
+  );
   const serverPrefsClientKind = "webui";
   const serverPrefsCanUse = serverPrefsEffectiveEnabled && String(serverPrefsBase || "").trim().length > 0;
   const connectionProfilesRef = React.useRef(connectionProfiles);
@@ -1438,7 +1445,10 @@ export default function useUiSettings(): UiSettings {
         const merged = mergeServerPrefs(resp.prefs as ServerPrefs, connectionProfilesRef.current, defaults);
         setConnectionProfiles(merged.profiles);
         if (merged.activeProfileId) setActiveProfileId(merged.activeProfileId);
-        serverPrefsLastPayloadRef.current = JSON.stringify(buildServerPrefs(merged.profiles, merged.activeProfileId));
+        serverPrefsLastPayloadRef.current = JSON.stringify({
+          client_id: String(clientId || "webui"),
+          prefs: buildServerPrefs(merged.profiles, merged.activeProfileId),
+        });
       }
       setServerPrefsLastSyncMs(typeof resp.updated_utc_ms === "number" ? resp.updated_utc_ms : Date.now());
       setServerPrefsStatus("synced");
@@ -1463,8 +1473,8 @@ export default function useUiSettings(): UiSettings {
   const pushServerPrefs = React.useCallback(async () => {
     if (!serverPrefsCanUse) return;
     const payload = serverPrefsPayload;
-    const payloadJson = serverPrefsPayloadJson;
-    if (payloadJson === serverPrefsLastPayloadRef.current) return;
+    const payloadKey = serverPrefsPayloadKey;
+    if (payloadKey === serverPrefsLastPayloadRef.current) return;
     setServerPrefsStatus("loading");
     setServerPrefsError(null);
     try {
@@ -1476,7 +1486,7 @@ export default function useUiSettings(): UiSettings {
       if (!resp.ok) {
         throw new Error(resp.error || resp.err || resp.code || "client prefs update failed");
       }
-      serverPrefsLastPayloadRef.current = payloadJson;
+      serverPrefsLastPayloadRef.current = payloadKey;
       setServerPrefsLastSyncMs(typeof resp.updated_utc_ms === "number" ? resp.updated_utc_ms : Date.now());
       setServerPrefsStatus("synced");
     } catch (err) {
@@ -1492,6 +1502,7 @@ export default function useUiSettings(): UiSettings {
     serverPrefsClientKind,
     serverPrefsPayload,
     serverPrefsPayloadJson,
+    serverPrefsPayloadKey,
   ]);
 
   const setServerPrefsEnabled = React.useCallback<React.Dispatch<React.SetStateAction<boolean>>>(
@@ -1519,7 +1530,7 @@ export default function useUiSettings(): UiSettings {
       void pushServerPrefs();
     }, 600);
     return () => window.clearTimeout(t);
-  }, [pushServerPrefs, serverPrefsCanUse, serverPrefsPayloadJson]);
+  }, [pushServerPrefs, serverPrefsCanUse, serverPrefsPayloadKey]);
 
   React.useEffect(() => {
     if (maxStepsUserSet) return;
@@ -1665,6 +1676,7 @@ export default function useUiSettings(): UiSettings {
     },
     client: {
       clientId: String(clientId || "webui"),
+      setClientId,
       allowAutoplay,
       setAllowAutoplay,
       allowClientRpcs,

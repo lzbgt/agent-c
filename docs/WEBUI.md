@@ -32,6 +32,7 @@ For static hosting (nginx/Caddy/S3), serve `ui/dist/`.
 ## Runtime defaults (no rebuild)
 
 Edit `ui/public/agentui-config.js` (copied to `ui/dist/agentui-config.js`) to prefill:
+- `clientId` (client prefs id for server-side profile sync)
 - `connectionMode` (`direct` or `broker`)
 - `daemonBaseUrl`, `brokerBaseUrl`, `brokerAgentId`, `brokerDeploymentId`
 - `daemonAuthToken`, `brokerAuthToken` (only if you accept putting tokens in a static file)
@@ -51,6 +52,7 @@ Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`,
 - The broker console exposes agent membership management, audit events, team setup (members + quorum rules), team runs, and quorum approvals (Team console includes recent quorum requests and approvals).
 - Server-side sync prefers the **daemon** (direct mode) or **broker** (broker mode) when supported.
   - Default: **auto** (syncs when the server advertises client prefs and auth allows; broker requires OIDC token).
+  - The client prefs id defaults to `webui` and can be changed in Settings → Connection.
   - Toggle “Sync connection profiles to daemon/broker” in Settings → Connection to force on/off.
   - Only non-secret fields are stored (URLs/ids/profile names). Auth tokens remain local.
 - Devstack OIDC helper: `tools/devstack_oidc_token.sh --state out/devstack_state.json` (prints a bearer token).

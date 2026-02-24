@@ -416,6 +416,36 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
               {connection.serverPrefsError ? (
                 <div className="mt-1 text-rose-200">Sync error: {connection.serverPrefsError}</div>
               ) : null}
+              <div className="mt-3">
+                <FieldLabel>Server prefs client id</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                  value={client.clientId}
+                  onChange={(e) => client.setClientId(e.target.value)}
+                  placeholder="e.g. webui"
+                />
+                <div className="mt-1 text-white/50">
+                  Use a stable id to share profiles across devices (server-side). Leave as default for per-device storage.
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/70">
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                    type="button"
+                    onClick={() => client.setClientId("webui")}
+                  >
+                    Use shared id
+                  </button>
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                    type="button"
+                    onClick={() =>
+                      client.setClientId(`webui-${Date.now()}-${Math.random().toString(16).slice(2)}`)
+                    }
+                  >
+                    New random id
+                  </button>
+                </div>
+              </div>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 {connection.serverPrefsAuto && connection.serverPrefsUserSet ? (
                   <button
