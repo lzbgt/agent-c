@@ -89,6 +89,8 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const teamList = Array.isArray(teams) ? teams : [];
   const teamIdTrimmed = String(teamId || "").trim();
   const approvalRunIdTrimmed = String(approvalRunId || runLookupId || "").trim();
+  const membersList = Array.isArray(members) ? members : [];
+  const rulesList = Array.isArray(rules) ? rules : [];
 
   React.useEffect(() => {
     if (!approvalRunId && runResult?.team_run_id) {
@@ -824,7 +826,15 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
               value={approvalMemberId}
               onChange={(e) => setApprovalMemberId(e.target.value)}
               placeholder="member id"
+              list="team-approvals-members"
             />
+            <datalist id="team-approvals-members">
+              {membersList.map((m, idx) => {
+                const mid = String(m?.member_id || "");
+                if (!mid) return null;
+                return <option key={`member-opt-${mid}-${idx}`} value={mid} />;
+              })}
+            </datalist>
             <FieldLabel>Decision</FieldLabel>
             <select
               className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
@@ -840,7 +850,15 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
               value={approvalRuleId}
               onChange={(e) => setApprovalRuleId(e.target.value)}
               placeholder="optional"
+              list="team-approvals-rules"
             />
+            <datalist id="team-approvals-rules">
+              {rulesList.map((r, idx) => {
+                const rid = String(r?.rule_id || "");
+                if (!rid) return null;
+                return <option key={`rule-opt-${rid}-${idx}`} value={rid} />;
+              })}
+            </datalist>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <FieldLabel>Reason</FieldLabel>
