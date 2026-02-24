@@ -412,7 +412,7 @@ See `docs/DIAGNOSTICS.md` for provider_test usage. The providers endpoint includ
 - Build once and host on a static server:
   - `cd ui && npm ci && npm run build`
 - Serve `ui/dist/` via nginx/Caddy/S3.
-- Runtime defaults (no rebuild): edit `ui/dist/agentui-config.js`.
+- Runtime defaults (no rebuild): edit `ui/dist/agentui-config.js` (supports `serverPrefsMode` = `off|auto|on`).
 - Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`, and `VITE_AGENTUI_*`.
 - Broker proxy is recommended for production; direct agentd exposure requires CORS + auth hardening.
 - Full WebUI setup (dev, runtime config, diagnostics, reliability notes) lives in `docs/WEBUI.md`.
