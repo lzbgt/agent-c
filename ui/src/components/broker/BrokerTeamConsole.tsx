@@ -787,6 +787,22 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     void handleApprovalsRefresh();
   }, [approvalRunIdTrimmed, approvals, approvalsBusy, canQuery, handleApprovalsRefresh, teamIdTrimmed]);
 
+  React.useEffect(() => {
+    if (!runtimeMemberAgentId) {
+      if (runtimeMemberDeploymentId) {
+        setRuntimeMemberDeploymentId("");
+      }
+      return;
+    }
+    if (runtimeMemberDeploymentId) return;
+    if (runtimeAgentDeployments.length === 0) return;
+    const first = runtimeAgentDeployments[0];
+    const depId = first?.deployment_id ? String(first.deployment_id) : "";
+    if (depId) {
+      setRuntimeMemberDeploymentId(depId);
+    }
+  }, [runtimeMemberAgentId, runtimeMemberDeploymentId, runtimeAgentDeployments]);
+
   return (
     <section className="rounded-md border border-white/10 bg-black/20 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
