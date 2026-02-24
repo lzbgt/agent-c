@@ -82,6 +82,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [approvalsBusy, setApprovalsBusy] = React.useState<boolean>(false);
   const [approvalsError, setApprovalsError] = React.useState<string | null>(null);
   const [approvals, setApprovals] = React.useState<any[] | null>(null);
+  const [approvalsLastSyncMs, setApprovalsLastSyncMs] = React.useState<number | null>(null);
   const [approvalRunId, setApprovalRunId] = React.useState<string>("");
   const [approvalMemberId, setApprovalMemberId] = React.useState<string>("");
   const [approvalRuleId, setApprovalRuleId] = React.useState<string>("");
@@ -116,6 +117,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   React.useEffect(() => {
     setApprovals(null);
     setApprovalsError(null);
+    setApprovalsLastSyncMs(null);
   }, [approvalRunIdTrimmed, teamIdTrimmed]);
 
   const refreshTeams = async () => {
@@ -384,6 +386,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       }
       const rows = Array.isArray(resp?.approvals) ? resp.approvals : [];
       setApprovals(rows);
+      setApprovalsLastSyncMs(Date.now());
     } catch (err) {
       setApprovalsError(String(err));
     } finally {
@@ -422,6 +425,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       }
       const rows = Array.isArray(resp?.approvals) ? resp.approvals : [];
       setApprovals(rows);
+      setApprovalsLastSyncMs(Date.now());
       setApprovalReason("");
     } catch (err) {
       setApprovalsError(String(err));
@@ -842,6 +846,9 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
           <div className="text-[11px] text-white/50">
             Submit or review approvals for a team run (quorum rules apply).
           </div>
+          {approvalsLastSyncMs ? (
+            <div className="text-[11px] text-white/50">Last sync: {fmtTs(approvalsLastSyncMs)}</div>
+          ) : null}
           {quorumRequestRows.length > 0 ? (
             <div className="grid gap-2">
               <div className="text-[11px] text-white/60">Recent quorum requests</div>
