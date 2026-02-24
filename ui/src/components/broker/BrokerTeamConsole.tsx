@@ -618,6 +618,13 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     setRunRuntimeMembersJson(JSON.stringify(next, null, 2));
   };
 
+  const handleSetAllRuntimeStatus = (status: "active" | "paused") => {
+    const rawItems = runtimeMembersPreview.items;
+    if (!Array.isArray(rawItems) || rawItems.length === 0) return;
+    const next = rawItems.map((item) => ({ ...item, status }));
+    setRunRuntimeMembersJson(JSON.stringify(next, null, 2));
+  };
+
   const handleSeedExplicitOverrides = () => {
     if (membersList.length === 0) {
       setRunError("no team members loaded");
@@ -1493,6 +1500,23 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
           ) : null}
           {runtimeMembersPreview.items.length > 0 ? (
             <div className="grid gap-2">
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+                <span>Bulk status:</span>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                  type="button"
+                  onClick={() => handleSetAllRuntimeStatus("paused")}
+                >
+                  Pause all
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                  type="button"
+                  onClick={() => handleSetAllRuntimeStatus("active")}
+                >
+                  Resume all
+                </button>
+              </div>
               {runtimeMembersPreview.items.map((item, idx) => {
                 const memberId = item?.member_id ? String(item.member_id) : "";
                 const agentId = item?.agent_id ? String(item.agent_id) : "";
