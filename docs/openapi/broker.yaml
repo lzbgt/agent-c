@@ -14,6 +14,7 @@ servers:
 tags:
   - name: health
   - name: caps
+  - name: client_prefs
   - name: client_auth
   - name: agents
   - name: audio

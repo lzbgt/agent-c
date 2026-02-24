@@ -30,6 +30,12 @@ import {
   BrokerTeamRunStatusRespSchema,
   type BrokerTeamRunStatusResp,
 } from "./schemas/broker";
+import {
+  ClientPrefsSchema,
+  type ClientPrefs,
+  ClientPrefsUpdateReqSchema,
+  type ClientPrefsUpdateReq,
+} from "./schemas/daemon";
 import type { MemoryRecapsListParams, MemorySalienceParams } from "./memory";
 
 export async function apiBrokerListAgents(brokerBase: string, auth?: ApiAuth): Promise<BrokerAgentsResp> {
@@ -341,6 +347,37 @@ export async function apiBrokerGetMembershipAudit(
   });
   const j = await r.json();
   return BrokerMembershipAuditRespSchema.parse(j);
+}
+
+export async function apiBrokerGetClientPrefs(
+  brokerBase: string,
+  clientId: string,
+  clientKind: string,
+  auth?: ApiAuth,
+): Promise<ClientPrefs> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const qs = new URLSearchParams({ client_id: clientId, client_kind: clientKind });
+  const r = await fetch(`${base}/v1/client_prefs?${qs.toString()}`, {
+    headers: daemonHeaders(auth),
+  });
+  const j = await r.json();
+  return ClientPrefsSchema.parse(j);
+}
+
+export async function apiBrokerPostClientPrefs(
+  brokerBase: string,
+  req: ClientPrefsUpdateReq,
+  auth?: ApiAuth,
+): Promise<ClientPrefs> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const payload = ClientPrefsUpdateReqSchema.parse(req);
+  const r = await fetch(`${base}/v1/client_prefs`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json();
+  return ClientPrefsSchema.parse(j);
 }
 
 export async function apiBrokerTeamList(brokerBase: string, auth?: ApiAuth): Promise<BrokerTeamListResp> {

@@ -118,9 +118,9 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const [brokerDeploymentsError, setBrokerDeploymentsError] = React.useState<string | null>(null);
   const [brokerDeployments, setBrokerDeployments] = React.useState<any[] | null>(null);
   const [brokerDeploymentsDefaultId, setBrokerDeploymentsDefaultId] = React.useState<string | null>(null);
-  const serverPrefsModeBlocked = connection.mode !== "direct";
-  const serverPrefsBase = String(connection.effectiveBase || "").trim();
-  const serverPrefsCanSync = !serverPrefsModeBlocked && serverPrefsBase.length > 0;
+  const serverPrefsBase = String(connection.serverPrefsBase || "").trim();
+  const serverPrefsCanSync = serverPrefsBase.length > 0;
+  const serverPrefsTarget = connection.mode === "broker" ? "broker" : "daemon";
   const serverPrefsStatusLabel =
     connection.serverPrefsStatus === "loading" ? "syncing…" : connection.serverPrefsStatus;
   const [openrouterModels, setOpenrouterModels] = React.useState<any | null>(null);
@@ -381,15 +381,15 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                     type="checkbox"
                     checked={connection.serverPrefsEnabled}
                     onChange={(e) => connection.setServerPrefsEnabled(e.target.checked)}
-                    disabled={serverPrefsModeBlocked}
+                    disabled={!serverPrefsCanSync}
                   />
-                  <span>Sync connection profiles to daemon (no tokens)</span>
+                  <span>Sync connection profiles to {serverPrefsTarget} (no tokens)</span>
                 </label>
               </div>
               <div className="mt-1 text-white/50">
-                {serverPrefsModeBlocked
-                  ? "Direct mode only (broker mode does not expose prefs yet)."
-                  : `Status: ${serverPrefsStatusLabel}${connection.serverPrefsLastSyncMs ? ` · ${new Date(connection.serverPrefsLastSyncMs).toLocaleString()}` : ""}`}
+                {serverPrefsCanSync
+                  ? `Status: ${serverPrefsStatusLabel}${connection.serverPrefsLastSyncMs ? ` · ${new Date(connection.serverPrefsLastSyncMs).toLocaleString()}` : ""}`
+                  : "Set a base URL first."}
               </div>
               {connection.serverPrefsError ? (
                 <div className="mt-1 text-rose-200">Sync error: {connection.serverPrefsError}</div>

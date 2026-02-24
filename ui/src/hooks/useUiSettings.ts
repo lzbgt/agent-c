@@ -8,7 +8,14 @@ import {
   type HostPolicy,
   type ToolMode,
 } from "../runtime_config";
-import { apiGetClientPrefs, apiPostClientPrefs, type ApiAuth, type ClientPrefs } from "../api";
+import {
+  apiBrokerGetClientPrefs,
+  apiBrokerPostClientPrefs,
+  apiGetClientPrefs,
+  apiPostClientPrefs,
+  type ApiAuth,
+  type ClientPrefs,
+} from "../api";
 
 export type ConnectionSettings = {
   profiles: ConnectionProfile[];
@@ -38,6 +45,7 @@ export type ConnectionSettings = {
   serverPrefsStatus: "idle" | "loading" | "error" | "synced";
   serverPrefsError: string | null;
   serverPrefsLastSyncMs: number | null;
+  serverPrefsBase: string;
   pullServerPrefs: () => void;
   pushServerPrefs: () => void;
   effectiveBase: string;
@@ -1273,14 +1281,20 @@ export default function useUiSettings(): UiSettings {
       : `direct:pid=${pid}:tlen=${t.length}`;
   }, [activeProfileId, daemonAuth]);
 
+  const serverPrefsBase = React.useMemo(() => {
+    if (connectionMode === "broker") {
+      return normalizeHttpBase(brokerBase, "https://127.0.0.1:8443", "https");
+    }
+    return normalizeHttpBase(base, "http://127.0.0.1:8123", "http");
+  }, [base, brokerBase, connectionMode]);
+
   const serverPrefsPayload = React.useMemo(
     () => buildServerPrefs(connectionProfiles, activeProfileId),
     [connectionProfiles, activeProfileId],
   );
   const serverPrefsPayloadJson = React.useMemo(() => JSON.stringify(serverPrefsPayload), [serverPrefsPayload]);
   const serverPrefsClientKind = "webui";
-  const serverPrefsCanUse =
-    serverPrefsEnabled && connectionMode === "direct" && String(effectiveBase || "").trim().length > 0;
+  const serverPrefsCanUse = serverPrefsEnabled && String(serverPrefsBase || "").trim().length > 0;
   const connectionProfilesRef = React.useRef(connectionProfiles);
   React.useEffect(() => {
     connectionProfilesRef.current = connectionProfiles;
@@ -1293,7 +1307,15 @@ export default function useUiSettings(): UiSettings {
     setServerPrefsStatus("loading");
     setServerPrefsError(null);
     try {
-      const resp = await apiGetClientPrefs(effectiveBase, String(clientId || "webui"), serverPrefsClientKind, daemonAuth);
+      const isBrokerPrefs = connectionMode === "broker";
+      const resp = isBrokerPrefs
+        ? await apiBrokerGetClientPrefs(
+            serverPrefsBase,
+            String(clientId || "webui"),
+            serverPrefsClientKind,
+            daemonAuth,
+          )
+        : await apiGetClientPrefs(serverPrefsBase, String(clientId || "webui"), serverPrefsClientKind, daemonAuth);
       if (!resp.ok) {
         throw new Error(resp.error || resp.err || resp.code || "client prefs fetch failed");
       }
@@ -1315,7 +1337,8 @@ export default function useUiSettings(): UiSettings {
     clientId,
     daemonAuth,
     defaults,
-    effectiveBase,
+    connectionMode,
+    serverPrefsBase,
     serverPrefsCanUse,
     serverPrefsClientKind,
     setActiveProfileId,
@@ -1330,11 +1353,11 @@ export default function useUiSettings(): UiSettings {
     setServerPrefsStatus("loading");
     setServerPrefsError(null);
     try {
-      const resp = await apiPostClientPrefs(
-        effectiveBase,
-        { client_id: String(clientId || "webui"), client_kind: serverPrefsClientKind, prefs: payload },
-        daemonAuth,
-      );
+      const isBrokerPrefs = connectionMode === "broker";
+      const req = { client_id: String(clientId || "webui"), client_kind: serverPrefsClientKind, prefs: payload };
+      const resp = isBrokerPrefs
+        ? await apiBrokerPostClientPrefs(serverPrefsBase, req, daemonAuth)
+        : await apiPostClientPrefs(serverPrefsBase, req, daemonAuth);
       if (!resp.ok) {
         throw new Error(resp.error || resp.err || resp.code || "client prefs update failed");
       }
@@ -1348,7 +1371,8 @@ export default function useUiSettings(): UiSettings {
   }, [
     clientId,
     daemonAuth,
-    effectiveBase,
+    connectionMode,
+    serverPrefsBase,
     serverPrefsCanUse,
     serverPrefsClientKind,
     serverPrefsPayload,
@@ -1408,6 +1432,7 @@ export default function useUiSettings(): UiSettings {
       serverPrefsStatus,
       serverPrefsError,
       serverPrefsLastSyncMs,
+      serverPrefsBase,
       pullServerPrefs,
       pushServerPrefs,
       effectiveBase,

@@ -25,6 +25,17 @@ schemas:
         type: object
         additionalProperties: true
 
+  ClientPrefsConnectionProfile:
+    $ref: ./components/client_prefs.yaml#/ClientPrefsConnectionProfile
+  ClientPrefsConnection:
+    $ref: ./components/client_prefs.yaml#/ClientPrefsConnection
+  ClientPrefs:
+    $ref: ./components/client_prefs.yaml#/ClientPrefs
+  ClientPrefsUpdateRequest:
+    $ref: ./components/client_prefs.yaml#/ClientPrefsUpdateRequest
+  ClientPrefsResponse:
+    $ref: ./components/client_prefs.yaml#/ClientPrefsResponse
+
   AudioSessionCreateRequest:
     type: object
     required: [agent_id]

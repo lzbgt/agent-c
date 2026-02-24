@@ -83,6 +83,12 @@ func (s *Server) handleCaps(w http.ResponseWriter, r *http.Request) {
 					return s.cfg.ClientAuthMaxAge.Milliseconds()
 				}(),
 			},
+			"client_prefs": map[string]any{
+				"enabled":     true,
+				"secrets":     false,
+				"max_bytes":   clientPrefsMaxBodyBytes,
+				"owner_scope": "oidc_sub",
+			},
 			"mTLS": map[string]any{
 				"require_agent_mtls": s.cfg.RequireAgentMTLS,
 				"agent_cn_prefix":    s.cfg.AgentCNPfx,

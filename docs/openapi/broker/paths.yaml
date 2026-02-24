@@ -70,6 +70,43 @@
             schema:
               $ref: "#/components/schemas/BrokerCapsResponse"
 
+/v1/client_prefs:
+  get:
+    tags: [client_prefs]
+    summary: Get client prefs (WebUI profiles)
+    parameters:
+      - in: query
+        name: client_id
+        required: true
+        schema: { type: string }
+      - in: query
+        name: client_kind
+        required: false
+        schema: { type: string, default: webui }
+    responses:
+      "200":
+        description: Client prefs
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientPrefsResponse"
+  post:
+    tags: [client_prefs]
+    summary: Store client prefs (WebUI profiles)
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ClientPrefsUpdateRequest"
+    responses:
+      "200":
+        description: Stored client prefs
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ClientPrefsResponse"
+
 /v1/agents:
   get:
     tags: [agents]

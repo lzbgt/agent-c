@@ -1,0 +1,53 @@
+ClientPrefsConnectionProfile:
+  type: object
+  required: [id, name, mode, base, brokerBase, brokerAgentId, brokerDeploymentId]
+  properties:
+    id: { type: string }
+    name: { type: string }
+    mode: { type: string, enum: [direct, broker] }
+    base: { type: string }
+    brokerBase: { type: string }
+    brokerAgentId: { type: string }
+    brokerDeploymentId: { type: string }
+
+ClientPrefsConnection:
+  type: object
+  required: [active_profile_id, profiles]
+  properties:
+    active_profile_id: { type: string }
+    profiles:
+      type: array
+      items:
+        $ref: "#/ClientPrefsConnectionProfile"
+
+ClientPrefs:
+  type: object
+  required: [connection]
+  properties:
+    connection:
+      $ref: "#/ClientPrefsConnection"
+
+ClientPrefsUpdateRequest:
+  type: object
+  required: [client_id, prefs]
+  properties:
+    client_id: { type: string }
+    client_kind: { type: string, default: webui }
+    prefs:
+      $ref: "#/ClientPrefs"
+
+ClientPrefsResponse:
+  type: object
+  required: [ok, found, client_id, client_kind]
+  properties:
+    ok: { type: boolean }
+    found: { type: boolean }
+    client_id: { type: string }
+    client_kind: { type: string }
+    version: { type: integer }
+    updated_utc_ms: { type: integer, format: int64 }
+    prefs:
+      $ref: "#/ClientPrefs"
+    error: { type: string }
+    err: { type: string }
+    code: { type: string }

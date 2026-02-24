@@ -1,18 +1,17 @@
 # WebUI Server-Side Connection Prefs v1
 
-Last updated: 2026-02-20
+Last updated: 2026-02-24
 
 ## Goals
 
-- Persist **WebUI connection profiles** (daemon/broker URLs, agent ids, profile names) on the **daemon** so they survive browser resets and are shared across devices.
+- Persist **WebUI connection profiles** (daemon/broker URLs, agent ids, profile names) on the **daemon or broker** so they survive browser resets and are shared across devices.
 - Keep secrets **off** the server by default (auth tokens remain local unless explicitly opted in later).
 - Make the flow robust when the daemon is restarted (prefs stored in agentd DB meta table).
 - Maintain backward compatibility with existing localStorage-only behavior.
 
 ## Non-goals (v1)
 
-- Broker-side prefs (broker mode may be added later).
-- Multi-user account separation beyond client_id + auth (no per-user auth subject mapping yet).
+- Multi-user account separation beyond auth subject + client_id (no admin cross-user browsing UI yet).
 - Synchronizing all WebUI settings (run settings, memory preferences, UI layout).
 - Storing auth tokens server-side (explicit opt-in may be added later).
 
@@ -24,13 +23,13 @@ Last updated: 2026-02-20
 
 ## Architecture
 
-### Storage
+### Storage (agentd)
 
 - agentd DB `meta` table.
 - Key: `client.prefs.<client_kind>.<client_id>`
 - Value: JSON blob with `version`, `client_id`, `client_kind`, `prefs`, `updated_utc_ms`.
 
-### API
+### API (agentd)
 
 - `GET /api/v1/client/prefs?client_id=...&client_kind=webui`
   - Returns `{ ok, found, prefs, updated_utc_ms }`
@@ -38,6 +37,22 @@ Last updated: 2026-02-20
   - Body: `{ client_id, client_kind, prefs }`
   - Returns `{ ok, prefs, updated_utc_ms }`
 - Both require daemon auth when enabled.
+
+### Storage (broker)
+
+- broker DB table `broker_client_prefs`.
+- Key: `(owner_sub, client_kind, client_id)`.
+- Value: JSON blob with `version`, `client_id`, `client_kind`, `prefs`, `updated_utc_ms`.
+
+### API (broker)
+
+- `GET /v1/client_prefs?client_id=...&client_kind=webui`
+  - Returns `{ ok, found, prefs, updated_utc_ms }`
+  - OIDC required; uses caller `sub` as owner.
+- `POST /v1/client_prefs`
+  - Body: `{ client_id, client_kind, prefs }`
+  - Returns `{ ok, prefs, updated_utc_ms }`
+  - OIDC required; uses caller `sub` as owner.
 
 ### Prefs Schema (v1)
 
@@ -60,12 +75,12 @@ Notes:
 
 - Toggle: “Sync connection profiles to daemon”.
 - On enable:
-  - Pull prefs from daemon (if found) and merge with local tokens.
+  - Pull prefs from daemon (direct mode) or broker (broker mode) and merge with local tokens.
   - Push sanitized profiles (no secrets) on change.
 - On failure: keep local settings, surface a warning, and retry on demand.
 
 ## Future Enhancements
 
-- Broker-side storage keyed by user identity (OIDC subject).
+- Admin/ops tooling to inspect or reset prefs across users.
 - Optional encrypted secret storage (tokens).
 - Full UI settings sync with versioned migrations.

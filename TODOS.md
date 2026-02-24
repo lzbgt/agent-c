@@ -63,7 +63,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-20: `tools/verify_mac_full_stack.sh` succeeded (log: `build/verify_mac_full_stack.log`).
   - 2026-02-20: mac local provider tests passed (DeepSeek + Moonshot) via `MAC_LOCAL_PROVIDER_TEST=1` using keys from `~/.env`.
   - [x] WebUI connection profiles for multi-agentd deployments (direct or broker-backed).
-  - [ ] Broker-mode connection profile persistence (server-side store; avoid localStorage-only URLs).
+  - [x] Broker-mode connection profile persistence (server-side store; avoid localStorage-only URLs).
+  - 2026-02-24: Broker client prefs endpoint + WebUI broker-mode profile sync (no tokens).
   - [x] WebUI profile-specific run settings per connection profile (model/provider + run limits).
   - [x] Broker multi-deployment routing (`deployment_id`, `X-Agentd-Deployment`) + WebUI deployment selector + docs.
   - [x] OTA update pipeline: agentd OTA endpoint + operator update command, WebUI multi-deployment fanout via broker bulk OTA endpoints.
