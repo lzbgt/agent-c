@@ -7,6 +7,7 @@ import {
   apiBrokerTeamMembersDelete,
   apiBrokerTeamMembersList,
   apiBrokerTeamMembersUpsert,
+  apiBrokerListAgents,
   apiBrokerTeamQuorumDelete,
   apiBrokerTeamQuorumList,
   apiBrokerTeamQuorumUpsert,
@@ -134,6 +135,9 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [runtimeMemberSummaryModel, setRuntimeMemberSummaryModel] = React.useState<string>("");
   const [runtimeMemberTools, setRuntimeMemberTools] = React.useState<string>("");
   const [runtimeMemberTimeoutMs, setRuntimeMemberTimeoutMs] = React.useState<string>("");
+  const [runtimeAgentsBusy, setRuntimeAgentsBusy] = React.useState<boolean>(false);
+  const [runtimeAgentsError, setRuntimeAgentsError] = React.useState<string | null>(null);
+  const [runtimeAgents, setRuntimeAgents] = React.useState<any[] | null>(null);
 
   const runtimeMembersPreview = React.useMemo(() => {
     const raw = String(runRuntimeMembersJson || "").trim();
@@ -148,6 +152,14 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       return { items: [] as any[], error: `invalid runtime_members json: ${String(err)}` };
     }
   }, [runRuntimeMembersJson]);
+
+  const runtimeAgentOptions = Array.isArray(runtimeAgents) ? runtimeAgents : [];
+  const runtimeSelectedAgent = runtimeAgentOptions.find(
+    (agent) => String(agent?.agent_id || "") === String(runtimeMemberAgentId || "").trim(),
+  );
+  const runtimeAgentDeployments = Array.isArray(runtimeSelectedAgent?.deployments)
+    ? (runtimeSelectedAgent?.deployments as any[])
+    : [];
   type InlineApproval = {
     member_id: string;
     decision: "approve" | "deny";
@@ -465,6 +477,21 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     setRunApprovalMemberId("");
     setRunApprovalRuleId("");
     setRunApprovalReason("");
+  };
+
+  const refreshRuntimeAgents = async () => {
+    if (!canQuery) return;
+    setRuntimeAgentsError(null);
+    setRuntimeAgentsBusy(true);
+    try {
+      const resp = await apiBrokerListAgents(props.base, props.auth);
+      const rows = Array.isArray(resp?.agents) ? resp.agents : [];
+      setRuntimeAgents(rows);
+    } catch (err) {
+      setRuntimeAgentsError(String(err));
+    } finally {
+      setRuntimeAgentsBusy(false);
+    }
   };
 
   const handleAddRuntimeMember = () => {
@@ -1279,6 +1306,40 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
               />
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <FieldLabel>Agent pick</FieldLabel>
+              <select
+                className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                value={runtimeMemberAgentId}
+                onChange={(e) => setRuntimeMemberAgentId(e.target.value)}
+              >
+                <option value="">(select agent)</option>
+                {runtimeAgentOptions.map((agent) => {
+                  const id = String(agent?.agent_id || "");
+                  const connected = agent?.connected === true;
+                  const depCount = Array.isArray(agent?.deployments) ? agent.deployments.length : 0;
+                  const label = id
+                    ? `${id}${connected ? " · connected" : ""}${depCount ? ` · ${depCount} dep` : ""}`
+                    : "agent";
+                  return (
+                    <option key={`runtime-agent-${id}`} value={id}>
+                      {label}
+                    </option>
+                  );
+                })}
+              </select>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={!canQuery || runtimeAgentsBusy}
+                onClick={() => void refreshRuntimeAgents()}
+              >
+                {runtimeAgentsBusy ? "Loading…" : "Refresh agents"}
+              </button>
+              {runtimeAgentsError ? (
+                <span className="text-[11px] text-rose-200">{runtimeAgentsError}</span>
+              ) : null}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
               <FieldLabel>Deployment</FieldLabel>
               <input
                 className="min-w-[140px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
@@ -1286,6 +1347,25 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                 onChange={(e) => setRuntimeMemberDeploymentId(e.target.value)}
                 placeholder="default"
               />
+              <FieldLabel>Deployment pick</FieldLabel>
+              <select
+                className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                value={runtimeMemberDeploymentId}
+                onChange={(e) => setRuntimeMemberDeploymentId(e.target.value)}
+                disabled={runtimeAgentDeployments.length === 0}
+              >
+                <option value="">default</option>
+                {runtimeAgentDeployments.map((dep, idx) => {
+                  const depId = String(dep?.deployment_id || "");
+                  const connected = dep?.connected === true;
+                  const label = depId ? `${depId}${connected ? " · connected" : ""}` : `deployment-${idx + 1}`;
+                  return (
+                    <option key={`runtime-dep-${depId || idx}`} value={depId}>
+                      {label}
+                    </option>
+                  );
+                })}
+              </select>
               <FieldLabel>Capabilities</FieldLabel>
               <input
                 className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
