@@ -51,6 +51,7 @@ Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`,
 - Optional: sync connection profiles to the **daemon** (direct mode) or **broker** (broker mode) for server-side persistence.
   - Toggle “Sync connection profiles to daemon/broker” in Settings → Connection.
   - Only non-secret fields are stored (URLs/ids/profile names). Auth tokens remain local.
+- Devstack OIDC helper: `tools/devstack_oidc_token.sh --state out/devstack_state.json` (prints a bearer token).
 
 ## Diagnostics
 

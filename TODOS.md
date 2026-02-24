@@ -66,6 +66,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - [x] Broker-mode connection profile persistence (server-side store; avoid localStorage-only URLs).
   - 2026-02-24: Broker client prefs endpoint + WebUI broker-mode profile sync (no tokens).
   - 2026-02-24: Added broker client prefs smoke test (`tests/broker_client_prefs_smoke.sh`).
+  - 2026-02-24: Added devstack OIDC helper (`tools/devstack_oidc_token.sh`).
   - 2026-02-24: Added broker client prefs smoke test (`tests/broker_client_prefs_smoke.sh`).
   - [x] WebUI profile-specific run settings per connection profile (model/provider + run limits).
   - [x] Broker multi-deployment routing (`deployment_id`, `X-Agentd-Deployment`) + WebUI deployment selector + docs.
