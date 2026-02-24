@@ -48,7 +48,35 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
 
   const [membersBusy, setMembersBusy] = React.useState<boolean>(false);
   const [membersError, setMembersError] = React.useState<string | null>(null);
-  const [members, setMembers] = React.useState<any[] | null>(null);
+  type TeamMemberRow = {
+    member_id?: string;
+    role?: string;
+    status?: string;
+    agent_id?: string;
+    deployment_id?: string;
+    created_unix_ms?: number;
+  };
+  type TeamQuorumRuleRow = {
+    rule_id?: string;
+    action?: string;
+    min_approvals?: number;
+    quorum_mode?: string;
+    created_unix_ms?: number;
+  };
+  type TeamRunApprovalRow = {
+    approval_id?: string;
+    team_id?: string;
+    team_run_id?: string;
+    rule_id?: string;
+    member_id?: string;
+    role?: string;
+    decision?: string;
+    reason?: string;
+    created_by?: string;
+    created_unix_ms?: number;
+  };
+
+  const [members, setMembers] = React.useState<TeamMemberRow[] | null>(null);
   const [memberId, setMemberId] = React.useState<string>("");
   const [memberRole, setMemberRole] = React.useState<string>("executor");
   const [memberStatus, setMemberStatus] = React.useState<string>("active");
@@ -58,7 +86,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
 
   const [rulesBusy, setRulesBusy] = React.useState<boolean>(false);
   const [rulesError, setRulesError] = React.useState<string | null>(null);
-  const [rules, setRules] = React.useState<any[] | null>(null);
+  const [rules, setRules] = React.useState<TeamQuorumRuleRow[] | null>(null);
   const [ruleAction, setRuleAction] = React.useState<string>("team_run");
   const [ruleMinApprovals, setRuleMinApprovals] = React.useState<string>("1");
   const [ruleMode, setRuleMode] = React.useState<string>("strict");
@@ -80,7 +108,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [runLookupResult, setRunLookupResult] = React.useState<any | null>(null);
   const [approvalsBusy, setApprovalsBusy] = React.useState<boolean>(false);
   const [approvalsError, setApprovalsError] = React.useState<string | null>(null);
-  const [approvals, setApprovals] = React.useState<any[] | null>(null);
+  const [approvals, setApprovals] = React.useState<TeamRunApprovalRow[] | null>(null);
   const [approvalsLastSyncMs, setApprovalsLastSyncMs] = React.useState<number | null>(null);
   const [approvalRunId, setApprovalRunId] = React.useState<string>("");
   const [approvalMemberId, setApprovalMemberId] = React.useState<string>("");
