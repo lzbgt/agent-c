@@ -955,6 +955,12 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   }, [canQuery, teamIdTrimmed]);
 
   React.useEffect(() => {
+    if (!canQuery) return;
+    if (runtimeAgentsBusy || (runtimeAgents && runtimeAgents.length > 0)) return;
+    void refreshRuntimeAgents();
+  }, [canQuery, runtimeAgentsBusy, runtimeAgents, refreshRuntimeAgents]);
+
+  React.useEffect(() => {
     if (!teamIdTrimmed) return;
     setRunResult(null);
     setRunError(null);
