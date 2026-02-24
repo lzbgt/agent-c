@@ -134,6 +134,20 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [runtimeMemberSummaryModel, setRuntimeMemberSummaryModel] = React.useState<string>("");
   const [runtimeMemberTools, setRuntimeMemberTools] = React.useState<string>("");
   const [runtimeMemberTimeoutMs, setRuntimeMemberTimeoutMs] = React.useState<string>("");
+
+  const runtimeMembersPreview = React.useMemo(() => {
+    const raw = String(runRuntimeMembersJson || "").trim();
+    if (!raw) return { items: [] as any[], error: "" };
+    try {
+      const parsed = JSON.parse(raw);
+      if (!Array.isArray(parsed)) {
+        return { items: [] as any[], error: "runtime_members must be a JSON array" };
+      }
+      return { items: parsed, error: "" };
+    } catch (err) {
+      return { items: [] as any[], error: `invalid runtime_members json: ${String(err)}` };
+    }
+  }, [runRuntimeMembersJson]);
   type InlineApproval = {
     member_id: string;
     decision: "approve" | "deny";
@@ -520,6 +534,13 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     setRuntimeMemberSummaryModel("");
     setRuntimeMemberTools("");
     setRuntimeMemberTimeoutMs("");
+  };
+
+  const handleRemoveRuntimeMember = (idx: number) => {
+    const rawItems = runtimeMembersPreview.items;
+    if (!Array.isArray(rawItems) || idx < 0 || idx >= rawItems.length) return;
+    const next = rawItems.filter((_, i) => i !== idx);
+    setRunRuntimeMembersJson(next.length > 0 ? JSON.stringify(next, null, 2) : "");
   };
 
   const handleCreateRun = async () => {
@@ -1200,6 +1221,38 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
           <div className="text-[11px] text-white/50">
             Each entry needs agent_id + role; member_id is optional (required for explicit overrides).
           </div>
+          {runtimeMembersPreview.error ? (
+            <div className="text-[11px] text-rose-200">{runtimeMembersPreview.error}</div>
+          ) : null}
+          {runtimeMembersPreview.items.length > 0 ? (
+            <div className="grid gap-2">
+              {runtimeMembersPreview.items.map((item, idx) => {
+                const memberId = item?.member_id ? String(item.member_id) : "";
+                const agentId = item?.agent_id ? String(item.agent_id) : "";
+                const role = item?.role ? String(item.role) : "";
+                const label = memberId ? `${memberId}` : agentId ? `agent ${agentId}` : "runtime member";
+                return (
+                  <div
+                    key={`runtime-preview-${label}-${idx}`}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70"
+                  >
+                    <div>
+                      <span className="text-white/90">{label}</span>
+                      {agentId && memberId ? ` · agent ${agentId}` : ""}
+                      {role ? ` · role ${role}` : ""}
+                    </div>
+                    <button
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                      type="button"
+                      onClick={() => handleRemoveRuntimeMember(idx)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
           <div className="mt-2 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
             <div className="text-[11px] text-white/70">Quick add runtime member</div>
             <div className="flex flex-wrap items-center gap-2">
@@ -1443,6 +1496,23 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
           <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
             status {String(runLookupResult?.status || "")}
             {runLookupResult?.created_unix_ms ? ` · ${fmtTs(runLookupResult.created_unix_ms)}` : ""}
+          </div>
+        ) : null}
+        {Array.isArray(runLookupResult?.runtime_members) && runLookupResult.runtime_members.length > 0 ? (
+          <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
+            runtime members:
+            {runLookupResult.runtime_members.map((m: any, idx: number) => {
+              const agentId = m?.agent_id ? String(m.agent_id) : "";
+              const role = m?.role ? String(m.role) : "";
+              const mid = m?.member_id ? String(m.member_id) : "";
+              return (
+                <div key={`runtime-member-${mid || agentId}-${idx}`}>
+                  {mid ? `${mid} · ` : ""}
+                  {agentId ? `agent ${agentId}` : "agent ?"}
+                  {role ? ` · role ${role}` : ""}
+                </div>
+              );
+            })}
           </div>
         ) : null}
 

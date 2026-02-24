@@ -519,6 +519,11 @@ schemas:
         type: array
         items:
           $ref: "#/components/schemas/TeamMember"
+      runtime_members:
+        type: array
+        description: Runtime members included in the team run (if provided).
+        items:
+          $ref: "#/components/schemas/TeamRunRuntimeMember"
 
   TeamRunApprovalInput:
     type: object
