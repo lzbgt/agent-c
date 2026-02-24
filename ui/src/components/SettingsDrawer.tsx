@@ -417,6 +417,17 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                 <div className="mt-1 text-rose-200">Sync error: {connection.serverPrefsError}</div>
               ) : null}
               <div className="mt-2 flex flex-wrap items-center gap-2">
+                {connection.serverPrefsAuto && connection.serverPrefsUserSet ? (
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
+                    type="button"
+                    onClick={() => connection.clearServerPrefsOverride()}
+                    disabled={!serverPrefsCanSync}
+                    title="Resume auto sync behavior"
+                  >
+                    Use auto
+                  </button>
+                ) : null}
                 <button
                   className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
                   type="button"

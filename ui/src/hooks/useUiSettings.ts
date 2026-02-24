@@ -47,6 +47,7 @@ export type ConnectionSettings = {
   serverPrefsUserSet: boolean;
   serverPrefsAutoStatus: ServerPrefsAutoStatus;
   serverPrefsAutoError: string | null;
+  clearServerPrefsOverride: () => void;
   setServerPrefsEnabled: React.Dispatch<React.SetStateAction<boolean>>;
   serverPrefsStatus: "idle" | "loading" | "error" | "synced";
   serverPrefsError: string | null;
@@ -1501,6 +1502,10 @@ export default function useUiSettings(): UiSettings {
     [setServerPrefsEnabledState, setServerPrefsUserSet],
   );
 
+  const clearServerPrefsOverride = React.useCallback(() => {
+    setServerPrefsUserSet(false);
+  }, [setServerPrefsUserSet]);
+
   React.useEffect(() => {
     if (!serverPrefsCanUse) return;
     void pullServerPrefs();
@@ -1554,6 +1559,7 @@ export default function useUiSettings(): UiSettings {
       serverPrefsUserSet,
       serverPrefsAutoStatus,
       serverPrefsAutoError,
+      clearServerPrefsOverride,
       setServerPrefsEnabled,
       serverPrefsStatus,
       serverPrefsError,
