@@ -436,6 +436,18 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     void refreshRules(teamIdTrimmed);
   }, [canQuery, teamIdTrimmed]);
 
+  React.useEffect(() => {
+    if (!teamIdTrimmed) return;
+    setRunResult(null);
+    setRunError(null);
+    setRunLookupResult(null);
+    setRunLookupError(null);
+    setRunLookupId("");
+    setApprovalRunId("");
+    setApprovals(null);
+    setApprovalsError(null);
+  }, [teamIdTrimmed]);
+
   return (
     <section className="rounded-md border border-white/10 bg-black/20 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
