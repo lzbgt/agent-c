@@ -430,6 +430,12 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     void refreshTeamDetails(teamIdTrimmed);
   }, [canQuery, teamIdTrimmed, teamList.length]);
 
+  React.useEffect(() => {
+    if (!canQuery || !teamIdTrimmed) return;
+    void refreshMembers(teamIdTrimmed);
+    void refreshRules(teamIdTrimmed);
+  }, [canQuery, teamIdTrimmed]);
+
   return (
     <section className="rounded-md border border-white/10 bg-black/20 p-3">
       <div className="mb-2 flex items-center justify-between gap-2">
