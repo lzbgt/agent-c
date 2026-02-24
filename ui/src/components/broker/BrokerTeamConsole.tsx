@@ -31,7 +31,6 @@ const fmtTs = (ms?: number | null) => {
 export type BrokerTeamConsoleProps = {
   base: string;
   auth: ApiAuth;
-  authKey: string;
   quorumEvents?: BrokerEventRow[];
 };
 

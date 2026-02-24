@@ -1596,7 +1596,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
           )}
         </section>
 
-        <BrokerTeamConsole base={base} auth={props.auth} authKey={props.authKey} quorumEvents={brokerEvents} />
+        <BrokerTeamConsole base={base} auth={props.auth} quorumEvents={brokerEvents} />
 
         <section className="rounded-md border border-white/10 bg-black/20 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
