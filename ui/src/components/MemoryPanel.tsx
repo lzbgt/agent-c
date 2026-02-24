@@ -1,5 +1,6 @@
 import React from "react";
 import {
+  apiGetConfig,
   apiMemoryCheckpoints,
   apiMemoryCorrelate,
   apiMemoryIndex,
@@ -8,6 +9,7 @@ import {
   apiMemoryRecapsCreate,
   apiMemoryRecapsList,
   apiMemoryRetentionEnforce,
+  apiUpdateDaemonConfig,
   type ApiAuth,
 } from "../api";
 import FieldLabel from "./FieldLabel";
@@ -79,6 +81,8 @@ export default function MemoryPanel(props: MemoryPanelProps) {
   const [recapsIncludeSummary, setRecapsIncludeSummary] = React.useState<boolean>(false);
   const [recapsDryRun, setRecapsDryRun] = React.useState<boolean>(true);
   const [recapsWriteFile, setRecapsWriteFile] = React.useState<boolean>(true);
+  const [recapsKind, setRecapsKind] = React.useState<string>("");
+  const [recapsKindFilter, setRecapsKindFilter] = React.useState<string>("");
   const [recapsModel, setRecapsModel] = React.useState<string>("");
   const [recapsSummaryMaxChars, setRecapsSummaryMaxChars] = React.useState<string>("1200");
   const [recapsIncludeStructured, setRecapsIncludeStructured] = React.useState<boolean>(true);
@@ -93,6 +97,14 @@ export default function MemoryPanel(props: MemoryPanelProps) {
   const [recapsError, setRecapsError] = React.useState<string | null>(null);
   const [recapsListBusy, setRecapsListBusy] = React.useState<boolean>(false);
   const [recapsGenerateBusy, setRecapsGenerateBusy] = React.useState<boolean>(false);
+  const [recapScheduleDailyIntervalMs, setRecapScheduleDailyIntervalMs] = React.useState<string>("0");
+  const [recapScheduleWeeklyIntervalMs, setRecapScheduleWeeklyIntervalMs] = React.useState<string>("0");
+  const [recapScheduleDailyDays, setRecapScheduleDailyDays] = React.useState<string>("1");
+  const [recapScheduleWeeklyDays, setRecapScheduleWeeklyDays] = React.useState<string>("7");
+  const [recapScheduleBusy, setRecapScheduleBusy] = React.useState<boolean>(false);
+  const [recapScheduleError, setRecapScheduleError] = React.useState<string | null>(null);
+  const [recapScheduleResult, setRecapScheduleResult] = React.useState<any | null>(null);
+  const [recapSummaryModel, setRecapSummaryModel] = React.useState<string>("");
 
   const [retentionDryRun, setRetentionDryRun] = React.useState<boolean>(true);
   const [retentionDailyMaxDays, setRetentionDailyMaxDays] = React.useState<string>("30");
@@ -322,6 +334,8 @@ export default function MemoryPanel(props: MemoryPanelProps) {
       include_structured: recapsIncludeStructured,
       include_daily: recapsIncludeDaily,
     };
+    const kind = recapsKind.trim();
+    if (kind) payload.kind = kind;
     const model = recapsModel.trim();
     if (model) payload.model = model;
     const summaryMax = parseOptionalInt(recapsSummaryMaxChars, 0);
@@ -348,6 +362,63 @@ export default function MemoryPanel(props: MemoryPanelProps) {
       setRecapsError(String(e));
     } finally {
       setRecapsGenerateBusy(false);
+    }
+  };
+
+  const loadRecapSchedule = async () => {
+    setRecapScheduleError(null);
+    setRecapScheduleResult(null);
+    if (!canQuery) {
+      setRecapScheduleError("missing base URL");
+      return;
+    }
+    setRecapScheduleBusy(true);
+    try {
+      const res = await apiGetConfig(base, props.auth);
+      if (!res.ok) throw new Error(res.error || res.err || "config load failed");
+      const mem = (res as any).memory || {};
+      const daemon = (res as any).daemon || {};
+      setRecapScheduleDailyIntervalMs(String(mem.recap_daily_interval_ms ?? "0"));
+      setRecapScheduleWeeklyIntervalMs(String(mem.recap_weekly_interval_ms ?? "0"));
+      setRecapScheduleDailyDays(String(mem.recap_daily_days ?? "1"));
+      setRecapScheduleWeeklyDays(String(mem.recap_weekly_days ?? "7"));
+      setRecapSummaryModel(String(daemon.summary_model || ""));
+    } catch (e) {
+      setRecapScheduleError(String(e));
+    } finally {
+      setRecapScheduleBusy(false);
+    }
+  };
+
+  const applyRecapSchedule = async () => {
+    setRecapScheduleError(null);
+    setRecapScheduleResult(null);
+    if (!canQuery) {
+      setRecapScheduleError("missing base URL");
+      return;
+    }
+    const memory: Record<string, any> = {};
+    const dailyInterval = parseOptionalInt(recapScheduleDailyIntervalMs, 0);
+    if (dailyInterval !== undefined) memory.recap_daily_interval_ms = dailyInterval;
+    const weeklyInterval = parseOptionalInt(recapScheduleWeeklyIntervalMs, 0);
+    if (weeklyInterval !== undefined) memory.recap_weekly_interval_ms = weeklyInterval;
+    const dailyDays = parseOptionalInt(recapScheduleDailyDays, 0);
+    if (dailyDays !== undefined) memory.recap_daily_days = dailyDays;
+    const weeklyDays = parseOptionalInt(recapScheduleWeeklyDays, 0);
+    if (weeklyDays !== undefined) memory.recap_weekly_days = weeklyDays;
+    if (Object.keys(memory).length === 0) {
+      setRecapScheduleError("no schedule fields provided");
+      return;
+    }
+    setRecapScheduleBusy(true);
+    try {
+      const res = await apiUpdateDaemonConfig(base, { memory }, props.auth);
+      if (!res.ok) throw new Error(res.error || res.err || "schedule update failed");
+      setRecapScheduleResult(res);
+    } catch (e) {
+      setRecapScheduleError(String(e));
+    } finally {
+      setRecapScheduleBusy(false);
     }
   };
 
@@ -385,6 +456,12 @@ export default function MemoryPanel(props: MemoryPanelProps) {
       setRetentionBusy(false);
     }
   };
+
+  const recapsList = Array.isArray((recapsResult as any)?.recaps) ? (recapsResult as any).recaps : [];
+  const recapsKindFilterValue = recapsKindFilter.trim().toLowerCase();
+  const recapsFiltered = recapsKindFilterValue
+    ? recapsList.filter((item: any) => String(item?.kind || "").toLowerCase() === recapsKindFilterValue)
+    : recapsList;
 
   return (
     <details
@@ -828,6 +905,84 @@ export default function MemoryPanel(props: MemoryPanelProps) {
               </button>
             </div>
           </div>
+          <div className="rounded-md border border-white/10 bg-black/30 p-3">
+            <div className="flex items-center justify-between gap-2">
+              <div className="text-[11px] font-semibold text-white/80">Recap scheduling</div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                  type="button"
+                  disabled={recapScheduleBusy || !canQuery}
+                  onClick={() => void loadRecapSchedule()}
+                >
+                  {recapScheduleBusy ? "Loading…" : "Load config"}
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                  type="button"
+                  disabled={recapScheduleBusy || !canQuery}
+                  onClick={() => void applyRecapSchedule()}
+                >
+                  {recapScheduleBusy ? "Saving…" : "Apply schedule"}
+                </button>
+              </div>
+            </div>
+            <div className="mt-2 grid gap-2 text-[11px] text-white/70">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <FieldLabel>Daily interval (ms)</FieldLabel>
+                  <input
+                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                    value={recapScheduleDailyIntervalMs}
+                    onChange={(e) => setRecapScheduleDailyIntervalMs(e.target.value)}
+                    inputMode="numeric"
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Weekly interval (ms)</FieldLabel>
+                  <input
+                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                    value={recapScheduleWeeklyIntervalMs}
+                    onChange={(e) => setRecapScheduleWeeklyIntervalMs(e.target.value)}
+                    inputMode="numeric"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <FieldLabel>Daily days</FieldLabel>
+                  <input
+                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                    value={recapScheduleDailyDays}
+                    onChange={(e) => setRecapScheduleDailyDays(e.target.value)}
+                    inputMode="numeric"
+                  />
+                </div>
+                <div>
+                  <FieldLabel>Weekly days</FieldLabel>
+                  <input
+                    className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                    value={recapScheduleWeeklyDays}
+                    onChange={(e) => setRecapScheduleWeeklyDays(e.target.value)}
+                    inputMode="numeric"
+                  />
+                </div>
+              </div>
+              <div className="text-[11px] text-white/50">
+                Summary model: {recapSummaryModel ? recapSummaryModel : "unset"} (scheduled recaps require summary_model)
+              </div>
+            </div>
+            {recapScheduleError ? (
+              <div className="mt-2 rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+                {recapScheduleError}
+              </div>
+            ) : null}
+            {recapScheduleResult ? (
+              <pre className="mt-2 max-h-56 overflow-auto rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/70">
+                {stringifyJson(recapScheduleResult)}
+              </pre>
+            ) : null}
+          </div>
           <div className="grid gap-2 text-[11px] text-white/70">
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -866,6 +1021,26 @@ export default function MemoryPanel(props: MemoryPanelProps) {
                   value={recapsDailyDays}
                   onChange={(e) => setRecapsDailyDays(e.target.value)}
                   inputMode="numeric"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <FieldLabel>Recap kind (optional)</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={recapsKind}
+                  onChange={(e) => setRecapsKind(e.target.value)}
+                  placeholder="daily|weekly|manual"
+                />
+              </div>
+              <div>
+                <FieldLabel>Filter kind (list)</FieldLabel>
+                <input
+                  className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90"
+                  value={recapsKindFilter}
+                  onChange={(e) => setRecapsKindFilter(e.target.value)}
+                  placeholder="daily|weekly|manual"
                 />
               </div>
             </div>
@@ -949,9 +1124,43 @@ export default function MemoryPanel(props: MemoryPanelProps) {
             </div>
           ) : null}
           {recapsResult ? (
-            <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/70">
-              {stringifyJson(recapsResult)}
-            </pre>
+            <>
+              {recapsList.length > 0 ? (
+                <div className="mt-2 grid gap-2 text-[11px] text-white/70">
+                  <div className="text-[11px] text-white/50">
+                    Showing {recapsFiltered.length} of {recapsList.length} recap snapshots
+                  </div>
+                  {recapsFiltered.map((item: any) => {
+                    const recapPath = String(item?.recap_path || "");
+                    const kind = String(item?.kind || "manual");
+                    const ts = String(item?.ts_utc || "");
+                    const model = String(item?.model || "");
+                    const bytes = typeof item?.bytes === "number" ? `${item.bytes} bytes` : "size unknown";
+                    const summary = String(item?.summary_text || "");
+                    return (
+                      <div
+                        key={recapPath || `${kind}-${ts}`}
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-white/80">
+                          <div>
+                            <span className="font-semibold">{kind}</span>
+                            {ts ? ` · ${ts}` : ""}
+                            {model ? ` · ${model}` : ""}
+                          </div>
+                          <div className="text-white/50">{bytes}</div>
+                        </div>
+                        <div className="text-[11px] text-white/50">{recapPath || "recap path unknown"}</div>
+                        {summary ? <div className="mt-1 text-[11px] text-white/60">{summary}</div> : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+              <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/70">
+                {stringifyJson(recapsResult)}
+              </pre>
+            </>
           ) : null}
         </section>
 

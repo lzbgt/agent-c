@@ -77,6 +77,15 @@ The WebUI includes an **Approval queue** panel for tool-level approvals:
 - Loads approval details + decisions from `/api/v1/approvals/<approval_id>`.
 - Submits decisions via `/api/v1/approvals/<approval_id>/decisions`.
 
+## Memory explorer
+
+The **Memory explorer** panel (toggle from the main UI) provides operator tooling for durable memory:
+- Structured memory query + trace correlation.
+- Memory index + salience snapshots.
+- Recap generation + recap list filtering by `kind`.
+- Recap scheduling controls that update `memory.recap_*` config via `/api/v1/config/update`
+  (scheduled recaps require `summary_model`).
+
 ## Workflows (read-only)
 
 The WebUI includes a **Workflows** panel for durable workflow inspection:
