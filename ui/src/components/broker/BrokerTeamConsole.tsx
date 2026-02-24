@@ -379,10 +379,10 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     setApprovalsBusy(true);
     try {
       const resp = await apiBrokerTeamRunApprovalsList(props.base, tid, runId, props.auth);
-      if (resp.status >= 400) {
-        throw new Error(resp?.data?.error || resp?.data?.err || `HTTP ${resp.status}`);
+      if (!resp.ok) {
+        throw new Error(resp.error || resp.err || resp.code || "approvals fetch failed");
       }
-      const rows = Array.isArray(resp?.data?.approvals) ? resp.data.approvals : [];
+      const rows = Array.isArray(resp?.approvals) ? resp.approvals : [];
       setApprovals(rows);
     } catch (err) {
       setApprovalsError(String(err));
@@ -417,10 +417,10 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       if (ruleId) payload.rule_id = ruleId;
       if (reason) payload.reason = reason;
       const resp = await apiBrokerTeamRunApprovalsCreate(props.base, tid, runId, payload, props.auth);
-      if (resp.status >= 400) {
-        throw new Error(resp?.data?.error || resp?.data?.err || `HTTP ${resp.status}`);
+      if (!resp.ok) {
+        throw new Error(resp.error || resp.err || resp.code || "approvals update failed");
       }
-      const rows = Array.isArray(resp?.data?.approvals) ? resp.data.approvals : [];
+      const rows = Array.isArray(resp?.approvals) ? resp.approvals : [];
       setApprovals(rows);
       setApprovalReason("");
     } catch (err) {

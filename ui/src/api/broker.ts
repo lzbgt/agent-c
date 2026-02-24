@@ -29,6 +29,8 @@ import {
   type BrokerTeamRunResp,
   BrokerTeamRunStatusRespSchema,
   type BrokerTeamRunStatusResp,
+  BrokerTeamRunApprovalListRespSchema,
+  type BrokerTeamRunApprovalListResp,
 } from "./schemas/broker";
 import {
   ClientPrefsSchema,
@@ -576,25 +578,17 @@ export async function apiBrokerTeamRunApprovalsList(
   teamId: string,
   teamRunId: string,
   auth?: ApiAuth,
-): Promise<{ status: number; data: any }> {
+): Promise<BrokerTeamRunApprovalListResp> {
   const base = brokerBase.replace(/\/+$/, "");
   const team = String(teamId || "").trim();
   const run = String(teamRunId || "").trim();
   if (!team) throw new Error("missing team_id");
   if (!run) throw new Error("missing team_run_id");
-  const r = await fetch(
-    `${base}/v1/teams/${encodeURIComponent(team)}/runs/${encodeURIComponent(run)}/approvals`,
-    {
-      headers: daemonHeaders(auth),
-    },
-  );
-  let data: any = null;
-  try {
-    data = await r.json();
-  } catch {
-    data = null;
-  }
-  return { status: r.status, data };
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(team)}/runs/${encodeURIComponent(run)}/approvals`, {
+    headers: daemonHeaders(auth),
+  });
+  const j = await r.json();
+  return BrokerTeamRunApprovalListRespSchema.parse(j);
 }
 
 export async function apiBrokerTeamRunApprovalsCreate(
@@ -603,26 +597,18 @@ export async function apiBrokerTeamRunApprovalsCreate(
   teamRunId: string,
   body: Record<string, any>,
   auth?: ApiAuth,
-): Promise<{ status: number; data: any }> {
+): Promise<BrokerTeamRunApprovalListResp> {
   const base = brokerBase.replace(/\/+$/, "");
   const team = String(teamId || "").trim();
   const run = String(teamRunId || "").trim();
   if (!team) throw new Error("missing team_id");
   if (!run) throw new Error("missing team_run_id");
   const payload = body ?? {};
-  const r = await fetch(
-    `${base}/v1/teams/${encodeURIComponent(team)}/runs/${encodeURIComponent(run)}/approvals`,
-    {
-      method: "POST",
-      headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
-      body: JSON.stringify(payload),
-    },
-  );
-  let data: any = null;
-  try {
-    data = await r.json();
-  } catch {
-    data = null;
-  }
-  return { status: r.status, data };
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(team)}/runs/${encodeURIComponent(run)}/approvals`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json();
+  return BrokerTeamRunApprovalListRespSchema.parse(j);
 }
