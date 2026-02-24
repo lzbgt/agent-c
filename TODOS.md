@@ -160,6 +160,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-24: Runtime members can be paused/resumed from the preview list.
   - 2026-02-24: Added pause/resume-all controls for runtime members.
   - 2026-02-24: Added remove-paused action for runtime members.
+  - 2026-02-24: Added runtime members JSON compaction helper.
 - [x] W=9 — Approval queues + tool-level quorum gating: WebUI approval queue, tool-level quorum enforcement, and SSE updates for approval state.
   - 2026-02-24: Added agentd approval DB tables, approval gate, approval APIs, and approval run events.
   - 2026-02-24: Added approval event schemas + fixtures + spec tests.

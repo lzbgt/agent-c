@@ -635,6 +635,48 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     setRunRuntimeMembersJson(filtered.length > 0 ? JSON.stringify(filtered, null, 2) : "");
   };
 
+  const handleCompactRuntimeMembers = () => {
+    if (runtimeMembersPreview.error) {
+      setRunError(runtimeMembersPreview.error);
+      return;
+    }
+    const rawItems = runtimeMembersPreview.items;
+    if (!Array.isArray(rawItems) || rawItems.length === 0) return;
+    const compacted = rawItems
+      .map((item) => {
+        const out: Record<string, any> = {};
+        const memberId = item?.member_id ? String(item.member_id).trim() : "";
+        const agentId = item?.agent_id ? String(item.agent_id).trim() : "";
+        const deploymentId = item?.deployment_id ? String(item.deployment_id).trim() : "";
+        const role = item?.role ? String(item.role).trim() : "";
+        const status = item?.status ? String(item.status).trim().toLowerCase() : "";
+        if (memberId) out.member_id = memberId;
+        if (agentId) out.agent_id = agentId;
+        if (deploymentId) out.deployment_id = deploymentId;
+        if (role) out.role = role;
+        if (status && status !== "active") out.status = status;
+        if (Array.isArray(item?.capabilities)) {
+          const caps = item.capabilities.map((c: any) => String(c).trim()).filter(Boolean);
+          if (caps.length > 0) out.capabilities = caps;
+        }
+        if (typeof item?.weight === "number") out.weight = item.weight;
+        if (item?.meta && typeof item.meta === "object") {
+          const meta: Record<string, any> = {};
+          for (const [k, v] of Object.entries(item.meta as Record<string, any>)) {
+            if (v === null || v === undefined) continue;
+            if (typeof v === "string" && v.trim() === "") continue;
+            if (Array.isArray(v) && v.length === 0) continue;
+            if (typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0) continue;
+            meta[k] = v;
+          }
+          if (Object.keys(meta).length > 0) out.meta = meta;
+        }
+        return out;
+      })
+      .filter((item) => Object.keys(item).length > 0);
+    setRunRuntimeMembersJson(compacted.length > 0 ? JSON.stringify(compacted, null, 2) : "");
+  };
+
   const handleSeedExplicitOverrides = () => {
     if (membersList.length === 0) {
       setRunError("no team members loaded");
@@ -1532,6 +1574,13 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                   onClick={() => handleRemovePausedRuntimeMembers()}
                 >
                   Remove paused
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                  type="button"
+                  onClick={() => handleCompactRuntimeMembers()}
+                >
+                  Compact JSON
                 </button>
               </div>
               {runtimeMembersPreview.items.map((item, idx) => {
