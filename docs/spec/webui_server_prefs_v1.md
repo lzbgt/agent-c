@@ -73,7 +73,7 @@ Notes:
 
 ## WebUI Behavior
 
-- Default mode: **auto** (enable sync when server advertises client prefs and auth token is present).
+- Default mode: **auto** (enable sync when server advertises client prefs and auth permits; broker requires OIDC).
 - Manual override: toggle “Sync connection profiles to daemon/broker”.
 - On enable (auto or manual):
   - Pull prefs from daemon (direct mode) or broker (broker mode) and merge with local tokens.

@@ -12,9 +12,9 @@ import {
 import {
   apiBrokerGetClientPrefs,
   apiBrokerPostClientPrefs,
-  apiGetCaps,
   apiGetClientPrefs,
   apiPostClientPrefs,
+  daemonHeaders,
   type ApiAuth,
   type ClientPrefs,
 } from "../api";
@@ -1321,7 +1321,7 @@ export default function useUiSettings(): UiSettings {
   }, [base, brokerBase, connectionMode]);
 
   const serverPrefsAuthToken = connectionMode === "broker" ? brokerAuthToken : daemonAuthToken;
-  const serverPrefsAuthReady = String(serverPrefsAuthToken || "").trim().length > 0;
+  const serverPrefsAuthReady = connectionMode !== "broker" || String(serverPrefsAuthToken || "").trim().length > 0;
   const serverPrefsAuto = serverPrefsDefaultMode === "auto" && !serverPrefsUserSet;
   const serverPrefsEffectiveEnabled = serverPrefsUserSet
     ? serverPrefsEnabled
@@ -1343,7 +1343,7 @@ export default function useUiSettings(): UiSettings {
       setServerPrefsAutoError(null);
       return;
     }
-    if (!serverPrefsAuthReady) {
+    if (connectionMode === "broker" && !serverPrefsAuthReady) {
       setServerPrefsAutoEnabled(false);
       setServerPrefsAutoStatus("auth_required");
       setServerPrefsAutoError(null);
@@ -1357,6 +1357,9 @@ export default function useUiSettings(): UiSettings {
         if (connectionMode === "broker") {
           const baseNoSlash = baseTrimmed.replace(/\/+$/, "");
           const r = await fetch(`${baseNoSlash}/v1/caps`);
+          if (!r.ok) {
+            throw new Error(`caps ${r.status}`);
+          }
           const j = await r.json();
           const enabled = !!j?.features?.client_prefs?.enabled;
           if (cancelled) return;
@@ -1364,8 +1367,19 @@ export default function useUiSettings(): UiSettings {
           setServerPrefsAutoStatus(enabled ? "ready" : "unsupported");
           return;
         }
-        const caps = await apiGetCaps(baseTrimmed, daemonAuth);
-        const enabled = !!(caps as any)?.features?.client_prefs?.enabled;
+        const r = await fetch(`${baseTrimmed}/api/v1/caps`, { headers: daemonHeaders(daemonAuth) });
+        if (r.status === 401 || r.status === 403) {
+          if (cancelled) return;
+          setServerPrefsAutoEnabled(false);
+          setServerPrefsAutoStatus("auth_required");
+          setServerPrefsAutoError(null);
+          return;
+        }
+        if (!r.ok) {
+          throw new Error(`caps ${r.status}`);
+        }
+        const j = await r.json();
+        const enabled = !!j?.features?.client_prefs?.enabled;
         if (cancelled) return;
         setServerPrefsAutoEnabled(enabled);
         setServerPrefsAutoStatus(enabled ? "ready" : "unsupported");
