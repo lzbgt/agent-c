@@ -710,6 +710,24 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     }
   };
 
+  const handleDownloadRuntimeMembers = () => {
+    const payload = String(runRuntimeMembersJson || "").trim();
+    if (!payload) {
+      setRunError("runtime members json is empty");
+      return;
+    }
+    const blob = new Blob([payload], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "runtime_members.json";
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    setRunError(null);
+  };
+
   const handleSeedExplicitOverrides = () => {
     if (membersList.length === 0) {
       setRunError("no team members loaded");
@@ -1628,6 +1646,13 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                   onClick={() => runtimeImportRef.current?.click()}
                 >
                   Import JSON
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                  type="button"
+                  onClick={() => handleDownloadRuntimeMembers()}
+                >
+                  Download JSON
                 </button>
                 <input
                   ref={runtimeImportRef}
