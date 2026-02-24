@@ -182,14 +182,17 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       const agentId = item?.agent_id ? String(item.agent_id).trim() : "";
       const role = item?.role ? String(item.role).trim() : "";
       if (!agentId || !role) {
-        invalid.push(item);
+        invalid.push({
+          item,
+          reason: !agentId && !role ? "missing agent_id and role" : !agentId ? "missing agent_id" : "missing role",
+        });
         continue;
       }
       if (memberId && existingIDs.has(memberId)) {
-        skipped.push(item);
+        skipped.push({ item, reason: "member_id already exists" });
         continue;
       }
-      newMembers.push(item);
+      newMembers.push({ item, reason: "new" });
     }
     return { newMembers, skipped, invalid };
   }, [members, runtimeMembersPreview.items]);
@@ -699,18 +702,11 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       setRuntimeSaveError("no runtime members to save");
       return;
     }
-    const existingIDs = new Set<string>();
-    for (const m of membersList) {
-      const id = String(m?.member_id || "").trim();
-      if (id) existingIDs.add(id);
-    }
     const payloads: Record<string, any>[] = [];
     const invalid: string[] = [];
-    for (const item of items) {
+    for (const row of runtimeSavePreview.newMembers) {
+      const item = row?.item ?? {};
       const memberId = item?.member_id ? String(item.member_id).trim() : "";
-      if (memberId && existingIDs.has(memberId)) {
-        continue;
-      }
       const agentId = item?.agent_id ? String(item.agent_id).trim() : "";
       const role = item?.role ? String(item.role).trim() : "";
       if (!agentId || !role) {
@@ -1561,10 +1557,48 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
               <div className="text-[11px] text-rose-200">{runtimeSaveError}</div>
             ) : null}
             {runtimeMembersPreview.items.length > 0 ? (
-              <div className="text-[11px] text-white/50">
-                save preview: {runtimeSavePreview.newMembers.length} new ·{" "}
-                {runtimeSavePreview.skipped.length} skipped ·{" "}
-                {runtimeSavePreview.invalid.length} invalid
+              <div className="grid gap-1 text-[11px] text-white/50">
+                <div>
+                  save preview: {runtimeSavePreview.newMembers.length} new ·{" "}
+                  {runtimeSavePreview.skipped.length} skipped ·{" "}
+                  {runtimeSavePreview.invalid.length} invalid
+                </div>
+                {runtimeSavePreview.invalid.length > 0 ? (
+                  <div>
+                    invalid:
+                    {runtimeSavePreview.invalid.map((row, idx) => {
+                      const item = row?.item ?? {};
+                      const label = item?.member_id
+                        ? String(item.member_id)
+                        : item?.agent_id
+                        ? `agent ${String(item.agent_id)}`
+                        : `runtime-${idx + 1}`;
+                      return (
+                        <div key={`runtime-invalid-${label}-${idx}`}>
+                          {label} · {row?.reason || "invalid"}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+                {runtimeSavePreview.skipped.length > 0 ? (
+                  <div>
+                    skipped:
+                    {runtimeSavePreview.skipped.map((row, idx) => {
+                      const item = row?.item ?? {};
+                      const label = item?.member_id
+                        ? String(item.member_id)
+                        : item?.agent_id
+                        ? `agent ${String(item.agent_id)}`
+                        : `runtime-${idx + 1}`;
+                      return (
+                        <div key={`runtime-skipped-${label}-${idx}`}>
+                          {label} · {row?.reason || "skipped"}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </div>
             ) : null}
             <div className="flex flex-wrap items-center gap-2">
