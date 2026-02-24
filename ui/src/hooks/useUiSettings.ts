@@ -67,6 +67,7 @@ export type RunProfileOverrides = {
   tools?: ToolMode;
   yolo?: boolean;
   hostPolicy?: HostPolicy;
+  automationProfile?: string;
   verbose?: boolean;
   model?: string;
   summaryModel?: string;
@@ -145,6 +146,8 @@ export type RunSettings = {
   setYolo: React.Dispatch<React.SetStateAction<boolean>>;
   hostPolicy: HostPolicy;
   setHostPolicy: React.Dispatch<React.SetStateAction<HostPolicy>>;
+  automationProfile: string;
+  setAutomationProfile: React.Dispatch<React.SetStateAction<string>>;
   verbose: boolean;
   setVerbose: React.Dispatch<React.SetStateAction<boolean>>;
   model: string;
@@ -330,6 +333,19 @@ const normalizeRunOverrides = (raw: unknown): RunProfileOverrides | undefined =>
   if (v.tools === "host" || v.tools === "basic" || v.tools === "none") out.tools = v.tools;
   if (typeof v.yolo === "boolean") out.yolo = v.yolo;
   if (v.hostPolicy === "full" || v.hostPolicy === "readonly") out.hostPolicy = v.hostPolicy;
+  const automationProfile = readString(v.automationProfile);
+  if (automationProfile !== undefined) {
+    const trimmed = automationProfile.trim();
+    if (
+      trimmed === "" ||
+      trimmed === "full" ||
+      trimmed === "guided" ||
+      trimmed === "strict" ||
+      trimmed === "custom"
+    ) {
+      out.automationProfile = trimmed;
+    }
+  }
   if (typeof v.verbose === "boolean") out.verbose = v.verbose;
   const model = readString(v.model);
   if (model !== undefined) out.model = model;
@@ -582,6 +598,10 @@ export default function useUiSettings(): UiSettings {
     "agentui.hostPolicy",
     defaults.hostPolicy,
   );
+  const [automationProfileGlobal, setAutomationProfileGlobal] = useLocalStorageState(
+    "agentui.automationProfile",
+    defaults.automationProfile,
+  );
   const [verboseGlobal, setVerboseGlobal] = useLocalStorageState("agentui.verbose", defaults.verbose);
   const [modelGlobal, setModelGlobal] = useLocalStorageState("agentui.model", defaults.model);
   const [summaryModelGlobal, setSummaryModelGlobal] = useLocalStorageState("agentui.summaryModel", "");
@@ -798,6 +818,7 @@ export default function useUiSettings(): UiSettings {
       tools: toolsGlobal,
       yolo: yoloGlobal,
       hostPolicy: hostPolicyGlobal,
+      automationProfile: automationProfileGlobal,
       verbose: verboseGlobal,
       model: modelGlobal,
       summaryModel: summaryModelGlobal,
@@ -835,6 +856,7 @@ export default function useUiSettings(): UiSettings {
     }),
     [
       apiKeyGlobal,
+      automationProfileGlobal,
       baseUrlGlobal,
       hostPolicyGlobal,
       keepLastGlobal,
@@ -947,6 +969,7 @@ export default function useUiSettings(): UiSettings {
   const tools = resolveRunValue("tools", toolsGlobal);
   const yolo = resolveRunValue("yolo", yoloGlobal);
   const hostPolicy = resolveRunValue("hostPolicy", hostPolicyGlobal);
+  const automationProfile = resolveRunValue("automationProfile", automationProfileGlobal);
   const verbose = resolveRunValue("verbose", verboseGlobal);
   const model = resolveRunValue("model", modelGlobal);
   const summaryModel = resolveRunValue("summaryModel", summaryModelGlobal);
@@ -995,6 +1018,12 @@ export default function useUiSettings(): UiSettings {
   const setHostPolicy = React.useCallback(
     (next: React.SetStateAction<HostPolicy>) => setRunValue("hostPolicy", next, hostPolicyGlobal, setHostPolicyGlobal),
     [hostPolicyGlobal, setHostPolicyGlobal, setRunValue],
+  );
+
+  const setAutomationProfile = React.useCallback(
+    (next: React.SetStateAction<string>) =>
+      setRunValue("automationProfile", next, automationProfileGlobal, setAutomationProfileGlobal),
+    [automationProfileGlobal, setAutomationProfileGlobal, setRunValue],
   );
 
   const setVerbose = React.useCallback(
@@ -1595,6 +1624,8 @@ export default function useUiSettings(): UiSettings {
       setYolo,
       hostPolicy,
       setHostPolicy,
+      automationProfile,
+      setAutomationProfile,
       verbose,
       setVerbose,
       model,

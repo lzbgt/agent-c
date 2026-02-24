@@ -54,6 +54,9 @@ export const buildWorkflowDefaults = (run: RunSettings): Record<string, any> => 
 
   if (run.tools) defaults.tools = run.tools;
   if (run.tools === "host" && run.hostPolicy) defaults.host_policy = run.hostPolicy;
+  if (run.automationProfile && run.automationProfile.trim().length > 0) {
+    defaults.automation_profile = run.automationProfile.trim();
+  }
   if (typeof run.yolo === "boolean") defaults.yolo = run.yolo;
   if (typeof run.verbose === "boolean") defaults.verbose = run.verbose;
 

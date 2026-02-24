@@ -116,6 +116,7 @@ export default function App() {
     tools,
     yolo,
     hostPolicy,
+    automationProfile,
     verbose,
     model,
     summaryModel,
@@ -151,6 +152,14 @@ export default function App() {
     trace,
     useAsync,
   } = runSettings;
+  const automationProfileTrim = automationProfile.trim();
+  const automationProfileValue =
+    automationProfileTrim === "full" ||
+    automationProfileTrim === "guided" ||
+    automationProfileTrim === "strict" ||
+    automationProfileTrim === "custom"
+      ? automationProfileTrim
+      : undefined;
   const workflowDefaults = buildWorkflowDefaults(runSettings);
   const jobsEnabled = (capsData as any)?.features?.jobs?.enabled !== false;
   const uploadMaxBytesRaw = (capsData as any)?.limits?.upload_max_bytes;
@@ -1076,6 +1085,7 @@ export default function App() {
         client,
         tools,
         host_policy: tools === "host" ? hostPolicy : undefined,
+        automation_profile: automationProfileValue,
         yolo,
         verbose,
         model: model || undefined,

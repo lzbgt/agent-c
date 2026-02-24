@@ -15,6 +15,7 @@ export type AgentUIRuntimeConfig = {
   tools?: ToolMode | string;
   yolo?: boolean | string;
   hostPolicy?: HostPolicy | string;
+  automationProfile?: string;
   verbose?: boolean | string;
   model?: string;
   baseUrl?: string;
@@ -60,6 +61,7 @@ export type AgentUIDefaults = {
   tools: ToolMode;
   yolo: boolean;
   hostPolicy: HostPolicy;
+  automationProfile: string;
   verbose: boolean;
   model: string;
   baseUrl: string;
@@ -111,6 +113,7 @@ const DEFAULTS: AgentUIDefaults = {
   tools: "host",
   yolo: true,
   hostPolicy: "full",
+  automationProfile: "",
   verbose: true,
   model: "deepseek-chat",
   baseUrl: "https://api.deepseek.com",
@@ -262,6 +265,10 @@ export const getUiDefaults = (): AgentUIDefaults => {
     coerceEnum(cfg.hostPolicy, ["full", "readonly"]) ??
     coerceEnum(envString("VITE_AGENTUI_HOST_POLICY"), ["full", "readonly"]) ??
     out.hostPolicy;
+  out.automationProfile =
+    coerceEnum(cfg.automationProfile, ["full", "guided", "strict", "custom"]) ??
+    coerceEnum(envString("VITE_AGENTUI_AUTOMATION_PROFILE"), ["full", "guided", "strict", "custom"]) ??
+    out.automationProfile;
 
   out.verbose = coerceBool(cfg.verbose) ?? coerceBool(envString("VITE_AGENTUI_VERBOSE")) ?? out.verbose;
   out.model = coerceString(cfg.model) ?? coerceString(envString("VITE_AGENTUI_MODEL")) ?? out.model;

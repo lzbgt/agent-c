@@ -102,6 +102,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 - [ ] W=11 — Automation mode profile + moderator control plane: explicit profiles in caps, per-run override, moderator directives, and nonblocking UX.
   - 2026-02-25: added automation profiles in `/api/v1/caps`, per-run `automation_profile` override, and `effective_automation_profile` response field (agentd + docs + smoke test).
+  - 2026-02-25: WebUI run settings + workflow defaults now include `automation_profile` with caps-driven options.
 - [ ] W=9 — Rolling memory consolidation v1: scheduled rollups (daily/weekly), cross-run correlation index, and evidence-linked recall.
 - [ ] W=8 — Real-provider automation smokes: DeepSeek + Kimi agent runs using ~/.env keys to validate full automation defaults.
   - 2026-02-25: mac-local provider tests passed (DeepSeek reasoner + Moonshot/Kimi) via `tools/verify_mac_local_stack.sh` with `MAC_LOCAL_PROVIDER_TEST=1` (log: `out/mac_local_provider_tests_2026-02-25_004102.log`).

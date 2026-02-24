@@ -312,6 +312,15 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
     return formatDuration(age);
   }, [props.caps.updatedMs]);
   const jobsEnabled = (capsData as any)?.features?.jobs?.enabled !== false;
+  const automationCaps = (capsData as any)?.features?.automation;
+  const automationProfiles = React.useMemo(() => {
+    const raw = automationCaps?.profiles;
+    const list = Array.isArray(raw) ? raw.filter((p: any) => typeof p === "string") : [];
+    return list.length ? list : ["full", "guided", "strict", "custom"];
+  }, [automationCaps?.profiles]);
+  const automationDefault =
+    automationCaps && typeof automationCaps.default_profile === "string" ? automationCaps.default_profile : "";
+  const automationOverrideAllowed = automationCaps ? automationCaps.per_run_override !== false : true;
   const diagProviders = diagnosticsProviders.data;
   const providerEntries = diagProviders && diagProviders.providers && typeof diagProviders.providers === "object"
     ? (diagProviders.providers as Record<string, any>)
@@ -730,6 +739,30 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
               <option value="full">full</option>
               <option value="readonly">readonly</option>
             </select>
+          </div>
+          <div className="col-span-2">
+            <FieldLabel>Automation profile</FieldLabel>
+            <select
+              className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+              value={run.automationProfile}
+              onChange={(e) => run.setAutomationProfile(e.target.value)}
+              disabled={!automationOverrideAllowed}
+            >
+              <option value="">
+                {automationDefault ? `default (${automationDefault})` : "default (daemon config)"}
+              </option>
+              {automationProfiles.map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+            <div className="mt-1 text-[11px] text-white/60">
+              Overrides yolo/host policy/policy mode when set. Use default to follow daemon config.
+            </div>
+            {!automationOverrideAllowed ? (
+              <div className="mt-1 text-[11px] text-amber-200">Per-run automation override disabled by daemon caps.</div>
+            ) : null}
           </div>
         </div>
 

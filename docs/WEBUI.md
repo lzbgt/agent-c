@@ -38,6 +38,7 @@ Edit `ui/public/agentui-config.js` (copied to `ui/dist/agentui-config.js`) to pr
 - `daemonAuthToken`, `brokerAuthToken` (only if you accept putting tokens in a static file)
 - `model`, `baseUrl`, `proxyUrl`, `timeoutMs`
 - `tools`, `yolo`, `hostPolicy`, `verbose`
+- `automationProfile` (full|guided|strict|custom; omit for daemon default)
 - `allowClientRpcs`, `allowClientEffects`, `allowUnsafePageEval`
 - `workflowAgentTargets` (array or CSV of agentd base URLs for collaboration templates)
 - `workflowBearerEnv` (env var name used by `agentd_call` bearer_env in templates)
