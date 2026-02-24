@@ -252,6 +252,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/memory_salience.cpp
     daemon/src/memory_recaps.cpp
     daemon/src/memory_endpoints.cpp
+    daemon/src/moderator_endpoints.cpp
     daemon/src/runtime_config.cpp
     daemon/src/secrets_file.cpp
     daemon/src/run_client_acks.cpp
@@ -544,6 +545,7 @@ if(AGENT_BUILD_HOST)
 
     add_test(NAME agentd_tools_list_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_tools_list_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_automation_profile_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_automation_profile_smoke.sh $<TARGET_FILE:agentd>)
+    add_test(NAME agentd_moderator_directive_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_moderator_directive_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_policy_hooks_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_policy_hooks_smoke.sh $<TARGET_FILE:agentd>)
     add_test(NAME agentd_avm_job_scan_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_avm_job_scan_smoke.sh $<TARGET_FILE:agentd>)
 	    add_test(NAME agentd_auth_smoke COMMAND bash ${CMAKE_CURRENT_SOURCE_DIR}/tests/agentd_auth_smoke.sh $<TARGET_FILE:agentd>)

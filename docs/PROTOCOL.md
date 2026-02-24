@@ -259,6 +259,12 @@ These are optionally appended into the session message history and (when `--db-p
 
 See: `docs/CLIENT.md` (client events, state snapshots, and RPC).
 
+Moderator control plane:
+- `POST /api/v1/moderator/directive` publishes a moderator directive (`type=moderator_directive`).
+- `POST /api/v1/moderator/task` publishes a moderator task (`type=moderator_task_published`).
+- `GET /api/v1/moderator/events?session_id=...` lists moderator events (filtered from client events).
+
+
 ### Endpoint: list client events (file-backed)
 
 For debugging without enabling SQLite, UIs can read the tail of the session-scoped client event log:

@@ -216,6 +216,13 @@ Policy decisions emit `policy_decision` events in the run/job event streams for 
   - `custom`: no override (use daemon config as-is).
 - Run responses include `effective_automation_profile`.
 
+### Moderator control plane (nonblocking)
+
+- `POST /api/v1/moderator/directive` publishes a moderator directive as a client event (`type=moderator_directive`).
+- `POST /api/v1/moderator/task` publishes a moderator task (`type=moderator_task_published`).
+- `GET /api/v1/moderator/events?session_id=...` tails moderator events for a session (filters client events).
+- These events are stored in the client events log and are replayable; they do not block runs unless a policy hook requires it.
+
 ## Daemon-side key loading and client identity
 
 - `agentd` supports **daemon-side** key loading per-run based on the request `base_url`, so WebUI can omit `api_key`.

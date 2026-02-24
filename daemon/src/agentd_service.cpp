@@ -24,6 +24,7 @@
 #include "job_stream_endpoint.h"
 #include "health_endpoint.h"
 #include "memory_endpoints.h"
+#include "moderator_endpoints.h"
 #include "memory_consolidator.h"
 #include "memory_retention.h"
 #include "orchestrate_endpoints.h"
@@ -977,6 +978,21 @@ struct AgentdService::Impl {
     server.handle("POST", "/api/v1/session/client_event", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_session_ui_event_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+
+    server.handle("POST", "/api/v1/moderator/directive", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_moderator_directive_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+
+    server.handle("POST", "/api/v1/moderator/task", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_moderator_task_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+
+    server.handle("GET", "/api/v1/moderator/events", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_moderator_events_endpoint(cur, cors_cfg, &db, req, resp);
     });
 
     server.handle("POST", "/api/v1/session/upload", [this](const HttpRequest& req, HttpResponse* resp) {

@@ -7,6 +7,8 @@ import {
   apiGetDiagnostics,
   apiGetDiagnosticsProviders,
   apiGetOpenRouterModels,
+  apiPostModeratorDirective,
+  apiPostModeratorTask,
   apiPostDiagnosticsProviderTest,
 } from "../api";
 import type { ClientSettings, ConnectionSettings, RunSettings } from "../hooks/useUiSettings";
@@ -118,6 +120,13 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const [brokerDeploymentsError, setBrokerDeploymentsError] = React.useState<string | null>(null);
   const [brokerDeployments, setBrokerDeployments] = React.useState<any[] | null>(null);
   const [brokerDeploymentsDefaultId, setBrokerDeploymentsDefaultId] = React.useState<string | null>(null);
+  const [moderatorDirective, setModeratorDirective] = React.useState<string>("");
+  const [moderatorTaskTitle, setModeratorTaskTitle] = React.useState<string>("");
+  const [moderatorTaskDetail, setModeratorTaskDetail] = React.useState<string>("");
+  const [moderatorAppendToSession, setModeratorAppendToSession] = React.useState<boolean>(false);
+  const [moderatorBusy, setModeratorBusy] = React.useState<boolean>(false);
+  const [moderatorError, setModeratorError] = React.useState<string | null>(null);
+  const [moderatorSuccess, setModeratorSuccess] = React.useState<string | null>(null);
   const serverPrefsBase = String(connection.serverPrefsBase || "").trim();
   const serverPrefsCanSync = serverPrefsBase.length > 0;
   const serverPrefsTarget = connection.mode === "broker" ? "broker" : "daemon";
@@ -321,6 +330,90 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const automationDefault =
     automationCaps && typeof automationCaps.default_profile === "string" ? automationCaps.default_profile : "";
   const automationOverrideAllowed = automationCaps ? automationCaps.per_run_override !== false : true;
+  const moderatorCaps = (capsData as any)?.features?.moderator;
+  const moderatorDirectivesEnabled = moderatorCaps ? moderatorCaps.directives !== false : true;
+  const moderatorTasksEnabled = moderatorCaps ? moderatorCaps.tasks !== false : true;
+
+  const publishModeratorDirective = React.useCallback(async () => {
+    const sid = String(props.session.id || "").trim();
+    const directive = String(moderatorDirective || "").trim();
+    if (!sid) {
+      setModeratorError("missing session_id");
+      return;
+    }
+    if (!directive) {
+      setModeratorError("missing directive");
+      return;
+    }
+    setModeratorBusy(true);
+    setModeratorError(null);
+    setModeratorSuccess(null);
+    try {
+      const resp = await apiPostModeratorDirective(
+        connection.effectiveBase,
+        {
+          session_id: sid,
+          directive,
+          append_to_session: moderatorAppendToSession,
+          actor: { role: "moderator", id: client.clientId || "moderator", kind: "webui" },
+        },
+        connection.daemonAuth,
+      );
+      if (!resp.ok) throw new Error(resp.error || "failed to publish directive");
+      setModeratorDirective("");
+      setModeratorSuccess("directive published");
+    } catch (err: any) {
+      setModeratorError(String(err?.message || err));
+    } finally {
+      setModeratorBusy(false);
+    }
+  }, [client.clientId, connection.daemonAuth, connection.effectiveBase, moderatorAppendToSession, moderatorDirective, props.session.id]);
+
+  const publishModeratorTask = React.useCallback(async () => {
+    const sid = String(props.session.id || "").trim();
+    const title = String(moderatorTaskTitle || "").trim();
+    const detail = String(moderatorTaskDetail || "").trim();
+    if (!sid) {
+      setModeratorError("missing session_id");
+      return;
+    }
+    if (!title) {
+      setModeratorError("missing task title");
+      return;
+    }
+    setModeratorBusy(true);
+    setModeratorError(null);
+    setModeratorSuccess(null);
+    try {
+      const resp = await apiPostModeratorTask(
+        connection.effectiveBase,
+        {
+          session_id: sid,
+          title,
+          detail: detail || undefined,
+          append_to_session: moderatorAppendToSession,
+          actor: { role: "moderator", id: client.clientId || "moderator", kind: "webui" },
+        },
+        connection.daemonAuth,
+      );
+      if (!resp.ok) throw new Error(resp.error || "failed to publish task");
+      setModeratorTaskTitle("");
+      setModeratorTaskDetail("");
+      setModeratorSuccess("task published");
+    } catch (err: any) {
+      setModeratorError(String(err?.message || err));
+    } finally {
+      setModeratorBusy(false);
+    }
+  }, [
+    client.clientId,
+    connection.daemonAuth,
+    connection.effectiveBase,
+    moderatorAppendToSession,
+    moderatorTaskDetail,
+    moderatorTaskTitle,
+    props.session.id,
+  ]);
   const diagProviders = diagnosticsProviders.data;
   const providerEntries = diagProviders && diagProviders.providers && typeof diagProviders.providers === "object"
     ? (diagProviders.providers as Record<string, any>)
@@ -763,6 +856,73 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
             {!automationOverrideAllowed ? (
               <div className="mt-1 text-[11px] text-amber-200">Per-run automation override disabled by daemon caps.</div>
             ) : null}
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-md border border-white/10 bg-black/20 p-3">
+          <SectionHeader title="Moderator" />
+          <div className="mt-2 grid gap-3 text-[11px] text-white/70">
+            <div>
+              <FieldLabel>Directive</FieldLabel>
+              <textarea
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                placeholder="Publish a nonblocking moderator directive"
+                rows={3}
+                value={moderatorDirective}
+                onChange={(e) => setModeratorDirective(e.target.value)}
+              />
+            </div>
+            <div>
+              <FieldLabel>Task</FieldLabel>
+              <input
+                className="mt-1 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                placeholder="Task title"
+                value={moderatorTaskTitle}
+                onChange={(e) => setModeratorTaskTitle(e.target.value)}
+              />
+              <textarea
+                className="mt-2 w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                placeholder="Task detail (optional)"
+                rows={2}
+                value={moderatorTaskDetail}
+                onChange={(e) => setModeratorTaskDetail(e.target.value)}
+              />
+            </div>
+            <label className="flex items-center justify-between gap-2">
+              <span>Append to session history</span>
+              <input
+                type="checkbox"
+                checked={moderatorAppendToSession}
+                onChange={(e) => setModeratorAppendToSession(e.target.checked)}
+              />
+            </label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                type="button"
+                onClick={() => void publishModeratorDirective()}
+                disabled={moderatorBusy || !props.session.id.trim() || !moderatorDirectivesEnabled}
+              >
+                Publish directive
+              </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                type="button"
+                onClick={() => void publishModeratorTask()}
+                disabled={moderatorBusy || !props.session.id.trim() || !moderatorTasksEnabled}
+              >
+                Publish task
+              </button>
+              {moderatorBusy ? <span className="text-white/50">publishing…</span> : null}
+            </div>
+            {!moderatorDirectivesEnabled || !moderatorTasksEnabled ? (
+              <div className="text-amber-200">Moderator publishing disabled by daemon caps.</div>
+            ) : null}
+            {moderatorError ? <div className="text-rose-200">moderator error: {moderatorError}</div> : null}
+            {moderatorSuccess ? <div className="text-emerald-200">{moderatorSuccess}</div> : null}
+            <div className="text-[11px] text-white/50">
+              Moderator directives/tasks are stored as client events and do not block automation unless policy hooks require it.
+            </div>
           </div>
         </div>
 

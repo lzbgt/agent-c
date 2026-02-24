@@ -1999,3 +1999,101 @@
                       mm_bytes: { type: integer, format: int64 }
                       mm_truncated: { type: integer, format: int64 }
                 error: { type: string }
+
+/api/v1/moderator/directive:
+  post:
+    tags: [moderator]
+    summary: Publish a moderator directive (nonblocking)
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ModeratorDirectiveRequest"
+    responses:
+      "200":
+        description: OK
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModeratorPostResponse"
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
+/api/v1/moderator/task:
+  post:
+    tags: [moderator]
+    summary: Publish a moderator task (nonblocking)
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ModeratorTaskRequest"
+    responses:
+      "200":
+        description: OK
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModeratorPostResponse"
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+
+/api/v1/moderator/events:
+  get:
+    tags: [moderator]
+    summary: List moderator events for a session
+    parameters:
+      - in: query
+        name: session_id
+        schema: { type: string }
+        required: true
+      - in: query
+        name: max_bytes
+        schema: { type: integer, format: int64 }
+        required: false
+      - in: query
+        name: types
+        schema: { type: string }
+        required: false
+        description: Comma-separated event types to include (default: moderator_directive, moderator_task_published)
+    responses:
+      "200":
+        description: OK
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ModeratorEventsResponse"
+      "400":
+        description: Invalid request
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"
+      "401":
+        description: Unauthorized
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ErrorResponse"

@@ -9,6 +9,7 @@ export * from "./api/trace";
 export * from "./api/memory";
 export * from "./api/approvals";
 export * from "./api/workflow";
+export * from "./api/moderator";
 
 export * from "./api/schemas/daemon";
 export * from "./api/schemas/run";
@@ -20,3 +21,4 @@ export * from "./api/schemas/trace";
 export * from "./api/schemas/memory";
 export * from "./api/schemas/approvals";
 export * from "./api/schemas/workflow";
+export * from "./api/schemas/moderator";

@@ -1,0 +1,83 @@
+ModeratorActor:
+  type: object
+  properties:
+    role: { type: string }
+    id: { type: string }
+    kind: { type: string }
+    instance_id: { type: string }
+
+ModeratorDirectiveRequest:
+  type: object
+  required: [session_id, directive]
+  properties:
+    session_id: { type: string }
+    directive: { type: string }
+    scope: { type: string }
+    priority: { type: integer, format: int64 }
+    metadata:
+      type: object
+      additionalProperties: true
+    actor:
+      $ref: "#/ModeratorActor"
+    append_to_session: { type: boolean }
+    ts_unix_ms: { type: integer, format: int64 }
+
+ModeratorTaskRequest:
+  type: object
+  required: [session_id, title]
+  properties:
+    session_id: { type: string }
+    title: { type: string }
+    detail: { type: string }
+    priority: { type: integer, format: int64 }
+    tags:
+      type: array
+      items: { type: string }
+    assignees:
+      type: array
+      items: { type: string }
+    metadata:
+      type: object
+      additionalProperties: true
+    status: { type: string }
+    actor:
+      $ref: "#/ModeratorActor"
+    append_to_session: { type: boolean }
+    ts_unix_ms: { type: integer, format: int64 }
+
+ModeratorEvent:
+  type: object
+  properties:
+    type: { type: string }
+    ts_unix_ms: { type: integer, format: int64 }
+    actor:
+      $ref: "#/ModeratorActor"
+    data:
+      type: object
+      additionalProperties: true
+
+ModeratorPostResponse:
+  type: object
+  required: [ok]
+  properties:
+    ok: { type: boolean }
+    session_id: { type: string }
+    type: { type: string }
+    appended_to_session: { type: boolean }
+    logged_to_client_events: { type: boolean }
+    event:
+      $ref: "#/ModeratorEvent"
+
+ModeratorEventsResponse:
+  type: object
+  required: [ok, session_id, max_bytes, count, events]
+  properties:
+    ok: { type: boolean }
+    session_id: { type: string }
+    max_bytes: { type: integer, format: int64 }
+    count: { type: integer, format: int64 }
+    events:
+      type: array
+      items:
+        $ref: "#/ModeratorEvent"
+    error: { type: string }

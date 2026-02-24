@@ -92,7 +92,8 @@ All consolidation steps are explicit jobs with stored outputs.
 - `automation.default_profile` in `/api/v1/caps`
 - `automation_profile` in run submit payloads
 - `moderator` role identity in approvals + event streams
-- `moderator_tasks` endpoint for publishing/observing directives
+- `POST /api/v1/moderator/directive` + `POST /api/v1/moderator/task`
+- `GET /api/v1/moderator/events` (filtered from client events)
 
 ## Implementation plan (rolling)
 
@@ -105,8 +106,9 @@ Phase 1 (identity + approvals):
 - Enforce `policy_approval_roles` when identity is present.
 
 Phase 2 (moderator control plane):
-- Add moderator task publish/subscribe endpoints.
+- Add moderator task/directive publish + subscribe endpoints.
 - WebUI panel for moderator directives + approvals.
+  - 2026-02-25: endpoints + WebUI panel for directives/tasks added (events stored as client events).
 
 Phase 3 (memory consolidation):
 - Add consolidation jobs + schedule.

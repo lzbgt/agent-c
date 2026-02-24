@@ -120,6 +120,14 @@ void handle_caps_endpoint(
     features["automation"] = automation;
   }
   {
+    Json::Value moderator(Json::objectValue);
+    moderator["directives"] = true;
+    moderator["tasks"] = true;
+    moderator["events"] = true;
+    moderator["default_role"] = "moderator";
+    features["moderator"] = moderator;
+  }
+  {
     Json::Value policy(Json::objectValue);
     policy["mode"] = cfg.policy_mode;
     {

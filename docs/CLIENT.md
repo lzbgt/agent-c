@@ -133,6 +133,10 @@ Read-back helpers:
 - notification_shown
 - notification_ack
 
+Moderator events (server-issued, stored as client events):
+- moderator_directive
+- moderator_task_published
+
 ## Agent -> client actions (ui_action)
 
 The host tool `ui_action` lets the agent request UI-side actions.

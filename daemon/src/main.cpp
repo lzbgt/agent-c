@@ -21,6 +21,7 @@
 #include "tool_servers.h"
 #include "tool_extension_mux.h"
 #include "session_endpoints.h"
+#include "moderator_endpoints.h"
 #include "job_endpoints.h"
 #include "orchestrate_endpoints.h"
 #include "memory_endpoints.h"
@@ -1181,6 +1182,21 @@ int main(int argc, char** argv) {
   server.handle("POST", "/api/v1/session/client_event", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_session_ui_event_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+
+  server.handle("POST", "/api/v1/moderator/directive", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_moderator_directive_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+
+  server.handle("POST", "/api/v1/moderator/task", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_moderator_task_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+
+  server.handle("GET", "/api/v1/moderator/events", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_moderator_events_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   // Session-scoped uploads (UI -> daemon). Returns session-relative paths that can be fetched via /api/v1/file.

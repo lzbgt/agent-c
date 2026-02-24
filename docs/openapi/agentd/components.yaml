@@ -19,6 +19,18 @@ schemas:
     $ref: ./components/client_prefs.yaml#/ClientPrefsUpdateRequest
   ClientPrefsResponse:
     $ref: ./components/client_prefs.yaml#/ClientPrefsResponse
+  ModeratorActor:
+    $ref: ./components/moderator.yaml#/ModeratorActor
+  ModeratorDirectiveRequest:
+    $ref: ./components/moderator.yaml#/ModeratorDirectiveRequest
+  ModeratorTaskRequest:
+    $ref: ./components/moderator.yaml#/ModeratorTaskRequest
+  ModeratorEvent:
+    $ref: ./components/moderator.yaml#/ModeratorEvent
+  ModeratorPostResponse:
+    $ref: ./components/moderator.yaml#/ModeratorPostResponse
+  ModeratorEventsResponse:
+    $ref: ./components/moderator.yaml#/ModeratorEventsResponse
   BlobStoreConfig:
     $ref: ./components/blob.yaml#/BlobStoreConfig
   BlobStoreUpdate:
