@@ -97,6 +97,12 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   }, [approvalRunId, runResult]);
 
   React.useEffect(() => {
+    if (!approvalRunId && runLookupResult?.team_run_id) {
+      setApprovalRunId(String(runLookupResult.team_run_id));
+    }
+  }, [approvalRunId, runLookupResult]);
+
+  React.useEffect(() => {
     setApprovals(null);
     setApprovalsError(null);
   }, [approvalRunIdTrimmed, teamIdTrimmed]);
