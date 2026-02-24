@@ -131,6 +131,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-24: WebUI broker console now includes team console (teams/members/quorum) plus team runs + approvals UI.
   - 2026-02-20: Add quorum enforcement smoke.
 - [ ] W=9 — Approval queues + tool-level quorum gating: WebUI approval queue, tool-level quorum enforcement, and SSE updates for approval state.
+- [ ] W=6 — Finalize WebUI inline run approvals in `ui/src/components/broker/BrokerTeamConsole.tsx` (tests + docs + commit).
 - [ ] W=8 — Run comparison + evidence diff UX: side-by-side run diffs (events/artifacts/costs), evidence bundle viewer, and regression baselines.
 - [x] W=10 — Policy hook MVP: deterministic pre/post run + tool call hooks with allow/deny + budget caps, config surface, and audit logs.
 - [ ] W=9 — Attestation bundles: canonical hash format + signed run certificates + verification CLI.
