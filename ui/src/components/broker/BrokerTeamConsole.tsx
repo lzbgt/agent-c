@@ -138,6 +138,8 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [runtimeAgentsBusy, setRuntimeAgentsBusy] = React.useState<boolean>(false);
   const [runtimeAgentsError, setRuntimeAgentsError] = React.useState<string | null>(null);
   const [runtimeAgents, setRuntimeAgents] = React.useState<any[] | null>(null);
+  const [runtimeSaveBusy, setRuntimeSaveBusy] = React.useState<boolean>(false);
+  const [runtimeSaveError, setRuntimeSaveError] = React.useState<string | null>(null);
 
   const runtimeMembersPreview = React.useMemo(() => {
     const raw = String(runRuntimeMembersJson || "").trim();
@@ -650,6 +652,68 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     const merged = [...existingRuntime, ...additions];
     setRunRuntimeMembersJson(JSON.stringify(merged, null, 2));
     setRunError(null);
+  };
+
+  const handleSaveRuntimeMembers = async () => {
+    if (!teamIdTrimmed) {
+      setRuntimeSaveError("select a team first");
+      return;
+    }
+    if (runtimeMembersPreview.error) {
+      setRuntimeSaveError(runtimeMembersPreview.error);
+      return;
+    }
+    const items = runtimeMembersPreview.items;
+    if (!Array.isArray(items) || items.length === 0) {
+      setRuntimeSaveError("no runtime members to save");
+      return;
+    }
+    const existingIDs = new Set<string>();
+    for (const m of membersList) {
+      const id = String(m?.member_id || "").trim();
+      if (id) existingIDs.add(id);
+    }
+    const payloads: Record<string, any>[] = [];
+    const invalid: string[] = [];
+    for (const item of items) {
+      const memberId = item?.member_id ? String(item.member_id).trim() : "";
+      if (memberId && existingIDs.has(memberId)) {
+        continue;
+      }
+      const agentId = item?.agent_id ? String(item.agent_id).trim() : "";
+      const role = item?.role ? String(item.role).trim() : "";
+      if (!agentId || !role) {
+        invalid.push(memberId || agentId || "runtime");
+        continue;
+      }
+      const payload: Record<string, any> = { role, agent_id: agentId };
+      if (memberId) payload.member_id = memberId;
+      if (item?.deployment_id) payload.deployment_id = String(item.deployment_id);
+      if (Array.isArray(item?.capabilities)) payload.capabilities = item.capabilities;
+      if (item?.status) payload.status = String(item.status);
+      if (typeof item?.weight === "number") payload.weight = item.weight;
+      if (item?.meta && typeof item.meta === "object") payload.meta = item.meta;
+      payloads.push(payload);
+    }
+    if (payloads.length === 0) {
+      setRuntimeSaveError(invalid.length > 0 ? "runtime members missing agent_id or role" : "no new members to save");
+      return;
+    }
+    if (!window.confirm(`Save ${payloads.length} runtime member(s) to team?`)) {
+      return;
+    }
+    setRuntimeSaveError(null);
+    setRuntimeSaveBusy(true);
+    try {
+      for (const payload of payloads) {
+        await apiBrokerTeamMembersUpsert(props.base, teamIdTrimmed, payload, props.auth);
+      }
+      await refreshMembers(teamIdTrimmed);
+    } catch (err) {
+      setRuntimeSaveError(String(err));
+    } finally {
+      setRuntimeSaveBusy(false);
+    }
   };
 
   const handleCreateRun = async () => {
@@ -1450,10 +1514,21 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
               >
                 Add connected agents
               </button>
+              <button
+                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                type="button"
+                disabled={!canQuery || runtimeSaveBusy || runtimeMembersPreview.items.length === 0}
+                onClick={() => void handleSaveRuntimeMembers()}
+              >
+                {runtimeSaveBusy ? "Saving…" : "Save to team"}
+              </button>
               {runtimeAgentsError ? (
                 <span className="text-[11px] text-rose-200">{runtimeAgentsError}</span>
               ) : null}
             </div>
+            {runtimeSaveError ? (
+              <div className="text-[11px] text-rose-200">{runtimeSaveError}</div>
+            ) : null}
             <div className="flex flex-wrap items-center gap-2">
               <FieldLabel>Deployment</FieldLabel>
               <input
