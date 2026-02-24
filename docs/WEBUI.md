@@ -47,7 +47,7 @@ Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`,
 
 - The WebUI can store multiple **connection profiles** (direct or broker-backed) in localStorage.
 - Each profile can enable **profile-specific run settings** (model/provider, tool flags, run limits).
-- The broker console exposes agent membership management, audit events, and team quorum approvals.
+- The broker console exposes agent membership management, audit events, team setup (members + quorum rules), team runs, and quorum approvals.
 - Optional: sync connection profiles to the **daemon** (direct mode) for server-side persistence.
   - Toggle “Sync connection profiles to daemon” in Settings → Connection.
   - Only non-secret fields are stored (URLs/ids/profile names). Auth tokens remain local.

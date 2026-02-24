@@ -9,6 +9,26 @@ import {
   type BrokerMembersResp,
   BrokerMembershipAuditRespSchema,
   type BrokerMembershipAuditResp,
+  BrokerTeamCreateRespSchema,
+  type BrokerTeamCreateResp,
+  BrokerTeamDeleteRespSchema,
+  type BrokerTeamDeleteResp,
+  BrokerTeamGetRespSchema,
+  type BrokerTeamGetResp,
+  BrokerTeamListRespSchema,
+  type BrokerTeamListResp,
+  BrokerTeamMemberListRespSchema,
+  type BrokerTeamMemberListResp,
+  BrokerTeamMemberUpsertRespSchema,
+  type BrokerTeamMemberUpsertResp,
+  BrokerTeamQuorumRuleListRespSchema,
+  type BrokerTeamQuorumRuleListResp,
+  BrokerTeamQuorumRuleUpsertRespSchema,
+  type BrokerTeamQuorumRuleUpsertResp,
+  BrokerTeamRunRespSchema,
+  type BrokerTeamRunResp,
+  BrokerTeamRunStatusRespSchema,
+  type BrokerTeamRunStatusResp,
 } from "./schemas/broker";
 import type { MemoryRecapsListParams, MemorySalienceParams } from "./memory";
 
@@ -321,6 +341,197 @@ export async function apiBrokerGetMembershipAudit(
   });
   const j = await r.json();
   return BrokerMembershipAuditRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamList(brokerBase: string, auth?: ApiAuth): Promise<BrokerTeamListResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const r = await fetch(`${base}/v1/teams`, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return BrokerTeamListRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamCreate(
+  brokerBase: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<BrokerTeamCreateResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const payload = body ?? {};
+  const r = await fetch(`${base}/v1/teams`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json();
+  return BrokerTeamCreateRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamGet(
+  brokerBase: string,
+  teamId: string,
+  auth?: ApiAuth,
+): Promise<BrokerTeamGetResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}`, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return BrokerTeamGetRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamDelete(
+  brokerBase: string,
+  teamId: string,
+  auth?: ApiAuth,
+): Promise<BrokerTeamDeleteResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}`, {
+    method: "DELETE",
+    headers: daemonHeaders(auth),
+  });
+  const j = await r.json();
+  return BrokerTeamDeleteRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamMembersList(
+  brokerBase: string,
+  teamId: string,
+  auth?: ApiAuth,
+): Promise<BrokerTeamMemberListResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/members`, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return BrokerTeamMemberListRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamMembersUpsert(
+  brokerBase: string,
+  teamId: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<BrokerTeamMemberUpsertResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  const payload = body ?? {};
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/members`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json();
+  return BrokerTeamMemberUpsertRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamMembersDelete(
+  brokerBase: string,
+  teamId: string,
+  memberId: string,
+  auth?: ApiAuth,
+): Promise<BrokerTeamDeleteResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  const mid = String(memberId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  if (!mid) throw new Error("missing member_id");
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/members/${encodeURIComponent(mid)}`, {
+    method: "DELETE",
+    headers: daemonHeaders(auth),
+  });
+  const j = await r.json();
+  return BrokerTeamDeleteRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamQuorumList(
+  brokerBase: string,
+  teamId: string,
+  auth?: ApiAuth,
+): Promise<BrokerTeamQuorumRuleListResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/quorum`, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return BrokerTeamQuorumRuleListRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamQuorumUpsert(
+  brokerBase: string,
+  teamId: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<BrokerTeamQuorumRuleUpsertResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  const payload = body ?? {};
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/quorum`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json();
+  return BrokerTeamQuorumRuleUpsertRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamQuorumDelete(
+  brokerBase: string,
+  teamId: string,
+  ruleId: string,
+  auth?: ApiAuth,
+): Promise<BrokerTeamDeleteResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  const rid = String(ruleId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  if (!rid) throw new Error("missing rule_id");
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/quorum/${encodeURIComponent(rid)}`, {
+    method: "DELETE",
+    headers: daemonHeaders(auth),
+  });
+  const j = await r.json();
+  return BrokerTeamDeleteRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamRunCreate(
+  brokerBase: string,
+  teamId: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<BrokerTeamRunResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  const payload = body ?? {};
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/runs`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(payload),
+  });
+  const j = await r.json();
+  return BrokerTeamRunRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamRunGet(
+  brokerBase: string,
+  teamId: string,
+  teamRunId: string,
+  auth?: ApiAuth,
+): Promise<BrokerTeamRunStatusResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  const rid = String(teamRunId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  if (!rid) throw new Error("missing team_run_id");
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/runs/${encodeURIComponent(rid)}`, {
+    headers: daemonHeaders(auth),
+  });
+  const j = await r.json();
+  return BrokerTeamRunStatusRespSchema.parse(j);
 }
 
 export async function apiBrokerTeamRunApprovalsList(

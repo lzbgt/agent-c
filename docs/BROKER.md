@@ -347,6 +347,8 @@ The WebUI can operate in **broker mode** (OIDC) and now includes a broker consol
 - list agents and select the active `agent_id`
 - manage agent memberships (add/remove roles)
 - view membership audit trail (per agent)
+- manage teams (create/delete), team members, and quorum rules
+- create team runs and submit quorum approvals
 
 ## CORS (browser clients)
 

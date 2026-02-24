@@ -63,6 +63,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-20: `tools/verify_mac_full_stack.sh` succeeded (log: `build/verify_mac_full_stack.log`).
   - 2026-02-20: mac local provider tests passed (DeepSeek + Moonshot) via `MAC_LOCAL_PROVIDER_TEST=1` using keys from `~/.env`.
   - [x] WebUI connection profiles for multi-agentd deployments (direct or broker-backed).
+  - [ ] Broker-mode connection profile persistence (server-side store; avoid localStorage-only URLs).
   - [x] WebUI profile-specific run settings per connection profile (model/provider + run limits).
   - [x] Broker multi-deployment routing (`deployment_id`, `X-Agentd-Deployment`) + WebUI deployment selector + docs.
   - [x] OTA update pipeline: agentd OTA endpoint + operator update command, WebUI multi-deployment fanout via broker bulk OTA endpoints.
@@ -121,6 +122,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-20: Added broker SSE smoke for quorum events (`tests/broker_team_quorum_events_sse_compose_smoke.sh`).
   - 2026-02-19: Connector now supports `--local-agentd-token` (or `AGENTD_AUTH_TOKEN`) so team run fan-out can authenticate to local agentd; compose updated and compose smoke verified.
   - 2026-02-19: Broker now enforces `team_run` quorum rules on run creation via inline approvals (`team.approvals`) with strict failures returning `409`.
+  - 2026-02-24: WebUI broker console now includes team console (teams/members/quorum) plus team runs + approvals UI.
   - 2026-02-20: Add quorum enforcement smoke.
 - [ ] W=9 — Approval queues + tool-level quorum gating: WebUI approval queue, tool-level quorum enforcement, and SSE updates for approval state.
 - [ ] W=8 — Run comparison + evidence diff UX: side-by-side run diffs (events/artifacts/costs), evidence bundle viewer, and regression baselines.
