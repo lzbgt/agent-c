@@ -83,6 +83,7 @@ The **Memory explorer** panel (toggle from the main UI) provides operator toolin
 - Structured memory query + trace correlation.
 - Memory index + salience snapshots.
 - Recap generation + recap list filtering by `kind`.
+- Broker console memory maintenance supports recap kind tagging + list filtering across deployments.
 - Recap scheduling controls that update `memory.recap_*` config via `/api/v1/config/update`
   (scheduled recaps require `summary_model`).
 

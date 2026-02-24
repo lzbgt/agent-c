@@ -205,6 +205,7 @@ export async function apiBrokerMemoryRecapsListBulk(
   const qs = new URLSearchParams();
   addQueryParam(qs, "limit", params.limit);
   addQueryParam(qs, "include_summary", params.includeSummary);
+  addQueryParam(qs, "kind", params.kind);
   if (Array.isArray(deploymentIds) && deploymentIds.length > 0) {
     qs.set("deployment_ids", deploymentIds.join(","));
   }

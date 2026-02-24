@@ -110,6 +110,8 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   const [recapsIncludeSummary, setRecapsIncludeSummary] = React.useState<boolean>(false);
   const [recapsDryRun, setRecapsDryRun] = React.useState<boolean>(true);
   const [recapsWriteFile, setRecapsWriteFile] = React.useState<boolean>(true);
+  const [recapsKind, setRecapsKind] = React.useState<string>("");
+  const [recapsKindFilter, setRecapsKindFilter] = React.useState<string>("");
   const [recapsModel, setRecapsModel] = React.useState<string>("");
   const [recapsSummaryMaxChars, setRecapsSummaryMaxChars] = React.useState<string>("1200");
   const [recapsDailyDays, setRecapsDailyDays] = React.useState<string>("7");
@@ -605,6 +607,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
     const listParams = {
       limit: parseOptionalInt(recapsLimit, 1) ?? 20,
       includeSummary: recapsIncludeSummary,
+      kind: recapsKindFilter.trim() || undefined,
     };
 
     setRecapsListBusy(true);
@@ -614,6 +617,7 @@ export default function BrokerPanel(props: BrokerPanelProps) {
         const qs = new URLSearchParams();
         qs.set("limit", String(listParams.limit));
         if (listParams.includeSummary) qs.set("include_summary", "1");
+        if (listParams.kind) qs.set("kind", listParams.kind);
         const path = `/api/v1/memory/recaps${qs.toString() ? `?${qs.toString()}` : ""}`;
         const settled = await Promise.allSettled(
           selectedDeployments.map(async (deploymentId) => {
@@ -667,6 +671,8 @@ export default function BrokerPanel(props: BrokerPanelProps) {
       include_structured: recapsIncludeStructured,
       include_daily: recapsIncludeDaily,
     };
+    const kind = recapsKind.trim();
+    if (kind) payload.kind = kind;
     const model = recapsModel.trim();
     if (model) payload.model = model;
     const summaryMax = parseOptionalInt(recapsSummaryMaxChars, 0);
@@ -1348,6 +1354,18 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                 placeholder="summary max chars"
                 value={recapsSummaryMaxChars}
                 onChange={(e) => setRecapsSummaryMaxChars(e.target.value)}
+              />
+              <input
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="recap kind (optional)"
+                value={recapsKind}
+                onChange={(e) => setRecapsKind(e.target.value)}
+              />
+              <input
+                className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="filter kind (list)"
+                value={recapsKindFilter}
+                onChange={(e) => setRecapsKindFilter(e.target.value)}
               />
               <input
                 className="rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
