@@ -763,6 +763,45 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     setRunError(null);
   };
 
+  const handleExportTeamMembers = () => {
+    if (membersList.length === 0) {
+      setRunError("no team members to export");
+      return;
+    }
+    const payload = membersList.map((m) => {
+      const entry: Record<string, any> = {};
+      const memberId = String(m?.member_id || "").trim();
+      const agentId = String(m?.agent_id || "").trim();
+      const deploymentId = String(m?.deployment_id || "").trim();
+      const role = String(m?.role || "").trim();
+      const status = String(m?.status || "").trim();
+      if (memberId) entry.member_id = memberId;
+      if (agentId) entry.agent_id = agentId;
+      if (deploymentId) entry.deployment_id = deploymentId;
+      if (role) entry.role = role;
+      if (status && status !== "active") entry.status = status;
+      if (typeof m?.weight === "number") entry.weight = m.weight;
+      if (Array.isArray(m?.capabilities)) {
+        const caps = m.capabilities.map((c) => String(c).trim()).filter(Boolean);
+        if (caps.length > 0) entry.capabilities = caps;
+      }
+      if (m?.meta && typeof m.meta === "object") {
+        const meta: Record<string, any> = {};
+        for (const [k, v] of Object.entries(m.meta)) {
+          if (v === null || v === undefined) continue;
+          if (typeof v === "string" && v.trim() === "") continue;
+          if (Array.isArray(v) && v.length === 0) continue;
+          if (typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0) continue;
+          meta[k] = v;
+        }
+        if (Object.keys(meta).length > 0) entry.meta = meta;
+      }
+      return entry;
+    });
+    setRunRuntimeMembersJson(JSON.stringify(payload, null, 2));
+    setRunError(null);
+  };
+
   const handleSeedExplicitOverrides = () => {
     if (membersList.length === 0) {
       setRunError("no team members loaded");
@@ -1696,6 +1735,13 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                   onClick={() => handleDownloadRuntimeMembers()}
                 >
                   Download JSON
+                </button>
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                  type="button"
+                  onClick={() => handleExportTeamMembers()}
+                >
+                  Export team
                 </button>
                 <input
                   ref={runtimeImportRef}
