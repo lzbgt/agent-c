@@ -12,6 +12,8 @@ import {
   apiBrokerTeamQuorumUpsert,
   apiBrokerTeamRunCreate,
   apiBrokerTeamRunGet,
+  apiBrokerTeamRunApprovalsCreate,
+  apiBrokerTeamRunApprovalsList,
   type ApiAuth,
 } from "../../api";
 import FieldLabel from "../FieldLabel";
@@ -75,9 +77,18 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [runLookupBusy, setRunLookupBusy] = React.useState<boolean>(false);
   const [runLookupError, setRunLookupError] = React.useState<string | null>(null);
   const [runLookupResult, setRunLookupResult] = React.useState<any | null>(null);
+  const [approvalsBusy, setApprovalsBusy] = React.useState<boolean>(false);
+  const [approvalsError, setApprovalsError] = React.useState<string | null>(null);
+  const [approvals, setApprovals] = React.useState<any[] | null>(null);
+  const [approvalRunId, setApprovalRunId] = React.useState<string>("");
+  const [approvalMemberId, setApprovalMemberId] = React.useState<string>("");
+  const [approvalRuleId, setApprovalRuleId] = React.useState<string>("");
+  const [approvalDecision, setApprovalDecision] = React.useState<string>("approve");
+  const [approvalReason, setApprovalReason] = React.useState<string>("");
 
   const teamList = Array.isArray(teams) ? teams : [];
   const teamIdTrimmed = String(teamId || "").trim();
+  const approvalRunIdTrimmed = String(approvalRunId || runLookupId || "").trim();
 
   const refreshTeams = async () => {
     if (!canQuery) return;
@@ -326,6 +337,68 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       setRunLookupError(String(err));
     } finally {
       setRunLookupBusy(false);
+    }
+  };
+
+  const handleApprovalsRefresh = async () => {
+    const tid = teamIdTrimmed;
+    const runId = approvalRunIdTrimmed;
+    if (!tid || !runId) {
+      setApprovalsError("missing team_id or run id");
+      return;
+    }
+    setApprovalsError(null);
+    setApprovalsBusy(true);
+    try {
+      const resp = await apiBrokerTeamRunApprovalsList(props.base, tid, runId, props.auth);
+      if (resp.status >= 400) {
+        throw new Error(resp?.data?.error || resp?.data?.err || `HTTP ${resp.status}`);
+      }
+      const rows = Array.isArray(resp?.data?.approvals) ? resp.data.approvals : [];
+      setApprovals(rows);
+    } catch (err) {
+      setApprovalsError(String(err));
+    } finally {
+      setApprovalsBusy(false);
+    }
+  };
+
+  const handleApprovalSubmit = async () => {
+    const tid = teamIdTrimmed;
+    const runId = approvalRunIdTrimmed;
+    const memberId = String(approvalMemberId || "").trim();
+    const decision = String(approvalDecision || "").trim().toLowerCase();
+    const ruleId = String(approvalRuleId || "").trim();
+    const reason = String(approvalReason || "").trim();
+    if (!tid || !runId) {
+      setApprovalsError("missing team_id or run id");
+      return;
+    }
+    if (!memberId) {
+      setApprovalsError("member_id required");
+      return;
+    }
+    if (!decision) {
+      setApprovalsError("decision required");
+      return;
+    }
+    setApprovalsError(null);
+    setApprovalsBusy(true);
+    try {
+      const payload: Record<string, any> = { member_id: memberId, decision };
+      if (ruleId) payload.rule_id = ruleId;
+      if (reason) payload.reason = reason;
+      const resp = await apiBrokerTeamRunApprovalsCreate(props.base, tid, runId, payload, props.auth);
+      if (resp.status >= 400) {
+        throw new Error(resp?.data?.error || resp?.data?.err || `HTTP ${resp.status}`);
+      }
+      const rows = Array.isArray(resp?.data?.approvals) ? resp.data.approvals : [];
+      setApprovals(rows);
+      setApprovalReason("");
+    } catch (err) {
+      setApprovalsError(String(err));
+    } finally {
+      setApprovalsBusy(false);
     }
   };
 
@@ -704,6 +777,99 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             {runLookupResult?.created_unix_ms ? ` · ${fmtTs(runLookupResult.created_unix_ms)}` : ""}
           </div>
         ) : null}
+
+        <div className="mt-3 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
+          <div className="text-xs font-semibold text-white/80">Run approvals</div>
+          <div className="text-[11px] text-white/50">
+            Submit or review approvals for a team run (quorum rules apply).
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <FieldLabel>Run ID</FieldLabel>
+            <input
+              className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={approvalRunId}
+              onChange={(e) => setApprovalRunId(e.target.value)}
+              placeholder="defaults to run id above"
+            />
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+              type="button"
+              disabled={!canQuery || !teamIdTrimmed || approvalsBusy}
+              onClick={() => void handleApprovalsRefresh()}
+            >
+              {approvalsBusy ? "Loading…" : "Load approvals"}
+            </button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <FieldLabel>Member ID</FieldLabel>
+            <input
+              className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={approvalMemberId}
+              onChange={(e) => setApprovalMemberId(e.target.value)}
+              placeholder="member id"
+            />
+            <FieldLabel>Decision</FieldLabel>
+            <select
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={approvalDecision}
+              onChange={(e) => setApprovalDecision(e.target.value)}
+            >
+              <option value="approve">approve</option>
+              <option value="deny">deny</option>
+            </select>
+            <FieldLabel>Rule ID</FieldLabel>
+            <input
+              className="min-w-[140px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={approvalRuleId}
+              onChange={(e) => setApprovalRuleId(e.target.value)}
+              placeholder="optional"
+            />
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <FieldLabel>Reason</FieldLabel>
+            <input
+              className="min-w-[220px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+              value={approvalReason}
+              onChange={(e) => setApprovalReason(e.target.value)}
+              placeholder="optional"
+            />
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+              type="button"
+              disabled={!canQuery || !teamIdTrimmed || approvalsBusy}
+              onClick={() => void handleApprovalSubmit()}
+            >
+              {approvalsBusy ? "Submitting…" : "Submit approval"}
+            </button>
+          </div>
+          {approvalsError ? (
+            <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">
+              {approvalsError}
+            </div>
+          ) : null}
+          {approvals && approvals.length > 0 ? (
+            <div className="grid gap-2">
+              {approvals.map((a, idx) => (
+                <div
+                  key={`approval-${a?.approval_id || idx}`}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70"
+                >
+                  <div className="text-[11px] text-white/70">
+                    <span className="text-white/90">{String(a?.member_id || "member")}</span>
+                    {a?.decision ? ` · ${a.decision}` : ""}
+                    {a?.rule_id ? ` · rule ${a.rule_id}` : ""}
+                    {a?.role ? ` · role ${a.role}` : ""}
+                    {a?.created_by ? ` · by ${a.created_by}` : ""}
+                    {a?.created_unix_ms ? ` · ${fmtTs(a.created_unix_ms)}` : ""}
+                    {a?.reason ? ` · ${a.reason}` : ""}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : approvals ? (
+            <div className="text-[11px] text-white/50">No approvals yet.</div>
+          ) : null}
+        </div>
       </div>
     </section>
   );
