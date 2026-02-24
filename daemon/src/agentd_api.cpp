@@ -225,6 +225,30 @@ static void fill_env_defaults(DaemonConfig* cfg) {
       if (cfg->memory_consolidate_keep_checkpoints < 1) cfg->memory_consolidate_keep_checkpoints = 1;
     } catch (...) {}
   }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RECAP_DAILY_INTERVAL_MS")) {
+    try {
+      cfg->memory_recap_daily_interval_ms = (int64_t)std::stoll(ms);
+      if (cfg->memory_recap_daily_interval_ms < 0) cfg->memory_recap_daily_interval_ms = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RECAP_WEEKLY_INTERVAL_MS")) {
+    try {
+      cfg->memory_recap_weekly_interval_ms = (int64_t)std::stoll(ms);
+      if (cfg->memory_recap_weekly_interval_ms < 0) cfg->memory_recap_weekly_interval_ms = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RECAP_DAILY_DAYS")) {
+    try {
+      cfg->memory_recap_daily_days = (int)std::stol(ms);
+      if (cfg->memory_recap_daily_days < 0) cfg->memory_recap_daily_days = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RECAP_WEEKLY_DAYS")) {
+    try {
+      cfg->memory_recap_weekly_days = (int)std::stol(ms);
+      if (cfg->memory_recap_weekly_days < 0) cfg->memory_recap_weekly_days = 0;
+    } catch (...) {}
+  }
   if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_INTERVAL_MS")) {
     try {
       cfg->memory_retention_interval_ms = (int64_t)std::stoll(ms);

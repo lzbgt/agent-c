@@ -26,6 +26,7 @@
 #include "orchestrate_endpoints.h"
 #include "memory_endpoints.h"
 #include "memory_consolidator.h"
+#include "memory_recaps.h"
 #include "memory_retention.h"
 #include "ota_endpoints.h"
 #include "run_endpoints.h"
@@ -582,6 +583,34 @@ int main(int argc, char** argv) {
       if (cfg.memory_consolidate_keep_checkpoints < 1) cfg.memory_consolidate_keep_checkpoints = 1;
     } catch (...) {}
   }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RECAP_DAILY_INTERVAL_MS")) {
+    try {
+      cfg.memory_recap_daily_interval_ms = (int64_t)std::stoll(ms);
+      if (cfg.memory_recap_daily_interval_ms < 0) cfg.memory_recap_daily_interval_ms = 0;
+      cli.memory_recap_set = true;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RECAP_WEEKLY_INTERVAL_MS")) {
+    try {
+      cfg.memory_recap_weekly_interval_ms = (int64_t)std::stoll(ms);
+      if (cfg.memory_recap_weekly_interval_ms < 0) cfg.memory_recap_weekly_interval_ms = 0;
+      cli.memory_recap_set = true;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RECAP_DAILY_DAYS")) {
+    try {
+      cfg.memory_recap_daily_days = (int)std::stol(ms);
+      if (cfg.memory_recap_daily_days < 0) cfg.memory_recap_daily_days = 0;
+      cli.memory_recap_set = true;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RECAP_WEEKLY_DAYS")) {
+    try {
+      cfg.memory_recap_weekly_days = (int)std::stol(ms);
+      if (cfg.memory_recap_weekly_days < 0) cfg.memory_recap_weekly_days = 0;
+      cli.memory_recap_set = true;
+    } catch (...) {}
+  }
   if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_INTERVAL_MS")) {
     try {
       cfg.memory_retention_interval_ms = (int64_t)std::stoll(ms);
@@ -755,6 +784,7 @@ int main(int argc, char** argv) {
     opt.override_upload_max_bytes = !cli.upload_max_bytes_set;
     opt.override_blob_store = !cli.blob_store_set;
     opt.override_blob_tier = !cli.blob_tier_set;
+    opt.override_memory_recap = !cli.memory_recap_set;
     opt.override_memory_retention = !cli.memory_retention_set;
     opt.override_memory_salience = !cli.memory_salience_set;
     if (!load_runtime_config_best_effort(db, &cfg, &err, opt)) {
@@ -931,6 +961,19 @@ int main(int argc, char** argv) {
     std::string merr;
     if (!mem_retention_engine.start(&merr)) {
       std::cerr << "Warning: failed to start memory retention engine: " << merr << "\n";
+    }
+  }
+
+  // Memory recaps (background; disabled by default).
+  MemoryRecapEngine mem_recap_engine(
+    [&cfg_store]() { return cfg_store.snapshot(); },
+    ocfg_from_cfg,
+    MemoryRecapEngine::Options{}
+  );
+  {
+    std::string rerr;
+    if (!mem_recap_engine.start(&rerr)) {
+      std::cerr << "Warning: failed to start memory recap engine: " << rerr << "\n";
     }
   }
 

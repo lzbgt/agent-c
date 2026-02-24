@@ -717,6 +717,60 @@ int parse_daemon_cli(int argc, char** argv, DaemonConfig* cfg, DaemonCliOverride
         std::cerr << "Invalid --memory-consolidate-keep-checkpoints\n";
         return 2;
       }
+    } else if (a == "--memory-recap-daily-interval-ms") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --memory-recap-daily-interval-ms\n";
+        return 2;
+      }
+      try {
+        cfg->memory_recap_daily_interval_ms = (int64_t)std::stoll(v);
+        if (cfg->memory_recap_daily_interval_ms < 0) cfg->memory_recap_daily_interval_ms = 0;
+        out->memory_recap_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --memory-recap-daily-interval-ms\n";
+        return 2;
+      }
+    } else if (a == "--memory-recap-weekly-interval-ms") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --memory-recap-weekly-interval-ms\n";
+        return 2;
+      }
+      try {
+        cfg->memory_recap_weekly_interval_ms = (int64_t)std::stoll(v);
+        if (cfg->memory_recap_weekly_interval_ms < 0) cfg->memory_recap_weekly_interval_ms = 0;
+        out->memory_recap_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --memory-recap-weekly-interval-ms\n";
+        return 2;
+      }
+    } else if (a == "--memory-recap-daily-days") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --memory-recap-daily-days\n";
+        return 2;
+      }
+      try {
+        cfg->memory_recap_daily_days = std::max(0, std::stoi(v));
+        out->memory_recap_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --memory-recap-daily-days\n";
+        return 2;
+      }
+    } else if (a == "--memory-recap-weekly-days") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --memory-recap-weekly-days\n";
+        return 2;
+      }
+      try {
+        cfg->memory_recap_weekly_days = std::max(0, std::stoi(v));
+        out->memory_recap_set = true;
+      } catch (...) {
+        std::cerr << "Invalid --memory-recap-weekly-days\n";
+        return 2;
+      }
     } else if (a == "--memory-retention-interval-ms") {
       std::string v;
       if (!take(&v)) {
@@ -1417,6 +1471,10 @@ int parse_daemon_cli(int argc, char** argv, DaemonConfig* cfg, DaemonCliOverride
         << "  --memory-consolidate-interval-ms <n>   Run memory consolidation every n ms (default: 0=disabled)\n"
         << "  --memory-consolidate-daily-days <n>    Scan last n daily memory files for @mem markers (default: 14)\n"
         << "  --memory-consolidate-keep-checkpoints <n>  Retain at most n structured checkpoints (default: 100)\n"
+        << "  --memory-recap-daily-interval-ms <n>  Run daily memory recap every n ms (default: 0=disabled)\n"
+        << "  --memory-recap-weekly-interval-ms <n> Run weekly memory recap every n ms (default: 0=disabled)\n"
+        << "  --memory-recap-daily-days <n>   Daily recap: scan last n days (default: 1)\n"
+        << "  --memory-recap-weekly-days <n>  Weekly recap: scan last n days (default: 7)\n"
         << "  --memory-retention-interval-ms <n>    Run memory retention every n ms (default: 0=disabled)\n"
         << "  --memory-retention-daily-max-days <n> Keep at most n daily memory files (default: 0=disabled)\n"
         << "  --memory-retention-daily-max-bytes <n>  Cap daily memory bytes (default: 0=disabled)\n"

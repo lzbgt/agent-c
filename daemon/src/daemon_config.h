@@ -293,6 +293,10 @@ struct DaemonConfig {
   int64_t memory_consolidate_interval_ms = 0;
   int memory_consolidate_daily_days = 14;
   int memory_consolidate_keep_checkpoints = 100;
+  int64_t memory_recap_daily_interval_ms = 0;
+  int64_t memory_recap_weekly_interval_ms = 0;
+  int memory_recap_daily_days = 1;
+  int memory_recap_weekly_days = 7;
   int64_t memory_retention_interval_ms = 0;
   int memory_retention_daily_max_days = 0;
   int64_t memory_retention_daily_max_bytes = 0;

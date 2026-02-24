@@ -10,8 +10,10 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <sstream>
 #include <vector>
+#include <thread>
 
 namespace agentd {
 namespace {
@@ -52,6 +54,10 @@ std::string to_lower_ascii(std::string s) {
   return s;
 }
 
+std::string normalize_kind(std::string s) {
+  return to_lower_ascii(trim_copy(s));
+}
+
 bool status_is_inactive(const std::string& status) {
   const std::string s = to_lower_ascii(trim_copy(status));
   return s == "deprecated" || s == "inactive" || s == "obsolete" || s == "disabled";
@@ -68,6 +74,22 @@ std::string safe_item_source(const MemorySalienceItem& item) {
   return "";
 }
 
+std::vector<std::string> collect_evidence_sources(const MemorySalienceReport& rep) {
+  std::vector<std::string> out;
+  auto push = [&](const std::string& src) {
+    if (src.empty()) return;
+    if (std::find(out.begin(), out.end(), src) != out.end()) return;
+    out.push_back(src);
+  };
+  for (const auto& item : rep.structured_items) {
+    push(safe_item_source(item));
+  }
+  for (const auto& item : rep.daily_items) {
+    push(safe_item_source(item));
+  }
+  return out;
+}
+
 std::string truncate_ascii(std::string s, size_t max_chars) {
   if (s.size() <= max_chars) return s;
   if (max_chars < 3) return s.substr(0, max_chars);
@@ -80,12 +102,17 @@ std::string build_recap_prompt(const MemorySalienceReport& rep, bool* out_trunca
   if (out_truncated) *out_truncated = false;
   const size_t max_prompt_chars = 12000;
   std::ostringstream oss;
-  oss << "Memory items (ranked by recency + importance). Summarize only what appears below.\n\n";
+  oss << "Memory items (ranked by recency + importance). Summarize only what appears below.\n";
+  oss << "Each item includes a source; include citations in square brackets (e.g. [daily/2026-02-24.md#L12] or [structured:foo]).\n\n";
 
   if (!rep.structured_items.empty()) {
     oss << "[structured]\n";
     for (const auto& item : rep.structured_items) {
       oss << "- key: " << item.key << "\n";
+      const std::string source = safe_item_source(item);
+      if (!source.empty()) {
+        oss << "  source: " << source << "\n";
+      }
       if (!item.kind.empty() || !item.status.empty() || !item.ts_utc.empty()) {
         oss << "  meta: kind=" << (item.kind.empty() ? "fact" : item.kind)
             << " status=" << (item.status.empty() ? "active" : item.status);
@@ -172,6 +199,54 @@ bool read_file_bounded(const std::filesystem::path& p, size_t max_bytes, std::st
   return true;
 }
 
+bool latest_recap_ts_ms(
+  const std::filesystem::path& recap_dir,
+  const std::string& kind,
+  int64_t* out_ts_ms
+) {
+  if (!out_ts_ms) return false;
+  *out_ts_ms = 0;
+  std::error_code ec;
+  if (!std::filesystem::exists(recap_dir, ec) || !std::filesystem::is_directory(recap_dir, ec)) {
+    return false;
+  }
+  const std::string kind_norm = normalize_kind(kind);
+  int64_t best = 0;
+  for (auto it = std::filesystem::directory_iterator(recap_dir, ec);
+       !ec && it != std::filesystem::directory_iterator();
+       ++it) {
+    const auto& de = *it;
+    if (!de.is_regular_file(ec)) continue;
+    const std::string fn = de.path().filename().string();
+    if (fn.size() < 6 || fn.rfind(".json") != fn.size() - 5) continue;
+    std::string text;
+    if (!read_file_bounded(de.path(), 1024 * 1024, &text)) continue;
+    Json::Value doc;
+    std::string perr;
+    if (!json_parse_any(text, &doc, &perr) || !doc.isObject()) continue;
+    if (!kind_norm.empty()) {
+      const std::string doc_kind =
+        (doc.isMember("kind") && doc["kind"].isString()) ? doc["kind"].asString() : std::string();
+      if (normalize_kind(doc_kind) != kind_norm) continue;
+    }
+    int64_t ts_ms = 0;
+    if (doc.isMember("ts_utc_ms") && doc["ts_utc_ms"].isInt64()) ts_ms = doc["ts_utc_ms"].asInt64();
+    if (ts_ms <= 0) {
+      const auto mtime = de.last_write_time(ec);
+      if (!ec) {
+        ts_ms = (int64_t)std::chrono::duration_cast<std::chrono::milliseconds>(
+          mtime.time_since_epoch()).count();
+      }
+    }
+    if (ts_ms > best) best = ts_ms;
+  }
+  if (best > 0) {
+    *out_ts_ms = best;
+    return true;
+  }
+  return false;
+}
+
 }  // namespace
 
 bool memory_generate_recap(
@@ -210,6 +285,7 @@ bool memory_generate_recap(
   rep.generated_utc_ms = sal.generated_utc_ms > 0 ? sal.generated_utc_ms : now_utc_ms();
   rep.ts_utc = iso_utc_now();
   rep.model = trim_copy(opt.model);
+  rep.kind = normalize_kind(opt.kind);
   rep.dry_run = opt.dry_run;
   rep.write_file = opt.write_file;
   rep.policy = opt.salience;
@@ -243,6 +319,7 @@ bool memory_generate_recap(
     "  request, investigated, learned, completed, next_steps, files_read, files_modified, notes.\n"
     "Use strings for request/investigated/learned/completed/notes.\n"
     "Use arrays of strings for next_steps, files_read, files_modified.\n"
+    "Include citations in square brackets using the provided sources (e.g. [daily/2026-02-24.md#L12] or [structured:key]).\n"
     "If information is missing, use empty strings/arrays.\n"
     "Do not invent facts.\n";
 
@@ -294,13 +371,16 @@ bool memory_generate_recap(
       return false;
     }
     const std::string safe_ts = sanitize_ts_for_path(rep.ts_utc);
-    const std::filesystem::path recap_path = recap_dir / (std::string("recap_") + safe_ts + ".json");
+    std::string recap_prefix = "recap_";
+    if (!rep.kind.empty()) recap_prefix += rep.kind + "_";
+    const std::filesystem::path recap_path = recap_dir / (recap_prefix + safe_ts + ".json");
 
     Json::Value doc(Json::objectValue);
     doc["schema"] = "agentd_memory_recap_v1";
     doc["ts_utc"] = rep.ts_utc;
     doc["ts_utc_ms"] = (Json::Int64)rep.generated_utc_ms;
     doc["model"] = rep.model;
+    if (!rep.kind.empty()) doc["kind"] = rep.kind;
     doc["summary_max_chars"] = (Json::Int64)opt.summary_max_chars;
     doc["policy"] = salience_policy_to_json(rep.policy);
     Json::Value input(Json::objectValue);
@@ -308,6 +388,11 @@ bool memory_generate_recap(
     input["daily_count"] = (Json::Int64)rep.salience.daily_items.size();
     input["total_count"] = (Json::Int64)(rep.salience.structured_items.size() + rep.salience.daily_items.size());
     doc["input"] = input;
+    {
+      Json::Value sources(Json::arrayValue);
+      for (const auto& s : collect_evidence_sources(rep.salience)) sources.append(s);
+      doc["evidence_sources"] = sources;
+    }
     doc["summary_text"] = rep.summary_text;
     if (rep.summary_json_ok) doc["summary"] = rep.summary_json;
     doc["structured_items"] = salience_items_to_json(rep.salience.structured_items);
@@ -364,6 +449,7 @@ bool memory_list_recaps(
     int64_t bytes = 0;
     std::string ts_utc;
     std::string model;
+    std::string kind;
     std::string summary_text;
   };
   std::vector<RecapRow> rows;
@@ -387,6 +473,7 @@ bool memory_list_recaps(
     row.bytes = (int64_t)sz;
     if (doc.isMember("ts_utc") && doc["ts_utc"].isString()) row.ts_utc = doc["ts_utc"].asString();
     if (doc.isMember("ts_utc_ms") && doc["ts_utc_ms"].isInt64()) row.ts_ms = doc["ts_utc_ms"].asInt64();
+    if (doc.isMember("kind") && doc["kind"].isString()) row.kind = doc["kind"].asString();
     if (row.ts_ms <= 0) {
       const auto mtime = de.last_write_time(ec);
       if (!ec) {
@@ -415,6 +502,7 @@ bool memory_list_recaps(
     if (!row.ts_utc.empty()) o["ts_utc"] = row.ts_utc;
     if (row.ts_ms > 0) o["ts_utc_ms"] = (Json::Int64)row.ts_ms;
     if (!row.model.empty()) o["model"] = row.model;
+    if (!row.kind.empty()) o["kind"] = row.kind;
     if (include_summary && !row.summary_text.empty()) o["summary_text"] = row.summary_text;
     out_list->append(o);
   }
@@ -427,6 +515,7 @@ Json::Value memory_recap_report_to_json(const MemoryRecapReport& rep, bool inclu
   o["generated_utc_ms"] = (Json::Int64)rep.generated_utc_ms;
   if (!rep.ts_utc.empty()) o["ts_utc"] = rep.ts_utc;
   if (!rep.model.empty()) o["model"] = rep.model;
+  if (!rep.kind.empty()) o["kind"] = rep.kind;
   o["dry_run"] = rep.dry_run;
   o["write_file"] = rep.write_file;
   o["policy"] = salience_policy_to_json(rep.policy);
@@ -437,6 +526,11 @@ Json::Value memory_recap_report_to_json(const MemoryRecapReport& rep, bool inclu
   o["input"] = input;
   o["structured_items"] = salience_items_to_json(rep.salience.structured_items);
   o["daily_items"] = salience_items_to_json(rep.salience.daily_items);
+  {
+    Json::Value sources(Json::arrayValue);
+    for (const auto& s : collect_evidence_sources(rep.salience)) sources.append(s);
+    o["evidence_sources"] = sources;
+  }
   if (include_prompt && !rep.prompt.empty()) {
     o["prompt"] = rep.prompt;
     o["prompt_truncated"] = rep.prompt_truncated;
@@ -446,6 +540,107 @@ Json::Value memory_recap_report_to_json(const MemoryRecapReport& rep, bool inclu
   if (!rep.recap_path_rel.empty()) o["recap_path"] = rep.recap_path_rel;
   if (rep.recap_bytes > 0) o["recap_bytes"] = (Json::Int64)rep.recap_bytes;
   return o;
+}
+
+MemoryRecapEngine::MemoryRecapEngine(
+  std::function<DaemonConfig()> cfg_snapshot,
+  std::function<OpenAIClientConfig(const DaemonConfig&)> ocfg_from_cfg,
+  Options opt
+)
+  : cfg_snapshot_(std::move(cfg_snapshot)),
+    ocfg_from_cfg_(std::move(ocfg_from_cfg)),
+    opt_(opt) {}
+
+MemoryRecapEngine::~MemoryRecapEngine() {
+  stop();
+}
+
+bool MemoryRecapEngine::start(std::string* out_error) {
+  if (out_error) out_error->clear();
+  if (running_) return true;
+  stop_ = false;
+  running_ = true;
+  worker_ = std::thread([this]() { worker_main(); });
+  return true;
+}
+
+void MemoryRecapEngine::stop() {
+  stop_ = true;
+  if (worker_.joinable()) worker_.join();
+  running_ = false;
+}
+
+void MemoryRecapEngine::worker_main() {
+  int64_t last_daily_ms = 0;
+  int64_t last_weekly_ms = 0;
+  for (;;) {
+    if (stop_) break;
+    std::this_thread::sleep_for(std::chrono::milliseconds(opt_.poll_ms));
+    if (stop_) break;
+
+    const DaemonConfig cfg = cfg_snapshot_ ? cfg_snapshot_() : DaemonConfig{};
+    if (cfg.state_dir.empty()) continue;
+
+    const int64_t now = now_utc_ms();
+    const std::filesystem::path recap_dir =
+      (std::filesystem::path(cfg.state_dir) / "memory" / "recaps").lexically_normal();
+
+    auto maybe_seed_last = [&](const std::string& kind, int64_t* last_ts) {
+      if (!last_ts || *last_ts != 0) return;
+      int64_t seeded = 0;
+      if (latest_recap_ts_ms(recap_dir, kind, &seeded)) {
+        *last_ts = seeded;
+      }
+    };
+
+    auto run_recap = [&](const std::string& kind, int daily_days) -> bool {
+      MemoryRecapOptions opt;
+      opt.salience.include_structured = true;
+      opt.salience.include_daily = true;
+      opt.salience.daily_days = std::max(0, std::min(31, daily_days));
+      opt.salience.max_items = std::max(0, std::min(200, cfg.memory_salience_max_items));
+      opt.salience.max_structured_items = std::max(0, std::min(200, cfg.memory_salience_structured_max_items));
+      opt.salience.max_daily_items = std::max(0, std::min(200, cfg.memory_salience_daily_max_items));
+      opt.salience.half_life_days = cfg.memory_salience_half_life_days < 0 ? 0 : cfg.memory_salience_half_life_days;
+      opt.salience.importance_weight = cfg.memory_salience_importance_weight < 0 ? 0 : cfg.memory_salience_importance_weight;
+      opt.summary_max_chars = cfg.summary_max_chars;
+      opt.model = cfg.summary_model;
+      opt.kind = kind;
+      opt.dry_run = false;
+      opt.write_file = true;
+
+      if (trim_copy(opt.model).empty()) {
+        std::cerr << "Warning: scheduled memory recap (" << kind << ") skipped: summary_model not set\n";
+        return false;
+      }
+
+      const OpenAIClientConfig ocfg = ocfg_from_cfg_ ? ocfg_from_cfg_(cfg) : OpenAIClientConfig{};
+      MemoryRecapReport rep;
+      std::string err;
+      if (!memory_generate_recap(cfg, ocfg, opt, &rep, &err)) {
+        std::cerr << "Warning: scheduled memory recap (" << kind << ") failed: "
+                  << (err.empty() ? "recap failed" : err) << "\n";
+        return false;
+      }
+      return true;
+    };
+
+    if (cfg.memory_recap_daily_interval_ms > 0) {
+      maybe_seed_last("daily", &last_daily_ms);
+      if (last_daily_ms == 0 || (now - last_daily_ms) >= cfg.memory_recap_daily_interval_ms) {
+        (void)run_recap("daily", cfg.memory_recap_daily_days);
+        last_daily_ms = now;
+      }
+    }
+
+    if (cfg.memory_recap_weekly_interval_ms > 0) {
+      maybe_seed_last("weekly", &last_weekly_ms);
+      if (last_weekly_ms == 0 || (now - last_weekly_ms) >= cfg.memory_recap_weekly_interval_ms) {
+        (void)run_recap("weekly", cfg.memory_recap_weekly_days);
+        last_weekly_ms = now;
+      }
+    }
+  }
 }
 
 }  // namespace agentd

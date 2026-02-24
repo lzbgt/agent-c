@@ -26,6 +26,7 @@
 #include "memory_endpoints.h"
 #include "moderator_endpoints.h"
 #include "memory_consolidator.h"
+#include "memory_recaps.h"
 #include "memory_retention.h"
 #include "orchestrate_endpoints.h"
 #include "ota_endpoints.h"
@@ -389,6 +390,30 @@ static void fill_env_defaults(DaemonConfig* cfg) {
       if (cfg->memory_consolidate_keep_checkpoints < 1) cfg->memory_consolidate_keep_checkpoints = 1;
     } catch (...) {}
   }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RECAP_DAILY_INTERVAL_MS")) {
+    try {
+      cfg->memory_recap_daily_interval_ms = (int64_t)std::stoll(ms);
+      if (cfg->memory_recap_daily_interval_ms < 0) cfg->memory_recap_daily_interval_ms = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RECAP_WEEKLY_INTERVAL_MS")) {
+    try {
+      cfg->memory_recap_weekly_interval_ms = (int64_t)std::stoll(ms);
+      if (cfg->memory_recap_weekly_interval_ms < 0) cfg->memory_recap_weekly_interval_ms = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RECAP_DAILY_DAYS")) {
+    try {
+      cfg->memory_recap_daily_days = (int)std::stol(ms);
+      if (cfg->memory_recap_daily_days < 0) cfg->memory_recap_daily_days = 0;
+    } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_MEMORY_RECAP_WEEKLY_DAYS")) {
+    try {
+      cfg->memory_recap_weekly_days = (int)std::stol(ms);
+      if (cfg->memory_recap_weekly_days < 0) cfg->memory_recap_weekly_days = 0;
+    } catch (...) {}
+  }
   if (const char* ms = getenv_s("AGENTD_MEMORY_RETENTION_INTERVAL_MS")) {
     try {
       cfg->memory_retention_interval_ms = (int64_t)std::stoll(ms);
@@ -527,6 +552,7 @@ struct AgentdService::Impl {
   std::unique_ptr<JobEngine> job_engine;
   std::unique_ptr<WorkflowEngine> wf_engine;
   std::unique_ptr<MemoryConsolidatorEngine> mem_engine;
+  std::unique_ptr<MemoryRecapEngine> mem_recap_engine;
   std::unique_ptr<MemoryRetentionEngine> mem_retention_engine;
   std::unique_ptr<EdgeDeadlineSweeperEngine> edge_deadline_engine;
   std::unique_ptr<EdgeWorkflowEngine> edge_wf_engine;
@@ -692,6 +718,19 @@ struct AgentdService::Impl {
       std::string rerr;
       if (!mem_retention_engine->start(&rerr)) {
         std::cerr << "Warning: failed to start memory retention engine: " << rerr << "\n";
+      }
+    }
+
+    // Memory recaps (background; disabled by default).
+    if (!mem_recap_engine) {
+      mem_recap_engine = std::make_unique<MemoryRecapEngine>(
+        [this]() { return cfg_store->snapshot(); },
+        [this](const DaemonConfig& c) { return ocfg_from_cfg(c); },
+        MemoryRecapEngine::Options{}
+      );
+      std::string rerr;
+      if (!mem_recap_engine->start(&rerr)) {
+        std::cerr << "Warning: failed to start memory recap engine: " << rerr << "\n";
       }
     }
 

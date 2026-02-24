@@ -25,6 +25,7 @@ struct DaemonCliOverrides {
   bool upload_max_bytes_set = false;
   bool blob_store_set = false;
   bool blob_tier_set = false;
+  bool memory_recap_set = false;
   bool memory_retention_set = false;
   bool memory_salience_set = false;
   bool cors_allow_credentials_set = false;

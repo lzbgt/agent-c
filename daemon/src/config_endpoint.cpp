@@ -393,6 +393,10 @@ void handle_config_endpoint(
   memory["consolidate_interval_ms"] = (Json::Int64)cfg.memory_consolidate_interval_ms;
   memory["consolidate_daily_days"] = cfg.memory_consolidate_daily_days;
   memory["consolidate_keep_checkpoints"] = cfg.memory_consolidate_keep_checkpoints;
+  memory["recap_daily_interval_ms"] = (Json::Int64)cfg.memory_recap_daily_interval_ms;
+  memory["recap_weekly_interval_ms"] = (Json::Int64)cfg.memory_recap_weekly_interval_ms;
+  memory["recap_daily_days"] = cfg.memory_recap_daily_days;
+  memory["recap_weekly_days"] = cfg.memory_recap_weekly_days;
   memory["retention_interval_ms"] = (Json::Int64)cfg.memory_retention_interval_ms;
   memory["retention_daily_max_days"] = cfg.memory_retention_daily_max_days;
   memory["retention_daily_max_bytes"] = (Json::Int64)cfg.memory_retention_daily_max_bytes;
@@ -668,6 +672,30 @@ void handle_config_update_endpoint(
         ? mem["consolidate_keep_checkpoints"].asInt()
         : (int)mem["consolidate_keep_checkpoints"].asUInt();
       next.memory_consolidate_keep_checkpoints = std::max(1, n);
+    }
+    if (mem.isMember("recap_daily_interval_ms") && (mem["recap_daily_interval_ms"].isInt64() || mem["recap_daily_interval_ms"].isUInt64())) {
+      const int64_t n = mem["recap_daily_interval_ms"].isInt64()
+        ? mem["recap_daily_interval_ms"].asInt64()
+        : (int64_t)mem["recap_daily_interval_ms"].asUInt64();
+      next.memory_recap_daily_interval_ms = std::max<int64_t>(0, n);
+    }
+    if (mem.isMember("recap_weekly_interval_ms") && (mem["recap_weekly_interval_ms"].isInt64() || mem["recap_weekly_interval_ms"].isUInt64())) {
+      const int64_t n = mem["recap_weekly_interval_ms"].isInt64()
+        ? mem["recap_weekly_interval_ms"].asInt64()
+        : (int64_t)mem["recap_weekly_interval_ms"].asUInt64();
+      next.memory_recap_weekly_interval_ms = std::max<int64_t>(0, n);
+    }
+    if (mem.isMember("recap_daily_days") && (mem["recap_daily_days"].isInt() || mem["recap_daily_days"].isUInt())) {
+      const int n = mem["recap_daily_days"].isInt()
+        ? mem["recap_daily_days"].asInt()
+        : (int)mem["recap_daily_days"].asUInt();
+      next.memory_recap_daily_days = std::max(0, n);
+    }
+    if (mem.isMember("recap_weekly_days") && (mem["recap_weekly_days"].isInt() || mem["recap_weekly_days"].isUInt())) {
+      const int n = mem["recap_weekly_days"].isInt()
+        ? mem["recap_weekly_days"].asInt()
+        : (int)mem["recap_weekly_days"].asUInt();
+      next.memory_recap_weekly_days = std::max(0, n);
     }
     if (mem.isMember("retention_interval_ms") && (mem["retention_interval_ms"].isInt64() || mem["retention_interval_ms"].isUInt64())) {
       const int64_t n = mem["retention_interval_ms"].isInt64()
@@ -1192,6 +1220,10 @@ void handle_config_update_endpoint(
     mem["consolidate_interval_ms"] = (Json::Int64)next.memory_consolidate_interval_ms;
     mem["consolidate_daily_days"] = next.memory_consolidate_daily_days;
     mem["consolidate_keep_checkpoints"] = next.memory_consolidate_keep_checkpoints;
+    mem["recap_daily_interval_ms"] = (Json::Int64)next.memory_recap_daily_interval_ms;
+    mem["recap_weekly_interval_ms"] = (Json::Int64)next.memory_recap_weekly_interval_ms;
+    mem["recap_daily_days"] = next.memory_recap_daily_days;
+    mem["recap_weekly_days"] = next.memory_recap_weekly_days;
     mem["retention_interval_ms"] = (Json::Int64)next.memory_retention_interval_ms;
     mem["retention_daily_max_days"] = next.memory_retention_daily_max_days;
     mem["retention_daily_max_bytes"] = (Json::Int64)next.memory_retention_daily_max_bytes;

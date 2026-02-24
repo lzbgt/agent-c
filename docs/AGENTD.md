@@ -121,6 +121,18 @@ Notes:
 (`memory_write/get/search/put`) to persist and retrieve long-lived facts/preferences/tasks.
 See `docs/MEMORY.md`.
 
+Memory scheduling (disabled by default; requires `summary_model` for recaps):
+- `--memory-recap-daily-interval-ms <n>`
+- `--memory-recap-weekly-interval-ms <n>`
+- `--memory-recap-daily-days <n>`
+- `--memory-recap-weekly-days <n>`
+
+Env overrides:
+- `AGENTD_MEMORY_RECAP_DAILY_INTERVAL_MS`
+- `AGENTD_MEMORY_RECAP_WEEKLY_INTERVAL_MS`
+- `AGENTD_MEMORY_RECAP_DAILY_DAYS`
+- `AGENTD_MEMORY_RECAP_WEEKLY_DAYS`
+
 ## Job GC (longevity)
 
 `agentd` keeps async job state in memory for UI progress streaming. Finished jobs are garbage-collected:

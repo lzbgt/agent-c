@@ -22,6 +22,7 @@ struct RuntimeConfigLoadOptions {
   bool override_upload_max_bytes = true;
   bool override_blob_store = true;
   bool override_blob_tier = true;
+  bool override_memory_recap = true;
   bool override_memory_retention = true;
   bool override_memory_salience = true;
 };

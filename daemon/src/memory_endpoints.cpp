@@ -883,6 +883,10 @@ void handle_memory_recaps_endpoint(
 
   if (args.isMember("dry_run") && args["dry_run"].isBool()) opt.dry_run = args["dry_run"].asBool();
   if (args.isMember("write_file") && args["write_file"].isBool()) opt.write_file = args["write_file"].asBool();
+  if (args.isMember("kind")) {
+    if (args["kind"].isString()) opt.kind = args["kind"].asString();
+    else if (args["kind"].isNull()) opt.kind.clear();
+  }
 
   if (args.isMember("model") && args["model"].isString()) opt.model = args["model"].asString();
   if (args.isMember("summary_model")) {

@@ -56,7 +56,7 @@ resp="$(curl -fsS --noproxy "*" --max-time 5 \
   -H "Authorization: Bearer ${TOKEN}" \
   -H "Content-Type: application/json" \
   -X POST \
-  -d '{"dry_run":true,"daily_days":1,"max_items":5}' \
+  -d '{"dry_run":true,"daily_days":1,"max_items":5,"kind":"daily"}' \
   "${DAEMON_URL}/api/v1/memory/recaps")"
 
 python3 - <<PY
@@ -68,6 +68,9 @@ if not obj.get("ok"):
 if not obj.get("dry_run"):
   print("expected dry_run", obj, file=sys.stderr)
   raise SystemExit(1)
+if obj.get("kind") != "daily":
+  print("expected kind", obj, file=sys.stderr)
+  raise SystemExit(1)
 structured = obj.get("structured_items") or []
 daily = obj.get("daily_items") or []
 if not structured:
@@ -75,6 +78,10 @@ if not structured:
   raise SystemExit(1)
 if not daily:
   print("expected daily_items", obj, file=sys.stderr)
+  raise SystemExit(1)
+sources = obj.get("evidence_sources") or []
+if not sources:
+  print("expected evidence_sources", obj, file=sys.stderr)
   raise SystemExit(1)
 prompt = obj.get("prompt") or ""
 if not prompt:

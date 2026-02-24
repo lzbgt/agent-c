@@ -290,6 +290,19 @@ For operator-triggered summaries, agentd can generate recap snapshots from salie
 
 Recaps use `summary_model` by default and can override with `model` or `summary_model` per request.
 Each recap JSON includes the prompt inputs, the recap summary (JSON + text), and the ranked items used.
+Recap snapshots now include `evidence_sources` (deduped list of cited sources) and each item includes `source`
+(`structured:<key>` or `daily/path#L<line>`), so summaries can be traced to evidence.
+
+Optional request fields:
+- `kind`: label the recap (e.g. `daily`, `weekly`, `manual`), used in the recap filename.
+
+Scheduled recaps (disabled by default):
+- `--memory-recap-daily-interval-ms <n>` / `AGENTD_MEMORY_RECAP_DAILY_INTERVAL_MS`
+- `--memory-recap-weekly-interval-ms <n>` / `AGENTD_MEMORY_RECAP_WEEKLY_INTERVAL_MS`
+- `--memory-recap-daily-days <n>` / `AGENTD_MEMORY_RECAP_DAILY_DAYS`
+- `--memory-recap-weekly-days <n>` / `AGENTD_MEMORY_RECAP_WEEKLY_DAYS`
+
+Scheduled recaps use the same salience tuning as manual recaps, but override `daily_days` per schedule.
 
 ## API helpers (correlation)
 
