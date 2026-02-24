@@ -100,6 +100,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Weighted tasks (next up)
 
+- [ ] W=11 — Automation mode profile + moderator control plane: explicit profiles in caps, per-run override, moderator directives, and nonblocking UX.
+- [ ] W=9 — Rolling memory consolidation v1: scheduled rollups (daily/weekly), cross-run correlation index, and evidence-linked recall.
+- [ ] W=8 — Real-provider automation smokes: DeepSeek + Kimi agent runs using ~/.env keys to validate full automation defaults.
+
 Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
 
 - [ ] W=10 — Populate OpenRouter streaming pins with a verified key, commit `ref/openrouter/streaming_pins.json`, and tighten smoke tests to prefer pins (unblocks streaming stability work). Current key returns 401 “User not found” on chat preflight; verify key and OpenRouter headers.
@@ -130,7 +134,11 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-19: Broker now enforces `team_run` quorum rules on run creation via inline approvals (`team.approvals`) with strict failures returning `409`.
   - 2026-02-24: WebUI broker console now includes team console (teams/members/quorum) plus team runs + approvals UI.
   - 2026-02-20: Add quorum enforcement smoke.
-- [ ] W=9 — Approval queues + tool-level quorum gating: WebUI approval queue, tool-level quorum enforcement, and SSE updates for approval state.
+- [x] W=9 — Approval queues + tool-level quorum gating: WebUI approval queue, tool-level quorum enforcement, and SSE updates for approval state.
+  - 2026-02-24: Added agentd approval DB tables, approval gate, approval APIs, and approval run events.
+  - 2026-02-24: Added approval event schemas + fixtures + spec tests.
+  - 2026-02-24: Added WebUI approval queue panel + docs updates.
+- [ ] W=7 — Enforce approval role constraints once member-role identity is available in agentd approvals.
 - [x] W=6 — Finalize WebUI inline run approvals in `ui/src/components/broker/BrokerTeamConsole.tsx` (tests + docs + commit).
   - 2026-02-24: added Playwright broker inline approvals smoke + WebUI doc note.
 - [ ] W=8 — Run comparison + evidence diff UX: side-by-side run diffs (events/artifacts/costs), evidence bundle viewer, and regression baselines.

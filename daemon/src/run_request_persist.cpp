@@ -140,6 +140,9 @@ void persist_run_request(const RunRequestPersistInput& in) {
 
   int64_t run_id = 0;
   if (db.insert_run(rr, &run_id, nullptr) && run_id > 0) {
+    if (!in.trace_id->empty()) {
+      (void)db.backfill_approval_run_id(*in.trace_id, run_id, nullptr);
+    }
     Json::StreamWriterBuilder wb;
     wb["indentation"] = "";
     if (in.events_out->isArray()) {

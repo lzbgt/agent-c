@@ -35,9 +35,8 @@ submit_one() {
   local session_id="${1}"
   local tag="${2}"
   local delay_ms="${3}"
-  curl -fsS --noproxy "*" --max-time 20 \
-    -H "Content-Type: application/json" \
-    -d "$(python3 - <<PY
+  local payload
+  payload="$(python3 - <<PY
 import json
 print(json.dumps({
   "session_id": "${session_id}",
@@ -46,8 +45,32 @@ print(json.dumps({
   ]
 }))
 PY
-)" \
-    "${DAEMON_URL}/api/v1/workflow/submit"
+)"
+  local attempt
+  local status=""
+  local body=""
+  for attempt in $(seq 1 5); do
+    local resp
+    resp="$(curl -sS --noproxy "*" --max-time 20 \
+      -H "Content-Type: application/json" \
+      -d "${payload}" \
+      -w "\n%{http_code}" \
+      "${DAEMON_URL}/api/v1/workflow/submit")" || true
+    status="$(printf "%s" "${resp}" | tail -n 1)"
+    body="$(printf "%s" "${resp}" | sed '$d')"
+    if [[ "${status}" == "200" || "${status}" == "201" ]]; then
+      printf "%s" "${body}"
+      return 0
+    fi
+    if [[ "${status}" == "409" || "${status}" == "429" ]]; then
+      sleep 0.05
+      continue
+    fi
+    echo "submit failed status=${status} body=${body}" >&2
+    return 1
+  done
+  echo "submit failed status=${status} body=${body}" >&2
+  return 1
 }
 
 # Regression: with DB-side LIMIT (default max_scan_workflows=64), an older workflow can starve when

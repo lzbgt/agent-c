@@ -192,6 +192,7 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
   # `AGENTD_ENABLE_HTTP` (useful for app embedding where a cloud broker / custom transport is used).
   set(AGENTD_LIB_SOURCES
     daemon/src/agent_db.cpp
+    daemon/src/agent_db_approvals.cpp
     daemon/src/agent_db_state.cpp
     daemon/src/agent_db_sessions.cpp
     daemon/src/agent_db_audit.cpp
@@ -208,6 +209,8 @@ target_link_libraries(agent_ed25519_tool PRIVATE agent_core)
     daemon/src/config_endpoint.cpp
     daemon/src/caps_endpoint.cpp
     daemon/src/avm_endpoints.cpp
+    daemon/src/approval_queue.cpp
+    daemon/src/approval_queue_endpoints.cpp
     daemon/src/cbor_decode.cpp
     daemon/src/cbor_encode.cpp
     daemon/src/cors.cpp
@@ -1043,6 +1046,7 @@ if(AGENT_BUILD_HOST AND AGENT_ENABLE_JSONCPP)
     add_executable(agent_db_tests
       tests/test_agent_db.cpp
       daemon/src/agent_db.cpp
+      daemon/src/agent_db_approvals.cpp
       daemon/src/agent_db_state.cpp
       daemon/src/agent_db_sessions.cpp
       daemon/src/agent_db_audit.cpp

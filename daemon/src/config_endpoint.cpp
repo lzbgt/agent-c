@@ -315,6 +315,19 @@ void handle_config_endpoint(
   policy["max_tool_calls_per_tool"] = (Json::UInt64)cfg.policy_max_tool_calls_per_tool;
   policy["max_tool_call_args_chars"] = (Json::UInt64)cfg.policy_max_tool_call_args_chars;
   policy["max_tool_result_chars"] = (Json::UInt64)cfg.policy_max_tool_result_chars;
+  if (!cfg.policy_approval_tools.empty()) {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : cfg.policy_approval_tools) if (!s.empty()) arr.append(s);
+    policy["approval_tools"] = arr;
+  }
+  policy["approval_required"] = cfg.policy_approval_required;
+  if (!cfg.policy_approval_roles.empty()) {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : cfg.policy_approval_roles) if (!s.empty()) arr.append(s);
+    policy["approval_roles"] = arr;
+  }
+  policy["approval_timeout_ms"] = (Json::Int64)cfg.policy_approval_timeout_ms;
+  policy["approval_poll_ms"] = (Json::Int64)cfg.policy_approval_poll_ms;
   out["policy"] = policy;
 
   Json::Value jobs(Json::objectValue);
@@ -511,6 +524,32 @@ void handle_config_update_endpoint(
     }
     if (json_get_u64_nonneg(pol, "max_tool_result_chars", &n_u64)) {
       next.policy_max_tool_result_chars = (size_t)n_u64;
+    }
+    if (pol.isMember("approval_tools") && pol["approval_tools"].isArray()) {
+      next.policy_approval_tools.clear();
+      for (const auto& item : pol["approval_tools"]) {
+        if (!item.isString()) continue;
+        std::string s = trim_copy(item.asString());
+        if (is_safe_tool_name(s)) next.policy_approval_tools.push_back(std::move(s));
+      }
+    }
+    if (pol.isMember("approval_required") && (pol["approval_required"].isInt64() || pol["approval_required"].isInt())) {
+      const int64_t v = pol["approval_required"].asInt64();
+      next.policy_approval_required = (int)std::max<int64_t>(0, v);
+    }
+    if (pol.isMember("approval_roles") && pol["approval_roles"].isArray()) {
+      next.policy_approval_roles.clear();
+      for (const auto& item : pol["approval_roles"]) {
+        if (!item.isString()) continue;
+        std::string s = trim_copy(item.asString());
+        if (!s.empty()) next.policy_approval_roles.push_back(std::move(s));
+      }
+    }
+    if (json_get_u64_nonneg(pol, "approval_timeout_ms", &n_u64)) {
+      next.policy_approval_timeout_ms = (int64_t)n_u64;
+    }
+    if (json_get_u64_nonneg(pol, "approval_poll_ms", &n_u64)) {
+      next.policy_approval_poll_ms = (int64_t)n_u64;
     }
   }
   if (args.isMember("upload_max_bytes") && (args["upload_max_bytes"].isInt64() || args["upload_max_bytes"].isUInt64())) {
@@ -1106,6 +1145,19 @@ void handle_config_update_endpoint(
     pol["max_tool_calls_per_tool"] = (Json::UInt64)next.policy_max_tool_calls_per_tool;
     pol["max_tool_call_args_chars"] = (Json::UInt64)next.policy_max_tool_call_args_chars;
     pol["max_tool_result_chars"] = (Json::UInt64)next.policy_max_tool_result_chars;
+    if (!next.policy_approval_tools.empty()) {
+      Json::Value arr(Json::arrayValue);
+      for (const auto& s : next.policy_approval_tools) if (!s.empty()) arr.append(s);
+      pol["approval_tools"] = arr;
+    }
+    pol["approval_required"] = next.policy_approval_required;
+    if (!next.policy_approval_roles.empty()) {
+      Json::Value arr(Json::arrayValue);
+      for (const auto& s : next.policy_approval_roles) if (!s.empty()) arr.append(s);
+      pol["approval_roles"] = arr;
+    }
+    pol["approval_timeout_ms"] = (Json::Int64)next.policy_approval_timeout_ms;
+    pol["approval_poll_ms"] = (Json::Int64)next.policy_approval_poll_ms;
     o["policy"] = pol;
   }
   o["proxy_url_set"] = !next.proxy_url.empty();

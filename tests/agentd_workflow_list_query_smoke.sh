@@ -27,6 +27,7 @@ TRACE_ID="smoke_q_trace_${PORT_DAEMON}"
 
 submit_payload="$(cat <<JSON
 {
+  "allow_sessions": true,
   "session_id": "${SESSION_ID}",
   "trace_id": "${TRACE_ID}",
   "idempotency_key": "${IDK}",
@@ -53,15 +54,61 @@ check_query() {
   local label="$1"
   local query="$2"
   local resp
-  resp="$(curl -fsS "${DAEMON_URL}/api/v1/workflows?status=all&limit=50&q=${query}")"
-  python3 -c 'import json,sys; label=sys.argv[1]; query=sys.argv[2]; workflow_id=sys.argv[3]; idk=sys.argv[4]; session_id=sys.argv[5]; trace_id=sys.argv[6]; resp=json.load(sys.stdin); workflows=resp.get("workflows") or []; \
-  (print(f"no workflows for query {label}={query}", file=sys.stderr) or sys.exit(1)) if not workflows else None; \
-  found=False; \
-  for wf in workflows: \
-    if wf.get("workflow_id")==workflow_id or (wf.get("idempotency_key")==idk and idk==query) or (wf.get("session_id")==session_id and session_id==query) or (wf.get("trace_id")==trace_id and trace_id==query): \
-      found=True; break; \
-  (sys.exit(0) if found else (print(f"workflow not found for query {label}={query}", file=sys.stderr) or sys.exit(1)))' \
-    "${label}" "${query}" "${workflow_id}" "${IDK}" "${SESSION_ID}" "${TRACE_ID}" <<<"${resp}"
+  local last_err=""
+  for _ in $(seq 1 60); do
+    if ! resp="$(curl -fsS "${DAEMON_URL}/api/v1/workflows?status=all&limit=50&q=${query}")"; then
+      last_err="curl failed"
+      sleep 0.5
+      continue
+    fi
+    if [[ -z "${resp//[[:space:]]/}" ]]; then
+      last_err="empty response"
+      sleep 0.5
+      continue
+    fi
+    if RESP="${resp}" python3 - "${label}" "${query}" "${workflow_id}" "${IDK}" "${SESSION_ID}" "${TRACE_ID}" <<'PY'
+import json
+import os
+import sys
+
+label, query, workflow_id, idk, session_id, trace_id = sys.argv[1:7]
+raw = os.environ.get("RESP", "")
+try:
+  resp = json.loads(raw)
+except json.JSONDecodeError:
+  print(f"invalid json response for query {label}={query}", file=sys.stderr)
+  sys.exit(1)
+workflows = resp.get("workflows") or []
+if not workflows:
+  print(f"no workflows for query {label}={query}", file=sys.stderr)
+  sys.exit(1)
+found = False
+for wf in workflows:
+  if wf.get("workflow_id") == workflow_id:
+    found = True
+    break
+  if idk == query and wf.get("idempotency_key") == idk:
+    found = True
+    break
+  if session_id == query and wf.get("session_id") == session_id:
+    found = True
+    break
+  if trace_id == query and wf.get("trace_id") == trace_id:
+    found = True
+    break
+if not found:
+  print(f"workflow not found for query {label}={query}", file=sys.stderr)
+  sys.exit(1)
+PY
+    then
+      return 0
+    else
+      last_err="query not ready"
+      sleep 0.5
+    fi
+  done
+  echo "workflow query failed for ${label}=${query} (${last_err})" >&2
+  return 1
 }
 
 check_query "idempotency" "${IDK}"

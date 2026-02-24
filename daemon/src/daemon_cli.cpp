@@ -1087,6 +1087,71 @@ int parse_daemon_cli(int argc, char** argv, DaemonConfig* cfg, DaemonCliOverride
         std::cerr << "Invalid --policy-max-tool-result-chars\n";
         return 2;
       }
+    } else if (a == "--policy-approval-tools") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --policy-approval-tools\n";
+        return 2;
+      }
+      std::vector<std::string> items;
+      parse_csv_tokens_best_effort(v, &items);
+      for (const auto& item : items) {
+        if (!is_safe_tool_name(item)) {
+          std::cerr << "Invalid --policy-approval-tools (bad tool name: " << item << ")\n";
+          return 2;
+        }
+        cfg->policy_approval_tools.push_back(item);
+      }
+    } else if (a == "--policy-approval-required") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --policy-approval-required\n";
+        return 2;
+      }
+      try {
+        const long long n = std::stoll(v);
+        cfg->policy_approval_required = (int)std::max<long long>(0, n);
+      } catch (...) {
+        std::cerr << "Invalid --policy-approval-required\n";
+        return 2;
+      }
+    } else if (a == "--policy-approval-roles") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --policy-approval-roles\n";
+        return 2;
+      }
+      std::vector<std::string> items;
+      parse_csv_tokens_best_effort(v, &items);
+      for (const auto& item : items) {
+        if (!item.empty()) cfg->policy_approval_roles.push_back(item);
+      }
+    } else if (a == "--policy-approval-timeout-ms") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --policy-approval-timeout-ms\n";
+        return 2;
+      }
+      try {
+        const long long n = std::stoll(v);
+        cfg->policy_approval_timeout_ms = std::max<long long>(0, n);
+      } catch (...) {
+        std::cerr << "Invalid --policy-approval-timeout-ms\n";
+        return 2;
+      }
+    } else if (a == "--policy-approval-poll-ms") {
+      std::string v;
+      if (!take(&v)) {
+        std::cerr << "Missing value for --policy-approval-poll-ms\n";
+        return 2;
+      }
+      try {
+        const long long n = std::stoll(v);
+        cfg->policy_approval_poll_ms = std::max<long long>(1, n);
+      } catch (...) {
+        std::cerr << "Invalid --policy-approval-poll-ms\n";
+        return 2;
+      }
     } else if (a == "--tool-call-limit") {
       std::string v;
       if (!take(&v)) {
@@ -1382,6 +1447,11 @@ int parse_daemon_cli(int argc, char** argv, DaemonConfig* cfg, DaemonCliOverride
         << "  --policy-max-tool-calls-per-tool <n> Policy max tool calls per tool (default: 0; 0 means unlimited)\n"
         << "  --policy-max-tool-call-args-chars <n> Policy max tool call args chars (default: 0; 0 means unlimited)\n"
         << "  --policy-max-tool-result-chars <n> Policy max tool result chars (default: 0; 0 means unlimited)\n"
+        << "  --policy-approval-tools <csv> Policy approval tools (comma-separated, repeatable)\n"
+        << "  --policy-approval-required <n> Policy approvals required (default: 1)\n"
+        << "  --policy-approval-roles <csv> Policy approval role allowlist (comma-separated, optional)\n"
+        << "  --policy-approval-timeout-ms <n> Policy approval timeout ms (default: 300000)\n"
+        << "  --policy-approval-poll-ms <n> Policy approval poll cadence ms (default: 500)\n"
         << "  --tool-call-limit <tool>=<n>[,<tool>=<n>...] Default per-tool call limit (repeatable; 0 means unlimited for that tool)\n"
         << "  --tools host|basic|none   Default toolset (default: host)\n"
         << "  --host-policy full|readonly  Host tool safety policy (default: full)\n"

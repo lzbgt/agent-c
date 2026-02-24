@@ -400,9 +400,15 @@ int main() {
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('runs') WHERE name='replay_sha256_schema';");
   const int64_t run_replay_error_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('runs') WHERE name='replay_error';");
+  const int64_t approval_requests_tbl =
+    query_i64(raw2, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='approval_requests';");
+  const int64_t approval_decisions_tbl =
+    query_i64(raw2, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='approval_decisions';");
   sqlite3_close(raw2);
-  assert(ver == 29);
+  assert(ver == 30);
   assert(fairq_sessions_tbl == 1);
+  assert(approval_requests_tbl == 1);
+  assert(approval_decisions_tbl == 1);
   assert(arts2 == 0);
   assert(msg_mm_json_cols == 1);
   assert(msg_mm_bytes_cols == 1);

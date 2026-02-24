@@ -1,5 +1,6 @@
 #include "run_endpoints.h"
 
+#include "approval_queue.h"
 #include "daemon_auth.h"
 #include "client_profiles.h"
 #include "default_system_prompt.h"
@@ -88,6 +89,9 @@ static void inject_schema_into_events(Json::Value* arr) {
     else if (type == "heartbeat") schema = "run_event_payload_heartbeat_v1";
     else if (type == "error") schema = "run_event_payload_error_v1";
     else if (type == "policy_decision") schema = "run_event_payload_policy_decision_v1";
+    else if (type == "approval_request") schema = "run_event_payload_approval_request_v1";
+    else if (type == "approval_update") schema = "run_event_payload_approval_update_v1";
+    else if (type == "approval_resolved") schema = "run_event_payload_approval_resolved_v1";
     else if (type == "team_handoff") schema = "run_event_payload_team_handoff_v1";
     else if (type == "team_quorum_request") schema = "run_event_payload_team_quorum_request_v1";
     else if (type == "team_quorum_result") schema = "run_event_payload_team_quorum_result_v1";
@@ -483,7 +487,7 @@ static Json::Value run_request_to_json_impl(
   PolicyHookCtx policy_ctx;
   const bool policy_active = (policy_cfg.mode != PolicyMode::Off);
   if (policy_active) {
-    policy_prepare(&policy_ctx, policy_cfg, trace_id, job_id_local);
+    policy_prepare(&policy_ctx, policy_cfg, trace_id, job_id_local, session_id);
     policy_emit_start(&policy_ctx);
     policy_apply_budget_caps(
       &policy_ctx,
@@ -641,10 +645,38 @@ static Json::Value run_request_to_json_impl(
     }
   }
 
+  ApprovalGateCtx approval_gate{};
+  const bool approvals_enabled = policy_active && use_tool_loop && !policy_cfg.approval_tools.empty();
+  if (approvals_enabled) {
+    for (const auto& tool : policy_cfg.approval_tools) {
+      if (!tool.empty()) approval_gate.toolset.insert(tool);
+    }
+    approval_gate.required = std::max(0, policy_cfg.approval_required);
+    approval_gate.roles = policy_cfg.approval_roles;
+    approval_gate.timeout_ms = std::max<int64_t>(0, policy_cfg.approval_timeout_ms);
+    approval_gate.poll_ms = std::max<int64_t>(1, policy_cfg.approval_poll_ms);
+    approval_gate.enforce = (policy_cfg.mode == PolicyMode::Enforce);
+    approval_gate.audit = (policy_cfg.mode == PolicyMode::Audit);
+    approval_gate.db = db_or_null;
+    approval_gate.hook = &policy_ctx;
+    approval_gate.trace_id = trace_id;
+    approval_gate.session_id = session_id;
+    approval_gate.job_id = job_id_local;
+    if (approval_gate.enforce && (!db_or_null || !db_or_null->is_open())) {
+      if (registry) agent_tool_registry_destroy(registry);
+      if (need_destroy_host_executor) {
+        toolset_host_destroy(&base_executor);
+      }
+      agent_session_destroy(session);
+      return run_request_error(500, "db not available (approvals require db)");
+    }
+  }
+
   PolicyToolExecutorCtx policy_exec_ctx{};
   if (policy_active && use_tool_loop && executor.execute) {
     policy_exec_ctx.base = executor;
     policy_exec_ctx.hook = &policy_ctx;
+    policy_exec_ctx.approval_gate = approvals_enabled ? (void*)&approval_gate : nullptr;
     executor.ctx = &policy_exec_ctx;
     executor.execute = policy_tool_execute;
   }

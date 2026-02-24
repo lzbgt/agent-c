@@ -175,6 +175,65 @@ class AgentDb {
   };
   bool insert_tool_record(const ToolRecordRow& row, std::string* out_error);
 
+  // Approval queue (tool-level quorum gating).
+  struct ApprovalRequestRow {
+    std::string approval_id;
+    int64_t run_id = 0;
+    std::string trace_id;
+    std::string session_id;
+    std::string job_id;
+    std::string team_id;
+    std::string tool_name;
+    std::string tool_call_id;
+    std::string tool_args_hash;
+    int required_approvals = 0;
+    std::string role_constraints_json;
+    std::string status;
+    int64_t created_unix_ms = 0;
+    int64_t expires_unix_ms = 0;
+    std::string decision_reason;
+  };
+
+  struct ApprovalDecisionRow {
+    int64_t id = 0;
+    std::string approval_id;
+    std::string member_id;
+    std::string decision;
+    int64_t decision_unix_ms = 0;
+    std::string note;
+  };
+
+  struct ApprovalListFilter {
+    std::string status;
+    std::string team_id;
+    std::string trace_id;
+    std::string job_id;
+    std::string tool_name;
+    int64_t run_id = 0;
+    size_t limit = 100;
+  };
+
+  bool insert_approval_request(const ApprovalRequestRow& row, std::string* out_error);
+  bool get_approval_request(const std::string& approval_id, ApprovalRequestRow* out_row, std::string* out_error);
+  bool list_approval_requests(
+    const ApprovalListFilter& filter,
+    std::vector<ApprovalRequestRow>* out_rows_desc,
+    std::string* out_error
+  );
+  bool update_approval_status(
+    const std::string& approval_id,
+    const std::string& status,
+    const std::string& decision_reason,
+    std::string* out_error
+  );
+  bool insert_approval_decision(const ApprovalDecisionRow& row, std::string* out_error);
+  bool list_approval_decisions(
+    const std::string& approval_id,
+    std::vector<ApprovalDecisionRow>* out_rows_desc,
+    std::string* out_error
+  );
+  bool backfill_approval_run_id(const std::string& trace_id, int64_t run_id, std::string* out_error);
+
   struct ArtifactRow {
     int64_t run_id = 0;
     int64_t ts_unix_ms = 0;

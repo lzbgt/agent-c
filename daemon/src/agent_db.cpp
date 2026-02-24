@@ -107,7 +107,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 29;
+  const int kSchemaVersion = 30;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -835,6 +835,44 @@ END;
       if (!exec_locked("ALTER TABLE messages ADD COLUMN mm_truncated INTEGER;", out_error)) return false;
     }
     cur_ver = 29;
+  }
+
+  if (cur_ver < 30) {
+    const char* schema_v30 = R"SQL(
+CREATE TABLE IF NOT EXISTS approval_requests(
+  approval_id TEXT PRIMARY KEY,
+  run_id INTEGER,
+  trace_id TEXT,
+  session_id TEXT,
+  job_id TEXT,
+  team_id TEXT,
+  tool_name TEXT NOT NULL,
+  tool_call_id TEXT,
+  tool_args_hash TEXT,
+  required_approvals INTEGER NOT NULL,
+  role_constraints_json TEXT,
+  status TEXT NOT NULL,
+  created_unix_ms INTEGER NOT NULL,
+  expires_unix_ms INTEGER,
+  decision_reason TEXT
+);
+CREATE INDEX IF NOT EXISTS approval_requests_by_status ON approval_requests(status, created_unix_ms DESC);
+CREATE INDEX IF NOT EXISTS approval_requests_by_trace ON approval_requests(trace_id, created_unix_ms DESC);
+CREATE INDEX IF NOT EXISTS approval_requests_by_run ON approval_requests(run_id, created_unix_ms DESC);
+
+CREATE TABLE IF NOT EXISTS approval_decisions(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  approval_id TEXT NOT NULL,
+  member_id TEXT NOT NULL,
+  decision TEXT NOT NULL,
+  decision_unix_ms INTEGER NOT NULL,
+  note TEXT,
+  FOREIGN KEY(approval_id) REFERENCES approval_requests(approval_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS approval_decisions_by_approval ON approval_decisions(approval_id, id);
+)SQL";
+    if (!exec_locked(schema_v30, out_error)) return false;
+    cur_ver = 30;
   }
 
   // Record schema version.

@@ -100,7 +100,7 @@ The DB includes a small `meta` table with a single key:
 The daemon runs idempotent schema setup on open and will migrate older DB files forward. If the DB is newer than the current
 binary (e.g. you downgrade `agentd`), `agentd` refuses to open it rather than silently corrupting the schema.
 
-## Schema (v29)
+## Schema (v30)
 
 All timestamps are Unix milliseconds.
 
@@ -189,6 +189,45 @@ Mirrors the host tool records captured during the tool loop.
 
 Index:
 - `CREATE INDEX tool_records_by_run ON tool_records(run_id, id)`
+
+### `approval_requests`
+
+Approval queue entries for gated tool calls.
+
+- `approval_id TEXT PRIMARY KEY`
+- `run_id INTEGER` (optional; backfilled after run persistence)
+- `trace_id TEXT`
+- `session_id TEXT`
+- `job_id TEXT`
+- `team_id TEXT`
+- `tool_name TEXT NOT NULL`
+- `tool_call_id TEXT`
+- `tool_args_hash TEXT` (SHA256 hex of tool args JSON)
+- `required_approvals INTEGER NOT NULL`
+- `role_constraints_json TEXT` (JSON array string)
+- `status TEXT NOT NULL` (`pending|approved|denied|expired`)
+- `created_unix_ms INTEGER NOT NULL`
+- `expires_unix_ms INTEGER` (optional)
+- `decision_reason TEXT` (optional)
+
+Indexes:
+- `CREATE INDEX approval_requests_by_status ON approval_requests(status, created_unix_ms DESC)`
+- `CREATE INDEX approval_requests_by_trace ON approval_requests(trace_id, created_unix_ms DESC)`
+- `CREATE INDEX approval_requests_by_run ON approval_requests(run_id, created_unix_ms DESC)`
+
+### `approval_decisions`
+
+Approval decisions tied to an approval request.
+
+- `id INTEGER PRIMARY KEY AUTOINCREMENT`
+- `approval_id TEXT NOT NULL`
+- `member_id TEXT NOT NULL`
+- `decision TEXT NOT NULL` (`approve|deny`)
+- `decision_unix_ms INTEGER NOT NULL`
+- `note TEXT` (optional)
+
+Index:
+- `CREATE INDEX approval_decisions_by_approval ON approval_decisions(approval_id, id)`
 
 ### `artifacts`
 

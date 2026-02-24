@@ -127,6 +127,19 @@ void handle_caps_endpoint(
     policy["max_tool_calls_per_tool"] = Json::UInt64(cfg.policy_max_tool_calls_per_tool);
     policy["max_tool_call_args_chars"] = Json::UInt64(cfg.policy_max_tool_call_args_chars);
     policy["max_tool_result_chars"] = Json::UInt64(cfg.policy_max_tool_result_chars);
+    {
+      Json::Value arr(Json::arrayValue);
+      for (const auto& s : cfg.policy_approval_tools) if (!s.empty()) arr.append(s);
+      policy["approval_tools"] = arr;
+    }
+    policy["approval_required"] = cfg.policy_approval_required;
+    {
+      Json::Value arr(Json::arrayValue);
+      for (const auto& s : cfg.policy_approval_roles) if (!s.empty()) arr.append(s);
+      policy["approval_roles"] = arr;
+    }
+    policy["approval_timeout_ms"] = Json::Int64(cfg.policy_approval_timeout_ms);
+    policy["approval_poll_ms"] = Json::Int64(cfg.policy_approval_poll_ms);
     features["policy"] = policy;
   }
   {

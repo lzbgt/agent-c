@@ -151,6 +151,32 @@ bool load_runtime_config_best_effort(
       if (json_get_u64_nonneg(v, "policy_max_tool_result_chars", &n_u64)) {
         cfg_io->policy_max_tool_result_chars = (size_t)n_u64;
       }
+      if (v.isMember("policy_approval_tools") && v["policy_approval_tools"].isArray()) {
+        cfg_io->policy_approval_tools.clear();
+        for (const auto& item : v["policy_approval_tools"]) {
+          if (!item.isString()) continue;
+          std::string s = trim_copy(item.asString());
+          if (is_safe_tool_name(s)) cfg_io->policy_approval_tools.push_back(std::move(s));
+        }
+      }
+      if (v.isMember("policy_approval_required") && (v["policy_approval_required"].isInt64() || v["policy_approval_required"].isInt())) {
+        const int64_t req = v["policy_approval_required"].asInt64();
+        cfg_io->policy_approval_required = (int)std::max<int64_t>(0, req);
+      }
+      if (v.isMember("policy_approval_roles") && v["policy_approval_roles"].isArray()) {
+        cfg_io->policy_approval_roles.clear();
+        for (const auto& item : v["policy_approval_roles"]) {
+          if (!item.isString()) continue;
+          std::string s = trim_copy(item.asString());
+          if (!s.empty()) cfg_io->policy_approval_roles.push_back(std::move(s));
+        }
+      }
+      if (json_get_u64_nonneg(v, "policy_approval_timeout_ms", &n_u64)) {
+        cfg_io->policy_approval_timeout_ms = (int64_t)n_u64;
+      }
+      if (json_get_u64_nonneg(v, "policy_approval_poll_ms", &n_u64)) {
+        cfg_io->policy_approval_poll_ms = (int64_t)n_u64;
+      }
       if (v.isMember("timeout_ms") && v["timeout_ms"].isInt64()) {
         const auto n = v["timeout_ms"].asInt64();
         if (n > 0) cfg_io->timeout_ms = (long)n;
@@ -501,6 +527,19 @@ bool save_runtime_config_best_effort(AgentDb& db, const DaemonConfig& cfg, std::
   v["policy_max_tool_calls_per_tool"] = (Json::UInt64)cfg.policy_max_tool_calls_per_tool;
   v["policy_max_tool_call_args_chars"] = (Json::UInt64)cfg.policy_max_tool_call_args_chars;
   v["policy_max_tool_result_chars"] = (Json::UInt64)cfg.policy_max_tool_result_chars;
+  if (!cfg.policy_approval_tools.empty()) {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : cfg.policy_approval_tools) if (!s.empty()) arr.append(s);
+    v["policy_approval_tools"] = arr;
+  }
+  v["policy_approval_required"] = cfg.policy_approval_required;
+  if (!cfg.policy_approval_roles.empty()) {
+    Json::Value arr(Json::arrayValue);
+    for (const auto& s : cfg.policy_approval_roles) if (!s.empty()) arr.append(s);
+    v["policy_approval_roles"] = arr;
+  }
+  v["policy_approval_timeout_ms"] = (Json::Int64)cfg.policy_approval_timeout_ms;
+  v["policy_approval_poll_ms"] = (Json::Int64)cfg.policy_approval_poll_ms;
   v["timeout_ms"] = (Json::Int64)cfg.timeout_ms;
   v["upload_max_bytes"] = (Json::UInt64)cfg.upload_max_bytes;
   v["blob_store_mode"] = cfg.blob_store_mode;

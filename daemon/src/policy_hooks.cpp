@@ -1,4 +1,5 @@
 #include "policy_hooks.h"
+#include "approval_queue.h"
 
 #include "daemon_config.h"
 #include "job_manager.h"
@@ -104,13 +105,25 @@ PolicyConfig policy_config_from_daemon(const DaemonConfig& cfg) {
   out.max_tool_calls_per_tool = cfg.policy_max_tool_calls_per_tool;
   out.max_tool_call_args_chars = cfg.policy_max_tool_call_args_chars;
   out.max_tool_result_chars = cfg.policy_max_tool_result_chars;
+  out.approval_tools = cfg.policy_approval_tools;
+  out.approval_required = std::max(0, cfg.policy_approval_required);
+  out.approval_roles = cfg.policy_approval_roles;
+  out.approval_timeout_ms = std::max<int64_t>(0, cfg.policy_approval_timeout_ms);
+  out.approval_poll_ms = std::max<int64_t>(0, cfg.policy_approval_poll_ms);
   return out;
 }
 
-void policy_prepare(PolicyHookCtx* ctx, const PolicyConfig& cfg, const std::string& trace_id, const std::string& job_id) {
+void policy_prepare(
+  PolicyHookCtx* ctx,
+  const PolicyConfig& cfg,
+  const std::string& trace_id,
+  const std::string& job_id,
+  const std::string& session_id
+) {
   if (!ctx) return;
   ctx->cfg = cfg;
   ctx->trace_id = trace_id;
+  ctx->session_id = session_id;
   ctx->job_id = job_id;
   ctx->events = Json::Value(Json::arrayValue);
   ctx->allowset.clear();
@@ -137,6 +150,19 @@ void policy_emit_event(PolicyHookCtx* ctx, const Json::Value& data) {
 
   if (!ctx->job_id.empty()) {
     job_append_event(ctx->job_id, "policy_decision", json_stringify(data));
+  }
+}
+
+void policy_emit_custom_event(PolicyHookCtx* ctx, const char* type, const Json::Value& data) {
+  if (!ctx || !type || !type[0]) return;
+  Json::Value ev(Json::objectValue);
+  ev["type"] = type;
+  if (!ctx->trace_id.empty()) ev["trace_id"] = ctx->trace_id;
+  ev["data"] = data;
+  ctx->events.append(ev);
+
+  if (!ctx->job_id.empty()) {
+    job_append_event(ctx->job_id, type, json_stringify(data));
   }
 }
 
@@ -241,6 +267,19 @@ agent_status_t policy_tool_execute(
   } else if (!hook->allowset.empty() || !hook->denyset.empty()) {
     const std::string reason = allowlist_active ? "tool_allowlist" : "tool_not_denied";
     policy_emit_tool_event(hook, "allow", reason, false, tool);
+  }
+
+  if (ctx->approval_gate) {
+    auto* gate = static_cast<ApprovalGateCtx*>(ctx->approval_gate);
+    const std::string call_id = hook ? hook->last_tool_call_id : std::string();
+    const std::string args = arguments_json ? std::string(arguments_json) : std::string();
+    const agent_status_t gate_st = approval_gate_tool(gate, tool, call_id, args);
+    if (gate_st != AGENT_OK) {
+      if (hook && hook->last_error.empty()) {
+        hook->last_error = "approval gate blocked tool: " + tool;
+      }
+      return gate_st;
+    }
   }
 
   return ctx->base.execute(ctx->base.ctx, tool_name, arguments_json, out_result);

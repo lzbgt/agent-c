@@ -31,6 +31,11 @@ struct PolicyConfig {
   size_t max_tool_calls_per_tool = 0;
   size_t max_tool_call_args_chars = 0;
   size_t max_tool_result_chars = 0;
+  std::vector<std::string> approval_tools;
+  int approval_required = 1;
+  std::vector<std::string> approval_roles;
+  int64_t approval_timeout_ms = 300000;
+  int64_t approval_poll_ms = 500;
 };
 
 struct PolicyHookCtx {
@@ -39,6 +44,7 @@ struct PolicyHookCtx {
   std::unordered_set<std::string> denyset;
   Json::Value events = Json::Value(Json::arrayValue);
   std::string trace_id;
+  std::string session_id;
   std::string job_id;
   std::string last_tool_call_id;
   std::string last_tool_name;
@@ -49,14 +55,22 @@ struct PolicyHookCtx {
 struct PolicyToolExecutorCtx {
   agent_tool_executor_t base{};
   PolicyHookCtx* hook = nullptr;
+  void* approval_gate = nullptr;
 };
 
 PolicyConfig policy_config_from_daemon(const DaemonConfig& cfg);
-void policy_prepare(PolicyHookCtx* ctx, const PolicyConfig& cfg, const std::string& trace_id, const std::string& job_id);
+void policy_prepare(
+  PolicyHookCtx* ctx,
+  const PolicyConfig& cfg,
+  const std::string& trace_id,
+  const std::string& job_id,
+  const std::string& session_id
+);
 
 void policy_emit_start(PolicyHookCtx* ctx);
 void policy_emit_complete(PolicyHookCtx* ctx, bool ok);
 void policy_emit_event(PolicyHookCtx* ctx, const Json::Value& data);
+void policy_emit_custom_event(PolicyHookCtx* ctx, const char* type, const Json::Value& data);
 
 void policy_apply_budget_caps(
   PolicyHookCtx* ctx,

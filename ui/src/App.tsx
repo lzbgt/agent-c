@@ -39,6 +39,7 @@ import SettingsDrawer from "./components/SettingsDrawer";
 import TraceLookupPanel from "./components/TraceLookupPanel";
 import BrokerPanel from "./components/BrokerPanel";
 import MemoryPanel from "./components/MemoryPanel";
+import ApprovalQueuePanel from "./components/ApprovalQueuePanel";
 import WorkflowPanel from "./components/WorkflowPanel";
 import useLocalStorageState from "./hooks/useLocalStorageState";
 import useJobStreaming from "./hooks/useJobStreaming";
@@ -171,6 +172,7 @@ export default function App() {
   const [traceLookupId, setTraceLookupId] = useLocalStorageState("agentui.traceLookupId", "");
   const [traceLookupOpen, setTraceLookupOpen] = useLocalStorageState("agentui.traceLookupOpen", false);
   const [memoryPanelOpen, setMemoryPanelOpen] = useLocalStorageState("agentui.memoryPanelOpen", false);
+  const [approvalPanelOpen, setApprovalPanelOpen] = useLocalStorageState("agentui.approvalPanelOpen", false);
   const [workflowPanelOpen, setWorkflowPanelOpen] = useLocalStorageState("agentui.workflowPanelOpen", false);
   // Keep prompts separate so an active async run does not overwrite the "last completed" view.
   const [lastRunPrompt, setLastRunPrompt] = React.useState("");
@@ -1660,6 +1662,12 @@ export default function App() {
             <MemoryPanel
               open={!!memoryPanelOpen}
               onToggle={(open) => setMemoryPanelOpen(open)}
+              baseUrl={effectiveBase}
+              auth={daemonAuth}
+            />
+            <ApprovalQueuePanel
+              open={!!approvalPanelOpen}
+              onToggle={(open) => setApprovalPanelOpen(open)}
               baseUrl={effectiveBase}
               auth={daemonAuth}
             />

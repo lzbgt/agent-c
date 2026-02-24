@@ -68,6 +68,13 @@ Settings → Diagnostics triggers:
 
 See `docs/DIAGNOSTICS.md` for provider_test usage.
 
+## Approval queue
+
+The WebUI includes an **Approval queue** panel for tool-level approvals:
+- Lists approvals from `/api/v1/approvals` with basic filtering.
+- Loads approval details + decisions from `/api/v1/approvals/<approval_id>`.
+- Submits decisions via `/api/v1/approvals/<approval_id>/decisions`.
+
 ## Workflows (read-only)
 
 The WebUI includes a **Workflows** panel for durable workflow inspection:

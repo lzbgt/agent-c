@@ -50,6 +50,9 @@ void inject_schema_into_events(Json::Value* arr) {
     else if (type == "heartbeat") schema = "run_event_payload_heartbeat_v1";
     else if (type == "error") schema = "run_event_payload_error_v1";
     else if (type == "policy_decision") schema = "run_event_payload_policy_decision_v1";
+    else if (type == "approval_request") schema = "run_event_payload_approval_request_v1";
+    else if (type == "approval_update") schema = "run_event_payload_approval_update_v1";
+    else if (type == "approval_resolved") schema = "run_event_payload_approval_resolved_v1";
     if (schema) ev["schema"] = schema;
   }
 }

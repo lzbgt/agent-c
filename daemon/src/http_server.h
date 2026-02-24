@@ -39,6 +39,9 @@ class HttpServer {
   // Useful for centralized CORS preflight logic.
   void set_options_handler(OptionsHandler handler);
   void handle(const std::string& method, const std::string& path, Handler handler);
+  // Registers a handler that matches any path with the given prefix (exact prefix match).
+  // Useful for endpoints with path params (e.g. /api/v1/items/{id}).
+  void handle_prefix(const std::string& method, const std::string& path_prefix, Handler handler);
   // Registers a handler that writes directly to the client socket (e.g., SSE).
   // The handler must write a full HTTP response (status line + headers + body streaming).
   // The server will close the socket after the handler returns.
@@ -62,6 +65,7 @@ class HttpServer {
 
   std::map<RouteKey, Handler> routes_;
   std::map<RouteKey, StreamHandler> stream_routes_;
+  std::vector<std::pair<RouteKey, Handler>> prefix_routes_;
   OptionsHandler options_handler_;
   std::map<std::string, std::string> default_headers_;
   socket_t listen_fd_ = kInvalidSocket;

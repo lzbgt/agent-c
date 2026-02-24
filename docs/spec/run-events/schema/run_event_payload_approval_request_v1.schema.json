@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Agent Run Event Payload approval_request v1",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["approval_id", "tool_name", "status", "required_approvals", "created_unix_ms"],
+  "properties": {
+    "approval_id": {
+      "type": "string",
+      "description": "Approval request identifier."
+    },
+    "trace_id": {
+      "type": "string",
+      "description": "Run trace identifier."
+    },
+    "run_id": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Run ID when known."
+    },
+    "session_id": {
+      "type": "string",
+      "description": "Session identifier."
+    },
+    "job_id": {
+      "type": "string",
+      "description": "Async job identifier."
+    },
+    "team_id": {
+      "type": "string",
+      "description": "Team identifier when applicable."
+    },
+    "tool_name": {
+      "type": "string",
+      "description": "Tool name that triggered the approval."
+    },
+    "tool_call_id": {
+      "type": "string",
+      "description": "Tool call identifier."
+    },
+    "tool_args_hash": {
+      "type": "string",
+      "description": "SHA256 hex of tool arguments JSON."
+    },
+    "status": {
+      "type": "string",
+      "description": "Approval status (pending|approved|denied|expired)."
+    },
+    "required_approvals": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Approvals required to proceed."
+    },
+    "role_constraints": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Role allowlist for approvals."
+    },
+    "created_unix_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Creation timestamp (unix ms)."
+    },
+    "expires_unix_ms": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Expiry timestamp (unix ms)."
+    },
+    "decision_reason": {
+      "type": "string",
+      "description": "Optional decision reason when auto-resolved."
+    }
+  }
+}

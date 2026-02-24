@@ -154,6 +154,11 @@ Flags:
 - `--policy-max-tool-calls-per-tool <n>`
 - `--policy-max-tool-call-args-chars <n>`
 - `--policy-max-tool-result-chars <n>`
+- `--policy-approval-tools <csv>` (tool names requiring approvals)
+- `--policy-approval-required <n>` (approvals required; default: 1)
+- `--policy-approval-roles <csv>` (optional role allowlist)
+- `--policy-approval-timeout-ms <n>` (default: 300000)
+- `--policy-approval-poll-ms <n>` (default: 500)
 
 Env overrides:
 - `AGENTD_POLICY_MODE`
@@ -164,6 +169,11 @@ Env overrides:
 - `AGENTD_POLICY_MAX_TOOL_CALLS_PER_TOOL`
 - `AGENTD_POLICY_MAX_TOOL_CALL_ARGS_CHARS`
 - `AGENTD_POLICY_MAX_TOOL_RESULT_CHARS`
+- `AGENTD_POLICY_APPROVAL_TOOLS`
+- `AGENTD_POLICY_APPROVAL_REQUIRED`
+- `AGENTD_POLICY_APPROVAL_ROLES`
+- `AGENTD_POLICY_APPROVAL_TIMEOUT_MS`
+- `AGENTD_POLICY_APPROVAL_POLL_MS`
 
 Runtime config (`/api/v1/config`):
 
@@ -177,12 +187,24 @@ Runtime config (`/api/v1/config`):
     "max_tool_calls_total": 64,
     "max_tool_calls_per_tool": 8,
     "max_tool_call_args_chars": 4000,
-    "max_tool_result_chars": 8000
+    "max_tool_result_chars": 8000,
+    "approval_tools": ["shell_exec"],
+    "approval_required": 2,
+    "approval_roles": ["security", "reviewer"],
+    "approval_timeout_ms": 300000,
+    "approval_poll_ms": 500
   }
 }
 ```
 
 Policy decisions emit `policy_decision` events in the run/job event streams for auditability.
+
+### Policy approvals (tool-level quorum)
+
+- Approvals gate tool execution for tools in `approval_tools`.
+- In `enforce` mode, the tool loop waits until approvals resolve or time out (requires SQLite DB).
+- In `audit` mode, approvals emit `approval_request` + `approval_resolved` events but do not block.
+- Approval lifecycle events: `approval_request`, `approval_update`, `approval_resolved`.
 
 ## Daemon-side key loading and client identity
 
@@ -224,6 +246,15 @@ Notes:
 - Requests cannot exceed the daemon's `--tools` setting; exceeding it returns HTTP 400.
 - The response includes `daemon_tools` and (when provided) `requested_tools` for clarity.
 - When `session_id` is provided (and `tools=host`), the registry may include session-scoped tools such as `ui_wait_event`.
+
+## Approval queue API
+
+- `GET /api/v1/approvals?status=pending&trace_id=...&job_id=...&tool_name=...&run_id=...&limit=100`
+  - Lists approvals (most recent first). Filters are optional.
+- `GET /api/v1/approvals/<approval_id>`
+  - Returns a single approval with its decisions array.
+- `POST /api/v1/approvals/<approval_id>/decisions`
+  - Body: `{ "member_id": "...", "decision": "approve|deny", "note": "..." }`
 
 ## OpenRouter model discovery
 

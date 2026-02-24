@@ -189,6 +189,12 @@ struct DaemonConfig {
   size_t policy_max_tool_calls_per_tool = 0;
   size_t policy_max_tool_call_args_chars = 0;
   size_t policy_max_tool_result_chars = 0;
+  // Policy approvals (tool-level quorum gating).
+  std::vector<std::string> policy_approval_tools;
+  int policy_approval_required = 1;
+  std::vector<std::string> policy_approval_roles;
+  int64_t policy_approval_timeout_ms = 300000; // 5 minutes
+  int64_t policy_approval_poll_ms = 500;       // poll cadence while waiting
 
   // Async job GC (daemon longevity): finished jobs are kept only for a bounded time/count.
   int64_t job_ttl_ms = 30 * 60 * 1000; // 30 minutes

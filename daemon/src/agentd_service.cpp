@@ -3,6 +3,7 @@
 #include "http_server.h"
 
 #include "agent_db.h"
+#include "approval_queue_endpoints.h"
 #include "avm_endpoints.h"
 #include "blob_endpoints.h"
 #include "caps_endpoint.h"
@@ -301,6 +302,43 @@ static void fill_env_defaults(DaemonConfig* cfg) {
   }
   if (const char* ms = getenv_s("AGENTD_POLICY_MAX_TOOL_RESULT_CHARS")) {
     try { cfg->policy_max_tool_result_chars = (size_t)std::stoull(ms); } catch (...) {}
+  }
+  if (const char* ms = getenv_s("AGENTD_POLICY_APPROVAL_TOOLS")) {
+    std::vector<std::string> items;
+    parse_csv_tokens_best_effort(ms, &items);
+    cfg->policy_approval_tools.clear();
+    for (const auto& item : items) {
+      if (is_safe_tool_name(item)) cfg->policy_approval_tools.push_back(item);
+    }
+  }
+  if (const char* ms = getenv_s("AGENTD_POLICY_APPROVAL_REQUIRED")) {
+    try {
+      const long long n = std::stoll(ms);
+      cfg->policy_approval_required = (int)std::max<long long>(0, n);
+    } catch (...) {
+    }
+  }
+  if (const char* ms = getenv_s("AGENTD_POLICY_APPROVAL_ROLES")) {
+    std::vector<std::string> items;
+    parse_csv_tokens_best_effort(ms, &items);
+    cfg->policy_approval_roles.clear();
+    for (const auto& item : items) {
+      if (!item.empty()) cfg->policy_approval_roles.push_back(item);
+    }
+  }
+  if (const char* ms = getenv_s("AGENTD_POLICY_APPROVAL_TIMEOUT_MS")) {
+    try {
+      const long long n = std::stoll(ms);
+      cfg->policy_approval_timeout_ms = std::max<long long>(0, n);
+    } catch (...) {
+    }
+  }
+  if (const char* ms = getenv_s("AGENTD_POLICY_APPROVAL_POLL_MS")) {
+    try {
+      const long long n = std::stoll(ms);
+      cfg->policy_approval_poll_ms = std::max<long long>(1, n);
+    } catch (...) {
+    }
   }
   if (const char* ms = getenv_s("AGENTD_JOB_CONCURRENCY")) {
     try { cfg->job_engine_max_concurrency = std::max(1, std::stoi(ms)); } catch (...) {}
@@ -761,6 +799,18 @@ struct AgentdService::Impl {
     server.handle("GET", "/api/v1/tools", [this](const HttpRequest& req, HttpResponse* resp) {
       const DaemonConfig cur = cfg_store->snapshot();
       handle_tools_endpoint(cur, cors_cfg, cur.sessions_root_dir, tool_ext_or_null(), req, resp);
+    });
+    server.handle("GET", "/api/v1/approvals", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_approvals_list_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle_prefix("GET", "/api/v1/approvals/", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_approvals_prefix_endpoint(cur, cors_cfg, &db, req, resp);
+    });
+    server.handle_prefix("POST", "/api/v1/approvals/", [this](const HttpRequest& req, HttpResponse* resp) {
+      const DaemonConfig cur = cfg_store->snapshot();
+      handle_approvals_prefix_endpoint(cur, cors_cfg, &db, req, resp);
     });
 
     server.handle("POST", "/api/v1/avm/job_scan", [this](const HttpRequest& req, HttpResponse* resp) {

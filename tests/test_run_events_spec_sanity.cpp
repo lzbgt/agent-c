@@ -70,6 +70,9 @@ static const char* expected_schema_for_type(const std::string& type) {
   if (type == "heartbeat") return "run_event_payload_heartbeat_v1";
   if (type == "error") return "run_event_payload_error_v1";
   if (type == "policy_decision") return "run_event_payload_policy_decision_v1";
+  if (type == "approval_request") return "run_event_payload_approval_request_v1";
+  if (type == "approval_update") return "run_event_payload_approval_update_v1";
+  if (type == "approval_resolved") return "run_event_payload_approval_resolved_v1";
   if (type == "team_handoff") return "run_event_payload_team_handoff_v1";
   if (type == "team_quorum_request") return "run_event_payload_team_quorum_request_v1";
   if (type == "team_quorum_result") return "run_event_payload_team_quorum_result_v1";
@@ -382,6 +385,149 @@ static bool validate_payload_error(const Json::Value& data, std::string* out_err
   if (data.isMember("max_steps") && !is_nonneg_int(data["max_steps"])) {
     if (out_err) *out_err = "error.data.max_steps must be integer >= 0";
     return false;
+  }
+  return true;
+}
+
+static bool validate_payload_approval_request(const Json::Value& data, std::string* out_err) {
+  if (!data.isObject()) {
+    if (out_err) *out_err = "approval_request data must be object";
+    return false;
+  }
+  std::string approval_id;
+  if (!get_string_field(data, "approval_id", &approval_id)) {
+    if (out_err) *out_err = "approval_request.data.approval_id must be non-empty string";
+    return false;
+  }
+  std::string tool_name;
+  if (!get_string_field(data, "tool_name", &tool_name)) {
+    if (out_err) *out_err = "approval_request.data.tool_name must be non-empty string";
+    return false;
+  }
+  std::string status;
+  if (!get_string_field(data, "status", &status)) {
+    if (out_err) *out_err = "approval_request.data.status must be non-empty string";
+    return false;
+  }
+  int64_t required = 0;
+  if (!get_int_field(data, "required_approvals", &required)) {
+    if (out_err) *out_err = "approval_request.data.required_approvals must be integer >= 0";
+    return false;
+  }
+  int64_t created = 0;
+  if (!get_int_field(data, "created_unix_ms", &created)) {
+    if (out_err) *out_err = "approval_request.data.created_unix_ms must be integer >= 0";
+    return false;
+  }
+  if (data.isMember("expires_unix_ms") && !is_nonneg_int(data["expires_unix_ms"])) {
+    if (out_err) *out_err = "approval_request.data.expires_unix_ms must be integer >= 0";
+    return false;
+  }
+  if (data.isMember("role_constraints")) {
+    if (!data["role_constraints"].isArray()) {
+      if (out_err) *out_err = "approval_request.data.role_constraints must be array";
+      return false;
+    }
+    for (const auto& item : data["role_constraints"]) {
+      if (!item.isString()) {
+        if (out_err) *out_err = "approval_request.data.role_constraints must contain strings";
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+static bool validate_payload_approval_update(const Json::Value& data, std::string* out_err) {
+  if (!data.isObject()) {
+    if (out_err) *out_err = "approval_update data must be object";
+    return false;
+  }
+  std::string approval_id;
+  if (!get_string_field(data, "approval_id", &approval_id)) {
+    if (out_err) *out_err = "approval_update.data.approval_id must be non-empty string";
+    return false;
+  }
+  std::string status;
+  if (!get_string_field(data, "status", &status)) {
+    if (out_err) *out_err = "approval_update.data.status must be non-empty string";
+    return false;
+  }
+  std::string decision;
+  if (!get_string_field(data, "decision", &decision)) {
+    if (out_err) *out_err = "approval_update.data.decision must be non-empty string";
+    return false;
+  }
+  std::string member_id;
+  if (!get_string_field(data, "member_id", &member_id)) {
+    if (out_err) *out_err = "approval_update.data.member_id must be non-empty string";
+    return false;
+  }
+  int64_t approved = 0;
+  if (!get_int_field(data, "approved", &approved)) {
+    if (out_err) *out_err = "approval_update.data.approved must be integer >= 0";
+    return false;
+  }
+  int64_t required = 0;
+  if (!get_int_field(data, "required_approvals", &required)) {
+    if (out_err) *out_err = "approval_update.data.required_approvals must be integer >= 0";
+    return false;
+  }
+  if (data.isMember("decision_unix_ms") && !is_nonneg_int(data["decision_unix_ms"])) {
+    if (out_err) *out_err = "approval_update.data.decision_unix_ms must be integer >= 0";
+    return false;
+  }
+  if (data.isMember("role_constraints")) {
+    if (!data["role_constraints"].isArray()) {
+      if (out_err) *out_err = "approval_update.data.role_constraints must be array";
+      return false;
+    }
+    for (const auto& item : data["role_constraints"]) {
+      if (!item.isString()) {
+        if (out_err) *out_err = "approval_update.data.role_constraints must contain strings";
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+static bool validate_payload_approval_resolved(const Json::Value& data, std::string* out_err) {
+  if (!data.isObject()) {
+    if (out_err) *out_err = "approval_resolved data must be object";
+    return false;
+  }
+  std::string approval_id;
+  if (!get_string_field(data, "approval_id", &approval_id)) {
+    if (out_err) *out_err = "approval_resolved.data.approval_id must be non-empty string";
+    return false;
+  }
+  std::string status;
+  if (!get_string_field(data, "status", &status)) {
+    if (out_err) *out_err = "approval_resolved.data.status must be non-empty string";
+    return false;
+  }
+  int64_t approved = 0;
+  if (!get_int_field(data, "approved", &approved)) {
+    if (out_err) *out_err = "approval_resolved.data.approved must be integer >= 0";
+    return false;
+  }
+  int64_t required = 0;
+  if (!get_int_field(data, "required_approvals", &required)) {
+    if (out_err) *out_err = "approval_resolved.data.required_approvals must be integer >= 0";
+    return false;
+  }
+  if (data.isMember("role_constraints")) {
+    if (!data["role_constraints"].isArray()) {
+      if (out_err) *out_err = "approval_resolved.data.role_constraints must be array";
+      return false;
+    }
+    for (const auto& item : data["role_constraints"]) {
+      if (!item.isString()) {
+        if (out_err) *out_err = "approval_resolved.data.role_constraints must contain strings";
+        return false;
+      }
+    }
   }
   return true;
 }
@@ -1012,6 +1158,9 @@ static bool validate_event_payload(const Json::Value& v, std::string* out_err) {
   if (type == "ui_action") return validate_payload_ui_action(data, out_err);
   if (type == "heartbeat") return validate_payload_heartbeat(data, out_err);
   if (type == "error") return validate_payload_error(data, out_err);
+  if (type == "approval_request") return validate_payload_approval_request(data, out_err);
+  if (type == "approval_update") return validate_payload_approval_update(data, out_err);
+  if (type == "approval_resolved") return validate_payload_approval_resolved(data, out_err);
   if (type == "team_handoff") return validate_payload_team_handoff(data, out_err);
   if (type == "team_quorum_request") return validate_payload_team_quorum_request(data, out_err);
   if (type == "team_quorum_result") return validate_payload_team_quorum_result(data, out_err);
@@ -1093,6 +1242,9 @@ static int schema_sanity(const std::string& schema_dir) {
     "run_event_payload_heartbeat_v1.schema.json",
     "run_event_payload_error_v1.schema.json",
     "run_event_payload_policy_decision_v1.schema.json",
+    "run_event_payload_approval_request_v1.schema.json",
+    "run_event_payload_approval_update_v1.schema.json",
+    "run_event_payload_approval_resolved_v1.schema.json",
     "run_event_payload_task_status_v1.schema.json",
     "run_event_payload_workflow_status_v1.schema.json",
     "run_event_payload_workflow_done_v1.schema.json",

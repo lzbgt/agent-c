@@ -404,6 +404,11 @@ void HttpServer::handle(const std::string& method, const std::string& path, Hand
   routes_[k] = std::move(handler);
 }
 
+void HttpServer::handle_prefix(const std::string& method, const std::string& path_prefix, Handler handler) {
+  RouteKey k{method, path_prefix};
+  prefix_routes_.emplace_back(std::move(k), std::move(handler));
+}
+
 void HttpServer::handle_stream(const std::string& method, const std::string& path, StreamHandler handler) {
   RouteKey k{method, path};
   stream_routes_[k] = std::move(handler);
@@ -685,8 +690,24 @@ bool HttpServer::serve(const std::string& host, uint16_t port, std::string* out_
       HttpResponse resp;
       auto it = routes_.find(RouteKey{req.method, req.path});
       if (it == routes_.end()) {
-        resp.status = 404;
-        resp.body = json_error_body("not found");
+        const Handler* prefix_match = nullptr;
+        size_t best_len = 0;
+        for (const auto& entry : prefix_routes_) {
+          if (entry.first.method != req.method) continue;
+          const std::string& prefix = entry.first.path;
+          if (prefix.empty()) continue;
+          if (req.path.compare(0, prefix.size(), prefix) != 0) continue;
+          if (prefix.size() >= best_len) {
+            best_len = prefix.size();
+            prefix_match = &entry.second;
+          }
+        }
+        if (prefix_match) {
+          (*prefix_match)(req, &resp);
+        } else {
+          resp.status = 404;
+          resp.body = json_error_body("not found");
+        }
       } else {
         it->second(req, &resp);
       }
