@@ -90,6 +90,11 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const teamIdTrimmed = String(teamId || "").trim();
   const approvalRunIdTrimmed = String(approvalRunId || runLookupId || "").trim();
 
+  React.useEffect(() => {
+    setApprovals(null);
+    setApprovalsError(null);
+  }, [approvalRunIdTrimmed, teamIdTrimmed]);
+
   const refreshTeams = async () => {
     if (!canQuery) return;
     setTeamsError(null);
