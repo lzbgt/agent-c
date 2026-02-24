@@ -99,6 +99,10 @@ AgentdConfigResponse:
         consolidate_interval_ms: { type: integer, format: int64 }
         consolidate_daily_days: { type: integer, format: int32 }
         consolidate_keep_checkpoints: { type: integer, format: int32 }
+        recap_daily_interval_ms: { type: integer, format: int64 }
+        recap_weekly_interval_ms: { type: integer, format: int64 }
+        recap_daily_days: { type: integer, format: int32 }
+        recap_weekly_days: { type: integer, format: int32 }
         retention_interval_ms: { type: integer, format: int64 }
         retention_daily_max_days: { type: integer, format: int32 }
         retention_daily_max_bytes: { type: integer, format: int64 }
@@ -258,6 +262,10 @@ AgentdConfigUpdateRequest:
         consolidate_interval_ms: { type: integer, format: int64 }
         consolidate_daily_days: { type: integer, format: int32 }
         consolidate_keep_checkpoints: { type: integer, format: int32 }
+        recap_daily_interval_ms: { type: integer, format: int64 }
+        recap_weekly_interval_ms: { type: integer, format: int64 }
+        recap_daily_days: { type: integer, format: int32 }
+        recap_weekly_days: { type: integer, format: int32 }
         retention_interval_ms: { type: integer, format: int64 }
         retention_daily_max_days: { type: integer, format: int32 }
         retention_daily_max_bytes: { type: integer, format: int64 }
@@ -312,6 +320,10 @@ AgentdConfigUpdateResponse:
         consolidate_interval_ms: { type: integer, format: int64 }
         consolidate_daily_days: { type: integer, format: int32 }
         consolidate_keep_checkpoints: { type: integer, format: int32 }
+        recap_daily_interval_ms: { type: integer, format: int64 }
+        recap_weekly_interval_ms: { type: integer, format: int64 }
+        recap_daily_days: { type: integer, format: int32 }
+        recap_weekly_days: { type: integer, format: int32 }
         retention_interval_ms: { type: integer, format: int64 }
         retention_daily_max_days: { type: integer, format: int32 }
         retention_daily_max_bytes: { type: integer, format: int64 }

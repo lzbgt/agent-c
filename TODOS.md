@@ -107,6 +107,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-25: added moderator directive/task endpoints + caps feature; WebUI moderator panel publishes nonblocking events.
 - [ ] W=9 — Rolling memory consolidation v1: scheduled rollups (daily/weekly), cross-run correlation index, and evidence-linked recall.
   - 2026-02-24: added scheduled recap engine (daily/weekly) with config/env/caps plumbing; recap files now carry `kind` and `evidence_sources`.
+- [ ] W=6 — WebUI memory recap controls: schedule knobs + recap list view/filter by `kind`.
 - [ ] W=8 — Real-provider automation smokes: DeepSeek + Kimi agent runs using ~/.env keys to validate full automation defaults.
   - 2026-02-25: mac-local provider tests passed (DeepSeek reasoner + Moonshot/Kimi) via `tools/verify_mac_local_stack.sh` with `MAC_LOCAL_PROVIDER_TEST=1` (log: `out/mac_local_provider_tests_2026-02-25_004102.log`).
 

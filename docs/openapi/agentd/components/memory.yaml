@@ -209,6 +209,7 @@ MemoryRecapsListItem:
     ts_utc: { type: string }
     ts_utc_ms: { type: integer, format: int64 }
     model: { type: string }
+    kind: { type: string }
     summary_text: { type: string }
 
 
@@ -233,6 +234,7 @@ MemoryRecapRequest:
   properties:
     dry_run: { type: boolean }
     write_file: { type: boolean }
+    kind: { type: string }
     model: { type: string }
     summary_model: { type: string, nullable: true }
     summary_max_chars: { type: integer, format: int64 }
@@ -254,6 +256,7 @@ MemoryRecapResponse:
     generated_utc_ms: { type: integer, format: int64 }
     ts_utc: { type: string }
     model: { type: string }
+    kind: { type: string }
     dry_run: { type: boolean }
     write_file: { type: boolean }
     policy:
@@ -273,6 +276,10 @@ MemoryRecapResponse:
       type: array
       items:
         $ref: "#/components/schemas/MemoryRecapItem"
+    evidence_sources:
+      type: array
+      items:
+        type: string
     prompt: { type: string }
     prompt_truncated: { type: boolean }
     summary_text: { type: string }
