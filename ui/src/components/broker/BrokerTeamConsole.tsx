@@ -85,6 +85,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [approvalRuleId, setApprovalRuleId] = React.useState<string>("");
   const [approvalDecision, setApprovalDecision] = React.useState<string>("approve");
   const [approvalReason, setApprovalReason] = React.useState<string>("");
+  const lastAutoApprovalRunIdRef = React.useRef<string>("");
 
   const teamList = Array.isArray(teams) ? teams : [];
   const teamIdTrimmed = String(teamId || "").trim();
@@ -446,7 +447,20 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     setApprovalRunId("");
     setApprovals(null);
     setApprovalsError(null);
+    lastAutoApprovalRunIdRef.current = "";
   }, [teamIdTrimmed]);
+
+  React.useEffect(() => {
+    if (!approvalRunIdTrimmed) {
+      lastAutoApprovalRunIdRef.current = "";
+      return;
+    }
+    if (!canQuery || !teamIdTrimmed) return;
+    if (approvalsBusy || approvals !== null) return;
+    if (lastAutoApprovalRunIdRef.current === approvalRunIdTrimmed) return;
+    lastAutoApprovalRunIdRef.current = approvalRunIdTrimmed;
+    void handleApprovalsRefresh();
+  }, [approvalRunIdTrimmed, approvals, approvalsBusy, canQuery, handleApprovalsRefresh, teamIdTrimmed]);
 
   return (
     <section className="rounded-md border border-white/10 bg-black/20 p-3">
