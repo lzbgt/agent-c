@@ -20,6 +20,7 @@ export type ApprovalsListQuery = {
 
 export type ApprovalDecisionReq = {
   memberId: string;
+  memberRole?: string;
   decision: "approve" | "deny";
   note?: string;
 };
@@ -75,6 +76,7 @@ export async function apiPostApprovalDecision(
 ): Promise<ApprovalDecisionResp> {
   const payload = {
     member_id: req.memberId,
+    member_role: req.memberRole ?? "",
     decision: req.decision,
     note: req.note ?? "",
   };

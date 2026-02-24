@@ -54,6 +54,10 @@
       "type": "string",
       "description": "Approver identifier."
     },
+    "member_role": {
+      "type": "string",
+      "description": "Approver role (when provided)."
+    },
     "decision_unix_ms": {
       "type": "integer",
       "minimum": 0,

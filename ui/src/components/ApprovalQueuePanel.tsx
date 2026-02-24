@@ -38,6 +38,7 @@ export default function ApprovalQueuePanel(props: ApprovalQueuePanelProps) {
   const [detailError, setDetailError] = React.useState<string | null>(null);
 
   const [memberId, setMemberId] = React.useState<string>("");
+  const [memberRole, setMemberRole] = React.useState<string>("");
   const [note, setNote] = React.useState<string>("");
   const [decisionBusy, setDecisionBusy] = React.useState<boolean>(false);
   const [decisionError, setDecisionError] = React.useState<string | null>(null);
@@ -87,6 +88,11 @@ export default function ApprovalQueuePanel(props: ApprovalQueuePanelProps) {
       if (!res.ok) throw new Error(res.error || "failed to load approval");
       setDetailApproval(res.approval ?? null);
       setDetailDecisions(res.decisions ?? []);
+      const roles = Array.isArray(res.approval?.role_constraints) ? res.approval?.role_constraints ?? [] : [];
+      if (roles.length > 0) {
+        const cur = memberRole.trim();
+        if (!cur) setMemberRole(String(roles[0] ?? ""));
+      }
     } catch (err) {
       setDetailError(String(err));
       setDetailApproval(null);
@@ -100,6 +106,7 @@ export default function ApprovalQueuePanel(props: ApprovalQueuePanelProps) {
     setSelectedId(approvalId);
     setDecisionError(null);
     setMemberId("");
+    setMemberRole("");
     setNote("");
     void loadDetail(approvalId);
   };
@@ -111,10 +118,13 @@ export default function ApprovalQueuePanel(props: ApprovalQueuePanelProps) {
     try {
       const m = memberId.trim();
       if (!m) throw new Error("missing member_id");
+      const roleConstraints = Array.isArray(detailApproval?.role_constraints) ? detailApproval?.role_constraints ?? [] : [];
+      const role = memberRole.trim();
+      if (roleConstraints.length > 0 && !role) throw new Error("missing member_role");
       const res = await apiPostApprovalDecision(
         base,
         selectedId,
-        { memberId: m, decision, note: note.trim() || undefined },
+        { memberId: m, memberRole: role || undefined, decision, note: note.trim() || undefined },
         props.auth,
       );
       if (!res.ok) throw new Error(res.error || "decision failed");
@@ -282,6 +292,11 @@ export default function ApprovalQueuePanel(props: ApprovalQueuePanelProps) {
                             <div className="text-[11px] text-white/70">
                               Required approvals: {detailApproval?.required_approvals ?? "-"}
                             </div>
+                            {detailApproval?.role_constraints && detailApproval.role_constraints.length > 0 ? (
+                              <div className="text-[11px] text-white/70">
+                                Role constraints: {detailApproval.role_constraints.join(", ")}
+                              </div>
+                            ) : null}
                             <div className="text-[11px] text-white/70">
                               Decision reason: {detailApproval?.decision_reason || "-"}
                             </div>
@@ -295,7 +310,8 @@ export default function ApprovalQueuePanel(props: ApprovalQueuePanelProps) {
                                     key={`${d.id ?? ""}-${d.member_id ?? ""}-${d.decision ?? ""}`}
                                     className="rounded border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70"
                                   >
-                                    {d.member_id || "?"}: {d.decision || "?"} ({d.decision_unix_ms ?? "-"})
+                                    {d.member_id || "?"}
+                                    {d.member_role ? ` (${d.member_role})` : ""}: {d.decision || "?"} ({d.decision_unix_ms ?? "-"})
                                   </div>
                                 ))}
                               </div>
@@ -309,6 +325,18 @@ export default function ApprovalQueuePanel(props: ApprovalQueuePanelProps) {
                                 value={memberId}
                                 onChange={(e) => setMemberId(e.target.value)}
                               />
+                              <input
+                                className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90 placeholder:text-white/40"
+                                placeholder="member_role (optional)"
+                                value={memberRole}
+                                onChange={(e) => setMemberRole(e.target.value)}
+                                list="approval-role-constraints"
+                              />
+                              <datalist id="approval-role-constraints">
+                                {(detailApproval?.role_constraints ?? []).map((r, idx) => (
+                                  <option key={`role-${idx}-${r}`} value={r} />
+                                ))}
+                              </datalist>
                               <input
                                 className="w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90 placeholder:text-white/40"
                                 placeholder="note (optional)"

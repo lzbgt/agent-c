@@ -8,6 +8,7 @@
 #include "config_endpoint.h"
 #include "caps_endpoint.h"
 #include "client_prefs_endpoints.h"
+#include "approval_queue_endpoints.h"
 #include "avm_endpoints.h"
 #include "blob_endpoints.h"
 #include "file_endpoint.h"
@@ -1244,6 +1245,19 @@ int main(int argc, char** argv) {
   server.handle("GET", "/api/v1/moderator/events", [&](const HttpRequest& req, HttpResponse* resp) {
     const DaemonConfig cur = cfg_store.snapshot();
     handle_moderator_events_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+
+  server.handle("GET", "/api/v1/approvals", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_approvals_list_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle_prefix("GET", "/api/v1/approvals/", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_approvals_prefix_endpoint(cur, cors_cfg, db_or_null, req, resp);
+  });
+  server.handle_prefix("POST", "/api/v1/approvals/", [&](const HttpRequest& req, HttpResponse* resp) {
+    const DaemonConfig cur = cfg_store.snapshot();
+    handle_approvals_prefix_endpoint(cur, cors_cfg, db_or_null, req, resp);
   });
 
   // Session-scoped uploads (UI -> daemon). Returns session-relative paths that can be fetched via /api/v1/file.

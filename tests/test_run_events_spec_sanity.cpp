@@ -463,6 +463,10 @@ static bool validate_payload_approval_update(const Json::Value& data, std::strin
     if (out_err) *out_err = "approval_update.data.member_id must be non-empty string";
     return false;
   }
+  if (data.isMember("member_role") && !data["member_role"].isString()) {
+    if (out_err) *out_err = "approval_update.data.member_role must be string";
+    return false;
+  }
   int64_t approved = 0;
   if (!get_int_field(data, "approved", &approved)) {
     if (out_err) *out_err = "approval_update.data.approved must be integer >= 0";

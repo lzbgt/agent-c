@@ -1,6 +1,7 @@
 #include "agentd/api.h"
 
 #include "agent_db.h"
+#include "approval_queue_endpoints.h"
 #include "blob_endpoints.h"
 #include "caps_endpoint.h"
 #include "client_prefs_endpoints.h"
@@ -43,6 +44,7 @@
 #include <signal.h>
 #include <string>
 #include <thread>
+#include <vector>
 #if !defined(_WIN32)
 #include <pwd.h>
 #include <unistd.h>
@@ -397,7 +399,14 @@ struct AgentdApi::Impl {
   const std::chrono::steady_clock::time_point start_time = std::chrono::steady_clock::now();
   std::atomic<int64_t> last_job_gc_ms{0};
 
+  struct PrefixRoute {
+    std::string method;
+    std::string prefix;
+    Handler handler = nullptr;
+  };
+
   std::map<RouteKey, Handler> routes;
+  std::vector<PrefixRoute> prefix_routes;
 
   const ToolExtension* tool_ext_or_null() const {
     if (!options.enable_tool_extension) return nullptr;
@@ -406,6 +415,10 @@ struct AgentdApi::Impl {
 
   void route(const std::string& method, const std::string& path, Handler h) {
     routes[RouteKey{method, path}] = h;
+  }
+
+  void route_prefix(const std::string& method, const std::string& prefix, Handler h) {
+    prefix_routes.push_back(PrefixRoute{method, prefix, h});
   }
 
   void maybe_job_gc() {
@@ -726,6 +739,22 @@ bool AgentdApi::init(std::string* out_error) {
     const DaemonConfig cur = self->cfg_store->snapshot();
     handle_moderator_events_endpoint(cur, self->cors_cfg, &self->db, req, resp);
   });
+
+  impl_->route("GET", "/api/v1/approvals", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_approvals_list_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route_prefix("GET", "/api/v1/approvals/", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_approvals_prefix_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
+  impl_->route_prefix("POST", "/api/v1/approvals/", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
+    auto* self = static_cast<Impl*>(ctx);
+    const DaemonConfig cur = self->cfg_store->snapshot();
+    handle_approvals_prefix_endpoint(cur, self->cors_cfg, &self->db, req, resp);
+  });
   impl_->route("POST", "/api/v1/session/upload", +[](void* ctx, const HttpRequest& req, HttpResponse* resp) {
     auto* self = static_cast<Impl*>(ctx);
     const DaemonConfig cur = self->cfg_store->snapshot();
@@ -992,14 +1021,30 @@ bool AgentdApi::handle(const HttpRequest& req, HttpResponse* resp) {
   }
 
   const auto it = impl_->routes.find(RouteKey{req.method, req.path});
-  if (it == impl_->routes.end()) {
-    resp->status = 404;
-    resp->body = json_error_body("not found");
-    cors_apply(req, resp, impl_->cors_cfg);
-    return false;
+  if (it != impl_->routes.end()) {
+    it->second(impl_, req, resp);
+    return true;
   }
-  it->second(impl_, req, resp);
-  return true;
+
+  const Handler* prefix_handler = nullptr;
+  size_t prefix_len = 0;
+  for (const auto& entry : impl_->prefix_routes) {
+    if (entry.method != req.method) continue;
+    if (req.path.rfind(entry.prefix, 0) != 0) continue;
+    if (entry.prefix.size() > prefix_len) {
+      prefix_handler = &entry.handler;
+      prefix_len = entry.prefix.size();
+    }
+  }
+  if (prefix_handler && *prefix_handler) {
+    (*prefix_handler)(impl_, req, resp);
+    return true;
+  }
+
+  resp->status = 404;
+  resp->body = json_error_body("not found");
+  cors_apply(req, resp, impl_->cors_cfg);
+  return false;
 }
 
 std::string AgentdApi::db_path() const { return impl_ ? impl_->options.cfg.db_path : ""; }

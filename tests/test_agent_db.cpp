@@ -328,6 +328,8 @@ int main() {
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflow_tasks') WHERE name='priority';");
   const int64_t workflow_task_allow_error_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflow_tasks') WHERE name='allow_error';");
+  const int64_t approval_member_role_cols =
+    query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('approval_decisions') WHERE name='member_role';");
   const int64_t workflow_task_tool_calls_cum_cols =
     query_i64(raw2, "SELECT COUNT(*) FROM pragma_table_info('workflow_tasks') WHERE name='tool_calls_total_cum';");
   const int64_t workflow_task_steps_cum_cols =
@@ -405,7 +407,7 @@ int main() {
   const int64_t approval_decisions_tbl =
     query_i64(raw2, "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='approval_decisions';");
   sqlite3_close(raw2);
-  assert(ver == 30);
+  assert(ver == 31);
   assert(fairq_sessions_tbl == 1);
   assert(approval_requests_tbl == 1);
   assert(approval_decisions_tbl == 1);
@@ -431,6 +433,7 @@ int main() {
   assert(workflow_idempotency_cols == 1);
   assert(workflow_task_prio_cols == 1);
   assert(workflow_task_allow_error_cols == 1);
+  assert(approval_member_role_cols == 1);
   assert(workflow_task_tool_calls_cum_cols == 1);
   assert(workflow_task_steps_cum_cols == 1);
   assert(workflow_task_elapsed_cum_cols == 1);

@@ -49,6 +49,7 @@ static Json::Value decision_row_to_json(const AgentDb::ApprovalDecisionRow& row)
   out["id"] = (Json::Int64)row.id;
   out["approval_id"] = row.approval_id;
   out["member_id"] = row.member_id;
+  if (!row.member_role.empty()) out["member_role"] = row.member_role;
   out["decision"] = row.decision;
   if (row.decision_unix_ms > 0) out["decision_unix_ms"] = (Json::Int64)row.decision_unix_ms;
   if (!row.note.empty()) out["note"] = row.note;
@@ -83,6 +84,7 @@ static bool parse_limit_param(const std::optional<std::string>& raw, size_t* out
 
 static void count_decisions(
   const std::vector<AgentDb::ApprovalDecisionRow>& rows,
+  const std::unordered_set<std::string>* allowed_roles,
   int* out_approved,
   bool* out_denied
 ) {
@@ -90,7 +92,12 @@ static void count_decisions(
   if (out_denied) *out_denied = false;
   std::unordered_set<std::string> approved_members;
   std::unordered_set<std::string> denied_members;
+  const bool enforce_roles = allowed_roles && !allowed_roles->empty();
   for (const auto& row : rows) {
+    if (enforce_roles) {
+      const std::string role = lower_copy(trim_copy(row.member_role));
+      if (role.empty() || allowed_roles->find(role) == allowed_roles->end()) continue;
+    }
     const std::string d = lower_copy(trim_copy(row.decision));
     if (d == "deny") {
       denied_members.insert(row.member_id);
@@ -100,6 +107,20 @@ static void count_decisions(
   }
   if (out_approved) *out_approved = (int)approved_members.size();
   if (out_denied) *out_denied = !denied_members.empty();
+}
+
+static std::unordered_set<std::string> parse_role_constraints_set(const std::string& raw) {
+  std::unordered_set<std::string> out;
+  if (raw.empty()) return out;
+  Json::Value v;
+  std::string err;
+  if (!json_parse_any(raw, &v, &err) || !v.isArray()) return out;
+  for (const auto& item : v) {
+    if (!item.isString()) continue;
+    const std::string role = lower_copy(trim_copy(item.asString()));
+    if (!role.empty()) out.insert(role);
+  }
+  return out;
 }
 
 }  // namespace
@@ -228,6 +249,9 @@ void handle_approvals_prefix_endpoint(
     }
 
     const std::string member_id = body.isMember("member_id") && body["member_id"].isString() ? trim_copy(body["member_id"].asString()) : "";
+    const std::string member_role_raw =
+      body.isMember("member_role") && body["member_role"].isString() ? body["member_role"].asString() : "";
+    const std::string member_role = trim_copy(member_role_raw);
     const std::string decision = body.isMember("decision") && body["decision"].isString() ? lower_copy(trim_copy(body["decision"].asString())) : "";
     const std::string note = body.isMember("note") && body["note"].isString() ? body["note"].asString() : "";
 
@@ -255,9 +279,26 @@ void handle_approvals_prefix_endpoint(
       return;
     }
 
+    const std::unordered_set<std::string> allowed_roles = parse_role_constraints_set(row.role_constraints_json);
+    const bool enforce_roles = !allowed_roles.empty();
+    const std::string member_role_norm = lower_copy(member_role);
+    if (enforce_roles) {
+      if (member_role_norm.empty()) {
+        resp->status = 400;
+        resp->body = json_error_body("missing member_role");
+        return;
+      }
+      if (allowed_roles.find(member_role_norm) == allowed_roles.end()) {
+        resp->status = 403;
+        resp->body = json_error_body("member_role not allowed");
+        return;
+      }
+    }
+
     AgentDb::ApprovalDecisionRow dr;
     dr.approval_id = approval_id;
     dr.member_id = member_id;
+    dr.member_role = member_role_norm;
     dr.decision = decision;
     dr.note = note;
     if (!db_or_null->insert_approval_decision(dr, &db_err)) {
@@ -276,7 +317,7 @@ void handle_approvals_prefix_endpoint(
     const int required = std::max(1, row.required_approvals);
     int approved = 0;
     bool denied = false;
-    count_decisions(decisions, &approved, &denied);
+    count_decisions(decisions, enforce_roles ? &allowed_roles : nullptr, &approved, &denied);
     if (denied) {
       row.status = "denied";
       row.decision_reason = "denied";

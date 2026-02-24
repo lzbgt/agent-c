@@ -104,6 +104,7 @@ Phase 0 (docs + config):
 Phase 1 (identity + approvals):
 - Bind authenticated users to `moderator` role.
 - Enforce `policy_approval_roles` when identity is present.
+  - 2026-02-24: approval decisions accept `member_role` and enforce role allowlists for approvals.
 
 Phase 2 (moderator control plane):
 - Add moderator task/directive publish + subscribe endpoints.

@@ -100,7 +100,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Weighted tasks (next up)
 
-- [ ] W=11 — Automation mode profile + moderator control plane: explicit profiles in caps, per-run override, moderator directives, and nonblocking UX.
+- [x] W=11 — Automation mode profile + moderator control plane: explicit profiles in caps, per-run override, moderator directives, and nonblocking UX.
   - 2026-02-25: added automation profiles in `/api/v1/caps`, per-run `automation_profile` override, and `effective_automation_profile` response field (agentd + docs + smoke test).
   - 2026-02-25: WebUI run settings + workflow defaults now include `automation_profile` with caps-driven options.
   - 2026-02-25: session audit records include `effective_automation_profile`; WebUI history shows applied run settings.
@@ -110,9 +110,10 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-25: added correlation index build endpoint + index-backed trace correlation (daily + recap evidence), rebuilt after recaps/consolidation.
 - [x] W=6 — WebUI memory recap controls: schedule knobs + recap list view/filter by `kind`.
   - 2026-02-25: MemoryPanel includes schedule load/apply and recap list filtering with kind tagging.
-- [ ] W=8 — Real-provider automation smokes: DeepSeek + Kimi agent runs using ~/.env keys to validate full automation defaults.
+- [x] W=8 — Real-provider automation smokes: DeepSeek + Kimi agent runs using ~/.env keys to validate full automation defaults.
   - 2026-02-25: mac-local provider tests passed (DeepSeek reasoner + Moonshot/Kimi) via `tools/verify_mac_local_stack.sh` with `MAC_LOCAL_PROVIDER_TEST=1` (log: `out/mac_local_provider_tests_2026-02-25_004102.log`).
   - 2026-02-25: mac-local provider tests re-verified (log: `out/mac_local_provider_tests_2026-02-25_021632.log`).
+  - 2026-02-24: mac-local provider tests passed with DeepSeek + Kimi (log: `out/mac_local_provider_tests_2026-02-25_024211.log`).
 
 Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
 
@@ -148,7 +149,8 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-24: Added agentd approval DB tables, approval gate, approval APIs, and approval run events.
   - 2026-02-24: Added approval event schemas + fixtures + spec tests.
   - 2026-02-24: Added WebUI approval queue panel + docs updates.
-- [ ] W=7 — Enforce approval role constraints once member-role identity is available in agentd approvals.
+- [x] W=7 — Enforce approval role constraints once member-role identity is available in agentd approvals.
+  - 2026-02-24: approvals decisions accept `member_role`, enforce role allowlists, and surface role in events/UI; approvals endpoints wired into agentd main + AgentdApi with prefix routing.
 - [x] W=6 — Finalize WebUI inline run approvals in `ui/src/components/broker/BrokerTeamConsole.tsx` (tests + docs + commit).
   - 2026-02-24: added Playwright broker inline approvals smoke + WebUI doc note.
 - [ ] W=8 — Run comparison + evidence diff UX: side-by-side run diffs (events/artifacts/costs), evidence bundle viewer, and regression baselines.

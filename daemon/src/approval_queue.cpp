@@ -86,6 +86,7 @@ static void emit_approval_update(
   if (!gate || !gate->hook) return;
   Json::Value d = approval_event_base(req, *gate);
   if (!decision.member_id.empty()) d["member_id"] = decision.member_id;
+  if (!decision.member_role.empty()) d["member_role"] = decision.member_role;
   if (!decision.decision.empty()) d["decision"] = decision.decision;
   if (decision.decision_unix_ms > 0) d["decision_unix_ms"] = (Json::Int64)decision.decision_unix_ms;
   if (!decision.note.empty()) d["note"] = decision.note;
@@ -113,6 +114,7 @@ static std::string normalize_decision(const std::string& raw) {
 
 static void count_decisions(
   const std::vector<AgentDb::ApprovalDecisionRow>& rows,
+  const std::unordered_set<std::string>* allowed_roles,
   int* out_approved,
   bool* out_denied
 ) {
@@ -120,7 +122,12 @@ static void count_decisions(
   if (out_denied) *out_denied = false;
   std::unordered_set<std::string> approved_members;
   std::unordered_set<std::string> denied_members;
+  const bool enforce_roles = allowed_roles && !allowed_roles->empty();
   for (const auto& row : rows) {
+    if (enforce_roles) {
+      const std::string role = lower_copy(trim_copy(row.member_role));
+      if (role.empty() || allowed_roles->find(role) == allowed_roles->end()) continue;
+    }
     const std::string d = normalize_decision(row.decision);
     if (d == "deny") {
       denied_members.insert(row.member_id);
@@ -130,6 +137,17 @@ static void count_decisions(
   }
   if (out_approved) *out_approved = (int)approved_members.size();
   if (out_denied) *out_denied = !denied_members.empty();
+}
+
+static std::unordered_set<std::string> role_constraints_to_set(const Json::Value& roles) {
+  std::unordered_set<std::string> out;
+  if (!roles.isArray()) return out;
+  for (const auto& item : roles) {
+    if (!item.isString()) continue;
+    const std::string role = lower_copy(trim_copy(item.asString()));
+    if (!role.empty()) out.insert(role);
+  }
+  return out;
 }
 
 static bool approval_tool_matches(const ApprovalGateCtx& gate, const std::string& tool_name) {
@@ -243,9 +261,13 @@ agent_status_t approval_gate_tool(
       return AGENT_ERR_INTERNAL;
     }
 
+    const Json::Value role_constraints = role_constraints_from_row(cur, *gate);
+    const std::unordered_set<std::string> allowed_roles = role_constraints_to_set(role_constraints);
+    const std::unordered_set<std::string>* allowed_ptr = allowed_roles.empty() ? nullptr : &allowed_roles;
+
     int approved = 0;
     bool denied = false;
-    count_decisions(decisions, &approved, &denied);
+    count_decisions(decisions, allowed_ptr, &approved, &denied);
 
     for (const auto& d : decisions) {
       if (d.id <= last_decision_id) continue;

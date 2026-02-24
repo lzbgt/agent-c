@@ -346,8 +346,8 @@ bool AgentDb::insert_approval_decision(const ApprovalDecisionRow& row, std::stri
   sqlite3_stmt* st = nullptr;
   const char* sql = R"SQL(
 INSERT INTO approval_decisions(
-  approval_id, member_id, decision, decision_unix_ms, note
-) VALUES(?,?,?,?,?);
+  approval_id, member_id, member_role, decision, decision_unix_ms, note
+) VALUES(?,?,?,?,?,?);
   )SQL";
   if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
     if (out_error) *out_error = agent_db_sqlite_err(db_);
@@ -357,9 +357,10 @@ INSERT INTO approval_decisions(
   bool ok = true;
   ok = ok && agent_db_bind_text(st, 1, row.approval_id);
   ok = ok && agent_db_bind_text(st, 2, row.member_id);
-  ok = ok && agent_db_bind_text(st, 3, row.decision);
-  ok = ok && agent_db_bind_i64(st, 4, ts);
-  ok = ok && agent_db_bind_text_or_null(st, 5, row.note);
+  ok = ok && agent_db_bind_text_or_null(st, 3, row.member_role);
+  ok = ok && agent_db_bind_text(st, 4, row.decision);
+  ok = ok && agent_db_bind_i64(st, 5, ts);
+  ok = ok && agent_db_bind_text_or_null(st, 6, row.note);
   ok = ok && agent_db_step_done(st);
   if (!ok && out_error && out_error->empty()) {
     *out_error = agent_db_sqlite_err(db_);
@@ -398,7 +399,7 @@ bool AgentDb::list_approval_decisions(
 
   sqlite3_stmt* st = nullptr;
   const char* sql = R"SQL(
-SELECT id, approval_id, member_id, decision, decision_unix_ms, COALESCE(note,'')
+SELECT id, approval_id, member_id, COALESCE(member_role,''), decision, decision_unix_ms, COALESCE(note,'')
 FROM approval_decisions
 WHERE approval_id=?
 ORDER BY id ASC;
@@ -419,9 +420,10 @@ ORDER BY id ASC;
     row.id = stmt_i64(st, 0);
     row.approval_id = stmt_text(st, 1);
     row.member_id = stmt_text(st, 2);
-    row.decision = stmt_text(st, 3);
-    row.decision_unix_ms = stmt_i64(st, 4);
-    row.note = stmt_text(st, 5);
+    row.member_role = stmt_text(st, 3);
+    row.decision = stmt_text(st, 4);
+    row.decision_unix_ms = stmt_i64(st, 5);
+    row.note = stmt_text(st, 6);
     out_rows_desc->push_back(std::move(row));
   }
   sqlite3_finalize(st);

@@ -198,6 +198,7 @@ class AgentDb {
     int64_t id = 0;
     std::string approval_id;
     std::string member_id;
+    std::string member_role;
     std::string decision;
     int64_t decision_unix_ms = 0;
     std::string note;

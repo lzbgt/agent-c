@@ -4,6 +4,7 @@ export const ApprovalDecisionSchema = z.object({
   id: z.number().optional(),
   approval_id: z.string().optional(),
   member_id: z.string().optional(),
+  member_role: z.string().optional(),
   decision: z.string().optional(),
   decision_unix_ms: z.number().optional(),
   note: z.string().optional(),

@@ -107,7 +107,7 @@ bool AgentDb::ensure_schema_locked(std::string* out_error) {
   if (out_error) *out_error = "sqlite3 support not compiled (AGENT_HAVE_SQLITE3)";
   return false;
 #else
-  const int kSchemaVersion = 30;
+  const int kSchemaVersion = 31;
 
   // Pragmas for multi-connection safety and performance.
   if (!exec_locked("PRAGMA journal_mode=WAL;", out_error)) return false;
@@ -864,6 +864,7 @@ CREATE TABLE IF NOT EXISTS approval_decisions(
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   approval_id TEXT NOT NULL,
   member_id TEXT NOT NULL,
+  member_role TEXT,
   decision TEXT NOT NULL,
   decision_unix_ms INTEGER NOT NULL,
   note TEXT,
@@ -873,6 +874,13 @@ CREATE INDEX IF NOT EXISTS approval_decisions_by_approval ON approval_decisions(
 )SQL";
     if (!exec_locked(schema_v30, out_error)) return false;
     cur_ver = 30;
+  }
+
+  if (cur_ver < 31) {
+    if (!column_exists("approval_decisions", "member_role")) {
+      if (!exec_locked("ALTER TABLE approval_decisions ADD COLUMN member_role TEXT;", out_error)) return false;
+    }
+    cur_ver = 31;
   }
 
   // Record schema version.

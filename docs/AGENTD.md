@@ -289,7 +289,8 @@ Notes:
 - `GET /api/v1/approvals/<approval_id>`
   - Returns a single approval with its decisions array.
 - `POST /api/v1/approvals/<approval_id>/decisions`
-  - Body: `{ "member_id": "...", "decision": "approve|deny", "note": "..." }`
+  - Body: `{ "member_id": "...", "member_role": "...", "decision": "approve|deny", "note": "..." }`
+  - If the approval has `role_constraints`, `member_role` is required and must match the allowlist.
 
 ## OpenRouter model discovery
 

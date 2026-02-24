@@ -94,7 +94,7 @@ The fixture set is validated for these common event payloads:
 -   Schema: `run_event_payload_policy_decision_v1`
 - `approval_request`: `data.approval_id`, `data.tool_name`, `data.status` strings; `data.required_approvals`, `data.created_unix_ms` integers.
 -   Schema: `run_event_payload_approval_request_v1`
-- `approval_update`: `data.approval_id`, `data.status`, `data.decision`, `data.member_id` strings; `data.approved`, `data.required_approvals` integers.
+- `approval_update`: `data.approval_id`, `data.status`, `data.decision`, `data.member_id` strings; `data.member_role` optional; `data.approved`, `data.required_approvals` integers.
 -   Schema: `run_event_payload_approval_update_v1`
 - `approval_resolved`: `data.approval_id`, `data.status` strings; `data.approved`, `data.required_approvals` integers.
 -   Schema: `run_event_payload_approval_resolved_v1`

@@ -39,6 +39,7 @@ ApprovalRequest:
 ApprovalDecision:
 - `approval_id`
 - `member_id`
+- `member_role` (optional)
 - `decision` (approve | deny)
 - `decision_unix_ms`
 - `note` (optional)
@@ -56,7 +57,7 @@ ApprovalDecision:
   - `approval_requests(approval_id TEXT PRIMARY KEY, run_id INTEGER, trace_id TEXT, session_id TEXT, job_id TEXT, team_id TEXT,
      tool_name TEXT, tool_call_id TEXT, tool_args_hash TEXT, required_approvals INTEGER, role_constraints_json TEXT,
      status TEXT, created_unix_ms INTEGER, expires_unix_ms INTEGER, decision_reason TEXT)`
-  - `approval_decisions(id INTEGER PRIMARY KEY AUTOINCREMENT, approval_id TEXT, member_id TEXT, decision TEXT,
+  - `approval_decisions(id INTEGER PRIMARY KEY AUTOINCREMENT, approval_id TEXT, member_id TEXT, member_role TEXT, decision TEXT,
      decision_unix_ms INTEGER, note TEXT)`
 - `approval_id` is generated as `approval_<hex>`; `tool_args_hash` is SHA256 over raw `arguments_json`.
 - After run completion, `run_id` is backfilled for approvals with the matching `trace_id`.
@@ -77,7 +78,7 @@ Approvals only gate tools listed in `policy_approval_tools`. Empty list disables
   - filters: `status`, `team_id`, `run_id`, `trace_id`, `job_id`, `tool_name`
 - `GET /v1/approvals/{approval_id}`
 - `POST /v1/approvals/{approval_id}/decisions`
-  - body: `{ "member_id": "...", "decision": "approve|deny", "note": "..." }`
+  - body: `{ "member_id": "...", "member_role": "...", "decision": "approve|deny", "note": "..." }`
 
 ## SSE events
 
