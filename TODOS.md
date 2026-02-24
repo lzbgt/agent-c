@@ -69,7 +69,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-24: Added devstack OIDC helper (`tools/devstack_oidc_token.sh`).
   - 2026-02-24: Added broker client prefs smoke test (`tests/broker_client_prefs_smoke.sh`).
   - 2026-02-24: WebUI server-side profile sync defaults to auto when supported (auth required; tokens remain local).
-  - 2026-02-24: WebUI team console includes run approvals panel for quorum workflows.
+  - 2026-02-25: WebUI team console includes quorum request + approvals panel (merged from Broker panel).
   - [x] WebUI profile-specific run settings per connection profile (model/provider + run limits).
   - [x] Broker multi-deployment routing (`deployment_id`, `X-Agentd-Deployment`) + WebUI deployment selector + docs.
   - [x] OTA update pipeline: agentd OTA endpoint + operator update command, WebUI multi-deployment fanout via broker bulk OTA endpoints.
