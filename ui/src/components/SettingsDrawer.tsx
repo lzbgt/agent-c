@@ -211,6 +211,8 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const [copyNotice, setCopyNotice] = React.useState<string | null>(null);
   const [pinNotice, setPinNotice] = React.useState<string | null>(null);
   const [pinError, setPinError] = React.useState<string | null>(null);
+  const [pinnedCompareA, setPinnedCompareA] = React.useState<string>("");
+  const [pinnedCompareB, setPinnedCompareB] = React.useState<string>("");
   const copyNoticeTimeoutRef = React.useRef<number>(0);
   const pinNoticeTimeoutRef = React.useRef<number>(0);
   const pinImportRef = React.useRef<HTMLInputElement | null>(null);
@@ -719,6 +721,27 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
     });
     return entries;
   }, [moderatorPinnedEvents]);
+  const pinnedCompareOptions = React.useMemo(() => {
+    return moderatorPinnedEntries.map(([key, event]) => {
+      const type = typeof event?.type === "string" ? event.type : "event";
+      const ts = typeof event?.ts_unix_ms === "number" ? new Date(event.ts_unix_ms).toLocaleString() : "";
+      const actor = event?.actor && typeof event.actor === "object" ? (event.actor as any) : {};
+      const actorId = typeof actor?.id === "string" ? actor.id : "";
+      const summary = formatModeratorEventSummary(event);
+      const labelParts = [type, actorId, summary].filter(Boolean);
+      const label = labelParts.length > 0 ? `${labelParts.join(" · ")}${ts ? ` · ${ts}` : ""}` : ts || key;
+      return { key, label };
+    });
+  }, [moderatorPinnedEntries]);
+  React.useEffect(() => {
+    if (!pinnedCompareA || !moderatorPinnedEvents[pinnedCompareA]) {
+      setPinnedCompareA(pinnedCompareOptions[0]?.key ?? "");
+    }
+    if (!pinnedCompareB || !moderatorPinnedEvents[pinnedCompareB]) {
+      const fallback = pinnedCompareOptions.length > 1 ? pinnedCompareOptions[1]?.key : pinnedCompareOptions[0]?.key ?? "";
+      setPinnedCompareB(fallback);
+    }
+  }, [moderatorPinnedEvents, pinnedCompareA, pinnedCompareB, pinnedCompareOptions]);
   const moderatorRolePresets = React.useMemo(() => ["role:planner", "role:executor", "role:critic"], []);
 
   if (!props.open) return null;
@@ -1550,6 +1573,89 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                       );
                     })}
                   </div>
+                  {moderatorPinnedEntries.length > 1 ? (
+                    <div className="mt-3 rounded-md border border-white/10 bg-black/20 p-2">
+                      <div className="text-[11px] text-white/70">Compare pinned events</div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+                        <label className="flex items-center gap-2">
+                          <span>A</span>
+                          <select
+                            className="min-w-[220px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
+                            value={pinnedCompareA}
+                            onChange={(e) => setPinnedCompareA(e.target.value)}
+                          >
+                            {pinnedCompareOptions.map((opt) => (
+                              <option key={`pin-a-${opt.key}`} value={opt.key}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="flex items-center gap-2">
+                          <span>B</span>
+                          <select
+                            className="min-w-[220px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
+                            value={pinnedCompareB}
+                            onChange={(e) => setPinnedCompareB(e.target.value)}
+                          >
+                            {pinnedCompareOptions.map((opt) => (
+                              <option key={`pin-b-${opt.key}`} value={opt.key}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                      {pinnedCompareA && pinnedCompareB ? (
+                        (() => {
+                          const evA = moderatorPinnedEvents[pinnedCompareA];
+                          const evB = moderatorPinnedEvents[pinnedCompareB];
+                          const jsonA = JSON.stringify(evA, null, 2);
+                          const jsonB = JSON.stringify(evB, null, 2);
+                          const same = jsonA === jsonB;
+                          return (
+                            <div className="mt-2 grid gap-2">
+                              <div className={`text-[11px] ${same ? "text-emerald-200" : "text-amber-200"}`}>
+                                {same ? "Pinned events are identical." : "Pinned events differ."}
+                              </div>
+                              <div className="grid gap-2 md:grid-cols-2">
+                                <div className="rounded-md border border-white/10 bg-black/30 p-2">
+                                  <div className="flex items-center justify-between gap-2 text-[10px] text-white/60">
+                                    <span>Event A</span>
+                                    <button
+                                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
+                                      type="button"
+                                      onClick={() => void handleCopy("JSON A", jsonA)}
+                                    >
+                                      Copy JSON A
+                                    </button>
+                                  </div>
+                                  <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-[10px] text-white/70">
+                                    {jsonA}
+                                  </pre>
+                                </div>
+                                <div className="rounded-md border border-white/10 bg-black/30 p-2">
+                                  <div className="flex items-center justify-between gap-2 text-[10px] text-white/60">
+                                    <span>Event B</span>
+                                    <button
+                                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
+                                      type="button"
+                                      onClick={() => void handleCopy("JSON B", jsonB)}
+                                    >
+                                      Copy JSON B
+                                    </button>
+                                  </div>
+                                  <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-[10px] text-white/70">
+                                    {jsonB}
+                                  </pre>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })()
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
               {moderatorEventsError ? <div className="mt-2 text-[11px] text-rose-200">{moderatorEventsError}</div> : null}
