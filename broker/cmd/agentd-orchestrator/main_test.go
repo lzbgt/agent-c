@@ -105,3 +105,51 @@ func TestBuildRuntimeMemberUpdates(t *testing.T) {
 		t.Fatalf("expected deployment_id preserved: %#v", updates[1])
 	}
 }
+
+func TestParseSpawnMetaConfig(t *testing.T) {
+	meta := map[string]any{
+		"spawn_count_per_role": 3,
+		"spawn_count_by_role": map[string]any{
+			"planner": 2,
+		},
+		"spawn_requirements": map[string]any{
+			"region": "us",
+		},
+		"spawn_requirements_by_role": map[string]any{
+			"planner": map[string]any{"tier": "gpu"},
+		},
+	}
+	cfg := parseSpawnMetaConfig(meta)
+	if cfg.defaultCount != 3 {
+		t.Fatalf("expected defaultCount=3, got %d", cfg.defaultCount)
+	}
+	if cfg.countByRole["planner"] != 2 {
+		t.Fatalf("expected planner count 2, got %d", cfg.countByRole["planner"])
+	}
+	if cfg.requirements["region"] != "us" {
+		t.Fatalf("expected requirements region=us, got %#v", cfg.requirements)
+	}
+	if cfg.requirementsByRole["planner"]["tier"] != "gpu" {
+		t.Fatalf("expected planner tier gpu, got %#v", cfg.requirementsByRole["planner"])
+	}
+	if len(cfg.errors) != 0 {
+		t.Fatalf("expected no errors, got %#v", cfg.errors)
+	}
+}
+
+func TestParseSpawnMetaConfigErrors(t *testing.T) {
+	meta := map[string]any{
+		"spawn_count_per_role": 0,
+		"spawn_count_by_role": map[string]any{
+			"planner": 0,
+		},
+		"spawn_requirements": "bad",
+		"spawn_requirements_by_role": map[string]any{
+			"executor": "bad",
+		},
+	}
+	cfg := parseSpawnMetaConfig(meta)
+	if len(cfg.errors) == 0 {
+		t.Fatalf("expected errors for invalid spawn meta")
+	}
+}
