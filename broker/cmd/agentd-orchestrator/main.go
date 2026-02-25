@@ -607,6 +607,11 @@ func processGuidance(
 	if v, ok := asInt64(meta["guidance_since_ts"]); ok && v > 0 {
 		sinceTS = v
 	}
+	currentRunID := strings.TrimSpace(teamRunID)
+	prevRunID := strings.TrimSpace(asString(meta["guidance_since_team_run_id"]))
+	if currentRunID != "" && prevRunID != currentRunID {
+		sinceTS = 0
+	}
 	globalSinceTS := int64(0)
 	if v, ok := asInt64(meta["guidance_since_ts_global"]); ok && v > 0 {
 		globalSinceTS = v
@@ -731,6 +736,10 @@ func processGuidance(
 	}
 	if runMaxTS > sinceTS && !pendingRun {
 		meta["guidance_since_ts"] = runMaxTS
+		changed = true
+	}
+	if currentRunID != "" && currentRunID != prevRunID {
+		meta["guidance_since_team_run_id"] = currentRunID
 		changed = true
 	}
 	if globalMaxTS > globalSinceTS && !pendingGlobal {

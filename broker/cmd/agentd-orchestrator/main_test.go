@@ -576,6 +576,56 @@ func TestProcessGuidanceSkipsOtherOrchestrator(t *testing.T) {
 	}
 }
 
+func TestProcessGuidanceResetsCursorOnRunChange(t *testing.T) {
+	var acked bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/teams/team1/guidance":
+			q := r.URL.Query()
+			if q.Get("team_run_id") == "run_new" {
+				w.Header().Set("Content-Type", "application/json")
+				io.WriteString(w, `{"ok":true,"team_id":"team1","team_run_id":"run_new","count":1,"guidance":[{"guidance_id":"g4","team_id":"team1","team_run_id":"run_new","kind":"directive","priority":"normal","message":"hi","status":"open","created_unix_ms":10}]}`)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","count":0,"guidance":[]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/teams/team1/guidance/g4/ack":
+			acked = true
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","guidance":{"guidance_id":"g4","status":"acked"}}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/teams/team1/runs/run_new/moderator/directive":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","team_run_id":"run_new","dispatched":[{}],"skipped":[]}`)
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","count":0,"guidance":[]}`)
+		}
+	}))
+	defer server.Close()
+
+	cfg := config{brokerBase: server.URL, oidcToken: "token", orchestratorID: "orch1"}
+	meta := map[string]any{
+		"guidance_since_ts":          int64(999),
+		"guidance_since_team_run_id": "run_old",
+	}
+	changed, err := processGuidance(context.Background(), server.Client(), cfg, "team1", "run_new", meta)
+	if err != nil {
+		t.Fatalf("processGuidance error: %v", err)
+	}
+	if !changed {
+		t.Fatalf("expected cursor reset and guidance processing")
+	}
+	if meta["guidance_since_ts"] != int64(10) {
+		t.Fatalf("expected guidance_since_ts reset to 10, got %#v", meta["guidance_since_ts"])
+	}
+	if meta["guidance_since_team_run_id"] != "run_new" {
+		t.Fatalf("expected guidance_since_team_run_id updated, got %#v", meta["guidance_since_team_run_id"])
+	}
+	if !acked {
+		t.Fatalf("expected guidance ack after reset")
+	}
+}
+
 func TestProcessGuidanceExpiresGuidance(t *testing.T) {
 	type state struct {
 		mu        sync.Mutex

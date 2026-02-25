@@ -53,6 +53,8 @@ GuidanceEvent:
 Notes:
 - Orchestrator loop may automatically mark guidance as `expired` when `expires_unix_ms`
   is in the past to keep queues clean.
+- Orchestrator loop tracks the last team run id (`guidance_since_team_run_id`) so
+  guidance cursors reset when a new run becomes active.
 
 GuidanceReceipt (audit trail):
 - `guidance_id`
