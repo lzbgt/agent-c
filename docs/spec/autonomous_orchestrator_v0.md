@@ -27,12 +27,16 @@ Status: draft (rolling)
 - Global autoscaling or multi-tenant resource scheduling.
 - LLM-driven policy scripting (policy hooks/VM are handled separately).
 
+Future (v1+):
+- Optional agent provisioning hooks (pluggable `agent_spawn` adapters).
+
 ## Constraints (facts)
 
 - Team orchestration exists in the broker (`team_orchestration_v0.md`).
 - Orchestrator console UX is defined in `orchestrator_console_v0.md`.
 - Moderator directives/tasks exist and are persisted (`automation_mode_v0.md`).
 - Runtime members are supported for team runs (replace/merge).
+- Broker `/v1/events` is an in-memory SSE stream (no persisted replay API yet).
 
 ## Current primitives (implemented)
 
@@ -41,6 +45,7 @@ Status: draft (rolling)
 - Runtime members for dynamic per-run composition.
 - Team run SSE events: created/status/quorum/runtime updates.
 - Moderator fan-out (directives/tasks) + event aggregation.
+- Auto-allocation: broker allocator endpoint + `auto_allocate_roles` on team runs.
 
 ## Gaps to reach “full automation, low drift”
 
@@ -62,6 +67,14 @@ Status: draft (rolling)
 
 5) **Tool-level quorum gates**
    - Team-run quorum exists; tool-level quorum is still pending.
+
+6) **Durable orchestration state**
+   - Orchestrator runs are not yet persisted as first-class DB rows.
+   - Need lease/heartbeat so automation survives UI refresh or client disconnects.
+
+7) **Event replay + UI rehydration**
+   - SSE stream is in-memory only; refresh loses event history.
+   - Need persisted event log + replay API to restore context after reconnect.
 
 ## Proposed orchestration model (v0)
 
