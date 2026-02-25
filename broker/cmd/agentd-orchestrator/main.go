@@ -160,6 +160,14 @@ type guidanceAckResponse struct {
 	Receipt  map[string]any `json:"receipt"`
 }
 
+type moderatorDispatchResponse struct {
+	OK         bool             `json:"ok"`
+	TeamID     string           `json:"team_id"`
+	TeamRunID  string           `json:"team_run_id"`
+	Dispatched []map[string]any `json:"dispatched"`
+	Skipped    []map[string]any `json:"skipped"`
+}
+
 type httpError struct {
 	Status int
 	Body   string
@@ -587,6 +595,7 @@ func processGuidance(
 		return false, nil
 	}
 	changed := false
+	pending := false
 	for _, item := range items {
 		id := strings.TrimSpace(item.GuidanceID)
 		if id == "" {
@@ -595,10 +604,45 @@ func processGuidance(
 		if ackedSet[id] {
 			continue
 		}
-		if !shouldHandleGuidance(item, cfg.orchestratorID) {
+		status := strings.ToLower(strings.TrimSpace(item.Status))
+		if status != "" && status != "open" {
+			ackedSet[id] = true
+			ackedIDs = append(ackedIDs, id)
+			changed = true
+			continue
+		}
+		dispatchTargets, shouldDispatch := guidanceTargetsForMembers(item)
+		dispatched := false
+		if shouldDispatch {
+			runID := teamRunID
+			if item.TeamRunID != "" {
+				runID = item.TeamRunID
+			}
+			if runID == "" {
+				pending = true
+			} else {
+				if _, err := dispatchGuidanceDirective(ctx, client, cfg, teamID, runID, item, dispatchTargets); err != nil {
+					if isGuidanceDispatchRetriable(err) {
+						pending = true
+					} else {
+						return false, err
+					}
+				} else {
+					dispatched = true
+				}
+			}
+		}
+		shouldAck := shouldHandleGuidance(item, cfg.orchestratorID) || dispatched
+		if !shouldAck {
+			if shouldDispatch && !dispatched {
+				pending = true
+			}
 			continue
 		}
 		note := fmt.Sprintf("received by orchestrator %s", cfg.orchestratorID)
+		if dispatched {
+			note = fmt.Sprintf("dispatched by orchestrator %s", cfg.orchestratorID)
+		}
 		if _, err := ackGuidance(ctx, client, cfg, teamID, id, note, "orchestrator", "orchestrator"); err != nil {
 			if isHTTPStatus(err, http.StatusConflict) {
 				ackedSet[id] = true
@@ -612,7 +656,7 @@ func processGuidance(
 		ackedIDs = append(ackedIDs, id)
 		changed = true
 	}
-	if maxTS > sinceTS {
+	if maxTS > sinceTS && !pending {
 		meta["guidance_since_ts"] = maxTS
 		changed = true
 	}
@@ -642,6 +686,40 @@ func shouldHandleGuidance(item guidanceEvent, orchestratorID string) bool {
 		}
 	}
 	return false
+}
+
+func guidanceTargetsForMembers(item guidanceEvent) (map[string]any, bool) {
+	hasExplicit := len(item.TargetRoles) > 0 || len(item.TargetMemberIDs) > 0 || len(item.TargetAgentIDs) > 0
+	roles := []string{}
+	for _, r := range item.TargetRoles {
+		role := strings.TrimSpace(r)
+		if role == "" {
+			continue
+		}
+		if strings.EqualFold(role, "orchestrator") {
+			continue
+		}
+		roles = append(roles, role)
+	}
+	memberIDs := cleanStringList(item.TargetMemberIDs)
+	agentIDs := cleanStringList(item.TargetAgentIDs)
+	if len(roles) == 0 && len(memberIDs) == 0 && len(agentIDs) == 0 {
+		if !hasExplicit {
+			return nil, true
+		}
+		return nil, false
+	}
+	out := map[string]any{}
+	if len(roles) > 0 {
+		out["roles"] = roles
+	}
+	if len(memberIDs) > 0 {
+		out["member_ids"] = memberIDs
+	}
+	if len(agentIDs) > 0 {
+		out["agent_ids"] = agentIDs
+	}
+	return out, true
 }
 
 func buildTeamRunPayload(run orchestratorRun, meta map[string]any) (map[string]any, map[string]any) {
@@ -1464,6 +1542,52 @@ func ackGuidance(ctx context.Context, client *http.Client, cfg config, teamID, g
 	return &resp, nil
 }
 
+func dispatchGuidanceDirective(
+	ctx context.Context,
+	client *http.Client,
+	cfg config,
+	teamID,
+	teamRunID string,
+	item guidanceEvent,
+	targets map[string]any,
+) (*moderatorDispatchResponse, error) {
+	payload := map[string]any{
+		"directive":         item.Message,
+		"append_to_session": true,
+		"scope":             fmt.Sprintf("guidance:%s", item.GuidanceID),
+		"actor": map[string]any{
+			"id":   cfg.orchestratorID,
+			"kind": "orchestrator",
+		},
+	}
+	meta := map[string]any{
+		"guidance_id":       item.GuidanceID,
+		"guidance_kind":     item.Kind,
+		"guidance_priority": item.Priority,
+	}
+	if item.TeamRunID != "" {
+		meta["guidance_team_run_id"] = item.TeamRunID
+	}
+	if len(item.Payload) > 0 {
+		meta["guidance_payload"] = item.Payload
+	}
+	if len(meta) > 0 {
+		payload["metadata"] = meta
+	}
+	if targets != nil && len(targets) > 0 {
+		payload["targets"] = targets
+	}
+	url := fmt.Sprintf("%s/v1/teams/%s/runs/%s/moderator/directive", cfg.brokerBase, teamID, teamRunID)
+	var resp moderatorDispatchResponse
+	if err := doJSON(ctx, client, cfg, http.MethodPost, url, payload, &resp); err != nil {
+		return nil, err
+	}
+	if !resp.OK {
+		return nil, fmt.Errorf("broker returned ok=false for moderator directive")
+	}
+	return &resp, nil
+}
+
 func doJSON(ctx context.Context, client *http.Client, cfg config, method, url string, body any, out any) error {
 	var reader io.Reader
 	if body != nil {
@@ -1665,6 +1789,23 @@ func asStringSlice(v any) []string {
 	}
 }
 
+func cleanStringList(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		s := strings.TrimSpace(v)
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		out = append(out, s)
+	}
+	return out
+}
+
 func isTerminalTeamRunStatus(status string) bool {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "succeeded", "failed", "cancelled":
@@ -1677,7 +1818,25 @@ func isTerminalTeamRunStatus(status string) bool {
 func isNoEligibleMembers(err error) bool {
 	var herr *httpError
 	if errors.As(err, &herr) {
-		return strings.Contains(strings.ToLower(herr.Body), "no eligible team members")
+		body := strings.ToLower(herr.Body)
+		return strings.Contains(body, "no eligible team members")
+	}
+	return false
+}
+
+func isGuidanceDispatchRetriable(err error) bool {
+	var herr *httpError
+	if errors.As(err, &herr) {
+		body := strings.ToLower(herr.Body)
+		if strings.Contains(body, "no eligible members") {
+			return true
+		}
+		if strings.Contains(body, "no eligible member sessions") {
+			return true
+		}
+		if strings.Contains(body, "missing session_id") {
+			return true
+		}
 	}
 	return false
 }

@@ -276,7 +276,6 @@ payload = {
     "handoff_queue": [{"from_role": "planner", "to_role": "executor", "reason": "smoke"}],
     "run_template": {
       "prompt": "Return exactly: OK",
-      "no_session": True,
       "tools": "none",
       "base_url": "${STUB_BASE_CONTAINER}",
       "api_key": "dummy",
@@ -317,18 +316,6 @@ ORCH_LOG="${LOG_DIR}/broker_orchestrator_loop_events.log"
 
 sleep 1
 
-(
-  cd "${ROOT}/broker"
-  go run ./cmd/agentd-orchestrator \
-    --broker-base "${BROKER_BASE}" \
-    --oidc-token "${OIDC_JWT}" \
-    --insecure \
-    --once
-) >> "${ORCH_LOG}" 2>&1 || {
-  cat "${ORCH_LOG}" >&2 || true
-  exit 1
-}
-
 RUN_GET_JSON="$(
   curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
     -H "Authorization: Bearer ${OIDC_JWT}" \
@@ -346,6 +333,41 @@ if [[ -z "${TEAM_RUN_ID}" ]]; then
   echo "missing active_team_run_id in orchestrator run meta: ${RUN_GET_JSON}" >&2
   exit 1
 fi
+
+GUIDANCE_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    -H "Content-Type: application/json" \
+    -d "{\"guidance_id\":\"events_guidance_${TEAM_RUN_ID}\",\"team_run_id\":\"${TEAM_RUN_ID}\",\"kind\":\"directive\",\"priority\":\"normal\",\"message\":\"Guidance: stay on goal.\",\"target_roles\":[\"planner\"]}" \
+    "${BROKER_BASE}/v1/teams/${TEAM_ID}/guidance"
+)"
+GUIDANCE_ID="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${GUIDANCE_JSON}''')
+guidance = obj.get("guidance") or {}
+gid = str(guidance.get("guidance_id",""))
+if not gid:
+  print("failed to create guidance", obj, file=sys.stderr)
+  raise SystemExit(1)
+print(gid)
+PY
+)"
+if [[ -z "${GUIDANCE_ID}" ]]; then
+  echo "failed to parse guidance id: ${GUIDANCE_JSON}" >&2
+  exit 1
+fi
+
+(
+  cd "${ROOT}/broker"
+  go run ./cmd/agentd-orchestrator \
+    --broker-base "${BROKER_BASE}" \
+    --oidc-token "${OIDC_JWT}" \
+    --insecure \
+    --once
+) >> "${ORCH_LOG}" 2>&1 || {
+  cat "${ORCH_LOG}" >&2 || true
+  exit 1
+}
 
 TEAM_RUN_JSON="$(
   curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
@@ -366,6 +388,59 @@ if "progress" not in types or "drift" not in types:
   raise SystemExit(1)
 if not isinstance(handoffs, list) or len(handoffs) < 1:
   print("expected handoff_events", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+GUIDANCE_GET_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    "${BROKER_BASE}/v1/teams/${TEAM_ID}/guidance/${GUIDANCE_ID}"
+)"
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${GUIDANCE_GET_JSON}''')
+guidance = obj.get("guidance") or {}
+if not obj.get("ok"):
+  print("guidance fetch failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+if str(guidance.get("guidance_id","")) != "${GUIDANCE_ID}":
+  print("guidance id mismatch", obj, file=sys.stderr)
+  raise SystemExit(1)
+if str(guidance.get("status","")) != "acked":
+  print("guidance not acked", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+MOD_EVENTS_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    "${BROKER_BASE}/v1/teams/${TEAM_ID}/runs/${TEAM_RUN_ID}/moderator/events?types=moderator_directive&limit=200"
+)"
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${MOD_EVENTS_JSON}''')
+events = obj.get("events") or []
+if not isinstance(events, list) or len(events) < 1:
+  print("expected moderator events", obj, file=sys.stderr)
+  raise SystemExit(1)
+found = False
+for row in events:
+  if not isinstance(row, dict):
+    continue
+  ev = row.get("event") or {}
+  if not isinstance(ev, dict):
+    continue
+  if str(ev.get("type","")) != "moderator_directive":
+    continue
+  data = ev.get("data") or {}
+  if str(data.get("directive","")) != "Guidance: stay on goal.":
+    continue
+  meta = data.get("metadata") or {}
+  if str(meta.get("guidance_id","")) == "${GUIDANCE_ID}":
+    found = True
+    break
+if not found:
+  print("guidance directive not found in moderator events", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 

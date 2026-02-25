@@ -8,7 +8,9 @@ Status: draft
 Provide a durable, low-friction guidance lane so operators can inject
 occasional corrections or constraints without breaking autonomous runs.
 Guidance events are persisted, replayable, targeted to team/run/roles,
-and produce explicit acknowledgements from orchestrator/agents.
+and produce explicit acknowledgements from orchestrator/agents. The
+orchestrator forwards guidance to active team members via moderator
+directives so guidance lands in the agents’ sessions.
 
 ## Goals
 
@@ -133,7 +135,9 @@ guidance state on refresh.
 
 1) Operator posts guidance for a team/run or target role.
 2) Broker persists the event and emits `team_guidance_created`.
-3) Orchestrator/agents subscribe (SSE or replay) and apply guidance.
+3) Orchestrator subscribes (SSE or replay) and dispatches guidance to
+   active members via `/runs/{team_run_id}/moderator/directive` with
+   guidance metadata attached.
 4) Orchestrator/agent acknowledges via `/ack`, emitting `team_guidance_ack`.
 5) UI shows guidance lifecycle and receipt trail.
 
