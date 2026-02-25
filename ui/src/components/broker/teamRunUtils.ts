@@ -96,6 +96,28 @@ export const normalizeSharedMemoryMode = (raw: any): string => {
   return "read_write";
 };
 
+export type RoleGraphEdge = {
+  from_role: string;
+  to_role: string;
+  reason?: string;
+};
+
+export const normalizeRoleGraphEdges = (raw: any): RoleGraphEdge[] => {
+  let edgesRaw: any[] = [];
+  if (Array.isArray(raw)) edgesRaw = raw;
+  else if (raw && typeof raw === "object" && Array.isArray((raw as any).edges)) edgesRaw = (raw as any).edges;
+  const out: RoleGraphEdge[] = [];
+  for (const item of edgesRaw) {
+    if (!item || typeof item !== "object") continue;
+    const from = String((item as any).from_role || (item as any).from || "").trim().toLowerCase();
+    const to = String((item as any).to_role || (item as any).to || "").trim().toLowerCase();
+    if (!from || !to) continue;
+    const reason = (item as any).reason ? String((item as any).reason).trim() : "";
+    out.push({ from_role: from, to_role: to, reason: reason || undefined });
+  }
+  return out;
+};
+
 const normalizeRoleValue = (role: any): string => String(role || "").trim();
 
 const isConnectedAgent = (agent: any): { connected: boolean; deploymentId: string } => {

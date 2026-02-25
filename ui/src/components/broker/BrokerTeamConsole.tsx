@@ -24,7 +24,8 @@ import BrokerTeamRunPanel from "./BrokerTeamRunPanel";
 import BrokerOrchestratorRunPanel from "./BrokerOrchestratorRunPanel";
 import BrokerOrchestratorSpawnPanel from "./BrokerOrchestratorSpawnPanel";
 import BrokerTeamGuidancePanel from "./BrokerTeamGuidancePanel";
-import type { RoleGraphEdge } from "./RoleGraphPreview";
+import { normalizeRoleGraphEdges } from "./teamRunUtils";
+import type { RoleGraphEdge } from "./teamRunUtils";
 import TeamRolePlanEditor from "./TeamRolePlanEditor";
 import { GUIDANCE_EVENT_TYPES, ORCHESTRATOR_EVENT_TYPES, TEAM_RUN_EVENT_TYPES } from "./teamRunUtils";
 import type { BrokerEventRow, TeamMemberRow, TeamQuorumRuleRow } from "./types";
@@ -68,22 +69,6 @@ const normalizeSharedMemoryMode = (raw: any): string => {
   if (mode === "read_only" || mode === "readonly") return "read_only";
   if (mode === "read_write" || mode === "readwrite") return "read_write";
   return "read_write";
-};
-
-const normalizeRoleGraphEdges = (raw: any): RoleGraphEdge[] => {
-  let edgesRaw: any[] = [];
-  if (Array.isArray(raw)) edgesRaw = raw;
-  else if (raw && typeof raw === "object" && Array.isArray((raw as any).edges)) edgesRaw = (raw as any).edges;
-  const out: RoleGraphEdge[] = [];
-  for (const item of edgesRaw) {
-    if (!item || typeof item !== "object") continue;
-    const from = String((item as any).from_role || (item as any).from || "").trim().toLowerCase();
-    const to = String((item as any).to_role || (item as any).to || "").trim().toLowerCase();
-    if (!from || !to) continue;
-    const reason = (item as any).reason ? String((item as any).reason).trim() : "";
-    out.push({ from_role: from, to_role: to, reason: reason || undefined });
-  }
-  return out;
 };
 
 const TEAM_EVENTS_MAX = 200;

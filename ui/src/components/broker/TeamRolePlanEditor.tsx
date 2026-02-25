@@ -1,6 +1,7 @@
 import React from "react";
 import FieldLabel from "../FieldLabel";
-import RoleGraphPreview, { type RoleGraphEdge } from "./RoleGraphPreview";
+import RoleGraphPreview from "./RoleGraphPreview";
+import type { RoleGraphEdge } from "./teamRunUtils";
 
 type TeamRolePlanEditorProps = {
   disabled?: boolean;

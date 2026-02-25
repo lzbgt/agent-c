@@ -5,8 +5,8 @@ import {
   apiBrokerTeamRunHandoff,
   type ApiAuth,
 } from "../../api";
-import RoleGraphPreview, { type RoleGraphEdge } from "./RoleGraphPreview";
-import { normalizeRoleInstructionMap } from "./teamRunUtils";
+import RoleGraphPreview from "./RoleGraphPreview";
+import { normalizeRoleGraphEdges, normalizeRoleInstructionMap } from "./teamRunUtils";
 
 type MemberSession = {
   memberId: string;
@@ -34,22 +34,6 @@ const parseLineList = (raw: string): string[] =>
     .split(/[\n,]+/)
     .map((item) => item.trim())
     .filter(Boolean);
-
-const normalizeRoleGraphEdges = (raw: any): RoleGraphEdge[] => {
-  let edgesRaw: any[] = [];
-  if (Array.isArray(raw)) edgesRaw = raw;
-  else if (raw && typeof raw === "object" && Array.isArray((raw as any).edges)) edgesRaw = (raw as any).edges;
-  const out: RoleGraphEdge[] = [];
-  for (const item of edgesRaw) {
-    if (!item || typeof item !== "object") continue;
-    const from = String((item as any).from_role || (item as any).from || "").trim().toLowerCase();
-    const to = String((item as any).to_role || (item as any).to || "").trim().toLowerCase();
-    if (!from || !to) continue;
-    const reason = (item as any).reason ? String((item as any).reason).trim() : "";
-    out.push({ from_role: from, to_role: to, reason: reason || undefined });
-  }
-  return out;
-};
 
 export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
   const run = props.runLookupResult;
@@ -311,6 +295,16 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
             title="Role graph"
             emptyLabel="No role graph recorded."
           />
+          {roleGraphEdges.length > 0 ? (
+            <div className="mt-2 grid gap-1 text-[11px] text-white/60">
+              {roleGraphEdges.map((edge, idx) => (
+                <div key={`role-graph-edge-${edge.from_role}-${edge.to_role}-${idx}`}>
+                  {edge.from_role || "role"} {"->"} {edge.to_role || "role"}
+                  {edge.reason ? ` · ${edge.reason}` : ""}
+                </div>
+              ))}
+            </div>
+          ) : null}
           {rolePromptMode || roleInstructionCount > 0 ? (
             <div className="mt-1 text-[11px] text-white/60">
               {rolePromptMode ? `prompt mode ${rolePromptMode}` : ""}

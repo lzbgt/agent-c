@@ -1,10 +1,5 @@
 import React from "react";
-
-export type RoleGraphEdge = {
-  from_role: string;
-  to_role: string;
-  reason?: string;
-};
+import type { RoleGraphEdge } from "./teamRunUtils";
 
 type RoleGraphPreviewProps = {
   roles: string[];
