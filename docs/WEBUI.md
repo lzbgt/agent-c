@@ -88,6 +88,7 @@ Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`,
 - Team run panel can seed role overrides from team defaults (`meta.role_overrides`) when present.
 - Team run status lookup surfaces applied overrides (`role_overrides_applied` / `member_overrides_applied`) with an expand toggle.
 - Team run status lookup supports auto refresh on team run SSE events.
+- Team run status lookup surfaces `member_sessions` for moderator broadcasts and includes a moderator panel to publish directives/tasks to selected roles or members.
 - Server-side sync prefers the **daemon** (direct mode) or **broker** (broker mode) when supported.
   - Default: **auto** (syncs when the server advertises client prefs and auth allows; broker requires OIDC token).
   - The client prefs id defaults to `webui` and can be changed in Settings → Connection.

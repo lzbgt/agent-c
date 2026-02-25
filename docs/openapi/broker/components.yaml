@@ -417,6 +417,101 @@ schemas:
       error: { type: string }
       http_status: { type: integer, format: int32 }
 
+  TeamRunModeratorTargets:
+    type: object
+    properties:
+      roles:
+        type: array
+        items: { type: string }
+      member_ids:
+        type: array
+        items: { type: string }
+      agent_ids:
+        type: array
+        items: { type: string }
+
+  TeamRunModeratorDirectiveRequest:
+    type: object
+    required: [directive]
+    properties:
+      directive: { type: string }
+      scope: { type: string }
+      assignees:
+        type: array
+        items: { type: string }
+      priority: { type: integer, format: int32 }
+      metadata:
+        type: object
+        additionalProperties: true
+      append_to_session: { type: boolean }
+      actor:
+        type: object
+        additionalProperties: true
+      targets:
+        $ref: "#/components/schemas/TeamRunModeratorTargets"
+      max_concurrency: { type: integer, format: int32 }
+      timeout_ms: { type: integer, format: int32 }
+
+  TeamRunModeratorTaskRequest:
+    type: object
+    required: [title]
+    properties:
+      title: { type: string }
+      detail: { type: string }
+      tags:
+        type: array
+        items: { type: string }
+      status: { type: string }
+      assignees:
+        type: array
+        items: { type: string }
+      priority: { type: integer, format: int32 }
+      metadata:
+        type: object
+        additionalProperties: true
+      append_to_session: { type: boolean }
+      actor:
+        type: object
+        additionalProperties: true
+      targets:
+        $ref: "#/components/schemas/TeamRunModeratorTargets"
+      max_concurrency: { type: integer, format: int32 }
+      timeout_ms: { type: integer, format: int32 }
+
+  TeamRunModeratorDispatch:
+    type: object
+    properties:
+      member_id: { type: string }
+      agent_id: { type: string }
+      deployment_id: { type: string }
+      session_id: { type: string }
+      ok: { type: boolean }
+      http_status: { type: integer, format: int32 }
+      error: { type: string }
+
+  TeamRunModeratorSkipped:
+    type: object
+    properties:
+      member_id: { type: string }
+      agent_id: { type: string }
+      reason: { type: string }
+
+  TeamRunModeratorResponse:
+    type: object
+    required: [ok, team_id, team_run_id, dispatched]
+    properties:
+      ok: { type: boolean }
+      team_id: { type: string }
+      team_run_id: { type: string }
+      dispatched:
+        type: array
+        items:
+          $ref: "#/components/schemas/TeamRunModeratorDispatch"
+      skipped:
+        type: array
+        items:
+          $ref: "#/components/schemas/TeamRunModeratorSkipped"
+
   TeamRunDispatchError:
     type: object
     properties:
@@ -567,6 +662,10 @@ schemas:
         type: array
         items:
           $ref: "#/components/schemas/TeamRunMemberJob"
+      member_sessions:
+        type: object
+        additionalProperties:
+          type: string
       dispatch_errors:
         type: array
         items:

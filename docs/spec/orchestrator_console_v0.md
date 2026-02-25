@@ -82,6 +82,8 @@ Status: draft (rolling)
 - Runs are persisted by broker with `team_run_id`, status, payload, and job ids.
 - UI refresh uses `GET /v1/teams/{team_id}/runs` and SSE events to rehydrate.
 - SSE is used to refresh lists; durable state is always in DB.
+- Team runs persist `member_sessions` so moderators can target specific members
+  after reload (used by team-run moderator broadcasts).
 
 ## Event model (SSE)
 
@@ -115,6 +117,7 @@ Phase 2 (team graph + orchestration UX):
 Phase 3 (moderator ops):
 - Moderator task panel integrated with team run view.
 - Moderators can publish directives without stopping runs.
+- Broadcast uses team-run session mappings to target members by role or id.
 
 ## Open questions
 

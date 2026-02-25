@@ -1,7 +1,7 @@
 # Team Orchestration v0 (agentd + broker)
 
 Date: 2026-02-19
-Status: v0.6 (broker team registry CRUD + sync/async team runs + quorum enforcement + runtime member updates + run list implemented; shared memory scope pending)
+Status: v0.8 (broker team registry CRUD + sync/async team runs + quorum enforcement + runtime member updates + run list implemented; shared memory scope pending; team-run session mapping + moderator fan-out underway)
 
 This spec defines a **team orchestration model** for multi-agent runs that goes beyond
 single-run tool loops. It formalizes agent groups, roles, shared memory scopes, and
@@ -119,6 +119,28 @@ Constraints:
   `tools`, `timeout_ms`, `max_steps`, `stream_assistant`).
 - `api_key` is never accepted via member meta (avoid secret storage in broker DB).
 - The broker merges overrides as: `run = base_run ⊕ member.run_overrides` (member wins).
+
+### 10) Team-run session mapping (v0.7)
+
+Team runs now persist a **per-member session_id mapping** so moderator actions can
+target specific members after submission and UI reloads:
+
+- If `run.session_id` is omitted and `run.no_session` is not set, the broker injects
+  a **stable per-member session_id** (safe characters, <= 200 chars).
+- The mapping is stored under `team.member_sessions` in the run payload and surfaced
+  in run status responses.
+- If `run.session_id` is provided, the broker reuses it for all members (same value).
+- If `run.no_session=true`, no sessions are created and moderator actions are skipped.
+
+### 11) Moderator fan-out (v0.8)
+
+Moderators can publish **directives** or **tasks** to a team run:
+
+- The broker fans out `POST /api/v1/moderator/directive` and `/api/v1/moderator/task`
+  to each member’s `agentd` using the stored `session_id`.
+- Optional target filters (roles/member_ids/agent_ids) limit which members receive
+  the broadcast; otherwise the event is sent to all eligible members.
+- Results include per-member dispatch status (`ok`, `http_status`, `error`).
 
 ---
 

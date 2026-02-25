@@ -178,6 +178,9 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-25: Team member rows add pause/resume status toggles.
   - 2026-02-25: Team members list adds bulk pause/resume controls.
   - 2026-02-25: Team members list adds bulk remove-paused control.
+  - 2026-02-25: Team runs now persist per-member session_id mappings; run status includes `member_sessions` and runtime member updates extend mappings.
+  - 2026-02-25: Added broker team-run moderator broadcast endpoints (directive/task) + OpenAPI/docs updates.
+  - 2026-02-25: WebUI team run panel now publishes moderator directives/tasks with target filters; session mappings visible in run status.
   - 2026-02-25: Team member inline edit panel added (role/status/weight/caps/meta + agent/deployment).
   - [x] 2026-02-25: Added runtime member updates for team runs (replace/merge) + WebUI panel + broker API/event.
   - [x] 2026-02-25: Added compose smoke for team run runtime member updates.

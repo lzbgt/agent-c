@@ -913,6 +913,60 @@
             schema:
               $ref: "#/components/schemas/TeamRunApprovalListResponse"
 
+/v1/teams/{team_id}/runs/{team_run_id}/moderator/directive:
+  post:
+    tags: [teams]
+    summary: Publish a moderator directive to team run members
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: team_run_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TeamRunModeratorDirectiveRequest"
+    responses:
+      "200":
+        description: Moderator directive broadcast result
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamRunModeratorResponse"
+
+/v1/teams/{team_id}/runs/{team_run_id}/moderator/task:
+  post:
+    tags: [teams]
+    summary: Publish a moderator task to team run members
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: team_run_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TeamRunModeratorTaskRequest"
+    responses:
+      "200":
+        description: Moderator task broadcast result
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamRunModeratorResponse"
+
 /v1/orchestrate:
   post:
     tags: [orchestrate]

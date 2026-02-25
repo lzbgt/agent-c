@@ -116,9 +116,11 @@ func (s *Server) handleTeamsSubroutes(w http.ResponseWriter, r *http.Request) {
 	// - /v1/teams/{team_id}/runs/{team_run_id}
 	// - /v1/teams/{team_id}/runs/{team_run_id}/approvals
 	// - /v1/teams/{team_id}/runs/{team_run_id}/runtime_members
+	// - /v1/teams/{team_id}/runs/{team_run_id}/moderator/directive
+	// - /v1/teams/{team_id}/runs/{team_run_id}/moderator/task
 
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/teams/")
-	parts := strings.SplitN(rest, "/", 4)
+	parts := strings.SplitN(rest, "/", 5)
 	if len(parts) < 1 || parts[0] == "" {
 		writeErrorJSON(w, "not found", http.StatusNotFound)
 		return
@@ -204,6 +206,22 @@ func (s *Server) handleTeamsSubroutes(w http.ResponseWriter, r *http.Request) {
 				}
 				writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
+			case "moderator":
+				if len(parts) < 5 || parts[4] == "" {
+					writeErrorJSON(w, "not found", http.StatusNotFound)
+					return
+				}
+				switch parts[4] {
+				case "directive":
+					s.handleTeamRunModeratorDirective(w, r, teamID, parts[2])
+					return
+				case "task":
+					s.handleTeamRunModeratorTask(w, r, teamID, parts[2])
+					return
+				default:
+					writeErrorJSON(w, "not found", http.StatusNotFound)
+					return
+				}
 			default:
 				writeErrorJSON(w, "not found", http.StatusNotFound)
 				return
@@ -936,9 +954,34 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 		}
 	}
 
+	teamRunID := "tr_" + newID()[:12]
 	memberOverridesApplied := map[string]map[string]any{}
 	roleOverridesApplied := map[string]map[string]any{}
 	memberRunBodies := make([][]byte, 0, len(runMembers))
+	memberSessions := map[string]string{}
+	noSession := false
+	if v, ok := runMap["no_session"]; ok {
+		if b, ok := v.(bool); ok && b {
+			noSession = true
+		}
+	}
+	var runSessionID string
+	if raw, ok := runMap["session_id"]; ok {
+		s, ok := raw.(string)
+		if !ok {
+			writeErrorJSON(w, "session_id must be string", http.StatusBadRequest)
+			return
+		}
+		runSessionID = strings.TrimSpace(s)
+		if runSessionID != "" && !isSessionIDSafe(runSessionID) {
+			writeErrorJSON(w, "invalid session_id", http.StatusBadRequest)
+			return
+		}
+	}
+	if noSession && runSessionID != "" {
+		writeErrorJSON(w, "no_session true with session_id set", http.StatusBadRequest)
+		return
+	}
 	for _, member := range runMembers {
 		runForMember := map[string]any{}
 		for k, v := range runMap {
@@ -968,6 +1011,16 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 			}
 			memberOverridesApplied[member.MemberID] = overridesForMember
 		}
+		if !noSession {
+			sessionID := runSessionID
+			if sessionID == "" {
+				sessionID = makeTeamRunSessionID(teamID, teamRunID, member.MemberID)
+			}
+			if sessionID != "" {
+				runForMember["session_id"] = sessionID
+				memberSessions[member.MemberID] = sessionID
+			}
+		}
 		memberRunBodies = append(memberRunBodies, mustJSON(runForMember))
 	}
 	if len(memberOverridesApplied) > 0 {
@@ -978,7 +1031,9 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 	}
 	teamMeta["mode"] = options.Mode
 
-	teamRunID := "tr_" + newID()[:12]
+	if len(memberSessions) > 0 {
+		teamMeta["member_sessions"] = memberSessions
+	}
 	if options.Mode == "async" {
 		resp, err := s.executeTeamRunAsync(
 			r.Context(),
@@ -1368,6 +1423,49 @@ func (s *Server) handleTeamRunRuntimeMembersUpdate(w http.ResponseWriter, r *htt
 			return
 		}
 	}
+
+	runMap, _ := runPayload["run"].(map[string]any)
+	noSession := false
+	var runSessionID string
+	if runMap != nil {
+		if v, ok := runMap["no_session"]; ok {
+			if b, ok := v.(bool); ok && b {
+				noSession = true
+			}
+		}
+		if raw, ok := runMap["session_id"]; ok {
+			if s, ok := raw.(string); ok {
+				runSessionID = strings.TrimSpace(s)
+				if runSessionID != "" && !isSessionIDSafe(runSessionID) {
+					runSessionID = ""
+				}
+			}
+		}
+	}
+	if !noSession {
+		memberSessions := teamRunMemberSessionsFromMeta(teamMeta)
+		if runSessionID != "" || memberSessions != nil {
+			if memberSessions == nil {
+				memberSessions = map[string]string{}
+			}
+			for _, m := range runtimeMembers {
+				if m.MemberID == "" {
+					continue
+				}
+				if _, ok := memberSessions[m.MemberID]; ok {
+					continue
+				}
+				if runSessionID != "" {
+					memberSessions[m.MemberID] = runSessionID
+				} else {
+					memberSessions[m.MemberID] = makeTeamRunSessionID(teamID, run.TeamRunID, m.MemberID)
+				}
+			}
+			if len(memberSessions) > 0 {
+				teamMeta["member_sessions"] = memberSessions
+			}
+		}
+	}
 	if len(runtimeMembersJSON) > 0 {
 		teamMeta["runtime_members"] = runtimeMembersJSON
 	} else {
@@ -1437,6 +1535,10 @@ func (s *Server) teamRunStatusResponse(ctx context.Context, p *Principal, run *d
 	if raw, ok := teamMeta["member_jobs"]; ok {
 		memberJobs = raw
 	}
+	var memberSessions any
+	if raw, ok := teamMeta["member_sessions"]; ok {
+		memberSessions = raw
+	}
 	var dispatchErrors any
 	if raw, ok := teamMeta["dispatch_errors"]; ok {
 		dispatchErrors = raw
@@ -1481,6 +1583,9 @@ func (s *Server) teamRunStatusResponse(ctx context.Context, p *Principal, run *d
 	}
 	if memberJobs != nil {
 		resp["member_jobs"] = memberJobs
+	}
+	if memberSessions != nil {
+		resp["member_sessions"] = memberSessions
 	}
 	if dispatchErrors != nil {
 		resp["dispatch_errors"] = dispatchErrors

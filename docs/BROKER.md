@@ -208,6 +208,7 @@ All endpoints below are served by the broker (not by agents).
   - returns the stored team run status + current member list
   - if runtime members were provided, `runtime_members` is included in the response
   - applied overrides are surfaced via `role_overrides_applied`, `member_overrides_applied`, and `run_overrides_mode`
+  - `member_sessions` maps `member_id` → `session_id` for moderator broadcasts (when sessions are enabled)
   - async runs include `member_jobs` (job IDs + status), `dispatch_errors`, and `member_job_summary` when present
   - cancel metadata is surfaced via `cancel_requested_unix_ms` and `cancel_results`
 - `POST /v1/teams/{team_id}/runs/{team_run_id}/cancel`
@@ -222,6 +223,14 @@ All endpoints below are served by the broker (not by agents).
 - `POST /v1/teams/{team_id}/runs/{team_run_id}/approvals`
   - creates approvals for a team run (owner/admin only)
   - body supports either a single approval object or `{ "approvals": [...] }`
+- `POST /v1/teams/{team_id}/runs/{team_run_id}/moderator/directive`
+  - broadcasts a moderator directive to team run member sessions
+  - optional target filters: `targets.roles`, `targets.member_ids`, `targets.agent_ids`
+  - response includes per-member dispatch status (`ok`, `http_status`, `error`)
+- `POST /v1/teams/{team_id}/runs/{team_run_id}/moderator/task`
+  - broadcasts a moderator task to team run member sessions
+  - optional target filters: `targets.roles`, `targets.member_ids`, `targets.agent_ids`
+  - response includes per-member dispatch status (`ok`, `http_status`, `error`)
 
 - `POST /v1/agents/{agent_id}/delete` (or `DELETE` to the same path)
   - deletes an agent record (owner or admin)

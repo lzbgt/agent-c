@@ -359,6 +359,7 @@ export const BrokerTeamRunStatusRespSchema = z
     mode: z.string().optional(),
     created_unix_ms: z.number().optional(),
     members: z.array(BrokerTeamMemberSchema).optional(),
+    member_sessions: z.record(z.string()).optional(),
     member_jobs: z.array(BrokerTeamRunMemberJobSchema).optional(),
     dispatch_errors: z.array(BrokerTeamRunDispatchErrorSchema).optional(),
     member_job_summary: BrokerTeamRunMemberJobSummarySchema.optional(),
@@ -370,6 +371,44 @@ export const BrokerTeamRunStatusRespSchema = z
   })
   .passthrough();
 export type BrokerTeamRunStatusResp = z.infer<typeof BrokerTeamRunStatusRespSchema>;
+
+export const BrokerTeamRunModeratorRespSchema = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string().optional(),
+    team_run_id: z.string().optional(),
+    dispatched: z
+      .array(
+        z
+          .object({
+            member_id: z.string().optional(),
+            agent_id: z.string().optional(),
+            deployment_id: z.string().optional(),
+            session_id: z.string().optional(),
+            ok: z.boolean().optional(),
+            http_status: z.number().optional(),
+            error: z.string().optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+    skipped: z
+      .array(
+        z
+          .object({
+            member_id: z.string().optional(),
+            agent_id: z.string().optional(),
+            reason: z.string().optional(),
+          })
+          .passthrough(),
+      )
+      .optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+export type BrokerTeamRunModeratorResp = z.infer<typeof BrokerTeamRunModeratorRespSchema>;
 
 export const BrokerTeamRunApprovalSchema = z
   .object({

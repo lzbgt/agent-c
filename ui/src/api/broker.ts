@@ -33,6 +33,8 @@ import {
   type BrokerTeamRunStatusResp,
   BrokerTeamRunApprovalListRespSchema,
   type BrokerTeamRunApprovalListResp,
+  BrokerTeamRunModeratorRespSchema,
+  type BrokerTeamRunModeratorResp,
 } from "./schemas/broker";
 import {
   ClientPrefsSchema,
@@ -654,6 +656,48 @@ export async function apiBrokerTeamRunCancel(
   });
   const j = await r.json();
   return BrokerTeamRunStatusRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamRunModeratorDirective(
+  brokerBase: string,
+  teamId: string,
+  teamRunId: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<BrokerTeamRunModeratorResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  const rid = String(teamRunId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  if (!rid) throw new Error("missing team_run_id");
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/runs/${encodeURIComponent(rid)}/moderator/directive`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(body ?? {}),
+  });
+  const j = await r.json();
+  return BrokerTeamRunModeratorRespSchema.parse(j);
+}
+
+export async function apiBrokerTeamRunModeratorTask(
+  brokerBase: string,
+  teamId: string,
+  teamRunId: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<BrokerTeamRunModeratorResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  const rid = String(teamRunId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  if (!rid) throw new Error("missing team_run_id");
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/runs/${encodeURIComponent(rid)}/moderator/task`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(body ?? {}),
+  });
+  const j = await r.json();
+  return BrokerTeamRunModeratorRespSchema.parse(j);
 }
 
 export async function apiBrokerTeamRunApprovalsList(

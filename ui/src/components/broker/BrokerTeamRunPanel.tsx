@@ -8,11 +8,14 @@ import {
   apiBrokerTeamRunCreate,
   apiBrokerTeamRunGet,
   apiBrokerTeamRunList,
+  apiBrokerTeamRunModeratorDirective,
+  apiBrokerTeamRunModeratorTask,
   apiBrokerTeamRunRuntimeMembersUpdate,
   type ApiAuth,
 } from "../../api";
 import useLocalStorageState from "../../hooks/useLocalStorageState";
 import FieldLabel from "../FieldLabel";
+import TeamRunModeratorPanel from "./TeamRunModeratorPanel";
 import type { BrokerEventRow, TeamMemberRow, TeamQuorumRuleRow } from "./types";
 
 const fmtTs = (ms?: number | null) => {
@@ -43,6 +46,14 @@ const fmtSummary = (summary?: any) => {
   pushIf("failed", "failed");
   pushIf("dispatch_errors", "dispatch_errors");
   return parts.join(" · ");
+};
+
+const parseCsvList = (raw?: string | null) => {
+  if (!raw) return [];
+  return String(raw)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
 };
 
 const TEAM_RUN_EVENT_TYPES = new Set([
@@ -291,6 +302,19 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
     true,
   );
   const [runLookupLastEvent, setRunLookupLastEvent] = React.useState<string>("");
+  const [moderatorDirective, setModeratorDirective] = React.useState<string>("");
+  const [moderatorDirectiveScope, setModeratorDirectiveScope] = React.useState<string>("");
+  const [moderatorTaskTitle, setModeratorTaskTitle] = React.useState<string>("");
+  const [moderatorTaskDetail, setModeratorTaskDetail] = React.useState<string>("");
+  const [moderatorTaskStatus, setModeratorTaskStatus] = React.useState<string>("");
+  const [moderatorTargetRoles, setModeratorTargetRoles] = React.useState<string>("");
+  const [moderatorTargetMembers, setModeratorTargetMembers] = React.useState<string>("");
+  const [moderatorTargetAgents, setModeratorTargetAgents] = React.useState<string>("");
+  const [moderatorAssignees, setModeratorAssignees] = React.useState<string>("");
+  const [moderatorAppendToSession, setModeratorAppendToSession] = React.useState<boolean>(false);
+  const [moderatorBusy, setModeratorBusy] = React.useState<boolean>(false);
+  const [moderatorError, setModeratorError] = React.useState<string | null>(null);
+  const [moderatorSuccess, setModeratorSuccess] = React.useState<string | null>(null);
   const [approvalsBusy, setApprovalsBusy] = React.useState<boolean>(false);
   const [approvalsError, setApprovalsError] = React.useState<string | null>(null);
   const [approvals, setApprovals] = React.useState<TeamRunApprovalRow[] | null>(null);
@@ -311,6 +335,58 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
 
   const approvalRunIdTrimmed = String(approvalRunId || runLookupId || "").trim();
   const recentRunsItems = Array.isArray(recentRuns) ? recentRuns : [];
+  const runMemberSessions = React.useMemo(() => {
+    const raw = runLookupResult?.member_sessions;
+    if (!raw || typeof raw !== "object") return [] as Array<{ memberId: string; sessionId: string }>;
+    return Object.entries(raw as Record<string, any>)
+      .map(([memberId, sessionId]) => ({
+        memberId: String(memberId || ""),
+        sessionId: String(sessionId || ""),
+      }))
+      .filter((row) => row.memberId && row.sessionId);
+  }, [runLookupResult]);
+  const runMemberOptions = React.useMemo(() => {
+    const out = new Set<string>();
+    const members = Array.isArray(runLookupResult?.members) ? runLookupResult.members : [];
+    const runtime = Array.isArray(runLookupResult?.runtime_members) ? runLookupResult.runtime_members : [];
+    for (const m of members) {
+      const mid = String(m?.member_id || "").trim();
+      if (mid) out.add(mid);
+    }
+    for (const m of runtime) {
+      const mid = String(m?.member_id || "").trim();
+      if (mid) out.add(mid);
+    }
+    return Array.from(out);
+  }, [runLookupResult]);
+  const runAgentOptions = React.useMemo(() => {
+    const out = new Set<string>();
+    const members = Array.isArray(runLookupResult?.members) ? runLookupResult.members : [];
+    const runtime = Array.isArray(runLookupResult?.runtime_members) ? runLookupResult.runtime_members : [];
+    for (const m of members) {
+      const aid = String(m?.agent_id || "").trim();
+      if (aid) out.add(aid);
+    }
+    for (const m of runtime) {
+      const aid = String(m?.agent_id || "").trim();
+      if (aid) out.add(aid);
+    }
+    return Array.from(out);
+  }, [runLookupResult]);
+  const runRoleOptions = React.useMemo(() => {
+    const out = new Set<string>();
+    const members = Array.isArray(runLookupResult?.members) ? runLookupResult.members : [];
+    const runtime = Array.isArray(runLookupResult?.runtime_members) ? runLookupResult.runtime_members : [];
+    for (const m of members) {
+      const role = String(m?.role || "").trim();
+      if (role) out.add(role);
+    }
+    for (const m of runtime) {
+      const role = String(m?.role || "").trim();
+      if (role) out.add(role);
+    }
+    return Array.from(out);
+  }, [runLookupResult]);
 
   React.useEffect(() => {
     if (!approvalRunId && runResult?.team_run_id) {
@@ -605,6 +681,99 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
       setRunCancelError(String(err));
     } finally {
       setRunCancelBusy(false);
+    }
+  };
+
+  const buildModeratorTargets = React.useCallback(() => {
+    const roles = parseCsvList(moderatorTargetRoles).map((r) => r.toLowerCase());
+    const members = parseCsvList(moderatorTargetMembers);
+    const agents = parseCsvList(moderatorTargetAgents);
+    if (roles.length === 0 && members.length === 0 && agents.length === 0) return undefined;
+    return { roles, member_ids: members, agent_ids: agents };
+  }, [moderatorTargetRoles, moderatorTargetMembers, moderatorTargetAgents]);
+
+  const handleModeratorDirectivePublish = async () => {
+    const runId = resolveRunId();
+    if (!teamIdTrimmed || !runId) {
+      setModeratorError("missing team_id or run id");
+      return;
+    }
+    const directive = String(moderatorDirective || "").trim();
+    if (!directive) {
+      setModeratorError("directive required");
+      return;
+    }
+    setModeratorBusy(true);
+    setModeratorError(null);
+    setModeratorSuccess(null);
+    try {
+      const payload: Record<string, any> = {
+        directive,
+        scope: String(moderatorDirectiveScope || "").trim() || undefined,
+        assignees: parseCsvList(moderatorAssignees),
+        targets: buildModeratorTargets(),
+        append_to_session: moderatorAppendToSession,
+      };
+      if (!payload.scope) delete payload.scope;
+      if (!payload.assignees.length) delete payload.assignees;
+      if (!payload.targets) delete payload.targets;
+      const resp = await apiBrokerTeamRunModeratorDirective(props.base, teamIdTrimmed, runId, payload, props.auth);
+      if (!resp.ok) {
+        throw new Error(resp.error || resp.err || resp.code || "moderator directive failed");
+      }
+      const dispatched = Array.isArray(resp.dispatched) ? resp.dispatched.length : 0;
+      const skipped = Array.isArray(resp.skipped) ? resp.skipped.length : 0;
+      setModeratorSuccess(`directive dispatched to ${dispatched}${skipped ? ` (skipped ${skipped})` : ""}`);
+      setModeratorDirective("");
+      setModeratorDirectiveScope("");
+    } catch (err) {
+      setModeratorError(String(err));
+    } finally {
+      setModeratorBusy(false);
+    }
+  };
+
+  const handleModeratorTaskPublish = async () => {
+    const runId = resolveRunId();
+    if (!teamIdTrimmed || !runId) {
+      setModeratorError("missing team_id or run id");
+      return;
+    }
+    const title = String(moderatorTaskTitle || "").trim();
+    if (!title) {
+      setModeratorError("task title required");
+      return;
+    }
+    setModeratorBusy(true);
+    setModeratorError(null);
+    setModeratorSuccess(null);
+    try {
+      const payload: Record<string, any> = {
+        title,
+        detail: String(moderatorTaskDetail || "").trim() || undefined,
+        status: String(moderatorTaskStatus || "").trim() || undefined,
+        assignees: parseCsvList(moderatorAssignees),
+        targets: buildModeratorTargets(),
+        append_to_session: moderatorAppendToSession,
+      };
+      if (!payload.detail) delete payload.detail;
+      if (!payload.status) delete payload.status;
+      if (!payload.assignees.length) delete payload.assignees;
+      if (!payload.targets) delete payload.targets;
+      const resp = await apiBrokerTeamRunModeratorTask(props.base, teamIdTrimmed, runId, payload, props.auth);
+      if (!resp.ok) {
+        throw new Error(resp.error || resp.err || resp.code || "moderator task failed");
+      }
+      const dispatched = Array.isArray(resp.dispatched) ? resp.dispatched.length : 0;
+      const skipped = Array.isArray(resp.skipped) ? resp.skipped.length : 0;
+      setModeratorSuccess(`task dispatched to ${dispatched}${skipped ? ` (skipped ${skipped})` : ""}`);
+      setModeratorTaskTitle("");
+      setModeratorTaskDetail("");
+      setModeratorTaskStatus("");
+    } catch (err) {
+      setModeratorError(String(err));
+    } finally {
+      setModeratorBusy(false);
     }
   };
 
@@ -2186,6 +2355,16 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
           })}
         </div>
       ) : null}
+      {runMemberSessions.length > 0 ? (
+        <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
+          member sessions:
+          {runMemberSessions.map((row, idx) => (
+            <div key={`member-session-${row.memberId}-${idx}`} className="mt-1 text-[10px] text-white/60">
+              {row.memberId} · {row.sessionId}
+            </div>
+          ))}
+        </div>
+      ) : null}
       {Array.isArray(runLookupResult?.runtime_members) && runLookupResult.runtime_members.length > 0 ? (
         <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
           runtime members:
@@ -2233,6 +2412,39 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
           })}
         </div>
       ) : null}
+      <TeamRunModeratorPanel
+        canQuery={props.canQuery}
+        runId={resolveRunId()}
+        memberSessions={runMemberSessions}
+        roleOptions={runRoleOptions}
+        memberOptions={runMemberOptions}
+        agentOptions={runAgentOptions}
+        directive={moderatorDirective}
+        directiveScope={moderatorDirectiveScope}
+        taskTitle={moderatorTaskTitle}
+        taskDetail={moderatorTaskDetail}
+        taskStatus={moderatorTaskStatus}
+        targetRoles={moderatorTargetRoles}
+        targetMembers={moderatorTargetMembers}
+        targetAgents={moderatorTargetAgents}
+        assignees={moderatorAssignees}
+        appendToSession={moderatorAppendToSession}
+        busy={moderatorBusy}
+        error={moderatorError}
+        success={moderatorSuccess}
+        onDirectiveChange={setModeratorDirective}
+        onDirectiveScopeChange={setModeratorDirectiveScope}
+        onTaskTitleChange={setModeratorTaskTitle}
+        onTaskDetailChange={setModeratorTaskDetail}
+        onTaskStatusChange={setModeratorTaskStatus}
+        onTargetRolesChange={setModeratorTargetRoles}
+        onTargetMembersChange={setModeratorTargetMembers}
+        onTargetAgentsChange={setModeratorTargetAgents}
+        onAssigneesChange={setModeratorAssignees}
+        onAppendToSessionChange={setModeratorAppendToSession}
+        onPublishDirective={() => void handleModeratorDirectivePublish()}
+        onPublishTask={() => void handleModeratorTaskPublish()}
+      />
       <div className="mt-2 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
         <div className="text-xs font-semibold text-white/80">Runtime member updates</div>
         <div className="text-[11px] text-white/50">
