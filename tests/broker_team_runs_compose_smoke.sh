@@ -168,7 +168,9 @@ for project, services in projects.items():
 PY
 }
 
-if [[ -n "${BROKER_PUBLISHED_PORT}" && -n "${KEYCLOAK_PUBLISHED_PORT}" && -n "${AGENTD_PUBLISHED_PORT}" && -n "${WEBUI_PUBLISHED_PORT}" ]]; then
+if [[ "${BROKER_SMOKE_FORCE_NEW_STACK:-}" == "1" ]]; then
+  STACK_ENV=""
+elif [[ -n "${BROKER_PUBLISHED_PORT}" && -n "${KEYCLOAK_PUBLISHED_PORT}" && -n "${AGENTD_PUBLISHED_PORT}" && -n "${WEBUI_PUBLISHED_PORT}" ]]; then
   STACK_ENV=""
 else
   STACK_ENV="$(detect_running_stack || true)"
