@@ -275,6 +275,12 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 		}
 	}
 	if activeRunID != "" {
+		if status == "paused" || status == "waiting" {
+			if guidanceChanged {
+				_, _ = updateOrchestratorRun(ctx, client, cfg, teamID, run.OrchestratorRunID, "", meta, stringPtr(owner), nil)
+			}
+			return nil
+		}
 		tr, err := fetchTeamRunStatus(ctx, client, cfg, teamID, activeRunID)
 		if err != nil {
 			return err
@@ -304,7 +310,7 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 			return err
 		}
 		metaChanged := guidanceChanged
-		changed, err := tickActiveTeamRun(ctx, client, cfg, teamID, activeRunID, tr, meta)
+		changed, err := tickActiveTeamRun(ctx, client, cfg, teamID, activeRunID, run.OrchestratorRunID, owner, tr, meta)
 		if err != nil {
 			return err
 		}
@@ -373,7 +379,9 @@ func tickActiveTeamRun(
 	client *http.Client,
 	cfg config,
 	teamID,
-	teamRunID string,
+	teamRunID,
+	orchestratorRunID,
+	owner string,
 	status *teamRunResponse,
 	meta map[string]any,
 ) (bool, error) {
@@ -386,7 +394,7 @@ func tickActiveTeamRun(
 	} else if ok {
 		changed = true
 	}
-	if ok, err := maybeEmitDrift(ctx, client, cfg, teamID, teamRunID, status, meta); err != nil {
+	if ok, err := maybeEmitDrift(ctx, client, cfg, teamID, teamRunID, orchestratorRunID, owner, status, meta); err != nil {
 		return changed, err
 	} else if ok {
 		changed = true
@@ -579,7 +587,17 @@ func maybeEmitProgress(ctx context.Context, client *http.Client, cfg config, tea
 	return true, nil
 }
 
-func maybeEmitDrift(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string, status *teamRunResponse, meta map[string]any) (bool, error) {
+func maybeEmitDrift(
+	ctx context.Context,
+	client *http.Client,
+	cfg config,
+	teamID,
+	teamRunID,
+	orchestratorRunID,
+	owner string,
+	status *teamRunResponse,
+	meta map[string]any,
+) (bool, error) {
 	threshold, ok := asInt(meta["drift_after_ms"])
 	if !ok || threshold <= 0 {
 		return false, nil
@@ -610,7 +628,7 @@ func maybeEmitDrift(ctx context.Context, client *http.Client, cfg config, teamID
 	}
 	meta["last_drift_unix_ms"] = now
 	meta["last_drift_team_run_id"] = teamRunID
-	if applyDriftAction(ctx, client, cfg, teamID, teamRunID, meta, elapsed, int64(threshold), now) {
+	if applyDriftAction(ctx, client, cfg, teamID, teamRunID, orchestratorRunID, owner, meta, elapsed, int64(threshold), now) {
 		meta["drift_action_unix_ms"] = now
 		meta["drift_action_team_run_id"] = teamRunID
 	}
@@ -623,6 +641,8 @@ func applyDriftAction(
 	cfg config,
 	teamID,
 	teamRunID string,
+	orchestratorRunID string,
+	owner string,
 	meta map[string]any,
 	elapsed,
 	threshold,
@@ -693,6 +713,34 @@ func applyDriftAction(
 			return true
 		}
 		meta["drift_guidance_id"] = guidance.GuidanceID
+		meta["drift_action_error"] = ""
+		return true
+	case "cancel":
+		if teamRunID == "" {
+			meta["drift_action_error"] = "drift cancel missing team_run_id"
+			return true
+		}
+		if err := cancelTeamRun(ctx, client, cfg, teamID, teamRunID); err != nil {
+			meta["drift_action_error"] = err.Error()
+			fmt.Fprintf(os.Stderr, "drift cancel failed: %v\n", err)
+			return true
+		}
+		meta["drift_cancel_unix_ms"] = now
+		meta["drift_cancel_team_run_id"] = teamRunID
+		meta["drift_action_error"] = ""
+		return true
+	case "pause":
+		if orchestratorRunID == "" {
+			meta["drift_action_error"] = "drift pause missing orchestrator_run_id"
+			return true
+		}
+		if _, err := updateOrchestratorRun(ctx, client, cfg, teamID, orchestratorRunID, "paused", meta, stringPtr(owner), nil); err != nil {
+			meta["drift_action_error"] = err.Error()
+			fmt.Fprintf(os.Stderr, "drift pause failed: %v\n", err)
+			return true
+		}
+		meta["drift_pause_unix_ms"] = now
+		meta["drift_pause_team_run_id"] = teamRunID
 		meta["drift_action_error"] = ""
 		return true
 	default:
@@ -1287,6 +1335,15 @@ func updateTeamRunRuntimeMembers(ctx context.Context, client *http.Client, cfg c
 	url := fmt.Sprintf("%s/v1/teams/%s/runs/%s/runtime_members", cfg.brokerBase, teamID, teamRunID)
 	var resp map[string]any
 	return doJSON(ctx, client, cfg, http.MethodPatch, url, payload, &resp)
+}
+
+func cancelTeamRun(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string) error {
+	if teamID == "" || teamRunID == "" {
+		return fmt.Errorf("missing team_id or team_run_id")
+	}
+	url := fmt.Sprintf("%s/v1/teams/%s/runs/%s/cancel", cfg.brokerBase, teamID, teamRunID)
+	var resp map[string]any
+	return doJSON(ctx, client, cfg, http.MethodPost, url, map[string]any{}, &resp)
 }
 
 func maybeRetireRuntimeMembers(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string, status *teamRunResponse, meta map[string]any) (bool, error) {

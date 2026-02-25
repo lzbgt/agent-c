@@ -135,8 +135,8 @@ Minimal responsibilities:
 5) **Progress + drift checkpoints**
    - Emit `goal_progress` events periodically (`meta.progress_every_ms`).
    - Emit a single `goal_drift` event when a run exceeds `meta.drift_after_ms`.
-   - Optional drift action (`meta.drift_action="guidance"`) can emit a guidance
-     item for human intervention.
+   - Optional drift action (`meta.drift_action="guidance"|"pause"|"cancel"`) can
+     emit guidance, pause the orchestrator run, or cancel the active team run.
 
 6) **Handoff execution**
    - When `meta.handoff_queue` contains events, publish them to the active team run
@@ -164,7 +164,7 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
   completion_mode: "on_success"|"on_failure"|"never"  # default on_success
   progress_every_ms: number           # emit goal_progress every N ms (optional)
   drift_after_ms: number              # emit goal_drift after N ms (optional)
-  drift_action: "none"|"guidance"     # optional drift response (default none)
+  drift_action: "none"|"guidance"|"pause"|"cancel"  # optional drift response
   drift_guidance_kind: "warning"|"constraint"|"directive"|"context"  # optional
   drift_guidance_priority: "low"|"normal"|"high"|"urgent"            # optional
   drift_guidance_message: string      # optional override for guidance text
@@ -203,6 +203,10 @@ Notes:
 - Drift guidance defaults to `target_orchestrator_id="human"` when no explicit targets
   are provided so the item stays open for operator review. Set
   `drift_guidance_target_orchestrator` to the orchestrator id to auto-ack.
+- `drift_action="cancel"` uses the team-run cancel endpoint (async runs only); sync
+  runs will return a 400 and the loop records `drift_action_error`.
+- `drift_action="pause"` updates the orchestrator run status to `paused` and the
+  loop skips further dispatch until resumed.
 
 ### Goal progress + drift events (SSE)
 

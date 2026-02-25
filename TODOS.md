@@ -295,7 +295,9 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-19: Added `tools/verify.sh --eval-pack` to run eval pack smoke locally.
   - 2026-02-19: Added richer eval checks (json_number/json_len/file_sha256) + eval_pack_checks_smoke.
   - 2026-02-19: Added broker_smoke eval pack (health/ready + evidence) and templated scenario ports.
-- [ ] W=9 — Drift remediation actions: pause/cancel/replan policies after drift, with configurable action targets and evidence.
+- [x] W=9 — Drift remediation actions: pause/cancel policies after drift, with audit fields and docs/tests.
+  - 2026-02-26: drift_action supports guidance/pause/cancel with meta audit fields + tests.
+- [ ] W=8 — Drift replanning workflows: orchestrator-driven goal revision after drift, with approval hooks and evidence.
 - [ ] W=8 — Capacity-based autoscale: spawn or retire runtime members based on backlog/latency signals (not only missing roles).
 - [ ] W=9 — Scheduling + isolation MVP: admission control, per-run budgets, and tool execution caps with evidence logs.
 - [ ] W=8 — Data governance controls: retention policy config, export/erase endpoints, and redaction-aware evidence bundles.

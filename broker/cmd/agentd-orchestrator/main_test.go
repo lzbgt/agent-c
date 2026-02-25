@@ -809,7 +809,7 @@ func TestMaybeEmitDriftEmitsOnce(t *testing.T) {
 	cfg := config{brokerBase: server.URL, oidcToken: "token", orchestratorID: "orch1"}
 	meta := map[string]any{"drift_after_ms": int64(1)}
 	status := &teamRunResponse{CreatedUnixMS: time.Now().UTC().UnixMilli() - 500}
-	changed, err := maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", status, meta)
+	changed, err := maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", "orun1", "orch1", status, meta)
 	if err != nil {
 		t.Fatalf("maybeEmitDrift error: %v", err)
 	}
@@ -833,7 +833,7 @@ func TestMaybeEmitDriftEmitsOnce(t *testing.T) {
 		t.Fatalf("expected drift event, got %#v", event)
 	}
 
-	changed, err = maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", status, meta)
+	changed, err = maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", "orun1", "orch1", status, meta)
 	if err != nil {
 		t.Fatalf("maybeEmitDrift second call error: %v", err)
 	}
@@ -885,7 +885,7 @@ func TestMaybeEmitDriftCreatesGuidance(t *testing.T) {
 		"drift_guidance_target_roles": []string{},
 	}
 	status := &teamRunResponse{CreatedUnixMS: time.Now().UTC().UnixMilli() - 500}
-	changed, err := maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", status, meta)
+	changed, err := maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", "orun1", "orch1", status, meta)
 	if err != nil {
 		t.Fatalf("maybeEmitDrift error: %v", err)
 	}
@@ -920,6 +920,112 @@ func TestMaybeEmitDriftCreatesGuidance(t *testing.T) {
 	}
 	if st.guidancePayload["target_orchestrator_id"] != "human" {
 		t.Fatalf("expected target_orchestrator_id=human, got %#v", st.guidancePayload["target_orchestrator_id"])
+	}
+}
+
+func TestMaybeEmitDriftCancelAction(t *testing.T) {
+	type state struct {
+		mu          sync.Mutex
+		cancelCalls int
+	}
+	st := &state{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/teams/team1/runs/run1/goal":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/teams/team1/runs/run1/cancel":
+			st.mu.Lock()
+			st.cancelCalls++
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"status":"cancelled"}`)
+		default:
+			http.Error(w, "unexpected", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	cfg := config{brokerBase: server.URL, oidcToken: "token", orchestratorID: "orch1"}
+	meta := map[string]any{
+		"drift_after_ms": int64(1),
+		"drift_action":   "cancel",
+	}
+	status := &teamRunResponse{CreatedUnixMS: time.Now().UTC().UnixMilli() - 500}
+	changed, err := maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", "orun1", "orch1", status, meta)
+	if err != nil {
+		t.Fatalf("maybeEmitDrift error: %v", err)
+	}
+	if !changed {
+		t.Fatalf("expected drift to emit and update meta")
+	}
+	if meta["drift_cancel_team_run_id"] != "run1" {
+		t.Fatalf("expected drift_cancel_team_run_id=run1, got %#v", meta["drift_cancel_team_run_id"])
+	}
+	if meta["drift_action_error"] != "" {
+		t.Fatalf("expected no drift_action_error, got %#v", meta["drift_action_error"])
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.cancelCalls != 1 {
+		t.Fatalf("expected cancel call, got %d", st.cancelCalls)
+	}
+}
+
+func TestMaybeEmitDriftPauseAction(t *testing.T) {
+	type state struct {
+		mu        sync.Mutex
+		pausedRun bool
+		patchBody map[string]any
+	}
+	st := &state{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/teams/team1/runs/run1/goal":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true}`)
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/teams/team1/orchestrator/runs/orun1":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			st.mu.Lock()
+			st.pausedRun = true
+			st.patchBody = payload
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","run":{"orchestrator_run_id":"orun1","status":"paused"}}`)
+		default:
+			http.Error(w, "unexpected", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	cfg := config{brokerBase: server.URL, oidcToken: "token", orchestratorID: "orch1"}
+	meta := map[string]any{
+		"drift_after_ms": int64(1),
+		"drift_action":   "pause",
+	}
+	status := &teamRunResponse{CreatedUnixMS: time.Now().UTC().UnixMilli() - 500}
+	changed, err := maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", "orun1", "orch1", status, meta)
+	if err != nil {
+		t.Fatalf("maybeEmitDrift error: %v", err)
+	}
+	if !changed {
+		t.Fatalf("expected drift to emit and update meta")
+	}
+	if meta["drift_pause_team_run_id"] != "run1" {
+		t.Fatalf("expected drift_pause_team_run_id=run1, got %#v", meta["drift_pause_team_run_id"])
+	}
+	if meta["drift_action_error"] != "" {
+		t.Fatalf("expected no drift_action_error, got %#v", meta["drift_action_error"])
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if !st.pausedRun {
+		t.Fatalf("expected orchestrator run pause call")
+	}
+	if st.patchBody == nil || st.patchBody["status"] != "paused" {
+		t.Fatalf("expected status=paused, got %#v", st.patchBody)
 	}
 }
 
