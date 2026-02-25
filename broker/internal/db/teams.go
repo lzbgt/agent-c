@@ -507,7 +507,7 @@ func (d *DB) CreateTeamMember(ctx context.Context, teamID, memberID, deploymentI
 	return d.GetTeamMember(ctx, teamID, memberID)
 }
 
-func (d *DB) UpdateTeamMember(ctx context.Context, teamID, memberID, role, status string, capabilities []string, weight int, meta map[string]any) (*TeamMember, error) {
+func (d *DB) UpdateTeamMember(ctx context.Context, teamID, memberID, deploymentID, agentID, role, status string, capabilities []string, weight int, meta map[string]any) (*TeamMember, error) {
 	if d == nil || d.Pool == nil {
 		return nil, errors.New("db not open")
 	}
@@ -528,9 +528,9 @@ func (d *DB) UpdateTeamMember(ctx context.Context, teamID, memberID, role, statu
 	metaJSON, _ := json.Marshal(coalesceMap(meta))
 	_, err := d.Pool.Exec(ctx, `
 		UPDATE broker_team_members
-		SET role=$3, capabilities=$4::jsonb, status=$5, weight=$6, meta=$7::jsonb
+		SET deployment_id=$3, agent_id=$4, role=$5, capabilities=$6::jsonb, status=$7, weight=$8, meta=$9::jsonb
 		WHERE team_id=$1 AND member_id=$2
-	`, teamID, memberID, role, string(capsJSON), status, weight, string(metaJSON))
+	`, teamID, memberID, nullIfEmpty(deploymentID), nullIfEmpty(agentID), role, string(capsJSON), status, weight, string(metaJSON))
 	if err != nil {
 		return nil, err
 	}

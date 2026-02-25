@@ -87,6 +87,8 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [memberEditWeight, setMemberEditWeight] = React.useState<string>("");
   const [memberEditCapabilities, setMemberEditCapabilities] = React.useState<string>("");
   const [memberEditMetaJson, setMemberEditMetaJson] = React.useState<string>("");
+  const [memberEditAgentId, setMemberEditAgentId] = React.useState<string>("");
+  const [memberEditDeploymentId, setMemberEditDeploymentId] = React.useState<string>("");
   const [memberEditBusy, setMemberEditBusy] = React.useState<boolean>(false);
   const [memberEditError, setMemberEditError] = React.useState<string | null>(null);
   const [memberAgentsBusy, setMemberAgentsBusy] = React.useState<boolean>(false);
@@ -110,6 +112,12 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   );
   const memberAgentDeployments = Array.isArray(memberSelectedAgent?.deployments)
     ? (memberSelectedAgent?.deployments as any[])
+    : [];
+  const memberEditSelectedAgent = memberAgentOptions.find(
+    (agent) => String(agent?.agent_id || "") === String(memberEditAgentId || "").trim(),
+  );
+  const memberEditAgentDeployments = Array.isArray(memberEditSelectedAgent?.deployments)
+    ? (memberEditSelectedAgent?.deployments as any[])
     : [];
 
   const refreshTeams = async () => {
@@ -449,6 +457,8 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     setMemberEditId(mid);
     setMemberEditRole(String(member?.role || ""));
     setMemberEditStatus(String(member?.status || "active"));
+    setMemberEditAgentId(String(member?.agent_id || ""));
+    setMemberEditDeploymentId(String(member?.deployment_id || ""));
     setMemberEditWeight(
       typeof member?.weight === "number" && Number.isFinite(member.weight) ? String(member.weight) : "",
     );
@@ -472,6 +482,8 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     setMemberEditId("");
     setMemberEditRole("");
     setMemberEditStatus("");
+    setMemberEditAgentId("");
+    setMemberEditDeploymentId("");
     setMemberEditWeight("");
     setMemberEditCapabilities("");
     setMemberEditMetaJson("");
@@ -488,6 +500,8 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       return;
     }
     const status = String(memberEditStatus || "").trim() || "active";
+    const agentId = String(memberEditAgentId || "").trim();
+    const deploymentId = String(memberEditDeploymentId || "").trim();
     const caps = String(memberEditCapabilities || "")
       .split(",")
       .map((c) => c.trim())
@@ -526,6 +540,8 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         capabilities: caps,
         meta,
       };
+      payload.agent_id = agentId;
+      payload.deployment_id = deploymentId;
       if (weightValue !== undefined) payload.weight = weightValue;
       const resp = await apiBrokerTeamMemberUpdate(props.base, tid, mid, payload, props.auth);
       if (!resp.ok) {
@@ -701,6 +717,22 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       setMemberDeploymentId(depId);
     }
   }, [memberAgentId, memberDeploymentId, memberAgentDeployments]);
+
+  React.useEffect(() => {
+    if (!memberEditAgentId) {
+      if (memberEditDeploymentId) {
+        setMemberEditDeploymentId("");
+      }
+      return;
+    }
+    if (memberEditDeploymentId) return;
+    if (memberEditAgentDeployments.length === 0) return;
+    const first = memberEditAgentDeployments[0];
+    const depId = first?.deployment_id ? String(first.deployment_id) : "";
+    if (depId) {
+      setMemberEditDeploymentId(depId);
+    }
+  }, [memberEditAgentId, memberEditDeploymentId, memberEditAgentDeployments]);
 
   return (
     <section className="rounded-md border border-white/10 bg-black/20 p-3">
@@ -1161,6 +1193,51 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                           onChange={(e) => setMemberEditWeight(e.target.value)}
                           placeholder="1"
                         />
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-2">
+                        <FieldLabel>Agent ID</FieldLabel>
+                        <input
+                          className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                          value={memberEditAgentId}
+                          onChange={(e) => setMemberEditAgentId(e.target.value)}
+                          placeholder="agent1"
+                        />
+                        <FieldLabel>Agent pick</FieldLabel>
+                        <select
+                          className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                          value={memberEditAgentId}
+                          onChange={(e) => setMemberEditAgentId(e.target.value)}
+                        >
+                          <option value="">(select agent)</option>
+                          {memberAgentOptions.map((agent) => {
+                            const aid = String(agent?.agent_id || "");
+                            if (!aid) return null;
+                            const suffix = agent?.connected ? " · connected" : "";
+                            return (
+                              <option key={`member-edit-agent-${aid}`} value={aid}>
+                                {aid}
+                                {suffix}
+                              </option>
+                            );
+                          })}
+                        </select>
+                        <FieldLabel>Deployment</FieldLabel>
+                        <select
+                          className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                          value={memberEditDeploymentId}
+                          onChange={(e) => setMemberEditDeploymentId(e.target.value)}
+                          disabled={memberEditAgentDeployments.length === 0}
+                        >
+                          <option value="">(default)</option>
+                          {memberEditAgentDeployments.map((dep, idx) => {
+                            const depId = dep?.deployment_id ? String(dep.deployment_id) : "";
+                            return (
+                              <option key={`member-edit-dep-${depId || idx}`} value={depId}>
+                                {depId || `deployment-${idx + 1}`}
+                              </option>
+                            );
+                          })}
+                        </select>
                       </div>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <FieldLabel>Capabilities</FieldLabel>

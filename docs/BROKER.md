@@ -166,6 +166,7 @@ All endpoints below are served by the broker (not by agents).
   - adds a team member (owner/admin only)
 - `PATCH /v1/teams/{team_id}/members/{member_id}`
   - updates a team member (owner/admin only)
+  - supports role/status/capabilities/weight/meta plus agent/deployment reassignment
 - `DELETE /v1/teams/{team_id}/members/{member_id}`
   - removes a team member (owner/admin only)
 - `GET /v1/teams/{team_id}/quorum`

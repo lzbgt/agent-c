@@ -413,6 +413,8 @@ func (s *Server) handleTeamMemberUpdate(w http.ResponseWriter, r *http.Request, 
 		Status       *string         `json:"status"`
 		Weight       *int            `json:"weight"`
 		Meta         *map[string]any `json:"meta"`
+		DeploymentID *string         `json:"deployment_id"`
+		AgentID      *string         `json:"agent_id"`
 	}{}
 	if len(body) > 0 {
 		if err := json.Unmarshal(body, &req); err != nil {
@@ -447,7 +449,15 @@ func (s *Server) handleTeamMemberUpdate(w http.ResponseWriter, r *http.Request, 
 	if req.Meta != nil {
 		meta = *req.Meta
 	}
-	updated, err := s.cfg.DB.UpdateTeamMember(r.Context(), teamID, memberID, role, status, caps, weight, meta)
+	deploymentID := existing.DeploymentID
+	if req.DeploymentID != nil {
+		deploymentID = strings.TrimSpace(*req.DeploymentID)
+	}
+	agentID := existing.AgentID
+	if req.AgentID != nil {
+		agentID = strings.TrimSpace(*req.AgentID)
+	}
+	updated, err := s.cfg.DB.UpdateTeamMember(r.Context(), teamID, memberID, deploymentID, agentID, role, status, caps, weight, meta)
 	if err != nil {
 		writeErrorJSON(w, "update member failed", http.StatusBadRequest)
 		return

@@ -127,6 +127,8 @@ weight: integer               # scheduling hint
 created_unix_ms: integer
 ```
 
+Note: PATCH updates may reassign `agent_id`/`deployment_id` to retarget a role without recreating the member.
+
 ### Quorum rule
 
 ```
