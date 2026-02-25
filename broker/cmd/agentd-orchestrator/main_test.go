@@ -619,3 +619,106 @@ func TestProcessGuidanceExpiresGuidance(t *testing.T) {
 		t.Fatalf("expected expired ack status, got %q", st.ackStatus)
 	}
 }
+
+func TestMaybeProcessHandoffQueueDispatchesDirective(t *testing.T) {
+	type state struct {
+		mu             sync.Mutex
+		directiveBody  map[string]any
+		handoffCalled  bool
+		err            string
+	}
+	st := &state{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/teams/team1/runs/run1/moderator/directive":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			st.mu.Lock()
+			st.directiveBody = payload
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","team_run_id":"run1","dispatched":[{}],"skipped":[]}`)
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/teams/team1/runs/run1/handoff":
+			st.mu.Lock()
+			st.handoffCalled = true
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true}`)
+		default:
+			st.mu.Lock()
+			st.err = "unexpected request: " + r.Method + " " + r.URL.Path
+			st.mu.Unlock()
+			http.Error(w, "unexpected", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	cfg := config{brokerBase: server.URL, oidcToken: "token", orchestratorID: "orch1"}
+	meta := map[string]any{
+		"handoff_queue": []map[string]any{{"from_role": "planner", "to_role": "executor", "reason": "test"}},
+	}
+	changed, err := maybeProcessHandoffQueue(context.Background(), server.Client(), cfg, "team1", "run1", meta)
+	if err != nil {
+		t.Fatalf("maybeProcessHandoffQueue error: %v", err)
+	}
+	if !changed {
+		t.Fatalf("expected queue to be processed")
+	}
+	queue, _ := meta["handoff_queue"].([]map[string]any)
+	if len(queue) != 0 {
+		t.Fatalf("expected queue drained, got %#v", meta["handoff_queue"])
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.err != "" {
+		t.Fatalf("server error: %s", st.err)
+	}
+	if !st.handoffCalled {
+		t.Fatalf("expected handoff event emitted")
+	}
+	if st.directiveBody == nil {
+		t.Fatalf("expected directive body")
+	}
+	targets, _ := st.directiveBody["targets"].(map[string]any)
+	roles, _ := targets["roles"].([]any)
+	if len(roles) != 1 || strings.TrimSpace(roles[0].(string)) != "executor" {
+		t.Fatalf("unexpected directive targets: %#v", targets)
+	}
+}
+
+func TestMaybeProcessHandoffQueueRetriable(t *testing.T) {
+	var handoffCalled bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/teams/team1/runs/run1/moderator/directive":
+			http.Error(w, "no eligible member sessions", http.StatusBadRequest)
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/teams/team1/runs/run1/handoff":
+			handoffCalled = true
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true}`)
+		default:
+			http.Error(w, "unexpected", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	cfg := config{brokerBase: server.URL, oidcToken: "token", orchestratorID: "orch1"}
+	meta := map[string]any{
+		"handoff_queue": []map[string]any{{"from_role": "planner", "to_role": "executor"}},
+	}
+	changed, err := maybeProcessHandoffQueue(context.Background(), server.Client(), cfg, "team1", "run1", meta)
+	if err != nil {
+		t.Fatalf("maybeProcessHandoffQueue error: %v", err)
+	}
+	if changed {
+		t.Fatalf("expected retriable dispatch to keep queue")
+	}
+	if handoffCalled {
+		t.Fatalf("did not expect handoff event during retriable dispatch")
+	}
+	queue, _ := meta["handoff_queue"].([]map[string]any)
+	if len(queue) != 1 {
+		t.Fatalf("expected queue preserved, got %#v", meta["handoff_queue"])
+	}
+}

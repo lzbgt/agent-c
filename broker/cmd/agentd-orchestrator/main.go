@@ -1058,6 +1058,12 @@ func maybeProcessHandoffQueue(ctx context.Context, client *http.Client, cfg conf
 		payload["data"] = v
 	}
 	payload["ts_unix_ms"] = time.Now().UTC().UnixMilli()
+	if err := dispatchHandoffDirective(ctx, client, cfg, teamID, teamRunID, payload); err != nil {
+		if isGuidanceDispatchRetriable(err) {
+			return false, nil
+		}
+		fmt.Fprintf(os.Stderr, "handoff directive dispatch failed: %v\n", err)
+	}
 	if err := emitTeamRunHandoffEvent(ctx, client, cfg, teamID, teamRunID, payload); err != nil {
 		return false, err
 	}
@@ -1890,6 +1896,71 @@ func dispatchGuidanceDirective(
 		return nil, fmt.Errorf("broker returned ok=false for moderator directive")
 	}
 	return &resp, nil
+}
+
+func dispatchHandoffDirective(
+	ctx context.Context,
+	client *http.Client,
+	cfg config,
+	teamID,
+	teamRunID string,
+	payload map[string]any,
+) error {
+	if payload == nil {
+		return nil
+	}
+	fromRole := strings.TrimSpace(asString(payload["from_role"]))
+	toRole := strings.TrimSpace(asString(payload["to_role"]))
+	if fromRole == "" || toRole == "" {
+		return nil
+	}
+	reason := strings.TrimSpace(asString(payload["reason"]))
+	message := strings.TrimSpace(asString(payload["message"]))
+	directive := fmt.Sprintf("Handoff %s -> %s", fromRole, toRole)
+	if reason != "" {
+		directive = fmt.Sprintf("%s (reason: %s)", directive, reason)
+	}
+	if message != "" {
+		directive = fmt.Sprintf("%s\n%s", directive, message)
+	}
+	meta := map[string]any{
+		"handoff_from_role": fromRole,
+		"handoff_to_role":   toRole,
+	}
+	if reason != "" {
+		meta["handoff_reason"] = reason
+	}
+	if message != "" {
+		meta["handoff_message"] = message
+	}
+	if data, ok := payload["data"].(map[string]any); ok && len(data) > 0 {
+		meta["handoff_data"] = data
+	}
+	if ts, ok := payload["ts_unix_ms"]; ok {
+		meta["handoff_ts_unix_ms"] = ts
+	}
+	req := map[string]any{
+		"directive":         directive,
+		"append_to_session": true,
+		"scope":             fmt.Sprintf("handoff:%s:%s", fromRole, toRole),
+		"actor": map[string]any{
+			"id":   cfg.orchestratorID,
+			"kind": "orchestrator",
+		},
+		"metadata": meta,
+		"targets": map[string]any{
+			"roles": []string{toRole},
+		},
+	}
+	url := fmt.Sprintf("%s/v1/teams/%s/runs/%s/moderator/directive", cfg.brokerBase, teamID, teamRunID)
+	var resp moderatorDispatchResponse
+	if err := doJSON(ctx, client, cfg, http.MethodPost, url, req, &resp); err != nil {
+		return err
+	}
+	if !resp.OK {
+		return fmt.Errorf("broker returned ok=false for handoff directive")
+	}
+	return nil
 }
 
 func doJSON(ctx context.Context, client *http.Client, cfg config, method, url string, body any, out any) error {

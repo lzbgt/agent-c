@@ -139,6 +139,8 @@ Minimal responsibilities:
 6) **Handoff execution**
    - When `meta.handoff_queue` contains events, publish them to the active team run
      and pop them from the queue.
+   - Orchestrator dispatches a moderator directive to the `to_role` when possible;
+     if no eligible member sessions exist, it retries without popping the queue.
 
 #### Orchestrator run meta contract (v0)
 
