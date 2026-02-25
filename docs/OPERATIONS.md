@@ -24,6 +24,13 @@ Optional: run eval pack smoke after build/tests:
 tools/verify.sh --eval-pack
 ```
 
+Eval pack regression gating can compare to a stored baseline:
+
+```bash
+python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline out/baselines/basic_agentd_smoke.summary.json
+python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline out/baselines/basic_agentd_smoke.summary.json --update-baseline
+```
+
 Include repo hygiene guards:
 
 ```bash

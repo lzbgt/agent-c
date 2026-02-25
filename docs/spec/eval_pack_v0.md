@@ -168,3 +168,14 @@ Validates the length of a JSON array/object/string. Supports `equals`, `min`, an
 - Runner: `tools/eval_pack.py`
 - Example pack: `tools/eval_packs/basic_agentd_smoke.json`
 - Scenarios: `tools/scenarios/`
+
+CLI options:
+- `--baseline <path>`: compare current summary against a saved baseline summary.
+- `--update-baseline`: write current summary to the baseline path (requires `--baseline`).
+
+Example:
+
+```bash
+python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline out/baselines/basic_agentd_smoke.summary.json
+python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline out/baselines/basic_agentd_smoke.summary.json --update-baseline
+```

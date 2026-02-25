@@ -206,6 +206,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-19: Added server-side HMAC/Ed25519 signing for `/api/v1/run/attestation` + Ed25519 verification smoke.
   - 2026-02-25: Verified `tests/run_attestation_bundle_tool_smoke.sh` + `tests/agentd_run_attestation_ed25519_smoke.sh` (logs in `out/`).
 - [ ] W=8 — Evaluation + regression gating: canonical eval packs, deterministic scoring, and CI baselines to catch model/version drift.
+  - 2026-02-25: Added eval pack baseline compare/update flags to `tools/eval_pack.py` with spec + ops docs.
   - 2026-02-19: Added eval pack spec (`docs/spec/eval_pack_v0.md`) and runner (`tools/eval_pack.py`) with a minimal example pack.
   - 2026-02-19: Added `eval_pack_smoke` test (self-contained, no agentd required).
   - 2026-02-19: Added CI workflow to run `tools/eval_pack.py` against a self-contained eval pack.

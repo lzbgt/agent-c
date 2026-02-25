@@ -235,7 +235,49 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--file", required=True, help="eval pack JSON file")
     parser.add_argument("--out-dir", help="output root (default: out/eval_pack_<ts>)")
     parser.add_argument("--keep-going", action="store_true", help="continue running scenarios even if one fails")
+    parser.add_argument("--baseline", help="compare results to a baseline summary.json")
+    parser.add_argument("--update-baseline", action="store_true", help="write current summary to --baseline")
     return parser.parse_args()
+
+
+def compare_baseline(current: Dict[str, Any], baseline: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    issues: List[str] = []
+    try:
+        base_total = float(baseline.get("total_score") or 0.0)
+    except (TypeError, ValueError):
+        base_total = 0.0
+    try:
+        cur_total = float(current.get("total_score") or 0.0)
+    except (TypeError, ValueError):
+        cur_total = 0.0
+    if cur_total < base_total:
+        issues.append(f"total_score regressed: {cur_total} < {base_total}")
+    try:
+        base_pass = float(baseline.get("pass_rate") or 0.0)
+    except (TypeError, ValueError):
+        base_pass = 0.0
+    try:
+        cur_pass = float(current.get("pass_rate") or 0.0)
+    except (TypeError, ValueError):
+        cur_pass = 0.0
+    if cur_pass < base_pass:
+        issues.append(f"pass_rate regressed: {cur_pass} < {base_pass}")
+
+    if baseline.get("ok") and not current.get("ok"):
+        issues.append("baseline ok=true but current ok=false")
+
+    base_results = baseline.get("results") or []
+    cur_results = current.get("results") or []
+    if isinstance(base_results, list) and isinstance(cur_results, list):
+        cur_map = {str(r.get("id")): bool(r.get("ok")) for r in cur_results if isinstance(r, dict)}
+        for row in base_results:
+            if not isinstance(row, dict):
+                continue
+            sid = str(row.get("id"))
+            if sid and row.get("ok") and not cur_map.get(sid, False):
+                issues.append(f"scenario regressed: {sid}")
+
+    return len(issues) == 0, issues
 
 
 def main() -> int:
@@ -335,20 +377,44 @@ def main() -> int:
     ok = total_score >= min_score and pass_rate >= min_pass_rate and not failures
 
     summary_path = os.path.join(out_root, "summary.json")
+    summary_payload = {
+        "name": pack.get("name"),
+        "version": pack.get("version") or VERSION,
+        "started_at": started_at,
+        "finished_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+        "results": results,
+        "total_score": total_score,
+        "max_score": max_score,
+        "pass_rate": pass_rate,
+        "threshold": {"min_score": min_score, "min_pass_rate": min_pass_rate},
+        "failed": failures,
+        "ok": ok,
+    }
     with open(summary_path, "w", encoding="utf-8") as f:
-        json.dump({
-            "name": pack.get("name"),
-            "version": pack.get("version") or VERSION,
-            "started_at": started_at,
-            "finished_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-            "results": results,
-            "total_score": total_score,
-            "max_score": max_score,
-            "pass_rate": pass_rate,
-            "threshold": {"min_score": min_score, "min_pass_rate": min_pass_rate},
-            "failed": failures,
-            "ok": ok,
-        }, f, indent=2)
+        json.dump(summary_payload, f, indent=2)
+
+    if args.baseline:
+        baseline_path = os.path.abspath(args.baseline)
+        if args.update_baseline:
+            os.makedirs(os.path.dirname(baseline_path), exist_ok=True)
+            with open(baseline_path, "w", encoding="utf-8") as f:
+                json.dump(summary_payload, f, indent=2)
+        else:
+            try:
+                with open(baseline_path, "r", encoding="utf-8") as f:
+                    baseline_payload = json.load(f)
+                same, issues = compare_baseline(summary_payload, baseline_payload)
+                if not same:
+                    ok = False
+                    print("baseline regressions detected:")
+                    for issue in issues:
+                        print(f"- {issue}")
+            except FileNotFoundError:
+                ok = False
+                print(f"baseline missing: {baseline_path}")
+            except Exception as exc:
+                ok = False
+                print(f"baseline check failed: {exc}")
 
     if not ok:
         print("eval pack failed:")

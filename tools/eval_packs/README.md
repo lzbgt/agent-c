@@ -26,3 +26,10 @@ Notes:
 - `broker_team_runtime_members_events_sse_compose_smoke.json` requires Docker + Docker Compose (it brings up the broker stack if needed).
 - `broker_team_quorum_events_sse_compose_smoke.json` requires Docker + Docker Compose (it brings up the broker stack if needed).
 - `broker_team_run_events_sse_compose_smoke.json` requires Docker + Docker Compose (it brings up the broker stack if needed).
+
+Baseline regression gating:
+
+```bash
+python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline out/baselines/basic_agentd_smoke.summary.json
+python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline out/baselines/basic_agentd_smoke.summary.json --update-baseline
+```
