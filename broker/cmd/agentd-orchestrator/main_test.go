@@ -1142,6 +1142,9 @@ func TestMaybeHandleReplanAckResumesRun(t *testing.T) {
 	meta := map[string]any{
 		"drift_action":             "replan",
 		"drift_replan_guidance_id": "g-replan",
+		"replan_goal":              "new goal",
+		"replan_create_new_run":    true,
+		"active_team_run_id":       "run1",
 	}
 	updated, err := maybeHandleReplanAck(context.Background(), server.Client(), cfg, "team1", "orun1", "orch1", meta)
 	if err != nil {
@@ -1163,6 +1166,12 @@ func TestMaybeHandleReplanAckResumesRun(t *testing.T) {
 	}
 	if exp, ok := st.patchBody["expected_status"].(string); !ok || exp != "paused" {
 		t.Fatalf("expected expected_status=paused, got %#v", st.patchBody)
+	}
+	if st.patchBody["goal"] != "new goal" {
+		t.Fatalf("expected goal=new goal, got %#v", st.patchBody["goal"])
+	}
+	if meta["active_team_run_id"] != "" {
+		t.Fatalf("expected active_team_run_id cleared, got %#v", meta["active_team_run_id"])
 	}
 }
 

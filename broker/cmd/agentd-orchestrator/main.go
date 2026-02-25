@@ -1438,7 +1438,44 @@ func maybeHandleReplanAck(
 	if guidance.AckNote != "" {
 		meta["drift_replan_ack_note"] = guidance.AckNote
 	}
-	resp, err := updateOrchestratorRun(ctx, client, cfg, teamID, orchestratorRunID, "running", meta, stringPtr(owner), stringPtr("paused"))
+	activeRunID := strings.TrimSpace(asString(meta["active_team_run_id"]))
+	goal := strings.TrimSpace(asString(meta["replan_goal"]))
+	var goalPtr *string
+	if goal != "" {
+		goalPtr = &goal
+		meta["replan_goal_applied_unix_ms"] = time.Now().UTC().UnixMilli()
+	}
+	var goalContract map[string]any
+	if raw, ok := meta["replan_goal_contract"].(map[string]any); ok && len(raw) > 0 {
+		goalContract = raw
+		meta["replan_goal_contract_applied_unix_ms"] = time.Now().UTC().UnixMilli()
+	}
+	var rolePlan map[string]any
+	if raw, ok := meta["replan_role_plan_snapshot"].(map[string]any); ok && len(raw) > 0 {
+		rolePlan = raw
+		meta["replan_role_plan_snapshot_applied_unix_ms"] = time.Now().UTC().UnixMilli()
+	}
+	createNew := false
+	if v, ok := asBool(meta["replan_create_new_run"]); ok {
+		createNew = v
+	}
+	cancelActive := false
+	if v, ok := asBool(meta["replan_cancel_active_run"]); ok {
+		cancelActive = v
+	}
+	if cancelActive && activeRunID != "" {
+		if err := cancelTeamRun(ctx, client, cfg, teamID, activeRunID); err != nil {
+			meta["replan_cancel_error"] = err.Error()
+		} else {
+			meta["replan_cancel_unix_ms"] = time.Now().UTC().UnixMilli()
+		}
+	}
+	if createNew && activeRunID != "" {
+		meta["replan_prev_team_run_id"] = activeRunID
+		meta["active_team_run_id"] = ""
+		meta["replan_new_run_requested_unix_ms"] = time.Now().UTC().UnixMilli()
+	}
+	resp, err := updateOrchestratorRunFields(ctx, client, cfg, teamID, orchestratorRunID, "running", meta, stringPtr(owner), stringPtr("paused"), goalPtr, goalContract, rolePlan)
 	if err != nil {
 		if isHTTPStatus(err, http.StatusConflict) {
 			return false, nil
@@ -1563,6 +1600,23 @@ func heartbeatRun(ctx context.Context, client *http.Client, cfg config, teamID, 
 }
 
 func updateOrchestratorRun(ctx context.Context, client *http.Client, cfg config, teamID, runID, status string, meta map[string]any, expectedOwner *string, expectedStatus *string) (*orchestratorRunResponse, error) {
+	return updateOrchestratorRunFields(ctx, client, cfg, teamID, runID, status, meta, expectedOwner, expectedStatus, nil, nil, nil)
+}
+
+func updateOrchestratorRunFields(
+	ctx context.Context,
+	client *http.Client,
+	cfg config,
+	teamID,
+	runID,
+	status string,
+	meta map[string]any,
+	expectedOwner *string,
+	expectedStatus *string,
+	goal *string,
+	goalContract map[string]any,
+	rolePlanSnapshot map[string]any,
+) (*orchestratorRunResponse, error) {
 	payload := map[string]any{}
 	if status != "" {
 		payload["status"] = status
@@ -1575,6 +1629,15 @@ func updateOrchestratorRun(ctx context.Context, client *http.Client, cfg config,
 	}
 	if expectedStatus != nil {
 		payload["expected_status"] = *expectedStatus
+	}
+	if goal != nil && strings.TrimSpace(*goal) != "" {
+		payload["goal"] = strings.TrimSpace(*goal)
+	}
+	if goalContract != nil {
+		payload["goal_contract"] = goalContract
+	}
+	if rolePlanSnapshot != nil {
+		payload["role_plan_snapshot"] = rolePlanSnapshot
 	}
 	url := fmt.Sprintf("%s/v1/teams/%s/orchestrator/runs/%s", cfg.brokerBase, teamID, runID)
 	var resp orchestratorRunResponse

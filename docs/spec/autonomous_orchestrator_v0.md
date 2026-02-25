@@ -182,9 +182,18 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
   drift_replan_target_roles: [string]      # optional targeting
   drift_replan_target_member_ids: [string] # optional targeting
   drift_replan_target_agent_ids: [string]  # optional targeting
+  replan_goal: string                      # optional goal override on resume
+  replan_goal_contract: { ... }            # optional goal contract override on resume
+  replan_role_plan_snapshot: { ... }       # optional role plan override on resume
+  replan_create_new_run: true|false        # optional: clear active run and start new
+  replan_cancel_active_run: true|false     # optional: cancel active run before new
   drift_replan_ack_by: string              # set when guidance is acked
   drift_replan_ack_note: string            # set when guidance is acked
   drift_replan_ack_unix_ms: integer        # set when guidance is acked
+  replan_prev_team_run_id: string          # previous run id when new run requested
+  replan_new_run_requested_unix_ms: integer # when new run requested
+  replan_cancel_unix_ms: integer           # when active run cancel issued
+  replan_cancel_error: string              # cancel error, if any
   allow_takeover: true|false          # default true; allow stale-lease takeover
   handoff_queue: [{from_role,to_role,reason?,message?,data?}]  # optional queue
   run_template: { ... }               # optional /api/v1/run payload
@@ -223,6 +232,10 @@ Notes:
   with `replan_requested=true` for operator review.
   - Once the guidance item is acked, the loop resumes the orchestrator run and
     records `drift_replan_ack_*` fields in meta.
+  - If `replan_create_new_run` is true, the loop clears `active_team_run_id` so
+    a new team run is created with any `replan_*` overrides.
+  - If `replan_cancel_active_run` is true, the loop attempts to cancel the
+    existing team run before starting a new one.
 
 ### Goal progress + drift events (SSE)
 
