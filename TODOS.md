@@ -127,6 +127,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-26: orchestrator run responses include lease status derived from heartbeat.
   - 2026-02-25: added compose smoke for orchestrator runs (create/list/update/heartbeat) via `tests/broker_orchestrator_runs_compose_smoke.sh`.
   - 2026-02-26: broker console replay cursor persists via client prefs (fallback localStorage).
+  - 2026-02-26: orchestrator loop events smoke now verifies replay for goal progress/drift + handoff events.
 - [x] W=12 — Workflow rehydration beyond localStorage: persist workflow wait/resume state in broker/agentd and restore on WebUI reconnect.
   - 2026-02-26: workflow waits persist to client prefs (broker/agentd) with local fallback.
 - [x] W=12 — Refresh-safe run streaming: persist active job stream state in client prefs (broker/agentd) and auto-resume after reload.

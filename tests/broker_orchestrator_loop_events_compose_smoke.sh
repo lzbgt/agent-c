@@ -369,4 +369,44 @@ if not isinstance(handoffs, list) or len(handoffs) < 1:
   raise SystemExit(1)
 PY
 
+EVENTS_REPLAY_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    "${BROKER_BASE}/v1/events/replay?types=team_goal_progress,team_goal_drift,team_handoff&limit=100"
+)"
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${EVENTS_REPLAY_JSON}''')
+events = obj.get("events") or []
+if not isinstance(events, list) or len(events) < 1:
+  print("expected replay events", obj, file=sys.stderr)
+  raise SystemExit(1)
+seen_progress = False
+seen_drift = False
+seen_handoff = False
+for raw in events:
+  if isinstance(raw, str):
+    try:
+      ev = json.loads(raw)
+    except json.JSONDecodeError:
+      continue
+  elif isinstance(raw, dict):
+    ev = raw
+  else:
+    continue
+  etype = str(ev.get("type",""))
+  payload = ev.get("payload") or {}
+  if str(payload.get("team_run_id","")) != "${TEAM_RUN_ID}":
+    continue
+  if etype == "team_goal_progress":
+    seen_progress = True
+  elif etype == "team_goal_drift":
+    seen_drift = True
+  elif etype == "team_handoff":
+    seen_handoff = True
+if not (seen_progress and seen_drift and seen_handoff):
+  print("replay missing events", seen_progress, seen_drift, seen_handoff, obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 echo "broker_orchestrator_loop_events_compose_smoke OK (stub=${STUB_BASE_HOST})"
