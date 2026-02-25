@@ -100,7 +100,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Weighted tasks (next up)
 
-- [ ] W=14 — Orchestrator ownership + lease takeover: prevent split-brain while keeping automation always-on.
+- [x] W=14 — Orchestrator ownership + lease takeover: prevent split-brain while keeping automation always-on.
   - 2026-02-26: added `expected_owner` guard to orchestrator run update/heartbeat and orchestrator loop claim via `meta.orchestrator_owner`.
   - 2026-02-26: orchestrator loop can take over stale/missing leases when `allow_takeover=true`.
   - 2026-02-26: orchestrator console surfaces lease/owner; compose smoke asserts takeover behavior.
