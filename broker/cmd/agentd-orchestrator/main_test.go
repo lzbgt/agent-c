@@ -842,6 +842,87 @@ func TestMaybeEmitDriftEmitsOnce(t *testing.T) {
 	}
 }
 
+func TestMaybeEmitDriftCreatesGuidance(t *testing.T) {
+	type state struct {
+		mu              sync.Mutex
+		goalCalled      int
+		guidanceCalled  int
+		guidancePayload map[string]any
+	}
+	st := &state{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/teams/team1/runs/run1/goal":
+			st.mu.Lock()
+			st.goalCalled++
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/teams/team1/guidance":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			st.mu.Lock()
+			st.guidanceCalled++
+			st.guidancePayload = payload
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","guidance":{"guidance_id":"g1"}}`)
+		default:
+			http.Error(w, "unexpected", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	cfg := config{brokerBase: server.URL, oidcToken: "token", orchestratorID: "orch1"}
+	meta := map[string]any{
+		"drift_after_ms":              int64(1),
+		"drift_action":                "guidance",
+		"drift_guidance_kind":         "warning",
+		"drift_guidance_priority":     "urgent",
+		"drift_guidance_message":      "drift detected",
+		"drift_guidance_payload":      map[string]any{"note": "check goal"},
+		"drift_guidance_target_roles": []string{},
+	}
+	status := &teamRunResponse{CreatedUnixMS: time.Now().UTC().UnixMilli() - 500}
+	changed, err := maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", status, meta)
+	if err != nil {
+		t.Fatalf("maybeEmitDrift error: %v", err)
+	}
+	if !changed {
+		t.Fatalf("expected drift to emit and update meta")
+	}
+	if meta["drift_guidance_id"] != "g1" {
+		t.Fatalf("expected drift_guidance_id=g1, got %#v", meta["drift_guidance_id"])
+	}
+	if meta["drift_action_error"] != "" {
+		t.Fatalf("expected no drift_action_error, got %#v", meta["drift_action_error"])
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.goalCalled != 1 {
+		t.Fatalf("expected goal event call, got %d", st.goalCalled)
+	}
+	if st.guidanceCalled != 1 {
+		t.Fatalf("expected guidance create call, got %d", st.guidanceCalled)
+	}
+	if st.guidancePayload == nil {
+		t.Fatalf("expected guidance payload")
+	}
+	if st.guidancePayload["kind"] != "warning" {
+		t.Fatalf("expected kind=warning, got %#v", st.guidancePayload["kind"])
+	}
+	if st.guidancePayload["priority"] != "urgent" {
+		t.Fatalf("expected priority=urgent, got %#v", st.guidancePayload["priority"])
+	}
+	if st.guidancePayload["message"] != "drift detected" {
+		t.Fatalf("expected message=drift detected, got %#v", st.guidancePayload["message"])
+	}
+	if st.guidancePayload["target_orchestrator_id"] != "human" {
+		t.Fatalf("expected target_orchestrator_id=human, got %#v", st.guidancePayload["target_orchestrator_id"])
+	}
+}
+
 func TestMaybeProcessHandoffQueueDispatchesDirective(t *testing.T) {
 	type state struct {
 		mu            sync.Mutex

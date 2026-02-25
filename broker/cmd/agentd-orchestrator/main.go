@@ -610,7 +610,95 @@ func maybeEmitDrift(ctx context.Context, client *http.Client, cfg config, teamID
 	}
 	meta["last_drift_unix_ms"] = now
 	meta["last_drift_team_run_id"] = teamRunID
+	if applyDriftAction(ctx, client, cfg, teamID, teamRunID, meta, elapsed, int64(threshold), now) {
+		meta["drift_action_unix_ms"] = now
+		meta["drift_action_team_run_id"] = teamRunID
+	}
 	return true, nil
+}
+
+func applyDriftAction(
+	ctx context.Context,
+	client *http.Client,
+	cfg config,
+	teamID,
+	teamRunID string,
+	meta map[string]any,
+	elapsed,
+	threshold,
+	now int64,
+) bool {
+	action := strings.ToLower(strings.TrimSpace(asString(meta["drift_action"])))
+	if action == "" || action == "none" {
+		return false
+	}
+	meta["drift_action"] = action
+	switch action {
+	case "guidance":
+		kind := strings.TrimSpace(asString(meta["drift_guidance_kind"]))
+		if kind == "" {
+			kind = "warning"
+		}
+		priority := strings.TrimSpace(asString(meta["drift_guidance_priority"]))
+		if priority == "" {
+			priority = "high"
+		}
+		message := strings.TrimSpace(asString(meta["drift_guidance_message"]))
+		if message == "" {
+			message = fmt.Sprintf("Goal drift detected after %dms (threshold %dms).", elapsed, threshold)
+		}
+		payload := map[string]any{
+			"source":          "drift_guard",
+			"elapsed_ms":      elapsed,
+			"threshold_ms":    threshold,
+			"team_run_id":     teamRunID,
+			"orchestrator_id": cfg.orchestratorID,
+			"ts_unix_ms":      now,
+		}
+		if extra, ok := meta["drift_guidance_payload"].(map[string]any); ok && len(extra) > 0 {
+			for k, v := range extra {
+				payload[k] = v
+			}
+		}
+		req := guidanceCreateRequest{
+			TeamRunID: teamRunID,
+			Kind:      kind,
+			Priority:  priority,
+			Message:   message,
+			Payload:   payload,
+		}
+		targetRoles := cleanStringList(asStringSlice(meta["drift_guidance_target_roles"]))
+		targetMembers := cleanStringList(asStringSlice(meta["drift_guidance_target_member_ids"]))
+		targetAgents := cleanStringList(asStringSlice(meta["drift_guidance_target_agent_ids"]))
+		targetOrch := strings.TrimSpace(asString(meta["drift_guidance_target_orchestrator"]))
+		if len(targetRoles) > 0 {
+			req.TargetRoles = targetRoles
+		}
+		if len(targetMembers) > 0 {
+			req.TargetMemberIDs = targetMembers
+		}
+		if len(targetAgents) > 0 {
+			req.TargetAgentIDs = targetAgents
+		}
+		if targetOrch == "" && len(targetRoles) == 0 && len(targetMembers) == 0 && len(targetAgents) == 0 {
+			targetOrch = "human"
+		}
+		if targetOrch != "" {
+			req.TargetOrchestrator = targetOrch
+		}
+		guidance, err := createGuidance(ctx, client, cfg, teamID, req)
+		if err != nil {
+			meta["drift_action_error"] = err.Error()
+			fmt.Fprintf(os.Stderr, "drift guidance create failed: %v\n", err)
+			return true
+		}
+		meta["drift_guidance_id"] = guidance.GuidanceID
+		meta["drift_action_error"] = ""
+		return true
+	default:
+		meta["drift_action_error"] = fmt.Sprintf("unknown drift_action: %s", action)
+	}
+	return true
 }
 
 func maybeProcessHandoffQueue(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string, meta map[string]any) (bool, error) {

@@ -135,6 +135,8 @@ Minimal responsibilities:
 5) **Progress + drift checkpoints**
    - Emit `goal_progress` events periodically (`meta.progress_every_ms`).
    - Emit a single `goal_drift` event when a run exceeds `meta.drift_after_ms`.
+   - Optional drift action (`meta.drift_action="guidance"`) can emit a guidance
+     item for human intervention.
 
 6) **Handoff execution**
    - When `meta.handoff_queue` contains events, publish them to the active team run
@@ -162,6 +164,15 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
   completion_mode: "on_success"|"on_failure"|"never"  # default on_success
   progress_every_ms: number           # emit goal_progress every N ms (optional)
   drift_after_ms: number              # emit goal_drift after N ms (optional)
+  drift_action: "none"|"guidance"     # optional drift response (default none)
+  drift_guidance_kind: "warning"|"constraint"|"directive"|"context"  # optional
+  drift_guidance_priority: "low"|"normal"|"high"|"urgent"            # optional
+  drift_guidance_message: string      # optional override for guidance text
+  drift_guidance_payload: { ... }     # optional payload merged into guidance
+  drift_guidance_target_orchestrator: string # optional target; default "human"
+  drift_guidance_target_roles: [string]      # optional targeting
+  drift_guidance_target_member_ids: [string] # optional targeting
+  drift_guidance_target_agent_ids: [string]  # optional targeting
   allow_takeover: true|false          # default true; allow stale-lease takeover
   handoff_queue: [{from_role,to_role,reason?,message?,data?}]  # optional queue
   run_template: { ... }               # optional /api/v1/run payload
@@ -187,6 +198,11 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
   runtime_members_retired_unix_ms: integer
   last_tick_unix_ms: integer
 ```
+
+Notes:
+- Drift guidance defaults to `target_orchestrator_id="human"` when no explicit targets
+  are provided so the item stays open for operator review. Set
+  `drift_guidance_target_orchestrator` to the orchestrator id to auto-ack.
 
 ### Goal progress + drift events (SSE)
 

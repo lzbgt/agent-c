@@ -122,7 +122,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-26: orchestrator loop attempts allocator-backed runtime member allocation for missing roles (meta tracking + tests).
   - 2026-02-26: orchestrator loop dispatches handoff directives to target roles (retriable on missing sessions).
   - 2026-02-26: added unit tests for goal progress/drift event emission and meta updates.
-- [ ] W=12 — Durable orchestration state + event replay: persist orchestrator runs (DB + CRUD), add replayable event log for team run/goal/handoff/moderator events, and rehydrate WebUI on refresh without losing context.
+- [x] W=12 — Durable orchestration state + event replay: persist orchestrator runs (DB + CRUD), add replayable event log for team run/goal/handoff/moderator events, and rehydrate WebUI on refresh without losing context.
   - 2026-02-26: broker persists events and exposes `/v1/events/replay`; UI rehydrates on refresh (paging still capped).
   - 2026-02-26: WebUI broker console + team console replay events on refresh; orchestrator panel also rehydrates from replay.
   - 2026-02-26: broker orchestrator runs persisted with CRUD + heartbeat endpoint.
@@ -197,12 +197,14 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-20 check: even with `OPENROUTER_HTTP_REFERER=http://localhost` and `OPENROUTER_X_TITLE=agentd`, `/chat/completions` returns 401 “User not found”.
   - 2026-02-25 check: `tools/probe_openrouter_stream_models.sh` still skips with chat 401; `tools/openrouter_auth_debug.sh` reports `chat_status=401` and `User not found` (key source `~/.env`).
   - 2026-02-19 check: `tools/openrouter_auth_debug.sh` shows `/models` ok (models_count=337) but `/chat/completions` returns 401 “User not found”.
+- [x] W=9 — Drift response policy: allow `drift_action=guidance` to emit a guidance item for operator intervention, with default human target and tests.
+  - 2026-02-26: orchestrator drift action emits guidance items; docs + tests updated.
 - [x] W=9 — Unblock macOS full-stack compose verification (document Docker Desktop resource settings + prebuilt image path) and improve `tools/verify_mac_full_stack.sh` diagnostics for `unpigz/runc` failures.
 - [x] W=8 — Finish embedded/MCU-compatible tool plugin path (ABI constraints + host/sandbox policy; Windows parity tests added).
 - [x] W=7 — Split near-2000 LOC modules into SOLID units with focused tests: `broker/internal/broker/server.go` (UI `api.ts` + `daemon/src/agent_db.cpp` + `daemon/src/workflow_endpoints.cpp` completed).
 - [x] W=3 — Reduce WebUI bundle size warning (>500 kB) via `manualChunks` or dynamic imports where appropriate.
 - [x] W=5 — Audio streaming foundation: define WebRTC/Opus signaling + broker relay endpoints (spec + broker relay endpoints + loopback + docker-postgres smoke tests + agentd loopback tool/test added).
-- [ ] W=12 — Multi-agent team orchestration: define agent group model (roles, shared memory, quorum gating), add APIs + WebUI flows + smoke tests.
+- [x] W=12 — Multi-agent team orchestration: define agent group model (roles, shared memory, quorum gating), add APIs + WebUI flows + smoke tests.
   - 2026-02-19: Draft spec added (`docs/spec/team_orchestration_v0.md`) describing data model + quorum semantics.
   - 2026-02-19: Added run-event payload schemas + fixtures for team handoff/quorum/member results.
   - 2026-02-19: Added broker OpenAPI shapes for team/membership/quorum endpoints (planned).
@@ -293,6 +295,8 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-19: Added `tools/verify.sh --eval-pack` to run eval pack smoke locally.
   - 2026-02-19: Added richer eval checks (json_number/json_len/file_sha256) + eval_pack_checks_smoke.
   - 2026-02-19: Added broker_smoke eval pack (health/ready + evidence) and templated scenario ports.
+- [ ] W=9 — Drift remediation actions: pause/cancel/replan policies after drift, with configurable action targets and evidence.
+- [ ] W=8 — Capacity-based autoscale: spawn or retire runtime members based on backlog/latency signals (not only missing roles).
 - [ ] W=9 — Scheduling + isolation MVP: admission control, per-run budgets, and tool execution caps with evidence logs.
 - [ ] W=8 — Data governance controls: retention policy config, export/erase endpoints, and redaction-aware evidence bundles.
 

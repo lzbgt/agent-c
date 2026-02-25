@@ -147,6 +147,27 @@ type guidanceListResponse struct {
 	Guidance []guidanceEvent `json:"guidance"`
 }
 
+type guidanceCreateRequest struct {
+	GuidanceID         string         `json:"guidance_id,omitempty"`
+	TeamRunID          string         `json:"team_run_id,omitempty"`
+	Kind               string         `json:"kind"`
+	Priority           string         `json:"priority,omitempty"`
+	Message            string         `json:"message"`
+	Payload            map[string]any `json:"payload,omitempty"`
+	TargetRoles        []string       `json:"target_roles,omitempty"`
+	TargetMemberIDs    []string       `json:"target_member_ids,omitempty"`
+	TargetAgentIDs     []string       `json:"target_agent_ids,omitempty"`
+	TargetOrchestrator string         `json:"target_orchestrator_id,omitempty"`
+	ExpiresUnixMS      int64          `json:"expires_unix_ms,omitempty"`
+	CreatedBy          string         `json:"created_by,omitempty"`
+}
+
+type guidanceCreateResponse struct {
+	OK       bool          `json:"ok"`
+	TeamID   string        `json:"team_id"`
+	Guidance guidanceEvent `json:"guidance"`
+}
+
 type guidanceAckResponse struct {
 	OK       bool           `json:"ok"`
 	TeamID   string         `json:"team_id"`

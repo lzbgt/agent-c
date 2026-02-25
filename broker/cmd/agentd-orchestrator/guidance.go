@@ -256,6 +256,18 @@ func fetchGuidance(ctx context.Context, client *http.Client, cfg config, teamID,
 	return resp.Guidance, nil
 }
 
+func createGuidance(ctx context.Context, client *http.Client, cfg config, teamID string, req guidanceCreateRequest) (*guidanceEvent, error) {
+	url := fmt.Sprintf("%s/v1/teams/%s/guidance", cfg.brokerBase, teamID)
+	var resp guidanceCreateResponse
+	if err := doJSON(ctx, client, cfg, http.MethodPost, url, req, &resp); err != nil {
+		return nil, err
+	}
+	if !resp.OK {
+		return nil, fmt.Errorf("broker returned ok=false for guidance create")
+	}
+	return &resp.Guidance, nil
+}
+
 func ackGuidance(ctx context.Context, client *http.Client, cfg config, teamID, guidanceID, status, note, ackSource, ackRole string) (*guidanceAckResponse, error) {
 	if strings.TrimSpace(status) == "" {
 		status = "acked"
