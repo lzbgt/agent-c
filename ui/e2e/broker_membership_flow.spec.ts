@@ -21,9 +21,9 @@ test("broker membership flow wires settings and refresh actions", async ({ page 
   // Fill membership form to ensure inputs are wired.
   await expect(page.getByPlaceholder("user_sub")).toBeVisible();
   await page.getByPlaceholder("user_sub").fill("user-123");
-  await expect(page.getByRole("button", { name: "Save" })).toBeVisible();
+  const membersSection = page.locator("section").filter({ has: page.getByText("Members", { exact: true }) });
+  await expect(membersSection.getByRole("button", { name: "Save", exact: true })).toBeVisible();
 
   // Trigger refresh buttons (no assertions on network, just UI wiring).
-  const membersSection = page.locator("section").filter({ has: page.getByText("Members", { exact: true }) });
   await expect(membersSection.getByRole("button", { name: /Refresh|Loading/ })).toBeVisible();
 });
