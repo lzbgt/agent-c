@@ -124,6 +124,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-19 check: `tools/probe_openrouter_stream_models.sh` fails with 401 chat auth even with headers set.
   - 2026-02-20 check: `tools/openrouter_auth_debug.sh` with key from `~/.env` still returns 401 “User not found” on `/chat/completions`.
   - 2026-02-20 check: even with `OPENROUTER_HTTP_REFERER=http://localhost` and `OPENROUTER_X_TITLE=agentd`, `/chat/completions` returns 401 “User not found”.
+  - 2026-02-25 check: `tools/probe_openrouter_stream_models.sh` still skips with chat 401; `tools/openrouter_auth_debug.sh` reports `chat_status=401` and `User not found` (key source `~/.env`).
   - 2026-02-19 check: `tools/openrouter_auth_debug.sh` shows `/models` ok (models_count=337) but `/chat/completions` returns 401 “User not found”.
 - [x] W=9 — Unblock macOS full-stack compose verification (document Docker Desktop resource settings + prebuilt image path) and improve `tools/verify_mac_full_stack.sh` diagnostics for `unpigz/runc` failures.
 - [x] W=8 — Finish embedded/MCU-compatible tool plugin path (ABI constraints + host/sandbox policy; Windows parity tests added).
@@ -191,9 +192,10 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
 - [x] W=5 — WebUI refresh-safe workflow waits: persist active workflow wait state and resume polling after reload.
 - [ ] W=8 — Run comparison + evidence diff UX: side-by-side run diffs (events/artifacts/costs), evidence bundle viewer, and regression baselines.
 - [x] W=10 — Policy hook MVP: deterministic pre/post run + tool call hooks with allow/deny + budget caps, config surface, and audit logs.
-- [ ] W=9 — Attestation bundles: canonical hash format + signed run certificates + verification CLI.
+- [x] W=9 — Attestation bundles: canonical hash format + signed run certificates + verification CLI.
   - 2026-02-19: Added draft spec (`docs/spec/run_attestation_bundle_v1.md`) + host tool (`run_attestation_bundle_tool`) + smoke test.
   - 2026-02-19: Added server-side HMAC/Ed25519 signing for `/api/v1/run/attestation` + Ed25519 verification smoke.
+  - 2026-02-25: Verified `tests/run_attestation_bundle_tool_smoke.sh` + `tests/agentd_run_attestation_ed25519_smoke.sh` (logs in `out/`).
 - [ ] W=8 — Evaluation + regression gating: canonical eval packs, deterministic scoring, and CI baselines to catch model/version drift.
   - 2026-02-19: Added eval pack spec (`docs/spec/eval_pack_v0.md`) and runner (`tools/eval_pack.py`) with a minimal example pack.
   - 2026-02-19: Added `eval_pack_smoke` test (self-contained, no agentd required).
