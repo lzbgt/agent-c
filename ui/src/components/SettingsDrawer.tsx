@@ -202,6 +202,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const [moderatorEventsIncludeTasks, setModeratorEventsIncludeTasks] = React.useState<boolean>(true);
   const [moderatorEventsFilter, setModeratorEventsFilter] = React.useState<string>("");
   const [moderatorEventsExpanded, setModeratorEventsExpanded] = React.useState<Record<string, boolean>>({});
+  const [moderatorPinnedEvents, setModeratorPinnedEvents] = React.useState<Record<string, ModeratorEvent>>({});
   const serverPrefsBase = String(connection.serverPrefsBase || "").trim();
   const serverPrefsCanSync = serverPrefsBase.length > 0;
   const serverPrefsTarget = connection.mode === "broker" ? "broker" : "daemon";
@@ -618,6 +619,15 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
       return false;
     });
   }, [moderatorEventsFilterValue, moderatorEventsList]);
+  const moderatorPinnedEntries = React.useMemo(() => {
+    const entries = Object.entries(moderatorPinnedEvents);
+    entries.sort((a, b) => {
+      const ta = typeof a[1]?.ts_unix_ms === "number" ? a[1].ts_unix_ms : 0;
+      const tb = typeof b[1]?.ts_unix_ms === "number" ? b[1].ts_unix_ms : 0;
+      return tb - ta;
+    });
+    return entries;
+  }, [moderatorPinnedEvents]);
   const moderatorRolePresets = React.useMemo(() => ["role:planner", "role:executor", "role:critic"], []);
 
   if (!props.open) return null;
@@ -1321,6 +1331,72 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                   </button>
                 ) : null}
               </div>
+              {moderatorPinnedEntries.length > 0 ? (
+                <div className="mt-2 rounded-md border border-white/10 bg-black/20 p-2">
+                  <div className="flex items-center justify-between gap-2 text-[11px] text-white/70">
+                    <span>Pinned events ({moderatorPinnedEntries.length})</span>
+                    <button
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                      type="button"
+                      onClick={() => setModeratorPinnedEvents({})}
+                    >
+                      Clear pins
+                    </button>
+                  </div>
+                  <div className="mt-2 grid gap-2">
+                    {moderatorPinnedEntries.map(([key, event]) => {
+                      const type = typeof event?.type === "string" ? event.type : "event";
+                      const ts = typeof event?.ts_unix_ms === "number" ? new Date(event.ts_unix_ms).toLocaleString() : "";
+                      const actor = event?.actor && typeof event.actor === "object" ? (event.actor as any) : {};
+                      const actorId = typeof actor?.id === "string" ? actor.id : "";
+                      const summary = formatModeratorEventSummary(event);
+                      return (
+                        <div key={`pinned-${key}`} className="rounded-md border border-white/5 bg-black/30 p-2 text-[11px] text-white/70">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="text-white/80">
+                              {type}
+                              {actorId ? ` · ${actorId}` : ""}
+                            </div>
+                            <div className="text-white/40">{ts}</div>
+                          </div>
+                          {summary ? <div className="text-white/60">{summary}</div> : null}
+                          <div className="mt-1 flex flex-wrap items-center gap-2">
+                            {summary ? (
+                              <button
+                                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
+                                type="button"
+                                onClick={() => void copyTextToClipboard(summary)}
+                              >
+                                Copy summary
+                              </button>
+                            ) : null}
+                            <button
+                              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
+                              type="button"
+                              onClick={() => void copyTextToClipboard(JSON.stringify(event, null, 2))}
+                            >
+                              Copy JSON
+                            </button>
+                            <button
+                              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
+                              type="button"
+                              onClick={() =>
+                                setModeratorPinnedEvents((prev) => {
+                                  const next = { ...prev };
+                                  delete next[key];
+                                  return next;
+                                })
+                              }
+                            >
+                              Unpin
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : null}
               {moderatorEventsError ? <div className="mt-2 text-[11px] text-rose-200">{moderatorEventsError}</div> : null}
               {!moderatorEventsEnabled ? (
                 <div className="mt-2 text-[11px] text-amber-200">Moderator events disabled by daemon caps.</div>
@@ -1341,6 +1417,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                     const actorId = typeof actor?.id === "string" ? actor.id : "";
                     const summary = formatModeratorEventSummary(event);
                     const key = `${type}-${event?.ts_unix_ms ?? "0"}-${idx}`;
+                    const isPinned = !!moderatorPinnedEvents[key];
                     const isExpanded = moderatorEventsExpanded[key] === true;
                     return (
                       <div key={key} className="border-b border-white/5 py-1 last:border-b-0">
@@ -1366,6 +1443,23 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                               onClick={() => void copyTextToClipboard(JSON.stringify(event, null, 2))}
                             >
                               Copy JSON
+                            </button>
+                            <button
+                              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
+                              type="button"
+                              onClick={() =>
+                                setModeratorPinnedEvents((prev) => {
+                                  const next = { ...prev };
+                                  if (next[key]) {
+                                    delete next[key];
+                                  } else {
+                                    next[key] = event;
+                                  }
+                                  return next;
+                                })
+                              }
+                            >
+                              {isPinned ? "Unpin" : "Pin"}
                             </button>
                             <button
                               className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
