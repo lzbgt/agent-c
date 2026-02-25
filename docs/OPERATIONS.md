@@ -146,6 +146,9 @@ On macOS, Docker preflight will try to auto-start Docker Desktop when the daemon
 is down. Set `AGENT_DOCKER_AUTOSTART=0` to disable, or tune the wait with
 `AGENT_DOCKER_STARTUP_TIMEOUT_SEC` (default: 120 seconds).
 
+Additional broker compose smokes:
+- OIDC refresh sidecar + token file: `tests/broker_oidc_refresh_compose_smoke.sh`
+
 ## Spawn adapter (orchestrator provisioning)
 
 The broker can persist spawn requests for new runtime members. The
