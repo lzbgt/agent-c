@@ -52,6 +52,7 @@ HTTP proxy behavior:
 - `broker_smoke.json`: checks `/healthz` + `/readyz` (TLS insecure), captures evidence via broker proxy.
 - `broker_team_runs_quorum_compose_smoke.json`: runs the broker team-run quorum compose smoke (requires Docker Compose).
 - `broker_team_runs_runtime_members_compose_smoke.json`: runs the broker team-run runtime members compose smoke (requires Docker Compose).
+- `broker_team_runs_role_overrides_compose_smoke.json`: runs the broker team-run role overrides compose smoke (requires Docker Compose).
 - `broker_team_runtime_members_events_sse_compose_smoke.json`: validates runtime members SSE events (requires Docker Compose).
 - `broker_team_quorum_events_sse_compose_smoke.json`: validates quorum SSE events (requires Docker Compose).
 - `broker_team_run_events_sse_compose_smoke.json`: validates team run created/status SSE events (requires Docker Compose).
