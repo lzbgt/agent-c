@@ -185,17 +185,31 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
     const key = String(props.authKey || "").trim();
     return `${base}::${key}`;
   }, [props.authKey, props.baseUrl]);
+  const waitStaleMs = 7 * 24 * 60 * 60 * 1000;
   const [waitByScope, setWaitByScope] = useLocalStorageState<Record<string, WaitStatePersisted>>(
     "agentui.workflowWaitByScope",
     {},
   );
   const waitPersistedEntry = React.useMemo(() => {
-    const rec = waitByScope[waitScopeKey];
+    const now = Date.now();
+    const fresh: Record<string, WaitStatePersisted> = {};
+    for (const [key, value] of Object.entries(waitByScope)) {
+      const ts =
+        typeof value?.updated_unix_ms === "number"
+          ? value.updated_unix_ms
+          : typeof value?.started_unix_ms === "number"
+            ? value.started_unix_ms
+            : 0;
+      if (!ts || now - ts <= waitStaleMs) {
+        fresh[key] = value;
+      }
+    }
+    const rec = fresh[waitScopeKey];
     if (rec && typeof rec.workflow_id === "string" && rec.workflow_id.trim()) {
-      return { key: waitScopeKey, value: rec };
+      return { key: waitScopeKey, value: rec, extra: 0 };
     }
     const basePrefix = `${waitScopeKey.split("::")[0]}::`;
-    const matches = Object.entries(waitByScope).filter(([key, value]) => {
+    const matches = Object.entries(fresh).filter(([key, value]) => {
       if (!key.startsWith(basePrefix)) return false;
       return value && typeof value.workflow_id === "string" && value.workflow_id.trim().length > 0;
     });
@@ -207,12 +221,13 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
         const bts = typeof bv.updated_unix_ms === "number" ? bv.updated_unix_ms : bv.started_unix_ms ?? 0;
         return bts - ats;
       });
-      return { key: matches[0][0], value: matches[0][1] };
+      return { key: matches[0][0], value: matches[0][1], extra: Math.max(0, matches.length - 1) };
     }
     return null;
-  }, [waitByScope, waitScopeKey]);
+  }, [waitByScope, waitScopeKey, waitStaleMs]);
   const waitPersisted = waitPersistedEntry?.value ?? null;
   const waitPersistedKey = waitPersistedEntry?.key ?? waitScopeKey;
+  const waitPersistedExtra = waitPersistedEntry?.extra ?? 0;
   const writeWaitPersisted = React.useCallback(
     (next: WaitStatePersisted | null) => {
       setWaitByScope((prev) => {
@@ -231,6 +246,24 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
     [setWaitByScope, waitPersistedKey, waitScopeKey],
   );
   const resumeAttemptedRef = React.useRef<string>("");
+
+  React.useEffect(() => {
+    const now = Date.now();
+    const fresh: Record<string, WaitStatePersisted> = {};
+    for (const [key, value] of Object.entries(waitByScope)) {
+      const ts =
+        typeof value?.updated_unix_ms === "number"
+          ? value.updated_unix_ms
+          : typeof value?.started_unix_ms === "number"
+            ? value.started_unix_ms
+            : 0;
+      if (!ts || now - ts <= waitStaleMs) {
+        fresh[key] = value;
+      }
+    }
+    if (Object.keys(fresh).length === Object.keys(waitByScope).length) return;
+    setWaitByScope(fresh);
+  }, [setWaitByScope, waitByScope, waitStaleMs]);
 
   const defaults = React.useMemo(() => props.workflowDefaults ?? {}, [props.workflowDefaults]);
   const targets = React.useMemo(() => normalizeTargets(props.workflowTargets), [props.workflowTargets]);
@@ -758,6 +791,7 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
             <span className="text-[11px] text-white/60">
               Resume wait: {waitPersisted.workflow_id}
               {waitPersisted.last_status ? ` • ${waitPersisted.last_status}` : ""}
+              {waitPersistedExtra > 0 ? ` • +${waitPersistedExtra} more` : ""}
             </span>
             <button
               className="rounded-md border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[11px] text-emerald-100 hover:bg-emerald-400/20"
