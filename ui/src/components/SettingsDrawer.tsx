@@ -175,6 +175,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const [moderatorEventsMaxBytes, setModeratorEventsMaxBytes] = React.useState<string>("1048576");
   const [moderatorEventsIncludeDirectives, setModeratorEventsIncludeDirectives] = React.useState<boolean>(true);
   const [moderatorEventsIncludeTasks, setModeratorEventsIncludeTasks] = React.useState<boolean>(true);
+  const [moderatorEventsExpanded, setModeratorEventsExpanded] = React.useState<Record<string, boolean>>({});
   const serverPrefsBase = String(connection.serverPrefsBase || "").trim();
   const serverPrefsCanSync = serverPrefsBase.length > 0;
   const serverPrefsTarget = connection.mode === "broker" ? "broker" : "daemon";
@@ -1273,6 +1274,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                     const actorId = typeof actor?.id === "string" ? actor.id : "";
                     const summary = formatModeratorEventSummary(event);
                     const key = `${type}-${event?.ts_unix_ms ?? "0"}-${idx}`;
+                    const isExpanded = moderatorEventsExpanded[key] === true;
                     return (
                       <div key={key} className="border-b border-white/5 py-1 last:border-b-0">
                         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1280,9 +1282,28 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                             {type}
                             {actorId ? ` · ${actorId}` : ""}
                           </div>
-                          <div className="text-white/40">{ts}</div>
+                          <div className="flex items-center gap-2 text-white/40">
+                            <span>{ts}</span>
+                            <button
+                              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
+                              type="button"
+                              onClick={() =>
+                                setModeratorEventsExpanded((prev) => ({
+                                  ...prev,
+                                  [key]: !isExpanded,
+                                }))
+                              }
+                            >
+                              {isExpanded ? "Hide JSON" : "Show JSON"}
+                            </button>
+                          </div>
                         </div>
                         {summary ? <div className="text-white/60">{summary}</div> : null}
+                        {isExpanded ? (
+                          <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-md border border-white/10 bg-black/40 p-2 text-[10px] text-white/70">
+                            {JSON.stringify(event, null, 2)}
+                          </pre>
+                        ) : null}
                       </div>
                     );
                   })
