@@ -196,6 +196,10 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
   drift_replan_ack_unix_ms: integer        # set when guidance is acked
   replan_ack_count: number                 # receipt count meeting filters
   replan_ack_satisfied_unix_ms: integer    # when receipt threshold met
+  replan_ack_roles_seen: [string]          # roles from receipts used to resume
+  replan_ack_sources_seen: [string]        # sources from receipts used to resume
+  replan_event_unix_ms: integer            # when replan resume event emitted
+  replan_event_error: string               # error if resume event fails
   replan_prev_team_run_id: string          # previous run id when new run requested
   replan_new_run_requested_unix_ms: integer # when new run requested
   replan_cancel_unix_ms: integer           # when active run cancel issued
@@ -250,6 +254,7 @@ Notes:
 - `goal_progress`: checkpoint updates (milestones, partials, evidence references)
 - `goal_drift`: detected deviation from the goal contract
 - `spawn_validation`: invalid spawn meta detected (errors persisted in orchestrator run meta)
+- `replan_resume`: replan guidance acked and orchestrator run resumed
 
 ### Runtime member allocation
 

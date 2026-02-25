@@ -1123,6 +1123,9 @@ func TestMaybeHandleReplanAckResumesRun(t *testing.T) {
 		case r.Method == http.MethodGet && r.URL.Path == "/v1/teams/team1/guidance/g-replan":
 			w.Header().Set("Content-Type", "application/json")
 			io.WriteString(w, `{"ok":true,"team_id":"team1","guidance":{"guidance_id":"g-replan","status":"acked","acked_by":"human","acked_unix_ms":123,"ack_note":"ok"}}`)
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/teams/team1/runs/run1/goal":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true}`)
 		case r.Method == http.MethodPatch && r.URL.Path == "/v1/teams/team1/orchestrator/runs/orun1":
 			body, _ := io.ReadAll(r.Body)
 			var payload map[string]any

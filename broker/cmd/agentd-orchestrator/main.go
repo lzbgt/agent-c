@@ -1433,8 +1433,14 @@ func maybeHandleReplanAck(
 		if err != nil {
 			return false, err
 		}
-		ok, count := replanReceiptsSatisfied(receipts, minAck, roleSet, sourceSet, requireAllRoles)
+		ok, count, rolesSeen, sourcesSeen := replanReceiptsSatisfied(receipts, minAck, roleSet, sourceSet, requireAllRoles)
 		meta["replan_ack_count"] = count
+		if len(rolesSeen) > 0 {
+			meta["replan_ack_roles_seen"] = rolesSeen
+		}
+		if len(sourcesSeen) > 0 {
+			meta["replan_ack_sources_seen"] = sourcesSeen
+		}
 		if !ok {
 			return false, nil
 		}
@@ -1488,6 +1494,43 @@ func maybeHandleReplanAck(
 		meta["active_team_run_id"] = ""
 		meta["replan_new_run_requested_unix_ms"] = time.Now().UTC().UnixMilli()
 	}
+	eventRunID := activeRunID
+	if eventRunID == "" {
+		eventRunID = strings.TrimSpace(asString(meta["replan_prev_team_run_id"]))
+	}
+	if eventRunID != "" {
+		event := map[string]any{
+			"type":       "replan_resume",
+			"message":    "replan guidance acked",
+			"ts_unix_ms": time.Now().UTC().UnixMilli(),
+			"data": map[string]any{
+				"guidance_id": guidanceID,
+			},
+		}
+		if v, ok := meta["replan_ack_count"]; ok {
+			event["data"].(map[string]any)["ack_count"] = v
+		}
+		if v, ok := meta["replan_ack_roles_seen"]; ok {
+			event["data"].(map[string]any)["ack_roles"] = v
+		}
+		if v, ok := meta["replan_ack_sources_seen"]; ok {
+			event["data"].(map[string]any)["ack_sources"] = v
+		}
+		if guidance.AckedBy != "" {
+			event["data"].(map[string]any)["acked_by"] = guidance.AckedBy
+		}
+		if guidance.AckNote != "" {
+			event["data"].(map[string]any)["ack_note"] = guidance.AckNote
+		}
+		if guidance.AckedUnixMS > 0 {
+			event["data"].(map[string]any)["ack_unix_ms"] = guidance.AckedUnixMS
+		}
+		if err := emitTeamRunGoalEvent(ctx, client, cfg, teamID, eventRunID, event); err != nil {
+			meta["replan_event_error"] = err.Error()
+		} else {
+			meta["replan_event_unix_ms"] = event["ts_unix_ms"]
+		}
+	}
 	resp, err := updateOrchestratorRunFields(ctx, client, cfg, teamID, orchestratorRunID, "running", meta, stringPtr(owner), stringPtr("paused"), goalPtr, goalContract, rolePlan)
 	if err != nil {
 		if isHTTPStatus(err, http.StatusConflict) {
@@ -1524,18 +1567,19 @@ func replanReceiptRequirements(meta map[string]any) (bool, int, map[string]bool,
 	return required, minAck, roleSet, sourceSet, requireAllRoles
 }
 
-func replanReceiptsSatisfied(receipts []guidanceReceipt, minAck int, roleSet, sourceSet map[string]bool, requireAllRoles bool) (bool, int) {
+func replanReceiptsSatisfied(receipts []guidanceReceipt, minAck int, roleSet, sourceSet map[string]bool, requireAllRoles bool) (bool, int, []string, []string) {
 	if minAck <= 0 {
 		minAck = 1
 	}
 	if len(receipts) == 0 {
 		if minAck <= 0 {
-			return true, 0
+			return true, 0, nil, nil
 		}
-		return false, 0
+		return false, 0, nil, nil
 	}
 	seen := map[string]bool{}
 	roleHits := map[string]bool{}
+	sourceHits := map[string]bool{}
 	count := 0
 	for _, r := range receipts {
 		role := strings.ToLower(strings.TrimSpace(r.AckRole))
@@ -1558,16 +1602,29 @@ func replanReceiptsSatisfied(receipts []guidanceReceipt, minAck int, roleSet, so
 		if role != "" {
 			roleHits[role] = true
 		}
+		if source != "" {
+			sourceHits[source] = true
+		}
 	}
+	rolesSeen := []string{}
+	for role := range roleHits {
+		rolesSeen = append(rolesSeen, role)
+	}
+	sort.Strings(rolesSeen)
+	sourcesSeen := []string{}
+	for source := range sourceHits {
+		sourcesSeen = append(sourcesSeen, source)
+	}
+	sort.Strings(sourcesSeen)
 	if requireAllRoles && len(roleSet) > 0 {
 		for role := range roleSet {
 			if !roleHits[role] {
-				return false, count
+				return false, count, rolesSeen, sourcesSeen
 			}
 		}
-		return true, count
+		return true, count, rolesSeen, sourcesSeen
 	}
-	return count >= minAck, count
+	return count >= minAck, count, rolesSeen, sourcesSeen
 }
 
 func maybeRetireRuntimeMembers(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string, status *teamRunResponse, meta map[string]any) (bool, error) {
