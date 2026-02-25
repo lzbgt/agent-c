@@ -753,6 +753,12 @@ schemas:
       created_unix_ms: { type: integer, format: int64 }
       mode: { type: string }
       run_overrides_mode: { type: string }
+      goal_contract:
+        $ref: "#/components/schemas/TeamRunGoalContract"
+      goal_events:
+        type: array
+        items:
+          $ref: "#/components/schemas/TeamRunGoalEvent"
       role_overrides_applied:
         type: object
         additionalProperties: true
@@ -783,6 +789,52 @@ schemas:
         type: array
         items:
           $ref: "#/components/schemas/TeamRunCancelResult"
+
+  TeamRunGoalContract:
+    type: object
+    properties:
+      goal: { type: string }
+      success_criteria:
+        type: array
+        items: { type: string }
+      constraints:
+        type: array
+        items: { type: string }
+
+  TeamRunGoalEvent:
+    type: object
+    required: [type, ts_unix_ms]
+    properties:
+      type: { type: string }
+      message: { type: string }
+      ts_unix_ms: { type: integer, format: int64 }
+      data:
+        type: object
+        additionalProperties: true
+      event_index: { type: integer, format: int32 }
+
+  TeamRunGoalUpdateRequest:
+    type: object
+    properties:
+      goal_contract:
+        $ref: "#/components/schemas/TeamRunGoalContract"
+      event:
+        $ref: "#/components/schemas/TeamRunGoalEvent"
+
+  TeamRunGoalUpdateResponse:
+    type: object
+    required: [ok, team_id, team_run_id]
+    properties:
+      ok: { type: boolean }
+      team_id: { type: string }
+      team_run_id: { type: string }
+      goal_contract:
+        $ref: "#/components/schemas/TeamRunGoalContract"
+      goal_events:
+        type: array
+        items:
+          $ref: "#/components/schemas/TeamRunGoalEvent"
+      goal_event_count: { type: integer, format: int32 }
 
   TeamRunRuntimeMembersUpdateRequest:
     type: object

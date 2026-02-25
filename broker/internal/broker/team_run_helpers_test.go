@@ -138,3 +138,55 @@ func TestAllocateRuntimeMembersByRole(t *testing.T) {
 		t.Fatal("expected warning for insufficient allocation")
 	}
 }
+
+func TestParseGoalContract(t *testing.T) {
+	contract, err := parseGoalContract("  ship it ")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if contract["goal"] != "ship it" {
+		t.Fatalf("unexpected goal: %v", contract["goal"])
+	}
+
+	contract, err = parseGoalContract(map[string]any{
+		"goal":             "test goal",
+		"success_criteria": []any{"ok", "fast"},
+		"constraints":      []string{"safe"},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if contract["goal"] != "test goal" {
+		t.Fatalf("unexpected goal: %v", contract["goal"])
+	}
+	if _, ok := contract["success_criteria"]; !ok {
+		t.Fatal("expected success_criteria")
+	}
+	if _, ok := contract["constraints"]; !ok {
+		t.Fatal("expected constraints")
+	}
+
+	if _, err := parseGoalContract(123); err == nil {
+		t.Fatal("expected error for invalid goal_contract")
+	}
+}
+
+func TestAppendGoalEventCapped(t *testing.T) {
+	meta := map[string]any{}
+	for i := 0; i < 5; i++ {
+		events, err := appendGoalEvent(meta, teamGoalEventInput{
+			Type:    "progress",
+			Message: "step",
+		}, 3)
+		if err != nil {
+			t.Fatalf("append failed: %v", err)
+		}
+		if len(events) > 3 {
+			t.Fatalf("expected cap 3, got %d", len(events))
+		}
+	}
+	events, _ := meta["goal_events"].([]map[string]any)
+	if len(events) != 3 {
+		t.Fatalf("expected 3 events, got %d", len(events))
+	}
+}

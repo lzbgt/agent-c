@@ -846,6 +846,33 @@
             schema:
               $ref: "#/components/schemas/TeamRunStatusResponse"
 
+/v1/teams/{team_id}/runs/{team_run_id}/goal:
+  post:
+    tags: [teams]
+    summary: Update team run goal contract or append a goal event
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: team_run_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TeamRunGoalUpdateRequest"
+    responses:
+      "200":
+        description: Goal update applied
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamRunGoalUpdateResponse"
+
 /v1/teams/{team_id}/runtime_members/allocate:
   post:
     tags: [teams]

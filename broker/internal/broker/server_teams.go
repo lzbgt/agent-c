@@ -212,6 +212,13 @@ func (s *Server) handleTeamsSubroutes(w http.ResponseWriter, r *http.Request) {
 				}
 				writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
+			case "goal":
+				if r.Method == "POST" {
+					s.handleTeamRunGoalUpdate(w, r, teamID, parts[2])
+					return
+				}
+				writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
 			case "cancel":
 				if r.Method == "POST" {
 					s.handleTeamRunCancel(w, r, teamID, parts[2])
@@ -1733,6 +1740,120 @@ func (s *Server) handleTeamRunRuntimeMembersUpdate(w http.ResponseWriter, r *htt
 	writeJSON(w, resp)
 }
 
+func (s *Server) handleTeamRunGoalUpdate(w http.ResponseWriter, r *http.Request, teamID, teamRunID string) {
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if p.AuthKind != "oidc" {
+		writeErrorJSON(w, "oidc required", http.StatusForbidden)
+		return
+	}
+	if _, ok := s.requireTeamOwner(w, r, p, teamID); !ok {
+		return
+	}
+	run, err := s.cfg.DB.GetTeamRun(r.Context(), teamID, teamRunID)
+	if err != nil {
+		writeErrorJSON(w, "team run not found", http.StatusNotFound)
+		return
+	}
+	body, err := readBodyBounded(r.Body, 1024*1024)
+	if err != nil {
+		writeErrorJSON(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	if len(body) == 0 {
+		writeErrorJSON(w, "missing body", http.StatusBadRequest)
+		return
+	}
+	raw := map[string]any{}
+	if err := json.Unmarshal(body, &raw); err != nil {
+		writeErrorJSON(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	rawContract := raw["goal_contract"]
+	rawEvent := raw["event"]
+	if rawContract == nil && rawEvent == nil {
+		writeErrorJSON(w, "goal_contract or event required", http.StatusBadRequest)
+		return
+	}
+	contract, err := parseGoalContract(rawContract)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	var goalEvent teamGoalEventInput
+	if rawEvent != nil {
+		goalEvent, err = parseGoalEvent(rawEvent)
+		if err != nil {
+			writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	runPayload := map[string]any{}
+	teamMeta := map[string]any{}
+	if len(run.RunJSON) > 0 {
+		if err := json.Unmarshal(run.RunJSON, &runPayload); err != nil {
+			writeErrorJSON(w, "invalid stored run payload", http.StatusInternalServerError)
+			return
+		}
+		if teamRaw, ok := runPayload["team"].(map[string]any); ok {
+			teamMeta = teamRaw
+		}
+	}
+	if teamMeta == nil {
+		teamMeta = map[string]any{}
+	}
+	nowMs := time.Now().UTC().UnixMilli()
+	if len(contract) > 0 {
+		teamMeta["goal_contract"] = contract
+		teamMeta["goal_updated_unix_ms"] = nowMs
+	}
+	var goalEvents []map[string]any
+	if rawEvent != nil {
+		goalEvents, err = appendGoalEvent(teamMeta, goalEvent, maxGoalEvents)
+		if err != nil {
+			writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		teamMeta["goal_events_updated_unix_ms"] = nowMs
+	}
+	runPayload["team"] = teamMeta
+	if err := s.cfg.DB.UpdateTeamRunPayload(r.Context(), teamID, teamRunID, mustJSON(runPayload)); err != nil {
+		writeErrorJSON(w, "update team run failed", http.StatusInternalServerError)
+		return
+	}
+	traceID := traceIDFromContext(r.Context())
+	if rawEvent != nil && len(goalEvents) > 0 {
+		lastEvent := goalEvents[len(goalEvents)-1]
+		payload := map[string]any{
+			"team_id":     teamID,
+			"team_run_id": teamRunID,
+			"event":       lastEvent,
+		}
+		if goalEvent.Type == "progress" {
+			publishTeamGoalEvent(s.cfg.Events, p.Sub, "team_goal_progress", payload, traceID)
+		} else if goalEvent.Type == "drift" {
+			publishTeamGoalEvent(s.cfg.Events, p.Sub, "team_goal_drift", payload, traceID)
+		}
+	}
+	resp := map[string]any{
+		"ok":          true,
+		"team_id":     teamID,
+		"team_run_id": teamRunID,
+	}
+	if len(contract) > 0 {
+		resp["goal_contract"] = contract
+	}
+	if goalEvents != nil {
+		resp["goal_events"] = goalEvents
+		resp["goal_event_count"] = len(goalEvents)
+	}
+	writeJSON(w, resp)
+}
+
 func (s *Server) teamRunStatusResponse(ctx context.Context, p *Principal, run *db.TeamRun) (map[string]any, error) {
 	if run == nil {
 		return nil, errors.New("missing team run")
@@ -1786,6 +1907,14 @@ func (s *Server) teamRunStatusResponse(ctx context.Context, p *Principal, run *d
 	if raw, ok := teamMeta["dispatch_errors"]; ok {
 		dispatchErrors = raw
 	}
+	var goalContract any
+	if raw, ok := teamMeta["goal_contract"]; ok {
+		goalContract = raw
+	}
+	var goalEvents any
+	if raw, ok := teamMeta["goal_events"]; ok {
+		goalEvents = raw
+	}
 	var cancelRequested any
 	if raw, ok := teamMeta["cancel_requested_unix_ms"]; ok {
 		cancelRequested = raw
@@ -1832,6 +1961,12 @@ func (s *Server) teamRunStatusResponse(ctx context.Context, p *Principal, run *d
 	}
 	if dispatchErrors != nil {
 		resp["dispatch_errors"] = dispatchErrors
+	}
+	if goalContract != nil {
+		resp["goal_contract"] = goalContract
+	}
+	if goalEvents != nil {
+		resp["goal_events"] = goalEvents
 	}
 	if summary != nil {
 		resp["member_job_summary"] = summary
@@ -2172,6 +2307,25 @@ func publishTeamRuntimeMembersUpdated(
 	}
 	ev := events.Event{
 		Type:    "team_runtime_members_updated",
+		UserSub: userSub,
+		TraceID: traceID,
+		Payload: payload,
+	}
+	hub.PublishTo([]string{userSub}, ev)
+}
+
+func publishTeamGoalEvent(
+	hub *events.Hub,
+	userSub string,
+	eventType string,
+	payload map[string]any,
+	traceID string,
+) {
+	if hub == nil || userSub == "" || eventType == "" {
+		return
+	}
+	ev := events.Event{
+		Type:    eventType,
 		UserSub: userSub,
 		TraceID: traceID,
 		Payload: payload,

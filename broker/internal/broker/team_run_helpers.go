@@ -95,6 +95,15 @@ type teamRuntimeMemberInput struct {
 	Meta         map[string]any
 }
 
+type teamGoalEventInput struct {
+	Type     string
+	Message  string
+	Data     map[string]any
+	TSUnixMS int64
+}
+
+const maxGoalEvents = 200
+
 type runtimeAgentCandidate struct {
 	AgentID      string
 	DeploymentID string
@@ -115,6 +124,150 @@ func normalizeRoleList(roles []string) []string {
 		out = append(out, val)
 	}
 	return out
+}
+
+func parseGoalContract(raw any) (map[string]any, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	switch t := raw.(type) {
+	case string:
+		goal := strings.TrimSpace(t)
+		if goal == "" {
+			return nil, nil
+		}
+		return map[string]any{"goal": goal}, nil
+	case map[string]any:
+		out := map[string]any{}
+		if v, ok := t["goal"]; ok {
+			if s, ok := v.(string); ok {
+				goal := strings.TrimSpace(s)
+				if goal != "" {
+					out["goal"] = goal
+				}
+			} else {
+				return nil, fmt.Errorf("goal_contract.goal must be string")
+			}
+		}
+		if v, ok := t["success_criteria"]; ok {
+			criteria := asStringSlice(v)
+			if v != nil && criteria == nil {
+				return nil, fmt.Errorf("goal_contract.success_criteria must be array of strings")
+			}
+			if len(criteria) > 0 {
+				out["success_criteria"] = criteria
+			}
+		}
+		if v, ok := t["constraints"]; ok {
+			constraints := asStringSlice(v)
+			if v != nil && constraints == nil {
+				return nil, fmt.Errorf("goal_contract.constraints must be array of strings")
+			}
+			if len(constraints) > 0 {
+				out["constraints"] = constraints
+			}
+		}
+		if len(out) == 0 {
+			return nil, nil
+		}
+		return out, nil
+	default:
+		return nil, fmt.Errorf("goal_contract must be string or object")
+	}
+}
+
+func parseGoalEvent(raw any) (teamGoalEventInput, error) {
+	if raw == nil {
+		return teamGoalEventInput{}, fmt.Errorf("goal event required")
+	}
+	obj, ok := raw.(map[string]any)
+	if !ok {
+		return teamGoalEventInput{}, fmt.Errorf("goal event must be object")
+	}
+	typeRaw, ok := obj["type"].(string)
+	if !ok || strings.TrimSpace(typeRaw) == "" {
+		return teamGoalEventInput{}, fmt.Errorf("goal event type required")
+	}
+	eventType := strings.ToLower(strings.TrimSpace(typeRaw))
+	if eventType != "progress" && eventType != "drift" {
+		return teamGoalEventInput{}, fmt.Errorf("goal event type must be progress or drift")
+	}
+	message := ""
+	if v, ok := obj["message"]; ok {
+		if s, ok := v.(string); ok {
+			message = strings.TrimSpace(s)
+		} else {
+			return teamGoalEventInput{}, fmt.Errorf("goal event message must be string")
+		}
+	}
+	var data map[string]any
+	if v, ok := obj["data"]; ok && v != nil {
+		m, ok := v.(map[string]any)
+		if !ok {
+			return teamGoalEventInput{}, fmt.Errorf("goal event data must be object")
+		}
+		data = m
+	}
+	ts := int64(0)
+	if v, ok := obj["ts_unix_ms"]; ok {
+		if n, ok := asInt(v); ok {
+			ts = int64(n)
+		} else {
+			return teamGoalEventInput{}, fmt.Errorf("goal event ts_unix_ms must be integer")
+		}
+	}
+	return teamGoalEventInput{
+		Type:     eventType,
+		Message:  message,
+		Data:     data,
+		TSUnixMS: ts,
+	}, nil
+}
+
+func appendGoalEvent(teamMeta map[string]any, event teamGoalEventInput, maxEvents int) ([]map[string]any, error) {
+	if teamMeta == nil {
+		return nil, fmt.Errorf("missing team meta")
+	}
+	if event.Type == "" {
+		return nil, fmt.Errorf("goal event type required")
+	}
+	if maxEvents <= 0 {
+		maxEvents = maxGoalEvents
+	}
+	var events []map[string]any
+	if raw, ok := teamMeta["goal_events"]; ok && raw != nil {
+		switch t := raw.(type) {
+		case []map[string]any:
+			events = append(events, t...)
+		case []any:
+			for _, item := range t {
+				if m, ok := item.(map[string]any); ok {
+					events = append(events, m)
+				}
+			}
+		default:
+			return nil, fmt.Errorf("goal_events must be array")
+		}
+	}
+	ts := event.TSUnixMS
+	if ts <= 0 {
+		ts = time.Now().UTC().UnixMilli()
+	}
+	entry := map[string]any{
+		"type":        event.Type,
+		"ts_unix_ms":  ts,
+		"message":     event.Message,
+		"event_index": len(events) + 1,
+	}
+	if event.Data != nil {
+		entry["data"] = event.Data
+	}
+	events = append(events, entry)
+	if len(events) > maxEvents {
+		events = events[len(events)-maxEvents:]
+	}
+	teamMeta["goal_events"] = events
+	return events, nil
 }
 
 func allocateRuntimeMembersByRole(

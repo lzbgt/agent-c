@@ -4,6 +4,8 @@ export const TEAM_RUN_EVENT_TYPES = new Set([
   "team_runtime_members_updated",
   "team_quorum_request",
   "team_quorum_result",
+  "team_goal_progress",
+  "team_goal_drift",
 ]);
 
 export const fmtTs = (ms?: number | null) => {
