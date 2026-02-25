@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -339,5 +340,115 @@ func TestMaybeAllocateRuntimeMembersNonFatal(t *testing.T) {
 	}
 	if len(missing) != 1 || missing[0] != "planner" {
 		t.Fatalf("unexpected missing roles: %v", missing)
+	}
+}
+
+func TestHandleRunAllocatorFallbacksToSpawn(t *testing.T) {
+	type state struct {
+		mu            sync.Mutex
+		calls         []string
+		allocateBody  map[string]any
+		spawnBody     map[string]any
+		updateBodies  []map[string]any
+		err           string
+	}
+	st := &state{}
+	runMeta := map[string]any{
+		"orchestrator_owner": "orch1",
+		"active_team_run_id": "teamrun1",
+		"auto_allocate_roles": true,
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "" {
+			st.mu.Lock()
+			st.err = "missing Authorization header"
+			st.mu.Unlock()
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/teams/team1/orchestrator/runs/run1/heartbeat":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","run":{"orchestrator_run_id":"run1","team_id":"team1","status":"running","meta":{"orchestrator_owner":"orch1","active_team_run_id":"teamrun1","auto_allocate_roles":true}}}`)
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/teams/team1/orchestrator/runs/run1":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			st.mu.Lock()
+			st.updateBodies = append(st.updateBodies, payload)
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","run":{"orchestrator_run_id":"run1","team_id":"team1","status":"running","meta":{}}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/teams/team1/runs/teamrun1":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","team_run_id":"teamrun1","status":"running","auto_allocate_roles":true,"auto_allocate_max_members":2,"auto_allocate_missing_roles":["planner"],"runtime_members":[{"agent_id":"agent-2","role":"executor"}]}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/teams/team1/guidance":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","guidance":[],"count":0}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/teams/team1/runtime_members/allocate":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			st.mu.Lock()
+			st.calls = append(st.calls, "allocate")
+			st.allocateBody = payload
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","runtime_members":[],"allocated_roles":[],"missing_roles":["planner"]}`)
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/teams/team1/runs/teamrun1/runtime_members":
+			st.mu.Lock()
+			st.err = "unexpected runtime member update"
+			st.mu.Unlock()
+			http.Error(w, "unexpected", http.StatusBadRequest)
+		case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/v1/teams/team1/orchestrator/spawn_requests"):
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","spawn_requests":[]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/teams/team1/orchestrator/spawn_requests":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			st.mu.Lock()
+			st.calls = append(st.calls, "spawn")
+			st.spawnBody = payload
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","spawn_request":{"spawn_request_id":"spawn1","role":"planner","status":"requested","count":1}}`)
+		default:
+			st.mu.Lock()
+			st.err = "unexpected request: " + r.Method + " " + r.URL.Path
+			st.mu.Unlock()
+			http.Error(w, "unexpected", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	cfg := config{brokerBase: server.URL, oidcToken: "token", orchestratorID: "orch1"}
+	run := orchestratorRun{
+		OrchestratorRunID: "run1",
+		TeamID:            "team1",
+		Status:            "running",
+		Meta:              runMeta,
+	}
+	if err := handleRun(context.Background(), server.Client(), cfg, "team1", run); err != nil {
+		t.Fatalf("handleRun error: %v", err)
+	}
+
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.err != "" {
+		t.Fatalf("server error: %s", st.err)
+	}
+	if len(st.calls) < 2 || st.calls[0] != "allocate" || st.calls[1] != "spawn" {
+		t.Fatalf("expected allocate then spawn, got %v", st.calls)
+	}
+	if st.allocateBody["exclude_team_members"] != true {
+		t.Fatalf("expected exclude_team_members true, got %#v", st.allocateBody["exclude_team_members"])
+	}
+	role, _ := st.spawnBody["role"].(string)
+	if strings.TrimSpace(role) != "planner" {
+		t.Fatalf("unexpected spawn role payload: %#v", st.spawnBody)
+	}
+	if len(st.updateBodies) == 0 {
+		t.Fatalf("expected orchestrator meta updates")
 	}
 }
