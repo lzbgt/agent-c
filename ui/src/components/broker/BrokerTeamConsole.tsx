@@ -198,6 +198,59 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     }
     return { newMembers, skipped, invalid };
   }, [members, runtimeMembersPreview.items]);
+
+  const runtimeTeamDiff = React.useMemo(() => {
+    const runtimeItems = runtimeMembersPreview.items;
+    if (!Array.isArray(runtimeItems)) {
+      return { runtimeOnly: [] as any[], teamOnly: [] as TeamMemberRow[], mismatched: [] as any[] };
+    }
+    const teamByMemberId = new Map<string, TeamMemberRow>();
+    const teamByAgentId = new Map<string, TeamMemberRow>();
+    const currentMembers = Array.isArray(members) ? members : [];
+    for (const member of currentMembers) {
+      const mid = String(member?.member_id || "").trim();
+      const aid = String(member?.agent_id || "").trim();
+      if (mid) teamByMemberId.set(mid, member);
+      if (aid) teamByAgentId.set(aid, member);
+    }
+    const matched = new Set<string>();
+    const runtimeOnly: any[] = [];
+    const mismatched: any[] = [];
+    for (const item of runtimeItems) {
+      const memberId = item?.member_id ? String(item.member_id).trim() : "";
+      const agentId = item?.agent_id ? String(item.agent_id).trim() : "";
+      const key = memberId || agentId;
+      const teamMatch =
+        (memberId && teamByMemberId.get(memberId)) || (agentId && teamByAgentId.get(agentId));
+      if (!teamMatch) {
+        runtimeOnly.push(item);
+        continue;
+      }
+      if (teamMatch?.member_id) matched.add(String(teamMatch.member_id));
+      if (!teamMatch?.member_id && teamMatch?.agent_id) matched.add(String(teamMatch.agent_id));
+      const diffs: string[] = [];
+      const runtimeRole = item?.role ? String(item.role) : "";
+      const runtimeAgent = agentId;
+      const runtimeDep = item?.deployment_id ? String(item.deployment_id) : "";
+      const runtimeStatus = item?.status ? String(item.status) : "";
+      if (runtimeRole && teamMatch?.role && runtimeRole !== teamMatch.role) diffs.push("role");
+      if (runtimeAgent && teamMatch?.agent_id && runtimeAgent !== teamMatch.agent_id) diffs.push("agent_id");
+      if (runtimeDep && teamMatch?.deployment_id && runtimeDep !== teamMatch.deployment_id) diffs.push("deployment_id");
+      if (runtimeStatus && teamMatch?.status && runtimeStatus !== teamMatch.status) diffs.push("status");
+      if (diffs.length > 0) {
+        mismatched.push({ item, team: teamMatch, diffs });
+      }
+    }
+    const teamOnly = currentMembers.filter((member) => {
+      const mid = String(member?.member_id || "").trim();
+      const aid = String(member?.agent_id || "").trim();
+      if (mid && matched.has(mid)) return false;
+      if (!mid && aid && matched.has(aid)) return false;
+      if (!mid && !aid) return false;
+      return true;
+    });
+    return { runtimeOnly, teamOnly, mismatched };
+  }, [members, runtimeMembersPreview.items]);
   type InlineApproval = {
     member_id: string;
     decision: "approve" | "deny";
@@ -1787,6 +1840,52 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                   </div>
                 );
               })}
+              {runtimeMembersPreview.items.length > 0 ? (
+                <div className="mt-2 rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
+                  <div>
+                    team diff · runtime-only {runtimeTeamDiff.runtimeOnly.length} · team-only{" "}
+                    {runtimeTeamDiff.teamOnly.length} · mismatched {runtimeTeamDiff.mismatched.length}
+                  </div>
+                  {runtimeTeamDiff.runtimeOnly.length > 0 ? (
+                    <div>
+                      runtime-only:
+                      {runtimeTeamDiff.runtimeOnly.map((item, idx) => {
+                        const mid = item?.member_id ? String(item.member_id) : "";
+                        const aid = item?.agent_id ? String(item.agent_id) : "";
+                        const label = mid ? mid : aid ? `agent ${aid}` : `runtime-${idx + 1}`;
+                        return <div key={`runtime-only-${label}-${idx}`}>{label}</div>;
+                      })}
+                    </div>
+                  ) : null}
+                  {runtimeTeamDiff.teamOnly.length > 0 ? (
+                    <div>
+                      team-only:
+                      {runtimeTeamDiff.teamOnly.map((item, idx) => {
+                        const mid = item?.member_id ? String(item.member_id) : "";
+                        const aid = item?.agent_id ? String(item.agent_id) : "";
+                        const label = mid ? mid : aid ? `agent ${aid}` : `team-${idx + 1}`;
+                        return <div key={`team-only-${label}-${idx}`}>{label}</div>;
+                      })}
+                    </div>
+                  ) : null}
+                  {runtimeTeamDiff.mismatched.length > 0 ? (
+                    <div>
+                      mismatched:
+                      {runtimeTeamDiff.mismatched.map((row: any, idx: number) => {
+                        const item = row?.item ?? {};
+                        const mid = item?.member_id ? String(item.member_id) : "";
+                        const aid = item?.agent_id ? String(item.agent_id) : "";
+                        const label = mid ? mid : aid ? `agent ${aid}` : `runtime-${idx + 1}`;
+                        return (
+                          <div key={`runtime-mismatch-${label}-${idx}`}>
+                            {label} · {Array.isArray(row?.diffs) ? row.diffs.join(", ") : "diff"}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           ) : null}
           <div className="mt-2 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
