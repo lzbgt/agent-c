@@ -25,3 +25,8 @@ export type TeamQuorumRuleRow = {
   quorum_mode?: string;
   created_unix_ms?: number;
 };
+
+export type TeamCursorEntry = {
+  cursor_ts?: number;
+  updated_unix_ms?: number;
+};

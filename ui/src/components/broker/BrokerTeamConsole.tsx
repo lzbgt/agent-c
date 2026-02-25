@@ -24,6 +24,8 @@ import BrokerTeamRunPanel from "./BrokerTeamRunPanel";
 import BrokerOrchestratorRunPanel from "./BrokerOrchestratorRunPanel";
 import BrokerOrchestratorSpawnPanel from "./BrokerOrchestratorSpawnPanel";
 import BrokerTeamGuidancePanel from "./BrokerTeamGuidancePanel";
+import BrokerTeamCreatePanel from "./BrokerTeamCreatePanel";
+import BrokerTeamSettingsPanel from "./BrokerTeamSettingsPanel";
 import {
   fmtTs,
   normalizeRoleGraphEdges,
@@ -32,18 +34,12 @@ import {
   normalizeSharedMemoryMode,
   type RoleGraphEdge,
 } from "./teamRunUtils";
-import TeamRolePlanEditor from "./TeamRolePlanEditor";
 import { GUIDANCE_EVENT_TYPES, ORCHESTRATOR_EVENT_TYPES, TEAM_RUN_EVENT_TYPES } from "./teamRunUtils";
-import type { BrokerEventRow, TeamMemberRow, TeamQuorumRuleRow } from "./types";
+import type { BrokerEventRow, TeamCursorEntry, TeamMemberRow, TeamQuorumRuleRow } from "./types";
 
 const TEAM_EVENTS_MAX = 200;
 const TEAM_EVENTS_PREFS_KIND = "webui-team-events";
 const TEAM_EVENTS_PREFS_VERSION = 1;
-
-type TeamCursorEntry = {
-  cursor_ts?: number;
-  updated_unix_ms?: number;
-};
 
 export type BrokerTeamConsoleProps = {
   base: string;
@@ -1360,140 +1356,46 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         ) : null}
       </div>
 
-      <div data-testid="team-settings" className="mt-3 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
-        <div className="flex items-center justify-between gap-2">
-          <div className="text-xs font-semibold text-white/80">Team settings</div>
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-            type="button"
-            disabled={!teamDetails}
-            onClick={() => loadTeamEditsFromDetails(teamDetails)}
-          >
-            Load
-          </button>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <FieldLabel>Name</FieldLabel>
-          <input
-            className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={teamEditName}
-            onChange={(e) => setTeamEditName(e.target.value)}
-            placeholder="Team display name"
-          />
-          <FieldLabel>Tags</FieldLabel>
-          <input
-            className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={teamEditTags}
-            onChange={(e) => setTeamEditTags(e.target.value)}
-            placeholder="ops,security"
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <FieldLabel>Policy ref</FieldLabel>
-          <input
-            className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={teamEditPolicyRef}
-            onChange={(e) => setTeamEditPolicyRef(e.target.value)}
-            placeholder="policy:high-risk"
-          />
-          <FieldLabel>Shared memory scope</FieldLabel>
-          <input
-            className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={teamEditSharedScope}
-            onChange={(e) => setTeamEditSharedScope(e.target.value)}
-            placeholder="scope-id"
-          />
-          <FieldLabel>Shared memory mode</FieldLabel>
-          <select
-            className="min-w-[160px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={teamEditSharedMode}
-            onChange={(e) => setTeamEditSharedMode(e.target.value)}
-          >
-            <option value="read_write">read_write</option>
-            <option value="read_only">read_only</option>
-          </select>
-        </div>
-        <div className="grid gap-1">
-          <FieldLabel>Meta JSON</FieldLabel>
-          <textarea
-            className="min-h-[72px] w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
-            value={teamEditMetaJson}
-            onChange={(e) => setTeamEditMetaJson(e.target.value)}
-            placeholder='{"owner_notes":"tier-1","priority":"high"}'
-          />
-        </div>
-        <div className="grid gap-1">
-          <FieldLabel>Role overrides JSON</FieldLabel>
-          <textarea
-            className="min-h-[72px] w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
-            value={teamEditRoleOverridesJson}
-            onChange={(e) => setTeamEditRoleOverridesJson(e.target.value)}
-            placeholder='{"planner":{"model":"gpt-4.1-mini","tools":"basic"},"executor":{"base_url":"https://api.openai.com/v1"}}'
-          />
-          <div className="text-[11px] text-white/50">
-            Stored under meta.role_overrides; applied to team runs unless a run overrides it.
-          </div>
-        </div>
-        <div className="grid gap-1">
-          <FieldLabel>Role plan</FieldLabel>
-          <div className="rounded-md border border-white/10 bg-black/20 p-2">
-            <TeamRolePlanEditor
-              disabled={!canQuery || !teamIdTrimmed}
-              roleInstructions={teamRoleInstructions}
-              onRoleInstructionsChange={handleRoleInstructionsChange}
-              rolePromptMode={teamRolePromptMode}
-              onRolePromptModeChange={handleRolePromptModeChange}
-              edges={teamRoleGraphEdges}
-              onEdgesChange={handleRoleGraphEdgesChange}
-              roleOptions={rolePlanOptions}
-            />
-          </div>
-          <div className="text-[11px] text-white/50">
-            Stored under meta.role_instructions / meta.role_prompt_mode / meta.role_graph; applied to team runs by default.
-          </div>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-            type="button"
-            disabled={!canQuery || !teamIdTrimmed || teamEditBusy}
-            onClick={() => void handleUpdateTeam()}
-          >
-            {teamEditBusy ? "Saving…" : "Update team"}
-          </button>
-          {teamEditError ? (
-            <span className="text-[11px] text-rose-200">{teamEditError}</span>
-          ) : null}
-        </div>
-      </div>
+      <BrokerTeamSettingsPanel
+        canQuery={canQuery}
+        teamId={teamIdTrimmed}
+        teamDetails={teamDetails}
+        teamEditName={teamEditName}
+        teamEditTags={teamEditTags}
+        teamEditPolicyRef={teamEditPolicyRef}
+        teamEditSharedScope={teamEditSharedScope}
+        teamEditSharedMode={teamEditSharedMode}
+        teamEditMetaJson={teamEditMetaJson}
+        teamEditRoleOverridesJson={teamEditRoleOverridesJson}
+        teamRoleInstructions={teamRoleInstructions}
+        teamRolePromptMode={teamRolePromptMode}
+        teamRoleGraphEdges={teamRoleGraphEdges}
+        rolePlanOptions={rolePlanOptions}
+        teamEditBusy={teamEditBusy}
+        teamEditError={teamEditError}
+        onLoadTeamEdits={() => loadTeamEditsFromDetails(teamDetails)}
+        onTeamEditNameChange={setTeamEditName}
+        onTeamEditTagsChange={setTeamEditTags}
+        onTeamEditPolicyRefChange={setTeamEditPolicyRef}
+        onTeamEditSharedScopeChange={setTeamEditSharedScope}
+        onTeamEditSharedModeChange={setTeamEditSharedMode}
+        onTeamEditMetaJsonChange={setTeamEditMetaJson}
+        onTeamEditRoleOverridesJsonChange={setTeamEditRoleOverridesJson}
+        onRoleInstructionsChange={handleRoleInstructionsChange}
+        onRolePromptModeChange={handleRolePromptModeChange}
+        onRoleGraphEdgesChange={handleRoleGraphEdgesChange}
+        onUpdateTeam={() => void handleUpdateTeam()}
+      />
 
-      <div className="mt-3 grid gap-2 rounded-md border border-white/10 bg-black/30 p-2">
-        <div className="text-xs font-semibold text-white/80">Create team</div>
-        <div className="flex flex-wrap items-center gap-2">
-          <FieldLabel>ID</FieldLabel>
-          <input
-            className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={newTeamId}
-            onChange={(e) => setNewTeamId(e.target.value)}
-            placeholder="team-ops"
-          />
-          <FieldLabel>Name</FieldLabel>
-          <input
-            className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
-            value={newTeamName}
-            onChange={(e) => setNewTeamName(e.target.value)}
-            placeholder="Ops team"
-          />
-          <button
-            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
-            type="button"
-            disabled={!canQuery || teamsBusy}
-            onClick={() => void handleCreateTeam()}
-          >
-            Create
-          </button>
-        </div>
-      </div>
+      <BrokerTeamCreatePanel
+        canQuery={canQuery}
+        teamsBusy={teamsBusy}
+        newTeamId={newTeamId}
+        newTeamName={newTeamName}
+        onNewTeamIdChange={setNewTeamId}
+        onNewTeamNameChange={setNewTeamName}
+        onCreateTeam={() => void handleCreateTeam()}
+      />
 
       <div className="mt-4 grid gap-3">
         <div className="flex items-center justify-between gap-2">
