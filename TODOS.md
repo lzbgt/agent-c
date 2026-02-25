@@ -114,6 +114,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-26: WebUI broker console + team console replay events on refresh; orchestrator panel also rehydrates from replay.
   - 2026-02-26: broker orchestrator runs persisted with CRUD + heartbeat endpoint.
   - 2026-02-26: WebUI team console includes orchestrator run panel (create/list/update/heartbeat).
+  - 2026-02-26: orchestrator run responses include lease status derived from heartbeat.
 - [ ] W=9 — Agent provisioning hooks: define an optional `agent_spawn` interface (pluggable adapters for local/remote spawn) so the orchestrator can request new runtime members when capacity is low.
 - [x] W=11 — Team shared memory scope enforcement (read-only/read-write) wired through team runs + tool policy hooks + tests.
   - 2026-02-25: agentd run request supports `memory_scope_id` + `memory_scope_mode` with scoped memory roots.

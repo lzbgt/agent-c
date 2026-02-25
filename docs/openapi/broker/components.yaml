@@ -942,6 +942,9 @@ schemas:
       created_unix_ms: { type: integer, format: int64 }
       updated_unix_ms: { type: integer, format: int64 }
       last_heartbeat_unix_ms: { type: integer, format: int64 }
+      heartbeat_age_ms: { type: integer, format: int64 }
+      lease_timeout_ms: { type: integer, format: int64 }
+      lease_status: { type: string, enum: [ok, stale, missing, unknown] }
       goal_contract:
         $ref: "#/components/schemas/TeamRunGoalContract"
       role_plan_snapshot:

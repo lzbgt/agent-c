@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 
 	"agentd-broker/internal/db"
 	"agentd-broker/internal/events"
@@ -268,6 +269,8 @@ func (s *Server) handleTeamOrchestratorRunHeartbeat(w http.ResponseWriter, r *ht
 }
 
 func orchestratorRunToJSON(run db.OrchestratorRun) map[string]any {
+	now := time.Now()
+	leaseTimeoutMs, heartbeatAgeMs, leaseStatus := deriveOrchestratorLease(run, now)
 	out := map[string]any{
 		"orchestrator_run_id": run.OrchestratorRunID,
 		"team_id":             run.TeamID,
@@ -280,8 +283,17 @@ func orchestratorRunToJSON(run db.OrchestratorRun) map[string]any {
 		"role_plan_snapshot":  run.RolePlanSnapshot(),
 		"meta":                run.Meta(),
 	}
+	if leaseTimeoutMs > 0 {
+		out["lease_timeout_ms"] = leaseTimeoutMs
+	}
 	if run.LastHeartbeatAt != nil {
 		out["last_heartbeat_unix_ms"] = run.LastHeartbeatAt.UnixMilli()
+		if heartbeatAgeMs >= 0 {
+			out["heartbeat_age_ms"] = heartbeatAgeMs
+		}
+	}
+	if leaseStatus != "" {
+		out["lease_status"] = leaseStatus
 	}
 	return out
 }
@@ -363,6 +375,8 @@ func publishOrchestratorRunHeartbeat(hub *events.Hub, userSub string, run *db.Or
 }
 
 func orchestratorRunEventPayload(run db.OrchestratorRun) map[string]any {
+	now := time.Now()
+	leaseTimeoutMs, heartbeatAgeMs, leaseStatus := deriveOrchestratorLease(run, now)
 	payload := map[string]any{
 		"team_id":             run.TeamID,
 		"orchestrator_run_id": run.OrchestratorRunID,
@@ -373,6 +387,62 @@ func orchestratorRunEventPayload(run db.OrchestratorRun) map[string]any {
 	}
 	if run.LastHeartbeatAt != nil {
 		payload["last_heartbeat_unix_ms"] = run.LastHeartbeatAt.UnixMilli()
+		if heartbeatAgeMs >= 0 {
+			payload["heartbeat_age_ms"] = heartbeatAgeMs
+		}
+	}
+	if leaseTimeoutMs > 0 {
+		payload["lease_timeout_ms"] = leaseTimeoutMs
+	}
+	if leaseStatus != "" {
+		payload["lease_status"] = leaseStatus
 	}
 	return payload
+}
+
+func deriveOrchestratorLease(run db.OrchestratorRun, now time.Time) (int64, int64, string) {
+	meta := run.Meta()
+	leaseTimeoutMs := int64(120000)
+	if meta != nil {
+		if v, ok := meta["lease_timeout_ms"]; ok {
+			if n, ok := parseInt64Value(v); ok && n > 0 {
+				leaseTimeoutMs = n
+			}
+		} else if v, ok := meta["heartbeat_timeout_ms"]; ok {
+			if n, ok := parseInt64Value(v); ok && n > 0 {
+				leaseTimeoutMs = n
+			}
+		}
+	}
+	if run.LastHeartbeatAt == nil {
+		return leaseTimeoutMs, -1, "missing"
+	}
+	ageMs := now.Sub(*run.LastHeartbeatAt).Milliseconds()
+	if leaseTimeoutMs <= 0 {
+		return leaseTimeoutMs, ageMs, "unknown"
+	}
+	if ageMs > leaseTimeoutMs {
+		return leaseTimeoutMs, ageMs, "stale"
+	}
+	return leaseTimeoutMs, ageMs, "ok"
+}
+
+func parseInt64Value(v any) (int64, bool) {
+	switch t := v.(type) {
+	case int:
+		return int64(t), true
+	case int64:
+		return t, true
+	case float64:
+		return int64(t), true
+	case json.Number:
+		if n, err := t.Int64(); err == nil {
+			return n, true
+		}
+	case string:
+		if n, ok := parseInt64Bounded(t, 0, 9_999_999_999_999); ok {
+			return n, true
+		}
+	}
+	return 0, false
 }
