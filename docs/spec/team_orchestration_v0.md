@@ -332,6 +332,7 @@ Notes:
 - The broker validates the runtime members and updates the stored run payload.
 - For synchronous runs that already completed, updates are recorded for auditability and future orchestration; they do not retroactively re-run the completed fan-out.
 - For async runs, updates do not affect already-dispatched member jobs; use runtime updates to prepare for follow-on orchestration.
+- Team run status responses include `role_overrides_applied`, `member_overrides_applied`, and `run_overrides_mode` for auditability.
 
 `run_overrides_mode`:
 - `off` (default): no per-member overrides.
