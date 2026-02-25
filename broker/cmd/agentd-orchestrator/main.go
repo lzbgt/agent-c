@@ -630,6 +630,7 @@ func processGuidance(
 	pendingGlobal := false
 	runMaxTS := sinceTS
 	globalMaxTS := globalSinceTS
+	nowUnixMS := time.Now().UTC().UnixMilli()
 	for _, item := range items {
 		id := strings.TrimSpace(item.GuidanceID)
 		if id == "" {
@@ -649,14 +650,30 @@ func processGuidance(
 		} else if item.CreatedUnixMS > runMaxTS {
 			runMaxTS = item.CreatedUnixMS
 		}
-		if item.TargetOrchestrator != "" && item.TargetOrchestrator != cfg.orchestratorID {
-			continue
-		}
 		status := strings.ToLower(strings.TrimSpace(item.Status))
 		if status != "" && status != "open" {
 			ackedSet[id] = true
 			ackedIDs = append(ackedIDs, id)
 			changed = true
+			continue
+		}
+		if item.ExpiresUnixMS > 0 && nowUnixMS >= item.ExpiresUnixMS {
+			note := fmt.Sprintf("expired by orchestrator %s", cfg.orchestratorID)
+			if _, err := ackGuidance(ctx, client, cfg, teamID, id, "expired", note, "orchestrator", "orchestrator"); err != nil {
+				if isHTTPStatus(err, http.StatusConflict) {
+					ackedSet[id] = true
+					ackedIDs = append(ackedIDs, id)
+					changed = true
+					continue
+				}
+				return false, err
+			}
+			ackedSet[id] = true
+			ackedIDs = append(ackedIDs, id)
+			changed = true
+			continue
+		}
+		if item.TargetOrchestrator != "" && item.TargetOrchestrator != cfg.orchestratorID {
 			continue
 		}
 		itemPending := false
@@ -699,7 +716,7 @@ func processGuidance(
 		if dispatched {
 			note = fmt.Sprintf("dispatched by orchestrator %s", cfg.orchestratorID)
 		}
-		if _, err := ackGuidance(ctx, client, cfg, teamID, id, note, "orchestrator", "orchestrator"); err != nil {
+		if _, err := ackGuidance(ctx, client, cfg, teamID, id, "acked", note, "orchestrator", "orchestrator"); err != nil {
 			if isHTTPStatus(err, http.StatusConflict) {
 				ackedSet[id] = true
 				ackedIDs = append(ackedIDs, id)
@@ -1808,9 +1825,12 @@ func fetchGuidance(ctx context.Context, client *http.Client, cfg config, teamID,
 	return resp.Guidance, nil
 }
 
-func ackGuidance(ctx context.Context, client *http.Client, cfg config, teamID, guidanceID, note, ackSource, ackRole string) (*guidanceAckResponse, error) {
+func ackGuidance(ctx context.Context, client *http.Client, cfg config, teamID, guidanceID, status, note, ackSource, ackRole string) (*guidanceAckResponse, error) {
+	if strings.TrimSpace(status) == "" {
+		status = "acked"
+	}
 	payload := map[string]any{
-		"status":     "acked",
+		"status":     status,
 		"note":       note,
 		"ack_source": ackSource,
 		"ack_role":   ackRole,

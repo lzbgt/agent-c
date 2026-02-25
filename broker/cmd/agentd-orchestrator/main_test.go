@@ -457,6 +457,7 @@ func TestProcessGuidanceDispatchAndAck(t *testing.T) {
 	type state struct {
 		mu              sync.Mutex
 		acked           []string
+		ackStatus       string
 		directiveMeta   map[string]any
 		directiveTarget map[string]any
 		err             string
@@ -490,8 +491,14 @@ func TestProcessGuidanceDispatchAndAck(t *testing.T) {
 			w.Header().Set("Content-Type", "application/json")
 			io.WriteString(w, `{"ok":true,"team_id":"team1","team_run_id":"run1","dispatched":[{}],"skipped":[]}`)
 		case r.Method == http.MethodPost && r.URL.Path == "/v1/teams/team1/guidance/g1/ack":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
 			st.mu.Lock()
 			st.acked = append(st.acked, "g1")
+			if v, ok := payload["status"].(string); ok {
+				st.ackStatus = v
+			}
 			st.mu.Unlock()
 			w.Header().Set("Content-Type", "application/json")
 			io.WriteString(w, `{"ok":true,"team_id":"team1","guidance":{"guidance_id":"g1","status":"acked"}}`)
@@ -523,6 +530,9 @@ func TestProcessGuidanceDispatchAndAck(t *testing.T) {
 	}
 	if len(st.acked) != 1 {
 		t.Fatalf("expected guidance ack, got %v", st.acked)
+	}
+	if st.ackStatus != "acked" {
+		t.Fatalf("expected ack status 'acked', got %q", st.ackStatus)
 	}
 	if st.directiveMeta == nil || st.directiveMeta["guidance_id"] != "g1" {
 		t.Fatalf("expected directive metadata guidance_id, got %#v", st.directiveMeta)
@@ -563,5 +573,49 @@ func TestProcessGuidanceSkipsOtherOrchestrator(t *testing.T) {
 	}
 	if acked {
 		t.Fatalf("did not expect ack for other orchestrator guidance")
+	}
+}
+
+func TestProcessGuidanceExpiresGuidance(t *testing.T) {
+	type state struct {
+		mu        sync.Mutex
+		ackStatus string
+	}
+	st := &state{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/teams/team1/guidance":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","team_run_id":"run1","count":1,"guidance":[{"guidance_id":"g3","team_id":"team1","team_run_id":"run1","kind":"directive","priority":"normal","message":"hi","status":"open","created_unix_ms":1,"expires_unix_ms":2}]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/teams/team1/guidance/g3/ack":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			st.mu.Lock()
+			if v, ok := payload["status"].(string); ok {
+				st.ackStatus = v
+			}
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","guidance":{"guidance_id":"g3","status":"expired"}}`)
+		default:
+			http.Error(w, "unexpected", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	cfg := config{brokerBase: server.URL, oidcToken: "token", orchestratorID: "orch1"}
+	meta := map[string]any{}
+	changed, err := processGuidance(context.Background(), server.Client(), cfg, "team1", "run1", meta)
+	if err != nil {
+		t.Fatalf("processGuidance error: %v", err)
+	}
+	if !changed {
+		t.Fatalf("expected meta change after expiring guidance")
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.ackStatus != "expired" {
+		t.Fatalf("expected expired ack status, got %q", st.ackStatus)
 	}
 }

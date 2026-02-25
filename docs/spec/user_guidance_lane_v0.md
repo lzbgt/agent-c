@@ -50,6 +50,10 @@ GuidanceEvent:
 - `acked_unix_ms` (optional)
 - `ack_note` (optional)
 
+Notes:
+- Orchestrator loop may automatically mark guidance as `expired` when `expires_unix_ms`
+  is in the past to keep queues clean.
+
 GuidanceReceipt (audit trail):
 - `guidance_id`
 - `ack_by`
