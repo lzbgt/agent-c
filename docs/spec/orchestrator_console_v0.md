@@ -39,6 +39,7 @@ Status: draft (rolling)
 - Teams, members, quorum rules, and team runs in broker DB.
 - Per-member backend profiles via member meta `run_overrides` allowlist.
 - Per-role run overrides via `team.role_overrides` (allowlist enforced).
+- Team defaults can persist `meta.role_overrides` and are applied when runs omit overrides.
 - Runtime members for per-run team composition (replace/merge).
 - Async team runs (`team.mode=async`) with job persistence + status reconcile.
 - Broker SSE events: `team_run_created`, `team_run_status`, `team_quorum_*`, `team_runtime_members_updated`.

@@ -341,6 +341,7 @@ Notes:
 `role_overrides`:
 - Optional per-role overrides applied **before** member overrides.
 - Uses the same allowlist as member overrides.
+- If omitted, the broker applies defaults stored in `team.meta.role_overrides` (if present).
 
 ---
 

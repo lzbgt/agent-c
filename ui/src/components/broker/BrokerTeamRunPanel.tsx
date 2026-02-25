@@ -1356,7 +1356,7 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
           placeholder='{"planner":{"model":"gpt-4.1-mini","tools":"basic"},"executor":{"base_url":"https://api.openai.com/v1"}}'
         />
         <div className="text-[11px] text-white/50">
-          Role overrides apply before member overrides and use the same allowlist.
+          Role overrides apply before member overrides and use the same allowlist. If empty, broker uses team defaults.
         </div>
       </div>
       <div className="grid gap-1">

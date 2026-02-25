@@ -752,7 +752,7 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 		writeErrorJSON(w, "oidc required", http.StatusForbidden)
 		return
 	}
-	_, ok := s.requireTeamOwner(w, r, p, teamID)
+	team, ok := s.requireTeamOwner(w, r, p, teamID)
 	if !ok {
 		return
 	}
@@ -794,10 +794,29 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	roleOverridesProvided := false
+	if _, ok := teamMeta["role_overrides"]; ok {
+		roleOverridesProvided = true
+	}
 	roleOverrides, err := parseRoleOverrides(teamMeta["role_overrides"])
 	if err != nil {
 		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+	if !roleOverridesProvided && team != nil {
+		if teamMetaDefaults := team.Meta(); len(teamMetaDefaults) > 0 {
+			if rawDefaults, ok := teamMetaDefaults["role_overrides"]; ok {
+				defaults, err := parseRoleOverrides(rawDefaults)
+				if err != nil {
+					writeErrorJSON(w, "invalid team role_overrides", http.StatusBadRequest)
+					return
+				}
+				if len(defaults) > 0 {
+					roleOverrides = defaults
+					teamMeta["role_overrides"] = defaults
+				}
+			}
+		}
 	}
 	teamMeta["run_overrides_mode"] = overrides.Mode
 	if overrides.Mode != "explicit" {

@@ -61,6 +61,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [teamEditPolicyRef, setTeamEditPolicyRef] = React.useState<string>("");
   const [teamEditSharedScope, setTeamEditSharedScope] = React.useState<string>("");
   const [teamEditMetaJson, setTeamEditMetaJson] = React.useState<string>("");
+  const [teamEditRoleOverridesJson, setTeamEditRoleOverridesJson] = React.useState<string>("");
   const [teamEditBusy, setTeamEditBusy] = React.useState<boolean>(false);
   const [teamEditError, setTeamEditError] = React.useState<string | null>(null);
 
@@ -246,6 +247,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       setTeamEditPolicyRef("");
       setTeamEditSharedScope("");
       setTeamEditMetaJson("");
+      setTeamEditRoleOverridesJson("");
       return;
     }
     setTeamEditName(String(details?.display_name || ""));
@@ -261,6 +263,16 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       }
     } else {
       setTeamEditMetaJson("");
+    }
+    const metaObj = details?.meta && typeof details.meta === "object" ? (details.meta as Record<string, any>) : null;
+    if (metaObj?.role_overrides && typeof metaObj.role_overrides === "object") {
+      try {
+        setTeamEditRoleOverridesJson(JSON.stringify(metaObj.role_overrides, null, 2));
+      } catch {
+        setTeamEditRoleOverridesJson("");
+      }
+    } else {
+      setTeamEditRoleOverridesJson("");
     }
   };
 
@@ -295,6 +307,21 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         }
       } catch (err) {
         setTeamEditError(`invalid meta json: ${String(err)}`);
+        return;
+      }
+    }
+    const roleOverridesRaw = String(teamEditRoleOverridesJson || "").trim();
+    if (roleOverridesRaw) {
+      try {
+        const parsed = JSON.parse(roleOverridesRaw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          meta.role_overrides = parsed;
+        } else {
+          setTeamEditError("role overrides must be a JSON object keyed by role");
+          return;
+        }
+      } catch (err) {
+        setTeamEditError(`invalid role overrides json: ${String(err)}`);
         return;
       }
     }
@@ -911,6 +938,18 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             onChange={(e) => setTeamEditMetaJson(e.target.value)}
             placeholder='{"owner_notes":"tier-1","priority":"high"}'
           />
+        </div>
+        <div className="grid gap-1">
+          <FieldLabel>Role overrides JSON</FieldLabel>
+          <textarea
+            className="min-h-[72px] w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
+            value={teamEditRoleOverridesJson}
+            onChange={(e) => setTeamEditRoleOverridesJson(e.target.value)}
+            placeholder='{"planner":{"model":"gpt-4.1-mini","tools":"basic"},"executor":{"base_url":"https://api.openai.com/v1"}}'
+          />
+          <div className="text-[11px] text-white/50">
+            Stored under meta.role_overrides; applied to team runs unless a run overrides it.
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <button

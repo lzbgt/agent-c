@@ -193,6 +193,7 @@ All endpoints below are served by the broker (not by agents).
     - `member_meta` applies allowlisted fields from `member.meta.run_overrides`
     - `explicit` applies allowlisted fields from `team.member_overrides` keyed by `member_id`
     - `team.role_overrides` (optional) applies allowlisted fields per role before member overrides
+    - if `team.role_overrides` is omitted, the broker falls back to `team.meta.role_overrides` defaults (if present)
     - allowlist: `model`, `base_url`, `summary_model`, `tools`, `timeout_ms`, `max_steps`, `stream_assistant`
     - `api_key` is never accepted via team/member metadata
   - accepts ephemeral runtime members (not persisted in team registry):

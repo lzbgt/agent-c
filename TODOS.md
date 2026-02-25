@@ -159,6 +159,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-24: Runtime member save preview now lists skipped/invalid entries with reasons.
   - 2026-02-24: Added helper to fix invalid runtime members (drop missing agent_id, fill missing role).
   - 2026-02-25: Added per-role run overrides (`team.role_overrides`) with broker allowlist enforcement + WebUI run panel support.
+  - 2026-02-25: Team settings now persist `meta.role_overrides`, and broker applies it when runs omit overrides.
   - 2026-02-24: Runtime agent list auto-refreshes when team console is active.
   - 2026-02-24: Runtime members can be paused/resumed from the preview list.
   - 2026-02-24: Added pause/resume-all controls for runtime members.
