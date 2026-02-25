@@ -4,6 +4,7 @@ import {
   apiBrokerDeleteMember,
   apiBrokerGetMembers,
   apiBrokerGetMembershipAudit,
+  apiBrokerGetClientPrefs,
   apiBrokerListAgents,
   apiBrokerListDeployments,
   apiBrokerEventsReplay,
@@ -15,6 +16,7 @@ import {
   apiBrokerOtaStatusBulk,
   apiBrokerOtaUpdate,
   apiBrokerOtaUpdateBulk,
+  apiBrokerPostClientPrefs,
   apiBrokerProxyJson,
   apiBrokerUpsertMember,
   daemonHeaders,
@@ -42,6 +44,13 @@ const fmtTs = (ms?: number | null) => {
 };
 
 const BROKER_EVENTS_MAX = 200;
+const BROKER_EVENTS_PREFS_KIND = "webui-broker-events";
+const BROKER_EVENTS_PREFS_VERSION = 1;
+
+type BrokerCursorEntry = {
+  cursor_ts?: number;
+  updated_unix_ms?: number;
+};
 
 export type BrokerPanelProps = {
   open: boolean;
@@ -51,6 +60,7 @@ export type BrokerPanelProps = {
   setBrokerAgentId: (next: string) => void;
   auth: ApiAuth;
   authKey: string;
+  clientId: string;
 };
 
 export default function BrokerPanel(props: BrokerPanelProps) {
@@ -144,15 +154,126 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   const [brokerEventsCursorTs, setBrokerEventsCursorTs] = React.useState<number>(0);
   const brokerEventsCursorRef = React.useRef<number>(0);
   const brokerEventsReplayKeyRef = React.useRef<string>("");
+  const [brokerEventsCursorByScope, setBrokerEventsCursorByScope] = React.useState<Record<string, BrokerCursorEntry>>({});
+  const [brokerEventsCursorStatus, setBrokerEventsCursorStatus] = React.useState<"idle" | "loading" | "ready" | "error">(
+    "idle",
+  );
+  const brokerEventsCursorPersistRef = React.useRef<{
+    timer: ReturnType<typeof setTimeout> | null;
+    pending: Record<string, BrokerCursorEntry> | null;
+  }>({ timer: null, pending: null });
 
   const brokerEventsCursorKey = React.useMemo(() => {
     if (!base || !props.authKey) return "";
     return `agentd:broker:eventsCursor:${base}:${props.authKey}`;
   }, [base, props.authKey]);
+  const brokerEventsScopeKey = React.useMemo(() => {
+    if (!base) return "";
+    return `${base}::${String(props.authKey || "").trim()}`;
+  }, [base, props.authKey]);
+  const brokerPrefsClientId = React.useMemo(() => String(props.clientId || "webui"), [props.clientId]);
+  const brokerPrefsBase = base;
+  const extractBrokerEventsCursorByScope = React.useCallback((prefs: any): Record<string, BrokerCursorEntry> => {
+    if (!prefs || typeof prefs !== "object") return {};
+    const raw = (prefs as any).broker_events_cursor;
+    if (!raw || typeof raw !== "object") return {};
+    const byScope = (raw as any).by_scope;
+    if (!byScope || typeof byScope !== "object") return {};
+    const out: Record<string, BrokerCursorEntry> = {};
+    for (const [key, value] of Object.entries(byScope)) {
+      if (!value || typeof value !== "object") continue;
+      const cursor = (value as any).cursor_ts;
+      if (typeof cursor !== "number" || !Number.isFinite(cursor) || cursor <= 0) continue;
+      out[key] = {
+        cursor_ts: cursor,
+        updated_unix_ms: typeof (value as any).updated_unix_ms === "number" ? (value as any).updated_unix_ms : undefined,
+      };
+    }
+    return out;
+  }, []);
 
   React.useEffect(() => {
     brokerEventsCursorRef.current = brokerEventsCursorTs;
   }, [brokerEventsCursorTs]);
+
+  const pushBrokerEventsCursor = React.useCallback(
+    async (nextMap: Record<string, BrokerCursorEntry>) => {
+      if (!brokerPrefsBase || !brokerPrefsClientId || !brokerEventsScopeKey) return;
+      const payload = {
+        client_id: brokerPrefsClientId,
+        client_kind: BROKER_EVENTS_PREFS_KIND,
+        prefs: {
+          broker_events_cursor: {
+            version: BROKER_EVENTS_PREFS_VERSION,
+            by_scope: nextMap,
+          },
+        },
+      };
+      const resp = await apiBrokerPostClientPrefs(brokerPrefsBase, payload, props.auth);
+      if (!resp.ok) {
+        throw new Error(resp.error || resp.err || resp.code || "broker events prefs update failed");
+      }
+      setBrokerEventsCursorStatus("ready");
+    },
+    [brokerPrefsBase, brokerPrefsClientId, brokerEventsScopeKey, props.auth],
+  );
+
+  const scheduleBrokerEventsCursorPersist = React.useCallback(
+    (nextMap: Record<string, BrokerCursorEntry>) => {
+      if (!brokerPrefsBase || !brokerPrefsClientId || !brokerEventsScopeKey) return;
+      if (brokerEventsCursorStatus === "error") return;
+      brokerEventsCursorPersistRef.current.pending = nextMap;
+      if (brokerEventsCursorPersistRef.current.timer) return;
+      brokerEventsCursorPersistRef.current.timer = setTimeout(() => {
+        const pending = brokerEventsCursorPersistRef.current.pending;
+        brokerEventsCursorPersistRef.current.pending = null;
+        brokerEventsCursorPersistRef.current.timer = null;
+        if (!pending) return;
+        pushBrokerEventsCursor(pending).catch(() => {
+          setBrokerEventsCursorStatus("error");
+        });
+      }, 1500);
+    },
+    [brokerPrefsBase, brokerPrefsClientId, brokerEventsScopeKey, brokerEventsCursorStatus, pushBrokerEventsCursor],
+  );
+
+  const loadBrokerEventsCursor = React.useCallback(async () => {
+    if (!canQuery || !brokerPrefsBase || !brokerPrefsClientId || !brokerEventsScopeKey) return;
+    setBrokerEventsCursorStatus("loading");
+    try {
+      const resp = await apiBrokerGetClientPrefs(brokerPrefsBase, brokerPrefsClientId, BROKER_EVENTS_PREFS_KIND, props.auth);
+      if (!resp.ok) {
+        throw new Error(resp.error || resp.err || resp.code || "broker events prefs fetch failed");
+      }
+      const remoteMap = extractBrokerEventsCursorByScope(resp.prefs);
+      setBrokerEventsCursorByScope(remoteMap);
+      const remoteTs = remoteMap[brokerEventsScopeKey]?.cursor_ts || 0;
+      const localTs = brokerEventsCursorRef.current || 0;
+      const merged = Math.max(localTs, remoteTs);
+      if (merged > localTs) {
+        setBrokerEventsCursorTs(merged);
+      }
+      if (merged > remoteTs) {
+        const nextMap = {
+          ...remoteMap,
+          [brokerEventsScopeKey]: { cursor_ts: merged, updated_unix_ms: Date.now() },
+        };
+        setBrokerEventsCursorByScope(nextMap);
+        scheduleBrokerEventsCursorPersist(nextMap);
+      }
+      setBrokerEventsCursorStatus("ready");
+    } catch {
+      setBrokerEventsCursorStatus("error");
+    }
+  }, [
+    canQuery,
+    brokerPrefsBase,
+    brokerPrefsClientId,
+    brokerEventsScopeKey,
+    props.auth,
+    extractBrokerEventsCursorByScope,
+    scheduleBrokerEventsCursorPersist,
+  ]);
 
   React.useEffect(() => {
     setBrokerEvents([]);
@@ -174,6 +295,10 @@ export default function BrokerPanel(props: BrokerPanelProps) {
   }, [brokerEventsCursorKey]);
 
   React.useEffect(() => {
+    void loadBrokerEventsCursor();
+  }, [loadBrokerEventsCursor]);
+
+  React.useEffect(() => {
     if (!brokerEventsCursorKey || typeof window === "undefined") return;
     if (brokerEventsCursorTs <= 0) return;
     try {
@@ -185,6 +310,23 @@ export default function BrokerPanel(props: BrokerPanelProps) {
       // ignore cache errors
     }
   }, [brokerEventsCursorKey, brokerEventsCursorTs]);
+
+  React.useEffect(() => {
+    if (!brokerEventsScopeKey || brokerEventsCursorTs <= 0) return;
+    const current = brokerEventsCursorByScope[brokerEventsScopeKey]?.cursor_ts || 0;
+    if (brokerEventsCursorTs <= current) return;
+    const nextMap = {
+      ...brokerEventsCursorByScope,
+      [brokerEventsScopeKey]: { cursor_ts: brokerEventsCursorTs, updated_unix_ms: Date.now() },
+    };
+    setBrokerEventsCursorByScope(nextMap);
+    scheduleBrokerEventsCursorPersist(nextMap);
+  }, [
+    brokerEventsCursorByScope,
+    brokerEventsCursorTs,
+    brokerEventsScopeKey,
+    scheduleBrokerEventsCursorPersist,
+  ]);
 
   const buildBrokerEventRow = React.useCallback((parsed: any, fallbackType?: string): BrokerEventRow | null => {
     if (!parsed && !fallbackType) return null;
@@ -1736,7 +1878,13 @@ export default function BrokerPanel(props: BrokerPanelProps) {
           )}
         </section>
 
-        <BrokerTeamConsole base={base} auth={props.auth} quorumEvents={brokerEvents} />
+        <BrokerTeamConsole
+          base={base}
+          auth={props.auth}
+          authKey={props.authKey}
+          clientId={props.clientId}
+          quorumEvents={brokerEvents}
+        />
 
         <section className="rounded-md border border-white/10 bg-black/20 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">

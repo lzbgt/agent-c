@@ -124,6 +124,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-26: WebUI team console includes orchestrator run panel (create/list/update/heartbeat).
   - 2026-02-26: orchestrator run responses include lease status derived from heartbeat.
   - 2026-02-25: added compose smoke for orchestrator runs (create/list/update/heartbeat) via `tests/broker_orchestrator_runs_compose_smoke.sh`.
+  - 2026-02-26: broker console replay cursor persists via client prefs (fallback localStorage).
 - [x] W=12 — Workflow rehydration beyond localStorage: persist workflow wait/resume state in broker/agentd and restore on WebUI reconnect.
   - 2026-02-26: workflow waits persist to client prefs (broker/agentd) with local fallback.
 - [ ] W=11 — Autonomous ops stack defaults: orchestrator + spawn adapter as first-class services (compose/systemd/launchd) with auto OIDC token refresh, so automation runs without the WebUI.

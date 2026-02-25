@@ -4,6 +4,8 @@ import {
   apiBrokerTeamDelete,
   apiBrokerTeamGet,
   apiBrokerTeamList,
+  apiBrokerGetClientPrefs,
+  apiBrokerPostClientPrefs,
   apiBrokerTeamMembersDelete,
   apiBrokerTeamMembersList,
   apiBrokerTeamMembersUpsert,
@@ -84,10 +86,19 @@ const normalizeRoleGraphEdges = (raw: any): RoleGraphEdge[] => {
 };
 
 const TEAM_EVENTS_MAX = 200;
+const TEAM_EVENTS_PREFS_KIND = "webui-team-events";
+const TEAM_EVENTS_PREFS_VERSION = 1;
+
+type TeamCursorEntry = {
+  cursor_ts?: number;
+  updated_unix_ms?: number;
+};
 
 export type BrokerTeamConsoleProps = {
   base: string;
   auth: ApiAuth;
+  authKey: string;
+  clientId: string;
   quorumEvents?: BrokerEventRow[];
 };
 
@@ -137,6 +148,14 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     {},
   );
   const teamEventsCursorRef = React.useRef<number>(0);
+  const [teamEventsCursorByScope, setTeamEventsCursorByScope] = React.useState<Record<string, TeamCursorEntry>>({});
+  const [teamEventsCursorStatus, setTeamEventsCursorStatus] = React.useState<"idle" | "loading" | "ready" | "error">(
+    "idle",
+  );
+  const teamEventsCursorPersistRef = React.useRef<{
+    timer: ReturnType<typeof setTimeout> | null;
+    pending: Record<string, TeamCursorEntry> | null;
+  }>({ timer: null, pending: null });
 
   const [membersBusy, setMembersBusy] = React.useState<boolean>(false);
   const [membersError, setMembersError] = React.useState<string | null>(null);
@@ -185,9 +204,115 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const teamList = Array.isArray(teams) ? teams : [];
   const teamIdTrimmed = String(teamId || "").trim();
   const teamEventsCursor = teamIdTrimmed ? teamEventsCursorByTeam[teamIdTrimmed] || 0 : 0;
+  const teamEventsScopeKey = React.useMemo(() => {
+    if (!teamIdTrimmed) return "";
+    const base = String(props.base || "").trim();
+    const key = String(props.authKey || "").trim();
+    return `${base}::${key}::${teamIdTrimmed}`;
+  }, [props.authKey, props.base, teamIdTrimmed]);
+  const teamPrefsClientId = React.useMemo(() => String(props.clientId || "webui"), [props.clientId]);
+  const teamPrefsBase = React.useMemo(() => String(props.base || "").trim(), [props.base]);
+  const extractTeamEventsCursorByScope = React.useCallback((prefs: any): Record<string, TeamCursorEntry> => {
+    if (!prefs || typeof prefs !== "object") return {};
+    const raw = (prefs as any).team_events_cursor;
+    if (!raw || typeof raw !== "object") return {};
+    const byScope = (raw as any).by_scope;
+    if (!byScope || typeof byScope !== "object") return {};
+    const out: Record<string, TeamCursorEntry> = {};
+    for (const [key, value] of Object.entries(byScope)) {
+      if (!value || typeof value !== "object") continue;
+      const cursor = (value as any).cursor_ts;
+      if (typeof cursor !== "number" || !Number.isFinite(cursor) || cursor <= 0) continue;
+      out[key] = {
+        cursor_ts: cursor,
+        updated_unix_ms: typeof (value as any).updated_unix_ms === "number" ? (value as any).updated_unix_ms : undefined,
+      };
+    }
+    return out;
+  }, []);
   React.useEffect(() => {
     teamEventsCursorRef.current = teamEventsCursor;
   }, [teamEventsCursor]);
+
+  const pushTeamEventsCursor = React.useCallback(
+    async (nextMap: Record<string, TeamCursorEntry>) => {
+      if (!teamPrefsBase || !teamPrefsClientId || !teamEventsScopeKey) return;
+      const payload = {
+        client_id: teamPrefsClientId,
+        client_kind: TEAM_EVENTS_PREFS_KIND,
+        prefs: {
+          team_events_cursor: {
+            version: TEAM_EVENTS_PREFS_VERSION,
+            by_scope: nextMap,
+          },
+        },
+      };
+      const resp = await apiBrokerPostClientPrefs(teamPrefsBase, payload, props.auth);
+      if (!resp.ok) {
+        throw new Error(resp.error || resp.err || resp.code || "team events prefs update failed");
+      }
+      setTeamEventsCursorStatus("ready");
+    },
+    [props.auth, teamEventsScopeKey, teamPrefsBase, teamPrefsClientId],
+  );
+
+  const scheduleTeamEventsCursorPersist = React.useCallback(
+    (nextMap: Record<string, TeamCursorEntry>) => {
+      if (!teamPrefsBase || !teamPrefsClientId || !teamEventsScopeKey) return;
+      if (teamEventsCursorStatus === "error") return;
+      teamEventsCursorPersistRef.current.pending = nextMap;
+      if (teamEventsCursorPersistRef.current.timer) return;
+      teamEventsCursorPersistRef.current.timer = setTimeout(() => {
+        const pending = teamEventsCursorPersistRef.current.pending;
+        teamEventsCursorPersistRef.current.pending = null;
+        teamEventsCursorPersistRef.current.timer = null;
+        if (!pending) return;
+        pushTeamEventsCursor(pending).catch(() => {
+          setTeamEventsCursorStatus("error");
+        });
+      }, 1500);
+    },
+    [teamEventsCursorStatus, teamEventsScopeKey, teamPrefsBase, teamPrefsClientId, pushTeamEventsCursor],
+  );
+
+  const loadTeamEventsCursor = React.useCallback(async () => {
+    if (!canQuery || !teamPrefsBase || !teamPrefsClientId || !teamEventsScopeKey) return;
+    setTeamEventsCursorStatus("loading");
+    try {
+      const resp = await apiBrokerGetClientPrefs(teamPrefsBase, teamPrefsClientId, TEAM_EVENTS_PREFS_KIND, props.auth);
+      if (!resp.ok) {
+        throw new Error(resp.error || resp.err || resp.code || "team events prefs fetch failed");
+      }
+      const remoteMap = extractTeamEventsCursorByScope(resp.prefs);
+      setTeamEventsCursorByScope(remoteMap);
+      const remoteTs = remoteMap[teamEventsScopeKey]?.cursor_ts || 0;
+      const localTs = teamEventsCursorRef.current || 0;
+      const merged = Math.max(localTs, remoteTs);
+      if (merged > localTs && teamIdTrimmed) {
+        setTeamEventsCursorByTeam((prev) => ({ ...prev, [teamIdTrimmed]: merged }));
+      }
+      if (merged > remoteTs) {
+        const nextMap = {
+          ...remoteMap,
+          [teamEventsScopeKey]: { cursor_ts: merged, updated_unix_ms: Date.now() },
+        };
+        setTeamEventsCursorByScope(nextMap);
+        scheduleTeamEventsCursorPersist(nextMap);
+      }
+      setTeamEventsCursorStatus("ready");
+    } catch {
+      setTeamEventsCursorStatus("error");
+    }
+  }, [
+    canQuery,
+    extractTeamEventsCursorByScope,
+    props.auth,
+    scheduleTeamEventsCursorPersist,
+    teamEventsScopeKey,
+    teamIdTrimmed,
+    teamPrefsBase,
+    teamPrefsClientId,
+  ]);
   const membersList = Array.isArray(members) ? members : [];
   const rolePlanOptions = React.useMemo(() => {
     const set = new Set<string>();
@@ -369,6 +494,10 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     [liveEvents, teamReplayEvents, mergeGuidanceEvents],
   );
 
+  React.useEffect(() => {
+    void loadTeamEventsCursor();
+  }, [loadTeamEventsCursor]);
+
   const loadTeamReplay = React.useCallback(async () => {
     if (!canQuery || !teamIdTrimmed) return;
     setTeamReplayBusy(true);
@@ -443,6 +572,23 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       setTeamEventsCursorByTeam((prev) => ({ ...prev, [teamIdTrimmed]: maxTs }));
     }
   }, [props.quorumEvents, teamIdTrimmed, isTeamEvent, teamEventsCursorByTeam, setTeamEventsCursorByTeam]);
+
+  React.useEffect(() => {
+    if (!teamEventsScopeKey || teamEventsCursor <= 0) return;
+    const current = teamEventsCursorByScope[teamEventsScopeKey]?.cursor_ts || 0;
+    if (teamEventsCursor <= current) return;
+    const nextMap = {
+      ...teamEventsCursorByScope,
+      [teamEventsScopeKey]: { cursor_ts: teamEventsCursor, updated_unix_ms: Date.now() },
+    };
+    setTeamEventsCursorByScope(nextMap);
+    scheduleTeamEventsCursorPersist(nextMap);
+  }, [
+    scheduleTeamEventsCursorPersist,
+    teamEventsCursor,
+    teamEventsCursorByScope,
+    teamEventsScopeKey,
+  ]);
 
   const refreshTeams = async () => {
     if (!canQuery) return;

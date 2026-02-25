@@ -1706,15 +1706,16 @@ export default function App() {
               }}
             />
             {connectionMode === "broker" ? (
-              <BrokerPanel
-                open={!!brokerPanelOpen}
-                onToggle={(open) => setBrokerPanelOpen(open)}
-                brokerBase={connection.brokerBase}
-                brokerAgentId={connection.brokerAgentId}
-                setBrokerAgentId={connection.setBrokerAgentId}
-                auth={daemonAuth}
-                authKey={authKey}
-              />
+                <BrokerPanel
+                  open={!!brokerPanelOpen}
+                  onToggle={(open) => setBrokerPanelOpen(open)}
+                  brokerBase={connection.brokerBase}
+                  brokerAgentId={connection.brokerAgentId}
+                  setBrokerAgentId={connection.setBrokerAgentId}
+                  auth={daemonAuth}
+                  authKey={authKey}
+                  clientId={client.id}
+                />
             ) : null}
             <HistoryPanel
               entries={historyEntriesDesc}
