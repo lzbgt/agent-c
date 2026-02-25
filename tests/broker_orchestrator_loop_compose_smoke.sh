@@ -391,6 +391,29 @@ if not found:
   raise SystemExit(1)
 PY
 
+ORCH_GUIDANCE_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    -H "Content-Type: application/json" \
+    -d "{\"guidance_id\":\"orch_guidance_${BAD_TEAM_RUN_ID}\",\"team_run_id\":\"${BAD_TEAM_RUN_ID}\",\"kind\":\"directive\",\"priority\":\"urgent\",\"message\":\"Orchestrator: stay on contract.\",\"target_orchestrator_id\":\"orch_takeover\"}" \
+    "${BROKER_BASE}/v1/teams/${TEAM_ID}/guidance"
+)"
+ORCH_GUIDANCE_ID="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${ORCH_GUIDANCE_JSON}''')
+guidance = obj.get("guidance") or {}
+gid = str(guidance.get("guidance_id",""))
+if not gid:
+  print("failed to create orchestrator guidance", obj, file=sys.stderr)
+  raise SystemExit(1)
+print(gid)
+PY
+)"
+if [[ -z "${ORCH_GUIDANCE_ID}" ]]; then
+  echo "failed to parse orchestrator guidance id: ${ORCH_GUIDANCE_JSON}" >&2
+  exit 1
+fi
+
 GUIDANCE_JSON="$(
   curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
     -H "Authorization: Bearer ${OIDC_JWT}" \
@@ -458,44 +481,6 @@ if not match:
   raise SystemExit(1)
 PY
 
-GUIDANCE_EVENTS_REPLAY_JSON="$(
-  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
-    -H "Authorization: Bearer ${OIDC_JWT}" \
-    "${BROKER_BASE}/v1/events/replay?types=team_guidance_created,team_guidance_ack&limit=50"
-)"
-python3 - <<PY
-import json, sys
-obj = json.loads(r'''${GUIDANCE_EVENTS_REPLAY_JSON}''')
-events = obj.get("events") or []
-if not isinstance(events, list) or len(events) < 1:
-  print("expected guidance replay events", obj, file=sys.stderr)
-  raise SystemExit(1)
-found_created = False
-found_ack = False
-for raw in events:
-  if isinstance(raw, str):
-    try:
-      ev = json.loads(raw)
-    except json.JSONDecodeError:
-      continue
-  elif isinstance(raw, dict):
-    ev = raw
-  else:
-    continue
-  etype = str(ev.get("type",""))
-  payload = ev.get("payload") or {}
-  if str(payload.get("guidance_id","")) != "${GUIDANCE_ID}":
-    continue
-  if etype == "team_guidance_created":
-    found_created = True
-  elif etype == "team_guidance_ack":
-    if isinstance(payload.get("receipt"), dict):
-      found_ack = True
-if not found_created or not found_ack:
-  print("guidance events missing", found_created, found_ack, obj, file=sys.stderr)
-  raise SystemExit(1)
-PY
-
 ORCH_LOG2="${LOG_DIR}/broker_orchestrator_loop_repeat.log"
 (
   cd "${ROOT}/broker"
@@ -509,6 +494,101 @@ ORCH_LOG2="${LOG_DIR}/broker_orchestrator_loop_repeat.log"
   cat "${ORCH_LOG2}" >&2 || true
   exit 1
 }
+
+ORCH_GUIDANCE_GET_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    "${BROKER_BASE}/v1/teams/${TEAM_ID}/guidance/${ORCH_GUIDANCE_ID}"
+)"
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${ORCH_GUIDANCE_GET_JSON}''')
+guidance = obj.get("guidance") or {}
+if not obj.get("ok"):
+  print("orchestrator guidance fetch failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+if str(guidance.get("guidance_id","")) != "${ORCH_GUIDANCE_ID}":
+  print("orchestrator guidance id mismatch", obj, file=sys.stderr)
+  raise SystemExit(1)
+if str(guidance.get("status","")) != "acked":
+  print("orchestrator guidance not acked", obj, file=sys.stderr)
+  raise SystemExit(1)
+if not guidance.get("acked_by"):
+  print("orchestrator guidance missing acked_by", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+ORCH_GUIDANCE_RECEIPTS_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    "${BROKER_BASE}/v1/teams/${TEAM_ID}/guidance/${ORCH_GUIDANCE_ID}/receipts?limit=10"
+)"
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${ORCH_GUIDANCE_RECEIPTS_JSON}''')
+rows = obj.get("receipts") or []
+if not isinstance(rows, list) or len(rows) < 1:
+  print("expected orchestrator guidance receipt rows", obj, file=sys.stderr)
+  raise SystemExit(1)
+match = False
+for row in rows:
+  if not isinstance(row, dict):
+    continue
+  if str(row.get("guidance_id","")) != "${ORCH_GUIDANCE_ID}":
+    continue
+  if str(row.get("ack_source","")) == "orchestrator" and str(row.get("ack_role","")) == "orchestrator":
+    match = True
+    break
+if not match:
+  print("orchestrator guidance receipt missing", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+GUIDANCE_EVENTS_REPLAY_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    "${BROKER_BASE}/v1/events/replay?types=team_guidance_created,team_guidance_ack&limit=50"
+)"
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${GUIDANCE_EVENTS_REPLAY_JSON}''')
+events = obj.get("events") or []
+if not isinstance(events, list) or len(events) < 1:
+  print("expected guidance replay events", obj, file=sys.stderr)
+  raise SystemExit(1)
+manual_created = False
+manual_ack = False
+orch_created = False
+orch_ack = False
+for raw in events:
+  if isinstance(raw, str):
+    try:
+      ev = json.loads(raw)
+    except json.JSONDecodeError:
+      continue
+  elif isinstance(raw, dict):
+    ev = raw
+  else:
+    continue
+  etype = str(ev.get("type",""))
+  payload = ev.get("payload") or {}
+  gid = str(payload.get("guidance_id",""))
+  if gid == "${GUIDANCE_ID}":
+    if etype == "team_guidance_created":
+      manual_created = True
+    elif etype == "team_guidance_ack":
+      if isinstance(payload.get("receipt"), dict):
+        manual_ack = True
+  elif gid == "${ORCH_GUIDANCE_ID}":
+    if etype == "team_guidance_created":
+      orch_created = True
+    elif etype == "team_guidance_ack":
+      if isinstance(payload.get("receipt"), dict):
+        orch_ack = True
+if not (manual_created and manual_ack and orch_created and orch_ack):
+  print("guidance events missing", manual_created, manual_ack, orch_created, orch_ack, obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
 
 SPAWN_LIST_JSON2="$(
   curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \

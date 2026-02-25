@@ -147,6 +147,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-26: WebUI guidance panel consumes SSE/replay events for live refresh.
   - 2026-02-26: added guidance receipts list endpoint + WebUI receipt detail view.
   - 2026-02-25: broker orchestrator loop compose smoke now validates guidance create/ack + replay events.
+  - 2026-02-26: orchestrator loop compose smoke validates auto-ack for orchestrator-targeted guidance.
 - [x] W=9 — Agent provisioning hooks: define an optional `agent_spawn` interface (pluggable adapters for local/remote spawn) so the orchestrator can request new runtime members when capacity is low.
   - 2026-02-25: added broker spawn request persistence + events (`/v1/teams/{team_id}/orchestrator/spawn_requests`).
   - 2026-02-26: added `agentd-spawn-adapter` CLI + `docs/spec/agent_spawn_adapter_v0.md` (local adapter contract).
