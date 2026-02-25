@@ -411,12 +411,45 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
     setRuntimeUpdateError(null);
   };
 
-  const handleRuntimeMembersUpdate = async () => {
-    const runId = String(runLookupId || runResult?.team_run_id || "").trim();
+  const resolveRuntimeRunId = () =>
+    String(runLookupResult?.team_run_id || runLookupId || runResult?.team_run_id || "").trim();
+
+  const applyRuntimeMembersUpdate = async (members: any[], mode: string) => {
+    const runId = resolveRuntimeRunId();
     if (!teamIdTrimmed || !runId) {
       setRuntimeUpdateError("missing team_id or run id");
       return;
     }
+    setRuntimeUpdateError(null);
+    setRuntimeUpdateNote("");
+    setRuntimeUpdateBusy(true);
+    try {
+      const resp = await apiBrokerTeamRunRuntimeMembersUpdate(
+        props.base,
+        teamIdTrimmed,
+        runId,
+        { mode, runtime_members: members },
+        props.auth,
+      );
+      if (!resp.ok) {
+        throw new Error(resp.error || resp.err || resp.code || "runtime members update failed");
+      }
+      setRunLookupResult(resp);
+      if (Array.isArray(resp.runtime_members)) {
+        setRunRuntimeMembersJson(JSON.stringify(resp.runtime_members, null, 2));
+        setRuntimeUpdateNote(`updated ${resp.runtime_members.length} runtime members`);
+      } else {
+        setRunRuntimeMembersJson(JSON.stringify(members, null, 2));
+        setRuntimeUpdateNote(`updated ${members.length} runtime members`);
+      }
+    } catch (err) {
+      setRuntimeUpdateError(String(err));
+    } finally {
+      setRuntimeUpdateBusy(false);
+    }
+  };
+
+  const handleRuntimeMembersUpdate = async () => {
     const raw = String(runRuntimeMembersJson || "").trim();
     if (!raw) {
       setRuntimeUpdateError("runtime members json required");
@@ -434,27 +467,52 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
       return;
     }
     const mode = String(runtimeUpdateMode || "").trim() || "replace";
-    setRuntimeUpdateError(null);
-    setRuntimeUpdateNote("");
-    setRuntimeUpdateBusy(true);
-    try {
-      const resp = await apiBrokerTeamRunRuntimeMembersUpdate(
-        props.base,
-        teamIdTrimmed,
-        runId,
-        { mode, runtime_members: parsed },
-        props.auth,
-      );
-      if (!resp.ok) {
-        throw new Error(resp.error || resp.err || resp.code || "runtime members update failed");
-      }
-      setRunLookupResult(resp);
-      setRuntimeUpdateNote(`updated ${Array.isArray(resp.runtime_members) ? resp.runtime_members.length : 0} runtime members`);
-    } catch (err) {
-      setRuntimeUpdateError(String(err));
-    } finally {
-      setRuntimeUpdateBusy(false);
+    await applyRuntimeMembersUpdate(parsed, mode);
+  };
+
+  const handleRuntimeMemberToggle = async (member: any) => {
+    const runtimeMembers = Array.isArray(runLookupResult?.runtime_members) ? runLookupResult.runtime_members : [];
+    if (runtimeMembers.length === 0) {
+      setRuntimeUpdateError("load run status first");
+      return;
     }
+    const memberId = String(member?.member_id || "").trim();
+    const agentId = String(member?.agent_id || "").trim();
+    if (!memberId && !agentId) {
+      setRuntimeUpdateError("runtime member missing id");
+      return;
+    }
+    const updated = runtimeMembers.map((item: any) => {
+      const mid = String(item?.member_id || "").trim();
+      const aid = String(item?.agent_id || "").trim();
+      const match = memberId ? mid === memberId : aid === agentId;
+      if (!match) return item;
+      const current = String(item?.status || "active").toLowerCase();
+      const next = current === "paused" ? "active" : "paused";
+      return { ...item, status: next };
+    });
+    await applyRuntimeMembersUpdate(updated, "replace");
+  };
+
+  const handleRuntimeMemberRemove = async (member: any) => {
+    const runtimeMembers = Array.isArray(runLookupResult?.runtime_members) ? runLookupResult.runtime_members : [];
+    if (runtimeMembers.length === 0) {
+      setRuntimeUpdateError("load run status first");
+      return;
+    }
+    const memberId = String(member?.member_id || "").trim();
+    const agentId = String(member?.agent_id || "").trim();
+    if (!memberId && !agentId) {
+      setRuntimeUpdateError("runtime member missing id");
+      return;
+    }
+    const updated = runtimeMembers.filter((item: any) => {
+      const mid = String(item?.member_id || "").trim();
+      const aid = String(item?.agent_id || "").trim();
+      if (memberId) return mid !== memberId;
+      return aid !== agentId;
+    });
+    await applyRuntimeMembersUpdate(updated, "replace");
   };
 
   const handleApprovalsRefresh = async () => {
@@ -1673,11 +1731,41 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
             const agentId = m?.agent_id ? String(m.agent_id) : "";
             const role = m?.role ? String(m.role) : "";
             const mid = m?.member_id ? String(m.member_id) : "";
+            const status = m?.status ? String(m.status) : "";
+            const rawKey = mid || agentId || `row-${idx}`;
+            const runtimeKey = rawKey.replace(/[^a-zA-Z0-9_-]/g, "_");
             return (
-              <div key={`runtime-member-${mid || agentId}-${idx}`}>
-                {mid ? `${mid} · ` : ""}
-                {agentId ? `agent ${agentId}` : "agent ?"}
-                {role ? ` · role ${role}` : ""}
+              <div
+                key={`runtime-member-${mid || agentId}-${idx}`}
+                data-testid={`team-run-runtime-row-${runtimeKey}`}
+                className="flex flex-wrap items-center justify-between gap-2"
+              >
+                <div>
+                  {mid ? `${mid} · ` : ""}
+                  {agentId ? `agent ${agentId}` : "agent ?"}
+                  {role ? ` · role ${role}` : ""}
+                  {status ? ` · ${status}` : ""}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                    type="button"
+                    data-testid={`team-run-runtime-toggle-${runtimeKey}`}
+                    disabled={!props.canQuery || runtimeUpdateBusy}
+                    onClick={() => void handleRuntimeMemberToggle(m)}
+                  >
+                    {String(status || "active").toLowerCase() === "paused" ? "Resume" : "Pause"}
+                  </button>
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-0.5 text-[10px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                    type="button"
+                    data-testid={`team-run-runtime-remove-${runtimeKey}`}
+                    disabled={!props.canQuery || runtimeUpdateBusy}
+                    onClick={() => void handleRuntimeMemberRemove(m)}
+                  >
+                    Remove
+                  </button>
+                </div>
               </div>
             );
           })}

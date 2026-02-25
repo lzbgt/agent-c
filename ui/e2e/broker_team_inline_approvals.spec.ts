@@ -248,6 +248,120 @@ test("broker team run runtime members update submits patch", async ({ page }) =>
   });
 });
 
+test("broker team run runtime member toggle submits patch", async ({ page }) => {
+  const teamId = "team-alpha";
+  const runId = "run-900";
+  let updatePayload: any = null;
+
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem("agentui.connectionMode", JSON.stringify("broker"));
+      window.localStorage.setItem("agentui.brokerBase", "https://broker.example.invalid");
+      window.localStorage.setItem("agentui.brokerAuthToken", "test-token");
+      window.localStorage.setItem("agentui.brokerAgentId", "agent1");
+      window.localStorage.setItem("agentui.brokerPanelOpen", "true");
+      window.localStorage.setItem("agentui.showSettings", "false");
+      window.localStorage.setItem("agentui.allowClientRpcs", "true");
+      window.localStorage.setItem("agentui.allowClientEffects", "true");
+    } catch {
+      // ignore
+    }
+  });
+
+  await page.route("**/v1/teams**", async (route, request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    if (request.method() === "GET" && path === "/v1/teams") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, teams: [{ team_id: teamId, display_name: "Team Alpha" }] }),
+      });
+      return;
+    }
+    if (request.method() === "GET" && path === `/v1/teams/${teamId}`) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, team: { team_id: teamId, owner_sub: "owner" } }),
+      });
+      return;
+    }
+    if (request.method() === "GET" && path === `/v1/teams/${teamId}/members`) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, team_id: teamId, members: [] }),
+      });
+      return;
+    }
+    if (request.method() === "GET" && path === `/v1/teams/${teamId}/quorum`) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, team_id: teamId, rules: [] }),
+      });
+      return;
+    }
+    if (request.method() === "GET" && path === `/v1/teams/${teamId}/runs/${runId}`) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          team_id: teamId,
+          team_run_id: runId,
+          status: "succeeded",
+          members: [],
+          runtime_members: [
+            { member_id: "rt-1", agent_id: "agent-a", role: "executor", status: "active" },
+            { member_id: "rt-2", agent_id: "agent-b", role: "reviewer", status: "active" },
+          ],
+        }),
+      });
+      return;
+    }
+    if (request.method() === "PATCH" && path === `/v1/teams/${teamId}/runs/${runId}/runtime_members`) {
+      const body = request.postData() || "{}";
+      updatePayload = JSON.parse(body);
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          team_id: teamId,
+          team_run_id: runId,
+          status: "succeeded",
+          members: [],
+          runtime_members: updatePayload.runtime_members,
+        }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/");
+
+  const teamSection = page.locator("section").filter({ has: page.getByText("Teams", { exact: true }) });
+  await teamSection.getByRole("button", { name: "Refresh" }).first().click();
+
+  const runSection = page.locator("section").filter({ has: page.getByText("Team run", { exact: true }) });
+  await runSection.getByPlaceholder("team_run_id").fill(runId);
+  await runSection.getByRole("button", { name: "Get status" }).click();
+
+  await runSection.getByTestId("team-run-runtime-toggle-rt-1").click();
+
+  await expect.poll(() => updatePayload).not.toBeNull();
+  expect(updatePayload).toEqual({
+    mode: "replace",
+    runtime_members: [
+      { member_id: "rt-1", agent_id: "agent-a", role: "executor", status: "paused" },
+      { member_id: "rt-2", agent_id: "agent-b", role: "reviewer", status: "active" },
+    ],
+  });
+});
+
 test("broker team member inline edit submits patch", async ({ page }) => {
   const teamId = "team-alpha";
   const memberId = "member-1";
