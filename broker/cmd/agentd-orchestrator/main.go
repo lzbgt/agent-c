@@ -587,15 +587,29 @@ func processGuidance(
 	if v, ok := asInt64(meta["guidance_since_ts"]); ok && v > 0 {
 		sinceTS = v
 	}
-	items, maxTS, err := fetchGuidance(ctx, client, cfg, teamID, teamRunID, sinceTS)
+	globalSinceTS := int64(0)
+	if v, ok := asInt64(meta["guidance_since_ts_global"]); ok && v > 0 {
+		globalSinceTS = v
+	}
+	runItems, err := fetchGuidance(ctx, client, cfg, teamID, teamRunID, sinceTS)
 	if err != nil {
 		return false, err
 	}
-	if len(items) == 0 && maxTS <= sinceTS {
+	globalItems, err := fetchGuidance(ctx, client, cfg, teamID, "", globalSinceTS)
+	if err != nil {
+		return false, err
+	}
+	if len(runItems) == 0 && len(globalItems) == 0 {
 		return false, nil
 	}
+	items := make([]guidanceEvent, 0, len(runItems)+len(globalItems))
+	items = append(items, runItems...)
+	items = append(items, globalItems...)
 	changed := false
-	pending := false
+	pendingRun := false
+	pendingGlobal := false
+	runMaxTS := sinceTS
+	globalMaxTS := globalSinceTS
 	for _, item := range items {
 		id := strings.TrimSpace(item.GuidanceID)
 		if id == "" {
@@ -604,6 +618,17 @@ func processGuidance(
 		if ackedSet[id] {
 			continue
 		}
+		itemRunID := strings.TrimSpace(item.TeamRunID)
+		if itemRunID != "" && teamRunID != "" && itemRunID != teamRunID {
+			continue
+		}
+		if itemRunID == "" {
+			if item.CreatedUnixMS > globalMaxTS {
+				globalMaxTS = item.CreatedUnixMS
+			}
+		} else if item.CreatedUnixMS > runMaxTS {
+			runMaxTS = item.CreatedUnixMS
+		}
 		status := strings.ToLower(strings.TrimSpace(item.Status))
 		if status != "" && status != "open" {
 			ackedSet[id] = true
@@ -611,6 +636,7 @@ func processGuidance(
 			changed = true
 			continue
 		}
+		itemPending := false
 		dispatchTargets, shouldDispatch := guidanceTargetsForMembers(item)
 		dispatched := false
 		if shouldDispatch {
@@ -619,11 +645,11 @@ func processGuidance(
 				runID = item.TeamRunID
 			}
 			if runID == "" {
-				pending = true
+				itemPending = true
 			} else {
 				if _, err := dispatchGuidanceDirective(ctx, client, cfg, teamID, runID, item, dispatchTargets); err != nil {
 					if isGuidanceDispatchRetriable(err) {
-						pending = true
+						itemPending = true
 					} else {
 						return false, err
 					}
@@ -634,8 +660,12 @@ func processGuidance(
 		}
 		shouldAck := shouldHandleGuidance(item, cfg.orchestratorID) || dispatched
 		if !shouldAck {
-			if shouldDispatch && !dispatched {
-				pending = true
+			if itemPending {
+				if itemRunID == "" {
+					pendingGlobal = true
+				} else {
+					pendingRun = true
+				}
 			}
 			continue
 		}
@@ -656,8 +686,12 @@ func processGuidance(
 		ackedIDs = append(ackedIDs, id)
 		changed = true
 	}
-	if maxTS > sinceTS && !pending {
-		meta["guidance_since_ts"] = maxTS
+	if runMaxTS > sinceTS && !pendingRun {
+		meta["guidance_since_ts"] = runMaxTS
+		changed = true
+	}
+	if globalMaxTS > globalSinceTS && !pendingGlobal {
+		meta["guidance_since_ts_global"] = globalMaxTS
 		changed = true
 	}
 	if changed {
@@ -1497,7 +1531,7 @@ func createSpawnRequest(ctx context.Context, client *http.Client, cfg config, te
 	return &resp.SpawnRequest, nil
 }
 
-func fetchGuidance(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string, sinceTS int64) ([]guidanceEvent, int64, error) {
+func fetchGuidance(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string, sinceTS int64) ([]guidanceEvent, error) {
 	qs := url.Values{}
 	qs.Set("status", "open")
 	qs.Set("limit", "200")
@@ -1510,18 +1544,12 @@ func fetchGuidance(ctx context.Context, client *http.Client, cfg config, teamID,
 	url := fmt.Sprintf("%s/v1/teams/%s/guidance?%s", cfg.brokerBase, teamID, qs.Encode())
 	var resp guidanceListResponse
 	if err := doJSON(ctx, client, cfg, http.MethodGet, url, nil, &resp); err != nil {
-		return nil, sinceTS, err
+		return nil, err
 	}
 	if !resp.OK {
-		return nil, sinceTS, fmt.Errorf("broker returned ok=false for guidance list")
+		return nil, fmt.Errorf("broker returned ok=false for guidance list")
 	}
-	maxTS := sinceTS
-	for _, item := range resp.Guidance {
-		if item.CreatedUnixMS > maxTS {
-			maxTS = item.CreatedUnixMS
-		}
-	}
-	return resp.Guidance, maxTS, nil
+	return resp.Guidance, nil
 }
 
 func ackGuidance(ctx context.Context, client *http.Client, cfg config, teamID, guidanceID, note, ackSource, ackRole string) (*guidanceAckResponse, error) {

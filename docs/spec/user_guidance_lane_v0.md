@@ -31,7 +31,8 @@ directives so guidance lands in the agents’ sessions.
 GuidanceEvent:
 - `guidance_id` (string, `guidance_<hex>`)
 - `team_id`
-- `team_run_id` (optional)
+- `team_run_id` (optional; when omitted, orchestrator applies guidance to the
+  currently active team run if one exists)
 - `kind` (directive | context | warning | constraint)
 - `priority` (low | normal | high | urgent)
 - `message` (string, max 4096 chars)

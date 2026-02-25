@@ -357,6 +357,29 @@ if [[ -z "${GUIDANCE_ID}" ]]; then
   exit 1
 fi
 
+GLOBAL_GUIDANCE_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    -H "Content-Type: application/json" \
+    -d "{\"guidance_id\":\"events_guidance_global_${TEAM_RUN_ID}\",\"kind\":\"directive\",\"priority\":\"normal\",\"message\":\"Guidance: global update.\"}" \
+    "${BROKER_BASE}/v1/teams/${TEAM_ID}/guidance"
+)"
+GLOBAL_GUIDANCE_ID="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${GLOBAL_GUIDANCE_JSON}''')
+guidance = obj.get("guidance") or {}
+gid = str(guidance.get("guidance_id",""))
+if not gid:
+  print("failed to create global guidance", obj, file=sys.stderr)
+  raise SystemExit(1)
+print(gid)
+PY
+)"
+if [[ -z "${GLOBAL_GUIDANCE_ID}" ]]; then
+  echo "failed to parse global guidance id: ${GLOBAL_GUIDANCE_JSON}" >&2
+  exit 1
+fi
+
 (
   cd "${ROOT}/broker"
   go run ./cmd/agentd-orchestrator \
@@ -411,6 +434,26 @@ if str(guidance.get("status","")) != "acked":
   raise SystemExit(1)
 PY
 
+GLOBAL_GUIDANCE_GET_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    "${BROKER_BASE}/v1/teams/${TEAM_ID}/guidance/${GLOBAL_GUIDANCE_ID}"
+)"
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${GLOBAL_GUIDANCE_GET_JSON}''')
+guidance = obj.get("guidance") or {}
+if not obj.get("ok"):
+  print("global guidance fetch failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+if str(guidance.get("guidance_id","")) != "${GLOBAL_GUIDANCE_ID}":
+  print("global guidance id mismatch", obj, file=sys.stderr)
+  raise SystemExit(1)
+if str(guidance.get("status","")) != "acked":
+  print("global guidance not acked", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 MOD_EVENTS_JSON="$(
   curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
     -H "Authorization: Bearer ${OIDC_JWT}" \
@@ -424,6 +467,7 @@ if not isinstance(events, list) or len(events) < 1:
   print("expected moderator events", obj, file=sys.stderr)
   raise SystemExit(1)
 found = False
+found_global = False
 for row in events:
   if not isinstance(row, dict):
     continue
@@ -434,13 +478,16 @@ for row in events:
     continue
   data = ev.get("data") or {}
   if str(data.get("directive","")) != "Guidance: stay on goal.":
+    if str(data.get("directive","")) == "Guidance: global update.":
+      meta = data.get("metadata") or {}
+      if str(meta.get("guidance_id","")) == "${GLOBAL_GUIDANCE_ID}":
+        found_global = True
     continue
   meta = data.get("metadata") or {}
   if str(meta.get("guidance_id","")) == "${GUIDANCE_ID}":
     found = True
-    break
-if not found:
-  print("guidance directive not found in moderator events", obj, file=sys.stderr)
+if not found or not found_global:
+  print("guidance directive not found in moderator events", found, found_global, obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 

@@ -145,6 +145,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-26: broker storage + endpoints + SSE events for guidance lane.
   - 2026-02-26: orchestrator polls open guidance + auto-acks targeted items.
   - 2026-02-26: orchestrator forwards guidance to active members via moderator directives when targets include roles/members/agents.
+  - 2026-02-26: orchestrator processes unscoped guidance (no team_run_id) by applying it to the active run.
   - 2026-02-26: WebUI team console guidance panel (list/create/ack).
   - 2026-02-26: WebUI guidance panel consumes SSE/replay events for live refresh.
   - 2026-02-26: added guidance receipts list endpoint + WebUI receipt detail view.
