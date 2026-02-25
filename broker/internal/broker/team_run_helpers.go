@@ -261,6 +261,125 @@ func mergeRuntimeMemberInputs(existing, incoming []teamRuntimeMemberInput) []tea
 	return out
 }
 
+func teamRunMemberJobsFromMeta(teamMeta map[string]any) []map[string]any {
+	if teamMeta == nil {
+		return nil
+	}
+	rawJobs, ok := teamMeta["member_jobs"]
+	if !ok || rawJobs == nil {
+		return nil
+	}
+	switch t := rawJobs.(type) {
+	case []map[string]any:
+		return t
+	case []any:
+		out := make([]map[string]any, 0, len(t))
+		for _, item := range t {
+			if m, ok := item.(map[string]any); ok {
+				out = append(out, m)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func teamRunDispatchErrorCount(teamMeta map[string]any) int {
+	if teamMeta == nil {
+		return 0
+	}
+	rawErrs, ok := teamMeta["dispatch_errors"]
+	if !ok || rawErrs == nil {
+		return 0
+	}
+	switch t := rawErrs.(type) {
+	case []map[string]any:
+		return len(t)
+	case []any:
+		return len(t)
+	default:
+		return 0
+	}
+}
+
+func teamRunMemberJobSummary(teamMeta map[string]any) map[string]any {
+	items := teamRunMemberJobsFromMeta(teamMeta)
+	if len(items) == 0 {
+		return nil
+	}
+	dispatchCount := teamRunDispatchErrorCount(teamMeta)
+	queued := 0
+	running := 0
+	done := 0
+	errCount := 0
+	cancelled := 0
+	interrupted := 0
+	unknown := 0
+	okCount := 0
+	failedCount := 0
+
+	for _, item := range items {
+		status := ""
+		if raw, ok := item["status"].(string); ok {
+			status = strings.ToLower(strings.TrimSpace(raw))
+		}
+		switch status {
+		case "queued":
+			queued++
+		case "running":
+			running++
+		case "done":
+			done++
+		case "error":
+			errCount++
+		case "cancelled":
+			cancelled++
+		case "interrupted":
+			interrupted++
+		default:
+			unknown++
+		}
+
+		jobFailed := false
+		if dispatchErr, ok := item["dispatch_error"].(string); ok && strings.TrimSpace(dispatchErr) != "" {
+			jobFailed = true
+		}
+		if errStr, ok := item["error"].(string); ok && strings.TrimSpace(errStr) != "" {
+			jobFailed = true
+		}
+		if okVal, ok := item["ok"].(bool); ok {
+			if okVal {
+				okCount++
+			} else {
+				jobFailed = true
+			}
+		}
+		switch status {
+		case "error", "cancelled", "interrupted":
+			jobFailed = true
+		}
+		if jobFailed {
+			failedCount++
+		}
+	}
+
+	summary := map[string]any{
+		"total":           len(items),
+		"queued":          queued,
+		"running":         running,
+		"done":            done,
+		"error":           errCount,
+		"cancelled":       cancelled,
+		"interrupted":     interrupted,
+		"unknown":         unknown,
+		"ok":              okCount,
+		"failed":          failedCount,
+		"dispatch_errors": dispatchCount,
+	}
+	return summary
+}
+
 func parseTeamRunQuorumPolicy(meta map[string]any) (string, error) {
 	mode := "auto"
 	raw, ok := meta["quorum_policy"]

@@ -201,7 +201,12 @@ All endpoints below are served by the broker (not by agents).
 - `GET /v1/teams/{team_id}/runs/{team_run_id}`
   - returns the stored team run status + current member list
   - if runtime members were provided, `runtime_members` is included in the response
-  - async runs include `member_jobs` (job IDs + status) and `dispatch_errors` when present
+  - async runs include `member_jobs` (job IDs + status), `dispatch_errors`, and `member_job_summary` when present
+  - cancel metadata is surfaced via `cancel_requested_unix_ms` and `cancel_results`
+- `POST /v1/teams/{team_id}/runs/{team_run_id}/cancel`
+  - requests cancellation of an async team run (fan-out `/api/v1/job/cancel` per member job)
+  - updates the run payload with `cancel_requested_unix_ms` + `cancel_results`
+  - status shifts to `cancelling` while member jobs are still running
 - `PATCH /v1/teams/{team_id}/runs/{team_run_id}/runtime_members`
   - updates the stored runtime members for a team run (replace or merge by `member_id`)
   - validates agent access + allowlisted overrides; updates are recorded in the run payload

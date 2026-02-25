@@ -68,7 +68,18 @@ Async mode enables **nonblocking** orchestration: UI refresh or disconnect does 
 Member job execution persists inside each target `agentd` (job engine), so broker restarts do not cancel
 in-flight member runs.
 
-### 7) Runtime members (v0.3)
+### 7) Cancellation (v0.5)
+
+Async team runs can be cancelled without interrupting the browser session:
+
+- `POST /v1/teams/{team_id}/runs/{team_run_id}/cancel`
+  - broker fans out `POST /api/v1/job/cancel` to each member job
+  - records `cancel_requested_unix_ms` + `cancel_results` in the run payload
+  - run status shifts to `cancelling` until job statuses reconcile to terminal states
+
+Cancellation is **best-effort**: each `agentd` cooperatively stops its tool loop at safe boundaries.
+
+### 8) Runtime members (v0.3)
 
 Team runs may include **runtime members** supplied in the run request. These are
 ephemeral members used **only for the current run** and are **not persisted** in
@@ -82,7 +93,7 @@ Constraints:
 - Runtime members may include `meta.run_overrides` and `meta.backend_label`,
   and the same **allowlist** rules apply to `run_overrides`.
 
-### 8) Member backend profile (v0.2)
+### 9) Member backend profile (v0.2)
 
 Each team member may carry an optional backend profile stored under `member.meta`.
 The broker can optionally merge these **run overrides** into the base run when executing
@@ -191,6 +202,23 @@ member_jobs: [
 ]
 dispatch_errors: [
   { member_id: string, agent_id: string, error: string }
+]
+member_job_summary: {
+  total: integer
+  queued: integer
+  running: integer
+  done: integer
+  error: integer
+  cancelled: integer
+  interrupted: integer
+  unknown: integer
+  ok: integer
+  failed: integer
+  dispatch_errors: integer
+}
+cancel_requested_unix_ms: integer | null
+cancel_results: [
+  { member_id: string, agent_id: string, deployment_id: string | null, job_id: string, ok: boolean, error: string | null }
 ]
 ```
 

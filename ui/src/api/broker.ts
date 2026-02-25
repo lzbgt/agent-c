@@ -613,6 +613,25 @@ export async function apiBrokerTeamRunGet(
   return BrokerTeamRunStatusRespSchema.parse(j);
 }
 
+export async function apiBrokerTeamRunCancel(
+  brokerBase: string,
+  teamId: string,
+  teamRunId: string,
+  auth?: ApiAuth,
+): Promise<BrokerTeamRunStatusResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  const rid = String(teamRunId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  if (!rid) throw new Error("missing team_run_id");
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/runs/${encodeURIComponent(rid)}/cancel`, {
+    method: "POST",
+    headers: daemonHeaders(auth),
+  });
+  const j = await r.json();
+  return BrokerTeamRunStatusRespSchema.parse(j);
+}
+
 export async function apiBrokerTeamRunApprovalsList(
   brokerBase: string,
   teamId: string,

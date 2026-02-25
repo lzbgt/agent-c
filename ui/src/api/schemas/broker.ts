@@ -268,6 +268,34 @@ export const BrokerTeamRunMemberJobSchema = z
   })
   .passthrough();
 
+export const BrokerTeamRunMemberJobSummarySchema = z
+  .object({
+    total: z.number().optional(),
+    queued: z.number().optional(),
+    running: z.number().optional(),
+    done: z.number().optional(),
+    error: z.number().optional(),
+    cancelled: z.number().optional(),
+    interrupted: z.number().optional(),
+    unknown: z.number().optional(),
+    ok: z.number().optional(),
+    failed: z.number().optional(),
+    dispatch_errors: z.number().optional(),
+  })
+  .passthrough();
+
+export const BrokerTeamRunCancelResultSchema = z
+  .object({
+    member_id: z.string().optional(),
+    agent_id: z.string().optional(),
+    deployment_id: z.string().optional(),
+    job_id: z.string().optional(),
+    ok: z.boolean().optional(),
+    error: z.string().optional(),
+    http_status: z.number().optional(),
+  })
+  .passthrough();
+
 export const BrokerTeamRunDispatchErrorSchema = z
   .object({
     member_id: z.string().optional(),
@@ -286,6 +314,7 @@ export const BrokerTeamRunRespSchema = z
     created_unix_ms: z.number().optional(),
     member_jobs: z.array(BrokerTeamRunMemberJobSchema).optional(),
     dispatch_errors: z.array(BrokerTeamRunDispatchErrorSchema).optional(),
+    member_job_summary: BrokerTeamRunMemberJobSummarySchema.optional(),
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),
@@ -304,6 +333,9 @@ export const BrokerTeamRunStatusRespSchema = z
     members: z.array(BrokerTeamMemberSchema).optional(),
     member_jobs: z.array(BrokerTeamRunMemberJobSchema).optional(),
     dispatch_errors: z.array(BrokerTeamRunDispatchErrorSchema).optional(),
+    member_job_summary: BrokerTeamRunMemberJobSummarySchema.optional(),
+    cancel_requested_unix_ms: z.number().optional(),
+    cancel_results: z.array(BrokerTeamRunCancelResultSchema).optional(),
     error: z.string().optional(),
     err: z.string().optional(),
     code: z.string().optional(),

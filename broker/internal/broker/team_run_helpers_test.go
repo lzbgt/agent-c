@@ -1,0 +1,76 @@
+package broker
+
+import "testing"
+
+func TestTeamRunMemberJobSummary(t *testing.T) {
+	teamMeta := map[string]any{
+		"member_jobs": []map[string]any{
+			{"status": "queued"},
+			{"status": "running"},
+			{"status": "done", "ok": true},
+			{"status": "error", "error": "boom"},
+			{"status": "cancelled"},
+			{"status": "interrupted", "ok": false},
+			{},
+			{"status": "done", "dispatch_error": "missing job_id"},
+		},
+		"dispatch_errors": []map[string]any{
+			{"member_id": "m1", "error": "dispatch failed"},
+			{"member_id": "m2", "error": "dispatch failed"},
+		},
+	}
+	summary := teamRunMemberJobSummary(teamMeta)
+	if summary == nil {
+		t.Fatal("expected summary")
+	}
+	getInt := func(key string) int {
+		v, ok := summary[key]
+		if !ok {
+			t.Fatalf("missing summary key %q", key)
+		}
+		if n, ok := v.(int); ok {
+			return n
+		}
+		if n, ok := v.(int64); ok {
+			return int(n)
+		}
+		if n, ok := v.(float64); ok {
+			return int(n)
+		}
+		t.Fatalf("unexpected type for %q: %T", key, v)
+		return 0
+	}
+	if got := getInt("total"); got != 8 {
+		t.Fatalf("total=%d, want 8", got)
+	}
+	if got := getInt("queued"); got != 1 {
+		t.Fatalf("queued=%d, want 1", got)
+	}
+	if got := getInt("running"); got != 1 {
+		t.Fatalf("running=%d, want 1", got)
+	}
+	if got := getInt("done"); got != 2 {
+		t.Fatalf("done=%d, want 2", got)
+	}
+	if got := getInt("error"); got != 1 {
+		t.Fatalf("error=%d, want 1", got)
+	}
+	if got := getInt("cancelled"); got != 1 {
+		t.Fatalf("cancelled=%d, want 1", got)
+	}
+	if got := getInt("interrupted"); got != 1 {
+		t.Fatalf("interrupted=%d, want 1", got)
+	}
+	if got := getInt("unknown"); got != 1 {
+		t.Fatalf("unknown=%d, want 1", got)
+	}
+	if got := getInt("ok"); got != 1 {
+		t.Fatalf("ok=%d, want 1", got)
+	}
+	if got := getInt("failed"); got != 4 {
+		t.Fatalf("failed=%d, want 4", got)
+	}
+	if got := getInt("dispatch_errors"); got != 2 {
+		t.Fatalf("dispatch_errors=%d, want 2", got)
+	}
+}

@@ -81,6 +81,7 @@ Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`,
 - Team runs support **runtime members** for per-run team composition (ephemeral). Use runtime members to add/pause agents dynamically; "Save to team" persists them into the registry.
 - Team run panel can update runtime members for an existing run (replace/merge) after lookup; runtime member list includes quick pause/resume/remove actions.
 - Team run panel supports async mode (nonblocking): broker dispatches member runs via `/api/v1/run_async`, persists job IDs, and status lookups show per-member job state.
+- Team run panel can cancel async runs and surfaces the aggregated member job summary plus cancel results.
 - Server-side sync prefers the **daemon** (direct mode) or **broker** (broker mode) when supported.
   - Default: **auto** (syncs when the server advertises client prefs and auth allows; broker requires OIDC token).
   - The client prefs id defaults to `webui` and can be changed in Settings → Connection.

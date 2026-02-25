@@ -185,6 +185,13 @@ func (s *Server) handleTeamsSubroutes(w http.ResponseWriter, r *http.Request) {
 				}
 				writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
+			case "cancel":
+				if r.Method == "POST" {
+					s.handleTeamRunCancel(w, r, teamID, parts[2])
+					return
+				}
+				writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+				return
 			default:
 				writeErrorJSON(w, "not found", http.StatusNotFound)
 				return
@@ -1039,6 +1046,69 @@ func (s *Server) handleTeamRunGet(w http.ResponseWriter, r *http.Request, teamID
 	writeJSON(w, resp)
 }
 
+func (s *Server) handleTeamRunCancel(w http.ResponseWriter, r *http.Request, teamID, teamRunID string) {
+	if r.Method != "POST" {
+		writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if p.AuthKind != "oidc" {
+		writeErrorJSON(w, "oidc required", http.StatusForbidden)
+		return
+	}
+	_, ok := s.requireTeamOwner(w, r, p, teamID)
+	if !ok {
+		return
+	}
+	run, err := s.cfg.DB.GetTeamRun(r.Context(), teamID, teamRunID)
+	if err != nil {
+		writeErrorJSON(w, "team run not found", http.StatusNotFound)
+		return
+	}
+
+	runPayload := map[string]any{}
+	teamMeta := map[string]any{}
+	if len(run.RunJSON) > 0 {
+		if err := json.Unmarshal(run.RunJSON, &runPayload); err != nil {
+			writeErrorJSON(w, "invalid team run payload", http.StatusInternalServerError)
+			return
+		}
+		if teamRaw, ok := runPayload["team"].(map[string]any); ok {
+			teamMeta = teamRaw
+		}
+	}
+	mode := "sync"
+	if v, ok := teamMeta["mode"].(string); ok {
+		mode = strings.ToLower(strings.TrimSpace(v))
+		if mode == "" {
+			mode = "sync"
+		}
+	}
+	if mode != "async" {
+		writeErrorJSON(w, "team run is not async", http.StatusBadRequest)
+		return
+	}
+	options := teamRunOptions{MaxConcurrency: 4}
+	if parsed, err := parseTeamRunOptions(teamMeta); err == nil {
+		options = parsed
+	}
+	traceID := traceIDFromContext(r.Context())
+	if _, err := s.cancelTeamRunJobs(r.Context(), p, run, runPayload, teamMeta, options.MaxConcurrency, traceID); err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	resp, err := s.teamRunStatusResponse(r.Context(), p, run)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, resp)
+}
+
 func (s *Server) handleTeamRunRuntimeMembersUpdate(w http.ResponseWriter, r *http.Request, teamID, teamRunID string) {
 	p, err := s.requirePrincipal(r)
 	if err != nil {
@@ -1236,6 +1306,15 @@ func (s *Server) teamRunStatusResponse(ctx context.Context, p *Principal, run *d
 	if raw, ok := teamMeta["dispatch_errors"]; ok {
 		dispatchErrors = raw
 	}
+	var cancelRequested any
+	if raw, ok := teamMeta["cancel_requested_unix_ms"]; ok {
+		cancelRequested = raw
+	}
+	var cancelResults any
+	if raw, ok := teamMeta["cancel_results"]; ok {
+		cancelResults = raw
+	}
+	summary := teamRunMemberJobSummary(teamMeta)
 	members, err := s.cfg.DB.ListTeamMembers(ctx, run.TeamID)
 	if err != nil {
 		return nil, err
@@ -1261,6 +1340,15 @@ func (s *Server) teamRunStatusResponse(ctx context.Context, p *Principal, run *d
 	}
 	if dispatchErrors != nil {
 		resp["dispatch_errors"] = dispatchErrors
+	}
+	if summary != nil {
+		resp["member_job_summary"] = summary
+	}
+	if cancelRequested != nil {
+		resp["cancel_requested_unix_ms"] = cancelRequested
+	}
+	if cancelResults != nil {
+		resp["cancel_results"] = cancelResults
 	}
 	return resp, nil
 }

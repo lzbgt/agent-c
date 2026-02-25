@@ -167,6 +167,9 @@ func (s *Server) executeTeamRunAsync(
 	if len(dispatchErrors) > 0 {
 		resp["dispatch_errors"] = dispatchErrors
 	}
+	if summary := teamRunMemberJobSummary(teamMeta); summary != nil {
+		resp["member_job_summary"] = summary
+	}
 	return resp, nil
 }
 
@@ -177,43 +180,20 @@ func (s *Server) reconcileTeamRunJobs(ctx context.Context, p *Principal, run *db
 	if p == nil {
 		return run.Status, nil
 	}
-	rawJobs, ok := teamMeta["member_jobs"]
-	if !ok || rawJobs == nil {
-		return run.Status, nil
-	}
-	var items []map[string]any
-	switch t := rawJobs.(type) {
-	case []map[string]any:
-		items = t
-	case []any:
-		for _, item := range t {
-			if m, ok := item.(map[string]any); ok {
-				items = append(items, m)
-			}
-		}
-	default:
-		return run.Status, nil
-	}
+	items := teamRunMemberJobsFromMeta(teamMeta)
 	if len(items) == 0 {
 		return run.Status, nil
 	}
 
-	hasDispatchErrors := false
-	if rawErrs, ok := teamMeta["dispatch_errors"]; ok && rawErrs != nil {
-		switch t := rawErrs.(type) {
-		case []any:
-			if len(t) > 0 {
-				hasDispatchErrors = true
-			}
-		case []map[string]any:
-			if len(t) > 0 {
-				hasDispatchErrors = true
-			}
-		}
+	hasDispatchErrors := teamRunDispatchErrorCount(teamMeta) > 0
+	cancelRequested := false
+	if v, ok := teamMeta["cancel_requested_unix_ms"]; ok && v != nil {
+		cancelRequested = true
 	}
 
 	running := false
 	failed := false
+	cancelled := false
 	changed := false
 	updated := make([]map[string]any, 0, len(items))
 
@@ -308,8 +288,10 @@ func (s *Server) reconcileTeamRunJobs(ctx context.Context, p *Principal, run *db
 
 		if status == "queued" || status == "running" {
 			running = true
-		} else if status == "error" || status == "cancelled" || status == "interrupted" {
+		} else if status == "error" {
 			failed = true
+		} else if status == "cancelled" || status == "interrupted" {
+			cancelled = true
 		}
 
 		if prev, ok := entry["status"].(string); !ok || prev != status {
@@ -343,9 +325,15 @@ func (s *Server) reconcileTeamRunJobs(ctx context.Context, p *Principal, run *db
 
 	overall := run.Status
 	if running {
-		overall = "running"
+		if cancelRequested {
+			overall = "cancelling"
+		} else {
+			overall = "running"
+		}
 	} else if failed || hasDispatchErrors {
 		overall = "failed"
+	} else if cancelled {
+		overall = "cancelled"
 	} else {
 		overall = "succeeded"
 	}

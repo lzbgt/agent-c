@@ -819,6 +819,27 @@
             schema:
               $ref: "#/components/schemas/TeamRunStatusResponse"
 
+/v1/teams/{team_id}/runs/{team_run_id}/cancel:
+  post:
+    tags: [teams]
+    summary: Cancel async team run
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: team_run_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Team run status
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamRunStatusResponse"
+
 /v1/teams/{team_id}/runs/{team_run_id}/approvals:
   get:
     tags: [teams]

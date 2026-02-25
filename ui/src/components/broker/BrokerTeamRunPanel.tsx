@@ -4,6 +4,7 @@ import {
   apiBrokerTeamMembersUpsert,
   apiBrokerTeamRunApprovalsCreate,
   apiBrokerTeamRunApprovalsList,
+  apiBrokerTeamRunCancel,
   apiBrokerTeamRunCreate,
   apiBrokerTeamRunGet,
   apiBrokerTeamRunRuntimeMembersUpdate,
@@ -19,6 +20,27 @@ const fmtTs = (ms?: number | null) => {
   } catch {
     return String(ms);
   }
+};
+
+const fmtSummary = (summary?: any) => {
+  if (!summary || typeof summary !== "object") return "";
+  const parts: string[] = [];
+  const pushIf = (key: string, label: string) => {
+    const val = summary?.[key];
+    if (typeof val === "number") parts.push(`${label} ${val}`);
+  };
+  pushIf("total", "total");
+  pushIf("queued", "queued");
+  pushIf("running", "running");
+  pushIf("done", "done");
+  pushIf("error", "error");
+  pushIf("cancelled", "cancelled");
+  pushIf("interrupted", "interrupted");
+  pushIf("unknown", "unknown");
+  pushIf("ok", "ok");
+  pushIf("failed", "failed");
+  pushIf("dispatch_errors", "dispatch_errors");
+  return parts.join(" · ");
 };
 
 export type BrokerTeamRunPanelProps = {
@@ -239,6 +261,9 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const [runLookupBusy, setRunLookupBusy] = React.useState<boolean>(false);
   const [runLookupError, setRunLookupError] = React.useState<string | null>(null);
   const [runLookupResult, setRunLookupResult] = React.useState<any | null>(null);
+  const [runCancelBusy, setRunCancelBusy] = React.useState<boolean>(false);
+  const [runCancelError, setRunCancelError] = React.useState<string | null>(null);
+  const [runCancelNote, setRunCancelNote] = React.useState<string>("");
   const [approvalsBusy, setApprovalsBusy] = React.useState<boolean>(false);
   const [approvalsError, setApprovalsError] = React.useState<string | null>(null);
   const [approvals, setApprovals] = React.useState<TeamRunApprovalRow[] | null>(null);
@@ -404,6 +429,30 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
     }
   };
 
+  const handleRunCancel = async () => {
+    const runId = resolveRunId();
+    if (!teamIdTrimmed || !runId) {
+      setRunCancelError("missing team_id or run id");
+      return;
+    }
+    setRunCancelError(null);
+    setRunCancelNote("");
+    setRunCancelBusy(true);
+    try {
+      const resp = await apiBrokerTeamRunCancel(props.base, teamIdTrimmed, runId, props.auth);
+      if (!resp.ok) {
+        throw new Error(resp.error || resp.err || resp.code || "team run cancel failed");
+      }
+      setRunLookupResult(resp);
+      if (resp?.team_run_id) setRunLookupId(String(resp.team_run_id));
+      setRunCancelNote("cancel requested");
+    } catch (err) {
+      setRunCancelError(String(err));
+    } finally {
+      setRunCancelBusy(false);
+    }
+  };
+
   const handleRuntimeMembersLoadFromRun = () => {
     const runtimeMembers = runLookupResult?.runtime_members;
     if (!Array.isArray(runtimeMembers) || runtimeMembers.length === 0) {
@@ -414,11 +463,11 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
     setRuntimeUpdateError(null);
   };
 
-  const resolveRuntimeRunId = () =>
+  const resolveRunId = () =>
     String(runLookupResult?.team_run_id || runLookupId || runResult?.team_run_id || "").trim();
 
   const applyRuntimeMembersUpdate = async (members: any[], mode: string) => {
-    const runId = resolveRuntimeRunId();
+    const runId = resolveRunId();
     if (!teamIdTrimmed || !runId) {
       setRuntimeUpdateError("missing team_id or run id");
       return;
@@ -1730,15 +1779,37 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
         >
           {runLookupBusy ? "Loading…" : "Get status"}
         </button>
+        <button
+          className="rounded-md border border-amber-400/40 bg-amber-500/10 px-3 py-1 text-[11px] text-amber-100 hover:bg-amber-500/20 disabled:opacity-50"
+          type="button"
+          disabled={!props.canQuery || runCancelBusy || !resolveRunId()}
+          onClick={() => void handleRunCancel()}
+        >
+          {runCancelBusy ? "Cancelling…" : "Cancel run"}
+        </button>
       </div>
       {runLookupError ? (
         <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">{runLookupError}</div>
+      ) : null}
+      {runCancelError ? (
+        <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">{runCancelError}</div>
+      ) : null}
+      {runCancelNote ? (
+        <div className="rounded-md border border-amber-400/20 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-100">{runCancelNote}</div>
       ) : null}
       {runLookupResult ? (
         <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
           status {String(runLookupResult?.status || "")}
           {runLookupResult?.created_unix_ms ? ` · ${fmtTs(runLookupResult.created_unix_ms)}` : ""}
           {runLookupResult?.mode ? ` · mode ${String(runLookupResult.mode)}` : ""}
+          {typeof runLookupResult?.cancel_requested_unix_ms === "number"
+            ? ` · cancel requested ${fmtTs(runLookupResult.cancel_requested_unix_ms)}`
+            : ""}
+        </div>
+      ) : null}
+      {fmtSummary(runLookupResult?.member_job_summary) ? (
+        <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
+          summary: {fmtSummary(runLookupResult?.member_job_summary)}
         </div>
       ) : null}
       {Array.isArray(runLookupResult?.dispatch_errors) && runLookupResult.dispatch_errors.length > 0 ? (
@@ -1752,6 +1823,29 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
               <div key={`dispatch-error-${mid || aid}-${idx}`}>
                 {mid ? `${mid} · ` : ""}
                 {aid ? `agent ${aid}` : "agent ?"} · {msg}
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
+      {Array.isArray(runLookupResult?.cancel_results) && runLookupResult.cancel_results.length > 0 ? (
+        <div className="rounded-md border border-amber-400/20 bg-amber-500/10 px-2 py-1 text-[11px] text-amber-100">
+          cancel results:
+          {runLookupResult.cancel_results.map((row: any, idx: number) => {
+            const mid = row?.member_id ? String(row.member_id) : "";
+            const aid = row?.agent_id ? String(row.agent_id) : "";
+            const jobId = row?.job_id ? String(row.job_id) : "";
+            const ok = typeof row?.ok === "boolean" ? String(row.ok) : "";
+            const http = typeof row?.http_status === "number" ? `http ${row.http_status}` : "";
+            const err = row?.error ? String(row.error) : "";
+            return (
+              <div key={`cancel-result-${mid || aid}-${idx}`}>
+                {mid ? `${mid} · ` : ""}
+                {aid ? `agent ${aid}` : "agent ?"}
+                {jobId ? ` · job ${jobId}` : ""}
+                {ok ? ` · ok ${ok}` : ""}
+                {http ? ` · ${http}` : ""}
+                {err ? ` · ${err}` : ""}
               </div>
             );
           })}

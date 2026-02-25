@@ -391,6 +391,32 @@ schemas:
       updated_unix_ms: { type: integer, format: int64 }
       dispatch_error: { type: string }
 
+  TeamRunMemberJobSummary:
+    type: object
+    properties:
+      total: { type: integer, format: int32 }
+      queued: { type: integer, format: int32 }
+      running: { type: integer, format: int32 }
+      done: { type: integer, format: int32 }
+      error: { type: integer, format: int32 }
+      cancelled: { type: integer, format: int32 }
+      interrupted: { type: integer, format: int32 }
+      unknown: { type: integer, format: int32 }
+      ok: { type: integer, format: int32 }
+      failed: { type: integer, format: int32 }
+      dispatch_errors: { type: integer, format: int32 }
+
+  TeamRunCancelResult:
+    type: object
+    properties:
+      member_id: { type: string }
+      agent_id: { type: string }
+      deployment_id: { type: string }
+      job_id: { type: string }
+      ok: { type: boolean }
+      error: { type: string }
+      http_status: { type: integer, format: int32 }
+
   TeamRunDispatchError:
     type: object
     properties:
@@ -541,6 +567,8 @@ schemas:
         type: array
         items:
           $ref: "#/components/schemas/TeamRunDispatchError"
+      member_job_summary:
+        $ref: "#/components/schemas/TeamRunMemberJobSummary"
 
   TeamRunStatusResponse:
     type: object
@@ -569,6 +597,13 @@ schemas:
         type: array
         items:
           $ref: "#/components/schemas/TeamRunDispatchError"
+      member_job_summary:
+        $ref: "#/components/schemas/TeamRunMemberJobSummary"
+      cancel_requested_unix_ms: { type: integer, format: int64 }
+      cancel_results:
+        type: array
+        items:
+          $ref: "#/components/schemas/TeamRunCancelResult"
 
   TeamRunRuntimeMembersUpdateRequest:
     type: object
