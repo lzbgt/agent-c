@@ -1,7 +1,7 @@
 # Run Diff + Evidence Comparison v0
 
 Date: 2026-02-20
-Status: v0.1 (client-side replay diff shipped; server diff endpoints planned)
+Status: v0.2 (client-side replay + DB evidence diff shipped; server diff endpoints planned)
 
 ## Summary
 
@@ -9,10 +9,12 @@ Provide a deterministic way to compare two runs (or a run vs a baseline)
 using evidence bundles as the source of truth. The diff output is
 machine-checkable and UI-friendly.
 
-## Current implementation (v0.1)
+## Current implementation (v0.2)
 
 - WebUI uses **replay bundles** from `GET /api/v1/run/replay?run_id=...` and computes
   a client-side diff across request/response/tool records.
+- WebUI can optionally load **DB-backed evidence** (`/api/v1/db/run`) to diff events and artifacts.
+- WebUI surfaces **attestation bundles** (`/api/v1/run/attestation`) as signed evidence metadata.
 - The diff output is UI-facing only (not persisted in agentd yet).
 - Baselines are stored in the browser (per base URL) for quick reuse.
 
@@ -33,6 +35,8 @@ machine-checkable and UI-friendly.
 
 1) Replay bundle A (`/api/v1/run/replay`)
 2) Replay bundle B (`/api/v1/run/replay`)
+3) Optional DB run evidence (`/api/v1/db/run`)
+4) Optional attestation bundle (`/api/v1/run/attestation`)
 
 Replay bundles include:
 - run metadata (model, provider, limits, timestamps)
@@ -65,6 +69,10 @@ Top-level fields:
 
 - `GET /api/v1/run/replay?run_id=...`
   - returns: replay bundle JSON (request + response + tool records + hashes)
+- `GET /api/v1/db/run?run_id=...&include_events=1&include_artifacts=1`
+  - returns: run row + events + artifacts from SQLite (when enabled)
+- `GET /api/v1/run/attestation?run_id=...`
+  - returns: signed attestation bundle (hash metadata + signature)
 
 ### Planned
 

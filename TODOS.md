@@ -190,8 +190,9 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
 - [x] W=6 — Finalize WebUI inline run approvals in `ui/src/components/broker/BrokerTeamConsole.tsx` (tests + docs + commit).
   - 2026-02-24: added Playwright broker inline approvals smoke + WebUI doc note.
 - [x] W=5 — WebUI refresh-safe workflow waits: persist active workflow wait state and resume polling after reload.
-- [ ] W=8 — Run comparison + evidence diff UX: side-by-side run diffs (events/artifacts/costs), evidence bundle viewer, and regression baselines.
-  - 2026-02-25: Added WebUI Run diff panel using `/api/v1/run/replay` with client-side request/response/tool-record diffs, baseline shortcut, and docs/spec updates. Events/artifacts/cost deltas still pending for full completion.
+- [x] W=8 — Run comparison + evidence diff UX: side-by-side run diffs (events/artifacts/costs), evidence bundle viewer, and regression baselines.
+  - 2026-02-25: Added WebUI Run diff panel using `/api/v1/run/replay` with client-side request/response/tool-record diffs, baseline shortcut, and docs/spec updates.
+  - 2026-02-25: Added DB-backed event/artifact diffs via `/api/v1/db/run`, attestation viewing, and usage deltas.
 - [x] W=10 — Policy hook MVP: deterministic pre/post run + tool call hooks with allow/deny + budget caps, config surface, and audit logs.
 - [x] W=9 — Attestation bundles: canonical hash format + signed run certificates + verification CLI.
   - 2026-02-19: Added draft spec (`docs/spec/run_attestation_bundle_v1.md`) + host tool (`run_attestation_bundle_tool`) + smoke test.

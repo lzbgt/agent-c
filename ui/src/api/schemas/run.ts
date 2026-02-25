@@ -161,3 +161,32 @@ export const RunReplayRespSchema = z.object({
   code: z.string().optional(),
 });
 export type RunReplayResp = z.infer<typeof RunReplayRespSchema>;
+
+export const RunAttestationBundleSchema = z
+  .object({
+    schema: z.string().optional(),
+    created_utc_ms: z.number().optional(),
+    replay_sha256: z.string().optional(),
+    replay_sha256_alg: z.string().optional(),
+    replay_sha256_schema: z.string().optional(),
+    run_id: z.union([z.number(), z.string()]).optional(),
+    session_id: z.string().optional(),
+    agent_id: z.string().optional(),
+    deployment_id: z.string().optional(),
+    issuer: z.any().optional(),
+    attest: z.any().optional(),
+  })
+  .passthrough();
+export type RunAttestationBundle = z.infer<typeof RunAttestationBundleSchema>;
+
+export const RunAttestationRespSchema = z.object({
+  ok: z.boolean(),
+  run_id: z.union([z.number(), z.string()]).optional(),
+  session_id: z.string().optional(),
+  attestation: RunAttestationBundleSchema.optional(),
+  replay_error: z.string().optional(),
+  error: z.string().optional(),
+  err: z.string().optional(),
+  code: z.string().optional(),
+});
+export type RunAttestationResp = z.infer<typeof RunAttestationRespSchema>;

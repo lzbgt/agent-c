@@ -122,6 +122,8 @@ The WebUI includes a **Run diff** panel for replay bundle comparison:
 - Load two `run_id` values and diff request/response/tool records from `/api/v1/run/replay`.
 - Displays replay hash match status, usage summary, and a baseline shortcut.
 - Baselines are stored in the browser (per base URL) for quick reuse.
+- Optional evidence loader fetches DB-backed events/artifacts (`/api/v1/db/run`) plus attestation bundles
+  (`/api/v1/run/attestation`) to diff event/artifact deltas and surface signed hashes.
 
 ## Workflows (read-only)
 
