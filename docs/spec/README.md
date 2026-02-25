@@ -16,6 +16,7 @@ declares its own status (draft/rolling/implemented) in the document header.
 - `approval_queue_v0.md`: approval queue + tool-level quorum gating (draft).
 - `automation_mode_v0.md`: automation profile + moderator control plane (draft).
 - `team_orchestration_v0.md`: team orchestration model (roles, shared memory, quorum gates).
+- `orchestrator_console_v0.md`: WebUI orchestration console (roles/backends, run monitor, reload-safe).
 - `eval_pack_v0.md`: deterministic eval pack format for regression gating (draft).
 
 ## Streaming
