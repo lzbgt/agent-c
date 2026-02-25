@@ -1167,6 +1167,32 @@
             schema:
               type: string
 
+/v1/events/replay:
+  get:
+    tags: [events]
+    summary: Replay persisted broker events for the current user
+    parameters:
+      - in: query
+        name: since_ts
+        required: false
+        schema: { type: integer, format: int64 }
+      - in: query
+        name: limit
+        required: false
+        schema: { type: integer, format: int32 }
+      - in: query
+        name: types
+        required: false
+        schema: { type: string }
+        description: Comma-separated event types to include.
+    responses:
+      "200":
+        description: Replay response
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BrokerEventsReplayResponse"
+
 /v1/agent/connect:
   get:
     tags: [agents]

@@ -36,7 +36,7 @@ Future (v1+):
 - Orchestrator console UX is defined in `orchestrator_console_v0.md`.
 - Moderator directives/tasks exist and are persisted (`automation_mode_v0.md`).
 - Runtime members are supported for team runs (replace/merge).
-- Broker `/v1/events` is an in-memory SSE stream (no persisted replay API yet).
+- Broker `/v1/events` persists events and exposes `/v1/events/replay` (UI rehydration still pending).
 
 ## Current primitives (implemented)
 
@@ -46,6 +46,7 @@ Future (v1+):
 - Team run SSE events: created/status/quorum/runtime updates.
 - Moderator fan-out (directives/tasks) + event aggregation.
 - Auto-allocation: broker allocator endpoint + `auto_allocate_roles` on team runs.
+- Broker event log + replay API (`/v1/events/replay`).
 
 ## Gaps to reach “full automation, low drift”
 
@@ -73,8 +74,8 @@ Future (v1+):
    - Need lease/heartbeat so automation survives UI refresh or client disconnects.
 
 7) **Event replay + UI rehydration**
-   - SSE stream is in-memory only; refresh loses event history.
-   - Need persisted event log + replay API to restore context after reconnect.
+   - Replay API exists; WebUI still lacks rehydration on refresh.
+   - Need client resume logic + event cursor persistence.
 
 ## Proposed orchestration model (v0)
 

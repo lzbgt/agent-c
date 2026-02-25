@@ -2,6 +2,7 @@ package broker
 
 import (
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -92,6 +93,12 @@ func New(cfg Config) (*Server, error) {
 	if cfg.Events == nil {
 		cfg.Events = events.New()
 	}
+	if cfg.Events != nil && cfg.DB != nil {
+		cfg.Events.SetRecorder(newBrokerEventRecorder(cfg.DB))
+		cfg.Events.SetRecordErrorHandler(func(err error) {
+			log.Printf("broker events record error: %v", err)
+		})
+	}
 	if cfg.MaxRequestBodySize == 0 {
 		cfg.MaxRequestBodySize = 64 * 1024 * 1024
 	}
@@ -171,6 +178,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("/v1/orchestrate", s.handleOrchestrate)
 	mux.HandleFunc("/v1/trace", s.handleTrace)
 	mux.HandleFunc("/v1/events", s.handleEventsSSE)
+	mux.HandleFunc("/v1/events/replay", s.handleEventsReplay)
 	// Catch-all for /v1/agents/{id}/... paths.
 	mux.HandleFunc("/v1/agents/", s.handleAgentsSubroutes)
 	mux.HandleFunc("/v1/teams/", s.handleTeamsSubroutes)

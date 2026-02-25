@@ -1,6 +1,8 @@
 package events
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"sync"
 	"time"
 )
@@ -20,17 +22,35 @@ type Event struct {
 	ExtraInfo map[string]any `json:"extra,omitempty"`
 }
 
+type Recorder interface {
+	Record(userSubs []string, e Event) error
+}
+
 type Hub struct {
-	mu      sync.Mutex
-	nextID  int
-	byUser  map[string]map[int]chan Event
-	closing bool
+	mu        sync.Mutex
+	nextID    int
+	byUser    map[string]map[int]chan Event
+	closing   bool
+	recorder  Recorder
+	recordErr func(error)
 }
 
 func New() *Hub {
 	return &Hub{
 		byUser: make(map[string]map[int]chan Event),
 	}
+}
+
+func (h *Hub) SetRecorder(r Recorder) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.recorder = r
+}
+
+func (h *Hub) SetRecordErrorHandler(fn func(error)) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.recordErr = fn
 }
 
 func (h *Hub) Subscribe(userSub string) (<-chan Event, func()) {
@@ -75,6 +95,17 @@ func (h *Hub) PublishTo(userSubs []string, e Event) {
 	if e.TSUnixMS == 0 {
 		e.TSUnixMS = time.Now().UnixMilli()
 	}
+	if e.EventID == "" {
+		e.EventID = newEventID()
+	}
+	h.mu.Lock()
+	recorder, errHandler := h.recorder, h.recordErr
+	h.mu.Unlock()
+	if recorder != nil {
+		if err := recorder.Record(userSubs, e); err != nil && errHandler != nil {
+			errHandler(err)
+		}
+	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for _, sub := range userSubs {
@@ -93,4 +124,12 @@ func (h *Hub) PublishTo(userSubs []string, e Event) {
 			}
 		}
 	}
+}
+
+func newEventID() string {
+	var b [16]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return hex.EncodeToString([]byte(time.Now().Format("20060102150405.000000000")))
+	}
+	return hex.EncodeToString(b[:])
 }

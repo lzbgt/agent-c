@@ -898,6 +898,38 @@ schemas:
           $ref: "#/components/schemas/TeamRunHandoffEvent"
       handoff_event_count: { type: integer, format: int32 }
 
+  BrokerEvent:
+    type: object
+    required: [type, ts_unix_ms]
+    properties:
+      type: { type: string }
+      ts_unix_ms: { type: integer, format: int64 }
+      agent_id: { type: string }
+      user_sub: { type: string }
+      event_id: { type: string }
+      trace_id: { type: string }
+      payload:
+        type: object
+        additionalProperties: true
+      extra:
+        type: object
+        additionalProperties: true
+
+  BrokerEventsReplayResponse:
+    type: object
+    required: [ok, events]
+    properties:
+      ok: { type: boolean }
+      user_sub: { type: string }
+      since_ts: { type: integer, format: int64 }
+      next_since_ts: { type: integer, format: int64 }
+      limit: { type: integer, format: int32 }
+      count: { type: integer, format: int32 }
+      events:
+        type: array
+        items:
+          $ref: "#/components/schemas/BrokerEvent"
+
   TeamRunRuntimeMembersUpdateRequest:
     type: object
     required: [runtime_members]

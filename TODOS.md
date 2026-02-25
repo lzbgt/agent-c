@@ -110,6 +110,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-25: WebUI team run status panel surfaces goal contract/events and handoff events with emit actions.
   - 2026-02-26: SSE is in-memory only; durable orchestrator state + event replay still missing.
 - [ ] W=12 — Durable orchestration state + event replay: persist orchestrator runs (DB + CRUD), add replayable event log for team run/goal/handoff/moderator events, and rehydrate WebUI on refresh without losing context.
+  - 2026-02-26: broker persists events and exposes `/v1/events/replay` (UI rehydration still pending).
 - [ ] W=9 — Agent provisioning hooks: define an optional `agent_spawn` interface (pluggable adapters for local/remote spawn) so the orchestrator can request new runtime members when capacity is low.
 - [x] W=11 — Team shared memory scope enforcement (read-only/read-write) wired through team runs + tool policy hooks + tests.
   - 2026-02-25: agentd run request supports `memory_scope_id` + `memory_scope_mode` with scoped memory roots.
