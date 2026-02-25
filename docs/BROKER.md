@@ -206,6 +206,20 @@ All endpoints below are served by the broker (not by agents).
     - `team.runtime_members`: array of `{member_id?, agent_id, deployment_id?, role, capabilities?, status?, weight?, meta?}`
     - runtime members participate in the current fan-out only
     - quorum approvals are still stored against persistent team members
+- Orchestrator control plane (persisted, reload-safe):
+  - `GET /v1/teams/{team_id}/orchestrator/runs`
+  - `POST /v1/teams/{team_id}/orchestrator/runs`
+  - `GET /v1/teams/{team_id}/orchestrator/runs/{orchestrator_run_id}`
+  - `PATCH /v1/teams/{team_id}/orchestrator/runs/{orchestrator_run_id}`
+  - `POST /v1/teams/{team_id}/orchestrator/runs/{orchestrator_run_id}/heartbeat`
+  - spawn requests (external adapters fulfill):
+    - `GET /v1/teams/{team_id}/orchestrator/spawn_requests`
+    - `POST /v1/teams/{team_id}/orchestrator/spawn_requests`
+    - `GET /v1/teams/{team_id}/orchestrator/spawn_requests/{spawn_request_id}`
+    - `PATCH /v1/teams/{team_id}/orchestrator/spawn_requests/{spawn_request_id}`
+  - emitted events (SSE + replay):
+    - `orchestrator_run_created|updated|status|heartbeat`
+    - `orchestrator_spawn_requested|updated|status`
 - `GET /v1/teams/{team_id}/runs`
   - lists recent team runs (status + created time + best-effort summary)
   - optional query: `limit`, `offset`, `status`
