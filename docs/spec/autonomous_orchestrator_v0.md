@@ -29,7 +29,7 @@ Status: draft (rolling)
 
 Future (v1+):
 - Pluggable `agent_spawn` adapters that can directly provision new agentd nodes.
-- V0 exposes spawn request APIs so external automation can act as the adapter.
+- V0 exposes spawn request APIs so external automation can act as the adapter (see `agent_spawn_adapter_v0.md`).
 
 ## Constraints (facts)
 

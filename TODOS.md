@@ -118,6 +118,8 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-25: added compose smoke for orchestrator runs (create/list/update/heartbeat) via `tests/broker_orchestrator_runs_compose_smoke.sh`.
 - [ ] W=9 — Agent provisioning hooks: define an optional `agent_spawn` interface (pluggable adapters for local/remote spawn) so the orchestrator can request new runtime members when capacity is low.
   - 2026-02-25: added broker spawn request persistence + events (`/v1/teams/{team_id}/orchestrator/spawn_requests`); adapter still pending.
+  - 2026-02-26: added `agentd-spawn-adapter` CLI + `docs/spec/agent_spawn_adapter_v0.md` (local adapter contract).
+  - 2026-02-26: added compose smoke for spawn adapter (`tests/broker_spawn_adapter_compose_smoke.sh`).
 - [x] W=11 — Team shared memory scope enforcement (read-only/read-write) wired through team runs + tool policy hooks + tests.
   - 2026-02-25: agentd run request supports `memory_scope_id` + `memory_scope_mode` with scoped memory roots.
   - 2026-02-25: host memory tools enforce read_only mode (write tools rejected, read tools allowed).
