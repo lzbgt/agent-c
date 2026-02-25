@@ -324,6 +324,16 @@ tools/oidc_token_refresh.sh \
   --output /etc/agentd/broker_oidc_token.txt
 ```
 
+Container-friendly refresh (broker image):
+```
+agentd-oidc-refresh \
+  --issuer https://id.example.com/realms/agentd \
+  --client-id agentd-broker \
+  --user orchestration \
+  --password 'REDACTED' \
+  --output /etc/agentd/broker_oidc_token.txt
+```
+
 On macOS, the launchd helper scripts mirror these services:
 ```
 BROKER_BASE="https://broker.example.com" \

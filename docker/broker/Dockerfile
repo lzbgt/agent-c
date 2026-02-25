@@ -26,6 +26,7 @@ RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldfl
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/agentd-connector ./cmd/agentd-connector
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/agentd-orchestrator ./cmd/agentd-orchestrator
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/agentd-spawn-adapter ./cmd/agentd-spawn-adapter
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -trimpath -ldflags="-s -w" -o /out/agentd-oidc-refresh ./cmd/agentd-oidc-refresh
 
 FROM alpine:3.20
 RUN apk add --no-cache ca-certificates
@@ -34,4 +35,5 @@ COPY --from=build /out/agentd-broker /usr/local/bin/agentd-broker
 COPY --from=build /out/agentd-connector /usr/local/bin/agentd-connector
 COPY --from=build /out/agentd-orchestrator /usr/local/bin/agentd-orchestrator
 COPY --from=build /out/agentd-spawn-adapter /usr/local/bin/agentd-spawn-adapter
+COPY --from=build /out/agentd-oidc-refresh /usr/local/bin/agentd-oidc-refresh
 CMD ["/usr/local/bin/agentd-broker"]

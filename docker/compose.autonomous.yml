@@ -14,11 +14,16 @@ services:
     depends_on:
       broker:
         condition: service_healthy
+      oidc-refresh:
+        condition: service_started
     environment:
       BROKER_BASE: https://broker:8443
       BROKER_OIDC_TOKEN: ${AUTOMATION_CLIENT_TOKEN:-dev-orchestrator-token}
+      BROKER_OIDC_TOKEN_FILE: /run/agentd/broker_oidc_token.txt
       BROKER_INSECURE_TLS: "1"
       ORCHESTRATOR_ID: ${ORCHESTRATOR_ID:-auto-orchestrator}
+    volumes:
+      - broker_token:/run/agentd
     command:
       - /usr/local/bin/agentd-orchestrator
       - --poll-interval
@@ -29,13 +34,40 @@ services:
     depends_on:
       broker:
         condition: service_healthy
+      oidc-refresh:
+        condition: service_started
     environment:
       BROKER_BASE: https://broker:8443
       BROKER_OIDC_TOKEN: ${AUTOMATION_CLIENT_TOKEN:-dev-orchestrator-token}
+      BROKER_OIDC_TOKEN_FILE: /run/agentd/broker_oidc_token.txt
       BROKER_INSECURE_TLS: "1"
       SPAWN_ALLOCATOR: "1"
+    volumes:
+      - broker_token:/run/agentd
     command:
       - /usr/local/bin/agentd-spawn-adapter
       - --poll-interval
       - 3s
       - --allocator
+
+  oidc-refresh:
+    image: ${BROKER_IMAGE:-agentd-broker-local}
+    depends_on:
+      keycloak:
+        condition: service_started
+    environment:
+      OIDC_ISSUER: http://keycloak.lvh.me:${KEYCLOAK_PUBLISHED_PORT:-8081}/realms/agentd
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-agentd-broker-dev}
+      OIDC_USERNAME: ${OIDC_USERNAME:-test}
+      OIDC_PASSWORD: ${OIDC_PASSWORD:-test}
+      OIDC_TOKEN_FILE: /run/agentd/broker_oidc_token.txt
+      OIDC_REFRESH_BEFORE: "60"
+      OIDC_MIN_INTERVAL: "20"
+      OIDC_INSECURE_TLS: "1"
+    volumes:
+      - broker_token:/run/agentd
+    command:
+      - /usr/local/bin/agentd-oidc-refresh
+
+volumes:
+  broker_token:

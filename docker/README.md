@@ -26,6 +26,9 @@ Notes:
   (`AUTOMATION_CLIENT_TOKEN`, default `dev-orchestrator-token`) for the services.
 - Override `AUTOMATION_CLIENT_TOKEN` and update `docker/broker/client_auth.autonomous.json`
   for real deployments.
+- The overlay also starts an `oidc-refresh` sidecar that writes a broker token file
+  (`/run/agentd/broker_oidc_token.txt`). Orchestrator/spawn adapter will prefer
+  `BROKER_OIDC_TOKEN_FILE` when present.
 
 If Docker build fails on macOS with `unpigz`/`runc` resource errors, restart Docker Desktop or increase
 CPU/RAM. You can also control the build behavior via:
