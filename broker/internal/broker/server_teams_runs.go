@@ -1096,10 +1096,13 @@ func (s *Server) handleTeamRunGoalUpdate(w http.ResponseWriter, r *http.Request,
 			"team_run_id": teamRunID,
 			"event":       lastEvent,
 		}
-		if goalEvent.Type == "progress" {
+		switch goalEvent.Type {
+		case "progress":
 			publishTeamGoalEvent(s.cfg.Events, p.Sub, "team_goal_progress", payload, traceID)
-		} else if goalEvent.Type == "drift" {
+		case "drift":
 			publishTeamGoalEvent(s.cfg.Events, p.Sub, "team_goal_drift", payload, traceID)
+		case "spawn_validation":
+			publishTeamGoalEvent(s.cfg.Events, p.Sub, "team_goal_spawn_validation", payload, traceID)
 		}
 	}
 	resp := map[string]any{

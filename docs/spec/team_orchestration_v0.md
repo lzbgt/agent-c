@@ -446,6 +446,9 @@ Broker SSE events surfaced for team orchestration:
 - `team_quorum_request`: quorum gate opened for approval.
 - `team_quorum_result`: approvals received and decision outcome.
 - `team_runtime_members_updated`: runtime member set changed for a run.
+- `team_goal_progress`: goal checkpoint event emitted by orchestrator loop.
+- `team_goal_drift`: goal drift event emitted by orchestrator loop.
+- `team_goal_spawn_validation`: spawn meta validation error surfaced by orchestrator loop.
 
 Future additions (schemas TBD):
 
