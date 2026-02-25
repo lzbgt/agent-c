@@ -95,6 +95,91 @@ type teamRuntimeMemberInput struct {
 	Meta         map[string]any
 }
 
+type runtimeAgentCandidate struct {
+	AgentID      string
+	DeploymentID string
+}
+
+func normalizeRoleList(roles []string) []string {
+	if len(roles) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(roles))
+	for _, role := range roles {
+		val := strings.ToLower(strings.TrimSpace(role))
+		if val == "" || seen[val] {
+			continue
+		}
+		seen[val] = true
+		out = append(out, val)
+	}
+	return out
+}
+
+func allocateRuntimeMembersByRole(
+	roles []string,
+	candidates []runtimeAgentCandidate,
+	existingRoles map[string]bool,
+	usedAgentIDs map[string]bool,
+	maxMembers int,
+) ([]teamRuntimeMemberInput, []string, []string, string) {
+	normalizedRoles := normalizeRoleList(roles)
+	if len(normalizedRoles) == 0 {
+		return nil, nil, nil, "no roles available"
+	}
+	if existingRoles == nil {
+		existingRoles = map[string]bool{}
+	}
+	if usedAgentIDs == nil {
+		usedAgentIDs = map[string]bool{}
+	}
+	missingRoles := make([]string, 0, len(normalizedRoles))
+	for _, role := range normalizedRoles {
+		if existingRoles[role] {
+			continue
+		}
+		missingRoles = append(missingRoles, role)
+	}
+	if len(missingRoles) == 0 {
+		return nil, nil, nil, "all roles already assigned"
+	}
+	allocations := make([]teamRuntimeMemberInput, 0, len(missingRoles))
+	allocatedRoles := make([]string, 0, len(missingRoles))
+	candidateIdx := 0
+	for _, role := range missingRoles {
+		for candidateIdx < len(candidates) && usedAgentIDs[candidates[candidateIdx].AgentID] {
+			candidateIdx++
+		}
+		if candidateIdx >= len(candidates) {
+			break
+		}
+		candidate := candidates[candidateIdx]
+		candidateIdx++
+		if candidate.AgentID == "" {
+			continue
+		}
+		usedAgentIDs[candidate.AgentID] = true
+		allocations = append(allocations, teamRuntimeMemberInput{
+			AgentID:      candidate.AgentID,
+			DeploymentID: candidate.DeploymentID,
+			Role:         role,
+		})
+		allocatedRoles = append(allocatedRoles, role)
+		if maxMembers > 0 && len(allocations) >= maxMembers {
+			break
+		}
+	}
+	remaining := missingRoles[len(allocations):]
+	warning := ""
+	if len(allocations) == 0 {
+		warning = "no connected agents available for allocation"
+	} else if len(remaining) > 0 {
+		warning = "insufficient connected agents to cover all roles"
+	}
+	return allocations, allocatedRoles, remaining, warning
+}
+
 func parseTeamRunOptions(meta map[string]any) (teamRunOptions, error) {
 	out := teamRunOptions{
 		Mode:           "sync",

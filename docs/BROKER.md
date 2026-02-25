@@ -223,6 +223,10 @@ All endpoints below are served by the broker (not by agents).
 - `PATCH /v1/teams/{team_id}/runs/{team_run_id}/runtime_members`
   - updates the stored runtime members for a team run (replace or merge by `member_id`)
   - validates agent access + allowlisted overrides; updates are recorded in the run payload
+- `POST /v1/teams/{team_id}/runtime_members/allocate`
+  - allocates runtime members for missing roles using connected agents
+  - request accepts `roles` plus optional `existing_runtime_members`, `exclude_team_members`, and `max_members`
+  - response returns `runtime_members` plus `allocated_roles` and `missing_roles`
 - `GET /v1/teams/{team_id}/runs/{team_run_id}/approvals`
   - lists persisted approvals for a team run (owner/admin only)
 - `POST /v1/teams/{team_id}/runs/{team_run_id}/approvals`

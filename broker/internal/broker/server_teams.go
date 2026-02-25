@@ -119,6 +119,7 @@ func (s *Server) handleTeamsSubroutes(w http.ResponseWriter, r *http.Request) {
 	// - /v1/teams/{team_id}/runs/{team_run_id}/moderator/directive
 	// - /v1/teams/{team_id}/runs/{team_run_id}/moderator/task
 	// - /v1/teams/{team_id}/runs/{team_run_id}/moderator/events
+	// - /v1/teams/{team_id}/runtime_members/allocate
 
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/teams/")
 	parts := strings.SplitN(rest, "/", 5)
@@ -168,6 +169,17 @@ func (s *Server) handleTeamsSubroutes(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.handleTeamQuorumUpdateOrDelete(w, r, teamID, parts[2])
+	case "runtime_members":
+		if len(parts) >= 3 && parts[2] == "allocate" {
+			if r.Method == "POST" {
+				s.handleTeamRuntimeMembersAllocate(w, r, teamID)
+				return
+			}
+			writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		writeErrorJSON(w, "not found", http.StatusNotFound)
+		return
 	case "runs":
 		if len(parts) == 2 || parts[2] == "" {
 			switch r.Method {
@@ -424,6 +436,165 @@ func (s *Server) handleTeamMembersCreate(w http.ResponseWriter, r *http.Request,
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true, "member": teamMemberToJSON(*created)})
+}
+
+func (s *Server) handleTeamRuntimeMembersAllocate(w http.ResponseWriter, r *http.Request, teamID string) {
+	p, err := s.requirePrincipal(r)
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+	if p.AuthKind != "oidc" {
+		writeErrorJSON(w, "oidc required", http.StatusForbidden)
+		return
+	}
+	_, ok := s.requireTeamOwner(w, r, p, teamID)
+	if !ok {
+		return
+	}
+	body, err := readBodyBounded(r.Body, 1024*1024)
+	if err != nil {
+		writeErrorJSON(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	req := struct {
+		Roles                 []string `json:"roles"`
+		ExistingRuntime       []any    `json:"existing_runtime_members"`
+		ExcludeTeamMembers    *bool    `json:"exclude_team_members"`
+		MaxMembers            *int     `json:"max_members"`
+		PreferConnectedAgents *bool    `json:"prefer_connected"`
+	}{}
+	if len(body) > 0 {
+		if err := json.Unmarshal(body, &req); err != nil {
+			writeErrorJSON(w, "invalid json", http.StatusBadRequest)
+			return
+		}
+	}
+	roles := normalizeRoleList(req.Roles)
+	if len(roles) == 0 {
+		writeErrorJSON(w, "roles required", http.StatusBadRequest)
+		return
+	}
+	excludeTeam := true
+	if req.ExcludeTeamMembers != nil {
+		excludeTeam = *req.ExcludeTeamMembers
+	}
+	maxMembers := 0
+	if req.MaxMembers != nil && *req.MaxMembers > 0 {
+		maxMembers = *req.MaxMembers
+	}
+	_ = req.PreferConnectedAgents
+
+	existingRoles := map[string]bool{}
+	usedAgentIDs := map[string]bool{}
+
+	if excludeTeam {
+		members, err := s.cfg.DB.ListTeamMembers(r.Context(), teamID)
+		if err != nil {
+			writeErrorJSON(w, "db error", http.StatusInternalServerError)
+			return
+		}
+		for _, m := range members {
+			role := strings.ToLower(strings.TrimSpace(m.Role))
+			if role != "" {
+				existingRoles[role] = true
+			}
+			agentID := strings.TrimSpace(m.AgentID)
+			if agentID != "" {
+				usedAgentIDs[agentID] = true
+			}
+		}
+	}
+
+	if len(req.ExistingRuntime) > 0 {
+		inputs, err := parseTeamRunRuntimeMembers(map[string]any{"runtime_members": req.ExistingRuntime})
+		if err != nil {
+			writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		for _, input := range inputs {
+			role := strings.ToLower(strings.TrimSpace(input.Role))
+			if role != "" {
+				existingRoles[role] = true
+			}
+			agentID := strings.TrimSpace(input.AgentID)
+			if agentID != "" {
+				usedAgentIDs[agentID] = true
+			}
+		}
+	}
+
+	dbAgents, err := s.cfg.DB.ListAgentsForUser(r.Context(), p.Sub)
+	if err != nil {
+		writeErrorJSON(w, "db error", http.StatusInternalServerError)
+		return
+	}
+	candidates := make([]runtimeAgentCandidate, 0, len(dbAgents))
+	for _, a := range dbAgents {
+		if !a.Enabled {
+			continue
+		}
+		conns := s.cfg.Registry.ListByAgent(a.AgentID)
+		if len(conns) == 0 {
+			continue
+		}
+		var bestConnected time.Time
+		bestDeployment := ""
+		for _, conn := range conns {
+			if conn == nil {
+				continue
+			}
+			if bestDeployment == "" || conn.Connected.After(bestConnected) {
+				bestConnected = conn.Connected
+				bestDeployment = conn.DeploymentID
+			}
+		}
+		if bestDeployment != "" {
+			candidates = append(candidates, runtimeAgentCandidate{
+				AgentID:      a.AgentID,
+				DeploymentID: bestDeployment,
+			})
+		}
+	}
+	if len(candidates) == 0 {
+		writeErrorJSON(w, "no connected agents available", http.StatusBadRequest)
+		return
+	}
+
+	allocations, allocatedRoles, missingRoles, warning := allocateRuntimeMembersByRole(
+		roles,
+		candidates,
+		existingRoles,
+		usedAgentIDs,
+		maxMembers,
+	)
+
+	runtimeMembers := make([]map[string]any, 0, len(allocations))
+	for _, input := range allocations {
+		entry := map[string]any{
+			"agent_id": input.AgentID,
+			"role":     input.Role,
+		}
+		if input.DeploymentID != "" {
+			entry["deployment_id"] = input.DeploymentID
+		}
+		runtimeMembers = append(runtimeMembers, entry)
+	}
+	resp := map[string]any{
+		"ok":              true,
+		"team_id":         teamID,
+		"runtime_members": runtimeMembers,
+	}
+	if len(allocatedRoles) > 0 {
+		resp["allocated_roles"] = allocatedRoles
+	}
+	if len(missingRoles) > 0 {
+		resp["missing_roles"] = missingRoles
+	}
+	if warning != "" {
+		resp["warnings"] = []string{warning}
+	}
+	writeJSON(w, resp)
 }
 
 func (s *Server) handleTeamMemberUpdateOrDelete(w http.ResponseWriter, r *http.Request, teamID, memberID string) {

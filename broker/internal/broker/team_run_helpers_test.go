@@ -74,3 +74,67 @@ func TestTeamRunMemberJobSummary(t *testing.T) {
 		t.Fatalf("dispatch_errors=%d, want 2", got)
 	}
 }
+
+func TestAllocateRuntimeMembersByRole(t *testing.T) {
+	candidates := []runtimeAgentCandidate{
+		{AgentID: "agent-a", DeploymentID: "dep-a"},
+		{AgentID: "agent-b", DeploymentID: "dep-b"},
+	}
+	allocations, allocatedRoles, missingRoles, warning := allocateRuntimeMembersByRole(
+		[]string{"planner", "executor"},
+		candidates,
+		nil,
+		nil,
+		0,
+	)
+	if warning != "" {
+		t.Fatalf("unexpected warning: %s", warning)
+	}
+	if len(allocations) != 2 {
+		t.Fatalf("expected 2 allocations, got %d", len(allocations))
+	}
+	if len(missingRoles) != 0 {
+		t.Fatalf("expected no missing roles, got %v", missingRoles)
+	}
+	if len(allocatedRoles) != 2 {
+		t.Fatalf("expected 2 allocated roles, got %v", allocatedRoles)
+	}
+	if allocations[0].Role != "planner" || allocations[1].Role != "executor" {
+		t.Fatalf("unexpected role order: %v", []string{allocations[0].Role, allocations[1].Role})
+	}
+
+	existing := map[string]bool{"planner": true}
+	allocations, _, missingRoles, warning = allocateRuntimeMembersByRole(
+		[]string{"planner", "executor"},
+		candidates,
+		existing,
+		map[string]bool{},
+		0,
+	)
+	if warning != "" {
+		t.Fatalf("unexpected warning with existing role: %s", warning)
+	}
+	if len(allocations) != 1 || allocations[0].Role != "executor" {
+		t.Fatalf("expected executor allocation, got %+v", allocations)
+	}
+	if len(missingRoles) != 0 {
+		t.Fatalf("expected no missing roles, got %v", missingRoles)
+	}
+
+	allocations, _, missingRoles, warning = allocateRuntimeMembersByRole(
+		[]string{"planner", "executor"},
+		[]runtimeAgentCandidate{{AgentID: "agent-a", DeploymentID: "dep-a"}},
+		nil,
+		nil,
+		1,
+	)
+	if len(allocations) != 1 {
+		t.Fatalf("expected 1 allocation, got %d", len(allocations))
+	}
+	if len(missingRoles) != 1 {
+		t.Fatalf("expected 1 missing role, got %v", missingRoles)
+	}
+	if warning == "" {
+		t.Fatal("expected warning for insufficient allocation")
+	}
+}

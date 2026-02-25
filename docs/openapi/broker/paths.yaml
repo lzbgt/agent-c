@@ -846,6 +846,29 @@
             schema:
               $ref: "#/components/schemas/TeamRunStatusResponse"
 
+/v1/teams/{team_id}/runtime_members/allocate:
+  post:
+    tags: [teams]
+    summary: Allocate runtime members by role
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/TeamRuntimeMembersAllocateRequest"
+    responses:
+      "200":
+        description: Allocated runtime members
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TeamRuntimeMembersAllocateResponse"
+
 /v1/teams/{team_id}/runs/{team_run_id}/cancel:
   post:
     tags: [teams]

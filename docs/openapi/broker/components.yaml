@@ -798,6 +798,44 @@ schemas:
         items:
           $ref: "#/components/schemas/TeamRunRuntimeMember"
 
+  TeamRuntimeMembersAllocateRequest:
+    type: object
+    required: [roles]
+    properties:
+      roles:
+        type: array
+        items: { type: string }
+      existing_runtime_members:
+        type: array
+        items:
+          $ref: "#/components/schemas/TeamRunRuntimeMember"
+      exclude_team_members:
+        type: boolean
+        description: Skip agents already in the team registry (default true).
+      max_members:
+        type: integer
+        format: int32
+
+  TeamRuntimeMembersAllocateResponse:
+    type: object
+    required: [ok, team_id, runtime_members]
+    properties:
+      ok: { type: boolean }
+      team_id: { type: string }
+      runtime_members:
+        type: array
+        items:
+          $ref: "#/components/schemas/TeamRunRuntimeMember"
+      allocated_roles:
+        type: array
+        items: { type: string }
+      missing_roles:
+        type: array
+        items: { type: string }
+      warnings:
+        type: array
+        items: { type: string }
+
   TeamRunApprovalInput:
     type: object
     required: [member_id]
