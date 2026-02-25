@@ -209,7 +209,11 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
     Record<string, Record<string, ModeratorEvent>>
   >("agentui.moderatorPinnedEvents", {});
   const [copyNotice, setCopyNotice] = React.useState<string | null>(null);
+  const [pinNotice, setPinNotice] = React.useState<string | null>(null);
+  const [pinError, setPinError] = React.useState<string | null>(null);
   const copyNoticeTimeoutRef = React.useRef<number>(0);
+  const pinNoticeTimeoutRef = React.useRef<number>(0);
+  const pinImportRef = React.useRef<HTMLInputElement | null>(null);
   const serverPrefsBase = String(connection.serverPrefsBase || "").trim();
   const serverPrefsCanSync = serverPrefsBase.length > 0;
   const serverPrefsTarget = connection.mode === "broker" ? "broker" : "daemon";
@@ -256,6 +260,14 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
           // ignore
         }
         copyNoticeTimeoutRef.current = 0;
+      }
+      if (pinNoticeTimeoutRef.current) {
+        try {
+          window.clearTimeout(pinNoticeTimeoutRef.current);
+        } catch {
+          // ignore
+        }
+        pinNoticeTimeoutRef.current = 0;
       }
     };
   }, []);
@@ -465,6 +477,21 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
     },
     [moderatorPinnedScope, setModeratorPinnedStore],
   );
+  const showPinNotice = React.useCallback((msg: string, ok: boolean) => {
+    setPinError(ok ? null : msg);
+    setPinNotice(ok ? msg : null);
+    if (pinNoticeTimeoutRef.current) {
+      try {
+        window.clearTimeout(pinNoticeTimeoutRef.current);
+      } catch {
+        // ignore
+      }
+    }
+    pinNoticeTimeoutRef.current = window.setTimeout(() => {
+      setPinNotice(null);
+      setPinError(null);
+    }, 2000);
+  }, []);
   const brokerAgentOptions = React.useMemo(() => {
     const list = Array.isArray(brokerAgents) ? brokerAgents : [];
     return list
@@ -1399,14 +1426,78 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                 <div className="mt-2 rounded-md border border-white/10 bg-black/20 p-2">
                   <div className="flex items-center justify-between gap-2 text-[11px] text-white/70">
                     <span>Pinned events ({moderatorPinnedEntries.length})</span>
-                    <button
-                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
-                      type="button"
-                      onClick={() => updateModeratorPinnedEvents({})}
-                    >
-                      Clear pins
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                        type="button"
+                        onClick={() => {
+                          try {
+                            const payload = JSON.stringify(moderatorPinnedEvents, null, 2);
+                            const blob = new Blob([payload], { type: "application/json" });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement("a");
+                            a.href = url;
+                            a.download = `moderator_pins_${Date.now()}.json`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                            showPinNotice("Exported pins", true);
+                          } catch (err: any) {
+                            showPinNotice(String(err?.message || "export failed"), false);
+                          }
+                        }}
+                      >
+                        Export pins
+                      </button>
+                      <button
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                        type="button"
+                        onClick={() => pinImportRef.current?.click()}
+                      >
+                        Import pins
+                      </button>
+                      <button
+                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                        type="button"
+                        onClick={() => updateModeratorPinnedEvents({})}
+                      >
+                        Clear pins
+                      </button>
+                    </div>
                   </div>
+                  <input
+                    ref={pinImportRef}
+                    type="file"
+                    accept="application/json"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        const text = await file.text();
+                        const parsed = JSON.parse(text);
+                        let nextPins: Record<string, ModeratorEvent> = {};
+                        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+                          for (const [k, v] of Object.entries(parsed as Record<string, unknown>)) {
+                            if (v && typeof v === "object") {
+                              nextPins[k] = v as ModeratorEvent;
+                            }
+                          }
+                        } else if (Array.isArray(parsed)) {
+                          parsed.forEach((ev, idx) => {
+                            if (ev && typeof ev === "object") {
+                              nextPins[`import-${idx}`] = ev as ModeratorEvent;
+                            }
+                          });
+                        }
+                        updateModeratorPinnedEvents(nextPins);
+                        showPinNotice("Imported pins", true);
+                      } catch (err: any) {
+                        showPinNotice(String(err?.message || "import failed"), false);
+                      } finally {
+                        if (pinImportRef.current) pinImportRef.current.value = "";
+                      }
+                    }}
+                  />
                   <div className="mt-2 grid gap-2">
                     {moderatorPinnedEntries.map(([key, event]) => {
                       const type = typeof event?.type === "string" ? event.type : "event";
@@ -1463,6 +1554,8 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
               ) : null}
               {moderatorEventsError ? <div className="mt-2 text-[11px] text-rose-200">{moderatorEventsError}</div> : null}
               {copyNotice ? <div className="mt-2 text-[11px] text-emerald-200">{copyNotice}</div> : null}
+              {pinNotice ? <div className="mt-2 text-[11px] text-emerald-200">{pinNotice}</div> : null}
+              {pinError ? <div className="mt-2 text-[11px] text-rose-200">{pinError}</div> : null}
               {!moderatorEventsEnabled ? (
                 <div className="mt-2 text-[11px] text-amber-200">Moderator events disabled by daemon caps.</div>
               ) : null}
