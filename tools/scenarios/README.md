@@ -51,6 +51,7 @@ HTTP proxy behavior:
 - `agentd_smoke.json`: checks `/api/v1/health` + `/api/v1/diagnostics`, captures evidence.
 - `broker_smoke.json`: checks `/healthz` + `/readyz` (TLS insecure), captures evidence via broker proxy.
 - `broker_team_runs_quorum_compose_smoke.json`: runs the broker team-run quorum compose smoke (requires Docker Compose).
+- `broker_team_runs_runtime_members_compose_smoke.json`: runs the broker team-run runtime members compose smoke (requires Docker Compose).
 - `broker_team_quorum_events_sse_compose_smoke.json`: validates quorum SSE events (requires Docker Compose).
 - `eval_pack_smoke.json`: self-contained eval-pack smoke scenario.
 - `eval_pack_checks_smoke.json`: self-contained scenario to exercise eval checks.
