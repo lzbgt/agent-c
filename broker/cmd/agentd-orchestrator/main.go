@@ -474,7 +474,7 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 			metaChanged = true
 		}
 		if shouldSpawnMissingRoles(meta) {
-			if err := ensureSpawnRequests(ctx, client, cfg, teamID, run.OrchestratorRunID, meta, asStringSlice(tr.AutoAllocateMissing), owner); err == nil {
+			if err := ensureSpawnRequests(ctx, client, cfg, teamID, run.OrchestratorRunID, activeRunID, meta, asStringSlice(tr.AutoAllocateMissing), owner); err == nil {
 				metaChanged = true
 			}
 		}
@@ -497,7 +497,7 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 		if isNoEligibleMembers(err) {
 			roles := collectRolesFromPlan(run, meta)
 			if len(roles) > 0 && shouldSpawnMissingRoles(meta) {
-				_ = ensureSpawnRequests(ctx, client, cfg, teamID, run.OrchestratorRunID, meta, roles, owner)
+				_ = ensureSpawnRequests(ctx, client, cfg, teamID, run.OrchestratorRunID, "", meta, roles, owner)
 			}
 			return nil
 		}
@@ -514,7 +514,7 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 	}
 	tr, err := fetchTeamRunStatus(ctx, client, cfg, teamID, activeRunID)
 	if err == nil && shouldSpawnMissingRoles(meta) {
-		_ = ensureSpawnRequests(ctx, client, cfg, teamID, run.OrchestratorRunID, meta, asStringSlice(tr.AutoAllocateMissing), owner)
+		_ = ensureSpawnRequests(ctx, client, cfg, teamID, run.OrchestratorRunID, activeRunID, meta, asStringSlice(tr.AutoAllocateMissing), owner)
 	}
 	return nil
 }
@@ -918,7 +918,124 @@ func shouldSpawnMissingRoles(meta map[string]any) bool {
 	return true
 }
 
-func ensureSpawnRequests(ctx context.Context, client *http.Client, cfg config, teamID, orchestratorRunID string, meta map[string]any, missingRoles []string, owner string) error {
+type spawnMetaConfig struct {
+	defaultCount       int
+	countByRole        map[string]int
+	requirements       map[string]any
+	requirementsByRole map[string]map[string]any
+	errors             []string
+}
+
+func parseSpawnMetaConfig(meta map[string]any) spawnMetaConfig {
+	out := spawnMetaConfig{
+		defaultCount:       1,
+		countByRole:        map[string]int{},
+		requirements:       map[string]any{},
+		requirementsByRole: map[string]map[string]any{},
+	}
+	if meta == nil {
+		return out
+	}
+	if v, ok := meta["spawn_count_per_role"]; ok {
+		if n, ok := asInt(v); ok && n > 0 {
+			out.defaultCount = n
+		} else {
+			out.errors = append(out.errors, "spawn_count_per_role must be a positive integer")
+		}
+	}
+	if raw, ok := meta["spawn_count_by_role"]; ok {
+		m, ok := raw.(map[string]any)
+		if !ok {
+			out.errors = append(out.errors, "spawn_count_by_role must be an object map")
+		} else {
+			for role, val := range m {
+				r := strings.ToLower(strings.TrimSpace(role))
+				if r == "" {
+					continue
+				}
+				if n, ok := asInt(val); ok && n > 0 {
+					out.countByRole[r] = n
+				} else {
+					out.errors = append(out.errors, fmt.Sprintf("spawn_count_by_role.%s must be a positive integer", r))
+				}
+			}
+		}
+	}
+	if raw, ok := meta["spawn_requirements"]; ok {
+		m, ok := raw.(map[string]any)
+		if !ok {
+			out.errors = append(out.errors, "spawn_requirements must be an object map")
+		} else {
+			for k, v := range m {
+				out.requirements[k] = v
+			}
+		}
+	}
+	if raw, ok := meta["spawn_requirements_by_role"]; ok {
+		m, ok := raw.(map[string]any)
+		if !ok {
+			out.errors = append(out.errors, "spawn_requirements_by_role must be an object map")
+		} else {
+			for role, val := range m {
+				r := strings.ToLower(strings.TrimSpace(role))
+				if r == "" {
+					continue
+				}
+				roleMap, ok := val.(map[string]any)
+				if !ok {
+					out.errors = append(out.errors, fmt.Sprintf("spawn_requirements_by_role.%s must be an object map", r))
+					continue
+				}
+				next := map[string]any{}
+				for k, v := range roleMap {
+					next[k] = v
+				}
+				if len(next) > 0 {
+					out.requirementsByRole[r] = next
+				}
+			}
+		}
+	}
+	return out
+}
+
+func shouldEmitSpawnValidation(meta map[string]any, teamRunID string, errors []string) bool {
+	if len(errors) == 0 {
+		return false
+	}
+	if meta == nil {
+		return true
+	}
+	prevRun := strings.TrimSpace(asString(meta["spawn_validation_team_run_id"]))
+	prevSig := strings.TrimSpace(asString(meta["spawn_validation_signature"]))
+	if prevRun == teamRunID && prevSig == spawnValidationSignature(errors) {
+		return false
+	}
+	return true
+}
+
+func spawnValidationSignature(errors []string) string {
+	if len(errors) == 0 {
+		return ""
+	}
+	cp := make([]string, len(errors))
+	copy(cp, errors)
+	sort.Strings(cp)
+	return strings.Join(cp, " | ")
+}
+
+func recordSpawnValidation(meta map[string]any, teamRunID string, errors []string) map[string]any {
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	meta["spawn_validation_errors"] = errors
+	meta["spawn_validation_team_run_id"] = teamRunID
+	meta["spawn_validation_signature"] = spawnValidationSignature(errors)
+	meta["spawn_validation_unix_ms"] = time.Now().UTC().UnixMilli()
+	return meta
+}
+
+func ensureSpawnRequests(ctx context.Context, client *http.Client, cfg config, teamID, orchestratorRunID, teamRunID string, meta map[string]any, missingRoles []string, owner string) error {
 	if len(missingRoles) == 0 {
 		return nil
 	}
@@ -953,46 +1070,29 @@ func ensureSpawnRequests(ctx context.Context, client *http.Client, cfg config, t
 			}
 		}
 	}
-	defaultCount := 1
-	if n, ok := asInt(meta["spawn_count_per_role"]); ok && n > 0 {
-		defaultCount = n
-	}
-	countByRole := map[string]int{}
-	if raw, ok := meta["spawn_count_by_role"].(map[string]any); ok {
-		for role, val := range raw {
-			r := strings.ToLower(strings.TrimSpace(role))
-			if r == "" {
-				continue
-			}
-			if n, ok := asInt(val); ok && n > 0 {
-				countByRole[r] = n
-			}
-		}
-	}
-	requirements := map[string]any{}
-	if raw, ok := meta["spawn_requirements"].(map[string]any); ok {
-		for k, v := range raw {
-			requirements[k] = v
-		}
-	}
-	requirementsByRole := map[string]map[string]any{}
-	if raw, ok := meta["spawn_requirements_by_role"].(map[string]any); ok {
-		for role, val := range raw {
-			r := strings.ToLower(strings.TrimSpace(role))
-			if r == "" {
-				continue
-			}
-			if m, ok := val.(map[string]any); ok {
-				roleReq := map[string]any{}
-				for k, v := range m {
-					roleReq[k] = v
+	config := parseSpawnMetaConfig(meta)
+	if len(config.errors) > 0 {
+		if shouldEmitSpawnValidation(meta, teamRunID, config.errors) {
+			meta = recordSpawnValidation(meta, teamRunID, config.errors)
+			if teamRunID != "" {
+				payload := map[string]any{
+					"type":       "spawn_validation",
+					"message":    "invalid spawn meta",
+					"ts_unix_ms": time.Now().UTC().UnixMilli(),
+					"data": map[string]any{
+						"errors":              config.errors,
+						"orchestrator_run_id": orchestratorRunID,
+					},
 				}
-				if len(roleReq) > 0 {
-					requirementsByRole[r] = roleReq
-				}
+				_ = emitTeamRunGoalEvent(ctx, client, cfg, teamID, teamRunID, payload)
 			}
+			_, _ = updateOrchestratorRun(ctx, client, cfg, teamID, orchestratorRunID, "", meta, stringPtr(owner), nil)
 		}
 	}
+	defaultCount := config.defaultCount
+	countByRole := config.countByRole
+	requirements := config.requirements
+	requirementsByRole := config.requirementsByRole
 	baseMeta := map[string]any{"orchestrator_id": cfg.orchestratorID, "reason": "missing_role"}
 	if raw, ok := meta["spawn_request_meta"].(map[string]any); ok {
 		for k, v := range raw {

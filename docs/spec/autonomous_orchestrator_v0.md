@@ -173,6 +173,7 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
 
 - `goal_progress`: checkpoint updates (milestones, partials, evidence references)
 - `goal_drift`: detected deviation from the goal contract
+- `spawn_validation`: invalid spawn meta detected (errors persisted in orchestrator run meta)
 
 ### Runtime member allocation
 
