@@ -502,7 +502,7 @@
 /v1/teams:
   get:
     tags: [teams]
-    summary: List teams (planned)
+    summary: List teams
     responses:
       "200":
         description: Team list
@@ -512,7 +512,7 @@
               $ref: "#/components/schemas/TeamListResponse"
   post:
     tags: [teams]
-    summary: Create team (planned)
+    summary: Create team
     requestBody:
       required: true
       content:
@@ -530,7 +530,7 @@
 /v1/teams/{team_id}:
   get:
     tags: [teams]
-    summary: Get team (planned)
+    summary: Get team
     parameters:
       - in: path
         name: team_id
@@ -545,7 +545,7 @@
               $ref: "#/components/schemas/TeamGetResponse"
   patch:
     tags: [teams]
-    summary: Update team (planned)
+    summary: Update team
     parameters:
       - in: path
         name: team_id
@@ -566,7 +566,7 @@
               $ref: "#/components/schemas/TeamGetResponse"
   delete:
     tags: [teams]
-    summary: Delete team (planned)
+    summary: Delete team
     parameters:
       - in: path
         name: team_id
@@ -583,7 +583,7 @@
 /v1/teams/{team_id}/members:
   get:
     tags: [teams]
-    summary: List team members (planned)
+    summary: List team members
     parameters:
       - in: path
         name: team_id
@@ -598,7 +598,7 @@
               $ref: "#/components/schemas/TeamMemberListResponse"
   post:
     tags: [teams]
-    summary: Add team member (planned)
+    summary: Add team member
     parameters:
       - in: path
         name: team_id
@@ -621,7 +621,7 @@
 /v1/teams/{team_id}/members/{member_id}:
   patch:
     tags: [teams]
-    summary: Update team member (planned)
+    summary: Update team member
     parameters:
       - in: path
         name: team_id
@@ -646,7 +646,7 @@
               $ref: "#/components/schemas/TeamMemberUpsertResponse"
   delete:
     tags: [teams]
-    summary: Remove team member (planned)
+    summary: Remove team member
     parameters:
       - in: path
         name: team_id
@@ -667,7 +667,7 @@
 /v1/teams/{team_id}/quorum:
   get:
     tags: [teams]
-    summary: List quorum rules (planned)
+    summary: List quorum rules
     parameters:
       - in: path
         name: team_id
@@ -682,7 +682,7 @@
               $ref: "#/components/schemas/TeamQuorumRuleListResponse"
   post:
     tags: [teams]
-    summary: Create quorum rule (planned)
+    summary: Create quorum rule
     parameters:
       - in: path
         name: team_id
@@ -705,7 +705,7 @@
 /v1/teams/{team_id}/quorum/{rule_id}:
   patch:
     tags: [teams]
-    summary: Update quorum rule (planned)
+    summary: Update quorum rule
     parameters:
       - in: path
         name: team_id
@@ -730,7 +730,7 @@
               $ref: "#/components/schemas/TeamQuorumRuleUpsertResponse"
   delete:
     tags: [teams]
-    summary: Delete quorum rule (planned)
+    summary: Delete quorum rule
     parameters:
       - in: path
         name: team_id
