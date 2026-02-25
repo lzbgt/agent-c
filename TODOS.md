@@ -100,6 +100,12 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
 
 ## Weighted tasks (next up)
 
+- [ ] W=13 — Autonomous orchestrator loop: goal contract + drift guard + role handoff events + allocator, with evidence tests and SSE surface.
+  - 2026-02-25: drafted `docs/spec/autonomous_orchestrator_v0.md` (goal guard + dynamic allocation model).
+  - 2026-02-25: WebUI runtime member quick-add can allocate connected agents by role plan (UI-only; broker allocator pending).
+- [ ] W=11 — Team shared memory scope enforcement (read-only/read-write) wired through team runs + tool policy hooks + tests.
+- [ ] W=10 — Role handoff execution: emit `team_handoff` events and visualize role graph in WebUI.
+
 - [x] W=11 — Automation mode profile + moderator control plane: explicit profiles in caps, per-run override, moderator directives, and nonblocking UX.
   - 2026-02-25: added automation profiles in `/api/v1/caps`, per-run `automation_profile` override, and `effective_automation_profile` response field (agentd + docs + smoke test).
   - 2026-02-25: WebUI run settings + workflow defaults now include `automation_profile` with caps-driven options.

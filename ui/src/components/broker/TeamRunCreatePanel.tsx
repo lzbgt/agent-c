@@ -76,6 +76,7 @@ type TeamRunCreatePanelProps = {
   runtimeAgentsBusy: boolean;
   refreshRuntimeAgents: () => void;
   handleAddConnectedAgents: () => void;
+  handleAllocateRoleRuntimeMembers: () => void;
   runtimeSaveBusy: boolean;
   handleSaveRuntimeMembers: () => void;
   runtimeAgentsError: string | null;
@@ -550,6 +551,14 @@ export default function TeamRunCreatePanel(props: TeamRunCreatePanelProps) {
               onClick={() => props.handleAddConnectedAgents()}
             >
               Add connected agents
+            </button>
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+              type="button"
+              disabled={!props.canQuery || props.runtimeAgentsBusy || props.runRolePlanOptions.length === 0}
+              onClick={() => props.handleAllocateRoleRuntimeMembers()}
+            >
+              Allocate by roles
             </button>
             <button
               className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"

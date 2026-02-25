@@ -22,6 +22,8 @@ import TeamRunOpsPanel from "./TeamRunOpsPanel";
 import TeamRunRecentRunsPanel from "./TeamRunRecentRunsPanel";
 import {
   TEAM_RUN_EVENT_TYPES,
+  buildRoleAllocatedRuntimeMembers,
+  buildRuntimeAgentAdditions,
   fmtSummary,
   fmtTs,
   normalizeRoleInstructionMap,
@@ -1392,43 +1394,38 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
       setRunError(runtimeMembersPreview.error);
       return;
     }
-    if (runtimeAgentOptions.length === 0) {
-      setRunError("load agents before adding connected agents");
-      return;
-    }
     const role = String(runtimeMemberRole || "").trim() || "executor";
-    const existingRuntime = runtimeMembersPreview.items;
-    const seenAgentIds = new Set<string>();
-    for (const m of membersList) {
-      const aid = String(m?.agent_id || "").trim();
-      if (aid) seenAgentIds.add(aid);
-    }
-    for (const item of existingRuntime) {
-      const aid = item?.agent_id ? String(item.agent_id).trim() : "";
-      if (aid) seenAgentIds.add(aid);
-    }
-    const additions: any[] = [];
-    for (const agent of runtimeAgentOptions) {
-      const aid = String(agent?.agent_id || "").trim();
-      if (!aid || seenAgentIds.has(aid)) continue;
-      const deployments = Array.isArray(agent?.deployments) ? agent.deployments : [];
-      const connected = agent?.connected === true || deployments.length > 0;
-      if (!connected) continue;
-      const entry: Record<string, any> = { agent_id: aid, role };
-      if (deployments.length > 0) {
-        const depId = deployments[0]?.deployment_id ? String(deployments[0].deployment_id) : "";
-        if (depId) entry.deployment_id = depId;
-      }
-      additions.push(entry);
-      seenAgentIds.add(aid);
-    }
-    if (additions.length === 0) {
-      setRunError("no connected agents to add (already in team/runtime)");
+    const { additions, error } = buildRuntimeAgentAdditions({
+      runtimeAgentOptions,
+      existingRuntime: runtimeMembersPreview.items,
+      membersList,
+      role,
+    });
+    if (error) {
+      setRunError(error);
       return;
     }
-    const merged = [...existingRuntime, ...additions];
-    setRunRuntimeMembersJson(JSON.stringify(merged, null, 2));
+    setRunRuntimeMembersJson(JSON.stringify([...runtimeMembersPreview.items, ...additions], null, 2));
     setRunError(null);
+  };
+
+  const handleAllocateRoleRuntimeMembers = () => {
+    if (runtimeMembersPreview.error) {
+      setRunError(runtimeMembersPreview.error);
+      return;
+    }
+    const { additions, warning, error } = buildRoleAllocatedRuntimeMembers({
+      runtimeAgentOptions,
+      existingRuntime: runtimeMembersPreview.items,
+      membersList,
+      roles: runRolePlanOptions,
+    });
+    if (error) {
+      setRunError(error);
+      return;
+    }
+    setRunRuntimeMembersJson(JSON.stringify([...runtimeMembersPreview.items, ...additions], null, 2));
+    setRunError(warning ?? null);
   };
 
   const handleSaveRuntimeMembers = async () => {
@@ -1609,6 +1606,7 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
         runtimeAgentsBusy={runtimeAgentsBusy}
         refreshRuntimeAgents={refreshRuntimeAgents}
         handleAddConnectedAgents={handleAddConnectedAgents}
+        handleAllocateRoleRuntimeMembers={handleAllocateRoleRuntimeMembers}
         runtimeSaveBusy={runtimeSaveBusy}
         handleSaveRuntimeMembers={handleSaveRuntimeMembers}
         runtimeAgentsError={runtimeAgentsError}

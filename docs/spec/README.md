@@ -17,6 +17,7 @@ declares its own status (draft/rolling/implemented) in the document header.
 - `automation_mode_v0.md`: automation profile + moderator control plane (draft).
 - `team_orchestration_v0.md`: team orchestration model (roles, shared memory, quorum gates).
 - `orchestrator_console_v0.md`: WebUI orchestration console (roles/backends, run monitor, reload-safe).
+- `autonomous_orchestrator_v0.md`: autonomous orchestration model (goal guard, low drift, dynamic allocation).
 - `eval_pack_v0.md`: deterministic eval pack format for regression gating (draft).
 
 ## Streaming

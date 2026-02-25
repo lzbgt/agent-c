@@ -83,6 +83,7 @@ Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`,
 - Inline approvals live in the Team console → Team run panel. Add `member_id` + decision (optional `rule_id`/reason) before Create run; approvals are sent under `team.approvals`, persisted, and the Run approvals panel auto-loads the run after submission.
 - The Team run panel lists recent runs (status/mode/summary) and supports a live (SSE) toggle to refresh on broker events without polling.
 - Team runs support **runtime members** for per-run team composition (ephemeral). Use runtime members to add/pause agents dynamically; "Save to team" persists them into the registry.
+- Runtime member quick-add can allocate connected agents by the team’s role plan to cover missing roles.
 - Team run panel can update runtime members for an existing run (replace/merge) after lookup; runtime member list includes quick pause/resume/remove actions.
 - Team run panel supports async mode (nonblocking): broker dispatches member runs via `/api/v1/run_async`, persists job IDs, and status lookups show per-member job state.
 - Team run panel can cancel async runs and surfaces the aggregated member job summary plus cancel results.
