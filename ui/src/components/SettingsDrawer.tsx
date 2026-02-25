@@ -213,6 +213,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const [pinError, setPinError] = React.useState<string | null>(null);
   const [pinnedCompareA, setPinnedCompareA] = React.useState<string>("");
   const [pinnedCompareB, setPinnedCompareB] = React.useState<string>("");
+  const [pinnedCompareDiffOnly, setPinnedCompareDiffOnly] = React.useState<boolean>(false);
   const copyNoticeTimeoutRef = React.useRef<number>(0);
   const pinNoticeTimeoutRef = React.useRef<number>(0);
   const pinImportRef = React.useRef<HTMLInputElement | null>(null);
@@ -1608,52 +1609,82 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                       </div>
                       {pinnedCompareA && pinnedCompareB ? (
                         (() => {
-                          const evA = moderatorPinnedEvents[pinnedCompareA];
-                          const evB = moderatorPinnedEvents[pinnedCompareB];
-                          const jsonA = JSON.stringify(evA, null, 2);
-                          const jsonB = JSON.stringify(evB, null, 2);
-                          const same = jsonA === jsonB;
-                          return (
-                            <div className="mt-2 grid gap-2">
-                              <div className={`text-[11px] ${same ? "text-emerald-200" : "text-amber-200"}`}>
-                                {same ? "Pinned events are identical." : "Pinned events differ."}
-                              </div>
-                              <div className="grid gap-2 md:grid-cols-2">
-                                <div className="rounded-md border border-white/10 bg-black/30 p-2">
-                                  <div className="flex items-center justify-between gap-2 text-[10px] text-white/60">
-                                    <span>Event A</span>
-                                    <button
-                                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
-                                      type="button"
-                                      onClick={() => void handleCopy("JSON A", jsonA)}
-                                    >
-                                      Copy JSON A
-                                    </button>
-                                  </div>
-                                  <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-[10px] text-white/70">
-                                    {jsonA}
-                                  </pre>
+                            const evA = moderatorPinnedEvents[pinnedCompareA];
+                            const evB = moderatorPinnedEvents[pinnedCompareB];
+                            const jsonA = JSON.stringify(evA, null, 2);
+                            const jsonB = JSON.stringify(evB, null, 2);
+                            const same = jsonA === jsonB;
+                            const diffText = JSON.stringify({ a: evA, b: evB }, null, 2);
+                            return (
+                              <div className="mt-2 grid gap-2">
+                                <div className={`text-[11px] ${same ? "text-emerald-200" : "text-amber-200"}`}>
+                                  {same ? "Pinned events are identical." : "Pinned events differ."}
                                 </div>
-                                <div className="rounded-md border border-white/10 bg-black/30 p-2">
-                                  <div className="flex items-center justify-between gap-2 text-[10px] text-white/60">
-                                    <span>Event B</span>
-                                    <button
-                                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
-                                      type="button"
-                                      onClick={() => void handleCopy("JSON B", jsonB)}
-                                    >
-                                      Copy JSON B
-                                    </button>
+                                <label className="flex items-center gap-2 text-[11px] text-white/60">
+                                  <input
+                                    type="checkbox"
+                                    checked={pinnedCompareDiffOnly}
+                                    onChange={(e) => setPinnedCompareDiffOnly(e.target.checked)}
+                                  />
+                                  Diff-only view
+                                </label>
+                                <div className="grid gap-2 md:grid-cols-2">
+                                  <div className="rounded-md border border-white/10 bg-black/30 p-2">
+                                    <div className="flex items-center justify-between gap-2 text-[10px] text-white/60">
+                                      <span>Event A</span>
+                                      <button
+                                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
+                                        type="button"
+                                        onClick={() => void handleCopy("JSON A", jsonA)}
+                                      >
+                                        Copy JSON A
+                                      </button>
+                                    </div>
+                                    {!pinnedCompareDiffOnly ? (
+                                      <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-[10px] text-white/70">
+                                        {jsonA}
+                                      </pre>
+                                    ) : null}
                                   </div>
-                                  <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-[10px] text-white/70">
-                                    {jsonB}
-                                  </pre>
+                                  <div className="rounded-md border border-white/10 bg-black/30 p-2">
+                                    <div className="flex items-center justify-between gap-2 text-[10px] text-white/60">
+                                      <span>Event B</span>
+                                      <button
+                                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
+                                        type="button"
+                                        onClick={() => void handleCopy("JSON B", jsonB)}
+                                      >
+                                        Copy JSON B
+                                      </button>
+                                    </div>
+                                    {!pinnedCompareDiffOnly ? (
+                                      <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-[10px] text-white/70">
+                                        {jsonB}
+                                      </pre>
+                                    ) : null}
+                                  </div>
                                 </div>
+                                {pinnedCompareDiffOnly ? (
+                                  <div className="rounded-md border border-white/10 bg-black/30 p-2">
+                                    <div className="flex items-center justify-between gap-2 text-[10px] text-white/60">
+                                      <span>Combined diff view</span>
+                                      <button
+                                        className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
+                                        type="button"
+                                        onClick={() => void handleCopy("diff JSON", diffText)}
+                                      >
+                                        Copy diff JSON
+                                      </button>
+                                    </div>
+                                    <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-[10px] text-white/70">
+                                      {diffText}
+                                    </pre>
+                                  </div>
+                                ) : null}
                               </div>
-                            </div>
-                          );
-                        })()
-                      ) : null}
+                            );
+                          })()
+                        ) : null}
                     </div>
                   ) : null}
                 </div>

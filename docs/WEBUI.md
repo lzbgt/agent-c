@@ -64,6 +64,7 @@ Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`,
 - Copy actions show a brief confirmation toast.
 - Pinned events can be exported/imported as JSON.
 - Pinned events include a compare view with side-by-side JSON.
+- Compare view includes a diff-only toggle with combined JSON output.
 - The broker console exposes agent membership management, audit events, team setup (members + quorum rules), team runs, and quorum approvals (Team console includes recent quorum requests and approvals).
 - Team members editor supports broker agent/deployment pickers and a bulk add for connected agents.
 - Team member rows support quick pause/resume (updates status via PATCH).
