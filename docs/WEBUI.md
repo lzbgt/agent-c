@@ -60,6 +60,8 @@ Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`,
 - Moderator events panel includes a filter box to match by type/actor/content.
 - Moderator event rows include copy buttons for summary/JSON.
 - Moderator events can be pinned for side-by-side comparison.
+- Pinned events persist per base URL + session in localStorage.
+- Copy actions show a brief confirmation toast.
 - The broker console exposes agent membership management, audit events, team setup (members + quorum rules), team runs, and quorum approvals (Team console includes recent quorum requests and approvals).
 - Team members editor supports broker agent/deployment pickers and a bulk add for connected agents.
 - Team member rows support quick pause/resume (updates status via PATCH).

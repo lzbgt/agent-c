@@ -14,6 +14,7 @@ import {
 } from "../api";
 import type { ModeratorEvent } from "../api";
 import type { ClientSettings, ConnectionSettings, RunSettings } from "../hooks/useUiSettings";
+import useLocalStorageState from "../hooks/useLocalStorageState";
 import FieldLabel from "./FieldLabel";
 
 function SectionHeader({ title, action }: { title: string; action?: React.ReactNode }) {
@@ -83,12 +84,12 @@ function formatModeratorEventSummary(event: ModeratorEvent) {
   return "";
 }
 
-async function copyTextToClipboard(text: string) {
-  if (!text) return;
+async function copyTextToClipboard(text: string): Promise<boolean> {
+  if (!text) return false;
   try {
     if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
       await navigator.clipboard.writeText(text);
-      return;
+      return true;
     }
   } catch {
     // fallback below
@@ -101,11 +102,13 @@ async function copyTextToClipboard(text: string) {
     el.style.left = "-9999px";
     document.body.appendChild(el);
     el.select();
-    document.execCommand("copy");
+    const ok = document.execCommand("copy");
     document.body.removeChild(el);
+    return ok;
   } catch {
     // ignore
   }
+  return false;
 }
 
 function parseCsvList(raw: string) {
@@ -202,7 +205,11 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const [moderatorEventsIncludeTasks, setModeratorEventsIncludeTasks] = React.useState<boolean>(true);
   const [moderatorEventsFilter, setModeratorEventsFilter] = React.useState<string>("");
   const [moderatorEventsExpanded, setModeratorEventsExpanded] = React.useState<Record<string, boolean>>({});
-  const [moderatorPinnedEvents, setModeratorPinnedEvents] = React.useState<Record<string, ModeratorEvent>>({});
+  const [moderatorPinnedStore, setModeratorPinnedStore] = useLocalStorageState<
+    Record<string, Record<string, ModeratorEvent>>
+  >("agentui.moderatorPinnedEvents", {});
+  const [copyNotice, setCopyNotice] = React.useState<string | null>(null);
+  const copyNoticeTimeoutRef = React.useRef<number>(0);
   const serverPrefsBase = String(connection.serverPrefsBase || "").trim();
   const serverPrefsCanSync = serverPrefsBase.length > 0;
   const serverPrefsTarget = connection.mode === "broker" ? "broker" : "daemon";
@@ -242,6 +249,14 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
         }
       }
       clearAllArmTimeoutRef.current = 0;
+      if (copyNoticeTimeoutRef.current) {
+        try {
+          window.clearTimeout(copyNoticeTimeoutRef.current);
+        } catch {
+          // ignore
+        }
+        copyNoticeTimeoutRef.current = 0;
+      }
     };
   }, []);
 
@@ -423,6 +438,33 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const baseUrlLabel = String(run.baseUrl || "").trim();
   const diag = diagnostics.data;
   const capsData = props.caps.data;
+  const moderatorPinnedScope = React.useMemo(() => {
+    const base = String(connection.effectiveBase || "").trim();
+    const sid = String(props.session.id || "").trim();
+    if (!base || !sid) return "";
+    return `${base}::${sid}`;
+  }, [connection.effectiveBase, props.session.id]);
+  const moderatorPinnedEvents = React.useMemo(() => {
+    if (!moderatorPinnedScope) return {};
+    return (moderatorPinnedStore[moderatorPinnedScope] ?? {}) as Record<string, ModeratorEvent>;
+  }, [moderatorPinnedScope, moderatorPinnedStore]);
+  const updateModeratorPinnedEvents = React.useCallback(
+    (updater: Record<string, ModeratorEvent> | ((prev: Record<string, ModeratorEvent>) => Record<string, ModeratorEvent>)) => {
+      if (!moderatorPinnedScope) return;
+      setModeratorPinnedStore((prev) => {
+        const current = prev[moderatorPinnedScope] ?? {};
+        const nextScope = typeof updater === "function" ? updater(current) : updater;
+        const nextStore = { ...prev };
+        if (Object.keys(nextScope).length === 0) {
+          delete nextStore[moderatorPinnedScope];
+        } else {
+          nextStore[moderatorPinnedScope] = nextScope;
+        }
+        return nextStore;
+      });
+    },
+    [moderatorPinnedScope, setModeratorPinnedStore],
+  );
   const brokerAgentOptions = React.useMemo(() => {
     const list = Array.isArray(brokerAgents) ? brokerAgents : [];
     return list
@@ -599,6 +641,28 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const moderatorEventsError = moderatorEvents.isError ? String(moderatorEvents.error || "failed to load events") : null;
   const moderatorEventsList = Array.isArray(moderatorEventsData?.events) ? (moderatorEventsData?.events as ModeratorEvent[]) : [];
   const moderatorEventsFilterValue = String(moderatorEventsFilter || "").trim().toLowerCase();
+  const showCopyNotice = React.useCallback(
+    (label: string, ok: boolean) => {
+      const msg = ok ? `Copied ${label}` : "Copy failed";
+      setCopyNotice(msg);
+      if (copyNoticeTimeoutRef.current) {
+        try {
+          window.clearTimeout(copyNoticeTimeoutRef.current);
+        } catch {
+          // ignore
+        }
+      }
+      copyNoticeTimeoutRef.current = window.setTimeout(() => setCopyNotice(null), 1500);
+    },
+    [],
+  );
+  const handleCopy = React.useCallback(
+    async (label: string, text: string) => {
+      const ok = await copyTextToClipboard(text);
+      showCopyNotice(label, ok);
+    },
+    [showCopyNotice],
+  );
   const moderatorEventsFiltered = React.useMemo(() => {
     if (!moderatorEventsFilterValue) return moderatorEventsList;
     return moderatorEventsList.filter((event) => {
@@ -1338,7 +1402,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                     <button
                       className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
                       type="button"
-                      onClick={() => setModeratorPinnedEvents({})}
+                      onClick={() => updateModeratorPinnedEvents({})}
                     >
                       Clear pins
                     </button>
@@ -1365,7 +1429,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                               <button
                                 className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
                                 type="button"
-                                onClick={() => void copyTextToClipboard(summary)}
+                                onClick={() => void handleCopy("summary", summary)}
                               >
                                 Copy summary
                               </button>
@@ -1373,7 +1437,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                             <button
                               className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
                               type="button"
-                              onClick={() => void copyTextToClipboard(JSON.stringify(event, null, 2))}
+                              onClick={() => void handleCopy("JSON", JSON.stringify(event, null, 2))}
                             >
                               Copy JSON
                             </button>
@@ -1381,7 +1445,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                               className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
                               type="button"
                               onClick={() =>
-                                setModeratorPinnedEvents((prev) => {
+                                updateModeratorPinnedEvents((prev) => {
                                   const next = { ...prev };
                                   delete next[key];
                                   return next;
@@ -1398,6 +1462,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                 </div>
               ) : null}
               {moderatorEventsError ? <div className="mt-2 text-[11px] text-rose-200">{moderatorEventsError}</div> : null}
+              {copyNotice ? <div className="mt-2 text-[11px] text-emerald-200">{copyNotice}</div> : null}
               {!moderatorEventsEnabled ? (
                 <div className="mt-2 text-[11px] text-amber-200">Moderator events disabled by daemon caps.</div>
               ) : null}
@@ -1432,7 +1497,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                               <button
                                 className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
                                 type="button"
-                                onClick={() => void copyTextToClipboard(summary)}
+                                onClick={() => void handleCopy("summary", summary)}
                               >
                                 Copy summary
                               </button>
@@ -1440,7 +1505,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                             <button
                               className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
                               type="button"
-                              onClick={() => void copyTextToClipboard(JSON.stringify(event, null, 2))}
+                              onClick={() => void handleCopy("JSON", JSON.stringify(event, null, 2))}
                             >
                               Copy JSON
                             </button>
@@ -1448,7 +1513,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                               className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
                               type="button"
                               onClick={() =>
-                                setModeratorPinnedEvents((prev) => {
+                                updateModeratorPinnedEvents((prev) => {
                                   const next = { ...prev };
                                   if (next[key]) {
                                     delete next[key];
