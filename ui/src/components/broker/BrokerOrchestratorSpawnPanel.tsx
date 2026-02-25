@@ -387,6 +387,30 @@ export default function BrokerOrchestratorSpawnPanel(props: SpawnPanelProps) {
                   <span className="text-white/60">error:</span> {String(current.error)}
                 </div>
               ) : null}
+              {current.requirements ? (
+                <div className="text-white/60">
+                  requirements:
+                  <pre className="mt-1 max-h-40 overflow-auto rounded-md border border-white/10 bg-black/40 p-2 text-[10px] text-white/70">
+                    {JSON.stringify(current.requirements, null, 2)}
+                  </pre>
+                </div>
+              ) : null}
+              {Array.isArray(current.assigned_members) && current.assigned_members.length > 0 ? (
+                <div className="text-white/60">
+                  assigned_members:
+                  <pre className="mt-1 max-h-40 overflow-auto rounded-md border border-white/10 bg-black/40 p-2 text-[10px] text-white/70">
+                    {JSON.stringify(current.assigned_members, null, 2)}
+                  </pre>
+                </div>
+              ) : null}
+              {current.meta && Object.keys(current.meta).length > 0 ? (
+                <div className="text-white/60">
+                  meta:
+                  <pre className="mt-1 max-h-40 overflow-auto rounded-md border border-white/10 bg-black/40 p-2 text-[10px] text-white/70">
+                    {JSON.stringify(current.meta, null, 2)}
+                  </pre>
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
