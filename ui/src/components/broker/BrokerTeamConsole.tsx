@@ -53,6 +53,14 @@ const normalizeRolePromptMode = (raw: any): string => {
   return "prepend";
 };
 
+const normalizeSharedMemoryMode = (raw: any): string => {
+  if (typeof raw !== "string") return "read_write";
+  const mode = raw.trim().toLowerCase();
+  if (mode === "read_only" || mode === "readonly") return "read_only";
+  if (mode === "read_write" || mode === "readwrite") return "read_write";
+  return "read_write";
+};
+
 const normalizeRoleGraphEdges = (raw: any): RoleGraphEdge[] => {
   let edgesRaw: any[] = [];
   if (Array.isArray(raw)) edgesRaw = raw;
@@ -101,6 +109,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [teamEditTags, setTeamEditTags] = React.useState<string>("");
   const [teamEditPolicyRef, setTeamEditPolicyRef] = React.useState<string>("");
   const [teamEditSharedScope, setTeamEditSharedScope] = React.useState<string>("");
+  const [teamEditSharedMode, setTeamEditSharedMode] = React.useState<string>("read_write");
   const [teamEditMetaJson, setTeamEditMetaJson] = React.useState<string>("");
   const [teamEditRoleOverridesJson, setTeamEditRoleOverridesJson] = React.useState<string>("");
   const [teamRoleInstructions, setTeamRoleInstructions] = React.useState<Record<string, string>>({});
@@ -320,6 +329,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       setTeamEditTags("");
       setTeamEditPolicyRef("");
       setTeamEditSharedScope("");
+      setTeamEditSharedMode("read_write");
       setTeamEditMetaJson("");
       setTeamEditRoleOverridesJson("");
       return;
@@ -339,6 +349,9 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       setTeamEditMetaJson("");
     }
     const metaObj = details?.meta && typeof details.meta === "object" ? (details.meta as Record<string, any>) : null;
+    setTeamEditSharedMode(
+      normalizeSharedMemoryMode(metaObj?.shared_memory_mode ?? metaObj?.memory_scope_mode ?? "read_write"),
+    );
     if (metaObj?.role_overrides && typeof metaObj.role_overrides === "object") {
       try {
         setTeamEditRoleOverridesJson(JSON.stringify(metaObj.role_overrides, null, 2));
@@ -393,6 +406,18 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             .filter(Boolean);
     const policyRef = String(teamEditPolicyRef || "").trim();
     const sharedScope = String(teamEditSharedScope || "").trim();
+    const sharedModeRaw = String(teamEditSharedMode || "").trim().toLowerCase();
+    if (
+      sharedModeRaw &&
+      sharedModeRaw !== "read_only" &&
+      sharedModeRaw !== "read_write" &&
+      sharedModeRaw !== "readonly" &&
+      sharedModeRaw !== "readwrite"
+    ) {
+      setTeamEditError("shared memory mode must be read_only or read_write");
+      return;
+    }
+    const sharedMode = normalizeSharedMemoryMode(sharedModeRaw);
     const metaRaw = String(teamEditMetaJson || "").trim();
     let meta: Record<string, any> = {};
     if (metaRaw) {
@@ -437,6 +462,11 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       } else {
         delete meta.role_graph;
       }
+    }
+    if (sharedScope) {
+      meta.shared_memory_mode = sharedMode || "read_write";
+    } else {
+      delete meta.shared_memory_mode;
     }
     setTeamEditError(null);
     setTeamEditBusy(true);
@@ -1042,6 +1072,15 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             onChange={(e) => setTeamEditSharedScope(e.target.value)}
             placeholder="scope-id"
           />
+          <FieldLabel>Shared memory mode</FieldLabel>
+          <select
+            className="min-w-[160px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={teamEditSharedMode}
+            onChange={(e) => setTeamEditSharedMode(e.target.value)}
+          >
+            <option value="read_write">read_write</option>
+            <option value="read_only">read_only</option>
+          </select>
         </div>
         <div className="grid gap-1">
           <FieldLabel>Meta JSON</FieldLabel>

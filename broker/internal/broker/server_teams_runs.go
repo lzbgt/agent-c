@@ -157,6 +157,85 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 	} else {
 		delete(teamMeta, "role_overrides")
 	}
+	sharedMemoryMode, err := parseSharedMemoryMode(teamMeta["shared_memory_mode"])
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if sharedMemoryMode == "" {
+		if rawMode, ok := teamMeta["memory_scope_mode"]; ok {
+			mode, err := parseSharedMemoryMode(rawMode)
+			if err != nil {
+				writeErrorJSON(w, strings.Replace(err.Error(), "shared_memory_mode", "memory_scope_mode", 1), http.StatusBadRequest)
+				return
+			}
+			sharedMemoryMode = mode
+		}
+	}
+	if sharedMemoryMode == "" && team != nil {
+		if teamMetaDefaults := team.Meta(); len(teamMetaDefaults) > 0 {
+			if rawMode, ok := teamMetaDefaults["shared_memory_mode"]; ok {
+				mode, err := parseSharedMemoryMode(rawMode)
+				if err != nil {
+					writeErrorJSON(w, "invalid team shared_memory_mode", http.StatusBadRequest)
+					return
+				}
+				sharedMemoryMode = mode
+			}
+		}
+	}
+	sharedMemoryScopeID := ""
+	if v, ok := teamMeta["shared_memory_scope_id"]; ok {
+		if s, ok := v.(string); ok {
+			sharedMemoryScopeID = strings.TrimSpace(s)
+		} else if v != nil {
+			writeErrorJSON(w, "shared_memory_scope_id must be string", http.StatusBadRequest)
+			return
+		}
+	}
+	if sharedMemoryScopeID == "" && team != nil {
+		sharedMemoryScopeID = strings.TrimSpace(team.SharedMemoryScopeID)
+	}
+	runMemoryScopeID := ""
+	if v, ok := runMap["memory_scope_id"]; ok {
+		if s, ok := v.(string); ok {
+			runMemoryScopeID = strings.TrimSpace(s)
+		} else if v != nil {
+			writeErrorJSON(w, "memory_scope_id must be string", http.StatusBadRequest)
+			return
+		}
+	}
+	runMemoryScopeMode := ""
+	if v, ok := runMap["memory_scope_mode"]; ok {
+		mode, err := parseSharedMemoryMode(v)
+		if err != nil {
+			writeErrorJSON(w, strings.Replace(err.Error(), "shared_memory_mode", "memory_scope_mode", 1), http.StatusBadRequest)
+			return
+		}
+		runMemoryScopeMode = mode
+	}
+	effectiveMemoryScopeID := runMemoryScopeID
+	if effectiveMemoryScopeID == "" {
+		effectiveMemoryScopeID = sharedMemoryScopeID
+	}
+	effectiveMemoryMode := runMemoryScopeMode
+	if effectiveMemoryMode == "" {
+		effectiveMemoryMode = sharedMemoryMode
+	}
+	if effectiveMemoryScopeID == "" && effectiveMemoryMode != "" {
+		writeErrorJSON(w, "memory_scope_mode requires memory_scope_id", http.StatusBadRequest)
+		return
+	}
+	if effectiveMemoryScopeID != "" && effectiveMemoryMode == "" {
+		effectiveMemoryMode = "read_write"
+	}
+	if effectiveMemoryScopeID != "" {
+		runMap["memory_scope_id"] = effectiveMemoryScopeID
+		runMap["memory_scope_mode"] = effectiveMemoryMode
+		teamMeta["shared_memory_scope_id"] = effectiveMemoryScopeID
+		teamMeta["shared_memory_mode"] = effectiveMemoryMode
+		delete(teamMeta, "memory_scope_mode")
+	}
 	quorumPolicyMode, err := parseTeamRunQuorumPolicy(teamMeta)
 	if err != nil {
 		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
@@ -1047,6 +1126,14 @@ func (s *Server) teamRunStatusResponse(ctx context.Context, p *Principal, run *d
 	if raw, ok := teamMeta["run_overrides_mode"]; ok {
 		runOverridesMode = raw
 	}
+	var sharedMemoryScope any
+	if raw, ok := teamMeta["shared_memory_scope_id"]; ok {
+		sharedMemoryScope = raw
+	}
+	var sharedMemoryMode any
+	if raw, ok := teamMeta["shared_memory_mode"]; ok {
+		sharedMemoryMode = raw
+	}
 	var memberJobs any
 	if raw, ok := teamMeta["member_jobs"]; ok {
 		memberJobs = raw
@@ -1108,6 +1195,12 @@ func (s *Server) teamRunStatusResponse(ctx context.Context, p *Principal, run *d
 	}
 	if runOverridesMode != nil {
 		resp["run_overrides_mode"] = runOverridesMode
+	}
+	if sharedMemoryScope != nil {
+		resp["shared_memory_scope_id"] = sharedMemoryScope
+	}
+	if sharedMemoryMode != nil {
+		resp["shared_memory_mode"] = sharedMemoryMode
 	}
 	if memberJobs != nil {
 		resp["member_jobs"] = memberJobs

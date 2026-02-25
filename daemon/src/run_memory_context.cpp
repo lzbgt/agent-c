@@ -470,7 +470,7 @@ static bool build_memory_index_context_text(
   const bool have_recap = read_latest_recap_summary(mem_root, &recap_summary, &recap_ts, &recap_path);
   std::string assistant_hint;
   std::string assistant_ts;
-  const bool have_assistant = read_latest_assistant_hint(mem_root.parent_path(), session_id, &assistant_hint, &assistant_ts);
+  const bool have_assistant = read_latest_assistant_hint(std::filesystem::path(state_dir), session_id, &assistant_hint, &assistant_ts);
   if (have_recap) {
     for (char& c : recap_summary) {
       if (c == '\n' || c == '\r' || c == '\t') c = ' ';
@@ -814,7 +814,7 @@ static bool build_memory_search_context_text(
   const bool have_recap = read_latest_recap_summary(mem_root, &recap_summary, &recap_ts, &recap_path);
   std::string assistant_hint;
   std::string assistant_ts;
-  const bool have_assistant = read_latest_assistant_hint(mem_root.parent_path(), session_id, &assistant_hint, &assistant_ts);
+  const bool have_assistant = read_latest_assistant_hint(std::filesystem::path(state_dir), session_id, &assistant_hint, &assistant_ts);
   if (have_recap) {
     for (char& c : recap_summary) {
       if (c == '\n' || c == '\r' || c == '\t') c = ' ';
@@ -881,6 +881,7 @@ static bool build_memory_search_context_text(
 }
 
 bool build_memory_context_text(
+  const std::string& mem_root_raw,
   const std::string& state_dir,
   const std::string& session_id,
   const MemoryContextPolicy& pol,
@@ -891,7 +892,10 @@ bool build_memory_context_text(
   if (!out_text) return false;
   if (state_dir.empty()) return false;
 
-  const std::filesystem::path mem_root = std::filesystem::path(state_dir) / "memory";
+  std::filesystem::path mem_root = std::filesystem::path(mem_root_raw);
+  if (mem_root.empty()) {
+    mem_root = std::filesystem::path(state_dir) / "memory";
+  }
   if (pol.mode == MemoryContextMode::Index) {
     if (build_memory_index_context_text(mem_root, session_id, pol, out_text)) return true;
     return false;

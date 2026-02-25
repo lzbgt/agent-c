@@ -242,6 +242,9 @@ static std::string local_date_ymd() {
 
 static std::filesystem::path memory_root_from_ctx(const HostToolCtx* ctx) {
   if (!ctx) return {};
+  if (!ctx->memory_root_override.empty()) {
+    return ctx->memory_root_override;
+  }
   if (ctx->sessions_root_dir.empty()) return {};
   // Historical layout: sessions_root_dir = <state_dir>/sessions
   // Current default layout: sessions_root_dir = <state_dir>
@@ -503,6 +506,12 @@ agent_status_t tool_memory_write(HostToolCtx* ctx, const char* arguments_json, a
     d["policy"] = "readonly";
     return write_envelope(out_result, false, "tool disabled by policy", d);
   }
+  if (!ctx->memory_write_allowed) {
+    Json::Value d(Json::objectValue);
+    d["tool_name"] = "memory_write";
+    d["memory_scope"] = "read_only";
+    return write_envelope(out_result, false, "memory scope is read_only", d);
+  }
 
   Json::Value args;
   std::string perr;
@@ -591,6 +600,12 @@ agent_status_t tool_memory_observe(HostToolCtx* ctx, const char* arguments_json,
     d["tool_name"] = "memory_observe";
     d["policy"] = "readonly";
     return write_envelope(out_result, false, "tool disabled by policy", d);
+  }
+  if (!ctx->memory_write_allowed) {
+    Json::Value d(Json::objectValue);
+    d["tool_name"] = "memory_observe";
+    d["memory_scope"] = "read_only";
+    return write_envelope(out_result, false, "memory scope is read_only", d);
   }
 
   Json::Value args;
@@ -770,6 +785,12 @@ agent_status_t tool_memory_put(HostToolCtx* ctx, const char* arguments_json, age
     d["tool_name"] = "memory_put";
     d["policy"] = "readonly";
     return write_envelope(out_result, false, "tool disabled by policy", d);
+  }
+  if (!ctx->memory_write_allowed) {
+    Json::Value d(Json::objectValue);
+    d["tool_name"] = "memory_put";
+    d["memory_scope"] = "read_only";
+    return write_envelope(out_result, false, "memory scope is read_only", d);
   }
 
   Json::Value args;

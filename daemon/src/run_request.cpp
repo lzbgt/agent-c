@@ -111,6 +111,27 @@ static Json::Value run_request_error(int rpc_status, const std::string& msg) {
   return o;
 }
 
+static bool is_safe_memory_scope_id(const std::string& s) {
+  if (s.empty() || s.size() > 160) return false;
+  for (const char c : s) {
+    const bool ok =
+      (c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9') ||
+      c == '-' || c == '_' || c == '.' || c == ':';
+    if (!ok) return false;
+  }
+  return true;
+}
+
+static std::string normalize_memory_scope_mode(const std::string& raw) {
+  const std::string v = lower_copy(trim_copy(raw));
+  if (v.empty()) return "";
+  if (v == "read_only" || v == "readonly" || v == "ro") return "read_only";
+  if (v == "read_write" || v == "readwrite" || v == "read-write" || v == "rw") return "read_write";
+  return "";
+}
+
 static Json::Value run_request_to_json_impl(
   const DaemonConfig& daemon_cfg,
   const OpenAIClientConfig& ocfg,
@@ -490,6 +511,39 @@ static Json::Value run_request_to_json_impl(
   mem_pol.salience_structured_max_items = std::max(0, std::min(200, mem_pol.salience_structured_max_items));
   mem_pol.salience_daily_max_items = std::max(0, std::min(200, mem_pol.salience_daily_max_items));
 
+  std::string memory_scope_id;
+  std::string memory_scope_mode;
+  if (args.isMember("memory_scope_id") && args["memory_scope_id"].isString()) {
+    memory_scope_id = trim_copy(args["memory_scope_id"].asString());
+    if (!memory_scope_id.empty() && !is_safe_memory_scope_id(memory_scope_id)) {
+      return run_request_error(400, "invalid memory_scope_id (unsafe characters)");
+    }
+  }
+  if (args.isMember("memory_scope_mode") && args["memory_scope_mode"].isString()) {
+    memory_scope_mode = normalize_memory_scope_mode(args["memory_scope_mode"].asString());
+    if (memory_scope_mode.empty()) {
+      return run_request_error(400, "invalid memory_scope_mode (expected: read_only|read_write)");
+    }
+  }
+  if (memory_scope_id.empty() && !memory_scope_mode.empty()) {
+    return run_request_error(400, "memory_scope_mode requires memory_scope_id");
+  }
+  if (!memory_scope_id.empty() && memory_scope_mode.empty()) {
+    memory_scope_mode = "read_write";
+  }
+  std::string memory_root_override;
+  bool memory_write_allowed = true;
+  if (!memory_scope_id.empty()) {
+    if (effective_cfg.state_dir.empty()) {
+      return run_request_error(400, "memory_scope_id requires daemon state_dir");
+    }
+    memory_root_override =
+      (std::filesystem::path(effective_cfg.state_dir) / "memory_scopes" / memory_scope_id).lexically_normal().string();
+    if (memory_scope_mode == "read_only") {
+      memory_write_allowed = false;
+    }
+  }
+
   std::string job_id_local = (job_id_or_null && job_id_or_null[0]) ? std::string(job_id_or_null) : std::string();
   const int64_t run_ts_ms = now_unix_ms();
   if (!job_id_local.empty()) {
@@ -612,6 +666,10 @@ static Json::Value run_request_to_json_impl(
         hcfg.read_client_events_tail = host_read_client_events_tail_from_db;
         hcfg.read_client_events_tail_ctx = (void*)db_or_null;
       }
+    }
+    if (!memory_root_override.empty()) {
+      hcfg.memory_root_override = memory_root_override;
+      hcfg.memory_write_allowed = memory_write_allowed;
     }
     if (toolset_host_create(hcfg, &registry, &base_executor) != AGENT_OK) {
       Json::Value o = run_request_error(500, "failed to init toolset_host");
@@ -762,6 +820,9 @@ static Json::Value run_request_to_json_impl(
     tl_in.no_default_system = no_default_system;
     tl_in.mem_pol = &mem_pol;
     tl_in.mem_query = &mem_query;
+    if (!memory_root_override.empty()) {
+      tl_in.memory_root_override = &memory_root_override;
+    }
     tl_in.max_steps = max_steps;
     tl_in.max_tool_calls_total = max_tool_calls_total;
     tl_in.max_tool_calls_per_tool = max_tool_calls_per_tool;
@@ -1381,6 +1442,10 @@ static Json::Value run_request_to_json_impl(
     mp["daily_days"] = (Json::Int64)mem_pol.daily_days;
     mp["total_cap"] = (Json::UInt64)mem_pol.total_cap;
     out["effective_memory_policy"] = mp;
+  }
+  if (!memory_scope_id.empty()) {
+    out["memory_scope_id"] = memory_scope_id;
+    out["memory_scope_mode"] = memory_scope_mode;
   }
   out["effective_input_image_count"] = (Json::UInt64)input_image_count;
   out["effective_had_input_files"] = input_had_any_files;

@@ -107,7 +107,11 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-25: broker goal update endpoint added with SSE events and run payload persistence.
   - 2026-02-25: broker role handoff endpoint added with SSE event and run payload persistence.
   - 2026-02-25: WebUI team run status panel surfaces goal contract/events and handoff events with emit actions.
-- [ ] W=11 — Team shared memory scope enforcement (read-only/read-write) wired through team runs + tool policy hooks + tests.
+- [x] W=11 — Team shared memory scope enforcement (read-only/read-write) wired through team runs + tool policy hooks + tests.
+  - 2026-02-25: agentd run request supports `memory_scope_id` + `memory_scope_mode` with scoped memory roots.
+  - 2026-02-25: host memory tools enforce read_only mode (write tools rejected, read tools allowed).
+  - 2026-02-25: broker injects shared memory scope/mode into member runs; status surfaces shared memory fields.
+  - 2026-02-25: WebUI team settings include shared memory mode control; OpenAPI/docs updated.
 - [ ] W=10 — Role handoff execution: emit `team_handoff` events and visualize role graph in WebUI.
   - 2026-02-25: WebUI team run status panel can emit and display handoff events (role graph visualization still pending).
 

@@ -94,6 +94,13 @@ RunRequest:
       type: number
       format: double
       description: Weight for @obs importance in salience (default from daemon config).
+    memory_scope_id:
+      type: string
+      description: Optional shared memory scope id (uses daemon state_dir/memory_scopes/<id>).
+    memory_scope_mode:
+      type: string
+      enum: [read_only, read_write]
+      description: Shared memory scope mode (read_only blocks memory writes).
     model: { type: string }
     base_url: { type: string }
     api_key: { type: string }
@@ -195,6 +202,12 @@ RunResponse:
     effective_host_policy:
       type: string
       description: Effective host tool policy applied by the daemon.
+    memory_scope_id:
+      type: string
+      description: Shared memory scope id used by the run (when provided).
+    memory_scope_mode:
+      type: string
+      description: Shared memory scope mode used by the run (read_only|read_write).
     effective_automation_profile:
       type: string
       description: Effective automation profile applied by the daemon.

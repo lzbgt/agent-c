@@ -248,6 +248,27 @@ func TestParseRoleOverrides(t *testing.T) {
 	}
 }
 
+func TestParseSharedMemoryMode(t *testing.T) {
+	mode, err := parseSharedMemoryMode(nil)
+	if err != nil || mode != "" {
+		t.Fatalf("expected empty mode for nil, got %q err=%v", mode, err)
+	}
+	mode, err = parseSharedMemoryMode("READ_ONLY")
+	if err != nil || mode != "read_only" {
+		t.Fatalf("expected read_only, got %q err=%v", mode, err)
+	}
+	mode, err = parseSharedMemoryMode("readwrite")
+	if err != nil || mode != "read_write" {
+		t.Fatalf("expected read_write, got %q err=%v", mode, err)
+	}
+	if _, err = parseSharedMemoryMode(123); err == nil {
+		t.Fatalf("expected error for non-string mode")
+	}
+	if _, err = parseSharedMemoryMode("invalid"); err == nil {
+		t.Fatalf("expected error for invalid mode")
+	}
+}
+
 func TestParseRoleInstructions(t *testing.T) {
 	raw := map[string]any{
 		"Planner":  "  Plan the work  ",

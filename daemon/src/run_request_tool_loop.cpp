@@ -15,6 +15,7 @@
 #include <json/json.h>
 
 #include <algorithm>
+#include <filesystem>
 #include <memory>
 #include <sstream>
 
@@ -245,7 +246,11 @@ RunRequestToolLoopResult run_request_tool_loop(const RunRequestToolLoopInput& in
     if (effective_query.empty() && in.mem_pol->mode == MemoryContextMode::Search) {
       effective_query = *in.prompt_for_llm;
     }
-    if (build_memory_context_text(in.daemon_cfg->state_dir, *in.session_id, *in.mem_pol, effective_query, &mem_ctx)) {
+    std::string mem_root_override;
+    if (in.memory_root_override && !in.memory_root_override->empty()) {
+      mem_root_override = *in.memory_root_override;
+    }
+    if (build_memory_context_text(mem_root_override, in.daemon_cfg->state_dir, *in.session_id, *in.mem_pol, effective_query, &mem_ctx)) {
       if (agent_session_t* tmp = clone_session_with_memory_context(in.session, mem_ctx)) {
         ephemeral_seed.reset(tmp);
         seed_for_run = tmp;

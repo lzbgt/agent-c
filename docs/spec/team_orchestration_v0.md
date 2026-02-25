@@ -1,7 +1,7 @@
 # Team Orchestration v0 (agentd + broker)
 
 Date: 2026-02-19
-Status: v0.8 (broker team registry CRUD + sync/async team runs + quorum enforcement + runtime member updates + run list implemented; shared memory scope pending; team-run session mapping + moderator fan-out underway)
+Status: v0.9 (broker team registry CRUD + sync/async team runs + quorum enforcement + runtime member updates + run list implemented; shared memory scope wiring shipped; team-run session mapping + moderator fan-out underway)
 
 This spec defines a **team orchestration model** for multi-agent runs that goes beyond
 single-run tool loops. It formalizes agent groups, roles, shared memory scopes, and
@@ -186,7 +186,7 @@ created_unix_ms: integer
 tags: string[]
 policy_ref: string | null
 shared_memory_scope_id: string | null
-meta: object | null            # optional; includes role_overrides, role_graph, role_instructions
+meta: object | null            # optional; includes role_overrides, role_graph, role_instructions, shared_memory_mode
 ```
 
 ### Team member
@@ -224,7 +224,7 @@ quorum_mode: string           # strict|best_effort
 ```
 scope_id: string
 team_id: string
-mode: string                  # read_only|read_write
+mode: string                  # read_only|read_write (stored in team.meta.shared_memory_mode)
 retention_policy_ref: string | null
 ```
 
@@ -354,7 +354,8 @@ Run requests may accept:
   "team_id": "...",
   "mode": "sync" | "async",
   "role": "planner",
-  "shared_memory": { "scope_id": "...", "mode": "read_only" },
+  "shared_memory_scope_id": "...",
+  "shared_memory_mode": "read_only" | "read_write",
   "quorum_policy": { "mode": "auto" | "off" },
   "approvals": [ { "member_id": "...", "rule_id": "...", "decision": "approve" } ],
   "runtime_members": [
@@ -422,7 +423,8 @@ Team runs may read/write a shared memory scope.
 Rules:
 - Team scopes are **distinct** from user session memory.
 - `read_only` blocks writes from members.
-- Memory queries may include `scope_id` and `mode` in parameters.
+- The broker injects `memory_scope_id` + `memory_scope_mode` into each member run.
+- Member runs read/write under `state_dir/memory_scopes/<scope_id>` on the target agentd.
 
 ---
 

@@ -711,6 +711,10 @@ agent_status_t toolset_host_create(const HostToolsetConfig& cfg, agent_tool_regi
     ctx->sessions_root_dir = std::filesystem::path(cfg.sessions_root_dir);
   }
   ctx->session_id = cfg.session_id;
+  if (!cfg.memory_root_override.empty()) {
+    ctx->memory_root_override = std::filesystem::path(cfg.memory_root_override);
+  }
+  ctx->memory_write_allowed = cfg.memory_write_allowed;
   ctx->read_client_events_tail_cb = cfg.read_client_events_tail;
   ctx->read_client_events_tail_ctx = cfg.read_client_events_tail_ctx;
   {

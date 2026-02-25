@@ -137,6 +137,28 @@ func normalizeRoleList(roles []string) []string {
 	return out
 }
 
+func parseSharedMemoryMode(raw any) (string, error) {
+	if raw == nil {
+		return "", nil
+	}
+	s, ok := raw.(string)
+	if !ok {
+		return "", fmt.Errorf("shared_memory_mode must be string")
+	}
+	mode := strings.ToLower(strings.TrimSpace(s))
+	if mode == "" {
+		return "", nil
+	}
+	switch mode {
+	case "read_only", "readonly":
+		return "read_only", nil
+	case "read_write", "readwrite":
+		return "read_write", nil
+	default:
+		return "", fmt.Errorf("invalid shared_memory_mode (read_only|read_write)")
+	}
+}
+
 func parseGoalContract(raw any) (map[string]any, error) {
 	if raw == nil {
 		return nil, nil

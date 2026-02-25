@@ -21,6 +21,17 @@ These are host tools exposed to the model when a daemon session context is avail
 - `memory_timeline` — retrieve bounded context around a citation (`path:line`)
 - `memory_put` — consolidate/overwrite memory files (legacy mode), or structured upsert (`entries`)
 
+## Shared memory scopes
+
+Runs can opt into a **shared memory scope** (for multi-agent collaboration) by setting:
+
+- `memory_scope_id` — scope identifier (rooted at `state_dir/memory_scopes/<id>`).
+- `memory_scope_mode` — `"read_write"` (default) or `"read_only"` (blocks memory writes).
+
+When set, memory tools and memory-context injection read/write under the scope root instead
+of the default `state_dir/memory`. This keeps team runs isolated from the global memory
+unless explicitly configured to share a scope.
+
 ## Memory context injection (runs)
 
 When `tools="host"`, agentd can inject a **durable memory context** as a system message before the run:

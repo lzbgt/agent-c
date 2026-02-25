@@ -635,6 +635,13 @@ schemas:
             type: array
             items: { type: string }
             description: Role allowlist for eligible team members.
+          shared_memory_scope_id:
+            type: string
+            description: Shared memory scope id injected into member runs.
+          shared_memory_mode:
+            type: string
+            enum: [read_only, read_write]
+            description: Shared memory mode (read_only blocks memory writes).
           max_concurrency:
             type: integer
             format: int32
@@ -753,6 +760,8 @@ schemas:
       created_unix_ms: { type: integer, format: int64 }
       mode: { type: string }
       run_overrides_mode: { type: string }
+      shared_memory_scope_id: { type: string }
+      shared_memory_mode: { type: string }
       goal_contract:
         $ref: "#/components/schemas/TeamRunGoalContract"
       goal_events:

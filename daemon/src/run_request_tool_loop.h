@@ -31,6 +31,7 @@ struct RunRequestToolLoopInput {
   bool no_default_system = false;
   const MemoryContextPolicy* mem_pol = nullptr;
   const std::string* mem_query = nullptr;
+  const std::string* memory_root_override = nullptr;
   size_t max_steps = 0;
   size_t max_tool_calls_total = 0;
   size_t max_tool_calls_per_tool = 0;

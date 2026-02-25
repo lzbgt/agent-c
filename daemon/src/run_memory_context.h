@@ -42,6 +42,7 @@ struct MemoryContextPolicy {
 };
 
 bool build_memory_context_text(
+  const std::string& mem_root,
   const std::string& state_dir,
   const std::string& session_id,
   const MemoryContextPolicy& pol,

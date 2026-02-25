@@ -59,6 +59,13 @@ struct HostToolsetConfig {
   std::string sessions_root_dir;
   std::string session_id;
 
+  // Optional override for durable memory root (defaults to <state_dir>/memory).
+  // When set, memory_* tools read/write under this path.
+  std::string memory_root_override;
+  // When false, memory write tools (memory_write/memory_observe/memory_put) are disabled,
+  // while read-only memory tools remain available.
+  bool memory_write_allowed = true;
+
   // Optional: DB-backed session client event log reader (preferred).
   //
   // This enables tools like `client_wait_event` and `client_peek` to read session client events even when

@@ -158,6 +158,8 @@ struct HostToolCtx {
   // can read session-scoped UI client events.
   std::filesystem::path sessions_root_dir;
   std::string session_id;
+  std::filesystem::path memory_root_override;
+  bool memory_write_allowed = true;
   // Optional: prefer DB-backed client events (agentd canonical state).
   HostReadClientEventsTailCallback read_client_events_tail_cb = nullptr;
   void* read_client_events_tail_ctx = nullptr;
