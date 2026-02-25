@@ -49,6 +49,10 @@ type orchestratorRun struct {
 	GoalContract      map[string]any `json:"goal_contract"`
 	RolePlanSnapshot  map[string]any `json:"role_plan_snapshot"`
 	Meta              map[string]any `json:"meta"`
+	LastHeartbeatUnix *int64         `json:"last_heartbeat_unix_ms"`
+	HeartbeatAgeMS    *int64         `json:"heartbeat_age_ms"`
+	LeaseTimeoutMS    *int64         `json:"lease_timeout_ms"`
+	LeaseStatus       string         `json:"lease_status"`
 }
 
 type orchestratorRunListResponse struct {
@@ -252,6 +256,58 @@ func shouldAutonomous(meta map[string]any) bool {
 	return true
 }
 
+func allowLeaseTakeover(meta map[string]any) bool {
+	if meta == nil {
+		return true
+	}
+	if v, ok := meta["allow_takeover"]; ok {
+		if b, ok := asBool(v); ok {
+			return b
+		}
+	}
+	return true
+}
+
+func leaseStatusForRun(run orchestratorRun, meta map[string]any) string {
+	if run.LeaseStatus != "" {
+		return strings.ToLower(strings.TrimSpace(run.LeaseStatus))
+	}
+	timeoutMs := leaseTimeoutForRun(run, meta)
+	if run.LastHeartbeatUnix == nil {
+		if timeoutMs > 0 {
+			return "missing"
+		}
+		return ""
+	}
+	if timeoutMs <= 0 {
+		return "unknown"
+	}
+	age := time.Now().UTC().UnixMilli() - *run.LastHeartbeatUnix
+	if age > timeoutMs {
+		return "stale"
+	}
+	return "ok"
+}
+
+func leaseTimeoutForRun(run orchestratorRun, meta map[string]any) int64 {
+	if run.LeaseTimeoutMS != nil && *run.LeaseTimeoutMS > 0 {
+		return *run.LeaseTimeoutMS
+	}
+	if meta == nil {
+		return 0
+	}
+	if v, ok := meta["lease_timeout_ms"]; ok {
+		if n, ok := asInt64(v); ok && n > 0 {
+			return n
+		}
+	} else if v, ok := meta["heartbeat_timeout_ms"]; ok {
+		if n, ok := asInt64(v); ok && n > 0 {
+			return n
+		}
+	}
+	return 0
+}
+
 func handleRun(ctx context.Context, client *http.Client, cfg config, teamID string, run orchestratorRun) error {
 	status := strings.ToLower(strings.TrimSpace(run.Status))
 	if status == "" {
@@ -262,8 +318,27 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 		meta["orchestrator_id"] = cfg.orchestratorID
 	}
 	owner := strings.TrimSpace(asString(meta["orchestrator_owner"]))
+	leaseStatus := leaseStatusForRun(run, meta)
 	if owner != "" && owner != cfg.orchestratorID {
-		return nil
+		if leaseStatus == "" {
+			return nil
+		}
+		if leaseStatus != "stale" && leaseStatus != "missing" {
+			return nil
+		}
+		if !allowLeaseTakeover(meta) {
+			return nil
+		}
+		meta["orchestrator_owner_prev"] = owner
+		meta["orchestrator_owner"] = cfg.orchestratorID
+		meta["orchestrator_owner_claimed_unix_ms"] = time.Now().UTC().UnixMilli()
+		if _, err := updateOrchestratorRun(ctx, client, cfg, teamID, run.OrchestratorRunID, "", meta, stringPtr(owner), nil); err != nil {
+			if isHTTPStatus(err, http.StatusConflict) {
+				return nil
+			}
+			return err
+		}
+		owner = cfg.orchestratorID
 	}
 	if owner == "" {
 		meta["orchestrator_owner"] = cfg.orchestratorID
@@ -1055,6 +1130,38 @@ func asInt(v any) (int, bool) {
 			n = n*10 + int(r-'0')
 		}
 		return n, true
+	default:
+		return 0, false
+	}
+}
+
+func asInt64(v any) (int64, bool) {
+	switch t := v.(type) {
+	case int64:
+		return t, true
+	case int:
+		return int64(t), true
+	case float64:
+		return int64(t), true
+	case json.Number:
+		n, err := t.Int64()
+		if err != nil {
+			return 0, false
+		}
+		return n, true
+	case string:
+		trimmed := strings.TrimSpace(t)
+		if trimmed == "" {
+			return 0, false
+		}
+		var out int64
+		for _, r := range trimmed {
+			if r < '0' || r > '9' {
+				return 0, false
+			}
+			out = out*10 + int64(r-'0')
+		}
+		return out, true
 	default:
 		return 0, false
 	}

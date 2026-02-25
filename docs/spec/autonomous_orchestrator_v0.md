@@ -150,6 +150,7 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
   completion_mode: "on_success"|"on_failure"|"never"  # default on_success
   progress_every_ms: number           # emit goal_progress every N ms (optional)
   drift_after_ms: number              # emit goal_drift after N ms (optional)
+  allow_takeover: true|false          # default true; allow stale-lease takeover
   handoff_queue: [{from_role,to_role,reason?,message?,data?}]  # optional queue
   run_template: { ... }               # optional /api/v1/run payload
   team_overrides: { ... }             # optional TeamRunRequest.team overrides
@@ -157,6 +158,7 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
   # loop-maintained fields
   orchestrator_owner: string
   orchestrator_owner_claimed_unix_ms: integer
+  orchestrator_owner_prev: string
   active_team_run_id: string
   team_run_history: [{team_run_id, status, updated_unix_ms}]
   spawn_requests: { role: [spawn_request_id, ...] }
