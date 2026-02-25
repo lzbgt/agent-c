@@ -24,52 +24,17 @@ import BrokerTeamRunPanel from "./BrokerTeamRunPanel";
 import BrokerOrchestratorRunPanel from "./BrokerOrchestratorRunPanel";
 import BrokerOrchestratorSpawnPanel from "./BrokerOrchestratorSpawnPanel";
 import BrokerTeamGuidancePanel from "./BrokerTeamGuidancePanel";
-import { normalizeRoleGraphEdges } from "./teamRunUtils";
-import type { RoleGraphEdge } from "./teamRunUtils";
+import {
+  fmtTs,
+  normalizeRoleGraphEdges,
+  normalizeRoleInstructionMap,
+  normalizeRolePromptMode,
+  normalizeSharedMemoryMode,
+  type RoleGraphEdge,
+} from "./teamRunUtils";
 import TeamRolePlanEditor from "./TeamRolePlanEditor";
 import { GUIDANCE_EVENT_TYPES, ORCHESTRATOR_EVENT_TYPES, TEAM_RUN_EVENT_TYPES } from "./teamRunUtils";
 import type { BrokerEventRow, TeamMemberRow, TeamQuorumRuleRow } from "./types";
-
-const fmtTs = (ms?: number | null) => {
-  if (!ms || !Number.isFinite(ms)) return "";
-  try {
-    return new Date(ms).toLocaleString();
-  } catch {
-    return String(ms);
-  }
-};
-
-const normalizeRoleInstructionMap = (raw: any): Record<string, string> => {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const out: Record<string, string> = {};
-  for (const [key, value] of Object.entries(raw)) {
-    const role = String(key || "").trim().toLowerCase();
-    if (!role) continue;
-    let instr = "";
-    if (typeof value === "string") instr = value;
-    else if (value && typeof value === "object" && typeof (value as any).instruction === "string") {
-      instr = String((value as any).instruction);
-    }
-    instr = instr.trim();
-    if (instr) out[role] = instr;
-  }
-  return out;
-};
-
-const normalizeRolePromptMode = (raw: any): string => {
-  if (typeof raw !== "string") return "prepend";
-  const mode = raw.trim().toLowerCase();
-  if (mode === "append" || mode === "replace") return mode;
-  return "prepend";
-};
-
-const normalizeSharedMemoryMode = (raw: any): string => {
-  if (typeof raw !== "string") return "read_write";
-  const mode = raw.trim().toLowerCase();
-  if (mode === "read_only" || mode === "readonly") return "read_only";
-  if (mode === "read_write" || mode === "readwrite") return "read_write";
-  return "read_write";
-};
 
 const TEAM_EVENTS_MAX = 200;
 const TEAM_EVENTS_PREFS_KIND = "webui-team-events";
