@@ -66,9 +66,9 @@ Future (v1+):
 
 3) **Dynamic runtime member allocation**
    - Broker supports an allocator endpoint and `auto_allocate_roles` on team runs.
-   - The orchestrator loop now attempts allocator-backed runtime member allocation when
+   - Orchestrator loop attempts allocator-backed runtime member allocation when
      `auto_allocate_missing_roles` are reported on the active team run, then falls back
-     to spawn requests if roles remain missing.
+     to spawn requests if roles remain missing (validation pending via compose smoke).
 
 4) **Automated spawn request issuance**
    - Spawn requests are persisted + evented and adapters can fulfill them.
