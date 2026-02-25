@@ -1103,6 +1103,8 @@ func (s *Server) handleTeamRunGoalUpdate(w http.ResponseWriter, r *http.Request,
 			publishTeamGoalEvent(s.cfg.Events, p.Sub, "team_goal_drift", payload, traceID)
 		case "spawn_validation":
 			publishTeamGoalEvent(s.cfg.Events, p.Sub, "team_goal_spawn_validation", payload, traceID)
+		case "replan_resume":
+			publishTeamGoalEvent(s.cfg.Events, p.Sub, "team_goal_replan_resume", payload, traceID)
 		}
 	}
 	resp := map[string]any{

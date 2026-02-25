@@ -301,6 +301,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-26: added `drift_action=replan` to pause and emit replan guidance, auto-resume after ack, optional new run + goal overrides (no auto goal update yet).
   - 2026-02-26: added receipt-based approval thresholds for replan resume (`replan_ack_*`).
   - 2026-02-26: emit `replan_resume` goal event with receipt summary for evidence.
+  - 2026-02-26: allow `replan_resume` goal events and SSE `team_goal_replan_resume`.
 - [ ] W=8 — Capacity-based autoscale: spawn or retire runtime members based on backlog/latency signals (not only missing roles).
 - [ ] W=9 — Scheduling + isolation MVP: admission control, per-run budgets, and tool execution caps with evidence logs.
 - [ ] W=8 — Data governance controls: retention policy config, export/erase endpoints, and redaction-aware evidence bundles.

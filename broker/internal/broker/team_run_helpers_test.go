@@ -75,6 +75,20 @@ func TestTeamRunMemberJobSummary(t *testing.T) {
 	}
 }
 
+func TestParseGoalEventAllowsReplanResume(t *testing.T) {
+	_, err := parseGoalEvent(map[string]any{
+		"type":    "replan_resume",
+		"message": "resume after replan",
+		"data": map[string]any{
+			"guidance_id": "g1",
+		},
+		"ts_unix_ms": int64(123),
+	})
+	if err != nil {
+		t.Fatalf("expected replan_resume event to parse, got %v", err)
+	}
+}
+
 func TestAllocateRuntimeMembersByRole(t *testing.T) {
 	candidates := []runtimeAgentCandidate{
 		{AgentID: "agent-a", DeploymentID: "dep-a"},

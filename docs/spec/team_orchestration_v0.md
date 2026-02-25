@@ -449,6 +449,7 @@ Broker SSE events surfaced for team orchestration:
 - `team_goal_progress`: goal checkpoint event emitted by orchestrator loop.
 - `team_goal_drift`: goal drift event emitted by orchestrator loop.
 - `team_goal_spawn_validation`: spawn meta validation error surfaced by orchestrator loop.
+- `team_goal_replan_resume`: replan guidance acked and orchestrator resumed.
 - `team_handoff`: explicit handoff between roles (emitted on `/runs/{id}/handoff`).
 
 Future additions (schemas TBD):

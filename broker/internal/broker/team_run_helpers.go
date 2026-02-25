@@ -309,8 +309,10 @@ func parseGoalEvent(raw any) (teamGoalEventInput, error) {
 		return teamGoalEventInput{}, fmt.Errorf("goal event type required")
 	}
 	eventType := strings.ToLower(strings.TrimSpace(typeRaw))
-	if eventType != "progress" && eventType != "drift" {
-		return teamGoalEventInput{}, fmt.Errorf("goal event type must be progress or drift")
+	switch eventType {
+	case "progress", "drift", "spawn_validation", "replan_resume":
+	default:
+		return teamGoalEventInput{}, fmt.Errorf("goal event type must be progress, drift, spawn_validation, or replan_resume")
 	}
 	message := ""
 	if v, ok := obj["message"]; ok {
