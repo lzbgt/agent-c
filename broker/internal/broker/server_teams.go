@@ -956,13 +956,16 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 		"run":  runMap,
 		"team": teamMeta,
 	}
-	if _, err := s.cfg.DB.CreateTeamRun(r.Context(), teamRunID, teamID, "running", p.Sub, mustJSON(runPayload)); err != nil {
+	run, err := s.cfg.DB.CreateTeamRun(r.Context(), teamRunID, teamID, "running", p.Sub, mustJSON(runPayload))
+	if err != nil {
 		writeErrorJSON(w, "create team run failed", http.StatusBadRequest)
 		return
 	}
+	publishTeamRunCreated(s.cfg.Events, p.Sub, teamID, teamRunID, "running", options.Mode, p.Sub, run.CreatedAt.UnixMilli(), nil, traceID)
 	if len(approvals) > 0 {
 		if err := s.persistTeamRunApprovals(r.Context(), teamID, teamRunID, teamRunRules, approvals, membersByID, p.Sub); err != nil {
 			_ = s.cfg.DB.UpdateTeamRunStatus(r.Context(), teamID, teamRunID, "failed")
+			publishTeamRunStatus(s.cfg.Events, p.Sub, teamID, teamRunID, "failed", options.Mode, run.CreatedAt.UnixMilli(), nil, traceID)
 			writeErrorJSON(w, err.Error(), http.StatusBadRequest)
 			return
 		}
@@ -1007,11 +1010,12 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 		writeErrorJSON(w, "update team run failed", http.StatusInternalServerError)
 		return
 	}
-	run, err := s.cfg.DB.GetTeamRun(r.Context(), teamID, teamRunID)
+	run, err = s.cfg.DB.GetTeamRun(r.Context(), teamID, teamRunID)
 	if err != nil {
 		writeErrorJSON(w, "team run not found", http.StatusNotFound)
 		return
 	}
+	publishTeamRunStatus(s.cfg.Events, p.Sub, teamID, teamRunID, run.Status, options.Mode, run.CreatedAt.UnixMilli(), nil, traceID)
 	writeJSON(w, map[string]any{
 		"ok":              true,
 		"team_id":         run.TeamID,
@@ -1160,9 +1164,13 @@ func (s *Server) handleTeamRunCancel(w http.ResponseWriter, r *http.Request, tea
 		options = parsed
 	}
 	traceID := traceIDFromContext(r.Context())
+	prevStatus := run.Status
 	if _, err := s.cancelTeamRunJobs(r.Context(), p, run, runPayload, teamMeta, options.MaxConcurrency, traceID); err != nil {
 		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+	if run.Status != prevStatus {
+		publishTeamRunStatus(s.cfg.Events, p.Sub, teamID, teamRunID, run.Status, mode, run.CreatedAt.UnixMilli(), teamRunMemberJobSummary(teamMeta), traceID)
 	}
 	resp, err := s.teamRunStatusResponse(r.Context(), p, run)
 	if err != nil {
@@ -1748,4 +1756,73 @@ func publishTeamRuntimeMembersUpdated(
 		Payload: payload,
 	}
 	hub.PublishTo([]string{userSub}, ev)
+}
+
+func publishTeamRunCreated(
+	hub *events.Hub,
+	userSub,
+	teamID,
+	teamRunID,
+	status,
+	mode,
+	createdBy string,
+	createdUnixMs int64,
+	summary map[string]any,
+	traceID string,
+) {
+	if hub == nil || userSub == "" {
+		return
+	}
+	payload := teamRunEventPayload(teamID, teamRunID, status, mode, createdUnixMs, summary)
+	if createdBy != "" {
+		payload["created_by"] = createdBy
+	}
+	ev := events.Event{
+		Type:    "team_run_created",
+		UserSub: userSub,
+		TraceID: traceID,
+		Payload: payload,
+	}
+	hub.PublishTo([]string{userSub}, ev)
+}
+
+func publishTeamRunStatus(
+	hub *events.Hub,
+	userSub,
+	teamID,
+	teamRunID,
+	status,
+	mode string,
+	createdUnixMs int64,
+	summary map[string]any,
+	traceID string,
+) {
+	if hub == nil || userSub == "" {
+		return
+	}
+	ev := events.Event{
+		Type:    "team_run_status",
+		UserSub: userSub,
+		TraceID: traceID,
+		Payload: teamRunEventPayload(teamID, teamRunID, status, mode, createdUnixMs, summary),
+	}
+	hub.PublishTo([]string{userSub}, ev)
+}
+
+func teamRunEventPayload(teamID, teamRunID, status, mode string, createdUnixMs int64, summary map[string]any) map[string]any {
+	payload := map[string]any{
+		"team_id":     teamID,
+		"team_run_id": teamRunID,
+		"status":      status,
+	}
+	if mode != "" {
+		payload["mode"] = mode
+	}
+	if createdUnixMs > 0 {
+		payload["created_unix_ms"] = createdUnixMs
+	}
+	if summary != nil {
+		payload["member_job_summary"] = summary
+	}
+	return payload
 }

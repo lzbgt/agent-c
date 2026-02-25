@@ -102,6 +102,48 @@ func TestPublishTeamQuorumResultDecisionTokens(t *testing.T) {
 	}
 }
 
+func TestPublishTeamRunEvents(t *testing.T) {
+	hub := events.New()
+	ch, cancel := hub.Subscribe("user-1")
+	defer cancel()
+
+	readEvent := func(label string) events.Event {
+		t.Helper()
+		select {
+		case ev := <-ch:
+			return ev
+		case <-time.After(500 * time.Millisecond):
+			t.Fatalf("timeout waiting for event: %s", label)
+		}
+		return events.Event{}
+	}
+
+	summary := map[string]any{"total": 2}
+	publishTeamRunCreated(hub, "user-1", "team-1", "run-1", "running", "async", "user-1", 123, summary, "trace-1")
+	ev := readEvent("created")
+	if ev.Type != "team_run_created" {
+		t.Fatalf("expected team_run_created, got %s", ev.Type)
+	}
+	if ev.Payload["team_id"] != "team-1" || ev.Payload["team_run_id"] != "run-1" {
+		t.Fatalf("unexpected payload ids: %v", ev.Payload)
+	}
+	if ev.Payload["created_by"] != "user-1" {
+		t.Fatalf("expected created_by user-1, got %v", ev.Payload["created_by"])
+	}
+	if ev.Payload["member_job_summary"] == nil {
+		t.Fatalf("expected member_job_summary in payload")
+	}
+
+	publishTeamRunStatus(hub, "user-1", "team-1", "run-1", "succeeded", "async", 123, summary, "trace-2")
+	ev = readEvent("status")
+	if ev.Type != "team_run_status" {
+		t.Fatalf("expected team_run_status, got %s", ev.Type)
+	}
+	if ev.Payload["status"] != "succeeded" {
+		t.Fatalf("expected status succeeded, got %v", ev.Payload["status"])
+	}
+}
+
 func TestSanitizeRunOverrides(t *testing.T) {
 	raw := map[string]any{
 		"model":            " gpt-4.1-mini ",

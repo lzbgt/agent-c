@@ -181,7 +181,8 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - [x] 2026-02-25: Added SSE compose smoke for runtime member update events.
   - [x] 2026-02-25: Added async team runs (`team.mode=async`) with `run_async` fan-out, persisted member job metadata, and status reconciliation on lookup (Broker + WebUI + OpenAPI/docs).
   - [x] 2026-02-25: Add async team run cancellation (broker fan-out `/api/v1/job/cancel`) + aggregated member job summary (broker/WebUI/docs + unit test).
-  - 2026-02-25: Added team run list endpoint + WebUI recent runs list (auto-refresh) for nonblocking monitoring.
+  - 2026-02-25: Added team run list endpoint + WebUI recent runs list (live SSE updates, no polling) for nonblocking monitoring.
+  - 2026-02-25: Added `team_run_created` + `team_run_status` broker SSE events to drive live run list refresh.
 - [x] W=9 — Approval queues + tool-level quorum gating: WebUI approval queue, tool-level quorum enforcement, and SSE updates for approval state.
   - 2026-02-24: Added agentd approval DB tables, approval gate, approval APIs, and approval run events.
   - 2026-02-24: Added approval event schemas + fixtures + spec tests.

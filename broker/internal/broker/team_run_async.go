@@ -139,10 +139,13 @@ func (s *Server) executeTeamRunAsync(
 	if err != nil {
 		return nil, errors.New("create team run failed")
 	}
+	summary := teamRunMemberJobSummary(teamMeta)
+	publishTeamRunCreated(s.cfg.Events, p.Sub, teamID, teamRunID, status, options.Mode, p.Sub, run.CreatedAt.UnixMilli(), summary, traceID)
 
 	if len(approvals) > 0 {
 		if err := s.persistTeamRunApprovals(ctx, teamID, teamRunID, teamRunRules, approvals, membersByID, p.Sub); err != nil {
 			_ = s.cfg.DB.UpdateTeamRunStatus(ctx, teamID, teamRunID, "failed")
+			publishTeamRunStatus(s.cfg.Events, p.Sub, teamID, teamRunID, "failed", options.Mode, run.CreatedAt.UnixMilli(), summary, traceID)
 			return nil, err
 		}
 	}
@@ -180,6 +183,7 @@ func (s *Server) reconcileTeamRunJobs(ctx context.Context, p *Principal, run *db
 	if p == nil {
 		return run.Status, nil
 	}
+	prevStatus := run.Status
 	items := teamRunMemberJobsFromMeta(teamMeta)
 	if len(items) == 0 {
 		return run.Status, nil
@@ -349,7 +353,28 @@ func (s *Server) reconcileTeamRunJobs(ctx context.Context, p *Principal, run *db
 	if overall != run.Status {
 		_ = s.cfg.DB.UpdateTeamRunStatus(ctx, run.TeamID, run.TeamRunID, overall)
 		run.Status = overall
+		mode := "async"
+		if rawMode, ok := teamMeta["mode"].(string); ok {
+			mode = strings.ToLower(strings.TrimSpace(rawMode))
+			if mode == "" {
+				mode = "async"
+			}
+		}
+		publishTeamRunStatus(
+			s.cfg.Events,
+			p.Sub,
+			run.TeamID,
+			run.TeamRunID,
+			overall,
+			mode,
+			run.CreatedAt.UnixMilli(),
+			teamRunMemberJobSummary(teamMeta),
+			traceIDFromContext(ctx),
+		)
 	}
 
-	return overall, nil
+	if overall != prevStatus {
+		return overall, nil
+	}
+	return run.Status, nil
 }

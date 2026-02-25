@@ -364,13 +364,19 @@ Rules:
 
 ---
 
-## Events (proposed)
+## Events
 
-New run events (names + schemas to be defined):
+Broker SSE events surfaced for team orchestration:
 
-- `team_handoff`: explicit handoff between roles.
+- `team_run_created`: run record persisted (includes team/run ids, status, mode, created time, optional member job summary).
+- `team_run_status`: status transitions for a run (same core payload fields as created).
 - `team_quorum_request`: quorum gate opened for approval.
 - `team_quorum_result`: approvals received and decision outcome.
+- `team_runtime_members_updated`: runtime member set changed for a run.
+
+Future additions (schemas TBD):
+
+- `team_handoff`: explicit handoff between roles.
 - `team_member_result`: per-member run summary.
 
 Existing `policy_decision` events remain valid for tool/limit enforcement.

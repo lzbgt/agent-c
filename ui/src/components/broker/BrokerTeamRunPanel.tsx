@@ -45,6 +45,14 @@ const fmtSummary = (summary?: any) => {
   return parts.join(" · ");
 };
 
+const TEAM_RUN_EVENT_TYPES = new Set([
+  "team_run_created",
+  "team_run_status",
+  "team_runtime_members_updated",
+  "team_quorum_request",
+  "team_quorum_result",
+]);
+
 export type BrokerTeamRunPanelProps = {
   base: string;
   auth: ApiAuth;
@@ -279,9 +287,10 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const [recentRuns, setRecentRuns] = React.useState<any[]>([]);
   const [recentRunsBusy, setRecentRunsBusy] = React.useState<boolean>(false);
   const [recentRunsError, setRecentRunsError] = React.useState<string | null>(null);
-  const [recentRunsAuto, setRecentRunsAuto] = useLocalStorageState<boolean>("agentui.teamRunListAuto", false);
+  const [recentRunsLive, setRecentRunsLive] = useLocalStorageState<boolean>("agentui.teamRunListAuto", false);
   const [recentRunsLimit, setRecentRunsLimit] = useLocalStorageState<number>("agentui.teamRunListLimit", 10);
   const [recentRunsStatus, setRecentRunsStatus] = useLocalStorageState<string>("agentui.teamRunListStatus", "");
+  const recentRunsEventRef = React.useRef<string>("");
 
   const approvalRunIdTrimmed = String(approvalRunId || runLookupId || "").trim();
   const recentRunsItems = Array.isArray(recentRuns) ? recentRuns : [];
@@ -474,12 +483,28 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   }, [teamIdTrimmed, loadRecentRuns]);
 
   React.useEffect(() => {
-    if (!recentRunsAuto) return;
-    const handle = window.setInterval(() => {
-      void loadRecentRuns();
-    }, 5000);
-    return () => window.clearInterval(handle);
-  }, [recentRunsAuto, loadRecentRuns]);
+    if (!recentRunsLive || !props.canQuery) return;
+    const rows = Array.isArray(props.quorumEvents) ? props.quorumEvents : [];
+    if (rows.length === 0) return;
+    let nextKey = "";
+    for (let i = rows.length - 1; i >= 0; i -= 1) {
+      const ev = rows[i];
+      if (!ev) continue;
+      const type = String(ev?.type || "");
+      if (!TEAM_RUN_EVENT_TYPES.has(type)) continue;
+      const evTeamId = String(ev?.payload?.team_id || "");
+      if (teamIdTrimmed && evTeamId && evTeamId !== teamIdTrimmed) continue;
+      const evRunId = String(ev?.payload?.team_run_id || "");
+      nextKey = ev?.event_id
+        ? `id:${String(ev.event_id)}`
+        : `ts:${Number(ev?.ts_unix_ms || 0)}|type:${type}|run:${evRunId}`;
+      break;
+    }
+    if (!nextKey) return;
+    if (recentRunsEventRef.current === nextKey) return;
+    recentRunsEventRef.current = nextKey;
+    void loadRecentRuns();
+  }, [recentRunsLive, props.canQuery, props.quorumEvents, teamIdTrimmed, loadRecentRuns]);
 
   const handleRunCancel = async () => {
     const runId = resolveRunId();
@@ -1844,10 +1869,10 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
               <input
                 type="checkbox"
                 className="rounded border-white/20 bg-black/40"
-                checked={recentRunsAuto}
-                onChange={(e) => setRecentRunsAuto(e.target.checked)}
+                checked={recentRunsLive}
+                onChange={(e) => setRecentRunsLive(e.target.checked)}
               />
-              auto
+              live (SSE)
             </label>
             <button
               className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
