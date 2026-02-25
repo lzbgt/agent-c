@@ -241,6 +241,25 @@ if [[ -z "${TAKEOVER_ID}" ]]; then
   exit 1
 fi
 
+BAD_RUN_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    -H "Content-Type: application/json" \
+    -d '{"goal":"Loop bad spawn meta","status":"running","meta":{"team_mode":"async","spawn_missing_roles":true,"spawn_count_by_role":{"planner":0},"spawn_requirements_by_role":{"executor":"bad"}}}' \
+    "${BROKER_BASE}/v1/teams/${TEAM_ID}/orchestrator/runs"
+)"
+BAD_RUN_ID="$(python3 - <<PY
+import json
+obj = json.loads(r'''${BAD_RUN_JSON}''')
+run = obj.get("run") or {}
+print(run.get("orchestrator_run_id",""))
+PY
+)"
+if [[ -z "${BAD_RUN_ID}" ]]; then
+  echo "failed to create bad-meta run: ${BAD_RUN_JSON}" >&2
+  exit 1
+fi
+
 ORCH_LOG="${LOG_DIR}/broker_orchestrator_loop.log"
 (
   cd "${ROOT}/broker"
@@ -293,6 +312,42 @@ if str(preq.get("region","")) != "eu" or str(preq.get("tier","")) != "gpu":
   raise SystemExit(1)
 if str(ereq.get("region","")) != "us":
   print("executor requirements mismatch", executor, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+BAD_RUN_GET_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    "${BROKER_BASE}/v1/teams/${TEAM_ID}/orchestrator/runs/${BAD_RUN_ID}"
+)"
+BAD_TEAM_RUN_ID="$(python3 - <<PY
+import json
+obj = json.loads(r'''${BAD_RUN_GET_JSON}''')
+run = obj.get("run") or {}
+meta = run.get("meta") or {}
+print(meta.get("active_team_run_id",""))
+PY
+)"
+if [[ -z "${BAD_TEAM_RUN_ID}" ]]; then
+  echo "failed to resolve bad run team_run_id: ${BAD_RUN_GET_JSON}" >&2
+  exit 1
+fi
+
+BAD_TEAM_RUN_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    "${BROKER_BASE}/v1/teams/${TEAM_ID}/runs/${BAD_TEAM_RUN_ID}"
+)"
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${BAD_TEAM_RUN_JSON}''')
+events = obj.get("goal_events") or []
+if not isinstance(events, list) or len(events) < 1:
+  print("expected goal_events for bad spawn meta", obj, file=sys.stderr)
+  raise SystemExit(1)
+types = [str(e.get("type","")) for e in events if isinstance(e, dict)]
+if "spawn_validation" not in types:
+  print("expected spawn_validation goal event", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 
