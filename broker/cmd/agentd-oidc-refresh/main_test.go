@@ -51,6 +51,18 @@ func TestResolveTokenURLFromKeycloakBase(t *testing.T) {
 	}
 }
 
+func TestResolveTokenURLIssuerMissingTokenEndpoint(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{"issuer": "noop"})
+	}))
+	defer ts.Close()
+
+	cfg := config{issuer: ts.URL, clientID: "client", username: "user", password: "pass"}
+	if _, err := resolveTokenURL(context.Background(), ts.Client(), &cfg); err == nil {
+		t.Fatal("expected error for missing token_endpoint")
+	}
+}
+
 func TestFetchTokenPasswordGrant(t *testing.T) {
 	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
@@ -107,6 +119,32 @@ func TestFetchTokenRefreshGrant(t *testing.T) {
 	}
 	if resp.AccessToken != "tok2" {
 		t.Fatalf("expected access token tok2, got %q", resp.AccessToken)
+	}
+}
+
+func TestFetchTokenClientCredentialsGrant(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		vals, _ := url.ParseQuery(string(body))
+		if vals.Get("grant_type") != "client_credentials" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		if vals.Get("client_id") != "client" || vals.Get("client_secret") != "secret" {
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(tokenResponse{AccessToken: "tok3", ExpiresIn: 30})
+	}))
+	defer ts.Close()
+
+	cfg := config{tokenURL: ts.URL, clientID: "client", clientSecret: "secret"}
+	resp, err := fetchToken(context.Background(), ts.Client(), &cfg)
+	if err != nil {
+		t.Fatalf("fetchToken error: %v", err)
+	}
+	if resp.AccessToken != "tok3" {
+		t.Fatalf("expected access token tok3, got %q", resp.AccessToken)
 	}
 }
 
