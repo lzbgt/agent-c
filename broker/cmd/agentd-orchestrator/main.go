@@ -629,6 +629,9 @@ func processGuidance(
 		} else if item.CreatedUnixMS > runMaxTS {
 			runMaxTS = item.CreatedUnixMS
 		}
+		if item.TargetOrchestrator != "" && item.TargetOrchestrator != cfg.orchestratorID {
+			continue
+		}
 		status := strings.ToLower(strings.TrimSpace(item.Status))
 		if status != "" && status != "open" {
 			ackedSet[id] = true

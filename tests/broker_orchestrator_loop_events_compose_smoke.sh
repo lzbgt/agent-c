@@ -380,6 +380,29 @@ if [[ -z "${GLOBAL_GUIDANCE_ID}" ]]; then
   exit 1
 fi
 
+OTHER_GUIDANCE_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    -H "Content-Type: application/json" \
+    -d "{\"guidance_id\":\"events_guidance_other_${TEAM_RUN_ID}\",\"kind\":\"directive\",\"priority\":\"low\",\"message\":\"Guidance: other orch.\",\"target_orchestrator_id\":\"other_orch\"}" \
+    "${BROKER_BASE}/v1/teams/${TEAM_ID}/guidance"
+)"
+OTHER_GUIDANCE_ID="$(python3 - <<PY
+import json, sys
+obj = json.loads(r'''${OTHER_GUIDANCE_JSON}''')
+guidance = obj.get("guidance") or {}
+gid = str(guidance.get("guidance_id",""))
+if not gid:
+  print("failed to create other guidance", obj, file=sys.stderr)
+  raise SystemExit(1)
+print(gid)
+PY
+)"
+if [[ -z "${OTHER_GUIDANCE_ID}" ]]; then
+  echo "failed to parse other guidance id: ${OTHER_GUIDANCE_JSON}" >&2
+  exit 1
+fi
+
 (
   cd "${ROOT}/broker"
   go run ./cmd/agentd-orchestrator \
@@ -451,6 +474,26 @@ if str(guidance.get("guidance_id","")) != "${GLOBAL_GUIDANCE_ID}":
   raise SystemExit(1)
 if str(guidance.get("status","")) != "acked":
   print("global guidance not acked", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+OTHER_GUIDANCE_GET_JSON="$(
+  curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
+    -H "Authorization: Bearer ${OIDC_JWT}" \
+    "${BROKER_BASE}/v1/teams/${TEAM_ID}/guidance/${OTHER_GUIDANCE_ID}"
+)"
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${OTHER_GUIDANCE_GET_JSON}''')
+guidance = obj.get("guidance") or {}
+if not obj.get("ok"):
+  print("other guidance fetch failed", obj, file=sys.stderr)
+  raise SystemExit(1)
+if str(guidance.get("guidance_id","")) != "${OTHER_GUIDANCE_ID}":
+  print("other guidance id mismatch", obj, file=sys.stderr)
+  raise SystemExit(1)
+if str(guidance.get("status","")) != "open":
+  print("other guidance should remain open", obj, file=sys.stderr)
   raise SystemExit(1)
 PY
 
