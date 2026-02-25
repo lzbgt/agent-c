@@ -10,6 +10,8 @@ UI_INSTALL=0
 REPO_GUARDS=0
 REPO_GUARDS_STRICT=0
 EVAL_PACK=0
+EVAL_PACK_BASELINE=""
+EVAL_PACK_UPDATE=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -38,9 +40,18 @@ while [[ $# -gt 0 ]]; do
       EVAL_PACK=1
       shift 1
       ;;
+    --eval-pack-baseline)
+      EVAL_PACK=1
+      EVAL_PACK_BASELINE="${2:-}"
+      shift 2
+      ;;
+    --eval-pack-update-baseline)
+      EVAL_PACK_UPDATE=1
+      shift 1
+      ;;
     -h|--help)
       cat <<'EOF'
-Usage: tools/verify.sh [--core-only] [--skip-ui] [--ui-install] [--repo-guards] [--repo-guards-strict] [--eval-pack]
+Usage: tools/verify.sh [--core-only] [--skip-ui] [--ui-install] [--repo-guards] [--repo-guards-strict] [--eval-pack] [--eval-pack-baseline <path>] [--eval-pack-update-baseline]
 
 Runs a local verification pass with timestamped logs under ./build/.
 
@@ -58,6 +69,8 @@ Guards:
 
 Eval:
   --eval-pack  Run eval pack smoke after build/tests.
+  --eval-pack-baseline <path>  Compare eval pack summary to baseline.
+  --eval-pack-update-baseline  Write current eval pack summary to baseline (requires --eval-pack-baseline).
 EOF
       exit 0
       ;;
@@ -149,7 +162,18 @@ fi
 
 if [[ "${EVAL_PACK}" == "1" ]]; then
   eval_log="${log_dir}/verify_${ts}_eval_pack.log"
-  run_logged "eval pack smoke" "${eval_log}" python3 "${ROOT}/tools/eval_pack.py" --file "${ROOT}/tools/eval_packs/eval_pack_smoke.json"
+  if [[ "${EVAL_PACK_UPDATE}" == "1" && -z "${EVAL_PACK_BASELINE}" ]]; then
+    echo "[verify] --eval-pack-update-baseline requires --eval-pack-baseline <path>" >&2
+    exit 2
+  fi
+  eval_args=(--file "${ROOT}/tools/eval_packs/eval_pack_smoke.json")
+  if [[ -n "${EVAL_PACK_BASELINE}" ]]; then
+    eval_args+=(--baseline "${EVAL_PACK_BASELINE}")
+  fi
+  if [[ "${EVAL_PACK_UPDATE}" == "1" ]]; then
+    eval_args+=(--update-baseline)
+  fi
+  run_logged "eval pack smoke" "${eval_log}" python3 "${ROOT}/tools/eval_pack.py" "${eval_args[@]}"
 fi
 
 if [[ "${SKIP_UI}" == "1" ]]; then

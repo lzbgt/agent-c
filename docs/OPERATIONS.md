@@ -31,6 +31,13 @@ python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --bas
 python3 tools/eval_pack.py --file tools/eval_packs/basic_agentd_smoke.json --baseline out/baselines/basic_agentd_smoke.summary.json --update-baseline
 ```
 
+Or via the verifier:
+
+```bash
+tools/verify.sh --eval-pack-baseline out/baselines/eval_pack_smoke.summary.json
+tools/verify.sh --eval-pack-baseline out/baselines/eval_pack_smoke.summary.json --eval-pack-update-baseline
+```
+
 Include repo hygiene guards:
 
 ```bash
