@@ -47,6 +47,7 @@ Future (v1+):
 - Moderator fan-out (directives/tasks) + event aggregation.
 - Auto-allocation: broker allocator endpoint + `auto_allocate_roles` on team runs.
 - Broker event log + replay API (`/v1/events/replay`).
+- Orchestrator runs persisted in broker (`/v1/teams/{team_id}/orchestrator/runs`).
 
 ## Gaps to reach “full automation, low drift”
 
@@ -70,8 +71,8 @@ Future (v1+):
    - Team-run quorum exists; tool-level quorum is still pending.
 
 6) **Durable orchestration state**
-   - Orchestrator runs are not yet persisted as first-class DB rows.
-   - Need lease/heartbeat so automation survives UI refresh or client disconnects.
+   - Orchestrator runs are persisted (DB + CRUD).
+   - Lease/heartbeat endpoint exists; still need automated lease supervision.
 
 7) **Event replay + UI rehydration**
    - Replay API exists; Broker console replays on refresh.

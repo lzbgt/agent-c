@@ -1101,6 +1101,129 @@
             schema:
               $ref: "#/components/schemas/TeamRunModeratorEventsResponse"
 
+/v1/teams/{team_id}/orchestrator/runs:
+  get:
+    tags: [teams]
+    summary: List orchestrator runs for a team
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: query
+        name: limit
+        required: false
+        schema: { type: integer, format: int32 }
+      - in: query
+        name: offset
+        required: false
+        schema: { type: integer, format: int32 }
+      - in: query
+        name: status
+        required: false
+        schema: { type: string }
+    responses:
+      "200":
+        description: Orchestrator runs
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrchestratorRunListResponse"
+  post:
+    tags: [teams]
+    summary: Create an orchestrator run for a team
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/OrchestratorRunCreateRequest"
+    responses:
+      "200":
+        description: Orchestrator run created
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrchestratorRunResponse"
+
+/v1/teams/{team_id}/orchestrator/runs/{orchestrator_run_id}:
+  get:
+    tags: [teams]
+    summary: Get an orchestrator run
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: orchestrator_run_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Orchestrator run
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrchestratorRunResponse"
+  patch:
+    tags: [teams]
+    summary: Update an orchestrator run
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: orchestrator_run_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/OrchestratorRunUpdateRequest"
+    responses:
+      "200":
+        description: Orchestrator run updated
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrchestratorRunResponse"
+
+/v1/teams/{team_id}/orchestrator/runs/{orchestrator_run_id}/heartbeat:
+  post:
+    tags: [teams]
+    summary: Heartbeat an orchestrator run (lease refresh)
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: orchestrator_run_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/OrchestratorRunHeartbeatRequest"
+    responses:
+      "200":
+        description: Orchestrator run heartbeat recorded
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrchestratorRunResponse"
+
 /v1/orchestrate:
   post:
     tags: [orchestrate]

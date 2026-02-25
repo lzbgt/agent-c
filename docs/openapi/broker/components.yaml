@@ -930,6 +930,84 @@ schemas:
         items:
           $ref: "#/components/schemas/BrokerEvent"
 
+  OrchestratorRun:
+    type: object
+    required: [orchestrator_run_id, team_id, status]
+    properties:
+      orchestrator_run_id: { type: string }
+      team_id: { type: string }
+      status: { type: string }
+      goal: { type: string }
+      created_by: { type: string }
+      created_unix_ms: { type: integer, format: int64 }
+      updated_unix_ms: { type: integer, format: int64 }
+      last_heartbeat_unix_ms: { type: integer, format: int64 }
+      goal_contract:
+        $ref: "#/components/schemas/TeamRunGoalContract"
+      role_plan_snapshot:
+        type: object
+        additionalProperties: true
+      meta:
+        type: object
+        additionalProperties: true
+
+  OrchestratorRunCreateRequest:
+    type: object
+    properties:
+      orchestrator_run_id: { type: string }
+      goal: { type: string }
+      status: { type: string }
+      goal_contract:
+        $ref: "#/components/schemas/TeamRunGoalContract"
+      role_plan_snapshot:
+        type: object
+        additionalProperties: true
+      meta:
+        type: object
+        additionalProperties: true
+
+  OrchestratorRunUpdateRequest:
+    type: object
+    properties:
+      status: { type: string }
+      goal: { type: string }
+      goal_contract:
+        $ref: "#/components/schemas/TeamRunGoalContract"
+      role_plan_snapshot:
+        type: object
+        additionalProperties: true
+      meta:
+        type: object
+        additionalProperties: true
+
+  OrchestratorRunHeartbeatRequest:
+    type: object
+    properties:
+      status: { type: string }
+
+  OrchestratorRunResponse:
+    type: object
+    required: [ok, team_id, run]
+    properties:
+      ok: { type: boolean }
+      team_id: { type: string }
+      run:
+        $ref: "#/components/schemas/OrchestratorRun"
+
+  OrchestratorRunListResponse:
+    type: object
+    required: [ok, team_id, runs]
+    properties:
+      ok: { type: boolean }
+      team_id: { type: string }
+      limit: { type: integer, format: int32 }
+      offset: { type: integer, format: int32 }
+      status: { type: string }
+      runs:
+        type: array
+        items:
+          $ref: "#/components/schemas/OrchestratorRun"
+
   TeamRunRuntimeMembersUpdateRequest:
     type: object
     required: [runtime_members]

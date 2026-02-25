@@ -116,6 +116,9 @@ func (s *Server) handleTeamsSubroutes(w http.ResponseWriter, r *http.Request) {
 	// - /v1/teams/{team_id}/runs/{team_run_id}/moderator/task
 	// - /v1/teams/{team_id}/runs/{team_run_id}/moderator/events
 	// - /v1/teams/{team_id}/runtime_members/allocate
+	// - /v1/teams/{team_id}/orchestrator/runs
+	// - /v1/teams/{team_id}/orchestrator/runs/{orchestrator_run_id}
+	// - /v1/teams/{team_id}/orchestrator/runs/{orchestrator_run_id}/heartbeat
 
 	rest := strings.TrimPrefix(r.URL.Path, "/v1/teams/")
 	parts := strings.SplitN(rest, "/", 5)
@@ -254,6 +257,39 @@ func (s *Server) handleTeamsSubroutes(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		s.handleTeamRunGet(w, r, teamID, parts[2])
+	case "orchestrator":
+		if len(parts) < 3 || parts[2] == "" {
+			writeErrorJSON(w, "not found", http.StatusNotFound)
+			return
+		}
+		if parts[2] != "runs" {
+			writeErrorJSON(w, "not found", http.StatusNotFound)
+			return
+		}
+		if len(parts) == 3 || parts[3] == "" {
+			switch r.Method {
+			case "GET":
+				s.handleTeamOrchestratorRunsList(w, r, teamID)
+			case "POST":
+				s.handleTeamOrchestratorRunCreate(w, r, teamID)
+			default:
+				writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+			}
+			return
+		}
+		if len(parts) >= 5 && parts[4] == "heartbeat" {
+			s.handleTeamOrchestratorRunHeartbeat(w, r, teamID, parts[3])
+			return
+		}
+		switch r.Method {
+		case "GET":
+			s.handleTeamOrchestratorRunGet(w, r, teamID, parts[3])
+		case "PATCH":
+			s.handleTeamOrchestratorRunUpdate(w, r, teamID, parts[3])
+		default:
+			writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+		return
 	default:
 		writeErrorJSON(w, "not found", http.StatusNotFound)
 	}

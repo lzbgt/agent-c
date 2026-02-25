@@ -91,6 +91,7 @@ Status: draft (rolling)
 ## Persistence + reload safety
 
 - Runs are persisted by broker with `team_run_id`, status, payload, and job ids.
+- Orchestrator runs persist separately (`/v1/teams/{team_id}/orchestrator/runs`).
 - UI refresh uses `GET /v1/teams/{team_id}/runs` and SSE events to rehydrate.
 - SSE is used to refresh lists; durable state is always in DB.
 - Team runs persist `member_sessions` so moderators can target specific members
