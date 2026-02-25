@@ -1,5 +1,13 @@
 import React from "react";
-import { apiCancelWorkflow, apiGetWorkflow, apiSubmitWorkflow } from "../api";
+import {
+  apiBrokerGetClientPrefs,
+  apiBrokerPostClientPrefs,
+  apiCancelWorkflow,
+  apiGetClientPrefs,
+  apiGetWorkflow,
+  apiPostClientPrefs,
+  apiSubmitWorkflow,
+} from "../api";
 import type { ApiAuth } from "../api/auth";
 import useLocalStorageState from "../hooks/useLocalStorageState";
 import WorkflowGraphComposer from "./WorkflowGraphComposer";
@@ -18,6 +26,7 @@ export type WorkflowComposerProps = {
   baseUrl: string;
   auth?: ApiAuth;
   authKey?: string;
+  clientId?: string;
   workflowDefaults?: Record<string, any>;
   workflowTargets?: string[];
   workflowBearerEnv?: string;
@@ -45,6 +54,55 @@ const TEMPLATE_LABELS: Record<TemplateKind, string> = {
   llm_dag: "LLM DAG (A→B/C)",
   agent_parallel: "Agent collaboration (agentd_parallel)",
   agent_parallel_demo: "Agent collaboration demo (agentd_parallel)",
+};
+
+const WAIT_PREFS_KIND = "webui-workflow";
+const WAIT_PREFS_VERSION = 1;
+
+const pruneWaitByScope = (
+  input: Record<string, WaitStatePersisted> | null | undefined,
+  now: number,
+  staleMs: number,
+) => {
+  const out: Record<string, WaitStatePersisted> = {};
+  if (!input || typeof input !== "object") return out;
+  for (const [key, value] of Object.entries(input)) {
+    if (!value || typeof value !== "object") continue;
+    const ts =
+      typeof value.updated_unix_ms === "number"
+        ? value.updated_unix_ms
+        : typeof value.started_unix_ms === "number"
+          ? value.started_unix_ms
+          : 0;
+    if (!ts || now - ts <= staleMs) {
+      out[key] = value;
+    }
+  }
+  return out;
+};
+
+const extractWorkflowWaitByScope = (prefs: any): Record<string, WaitStatePersisted> => {
+  if (!prefs || typeof prefs !== "object") return {};
+  const raw = prefs.workflow_wait;
+  if (!raw || typeof raw !== "object") return {};
+  const byScope = raw.by_scope;
+  if (!byScope || typeof byScope !== "object") return {};
+  const out: Record<string, WaitStatePersisted> = {};
+  for (const [key, value] of Object.entries(byScope)) {
+    if (!value || typeof value !== "object") continue;
+    const workflowId = typeof (value as any).workflow_id === "string" ? String((value as any).workflow_id).trim() : "";
+    if (!workflowId) continue;
+    out[key] = value as WaitStatePersisted;
+  }
+  return out;
+};
+
+const brokerBaseFromProxy = (baseUrl: string) => {
+  const trimmed = String(baseUrl || "").trim().replace(/\/+$/, "");
+  const marker = "/v1/agents/";
+  const idx = trimmed.indexOf(marker);
+  if (idx >= 0) return trimmed.slice(0, idx);
+  return trimmed;
 };
 
 const buildLlmDagTemplate = (defaults: Record<string, any>, allowInlineKeys: boolean) => {
@@ -185,25 +243,101 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
     const key = String(props.authKey || "").trim();
     return `${base}::${key}`;
   }, [props.authKey, props.baseUrl]);
+  const waitServerScopeKey = React.useMemo(() => String(props.baseUrl || "").trim(), [props.baseUrl]);
   const waitStaleMs = 7 * 24 * 60 * 60 * 1000;
   const [waitByScope, setWaitByScope] = useLocalStorageState<Record<string, WaitStatePersisted>>(
     "agentui.workflowWaitByScope",
     {},
   );
-  const waitPersistedEntry = React.useMemo(() => {
-    const now = Date.now();
-    const fresh: Record<string, WaitStatePersisted> = {};
-    for (const [key, value] of Object.entries(waitByScope)) {
-      const ts =
-        typeof value?.updated_unix_ms === "number"
-          ? value.updated_unix_ms
-          : typeof value?.started_unix_ms === "number"
-            ? value.started_unix_ms
-            : 0;
-      if (!ts || now - ts <= waitStaleMs) {
-        fresh[key] = value;
+  const [serverWaitByScope, setServerWaitByScope] = React.useState<Record<string, WaitStatePersisted>>({});
+  const [serverWaitStatus, setServerWaitStatus] = React.useState<"idle" | "loading" | "ready" | "error">("idle");
+  const serverPrefsClientId = React.useMemo(() => String(props.clientId || "webui"), [props.clientId]);
+  const serverPrefsBase = React.useMemo(() => {
+    const base = String(props.baseUrl || "").trim();
+    if (!base) return "";
+    if (props.auth?.mode === "broker") return brokerBaseFromProxy(base);
+    return base;
+  }, [props.auth?.mode, props.baseUrl]);
+  const serverPersistRef = React.useRef<{
+    timer: ReturnType<typeof setTimeout> | null;
+    pending: Record<string, WaitStatePersisted> | null;
+  }>({ timer: null, pending: null });
+
+  const pushServerWait = React.useCallback(
+    async (nextMap: Record<string, WaitStatePersisted>) => {
+      if (!serverPrefsBase || !serverPrefsClientId) return;
+      const payload = {
+        client_id: serverPrefsClientId,
+        client_kind: WAIT_PREFS_KIND,
+        prefs: { workflow_wait: { version: WAIT_PREFS_VERSION, by_scope: nextMap } },
+      };
+      const resp =
+        props.auth?.mode === "broker"
+          ? await apiBrokerPostClientPrefs(serverPrefsBase, payload, props.auth)
+          : await apiPostClientPrefs(serverPrefsBase, payload, props.auth);
+      if (!resp.ok) {
+        throw new Error(resp.error || resp.err || resp.code || "workflow prefs update failed");
       }
+      setServerWaitStatus("ready");
+    },
+    [props.auth, serverPrefsBase, serverPrefsClientId],
+  );
+
+  const scheduleServerPersist = React.useCallback(
+    (nextMap: Record<string, WaitStatePersisted>) => {
+      if (!serverPrefsBase || !serverPrefsClientId) return;
+      if (serverWaitStatus === "error") return;
+      serverPersistRef.current.pending = nextMap;
+      if (serverPersistRef.current.timer) return;
+      serverPersistRef.current.timer = setTimeout(() => {
+        const pending = serverPersistRef.current.pending;
+        serverPersistRef.current.pending = null;
+        serverPersistRef.current.timer = null;
+        if (!pending) return;
+        pushServerWait(pending).catch(() => {
+          setServerWaitStatus("error");
+        });
+      }, 1500);
+    },
+    [pushServerWait, serverPrefsBase, serverPrefsClientId, serverWaitStatus],
+  );
+
+  const loadServerWait = React.useCallback(async () => {
+    if (!serverPrefsBase || !serverPrefsClientId) return;
+    setServerWaitStatus("loading");
+    try {
+      const resp =
+        props.auth?.mode === "broker"
+          ? await apiBrokerGetClientPrefs(serverPrefsBase, serverPrefsClientId, WAIT_PREFS_KIND, props.auth)
+          : await apiGetClientPrefs(serverPrefsBase, serverPrefsClientId, WAIT_PREFS_KIND, props.auth);
+      if (!resp.ok) {
+        throw new Error(resp.error || resp.err || resp.code || "workflow prefs fetch failed");
+      }
+      const nextMap = pruneWaitByScope(extractWorkflowWaitByScope(resp.prefs), Date.now(), waitStaleMs);
+      setServerWaitByScope(nextMap);
+      setServerWaitStatus("ready");
+    } catch (err) {
+      setServerWaitStatus("error");
     }
+  }, [props.auth, serverPrefsBase, serverPrefsClientId, waitStaleMs]);
+
+  React.useEffect(() => {
+    if (!serverPrefsBase || !serverPrefsClientId) return;
+    void loadServerWait();
+  }, [loadServerWait, props.authKey, serverPrefsBase, serverPrefsClientId]);
+
+  React.useEffect(
+    () => () => {
+      if (serverPersistRef.current.timer) {
+        clearTimeout(serverPersistRef.current.timer);
+      }
+    },
+    [],
+  );
+
+  const localPersistedEntry = React.useMemo(() => {
+    const now = Date.now();
+    const fresh = pruneWaitByScope(waitByScope, now, waitStaleMs);
     const rec = fresh[waitScopeKey];
     if (rec && typeof rec.workflow_id === "string" && rec.workflow_id.trim()) {
       return { key: waitScopeKey, value: rec, extra: 0 };
@@ -225,8 +359,21 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
     }
     return null;
   }, [waitByScope, waitScopeKey, waitStaleMs]);
+
+  const serverPersistedEntry = React.useMemo(() => {
+    if (!waitServerScopeKey) return null;
+    const now = Date.now();
+    const fresh = pruneWaitByScope(serverWaitByScope, now, waitStaleMs);
+    const rec = fresh[waitServerScopeKey];
+    if (rec && typeof rec.workflow_id === "string" && rec.workflow_id.trim()) {
+      return { key: waitServerScopeKey, value: rec, extra: Math.max(0, Object.keys(fresh).length - 1) };
+    }
+    return null;
+  }, [serverWaitByScope, waitServerScopeKey, waitStaleMs]);
+
+  const waitPersistedEntry = serverPersistedEntry ?? localPersistedEntry;
   const waitPersisted = waitPersistedEntry?.value ?? null;
-  const waitPersistedKey = waitPersistedEntry?.key ?? waitScopeKey;
+  const waitPersistedKey = localPersistedEntry?.key ?? waitScopeKey;
   const waitPersistedExtra = waitPersistedEntry?.extra ?? 0;
   const writeWaitPersisted = React.useCallback(
     (next: WaitStatePersisted | null) => {
@@ -242,28 +389,47 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
         }
         return out;
       });
+      if (!serverPrefsBase || !waitServerScopeKey) return;
+      if (serverWaitStatus === "error") return;
+      setServerWaitByScope((prev) => {
+        const out = { ...prev };
+        if (next && next.workflow_id) {
+          out[waitServerScopeKey] = next;
+        } else {
+          delete out[waitServerScopeKey];
+        }
+        const pruned = pruneWaitByScope(out, Date.now(), waitStaleMs);
+        scheduleServerPersist(pruned);
+        return pruned;
+      });
     },
-    [setWaitByScope, waitPersistedKey, waitScopeKey],
+    [
+      scheduleServerPersist,
+      serverPrefsBase,
+      serverWaitStatus,
+      setServerWaitByScope,
+      setWaitByScope,
+      waitPersistedKey,
+      waitScopeKey,
+      waitServerScopeKey,
+      waitStaleMs,
+    ],
   );
   const resumeAttemptedRef = React.useRef<string>("");
 
   React.useEffect(() => {
-    const now = Date.now();
-    const fresh: Record<string, WaitStatePersisted> = {};
-    for (const [key, value] of Object.entries(waitByScope)) {
-      const ts =
-        typeof value?.updated_unix_ms === "number"
-          ? value.updated_unix_ms
-          : typeof value?.started_unix_ms === "number"
-            ? value.started_unix_ms
-            : 0;
-      if (!ts || now - ts <= waitStaleMs) {
-        fresh[key] = value;
-      }
-    }
+    const fresh = pruneWaitByScope(waitByScope, Date.now(), waitStaleMs);
     if (Object.keys(fresh).length === Object.keys(waitByScope).length) return;
     setWaitByScope(fresh);
   }, [setWaitByScope, waitByScope, waitStaleMs]);
+
+  React.useEffect(() => {
+    if (serverWaitStatus !== "ready") return;
+    const fresh = pruneWaitByScope(serverWaitByScope, Date.now(), waitStaleMs);
+    if (Object.keys(fresh).length === Object.keys(serverWaitByScope).length) return;
+    setServerWaitByScope(fresh);
+    scheduleServerPersist(fresh);
+  }, [scheduleServerPersist, serverWaitByScope, serverWaitStatus, waitStaleMs]);
 
   const defaults = React.useMemo(() => props.workflowDefaults ?? {}, [props.workflowDefaults]);
   const targets = React.useMemo(() => normalizeTargets(props.workflowTargets), [props.workflowTargets]);

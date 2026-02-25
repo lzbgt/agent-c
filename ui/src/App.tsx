@@ -1695,6 +1695,7 @@ export default function App() {
               baseUrl={effectiveBase}
               auth={daemonAuth}
               authKey={authKey}
+              clientId={client.clientId}
               workflowDefaults={workflowDefaults}
               workflowTargets={workflowTargets}
               workflowBearerEnv={workflowBearerEnv}

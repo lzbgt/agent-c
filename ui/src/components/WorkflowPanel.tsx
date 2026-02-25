@@ -11,6 +11,7 @@ type WorkflowPanelProps = {
   baseUrl: string;
   auth?: ApiAuth;
   authKey?: string;
+  clientId?: string;
   onTraceIdClick?: (traceId: string) => void;
   workflowDefaults?: Record<string, any>;
   workflowTargets?: string[];
@@ -739,6 +740,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
           baseUrl={props.baseUrl}
           auth={props.auth}
           authKey={props.authKey}
+          clientId={props.clientId}
           workflowDefaults={props.workflowDefaults}
           workflowTargets={props.workflowTargets}
           workflowBearerEnv={props.workflowBearerEnv}
