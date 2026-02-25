@@ -14,6 +14,9 @@ export const ORCHESTRATOR_EVENT_TYPES = new Set([
   "orchestrator_run_updated",
   "orchestrator_run_status",
   "orchestrator_run_heartbeat",
+  "orchestrator_spawn_requested",
+  "orchestrator_spawn_updated",
+  "orchestrator_spawn_status",
 ]);
 
 export const fmtTs = (ms?: number | null) => {

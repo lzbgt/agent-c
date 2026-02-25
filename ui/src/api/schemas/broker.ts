@@ -191,6 +191,53 @@ export const BrokerOrchestratorRunListRespSchema = z
   .passthrough();
 export type BrokerOrchestratorRunListResp = z.infer<typeof BrokerOrchestratorRunListRespSchema>;
 
+export const BrokerOrchestratorSpawnRequestSchema = z
+  .object({
+    spawn_request_id: z.string(),
+    team_id: z.string().optional(),
+    orchestrator_run_id: z.string().optional(),
+    role: z.string().optional(),
+    count: z.number().optional(),
+    status: z.string().optional(),
+    requirements: z.record(z.any()).optional(),
+    assigned_members: z.array(z.record(z.any())).optional(),
+    error: z.string().optional(),
+    created_by: z.string().optional(),
+    created_unix_ms: z.number().optional(),
+    updated_unix_ms: z.number().optional(),
+    meta: z.record(z.any()).optional(),
+  })
+  .passthrough();
+export type BrokerOrchestratorSpawnRequest = z.infer<typeof BrokerOrchestratorSpawnRequestSchema>;
+
+export const BrokerOrchestratorSpawnRequestRespSchema = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string().optional(),
+    spawn_request: BrokerOrchestratorSpawnRequestSchema.optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+export type BrokerOrchestratorSpawnRequestResp = z.infer<typeof BrokerOrchestratorSpawnRequestRespSchema>;
+
+export const BrokerOrchestratorSpawnRequestListRespSchema = z
+  .object({
+    ok: z.boolean(),
+    team_id: z.string().optional(),
+    spawn_requests: z.array(BrokerOrchestratorSpawnRequestSchema).optional(),
+    limit: z.number().optional(),
+    offset: z.number().optional(),
+    status: z.string().optional(),
+    orchestrator_run_id: z.string().optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+export type BrokerOrchestratorSpawnRequestListResp = z.infer<typeof BrokerOrchestratorSpawnRequestListRespSchema>;
+
 export const BrokerTeamSchema = z
   .object({
     team_id: z.string(),

@@ -15,6 +15,10 @@ import {
   type BrokerOrchestratorRunResp,
   BrokerOrchestratorRunListRespSchema,
   type BrokerOrchestratorRunListResp,
+  BrokerOrchestratorSpawnRequestRespSchema,
+  type BrokerOrchestratorSpawnRequestResp,
+  BrokerOrchestratorSpawnRequestListRespSchema,
+  type BrokerOrchestratorSpawnRequestListResp,
   BrokerTeamCreateRespSchema,
   type BrokerTeamCreateResp,
   BrokerTeamDeleteRespSchema,
@@ -499,6 +503,96 @@ export async function apiBrokerOrchestratorRunHeartbeat(
   );
   const j = await r.json();
   return BrokerOrchestratorRunRespSchema.parse(j);
+}
+
+export async function apiBrokerOrchestratorSpawnRequestsList(
+  brokerBase: string,
+  teamId: string,
+  auth?: ApiAuth,
+  opts?: { limit?: number; offset?: number; status?: string; orchestratorRunId?: string },
+): Promise<BrokerOrchestratorSpawnRequestListResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  const params = new URLSearchParams();
+  if (typeof opts?.limit === "number" && Number.isFinite(opts.limit)) {
+    params.set("limit", String(Math.max(1, Math.floor(opts.limit))));
+  }
+  if (typeof opts?.offset === "number" && Number.isFinite(opts.offset)) {
+    params.set("offset", String(Math.max(0, Math.floor(opts.offset))));
+  }
+  if (typeof opts?.status === "string" && opts.status.trim()) {
+    params.set("status", opts.status.trim());
+  }
+  if (typeof opts?.orchestratorRunId === "string" && opts.orchestratorRunId.trim()) {
+    params.set("orchestrator_run_id", opts.orchestratorRunId.trim());
+  }
+  const qs = params.toString();
+  const url = `${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/spawn_requests${qs ? `?${qs}` : ""}`;
+  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return BrokerOrchestratorSpawnRequestListRespSchema.parse(j);
+}
+
+export async function apiBrokerOrchestratorSpawnRequestCreate(
+  brokerBase: string,
+  teamId: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<BrokerOrchestratorSpawnRequestResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  if (!tid) throw new Error("missing team_id");
+  const r = await fetch(`${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/spawn_requests`, {
+    method: "POST",
+    headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+    body: JSON.stringify(body ?? {}),
+  });
+  const j = await r.json();
+  return BrokerOrchestratorSpawnRequestRespSchema.parse(j);
+}
+
+export async function apiBrokerOrchestratorSpawnRequestGet(
+  brokerBase: string,
+  teamId: string,
+  spawnRequestId: string,
+  auth?: ApiAuth,
+): Promise<BrokerOrchestratorSpawnRequestResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  const sid = String(spawnRequestId || "").trim();
+  if (!tid || !sid) throw new Error("missing team_id or spawn_request_id");
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/spawn_requests/${encodeURIComponent(sid)}`,
+    {
+      headers: daemonHeaders(auth),
+    },
+  );
+  const j = await r.json();
+  return BrokerOrchestratorSpawnRequestRespSchema.parse(j);
+}
+
+export async function apiBrokerOrchestratorSpawnRequestUpdate(
+  brokerBase: string,
+  teamId: string,
+  spawnRequestId: string,
+  body: Record<string, any>,
+  auth?: ApiAuth,
+): Promise<BrokerOrchestratorSpawnRequestResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const tid = String(teamId || "").trim();
+  const sid = String(spawnRequestId || "").trim();
+  if (!tid || !sid) throw new Error("missing team_id or spawn_request_id");
+  const r = await fetch(
+    `${base}/v1/teams/${encodeURIComponent(tid)}/orchestrator/spawn_requests/${encodeURIComponent(sid)}`,
+    {
+      method: "PATCH",
+      headers: daemonHeaders(auth, { "Content-Type": "application/json" }),
+      body: JSON.stringify(body ?? {}),
+    },
+  );
+  const j = await r.json();
+  return BrokerOrchestratorSpawnRequestRespSchema.parse(j);
 }
 
 export async function apiBrokerGetClientPrefs(
