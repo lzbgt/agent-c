@@ -83,6 +83,31 @@ function formatModeratorEventSummary(event: ModeratorEvent) {
   return "";
 }
 
+async function copyTextToClipboard(text: string) {
+  if (!text) return;
+  try {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+  } catch {
+    // fallback below
+  }
+  try {
+    const el = document.createElement("textarea");
+    el.value = text;
+    el.setAttribute("readonly", "true");
+    el.style.position = "absolute";
+    el.style.left = "-9999px";
+    document.body.appendChild(el);
+    el.select();
+    document.execCommand("copy");
+    document.body.removeChild(el);
+  } catch {
+    // ignore
+  }
+}
+
 function parseCsvList(raw: string) {
   const out: string[] = [];
   if (!raw) return out;
@@ -1326,6 +1351,22 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                           </div>
                           <div className="flex items-center gap-2 text-white/40">
                             <span>{ts}</span>
+                            {summary ? (
+                              <button
+                                className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
+                                type="button"
+                                onClick={() => void copyTextToClipboard(summary)}
+                              >
+                                Copy summary
+                              </button>
+                            ) : null}
+                            <button
+                              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
+                              type="button"
+                              onClick={() => void copyTextToClipboard(JSON.stringify(event, null, 2))}
+                            >
+                              Copy JSON
+                            </button>
                             <button
                               className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-white/70 hover:bg-black/40"
                               type="button"

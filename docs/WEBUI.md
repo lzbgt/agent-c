@@ -58,6 +58,7 @@ Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`,
 - Assignee fields include quick role chips (planner/executor/critic) for fast targeting.
 - Moderator event rows include a JSON expand toggle for full payload inspection.
 - Moderator events panel includes a filter box to match by type/actor/content.
+- Moderator event rows include copy buttons for summary/JSON.
 - The broker console exposes agent membership management, audit events, team setup (members + quorum rules), team runs, and quorum approvals (Team console includes recent quorum requests and approvals).
 - Team members editor supports broker agent/deployment pickers and a bulk add for connected agents.
 - Team member rows support quick pause/resume (updates status via PATCH).
