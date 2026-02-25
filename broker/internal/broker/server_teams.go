@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
-	"time"
 
 	"agentd-broker/internal/db"
 )
@@ -535,40 +534,14 @@ func (s *Server) handleTeamRuntimeMembersAllocate(w http.ResponseWriter, r *http
 		}
 	}
 
-	dbAgents, err := s.cfg.DB.ListAgentsForUser(r.Context(), p.Sub)
+	candidates, err := s.collectRuntimeAgentCandidates(r.Context(), p.Sub)
 	if err != nil {
-		writeErrorJSON(w, "db error", http.StatusInternalServerError)
-		return
-	}
-	candidates := make([]runtimeAgentCandidate, 0, len(dbAgents))
-	for _, a := range dbAgents {
-		if !a.Enabled {
-			continue
+		msg := err.Error()
+		status := http.StatusBadRequest
+		if msg == "db error" || msg == "broker not initialized" {
+			status = http.StatusInternalServerError
 		}
-		conns := s.cfg.Registry.ListByAgent(a.AgentID)
-		if len(conns) == 0 {
-			continue
-		}
-		var bestConnected time.Time
-		bestDeployment := ""
-		for _, conn := range conns {
-			if conn == nil {
-				continue
-			}
-			if bestDeployment == "" || conn.Connected.After(bestConnected) {
-				bestConnected = conn.Connected
-				bestDeployment = conn.DeploymentID
-			}
-		}
-		if bestDeployment != "" {
-			candidates = append(candidates, runtimeAgentCandidate{
-				AgentID:      a.AgentID,
-				DeploymentID: bestDeployment,
-			})
-		}
-	}
-	if len(candidates) == 0 {
-		writeErrorJSON(w, "no connected agents available", http.StatusBadRequest)
+		writeErrorJSON(w, msg, status)
 		return
 	}
 

@@ -139,6 +139,44 @@ func TestAllocateRuntimeMembersByRole(t *testing.T) {
 	}
 }
 
+func TestCollectRolePlanRoles(t *testing.T) {
+	meta := map[string]any{
+		"role_graph": map[string]any{
+			"edges": []any{
+				map[string]any{"from_role": "Planner", "to_role": "Executor"},
+				map[string]any{"from": "Reviewer", "to": "Planner"},
+			},
+		},
+	}
+	roleOverrides := map[string]map[string]any{"ops": {"model": "x"}, "planner": {"tools": "basic"}}
+	roleInstructions := map[string]string{"writer": "Write it."}
+	got := collectRolePlanRoles(meta, roleOverrides, roleInstructions)
+	want := []string{"executor", "ops", "planner", "reviewer", "writer"}
+	if len(got) != len(want) {
+		t.Fatalf("expected %v, got %v", want, got)
+	}
+	for i, role := range want {
+		if got[i] != role {
+			t.Fatalf("expected %v, got %v", want, got)
+		}
+	}
+}
+
+func TestAsBool(t *testing.T) {
+	if v, ok := asBool(true); !ok || !v {
+		t.Fatalf("expected true from bool")
+	}
+	if v, ok := asBool("yes"); !ok || !v {
+		t.Fatalf("expected true from string")
+	}
+	if v, ok := asBool("0"); !ok || v {
+		t.Fatalf("expected false from string")
+	}
+	if _, ok := asBool(123); ok {
+		t.Fatalf("expected non-bool to be invalid")
+	}
+}
+
 func TestParseGoalContract(t *testing.T) {
 	contract, err := parseGoalContract("  ship it ")
 	if err != nil {

@@ -104,6 +104,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-25: drafted `docs/spec/autonomous_orchestrator_v0.md` (goal guard + dynamic allocation model).
   - 2026-02-25: WebUI runtime member quick-add can allocate connected agents by role plan.
   - 2026-02-25: broker runtime member allocator endpoint added (role-based allocation + tests).
+  - 2026-02-26: team runs support `auto_allocate_roles` + max members (broker + WebUI).
   - 2026-02-25: broker goal update endpoint added with SSE events and run payload persistence.
   - 2026-02-25: broker role handoff endpoint added with SSE event and run payload persistence.
   - 2026-02-25: WebUI team run status panel surfaces goal contract/events and handoff events with emit actions.

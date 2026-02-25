@@ -356,6 +356,8 @@ Run requests may accept:
   "role": "planner",
   "shared_memory_scope_id": "...",
   "shared_memory_mode": "read_only" | "read_write",
+  "auto_allocate_roles": true,
+  "auto_allocate_max_members": 4,
   "quorum_policy": { "mode": "auto" | "off" },
   "approvals": [ { "member_id": "...", "rule_id": "...", "decision": "approve" } ],
   "runtime_members": [
@@ -387,6 +389,7 @@ Notes:
 - For synchronous runs that already completed, updates are recorded for auditability and future orchestration; they do not retroactively re-run the completed fan-out.
 - For async runs, updates do not affect already-dispatched member jobs; use runtime updates to prepare for follow-on orchestration.
 - Team run status responses include `role_overrides_applied`, `member_overrides_applied`, and `run_overrides_mode` for auditability.
+- When `auto_allocate_roles=true`, broker selects connected agents for missing roles (based on role plan or requested role filters) and appends them as runtime members.
 
 `run_overrides_mode`:
 - `off` (default): no per-member overrides.

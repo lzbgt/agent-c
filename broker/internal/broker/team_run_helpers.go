@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -1107,6 +1108,25 @@ func asInt(v any) (int, bool) {
 	}
 }
 
+func asBool(v any) (bool, bool) {
+	switch t := v.(type) {
+	case bool:
+		return t, true
+	case string:
+		val := strings.ToLower(strings.TrimSpace(t))
+		switch val {
+		case "true", "1", "yes", "y":
+			return true, true
+		case "false", "0", "no", "n":
+			return false, true
+		default:
+			return false, false
+		}
+	default:
+		return false, false
+	}
+}
+
 func asStringSlice(v any) []string {
 	switch t := v.(type) {
 	case []string:
@@ -1122,6 +1142,75 @@ func asStringSlice(v any) []string {
 	default:
 		return nil
 	}
+}
+
+func collectRolePlanRoles(
+	teamMeta map[string]any,
+	roleOverrides map[string]map[string]any,
+	roleInstructions map[string]string,
+) []string {
+	roles := map[string]bool{}
+	for role := range roleOverrides {
+		r := strings.ToLower(strings.TrimSpace(role))
+		if r != "" {
+			roles[r] = true
+		}
+	}
+	for role := range roleInstructions {
+		r := strings.ToLower(strings.TrimSpace(role))
+		if r != "" {
+			roles[r] = true
+		}
+	}
+	if teamMeta != nil {
+		rawGraph, ok := teamMeta["role_graph"]
+		if ok && rawGraph != nil {
+			var edges []any
+			switch t := rawGraph.(type) {
+			case []any:
+				edges = t
+			case map[string]any:
+				if arr, ok := t["edges"].([]any); ok {
+					edges = arr
+				}
+			}
+			for _, item := range edges {
+				m, ok := item.(map[string]any)
+				if !ok {
+					continue
+				}
+				from := ""
+				if v, ok := m["from_role"].(string); ok {
+					from = v
+				} else if v, ok := m["from"].(string); ok {
+					from = v
+				}
+				to := ""
+				if v, ok := m["to_role"].(string); ok {
+					to = v
+				} else if v, ok := m["to"].(string); ok {
+					to = v
+				}
+				from = strings.ToLower(strings.TrimSpace(from))
+				to = strings.ToLower(strings.TrimSpace(to))
+				if from != "" {
+					roles[from] = true
+				}
+				if to != "" {
+					roles[to] = true
+				}
+			}
+		}
+	}
+	if len(roles) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(roles))
+	for role := range roles {
+		out = append(out, role)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func parseCapabilitiesValue(v any) ([]string, error) {

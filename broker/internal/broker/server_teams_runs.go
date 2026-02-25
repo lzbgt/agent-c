@@ -275,6 +275,105 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	autoAllocateRoles := false
+	if v, ok := teamMeta["auto_allocate_roles"]; ok {
+		if b, ok := asBool(v); ok {
+			autoAllocateRoles = b
+		} else {
+			writeErrorJSON(w, "auto_allocate_roles must be boolean", http.StatusBadRequest)
+			return
+		}
+	}
+	autoAllocateMaxMembers := 0
+	if v, ok := teamMeta["auto_allocate_max_members"]; ok {
+		if iv, ok := asInt(v); ok {
+			if iv < 1 {
+				iv = 1
+			}
+			if iv > 16 {
+				iv = 16
+			}
+			autoAllocateMaxMembers = iv
+		} else {
+			writeErrorJSON(w, "auto_allocate_max_members must be integer", http.StatusBadRequest)
+			return
+		}
+	}
+	if autoAllocateRoles {
+		teamMeta["auto_allocate_roles"] = true
+	} else {
+		delete(teamMeta, "auto_allocate_roles")
+	}
+	if autoAllocateMaxMembers > 0 {
+		teamMeta["auto_allocate_max_members"] = autoAllocateMaxMembers
+	} else {
+		delete(teamMeta, "auto_allocate_max_members")
+	}
+	if autoAllocateRoles {
+		rolePlan := []string{}
+		if len(options.Roles) > 0 {
+			for r := range options.Roles {
+				if r != "" {
+					rolePlan = append(rolePlan, r)
+				}
+			}
+		} else if options.Role != "" {
+			rolePlan = []string{options.Role}
+		}
+		if len(rolePlan) == 0 {
+			rolePlan = collectRolePlanRoles(teamMeta, roleOverrides, roleInstructions)
+		}
+		if len(rolePlan) == 0 {
+			teamMeta["auto_allocate_warning"] = "no role plan roles available"
+		} else {
+			existingRoles := map[string]bool{}
+			usedAgentIDs := map[string]bool{}
+			for _, member := range members {
+				role := strings.ToLower(strings.TrimSpace(member.Role))
+				if role != "" {
+					existingRoles[role] = true
+				}
+				agentID := strings.TrimSpace(member.AgentID)
+				if agentID != "" {
+					usedAgentIDs[agentID] = true
+				}
+			}
+			for _, input := range runtimeInputs {
+				role := strings.ToLower(strings.TrimSpace(input.Role))
+				if role != "" {
+					existingRoles[role] = true
+				}
+				agentID := strings.TrimSpace(input.AgentID)
+				if agentID != "" {
+					usedAgentIDs[agentID] = true
+				}
+			}
+			candidates, err := s.collectRuntimeAgentCandidates(r.Context(), p.Sub)
+			if err != nil {
+				teamMeta["auto_allocate_warning"] = err.Error()
+			} else {
+				allocations, allocatedRoles, missingRoles, warning := allocateRuntimeMembersByRole(
+					rolePlan,
+					candidates,
+					existingRoles,
+					usedAgentIDs,
+					autoAllocateMaxMembers,
+				)
+				if len(allocations) > 0 {
+					runtimeInputs = append(runtimeInputs, allocations...)
+				}
+				if len(allocatedRoles) > 0 {
+					teamMeta["auto_allocate_allocated_roles"] = allocatedRoles
+				}
+				if len(missingRoles) > 0 {
+					teamMeta["auto_allocate_missing_roles"] = missingRoles
+				}
+				if warning != "" {
+					teamMeta["auto_allocate_warning"] = warning
+				}
+			}
+		}
+	}
 	runtimeMembers, runtimeMembersJSON, err := buildRuntimeMembers(runtimeInputs, teamID, usedMemberIDs)
 	if err != nil {
 		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
@@ -1126,6 +1225,22 @@ func (s *Server) teamRunStatusResponse(ctx context.Context, p *Principal, run *d
 	if raw, ok := teamMeta["run_overrides_mode"]; ok {
 		runOverridesMode = raw
 	}
+	var autoAllocateRoles any
+	if raw, ok := teamMeta["auto_allocate_roles"]; ok {
+		autoAllocateRoles = raw
+	}
+	var autoAllocateAllocated any
+	if raw, ok := teamMeta["auto_allocate_allocated_roles"]; ok {
+		autoAllocateAllocated = raw
+	}
+	var autoAllocateMissing any
+	if raw, ok := teamMeta["auto_allocate_missing_roles"]; ok {
+		autoAllocateMissing = raw
+	}
+	var autoAllocateWarning any
+	if raw, ok := teamMeta["auto_allocate_warning"]; ok {
+		autoAllocateWarning = raw
+	}
 	var sharedMemoryScope any
 	if raw, ok := teamMeta["shared_memory_scope_id"]; ok {
 		sharedMemoryScope = raw
@@ -1195,6 +1310,18 @@ func (s *Server) teamRunStatusResponse(ctx context.Context, p *Principal, run *d
 	}
 	if runOverridesMode != nil {
 		resp["run_overrides_mode"] = runOverridesMode
+	}
+	if autoAllocateRoles != nil {
+		resp["auto_allocate_roles"] = autoAllocateRoles
+	}
+	if autoAllocateAllocated != nil {
+		resp["auto_allocate_allocated_roles"] = autoAllocateAllocated
+	}
+	if autoAllocateMissing != nil {
+		resp["auto_allocate_missing_roles"] = autoAllocateMissing
+	}
+	if autoAllocateWarning != nil {
+		resp["auto_allocate_warning"] = autoAllocateWarning
 	}
 	if sharedMemoryScope != nil {
 		resp["shared_memory_scope_id"] = sharedMemoryScope
@@ -1530,4 +1657,45 @@ func teamRunEventPayload(teamID, teamRunID, status, mode string, createdUnixMs i
 		payload["member_job_summary"] = summary
 	}
 	return payload
+}
+
+func (s *Server) collectRuntimeAgentCandidates(ctx context.Context, ownerSub string) ([]runtimeAgentCandidate, error) {
+	if s == nil || s.cfg.DB == nil || s.cfg.Registry == nil {
+		return nil, errors.New("broker not initialized")
+	}
+	dbAgents, err := s.cfg.DB.ListAgentsForUser(ctx, ownerSub)
+	if err != nil {
+		return nil, errors.New("db error")
+	}
+	candidates := make([]runtimeAgentCandidate, 0, len(dbAgents))
+	for _, a := range dbAgents {
+		if !a.Enabled {
+			continue
+		}
+		conns := s.cfg.Registry.ListByAgent(a.AgentID)
+		if len(conns) == 0 {
+			continue
+		}
+		var bestConnected time.Time
+		bestDeployment := ""
+		for _, conn := range conns {
+			if conn == nil {
+				continue
+			}
+			if bestDeployment == "" || conn.Connected.After(bestConnected) {
+				bestConnected = conn.Connected
+				bestDeployment = conn.DeploymentID
+			}
+		}
+		if bestDeployment != "" {
+			candidates = append(candidates, runtimeAgentCandidate{
+				AgentID:      a.AgentID,
+				DeploymentID: bestDeployment,
+			})
+		}
+	}
+	if len(candidates) == 0 {
+		return nil, errors.New("no connected agents available")
+	}
+	return candidates, nil
 }

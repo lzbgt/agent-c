@@ -54,7 +54,7 @@ Status: draft (rolling)
 
 3) **Dynamic runtime member allocation**
    - Runtime members are manual today.
-   - Need an allocator that selects connected agents by role and capacity.
+   - Broker supports an allocator endpoint and `auto_allocate_roles` on team runs, but no autonomous loop yet.
 
 4) **Shared memory scope enforcement**
    - Scope IDs are stored; enforcement is still pending.

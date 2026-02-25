@@ -679,6 +679,13 @@ schemas:
             type: object
             additionalProperties: true
             description: Map of role to run override objects (applied before member_overrides; allowlist enforced server-side).
+          auto_allocate_roles:
+            type: boolean
+            description: When true, broker auto-allocates runtime members for missing roles.
+          auto_allocate_max_members:
+            type: integer
+            format: int32
+            description: Cap auto-allocated runtime members (1-16).
           member_overrides:
             type: object
             additionalProperties: true
@@ -762,6 +769,14 @@ schemas:
       run_overrides_mode: { type: string }
       shared_memory_scope_id: { type: string }
       shared_memory_mode: { type: string }
+      auto_allocate_roles: { type: boolean }
+      auto_allocate_allocated_roles:
+        type: array
+        items: { type: string }
+      auto_allocate_missing_roles:
+        type: array
+        items: { type: string }
+      auto_allocate_warning: { type: string }
       goal_contract:
         $ref: "#/components/schemas/TeamRunGoalContract"
       goal_events:

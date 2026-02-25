@@ -101,6 +101,8 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const [runTimeoutMs, setRunTimeoutMs] = React.useState<string>("60000");
   const [runSharedMemoryScope, setRunSharedMemoryScope] = React.useState<string>("");
   const [runSharedMemoryMode, setRunSharedMemoryMode] = React.useState<string>("read_write");
+  const [runAutoAllocateRoles, setRunAutoAllocateRoles] = React.useState<boolean>(false);
+  const [runAutoAllocateMaxMembers, setRunAutoAllocateMaxMembers] = React.useState<string>("");
   const [runQuorumMode, setRunQuorumMode] = React.useState<string>("auto");
   const [runOverridesMode, setRunOverridesMode] = React.useState<string>("member_meta");
   const [runMemberOverridesJson, setRunMemberOverridesJson] = React.useState<string>("");
@@ -429,6 +431,8 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
     setRunRolePromptMode("prepend");
     setRunSharedMemoryScope(teamSharedMemoryScopeDefault);
     setRunSharedMemoryMode(teamSharedMemoryModeDefault);
+    setRunAutoAllocateRoles(false);
+    setRunAutoAllocateMaxMembers("");
   }, [teamIdTrimmed]);
 
   React.useEffect(() => {
@@ -503,6 +507,13 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
       if (mode) teamPayload.mode = mode;
       const qmode = String(runQuorumMode || "").trim();
       if (qmode) teamPayload.quorum_policy = { mode: qmode };
+      if (runAutoAllocateRoles) {
+        teamPayload.auto_allocate_roles = true;
+        const maxMembers = Number.parseInt(String(runAutoAllocateMaxMembers || "").trim(), 10);
+        if (Number.isFinite(maxMembers)) {
+          teamPayload.auto_allocate_max_members = maxMembers;
+        }
+      }
       const overridesMode = String(runOverridesMode || "").trim();
       if (overridesMode) teamPayload.run_overrides_mode = overridesMode;
       if (overridesMode === "explicit") {
@@ -1576,6 +1587,10 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
         setRunSharedMemoryScope={setRunSharedMemoryScope}
         runSharedMemoryMode={runSharedMemoryMode}
         setRunSharedMemoryMode={setRunSharedMemoryMode}
+        runAutoAllocateRoles={runAutoAllocateRoles}
+        setRunAutoAllocateRoles={setRunAutoAllocateRoles}
+        runAutoAllocateMaxMembers={runAutoAllocateMaxMembers}
+        setRunAutoAllocateMaxMembers={setRunAutoAllocateMaxMembers}
         runMode={runMode}
         setRunMode={setRunMode}
         runQuorumMode={runQuorumMode}

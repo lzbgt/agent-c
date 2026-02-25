@@ -44,6 +44,12 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
   const handoffEvents = Array.isArray(run?.handoff_events) ? run.handoff_events : [];
   const sharedMemoryScope = run?.shared_memory_scope_id ? String(run.shared_memory_scope_id) : "";
   const sharedMemoryMode = run?.shared_memory_mode ? String(run.shared_memory_mode) : "";
+  const autoAllocateRoles = run?.auto_allocate_roles === true;
+  const autoAllocateAllocated = Array.isArray(run?.auto_allocate_allocated_roles)
+    ? run.auto_allocate_allocated_roles
+    : [];
+  const autoAllocateMissing = Array.isArray(run?.auto_allocate_missing_roles) ? run.auto_allocate_missing_roles : [];
+  const autoAllocateWarning = run?.auto_allocate_warning ? String(run.auto_allocate_warning) : "";
 
   const lastInitRunId = React.useRef<string>("");
   const [goalContractGoal, setGoalContractGoal] = React.useState<string>("");
@@ -238,6 +244,14 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
         <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
           shared memory: {sharedMemoryScope}
           {sharedMemoryMode ? ` (${sharedMemoryMode})` : ""}
+        </div>
+      ) : null}
+      {autoAllocateRoles ? (
+        <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
+          auto-allocate: on
+          {autoAllocateAllocated.length > 0 ? ` · allocated ${autoAllocateAllocated.join(", ")}` : ""}
+          {autoAllocateMissing.length > 0 ? ` · missing ${autoAllocateMissing.join(", ")}` : ""}
+          {autoAllocateWarning ? ` · ${autoAllocateWarning}` : ""}
         </div>
       ) : null}
       {run?.role_overrides_applied || run?.member_overrides_applied ? (

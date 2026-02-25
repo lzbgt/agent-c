@@ -30,6 +30,10 @@ type TeamRunCreatePanelProps = {
   setRunSharedMemoryScope: (value: string) => void;
   runSharedMemoryMode: string;
   setRunSharedMemoryMode: (value: string) => void;
+  runAutoAllocateRoles: boolean;
+  setRunAutoAllocateRoles: (value: boolean) => void;
+  runAutoAllocateMaxMembers: string;
+  setRunAutoAllocateMaxMembers: (value: string) => void;
   runMode: string;
   setRunMode: (value: string) => void;
   runQuorumMode: string;
@@ -230,6 +234,27 @@ export default function TeamRunCreatePanel(props: TeamRunCreatePanelProps) {
           <option value="read_only">read_only</option>
         </select>
         <span className="text-[11px] text-white/50">Overrides team shared memory for this run.</span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2 text-[11px] text-white/70">
+          <input
+            type="checkbox"
+            className="h-3 w-3"
+            checked={props.runAutoAllocateRoles}
+            onChange={(e) => props.setRunAutoAllocateRoles(e.target.checked)}
+          />
+          Auto-allocate runtime members by role
+        </label>
+        <FieldLabel>Max members</FieldLabel>
+        <input
+          className="w-20 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+          value={props.runAutoAllocateMaxMembers}
+          onChange={(e) => props.setRunAutoAllocateMaxMembers(e.target.value)}
+          placeholder="optional"
+        />
+        <span className="text-[11px] text-white/50">
+          Fills missing roles from connected agents when enabled.
+        </span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <FieldLabel>Run overrides</FieldLabel>
