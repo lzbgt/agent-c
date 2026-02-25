@@ -1,7 +1,13 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -236,5 +242,102 @@ func TestShouldAutoAllocateRuntimeMembers(t *testing.T) {
 	status := &teamRunResponse{AutoAllocateRoles: false}
 	if shouldAutoAllocateRuntimeMembers(nil, status) {
 		t.Fatalf("expected status auto_allocate_roles=false to disable auto-allocate")
+	}
+}
+
+func TestMaybeAllocateRuntimeMembersUpdatesRuntimeMembers(t *testing.T) {
+	var allocatePayload map[string]any
+	var updatePayload map[string]any
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") == "" {
+			t.Fatalf("missing Authorization header")
+		}
+		switch r.URL.Path {
+		case "/v1/teams/team1/runtime_members/allocate":
+			if r.Method != http.MethodPost {
+				t.Fatalf("allocate expected POST, got %s", r.Method)
+			}
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &allocatePayload)
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","runtime_members":[{"agent_id":"agent-1","role":"planner"}],"allocated_roles":["planner"],"missing_roles":[]}`)
+		case "/v1/teams/team1/runs/run1/runtime_members":
+			if r.Method != http.MethodPatch {
+				t.Fatalf("runtime_members expected PATCH, got %s", r.Method)
+			}
+			body, _ := io.ReadAll(r.Body)
+			_ = json.Unmarshal(body, &updatePayload)
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true}`)
+		default:
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+	}))
+	defer server.Close()
+
+	cfg := config{brokerBase: server.URL, oidcToken: "token"}
+	status := &teamRunResponse{
+		RuntimeMembers: []map[string]any{{"agent_id": "agent-2", "role": "executor"}},
+		AutoAllocateMaxMembers: 3,
+	}
+	meta := map[string]any{"auto_allocate_max_members": 3}
+	ok, missing, err := maybeAllocateRuntimeMembers(context.Background(), server.Client(), cfg, "team1", "run1", status, meta, []string{"planner"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected allocator attempt to change meta")
+	}
+	if len(missing) != 0 {
+		t.Fatalf("expected no missing roles, got %v", missing)
+	}
+	if roles, ok := allocatePayload["roles"].([]any); !ok || len(roles) != 1 {
+		t.Fatalf("unexpected allocate roles payload: %#v", allocatePayload["roles"])
+	} else if role, ok := roles[0].(string); !ok || strings.TrimSpace(role) != "planner" {
+		t.Fatalf("unexpected allocate role: %#v", roles[0])
+	}
+	if allocatePayload["exclude_team_members"] != true {
+		t.Fatalf("expected exclude_team_members true, got %#v", allocatePayload["exclude_team_members"])
+	}
+	if allocatePayload["max_members"] != float64(3) {
+		t.Fatalf("expected max_members 3, got %#v", allocatePayload["max_members"])
+	}
+	if updatePayload["mode"] != "merge" {
+		t.Fatalf("expected merge mode, got %#v", updatePayload["mode"])
+	}
+	members, ok := updatePayload["runtime_members"].([]any)
+	if !ok || len(members) != 1 {
+		t.Fatalf("expected runtime_members update, got %#v", updatePayload["runtime_members"])
+	}
+	member, _ := members[0].(map[string]any)
+	if member == nil {
+		t.Fatalf("unexpected runtime member payload: %#v", members[0])
+	}
+	agentID, _ := member["agent_id"].(string)
+	if strings.TrimSpace(agentID) != "agent-1" {
+		t.Fatalf("unexpected runtime member payload: %#v", member)
+	}
+}
+
+func TestMaybeAllocateRuntimeMembersNonFatal(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/teams/team1/runtime_members/allocate" {
+			t.Fatalf("unexpected path: %s", r.URL.Path)
+		}
+		http.Error(w, "no connected agents available", http.StatusBadRequest)
+	}))
+	defer server.Close()
+
+	cfg := config{brokerBase: server.URL, oidcToken: "token"}
+	meta := map[string]any{}
+	ok, missing, err := maybeAllocateRuntimeMembers(context.Background(), server.Client(), cfg, "team1", "run1", &teamRunResponse{}, meta, []string{"planner"})
+	if err != nil {
+		t.Fatalf("expected non-fatal error, got %v", err)
+	}
+	if !ok {
+		t.Fatalf("expected meta to be updated on non-fatal error")
+	}
+	if len(missing) != 1 || missing[0] != "planner" {
+		t.Fatalf("unexpected missing roles: %v", missing)
 	}
 }
