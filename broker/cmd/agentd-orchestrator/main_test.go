@@ -1029,6 +1029,89 @@ func TestMaybeEmitDriftPauseAction(t *testing.T) {
 	}
 }
 
+func TestMaybeEmitDriftReplanAction(t *testing.T) {
+	type state struct {
+		mu              sync.Mutex
+		pausedRun       bool
+		guidanceCalled  bool
+		patchBody       map[string]any
+		guidancePayload map[string]any
+	}
+	st := &state{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/teams/team1/runs/run1/goal":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true}`)
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/teams/team1/orchestrator/runs/orun1":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			st.mu.Lock()
+			st.pausedRun = true
+			st.patchBody = payload
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","run":{"orchestrator_run_id":"orun1","status":"paused"}}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/teams/team1/guidance":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			st.mu.Lock()
+			st.guidanceCalled = true
+			st.guidancePayload = payload
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","guidance":{"guidance_id":"g-replan"}}`)
+		default:
+			http.Error(w, "unexpected", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	cfg := config{brokerBase: server.URL, oidcToken: "token", orchestratorID: "orch1"}
+	meta := map[string]any{
+		"drift_after_ms":       int64(1),
+		"drift_action":         "replan",
+		"drift_replan_message": "replan now",
+	}
+	status := &teamRunResponse{CreatedUnixMS: time.Now().UTC().UnixMilli() - 500}
+	changed, err := maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", "orun1", "orch1", status, meta)
+	if err != nil {
+		t.Fatalf("maybeEmitDrift error: %v", err)
+	}
+	if !changed {
+		t.Fatalf("expected drift to emit and update meta")
+	}
+	if meta["drift_replan_guidance_id"] != "g-replan" {
+		t.Fatalf("expected drift_replan_guidance_id=g-replan, got %#v", meta["drift_replan_guidance_id"])
+	}
+	if meta["drift_action_error"] != "" {
+		t.Fatalf("expected no drift_action_error, got %#v", meta["drift_action_error"])
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if !st.pausedRun {
+		t.Fatalf("expected orchestrator run pause call")
+	}
+	if st.patchBody == nil || st.patchBody["status"] != "paused" {
+		t.Fatalf("expected status=paused, got %#v", st.patchBody)
+	}
+	if !st.guidanceCalled {
+		t.Fatalf("expected guidance create call")
+	}
+	if st.guidancePayload == nil || st.guidancePayload["message"] != "replan now" {
+		t.Fatalf("expected guidance message replan now, got %#v", st.guidancePayload)
+	}
+	if payload, ok := st.guidancePayload["payload"].(map[string]any); ok {
+		if v, ok := payload["replan_requested"].(bool); !ok || !v {
+			t.Fatalf("expected replan_requested true, got %#v", payload["replan_requested"])
+		}
+	} else {
+		t.Fatalf("expected guidance payload map")
+	}
+}
+
 func TestMaybeProcessHandoffQueueDispatchesDirective(t *testing.T) {
 	type state struct {
 		mu            sync.Mutex

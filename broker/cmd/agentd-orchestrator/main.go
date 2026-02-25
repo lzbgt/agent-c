@@ -653,29 +653,33 @@ func applyDriftAction(
 		return false
 	}
 	meta["drift_action"] = action
-	switch action {
-	case "guidance":
-		kind := strings.TrimSpace(asString(meta["drift_guidance_kind"]))
+	buildGuidance := func(prefix, defaultKind, defaultPriority, defaultMessage string, includeReplan bool) guidanceCreateRequest {
+		kind := strings.TrimSpace(asString(meta[prefix+"_kind"]))
 		if kind == "" {
-			kind = "warning"
+			kind = defaultKind
 		}
-		priority := strings.TrimSpace(asString(meta["drift_guidance_priority"]))
+		priority := strings.TrimSpace(asString(meta[prefix+"_priority"]))
 		if priority == "" {
-			priority = "high"
+			priority = defaultPriority
 		}
-		message := strings.TrimSpace(asString(meta["drift_guidance_message"]))
+		message := strings.TrimSpace(asString(meta[prefix+"_message"]))
 		if message == "" {
-			message = fmt.Sprintf("Goal drift detected after %dms (threshold %dms).", elapsed, threshold)
+			message = defaultMessage
 		}
 		payload := map[string]any{
-			"source":          "drift_guard",
-			"elapsed_ms":      elapsed,
-			"threshold_ms":    threshold,
-			"team_run_id":     teamRunID,
-			"orchestrator_id": cfg.orchestratorID,
-			"ts_unix_ms":      now,
+			"source":              "drift_guard",
+			"elapsed_ms":          elapsed,
+			"threshold_ms":        threshold,
+			"team_run_id":         teamRunID,
+			"orchestrator_id":     cfg.orchestratorID,
+			"orchestrator_run_id": orchestratorRunID,
+			"drift_action":        action,
+			"ts_unix_ms":          now,
 		}
-		if extra, ok := meta["drift_guidance_payload"].(map[string]any); ok && len(extra) > 0 {
+		if includeReplan {
+			payload["replan_requested"] = true
+		}
+		if extra, ok := meta[prefix+"_payload"].(map[string]any); ok && len(extra) > 0 {
 			for k, v := range extra {
 				payload[k] = v
 			}
@@ -687,10 +691,10 @@ func applyDriftAction(
 			Message:   message,
 			Payload:   payload,
 		}
-		targetRoles := cleanStringList(asStringSlice(meta["drift_guidance_target_roles"]))
-		targetMembers := cleanStringList(asStringSlice(meta["drift_guidance_target_member_ids"]))
-		targetAgents := cleanStringList(asStringSlice(meta["drift_guidance_target_agent_ids"]))
-		targetOrch := strings.TrimSpace(asString(meta["drift_guidance_target_orchestrator"]))
+		targetRoles := cleanStringList(asStringSlice(meta[prefix+"_target_roles"]))
+		targetMembers := cleanStringList(asStringSlice(meta[prefix+"_target_member_ids"]))
+		targetAgents := cleanStringList(asStringSlice(meta[prefix+"_target_agent_ids"]))
+		targetOrch := strings.TrimSpace(asString(meta[prefix+"_target_orchestrator"]))
 		if len(targetRoles) > 0 {
 			req.TargetRoles = targetRoles
 		}
@@ -706,6 +710,17 @@ func applyDriftAction(
 		if targetOrch != "" {
 			req.TargetOrchestrator = targetOrch
 		}
+		return req
+	}
+	switch action {
+	case "guidance":
+		req := buildGuidance(
+			"drift_guidance",
+			"warning",
+			"high",
+			fmt.Sprintf("Goal drift detected after %dms (threshold %dms).", elapsed, threshold),
+			false,
+		)
 		guidance, err := createGuidance(ctx, client, cfg, teamID, req)
 		if err != nil {
 			meta["drift_action_error"] = err.Error()
@@ -742,6 +757,36 @@ func applyDriftAction(
 		meta["drift_pause_unix_ms"] = now
 		meta["drift_pause_team_run_id"] = teamRunID
 		meta["drift_action_error"] = ""
+		return true
+	case "replan":
+		pauseErr := ""
+		if orchestratorRunID == "" {
+			pauseErr = "drift replan missing orchestrator_run_id"
+		} else if _, err := updateOrchestratorRun(ctx, client, cfg, teamID, orchestratorRunID, "paused", meta, stringPtr(owner), nil); err != nil {
+			pauseErr = err.Error()
+			fmt.Fprintf(os.Stderr, "drift replan pause failed: %v\n", err)
+		} else {
+			meta["drift_replan_pause_unix_ms"] = now
+			meta["drift_replan_pause_team_run_id"] = teamRunID
+		}
+		req := buildGuidance(
+			"drift_replan",
+			"directive",
+			"urgent",
+			fmt.Sprintf("Goal drift detected after %dms (threshold %dms). Please replan.", elapsed, threshold),
+			true,
+		)
+		guidance, err := createGuidance(ctx, client, cfg, teamID, req)
+		if err != nil {
+			meta["drift_action_error"] = err.Error()
+			if pauseErr != "" {
+				meta["drift_action_error"] = pauseErr + " | " + err.Error()
+			}
+			fmt.Fprintf(os.Stderr, "drift replan guidance create failed: %v\n", err)
+			return true
+		}
+		meta["drift_replan_guidance_id"] = guidance.GuidanceID
+		meta["drift_action_error"] = pauseErr
 		return true
 	default:
 		meta["drift_action_error"] = fmt.Sprintf("unknown drift_action: %s", action)

@@ -135,8 +135,9 @@ Minimal responsibilities:
 5) **Progress + drift checkpoints**
    - Emit `goal_progress` events periodically (`meta.progress_every_ms`).
    - Emit a single `goal_drift` event when a run exceeds `meta.drift_after_ms`.
-   - Optional drift action (`meta.drift_action="guidance"|"pause"|"cancel"`) can
-     emit guidance, pause the orchestrator run, or cancel the active team run.
+   - Optional drift action (`meta.drift_action="guidance"|"pause"|"cancel"|"replan"`)
+     can emit guidance, pause the orchestrator run, cancel the active team run,
+     or pause + request a replan.
 
 6) **Handoff execution**
    - When `meta.handoff_queue` contains events, publish them to the active team run
@@ -164,7 +165,7 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
   completion_mode: "on_success"|"on_failure"|"never"  # default on_success
   progress_every_ms: number           # emit goal_progress every N ms (optional)
   drift_after_ms: number              # emit goal_drift after N ms (optional)
-  drift_action: "none"|"guidance"|"pause"|"cancel"  # optional drift response
+  drift_action: "none"|"guidance"|"pause"|"cancel"|"replan"  # optional drift response
   drift_guidance_kind: "warning"|"constraint"|"directive"|"context"  # optional
   drift_guidance_priority: "low"|"normal"|"high"|"urgent"            # optional
   drift_guidance_message: string      # optional override for guidance text
@@ -173,6 +174,14 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
   drift_guidance_target_roles: [string]      # optional targeting
   drift_guidance_target_member_ids: [string] # optional targeting
   drift_guidance_target_agent_ids: [string]  # optional targeting
+  drift_replan_kind: "directive"|"warning"|"constraint"|"context"     # optional
+  drift_replan_priority: "low"|"normal"|"high"|"urgent"               # optional
+  drift_replan_message: string        # optional override for replan text
+  drift_replan_payload: { ... }       # optional payload merged into replan guidance
+  drift_replan_target_orchestrator: string # optional target; default "human"
+  drift_replan_target_roles: [string]      # optional targeting
+  drift_replan_target_member_ids: [string] # optional targeting
+  drift_replan_target_agent_ids: [string]  # optional targeting
   allow_takeover: true|false          # default true; allow stale-lease takeover
   handoff_queue: [{from_role,to_role,reason?,message?,data?}]  # optional queue
   run_template: { ... }               # optional /api/v1/run payload
@@ -207,6 +216,8 @@ Notes:
   runs will return a 400 and the loop records `drift_action_error`.
 - `drift_action="pause"` updates the orchestrator run status to `paused` and the
   loop skips further dispatch until resumed.
+- `drift_action="replan"` pauses the orchestrator run and emits a guidance item
+  with `replan_requested=true` for operator review.
 
 ### Goal progress + drift events (SSE)
 
