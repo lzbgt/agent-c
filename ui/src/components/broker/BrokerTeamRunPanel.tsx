@@ -286,6 +286,11 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const [runCancelError, setRunCancelError] = React.useState<string | null>(null);
   const [runCancelNote, setRunCancelNote] = React.useState<string>("");
   const [runOverridesExpanded, setRunOverridesExpanded] = React.useState<boolean>(false);
+  const [autoRefreshRunLookup, setAutoRefreshRunLookup] = useLocalStorageState<boolean>(
+    "agentui.teamRunLookupAuto",
+    true,
+  );
+  const [runLookupLastEvent, setRunLookupLastEvent] = React.useState<string>("");
   const [approvalsBusy, setApprovalsBusy] = React.useState<boolean>(false);
   const [approvalsError, setApprovalsError] = React.useState<string | null>(null);
   const [approvals, setApprovals] = React.useState<TeamRunApprovalRow[] | null>(null);
@@ -465,22 +470,25 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
     }
   };
 
-  const fetchRunStatus = async (runId: string) => {
-    if (!teamIdTrimmed || !runId) {
-      setRunLookupError("missing team_id or run id");
-      return;
-    }
-    setRunLookupError(null);
-    setRunLookupBusy(true);
-    try {
-      const resp = await apiBrokerTeamRunGet(props.base, teamIdTrimmed, runId, props.auth);
-      setRunLookupResult(resp);
-    } catch (err) {
-      setRunLookupError(String(err));
-    } finally {
-      setRunLookupBusy(false);
-    }
-  };
+  const fetchRunStatus = React.useCallback(
+    async (runId: string) => {
+      if (!teamIdTrimmed || !runId) {
+        setRunLookupError("missing team_id or run id");
+        return;
+      }
+      setRunLookupError(null);
+      setRunLookupBusy(true);
+      try {
+        const resp = await apiBrokerTeamRunGet(props.base, teamIdTrimmed, runId, props.auth);
+        setRunLookupResult(resp);
+      } catch (err) {
+        setRunLookupError(String(err));
+      } finally {
+        setRunLookupBusy(false);
+      }
+    },
+    [teamIdTrimmed, props.base, props.auth],
+  );
 
   const handleRunLookup = async () => {
     const runId = String(runLookupId || "").trim();
@@ -541,6 +549,40 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
     recentRunsEventRef.current = nextKey;
     void loadRecentRuns();
   }, [recentRunsLive, props.canQuery, props.quorumEvents, teamIdTrimmed, loadRecentRuns]);
+
+  React.useEffect(() => {
+    if (!autoRefreshRunLookup || !props.canQuery) return;
+    const runId = resolveRunId();
+    if (!runId) return;
+    const rows = Array.isArray(props.quorumEvents) ? props.quorumEvents : [];
+    if (rows.length === 0) return;
+    let nextKey = "";
+    for (let i = rows.length - 1; i >= 0; i -= 1) {
+      const ev = rows[i];
+      if (!ev) continue;
+      const type = String(ev?.type || "");
+      if (!TEAM_RUN_EVENT_TYPES.has(type)) continue;
+      const evTeamId = String(ev?.payload?.team_id || "");
+      if (teamIdTrimmed && evTeamId && evTeamId !== teamIdTrimmed) continue;
+      const evRunId = String(ev?.payload?.team_run_id || "");
+      if (evRunId && evRunId !== runId) continue;
+      nextKey = ev?.event_id
+        ? `id:${String(ev.event_id)}`
+        : `ts:${Number(ev?.ts_unix_ms || 0)}|type:${type}|run:${evRunId}`;
+      break;
+    }
+    if (!nextKey) return;
+    if (runLookupLastEvent === nextKey) return;
+    setRunLookupLastEvent(nextKey);
+    void fetchRunStatus(runId);
+  }, [
+    autoRefreshRunLookup,
+    props.canQuery,
+    props.quorumEvents,
+    teamIdTrimmed,
+    runLookupLastEvent,
+    fetchRunStatus,
+  ]);
 
   const handleRunCancel = async () => {
     const runId = resolveRunId();
@@ -2012,6 +2054,15 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
           {runCancelBusy ? "Cancelling…" : "Cancel run"}
         </button>
       </div>
+      <label className="flex items-center gap-2 text-[11px] text-white/60">
+        <input
+          type="checkbox"
+          className="rounded border-white/20 bg-black/40"
+          checked={autoRefreshRunLookup}
+          onChange={(e) => setAutoRefreshRunLookup(e.target.checked)}
+        />
+        Auto refresh run status on team run events
+      </label>
       {runLookupError ? (
         <div className="rounded-md border border-rose-500/30 bg-rose-500/10 px-2 py-1 text-[11px] text-rose-200">{runLookupError}</div>
       ) : null}
