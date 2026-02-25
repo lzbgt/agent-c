@@ -258,6 +258,42 @@ func TestParseRoleOverridesRejectsBadRole(t *testing.T) {
 	}
 }
 
+func TestNormalizeTeamMetaRoleOverrides(t *testing.T) {
+	meta := map[string]any{
+		"role_overrides": map[string]any{
+			"Planner": map[string]any{
+				"model":   " gpt-4.1-mini ",
+				"api_key": "nope",
+			},
+		},
+	}
+	out, err := normalizeTeamMetaRoleOverrides(meta)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	ro, ok := out["role_overrides"].(map[string]map[string]any)
+	if !ok {
+		t.Fatalf("expected role_overrides map, got %T", out["role_overrides"])
+	}
+	planner := ro["planner"]
+	if planner["model"] != "gpt-4.1-mini" {
+		t.Fatalf("expected sanitized model, got %v", planner["model"])
+	}
+	if _, ok := planner["api_key"]; ok {
+		t.Fatalf("unexpected api_key in role overrides")
+	}
+}
+
+func TestNormalizeTeamMetaRoleOverridesRejectsInvalid(t *testing.T) {
+	meta := map[string]any{
+		"role_overrides": "nope",
+	}
+	_, err := normalizeTeamMetaRoleOverrides(meta)
+	if err == nil {
+		t.Fatalf("expected error for invalid role_overrides")
+	}
+}
+
 func TestBuildRuntimeMembers(t *testing.T) {
 	meta := map[string]any{
 		"runtime_members": []any{

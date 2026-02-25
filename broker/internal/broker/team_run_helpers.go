@@ -833,6 +833,26 @@ func parseRoleOverrides(v any) (map[string]map[string]any, error) {
 	return out, nil
 }
 
+func normalizeTeamMetaRoleOverrides(meta map[string]any) (map[string]any, error) {
+	if meta == nil {
+		return meta, nil
+	}
+	raw, ok := meta["role_overrides"]
+	if !ok {
+		return meta, nil
+	}
+	overrides, err := parseRoleOverrides(raw)
+	if err != nil {
+		return meta, err
+	}
+	if len(overrides) > 0 {
+		meta["role_overrides"] = overrides
+	} else {
+		delete(meta, "role_overrides")
+	}
+	return meta, nil
+}
+
 func buildRuntimeMembers(inputs []teamRuntimeMemberInput, teamID string, usedIDs map[string]bool) ([]db.TeamMember, []map[string]any, error) {
 	if len(inputs) == 0 {
 		return nil, nil, nil

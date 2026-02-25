@@ -92,7 +92,12 @@ func (s *Server) handleTeamsCreate(w http.ResponseWriter, r *http.Request) {
 		writeErrorJSON(w, "missing display_name", http.StatusBadRequest)
 		return
 	}
-	t, err := s.cfg.DB.CreateTeam(r.Context(), p.Sub, teamID, displayName, req.Tags, req.PolicyRef, req.SharedMemoryScopeID, req.Meta)
+	meta, err := normalizeTeamMetaRoleOverrides(req.Meta)
+	if err != nil {
+		writeErrorJSON(w, "invalid role_overrides", http.StatusBadRequest)
+		return
+	}
+	t, err := s.cfg.DB.CreateTeam(r.Context(), p.Sub, teamID, displayName, req.Tags, req.PolicyRef, req.SharedMemoryScopeID, meta)
 	if err != nil {
 		writeErrorJSON(w, "create team failed", http.StatusBadRequest)
 		return
@@ -282,6 +287,11 @@ func (s *Server) handleTeamUpdate(w http.ResponseWriter, r *http.Request, teamID
 	meta := team.Meta()
 	if req.Meta != nil {
 		meta = *req.Meta
+	}
+	meta, err = normalizeTeamMetaRoleOverrides(meta)
+	if err != nil {
+		writeErrorJSON(w, "invalid role_overrides", http.StatusBadRequest)
+		return
 	}
 	updated, err := s.cfg.DB.UpdateTeam(r.Context(), teamID, displayName, tags, policyRef, sharedScope, meta)
 	if err != nil {
