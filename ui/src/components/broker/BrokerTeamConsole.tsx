@@ -23,7 +23,7 @@ import BrokerOrchestratorRunPanel from "./BrokerOrchestratorRunPanel";
 import BrokerOrchestratorSpawnPanel from "./BrokerOrchestratorSpawnPanel";
 import BrokerTeamGuidancePanel from "./BrokerTeamGuidancePanel";
 import TeamRolePlanEditor, { type RoleGraphEdge } from "./TeamRolePlanEditor";
-import { ORCHESTRATOR_EVENT_TYPES, TEAM_RUN_EVENT_TYPES } from "./teamRunUtils";
+import { GUIDANCE_EVENT_TYPES, ORCHESTRATOR_EVENT_TYPES, TEAM_RUN_EVENT_TYPES } from "./teamRunUtils";
 import type { BrokerEventRow, TeamMemberRow, TeamQuorumRuleRow } from "./types";
 
 const fmtTs = (ms?: number | null) => {
@@ -249,6 +249,17 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     [eventTeamId, teamIdTrimmed],
   );
 
+  const isGuidanceEvent = React.useCallback(
+    (row?: BrokerEventRow | null) => {
+      if (!row) return false;
+      const type = String(row.type || "");
+      if (!GUIDANCE_EVENT_TYPES.has(type)) return false;
+      if (!teamIdTrimmed) return true;
+      return eventTeamId(row) === teamIdTrimmed;
+    },
+    [eventTeamId, teamIdTrimmed],
+  );
+
   const isOrchestratorEvent = React.useCallback(
     (row?: BrokerEventRow | null) => {
       if (!row) return false;
@@ -317,6 +328,33 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     [isOrchestratorEvent],
   );
 
+  const mergeGuidanceEvents = React.useCallback(
+    (live: BrokerEventRow[], replay: BrokerEventRow[]) => {
+      const seen = new Set<string>();
+      const out: BrokerEventRow[] = [];
+      const push = (row: BrokerEventRow) => {
+        const key = buildEventKey(row);
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push(row);
+      };
+      for (const row of replay) {
+        if (!isGuidanceEvent(row)) continue;
+        push(row);
+      }
+      for (const row of live) {
+        if (!isGuidanceEvent(row)) continue;
+        push(row);
+      }
+      out.sort((a, b) => (a.ts_unix_ms || 0) - (b.ts_unix_ms || 0));
+      if (out.length > TEAM_EVENTS_MAX) {
+        return out.slice(out.length - TEAM_EVENTS_MAX);
+      }
+      return out;
+    },
+    [isGuidanceEvent],
+  );
+
   const liveEvents = Array.isArray(props.quorumEvents) ? props.quorumEvents : [];
   const mergedTeamEvents = React.useMemo(
     () => mergeTeamEvents(liveEvents, teamReplayEvents),
@@ -325,6 +363,10 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const mergedOrchestratorEvents = React.useMemo(
     () => mergeOrchestratorEvents(liveEvents, orchestratorReplayEvents),
     [liveEvents, orchestratorReplayEvents, mergeOrchestratorEvents],
+  );
+  const mergedGuidanceEvents = React.useMemo(
+    () => mergeGuidanceEvents(liveEvents, teamReplayEvents),
+    [liveEvents, teamReplayEvents, mergeGuidanceEvents],
   );
 
   const loadTeamReplay = React.useCallback(async () => {
@@ -336,7 +378,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       const resp = await apiBrokerEventsReplay(props.base, props.auth, {
         sinceTs: teamEventsCursorRef.current || 0,
         limit: TEAM_EVENTS_MAX,
-        types: Array.from(new Set([...TEAM_RUN_EVENT_TYPES, ...ORCHESTRATOR_EVENT_TYPES])),
+        types: Array.from(new Set([...TEAM_RUN_EVENT_TYPES, ...ORCHESTRATOR_EVENT_TYPES, ...GUIDANCE_EVENT_TYPES])),
       });
       if (!resp.ok) {
         throw new Error(resp.error || resp.err || resp.code || "team events replay failed");
@@ -1922,7 +1964,13 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         events={mergedOrchestratorEvents}
       />
 
-      <BrokerTeamGuidancePanel base={props.base} auth={props.auth} canQuery={canQuery} teamId={teamIdTrimmed} />
+      <BrokerTeamGuidancePanel
+        base={props.base}
+        auth={props.auth}
+        canQuery={canQuery}
+        teamId={teamIdTrimmed}
+        events={mergedGuidanceEvents}
+      />
 
       <BrokerOrchestratorSpawnPanel
         base={props.base}

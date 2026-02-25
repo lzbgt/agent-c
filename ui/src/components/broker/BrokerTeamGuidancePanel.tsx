@@ -7,13 +7,15 @@ import {
   type BrokerGuidanceEvent,
 } from "../../api";
 import FieldLabel from "../FieldLabel";
-import { fmtTs, parseCsvList } from "./teamRunUtils";
+import { fmtTs, parseCsvList, GUIDANCE_EVENT_TYPES } from "./teamRunUtils";
+import type { BrokerEventRow } from "./types";
 
 export type BrokerTeamGuidancePanelProps = {
   base: string;
   auth: ApiAuth;
   canQuery: boolean;
   teamId: string;
+  events?: BrokerEventRow[];
 };
 
 const normalizeGuidanceList = (rows?: BrokerGuidanceEvent[]) =>
@@ -42,6 +44,12 @@ export default function BrokerTeamGuidancePanel(props: BrokerTeamGuidancePanelPr
   const [ackNote, setAckNote] = React.useState<string>("");
   const [ackBusyId, setAckBusyId] = React.useState<string>("");
   const [ackError, setAckError] = React.useState<string | null>(null);
+  const lastEventTsRef = React.useRef<number>(0);
+
+  const guidanceEvents = React.useMemo(() => {
+    const rows = Array.isArray(props.events) ? props.events : [];
+    return rows.filter((row) => GUIDANCE_EVENT_TYPES.has(String(row?.type || "")));
+  }, [props.events]);
 
   const loadGuidance = React.useCallback(async () => {
     if (!canQuery) return;
@@ -71,6 +79,15 @@ export default function BrokerTeamGuidancePanel(props: BrokerTeamGuidancePanelPr
   React.useEffect(() => {
     void loadGuidance();
   }, [loadGuidance]);
+
+  React.useEffect(() => {
+    if (!canQuery) return;
+    if (guidanceEvents.length === 0) return;
+    const maxTs = guidanceEvents.reduce((acc, row) => Math.max(acc, row.ts_unix_ms || 0), 0);
+    if (maxTs <= 0 || maxTs <= lastEventTsRef.current) return;
+    lastEventTsRef.current = maxTs;
+    void loadGuidance();
+  }, [canQuery, guidanceEvents, loadGuidance]);
 
   const handleCreate = React.useCallback(async () => {
     if (!canQuery) return;
@@ -264,6 +281,22 @@ export default function BrokerTeamGuidancePanel(props: BrokerTeamGuidancePanelPr
       </div>
 
       <div className="space-y-2">
+        {guidanceEvents.length > 0 ? (
+          <div className="rounded-md border border-white/10 bg-black/20 p-2 text-[11px] text-white/60">
+            <div className="text-[11px] font-semibold text-white/70">Recent guidance events</div>
+            <div className="mt-1 space-y-1">
+              {guidanceEvents.slice(-4).map((ev, idx) => (
+                <div key={`${ev.event_id || ev.ts_unix_ms || idx}`} className="flex flex-wrap gap-2">
+                  <span className="rounded-full border border-white/10 px-2 py-0.5 text-[10px] text-white/60">
+                    {ev.type}
+                  </span>
+                  {ev.ts_unix_ms ? <span>{fmtTs(ev.ts_unix_ms)}</span> : null}
+                  {ev.payload?.guidance_id ? <span>{String(ev.payload.guidance_id)}</span> : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
           <FieldLabel>Ack note</FieldLabel>
           <input

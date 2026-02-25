@@ -19,6 +19,12 @@ export const ORCHESTRATOR_EVENT_TYPES = new Set([
   "orchestrator_spawn_status",
 ]);
 
+export const GUIDANCE_EVENT_TYPES = new Set([
+  "team_guidance_created",
+  "team_guidance_ack",
+  "team_guidance_expired",
+]);
+
 export const fmtTs = (ms?: number | null) => {
   if (!ms || !Number.isFinite(ms)) return "";
   try {
