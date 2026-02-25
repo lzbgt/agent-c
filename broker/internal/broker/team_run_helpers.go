@@ -807,6 +807,32 @@ func parseMemberOverrides(v any) (map[string]map[string]any, error) {
 	return out, nil
 }
 
+func parseRoleOverrides(v any) (map[string]map[string]any, error) {
+	if v == nil {
+		return nil, nil
+	}
+	raw, ok := v.(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("role_overrides must be object")
+	}
+	out := map[string]map[string]any{}
+	for k, rv := range raw {
+		role := strings.ToLower(strings.TrimSpace(k))
+		if role == "" {
+			continue
+		}
+		m, ok := rv.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("role_overrides.%s must be object", role)
+		}
+		sanitized := sanitizeRunOverrides(m)
+		if len(sanitized) > 0 {
+			out[role] = sanitized
+		}
+	}
+	return out, nil
+}
+
 func buildRuntimeMembers(inputs []teamRuntimeMemberInput, teamID string, usedIDs map[string]bool) ([]db.TeamMember, []map[string]any, error) {
 	if len(inputs) == 0 {
 		return nil, nil, nil

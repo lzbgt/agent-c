@@ -14,7 +14,7 @@ Status: draft (rolling)
    - Moderator directives/tasks are first-class events and persisted.
 
 3) **Team-graph orchestration UI**
-   - Create teams and define **role-specific backends** (model/base URL/tools/timeout).
+   - Create teams and define **role-specific backends** (model/base URL/tools/timeout) using `team.role_overrides`.
    - Connect agents to roles, define orchestration goals, and start runs.
 
 4) **Reload-safe, persistent runs**
@@ -38,6 +38,7 @@ Status: draft (rolling)
 
 - Teams, members, quorum rules, and team runs in broker DB.
 - Per-member backend profiles via member meta `run_overrides` allowlist.
+- Per-role run overrides via `team.role_overrides` (allowlist enforced).
 - Runtime members for per-run team composition (replace/merge).
 - Async team runs (`team.mode=async`) with job persistence + status reconcile.
 - Broker SSE events: `team_run_created`, `team_run_status`, `team_quorum_*`, `team_runtime_members_updated`.
@@ -56,8 +57,8 @@ Status: draft (rolling)
 
 ### 2) Backend profile editor
 
-- Default per-role backend config (model/base URL/tools/timeout).
-- Per-member overrides (already supported by broker allowlist).
+- Per-role backend config (model/base URL/tools/timeout) wired to `team.role_overrides`.
+- Per-member overrides (already supported by broker allowlist via member meta).
 - Inline validation: no secrets in UI state (keys are not stored).
 
 ### 3) Orchestration launch
@@ -103,7 +104,7 @@ Phase 0 (docs + alignment):
 - UI copy updates for nonblocking orchestration (already partially shipped).
 
 Phase 1 (role + backend UX):
-- Add role definitions + backend profile editor UI (default + per-member).
+- Add role definitions + backend profile editor UI (per-role + per-member).
 - Persist role metadata in team meta (broker DB).
 
 Phase 2 (team graph + orchestration UX):

@@ -794,11 +794,21 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	roleOverrides, err := parseRoleOverrides(teamMeta["role_overrides"])
+	if err != nil {
+		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 	teamMeta["run_overrides_mode"] = overrides.Mode
 	if overrides.Mode != "explicit" {
 		delete(teamMeta, "member_overrides")
 	} else if len(overrides.MemberOverrides) > 0 {
 		teamMeta["member_overrides"] = overrides.MemberOverrides
+	}
+	if len(roleOverrides) > 0 {
+		teamMeta["role_overrides"] = roleOverrides
+	} else {
+		delete(teamMeta, "role_overrides")
 	}
 	quorumPolicyMode, err := parseTeamRunQuorumPolicy(teamMeta)
 	if err != nil {
@@ -898,11 +908,21 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 	}
 
 	memberOverridesApplied := map[string]map[string]any{}
+	roleOverridesApplied := map[string]map[string]any{}
 	memberRunBodies := make([][]byte, 0, len(runMembers))
 	for _, member := range runMembers {
 		runForMember := map[string]any{}
 		for k, v := range runMap {
 			runForMember[k] = v
+		}
+		roleKey := strings.ToLower(strings.TrimSpace(member.Role))
+		if roleKey != "" && len(roleOverrides) > 0 {
+			if overridesForRole, ok := roleOverrides[roleKey]; ok && len(overridesForRole) > 0 {
+				for k, v := range overridesForRole {
+					runForMember[k] = v
+				}
+				roleOverridesApplied[member.MemberID] = overridesForRole
+			}
 		}
 		var overridesForMember map[string]any
 		switch overrides.Mode {
@@ -923,6 +943,9 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 	}
 	if len(memberOverridesApplied) > 0 {
 		teamMeta["member_overrides_applied"] = memberOverridesApplied
+	}
+	if len(roleOverridesApplied) > 0 {
+		teamMeta["role_overrides_applied"] = roleOverridesApplied
 	}
 	teamMeta["mode"] = options.Mode
 

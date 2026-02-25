@@ -531,6 +531,10 @@ schemas:
             type: string
             enum: [off, member_meta, explicit]
             description: Per-member run override mode (default off).
+          role_overrides:
+            type: object
+            additionalProperties: true
+            description: Map of role to run override objects (applied before member_overrides; allowlist enforced server-side).
           member_overrides:
             type: object
             additionalProperties: true

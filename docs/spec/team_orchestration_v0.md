@@ -308,6 +308,9 @@ Run requests may accept:
     { "member_id": "rt-1", "agent_id": "agent_a", "role": "executor" }
   ],
   "run_overrides_mode": "off" | "member_meta" | "explicit",
+  "role_overrides": {
+    "planner": { "model": "...", "base_url": "...", "tools": "basic" }
+  },
   "member_overrides": {
     "member_1": { "model": "...", "base_url": "...", "tools": "basic" }
   }
@@ -334,6 +337,10 @@ Notes:
 - `off` (default): no per-member overrides.
 - `member_meta`: apply allowlisted overrides from `member.meta.run_overrides`.
 - `explicit`: apply allowlisted overrides from `team.member_overrides`.
+
+`role_overrides`:
+- Optional per-role overrides applied **before** member overrides.
+- Uses the same allowlist as member overrides.
 
 ---
 

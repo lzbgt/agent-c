@@ -126,6 +126,7 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const [runQuorumMode, setRunQuorumMode] = React.useState<string>("auto");
   const [runOverridesMode, setRunOverridesMode] = React.useState<string>("member_meta");
   const [runMemberOverridesJson, setRunMemberOverridesJson] = React.useState<string>("");
+  const [runRoleOverridesJson, setRunRoleOverridesJson] = React.useState<string>("");
   const [runRuntimeMembersJson, setRunRuntimeMembersJson] = React.useState<string>("");
   const [runtimeMemberId, setRuntimeMemberId] = React.useState<string>("");
   const [runtimeMemberAgentId, setRuntimeMemberAgentId] = React.useState<string>("");
@@ -386,6 +387,21 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
           }
           teamPayload.member_overrides = parsed;
         }
+      }
+      const roleOverridesRaw = String(runRoleOverridesJson || "").trim();
+      if (roleOverridesRaw) {
+        let parsed: any = null;
+        try {
+          parsed = JSON.parse(roleOverridesRaw);
+        } catch (err) {
+          setRunError(`invalid role_overrides json: ${String(err)}`);
+          return;
+        }
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          setRunError("role_overrides must be an object keyed by role");
+          return;
+        }
+        teamPayload.role_overrides = parsed;
       }
       const runtimeMembersRaw = String(runRuntimeMembersJson || "").trim();
       if (runtimeMembersRaw) {
@@ -1331,6 +1347,18 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
           </div>
         </div>
       ) : null}
+      <div className="grid gap-1">
+        <FieldLabel>Role overrides JSON (optional)</FieldLabel>
+        <textarea
+          className="min-h-[84px] w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
+          value={runRoleOverridesJson}
+          onChange={(e) => setRunRoleOverridesJson(e.target.value)}
+          placeholder='{"planner":{"model":"gpt-4.1-mini","tools":"basic"},"executor":{"base_url":"https://api.openai.com/v1"}}'
+        />
+        <div className="text-[11px] text-white/50">
+          Role overrides apply before member overrides and use the same allowlist.
+        </div>
+      </div>
       <div className="grid gap-1">
         <FieldLabel>Runtime members JSON (optional)</FieldLabel>
         <textarea

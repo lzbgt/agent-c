@@ -212,6 +212,52 @@ func TestParseTeamRunOverridesRejectsBadMember(t *testing.T) {
 	}
 }
 
+func TestParseRoleOverrides(t *testing.T) {
+	raw := map[string]any{
+		"Planner": map[string]any{
+			"model":     " gpt-4.1-mini ",
+			"tools":     "HOST",
+			"api_key":   "nope",
+			"timeout":   123,
+			"max_steps": 512,
+		},
+		"executor": map[string]any{
+			"base_url": " https://api.openai.com/v1 ",
+		},
+	}
+	out, err := parseRoleOverrides(raw)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(out) != 2 {
+		t.Fatalf("expected 2 role overrides, got %d", len(out))
+	}
+	plan := out["planner"]
+	if plan["model"] != "gpt-4.1-mini" {
+		t.Fatalf("expected planner model sanitized, got %v", plan["model"])
+	}
+	if plan["tools"] != "host" {
+		t.Fatalf("expected planner tools host, got %v", plan["tools"])
+	}
+	if _, ok := plan["api_key"]; ok {
+		t.Fatalf("unexpected api_key in planner overrides")
+	}
+	exec := out["executor"]
+	if exec["base_url"] != "https://api.openai.com/v1" {
+		t.Fatalf("expected executor base_url sanitized, got %v", exec["base_url"])
+	}
+}
+
+func TestParseRoleOverridesRejectsBadRole(t *testing.T) {
+	raw := map[string]any{
+		"planner": "nope",
+	}
+	_, err := parseRoleOverrides(raw)
+	if err == nil {
+		t.Fatalf("expected error for non-object role override")
+	}
+}
+
 func TestBuildRuntimeMembers(t *testing.T) {
 	meta := map[string]any{
 		"runtime_members": []any{
