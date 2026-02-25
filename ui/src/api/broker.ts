@@ -9,6 +9,8 @@ import {
   type BrokerMembersResp,
   BrokerMembershipAuditRespSchema,
   type BrokerMembershipAuditResp,
+  BrokerEventsReplayRespSchema,
+  type BrokerEventsReplayResp,
   BrokerTeamCreateRespSchema,
   type BrokerTeamCreateResp,
   BrokerTeamDeleteRespSchema,
@@ -360,6 +362,35 @@ export async function apiBrokerGetMembershipAudit(
   });
   const j = await r.json();
   return BrokerMembershipAuditRespSchema.parse(j);
+}
+
+export async function apiBrokerEventsReplay(
+  brokerBase: string,
+  auth?: ApiAuth,
+  opts?: { sinceTs?: number; limit?: number; types?: string[] },
+): Promise<BrokerEventsReplayResp> {
+  const base = brokerBase.replace(/\/+$/, "");
+  const params = new URLSearchParams();
+  if (typeof opts?.sinceTs === "number" && Number.isFinite(opts.sinceTs)) {
+    params.set("since_ts", String(Math.max(0, Math.floor(opts.sinceTs))));
+  }
+  if (typeof opts?.limit === "number" && Number.isFinite(opts.limit)) {
+    params.set("limit", String(Math.max(1, Math.floor(opts.limit))));
+  }
+  if (Array.isArray(opts?.types) && opts?.types.length > 0) {
+    params.set(
+      "types",
+      opts.types
+        .map((t) => String(t || "").trim())
+        .filter(Boolean)
+        .join(","),
+    );
+  }
+  const qs = params.toString();
+  const url = `${base}/v1/events/replay${qs ? `?${qs}` : ""}`;
+  const r = await fetch(url, { headers: daemonHeaders(auth) });
+  const j = await r.json();
+  return BrokerEventsReplayRespSchema.parse(j);
 }
 
 export async function apiBrokerGetClientPrefs(

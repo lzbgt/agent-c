@@ -117,6 +117,36 @@ export const BrokerMembershipAuditRespSchema = z
   .passthrough();
 export type BrokerMembershipAuditResp = z.infer<typeof BrokerMembershipAuditRespSchema>;
 
+export const BrokerEventSchema = z
+  .object({
+    type: z.string(),
+    ts_unix_ms: z.number().optional(),
+    agent_id: z.string().optional(),
+    user_sub: z.string().optional(),
+    event_id: z.string().optional(),
+    trace_id: z.string().optional(),
+    payload: z.record(z.any()).optional(),
+    extra: z.record(z.any()).optional(),
+  })
+  .passthrough();
+export type BrokerEvent = z.infer<typeof BrokerEventSchema>;
+
+export const BrokerEventsReplayRespSchema = z
+  .object({
+    ok: z.boolean(),
+    user_sub: z.string().optional(),
+    since_ts: z.number().optional(),
+    next_since_ts: z.number().optional(),
+    limit: z.number().optional(),
+    count: z.number().optional(),
+    events: z.array(BrokerEventSchema).optional(),
+    error: z.string().optional(),
+    err: z.string().optional(),
+    code: z.string().optional(),
+  })
+  .passthrough();
+export type BrokerEventsReplayResp = z.infer<typeof BrokerEventsReplayRespSchema>;
+
 export const BrokerTeamSchema = z
   .object({
     team_id: z.string(),

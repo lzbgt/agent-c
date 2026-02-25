@@ -74,8 +74,8 @@ Future (v1+):
    - Need lease/heartbeat so automation survives UI refresh or client disconnects.
 
 7) **Event replay + UI rehydration**
-   - Replay API exists; WebUI still lacks rehydration on refresh.
-   - Need client resume logic + event cursor persistence.
+   - Replay API exists; Broker console replays on refresh.
+   - Team/run views still need cursor persistence + replay-based rehydration.
 
 ## Proposed orchestration model (v0)
 
