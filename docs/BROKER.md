@@ -244,7 +244,7 @@ All endpoints below are served by the broker (not by agents).
   - validates agent access + allowlisted overrides; updates are recorded in the run payload
 - `POST /v1/teams/{team_id}/runs/{team_run_id}/goal`
   - updates the goal contract and/or appends a goal event (`progress` or `drift`)
-  - events are stored in the run payload (bounded) and emitted as SSE (`team_goal_progress`, `team_goal_drift`)
+  - events are stored in the run payload (bounded) and emitted as SSE (`team_goal_progress`, `team_goal_drift`, `team_goal_spawn_validation`)
 - `POST /v1/teams/{team_id}/runs/{team_run_id}/handoff`
   - appends a role handoff event (`from_role` → `to_role`) and emits SSE (`team_handoff`)
 - `POST /v1/teams/{team_id}/runtime_members/allocate`
