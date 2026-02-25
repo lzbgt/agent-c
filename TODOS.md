@@ -104,7 +104,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-26: added `expected_owner` guard to orchestrator run update/heartbeat and orchestrator loop claim via `meta.orchestrator_owner`.
   - 2026-02-26: orchestrator loop can take over stale/missing leases when `allow_takeover=true`.
   - 2026-02-26: orchestrator console surfaces lease/owner; compose smoke asserts takeover behavior.
-- [ ] W=13 — Autonomous orchestrator loop: goal contract + drift guard + role handoff events + allocator, with evidence tests and SSE surface.
+- [x] W=13 — Autonomous orchestrator loop: goal contract + drift guard + role handoff events + allocator, with evidence tests and SSE surface.
   - 2026-02-25: drafted `docs/spec/autonomous_orchestrator_v0.md` (goal guard + dynamic allocation model).
   - 2026-02-25: WebUI runtime member quick-add can allocate connected agents by role plan.
   - 2026-02-25: broker runtime member allocator endpoint added (role-based allocation + tests).
@@ -121,6 +121,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-26: added runtime member retire policy (orchestrator meta-driven, terminal runs).
   - 2026-02-26: orchestrator loop attempts allocator-backed runtime member allocation for missing roles (meta tracking + tests).
   - 2026-02-26: orchestrator loop dispatches handoff directives to target roles (retriable on missing sessions).
+  - 2026-02-26: added unit tests for goal progress/drift event emission and meta updates.
 - [ ] W=12 — Durable orchestration state + event replay: persist orchestrator runs (DB + CRUD), add replayable event log for team run/goal/handoff/moderator events, and rehydrate WebUI on refresh without losing context.
   - 2026-02-26: broker persists events and exposes `/v1/events/replay`; UI rehydrates on refresh (paging still capped).
   - 2026-02-26: WebUI broker console + team console replay events on refresh; orchestrator panel also rehydrates from replay.

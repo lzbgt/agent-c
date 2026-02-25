@@ -278,7 +278,7 @@ func TestMaybeAllocateRuntimeMembersUpdatesRuntimeMembers(t *testing.T) {
 
 	cfg := config{brokerBase: server.URL, oidcToken: "token"}
 	status := &teamRunResponse{
-		RuntimeMembers: []map[string]any{{"agent_id": "agent-2", "role": "executor"}},
+		RuntimeMembers:         []map[string]any{{"agent_id": "agent-2", "role": "executor"}},
 		AutoAllocateMaxMembers: 3,
 	}
 	meta := map[string]any{"auto_allocate_max_members": 3}
@@ -345,17 +345,17 @@ func TestMaybeAllocateRuntimeMembersNonFatal(t *testing.T) {
 
 func TestHandleRunAllocatorFallbacksToSpawn(t *testing.T) {
 	type state struct {
-		mu            sync.Mutex
-		calls         []string
-		allocateBody  map[string]any
-		spawnBody     map[string]any
-		updateBodies  []map[string]any
-		err           string
+		mu           sync.Mutex
+		calls        []string
+		allocateBody map[string]any
+		spawnBody    map[string]any
+		updateBodies []map[string]any
+		err          string
 	}
 	st := &state{}
 	runMeta := map[string]any{
-		"orchestrator_owner": "orch1",
-		"active_team_run_id": "teamrun1",
+		"orchestrator_owner":  "orch1",
+		"active_team_run_id":  "teamrun1",
 		"auto_allocate_roles": true,
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -626,6 +626,67 @@ func TestProcessGuidanceResetsCursorOnRunChange(t *testing.T) {
 	}
 }
 
+func TestProcessGuidanceGlobalAppliesToActiveRun(t *testing.T) {
+	type state struct {
+		mu        sync.Mutex
+		acked     bool
+		directive map[string]any
+	}
+	st := &state{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/teams/team1/guidance":
+			q := r.URL.Query()
+			if q.Get("team_run_id") == "" {
+				w.Header().Set("Content-Type", "application/json")
+				io.WriteString(w, `{"ok":true,"team_id":"team1","count":1,"guidance":[{"guidance_id":"g5","team_id":"team1","kind":"directive","priority":"normal","message":"global","status":"open","created_unix_ms":77}]}`)
+				return
+			}
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","team_run_id":"run1","count":0,"guidance":[]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/teams/team1/runs/run1/moderator/directive":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			st.mu.Lock()
+			st.directive = payload
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","team_run_id":"run1","dispatched":[{}],"skipped":[]}`)
+		case r.Method == http.MethodPost && r.URL.Path == "/v1/teams/team1/guidance/g5/ack":
+			st.mu.Lock()
+			st.acked = true
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","guidance":{"guidance_id":"g5","status":"acked"}}`)
+		default:
+			http.Error(w, "unexpected", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	cfg := config{brokerBase: server.URL, oidcToken: "token", orchestratorID: "orch1"}
+	meta := map[string]any{}
+	changed, err := processGuidance(context.Background(), server.Client(), cfg, "team1", "run1", meta)
+	if err != nil {
+		t.Fatalf("processGuidance error: %v", err)
+	}
+	if !changed {
+		t.Fatalf("expected meta change after global guidance")
+	}
+	if meta["guidance_since_ts_global"] != int64(77) {
+		t.Fatalf("expected guidance_since_ts_global=77, got %#v", meta["guidance_since_ts_global"])
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if !st.acked {
+		t.Fatalf("expected ack for global guidance")
+	}
+	if st.directive == nil {
+		t.Fatalf("expected directive payload")
+	}
+}
+
 func TestProcessGuidanceExpiresGuidance(t *testing.T) {
 	type state struct {
 		mu        sync.Mutex
@@ -670,12 +731,123 @@ func TestProcessGuidanceExpiresGuidance(t *testing.T) {
 	}
 }
 
+func TestMaybeEmitProgressEmitsGoalEvent(t *testing.T) {
+	type state struct {
+		mu      sync.Mutex
+		called  int
+		payload map[string]any
+	}
+	st := &state{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch || r.URL.Path != "/v1/teams/team1/runs/run1/goal" {
+			http.Error(w, "unexpected", http.StatusNotFound)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]any
+		_ = json.Unmarshal(body, &payload)
+		st.mu.Lock()
+		st.called++
+		st.payload = payload
+		st.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"ok":true}`)
+	}))
+	defer server.Close()
+
+	cfg := config{brokerBase: server.URL, oidcToken: "token", orchestratorID: "orch1"}
+	meta := map[string]any{"progress_every_ms": int64(1)}
+	status := &teamRunResponse{CreatedUnixMS: time.Now().UTC().UnixMilli() - 500}
+	changed, err := maybeEmitProgress(context.Background(), server.Client(), cfg, "team1", "run1", status, meta)
+	if err != nil {
+		t.Fatalf("maybeEmitProgress error: %v", err)
+	}
+	if !changed {
+		t.Fatalf("expected progress to emit and update meta")
+	}
+	if meta["last_progress_team_run_id"] != "run1" {
+		t.Fatalf("expected last_progress_team_run_id=run1, got %#v", meta["last_progress_team_run_id"])
+	}
+	if ts, ok := asInt64(meta["last_progress_unix_ms"]); !ok || ts <= 0 {
+		t.Fatalf("expected last_progress_unix_ms set, got %#v", meta["last_progress_unix_ms"])
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.called != 1 {
+		t.Fatalf("expected 1 goal event call, got %d", st.called)
+	}
+	event, _ := st.payload["event"].(map[string]any)
+	if event == nil || event["type"] != "progress" {
+		t.Fatalf("expected progress event, got %#v", st.payload["event"])
+	}
+}
+
+func TestMaybeEmitDriftEmitsOnce(t *testing.T) {
+	type state struct {
+		mu      sync.Mutex
+		called  int
+		payload map[string]any
+	}
+	st := &state{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPatch || r.URL.Path != "/v1/teams/team1/runs/run1/goal" {
+			http.Error(w, "unexpected", http.StatusNotFound)
+			return
+		}
+		body, _ := io.ReadAll(r.Body)
+		var payload map[string]any
+		_ = json.Unmarshal(body, &payload)
+		st.mu.Lock()
+		st.called++
+		st.payload = payload
+		st.mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"ok":true}`)
+	}))
+	defer server.Close()
+
+	cfg := config{brokerBase: server.URL, oidcToken: "token", orchestratorID: "orch1"}
+	meta := map[string]any{"drift_after_ms": int64(1)}
+	status := &teamRunResponse{CreatedUnixMS: time.Now().UTC().UnixMilli() - 500}
+	changed, err := maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", status, meta)
+	if err != nil {
+		t.Fatalf("maybeEmitDrift error: %v", err)
+	}
+	if !changed {
+		t.Fatalf("expected drift to emit and update meta")
+	}
+	if meta["last_drift_team_run_id"] != "run1" {
+		t.Fatalf("expected last_drift_team_run_id=run1, got %#v", meta["last_drift_team_run_id"])
+	}
+	if _, ok := asInt64(meta["last_drift_unix_ms"]); !ok {
+		t.Fatalf("expected last_drift_unix_ms set, got %#v", meta["last_drift_unix_ms"])
+	}
+	st.mu.Lock()
+	if st.called != 1 {
+		st.mu.Unlock()
+		t.Fatalf("expected 1 goal event call, got %d", st.called)
+	}
+	event := st.payload["event"].(map[string]any)
+	st.mu.Unlock()
+	if event == nil || event["type"] != "drift" {
+		t.Fatalf("expected drift event, got %#v", event)
+	}
+
+	changed, err = maybeEmitDrift(context.Background(), server.Client(), cfg, "team1", "run1", status, meta)
+	if err != nil {
+		t.Fatalf("maybeEmitDrift second call error: %v", err)
+	}
+	if changed {
+		t.Fatalf("expected drift to emit only once per run")
+	}
+}
+
 func TestMaybeProcessHandoffQueueDispatchesDirective(t *testing.T) {
 	type state struct {
-		mu             sync.Mutex
-		directiveBody  map[string]any
-		handoffCalled  bool
-		err            string
+		mu            sync.Mutex
+		directiveBody map[string]any
+		handoffCalled bool
+		err           string
 	}
 	st := &state{}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
