@@ -1201,6 +1201,125 @@ schemas:
         items:
           $ref: "#/components/schemas/TeamRunApproval"
 
+  GuidanceEvent:
+    type: object
+    required: [guidance_id, team_id, kind, priority, message, created_unix_ms, status]
+    properties:
+      guidance_id: { type: string }
+      team_id: { type: string }
+      team_run_id: { type: string }
+      kind: { type: string }
+      priority: { type: string }
+      message: { type: string }
+      payload:
+        type: object
+        additionalProperties: true
+      target_roles:
+        type: array
+        items: { type: string }
+      target_member_ids:
+        type: array
+        items: { type: string }
+      target_agent_ids:
+        type: array
+        items: { type: string }
+      target_orchestrator_id: { type: string }
+      created_by: { type: string }
+      created_sub: { type: string }
+      created_unix_ms: { type: integer, format: int64 }
+      expires_unix_ms: { type: integer, format: int64 }
+      status: { type: string }
+      acked_by: { type: string }
+      acked_unix_ms: { type: integer, format: int64 }
+      ack_note: { type: string }
+
+  GuidanceReceipt:
+    type: object
+    required: [id, guidance_id, ack_by, ack_source, acked_unix_ms]
+    properties:
+      id: { type: integer, format: int64 }
+      guidance_id: { type: string }
+      ack_by: { type: string }
+      ack_role: { type: string }
+      ack_source: { type: string }
+      ack_note: { type: string }
+      acked_unix_ms: { type: integer, format: int64 }
+
+  GuidanceCreateRequest:
+    type: object
+    required: [kind, message]
+    properties:
+      guidance_id: { type: string }
+      team_run_id: { type: string }
+      kind: { type: string }
+      priority: { type: string }
+      message: { type: string }
+      payload:
+        type: object
+        additionalProperties: true
+      target_roles:
+        type: array
+        items: { type: string }
+      target_member_ids:
+        type: array
+        items: { type: string }
+      target_agent_ids:
+        type: array
+        items: { type: string }
+      target_orchestrator_id: { type: string }
+      expires_unix_ms: { type: integer, format: int64 }
+      created_by: { type: string }
+
+  GuidanceCreateResponse:
+    type: object
+    required: [ok, team_id, guidance]
+    properties:
+      ok: { type: boolean }
+      team_id: { type: string }
+      guidance:
+        $ref: "#/components/schemas/GuidanceEvent"
+
+  GuidanceGetResponse:
+    $ref: "#/components/schemas/GuidanceCreateResponse"
+
+  GuidanceListResponse:
+    type: object
+    required: [ok, team_id, guidance]
+    properties:
+      ok: { type: boolean }
+      team_id: { type: string }
+      team_run_id: { type: string }
+      status:
+        type: array
+        items: { type: string }
+      since_ts: { type: integer, format: int64 }
+      limit: { type: integer, format: int32 }
+      offset: { type: integer, format: int32 }
+      count: { type: integer, format: int32 }
+      guidance:
+        type: array
+        items:
+          $ref: "#/components/schemas/GuidanceEvent"
+
+  GuidanceAckRequest:
+    type: object
+    properties:
+      status: { type: string }
+      note: { type: string }
+      ack_source: { type: string }
+      ack_role: { type: string }
+
+  GuidanceAckResponse:
+    type: object
+    required: [ok, team_id, guidance, receipt]
+    properties:
+      ok: { type: boolean }
+      team_id: { type: string }
+      guidance:
+        $ref: "#/components/schemas/GuidanceEvent"
+      receipt:
+        $ref: "#/components/schemas/GuidanceReceipt"
+
   OrchestrateRequest:
     type: object
     required: [tasks]

@@ -664,6 +664,112 @@
             schema:
               $ref: "#/components/schemas/TeamDeleteResponse"
 
+/v1/teams/{team_id}/guidance:
+  get:
+    tags: [teams]
+    summary: List guidance events
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: query
+        name: team_run_id
+        required: false
+        schema: { type: string }
+      - in: query
+        name: status
+        required: false
+        schema: { type: string, description: "comma-separated statuses" }
+      - in: query
+        name: since_ts
+        required: false
+        schema: { type: integer, format: int64 }
+      - in: query
+        name: limit
+        required: false
+        schema: { type: integer, format: int32 }
+      - in: query
+        name: offset
+        required: false
+        schema: { type: integer, format: int32 }
+    responses:
+      "200":
+        description: Guidance list
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuidanceListResponse"
+  post:
+    tags: [teams]
+    summary: Create guidance
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/GuidanceCreateRequest"
+    responses:
+      "200":
+        description: Created
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuidanceCreateResponse"
+
+/v1/teams/{team_id}/guidance/{guidance_id}:
+  get:
+    tags: [teams]
+    summary: Get guidance by id
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: guidance_id
+        required: true
+        schema: { type: string }
+    responses:
+      "200":
+        description: Guidance
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuidanceGetResponse"
+
+/v1/teams/{team_id}/guidance/{guidance_id}/ack:
+  post:
+    tags: [teams]
+    summary: Acknowledge guidance
+    parameters:
+      - in: path
+        name: team_id
+        required: true
+        schema: { type: string }
+      - in: path
+        name: guidance_id
+        required: true
+        schema: { type: string }
+    requestBody:
+      required: false
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/GuidanceAckRequest"
+    responses:
+      "200":
+        description: Acked
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GuidanceAckResponse"
+
 /v1/teams/{team_id}/quorum:
   get:
     tags: [teams]

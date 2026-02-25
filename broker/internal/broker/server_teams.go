@@ -116,6 +116,9 @@ func (s *Server) handleTeamsSubroutes(w http.ResponseWriter, r *http.Request) {
 	// - /v1/teams/{team_id}/runs/{team_run_id}/moderator/task
 	// - /v1/teams/{team_id}/runs/{team_run_id}/moderator/events
 	// - /v1/teams/{team_id}/runtime_members/allocate
+	// - /v1/teams/{team_id}/guidance
+	// - /v1/teams/{team_id}/guidance/{guidance_id}
+	// - /v1/teams/{team_id}/guidance/{guidance_id}/ack
 	// - /v1/teams/{team_id}/orchestrator/runs
 	// - /v1/teams/{team_id}/orchestrator/runs/{orchestrator_run_id}
 	// - /v1/teams/{team_id}/orchestrator/runs/{orchestrator_run_id}/heartbeat
@@ -144,6 +147,29 @@ func (s *Server) handleTeamsSubroutes(w http.ResponseWriter, r *http.Request) {
 	}
 	action := parts[1]
 	switch action {
+	case "guidance":
+		if len(parts) == 2 || parts[2] == "" {
+			switch r.Method {
+			case "GET":
+				s.handleTeamGuidanceList(w, r, teamID)
+			case "POST":
+				s.handleTeamGuidanceCreate(w, r, teamID)
+			default:
+				writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+			}
+			return
+		}
+		if len(parts) >= 4 && parts[3] == "ack" {
+			s.handleTeamGuidanceAck(w, r, teamID, parts[2])
+			return
+		}
+		switch r.Method {
+		case "GET":
+			s.handleTeamGuidanceGet(w, r, teamID, parts[2])
+		default:
+			writeErrorJSON(w, "method not allowed", http.StatusMethodNotAllowed)
+		}
+		return
 	case "members":
 		if len(parts) == 2 || parts[2] == "" {
 			switch r.Method {
