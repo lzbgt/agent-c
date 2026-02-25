@@ -114,6 +114,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-25: WebUI team run status panel surfaces goal contract/events and handoff events with emit actions.
   - 2026-02-26: broker events are persisted + replayable; remaining work is autonomous loop + drift checkpoints.
   - 2026-02-25: added `agentd-orchestrator` loop (heartbeat + dispatch + missing-role spawn requests + drift/progress + handoff queue).
+  - 2026-02-26: orchestrator spawn requests support per-role counts + per-role requirements overrides.
   - 2026-02-25: added compose smoke for orchestrator loop (`tests/broker_orchestrator_loop_compose_smoke.sh`).
   - 2026-02-25: added compose smoke for drift/progress/handoff events (`tests/broker_orchestrator_loop_events_compose_smoke.sh`).
   - 2026-02-26: added `tools/run_autonomous_devstack.sh` to run orchestrator + spawn adapter together.

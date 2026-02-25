@@ -110,6 +110,7 @@ type spawnRequest struct {
 	SpawnRequestID string `json:"spawn_request_id"`
 	Role           string `json:"role"`
 	Status         string `json:"status"`
+	Count          int    `json:"count"`
 }
 
 type spawnListResponse struct {
@@ -925,7 +926,7 @@ func ensureSpawnRequests(ctx context.Context, client *http.Client, cfg config, t
 	if err != nil {
 		return err
 	}
-	existingByRole := map[string]bool{}
+	existingByRole := map[string]int{}
 	for _, req := range existing {
 		role := strings.ToLower(strings.TrimSpace(req.Role))
 		if role == "" {
@@ -935,7 +936,11 @@ func ensureSpawnRequests(ctx context.Context, client *http.Client, cfg config, t
 		if status == "" || status == "error" {
 			continue
 		}
-		existingByRole[role] = true
+		count := req.Count
+		if count <= 0 {
+			count = 1
+		}
+		existingByRole[role] += count
 	}
 	created := map[string][]string{}
 	if raw, ok := meta["spawn_requests"]; ok {
@@ -948,14 +953,44 @@ func ensureSpawnRequests(ctx context.Context, client *http.Client, cfg config, t
 			}
 		}
 	}
-	count := 1
+	defaultCount := 1
 	if n, ok := asInt(meta["spawn_count_per_role"]); ok && n > 0 {
-		count = n
+		defaultCount = n
+	}
+	countByRole := map[string]int{}
+	if raw, ok := meta["spawn_count_by_role"].(map[string]any); ok {
+		for role, val := range raw {
+			r := strings.ToLower(strings.TrimSpace(role))
+			if r == "" {
+				continue
+			}
+			if n, ok := asInt(val); ok && n > 0 {
+				countByRole[r] = n
+			}
+		}
 	}
 	requirements := map[string]any{}
 	if raw, ok := meta["spawn_requirements"].(map[string]any); ok {
 		for k, v := range raw {
 			requirements[k] = v
+		}
+	}
+	requirementsByRole := map[string]map[string]any{}
+	if raw, ok := meta["spawn_requirements_by_role"].(map[string]any); ok {
+		for role, val := range raw {
+			r := strings.ToLower(strings.TrimSpace(role))
+			if r == "" {
+				continue
+			}
+			if m, ok := val.(map[string]any); ok {
+				roleReq := map[string]any{}
+				for k, v := range m {
+					roleReq[k] = v
+				}
+				if len(roleReq) > 0 {
+					requirementsByRole[r] = roleReq
+				}
+			}
 		}
 	}
 	baseMeta := map[string]any{"orchestrator_id": cfg.orchestratorID, "reason": "missing_role"}
@@ -969,18 +1004,36 @@ func ensureSpawnRequests(ctx context.Context, client *http.Client, cfg config, t
 		if r == "" {
 			continue
 		}
-		if existingByRole[r] {
+		desiredCount := defaultCount
+		if v, ok := countByRole[r]; ok && v > 0 {
+			desiredCount = v
+		}
+		if desiredCount <= 0 {
 			continue
 		}
+		existingCount := existingByRole[r]
+		if existingCount >= desiredCount {
+			continue
+		}
+		requestCount := desiredCount - existingCount
 		payload := map[string]any{
 			"role":                r,
-			"count":               count,
+			"count":               requestCount,
 			"status":              "requested",
 			"orchestrator_run_id": orchestratorRunID,
 			"meta":                baseMeta,
 		}
-		if len(requirements) > 0 {
-			payload["requirements"] = requirements
+		mergedRequirements := map[string]any{}
+		for k, v := range requirements {
+			mergedRequirements[k] = v
+		}
+		if roleReq, ok := requirementsByRole[r]; ok {
+			for k, v := range roleReq {
+				mergedRequirements[k] = v
+			}
+		}
+		if len(mergedRequirements) > 0 {
+			payload["requirements"] = mergedRequirements
 		}
 		resp, err := createSpawnRequest(ctx, client, cfg, teamID, payload)
 		if err != nil {

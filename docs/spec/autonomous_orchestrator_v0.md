@@ -149,6 +149,8 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
   auto_allocate_max_members: number   # optional cap
   spawn_missing_roles: true|false     # default true
   spawn_count_per_role: number        # default 1
+  spawn_count_by_role: { role: number }  # optional per-role override
+  spawn_requirements_by_role: { role: { ... } }  # optional per-role requirements override
   completion_mode: "on_success"|"on_failure"|"never"  # default on_success
   progress_every_ms: number           # emit goal_progress every N ms (optional)
   drift_after_ms: number              # emit goal_drift after N ms (optional)
