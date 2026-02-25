@@ -207,7 +207,7 @@ RUN_JSON="$(
   curl -fsS -k --noproxy "*" "${CURL_BASE_OPTS[@]}" \
     -H "Authorization: Bearer ${OIDC_JWT}" \
     -H "Content-Type: application/json" \
-    -d '{"goal":"Loop smoke goal","status":"running","meta":{"team_mode":"async","spawn_missing_roles":true}}' \
+    -d '{"goal":"Loop smoke goal","status":"running","meta":{"team_mode":"async","spawn_missing_roles":true,"spawn_count_by_role":{"planner":2,"executor":1},"spawn_requirements":{"region":"us"},"spawn_requirements_by_role":{"planner":{"region":"eu","tier":"gpu"}}}}' \
     "${BROKER_BASE}/v1/teams/${TEAM_ID}/orchestrator/runs"
 )"
 RUN_ID="$(python3 - <<PY
@@ -267,9 +267,32 @@ items = obj.get("spawn_requests") or []
 if not isinstance(items, list) or len(items) < 1:
   print("expected spawn requests", obj, file=sys.stderr)
   raise SystemExit(1)
-roles = {str(item.get("role","")) for item in items if isinstance(item, dict)}
-if not roles:
-  print("expected spawn request roles", obj, file=sys.stderr)
+by_role = {}
+for item in items:
+  if not isinstance(item, dict):
+    continue
+  role = str(item.get("role","")).strip().lower()
+  if not role:
+    continue
+  by_role[role] = item
+if "planner" not in by_role or "executor" not in by_role:
+  print("expected spawn request roles planner/executor", obj, file=sys.stderr)
+  raise SystemExit(1)
+planner = by_role["planner"]
+executor = by_role["executor"]
+if int(planner.get("count") or 0) != 2:
+  print("planner spawn count mismatch", planner, file=sys.stderr)
+  raise SystemExit(1)
+if int(executor.get("count") or 0) != 1:
+  print("executor spawn count mismatch", executor, file=sys.stderr)
+  raise SystemExit(1)
+preq = planner.get("requirements") or {}
+ereq = executor.get("requirements") or {}
+if str(preq.get("region","")) != "eu" or str(preq.get("tier","")) != "gpu":
+  print("planner requirements mismatch", planner, file=sys.stderr)
+  raise SystemExit(1)
+if str(ereq.get("region","")) != "us":
+  print("executor requirements mismatch", executor, file=sys.stderr)
   raise SystemExit(1)
 PY
 
