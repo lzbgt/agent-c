@@ -136,7 +136,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-19: Added run-event payload schemas + fixtures for team handoff/quorum/member results.
   - 2026-02-19: Added broker OpenAPI shapes for team/membership/quorum endpoints (planned).
   - 2026-02-19: Added broker DB tables + CRUD handlers for teams/members/quorum (team runs still stubbed).
-  - 2026-02-20: Team run execution implemented (sync fan-out + DB run records). Quorum enforcement + async runs + WebUI still pending.
+  - 2026-02-20: Team run execution implemented (sync fan-out + DB run records).
   - 2026-02-20: Added unit coverage for team run fan-out executor + role filtering; still need end-to-end smoke.
   - 2026-02-20: Added compose smoke for team run fan-out + role filter (`tests/broker_team_runs_compose_smoke.sh`).
   - 2026-02-20: Added quorum gating compose smoke (`tests/broker_team_runs_quorum_compose_smoke.sh`).
@@ -146,7 +146,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-19: Connector now supports `--local-agentd-token` (or `AGENTD_AUTH_TOKEN`) so team run fan-out can authenticate to local agentd; compose updated and compose smoke verified.
   - 2026-02-19: Broker now enforces `team_run` quorum rules on run creation via inline approvals (`team.approvals`) with strict failures returning `409`.
   - 2026-02-24: WebUI broker console now includes team console (teams/members/quorum) plus team runs + approvals UI.
-  - 2026-02-20: Add quorum enforcement smoke.
+  - [x] 2026-02-20: Add quorum enforcement smoke.
   - 2026-02-24: Added per-member backend profiles (member meta + explicit run overrides), UI inputs for backend roles, and broker allowlist enforcement + tests.
   - 2026-02-24: Added runtime members for team runs (ephemeral members per run), with broker validation, OpenAPI/docs, and WebUI support.
   - 2026-02-24: WebUI runtime member preview/removal + run status display; OpenAPI run status updated.
