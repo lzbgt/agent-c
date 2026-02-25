@@ -92,4 +92,42 @@ if not profiles:
   raise SystemExit(1)
 PY
 
+workflow_payload="$(cat <<'JSON'
+{"client_id":"webui-test","client_kind":"webui-workflow","prefs":{"workflow_wait":{"version":1,"by_scope":{"http://127.0.0.1:8123":{"workflow_id":"wf_smoke","started_unix_ms":1710000000000,"last_status":"running","updated_unix_ms":1710000001234}}}}}
+JSON
+)"
+
+resp_wf_post="$(curl -sS --noproxy "*" --max-time 5 -H "Authorization: Bearer ${TOKEN}" \
+  -H "Content-Type: application/json" -d "${workflow_payload}" \
+  "${DAEMON_URL}/api/v1/client/prefs")"
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${resp_wf_post}''')
+if not obj.get("ok"):
+  print("expected ok true on workflow post", obj, file=sys.stderr)
+  raise SystemExit(1)
+prefs = obj.get("prefs") or {}
+wf = prefs.get("workflow_wait") or {}
+by_scope = wf.get("by_scope") or {}
+if not by_scope:
+  print("missing workflow_wait.by_scope", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
+resp_wf_get="$(curl -sS --noproxy "*" --max-time 5 -H "Authorization: Bearer ${TOKEN}" \
+  "${DAEMON_URL}/api/v1/client/prefs?client_id=webui-test&client_kind=webui-workflow")"
+python3 - <<PY
+import json, sys
+obj = json.loads(r'''${resp_wf_get}''')
+if not obj.get("ok") or not obj.get("found"):
+  print("expected ok true and found on workflow get", obj, file=sys.stderr)
+  raise SystemExit(1)
+prefs = obj.get("prefs") or {}
+wf = prefs.get("workflow_wait") or {}
+by_scope = wf.get("by_scope") or {}
+if not by_scope:
+  print("missing workflow_wait.by_scope on get", obj, file=sys.stderr)
+  raise SystemExit(1)
+PY
+
 echo "agentd_client_prefs_smoke OK"
