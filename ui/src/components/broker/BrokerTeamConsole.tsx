@@ -24,7 +24,8 @@ import BrokerTeamRunPanel from "./BrokerTeamRunPanel";
 import BrokerOrchestratorRunPanel from "./BrokerOrchestratorRunPanel";
 import BrokerOrchestratorSpawnPanel from "./BrokerOrchestratorSpawnPanel";
 import BrokerTeamGuidancePanel from "./BrokerTeamGuidancePanel";
-import TeamRolePlanEditor, { type RoleGraphEdge } from "./TeamRolePlanEditor";
+import type { RoleGraphEdge } from "./RoleGraphPreview";
+import TeamRolePlanEditor from "./TeamRolePlanEditor";
 import { GUIDANCE_EVENT_TYPES, ORCHESTRATOR_EVENT_TYPES, TEAM_RUN_EVENT_TYPES } from "./teamRunUtils";
 import type { BrokerEventRow, TeamMemberRow, TeamQuorumRuleRow } from "./types";
 

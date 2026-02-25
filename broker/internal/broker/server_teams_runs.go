@@ -1245,6 +1245,18 @@ func (s *Server) teamRunStatusResponse(ctx context.Context, p *Principal, run *d
 	if raw, ok := teamMeta["role_overrides_applied"]; ok {
 		roleOverridesApplied = raw
 	}
+	var roleGraph any
+	if raw, ok := teamMeta["role_graph"]; ok {
+		roleGraph = raw
+	}
+	var roleInstructions any
+	if raw, ok := teamMeta["role_instructions"]; ok {
+		roleInstructions = raw
+	}
+	var rolePromptMode any
+	if raw, ok := teamMeta["role_prompt_mode"]; ok {
+		rolePromptMode = raw
+	}
 	var runOverridesMode any
 	if raw, ok := teamMeta["run_overrides_mode"]; ok {
 		runOverridesMode = raw
@@ -1331,6 +1343,15 @@ func (s *Server) teamRunStatusResponse(ctx context.Context, p *Principal, run *d
 	}
 	if roleOverridesApplied != nil {
 		resp["role_overrides_applied"] = roleOverridesApplied
+	}
+	if roleGraph != nil {
+		resp["role_graph"] = roleGraph
+	}
+	if roleInstructions != nil {
+		resp["role_instructions"] = roleInstructions
+	}
+	if rolePromptMode != nil {
+		resp["role_prompt_mode"] = rolePromptMode
 	}
 	if runOverridesMode != nil {
 		resp["run_overrides_mode"] = runOverridesMode

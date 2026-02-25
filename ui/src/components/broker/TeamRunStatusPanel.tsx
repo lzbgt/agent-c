@@ -5,6 +5,8 @@ import {
   apiBrokerTeamRunHandoff,
   type ApiAuth,
 } from "../../api";
+import RoleGraphPreview, { type RoleGraphEdge } from "./RoleGraphPreview";
+import { normalizeRoleInstructionMap } from "./teamRunUtils";
 
 type MemberSession = {
   memberId: string;
@@ -33,6 +35,22 @@ const parseLineList = (raw: string): string[] =>
     .map((item) => item.trim())
     .filter(Boolean);
 
+const normalizeRoleGraphEdges = (raw: any): RoleGraphEdge[] => {
+  let edgesRaw: any[] = [];
+  if (Array.isArray(raw)) edgesRaw = raw;
+  else if (raw && typeof raw === "object" && Array.isArray((raw as any).edges)) edgesRaw = (raw as any).edges;
+  const out: RoleGraphEdge[] = [];
+  for (const item of edgesRaw) {
+    if (!item || typeof item !== "object") continue;
+    const from = String((item as any).from_role || (item as any).from || "").trim().toLowerCase();
+    const to = String((item as any).to_role || (item as any).to || "").trim().toLowerCase();
+    if (!from || !to) continue;
+    const reason = (item as any).reason ? String((item as any).reason).trim() : "";
+    out.push({ from_role: from, to_role: to, reason: reason || undefined });
+  }
+  return out;
+};
+
 export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
   const run = props.runLookupResult;
   const runId = String(props.runId || run?.team_run_id || "").trim();
@@ -42,6 +60,35 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
   const goalContract = run?.goal_contract && typeof run.goal_contract === "object" ? run.goal_contract : null;
   const goalEvents = Array.isArray(run?.goal_events) ? run.goal_events : [];
   const handoffEvents = Array.isArray(run?.handoff_events) ? run.handoff_events : [];
+  const roleInstructions = normalizeRoleInstructionMap(run?.role_instructions);
+  const rolePromptMode = typeof run?.role_prompt_mode === "string" ? String(run.role_prompt_mode) : "";
+  const roleGraphEdges = normalizeRoleGraphEdges(run?.role_graph);
+  const roleGraphRoles = React.useMemo(() => {
+    const set = new Set<string>();
+    for (const edge of roleGraphEdges) {
+      const from = String(edge.from_role || "").trim().toLowerCase();
+      const to = String(edge.to_role || "").trim().toLowerCase();
+      if (from) set.add(from);
+      if (to) set.add(to);
+    }
+    for (const role of Object.keys(roleInstructions)) {
+      const key = String(role || "").trim().toLowerCase();
+      if (key) set.add(key);
+    }
+    if (Array.isArray(run?.members)) {
+      for (const member of run.members) {
+        const role = String(member?.role || "").trim().toLowerCase();
+        if (role) set.add(role);
+      }
+    }
+    if (Array.isArray(run?.runtime_members)) {
+      for (const member of run.runtime_members) {
+        const role = String(member?.role || "").trim().toLowerCase();
+        if (role) set.add(role);
+      }
+    }
+    return Array.from(set).filter(Boolean).sort();
+  }, [roleGraphEdges, roleInstructions, run?.members, run?.runtime_members]);
   const sharedMemoryScope = run?.shared_memory_scope_id ? String(run.shared_memory_scope_id) : "";
   const sharedMemoryMode = run?.shared_memory_mode ? String(run.shared_memory_mode) : "";
   const autoAllocateRoles = run?.auto_allocate_roles === true;
@@ -50,6 +97,7 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
     : [];
   const autoAllocateMissing = Array.isArray(run?.auto_allocate_missing_roles) ? run.auto_allocate_missing_roles : [];
   const autoAllocateWarning = run?.auto_allocate_warning ? String(run.auto_allocate_warning) : "";
+  const roleInstructionCount = Object.keys(roleInstructions).length;
 
   const lastInitRunId = React.useRef<string>("");
   const [goalContractGoal, setGoalContractGoal] = React.useState<string>("");
@@ -252,6 +300,23 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
           {autoAllocateAllocated.length > 0 ? ` · allocated ${autoAllocateAllocated.join(", ")}` : ""}
           {autoAllocateMissing.length > 0 ? ` · missing ${autoAllocateMissing.join(", ")}` : ""}
           {autoAllocateWarning ? ` · ${autoAllocateWarning}` : ""}
+        </div>
+      ) : null}
+      {roleGraphEdges.length > 0 || roleGraphRoles.length > 0 ? (
+        <div className="rounded-md border border-white/5 bg-black/30 p-2">
+          <div className="text-xs font-semibold text-white/80">Role graph</div>
+          <RoleGraphPreview
+            roles={roleGraphRoles}
+            edges={roleGraphEdges}
+            title="Role graph"
+            emptyLabel="No role graph recorded."
+          />
+          {rolePromptMode || roleInstructionCount > 0 ? (
+            <div className="mt-1 text-[11px] text-white/60">
+              {rolePromptMode ? `prompt mode ${rolePromptMode}` : ""}
+              {roleInstructionCount > 0 ? `${rolePromptMode ? " · " : ""}instructions ${roleInstructionCount}` : ""}
+            </div>
+          ) : null}
         </div>
       ) : null}
       {run?.role_overrides_applied || run?.member_overrides_applied ? (

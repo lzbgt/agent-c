@@ -51,7 +51,7 @@ Status: draft (rolling)
 - Broker SSE events: `team_run_created`, `team_run_status`, `team_quorum_*`, `team_runtime_members_updated`.
 - WebUI Team console with run panel (recent runs + inline approvals).
 - WebUI Team console includes orchestrator run panel (create/list/update/heartbeat).
-- WebUI team run status panel shows goal contracts, goal progress/drift events, and handoff events; it can emit goal + handoff updates.
+- WebUI team run status panel shows role graph previews, goal contracts, goal progress/drift events, and handoff events; it can emit goal + handoff updates.
 - Broker orchestrator spawn requests persist + emit events (`/v1/teams/{team_id}/orchestrator/spawn_requests`).
 
 ## Proposed UI flows
