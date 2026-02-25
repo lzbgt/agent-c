@@ -1657,6 +1657,17 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                             ))}
                           </select>
                         </label>
+                        <button
+                          className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
+                          type="button"
+                          onClick={() => {
+                            setPinnedCompareA(pinnedCompareB);
+                            setPinnedCompareB(pinnedCompareA);
+                          }}
+                          disabled={!pinnedCompareA || !pinnedCompareB}
+                        >
+                          Swap
+                        </button>
                       </div>
                       {pinnedCompareA && pinnedCompareB ? (
                         (() => {
