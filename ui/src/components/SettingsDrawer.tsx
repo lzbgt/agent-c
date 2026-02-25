@@ -7,10 +7,12 @@ import {
   apiGetDiagnostics,
   apiGetDiagnosticsProviders,
   apiGetOpenRouterModels,
+  apiGetModeratorEvents,
   apiPostModeratorDirective,
   apiPostModeratorTask,
   apiPostDiagnosticsProviderTest,
 } from "../api";
+import type { ModeratorEvent } from "../api";
 import type { ClientSettings, ConnectionSettings, RunSettings } from "../hooks/useUiSettings";
 import FieldLabel from "./FieldLabel";
 
@@ -64,6 +66,21 @@ function formatDuration(ms?: number | null) {
   if (h > 0) return `${h}h ${m}m ${rem}s`;
   if (m > 0) return `${m}m ${rem}s`;
   return `${rem}s`;
+}
+
+function formatModeratorEventSummary(event: ModeratorEvent) {
+  const type = typeof event?.type === "string" ? event.type : "";
+  const data = event?.data && typeof event.data === "object" ? (event.data as any) : {};
+  if (type === "moderator_directive") {
+    const directive = typeof data?.directive === "string" ? data.directive : "";
+    return directive || "(directive)";
+  }
+  if (type === "moderator_task_published") {
+    const task = data?.task && typeof data.task === "object" ? data.task : {};
+    const title = typeof task?.title === "string" ? task.title : "";
+    return title || "(task)";
+  }
+  return "";
 }
 
 function parseCsvList(raw: string) {
@@ -154,6 +171,10 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const [moderatorBusy, setModeratorBusy] = React.useState<boolean>(false);
   const [moderatorError, setModeratorError] = React.useState<string | null>(null);
   const [moderatorSuccess, setModeratorSuccess] = React.useState<string | null>(null);
+  const [moderatorEventsAuto, setModeratorEventsAuto] = React.useState<boolean>(false);
+  const [moderatorEventsMaxBytes, setModeratorEventsMaxBytes] = React.useState<string>("1048576");
+  const [moderatorEventsIncludeDirectives, setModeratorEventsIncludeDirectives] = React.useState<boolean>(true);
+  const [moderatorEventsIncludeTasks, setModeratorEventsIncludeTasks] = React.useState<boolean>(true);
   const serverPrefsBase = String(connection.serverPrefsBase || "").trim();
   const serverPrefsCanSync = serverPrefsBase.length > 0;
   const serverPrefsTarget = connection.mode === "broker" ? "broker" : "daemon";
@@ -335,6 +356,39 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
     enabled: props.open,
     retry: 1,
   });
+  const moderatorEventsTypes = React.useMemo(() => {
+    const types: string[] = [];
+    if (moderatorEventsIncludeDirectives) types.push("moderator_directive");
+    if (moderatorEventsIncludeTasks) types.push("moderator_task_published");
+    if (types.length === 0) {
+      return ["moderator_directive", "moderator_task_published"];
+    }
+    return types;
+  }, [moderatorEventsIncludeDirectives, moderatorEventsIncludeTasks]);
+  const moderatorEventsMaxBytesValue = React.useMemo(() => {
+    const parsed = Number.parseInt(String(moderatorEventsMaxBytes || "").trim(), 10);
+    if (!Number.isFinite(parsed) || parsed <= 0) return 1024 * 1024;
+    return Math.min(parsed, 4 * 1024 * 1024);
+  }, [moderatorEventsMaxBytes]);
+  const moderatorEventsEnabled = (props.caps.data as any)?.features?.moderator?.events !== false;
+  const moderatorEvents = useQuery({
+    queryKey: [
+      "moderatorEvents",
+      connection.effectiveBase,
+      connection.authKey,
+      props.session.id,
+      moderatorEventsMaxBytesValue,
+      moderatorEventsTypes.join(","),
+    ],
+    queryFn: () =>
+      apiGetModeratorEvents(connection.effectiveBase, props.session.id, connection.daemonAuth, {
+        maxBytes: moderatorEventsMaxBytesValue,
+        types: moderatorEventsTypes,
+      }),
+    enabled: props.open && moderatorEventsAuto && moderatorEventsEnabled && !!props.session.id.trim(),
+    retry: 1,
+    refetchInterval: moderatorEventsAuto ? 5000 : false,
+  });
 
   const cfg = props.daemonConfig.data;
   const daemonDefaults = cfg?.daemon;
@@ -513,6 +567,9 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
     : {};
   const deepseekKeyPresent = providerEntries?.deepseek?.key_present === true;
   const moonshotKeyPresent = providerEntries?.moonshot?.key_present === true;
+  const moderatorEventsData = moderatorEvents.data;
+  const moderatorEventsError = moderatorEvents.isError ? String(moderatorEvents.error || "failed to load events") : null;
+  const moderatorEventsList = Array.isArray(moderatorEventsData?.events) ? (moderatorEventsData?.events as ModeratorEvent[]) : [];
 
   if (!props.open) return null;
 
@@ -1122,6 +1179,89 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
             ) : null}
             {moderatorError ? <div className="text-rose-200">moderator error: {moderatorError}</div> : null}
             {moderatorSuccess ? <div className="text-emerald-200">{moderatorSuccess}</div> : null}
+            <div className="mt-3 rounded-md border border-white/10 bg-black/30 p-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs font-semibold text-white/70">Moderator events</div>
+                <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                    type="button"
+                    onClick={() => void moderatorEvents.refetch()}
+                    disabled={!moderatorEventsEnabled || !props.session.id.trim() || moderatorEvents.isFetching}
+                  >
+                    {moderatorEvents.isFetching ? "Loading…" : "Load"}
+                  </button>
+                  <label className="flex items-center gap-2">
+                    <span>auto</span>
+                    <input
+                      type="checkbox"
+                      checked={moderatorEventsAuto}
+                      onChange={(e) => setModeratorEventsAuto(e.target.checked)}
+                      disabled={!moderatorEventsEnabled || !props.session.id.trim()}
+                    />
+                  </label>
+                </div>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={moderatorEventsIncludeDirectives}
+                    onChange={(e) => setModeratorEventsIncludeDirectives(e.target.checked)}
+                  />
+                  directives
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={moderatorEventsIncludeTasks}
+                    onChange={(e) => setModeratorEventsIncludeTasks(e.target.checked)}
+                  />
+                  tasks
+                </label>
+                <label className="flex items-center gap-2">
+                  <span>max bytes</span>
+                  <input
+                    className="w-28 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
+                    value={moderatorEventsMaxBytes}
+                    onChange={(e) => setModeratorEventsMaxBytes(e.target.value)}
+                  />
+                </label>
+              </div>
+              {moderatorEventsError ? <div className="mt-2 text-[11px] text-rose-200">{moderatorEventsError}</div> : null}
+              {!moderatorEventsEnabled ? (
+                <div className="mt-2 text-[11px] text-amber-200">Moderator events disabled by daemon caps.</div>
+              ) : null}
+              {props.session.id.trim().length === 0 ? (
+                <div className="mt-2 text-[11px] text-amber-200">Set a session id to read events.</div>
+              ) : null}
+              <div className="mt-2 max-h-48 overflow-auto rounded-md border border-white/10 bg-black/20 p-2 text-[11px] text-white/70">
+                {moderatorEventsList.length === 0 ? (
+                  <div className="text-white/40">No events loaded yet.</div>
+                ) : (
+                  moderatorEventsList.map((event, idx) => {
+                    const type = typeof event?.type === "string" ? event.type : "event";
+                    const ts = typeof event?.ts_unix_ms === "number" ? new Date(event.ts_unix_ms).toLocaleString() : "";
+                    const actor = event?.actor && typeof event.actor === "object" ? (event.actor as any) : {};
+                    const actorId = typeof actor?.id === "string" ? actor.id : "";
+                    const summary = formatModeratorEventSummary(event);
+                    const key = `${type}-${event?.ts_unix_ms ?? "0"}-${idx}`;
+                    return (
+                      <div key={key} className="border-b border-white/5 py-1 last:border-b-0">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="text-white/80">
+                            {type}
+                            {actorId ? ` · ${actorId}` : ""}
+                          </div>
+                          <div className="text-white/40">{ts}</div>
+                        </div>
+                        {summary ? <div className="text-white/60">{summary}</div> : null}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
             <div className="text-[11px] text-white/50">
               Moderator directives/tasks are stored as client events. Assignees and scope are advisory hints; empty assignees
               broadcast to all listening agents.

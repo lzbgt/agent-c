@@ -54,6 +54,7 @@ Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`,
 - Moderator publishing supports optional assignees/scope for targeted routing; empty assignees broadcast to all listeners.
 - In broker mode, the Moderator panel can populate assignees from connected broker agents.
 - Moderator tasks include a quick template for broker runtime member updates (tool server helper).
+- Moderator events panel can load recent directives/tasks with optional auto-refresh.
 - The broker console exposes agent membership management, audit events, team setup (members + quorum rules), team runs, and quorum approvals (Team console includes recent quorum requests and approvals).
 - Team members editor supports broker agent/deployment pickers and a bulk add for connected agents.
 - Team member rows support quick pause/resume (updates status via PATCH).
