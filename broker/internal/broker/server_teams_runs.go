@@ -247,6 +247,7 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 		return
 	}
 	teamRunRules := []db.TeamQuorumRule{}
+	toolApprovalRules := []teamPolicyApprovalRule{}
 	if quorumPolicyMode != "off" || len(approvals) > 0 {
 		rules, err := s.cfg.DB.ListTeamQuorumRules(r.Context(), teamID)
 		if err != nil {
@@ -254,6 +255,7 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 			return
 		}
 		teamRunRules = filterTeamRunRules(rules)
+		toolApprovalRules = buildPolicyApprovalRules(rules)
 		if len(approvals) > 0 && len(teamRunRules) == 0 {
 			writeErrorJSON(w, "no quorum rules configured", http.StatusBadRequest)
 			return
@@ -437,6 +439,13 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 	roleOverridesApplied := map[string]map[string]any{}
 	memberRunBodies := make([][]byte, 0, len(runMembers))
 	memberSessions := map[string]string{}
+	policyRulesPayload := []any{}
+	if len(toolApprovalRules) > 0 {
+		policyRulesPayload = make([]any, 0, len(toolApprovalRules))
+		for _, rule := range toolApprovalRules {
+			policyRulesPayload = append(policyRulesPayload, rule)
+		}
+	}
 	noSession := false
 	if v, ok := runMap["no_session"]; ok {
 		if b, ok := v.(bool); ok && b {
@@ -503,6 +512,18 @@ func (s *Server) handleTeamRunCreate(w http.ResponseWriter, r *http.Request, tea
 				}
 			}
 		}
+		if len(policyRulesPayload) > 0 {
+			merged := make([]any, 0, len(policyRulesPayload))
+			if existing, ok := runForMember["policy_approval_rules"]; ok {
+				if items, ok := existing.([]any); ok {
+					merged = append(merged, items...)
+				}
+			}
+			merged = append(merged, policyRulesPayload...)
+			runForMember["policy_approval_rules"] = merged
+			runForMember["policy_mode"] = "enforce"
+		}
+		runForMember["team_id"] = teamID
 		if !noSession {
 			sessionID := runSessionID
 			if sessionID == "" {

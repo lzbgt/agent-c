@@ -219,6 +219,11 @@ timeout_ms: integer
 quorum_mode: string           # strict|best_effort
 ```
 
+Tool quorum rules are enforced inside `agentd` by injecting
+`policy_approval_rules` (plus `policy_mode=enforce`) into member run
+requests. `team_id` is forwarded so approval requests can be filtered
+by team.
+
 ### Shared memory scope
 
 ```

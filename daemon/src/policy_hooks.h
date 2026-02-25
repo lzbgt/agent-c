@@ -22,6 +22,15 @@ enum class PolicyMode {
 const char* policy_mode_to_string(PolicyMode mode);
 bool policy_mode_from_string(const std::string& s, PolicyMode* out);
 
+struct PolicyApprovalRule {
+  std::vector<std::string> tool_names;
+  int required = 1;
+  std::vector<std::string> roles;
+  int64_t timeout_ms = 300000;
+  bool require_distinct_roles = false;
+  bool best_effort = false;
+};
+
 struct PolicyConfig {
   PolicyMode mode = PolicyMode::Off;
   std::vector<std::string> tool_allowlist;
@@ -31,6 +40,7 @@ struct PolicyConfig {
   size_t max_tool_calls_per_tool = 0;
   size_t max_tool_call_args_chars = 0;
   size_t max_tool_result_chars = 0;
+  std::vector<PolicyApprovalRule> approval_rules;
   std::vector<std::string> approval_tools;
   int approval_required = 1;
   std::vector<std::string> approval_roles;
@@ -59,6 +69,7 @@ struct PolicyToolExecutorCtx {
 };
 
 PolicyConfig policy_config_from_daemon(const DaemonConfig& cfg);
+bool policy_apply_overrides_from_json(const Json::Value& args, PolicyConfig* cfg, std::string* out_error);
 void policy_prepare(
   PolicyHookCtx* ctx,
   const PolicyConfig& cfg,

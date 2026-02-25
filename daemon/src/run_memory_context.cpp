@@ -399,6 +399,7 @@ static bool build_memory_files_context_text(
 
 static bool build_memory_index_context_text(
   const std::filesystem::path& mem_root,
+  const std::string& state_dir,
   const std::string& session_id,
   const MemoryContextPolicy& pol,
   std::string* out_text
@@ -641,6 +642,7 @@ static bool build_memory_salience_context_text(
 
 static bool build_memory_search_context_text(
   const std::filesystem::path& mem_root,
+  const std::string& state_dir,
   const std::string& session_id,
   const MemoryContextPolicy& pol,
   const std::string& query_raw,
@@ -897,11 +899,11 @@ bool build_memory_context_text(
     mem_root = std::filesystem::path(state_dir) / "memory";
   }
   if (pol.mode == MemoryContextMode::Index) {
-    if (build_memory_index_context_text(mem_root, session_id, pol, out_text)) return true;
+    if (build_memory_index_context_text(mem_root, state_dir, session_id, pol, out_text)) return true;
     return false;
   }
   if (pol.mode == MemoryContextMode::Search) {
-    if (build_memory_search_context_text(mem_root, session_id, pol, query, out_text)) return true;
+    if (build_memory_search_context_text(mem_root, state_dir, session_id, pol, query, out_text)) return true;
     if (!pol.search_fallback_to_files) return false;
     return build_memory_files_context_text(mem_root, session_id, pol, out_text);
   }

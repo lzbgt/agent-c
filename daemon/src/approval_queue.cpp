@@ -43,6 +43,16 @@ static Json::Value role_constraints_from_row(const AgentDb::ApprovalRequestRow& 
   return roles_to_json_array(gate.roles);
 }
 
+static ApprovalGateRule build_default_rule(const ApprovalGateCtx& gate) {
+  ApprovalGateRule rule;
+  rule.required = gate.required;
+  rule.roles = gate.roles;
+  rule.timeout_ms = gate.timeout_ms;
+  rule.require_distinct_roles = gate.require_distinct_roles;
+  rule.best_effort = gate.best_effort;
+  return rule;
+}
+
 static Json::Value approval_event_base(const AgentDb::ApprovalRequestRow& req, const ApprovalGateCtx& gate) {
   Json::Value d(Json::objectValue);
   if (!req.approval_id.empty()) d["approval_id"] = req.approval_id;
@@ -61,6 +71,7 @@ static Json::Value approval_event_base(const AgentDb::ApprovalRequestRow& req, c
   if (!req.tool_args_hash.empty()) d["tool_args_hash"] = req.tool_args_hash;
   if (!req.status.empty()) d["status"] = req.status;
   if (req.required_approvals > 0) d["required_approvals"] = req.required_approvals;
+  if (req.require_distinct_roles) d["require_distinct_roles"] = true;
   Json::Value roles = role_constraints_from_row(req, gate);
   if (roles.isArray() && !roles.empty()) d["role_constraints"] = roles;
   if (req.created_unix_ms > 0) d["created_unix_ms"] = (Json::Int64)req.created_unix_ms;
@@ -116,7 +127,8 @@ static void count_decisions(
   const std::vector<AgentDb::ApprovalDecisionRow>& rows,
   const std::unordered_set<std::string>* allowed_roles,
   int* out_approved,
-  bool* out_denied
+  bool* out_denied,
+  bool require_distinct_roles
 ) {
   if (out_approved) *out_approved = 0;
   if (out_denied) *out_denied = false;
@@ -129,10 +141,18 @@ static void count_decisions(
       if (role.empty() || allowed_roles->find(role) == allowed_roles->end()) continue;
     }
     const std::string d = normalize_decision(row.decision);
+    std::string key;
+    if (require_distinct_roles) {
+      key = lower_copy(trim_copy(row.member_role));
+      if (key.empty()) continue;
+    } else {
+      key = row.member_id;
+      if (key.empty()) continue;
+    }
     if (d == "deny") {
-      denied_members.insert(row.member_id);
+      denied_members.insert(key);
     } else if (d == "approve") {
-      approved_members.insert(row.member_id);
+      approved_members.insert(key);
     }
   }
   if (out_approved) *out_approved = (int)approved_members.size();
@@ -157,6 +177,7 @@ static bool approval_tool_matches(const ApprovalGateCtx& gate, const std::string
 
 static AgentDb::ApprovalRequestRow build_request_row(
   ApprovalGateCtx* gate,
+  const ApprovalGateRule& rule,
   const std::string& tool_name,
   const std::string& tool_call_id,
   const std::string& arguments_json
@@ -174,14 +195,18 @@ static AgentDb::ApprovalRequestRow build_request_row(
   req.tool_name = tool_name;
   req.tool_call_id = tool_call_id;
   req.tool_args_hash = sha256_hex_or_empty(arguments_json);
-  req.required_approvals = gate ? gate->required : 1;
-  if (gate && !gate->roles.empty()) {
-    req.role_constraints_json = json_stringify(roles_to_json_array(gate->roles));
+  req.required_approvals = rule.required;
+  req.require_distinct_roles = rule.require_distinct_roles;
+  if (!rule.roles.empty()) {
+    req.role_constraints_json = json_stringify(roles_to_json_array(rule.roles));
+  } else if (gate && !gate->roles.empty()) {
+    // Explicitly record empty constraints so per-tool rules don't inherit default roles.
+    req.role_constraints_json = "[]";
   }
   req.status = "pending";
   req.created_unix_ms = now_unix_ms();
-  if (gate && gate->timeout_ms > 0) {
-    req.expires_unix_ms = req.created_unix_ms + gate->timeout_ms;
+  if (rule.timeout_ms > 0) {
+    req.expires_unix_ms = req.created_unix_ms + rule.timeout_ms;
   }
   return req;
 }
@@ -195,16 +220,26 @@ agent_status_t approval_gate_tool(
   const std::string& arguments_json
 ) {
   if (!gate) return AGENT_ERR_INVALID_ARGUMENT;
-  if (!approval_tool_matches(*gate, tool_name)) return AGENT_OK;
-  if (gate->required <= 0) return AGENT_OK;
+  ApprovalGateRule fallback;
+  const ApprovalGateRule* rule = nullptr;
+  if (!gate->tool_rules.empty()) {
+    auto it = gate->tool_rules.find(tool_name);
+    if (it != gate->tool_rules.end()) rule = &it->second;
+  }
+  if (!rule && approval_tool_matches(*gate, tool_name)) {
+    fallback = build_default_rule(*gate);
+    rule = &fallback;
+  }
+  if (!rule) return AGENT_OK;
+  if (rule->required <= 0) return AGENT_OK;
   if (!gate->enforce && !gate->audit) return AGENT_OK;
 
   if (gate->audit && !gate->enforce) {
-    AgentDb::ApprovalRequestRow req = build_request_row(gate, tool_name, tool_call_id, arguments_json);
+    AgentDb::ApprovalRequestRow req = build_request_row(gate, *rule, tool_name, tool_call_id, arguments_json);
     emit_approval_request(gate, req);
     req.status = "approved";
     req.decision_reason = "audit_auto_approve";
-    emit_approval_resolved(gate, req, gate->required, gate->required);
+    emit_approval_resolved(gate, req, rule->required, rule->required);
     return AGENT_OK;
   }
 
@@ -213,7 +248,7 @@ agent_status_t approval_gate_tool(
     return AGENT_ERR_INTERNAL;
   }
 
-  AgentDb::ApprovalRequestRow req = build_request_row(gate, tool_name, tool_call_id, arguments_json);
+  AgentDb::ApprovalRequestRow req = build_request_row(gate, *rule, tool_name, tool_call_id, arguments_json);
   std::string db_err;
   if (!gate->db->insert_approval_request(req, &db_err)) {
     if (gate->hook) gate->hook->last_error = db_err.empty() ? "failed to insert approval request" : db_err;
@@ -230,7 +265,7 @@ agent_status_t approval_gate_tool(
       req.status = "denied";
       req.decision_reason = "cancelled";
       (void)gate->db->update_approval_status(req.approval_id, req.status, req.decision_reason, nullptr);
-      emit_approval_resolved(gate, req, 0, gate->required);
+      emit_approval_resolved(gate, req, 0, rule->required);
       if (gate->hook) gate->hook->last_error = "approval gate cancelled";
       return AGENT_ERR_CANCELLED;
     }
@@ -243,11 +278,14 @@ agent_status_t approval_gate_tool(
     if (!cur.status.empty() && cur.status != "pending") {
       const std::string st = lower_copy(cur.status);
       if (st == "approved") {
-        emit_approval_resolved(gate, cur, gate->required, gate->required);
+        emit_approval_resolved(gate, cur, rule->required, rule->required);
         return AGENT_OK;
       }
       if (st == "denied" || st == "expired") {
-        emit_approval_resolved(gate, cur, 0, gate->required);
+        emit_approval_resolved(gate, cur, 0, rule->required);
+        if (st == "expired" && rule->best_effort) {
+          return AGENT_OK;
+        }
         if (gate->hook && gate->hook->last_error.empty()) {
           gate->hook->last_error = "approval gate " + st;
         }
@@ -267,11 +305,11 @@ agent_status_t approval_gate_tool(
 
     int approved = 0;
     bool denied = false;
-    count_decisions(decisions, allowed_ptr, &approved, &denied);
+    count_decisions(decisions, allowed_ptr, &approved, &denied, rule->require_distinct_roles);
 
     for (const auto& d : decisions) {
       if (d.id <= last_decision_id) continue;
-      emit_approval_update(gate, req, d, approved, gate->required);
+      emit_approval_update(gate, req, d, approved, rule->required);
       last_decision_id = std::max<int64_t>(last_decision_id, d.id);
     }
 
@@ -280,24 +318,27 @@ agent_status_t approval_gate_tool(
       req.status = "denied";
       req.decision_reason = "denied";
       (void)gate->db->update_approval_status(req.approval_id, req.status, req.decision_reason, nullptr);
-      emit_approval_resolved(gate, req, approved, gate->required);
+      emit_approval_resolved(gate, req, approved, rule->required);
       if (gate->hook && gate->hook->last_error.empty()) {
         gate->hook->last_error = "approval denied";
       }
       return AGENT_ERR_LIMIT;
     }
-    if (approved >= gate->required) {
+    if (approved >= rule->required) {
       req.status = "approved";
       req.decision_reason = "approved";
       (void)gate->db->update_approval_status(req.approval_id, req.status, req.decision_reason, nullptr);
-      emit_approval_resolved(gate, req, approved, gate->required);
+      emit_approval_resolved(gate, req, approved, rule->required);
       return AGENT_OK;
     }
     if (req.expires_unix_ms > 0 && now_ms >= req.expires_unix_ms) {
       req.status = "expired";
       req.decision_reason = "expired";
       (void)gate->db->update_approval_status(req.approval_id, req.status, req.decision_reason, nullptr);
-      emit_approval_resolved(gate, req, approved, gate->required);
+      emit_approval_resolved(gate, req, approved, rule->required);
+      if (rule->best_effort) {
+        return AGENT_OK;
+      }
       if (gate->hook && gate->hook->last_error.empty()) {
         gate->hook->last_error = "approval expired";
       }

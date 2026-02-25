@@ -31,6 +31,7 @@ static Json::Value approval_row_to_json(const AgentDb::ApprovalRequestRow& row) 
   if (!row.tool_args_hash.empty()) out["tool_args_hash"] = row.tool_args_hash;
   if (!row.status.empty()) out["status"] = row.status;
   if (row.required_approvals > 0) out["required_approvals"] = row.required_approvals;
+  if (row.require_distinct_roles) out["require_distinct_roles"] = true;
   if (!row.role_constraints_json.empty()) {
     Json::Value rc;
     std::string err;
@@ -86,7 +87,8 @@ static void count_decisions(
   const std::vector<AgentDb::ApprovalDecisionRow>& rows,
   const std::unordered_set<std::string>* allowed_roles,
   int* out_approved,
-  bool* out_denied
+  bool* out_denied,
+  bool require_distinct_roles
 ) {
   if (out_approved) *out_approved = 0;
   if (out_denied) *out_denied = false;
@@ -99,10 +101,18 @@ static void count_decisions(
       if (role.empty() || allowed_roles->find(role) == allowed_roles->end()) continue;
     }
     const std::string d = lower_copy(trim_copy(row.decision));
+    std::string key;
+    if (require_distinct_roles) {
+      key = lower_copy(trim_copy(row.member_role));
+      if (key.empty()) continue;
+    } else {
+      key = row.member_id;
+      if (key.empty()) continue;
+    }
     if (d == "deny") {
-      denied_members.insert(row.member_id);
+      denied_members.insert(key);
     } else if (d == "approve") {
-      approved_members.insert(row.member_id);
+      approved_members.insert(key);
     }
   }
   if (out_approved) *out_approved = (int)approved_members.size();
@@ -317,7 +327,7 @@ void handle_approvals_prefix_endpoint(
     const int required = std::max(1, row.required_approvals);
     int approved = 0;
     bool denied = false;
-    count_decisions(decisions, enforce_roles ? &allowed_roles : nullptr, &approved, &denied);
+    count_decisions(decisions, enforce_roles ? &allowed_roles : nullptr, &approved, &denied, row.require_distinct_roles);
     if (denied) {
       row.status = "denied";
       row.decision_reason = "denied";

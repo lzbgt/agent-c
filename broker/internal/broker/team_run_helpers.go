@@ -26,6 +26,15 @@ type teamRunApprovalRecord struct {
 	Reason   string
 }
 
+type teamPolicyApprovalRule struct {
+	ToolNames            []string `json:"tool_names"`
+	MinApprovals         int      `json:"min_approvals"`
+	RoleAllowlist        []string `json:"role_allowlist,omitempty"`
+	RequireDistinctRoles bool     `json:"require_distinct_roles,omitempty"`
+	TimeoutMS            int64    `json:"timeout_ms,omitempty"`
+	QuorumMode           string   `json:"quorum_mode,omitempty"`
+}
+
 type teamRunQuorumRuleEval struct {
 	RuleID                string
 	Action                string
@@ -134,6 +143,83 @@ func normalizeRoleList(roles []string) []string {
 		}
 		seen[val] = true
 		out = append(out, val)
+	}
+	return out
+}
+
+func normalizeToolList(tools []string) []string {
+	if len(tools) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(tools))
+	for _, tool := range tools {
+		val := strings.TrimSpace(tool)
+		if val == "" || seen[val] {
+			continue
+		}
+		seen[val] = true
+		out = append(out, val)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func parseToolQuorumAction(action string) (string, bool) {
+	raw := strings.TrimSpace(action)
+	if raw == "" {
+		return "", false
+	}
+	lower := strings.ToLower(raw)
+	if lower == "tool" {
+		return "", true
+	}
+	if strings.HasPrefix(lower, "tool:") {
+		name := strings.TrimSpace(raw[len("tool:"):])
+		return name, true
+	}
+	return "", false
+}
+
+func buildPolicyApprovalRules(rules []db.TeamQuorumRule) []teamPolicyApprovalRule {
+	if len(rules) == 0 {
+		return nil
+	}
+	out := make([]teamPolicyApprovalRule, 0, len(rules))
+	for _, rule := range rules {
+		toolName, ok := parseToolQuorumAction(rule.Action)
+		if !ok {
+			continue
+		}
+		tools := append([]string{}, rule.ToolNames()...)
+		if toolName != "" {
+			tools = append(tools, toolName)
+		}
+		tools = normalizeToolList(tools)
+		if len(tools) == 0 {
+			continue
+		}
+		roles := normalizeRoleList(rule.RoleAllowlist())
+		item := teamPolicyApprovalRule{
+			ToolNames:    tools,
+			MinApprovals: rule.MinApprovals,
+		}
+		if len(roles) > 0 {
+			item.RoleAllowlist = roles
+		}
+		if rule.RequireDistinctRoles {
+			item.RequireDistinctRoles = true
+		}
+		if rule.TimeoutMS > 0 {
+			item.TimeoutMS = rule.TimeoutMS
+		}
+		if qm := strings.ToLower(strings.TrimSpace(rule.QuorumMode)); qm != "" {
+			if qm == "best-effort" {
+				qm = "best_effort"
+			}
+			item.QuorumMode = qm
+		}
+		out = append(out, item)
 	}
 	return out
 }

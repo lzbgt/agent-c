@@ -18,6 +18,45 @@ RunRequest:
       type: string
       description: Optional automation profile override (full|guided|strict|custom).
       enum: [full, guided, strict, custom]
+    team_id:
+      type: string
+      description: Optional team identifier for approval/quorum correlation.
+    policy_mode:
+      type: string
+      description: Optional policy mode override (off|audit|enforce). Overrides only tighten the daemon policy.
+      enum: [off, audit, enforce]
+    policy_approval_rules:
+      type: array
+      description: Optional per-tool approval rules (overrides tighten daemon policy).
+      items:
+        $ref: "#/components/schemas/PolicyApprovalRule"
+    policy_approval_poll_ms:
+      type: integer
+      format: int64
+      description: Poll cadence while waiting for approvals (ms). Overrides only tighten daemon policy.
+    policy_approval_tools:
+      type: array
+      items: { type: string }
+      description: Legacy per-run approval tool list (overrides only tighten daemon policy).
+    policy_approval_required:
+      type: integer
+      format: int32
+      description: Legacy per-run approvals required (applies to policy_approval_tools).
+    policy_approval_roles:
+      type: array
+      items: { type: string }
+      description: Legacy per-run role allowlist (applies to policy_approval_tools).
+    policy_approval_timeout_ms:
+      type: integer
+      format: int64
+      description: Legacy per-run approval timeout (applies to policy_approval_tools).
+    policy_approval_require_distinct_roles:
+      type: boolean
+      description: Legacy per-run distinct-role requirement (applies to policy_approval_tools).
+    policy_approval_quorum_mode:
+      type: string
+      description: Legacy per-run quorum mode (strict|best_effort) for policy_approval_tools.
+      enum: [strict, best_effort]
     tools:
       type: string
       description: Tool mode
@@ -333,3 +372,26 @@ JobGetResponse:
       type: array
       items:
         $ref: "#/components/schemas/AgentEvent"
+
+PolicyApprovalRule:
+  type: object
+  required: [tool_names, min_approvals]
+  properties:
+    tool_names:
+      type: array
+      items: { type: string }
+    min_approvals:
+      type: integer
+      format: int32
+      minimum: 1
+    role_allowlist:
+      type: array
+      items: { type: string }
+    require_distinct_roles:
+      type: boolean
+    timeout_ms:
+      type: integer
+      format: int64
+    quorum_mode:
+      type: string
+      enum: [strict, best_effort]

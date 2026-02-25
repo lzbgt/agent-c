@@ -7,6 +7,7 @@
 #include "string_util.h"
 
 #include <algorithm>
+#include <unordered_map>
 
 namespace agentd {
 namespace {
@@ -60,6 +61,160 @@ static bool policy_active_mode(const PolicyConfig& cfg) {
   return cfg.mode != PolicyMode::Off;
 }
 
+static PolicyMode policy_mode_tighten(PolicyMode base, PolicyMode requested) {
+  return (requested > base) ? requested : base;
+}
+
+static bool parse_string_array(const Json::Value& v, std::vector<std::string>* out, bool lower) {
+  if (!out) return false;
+  if (!v.isArray()) return false;
+  out->clear();
+  out->reserve(v.size());
+  for (const auto& item : v) {
+    if (!item.isString()) return false;
+    std::string s = trim_copy(item.asString());
+    if (s.empty()) continue;
+    if (lower) s = lower_copy(s);
+    out->push_back(std::move(s));
+  }
+  return true;
+}
+
+static bool parse_policy_approval_rule(const Json::Value& v, PolicyApprovalRule* out, std::string* err) {
+  if (!out) return false;
+  if (!v.isObject()) {
+    if (err) *err = "policy_approval_rules item must be object";
+    return false;
+  }
+  if (!v.isMember("tool_names")) {
+    if (err) *err = "policy_approval_rules tool_names required";
+    return false;
+  }
+  PolicyApprovalRule rule;
+  if (!parse_string_array(v["tool_names"], &rule.tool_names, false) || rule.tool_names.empty()) {
+    if (err) *err = "policy_approval_rules tool_names must be non-empty array";
+    return false;
+  }
+  if (!v.isMember("min_approvals") || !v["min_approvals"].isInt()) {
+    if (err) *err = "policy_approval_rules min_approvals required";
+    return false;
+  }
+  const int min_approvals = (int)v["min_approvals"].asInt();
+  if (min_approvals < 1) {
+    if (err) *err = "policy_approval_rules min_approvals must be >= 1";
+    return false;
+  }
+  rule.required = min_approvals;
+  if (v.isMember("role_allowlist")) {
+    if (!parse_string_array(v["role_allowlist"], &rule.roles, true)) {
+      if (err) *err = "policy_approval_rules role_allowlist must be array of strings";
+      return false;
+    }
+  }
+  if (v.isMember("require_distinct_roles")) {
+    if (!v["require_distinct_roles"].isBool()) {
+      if (err) *err = "policy_approval_rules require_distinct_roles must be boolean";
+      return false;
+    }
+    rule.require_distinct_roles = v["require_distinct_roles"].asBool();
+  }
+  if (v.isMember("timeout_ms")) {
+    if (!v["timeout_ms"].isInt64()) {
+      if (err) *err = "policy_approval_rules timeout_ms must be integer";
+      return false;
+    }
+    const int64_t timeout_ms = v["timeout_ms"].asInt64();
+    if (timeout_ms < 0) {
+      if (err) *err = "policy_approval_rules timeout_ms must be >= 0";
+      return false;
+    }
+    rule.timeout_ms = timeout_ms;
+  }
+  if (v.isMember("quorum_mode")) {
+    if (!v["quorum_mode"].isString()) {
+      if (err) *err = "policy_approval_rules quorum_mode must be string";
+      return false;
+    }
+    const std::string q = lower_copy(trim_copy(v["quorum_mode"].asString()));
+    if (q.empty() || q == "strict") {
+      rule.best_effort = false;
+    } else if (q == "best_effort" || q == "best-effort") {
+      rule.best_effort = true;
+    } else {
+      if (err) *err = "policy_approval_rules quorum_mode invalid (expected strict|best_effort)";
+      return false;
+    }
+  }
+  *out = std::move(rule);
+  return true;
+}
+
+static bool merge_role_allowlist(
+  const std::vector<std::string>& base,
+  const std::vector<std::string>& next,
+  std::vector<std::string>* out,
+  std::string* err
+) {
+  if (!out) return false;
+  if (next.empty()) {
+    *out = base;
+    return true;
+  }
+  if (base.empty()) {
+    *out = next;
+    return true;
+  }
+  std::unordered_set<std::string> base_set(base.begin(), base.end());
+  for (const auto& role : next) {
+    if (base_set.find(role) == base_set.end()) {
+      if (err) *err = "policy_approval_roles must be subset of daemon roles";
+      return false;
+    }
+  }
+  *out = next;
+  return true;
+}
+
+static bool merge_policy_approval_rule(
+  PolicyApprovalRule* base,
+  const PolicyApprovalRule& next,
+  std::string* err
+) {
+  if (!base) return false;
+  base->required = std::max(base->required, next.required);
+  base->require_distinct_roles = base->require_distinct_roles || next.require_distinct_roles;
+  base->best_effort = base->best_effort && next.best_effort;
+  if (next.timeout_ms > 0) {
+    if (base->timeout_ms > 0) base->timeout_ms = std::min(base->timeout_ms, next.timeout_ms);
+    else base->timeout_ms = next.timeout_ms;
+  }
+  std::vector<std::string> merged_roles;
+  if (!merge_role_allowlist(base->roles, next.roles, &merged_roles, err)) return false;
+  base->roles = std::move(merged_roles);
+  return true;
+}
+
+static bool add_rule_for_tools(
+  std::unordered_map<std::string, PolicyApprovalRule>* dst,
+  const PolicyApprovalRule& rule,
+  std::string* err
+) {
+  if (!dst) return false;
+  for (const auto& tool : rule.tool_names) {
+    const std::string name = trim_copy(tool);
+    if (name.empty()) continue;
+    auto it = dst->find(name);
+    if (it == dst->end()) {
+      PolicyApprovalRule entry = rule;
+      entry.tool_names = {name};
+      (*dst)[name] = std::move(entry);
+    } else {
+      if (!merge_policy_approval_rule(&it->second, rule, err)) return false;
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 const char* policy_mode_to_string(PolicyMode mode) {
@@ -111,6 +266,180 @@ PolicyConfig policy_config_from_daemon(const DaemonConfig& cfg) {
   out.approval_timeout_ms = std::max<int64_t>(0, cfg.policy_approval_timeout_ms);
   out.approval_poll_ms = std::max<int64_t>(0, cfg.policy_approval_poll_ms);
   return out;
+}
+
+bool policy_apply_overrides_from_json(const Json::Value& args, PolicyConfig* cfg, std::string* out_error) {
+  if (!cfg) {
+    if (out_error) *out_error = "policy override missing config";
+    return false;
+  }
+  if (!args.isObject()) return true;
+
+  if (args.isMember("policy_mode")) {
+    if (!args["policy_mode"].isString()) {
+      if (out_error) *out_error = "policy_mode must be string";
+      return false;
+    }
+    PolicyMode requested = PolicyMode::Off;
+    if (!policy_mode_from_string(args["policy_mode"].asString(), &requested)) {
+      if (out_error) *out_error = "invalid policy_mode";
+      return false;
+    }
+    cfg->mode = policy_mode_tighten(cfg->mode, requested);
+  }
+
+  if (args.isMember("policy_approval_poll_ms")) {
+    if (!args["policy_approval_poll_ms"].isInt64()) {
+      if (out_error) *out_error = "policy_approval_poll_ms must be integer";
+      return false;
+    }
+    const int64_t poll_ms = args["policy_approval_poll_ms"].asInt64();
+    if (poll_ms < 0) {
+      if (out_error) *out_error = "policy_approval_poll_ms must be >= 0";
+      return false;
+    }
+    if (poll_ms > 0) {
+      if (cfg->approval_poll_ms > 0) cfg->approval_poll_ms = std::min(cfg->approval_poll_ms, poll_ms);
+      else cfg->approval_poll_ms = poll_ms;
+    }
+  }
+
+  bool has_overrides = false;
+  std::vector<PolicyApprovalRule> override_rules;
+
+  if (args.isMember("policy_approval_rules")) {
+    if (!args["policy_approval_rules"].isArray()) {
+      if (out_error) *out_error = "policy_approval_rules must be array";
+      return false;
+    }
+    for (const auto& item : args["policy_approval_rules"]) {
+      PolicyApprovalRule rule;
+      std::string err;
+      if (!parse_policy_approval_rule(item, &rule, &err)) {
+        if (out_error) *out_error = err.empty() ? "invalid policy_approval_rules" : err;
+        return false;
+      }
+      override_rules.push_back(std::move(rule));
+    }
+    has_overrides = has_overrides || !override_rules.empty();
+  }
+
+  if (args.isMember("policy_approval_tools")) {
+    if (!args["policy_approval_tools"].isArray()) {
+      if (out_error) *out_error = "policy_approval_tools must be array";
+      return false;
+    }
+    std::vector<std::string> tools;
+    if (!parse_string_array(args["policy_approval_tools"], &tools, false)) {
+      if (out_error) *out_error = "policy_approval_tools must be array of strings";
+      return false;
+    }
+    if (!tools.empty()) {
+      PolicyApprovalRule rule;
+      rule.tool_names = std::move(tools);
+      int required = cfg->approval_required;
+      if (args.isMember("policy_approval_required")) {
+        if (!args["policy_approval_required"].isInt()) {
+          if (out_error) *out_error = "policy_approval_required must be integer";
+          return false;
+        }
+        required = (int)args["policy_approval_required"].asInt();
+      }
+      if (required < 1) {
+        if (out_error) *out_error = "policy_approval_required must be >= 1";
+        return false;
+      }
+      rule.required = required;
+      if (args.isMember("policy_approval_roles")) {
+        if (!parse_string_array(args["policy_approval_roles"], &rule.roles, true)) {
+          if (out_error) *out_error = "policy_approval_roles must be array of strings";
+          return false;
+        }
+      } else {
+        rule.roles = cfg->approval_roles;
+      }
+      int64_t timeout_ms = cfg->approval_timeout_ms;
+      if (args.isMember("policy_approval_timeout_ms")) {
+        if (!args["policy_approval_timeout_ms"].isInt64()) {
+          if (out_error) *out_error = "policy_approval_timeout_ms must be integer";
+          return false;
+        }
+        timeout_ms = args["policy_approval_timeout_ms"].asInt64();
+      }
+      if (timeout_ms < 0) {
+        if (out_error) *out_error = "policy_approval_timeout_ms must be >= 0";
+        return false;
+      }
+      rule.timeout_ms = timeout_ms;
+      if (args.isMember("policy_approval_require_distinct_roles")) {
+        if (!args["policy_approval_require_distinct_roles"].isBool()) {
+          if (out_error) *out_error = "policy_approval_require_distinct_roles must be boolean";
+          return false;
+        }
+        rule.require_distinct_roles = args["policy_approval_require_distinct_roles"].asBool();
+      }
+      if (args.isMember("policy_approval_quorum_mode")) {
+        if (!args["policy_approval_quorum_mode"].isString()) {
+          if (out_error) *out_error = "policy_approval_quorum_mode must be string";
+          return false;
+        }
+        const std::string q = lower_copy(trim_copy(args["policy_approval_quorum_mode"].asString()));
+        if (q == "best_effort" || q == "best-effort") rule.best_effort = true;
+        else if (q.empty() || q == "strict") rule.best_effort = false;
+        else {
+          if (out_error) *out_error = "policy_approval_quorum_mode invalid (expected strict|best_effort)";
+          return false;
+        }
+      }
+      override_rules.push_back(std::move(rule));
+      has_overrides = true;
+    }
+  }
+
+  if (has_overrides) {
+    std::unordered_map<std::string, PolicyApprovalRule> merged;
+    if (!cfg->approval_rules.empty()) {
+      for (const auto& rule : cfg->approval_rules) {
+        std::string err;
+        if (!add_rule_for_tools(&merged, rule, &err)) {
+          if (out_error) *out_error = err.empty() ? "invalid policy_approval_rules" : err;
+          return false;
+        }
+      }
+    } else if (!cfg->approval_tools.empty()) {
+      PolicyApprovalRule base;
+      base.tool_names = cfg->approval_tools;
+      base.required = std::max(1, cfg->approval_required);
+      base.roles = cfg->approval_roles;
+      base.timeout_ms = cfg->approval_timeout_ms;
+      base.require_distinct_roles = false;
+      base.best_effort = false;
+      std::string err;
+      if (!add_rule_for_tools(&merged, base, &err)) {
+        if (out_error) *out_error = err.empty() ? "invalid policy_approval_tools" : err;
+        return false;
+      }
+    }
+    for (const auto& rule : override_rules) {
+      std::string err;
+      if (!add_rule_for_tools(&merged, rule, &err)) {
+        if (out_error) *out_error = err.empty() ? "invalid policy_approval_rules" : err;
+        return false;
+      }
+    }
+    cfg->approval_rules.clear();
+    cfg->approval_rules.reserve(merged.size());
+    for (auto& item : merged) {
+      PolicyApprovalRule r = item.second;
+      r.tool_names = {item.first};
+      cfg->approval_rules.push_back(std::move(r));
+    }
+    if (cfg->mode == PolicyMode::Off) {
+      cfg->mode = PolicyMode::Enforce;
+    }
+  }
+
+  return true;
 }
 
 void policy_prepare(

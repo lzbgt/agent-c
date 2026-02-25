@@ -124,6 +124,19 @@ static bool is_safe_memory_scope_id(const std::string& s) {
   return true;
 }
 
+static bool is_safe_team_id(const std::string& s) {
+  if (s.empty() || s.size() > 128) return false;
+  for (const char c : s) {
+    const bool ok =
+      (c >= 'a' && c <= 'z') ||
+      (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9') ||
+      c == '-' || c == '_' || c == '.' || c == ':';
+    if (!ok) return false;
+  }
+  return true;
+}
+
 static std::string normalize_memory_scope_mode(const std::string& raw) {
   const std::string v = lower_copy(trim_copy(raw));
   if (v.empty()) return "";
@@ -190,6 +203,16 @@ static Json::Value run_request_to_json_impl(
   const bool no_session = args.isMember("no_session") && args["no_session"].isBool() ? args["no_session"].asBool() : false;
   if (!session_id_is_safe(session_id)) {
     return run_request_error(400, "invalid session_id");
+  }
+  std::string team_id;
+  if (args.isMember("team_id")) {
+    if (!args["team_id"].isString()) {
+      return run_request_error(400, "invalid team_id");
+    }
+    team_id = args["team_id"].asString();
+    if (!team_id.empty() && !is_safe_team_id(team_id)) {
+      return run_request_error(400, "invalid team_id");
+    }
   }
   if (args.isMember("tools_root")) {
     return run_request_error(400, "tools_root was removed; omit it and use explicit paths or session_id");
@@ -551,6 +574,10 @@ static Json::Value run_request_to_json_impl(
   }
 
   PolicyConfig policy_cfg = policy_config_from_daemon(effective_cfg);
+  std::string policy_err;
+  if (!policy_apply_overrides_from_json(args, &policy_cfg, &policy_err)) {
+    return run_request_error(400, policy_err.empty() ? "invalid policy override" : policy_err);
+  }
   PolicyHookCtx policy_ctx;
   const bool policy_active = (policy_cfg.mode != PolicyMode::Off);
   if (policy_active) {
@@ -717,14 +744,31 @@ static Json::Value run_request_to_json_impl(
   }
 
   ApprovalGateCtx approval_gate{};
-  const bool approvals_enabled = policy_active && use_tool_loop && !policy_cfg.approval_tools.empty();
+  const bool approvals_enabled = policy_active && use_tool_loop &&
+    (!policy_cfg.approval_rules.empty() || !policy_cfg.approval_tools.empty());
   if (approvals_enabled) {
-    for (const auto& tool : policy_cfg.approval_tools) {
-      if (!tool.empty()) approval_gate.toolset.insert(tool);
+    if (!policy_cfg.approval_rules.empty()) {
+      for (const auto& rule : policy_cfg.approval_rules) {
+        if (rule.tool_names.empty()) continue;
+        ApprovalGateRule gate_rule;
+        gate_rule.required = std::max(0, rule.required);
+        gate_rule.roles = rule.roles;
+        gate_rule.timeout_ms = std::max<int64_t>(0, rule.timeout_ms);
+        gate_rule.require_distinct_roles = rule.require_distinct_roles;
+        gate_rule.best_effort = rule.best_effort;
+        for (const auto& tool : rule.tool_names) {
+          const std::string name = trim_copy(tool);
+          if (!name.empty()) approval_gate.tool_rules[name] = gate_rule;
+        }
+      }
+    } else {
+      for (const auto& tool : policy_cfg.approval_tools) {
+        if (!tool.empty()) approval_gate.toolset.insert(tool);
+      }
+      approval_gate.required = std::max(0, policy_cfg.approval_required);
+      approval_gate.roles = policy_cfg.approval_roles;
+      approval_gate.timeout_ms = std::max<int64_t>(0, policy_cfg.approval_timeout_ms);
     }
-    approval_gate.required = std::max(0, policy_cfg.approval_required);
-    approval_gate.roles = policy_cfg.approval_roles;
-    approval_gate.timeout_ms = std::max<int64_t>(0, policy_cfg.approval_timeout_ms);
     approval_gate.poll_ms = std::max<int64_t>(1, policy_cfg.approval_poll_ms);
     approval_gate.enforce = (policy_cfg.mode == PolicyMode::Enforce);
     approval_gate.audit = (policy_cfg.mode == PolicyMode::Audit);
@@ -733,6 +777,7 @@ static Json::Value run_request_to_json_impl(
     approval_gate.trace_id = trace_id;
     approval_gate.session_id = session_id;
     approval_gate.job_id = job_id_local;
+    approval_gate.team_id = team_id;
     if (approval_gate.enforce && (!db_or_null || !db_or_null->is_open())) {
       if (registry) agent_tool_registry_destroy(registry);
       if (need_destroy_host_executor) {

@@ -54,8 +54,8 @@ bool AgentDb::insert_approval_request(const ApprovalRequestRow& row, std::string
 INSERT INTO approval_requests(
   approval_id, run_id, trace_id, session_id, job_id, team_id,
   tool_name, tool_call_id, tool_args_hash, required_approvals, role_constraints_json,
-  status, created_unix_ms, expires_unix_ms, decision_reason
-) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);
+  require_distinct_roles, status, created_unix_ms, expires_unix_ms, decision_reason
+) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?);
   )SQL";
   if (sqlite3_prepare_v2(db_, sql, -1, &st, nullptr) != SQLITE_OK) {
     if (out_error) *out_error = agent_db_sqlite_err(db_);
@@ -74,10 +74,11 @@ INSERT INTO approval_requests(
   ok = ok && agent_db_bind_text_or_null(st, 9, row.tool_args_hash);
   ok = ok && agent_db_bind_i32(st, 10, std::max(0, row.required_approvals));
   ok = ok && agent_db_bind_text_or_null(st, 11, row.role_constraints_json);
-  ok = ok && agent_db_bind_text(st, 12, status);
-  ok = ok && agent_db_bind_i64(st, 13, created);
-  ok = ok && agent_db_bind_i64_or_null(st, 14, expires);
-  ok = ok && agent_db_bind_text_or_null(st, 15, row.decision_reason);
+  ok = ok && agent_db_bind_i32(st, 12, row.require_distinct_roles ? 1 : 0);
+  ok = ok && agent_db_bind_text(st, 13, status);
+  ok = ok && agent_db_bind_i64(st, 14, created);
+  ok = ok && agent_db_bind_i64_or_null(st, 15, expires);
+  ok = ok && agent_db_bind_text_or_null(st, 16, row.decision_reason);
 
   ok = ok && agent_db_step_done(st);
   if (!ok && out_error && out_error->empty()) {
@@ -116,8 +117,8 @@ bool AgentDb::get_approval_request(const std::string& approval_id, ApprovalReque
 SELECT
   approval_id, COALESCE(run_id,0), COALESCE(trace_id,''), COALESCE(session_id,''), COALESCE(job_id,''), COALESCE(team_id,''),
   COALESCE(tool_name,''), COALESCE(tool_call_id,''), COALESCE(tool_args_hash,''), COALESCE(required_approvals,0),
-  COALESCE(role_constraints_json,''), COALESCE(status,''), COALESCE(created_unix_ms,0), COALESCE(expires_unix_ms,0),
-  COALESCE(decision_reason,'')
+  COALESCE(role_constraints_json,''), COALESCE(require_distinct_roles,0), COALESCE(status,''), COALESCE(created_unix_ms,0),
+  COALESCE(expires_unix_ms,0), COALESCE(decision_reason,'')
 FROM approval_requests
 WHERE approval_id=?
 LIMIT 1;
@@ -141,10 +142,11 @@ LIMIT 1;
     out_row->tool_args_hash = stmt_text(st, 8);
     out_row->required_approvals = stmt_i32(st, 9);
     out_row->role_constraints_json = stmt_text(st, 10);
-    out_row->status = stmt_text(st, 11);
-    out_row->created_unix_ms = stmt_i64(st, 12);
-    out_row->expires_unix_ms = stmt_i64(st, 13);
-    out_row->decision_reason = stmt_text(st, 14);
+    out_row->require_distinct_roles = stmt_i32(st, 11) != 0;
+    out_row->status = stmt_text(st, 12);
+    out_row->created_unix_ms = stmt_i64(st, 13);
+    out_row->expires_unix_ms = stmt_i64(st, 14);
+    out_row->decision_reason = stmt_text(st, 15);
   }
   sqlite3_finalize(st);
   if (!ok) {
@@ -182,8 +184,8 @@ bool AgentDb::list_approval_requests(
 SELECT
   approval_id, COALESCE(run_id,0), COALESCE(trace_id,''), COALESCE(session_id,''), COALESCE(job_id,''), COALESCE(team_id,''),
   COALESCE(tool_name,''), COALESCE(tool_call_id,''), COALESCE(tool_args_hash,''), COALESCE(required_approvals,0),
-  COALESCE(role_constraints_json,''), COALESCE(status,''), COALESCE(created_unix_ms,0), COALESCE(expires_unix_ms,0),
-  COALESCE(decision_reason,'')
+  COALESCE(role_constraints_json,''), COALESCE(require_distinct_roles,0), COALESCE(status,''), COALESCE(created_unix_ms,0),
+  COALESCE(expires_unix_ms,0), COALESCE(decision_reason,'')
 FROM approval_requests
 WHERE 1=1
   )SQL";
@@ -252,10 +254,11 @@ WHERE 1=1
     row.tool_args_hash = stmt_text(st, 8);
     row.required_approvals = stmt_i32(st, 9);
     row.role_constraints_json = stmt_text(st, 10);
-    row.status = stmt_text(st, 11);
-    row.created_unix_ms = stmt_i64(st, 12);
-    row.expires_unix_ms = stmt_i64(st, 13);
-    row.decision_reason = stmt_text(st, 14);
+    row.require_distinct_roles = stmt_i32(st, 11) != 0;
+    row.status = stmt_text(st, 12);
+    row.created_unix_ms = stmt_i64(st, 13);
+    row.expires_unix_ms = stmt_i64(st, 14);
+    row.decision_reason = stmt_text(st, 15);
     out_rows_desc->push_back(std::move(row));
   }
   sqlite3_finalize(st);

@@ -7,12 +7,13 @@ Status: draft
 
 Add a unified approval queue for sensitive actions and tool calls, with
 team- and role-based quorum rules. Tool execution pauses until the
-approval is resolved or times out.
+approval is resolved; strict gates fail on timeout, while best-effort
+gates continue after timeout.
 
 ## Goals
 
 - Deterministic, auditable approvals for tool calls and sensitive actions.
-- Role- and quorum-aware approval rules.
+- Role- and quorum-aware approval rules (including distinct-role requirements).
 - SSE updates for approval lifecycle events.
 - WebUI approval queue with clear status and audit trail.
 
@@ -49,7 +50,8 @@ ApprovalDecision:
 1) Tool call hits approval gate (policy + quorum rules).
 2) Tool loop emits `approval_request` event and pauses.
 3) Approvers decide; broker/agentd records decisions.
-4) Tool loop resumes on approve, or fails on deny/expire.
+4) Tool loop resumes on approve, or fails on deny/expire (strict) or
+   continues on expire (best_effort).
 
 ## Agentd storage (v0)
 
@@ -69,8 +71,18 @@ ApprovalDecision:
 - `policy_approval_roles` (CSV, optional): role allowlist.
 - `policy_approval_timeout_ms` (int, default 300000): approval expiry.
 - `policy_approval_poll_ms` (int, default 500): poll cadence while waiting.
+- `policy_approval_rules` (array, optional): per-tool rules with:
+  - `tool_names` (string[]), `min_approvals` (int),
+  - `role_allowlist` (string[]),
+  - `require_distinct_roles` (bool),
+  - `timeout_ms` (int),
+  - `quorum_mode` (strict|best_effort).
+- Per-run overrides: `policy_mode`, `policy_approval_rules`,
+  `policy_approval_poll_ms`, and legacy `policy_approval_*` fields in
+  run requests (tighten-only).
 
-Approvals only gate tools listed in `policy_approval_tools`. Empty list disables the queue.
+Approvals gate tools listed in `policy_approval_tools` or `policy_approval_rules`.
+Empty list disables the queue.
 
 ## API surface
 

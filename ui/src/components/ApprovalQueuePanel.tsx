@@ -21,6 +21,7 @@ export default function ApprovalQueuePanel(props: ApprovalQueuePanelProps) {
   const canQuery = base.length > 0;
 
   const [statusFilter, setStatusFilter] = React.useState<string>("");
+  const [teamIdFilter, setTeamIdFilter] = React.useState<string>("");
   const [traceIdFilter, setTraceIdFilter] = React.useState<string>("");
   const [jobIdFilter, setJobIdFilter] = React.useState<string>("");
   const [toolNameFilter, setToolNameFilter] = React.useState<string>("");
@@ -58,6 +59,7 @@ export default function ApprovalQueuePanel(props: ApprovalQueuePanelProps) {
         base,
         {
           status: statusFilter.trim() || undefined,
+          teamId: teamIdFilter.trim() || undefined,
           traceId: traceIdFilter.trim() || undefined,
           jobId: jobIdFilter.trim() || undefined,
           toolName: toolNameFilter.trim() || undefined,
@@ -168,6 +170,15 @@ export default function ApprovalQueuePanel(props: ApprovalQueuePanelProps) {
                 <option value="denied">denied</option>
                 <option value="expired">expired</option>
               </select>
+            </div>
+            <div className="grid gap-1">
+              <FieldLabel>Team ID</FieldLabel>
+              <input
+                className="w-full rounded-md border border-white/10 bg-black/30 px-3 py-2 text-xs text-white/90 placeholder:text-white/40"
+                placeholder="team_..."
+                value={teamIdFilter}
+                onChange={(e) => setTeamIdFilter(e.target.value)}
+              />
             </div>
             <div className="grid gap-1">
               <FieldLabel>Trace ID</FieldLabel>

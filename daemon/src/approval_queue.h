@@ -4,6 +4,7 @@
 
 #include <cstdint>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -12,14 +13,25 @@ namespace agentd {
 class AgentDb;
 struct PolicyHookCtx;
 
+struct ApprovalGateRule {
+  int required = 1;
+  std::vector<std::string> roles;
+  int64_t timeout_ms = 300000;
+  bool require_distinct_roles = false;
+  bool best_effort = false;
+};
+
 struct ApprovalGateCtx {
   AgentDb* db = nullptr;
   PolicyHookCtx* hook = nullptr;
   std::unordered_set<std::string> toolset;
+  std::unordered_map<std::string, ApprovalGateRule> tool_rules;
   std::vector<std::string> roles;
   int required = 1;
   int64_t timeout_ms = 300000;
   int64_t poll_ms = 500;
+  bool require_distinct_roles = false;
+  bool best_effort = false;
   bool enforce = false;
   bool audit = false;
   std::string trace_id;

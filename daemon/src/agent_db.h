@@ -188,6 +188,7 @@ class AgentDb {
     std::string tool_args_hash;
     int required_approvals = 0;
     std::string role_constraints_json;
+    bool require_distinct_roles = false;
     std::string status;
     int64_t created_unix_ms = 0;
     int64_t expires_unix_ms = 0;
