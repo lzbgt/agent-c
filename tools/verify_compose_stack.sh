@@ -17,6 +17,19 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT_DIR="${ROOT}/out"
 mkdir -p "${OUT_DIR}"
 
+compose_files=("docker-compose.yml")
+if [[ "${COMPOSE_AUTONOMOUS:-0}" == "1" ]]; then
+  compose_files+=("docker/compose.autonomous.yml")
+fi
+compose_args=()
+for f in "${compose_files[@]}"; do
+  compose_args+=("-f" "${f}")
+done
+
+compose_cmd() {
+  docker compose "${compose_args[@]}" "$@"
+}
+
 curlq() {
   local curl_bin="${CURL_BIN:-}"
   if [[ -z "${curl_bin}" ]]; then
@@ -184,7 +197,7 @@ if [[ "${COMPOSE_BUILD:-1}" == "0" ]]; then
     if [[ "${COMPOSE_PULL:-0}" == "1" ]]; then
       echo "[compose] pulling missing images (logs: ${LOG_PULL})"
       : >"${LOG_PULL}"
-      if (cd "${ROOT}" && docker compose pull "${missing_svcs[@]}") >>"${LOG_PULL}" 2>&1; then
+      if (cd "${ROOT}" && compose_cmd pull "${missing_svcs[@]}") >>"${LOG_PULL}" 2>&1; then
         missing=()
         for svc in agentd broker connector webui; do
           img="$(image_for "${svc}")"
@@ -213,7 +226,7 @@ fi
 
   if [[ "${COMPOSE_CLEAN:-1}" == "1" ]]; then
     if docker_compose_preflight "compose-clean" >/dev/null 2>&1; then
-      docker compose down -v --remove-orphans >/dev/null 2>&1 || true
+      compose_cmd down -v --remove-orphans >/dev/null 2>&1 || true
     fi
   fi
 ) >/dev/null 2>&1
@@ -225,10 +238,10 @@ if [[ "${COMPOSE_BUILD:-1}" == "1" ]]; then
     if [[ "${COMPOSE_BUILD_SERIAL:-1}" == "1" ]]; then
       for svc in agentd broker connector webui; do
         echo "[compose] build ${svc}"
-        env ${build_env[@]+"${build_env[@]}"} docker compose build "${svc}"
+        env ${build_env[@]+"${build_env[@]}"} compose_cmd build "${svc}"
       done
     else
-      env ${build_env[@]+"${build_env[@]}"} docker compose build
+      env ${build_env[@]+"${build_env[@]}"} compose_cmd build
     fi
   }
 
@@ -281,7 +294,7 @@ if [[ "${COMPOSE_BUILD:-1}" == "0" ]]; then
   up_args+=(--no-build)
 fi
 set +e
-(cd "${ROOT}" && docker compose up "${up_args[@]}") >"${LOG_UP}" 2>&1 &
+(cd "${ROOT}" && compose_cmd up "${up_args[@]}") >"${LOG_UP}" 2>&1 &
 up_pid=$!
 set -e
 up_timeout="${COMPOSE_UP_TIMEOUT:-60}"
@@ -306,7 +319,7 @@ if [[ "${up_rc}" -ne 0 ]]; then
     echo "[compose] SKIP: docker up failed due to resource limits (iptables/runc). Try restarting Docker Desktop or increasing CPU/RAM." >&2
     exit 77
   fi
-  running_services="$(cd "${ROOT}" && docker compose ps --services --filter status=running 2>/dev/null || true)"
+  running_services="$(cd "${ROOT}" && compose_cmd ps --services --filter status=running 2>/dev/null || true)"
   missing=()
   for svc in postgres keycloak broker connector agentd webui; do
     if ! echo "${running_services}" | grep -qx "${svc}"; then
