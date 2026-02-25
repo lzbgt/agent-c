@@ -189,15 +189,37 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
     "agentui.workflowWaitByScope",
     {},
   );
-  const waitPersisted = React.useMemo(() => {
+  const waitPersistedEntry = React.useMemo(() => {
     const rec = waitByScope[waitScopeKey];
-    if (!rec || typeof rec.workflow_id !== "string" || !rec.workflow_id.trim()) return null;
-    return rec;
+    if (rec && typeof rec.workflow_id === "string" && rec.workflow_id.trim()) {
+      return { key: waitScopeKey, value: rec };
+    }
+    const basePrefix = `${waitScopeKey.split("::")[0]}::`;
+    const matches = Object.entries(waitByScope).filter(([key, value]) => {
+      if (!key.startsWith(basePrefix)) return false;
+      return value && typeof value.workflow_id === "string" && value.workflow_id.trim().length > 0;
+    });
+    if (matches.length >= 1) {
+      matches.sort((a, b) => {
+        const av = a[1];
+        const bv = b[1];
+        const ats = typeof av.updated_unix_ms === "number" ? av.updated_unix_ms : av.started_unix_ms ?? 0;
+        const bts = typeof bv.updated_unix_ms === "number" ? bv.updated_unix_ms : bv.started_unix_ms ?? 0;
+        return bts - ats;
+      });
+      return { key: matches[0][0], value: matches[0][1] };
+    }
+    return null;
   }, [waitByScope, waitScopeKey]);
+  const waitPersisted = waitPersistedEntry?.value ?? null;
+  const waitPersistedKey = waitPersistedEntry?.key ?? waitScopeKey;
   const writeWaitPersisted = React.useCallback(
     (next: WaitStatePersisted | null) => {
       setWaitByScope((prev) => {
         const out = { ...prev };
+        if (waitPersistedKey && waitPersistedKey !== waitScopeKey) {
+          delete out[waitPersistedKey];
+        }
         if (next && next.workflow_id) {
           out[waitScopeKey] = next;
         } else {
@@ -206,7 +228,7 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
         return out;
       });
     },
-    [setWaitByScope, waitScopeKey],
+    [setWaitByScope, waitPersistedKey, waitScopeKey],
   );
   const resumeAttemptedRef = React.useRef<string>("");
 
