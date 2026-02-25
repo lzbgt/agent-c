@@ -61,6 +61,29 @@ Enable one or more tool servers:
   --tool-server-max-line-bytes $((4*1024*1024)) \
   --tool-server-ping-interval-ms 0
 
+Broker runtime member tool server example (updates a team run's runtime members):
+
+```bash
+export BROKER_BASE_URL="https://broker.example.invalid"
+export BROKER_AUTH_TOKEN="...bearer..."
+
+./build/agentd --tools basic \
+  --tool-server-cmd "python3 -u ./tools/tool_server_broker_runtime_members.py"
+```
+
+Tool call shape:
+
+```json
+{
+  "team_id": "team-alpha",
+  "team_run_id": "run-123",
+  "mode": "merge",
+  "runtime_members": [
+    {"member_id":"rt-1","agent_id":"agent-a","role":"executor"}
+  ]
+}
+```
+
 Notes:
 - tool-server flags are per-server and apply to the most recently declared
   --tool-server-cmd
