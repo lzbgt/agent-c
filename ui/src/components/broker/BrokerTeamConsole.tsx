@@ -9,16 +9,19 @@ import {
   apiBrokerTeamMembersUpsert,
   apiBrokerTeamMemberUpdate,
   apiBrokerListAgents,
+  apiBrokerEventsReplay,
   apiBrokerTeamQuorumDelete,
   apiBrokerTeamQuorumList,
   apiBrokerTeamQuorumUpsert,
   apiBrokerTeamUpdate,
   type ApiAuth,
 } from "../../api";
+import useLocalStorageState from "../../hooks/useLocalStorageState";
 import FieldLabel from "../FieldLabel";
 import BrokerTeamRunPanel from "./BrokerTeamRunPanel";
 import BrokerOrchestratorRunPanel from "./BrokerOrchestratorRunPanel";
 import TeamRolePlanEditor, { type RoleGraphEdge } from "./TeamRolePlanEditor";
+import { TEAM_RUN_EVENT_TYPES } from "./teamRunUtils";
 import type { BrokerEventRow, TeamMemberRow, TeamQuorumRuleRow } from "./types";
 
 const fmtTs = (ms?: number | null) => {
@@ -78,6 +81,8 @@ const normalizeRoleGraphEdges = (raw: any): RoleGraphEdge[] => {
   return out;
 };
 
+const TEAM_EVENTS_MAX = 200;
+
 export type BrokerTeamConsoleProps = {
   base: string;
   auth: ApiAuth;
@@ -119,6 +124,16 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [teamRolePlanTouched, setTeamRolePlanTouched] = React.useState<boolean>(false);
   const [teamEditBusy, setTeamEditBusy] = React.useState<boolean>(false);
   const [teamEditError, setTeamEditError] = React.useState<string | null>(null);
+
+  const [teamReplayEvents, setTeamReplayEvents] = React.useState<BrokerEventRow[]>([]);
+  const [teamReplayBusy, setTeamReplayBusy] = React.useState<boolean>(false);
+  const [teamReplayError, setTeamReplayError] = React.useState<string | null>(null);
+  const [teamReplayNote, setTeamReplayNote] = React.useState<string | null>(null);
+  const [teamEventsCursorByTeam, setTeamEventsCursorByTeam] = useLocalStorageState<Record<string, number>>(
+    "agentui.teamEventsCursorByTeam",
+    {},
+  );
+  const teamEventsCursorRef = React.useRef<number>(0);
 
   const [membersBusy, setMembersBusy] = React.useState<boolean>(false);
   const [membersError, setMembersError] = React.useState<string | null>(null);
@@ -166,6 +181,10 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
 
   const teamList = Array.isArray(teams) ? teams : [];
   const teamIdTrimmed = String(teamId || "").trim();
+  const teamEventsCursor = teamIdTrimmed ? teamEventsCursorByTeam[teamIdTrimmed] || 0 : 0;
+  React.useEffect(() => {
+    teamEventsCursorRef.current = teamEventsCursor;
+  }, [teamEventsCursor]);
   const membersList = Array.isArray(members) ? members : [];
   const rolePlanOptions = React.useMemo(() => {
     const set = new Set<string>();
@@ -210,6 +229,133 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const memberEditAgentDeployments = Array.isArray(memberEditSelectedAgent?.deployments)
     ? (memberEditSelectedAgent?.deployments as any[])
     : [];
+  const eventTeamId = React.useCallback((row?: BrokerEventRow | null) => {
+    const payload = row?.payload;
+    if (!payload || typeof payload !== "object") return "";
+    return String((payload as any).team_id || "");
+  }, []);
+
+  const isTeamEvent = React.useCallback(
+    (row?: BrokerEventRow | null) => {
+      if (!row) return false;
+      const type = String(row.type || "");
+      if (!TEAM_RUN_EVENT_TYPES.has(type)) return false;
+      if (!teamIdTrimmed) return true;
+      return eventTeamId(row) === teamIdTrimmed;
+    },
+    [eventTeamId, teamIdTrimmed],
+  );
+
+  const buildEventKey = (row: BrokerEventRow) =>
+    row.event_id || `${row.type || ""}:${row.ts_unix_ms || 0}:${row.trace_id || ""}`;
+
+  const mergeTeamEvents = React.useCallback(
+    (live: BrokerEventRow[], replay: BrokerEventRow[]) => {
+      const seen = new Set<string>();
+      const out: BrokerEventRow[] = [];
+      const push = (row: BrokerEventRow) => {
+        const key = buildEventKey(row);
+        if (seen.has(key)) return;
+        seen.add(key);
+        out.push(row);
+      };
+      for (const row of replay) {
+        if (!isTeamEvent(row)) continue;
+        push(row);
+      }
+      for (const row of live) {
+        if (!isTeamEvent(row)) continue;
+        push(row);
+      }
+      out.sort((a, b) => (a.ts_unix_ms || 0) - (b.ts_unix_ms || 0));
+      if (out.length > TEAM_EVENTS_MAX) {
+        return out.slice(out.length - TEAM_EVENTS_MAX);
+      }
+      return out;
+    },
+    [isTeamEvent],
+  );
+
+  const liveEvents = Array.isArray(props.quorumEvents) ? props.quorumEvents : [];
+  const mergedTeamEvents = React.useMemo(
+    () => mergeTeamEvents(liveEvents, teamReplayEvents),
+    [liveEvents, teamReplayEvents, mergeTeamEvents],
+  );
+
+  const loadTeamReplay = React.useCallback(async () => {
+    if (!canQuery || !teamIdTrimmed) return;
+    setTeamReplayBusy(true);
+    setTeamReplayError(null);
+    setTeamReplayNote(null);
+    try {
+      const resp = await apiBrokerEventsReplay(props.base, props.auth, {
+        sinceTs: teamEventsCursorRef.current || 0,
+        limit: TEAM_EVENTS_MAX,
+        types: Array.from(TEAM_RUN_EVENT_TYPES),
+      });
+      if (!resp.ok) {
+        throw new Error(resp.error || resp.err || resp.code || "team events replay failed");
+      }
+      const items = Array.isArray(resp.events) ? resp.events : [];
+      const rows = items
+        .map((ev: any) => ({
+          type: String(ev?.type || ""),
+          ts_unix_ms: typeof ev?.ts_unix_ms === "number" ? ev.ts_unix_ms : undefined,
+          event_id: ev?.event_id ? String(ev.event_id) : undefined,
+          trace_id: ev?.trace_id ? String(ev.trace_id) : undefined,
+          payload: ev?.payload && typeof ev.payload === "object" ? (ev.payload as Record<string, any>) : undefined,
+        }))
+        .filter((row) => isTeamEvent(row));
+      setTeamReplayEvents(rows);
+      let nextCursor = teamEventsCursorRef.current || 0;
+      if (typeof resp.next_since_ts === "number") {
+        nextCursor = Math.max(nextCursor, resp.next_since_ts);
+      }
+      for (const row of rows) {
+        if (row.ts_unix_ms && row.ts_unix_ms > nextCursor) nextCursor = row.ts_unix_ms;
+      }
+      if (teamIdTrimmed && nextCursor > (teamEventsCursorByTeam[teamIdTrimmed] || 0)) {
+        setTeamEventsCursorByTeam((prev) => ({ ...prev, [teamIdTrimmed]: nextCursor }));
+      }
+      setTeamReplayNote(`replay +${rows.length}`);
+    } catch (err) {
+      setTeamReplayError(String(err));
+    } finally {
+      setTeamReplayBusy(false);
+    }
+  }, [
+    canQuery,
+    teamIdTrimmed,
+    props.base,
+    props.auth,
+    isTeamEvent,
+    teamEventsCursorByTeam,
+    setTeamEventsCursorByTeam,
+  ]);
+
+  React.useEffect(() => {
+    if (!teamIdTrimmed) {
+      setTeamReplayEvents([]);
+      setTeamReplayError(null);
+      setTeamReplayNote(null);
+      return;
+    }
+    void loadTeamReplay();
+  }, [teamIdTrimmed, loadTeamReplay]);
+
+  React.useEffect(() => {
+    if (!teamIdTrimmed) return;
+    const rows = Array.isArray(props.quorumEvents) ? props.quorumEvents : [];
+    let maxTs = teamEventsCursorRef.current || 0;
+    for (const row of rows) {
+      if (!isTeamEvent(row)) continue;
+      const ts = row.ts_unix_ms || 0;
+      if (ts > maxTs) maxTs = ts;
+    }
+    if (maxTs > (teamEventsCursorByTeam[teamIdTrimmed] || 0)) {
+      setTeamEventsCursorByTeam((prev) => ({ ...prev, [teamIdTrimmed]: maxTs }));
+    }
+  }, [props.quorumEvents, teamIdTrimmed, isTeamEvent, teamEventsCursorByTeam, setTeamEventsCursorByTeam]);
 
   const refreshTeams = async () => {
     if (!canQuery) return;
@@ -1708,6 +1854,20 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       </div>
 
 
+      <div className="flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+        <span>Team event replay</span>
+        <button
+          className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40 disabled:opacity-50"
+          type="button"
+          disabled={!canQuery || !teamIdTrimmed || teamReplayBusy}
+          onClick={() => void loadTeamReplay()}
+        >
+          {teamReplayBusy ? "Replaying…" : "Replay"}
+        </button>
+        {teamReplayNote ? <span className="text-emerald-200">{teamReplayNote}</span> : null}
+        {teamReplayError ? <span className="text-rose-200">{teamReplayError}</span> : null}
+      </div>
+
       <BrokerOrchestratorRunPanel
         base={props.base}
         auth={props.auth}
@@ -1723,7 +1883,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
         teamId={teamIdTrimmed}
         members={membersList}
         rules={rulesList}
-        quorumEvents={props.quorumEvents}
+        quorumEvents={mergedTeamEvents}
         teamMeta={teamDetails?.meta && typeof teamDetails.meta === "object" ? (teamDetails.meta as Record<string, any>) : null}
         onMembersRefresh={refreshMembers}
         onTeamSelect={setTeamId}
