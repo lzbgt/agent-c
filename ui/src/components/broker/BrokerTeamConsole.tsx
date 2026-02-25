@@ -408,6 +408,33 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     }
   };
 
+  const handleRemovePausedMembers = async () => {
+    const tid = teamIdTrimmed;
+    if (!tid) return;
+    const paused = membersList.filter(
+      (m) => String(m?.status || "").trim().toLowerCase() === "paused",
+    );
+    if (paused.length === 0) {
+      setMembersError("no paused members to remove");
+      return;
+    }
+    if (!window.confirm(`Remove ${paused.length} paused member(s) from the team?`)) return;
+    setMembersError(null);
+    setMembersBusy(true);
+    try {
+      for (const member of paused) {
+        const mid = String(member?.member_id || "").trim();
+        if (!mid) continue;
+        await apiBrokerTeamMembersDelete(props.base, tid, mid, props.auth);
+      }
+      await refreshMembers(tid);
+    } catch (err) {
+      setMembersError(String(err));
+    } finally {
+      setMembersBusy(false);
+    }
+  };
+
   const handleAddConnectedAgentsToTeam = async () => {
     const tid = teamIdTrimmed;
     if (!tid) return;
@@ -917,6 +944,14 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
               onClick={() => void handleSetAllMemberStatus("active")}
             >
               Resume all
+            </button>
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+              type="button"
+              disabled={!canQuery || membersBusy}
+              onClick={() => void handleRemovePausedMembers()}
+            >
+              Remove paused
             </button>
           </div>
         ) : null}
