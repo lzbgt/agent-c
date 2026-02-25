@@ -185,6 +185,7 @@ Weight = Impact (1-5) * Urgency (1-5) / Effort (1-5). Higher is sooner.
   - 2026-02-24: approvals decisions accept `member_role`, enforce role allowlists, and surface role in events/UI; approvals endpoints wired into agentd main + AgentdApi with prefix routing.
 - [x] W=6 — Finalize WebUI inline run approvals in `ui/src/components/broker/BrokerTeamConsole.tsx` (tests + docs + commit).
   - 2026-02-24: added Playwright broker inline approvals smoke + WebUI doc note.
+- [x] W=5 — WebUI refresh-safe workflow waits: persist active workflow wait state and resume polling after reload.
 - [ ] W=8 — Run comparison + evidence diff UX: side-by-side run diffs (events/artifacts/costs), evidence bundle viewer, and regression baselines.
 - [x] W=10 — Policy hook MVP: deterministic pre/post run + tool call hooks with allow/deny + budget caps, config surface, and audit logs.
 - [ ] W=9 — Attestation bundles: canonical hash format + signed run certificates + verification CLI.

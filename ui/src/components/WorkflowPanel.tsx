@@ -738,6 +738,7 @@ export default function WorkflowPanel(props: WorkflowPanelProps) {
         <WorkflowComposer
           baseUrl={props.baseUrl}
           auth={props.auth}
+          authKey={props.authKey}
           workflowDefaults={props.workflowDefaults}
           workflowTargets={props.workflowTargets}
           workflowBearerEnv={props.workflowBearerEnv}

@@ -82,6 +82,7 @@ Notes:
 ### Durability and restart recovery
 
 - Workflows and tasks are persisted in the SQLite DB (`agentd.db`).
+- Client/UI disconnects (including browser refresh) do **not** cancel workflows; cancellation is explicit via `/api/v1/workflow/cancel`.
 - If the daemon restarts while tasks are running, those tasks are recovered back to `queued`.
   - This implies **at-least-once** execution semantics for inflight tasks.
   - If your tools or external side-effects are not idempotent, design tasks with explicit idempotency keys.

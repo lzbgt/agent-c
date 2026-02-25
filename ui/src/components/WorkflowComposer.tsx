@@ -17,6 +17,7 @@ import {
 export type WorkflowComposerProps = {
   baseUrl: string;
   auth?: ApiAuth;
+  authKey?: string;
   workflowDefaults?: Record<string, any>;
   workflowTargets?: string[];
   workflowBearerEnv?: string;
@@ -31,6 +32,13 @@ type WaitState = {
   status: string;
   elapsedSec: number;
   active: boolean;
+  startedUnixMs: number;
+};
+type WaitStatePersisted = {
+  workflow_id: string;
+  started_unix_ms: number;
+  last_status?: string;
+  updated_unix_ms?: number;
 };
 
 const TEMPLATE_LABELS: Record<TemplateKind, string> = {
@@ -172,6 +180,35 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
   const [submitBusy, setSubmitBusy] = React.useState(false);
   const [cancelBusy, setCancelBusy] = React.useState(false);
   const [waitState, setWaitState] = React.useState<WaitState | null>(null);
+  const waitScopeKey = React.useMemo(() => {
+    const base = String(props.baseUrl || "").trim();
+    const key = String(props.authKey || "").trim();
+    return `${base}::${key}`;
+  }, [props.authKey, props.baseUrl]);
+  const [waitByScope, setWaitByScope] = useLocalStorageState<Record<string, WaitStatePersisted>>(
+    "agentui.workflowWaitByScope",
+    {},
+  );
+  const waitPersisted = React.useMemo(() => {
+    const rec = waitByScope[waitScopeKey];
+    if (!rec || typeof rec.workflow_id !== "string" || !rec.workflow_id.trim()) return null;
+    return rec;
+  }, [waitByScope, waitScopeKey]);
+  const writeWaitPersisted = React.useCallback(
+    (next: WaitStatePersisted | null) => {
+      setWaitByScope((prev) => {
+        const out = { ...prev };
+        if (next && next.workflow_id) {
+          out[waitScopeKey] = next;
+        } else {
+          delete out[waitScopeKey];
+        }
+        return out;
+      });
+    },
+    [setWaitByScope, waitScopeKey],
+  );
+  const resumeAttemptedRef = React.useRef<string>("");
 
   const defaults = React.useMemo(() => props.workflowDefaults ?? {}, [props.workflowDefaults]);
   const targets = React.useMemo(() => normalizeTargets(props.workflowTargets), [props.workflowTargets]);
@@ -200,11 +237,27 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
   }, [graphState, defaults, allowInlineKeys, targets, bearerEnv]);
 
   const waitForWorkflow = React.useCallback(
-    async (workflowId: string) => {
-      const started = Date.now();
+    async (workflowId: string, opts?: { startedUnixMs?: number }) => {
+      const startedUnixMs =
+        typeof opts?.startedUnixMs === "number" && Number.isFinite(opts.startedUnixMs) ? opts.startedUnixMs : Date.now();
       let last: any = null;
-      setWaitState({ workflowId, status: "running", elapsedSec: 0, active: true });
-      while (Date.now() - started < 180_000) {
+      const persist = (status: string) => {
+        writeWaitPersisted({
+          workflow_id: workflowId,
+          started_unix_ms: startedUnixMs,
+          last_status: status,
+          updated_unix_ms: Date.now(),
+        });
+      };
+      persist("running");
+      setWaitState({
+        workflowId,
+        status: "running",
+        elapsedSec: Math.max(0, Math.round((Date.now() - startedUnixMs) / 1000)),
+        active: true,
+        startedUnixMs,
+      });
+      while (Date.now() - startedUnixMs < 180_000) {
         const resp = await apiGetWorkflow(
           props.baseUrl,
           {
@@ -216,13 +269,17 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
         );
         last = resp;
         const status = String(resp?.workflow?.status || "").toLowerCase();
+        const display = status || "unknown";
         setWaitState({
           workflowId,
-          status: status || "unknown",
-          elapsedSec: Math.max(0, Math.round((Date.now() - started) / 1000)),
+          status: display,
+          elapsedSec: Math.max(0, Math.round((Date.now() - startedUnixMs) / 1000)),
           active: status === "running" || status === "queued",
+          startedUnixMs,
         });
+        persist(display);
         if (status && status !== "running" && status !== "queued") {
+          writeWaitPersisted(null);
           return resp;
         }
         await new Promise((resolve) => setTimeout(resolve, 5000));
@@ -232,14 +289,16 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
           ? {
               ...prev,
               status: "timeout",
-              elapsedSec: Math.max(0, Math.round((Date.now() - started) / 1000)),
+              elapsedSec: Math.max(0, Math.round((Date.now() - startedUnixMs) / 1000)),
               active: false,
+              startedUnixMs,
             }
           : null,
       );
+      persist("timeout");
       return last;
     },
-    [props.baseUrl, props.auth],
+    [props.baseUrl, props.auth, writeWaitPersisted],
   );
 
   const submitWorkflow = React.useCallback(
@@ -259,7 +318,7 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
         if (resp && resp.workflow_id) {
           props.onSubmitted?.(resp.workflow_id);
           if (opts?.wait) {
-            const finalResp = await waitForWorkflow(resp.workflow_id);
+            const finalResp = await waitForWorkflow(resp.workflow_id, { startedUnixMs: Date.now() });
             if (finalResp) {
               setSubmitResult(finalResp);
               if (finalResp.ok === false) {
@@ -295,6 +354,16 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
       if (resp && resp.ok === false) {
         setSubmitError(resp.error || "Workflow cancel failed");
       } else {
+        const startedUnixMs =
+          typeof waitState.startedUnixMs === "number" && Number.isFinite(waitState.startedUnixMs)
+            ? waitState.startedUnixMs
+            : Date.now();
+        writeWaitPersisted({
+          workflow_id: waitState.workflowId,
+          started_unix_ms: startedUnixMs,
+          last_status: "cancel_requested",
+          updated_unix_ms: Date.now(),
+        });
         setWaitState((prev) =>
           prev
             ? {
@@ -310,7 +379,79 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
     } finally {
       setCancelBusy(false);
     }
-  }, [props.baseUrl, props.auth, waitState]);
+  }, [props.baseUrl, props.auth, waitState, writeWaitPersisted]);
+
+  React.useEffect(() => {
+    const persisted = waitPersisted;
+    if (!persisted || !persisted.workflow_id) {
+      resumeAttemptedRef.current = "";
+      return;
+    }
+    const baseUrl = String(props.baseUrl || "").trim();
+    if (!baseUrl) return;
+    if (waitState?.active) return;
+    if (resumeAttemptedRef.current === persisted.workflow_id) return;
+    resumeAttemptedRef.current = persisted.workflow_id;
+    let cancelled = false;
+    const workflowId = persisted.workflow_id;
+    const startedUnixMs =
+      typeof persisted.started_unix_ms === "number" && Number.isFinite(persisted.started_unix_ms)
+        ? persisted.started_unix_ms
+        : Date.now();
+    (async () => {
+      try {
+        const resp = await apiGetWorkflow(
+          baseUrl,
+          {
+            workflowId,
+            includeTasks: true,
+            includeResults: true,
+          },
+          props.auth,
+        );
+        if (cancelled) return;
+        if (resp && resp.ok === false) {
+          setSubmitError(resp.error || "Workflow lookup failed");
+          return;
+        }
+        const status = String(resp?.workflow?.status || "").toLowerCase();
+        if (status === "running" || status === "queued") {
+          setWaitState({
+            workflowId,
+            status: status || "running",
+            elapsedSec: Math.max(0, Math.round((Date.now() - startedUnixMs) / 1000)),
+            active: true,
+            startedUnixMs,
+          });
+          const finalResp = await waitForWorkflow(workflowId, { startedUnixMs });
+          if (cancelled) return;
+          if (finalResp) {
+            setSubmitResult(finalResp);
+            if (finalResp.ok === false) {
+              setSubmitError(finalResp.error || "Workflow lookup failed");
+            }
+          }
+          return;
+        }
+        setWaitState({
+          workflowId,
+          status: status || "unknown",
+          elapsedSec: Math.max(0, Math.round((Date.now() - startedUnixMs) / 1000)),
+          active: false,
+          startedUnixMs,
+        });
+        setSubmitResult(resp);
+        writeWaitPersisted(null);
+      } catch (err) {
+        if (!cancelled) {
+          setSubmitError(String(err));
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [props.auth, props.baseUrl, waitForWorkflow, waitPersisted, waitState?.active, writeWaitPersisted]);
 
   React.useEffect(() => {
     if (defaults.api_key && !allowInlineKeys) {
