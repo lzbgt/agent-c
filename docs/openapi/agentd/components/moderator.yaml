@@ -13,6 +13,9 @@ ModeratorDirectiveRequest:
     session_id: { type: string }
     directive: { type: string }
     scope: { type: string }
+    assignees:
+      type: array
+      items: { type: string }
     priority: { type: integer, format: int64 }
     metadata:
       type: object
