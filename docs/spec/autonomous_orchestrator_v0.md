@@ -65,12 +65,14 @@ Future (v1+):
    - Need a `team_handoff` event and a minimal handoff runner.
 
 3) **Dynamic runtime member allocation**
-   - Runtime members are manual today.
-   - Broker supports an allocator endpoint and `auto_allocate_roles` on team runs, but no autonomous loop yet.
+   - Broker supports an allocator endpoint and `auto_allocate_roles` on team runs.
+   - The orchestrator loop now attempts allocator-backed runtime member allocation when
+     `auto_allocate_missing_roles` are reported on the active team run, then falls back
+     to spawn requests if roles remain missing.
 
 4) **Automated spawn request issuance**
    - Spawn requests are persisted + evented and adapters can fulfill them.
-   - Still missing the autonomous loop that decides when to issue spawn requests.
+   - Orchestrator loop issues spawn requests after allocator attempts (or when allocation is disabled).
 
 5) **Shared memory scope enforcement**
    - Scope IDs are stored; enforcement is still pending.
@@ -128,6 +130,7 @@ Minimal responsibilities:
 4) **Spawn requests on missing roles**
    - If a team run reports `auto_allocate_missing_roles`, emit spawn requests for those roles
      (unless existing requests already cover them).
+   - Attempt allocator-backed runtime member allocation first when enabled.
 
 5) **Progress + drift checkpoints**
    - Emit `goal_progress` events periodically (`meta.progress_every_ms`).
@@ -147,6 +150,7 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
   team_mode: "async"|"sync"           # default async
   auto_allocate_roles: true|false     # default true
   auto_allocate_max_members: number   # optional cap
+  allocator_retry_after_ms: number    # optional retry window for allocator attempts
   spawn_missing_roles: true|false     # default true
   spawn_count_per_role: number        # default 1
   spawn_count_by_role: { role: number }  # optional per-role override
@@ -168,6 +172,14 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
   active_team_run_id: string
   team_run_history: [{team_run_id, status, updated_unix_ms}]
   spawn_requests: { role: [spawn_request_id, ...] }
+  allocator_last_team_run_id: string
+  allocator_last_missing_roles: [string, ...]
+  allocator_last_missing_signature: string
+  allocator_last_unix_ms: integer
+  allocator_allocated_roles: [string, ...]
+  allocator_missing_roles: [string, ...]
+  allocator_warnings: [string, ...]
+  allocator_runtime_members_added: integer
   runtime_members_retired_team_run_id: string
   runtime_members_retired_status: string
   runtime_members_retired_unix_ms: integer

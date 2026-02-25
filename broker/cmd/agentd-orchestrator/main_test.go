@@ -153,3 +153,88 @@ func TestParseSpawnMetaConfigErrors(t *testing.T) {
 		t.Fatalf("expected errors for invalid spawn meta")
 	}
 }
+
+func TestNormalizeRuntimeMembers(t *testing.T) {
+	input := []map[string]any{
+		{"agent_id": "agent-1", "role": "planner", "deployment_id": "dep-1", "status": "active"},
+		{"agent_id": "agent-2", "role": "executor"},
+		{"agent_id": "", "role": "bad"},
+		{"agent_id": "agent-3", "role": ""},
+		nil,
+	}
+	out := normalizeRuntimeMembers(input)
+	if len(out) != 2 {
+		t.Fatalf("expected 2 runtime members, got %d", len(out))
+	}
+	if out[0]["agent_id"] != "agent-1" || out[0]["role"] != "planner" {
+		t.Fatalf("unexpected entry: %#v", out[0])
+	}
+	if out[0]["deployment_id"] != "dep-1" || out[0]["status"] != "active" {
+		t.Fatalf("expected deployment/status preserved: %#v", out[0])
+	}
+}
+
+func TestNormalizeRolesAndSignature(t *testing.T) {
+	roles := []string{"Planner", "executor", "planner", "  reviewer "}
+	normalized := normalizeRoles(roles)
+	expected := []string{"executor", "planner", "reviewer"}
+	if !reflect.DeepEqual(normalized, expected) {
+		t.Fatalf("expected %v, got %v", expected, normalized)
+	}
+	if sig := rolesSignature(roles); sig != "executor|planner|reviewer" {
+		t.Fatalf("unexpected signature: %q", sig)
+	}
+}
+
+func TestResolveAllocatorMissing(t *testing.T) {
+	meta := map[string]any{
+		"allocator_last_team_run_id":       "run-1",
+		"allocator_last_missing_signature": rolesSignature([]string{"planner"}),
+		"allocator_missing_roles":          []string{"planner"},
+	}
+	missing := resolveAllocatorMissing(meta, "run-1", []string{"planner"})
+	if !reflect.DeepEqual(missing, []string{"planner"}) {
+		t.Fatalf("expected allocator missing roles, got %v", missing)
+	}
+	fallback := resolveAllocatorMissing(meta, "run-1", []string{"planner", "executor"})
+	if !reflect.DeepEqual(fallback, normalizeRoles([]string{"planner", "executor"})) {
+		t.Fatalf("expected fallback missing roles, got %v", fallback)
+	}
+}
+
+func TestShouldAttemptAllocator(t *testing.T) {
+	now := time.Now().UTC().UnixMilli()
+	meta := map[string]any{
+		"allocator_last_team_run_id":       "run-1",
+		"allocator_last_missing_signature": "planner",
+		"allocator_last_unix_ms":           now,
+	}
+	if shouldAttemptAllocator(meta, "run-1", "planner") {
+		t.Fatalf("expected attempt false without retry window")
+	}
+	meta["allocator_retry_after_ms"] = int64(10)
+	meta["allocator_last_unix_ms"] = now - 100
+	if !shouldAttemptAllocator(meta, "run-1", "planner") {
+		t.Fatalf("expected attempt true after retry window")
+	}
+	if !shouldAttemptAllocator(meta, "run-1", "executor") {
+		t.Fatalf("expected attempt true for different signature")
+	}
+	if !shouldAttemptAllocator(meta, "run-2", "planner") {
+		t.Fatalf("expected attempt true for different run")
+	}
+}
+
+func TestShouldAutoAllocateRuntimeMembers(t *testing.T) {
+	if !shouldAutoAllocateRuntimeMembers(nil, nil) {
+		t.Fatalf("expected default auto-allocate true")
+	}
+	meta := map[string]any{"auto_allocate_roles": false}
+	if shouldAutoAllocateRuntimeMembers(meta, &teamRunResponse{}) {
+		t.Fatalf("expected meta override to disable auto-allocate")
+	}
+	status := &teamRunResponse{AutoAllocateRoles: false}
+	if shouldAutoAllocateRuntimeMembers(nil, status) {
+		t.Fatalf("expected status auto_allocate_roles=false to disable auto-allocate")
+	}
+}

@@ -125,6 +125,15 @@ type spawnCreateResponse struct {
 	SpawnRequest spawnRequest `json:"spawn_request"`
 }
 
+type runtimeAllocateResponse struct {
+	OK             bool             `json:"ok"`
+	TeamID         string           `json:"team_id"`
+	RuntimeMembers []map[string]any `json:"runtime_members"`
+	AllocatedRoles []string         `json:"allocated_roles"`
+	MissingRoles   []string         `json:"missing_roles"`
+	Warnings       []string         `json:"warnings"`
+}
+
 type guidanceEvent struct {
 	GuidanceID         string         `json:"guidance_id"`
 	TeamID             string         `json:"team_id"`
@@ -486,8 +495,19 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 		if changed {
 			metaChanged = true
 		}
+		missingRoles := normalizeRoles(asStringSlice(tr.AutoAllocateMissing))
+		missingForSpawn := missingRoles
+		if shouldAutoAllocateRuntimeMembers(meta, tr) && len(missingRoles) > 0 {
+			missingForSpawn = resolveAllocatorMissing(meta, activeRunID, missingRoles)
+			if ok, after, err := maybeAllocateRuntimeMembers(ctx, client, cfg, teamID, activeRunID, tr, meta, missingRoles); err != nil {
+				return err
+			} else if ok {
+				metaChanged = true
+				missingForSpawn = after
+			}
+		}
 		if shouldSpawnMissingRoles(meta) {
-			if err := ensureSpawnRequests(ctx, client, cfg, teamID, run.OrchestratorRunID, activeRunID, meta, asStringSlice(tr.AutoAllocateMissing), owner); err == nil {
+			if err := ensureSpawnRequests(ctx, client, cfg, teamID, run.OrchestratorRunID, activeRunID, meta, missingForSpawn, owner); err == nil {
 				metaChanged = true
 			}
 		}
@@ -1029,6 +1049,184 @@ func maybeProcessHandoffQueue(ctx context.Context, client *http.Client, cfg conf
 	return true, nil
 }
 
+func shouldAutoAllocateRuntimeMembers(meta map[string]any, status *teamRunResponse) bool {
+	if meta != nil {
+		if v, ok := meta["auto_allocate_roles"]; ok {
+			if b, ok := asBool(v); ok {
+				return b
+			}
+		}
+	}
+	if status != nil {
+		if b, ok := asBool(status.AutoAllocateRoles); ok {
+			return b
+		}
+	}
+	return true
+}
+
+func allocatorRetryAfter(meta map[string]any) int64 {
+	if meta == nil {
+		return 0
+	}
+	if v, ok := asInt64(meta["allocator_retry_after_ms"]); ok && v > 0 {
+		return v
+	}
+	return 0
+}
+
+func shouldAttemptAllocator(meta map[string]any, teamRunID, missingSig string) bool {
+	if meta == nil || teamRunID == "" || missingSig == "" {
+		return true
+	}
+	lastRun := strings.TrimSpace(asString(meta["allocator_last_team_run_id"]))
+	if lastRun != teamRunID {
+		return true
+	}
+	lastSig := strings.TrimSpace(asString(meta["allocator_last_missing_signature"]))
+	if lastSig != missingSig {
+		return true
+	}
+	retryAfter := allocatorRetryAfter(meta)
+	if retryAfter <= 0 {
+		return false
+	}
+	lastTS, _ := asInt64(meta["allocator_last_unix_ms"])
+	if lastTS <= 0 {
+		return true
+	}
+	now := time.Now().UTC().UnixMilli()
+	return now-int64(lastTS) >= retryAfter
+}
+
+func resolveAllocatorMissing(meta map[string]any, teamRunID string, missingRoles []string) []string {
+	if meta == nil || teamRunID == "" {
+		return normalizeRoles(missingRoles)
+	}
+	lastRun := strings.TrimSpace(asString(meta["allocator_last_team_run_id"]))
+	if lastRun != teamRunID {
+		return normalizeRoles(missingRoles)
+	}
+	lastSig := strings.TrimSpace(asString(meta["allocator_last_missing_signature"]))
+	if lastSig != "" && lastSig != rolesSignature(missingRoles) {
+		return normalizeRoles(missingRoles)
+	}
+	if _, ok := meta["allocator_missing_roles"]; ok {
+		return normalizeRoles(asStringSlice(meta["allocator_missing_roles"]))
+	}
+	return normalizeRoles(missingRoles)
+}
+
+func maybeAllocateRuntimeMembers(
+	ctx context.Context,
+	client *http.Client,
+	cfg config,
+	teamID,
+	teamRunID string,
+	status *teamRunResponse,
+	meta map[string]any,
+	missingRoles []string,
+) (bool, []string, error) {
+	if len(missingRoles) == 0 || teamRunID == "" || teamID == "" {
+		return false, missingRoles, nil
+	}
+	missingSig := rolesSignature(missingRoles)
+	if !shouldAttemptAllocator(meta, teamRunID, missingSig) {
+		return false, resolveAllocatorMissing(meta, teamRunID, missingRoles), nil
+	}
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	existing := parseRuntimeMembers(status.RuntimeMembers)
+	maxMembers := 0
+	if v, ok := asInt(meta["auto_allocate_max_members"]); ok && v > 0 {
+		maxMembers = v
+	} else if status != nil {
+		if v, ok := asInt(status.AutoAllocateMaxMembers); ok && v > 0 {
+			maxMembers = v
+		}
+	}
+	resp, err := allocateRuntimeMembers(ctx, client, cfg, teamID, missingRoles, existing, maxMembers)
+	now := time.Now().UTC().UnixMilli()
+	meta["allocator_last_team_run_id"] = teamRunID
+	meta["allocator_last_missing_signature"] = missingSig
+	meta["allocator_last_unix_ms"] = now
+	meta["allocator_last_missing_roles"] = missingRoles
+	if err != nil {
+		warn := allocatorWarningFromErr(err)
+		if warn != "" {
+			meta["allocator_warnings"] = []string{warn}
+		}
+		meta["allocator_allocated_roles"] = nil
+		meta["allocator_missing_roles"] = missingRoles
+		meta["allocator_runtime_members_added"] = 0
+		if isAllocatorNonFatal(err) {
+			return true, missingRoles, nil
+		}
+		return true, missingRoles, err
+	}
+	allocatedRoles := normalizeRoles(resp.AllocatedRoles)
+	missingAfter := normalizeRoles(resp.MissingRoles)
+	if missingAfter == nil {
+		missingAfter = []string{}
+	}
+	warnings := cleanStringList(resp.Warnings)
+	added := 0
+	if len(resp.RuntimeMembers) > 0 {
+		members := normalizeRuntimeMembers(resp.RuntimeMembers)
+		if len(members) > 0 {
+			if err := updateTeamRunRuntimeMembers(ctx, client, cfg, teamID, teamRunID, members); err != nil {
+				return true, missingRoles, err
+			}
+			added = len(members)
+		}
+	}
+	if len(allocatedRoles) > 0 {
+		meta["allocator_allocated_roles"] = allocatedRoles
+	} else {
+		delete(meta, "allocator_allocated_roles")
+	}
+	meta["allocator_missing_roles"] = missingAfter
+	if len(warnings) > 0 {
+		meta["allocator_warnings"] = warnings
+	} else {
+		delete(meta, "allocator_warnings")
+	}
+	meta["allocator_runtime_members_added"] = added
+	return true, missingAfter, nil
+}
+
+func allocatorWarningFromErr(err error) string {
+	if err == nil {
+		return ""
+	}
+	var httpErr *httpError
+	if errors.As(err, &httpErr) {
+		msg := strings.TrimSpace(httpErr.Body)
+		if msg != "" {
+			return msg
+		}
+		return fmt.Sprintf("allocator http %d", httpErr.Status)
+	}
+	return err.Error()
+}
+
+func isAllocatorNonFatal(err error) bool {
+	if err == nil {
+		return false
+	}
+	var httpErr *httpError
+	if errors.As(err, &httpErr) {
+		if httpErr.Status == http.StatusBadRequest {
+			msg := strings.ToLower(httpErr.Body)
+			if strings.Contains(msg, "no connected agents") {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func shouldSpawnMissingRoles(meta map[string]any) bool {
 	if meta == nil {
 		return true
@@ -1312,6 +1510,35 @@ func parseRuntimeMembers(raw any) []map[string]any {
 	return out
 }
 
+func normalizeRuntimeMembers(raw []map[string]any) []map[string]any {
+	if len(raw) == 0 {
+		return nil
+	}
+	out := make([]map[string]any, 0, len(raw))
+	for _, rm := range raw {
+		if rm == nil {
+			continue
+		}
+		agentID := strings.TrimSpace(asString(rm["agent_id"]))
+		role := strings.TrimSpace(asString(rm["role"]))
+		if agentID == "" || role == "" {
+			continue
+		}
+		entry := map[string]any{
+			"agent_id": agentID,
+			"role":     role,
+		}
+		if v := strings.TrimSpace(asString(rm["deployment_id"])); v != "" {
+			entry["deployment_id"] = v
+		}
+		if v := strings.TrimSpace(asString(rm["status"])); v != "" {
+			entry["status"] = v
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
 func buildRuntimeMemberUpdates(runtimeMembers []map[string]any, status string) []map[string]any {
 	if len(runtimeMembers) == 0 {
 		return nil
@@ -1504,6 +1731,29 @@ func fetchTeamRunStatus(ctx context.Context, client *http.Client, cfg config, te
 	var resp teamRunResponse
 	if err := doJSON(ctx, client, cfg, http.MethodGet, url, nil, &resp); err != nil {
 		return nil, err
+	}
+	return &resp, nil
+}
+
+func allocateRuntimeMembers(ctx context.Context, client *http.Client, cfg config, teamID string, roles []string, existing []map[string]any, maxMembers int) (*runtimeAllocateResponse, error) {
+	payload := map[string]any{
+		"roles":            roles,
+		"prefer_connected": true,
+	}
+	if len(existing) > 0 {
+		payload["existing_runtime_members"] = existing
+	}
+	if maxMembers > 0 {
+		payload["max_members"] = maxMembers
+	}
+	payload["exclude_team_members"] = true
+	url := fmt.Sprintf("%s/v1/teams/%s/runtime_members/allocate", cfg.brokerBase, teamID)
+	var resp runtimeAllocateResponse
+	if err := doJSON(ctx, client, cfg, http.MethodPost, url, payload, &resp); err != nil {
+		return nil, err
+	}
+	if !resp.OK {
+		return &resp, fmt.Errorf("broker returned ok=false for runtime member allocation")
 	}
 	return &resp, nil
 }
@@ -1838,6 +2088,35 @@ func cleanStringList(values []string) []string {
 		out = append(out, s)
 	}
 	return out
+}
+
+func normalizeRoles(values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(values))
+	for _, v := range values {
+		r := strings.ToLower(strings.TrimSpace(v))
+		if r == "" || seen[r] {
+			continue
+		}
+		seen[r] = true
+		out = append(out, r)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	sort.Strings(out)
+	return out
+}
+
+func rolesSignature(values []string) string {
+	roles := normalizeRoles(values)
+	if len(roles) == 0 {
+		return ""
+	}
+	return strings.Join(roles, "|")
 }
 
 func isTerminalTeamRunStatus(status string) bool {
