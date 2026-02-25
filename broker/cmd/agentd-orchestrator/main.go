@@ -1427,6 +1427,19 @@ func maybeHandleReplanAck(
 	if strings.ToLower(strings.TrimSpace(guidance.Status)) != "acked" {
 		return false, nil
 	}
+	receiptsRequired, minAck, roleSet, sourceSet, requireAllRoles := replanReceiptRequirements(meta)
+	if receiptsRequired {
+		receipts, err := listGuidanceReceipts(ctx, client, cfg, teamID, guidanceID, 200)
+		if err != nil {
+			return false, err
+		}
+		ok, count := replanReceiptsSatisfied(receipts, minAck, roleSet, sourceSet, requireAllRoles)
+		meta["replan_ack_count"] = count
+		if !ok {
+			return false, nil
+		}
+		meta["replan_ack_satisfied_unix_ms"] = time.Now().UTC().UnixMilli()
+	}
 	if guidance.AckedUnixMS > 0 {
 		meta["drift_replan_ack_unix_ms"] = guidance.AckedUnixMS
 	} else {
@@ -1486,6 +1499,75 @@ func maybeHandleReplanAck(
 		return true, nil
 	}
 	return false, nil
+}
+
+func replanReceiptRequirements(meta map[string]any) (bool, int, map[string]bool, map[string]bool, bool) {
+	minAck := 1
+	if v, ok := asInt(meta["replan_ack_min"]); ok && v > 0 {
+		minAck = v
+	}
+	roles := normalizeRoles(asStringSlice(meta["replan_ack_roles"]))
+	roleSet := map[string]bool{}
+	for _, r := range roles {
+		roleSet[r] = true
+	}
+	sources := cleanStringList(asStringSlice(meta["replan_ack_sources"]))
+	sourceSet := map[string]bool{}
+	for _, s := range sources {
+		sourceSet[strings.ToLower(strings.TrimSpace(s))] = true
+	}
+	requireAllRoles := false
+	if v, ok := asBool(meta["replan_ack_all_roles"]); ok {
+		requireAllRoles = v
+	}
+	required := len(roleSet) > 0 || len(sourceSet) > 0 || requireAllRoles || minAck > 1
+	return required, minAck, roleSet, sourceSet, requireAllRoles
+}
+
+func replanReceiptsSatisfied(receipts []guidanceReceipt, minAck int, roleSet, sourceSet map[string]bool, requireAllRoles bool) (bool, int) {
+	if minAck <= 0 {
+		minAck = 1
+	}
+	if len(receipts) == 0 {
+		if minAck <= 0 {
+			return true, 0
+		}
+		return false, 0
+	}
+	seen := map[string]bool{}
+	roleHits := map[string]bool{}
+	count := 0
+	for _, r := range receipts {
+		role := strings.ToLower(strings.TrimSpace(r.AckRole))
+		source := strings.ToLower(strings.TrimSpace(r.AckSource))
+		if len(roleSet) > 0 && !roleSet[role] {
+			continue
+		}
+		if len(sourceSet) > 0 && !sourceSet[source] {
+			continue
+		}
+		key := strings.TrimSpace(r.AckBy)
+		if key == "" {
+			key = fmt.Sprintf("receipt:%d", r.ID)
+		}
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		count++
+		if role != "" {
+			roleHits[role] = true
+		}
+	}
+	if requireAllRoles && len(roleSet) > 0 {
+		for role := range roleSet {
+			if !roleHits[role] {
+				return false, count
+			}
+		}
+		return true, count
+	}
+	return count >= minAck, count
 }
 
 func maybeRetireRuntimeMembers(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string, status *teamRunResponse, meta map[string]any) (bool, error) {

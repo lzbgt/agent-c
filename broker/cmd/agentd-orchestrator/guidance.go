@@ -280,6 +280,25 @@ func getGuidance(ctx context.Context, client *http.Client, cfg config, teamID, g
 	return &resp.Guidance, nil
 }
 
+func listGuidanceReceipts(ctx context.Context, client *http.Client, cfg config, teamID, guidanceID string, limit int) ([]guidanceReceipt, error) {
+	qs := url.Values{}
+	if limit > 0 {
+		qs.Set("limit", fmt.Sprintf("%d", limit))
+	}
+	url := fmt.Sprintf("%s/v1/teams/%s/guidance/%s/receipts", cfg.brokerBase, teamID, guidanceID)
+	if encoded := qs.Encode(); encoded != "" {
+		url += "?" + encoded
+	}
+	var resp guidanceReceiptsResponse
+	if err := doJSON(ctx, client, cfg, http.MethodGet, url, nil, &resp); err != nil {
+		return nil, err
+	}
+	if !resp.OK {
+		return nil, fmt.Errorf("broker returned ok=false for guidance receipts")
+	}
+	return resp.Receipts, nil
+}
+
 func ackGuidance(ctx context.Context, client *http.Client, cfg config, teamID, guidanceID, status, note, ackSource, ackRole string) (*guidanceAckResponse, error) {
 	if strings.TrimSpace(status) == "" {
 		status = "acked"

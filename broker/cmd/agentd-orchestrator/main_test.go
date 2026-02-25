@@ -1175,6 +1175,55 @@ func TestMaybeHandleReplanAckResumesRun(t *testing.T) {
 	}
 }
 
+func TestMaybeHandleReplanAckRequiresReceipts(t *testing.T) {
+	type state struct {
+		mu        sync.Mutex
+		patchBody map[string]any
+	}
+	st := &state{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/teams/team1/guidance/g-replan":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","guidance":{"guidance_id":"g-replan","status":"acked","acked_by":"human","acked_unix_ms":123}}`)
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/teams/team1/guidance/g-replan/receipts":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","guidance_id":"g-replan","count":1,"receipts":[{"id":1,"guidance_id":"g-replan","ack_by":"human","ack_role":"owner","ack_source":"human","acked_unix_ms":123}]}`)
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/teams/team1/orchestrator/runs/orun1":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			st.mu.Lock()
+			st.patchBody = payload
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","run":{"orchestrator_run_id":"orun1","status":"running"}}`)
+		default:
+			http.Error(w, "unexpected", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	cfg := config{brokerBase: server.URL, oidcToken: "token", orchestratorID: "orch1"}
+	meta := map[string]any{
+		"drift_action":             "replan",
+		"drift_replan_guidance_id": "g-replan",
+		"replan_ack_min":           int64(2),
+	}
+	updated, err := maybeHandleReplanAck(context.Background(), server.Client(), cfg, "team1", "orun1", "orch1", meta)
+	if err != nil {
+		t.Fatalf("maybeHandleReplanAck error: %v", err)
+	}
+	if updated {
+		t.Fatalf("expected replan ack to wait for receipts")
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.patchBody != nil {
+		t.Fatalf("expected no orchestrator update, got %#v", st.patchBody)
+	}
+}
+
 func TestMaybeProcessHandoffQueueDispatchesDirective(t *testing.T) {
 	type state struct {
 		mu            sync.Mutex

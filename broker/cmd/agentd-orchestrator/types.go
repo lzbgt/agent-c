@@ -174,6 +174,24 @@ type guidanceGetResponse struct {
 	Guidance guidanceEvent `json:"guidance"`
 }
 
+type guidanceReceipt struct {
+	ID          int64  `json:"id"`
+	GuidanceID  string `json:"guidance_id"`
+	AckBy       string `json:"ack_by"`
+	AckRole     string `json:"ack_role"`
+	AckSource   string `json:"ack_source"`
+	AckNote     string `json:"ack_note"`
+	AckedUnixMS int64  `json:"acked_unix_ms"`
+}
+
+type guidanceReceiptsResponse struct {
+	OK         bool              `json:"ok"`
+	TeamID     string            `json:"team_id"`
+	GuidanceID string            `json:"guidance_id"`
+	Count      int               `json:"count"`
+	Receipts   []guidanceReceipt `json:"receipts"`
+}
+
 type guidanceAckResponse struct {
 	OK       bool           `json:"ok"`
 	TeamID   string         `json:"team_id"`

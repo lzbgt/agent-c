@@ -187,9 +187,15 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
   replan_role_plan_snapshot: { ... }       # optional role plan override on resume
   replan_create_new_run: true|false        # optional: clear active run and start new
   replan_cancel_active_run: true|false     # optional: cancel active run before new
+  replan_ack_min: number                   # optional receipts required (default 1)
+  replan_ack_roles: [string]               # optional receipt role filter
+  replan_ack_sources: [string]             # optional receipt source filter
+  replan_ack_all_roles: true|false         # optional require all roles to ack
   drift_replan_ack_by: string              # set when guidance is acked
   drift_replan_ack_note: string            # set when guidance is acked
   drift_replan_ack_unix_ms: integer        # set when guidance is acked
+  replan_ack_count: number                 # receipt count meeting filters
+  replan_ack_satisfied_unix_ms: integer    # when receipt threshold met
   replan_prev_team_run_id: string          # previous run id when new run requested
   replan_new_run_requested_unix_ms: integer # when new run requested
   replan_cancel_unix_ms: integer           # when active run cancel issued
@@ -232,6 +238,8 @@ Notes:
   with `replan_requested=true` for operator review.
   - Once the guidance item is acked, the loop resumes the orchestrator run and
     records `drift_replan_ack_*` fields in meta.
+  - When `replan_ack_min` or receipt filters are set, the loop waits for enough
+    guidance receipts before resuming.
   - If `replan_create_new_run` is true, the loop clears `active_team_run_id` so
     a new team run is created with any `replan_*` overrides.
   - If `replan_cancel_active_run` is true, the loop attempts to cancel the
