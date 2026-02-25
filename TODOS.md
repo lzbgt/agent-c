@@ -133,6 +133,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-26: compose overlay `docker/compose.autonomous.yml` + dev client auth file added.
   - 2026-02-26: launchd install/uninstall scripts added for orchestrator + spawn adapter.
   - 2026-02-26: orchestrator/spawn adapter can read `BROKER_OIDC_TOKEN_FILE`; added `tools/oidc_token_refresh.sh`.
+  - 2026-02-26: compose smoke added for OIDC refresh sidecar (`tests/broker_oidc_refresh_compose_smoke.sh`).
 - [ ] W=12 — User guidance/override lane: persist operator “guidance” events, deliver to orchestrator + active agents, and surface in WebUI with ack/receipt so rare human intervention re-aligns autonomy without breaking flows.
   - 2026-02-26: drafted `docs/spec/user_guidance_lane_v0.md` (guidance events + ack + replay).
   - 2026-02-26: broker storage + endpoints + SSE events for guidance lane.
