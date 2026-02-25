@@ -168,6 +168,12 @@ type guidanceCreateResponse struct {
 	Guidance guidanceEvent `json:"guidance"`
 }
 
+type guidanceGetResponse struct {
+	OK       bool          `json:"ok"`
+	TeamID   string        `json:"team_id"`
+	Guidance guidanceEvent `json:"guidance"`
+}
+
 type guidanceAckResponse struct {
 	OK       bool           `json:"ok"`
 	TeamID   string         `json:"team_id"`

@@ -276,6 +276,13 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 	}
 	if activeRunID != "" {
 		if status == "paused" || status == "waiting" {
+			if owner == cfg.orchestratorID {
+				if updated, err := maybeHandleReplanAck(ctx, client, cfg, teamID, run.OrchestratorRunID, owner, meta); err != nil {
+					return err
+				} else if updated {
+					return nil
+				}
+			}
 			if guidanceChanged {
 				_, _ = updateOrchestratorRun(ctx, client, cfg, teamID, run.OrchestratorRunID, "", meta, stringPtr(owner), nil)
 			}
@@ -1389,6 +1396,59 @@ func cancelTeamRun(ctx context.Context, client *http.Client, cfg config, teamID,
 	url := fmt.Sprintf("%s/v1/teams/%s/runs/%s/cancel", cfg.brokerBase, teamID, teamRunID)
 	var resp map[string]any
 	return doJSON(ctx, client, cfg, http.MethodPost, url, map[string]any{}, &resp)
+}
+
+func maybeHandleReplanAck(
+	ctx context.Context,
+	client *http.Client,
+	cfg config,
+	teamID,
+	orchestratorRunID,
+	owner string,
+	meta map[string]any,
+) (bool, error) {
+	if meta == nil {
+		return false, nil
+	}
+	if strings.ToLower(strings.TrimSpace(asString(meta["drift_action"]))) != "replan" {
+		return false, nil
+	}
+	if _, ok := asInt64(meta["drift_replan_ack_unix_ms"]); ok {
+		return false, nil
+	}
+	guidanceID := strings.TrimSpace(asString(meta["drift_replan_guidance_id"]))
+	if guidanceID == "" {
+		return false, nil
+	}
+	guidance, err := getGuidance(ctx, client, cfg, teamID, guidanceID)
+	if err != nil {
+		return false, err
+	}
+	if strings.ToLower(strings.TrimSpace(guidance.Status)) != "acked" {
+		return false, nil
+	}
+	if guidance.AckedUnixMS > 0 {
+		meta["drift_replan_ack_unix_ms"] = guidance.AckedUnixMS
+	} else {
+		meta["drift_replan_ack_unix_ms"] = time.Now().UTC().UnixMilli()
+	}
+	if guidance.AckedBy != "" {
+		meta["drift_replan_ack_by"] = guidance.AckedBy
+	}
+	if guidance.AckNote != "" {
+		meta["drift_replan_ack_note"] = guidance.AckNote
+	}
+	resp, err := updateOrchestratorRun(ctx, client, cfg, teamID, orchestratorRunID, "running", meta, stringPtr(owner), stringPtr("paused"))
+	if err != nil {
+		if isHTTPStatus(err, http.StatusConflict) {
+			return false, nil
+		}
+		return false, err
+	}
+	if resp != nil && resp.Run.OrchestratorRunID != "" {
+		return true, nil
+	}
+	return false, nil
 }
 
 func maybeRetireRuntimeMembers(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string, status *teamRunResponse, meta map[string]any) (bool, error) {

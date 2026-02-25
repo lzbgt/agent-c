@@ -268,6 +268,18 @@ func createGuidance(ctx context.Context, client *http.Client, cfg config, teamID
 	return &resp.Guidance, nil
 }
 
+func getGuidance(ctx context.Context, client *http.Client, cfg config, teamID, guidanceID string) (*guidanceEvent, error) {
+	url := fmt.Sprintf("%s/v1/teams/%s/guidance/%s", cfg.brokerBase, teamID, guidanceID)
+	var resp guidanceGetResponse
+	if err := doJSON(ctx, client, cfg, http.MethodGet, url, nil, &resp); err != nil {
+		return nil, err
+	}
+	if !resp.OK {
+		return nil, fmt.Errorf("broker returned ok=false for guidance get")
+	}
+	return &resp.Guidance, nil
+}
+
 func ackGuidance(ctx context.Context, client *http.Client, cfg config, teamID, guidanceID, status, note, ackSource, ackRole string) (*guidanceAckResponse, error) {
 	if strings.TrimSpace(status) == "" {
 		status = "acked"

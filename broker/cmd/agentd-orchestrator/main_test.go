@@ -1112,6 +1112,60 @@ func TestMaybeEmitDriftReplanAction(t *testing.T) {
 	}
 }
 
+func TestMaybeHandleReplanAckResumesRun(t *testing.T) {
+	type state struct {
+		mu        sync.Mutex
+		patchBody map[string]any
+	}
+	st := &state{}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/v1/teams/team1/guidance/g-replan":
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","guidance":{"guidance_id":"g-replan","status":"acked","acked_by":"human","acked_unix_ms":123,"ack_note":"ok"}}`)
+		case r.Method == http.MethodPatch && r.URL.Path == "/v1/teams/team1/orchestrator/runs/orun1":
+			body, _ := io.ReadAll(r.Body)
+			var payload map[string]any
+			_ = json.Unmarshal(body, &payload)
+			st.mu.Lock()
+			st.patchBody = payload
+			st.mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			io.WriteString(w, `{"ok":true,"team_id":"team1","run":{"orchestrator_run_id":"orun1","status":"running"}}`)
+		default:
+			http.Error(w, "unexpected", http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+
+	cfg := config{brokerBase: server.URL, oidcToken: "token", orchestratorID: "orch1"}
+	meta := map[string]any{
+		"drift_action":             "replan",
+		"drift_replan_guidance_id": "g-replan",
+	}
+	updated, err := maybeHandleReplanAck(context.Background(), server.Client(), cfg, "team1", "orun1", "orch1", meta)
+	if err != nil {
+		t.Fatalf("maybeHandleReplanAck error: %v", err)
+	}
+	if !updated {
+		t.Fatalf("expected replan ack to update run")
+	}
+	if meta["drift_replan_ack_by"] != "human" {
+		t.Fatalf("expected drift_replan_ack_by=human, got %#v", meta["drift_replan_ack_by"])
+	}
+	if meta["drift_replan_ack_unix_ms"] != int64(123) {
+		t.Fatalf("expected drift_replan_ack_unix_ms=123, got %#v", meta["drift_replan_ack_unix_ms"])
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.patchBody == nil || st.patchBody["status"] != "running" {
+		t.Fatalf("expected status=running, got %#v", st.patchBody)
+	}
+	if exp, ok := st.patchBody["expected_status"].(string); !ok || exp != "paused" {
+		t.Fatalf("expected expected_status=paused, got %#v", st.patchBody)
+	}
+}
+
 func TestMaybeProcessHandoffQueueDispatchesDirective(t *testing.T) {
 	type state struct {
 		mu            sync.Mutex

@@ -182,6 +182,9 @@ These optional fields live in `orchestrator_run.meta` and drive the loop behavio
   drift_replan_target_roles: [string]      # optional targeting
   drift_replan_target_member_ids: [string] # optional targeting
   drift_replan_target_agent_ids: [string]  # optional targeting
+  drift_replan_ack_by: string              # set when guidance is acked
+  drift_replan_ack_note: string            # set when guidance is acked
+  drift_replan_ack_unix_ms: integer        # set when guidance is acked
   allow_takeover: true|false          # default true; allow stale-lease takeover
   handoff_queue: [{from_role,to_role,reason?,message?,data?}]  # optional queue
   run_template: { ... }               # optional /api/v1/run payload
@@ -218,6 +221,8 @@ Notes:
   loop skips further dispatch until resumed.
 - `drift_action="replan"` pauses the orchestrator run and emits a guidance item
   with `replan_requested=true` for operator review.
+  - Once the guidance item is acked, the loop resumes the orchestrator run and
+    records `drift_replan_ack_*` fields in meta.
 
 ### Goal progress + drift events (SSE)
 
