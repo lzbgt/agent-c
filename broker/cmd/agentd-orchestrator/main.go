@@ -450,6 +450,11 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 		if isTerminalTeamRunStatus(trStatus) {
 			meta = appendTeamRunHistory(meta, activeRunID, trStatus)
 			meta["last_team_run_status"] = trStatus
+			if changed, err := maybeRetireRuntimeMembers(ctx, client, cfg, teamID, activeRunID, tr, meta); err != nil {
+				fmt.Fprintf(os.Stderr, "runtime member retire failed: %v\n", err)
+			} else if changed {
+				// metadata updated by retire helper
+			}
 			completionMode := strings.ToLower(strings.TrimSpace(asString(meta["completion_mode"])))
 			if completionMode == "" {
 				completionMode = "on_success"
@@ -918,6 +923,29 @@ func shouldSpawnMissingRoles(meta map[string]any) bool {
 	return true
 }
 
+func shouldRetireRuntimeMembers(meta map[string]any) bool {
+	if meta == nil {
+		return false
+	}
+	if v, ok := meta["retire_runtime_members"]; ok {
+		if b, ok := asBool(v); ok {
+			return b
+		}
+	}
+	return false
+}
+
+func runtimeMemberRetireStatus(meta map[string]any) string {
+	if meta == nil {
+		return "paused"
+	}
+	status := strings.ToLower(strings.TrimSpace(asString(meta["retire_runtime_member_status"])))
+	if status == "" {
+		status = "paused"
+	}
+	return status
+}
+
 type spawnMetaConfig struct {
 	defaultCount       int
 	countByRole        map[string]int
@@ -1149,6 +1177,95 @@ func ensureSpawnRequests(ctx context.Context, client *http.Client, cfg config, t
 		_, _ = updateOrchestratorRun(ctx, client, cfg, teamID, orchestratorRunID, "", meta, stringPtr(owner), nil)
 	}
 	return nil
+}
+
+func parseRuntimeMembers(raw any) []map[string]any {
+	out := []map[string]any{}
+	switch t := raw.(type) {
+	case []map[string]any:
+		out = append(out, t...)
+	case []any:
+		for _, item := range t {
+			if m, ok := item.(map[string]any); ok {
+				out = append(out, m)
+			}
+		}
+	}
+	return out
+}
+
+func buildRuntimeMemberUpdates(runtimeMembers []map[string]any, status string) []map[string]any {
+	if len(runtimeMembers) == 0 {
+		return nil
+	}
+	updates := make([]map[string]any, 0, len(runtimeMembers))
+	for _, rm := range runtimeMembers {
+		memberID := strings.TrimSpace(asString(rm["member_id"]))
+		agentID := strings.TrimSpace(asString(rm["agent_id"]))
+		role := strings.TrimSpace(asString(rm["role"]))
+		if memberID == "" || agentID == "" || role == "" {
+			continue
+		}
+		entry := map[string]any{
+			"member_id": memberID,
+			"agent_id":  agentID,
+			"role":      role,
+			"status":    status,
+		}
+		if v := strings.TrimSpace(asString(rm["deployment_id"])); v != "" {
+			entry["deployment_id"] = v
+		}
+		updates = append(updates, entry)
+	}
+	return updates
+}
+
+func updateTeamRunRuntimeMembers(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string, members []map[string]any) error {
+	if teamID == "" || teamRunID == "" {
+		return fmt.Errorf("missing team_id or team_run_id")
+	}
+	payload := map[string]any{
+		"mode":            "merge",
+		"runtime_members": members,
+	}
+	url := fmt.Sprintf("%s/v1/teams/%s/runs/%s/runtime_members", cfg.brokerBase, teamID, teamRunID)
+	var resp map[string]any
+	return doJSON(ctx, client, cfg, http.MethodPatch, url, payload, &resp)
+}
+
+func maybeRetireRuntimeMembers(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string, status *teamRunResponse, meta map[string]any) (bool, error) {
+	if !shouldRetireRuntimeMembers(meta) {
+		return false, nil
+	}
+	if status == nil {
+		return false, nil
+	}
+	if strings.TrimSpace(teamRunID) == "" {
+		return false, nil
+	}
+	lastRunID := strings.TrimSpace(asString(meta["runtime_members_retired_team_run_id"]))
+	if lastRunID == teamRunID {
+		return false, nil
+	}
+	runtimeMembers := parseRuntimeMembers(status.RuntimeMembers)
+	if len(runtimeMembers) == 0 {
+		return false, nil
+	}
+	retireStatus := runtimeMemberRetireStatus(meta)
+	updates := buildRuntimeMemberUpdates(runtimeMembers, retireStatus)
+	if len(updates) == 0 {
+		return false, nil
+	}
+	if err := updateTeamRunRuntimeMembers(ctx, client, cfg, teamID, teamRunID, updates); err != nil {
+		return false, err
+	}
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	meta["runtime_members_retired_team_run_id"] = teamRunID
+	meta["runtime_members_retired_status"] = retireStatus
+	meta["runtime_members_retired_unix_ms"] = time.Now().UTC().UnixMilli()
+	return true, nil
 }
 
 func emitTeamRunGoalEvent(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string, event map[string]any) error {
