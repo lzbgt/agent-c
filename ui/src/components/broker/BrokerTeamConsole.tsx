@@ -7,6 +7,7 @@ import {
   apiBrokerTeamMembersDelete,
   apiBrokerTeamMembersList,
   apiBrokerTeamMembersUpsert,
+  apiBrokerListAgents,
   apiBrokerTeamQuorumDelete,
   apiBrokerTeamQuorumList,
   apiBrokerTeamQuorumUpsert,
@@ -71,6 +72,9 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const [memberSummaryModel, setMemberSummaryModel] = React.useState<string>("");
   const [memberTools, setMemberTools] = React.useState<string>("");
   const [memberTimeoutMs, setMemberTimeoutMs] = React.useState<string>("");
+  const [memberAgentsBusy, setMemberAgentsBusy] = React.useState<boolean>(false);
+  const [memberAgentsError, setMemberAgentsError] = React.useState<string | null>(null);
+  const [memberAgents, setMemberAgents] = React.useState<any[] | null>(null);
 
   const [rulesBusy, setRulesBusy] = React.useState<boolean>(false);
   const [rulesError, setRulesError] = React.useState<string | null>(null);
@@ -83,6 +87,13 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
   const teamIdTrimmed = String(teamId || "").trim();
   const membersList = Array.isArray(members) ? members : [];
   const rulesList = Array.isArray(rules) ? rules : [];
+  const memberAgentOptions = Array.isArray(memberAgents) ? memberAgents : [];
+  const memberSelectedAgent = memberAgentOptions.find(
+    (agent) => String(agent?.agent_id || "") === String(memberAgentId || "").trim(),
+  );
+  const memberAgentDeployments = Array.isArray(memberSelectedAgent?.deployments)
+    ? (memberSelectedAgent?.deployments as any[])
+    : [];
 
   const refreshTeams = async () => {
     if (!canQuery) return;
@@ -125,6 +136,21 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
       setMembersError(String(err));
     } finally {
       setMembersBusy(false);
+    }
+  };
+
+  const refreshMemberAgents = async () => {
+    if (!canQuery) return;
+    setMemberAgentsError(null);
+    setMemberAgentsBusy(true);
+    try {
+      const resp = await apiBrokerListAgents(props.base, props.auth);
+      const rows = Array.isArray(resp?.agents) ? resp.agents : [];
+      setMemberAgents(rows);
+    } catch (err) {
+      setMemberAgentsError(String(err));
+    } finally {
+      setMemberAgentsBusy(false);
     }
   };
 
@@ -235,6 +261,59 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     }
   };
 
+  const handleAddConnectedAgentsToTeam = async () => {
+    const tid = teamIdTrimmed;
+    if (!tid) return;
+    if (!canQuery) return;
+    if (!memberRole.trim()) {
+      setMembersError("role required");
+      return;
+    }
+    const agentOptions = Array.isArray(memberAgents) ? memberAgents : [];
+    if (agentOptions.length === 0) {
+      setMembersError("load agents before bulk add");
+      return;
+    }
+    const role = String(memberRole || "").trim() || "executor";
+    const existingAgentIds = new Set<string>();
+    for (const m of membersList) {
+      const aid = String(m?.agent_id || "").trim();
+      if (aid) existingAgentIds.add(aid);
+    }
+    const payloads: Record<string, any>[] = [];
+    for (const agent of agentOptions) {
+      const aid = String(agent?.agent_id || "").trim();
+      if (!aid || existingAgentIds.has(aid)) continue;
+      const deployments = Array.isArray(agent?.deployments) ? agent.deployments : [];
+      const connected = agent?.connected === true || deployments.length > 0;
+      if (!connected) continue;
+      const payload: Record<string, any> = { role, agent_id: aid };
+      if (deployments.length > 0) {
+        const depId = deployments[0]?.deployment_id ? String(deployments[0].deployment_id) : "";
+        if (depId) payload.deployment_id = depId;
+      }
+      payloads.push(payload);
+      existingAgentIds.add(aid);
+    }
+    if (payloads.length === 0) {
+      setMembersError("no connected agents to add (already in team)");
+      return;
+    }
+    if (!window.confirm(`Add ${payloads.length} connected agent(s) to team?`)) return;
+    setMembersError(null);
+    setMembersBusy(true);
+    try {
+      for (const payload of payloads) {
+        await apiBrokerTeamMembersUpsert(props.base, tid, payload, props.auth);
+      }
+      await refreshMembers(tid);
+    } catch (err) {
+      setMembersError(String(err));
+    } finally {
+      setMembersBusy(false);
+    }
+  };
+
   const handleDeleteMember = async (memberIdRaw: string) => {
     const tid = teamIdTrimmed;
     const mid = String(memberIdRaw || "").trim();
@@ -313,6 +392,28 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
     void refreshMembers(teamIdTrimmed);
     void refreshRules(teamIdTrimmed);
   }, [canQuery, teamIdTrimmed]);
+
+  React.useEffect(() => {
+    if (!canQuery) return;
+    if (memberAgentsBusy || (memberAgents && memberAgents.length > 0)) return;
+    void refreshMemberAgents();
+  }, [canQuery, memberAgentsBusy, memberAgents, refreshMemberAgents]);
+
+  React.useEffect(() => {
+    if (!memberAgentId) {
+      if (memberDeploymentId) {
+        setMemberDeploymentId("");
+      }
+      return;
+    }
+    if (memberDeploymentId) return;
+    if (memberAgentDeployments.length === 0) return;
+    const first = memberAgentDeployments[0];
+    const depId = first?.deployment_id ? String(first.deployment_id) : "";
+    if (depId) {
+      setMemberDeploymentId(depId);
+    }
+  }, [memberAgentId, memberDeploymentId, memberAgentDeployments]);
 
   return (
     <section className="rounded-md border border-white/10 bg-black/20 p-3">
@@ -454,6 +555,63 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
             onChange={(e) => setMemberCapabilities(e.target.value)}
             placeholder="vision,audio"
           />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <FieldLabel>Agent pick</FieldLabel>
+          <select
+            className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={memberAgentId}
+            onChange={(e) => setMemberAgentId(e.target.value)}
+          >
+            <option value="">(select agent)</option>
+            {memberAgentOptions.map((agent) => {
+              const aid = String(agent?.agent_id || "");
+              if (!aid) return null;
+              const suffix = agent?.connected ? " · connected" : "";
+              return (
+                <option key={`member-agent-${aid}`} value={aid}>
+                  {aid}
+                  {suffix}
+                </option>
+              );
+            })}
+          </select>
+          <FieldLabel>Deployment pick</FieldLabel>
+          <select
+            className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+            value={memberDeploymentId}
+            onChange={(e) => setMemberDeploymentId(e.target.value)}
+            disabled={memberAgentDeployments.length === 0}
+          >
+            <option value="">(default)</option>
+            {memberAgentDeployments.map((dep, idx) => {
+              const depId = dep?.deployment_id ? String(dep.deployment_id) : "";
+              return (
+                <option key={`member-dep-${depId || idx}`} value={depId}>
+                  {depId || `deployment-${idx + 1}`}
+                </option>
+              );
+            })}
+          </select>
+          <button
+            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+            type="button"
+            disabled={!canQuery || memberAgentsBusy}
+            onClick={() => void refreshMemberAgents()}
+          >
+            {memberAgentsBusy ? "Loading…" : "Refresh agents"}
+          </button>
+          <button
+            className="rounded-md border border-white/10 bg-black/30 px-3 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+            type="button"
+            disabled={!canQuery || !teamIdTrimmed || membersBusy || memberAgentsBusy}
+            onClick={() => void handleAddConnectedAgentsToTeam()}
+          >
+            Add connected agents
+          </button>
+          {memberAgentsError ? (
+            <span className="text-[11px] text-rose-200">{memberAgentsError}</span>
+          ) : null}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <FieldLabel>Backend label</FieldLabel>
