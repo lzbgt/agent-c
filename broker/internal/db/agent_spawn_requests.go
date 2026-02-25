@@ -27,11 +27,14 @@ type AgentSpawnRequest struct {
 
 type AgentSpawnRequestUpdate struct {
 	Status          *string
+	ExpectedStatus  *string
 	Requirements    map[string]any
 	AssignedMembers *[]map[string]any
 	Error           *string
 	Meta            map[string]any
 }
+
+var ErrAgentSpawnRequestConflict = errors.New("spawn request status mismatch")
 
 func (r AgentSpawnRequest) Requirements() map[string]any {
 	return decodeMeta(r.RequirementsJSON)
@@ -272,14 +275,31 @@ func (d *DB) UpdateAgentSpawnRequest(ctx context.Context, teamID, spawnRequestID
 		}
 		push("meta=$"+strconv.Itoa(len(args)+1)+"::jsonb", string(b))
 	}
+	var expectedStatus string
+	if update.ExpectedStatus != nil {
+		expectedStatus = strings.TrimSpace(*update.ExpectedStatus)
+		if expectedStatus == "" {
+			return nil, errors.New("missing expected_status")
+		}
+	}
 	if len(sets) == 0 {
 		return nil, errors.New("no updates")
 	}
 	sets = append(sets, "updated_at=NOW()")
 	args = append(args, teamID, spawnRequestID)
-	query := "UPDATE broker_agent_spawn_requests SET " + strings.Join(sets, ", ") + " WHERE team_id=$" + strconv.Itoa(len(args)-1) + " AND spawn_request_id=$" + strconv.Itoa(len(args))
-	if _, err := d.Pool.Exec(ctx, query, args...); err != nil {
+	query := "UPDATE broker_agent_spawn_requests SET " + strings.Join(sets, ", ") +
+		" WHERE team_id=$" + strconv.Itoa(len(args)-1) +
+		" AND spawn_request_id=$" + strconv.Itoa(len(args))
+	if expectedStatus != "" {
+		args = append(args, expectedStatus)
+		query += " AND status=$" + strconv.Itoa(len(args))
+	}
+	tag, err := d.Pool.Exec(ctx, query, args...)
+	if err != nil {
 		return nil, err
+	}
+	if expectedStatus != "" && tag.RowsAffected() == 0 {
+		return nil, ErrAgentSpawnRequestConflict
 	}
 	return d.GetAgentSpawnRequest(ctx, teamID, spawnRequestID)
 }

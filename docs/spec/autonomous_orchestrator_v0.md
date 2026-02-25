@@ -37,7 +37,7 @@ Future (v1+):
 - Orchestrator console UX is defined in `orchestrator_console_v0.md`.
 - Moderator directives/tasks exist and are persisted (`automation_mode_v0.md`).
 - Runtime members are supported for team runs (replace/merge).
-- Broker `/v1/events` persists events and exposes `/v1/events/replay` (UI rehydration still pending).
+- Broker `/v1/events` persists events and exposes `/v1/events/replay` (Broker console + team console rehydrate on refresh).
 - Broker orchestrator spawn requests persist and emit events (`/v1/teams/{team_id}/orchestrator/spawn_requests`).
 
 ## Current primitives (implemented)
@@ -50,6 +50,7 @@ Future (v1+):
 - Auto-allocation: broker allocator endpoint + `auto_allocate_roles` on team runs.
 - Broker event log + replay API (`/v1/events/replay`).
 - Orchestrator runs persisted in broker (`/v1/teams/{team_id}/orchestrator/runs`).
+- Spawn adapter CLI + claim guard (`expected_status`) for spawn requests.
 
 ## Gaps to reach “full automation, low drift”
 
@@ -65,9 +66,9 @@ Future (v1+):
    - Runtime members are manual today.
    - Broker supports an allocator endpoint and `auto_allocate_roles` on team runs, but no autonomous loop yet.
 
-4) **Agent provisioning adapter**
-   - Spawn requests are persisted + evented.
-   - Still missing the pluggable adapter that provisions new nodes and resolves requests.
+4) **Automated spawn request issuance**
+   - Spawn requests are persisted + evented and adapters can fulfill them.
+   - Still missing the autonomous loop that decides when to issue spawn requests.
 
 5) **Shared memory scope enforcement**
    - Scope IDs are stored; enforcement is still pending.
@@ -81,8 +82,8 @@ Future (v1+):
    - Lease/heartbeat endpoint exists; still need automated lease supervision.
 
 8) **Event replay + UI rehydration**
-   - Replay API exists; Broker console replays on refresh.
-   - Team/run views still need cursor persistence + replay-based rehydration.
+   - Replay API exists; Broker console + team console rehydrate on refresh.
+   - Cursor persistence and replay tuning still need to be hardened for long-lived runs.
 
 ## Proposed orchestration model (v0)
 

@@ -2,6 +2,7 @@ package broker
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -204,6 +205,7 @@ func (s *Server) handleTeamOrchestratorSpawnRequestUpdate(w http.ResponseWriter,
 	}
 	req := struct {
 		Status          *string           `json:"status"`
+		ExpectedStatus  *string           `json:"expected_status"`
 		Requirements    map[string]any    `json:"requirements"`
 		AssignedMembers *[]map[string]any `json:"assigned_members"`
 		Error           *string           `json:"error"`
@@ -222,6 +224,7 @@ func (s *Server) handleTeamOrchestratorSpawnRequestUpdate(w http.ResponseWriter,
 	}
 	update := db.AgentSpawnRequestUpdate{
 		Status:          req.Status,
+		ExpectedStatus:  req.ExpectedStatus,
 		Requirements:    req.Requirements,
 		AssignedMembers: req.AssignedMembers,
 		Error:           req.Error,
@@ -229,6 +232,10 @@ func (s *Server) handleTeamOrchestratorSpawnRequestUpdate(w http.ResponseWriter,
 	}
 	spawn, err := s.cfg.DB.UpdateAgentSpawnRequest(r.Context(), teamID, spawnID, update)
 	if err != nil {
+		if errors.Is(err, db.ErrAgentSpawnRequestConflict) {
+			writeErrorJSON(w, "spawn request status mismatch", http.StatusConflict)
+			return
+		}
 		writeErrorJSON(w, err.Error(), http.StatusBadRequest)
 		return
 	}

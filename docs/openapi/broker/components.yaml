@@ -1061,6 +1061,7 @@ schemas:
     type: object
     properties:
       status: { type: string }
+      expected_status: { type: string }
       requirements:
         type: object
         additionalProperties: true

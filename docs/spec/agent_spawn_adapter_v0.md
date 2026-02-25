@@ -28,6 +28,7 @@ Status: draft (rolling)
 - `GET /v1/teams`
 - `GET /v1/teams/{team_id}/orchestrator/spawn_requests?status=requested`
 - `PATCH /v1/teams/{team_id}/orchestrator/spawn_requests/{spawn_request_id}`
+  - Optional `expected_status` guard to prevent double-claim races.
 
 Spawn request statuses (convention):
 - `requested` → adapter should pick up
@@ -54,7 +55,8 @@ Optional:
 The adapter:
 1) Lists teams for the token.
 2) Lists spawn requests per team (status filter).
-3) Claims the request by setting `status=allocating` and recording `adapter_id` in `meta`.
+3) Claims the request by setting `status=allocating`, sending `expected_status=requested`, and recording `adapter_id` in `meta`.
+   - A `409` response means another adapter claimed it first; treat as non-fatal and move on.
 4) Executes the spawn command.
 5) Updates the request with `status`, `assigned_members`, `error`, and merged `meta`.
 

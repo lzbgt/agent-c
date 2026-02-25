@@ -108,18 +108,19 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-25: broker goal update endpoint added with SSE events and run payload persistence.
   - 2026-02-25: broker role handoff endpoint added with SSE event and run payload persistence.
   - 2026-02-25: WebUI team run status panel surfaces goal contract/events and handoff events with emit actions.
-  - 2026-02-26: SSE is in-memory only; durable orchestrator state + event replay still missing.
+  - 2026-02-26: broker events are persisted + replayable; remaining work is autonomous loop + drift checkpoints.
 - [ ] W=12 — Durable orchestration state + event replay: persist orchestrator runs (DB + CRUD), add replayable event log for team run/goal/handoff/moderator events, and rehydrate WebUI on refresh without losing context.
-  - 2026-02-26: broker persists events and exposes `/v1/events/replay` (UI rehydration still pending).
+  - 2026-02-26: broker persists events and exposes `/v1/events/replay`; UI rehydrates on refresh (paging still capped).
   - 2026-02-26: WebUI broker console + team console replay events on refresh; orchestrator panel also rehydrates from replay.
   - 2026-02-26: broker orchestrator runs persisted with CRUD + heartbeat endpoint.
   - 2026-02-26: WebUI team console includes orchestrator run panel (create/list/update/heartbeat).
   - 2026-02-26: orchestrator run responses include lease status derived from heartbeat.
   - 2026-02-25: added compose smoke for orchestrator runs (create/list/update/heartbeat) via `tests/broker_orchestrator_runs_compose_smoke.sh`.
-- [ ] W=9 — Agent provisioning hooks: define an optional `agent_spawn` interface (pluggable adapters for local/remote spawn) so the orchestrator can request new runtime members when capacity is low.
-  - 2026-02-25: added broker spawn request persistence + events (`/v1/teams/{team_id}/orchestrator/spawn_requests`); adapter still pending.
+- [x] W=9 — Agent provisioning hooks: define an optional `agent_spawn` interface (pluggable adapters for local/remote spawn) so the orchestrator can request new runtime members when capacity is low.
+  - 2026-02-25: added broker spawn request persistence + events (`/v1/teams/{team_id}/orchestrator/spawn_requests`).
   - 2026-02-26: added `agentd-spawn-adapter` CLI + `docs/spec/agent_spawn_adapter_v0.md` (local adapter contract).
   - 2026-02-26: added compose smoke for spawn adapter (`tests/broker_spawn_adapter_compose_smoke.sh`).
+  - 2026-02-26: added `expected_status` claim guard to prevent double-claim races.
 - [x] W=11 — Team shared memory scope enforcement (read-only/read-write) wired through team runs + tool policy hooks + tests.
   - 2026-02-25: agentd run request supports `memory_scope_id` + `memory_scope_mode` with scoped memory roots.
   - 2026-02-25: host memory tools enforce read_only mode (write tools rejected, read tools allowed).

@@ -7,6 +7,7 @@ import (
 	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -74,6 +75,15 @@ type spawnCommandOutput struct {
 	AssignedMembers []map[string]any `json:"assigned_members"`
 	Error           string           `json:"error"`
 	Meta            map[string]any   `json:"meta"`
+}
+
+type httpError struct {
+	Status int
+	Body   string
+}
+
+func (e *httpError) Error() string {
+	return fmt.Sprintf("http %d: %s", e.Status, e.Body)
 }
 
 func main() {
@@ -179,9 +189,13 @@ func handleSpawnRequest(ctx context.Context, client *http.Client, cfg config, re
 	claimedMeta["adapter_id"] = cfg.adapterID
 	claimedMeta["adapter_claimed_unix_ms"] = now
 	if _, err := updateSpawnRequest(ctx, client, cfg, req.TeamID, req.SpawnRequestID, map[string]any{
-		"status": "allocating",
-		"meta":   claimedMeta,
+		"status":          "allocating",
+		"expected_status": req.Status,
+		"meta":            claimedMeta,
 	}); err != nil {
+		if isHTTPStatus(err, http.StatusConflict) {
+			return nil
+		}
 		return err
 	}
 	out, err := runCommand(ctx, cfg, req, claimedMeta)
@@ -341,7 +355,7 @@ func doJSON(ctx context.Context, client *http.Client, cfg config, method, url st
 		return err
 	}
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("http %d: %s", resp.StatusCode, strings.TrimSpace(string(data)))
+		return &httpError{Status: resp.StatusCode, Body: strings.TrimSpace(string(data))}
 	}
 	if out == nil {
 		return nil
@@ -350,6 +364,14 @@ func doJSON(ctx context.Context, client *http.Client, cfg config, method, url st
 		return err
 	}
 	return nil
+}
+
+func isHTTPStatus(err error, code int) bool {
+	var herr *httpError
+	if errors.As(err, &herr) {
+		return herr.Status == code
+	}
+	return false
 }
 
 func httpClient(insecure bool) *http.Client {

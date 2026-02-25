@@ -1323,6 +1323,8 @@
           application/json:
             schema:
               $ref: "#/components/schemas/OrchestratorSpawnRequestResponse"
+      "409":
+        description: Spawn request status mismatch
 
 /v1/orchestrate:
   post:

@@ -217,6 +217,7 @@ All endpoints below are served by the broker (not by agents).
     - `POST /v1/teams/{team_id}/orchestrator/spawn_requests`
     - `GET /v1/teams/{team_id}/orchestrator/spawn_requests/{spawn_request_id}`
     - `PATCH /v1/teams/{team_id}/orchestrator/spawn_requests/{spawn_request_id}`
+    - `PATCH` supports `expected_status` to guard against double-claim (409 on mismatch).
   - emitted events (SSE + replay):
     - `orchestrator_run_created|updated|status|heartbeat`
     - `orchestrator_spawn_requested|updated|status`
