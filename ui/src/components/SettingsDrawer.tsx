@@ -175,6 +175,7 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const [moderatorEventsMaxBytes, setModeratorEventsMaxBytes] = React.useState<string>("1048576");
   const [moderatorEventsIncludeDirectives, setModeratorEventsIncludeDirectives] = React.useState<boolean>(true);
   const [moderatorEventsIncludeTasks, setModeratorEventsIncludeTasks] = React.useState<boolean>(true);
+  const [moderatorEventsFilter, setModeratorEventsFilter] = React.useState<string>("");
   const [moderatorEventsExpanded, setModeratorEventsExpanded] = React.useState<Record<string, boolean>>({});
   const serverPrefsBase = String(connection.serverPrefsBase || "").trim();
   const serverPrefsCanSync = serverPrefsBase.length > 0;
@@ -571,6 +572,27 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const moderatorEventsData = moderatorEvents.data;
   const moderatorEventsError = moderatorEvents.isError ? String(moderatorEvents.error || "failed to load events") : null;
   const moderatorEventsList = Array.isArray(moderatorEventsData?.events) ? (moderatorEventsData?.events as ModeratorEvent[]) : [];
+  const moderatorEventsFilterValue = String(moderatorEventsFilter || "").trim().toLowerCase();
+  const moderatorEventsFiltered = React.useMemo(() => {
+    if (!moderatorEventsFilterValue) return moderatorEventsList;
+    return moderatorEventsList.filter((event) => {
+      const type = typeof event?.type === "string" ? event.type : "";
+      const actor = event?.actor && typeof event.actor === "object" ? (event.actor as any) : {};
+      const actorId = typeof actor?.id === "string" ? actor.id : "";
+      const summary = formatModeratorEventSummary(event);
+      const haystacks = [type, actorId, summary];
+      for (const h of haystacks) {
+        if (h && h.toLowerCase().includes(moderatorEventsFilterValue)) return true;
+      }
+      try {
+        const raw = JSON.stringify(event);
+        if (raw && raw.toLowerCase().includes(moderatorEventsFilterValue)) return true;
+      } catch {
+        // ignore
+      }
+      return false;
+    });
+  }, [moderatorEventsFilterValue, moderatorEventsList]);
   const moderatorRolePresets = React.useMemo(() => ["role:planner", "role:executor", "role:critic"], []);
 
   if (!props.open) return null;
@@ -1255,6 +1277,24 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                     onChange={(e) => setModeratorEventsMaxBytes(e.target.value)}
                   />
                 </label>
+                <label className="flex items-center gap-2">
+                  <span>filter</span>
+                  <input
+                    className="w-40 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
+                    value={moderatorEventsFilter}
+                    onChange={(e) => setModeratorEventsFilter(e.target.value)}
+                    placeholder="type/actor/text"
+                  />
+                </label>
+                {moderatorEventsFilterValue ? (
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+                    type="button"
+                    onClick={() => setModeratorEventsFilter("")}
+                  >
+                    Clear
+                  </button>
+                ) : null}
               </div>
               {moderatorEventsError ? <div className="mt-2 text-[11px] text-rose-200">{moderatorEventsError}</div> : null}
               {!moderatorEventsEnabled ? (
@@ -1264,10 +1304,12 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                 <div className="mt-2 text-[11px] text-amber-200">Set a session id to read events.</div>
               ) : null}
               <div className="mt-2 max-h-48 overflow-auto rounded-md border border-white/10 bg-black/20 p-2 text-[11px] text-white/70">
-                {moderatorEventsList.length === 0 ? (
-                  <div className="text-white/40">No events loaded yet.</div>
+                {moderatorEventsFiltered.length === 0 ? (
+                  <div className="text-white/40">
+                    {moderatorEventsList.length === 0 ? "No events loaded yet." : "No events match the filter."}
+                  </div>
                 ) : (
-                  moderatorEventsList.map((event, idx) => {
+                  moderatorEventsFiltered.map((event, idx) => {
                     const type = typeof event?.type === "string" ? event.type : "event";
                     const ts = typeof event?.ts_unix_ms === "number" ? new Date(event.ts_unix_ms).toLocaleString() : "";
                     const actor = event?.actor && typeof event.actor === "object" ? (event.actor as any) : {};
