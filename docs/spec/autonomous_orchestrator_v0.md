@@ -124,6 +124,14 @@ Minimal responsibilities:
    - If a team run reports `auto_allocate_missing_roles`, emit spawn requests for those roles
      (unless existing requests already cover them).
 
+5) **Progress + drift checkpoints**
+   - Emit `goal_progress` events periodically (`meta.progress_every_ms`).
+   - Emit a single `goal_drift` event when a run exceeds `meta.drift_after_ms`.
+
+6) **Handoff execution**
+   - When `meta.handoff_queue` contains events, publish them to the active team run
+     and pop them from the queue.
+
 #### Orchestrator run meta contract (v0)
 
 These optional fields live in `orchestrator_run.meta` and drive the loop behavior:
@@ -137,6 +145,9 @@ meta:
   spawn_missing_roles: true|false     # default true
   spawn_count_per_role: number        # default 1
   completion_mode: "on_success"|"on_failure"|"never"  # default on_success
+  progress_every_ms: number           # emit goal_progress every N ms (optional)
+  drift_after_ms: number              # emit goal_drift after N ms (optional)
+  handoff_queue: [{from_role,to_role,reason?,message?,data?}]  # optional queue
   run_template: { ... }               # optional /api/v1/run payload
   team_overrides: { ... }             # optional TeamRunRequest.team overrides
 

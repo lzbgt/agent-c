@@ -76,6 +76,7 @@ type teamRunResponse struct {
 	TeamRunID               string         `json:"team_run_id"`
 	Status                  string         `json:"status"`
 	Mode                    string         `json:"mode"`
+	CreatedUnixMS           int64          `json:"created_unix_ms"`
 	AutoAllocateMissing     any            `json:"auto_allocate_missing_roles"`
 	AutoAllocateWarning     string         `json:"auto_allocate_warning"`
 	GoalContract            any            `json:"goal_contract"`
@@ -295,8 +296,21 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 			_, err := updateOrchestratorRun(ctx, client, cfg, teamID, run.OrchestratorRunID, nextStatus, meta)
 			return err
 		}
+		metaChanged := false
+		changed, err := tickActiveTeamRun(ctx, client, cfg, teamID, activeRunID, tr, meta)
+		if err != nil {
+			return err
+		}
+		if changed {
+			metaChanged = true
+		}
 		if shouldSpawnMissingRoles(meta) {
-			_ = ensureSpawnRequests(ctx, client, cfg, teamID, run.OrchestratorRunID, meta, asStringSlice(tr.AutoAllocateMissing))
+			if err := ensureSpawnRequests(ctx, client, cfg, teamID, run.OrchestratorRunID, meta, asStringSlice(tr.AutoAllocateMissing)); err == nil {
+				metaChanged = true
+			}
+		}
+		if metaChanged {
+			_, _ = updateOrchestratorRun(ctx, client, cfg, teamID, run.OrchestratorRunID, "", meta)
 		}
 		return nil
 	}
@@ -331,6 +345,37 @@ func handleRun(ctx context.Context, client *http.Client, cfg config, teamID stri
 		_ = ensureSpawnRequests(ctx, client, cfg, teamID, run.OrchestratorRunID, meta, asStringSlice(tr.AutoAllocateMissing))
 	}
 	return nil
+}
+
+func tickActiveTeamRun(
+	ctx context.Context,
+	client *http.Client,
+	cfg config,
+	teamID,
+	teamRunID string,
+	status *teamRunResponse,
+	meta map[string]any,
+) (bool, error) {
+	if status == nil {
+		return false, nil
+	}
+	changed := false
+	if ok, err := maybeEmitProgress(ctx, client, cfg, teamID, teamRunID, status, meta); err != nil {
+		return changed, err
+	} else if ok {
+		changed = true
+	}
+	if ok, err := maybeEmitDrift(ctx, client, cfg, teamID, teamRunID, status, meta); err != nil {
+		return changed, err
+	} else if ok {
+		changed = true
+	}
+	if ok, err := maybeProcessHandoffQueue(ctx, client, cfg, teamID, teamRunID, meta); err != nil {
+		return changed, err
+	} else if ok {
+		changed = true
+	}
+	return changed, nil
 }
 
 func buildTeamRunPayload(run orchestratorRun, meta map[string]any) (map[string]any, map[string]any) {
@@ -479,6 +524,127 @@ func appendTeamRunHistory(meta map[string]any, teamRunID, status string) map[str
 	return meta
 }
 
+func maybeEmitProgress(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string, status *teamRunResponse, meta map[string]any) (bool, error) {
+	interval, ok := asInt(meta["progress_every_ms"])
+	if !ok || interval <= 0 {
+		return false, nil
+	}
+	now := time.Now().UTC().UnixMilli()
+	lastRunID := strings.TrimSpace(asString(meta["last_progress_team_run_id"]))
+	lastTS, _ := asInt(meta["last_progress_unix_ms"])
+	if lastRunID != teamRunID {
+		lastTS = 0
+	}
+	if lastTS > 0 && now-int64(lastTS) < int64(interval) {
+		return false, nil
+	}
+	elapsed := int64(0)
+	if status != nil && status.CreatedUnixMS > 0 {
+		elapsed = now - status.CreatedUnixMS
+	}
+	payload := map[string]any{
+		"type":       "progress",
+		"message":    "orchestrator heartbeat",
+		"ts_unix_ms": now,
+		"data": map[string]any{
+			"elapsed_ms": elapsed,
+		},
+	}
+	if err := emitTeamRunGoalEvent(ctx, client, cfg, teamID, teamRunID, payload); err != nil {
+		return false, err
+	}
+	meta["last_progress_unix_ms"] = now
+	meta["last_progress_team_run_id"] = teamRunID
+	return true, nil
+}
+
+func maybeEmitDrift(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string, status *teamRunResponse, meta map[string]any) (bool, error) {
+	threshold, ok := asInt(meta["drift_after_ms"])
+	if !ok || threshold <= 0 {
+		return false, nil
+	}
+	if status == nil || status.CreatedUnixMS <= 0 {
+		return false, nil
+	}
+	now := time.Now().UTC().UnixMilli()
+	elapsed := now - status.CreatedUnixMS
+	if elapsed < int64(threshold) {
+		return false, nil
+	}
+	lastRunID := strings.TrimSpace(asString(meta["last_drift_team_run_id"]))
+	if lastRunID == teamRunID {
+		return false, nil
+	}
+	payload := map[string]any{
+		"type":       "drift",
+		"message":    "orchestrator drift timeout",
+		"ts_unix_ms": now,
+		"data": map[string]any{
+			"elapsed_ms":   elapsed,
+			"threshold_ms": threshold,
+		},
+	}
+	if err := emitTeamRunGoalEvent(ctx, client, cfg, teamID, teamRunID, payload); err != nil {
+		return false, err
+	}
+	meta["last_drift_unix_ms"] = now
+	meta["last_drift_team_run_id"] = teamRunID
+	return true, nil
+}
+
+func maybeProcessHandoffQueue(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string, meta map[string]any) (bool, error) {
+	raw, ok := meta["handoff_queue"]
+	if !ok || raw == nil {
+		return false, nil
+	}
+	queue := []map[string]any{}
+	switch t := raw.(type) {
+	case []map[string]any:
+		queue = append(queue, t...)
+	case []any:
+		for _, item := range t {
+			if m, ok := item.(map[string]any); ok {
+				queue = append(queue, m)
+			}
+		}
+	}
+	if len(queue) == 0 {
+		return false, nil
+	}
+	ev := queue[0]
+	payload := map[string]any{
+		"from_role": strings.TrimSpace(asString(ev["from_role"])),
+		"to_role":   strings.TrimSpace(asString(ev["to_role"])),
+	}
+	if payload["from_role"] == "" {
+		payload["from_role"] = strings.TrimSpace(asString(ev["from"]))
+	}
+	if payload["to_role"] == "" {
+		payload["to_role"] = strings.TrimSpace(asString(ev["to"]))
+	}
+	if payload["from_role"] == "" || payload["to_role"] == "" {
+		queue = queue[1:]
+		meta["handoff_queue"] = queue
+		return true, nil
+	}
+	if v := strings.TrimSpace(asString(ev["reason"])); v != "" {
+		payload["reason"] = v
+	}
+	if v := strings.TrimSpace(asString(ev["message"])); v != "" {
+		payload["message"] = v
+	}
+	if v, ok := ev["data"].(map[string]any); ok && len(v) > 0 {
+		payload["data"] = v
+	}
+	payload["ts_unix_ms"] = time.Now().UTC().UnixMilli()
+	if err := emitTeamRunHandoffEvent(ctx, client, cfg, teamID, teamRunID, payload); err != nil {
+		return false, err
+	}
+	queue = queue[1:]
+	meta["handoff_queue"] = queue
+	return true, nil
+}
+
 func shouldSpawnMissingRoles(meta map[string]any) bool {
 	if meta == nil {
 		return true
@@ -568,6 +734,30 @@ func ensureSpawnRequests(ctx context.Context, client *http.Client, cfg config, t
 	if len(created) > 0 {
 		meta["spawn_requests"] = created
 		_, _ = updateOrchestratorRun(ctx, client, cfg, teamID, orchestratorRunID, "", meta)
+	}
+	return nil
+}
+
+func emitTeamRunGoalEvent(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string, event map[string]any) error {
+	payload := map[string]any{
+		"event": event,
+	}
+	url := fmt.Sprintf("%s/v1/teams/%s/runs/%s/goal", cfg.brokerBase, teamID, teamRunID)
+	var resp map[string]any
+	if err := doJSON(ctx, client, cfg, http.MethodPatch, url, payload, &resp); err != nil {
+		return err
+	}
+	return nil
+}
+
+func emitTeamRunHandoffEvent(ctx context.Context, client *http.Client, cfg config, teamID, teamRunID string, event map[string]any) error {
+	payload := map[string]any{
+		"event": event,
+	}
+	url := fmt.Sprintf("%s/v1/teams/%s/runs/%s/handoff", cfg.brokerBase, teamID, teamRunID)
+	var resp map[string]any
+	if err := doJSON(ctx, client, cfg, http.MethodPatch, url, payload, &resp); err != nil {
+		return err
 	}
 	return nil
 }
