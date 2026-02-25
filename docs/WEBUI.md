@@ -112,6 +112,7 @@ This panel includes a **Workflow composer** with JSON and Graph modes:
 - When waiting, the composer shows a lightweight status line with elapsed time.
 - The status line includes a Cancel button while a workflow is running (best-effort cancellation).
 - The composer stores active workflow waits locally so browser refresh can resume polling (workflows continue even if the UI reloads).
+- If auto-resume cannot reconnect (offline/auth mismatch), the composer shows a Resume/Clear control for persisted waits.
 - The workflow summary panel also exposes a Cancel button for `running`/`queued` workflows.
 - The workflow summary panel shows the idempotency key when present.
 - The workflow summary panel includes copy buttons for workflow id and trace id.

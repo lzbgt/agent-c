@@ -403,6 +403,28 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
     }
   }, [props.baseUrl, props.auth, waitState, writeWaitPersisted]);
 
+  const resumePersistedWait = React.useCallback(async () => {
+    if (!waitPersisted) return;
+    setSubmitError(null);
+    setSubmitResult(null);
+    const startedUnixMs =
+      typeof waitPersisted.started_unix_ms === "number" && Number.isFinite(waitPersisted.started_unix_ms)
+        ? waitPersisted.started_unix_ms
+        : Date.now();
+    const resp = await waitForWorkflow(waitPersisted.workflow_id, { startedUnixMs });
+    if (resp) {
+      setSubmitResult(resp);
+      if (resp.ok === false) {
+        setSubmitError(resp.error || "Workflow lookup failed");
+      }
+    }
+  }, [waitPersisted, waitForWorkflow]);
+
+  const clearPersistedWait = React.useCallback(() => {
+    writeWaitPersisted(null);
+    setWaitState(null);
+  }, [writeWaitPersisted]);
+
   React.useEffect(() => {
     const persisted = waitPersisted;
     if (!persisted || !persisted.workflow_id) {
@@ -730,6 +752,27 @@ export default function WorkflowComposer(props: WorkflowComposerProps) {
                 {cancelBusy ? "Canceling…" : "Cancel"}
               </button>
             ) : null}
+          </>
+        ) : waitPersisted ? (
+          <>
+            <span className="text-[11px] text-white/60">
+              Resume wait: {waitPersisted.workflow_id}
+              {waitPersisted.last_status ? ` • ${waitPersisted.last_status}` : ""}
+            </span>
+            <button
+              className="rounded-md border border-emerald-400/30 bg-emerald-400/10 px-2 py-1 text-[11px] text-emerald-100 hover:bg-emerald-400/20"
+              type="button"
+              onClick={() => void resumePersistedWait()}
+            >
+              Resume
+            </button>
+            <button
+              className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/70 hover:bg-black/40"
+              type="button"
+              onClick={clearPersistedWait}
+            >
+              Clear
+            </button>
           </>
         ) : null}
       </div>
