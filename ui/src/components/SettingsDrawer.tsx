@@ -414,6 +414,32 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
     moderatorTaskTitle,
     props.session.id,
   ]);
+
+  const buildRuntimeMemberTaskTemplate = React.useCallback(() => {
+    return (
+      "Use tool broker_team_runtime_members_update with payload:\\n" +
+      "{\\n" +
+      "  \\\"team_id\\\": \\\"team-alpha\\\",\\n" +
+      "  \\\"team_run_id\\\": \\\"run-123\\\",\\n" +
+      "  \\\"mode\\\": \\\"merge\\\",\\n" +
+      "  \\\"runtime_members\\\": [\\n" +
+      "    {\\\"member_id\\\": \\\"rt-1\\\", \\\"agent_id\\\": \\\"agent-a\\\", \\\"role\\\": \\\"executor\\\"}\\n" +
+      "  ]\\n" +
+      "}\\n" +
+      "Optional: pass broker_base/auth_token if BROKER_BASE_URL / BROKER_AUTH_TOKEN are not set."
+    );
+  }, []);
+
+  const applyRuntimeMemberTaskTemplate = React.useCallback(() => {
+    setModeratorTaskTitle((prev) => (prev.trim().length === 0 ? "Update team run runtime members" : prev));
+    const template = buildRuntimeMemberTaskTemplate();
+    setModeratorTaskDetail((prev) => {
+      const trimmed = prev.trim();
+      if (trimmed.length === 0) return template;
+      if (trimmed.includes("broker_team_runtime_members_update")) return prev;
+      return `${prev}\\n\\n${template}`;
+    });
+  }, [buildRuntimeMemberTaskTemplate]);
   const diagProviders = diagnosticsProviders.data;
   const providerEntries = diagProviders && diagProviders.providers && typeof diagProviders.providers === "object"
     ? (diagProviders.providers as Record<string, any>)
@@ -887,6 +913,16 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                 value={moderatorTaskDetail}
                 onChange={(e) => setModeratorTaskDetail(e.target.value)}
               />
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+                <button
+                  className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40"
+                  type="button"
+                  onClick={() => applyRuntimeMemberTaskTemplate()}
+                  disabled={moderatorBusy || !moderatorTasksEnabled}
+                >
+                  Insert runtime member update template
+                </button>
+              </div>
             </div>
             <label className="flex items-center justify-between gap-2">
               <span>Append to session history</span>

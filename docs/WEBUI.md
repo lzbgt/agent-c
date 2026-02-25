@@ -51,6 +51,7 @@ Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`,
 - The WebUI caches multiple **connection profiles** (direct or broker-backed) locally and can persist them server-side.
 - Each profile can enable **profile-specific run settings** (model/provider, tool flags, run limits).
 - Settings → Moderator lets operators publish moderator directives/tasks (nonblocking) stored as client events.
+- Moderator tasks include a quick template for broker runtime member updates (tool server helper).
 - The broker console exposes agent membership management, audit events, team setup (members + quorum rules), team runs, and quorum approvals (Team console includes recent quorum requests and approvals).
 - Team members editor supports broker agent/deployment pickers and a bulk add for connected agents.
 - Team member rows support quick pause/resume (updates status via PATCH).
