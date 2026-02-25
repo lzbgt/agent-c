@@ -372,6 +372,7 @@ The daemon can persist WebUI connection profiles so they survive browser resets:
 Notes:
 - Requires auth when `--auth-token` is set.
 - v1 stores **non-secret** connection fields only (URLs/agent ids). Tokens stay client-side.
+- Workflow waits (composer resume state) are stored under `client_kind=webui-workflow` when available.
 
 ## State dir / multi-agent safety
 

@@ -423,6 +423,7 @@ The WebUI can operate in **broker mode** (OIDC) and now includes a broker consol
 - manage teams (create/delete), team members, and quorum rules
 - create team runs and submit quorum approvals
 - optionally persist WebUI connection profiles via `/v1/client_prefs` (OIDC, non-secret fields only)
+  - workflow wait state persists under `client_kind=webui-workflow` when supported
 
 ## CORS (browser clients)
 
