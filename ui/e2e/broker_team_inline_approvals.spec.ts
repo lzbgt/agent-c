@@ -126,3 +126,135 @@ test("broker team run submits inline approvals", async ({ page }) => {
 
   await expect(runSection.getByText(`run id ${runId}`)).toBeVisible();
 });
+
+test("broker team member inline edit submits patch", async ({ page }) => {
+  const teamId = "team-alpha";
+  const memberId = "member-1";
+  let updatePayload: any = null;
+  const members: any[] = [
+    {
+      member_id: memberId,
+      role: "executor",
+      status: "active",
+      agent_id: "agent-a",
+      deployment_id: "dep-a",
+      weight: 1,
+      capabilities: ["vision"],
+      meta: { backend_label: "openrouter-main" },
+    },
+  ];
+
+  await page.addInitScript(() => {
+    try {
+      window.localStorage.setItem("agentui.connectionMode", JSON.stringify("broker"));
+      window.localStorage.setItem("agentui.brokerBase", "https://broker.example.invalid");
+      window.localStorage.setItem("agentui.brokerAuthToken", "test-token");
+      window.localStorage.setItem("agentui.brokerAgentId", "agent1");
+      window.localStorage.setItem("agentui.brokerPanelOpen", "true");
+      window.localStorage.setItem("agentui.showSettings", "false");
+      window.localStorage.setItem("agentui.allowClientRpcs", "true");
+      window.localStorage.setItem("agentui.allowClientEffects", "true");
+    } catch {
+      // ignore
+    }
+  });
+
+  await page.route("**/v1/teams**", async (route, request) => {
+    const url = new URL(request.url());
+    const path = url.pathname;
+    if (request.method() === "GET" && path === "/v1/teams") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, teams: [{ team_id: teamId, display_name: "Team Alpha" }] }),
+      });
+      return;
+    }
+    if (request.method() === "GET" && path === `/v1/teams/${teamId}`) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, team: { team_id: teamId, owner_sub: "owner", display_name: "Team Alpha" } }),
+      });
+      return;
+    }
+    if (request.method() === "GET" && path === `/v1/teams/${teamId}/members`) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, team_id: teamId, members }),
+      });
+      return;
+    }
+    if (request.method() === "PATCH" && path === `/v1/teams/${teamId}/members/${memberId}`) {
+      const body = request.postData() || "{}";
+      updatePayload = JSON.parse(body);
+      members[0] = { ...members[0], ...updatePayload };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, member: members[0] }),
+      });
+      return;
+    }
+    if (request.method() === "GET" && path === `/v1/teams/${teamId}/quorum`) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ ok: true, team_id: teamId, rules: [] }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.route("**/v1/agents", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        agents: [
+          { agent_id: "agent-a", connected: true, deployments: [{ deployment_id: "dep-a" }] },
+          { agent_id: "agent-b", connected: true, deployments: [{ deployment_id: "dep-b" }] },
+        ],
+      }),
+    });
+  });
+
+  await page.goto("/");
+
+  const teamSection = page.locator("section").filter({ has: page.getByText("Teams", { exact: true }) });
+  await teamSection.getByRole("button", { name: "Refresh" }).first().click();
+
+  const membersSection = page.locator("section").filter({ has: page.getByText("Team members", { exact: true }) });
+  await expect(membersSection.getByText(memberId)).toBeVisible();
+
+  await membersSection.getByRole("button", { name: "Edit" }).first().click();
+
+  const editPanel = membersSection.getByTestId("team-member-edit");
+  await expect(editPanel).toBeVisible();
+
+  await editPanel.getByTestId("team-member-edit-role").fill("reviewer");
+  await editPanel.getByTestId("team-member-edit-status").selectOption("paused");
+  await editPanel.getByTestId("team-member-edit-weight").fill("2");
+  await editPanel.getByTestId("team-member-edit-caps").fill("vision,audio");
+  await editPanel.getByTestId("team-member-edit-agent-pick").selectOption("agent-b");
+  await editPanel.getByTestId("team-member-edit-deployment").selectOption("dep-b");
+  await editPanel
+    .getByTestId("team-member-edit-meta")
+    .fill("{\"backend_label\":\"new-backend\",\"notes\":\"edited\"}");
+
+  await editPanel.getByRole("button", { name: "Save" }).click();
+
+  await expect.poll(() => updatePayload).not.toBeNull();
+  expect(updatePayload).toEqual({
+    role: "reviewer",
+    status: "paused",
+    capabilities: ["vision", "audio"],
+    meta: { backend_label: "new-backend", notes: "edited" },
+    agent_id: "agent-b",
+    deployment_id: "dep-b",
+    weight: 2,
+  });
+});

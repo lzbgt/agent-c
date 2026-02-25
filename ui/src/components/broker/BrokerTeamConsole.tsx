@@ -1168,17 +1168,22 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                     </div>
                   </div>
                   {memberEditId === mid ? (
-                    <div className="rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/70">
+                    <div
+                      data-testid="team-member-edit"
+                      className="rounded-md border border-white/10 bg-black/30 p-2 text-[11px] text-white/70"
+                    >
                       <div className="flex flex-wrap items-center gap-2">
                         <FieldLabel>Role</FieldLabel>
                         <input
                           className="min-w-[140px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                          data-testid="team-member-edit-role"
                           value={memberEditRole}
                           onChange={(e) => setMemberEditRole(e.target.value)}
                         />
                         <FieldLabel>Status</FieldLabel>
                         <select
                           className="min-w-[120px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                          data-testid="team-member-edit-status"
                           value={memberEditStatus}
                           onChange={(e) => setMemberEditStatus(e.target.value)}
                         >
@@ -1189,6 +1194,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                         <FieldLabel>Weight</FieldLabel>
                         <input
                           className="w-20 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                          data-testid="team-member-edit-weight"
                           value={memberEditWeight}
                           onChange={(e) => setMemberEditWeight(e.target.value)}
                           placeholder="1"
@@ -1198,6 +1204,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                         <FieldLabel>Agent ID</FieldLabel>
                         <input
                           className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                          data-testid="team-member-edit-agent-id"
                           value={memberEditAgentId}
                           onChange={(e) => setMemberEditAgentId(e.target.value)}
                           placeholder="agent1"
@@ -1205,6 +1212,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                         <FieldLabel>Agent pick</FieldLabel>
                         <select
                           className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                          data-testid="team-member-edit-agent-pick"
                           value={memberEditAgentId}
                           onChange={(e) => setMemberEditAgentId(e.target.value)}
                         >
@@ -1224,6 +1232,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                         <FieldLabel>Deployment</FieldLabel>
                         <select
                           className="min-w-[160px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                          data-testid="team-member-edit-deployment"
                           value={memberEditDeploymentId}
                           onChange={(e) => setMemberEditDeploymentId(e.target.value)}
                           disabled={memberEditAgentDeployments.length === 0}
@@ -1243,6 +1252,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                         <FieldLabel>Capabilities</FieldLabel>
                         <input
                           className="min-w-[200px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                          data-testid="team-member-edit-caps"
                           value={memberEditCapabilities}
                           onChange={(e) => setMemberEditCapabilities(e.target.value)}
                           placeholder="vision,audio"
@@ -1252,6 +1262,7 @@ export default function BrokerTeamConsole(props: BrokerTeamConsoleProps) {
                         <FieldLabel>Meta JSON</FieldLabel>
                         <textarea
                           className="min-h-[72px] w-full rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/90"
+                          data-testid="team-member-edit-meta"
                           value={memberEditMetaJson}
                           onChange={(e) => setMemberEditMetaJson(e.target.value)}
                           placeholder='{"backend_label":"openrouter-main"}'
