@@ -793,6 +793,17 @@ schemas:
       member_overrides_applied:
         type: object
         additionalProperties: true
+      role_graph:
+        type: object
+        description: Role graph data (edges/roles) captured in team meta for the run.
+        additionalProperties: true
+      role_instructions:
+        type: object
+        description: Role instructions map captured in team meta for the run.
+        additionalProperties: true
+      role_prompt_mode:
+        type: string
+        description: Prompt composition mode for role instructions (prepend/append/replace).
       members:
         type: array
         items:
