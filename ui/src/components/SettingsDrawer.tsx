@@ -79,6 +79,15 @@ function parseCsvList(raw: string) {
   return out;
 }
 
+function appendCsvValue(raw: string, value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return raw;
+  const items = parseCsvList(raw);
+  if (items.includes(trimmed)) return items.join(", ");
+  items.push(trimmed);
+  return items.join(", ");
+}
+
 type SettingsDrawerProps = {
   open: boolean;
   onClose: () => void;
@@ -136,9 +145,11 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const [moderatorDirective, setModeratorDirective] = React.useState<string>("");
   const [moderatorDirectiveScope, setModeratorDirectiveScope] = React.useState<string>("");
   const [moderatorDirectiveAssignees, setModeratorDirectiveAssignees] = React.useState<string>("");
+  const [moderatorDirectivePick, setModeratorDirectivePick] = React.useState<string>("");
   const [moderatorTaskTitle, setModeratorTaskTitle] = React.useState<string>("");
   const [moderatorTaskDetail, setModeratorTaskDetail] = React.useState<string>("");
   const [moderatorTaskAssignees, setModeratorTaskAssignees] = React.useState<string>("");
+  const [moderatorTaskPick, setModeratorTaskPick] = React.useState<string>("");
   const [moderatorAppendToSession, setModeratorAppendToSession] = React.useState<boolean>(false);
   const [moderatorBusy, setModeratorBusy] = React.useState<boolean>(false);
   const [moderatorError, setModeratorError] = React.useState<string | null>(null);
@@ -330,6 +341,18 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
   const baseUrlLabel = String(run.baseUrl || "").trim();
   const diag = diagnostics.data;
   const capsData = props.caps.data;
+  const brokerAgentOptions = React.useMemo(() => {
+    const list = Array.isArray(brokerAgents) ? brokerAgents : [];
+    return list
+      .map((agent) => {
+        const id = typeof agent?.agent_id === "string" ? agent.agent_id : "";
+        if (!id) return null;
+        const connected = agent?.connected === true;
+        const label = connected ? `${id} · connected` : id;
+        return { id, label, connected };
+      })
+      .filter(Boolean) as Array<{ id: string; label: string; connected: boolean }>;
+  }, [brokerAgents]);
   const capsJson = React.useMemo(() => (capsData ? JSON.stringify(capsData, null, 2) : ""), [capsData]);
   const capsAge = React.useMemo(() => {
     if (!props.caps.updatedMs) return "";
@@ -448,6 +471,16 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
     moderatorTaskTitle,
     props.session.id,
   ]);
+
+  const addDirectiveAssignee = React.useCallback((value: string) => {
+    if (!value) return;
+    setModeratorDirectiveAssignees((prev) => appendCsvValue(prev, value));
+  }, []);
+
+  const addTaskAssignee = React.useCallback((value: string) => {
+    if (!value) return;
+    setModeratorTaskAssignees((prev) => appendCsvValue(prev, value));
+  }, []);
 
   const buildRuntimeMemberTaskTemplate = React.useCallback(() => {
     return (
@@ -955,6 +988,39 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
               <div className="mt-1 text-[11px] text-white/50">
                 Leave empty to broadcast to all listening agents.
               </div>
+              {connection.mode === "broker" ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+                  <select
+                    className="min-w-[200px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                    value={moderatorDirectivePick}
+                    onChange={(e) => setModeratorDirectivePick(e.target.value)}
+                    disabled={brokerAgentOptions.length === 0}
+                  >
+                    <option value="">(pick broker agent)</option>
+                    {brokerAgentOptions.map((opt) => (
+                      <option key={`moderator-directive-agent-${opt.id}`} value={opt.id}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                    type="button"
+                    onClick={() => addDirectiveAssignee(moderatorDirectivePick)}
+                    disabled={!moderatorDirectivePick}
+                  >
+                    Add
+                  </button>
+                  <button
+                    className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                    type="button"
+                    onClick={() => void listBrokerAgents()}
+                    disabled={brokerAgentsBusy}
+                  >
+                    {brokerAgentsBusy ? "Refreshing…" : "Refresh agents"}
+                  </button>
+                </div>
+              ) : null}
             </div>
             <div>
               <FieldLabel>Task</FieldLabel>
@@ -979,6 +1045,39 @@ export default function SettingsDrawer(props: SettingsDrawerProps) {
                   value={moderatorTaskAssignees}
                   onChange={(e) => setModeratorTaskAssignees(e.target.value)}
                 />
+                {connection.mode === "broker" ? (
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
+                    <select
+                      className="min-w-[200px] rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+                      value={moderatorTaskPick}
+                      onChange={(e) => setModeratorTaskPick(e.target.value)}
+                      disabled={brokerAgentOptions.length === 0}
+                    >
+                      <option value="">(pick broker agent)</option>
+                      {brokerAgentOptions.map((opt) => (
+                        <option key={`moderator-task-agent-${opt.id}`} value={opt.id}>
+                          {opt.label}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                      type="button"
+                      onClick={() => addTaskAssignee(moderatorTaskPick)}
+                      disabled={!moderatorTaskPick}
+                    >
+                      Add
+                    </button>
+                    <button
+                      className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-white/80 hover:bg-black/40 disabled:opacity-50"
+                      type="button"
+                      onClick={() => void listBrokerAgents()}
+                      disabled={brokerAgentsBusy}
+                    >
+                      {brokerAgentsBusy ? "Refreshing…" : "Refresh agents"}
+                    </button>
+                  </div>
+                ) : null}
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-white/60">
                 <button
