@@ -100,6 +100,53 @@ created_unix_ms: integer
 updated_unix_ms: integer
 ```
 
+### Autonomous loop service (agentd-orchestrator)
+
+The autonomous loop is a **separate adapter process** (like the spawn adapter) that
+polls broker state and drives orchestration forward without user presence.
+
+Minimal responsibilities:
+
+1) **Lease heartbeat**
+   - Refresh `/v1/teams/{team_id}/orchestrator/runs/{run_id}/heartbeat` for active runs.
+   - If status is `planned`, the loop may advance it to `running`.
+
+2) **Team run dispatch**
+   - If `meta.active_team_run_id` is missing, create a team run using the
+     orchestrator run goal and role plan snapshot.
+   - Store the created `team_run_id` in `meta.active_team_run_id`.
+
+3) **Completion handling**
+   - When the active team run reaches a terminal status, update the orchestrator run
+     status (`done` or `error`) based on `meta.completion_mode`.
+
+4) **Spawn requests on missing roles**
+   - If a team run reports `auto_allocate_missing_roles`, emit spawn requests for those roles
+     (unless existing requests already cover them).
+
+#### Orchestrator run meta contract (v0)
+
+These optional fields live in `orchestrator_run.meta` and drive the loop behavior:
+
+```
+meta:
+  autonomous: true|false              # default true
+  team_mode: "async"|"sync"           # default async
+  auto_allocate_roles: true|false     # default true
+  auto_allocate_max_members: number   # optional cap
+  spawn_missing_roles: true|false     # default true
+  spawn_count_per_role: number        # default 1
+  completion_mode: "on_success"|"on_failure"|"never"  # default on_success
+  run_template: { ... }               # optional /api/v1/run payload
+  team_overrides: { ... }             # optional TeamRunRequest.team overrides
+
+  # loop-maintained fields
+  active_team_run_id: string
+  team_run_history: [{team_run_id, status, updated_unix_ms}]
+  spawn_requests: { role: [spawn_request_id, ...] }
+  last_tick_unix_ms: integer
+```
+
 ### Goal progress + drift events (SSE)
 
 - `goal_progress`: checkpoint updates (milestones, partials, evidence references)

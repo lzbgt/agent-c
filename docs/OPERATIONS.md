@@ -165,6 +165,21 @@ Notes:
 - `BROKER_INSECURE_TLS=1` or `--insecure` is useful for local self-signed stacks.
 - See `docs/spec/agent_spawn_adapter_v0.md` for the full contract.
 
+## Autonomous orchestrator loop
+
+`agentd-orchestrator` polls orchestrator runs, heartbeats leases, and dispatches
+team runs (plus spawn requests when roles are missing).
+
+Example (devstack + single poll cycle):
+
+```bash
+tools/run_orchestrator_devstack.sh --once --insecure
+```
+
+Notes:
+- The loop honors `orchestrator_run.meta` (see `docs/spec/autonomous_orchestrator_v0.md`).
+- `BROKER_INSECURE_TLS=1` or `--insecure` is useful for local self-signed stacks.
+
 ## Network smoke tests
 
 `ctest` includes network smokes (OpenRouter + DeepSeek). They run when keys are available via:
