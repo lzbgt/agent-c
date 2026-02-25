@@ -153,6 +153,7 @@ Observability (trace/timeline) matters, but it is **not** the origin of capabili
   - 2026-02-26: added broker compose smoke for shared memory read_only enforcement.
 - [ ] W=10 — Role handoff execution: emit `team_handoff` events and visualize role graph in WebUI.
   - 2026-02-25: WebUI team run status panel can emit and display handoff events (role graph visualization still pending).
+  - 2026-02-26: WebUI role plan editor now renders a role graph preview.
 
 - [x] W=11 — Automation mode profile + moderator control plane: explicit profiles in caps, per-run override, moderator directives, and nonblocking UX.
   - 2026-02-25: added automation profiles in `/api/v1/caps`, per-run `automation_profile` override, and `effective_automation_profile` response field (agentd + docs + smoke test).

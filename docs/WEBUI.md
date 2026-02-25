@@ -80,6 +80,7 @@ Build-time overrides (optional): `VITE_AGENTD_BASE_URL`, `VITE_BROKER_BASE_URL`,
 - Team settings editor includes a role overrides JSON field (stored in `meta.role_overrides`) used as team run defaults.
 - Team settings editor includes a role plan editor (role graph + role instructions + prompt mode) stored in `meta.role_graph` / `meta.role_instructions`.
 - Role instructions can include `{{goal}}` and are used to compose per-role prompts for team runs.
+- Role graph preview renders a compact visualization of role handoff edges.
 - Team runs support **inline approvals** (optional) to satisfy strict quorum rules at submit time; failed quorum responses surface rule evals.
 - Inline approvals live in the Team console → Team run panel. Add `member_id` + decision (optional `rule_id`/reason) before Create run; approvals are sent under `team.approvals`, persisted, and the Run approvals panel auto-loads the run after submission.
 - The Team run panel lists recent runs (status/mode/summary) and supports a live (SSE) toggle to refresh on broker events without polling.
