@@ -6,6 +6,7 @@ export const TEAM_RUN_EVENT_TYPES = new Set([
   "team_quorum_result",
   "team_goal_progress",
   "team_goal_drift",
+  "team_goal_spawn_validation",
   "team_handoff",
 ]);
 

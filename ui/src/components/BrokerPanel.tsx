@@ -1958,10 +1958,16 @@ export default function BrokerPanel(props: BrokerPanelProps) {
                   const approvals = payload?.approvals;
                   const required = payload?.required_approvals;
                   summary = `${decision} · ${approvals ?? "?"}/${required ?? "?"}`;
-                } else if (type === "team_goal_progress" || type === "team_goal_drift") {
+                } else if (type === "team_goal_progress" || type === "team_goal_drift" || type === "team_goal_spawn_validation") {
                   const ev = payload?.event ?? {};
                   const msg = ev?.message ? String(ev.message) : "";
-                  summary = `${type === "team_goal_progress" ? "progress" : "drift"}${msg ? ` · ${msg}` : ""}`;
+                  const label =
+                    type === "team_goal_progress"
+                      ? "progress"
+                      : type === "team_goal_drift"
+                        ? "drift"
+                        : "spawn validation";
+                  summary = `${label}${msg ? ` · ${msg}` : ""}`;
                 } else if (type === "team_handoff") {
                   const ev = payload?.event ?? {};
                   const fromRole = ev?.from_role ? String(ev.from_role) : "";
