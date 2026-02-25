@@ -425,6 +425,7 @@ Rules:
 - `read_only` blocks writes from members.
 - The broker injects `memory_scope_id` + `memory_scope_mode` into each member run.
 - Member runs read/write under `state_dir/memory_scopes/<scope_id>` on the target agentd.
+ - If the run payload already includes `memory_scope_id`/`memory_scope_mode`, it overrides the team defaults for that run.
 
 ---
 

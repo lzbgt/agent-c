@@ -26,6 +26,10 @@ type TeamRunCreatePanelProps = {
   setRunConcurrency: (value: string) => void;
   runTimeoutMs: string;
   setRunTimeoutMs: (value: string) => void;
+  runSharedMemoryScope: string;
+  setRunSharedMemoryScope: (value: string) => void;
+  runSharedMemoryMode: string;
+  setRunSharedMemoryMode: (value: string) => void;
   runMode: string;
   setRunMode: (value: string) => void;
   runQuorumMode: string;
@@ -207,6 +211,25 @@ export default function TeamRunCreatePanel(props: TeamRunCreatePanelProps) {
       </div>
       <div className="text-[11px] text-white/50">
         Async mode dispatches `run_async` per member so the run continues if the UI disconnects.
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <FieldLabel>Shared memory scope</FieldLabel>
+        <input
+          className="min-w-[180px] flex-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+          value={props.runSharedMemoryScope}
+          onChange={(e) => props.setRunSharedMemoryScope(e.target.value)}
+          placeholder="override scope-id (optional)"
+        />
+        <FieldLabel>Shared memory mode</FieldLabel>
+        <select
+          className="rounded-md border border-white/10 bg-black/30 px-2 py-1 text-xs text-white/90"
+          value={props.runSharedMemoryMode}
+          onChange={(e) => props.setRunSharedMemoryMode(e.target.value)}
+        >
+          <option value="read_write">read_write</option>
+          <option value="read_only">read_only</option>
+        </select>
+        <span className="text-[11px] text-white/50">Overrides team shared memory for this run.</span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <FieldLabel>Run overrides</FieldLabel>

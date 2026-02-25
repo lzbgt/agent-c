@@ -29,6 +29,7 @@ import {
   fmtTs,
   normalizeRoleInstructionMap,
   normalizeRolePromptMode,
+  normalizeSharedMemoryMode,
   parseCsvList,
 } from "./teamRunUtils";
 import type { BrokerEventRow, TeamMemberRow, TeamQuorumRuleRow } from "./types";
@@ -98,6 +99,8 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const [runRoles, setRunRoles] = React.useState<string>("");
   const [runConcurrency, setRunConcurrency] = React.useState<string>("1");
   const [runTimeoutMs, setRunTimeoutMs] = React.useState<string>("60000");
+  const [runSharedMemoryScope, setRunSharedMemoryScope] = React.useState<string>("");
+  const [runSharedMemoryMode, setRunSharedMemoryMode] = React.useState<string>("read_write");
   const [runQuorumMode, setRunQuorumMode] = React.useState<string>("auto");
   const [runOverridesMode, setRunOverridesMode] = React.useState<string>("member_meta");
   const [runMemberOverridesJson, setRunMemberOverridesJson] = React.useState<string>("");
@@ -140,6 +143,12 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
   const teamRoleInstructionsDefaults = normalizeRoleInstructionMap(teamMetaObj?.role_instructions);
   const teamRoleInstructionKeys = Object.keys(teamRoleInstructionsDefaults);
   const teamRolePromptModeDefault = normalizeRolePromptMode(teamMetaObj?.role_prompt_mode);
+  const teamSharedMemoryScopeDefault = teamMetaObj?.shared_memory_scope_id
+    ? String(teamMetaObj.shared_memory_scope_id).trim()
+    : "";
+  const teamSharedMemoryModeDefault = normalizeSharedMemoryMode(
+    teamMetaObj?.shared_memory_mode ?? teamMetaObj?.memory_scope_mode ?? "read_write",
+  );
   const runRolePlanOptions = React.useMemo(() => {
     const set = new Set<string>();
     for (const role of teamRoleOverrideKeys) {
@@ -418,6 +427,8 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
     setRunRoleInstructionsOverride(false);
     setRunRoleInstructions({});
     setRunRolePromptMode("prepend");
+    setRunSharedMemoryScope(teamSharedMemoryScopeDefault);
+    setRunSharedMemoryMode(teamSharedMemoryModeDefault);
   }, [teamIdTrimmed]);
 
   React.useEffect(() => {
@@ -474,6 +485,11 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
       if (model) runPayload.model = model;
       const tools = String(runTools || "").trim();
       if (tools) runPayload.tools = tools;
+      const sharedScope = String(runSharedMemoryScope || "").trim();
+      if (sharedScope) {
+        runPayload.memory_scope_id = sharedScope;
+        runPayload.memory_scope_mode = normalizeSharedMemoryMode(runSharedMemoryMode);
+      }
       const teamPayload: Record<string, any> = {};
       const role = String(runRole || "").trim();
       if (role) teamPayload.role = role;
@@ -1556,6 +1572,10 @@ export default function BrokerTeamRunPanel(props: BrokerTeamRunPanelProps) {
         setRunConcurrency={setRunConcurrency}
         runTimeoutMs={runTimeoutMs}
         setRunTimeoutMs={setRunTimeoutMs}
+        runSharedMemoryScope={runSharedMemoryScope}
+        setRunSharedMemoryScope={setRunSharedMemoryScope}
+        runSharedMemoryMode={runSharedMemoryMode}
+        setRunSharedMemoryMode={setRunSharedMemoryMode}
         runMode={runMode}
         setRunMode={setRunMode}
         runQuorumMode={runQuorumMode}

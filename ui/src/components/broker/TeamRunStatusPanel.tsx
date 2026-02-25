@@ -42,6 +42,8 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
   const goalContract = run?.goal_contract && typeof run.goal_contract === "object" ? run.goal_contract : null;
   const goalEvents = Array.isArray(run?.goal_events) ? run.goal_events : [];
   const handoffEvents = Array.isArray(run?.handoff_events) ? run.handoff_events : [];
+  const sharedMemoryScope = run?.shared_memory_scope_id ? String(run.shared_memory_scope_id) : "";
+  const sharedMemoryMode = run?.shared_memory_mode ? String(run.shared_memory_mode) : "";
 
   const lastInitRunId = React.useRef<string>("");
   const [goalContractGoal, setGoalContractGoal] = React.useState<string>("");
@@ -230,6 +232,12 @@ export default function TeamRunStatusPanel(props: TeamRunStatusPanelProps) {
       {run?.run_overrides_mode ? (
         <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
           overrides mode: {String(run.run_overrides_mode)}
+        </div>
+      ) : null}
+      {sharedMemoryScope ? (
+        <div className="rounded-md border border-white/5 bg-black/30 px-2 py-1 text-[11px] text-white/70">
+          shared memory: {sharedMemoryScope}
+          {sharedMemoryMode ? ` (${sharedMemoryMode})` : ""}
         </div>
       ) : null}
       {run?.role_overrides_applied || run?.member_overrides_applied ? (

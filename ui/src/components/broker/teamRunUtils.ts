@@ -71,6 +71,14 @@ export const normalizeRolePromptMode = (raw: any): string => {
   return "prepend";
 };
 
+export const normalizeSharedMemoryMode = (raw: any): string => {
+  if (typeof raw !== "string") return "read_write";
+  const mode = raw.trim().toLowerCase();
+  if (mode === "read_only" || mode === "readonly") return "read_only";
+  if (mode === "read_write" || mode === "readwrite") return "read_write";
+  return "read_write";
+};
+
 const normalizeRoleValue = (role: any): string => String(role || "").trim();
 
 const isConnectedAgent = (agent: any): { connected: boolean; deploymentId: string } => {
